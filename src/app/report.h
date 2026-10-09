@@ -1,6 +1,5 @@
-// Sortable HTML path report: row collection and page building. Split from
-// the CLI's main() so the GUI's ReportJob and the tests
-// (tests/test_report.cpp) can build the page without a process spawn.
+// The path report: row collection, tiles and the subtitle and footer framing.
+// The GUI's ReportJob builds it and the path report window draws it.
 
 #ifndef HYDRA_APP_REPORT_H
 #define HYDRA_APP_REPORT_H
@@ -24,9 +23,7 @@ struct Settings;  // app/config.h
 
 namespace hydra::app::report {
 
-// One table row. Field order is the JSON key order the page's script reads.
-// `hyhash` goes out as "c", a small per-chart number in order of first
-// appearance, and `copies` as "k"; the Charts tile adds up "k" once per "c".
+// One table row: one path of one chart and mode.
 struct ReportRow {
     std::string song;
     std::string artist;
@@ -57,8 +54,7 @@ struct ReportRow {
     int sqout = 0;
     int notes = 0;
     // The chart this row belongs to. charts_counted (report.cpp) groups rows
-    // by it for the subtitle's count and the Charts shown tile, and
-    // page_charts numbers it for the page's "c".
+    // by it for the subtitle's count and the Charts shown tile.
     std::string hyhash;
     // How many library rows that chart counts as, every copy counted (D76):
     // what the subtitle and the Charts tile add up. collect_rows sets it from
@@ -231,24 +227,13 @@ struct CollectedRows {
 CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
                            const ReportOptions& options);
 
-// The line the page shows under its subtitle, and hydra_report prints, when
-// charts were left out (D89 item 1). Empty when none were.
+// The line a report shows under its subtitle when charts were left out (D89
+// item 1). Empty when none were.
 std::string left_out_line(const std::vector<ReportFailure>& failures);
 
-// The self-contained page: the PAGE template with subtitle/footer escaped in
-// and a JSON payload {hit_window, tiers, rows} embedded, so the page's tier
-// dropdown and stats derive from the same window the rows were labeled with.
-// `failures` are the charts the page says it left out, under its subtitle.
-std::string build_html(const std::vector<ReportRow>& rows, const std::string& subtitle,
-                       const std::string& footer,
-                       double hit_window_ms = kDefaultHitWindowMs,
-                       const std::vector<ReportFailure>& failures = {});
-
 // ---- generate_report -------------------------------------------------------
-// The whole report in one call: counts + rows + the standard page framing
-// (subtitle and footer). The GUI's ReportJob and the hydra_report CLI are
-// adapters over this seam; both previously composed the same framing strings
-// by hand, where they could (and did) drift.
+// The whole report in one call: counts + rows + the standard framing
+// (subtitle and footer). The GUI's ReportJob is an adapter over this seam.
 
 // Why a report came out with no page (finding 105, D48 Q28).
 enum class EmptyReason {
@@ -287,7 +272,10 @@ std::string nothing_under_settings(int cap, const std::string& middle,
                                    const std::string& ending = std::string());
 
 struct GeneratedReport {
-    std::string html;  // empty when the store held no reportable rows
+    // Nothing fills this any more: the page it held is gone. It stays only
+    // until src/ui/dm_jobs.cpp, src/ui/library_jobs.cpp and
+    // tests/test_app_state.cpp stop naming it (RW-T7's handoff).
+    std::string html;
     // Both count every library copy of a chart (D76, D77).
     int64_t songs = 0;    // charts with rows on the page
     int64_t records = 0;  // records with rows on the page (one rank-1 row each)
@@ -314,7 +302,7 @@ struct GeneratedReport {
 };
 
 // The library's charts through collect_rows, with `seed`'s rows reused.
-// hydra_report passes an empty seed.
+// A report with no batch before it passes an empty seed.
 GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& options,
                                 const ReportSeed& seed = ReportSeed{});
 

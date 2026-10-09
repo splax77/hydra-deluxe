@@ -1,8 +1,9 @@
 #include "app/dm_report_view.h"
 
 #include "app/display_format.h"  // format_percent
-#include "app/html_page.h"       // search_field, replace_all
+#include "app/library_query.h"   // search_field
 #include "core/model.h"          // group_thousands, kCloneHeroSpCap
+#include "core/strutil.h"        // replace_all
 
 namespace hydra::app::dm_report_view {
 
@@ -15,10 +16,10 @@ namespace {
 
 // The definitions name the base speed through __BASE_SPEED__ and Clone
 // Hero's cap through __SP_CAP__, filled from net::kBaseSpeedPercent and
-// kCloneHeroSpCap as the page was.
+// kCloneHeroSpCap.
 std::string fill_constants(std::string definition) {
-    return html::replace_all(
-        html::replace_all(std::move(definition), "__BASE_SPEED__",
+    return replace_all(
+        replace_all(std::move(definition), "__BASE_SPEED__",
                           std::to_string(net::kBaseSpeedPercent)),
         "__SP_CAP__", std::to_string(kCloneHeroSpCap));
 }
@@ -199,7 +200,7 @@ std::function<bool(const DmReportRow&)> dm_keep(std::optional<std::string> statu
 }
 
 std::string dm_search_text(const DmReportRow& row) {
-    return html::search_field(row.song, row.artist, row.charter);
+    return search_field(row.song, row.artist, row.charter);
 }
 
 }  // namespace hydra::app::dm_report_view

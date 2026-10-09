@@ -43,6 +43,15 @@ std::string trim(std::string_view s) {
     return std::string(trim_view(s));
 }
 
+std::string replace_all(std::string s, std::string_view from, std::string_view to) {
+    size_t pos = 0;
+    while ((pos = s.find(from, pos)) != std::string::npos) {
+        s.replace(pos, from.size(), to);
+        pos += to.size();
+    }
+    return s;
+}
+
 bool starts_with(std::string_view s, std::string_view prefix) {
     return s.size() >= prefix.size() && s.substr(0, prefix.size()) == prefix;
 }

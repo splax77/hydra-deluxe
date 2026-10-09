@@ -105,7 +105,7 @@ struct Settings {
     // FillDeadlineRule). Off by default: 1.1 is the game people play now. Part
     // of a result's key, like the SP cap. INI line: legacy_fills=0.
     // A tool that takes its own kLegacyFillsFlag ignores it: see
-    // load_for_command_line. (hydra_report follows it, docs/adr/0010.)
+    // load_for_command_line. (The path report follows it, docs/adr/0010.)
     bool legacy_fills = false;
 
     // Open a report in the browser as soon as Hydra builds it. It covers every

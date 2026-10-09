@@ -48,7 +48,7 @@ TEST_CASE("s2 offspeed: an off-speed score is 'other speed', with or without a r
         app::dm_report::collect_dm_rows(store, scores, kMode, store::Lens{});
     REQUIRE(rows.size() == 4);
 
-    // These strings are load-bearing: the page's filter and chip classes key on them.
+    // These strings are load-bearing: the window's Status filter and chips key on them.
     CHECK(rows[0].status == "other speed");
     CHECK(rows[1].status == "other speed");
     CHECK(rows[2].status == "other speed");
@@ -86,7 +86,7 @@ TEST_CASE("s2 offspeed: the counts sentence names other speeds only when there a
           "1 not in your library");
 }
 
-TEST_CASE("s2 offspeed: the page filters, colours and counts 'other speed'") {
+TEST_CASE("s2 offspeed: the subtitle and the Other speed tile count 'other speed'") {
     store::RecordStore store(":memory:");
     const int64_t optimal = fill_store(store);
     const app::dm_report::GeneratedDmReport report = app::dm_report::generate_dm_report(
@@ -94,58 +94,10 @@ TEST_CASE("s2 offspeed: the page filters, colours and counts 'other speed'") {
                 score_at(kHash, optimal - 9, 50)},
         kMode, store::Lens{}, "TestUser");
     CHECK(report.stats.other_speed == 2);
-    CHECK(report.html.find("TestUser — 3 scores: 1 under optimal, 0 at optimal, "
-                           "0 above optimal, 0 not analyzed, 0 not in your library, "
-                           "2 at other speeds") != std::string::npos);
-    CHECK(report.html.find("<option value=\"other speed\">Other speed</option>") !=
-          std::string::npos);
-    CHECK(report.html.find("'other speed':'s-otherspeed'") != std::string::npos);
-    CHECK(report.html.find("['Other speed', fmt(otherSpeed.length)]") != std::string::npos);
-    CHECK(report.html.find(".s-otherspeed{") != std::string::npos);
-}
+    CHECK(report.subtitle ==
+          "TestUser — 3 scores: 1 under optimal, 0 at optimal, "
+          "0 above optimal, 0 not analyzed, 0 not in your library, "
+          "2 at other speeds");
 
-// The page's stat row counts statuses in JavaScript, and tally_dm_rows counts
-// them in C++. The page has to count per filtered view, so it can't just print
-// the C++ totals. Instead this case pins that both count the same statuses:
-// every status the C++ assigns has its own tally field, its own count in the
-// page's stats(), its own filter option and its own chip class, and the page
-// counts no status the C++ doesn't know.
-TEST_CASE("s2 offspeed: the page counts the same statuses tally_dm_rows counts") {
-    const std::vector<std::string> statuses = {"under optimal", "at optimal", "above optimal",
-                                               "not analyzed", "not in library", "other speed"};
-    std::vector<DmReportRow> rows;
-    for (const std::string& s : statuses) {
-        DmReportRow r;
-        r.status = s;
-        rows.push_back(r);
-    }
-    const app::dm_report::DmReportStats st = app::dm_report::tally_dm_rows(rows);
-    CHECK(st.total == 6);
-    CHECK(st.under_optimal == 1);
-    CHECK(st.at_optimal == 1);
-    CHECK(st.above_optimal == 1);
-    CHECK(st.not_analyzed == 1);
-    CHECK(st.not_in_library == 1);
-    CHECK(st.other_speed == 1);
-
-    // The page shell with no rows. (generate_dm_report returns no page at all
-    // for an empty score list, so the shell is built directly.)
-    const std::string html = app::dm_report::build_dm_html({}, "TestUser", "footer");
-    for (const std::string& s : statuses) {
-        CAPTURE(s);
-        CHECK(html.find("rows.filter(r => r.status === '" + s + "')") != std::string::npos);
-        CHECK(html.find("<option value=\"" + s + "\">") != std::string::npos);
-        CHECK(html.find("'" + s + "':'s-") != std::string::npos);
-    }
-    // No status counted on the page that the C++ never assigns.
-    size_t counted = 0;
-    for (size_t at = html.find("rows.filter(r => r.status === '"); at != std::string::npos;
-         at = html.find("rows.filter(r => r.status === '", at + 1))
-        ++counted;
-    CHECK(counted == statuses.size());
-
-    // The help text reads the base speed from kBaseSpeedPercent, not a literal.
-    CHECK(html.find("__BASE_SPEED__") == std::string::npos);
-    CHECK(html.find("Other speed: played at a speed other than " +
-                    std::to_string(net::kBaseSpeedPercent) + "%.") != std::string::npos);
+    CHECK(testdm::dm_tile(report.rows, "Other speed") == "2");
 }

@@ -1,7 +1,6 @@
-// Shared plumbing for the three HTML report pages (app/report.cpp,
-// app/dm_report.cpp, app/fill_report.cpp): the one stylesheet and script they
-// all use, template substitution, and the escaping helpers they embed their
-// row data with.
+// Plumbing for the fill comparison's HTML page (app/fill_report.cpp): its
+// stylesheet and script, template substitution, and the escaping helpers it
+// embeds its row data with.
 
 #ifndef HYDRA_APP_HTML_PAGE_H
 #define HYDRA_APP_HTML_PAGE_H
@@ -10,10 +9,6 @@
 #include <string_view>
 
 namespace hydra::app::html {
-
-// str.replace(old, new) for the one-shot template placeholders.
-std::string replace_all(std::string s, const std::string& from,
-                        const std::string& to);
 
 // html.escape(s, quote=True): & first, then the rest.
 std::string html_escape(const std::string& s);
@@ -30,11 +25,11 @@ std::string render_page(const char* page_template, std::string data_json,
                         const std::string& subtitle, const std::string& footer);
 
 // ---- the shared report page -----------------------------------------------
-// All three report pages are one stylesheet and one script wrapped around each
-// page's own title, body markup and PAGE settings (docs/adr/0016). Both stay
-// ASCII: this file compiles into hydra_core, so a glyph goes in as an HTML
-// entity or a \uXXXX JavaScript escape.
-extern const char* const kReportCss;     // every rule the three pages use
+// The fill page is one stylesheet and one script wrapped around its own
+// title, body markup and PAGE settings (docs/adr/0016). Both stay ASCII: this
+// file compiles into hydra_core, so a glyph goes in as an HTML entity or a
+// \uXXXX JavaScript escape.
+extern const char* const kReportCss;     // every rule the fill page uses
 extern const char* const kReportJsHead;  // the data tag, DATA, DASH, fmt
 extern const char* const kReportJs;      // sorting, filtering, drawing, first render
 
@@ -45,18 +40,9 @@ extern const char* const kReportJs;      // sorting, filtering, drawing, first r
 // search_fold_table the search box folds a typed query with. Every row in
 // PAGE.rows carries `search`, its search_field text; PAGE.filter() takes no
 // query and keeps rows by the page's own controls only.
-// A column in PAGE.cols may carry `d:'...'`, its definition: the header's
-// hover text and the footer legend (#legend, when the body has one) show it.
 // The result still carries __SUBTITLE__, __FOOTER__ and __DATA__ for
 // render_page to fill.
 std::string page_template(const char* title, const char* body, const char* page_js);
-
-// A row's search text on a report page: each field the page searches, folded
-// and tag-free the way the library stores its rows (make_searchable in
-// app/library_query.h), joined by single spaces. Empty fields are left out.
-// The page keeps a row when every word of the folded query appears in it.
-std::string search_field(std::string_view song, std::string_view artist,
-                         std::string_view charter, std::string_view path = {});
 
 }  // namespace hydra::app::html
 

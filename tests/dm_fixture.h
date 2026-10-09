@@ -1,5 +1,6 @@
 // The one leaderboard fixture the dm_report tests share (audit finding 277):
-// a store holding one analyzed corpus chart, and a leaderboard score builder.
+// a store holding one analyzed corpus chart, a leaderboard score builder, and
+// a tile lookup over every score.
 
 #ifndef HYDRA_TESTS_DM_FIXTURE_H
 #define HYDRA_TESTS_DM_FIXTURE_H
@@ -7,12 +8,16 @@
 #include <cstdint>
 #include <exception>
 #include <string>
+#include <vector>
 
 #include "app/analysis.h"
+#include "app/dm_report.h"
+#include "app/report.h"  // Tile
 #include "core/model.h"
 #include "corpus_util.h"
 #include "doctest.h"
 #include "net/dmbot_client.h"
+#include "report_samples.h"  // every_row
 #include "store/record_store.h"
 
 namespace testdm {
@@ -58,6 +63,16 @@ inline hydra::net::DmScore make_score(const std::string& identifier, int64_t sco
     s.posted = "2026-01-01T00:00:00Z";
     s.known = true;
     return s;
+}
+
+// The value of the tile named `label` over every score in `rows`.
+inline std::string dm_tile(const std::vector<hydra::app::dm_report::DmReportRow>& rows,
+                           const std::string& label) {
+    for (const hydra::app::report::Tile& t :
+         hydra::app::dm_report::dm_tiles(rows, report_samples::every_row(rows.size())))
+        if (t.label == label) return t.value;
+    FAIL("no tile " << label);
+    return {};
 }
 
 }  // namespace testdm

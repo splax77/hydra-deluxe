@@ -133,7 +133,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 ==============================================================================
 SQLite
 Version: 3.46.0 (https://www.sqlite.org/2024/sqlite-amalgamation-3460000.zip)
-Used in: Hydra.exe, hydra_batch.exe, hydra_report.exe, hydra_fillcompare.exe
+Used in: Hydra.exe, hydra_batch.exe, hydra_fillcompare.exe
 ==============================================================================
 
 The author disclaims copyright to this source code.  In place of
@@ -147,7 +147,7 @@ a legal notice, here is a blessing:
 ==============================================================================
 miniz
 Version: miniz 3.0.2 (amalgamated release)
-Used in: Hydra.exe, hydra_batch.exe, hydra_report.exe, hydra_fillcompare.exe
+Used in: Hydra.exe, hydra_batch.exe, hydra_fillcompare.exe
 ==============================================================================
 
 Copyright 2013-2014 RAD Game Tools and Valve Software

@@ -5,7 +5,6 @@
 #endif
 #include <windows.h>
 #include <shobjidl.h>
-#include <shellapi.h>
 #include <wrl/client.h>
 
 #include "core/winstr.h"
@@ -52,29 +51,6 @@ std::optional<std::string> browse_for_folder(HWND owner, bool* failed) {
 
     if (we_initialized_com) CoUninitialize();
     return result;
-}
-
-namespace {
-ShowInFolderFn& show_in_folder_seam() {
-    static ShowInFolderFn fn;
-    return fn;
-}
-}  // namespace
-
-void set_show_in_folder(ShowInFolderFn fn) { show_in_folder_seam() = std::move(fn); }
-
-bool show_in_folder(const std::filesystem::path& file) {
-    const std::wstring path = file.wstring();
-    if (show_in_folder_seam()) return show_in_folder_seam()(path);
-    // Explorer opens nothing for a path fits_shell refuses (too long, or
-    // prefixed); its short name works. With no short name there is nothing
-    // it can show.
-    const std::wstring target = hydra::shell_path(path);
-    if (target.empty()) return false;
-    const std::wstring args = L"/select,\"" + target + L"\"";
-    HINSTANCE r = ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr,
-                                SW_SHOWNORMAL);
-    return shell_execute_ok(r);
 }
 
 }  // namespace hydra::ui

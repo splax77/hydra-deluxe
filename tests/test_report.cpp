@@ -1,6 +1,7 @@
 // Structural tests for app/report.{h,cpp}: collect_rows must surface one row
-// per stored record, and build_html must substitute every template
-// placeholder and embed the rows and the subtitle/footer strings.
+// per stored record, and generate_report frames those rows with the subtitle
+// and footer the report window shows. The fill comparison page's shell and
+// the samples case for the browser check live here too.
 
 #include "doctest.h"
 
@@ -35,11 +36,13 @@
 #include "app/fill_report.h"
 #include "app/html_page.h"
 #include "app/library_query.h"
+#include "app/path_report_view.h"
 #include "app/report.h"
 #include "app/report_files.h"
 #include "app/user_messages.h"
 #include "core/model.h"
 #include "core/squeeze_rating.h"
+#include "core/strutil.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "record_fixtures.h"
@@ -60,12 +63,7 @@ size_t occurrences(const std::string& text, const std::string& what) {
     return n;
 }
 
-// Every row of `n`, in order: what a window shows with no filter set.
-std::vector<size_t> every_row(size_t n) {
-    std::vector<size_t> shown(n);
-    for (size_t i = 0; i < n; ++i) shown[i] = i;
-    return shown;
-}
+using report_samples::every_row;
 
 using TilePairs = std::vector<std::pair<std::string, std::string>>;
 
@@ -189,21 +187,24 @@ void check_cap(int cap) {
     CHECK(rank1 == added);
     CHECK(static_cast<int>(rows.size()) >= added);
 
-    const std::string subtitle = "Subtitle marker 4242";
-    const std::string footer = "Footer marker 2424";
-    std::string html = report::build_html(rows, subtitle, footer);
+    // Every stored chart is named on some row.
+    for (int i = 0; i < added; ++i) {
+        const std::string title = "Title " + std::to_string(i);
+        INFO(title);
+        CHECK(std::any_of(rows.begin(), rows.end(),
+                          [&title](const report::ReportRow& r) { return r.song == title; }));
+    }
 
-    // Every placeholder is substituted, and the substituted content is there.
-    CHECK(html.find("__SUBTITLE__") == std::string::npos);
-    CHECK(html.find("__FOOTER__") == std::string::npos);
-    CHECK(html.find("__DATA__") == std::string::npos);
-    CHECK(html.find(subtitle) != std::string::npos);
-    CHECK(html.find(footer) != std::string::npos);
-    for (int i = 0; i < added; ++i)
-        CHECK(html.find("Title " + std::to_string(i)) != std::string::npos);
+    MESSAGE(std::to_string(cap) << " bars: " << rows.size() << " rows");
+}
 
-    MESSAGE(std::to_string(cap) << " bars: " << rows.size()
-            << " rows, " << html.size() << " bytes");
+// The fields that tell two report rows apart, so two reports compare row by row.
+using RowKey = std::tuple<std::string, std::string, std::string, int64_t, int>;
+std::vector<RowKey> row_keys(const std::vector<report::ReportRow>& rows) {
+    std::vector<RowKey> out;
+    for (const report::ReportRow& r : rows)
+        out.emplace_back(r.hyhash, r.mode, r.path, r.score, r.copies);
+    return out;
 }
 
 // Stores H1's tied-variant record for chart `hyhash` under
@@ -263,16 +264,14 @@ TEST_CASE("report rows: a tied top-score variant is optimal too") {
     const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
     // The subtitle still counts one record, however many paths tie.
     CHECK(page.records == 1);
-    CHECK(occurrences(page.html, "\"opt\":true") == 2);
-    CHECK(occurrences(page.html, "\"opt\":false") == 1);
-    // "Best path only" and the bold row read the flag, not the rank.
-    CHECK(page.html.find("if (bestOnly && !r.opt) return false;") != std::string::npos);
-    CHECK(page.html.find("rowClass: r => r.opt ? 'best' : '',") != std::string::npos);
-    CHECK(page.html.find("r.rank !== 1") == std::string::npos);
-    CHECK(page.html.find("r.rank === 1") == std::string::npos);
+    // The report hands both tied paths over as optimal, and the lower one not.
+    REQUIRE(page.paths.size() == 3);
+    CHECK(std::count_if(page.paths.begin(), page.paths.end(),
+                        [](const report::ReportRow& r) { return r.optimal; }) == 2);
+    CHECK_FALSE(page.paths[2].optimal);
 }
 
-TEST_CASE("report page embeds every stored record (4 bars)") { check_cap(4); }
+TEST_CASE("report rows list every stored record (4 bars)") { check_cap(4); }
 
 // collect_rows lists a record's paths in all_paths() order and numbers them
 // from 1, so that order has to be best first already. This guards it at the
@@ -313,11 +312,14 @@ TEST_CASE("report counts every library copy of a chart, and leaves out a chart t
     const report::GeneratedReport out = report::generate_report(store, fixture_options(4));
     CHECK(out.records == 2);
     CHECK(out.songs == 2);
-    CHECK(out.html.find("2 records across 2 charts") != std::string::npos);
-    // The Charts tile adds up "k" once per chart.
-    CHECK(out.html.find("\"k\":2") != std::string::npos);
-    CHECK(out.html.find("\"k\":1") == std::string::npos);
-    CHECK(out.html.find("Title 1") == std::string::npos);
+    CHECK(out.subtitle.find("2 records across 2 charts") != std::string::npos);
+    // Every row is h0's and carries its two copies; h1 is left out.
+    REQUIRE_FALSE(out.paths.empty());
+    for (const report::ReportRow& r : out.paths) {
+        CHECK(r.hyhash == "h0");
+        CHECK(r.copies == 2);
+        CHECK(r.song != "Title 1");
+    }
 }
 
 TEST_CASE("library copies are keyed like records_by_hash, and an unlisted chart counts once") {
@@ -340,46 +342,30 @@ TEST_CASE("library copies are keyed like records_by_hash, and an unlisted chart 
     CHECK(store::RecordStore::copies_of(library, "00ff00ff00ff00ff00ff00ff00ff00ff") == 1);
 }
 
-// The page's Charts tile adds up "k" once per "c" in JavaScript, and
-// generate_report adds up each chart's copies once in C++. The page has to
-// count per filtered view, so it can't print the C++ total. This pins that
-// both count the same thing: every row carries its chart's number as "c" and
-// that chart's copies as "k", and the tile sums exactly those two fields.
-TEST_CASE("path page: the Charts tile adds up the copies generate_report adds up") {
+// The Charts shown tile adds up each chart's copies once over the rows shown
+// (path_tiles), and generate_report's subtitle adds them up once over every
+// row. This pins that both count the same thing: every row carries its
+// chart's copies, and with every row shown the two totals agree.
+TEST_CASE("path report: the Charts shown tile adds up the copies generate_report adds up") {
     store::RecordStore store(":memory:");
     fill_store_with_copies(store);
 
-    const report::ReportOptions options = fixture_options(4);
-    const report::GeneratedReport out = report::generate_report(store, options);
+    const report::GeneratedReport out = report::generate_report(store, fixture_options(4));
     CHECK(out.songs == 5);
-    CHECK(out.html.find(" across 5 charts") != std::string::npos);
+    CHECK(out.subtitle.find(" across 5 charts") != std::string::npos);
 
-    // Every row of a chart carries that chart's copies, and one of two
-    // numbers for the chart.
+    // Every row of a chart carries that chart's copies.
     size_t rows_h0 = 0, rows_h1 = 0;
-    for (const report::ReportRow& r :
-         report::collect_rows(store, report::ReportSeed{}, options).rows)
+    for (const report::ReportRow& r : out.paths) {
+        INFO(r.hyhash);
+        CHECK(r.copies == (r.hyhash == "h0" ? 2 : 3));
         ++(r.hyhash == "h0" ? rows_h0 : rows_h1);
+    }
     REQUIRE(rows_h0 > 0);
     REQUIRE(rows_h1 > 0);
     CHECK(static_cast<int64_t>(rows_h0 + rows_h1) == out.rows);
-    CHECK(occurrences(out.html, ",\"k\":2,") == rows_h0);
-    CHECK(occurrences(out.html, ",\"k\":3,") == rows_h1);
-    CHECK(static_cast<int64_t>(occurrences(out.html, "{\"c\":0,") +
-                               occurrences(out.html, "{\"c\":1,")) == out.rows);
-    CHECK(occurrences(out.html, "{\"c\":2,") == 0);
-    CHECK(out.html.find("['Charts', fmt([...new Map(rows.map(r => [r.c, r.k])).values()]"
-                        ".reduce((n, k) => n + k, 0))]") != std::string::npos);
-
-    // The count beside the filters counts paths here, and scores on the
-    // leaderboard page: neither page gives its own PAGE.count, so the shared
-    // script counts one per row.
-    CHECK(out.html.find("noun: 'paths',") != std::string::npos);
-    CHECK(out.html.find("\n  count: ") == std::string::npos);
-    const std::string dm = dm_report::build_dm_html({}, "sub", "foot");
-    CHECK(dm.find("noun: 'scores',") != std::string::npos);
-    CHECK(dm.find("\n  count: ") == std::string::npos);
-    CHECK(dm.find("const countOf = PAGE.count || (rs => rs.length);") != std::string::npos);
+    CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.hit_window_ms)[0]
+              .value == std::to_string(out.songs));
 }
 
 // What a window draws from: the rows, the subtitle and footer the page shows,
@@ -404,10 +390,8 @@ TEST_CASE("generate_report hands over its rows, subtitle and footer") {
     CHECK(out.hit_window_ms == 85.0);
 
     CHECK(out.subtitle.find(" across 5 charts — ") != std::string::npos);
-    CHECK(out.html.find(html::html_escape(out.subtitle)) != std::string::npos);
     CHECK(out.footer.rfind("Generated from ", 0) == 0);
     CHECK(out.footer.find("'Beyond' means past the 170 ms window.") != std::string::npos);
-    CHECK(out.html.find(html::html_escape(out.footer)) != std::string::npos);
 
     CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.hit_window_ms)[0]
               .value == "5");
@@ -425,12 +409,12 @@ TEST_CASE("report lists only the wanted cap and names it") {
 
     report::ReportOptions options = fixture_options(4);
     report::GeneratedReport four = report::generate_report(store, options);
-    CHECK(four.html.find("SP cap 4 bars") != std::string::npos);
-    // The subtitle counts what the page lists: the one record at 4 bars, not
+    CHECK(hydra::ends_with(four.subtitle, "SP cap 4 bars"));
+    // The subtitle counts what the report lists: the one record at 4 bars, not
     // the 8-bar record the database also holds for the same chart.
     CHECK(four.records == 1);
     CHECK(four.songs == 1);
-    CHECK(four.html.find("1 record across 1 chart") != std::string::npos);
+    CHECK(four.subtitle.rfind("1 record across 1 chart — ", 0) == 0);
     int rank1 = 0;
     options.max_paths = 100;
     for (const report::ReportRow& row :
@@ -442,17 +426,44 @@ TEST_CASE("report lists only the wanted cap and names it") {
     // 1,000 (D48 Q12).
     store_tied(store, library, "one", 1);
     store_tied(store, library, "thousand", 1000);
-    CHECK(report::generate_report(store, fixture_options(1)).html.find("SP cap 1 bar<") !=
-          std::string::npos);
-    CHECK(report::generate_report(store, fixture_options(1000)).html.find("SP cap 1,000 bars") !=
-          std::string::npos);
+    CHECK(hydra::ends_with(report::generate_report(store, fixture_options(1)).subtitle, "SP cap 1 bar"));
+    CHECK(hydra::ends_with(report::generate_report(store, fixture_options(1000)).subtitle,
+                           "SP cap 1,000 bars"));
 
-    // A 1.0 page names its rule by the fill rule's one long name.
+    // A 1.0 report names its rule by the fill rule's one long name.
     store_tied(store, library, "legacy", 4, /*legacy_fills=*/true);
-    CHECK(report::generate_report(store, fixture_options(4, /*legacy_fills=*/true))
-              .html.find(std::string("SP cap 4 bars — ") +
-                         fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Long) +
-                         " fills") != std::string::npos);
+    CHECK(hydra::ends_with(report::generate_report(store, fixture_options(4, /*legacy_fills=*/true))
+                               .subtitle,
+                           std::string("SP cap 4 bars — ") +
+                               fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Long) +
+                               " fills"));
+}
+
+// What hydra_report's "--legacy-fills database" case pinned, now that the
+// tool is gone: a database filled under the 1.0 rule, as hydra_batch
+// --legacy-fills leaves one, reports its chart under the 1.0 rule when the
+// report is asked for 1.0 fills, and lists nothing under the 1.1 rule.
+TEST_CASE("generate_report reports a 1.0-fills database under the 1.0 rule") {
+    store::RecordStore store(":memory:");
+    const Settings legacy = fixture_settings(4, /*legacy_fills=*/true);
+    std::vector<corpus::ChartWithPaths> charts =
+        corpus::charts_with_paths(legacy.batch_run().settings, 1);
+    REQUIRE(charts.size() == 1);
+    store.add_record(legacy.record_key("h0"), charts[0].result.record);
+    store.rebuild_chart_library({library_entry("h0", "Title 0", charts[0].chart)});
+    store.set_engine_mode(engine_mode_stamp(FillDeadlineRule::Ch10));
+
+    const report::GeneratedReport ch10 =
+        report::generate_report(store, fixture_options(4, /*legacy_fills=*/true));
+    CHECK(ch10.records == 1);
+    REQUIRE_FALSE(ch10.paths.empty());
+    for (const report::ReportRow& r : ch10.paths) CHECK(r.song == "Title 0");
+    CHECK(hydra::ends_with(ch10.subtitle, "SP cap 4 bars — Clone Hero 1.0 fills"));
+
+    const report::GeneratedReport ch11 = report::generate_report(store, fixture_options(4));
+    CHECK(ch11.paths.empty());
+    CHECK(ch11.empty_reason == report::EmptyReason::NothingUnderSettings);
+    CHECK(ch11.why_empty == report::nothing_under_settings(4, "Clone Hero 1.1 fills"));
 }
 
 TEST_CASE("collect_rows: a blank or old-placeholder song name reads (unknown)") {
@@ -584,77 +595,7 @@ TEST_CASE("tier_for walks the timing_tiers table edge by edge") {
     }
 }
 
-TEST_CASE("report payload carries the hit window and the tier table") {
-    // No store needed: an empty row list still embeds the metadata.
-    std::string html =
-        report::build_html({}, "sub", "foot", /*hit_window_ms=*/85.0);
-    CHECK(html.find("\"hit_window\":85.0") != std::string::npos);
-    CHECK(html.find("\"tiers\":[") != std::string::npos);
-    CHECK(html.find("{\"name\":\"Normal\",\"tok\":\"t0\",\"cutoff\":2.0}") !=
-          std::string::npos);
-    CHECK(html.find("{\"name\":\"Insane+\",\"tok\":\"t4\",\"cutoff\":170.0}") !=
-          std::string::npos);
-    CHECK(html.find("{\"name\":\"Beyond\",\"tok\":\"t5\",\"cutoff\":null}") !=
-          std::string::npos);
-    CHECK(html.find("{\"name\":\"None\",\"tok\":\"tn\",\"cutoff\":null}") !=
-          std::string::npos);
-    CHECK(html.find("\"rows\":[]") != std::string::npos);
-
-    // The dropdown is payload-built; no hardcoded band strings remain.
-    CHECK(html.find("Beyond 140ms") == std::string::npos);
-
-    // The Hardest ms and Early fill cells print the app's own one-decimal
-    // text, so an exact half rounds the way the app rounds it (D48 Q2, Q5).
-    // The numbers stay beside the text for sorting and the tiles.
-    report::ReportRow timed;
-    timed.song = "Through The Fire";
-    timed.artist = "DragonForce";
-    timed.charter = "Some Charter";
-    timed.path = "1";
-    timed.tier = "Hard";
-    timed.tok = "t1";
-    timed.ms = 12.25;
-    timed.efill = -3.25;
-    report::ReportRow untimed = timed;
-    untimed.ms.reset();
-    untimed.efill.reset();
-    const std::string rows = report::build_html({timed, untimed}, "sub", "foot", 85.0);
-    CHECK(rows.find("\"ms\":12.25,\"ms_text\":\"" + format_ms(12.25) + "\"") !=
-          std::string::npos);
-    CHECK(rows.find("\"efill\":-3.25,\"efill_text\":\"" + format_ms(-3.25) + "\"") !=
-          std::string::npos);
-    CHECK(rows.find("\"ms\":null,\"ms_text\":null") != std::string::npos);
-    CHECK(rows.find("\"efill\":null,\"efill_text\":null") != std::string::npos);
-    CHECK(rows.find("['num', r.ms_text === null ? DASH : r.ms_text],") != std::string::npos);
-    CHECK(rows.find("['num', r.efill_text === null ? DASH : r.efill_text],") !=
-          std::string::npos);
-    CHECK(rows.find("fmtMs") == std::string::npos);
-    CHECK(rows.find("toFixed(1)") == std::string::npos);
-
-    // Each row carries its search text: the library's fold of the shown song,
-    // artist, charter and path (D48 Q31).
-    const std::string search = fold_for_search(timed.song + " " + timed.artist + " " +
-                                               timed.charter + " " + timed.path);
-    CHECK(search == "through the fire dragonforce some charter 1");
-    CHECK(occurrences(rows, "\"search\":\"" + search + "\"") == 2);
-}
-
-TEST_CASE("report payload: the average multiplier is C++ text from format_avg_mult") {
-    // The cell prints the payload's mult_text; the number beside it stays
-    // for sorting. The page never formats the multiplier itself.
-    report::ReportRow row;
-    row.song = "Song";
-    row.path = "1";
-    row.tier = "None";
-    row.tok = "tn";
-    row.mult = 2.5;
-    const std::string html = report::build_html({row}, "sub", "foot", 85.0);
-    CHECK(html.find("\"mult\":2.5,\"mult_text\":\"2.500\"") != std::string::npos);
-    CHECK(html.find("['num', r.mult_text],") != std::string::npos);
-    CHECK(html.find("r.mult.toFixed(") == std::string::npos);
-}
-
-TEST_CASE("report payload: the search field is folded and tag-free") {
+TEST_CASE("path report: a row's search text is folded and tag-free") {
     report::ReportRow row;
     row.song = "Halo";
     row.artist = "Beyonc\xc3\xa9";  // Beyoncé
@@ -662,26 +603,10 @@ TEST_CASE("report payload: the search field is folded and tag-free") {
     row.path = "1";
     row.tier = "None";
     row.tok = "tn";
-    const std::string html = report::build_html({row}, "sub", "foot", 85.0);
-    CHECK(html.find("\"search\":\"halo beyonce bob 1\"") != std::string::npos);
+    CHECK(path_report_view::path_search_text(row) == "halo beyonce bob 1");
 }
 
-TEST_CASE("report page reads the Beyond edge from the payload") {
-    // The edge travels in the page's data as the whole number the footer
-    // prints, and the "Past N ms" tile counts the rows tier_for already put
-    // in Beyond, so the page never works out either fact again.
-    std::string html = report::build_html({}, "sub", "foot", /*hit_window_ms=*/85.0);
-    CHECK(html.find("\"beyond_edge_ms\":170") != std::string::npos);
-    CHECK(html.find("DATA.beyond_edge_ms") != std::string::npos);
-    CHECK(html.find("Math.max(...DATA.tiers") == std::string::npos);
-    CHECK(html.find("HIT_WINDOW * 2") == std::string::npos);
-    CHECK(html.find("const beyond = rows.filter(r => r.tier === 'Beyond').length;") !=
-          std::string::npos);
-    CHECK(html.find("r.ms > BEYOND") == std::string::npos);
-}
-
-
-TEST_CASE("generate_report: one seam frames the page for every entry point") {
+TEST_CASE("generate_report: one seam frames the report for every entry point") {
     store::RecordStore store(":memory:");
     const int added = fill_store(store, 4, 2);
     REQUIRE(added > 0);
@@ -694,44 +619,42 @@ TEST_CASE("generate_report: one seam frames the page for every entry point") {
     CHECK(result.records == added);
     CHECK(result.rows >= added);
 
-    // The framing strings are part of the interface: the CLI and the GUI's
-    // ReportJob both ship exactly this subtitle and footer. The cut is per
-    // chart and mode, and the page lists every mode at the current cap.
+    // The framing strings are part of the interface: the GUI's ReportJob
+    // ships exactly this subtitle and footer. The cut is per chart and mode,
+    // and the report lists every mode at the current cap.
     CHECK(result.empty_reason == report::EmptyReason::None);
-    std::string subtitle = counted(result.records, "record", "records") + " across " +
-                           counted(result.songs, "chart", "charts") +
-                           " — every mode at the current cap, top 5 paths per chart and mode";
-    CHECK(result.html.find(subtitle) != std::string::npos);
+    const std::string subtitle = counted(result.records, "record", "records") + " across " +
+                                 counted(result.songs, "chart", "charts") +
+                                 " — every mode at the current cap, top 5 paths per chart "
+                                 "and mode — SP cap 4 bars";
+    CHECK(result.subtitle == subtitle);
     // D50 item 1. The default 85 ms hit window puts Beyond past 170 ms, the
-    // same number the Beyond chip and the "Past 170 ms" tile print. The page
-    // escapes the apostrophes.
-    CHECK(result.html.find(
-              "<p>Generated from hydra.db. Timing tiers measure how big each "
-              "squeeze is, in steps of your hit window. The Paths tab&#x27;s row "
-              "labels measure how far a hit lands from the Star Power end, so the "
-              "two can differ. &#x27;Beyond&#x27; means past the 170 ms window.</p>") !=
-          std::string::npos);
-    CHECK(result.html.find("Timing tiers match") == std::string::npos);
+    // same number the Beyond chip and the "Past 170 ms" tile print.
+    CHECK(result.footer ==
+          "Generated from hydra.db. Timing tiers measure how big each "
+          "squeeze is, in steps of your hit window. The Paths tab's row "
+          "labels measure how far a hit lands from the Star Power end, so the "
+          "two can differ. 'Beyond' means past the 170 ms window.");
 
     // --all-paths wording.
     options.max_paths = report::kEveryPathSentinel;
     CHECK(report::generate_report(store, options)
-              .html.find(counted(result.songs, "chart", "charts") + " — every path") !=
+              .subtitle.find(counted(result.songs, "chart", "charts") + " — every path") !=
           std::string::npos);
 
-    // An empty store yields no page, and says nothing is stored.
+    // An empty store yields no rows, and says nothing is stored.
     store::RecordStore empty(":memory:");
     report::GeneratedReport none = report::generate_report(empty, options);
     CHECK(none.rows == 0);
-    CHECK(none.html.empty());
+    CHECK(none.paths.empty());
     CHECK(none.empty_reason == report::EmptyReason::NothingStored);
 
-    // Records stored at cap 4, asked at cap 8: the page is empty because of
+    // Records stored at cap 4, asked at cap 8: the report is empty because of
     // the settings, and the reason names them (finding 105, D48 Q28).
     options = fixture_options(8);
     report::GeneratedReport off = report::generate_report(store, options);
     CHECK(off.rows == 0);
-    CHECK(off.html.empty());
+    CHECK(off.paths.empty());
     CHECK(off.empty_reason == report::EmptyReason::NothingUnderSettings);
     const std::string sentence =
         "Nothing is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills). "
@@ -750,14 +673,14 @@ TEST_CASE("generate_report: \"every path\" is the sentinel's, a huge --paths sta
     // --all-paths asks for the sentinel, and only that reads "every path".
     report::ReportOptions options = fixture_options(4);
     options.max_paths = report::kEveryPathSentinel;
-    CHECK(report::generate_report(store, options).html.find(" — every path — ") !=
+    CHECK(report::generate_report(store, options).subtitle.find(" — every path — ") !=
           std::string::npos);
 
     // A large --paths below it lists at most that many, so it says so.
     options.max_paths = 200000000;
-    const std::string html = report::generate_report(store, options).html;
-    CHECK(html.find("top 200,000,000 paths per chart and mode") != std::string::npos);
-    CHECK(html.find(" — every path") == std::string::npos);
+    const std::string subtitle = report::generate_report(store, options).subtitle;
+    CHECK(subtitle.find("top 200,000,000 paths per chart and mode") != std::string::npos);
+    CHECK(subtitle.find(" — every path") == std::string::npos);
 
     // 140: the hit window keeps a decimal, starting from the default.
     CHECK(std::is_same<decltype(report::ReportOptions{}.hit_window_ms), double>::value);
@@ -794,7 +717,7 @@ TEST_CASE("generate_report hands back nothing when its cancel flag is set") {
 
     report::GeneratedReport result = report::generate_report(store, options);
     CHECK(result.rows == 0);
-    CHECK(result.html.empty());
+    CHECK(result.paths.empty());
     CHECK(result.empty_reason == report::EmptyReason::Cancelled);
 }
 
@@ -830,8 +753,11 @@ TEST_CASE("the report reuses the charts a batch just analyzed (D87 item 5)") {
     const report::GeneratedReport page = report::generate_report(store, options, seed);
     CHECK(pass.paths == std::vector<std::string>{files[2]});
     CHECK(page.records == 3);
-    // The page is the one a fresh analysis of all three gives.
-    CHECK(page.html == report::generate_report(store, fixture_options(4)).html);
+    // The report is the one a fresh analysis of all three gives.
+    const report::GeneratedReport fresh = report::generate_report(store, fixture_options(4));
+    CHECK(row_keys(page.paths) == row_keys(fresh.paths));
+    CHECK(page.subtitle == fresh.subtitle);
+    CHECK(page.footer == fresh.footer);
 
     // Rows filed under other settings are refused, by the batch and the report.
     report::ReportSeed other = report::ReportSeed::for_run(fixture_settings(5).batch_run());
@@ -868,7 +794,7 @@ TEST_CASE("cancelling the report's pass stops it and builds no page") {
     };
     const report::GeneratedReport result = report::generate_report(store, options);
     CHECK(result.empty_reason == report::EmptyReason::Cancelled);
-    CHECK(result.html.empty());
+    CHECK(result.paths.empty());
     CHECK(result.rows == 0);
     CHECK(calls.load() <= batch_worker_count());
     CHECK(calls.load() < charts);
@@ -907,35 +833,35 @@ TEST_CASE("a report on results with no chart library says the library is missing
 
     const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
     CHECK(page.rows == 0);
-    CHECK(page.html.empty());
+    CHECK(page.paths.empty());
     CHECK(page.empty_reason == report::EmptyReason::NoLibrary);
     CHECK(page.why_empty ==
           "This database has no chart library. Run hydra_batch without folder arguments, or "
           "scan in Hydra, to build one.");
 }
 
-TEST_CASE("a chart whose file fails to load is left off the page and listed") {
+TEST_CASE("a chart whose file fails to load is left off the report and listed") {
     store::RecordStore store(":memory:");
     std::vector<store::ChartLibraryEntry> library;
     REQUIRE(fill_store(store, library, 4, 2).size() == 2);
     const std::string missing = testtemp::temp_path("report_missing", ".chart");
 
-    // No failures: the page says nothing about charts left out.
-    CHECK(report::generate_report(store, fixture_options(4)).html.find("Left out:") ==
-          std::string::npos);
+    // No failures: the report says nothing about charts left out.
+    const report::GeneratedReport whole = report::generate_report(store, fixture_options(4));
+    CHECK(whole.failures.empty());
+    CHECK(report::left_out_line(whole.failures).empty());
 
     library[1].notespath = missing;
     store.rebuild_chart_library(library);
     const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
     CHECK(page.records == 1);
-    CHECK(page.html.find("Title 1") == std::string::npos);
+    for (const report::ReportRow& r : page.paths) CHECK(r.song != "Title 1");
     REQUIRE(page.failures.size() == 1);
     CHECK(page.failures[0].notespath == missing);
     CHECK_FALSE(page.failures[0].error.empty());
-    // D89 item 1: the page names the chart it left out, and its file.
-    CHECK(page.html.find("Left out: 1 chart whose file couldn") != std::string::npos);
-    CHECK(page.html.find(std::filesystem::u8path(missing).filename().u8string()) !=
-          std::string::npos);
+    // D89 item 1: the report names the chart it left out; its file is in failures.
+    CHECK(report::left_out_line(page.failures) ==
+          "Left out: 1 chart whose file couldn't be read.");
 
     // A chart mode no settings spell is an error, not a skipped chart.
     store_tied(store, library, "odd", 4, false, std::string("Legendary Drums, 3x Bass"));
@@ -959,46 +885,21 @@ TEST_CASE("write_report_file swaps the page in and leaves no .tmp behind") {
     std::filesystem::remove(path, ec);
 }
 
-TEST_CASE("path report shows each row's chart mode in its own column") {
-    report::ReportRow a;
-    a.song = "Song A";
-    a.mode = "Expert Pro Drums, 2x Bass";
-    a.path = "1";
-    a.tier = "None";
-    a.tok = "tn";
-    report::ReportRow b = a;
-    b.mode = "Hard Drums, 1x Bass";
-    const std::string html = report::build_html({a, b}, "sub", "foot", 85.0);
-
-    CHECK(html.find("{k:'mode',") != std::string::npos);
-    CHECK(html.find("t:'Mode'") != std::string::npos);
-    CHECK(html.find("['dim trunc mode', r.mode]") != std::string::npos);
-    CHECK(html.find("\"mode\":\"Expert Pro Drums, 2x Bass\"") != std::string::npos);
-    CHECK(html.find("\"mode\":\"Hard Drums, 1x Bass\"") != std::string::npos);
-    // The page never read each row's gap to the best path, so the payload no
-    // longer carries it.
-    CHECK(html.find("\"delta\":") == std::string::npos);
-}
-
-TEST_CASE("the three report pages share one stylesheet and one script") {
-    const std::string paths = report::build_html({}, "sub", "foot", 85.0);
-    const std::string dm = dm_report::build_dm_html({}, "sub", "foot");
+TEST_CASE("the fill page carries the shared stylesheet and script") {
     const std::string fill = fill_report::build_fill_html({}, "sub", "foot");
-    for (const std::string* page : {&paths, &dm, &fill}) {
-        CHECK(page->find(html::kReportCss) != std::string::npos);
-        CHECK(page->find(html::kReportJs) != std::string::npos);
-        // Rules no page used, and the theme switch nothing ever sets, are gone.
-        CHECK(page->find(".delta {") == std::string::npos);
-        CHECK(page->find(".rank {") == std::string::npos);
-        CHECK(page->find("data-theme") == std::string::npos);
-        // The pages search words only (D56 item 1, D57 item 3): accents fold,
-        // and every typed word must appear in the text the page shows; quotes
-        // and field prefixes are ordinary words. No page joins its fields and
-        // looks for the query as one lowercased run, and every page carries
-        // the fold table Hydra built from the library's fold.
-        CHECK(page->find("toLowerCase().includes(") == std::string::npos);
-        CHECK(page->find("const FOLD = {\"A\":\"a\",") != std::string::npos);
-    }
+    CHECK(fill.find(html::kReportCss) != std::string::npos);
+    CHECK(fill.find(html::kReportJs) != std::string::npos);
+    // Rules no page used, and the theme switch nothing ever sets, are gone.
+    CHECK(fill.find(".delta {") == std::string::npos);
+    CHECK(fill.find(".rank {") == std::string::npos);
+    CHECK(fill.find("data-theme") == std::string::npos);
+    // The page searches words only (D56 item 1, D57 item 3): accents fold,
+    // and every typed word must appear in the text the page shows; quotes
+    // and field prefixes are ordinary words. It never joins its fields and
+    // looks for the query as one lowercased run, and it carries the fold
+    // table Hydra built from the library's fold.
+    CHECK(fill.find("toLowerCase().includes(") == std::string::npos);
+    CHECK(fill.find("const FOLD = {\"A\":\"a\",") != std::string::npos);
     // The shared script folds the query through that table, splits it into
     // words and keeps a row when every word is in its search text. It holds no
     // fold of its own: no lowercasing and no accented letter, raw or escaped.
@@ -1011,16 +912,14 @@ TEST_CASE("the three report pages share one stylesheet and one script") {
                        [](char c) { return static_cast<unsigned char>(c) >= 0x80; }));
     for (const char* range : {"\\u00", "\\u01", "\\uff", "\\uFF"})
         CHECK(script.find(range) == std::string::npos);
-    CHECK(paths.find("<div class=\"wrap\">") != std::string::npos);
-    CHECK(dm.find("<div class=\"wrap dm\">") != std::string::npos);
     CHECK(fill.find("<div class=\"wrap fill\">") != std::string::npos);
 
-    // Every number on the path report groups through the shared fmt, which
-    // uses one fixed rule (1,234), whatever language the browser is set to
-    // (D48 Q12). The single-owner scan keeps it that way.
+    // Every number on the page groups through the shared fmt, which uses one
+    // fixed rule (1,234), whatever language the browser is set to (D48 Q12).
+    // The single-owner scan keeps it that way.
     CHECK(std::string(html::kReportJsHead).find("n.toLocaleString('en-US')") !=
           std::string::npos);
-    CHECK(paths.find(".toLocaleString()") == std::string::npos);
+    CHECK(fill.find(".toLocaleString()") == std::string::npos);
 }
 
 TEST_CASE("tier_for over a built table matches the window form") {
@@ -1118,7 +1017,7 @@ TEST_CASE("dm_tiles: the four sample scores") {
                     {"Points left on table", "3,456"}});
 }
 
-// Not an invariant: writes one small page of each kind into the folder named
+// Not an invariant: writes a small fill comparison page into the folder named
 // by HYDRA_PAGE_SAMPLES, built from fixed rows, so a page change can be
 // checked in a real browser before and after (docs/adr/0016). Run it with
 //   hydra_tests.exe --no-skip -tc="report pages: write samples*"
@@ -1127,9 +1026,6 @@ TEST_CASE("report pages: write samples for the browser check" * doctest::skip())
     REQUIRE(dir.has_value());
     const std::filesystem::path out = std::filesystem::u8path(*dir);
     std::filesystem::create_directories(out);
-
-    const std::vector<report::ReportRow> paths = sample_path_rows();
-    const std::vector<dm_report::DmReportRow> dm = sample_dm_rows();
 
     std::vector<fill_report::FillCompareRow> fill;
     auto add_fill = [&](const char* song, std::optional<int64_t> old_score,
@@ -1155,96 +1051,13 @@ TEST_CASE("report pages: write samples for the browser check" * doctest::skip())
     add_fill("Song D", 100000, std::nullopt, std::nullopt, "only 1.0");
     add_fill("Song E", std::nullopt, 100000, std::nullopt, "only 1.1");
 
-    write_report_file(out / "paths.html",
-                      report::build_html(paths, "Sample subtitle", "Sample footer", 85.0));
-    write_report_file(out / "dm.html",
-                      dm_report::build_dm_html(dm, "Sample subtitle", "Sample footer"));
     write_report_file(out / "fill.html",
                       fill_report::build_fill_html(fill, "Sample subtitle", "Sample footer"));
 }
 
-// ---- where reports are saved ------------------------------------------------
+// ---- the page shell ----------------------------------------------------------
 
 namespace {
-
-namespace fs = std::filesystem;
-
-// One test's view of the Documents folder. It clears the database override
-// (a harness override keeps reports next to its database, which would hide
-// the Documents rule), and afterwards puts the overrides and the lookup back
-// and deletes its scratch folder.
-struct DocumentsSandbox {
-    PathOverrides previous = path_overrides();
-    fs::path root;
-
-    explicit DocumentsSandbox(const char* tag) {
-        PathOverrides cleared = previous;
-        cleared.db_path.clear();
-        set_path_overrides(cleared);
-        root = hydra::os_path(testtemp::temp_dir(std::string("docs_") + tag));
-        std::error_code ec;
-        fs::remove_all(root, ec);
-        fs::create_directories(root);
-    }
-
-    ~DocumentsSandbox() {
-        set_documents_dir_lookup({});
-        set_path_overrides(previous);
-        std::error_code ec;
-        fs::remove_all(root, ec);
-    }
-};
-
-}  // namespace
-
-TEST_CASE("reports_dir is Documents\\Hydra, made on first use") {
-    DocumentsSandbox box("made");
-    set_documents_dir_lookup([&box] { return std::optional<fs::path>(box.root); });
-
-    const fs::path dir = reports_dir();
-    CHECK(dir == box.root / "Hydra");
-    CHECK(fs::is_directory(dir));
-    // Every report path helper lives in it. The names are what a person finds
-    // on disk, so the test pins them as text.
-    CHECK(fs::path(report_html_path()) == dir / "hydra_paths.html");
-    CHECK(fs::path(dm_report_html_path()) == dir / "hydra_dmcompare.html");
-}
-
-TEST_CASE("reports_dir falls back to the database folder without Documents") {
-    DocumentsSandbox box("fallback");
-    const fs::path db_folder = fs::u8path(db_path()).parent_path();
-
-    // No Documents folder at all.
-    set_documents_dir_lookup([] { return std::optional<fs::path>(); });
-    CHECK(reports_dir() == db_folder);
-
-    // A Documents folder where "Hydra" can't be made: a plain file is in the way.
-    { std::ofstream(box.root / "Hydra") << "not a folder"; }
-    set_documents_dir_lookup([&box] { return std::optional<fs::path>(box.root); });
-    CHECK(reports_dir() == db_folder);
-}
-
-TEST_CASE("reports_dir keeps a harness's reports next to its database") {
-    DocumentsSandbox box("override");
-    set_documents_dir_lookup([&box] { return std::optional<fs::path>(box.root); });
-    PathOverrides scratch = path_overrides();
-    scratch.db_path = (box.root / "scratch" / "hydra.db").u8string();
-    set_path_overrides(scratch);
-
-    CHECK(reports_dir() == box.root / "scratch");
-    CHECK_FALSE(fs::exists(box.root / "Hydra"));  // Documents was never touched
-}
-
-// ---- the page shell and the path report -------------------------------------
-
-namespace {
-
-// The one COLS line of a page's script that declares column `key`.
-std::string col_line(const std::string& page, const std::string& key) {
-    const size_t at = page.find("{k:'" + key + "',");
-    if (at == std::string::npos) return {};
-    return page.substr(at, page.find('\n', at) - at);
-}
 
 // WCAG 2.2 relative luminance of "#rrggbb" (testwcag owns the formula).
 double luminance(const std::string& hex) {
@@ -1279,17 +1092,13 @@ std::map<std::string, std::string> css_tokens(const std::string& css, size_t fro
 
 }  // namespace
 
-TEST_CASE("report pages are standards-mode documents") {
-    const std::string paths = report::build_html({}, "sub", "foot", 85.0);
-    const std::string dm = dm_report::build_dm_html({}, "sub", "foot");
+TEST_CASE("the fill page is a standards-mode document") {
     const std::string fill = fill_report::build_fill_html({}, "sub", "foot");
-    for (const std::string* page : {&paths, &dm, &fill}) {
-        CHECK(page->rfind("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n", 0) == 0);
-        CHECK(page->find("</style>\n</head>\n<body>\n") != std::string::npos);
-        REQUIRE(page->size() > 16);
-        CHECK(page->substr(page->size() - 16) == "</body>\n</html>\n");
-        CHECK(occurrences(*page, "<title>") == 1);
-    }
+    CHECK(fill.rfind("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n", 0) == 0);
+    CHECK(fill.find("</style>\n</head>\n<body>\n") != std::string::npos);
+    REQUIRE(fill.size() > 16);
+    CHECK(fill.substr(fill.size() - 16) == "</body>\n</html>\n");
+    CHECK(occurrences(fill, "<title>") == 1);
 }
 
 TEST_CASE("report colours meet WCAG contrast in both themes") {
@@ -1300,7 +1109,7 @@ TEST_CASE("report colours meet WCAG contrast in both themes") {
     for (const auto* theme : {&light, &dark}) {
         // Body text, dim text, header text and every chip colour, on the page,
         // on a cell, and on a hovered row or the header band.
-        for (const char* text : {"ink", "muted", "t0", "t1", "t2", "t3", "t4", "t5", "tn"}) {
+        for (const char* text : {"ink", "muted", "t0", "t3", "tn"}) {
             for (const char* ground : {"paper", "surface", "raised"}) {
                 INFO(text << " on " << ground);
                 CHECK(contrast(theme->at(text), theme->at(ground)) >= 4.5);
@@ -1328,7 +1137,7 @@ TEST_CASE("report table header sticks and the page prints") {
 }
 
 TEST_CASE("report pages number their rows in a # column") {
-    // The shared script adds the column, so all three pages get it.
+    // The shared script adds the column, so the fill page gets it.
     const std::string js = html::kReportJs;
     CHECK(js.find("th.textContent = '#';") != std::string::npos);
     CHECK(js.find("idx.textContent = fmt(++n);") != std::string::npos);
@@ -1337,52 +1146,7 @@ TEST_CASE("report pages number their rows in a # column") {
     CHECK(std::string(html::kReportCss).find("th.idx, td.idx {") != std::string::npos);
 }
 
-TEST_CASE("path report explains and renames its columns") {
-    const std::string html = report::build_html({}, "sub", "foot", 85.0);
-    CHECK(html.find("t:'Early fill (ms)'") != std::string::npos);
-    CHECK(html.find("t:'Avg multiplier'") != std::string::npos);
-    CHECK(html.find("t:'Early fill',") == std::string::npos);
-    CHECK(html.find("t:'Avg mult',") == std::string::npos);
-    for (const char* key : {"mode", "path", "score", "acts", "skip", "ms", "tier", "efill",
-                            "mult", "sqin", "sqout", "notes"}) {
-        INFO(key);
-        CHECK(col_line(html, key).find("d:'") != std::string::npos);
-    }
-    // Hover text and the footer legend both read the definitions.
-    CHECK(html.find("<dl class=\"legend\" id=\"legend\"></dl>") != std::string::npos);
-    CHECK(html.find("const legend = document.getElementById('legend');") != std::string::npos);
-    // One name per tier for the dropdown and the chip ("No squeezes" in both).
-    CHECK(html.find("function tierLabel(name)") != std::string::npos);
-    CHECK(html.find("o.textContent = tierLabel(t.name);") != std::string::npos);
-    CHECK(html.find("['chip ' + r.tok, tierLabel(r.tier), 'chip']") != std::string::npos);
-    // The search box and the tier dropdown have names a screen reader reads.
-    CHECK(html.find("id=\"q\" aria-label=\"Search paths\"") != std::string::npos);
-    CHECK(html.find("id=\"tier\" aria-label=\"Timing tier\"") != std::string::npos);
-    // The tile over the table carries the column's name, since it can show an
-    // early fill as well as a squeeze (D48 Q7), and the text of the row with
-    // the largest Hardest ms.
-    CHECK(html.find("['Hardest ms', hardest === null ? DASH : hardest.ms_text],") !=
-          std::string::npos);
-    CHECK(html.find("Tightest squeeze") == std::string::npos);
-    // The "Past N ms" tile counts the rows tier_for put in Beyond: past the
-    // edge, not on it.
-    CHECK(html.find("const beyond = rows.filter(r => r.tier === 'Beyond').length;") !=
-          std::string::npos);
-    CHECK(col_line(html, "tier").find("Beyond means more than twice the hit window.") !=
-          std::string::npos);
-    // D51 call 5: a required early fill counts like a squeeze, and the words
-    // say so.
-    CHECK(col_line(html, "ms").find(
-              "d:'The hardest squeeze or required early fill the path needs, in raw ms. "
-              "A dash means it needs none.'") != std::string::npos);
-    // The average multiplier's definition opens with its own name.
-    CHECK(col_line(html, "mult").find(
-              "d:'Average multiplier: the score without solo bonuses divided by the base score "
-              "(every note at 1x).'") != std::string::npos);
-    CHECK(html.find("Points per note on average") == std::string::npos);
-}
-
-TEST_CASE("path report counts charts by hash in the tile and the subtitle") {
+TEST_CASE("path report counts charts by hash in the Charts shown tile") {
     report::ReportRow a;
     a.song = "Same";
     a.artist = "Name";
@@ -1390,50 +1154,15 @@ TEST_CASE("path report counts charts by hash in the tile and the subtitle") {
     a.tier = "None";
     a.tok = "tn";
     a.hyhash = "h1";
+    a.copies = 1;
     report::ReportRow a2 = a;
     a2.rank = 2;
     report::ReportRow b = a;  // another chart with the same title and artist
     b.hyhash = "h2";
-    const std::string html = report::build_html({a, a2, b}, "sub", "foot", 85.0);
 
-    // Each chart gets a small id in order of first appearance.
-    CHECK(occurrences(html, "\"c\":0") == 2);
-    CHECK(occurrences(html, "\"c\":1") == 1);
-    CHECK(html.find("['Charts', fmt([...new Map(rows.map(r => [r.c, r.k])).values()]"
-                    ".reduce((n, k) => n + k, 0))]") != std::string::npos);
-    CHECK(html.find("r.song + r.artist))") == std::string::npos);
-}
-
-TEST_CASE("comparison page explains its columns and splits the missing scores") {
-    const std::string html = dm_report::build_dm_html({}, "sub", "foot");
-    for (const char* key : {"actual", "optimal", "delta", "pct_h", "fc", "speed", "rank",
-                            "posted", "status"}) {
-        INFO(key);
-        CHECK(col_line(html, key).find("d:'") != std::string::npos);
-    }
-    CHECK(html.find("<option value=\"not analyzed\">") != std::string::npos);
-    CHECK(html.find("<option value=\"not in library\">") != std::string::npos);
-    CHECK(html.find("value=\"unmatched\"") == std::string::npos);
-    CHECK(html.find("'not analyzed':'s-notanalyzed'") != std::string::npos);
-    // A score with a result reads under, at or above optimal; none is "matched".
-    CHECK(html.find("<option value=\"under optimal\">Under optimal</option>") !=
-          std::string::npos);
-    CHECK(html.find("<option value=\"at optimal\">At optimal</option>") != std::string::npos);
-    CHECK(html.find("<option value=\"above optimal\">Above optimal</option>") !=
-          std::string::npos);
-    for (const char* status : {"under optimal", "at optimal", "above optimal"}) {
-        INFO(status);
-        CHECK(html.find(std::string("'") + status + "':'s-") != std::string::npos);
-    }
-    CHECK(html.find("value=\"matched\"") == std::string::npos);
-    CHECK(html.find("'matched'") == std::string::npos);
-    CHECK(html.find("Matched") == std::string::npos);
-    CHECK(col_line(html, "status").find(
-              "d:'Under optimal, At optimal or Above optimal when Hydra has a result.") !=
-          std::string::npos);
-    CHECK(html.find("id=\"q\" aria-label=\"Search scores\"") != std::string::npos);
-    CHECK(html.find("id=\"status\" aria-label=\"Status\"") != std::string::npos);
-    CHECK(html.find("<dl class=\"legend\" id=\"legend\"></dl>") != std::string::npos);
+    // Two charts, however many rows each has, and even when the names match.
+    CHECK(report::path_tiles({a, a2, b}, every_row(3), 85.0)[0].value == "2");
+    CHECK(report::path_tiles({a, a2, b}, {0, 1}, 85.0)[0].value == "1");
 }
 
 // D103 item 22: a settings change marks the path report out of date only when

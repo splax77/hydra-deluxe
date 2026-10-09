@@ -1,7 +1,6 @@
 #include "app/report.h"
 
 #include <algorithm>
-#include <charconv>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -17,7 +16,6 @@
 #include "app/analysis.h"  // normalize_chart_hash, batch_worker_count
 #include "app/config.h"    // Settings::chartmode_key, to_analysis_settings
 #include "app/display_format.h"
-#include "app/html_page.h"
 #include "app/work_pool.h"
 #include "core/model.h"
 #include "core/squeeze_rating.h"
@@ -27,196 +25,7 @@
 
 namespace hydra::app::report {
 
-using html::json_escape_into;
-
 namespace {
-
-// The path report's own pieces. The stylesheet and the script that sorts,
-// filters and draws the table are shared with the other two report pages
-// (html::page_template, docs/adr/0016).
-const char* const kTitle = "Hydra Path Index";
-
-const char* const kBody = R"page(<div class="wrap">
-  <header>
-    <h1>Hydra <span class="accent">Path Index</span></h1>
-    <div class="sub">__SUBTITLE__</div>
-  </header>
-
-  <div class="stats" id="stats"></div>
-
-  <div class="controls">
-    <span class="sorter">
-      <label for="sortby">Sort by</label>
-      <select id="sortby"></select>
-      <button id="sortdir" type="button" title="Switch between highest-first and lowest-first"></button>
-    </span>
-    <input type="search" id="q" aria-label="Search paths" placeholder="Search song, artist, charter, or path notation">
-    <select id="tier" aria-label="Timing tier">
-      <option value="">All timing tiers</option>
-    </select>
-    <label class="toggle"><input type="checkbox" id="bestonly" checked> Best path only</label>
-    <span class="count" id="count"></span>
-  </div>
-
-  <div class="tablewrap">
-    <table>
-      <thead><tr id="head"></tr></thead>
-      <tbody id="body"></tbody>
-    </table>
-    <div class="empty" id="empty">Reading paths&hellip;</div>
-  </div>
-
-  <footer>
-    <p>__FOOTER__</p>
-    <dl class="legend" id="legend"></dl>
-  </footer>
-</div>
-
-)page";
-
-// The payload is build_html's (see there). The tier dropdown
-// reads the tier table, and the Beyond chip and the "Past N ms" tile read the
-// edge C++ worked out, so they always match the bands the rows were labeled
-// with.
-const char* const kPageJs = R"page(// One name per tier, for both the dropdown and the chips, so a row's chip
-// reads the same words as the filter that finds it.
-function tierLabel(name) {
-  return name === 'Beyond' ? 'Beyond ' + DATA.beyond_edge_ms + ' ms'
-       : name === 'None' ? 'No squeezes'
-       : name;
-}
-
-// The tier dropdown mirrors the bands the rows were labeled with.
-{
-  const sel = document.getElementById('tier');
-  for (const t of DATA.tiers) {
-    const o = document.createElement('option');
-    o.value = t.name;
-    o.textContent = tierLabel(t.name);
-    sel.appendChild(o);
-  }
-}
-
-// Charts the pass couldn't read go under the subtitle, with their files
-// (D89 item 1). C++ words the line and leaves it empty when there are none.
-if (DATA.left_out) {
-  const note = document.createElement('div');
-  note.className = 'sub';
-  const line = document.createElement('p');
-  line.textContent = DATA.left_out;
-  note.appendChild(line);
-  const list = document.createElement('ul');
-  for (const file of DATA.left_out_files) {
-    const li = document.createElement('li');
-    li.textContent = file;
-    list.appendChild(li);
-  }
-  note.appendChild(list);
-  document.querySelector('header .sub').after(note);
-}
-
-const PAGE = {
-  rows: DATA.rows,
-  noun: 'paths',
-  sortKey: 'score',
-  sortDir: -1,
-  cols: [
-    {k:'song',    t:'Song',     num:false},
-    {k:'artist',  t:'Artist',   num:false},
-    {k:'charter', t:'Charter',  num:false},
-    {k:'mode',    t:'Mode',     num:false, d:'The difficulty and drum options the path was found for.'},
-    {k:'path',    t:'Path',     num:false, d:'The path in path notation: one entry per activation, with its skip count and squeeze symbols.'},
-    {k:'score',   t:'Score',    num:true,  d:'The total score the path reaches.'},
-    {k:'acts',    t:'Acts',     num:true,  d:'Activations: how many times the path uses Star Power.'},
-    {k:'skip',    t:'Max skip', num:true,  d:'The most fills any one activation passes over before activating.'},
-    {k:'ms',      t:'Hardest ms', num:true, d:'The hardest squeeze or required early fill the path needs, in raw ms. A dash means it needs none.'},
-    {k:'tier',    t:'Timing',   num:false, d:'How hard Hardest ms is, in bands of your hit window. Beyond means more than twice the hit window.'},
-    {k:'efill',   t:'Early fill (ms)', num:true, d:'The hardest early fill (E0) on the path: how many ms early you must hit to summon the fill. Negative means slack. A dash means the path has none.'},
-    {k:'mult',    t:'Avg multiplier', num:true, d:'Average multiplier: the score without solo bonuses divided by the base score (every note at 1x).'},
-    {k:'sqin',    t:'SqIn',     num:true,  d:'SP phrase notes squeezed into an active Star Power window (+ in the path).'},
-    {k:'sqout',   t:'SqOut',    num:true,  d:'SP phrase notes squeezed out of an active Star Power window (- in the path).'},
-    {k:'notes',   t:'Notes',    num:true,  d:'Notes in the chart.'},
-  ],
-  controls: [['q', 'input'], ['tier', 'change'], ['bestonly', 'change']],
-  // The search box is matched against each row's search text in the shared
-  // script; this keeps rows by the tier and best-path controls.
-  filter() {
-    const tier = document.getElementById('tier').value;
-    const bestOnly = document.getElementById('bestonly').checked;
-    return r => {
-      if (bestOnly && !r.opt) return false;
-      if (tier && r.tier !== tier) return false;
-      return true;
-    };
-  },
-  // Every path tied at the top score is optimal, as on the Paths tab.
-  rowClass: r => r.opt ? 'best' : '',
-  // The two timing columns print the app's own text; the numbers beside it
-  // sort the column and feed the tiles.
-  cells: r => [
-    ['song trunc', r.song],
-    ['dim trunc artist', r.artist],
-    ['dim trunc charter', r.charter],
-    ['dim trunc mode', r.mode],
-    ['path mono trunc', r.path],
-    ['num', fmt(r.score)],
-    ['num', r.acts],
-    ['num', r.skip],
-    ['num', r.ms_text === null ? DASH : r.ms_text],
-    ['chip ' + r.tok, tierLabel(r.tier), 'chip'],
-    ['num', r.efill_text === null ? DASH : r.efill_text],
-    ['num', r.mult_text],
-    ['num', r.sqin],
-    ['num', r.sqout],
-    ['num', fmt(r.notes)],
-  ],
-  stats(rows) {
-    // The row with the largest Hardest ms; the tile shows that row's text.
-    const withMs = rows.filter(r => r.ms !== null && r.ms !== undefined);
-    const hardest = withMs.length ? withMs.reduce((a, b) => b.ms > a.ms ? b : a) : null;
-    const maxSkip = rows.length ? Math.max(...rows.map(r => r.skip)) : 0;
-    // The rows tier_for put in Beyond (a timing on the edge itself is Insane+).
-    const beyond = rows.filter(r => r.tier === 'Beyond').length;
-    return [
-      ['Charts', fmt([...new Map(rows.map(r => [r.c, r.k])).values()].reduce((n, k) => n + k, 0))],
-      ['Paths shown', fmt(rows.length)],
-      ['Hardest ms', hardest === null ? DASH : hardest.ms_text],
-      ['Past ' + DATA.beyond_edge_ms + ' ms', fmt(beyond)],
-      ['Highest skip', maxSkip],
-    ];
-  },
-};
-)page";
-
-// The page shell, built once on first use.
-const std::string& page_template() {
-    static const std::string page = html::page_template(kTitle, kBody, kPageJs);
-    return page;
-}
-
-// repr(float) / json.dumps float formatting for the page payload.
-std::string py_repr(double v) {
-    // std::to_chars with no precision produces the shortest string that
-    // round-trips -- the same contract as CPython's float repr. The one
-    // cosmetic difference: Python prints integral floats as "140.0" where
-    // to_chars gives "140".
-    char buf[32];
-    auto res = std::to_chars(buf, buf + sizeof(buf), v);
-    std::string s(buf, res.ptr);
-    if (s.find_first_of(".eE") == std::string::npos &&
-        s.find_first_of("0123456789") != std::string::npos)
-        s += ".0";
-    return s;
-}
-
-// A timing as the app prints it ("12.3 ms", format_ms), as a JSON
-// string, or null when there is none. The page prints this text as it is.
-void ms_text_into(std::string& data, const std::optional<double>& ms) {
-    if (ms)
-        json_escape_into(data, format_ms(*ms));
-    else
-        data += "null";
-}
 
 // How many library charts the rows at `shown` belong to, each chart's
 // copies added once however many of its rows there are (D76, D77). The
@@ -226,23 +35,6 @@ int64_t charts_counted(const std::vector<ReportRow>& rows, const std::vector<siz
     int64_t charts = 0;
     for (size_t i : shown)
         if (seen.insert(rows[i].hyhash).second) charts += rows[i].copies;
-    return charts;
-}
-
-// One chart on the page: a small number, in order of first appearance among
-// the rows, and its library copies (D76, D77).
-struct PageChart {
-    int id = 0;
-    int copies = 0;  // the chart's ReportRow::copies
-};
-
-// The charts the rows belong to, each once. The page's "c" is the number, so
-// the page's own Charts tile finds each chart's "k" without the 32-character
-// hash on every row. C++ counts charts with charts_counted.
-std::unordered_map<std::string, PageChart> page_charts(const std::vector<ReportRow>& rows) {
-    std::unordered_map<std::string, PageChart> charts;
-    for (const ReportRow& r : rows)
-        charts.emplace(r.hyhash, PageChart{static_cast<int>(charts.size()), r.copies});
     return charts;
 }
 
@@ -331,7 +123,8 @@ ReportSeed ReportSeed::for_run(const BatchRun& run, int64_t max_paths) {
 std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
                                              double hit_window_ms) {
     // The ladder itself lives in core/squeeze_rating.h (timing_tiers) so
-    // these labels and the page's embedded tier table cannot drift apart.
+    // these labels and every other reader of the tier table cannot drift
+    // apart.
     return tier_for(ms, timing_tiers(hit_window_ms));
 }
 
@@ -535,10 +328,10 @@ std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
     return {
         {"Charts shown", group_thousands(charts_counted(rows, shown))},
         {"Paths shown", group_thousands(static_cast<int64_t>(shown.size()))},
-        // The Hardest ms column's own text (ms_text_into).
+        // The Hardest ms column's own text (format_ms).
         {"Hardest ms", hardest ? format_ms(*hardest->ms) : std::string(kDash)},
         {"Past " + beyond_edge_text(hit_window_ms) + " ms", group_thousands(past_edge)},
-        // The page writes this one without thousands separators.
+        // Written without thousands separators, as the old page wrote it.
         {"Highest skip", std::to_string(highest_skip)},
     };
 }
@@ -548,93 +341,6 @@ std::string left_out_line(const std::vector<ReportFailure>& failures) {
     return "Left out: " +
            hydra::counted(static_cast<int64_t>(failures.size()), "chart", "charts") +
            " whose file couldn't be read.";
-}
-
-std::string build_html(const std::vector<ReportRow>& rows, const std::string& subtitle,
-                       const std::string& footer, double hit_window_ms,
-                       const std::vector<ReportFailure>& failures) {
-    // The payload: {hit_window, beyond_edge_ms, left_out, left_out_files,
-    // tiers, rows}. The page builds its tier dropdown from the tiers and its
-    // Beyond chip and tile from the edge, so the embedded UI can never drift
-    // from the bands the rows were labeled with. It shows left_out and its
-    // files under the subtitle when the line is not empty.
-    std::string data;
-    data.reserve(rows.size() * 160 + 256);
-    data += "{\"hit_window\":" + py_repr(hit_window_ms);
-    data += ",\"beyond_edge_ms\":" + beyond_edge_text(hit_window_ms);
-    data += ",\"left_out\":";
-    json_escape_into(data, left_out_line(failures));
-    data += ",\"left_out_files\":[";
-    for (size_t i = 0; i < failures.size(); ++i) {
-        if (i) data.push_back(',');
-        json_escape_into(data, failures[i].notespath);
-    }
-    data.push_back(']');
-    data += ",\"tiers\":[";
-    {
-        bool first_tier = true;
-        for (const TimingTier& t : timing_tiers(hit_window_ms)) {
-            if (!first_tier) data.push_back(',');
-            first_tier = false;
-            data += "{\"name\":";
-            json_escape_into(data, t.name);
-            data += ",\"tok\":\"";
-            data += t.tok;
-            data += "\",\"cutoff\":" +
-                    (t.cutoff ? py_repr(*t.cutoff) : std::string("null"));
-            data.push_back('}');
-        }
-    }
-    data += "],\"rows\":[";
-    const std::unordered_map<std::string, PageChart> charts = page_charts(rows);
-    bool first_row = true;
-    for (const ReportRow& r : rows) {
-        if (!first_row) data.push_back(',');
-        first_row = false;
-
-        const PageChart& chart = charts.at(r.hyhash);
-        data += "{\"c\":" + std::to_string(chart.id);
-        data += ",\"k\":" + std::to_string(chart.copies);
-        data += ",\"song\":";
-        json_escape_into(data, r.song);
-        data += ",\"artist\":";
-        json_escape_into(data, r.artist);
-        data += ",\"charter\":";
-        json_escape_into(data, r.charter);
-        data += ",\"mode\":";
-        json_escape_into(data, r.mode);
-        data += ",\"rank\":" + std::to_string(r.rank);
-        data += ",\"opt\":";
-        data += r.optimal ? "true" : "false";
-        data += ",\"path\":";
-        json_escape_into(data, r.path);
-        data += ",\"search\":";
-        json_escape_into(data, html::search_field(r.song, r.artist, r.charter, r.path));
-        data += ",\"score\":" + std::to_string(r.score);
-        data += ",\"acts\":" + std::to_string(r.acts);
-        data += ",\"skip\":" + std::to_string(r.skip);
-        data += ",\"ms\":" + (r.ms ? py_repr(*r.ms) : std::string("null"));
-        data += ",\"ms_text\":";
-        ms_text_into(data, r.ms);
-        data += ",\"tier\":";
-        json_escape_into(data, r.tier);
-        data += ",\"tok\":";
-        json_escape_into(data, r.tok);
-        data += ",\"efill\":" + (r.efill ? py_repr(*r.efill) : std::string("null"));
-        data += ",\"efill_text\":";
-        ms_text_into(data, r.efill);
-        // `mult` sorts the column; `mult_text` is what the cell shows.
-        data += ",\"mult\":" + py_repr(r.mult);
-        data += ",\"mult_text\":";
-        json_escape_into(data, format_avg_mult(r.mult));
-        data += ",\"sqin\":" + std::to_string(r.sqin);
-        data += ",\"sqout\":" + std::to_string(r.sqout);
-        data += ",\"notes\":" + std::to_string(r.notes);
-        data.push_back('}');
-    }
-    data += "]}";
-    return html::render_page(page_template().c_str(), std::move(data), subtitle,
-                             footer);
 }
 
 std::string nothing_under_settings(int cap, const std::string& middle,
@@ -712,7 +418,6 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
                          "far a hit lands from the Star Power end, so the two can "
                          "differ. 'Beyond' means past the " + beyond_edge_text(w) +
                          " ms window.";
-    out.html = build_html(rows, subtitle, footer, w, out.failures);
     out.subtitle = std::move(subtitle);
     out.footer = std::move(footer);
     out.paths = std::move(collected.rows);

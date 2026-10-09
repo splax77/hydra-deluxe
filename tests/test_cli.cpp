@@ -1,4 +1,4 @@
-// End-to-end tests for the three console tools (src/cli/). Each test copies
+// End-to-end tests for the two console tools (src/cli/). Each test copies
 // the built exes into a fresh temp folder and runs them there, because the
 // tools read hydra_settings.ini and hydra_rules.ini from their own folder: a
 // folder with neither gives the app's defaults, whatever the developer's build
@@ -33,8 +33,7 @@
 #include "store/record_store.h"
 #include "temp_util.h"
 
-#if !defined(HYDRA_BATCH_EXE) || !defined(HYDRA_REPORT_EXE) || \
-    !defined(HYDRA_FILLCOMPARE_EXE)
+#if !defined(HYDRA_BATCH_EXE) || !defined(HYDRA_FILLCOMPARE_EXE)
 #error "the CLI exe paths must be defined (see CMakeLists.txt)"
 #endif
 
@@ -115,7 +114,7 @@ std::string small_chart() {
 // known song name. Removed again when the test ends.
 struct CliSandbox {
     fs::path dir;
-    fs::path batch, report, fillcompare;
+    fs::path batch, fillcompare;
     fs::path songs;  // holds one chart folder, "fixture"
 
     explicit CliSandbox(const char* name) {
@@ -123,7 +122,6 @@ struct CliSandbox {
         fs::remove_all(dir);
         fs::create_directories(dir);
         batch = copy_tool(HYDRA_BATCH_EXE);
-        report = copy_tool(HYDRA_REPORT_EXE);
         fillcompare = copy_tool(HYDRA_FILLCOMPARE_EXE);
         // The tools start only with the DLLs built beside them (see
         // hydra_use_mimalloc in CMakeLists.txt), so those travel with them.
@@ -152,22 +150,6 @@ struct CliSandbox {
     }
     std::string db(const char* name) const { return (dir / name).u8string(); }
     std::string folder() const { return songs.u8string(); }
-
-    // A database with a chart library, built the way a user builds one: the
-    // sandbox's hydra_settings.ini lists the songs folder as a chart folder and
-    // hydra_batch runs with no folder arguments (D79 item 1: folder arguments
-    // never save a library). `extra` holds any further flags, e.g. --legacy-fills.
-    std::string library_db(const char* name, std::vector<std::string> extra = {}) const {
-        hydra::app::Settings settings{};
-        settings.chartfolders = {folder()};
-        REQUIRE(settings.save_file((dir / "hydra_settings.ini").u8string()));
-        const std::string path = db(name);
-        extra.insert(extra.end(), {"--db", path});
-        const RunResult r = run_exe(batch, extra);
-        INFO(r.output);
-        REQUIRE(r.exit_code == 0);
-        return path;
-    }
 };
 
 }  // namespace
@@ -206,14 +188,13 @@ TEST_CASE("hydra_batch stamps a new database with the rule it ran under") {
 
 // D72 item 5: a database that won't open is a run that can't start, so each
 // tool prints the sentence and SQLite's text and exits 2.
-TEST_CASE("hydra_batch, hydra_report and hydra_fillcompare say why a database won't open") {
+TEST_CASE("hydra_batch and hydra_fillcompare say why a database won't open") {
     CliSandbox box("junkdb");
     const std::string junk = box.db("junk.db");
     hydra::test::write_junk_db(junk);
     const std::string page = (box.dir / "page.html").u8string();
     const std::pair<fs::path, std::vector<std::string>> runs[] = {
         {box.batch, {"--db", junk, box.folder()}},
-        {box.report, {"--db", junk, "--out", page, "--no-open"}},
         {box.fillcompare, {"--old", junk, "--new", junk, "--out", page, "--no-open"}},
     };
     for (const auto& [exe, args] : runs) {
@@ -368,57 +349,6 @@ TEST_CASE("hydra_batch names the cap with the one count rule") {
     CHECK(contains(header_at_cap(1000, "cap1000.db"), "SP cap     : 1,000 bars"));
 }
 
-TEST_CASE("hydra_report writes a page for a filled database and says so for an empty one") {
-    CliSandbox box("report");
-    const std::string db = box.library_db("report.db");
-
-    const fs::path page = box.dir / "out" / "paths.html";
-    RunResult r =
-        run_exe(box.report, {"--db", db, "--out", page.u8string(), "--no-open"});
-    INFO(r.output);
-    CHECK(r.exit_code == 0);
-    CHECK(contains(r.output, "Wrote "));
-    REQUIRE(fs::exists(page));
-    std::ifstream f(page, std::ios::binary);
-    const std::string html((std::istreambuf_iterator<char>(f)),
-                           std::istreambuf_iterator<char>());
-    CHECK(contains(html, "CLI Fixture"));
-
-    RunResult empty = run_exe(box.report, {"--db", box.db("empty.db"), "--out",
-                                           (box.dir / "empty.html").u8string(),
-                                           "--no-open"});
-    INFO(empty.output);
-    CHECK(empty.exit_code == 1);
-    CHECK(contains(empty.output, "No records stored yet"));
-
-    // D89 item 2: a database filled by folder arguments holds results but no
-    // chart library, and the report covers library charts only.
-    const std::string folder_db = box.db("folder_args.db");
-    REQUIRE(run_exe(box.batch, {"--db", folder_db, box.folder()}).exit_code == 0);
-    RunResult no_library = run_exe(box.report, {"--db", folder_db, "--out",
-                                                (box.dir / "no_library.html").u8string(),
-                                                "--no-open"});
-    INFO(no_library.output);
-    CHECK(no_library.exit_code == 1);
-    CHECK(contains(no_library.output,
-                   "This database has no chart library. Run hydra_batch without folder "
-                   "arguments, or scan in Hydra, to build one."));
-
-    CHECK(run_exe(box.report, {"--bogus"}).exit_code == 2);
-
-    // The batch stored its record at the default cap 4. Asked at cap 8, the
-    // database is not empty, so the reason names the settings instead.
-    { std::ofstream(box.dir / "hydra_settings.ini", std::ios::binary) << "sp_cap=8\n"; }
-    RunResult off = run_exe(box.report, {"--db", db, "--out",
-                                         (box.dir / "off.html").u8string(), "--no-open"});
-    INFO(off.output);
-    CHECK(off.exit_code == 1);
-    CHECK(contains(off.output,
-                   "Nothing is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills). "
-                   "Analyze with these settings, or change them."));
-    CHECK(!contains(off.output, "No records stored yet"));
-}
-
 TEST_CASE("hydra_fillcompare compares a 1.0 and a 1.1 database") {
     CliSandbox box("fillcompare");
     const std::string ch10 = box.db("ch10.db"), ch11 = box.db("ch11.db");
@@ -514,22 +444,4 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
     // The parts add up to the total: 1 same + 1 with a score on one side.
     CHECK(contains(two.output, "Compared 2 charts: 1 same, 0 1.0 higher, 0 1.1 higher, "
                                "0 only in 1.0, 0 only in 1.1, 1 with a score on one side only"));
-}
-
-TEST_CASE("hydra_report reports a --legacy-fills database under the 1.0 rule") {
-    // The app's own setting is 1.1 (the sandbox's defaults), but a file that
-    // hydra_batch --legacy-fills filled holds only 1.0 results.
-    CliSandbox box("report_legacy");
-    const std::string db = box.library_db("ch10.db", {"--legacy-fills"});
-
-    const fs::path page = box.dir / "legacy.html";
-    RunResult r = run_exe(box.report, {"--db", db, "--out", page.u8string(), "--no-open"});
-    INFO(r.output);
-    CHECK(r.exit_code == 0);
-    REQUIRE(fs::exists(page));
-    std::ifstream f(page, std::ios::binary);
-    const std::string html((std::istreambuf_iterator<char>(f)),
-                           std::istreambuf_iterator<char>());
-    CHECK(contains(html, "CLI Fixture"));
-    CHECK(contains(html, "Clone Hero 1.0 fills"));
 }

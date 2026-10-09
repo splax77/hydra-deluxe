@@ -27,7 +27,6 @@
 #include "app/allocator.h"
 #include "app/analysis.h"
 #include "app/config.h"
-#include "app/report_files.h"
 #include "app/user_messages.h"  // plain_error_block
 #include "audio/device.h"
 #include "net/dmbot_client.h"
@@ -270,10 +269,6 @@ void reset_app(Harness& h, const std::string& rules_text, bool wait_store) {
     h.app.reset();
 
     hydra::audio::set_headless(true);
-    hydra::app::set_open_in_browser([&h](const std::wstring& path) {
-        h.opened_urls.push_back(path);
-        return true;
-    });
     // The dmleaderboards API, canned: one user whose only score is the first
     // chart of the scanned library (so the join has something to match).
     hydra::net::set_fetcher([&h](const std::string& url, const std::atomic<bool>*) {
@@ -308,8 +303,6 @@ void reset_app(Harness& h, const std::string& rules_text, bool wait_store) {
             }
         }
     }
-    fs::remove(fs::u8path(h.temp_dir + "\\" + hydra::app::kPathReportFileName), ec);
-    fs::remove(fs::u8path(h.temp_dir + "\\" + hydra::app::kDmReportFileName), ec);
     // The GUI tests' settings (tests/scratch_settings.h), written the way the
     // app writes its own ini.
     if (!scratch_settings().save_file(h.ini_path)) {
@@ -322,7 +315,6 @@ void reset_app(Harness& h, const std::string& rules_text, bool wait_store) {
         std::ofstream f(fs::u8path(h.rules_path), std::ios::trunc);
         f << rules_text;
     }
-    h.opened_urls.clear();
     h.frame_text.text.clear();
     // The split outlives an AppState (it is hydra_ui.ini's), so a test that
     // dragged it would hand its split to the next test.
@@ -557,8 +549,8 @@ void dump_state(Harness& h) {
         std::printf("  preview: active=%s loading=%s playing=%s error=\"%s\"\n",
                     yes_no(a.preview->active()), yes_no(a.preview->loading()),
                     yes_no(a.preview->playing()), a.preview->error().c_str());
-    std::printf("  status=\"%s\" dm_users=%zu opened_urls=%zu\n", a.status_message.c_str(),
-                a.dm_users.size(), h.opened_urls.size());
+    std::printf("  status=\"%s\" dm_users=%zu\n", a.status_message.c_str(),
+                a.dm_users.size());
 }
 
 bool screenshot(ImGuiTestContext* ctx, const std::string& file) {

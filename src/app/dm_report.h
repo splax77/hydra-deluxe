@@ -1,7 +1,7 @@
 // Comparison report: one dmleaderboards user's actual scores against Hydra's
 // computed optimal for the same charts. It joins the fetched scores to stored
-// records by chart-file MD5 (leaderboard `identifier` == Hydra `hyhash`) and
-// emits a self-contained sortable HTML page on the shared report shell.
+// records by chart-file MD5 (leaderboard `identifier` == Hydra `hyhash`); the
+// comparison window draws the rows.
 //
 // "Above optimal" is expected, not an error: Hydra's optimal intentionally
 // excludes several score backends, and many leaderboard scores were set on an
@@ -92,11 +92,6 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
                                          const std::string& chartmode,
                                          const store::Lens& lens);
 
-// The self-contained comparison page. Same __SUBTITLE__/__FOOTER__/__DATA__
-// placeholder mechanism as report::build_html, with its own columns.
-std::string build_dm_html(const std::vector<DmReportRow>& rows, const std::string& subtitle,
-                          const std::string& footer);
-
 // ---- generate_dm_report ----------------------------------------------------
 // The whole comparison in one call: join + tally + the standard page framing.
 // The GUI's DmReportJob is an adapter over this seam; the tally previously
@@ -135,7 +130,10 @@ std::vector<report::Tile> dm_tiles(const std::vector<DmReportRow>& rows,
 std::string counts_phrase(const DmReportStats& stats);
 
 struct GeneratedDmReport {
-    std::string html;  // empty when the user had no scores to compare
+    // Nothing fills this any more: the page it held is gone. It stays only
+    // until src/ui/dm_jobs.cpp and tests/test_app_state.cpp stop naming it
+    // (RW-T7's handoff).
+    std::string html;
     DmReportStats stats;
     // collect_dm_rows' rows, one per score, in the leaderboard's order.
     std::vector<DmReportRow> rows;

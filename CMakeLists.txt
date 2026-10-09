@@ -1,6 +1,6 @@
 # Hydra — Windows-only C++ build. Produces:
 #   * Hydra.exe                       — the GUI
-#   * hydra_batch / hydra_report / hydra_fillcompare — the command line tools
+#   * hydra_batch / hydra_fillcompare — the command line tools
 #   * hydra_tests                     — the doctest harness
 #   * hydra_uitest                    — the headless GUI test runner
 #   * hydra_bench / hydra_replay      — developer tools (build_cpp.ps1 builds them)
@@ -268,13 +268,13 @@ target_compile_definitions(hydra_core PUBLIC HYDRA_VERSION="${PROJECT_VERSION}"
                            HYDRA_APP_USER_MODEL_ID="${HYDRA_APP_USER_MODEL_ID}")
 # store/ needs sqlite3; app/ hashes chart files via CNG (bcrypt.lib) and walks
 # folders via the Win32 Find*File API (already linked into every Windows exe).
-# shell32: report_files.cpp hands finished report pages to the browser with
-# ShellExecuteW, for both the GUI's report jobs and the hydra_report CLI, and
-# winstr.cpp splits every entry point's Unicode command line with
-# CommandLineToArgvW. shell32 + ole32 + uuid: reports_dir() finds Documents
-# with SHGetKnownFolderPath(FOLDERID_Documents) and frees the answer with
-# CoTaskMemFree. shlwapi: open_in_browser looks up the .html program
-# (AssocQueryStringW) to hand it a long page's short name directly.
+# shell32: report_files.cpp hands hydra_fillcompare's finished page to the
+# browser with ShellExecuteW, and winstr.cpp splits every entry point's
+# Unicode command line with CommandLineToArgvW. shell32 + ole32 + uuid:
+# report_files.cpp finds Documents with SHGetKnownFolderPath(FOLDERID_Documents)
+# and frees the answer with CoTaskMemFree. shlwapi: open_in_browser looks up
+# the .html program (AssocQueryStringW) to hand it a long page's short name
+# directly.
 target_link_libraries(hydra_core PUBLIC sqlite3 miniz)
 target_link_libraries(hydra_core PRIVATE bcrypt shell32 shlwapi ole32 uuid hydra_warnings)
 # allocator.cpp calls mimalloc by name, so it needs mimalloc.h. Only the
@@ -288,8 +288,8 @@ target_include_directories(hydra_core PRIVATE
 # ---- hydra_audio: the Preview audio engine (decode + mix + player) -------
 # Decodes chart stems to float PCM, mixes them, and (GUI-side) drives the
 # output device. It also owns a song's length, the end of its mixed audio
-# (song_audio.cpp, D69). Kept separate from hydra_core so hydra_report and
-# hydra_fillcompare never pull in the codec libraries; linked by hydra_ui,
+# (song_audio.cpp, D69). Kept separate from hydra_core so hydra_fillcompare
+# never pulls in the codec libraries; linked by hydra_ui,
 # hydra_tests and hydra_batch (so a batch can save song lengths). The decode and mix
 # code is pure and unit-tested; only the player owns a miniaudio device.
 # Depends on hydra_core for the PreviewAudioStem type and file I/O helpers.
@@ -447,12 +447,11 @@ if(HYDRA_UITEST_ATTACHED)
     target_compile_definitions(Hydra PRIVATE HYDRA_UITEST_ATTACHED)
 endif()
 
-# ---- hydra_batch / hydra_report: the command-line tools ------------------
+# ---- hydra_batch / hydra_fillcompare: the command-line tools -------------
 # Both read the same settings INI and database the GUI uses.
 add_executable(hydra_batch src/cli/batch.cpp)
-add_executable(hydra_report src/cli/report.cpp)
 add_executable(hydra_fillcompare src/cli/fillcompare.cpp)
-foreach(tool IN ITEMS hydra_batch hydra_report hydra_fillcompare)
+foreach(tool IN ITEMS hydra_batch hydra_fillcompare)
     target_link_libraries(${tool} PRIVATE hydra_core hydra_warnings)
 endforeach()
 
@@ -580,7 +579,7 @@ add_test(NAME hydra_uitest COMMAND hydra_uitest --all)
 # everything the install() rules below stage, all in one folder.
 # User data (hydra*.db/.ini) is created next to the exe at runtime and never
 # lives in the package, so a rebuilt zip can't clobber anyone's records.
-install(TARGETS Hydra hydra_batch hydra_report hydra_fillcompare RUNTIME DESTINATION .)
+install(TARGETS Hydra hydra_batch hydra_fillcompare RUNTIME DESTINATION .)
 # Every exe above needs mimalloc's two DLLs beside it to start (see
 # hydra_use_mimalloc). install(FILES) rather than install(TARGETS), so
 # mimalloc's import library stays out of the stage.
@@ -618,13 +617,12 @@ target_compile_definitions(hydra_replay PRIVATE
 )
 
 # ---- CLI end-to-end tests ------------------------------------------------
-# tests/test_cli.cpp runs the three console tools as real processes, so
+# tests/test_cli.cpp runs the two console tools as real processes, so
 # building the tests builds the tools first and tells the tests where they are.
 target_sources(hydra_tests PRIVATE tests/test_cli.cpp)
-add_dependencies(hydra_tests hydra_batch hydra_report hydra_fillcompare)
+add_dependencies(hydra_tests hydra_batch hydra_fillcompare)
 target_compile_definitions(hydra_tests PRIVATE
     HYDRA_BATCH_EXE="$<TARGET_FILE:hydra_batch>"
-    HYDRA_REPORT_EXE="$<TARGET_FILE:hydra_report>"
     HYDRA_FILLCOMPARE_EXE="$<TARGET_FILE:hydra_fillcompare>"
 )
 
@@ -647,7 +645,7 @@ target_link_libraries(hydra_tests PRIVATE hydra_replay_json)
 # hydra_tests is left out on purpose. Without the manifest Windows refuses a
 # plain long path even where long paths are enabled, so test_long_paths proves
 # Hydra's own handling rather than the machine's setting.
-foreach(hydra_exe Hydra hydra_batch hydra_report hydra_fillcompare
+foreach(hydra_exe Hydra hydra_batch hydra_fillcompare
                   hydra_uitest hydra_bench hydra_replay)
     target_sources(${hydra_exe} PRIVATE src/app/long_paths.manifest)
 endforeach()

@@ -369,6 +369,18 @@ SearchableRow make_searchable(std::string_view title, std::string_view artist,
     return row;
 }
 
+std::string search_field(std::string_view song, std::string_view artist,
+                         std::string_view charter, std::string_view path) {
+    const SearchableRow row = make_searchable(song, artist, charter, path);
+    std::string out;
+    for (const std::string* field : {&row.title, &row.artist, &row.charter, &row.folder}) {
+        if (field->empty()) continue;
+        if (!out.empty()) out.push_back(' ');
+        out += *field;
+    }
+    return out;
+}
+
 bool query_matches(const LibraryQuery& q, const SearchableRow& row, const RowFacts& facts) {
     if (q.stars || q.squeeze_max_ms) {
         if (!facts.stars) return false;  // a row with no facts matches no filter (facts_of)
