@@ -259,6 +259,27 @@ void wait_song_analyzed(ImGuiTestContext* ctx);
 // Fresh app, scan, open chart 0's Preview and wait for the load. False on error.
 bool open_preview(ImGuiTestContext* ctx);
 
+// ---- the Analysis settings panel (settings_bar.cpp) ------------------------
+// The panel is a popup: a top-level window of its own, outside //Hydra, that
+// takes focus when it opens. Its controls sit in tables, so refs to them
+// start with **/.
+// Open the panel from its button and leave the ref on it.
+ImGuiWindow* open_settings_panel(ImGuiTestContext* ctx);
+// The ID of the open panel's control `label` that sits in the same group as
+// `sibling`, a checkbox ("##prodrums"). A **/ ref can't find a combo (the test engine files
+// combos with an empty label), so a combo is found through a checkbox beside
+// it: both share their group table's ID scope. (A number box won't do as the
+// sibling: its parts sit in an ID scope of their own.)
+ImGuiID settings_control(ImGuiTestContext* ctx, const char* sibling, const char* label);
+// Pick `item` from the open panel's combo `combo` ("##difficulty"), found
+// beside `sibling` (settings_control).
+void settings_combo_pick(ImGuiTestContext* ctx, const char* sibling, const char* combo,
+                         const char* item);
+// Close the panel with Esc and point refs back at //Hydra. An open popup
+// keeps every other window from being hovered, so a test closes it before
+// clicking anywhere else.
+void close_settings_panel(ImGuiTestContext* ctx);
+
 }  // namespace uitest
 
 #endif  // HYDRA_TESTS_UI_UITEST_HARNESS_H

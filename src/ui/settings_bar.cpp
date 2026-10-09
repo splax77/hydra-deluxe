@@ -1,11 +1,12 @@
-// The "Analysis settings" bar under the toolbar: every setting an analysis
-// runs with, for every song. Locked while anything analyzes, because a result
-// is filed under the settings it ran with -- changing SP cap mid-run used to
-// hide the result it had just made.
+// The "Analysis settings" button on the action row and the panel it opens:
+// every setting an analysis runs with, for every song. Locked while a batch
+// runs, because a result is filed under the settings it ran with -- changing
+// SP cap mid-run used to hide the result it had just made.
 
 #include "app/config.h"  // Settings::clamp, the one range each box asks
 #include "core/model.h"
 #include "imgui.h"
+#include "imgui_internal.h"  // IsPopupOpen by id, SetKeyOwner
 #include "parse/song.h"    // display_title
 #include "search/graph.h"  // fill_rule_name, fill_rule_description
 #include "ui/app_state.h"
@@ -17,7 +18,6 @@
 #include <algorithm>
 #include <iterator>
 #include <string>
-#include <type_traits>
 
 namespace hydra::ui::detail {
 
@@ -33,21 +33,54 @@ std::string legacy_fills_help_text() {
 
 namespace {
 
-// The gap each side of a divider, and the divider's width.
+constexpr const char* kPanelId = "##settingspanel";
+
+// The gap each side of the divider before the button, and the divider's
+// width.
 float separator_gap() { return px(14.0f); }
 constexpr float kSeparatorW = 1.0f;
 
 // A 1 px divider at screen x, from top to bottom, drawn straight onto the
-// window: as an item (SeparatorEx) it would take the line's height, and the
-// dividers on the caption's line should span both caption lines.
+// window so it takes no room on the line.
 void draw_divider(float x, float top, float bottom) {
     ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(x, top), ImVec2(x + kSeparatorW, bottom),
                                               ImGui::GetColorU32(ImGuiCol_Separator));
 }
 
-void render_difficulty(AppState& app, bool locked) {
-    ImGui::TextUnformatted("Difficulty");
-    ImGui::SameLine();
+// A group of the panel: its dimmed heading, then a two-column form. The
+// three groups' tables share one ID, so Dear ImGui keeps their label columns
+// one width (synced tables).
+bool begin_group(const char* title) {
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::SeparatorText(title);
+    ImGui::PopStyleColor();
+    return ImGui::BeginTable("##settingsform", 2, ImGuiTableFlags_SizingFixedFit);
+}
+
+// A new form row. Every row reads the same way: the setting's name and its
+// (?) in the left column, and only the control in the right one, where this
+// leaves the cursor.
+void begin_row(const char* name, const char* help) {
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(name);
+    help_marker(help);
+    ImGui::TableSetColumnIndex(1);
+}
+
+// A bare checkbox (its name sits in the left column), greyed out while the
+// settings are locked. True when the user changed it.
+bool setting_checkbox(const char* id, bool* value, bool locked) {
+    begin_disabled_checkbox(locked);
+    const bool changed = ImGui::Checkbox(id, value);
+    end_disabled_checkbox(locked);
+    return changed;
+}
+
+void render_chart_group(AppState& app, bool locked) {
+    if (!begin_group("Chart")) return;
+    begin_row("Difficulty", "Which charted difficulty to analyze, path and preview");
     ImGui::SetNextItemWidth(px(90));
     const char* names[std::size(kAllDifficulties)];
     for (size_t i = 0; i < std::size(kAllDifficulties); ++i)
@@ -61,45 +94,38 @@ void render_difficulty(AppState& app, bool locked) {
         app.commit_settings();
     }
     end_disabled_input(locked);
-    help_marker("Which charted difficulty to analyze, path and preview");
 
-    ImGui::SameLine();
-    begin_disabled_checkbox(locked);
-    if (ImGui::Checkbox("Pro Drums", &app.settings.view_prodrums)) app.commit_settings();
-    end_disabled_checkbox(locked);
+    begin_row("Pro Drums",
+              "Analyze with cymbals and toms as separate notes, the way Clone Hero scores "
+              "Pro Drums.");
+    if (setting_checkbox("##prodrums", &app.settings.view_prodrums, locked)) app.commit_settings();
 
     // 2x Bass works at every difficulty, like Clone Hero's Double Kick (D20):
     // each difficulty has its own 2x kicks.
-    ImGui::SameLine();
+    begin_row("2x Bass", "Include the chart's 2x kicks, like Clone Hero's Double Kick.");
     bool bass2x_shown = app.settings.effective_bass2x();
-    begin_disabled_checkbox(locked);
-    if (ImGui::Checkbox("2x Bass", &bass2x_shown)) {
+    if (setting_checkbox("##bass2x", &bass2x_shown, locked)) {
         app.settings.view_bass2x = bass2x_shown;
         app.commit_settings();
     }
-    end_disabled_checkbox(locked);
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal |
-                             ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip("Include the chart's 2x kicks, like Clone Hero's Double Kick.");
 
     // Part of a result's key, like the two before it (D104 item 1).
-    ImGui::SameLine();
-    begin_disabled_checkbox(locked);
-    if (ImGui::Checkbox("Note Shuffle", &app.settings.view_noteshuffle)) app.commit_settings();
-    end_disabled_checkbox(locked);
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal |
-                             ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip("Score the chart as Clone Hero 1.1's Note Shuffle modifier rearranges "
-                          "it. The rearrangement is the same every time for a given chart and "
-                          "drum setting.");
+    begin_row("Note Shuffle",
+              "Score the chart as Clone Hero 1.1's Note Shuffle modifier rearranges it. The "
+              "rearrangement is the same every time for a given chart and drum setting.");
+    if (setting_checkbox("##noteshuffle", &app.settings.view_noteshuffle, locked))
+        app.commit_settings();
+    ImGui::EndTable();
 }
 
-void render_sp_cap(AppState& app, bool locked) {
-    ImGui::TextUnformatted("SP cap");
-    help_marker((std::to_string(kCloneHeroSpCap) +
-                 " bars is Clone Hero's rule. Higher caps are what-ifs; their scores "
-                 "are not achievable in game.").c_str());
-    ImGui::SameLine();
+// The two Clone Hero rules a result is keyed by: the SP cap and when fills
+// spawn.
+void render_rules_group(AppState& app, bool locked) {
+    if (!begin_group("Clone Hero rules")) return;
+    begin_row("SP cap", (std::to_string(kCloneHeroSpCap) +
+                         " bars is Clone Hero's rule. Higher caps are what-ifs; their scores "
+                         "are not achievable in game.")
+                            .c_str());
     ImGui::SetNextItemWidth(px(90));
     begin_disabled_input(locked);
     // Number boxes apply every step live but save the INI once the edit ends
@@ -113,20 +139,17 @@ void render_sp_cap(AppState& app, bool locked) {
     ImGui::TextUnformatted("bars");
     end_disabled_input(locked);
 
-    // The other Clone Hero rule a result is keyed by: when fills spawn. It
-    // sits with the SP cap because both are "which game's rules".
-    ImGui::SameLine();
-    begin_disabled_checkbox(locked);
-    if (ImGui::Checkbox("1.0 fills", &app.settings.legacy_fills)) app.commit_settings();
-    end_disabled_checkbox(locked);
-    help_marker(legacy_fills_help_text().c_str());
+    begin_row("1.0 fills", legacy_fills_help_text().c_str());
+    if (setting_checkbox("##legacyfills", &app.settings.legacy_fills, locked))
+        app.commit_settings();
+    ImGui::EndTable();
 }
 
-void render_score_range(AppState& app, bool locked) {
-    ImGui::TextUnformatted("Score range");
-    help_marker("How many extra paths below optimal to keep: a number of scores, or of "
-                "points. More paths take longer to analyze.");
-    ImGui::SameLine();
+void render_paths_group(AppState& app, bool locked) {
+    if (!begin_group("Paths kept")) return;
+    begin_row("Score range",
+              "How many extra paths below optimal to keep: a number of scores, or of "
+              "points. More paths take longer to analyze.");
     // Room for six digits beside the two step buttons (each a frame-height
     // square after an inner gap), never less than the old 90 px.
     const ImGuiStyle& style = ImGui::GetStyle();
@@ -149,15 +172,12 @@ void render_score_range(AppState& app, bool locked) {
         app.commit_settings();
     }
     end_disabled_input(locked);
-}
 
-void render_path_limit(AppState& app, bool locked) {
-    begin_disabled_checkbox(locked);
-    if (ImGui::Checkbox("Path limit##mslimit", &app.settings.mslimit_enabled))
+    begin_row("Path limit",
+              "Keep extra paths only when their hardest squeeze or required early fill is "
+              "within this many ms. Lower or negative values demand more slack.");
+    if (setting_checkbox("##mslimit", &app.settings.mslimit_enabled, locked))
         app.commit_settings();
-    end_disabled_checkbox(locked);
-    help_marker("Keep extra paths only when their hardest squeeze or required early fill is "
-                "within this many ms. Lower or negative values demand more slack.");
     ImGui::SameLine();
     const bool off = locked || !app.settings.mslimit_enabled;
     begin_disabled_input(off);
@@ -170,102 +190,93 @@ void render_path_limit(AppState& app, bool locked) {
     ImGui::SameLine();
     ImGui::TextUnformatted("ms");
     end_disabled_input(off);
+    ImGui::EndTable();
+}
+
+// The panel's body: the three groups, then the lock line while a batch
+// holds the settings (only a batch locks them, D90 item 2).
+void render_panel(AppState& app, bool locked) {
+    render_chart_group(app, locked);
+    render_rules_group(app, locked);
+    render_paths_group(app, locked);
+    if (locked) {
+        ImGui::Separator();
+        ImGui::PushStyleColor(ImGuiCol_Text, kSubtleTextColor);
+        ImGui::TextUnformatted("Stop the batch to change these.");
+        ImGui::PopStyleColor();
+    }
+}
+
+// A small downward arrow, ending `right` px in from the button's right edge.
+void draw_open_arrow(const ImVec2& min, const ImVec2& max, float w, float right) {
+    const float x = max.x - right - w;
+    const float mid = (min.y + max.y) * 0.5f;
+    const float h = w * 0.5f;
+    ImGui::GetWindowDrawList()->AddTriangleFilled(
+        ImVec2(x, mid - h * 0.5f), ImVec2(x + w, mid - h * 0.5f), ImVec2(x + w * 0.5f, mid + h * 0.5f),
+        ImGui::GetColorU32(kSubtleTextColor));
 }
 
 }  // namespace
 
-void render_settings_bar(AppState& app) {
-    // Read once: a batch that ends on its worker mid-frame must not turn a
-    // batch lock into an analysis lock with no analyze job behind it.
+void render_settings_button(AppState& app, float room_after) {
+    // Read once: a batch that ends on its worker mid-frame must not leave the
+    // button saying "(locked)" over a panel of enabled controls.
     const AppState::SettingsLock lock = app.settings_lock();
     const bool locked = lock != AppState::SettingsLock::None;
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, kSettingsBarBg);
-    ImGui::BeginChild("##settingsbar", ImVec2(0.0f, 0.0f),
-                      ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
-    ImGui::PopStyleColor();
 
-    // The bar's right edge, in screen space: a block that would run past it
-    // starts a new line instead.
-    const float right_edge = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+    const ImGuiID panel_id = ImGui::GetID(kPanelId);
+    // Dear ImGui closes an open popup on Esc in NewFrame, but the key still
+    // reads as pressed for the rest of the frame. Claim it, so the song
+    // panel's own Esc (details_panel.cpp) doesn't close that too.
+    bool& was_open = app.library_ui.settings_panel_was_open;
+    if (was_open && !ImGui::IsPopupOpen(panel_id, ImGuiPopupFlags_None) &&
+        ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+        ImGui::SetKeyOwner(ImGuiKey_Escape, panel_id, ImGuiInputFlags_LockThisFrame);
 
-    // Two stacked caption lines; the controls on their line sit centred on
-    // them.
-    ImGui::BeginGroup();
-    ImGui::TextUnformatted("Analysis settings");
-    ImGui::TextDisabled(locked ? "locked" : "for every song");
-    ImGui::EndGroup();
-    const float caption_top = ImGui::GetItemRectMin().y;
-    const float caption_bottom = ImGui::GetItemRectMax().y;
-    const float frame_h = ImGui::GetFrameHeight();
-    float line_end = ImGui::GetItemRectMax().x;
-    // The line the blocks are on, for the dividers' height: the caption's
-    // until a block wraps.
-    float line_top = caption_top, line_bottom = caption_bottom;
-
-    // The four groups are blocks. A block stays on the current line when it
-    // fits, divider included, and otherwise starts a new line with no divider
-    // before it. A block's width is known only once it is drawn, so each
-    // frame places the blocks by the widths they had on the last one (0 on
-    // the very first frame: one line, corrected a frame later).
-    //
-    // The first block on the caption's line starts a fresh line of its own at
-    // the centred height, rather than SameLine after the caption: an item
-    // that continues a line is placed from the line's top whatever the
-    // cursor says (ImGui's ItemSize), so a nudge there moved only the first
-    // label and left the rest of the row at the top.
-    using Block = void (*)(AppState&, bool);
-    static constexpr Block kBlocks[] = {render_difficulty, render_sp_cap, render_score_range,
-                                        render_path_limit};
-    static_assert(std::size(kBlocks) ==
-                  std::extent_v<decltype(LibraryViewState::settings_block_w)>);
-    const float gap = separator_gap();
-    const float separator_w = gap * 2.0f + kSeparatorW;
-    float* block_w = app.library_ui.settings_block_w;
-    for (size_t i = 0; i < std::size(kBlocks); ++i) {
-        if (fits_in_row(line_end + separator_w, block_w[i], right_edge)) {
-            const float divider_x = line_end + gap;
-            draw_divider(divider_x, line_top, line_bottom);
-            const float x = divider_x + kSeparatorW + gap;
-            if (i == 0) {
-                // A fresh line at the centred height (the caption group
-                // already ended its own line).
-                ImGui::SetCursorScreenPos(
-                    ImVec2(x, caption_top + (caption_bottom - caption_top - frame_h) * 0.5f));
-            } else {
-                ImGui::SameLine();  // keeps this line's top
-                ImGui::SetCursorScreenPos(ImVec2(x, ImGui::GetCursorScreenPos().y));
-            }
-        } else {
-            // A new line, below the caption when it would reach up beside it.
-            const ImVec2 at = ImGui::GetCursorScreenPos();
-            const float below = caption_bottom + ImGui::GetStyle().ItemSpacing.y;
-            if (at.y < below) ImGui::SetCursorScreenPos(ImVec2(at.x, below));
-            line_top = ImGui::GetCursorScreenPos().y;
-            line_bottom = line_top + frame_h;
-        }
-        ImGui::AlignTextToFramePadding();
-        ImGui::BeginGroup();
-        kBlocks[i](app, locked);
-        ImGui::EndGroup();
-        block_w[i] = ImGui::GetItemRectSize().x;
-        line_end = ImGui::GetItemRectMax().x;
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const std::string label = settings_button_label(app.settings, locked);
+    const float arrow_w = ImGui::GetFontSize() * 0.5f;
+    const float chrome = style.FramePadding.x * 2.0f + style.ItemInnerSpacing.x + arrow_w;
+    const float lead = separator_gap() * 2.0f + kSeparatorW;
+    // The button stays on the action row while the default label still fits
+    // there; a longer label is cut to the room left. Below that it starts a
+    // line of its own.
+    static const std::string kDefaultLabel = settings_button_label(app::Settings{}, false);
+    const float least = ImGui::CalcTextSize(kDefaultLabel.c_str()).x + chrome;
+    if (fits_on_line(lead + least + room_after, style.ItemSpacing.x)) {
+        const float top = ImGui::GetItemRectMin().y, bottom = ImGui::GetItemRectMax().y;
+        draw_divider(ImGui::GetItemRectMax().x + separator_gap(), top, bottom);
+        ImGui::SameLine(0.0f, lead);
     }
+    const float room = std::max(ImGui::GetContentRegionAvail().x - room_after, least);
+    const float text_room = std::min(ImGui::CalcTextSize(label.c_str()).x, room - chrome);
+    const std::string shown = render::ellipsize(label, text_room, text_width);
 
-    // The lock message is a fifth block, right-aligned on whichever line it
-    // lands on.
-    if (locked) {
-        // Only a batch locks the bar (D90 item 2).
-        const std::string why = "Stop the batch to change these.";
-        const float w = ImGui::CalcTextSize(why.c_str()).x;
-        if (fits_on_line(w, ImGui::GetStyle().ItemSpacing.x)) ImGui::SameLine();
-        ImGui::AlignTextToFramePadding();
-        const float right = ImGui::GetContentRegionMax().x - w;
-        if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);
-        ImGui::PushStyleColor(ImGuiCol_Text, kSubtleTextColor);
-        ImGui::TextUnformatted(why.c_str());
-        ImGui::PopStyleColor();
+    ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgHovered));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
+    const bool clicked =
+        ImGui::Button((shown + "###analysissettings").c_str(), ImVec2(text_room + chrome, 0.0f));
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor(3);
+    const ImVec2 button_min = ImGui::GetItemRectMin(), button_max = ImGui::GetItemRectMax();
+    draw_open_arrow(button_min, button_max, arrow_w, style.FramePadding.x);
+    if (shown != label) overflow_tooltip(label.c_str());
+
+    if (clicked) ImGui::OpenPopup(kPanelId);
+    // Under the button: from its left edge, or back from its right edge when
+    // it sits in the window's right half, so the panel stays on screen.
+    const bool right_half = button_min.x > ImGui::GetWindowPos().x + ImGui::GetWindowWidth() * 0.5f;
+    ImGui::SetNextWindowPos(ImVec2(right_half ? button_max.x : button_min.x, button_max.y),
+                            ImGuiCond_Always, ImVec2(right_half ? 1.0f : 0.0f, 0.0f));
+    if (ImGui::BeginPopup(kPanelId)) {
+        render_panel(app, locked);
+        ImGui::EndPopup();
     }
-    ImGui::EndChild();
+    was_open = ImGui::IsPopupOpen(panel_id, ImGuiPopupFlags_None);
 }
 
 }  // namespace hydra::ui::detail

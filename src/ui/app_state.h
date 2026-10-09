@@ -114,10 +114,9 @@ struct LibraryViewState {
     // Song folders: a folder was added or removed since the dialog opened,
     // so it offers "Scan now".
     bool folders_changed = false;
-    // The Analysis settings bar's four blocks (Difficulty, SP cap, Score
-    // range, Path limit) as wide as they were drawn last frame, so this frame
-    // can tell which still fit on the line. 0 = not drawn yet.
-    float settings_block_w[4] = {};
+    // The Analysis settings panel was open at the end of last frame, so an
+    // Esc that closed it this frame can be told apart (render_settings_button).
+    bool settings_panel_was_open = false;
 };
 
 // The open song as the engine analyzed it on the click (D87 item 1). Nothing
@@ -320,11 +319,11 @@ public:
     // (D87 item 11). Safe to call when closed.
     void close_details();
 
-    // A report row's click (D103 item 3): switches the settings bar to
-    // `chartmode` first when it differs, the way the bar's own controls do,
+    // A report row's click (D103 item 3): switches the analysis settings to
+    // `chartmode` first when it differs, the way the panel's own controls do,
     // then selects the chart with hash `hyhash`. A chart with several copies
     // selects the first in the library's current order. A hash the library
-    // doesn't list selects nothing. While a batch locks the settings bar, a
+    // doesn't list selects nothing. While a batch locks the analysis settings, a
     // row of another mode selects nothing and the status line says why.
     void select_chart(const std::string& hyhash, const std::string& chartmode);
 
@@ -420,7 +419,7 @@ public:
     std::unique_ptr<BatchJob> batch_job;
     std::unique_ptr<ReportJob> report_job;
 
-    // True while a batch is running. The settings bar is locked then: a
+    // True while a batch is running. The analysis settings are locked then: a
     // result is filed under the settings it ran with. A click's analysis
     // does not lock it; a setting change restarts that one (D90 item 2).
     bool batch_running() const;

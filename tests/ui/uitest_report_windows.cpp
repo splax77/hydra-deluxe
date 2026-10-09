@@ -607,7 +607,7 @@ void test_dm_handover(ImGuiTestContext* ctx) {
 }
 
 // A row click selects its chart; a row of the other chart mode switches the
-// settings bar first; a comparison row not in the library selects nothing.
+// analysis settings first; a comparison row not in the library selects nothing.
 void test_row_click(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);

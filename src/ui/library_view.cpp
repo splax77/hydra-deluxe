@@ -186,11 +186,10 @@ void render_main_window(AppState& app) {
     }
 
     detail::render_actions_row(app);
-    // The batch strips sit between the toolbar and the settings bar (the
-    // Batch mockup).
+    // The batch strips sit between the toolbar and the library (the Batch
+    // mockup).
     detail::render_batch_strip(app);
     detail::render_batch_done(app);
-    detail::render_settings_bar(app);
     render_library_and_panel(app);
 
     if (app.scan_job) detail::render_scan_modal(app);

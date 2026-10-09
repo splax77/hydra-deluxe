@@ -155,11 +155,14 @@ void test_settings_and_reports(ImGuiTestContext* ctx) {
 
     // A view-setting toggle lands in the INI at once.
     bool before = h.app->settings.view_bass2x;
-    ctx->ItemClick("**/2x Bass");  // in the settings bar
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    ctx->ItemClick("**/##bass2x");
     ctx->Yield();
     IM_CHECK(h.app->settings.view_bass2x != before);
     IM_CHECK(hydra::app::Settings::load_file(h.ini_path).view_bass2x != before);
-    ctx->ItemClick("**/2x Bass");  // restore
+    ctx->ItemClick("**/##bass2x");  // restore
+    close_settings_panel(ctx);
 
     // Batch-analyze just the first chart (search narrows the batch), which
     // builds the path report; with auto-open off its window stays shut.
@@ -210,19 +213,19 @@ void test_dm_compare_flow(ImGuiTestContext* ctx) {
     h.app->settings.sp_cap = hydra::kCloneHeroSpCap;
     h.app->commit_settings();
 
-    // The difficulty picker lives in the settings bar; the button in the
-    // toolbar above it.
-    ctx->SetRef(ctx->WindowInfo("//Hydra/##settingsbar").Window);
-    ctx->ComboClick("##difficulty/Hard");
+    // The difficulty picker lives in the settings panel; the button on the
+    // toolbar.
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    settings_combo_pick(ctx, "##prodrums", "##difficulty", "Hard");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Hard"; }, 5));
-    ctx->Yield(2);
-    ctx->SetRef("//Hydra");
+    close_settings_panel(ctx);
     IM_CHECK(compare_disabled());
-    ctx->SetRef(ctx->WindowInfo("//Hydra/##settingsbar").Window);
-    ctx->ComboClick("##difficulty/Expert");
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    settings_combo_pick(ctx, "##prodrums", "##difficulty", "Expert");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Expert"; }, 5));
-    ctx->Yield(2);
-    ctx->SetRef("//Hydra");
+    close_settings_panel(ctx);
     IM_CHECK(!compare_disabled());
 
     // The picker opens on the canned ladder; the filter narrows it as you
@@ -328,11 +331,12 @@ void test_batch_confirm_note_shuffle(ImGuiTestContext* ctx) {
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
-    ctx->SetRef(ctx->WindowInfo("//Hydra/##settingsbar").Window);
-    ctx->ItemCheck("Note Shuffle");
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    ctx->ItemCheck("**/##noteshuffle");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_noteshuffle; }, 5));
 
-    ctx->SetRef("//Hydra");
+    close_settings_panel(ctx);
     ctx->ItemClick("Analyze library...");
     ctx->Yield(2);
     IM_CHECK(h.app->batch_confirm_pending);
@@ -342,16 +346,17 @@ void test_batch_confirm_note_shuffle(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(!h.app->batch_confirm_pending);
 
-    ctx->SetRef(ctx->WindowInfo("//Hydra/##settingsbar").Window);
-    ctx->ItemUncheck("Note Shuffle");
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    ctx->ItemUncheck("**/##noteshuffle");
     IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.view_noteshuffle; }, 5));
-    ctx->SetRef("//Hydra");
+    close_settings_panel(ctx);
     ctx->ItemClick("Analyze library...");
     ctx->Yield(2);
     IM_CHECK(h.app->batch_confirm_pending);
     const std::string text = visible_text(h);
     IM_CHECK(text.find("Expert \xC2\xB7 Pro Drums \xC2\xB7 2x Bass") != std::string::npos);
-    // The settings bar's own box still reads "Note Shuffle"; only the
+    // The settings panel's own row still reads "Note Shuffle"; only the
     // confirm's line drops it.
     IM_CHECK(text.find("\xC2\xB7 Note Shuffle") == std::string::npos);
     ctx->KeyPress(ImGuiKey_Escape);

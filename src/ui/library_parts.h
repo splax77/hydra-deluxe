@@ -6,7 +6,8 @@
 //                      and the song panel side by side), reaps finished
 //                      jobs, and places everything below
 // library_toolbar.cpp  the status line and the actions row
-// settings_bar.cpp     the "Analysis settings" bar under the toolbar
+// settings_bar.cpp     the "Analysis settings" button on the actions row and
+//                      its panel
 // library_table.cpp    the search box and the library table
 // library_dialogs.cpp  the Song folders, Scanning charts, Analyze library and
 //                      Compare dmleaderboards user modals, and the batch strips
@@ -30,7 +31,11 @@ void render_actions_row(AppState& app);
 std::string analyze_search_label(int64_t count);
 
 // settings_bar.cpp
-void render_settings_bar(AppState& app);
+// The "Analysis settings: ..." button and the panel it opens, drawn right
+// after the action row's last left-hand button. `room_after` is the width
+// the row still needs to its right (the path report button), so the label
+// is cut short of it.
+void render_settings_button(AppState& app, float room_after);
 // The help text beside the "1.0 fills" checkbox. Each rule's deadline is
 // fill_rule_description's sentence.
 std::string legacy_fills_help_text();
@@ -68,6 +73,14 @@ struct BatchSettingsSummary {
     std::string path_limit;   // "10 ms" or "off"
 };
 BatchSettingsSummary batch_settings_summary(const app::Settings& s);
+
+// The settings that differ from a default-constructed app::Settings, one
+// phrase each in the panel's order, joined with " · ": "Hard · Note Shuffle".
+// "defaults" when none differ.
+std::string settings_changes_summary(const app::Settings& s);
+// The settings button's label: "Analysis settings: " and the summary above,
+// ending in " (locked)" while the settings are locked.
+std::string settings_button_label(const app::Settings& s, bool locked);
 
 // What the library area says when there are no charts: add a folder first,
 // or scan the folders you have.

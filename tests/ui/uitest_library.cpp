@@ -93,55 +93,56 @@ void test_library_twin_rows(ImGuiTestContext* ctx) {
     h.app->library.set_sort(hydra::ui::LibrarySort::Title, true);
 }
 
-// The settings bar's difficulty dropdown: it drives the chartmode everything
-// else is keyed by. 2x Bass stays live at every difficulty (D20) and is part
-// of the key there too.
+// The settings panel's difficulty dropdown: it drives the chartmode
+// everything else is keyed by. 2x Bass stays live at every difficulty (D20)
+// and is part of the key there too.
 void test_difficulty(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
-    ctx->SetRef(ctx->WindowInfo("//Hydra/##settingsbar").Window);
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
 
     IM_CHECK(h.app->settings.view_bass2x);  // the default the test relies on
-    IM_CHECK((ctx->ItemInfo("2x Bass").ItemFlags & ImGuiItemFlags_Disabled) == 0);
+    IM_CHECK((ctx->ItemInfo("**/##bass2x").ItemFlags & ImGuiItemFlags_Disabled) == 0);
 
-    ctx->ComboClick("##difficulty/Hard");
+    settings_combo_pick(ctx, "##prodrums", "##difficulty", "Hard");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Hard"; }, 5));
     IM_CHECK_STR_EQ(hydra::app::Settings::load_file(h.ini_path).view_difficulty.c_str(),
                     "Hard");
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Hard Pro Drums, 2x Bass");
 
     // Live at Hard: unticking it changes Hard's key, and ticking it restores it.
-    IM_CHECK((ctx->ItemInfo("2x Bass").ItemFlags & ImGuiItemFlags_Disabled) == 0);
+    IM_CHECK((ctx->ItemInfo("**/##bass2x").ItemFlags & ImGuiItemFlags_Disabled) == 0);
     IM_CHECK(h.app->settings.effective_bass2x());
-    ctx->ItemClick("2x Bass");
+    ctx->ItemClick("**/##bass2x");
     IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.view_bass2x; }, 5));
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Hard Pro Drums, 1x Bass");
-    ctx->ItemClick("2x Bass");
+    ctx->ItemClick("**/##bass2x");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_bass2x; }, 5));
 
     // Back on Expert the box still carries the user's own setting. (Checked
     // here rather than at the end of the test: the details modal opened below
     // has no close button the harness can address.)
-    ctx->ComboClick("##difficulty/Expert");
+    settings_combo_pick(ctx, "##prodrums", "##difficulty", "Expert");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Expert"; }, 5));
-    IM_CHECK((ctx->ItemInfo("2x Bass").ItemFlags & ImGuiItemFlags_Disabled) == 0);
+    IM_CHECK((ctx->ItemInfo("**/##bass2x").ItemFlags & ImGuiItemFlags_Disabled) == 0);
     IM_CHECK(h.app->settings.effective_bass2x());
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Expert Pro Drums, 2x Bass");
 
-    ctx->ComboClick("##difficulty/Hard");
+    settings_combo_pick(ctx, "##prodrums", "##difficulty", "Hard");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Hard"; }, 5));
 
     // Narrow to a chart that actually has a [HardDrums] section, so the
     // analysis below has notes to work with.
-    ctx->SetRef("//Hydra");
+    close_settings_panel(ctx);
     ctx->ItemInputValue("**/##search", "Pokemon Theme");
     IM_CHECK(wait_until(ctx, [&] { return h.app->search == "Pokemon Theme"; }, 5));
     IM_CHECK(wait_until(ctx, [&] { return h.app->library_shown_count() > 0; }, 5));
     open_details(ctx, 0);
     if (ctx->IsError()) return;
-    // The settings bar, not the panel, names the difficulty now.
+    // The settings, not the song panel, name the difficulty now.
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Hard Pro Drums, 2x Bass");
 
     // The click analyzed it under Hard (D87 item 1).
@@ -163,7 +164,7 @@ void test_difficulty(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(h.app->preview->error().c_str(), "");
 }
 
-// The settings bar's "Note Shuffle" box (D104 items 1, 2 and 6): off by
+// The settings panel's "Note Shuffle" box (D104 items 1, 2 and 6): off by
 // default, ticking it saves the INI and ends the mode string in ", Note
 // Shuffle", and the dmleaderboards Compare button greys out with its sentence
 // as its tooltip. Unticking puts both back.
@@ -184,28 +185,56 @@ void test_note_shuffle_switch(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Expert Pro Drums, 2x Bass");
     IM_CHECK(!compare_disabled());
 
-    ctx->SetRef(ctx->WindowInfo("//Hydra/##settingsbar").Window);
-    IM_CHECK((ctx->ItemInfo("Note Shuffle").ItemFlags & ImGuiItemFlags_Disabled) == 0);
-    ctx->ItemCheck("Note Shuffle");
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK((ctx->ItemInfo("**/##noteshuffle").ItemFlags & ImGuiItemFlags_Disabled) == 0);
+    ctx->ItemCheck("**/##noteshuffle");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_noteshuffle; }, 5));
     IM_CHECK(hydra::app::Settings::load_file(h.ini_path).view_noteshuffle);
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(),
                     "Expert Pro Drums, 2x Bass, Note Shuffle");
 
-    ctx->SetRef("//Hydra");
+    close_settings_panel(ctx);
     IM_CHECK(wait_until(ctx, compare_disabled, 5));
     // The tooltip shows on a disabled button too, after the hover delay.
     ctx->MouseMove("Compare with dmleaderboards...", ImGuiTestOpFlags_NoCheckHoveredId);
     IM_CHECK(wait_until(ctx, [&] { return visible_text(h).find(refused) != std::string::npos; },
                         5));
 
-    ctx->SetRef(ctx->WindowInfo("//Hydra/##settingsbar").Window);
-    ctx->ItemUncheck("Note Shuffle");
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    ctx->ItemUncheck("**/##noteshuffle");
     IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.view_noteshuffle; }, 5));
     IM_CHECK(!hydra::app::Settings::load_file(h.ini_path).view_noteshuffle);
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Expert Pro Drums, 2x Bass");
-    ctx->SetRef("//Hydra");
+    // The open popup outlives the test, so the next test could hover nothing.
+    close_settings_panel(ctx);
     IM_CHECK(wait_until(ctx, [&] { return !compare_disabled(); }, 5));
+}
+
+// The settings button (settings summary button handoff, 2026-10-09): it
+// reads "defaults" with every setting at its default, its label follows a
+// ticked box, and the panel stays open after the tick.
+void test_settings_button(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    auto shows = [&](const char* text) { return visible_text(h).find(text) != std::string::npos; };
+    // The scratch INI keeps a smaller score range; a default start has the
+    // default one.
+    h.app->settings.depth_value = hydra::app::Settings{}.depth_value;
+    h.app->commit_settings();
+    IM_CHECK(wait_until(ctx, [&] { return shows("Analysis settings: defaults"); }, 5));
+
+    ImGuiWindow* panel = open_settings_panel(ctx);
+    if (ctx->IsError()) return;    ctx->ItemCheck("**/##noteshuffle");
+    IM_CHECK(wait_until(ctx, [&] { return shows("Analysis settings: Note Shuffle"); }, 5));
+    // Ticking a box leaves the panel open, still the window with focus.
+    ctx->Yield(2);
+    IM_CHECK(ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
+    IM_CHECK(ctx->GetWindowByRef("//$FOCUSED") == panel);
+    ctx->ItemUncheck("**/##noteshuffle");
+    IM_CHECK(wait_until(ctx, [&] { return shows("Analysis settings: defaults"); }, 5));
+    close_settings_panel(ctx);
 }
 
 // A bad hydra_rules.ini: the app still opens and scans, the error naming the
@@ -284,16 +313,17 @@ void test_view_settings(ImGuiTestContext* ctx) {
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
-    ctx->SetRef("//Hydra");
-
     // Pro Drums off is a different chart mode: persisted at once.
     IM_CHECK(h.app->settings.view_prodrums);
-    ctx->ItemClick("**/Pro Drums");
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    ctx->ItemClick("**/##prodrums");
     IM_CHECK(!h.app->settings.view_prodrums);
     IM_CHECK(!hydra::app::Settings::load_file(h.ini_path).view_prodrums);
     IM_CHECK(h.app->settings.chartmode_key().find("Pro Drums") == std::string::npos);
-    ctx->ItemClick("**/Pro Drums");
+    ctx->ItemClick("**/##prodrums");
     IM_CHECK(h.app->settings.view_prodrums);
+    close_settings_panel(ctx);
 
     // "Analyze library..." asks first; Cancel starts nothing.
     ctx->ItemClick("Analyze library...");
@@ -471,18 +501,11 @@ ImGuiTable* library_table() {
     return nullptr;
 }
 
-// The settings bar, the chips and the Title column fit their room, at the
-// narrowest library and on long data. Geometry, not text: the text log
-// records a cut-off string in full.
+// The settings panel's Score range box, the chips and the Title column fit
+// their room, at the narrowest library and on long data. Geometry, not text:
+// the text log records a cut-off string in full.
 void test_library_layout(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    // The window width this test changes goes back for the tests after it,
-    // however it ends.
-    struct WidthGuard {
-        Harness& h;
-        int width;
-        ~WidthGuard() { h.width = width; }
-    } guard{h, h.width};
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
@@ -499,39 +522,23 @@ void test_library_layout(ImGuiTestContext* ctx) {
     h.app->library_ui.panel_was_open = false;
     ctx->Yield(3);
 
-    // The settings bar: nothing past its right edge, the lock message aside
-    // (nothing is running). The bar spans the window, so at 1,280 px its
-    // last block has wrapped under the first.
-    ImGuiWindow* bar = ctx->WindowInfo("//Hydra/##settingsbar").Window;
-    IM_CHECK(bar != nullptr);
-    if (bar == nullptr) return;
-    IM_CHECK_LE(bar->ContentSize.x, bar->ContentRegionRect.GetWidth() + 0.5f);
-    ctx->SetRef(bar);
-    const char* bar_items[] = {"##difficulty", "Pro Drums", "2x Bass", "Note Shuffle", "##spcap",
-                               "1.0 fills", "##depthvalue", "##depthmode",
-                               "Path limit##mslimit", "##mslimitvalue"};
-    for (const char* item : bar_items)
-        IM_CHECK_LE(ctx->ItemInfo(item).RectFull.Max.x, bar->InnerRect.Max.x + 0.5f);
-    const float first_line_y = ctx->ItemInfo("##difficulty").RectFull.Min.y;
-    IM_CHECK_GT(ctx->ItemInfo("##mslimitvalue").RectFull.Min.y, first_line_y);
-    // A wrapped block keeps its own pieces on one line.
-    IM_CHECK_EQ(ctx->ItemInfo("Path limit##mslimit").RectFull.Min.y,
-                ctx->ItemInfo("##mslimitvalue").RectFull.Min.y);
-
-    // Score range holds six digits beside its step buttons. The sample
-    // widest_digits gives is one measured run in the shipped font at this
-    // size (audit finding 112).
+    // Score range holds six digits beside its step buttons, in the open
+    // settings panel. The sample widest_digits gives is one measured run in
+    // the shipped font at this size (audit finding 112).
     h.app->settings.depth_value = 999999;
     ctx->Yield(2);
     // The click analyzed (and saved) this song (D87), and the setting change
     // re-analyzes it (D90): let that settle, so the chip counts below stand still.
     IM_CHECK(wait_until(ctx, [&] { return h.app->view_settled(); }, 300));
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
     const std::string widest = hydra::ui::widest_digits(6);
     IM_CHECK_STR_EQ(widest.c_str(), "000000");
-    IM_CHECK_GE(ctx->ItemInfo("##depthvalue").RectFull.GetWidth(),
+    IM_CHECK_GE(ctx->ItemInfo("**/##depthvalue").RectFull.GetWidth(),
                 hydra::ui::button_slot_width(widest.c_str()));
-    IM_CHECK_LE(ctx->ItemInfo("##depthvalue/+").RectFull.Max.x,
-                ctx->ItemInfo("##depthmode").RectFull.Min.x);
+    IM_CHECK_LE(ctx->ItemInfo("**/##depthvalue/+").RectFull.Max.x,
+                ctx->ItemInfo(settings_control(ctx, "##mslimit", "##depthmode")).RectFull.Min.x);
+    close_settings_panel(ctx);
 
     // The four chips stay inside the library, wrapping as they must: at
     // 320 px "Analyzed (0)" no longer fits after the other three.
@@ -566,26 +573,6 @@ void test_library_layout(ImGuiTestContext* ctx) {
     IM_CHECK_LE(title_col.ContentMaxXUnfrozen, title_col.WorkMaxX + 0.5f);
     const ImRect row = ctx->ItemInfo(("**/" + escape_ref(title)).c_str()).RectFull;
     IM_CHECK_GE(row.Max.x, table->Columns[table->RightMostEnabledColumn].WorkMaxX);
-
-    // The library at its widest on a wide window: the bar is one line.
-    h.width = 1920;
-    hydra::ui::remember_library_share(0.99f);
-    h.app->library_ui.panel_was_open = false;
-    ctx->Yield(3);
-    ctx->SetRef(bar);
-    IM_CHECK_LE(bar->ContentSize.x, bar->ContentRegionRect.GetWidth() + 0.5f);
-    const float line_y = ctx->ItemInfo("##difficulty").RectFull.Min.y;
-    for (const char* item :
-         {"Pro Drums", "2x Bass", "Note Shuffle", "##spcap", "1.0 fills", "##depthvalue",
-          "##mslimitvalue"})
-        IM_CHECK_EQ(ctx->ItemInfo(item).RectFull.Min.y, line_y);
-    // The whole row sits centred on the two caption lines ("Analysis
-    // settings" over "for every song"), not level with the first of them.
-    const ImGuiStyle& style = ImGui::GetStyle();
-    const float caption_top = bar->Pos.y + style.WindowPadding.y;
-    const float caption_h = ImGui::GetTextLineHeight() * 2.0f + style.ItemSpacing.y;
-    IM_CHECK_FLOAT_NEAR_EQ(line_y, caption_top + (caption_h - ImGui::GetFrameHeight()) * 0.5f,
-                           1.0f);
 }
 
 // A hydra_ui.ini that only records a sort on Best path (what sorting by it,
@@ -728,6 +715,7 @@ const std::vector<TestEntry>& library_tests() {
         {"scan", test_scan},
         {"difficulty", test_difficulty},
         {"note-shuffle-switch", test_note_shuffle_switch},
+        {"settings-button", test_settings_button},
         {"rules-error", test_rules_error},
         {"library-state-per-app", test_library_state_per_app},
         {"view-settings", test_view_settings},

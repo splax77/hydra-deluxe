@@ -633,8 +633,8 @@ void test_preview_error_wraps(ImGuiTestContext* ctx) {
     // The raw text is on the details line under it.
     IM_CHECK(!pc.error_detail().empty());
     IM_CHECK(visible_text(h).find(pc.error_detail()) != std::string::npos);
-    // The song panel's windows, the message's among them. (The settings bar
-    // above the library is another task's.)
+    // The song panel's windows, the message's among them. (The rest of the
+    // window is another task's.)
     int checked = 0;
     int overflowing = 0;
     float widest_room = 0.0f;
@@ -657,7 +657,7 @@ void test_preview_error_wraps(ImGuiTestContext* ctx) {
 }
 
 // A mode change on the open chart reloads the Preview (D48, Q22). Evans Blue -
-// Beg charts Expert drums and no Hard, so picking Hard in the settings bar
+// Beg charts Expert drums and no Hard, so picking Hard in the analysis settings
 // must say so in the Preview, in the no-notes sentence analysis uses, rather
 // than keep drawing Expert's notes. Back on Expert the highway returns.
 void test_preview_mode_reload(ImGuiTestContext* ctx) {
@@ -674,8 +674,9 @@ void test_preview_mode_reload(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return !pc.loading(); }, 120));
     IM_CHECK_STR_EQ(pc.error().c_str(), "");
 
-    ctx->SetRef(ctx->WindowInfo("//Hydra/##settingsbar").Window);
-    ctx->ComboClick("##difficulty/Hard");
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    settings_combo_pick(ctx, "##prodrums", "##difficulty", "Hard");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Hard"; }, 5));
     IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && pc.has_error(); }, 120));
     const std::string no_hard =
@@ -684,8 +685,9 @@ void test_preview_mode_reload(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(visible_text(h).find(no_hard) != std::string::npos);
 
-    ctx->ComboClick("##difficulty/Expert");
+    settings_combo_pick(ctx, "##prodrums", "##difficulty", "Expert");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Expert"; }, 5));
+    close_settings_panel(ctx);
     IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && !pc.has_error() && pc.scrub_end_ms() > 0.0; },
                         120));
     IM_CHECK_STR_EQ(pc.error().c_str(), "");

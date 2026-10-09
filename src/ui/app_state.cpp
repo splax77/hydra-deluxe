@@ -578,7 +578,7 @@ void AppState::update_background_jobs() {
         if (!batch_job->is_cancelled() && !report_started) {
             report_started = true;
             // The report lists the records the batch filed: its cap and lens,
-            // not whatever the settings bar holds now, analyzed under the
+            // not whatever the analysis settings hold now, analyzed under the
             // batch's settings, reusing the charts the batch just analyzed
             // (D87 item 5).
             const app::BatchRun& run = batch_job->batch_run();

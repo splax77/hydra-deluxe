@@ -2546,7 +2546,9 @@ const std::vector<OwnerRule>& rules() {
          {"src", "tools", "tests"}},
         // A depth unit word chosen from the search's enum, or bench's header
         // words. The GUI's own wordings ("Within 4 scores", the score-range
-        // box) are separate display text and do not name the enum.
+        // box) are separate display text. The GUI's counted "4 scores" for
+        // the batch confirm and the settings button names the enum, and is
+        // listed with the owner's lines as that display text.
         {"How do the analysis settings read as text?",
          "describe_settings in src/app/config.cpp",
          R"re(DepthMode::\w+.*"(scores|points)"|score range %d|%dms limit)re",
@@ -2562,7 +2564,11 @@ const std::vector<OwnerRule>& rules() {
           R"(if (a.depth_mode) s.depth_mode = *a.depth_mode == "points" ? 1 : 0;)"},
          {{"src/app/config.cpp",
            R"(const char* unit = settings.depth_mode == DepthMode::Points ? "points" : "scores";)",
-           "describe_settings, the owner"}}},
+           "describe_settings, the owner"},
+          {"src/ui/library_dialogs.cpp",
+           R"re(return s.search_depth_mode() == DepthMode::Scores ? counted(s.depth_value, "score", "scores"))re",
+           "score_range_value: the GUI's counted display wording, which the batch confirm and the "
+           "settings button share (settings summary button handoff, 2026-10-09)"}}},
         // The two strings typed anywhere but CMakeLists.txt, which the walk
         // does not read (so no owner line is listed). The installer script is
         // checked by the case below this table's scan.
@@ -3403,9 +3409,10 @@ const std::vector<OwnerRule>& rules() {
           "for (int i = static_cast<int>(digits.size()) - 1; i >= 0; --i) {"},
          {},
          {"src"}},
-        // The settings bar's lock decision: read once per frame so a batch
-        // ending mid-frame cannot send the bar to the one-song message with
-        // no analyze job behind it.
+        // The settings button's lock decision: read once per frame and
+        // handed to both the button and its panel, so a batch ending
+        // mid-frame cannot leave the button saying "(locked)" over enabled
+        // controls.
         {"What locks the analysis settings?",
          "settings_lock in src/ui/app_state.cpp",
          R"(\b(app|a)\.(batch_running|analyze_running)\(\))",
@@ -5522,9 +5529,6 @@ const std::vector<KnownCopy>& known_copies() {
          "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);",
          "a follow-up to RW-T5's review, once T4, which owns this file now, has merged"},
         {"Where does a right-aligned item start?", "src/ui/library_toolbar.cpp",
-         "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);",
-         "a follow-up to RW-T5's review"},
-        {"Where does a right-aligned item start?", "src/ui/settings_bar.cpp",
          "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);",
          "a follow-up to RW-T5's review"},
         {"Does a string end with a tail?", "tests/test_config.cpp",

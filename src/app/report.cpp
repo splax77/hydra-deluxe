@@ -432,7 +432,7 @@ bool settings_change_touches(const Settings& before, const Settings& after) {
     // generate_report is asked for one SP cap and one lens. It lists every
     // chart mode, and settings_for_mode gives each mode the run's search
     // settings with only that mode's own parse choices, so the mode the
-    // settings bar shows reaches no row.
+    // analysis settings show reaches no row.
     return before.cap_query() != after.cap_query() || before.lens() != after.lens();
 }
 
