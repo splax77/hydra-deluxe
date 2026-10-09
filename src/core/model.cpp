@@ -247,8 +247,34 @@ ChordNote& Chord::add_note(NoteColor color) {
 
 void Chord::insert_note(const ChordNote& note) { at(note.colortype) = note; }
 
-void Chord::add_2x() {
-    set_lane_flag(add_note(NoteColor::Kick));
+// Clone Hero's readers keep both kicks; its track finalizer then ORs their
+// flags onto one of them and deletes the other (0x215B8C0, 0x5DB0C0), so the
+// kick that stays carries the 2x mark and both kicks' ghost or accent marks.
+ChordNote& Chord::add_kick(bool is2x, NoteDynamicType dyn) {
+    std::optional<ChordNote>& kick = at(NoteColor::Kick);
+    if (!kick.has_value()) {
+        ChordNote& added = add_note(NoteColor::Kick);
+        added.dynamictype = dyn;
+        if (is2x) set_lane_flag(added);
+        return added;
+    }
+    // Two kicks of one kind: add_note raises the duplicate.
+    if (lane_flag(*kick) == is2x) return add_note(NoteColor::Kick);
+    set_lane_flag(*kick);
+    // One dynamictype can't hold a ghost and an accent together, and what the
+    // game scores that as is an open user question (D105), so a kick that
+    // already has a mark keeps it, as the first kick did before D105.
+    if (!kick->is_dynamic()) kick->dynamictype = dyn;
+    return *kick;
+}
+
+void Chord::add_2x() { add_kick(true, NoteDynamicType::Normal); }
+
+bool Chord::apply_2x_bass(bool bass2x) {
+    std::optional<ChordNote>& kick = at(NoteColor::Kick);
+    if (bass2x || !kick.has_value() || !lane_flag(*kick)) return false;
+    kick.reset();
+    return true;
 }
 
 // A cymbal, ghost or accent marker with no note of its colour under it is a

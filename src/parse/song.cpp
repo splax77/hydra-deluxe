@@ -575,7 +575,7 @@ enum class MPhase { None, Time, Pre, PreDelayed, Notes, PostDelayed };
 // classified and carried out later in its phase. A plain tagged struct, so a
 // tick's handlers cost no allocation (they used to be std::function closures).
 enum class MAct : uint8_t {
-    None, Note, FillStart, StoreFillEnd, SpStart, SpEnd, Tom, Flam,
+    None, Note, Kick, FillStart, StoreFillEnd, SpStart, SpEnd, Tom, Flam,
     Solo, Dynamics, Disco, Tempo, TimeSig,
 };
 
@@ -583,9 +583,9 @@ struct MOp {
     MPhase phase = MPhase::None;
     MAct act = MAct::None;
     NoteColor color = NoteColor::Kick;                  // Note, Tom
-    NoteDynamicType dyn = NoteDynamicType::Normal;      // Note
+    NoteDynamicType dyn = NoteDynamicType::Normal;      // Note, Kick
     NoteCymbalType cymbal = NoteCymbalType::Normal;     // Tom
-    bool flag = false;     // Note: is2x; Flam/Solo/Disco: on
+    bool flag = false;     // Kick: is2x; Flam/Solo/Disco: on
     int64_t tick = 0;      // FillStart/StoreFillEnd/SpStart/SpEnd/Dynamics/Tempo/TimeSig
     uint32_t tempo = 0;    // Tempo
     int num = 0, den = 0;  // TimeSig
@@ -600,9 +600,15 @@ MOp mop(MPhase phase, MAct act) {
     return op;
 }
 
-MOp mop_note(NoteColor color, NoteDynamicType dyn, bool is2x) {
+MOp mop_note(NoteColor color, NoteDynamicType dyn) {
     MOp op = mop(MPhase::Notes, MAct::Note);
     op.color = color;
+    op.dyn = dyn;
+    return op;
+}
+
+MOp mop_kick(NoteDynamicType dyn, bool is2x) {
+    MOp op = mop(MPhase::Notes, MAct::Kick);
     op.dyn = dyn;
     op.flag = is2x;
     return op;
@@ -770,7 +776,7 @@ private:
     }
     void op_flam(bool enabled) { flag_flam_ = enabled; }
     void op_solo(bool on) { flag_solo_ = on; }
-    void op_note(NoteColor color, NoteDynamicType dyn, bool is2x) {
+    void op_note(NoteColor color, NoteDynamicType dyn) {
         ChordNote& note = chord_.add_note(color);  // may throw ChartFileError
         note.dynamictype = dynamics_enabled_ ? dyn : NoteDynamicType::Normal;
         // A ghost or accent velocity before the tag: Clone Hero prices it as
@@ -778,7 +784,26 @@ private:
         if (!dynamics_enabled_ && dyn != NoteDynamicType::Normal) ++marks_before_tag_;
         if (allows_cymbals(color) && mode_pro_)
             note.cymbaltype = flag_cymbals_[static_cast<int>(color) - 1];
-        note.is2x = is2x;
+    }
+    // A kick, a 2x kick when `is2x`. Chord::add_kick merges a 2x kick and a
+    // normal kick on one tick into one kick, so a mark before the tag counts
+    // once for it, as for any other note.
+    void op_kick(NoteDynamicType dyn, bool is2x) {
+        chord_.add_kick(is2x, dynamics_enabled_ ? dyn : NoteDynamicType::Normal);  // may throw
+        if (!dynamics_enabled_ && dyn != NoteDynamicType::Normal && !kick_mark_before_tag_) {
+            ++marks_before_tag_;
+            kick_mark_before_tag_ = true;
+        }
+    }
+    // Once the tick's notes are read: the 2x Bass setting may remove the kick
+    // (Chord::apply_2x_bass). A removed kick is never priced, so a mark it
+    // had before the tag stops counting, and comes out of the tag's count too
+    // when the tag was read on this tick after it.
+    void apply_2x_bass(int64_t tick) {
+        if (!chord_.apply_2x_bass(mode_bass2x_) || !kick_mark_before_tag_) return;
+        --marks_before_tag_;
+        if (song_->dynamics_late_tag_tick != std::optional<int64_t>(tick)) return;
+        if (--song_->dynamics_marks_before_tag == 0) song_->dynamics_late_tag_tick.reset();
     }
 
     Song* song_ = nullptr;
@@ -804,6 +829,7 @@ private:
     std::vector<AuthoredFill> fills_;  // every authored fill, placed after pass 2
     bool dynamics_enabled_ = false;
     int marks_before_tag_ = 0;  // ghost/accent velocities read before the tag
+    bool kick_mark_before_tag_ = false;  // this tick's kick counted in marks_before_tag_
     std::optional<int64_t> sp_start_tick_;
 };
 
@@ -826,17 +852,15 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
                 velocity == 127   ? NoteDynamicType::Accent
                 : velocity == 1   ? NoteDynamicType::Ghost
                                   : NoteDynamicType::Normal;
-            if (note == base_) return mop_note(NoteColor::Kick, vel_dyn, false);
+            if (note == base_) return mop_kick(vel_dyn, false);
             if (note > base_ && note <= base_ + 4) {
                 // base+1 -> Red(2), as 97 -> Red(2) on Expert.
                 NoteColor color = static_cast<NoteColor>(note - base_ + 1);
-                return mop_note(color, vel_dyn, false);
+                return mop_note(color, vel_dyn);
             }
-            // The difficulty's own 2x kick, read only with 2x Bass on.
-            if (note == kick2x_pitch_) {
-                if (mode_bass2x_) return mop_note(NoteColor::Kick, vel_dyn, true);
-                return {};
-            }
+            // The difficulty's own 2x kick, read whatever the 2x Bass setting:
+            // it can take a normal kick on its tick with it (D105).
+            if (note == kick2x_pitch_) return mop_kick(vel_dyn, true);
             switch (note) {
                 case kFillMarkerPitch:
                     return mop_tick(MPhase::PostDelayed, MAct::FillStart, tick);
@@ -905,7 +929,8 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
 void MidiParser::run(const MOp& op) {
     switch (op.act) {
         case MAct::None: break;
-        case MAct::Note: op_note(op.color, op.dyn, op.flag); break;
+        case MAct::Note: op_note(op.color, op.dyn); break;
+        case MAct::Kick: op_kick(op.dyn, op.flag); break;
         case MAct::FillStart: op_fillstart(op.tick); break;
         case MAct::StoreFillEnd: op_store_fillend(op.tick); break;
         case MAct::SpStart: op_sp_start(op.tick); break;
@@ -931,6 +956,7 @@ void MidiParser::run_ops(const std::vector<MOp>& ops) {
 
 void MidiParser::push_timestamp(int64_t tick) {
     chord_ = Chord();
+    kick_mark_before_tag_ = false;
 
     pre_.clear();
     pre_delayed_.clear();
@@ -951,6 +977,7 @@ void MidiParser::push_timestamp(int64_t tick) {
     run_ops(pre_);
     run_ops(pre_delayed_);
     run_ops(notes_);
+    apply_2x_bass(tick);
 
     if (chord_.count())
         emit_chord_timestamp(*song_, chord_, tick, flag_flam_, mode_pro_, flag_disco_,
@@ -1224,7 +1251,7 @@ enum class CPhase { None, Time, Notes, NoteMods, Pre, Post, PostDelayed };
 // What a .chart event does, decided when it is classified and carried out in
 // its phase: a plain tagged struct, so a tick's handlers cost no allocation.
 enum class CAct : uint8_t {
-    None, Disco, Tempo, TimeSig, Solo, Note, TwoX, Accent, Ghost, Cymbal,
+    None, Disco, Tempo, TimeSig, Solo, Note, Kick, Accent, Ghost, Cymbal,
     SpStart, SpEnd, FillStart,
 };
 
@@ -1308,7 +1335,7 @@ private:
     }
     void op_solo(bool on) { flag_solo_ = on; }
     void op_note(NoteColor color) { chord_.add_note(color); }
-    void op_2x() { chord_.add_2x(); }
+    void op_kick(bool is2x) { chord_.add_kick(is2x, NoteDynamicType::Normal); }
     void op_accent(NoteColor color) { chord_.apply_accent(color); }
     void op_ghost(NoteColor color) { chord_.apply_ghost(color); }
     void op_cymbal(NoteColor color) { chord_.apply_cymbal(color); }
@@ -1501,14 +1528,14 @@ COp ChartParser::optype(const ChartLine& e, int64_t tick) {
 COp ChartParser::note_optype(int value) const {
     constexpr CPhase N = CPhase::Notes, M = CPhase::NoteMods;
     switch (value) {
-        case 0: return cop_color(N, CAct::Note, NoteColor::Kick);
+        case 0: return cop_flag(N, CAct::Kick, false);
         case 1: return cop_color(N, CAct::Note, NoteColor::Red);
         case 2: return cop_color(N, CAct::Note, NoteColor::Yellow);
         case 3: return cop_color(N, CAct::Note, NoteColor::Blue);
         case 4: return cop_color(N, CAct::Note, NoteColor::Green);
-        case 32:
-            if (mode_bass2x_) return cop(N, CAct::TwoX);
-            return {};
+        // The 2x kick, read whatever the 2x Bass setting: it can take a
+        // normal kick on its tick with it (D105).
+        case 32: return cop_flag(N, CAct::Kick, true);
         case 34: return cop_color(M, CAct::Accent, NoteColor::Red);
         case 35: return cop_color(M, CAct::Accent, NoteColor::Yellow);
         case 36: return cop_color(M, CAct::Accent, NoteColor::Blue);
@@ -1538,7 +1565,7 @@ void ChartParser::run(const COp& op) {
         case CAct::TimeSig: op_timesig(op.a, op.num, op.den); break;
         case CAct::Solo: op_solo(op.flag); break;
         case CAct::Note: op_note(op.color); break;
-        case CAct::TwoX: op_2x(); break;
+        case CAct::Kick: op_kick(op.flag); break;
         case CAct::Accent: op_accent(op.color); break;
         case CAct::Ghost: op_ghost(op.color); break;
         case CAct::Cymbal: op_cymbal(op.color); break;
@@ -1569,6 +1596,7 @@ void ChartParser::push_timestamp(int64_t tick, const ChartLine* first, const Cha
     };
 
     run_phase(CPhase::Notes);
+    chord_.apply_2x_bass(mode_bass2x_);
     run_phase(CPhase::NoteMods);
 
     // Phrase end: SP.
