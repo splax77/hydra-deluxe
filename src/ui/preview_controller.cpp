@@ -85,10 +85,7 @@ void PreviewController::open(const store::ChartLibraryEntry& entry, bool pro,
     if (active_ && open_key_ == key) {
         // Same chart, same overlay: nothing to do, and nothing built.
         if (sp_cap == sp_cap_ && path_key == requested_path_key_) return;
-        path_ = path ? std::optional<Path>(*path) : std::nullopt;
-        sp_cap_ = sp_cap;
-        requested_path_key_ = path_key;
-        path_key_ = overlay_key(path_key, sp_cap);
+        record_request(path, path_key, sp_cap);
         // Mid-load the load or notes job is building its own scene; poll()
         // reconciles. Once the song is here, the new overlay builds on a job
         // and poll() swaps it in, which leaves the audio and the playhead
@@ -99,10 +96,7 @@ void PreviewController::open(const store::ChartLibraryEntry& entry, bool pro,
     // The same chart in another mode, with its audio already loaded: keep the
     // audio and the playhead, and reload only the notes.
     if (active_ && first_load_done_ && !job_ && open_key_.md5 == key.md5) {
-        path_ = path ? std::optional<Path>(*path) : std::nullopt;
-        sp_cap_ = sp_cap;
-        requested_path_key_ = path_key;
-        path_key_ = overlay_key(path_key, sp_cap_);
+        record_request(path, path_key, sp_cap);
         start_notes_job(entry, key);
         return;
     }
@@ -113,15 +107,25 @@ void PreviewController::open(const store::ChartLibraryEntry& entry, bool pro,
     error_.clear();
     error_detail_.clear();
     pro_ = pro;
-    sp_cap_ = sp_cap;
-
-    path_ = path ? std::optional<Path>(*path) : std::nullopt;
-    requested_path_key_ = path_key;
-    path_key_ = overlay_key(path_key, sp_cap_);
+    record_request(path, path_key, sp_cap);
     job_path_key_ = path_key_;
     job_ = std::make_unique<PreviewLoadJob>(entry, pro, bass2x, difficulty, path_, sp_cap_,
                                             rules, noteshuffle);
     job_->start();
+}
+
+void PreviewController::record_request(const Path* path, const std::string& path_key,
+                                       int sp_cap) {
+    path_ = path ? std::optional<Path>(*path) : std::nullopt;
+    sp_cap_ = sp_cap;
+    requested_path_key_ = path_key;
+    path_key_ = overlay_key(path_key, sp_cap);
+}
+
+std::optional<Path> PreviewController::path_to_draw() const {
+    // A changed chart keeps drawing no path (drawn_path, finding 126).
+    const Path* drawn = drawn_path(path_, chart_changed_);
+    return drawn ? std::optional<Path>(*drawn) : std::nullopt;
 }
 
 void PreviewController::start_notes_job(const store::ChartLibraryEntry& entry,
@@ -139,12 +143,9 @@ void PreviewController::start_notes_job(const store::ChartLibraryEntry& entry,
     // no longer answers shows_path for any selection.
     scene_path_key_.clear();
     job_path_key_ = path_key_;
-    // A changed chart keeps drawing no path (drawn_path, finding 126).
-    const Path* drawn = drawn_path(path_, chart_changed_);
-    notes_job_ = std::make_unique<PreviewNotesJob>(
-        entry, key.pro, key.bass2x, key.difficulty,
-        drawn ? std::optional<Path>(*drawn) : std::nullopt, sp_cap_, rules_, key.noteshuffle,
-        audio_end_ms_);
+    notes_job_ = std::make_unique<PreviewNotesJob>(entry, key.pro, key.bass2x, key.difficulty,
+                                                   path_to_draw(), sp_cap_, rules_,
+                                                   key.noteshuffle, audio_end_ms_);
     notes_job_->start();
 }
 
@@ -192,10 +193,7 @@ void PreviewController::show_scene(hydra::app::PreviewScene scene,
 
 void PreviewController::start_scene_job() {
     retire(scene_job_, retired_scene_jobs_);
-    // A changed chart keeps drawing no path (drawn_path, finding 126).
-    const Path* drawn = drawn_path(path_, chart_changed_);
-    std::optional<Path> path = drawn ? std::optional<Path>(*drawn) : std::nullopt;
-    scene_job_ = std::make_unique<PreviewSceneJob>(song_, scene_base_, std::move(path), sp_cap_,
+    scene_job_ = std::make_unique<PreviewSceneJob>(song_, scene_base_, path_to_draw(), sp_cap_,
                                                    rules_, path_key_, track_opts(), audio_end_ms_,
                                                    song_length_ms_);
     scene_job_->start();

@@ -358,6 +358,12 @@ private:
     std::optional<Path> path_;
     std::string requested_path_key_;  // the path half of path_key_, as open() got it
     std::string path_key_;        // key of path_ + sp_cap_
+    // Every branch of open() remembers the caller's path, cap and path key
+    // here, and builds path_key_ from them.
+    void record_request(const Path* path, const std::string& path_key, int sp_cap);
+    // The path a new scene or notes build draws (drawn_path's answer for
+    // path_), copied for the job to own.
+    std::optional<Path> path_to_draw() const;
     // The overlay being built for a new selection, and replaced ones still
     // finishing (dropped by poll() once done, so replacing one never joins
     // its thread on the UI thread).
