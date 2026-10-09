@@ -1,0 +1,9 @@
+division 480
+1920 ['tomG', 'G', 'kick', 'Y']
+2160 ['tomG', 'Y', 'kick', 'G']
+2400 ['red', 'G']
+2640 ['tomB', 'Y', 'kick', 'B']
+2880 ['tomY', 'B', 'Y']
+3120 ['Y', 'kick']
+3360 ['Y', 'kick']
+3600 ['tomG', 'G', 'Y']

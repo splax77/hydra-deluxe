@@ -1,0 +1,56 @@
+0x3cbbf00 <- 0xdda12 in 0xdd970 VideoSettingsMenu$$ʵʸʶʴʻʴʿʾʵʾˁ
+0x3cbbf00 <- 0xddbb8 in 0xdd970 VideoSettingsMenu$$ʵʸʶʴʻʴʿʾʵʾˁ
+0x3cbbf00 <- 0xde06d in 0xde000 VideoSettingsMenu$$ʵˁʺʻʲʹˁʻʹʺʳ
+0x3cbbf00 <- 0xde317 in 0xde000 VideoSettingsMenu$$ʵˁʺʻʲʹˁʻʹʺʳ
+0x3cbbf00 <- 0xde801 in 0xde7e0 VideoSettingsMenu$$ʷʺˀʸʾʺʽʴʻʳʶ
+0x3cbbf00 <- 0xde81b in 0xde7e0 VideoSettingsMenu$$ʷʺˀʸʾʺʽʴʻʳʶ
+0x3cbbf00 <- 0xdf1be in 0xdf020 VideoSettingsMenu$$ʺʴʼʺʷʷʷʾʷˁˀ
+0x3cbbf00 <- 0xdf6f5 in 0xdf020 VideoSettingsMenu$$ʺʴʼʺʷʷʷʾʷˁˀ
+0x3cbbf00 <- 0xe2689 in 0xe2650 VideoSettingsMenu$$ˁʳʼʶʽʶʿʷʻʵʻ
+0x3cbbf00 <- 0xe26a3 in 0xe2650 VideoSettingsMenu$$ˁʳʼʶʽʶʿʷʻʵʻ
+0x3cbbf00 <- 0x185fee in 0x185fd0 SongSettingsMenu$$ʶʾʶʹʺʷʳʾʹʾʴ
+0x3cbbf00 <- 0x186046 in 0x185fd0 SongSettingsMenu$$ʶʾʶʹʺʷʳʾʹʾʴ
+0x3cbbf00 <- 0x1864ce in 0x1864b0 SongSettingsMenu$$ʻʺʾʳʺʶʹʷʽʺʳ
+0x3cbbf00 <- 0x18654a in 0x1864b0 SongSettingsMenu$$ʻʺʾʳʺʶʹʷʽʺʳ
+0x3cbbf00 <- 0x20c11d in 0x20c0e0 SubmissionStatsEntry$$ʳʹʾʳʷʴʻʻʶʾʸ
+0x3cbbf00 <- 0x20c500 in 0x20c0e0 SubmissionStatsEntry$$ʳʹʾʳʷʴʻʻʶʾʸ
+0x3cbbf00 <- 0x36643e in 0x3663b0 BassAudioManager$$ʴʾʵʹʴʼʶʴˁʶʹ
+0x3cbbf00 <- 0x3667e2 in 0x3663b0 BassAudioManager$$ʴʾʵʹʴʼʶʴˁʶʹ
+0x3cbbf00 <- 0x211ca7c in 0x211ca10 ʸʻʿʴʴʼʽʴʷˁʶ$$ʸʸʵʸʳʾˀˁʲʻʲ
+0x3cbbf00 <- 0x211cae0 in 0x211ca10 ʸʻʿʴʴʼʽʴʷˁʶ$$ʸʸʵʸʳʾˀˁʲʻʲ
+0x3cbbf00 <- 0x2164158 in 0x2164100 ʺʹˁʿʺʼʼʷʳʴʶ$$ˁʸʷʶʳˀʼʹʿʺʳ
+0x3cbbf00 <- 0x2164379 in 0x2164100 ʺʹˁʿʺʼʼʷʳʴʶ$$ˁʸʷʶʳˀʼʹʿʺʳ
+0x3ccab48 <- 0x211b91c in 0x211b900 ʶʶʹʴʳʷˀʽʽʾʳ$$.cctor
+0x3ccab48 <- 0x211b941 in 0x211b900 ʶʶʹʴʳʷˀʽʽʾʳ$$.cctor
+0x3ccac08 <- 0x2150abc in 0x2150aa0 ˀʽʵʲˁʴˀʴʽʷʳ$$.cctor
+0x3ccac08 <- 0x2150ae1 in 0x2150aa0 ˀʽʵʲˁʴˀʴʽʷʳ$$.cctor
+0x3cf39c8 <- 0x1cd705 in 0x1cd620 ʽʼʲʴʲˀʸʻʸʲʹ$$ʶʾʳʽʿˀʵʾʳʵʲ
+0x3cf39c8 <- 0x1cdb6a in 0x1cd620 ʽʼʲʴʲˀʸʻʸʲʹ$$ʶʾʳʽʿˀʵʾʳʵʲ
+0x3cf39c8 <- 0x28b1fd in 0x28b130 ʺˀʹʻˀʾʸʻʾʽʺ$$.ctor
+0x3cf39c8 <- 0x28b588 in 0x28b130 ʺˀʹʻˀʾʸʻʾʽʺ$$.ctor
+0x3cf39c8 <- 0x395892 in 0x395850 CliGameLauncher$$ʲʲʲʼˁʹˀʷˁʺʵ
+0x3cf39c8 <- 0x39592c in 0x395850 CliGameLauncher$$ʲʲʲʼˁʹˀʷˁʺʵ
+0x3cf3a88 <- 0x1444e1 in 0x1444b0 UVScroll$$ʴˁʶʾʳʴʽʷʶˀʹ
+0x3cf3a88 <- 0x14453c in 0x1444b0 UVScroll$$ʴˁʶʾʳʴʽʷʶˀʹ
+0x3cf3a88 <- 0x25d8c4 in 0x25d840 ʲʺʺʸʵʼʺʾʻʺʵ$$ʲʴʻʷˀʻʼʿʷʽʼ
+0x3cf3a88 <- 0x25d960 in 0x25d840 ʲʺʺʸʵʼʺʾʻʺʵ$$ʲʴʻʷˀʻʼʿʷʽʼ
+0x3cf3a88 <- 0x28b209 in 0x28b130 ʺˀʹʻˀʾʸʻʾʽʺ$$.ctor
+0x3cf3a88 <- 0x28b56a in 0x28b130 ʺˀʹʻˀʾʸʻʾʽʺ$$.ctor
+0x3cf3a88 <- 0x32befd in 0x32bed0 MIDITest$$Update
+0x3cf3a88 <- 0x32bf39 in 0x32bed0 MIDITest$$Update
+0x3cf3a88 <- 0x3958aa in 0x395850 CliGameLauncher$$ʲʲʲʼˁʹˀʷˁʺʵ
+0x3cf3a88 <- 0x39591a in 0x395850 CliGameLauncher$$ʲʲʲʼˁʹˀʷˁʺʵ
+0x3cfa9d8 <- 0x35cab2 in 0x35c980 SongEntry$$ʿʳʴʾʽʻʴʽʿʵʽ
+0x3cfa9d8 <- 0x35d3dd in 0x35c980 SongEntry$$ʿʳʴʾʽʻʴʽʿʵʽ
+0x3cfa9d8 <- 0xf697de in 0xf69730 sZxmpzIWDNqBTidQyuBRnjdJHszFA<object, bdHHBbvsrukIjhbwTeqFPmkxMNFl, kjoEnOiXWReAMfuIOezrdBvRckTbA>$$USSVWKTDwKjhzKnDvcKTzulhIQxE
+0x3cfa9d8 <- 0xf69a2c in 0xf69730 sZxmpzIWDNqBTidQyuBRnjdJHszFA<object, bdHHBbvsrukIjhbwTeqFPmkxMNFl, kjoEnOiXWReAMfuIOezrdBvRckTbA>$$USSVWKTDwKjhzKnDvcKTzulhIQxE
+0x3cfa9d8 <- 0xf69a50 in 0xf69730 sZxmpzIWDNqBTidQyuBRnjdJHszFA<object, bdHHBbvsrukIjhbwTeqFPmkxMNFl, kjoEnOiXWReAMfuIOezrdBvRckTbA>$$USSVWKTDwKjhzKnDvcKTzulhIQxE
+0x3cfa9d8 <- 0xf69fce in 0xf69f20 sZxmpzIWDNqBTidQyuBRnjdJHszFA<object, TMxIHksqTDbKyReVRajorGktgmdgA, hUfHzWDFVBXJbBgxNXhuQHtyyNmE>$$USSVWKTDwKjhzKnDvcKTzulhIQxE
+0x3cfa9d8 <- 0xf6a21c in 0xf69f20 sZxmpzIWDNqBTidQyuBRnjdJHszFA<object, TMxIHksqTDbKyReVRajorGktgmdgA, hUfHzWDFVBXJbBgxNXhuQHtyyNmE>$$USSVWKTDwKjhzKnDvcKTzulhIQxE
+0x3cfa9d8 <- 0xf6a240 in 0xf69f20 sZxmpzIWDNqBTidQyuBRnjdJHszFA<object, TMxIHksqTDbKyReVRajorGktgmdgA, hUfHzWDFVBXJbBgxNXhuQHtyyNmE>$$USSVWKTDwKjhzKnDvcKTzulhIQxE
+0x3cfa9d8 <- 0xf6a7be in 0xf6a710 sZxmpzIWDNqBTidQyuBRnjdJHszFA<object, tSEDMxtQpNDquNOKVoqmIOyKbuAI, gqrVYEWalqVTWqZGJrGWDdQpxhfH>$$USSVWKTDwKjhzKnDvcKTzulhIQxE
+0x3cfa9d8 <- 0xf6aa0c in 0xf6a710 sZxmpzIWDNqBTidQyuBRnjdJHszFA<object, tSEDMxtQpNDquNOKVoqmIOyKbuAI, gqrVYEWalqVTWqZGJrGWDdQpxhfH>$$USSVWKTDwKjhzKnDvcKTzulhIQxE
+0x3cfa9d8 <- 0xf6aa30 in 0xf6a710 sZxmpzIWDNqBTidQyuBRnjdJHszFA<object, tSEDMxtQpNDquNOKVoqmIOyKbuAI, gqrVYEWalqVTWqZGJrGWDdQpxhfH>$$USSVWKTDwKjhzKnDvcKTzulhIQxE
+0x3cfa9d8 <- 0xf6afae in 0xf6af00 sZxmpzIWDNqBTidQyuBRnjdJHszFA<object, __Il2CppFullySharedGenericStructType, __Il2CppFullySharedGenericStructType>$$USSVWKTDwKjhzKnDvcKTzulhIQxE
+0x3cfa9d8 <- 0xf6b1fc in 0xf6af00 sZxmpzIWDNqBTidQyuBRnjdJHszFA<object, __Il2CppFullySharedGenericStructType, __Il2CppFullySharedGenericStructType>$$USSVWKTDwKjhzKnDvcKTzulhIQxE
+0x3cfa9d8 <- 0xf6b220 in 0xf6af00 sZxmpzIWDNqBTidQyuBRnjdJHszFA<object, __Il2CppFullySharedGenericStructType, __Il2CppFullySharedGenericStructType>$$USSVWKTDwKjhzKnDvcKTzulhIQxE

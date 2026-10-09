@@ -1,0 +1,11 @@
+0x20d2ea0 <- 0x208986 in 0x208870 BasePlayer$$ʶʷʶʲʽʼʼʾʿʵʵ
+0x20d2ea0 <- 0x235c9e in 0x235ad0 GlobalVariables$$ʺʵʸʸʽʶʾˀʶʺʺ
+0x20d2ea0 <- 0xfebbe8 in 0xfebb30 ʺˀˀʷʽʽʾʾʻʼʶ<object, ʾʸʸʻʷʸˁʾˁʽʸ>$$.ctor
+0x20d2ea0 <- 0xfebd65 in 0xfebcb0 ʺˀˀʷʽʽʾʾʻʼʶ<object, __Il2CppFullySharedGenericStructType>$$.ctor
+0x20f79e0 <- 0x100e9e3 in 0x100e960 ʿʺʸʺʼʴʸʼʻʳʼ<ʽʽʲʸʷʼʾʸʿʽʳ>$$.ctor
+0x20f79e0 <- 0x100eb63 in 0x100eae0 ʿʺʸʺʼʴʸʼʻʳʼ<ʾʸʸʻʷʸˁʾˁʽʸ>$$.ctor
+0x20f79e0 <- 0x100ece3 in 0x100ec60 ʿʺʸʺʼʴʸʼʻʳʼ<__Il2CppFullySharedGenericStructType>$$.ctor
+0x20f0c30 <- 0x20d31b1 in 0x20d2ea0 ʲʽʶʳʺʹʳˀʾʴʹ$$ʹʹʾʴʳʶʼʵʳʼʼ
+0x20f0c30 <- 0x20d3315 in 0x20d2ea0 ʲʽʶʳʺʹʳˀʾʴʹ$$ʹʹʾʴʳʶʼʵʳʼʼ
+0x20f0b30 <- 0x20f10ea in 0x20f0c30 ʽʶʸʽʳʼʵʸʺʸʳ$$ʾʿʺʶʼʵʽʽʻʾʹ
+0x20f4680 <- 0x20f7dcc in 0x20f79e0 ʿʶʴˀʴʾʵʵʶʳʲ$$.ctor

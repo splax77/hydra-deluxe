@@ -1,0 +1,17 @@
+Listings relied on for Open 3 and Open 4 (Clone Hero v1.1.0.6142, GameAssembly.dll, RVAs).
+Made with tools.py (wrapper around the il2cpp scratch helpers; runs under py -I).
+
+starbase_20f4680.asm            star base; enumerates the note list at engine+0x1E0, reads note+0x80 (lane mask); result stored to engine+0x1D0 by the caller
+engine_ctor_20f79e0.asm         engine base ctor; copies the builder's result struct into engine+0x1E0 and calls the star base at 0x20F7DCC (only direct caller)
+engine_generic_ctor_100eae0.asm generic ctor wrapper that calls 0x20F79E0; called from the drums engine ctor 0x20DF680
+baseplayer_208870.asm           BasePlayer slot 46: calls the note builder 0x20D2EA0 at 0x208986, then slot 41 (engine factory) at 0x208AAF with the result struct
+builder_20d2ea0.asm             note builder; shuffle called at 0x20D31B1 (non-drums) and 0x20D3315 (drums) when modifier bit 0x40 is set; result struct built at 0x20D364E
+result_struct_ctor_20e8d30.asm  result struct ctor; field +0 is the note list
+shuffle_20f0c30.asm             the shuffle; seed at 0x20F0D90-0x20F0DE8, redraw loop 0x20F10E0-0x20F1131
+lanedraw_20f0b30.asm            lane draw (xorshift128+ step, no seed check)
+settings_ctor_2164780.asm       settings struct ctor; +4 is the modifiers int
+globalvars_235ad0.asm           second builder caller (online score path), passes the player's modifiers too
+online_movenext_3bd710.asm      the UniTask state machine that calls 0x235AD0
+gamemanager_movenext_d9ef0.asm  leaderboard-session UniTask in GameManager that calls BasePlayer slot 46
+gamemanager_b5220.asm, gamemanager_ba8b0.asm, gamemanager_bd640.asm   GameManager methods that call BasePlayer slot 46 directly
+callers*.txt                    direct call-site scans; vcalls_slot46_0x418.txt = every `call [reg+0x418]` site (slot 46)
