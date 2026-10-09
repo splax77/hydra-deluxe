@@ -6,7 +6,8 @@
 //                      and the song panel side by side), reaps finished
 //                      jobs, and places everything below
 // library_toolbar.cpp  the status line and the actions row
-// settings_bar.cpp     the "Analysis settings" bar under the toolbar
+// settings_bar.cpp     the "Analysis settings" button on the actions row and
+//                      its panel
 // library_table.cpp    the search box and the library table
 // library_dialogs.cpp  the Song folders, Scanning charts, Analyze library and
 //                      Compare dmleaderboards user modals, and the batch strips

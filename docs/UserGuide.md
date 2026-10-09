@@ -6,7 +6,7 @@ It covers Hydra Deluxe. The public Hydra by DragonDelgar has a different screen;
 
 ## The main screen
 
-Hydra Deluxe has one main screen. The toolbar runs along the top. The **Analysis settings** bar sits under it. The library fills the rest of the window.
+Hydra Deluxe has one main screen. The toolbar runs along the top. Its **Analysis settings** button opens the settings panel. The library fills the rest of the window.
 
 Click a song and the **song panel** opens beside the library. Drag the library's right edge to give either side more room. Hydra Deluxe remembers the width.
 
@@ -56,7 +56,7 @@ Songs stay in the list until the next scan, even if you changed their files. Aft
 
 The `Analysis settings` button sits on the toolbar, after `Compare with dmleaderboards...`. Its label names only the settings you have changed from their defaults, joined with ` · `, for example `Analysis settings: Hard · Note Shuffle`. With every setting at its default it reads `Analysis settings: defaults`. When the window is too narrow for the whole label, the label is cut short; hover over the button to read all of it.
 
-Click the button to open the settings panel. It holds every setting that shapes an analysis, in three groups: **Chart** (Difficulty, Pro Drums, 2x Bass, Note Shuffle), **Clone Hero rules** (SP cap, 1.0 fills) and **Paths kept** (Score range, Path limit). A change applies the moment you make it, and there is no Apply button. Ticking a box leaves the panel open. Click outside the panel or press Esc to close it.
+Click the button to open the settings panel. It holds every setting that shapes an analysis, in three groups: **Chart** (Difficulty, Pro Drums, 2x Bass, Note Shuffle), **Clone Hero rules** (SP cap, 1.0 fills) and **Paths kept** (Score range, Path limit). A change applies the moment you make it, and there is no Apply button. Ticking a box leaves the panel open. Click outside the panel or press `Escape` to close it.
 
 Each setting applies to every song, not just the one you have open. A result is saved together with the settings it ran under. Change a setting and the library shows the results for the new settings; a combination you haven't analyzed yet shows its songs as Not analyzed. Change it back and the old results come back, with no batch to run. A song open in the panel is analyzed again under the new settings, the same as clicking it.
 
