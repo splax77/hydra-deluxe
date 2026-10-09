@@ -1,0 +1,6 @@
+0x235ad0 <- 0x2983c3 (call) in 0x297240 SongOptions$$ʵˁʺʻʲʹˁʻʹʺʳ
+0x208870 <- 0x2d3353 (jmp) in 0x2d3350 GHLPlayer$$ʶʷʶʲʽʼʼʾʿʵʵ
+0x235ad0 <- 0x3bd88c (call) in 0x3bd710 ʲʻʳʶʲʼʸʴʾʲʳ.ˁʸˁʵʽʵʾʹʲʶʼ$$MoveNext
+0x20f79e0 <- 0x100e9e3 (call) in 0x100e960 ʿʺʸʺʼʴʸʼʻʳʼ<ʽʽʲʸʷʼʾʸʿʽʳ>$$.ctor
+0x20f79e0 <- 0x100eb63 (call) in 0x100eae0 ʿʺʸʺʼʴʸʼʻʳʼ<ʾʸʸʻʷʸˁʾˁʽʸ>$$.ctor
+0x20f79e0 <- 0x100ece3 (call) in 0x100ec60 ʿʺʸʺʼʴʸʼʻʳʼ<__Il2CppFullySharedGenericStructType>$$.ctor

@@ -1,0 +1,3039 @@
+{
+ "NS A1 tick scale chart192": {
+  "file": "songs/NS A1 tick scale chart192/notes.chart",
+  "resolution": 192,
+  "written": [
+   {
+    "tick": 960,
+    "notes_in_file_order": [
+     "kick",
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 1056,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 1152,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 1248,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 1344,
+    "notes_in_file_order": [
+     "kick",
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 1440,
+    "notes_in_file_order": [
+     "kick"
+    ]
+   },
+   {
+    "tick": 1536,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 1632,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 1728,
+    "notes_in_file_order": [
+     "kick",
+     "green cymbal"
+    ]
+   },
+   {
+    "tick": 1824,
+    "notes_in_file_order": [
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 1920,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 2016,
+    "notes_in_file_order": [
+     "green tom"
+    ]
+   },
+   {
+    "tick": 2112,
+    "notes_in_file_order": [
+     "kick",
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 2208,
+    "notes_in_file_order": [
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 2304,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 2400,
+    "notes_in_file_order": [
+     "kick",
+     "green cymbal"
+    ]
+   }
+  ],
+  "predictions": {
+   "pro drums on | ticks as 192 | order lane": [
+    {
+     "tick": 960,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 1056,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 1152,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 1248,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 1344,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 1440,
+     "pads": "kick"
+    },
+    {
+     "tick": 1536,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 1632,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 1728,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 1824,
+     "pads": "green tom"
+    },
+    {
+     "tick": 1920,
+     "pads": "yellow cymbal"
+    },
+    {
+     "tick": 2016,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 2112,
+     "pads": "kick + yellow cymbal"
+    },
+    {
+     "tick": 2208,
+     "pads": "green cymbal"
+    },
+    {
+     "tick": 2304,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 2400,
+     "pads": "kick + yellow tom"
+    }
+   ],
+   "pro drums on | ticks as 480 | order lane": [
+    {
+     "tick": 960,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 1056,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 1152,
+     "pads": "yellow cymbal"
+    },
+    {
+     "tick": 1248,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 1344,
+     "pads": "kick + green cymbal"
+    },
+    {
+     "tick": 1440,
+     "pads": "kick"
+    },
+    {
+     "tick": 1536,
+     "pads": "red snare"
+    },
+    {
+     "tick": 1632,
+     "pads": "green cymbal"
+    },
+    {
+     "tick": 1728,
+     "pads": "kick + blue cymbal"
+    },
+    {
+     "tick": 1824,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 1920,
+     "pads": "red snare"
+    },
+    {
+     "tick": 2016,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 2112,
+     "pads": "kick + green cymbal"
+    },
+    {
+     "tick": 2208,
+     "pads": "red snare"
+    },
+    {
+     "tick": 2304,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 2400,
+     "pads": "kick + green tom"
+    }
+   ],
+   "pro drums on | ticks as 960 | order lane": [
+    {
+     "tick": 960,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 1056,
+     "pads": "green tom"
+    },
+    {
+     "tick": 1152,
+     "pads": "yellow cymbal"
+    },
+    {
+     "tick": 1248,
+     "pads": "green tom"
+    },
+    {
+     "tick": 1344,
+     "pads": "kick + blue cymbal"
+    },
+    {
+     "tick": 1440,
+     "pads": "kick"
+    },
+    {
+     "tick": 1536,
+     "pads": "red snare"
+    },
+    {
+     "tick": 1632,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 1728,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 1824,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 1920,
+     "pads": "red snare"
+    },
+    {
+     "tick": 2016,
+     "pads": "yellow cymbal"
+    },
+    {
+     "tick": 2112,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 2208,
+     "pads": "green cymbal"
+    },
+    {
+     "tick": 2304,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 2400,
+     "pads": "kick + blue tom"
+    }
+   ],
+   "pro drums off | ticks as 192 | order lane": [
+    {
+     "tick": 960,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 1056,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 1152,
+     "pads": "red snare"
+    },
+    {
+     "tick": 1248,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 1344,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 1440,
+     "pads": "kick"
+    },
+    {
+     "tick": 1536,
+     "pads": "red snare"
+    },
+    {
+     "tick": 1632,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 1728,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 1824,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 1920,
+     "pads": "red snare"
+    },
+    {
+     "tick": 2016,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 2112,
+     "pads": "kick + green tom"
+    },
+    {
+     "tick": 2208,
+     "pads": "red snare"
+    },
+    {
+     "tick": 2304,
+     "pads": "green tom"
+    },
+    {
+     "tick": 2400,
+     "pads": "kick + blue tom"
+    }
+   ],
+   "pro drums off | ticks as 480 | order lane": [
+    {
+     "tick": 960,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 1056,
+     "pads": "green tom"
+    },
+    {
+     "tick": 1152,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 1248,
+     "pads": "green tom"
+    },
+    {
+     "tick": 1344,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 1440,
+     "pads": "kick"
+    },
+    {
+     "tick": 1536,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 1632,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 1728,
+     "pads": "kick + green tom"
+    },
+    {
+     "tick": 1824,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 1920,
+     "pads": "red snare"
+    },
+    {
+     "tick": 2016,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 2112,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 2208,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 2304,
+     "pads": "green tom"
+    },
+    {
+     "tick": 2400,
+     "pads": "kick + red snare"
+    }
+   ],
+   "pro drums off | ticks as 960 | order lane": [
+    {
+     "tick": 960,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 1056,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 1152,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 1248,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 1344,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 1440,
+     "pads": "kick"
+    },
+    {
+     "tick": 1536,
+     "pads": "green tom"
+    },
+    {
+     "tick": 1632,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 1728,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 1824,
+     "pads": "green tom"
+    },
+    {
+     "tick": 1920,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 2016,
+     "pads": "green tom"
+    },
+    {
+     "tick": 2112,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 2208,
+     "pads": "green tom"
+    },
+    {
+     "tick": 2304,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 2400,
+     "pads": "kick + red snare"
+    }
+   ]
+  }
+ },
+ "NS A2 tick scale mid960": {
+  "file": "songs/NS A2 tick scale mid960/notes.mid",
+  "resolution": 960,
+  "written": [
+   {
+    "tick": 4800,
+    "notes_in_file_order": [
+     "kick",
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 5280,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 5760,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 6240,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 6720,
+    "notes_in_file_order": [
+     "kick",
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 7200,
+    "notes_in_file_order": [
+     "kick"
+    ]
+   },
+   {
+    "tick": 7680,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 8160,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 8640,
+    "notes_in_file_order": [
+     "kick",
+     "green cymbal"
+    ]
+   },
+   {
+    "tick": 9120,
+    "notes_in_file_order": [
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 9600,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 10080,
+    "notes_in_file_order": [
+     "green tom"
+    ]
+   },
+   {
+    "tick": 10560,
+    "notes_in_file_order": [
+     "kick",
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 11040,
+    "notes_in_file_order": [
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 11520,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 12000,
+    "notes_in_file_order": [
+     "kick",
+     "green cymbal"
+    ]
+   }
+  ],
+  "predictions": {
+   "pro drums on | ticks as 192 | order lane": [
+    {
+     "tick": 4800,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 5280,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 5760,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 6240,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 6720,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 7200,
+     "pads": "kick"
+    },
+    {
+     "tick": 7680,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 8160,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 8640,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 9120,
+     "pads": "green tom"
+    },
+    {
+     "tick": 9600,
+     "pads": "yellow cymbal"
+    },
+    {
+     "tick": 10080,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 10560,
+     "pads": "kick + yellow cymbal"
+    },
+    {
+     "tick": 11040,
+     "pads": "green cymbal"
+    },
+    {
+     "tick": 11520,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 12000,
+     "pads": "kick + yellow tom"
+    }
+   ],
+   "pro drums on | ticks as 480 | order lane": [
+    {
+     "tick": 4800,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 5280,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 5760,
+     "pads": "yellow cymbal"
+    },
+    {
+     "tick": 6240,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 6720,
+     "pads": "kick + green cymbal"
+    },
+    {
+     "tick": 7200,
+     "pads": "kick"
+    },
+    {
+     "tick": 7680,
+     "pads": "red snare"
+    },
+    {
+     "tick": 8160,
+     "pads": "green cymbal"
+    },
+    {
+     "tick": 8640,
+     "pads": "kick + blue cymbal"
+    },
+    {
+     "tick": 9120,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 9600,
+     "pads": "red snare"
+    },
+    {
+     "tick": 10080,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 10560,
+     "pads": "kick + green cymbal"
+    },
+    {
+     "tick": 11040,
+     "pads": "red snare"
+    },
+    {
+     "tick": 11520,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 12000,
+     "pads": "kick + green tom"
+    }
+   ],
+   "pro drums on | ticks as 960 | order lane": [
+    {
+     "tick": 4800,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 5280,
+     "pads": "green tom"
+    },
+    {
+     "tick": 5760,
+     "pads": "yellow cymbal"
+    },
+    {
+     "tick": 6240,
+     "pads": "green tom"
+    },
+    {
+     "tick": 6720,
+     "pads": "kick + blue cymbal"
+    },
+    {
+     "tick": 7200,
+     "pads": "kick"
+    },
+    {
+     "tick": 7680,
+     "pads": "red snare"
+    },
+    {
+     "tick": 8160,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 8640,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 9120,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 9600,
+     "pads": "red snare"
+    },
+    {
+     "tick": 10080,
+     "pads": "yellow cymbal"
+    },
+    {
+     "tick": 10560,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 11040,
+     "pads": "green cymbal"
+    },
+    {
+     "tick": 11520,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 12000,
+     "pads": "kick + blue tom"
+    }
+   ],
+   "pro drums off | ticks as 192 | order lane": [
+    {
+     "tick": 4800,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 5280,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 5760,
+     "pads": "red snare"
+    },
+    {
+     "tick": 6240,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 6720,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 7200,
+     "pads": "kick"
+    },
+    {
+     "tick": 7680,
+     "pads": "red snare"
+    },
+    {
+     "tick": 8160,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 8640,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 9120,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 9600,
+     "pads": "red snare"
+    },
+    {
+     "tick": 10080,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 10560,
+     "pads": "kick + green tom"
+    },
+    {
+     "tick": 11040,
+     "pads": "red snare"
+    },
+    {
+     "tick": 11520,
+     "pads": "green tom"
+    },
+    {
+     "tick": 12000,
+     "pads": "kick + blue tom"
+    }
+   ],
+   "pro drums off | ticks as 480 | order lane": [
+    {
+     "tick": 4800,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 5280,
+     "pads": "green tom"
+    },
+    {
+     "tick": 5760,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 6240,
+     "pads": "green tom"
+    },
+    {
+     "tick": 6720,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 7200,
+     "pads": "kick"
+    },
+    {
+     "tick": 7680,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 8160,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 8640,
+     "pads": "kick + green tom"
+    },
+    {
+     "tick": 9120,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 9600,
+     "pads": "red snare"
+    },
+    {
+     "tick": 10080,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 10560,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 11040,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 11520,
+     "pads": "green tom"
+    },
+    {
+     "tick": 12000,
+     "pads": "kick + red snare"
+    }
+   ],
+   "pro drums off | ticks as 960 | order lane": [
+    {
+     "tick": 4800,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 5280,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 5760,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 6240,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 6720,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 7200,
+     "pads": "kick"
+    },
+    {
+     "tick": 7680,
+     "pads": "green tom"
+    },
+    {
+     "tick": 8160,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 8640,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 9120,
+     "pads": "green tom"
+    },
+    {
+     "tick": 9600,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 10080,
+     "pads": "green tom"
+    },
+    {
+     "tick": 10560,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 11040,
+     "pads": "green tom"
+    },
+    {
+     "tick": 11520,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 12000,
+     "pads": "kick + red snare"
+    }
+   ]
+  }
+ },
+ "NS B note order mid480": {
+  "file": "songs/NS B note order mid480/notes.mid",
+  "resolution": 480,
+  "written": [
+   {
+    "tick": 1920,
+    "notes_in_file_order": [
+     "green tom",
+     "kick",
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 2160,
+    "notes_in_file_order": [
+     "yellow cymbal",
+     "kick",
+     "green tom"
+    ]
+   },
+   {
+    "tick": 2400,
+    "notes_in_file_order": [
+     "red snare",
+     "green cymbal"
+    ]
+   },
+   {
+    "tick": 2640,
+    "notes_in_file_order": [
+     "yellow cymbal",
+     "kick",
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 2880,
+    "notes_in_file_order": [
+     "blue cymbal",
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 3120,
+    "notes_in_file_order": [
+     "yellow cymbal",
+     "kick"
+    ]
+   },
+   {
+    "tick": 3360,
+    "notes_in_file_order": [
+     "yellow cymbal",
+     "kick"
+    ]
+   },
+   {
+    "tick": 3600,
+    "notes_in_file_order": [
+     "green tom",
+     "yellow cymbal"
+    ]
+   }
+  ],
+  "predictions": {
+   "pro drums on | raw ticks | order file": [
+    {
+     "tick": 1920,
+     "pads": "kick + red snare + blue cymbal"
+    },
+    {
+     "tick": 2160,
+     "pads": "kick + red snare + yellow tom"
+    },
+    {
+     "tick": 2400,
+     "pads": "red snare + blue cymbal"
+    },
+    {
+     "tick": 2640,
+     "pads": "kick + yellow cymbal + green tom"
+    },
+    {
+     "tick": 2880,
+     "pads": "yellow tom + blue tom"
+    },
+    {
+     "tick": 3120,
+     "pads": "kick + green cymbal"
+    },
+    {
+     "tick": 3360,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 3600,
+     "pads": "red snare + blue tom"
+    }
+   ],
+   "pro drums on | raw ticks | order lane": [
+    {
+     "tick": 1920,
+     "pads": "kick + red snare + green tom"
+    },
+    {
+     "tick": 2160,
+     "pads": "kick + red snare + yellow tom"
+    },
+    {
+     "tick": 2400,
+     "pads": "blue tom + green cymbal"
+    },
+    {
+     "tick": 2640,
+     "pads": "kick + yellow tom + green tom"
+    },
+    {
+     "tick": 2880,
+     "pads": "blue cymbal + green tom"
+    },
+    {
+     "tick": 3120,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 3360,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 3600,
+     "pads": "red snare + green tom"
+    }
+   ],
+   "pro drums on | raw ticks | order bit": [
+    {
+     "tick": 1920,
+     "pads": "kick + red snare + green tom"
+    },
+    {
+     "tick": 2160,
+     "pads": "kick + yellow tom + green tom"
+    },
+    {
+     "tick": 2400,
+     "pads": "red snare + blue tom"
+    },
+    {
+     "tick": 2640,
+     "pads": "kick + blue cymbal + green cymbal"
+    },
+    {
+     "tick": 2880,
+     "pads": "yellow tom + green tom"
+    },
+    {
+     "tick": 3120,
+     "pads": "kick + blue cymbal"
+    },
+    {
+     "tick": 3360,
+     "pads": "kick + green tom"
+    },
+    {
+     "tick": 3600,
+     "pads": "red snare + yellow tom"
+    }
+   ],
+   "pro drums on | raw ticks | order reverse": [
+    {
+     "tick": 1920,
+     "pads": "kick + red snare + green cymbal"
+    },
+    {
+     "tick": 2160,
+     "pads": "kick + blue cymbal + green cymbal"
+    },
+    {
+     "tick": 2400,
+     "pads": "yellow cymbal + green cymbal"
+    },
+    {
+     "tick": 2640,
+     "pads": "kick + red snare + green tom"
+    },
+    {
+     "tick": 2880,
+     "pads": "yellow cymbal + blue tom"
+    },
+    {
+     "tick": 3120,
+     "pads": "kick + green tom"
+    },
+    {
+     "tick": 3360,
+     "pads": "kick + blue cymbal"
+    },
+    {
+     "tick": 3600,
+     "pads": "red snare + green tom"
+    }
+   ],
+   "pro drums off | raw ticks | order file": [
+    {
+     "tick": 1920,
+     "pads": "kick + red snare + green tom"
+    },
+    {
+     "tick": 2160,
+     "pads": "kick + blue tom + green tom"
+    },
+    {
+     "tick": 2400,
+     "pads": "red snare + blue tom"
+    },
+    {
+     "tick": 2640,
+     "pads": "kick + yellow tom + green tom"
+    },
+    {
+     "tick": 2880,
+     "pads": "yellow tom + blue tom"
+    },
+    {
+     "tick": 3120,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 3360,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 3600,
+     "pads": "red snare + green tom"
+    }
+   ],
+   "pro drums off | raw ticks | order lane": [
+    {
+     "tick": 1920,
+     "pads": "kick + yellow tom + blue tom"
+    },
+    {
+     "tick": 2160,
+     "pads": "kick + red snare + blue tom"
+    },
+    {
+     "tick": 2400,
+     "pads": "blue tom + green tom"
+    },
+    {
+     "tick": 2640,
+     "pads": "kick + red snare + green tom"
+    },
+    {
+     "tick": 2880,
+     "pads": "blue tom + green tom"
+    },
+    {
+     "tick": 3120,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 3360,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 3600,
+     "pads": "blue tom + green tom"
+    }
+   ],
+   "pro drums off | raw ticks | order bit": [
+    {
+     "tick": 1920,
+     "pads": "kick + yellow tom + blue tom"
+    },
+    {
+     "tick": 2160,
+     "pads": "kick + red snare + yellow tom"
+    },
+    {
+     "tick": 2400,
+     "pads": "blue tom + green tom"
+    },
+    {
+     "tick": 2640,
+     "pads": "kick + red snare + green tom"
+    },
+    {
+     "tick": 2880,
+     "pads": "blue tom + green tom"
+    },
+    {
+     "tick": 3120,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 3360,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 3600,
+     "pads": "blue tom + green tom"
+    }
+   ],
+   "pro drums off | raw ticks | order reverse": [
+    {
+     "tick": 1920,
+     "pads": "kick + red snare + blue tom"
+    },
+    {
+     "tick": 2160,
+     "pads": "kick + red snare + yellow tom"
+    },
+    {
+     "tick": 2400,
+     "pads": "blue tom + green tom"
+    },
+    {
+     "tick": 2640,
+     "pads": "kick + red snare + yellow tom"
+    },
+    {
+     "tick": 2880,
+     "pads": "red snare + blue tom"
+    },
+    {
+     "tick": 3120,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 3360,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 3600,
+     "pads": "red snare + blue tom"
+    }
+   ]
+  }
+ },
+ "NS C1 four colour then snare": {
+  "file": "songs/NS C1 four colour then snare/notes.mid",
+  "resolution": 480,
+  "written": [
+   {
+    "tick": 1920,
+    "notes_in_file_order": [
+     "kick",
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 2160,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 2400,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 2640,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 2880,
+    "notes_in_file_order": [
+     "kick",
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 3120,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 3360,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 3600,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 3840,
+    "notes_in_file_order": [
+     "red snare",
+     "yellow cymbal",
+     "blue tom",
+     "green cymbal"
+    ]
+   },
+   {
+    "tick": 4320,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   }
+  ],
+  "predictions": {
+   "pro drums on | raw ticks | order lane": "HANG",
+   "pro drums off | raw ticks | order lane": "HANG"
+  }
+ },
+ "NS C2 control four colour last": {
+  "file": "songs/NS C2 control four colour last/notes.mid",
+  "resolution": 480,
+  "written": [
+   {
+    "tick": 1920,
+    "notes_in_file_order": [
+     "kick",
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 2160,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 2400,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 2640,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 2880,
+    "notes_in_file_order": [
+     "kick",
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 3120,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 3360,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 3600,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 3840,
+    "notes_in_file_order": [
+     "red snare",
+     "yellow cymbal",
+     "blue tom",
+     "green cymbal"
+    ]
+   }
+  ],
+  "predictions": {
+   "pro drums on | raw ticks | order lane": [
+    {
+     "tick": 1920,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 2160,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 2400,
+     "pads": "green tom"
+    },
+    {
+     "tick": 2640,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 2880,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 3120,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 3360,
+     "pads": "red snare"
+    },
+    {
+     "tick": 3600,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 3840,
+     "pads": "red snare + yellow cymbal + blue cymbal + green cymbal"
+    }
+   ],
+   "pro drums off | raw ticks | order lane": [
+    {
+     "tick": 1920,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 2160,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 2400,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 2640,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 2880,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 3120,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 3360,
+     "pads": "green tom"
+    },
+    {
+     "tick": 3600,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 3840,
+     "pads": "red snare + yellow tom + blue tom + green tom"
+    }
+   ]
+  }
+ },
+ "NS D1 four notes on tick 0": {
+  "file": "songs/NS D1 four notes on tick 0/notes.mid",
+  "resolution": 480,
+  "written": [
+   {
+    "tick": 0,
+    "notes_in_file_order": [
+     "kick",
+     "red snare",
+     "yellow cymbal",
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 480,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 720,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 960,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 1200,
+    "notes_in_file_order": [
+     "kick",
+     "red snare"
+    ]
+   },
+   {
+    "tick": 1440,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 1680,
+    "notes_in_file_order": [
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 1920,
+    "notes_in_file_order": [
+     "kick",
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 2160,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   }
+  ],
+  "predictions": {
+   "pro drums on | raw ticks | order lane": "HANG",
+   "pro drums off | raw ticks | order lane": "HANG"
+  }
+ },
+ "NS D2 control same notes later": {
+  "file": "songs/NS D2 control same notes later/notes.mid",
+  "resolution": 480,
+  "written": [
+   {
+    "tick": 3840,
+    "notes_in_file_order": [
+     "kick",
+     "red snare",
+     "yellow cymbal",
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 4320,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 4560,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 4800,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 5040,
+    "notes_in_file_order": [
+     "kick",
+     "red snare"
+    ]
+   },
+   {
+    "tick": 5280,
+    "notes_in_file_order": [
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 5520,
+    "notes_in_file_order": [
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 5760,
+    "notes_in_file_order": [
+     "kick",
+     "yellow cymbal"
+    ]
+   },
+   {
+    "tick": 6000,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   }
+  ],
+  "predictions": {
+   "pro drums on | raw ticks | order lane": [
+    {
+     "tick": 3840,
+     "pads": "kick + red snare + yellow cymbal + blue tom"
+    },
+    {
+     "tick": 4320,
+     "pads": "green tom"
+    },
+    {
+     "tick": 4560,
+     "pads": "red snare"
+    },
+    {
+     "tick": 4800,
+     "pads": "green tom"
+    },
+    {
+     "tick": 5040,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 5280,
+     "pads": "green tom"
+    },
+    {
+     "tick": 5520,
+     "pads": "yellow cymbal"
+    },
+    {
+     "tick": 5760,
+     "pads": "kick + green tom"
+    },
+    {
+     "tick": 6000,
+     "pads": "yellow cymbal"
+    }
+   ],
+   "pro drums off | raw ticks | order lane": [
+    {
+     "tick": 3840,
+     "pads": "kick + red snare + blue tom + green tom"
+    },
+    {
+     "tick": 4320,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 4560,
+     "pads": "green tom"
+    },
+    {
+     "tick": 4800,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 5040,
+     "pads": "kick + green tom"
+    },
+    {
+     "tick": 5280,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 5520,
+     "pads": "green tom"
+    },
+    {
+     "tick": 5760,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 6000,
+     "pads": "green tom"
+    }
+   ]
+  }
+ },
+ "NS E star cutoffs": {
+  "file": "songs/NS E star cutoffs/notes.mid",
+  "resolution": 480,
+  "written": [
+   {
+    "tick": 1920,
+    "notes_in_file_order": [
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 2160,
+    "notes_in_file_order": [
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 2400,
+    "notes_in_file_order": [
+     "green tom"
+    ]
+   },
+   {
+    "tick": 2640,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 2880,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 3120,
+    "notes_in_file_order": [
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 3360,
+    "notes_in_file_order": [
+     "kick",
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 3600,
+    "notes_in_file_order": [
+     "green tom"
+    ]
+   },
+   {
+    "tick": 3840,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 4080,
+    "notes_in_file_order": [
+     "kick"
+    ]
+   },
+   {
+    "tick": 4320,
+    "notes_in_file_order": [
+     "kick",
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 4560,
+    "notes_in_file_order": [
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 4800,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 5040,
+    "notes_in_file_order": [
+     "green tom"
+    ]
+   },
+   {
+    "tick": 5280,
+    "notes_in_file_order": [
+     "kick",
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 5520,
+    "notes_in_file_order": [
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 5760,
+    "notes_in_file_order": [
+     "kick",
+     "red snare"
+    ]
+   },
+   {
+    "tick": 6000,
+    "notes_in_file_order": [
+     "green tom"
+    ]
+   },
+   {
+    "tick": 6240,
+    "notes_in_file_order": [
+     "kick",
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 6480,
+    "notes_in_file_order": [
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 6720,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 6960,
+    "notes_in_file_order": [
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 7200,
+    "notes_in_file_order": [
+     "kick",
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 7440,
+    "notes_in_file_order": [
+     "green tom"
+    ]
+   },
+   {
+    "tick": 7680,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 7920,
+    "notes_in_file_order": [
+     "kick"
+    ]
+   },
+   {
+    "tick": 8160,
+    "notes_in_file_order": [
+     "kick",
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 8400,
+    "notes_in_file_order": [
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 8640,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 8880,
+    "notes_in_file_order": [
+     "green tom"
+    ]
+   },
+   {
+    "tick": 9120,
+    "notes_in_file_order": [
+     "kick",
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 9360,
+    "notes_in_file_order": [
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 9600,
+    "notes_in_file_order": [
+     "kick",
+     "red snare"
+    ]
+   },
+   {
+    "tick": 9840,
+    "notes_in_file_order": [
+     "green tom"
+    ]
+   },
+   {
+    "tick": 10080,
+    "notes_in_file_order": [
+     "kick",
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 10320,
+    "notes_in_file_order": [
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 10560,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 10800,
+    "notes_in_file_order": [
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 11040,
+    "notes_in_file_order": [
+     "kick",
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 11280,
+    "notes_in_file_order": [
+     "green tom"
+    ]
+   },
+   {
+    "tick": 11520,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 11760,
+    "notes_in_file_order": [
+     "kick"
+    ]
+   },
+   {
+    "tick": 12000,
+    "notes_in_file_order": [
+     "kick",
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 12240,
+    "notes_in_file_order": [
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 12480,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 12720,
+    "notes_in_file_order": [
+     "green tom"
+    ]
+   },
+   {
+    "tick": 12960,
+    "notes_in_file_order": [
+     "kick",
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 13200,
+    "notes_in_file_order": [
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 13440,
+    "notes_in_file_order": [
+     "kick",
+     "red snare"
+    ]
+   },
+   {
+    "tick": 13680,
+    "notes_in_file_order": [
+     "green tom"
+    ]
+   },
+   {
+    "tick": 13920,
+    "notes_in_file_order": [
+     "kick",
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 14160,
+    "notes_in_file_order": [
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 14400,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 14640,
+    "notes_in_file_order": [
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 14880,
+    "notes_in_file_order": [
+     "kick",
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 15120,
+    "notes_in_file_order": [
+     "green tom"
+    ]
+   },
+   {
+    "tick": 15360,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 15600,
+    "notes_in_file_order": [
+     "kick"
+    ]
+   },
+   {
+    "tick": 15840,
+    "notes_in_file_order": [
+     "kick",
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 16080,
+    "notes_in_file_order": [
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 16320,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 16560,
+    "notes_in_file_order": [
+     "green tom"
+    ]
+   },
+   {
+    "tick": 16800,
+    "notes_in_file_order": [
+     "kick",
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 17040,
+    "notes_in_file_order": [
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 17280,
+    "notes_in_file_order": [
+     "kick",
+     "red snare"
+    ]
+   },
+   {
+    "tick": 17520,
+    "notes_in_file_order": [
+     "green tom"
+    ]
+   },
+   {
+    "tick": 17760,
+    "notes_in_file_order": [
+     "kick",
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 18000,
+    "notes_in_file_order": [
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 18240,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 18480,
+    "notes_in_file_order": [
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 18720,
+    "notes_in_file_order": [
+     "kick",
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 18960,
+    "notes_in_file_order": [
+     "green tom"
+    ]
+   },
+   {
+    "tick": 19200,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 19440,
+    "notes_in_file_order": [
+     "kick"
+    ]
+   },
+   {
+    "tick": 19680,
+    "notes_in_file_order": [
+     "kick",
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 19920,
+    "notes_in_file_order": [
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 20160,
+    "notes_in_file_order": [
+     "red snare"
+    ]
+   },
+   {
+    "tick": 20400,
+    "notes_in_file_order": [
+     "green tom"
+    ]
+   },
+   {
+    "tick": 20640,
+    "notes_in_file_order": [
+     "kick",
+     "blue tom"
+    ]
+   },
+   {
+    "tick": 20880,
+    "notes_in_file_order": [
+     "yellow tom"
+    ]
+   },
+   {
+    "tick": 21120,
+    "notes_in_file_order": [
+     "kick",
+     "red snare"
+    ]
+   },
+   {
+    "tick": 21360,
+    "notes_in_file_order": [
+     "green tom"
+    ]
+   }
+  ],
+  "predictions": {
+   "pro drums on | raw ticks | order lane": [
+    {
+     "tick": 1920,
+     "pads": "red snare"
+    },
+    {
+     "tick": 2160,
+     "pads": "green tom"
+    },
+    {
+     "tick": 2400,
+     "pads": "red snare"
+    },
+    {
+     "tick": 2640,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 2880,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 3120,
+     "pads": "yellow cymbal"
+    },
+    {
+     "tick": 3360,
+     "pads": "kick + blue cymbal"
+    },
+    {
+     "tick": 3600,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 3840,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 4080,
+     "pads": "kick"
+    },
+    {
+     "tick": 4320,
+     "pads": "kick + yellow cymbal"
+    },
+    {
+     "tick": 4560,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 4800,
+     "pads": "green cymbal"
+    },
+    {
+     "tick": 5040,
+     "pads": "yellow cymbal"
+    },
+    {
+     "tick": 5280,
+     "pads": "kick + green cymbal"
+    },
+    {
+     "tick": 5520,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 5760,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 6000,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 6240,
+     "pads": "kick + green tom"
+    },
+    {
+     "tick": 6480,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 6720,
+     "pads": "green cymbal"
+    },
+    {
+     "tick": 6960,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 7200,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 7440,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 7680,
+     "pads": "green tom"
+    },
+    {
+     "tick": 7920,
+     "pads": "kick"
+    },
+    {
+     "tick": 8160,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 8400,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 8640,
+     "pads": "green cymbal"
+    },
+    {
+     "tick": 8880,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 9120,
+     "pads": "kick + green tom"
+    },
+    {
+     "tick": 9360,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 9600,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 9840,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 10080,
+     "pads": "kick + blue cymbal"
+    },
+    {
+     "tick": 10320,
+     "pads": "red snare"
+    },
+    {
+     "tick": 10560,
+     "pads": "green tom"
+    },
+    {
+     "tick": 10800,
+     "pads": "red snare"
+    },
+    {
+     "tick": 11040,
+     "pads": "kick + green cymbal"
+    },
+    {
+     "tick": 11280,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 11520,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 11760,
+     "pads": "kick"
+    },
+    {
+     "tick": 12000,
+     "pads": "kick + green cymbal"
+    },
+    {
+     "tick": 12240,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 12480,
+     "pads": "green cymbal"
+    },
+    {
+     "tick": 12720,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 12960,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 13200,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 13440,
+     "pads": "kick + yellow cymbal"
+    },
+    {
+     "tick": 13680,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 13920,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 14160,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 14400,
+     "pads": "green tom"
+    },
+    {
+     "tick": 14640,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 14880,
+     "pads": "kick + green tom"
+    },
+    {
+     "tick": 15120,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 15360,
+     "pads": "green tom"
+    },
+    {
+     "tick": 15600,
+     "pads": "kick"
+    },
+    {
+     "tick": 15840,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 16080,
+     "pads": "green cymbal"
+    },
+    {
+     "tick": 16320,
+     "pads": "yellow cymbal"
+    },
+    {
+     "tick": 16560,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 16800,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 17040,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 17280,
+     "pads": "kick + green cymbal"
+    },
+    {
+     "tick": 17520,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 17760,
+     "pads": "kick + green tom"
+    },
+    {
+     "tick": 18000,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 18240,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 18480,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 18720,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 18960,
+     "pads": "green tom"
+    },
+    {
+     "tick": 19200,
+     "pads": "yellow cymbal"
+    },
+    {
+     "tick": 19440,
+     "pads": "kick"
+    },
+    {
+     "tick": 19680,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 19920,
+     "pads": "yellow cymbal"
+    },
+    {
+     "tick": 20160,
+     "pads": "green tom"
+    },
+    {
+     "tick": 20400,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 20640,
+     "pads": "kick + green cymbal"
+    },
+    {
+     "tick": 20880,
+     "pads": "blue cymbal"
+    },
+    {
+     "tick": 21120,
+     "pads": "kick + green cymbal"
+    },
+    {
+     "tick": 21360,
+     "pads": "red snare"
+    }
+   ],
+   "pro drums off | raw ticks | order lane": [
+    {
+     "tick": 1920,
+     "pads": "red snare"
+    },
+    {
+     "tick": 2160,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 2400,
+     "pads": "red snare"
+    },
+    {
+     "tick": 2640,
+     "pads": "green tom"
+    },
+    {
+     "tick": 2880,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 3120,
+     "pads": "green tom"
+    },
+    {
+     "tick": 3360,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 3600,
+     "pads": "green tom"
+    },
+    {
+     "tick": 3840,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 4080,
+     "pads": "kick"
+    },
+    {
+     "tick": 4320,
+     "pads": "kick + green tom"
+    },
+    {
+     "tick": 4560,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 4800,
+     "pads": "green tom"
+    },
+    {
+     "tick": 5040,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 5280,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 5520,
+     "pads": "green tom"
+    },
+    {
+     "tick": 5760,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 6000,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 6240,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 6480,
+     "pads": "red snare"
+    },
+    {
+     "tick": 6720,
+     "pads": "green tom"
+    },
+    {
+     "tick": 6960,
+     "pads": "red snare"
+    },
+    {
+     "tick": 7200,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 7440,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 7680,
+     "pads": "red snare"
+    },
+    {
+     "tick": 7920,
+     "pads": "kick"
+    },
+    {
+     "tick": 8160,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 8400,
+     "pads": "red snare"
+    },
+    {
+     "tick": 8640,
+     "pads": "green tom"
+    },
+    {
+     "tick": 8880,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 9120,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 9360,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 9600,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 9840,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 10080,
+     "pads": "kick + green tom"
+    },
+    {
+     "tick": 10320,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 10560,
+     "pads": "green tom"
+    },
+    {
+     "tick": 10800,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 11040,
+     "pads": "kick + green tom"
+    },
+    {
+     "tick": 11280,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 11520,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 11760,
+     "pads": "kick"
+    },
+    {
+     "tick": 12000,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 12240,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 12480,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 12720,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 12960,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 13200,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 13440,
+     "pads": "kick + green tom"
+    },
+    {
+     "tick": 13680,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 13920,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 14160,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 14400,
+     "pads": "green tom"
+    },
+    {
+     "tick": 14640,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 14880,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 15120,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 15360,
+     "pads": "red snare"
+    },
+    {
+     "tick": 15600,
+     "pads": "kick"
+    },
+    {
+     "tick": 15840,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 16080,
+     "pads": "green tom"
+    },
+    {
+     "tick": 16320,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 16560,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 16800,
+     "pads": "kick + yellow tom"
+    },
+    {
+     "tick": 17040,
+     "pads": "red snare"
+    },
+    {
+     "tick": 17280,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 17520,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 17760,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 18000,
+     "pads": "green tom"
+    },
+    {
+     "tick": 18240,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 18480,
+     "pads": "green tom"
+    },
+    {
+     "tick": 18720,
+     "pads": "kick + red snare"
+    },
+    {
+     "tick": 18960,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 19200,
+     "pads": "yellow tom"
+    },
+    {
+     "tick": 19440,
+     "pads": "kick"
+    },
+    {
+     "tick": 19680,
+     "pads": "kick + green tom"
+    },
+    {
+     "tick": 19920,
+     "pads": "blue tom"
+    },
+    {
+     "tick": 20160,
+     "pads": "green tom"
+    },
+    {
+     "tick": 20400,
+     "pads": "red snare"
+    },
+    {
+     "tick": 20640,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 20880,
+     "pads": "red snare"
+    },
+    {
+     "tick": 21120,
+     "pads": "kick + blue tom"
+    },
+    {
+     "tick": 21360,
+     "pads": "yellow tom"
+    }
+   ]
+  },
+  "stars": {
+   "pro drums on, shuffled": {
+    "gems": 106,
+    "cymbals_after_shuffle": 32,
+    "full_combo_score_hydra": 19925,
+    "final": {
+     "accent": 0,
+     "base": 5780,
+     "combo": 14145,
+     "ghost": 0,
+     "solo": 0,
+     "sp": 0,
+     "total": 19925
+    },
+    "base_before": 5300,
+    "base_after": 5780,
+    "stars_if_base_before": 6,
+    "stars_if_base_after": 5,
+    "cutoffs_base_before": [
+     530,
+     2650,
+     5300,
+     10600,
+     14840,
+     19080,
+     23320
+    ],
+    "cutoffs_base_after": [
+     578,
+     2890,
+     5780,
+     11560,
+     16184,
+     20808,
+     25432
+    ]
+   },
+   "pro drums off (no cymbals either way)": {
+    "gems": 106,
+    "cymbals_after_shuffle": 0,
+    "full_combo_score_hydra": 18350,
+    "final": {
+     "accent": 0,
+     "base": 5300,
+     "combo": 13050,
+     "ghost": 0,
+     "solo": 0,
+     "sp": 0,
+     "total": 18350
+    },
+    "base_before": 5300,
+    "base_after": 5300,
+    "stars_if_base_before": 5,
+    "stars_if_base_after": 5,
+    "cutoffs_base_before": [
+     530,
+     2650,
+     5300,
+     10600,
+     14840,
+     19080,
+     23320
+    ],
+    "cutoffs_base_after": [
+     530,
+     2650,
+     5300,
+     10600,
+     14840,
+     19080,
+     23320
+    ]
+   }
+  }
+ }
+}

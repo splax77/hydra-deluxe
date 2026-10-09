@@ -1,0 +1,34 @@
+0x214b5e0: test byte ptr [rcx + 0x80], 0x1e ; seta al ; ret
+0x214b5f0: test dword ptr [rcx + 0x7c], 0x100 ; seta al ; ret
+0x214b600: test byte ptr [rcx + 0x84], 0x10 ; seta al ; ret
+0x214b620: test dword ptr [rcx + 0x7c], 0x2000 ; seta al ; ret
+0x214b630: test dword ptr [rcx + 0x7c], 0x200 ; seta al ; ret
+0x214b640: cmp word ptr [rcx + 0x80], 1 ; sete al ; ret
+0x214b6b0: test dword ptr [rcx + 0x7c], 0x200000 ; seta al ; ret
+0x214b6c0: test dword ptr [rcx + 0x7c], 0x40000 ; seta al ; ret
+0x214b6d0: test byte ptr [rcx + 0x84], 3 ; seta al ; ret
+0x214b770: test byte ptr [rcx + 0x84], 2 ; seta al ; ret
+0x214b780: test dword ptr [rcx + 0x7c], 0x1000 ; seta al ; ret
+0x214b7c0: test dword ptr [rcx + 0x7c], 0x400000 ; seta al ; ret
+0x214b7d0: test dword ptr [rcx + 0x7c], 0x400 ; seta al ; ret
+0x214b7e0: test dword ptr [rcx + 0x7c], 0x800000 ; seta al ; ret
+0x214b800: test byte ptr [rcx + 0x7c], 2 ; seta al ; ret
+0x214b850: test dword ptr [rcx + 0x7c], 0x100000 ; seta al ; ret
+0x214b860: mov eax, dword ptr [rcx + 0x7c] ; and al, 0x32 ; cmp al, 1 ; seta al ; ret
+0x214b870: test byte ptr [rcx + 0x7c], 0x2a ; seta al ; ret
+0x214b8b0: movzx eax, byte ptr [rcx + 0x7c] ; and al, 1 ; ret
+0x214ba10: test byte ptr [rcx + 0x7c], 0x40 ; seta al ; ret
+0x214bb30: test byte ptr [rcx + 0x7c], 0x10 ; seta al ; ret
+0x214bb40: test byte ptr [rcx + 0x84], 4 ; seta al ; ret
+0x214bb50: test dword ptr [rcx + 0x7c], 0x800 ; seta al ; ret
+0x214bb90: test dword ptr [rcx + 0x7c], 0xc0000 ; seta al ; ret
+0x214bba0: test byte ptr [rcx + 0x84], 0x20 ; seta al ; ret
+0x214bcc0: test byte ptr [rcx + 0x7c], 4 ; seta al ; ret
+0x214bdf0: movzx eax, byte ptr [rcx + 0x84] ; and al, 8 ; cmp al, 1 ; seta al ; ret
+0x214be00: test byte ptr [rcx + 0x84], 8 ; seta al ; ret
+0x214be10: test dword ptr [rcx + 0x7c], 0x80000 ; seta al ; ret
+0x214be20: test dword ptr [rcx + 0x7c], 0x80 ; seta al ; ret
+0x214be30: mov eax, 0xe0 ; test word ptr [rcx + 0x80], ax ; seta al ; ret
+0x214be40: test byte ptr [rcx + 0x7c], 0x20 ; seta al ; ret
+0x214be50: test byte ptr [rcx + 0x7c], 0x10 ; jbe 0x18214be59 ; mov al, 1 ; ret
+0x214b610: movzx eax, byte ptr [rcx + 0x84] ; and al, 1 ; ret

@@ -1,0 +1,16 @@
+OK  NS A1 tick scale chart192 pro=on: 16 chords; {'chartmode': 'Expert Pro Drums, 1x Bass'}
+OK  NS A1 tick scale chart192 pro=off: 16 chords; {'chartmode': 'Expert Drums, 1x Bass'}
+OK  NS A2 tick scale mid960 pro=on: 16 chords; {'chartmode': 'Expert Pro Drums, 1x Bass'}
+OK  NS A2 tick scale mid960 pro=off: 16 chords; {'chartmode': 'Expert Drums, 1x Bass'}
+OK  NS B note order mid480 pro=on: 8 chords; {'chartmode': 'Expert Pro Drums, 1x Bass'}
+OK  NS B note order mid480 pro=off: 8 chords; {'chartmode': 'Expert Drums, 1x Bass'}
+OK  NS C1 four colour then snare pro=on: 10 chords; {'chartmode': 'Expert Pro Drums, 1x Bass'}
+OK  NS C1 four colour then snare pro=off: 10 chords; {'chartmode': 'Expert Drums, 1x Bass'}
+OK  NS C2 control four colour last pro=on: 9 chords; {'chartmode': 'Expert Pro Drums, 1x Bass'}
+OK  NS C2 control four colour last pro=off: 9 chords; {'chartmode': 'Expert Drums, 1x Bass'}
+OK  NS D1 four notes on tick 0 pro=on: 9 chords; {'chartmode': 'Expert Pro Drums, 1x Bass'}
+OK  NS D1 four notes on tick 0 pro=off: 9 chords; {'chartmode': 'Expert Drums, 1x Bass'}
+OK  NS D2 control same notes later pro=on: 9 chords; {'chartmode': 'Expert Pro Drums, 1x Bass'}
+OK  NS D2 control same notes later pro=off: 9 chords; {'chartmode': 'Expert Drums, 1x Bass'}
+OK  NS E star cutoffs pro=on: 82 chords; {'chartmode': 'Expert Pro Drums, 1x Bass'}
+OK  NS E star cutoffs pro=off: 82 chords; {'chartmode': 'Expert Drums, 1x Bass'}
