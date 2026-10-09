@@ -53,10 +53,6 @@ struct Harness {
     ImGuiTestEngine* engine = nullptr;
     hydra::ui::FrameText frame_text;
 
-    // Every path the app asked to open in a browser (the seam records, it
-    // never launches one).
-    std::vector<std::wstring> opened_urls;
-
     // Command file for the "script" test (--script).
     std::string script_path;
 

@@ -14,7 +14,6 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
-#include "app/report_files.h"
 #include "core/model.h"
 #include "imgui_internal.h"
 #include "ui/app_state.h"
@@ -490,15 +489,13 @@ void test_batch_done_strip(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists("**/Open path report"); }, 5));
 }
 
-// The report no longer goes through a browser, so a browser that refuses
-// changes nothing: with Open automatically on, the report's window opens
-// and the strip names no browser problem.
+// The report no longer goes through a browser: with Open automatically on,
+// the report's window opens and the strip names no browser problem.
 void test_batch_open_failure(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
     h.app->settings.auto_open_report = true;
     h.app->commit_settings();
-    hydra::app::set_open_in_browser([](const std::wstring&) { return false; });
     scan_library(ctx);
     if (ctx->IsError()) return;
     IM_CHECK(batch_search(ctx, "Burnout"));
@@ -506,7 +503,6 @@ void test_batch_open_failure(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->path_report.window_open);
     IM_CHECK(visible_text(h).find("The path report is ready.") != std::string::npos);
     IM_CHECK(visible_text(h).find("browser") == std::string::npos);
-    // reset_app reinstalls the recording seam for the next test.
 }
 
 // News fades; a problem stays until dismissed.
