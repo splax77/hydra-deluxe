@@ -313,7 +313,7 @@ hydra::app::ChartAnalyzer analyzer_carrying_chart_bytes(const AnalysisResult& re
 // Runs `job_body`, which builds a job, runs it to its end and destroys it
 // (joining its thread), then checks the memory its charts freed went back
 // to Windows. `what` names the job in the message.
-void check_job_hands_memory_back(const std::string& what,const std::function<void()>& job_body) {
+void check_job_hands_memory_back(const std::string& what, const std::function<void()>& job_body) {
 #ifdef NDEBUG
     // On the Windows heap the charts' memory never reaches mimalloc, and the
     // check below passes whatever the job did.
