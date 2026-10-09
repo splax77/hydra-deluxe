@@ -50,6 +50,9 @@ struct Harness {
     std::string seed_db;
 
     std::unique_ptr<hydra::ui::AppState> app;
+    // Set by reset_app for the one frame that runs with the old app undrawn,
+    // so nothing it drew is still waiting to render when it is freed.
+    bool app_hidden = false;
     ImGuiTestEngine* engine = nullptr;
     hydra::ui::FrameText frame_text;
 
