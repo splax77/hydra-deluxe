@@ -6,7 +6,7 @@ The main checkout is `C:\Users\Patrick\Downloads\Hydra\hydra-test`. Read the pla
 
 Also read `C:\Users\Patrick\Downloads\Hydra\hydra-test\docs\agents\brief-preamble.md`, the shared preamble. Where the two differ, this file wins on paths and builds. Its "If you write code" self-check applies to you in full.
 
-Session id: `c4589620-c1de-4119-bfdd-c82e8fbe6a86`.
+Session id: `e40fb55d-4056-4249-a3d0-000442c5738a` (wave 3; waves 1 and 2 ran in `c4589620-c1de-4119-bfdd-c82e8fbe6a86`).
 
 ## Hard rules
 
@@ -19,7 +19,7 @@ Session id: `c4589620-c1de-4119-bfdd-c82e8fbe6a86`.
 - **Rows don't change.** No task in wave 1 changes a stored record, a score, a path or any text Hydra shows today. Never touch `src/store/stored_versions.h`. The HTML pages keep building exactly as today until task T7 deletes them.
 - **Pages still carry their own copies until T7.** In wave 1 the C++ you add takes over rules the pages' JavaScript also computes (tiles, search, keep-rules, sort). The JavaScript copies stay until T7 deletes the pages; don't edit or delete them. Say in your report which JavaScript copy each new function replaces, so the T7 agent can delete it.
 - **Edits.** Edit source with the Edit tool. Read with offset and limit, never `sed`, `head` or `tail`. Never write source through a patch script. To replace most of a file, Write `<file>.new` and `Move-Item` it over the old one. A "file modified on disk" notice after your own edit is expected.
-- **Commits.** Stage files by name. `git commit -m "<plain subject>" -m "<body>" --trailer "Task: <task id>" --trailer "Agent: <your agent id>" --trailer "Session: c4589620-c1de-4119-bfdd-c82e8fbe6a86" --trailer "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"` (use your own model's name in the last trailer). Commit after each finished step and before your 100th tool call. Never amend, rebase, reset or move a branch. Never push.
+- **Commits.** Stage files by name. `git commit -m "<plain subject>" -m "<body>" --trailer "Task: <task id>" --trailer "Agent: <your agent id>" --trailer "Session: e40fb55d-4056-4249-a3d0-000442c5738a" --trailer "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"` (use your own model's name in the last trailer). Commit after each finished step and before your 100th tool call. Never amend, rebase, reset or move a branch. Never push.
 - **Budget.** At 100 tool calls, commit what passes and return with `complete: false` and a handoff that says exactly what is left; a finisher agent picks it up in your worktree. 150 is a hard stop.
 - **Foreground only.** Never use `run_in_background`, and never end your turn waiting for a job.
 - **No helper agents.** Workflow agents have no Agent tool. Do the mechanical work yourself and say so in your report.
