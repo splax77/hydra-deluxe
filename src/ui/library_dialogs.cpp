@@ -485,8 +485,8 @@ void render_batch_done(AppState& app) {
     ImGui::PopTextWrapPos();
 
     // A setting with no other home, so it outlasts the rows a close lets go
-    // (D103 item 28's 2026-10-09 answer); a build or a failure hides it.
-    if (app.batch_report_landed() && !building && !report_failed) {
+    // (D103 item 28's 2026-10-09 answer).
+    if (app.report_started && !building && !report_failed) {
         if (ImGui::Checkbox("Open automatically", &app.settings.auto_open_report))
             app.commit_settings();
         hint("Open the path report as soon as it's built.");

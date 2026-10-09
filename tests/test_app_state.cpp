@@ -1660,43 +1660,41 @@ TEST_CASE("the post-batch report lists the batch's cap and lens, not the live se
     while (!app->report_job->finished()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
 }
 
-// D103 item 28's 2026-10-09 answer: the finished strip keeps "Open
-// automatically" after the window's close, so AppState remembers that this
-// batch's report landed Ready after the rows are gone. A new batch forgets it.
-TEST_CASE("a batch's path report landing Ready outlasts a close, and a new batch clears it") {
+// D103 item 28's 2026-10-09 answer: the finished strip shows "Open
+// automatically" from report_started and the build state alone. These pin
+// what the strip reads on the paths that matter: a batch's report cancelled
+// in the window then refreshed, a close, and a new batch.
+TEST_CASE("the strip's report_started holds through a cancel, a refresh and a close") {
     ScratchPaths paths("appstate_batchlanded");
     std::unique_ptr<AppState> app = app_with_result(paths, "batchlanded");
     const std::string title = app->library_row_at(0).title;
-    CHECK_FALSE(app->batch_report_landed());
+    CHECK_FALSE(app->report_started);
 
-    // A report built for another reason is not the batch's.
-    app->request_path_report();
-    finish_path_report(*app);
-    REQUIRE(app->path_report_build() == ReportBuild::Ready);
-    CHECK_FALSE(app->batch_report_landed());
-
+    // The batch's own report is cancelled in the window, then refreshed: the
+    // refresh's rows are the strip's to show, though its cause is Request.
     run_redo_batch_over(*app, title);
-    app->update_background_jobs();  // starts the batch's own report
+    std::atomic<bool> release{false};
+    hydra::ui::set_report_analyzer_for_test(held_report_analyzer(release));
+    app->update_background_jobs();  // starts the batch's own report, held
+    hydra::ui::set_report_analyzer_for_test({});
+    REQUIRE(app->report_job != nullptr);
+    app->cancel_path_report();
+    release = true;
     finish_path_report(*app);
-    REQUIRE(app->path_report_build() == ReportBuild::Ready);
-    CHECK(app->batch_report_landed());
+    CHECK(app->path_report_build() == ReportBuild::Cancelled);
+    CHECK(app->report_started);
+    app->request_path_report();  // the window's Refresh
+    finish_path_report(*app);
+    CHECK(app->path_report_build() == ReportBuild::Ready);
+    CHECK(app->report_started);
 
     app->close_path_report();
     CHECK(app->path_report_build() == ReportBuild::None);
-    CHECK(app->batch_report_landed());
-
-    // The toolbar's reopen builds for the window, not the batch: the fact
-    // stays as it was.
-    app->show_path_report();
-    finish_path_report(*app);
-    CHECK(app->batch_report_landed());
+    CHECK(app->report_started);
 
     app->batch_job.reset();  // the finished strip's X
     run_redo_batch_over(*app, title);
-    CHECK_FALSE(app->batch_report_landed());  // the new run's report has not landed
-    app->update_background_jobs();
-    finish_path_report(*app);
-    CHECK(app->batch_report_landed());
+    CHECK_FALSE(app->report_started);  // the new run's report has not started
 }
 
 // Memory audit fix 4: a stopped batch builds no report, so nothing reads the

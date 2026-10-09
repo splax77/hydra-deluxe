@@ -552,7 +552,6 @@ void AppState::start_batch(bool redo) {
                                            settings.batch_run(), *store);
     close_batch_confirm();
     report_started = false;
-    batch_report_landed_ = false;
     batch_seen_completed_ = 0;
     batch_refreshed_at_ = -1.0;
     batch_finish_seen_ = false;
@@ -767,7 +766,6 @@ void AppState::collect_path_report() {
     if (outcome == ReportBuild::Ready)
         path_report.built_on_open = path_report_cause_ == PathReportCause::Open;
     if (path_report_cause_ != PathReportCause::Batch) return;
-    if (outcome == ReportBuild::Ready) batch_report_landed_ = true;
     // The batch's own report: "Open automatically" opens it (D103 item 13).
     if (outcome == ReportBuild::Ready && settings.auto_open_report)
         path_report.window_open = true;
