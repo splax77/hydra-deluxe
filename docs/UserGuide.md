@@ -285,7 +285,7 @@ The table lists each score, Hydra Deluxe's optimal, the points left, and a statu
 
 Clicking a row selects its song, as in the path report. A row whose status is `not in library` has no song to select, so clicking it does nothing, and hovering it says `Not in your library`.
 
-The tiles count the scores under, at and above optimal, the ones for songs you haven't analyzed, and the ones for songs not in your library, among the rows that pass the filters. Scores played at a speed other than 100% get their own status, Other speed. Clone Hero keeps a separate leaderboard for each speed, and Hydra Deluxe's optimal is for normal speed, so those rows show Hydra's numbers but aren't compared with its optimal.
+The header line gives the player's total number of scores. The tiles count only the rows that pass the filters: `Scores shown`, then the scores under, at and above optimal, the ones for songs you haven't analyzed, and the ones for songs not in your library. Scores played at a speed other than 100% get their own status, Other speed. Clone Hero keeps a separate leaderboard for each speed, and Hydra Deluxe's optimal is for normal speed, so those rows show Hydra's numbers but aren't compared with its optimal.
 
 Rows above optimal are expected, not errors. Hydra Deluxe's optimal leaves out several score backends on purpose. Many leaderboard scores were also set on older Clone Hero versions, whose fill rules allowed totals that are impossible now.
 

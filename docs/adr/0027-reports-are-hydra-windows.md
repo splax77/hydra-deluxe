@@ -178,6 +178,8 @@ Items 1 to 13 came with the design. These came up while it was built:
     toolbar's rules-error sentence.
 25. The building bar reads "Analyzing n of N records", one per chart and mode.
 26. With nothing left to analyze, the building bar moves with no count.
+27. The comparison's tiles count the rows on screen (the first reads "Scores
+    shown"), and its subtitle no longer counts by status.
 
 The full wording of each is in docs/audit/2026-10-03-fix-decisions.md.
 
