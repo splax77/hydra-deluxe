@@ -130,6 +130,18 @@ void pick_preview_path(ImGuiTestContext* ctx, const hydra::Path* path) {
     ctx->Yield(2);
 }
 
+// A fresh app with chart 0 open and analyzed. Returns false (the check
+// already failed) when a step did not work.
+bool open_chart0_analyzed(ImGuiTestContext* ctx) {
+    reset_app(harness(ctx));
+    scan_library(ctx);
+    if (ctx->IsError()) return false;
+    open_details(ctx, 0);
+    if (ctx->IsError()) return false;
+    wait_song_analyzed(ctx);
+    return !ctx->IsError();
+}
+
 // The path overlay follows the Paths tab's selection. Re-opening the Preview
 // for a chart that was already open used to be a plain no-op, so the overlay
 // stayed on whatever path had been selected the first time -- the record's
@@ -137,13 +149,7 @@ void pick_preview_path(ImGuiTestContext* ctx, const hydra::Path* path) {
 // re-parse, no audio re-decode, and the playhead left where it was.
 void test_preview_path_overlay(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    reset_app(h);
-    scan_library(ctx);
-    if (ctx->IsError()) return;
-    open_details(ctx, 0);
-    if (ctx->IsError()) return;
-    wait_song_analyzed(ctx);
-    if (ctx->IsError()) return;
+    if (!open_chart0_analyzed(ctx)) return;
 
     // A second path to switch to. Path rows are labeled by pathstring, so the
     // one picked must differ from the first path's and be unique among every
@@ -730,6 +736,72 @@ void test_preview_mode_reload(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return !pc.busy(); }, 120));
 }
 
+// A setting change re-analyzes the open song, and the song panel holds still
+// while it does: the headline and the Preview's "Showing" row keep their
+// height, drawn empty, so the tabs and the highway below them don't jump up
+// and back (AppState::view_holds_space). The old score is never shown under
+// the new setting. The scrubber is the row right above the highway, so its
+// place is the highway's.
+void test_settings_change_holds_layout(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    if (!open_chart0_analyzed(ctx)) return;
+    ctx->ItemClick("##DetailsTabs/Preview");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10));
+    if (!h.app->preview) return;
+    auto& pc = *h.app->preview;
+    IM_CHECK(wait_until(ctx, [&] { return !pc.busy(); }, 120));
+    IM_CHECK_STR_EQ(pc.error().c_str(), "");
+    ctx->Yield(2);
+
+    // Found by ID, so they can be read while the settings popup has the ref.
+    const ImGuiID tab_id = ctx->ItemInfo("##DetailsTabs/Preview").ID;
+    const ImGuiID scrub_id = ctx->ItemInfo("**/##scrub").ID;
+    auto tab_y = [&] { return ctx->ItemInfo(tab_id).RectFull.Min.y; };
+    auto scrub_y = [&] { return ctx->ItemInfo(scrub_id).RectFull.Min.y; };
+    const float tab0 = tab_y();
+    const float scrub0 = scrub_y();
+    const std::string score0 = hydra::group_thousands(h.app->viewed.record->best_path().totalscore());
+    IM_CHECK(on_screen(h, score0));
+
+    // Held while it re-analyzes: the same places, no score.
+    auto check_held = [&](const char* step) {
+        IM_CHECK(wait_until(ctx, [&] { return h.app->view_running(); }, 5));
+        ctx->Yield(3);
+        IM_CHECK(h.app->viewed.state == hydra::ui::ViewedSong::State::Analyzing);
+        std::fprintf(stderr, "%s: tabs y %.1f (was %.1f), scrubber y %.1f (was %.1f)\n", step,
+                     tab_y(), tab0, scrub_y(), scrub0);
+        IM_CHECK_EQ(tab_y(), tab0);
+        IM_CHECK_EQ(scrub_y(), scrub0);
+        IM_CHECK(!on_screen(h, score0));
+    };
+    {
+        ViewGate gate;
+        open_settings_panel(ctx);
+        if (ctx->IsError()) return;
+        const int cap = h.app->settings.sp_cap + 1;
+        ctx->ItemInputValue("**/##spcap", cap);
+        IM_CHECK(wait_until(ctx, [&] { return h.app->settings.sp_cap == cap; }, 5));
+        check_held("SP cap");
+        const bool prodrums = h.app->settings.view_prodrums;
+        ctx->ItemClick("**/##prodrums");
+        IM_CHECK(h.app->settings.view_prodrums != prodrums);
+        check_held("Pro Drums");
+        gate.open();
+    }
+
+    // Landed: the same places, and the new record's score is back.
+    IM_CHECK(wait_until(ctx, [&] { return h.app->view_settled(); }, 300));
+    IM_CHECK(h.app->viewed.ready());
+    if (!h.app->viewed.ready()) return;
+    IM_CHECK(wait_until(ctx, [&] { return !pc.busy(); }, 120));
+    ctx->Yield(3);
+    const std::string score1 = hydra::group_thousands(h.app->viewed.record->best_path().totalscore());
+    IM_CHECK(on_screen(h, score1));
+    IM_CHECK_EQ(tab_y(), tab0);
+    IM_CHECK_EQ(scrub_y(), scrub0);
+    close_settings_panel(ctx);
+}
+
 // The text boxes keep one size all through a path. The next-activation box
 // used to count toward the shared scale with whatever line it showed, so on
 // Burnout's long second chord every box shrank and grew back later. Checked
@@ -843,6 +915,7 @@ const std::vector<TestEntry>& preview_tests() {
         {"preview-error-wraps", test_preview_error_wraps},
         {"preview-overlay-steady", test_preview_overlay_steady},
         {"preview-mode-reload", test_preview_mode_reload},
+        {"settings-change-holds-layout", test_settings_change_holds_layout},
     };
     return entries;
 }

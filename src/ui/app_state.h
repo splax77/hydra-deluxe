@@ -44,6 +44,22 @@ class PreviewController;
 // exes).
 using Settings = app::Settings;
 
+// A song-panel row that keeps its place while the open song is re-analyzed
+// (AppState::view_holds_space): the height it had when it was last drawn with
+// content. The row draws that much empty space instead of nothing, so the
+// rows under it don't jump up and back. detail::draw_held_row
+// (ui/details_parts.h) draws every held row.
+struct HeldRow {
+    std::optional<float> height;
+    // For a frame the row has nothing to draw: the height to keep, or none.
+    // When it isn't holding, the row forgets its height, so a stale one never
+    // pads it later.
+    std::optional<float> keep(bool hold) {
+        if (!hold) height.reset();
+        return height;
+    }
+};
+
 // Per-frame UI state of the Song Details modal. Owned here, not as statics in
 // the draw code: a static outlives this AppState (the UI test runner builds one
 // per test) and a static pointer into `viewed`'s record outlived the record
@@ -70,6 +86,11 @@ struct DetailsViewState {
     // or network drive one look can stall a frame. -1 = look now.
     bool file_ok = true;
     double file_checked_at = -1.0;
+    // The headline (render_headline) and the Preview's "Showing" row
+    // (render_path_picker), held while the open song is re-analyzed.
+    // close_details forgets both.
+    HeldRow headline;
+    HeldRow path_picker;
 };
 
 // Per-frame UI state of the main window's library view. Owned here, not as
@@ -402,6 +423,11 @@ public:
     // has waited kViewProgressDelaySeconds since start_view.
     bool view_running() const;
     bool view_progress_shown() const;
+    // Whether the song panel holds its rows' places (HeldRow): the open song
+    // is analyzing again after its result was shown, as after a setting
+    // change. Which requests count as analyzing again is view_reanalysis_'s
+    // to say. Every held row asks here, through detail::draw_held_row.
+    bool view_holds_space() const;
     // True once the click's job has been collected and nothing waits: the
     // click has settled. The one spelling tests wait on.
     bool view_settled() const { return !view_job && !view_pending; }
@@ -627,6 +653,10 @@ private:
     void launch_view_job();
     // When the latest request was made (start_view), for view_progress_shown.
     std::chrono::steady_clock::time_point view_requested_at_{};
+    // For view_holds_space: the open song's last result landed Ready, so a
+    // request for it now is a re-analysis. update_view_job sets it as each
+    // result lands; start_view, cancel_view and close_details also clear it.
+    bool view_reanalysis_ = false;
     // The row index select_relative would open, if there is one.
     std::optional<size_t> relative_row(int delta) const;
     // Runs one store read on the UI thread. A read that throws puts its

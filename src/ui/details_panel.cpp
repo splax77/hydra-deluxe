@@ -93,13 +93,14 @@ bool render_state_line(AppState& app) {
 }
 
 // The optimal score and path in gold with one line of facts under it. Stars
-// are the summary row's (T7), never worked out again here.
+// are the summary row's (T7), never worked out again here. A held row
+// (detail::draw_held_row).
 void render_headline(AppState& app) {
     const float left_x = ImGui::GetCursorPosX();
     const float text_w = ImGui::GetContentRegionAvail().x;
 
-    ImGui::BeginGroup();
-    if (render_state_line(app)) {
+    detail::draw_held_row(app, app.details_ui.headline, [&] {
+        if (!render_state_line(app)) return;
         const Path& best = app.viewed.record->best_path();
         ImGui::PushStyleColor(ImGuiCol_Text, kBestPathColor);
         ImGui::PushFont(nullptr, 40.0f);
@@ -124,8 +125,7 @@ void render_headline(AppState& app) {
         ImGui::PushStyleColor(ImGuiCol_Text, kSubtleTextColor);
         ImGui::TextUnformatted(facts.c_str());
         ImGui::PopStyleColor();
-    }
-    ImGui::EndGroup();
+    });
 }
 
 // The lines that say why analysis can't run, each with its remedy.
@@ -202,6 +202,22 @@ bool render_record_state(AppState& app) {
         default:
             return render_state_line(app);
     }
+}
+
+void draw_held_row(AppState& app, HeldRow& row, const std::function<void()>& draw) {
+    if (!draw) {
+        if (const std::optional<float> held = row.keep(app.view_holds_space()))
+            ImGui::Dummy(ImVec2(0.0f, *held));
+        return;
+    }
+    const float top_y = ImGui::GetCursorPosY();
+    ImGui::BeginGroup();
+    draw();
+    // Whether anything was drawn: the cursor moved down past it.
+    const bool drew = ImGui::GetCursorPosY() != top_y;
+    if (!drew) draw_held_row(app, row);
+    ImGui::EndGroup();
+    if (drew) row.height = ImGui::GetItemRectSize().y;
 }
 
 }  // namespace detail

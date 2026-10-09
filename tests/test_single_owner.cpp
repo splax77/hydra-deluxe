@@ -1478,6 +1478,34 @@ const std::vector<OwnerRule>& rules() {
            "the ms-to-tick map's declaration"},
           {"src/core/timing.cpp", "double t = ms_.tick_at_ms(act_hit_ms);",
            "sp_end_ms keeps the fractional tick for its continuous map; no screen shows it"}}},
+        // A song-panel row's hold-and-measure step, any of its three parts:
+        // asking a HeldRow for its kept height, filling that height with an
+        // empty Dummy, or storing the drawn group's height. draw_held_row does
+        // all three for every held row.
+        {"How does a song-panel row keep its place while the panel holds?",
+         "detail::draw_held_row in src/ui/details_panel.cpp",
+         R"((\.|->)keep\(|\.height\s*=\s*ImGui::GetItemRectSize\(\)|ImGui::Dummy\(ImVec2\(0(\.0f?)?,\s*\*)",
+         "",
+         {},
+         {},
+         "the user's approval in chat 2026-10-09 (the headline and the Showing row hold their "
+         "space during a re-analysis); derive-once review of headline-holds-space (55928d3c), "
+         "finding 1",
+         {"if (const std::optional<float> held = row.keep(app.view_holds_space()))",
+          "if (auto h = app.details_ui.headline.keep(hold)) ImGui::Dummy(ImVec2(0, *h));",
+          "ImGui::Dummy(ImVec2(0.0f, *held));",
+          "if (drew) row.height = ImGui::GetItemRectSize().y;",
+          "row.height = ImGui::GetItemRectSize().y;"},
+         {"const float h = ImGui::GetItemRectSize().y;", "ImGui::Dummy(ImVec2(w, h));",
+          "draw_held_row(app, row);", "if (keep(v)) {",
+          "w.view->set_keep(view_rules::dm_keep(w.choices[0].status));"},
+         {{"src/ui/details_panel.cpp",
+           "if (const std::optional<float> held = row.keep(app.view_holds_space()))",
+           "draw_held_row, the owner"},
+          {"src/ui/details_panel.cpp", "ImGui::Dummy(ImVec2(0.0f, *held));",
+           "draw_held_row, the owner"},
+          {"src/ui/details_panel.cpp", "if (drew) row.height = ImGui::GetItemRectSize().y;",
+           "draw_held_row, the owner"}}},
         // ---- phase 3 wave C owners (derive-once review of M_C) ----
         // A status word typed in quotes. The library chips, the Best path
         // cell and the uitest state dump all ask status_label.
