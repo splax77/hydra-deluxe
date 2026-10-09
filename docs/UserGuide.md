@@ -48,13 +48,19 @@ Songs stay in the list until the next scan, even if you changed their files. Aft
 
 **`Compare with dmleaderboards...`** compares a player's leaderboard scores with your stored results. See [Reports](#reports).
 
+**`Analysis settings: ...`** shows the settings your analyses run under, and opens the panel where you change them. See [Analysis settings](#analysis-settings).
+
 **`Open path report`** opens the path report in its own window. It appears once your library has analyzed songs, and it stays while a report is open or building. While a batch's report builds, it reads **`Building path report...`**. You can still click it, and the window shows the build's progress. See [Reports](#reports).
 
 ## Analysis settings
 
-The settings bar holds every setting that shapes an analysis. Each one applies to every song, not just the one you have open. A result is saved together with the settings it ran under. Change a setting and the library shows the results for the new settings. Change it back and the old results come back, with no batch to run. A song open in the panel is analyzed again under the new settings, the same as clicking it.
+The `Analysis settings` button sits on the toolbar, after `Compare with dmleaderboards...`. Its label names only the settings you have changed from their defaults, joined with ` · `, for example `Analysis settings: Hard · Note Shuffle`. With every setting at its default it reads `Analysis settings: defaults`. When the window is too narrow for the whole label, the label is cut short; hover over the button to read all of it.
 
-While a batch runs, the bar is locked and says `Stop the batch to change these.` Opening a song never locks it. Changing a setting while the song is still analyzing starts it again under the new settings.
+Click the button to open the settings panel. It holds every setting that shapes an analysis, in three groups: **Chart** (Difficulty, Pro Drums, 2x Bass, Note Shuffle), **Clone Hero rules** (SP cap, 1.0 fills) and **Paths kept** (Score range, Path limit). A change applies the moment you make it, and there is no Apply button. Ticking a box leaves the panel open. Click outside the panel or press Esc to close it.
+
+Each setting applies to every song, not just the one you have open. A result is saved together with the settings it ran under. Change a setting and the library shows the results for the new settings; a combination you haven't analyzed yet shows its songs as Not analyzed. Change it back and the old results come back, with no batch to run. A song open in the panel is analyzed again under the new settings, the same as clicking it.
+
+While a batch runs, the settings are locked. The button's label ends in ` (locked)`. The panel still opens, but its controls are greyed out and it says `Stop the batch to change these.` Opening a song never locks them. Changing a setting while the song is still analyzing starts it again under the new settings.
 
 **Difficulty.** Which charted difficulty to analyze, path and preview: Expert, Hard, Medium or Easy.
 
@@ -257,7 +263,7 @@ The search box ignores case and accents. Every word you type must appear somewhe
 
 The table starts sorted by score, highest first. Click a column heading to sort by it, and click it again to flip the order. Shift+click another heading to add a second sort. Empty values always sink to the bottom. Text columns sort the way the Library does. Columns can be resized and hidden, and Hydra Deluxe remembers their widths.
 
-Click a row to select that song in Hydra Deluxe, the same as clicking it in the library. If the row is for another chart mode, say Hard instead of Expert, the settings bar switches to that mode first. That way the Paths tab shows the same path as the row. While a batch runs, the settings bar is locked. A row of another mode then selects nothing, and the status line says `A batch is running.`
+Click a row to select that song in Hydra Deluxe, the same as clicking it in the library. If the row is for another chart mode, say Hard instead of Expert, the analysis settings switch to that mode first. That way the Paths tab shows the same path as the row. While a batch runs, the analysis settings are locked. A row of another mode then selects nothing, and the status line says `A batch is running.`
 
 If nothing is analyzed under the current settings but other results exist, the report says so and names the settings it looked under, like `Nothing is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills).` It then suggests analyzing with these settings or changing them. Only an empty database says no records are stored yet.
 
