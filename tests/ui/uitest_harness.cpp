@@ -728,4 +728,36 @@ bool open_preview(ImGuiTestContext* ctx) {
     return true;
 }
 
+ImGuiWindow* open_settings_panel(ImGuiTestContext* ctx) {
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick("###analysissettings");
+    ctx->Yield();
+    ImGuiWindow* panel = ctx->GetWindowByRef("//$FOCUSED");
+    IM_CHECK_RETV(panel != nullptr && (panel->Flags & ImGuiWindowFlags_Popup) != 0, nullptr);
+    ctx->SetRef(panel);
+    return panel;
+}
+
+ImGuiID settings_control(ImGuiTestContext* ctx, const char* sibling, const char* label) {
+    const ImGuiID parent = ctx->ItemInfo((std::string("**/") + sibling).c_str()).ParentID;
+    return ctx->GetID(label, parent);
+}
+
+void settings_combo_pick(ImGuiTestContext* ctx, const char* sibling, const char* combo,
+                         const char* item) {
+    ctx->ItemClick(settings_control(ctx, sibling, combo));
+    ImGuiWindow* list = ctx->GetWindowByRef("//$FOCUSED");
+    IM_CHECK(list != nullptr);
+    if (list == nullptr) return;
+    ctx->ItemClick((std::string("//") + list->Name + "/**/" + item).c_str());
+}
+
+void close_settings_panel(ImGuiTestContext* ctx) {
+    ctx->KeyPress(ImGuiKey_Escape);
+    IM_CHECK(wait_until(ctx, [] {
+        return !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+    }, 5));
+    ctx->SetRef("//Hydra");
+}
+
 }  // namespace uitest

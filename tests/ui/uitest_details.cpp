@@ -23,11 +23,6 @@
 
 namespace uitest {
 
-// The settings panel's helpers, defined in uitest_library.cpp.
-ImGuiWindow* open_settings_panel(ImGuiTestContext* ctx);
-ImGuiID settings_control(ImGuiTestContext* ctx, const char* sibling, const char* label);
-void close_settings_panel(ImGuiTestContext* ctx);
-
 namespace {
 
 // Sets the SP cap in the settings panel, then closes the panel (with Esc,

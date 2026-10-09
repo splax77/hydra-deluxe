@@ -24,12 +24,6 @@ namespace fs = std::filesystem;
 
 namespace uitest {
 
-// The settings panel's helpers, defined in uitest_library.cpp.
-ImGuiWindow* open_settings_panel(ImGuiTestContext* ctx);
-void settings_combo_pick(ImGuiTestContext* ctx, const char* sibling, const char* combo,
-                         const char* item);
-void close_settings_panel(ImGuiTestContext* ctx);
-
 namespace {
 
 // A child window of the main window, or null. Child window names are

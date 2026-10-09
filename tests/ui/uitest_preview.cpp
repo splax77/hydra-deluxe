@@ -22,12 +22,6 @@
 
 namespace uitest {
 
-// The settings panel's helpers, defined in uitest_library.cpp.
-ImGuiWindow* open_settings_panel(ImGuiTestContext* ctx);
-void settings_combo_pick(ImGuiTestContext* ctx, const char* sibling, const char* combo,
-                         const char* item);
-void close_settings_panel(ImGuiTestContext* ctx);
-
 namespace {
 
 // How long chart 0 of testdata/input must run for the Preview tests below:

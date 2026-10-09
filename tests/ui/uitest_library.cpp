@@ -23,55 +23,6 @@
 
 namespace uitest {
 
-// The Analysis settings panel's three helpers. The other three area files
-// declare them; they belong in uitest_harness.h, which the change that added
-// them could not edit.
-//
-// The panel is a popup: a top-level window of its own, outside //Hydra, that
-// takes focus when it opens. Its controls sit in tables, so refs to them
-// start with **/. Opens the panel from its button and leaves the ref on it.
-ImGuiWindow* open_settings_panel(ImGuiTestContext* ctx) {
-    ctx->SetRef("//Hydra");
-    ctx->ItemClick("###analysissettings");
-    ctx->Yield();
-    ImGuiWindow* panel = ctx->GetWindowByRef("//$FOCUSED");
-    IM_CHECK_RETV(panel != nullptr && (panel->Flags & ImGuiWindowFlags_Popup) != 0, nullptr);
-    ctx->SetRef(panel);
-    return panel;
-}
-
-// The ID of the open panel's control `label` that sits in the same group as
-// `sibling`, a checkbox. A **/ ref can't find a combo (the test engine files
-// combos with an empty label), so a combo is found through a checkbox beside
-// it: both share their group table's ID scope. (A number box won't do as the
-// sibling: its parts sit in an ID scope of their own.)
-ImGuiID settings_control(ImGuiTestContext* ctx, const char* sibling, const char* label) {
-    const ImGuiID parent = ctx->ItemInfo((std::string("**/") + sibling).c_str()).ParentID;
-    return ctx->GetID(label, parent);
-}
-
-// Picks `item` from the open panel's combo `combo` ("##difficulty"), found
-// beside `sibling` (settings_control).
-void settings_combo_pick(ImGuiTestContext* ctx, const char* sibling, const char* combo,
-                         const char* item) {
-    ctx->ItemClick(settings_control(ctx, sibling, combo));
-    ImGuiWindow* list = ctx->GetWindowByRef("//$FOCUSED");
-    IM_CHECK(list != nullptr);
-    if (list == nullptr) return;
-    ctx->ItemClick((std::string("//") + list->Name + "/**/" + item).c_str());
-}
-
-// Closes the panel with Esc and points refs back at //Hydra. An open popup
-// keeps every other window from being hovered, so a test closes it before
-// clicking anywhere else.
-void close_settings_panel(ImGuiTestContext* ctx) {
-    ctx->KeyPress(ImGuiKey_Escape);
-    IM_CHECK(wait_until(ctx, [] {
-        return !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
-    }, 5));
-    ctx->SetRef("//Hydra");
-}
-
 namespace {
 
 namespace fs = std::filesystem;
