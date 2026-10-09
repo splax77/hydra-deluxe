@@ -1,8 +1,8 @@
-# Fixing your review findings
+# Fixing review findings
 
-You wrote a change, and the derive-once reviewer has sent you its findings in a message. This page says how to fix them. Read `docs/agents/brief-preamble.md` first if you haven't; its rules apply to you in full.
+The derive-once reviewer found problems in a change, and the orchestrator has sent you, a fresh agent, to fix them. Your dispatch gives you the review file, the range, the branch's worktree, the tip that was reviewed, and the task and session ids for your commit trailers. You did not write the change or the review, so check each finding in the code before you act on it. This page says how to fix them. Read `docs/agents/brief-preamble.md` first if you haven't; its rules apply to you in full.
 
-You get one chance. The user decided this in D61: the reviewer sends findings once, you fix them once and reply, and then the reviewer checks your fix and fixes anything left itself. There is no second round. So fix every copy now, not only the ones the reviewer listed.
+You get one chance. The user decided in D61 that a review runs as one review, one fix and one check, and in D106 that each step is a fresh agent. You fix the findings once and report. A fresh checker then checks your fixes and fixes anything left itself. There is no second round. So fix every copy now, not only the ones the reviewer listed.
 
 ## Why this page exists
 
@@ -30,26 +30,26 @@ A sweep for one finding often turns up copies of another kind. Fold those too, a
 
 ## Things you never do
 
-Never add a new number (a threshold, floor, depth, tolerance or band) to settle a finding. If a fix needs one, say so in your reply as a question for the user, in game terms, and leave it unfixed. Never change a displayed text, a score or a stored record unless the review file quotes a user decision for it. Never write a new copy while removing an old one: if your fix needs a helper, check the owner or `tests/` for one first. A comment that describes what a rule matches is a new copy too; name the owner instead (see "If you write code" in the preamble).
+Never add a new number (a threshold, floor, depth, tolerance or band) to settle a finding. If a fix needs one, say so in your report as a question for the user, in game terms, and leave it unfixed. Never change a displayed text, a score or a stored record unless the review file quotes a user decision for it. Never write a new copy while removing an old one: if your fix needs a helper, check the owner or `tests/` for one first. A comment that describes what a rule matches is a new copy too; name the owner instead (see "If you write code" in the preamble).
 
-If a finding is wrong (the two copies are not the same question, or the reviewer misread the code), do not change the code. Say why in your reply, with the truth table that shows the difference.
+If a finding is wrong (the two copies are not the same question, or the reviewer misread the code), do not change the code. Say why in your report, with the truth table that shows the difference.
 
 ## Slow proofs run once
 
 Grep proofs and named tests run after each finding. Anything slower runs once, after the last finding: a corpus comparison, an old-against-new output comparison, a self-test over a whole tool. If that one run shows a change, rerun it at each of your commits to find which one.
 
-## When you are done: run the precheck, then reply
+## When you are done: run the precheck, then report
 
 Run `tools/derive_once_precheck.ps1` on the range and repo path. It needs no build. It must print nothing new. If it does, fix those the same way and commit them.
 
-Then reply to the reviewer with SendMessage, to the agent id its message gave (load SendMessage first with ToolSearch, query `select:SendMessage`). Your reply gives:
+Then end your turn with your report to the orchestrator. It gives:
 - the new branch tip hash,
 - for each finding: the owner, every copy you folded, and the commit hash, and for a kind A finding the scan row you added or why no row can catch it,
 - every comment, header line and doc sentence you added or changed,
 - the precheck's final output and the test commands you ran with their pass counts,
 - anything you did not fix, and why.
 
-Then end your turn with the same text as your report. Do not wait for an answer; the reviewer finishes the job.
+Your report ends your part. Do not wait for an answer; the checker finishes the job.
 
 ## For the orchestrator
 
@@ -57,4 +57,6 @@ These rules are for the session that runs the merge.
 
 Before the review, run the precheck on the range and fix what it prints. Keep merges small enough to review in one read. The precheck prints the range's size, and a large-range note when it is over the threshold; `tools/derive_once_precheck.ps1` owns that threshold. A range with that note should go in as two or more merges. The note is a warning, not a gate. When you plan, size each task so its diff stays under the precheck's threshold.
 
-Give the reviewer the key, the range, the branch's worktree, the precheck output, the author's report, and the author's name or agent id (from its spawn result). Then wait for the reviewer's final report. The author's own completion notice arrives in between; it is not the end of the review. When the reviewer reports CLEAN, run the full suite once on the joined tree and merge. When it reports FINDINGS, the finding needs the user: take it to them. Never start another review round.
+Give the reviewer the key, the range, the branch's worktree, the precheck output, the author's report, and the author's name or agent id (from its spawn result), and tell it that it is the reviewer. When it submits CLEAN, run the full suite once on the joined tree and merge.
+
+When it reports findings instead, send a fresh Opus agent to fix them with this page. Give it the review file, the range, the branch's worktree, the tip that was reviewed, and the task and session ids for its commit trailers. When the fixer reports, send a fresh Sonnet agent with `docs/agents/derive-once-review.md`, and tell it that it is the checker. Give it the branch's worktree, the range (now ending at the fixer's new tip), the first review file, the tip that was reviewed, the fixer's new tip, the fixer's report, and the task and session ids for its commit trailers. If the fixer stopped early, at a time or tool-call limit, give the checker the branch's tip as the fixer's new tip and say the fixer did not finish; the checker fixes small leftovers and submits FINDINGS for the rest. Never wake the reviewer or the fixer again (D106). When the checker reports CLEAN, run the full suite once on the joined tree and merge the tip it signed off. When it reports FINDINGS, the finding needs the user: take it to them. Never start another review round.

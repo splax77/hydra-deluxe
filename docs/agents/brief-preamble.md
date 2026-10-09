@@ -62,8 +62,6 @@ You also have a time limit. At 20 minutes of real time, counted from your first 
 
 Run every helper and long command in the foreground. Never use `run_in_background`, and never end your turn waiting for a job. You have no helper agents; do the work yourself.
 
-The one exception is the review exchange. A reviewer that sends findings to the author ends its turn and is resumed by the author's reply. That is a message between two agents, not a job.
-
 ## Every step has a stop condition
 
 Any step that repeats or waits needs a cap, in runs or minutes, and a line saying what to report when the cap is hit. If your brief says "until X" with no cap, stop and report that before you start the step. A step with no cap never fails, so you never notice you are stuck.
@@ -72,15 +70,15 @@ For a bug that shows up only some of the time, first make it happen every run. U
 
 If your last two status lines show the same step and no new result, you are not making progress. Stop and report what you tried.
 
-## If a reviewer messages you
+## Review findings
 
-If you wrote code, the derive-once reviewer may resume you later with a message listing findings in your change. Fix them by `docs/agents/fix-round.md`, reply to the reviewer once, and end your turn. You get one chance; the reviewer fixes whatever you leave.
+No agent is woken up again after its turn ends. When a review finds problems in your change, the main session sends a fresh agent to fix them and another fresh agent to check the fixes (D106 in `docs/audit/2026-10-03-fix-decisions.md`). Your job ends with your report. If your brief sends you to fix review findings in code, follow `docs/agents/fix-round.md`; in a document, follow `docs/agents/doc-review.md`.
 
 ## The code is the source of truth
 
 Never trust another agent's summary, report or leftover comments. The code and the source data are the source of truth. Before you repeat a claim or act on it, check it against them.
 
-This is about claims of fact. Follow your brief's instructions. Treat a reviewer's finding as a claim: check it in the code, fix it if it is right, and if it is wrong, say why in your reply (`docs/agents/fix-round.md` says how).
+This is about claims of fact. Follow your brief's instructions. Treat a reviewer's finding as a claim: check it in the code, fix it if it is right, and if it is wrong, say why in your report (`docs/agents/fix-round.md` says how).
 
 ## When blocked
 
