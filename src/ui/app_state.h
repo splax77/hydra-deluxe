@@ -114,10 +114,9 @@ struct LibraryViewState {
     // Song folders: a folder was added or removed since the dialog opened,
     // so it offers "Scan now".
     bool folders_changed = false;
-    // The Analysis settings bar's four blocks (Difficulty, SP cap, Score
-    // range, Path limit) as wide as they were drawn last frame, so this frame
-    // can tell which still fit on the line. 0 = not drawn yet.
-    float settings_block_w[4] = {};
+    // The Analysis settings panel was open at the end of last frame, so an
+    // Esc that closed it this frame can be told apart (render_settings_button).
+    bool settings_panel_was_open = false;
 };
 
 // The open song as the engine analyzed it on the click (D87 item 1). Nothing

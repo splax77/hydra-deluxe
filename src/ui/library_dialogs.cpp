@@ -66,7 +66,7 @@ std::string score_range_value(const app::Settings& s) {
 }
 
 std::string path_limit_ms_value(const app::Settings& s) {
-    return std::to_string(s.mslimit_value) + " ms";
+    return format_ms_whole(s.mslimit_value);
 }
 
 }  // namespace

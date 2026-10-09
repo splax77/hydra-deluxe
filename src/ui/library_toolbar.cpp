@@ -125,9 +125,16 @@ void render_actions_row(AppState& app) {
     // one in memory (D103). While one builds the button says so, and still
     // opens the window in its building state.
     const bool building = app.path_report_build() == ReportBuild::Building;
-    if (building || app.path_report.result || app.library_has_analyzed()) {
-        const float report_w = std::max(button_slot_width("Open path report"),
-                                        button_slot_width("Building path report..."));
+    const bool show_report = building || app.path_report.result || app.library_has_analyzed();
+    const float report_w = std::max(button_slot_width("Open path report"),
+                                    button_slot_width("Building path report..."));
+
+    // The analysis settings, after the library actions. Its label is cut
+    // short of the path report button.
+    render_settings_button(app,
+                           show_report ? report_w + ImGui::GetStyle().ItemSpacing.x : 0.0f);
+
+    if (show_report) {
         ImGui::SameLine();
         const float right = ImGui::GetContentRegionMax().x - report_w;
         if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);

@@ -30,7 +30,11 @@ void render_actions_row(AppState& app);
 std::string analyze_search_label(int64_t count);
 
 // settings_bar.cpp
-void render_settings_bar(AppState& app);
+// The "Analysis settings: ..." button and the panel it opens, drawn right
+// after the action row's last left-hand button. `room_after` is the width
+// the row still needs to its right (the path report button), so the label
+// is cut short of it.
+void render_settings_button(AppState& app, float room_after);
 // The help text beside the "1.0 fills" checkbox. Each rule's deadline is
 // fill_rule_description's sentence.
 std::string legacy_fills_help_text();
