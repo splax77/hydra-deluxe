@@ -266,7 +266,7 @@ bool open_preview(ImGuiTestContext* ctx);
 // Open the panel from its button and leave the ref on it.
 ImGuiWindow* open_settings_panel(ImGuiTestContext* ctx);
 // The ID of the open panel's control `label` that sits in the same group as
-// `sibling`, a checkbox. A **/ ref can't find a combo (the test engine files
+// `sibling`, a checkbox ("##prodrums"). A **/ ref can't find a combo (the test engine files
 // combos with an empty label), so a combo is found through a checkbox beside
 // it: both share their group table's ID scope. (A number box won't do as the
 // sibling: its parts sit in an ID scope of their own.)

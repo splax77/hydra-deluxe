@@ -105,33 +105,33 @@ void test_difficulty(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
 
     IM_CHECK(h.app->settings.view_bass2x);  // the default the test relies on
-    IM_CHECK((ctx->ItemInfo("**/2x Bass").ItemFlags & ImGuiItemFlags_Disabled) == 0);
+    IM_CHECK((ctx->ItemInfo("**/##bass2x").ItemFlags & ImGuiItemFlags_Disabled) == 0);
 
-    settings_combo_pick(ctx, "Pro Drums", "##difficulty", "Hard");
+    settings_combo_pick(ctx, "##prodrums", "##difficulty", "Hard");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Hard"; }, 5));
     IM_CHECK_STR_EQ(hydra::app::Settings::load_file(h.ini_path).view_difficulty.c_str(),
                     "Hard");
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Hard Pro Drums, 2x Bass");
 
     // Live at Hard: unticking it changes Hard's key, and ticking it restores it.
-    IM_CHECK((ctx->ItemInfo("**/2x Bass").ItemFlags & ImGuiItemFlags_Disabled) == 0);
+    IM_CHECK((ctx->ItemInfo("**/##bass2x").ItemFlags & ImGuiItemFlags_Disabled) == 0);
     IM_CHECK(h.app->settings.effective_bass2x());
-    ctx->ItemClick("**/2x Bass");
+    ctx->ItemClick("**/##bass2x");
     IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.view_bass2x; }, 5));
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Hard Pro Drums, 1x Bass");
-    ctx->ItemClick("**/2x Bass");
+    ctx->ItemClick("**/##bass2x");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_bass2x; }, 5));
 
     // Back on Expert the box still carries the user's own setting. (Checked
     // here rather than at the end of the test: the details modal opened below
     // has no close button the harness can address.)
-    settings_combo_pick(ctx, "Pro Drums", "##difficulty", "Expert");
+    settings_combo_pick(ctx, "##prodrums", "##difficulty", "Expert");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Expert"; }, 5));
-    IM_CHECK((ctx->ItemInfo("**/2x Bass").ItemFlags & ImGuiItemFlags_Disabled) == 0);
+    IM_CHECK((ctx->ItemInfo("**/##bass2x").ItemFlags & ImGuiItemFlags_Disabled) == 0);
     IM_CHECK(h.app->settings.effective_bass2x());
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Expert Pro Drums, 2x Bass");
 
-    settings_combo_pick(ctx, "Pro Drums", "##difficulty", "Hard");
+    settings_combo_pick(ctx, "##prodrums", "##difficulty", "Hard");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Hard"; }, 5));
 
     // Narrow to a chart that actually has a [HardDrums] section, so the
@@ -187,8 +187,8 @@ void test_note_shuffle_switch(ImGuiTestContext* ctx) {
 
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
-    IM_CHECK((ctx->ItemInfo("**/Note Shuffle").ItemFlags & ImGuiItemFlags_Disabled) == 0);
-    ctx->ItemCheck("**/Note Shuffle");
+    IM_CHECK((ctx->ItemInfo("**/##noteshuffle").ItemFlags & ImGuiItemFlags_Disabled) == 0);
+    ctx->ItemCheck("**/##noteshuffle");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_noteshuffle; }, 5));
     IM_CHECK(hydra::app::Settings::load_file(h.ini_path).view_noteshuffle);
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(),
@@ -203,7 +203,7 @@ void test_note_shuffle_switch(ImGuiTestContext* ctx) {
 
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
-    ctx->ItemUncheck("**/Note Shuffle");
+    ctx->ItemUncheck("**/##noteshuffle");
     IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.view_noteshuffle; }, 5));
     IM_CHECK(!hydra::app::Settings::load_file(h.ini_path).view_noteshuffle);
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Expert Pro Drums, 2x Bass");
@@ -226,14 +226,13 @@ void test_settings_button(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return shows("Analysis settings: defaults"); }, 5));
 
     ImGuiWindow* panel = open_settings_panel(ctx);
-    if (ctx->IsError()) return;
-    ctx->ItemCheck("**/Note Shuffle");
+    if (ctx->IsError()) return;    ctx->ItemCheck("**/##noteshuffle");
     IM_CHECK(wait_until(ctx, [&] { return shows("Analysis settings: Note Shuffle"); }, 5));
     // Ticking a box leaves the panel open, still the window with focus.
     ctx->Yield(2);
     IM_CHECK(ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
     IM_CHECK(ctx->GetWindowByRef("//$FOCUSED") == panel);
-    ctx->ItemUncheck("**/Note Shuffle");
+    ctx->ItemUncheck("**/##noteshuffle");
     IM_CHECK(wait_until(ctx, [&] { return shows("Analysis settings: defaults"); }, 5));
     close_settings_panel(ctx);
 }
@@ -318,11 +317,11 @@ void test_view_settings(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->settings.view_prodrums);
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
-    ctx->ItemClick("**/Pro Drums");
+    ctx->ItemClick("**/##prodrums");
     IM_CHECK(!h.app->settings.view_prodrums);
     IM_CHECK(!hydra::app::Settings::load_file(h.ini_path).view_prodrums);
     IM_CHECK(h.app->settings.chartmode_key().find("Pro Drums") == std::string::npos);
-    ctx->ItemClick("**/Pro Drums");
+    ctx->ItemClick("**/##prodrums");
     IM_CHECK(h.app->settings.view_prodrums);
     close_settings_panel(ctx);
 
@@ -538,7 +537,7 @@ void test_library_layout(ImGuiTestContext* ctx) {
     IM_CHECK_GE(ctx->ItemInfo("**/##depthvalue").RectFull.GetWidth(),
                 hydra::ui::button_slot_width(widest.c_str()));
     IM_CHECK_LE(ctx->ItemInfo("**/##depthvalue/+").RectFull.Max.x,
-                ctx->ItemInfo(settings_control(ctx, "Path limit##mslimit", "##depthmode")).RectFull.Min.x);
+                ctx->ItemInfo(settings_control(ctx, "##mslimit", "##depthmode")).RectFull.Min.x);
     close_settings_panel(ctx);
 
     // The four chips stay inside the library, wrapping as they must: at

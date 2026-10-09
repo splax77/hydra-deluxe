@@ -676,7 +676,7 @@ void test_preview_mode_reload(ImGuiTestContext* ctx) {
 
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
-    settings_combo_pick(ctx, "Pro Drums", "##difficulty", "Hard");
+    settings_combo_pick(ctx, "##prodrums", "##difficulty", "Hard");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Hard"; }, 5));
     IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && pc.has_error(); }, 120));
     const std::string no_hard =
@@ -685,7 +685,7 @@ void test_preview_mode_reload(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(visible_text(h).find(no_hard) != std::string::npos);
 
-    settings_combo_pick(ctx, "Pro Drums", "##difficulty", "Expert");
+    settings_combo_pick(ctx, "##prodrums", "##difficulty", "Expert");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Expert"; }, 5));
     close_settings_panel(ctx);
     IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && !pc.has_error() && pc.scrub_end_ms() > 0.0; },

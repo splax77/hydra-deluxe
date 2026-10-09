@@ -39,9 +39,9 @@ void set_legacy_fills(ImGuiTestContext* ctx, bool on) {
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
     if (on)
-        ctx->ItemCheck("**/1.0 fills");
+        ctx->ItemCheck("**/##legacyfills");
     else
-        ctx->ItemUncheck("**/1.0 fills");
+        ctx->ItemUncheck("**/##legacyfills");
     close_settings_panel(ctx);
 }
 
@@ -1059,7 +1059,7 @@ void test_settings_lock(ImGuiTestContext* ctx) {
         open_settings_panel(ctx);
         if (ctx->IsError()) return;
         IM_CHECK((ctx->ItemInfo("**/##spcap").ItemFlags & ImGuiItemFlags_Disabled) == 0);
-        IM_CHECK((ctx->ItemInfo("**/Pro Drums").ItemFlags & ImGuiItemFlags_Disabled) == 0);
+        IM_CHECK((ctx->ItemInfo("**/##prodrums").ItemFlags & ImGuiItemFlags_Disabled) == 0);
         IM_CHECK(!shows("Stop the batch to change these."));
         IM_CHECK(!shows("(locked)"));
         close_settings_panel(ctx);
@@ -1078,13 +1078,12 @@ void test_settings_lock(ImGuiTestContext* ctx) {
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
     IM_CHECK(wait_until(ctx, [&] { return shows("Stop the batch to change these."); }, 5));
-    IM_CHECK((ctx->ItemInfo(settings_control(ctx, "Pro Drums", "##difficulty")).ItemFlags &
+    IM_CHECK((ctx->ItemInfo(settings_control(ctx, "##prodrums", "##difficulty")).ItemFlags &
               ImGuiItemFlags_Disabled) != 0);
     IM_CHECK((ctx->ItemInfo("**/##spcap").ItemFlags & ImGuiItemFlags_Disabled) != 0);
-    IM_CHECK((ctx->ItemInfo("**/Pro Drums").ItemFlags & ImGuiItemFlags_Disabled) != 0);
-    IM_CHECK((ctx->ItemInfo("**/Note Shuffle").ItemFlags & ImGuiItemFlags_Disabled) != 0);
-    IM_CHECK((ctx->ItemInfo("**/Path limit##mslimit").ItemFlags & ImGuiItemFlags_Disabled) != 0);
-    close_settings_panel(ctx);
+    IM_CHECK((ctx->ItemInfo("**/##prodrums").ItemFlags & ImGuiItemFlags_Disabled) != 0);
+    IM_CHECK((ctx->ItemInfo("**/##noteshuffle").ItemFlags & ImGuiItemFlags_Disabled) != 0);
+    IM_CHECK((ctx->ItemInfo("**/##mslimit").ItemFlags & ImGuiItemFlags_Disabled) != 0);    close_settings_panel(ctx);
 
     h.app->batch_job->stop();
     IM_CHECK(wait_until(ctx, [&] { return !h.app->batch_running(); }, 300));

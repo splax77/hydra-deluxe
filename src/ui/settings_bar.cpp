@@ -57,19 +57,30 @@ bool begin_group(const char* title) {
     return ImGui::BeginTable("##settingsform", 2, ImGuiTableFlags_SizingFixedFit);
 }
 
-// A new form row, with the cursor in its label column.
-void begin_row() {
+// A new form row. Every row reads the same way: the setting's name and its
+// (?) in the left column, and only the control in the right one, where this
+// leaves the cursor.
+void begin_row(const char* name, const char* help) {
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);
     ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(name);
+    help_marker(help);
+    ImGui::TableSetColumnIndex(1);
+}
+
+// A bare checkbox (its name sits in the left column), greyed out while the
+// settings are locked. True when the user changed it.
+bool setting_checkbox(const char* id, bool* value, bool locked) {
+    begin_disabled_checkbox(locked);
+    const bool changed = ImGui::Checkbox(id, value);
+    end_disabled_checkbox(locked);
+    return changed;
 }
 
 void render_chart_group(AppState& app, bool locked) {
     if (!begin_group("Chart")) return;
-    begin_row();
-    ImGui::TextUnformatted("Difficulty");
-    help_marker("Which charted difficulty to analyze, path and preview");
-    ImGui::TableSetColumnIndex(1);
+    begin_row("Difficulty", "Which charted difficulty to analyze, path and preview");
     ImGui::SetNextItemWidth(px(90));
     const char* names[std::size(kAllDifficulties)];
     for (size_t i = 0; i < std::size(kAllDifficulties); ++i)
@@ -84,38 +95,26 @@ void render_chart_group(AppState& app, bool locked) {
     }
     end_disabled_input(locked);
 
-    begin_row();
-    ImGui::TableSetColumnIndex(1);
-    begin_disabled_checkbox(locked);
-    if (ImGui::Checkbox("Pro Drums", &app.settings.view_prodrums)) app.commit_settings();
-    end_disabled_checkbox(locked);
+    begin_row("Pro Drums",
+              "Analyze with cymbals and toms as separate notes, the way Clone Hero scores "
+              "Pro Drums.");
+    if (setting_checkbox("##prodrums", &app.settings.view_prodrums, locked)) app.commit_settings();
 
     // 2x Bass works at every difficulty, like Clone Hero's Double Kick (D20):
     // each difficulty has its own 2x kicks.
-    begin_row();
-    ImGui::TableSetColumnIndex(1);
+    begin_row("2x Bass", "Include the chart's 2x kicks, like Clone Hero's Double Kick.");
     bool bass2x_shown = app.settings.effective_bass2x();
-    begin_disabled_checkbox(locked);
-    if (ImGui::Checkbox("2x Bass", &bass2x_shown)) {
+    if (setting_checkbox("##bass2x", &bass2x_shown, locked)) {
         app.settings.view_bass2x = bass2x_shown;
         app.commit_settings();
     }
-    end_disabled_checkbox(locked);
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal |
-                             ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip("Include the chart's 2x kicks, like Clone Hero's Double Kick.");
 
     // Part of a result's key, like the two before it (D104 item 1).
-    begin_row();
-    ImGui::TableSetColumnIndex(1);
-    begin_disabled_checkbox(locked);
-    if (ImGui::Checkbox("Note Shuffle", &app.settings.view_noteshuffle)) app.commit_settings();
-    end_disabled_checkbox(locked);
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal |
-                             ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip("Score the chart as Clone Hero 1.1's Note Shuffle modifier rearranges "
-                          "it. The rearrangement is the same every time for a given chart and "
-                          "drum setting.");
+    begin_row("Note Shuffle",
+              "Score the chart as Clone Hero 1.1's Note Shuffle modifier rearranges it. The "
+              "rearrangement is the same every time for a given chart and drum setting.");
+    if (setting_checkbox("##noteshuffle", &app.settings.view_noteshuffle, locked))
+        app.commit_settings();
     ImGui::EndTable();
 }
 
@@ -123,13 +122,10 @@ void render_chart_group(AppState& app, bool locked) {
 // spawn.
 void render_rules_group(AppState& app, bool locked) {
     if (!begin_group("Clone Hero rules")) return;
-    begin_row();
-    ImGui::TextUnformatted("SP cap");
-    help_marker((std::to_string(kCloneHeroSpCap) +
-                 " bars is Clone Hero's rule. Higher caps are what-ifs; their scores "
-                 "are not achievable in game.")
-                    .c_str());
-    ImGui::TableSetColumnIndex(1);
+    begin_row("SP cap", (std::to_string(kCloneHeroSpCap) +
+                         " bars is Clone Hero's rule. Higher caps are what-ifs; their scores "
+                         "are not achievable in game.")
+                            .c_str());
     ImGui::SetNextItemWidth(px(90));
     begin_disabled_input(locked);
     // Number boxes apply every step live but save the INI once the edit ends
@@ -143,22 +139,17 @@ void render_rules_group(AppState& app, bool locked) {
     ImGui::TextUnformatted("bars");
     end_disabled_input(locked);
 
-    begin_row();
-    ImGui::TableSetColumnIndex(1);
-    begin_disabled_checkbox(locked);
-    if (ImGui::Checkbox("1.0 fills", &app.settings.legacy_fills)) app.commit_settings();
-    end_disabled_checkbox(locked);
-    help_marker(legacy_fills_help_text().c_str());
+    begin_row("1.0 fills", legacy_fills_help_text().c_str());
+    if (setting_checkbox("##legacyfills", &app.settings.legacy_fills, locked))
+        app.commit_settings();
     ImGui::EndTable();
 }
 
 void render_paths_group(AppState& app, bool locked) {
     if (!begin_group("Paths kept")) return;
-    begin_row();
-    ImGui::TextUnformatted("Score range");
-    help_marker("How many extra paths below optimal to keep: a number of scores, or of "
-                "points. More paths take longer to analyze.");
-    ImGui::TableSetColumnIndex(1);
+    begin_row("Score range",
+              "How many extra paths below optimal to keep: a number of scores, or of "
+              "points. More paths take longer to analyze.");
     // Room for six digits beside the two step buttons (each a frame-height
     // square after an inner gap), never less than the old 90 px.
     const ImGuiStyle& style = ImGui::GetStyle();
@@ -182,14 +173,12 @@ void render_paths_group(AppState& app, bool locked) {
     }
     end_disabled_input(locked);
 
-    begin_row();
-    begin_disabled_checkbox(locked);
-    if (ImGui::Checkbox("Path limit##mslimit", &app.settings.mslimit_enabled))
+    begin_row("Path limit",
+              "Keep extra paths only when their hardest squeeze or required early fill is "
+              "within this many ms. Lower or negative values demand more slack.");
+    if (setting_checkbox("##mslimit", &app.settings.mslimit_enabled, locked))
         app.commit_settings();
-    end_disabled_checkbox(locked);
-    help_marker("Keep extra paths only when their hardest squeeze or required early fill is "
-                "within this many ms. Lower or negative values demand more slack.");
-    ImGui::TableSetColumnIndex(1);
+    ImGui::SameLine();
     const bool off = locked || !app.settings.mslimit_enabled;
     begin_disabled_input(off);
     ImGui::SetNextItemWidth(px(100));

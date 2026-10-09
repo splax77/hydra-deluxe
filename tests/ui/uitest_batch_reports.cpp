@@ -157,11 +157,11 @@ void test_settings_and_reports(ImGuiTestContext* ctx) {
     bool before = h.app->settings.view_bass2x;
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
-    ctx->ItemClick("**/2x Bass");
+    ctx->ItemClick("**/##bass2x");
     ctx->Yield();
     IM_CHECK(h.app->settings.view_bass2x != before);
     IM_CHECK(hydra::app::Settings::load_file(h.ini_path).view_bass2x != before);
-    ctx->ItemClick("**/2x Bass");  // restore
+    ctx->ItemClick("**/##bass2x");  // restore
     close_settings_panel(ctx);
 
     // Batch-analyze just the first chart (search narrows the batch), which
@@ -217,13 +217,13 @@ void test_dm_compare_flow(ImGuiTestContext* ctx) {
     // toolbar.
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
-    settings_combo_pick(ctx, "Pro Drums", "##difficulty", "Hard");
+    settings_combo_pick(ctx, "##prodrums", "##difficulty", "Hard");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Hard"; }, 5));
     close_settings_panel(ctx);
     IM_CHECK(compare_disabled());
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
-    settings_combo_pick(ctx, "Pro Drums", "##difficulty", "Expert");
+    settings_combo_pick(ctx, "##prodrums", "##difficulty", "Expert");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Expert"; }, 5));
     close_settings_panel(ctx);
     IM_CHECK(!compare_disabled());
@@ -333,7 +333,7 @@ void test_batch_confirm_note_shuffle(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
-    ctx->ItemCheck("**/Note Shuffle");
+    ctx->ItemCheck("**/##noteshuffle");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_noteshuffle; }, 5));
 
     close_settings_panel(ctx);
@@ -348,7 +348,7 @@ void test_batch_confirm_note_shuffle(ImGuiTestContext* ctx) {
 
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
-    ctx->ItemUncheck("**/Note Shuffle");
+    ctx->ItemUncheck("**/##noteshuffle");
     IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.view_noteshuffle; }, 5));
     close_settings_panel(ctx);
     ctx->ItemClick("Analyze library...");
@@ -356,7 +356,7 @@ void test_batch_confirm_note_shuffle(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->batch_confirm_pending);
     const std::string text = visible_text(h);
     IM_CHECK(text.find("Expert \xC2\xB7 Pro Drums \xC2\xB7 2x Bass") != std::string::npos);
-    // The settings panel's own box still reads "Note Shuffle"; only the
+    // The settings panel's own row still reads "Note Shuffle"; only the
     // confirm's line drops it.
     IM_CHECK(text.find("\xC2\xB7 Note Shuffle") == std::string::npos);
     ctx->KeyPress(ImGuiKey_Escape);
