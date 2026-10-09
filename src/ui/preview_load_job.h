@@ -209,6 +209,55 @@ private:
     mutable ByteRateClock clock_;
 };
 
+// Reloads only the notes of the chart the Preview already has open, for a new
+// mode (difficulty, Pro Drums, 2x Bass or Note Shuffle), off the UI thread.
+// It reads the notes through read_preview_notes, the first load's own step,
+// then builds the scene and the highway for them. It opens no audio and does
+// not hash the chart file: the audio and the "chart changed" answer belong to
+// the file, not the mode, so the controller keeps the first load's. `path` is
+// the path to draw (already drawn_path's answer), and `audio_end_ms` is the
+// first load's Result::audio_end_ms, which the beat lines run to.
+class PreviewNotesJob : public ResultJobBase {
+public:
+    PreviewNotesJob(store::ChartLibraryEntry entry, bool pro, bool bass2x, Difficulty difficulty,
+                    std::optional<Path> path, int sp_cap, core::Rules rules, bool noteshuffle,
+                    std::optional<double> audio_end_ms);
+    ~PreviewNotesJob() { shutdown(); }
+
+    void start();
+
+    struct Result {
+        app::PreviewScene scene;
+        // The new mode's song length (read_preview_notes).
+        std::optional<double> song_length_ms;
+        // The parsed song the scene was built from, kept by the controller
+        // for later overlays, as PreviewLoadJob::Result::song.
+        Song song;
+        // build_track_state(scene, track_opts), built on the worker, with
+        // track_opts = track_options(pro()).
+        render::TrackState track_state;
+        render::TrackStateOptions track_opts;
+    };
+    // Valid once finished() && ok(); moves the result out (call once).
+    Result take_result();
+    // The Pro Drums setting the notes were read with.
+    bool pro() const { return pro_; }
+
+private:
+    void run();
+
+    store::ChartLibraryEntry entry_;
+    bool pro_;
+    bool bass2x_;
+    Difficulty difficulty_;
+    std::optional<Path> path_;
+    int sp_cap_;
+    core::Rules rules_;  // copied: the job outlives the caller's settings
+    bool noteshuffle_;
+    std::optional<double> audio_end_ms_;
+    std::optional<Result> result_;
+};
+
 // The path-free half of one chart's Preview: the scene without an overlay
 // (app::build_preview_base) and the highway timeline built from it under
 // `track_opts`. Built once per open chart, then shared read-only between

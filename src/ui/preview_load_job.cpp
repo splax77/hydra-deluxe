@@ -283,6 +283,46 @@ std::string PreviewLoadJob::Progress::time_left_text() const {
     return gated_time_left_text(elapsed_s, time_left_s);
 }
 
+PreviewNotesJob::PreviewNotesJob(store::ChartLibraryEntry entry, bool pro, bool bass2x,
+                                 Difficulty difficulty, std::optional<Path> path, int sp_cap,
+                                 core::Rules rules, bool noteshuffle,
+                                 std::optional<double> audio_end_ms)
+    : entry_(std::move(entry)),
+      pro_(pro),
+      bass2x_(bass2x),
+      difficulty_(difficulty),
+      path_(std::move(path)),
+      sp_cap_(sp_cap),
+      rules_(std::move(rules)),
+      noteshuffle_(noteshuffle),
+      audio_end_ms_(audio_end_ms) {}
+
+void PreviewNotesJob::start() { spawn([this] { run(); }); }
+
+void PreviewNotesJob::run() {
+    run_guarded([this] {
+        throw_if_cancelled();  // a newer mode change already replaced this one
+        // A .sng or .srb is read whole: its notes live inside it.
+        app::SharedBytes container = app::read_preview_container(read_file_bytes, entry_.notespath);
+        throw_if_cancelled();
+        PreviewNotes notes = read_preview_notes(entry_, container, pro_, bass2x_, difficulty_,
+                                                rules_, noteshuffle_);
+        container.reset();  // a .sng's audio is not needed here
+        throw_if_cancelled();
+        app::PreviewScene scene = app::build_preview_scene(
+            notes.ps.song, path_ ? &*path_ : nullptr, sp_cap_, rules_, audio_end_ms_,
+            notes.song_length_ms);
+        throw_if_cancelled();
+        const render::TrackStateOptions track_opts = track_options(pro_);
+        render::TrackState track_state = render::build_track_state(scene, track_opts);
+        result_ = Result{std::move(scene), notes.song_length_ms, std::move(notes.ps.song),
+                         std::move(track_state), track_opts};
+        return true;
+    });
+}
+
+PreviewNotesJob::Result PreviewNotesJob::take_result() { return std::move(*result_); }
+
 std::shared_ptr<const PreviewSceneBase> build_scene_base(
     const Song& song, render::TrackStateOptions track_opts, std::optional<double> audio_end_ms,
     std::optional<double> song_length_ms, const std::function<void()>& check_cancel) {

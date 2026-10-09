@@ -44,12 +44,35 @@ PreviewController::PreviewController(ID3D11Device* device, ID3D11DeviceContext* 
     : device_(device), context_(context), volume_pct_(app::Settings{}.preview_volume) {}
 
 bool PreviewController::base_due() const {
-    return !base_started_ && !job_ && !scene_job_ && !scene_base_ && song_ && !song_->is_empty();
+    return !base_started_ && !job_ && !notes_job_ && !scene_job_ && !scene_base_ && song_ &&
+           !song_->is_empty();
 }
 
 bool PreviewController::busy() const {
-    return job_ || base_job_ || scene_job_ || !retired_scene_jobs_.empty() || base_due();
+    return job_ || notes_job_ || base_job_ || scene_job_ || !retired_scene_jobs_.empty() ||
+           !retired_base_jobs_.empty() || !retired_notes_jobs_.empty() || base_due();
 }
+
+namespace {
+
+// Moves a running job to `retired` after cancelling it, so poll() drops it
+// once its thread ends and the UI thread never waits on it.
+template <typename Job>
+void retire(std::unique_ptr<Job>& job, std::vector<std::unique_ptr<Job>>& retired) {
+    if (!job) return;
+    job->cancel();
+    retired.push_back(std::move(job));
+}
+
+// Drops the retired jobs whose threads have ended.
+template <typename Job>
+void drop_finished(std::vector<std::unique_ptr<Job>>& retired) {
+    retired.erase(std::remove_if(retired.begin(), retired.end(),
+                                 [](const std::unique_ptr<Job>& j) { return j->finished(); }),
+                  retired.end());
+}
+
+}  // namespace
 
 PreviewController::~PreviewController() { close(); }
 
@@ -66,10 +89,21 @@ void PreviewController::open(const store::ChartLibraryEntry& entry, bool pro,
         sp_cap_ = sp_cap;
         requested_path_key_ = path_key;
         path_key_ = overlay_key(path_key, sp_cap);
-        // Mid-load the load job is building its own scene; poll() reconciles.
-        // Once the song is here, the new overlay builds on a job and poll()
-        // swaps it in, which leaves the audio and the playhead alone.
-        if (!job_ && song_ && !song_->is_empty()) start_scene_job();
+        // Mid-load the load or notes job is building its own scene; poll()
+        // reconciles. Once the song is here, the new overlay builds on a job
+        // and poll() swaps it in, which leaves the audio and the playhead
+        // alone.
+        if (!job_ && !notes_job_ && song_ && !song_->is_empty()) start_scene_job();
+        return;
+    }
+    // The same chart in another mode, with its audio already loaded: keep the
+    // audio and the playhead, and reload only the notes.
+    if (active_ && first_load_done_ && !job_ && open_key_.md5 == key.md5) {
+        path_ = path ? std::optional<Path>(*path) : std::nullopt;
+        sp_cap_ = sp_cap;
+        requested_path_key_ = path_key;
+        path_key_ = overlay_key(path_key, sp_cap_);
+        start_notes_job(entry, key);
         return;
     }
     close();
@@ -90,11 +124,69 @@ void PreviewController::open(const store::ChartLibraryEntry& entry, bool pro,
     job_->start();
 }
 
-void PreviewController::start_scene_job() {
-    if (scene_job_) {
-        scene_job_->cancel();
-        retired_scene_jobs_.push_back(std::move(scene_job_));
+void PreviewController::start_notes_job(const store::ChartLibraryEntry& entry,
+                                        const PreviewSongKey& key) {
+    open_key_ = key;
+    // A "no notes in this mode" message goes away when the user switches back.
+    error_.clear();
+    error_detail_.clear();
+    // Nothing built for the old notes may land on the new ones: the overlay,
+    // the path-free base and an earlier notes reload are all retired.
+    retire(scene_job_, retired_scene_jobs_);
+    retire(base_job_, retired_base_jobs_);
+    retire(notes_job_, retired_notes_jobs_);
+    // The highway on screen is the old notes until the new ones land, so it
+    // no longer answers shows_path for any selection.
+    scene_path_key_.clear();
+    job_path_key_ = path_key_;
+    // A changed chart keeps drawing no path (drawn_path, finding 126).
+    const Path* drawn = drawn_path(path_, chart_changed_);
+    notes_job_ = std::make_unique<PreviewNotesJob>(
+        entry, key.pro, key.bass2x, key.difficulty,
+        drawn ? std::optional<Path>(*drawn) : std::nullopt, sp_cap_, rules_, key.noteshuffle,
+        audio_end_ms_);
+    notes_job_->start();
+}
+
+void PreviewController::take_notes_job() {
+    if (notes_job_->ok()) {
+        PreviewNotesJob::Result result = notes_job_->take_result();
+        song_ = std::make_shared<const Song>(std::move(result.song));
+        song_length_ms_ = result.song_length_ms;
+        pro_ = notes_job_->pro();
+        scene_ = std::move(result.scene);
+        pending_track_ = std::move(result.track_state);
+        pending_track_opts_ = result.track_opts;
+        scene_path_key_ = job_path_key_;
+        scene_dirty_ = true;
+        // The path-free base belonged to the old notes; poll() builds the new
+        // one as it does after a first load.
+        scene_base_.reset();
+        base_started_ = false;
+        // The audio stays; only where playback ends moves with the last note.
+        transport_.set_last_note_ms(hydra::app::last_note_ms(scene_));
+    } else {
+        error_ = notes_job_->message();
+        error_detail_ = notes_job_->error();
+        // The panel draws no Play button under an error, so audio left
+        // playing would have no way to stop. The playhead stays where it is.
+        transport_.pause();
+        // Drop the old notes so no later overlay is built on them. The
+        // transport stays loaded: switching back reloads only the notes.
+        song_.reset();
+        song_length_ms_.reset();
+        scene_ = hydra::app::PreviewScene{};
+        pending_track_.reset();
+        scene_dirty_ = true;
+        scene_base_.reset();
+        base_started_ = false;
     }
+    notes_job_.reset();
+    job_path_key_.clear();
+}
+
+void PreviewController::start_scene_job() {
+    retire(scene_job_, retired_scene_jobs_);
     // A changed chart keeps drawing no path (drawn_path, finding 126).
     const Path* drawn = drawn_path(path_, chart_changed_);
     std::optional<Path> path = drawn ? std::optional<Path>(*drawn) : std::nullopt;
@@ -115,10 +207,14 @@ void PreviewController::close() {
     audio_device_.reset();
     transport_.unload();
     job_.reset();  // ResultJobBase's shutdown() joins the worker
+    notes_job_.reset();
     scene_job_.reset();
     base_job_.reset();
     base_started_ = false;
+    first_load_done_ = false;
     retired_scene_jobs_.clear();
+    retired_base_jobs_.clear();
+    retired_notes_jobs_.clear();
     requested_path_key_.clear();
     scene_ = hydra::app::PreviewScene{};
     scene_dirty_ = true;  // the renderer (if kept) must drop the old chart
@@ -148,11 +244,16 @@ void PreviewController::close() {
 }
 
 void PreviewController::poll() {
-    // Replaced overlay builds that have finished can go.
-    retired_scene_jobs_.erase(
-        std::remove_if(retired_scene_jobs_.begin(), retired_scene_jobs_.end(),
-                       [](const std::unique_ptr<PreviewSceneJob>& j) { return j->finished(); }),
-        retired_scene_jobs_.end());
+    // Replaced notes, base and overlay builds that have finished can go.
+    drop_finished(retired_scene_jobs_);
+    drop_finished(retired_base_jobs_);
+    drop_finished(retired_notes_jobs_);
+    // A new mode's notes are ready: swap them in (or show why not). If the
+    // path changed while they were read, its overlay builds next.
+    if (notes_job_ && notes_job_->finished()) {
+        take_notes_job();
+        if (song_ && scene_path_key_ != path_key_) start_scene_job();
+    }
     // A new selection's overlay is ready: swap it in.
     if (scene_job_ && scene_job_->finished()) {
         if (scene_job_->ok()) {
@@ -197,6 +298,7 @@ void PreviewController::poll() {
         pending_track_opts_ = result.track_opts;
         scene_path_key_ = job_path_key_;
         scene_dirty_ = true;
+        first_load_done_ = true;
         transport_.set_gain(app::Settings::volume_gain(volume_pct_));
         transport_.load(std::make_unique<audio::Playhead>(std::move(result.audio)),
                         hydra::app::last_note_ms(scene_), result.audio_offset_ms);
