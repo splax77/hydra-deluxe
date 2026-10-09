@@ -30,9 +30,9 @@ Do this before you open anything else. Do not read the sources or the original r
 
 Read the document once. Then write, in your own words and in at most five sentences, what it decides, what it asks the reader to do, and the three numbers the reader will rely on. This is your **Restatement**. Only then open the sources.
 
-Where your restatement and the sources disagree, the document is wrong, not your reading. After working on a piece, a writer cannot read it as a first-time reader would [S11, second-hand: the research doc read it through search summaries]. You are the first-time reader. Saying it back in your own words is the paraphrase test [S14]. Fixing your reading before the sources can reshape it keeps each check apart from the author's framing, which is what lets a second check catch errors instead of repeating them [S19].
+Where your restatement and the sources disagree, the document is wrong, not your reading. After working on a piece, a writer cannot read it as a first-time reader would [S11, second-hand: the research doc read it through search summaries]. You are the first-time reader. The Federal Plain Language Guidelines recommend a paraphrase test for short documents [S14]. Those pages do not say what the reader does in it; taking it to mean saying the text back in your own words is the research doc's reading, not theirs. Fixing your reading before the sources can reshape it keeps each check apart from the author's framing, which is what lets a second check catch errors instead of repeating them [S19].
 
-The order cold read, trace, drift, style was tried once, in a manual trial review of a 599-line Artifact page on 2026-10-08, and worked well enough to keep (plan section 2, Q2). So did giving the reviewer whole source folders rather than single files.
+The order cold read, trace, drift, style was tried once, in a manual trial review of a 599-line Artifact page on 2026-10-08, and the session that ran the trial reported that it worked well enough to keep. That session also reported that giving the reviewer whole source folders, rather than single files, worked well. Plan section 2, Q2 describes the trial; sections 3.7 and 5 relay those two reports.
 
 ## Step 2: trace and recompute
 
@@ -83,7 +83,7 @@ This is the one-exchange rule, D61 in `docs/audit/2026-10-03-fix-decisions.md`: 
 3. **If it has findings,** do not submit yet. Send them to the author once. When the author is an agent, use SendMessage (load it first with ToolSearch, query `select:SendMessage`), giving the review file's full path, one plain sentence per finding, and your own agent id to reply to. When the author is the main session, as it is for plans and decision questions (plan section 3.4), your report is the message: put the same things in it. Then end your turn, reporting "sent N findings to <author>". You are resumed when the author replies.
 4. **When the author replies,** read its new text and check each finding there. Check also that the fix added no new unsourced claim.
 5. **Fix anything left yourself.** Small leftovers are the expected case; do not send them back. Edit the text where the dispatch says the author will publish it from: the file in the branch's worktree for a commit, the page file for an Artifact, the file at `planFilePath` for a plan, or the file the author will post for `gh` text. For a commit, do not commit your fix. This overrides the preamble's commit rule. The submit gate refuses a reviewer named in the `Agent:` trailer of a commit that holds the document, so leave the file edited and uncommitted, and name it in your report; the author commits it. For a decision question, copy the pending JSON to your scratch folder and edit only its strings. Step 6 gives its key; then save it as `hooks\state\doc_review\fixed\<that key>.json`. The key helper puts question JSON into one standard layout before hashing, so layout changes do not matter.
-6. **Compute the final key** with `& "C:/Users/Patrick/.claude/hooks/doc_review_key.ps1" "<fixed file>"`. Nobody computes a key any other way (plan section 3.8). Write the final review on that key, with `Base:` naming the key you were given, and `Verdict: CLEAN`. Submit it and report.
+6. **Compute the final key** with `& "C:/Users/Patrick/.claude/hooks/doc_review_key.ps1" "<fixed file>"`. Nobody computes a key any other way (plan section 3.8). Write the final review on that key, with `Base:` naming the key you were given, and `Verdict: CLEAN`. Submit it and report. If you fixed a plan, a page or `gh` text in the author's file, name that file in the submit (see "Output"), so the gate keeps the text you signed off.
 
 The one exception: a leftover that needs the user, or is too big to fix in about 30 tool calls. A new number, a change to what the user sees or what is stored, or a choice between two behaviours needs the user. The 30 is the main session's guide, not a user decision (D61). Do not fix it and do not send it back. Submit `Verdict: FINDINGS` naming it, and report it; the main session takes it to the user. If the author never replies, report that; do not wait.
 
@@ -114,7 +114,15 @@ Submit with:
 & "C:/Users/Patrick/.claude/hooks/doc_review_submit.ps1" <key> "<full path to your review file>"
 ```
 
-Run it in its own call, with nothing before or after it. Type the key and the path out in full, with no variables and no special characters; the submit gate refuses any other shape (plan section 4 describes it). If your file path has unusual characters, copy the file to a plain path first.
+If you fixed a plan, a page or `gh` text in the author's file at step 5, add that file's full path as a third word:
+
+```
+& "C:/Users/Patrick/.claude/hooks/doc_review_submit.ps1" <key> "<full path to your review file>" "<full path to the fixed file>"
+```
+
+The helper then keeps a copy of the text you signed off, so the next edit of that document can get an edit review instead of a full one. The gate refuses the submit unless `doc_review_key.ps1` gives that file the same key as your review. A fixed question needs no third word, because the helper finds it under `fixed\` itself. Leave it out for a commit too, because the gate reads a committed document's earlier version from git.
+
+Run it in its own call, with nothing before or after it. Type the key and the paths out in full, with no variables and no special characters; the submit gate refuses any other shape (plan section 4 describes it). If a file path has unusual characters, copy the file to a plain path first.
 
 Your final message: the verdict, the key, the base if any, the review file path, where the final text is, and one plain sentence per finding saying who fixed it.
 
