@@ -68,6 +68,11 @@ struct Settings {
     std::string view_difficulty = "Expert";
     bool view_prodrums = true;
     bool view_bass2x = true;
+    // Score the chart as Clone Hero 1.1's Note Shuffle modifier rearranges
+    // it (D104). Off by default. Part of a result's key through
+    // chartmode_key(), like Pro Drums and 2x Bass. INI line:
+    // view_noteshuffle=0.
+    bool view_noteshuffle = false;
 
     int depth_value = kDefaultDepthValue;
     // 0 = scores, 1 = points. Stays an int: it is what the INI stores and what
@@ -170,10 +175,12 @@ struct Settings {
     bool effective_bass2x() const;
 
     // "Expert Pro Drums, 2x Bass" — mirrors HyAppUserSettings.chartmode_key.
+    // With Note Shuffle on it gains an ending (D104); with it off the key is
+    // the one Hydra has always stored.
     std::string chartmode_key() const;
 
-    // These settings with the Difficulty, Pro Drums and 2x Bass choices
-    // that make chartmode_key() spell `chartmode`, the rest kept as they
+    // These settings with the Difficulty, Pro Drums, 2x Bass and Note Shuffle
+    // choices that make chartmode_key() spell `chartmode`, the rest kept as they
     // are. When several choices spell it, the first one this function tries
     // wins. nullopt when no choice spells it.
     std::optional<Settings> with_chartmode(const std::string& chartmode) const;

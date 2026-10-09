@@ -129,11 +129,34 @@ DynamicsBreakdown count_dynamics(const Song& song) {
 
 // ---- the count's parse ------------------------------------------------------
 
-Song load_dynamics_song(const std::string& notespath, bool pro, Difficulty difficulty) {
-    return load_songpath(notespath, pro, kDynamicsParseBass2x, difficulty);
+Song load_dynamics_song(const std::string& notespath, bool pro, Difficulty difficulty,
+                        bool noteshuffle) {
+    return load_songpath(notespath, pro, kDynamicsParseBass2x, difficulty,
+                         core::default_rules(), noteshuffle);
 }
 
 bool analysis_parse_counts_dynamics(bool bass2x) { return bass2x == kDynamicsParseBass2x; }
+
+DynamicsBreakdown dynamics_for_settings(const std::string& notespath, bool pro, bool bass2x,
+                                        Difficulty difficulty, bool noteshuffle,
+                                        const Song* analysis_song) {
+    if (analysis_song && analysis_parse_counts_dynamics(bass2x))
+        return count_dynamics(*analysis_song);
+    // The shuffle's seed reads the first notes, kicks included, so with 2x
+    // Bass off a shuffled chart's pads can differ from the count's own
+    // 2x-kept parse. Kicks never move, so the kick rows still come from it.
+    const bool pads_differ = noteshuffle && !analysis_parse_counts_dynamics(bass2x);
+    DynamicsBreakdown bd =
+        count_dynamics(load_dynamics_song(notespath, pro, difficulty, noteshuffle && !pads_differ));
+    if (!pads_differ) return bd;
+    const DynamicsBreakdown pads = count_dynamics(
+        analysis_song ? *analysis_song
+                      : load_songpath(notespath, pro, bass2x, difficulty, core::default_rules(),
+                                      noteshuffle));
+    for (size_t i = 0; i <= static_cast<size_t>(DynamicsRow::GreenTom); ++i)
+        bd.rows[i] = pads.rows[i];
+    return bd;
+}
 
 }  // namespace app
 }  // namespace hydra

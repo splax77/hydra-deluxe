@@ -26,6 +26,8 @@ constexpr const char* kDatabaseRead =
 constexpr const char* kChartUnreadable =
     "Hydra couldn't read this chart file. It may be damaged or in a format Hydra doesn't "
     "support; try downloading the song again.";
+constexpr const char* kNoteShuffleFreezes =
+    "Clone Hero freezes loading this chart with Note Shuffle on.";
 constexpr const char* kSongFileMissing =
     "Hydra couldn't open the song file. It may have been moved or deleted; run Scan "
     "library to update the library.";
@@ -85,6 +87,7 @@ std::optional<std::string> kind_sentence(const KindedError& e) {
         case ErrorKind::HashFailed: return kHashFailed;
         case ErrorKind::ChartUnreadable: return kChartUnreadable;
         case ErrorKind::ChartTimingRefused: return timing_refusal_sentence(e.what());
+        case ErrorKind::NoteShuffleFreezes: return kNoteShuffleFreezes;
         case ErrorKind::AlreadyPlain: return std::string(e.what());
         case ErrorKind::SearchBroken: return kSearchBroken;
         case ErrorKind::NetUnreachable: return kNetUnreachable;

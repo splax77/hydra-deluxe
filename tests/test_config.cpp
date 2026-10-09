@@ -4,8 +4,10 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -39,6 +41,7 @@ void check_same_settings(const Settings& r, const Settings& s) {
     CHECK(r.view_difficulty == s.view_difficulty);
     CHECK(r.view_prodrums == s.view_prodrums);
     CHECK(r.view_bass2x == s.view_bass2x);
+    CHECK(r.view_noteshuffle == s.view_noteshuffle);
     CHECK(r.depth_value == s.depth_value);
     CHECK(r.depth_mode == s.depth_mode);
     CHECK(r.mslimit_enabled == s.mslimit_enabled);
@@ -61,6 +64,7 @@ TEST_CASE("settings round-trip through an INI file") {
     s.is_rescan = true;
     s.view_prodrums = false;
     s.view_bass2x = false;
+    s.view_noteshuffle = true;
     s.depth_value = 25;
     s.depth_mode = 1;
     s.mslimit_enabled = false;
@@ -105,7 +109,8 @@ TEST_CASE("settings: load and save name the same keys") {
     std::remove(path.c_str());
     const std::vector<std::string> expected = {
         "is_rescan",        "view_difficulty",      "view_prodrums",      "view_bass2x",
-        "depth_value",      "depth_mode",           "mslimit_enabled",    "mslimit_value",
+        "view_noteshuffle",
+        "depth_value",     "depth_mode",           "mslimit_enabled",    "mslimit_value",
         "backendlimit_enabled", "backendlimit_value", "hit_window_ms",    "preview_volume",
         "sp_cap",           "legacy_fills",         "auto_open_report",   "dm_last_user",
         "chartfolder"};
@@ -348,6 +353,97 @@ TEST_CASE("chartmode_key: 2x Bass applies at every difficulty (D20)") {
     s.view_difficulty = "Expert";
     s.view_prodrums = true;
     CHECK(s.chartmode_key() == "Expert Pro Drums, 2x Bass");
+}
+
+namespace {
+
+// One Difficulty, Pro Drums and 2x Bass choice, with the key it spells with
+// Note Shuffle off and on. The off keys are the ones already in users'
+// stores, so they never move; the on keys are D104's.
+struct ModeCase {
+    const char* difficulty;
+    bool prodrums;
+    bool bass2x;
+    const char* key_off;
+    const char* key_on;
+};
+
+const ModeCase kModeCases[] = {
+    {"Expert", true, true, "Expert Pro Drums, 2x Bass", "Expert Pro Drums, 2x Bass, Note Shuffle"},
+    {"Expert", true, false, "Expert Pro Drums, 1x Bass", "Expert Pro Drums, 1x Bass, Note Shuffle"},
+    {"Expert", false, true, "Expert Drums, 2x Bass", "Expert Drums, 2x Bass, Note Shuffle"},
+    {"Expert", false, false, "Expert Drums, 1x Bass", "Expert Drums, 1x Bass, Note Shuffle"},
+    {"Hard", true, true, "Hard Pro Drums, 2x Bass", "Hard Pro Drums, 2x Bass, Note Shuffle"},
+    {"Hard", true, false, "Hard Pro Drums, 1x Bass", "Hard Pro Drums, 1x Bass, Note Shuffle"},
+    {"Hard", false, true, "Hard Drums, 2x Bass", "Hard Drums, 2x Bass, Note Shuffle"},
+    {"Hard", false, false, "Hard Drums, 1x Bass", "Hard Drums, 1x Bass, Note Shuffle"},
+    {"Medium", true, true, "Medium Pro Drums, 2x Bass", "Medium Pro Drums, 2x Bass, Note Shuffle"},
+    {"Medium", true, false, "Medium Pro Drums, 1x Bass", "Medium Pro Drums, 1x Bass, Note Shuffle"},
+    {"Medium", false, true, "Medium Drums, 2x Bass", "Medium Drums, 2x Bass, Note Shuffle"},
+    {"Medium", false, false, "Medium Drums, 1x Bass", "Medium Drums, 1x Bass, Note Shuffle"},
+    {"Easy", true, true, "Easy Pro Drums, 2x Bass", "Easy Pro Drums, 2x Bass, Note Shuffle"},
+    {"Easy", true, false, "Easy Pro Drums, 1x Bass", "Easy Pro Drums, 1x Bass, Note Shuffle"},
+    {"Easy", false, true, "Easy Drums, 2x Bass", "Easy Drums, 2x Bass, Note Shuffle"},
+    {"Easy", false, false, "Easy Drums, 1x Bass", "Easy Drums, 1x Bass, Note Shuffle"},
+};
+
+}  // namespace
+
+TEST_CASE("chartmode_key: Note Shuffle off leaves every key as it was, on adds an ending (D104)") {
+    for (const ModeCase& c : kModeCases) {
+        CAPTURE(c.key_off);
+        Settings s;
+        s.view_difficulty = c.difficulty;
+        s.view_prodrums = c.prodrums;
+        s.view_bass2x = c.bass2x;
+        CHECK_FALSE(s.view_noteshuffle);  // off by default
+        CHECK(s.chartmode_key() == c.key_off);
+        s.view_noteshuffle = true;
+        CHECK(s.chartmode_key() == c.key_on);
+    }
+}
+
+TEST_CASE("with_chartmode rebuilds the settings behind every key, shuffled or not") {
+    // A path-report row carries only its key; clicking it rebuilds the
+    // settings from that key, so every key the app can file must come back.
+    Settings base;
+    base.sp_cap = 7;  // a setting the key doesn't name stays as it was
+    for (const ModeCase& c : kModeCases) {
+        for (bool shuffled : {false, true}) {
+            const std::string key = shuffled ? c.key_on : c.key_off;
+            CAPTURE(key);
+            const std::optional<Settings> mode = base.with_chartmode(key);
+            REQUIRE(mode.has_value());
+            CHECK(mode->view_difficulty == c.difficulty);
+            CHECK(mode->view_prodrums == c.prodrums);
+            CHECK(mode->view_bass2x == c.bass2x);
+            CHECK(mode->view_noteshuffle == shuffled);
+            CHECK(mode->sp_cap == 7);
+            CHECK(mode->chartmode_key() == key);
+        }
+    }
+    CHECK_FALSE(base.with_chartmode("Expert Pro Drums, 2x Bass, Shuffled").has_value());
+}
+
+TEST_CASE("view_noteshuffle: off by default, and the INI key loads and saves it") {
+    CHECK_FALSE(Settings{}.view_noteshuffle);
+    CHECK_FALSE(load_ini_text("ns_missing", "view_prodrums=1\n").view_noteshuffle);
+    CHECK(load_ini_text("ns_on", "view_noteshuffle=1\n").view_noteshuffle);
+    CHECK_FALSE(load_ini_text("ns_off", "view_noteshuffle=0\n").view_noteshuffle);
+
+    const std::string path = testtemp::temp_path("noteshuffle", ".ini");
+    Settings s;
+    s.view_noteshuffle = true;
+    REQUIRE(s.save_file(path));
+    std::vector<std::string> lines;
+    {
+        std::ifstream f(path);
+        std::string line;
+        while (std::getline(f, line)) lines.push_back(line);
+    }
+    CHECK(Settings::load_file(path).view_noteshuffle);
+    std::remove(path.c_str());
+    CHECK(std::find(lines.begin(), lines.end(), "view_noteshuffle=1") != lines.end());
 }
 
 TEST_CASE("view_difficulty round-trips, and a junk value normalizes to Expert") {

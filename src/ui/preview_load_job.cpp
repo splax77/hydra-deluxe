@@ -64,14 +64,15 @@ double ByteRateClock::update(double now_s, uint64_t bytes_done, uint64_t bytes_t
 
 PreviewLoadJob::PreviewLoadJob(store::ChartLibraryEntry entry, bool pro, bool bass2x,
                                Difficulty difficulty, std::optional<Path> path, int sp_cap,
-                               core::Rules rules)
+                               core::Rules rules, bool noteshuffle)
     : entry_(std::move(entry)),
       pro_(pro),
       bass2x_(bass2x),
       difficulty_(difficulty),
       path_(std::move(path)),
       sp_cap_(sp_cap),
-      rules_(std::move(rules)) {}
+      rules_(std::move(rules)),
+      noteshuffle_(noteshuffle) {}
 
 void PreviewLoadJob::start() {
     started_ = std::chrono::steady_clock::now();
@@ -155,7 +156,8 @@ void PreviewLoadJob::run() {
 
         // Branch (a) here: the notes.
         app::PreviewSong ps =
-            app::resolve_preview_song(entry_.notespath, container, pro_, bass2x_, difficulty_, rules_);
+            app::resolve_preview_song(entry_.notespath, container, pro_, bass2x_, difficulty_, rules_,
+                                      noteshuffle_);
         // The song's length, from the same owner analysis saves through
         // (D75), with the container already in hand. A failed read costs only
         // the length: the scrubber then ends where playback does

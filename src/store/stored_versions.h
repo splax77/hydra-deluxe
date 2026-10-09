@@ -56,7 +56,10 @@ struct StampRule {
 // all Stale"), so results saved by earlier 2.1.0 builds, which can be
 // missing their all-0 path, read Stale too. The stamp is only compared as a
 // whole string, never parsed.
-inline constexpr StampRule<std::string_view, 1> kResultsStamp{"2.1.0+allzero", {"2.1.0+allzero"}};
+// "2.4.0": the chart readers merge a 2x kick and a normal kick on one tick,
+// and 2x Bass off then removes that kick, as Clone Hero does (D105). D105
+// accepted that every saved result reads Stale.
+inline constexpr StampRule<std::string_view, 1> kResultsStamp{"2.4.0", {"2.4.0"}};
 
 // ---- Scanned chart facts (the charts table) --------------------------------
 

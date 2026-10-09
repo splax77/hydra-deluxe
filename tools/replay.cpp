@@ -76,6 +76,7 @@ struct Args {
     std::optional<int> depth;
     std::optional<bool> prodrums;
     std::optional<bool> bass2x;
+    std::optional<bool> noteshuffle;
     std::optional<std::string> difficulty;
     std::string acts;
     std::string path;   // a dump/target JSON file to read a path out of
@@ -133,6 +134,9 @@ void usage() {
         "--legacy-fills prices the chart under Clone Hero 1.0's fill deadline,\n"
         "which is what a 1.0 run was played under, the same as the app's\n"
         "\"1.0 fills\" setting.\n"
+        "score, dump and target take --noteshuffle 0|1: price the chart as Clone\n"
+        "Hero 1.1's Note Shuffle modifier rearranges it, the same as the app's\n"
+        "\"Note Shuffle\" setting.\n"
         "Every command takes --rules <file>: the rule choices to price under\n"
         "(default: hydra_rules.ini next to the exe). A bad file exits with 2.\n"
         "JSON is printed compact by default; --pretty indents it.\n",
@@ -149,6 +153,7 @@ app::Settings settings_from(const Args& a) {
     s.rules = a.rules;
     if (a.prodrums) s.view_prodrums = *a.prodrums;
     if (a.bass2x) s.view_bass2x = *a.bass2x;
+    if (a.noteshuffle) s.view_noteshuffle = *a.noteshuffle;
     // Settings::difficulty() reads the word, an unknown one as Expert.
     if (a.difficulty) s.view_difficulty = *a.difficulty;
 
@@ -361,7 +366,7 @@ int cmd_score(const Args& a, const app::Settings& s) {
             "other, not both");
 
     Song song = load_songpath(a.chart, s.view_prodrums, s.effective_bass2x(),
-                              s.difficulty(), s.rules);
+                              s.difficulty(), s.rules, s.view_noteshuffle);
     if (song.is_empty()) {
         std::fprintf(stderr, "chart has no notes: %s\n", a.chart.c_str());
         return 1;
@@ -511,7 +516,7 @@ int cmd_target(const Args& a, const app::Settings& s) {
     const std::vector<int64_t> ticks = parse_ticks(a.ticks);
 
     Song song = load_songpath(a.chart, s.view_prodrums, s.effective_bass2x(),
-                              s.difficulty(), s.rules);
+                              s.difficulty(), s.rules, s.view_noteshuffle);
     if (song.is_empty()) {
         std::fprintf(stderr, "chart has no notes: %s\n", a.chart.c_str());
         return 1;
@@ -593,7 +598,8 @@ void check_chart(const std::string& path, const core::Rules& rules, Tally* tally
     std::optional<Song> song_opt;
     try {
         song_opt.emplace(
-            load_songpath(path, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules));
+            load_songpath(path, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules,
+                          cfg.noteshuffle));
     } catch (const std::exception& e) {
         std::printf("SKIP %s (%s)\n", path.c_str(), e.what());
         ++tally->skipped;
@@ -754,6 +760,7 @@ int main() {
             else if (k == "--verbose") g_verbose = true;
             else if (k == "--prodrums") a.prodrums = next_on_off();
             else if (k == "--bass2x") a.bass2x = next_on_off();
+            else if (k == "--noteshuffle") a.noteshuffle = next_on_off();
             else if (k == "--difficulty") a.difficulty = next();
             else if (k == "--pretty") a.pretty = true;
             else if (k == app::kLegacyFillsFlag) a.legacy_fills = true;

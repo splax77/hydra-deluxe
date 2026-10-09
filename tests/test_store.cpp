@@ -190,13 +190,14 @@ TEST_CASE("RecordStore maintenance: has_record, list_records, counts") {
 }
 
 TEST_CASE("RecordStore results stamp: every accepted stamp reads Ready, others Stale") {
-    // The stamp is not the app version (ADR 0018). Only "2.1.0+allzero"
-    // reads Ready. Results stamped "1.8.2" (every release from 1.8.4 to
-    // 2.0.0) or "1.8.3" hold values the SP-end history changed (ADR 0021),
-    // and earlier 2.1.0 builds' "2.1.0" can miss the all-0 path (D85), so
-    // they read Stale, through the C++ rule (get_summary) and its SQL twin
-    // (has_record).
-    CHECK(kResultsStamp.is_current("2.1.0+allzero"));
+    // The stamp is not the app version (ADR 0018). Only "2.4.0" reads
+    // Ready. Results stamped "1.8.2" (every release from 1.8.4 to 2.0.0) or
+    // "1.8.3" hold values the SP-end history changed (ADR 0021), earlier
+    // 2.1.0 builds' "2.1.0" can miss the all-0 path (D85), and
+    // "2.1.0+allzero" predates the 2x kick merge (D105), so they read Stale,
+    // through the C++ rule (get_summary) and its SQL twin (has_record).
+    CHECK(kResultsStamp.is_current("2.4.0"));
+    CHECK_FALSE(kResultsStamp.is_current("2.1.0+allzero"));
     CHECK_FALSE(kResultsStamp.is_current("2.1.0"));
     CHECK_FALSE(kResultsStamp.is_current("2.0.0"));
     CHECK_FALSE(kResultsStamp.is_current("1.8.2"));
@@ -226,7 +227,8 @@ TEST_CASE("RecordStore results stamp: every accepted stamp reads Ready, others S
         const char* hash;
         const char* stamp;
         RecordStatus want;
-    } cases[] = {{"a", "2.1.0+allzero", RecordStatus::Ready},
+    } cases[] = {{"a", "2.4.0", RecordStatus::Ready},
+                 {"f", "2.1.0+allzero", RecordStatus::Stale},
                  {"e", "2.1.0", RecordStatus::Stale},
                  {"b", "1.8.3", RecordStatus::Stale},
                  {"c", "1.8.2", RecordStatus::Stale},
