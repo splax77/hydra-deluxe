@@ -12,3 +12,7 @@ both pages to a cleaner shared template — was rejected because it breaks the
 parity pin. Do not strip the "unused" rules from the dm page's output or
 re-inline the fragments per page; per-page differences belong in each page's
 own column-width, chip-color, body, and script pieces only.
+
+_Note, 2026-10-08: the path report and the dmleaderboards comparison are no
+longer HTML pages. They are Hydra windows, and `hydra_report` is gone (D103,
+ADR 0027). Only the fill-spawn comparison is still a page._

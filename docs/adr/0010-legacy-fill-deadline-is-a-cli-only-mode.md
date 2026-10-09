@@ -126,3 +126,10 @@ key, so no lookup can mix the two.
 
 ADR 0026 stopped storing paths, so `hydra_batch --reindex`, named above, is
 gone. The stamp on the file and the guards are unchanged.
+
+## Note, 2026-10-08: no hydra_report
+
+`hydra_report`, named in the 2026-09-29 note, is gone (D103 item 5). The path
+report is now a Hydra window, built under the app's own settings, its 1.0
+fills setting included (ADR 0027). Nothing reports on a file stamped `ch10`
+any more except `hydra_fillcompare`. The guards and the stamp are unchanged.
