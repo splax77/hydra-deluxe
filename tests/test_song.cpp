@@ -960,12 +960,14 @@ TEST_CASE("display_charter: tags go and the ends are trimmed, with no fallback")
 // ---- the crafted edge files (testdata/parse_edge, speedups task P1) ----
 //
 // gen_edge.py writes 41 small charts, each one odd or broken in its own way,
-// and says what each one tests. The two expected files hold what the readers
-// made of them before P1 rewrote the readers, captured with the old readers'
-// hydra_bench --parse (one line per file: its name relative to the folder,
+// and says what each one tests. The two expected files were first captured
+// from the readers as they stood before P1 rewrote them, with hydra_bench
+// --parse (one line per file: its name relative to the folder,
 // tests/song_digest.h's hash in hex, and for a file that failed "FAIL " and
-// its exception's type and message). This test reads every file again and
-// must get the same hash and the same failure text.
+// its exception's type and message). Later changes to the readers or the
+// digest re-pinned some lines; git log on expected_expert.tsv and
+// expected_hard.tsv says which and why. This test reads every file again and
+// must get each line's pinned hash and failure text.
 
 namespace {
 

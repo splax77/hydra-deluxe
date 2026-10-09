@@ -6,9 +6,10 @@ list.txt (one file name per line, relative to this folder) and nothing else
 are written here. Run it again and every byte comes out the same.
 
 The expected digests beside them (expected_expert.tsv, expected_hard.tsv) were
-captured once from the readers as they stood before P1, with hydra_bench
---parse; tests/test_song.cpp reads them back ("the crafted edge files parse as
-the old readers did").
+first captured from the readers as they stood before P1, with hydra_bench
+--parse. Later changes to the readers or the digest re-pinned some lines; git
+log on the two files says which and why. tests/test_song.cpp reads them back
+("the crafted edge files parse as the old readers did").
 
     py testdata/parse_edge/gen_edge.py
 """
