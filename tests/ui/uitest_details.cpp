@@ -23,7 +23,32 @@
 
 namespace uitest {
 
+// The settings panel's helpers, defined in uitest_library.cpp.
+ImGuiWindow* open_settings_panel(ImGuiTestContext* ctx);
+ImGuiID settings_control(ImGuiTestContext* ctx, const char* sibling, const char* label);
+void close_settings_panel(ImGuiTestContext* ctx);
+
 namespace {
+
+// Sets the SP cap in the settings panel, then closes the panel (with Esc,
+// which must leave the song panel open) so the song panel can be clicked.
+void set_sp_cap(ImGuiTestContext* ctx, int cap) {
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    ctx->ItemInputValue("**/##spcap", cap);
+    close_settings_panel(ctx);
+}
+
+// Ticks or unticks "1.0 fills" the same way.
+void set_legacy_fills(ImGuiTestContext* ctx, bool on) {
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    if (on)
+        ctx->ItemCheck("**/1.0 fills");
+    else
+        ctx->ItemUncheck("**/1.0 fills");
+    close_settings_panel(ctx);
+}
 
 // The status of the library's first row under the settings as they are now
 // with the SP cap set to `cap`: what the row would read at that cap.
@@ -62,10 +87,9 @@ void test_analyze(ImGuiTestContext* ctx) {
     // Records are kept per SP cap: switching the cap away from 4 analyzes the
     // open song under the new cap and saves that cap's row (D90 item 1);
     // switching back shows the 4-bar best path again. The INI follows every
-    // change. The SP cap box is in the settings bar, outside the panel the
-    // ref points at.
+    // change. The SP cap box is in the settings panel.
     IM_CHECK(row0_status_at_cap(h, 8) == hydra::store::RecordStatus::NotAnalyzed);
-    ctx->ItemInputValue("//Hydra/**/##spcap",8);
+    set_sp_cap(ctx, 8);
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.sp_cap == 8; }, 5));
     wait_song_analyzed(ctx);
     if (ctx->IsError()) return;
@@ -74,7 +98,7 @@ void test_analyze(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] {
         return hydra::app::Settings::load_file(h.ini_path).sp_cap == 8;
     }, 5));
-    ctx->ItemInputValue("//Hydra/**/##spcap",4);
+    set_sp_cap(ctx, 4);
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.sp_cap == 4; }, 5));
     wait_song_analyzed(ctx);
     if (ctx->IsError()) return;
@@ -98,7 +122,7 @@ void test_cap_switch(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     IM_CHECK(analyzed_with_paths(ctx));
     std::string best4 = h.app->viewed.record->best_path().pathstring();
-    ctx->ItemInputValue("//Hydra/**/##spcap",6);
+    set_sp_cap(ctx, 6);
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.sp_cap == 6; }, 5));
     IM_CHECK(analyzed_with_paths(ctx));
     std::string best6 = h.app->viewed.record->best_path().pathstring();
@@ -106,7 +130,7 @@ void test_cap_switch(ImGuiTestContext* ctx) {
     // Flip back and forth; every switch must land on the current record's
     // best path, never on whatever the previous record's memory now holds.
     for (int cap : {4, 6, 4, 6, 4}) {
-        ctx->ItemInputValue("//Hydra/**/##spcap",cap);
+        set_sp_cap(ctx, cap);
         IM_CHECK(wait_until(ctx, [&] { return h.app->settings.sp_cap == cap; }, 5));
         IM_CHECK(analyzed_with_paths(ctx));
         IM_CHECK(h.app->viewed.record->sp_cap == cap);
@@ -117,7 +141,7 @@ void test_cap_switch(ImGuiTestContext* ctx) {
     // While a cap's analysis is still running, the Preview's SP gauge pins at
     // the Settings cap, the one that analysis runs at, not at 4 (D48, Q24).
     ViewGate gate;
-    ctx->ItemInputValue("//Hydra/**/##spcap", 5);
+    set_sp_cap(ctx, 5);
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.sp_cap == 5; }, 5));
     IM_CHECK(!h.app->viewed.record.has_value());
     set_panel_ref(ctx);
@@ -152,7 +176,7 @@ void test_legacy_fills(ImGuiTestContext* ctx) {
     IM_CHECK(!compare_disabled());
     IM_CHECK(h.app->store->counts().second == 1);
 
-    ctx->ItemCheck("//Hydra/**/1.0 fills");
+    set_legacy_fills(ctx, true);
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.legacy_fills; }, 5));
     IM_CHECK(hydra::app::Settings::load_file(h.ini_path).legacy_fills);
     IM_CHECK(compare_disabled());
@@ -162,7 +186,7 @@ void test_legacy_fills(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->library_row_at(0).status == hydra::store::RecordStatus::Ready);
     IM_CHECK(h.app->store->counts().second == 2);
 
-    ctx->ItemUncheck("//Hydra/**/1.0 fills");
+    set_legacy_fills(ctx, false);
     IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.legacy_fills; }, 5));
     IM_CHECK(analyzed_with_paths(ctx));
     IM_CHECK(h.app->library_row_at(0).status == hydra::store::RecordStatus::Ready);
@@ -999,7 +1023,7 @@ void test_view_setting_burst(ImGuiTestContext* ctx) {
     {
         ViewGate gate;  // no step's analysis can finish before the burst ends
         for (int cap = start_cap + 1; cap <= last_cap; ++cap) {
-            ctx->ItemInputValue("//Hydra/**/##spcap", cap);
+            set_sp_cap(ctx, cap);
             IM_CHECK(wait_until(ctx, [&] { return h.app->settings.sp_cap == cap; }, 5));
             IM_CHECK(h.app->view_running());
         }
@@ -1015,27 +1039,35 @@ void test_view_setting_burst(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return visible_text(h).find(best) != std::string::npos; }, 5));
 }
 
-// The settings bar locks while a batch runs and unlocks when it stops.
+// The settings lock while a batch runs and unlock when it stops. Locked, the
+// panel still opens with every control greyed and says why, and the button's
+// label ends in " (locked)".
 void test_settings_lock(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
-    ctx->SetRef("//Hydra");
+    auto shows = [&](const char* text) { return visible_text(h).find(text) != std::string::npos; };
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
     IM_CHECK((ctx->ItemInfo("**/##spcap").ItemFlags & ImGuiItemFlags_Disabled) == 0);
+    close_settings_panel(ctx);
 
-    // A click's analysis doesn't lock the bar (D90 item 2).
+    // A click's analysis doesn't lock the settings (D90 item 2).
     {
         ViewGate view_gate;
         open_details(ctx, 0);
         if (ctx->IsError()) return;
         IM_CHECK(wait_until(ctx, [&] { return view_gate.started() >= 1; }, 30));
-        ctx->SetRef("//Hydra");
         IM_CHECK(h.app->view_running());
         IM_CHECK(h.app->settings_lock() == hydra::ui::AppState::SettingsLock::None);
+        open_settings_panel(ctx);
+        if (ctx->IsError()) return;
         IM_CHECK((ctx->ItemInfo("**/##spcap").ItemFlags & ImGuiItemFlags_Disabled) == 0);
         IM_CHECK((ctx->ItemInfo("**/Pro Drums").ItemFlags & ImGuiItemFlags_Disabled) == 0);
-        IM_CHECK(visible_text(h).find("Stop the batch to change these.") == std::string::npos);
+        IM_CHECK(!shows("Stop the batch to change these."));
+        IM_CHECK(!shows("(locked)"));
+        close_settings_panel(ctx);
         ctx->ItemClick("**/X##closepanel");
         ctx->Yield(3);
     }
@@ -1047,17 +1079,26 @@ void test_settings_lock(ImGuiTestContext* ctx) {
     h.app->start_batch(false);
     IM_CHECK(wait_until(ctx, [&] { return gate.started() >= 1; }, 30));
     IM_CHECK(h.app->batch_running());
-    IM_CHECK(wait_until(ctx, [&] {
-        return visible_text(h).find("Stop the batch to change these.") != std::string::npos;
-    }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return shows("(locked)"); }, 5));
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(wait_until(ctx, [&] { return shows("Stop the batch to change these."); }, 5));
+    IM_CHECK((ctx->ItemInfo(settings_control(ctx, "Pro Drums", "##difficulty")).ItemFlags &
+              ImGuiItemFlags_Disabled) != 0);
     IM_CHECK((ctx->ItemInfo("**/##spcap").ItemFlags & ImGuiItemFlags_Disabled) != 0);
     IM_CHECK((ctx->ItemInfo("**/Pro Drums").ItemFlags & ImGuiItemFlags_Disabled) != 0);
     IM_CHECK((ctx->ItemInfo("**/Note Shuffle").ItemFlags & ImGuiItemFlags_Disabled) != 0);
+    IM_CHECK((ctx->ItemInfo("**/Path limit##mslimit").ItemFlags & ImGuiItemFlags_Disabled) != 0);
+    close_settings_panel(ctx);
 
     h.app->batch_job->stop();
     IM_CHECK(wait_until(ctx, [&] { return !h.app->batch_running(); }, 300));
     IM_CHECK(wait_until(ctx, [&] { return !jobs_busy(h); }, 120));
+    IM_CHECK(wait_until(ctx, [&] { return !shows("(locked)"); }, 5));
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
     IM_CHECK((ctx->ItemInfo("**/##spcap").ItemFlags & ImGuiItemFlags_Disabled) == 0);
+    close_settings_panel(ctx);
 }
 
 }  // namespace
