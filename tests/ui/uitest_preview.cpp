@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cfloat>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -656,10 +657,12 @@ void test_preview_error_wraps(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(overflowing, 0);
 }
 
-// A mode change on the open chart reloads the Preview (D48, Q22). Evans Blue -
-// Beg charts Expert drums and no Hard, so picking Hard in the analysis settings
-// must say so in the Preview, in the no-notes sentence analysis uses, rather
-// than keep drawing Expert's notes. Back on Expert the highway returns.
+// A mode change on the open chart reloads the Preview's notes (D48, Q22) and
+// keeps its place. Evans Blue - Beg charts Expert drums and no Hard, so
+// picking Hard in the analysis settings must say so in the Preview, in the
+// no-notes sentence analysis uses, rather than keep drawing Expert's notes.
+// Back on Expert the highway returns at the same spot, paused. Pro Drums
+// toggled while playing keeps playing from about where it was.
 void test_preview_mode_reload(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -671,26 +674,60 @@ void test_preview_mode_reload(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10));
     if (!h.app->preview) return;
     auto& pc = *h.app->preview;
-    IM_CHECK(wait_until(ctx, [&] { return !pc.loading(); }, 120));
+    // A notes reload is not a load (the highway stays up), so wait on every
+    // Preview thread.
+    IM_CHECK(wait_until(ctx, [&] { return !pc.busy(); }, 120));
     IM_CHECK_STR_EQ(pc.error().c_str(), "");
+
+    // A spot 30 s in, paused.
+    const double spot = 30000.0;
+    IM_CHECK_GT(pc.playback_end_ms(), spot);
+    pc.pause();
+    pc.seek_ms(spot);
 
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
     settings_combo_pick(ctx, "##prodrums", "##difficulty", "Hard");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Hard"; }, 5));
-    IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && pc.has_error(); }, 120));
+    IM_CHECK(wait_until(ctx, [&] { return !pc.busy() && pc.has_error(); }, 120));
     const std::string no_hard =
         hydra::no_notes_message(hydra::Difficulty::Hard, h.app->settings.view_prodrums);
     IM_CHECK_STR_EQ(pc.error().c_str(), no_hard.c_str());
     ctx->Yield(2);
     IM_CHECK(visible_text(h).find(no_hard) != std::string::npos);
+    IM_CHECK(!pc.playing());
+    IM_CHECK_LT(std::abs(pc.position_ms() - spot), 1.0);
 
     settings_combo_pick(ctx, "##prodrums", "##difficulty", "Expert");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Expert"; }, 5));
-    close_settings_panel(ctx);
-    IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && !pc.has_error() && pc.scrub_end_ms() > 0.0; },
+    IM_CHECK(wait_until(ctx, [&] { return !pc.busy() && !pc.has_error() && pc.scrub_end_ms() > 0.0; },
                         120));
     IM_CHECK_STR_EQ(pc.error().c_str(), "");
+    IM_CHECK(!pc.playing());
+    IM_CHECK_LT(std::abs(pc.position_ms() - spot), 1.0);
+
+    // Pro Drums off while playing: still playing, from about the same spot.
+    // It plays on while the notes reload, so the playhead only moves forward,
+    // and by no more than the wait.
+    pc.play();
+    IM_CHECK(pc.playing());
+    const double before = pc.position_ms();
+    IM_CHECK(h.app->settings.view_prodrums);
+    ctx->ItemClick("**/##prodrums");
+    IM_CHECK(!h.app->settings.view_prodrums);
+    ctx->Yield(2);  // the Preview tab's next frame sees the new mode
+    IM_CHECK(wait_until(ctx, [&] { return !pc.busy(); }, 120));
+    IM_CHECK_STR_EQ(pc.error().c_str(), "");
+    IM_CHECK(pc.playing());
+    IM_CHECK_GE(pc.position_ms(), before);
+    IM_CHECK_LT(pc.position_ms(), before + 10000.0);
+
+    // Back to Pro Drums on, as the other tests expect.
+    ctx->ItemClick("**/##prodrums");
+    IM_CHECK(h.app->settings.view_prodrums);
+    close_settings_panel(ctx);
+    pc.pause();
+    IM_CHECK(wait_until(ctx, [&] { return !pc.busy(); }, 120));
 }
 
 // The text boxes keep one size all through a path. The next-activation box
