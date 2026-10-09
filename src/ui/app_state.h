@@ -47,7 +47,8 @@ using Settings = app::Settings;
 // A song-panel row that keeps its place while the open song is re-analyzed
 // (AppState::view_holds_space): the height it had when it was last drawn with
 // content. The row draws that much empty space instead of nothing, so the
-// rows under it don't jump up and back.
+// rows under it don't jump up and back. detail::draw_held_row
+// (ui/details_parts.h) draws every held row.
 struct HeldRow {
     std::optional<float> height;
     // For a frame the row has nothing to draw: the height to keep, or none.

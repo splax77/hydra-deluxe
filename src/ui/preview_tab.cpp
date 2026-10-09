@@ -126,54 +126,54 @@ float key_hints(float width, bool draw) {
 // "Showing" and the ##previewpath list: the same paths, in the same order and
 // from the same cache, as the Paths tab's buttons. A pick sets the one
 // selection both tabs read (DetailsViewState::selected_path). Drawn only when
-// the song has a Ready record with paths; while the open song is re-analyzed
-// it keeps its place, empty (AppState::view_holds_space).
+// the song has a Ready record with paths. A held row (draw_held_row).
 void render_path_picker(AppState& app) {
     HeldRow& row = app.details_ui.path_picker;
     if (!app.viewed.ready() || app.viewed.record->paths.empty()) {
-        if (const std::optional<float> held = row.keep(app.view_holds_space()))
-            ImGui::Dummy(ImVec2(0.0f, *held));
+        draw_held_row(app, row);
         return;
     }
-    ImGui::BeginGroup();
-    const hydra::app::PathButtonsView& list = app.details_ui.paths_tab.buttons(
-        *app.viewed.record, app.record_generation.n, app.settings.depth_mode,
-        app.settings.depth_value);
-    const Path*& selected = app.details_ui.selected_path;
-    std::string current;
-    for (const hydra::app::PathButtonView& b : list.buttons)
-        if (b.path == selected) current = hydra::app::preview_path_label(b);
+    draw_held_row(app, row, [&] {
+        const hydra::app::PathButtonsView& list = app.details_ui.paths_tab.buttons(
+            *app.viewed.record, app.record_generation.n, app.settings.depth_mode,
+            app.settings.depth_value);
+        const Path*& selected = app.details_ui.selected_path;
+        std::string current;
+        for (const hydra::app::PathButtonView& b : list.buttons)
+            if (b.path == selected) current = hydra::app::preview_path_label(b);
 
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted("Showing");
-    ImGui::SameLine();
-    ImGui::PushFont(g_mono_font, 0.0f);
-    // On its own line, as wide as the longest path in the list (or the
-    // line). A path longer than the line (40 activations and "  (optimal)"
-    // run to about 100 characters) ends in "…" rather than vanish under the
-    // arrow, with the whole path a hover away; the open list shows it whole.
-    float widest = 0.0f;
-    for (const hydra::app::PathButtonView& b : list.buttons)
-        widest = std::max(widest, ImGui::CalcTextSize(hydra::app::preview_path_label(b).c_str()).x);
-    const float chrome = ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetFrameHeight();
-    const float box_w = std::min(widest + chrome, ImGui::GetContentRegionAvail().x);
-    const std::string shown = render::ellipsize(current, box_w - chrome, text_width);
-    ImGui::SetNextItemWidth(box_w);
-    const bool open = ImGui::BeginCombo("##previewpath", shown.c_str());
-    if (!open && shown != current) overflow_tooltip(current.c_str());
-    if (open) {
-        for (size_t i = 0; i < list.buttons.size(); ++i) {
-            const hydra::app::PathButtonView& b = list.buttons[i];
-            const std::string item = hydra::app::path_item_id(hydra::app::preview_path_label(b), i);
-            const bool is_selected = b.path == selected;
-            if (ImGui::Selectable(item.c_str(), is_selected)) selected = b.path;
-            if (is_selected) ImGui::SetItemDefaultFocus();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Showing");
+        ImGui::SameLine();
+        ImGui::PushFont(g_mono_font, 0.0f);
+        // On its own line, as wide as the longest path in the list (or the
+        // line). A path longer than the line (40 activations and "  (optimal)"
+        // run to about 100 characters) ends in "…" rather than vanish under
+        // the arrow, with the whole path a hover away; the open list shows it
+        // whole.
+        float widest = 0.0f;
+        for (const hydra::app::PathButtonView& b : list.buttons)
+            widest = std::max(widest,
+                              ImGui::CalcTextSize(hydra::app::preview_path_label(b).c_str()).x);
+        const float chrome = ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetFrameHeight();
+        const float box_w = std::min(widest + chrome, ImGui::GetContentRegionAvail().x);
+        const std::string shown = render::ellipsize(current, box_w - chrome, text_width);
+        ImGui::SetNextItemWidth(box_w);
+        const bool open = ImGui::BeginCombo("##previewpath", shown.c_str());
+        if (!open && shown != current) overflow_tooltip(current.c_str());
+        if (open) {
+            for (size_t i = 0; i < list.buttons.size(); ++i) {
+                const hydra::app::PathButtonView& b = list.buttons[i];
+                const std::string item =
+                    hydra::app::path_item_id(hydra::app::preview_path_label(b), i);
+                const bool is_selected = b.path == selected;
+                if (ImGui::Selectable(item.c_str(), is_selected)) selected = b.path;
+                if (is_selected) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
         }
-        ImGui::EndCombo();
-    }
-    ImGui::PopFont();
-    ImGui::EndGroup();
-    row.height = ImGui::GetItemRectSize().y;
+        ImGui::PopFont();
+    });
 }
 
 // Gold ticks over the scrubber just drawn, one per activation, where the

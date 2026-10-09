@@ -12,6 +12,7 @@
 #ifndef HYDRA_UI_DETAILS_PARTS_H
 #define HYDRA_UI_DETAILS_PARTS_H
 
+#include <functional>
 #include <string>
 
 #include "app/dynamics_breakdown.h"
@@ -23,6 +24,14 @@ namespace hydra::ui::detail {
 // content (the click's progress, cancelled, error, no paths). True only when
 // the record is ready to draw.
 bool render_record_state(AppState& app);
+
+// details_panel.cpp. One frame of a HeldRow, a row that keeps its place while
+// the panel holds (AppState::view_holds_space). `draw` draws the row as one
+// group. When it draws something, the row remembers the group's height; when
+// it draws nothing, the row fills its kept height (HeldRow::keep) with empty
+// space instead. A row that knows it has nothing to draw passes no `draw`:
+// then no group is opened, so it takes no room at all unless held.
+void draw_held_row(AppState& app, HeldRow& row, const std::function<void()>& draw = {});
 
 // paths_tab.cpp. The path list on the left and the selected path's details
 // on the right. A click in the list changes `selected_path`.
