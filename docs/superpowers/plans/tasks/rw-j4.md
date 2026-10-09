@@ -31,3 +31,7 @@ The hands-on check found two counts of one thing disagreeing in the comparison w
 ## Return
 
 `complete`, `branch`, `worktree`, `tip`, `report`, `questions`, `handoff`.
+
+## Orchestrator answer (2026-10-08)
+
+`tests/test_report.cpp` is owned too, for the one pin at line 1013 ("dm_tiles: the four sample scores"): `{"Scores", "4"}` becomes `{"Scores shown", "4"}`. Nothing else in that file.
