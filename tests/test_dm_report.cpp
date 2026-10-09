@@ -1,7 +1,7 @@
 // Tests for app/dm_report: the score-vs-optimal join (collect_dm_rows) and
-// the comparison page (build_dm_html). Pins the status strings the page's
-// filter and chip classes key on, and the four counts the app shows. Also
-// drives the real WinHTTP transport against a loopback server.
+// generate_dm_report's subtitle and footer. Pins the status strings the
+// comparison window's Status filter and chips key on, and the counts the app
+// shows. Also drives the real WinHTTP transport against a loopback server.
 
 // winsock2.h has to come before anything that pulls in windows.h.
 #ifndef WIN32_LEAN_AND_MEAN
@@ -30,8 +30,8 @@
 #include "app/display_format.h"  // format_percent, percent_steps
 #include "core/model.h"
 #include "app/dm_report.h"
-#include "app/html_page.h"  // html_escape
-#include "app/report.h"     // Tile, ChipToken
+#include "app/dm_report_view.h"  // dm_search_text
+#include "app/report.h"          // Tile, ChipToken
 #include "app/user_messages.h"
 #include "core/error_kind.h"
 #include "corpus_util.h"
@@ -159,49 +159,11 @@ TEST_CASE("dmbot JSON parsers handle canned payloads") {
     CHECK_THROWS_AS(net::parse_users_json("{\"a\":1}"), std::runtime_error);
 }
 
-TEST_CASE("build_dm_html substitutes every placeholder") {
-    store::RecordStore store(":memory:");
-    const int64_t optimal = fill_store(store);
-
-    std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
-        store, {make_score(kHash, optimal - 1)}, kMode, store::Lens{});
-    REQUIRE(rows.size() == 1);
-
-    const std::string subtitle = "Subtitle marker 5151";
-    const std::string footer = "Footer marker 1515";
-    std::string html = app::dm_report::build_dm_html(rows, subtitle, footer);
-
-    CHECK(html.find("__SUBTITLE__") == std::string::npos);
-    CHECK(html.find("__FOOTER__") == std::string::npos);
-    CHECK(html.find("__DATA__") == std::string::npos);
-    CHECK(html.find(subtitle) != std::string::npos);
-    CHECK(html.find(footer) != std::string::npos);
-    CHECK(html.find("Board Title") != std::string::npos);
-    // The help texts name Clone Hero's cap from kCloneHeroSpCap (finding 170).
-    CHECK(html.find("__SP_CAP__") == std::string::npos);
-    CHECK(html.find("at SP cap " + std::to_string(kCloneHeroSpCap)) != std::string::npos);
-}
-
-TEST_CASE("build_dm_html colours the delta from the status") {
-    // collect_dm_rows already decided which side is higher when it set the
-    // row's status; the cell's colour and the "left on the table" tile read
-    // that answer instead of testing the delta's sign again.
-    const std::string html = app::dm_report::build_dm_html({}, "sub", "foot");
-    CHECK(html.find("const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : "
-                    "(r.status === 'above optimal' ? 'num neg' : 'num');") !=
-          std::string::npos);
-    CHECK(html.find("const left = under.reduce((a, r) => a + r.delta, 0);") !=
-          std::string::npos);
-    // The "+N over" text reads the row's above_optimal field (D64), so the
-    // script tests the delta's sign nowhere.
-    CHECK(html.find(": (r.above_optimal ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));") !=
-          std::string::npos);
-    CHECK(html.find("r.delta < 0 ?") == std::string::npos);
-    CHECK(html.find("r.delta > 0 ?") == std::string::npos);
-
-    // D64: a score at another speed that beats the optimal keeps reading
-    // "+N over". Its status is "other speed", so the payload carries the
-    // above-optimal answer collect_dm_rows already gave, next to the delta.
+TEST_CASE("collect_dm_rows answers above-optimal beside the status (D64)") {
+    // A score at another speed that beats the optimal keeps reading "+N
+    // over". Its status is "other speed", so the row carries the
+    // above-optimal answer collect_dm_rows already gave, next to the delta;
+    // the Delta cell (dm_report_view) reads it instead of the delta's sign.
     store::RecordStore store(":memory:");
     const int64_t optimal = fill_store(store);
     REQUIRE(optimal > 0);
@@ -214,22 +176,21 @@ TEST_CASE("build_dm_html colours the delta from the status") {
     CHECK(rows[0].status == "above optimal");
     CHECK(rows[1].status == "other speed");
     CHECK(rows[2].status == "other speed");
-    const auto payload = [](const DmReportRow& r) {
-        return app::dm_report::build_dm_html({r}, "sub", "foot");
-    };
-    CHECK(payload(rows[0]).find("\"delta\":-5,\"above_optimal\":1,") != std::string::npos);
-    CHECK(payload(rows[1]).find("\"delta\":-5,\"above_optimal\":1,") != std::string::npos);
-    CHECK(payload(rows[2]).find("\"delta\":5,\"above_optimal\":0,") != std::string::npos);
+    CHECK(rows[0].delta == -5);
+    CHECK(rows[0].above_optimal);
+    CHECK(rows[1].delta == -5);
+    CHECK(rows[1].above_optimal);
+    CHECK(rows[2].delta == 5);
+    CHECK_FALSE(rows[2].above_optimal);
 }
 
-TEST_CASE("report payload: the search field is folded and tag-free") {
+TEST_CASE("dm comparison: a score's search text is folded and tag-free") {
     DmReportRow row;
     row.song = "Halo";
     row.artist = "Beyonc\xc3\xa9";  // Beyoncé
     row.charter = "<b>Bob</b>";
     row.status = "not in library";
-    const std::string html = app::dm_report::build_dm_html({row}, "sub", "foot");
-    CHECK(html.find("\"search\":\"halo beyonce bob\"") != std::string::npos);
+    CHECK(app::dm_report_view::dm_search_text(row) == "halo beyonce bob");
 }
 
 TEST_CASE("generate_dm_report: tally and framing behind one seam") {
@@ -255,20 +216,17 @@ TEST_CASE("generate_dm_report: tally and framing behind one seam") {
     CHECK(result.stats.not_in_library == 1);
 
     // The subtitle the finished modal's counts must agree with.
-    CHECK(result.html.find("TestUser — 5 scores: 2 under optimal, 1 at optimal, "
-                           "1 above optimal, 0 not analyzed, 1 not in your library") !=
-          std::string::npos);
-    CHECK(result.html.find(" matched,") == std::string::npos);
-    // (The apostrophe in "Hydra's" is HTML-escaped, so match up to it.)
-    CHECK(result.html.find(
-              "Actual scores from dmleaderboards.com against Hydra") !=
-          std::string::npos);
+    CHECK(result.subtitle ==
+          "TestUser — 5 scores: 2 under optimal, 1 at optimal, "
+          "1 above optimal, 0 not analyzed, 1 not in your library");
+    CHECK(result.subtitle.find(" matched,") == std::string::npos);
+    CHECK(result.footer.rfind("Actual scores from dmleaderboards.com against Hydra's", 0) == 0);
 
-    // No scores: zero stats, no page.
+    // No scores: zero stats, no rows.
     app::dm_report::GeneratedDmReport none =
         app::dm_report::generate_dm_report(store, {}, kMode, store::Lens{}, "TestUser");
     CHECK(none.stats.total == 0);
-    CHECK(none.html.empty());
+    CHECK(none.rows.empty());
 }
 
 // What a window draws from: the rows, the subtitle and footer the page shows,
@@ -294,8 +252,6 @@ TEST_CASE("generate_dm_report hands over its rows, subtitle, footer, player and 
     CHECK(result.footer.rfind("Actual scores from dmleaderboards.com against Hydra's optimal for " +
                                   std::string(kMode) + ".",
                               0) == 0);
-    CHECK(result.html.find(app::html::html_escape(result.subtitle)) != std::string::npos);
-    CHECK(result.html.find(app::html::html_escape(result.footer)) != std::string::npos);
 
     // No scores: the player and mode are still named, and nothing else is.
     const app::dm_report::GeneratedDmReport none =
@@ -435,7 +391,38 @@ TEST_CASE("collect_dm_rows: a leaderboard row's DMBot names lose their Clone Her
     }
 }
 
-TEST_CASE("collect_dm_rows: a percent rounds once") {
+namespace {
+
+// The text the comparison window's column `id` shows for `row`
+// (dm_report_view::dm_columns).
+std::string dm_cell(const std::string& id, const DmReportRow& row) {
+    for (const auto& c : app::dm_report_view::dm_columns())
+        if (c.id == id) return c.cell(row);
+    FAIL("no column " << id);
+    return {};
+}
+
+// The sort key the comparison window's column `id` gives `row`.
+app::report_view::SortKey dm_sort_key(const std::string& id, const DmReportRow& row) {
+    for (const auto& c : app::dm_report_view::dm_columns())
+        if (c.id == id) return c.sort_key(row);
+    FAIL("no column " << id);
+    return {};
+}
+
+// The value of the tile named `label` over every score in `rows`.
+std::string dm_tile(const std::vector<DmReportRow>& rows, const std::string& label) {
+    std::vector<size_t> shown(rows.size());
+    for (size_t i = 0; i < rows.size(); ++i) shown[i] = i;
+    for (const app::report::Tile& t : app::dm_report::dm_tiles(rows, shown))
+        if (t.label == label) return t.value;
+    FAIL("no tile " << label);
+    return {};
+}
+
+}  // namespace
+
+TEST_CASE("dm comparison: a percent rounds once") {
     // 198,010 of 198,020 is 99.99495%: rounded once it reads 99.99%, where
     // rounding to four places first and then to two read 100.00%. The row is
     // the one collect_dm_rows makes for that score at base speed.
@@ -445,22 +432,15 @@ TEST_CASE("collect_dm_rows: a percent rounds once") {
     row.optimal = 198020;
     row.delta = 10;
     row.pct_h = 9999;
-    const std::string html = app::dm_report::build_dm_html({row}, "sub", "foot");
+    row.status = "under optimal";
 
-    // The payload carries the percent's text, and the page shows that text
-    // instead of rounding the number itself.
-    CHECK(html.find("\"pct_txt\":\"99.99%\"") != std::string::npos);
-    CHECK(html.find("r.pct.toFixed(") == std::string::npos);
-    // The row's one percent is the whole hundredths; no unrounded percent
-    // rides along beside it.
-    CHECK(html.find("\"pct_h\":9999") != std::string::npos);
-    CHECK(html.find("\"pct\":") == std::string::npos);
-    // Counts and the over-optimal delta go through the page's shared fmt.
-    CHECK(html.find(".toLocaleString()]") == std::string::npos);
-    CHECK(html.find("(-r.delta).toLocaleString()") == std::string::npos);
+    // The % of opt cell writes the row's whole hundredths as text, and sorts
+    // on those same hundredths.
+    CHECK(dm_cell("pct_h", row) == "99.99%");
+    CHECK(std::get<double>(dm_sort_key("pct_h", row)) == 9999.0);
 }
 
-TEST_CASE("build_dm_html: the average tile reads a percent the way the cells do") {
+TEST_CASE("dm comparison: the average tile reads a percent the way the cells do") {
     // 198,010 of 200,000 is exactly 99.005%. format_percent rounds the half
     // up, so the cell reads 99.01%. The page's old tile rounded the float
     // 99.00499999... with toFixed(2) and read 99.00%.
@@ -473,22 +453,12 @@ TEST_CASE("build_dm_html: the average tile reads a percent the way the cells do"
     row.optimal = 200000;
     row.delta = 1990;
     row.pct_h = 9901;
-    const std::string html = app::dm_report::build_dm_html({row}, "sub", "foot");
+    row.status = "under optimal";
 
-    // The cell's text and the tile's input both come from percent_steps: the
-    // payload carries the cell's percent in whole hundredths.
-    CHECK(html.find("\"pct_txt\":\"99.01%\"") != std::string::npos);
-    CHECK(html.find("\"pct_h\":9901") != std::string::npos);
-    // The tile averages those hundredths in whole numbers and rounds the mean
-    // half up, so one row's tile is (2 x 9901 + 1) / 2 rounded down: 9901,
-    // "99.01%", the cell's own text.
-    CHECK(html.find("const sum = withPct.reduce((a, r) => a + r.pct_h, 0);") !=
-          std::string::npos);
-    CHECK(html.find("const h = Math.floor((2 * sum + n) / (2 * n));") != std::string::npos);
-    CHECK(html.find("Math.floor(h / 100) + '.' + String(h % 100).padStart(2, '0') + '%'") !=
-          std::string::npos);
-    // No number on the page is rounded by the browser's float rounding.
-    CHECK(html.find(".toFixed(") == std::string::npos);
+    // The cell's text and the tile's input both come from the row's whole
+    // hundredths, so one score's tile reads the cell's own text.
+    CHECK(dm_cell("pct_h", row) == "99.01%");
+    CHECK(dm_tile({row}, "Avg % of optimal") == "99.01%");
 }
 
 TEST_CASE("collect_dm_rows: the % of opt column sorts on the shown hundredths") {
@@ -514,20 +484,12 @@ TEST_CASE("collect_dm_rows: the % of opt column sorts on the shown hundredths") 
     CHECK(*rows[2].pct_h == 5000);
     CHECK(app::format_percent(rows[1].actual, optimal, 2) == "100.00%");
 
-    const std::string html = app::dm_report::build_dm_html(rows, "sub", "foot");
-    // The "% of opt" column sorts on that one value. The page sorts numbers by
-    // their difference, so the two 100.00% rows compare equal, and the
-    // browser's sort is stable: they keep the order the payload lists them in.
-    // The 50.00% row sorts below both.
-    CHECK(html.find("{k:'pct_h',   t:'% of opt',") != std::string::npos);
-    CHECK(html.find("return dir * (x - y);") != std::string::npos);
-    const size_t first = html.find("\"actual\":" + std::to_string(optimal) + ",");
-    const size_t second = html.find("\"actual\":" + std::to_string(optimal - 1) + ",");
-    REQUIRE(first != std::string::npos);
-    REQUIRE(second != std::string::npos);
-    CHECK(first < second);
-    CHECK(html.find("\"pct_h\":10000", first) < second);
-    CHECK(html.find("\"pct_h\":10000", second) < html.find("\"pct_h\":5000"));
+    // The "% of opt" column sorts on that one value, so the two 100.00% rows
+    // tie (the window's sort keeps ties in order) and the 50.00% row sorts
+    // below both.
+    CHECK(std::get<double>(dm_sort_key("pct_h", rows[0])) == 10000.0);
+    CHECK(std::get<double>(dm_sort_key("pct_h", rows[1])) == 10000.0);
+    CHECK(std::get<double>(dm_sort_key("pct_h", rows[2])) == 5000.0);
 }
 
 namespace {
@@ -743,12 +705,19 @@ TEST_CASE("collect_dm_rows: a Ready record with no paths reads \"no paths\" (D51
     CHECK(app::dm_report::counts_phrase(app::dm_report::tally_dm_rows({rows[0]})).find(
               "with no paths") == std::string::npos);
 
-    // The page offers the status in its filter, with the not-analyzed colour.
-    const std::string html = app::dm_report::build_dm_html(rows, "sub", "foot");
-    CHECK(html.find("<option value=\"no paths\">No paths (analyzed, none kept)</option>") !=
-          std::string::npos);
-    CHECK(html.find("'no paths':'s-notanalyzed'") != std::string::npos);
-    CHECK(html.find("No paths: analyzed, but the analysis kept no path.") != std::string::npos);
+    // The window offers the status in its Status filter, and the Status
+    // column's definition explains it.
+    bool offered = false;
+    for (const auto& c : app::dm_report_view::status_choices())
+        if (c.status == std::optional<std::string>("no paths"))
+            offered = c.label == "No paths (analyzed, none kept)";
+    CHECK(offered);
+    bool defined = false;
+    for (const auto& c : app::dm_report_view::dm_columns())
+        if (c.id == "status")
+            defined = c.definition.find("No paths: analyzed, but the analysis kept no path.") !=
+                      std::string::npos;
+    CHECK(defined);
 }
 
 TEST_CASE("why_not_comparable names the missing Clone Hero rule (170)") {
