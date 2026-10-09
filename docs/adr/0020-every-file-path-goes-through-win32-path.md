@@ -100,7 +100,11 @@ keeps the prefix.
   program won't launch (no program is set for `.html`, or starting it
   fails). A report is one self-contained file, so the copy shows the same
   page.
-- Show in folder (`ui::show_in_folder`): Explorer gets the short name. With
-  none, it returns false, and the app's message names the full path.
+- Show in folder: Explorer got the short name. With none, it returned false,
+  and the app's message named the full path.
 
-The source-scan test also fails on a shell launch anywhere but these two files.
+The source-scan test also fails on a shell launch anywhere but these files.
+
+*2026-10-08:* Show in folder is gone, with the report pages it served (ADR
+0027). `app::open_in_browser` is now the one shell launch, kept for
+`hydra_fillcompare`'s fill page.
