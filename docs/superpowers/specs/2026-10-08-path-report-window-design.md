@@ -129,7 +129,7 @@ Timing and Status are outlined chips in their colour. A path chip reads "Beyond 
 
 **States.** These come from the mock's boards 2 and 5. Every state except "nothing to report" is shared by both windows.
 
-- **Building (path report):** a progress bar reading "Analyzing n of N charts", Cancel, and greyed placeholder rows. Cancel shows "Report cancelled." with Try again.
+- **Building (path report):** a progress bar reading "Analyzing n of N records" (D103 item 25; with nothing left to analyze it moves with no count, item 26), Cancel, and greyed placeholder rows. Cancel shows "Report cancelled." with Try again.
 - **Building (comparison):** today's sentences, "Fetching scores and building the report..." and "The leaderboard server can take a moment to wake up.", with a moving bar and Cancel. The server gives no count, so the bar only shows that work is happening.
 - **Failed:** today's sentence for each report ("The path report could not be built." or "Could not build the report."), its message, its error and Try again. The comparison also offers "Compare another player...".
 - **Out of date:** a strip saying the library or the settings changed since the report was built, with Refresh. The old rows stay readable under it. It shows after a batch finishes or the committed settings change.
@@ -148,7 +148,7 @@ Timing and Status are outlined chips in their colour. A path chip reads "Beyond 
 - "Your library changed since this report was built."
 - "The settings changed since this report was built."
 - "The path report is ready."
-- "Analyzing n of N charts"
+- "Analyzing n of N records" (D103 item 25)
 - "Compare another player..."
 - "Not in your library", as the hover text on a "not in library" row
 - "Charts shown"
