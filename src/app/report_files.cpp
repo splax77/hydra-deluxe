@@ -35,12 +35,6 @@ std::optional<std::filesystem::path> known_documents_dir() {
     return out;
 }
 
-// Every report page lives in reports_dir(). `name` is one of report_files.h's
-// UTF-8 page names, converted here once.
-std::wstring html_artifact_path(const char* name) {
-    return (reports_dir() / std::filesystem::u8path(name)).wstring();
-}
-
 DocumentsDirFn g_documents_dir;
 OpenInBrowserFn g_open_in_browser;
 
@@ -62,6 +56,10 @@ std::filesystem::path reports_dir() {
 }
 
 void set_documents_dir_lookup(DocumentsDirFn fn) { g_documents_dir = std::move(fn); }
+
+std::wstring report_html_path() {
+    return (reports_dir() / std::filesystem::u8path(kPathReportFileName)).wstring();
+}
 
 void set_open_in_browser(OpenInBrowserFn fn) { g_open_in_browser = std::move(fn); }
 
@@ -126,23 +124,11 @@ bool open_in_browser(const std::wstring& path) {
     return !copy.empty() && shell_open(copy.wstring());
 }
 
-std::wstring report_html_path() { return html_artifact_path(kPathReportFileName); }
-
-std::wstring dm_report_html_path() { return html_artifact_path(kDmReportFileName); }
-
-bool open_report_in_browser() { return open_in_browser(report_html_path()); }
-
-bool open_dm_report_in_browser() { return open_in_browser(dm_report_html_path()); }
-
-bool report_file_exists() {
-    return file_exists_utf8(wide_to_utf8(report_html_path()));
-}
-
 void write_report_file(const std::filesystem::path& outpath, const std::string& html) {
-    // A reader can click "Open path report" at any moment, including while
-    // we're mid-write. To make sure they never see a half-written page, we
-    // finish writing under a temp name first and only swap it into place
-    // with one rename once it's complete.
+    // A reader can open the page at any moment, including while we're
+    // mid-write. To make sure they never see a half-written page, we finish
+    // writing under a temp name first and only swap it into place with one
+    // rename once it's complete.
     std::filesystem::path tmp = outpath;
     tmp += ".tmp";
     const auto cannot_write = [&outpath] {

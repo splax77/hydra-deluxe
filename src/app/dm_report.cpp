@@ -5,176 +5,15 @@
 
 #include "app/config.h"          // Settings::chartmode_key, Settings::lens
 #include "app/display_format.h"  // format_percent, percent_steps
-#include "app/html_page.h"
-#include "app/library_query.h"
 #include "app/report.h"  // records_by_hash, library_copies_by_hash
 #include "core/error_kind.h"
 #include "core/model.h"  // counted, group_thousands
-#include "core/strutil.h"
 #include "parse/song.h"  // display_title, display_artist, display_charter
 #include "search/graph.h"  // fill_rule_name
 
 namespace hydra::app::dm_report {
 
-using html::json_escape_into;
-
 namespace {
-
-// The comparison page's own pieces. The stylesheet and the script that sorts,
-// filters and draws the table are shared with the other report pages
-// (html::page_template, docs/adr/0016). __SUBTITLE__/__FOOTER__/__DATA__ are
-// filled by build_dm_html.
-const char* const kTitle = "Hydra vs dmleaderboards";
-
-const char* const kBody = R"page(<div class="wrap dm">
-  <header>
-    <h1>Hydra <span class="accent">vs dmleaderboards</span></h1>
-    <div class="sub">__SUBTITLE__</div>
-  </header>
-
-  <div class="stats" id="stats"></div>
-
-  <div class="controls">
-    <span class="sorter">
-      <label for="sortby">Sort by</label>
-      <select id="sortby"></select>
-      <button id="sortdir" type="button" title="Switch between highest-first and lowest-first"></button>
-    </span>
-    <input type="search" id="q" aria-label="Search scores" placeholder="Search song, artist, or charter">
-    <select id="status" aria-label="Status">
-      <option value="">All charts</option>
-      <option value="under optimal">Under optimal</option>
-      <option value="at optimal">At optimal</option>
-      <option value="above optimal">Above optimal</option>
-      <option value="not analyzed">Not analyzed (in your library)</option>
-      <option value="no paths">No paths (analyzed, none kept)</option>
-      <option value="not in library">Not in your library</option>
-      <option value="other speed">Other speed</option>
-    </select>
-    <span class="count" id="count"></span>
-  </div>
-
-  <div class="tablewrap">
-    <table>
-      <thead><tr id="head"></tr></thead>
-      <tbody id="body"></tbody>
-    </table>
-    <div class="empty" id="empty">Joining scores&hellip;</div>
-  </div>
-
-  <footer>
-    <p>__FOOTER__</p>
-    <dl class="legend" id="legend"></dl>
-  </footer>
-</div>
-
-)page";
-
-const char* const kPageJs = R"page(const STATUS_CLASS = {'under optimal':'s-matched', 'at optimal':'s-matched',
-                      'above optimal':'s-above',
-                      'not analyzed':'s-notanalyzed', 'no paths':'s-notanalyzed',
-                      'not in library':'s-unmatched',
-                      'other speed':'s-otherspeed'};
-
-const PAGE = {
-  rows: DATA,
-  noun: 'scores',
-  sortKey: 'delta',
-  sortDir: -1,
-  cols: [
-    {k:'song',    t:'Song',      num:false},
-    {k:'artist',  t:'Artist',    num:false},
-    {k:'charter', t:'Charter',   num:false},
-    {k:'actual',  t:'Actual',    num:true,  d:'The score the player posted.'},
-    {k:'optimal', t:'Hydra opt', num:true,  d:'The optimal score Hydra found for the chart at SP cap __SP_CAP__, the Clone Hero rule.'},
-    {k:'delta',   t:'Points left', num:true, d:'Hydra opt minus Actual. Marked over when the posted score is higher.'},
-    {k:'pct_h',   t:'% of opt',  num:true,  d:'Actual as a percent of Hydra opt. Only for scores played at __BASE_SPEED__% speed.'},
-    {k:'fc',      t:'FC',        num:true,  d:'Full combo: every note hit.'},
-    {k:'percent', t:'Percent',   num:true,  d:'The percent the leaderboard lists for this score.'},
-    {k:'speed',   t:'Speed',     num:true,  d:'The playback speed the score was set at. __BASE_SPEED__% is normal speed.'},
-    {k:'rank',    t:'Rank',      num:true,  d:'The score rank on this chart leaderboard.'},
-    {k:'posted',  t:'Posted',    num:false, d:'The date the score was posted.'},
-    {k:'status',  t:'Status',    num:false, d:'Under optimal, At optimal or Above optimal when Hydra has a result. Not analyzed: the chart is in your library but has no current result for this mode at SP cap __SP_CAP__. No paths: analyzed, but the analysis kept no path. Not in your library: the last scan did not find it. Other speed: played at a speed other than __BASE_SPEED__%. Clone Hero keeps a separate leaderboard per speed, so it is shown but not compared.'},
-  ],
-  controls: [['q', 'input'], ['status', 'change']],
-  // The search box is matched against each row's search text in the shared
-  // script; this keeps rows by the status control.
-  filter() {
-    const status = document.getElementById('status').value;
-    return r => !status || r.status === status;
-  },
-  cells(r) {
-    const noDelta = r.delta === null || r.delta === undefined;
-    const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.status === 'above optimal' ? 'num neg' : 'num');
-    const deltaTxt = noDelta ? DASH
-                   : (r.above_optimal ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));
-    return [
-      ['song trunc', r.song],
-      ['dim trunc artist', r.artist],
-      ['dim trunc charter', r.charter],
-      ['num', fmt(r.actual)],
-      ['num', fmt(r.optimal)],
-      [deltaCls, deltaTxt],
-      ['num', r.pct_txt === null || r.pct_txt === undefined ? DASH : r.pct_txt],
-      ['num', r.fc ? '\u2713' : DASH],
-      ['num', r.percent + '%'],
-      ['num', r.speed + '%'],
-      ['num', r.rank === null || r.rank === undefined ? DASH : '#' + r.rank],
-      ['dim', r.posted ? r.posted.slice(0, 10) : DASH],
-      ['chip ' + (STATUS_CLASS[r.status] || 's-unmatched'), r.status, 'chip'],
-    ];
-  },
-  // Mirrors tally_dm_rows in dm_report.cpp; the test "s2 offspeed: the page counts the same statuses" checks the two agree.
-  // A "no paths" row has no tile of its own (D62 item 1); Scores counts it.
-  stats(rows) {
-    const under = rows.filter(r => r.status === 'under optimal');
-    const at = rows.filter(r => r.status === 'at optimal');
-    const above = rows.filter(r => r.status === 'above optimal');
-    const notAnalyzed = rows.filter(r => r.status === 'not analyzed');
-    const notInLibrary = rows.filter(r => r.status === 'not in library');
-    const otherSpeed = rows.filter(r => r.status === 'other speed');
-    // The one percent the page works out itself, because it follows the
-    // filters: the mean of the cells' percents, which the payload carries in
-    // whole hundredths (percent_steps, the number format_percent writes).
-    // Whole numbers only, and the mean rounds half up like format_percent, so
-    // one row's tile reads exactly its cell.
-    const withPct = rows.filter(r => r.pct_h !== null && r.pct_h !== undefined);
-    let avgPct = DASH;
-    if (withPct.length) {
-      const n = withPct.length;
-      const sum = withPct.reduce((a, r) => a + r.pct_h, 0);
-      const h = Math.floor((2 * sum + n) / (2 * n));
-      avgPct = Math.floor(h / 100) + '.' + String(h % 100).padStart(2, '0') + '%';
-    }
-    // Only a score under optimal leaves points on the table, and every such
-    // row's delta is the points it left.
-    const left = under.reduce((a, r) => a + r.delta, 0);
-    return [
-      ['Scores', fmt(rows.length)],
-      ['Under optimal', fmt(under.length)],
-      ['At optimal', fmt(at.length)],
-      ['Above optimal', fmt(above.length)],
-      ['Not analyzed', fmt(notAnalyzed.length)],
-      ['Not in library', fmt(notInLibrary.length)],
-      ['Other speed', fmt(otherSpeed.length)],
-      ['Avg % of optimal', avgPct],
-      ['Points left on table', fmt(left)],
-    ];
-  },
-};
-)page";
-
-// The page shell, built once on first use.
-const std::string& page_template() {
-    // The help texts name the base speed through __BASE_SPEED__ and Clone
-    // Hero's cap through __SP_CAP__, so the page reads net::kBaseSpeedPercent
-    // and kCloneHeroSpCap instead of repeating them.
-    static const std::string page = replace_all(
-        replace_all(html::page_template(kTitle, kBody, kPageJs), "__BASE_SPEED__",
-                          std::to_string(net::kBaseSpeedPercent)),
-        "__SP_CAP__", std::to_string(kCloneHeroSpCap));
-    return page;
-}
 
 // Counts one score into `stats` by its status. Both tally_dm_rows overloads go
 // through it.
@@ -284,53 +123,6 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
     return rows;
 }
 
-std::string build_dm_html(const std::vector<DmReportRow>& rows, const std::string& subtitle,
-                          const std::string& footer) {
-    std::string data;
-    data.reserve(rows.size() * 200 + 2);
-    data.push_back('[');
-    bool first = true;
-    for (const DmReportRow& r : rows) {
-        if (!first) data.push_back(',');
-        first = false;
-
-        data += "{\"song\":";
-        json_escape_into(data, r.song);
-        data += ",\"artist\":";
-        json_escape_into(data, r.artist);
-        data += ",\"charter\":";
-        json_escape_into(data, r.charter);
-        data += ",\"search\":";
-        json_escape_into(data, search_field(r.song, r.artist, r.charter));
-        data += ",\"actual\":" + std::to_string(r.actual);
-        data += ",\"optimal\":" + (r.optimal ? std::to_string(*r.optimal) : std::string("null"));
-        data += ",\"delta\":" + (r.delta ? std::to_string(*r.delta) : std::string("null"));
-        data += ",\"above_optimal\":" + std::string(r.above_optimal ? "1" : "0");
-        // `pct_h` is the row's one percent, in whole hundredths: the column
-        // sorts on it and the average tile reads it. `pct_txt` is the same
-        // rounded percent as the cell shows it, written by format_percent.
-        if (r.pct_h && r.optimal) {
-            data += ",\"pct_h\":" + std::to_string(*r.pct_h);
-            data += ",\"pct_txt\":";
-            json_escape_into(data, format_percent(r.actual, *r.optimal, kPercentDecimals));
-        } else {
-            data += ",\"pct_h\":null,\"pct_txt\":null";
-        }
-        data += ",\"fc\":" + std::string(r.is_fc ? "1" : "0");
-        data += ",\"percent\":" + std::to_string(r.percent);
-        data += ",\"speed\":" + std::to_string(r.speed);
-        data += ",\"rank\":" + (r.rank ? std::to_string(*r.rank) : std::string("null"));
-        data += ",\"posted\":";
-        json_escape_into(data, r.posted);
-        data += ",\"status\":";
-        json_escape_into(data, r.status);
-        data.push_back('}');
-    }
-    data.push_back(']');
-    return html::render_page(page_template().c_str(), std::move(data), subtitle,
-                             footer);
-}
-
 DmReportStats tally_dm_rows(const std::vector<DmReportRow>& rows) {
     DmReportStats stats;
     for (const DmReportRow& r : rows) count_status(stats, r);
@@ -426,7 +218,6 @@ GeneratedDmReport generate_dm_report(store::RecordStore& store,
         "backends, and older Clone Hero versions allowed fills that are impossible now. "
         "Not analyzed charts are in your library without a current result for this mode "
         "at SP cap " + std::to_string(kCloneHeroSpCap) + ": analyze them, then compare again.";
-    out.html = build_dm_html(rows, subtitle, footer);
     out.subtitle = std::move(subtitle);
     out.footer = std::move(footer);
     out.rows = std::move(rows);
