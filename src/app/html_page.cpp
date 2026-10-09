@@ -124,7 +124,7 @@ const char* const kReportCss = R"css(:root {
   --rule: #e3e1db;
   --sp: #b07d0a;
   --sp-soft: #f6e7c2;
-  --t0: #2c7a5e; --t1: #85690f; --t2: #a0501f; --t3: #b23c3c; --t4: #8e3070; --t5: #5b3fa8;
+  --t0: #2c7a5e; --t3: #b23c3c;
   --tn: #646873;
   --idxw: 64px;  /* the "#" column's width; the song column sticks just right of it */
   --shadow: 0 1px 2px rgba(20,22,28,.06), 0 8px 24px rgba(20,22,28,.05);
@@ -134,7 +134,7 @@ const char* const kReportCss = R"css(:root {
     --paper: #101219; --surface: #171a22; --raised: #1e222c;
     --ink: #e9e7e2; --muted: #8f95a1; --rule: #282d39;
     --sp: #f0b429; --sp-soft: #3a2e12;
-    --t0: #4fbf94; --t1: #e0b13f; --t2: #f0894e; --t3: #f2686b; --t4: #e07ac0; --t5: #a78bfa;
+    --t0: #4fbf94; --t3: #f2686b;
     --tn: #949aa6;
     --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
   }
@@ -187,7 +187,6 @@ button:hover, select:hover { border-color: var(--sp); }
 input:focus-visible, select:focus-visible, th:focus-visible, button:focus-visible {
   outline: 2px solid var(--sp); outline-offset: 2px;
 }
-.toggle { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); cursor: pointer; user-select: none; }
 .count { color: var(--muted); font-size: 13px; margin-left: auto; }
 
 /* The wrapper scrolls both ways and has a height, so it is the header's
@@ -220,7 +219,6 @@ thead th[aria-sort] .arrow { opacity: 1; color: var(--sp); }
 tbody td { padding: 7px 10px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr:hover td { background: var(--raised); }
-tbody tr.best td:first-child { box-shadow: inset 3px 0 0 var(--sp); }
 
 /* The "#" column numbers the rows in the current sort. It isn't a sort key. */
 th.idx, td.idx { width: var(--idxw); min-width: var(--idxw); max-width: var(--idxw); color: var(--muted); }
@@ -245,15 +243,12 @@ td.trunc { overflow: hidden; text-overflow: ellipsis; }
 .song { font-weight: 550; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
 td.artist { max-width: 150px; }
 td.charter { max-width: 150px; }
-td.mode { max-width: 190px; }
 td.path { max-width: 230px; }
 .dim { color: var(--muted); }
 .path { color: var(--ink); }
 .pos { color: var(--t0); font-weight: 600; }
 .neg { color: var(--t3); }
-/* The two comparison pages size a few columns their own way. */
-.dm .song { max-width: 260px; }
-.dm td.artist { max-width: 170px; }
+/* The fill comparison sizes a few columns its own way. */
 .fill td.charter { max-width: 130px; }
 .fill td.path { max-width: 200px; font-size: 12px; }
 
@@ -262,9 +257,6 @@ td.path { max-width: 230px; }
   font-size: 11px; font-weight: 600; letter-spacing: .01em;
   border: 1px solid currentColor;
 }
-.t0{color:var(--t0)} .t1{color:var(--t1)} .t2{color:var(--t2)}
-.t3{color:var(--t3)} .t4{color:var(--t4)} .t5{color:var(--t5)} .tn{color:var(--tn); border-color:transparent}
-.s-matched{color:var(--t0)} .s-above{color:var(--t1)} .s-notanalyzed{color:var(--muted)} .s-unmatched{color:var(--tn); border-color:transparent} .s-otherspeed{color:var(--muted)}
 /* "1.1 higher" is the interesting, rare case, so it gets the strong green;
    "1.0 higher" (the common drop) is red, ties are neutral, and the two
    one-sided statuses are muted so they read as missing data, not a result. */
@@ -273,9 +265,6 @@ td.path { max-width: 230px; }
 .empty { padding: 40px; text-align: center; color: var(--muted); }
 footer { color: var(--muted); font-size: 12px; }
 footer p { margin: 0 0 8px; }
-.legend { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0; }
-.legend dt { font-weight: 600; color: var(--ink); }
-.legend dd { margin: 0; }
 
 /* Paper: light colours whatever the screen theme, no controls, the whole
    table (no inner scroller), the header repeated on every page, and rows
@@ -286,7 +275,7 @@ footer p { margin: 0 0 8px; }
     --paper: #ffffff; --surface: #ffffff; --raised: #f2f0ec;
     --ink: #000000; --muted: #4a4d55; --rule: #c9c6bf;
     --sp: #8f6508;
-    --t0: #2c7a5e; --t1: #85690f; --t2: #a0501f; --t3: #b23c3c; --t4: #8e3070; --t5: #5b3fa8;
+    --t0: #2c7a5e; --t3: #b23c3c;
     --tn: #646873;
     --shadow: none;
   }
@@ -366,8 +355,6 @@ function render() {
   let n = 0;
   for (const r of rows) {
     const tr = document.createElement('tr');
-    const rowCls = PAGE.rowClass ? PAGE.rowClass(r) : '';
-    if (rowCls) tr.className = rowCls;
 
     // The "#" column: the row's place in the current sort and filter.
     const idx = document.createElement('td');
@@ -457,8 +444,7 @@ COLS.forEach(c => {
   th.textContent = c.t;
   th.tabIndex = 0;
   th.scope = 'col';
-  // A column with a definition shows it on hover; every column says it sorts.
-  th.title = (c.d ? c.t + ': ' + c.d + '\n' : '') + 'Click to sort by ' + c.t + '.';
+  th.title = 'Click to sort by ' + c.t + '.';
   th.className = c.num ? 'sortable num' : 'sortable';
   const arrow = document.createElement('span');
   arrow.className = 'arrow';
@@ -473,19 +459,6 @@ COLS.forEach(c => {
   });
   head.appendChild(th);
 });
-
-// The footer legend: every column that carries a definition, in table order.
-const legend = document.getElementById('legend');
-if (legend) {
-  for (const c of COLS) {
-    if (!c.d) continue;
-    const dt = document.createElement('dt');
-    dt.textContent = c.t;
-    const dd = document.createElement('dd');
-    dd.textContent = c.d;
-    legend.append(dt, dd);
-  }
-}
 
 for (const [id, ev] of PAGE.controls)
   document.getElementById(id).addEventListener(ev, render);
