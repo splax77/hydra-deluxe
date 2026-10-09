@@ -704,8 +704,11 @@ AnalysisResult analyze_chart_file(const std::string& filepath,
                                   const std::function<void(float)>& on_progress) {
     // A chart with no charting at the asked difficulty (no Hard charting is
     // the common case) throws NoNotesError, which names that difficulty.
+    // With Note Shuffle on, a chart the game freezes on throws
+    // NoteShuffleFreezes here, and gets no path (D104 item 5).
     Song song = load_songpath_with_notes(filepath, settings.prodrums, settings.bass2x,
-                                         settings.difficulty, settings.rules);
+                                         settings.difficulty, settings.rules,
+                                         settings.noteshuffle);
     HydraRecord record = analyze_chart(song, settings, on_progress);
     return AnalysisResult{std::move(record), std::move(song)};
 }

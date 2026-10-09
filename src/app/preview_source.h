@@ -57,14 +57,15 @@ struct PreviewSource {
 };
 
 // Parse `notespath` (any supported chart kind) and gather its audio.
-// pro/bass2x/difficulty mirror the analysis toggles so the previewed notes
-// match the analyzed ones. rules places the fills the same way analysis does.
-// A .sng or .srb is read from disk once and the same bytes feed the notes and
-// the audio.
+// pro/bass2x/difficulty/noteshuffle mirror the analysis toggles so the
+// previewed notes match the analyzed ones. rules places the fills the same
+// way analysis does. A .sng or .srb is read from disk once and the same bytes
+// feed the notes and the audio.
 PreviewSource resolve_preview_source(const std::string& notespath, bool pro,
                                      bool bass2x,
                                      Difficulty difficulty = Difficulty::Expert,
-                                     const core::Rules& rules = core::default_rules());
+                                     const core::Rules& rules = core::default_rules(),
+                                     bool noteshuffle = false);
 
 // Reads a whole file's bytes, like read_file_bytes.
 using FileBytesReader = std::function<std::vector<uint8_t>(const std::string&)>;
@@ -76,7 +77,8 @@ PreviewSource resolve_preview_source_reading(const FileBytesReader& read_bytes,
                                              const std::string& notespath, bool pro,
                                              bool bass2x,
                                              Difficulty difficulty = Difficulty::Expert,
-                                             const core::Rules& rules = core::default_rules());
+                                             const core::Rules& rules = core::default_rules(),
+                                             bool noteshuffle = false);
 
 // ---- the two halves, for a load that runs them side by side -------------
 //
@@ -100,7 +102,8 @@ struct PreviewSong {
 PreviewSong resolve_preview_song(const std::string& notespath, const SharedBytes& container,
                                  bool pro, bool bass2x,
                                  Difficulty difficulty = Difficulty::Expert,
-                                 const core::Rules& rules = core::default_rules());
+                                 const core::Rules& rules = core::default_rules(),
+                                 bool noteshuffle = false);
 
 // Where chart time 0 sits in the audio of a chart already parsed
 // (PreviewSource::audio_offset_ms): the chart's own delay, from its song.ini

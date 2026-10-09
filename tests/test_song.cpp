@@ -15,6 +15,9 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/dynamics_breakdown.h"
+#include "app/user_messages.h"
+#include "core/error_kind.h"
 #include "core/model.h"
 #include "core/strutil.h"
 #include "chart_text.h"
@@ -25,6 +28,8 @@
 #include "parse/chart_files.h"
 #include "parse/song.h"
 #include "song_digest.h"
+#include "source_tree.h"
+#include "ui/preview_controller.h"  // PreviewSongKey
 
 #ifndef HYDRA_TESTDATA_DIR
 #error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
@@ -810,6 +815,104 @@ TEST_CASE("load-and-check throws the no-notes error for a missing difficulty") {
     CHECK_THROWS_WITH_AS(load_songpath_with_notes(no_hard, true, true, Difficulty::Hard),
                          "No Hard Pro Drums notes in this chart.", NoNotesError);
     CHECK_NOTHROW(load_songpath_with_notes(has_hard, true, true, Difficulty::Hard));
+}
+
+// ---- the Note Shuffle switch on the loaders (D104) ---------------------------
+
+namespace {
+
+const std::string kShuffleSongs =
+    (sourcetree::root() / "docs/audit/note-shuffle/game-tests/songs/").u8string();
+
+std::vector<std::string> chord_codes(const Song& song) {
+    std::vector<std::string> out;
+    for (const SongTimestamp& ts : song.sequence) out.push_back(ts.chord.code());
+    return out;
+}
+
+Song load_shuffle_song(const std::string& file, bool pro, bool bass2x, bool noteshuffle) {
+    return load_songpath(kShuffleSongs + file, pro, bass2x, Difficulty::Expert,
+                         core::default_rules(), noteshuffle);
+}
+
+}  // namespace
+
+TEST_CASE("Note Shuffle switch: a game-confirmed song loads shuffled on and as written off") {
+    const std::string a1 = "NS A1 tick scale chart192/notes.chart";
+    // The game-confirmed A1 run with Pro Drums on, the literal test_note_shuffle
+    // pins from the reference.
+    const std::vector<std::string> shuffled = {
+        "nn...", "..n..", "...n.", "..n..", "n..n.", "n....", "..n..", "...n.",
+        "nn...", "....n", "..N..", "...n.", "n.N..", "....N", "...n.", "n.n.."};
+    CHECK(chord_codes(load_shuffle_song(a1, true, false, true)) == shuffled);
+
+    const std::vector<std::string> off = chord_codes(load_shuffle_song(a1, true, false, false));
+    CHECK(off == chord_codes(load_songpath(kShuffleSongs + a1, true, false)));
+    CHECK(off != shuffled);
+
+    // The app's switch reaches the analysis settings.
+    app::Settings s;
+    CHECK_FALSE(s.to_analysis_settings().noteshuffle);
+    s.view_noteshuffle = true;
+    CHECK(s.to_analysis_settings().noteshuffle);
+}
+
+TEST_CASE("Note Shuffle switch: a chart the game freezes on gives the freeze error") {
+    const std::string c1 = "NS C1 four colour then snare/notes.mid";
+    const char* sentence = "Clone Hero freezes loading this chart with Note Shuffle on.";
+    for (const bool pro : {true, false}) {
+        CAPTURE(pro);
+        bool threw = false;
+        try {
+            load_shuffle_song(c1, pro, false, true);
+        } catch (const KindedError& e) {
+            threw = true;
+            CHECK(e.kind() == ErrorKind::NoteShuffleFreezes);
+            CHECK(app::plain_error(e) == sentence);
+        }
+        CHECK(threw);
+        CHECK_NOTHROW(load_shuffle_song(c1, pro, false, false));
+    }
+
+    // Analysis shows it the way it shows an unreadable chart: the error
+    // escapes analyze_chart_file, and its sentence is the freeze's.
+    app::Settings s;
+    s.view_noteshuffle = true;
+    bool threw = false;
+    try {
+        app::analyze_chart_file(kShuffleSongs + c1, s.to_analysis_settings());
+    } catch (const std::exception& e) {
+        threw = true;
+        CHECK(app::plain_error(e) == sentence);
+    }
+    CHECK(threw);
+}
+
+TEST_CASE("Note Shuffle switch: the Preview's song key differs when only the switch differs") {
+    const ui::PreviewSongKey off{"md5", Difficulty::Expert, true, true, false};
+    ui::PreviewSongKey on = off;
+    on.noteshuffle = true;
+    CHECK(off != on);
+    CHECK(off == ui::PreviewSongKey{"md5", Difficulty::Expert, true, true});
+}
+
+TEST_CASE("Note Shuffle switch: the Dynamics pads follow the analysis's shuffle") {
+    const std::string a2 = "NS A2 tick scale mid960/notes.mid";
+    const std::string path = kShuffleSongs + a2;
+    for (const bool bass2x : {true, false}) {
+        CAPTURE(bass2x);
+        const app::DynamicsBreakdown bd =
+            app::dynamics_for_settings(path, true, bass2x, Difficulty::Expert, true, nullptr);
+        const app::DynamicsBreakdown pads =
+            app::count_dynamics(load_shuffle_song(a2, true, bass2x, true));
+        const app::DynamicsBreakdown kicks = app::count_dynamics(
+            app::load_dynamics_song(path, true, Difficulty::Expert, false));
+        for (size_t i = 0; i < bd.rows.size(); ++i) {
+            CAPTURE(i);
+            const bool pad = i <= static_cast<size_t>(app::DynamicsRow::GreenTom);
+            CHECK(bd.rows[i] == (pad ? pads.rows[i] : kicks.rows[i]));
+        }
+    }
 }
 
 // ---- display_title: the one cleaned song title (findings 8 and 111) ----------

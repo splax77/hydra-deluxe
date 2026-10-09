@@ -3399,7 +3399,7 @@ const std::vector<OwnerRule>& rules() {
         // from a loop's enum, or a built key tested against a wanted one.
         // report.cpp's settings_for_mode and AppState::select_chart each had
         // one before the RW-T4 review.
-        {"Which Difficulty, Pro Drums and 2x Bass choices spell a chart mode key?",
+        {"Which Difficulty, Pro Drums, 2x Bass and Note Shuffle choices spell a chart mode key?",
          "Settings::with_chartmode in src/app/config.cpp",
          R"(\bview_difficulty\s*=\s*difficulty_name\(\s*\w+\s*\)|\.chartmode_key\(\)\s*(==|!=)\s*[A-Za-z_]\w*\s*\))",
          "",

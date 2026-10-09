@@ -274,32 +274,50 @@ private:
 // numerator of 0 is ignored; a bottom number of 0 or less refuses the chart.
 void apply_timesig(Song& song, int64_t tick, int numerator, int denominator);
 
+// The raw detail a Note Shuffle freeze carries (its sentence is
+// plain_error's, for ErrorKind::NoteShuffleFreezes).
+inline constexpr const char* kNoteShuffleFreezeDetail =
+    "Note Shuffle: Clone Hero's redraw never ends on this chart";
+
+// `noteshuffle` is the Note Shuffle switch (D104). Off, the chart is read as
+// written. On, load_songbytes_mid and load_songbytes_chart finish by
+// shuffling the chords (apply_note_shuffle in parse/note_shuffle.h), and
+// every other loader ends at one of those two. A chart the game freezes on
+// throws KindedError(ErrorKind::NoteShuffleFreezes) instead of returning.
 Song load_songpath_mid(const std::string& path, bool pro, bool bass2x,
                        Difficulty difficulty = Difficulty::Expert,
-                       const core::Rules& rules = core::default_rules());
+                       const core::Rules& rules = core::default_rules(),
+                       bool noteshuffle = false);
 Song load_songpath_chart(const std::string& path, bool pro, bool bass2x,
                          Difficulty difficulty = Difficulty::Expert,
-                         const core::Rules& rules = core::default_rules());
+                         const core::Rules& rules = core::default_rules(),
+                         bool noteshuffle = false);
 Song load_songpath_sng(const std::string& path, bool pro, bool bass2x,
                        Difficulty difficulty = Difficulty::Expert,
-                       const core::Rules& rules = core::default_rules());
+                       const core::Rules& rules = core::default_rules(),
+                       bool noteshuffle = false);
 Song load_songpath_srb(const std::string& path, bool pro, bool bass2x,
                        Difficulty difficulty = Difficulty::Expert,
-                       const core::Rules& rules = core::default_rules());
+                       const core::Rules& rules = core::default_rules(),
+                       bool noteshuffle = false);
 
 Song load_songbytes_mid(const std::vector<uint8_t>& data, bool pro, bool bass2x,
                         Difficulty difficulty = Difficulty::Expert,
-                        const core::Rules& rules = core::default_rules());
+                        const core::Rules& rules = core::default_rules(),
+                        bool noteshuffle = false);
 Song load_songbytes_chart(const std::vector<uint8_t>& data, bool pro, bool bass2x,
                           Difficulty difficulty = Difficulty::Expert,
-                          const core::Rules& rules = core::default_rules());
+                          const core::Rules& rules = core::default_rules(),
+                          bool noteshuffle = false);
 // A whole .sng / .srb container's bytes, as read from disk.
 Song load_songbytes_sng(const std::vector<uint8_t>& container, bool pro, bool bass2x,
                         Difficulty difficulty = Difficulty::Expert,
-                        const core::Rules& rules = core::default_rules());
+                        const core::Rules& rules = core::default_rules(),
+                        bool noteshuffle = false);
 Song load_songbytes_srb(const std::vector<uint8_t>& container, bool pro, bool bass2x,
                         Difficulty difficulty = Difficulty::Expert,
-                        const core::Rules& rules = core::default_rules());
+                        const core::Rules& rules = core::default_rules(),
+                        bool noteshuffle = false);
 
 // The file at `path` parsed from `bytes`, its contents already read by the
 // caller: dispatch on path's extension like load_songpath, without touching
@@ -309,14 +327,16 @@ Song load_songbytes_srb(const std::vector<uint8_t>& container, bool pro, bool ba
 Song load_songpath_from_bytes(const std::string& path, const std::vector<uint8_t>& bytes,
                               bool pro, bool bass2x,
                               Difficulty difficulty = Difficulty::Expert,
-                              const core::Rules& rules = core::default_rules());
+                              const core::Rules& rules = core::default_rules(),
+                              bool noteshuffle = false);
 
 // Dispatch on the file extension (.mid/.chart/.sng/.srb, case-insensitive).
 // A .sng or .srb is read in pieces: its header, then only the notes, never
 // the audio and art that make up the rest of the file.
 Song load_songpath(const std::string& path, bool pro, bool bass2x,
                    Difficulty difficulty = Difficulty::Expert,
-                   const core::Rules& rules = core::default_rules());
+                   const core::Rules& rules = core::default_rules(),
+                   bool noteshuffle = false);
 
 // Throws NoNotesError when `song` has no notes. `difficulty` and `prodrums`
 // are the ones the song was loaded with, so the sentence names them. For a
@@ -327,7 +347,8 @@ void require_notes(const Song& song, Difficulty difficulty, bool prodrums);
 // when it has no notes at `difficulty`.
 Song load_songpath_with_notes(const std::string& path, bool pro, bool bass2x,
                               Difficulty difficulty = Difficulty::Expert,
-                              const core::Rules& rules = core::default_rules());
+                              const core::Rules& rules = core::default_rules(),
+                              bool noteshuffle = false);
 
 // The one dispatch on the extension of `path`, its bytes read from `src`:
 // load_songpath passes the file (file_byte_source), load_songpath_from_bytes
@@ -335,7 +356,8 @@ Song load_songpath_with_notes(const std::string& path, bool pro, bool bass2x,
 // the pieces its notes need. Tests pass a counting source to prove that.
 Song load_songpath_reading(const ByteSource& src, const std::string& path, bool pro,
                            bool bass2x, Difficulty difficulty = Difficulty::Expert,
-                           const core::Rules& rules = core::default_rules());
+                           const core::Rules& rules = core::default_rules(),
+                           bool noteshuffle = false);
 
 }  // namespace hydra
 

@@ -46,19 +46,20 @@ class PreviewBaseJob;
 struct PreviewSceneBase;
 
 // What the Preview calls the same song: one chart (its md5) at one
-// difficulty, with Pro Drums and 2x Bass on or off. These are the inputs
-// Settings::to_analysis_settings reads to pick the notes, so another
-// difficulty, Pro Drums or 2x Bass is another song and reloads its notes
-// (D48, Q22).
+// difficulty, with Pro Drums, 2x Bass and Note Shuffle on or off. These are
+// the inputs Settings::to_analysis_settings reads to pick the notes, so
+// another difficulty, Pro Drums, 2x Bass or Note Shuffle is another song and
+// reloads its notes (D48, Q22; D104 item 1).
 struct PreviewSongKey {
     std::string md5;
     Difficulty difficulty = Difficulty::Expert;
     bool pro = false;
     bool bass2x = false;
+    bool noteshuffle = false;
 
     bool operator==(const PreviewSongKey& o) const {
         return md5 == o.md5 && difficulty == o.difficulty && pro == o.pro &&
-               bass2x == o.bass2x;
+               bass2x == o.bass2x && noteshuffle == o.noteshuffle;
     }
     bool operator!=(const PreviewSongKey& o) const { return !(*this == o); }
 };
@@ -76,7 +77,7 @@ public:
     // the caller's Path need not outlive the call. `path_key` is
     // app::path_overlay_key(path), which the caller builds once per selection
     // (it is too heavy to build per frame). Already open for the same song
-    // (PreviewSongKey: chart, difficulty, Pro Drums and 2x Bass), path key and
+    // (PreviewSongKey), path key and
     // SP cap: a no-op. Another song is a fresh load. Same song, different
     // path or cap: the new
     // overlay is built on a background job off the retained song and swapped
@@ -84,7 +85,8 @@ public:
     // position untouched; the old overlay stays up until then.
     void open(const store::ChartLibraryEntry& entry, bool pro, bool bass2x,
               Difficulty difficulty, const Path* path, const std::string& path_key,
-              int sp_cap, const core::Rules& rules = core::default_rules());
+              int sp_cap, const core::Rules& rules = core::default_rules(),
+              bool noteshuffle = false);
     // Stop audio, drop the scene/transport, and join the load thread. Keeps the
     // renderer for reuse but frees its size-dependent targets (D95 call 4);
     // the next render() makes them again. Safe to call when nothing is open.

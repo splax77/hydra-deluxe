@@ -27,6 +27,7 @@ enum class ErrorKind {
     HashFailed,
     ChartUnreadable,
     ChartTimingRefused,  // the text names the chart line, and the sentence quotes it
+    NoteShuffleFreezes,  // the game hangs shuffling this chart (apply_note_shuffle, D104 item 5)
     AlreadyPlain,        // the text is already written for the user
     SearchBroken,
     NetUnreachable,

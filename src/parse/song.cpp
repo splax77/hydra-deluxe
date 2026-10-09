@@ -14,6 +14,7 @@
 #include "core/strutil.h"
 #include "core/winstr.h"  // read_file_bytes, file_byte_source, memory_byte_source
 #include "parse/midi.h"
+#include "parse/note_shuffle.h"
 #include "parse/sng.h"
 #include "parse/chart_files.h"
 #include "parse/srb.h"
@@ -1743,32 +1744,48 @@ Song parse_mid_lean(const std::vector<uint8_t>& data, bool pro, bool bass2x,
     return MidiParser(rules).parse(mid, pro, bass2x, difficulty);
 }
 
+// The Note Shuffle switch, applied once a parser has finished the song: the
+// fill, solo and Star Power passes inside the parsers read only ticks and
+// flags, never a pad, so they see the same chords either way. Both public
+// byte loaders end here.
+void apply_shuffle_switch(Song& song, bool pro, bool noteshuffle) {
+    if (!noteshuffle) return;
+    if (apply_note_shuffle(song.sequence, pro) == NoteShuffleResult::GameFreezes)
+        throw KindedError(ErrorKind::NoteShuffleFreezes, kNoteShuffleFreezeDetail);
+}
+
 }  // namespace
 
 Song load_songbytes_mid(const std::vector<uint8_t>& data, bool pro,
-                        bool bass2x, Difficulty difficulty, const core::Rules& rules) {
+                        bool bass2x, Difficulty difficulty, const core::Rules& rules,
+                        bool noteshuffle) {
     // The lean file is gone once parse_mid_lean returns.
     Song song = parse_mid_lean(data, pro, bass2x, difficulty, rules);
+    apply_shuffle_switch(song, pro, noteshuffle);
     trim_parsed_song(song);
     return song;
 }
 
 Song load_songbytes_chart(const std::vector<uint8_t>& data, bool pro,
-                          bool bass2x, Difficulty difficulty, const core::Rules& rules) {
+                          bool bass2x, Difficulty difficulty, const core::Rules& rules,
+                          bool noteshuffle) {
     // The parser and its sections are gone by the end of this statement.
     Song song = ChartParser(rules).parse(data, pro, bass2x, difficulty);
+    apply_shuffle_switch(song, pro, noteshuffle);
     trim_parsed_song(song);
     return song;
 }
 
 Song load_songpath_mid(const std::string& path, bool pro, bool bass2x,
-                       Difficulty difficulty, const core::Rules& rules) {
-    return load_songbytes_mid(read_file_bytes(path), pro, bass2x, difficulty, rules);
+                       Difficulty difficulty, const core::Rules& rules, bool noteshuffle) {
+    return load_songbytes_mid(read_file_bytes(path), pro, bass2x, difficulty, rules,
+                              noteshuffle);
 }
 
 Song load_songpath_chart(const std::string& path, bool pro, bool bass2x,
-                         Difficulty difficulty, const core::Rules& rules) {
-    return load_songbytes_chart(read_file_bytes(path), pro, bass2x, difficulty, rules);
+                         Difficulty difficulty, const core::Rules& rules, bool noteshuffle) {
+    return load_songbytes_chart(read_file_bytes(path), pro, bass2x, difficulty, rules,
+                                noteshuffle);
 }
 
 namespace {
@@ -1777,7 +1794,7 @@ namespace {
 // disk in pieces or from a buffer in memory (the Preview reads the whole file
 // once and shares it; its notes are picked out the same way).
 Song load_container_sng(const ByteSource& src, bool pro, bool bass2x,
-                        Difficulty difficulty, const core::Rules& rules) {
+                        Difficulty difficulty, const core::Rules& rules, bool noteshuffle) {
     // Which entry is the notes file is pick_notes_file's question.
     const std::vector<uint8_t> head = sng_read_head(src);
     const std::vector<SngFileEntry> entries = sng_read_file_table(head);
@@ -1792,12 +1809,12 @@ Song load_container_sng(const ByteSource& src, bool pro, bool bass2x,
     std::optional<std::vector<uint8_t>> notebytes = sng_read_file(src, head, entries[pick->index]);
     if (!notebytes) throw KindedError(ErrorKind::ChartUnreadable, "Truncated SNG file.");
     if (pick->format == ChartFormat::Mid)
-        return load_songbytes_mid(*notebytes, pro, bass2x, difficulty, rules);
-    return load_songbytes_chart(*notebytes, pro, bass2x, difficulty, rules);
+        return load_songbytes_mid(*notebytes, pro, bass2x, difficulty, rules, noteshuffle);
+    return load_songbytes_chart(*notebytes, pro, bass2x, difficulty, rules, noteshuffle);
 }
 
 Song load_container_srb(const ByteSource& src, bool pro, bool bass2x,
-                        Difficulty difficulty, const core::Rules& rules) {
+                        Difficulty difficulty, const core::Rules& rules, bool noteshuffle) {
     // Stream 1 (metadata) names the notes file; stream 2 is its bytes.
     // srb_read_metadata reads stream 1 and refuses a source too short for it.
     const SrbMetadataRead read = srb_read_metadata(src);
@@ -1819,59 +1836,69 @@ Song load_container_srb(const ByteSource& src, bool pro, bool bass2x,
     else  // Unexpected filename: sniff the payload instead.
         is_mid = notebytes.size() >= 4 && std::memcmp(notebytes.data(), "MThd", 4) == 0;
 
-    if (is_mid) return load_songbytes_mid(notebytes, pro, bass2x, difficulty, rules);
-    return load_songbytes_chart(notebytes, pro, bass2x, difficulty, rules);
+    if (is_mid) return load_songbytes_mid(notebytes, pro, bass2x, difficulty, rules, noteshuffle);
+    return load_songbytes_chart(notebytes, pro, bass2x, difficulty, rules, noteshuffle);
 }
 
 }  // namespace
 
 Song load_songbytes_sng(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
-                        Difficulty difficulty, const core::Rules& rules) {
-    return load_container_sng(memory_byte_source(buf), pro, bass2x, difficulty, rules);
+                        Difficulty difficulty, const core::Rules& rules, bool noteshuffle) {
+    return load_container_sng(memory_byte_source(buf), pro, bass2x, difficulty, rules,
+                              noteshuffle);
 }
 
 Song load_songbytes_srb(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
-                        Difficulty difficulty, const core::Rules& rules) {
-    return load_container_srb(memory_byte_source(buf), pro, bass2x, difficulty, rules);
+                        Difficulty difficulty, const core::Rules& rules, bool noteshuffle) {
+    return load_container_srb(memory_byte_source(buf), pro, bass2x, difficulty, rules,
+                              noteshuffle);
 }
 
 // A container on disk is read in pieces: its header, then only the notes. The
 // rest is audio and art (about 1 GB for the largest .sng in the library), which
 // the notes never need.
 Song load_songpath_sng(const std::string& path, bool pro, bool bass2x,
-                       Difficulty difficulty, const core::Rules& rules) {
-    return load_container_sng(file_byte_source(path), pro, bass2x, difficulty, rules);
+                       Difficulty difficulty, const core::Rules& rules, bool noteshuffle) {
+    return load_container_sng(file_byte_source(path), pro, bass2x, difficulty, rules,
+                              noteshuffle);
 }
 
 Song load_songpath_srb(const std::string& path, bool pro, bool bass2x,
-                       Difficulty difficulty, const core::Rules& rules) {
-    return load_container_srb(file_byte_source(path), pro, bass2x, difficulty, rules);
+                       Difficulty difficulty, const core::Rules& rules, bool noteshuffle) {
+    return load_container_srb(file_byte_source(path), pro, bass2x, difficulty, rules,
+                              noteshuffle);
 }
 
 Song load_songpath_from_bytes(const std::string& path, const std::vector<uint8_t>& bytes,
                               bool pro, bool bass2x, Difficulty difficulty,
-                              const core::Rules& rules) {
+                              const core::Rules& rules, bool noteshuffle) {
     return load_songpath_reading(memory_byte_source(bytes), path, pro, bass2x, difficulty,
-                                 rules);
+                                 rules, noteshuffle);
 }
 
 Song load_songpath_reading(const ByteSource& src, const std::string& path, bool pro,
-                           bool bass2x, Difficulty difficulty, const core::Rules& rules) {
+                           bool bass2x, Difficulty difficulty, const core::Rules& rules,
+                           bool noteshuffle) {
     switch (chart_format_of(path)) {
         case ChartFormat::Mid:
-            return load_songbytes_mid(read_all(src), pro, bass2x, difficulty, rules);
+            return load_songbytes_mid(read_all(src), pro, bass2x, difficulty, rules,
+                                      noteshuffle);
         case ChartFormat::Chart:
-            return load_songbytes_chart(read_all(src), pro, bass2x, difficulty, rules);
-        case ChartFormat::Sng: return load_container_sng(src, pro, bass2x, difficulty, rules);
-        case ChartFormat::Srb: return load_container_srb(src, pro, bass2x, difficulty, rules);
+            return load_songbytes_chart(read_all(src), pro, bass2x, difficulty, rules,
+                                        noteshuffle);
+        case ChartFormat::Sng:
+            return load_container_sng(src, pro, bass2x, difficulty, rules, noteshuffle);
+        case ChartFormat::Srb:
+            return load_container_srb(src, pro, bass2x, difficulty, rules, noteshuffle);
         case ChartFormat::None: break;
     }
     throw KindedError(ErrorKind::ChartUnreadable, "unexpected chart type: " + path);
 }
 
 Song load_songpath(const std::string& path, bool pro, bool bass2x,
-                   Difficulty difficulty, const core::Rules& rules) {
-    return load_songpath_reading(file_byte_source(path), path, pro, bass2x, difficulty, rules);
+                   Difficulty difficulty, const core::Rules& rules, bool noteshuffle) {
+    return load_songpath_reading(file_byte_source(path), path, pro, bass2x, difficulty, rules,
+                                 noteshuffle);
 }
 
 void require_notes(const Song& song, Difficulty difficulty, bool prodrums) {
@@ -1879,8 +1906,9 @@ void require_notes(const Song& song, Difficulty difficulty, bool prodrums) {
 }
 
 Song load_songpath_with_notes(const std::string& path, bool pro, bool bass2x,
-                              Difficulty difficulty, const core::Rules& rules) {
-    Song song = load_songpath(path, pro, bass2x, difficulty, rules);
+                              Difficulty difficulty, const core::Rules& rules,
+                              bool noteshuffle) {
+    Song song = load_songpath(path, pro, bass2x, difficulty, rules, noteshuffle);
     require_notes(song, difficulty, pro);
     return song;
 }

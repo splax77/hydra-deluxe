@@ -300,6 +300,7 @@ AnalysisSettings Settings::to_analysis_settings() const {
     AnalysisSettings s;
     s.prodrums = view_prodrums;
     s.bass2x = effective_bass2x();
+    s.noteshuffle = view_noteshuffle;
     s.difficulty = difficulty();
     s.depth_mode = search_depth_mode();
     s.depth_value = depth_value;
