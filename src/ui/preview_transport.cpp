@@ -13,11 +13,7 @@ void PreviewTransport::load(std::unique_ptr<audio::Playhead> playhead,
     std::lock_guard<std::mutex> lock(mu_);
     playhead_ = std::move(playhead);
     audio_offset_ms_ = audio_offset_ms;
-    // How far playback runs, not the song's end: the audio may run on past
-    // the last note, and that tail stays playable (D48, Q25).
-    const std::optional<double> audio_end =
-        playhead_ ? audio_end_chart_ms(*playhead_, audio_offset_ms_) : std::nullopt;
-    length_ms_ = (std::max)(last_note_ms, audio_end.value_or(0.0));
+    update_length_locked(last_note_ms);
     if (playhead_) {
         playhead_->pause();
         playhead_->seek_ms(audio_ms_of_chart_ms(0.0, audio_offset_ms_));
@@ -25,6 +21,24 @@ void PreviewTransport::load(std::unique_ptr<audio::Playhead> playhead,
     }
     clock_.pause();
     clock_.seek_ms(0.0);
+}
+
+void PreviewTransport::update_length_locked(double last_note_ms) {
+    // How far playback runs, not the song's end: the audio may run on past
+    // the last note, and that tail stays playable (D48, Q25).
+    const std::optional<double> audio_end =
+        playhead_ ? audio_end_chart_ms(*playhead_, audio_offset_ms_) : std::nullopt;
+    length_ms_ = (std::max)(last_note_ms, audio_end.value_or(0.0));
+}
+
+void PreviewTransport::set_last_note_ms(double last_note_ms) {
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        update_length_locked(last_note_ms);
+    }
+    // A shorter range must not leave the clock past its end. seek_ms owns
+    // the clamp, so hand it the clock's own time.
+    if (clock_.now_ms() > length_ms_) seek_ms(clock_.now_ms());
 }
 
 void PreviewTransport::unload() {

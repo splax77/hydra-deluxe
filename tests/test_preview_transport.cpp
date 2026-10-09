@@ -108,6 +108,39 @@ TEST_CASE("load takes the later of last note and audio end as the length") {
     CHECK(transport.now_ms() == doctest::Approx(0.0));
 }
 
+// The Preview swaps in another mode's notes without reloading the audio. The
+// last note moves, so the playback range follows it by load()'s rule, and a
+// clock left past the new end comes back to it. The play state stays.
+TEST_CASE("set_last_note_ms moves the length and pulls the clock back to it") {
+    double t = 0.0;
+    PreviewTransport transport([&] { return t; });
+    auto* playhead = new Playhead(make_ramp(48000));  // 1000 ms
+    transport.load(std::unique_ptr<Playhead>(playhead), 3000.0);
+    REQUIRE(transport.length_ms() == doctest::Approx(3000.0));
+    transport.seek_ms(1200.0);
+    transport.play();
+
+    // Longer notes: the range grows and the clock stays put.
+    transport.set_last_note_ms(4000.0);
+    CHECK(transport.length_ms() == doctest::Approx(4000.0));
+    CHECK(transport.now_ms() == doctest::Approx(1200.0));
+    CHECK(transport.playing());
+
+    // Notes shorter than the audio: the audio's end is the range again.
+    transport.set_last_note_ms(200.0);
+    CHECK(transport.length_ms() == doctest::Approx(1000.0));
+    CHECK(transport.now_ms() == doctest::Approx(1000.0));  // pulled back from 1200
+    CHECK(playhead->position_ms() == doctest::Approx(1000.0));
+    CHECK(transport.has_audio());  // the audio was never dropped
+
+    // Inside the range nothing moves.
+    transport.seek_ms(500.0);
+    transport.set_last_note_ms(800.0);
+    CHECK(transport.length_ms() == doctest::Approx(1000.0));
+    CHECK(transport.now_ms() == doctest::Approx(500.0));
+    CHECK(playhead->position_ms() == doctest::Approx(500.0));
+}
+
 TEST_CASE("play seeks the playhead to the clock and both run") {
     double t = 0.0;
     PreviewTransport transport([&] { return t; });
