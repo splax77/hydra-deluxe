@@ -4142,6 +4142,30 @@ const std::vector<OwnerRule>& rules() {
           {"src/ui/preview_tab.cpp", "s.score_line_h = s.score_size * 1.2f;",
            "overlay_box_sizes, the owner"}},
          {"src/ui/preview_tab.cpp"}},
+        // The first load, a notes reload and an overlay build each used to
+        // swap their scene in by hand; close() and a failed notes reload
+        // dropped it the same way.
+        {"When a Preview scene lands or is dropped, what moves with it?",
+         "PreviewController::show_scene in src/ui/preview_controller.cpp",
+         R"(\b(scene_|pending_track_|pending_track_opts_|scene_path_key_)\s*=(?!=))",
+         "",
+         {},
+         {},
+         "derive-once review of preview-keeps-place (finding 1)",
+         {"scene_ = std::move(out.scene);", "pending_track_ = std::move(result.track_state);",
+          "pending_track_opts_ = out.track_opts;", "scene_path_key_ = job_path_key_;"},
+         {"if (pending_track_ && pending_track_opts_ == opts)", "pending_track_.reset();",
+          "scene_path_key_.clear();",
+          "show_scene(std::move(out.scene), std::move(out.track_state), out.track_opts,"},
+         {{"src/ui/preview_controller.cpp", "scene_ = std::move(scene);",
+           "show_scene, the owner"},
+          {"src/ui/preview_controller.cpp", "pending_track_ = std::move(track);",
+           "show_scene, the owner"},
+          {"src/ui/preview_controller.cpp", "pending_track_opts_ = track_opts;",
+           "show_scene, the owner"},
+          {"src/ui/preview_controller.cpp", "scene_path_key_ = std::move(path_key);",
+           "show_scene, the owner"}},
+         {"src/ui/preview_controller.cpp"}},
         // A prefix test on a drawn overlay key, or a read of the key's path
         // part (overlay_key_path_part) anywhere but shows_path. Tests may
         // still compare two keys whole.

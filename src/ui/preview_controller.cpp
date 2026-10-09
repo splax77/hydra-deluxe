@@ -154,11 +154,8 @@ void PreviewController::take_notes_job() {
         song_ = std::make_shared<const Song>(std::move(result.song));
         song_length_ms_ = result.song_length_ms;
         pro_ = notes_job_->pro();
-        scene_ = std::move(result.scene);
-        pending_track_ = std::move(result.track_state);
-        pending_track_opts_ = result.track_opts;
-        scene_path_key_ = job_path_key_;
-        scene_dirty_ = true;
+        show_scene(std::move(result.scene), std::move(result.track_state), result.track_opts,
+                   job_path_key_);
         // The path-free base belonged to the old notes; poll() builds the new
         // one as it does after a first load.
         scene_base_.reset();
@@ -175,14 +172,22 @@ void PreviewController::take_notes_job() {
         // transport stays loaded: switching back reloads only the notes.
         song_.reset();
         song_length_ms_.reset();
-        scene_ = hydra::app::PreviewScene{};
-        pending_track_.reset();
-        scene_dirty_ = true;
+        show_scene({}, std::nullopt, {}, {});
         scene_base_.reset();
         base_started_ = false;
     }
     notes_job_.reset();
     job_path_key_.clear();
+}
+
+void PreviewController::show_scene(hydra::app::PreviewScene scene,
+                                   std::optional<render::TrackState> track,
+                                   render::TrackStateOptions track_opts, std::string path_key) {
+    scene_ = std::move(scene);
+    pending_track_ = std::move(track);
+    pending_track_opts_ = track_opts;
+    scene_path_key_ = std::move(path_key);
+    scene_dirty_ = true;
 }
 
 void PreviewController::start_scene_job() {
@@ -216,9 +221,9 @@ void PreviewController::close() {
     retired_base_jobs_.clear();
     retired_notes_jobs_.clear();
     requested_path_key_.clear();
-    scene_ = hydra::app::PreviewScene{};
-    scene_dirty_ = true;  // the renderer (if kept) must drop the old chart
-    pending_track_.reset();  // scene_ is empty now; render() builds its (empty) timeline
+    // The renderer (if kept) must drop the old chart; render() builds the
+    // empty scene's timeline.
+    show_scene({}, std::nullopt, {}, {});
     song_.reset();
     audio_end_ms_.reset();
     song_length_ms_.reset();
@@ -227,7 +232,6 @@ void PreviewController::close() {
     sp_cap_ = kCloneHeroSpCap;
     path_key_.clear();
     job_path_key_.clear();
-    scene_path_key_.clear();
     have_frame_ = false;
     // The targets go (D95 call 4); zero sizes make the next render() resize.
     if (renderer_) renderer_->release_targets();
@@ -259,11 +263,8 @@ void PreviewController::poll() {
         if (scene_job_->ok()) {
             PreviewSceneJob::Output out = scene_job_->take_output();
             scene_base_ = std::move(out.base);  // the next path change reuses it
-            scene_ = std::move(out.scene);
-            pending_track_ = std::move(out.track_state);
-            pending_track_opts_ = out.track_opts;
-            scene_path_key_ = scene_job_->key();
-            scene_dirty_ = true;
+            show_scene(std::move(out.scene), std::move(out.track_state), out.track_opts,
+                       scene_job_->key());
         } else if (error_.empty()) {
             error_ = scene_job_->message();
             error_detail_ = scene_job_->error();
@@ -293,11 +294,8 @@ void PreviewController::poll() {
         audio_end_ms_ = result.audio_end_ms;
         song_length_ms_ = result.song_length_ms;
         chart_changed_ = result.chart_changed;
-        scene_ = std::move(result.scene);
-        pending_track_ = std::move(result.track_state);
-        pending_track_opts_ = result.track_opts;
-        scene_path_key_ = job_path_key_;
-        scene_dirty_ = true;
+        show_scene(std::move(result.scene), std::move(result.track_state), result.track_opts,
+                   job_path_key_);
         first_load_done_ = true;
         transport_.set_gain(app::Settings::volume_gain(volume_pct_));
         transport_.load(std::make_unique<audio::Playhead>(std::move(result.audio)),

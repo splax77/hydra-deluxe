@@ -309,11 +309,17 @@ private:
     render::TrackStateOptions track_opts() const;
     // The highway timeline a job built from scene_ on its worker, waiting for
     // render() to move it into the renderer, plus the options it was built
-    // with. Set together with scene_ whenever a job's scene lands; empty
-    // otherwise (then render() builds the timeline itself, as for the empty
-    // scene after close()). Dropped after the upload.
+    // with. Set by show_scene together with scene_; empty when there is none
+    // (then render() builds the timeline itself, as for the empty scene after
+    // close()). Dropped after the upload.
     std::optional<render::TrackState> pending_track_;
     render::TrackStateOptions pending_track_opts_;
+    // The one place scene_ changes: the scene, the timeline a job built from
+    // it (or none), that timeline's options and the overlay key the scene was
+    // built for are swapped in together, and render() is told. Each landing
+    // job and each drop of the scene calls it.
+    void show_scene(hydra::app::PreviewScene scene, std::optional<render::TrackState> track,
+                    render::TrackStateOptions track_opts, std::string path_key);
     int sp_cap_ = kCloneHeroSpCap;  // the SP meter's ceiling the scene was built with
     // The rules the running score is priced under: the user's
     // hydra_rules.ini, as the panel passes it to every open().
