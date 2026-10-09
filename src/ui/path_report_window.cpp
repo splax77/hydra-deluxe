@@ -2,6 +2,8 @@
 // filled with the path report's rows, columns (app/path_report_view.h),
 // tiles (path_tiles) and its Timing and Best path only controls.
 
+#include <algorithm>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -22,7 +24,8 @@ using app::report::ReportRow;
 using app::report_view::TableView;
 namespace view_rules = app::path_report_view;
 
-// Everything the window keeps between frames. A new result starts it fresh.
+// Everything the window keeps between frames. A new result starts it fresh,
+// except one built because the window opened (PathReportInput::keep_filters).
 struct PathWindow {
     std::weak_ptr<const GeneratedReport> built_from;
     std::unique_ptr<TableView<ReportRow>> view;
@@ -30,6 +33,8 @@ struct PathWindow {
     std::vector<std::string> labels;
     int timing = 0;
     bool best_only = true;
+    // The view's sort, kept while the window has no rows.
+    std::vector<app::report_view::SortSpec> sort;
     std::vector<app::report::Tile> tiles;
     bool tiles_dirty = true;
     report_frame::Memory memory;
@@ -48,11 +53,26 @@ void apply_filters(PathWindow& w) {
     w.tiles_dirty = true;
 }
 
-void rebuild(PathWindow& w, const std::shared_ptr<const GeneratedReport>& result) {
-    w.memory.reset();
+// Lets the window's copy of the rows go, keeping the sort they were in.
+void drop_rows(PathWindow& w) {
+    if (w.view) w.sort = w.view->sort();
     w.view.reset();
-    w.timing = 0;
-    w.best_only = true;
+    w.tiles.clear();
+}
+
+// Takes up a new result. `keep`: the search, timing, Best path only and sort
+// stay as the user left them; otherwise they start over.
+void rebuild(PathWindow& w, const std::shared_ptr<const GeneratedReport>& result, bool keep) {
+    drop_rows(w);
+    const report_frame::Memory kept = w.memory;
+    w.memory.reset();
+    if (keep) {
+        std::copy(std::begin(kept.search), std::end(kept.search), std::begin(w.memory.search));
+    } else {
+        w.timing = 0;
+        w.best_only = true;
+        w.sort.clear();
+    }
     w.tiles_dirty = true;
     w.built_from = result;
     if (!result || result->paths.empty()) return;
@@ -61,10 +81,21 @@ void rebuild(PathWindow& w, const std::shared_ptr<const GeneratedReport>& result
     for (const ReportRow& r : result->paths) texts.push_back(view_rules::path_search_text(r));
     w.view = std::make_unique<TableView<ReportRow>>(
         result->paths, std::move(texts), view_rules::path_columns(result->hit_window_ms));
-    w.view->set_sort({view_rules::path_first_sort()});
+    // A kept sort naming a column these rows lack falls back to the first.
+    const auto has_column = [&w](const app::report_view::SortSpec& s) {
+        const auto& cols = w.view->columns();
+        return std::any_of(cols.begin(), cols.end(), [&s](const auto& c) { return c.id == s.column; });
+    };
+    if (w.sort.empty() || !std::all_of(w.sort.begin(), w.sort.end(), has_column))
+        w.sort = {view_rules::path_first_sort()};
+    w.view->set_sort(w.sort);
+    // The timing kept is an index into the choices. New choices (the hit
+    // window changed) make it mean another tier, so it starts over.
     w.choices = view_rules::timing_choices(result->hit_window_ms);
-    w.labels.clear();
-    for (const view_rules::TimingChoice& c : w.choices) w.labels.push_back(c.label);
+    std::vector<std::string> labels;
+    for (const view_rules::TimingChoice& c : w.choices) labels.push_back(c.label);
+    if (labels != w.labels) w.timing = 0;
+    w.labels = std::move(labels);
     apply_filters(w);
 }
 
@@ -109,7 +140,8 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
         w.memory.was_open = false;
         return;
     }
-    if (!report_frame::same_result(w.built_from, input.result)) rebuild(w, input.result);
+    if (!report_frame::same_result(w.built_from, input.result))
+        rebuild(w, input.result, input.keep_filters);
     const GeneratedReport* result = input.result.get();
 
     report_frame::Frame frame = report_frame::frame_from(input);
@@ -133,6 +165,13 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
 
     if (report_frame::begin(open, frame, w.memory) && w.view) draw_body(w, frame, input);
     report_frame::end(open, frame, w.memory);
+    // Closed this frame: the window's copy of the rows goes with AppState's
+    // (D103 item 28). The search box, dropdown, Best path only and sort stay
+    // for the rows the next opening builds.
+    if (!*open) {
+        drop_rows(w);
+        w.built_from.reset();
+    }
 }
 
 PathReportInput path_report_input(AppState& app) {
@@ -141,6 +180,7 @@ PathReportInput path_report_input(AppState& app) {
     if (in.state == ReportBuild::Building && app.report_job)
         std::tie(in.progress_done, in.progress_total) = app.report_job->progress();
     in.rules_error = app.rules_error;
+    in.keep_filters = slot.built_on_open;
     // The row index is into this frame's result, which the click keeps alive.
     in.callbacks.row_click = [&app, result = slot.result](size_t row) {
         const ReportRow& r = result->paths[row];
@@ -149,7 +189,9 @@ PathReportInput path_report_input(AppState& app) {
     in.callbacks.refresh = [&app] { app.request_path_report(); };
     in.callbacks.try_again = [&app] { app.request_path_report(); };
     in.callbacks.cancel = [&app] { app.cancel_path_report(); };
-    // The window clears window_open itself through its `open` flag.
+    // The window clears window_open itself through its `open` flag; the
+    // close then goes through its one owner.
+    in.callbacks.close = [&app] { app.close_path_report(); };
     return in;
 }
 

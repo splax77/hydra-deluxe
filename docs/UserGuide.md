@@ -236,7 +236,7 @@ The first time a report window opens, it covers the main window, at the same siz
 
 The **path report** is one table of every analyzed song's paths, squeeze timings and scores. It lists every chart mode (each difficulty, with or without Pro Drums and 2x Bass) analyzed at the current SP cap, fill rule, path limit and score range. Each chart and mode shows its top 5 paths.
 
-A finished batch builds it. `Open path report` on the toolbar opens it at any time. Hydra Deluxe keeps the report in memory, not in a file. So the first time you open it after starting Hydra Deluxe, it builds a fresh one.
+A finished batch builds it. `Open path report` on the toolbar opens it at any time. Hydra Deluxe keeps the report in memory, not in a file. So the first time you open it after starting Hydra Deluxe, it builds a fresh one. Closing the window lets the report go, to save memory, and opening it again builds a fresh one too. The window keeps your search, timing choice, `Best path only` and sort for it. `Refresh` and a batch's new report start them over. If a build is still running when you close the window, it stops. A report a batch builds while the window is closed waits for you to open it.
 
 Hydra Deluxe keeps only each song's summary, so building the report analyzes those songs again, on all cores. Songs a batch just analyzed are reused. On a large library that takes a few seconds. While it builds, the window shows a bar reading `Analyzing n of N records` and a `Cancel` button. A record is one song in one mode, so a song analyzed in two modes counts twice. When a batch already analyzed everything, the bar just moves, with no count. While `hydra_rules.ini` has an error, analysis is off. A window with no report to show then says so instead of building. Cancelling shows `Report cancelled.` with `Try again`. If the build fails, the window says `The path report could not be built.`, with the reason and `Try again`.
 
@@ -261,12 +261,12 @@ If nothing is analyzed under the current settings but other results exist, the r
 
 **When the report is out of date.** The window never changes its rows behind your back. After a batch, a report built before it shows a strip: `Your library changed since this report was built (a batch finished at HH:MM).` Changing a setting the report depends on shows `The settings changed since this report was built.` For the path report those settings are the SP cap, `1.0 fills`, the score range and the path limit. Switching the difficulty, Pro Drums or 2x Bass doesn't count, because the report already lists every chart mode. The old rows stay readable under the strip. `Refresh` builds the report again and clears it.
 
-**Keyboard.** `Tab` moves through the controls and the table. The `Up` and `Down` arrows move the row selection, and each move selects the song, like a click. `Escape` or `Ctrl+W` closes the window, and so does its `X`. While you're typing in the search box, `Escape` doesn't close it. Closing keeps the report in memory, so it opens again at once.
+**Keyboard.** `Tab` moves through the controls and the table. The `Up` and `Down` arrows move the row selection, and each move selects the song, like a click. `Escape` or `Ctrl+W` closes the window, and so does its `X`. While you're typing in the search box, `Escape` doesn't close it. Closing the path report lets it go, as described under the path report above. Closing the comparison keeps it in memory, so it opens again at once.
 
 The finished batch strip offers:
 
-- **`Open report`** opens the path report window. The strip's second line reads `The path report is ready.`
-- **`Open automatically`**: Open the path report as soon as it's built. It covers only the path report.
+- **`Open report`** opens the path report window. The strip's second line reads `The path report is ready.` Once you close the path report window, the report is gone, so the line and the button go too. The toolbar's `Open path report` still opens it.
+- **`Open automatically`**: Open the path report as soon as it's built. It covers only the path report. The strip is the only place to change it, so it stays after you close the path report window. It hides while a report builds and after a build fails.
 - Its `X` dismisses the strip.
 
 ### Old report files

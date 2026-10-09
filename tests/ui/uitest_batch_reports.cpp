@@ -294,7 +294,7 @@ void test_report_buttons(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->path_report.window_open);
     ctx->Yield(2);
     IM_CHECK(window_named("###pathreport") != nullptr);
-    h.app->path_report.window_open = false;  // the window's X
+    h.app->close_path_report();  // the window's X, through its close callback
 
     // "Also re-analyze" re-analyzes the stored chart, and the confirm says so.
     const std::string label = hydra::ui::detail::analyze_search_label(
@@ -497,6 +497,23 @@ void test_batch_done_strip(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->path_report.window_open);
     ctx->Yield(2);
     IM_CHECK(window_named("###pathreport") != nullptr);
+    // Closing the window lets the report go (D103 item 28), so the strip
+    // drops its "ready" line and its Open report button; the strip stays.
+    h.app->close_path_report();
+    ctx->Yield(3);
+    IM_CHECK(child_window(ctx, "//Hydra/##batchdone") != nullptr);
+    IM_CHECK(visible_text(h).find("The path report is ready.") == std::string::npos);
+    ctx->SetRef(child_window(ctx, "//Hydra/##batchdone"));
+    IM_CHECK(!ctx->ItemExists("Open report"));
+    // "Open automatically" is a setting, and the strip is its only place, so
+    // it stays after the close (item 28's 2026-10-09 answer) and still works.
+    IM_CHECK(ctx->ItemExists("Open automatically"));
+    ctx->ItemClick("Open automatically");
+    IM_CHECK(h.app->settings.auto_open_report);
+    IM_CHECK(hydra::app::Settings::load_file(h.ini_path).auto_open_report);
+    ctx->ItemClick("Open automatically");
+    IM_CHECK(!h.app->settings.auto_open_report);
+    IM_CHECK(!hydra::app::Settings::load_file(h.ini_path).auto_open_report);
     ctx->ItemClick("X##dismissdone");
     ctx->Yield(3);
     IM_CHECK(h.app->batch_job == nullptr);

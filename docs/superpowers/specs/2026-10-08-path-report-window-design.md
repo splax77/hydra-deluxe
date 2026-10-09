@@ -89,6 +89,8 @@ Every other ImGui window keeps today's settings, so nothing else tears off. The 
 
 **Opening and closing.** Each window has one instance. Opening it again brings it to the front. The title-bar X, Esc or Ctrl+W hides the window. Its rows stay in memory, so reopening is instant.
 
+*Note (2026-10-09): this changed for the path report. Closing its window now lets the rows go, and reopening builds the report again with the building bar. The rebuilt rows keep the window's search, timing, Best path only and sort; Refresh and a batch's new report still reset them. A build still running when it closes stops. See D103 item 28 and ADR 0027's "Memory" paragraph. The comparison window still keeps its rows.*
+
 **The path report's entry points.** "Open path report" shows once the library has analyzed charts; today it needs a report file to exist. While a batch's report builds it reads "Building path report..." as today, but it stays clickable and opens the window in its building state. The batch-done strip keeps "Open report" and "Open automatically" but loses "Show in folder". Its second line reads "The path report is ready." instead of naming a file.
 
 **The comparison's entry point.** The toolbar's "Compare dmleaderboards user" button and its rules check are unchanged. The box still loads the user list and lets you pick a player. Picking one closes the box and opens the window, which shows today's two waiting sentences and a Cancel button. "Compare another player..." in the window reopens the box.
@@ -232,7 +234,7 @@ A new ADR 0027, "Reports are Hydra windows", records the decision.
 - filter to nothing, then Clear filters
 - a row click selects the chart and switches the settings bar's mode when needed
 - a "not in library" row click does nothing
-- Esc closes a window, and reopening is instant
+- Esc closes a window; the comparison reopens at once, and the path report builds again (see the 2026-10-09 note under "Opening and closing")
 - both windows can be open at once
 - the out-of-date strip shows after a batch and clears after Refresh
 
