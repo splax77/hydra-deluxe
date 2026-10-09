@@ -31,10 +31,13 @@ Documents Claude publishes need a review from a fresh agent first. Hooks enforce
 These hold for the main session and every agent it sends out. Hooks enforce most of them; the details live in `docs/agents/brief-preamble.md` (what every agent reads first) and the model-postures file (what the main session gets each prompt).
 
 1. Agents never run the full test suite. They run only the tests for their own change. The main session runs the full suite once, when it merges.
-2. Planning agents run on Fable. Code executors run on Opus. Code reviewers run on Sonnet.
-3. Anything that changes a display in the app or a stored record goes to the user first. A change that only touches code proceeds on your recommendation, and you report it after.
+2. Planning agents run on Fable. Code executors run on Opus. Code reviewers run on Sonnet. Read-only scouts run on Sonnet.
+3. No work starts without the user's approval. Every plan and every build waits for the user's yes before it begins. In this rule a build means any piece of work: writing code, editing hooks, or launching agents to do either. A change that only touches code needs no approval of its design: pick the design and recommend it, but the build still waits for the yes. A change to a display in the app or a stored record also takes its design to the user first. When the user asks for one specific edit, the request is the approval. Compiling and running tests inside approved work need no separate yes.
 4. Agents never stall or go quiet for long. When they hit a problem, they fail loudly: stop and say what broke.
 5. A reviewer agent must clear the derive-once audit before a change merges (see above). One round of review at most: the reviewer reports, the author fixes once, the reviewer fixes anything left and signs off.
 6. Agents run in parallel, in workflows, while the main session merges. Waves of parallel agents are fine. Never queue independent tasks one after another.
-7. Agents write a status line every 10 tool calls and every 5 minutes. At 100 tool calls an agent starts wrapping up: it commits what it has and hands the rest to a fresh agent. 150 tool calls is a hard stop.
+7. Agents write a status line every 10 tool calls and every 5 minutes. At 100 tool calls an agent starts wrapping up: it commits what it has and hands the rest to a fresh agent. 150 tool calls is a hard stop. Time works the same way. At 20 minutes of real time an agent starts wrapping up, and 30 minutes is a hard stop. Whichever limit comes first applies.
 8. Nobody runs a full library test without the user's explicit permission, asked for in chat first. That covers the main session and every agent, and any run over the user's whole song library (for example `hydra_batch` with no arguments, or a whole-library compare or timing run). Ask only when nothing smaller can answer the question. Otherwise test on the checked-in chart corpus in `testdata/input` (about 115 charts) or on the few charts the change touches.
+9. Never trust another agent's summary or the comments it left behind. The code and the source data are the source of truth. Check a claim against them before you repeat it or act on it.
+
+No hook checks rule 3 or rule 9. For rule 2, a hook checks only that a Fable session's dispatches name a model (Plan dispatches excepted), not which one. Follow these yourself.

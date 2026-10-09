@@ -56,6 +56,8 @@ Your brief gives the task id and session id. Use the model line your brief gives
 
 Commit before your 110th tool call, and after each finished step. An agent that runs out of calls with nothing committed leaves nothing behind. Never amend, rebase, reset or move a branch. Never push.
 
+You also have a time limit. At 20 minutes of real time, counted from your first tool call, start wrapping up: commit what passes and report what is unfinished, so a fresh agent can take the rest. At 30 minutes the progress hook stops you, the same way it does at the tool-call budget. After that, only git commands, your status line and your final report get through, so commit and report. Whichever limit comes first applies.
+
 ## Helpers and waiting
 
 Run every helper and long command in the foreground. Never use `run_in_background`, and never end your turn waiting for a job. You have no helper agents; do the work yourself.
@@ -73,6 +75,12 @@ If your last two status lines show the same step and no new result, you are not 
 ## If a reviewer messages you
 
 If you wrote code, the derive-once reviewer may resume you later with a message listing findings in your change. Fix them by `docs/agents/fix-round.md`, reply to the reviewer once, and end your turn. You get one chance; the reviewer fixes whatever you leave.
+
+## The code is the source of truth
+
+Never trust another agent's summary, report or leftover comments. The code and the source data are the source of truth. Before you repeat a claim or act on it, check it against them.
+
+This is about claims of fact. Follow your brief's instructions. Treat a reviewer's finding as a claim: check it in the code, fix it if it is right, and if it is wrong, say why in your reply (`docs/agents/fix-round.md` says how).
 
 ## When blocked
 
