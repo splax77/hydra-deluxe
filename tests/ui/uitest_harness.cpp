@@ -277,16 +277,11 @@ void reset_app(Harness& h, const std::string& rules_text, bool wait_store) {
     // The dmleaderboards API, canned: one user whose only score is the first
     // chart of the scanned library (so the join has something to match).
     hydra::net::set_fetcher([&h](const std::string& url, const std::atomic<bool>*) {
-        if (url.find("/all-users") != std::string::npos)
-            return std::string(R"([{"id":"111","username":"alice","elo":1500,
-                                     "stats":{"total_scores":1,"total_score":100000}}])");
+        if (url.find("/all-users") != std::string::npos) return canned_dm_users();
         std::string md5 = (h.app && h.app->library_shown_count() > 0)
                               ? h.app->library_row_at(0).entry.md5
                               : "00000000000000000000000000000000";
-        return std::string(R"({"scores":[{"identifier":")") + md5 +
-               R"(","song_name":"x","artist":"y","charter_refs":["z"],"score":100000,)"
-               R"("is_fc":0,"percent":95,"speed":100,"rank":1,"posted":"2026-01-01"}],)"
-               R"("unknown_scores":[]})";
+        return canned_dm_scores({canned_dm_score(md5, 100000)});
     });
 
     std::error_code ec;
@@ -473,6 +468,28 @@ std::string visible_text(Harness& h) {
         s += h.app->status_message;
     }
     return s;
+}
+
+bool on_screen(Harness& h, const std::string& s) {
+    return visible_text(h).find(s) != std::string::npos;
+}
+
+std::string canned_dm_users() {
+    return R"([{"id":"111","username":"alice","elo":1500,
+                "stats":{"total_scores":1,"total_score":100000}}])";
+}
+
+std::string canned_dm_score(const std::string& identifier, int points) {
+    return R"({"identifier":")" + identifier +
+           R"(","song_name":"x","artist":"y","charter_refs":["z"],"score":)" +
+           std::to_string(points) +
+           R"(,"is_fc":0,"percent":95,"speed":100,"rank":1,"posted":"2026-01-01"})";
+}
+
+std::string canned_dm_scores(const std::vector<std::string>& score_rows) {
+    std::string rows;
+    for (const std::string& row : score_rows) rows += (rows.empty() ? "" : ",") + row;
+    return R"({"scores":[)" + rows + R"(],"unknown_scores":[]})";
 }
 
 namespace {

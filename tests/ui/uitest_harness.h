@@ -189,6 +189,16 @@ public:
 // All text ImGui drew last frame plus the status line, for substring checks.
 std::string visible_text(Harness& h);
 
+// True when `s` is somewhere in visible_text(h).
+bool on_screen(Harness& h, const std::string& s);
+
+// The dmleaderboards API's canned answers, which reset_app serves and the
+// tests that serve their own variant build from: the one user (alice), one
+// score row, and the scores reply that wraps a list of rows.
+std::string canned_dm_users();
+std::string canned_dm_score(const std::string& identifier, int points);
+std::string canned_dm_scores(const std::vector<std::string>& score_rows);
+
 // A window drawn last frame whose name holds `part`, or nullptr when none
 // was. A part finds child windows too, whose names ImGui mangles.
 ImGuiWindow* window_named(const char* part);

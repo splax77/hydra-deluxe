@@ -358,10 +358,6 @@ void test_both(ImGuiTestContext* ctx) {
 
 // ---- End to end, through AppState (task 6) --------------------------------
 
-bool on_screen(Harness& h, const std::string& s) {
-    return visible_text(h).find(s) != std::string::npos;
-}
-
 // Library row `row`'s title in quotes, so the word search matches it as one
 // phrase. Read it before any search narrows the rows.
 std::string quoted_title(Harness& h, size_t row) {
@@ -419,19 +415,11 @@ class CannedDm {
 public:
     CannedDm(const std::string& md5, bool not_in_library_score, bool hold) {
         g_fetch_release = !hold;
-        auto score = [](const std::string& id, int points) {
-            return R"({"identifier":")" + id +
-                   R"(","song_name":"x","artist":"y","charter_refs":["z"],"score":)" +
-                   std::to_string(points) +
-                   R"(,"is_fc":0,"percent":95,"speed":100,"rank":1,"posted":"2026-01-01"})";
-        };
-        std::string scores = score(md5, 100000);
-        if (not_in_library_score) scores += "," + score(kNotInLibraryMd5, 90000);
-        const std::string body = R"({"scores":[)" + scores + R"(],"unknown_scores":[]})";
+        std::vector<std::string> rows{canned_dm_score(md5, 100000)};
+        if (not_in_library_score) rows.push_back(canned_dm_score(kNotInLibraryMd5, 90000));
+        const std::string body = canned_dm_scores(rows);
         hydra::net::set_fetcher([body](const std::string& url, const std::atomic<bool>* cancel) {
-            if (url.find("/all-users") != std::string::npos)
-                return std::string(R"([{"id":"111","username":"alice","elo":1500,
-                                         "stats":{"total_scores":1,"total_score":100000}}])");
+            if (url.find("/all-users") != std::string::npos) return canned_dm_users();
             while (!g_fetch_release.load() && !(cancel && cancel->load()))
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             return body;
