@@ -234,8 +234,9 @@ public:
     void insert_note(const ChordNote& note);
     // Adds a kick, a 2x kick when `is2x`, with the dynamic `dyn`. A 2x kick
     // and a normal kick on one tick become one 2x kick, as Clone Hero merges
-    // them (D105); a second kick of the same kind is a duplicate, as in
-    // add_note. Returns the kick.
+    // them (D105), and their ghost or accent marks combine by
+    // add_dynamic_mark in model.cpp. A second kick of the same kind is a
+    // duplicate, as in add_note. Returns the kick.
     ChordNote& add_kick(bool is2x, NoteDynamicType dyn);
     void add_2x();
     // Clone Hero's 2x Bass setting: off removes every 2x kick (D105,
@@ -243,6 +244,8 @@ public:
     // add_kick's merge. Returns whether the chord lost its kick.
     bool apply_2x_bass(bool bass2x);
     // Each raises ChartFileError when the colour has no note (a stray marker).
+    // A ghost or accent mark on a note that already has one combines by
+    // add_dynamic_mark in model.cpp.
     void apply_cymbal(NoteColor color);
     void apply_ghost(NoteColor color);
     void apply_accent(NoteColor color);

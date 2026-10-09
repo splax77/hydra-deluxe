@@ -171,11 +171,10 @@ TEST_CASE("D105 .mid: the merged kick keeps the ghost or accent from either kick
     CHECK(load_songbytes_mid(mid, true, /*bass2x=*/false).sequence.empty());
 }
 
-TEST_CASE("D105 .mid: a ghost and an accent kick on one tick keep the first one's mark") {
-    // Clone Hero's merged kick carries both marks (0x215B8C0), which one
-    // dynamictype can't hold, and what the game scores it as is a user
-    // question. Until it is answered the first kick in the file keeps its
-    // mark, as before D105. Only the 2x mark merges.
+TEST_CASE("D105 .mid: a ghost and an accent kick on one tick merge into an accent") {
+    // Clone Hero's merged kick carries both marks (0x215B8C0), and its
+    // note-list builder (0x20D4BE0) plays a note with both as an accent. So
+    // the merged 2x kick is an accent in both file orders.
     using namespace testmidi;
     const std::vector<uint8_t> mid = smf(concat(
         {track_name("PART DRUMS"), set_tempo(), text_event("[ENABLE_CHART_DYNAMICS]"),
@@ -185,7 +184,26 @@ TEST_CASE("D105 .mid: a ghost and an accent kick on one tick keep the first one'
     const Song on = load_songbytes_mid(mid, true, /*bass2x=*/true);
     REQUIRE(on.sequence.size() == 2);
     CHECK(on.sequence[0].chord.code() == "A....");
-    CHECK(on.sequence[1].chord.code() == "G....");
+    CHECK(on.sequence[1].chord.code() == "A....");
+    // With 2x Bass off the merged kick is a 2x kick, so it goes: no chords.
+    CHECK(load_songbytes_mid(mid, true, /*bass2x=*/false).sequence.empty());
+}
+
+TEST_CASE(".chart: a pad with both an accent and a ghost marker is an accent") {
+    // The game ORs both markers onto the chart note and plays it as an
+    // accent (0x20D4BE0), whichever marker comes first. Tick 0 has the
+    // accent marker first, tick 192 the ghost marker first; both on red.
+    const std::vector<uint8_t> data = testchart::chart_bytes(testchart::section(
+        "ExpertDrums",
+        "  0 = N 1 0\n  0 = N 34 0\n  0 = N 40 0\n"
+        "  192 = N 1 0\n  192 = N 40 0\n  192 = N 34 0\n"));
+    for (bool pro : {true, false}) {
+        CAPTURE(pro);
+        const Song song = load_songbytes_chart(data, pro, true);
+        REQUIRE(song.sequence.size() == 2);
+        CHECK(song.sequence[0].chord.code() == ".a...");
+        CHECK(song.sequence[1].chord.code() == ".a...");
+    }
 }
 
 TEST_CASE("D105 .mid: a kick the 2x Bass setting removes leaves no mark before the tag") {

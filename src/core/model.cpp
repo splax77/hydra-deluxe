@@ -247,6 +247,16 @@ ChordNote& Chord::add_note(NoteColor color) {
 
 void Chord::insert_note(const ChordNote& note) { at(note.colortype) = note; }
 
+// The one owner of what a note plays as when a second ghost or accent mark
+// lands on it: the merged kick below and the .chart markers both call it.
+// Clone Hero keeps every mark on the chart note, and its note-list builder
+// (0x20D4BE0, at 0x20D4E1F to 0x20D4E45) then gives the play note one, with
+// accent ahead of ghost.
+static void add_dynamic_mark(ChordNote& note, NoteDynamicType mark) {
+    if (note.is_accent() || mark == NoteDynamicType::Normal) return;
+    note.dynamictype = mark;
+}
+
 // Clone Hero's readers keep both kicks; its track finalizer then ORs their
 // flags onto one of them and deletes the other (0x215B8C0, 0x5DB0C0), so the
 // kick that stays carries the 2x mark and both kicks' ghost or accent marks.
@@ -261,10 +271,7 @@ ChordNote& Chord::add_kick(bool is2x, NoteDynamicType dyn) {
     // Two kicks of one kind: add_note raises the duplicate.
     if (lane_flag(*kick) == is2x) return add_note(NoteColor::Kick);
     set_lane_flag(*kick);
-    // One dynamictype can't hold a ghost and an accent together, and what the
-    // game scores that as is an open user question (D105), so a kick that
-    // already has a mark keeps it, as the first kick did before D105.
-    if (!kick->is_dynamic()) kick->dynamictype = dyn;
+    add_dynamic_mark(*kick, dyn);
     return *kick;
 }
 
@@ -288,12 +295,12 @@ void Chord::apply_cymbal(NoteColor color) {
 
 void Chord::apply_ghost(NoteColor color) {
     if (!at(color)) throw ChartFileError("ghost marker with no note under it");
-    at(color)->dynamictype = NoteDynamicType::Ghost;
+    add_dynamic_mark(*at(color), NoteDynamicType::Ghost);
 }
 
 void Chord::apply_accent(NoteColor color) {
     if (!at(color)) throw ChartFileError("accent marker with no note under it");
-    at(color)->dynamictype = NoteDynamicType::Accent;
+    add_dynamic_mark(*at(color), NoteDynamicType::Accent);
 }
 
 const ChordNote& Chord::activation_note() const {
