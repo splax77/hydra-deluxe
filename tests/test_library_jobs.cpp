@@ -1,6 +1,6 @@
 // Unit tests for the library and leaderboard jobs: Pause, Stop, the batch
 // clock and time-left estimate, the chart being analyzed, the batch's counts,
-// plain failure lines, report pages the browser refuses, and quiet cancels.
+// plain failure lines, and quiet cancels.
 // The analyzer and the network are fakes; only the counts case reads one
 // corpus chart, for a result the store can save.
 
@@ -29,7 +29,6 @@
 #include "temp_util.h"
 #include "ui/dm_jobs.h"
 #include "ui/library_jobs.h"
-#include "ui/report_outcome.h"
 
 using hydra::app::AnalysisResult;
 using hydra::app::AnalysisSettings;
@@ -380,39 +379,6 @@ TEST_CASE("jobs: a report job lets go of the batch's rows once its pass is done"
     job.start();
     REQUIRE(wait_until([&] { return job.finished(); }));
     CHECK(job.seed_charts_for_test() == 0);
-}
-
-TEST_CASE("jobs: a report the browser refuses is saved, not failed") {
-    const std::filesystem::path dir = hydra::os_path(testtemp::temp_dir("jobs_report"));
-    const std::filesystem::path page = dir / "report.html";
-
-    int opens = 0;
-    bool browser_ok = false;
-    hydra::app::set_open_in_browser([&](const std::wstring&) {
-        ++opens;
-        return browser_ok;
-    });
-
-    hydra::ui::ReportOutcome refused = hydra::ui::publish_report(page, "<p>x</p>", true);
-    CHECK(std::filesystem::exists(page));
-    CHECK(opens == 1);
-    CHECK(refused.saved_path == page);
-    CHECK_FALSE(refused.opened);
-    CHECK(refused.open_problem == "Windows couldn't open the report in your browser.");
-
-    browser_ok = true;
-    hydra::ui::ReportOutcome opened = hydra::ui::publish_report(page, "<p>y</p>", true);
-    CHECK(opens == 2);
-    CHECK(opened.opened);
-    CHECK(opened.open_problem.empty());
-
-    hydra::ui::ReportOutcome quiet = hydra::ui::publish_report(page, "<p>z</p>", false);
-    CHECK(opens == 2);  // auto-open off: the browser is never asked
-    CHECK_FALSE(quiet.opened);
-    CHECK(quiet.open_problem.empty());
-
-    hydra::app::set_open_in_browser({});
-    std::filesystem::remove_all(dir);
 }
 
 TEST_CASE("jobs: a cancelled leaderboard fetch is not an error") {

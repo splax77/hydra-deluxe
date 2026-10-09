@@ -30,7 +30,6 @@
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
-#include "app/report_files.h"
 #include "audio_chart_fixtures.h"
 #include "core/error_kind.h"
 #include "core/model.h"
@@ -1041,7 +1040,6 @@ TEST_CASE("a path report request builds it in memory, one build at a time") {
     CHECK(app->path_report_build() == ReportBuild::Ready);
     REQUIRE(app->path_report.result != nullptr);
     CHECK_FALSE(app->path_report.result->paths.empty());
-    CHECK(app->path_report.result->html.empty());  // no page is kept
     CHECK(app->path_report.built_at.time_since_epoch().count() != 0);
     CHECK(app->path_report.out_of_date == ReportOutOfDate::None);
     CHECK_FALSE(app->path_report.window_open);  // a request opens no window
@@ -1227,7 +1225,6 @@ TEST_CASE("picking a player opens the comparison; Refresh reuses the player") {
     REQUIRE(app->dm_report.result != nullptr);
     CHECK(app->dm_report.result->username == "alice");
     CHECK(app->dm_report.result->stats.total == 1);
-    CHECK(app->dm_report.result->html.empty());
 
     // The chart mode is a setting the comparison reads.
     app->settings.view_prodrums = !app->settings.view_prodrums;
@@ -1563,8 +1560,6 @@ TEST_CASE("the post-batch report lists the batch's cap and lens, not the live se
     CHECK(app->report_job->lens() == batch_lens);
     CHECK_FALSE(app->report_job->lens() == app->settings.lens());
     while (!app->report_job->finished()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    std::error_code ec;
-    std::filesystem::remove(std::filesystem::path(hydra::app::report_html_path()), ec);
 }
 
 // Memory audit fix 4: a stopped batch builds no report, so nothing reads the

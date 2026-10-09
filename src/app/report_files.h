@@ -8,31 +8,9 @@
 
 #include <filesystem>
 #include <functional>
-#include <optional>
 #include <string>
 
 namespace hydra::app {
-
-// ---- left only until tests/test_app_state.cpp stops naming report_html_path
-// (RW-T7's handoff). Nothing in the app reads these; delete all four then.
-
-// The folder the path report page was saved in: Documents\Hydra, made on
-// first use. It falls back to the database's folder when Documents can't be
-// found or the Hydra folder can't be made there. When a harness has
-// overridden the database path (app::set_path_overrides), it is that
-// database's folder instead.
-std::filesystem::path reports_dir();
-
-// The seam behind reports_dir's Documents lookup (SHGetKnownFolderPath by
-// default). An empty function restores the default.
-using DocumentsDirFn = std::function<std::optional<std::filesystem::path>()>;
-void set_documents_dir_lookup(DocumentsDirFn fn);
-
-// The old path report page's file name, and its path in reports_dir().
-inline constexpr const char* kPathReportFileName = "hydra_paths.html";
-std::wstring report_html_path();
-
-// ---- the page plumbing hydra_fillcompare uses
 
 // The "open a file in the browser" seam behind open_in_browser (ShellExecute
 // by default). A harness with no desktop installs one that just records the

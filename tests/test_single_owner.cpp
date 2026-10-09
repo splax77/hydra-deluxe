@@ -3214,23 +3214,6 @@ const std::vector<OwnerRule>& rules() {
            "id3_tag, the owner"}},
          {"tests"}},
         // ---- report pages (phase 7 task RP) ----
-        // A report page's file name typed outside its constant. The GUI test
-        // harness once cleared the pages, so it is scanned too.
-        {"What file name does each report page have?",
-         "kPathReportFileName in src/app/report_files.h",
-         R"(hydra_(paths|dmcompare)\.html)",
-         "",
-         {},
-         {},
-         "audit finding 202, D51's code-only calls (phase 7 task RP)",
-         {"std::string out = \"hydra_paths.html\";",
-          "std::wstring dm_report_html_path() { return html_artifact_path(L\"hydra_dmcompare.html\"); }"},
-         {"std::string out = hydra::app::kPathReportFileName;",
-          "std::string out = \"fill_compare.html\";"},
-         {{"src/app/report_files.h",
-           "inline constexpr const char* kPathReportFileName = \"hydra_paths.html\";",
-           "kPathReportFileName, the owner"}},
-         {"src", "tools", "tests/ui/uitest_harness.cpp"}},
         // Clone Hero's SP cap written as text, where the leaderboard page
         // names it.
         {"Which SP cap does the leaderboard comparison name?",
@@ -5451,6 +5434,21 @@ const std::vector<OwnerRule>& rules() {
           "if (!report_frame::same_result(w.built_from, input.result)) rebuild(w, input.result);"},
          {{"src/ui/report_window.h", "return !w.owner_before(p) && !p.owner_before(w);",
            "report_frame::same_result, the owner: both report windows call it"}},
+         {"src"}},
+        // Both window inputs start from one copy of a report slot's fields.
+        // A window file that read a slot field itself would be a second copy.
+        // AppState writes the slot, which this pattern leaves alone.
+        {"Which slot fields feed a report window's input?",
+         "input_from_slot in src/ui/report_window.h",
+         R"(= slot\.batch_finished)",
+         "",
+         {},
+         {},
+         "derive-once review of RW-T6 (finding 4)",
+         {"in.batch_finished = slot.batch_finished;"},
+         {"slot.batch_finished = batch_finished;"},
+         {{"src/ui/report_window.h", "in.batch_finished = slot.batch_finished;",
+           "input_from_slot, the owner: path_report_input and dm_report_input call it"}},
          {"src"}},
         // A table's header sort can hold more keys than a report sorts by,
         // so the window cuts it to the report's limit, read from the owner.
