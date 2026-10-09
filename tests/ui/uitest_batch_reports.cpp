@@ -497,6 +497,14 @@ void test_batch_done_strip(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->path_report.window_open);
     ctx->Yield(2);
     IM_CHECK(window_named("###pathreport") != nullptr);
+    // Closing the window lets the report go (D103 item 28), so the strip
+    // drops its "ready" line and its Open report button; the strip stays.
+    h.app->close_path_report();
+    ctx->Yield(3);
+    IM_CHECK(child_window(ctx, "//Hydra/##batchdone") != nullptr);
+    IM_CHECK(visible_text(h).find("The path report is ready.") == std::string::npos);
+    ctx->SetRef(child_window(ctx, "//Hydra/##batchdone"));
+    IM_CHECK(!ctx->ItemExists("Open report"));
     ctx->ItemClick("X##dismissdone");
     ctx->Yield(3);
     IM_CHECK(h.app->batch_job == nullptr);

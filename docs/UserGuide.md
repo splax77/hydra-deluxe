@@ -261,11 +261,11 @@ If nothing is analyzed under the current settings but other results exist, the r
 
 **When the report is out of date.** The window never changes its rows behind your back. After a batch, a report built before it shows a strip: `Your library changed since this report was built (a batch finished at HH:MM).` Changing a setting the report depends on shows `The settings changed since this report was built.` For the path report those settings are the SP cap, `1.0 fills`, the score range and the path limit. Switching the difficulty, Pro Drums or 2x Bass doesn't count, because the report already lists every chart mode. The old rows stay readable under the strip. `Refresh` builds the report again and clears it.
 
-**Keyboard.** `Tab` moves through the controls and the table. The `Up` and `Down` arrows move the row selection, and each move selects the song, like a click. `Escape` or `Ctrl+W` closes the window, and so does its `X`. While you're typing in the search box, `Escape` doesn't close it. Closing keeps the report in memory, so it opens again at once.
+**Keyboard.** `Tab` moves through the controls and the table. The `Up` and `Down` arrows move the row selection, and each move selects the song, like a click. `Escape` or `Ctrl+W` closes the window, and so does its `X`. While you're typing in the search box, `Escape` doesn't close it. Closing the path report lets it go, as described under the path report above. Closing the comparison keeps it in memory, so it opens again at once.
 
 The finished batch strip offers:
 
-- **`Open report`** opens the path report window. The strip's second line reads `The path report is ready.`
+- **`Open report`** opens the path report window. The strip's second line reads `The path report is ready.` Once you close the path report window, the report is gone, so the line, the button and the `Open automatically` box go too. The toolbar's `Open path report` still opens it.
 - **`Open automatically`**: Open the path report as soon as it's built. It covers only the path report.
 - Its `X` dismisses the strip.
 

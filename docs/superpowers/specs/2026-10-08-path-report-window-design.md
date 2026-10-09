@@ -234,7 +234,7 @@ A new ADR 0027, "Reports are Hydra windows", records the decision.
 - filter to nothing, then Clear filters
 - a row click selects the chart and switches the settings bar's mode when needed
 - a "not in library" row click does nothing
-- Esc closes a window, and reopening is instant
+- Esc closes a window; the comparison reopens at once, and the path report builds again (see the 2026-10-09 note under "Opening and closing")
 - both windows can be open at once
 - the out-of-date strip shows after a batch and clears after Refresh
 
