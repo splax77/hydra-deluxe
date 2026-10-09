@@ -55,6 +55,43 @@ void wait_finished(const Job& job) {
     REQUIRE(job.finished());
 }
 
+// Polls until the first load has landed (loading()), for at most 60 s.
+void wait_loaded(PreviewController& pc) {
+    for (int i = 0; i < 1200 && pc.loading(); ++i) {
+        pc.poll();
+        Sleep(50);
+    }
+    REQUIRE_FALSE(pc.loading());
+}
+
+// Polls until every Preview thread is done (busy(), finding 109), for at
+// most 12 s.
+void settle(PreviewController& pc) {
+    for (int i = 0; i < 1200 && pc.busy(); ++i) {
+        pc.poll();
+        Sleep(10);
+    }
+    REQUIRE_FALSE(pc.busy());
+}
+
+// Polls until the overlay drawn is `path_key`'s (shows_path), or a failed
+// build set the error and nothing more will land, for at most 12 s.
+void wait_for_path(PreviewController& pc, const std::string& path_key) {
+    for (int i = 0; i < 1200 && !pc.shows_path(path_key) && !pc.has_error(); ++i) {
+        pc.poll();
+        Sleep(10);
+    }
+}
+
+// An audio device factory that fails as a PC with no device would, so
+// nothing real opens.
+PreviewController::AudioDeviceFactory no_device_factory() {
+    return [](int, int, PreviewController::AudioSource)
+               -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
+        throw std::runtime_error("no device in tests");
+    };
+}
+
 // The entry the scan would make (corpus::scanned_entry), without its
 // fingerprint: its md5 is the file's own hash, so the Preview hashes the file,
 // takes the chart as unchanged and draws the path it is given.
@@ -303,11 +340,7 @@ TEST_CASE("with no audio device the Preview still loads, muted, with a warning")
             throw std::runtime_error("PreviewAudioDevice: ma_device_init failed");
         });
     pc.open(entry_for(chart_with_audio()), true, true, Difficulty::Expert, nullptr, "", 4);
-    for (int i = 0; i < 1200 && pc.loading(); ++i) {
-        pc.poll();
-        Sleep(50);
-    }
-    REQUIRE_FALSE(pc.loading());
+    wait_loaded(pc);
 
     CHECK(pc.has_audio());        // the stem decoded; only the device failed
     CHECK_FALSE(pc.has_error());  // so no "Preview failed"
@@ -358,17 +391,9 @@ std::string long_audio_chart_stating_3s(const std::string& tag) {
 
 // A controller with no audio device, opened on `notes` and loaded.
 void open_and_load(PreviewController& pc, const std::string& notes) {
-    pc.set_audio_device_factory(
-        [](int, int, PreviewController::AudioSource)
-            -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
-            throw std::runtime_error("no device in tests");
-        });
+    pc.set_audio_device_factory(no_device_factory());
     pc.open(entry_for(notes), true, true, Difficulty::Expert, nullptr, "", 4);
-    for (int i = 0; i < 1200 && pc.loading(); ++i) {
-        pc.poll();
-        Sleep(50);
-    }
-    REQUIRE_FALSE(pc.loading());
+    wait_loaded(pc);
     REQUIRE(pc.has_audio());
 }
 
@@ -448,11 +473,7 @@ TEST_CASE("switching paths builds the new overlay off the UI thread") {
 
     PreviewController pc(nullptr, nullptr);
     pc.open(entry_for(chart), true, true, Difficulty::Expert, nullptr, "", 4);
-    for (int i = 0; i < 1200 && pc.loading(); ++i) {
-        pc.poll();
-        Sleep(50);
-    }
-    REQUIRE_FALSE(pc.loading());
+    wait_loaded(pc);
     const std::string before = pc.overlay_path_key();
 
     // open() returns at once: the old overlay is still up, and nothing reloads.
@@ -460,12 +481,8 @@ TEST_CASE("switching paths builds the new overlay off the UI thread") {
     CHECK(pc.overlay_path_key() == before);
     CHECK_FALSE(pc.loading());
 
-    // The new overlay lands on a later poll. A failed build sets the error,
-    // and then nothing more will land, so stop waiting.
-    for (int i = 0; i < 1200 && !pc.shows_path(best_key) && !pc.has_error(); ++i) {
-        pc.poll();
-        Sleep(10);
-    }
+    // The new overlay lands on a later poll.
+    wait_for_path(pc, best_key);
     CHECK_FALSE(pc.has_error());
     CHECK(pc.shows_path(best_key));
 }
@@ -491,17 +508,10 @@ TEST_CASE("shows_path: the same path at another cap, and a different path") {
     other_key.back() = other_key.back() == 'x' ? 'y' : 'x';
 
     PreviewController pc(nullptr, nullptr);
-    pc.set_audio_device_factory(
-        [](int, int, PreviewController::AudioSource)
-            -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
-            throw std::runtime_error("no device in tests");
-        });
+    pc.set_audio_device_factory(no_device_factory());
     const ChartLibraryEntry entry = entry_for(chart);
     pc.open(entry, true, true, Difficulty::Expert, &best, best_key, 4);
-    for (int i = 0; i < 1200 && !pc.shows_path(best_key) && !pc.has_error(); ++i) {
-        pc.poll();
-        Sleep(10);
-    }
+    wait_for_path(pc, best_key);
     REQUIRE_FALSE(pc.has_error());
     CHECK(pc.shows_path(best_key));
     CHECK_FALSE(pc.shows_path(other_key));
@@ -513,10 +523,7 @@ TEST_CASE("shows_path: the same path at another cap, and a different path") {
     pc.open(entry, true, true, Difficulty::Expert, &best, best_key, 1);
     CHECK(pc.overlay_path_key() == at_cap4);
     CHECK(pc.shows_path(best_key));
-    for (int i = 0; i < 1200 && pc.busy(); ++i) {
-        pc.poll();
-        Sleep(10);
-    }
+    settle(pc);
     REQUIRE_FALSE(pc.has_error());
     CHECK(pc.overlay_path_key() != at_cap4);  // the cap-1 overlay is in
     CHECK(pc.shows_path(best_key));
@@ -525,24 +532,13 @@ TEST_CASE("shows_path: the same path at another cap, and a different path") {
 
 namespace {
 
-// Polls until every Preview thread is done (busy(), finding 109), for at
-// most 12 s.
-void settle(PreviewController& pc) {
-    for (int i = 0; i < 1200 && pc.busy(); ++i) {
-        pc.poll();
-        Sleep(10);
-    }
-    REQUIRE_FALSE(pc.busy());
-}
-
-// An audio device factory that counts its calls, then fails as a PC with no
-// device would, so nothing real opens. The count is how many times the
-// Preview opened its audio for output.
+// no_device_factory, counting its calls: how many times the Preview opened
+// its audio for output.
 PreviewController::AudioDeviceFactory counting_factory(int& calls) {
-    return [&calls](int, int, PreviewController::AudioSource)
-               -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
+    return [&calls, fail = no_device_factory()](int channels, int sample_rate,
+                                               PreviewController::AudioSource source) {
         ++calls;
-        throw std::runtime_error("no device in tests");
+        return fail(channels, sample_rate, std::move(source));
     };
 }
 
@@ -715,17 +711,9 @@ TEST_CASE("the Preview hides the path when the chart file changed since its reco
         ChartLibraryEntry entry = entry_for(chart);
         if (changed) entry.md5 = "0123456789abcdef0123456789abcdef";
         PreviewController pc(nullptr, nullptr);
-        pc.set_audio_device_factory(
-            [](int, int, PreviewController::AudioSource)
-                -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
-                throw std::runtime_error("no device in tests");
-            });
+        pc.set_audio_device_factory(no_device_factory());
         pc.open(entry, true, true, Difficulty::Expert, &best, best_key, 4);
-        for (int i = 0; i < 1200 && pc.loading(); ++i) {
-            pc.poll();
-            Sleep(50);
-        }
-        REQUIRE_FALSE(pc.loading());
+        wait_loaded(pc);
         REQUIRE_FALSE(pc.has_error());
         CHECK(pc.chart_changed() == changed);
         CHECK(pc.scrub_marks().empty() == changed);
@@ -769,17 +757,9 @@ TEST_CASE("the Preview trusts the scan's fingerprint and does not re-hash an unc
         entry.md5 = "0123456789abcdef0123456789abcdef";
         entry.sig = sig;
         PreviewController pc(nullptr, nullptr);
-        pc.set_audio_device_factory(
-            [](int, int, PreviewController::AudioSource)
-                -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
-                throw std::runtime_error("no device in tests");
-            });
+        pc.set_audio_device_factory(no_device_factory());
         pc.open(entry, true, true, Difficulty::Expert, nullptr, "", 4);
-        for (int i = 0; i < 1200 && pc.loading(); ++i) {
-            pc.poll();
-            Sleep(50);
-        }
-        REQUIRE_FALSE(pc.loading());
+        wait_loaded(pc);
         REQUIRE_FALSE(pc.has_error());
         CHECK(pc.chart_changed() == changed);
     }
@@ -792,20 +772,12 @@ TEST_CASE("busy covers the overlay and base jobs, not only the first load") {
     const std::string best_key = hydra::app::path_overlay_key(&a.best);
     PreviewController pc(nullptr, nullptr);
     pc.open(entry_for(a.chart), true, true, Difficulty::Expert, nullptr, "", 4);
-    for (int i = 0; i < 1200 && pc.loading(); ++i) {
-        pc.poll();
-        Sleep(10);
-    }
-    REQUIRE_FALSE(pc.loading());
+    wait_loaded(pc);
 
     pc.open(entry_for(a.chart), true, true, Difficulty::Expert, &a.best, best_key, 4);
     CHECK(pc.busy());
     CHECK_FALSE(pc.loading());
-    for (int i = 0; i < 1200 && pc.busy(); ++i) {
-        pc.poll();
-        Sleep(10);
-    }
-    CHECK_FALSE(pc.busy());
+    settle(pc);
     CHECK_FALSE(pc.has_error());
     CHECK(pc.shows_path(best_key));
 }
