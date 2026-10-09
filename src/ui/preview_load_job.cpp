@@ -39,6 +39,32 @@ long long whole_mb(uint64_t bytes) {
     return static_cast<long long>((bytes + 500000) / 1000000);
 }
 
+// A Preview scene for one mode's notes and one path, and the highway
+// timeline built from it on the worker, so the UI thread only uploads it.
+struct SceneAndHighway {
+    app::PreviewScene scene;
+    render::TrackState track_state;
+    render::TrackStateOptions track_opts;  // track_options(pro), as the controller draws
+};
+
+// The first load and the notes reload both build their scene and highway
+// here. `audio_end_ms` and `song_length_ms` are the load's Result fields of
+// those names. `after_scene` runs between the two steps and may throw to stop
+// the build.
+SceneAndHighway build_scene_and_highway(const Song& song, const Path* path, int sp_cap,
+                                        const core::Rules& rules,
+                                        std::optional<double> audio_end_ms,
+                                        std::optional<double> song_length_ms, bool pro,
+                                        const std::function<void()>& after_scene) {
+    SceneAndHighway built;
+    built.scene =
+        app::build_preview_scene(song, path, sp_cap, rules, audio_end_ms, song_length_ms);
+    after_scene();
+    built.track_opts = track_options(pro);
+    built.track_state = render::build_track_state(built.scene, built.track_opts);
+    return built;
+}
+
 }  // namespace
 
 PreviewNotes read_preview_notes(const store::ChartLibraryEntry& entry,
@@ -198,20 +224,19 @@ void PreviewLoadJob::run() {
         // The scene and the highway wait for the audio, because the beat
         // lines run to its end (D48, Q25). A changed chart is drawn with no
         // path, as an unanalyzed one is (drawn_path).
-        const Path* path = drawn_path(path_, chart_changed);
-        app::PreviewScene scene =
-            app::build_preview_scene(ps.song, path, sp_cap_, rules_, audio_end_ms, song_length_ms);
-        scene_done_.store(true);
-        throw_if_cancelled();
-        // The highway timeline, built here so the UI thread only uploads it,
-        // with the options the controller draws with (track_options).
-        const render::TrackStateOptions track_opts = track_options(pro_);
-        render::TrackState track_state = render::build_track_state(scene, track_opts);
+        SceneAndHighway built = build_scene_and_highway(
+            ps.song, drawn_path(path_, chart_changed), sp_cap_, rules_, audio_end_ms,
+            song_length_ms, pro_, [this] {
+                scene_done_.store(true);
+                throw_if_cancelled();
+            });
         highway_done_.store(true);
 
-        result_ = Result{std::move(scene),  std::move(song_mix.mix),  song_mix.audio_offset_ms,
-                         audio_end_ms,      song_length_ms,           std::move(ps.song),
-                         std::move(track_state), track_opts,          chart_changed};
+        result_ = Result{std::move(built.scene),       std::move(song_mix.mix),
+                         song_mix.audio_offset_ms,     audio_end_ms,
+                         song_length_ms,               std::move(ps.song),
+                         std::move(built.track_state), built.track_opts,
+                         chart_changed};
         return true;
     });
 }
@@ -309,14 +334,11 @@ void PreviewNotesJob::run() {
                                                 rules_, noteshuffle_);
         container.reset();  // a .sng's audio is not needed here
         throw_if_cancelled();
-        app::PreviewScene scene = app::build_preview_scene(
+        SceneAndHighway built = build_scene_and_highway(
             notes.ps.song, path_ ? &*path_ : nullptr, sp_cap_, rules_, audio_end_ms_,
-            notes.song_length_ms);
-        throw_if_cancelled();
-        const render::TrackStateOptions track_opts = track_options(pro_);
-        render::TrackState track_state = render::build_track_state(scene, track_opts);
-        result_ = Result{std::move(scene), notes.song_length_ms, std::move(notes.ps.song),
-                         std::move(track_state), track_opts};
+            notes.song_length_ms, pro_, [this] { throw_if_cancelled(); });
+        result_ = Result{std::move(built.scene), notes.song_length_ms, std::move(notes.ps.song),
+                         std::move(built.track_state), built.track_opts};
         return true;
     });
 }

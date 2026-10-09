@@ -4209,6 +4209,23 @@ const std::vector<OwnerRule>& rules() {
           {"src/ui/preview_controller.cpp",
            "return drawn ? std::optional<Path>(*drawn) : std::nullopt;", "path_to_draw, the owner"}},
          {"src/ui/preview_controller.cpp"}},
+        // The first load and the notes reload each used to build their scene
+        // and its highway inline. The path-free base has its own owner,
+        // build_scene_base, and calls app::build_preview_base instead.
+        {"How is a Preview job's scene and highway built from a mode's notes?",
+         "build_scene_and_highway in src/ui/preview_load_job.cpp",
+         R"(\bapp::build_preview_scene\()",
+         "",
+         {},
+         {},
+         "derive-once review of preview-keeps-place (finding 2)",
+         {"app::build_preview_scene(ps.song, path, sp_cap_, rules_, audio_end_ms, song_length_ms);",
+          "app::PreviewScene scene = app::build_preview_scene("},
+         {"built->scene = app::build_preview_base(song, audio_end_ms, song_length_ms);",
+          "PreviewScene build_preview_scene(const Song& song, const Path* path, int sp_cap,"},
+         {{"src/ui/preview_load_job.cpp",
+           "app::build_preview_scene(song, path, sp_cap, rules, audio_end_ms, song_length_ms);",
+           "build_scene_and_highway, the owner"}}},
         // A prefix test on a drawn overlay key, or a read of the key's path
         // part (overlay_key_path_part) anywhere but shows_path. Tests may
         // still compare two keys whole.

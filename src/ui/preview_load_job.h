@@ -133,10 +133,9 @@ public:
         // The parsed song the scene was built from. The controller keeps it so
         // a later path selection can rebuild the overlay without re-parsing.
         Song song;
-        // The highway timeline, build_track_state(scene, track_opts), built
-        // here on the worker so the UI thread only moves it into the
-        // renderer. track_opts.pro is the pro-drums setting the job was
-        // started with.
+        // The highway timeline built from `scene` on the worker, and its
+        // options (build_scene_and_highway in the .cpp), so the UI thread
+        // only moves it into the renderer.
         render::TrackState track_state;
         render::TrackStateOptions track_opts;
         // The chart file's hash (app::hash_chart_file, the scan's rule) is not
@@ -233,8 +232,8 @@ public:
         // The parsed song the scene was built from, kept by the controller
         // for later overlays, as PreviewLoadJob::Result::song.
         Song song;
-        // build_track_state(scene, track_opts), built on the worker, with
-        // track_opts = track_options(pro()).
+        // The highway timeline and its options, as PreviewLoadJob::Result's
+        // (build_scene_and_highway in the .cpp).
         render::TrackState track_state;
         render::TrackStateOptions track_opts;
     };
