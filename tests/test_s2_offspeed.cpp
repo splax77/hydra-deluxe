@@ -86,7 +86,7 @@ TEST_CASE("s2 offspeed: the counts sentence names other speeds only when there a
           "1 not in your library");
 }
 
-TEST_CASE("s2 offspeed: the subtitle and the Other speed tile count 'other speed'") {
+TEST_CASE("s2 offspeed: the subtitle counts every score; the Other speed tile counts 'other speed'") {
     store::RecordStore store(":memory:");
     const int64_t optimal = fill_store(store);
     const app::dm_report::GeneratedDmReport report = app::dm_report::generate_dm_report(
@@ -94,10 +94,8 @@ TEST_CASE("s2 offspeed: the subtitle and the Other speed tile count 'other speed
                 score_at(kHash, optimal - 9, 50)},
         kMode, store::Lens{}, "TestUser");
     CHECK(report.stats.other_speed == 2);
-    CHECK(report.subtitle ==
-          "TestUser — 3 scores: 1 under optimal, 0 at optimal, "
-          "0 above optimal, 0 not analyzed, 0 not in your library, "
-          "2 at other speeds");
+    // Off-speed scores count in the subtitle like any other (D103 item 27).
+    CHECK(report.subtitle == "TestUser — 3 scores");
 
     CHECK(testdm::dm_tile(report.rows, "Other speed") == "2");
 }
