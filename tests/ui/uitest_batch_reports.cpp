@@ -321,6 +321,44 @@ void test_report_buttons(ImGuiTestContext* ctx) {
     h.app->batch_redo = false;
 }
 
+// With "Note Shuffle" ticked, the confirm's settings line names it after the
+// drum settings; unticked, the line is as before.
+void test_batch_confirm_note_shuffle(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    ctx->SetRef(ctx->WindowInfo("//Hydra/##settingsbar").Window);
+    ctx->ItemCheck("Note Shuffle");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_noteshuffle; }, 5));
+
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick("Analyze library...");
+    ctx->Yield(2);
+    IM_CHECK(h.app->batch_confirm_pending);
+    IM_CHECK(visible_text(h).find("Expert \xC2\xB7 Pro Drums \xC2\xB7 2x Bass \xC2\xB7 Note Shuffle") !=
+             std::string::npos);
+    ctx->KeyPress(ImGuiKey_Escape);
+    ctx->Yield(2);
+    IM_CHECK(!h.app->batch_confirm_pending);
+
+    ctx->SetRef(ctx->WindowInfo("//Hydra/##settingsbar").Window);
+    ctx->ItemUncheck("Note Shuffle");
+    IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.view_noteshuffle; }, 5));
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick("Analyze library...");
+    ctx->Yield(2);
+    IM_CHECK(h.app->batch_confirm_pending);
+    const std::string text = visible_text(h);
+    IM_CHECK(text.find("Expert \xC2\xB7 Pro Drums \xC2\xB7 2x Bass") != std::string::npos);
+    // The settings bar's own box still reads "Note Shuffle"; only the
+    // confirm's line drops it.
+    IM_CHECK(text.find("\xC2\xB7 Note Shuffle") == std::string::npos);
+    ctx->KeyPress(ImGuiKey_Escape);
+    ctx->Yield(2);
+    IM_CHECK(!h.app->batch_confirm_pending);
+}
+
 // The confirm lists every setting and the real count; Escape backs out,
 // Enter starts, and the batch runs in the strip, not a modal.
 void test_batch_confirm(ImGuiTestContext* ctx) {
@@ -677,6 +715,7 @@ const std::vector<TestEntry>& batch_report_tests() {
         {"dm-compare-flow", test_dm_compare_flow},
         {"report-buttons", test_report_buttons},
         {"batch-confirm", test_batch_confirm},
+        {"batch-confirm-note-shuffle", test_batch_confirm_note_shuffle},
         {"batch-pause-stop", test_batch_pause_stop},
         {"batch-strip-workers", test_batch_strip_workers},
         {"batch-done-strip", test_batch_done_strip},

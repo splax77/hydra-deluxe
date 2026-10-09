@@ -81,6 +81,17 @@ void render_difficulty(AppState& app, bool locked) {
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal |
                              ImGuiHoveredFlags_AllowWhenDisabled))
         ImGui::SetTooltip("Include the chart's 2x kicks, like Clone Hero's Double Kick.");
+
+    // Part of a result's key, like the two before it (D104 item 1).
+    ImGui::SameLine();
+    begin_disabled_checkbox(locked);
+    if (ImGui::Checkbox("Note Shuffle", &app.settings.view_noteshuffle)) app.commit_settings();
+    end_disabled_checkbox(locked);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal |
+                             ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("Score the chart as Clone Hero 1.1's Note Shuffle modifier rearranges "
+                          "it. The rearrangement is the same every time for a given chart and "
+                          "drum setting.");
 }
 
 void render_sp_cap(AppState& app, bool locked) {
