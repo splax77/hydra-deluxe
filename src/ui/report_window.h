@@ -89,6 +89,22 @@ class AppState;
 PathReportInput path_report_input(AppState& app);
 DmReportInput dm_report_input(AppState& app);
 
+// The input's fields that come straight from a report's slot in AppState
+// (ReportSlot, ui/app_state.h) and its build state. Both window inputs start
+// here; each adds its own progress, player and callbacks.
+template <template <class> class Slot, class Result>
+ReportWindowInput<Result> input_from_slot(const Slot<Result>& slot, ReportBuild state) {
+    ReportWindowInput<Result> in;
+    in.result = slot.result;
+    in.state = state;
+    if (slot.result) in.built = slot.built_at;
+    in.out_of_date = slot.out_of_date;
+    in.batch_finished = slot.batch_finished;
+    in.failure_message = slot.message;
+    in.failure_error = slot.error;
+    return in;
+}
+
 // ---- The shared frame, used by the two window files -----------------------
 
 namespace report_frame {

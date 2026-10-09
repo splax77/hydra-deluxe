@@ -127,14 +127,7 @@ void draw_dm_report_window(bool* open, const DmReportInput& input) {
 
 DmReportInput dm_report_input(AppState& app) {
     const DmReportSlot& slot = app.dm_report;
-    DmReportInput in;
-    in.result = slot.result;
-    in.state = app.dm_report_build();
-    if (slot.result) in.built = slot.built_at;
-    in.out_of_date = slot.out_of_date;
-    in.batch_finished = slot.batch_finished;
-    in.failure_message = slot.message;
-    in.failure_error = slot.error;
+    DmReportInput in = input_from_slot(slot, app.dm_report_build());
     in.player = app.dm_player_name();
     // The row index is into this frame's result, which the click keeps alive.
     // A score the library doesn't list never calls it (the window's

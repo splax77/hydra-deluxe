@@ -131,16 +131,9 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
 
 PathReportInput path_report_input(AppState& app) {
     const PathReportSlot& slot = app.path_report;
-    PathReportInput in;
-    in.result = slot.result;
-    in.state = app.path_report_build();
-    if (slot.result) in.built = slot.built_at;
-    in.out_of_date = slot.out_of_date;
-    in.batch_finished = slot.batch_finished;
+    PathReportInput in = input_from_slot(slot, app.path_report_build());
     if (in.state == ReportBuild::Building && app.report_job)
         std::tie(in.progress_done, in.progress_total) = app.report_job->progress();
-    in.failure_message = slot.message;
-    in.failure_error = slot.error;
     // The row index is into this frame's result, which the click keeps alive.
     in.callbacks.row_click = [&app, result = slot.result](size_t row) {
         const ReportRow& r = result->paths[row];
