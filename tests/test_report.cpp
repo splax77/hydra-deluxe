@@ -1010,7 +1010,7 @@ TEST_CASE("path_tiles: Charts shown adds each chart's copies once") {
 TEST_CASE("dm_tiles: the four sample scores") {
     const std::vector<dm_report::DmReportRow> rows = sample_dm_rows();
     CHECK(tile_pairs(dm_report::dm_tiles(rows, every_row(rows.size()))) ==
-          TilePairs{{"Scores", "4"},
+          TilePairs{{"Scores shown", "4"},
                     {"Under optimal", "1"},
                     {"At optimal", "0"},
                     {"Above optimal", "1"},

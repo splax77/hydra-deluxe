@@ -170,9 +170,10 @@ std::vector<report::Tile> dm_tiles(const std::vector<DmReportRow>& rows,
     if (pct_rows > 0)
         average = format_percent(
             pct_sum, pct_rows * percent_steps(1, 1, kPercentDecimals), kPercentDecimals);
-    // A "no paths" row has no tile of its own (D62 item 1); Scores counts it.
+    // A "no paths" row has no tile of its own (D62 item 1); Scores shown counts
+    // it.
     return {
-        {"Scores", group_thousands(stats.total)},
+        {"Scores shown", group_thousands(stats.total)},
         {"Under optimal", group_thousands(stats.under_optimal)},
         {"At optimal", group_thousands(stats.at_optimal)},
         {"Above optimal", group_thousands(stats.above_optimal)},
@@ -209,9 +210,10 @@ GeneratedDmReport generate_dm_report(store::RecordStore& store,
     out.stats = tally_dm_rows(rows);
     if (rows.empty()) return out;
 
-    std::string subtitle = username + " — " +
-                           hydra::counted(out.stats.total, "score", "scores") + ": " +
-                           counts_phrase(out.stats);
+    // Every score, whatever the filters show; dm_tiles counts the rows that
+    // pass them (D103 item 27).
+    std::string subtitle =
+        username + " — " + hydra::counted(out.stats.total, "score", "scores");
     std::string footer =
         "Actual scores from dmleaderboards.com against Hydra's optimal for " + chartmode +
         ". Above-optimal scores are expected — Hydra's optimal excludes several score "

@@ -217,11 +217,9 @@ TEST_CASE("generate_dm_report: tally and framing behind one seam") {
     CHECK(result.stats.not_analyzed == 0);
     CHECK(result.stats.not_in_library == 1);
 
-    // The subtitle the finished modal's counts must agree with.
-    CHECK(result.subtitle ==
-          "TestUser — 5 scores: 2 under optimal, 1 at optimal, "
-          "1 above optimal, 0 not analyzed, 1 not in your library");
-    CHECK(result.subtitle.find(" matched,") == std::string::npos);
+    // The subtitle counts every score and nothing by status: the tiles count
+    // the scores that pass the filters (D103 item 27).
+    CHECK(result.subtitle == "TestUser — 5 scores");
     CHECK(result.footer.rfind("Actual scores from dmleaderboards.com against Hydra's", 0) == 0);
 
     // No scores: zero stats, no rows.
@@ -248,9 +246,10 @@ TEST_CASE("generate_dm_report hands over its rows, subtitle, footer, player and 
     CHECK(result.rows[1].status == "not in library");
     CHECK(result.username == "TestUser");
     CHECK(result.chartmode == kMode);
-    CHECK(result.subtitle ==
-          "TestUser — 2 scores: 1 under optimal, 0 at optimal, 0 above optimal, "
-          "0 not analyzed, 1 not in your library");
+    CHECK(result.subtitle == "TestUser — 2 scores");
+    // One score reads singular, as the count line writes its noun.
+    CHECK(app::dm_report::generate_dm_report(store, {scores[0]}, kMode, store::Lens{}, "TestUser")
+              .subtitle == "TestUser — 1 score");
     CHECK(result.footer.rfind("Actual scores from dmleaderboards.com against Hydra's optimal for " +
                                   std::string(kMode) + ".",
                               0) == 0);
@@ -289,7 +288,17 @@ TEST_CASE("dm_tiles: the tiles count only the scores shown") {
             out.push_back(t.value);
         return out;
     };
-    // A "no paths" score has no tile of its own; Scores counts it (D62 item 1).
+    // The first tile says it counts the scores shown, like the path report's
+    // Charts shown (D103 item 27).
+    std::vector<std::string> labels;
+    for (const app::report::Tile& t : app::dm_report::dm_tiles(rows, {0}))
+        labels.push_back(t.label);
+    CHECK(labels == std::vector<std::string>{"Scores shown", "Under optimal", "At optimal",
+                                             "Above optimal", "Not analyzed", "Not in library",
+                                             "Other speed", "Avg % of optimal",
+                                             "Points left on table"});
+    // A "no paths" score has no tile of its own; Scores shown counts it (D62
+    // item 1).
     CHECK(values({0, 1, 2, 3, 4}) ==
           std::vector<std::string>{"5", "2", "1", "0", "0", "0", "1", "99.34%", "3,500"});
     // One row's average reads its own cell.

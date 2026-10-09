@@ -125,8 +125,7 @@ std::vector<report::Tile> dm_tiles(const std::vector<DmReportRow>& rows,
 
 // "1 under optimal, 0 at optimal, 1 above optimal, 0 not analyzed, 1 not in
 // your library", plus ", 1 with no paths" and ", 2 at other speeds" when
-// there are any. The page subtitle and the finished window both read it, so
-// the two can't drift.
+// there are any. The comparison window shows it when the player had no scores.
 std::string counts_phrase(const DmReportStats& stats);
 
 struct GeneratedDmReport {
