@@ -22,6 +22,10 @@ To verify anything in the GUI, run `hydra_uitest` (headless, drives the real UI 
 
 Merges and commits on `main` that touch code need a review from a fresh agent first. A hook enforces it. Dispatch the reviewer with `docs/agents/derive-once-review.md`, the key and the range the hook's message gives. Only the user can skip a review, by typing `waive derive-once <key>` in chat. Never ask the user to waive one to save time.
 
+### Doc review
+
+Documents Claude publishes need a review from a fresh agent first. Hooks enforce it in repos whose `main` holds a `.doc-review-gate` marker, as this one does. Four steps are gated: a move of `main`, local or pushed, that adds or changes Markdown under `docs/` or the top-level `CLAUDE.md`, `CONTEXT.md` or `README.md`; an Artifact publish; a plan or decision question; and text posted with `gh`. The details are in `docs/superpowers/plans/2026-10-08-doc-review-gate.md`. Dispatch the reviewer with `docs/agents/doc-review.md`, the key and the review kind the hook's message gives. Only the user can skip a review, by typing `waive doc-review <key>` in chat.
+
 ## Agent rules
 
 These hold for the main session and every agent it sends out. Hooks enforce most of them; the details live in `docs/agents/brief-preamble.md` (what every agent reads first) and the model-postures file (what the main session gets each prompt).
