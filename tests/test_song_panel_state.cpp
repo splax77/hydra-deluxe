@@ -138,11 +138,11 @@ TEST_CASE("song panel: nothing is locked while idle") {
     CHECK_FALSE(app->batch_running());
 }
 
-// The settings bar reads the lock once per frame. It used to ask
+// The settings button reads the lock once per frame. It used to ask
 // batch_running() a second time; a batch that ended on its worker in between
 // sent it to the one-song message, which read the analyze job's song through
 // a null pointer (an access violation in hydra_uitest's batch-strip-workers
-// under load). Only a batch locks the bar now (D90 item 2).
+// under load). Only a batch locks the settings now (D90 item 2).
 TEST_CASE("song panel: a running batch locks the settings as a batch, then unlocks") {
     ScratchPaths paths("panel_batchlock");
     auto app = app_with_library(paths, 5);

@@ -565,7 +565,7 @@ TEST_CASE("a song whose file is gone shows FileMissing and starts no job") {
     CHECK_FALSE(app->view_pending);
 }
 
-// A click's analysis doesn't lock the settings bar; only a batch does (D90
+// A click's analysis doesn't lock the analysis settings; only a batch does (D90
 // item 2).
 TEST_CASE("the settings lock is the batch's alone") {
     ScratchPaths paths("appstate_click_lock");

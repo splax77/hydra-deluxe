@@ -756,8 +756,8 @@ void test_long_error_wraps(ImGuiTestContext* ctx) {
     // Unwrapped, the line would be wider than the whole screen.
     IM_CHECK_GT(ImGui::CalcTextSize(line.c_str()).x, ImGui::GetIO().DisplaySize.x);
 
-    // Only the song panel and its children: the settings bar is another
-    // task's (layout-sweep covers it).
+    // Only the song panel and its children: the rest of the window is
+    // another task's (layout-sweep covers it).
     std::vector<std::string> all, found;
     overflowing_windows("long error", all);
     for (const std::string& f : all)

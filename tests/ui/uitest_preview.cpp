@@ -633,8 +633,8 @@ void test_preview_error_wraps(ImGuiTestContext* ctx) {
     // The raw text is on the details line under it.
     IM_CHECK(!pc.error_detail().empty());
     IM_CHECK(visible_text(h).find(pc.error_detail()) != std::string::npos);
-    // The song panel's windows, the message's among them. (The settings bar
-    // above the library is another task's.)
+    // The song panel's windows, the message's among them. (The rest of the
+    // window is another task's.)
     int checked = 0;
     int overflowing = 0;
     float widest_room = 0.0f;
@@ -657,7 +657,7 @@ void test_preview_error_wraps(ImGuiTestContext* ctx) {
 }
 
 // A mode change on the open chart reloads the Preview (D48, Q22). Evans Blue -
-// Beg charts Expert drums and no Hard, so picking Hard in the settings bar
+// Beg charts Expert drums and no Hard, so picking Hard in the analysis settings
 // must say so in the Preview, in the no-notes sentence analysis uses, rather
 // than keep drawing Expert's notes. Back on Expert the highway returns.
 void test_preview_mode_reload(ImGuiTestContext* ctx) {

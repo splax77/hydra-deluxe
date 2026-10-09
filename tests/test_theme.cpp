@@ -30,7 +30,6 @@ TEST_CASE("theme: button text reads at 4.5:1 in every button state") {
 
 TEST_CASE("theme: dimmed and disabled text stays readable") {
     CHECK(contrast(kDimTextColor, kWindowBgColor) >= 4.5);
-    CHECK(contrast(kDimTextColor, kSettingsBarBg) >= 4.5);
     CHECK(contrast(kDimTextColor, kPanelBg) >= 4.5);
     CHECK(contrast(kDisabledInputTextColor, kDisabledInputBgColor) >= 4.5);
     CHECK(contrast(kDisabledButtonTextColor, kDisabledButtonColor) >= 4.5);

@@ -48,16 +48,14 @@ inline const ImVec4 kButtonActiveColor{0 / 255.0f, 88 / 255.0f, 88 / 255.0f, 1.0
 inline const ImVec4& kFrameHoveredColor = kButtonHoveredColor;
 
 // Surfaces. The window is DPG's baseline (it used to be a local in
-// apply_theme); the settings bar and the song panel sit a shade lighter so
-// they read as their own areas, as in the approved mockup.
+// apply_theme); the song panel sits a shade lighter so it reads as its own
+// area, as in the approved mockup.
 inline const ImVec4 kWindowBgColor{37 / 255.0f, 37 / 255.0f, 38 / 255.0f, 1.0f};
-inline const ImVec4 kSettingsBarBg{43 / 255.0f, 43 / 255.0f, 46 / 255.0f, 1.0f};
 inline const ImVec4 kPanelBg{40 / 255.0f, 40 / 255.0f, 42 / 255.0f, 1.0f};
 
 // Dimmed text: hints, "(?)" markers, secondary lines, ImGui's TextDisabled,
-// and disabled labels. (160,160,160) is 5.86:1 on the window, 5.40:1 on the
-// settings bar and 4.81:1 on an input face. kNewSongColor (145) would be
-// 4.48:1 on the settings bar, just under the line.
+// and disabled labels. (160,160,160) is 5.86:1 on the window and 4.81:1 on
+// an input face.
 inline const ImVec4 kDimTextColor{160 / 255.0f, 160 / 255.0f, 160 / 255.0f, 1.0f};
 // The byline under the song title: brighter than dimmed, quieter than text.
 inline const ImVec4 kSubtleTextColor{200 / 255.0f, 200 / 255.0f, 200 / 255.0f, 1.0f};
