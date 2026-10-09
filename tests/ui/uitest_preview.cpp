@@ -130,6 +130,18 @@ void pick_preview_path(ImGuiTestContext* ctx, const hydra::Path* path) {
     ctx->Yield(2);
 }
 
+// A fresh app with chart 0 open and analyzed. Returns false (the check
+// already failed) when a step did not work.
+bool open_chart0_analyzed(ImGuiTestContext* ctx) {
+    reset_app(harness(ctx));
+    scan_library(ctx);
+    if (ctx->IsError()) return false;
+    open_details(ctx, 0);
+    if (ctx->IsError()) return false;
+    wait_song_analyzed(ctx);
+    return !ctx->IsError();
+}
+
 // The path overlay follows the Paths tab's selection. Re-opening the Preview
 // for a chart that was already open used to be a plain no-op, so the overlay
 // stayed on whatever path had been selected the first time -- the record's
@@ -137,13 +149,7 @@ void pick_preview_path(ImGuiTestContext* ctx, const hydra::Path* path) {
 // re-parse, no audio re-decode, and the playhead left where it was.
 void test_preview_path_overlay(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    reset_app(h);
-    scan_library(ctx);
-    if (ctx->IsError()) return;
-    open_details(ctx, 0);
-    if (ctx->IsError()) return;
-    wait_song_analyzed(ctx);
-    if (ctx->IsError()) return;
+    if (!open_chart0_analyzed(ctx)) return;
 
     // A second path to switch to. Path rows are labeled by pathstring, so the
     // one picked must differ from the first path's and be unique among every
@@ -738,13 +744,7 @@ void test_preview_mode_reload(ImGuiTestContext* ctx) {
 // place is the highway's.
 void test_settings_change_holds_layout(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    reset_app(h);
-    scan_library(ctx);
-    if (ctx->IsError()) return;
-    open_details(ctx, 0);
-    if (ctx->IsError()) return;
-    wait_song_analyzed(ctx);
-    if (ctx->IsError()) return;
+    if (!open_chart0_analyzed(ctx)) return;
     ctx->ItemClick("##DetailsTabs/Preview");
     IM_CHECK(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10));
     if (!h.app->preview) return;
