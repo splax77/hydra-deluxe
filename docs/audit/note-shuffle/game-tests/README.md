@@ -12,7 +12,7 @@ You don't need to hit any notes, except in song E. A short screen recording of t
 
 ## How to install them
 
-1. Copy the ten folders inside `songs/` into your Clone Hero 1.1 songs folder. Putting them in a new subfolder, for example `Note Shuffle tests`, keeps them together.
+1. The ten folders inside `songs/` are already copied into `C:\Clone Hero\songs\Hydra Note Shuffle tests`. That's the songs folder Clone Hero's settings name (`[directories] path0` in `Documents\Clone Hero\settings.ini`). Delete that subfolder when the tests are done.
 2. Start the game and rescan your songs.
 3. Search for "NS". Every song name starts with "NS" and says what it tests.
 
