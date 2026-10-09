@@ -314,8 +314,9 @@ TEST_CASE("song: solo_sections lists each run of solo chords once") {
 TEST_CASE("Song::note_count: the chart's note total under each 2x Bass setting") {
     // Tick 0: a kick, a 2x kick on the same tick, and a red. Tick 192: a lone
     // 2x kick. Tick 384: a yellow. Tick 576: a 2x kick written before a kick
-    // on the same tick. A tick holds one kick whichever way 2x Bass is set,
-    // so only the lone 2x kick at 192 moves the total.
+    // on the same tick. The two kicks on one tick merge into one 2x kick
+    // (D105), so 2x Bass off removes all three kicks, and on keeps one per
+    // tick.
     const std::vector<uint8_t> data = testchart::chart_bytes(testchart::section(
         "ExpertDrums",
         "  0 = N 0 0\n  0 = N 32 0\n  0 = N 1 0\n"
@@ -323,7 +324,7 @@ TEST_CASE("Song::note_count: the chart's note total under each 2x Bass setting")
         "  384 = N 2 0\n"
         "  576 = N 32 0\n  576 = N 0 0\n"));
     CHECK(load_songbytes_chart(data, true, /*bass2x=*/true).note_count() == 5);
-    CHECK(load_songbytes_chart(data, true, /*bass2x=*/false).note_count() == 4);
+    CHECK(load_songbytes_chart(data, true, /*bass2x=*/false).note_count() == 2);
     // A chart with no notes counts none.
     CHECK(Song(192).note_count() == 0);
 }

@@ -1,0 +1,38 @@
+[Song]
+{
+  Name = "NS F2 2x kick shared tick chart"
+  Artist = "Hydra note shuffle test"
+  Charter = "Hydra"
+  Offset = 0
+  Resolution = 480
+  Genre = "Test"
+  MediaType = "cd"
+  MusicStream = "song.ogg"
+}
+[SyncTrack]
+{
+  0 = TS 4
+  0 = B 120000
+}
+[Events]
+{
+}
+[ExpertDrums]
+{
+  1920 = N 0 0
+  1920 = N 1 0
+  2400 = N 1 0
+  2880 = N 0 0
+  2880 = N 32 0
+  2880 = N 1 0
+  3360 = N 1 0
+  3840 = N 32 0
+  3840 = N 0 0
+  3840 = N 1 0
+  4320 = N 1 0
+  4800 = N 32 0
+  4800 = N 1 0
+  5280 = N 1 0
+  5760 = N 0 0
+  5760 = N 1 0
+}
