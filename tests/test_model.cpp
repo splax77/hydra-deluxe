@@ -275,7 +275,8 @@ TEST_CASE("Activation::hardest: the part with its ms, a tie names the squeeze") 
     CHECK_FALSE(plain().hardest().has_value());
 }
 
-TEST_CASE("Activation::needs_timing: free squeezes and slack fills need none (D51 Q4, D13)") {
+// D51 Q4; D13.
+TEST_CASE("Activation::needs_timing: free squeezes and slack fills need none") {
     auto plain = [] {
         Activation a;
         test::set_skips(a, 0);
@@ -330,7 +331,7 @@ TEST_CASE("Activation::needs_timing: free squeezes and slack fills need none (D5
 // D85: the all-0 list's 0 ms limit lets a timing of exactly 0 ms through,
 // though such a timing needs hitting (Activation::needs_timing). A free
 // squeeze counts too, so a negative limit can still refuse one.
-TEST_CASE("Activation::within_ms_limit: 0 ms timings pass a 0 ms limit (D85)") {
+TEST_CASE("Activation::within_ms_limit: 0 ms timings pass a 0 ms limit") {
     auto plain = [] {
         Activation a;
         test::set_skips(a, 0);
@@ -704,7 +705,7 @@ TEST_CASE("backend_row_value: every engine case") {
 // methods read (no 0.003 in the 126 Clone Hero engine methods read); the
 // 3 ms is Hydra's own setting (Rules::backend_leeway_ms), so the edge is
 // Hydra's call, and this is it.
-TEST_CASE("backend leeway: +2.999 ms is counted, exactly +3.0 ms is not (D29)") {
+TEST_CASE("backend leeway: +2.999 ms is counted, exactly +3.0 ms is not") {
     const double lw = core::default_rules().backend_leeway_ms;
     REQUIRE(lw == 3.0);
     CHECK(core::counted_without_squeeze(2.999, lw));
@@ -719,7 +720,8 @@ TEST_CASE("backend leeway: +2.999 ms is counted, exactly +3.0 ms is not (D29)") 
     CHECK(row.summarystr(false, 85.0, lw) == "Hard (uncounted)");
 }
 
-TEST_CASE("SPSqueeze::is_free: a note on the SP end is inside SP (D13)") {
+// D13.
+TEST_CASE("SPSqueeze::is_free: a note on the SP end is inside SP") {
     // A SqIn is free once its note is inside SP: at the end or before it.
     CHECK(SPSqueeze{SqueezeKind::SqIn, 0.0}.is_free());
     CHECK(SPSqueeze{SqueezeKind::SqIn, -0.0}.is_free());

@@ -213,7 +213,8 @@ TEST_CASE("malformed INI lines are tolerated") {
     CHECK(r.chartfolders.empty());
 }
 
-TEST_CASE("settings: a value outside its range loads at the nearest edge (D51 Q14)") {
+// D51 Q14.
+TEST_CASE("settings: a value outside its range loads at the nearest edge") {
     // The Path limit's range is the squeeze window on either side.
     CHECK(load_ini_text("range1", "mslimit_value=900\n").mslimit_value ==
           static_cast<int>(hydra::kSqueezeWindowMs));
@@ -264,7 +265,8 @@ TEST_CASE("Settings::clamp is the one range every caller asks") {
     CHECK(s.search_depth_mode() == hydra::DepthMode::Scores);
 }
 
-TEST_CASE("settings: the hit window keeps a decimal, and 0 reads the default (D51 Q15)") {
+// D51 Q15.
+TEST_CASE("settings: the hit window keeps a decimal, and 0 reads the default") {
     const Settings half = load_ini_text("hitwin1", "hit_window_ms=85.5\n");
     CHECK(half.hit_window_ms == 85.5);
     // 0 has no edge to land on (the file-load form of the old clamp line).
@@ -286,7 +288,8 @@ TEST_CASE("settings: the hit window keeps a decimal, and 0 reads the default (D5
     std::remove(path.c_str());
 }
 
-TEST_CASE("settings: a # after a value is a comment (D51 Q15)") {
+// D51 Q15.
+TEST_CASE("settings: a # after a value is a comment") {
     const Settings hard = load_ini_text("hash1", "view_difficulty=Hard # practice\n");
     CHECK(hard.view_difficulty == "Hard");
     CHECK(hard.chartmode_key().rfind("Hard ", 0) == 0);
@@ -350,7 +353,8 @@ const ModeCase kModeCases[] = {
 
 }  // namespace
 
-TEST_CASE("chartmode_key: Note Shuffle off leaves every key as it was, on adds an ending (D104)") {
+// D104.
+TEST_CASE("chartmode_key: Note Shuffle off leaves every key as it was, on adds an ending") {
     for (const ModeCase& c : kModeCases) {
         CAPTURE(c.key_off);
         Settings s;

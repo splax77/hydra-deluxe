@@ -146,7 +146,7 @@ TEST_CASE("file_size_bytes matches a small file's bytes and throws for a missing
 }
 
 // Finding 251's table, the rule the scan's stored rootfolder has always used.
-TEST_CASE("parent_folder: the audit's four rows") {
+TEST_CASE("parent_folder: a file's folder, a trailing slash's parent, and empty for a bare name") {
     CHECK(hydra::parent_folder("C:\\a\\b\\notes.mid") == "C:\\a\\b");
     CHECK(hydra::parent_folder("C:\\a\\b\\") == "C:\\a");
     CHECK(hydra::parent_folder("notes.mid").empty());
