@@ -105,9 +105,12 @@ jobs:
   # See "The coverage report" in docs/development.md.
   coverage:
     name: Coverage report (Windows, Release)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Off until the collection step is fixed: its first run on main (2026-10-10,
+    # run 38076842216) hung on "Start the collection session" for over an hour,
+    # because Start-Process -Wait also waits for the server it starts.
+    if: false
     runs-on: windows-2025
-    timeout-minutes: 90
+    timeout-minutes: 30
     defaults:
       run:
         shell: pwsh
