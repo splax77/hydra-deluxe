@@ -316,12 +316,16 @@ int check_overlay_boxes(ImGuiTestContext* ctx) {
                 IM_CHECK_NO_RET(!r[i].Overlaps(r[j]));
             }
     if (on[kNext] && on[kDrain]) {
+        // Two sums that come to the same pixel can differ by float rounding
+        // alone. The allowance is the one this file's other position checks
+        // (test_layout_drift) already use for "did not move".
+        constexpr float kSamePlace = 0.01f;
         IM_CHECK_NO_RET(r[kNext].Min.y >= r[kDrain].Max.y);
-        IM_CHECK_NO_RET(std::fabs(r[kNext].Max.x - r[kDrain].Max.x) <= 0.01f);
+        IM_CHECK_NO_RET(std::fabs(r[kNext].Max.x - r[kDrain].Max.x) <= kSamePlace);
         if (on[kTime] && on[kScore]) {
             const float right_gap = r[kNext].Min.y - r[kDrain].Max.y;
             const float left_gap = r[kScore].Min.y - r[kTime].Max.y;
-            IM_CHECK_NO_RET(std::fabs(right_gap - left_gap) <= 0.01f);
+            IM_CHECK_NO_RET(std::fabs(right_gap - left_gap) <= kSamePlace);
         }
     }
     return found;

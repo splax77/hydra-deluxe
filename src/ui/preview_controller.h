@@ -235,7 +235,8 @@ public:
     // the reference holds until the next call.
     const std::vector<double>& scrub_marks() const;
 
-    // The box at the highway's bottom-left (app::build_next_act_box).
+    // The next-activation box the panel draws under the drain box
+    // (app::build_next_act_box).
     hydra::app::PreviewNextActBox next_act_box() const;
 
     // Every box that one shows over the drawn path, one per activation: what
