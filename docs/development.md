@@ -74,7 +74,7 @@ the tests only.
 .\build_cpp.ps1              # configure + build everything (Release), dev tools too
 .\build_cpp.ps1 -Preset ship -Package   # zip a release without the GUI tests
 .\build_cpp.ps1 -Target hydra_tests
-.\build-cpp\Release\hydra_tests.exe    # run the test suite
+ctest --test-dir build-cpp -C Release -j 4 -R hydra_tests --output-on-failure   # run the test suite in its slices (tests/shards.txt)
 ```
 
 To build the Windows installer (needs Inno Setup 6:

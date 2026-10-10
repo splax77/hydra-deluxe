@@ -37,10 +37,11 @@ jobs:
       - name: Build hydra_tests
         run: .\build_cpp.ps1 -Target hydra_tests
 
-      # The one excluded case opens the default sound output, and hosted
-      # runners have no audio device. See tests/test_audio_device.cpp.
+      # The slices of tests/shards.txt, side by side. The excluded entry opens
+      # the default sound output, and hosted runners have no audio device.
+      # -R keeps hydra_uitest out until the step below has built it.
       - name: Run hydra_tests
-        run: .\build-cpp\Release\hydra_tests.exe "-tce=PreviewAudioDevice opens and starts the default output device"
+        run: ctest --test-dir build-cpp -C Release -j 4 -R hydra_tests -E audio_device --output-on-failure
 
       - name: Build hydra_uitest
         run: .\build_cpp.ps1 -Target hydra_uitest
