@@ -593,7 +593,10 @@ add_executable(hydra_tests
     tests/test_library_jobs.cpp
     tests/test_fill_deadline.cpp
     tests/test_fill_report.cpp
-    tests/test_app_state.cpp
+    tests/test_app_click.cpp
+    tests/test_app_settings.cpp
+    tests/test_app_reports.cpp
+    tests/test_app_library.cpp
     tests/test_song_panel_state.cpp
     tests/test_library_model.cpp
     tests/test_app_shell.cpp
@@ -625,8 +628,8 @@ add_executable(hydra_tests
 # hydra_audio: test_audio_decode exercises the stem decoders and mixer.
 # hydra_render: the highway geometry, meshes, and a WARP offscreen-render test —
 # hence d3d11/dxgi (a headless WARP device) and d3dcompiler (runtime HLSL).
-# hydra_ui: test_app_state builds a real AppState on a scratch store. Only the
-# window-independent half is exercised; nothing here opens a window or a device.
+# hydra_ui: test_app_click and the AppState tests split from it build a real
+# AppState on a scratch store. Only the window-independent half is exercised; nothing here opens a window or a device.
 target_link_libraries(hydra_tests PRIVATE
     hydra_ui hydra_dm hydra_audio hydra_render hydra_image d3d11 dxgi d3dcompiler
     hydra_warnings)
