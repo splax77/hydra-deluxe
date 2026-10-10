@@ -1864,28 +1864,27 @@ TEST_CASE("replay: window order does not matter and windows add up, shrunk by Ra
     REQUIRE(n > 500);
     INFO("chart: " << longest_path << " (" << n << " chords)");
     const std::vector<core::Rules> variants = leeway_variants();
-    const auto tick_of = [&song](size_t i) { return song.sequence[i].timecode.ticks(); };
 
-    // One window: an activation chord, a length of 1 to 60 chords, a
-    // deactivation node sometimes a few ticks off its chord, and on about a
-    // quarter of them a squeeze-out chord from 3 before the SP end to 3 after.
+    // One window: the same draws synthetic_windows makes from its Lcg, with
+    // the same odds (all in tests/replay_windows.h), so RapidCheck can shrink
+    // them. testreplay::window_over turns the draws into the window.
+    using testreplay::kDeactOffsetOneIn;
+    using testreplay::kDeactOffsetRange;
+    using testreplay::kMaxWindowChords;
+    using testreplay::kSqoutOneIn;
+    using testreplay::kSqoutPicks;
     const rc::Gen<ReplayWindow> one_window = rc::gen::map(
-        rc::gen::tuple(rc::gen::inRange<size_t>(0, n), rc::gen::inRange<size_t>(1, 61),
-                       rc::gen::weightedOneOf<int64_t>({{2, rc::gen::just<int64_t>(0)},
-                                                        {1, rc::gen::inRange<int64_t>(1, 10)}}),
-                       rc::gen::weightedOneOf<int>({{3, rc::gen::just(-1)},
-                                                    {1, rc::gen::inRange(0, 7)}})),
-        [&](const std::tuple<size_t, size_t, int64_t, int>& t) {
-            const size_t a = std::get<0>(t);
-            const size_t d = std::min(a + std::get<1>(t), n - 1);
-            ReplayWindow w;
-            w.act_tick = tick_of(a);
-            w.deact_tick = tick_of(d) + std::get<2>(t);
-            if (std::get<3>(t) >= 0) {
-                const size_t lo = d >= 3 ? d - 3 : 0;
-                w.sqout_tick = tick_of(std::min(lo + static_cast<size_t>(std::get<3>(t)), n - 1));
-            }
-            return w;
+        rc::gen::tuple(
+            rc::gen::inRange<size_t>(0, n), rc::gen::inRange<size_t>(1, kMaxWindowChords + 1),
+            rc::gen::weightedOneOf<int64_t>(
+                {{kDeactOffsetOneIn - 1, rc::gen::just<int64_t>(0)},
+                 {1, rc::gen::inRange<int64_t>(0, kDeactOffsetRange)}}),
+            rc::gen::weightedOneOf<int>(
+                {{kSqoutOneIn - 1, rc::gen::just(-1)},
+                 {1, rc::gen::inRange(0, static_cast<int>(kSqoutPicks))}})),
+        [&song](const std::tuple<size_t, size_t, int64_t, int>& t) {
+            return testreplay::window_over(song, std::get<0>(t), std::get<1>(t), std::get<2>(t),
+                                           std::get<3>(t));
         });
 
     const auto property = [&] {
