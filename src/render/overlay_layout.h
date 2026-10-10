@@ -1,16 +1,17 @@
 // Where the highway lands on the Preview image, and the scale that keeps the
 // Preview's text boxes (the time and score boxes top-left, the SP drain box
-// top-right) beside it rather than on it. Device-free: the same camera and
-// track height the renderer draws with, projected on the CPU.
+// and the next-activation box under it top-right) beside it rather than on
+// it. Device-free: the same camera and track height the renderer draws with,
+// projected on the CPU.
 //
 // The highway's size follows the track height, not the image width, so a
 // narrower window leaves less room at its sides. The boxes shrink into that
 // room, never past kOverlayMinScale (below it the text stops being readable,
 // so they overlap instead) and never above 1 (their configured size).
 //
-// The next-activation box stands on the image's bottom edge, where the
-// highway is widest, so its room is measured there; it wraps its lines to
-// that room (wrap_words) rather than shrink every box to fit its longest line.
+// The next-activation box wraps its lines to the room beside the highway at
+// its lowest row (wrap_right_box) rather than shrink every box to fit its
+// longest line.
 //
 // Also the "…" cut for a label too long for its space (ellipsize), measured
 // by the caller's font so it stays device-free.
@@ -47,14 +48,17 @@ struct HighwaySpan {
 HighwaySpan highway_span_at(const PreviewConfig& cfg, int width, int height, float y);
 
 // The boxes to fit, at scale 1, in image pixels. A width of 0 means absent.
+// The right column's boxes share one right edge, left of the gauge.
 struct OverlayBoxes {
     float left_w = 0.0f;      // the top-left column (time box, score box under it)
     float left_h = 0.0f;      //   from the image's top edge
+    float right_edge = 0.0f;  // x of the right column's right edge
     float right_w = 0.0f;     // the SP drain box
     float right_h = 0.0f;
-    float right_edge = 0.0f;  // x of the drain box's right edge, left of the gauge
-    float right_top = 0.0f;   // y of the drain box's top edge
-    float bottom_left_w = 0.0f;  // the next-activation box, on the image's bottom edge
+    float right_top = 0.0f;   //   y of its top edge
+    float next_w = 0.0f;      // the next-activation box, under the drain box
+    float next_h = 0.0f;
+    float next_top = 0.0f;    //   y of its top edge
     float gap = 0.0f;         // clearance kept from the highway's edge
 };
 
@@ -63,14 +67,41 @@ inline constexpr float kOverlayMinScale = 0.6f;
 // One scale for all the boxes: the largest in [min_scale, 1] at which each box
 // clears the highway at its lowest row (where the highway is widest within
 // it). Rows are measured at scale 1, so a shrunken box is only more clear.
-// The bottom-left box's lowest row is the image's bottom edge, where the
-// highway is at its widest.
 float overlay_scale(const PreviewConfig& cfg, int width, int height, const OverlayBoxes& boxes,
                     float min_scale = kOverlayMinScale);
 
-// The room a box standing on the image's bottom-left corner has before it
-// reaches the highway, less `gap`: the highway's left edge at the bottom row.
-float bottom_left_room(const PreviewConfig& cfg, int width, int height, float gap);
+// The room at image row `row` for a box whose right edge is at x
+// `right_edge`, before it reaches the highway, less `gap`. The highway widens
+// downward, so a box's lowest row is the one that limits it.
+float right_room(const PreviewConfig& cfg, int width, int height, float right_edge, float row,
+                 float gap);
+
+// One part of a box's text: the words, how wide a run of them is, how tall
+// each of its lines is, and how many of its last words stay together
+// (wrap_words). kKeepWhole keeps the whole text on one line.
+struct TextPiece {
+    std::string text;
+    std::function<float(const std::string&)> width_of;
+    float line_h = 0.0f;
+    size_t keep_last = 1;
+};
+inline constexpr size_t kKeepWhole = static_cast<size_t>(-1);
+
+// A box's pieces as wrapped: each piece's lines in order, the widest line,
+// and all the lines' heights summed.
+struct WrappedText {
+    std::vector<std::vector<std::string>> lines;
+    float text_w = 0.0f;
+    float text_h = 0.0f;
+};
+
+// `pieces` stacked in a box whose right edge is at `right_edge` and top at
+// row `top`, with `pad` inside on every side, each piece wrapped to the room
+// at the box's lowest row (right_room, less the pads). More lines make the
+// box taller and its room smaller, so it starts unbroken and wraps again
+// until a pass adds no line; text that fits stays one line a piece.
+WrappedText wrap_right_box(const PreviewConfig& cfg, int width, int height, float right_edge,
+                           float top, float pad, float gap, const std::vector<TextPiece>& pieces);
 
 // `text` broken at its spaces into lines no wider than `max_w`, each as wide
 // as fits (the first line takes the most words). A line keeps the text's own

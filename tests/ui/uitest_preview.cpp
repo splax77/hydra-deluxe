@@ -292,6 +292,41 @@ void test_preview_controls(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(pc.time_box().position.c_str(), mb0.c_str());
 }
 
+// The overlay's boxes as drawn, found by the names preview_tab gives them: no
+// box overlaps another or the gauge, and the next-activation box stands under
+// the drain box (D111 item 3) with their right edges lined up and the left
+// column's gap between them. A box not on screen is left out. Returns how
+// many boxes it found.
+int check_overlay_boxes(ImGuiTestContext* ctx) {
+    const char* const ids[] = {"**/##time_box", "**/##score_box", "**/##drain_box",
+                               "**/##next_act_box", "**/##sp_gauge"};
+    enum { kTime, kScore, kDrain, kNext, kGauge, kCount };
+    ImRect r[kCount];
+    bool on[kCount] = {};
+    int found = 0;
+    for (int i = 0; i < kCount; ++i) {
+        const ImGuiTestItemInfo info = ctx->ItemInfo(ids[i], ImGuiTestOpFlags_NoError);
+        on[i] = info.ID != 0;
+        if (on[i]) r[i] = info.RectFull, ++found;
+    }
+    for (int i = 0; i < kCount; ++i)
+        for (int j = i + 1; j < kCount; ++j)
+            if (on[i] && on[j] && r[i].Overlaps(r[j])) {
+                ctx->LogError("%s overlaps %s", ids[i], ids[j]);
+                IM_CHECK_NO_RET(!r[i].Overlaps(r[j]));
+            }
+    if (on[kNext] && on[kDrain]) {
+        IM_CHECK_NO_RET(r[kNext].Min.y >= r[kDrain].Max.y);
+        IM_CHECK_NO_RET(std::fabs(r[kNext].Max.x - r[kDrain].Max.x) <= 0.01f);
+        if (on[kTime] && on[kScore]) {
+            const float right_gap = r[kNext].Min.y - r[kDrain].Max.y;
+            const float left_gap = r[kScore].Min.y - r[kTime].Max.y;
+            IM_CHECK_NO_RET(std::fabs(right_gap - left_gap) <= 0.01f);
+        }
+    }
+    return found;
+}
+
 // The SP drain box beside the gauge. Its values are build_drain_box's, pinned
 // by the unit tests; this checks the panel feeds it the playhead and the
 // viewed path, and saves a frame of the active box to look at.
@@ -317,6 +352,10 @@ void test_preview_drain_box(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(idle.header.c_str(), "SP drain (if activated)");
     IM_CHECK(idle.rate.rfind("1 bar / ", 0) == 0);
     IM_CHECK(idle.detail.rfind("full meter ", 0) == 0);
+    // All five drawn, the next-activation box under the drain box.
+    IM_CHECK(pc.next_act_box().shown);
+    ctx->Yield(2);
+    IM_CHECK_EQ(check_overlay_boxes(ctx), 5);
 
     // Somewhere the path has SP running. Walk the playhead to find it, so the
     // test needs no timing of its own.
@@ -334,6 +373,7 @@ void test_preview_drain_box(ImGuiTestContext* ctx) {
 
     // A frame of the active box, for a person to look at.
     ctx->Yield(2);
+    check_overlay_boxes(ctx);
     IM_CHECK(screenshot(ctx, "drain-box-active.png"));
 }
 
@@ -369,12 +409,14 @@ void test_preview_overlay_fit(ImGuiTestContext* ctx) {
     h.app->library_ui.panel_was_open = false;
     ctx->Yield(5);
     IM_CHECK_EQ(pc.overlay_scale(), 1.0f);  // a wide panel: full size
+    check_overlay_boxes(ctx);
     IM_CHECK(screenshot(ctx, "overlay-fit-wide.png"));
 
     DisplayWidth narrow(h, 640);
     ctx->Yield(5);
     IM_CHECK(pc.overlay_scale() < 1.0f);
     IM_CHECK(pc.overlay_scale() >= hydra::render::kOverlayMinScale);
+    check_overlay_boxes(ctx);
     IM_CHECK(screenshot(ctx, "overlay-fit-narrow.png"));
 }
 
@@ -829,6 +871,7 @@ void test_preview_overlay_steady(ImGuiTestContext* ctx) {
             IM_CHECK(pc.jump_activation(+1));
             ctx->Yield(2);
             if (act == 1) IM_CHECK_STR_EQ(pc.time_box().position.c_str(), "m32.1.0");
+            IM_CHECK_EQ(check_overlay_boxes(ctx), 5);
             if (act == 2) {
                 IM_CHECK_STR_EQ(pc.time_box().position.c_str(), "m58.1.0");
                 // The long chord's box, wrapped beside the lane.

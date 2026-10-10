@@ -401,7 +401,7 @@ std::optional<double> song_fraction(double ms, double length_ms);
 std::optional<double> activation_jump_ms(const PreviewScene& scene, double now_ms,
                                          int direction);
 
-// The box at the highway's bottom-left: the first activation at or after the
+// The box under the SP drain box, top right: the first activation at or after the
 // playhead (the same half-millisecond slack), read at the moment the time box
 // shows for `now_ms` and `length_ms` (shown_ms), "Next: activation 1 of 3",
 // then the activation's notation, then "at m32.1.0 · [Kick - Green cymbal]".

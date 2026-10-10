@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <vector>
 
 #include <DirectXMath.h>
@@ -52,20 +53,20 @@ float overlay_scale(const PreviewConfig& cfg, int width, int height, const Overl
         const float room = highway_span_at(cfg, width, height, boxes.left_h).left - boxes.gap;
         scale = std::min(scale, room / boxes.left_w);
     }
-    if (boxes.right_w > 0.0f) {
-        const float bottom = boxes.right_top + boxes.right_h;
-        const float room =
-            boxes.right_edge - highway_span_at(cfg, width, height, bottom).right - boxes.gap;
-        scale = std::min(scale, room / boxes.right_w);
-    }
-    if (boxes.bottom_left_w > 0.0f)
-        scale = std::min(scale, bottom_left_room(cfg, width, height, boxes.gap) / boxes.bottom_left_w);
+    // The right column's boxes, each at its own lowest row.
+    auto fit_right = [&](float w, float top, float h) {
+        if (w <= 0.0f) return;
+        scale = std::min(scale,
+                         right_room(cfg, width, height, boxes.right_edge, top + h, boxes.gap) / w);
+    };
+    fit_right(boxes.right_w, boxes.right_top, boxes.right_h);
+    fit_right(boxes.next_w, boxes.next_top, boxes.next_h);
     return std::clamp(scale, min_scale, 1.0f);
 }
 
-float bottom_left_room(const PreviewConfig& cfg, int width, int height, float gap) {
-    const float bottom_row = static_cast<float>(track_rect(cfg, width, height).height);
-    return highway_span_at(cfg, width, height, bottom_row).left - gap;
+float right_room(const PreviewConfig& cfg, int width, int height, float right_edge, float row,
+                 float gap) {
+    return right_edge - highway_span_at(cfg, width, height, row).right - gap;
 }
 
 namespace {
@@ -123,6 +124,35 @@ float widest_word(const std::string& text,
     for (const std::string& line : wrap_words(text, 0.0f, width_of, keep_last))
         widest = std::max(widest, width_of(line));
     return widest;
+}
+
+WrappedText wrap_right_box(const PreviewConfig& cfg, int width, int height, float right_edge,
+                           float top, float pad, float gap, const std::vector<TextPiece>& pieces) {
+    auto wrap_all = [&](float max_w) {
+        WrappedText out;
+        for (const TextPiece& p : pieces) {
+            out.lines.push_back(wrap_words(p.text, max_w, p.width_of, p.keep_last));
+            for (const std::string& l : out.lines.back()) {
+                out.text_w = std::max(out.text_w, p.width_of(l));
+                out.text_h += p.line_h;
+            }
+        }
+        return out;
+    };
+    WrappedText wrapped = wrap_all(std::numeric_limits<float>::max());
+    // A pass that changes the box adds a line, and a piece never has more
+    // lines than characters, so the passes are capped by the characters.
+    size_t passes = 1;
+    for (const TextPiece& p : pieces) passes += p.text.size();
+    for (size_t i = 0; i < passes; ++i) {
+        const float bottom = top + pad * 2.0f + wrapped.text_h;
+        const float room = right_room(cfg, width, height, right_edge, bottom, gap) - pad * 2.0f;
+        WrappedText next = wrap_all(room);
+        const bool grew = next.text_h > wrapped.text_h;
+        wrapped = std::move(next);
+        if (!grew) break;
+    }
+    return wrapped;
 }
 
 std::string ellipsize(const std::string& text, float max_w,
