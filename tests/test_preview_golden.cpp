@@ -16,6 +16,7 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -133,6 +134,120 @@ std::vector<float> half_res(const std::vector<uint8_t>& rgba, int w, int h, int&
     return out;
 }
 
+// Each half-res pixel's largest channel delta between `a` and `g`, or -1 for a
+// pixel the caller masks out. `masked` takes half-res coordinates.
+template <typename Masked>
+std::vector<float> max_channel_deltas(const std::vector<float>& a, const std::vector<float>& g, int ow,
+                                      int oh, Masked masked) {
+    std::vector<float> out(static_cast<size_t>(ow) * oh, -1.0f);
+    for (int y = 0; y < oh; ++y)
+        for (int x = 0; x < ow; ++x) {
+            if (masked(x, y)) continue;
+            const size_t i = static_cast<size_t>(y) * ow + x;
+            float m = 0.0f;
+            for (int c = 0; c < 3; ++c) m = (std::max)(m,std::fabs(a[i * 3 + c] - g[i * 3 + c]));
+            out[i] = m;
+        }
+    return out;
+}
+
+constexpr int kTile = 16;  // tile side in half-res pixels (32 at full size), from the plan's Task 2
+
+// For one per-pixel delta D: the share of unmasked pixels whose delta is over D,
+// in the worst kTile by kTile tile and in the whole frame. Edge tiles are
+// partial; a tile's share is over its own unmasked pixels.
+struct OverShare {
+    double worst_tile_percent = 0.0;
+    int worst_tx = -1, worst_ty = -1;  // tile column and row
+    double frame_percent = 0.0;
+};
+
+// One tile's counts: unmasked pixels, and those over D.
+struct TileCount {
+    size_t unmasked = 0, over = 0;
+};
+
+std::vector<TileCount> tile_counts(const std::vector<float>& delta, int ow, int oh, float d, int& tw,
+                                   int& th) {
+    tw = (ow + kTile - 1) / kTile;
+    th = (oh + kTile - 1) / kTile;
+    std::vector<TileCount> t(static_cast<size_t>(tw) * th);
+    for (int y = 0; y < oh; ++y)
+        for (int x = 0; x < ow; ++x) {
+            const float v = delta[static_cast<size_t>(y) * ow + x];
+            if (v < 0.0f) continue;
+            TileCount& c = t[static_cast<size_t>(y / kTile) * tw + x / kTile];
+            ++c.unmasked;
+            if (v > d) ++c.over;
+        }
+    return t;
+}
+
+OverShare over_share(const std::vector<float>& delta, int ow, int oh, float d) {
+    int tw, th;
+    const std::vector<TileCount> t = tile_counts(delta, ow, oh, d, tw, th);
+    OverShare s;
+    size_t unmasked = 0, over = 0;
+    for (int ty = 0; ty < th; ++ty)
+        for (int tx = 0; tx < tw; ++tx) {
+            const TileCount& c = t[static_cast<size_t>(ty) * tw + tx];
+            unmasked += c.unmasked;
+            over += c.over;
+            if (c.unmasked == 0) continue;
+            const double p = 100.0 * static_cast<double>(c.over) / static_cast<double>(c.unmasked);
+            if (p > s.worst_tile_percent || s.worst_tx < 0) {
+                s.worst_tile_percent = p;
+                s.worst_tx = tx;
+                s.worst_ty = ty;
+            }
+        }
+    s.frame_percent = unmasked ? 100.0 * static_cast<double>(over) / static_cast<double>(unmasked) : 0.0;
+    return s;
+}
+
+// The delta at percentile `q` (0..100) of the unmasked pixels.
+float delta_percentile(const std::vector<float>& delta, double q) {
+    std::vector<float> v;
+    for (float x : delta)
+        if (x >= 0.0f) v.push_back(x);
+    if (v.empty()) return 0.0f;
+    const size_t k = (std::min)(v.size() - 1, static_cast<size_t>(q / 100.0 * static_cast<double>(v.size())));
+    std::nth_element(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(k), v.end());
+    return v[k];
+}
+
+// The D values the measurement reports (named in the tf-t2 brief).
+constexpr float kMeasureD[] = {16.0f, 24.0f, 32.0f, 48.0f, 64.0f};
+
+// Dev aid: the per-tile map (one over-D percent column per kMeasureD value) and
+// the histogram of per-pixel deltas (integer bins), as CSV in the working folder.
+void write_delta_csvs(const std::vector<float>& delta, int ow, int oh) {
+    std::ofstream tiles("preview_tiles.csv");
+    tiles << "tile_x,tile_y,half_x,half_y,unmasked";
+    for (float d : kMeasureD) tiles << ",pct_over_" << static_cast<int>(d);
+    tiles << "\n";
+    std::vector<std::vector<TileCount>> per_d;
+    int tw = 0, th = 0;
+    for (float d : kMeasureD) per_d.push_back(tile_counts(delta, ow, oh, d, tw, th));
+    for (int ty = 0; ty < th; ++ty)
+        for (int tx = 0; tx < tw; ++tx) {
+            const size_t i = static_cast<size_t>(ty) * tw + tx;
+            const size_t unmasked = per_d[0][i].unmasked;
+            tiles << tx << "," << ty << "," << tx * kTile << "," << ty * kTile << "," << unmasked;
+            for (const auto& t : per_d)
+                tiles << ","
+                      << (unmasked ? 100.0 * static_cast<double>(t[i].over) / static_cast<double>(unmasked)
+                                   : 0.0);
+            tiles << "\n";
+        }
+    std::vector<size_t> hist(256, 0);
+    for (float x : delta)
+        if (x >= 0.0f) ++hist[(std::min<size_t>)(255, static_cast<size_t>(x))];
+    std::ofstream h("preview_delta_hist.csv");
+    h << "delta,pixels\n";
+    for (size_t i = 0; i < hist.size(); ++i) h << i << "," << hist[i] << "\n";
+}
+
 }  // namespace
 
 TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
@@ -177,7 +292,8 @@ TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
     REQUIRE(golden.height == h);
 
     std::vector<uint8_t> actual = render_chart(chart, time_ms, w, h, pro, bass2x);
-    if (read_env("HYDRA_PREVIEW_GOLDEN_DUMP")) {
+    const bool dump = read_env("HYDRA_PREVIEW_GOLDEN_DUMP").has_value();
+    if (dump) {
         write_bmp("preview_actual.bmp", actual, w, h);
         write_bmp("preview_golden.bmp", golden.rgba, w, h);
     }
@@ -208,6 +324,21 @@ TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
         }
     const double mae = n ? err / static_cast<double>(n) : 0.0;
     MESSAGE("golden mean abs error: " << mae << " / 255 (tolerance " << tolerance << ")");
+
+    // The per-pixel delta and tile measurement: printed, not checked yet.
+    const std::vector<float> delta =
+        max_channel_deltas(a, g, ow, oh, [&](int x, int y) { return masked(x * 2, y * 2); });
+    MESSAGE("max-channel delta percentiles: p50 " << delta_percentile(delta, 50.0) << ", p90 "
+                                                  << delta_percentile(delta, 90.0) << ", p99 "
+                                                  << delta_percentile(delta, 99.0) << ", p99.9 "
+                                                  << delta_percentile(delta, 99.9));
+    for (float d : kMeasureD) {
+        const OverShare s = over_share(delta, ow, oh, d);
+        MESSAGE("D " << d << ": worst tile " << s.worst_tile_percent << "% at tile (" << s.worst_tx << ", "
+                     << s.worst_ty << ") = half-res (" << s.worst_tx * kTile << ", " << s.worst_ty * kTile
+                     << "); whole frame " << s.frame_percent << "%");
+    }
+    if (dump) write_delta_csvs(delta, ow, oh);
     if (mae >= tolerance) write_bmp("preview_actual.bmp", actual, w, h);
     CHECK(mae < tolerance);
 }
