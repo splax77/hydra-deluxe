@@ -86,6 +86,8 @@ The user decided in D107 (`docs/audit/2026-10-03-fix-decisions.md`) that a docum
 
 **A finding you should not fix yourself.** Some fixes need the user: a new number, a change to what the user sees or what is stored, or a choice between two behaviours. Do not make those changes. Write the finding under Notes as a question for the user and sign off CLEAN on the rest. The main session passes your Notes to the user. It does not hold the publish for them.
 
+**If you run out of time or tool calls.** When the progress hook warns you (at 100 tool calls or 20 minutes), stop fixing. Commit or save what you have fixed, compute the final key and sign off as step 5 says. Write each finding you did not fix under Notes, with what is left to do. No fresh agent picks it up, and the publish does not wait for it (D107 item 5).
+
 The gate accepts your CLEAN review of the text you fixed, because its `Base:` line leads back to a text someone else wrote. It also accepts your own commit of that fix, because you did not write the version you were given. How it checks both is the library's rule, in `C:\Users\Patrick\.claude\hooks\lib\doc_review_rules.ps1` (plan section 3.8).
 
 ## Output

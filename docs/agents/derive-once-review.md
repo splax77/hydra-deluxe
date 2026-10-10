@@ -77,6 +77,8 @@ While you fix, never write a new copy while removing an old one: if a fix needs 
 
 **A finding you should not fix yourself.** Some fixes need the user: a new number (a threshold, floor, tolerance or band), a change to a displayed text, a score or a stored record, or a choice between two behaviours. Do not make those changes. Write the finding under Notes as a question for the user, in game terms, and sign off CLEAN on the rest. The orchestrator passes your Notes to the user. It does not hold the merge for them.
 
+**If you run out of time or tool calls.** When the progress hook warns you (at 100 tool calls or 20 minutes), stop fixing. Commit what passes its tests, run the precheck, and sign off on your last commit as step 5 says. Write each finding you did not fix under Notes, with what is left to do. No fresh agent picks it up, and the merge does not wait for it (D107 item 5).
+
 The merge gate accepts your CLEAN review even though you wrote some of the commits, as long as you did not write all of them.
 
 ## Builds and test runs
