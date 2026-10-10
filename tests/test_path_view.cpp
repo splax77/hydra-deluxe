@@ -23,9 +23,6 @@ using namespace hydra::app;
 
 namespace {
 
-// One analyzed corpus chart (see analyzed_chart.h), shared across cases.
-const AnalysisResult& analyzed() { return corpus::analyzed_by_ten_scores(); }
-
 // Burnout (Green Day, charter Hoph2o), analyzed the way the GUI tests
 // analyze it: Expert, Pro Drums, 2x Bass, SP cap 4, 2 scores, 10 ms limit.
 const AnalysisResult& burnout() {
@@ -166,7 +163,7 @@ TEST_CASE("build_path_buttons: a 1-bar cap says why there are no activations") {
 }
 
 TEST_CASE("build_path_list: score groups and the all-0 dedupe rule") {
-    const HydraRecord& rec = analyzed().record;
+    const HydraRecord& rec = corpus::analyzed_by_ten_scores().record;
     PathListView list = build_path_list(rec);
 
     // One group per distinct score along the traversal; every path lands in
@@ -201,7 +198,7 @@ TEST_CASE("build_path_list: score groups and the all-0 dedupe rule") {
 
 // D51 Q4b.
 TEST_CASE("build_path_list: one duplicate hides only itself") {
-    const HydraRecord& rec = analyzed().record;
+    const HydraRecord& rec = corpus::analyzed_by_ten_scores().record;
     REQUIRE_FALSE(rec.paths.empty());
     const Path& first = rec.paths.front();
     REQUIRE_FALSE(first.activations.empty());
@@ -227,7 +224,7 @@ TEST_CASE("build_path_list: one duplicate hides only itself") {
 }
 
 TEST_CASE("path_identity: same path, rescored path, trimmed path") {
-    const std::vector<const Path*> paths = analyzed().record.all_paths();
+    const std::vector<const Path*> paths = corpus::analyzed_by_ten_scores().record.all_paths();
     REQUIRE_FALSE(paths.empty());
     const Path& first = *paths.front();
     REQUIRE_FALSE(first.activations.empty());
@@ -255,7 +252,7 @@ TEST_CASE("path_identity: same path, rescored path, trimmed path") {
 }
 
 TEST_CASE("build_path_list: the dedupe and the overlay key read one identity") {
-    const HydraRecord& rec = analyzed().record;
+    const HydraRecord& rec = corpus::analyzed_by_ten_scores().record;
     const std::vector<const Path*> flat = rec.all_paths();
     REQUIRE_FALSE(flat.empty());
 
@@ -277,7 +274,7 @@ TEST_CASE("build_path_list: the dedupe and the overlay key read one identity") {
 }
 
 TEST_CASE("build_activations: rows and backend rows line up") {
-    const AnalysisResult& ar = analyzed();
+    const AnalysisResult& ar = corpus::analyzed_by_ten_scores();
     const Path& best = ar.record.best_path();
     const SongTiming& timing = ar.song.timing();
 
@@ -608,7 +605,7 @@ TEST_CASE("build_activations: plain rows past the leeway show 0") {
 }
 
 TEST_CASE("build_multsqueezes: one labeled entry per squeeze") {
-    const HydraRecord& rec = analyzed().record;
+    const HydraRecord& rec = corpus::analyzed_by_ten_scores().record;
     std::vector<MultSqueezeView> v = build_multsqueezes(rec);
     CHECK(v.size() == rec.multsqueezes.size());
     for (size_t i = 0; i < v.size(); ++i) {
@@ -618,7 +615,7 @@ TEST_CASE("build_multsqueezes: one labeled entry per squeeze") {
 }
 
 TEST_CASE("PathsTabCache: views are built once and rebuilt only when their inputs move") {
-    const AnalysisResult& ar = analyzed();
+    const AnalysisResult& ar = corpus::analyzed_by_ten_scores();
     const HydraRecord& rec = ar.record;
     const SongTiming& timing = ar.song.timing();
     PathsTabCache cache;
