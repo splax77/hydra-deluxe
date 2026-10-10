@@ -2,7 +2,7 @@
 // literals from Clone Hero 1.1: 0x210D9C0 maps pitches 58-66 / 70-78 / 82-90 /
 // 94-102 to Easy / Medium / Hard / Expert; 0x21555CD flags 59, 71, 83 and 95
 // as DoubleKick; 0x210D990 maps a mix digit 0-3 to Easy..Expert.
-// test_s2_difficulty_table.cpp checks the parser's table against it; other
+// test_difficulty_table.cpp checks the parser's table against it; other
 // tests read their per-difficulty values from here instead of typing a second
 // table.
 

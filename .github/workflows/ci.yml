@@ -22,9 +22,9 @@ permissions:
 jobs:
   build-and-test:
     name: Build and test (Windows, Release)
-    # The default CMake preset uses the Visual Studio 2026 generator, so the
-    # job asks for the image that ships VS 2026 by name.
-    runs-on: windows-2025-vs2026
+    # The default CMake preset uses the Visual Studio 2026 generator. The
+    # windows-2025 image ships VS 2026 since GitHub's June 2026 migration.
+    runs-on: windows-2025
     timeout-minutes: 60
     defaults:
       run:
@@ -37,10 +37,11 @@ jobs:
       - name: Build hydra_tests
         run: .\build_cpp.ps1 -Target hydra_tests
 
-      # The one excluded case opens the default sound output, and hosted
-      # runners have no audio device. See tests/test_audio_device.cpp.
+      # The slices of tests/shards.txt, side by side. The excluded entry opens
+      # the default sound output, and hosted runners have no audio device.
+      # -R keeps hydra_uitest out until the step below has built it.
       - name: Run hydra_tests
-        run: .\build-cpp\Release\hydra_tests.exe "-tce=PreviewAudioDevice opens and starts the default output device"
+        run: ctest --test-dir build-cpp -C Release -j 4 -R hydra_tests -E audio_device --output-on-failure
 
       - name: Build hydra_uitest
         run: .\build_cpp.ps1 -Target hydra_uitest
@@ -49,3 +50,32 @@ jobs:
       # or the network (docs/agents/ui-testing.md).
       - name: Run hydra_uitest
         run: .\build-cpp\Release\hydra_uitest.exe --all --jobs 4
+
+  tool-tests:
+    name: Tool tests (Python and PowerShell)
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      # The full history, so the precheck self-test's two real commit ranges
+      # are in the clone; without them it skips that part.
+      - name: Check out the code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install pytest
+        run: py -m pip install pytest
+
+      # Only these two paths: tools\ch_probe\experiments holds scripts that
+      # pytest would collect and that drive the real game.
+      - name: Run the Python tool tests
+        run: py -m pytest tools/ch_probe/tests tools/test_compare_db.py -q
+
+      - name: Run the mutation probe self-test
+        run: pwsh -NoProfile -File tools/test_mutation_probe.ps1
+
+      - name: Run the derive-once precheck self-test
+        run: pwsh -NoProfile -File tools/test_derive_once_precheck.ps1

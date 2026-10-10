@@ -1,5 +1,5 @@
-// Reads an environment variable for a test's dev aids (HYDRA_PREVIEW_DUMP,
-// HYDRA_PAGE_SAMPLES, ...). std::getenv hands back a pointer into the
+// Reads an environment variable for a test's opt-in settings. std::getenv
+// hands back a pointer into the
 // environment that another thread could invalidate, which MSVC warns about
 // (C4996); _dupenv_s copies the value out instead.
 

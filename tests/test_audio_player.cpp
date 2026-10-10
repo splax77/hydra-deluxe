@@ -9,26 +9,10 @@
 #include "audio/decode.h"
 #include "audio/frames.h"
 #include "audio/player.h"
+#include "audio_util.h"
 
 using namespace hydra::audio;
-
-namespace {
-
-// `frames` stereo frames at 48 kHz where frame i holds {L=i, R=i+0.5}, so a
-// copied block is trivially recognizable.
-DecodedAudio make_ramp(int frames) {
-    DecodedAudio a;
-    a.channels = 2;
-    a.sample_rate = 48000;
-    a.samples.resize(static_cast<size_t>(frames) * 2);
-    for (int i = 0; i < frames; ++i) {
-        a.samples[i * 2] = static_cast<float>(i);
-        a.samples[i * 2 + 1] = static_cast<float>(i) + 0.5f;
-    }
-    return a;
-}
-
-}  // namespace
+using testaudio::make_ramp;
 
 TEST_CASE("Playhead starts paused at the start with the mix's format") {
     Playhead t(make_ramp(4800));

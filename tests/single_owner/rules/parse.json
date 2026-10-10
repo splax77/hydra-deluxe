@@ -293,6 +293,11 @@
           "file": "tests/test_dm_report.cpp",
           "line_text": "CHECK(hydra::ends_with(phrase, clause));",
           "why": "checks the counts phrase's last clause, not a file format"
+        },
+        {
+          "file": "tests/test_config.cpp",
+          "line_text": "CHECK(hydra::ends_with(dir, tail));",
+          "why": "checks the resource folder's name, not a file format"
         }
       ],
       "scope": [

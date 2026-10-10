@@ -370,8 +370,8 @@ void test_paths_folds_copy(ImGuiTestContext* ctx) {
 }
 
 // A squeezed-out row the engine never counted: the table says "(uncounted)"
-// and the sentence says it costs nothing. Found by the skipped doctest "find a
-// chart with an uncounted squeezed-out row" (tests/test_path_view.cpp).
+// and the sentence says it costs nothing. The chart was found by searching the
+// corpus under the GUI tests' settings for such a row.
 void test_paths_uncounted(ImGuiTestContext* ctx) {
     static const char* kTitle = "Tapestry of the Starless Abstract (Shortened)";
     Harness& h = harness(ctx);
