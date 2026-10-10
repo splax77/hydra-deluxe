@@ -46,16 +46,8 @@ void render_stars_panel(AppState& app) {
         rows.push_back({std::to_string(stars), multiplier, group_thousands(sc.cutoffs[stars - 1])});
         if (has_solo) rows.back().push_back(group_thousands(sc.with_solo[stars - 1]));
     }
-    const MeasuredWidths measured =
-        measure_widths(specs, rows.size(), [&](size_t r, size_t c) { return rows[r][c]; });
-    const TableRoom room = table_room("##startable", 0.0f, specs.size());
-    const ColumnLayout layout = place_columns(measured, specs, room);
-    if (ImGui::BeginTable("##startable", static_cast<int>(specs.size()),
-                          ImGuiTableFlags_RowBg | scroll_fixed_flags(),
-                          ImVec2(0.0f, table_outer_height(rows.size(), layout, room)),
-                          layout.inner_width)) {
-        for (size_t c = 0; c < specs.size(); ++c) setup_column(specs[c], layout, static_cast<int>(c));
-        apply_column_widths(layout);
+    if (begin_small_table("##startable", ImGuiTableFlags_RowBg, specs, rows.size(),
+                          [&](size_t r, size_t c) { return rows[r][c]; })) {
         ImGui::TableHeadersRow();
         for (const std::vector<std::string>& row : rows) {
             ImGui::TableNextRow();

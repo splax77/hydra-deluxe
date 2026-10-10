@@ -182,6 +182,24 @@ TableRoom table_room(const char* str_id, float outer_width, std::size_t column_c
 float table_outer_height(std::size_t rows, const ColumnLayout& layout, const TableRoom& room,
                          const std::vector<float>& cell_heights = {});
 
+// How tall each row's tallest wrapped cell is, given this frame's layout (for
+// table_outer_height's `cell_heights`).
+using CellHeights = std::function<std::vector<float>(const ColumnLayout&)>;
+
+// The whole frame of a small table whose rows are all at hand, up to and
+// including BeginTable and the column setup: it measures `rows` rows now
+// (they are a handful, so there is no cache to keep), reads the room, places
+// the columns, opens table `str_id` at the height table_outer_height gives
+// with `look` added to scroll_fixed_flags(), sets every column up and applies
+// the widths. A table of more rows keeps its measure and runs the frame in
+// the header comment by hand. Returns what BeginTable returned; when true, the
+// caller draws the headers and rows and calls EndTable. `wrapped_heights`, if
+// given, is called with the layout and returns table_outer_height's
+// `cell_heights`. Call it with the font the cells draw in pushed.
+bool begin_small_table(const char* str_id, ImGuiTableFlags look,
+                       const std::vector<ColumnSpec>& specs, std::size_t rows,
+                       const CellText& text, const CellHeights& wrapped_heights = {});
+
 // TableSetupColumn for column `column`, as a fixed-width column at the
 // rule's width. `flags` adds the table's own column flags (sort, hide); any
 // sizing flag in it is replaced.

@@ -383,22 +383,12 @@ void render_backend_table(const app::ActivationRowView& a) {
     // Every column is as wide as the width rule (ui/column_widths.h) says.
     // The rows are a handful, so they are measured each frame.
     const std::vector<ColumnSpec> specs = backend_column_specs();
-    const MeasuredWidths measured =
-        measure_widths(specs, a.backends.size(),
-                       [&](size_t r, size_t c) { return backend_cell(a.backends[r], c); });
     char id[32];
     std::snprintf(id, sizeof(id), "##backends%d", a.number);
-    const TableRoom room = table_room(id, 0.0f, specs.size());
-    const ColumnLayout layout = place_columns(measured, specs, room);
-    if (ImGui::BeginTable(id, static_cast<int>(specs.size()),
-                          ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |
-                              scroll_fixed_flags(),
-                          ImVec2(0.0f, table_outer_height(a.backends.size(), layout, room,
-                                                          backend_rating_heights(a, layout))),
-                          layout.inner_width)) {
-        for (size_t c = 0; c < specs.size(); ++c)
-            setup_column(specs[c], layout, static_cast<int>(c));
-        apply_column_widths(layout);
+    if (begin_small_table(
+            id, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable, specs, a.backends.size(),
+            [&](size_t r, size_t c) { return backend_cell(a.backends[r], c); },
+            [&](const ColumnLayout& layout) { return backend_rating_heights(a, layout); })) {
         ImGui::TableHeadersRow();
         for (const app::BackendRowView& row : a.backends) {
             ImGui::TableNextRow();

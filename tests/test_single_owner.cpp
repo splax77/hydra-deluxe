@@ -4081,8 +4081,8 @@ const std::vector<OwnerRule>& rules() {
          {},
          {"src"}},
         // The id no longer carries the column widths (the width rule sizes the
-        // table each frame), but table_room and BeginTable must still name the
-        // same table, so the id is built once and handed to both.
+        // table each frame). It is built once and handed to begin_small_table,
+        // which names the same table to table_room and BeginTable.
         {"What id does an activation's backend table get?",
          "render_backend_table in src/ui/paths_tab.cpp",
          R"(##backends)",
@@ -4093,9 +4093,9 @@ const std::vector<OwnerRule>& rules() {
          "(backend_table_id removed)",
          {R"x(std::snprintf(id, sizeof(id), "##backends%d_%d_%d_%d", a.number, static_cast<int>(w_timing),)x",
           R"x(const std::string prefix = "##backends" + std::to_string(number) + "_";)x"},
-         {"const TableRoom room = table_room(id, 0.0f, specs.size());"},
+         {"id, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable, specs, a.backends.size(),"},
          {{"src/ui/paths_tab.cpp", R"x(std::snprintf(id, sizeof(id), "##backends%d", a.number);)x",
-           "render_backend_table, the owner: it hands the id to table_room and BeginTable"}},
+           "render_backend_table, the owner: it hands the id to begin_small_table"}},
          {"src", "tests"}},
         // A letter before the figure: a badge's wording, not a decimal such
         // as "2.999 ms" in a leeway case.
@@ -5789,7 +5789,24 @@ const std::vector<OwnerRule>& rules() {
          "derive-once review of cw-t5 (the height was worked out once per tab file)",
          {"float height = static_cast<float>(rows + 1) * (ImGui::GetFontSize() + style.CellPadding.y * 2.0f);",
           "const float padding = style.CellPadding.y * 2.0f;"},
-         {"ImVec2(0.0f, table_outer_height(rows.size(), layout, room)),"},
+         {"float height = line + padding;"},
+         {},
+         {"src"}},
+        // A small table whose rows are all at hand runs the same frame every
+        // time: measure, read the room, place, open at its height, set the
+        // columns up, apply. Only begin_small_table asks for the height; a
+        // table that does it by hand is running that frame a second time. The
+        // Library and the report tables keep a cache and size themselves.
+        {"How does a small table that shows all its rows begin?",
+         "begin_small_table in src/ui/column_widths.cpp",
+         R"(\btable_outer_height\()",
+         "",
+         {"src/ui/column_widths.cpp", "src/ui/column_widths.h"},
+         {},
+         "derive-once review of cw-w2 (the Paths, Dynamics and Stars tables each ran the frame)",
+         {"ImVec2(0.0f, table_outer_height(rows.size(), layout, room)),",
+          "ImVec2(0.0f, table_outer_height(a.backends.size(), layout, room, heights)),"},
+         {"if (!begin_small_table(id, ImGuiTableFlags_RowBg, specs, rows.size(),"},
          {},
          {"src"}},
         // The backend table's cells and its column widths both read a row's

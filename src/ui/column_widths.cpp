@@ -224,6 +224,24 @@ void setup_column(const ColumnSpec& spec, const ColumnLayout& layout, int column
                             layout.widths[static_cast<std::size_t>(column)], user_id);
 }
 
+bool begin_small_table(const char* str_id, ImGuiTableFlags look,
+                       const std::vector<ColumnSpec>& specs, std::size_t rows,
+                       const CellText& text, const CellHeights& wrapped_heights) {
+    const MeasuredWidths measured = measure_widths(specs, rows, text);
+    const TableRoom room = table_room(str_id, 0.0f, specs.size());
+    const ColumnLayout layout = place_columns(measured, specs, room);
+    const std::vector<float> heights =
+        wrapped_heights ? wrapped_heights(layout) : std::vector<float>{};
+    if (!ImGui::BeginTable(str_id, static_cast<int>(specs.size()), look | scroll_fixed_flags(),
+                           ImVec2(0.0f, table_outer_height(rows, layout, room, heights)),
+                           layout.inner_width))
+        return false;
+    for (std::size_t c = 0; c < specs.size(); ++c)
+        setup_column(specs[c], layout, static_cast<int>(c));
+    apply_column_widths(layout);
+    return true;
+}
+
 void apply_column_widths(const ColumnLayout& layout) {
     ImGuiTable* table = ImGui::GetCurrentTable();
     if (!table || table->IsInitializing) return;

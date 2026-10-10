@@ -86,17 +86,9 @@ std::vector<ColumnSpec> dynamics_column_specs() {
 // each frame. A disabled row is dimmed.
 void dynamics_table(const char* id, const std::vector<DynamicsTableRow>& rows) {
     const std::vector<ColumnSpec> specs = dynamics_column_specs();
-    const MeasuredWidths measured = measure_widths(
-        specs, rows.size(), [&](size_t r, size_t c) { return rows[r].cells[c]; });
-    const TableRoom room = table_room(id, 0.0f, specs.size());
-    const ColumnLayout layout = place_columns(measured, specs, room);
-    if (!ImGui::BeginTable(id, static_cast<int>(specs.size()),
-                           ImGuiTableFlags_RowBg | scroll_fixed_flags(),
-                           ImVec2(0.0f, table_outer_height(rows.size(), layout, room)),
-                           layout.inner_width))
+    if (!begin_small_table(id, ImGuiTableFlags_RowBg, specs, rows.size(),
+                           [&](size_t r, size_t c) { return rows[r].cells[c]; }))
         return;
-    for (size_t c = 0; c < specs.size(); ++c) setup_column(specs[c], layout, static_cast<int>(c));
-    apply_column_widths(layout);
     ImGui::TableHeadersRow();
 
     for (const DynamicsTableRow& row : rows) {
