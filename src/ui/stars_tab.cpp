@@ -50,18 +50,9 @@ void render_stars_panel(AppState& app) {
         measure_widths(specs, rows.size(), [&](size_t r, size_t c) { return rows[r][c]; });
     const TableRoom room = table_room("##startable", 0.0f, specs.size());
     const ColumnLayout layout = place_columns(measured, specs, room);
-    // The outer height shows the header and every row, so the table never
-    // scrolls up and down. (A table that scrolls sideways is a child window,
-    // and a height of 0 would stretch it to the bottom of the tab.) Each row
-    // is ImGui's own row height, a line plus the cell padding above and below
-    // (TableGetHeaderRowHeight). When the columns overflow the room, the
-    // horizontal scrollbar takes its own height too.
-    const ImGuiStyle& style = ImGui::GetStyle();
-    float height =
-        static_cast<float>(rows.size() + 1) * (ImGui::GetFontSize() + style.CellPadding.y * 2.0f);
-    if (layout.inner_width > room.available) height += style.ScrollbarSize;
     if (ImGui::BeginTable("##startable", static_cast<int>(specs.size()),
-                          ImGuiTableFlags_RowBg | scroll_fixed_flags(), ImVec2(0.0f, height),
+                          ImGuiTableFlags_RowBg | scroll_fixed_flags(),
+                          ImVec2(0.0f, table_outer_height(rows.size(), layout, room)),
                           layout.inner_width)) {
         for (size_t c = 0; c < specs.size(); ++c) setup_column(specs[c], layout, static_cast<int>(c));
         apply_column_widths(layout);

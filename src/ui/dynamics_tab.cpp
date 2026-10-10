@@ -81,19 +81,6 @@ std::vector<ColumnSpec> dynamics_column_specs() {
             {"All", false, 0.0f, text}};
 }
 
-// The outer height that shows a table's header and `rows` one-line rows, so
-// it never scrolls up and down. (A table that scrolls sideways is a child
-// window, and a height of 0 would stretch it to the bottom of the box.) Each
-// row is ImGui's own row height, a line plus the cell padding above and below
-// (TableGetHeaderRowHeight). When the columns overflow the room, the
-// horizontal scrollbar takes its own height too.
-float one_line_table_height(size_t rows, const ColumnLayout& layout, const TableRoom& room) {
-    const ImGuiStyle& style = ImGui::GetStyle();
-    float height = static_cast<float>(rows + 1) * (ImGui::GetFontSize() + style.CellPadding.y * 2.0f);
-    if (layout.inner_width > room.available) height += style.ScrollbarSize;
-    return height;
-}
-
 // A Ghost/Accent/Normal/All table, its columns as wide as the width rule
 // (ui/column_widths.h) says. The rows are a handful, so they are measured
 // each frame. A disabled row is dimmed.
@@ -105,7 +92,7 @@ void dynamics_table(const char* id, const std::vector<DynamicsTableRow>& rows) {
     const ColumnLayout layout = place_columns(measured, specs, room);
     if (!ImGui::BeginTable(id, static_cast<int>(specs.size()),
                            ImGuiTableFlags_RowBg | scroll_fixed_flags(),
-                           ImVec2(0.0f, one_line_table_height(rows.size(), layout, room)),
+                           ImVec2(0.0f, table_outer_height(rows.size(), layout, room)),
                            layout.inner_width))
         return;
     for (size_t c = 0; c < specs.size(); ++c) setup_column(specs[c], layout, static_cast<int>(c));

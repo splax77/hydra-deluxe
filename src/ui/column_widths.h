@@ -171,6 +171,17 @@ WidthOf measure_in_font(ImFont* font = nullptr);
 // every column shown and no header wider than its text.
 TableRoom table_room(const char* str_id, float outer_width, std::size_t column_count);
 
+// The outer height of a small table that shows its header and all `rows`
+// rows, so it never scrolls up and down. A table that scrolls sideways is a
+// child window, and an outer height of 0 would stretch it to the bottom of
+// its box; pass this to BeginTable instead. Each row is one line high, or
+// taller where `cell_heights[row]` (the height of that row's tallest wrapped
+// cell; rows past the end of it, and an empty list, are one line) says so.
+// When `layout` is wider than `room`, the horizontal scrollbar's height is
+// added. Call it with the font the cells draw in pushed.
+float table_outer_height(std::size_t rows, const ColumnLayout& layout, const TableRoom& room,
+                         const std::vector<float>& cell_heights = {});
+
 // TableSetupColumn for column `column`, as a fixed-width column at the
 // rule's width. `flags` adds the table's own column flags (sort, hide); any
 // sizing flag in it is replaced.

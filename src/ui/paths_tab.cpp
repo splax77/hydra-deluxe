@@ -357,27 +357,16 @@ std::string backend_cell(const app::BackendRowView& row, size_t c) {
     }
 }
 
-// The backend table's outer height: its header and every row, so it never
-// scrolls up and down. (A table that scrolls sideways is a child window, and
-// a height of 0 would stretch it to the bottom of the panel.) Each row is
-// ImGui's own row height, a line plus the cell padding above and below
-// (TableGetHeaderRowHeight), or taller where its Rating wraps at the width
-// the rule gave that column. When the columns overflow the room, the
-// horizontal scrollbar takes its own height too. Call it with the mono font
-// pushed.
-float backend_table_height(const app::ActivationRowView& a, const ColumnLayout& layout,
-                           const TableRoom& room) {
-    const ImGuiStyle& style = ImGui::GetStyle();
-    const float line = ImGui::GetFontSize();
-    const float padding = style.CellPadding.y * 2.0f;
-    float height = line + padding;  // the header row
-    for (const app::BackendRowView& row : a.backends) {
-        const float rating =
-            ImGui::CalcTextSize(row.rating.c_str(), nullptr, false, layout.widths[kRatingColumn]).y;
-        height += (std::max)(line, rating) + padding;
-    }
-    if (layout.inner_width > room.available) height += style.ScrollbarSize;
-    return height;
+// How tall each backend row's Rating is once it wraps at the width the rule
+// gave that column, for table_outer_height. Call it with the mono font pushed.
+std::vector<float> backend_rating_heights(const app::ActivationRowView& a,
+                                          const ColumnLayout& layout) {
+    std::vector<float> heights;
+    heights.reserve(a.backends.size());
+    for (const app::BackendRowView& row : a.backends)
+        heights.push_back(
+            ImGui::CalcTextSize(row.rating.c_str(), nullptr, false, layout.widths[kRatingColumn]).y);
+    return heights;
 }
 
 // The backend rows of one activation, in the columns the old table had.
@@ -403,7 +392,8 @@ void render_backend_table(const app::ActivationRowView& a) {
     if (ImGui::BeginTable(id, static_cast<int>(specs.size()),
                           ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |
                               scroll_fixed_flags(),
-                          ImVec2(0.0f, backend_table_height(a, layout, room)),
+                          ImVec2(0.0f, table_outer_height(a.backends.size(), layout, room,
+                                                          backend_rating_heights(a, layout))),
                           layout.inner_width)) {
         for (size_t c = 0; c < specs.size(); ++c)
             setup_column(specs[c], layout, static_cast<int>(c));

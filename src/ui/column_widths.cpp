@@ -203,6 +203,20 @@ TableRoom table_room(const char* str_id, float outer_width, std::size_t column_c
     return room;
 }
 
+float table_outer_height(std::size_t rows, const ColumnLayout& layout, const TableRoom& room,
+                        const std::vector<float>& cell_heights) {
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float line = ImGui::GetFontSize();
+    const float padding = style.CellPadding.y * 2.0f;
+    // The header row, then each row: a line, or its wrapped cell when taller
+    // (TableGetHeaderRowHeight is a line plus the padding above and below).
+    float height = line + padding;
+    for (std::size_t r = 0; r < rows; ++r)
+        height += (std::max)(line, r < cell_heights.size() ? cell_heights[r] : 0.0f) + padding;
+    if (layout.inner_width > room.available) height += style.ScrollbarSize;
+    return height;
+}
+
 void setup_column(const ColumnSpec& spec, const ColumnLayout& layout, int column,
                   ImGuiTableColumnFlags flags, ImGuiID user_id) {
     flags = (flags & ~ImGuiTableColumnFlags_WidthMask_) | ImGuiTableColumnFlags_WidthFixed;
