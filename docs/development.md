@@ -186,6 +186,30 @@ Hydra finds the user's records where they were. Older versions also saved
 report pages in `Documents\Hydra`. Nothing reads or writes that folder any
 more, and Hydra leaves the old pages there (ADR 0027).
 
+### The AddressSanitizer build
+
+AddressSanitizer (ASan) is a compiler check for memory bugs. It stops the
+program at the first overrun or use after free and prints where it happened.
+The `asan` preset builds with it, in `build-asan\`. It is for tests only and
+never ships.
+
+```
+.\build_cpp.ps1 -Preset asan -Target hydra_tests
+ctest --test-dir build-asan -C Release -j 4 -R hydra_tests --output-on-failure
+```
+
+Run these from a Visual Studio developer shell ("Developer PowerShell for VS").
+The ASan runtime DLL sits beside the compiler, not beside the exes, and that
+shell puts it on `PATH`. The CLI tests start the command line tools as child
+processes, and they need it too.
+
+This build runs on the Windows heap instead of mimalloc, because mimalloc's
+redirect would hide the heap from ASan. The `HYDRA_ASAN` switch in
+`CMakeLists.txt` turns `HYDRA_MIMALLOC` off. The tests that check the mimalloc
+redirect are left out of it, and so is the GUI runner's start check for it.
+ASan keeps freed memory to itself during a run, so a test's memory use looks
+higher than usual; that is how ASan works, not a leak.
+
 ## The report windows
 
 The path report and the dmleaderboards comparison are Hydra windows, each its
@@ -323,7 +347,11 @@ and `hydra_uitest` with `build_cpp.ps1`, exactly as above, so a compiler
 warning fails the run. Then it runs `hydra_tests` and the headless GUI tests
 in `hydra_uitest`.
 
-A second job, beside it, runs the tool tests above with no C++ build. It
+The `asan` job, beside it, builds the same tests with the `asan` preset and
+runs them (see "The AddressSanitizer build" above). Any memory error it finds
+fails the run.
+
+Another job runs the tool tests above with no C++ build. It
 checks out the whole history, because the precheck self-test checks two real
 commit ranges and skips them in a shallow clone.
 
