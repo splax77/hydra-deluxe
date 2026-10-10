@@ -209,13 +209,14 @@ struct SecondLine {
 SecondLine second_line(const app::LibraryQuery& q, const LibraryRow& row, bool folder_shown,
                        bool charter_shown) {
     SecondLine line;
-    line.text = row.entry.rootfolder;
+    line.text = library_cell_text(row, kColumnFolder);
     if (!folder_shown) line.spans = app::match_spans(q, app::QueryField::Folder, line.text);
     if (line.spans.empty() && !charter_shown) {
-        std::vector<app::MatchSpan> spans = app::match_spans(q, app::QueryField::Charter, row.charter);
+        const std::string charter = library_cell_text(row, kColumnCharter);
+        std::vector<app::MatchSpan> spans = app::match_spans(q, app::QueryField::Charter, charter);
         if (!spans.empty()) {
             const std::string prefix = "charted by ";
-            line.text = prefix + row.charter;
+            line.text = prefix + charter;
             for (app::MatchSpan& s : spans) {
                 s.begin += prefix.size();
                 s.end += prefix.size();
@@ -370,24 +371,25 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
             // a title that fits back unchanged: that is the fit test. Its
             // kept width is where the search highlight stops, before the "…".
             float title_kept_w = 0.0f;
+            const std::string title = library_cell_text(row, kColumnTitle);
             const std::string title_shown =
-                render::ellipsize(row.title, title_w, text_width, title_kept_w);
-            const bool title_cut = title_shown != row.title;
+                render::ellipsize(title, title_w, text_width, title_kept_w);
+            const bool title_cut = title_shown != title;
             if (title_cut) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
             ImGuiSelectableFlags row_flags = ImGuiSelectableFlags_SpanAllColumns;
             if (title_cut) row_flags |= ImGuiSelectableFlags_SpanAvailWidth;
-            const bool clicked = ImGui::Selectable(row.title.c_str(), selected, row_flags,
+            const bool clicked = ImGui::Selectable(title.c_str(), selected, row_flags,
                                                    ImVec2(title_cut ? title_w : 0.0f, row_h));
             if (title_cut) ImGui::PopStyleColor();
             if (clicked) app.select(row.entry);
             if (ImGui::TableGetHoveredColumn() == kColumnTitle && title_cut)
-                overflow_tooltip(row.title.c_str());
+                overflow_tooltip(title.c_str());
             if (title_cut) draw_cut_title(title_pos, title_shown);
             const float title_text_w = title_cut ? title_kept_w : title_w;
             if (scroll_to && *scroll_to == static_cast<size_t>(k)) ImGui::SetScrollHereY(0.5f);
             if (searching_words)
-                overlay_matches(title_pos, row.title,
-                                app::match_spans(q, app::QueryField::Title, row.title),
+                overlay_matches(title_pos, title,
+                                app::match_spans(q, app::QueryField::Title, title),
                                 title_pos.x + title_text_w);
             if (two_lines) {
                 const SecondLine line = second_line(q, row, folder_shown, charter_shown);
