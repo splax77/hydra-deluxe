@@ -780,6 +780,42 @@ TEST_CASE("next activation box: on an activation within half a millisecond, and 
     CHECK(box.detail == "at m2.1.0");
 }
 
+TEST_CASE("next activation box: the notation line is the activation's own, header and detail unchanged") {
+    Song song = make_sp_song({960}, /*last_tick=*/13440);
+    Activation a = sp_act_at(song, 1920, /*sp_meter=*/1, /*end_tick=*/5760);
+    a.chord.add_note(NoteColor::Red);
+    a.e_offset = 300.0;  // not e-critical
+    auto box_for = [&song](const Activation& act) {
+        Path path;
+        path.activations = {act};
+        const PreviewScene scene = build_preview_scene(song, &path);
+        REQUIRE(scene.activations.size() == 1);
+        CHECK(scene.activations[0].notation == act.notationstr_verbose());
+        const PreviewNextActBox box = next_act_box_at(scene, 0.0, /*pro_drums=*/true);
+        CHECK(box.notation == act.notationstr_verbose());
+        CHECK(box.header == "Next: activation 1 of 1");
+        CHECK(box.detail == "at m2.1.0 " + kDot + " [Red snare]");
+        // Past the last activation the box, and its notation, are gone.
+        CHECK(next_act_box_at(scene, 9000.0, true).notation.empty());
+        return box;
+    };
+
+    // A plain activation shows its bare notation.
+    CHECK(box_for(a).notation == "0");
+
+    // One with a SqIn shows the "+" and its timing.
+    a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 100.0});
+    CHECK(box_for(a).notation == "0+ (100 ms)");
+
+    // An e-critical one (TwoActs' first) leads with the E and its timing.
+    TwoActs t;
+    const PreviewNextActBox e = next_act_box_at(t.scene, 0.0, true);
+    CHECK(e.notation == "E0 (0 ms)");
+    CHECK(e.notation == t.path.activations[0].notationstr_verbose());
+    CHECK(e.header == "Next: activation 1 of 2");
+    CHECK(e.detail == "at m2.1.0 " + kDot + " [Red snare]");
+}
+
 namespace {
 
 // A chart whose lookups have many entries to search: four tempos, three

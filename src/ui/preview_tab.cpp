@@ -200,6 +200,12 @@ void draw_scrub_marks(const std::vector<double>& marks) {
 // next-activation box's and the gauge's "SP" label all step by it.
 float line_height(float size) { return size * 1.25f; }
 
+// The next-activation box's notation line over its other lines' size. The
+// user approved the ratio through the Preview mock on 2026-10-10 (option B,
+// in docs/handoffs/2026-10-10-preview-next-act-stars-mock), where the mock's
+// own sizes are its source.
+constexpr float kNextActNotationScale = 17.0f / 12.0f;
+
 // The score box's star row: kMaxStars stars, each as tall as a line of text
 // at `size`, with a fifth of that between them. The overlay font has no star
 // glyph, so draw_star draws each one as a shape.
@@ -585,12 +591,14 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         auto width_at = [&](float sz) {
             return [&text_width, sz](const std::string& s) { return text_width(sz, s.c_str()); };
         };
-        // The header's count ("2 of 3") stays on one line.
+        // The header's count ("2 of 3") stays on one line. The notation never
+        // breaks, so all of it counts as one word, at its larger size.
         constexpr size_t kHeaderCountWords = 3;
         float next_word_w1 = 0.0f;
         for (const hydra::app::PreviewNextActBox& b : pc->next_act_boxes())
             next_word_w1 = std::max({next_word_w1,
                                      render::widest_word(b.header, width_at(sz1.size), kHeaderCountWords),
+                                     text_width(sz1.size * kNextActNotationScale, b.notation.c_str()),
                                      render::widest_word(b.detail, width_at(sz1.size))});
         if (next_word_w1 > 0.0f) fit.bottom_left_w = sz1.margin + next_word_w1 + sz1.pad * 2.0f;
         fit.gap = sz1.gap;
@@ -651,10 +659,12 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         }
 
         // The next activation, bottom-left in the same panel style: its number
-        // in the best-path gold the scrubber's marks use, then where it is
-        // and its chord. Hidden past the last one.
+        // in the best-path gold the scrubber's marks use, then its notation in
+        // larger type, then where it is and its chord. Hidden past the last
+        // one.
         // A line too wide for the room beside the highway at the bottom
         // wraps at its spaces, so the box grows up rather than over the lane.
+        // The notation is the exception: it is one line, never split.
         if (next.shown) {
             const float text_room =
                 render::bottom_left_room(pcfg, w, h, sz1.gap) - margin - pad * 2.0f;
@@ -662,11 +672,13 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
                 render::wrap_words(next.header, text_room, width_at(size), kHeaderCountWords);
             const std::vector<std::string> body =
                 render::wrap_words(next.detail, text_room, width_at(size));
-            float nw = 0.0f;
+            const float nota_size = size * kNextActNotationScale;
+            const float nota_h = next.notation.empty() ? 0.0f : line_height(nota_size);
+            float nw = text_width(nota_size, next.notation.c_str());
             for (const std::string& l : head) nw = std::max(nw, text_width(size, l.c_str()));
             for (const std::string& l : body) nw = std::max(nw, text_width(size, l.c_str()));
             const float n_lines = static_cast<float>(head.size() + body.size());
-            const ImVec2 n_min(origin.x, img_max.y - (pad * 2.0f + line_h * n_lines));
+            const ImVec2 n_min(origin.x, img_max.y - (pad * 2.0f + line_h * n_lines + nota_h));
             const ImVec2 n_max(origin.x + margin + nw + pad * 2.0f, img_max.y);
             dl->AddRectFilled(n_min, n_max, IM_COL32(0, 0, 0, 128), corner,
                               ImDrawFlags_RoundCornersTopRight);
@@ -675,6 +687,11 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
             for (const std::string& l : head) {
                 dl->AddText(font, size, ImVec2(origin.x + margin, y), head_color, l.c_str());
                 y += line_h;
+            }
+            if (!next.notation.empty()) {
+                dl->AddText(font, nota_size, ImVec2(origin.x + margin, y),
+                            IM_COL32(255, 255, 255, 255), next.notation.c_str());
+                y += nota_h;
             }
             for (const std::string& l : body) {
                 dl->AddText(font, size, ImVec2(origin.x + margin, y), IM_COL32(255, 255, 255, 255),

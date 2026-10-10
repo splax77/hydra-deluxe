@@ -607,6 +607,7 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
     }, 30));
     IM_CHECK(pc.position_ms() > 0.0);
     IM_CHECK_STR_EQ(pc.next_act_box().header.c_str(), "Next: activation 1 of 3");
+    IM_CHECK_STR_EQ(pc.next_act_box().notation.c_str(), "3- (163 ms)");
     IM_CHECK(pc.next_act_box().detail.rfind("at m32.1.0", 0) == 0);
 }
 
@@ -863,7 +864,11 @@ void test_preview_activation_jumps(ImGuiTestContext* ctx) {
 
     pc.seek_ms(0.0);
     IM_CHECK_STR_EQ(pc.next_act_box().header.c_str(), "Next: activation 1 of 3");
+    IM_CHECK_STR_EQ(pc.next_act_box().notation.c_str(), "3- (163 ms)");
     IM_CHECK_STR_EQ(pc.next_act_box().detail.c_str(), "at m32.1.0 \xC2\xB7 [Kick - Green cymbal]");
+    // The box with its notation line, for a person to look at.
+    ctx->Yield(2);
+    IM_CHECK(screenshot(ctx, "next-act-notation.png"));
 
     ctx->ItemClick("**/Act >##nextact");
     const double act1 = pc.position_ms();
@@ -872,6 +877,7 @@ void test_preview_activation_jumps(ImGuiTestContext* ctx) {
     ctx->KeyPress(ImGuiKey_RightBracket);
     IM_CHECK_STR_EQ(pc.time_box().position.c_str(), "m58.1.0");
     IM_CHECK_STR_EQ(pc.next_act_box().header.c_str(), "Next: activation 2 of 3");
+    IM_CHECK_STR_EQ(pc.next_act_box().notation.c_str(), "1");
     ctx->KeyPress(ImGuiKey_LeftBracket);
     IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), act1, 0.5);
     // Nothing before the first activation: the playhead stays.

@@ -263,7 +263,8 @@ them has one owner. This list points at each; read the owner for the rule.
   `src/ui/app_shell.{h,cpp}` makes each report its own OS window.
   `report_placement` beside it decides where a report opens and whether it
   opens maximized, and `place_report_window` applies that and notes where the
-  window is, in the `[Hydra][Window:<key>]` sections of `hydra_ui.ini` (D103
+  window is (`maximize_due_report_windows` does the maximize itself, between
+  frames, called from `main.cpp`), in the `[Hydra][Window:<key>]` sections of `hydra_ui.ini` (D103
   item 14; ADR 0027 says how it behaves). `main.cpp` measures the OS frame
   around a report and hands it over with `set_report_frame_insets`. The popup
   patch in `third_party/imgui/imgui.cpp` keeps popups inside their window

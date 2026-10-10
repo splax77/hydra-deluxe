@@ -224,13 +224,20 @@ void remember_report_placement(std::string_view key, const WindowPlacement& p);
 // When the window opens, it is placed by report_placement, from the saved
 // placement (the [Hydra][Window:<key>] section, else ImGui's own [Window]
 // entry, from a hydra_ui.ini written before that section existed) and the
-// main window's. A report that opens maximized is maximized on a later
-// frame, once ImGui has made its OS window (D103 item 14).
+// main window's. A report that opens maximized is maximized by
+// maximize_due_report_windows, once ImGui has made its OS window (D103
+// item 14).
 //
 // While the report's OS window exists, every frame notes whether it is
 // maximized and, when it is neither maximized nor minimized, its client
 // rectangle, through remember_report_placement.
 void place_report_window(const char* name);
+
+// Maximizes the report windows place_report_window found due. main.cpp calls
+// it between frames, after ImGui::UpdatePlatformWindows; the definition says
+// why. Does nothing when none is due, as in the GUI test runner, which has
+// no OS windows.
+void maximize_due_report_windows();
 
 // Everything ImGui drew this frame, as text, in draw order. Filled by
 // run_frame when `enabled`; the runner's wait-text/expect-text search it.

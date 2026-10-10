@@ -374,6 +374,7 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
                 pa.chord = a.chord;
             }
             pa.measure = format_measure(timing, pa.tick);
+            pa.notation = a.notationstr_verbose();
             scene.activations.push_back(pa);
         }
         scene.trailing_bank_ticks = path->trailing_bank_ticks;
@@ -685,6 +686,7 @@ PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms, d
     const size_t i = static_cast<size_t>(next - acts.begin());
     box.shown = true;
     box.header = "Next: activation " + std::to_string(i + 1) + " of " + std::to_string(acts.size());
+    box.notation = next->notation;
     box.detail = "at " + next->measure;
     if (next->chord.count() > 0) box.detail += " \xC2\xB7 " + next->chord.rowstr(pro_drums);
     return box;
