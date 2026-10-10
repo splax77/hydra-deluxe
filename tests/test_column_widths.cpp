@@ -167,8 +167,8 @@ TEST_CASE("column_widths: table_room reads a sorted header's drawn width from th
         ImGui::SetNextWindowSize(ImVec2(600.0f, 300.0f));
         ImGui::Begin("column_widths test");
         // The headers' text alone, as the rule's own measure would take it.
-        plain_text = std::ceil(hydra::ui::text_width()("Plain"));
-        sorted_text = std::ceil(hydra::ui::text_width()("Sorted"));
+        plain_text = std::ceil(hydra::ui::measure_in_font()("Plain"));
+        sorted_text = std::ceil(hydra::ui::measure_in_font()("Sorted"));
         room = hydra::ui::table_room("##t", 0.0f, 2);
         if (ImGui::BeginTable("##t", 2, hydra::ui::table_flags(), ImVec2(0.0f, 100.0f))) {
             ImGui::TableSetupColumn("Plain", ImGuiTableColumnFlags_WidthFixed, 100.0f);
@@ -312,7 +312,7 @@ TEST_CASE("column_widths timing: 40,000 rows" * doctest::test_suite("column_widt
     ImFont* font = ImGui::GetIO().Fonts->Fonts.Size > 0 ? ImGui::GetIO().Fonts->Fonts[0] : nullptr;
     const bool real = font != nullptr;
     const hydra::ui::WidthOf width_of =
-        real ? hydra::ui::text_width(font, font->LegacySize) : hydra::ui::WidthOf(ten_px);
+        real ? hydra::ui::measure_in_font(font, font->LegacySize) : hydra::ui::WidthOf(ten_px);
     if (real) std::printf("column_widths timing: 'Best path' measures %.1f px\n", width_of("Best path"));
     std::vector<ColumnSpec> specs;
     for (const char* h : {"Title", "Artist", "Charter", "Folder", "Best path"})

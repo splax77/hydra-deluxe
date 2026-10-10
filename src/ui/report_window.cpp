@@ -383,7 +383,7 @@ std::string row_number(size_t k) { return group_thousands(static_cast<int64_t>(k
 ColumnSpec row_number_spec() {
     ColumnSpec s;
     s.header = "#";
-    s.width_of = text_width();
+    s.width_of = measure_in_font();
     return s;
 }
 
@@ -392,7 +392,7 @@ ColumnSpec column_spec(const std::string& title, const app::report_view::CellLoo
     s.header = title;
     s.may_cut = look.truncate;
     if (look.chip) s.padding = chip_pad() * 2.0f;
-    s.width_of = text_width(look.mono ? g_mono_font : nullptr);
+    s.width_of = measure_in_font(look.mono ? g_mono_font : nullptr);
     return s;
 }
 

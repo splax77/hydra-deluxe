@@ -27,11 +27,8 @@
 #include "imgui.h"
 #include "ui/report_state.h"  // ReportBuild, ReportOutOfDate
 #include "ui/theme.h"
-#include "ui/widgets.h"  // hint, overflow_tooltip, keep_table_column_order
-// After widgets.h: its text_ellipsized hands render::ellipsize the name
-// text_width, which column_widths.h overloads; seen first, that name is no
-// longer one function and the call does not compile.
 #include "ui/column_widths.h"
+#include "ui/widgets.h"  // hint, overflow_tooltip, keep_table_column_order
 
 namespace hydra::ui {
 
