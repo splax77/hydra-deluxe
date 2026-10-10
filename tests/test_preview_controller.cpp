@@ -38,10 +38,6 @@
 #include "wait_util.h"
 #include "warp_util.h"
 
-#ifndef HYDRA_TESTDATA_DIR
-#error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
-#endif
-
 using hydra::Difficulty;
 using hydra::store::ChartLibraryEntry;
 using hydra::ui::ViewJob;

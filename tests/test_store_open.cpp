@@ -40,6 +40,7 @@
 #include "store/upgrade_files.h"
 #include "store_fixtures.h"  // at_cap, no_paths_at_cap
 #include "temp_util.h"
+#include "testdata_dirs.h"  // testdata_root
 
 using namespace hydra;
 using namespace hydra::store;
@@ -519,7 +520,7 @@ TEST_CASE("a database a real old release wrote opens with no path details, its r
     };
     for (const OldDatabase& f : fixtures) {
         INFO(std::string(f.file));
-        const std::string source = std::string(HYDRA_TESTDATA_DIR) + "/store/" + f.file;
+        const std::string source = corpus::testdata_root() + "/store/" + f.file;
         REQUIRE(std::filesystem::exists(source));
         // The store opens in WAL mode, which would write beside the checked-in
         // file, so it opens a copy.

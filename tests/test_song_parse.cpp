@@ -31,10 +31,6 @@
 #include "source_tree.h"
 #include "ui/preview_controller.h"  // PreviewSongKey
 
-#ifndef HYDRA_TESTDATA_DIR
-#error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
-#endif
-
 using namespace hydra;
 
 namespace {
@@ -507,7 +503,7 @@ TEST_CASE("mid: Won't Get Fooled Again (O) has 36 ghost kicks") {
     // The chart that proved the bug: Hydra called it 1,134,335 while a real FC
     // on Hydra's own path scored 1,142,235. 36 velocity-1 kicks, no accents.
     const std::string path =
-        std::string(HYDRA_TESTDATA_DIR) + "/midi/wgfa_onyxite/notes.mid";
+        corpus::testdata_root() + "/midi/wgfa_onyxite/notes.mid";
     Song song = load_songpath(path, true, true, Difficulty::Expert);
     REQUIRE(!song.is_empty());
 
@@ -903,7 +899,7 @@ TEST_CASE("Note Shuffle switch: the Dynamics pads follow the analysis's shuffle"
 
 namespace {
 
-std::string edge_dir() { return std::string(HYDRA_TESTDATA_DIR) + "/parse_edge/"; }
+std::string edge_dir() { return corpus::testdata_root() + "/parse_edge/"; }
 
 // One expected line, split at its tabs. The middle field hydra_bench writes
 // (the parse time) was taken out when the file was captured.

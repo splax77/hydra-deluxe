@@ -32,10 +32,6 @@
 #include "ui/widgets.h"  // progress_fraction
 #include "wait_util.h"
 
-#ifndef HYDRA_TESTDATA_DIR
-#error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
-#endif
-
 using hydra::ui::ByteRateClock;
 using hydra::ui::PreviewLoadJob;
 using P = PreviewLoadJob::Progress;

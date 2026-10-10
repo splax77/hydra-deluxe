@@ -395,8 +395,8 @@ TEST_CASE("a click whose save fails shows the paths and says so") {
 TEST_CASE("the click's Dynamics count keeps the 2x kicks with 2x Bass off") {
     ScratchPaths paths("appstate_click_dyn");
     const std::string dir = testtemp::temp_dir("click_dyn");
-    audiochart::copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) +
-                                   "/input/common/IB24/T3/Alpha Wolf - Acid Romance/notes.mid",
+    audiochart::copy_file_utf8(corpus::root() +
+                                   "/common/IB24/T3/Alpha Wolf - Acid Romance/notes.mid",
                                dir + "\\notes.mid");
     write_click_ini(dir);
     const ChartLibraryEntry song = entry_for(dir + "\\notes.mid", "Click dyn");

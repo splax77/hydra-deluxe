@@ -41,7 +41,7 @@ namespace {
 using test::scores_settings;
 
 Song fixture(const std::string& name) {
-    return load_songpath(std::string(HYDRA_INPUT_DIR) + "/test_fast_tempo/" + name, true, true);
+    return load_songpath(corpus::root() + "/test_fast_tempo/" + name, true, true);
 }
 
 // A root's tied variants, theirs, and so on, and every root's at once; a

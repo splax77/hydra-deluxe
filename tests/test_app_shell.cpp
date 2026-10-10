@@ -22,6 +22,7 @@
 #include "imgui_internal.h"  // SettingsDirtyTimer, to see what marks the ini for saving
 
 #include "temp_util.h"
+#include "testdata_dirs.h"  // testdata_root
 #include "ui/app_shell.h"
 #include "ui/fonts.h"
 
@@ -38,7 +39,7 @@ hydra::ui::ImGuiSetupOptions test_options(const std::string& ini_file) {
     hydra::ui::ImGuiSetupOptions opts;
     opts.dpi_scale = 1.0f;
     opts.ini_file = ini_file;
-    opts.resource_dir = std::string(HYDRA_TESTDATA_DIR) + "/../resource";
+    opts.resource_dir = corpus::testdata_root() + "/../resource";
     return opts;
 }
 

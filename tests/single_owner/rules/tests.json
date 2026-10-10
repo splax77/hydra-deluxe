@@ -167,6 +167,34 @@
       "note": "Decided by: this file's own rule (one scan, new rules are rows); step-1 derive-once review of fb1189b, finding 5 (2026-10-04); one reader for the docs test too (phase 4 join, 2026-10-04)"
     },
     {
+      "question": "Which test reads the test-data folders?",
+      "owner": "corpus::root and corpus::testdata_root in tests/testdata_dirs.h",
+      "owner_file": "tests/testdata_dirs.h",
+      "owner_symbol": "testdata_root",
+      "date": "2026-10-10",
+      "decision": "test dedup plan task 1.8 (docs/superpowers/plans/2026-10-10-test-dedup-naming-gaps.md)",
+      "added_by": "tdn-1-8",
+      "pattern": "\\bHYDRA_(INPUT|TESTDATA)_DIR\\b",
+      "anchor": "_DIR",
+      "owner_files": [
+        "tests/testdata_dirs.h"
+      ],
+      "must_match": [
+        "return load_songpath(std::string(HYDRA_INPUT_DIR) + \"/test_fast_tempo/\" + name, true, true);",
+        "const fs::path kFuzzRoot = fs::u8path(HYDRA_TESTDATA_DIR \"/fuzz\");",
+        "#ifndef HYDRA_TESTDATA_DIR"
+      ],
+      "must_not_match": [
+        "return load_songpath(corpus::root() + \"/test_fast_tempo/\" + name, true, true);",
+        "const std::string kFixtureDir = corpus::testdata_root() + \"/preview\";",
+        "std::ifstream in(std::string(HYDRA_SOURCE_DIR) + \"/src/app/preview_view.cpp\");"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "One reader of both folder macros, as source_tree.h is for HYDRA_SOURCE_DIR; each test file used to carry its own #error guard and its own std::string(...) build. Decided by: test dedup plan task 1.8 (2026-10-10)"
+    },
+    {
       "question": "Which test helper writes MThd/MTrk chunks?",
       "owner": "smf_tracks in tests/midi_util.h",
       "owner_file": "tests/midi_util.h",
@@ -542,20 +570,20 @@
       "date": "2026-10-04",
       "decision": "D53",
       "added_by": "J1-4",
-      "pattern": "HYDRA_TESTDATA_DIR\\) \\+ \"/audio/",
-      "anchor": "HYDRA_TESTDATA_DIR) + \"/audio/",
+      "pattern": "testdata_root\\(\\) \\+ \"/audio/",
+      "anchor": "testdata_root() + \"/audio/",
       "must_match": [
-        "return hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + \"/audio/\" + name);",
-        "copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + \"/audio/sine220.ogg\", d + \"\\\\song.ogg\");"
+        "return hydra::read_file_bytes(corpus::testdata_root() + \"/audio/\" + name);",
+        "copy_file_utf8(corpus::testdata_root() + \"/audio/sine220.ogg\", d + \"\\\\song.ogg\");"
       ],
       "must_not_match": [
         "ogg.path = fixture_path(\"sine220.ogg\");",
-        "#ifndef HYDRA_TESTDATA_DIR"
+        "for (const fs::directory_entry& e : fs::directory_iterator(fs::u8path(corpus::testdata_root() + \"/audio\")))"
       ],
       "owner_lines": [
         {
           "file": "tests/audio_util.h",
-          "line_text": "return std::string(HYDRA_TESTDATA_DIR) + \"/audio/\" + name;",
+          "line_text": "return corpus::testdata_root() + \"/audio/\" + name;",
           "why": "fixture_path, the owner (read_fixture reads through it)"
         }
       ],

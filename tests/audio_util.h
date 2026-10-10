@@ -24,16 +24,13 @@
 #include "audio/decode.h"
 #include "audio/stream_mix.h"
 #include "core/winstr.h"
-
-#ifndef HYDRA_TESTDATA_DIR
-#error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
-#endif
+#include "testdata_dirs.h"  // testdata_root
 
 namespace testaudio {
 
 // The path of testdata/audio/<name>, for a stem opened from a file.
 inline std::string fixture_path(const std::string& name) {
-    return std::string(HYDRA_TESTDATA_DIR) + "/audio/" + name;
+    return corpus::testdata_root() + "/audio/" + name;
 }
 
 // The bytes of testdata/audio/<name>, for a stem held in memory.
