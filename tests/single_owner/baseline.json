@@ -5,91 +5,136 @@
       "file_a": "src/audio/ma_reader.cpp",
       "file_b": "src/audio/vorbis_reader.cpp",
       "lines": 9,
-      "first": "pos_ += done;"
+      "first": "pos_ += done;",
+      "date": "2026-10-05",
+      "added_by": "MR1",
+      "remove_by": "2026-10-19"
     },
     {
       "file_a": "tests/test_app_state.cpp",
       "file_b": "tests/test_song_panel_state.cpp",
       "lines": 11,
-      "first": "char hash[32];"
+      "first": "char hash[32];",
+      "date": "2026-10-05",
+      "added_by": "MR1",
+      "remove_by": "2026-10-19"
     },
     {
       "file_a": "tests/test_highway_draw.cpp",
       "file_b": "tests/test_track_state.cpp",
       "lines": 9,
-      "first": "SongTiming timing(480, {{0, 1920}}, {{0, 300.0}});"
+      "first": "SongTiming timing(480, {{0, 1920}}, {{0, 300.0}});",
+      "date": "2026-10-05",
+      "added_by": "MR1",
+      "remove_by": "2026-10-19"
     },
     {
       "file_a": "tests/test_highway_draw.cpp",
       "file_b": "tests/test_track_state.cpp",
       "lines": 8,
-      "first": "using namespace hydra;"
+      "first": "using namespace hydra;",
+      "date": "2026-10-05",
+      "added_by": "MR1",
+      "remove_by": "2026-10-19"
     },
     {
       "file_a": "tests/test_highway_draw.cpp",
       "file_b": "tests/test_track_state.cpp",
       "lines": 10,
-      "first": "return s;"
+      "first": "return s;",
+      "date": "2026-10-05",
+      "added_by": "MR1",
+      "remove_by": "2026-10-19"
     },
     {
       "file_a": "tests/test_path_view.cpp",
       "file_b": "tests/test_path_view.cpp",
       "lines": 12,
-      "first": "HydraRecord rec;"
+      "first": "HydraRecord rec;",
+      "date": "2026-10-05",
+      "added_by": "MR1",
+      "remove_by": "2026-10-19"
     },
     {
       "file_a": "tests/test_path_view.cpp",
       "file_b": "tests/test_preview_view.cpp",
       "lines": 8,
-      "first": "const AnalysisResult& analyzed() {"
+      "first": "const AnalysisResult& analyzed() {",
+      "date": "2026-10-05",
+      "added_by": "MR1",
+      "remove_by": "2026-10-19"
     },
     {
       "file_a": "tests/test_preview_controller.cpp",
       "file_b": "tests/test_preview_controller.cpp",
       "lines": 11,
-      "first": "using namespace hydra;"
+      "first": "using namespace hydra;",
+      "date": "2026-10-05",
+      "added_by": "MR1",
+      "remove_by": "2026-10-19"
     },
     {
       "file_a": "tests/test_replay.cpp",
       "file_b": "tests/test_replay.cpp",
       "lines": 10,
-      "first": "int charts = 0, paths = 0, mismatches = 0;"
+      "first": "int charts = 0, paths = 0, mismatches = 0;",
+      "date": "2026-10-05",
+      "added_by": "MR1",
+      "remove_by": "2026-10-19"
     },
     {
       "file_a": "tests/test_replay.cpp",
       "file_b": "tests/test_replay.cpp",
       "lines": 10,
-      "first": "Song song(192);"
+      "first": "Song song(192);",
+      "date": "2026-10-05",
+      "added_by": "MR1",
+      "remove_by": "2026-10-19"
     },
     {
       "file_a": "tests/test_search.cpp",
       "file_b": "tests/test_search.cpp",
       "lines": 17,
-      "first": "for (const std::string& path : corpus::chart_paths()) {"
+      "first": "for (const std::string& path : corpus::chart_paths()) {",
+      "date": "2026-10-05",
+      "added_by": "MR1",
+      "remove_by": "2026-10-19"
     },
     {
       "file_a": "tests/test_search.cpp",
       "file_b": "tests/test_search.cpp",
       "lines": 10,
-      "first": "Song song = build_tail_song({{0, true, false},"
+      "first": "Song song = build_tail_song({{0, true, false},",
+      "date": "2026-10-05",
+      "added_by": "MR1",
+      "remove_by": "2026-10-19"
     },
     {
       "file_a": "tests/test_search.cpp",
       "file_b": "tests/test_search.cpp",
       "lines": 9,
-      "first": "{768, true, false},"
+      "first": "{768, true, false},",
+      "date": "2026-10-05",
+      "added_by": "MR1",
+      "remove_by": "2026-10-19"
     },
     {
       "file_a": "tests/test_store.cpp",
       "file_b": "tests/test_store.cpp",
       "lines": 8,
-      "first": "for (const std::string& path : corpus::chart_paths()) {"
+      "first": "for (const std::string& path : corpus::chart_paths()) {",
+      "date": "2026-10-05",
+      "added_by": "MR1",
+      "remove_by": "2026-10-19"
     },
     {
       "file_a": "tests/ui/uitest_batch_reports.cpp",
       "file_b": "tests/ui/uitest_batch_reports.cpp",
       "lines": 9,
-      "first": "Harness& h = harness(ctx);"
+      "first": "Harness& h = harness(ctx);",
+      "date": "2026-10-05",
+      "added_by": "MR1",
+      "remove_by": "2026-10-19"
     }
   ]
 }

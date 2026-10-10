@@ -18,6 +18,8 @@
 #include "doctest.h"
 
 #include <algorithm>
+#include <cctype>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
@@ -141,6 +143,77 @@ json read_json_file(const fs::path& path, const std::string& name) {
     }
 }
 
+// How many days after its date a baseline entry may stay at most. The user's
+// cap, from "Baselines that shrink" in
+// docs/superpowers/plans/2026-10-10-single-owner-redesign.md.
+constexpr int kBaselineMaxDays = 14;
+
+bool is_iso_shape(const std::string& s) {
+    if (s.size() != 10) return false;
+    for (size_t i = 0; i < s.size(); ++i)
+        if (i == 4 || i == 7 ? s[i] != '-' : !std::isdigit(static_cast<unsigned char>(s[i])))
+            return false;
+    return true;
+}
+
+// `iso` (YYYY-MM-DD) moved `days` later, as YYYY-MM-DD, or empty when `iso`
+// is not in that form. A date that does not exist (2026-02-30) comes back as
+// a different day, so iso_plus_days(s, 0) == s says s is a real date.
+std::string iso_plus_days(const std::string& iso, int days) {
+    if (!is_iso_shape(iso)) return {};
+    std::tm t{};
+    t.tm_year = std::stoi(iso.substr(0, 4)) - 1900;
+    t.tm_mon = std::stoi(iso.substr(5, 2)) - 1;
+    t.tm_mday = std::stoi(iso.substr(8, 2)) + days;
+    t.tm_hour = 12;  // noon, so a daylight-saving change cannot move the day
+    t.tm_isdst = -1;
+    if (std::mktime(&t) == static_cast<std::time_t>(-1)) return {};
+    char buf[16];
+    std::strftime(buf, sizeof buf, "%Y-%m-%d", &t);
+    return buf;
+}
+
+// Today on this machine's calendar, as YYYY-MM-DD.
+std::string today_iso() {
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+    localtime_s(&local, &now);
+    char buf[16];
+    std::strftime(buf, sizeof buf, "%Y-%m-%d", &local);
+    return buf;
+}
+
+BaselineDates parse_dates(const json& entry, const std::string& where) {
+    BaselineDates d{required_string(entry, "date", where), required_string(entry, "added_by", where),
+                    required_string(entry, "remove_by", where)};
+    for (const std::string& s : {d.date, d.remove_by})
+        if (iso_plus_days(s, 0) != s)
+            throw std::runtime_error(where + ": \"" + s + "\" is not a YYYY-MM-DD date");
+    const std::string cap = iso_plus_days(d.date, kBaselineMaxDays);
+    if (d.remove_by > cap)
+        throw std::runtime_error(where + ": remove_by " + d.remove_by + " is more than " +
+                                 std::to_string(kBaselineMaxDays) + " days after its date " + d.date +
+                                 " (" + cap + " at most)");
+    return d;
+}
+
+std::string copy_entry_name(const KnownCopy& k) {
+    return "known_copies \"" + k.question + "\" in " + k.file + ": " + k.line_text;
+}
+
+std::string clone_entry_name(const KnownClone& k) {
+    return "known_clones " + k.file_a + " and " + k.file_b + ", " + std::to_string(k.lines) +
+           " lines from: " + k.first;
+}
+
+// Empty while `today` (YYYY-MM-DD) is on or before the entry's remove_by,
+// else the failure. ISO dates compare as plain text.
+std::string baseline_due(const std::string& entry, const BaselineDates& d, const std::string& today) {
+    if (today <= d.remove_by) return {};
+    return "baseline.json: " + entry + ": past its remove_by date " + d.remove_by + " (added by " +
+           d.added_by + " on " + d.date + "): fix the copy and delete the entry";
+}
+
 struct RuleTables {
     std::vector<OwnerRule> rules;
     std::vector<KnownCopy> copies;
@@ -173,18 +246,26 @@ RuleTables load_tables() {
         if (doc.contains("known_copies"))
             for (const json& k : doc.at("known_copies")) {
                 const std::string w = name + ": known_copies";
-                check_keys(k, {"question", "file", "line_text", "removed_by"}, w);
-                t.copies.push_back({required_string(k, "question", w), required_string(k, "file", w),
-                                    required_string(k, "line_text", w),
-                                    required_string(k, "removed_by", w)});
+                check_keys(k,
+                           {"question", "file", "line_text", "removed_by", "date", "added_by",
+                            "remove_by"},
+                           w);
+                KnownCopy c{required_string(k, "question", w), required_string(k, "file", w),
+                            required_string(k, "line_text", w), required_string(k, "removed_by", w),
+                            {}};
+                c.dates = parse_dates(k, name + ": " + copy_entry_name(c));
+                t.copies.push_back(c);
             }
         if (doc.contains("known_clones"))
             for (const json& k : doc.at("known_clones")) {
                 const std::string w = name + ": known_clones";
-                check_keys(k, {"file_a", "file_b", "lines", "first"}, w);
+                check_keys(k, {"file_a", "file_b", "lines", "first", "date", "added_by", "remove_by"},
+                           w);
                 if (!k.contains("lines")) throw std::runtime_error(w + ": missing field \"lines\"");
-                t.clones.push_back({required_string(k, "file_a", w), required_string(k, "file_b", w),
-                                    k.at("lines").get<int>(), required_string(k, "first", w)});
+                KnownClone c{required_string(k, "file_a", w), required_string(k, "file_b", w),
+                             k.at("lines").get<int>(), required_string(k, "first", w), {}};
+                c.dates = parse_dates(k, name + ": " + clone_entry_name(c));
+                t.clones.push_back(c);
             }
     } catch (const json::exception& e) {
         throw std::runtime_error(name + ": " + e.what());
@@ -498,6 +579,48 @@ TEST_CASE("single-owner: the owner-gone guard and the loader fail on a made-up r
     no_question.erase("question");
     CHECK_THROWS_WITH(parse_rule(no_question, "rules/made_up.json", 2),
                       "rules/made_up.json: row 3: missing field \"question\"");
+}
+
+TEST_CASE("single-owner: no baseline entry is past its remove_by date") {
+    const std::string today = today_iso();
+    std::ostringstream due;
+    for (const KnownCopy& k : known_copies()) {
+        const std::string m = baseline_due(copy_entry_name(k), k.dates, today);
+        if (!m.empty()) due << m << "\n";
+    }
+    for (const KnownClone& k : known_clones()) {
+        const std::string m = baseline_due(clone_entry_name(k), k.dates, today);
+        if (!m.empty()) due << m << "\n";
+    }
+    INFO(due.str());
+    CHECK(due.str().empty());
+}
+
+TEST_CASE("single-owner: the baseline dates fail on a made-up entry") {
+    CHECK(iso_plus_days("2026-10-05", 14) == "2026-10-19");
+    CHECK(iso_plus_days("2026-12-25", 14) == "2027-01-08");
+    CHECK(iso_plus_days("2026-02-30", 0) == "2026-03-02");  // not a real date
+    CHECK(iso_plus_days("2026-1-05", 0).empty());
+
+    const KnownClone clone{"src/a.cpp", "src/b.cpp", 9, "x = 1;", {"2026-10-05", "MR1", "2026-10-19"}};
+    const std::string name = clone_entry_name(clone);
+    CHECK(baseline_due(name, clone.dates, "2026-10-19").empty());  // the last allowed day
+    CHECK(baseline_due(name, clone.dates, "2026-10-20") ==
+          "baseline.json: known_clones src/a.cpp and src/b.cpp, 9 lines from: x = 1;: past its "
+          "remove_by date 2026-10-19 (added by MR1 on 2026-10-05): fix the copy and delete the entry");
+
+    json entry = json::parse(R"({"date": "2026-10-05", "added_by": "MR1", "remove_by": "2026-10-19"})");
+    CHECK(parse_dates(entry, "made-up entry").remove_by == "2026-10-19");
+    entry["remove_by"] = "2026-10-20";
+    CHECK_THROWS_WITH(parse_dates(entry, "made-up entry"),
+                      "made-up entry: remove_by 2026-10-20 is more than 14 days after its date "
+                      "2026-10-05 (2026-10-19 at most)");
+    entry["remove_by"] = "2026-13-01";
+    CHECK_THROWS_WITH(parse_dates(entry, "made-up entry"),
+                      "made-up entry: \"2026-13-01\" is not a YYYY-MM-DD date");
+    entry.erase("remove_by");
+    CHECK_THROWS_WITH(parse_dates(entry, "made-up entry"),
+                      "made-up entry: missing field \"remove_by\"");
 }
 
 TEST_CASE("single-owner: the anchor guard fails on a made-up row") {

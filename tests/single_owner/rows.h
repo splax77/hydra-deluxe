@@ -63,11 +63,21 @@ struct OwnerRule {
     std::string language;
 };
 
+// When a baseline entry arrived and when it must be gone. A copy may be
+// parked, never kept: the scan fails the day after remove_by (baseline_due),
+// and the loader refuses a remove_by further out than kBaselineMaxDays.
+struct BaselineDates {
+    std::string date;       // YYYY-MM-DD, the day the entry was added
+    std::string added_by;   // the task or review that added it
+    std::string remove_by;  // YYYY-MM-DD, the last day the entry may stay
+};
+
 struct KnownCopy {
     std::string question;   // equals a rule's question
     std::string file;       // repo-relative, forward slashes
     std::string line_text;  // the line with leading and trailing space trimmed
     std::string removed_by; // the fix that deletes it
+    BaselineDates dates;
 };
 
 // A copy the clone scan tolerates for now. The key survives edits elsewhere in
@@ -78,6 +88,7 @@ struct KnownClone {
     std::string file_b;  // the same as file_a when a file repeats itself
     int lines;           // code lines, as clone_line_text counts them
     std::string first;   // the block's first code line, as clone_line_text gives it
+    BaselineDates dates;
 };
 
 const std::vector<OwnerRule>& rules();
