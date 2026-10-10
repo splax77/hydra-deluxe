@@ -52,6 +52,26 @@ out the same, 1372 by 714, or the comparison no longer lines up.
 
 ## The thresholds
 
-Placeholder: what the per-pixel delta, the worst-tile budget and the
-whole-frame budget mean, and where their values came from, is written here once
-they are chosen.
+The test shrinks both frames to half size and compares them there, skipping the
+masked pixels. Four keys in `golden.json` set how close they must be:
+
+1. `tolerance` caps the mean difference per colour channel, out of 255.
+2. `pixel_delta` is the line between a matching pixel and a wrong one. A pixel
+   counts as wrong when its largest channel difference is over this value, out
+   of 255.
+3. `tile_percent` caps the share of wrong pixels in the worst 16 by 16 tile of the
+   half-size frame.
+   This catches a small wrong piece, like a missing note, that the mean hides.
+4. `frame_percent` caps the share of wrong pixels in the whole frame.
+
+The user chose these values on 2026-10-10 from a measurement of two renders.
+Today's render had a worst tile of 6.25 percent, a whole frame of 0.0525
+percent and a mean of 5.688. A render with Pro Drums off, which draws some
+notes differently from the screenshot, had a worst tile of 32.8 percent, a whole frame of 0.125
+percent and a mean of 5.727. The mean barely moved, which is why the tile and
+frame checks exist. The decision and its reasoning are under "User decisions",
+item 3, in `docs/superpowers/plans/2026-10-10-test-fidelity-fixes.md`.
+
+After a recapture, measure again before changing any of the four keys: run the
+golden test with `HYDRA_PREVIEW_GOLDEN_DUMP` set, read the printed numbers and
+the CSVs it writes, and take new values to the user.

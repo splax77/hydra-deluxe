@@ -7,9 +7,10 @@
 //   { "chart": "notes.mid", "time_ms": ..., "width": ..., "height": ...,
 //     "crop": [x, y, w, h],           // the highway area inside the screenshot
 //     "pro": true, "bass2x": true, "tolerance": ...,
+//     "pixel_delta": ..., "tile_percent": ..., "frame_percent": ...,
 //     "mask": [[x, y, w, h], ...] }   // rectangles to ignore (Onyx's text)
 // plus golden_onyx.png next to it. Every key is required; a missing file or
-// key fails the test.
+// key fails the test. The README there says what the thresholds mean.
 //
 // Dev aid: set HYDRA_PREVIEW_DUMP="<chart path>|<time ms>|<out.bmp>" to
 // render any chart at any time to a BMP (the failing golden comparison also
@@ -217,29 +218,19 @@ float delta_percentile(const std::vector<float>& delta, double q) {
     return v[k];
 }
 
-// The D values the measurement reports (named in the tf-t2 brief).
-constexpr float kMeasureD[] = {16.0f, 24.0f, 32.0f, 48.0f, 64.0f};
-
-// Dev aid: the per-tile map (one over-D percent column per kMeasureD value) and
-// the histogram of per-pixel deltas (integer bins), as CSV in the working folder.
-void write_delta_csvs(const std::vector<float>& delta, int ow, int oh) {
+// Dev aid: the per-tile map (percent over the fixture's pixel_delta) and the
+// histogram of per-pixel deltas (integer bins), as CSV in the working folder.
+void write_delta_csvs(const std::vector<float>& delta, int ow, int oh, float d) {
     std::ofstream tiles("preview_tiles.csv");
-    tiles << "tile_x,tile_y,half_x,half_y,unmasked";
-    for (float d : kMeasureD) tiles << ",pct_over_" << static_cast<int>(d);
-    tiles << "\n";
-    std::vector<std::vector<TileCount>> per_d;
+    tiles << "tile_x,tile_y,half_x,half_y,unmasked,pct_over_" << d << "\n";
     int tw = 0, th = 0;
-    for (float d : kMeasureD) per_d.push_back(tile_counts(delta, ow, oh, d, tw, th));
+    const std::vector<TileCount> t = tile_counts(delta, ow, oh, d, tw, th);
     for (int ty = 0; ty < th; ++ty)
         for (int tx = 0; tx < tw; ++tx) {
-            const size_t i = static_cast<size_t>(ty) * tw + tx;
-            const size_t unmasked = per_d[0][i].unmasked;
-            tiles << tx << "," << ty << "," << tx * kTile << "," << ty * kTile << "," << unmasked;
-            for (const auto& t : per_d)
-                tiles << ","
-                      << (unmasked ? 100.0 * static_cast<double>(t[i].over) / static_cast<double>(unmasked)
-                                   : 0.0);
-            tiles << "\n";
+            const TileCount& c = t[static_cast<size_t>(ty) * tw + tx];
+            tiles << tx << "," << ty << "," << tx * kTile << "," << ty * kTile << "," << c.unmasked << ","
+                  << (c.unmasked ? 100.0 * static_cast<double>(c.over) / static_cast<double>(c.unmasked) : 0.0)
+                  << "\n";
         }
     std::vector<size_t> hist(256, 0);
     for (float x : delta)
@@ -259,7 +250,8 @@ TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
     REQUIRE(file_exists_utf8(png_path));
     std::string spec_text = read_file_text(spec_path);
     nlohmann::json spec = nlohmann::json::parse(spec_text);
-    for (const char* key : {"chart", "time_ms", "width", "height", "crop", "pro", "bass2x", "tolerance", "mask"}) {
+    for (const char* key : {"chart", "time_ms", "width", "height", "crop", "pro", "bass2x", "tolerance",
+                            "pixel_delta", "tile_percent", "frame_percent", "mask"}) {
         INFO("golden.json key: " << key);
         REQUIRE(spec.contains(key));
     }
@@ -269,6 +261,9 @@ TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
     const int w = spec["width"].get<int>(), h = spec["height"].get<int>();
     const bool pro = spec["pro"].get<bool>(), bass2x = spec["bass2x"].get<bool>();
     const double tolerance = spec["tolerance"].get<double>();
+    const float pixel_delta = spec["pixel_delta"].get<float>();
+    const double tile_percent = spec["tile_percent"].get<double>();
+    const double frame_percent = spec["frame_percent"].get<double>();
     REQUIRE(w > 0);
     REQUIRE(h > 0);
 
@@ -332,22 +327,31 @@ TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
     const double mae = n ? err / static_cast<double>(n) : 0.0;
     MESSAGE("golden mean abs error: " << mae << " / 255 (tolerance " << tolerance << ")");
 
-    // The per-pixel delta and tile measurement: printed, not checked yet.
+    // The per-pixel delta and tile budgets. testdata/preview/README.md says what
+    // the keys mean and where their values came from.
     const std::vector<float> delta =
         max_channel_deltas(a, g, ow, oh, [&](int x, int y) { return masked(x * 2, y * 2); });
     MESSAGE("max-channel delta percentiles: p50 " << delta_percentile(delta, 50.0) << ", p90 "
                                                   << delta_percentile(delta, 90.0) << ", p99 "
                                                   << delta_percentile(delta, 99.0) << ", p99.9 "
                                                   << delta_percentile(delta, 99.9));
-    for (float d : kMeasureD) {
-        const OverShare s = over_share(delta, ow, oh, d);
-        MESSAGE("D " << d << ": worst tile " << s.worst_tile_percent << "% at tile (" << s.worst_tx << ", "
-                     << s.worst_ty << ") = half-res (" << s.worst_tx * kTile << ", " << s.worst_ty * kTile
-                     << "); whole frame " << s.frame_percent << "%");
+    const OverShare s = over_share(delta, ow, oh, pixel_delta);
+    MESSAGE("over delta " << pixel_delta << ": worst tile " << s.worst_tile_percent << "% (budget "
+                          << tile_percent << "%) at tile (" << s.worst_tx << ", " << s.worst_ty
+                          << "), full-res x " << s.worst_tx * kTile * 2 << ".." << (s.worst_tx + 1) * kTile * 2
+                          << ", y " << s.worst_ty * kTile * 2 << ".." << (s.worst_ty + 1) * kTile * 2
+                          << "; whole frame " << s.frame_percent << "% (budget " << frame_percent << "%)");
+    if (dump) write_delta_csvs(delta, ow, oh, pixel_delta);
+    const bool tile_ok = s.worst_tile_percent <= tile_percent;
+    const bool frame_ok = s.frame_percent <= frame_percent;
+    if (mae >= tolerance || !tile_ok || !frame_ok) {
+        write_bmp("preview_actual.bmp", actual, w, h);
+        MESSAGE("wrote preview_actual.bmp; the worst tile is at full-res x "
+                << s.worst_tx * kTile * 2 << ", y " << s.worst_ty * kTile * 2 << " (" << kTile * 2 << " px square)");
     }
-    if (dump) write_delta_csvs(delta, ow, oh);
-    if (mae >= tolerance) write_bmp("preview_actual.bmp", actual, w, h);
     CHECK(mae < tolerance);
+    CHECK(s.worst_tile_percent <= tile_percent);
+    CHECK(s.frame_percent <= frame_percent);
 }
 
 TEST_CASE("preview dump (dev aid, HYDRA_PREVIEW_DUMP)") {
