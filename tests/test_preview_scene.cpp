@@ -327,7 +327,7 @@ TEST_CASE("parser keeps the SP-phrase start on the flagged note") {
 }
 
 TEST_CASE("build_preview_scene: an analyzed chart's overlay matches its path") {
-    const AnalysisResult& r = analyzed();
+    const AnalysisResult& r = corpus::analyzed_by_ten_scores();
     const Path& best = r.record.best_path();
     PreviewScene scene = build_preview_scene(r.song, &best);
 
@@ -591,7 +591,7 @@ TEST_CASE("path_overlay_key: no overlay, the same path, and a changed path") {
     // path; Path itself has no operator==.
     CHECK(path_overlay_key(nullptr).empty());
 
-    const AnalysisResult& r = analyzed();
+    const AnalysisResult& r = corpus::analyzed_by_ten_scores();
     std::vector<const Path*> paths = r.record.all_paths();
     REQUIRE_FALSE(paths.empty());
 

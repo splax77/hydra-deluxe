@@ -436,7 +436,7 @@ TEST_CASE("score box: a path the replay can't reproduce says so") {
 }
 
 TEST_CASE("score box: the analyzed chart ends on the path's total") {
-    const AnalysisResult& r = analyzed();
+    const AnalysisResult& r = corpus::analyzed_by_ten_scores();
     const Path& best = r.record.best_path();
     PreviewScene scene = build_preview_scene(r.song, &best);
     REQUIRE(scene.score.state == PreviewScore::State::Ready);

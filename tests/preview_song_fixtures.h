@@ -158,9 +158,6 @@ inline Song make_overfill_song() {
                                      {6768},        {7500}});
 }
 
-// One analyzed corpus chart (see analyzed_chart.h), shared across cases.
-inline const app::AnalysisResult& analyzed() { return ::corpus::analyzed_by_ten_scores(); }
-
 // A path whose stored score is what the replay prices it at, so the scene
 // trusts it. The corpus case proves the replay against the engine; these
 // hand-built fixtures only test the Preview's plumbing.
