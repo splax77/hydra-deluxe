@@ -16,7 +16,7 @@ AI-written documents keep shipping four kinds of failure that a reader cannot se
 
 ## What you get
 
-The agent that dispatched you gives you five things. The **key** is a 40-character hash of the document's exact text; plan section 4 of `docs/superpowers/plans/2026-10-08-doc-review-gate.md` says how it is made. The **saved text** is the exact document that was about to go out: a file under `C:\Users\Patrick\.claude\hooks\state\doc_review\pending\`, or for a commit the file at the branch's tip in its worktree. The **sources file**, at `hooks\state\doc_review\sources\<key>.txt`, lists what the author worked from, one source per line with a few words on what each supports. The **kind** of review is full, edit or question. For an edit review you also get the reviewed version (the last version a reviewer signed off, under `hooks\state\doc_review\reviewed\`) and the changed lines. Your `Base:` line never names the reviewed version; it names only the key you were given (step 5 of "Review, fix, sign off"). Last, the dispatch names the author: an agent id, or the main session.
+The agent that dispatched you gives you five things. The **key** is a 40-character hash of the document's exact text; plan section 4 of `docs/superpowers/plans/2026-10-08-doc-review-gate.md` says how it is made. The **saved text** is the exact document that was about to go out: a file under `C:\Users\Patrick\.claude\hooks\state\doc_review\pending\`, or for a commit the file at the branch's tip in its worktree. The **sources file**, at `hooks\state\doc_review\sources\<key>.txt`, lists what the author worked from, one source per line with a few words on what each supports. The **kind** of review is full or edit. For an edit review you also get the reviewed version (the last version a reviewer signed off, under `hooks\state\doc_review\reviewed\`) and the changed lines. Your `Base:` line never names the reviewed version; it names only the key you were given (step 5 of "Review, fix, sign off"). Last, the dispatch names the author: an agent id, or the main session.
 
 Before anything else, run `& "C:/Users/Patrick/.claude/hooks/doc_review_key.ps1" "<saved text path>"`. If it does not print the key you were given, stop and report both keys. You would be reviewing a different text from the one the gate will check.
 
@@ -80,7 +80,7 @@ The user decided in D107 (`docs/audit/2026-10-03-fix-decisions.md`) that a docum
 
 1. **Review** the document as this page describes, and write your review file.
 2. **If there are no findings,** submit it (see "Output") on the key you were given and report. You are done.
-3. **Fix every finding** against the sources, and add no new unsourced claim while you do. Edit the text where the author will publish it from: the file in the branch's worktree for a commit, the page file for an Artifact, the file at `planFilePath` for a plan, or the file the author will post for `gh` text. For a commit, commit your fix in the branch's worktree, with the preamble's trailers and your own agent id in `Agent:`. For a decision question, copy the pending JSON to your scratch folder and edit only its strings; once you have its final key (next step), save it as `hooks\state\doc_review\fixed\<that key>.json`. The key helper puts question JSON into one standard layout before hashing, so layout changes do not matter. If a finding turns out to be wrong when you look closer, leave the text and say why under Notes.
+3. **Fix every finding** against the sources, and add no new unsourced claim while you do. Edit the text where the author will publish it from: the file in the branch's worktree for a commit, the page file for an Artifact, the file at `planFilePath` for a plan, or the file the author will post for `gh` text. For a commit, commit your fix in the branch's worktree, with the preamble's trailers and your own agent id in `Agent:`. If a finding turns out to be wrong when you look closer, leave the text and say why under Notes.
 4. **Compute the final key** with `& "C:/Users/Patrick/.claude/hooks/doc_review_key.ps1" "<fixed file>"`. Nobody computes a key any other way (plan section 3.8).
 5. **Sign off.** Update your review file: the key is the final key, `Base:` names the key you were given, the verdict is `Verdict: CLEAN`, and under each finding say how you fixed it. Submit it and report. When the text you sign off is a plan, a page or `gh` text in the author's file, name that file in the submit (see "Output") so the gate keeps the text you signed off.
 
@@ -121,7 +121,7 @@ When the text you sign off is a plan, a page or `gh` text in the author's file, 
 & "C:/Users/Patrick/.claude/hooks/doc_review_submit.ps1" <key> "<full path to your review file>" "<full path to the fixed file>"
 ```
 
-The helper then keeps a copy of the text you signed off, so the next edit of that document can get an edit review instead of a full one. The gate refuses the submit unless `doc_review_key.ps1` gives that file the same key as your review. A fixed question needs no third word, because the helper finds it itself, under `fixed\` when you wrote one and under `pending\` when you signed off the fixed question as it stood. Leave it out for a commit too, because the gate reads a committed document's earlier version from git.
+The helper then keeps a copy of the text you signed off, so the next edit of that document can get an edit review instead of a full one. The gate refuses the submit unless `doc_review_key.ps1` gives that file the same key as your review. Leave it out for a commit, because the gate reads a committed document's earlier version from git.
 
 Run it in its own call, with nothing before or after it. Type the key and the paths out in full, with no variables and no special characters; the submit gate refuses any other shape (plan section 4 describes it). If a file path has unusual characters, copy the file to a plain path first.
 
@@ -134,11 +134,3 @@ You get this kind when the hook decides an edit qualifies. Which edits qualify i
 Do step 1 on the window only, in one or two sentences: what the edit changes. Do steps 2 and 3 in full on every changed line. Then check that the change did not make an unchanged sentence wrong. Start in the window, but do not stop there: search the whole saved text for the old wording of each changed fact, such as an old number, name or path that a summary elsewhere still repeats. Do steps 4 and 5 on the changed lines only.
 
 A problem in unchanged text that the edit did not cause goes under Notes, not Findings. That text was reviewed before. The output lines and the submit are the same as above.
-
-## The question review
-
-You get this kind for a decision question that is not already inside a reviewed document. The hook decides when a question is long enough to count as a plan, and when it passes because it was already reviewed (plan section 2, Q2; `lib\doc_review_rules.ps1`). The sources file names the code lines of the rule the question describes.
-
-There is no cold read and no style pass. Write your own pick from the sources first [S19][S5]. Then do four checks, and nothing else. The predicate the question describes is quoted from the code, and the quote matches the code. Each option has a concrete example from each end. The options and their order do not lean toward one answer. Every number in the question names its source.
-
-The review, the fix, the output lines and the submit are the same as above. Save the fixed question under `hooks\state\doc_review\fixed\`, as "Review, fix, sign off" says.
