@@ -463,13 +463,6 @@ bool narrowest_panel(ImGuiTestContext* ctx) {
     return true;
 }
 
-// The width rule's measurer for `font` at the size the UI draws text in
-// (text_width's size), for checking a column against the rule.
-hydra::ui::WidthOf rule_font_measure(ImFont* font) {
-    const ImGuiStyle& st = ImGui::GetStyle();
-    return hydra::ui::measure_in_font(font, st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi);
-}
-
 // The one backend table drawn this frame: the only four-column table in the
 // details column. Null when there is none, or more than one (more than one
 // activation row is open).
@@ -523,7 +516,7 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     const std::vector<hydra::app::BackendRowView>& rows = d->activations.acts[0].backends;
     const std::vector<hydra::ui::ColumnSpec> points = {
-        {"Points", false, 0.0f, rule_font_measure(hydra::ui::g_mono_font)}};
+        {"Points", false, 0.0f, text_measurer(hydra::ui::g_mono_font)}};
     const hydra::ui::MeasuredWidths measured = hydra::ui::measure_widths(
         points, rows.size(), [&](size_t r, size_t) { return rows[r].points; });
     IM_CHECK_EQ(t->Columns[2].WidthGiven,

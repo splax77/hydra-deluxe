@@ -24,6 +24,7 @@
 #include "imgui_te_engine.h"
 #include "ui/app_shell.h"
 #include "ui/app_state.h"
+#include "ui/column_widths.h"
 
 
 namespace uitest {
@@ -220,6 +221,10 @@ std::string escape_ref(const std::string& label);
 // size it draws text now: the style's base size times its main and DPI
 // scales. The one place a GUI test measures text.
 float text_width(const char* s, ImFont* font = nullptr);
+
+// text_width's measuring, as the width rule's WidthOf (ui/column_widths.h),
+// for a test that checks a column against the rule.
+hydra::ui::WidthOf text_measurer(ImFont* font = nullptr);
 
 // ---- the checked-in C++ tests ---------------------------------------------
 

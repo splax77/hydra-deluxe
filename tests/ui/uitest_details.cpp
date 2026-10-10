@@ -74,11 +74,7 @@ std::vector<ImGuiTable*> drawn_tables(int column, const char* header) {
 // (text_width's size). A column that never cuts takes its measured width,
 // whatever the room.
 float rule_width(const char* header, const std::vector<std::string>& cells) {
-    const ImGuiStyle& st = ImGui::GetStyle();
-    const std::vector<hydra::ui::ColumnSpec> specs = {
-        {header, false, 0.0f,
-         hydra::ui::measure_in_font(ImGui::GetIO().FontDefault,
-                                    st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi)}};
+    const std::vector<hydra::ui::ColumnSpec> specs = {{header, false, 0.0f, text_measurer()}};
     const hydra::ui::MeasuredWidths measured = hydra::ui::measure_widths(
         specs, cells.size(), [&](size_t r, size_t) { return cells[r]; });
     return hydra::ui::place_columns(measured, specs, hydra::ui::TableRoom{}).widths[0];
