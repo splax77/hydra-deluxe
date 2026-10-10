@@ -160,9 +160,16 @@ struct OverShare {
     double frame_percent = 0.0;
 };
 
+// The share of `unmasked` pixels that are `over` D, in percent (0 when none are
+// unmasked). The one place a share is worked out: tile, frame and the CSV use it.
+double percent_over(size_t over, size_t unmasked) {
+    return unmasked ? 100.0 * static_cast<double>(over) / static_cast<double>(unmasked) : 0.0;
+}
+
 // One tile's counts: unmasked pixels, and those over D.
 struct TileCount {
     size_t unmasked = 0, over = 0;
+    double percent() const { return percent_over(over, unmasked); }
 };
 
 std::vector<TileCount> tile_counts(const std::vector<float>& delta, int ow, int oh, float d, int& tw,
@@ -192,14 +199,14 @@ OverShare over_share(const std::vector<float>& delta, int ow, int oh, float d) {
             unmasked += c.unmasked;
             over += c.over;
             if (c.unmasked == 0) continue;
-            const double p = 100.0 * static_cast<double>(c.over) / static_cast<double>(c.unmasked);
+            const double p = c.percent();
             if (p > s.worst_tile_percent || s.worst_tx < 0) {
                 s.worst_tile_percent = p;
                 s.worst_tx = tx;
                 s.worst_ty = ty;
             }
         }
-    s.frame_percent = unmasked ? 100.0 * static_cast<double>(over) / static_cast<double>(unmasked) : 0.0;
+    s.frame_percent = percent_over(over, unmasked);
     return s;
 }
 
@@ -225,8 +232,7 @@ void write_delta_csvs(const std::vector<float>& delta, int ow, int oh, float d) 
         for (int tx = 0; tx < tw; ++tx) {
             const TileCount& c = t[static_cast<size_t>(ty) * tw + tx];
             tiles << tx << "," << ty << "," << tx * kTile << "," << ty * kTile << "," << c.unmasked << ","
-                  << (c.unmasked ? 100.0 * static_cast<double>(c.over) / static_cast<double>(c.unmasked) : 0.0)
-                  << "\n";
+                  << c.percent() << "\n";
         }
     std::vector<size_t> hist(256, 0);
     for (float x : delta)
