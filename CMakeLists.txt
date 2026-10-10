@@ -537,6 +537,7 @@ add_executable(hydra_tests
     tests/test_s2_deact_extension.cpp
     tests/test_perf_digest.cpp
     tests/test_note_shuffle.cpp
+    tests/test_wait_util.cpp
 )
 # hydra_dm: test_dm_report exercises the leaderboards join and JSON parsers.
 # hydra_audio: test_audio_decode exercises the stem decoders and mixer.
@@ -575,8 +576,36 @@ target_link_libraries(hydra_uitest PRIVATE
     hydra_uitest_harness d3d11 dxgi d3dcompiler hydra_warnings)
 
 enable_testing()
-add_test(NAME hydra_tests COMMAND hydra_tests)
+
+# hydra_tests runs as slices of whole source files, one CTest entry each, so
+# `ctest -j` runs them side by side. tests/shards.txt owns the slices and says
+# how its lines become entries; hydra_tests_rest takes every file the list does
+# not name. tools/check_shards.ps1 checks the registered entries add up to the
+# whole suite.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    ${CMAKE_SOURCE_DIR}/tests/shards.txt)
+file(STRINGS ${CMAKE_SOURCE_DIR}/tests/shards.txt hydra_shard_lines REGEX "^[^#]")
+set(hydra_shard_patterns "")
+foreach(hydra_shard_line IN LISTS hydra_shard_lines)
+    if(NOT hydra_shard_line MATCHES "^([a-z0-9_]+)[ \t]+([^ \t]+)[ \t]*$")
+        message(FATAL_ERROR "tests/shards.txt: cannot read the line '${hydra_shard_line}'")
+    endif()
+    add_test(NAME hydra_tests_${CMAKE_MATCH_1} COMMAND hydra_tests "-sf=${CMAKE_MATCH_2}")
+    list(APPEND hydra_shard_patterns "${CMAKE_MATCH_2}")
+endforeach()
+list(JOIN hydra_shard_patterns "," hydra_shard_patterns)
+add_test(NAME hydra_tests_rest COMMAND hydra_tests "-sfe=${hydra_shard_patterns}")
+add_test(NAME hydra_tests_shards_cover_all
+    COMMAND pwsh -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/check_shards.ps1
+            -Ctest ${CMAKE_CTEST_COMMAND} -BuildDir ${CMAKE_BINARY_DIR}
+            -Config $<CONFIG> -Exe $<TARGET_FILE:hydra_tests>)
+
 add_test(NAME hydra_uitest COMMAND hydra_uitest --all)
+# The GUI runner can start test processes of its own (its job count lives in
+# tests/ui/uitest_main.cpp), so ctest -j books it four slots and does not start
+# hydra_tests slices beside its children. Four is the count CI's --jobs uses
+# (task 3 of docs/superpowers/plans/2026-10-10-ci-test-tooling.md).
+set_tests_properties(hydra_uitest PROPERTIES PROCESSORS 4)
 
 # ---- packaging -----------------------------------------------------------
 # `cpack -G ZIP` (or build_cpp.ps1 -Package) produces Hydra-<ver>-win64.zip:

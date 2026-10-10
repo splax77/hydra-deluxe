@@ -2759,7 +2759,9 @@ const std::vector<OwnerRule>& rules() {
            R"(CHECK(hydra::ends_with(ch10.subtitle, "SP cap 4 bars — Clone Hero 1.0 fills"));)",
            "checks a report subtitle's tail, not a file format"},
           {"tests/test_dm_report.cpp", "CHECK(hydra::ends_with(phrase, clause));",
-           "checks the counts phrase's last clause, not a file format"}},
+           "checks the counts phrase's last clause, not a file format"},
+          {"tests/test_config.cpp", "CHECK(hydra::ends_with(dir, tail));",
+           "checks the resource folder's name, not a file format"}},
          {"tests"}},
         // A string's tail compared by hand, under any name: the text's size
         // minus the tail's size picks where the tail starts.
@@ -5729,21 +5731,7 @@ const std::vector<OwnerRule>& rules() {
 
 const std::vector<KnownCopy>& known_copies() {
     // Copies found in files the change that found them could not edit.
-    static const std::vector<KnownCopy> k = {
-        {"Where does a right-aligned item start?", "src/ui/paths_tab.cpp",
-         "if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);",
-         "a follow-up to RW-T5's review: align_right calls move_to_right_edge"},
-        {"Where does a right-aligned item start?", "src/ui/library_dialogs.cpp",
-         "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);",
-         "a follow-up to RW-T5's review, once T4, which owns this file now, has merged"},
-        {"Where does a right-aligned item start?", "src/ui/library_toolbar.cpp",
-         "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);",
-         "a follow-up to RW-T5's review"},
-        {"Does a string end with a tail?", "tests/test_config.cpp",
-         "CHECK(dir.substr(dir.size() - tail.size()) == tail);",
-         "a follow-up to RW-T7's review: the check calls hydra::ends_with, and the chart-format "
-         "row lists that line"},
-    };
+    static const std::vector<KnownCopy> k = {};
     return k;
 }
 

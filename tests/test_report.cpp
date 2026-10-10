@@ -32,7 +32,6 @@
 #include "app/config.h"
 #include "app/display_format.h"
 #include "app/dm_report.h"
-#include "env_util.h"
 #include "app/fill_report.h"
 #include "app/html_page.h"
 #include "app/library_query.h"
@@ -1019,44 +1018,6 @@ TEST_CASE("dm_tiles: the four sample scores") {
                     {"Other speed", "0"},
                     {"Avg % of optimal", "98.80%"},
                     {"Points left on table", "3,456"}});
-}
-
-// Not an invariant: writes a small fill comparison page into the folder named
-// by HYDRA_PAGE_SAMPLES, built from fixed rows, so a page change can be
-// checked in a real browser before and after (docs/adr/0016). Run it with
-//   hydra_tests.exe --no-skip -tc="report pages: write samples*"
-TEST_CASE("report pages: write samples for the browser check" * doctest::skip()) {
-    const std::optional<std::string> dir = read_env("HYDRA_PAGE_SAMPLES");
-    REQUIRE(dir.has_value());
-    const std::filesystem::path out = std::filesystem::u8path(*dir);
-    std::filesystem::create_directories(out);
-
-    std::vector<fill_report::FillCompareRow> fill;
-    auto add_fill = [&](const char* song, std::optional<int64_t> old_score,
-                        std::optional<int64_t> new_score, std::optional<int64_t> delta,
-                        const char* status) {
-        fill_report::FillCompareRow r;
-        r.song = song;
-        r.artist = "Artist";
-        r.charter = "Charter";
-        r.hyhash = song;
-        r.old_score = old_score;
-        r.new_score = new_score;
-        r.delta = delta;
-        if (old_score) { r.old_path = "1-E2 0"; r.old_acts = 2; }
-        if (new_score) { r.new_path = "1-E2 0-E1"; r.new_acts = 3; }
-        r.notes = 900;
-        r.status = status;
-        fill.push_back(r);
-    };
-    add_fill("Song A", 100000, 100500, 500, "1.1 higher");
-    add_fill("Song B", 100000, 99000, -1000, "1.0 higher");
-    add_fill("Song C", 100000, 100000, 0, "same");
-    add_fill("Song D", 100000, std::nullopt, std::nullopt, "only 1.0");
-    add_fill("Song E", std::nullopt, 100000, std::nullopt, "only 1.1");
-
-    write_report_file(out / "fill.html",
-                      fill_report::build_fill_html(fill, "Sample subtitle", "Sample footer"));
 }
 
 // ---- the page shell ----------------------------------------------------------

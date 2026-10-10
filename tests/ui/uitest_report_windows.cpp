@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "../report_samples.h"  // tests/ is not on the runner's include path
+#include "../wait_util.h"
 #include "imgui_internal.h"
 #include "app/analysis.h"
 #include "app/dm_report.h"
@@ -425,8 +426,8 @@ public:
         hydra::ui::set_report_analyzer_for_test(
             [](const std::string& path, const hydra::app::AnalysisSettings& s,
                const std::function<void(float)>& on_progress) {
-                while (!g_report_release.load())
-                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                testwait::wait_until([] { return g_report_release.load(); },
+                                     "the test to release the path report's build");
                 return hydra::app::analyze_chart_file(path, s, on_progress);
             });
     }
@@ -454,8 +455,9 @@ public:
         const std::string body = canned_dm_scores(rows);
         hydra::net::set_fetcher([body](const std::string& url, const std::atomic<bool>* cancel) {
             if (url.find("/all-users") != std::string::npos) return canned_dm_users();
-            while (!g_fetch_release.load() && !(cancel && cancel->load()))
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            testwait::wait_until(
+                [cancel] { return g_fetch_release.load() || (cancel && cancel->load()); },
+                "the test to release or cancel the scores fetch");
             return body;
         });
     }
