@@ -116,9 +116,35 @@ Run it in its own call, with nothing before or after it. Type the key and the pa
 
 Your final message: the key you signed off, the review file path, and one plain sentence per finding, saying how you fixed it and in which commit. For a kind A finding, that sentence also names the scan row's question, or the reason no row can catch it. Then any questions for the user from your Notes. End with the precheck's large-range note, if it printed one.
 
+## Resolution review
+
+Sometimes main moves after a branch was reviewed, and the branch has to merge main in to catch up. The branch's review carries over that merge. When git made the merge by itself, nothing more is needed. When someone resolved a conflict by hand, only the lines they wrote while resolving need a check. That check is a resolution review, and it is much smaller than a full one.
+
+Your key is the merge commit, M. Read only what the person resolving wrote:
+
+```
+git show --remerge-diff <M>
+```
+
+That diff shows the merge against what git would have made by itself, so everything in it was written by hand. Ask this page's one question of those lines: is any rule now answered twice? A conflict resolved by keeping both sides of a list is normal and needs nothing. New logic written while resolving is reviewed like any change, with "How to review" above.
+
+Fix what you find the same way (D107): fix it yourself, commit, sign off. Your fix commits sit directly above M, and the gate covers them because you wrote them and you sign off on the last one. Nobody else may commit between M and your commits.
+
+Your review file holds these three lines, each on its own line, then the usual sections from "Output":
+
+```
+Key: <M if you committed nothing, else your last commit>
+Verdict: CLEAN
+Scope: resolution
+```
+
+Submit with the usual command and that key. A resolution review never counts as a full review of anything, and one from the agent that made the merge does not count at all.
+
 ## For the orchestrator
 
 These rules are for the session that runs the merge.
+
+When main moves under a reviewed branch, merge main into the branch. A conflict-free merge needs nothing more. A merge resolved by hand gets one resolution review (see "Resolution review"), keyed on that merge commit. It never gets a second full review. The ref gate's refusal names each merge that still needs one. Any other commit after the review, such as your own edit, still needs a full review of the new tip. That includes a second agent's commit above a hand-resolved merge.
 
 Before the review, run the precheck on the range and fix what it prints. Keep merges small enough to review in one read. The precheck prints the range's size, and a large-range note when it is over the threshold that `tools/derive_once_precheck.ps1` owns. A range with that note should go in as two or more merges.
 
