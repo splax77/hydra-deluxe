@@ -155,7 +155,7 @@ TEST_CASE("a 2x kick and a normal kick on one tick read as Clone Hero played son
 }
 
 // D105.
-TEST_CASE(".mid: a 2x kick merged with a normal kick keeps the ghost or accent from either kick") {
+TEST_CASE(".mid: a 2x kick merged with a normal kick keeps a ghost mark from either kick") {
     // Clone Hero ORs the two kicks' flags (0x215B8C0), so a mark on either
     // kick lands on the merged 2x kick, in both file orders. Ticks 0 and 64
     // put the ghost on the normal kick, then on the 2x kick.
