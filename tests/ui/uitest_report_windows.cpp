@@ -20,12 +20,14 @@
 #include <ctime>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
 
 #include "../report_samples.h"  // tests/ is not on the runner's include path
+#include "../scoped_hook.h"
 #include "../wait_util.h"
 #include "imgui_internal.h"
 #include "app/analysis.h"
@@ -577,21 +579,24 @@ class ReportHold {
 public:
     ReportHold() {
         g_report_release = false;
-        hydra::ui::set_report_analyzer_for_test(
-            [](const std::string& path, const hydra::app::AnalysisSettings& s,
-               const std::function<void(float)>& on_progress) {
-                testwait::wait_until([] { return g_report_release.load(); },
-                                     "the test to release the path report's build");
-                return hydra::app::analyze_chart_file(path, s, on_progress);
-            });
+        seam_.emplace(hydra::ui::set_report_analyzer_for_test,
+                      [](const std::string& path, const hydra::app::AnalysisSettings& s,
+                         const std::function<void(float)>& on_progress) {
+                          testwait::wait_until([] { return g_report_release.load(); },
+                                               "the test to release the path report's build");
+                          return hydra::app::analyze_chart_file(path, s, on_progress);
+                      });
     }
     ~ReportHold() { release(); }
     ReportHold(const ReportHold&) = delete;
     ReportHold& operator=(const ReportHold&) = delete;
     void release() {
         g_report_release = true;
-        hydra::ui::set_report_analyzer_for_test({});
+        seam_.reset();
     }
+
+private:
+    std::optional<ScopedHook> seam_;
 };
 
 // The dmleaderboards API, canned as reset_app cans it (alice, one score on
