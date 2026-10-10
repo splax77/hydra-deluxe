@@ -423,6 +423,7 @@ int main()
         {
             ImGui::UpdatePlatformWindows();
             ImGui::RenderPlatformWindowsDefault();
+            hydra::ui::maximize_due_report_windows();
         }
 
         HRESULT hr = g_pSwapChain->Present(1, 0);   // vsync
