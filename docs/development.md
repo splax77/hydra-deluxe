@@ -152,10 +152,6 @@ won't start without both beside it. `hydra_use_mimalloc` at the bottom of
 `CMakeLists.txt` owns which exes link it and how, and puts both DLLs in the
 build folder; the install rules stage them beside the shipped exes.
 
-To run the leak checks (`hydra::test::leak_checked` in `tests/leak_check.h`), build
-with `.\build_cpp.ps1 -Target hydra_tests -Config Debug` and run
-`build-cpp\Debug\hydra_tests.exe` with `MIMALLOC_DISABLE_REDIRECT=1` set.
-
 Four speed flags stay out on purpose. `/fp:fast` and `/fp:contract` let the
 compiler reorder or fuse floating-point math, which can move a computed timing
 or score in its last bit, and every stored result must stay byte-identical.
