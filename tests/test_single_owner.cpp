@@ -5725,6 +5725,26 @@ const std::vector<OwnerRule>& rules() {
          {{"src/ui/widgets.h", "if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);",
            "move_to_right_edge, the owner: report_frame's cell, row number and right_align call it"}},
          {"src"}},
+        // The Library table's cells and its column widths both read a row's
+        // text for a column, so the table takes it from library_cell_text and
+        // never from the row's fields. Only the table's file is scanned: the
+        // reports and the search keep rows of their own with the same field
+        // names.
+        {"What text does a Library table cell show?",
+         "library_cell_text in src/ui/library_model.cpp",
+         R"(\brow\.(title|artist|charter)\b|\brow\.entry\.rootfolder\b|\bbest_label\(\)|\bbest_path_label\()",
+         "",
+         {},
+         {},
+         "derive-once review of cw-t4 (finding 1)",
+         {"cell_text(row.artist, spans);", "overlay_matches(title_pos, row.title, spans, x);",
+          "line.text = row.entry.rootfolder;", "text_ellipsized(row.best_label().c_str());",
+          "const std::string shown = best_path_label(status, bestpath, summary);"},
+         {"const std::string text = library_cell_text(row, column);",
+          "const std::string title = library_cell_text(row, kColumnTitle);",
+          "const LibraryRow& row = rows[index];"},
+         {},
+         {"src/ui/library_table.cpp"}},
     };
     return r;
 }
