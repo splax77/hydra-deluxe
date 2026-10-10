@@ -558,6 +558,7 @@ add_executable(hydra_tests
     tests/test_replay.cpp
     tests/test_store_results.cpp
     tests/test_store_open.cpp
+    tests/test_store_library.cpp
     tests/test_upgrade_files.cpp
     tests/test_analysis.cpp
     tests/test_report.cpp
