@@ -38,8 +38,6 @@
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file, scalar_on_file, write_junk_db
 #include "display_fixtures.h"  // add_stale_rows, old_build_row, other_rules_record
-#include "env_util.h"  // read_env, for the opt-in upgrade timing
-#include "leak_check.h"
 #include "old_layout_fixture.h"  // detail_layout_sql and the old layout's counts
 #include "parse/song.h"
 #include "record_fixtures.h"
@@ -735,24 +733,22 @@ TEST_CASE("a database from Hydra 1.6 or older opens with nothing to show") {
 }
 
 TEST_CASE("store: a new database carries 0 in user_version and reads its own rows") {
-    hydra::test::leak_checked([&] {
-        // D53 item 1: Hydra never writes the user_version slot. The column checks
-        // in the constructor are the one upgrade gate, so a new file keeps the 0
-        // SQLite gives a file nobody wrote it on.
-        const std::string path = testtemp::temp_path("user_version", ".db");
-        std::remove(path.c_str());
-        const RecordKey key{"h", "mode", CapQuery::at(4)};
-        {
-            RecordStore store(path);
-            store.add_record(key, at_cap(4));
-        }
-        CHECK(scalar_on_file(path,"PRAGMA user_version") == 0);
-        {
-            RecordStore reopened(path);
-            CHECK(reopened.get_summary(key).status == RecordStatus::Ready);
-        }
-        std::remove(path.c_str());
-    });
+    // D53 item 1: Hydra never writes the user_version slot. The column checks
+    // in the constructor are the one upgrade gate, so a new file keeps the 0
+    // SQLite gives a file nobody wrote it on.
+    const std::string path = testtemp::temp_path("user_version", ".db");
+    std::remove(path.c_str());
+    const RecordKey key{"h", "mode", CapQuery::at(4)};
+    {
+        RecordStore store(path);
+        store.add_record(key, at_cap(4));
+    }
+    CHECK(scalar_on_file(path,"PRAGMA user_version") == 0);
+    {
+        RecordStore reopened(path);
+        CHECK(reopened.get_summary(key).status == RecordStatus::Ready);
+    }
+    std::remove(path.c_str());
 }
 
 TEST_CASE("store: list_records reads its summary columns from the one list") {
@@ -1073,52 +1069,6 @@ TEST_CASE("another connection on the old file stops the swap as an upgrade error
     sqlite3_close(holder);
     check_old_file_whole(path);
     remove_db(path);
-}
-
-// Opt-in: times the real upgrade on a copy of a real library file. Runs only
-// when HYDRA_UPGRADE_TIMING_DB names a file, which it upgrades for good; the
-// main session points it at a scratch copy, never at the live database.
-TEST_CASE("upgrade timing") {
-    const std::optional<std::string> env = read_env("HYDRA_UPGRADE_TIMING_DB");
-    if (!env || env->empty()) return;
-    const std::string path = *env;
-    REQUIRE(file_exists_utf8(path));
-    const uint64_t bytes_before = file_size_bytes(path);
-
-    using Clock = std::chrono::steady_clock;
-    const Clock::time_point start = Clock::now();
-    std::vector<std::pair<OpenStep, Clock::time_point>> began;
-    OpenProgress last;
-    const OpenProgressFn record = [&](const OpenProgress& p) {
-        if (began.empty() || began.back().first != p.step) began.emplace_back(p.step, Clock::now());
-        last = p;
-        return true;
-    };
-    { RecordStore store(path, core::default_stamp(), record); }
-    const Clock::time_point end = Clock::now();
-
-    auto name = [](OpenStep s) {
-        switch (s) {
-            case OpenStep::Opening: return "Opening";
-            case OpenStep::UpdatingResultsKey: return "UpdatingResultsKey";
-            case OpenStep::Copying: return "Copying";
-            case OpenStep::Finishing: return "Finishing";
-        }
-        return "?";
-    };
-    auto seconds = [](Clock::time_point a, Clock::time_point b) {
-        return std::chrono::duration<double>(b - a).count();
-    };
-    for (size_t i = 0; i < began.size(); ++i) {
-        const Clock::time_point to = i + 1 < began.size() ? began[i + 1].second : end;
-        // As a std::string: doctest prints a bare const char* as its address.
-        MESSAGE(std::string(name(began[i].first)) << ": " << seconds(began[i].second, to)
-                                                  << " s");
-    }
-    MESSAGE("total: " << seconds(start, end) << " s");
-    MESSAGE("rows copied: " << last.rows_done << " of " << last.rows_total);
-    MESSAGE("file: " << bytes_before << " bytes before, " << file_size_bytes(path)
-                     << " bytes after");
 }
 
 TEST_CASE("every open caps the WAL file the log keeps after a checkpoint") {

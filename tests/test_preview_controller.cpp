@@ -34,6 +34,7 @@
 #include "ui/library_jobs.h"  // ViewJob
 #include "ui/preview_controller.h"
 #include "ui/preview_load_job.h"
+#include "wait_util.h"
 #include "warp_util.h"
 
 #ifndef HYDRA_TESTDATA_DIR
@@ -45,42 +46,45 @@ using hydra::store::ChartLibraryEntry;
 using hydra::ui::ViewJob;
 using hydra::ui::PreviewController;
 using hydra::ui::PreviewLoadJob;
+using testwait::wait_until;
 
 namespace {
 
-// Wait up to 60 s for a job's worker to finish.
+// Waits for a job's worker to finish.
 template <class Job>
 void wait_finished(const Job& job) {
-    for (int i = 0; i < 1200 && !job.finished(); ++i) Sleep(50);
-    REQUIRE(job.finished());
+    wait_until([&] { return job.finished(); }, "the load job to finish");
 }
 
-// Polls until the first load has landed (loading()), for at most 60 s.
+// Polls until the first load has landed (loading()).
 void wait_loaded(PreviewController& pc) {
-    for (int i = 0; i < 1200 && pc.loading(); ++i) {
-        pc.poll();
-        Sleep(50);
-    }
-    REQUIRE_FALSE(pc.loading());
+    wait_until(
+        [&] {
+            pc.poll();
+            return !pc.loading();
+        },
+        "the Preview's first load to land");
 }
 
-// Polls until every Preview thread is done (busy(), finding 109), for at
-// most 12 s.
+// Polls until every Preview thread is done (busy(), finding 109).
 void settle(PreviewController& pc) {
-    for (int i = 0; i < 1200 && pc.busy(); ++i) {
-        pc.poll();
-        Sleep(10);
-    }
-    REQUIRE_FALSE(pc.busy());
+    wait_until(
+        [&] {
+            pc.poll();
+            return !pc.busy();
+        },
+        "every Preview thread to finish");
 }
 
 // Polls until the overlay drawn is `path_key`'s (shows_path), or a failed
-// build set the error and nothing more will land, for at most 12 s.
+// build set the error and nothing more will land.
 void wait_for_path(PreviewController& pc, const std::string& path_key) {
-    for (int i = 0; i < 1200 && !pc.shows_path(path_key) && !pc.has_error(); ++i) {
-        pc.poll();
-        Sleep(10);
-    }
+    wait_until(
+        [&] {
+            pc.poll();
+            return pc.shows_path(path_key) || pc.has_error();
+        },
+        "the overlay for " + path_key + " to land");
 }
 
 // An audio device factory that fails as a PC with no device would, so
@@ -681,12 +685,14 @@ TEST_CASE("a second mode change during a notes reload wins") {
 
     pc.open(entry, true, false, Difficulty::Hard, nullptr, "", 4);
     pc.open(entry, true, false, Difficulty::Medium, nullptr, "", 4);
-    for (int i = 0; i < 1200 && pc.busy(); ++i) {
-        pc.poll();
-        CHECK(pc.playback_end_ms() != doctest::Approx(1000.0));  // Hard's never lands
-        Sleep(10);
-    }
-    REQUIRE_FALSE(pc.busy());
+    wait_until(
+        [&] {
+            if (!pc.busy()) return true;
+            pc.poll();
+            CHECK(pc.playback_end_ms() != doctest::Approx(1000.0));  // Hard's never lands
+            return false;
+        },
+        "every Preview thread to finish");
     CHECK_FALSE(pc.has_error());
     CHECK(pc.playback_end_ms() == doctest::Approx(1500.0));
 }

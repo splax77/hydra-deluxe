@@ -13,6 +13,7 @@
 
 #include "app/config.h"
 #include "core/model.h"
+#include "core/strutil.h"
 #include "core/version.h"
 #include "core/winstr.h"
 #include "temp_util.h"
@@ -634,7 +635,7 @@ TEST_CASE("config: resource_dir is the resource folder beside the exe") {
     CHECK(hydra::parent_folder(dir) == hydra::app::exe_dir());
     const std::string tail = "resource";
     REQUIRE(dir.size() > tail.size());
-    CHECK(dir.substr(dir.size() - tail.size()) == tail);
+    CHECK(hydra::ends_with(dir, tail));
 }
 
 // The pieces are hydra_batch's header words; the expected text is the header

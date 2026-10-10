@@ -606,28 +606,6 @@ TEST_CASE("build_activations: plain rows past the leeway show 0") {
     for (const BackendRowView& row : b) CHECK_FALSE(row.warn);
 }
 
-// Not an invariant: it names a chart the GUI test can open to see an
-// uncounted squeezed-out row for real. Prints nothing when none exists. It
-// runs under the GUI tests' settings, and only by hand (doctest::skip()), so
-// analyzing every chart before the search starts is fine here.
-TEST_CASE("find a chart with an uncounted squeezed-out row" * doctest::skip()) {
-    const AnalysisSettings settings = scratch_settings().to_analysis_settings();
-    for (const corpus::ChartWithPaths& c :
-         corpus::charts_with_paths(settings, corpus::chart_paths().size())) {
-        const AnalysisResult& r = c.result;
-        ActivationsView v = build_activations(r.record.best_path(), r.record,
-                                              &r.song.timing(), 85.0);
-        for (const ActivationRowView& av : v.acts)
-            for (const BackendRowView& row : av.backends)
-                if (row.rating.find("(uncounted) <-- squeezed out") !=
-                    std::string::npos) {
-                    MESSAGE(c.chart << " | activation " << av.number << " " << av.notation);
-                    return;
-                }
-    }
-    MESSAGE("no corpus chart has one at depth 2");
-}
-
 TEST_CASE("build_multsqueezes: one labeled entry per squeeze") {
     const HydraRecord& rec = analyzed().record;
     std::vector<MultSqueezeView> v = build_multsqueezes(rec);

@@ -12,10 +12,8 @@
 #include "doctest.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cstdint>
 #include <cstdio>
-#include <filesystem>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -30,8 +28,8 @@
 #include "core/backend_value.h"
 #include "core/model.h"
 #include "core/replay.h"
-#include "env_util.h"
 #include "replay_json.h"
+#include "replay_windows.h"
 #include "core/scoring.h"
 #include "core/sqout_chord.h"
 #include "core/timing.h"
@@ -1383,27 +1381,32 @@ TEST_CASE("chord_score_table: literal rows on a hand-built chart") {
 }
 
 TEST_CASE("replay multipliers agree with the combo on every corpus chord") {
-    Song song = load_songpath(corpus::first_chart_with_suffix(".mid"), true, true);
-    REQUIRE_FALSE(song.is_empty());
-    const ReplayResult r = replay_path(song, {});
-
-    for (size_t i = 0; i < r.chords.size(); ++i) {
-        const ReplayChord& c = r.chords[i];
-        REQUIRE_FALSE(c.notes.empty());
-        // The chord's multiplier is its first note's; multiplier_after is its
-        // last note's.
-        CHECK(c.multiplier == c.notes.front().multiplier);
-        CHECK(c.multiplier_after == c.notes.back().multiplier);
-        // What the disc shows after this chord is what the next chord starts
-        // from: the old field's value on the next chord.
-        if (i + 1 < r.chords.size())
-            CHECK(c.multiplier_after == to_multiplier(r.chords[i + 1].combo_before));
-        // A note's dynamics bonus is part of what it pays, never more.
-        for (const ReplayNote& n : c.notes) {
-            CHECK(n.dynamics_bonus >= 0);
-            CHECK(n.dynamics_bonus < n.sp_points);
+    int charts = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, true, true);
+        if (song.is_empty()) continue;
+        ++charts;
+        const ReplayResult r = replay_path(song, {});
+        INFO(path);
+        for (size_t i = 0; i < r.chords.size(); ++i) {
+            const ReplayChord& c = r.chords[i];
+            REQUIRE_FALSE(c.notes.empty());
+            // The chord's multiplier is its first note's; multiplier_after is
+            // its last note's.
+            CHECK(c.multiplier == c.notes.front().multiplier);
+            CHECK(c.multiplier_after == c.notes.back().multiplier);
+            // What the disc shows after this chord is what the next chord
+            // starts from: the old field's value on the next chord.
+            if (i + 1 < r.chords.size())
+                CHECK(c.multiplier_after == to_multiplier(r.chords[i + 1].combo_before));
+            // A note's dynamics bonus is part of what it pays, never more.
+            for (const ReplayNote& n : c.notes) {
+                CHECK(n.dynamics_bonus >= 0);
+                CHECK(n.dynamics_bonus < n.sp_points);
+            }
         }
     }
+    CHECK(charts > 0);
 }
 
 TEST_CASE("replay score fields: one list in schema order") {
@@ -1496,44 +1499,7 @@ std::string first_result_difference(const ReplayResult& a, const ReplayResult& b
     return "";
 }
 
-// A small deterministic generator, so the synthetic windows are the same on
-// every run and every machine.
-struct Lcg {
-    uint64_t state;
-    uint32_t next() {
-        state = state * 6364136223846793005ULL + 1442695040888963407ULL;
-        return static_cast<uint32_t>(state >> 33);
-    }
-};
-
-// `count` made-up windows over `song`: random activation chords, windows of
-// 1 to 60 chords that overlap freely, deactivation nodes that are sometimes a
-// few ticks off a chord, and a squeeze-out chord on about a quarter of them
-// (anywhere from 3 chords before the SP end to 3 after, so some sit before D).
-std::vector<ReplayWindow> synthetic_windows(const Song& song, size_t count,
-                                            uint64_t seed) {
-    std::vector<ReplayWindow> out;
-    const size_t n = song.sequence.size();
-    if (n == 0) return out;
-    Lcg rng{seed};
-    out.reserve(count);
-    for (size_t j = 0; j < count; ++j) {
-        const size_t a = rng.next() % n;
-        const size_t len = 1 + rng.next() % 60;
-        const size_t d = std::min(a + len, n - 1);
-        ReplayWindow w;
-        w.act_tick = song.sequence[a].timecode.ticks();
-        w.deact_tick = song.sequence[d].timecode.ticks() +
-                       (rng.next() % 3 == 0 ? static_cast<int64_t>(rng.next() % 10) : 0);
-        if (rng.next() % 4 == 0) {
-            const size_t lo = d >= 3 ? d - 3 : 0;
-            const size_t q = std::min(lo + rng.next() % 7, n - 1);
-            w.sqout_tick = song.sequence[q].timecode.ticks();
-        }
-        out.push_back(w);
-    }
-    return out;
-}
+using testreplay::synthetic_windows;
 
 // Leeways that stress the exit rule: the real 3 ms, none, a negative one, and
 // one wide enough that chords well past D keep counting.
@@ -1896,44 +1862,4 @@ TEST_CASE("replay: scores_only leaves chord_code and notes empty and every score
     CHECK(runs > 0);
     INFO("first difference: " << first_diff);
     CHECK(first_diff.empty());
-}
-
-// Timing on the real stress chart, for the record (Task 9 of the
-// 2026-10-03 preview-loading plan). Skipped by default; run it with
-//   hydra_tests.exe -tc="replay timing*" --no-skip
-// HYDRA_REPLAY_BENCH_CHART overrides the chart path.
-TEST_CASE("replay timing: 2,000 activations on the Discography chart" * doctest::skip()) {
-    const std::string chart = read_env("HYDRA_REPLAY_BENCH_CHART").value_or(
-        "C:\\Clone Hero\\songs\\Misc Downloads\\blink-182 - Discography\\notes.mid");
-    if (!std::filesystem::exists(std::filesystem::u8path(chart))) {
-        MESSAGE("chart not found, skipped: " << chart);
-        return;
-    }
-    const Song song = load_songpath(chart, true, true);
-    REQUIRE_FALSE(song.is_empty());
-    const std::vector<ReplayWindow> wl = synthetic_windows(song, 2000, 7);
-    const core::Rules rules = core::default_rules();
-    ReplayOptions scores;
-    scores.scores_only = true;
-
-    using clock = std::chrono::steady_clock;
-    auto best_ms = [](auto&& fn) {
-        double best = 1e300;
-        for (int run = 0; run < 3; ++run) {
-            const auto t0 = clock::now();
-            fn();
-            const double ms =
-                std::chrono::duration<double, std::milli>(clock::now() - t0).count();
-            best = std::min(best, ms);
-        }
-        return best;
-    };
-    ReplayResult b, c, z;
-    const double new_ms = best_ms([&] { b = replay_path(song, wl, rules); });
-    const double lean_ms = best_ms([&] { c = replay_path(song, wl, rules, scores); });
-    const double none_ms = best_ms([&] { z = replay_path(song, {}, rules); });
-    CHECK(first_result_difference(b, c, true).empty());
-    MESSAGE(song.sequence.size() << " chords, " << wl.size() << " windows, best of 3:"
-            << " open-window walk " << new_ms << " ms, scores-only " << lean_ms
-            << " ms, no windows " << none_ms << " ms");
 }

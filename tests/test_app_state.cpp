@@ -13,7 +13,6 @@
 
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -46,6 +45,7 @@
 #include "ui/library_parts.h"  // analyze_search_label
 #include "ui/library_jobs.h"  // set_app_batch_analyzer_for_test
 #include "ui/report_window.h"  // path_report_input
+#include "wait_util.h"
 
 using hydra::app::Settings;
 using hydra::store::ChartLibraryEntry;
@@ -55,6 +55,7 @@ using hydra::store::RecordStore;
 using hydra::ui::AppState;
 using hydra::ui::GenerationWatcher;
 using hydra::ui::ViewedSong;
+using testwait::wait_until;
 
 namespace {
 
@@ -203,12 +204,12 @@ std::unique_ptr<AppState> app_with(const ScratchPaths& paths,
 // Runs frames until the click's job, and any request waiting on it, has
 // ended and tick() has collected it, as the app's frames would.
 void settle(AppState& app) {
-    for (int i = 0; i < 12000; ++i) {
-        app.tick(0.0);
-        if (app.view_settled()) return;
-        Sleep(5);
-    }
-    FAIL("the click's job never ended");
+    wait_until(
+        [&] {
+            app.tick(0.0);
+            return app.view_settled();
+        },
+        "the click's job to end");
 }
 
 // Clicks `entry` and waits for its analysis.
@@ -239,7 +240,7 @@ struct ViewLatch {
                                              const hydra::app::AnalysisSettings& settings,
                                              const std::function<void(float)>& on_progress) {
                 ++*entered;
-                while (!open->load()) Sleep(1);
+                wait_until([&open] { return open->load(); }, "the test to open the latch");
                 on_progress(0.0f);  // throws when the job was cancelled
                 return hydra::app::analyze_chart_file(path, settings, on_progress);
             });
@@ -251,8 +252,8 @@ struct ViewLatch {
     void release() { open->store(true); }
     // Waits until `n` jobs have reached the latch.
     void wait_entered(int n) {
-        for (int i = 0; i < 12000 && entered->load() < n; ++i) Sleep(1);
-        REQUIRE(entered->load() >= n);
+        wait_until([&] { return entered->load() >= n; },
+                   std::to_string(n) + " jobs to reach the latch");
     }
 };
 
@@ -816,14 +817,16 @@ TEST_CASE("a burst of setting changes ends with one analysis of the final settin
     latch.release();
 
     std::set<int> started{first_generation};
-    for (int i = 0; i < 12000 && (app->view_job || app->view_pending); ++i) {
-        // While a request waits, the job still running is an older one.
-        if (app->view_pending) CHECK(app->view_job != nullptr);
-        app->tick(0.0);
-        if (app->view_job) started.insert(app->view_job->generation());
-        Sleep(5);
-    }
-    REQUIRE_FALSE(app->view_job);
+    wait_until(
+        [&] {
+            if (!app->view_job && !app->view_pending) return true;
+            // While a request waits, the job still running is an older one.
+            if (app->view_pending) CHECK(app->view_job != nullptr);
+            app->tick(0.0);
+            if (app->view_job) started.insert(app->view_job->generation());
+            return false;
+        },
+        "the held click jobs and the waiting request to end");
     CHECK(started == std::set<int>{first_generation, final_generation});
     CHECK(latch.entered->load() == 2);
 
@@ -979,7 +982,7 @@ void run_redo_batch_over(AppState& app, const std::string& search);  // below
 // Waits for the path report's job, then collects it as the app's frame does.
 void finish_path_report(AppState& app) {
     REQUIRE(app.report_job != nullptr);
-    while (!app.report_job->finished()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    wait_until([&] { return app.report_job->finished(); }, "the path report's job to finish");
     app.update_background_jobs();
     REQUIRE(app.report_job == nullptr);
 }
@@ -987,8 +990,7 @@ void finish_path_report(AppState& app) {
 // The same for the comparison's job.
 void finish_dm_report(AppState& app) {
     REQUIRE(app.dm_report_job != nullptr);
-    while (!app.dm_report_job->finished())
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    wait_until([&] { return app.dm_report_job->finished(); }, "the comparison's job to finish");
     app.update_background_jobs();
     REQUIRE(app.dm_report_job == nullptr);
 }
@@ -997,7 +999,7 @@ void finish_dm_report(AppState& app) {
 hydra::app::ChartAnalyzer held_report_analyzer(std::atomic<bool>& release) {
     return [&release](const std::string& path, const hydra::app::AnalysisSettings& s,
                       const std::function<void(float)>& on_progress) {
-        while (!release.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        wait_until([&release] { return release.load(); }, "the test to release the report");
         return hydra::app::analyze_chart_file(path, s, on_progress);
     };
 }
@@ -1030,11 +1032,11 @@ TEST_CASE("a path report request builds it in memory, one build at a time") {
     CHECK(app->report_job.get() == first);
     // The job's progress, for the window's "Analyzing n of N records": the
     // pass has listed its one chart and holds it at the analyzer.
-    while (app->report_job->progress().second == 0)
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    wait_until([&] { return app->report_job->progress().second != 0; },
+               "the report's pass to list its chart");
     CHECK(app->report_job->progress() == std::make_pair(0, 1));
     release = true;
-    while (!app->report_job->finished()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    wait_until([&] { return app->report_job->finished(); }, "the path report's job to finish");
     CHECK(app->report_job->progress() == std::make_pair(1, 1));
     finish_path_report(*app);
 
@@ -1123,8 +1125,8 @@ TEST_CASE("closing the path report mid-build cancels the build, and nothing land
 
     // The stopped job finishes; it never lands in the slot.
     release = true;
-    while (!app->parked_reports.front()->finished())
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    wait_until([&] { return app->parked_reports.front()->finished(); },
+               "the stopped report job to finish");
     app->update_background_jobs();
     CHECK(app->parked_reports.empty());
     CHECK(app->path_report.result == nullptr);
@@ -1310,7 +1312,8 @@ TEST_CASE("picking a player opens the comparison; Refresh reuses the player") {
             std::lock_guard<std::mutex> lock(m);
             score_urls.push_back(url);
         }
-        while (hold.load() && !cancel->load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        wait_until([&] { return !hold.load() || cancel->load(); },
+                   "the test to stop holding or cancel the fetch");
         if (cancel->load()) throw std::runtime_error("cancelled");
         return kDmScoresJson;
     });
@@ -1347,19 +1350,20 @@ TEST_CASE("picking a player opens the comparison; Refresh reuses the player") {
     app->cancel_dm_report();
     CHECK(app->dm_report_build() == ReportBuild::Cancelled);
     CHECK(app->dm_report.result == kept);
-    while (!app->parked_dm_reports.empty()) {
-        app->update_background_jobs();
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
+    wait_until(
+        [&] {
+            app->update_background_jobs();
+            return app->parked_dm_reports.empty();
+        },
+        "the cancelled comparison to be collected");
 
     // The window's "Compare another player..." opens the picker again.
     app->dm_picker_open = false;
     app->reopen_dm_picker();
     CHECK(app->dm_picker_open);
     CHECK(app->dm_picker_popup_pending);
-    if (app->dm_fetch_job) {
-        while (!app->dm_fetch_job->finished()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
+    if (app->dm_fetch_job)
+        wait_until([&] { return app->dm_fetch_job->finished(); }, "the player list's fetch to finish");
     hydra::net::set_fetcher({});
 }
 
@@ -1402,8 +1406,7 @@ void start_redo_batch(AppState& app, hydra::app::ChartAnalyzer analyzer) {
 
 // Waits until the batch has finished (however it ends).
 void wait_batch_finished(AppState& app) {
-    while (!app.batch_job->snapshot().finished)
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    wait_until([&] { return app.batch_job->snapshot().finished; }, "the batch to finish");
 }
 
 // Runs a Redo batch over the one chart `search` finds and waits for it to
@@ -1501,10 +1504,7 @@ void start_batch_until_stopped(AppState& app) {
     start_redo_batch(app, [](const std::string&, const hydra::app::AnalysisSettings&,
                              const std::function<void(float)>& on_progress)
                               -> hydra::app::AnalysisResult {
-        for (;;) {
-            on_progress(0.0f);
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
+        testwait::tick_until_thrown([&] { on_progress(0.0f); }, "the test to press Stop");
     });
     REQUIRE(app.batch_running());
 }
@@ -1573,9 +1573,8 @@ RowsOlderThanScan rows_older_than_scan(const ScratchPaths& paths, const std::str
     s.app->settings.chartfolders = {s.kept.rootfolder};
     s.app->start_scan();
     REQUIRE(s.app->scan_job != nullptr);
-    for (int i = 0; i < 12000 && !s.app->scan_job->snapshot().finished; ++i) Sleep(5);
+    wait_until([&] { return s.app->scan_job->snapshot().finished; }, "the scan to finish");
     const auto progress = s.app->scan_job->snapshot();
-    REQUIRE(progress.finished);
     REQUIRE(progress.charts_found == 1);
     REQUIRE(s.app->library_shown_count() == 2);  // no frame has read the new table
     return s;
@@ -1657,7 +1656,7 @@ TEST_CASE("the post-batch report lists the batch's cap and lens, not the live se
     CHECK(app->report_job->cap() == hydra::store::CapQuery::at(4));
     CHECK(app->report_job->lens() == batch_lens);
     CHECK_FALSE(app->report_job->lens() == app->settings.lens());
-    while (!app->report_job->finished()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    wait_until([&] { return app->report_job->finished(); }, "the batch's report job to finish");
 }
 
 // D103 item 28's 2026-10-09 answer: the finished strip shows "Open
@@ -1711,13 +1710,10 @@ TEST_CASE("a stopped batch lets go of its report rows when it ends") {
                                const std::function<void(float)>& on_progress)
                                -> hydra::app::AnalysisResult {
         if (calls++ == 0) return real;
-        for (;;) {
-            on_progress(0.0f);
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
+        testwait::tick_until_thrown([&] { on_progress(0.0f); }, "the test to press Stop");
     });
-    while (app->batch_job->snapshot().analyzed < 1)
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    wait_until([&] { return app->batch_job->snapshot().analyzed >= 1; },
+               "the first chart to be saved");
     stop_batch(*app);
     app->update_background_jobs();
 
@@ -1804,14 +1800,16 @@ TEST_CASE("the startup open runs on its own thread and tick collects the store a
 
     // Hold the open at its first report, as the GUI test's gate does.
     std::mutex mu;
-    std::condition_variable cv;
-    bool open = false;
+    std::atomic<bool> open{false};
     std::vector<hydra::ui::StoreOpenProgress::Step> steps;
     hydra::ui::set_store_open_gate_for_test(
         [&](const hydra::ui::StoreOpenProgress& p, const std::function<bool()>& cancelled) {
-            std::unique_lock<std::mutex> lock(mu);
-            steps.push_back(p.step);
-            cv.wait_for(lock, std::chrono::seconds(10), [&] { return open || cancelled(); });
+            {
+                std::lock_guard<std::mutex> lock(mu);
+                steps.push_back(p.step);
+            }
+            wait_until([&] { return open.load() || cancelled(); },
+                       "the test to let the open go on");
         });
     AppState app;
     hydra::ui::set_store_open_gate_for_test(nullptr);
@@ -1824,13 +1822,9 @@ TEST_CASE("the startup open runs on its own thread and tick collects the store a
     app.tick(0.0);
     CHECK_FALSE(app.store_ready());
 
-    {
-        std::lock_guard<std::mutex> lock(mu);
-        open = true;
-    }
-    cv.notify_all();
-    while (app.store_open_job && !app.store_open_job->finished())
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    open = true;
+    wait_until([&] { return !app.store_open_job || app.store_open_job->finished(); },
+               "the startup open to finish");
     app.tick(0.0);
 
     REQUIRE(app.store_ready());
@@ -1851,7 +1845,7 @@ TEST_CASE("an AppState closed during its startup open stops the open") {
     std::atomic<bool> gave_up{false};
     hydra::ui::set_store_open_gate_for_test(
         [&](const hydra::ui::StoreOpenProgress&, const std::function<bool()>& cancelled) {
-            while (!cancelled()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            wait_until(cancelled, "the closing app to cancel the open");
             gave_up = true;
         });
     {

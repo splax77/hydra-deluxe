@@ -1263,18 +1263,6 @@ std::string not_in_library(const char* hash) {
 }
 }  // namespace
 
-void RecordStore::delete_results_without_chart() {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
-    exec("BEGIN");
-    try {
-        purge_charts_not_in_library("delete_results_without_chart");
-        exec("COMMIT");
-    } catch (...) {
-        rollback_if_open(db_);
-        throw;
-    }
-}
-
 void RecordStore::reidentify_chart(const std::string& notespath, const std::string& new_md5,
                                    const std::string& new_sig) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
