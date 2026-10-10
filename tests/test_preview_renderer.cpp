@@ -15,6 +15,7 @@
 
 #include "app/preview_view.h"
 #include "app/user_messages.h"
+#include "core/winstr.h"  // os_path, utf8_to_wide
 #include "render/highway_draw.h"  // track_height
 #include "render/preview_renderer.h"
 #include "preview_scene_fixtures.h"
@@ -312,4 +313,26 @@ TEST_CASE("PreviewRenderer: setup that fails part-way releases what it made (WAR
     CHECK_THROWS_AS(PreviewRenderer(dev.Get(), ctx.Get(), dir_utf8), std::runtime_error);
     CHECK(device_refs() == before);
     fs::remove_all(dir);
+}
+
+// Hydra runs from wherever the user installed it, so the assets can sit under
+// a folder like C:\Users\Zoë\... The other non-ASCII folder readers are in
+// test_utf8_paths.cpp.
+TEST_CASE("the Preview renderer loads its assets from a non-ASCII folder (WARP)") {
+    namespace fs = std::filesystem;
+    ComPtr<ID3D11Device> dev;
+    ComPtr<ID3D11DeviceContext> ctx;
+    REQUIRE(warp::make_device(dev, ctx));
+    // A fresh, empty scratch folder whose name holds "Zoë" as UTF-8.
+    const std::string dir = testtemp::temp_dir("Zo\xC3\xAB_assets");
+    std::error_code ec;
+    fs::remove_all(hydra::os_path(dir), ec);
+    fs::create_directories(hydra::os_path(dir));
+    fs::copy(fs::u8path(kAssets), fs::path(hydra::utf8_to_wide(dir)),
+             fs::copy_options::recursive | fs::copy_options::overwrite_existing);
+
+    // Before the fix this threw "PreviewRenderer: missing ...\3d-config.json".
+    PreviewRenderer r(dev.Get(), ctx.Get(), dir);
+    CHECK(r.config().hydra.msaa == 4);
+    fs::remove_all(fs::path(hydra::utf8_to_wide(dir)), ec);
 }
