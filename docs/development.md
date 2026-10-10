@@ -220,10 +220,11 @@ each line it runs. The build never ships.
 
 The `coverage` job in `.github/workflows/ci.yml` holds the whole recipe and
 runs on pushes to main only. It instruments the exes, starts a collection
-session, runs the tests inside it (the unit-test slices one at a time), converts the result
-to Cobertura (a common XML coverage format), and turns that into an HTML
-report with ReportGenerator. The HTML is the run's `coverage-report` artifact,
-and the line-coverage summary is on the run's summary page.
+session, runs the tests inside it (the unit-test slices one at a time),
+converts the result to Cobertura (a common XML coverage format), and turns
+that into an HTML report with ReportGenerator. The HTML is the run's
+`coverage-report` artifact, and the line-coverage summary is on the run's
+summary page.
 `tools\coverage.settings.xml` leaves `third_party\` and `tests\` out of it.
 
 To instrument again after a test run, relink first (delete the exe and build).
