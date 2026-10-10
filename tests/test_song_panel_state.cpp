@@ -22,6 +22,7 @@
 
 #include "app/config.h"
 #include "core/winstr.h"
+#include "scoped_hook.h"
 #include "store/record_store.h"
 #include "temp_util.h"
 #include "ui/app_state.h"
@@ -148,16 +149,18 @@ TEST_CASE("song panel: a running batch locks the settings as a batch, then unloc
     ScratchPaths paths("panel_batchlock");
     std::atomic<bool> release{false};  // before the app, which joins the batch's thread
     auto app = app_with_library(paths, 5);
-    hydra::ui::set_app_batch_analyzer_for_test(
-        [&release](const std::string&, const hydra::app::AnalysisSettings&,
-                   const std::function<void(float)>&) -> hydra::app::AnalysisResult {
-            testwait::wait_until([&release] { return release.load(); },
-                                 "the test to release the chart");
-            throw std::runtime_error("no chart file in this test");
-        },
-        1);
-    app->start_batch(false);
-    hydra::ui::set_app_batch_analyzer_for_test(nullptr, 1);
+    {
+        const ScopedHook seam(
+            hydra::ui::set_app_batch_analyzer_for_test,
+            [&release](const std::string&, const hydra::app::AnalysisSettings&,
+                       const std::function<void(float)>&) -> hydra::app::AnalysisResult {
+                testwait::wait_until([&release] { return release.load(); },
+                                     "the test to release the chart");
+                throw std::runtime_error("no chart file in this test");
+            },
+            1);
+        app->start_batch(false);
+    }
     REQUIRE(app->batch_job != nullptr);
     CHECK(app->settings_lock() == AppState::SettingsLock::Batch);
     CHECK(app->settings_locked());
