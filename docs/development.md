@@ -327,9 +327,9 @@ A second job, beside it, runs the tool tests above with no C++ build. It
 checks out the whole history, because the precheck self-test checks two real
 commit ranges and skips them in a shallow clone.
 
-One test is left out on GitHub: the one that opens the real sound output
-(`tests/test_audio_device.cpp`), because hosted runners have no audio device.
-Run it locally. A newer push to the same branch or pull request cancels the
+One slice of the tests is left out on GitHub: the one that opens the real
+sound output, because hosted runners have no audio device. `tests/shards.txt`
+marks which slice that is. Run it locally. A newer push to the same branch or pull request cancels the
 run it replaces.
 
 ## Other developer notes in this folder
