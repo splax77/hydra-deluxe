@@ -18,6 +18,10 @@ Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/
 
 To verify anything in the GUI, run `hydra_uitest` (headless, drives the real UI by widget label, returns text) instead of launching the app and taking screenshots. See `docs/agents/ui-testing.md`.
 
+### Public doc style
+
+Anything a player reads (the four public pages and the GitHub release notes) follows `docs/agents/public-doc-style.md`: second person, no first person, no AI-writing tells, every label and number checked against the code.
+
 ### Derive-once review
 
 Merges and commits on `main` that touch code need a review from a fresh agent first. A hook enforces it. Dispatch the reviewer with `docs/agents/derive-once-review.md`, the key and the range the hook's message gives. When the change also holds documents, the same reviewer reviews them with `docs/agents/doc-review.md` (rule 5). Only the user can skip a review, by typing `waive derive-once <key>` in chat. Never ask the user to waive one to save time.
