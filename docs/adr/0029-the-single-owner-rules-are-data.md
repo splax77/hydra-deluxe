@@ -140,9 +140,10 @@ file another task owns still land its change, while the clock runs.
 
 ## The precheck reads the same files
 
-tools/derive_once_precheck.ps1 reads tests/single_owner/rules/*.json and
-baseline.json at the revision it checks, with `ConvertFrom-Json`. The scan and
-the precheck read one set of files, and neither parses the other's language.
+tools/derive_once_precheck.ps1 reads the rules files that `rule_files` in
+tests/single_owner/scan.cpp names, and baseline.json, at the revision it
+checks, with `ConvertFrom-Json`. The scan and the precheck read one set of
+files, and neither parses the other's language.
 
 ## Rejected
 

@@ -1,5 +1,5 @@
 // One owner per rule, checked where a grep can check it. The rows are data,
-// in tests/single_owner/rules/ (one JSON file per area), and the baselines are
+// in tests/single_owner/rules/ (rule_files below says which files), and the baselines are
 // in tests/single_owner/baseline.json; load_tables below is their one reader.
 // Each row names a question, the one place that answers it, and a pattern for
 // the text that answers it. A matching line anywhere else fails here, unless

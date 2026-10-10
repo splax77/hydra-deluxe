@@ -1,5 +1,5 @@
 // The rows and the baselines the single-owner cases read. The data lives in
-// tests/single_owner/rules/ (one JSON file per area) and
+// tests/single_owner/rules/ (rule_files in scan.cpp says which files) and
 // tests/single_owner/baseline.json; load_tables in scan.cpp is their one
 // reader, and these accessors return what it read.
 #pragma once
@@ -43,7 +43,7 @@ struct OwnerRule {
     // symbol, so a moved or deleted owner cannot leave the row checking nothing.
     std::string owner_file;                // repo-relative
     std::string owner_symbol;
-    std::string rules_file;                // the file the row came from, as "rules/<area>.json"
+    std::string rules_file;                // the file the row came from, named by rule_files in scan.cpp
     std::vector<std::string> must_match;   // lines the rule flags
     std::vector<std::string> must_not_match;
     std::vector<OwnerLine> owner_lines;    // the owner's own lines; each must still match
