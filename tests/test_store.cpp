@@ -22,6 +22,7 @@
 #include <stdexcept>
 #include <system_error>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -1229,54 +1230,150 @@ TEST_CASE("a schema 2 database hydra_batch --legacy-fills filled is filed under 
     std::remove(path.c_str());
 }
 
-TEST_CASE("a schema 3 database keeps every result and fills its rules column") {
-    // D51 addendum (ST1): schema 4 puts the rules fingerprint in the results
-    // key. The table is rebuilt with every row and result_id kept, and each
-    // row's fingerprint read out of its old blob, so nothing is analyzed
-    // again.
-    const core::Rules other = test::other_rules();
-    const RecordKey at4{"h", "mode", CapQuery::at(4)};
-    const RecordKey at8{"h", "mode", CapQuery::at(8)};
-    const std::string path = testtemp::temp_path("schema3", ".db");
-    std::remove(path.c_str());
-    {
-        RecordStore seed(path);
-        seed.add_record(at4, at_cap(4));
-        seed.add_row(prepare_row(at8, test::other_rules_record(at_cap(8))));
+// ---- real old databases (testdata/store, test fidelity plan task 1) --------
+
+namespace {
+
+// One file in testdata/store and what today's open makes of it. The fields
+// before the open are the README's "Facts the tests pin"; the fields after it
+// were pinned from one run on 2026-10-10 at a5935954.
+struct OldDatabase {
+    const char* file;
+    int64_t user_version;
+    bool has_legacy_fills_column;
+    bool has_rules_fp_column;
+    // The results rows the first open keeps.
+    int64_t rows_after_open;
+    // The fill rule every kept row is filed under.
+    int legacy_fills;
+    // The steps the first open reported, each once.
+    std::vector<OpenStep> steps;
+};
+
+// Every fixture row's chart mode (README "Schema and stamps").
+const char* const kOldDatabaseChartMode = "Expert Pro Drums, 2x Bass";
+
+// The three charts every fixture analysed (README "The three charts").
+const char* const kOldDatabaseHashes[] = {"0b647b1570475f18d463466f2c4d72a7",
+                                          "0d4fd734fe5f2bf6ff1fdbc4ff55be8f",
+                                          "bef0759746740f9c1045f64e9a5a2938"};
+
+// The rules fingerprint every fixture row holds, its bytes in file order as
+// SQLite's lower(hex()) spells them (README "Rules fingerprint").
+const char* const kOldDatabaseRulesFpHex = "f24c606966e9d270";
+
+// The settings every fixture row was analysed under (README "Results rows by
+// chart"): a 4-bar cap, the ms limit on at 10, depth "scores 4".
+RecordKey old_database_key(const char* hyhash, int legacy_fills) {
+    Lens lens;
+    lens.ms_enabled = 1;
+    lens.ms_value = 10;
+    lens.depth_mode = 0;
+    lens.depth_value = 4;
+    lens.legacy_fills = legacy_fills;
+    return RecordKey{hyhash, kOldDatabaseChartMode, CapQuery::at(4), lens};
+}
+
+using ChartPairs = std::set<std::pair<std::string, std::string>>;
+
+// The (hyhash, chartmode) pairs the fixtures' results tables hold. Rows are
+// matched by chart, since result_ids differ between the files.
+ChartPairs old_database_pairs() {
+    ChartPairs out;
+    for (const char* h : kOldDatabaseHashes) out.insert({h, kOldDatabaseChartMode});
+    return out;
+}
+
+// The (hyhash, chartmode) pairs the results table of the file at `path` holds.
+ChartPairs chart_pairs_on_file(const std::string& path) {
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
+    sqlite3_stmt* s = nullptr;
+    REQUIRE(sqlite3_prepare_v2(db, "SELECT hyhash, chartmode FROM results", -1, &s, nullptr) ==
+            SQLITE_OK);
+    ChartPairs out;
+    while (sqlite3_step(s) == SQLITE_ROW)
+        out.insert({reinterpret_cast<const char*>(sqlite3_column_text(s, 0)),
+                    reinterpret_cast<const char*>(sqlite3_column_text(s, 1))});
+    sqlite3_finalize(s);
+    sqlite3_close(db);
+    return out;
+}
+
+int64_t results_columns_named(const std::string& path, const std::string& column) {
+    return scalar_on_file(path, "SELECT COUNT(*) FROM pragma_table_info('results') WHERE name = '" +
+                                    column + "'");
+}
+
+int64_t results_rows_in(const std::string& path) {
+    return scalar_on_file(path, "SELECT COUNT(*) FROM results");
+}
+
+}  // namespace
+
+TEST_CASE("a database a real old release wrote opens with every result Stale and no path details") {
+    using S = OpenStep;
+    // The two v1.8.4 files are not here yet: their results table has no
+    // stars column, so today's open keeps none of their rows. Whether that
+    // is the answer to pin is an open question (tf-t1b report); until then
+    // the synthetic schema 2 cases above stay.
+    const std::vector<OldDatabase> fixtures = {
+        {"v2.0.0-schema3.db", 3, true, false, 3, 0,
+         {S::Opening, S::UpdatingResultsKey, S::Copying, S::Finishing}},
+        // v2.1.0 stopped setting user_version (README "Schema and stamps"),
+        // so its rules_fp column is what tells this layout apart.
+        {"v2.1.0-schema4.db", 0, true, true, 3, 0, {S::Opening, S::Copying, S::Finishing}},
+    };
+    for (const OldDatabase& f : fixtures) {
+        INFO(std::string(f.file));
+        const std::string source = std::string(HYDRA_TESTDATA_DIR) + "/store/" + f.file;
+        REQUIRE(std::filesystem::exists(source));
+        // The store opens in WAL mode, which would write beside the checked-in
+        // file, so it opens a copy.
+        const std::string path = testtemp::temp_path("old_database", ".db");
+        remove_db(path);
+        std::filesystem::copy_file(source, path, std::filesystem::copy_options::overwrite_existing);
+
+        // The file is the layout the README says, before anything opens it.
+        CHECK(scalar_on_file(path, "PRAGMA user_version") == f.user_version);
+        CHECK(results_columns_named(path, "legacy_fills") == (f.has_legacy_fills_column ? 1 : 0));
+        CHECK(results_columns_named(path, "rules_fp") == (f.has_rules_fp_column ? 1 : 0));
+        REQUIRE(chart_pairs_on_file(path) == old_database_pairs());
+
+        ProgressLog log;
+        {
+            RecordStore store(path, core::default_stamp(), log.fn());
+            CHECK(store.counts().second == f.rows_after_open);
+            // Each was written by an older build, so the store's own status
+            // call reads it Stale, never Ready.
+            for (const char* h : kOldDatabaseHashes) {
+                INFO(std::string(h));
+                const SummaryLookup got = store.get_summary(old_database_key(h, f.legacy_fills));
+                CHECK(got.status == RecordStatus::Stale);
+                CHECK(got.stale_build);
+            }
+        }
+        CHECK(log.steps() == f.steps);
+        CHECK(results_rows_in(path) == f.rows_after_open);
+        CHECK(chart_pairs_on_file(path) == old_database_pairs());
+        CHECK(scalar_on_file(path, std::string("SELECT COUNT(*) FROM results WHERE lower(hex(rules_fp))"
+                                               " <> '") +
+                                       kOldDatabaseRulesFpHex + "'") == 0);
+        CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM results WHERE legacy_fills <> " +
+                                       std::to_string(f.legacy_fills)) == 0);
+        check_upgraded_files(path);
+
+        // A second open finds nothing to upgrade and keeps every row.
+        ProgressLog again;
+        {
+            RecordStore store(path, core::default_stamp(), again.fn());
+            CHECK(store.counts().second == f.rows_after_open);
+        }
+        CHECK(again.steps() == std::vector<OpenStep>{S::Opening});
+        CHECK(results_rows_in(path) == f.rows_after_open);
+        CHECK(chart_pairs_on_file(path) == old_database_pairs());
+        remove_db(path);
     }
-    // Back to the schema 3 table (no rules_fp, a key without it), with a copy
-    // of each row's id and the fingerprint its blob holds to compare against
-    // afterwards.
-    downgrade_to_schema3(path);
-    exec_on_file(path,
-                 "CREATE TABLE kept AS SELECT result_id, substr(structure, 5, 8) AS fp"
-                 " FROM results;");
-    REQUIRE(scalar_on_file(path,"SELECT COUNT(*) FROM pragma_table_info('results')"
-                         " WHERE name='rules_fp'") == 0);
-    ProgressLog log;
-    {
-        RecordStore store(path, core::default_stamp(), log.fn());
-        CHECK(store.get_summary(at4).status == RecordStatus::Ready);
-        CHECK(store.get_summary(at8).status == RecordStatus::Stale);
-    }
-    // The rebuild has its own line on the startup screen.
-    CHECK(log.steps() == std::vector<OpenStep>{OpenStep::Opening, OpenStep::UpdatingResultsKey});
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM results") == 2);
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM results r JOIN kept k"
-                       " ON k.result_id = r.result_id AND k.fp = r.rules_fp") == 2);
-    CHECK(scalar_on_file(path,"SELECT COUNT(DISTINCT rules_fp) FROM results") == 2);
-    // The column holds each row's own rules: a default-rules write at 8 bars
-    // keeps the rules-B row there, which then reads Ready under its rules.
-    {
-        RecordStore store(path);
-        store.add_record(at8, at_cap(8));
-        CHECK(store.counts().second == 3);
-    }
-    {
-        RecordStore store(path, core::RulesStamp::of(other));
-        CHECK(store.get_summary(at8).status == RecordStatus::Ready);
-    }
-    std::remove(path.c_str());
 }
 
 TEST_CASE("a failed library rebuild keeps the previous scan") {
