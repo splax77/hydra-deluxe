@@ -20,6 +20,7 @@
 #include "imgui_internal.h"
 #include "ui/activation_row_layout.h"
 #include "ui/app_state.h"
+#include "ui/column_widths.h"
 #include "ui/details_view.h"
 #include "ui/fonts.h"  // px()
 #include "ui/preview_controller.h"
@@ -462,24 +463,22 @@ bool narrowest_panel(ImGuiTestContext* ctx) {
     return true;
 }
 
-// The backend table drawn this frame for activation `number` (its id is
-// backend_table_id of the number and its column widths).
-ImGuiTable* backend_table(int number) {
+// The one backend table drawn this frame: the only four-column table in the
+// details column. Null when there is none, or more than one (more than one
+// activation row is open).
+ImGuiTable* backend_table() {
     ImGuiContext& g = *ImGui::GetCurrentContext();
     ImGuiWindow* details = window_named("##pathdetails");
     if (!details) return nullptr;
+    ImGuiTable* found = nullptr;
     for (int n = 0; n < g.Tables.GetMapSize(); ++n) {
         ImGuiTable* t = g.Tables.TryGetMapData(n);
         if (!t || t->ColumnsCount != 4 || t->LastFrameActive < g.FrameCount - 2) continue;
         if (t->OuterWindow != details) continue;
-        // Match by id, built from the widths the table was set up with.
-        const std::string id = hydra::app::backend_table_id(
-            number, static_cast<int>(t->Columns[0].InitStretchWeightOrWidth),
-            static_cast<int>(t->Columns[1].InitStretchWeightOrWidth),
-            static_cast<int>(t->Columns[2].InitStretchWeightOrWidth));
-        if (t->ID == details->GetID(id.c_str())) return t;
+        if (found) return nullptr;
+        found = t;
     }
-    return nullptr;
+    return found;
 }
 
 // At the narrowest panel, Burnout's first backend table: Timing, Chord and
@@ -491,7 +490,7 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     if (!narrowest_panel(ctx)) return;  // row 1 is open, its backend table too
     ctx->Yield(3);
     IM_CHECK(on_screen(h, "Insane SqOut (eff. 163.5 ms) <-- squeezed out (-260)"));
-    ImGuiTable* t = backend_table(1);
+    ImGuiTable* t = backend_table();
     IM_CHECK(t != nullptr);
     if (ctx->IsError()) return;
     // Rating's content never reaches past its cell's right edge.
@@ -511,6 +510,17 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
         IM_CHECK_LE((std::max)(col.ContentMaxXUnfrozen, col.ContentMaxXFrozen), col.WorkMaxX + 0.5f);
         IM_CHECK_LT(col.WidthGiven, hydra::ui::px(80.0f));
     }
+    // Points is as wide as the width rule gives it for the rows the tab drew.
+    const hydra::app::PathsTabCache::Details* d = h.app->details_ui.paths_tab.built_details();
+    IM_CHECK(d != nullptr && !d->activations.acts.empty());
+    if (ctx->IsError()) return;
+    const std::vector<hydra::app::BackendRowView>& rows = d->activations.acts[0].backends;
+    const std::vector<hydra::ui::ColumnSpec> points = {
+        {"Points", false, 0.0f, text_measurer(hydra::ui::g_mono_font)}};
+    const hydra::ui::MeasuredWidths measured = hydra::ui::measure_widths(
+        points, rows.size(), [&](size_t r, size_t) { return rows[r].points; });
+    IM_CHECK_EQ(t->Columns[2].WidthGiven,
+                hydra::ui::place_columns(measured, points, hydra::ui::TableRoom{}).widths[0]);
     // And the table stays inside the details column.
     ImGuiWindow* details = window_named("##pathdetails");
     IM_CHECK_LE(details->ContentSize.x, details->ContentRegionRect.GetWidth() + 0.5f);

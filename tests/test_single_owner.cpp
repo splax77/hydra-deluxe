@@ -5745,6 +5745,20 @@ const std::vector<OwnerRule>& rules() {
           "const LibraryRow& row = rows[index];"},
          {},
          {"src/ui/library_table.cpp"}},
+        // The row height of a table is a line plus the cell padding above and
+        // below. A table that sizes itself to its rows asks the owner.
+        {"How tall is a small table that shows its header and every row?",
+         "table_outer_height in src/ui/column_widths.cpp",
+         R"(CellPadding\.y)",
+         "",
+         {"src/ui/column_widths.cpp"},
+         {},
+         "derive-once review of cw-t5 (the height was worked out once per tab file)",
+         {"float height = static_cast<float>(rows + 1) * (ImGui::GetFontSize() + style.CellPadding.y * 2.0f);",
+          "const float padding = style.CellPadding.y * 2.0f;"},
+         {"ImVec2(0.0f, table_outer_height(rows.size(), layout, room)),"},
+         {},
+         {"src"}},
     };
     return r;
 }

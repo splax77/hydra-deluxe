@@ -851,10 +851,6 @@ TEST_CASE("measure labels: one numbering rule for the rows, the timeline and the
     CHECK(first_measure_label() == "m1.1.0");
 }
 
-TEST_CASE("backend_table_id: the activation number and the three widths") {
-    CHECK(backend_table_id(1, 48, 40, 56) == "##backends1_48_40_56");
-}
-
 TEST_CASE("longest_activation_badge: the widest wording with the window's figure") {
     const std::string longest = longest_activation_badge();
     CHECK(longest == "squeeze out -500 ms");

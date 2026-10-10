@@ -3,8 +3,12 @@
 #include "core/model.h"  // group_thousands
 #include "core/stars.h"
 #include "imgui.h"
+#include "ui/column_widths.h"
 
 #include <cstdint>
+#include <cstdio>
+#include <string>
+#include <vector>
 
 namespace hydra::ui::detail {
 
@@ -26,26 +30,38 @@ void render_stars_panel(AppState& app) {
                     group_thousands(sc.solo_bonus).c_str());
     ImGui::Spacing();
 
-    const int table_flags = ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg;
-    if (ImGui::BeginTable("##startable", has_solo ? 4 : 3, table_flags)) {
-        ImGui::TableSetupColumn("Stars");
-        ImGui::TableSetupColumn("Multiplier");
-        ImGui::TableSetupColumn("Cutoff");
-        if (has_solo) ImGui::TableSetupColumn("With full solo bonus");
+    // Every column is a number and never cuts. Each is as wide as the width
+    // rule (ui/column_widths.h) says; the rows are a handful, so they are
+    // measured each frame.
+    const WidthOf text = measure_in_font();
+    std::vector<ColumnSpec> specs = {{"Stars", false, 0.0f, text},
+                                     {"Multiplier", false, 0.0f, text},
+                                     {"Cutoff", false, 0.0f, text}};
+    if (has_solo) specs.push_back({"With full solo bonus", false, 0.0f, text});
+    std::vector<std::vector<std::string>> rows;
+    for (int stars = 1; stars <= kMaxStars; ++stars) {
+        char multiplier[16];
+        std::snprintf(multiplier, sizeof(multiplier), "%.1f",
+                      static_cast<double>(kStarMultipliers[stars - 1]));
+        rows.push_back({std::to_string(stars), multiplier, group_thousands(sc.cutoffs[stars - 1])});
+        if (has_solo) rows.back().push_back(group_thousands(sc.with_solo[stars - 1]));
+    }
+    const MeasuredWidths measured =
+        measure_widths(specs, rows.size(), [&](size_t r, size_t c) { return rows[r][c]; });
+    const TableRoom room = table_room("##startable", 0.0f, specs.size());
+    const ColumnLayout layout = place_columns(measured, specs, room);
+    if (ImGui::BeginTable("##startable", static_cast<int>(specs.size()),
+                          ImGuiTableFlags_RowBg | scroll_fixed_flags(),
+                          ImVec2(0.0f, table_outer_height(rows.size(), layout, room)),
+                          layout.inner_width)) {
+        for (size_t c = 0; c < specs.size(); ++c) setup_column(specs[c], layout, static_cast<int>(c));
+        apply_column_widths(layout);
         ImGui::TableHeadersRow();
-
-        for (int stars = 1; stars <= kMaxStars; ++stars) {
-            const int64_t cutoff = sc.cutoffs[stars - 1];
+        for (const std::vector<std::string>& row : rows) {
             ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            ImGui::Text("%d", stars);
-            ImGui::TableNextColumn();
-            ImGui::Text("%.1f", static_cast<double>(kStarMultipliers[stars - 1]));
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(group_thousands(cutoff).c_str());
-            if (has_solo) {
+            for (const std::string& cell : row) {
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted(group_thousands(sc.with_solo[stars - 1]).c_str());
+                ImGui::TextUnformatted(cell.c_str());
             }
         }
         ImGui::EndTable();
