@@ -219,13 +219,17 @@ instrument a native exe. Instrumenting rewrites the exe in place so it records
 each line it runs. The build never ships.
 
 The `coverage` job in `.github/workflows/ci.yml` holds the whole recipe and
-runs on pushes to main only. It instruments the exes, starts a collection
-session, runs the tests inside it (the unit-test slices one at a time),
-converts the result to Cobertura (a common XML coverage format), and turns
-that into an HTML report with ReportGenerator. The HTML is the run's
+runs on pushes to main only. It instruments the exes, then runs each test
+step inside the tool's `collect` command (the unit-test slices one at a time).
+`collect` records every instrumented process the command starts and ends when
+the command ends, so no collector outlives its step. It merges the two results,
+converts them to Cobertura (a common XML coverage format), and turns that into
+an HTML report with ReportGenerator. The HTML is the run's
 `coverage-report` artifact, and the line-coverage summary is on the run's
 summary page.
-`tools\coverage.settings.xml` leaves `third_party\` and `tests\` out of it.
+`tools\coverage.settings.xml` leaves `third_party\` and `tests\` out of it. It
+also turns off the tool's dynamic instrumentation: left on, it injects itself
+into each test process ahead of mimalloc, and the mimalloc tests fail.
 
 To instrument again after a test run, relink first (delete the exe and build).
 
@@ -425,9 +429,8 @@ Start it by hand from the Actions tab after a change to memory-heavy code.
 
 On pushes to `main` only, a `coverage` job builds the tests with the `coverage`
 preset and writes the coverage report (see "The coverage report" above). It
-never fails a run over a low number. The job is switched off for now: its
-first run hung while starting the coverage collector, and it stays off until
-that step is fixed and proven.
+never fails a run over a low number. Its proving run, on 2026-10-10, took
+11.5 minutes.
 
 Another job runs the tool tests above with no C++ build. It
 checks out the whole history, because the precheck self-test checks two real

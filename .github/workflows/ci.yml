@@ -107,7 +107,9 @@ jobs:
     name: Coverage report (Windows, Release)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: windows-2025
-    timeout-minutes: 45
+    # The proving run on 2026-10-10 (run 38083092803) took 11.5 minutes. Each
+    # step has its own cap, set from its time in that run with room to spare.
+    timeout-minutes: 20
     defaults:
       run:
         shell: pwsh
@@ -119,7 +121,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Build hydra_tests and hydra_uitest
-        timeout-minutes: 15
+        timeout-minutes: 10
         run: |
           .\build_cpp.ps1 -Preset coverage -Target hydra_tests
           .\build_cpp.ps1 -Preset coverage -Target hydra_uitest
@@ -149,14 +151,14 @@ jobs:
       # The unit-test slices run one at a time here. The GUI runner keeps its
       # own job count (tests/ui/uitest_main.cpp), as in the other jobs.
       - name: Run hydra_tests
-        timeout-minutes: 15
+        timeout-minutes: 5
         run: >
           & $env:CC collect --session-id $env:COVERAGE_SESSION --settings tools\coverage.settings.xml
           --output "$env:COVERAGE_OUT\hydra_tests.coverage" --nologo --
           ctest --test-dir build-coverage -C Release -j 1 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
 
       - name: Run hydra_uitest
-        timeout-minutes: 15
+        timeout-minutes: 8
         run: >
           & $env:CC collect --session-id $env:COVERAGE_SESSION --settings tools\coverage.settings.xml
           --output "$env:COVERAGE_OUT\hydra_uitest.coverage" --nologo --
