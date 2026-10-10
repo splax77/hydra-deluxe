@@ -5772,7 +5772,23 @@ const std::vector<OwnerRule>& rules() {
          "CI and test tooling plan, decision 3 (2026-10-10); derive-once review of ct-t4",
          {R"(run: .\build-asan\Release\hydra_uitest.exe --all --jobs 4)"},
          {R"(run: .\build-cpp\Release\hydra_uitest.exe --all)",
-          R"(run: .\build-asan\Release\hydra_uitest.exe --all)"},
+          R"(run: .\build-asan\Release\hydra_uitest.exe --all)",
+          R"(run: .\build-coverage\Release\hydra_uitest.exe --all)"},
+         {},
+         {".github/workflows/ci.yml"}},
+        // A CI step that runs ctest names the entries a hosted runner skips
+        // through the workflow's one filter, so the skipped entry is written
+        // once. The scan reads ci.yml for the reason the row above does.
+        {"Which ctest entries does a hosted CI runner skip?",
+         "HOSTED_CTEST_FILTER in .github/workflows/ci.yml",
+         R"(\bctest\b.*-E\s+audio_device)",
+         "",
+         {},
+         {},
+         "tests/shards.txt (CI skips the audio_device entry by name); derive-once review of ct-t5",
+         {R"(run: ctest --test-dir build-coverage -C Release -j 1 -R hydra_tests -E audio_device --output-on-failure)"},
+         {R"(run: ctest --test-dir build-cpp -C Release -j 4 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure)",
+          R"(HOSTED_CTEST_FILTER: -R hydra_tests -E audio_device)"},
          {},
          {".github/workflows/ci.yml"}},
     };

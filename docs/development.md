@@ -220,7 +220,7 @@ each line it runs. The build never ships.
 
 The `coverage` job in `.github/workflows/ci.yml` holds the whole recipe and
 runs on pushes to main only. It instruments the exes, starts a collection
-session, runs the tests inside it one process at a time, converts the result
+session, runs the tests inside it (the unit-test slices one at a time), converts the result
 to Cobertura (a common XML coverage format), and turns that into an HTML
 report with ReportGenerator. The HTML is the run's `coverage-report` artifact,
 and the line-coverage summary is on the run's summary page.
@@ -368,6 +368,10 @@ in `hydra_uitest`.
 The `asan` job, beside it, builds the same tests with the `asan` preset and
 runs them (see "The AddressSanitizer build" above). Any memory error it finds
 fails the run.
+
+On pushes to `main` only, a `coverage` job builds the tests with the `coverage`
+preset and writes the coverage report (see "The coverage report" above). It
+never fails a run over a low number.
 
 Another job runs the tool tests above with no C++ build. It
 checks out the whole history, because the precheck self-test checks two real

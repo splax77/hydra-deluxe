@@ -19,6 +19,13 @@ concurrency:
 permissions:
   contents: read
 
+# Which ctest entries a hosted runner runs. The excluded entry opens the
+# default sound output, and hosted runners have no audio device (tests/shards.txt
+# owns the entry). -R keeps hydra_uitest out of the ctest steps: the steps after
+# them run it on its own.
+env:
+  HOSTED_CTEST_FILTER: -R hydra_tests -E audio_device
+
 jobs:
   build-and-test:
     name: Build and test (Windows, Release)
@@ -37,11 +44,9 @@ jobs:
       - name: Build hydra_tests
         run: .\build_cpp.ps1 -Target hydra_tests
 
-      # The slices of tests/shards.txt, side by side. The excluded entry opens
-      # the default sound output, and hosted runners have no audio device.
-      # -R keeps hydra_uitest out until the step below has built it.
+      # The slices of tests/shards.txt, side by side.
       - name: Run hydra_tests
-        run: ctest --test-dir build-cpp -C Release -j 4 -R hydra_tests -E audio_device --output-on-failure
+        run: ctest --test-dir build-cpp -C Release -j 4 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
 
       - name: Build hydra_uitest
         run: .\build_cpp.ps1 -Target hydra_uitest
@@ -78,7 +83,7 @@ jobs:
         run: .\build_cpp.ps1 -Preset asan -Target hydra_tests
 
       - name: Run hydra_tests
-        run: ctest --test-dir build-asan -C Release -j 4 -R hydra_tests -E audio_device --output-on-failure
+        run: ctest --test-dir build-asan -C Release -j 4 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
 
       - name: Build hydra_uitest
         run: .\build_cpp.ps1 -Preset asan -Target hydra_uitest
@@ -133,12 +138,13 @@ jobs:
             '--settings', 'tools\coverage.settings.xml', '--output', "$env:COVERAGE_OUT\hydra.coverage", '--nologo') -Wait
           Get-Content "$env:COVERAGE_OUT\collect.log"
 
-      # One process at a time, so the session sees every test.
+      # The unit-test slices run one at a time here. The GUI runner keeps its
+      # own job count (tests/ui/uitest_main.cpp), as in the other jobs.
       - name: Run hydra_tests
-        run: ctest --test-dir build-coverage -C Release -j 1 -R hydra_tests -E audio_device --output-on-failure
+        run: ctest --test-dir build-coverage -C Release -j 1 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
 
       - name: Run hydra_uitest
-        run: .\build-coverage\Release\hydra_uitest.exe --all --jobs 1
+        run: .\build-coverage\Release\hydra_uitest.exe --all
 
       - name: Close the session and convert
         if: always()
