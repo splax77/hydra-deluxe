@@ -51,6 +51,41 @@ jobs:
       - name: Run hydra_uitest
         run: .\build-cpp\Release\hydra_uitest.exe --all
 
+  # The same tests built with AddressSanitizer, which stops a test at the first
+  # memory error (an overrun, a use after free) and prints where it happened.
+  # The asan preset runs on the Windows heap instead of mimalloc; the build
+  # never ships. See "The AddressSanitizer build" in docs/development.md.
+  asan:
+    name: AddressSanitizer (Windows, Release)
+    runs-on: windows-2025
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+
+      # Puts the compiler's folder on PATH for every later step. The ASan
+      # runtime DLL lives there, and the exes and the CLI tools that
+      # tests/test_cli.cpp starts as child processes all load it.
+      - name: Set up the Visual Studio developer shell
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build hydra_tests
+        run: .\build_cpp.ps1 -Preset asan -Target hydra_tests
+
+      - name: Run hydra_tests
+        run: ctest --test-dir build-asan -C Release -j 4 -R hydra_tests -E audio_device --output-on-failure
+
+      - name: Build hydra_uitest
+        run: .\build_cpp.ps1 -Preset asan -Target hydra_uitest
+
+      - name: Run hydra_uitest
+        run: .\build-asan\Release\hydra_uitest.exe --all
+
   tool-tests:
     name: Tool tests (Python and PowerShell)
     runs-on: windows-2025
