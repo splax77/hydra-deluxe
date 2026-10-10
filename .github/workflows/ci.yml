@@ -105,12 +105,12 @@ jobs:
   # See "The coverage report" in docs/development.md.
   coverage:
     name: Coverage report (Windows, Release)
-    # Off until the collection step is fixed: its first run on main (2026-10-10,
-    # run 38076842216) hung on "Start the collection session" for over an hour,
-    # because Start-Process -Wait also waits for the server it starts.
-    if: false
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: windows-2025
-    timeout-minutes: 30
+    # The caps here, the job's and each step's, are set from the proving run's
+    # times with room to spare. "Continuous integration" in docs/development.md
+    # gives that run and its time.
+    timeout-minutes: 20
     defaults:
       run:
         shell: pwsh
@@ -122,6 +122,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Build hydra_tests and hydra_uitest
+        timeout-minutes: 10
         run: |
           .\build_cpp.ps1 -Preset coverage -Target hydra_tests
           .\build_cpp.ps1 -Preset coverage -Target hydra_uitest
@@ -130,6 +131,7 @@ jobs:
       # hydra_batch and hydra_fillcompare as child processes, so those two are
       # instrumented as well.
       - name: Instrument the exes
+        timeout-minutes: 3
         run: |
           $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -all -products * -property installationPath
           $cc = Get-ChildItem -Recurse -Filter Microsoft.CodeCoverage.Console.exe (Join-Path $vs 'Common7\IDE\Extensions\Microsoft\CodeCoverage.Console') | Select-Object -First 1
@@ -141,40 +143,47 @@ jobs:
             if ($LASTEXITCODE) { throw "instrument $exe failed" }
           }
 
-      # Start-Process, not the call operator: the server outlives this step,
-      # and a child holding the step's output pipe would keep it waiting.
-      - name: Start the collection session
-        run: |
-          Start-Process -FilePath $env:CC -RedirectStandardOutput "$env:COVERAGE_OUT\collect.log" -ArgumentList @(
-            'collect', '--server-mode', '--background', '--session-id', $env:COVERAGE_SESSION,
-            '--settings', 'tools\coverage.settings.xml', '--output', "$env:COVERAGE_OUT\hydra.coverage", '--nologo') -Wait
-          Get-Content "$env:COVERAGE_OUT\collect.log"
-
+      # Each test step runs its command inside "collect", which records every
+      # instrumented process the command starts and returns when the command
+      # ends, with the command's exit code. No collector outlives its step.
+      # The tool's own options go before "--"; everything after it is the
+      # command. (A collector started with --server-mode --background hung
+      # the first run on main, run 38076842216, until it was cancelled.)
       # The unit-test slices run one at a time here. The GUI runner keeps its
       # own job count (tests/ui/uitest_main.cpp), as in the other jobs.
       - name: Run hydra_tests
-        run: ctest --test-dir build-coverage -C Release -j 1 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
+        timeout-minutes: 5
+        run: >
+          & $env:CC collect --session-id $env:COVERAGE_SESSION --settings tools\coverage.settings.xml
+          --output "$env:COVERAGE_OUT\hydra_tests.coverage" --nologo --
+          ctest --test-dir build-coverage -C Release -j 1 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
 
       - name: Run hydra_uitest
-        run: .\build-coverage\Release\hydra_uitest.exe --all
+        timeout-minutes: 8
+        run: >
+          & $env:CC collect --session-id $env:COVERAGE_SESSION --settings tools\coverage.settings.xml
+          --output "$env:COVERAGE_OUT\hydra_uitest.coverage" --nologo --
+          .\build-coverage\Release\hydra_uitest.exe --all
 
-      - name: Close the session and convert
-        if: always()
+      - name: Merge and convert to Cobertura
+        timeout-minutes: 3
         run: |
-          & $env:CC shutdown $env:COVERAGE_SESSION --nologo
-          & $env:CC merge "$env:COVERAGE_OUT\hydra.coverage" -f cobertura -o "$env:COVERAGE_OUT\cobertura.xml" --nologo
+          & $env:CC merge "$env:COVERAGE_OUT\hydra_tests.coverage" "$env:COVERAGE_OUT\hydra_uitest.coverage" -f cobertura -o "$env:COVERAGE_OUT\cobertura.xml" --nologo
           if ($LASTEXITCODE) { throw "merge failed" }
 
       - name: Install ReportGenerator
+        timeout-minutes: 3
         run: dotnet tool install dotnet-reportgenerator-globaltool --tool-path "$env:RUNNER_TEMP\rg"
 
       - name: Write the HTML report and the summary
+        timeout-minutes: 3
         run: |
           & "$env:RUNNER_TEMP\rg\reportgenerator.exe" "-reports:$env:COVERAGE_OUT\cobertura.xml" "-targetdir:$env:COVERAGE_OUT\html" "-sourcedirs:$env:GITHUB_WORKSPACE" "-reporttypes:Html;MarkdownSummaryGithub"
           if ($LASTEXITCODE) { throw "reportgenerator failed" }
           Get-Content "$env:COVERAGE_OUT\html\SummaryGithub.md" >> $env:GITHUB_STEP_SUMMARY
 
       - name: Upload the HTML report
+        timeout-minutes: 3
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
