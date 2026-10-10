@@ -20,7 +20,7 @@ param(
     # default: dev build in build-cpp. vs2022: the VS 2022 generator, in its
     # own folder. ship: the installer's build (no attached GUI tests).
     # asan: the AddressSanitizer test build, which never ships.
-    [ValidateSet("default", "vs2022", "ship", "asan")]
+    [ValidateSet("default", "vs2022", "ship", "asan", "fuzz")]
     [string]$Preset = "default"
 )
 
