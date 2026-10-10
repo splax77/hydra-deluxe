@@ -1,8 +1,8 @@
 // The Song Details fixtures that test_path_list.cpp and
-// test_activation_rows.cpp share: the corpus chart they draw from, Burnout
-// analyzed the way the GUI tests analyze it, and the separator the labels use.
-// The functions are inline in a named namespace, so each chart is analyzed
-// once per test run, not once per file.
+// test_activation_rows.cpp share: Burnout analyzed the way the GUI tests
+// analyze it, and the separator the labels use. Both files also read the
+// shared corpus chart from analyzed_chart.h. The function is inline in a named
+// namespace, so Burnout is analyzed once per test run, not once per file.
 
 #ifndef HYDRA_TESTS_SONG_DETAILS_FIXTURES_H
 #define HYDRA_TESTS_SONG_DETAILS_FIXTURES_H
@@ -10,7 +10,6 @@
 #include <stdexcept>
 #include <string>
 
-#include "analyzed_chart.h"
 #include "app/analysis.h"
 #include "corpus_util.h"
 #include "scratch_settings.h"
@@ -19,9 +18,6 @@ namespace song_details {
 
 using namespace hydra;
 using namespace hydra::app;
-
-// One analyzed corpus chart (see analyzed_chart.h), shared across cases.
-inline const AnalysisResult& analyzed() { return corpus::analyzed_by_ten_scores(); }
 
 // Burnout (Green Day, charter Hoph2o), analyzed the way the GUI tests
 // analyze it: Expert, Pro Drums, 2x Bass, SP cap 4, 2 scores, 10 ms limit.

@@ -14,12 +14,12 @@
 #include "app/analysis.h"
 #include "app/display_format.h"
 #include "app/path_view.h"
+#include "analyzed_chart.h"
 #include "record_fixtures.h"
 #include "song_details_fixtures.h"
 
 using namespace hydra;
 using namespace hydra::app;
-using song_details::analyzed;
 using song_details::burnout;
 using song_details::kDot;
 
