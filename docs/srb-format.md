@@ -148,12 +148,12 @@ correct, because it skips that number either way.
 The scan treats every `.srb` it finds as one chart, the same as a `.sng`. There
 is no `song.ini` to read.
 
-Hydra computes the chart's identity (an MD5 fingerprint of the whole file) in
-one pass. While hashing, it keeps the first megabyte. Stream 1 always fits in
-that, so the name, artist and charter come from memory without a second read.
+The scan reads stream 1 once. The chart's id is the 16-byte checksum stream 1
+stores after the song length, the id Clone Hero and dmleaderboards use (ADR
+0028). The name, artist and charter come from the same read.
 
-If stream 1 is damaged, the song still appears. It shows as an unknown title,
-unknown artist and unknown charter. A blank name also shows as unknown.
+If stream 1 is damaged, or ends before the checksum, the song has no id. The
+scan lists it as an error instead of a chart. A blank name shows as unknown.
 
 A rescan skips any `.srb` whose size and timestamp haven't changed, the same as
 every other chart.

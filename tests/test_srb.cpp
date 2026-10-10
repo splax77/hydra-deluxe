@@ -46,9 +46,18 @@ using testtemp::write_bytes;
 // This process's scratch folder for the fixtures (testtemp::temp_dir).
 std::string fixture_dir() { return testtemp::temp_dir("srb"); }
 
+using testsrb::make_full_metadata;
 using testsrb::make_metadata;
 using testsrb::make_srb;
 using testsong::songs_equal;
+
+// No Known Suspects.srb's stored checksum, which Clone Hero's songcache.bin
+// and dmleaderboards use as its id. Only these 16 bytes are taken from the
+// real file; the containers around them are synthetic.
+constexpr testsrb::Checksum kNoKnownSuspectsId = {0xc8, 0x7b, 0x09, 0xd0, 0xe0, 0xa8,
+                                                  0x99, 0x9a, 0x73, 0x79, 0xfc, 0x6e,
+                                                  0x8e, 0x86, 0xfd, 0x72};
+constexpr const char* kNoKnownSuspectsHex = "c87b09d0e0a8999a7379fc6e8e86fd72";
 
 // First corpus chart with the given extension.
 std::string corpus_chart_path(const std::string& ext) {
@@ -257,6 +266,22 @@ TEST_CASE("srb: metadata parser reads song_length_ms after the string table") {
     CHECK_FALSE(junk.song_length_ms.has_value());
 }
 
+TEST_CASE("srb: metadata parser reads the checksum after song_length_ms") {
+    const std::vector<uint8_t> full =
+        make_full_metadata("notes.chart", "N", "A", "C", 196905, kNoKnownSuspectsId);
+    SrbMetadata md;
+    REQUIRE(srb_parse_metadata(full, md));
+    REQUIRE(md.checksum.has_value());
+    CHECK(*md.checksum == kNoKnownSuspectsId);
+
+    // One byte short: the length is read, the checksum is not.
+    const std::vector<uint8_t> cut(full.begin(), full.end() - 1);
+    SrbMetadata partial;
+    REQUIRE(srb_parse_metadata(cut, partial));
+    CHECK(partial.song_length_ms == 196905);
+    CHECK_FALSE(partial.checksum.has_value());
+}
+
 TEST_CASE("srb: discovery surfaces the embedded metadata") {
     // A dedicated folder so the corpus snapshot tests are unaffected.
     std::string dir = fixture_dir() + "\\scan";
@@ -264,8 +289,8 @@ TEST_CASE("srb: discovery surfaces the embedded metadata") {
 
     std::vector<uint8_t> notes = read_bytes(corpus_chart_path(".chart"));
     std::vector<uint8_t> srb = make_srb(
-        make_metadata("notes.chart", "Scanned Song", "Scanned Artist",
-                      "Scanned Charter"),
+        make_full_metadata("notes.chart", "Scanned Song", "Scanned Artist",
+                           "Scanned Charter", 196905, kNoKnownSuspectsId),
         notes);
     write_bytes(dir + "\\bundle.srb", srb);
 
@@ -275,8 +300,51 @@ TEST_CASE("srb: discovery surfaces the embedded metadata") {
     CHECK(items[0].title == "Scanned Song");
     CHECK(items[0].artist == "Scanned Artist");
     CHECK(items[0].charter == "Scanned Charter");
-    CHECK(items[0].md5.size() == 32);
+    CHECK(items[0].md5 == kNoKnownSuspectsHex);
     CHECK(!items[0].sig.empty());
+}
+
+// Clone Hero, its song cache and dmleaderboards key an .srb by the checksum
+// its metadata stores. In 4 of the 30 shipped files that is not the MD5 of
+// the notes stream (No Known Suspects stores c87b09d0..., checked against the
+// game's songcache.bin on 2026-10-09), so the id is read, never recomputed:
+// not the notes' MD5 and not the whole container's.
+TEST_CASE("srb: a chart's id is the checksum its metadata stores") {
+    std::string dir = fixture_dir() + "\\scan_id";
+    CreateDirectoryW(utf8_to_wide(dir).c_str(), nullptr);
+
+    const std::string loose = corpus_chart_path(".chart");
+    const std::string path = dir + "\\bundle.srb";
+    write_bytes(path, make_srb(make_full_metadata("notes.chart", "N", "A", "C", 196905,
+                                                  kNoKnownSuspectsId),
+                               read_bytes(loose)));
+
+    auto [items, errors] = hydra::app::discover_charts({dir});
+    REQUIRE(errors.empty());
+    REQUIRE(items.size() == 1);
+    CHECK(items[0].md5 == kNoKnownSuspectsHex);
+    // The tools' and the click's lookup by path reads the same id.
+    CHECK(hydra::app::hash_chart_file(path) == kNoKnownSuspectsHex);
+    // The loose notes file hashes to its own MD5, a different id.
+    CHECK(hydra::app::hash_chart_file(loose) != kNoKnownSuspectsHex);
+}
+
+// A block that ends before its checksum holds no id: the scan lists the file
+// as an error instead of a chart, and a lookup by path finds nothing.
+TEST_CASE("srb: a metadata block without its checksum is a scan error") {
+    std::string dir = fixture_dir() + "\\scan_no_id";
+    CreateDirectoryW(utf8_to_wide(dir).c_str(), nullptr);
+
+    const std::string path = dir + "\\bundle.srb";
+    std::vector<uint8_t> meta = testsrb::make_metadata_with_length("notes.chart", 196905);
+    meta.resize(meta.size() - 1);  // one byte short of the checksum
+    write_bytes(path, make_srb(meta, read_bytes(corpus_chart_path(".chart"))));
+
+    auto [items, errors] = hydra::app::discover_charts({dir});
+    CHECK(items.empty());
+    REQUIRE(errors.size() == 1);
+    CHECK(errors[0].find("checksum") != std::string::npos);
+    CHECK(hydra::app::hash_chart_file(path).empty());
 }
 
 TEST_CASE("srb: an empty embedded name reads (unknown)") {
@@ -285,8 +353,8 @@ TEST_CASE("srb: an empty embedded name reads (unknown)") {
 
     std::vector<uint8_t> notes = read_bytes(corpus_chart_path(".chart"));
     write_bytes(dir + "\\blank.srb",
-                make_srb(make_metadata("notes.chart", "", "Scanned Artist",
-                                       "Scanned Charter"),
+                make_srb(make_full_metadata("notes.chart", "", "Scanned Artist",
+                                            "Scanned Charter", 196905, kNoKnownSuspectsId),
                          notes));
 
     auto [items, errors] = hydra::app::discover_charts({dir});

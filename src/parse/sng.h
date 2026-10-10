@@ -26,7 +26,8 @@
 #include <utility>
 #include <vector>
 
-#include "core/winstr.h"  // ByteSource
+#include "core/winstr.h"          // ByteSource
+#include "parse/chart_files.h"  // ChartFormat
 
 namespace hydra {
 
@@ -77,6 +78,18 @@ std::vector<uint8_t> sng_read_head(const ByteSource& src);
 std::optional<std::vector<uint8_t>> sng_read_file(const ByteSource& src,
                                                   const std::vector<uint8_t>& head,
                                                   const SngFileEntry& entry);
+
+// The notes file inside a .sng: its decoded bytes and its format (Mid or
+// Chart). pick_notes_file says which entry it is. The note loader reads its
+// notes here, and the scan hashes these bytes for the song's id (Clone Hero
+// identifies a .sng by the MD5 of its notes file), so both take the same file.
+// Throws KindedError(ChartUnreadable) when the table names no notes file or
+// the entry runs past the end of the file.
+struct SngNotes {
+    std::vector<uint8_t> bytes;
+    ChartFormat format = ChartFormat::None;
+};
+SngNotes sng_read_notes(const ByteSource& src, const std::vector<uint8_t>& head);
 
 }  // namespace hydra
 

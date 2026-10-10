@@ -10,6 +10,7 @@
 #ifndef HYDRA_TESTS_SRB_UTIL_H
 #define HYDRA_TESTS_SRB_UTIL_H
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -58,15 +59,23 @@ inline std::vector<uint8_t> make_metadata(const std::string& notes_filename,
     return meta;
 }
 
+// The 16-byte checksum a metadata block ends its fields with: Clone Hero's id
+// for the song.
+using Checksum = std::array<uint8_t, 16>;
+
 // A metadata block laid out the way Clone Hero writes one (the user's .srb
 // format reference): the eight strings above, then the real trailing fields
 // in order. Twelve difficulty bytes, the preview start, the icon name, the
-// playlist and album track numbers, `song_length_ms`, and a 16-byte checksum
-// stand-in.
-inline std::vector<uint8_t> make_metadata_with_length(const std::string& notes_filename,
-                                                      int32_t song_length_ms,
-                                                      const std::string& icon = "icon") {
-    std::vector<uint8_t> meta = make_metadata(notes_filename);
+// playlist and album track numbers, `song_length_ms`, and `checksum`. A scan
+// needs the checksum: it is the song's id.
+inline std::vector<uint8_t> make_full_metadata(const std::string& notes_filename,
+                                               const std::string& name,
+                                               const std::string& artist,
+                                               const std::string& charter,
+                                               int32_t song_length_ms,
+                                               const Checksum& checksum,
+                                               const std::string& icon = "icon") {
+    std::vector<uint8_t> meta = make_metadata(notes_filename, name, artist, charter);
     meta.resize(meta.size() - 24);  // drop make_metadata's junk tail
     for (int i = 0; i < 12; ++i) meta.push_back(static_cast<uint8_t>(i));  // difficulties
     testbytes::put_u32(meta, 30000);                                      // preview_start_ms
@@ -74,8 +83,18 @@ inline std::vector<uint8_t> make_metadata_with_length(const std::string& notes_f
     testbytes::put_u32(meta, 3);  // playlist_track
     testbytes::put_u32(meta, 7);  // album_track
     testbytes::put_u32(meta, static_cast<uint32_t>(song_length_ms));
-    for (int i = 0; i < 16; ++i) meta.push_back(0xC5);  // checksum stand-in
+    meta.insert(meta.end(), checksum.begin(), checksum.end());
     return meta;
+}
+
+// The same with make_metadata's default names and a stand-in checksum.
+inline std::vector<uint8_t> make_metadata_with_length(const std::string& notes_filename,
+                                                      int32_t song_length_ms,
+                                                      const std::string& icon = "icon") {
+    Checksum stand_in;
+    stand_in.fill(0xC5);
+    return make_full_metadata(notes_filename, "Name", "Artist", "Charter", song_length_ms,
+                              stand_in, icon);
 }
 
 // A stand-in audio stream for the trailing slot.

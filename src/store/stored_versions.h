@@ -64,8 +64,8 @@ inline constexpr StampRule<std::string_view, 1> kResultsStamp{"2.4.0", {"2.4.0"}
 // ---- Scanned chart facts (the charts table) --------------------------------
 
 // How a scan reads a chart's identity and names. BUMP IT (add 1) whenever any
-// of these changes what an unchanged file reads as: hash_chart_file and its
-// 1 MB .sng head rule (D51 call 13), sig_of (the size and mtime fingerprint
+// of these changes what an unchanged file reads as: hash_chart_file (the song
+// id rule, song_id_read in app/analysis.cpp), sig_of (the size and mtime fingerprint
 // the rescan cache is keyed on), and the song.ini, .sng and .srb metadata
 // readers (names, stated length and delay). The sig only says a file is
 // unchanged; this stamp says the rows
@@ -73,8 +73,11 @@ inline constexpr StampRule<std::string_view, 1> kResultsStamp{"2.4.0", {"2.4.0"}
 // as the meta row chart_meta_version. A stale or missing stamp drops the
 // whole rescan cache, so the next scan reads every chart once (D51 call 12).
 // 1 = the first stamp. 2 = the scan also reads each chart's stated length
-// and delay (store::ChartTimingMeta, D75).
-inline constexpr StampRule<int, 1> kChartMetaStamp{2, {2}};
+// and delay (store::ChartTimingMeta, D75). 3 = a .sng's id is the MD5 of its
+// notes file and an .srb's its stored checksum, as Clone Hero identifies them
+// (both were the MD5 of the whole container). Their saved results no longer
+// match any chart and are dropped by the next scan; the user accepted that.
+inline constexpr StampRule<int, 1> kChartMetaStamp{3, {3}};
 
 // A build always reads back what it writes.
 static_assert(kResultsStamp.is_current(kResultsStamp.written));

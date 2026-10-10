@@ -19,7 +19,8 @@
 // strings (u32 LE length + UTF-8 bytes) in a fixed order: notes filename,
 // name, artist, album, genre, charter, year, description. Binary fields
 // follow; srb_parse_metadata reads them as far as the song's stated length
-// (D75) and says which ones it walks past.
+// (D75) and the checksum after it (the song's id), and says which ones it
+// walks past.
 //
 // DEFLATE streams do not encode their own compressed length, so finding
 // stream 2 requires inflating stream 1 while tracking consumed input — which
@@ -28,6 +29,7 @@
 #ifndef HYDRA_PARSE_SRB_H
 #define HYDRA_PARSE_SRB_H
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -65,6 +67,9 @@ std::vector<uint8_t> srb_inflate_stream(const uint8_t* data, size_t size,
 std::vector<uint8_t> srb_inflate_stream_reading(const ByteSource& src, uint64_t offset,
                                                 size_t max_out, uint64_t* end_offset);
 
+// The 16-byte checksum a metadata block stores after the song length.
+using SrbChecksum = std::array<uint8_t, 16>;
+
 // The fields of a metadata block Hydra reads, in file order.
 struct SrbMetadata {
     std::string notes_filename;
@@ -79,10 +84,15 @@ struct SrbMetadata {
     // shipped files. app::stated_length_ms decides which values count (D75).
     // Empty when the block ends before the field.
     std::optional<int32_t> song_length_ms;
+    // Clone Hero's id for the song: the game, its song cache and
+    // dmleaderboards all key the song by these bytes. It is usually the MD5
+    // of the notes stream, but not always (4 of the 30 shipped files differ),
+    // so it is read, never recomputed. Empty when the block ends before it.
+    std::optional<SrbChecksum> checksum;
 };
 
 // Parse a decompressed metadata block: its string table, then the binary
-// fields after it as far as song_length_ms. Returns false if the block is too
+// fields after it as far as the checksum. Returns false if the block is too
 // short to even hold the prefix; a block that truncates part way keeps the
 // fields read so far and leaves the rest empty.
 bool srb_parse_metadata(const std::vector<uint8_t>& meta, SrbMetadata& out);

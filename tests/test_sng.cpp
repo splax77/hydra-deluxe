@@ -17,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "app/analysis.h"
 #include "byte_source_util.h"
 #include "core/winstr.h"
 #include "midi_util.h"
@@ -234,6 +235,51 @@ TEST_CASE("sng: a container parses the same from bytes as from its path") {
                       load_songpath(path, true, true)));
     // The extension still decides the format; an unknown one throws.
     CHECK_THROWS_AS(load_songpath_from_bytes("x.txt", buf, true, true), std::runtime_error);
+}
+
+// Clone Hero, its song cache and dmleaderboards key a .sng by the MD5 of the
+// notes file inside it, as they key a folder chart by its notes file's MD5
+// (54 of 54 .sng files in the user's songcache.bin, 2026-10-09). The audio
+// and art around the notes never change the id.
+TEST_CASE("sng: a chart's id is the MD5 of the notes file inside it") {
+    const std::string dir = testtemp::temp_dir("sng_scan_id");
+    const std::string loose = dir + "\\notes.mid";
+    write_bytes(loose, tiny_mid());
+    const std::string with_ogg = dir + "\\a.sng";
+    write_bytes(with_ogg, make_sng({{"name", "Song"}, {"artist", "Band"}},
+                                   {{"song.ogg", {1, 2}}, {"notes.mid", tiny_mid()}}));
+    const std::string other_audio = dir + "\\b.sng";
+    write_bytes(other_audio, make_sng({{"name", "Song"}},
+                                      {{"notes.mid", tiny_mid()}, {"drums.ogg", {9, 9, 9}}}));
+
+    const std::string id = app::hash_chart_file(loose);
+    REQUIRE(id.size() == 32);
+    CHECK(app::hash_chart_file(with_ogg) == id);
+    CHECK(app::hash_chart_file(other_audio) == id);
+
+    // The scan gives the same id, and still reads the names.
+    auto [items, errors] = app::discover_charts({dir});
+    CHECK(errors.empty());
+    REQUIRE(items.size() == 2);  // the loose notes.mid has no song.ini: no chart
+    for (const app::ScanItem& item : items) {
+        CAPTURE(item.notespath);
+        CHECK(item.md5 == id);
+        CHECK(item.title == "Song");
+    }
+}
+
+// A .sng that holds no notes file has no id: the scan lists it as an error
+// instead of a chart, and a lookup by path finds nothing.
+TEST_CASE("sng: a container without a notes file is a scan error") {
+    const std::string dir = testtemp::temp_dir("sng_scan_no_notes");
+    const std::string path = dir + "\\audio_only.sng";
+    write_bytes(path, make_sng({{"name", "Song"}}, {{"song.ogg", {1, 2}}}));
+
+    auto [items, errors] = app::discover_charts({dir});
+    CHECK(items.empty());
+    REQUIRE(errors.size() == 1);
+    CHECK(errors[0].find("No chart files found in SNG file.") != std::string::npos);
+    CHECK(app::hash_chart_file(path).empty());
 }
 
 // The chart-files pins live here because test_song.cpp belongs to another

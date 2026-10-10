@@ -96,9 +96,12 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
     const std::vector<std::string>& rootfolders,
     const std::function<void(int)>& cb_progress = nullptr);
 
-// The chart file's hyhash: the same MD5 the library scan writes to the
-// charts rows, so a tool can look a chart up in the record store
-// by path alone. Returns an empty string if the file cannot be read.
+// The chart file's hyhash: the id Clone Hero gives the song (the MD5 of a
+// folder chart's notes file or of the notes inside a .sng, an .srb's stored
+// checksum; song_id_read in analysis.cpp is the rule). It is the same id the
+// library scan writes to the charts rows, so a tool can look a chart up in the
+// record store by path alone. Returns an empty string if the file cannot be
+// read or holds no id.
 std::string hash_chart_file(const std::string& path);
 
 // The fingerprint a chart's files give now, as the scan would store it in

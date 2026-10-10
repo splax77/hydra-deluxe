@@ -156,14 +156,19 @@ bool srb_parse_metadata(const std::vector<uint8_t>& meta, SrbMetadata& out) {
     // The binary fields after the strings, in order (the user's .srb format
     // reference): twelve difficulty bytes, the preview start (i32), the icon
     // name (a string), the playlist and album track numbers (i32 each), then
-    // song_length_ms (i32). The checksum and table of contents that follow are
-    // not read.
+    // song_length_ms (i32), then the 16-byte checksum. The table of contents
+    // that follows is not read.
     uint32_t scratch = 0;
     if (!skip(12) || !read_u32(&scratch) || !read_string(nullptr) || !read_u32(&scratch) ||
         !read_u32(&scratch))
         return true;
     uint32_t song_length = 0;
-    if (read_u32(&song_length)) out.song_length_ms = static_cast<int32_t>(song_length);
+    if (!read_u32(&song_length)) return true;
+    out.song_length_ms = static_cast<int32_t>(song_length);
+    SrbChecksum checksum;
+    if (!skip(checksum.size())) return true;
+    std::copy_n(meta.data() + pos - checksum.size(), checksum.size(), checksum.begin());
+    out.checksum = checksum;
     return true;
 }
 

@@ -1795,22 +1795,10 @@ namespace {
 // once and shares it; its notes are picked out the same way).
 Song load_container_sng(const ByteSource& src, bool pro, bool bass2x,
                         Difficulty difficulty, const core::Rules& rules, bool noteshuffle) {
-    // Which entry is the notes file is pick_notes_file's question.
-    const std::vector<uint8_t> head = sng_read_head(src);
-    const std::vector<SngFileEntry> entries = sng_read_file_table(head);
-    std::vector<std::string> names;
-    names.reserve(entries.size());
-    for (const SngFileEntry& e : entries) names.push_back(e.name);
-    const std::optional<NotesFilePick> pick = pick_notes_file(names);
-    // A file-level failure is a KindedError, not a ChartFileError: the
-    // per-note catches swallow ChartFileError.
-    if (!pick) throw KindedError(ErrorKind::ChartUnreadable, "No chart files found in SNG file.");
-
-    std::optional<std::vector<uint8_t>> notebytes = sng_read_file(src, head, entries[pick->index]);
-    if (!notebytes) throw KindedError(ErrorKind::ChartUnreadable, "Truncated SNG file.");
-    if (pick->format == ChartFormat::Mid)
-        return load_songbytes_mid(*notebytes, pro, bass2x, difficulty, rules, noteshuffle);
-    return load_songbytes_chart(*notebytes, pro, bass2x, difficulty, rules, noteshuffle);
+    const SngNotes notes = sng_read_notes(src, sng_read_head(src));
+    if (notes.format == ChartFormat::Mid)
+        return load_songbytes_mid(notes.bytes, pro, bass2x, difficulty, rules, noteshuffle);
+    return load_songbytes_chart(notes.bytes, pro, bass2x, difficulty, rules, noteshuffle);
 }
 
 Song load_container_srb(const ByteSource& src, bool pro, bool bass2x,

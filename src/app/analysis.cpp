@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstring>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <thread>
@@ -57,11 +58,11 @@ std::string relpath(const std::string& target, const std::string& base) {
 
 // ---- MD5 (Windows CNG), mirroring hashlib.file_digest(f, "md5") ----------
 //
-// The digest of the full raw chart file is record identity (results.hyhash),
-// so it must stay exactly MD5-of-all-bytes; only *how* the bytes reach the
-// hash changed: streamed in chunks (like Python's file_digest) instead of a
-// whole-file buffer, with the algorithm provider opened once per scan worker
-// instead of once per file.
+// A folder chart's id (results.hyhash) is the MD5 of all of its notes file's
+// bytes, and a .sng's the MD5 of the notes file inside it (song_id_read
+// below). A file is streamed in chunks (like Python's file_digest) instead of
+// read into one buffer, with the algorithm provider opened once per scan
+// worker instead of once per file.
 
 class Md5Provider {
 public:
@@ -82,48 +83,54 @@ private:
     BCRYPT_ALG_HANDLE alg_ = nullptr;
 };
 
-struct HashedFile {
-    std::string md5;
-    std::vector<uint8_t> head;  // first `head_capture` bytes, for .sng metadata
-};
+// A 16-byte id as the 32 lowercase hex digits a hyhash is stored as.
+std::string id_hex(const uint8_t* id) {
+    static const char* kHexDigits = "0123456789abcdef";
+    std::string out(32, '0');
+    for (size_t i = 0; i < 16; ++i) {
+        out[2 * i] = kHexDigits[id[i] >> 4];
+        out[2 * i + 1] = kHexDigits[id[i] & 0xF];
+    }
+    return out;
+}
 
-HashedFile stream_md5(BCRYPT_ALG_HANDLE alg, const std::string& path,
-                      size_t head_capture) {
-    FILE* f = fopen_utf8(path, L"rb");
-    if (f == nullptr) throw KindedError(ErrorKind::SongFileMissing, "cannot open file: " + path);
+// One MD5 in progress. `feed` hashes bytes; `hex` finishes it.
+class Md5Hash {
+public:
+    explicit Md5Hash(BCRYPT_ALG_HANDLE alg) {
+        if (!BCRYPT_SUCCESS(BCryptCreateHash(alg, &hash_, nullptr, 0, nullptr, 0, 0)))
+            throw KindedError(ErrorKind::HashFailed, "MD5 hashing failed");
+    }
+    ~Md5Hash() { BCryptDestroyHash(hash_); }
+    Md5Hash(const Md5Hash&) = delete;
+    Md5Hash& operator=(const Md5Hash&) = delete;
 
-    BCRYPT_HASH_HANDLE hash = nullptr;
-    if (!BCRYPT_SUCCESS(BCryptCreateHash(alg, &hash, nullptr, 0, nullptr, 0, 0))) {
-        std::fclose(f);
-        throw KindedError(ErrorKind::HashFailed, "MD5 hashing failed");
+    void feed(const uint8_t* data, size_t n) {
+        BCryptHashData(hash_, const_cast<PUCHAR>(data), static_cast<ULONG>(n), 0);
+    }
+    std::string hex() {
+        uint8_t digest[16];
+        if (!BCRYPT_SUCCESS(BCryptFinishHash(hash_, digest, sizeof(digest), 0)))
+            throw KindedError(ErrorKind::HashFailed, "MD5 hashing failed");
+        return id_hex(digest);
     }
 
-    HashedFile out;
+private:
+    BCRYPT_HASH_HANDLE hash_ = nullptr;
+};
+
+std::string stream_md5(BCRYPT_ALG_HANDLE alg, const std::string& path) {
+    FILE* f = fopen_utf8(path, L"rb");
+    if (f == nullptr) throw KindedError(ErrorKind::SongFileMissing, "cannot open file: " + path);
+    std::unique_ptr<FILE, int (*)(FILE*)> closer(f, &std::fclose);
+
+    Md5Hash hash(alg);
     // One read buffer per thread, reused for every file that thread hashes:
     // a fresh zero-filled megabyte per file cost the library scan real time.
     thread_local std::vector<uint8_t> buf(1 << 20);
     size_t got;
-    while ((got = std::fread(buf.data(), 1, buf.size(), f)) > 0) {
-        BCryptHashData(hash, buf.data(), static_cast<ULONG>(got), 0);
-        if (out.head.size() < head_capture) {
-            size_t want = std::min(head_capture - out.head.size(), got);
-            out.head.insert(out.head.end(), buf.data(), buf.data() + want);
-        }
-    }
-    std::fclose(f);
-
-    UCHAR digest[16];
-    bool ok = BCRYPT_SUCCESS(BCryptFinishHash(hash, digest, sizeof(digest), 0));
-    BCryptDestroyHash(hash);
-    if (!ok) throw KindedError(ErrorKind::HashFailed, "MD5 hashing failed");
-
-    static const char* kHexDigits = "0123456789abcdef";
-    out.md5.resize(32);
-    for (int i = 0; i < 16; ++i) {
-        out.md5[static_cast<size_t>(2 * i)] = kHexDigits[digest[i] >> 4];
-        out.md5[static_cast<size_t>(2 * i + 1)] = kHexDigits[digest[i] & 0xF];
-    }
-    return out;
+    while ((got = std::fread(buf.data(), 1, buf.size(), f)) > 0) hash.feed(buf.data(), got);
+    return hash.hex();
 }
 
 // What the scan reads from one chart's metadata. The names are empty when
@@ -159,17 +166,10 @@ ChartMeta read_metadata_ini(const std::string& path) {
 
 // ---- .sng metadata, mirroring ScanItem.get_metadata_sng -------------------
 //
-// Parses the metadata block from the head bytes captured while the file was
-// being hashed — the old version read the entire archive (chart + audio, can
-// be hundreds of MB) a second time to get three strings from its first few
-// KB. A truncated buffer degrades exactly like a truncated file did: the
-// bounds checks stop early and missing keys stay empty.
-
-// How much of a .sng/.srb to keep for metadata. A .sng block starts at
-// kSngMetadataOffset and a .srb's deflated block at kSrbHeaderSize, both a few
-// dozen bytes in; real metadata is a few KB, so 1 MB is far beyond any
-// legitimate block.
-constexpr size_t kSngHeadCapture = 1 << 20;
+// Parses the metadata block from sng_read_head's bytes (the file's header
+// through its file table), never the audio after it. A truncated buffer
+// degrades exactly like a truncated file did: the bounds checks stop early
+// and missing keys stay empty.
 
 ChartMeta parse_sng_metadata(const std::vector<uint8_t>& buf) {
     ChartMeta out;
@@ -188,27 +188,30 @@ ChartMeta parse_sng_metadata(const std::vector<uint8_t>& buf) {
 // ---- .srb metadata --------------------------------------------------------
 //
 // Clone Hero's bundled songs (see parse/srb.h for the reverse-engineered
-// container layout). srb_read_metadata reads the metadata block from `src`:
-// the scan hands it the head bytes captured while hashing, which always
-// contain the block (kSngHeadCapture), and read_chart_timing_meta the file.
-// Any parse failure leaves the fields empty, matching the .sng path. A .srb
-// states no delay.
+// container layout). srb_read_metadata reads the metadata block; the scan
+// reads it once for the song's id and its names (song_id_read), and
+// read_chart_timing_meta for the stated length. A .srb states no delay.
 
-ChartMeta parse_srb_metadata(const ByteSource& src) {
+ChartMeta srb_chart_meta(const SrbMetadataRead& read) {
     ChartMeta out;
-    try {
-        const SrbMetadataRead read = srb_read_metadata(src);
-        if (read.parsed) {
-            const SrbMetadata& md = read.fields;
-            if (!md.name.empty()) out.title = md.name;
-            out.artist = md.artist;
-            out.charter = md.charter;
-            if (md.song_length_ms) out.timing.length_ms = stated_length_ms(*md.song_length_ms);
-        }
-    } catch (const std::exception&) {
-        // Corrupt/truncated container: keep the defaults.
+    if (read.parsed) {
+        const SrbMetadata& md = read.fields;
+        if (!md.name.empty()) out.title = md.name;
+        out.artist = md.artist;
+        out.charter = md.charter;
+        if (md.song_length_ms) out.timing.length_ms = stated_length_ms(*md.song_length_ms);
     }
     return out;
+}
+
+// For read_chart_timing_meta: any parse failure leaves the fields empty,
+// matching the .sng path.
+ChartMeta parse_srb_metadata(const ByteSource& src) {
+    try {
+        return srb_chart_meta(srb_read_metadata(src));
+    } catch (const std::exception&) {
+        return {};  // Corrupt/truncated container: keep the defaults.
+    }
 }
 
 // ---- discovery ----------------------------------------------------------
@@ -260,6 +263,58 @@ ChartKind chart_kind_of(const std::string& name) {
         case ChartFormat::Srb: return ChartKind::Srb;
         default: return ChartKind::Folder;
     }
+}
+
+// ---- the song id ----------------------------------------------------------
+//
+// A chart's id (its hyhash) is the id Clone Hero gives the song: the one its
+// song cache, its saved scores and dmleaderboards key the song by. Checked
+// against the game's songcache.bin on 2026-10-09 (54 .sng, 30 .srb files):
+//   a folder chart: the MD5 of its notes file;
+//   a .sng:         the MD5 of the notes file inside it (sng_read_notes),
+//                   never of the whole container;
+//   a .srb:         the checksum its metadata stores. It equals the MD5 of
+//                   the notes stream in 26 of the 30 shipped files, so it is
+//                   read, never recomputed.
+
+// What one read of a chart file gives: its id, and for a .sng or .srb the
+// names and timing its metadata holds (a folder chart's come from its
+// song.ini, which the caller reads).
+struct SongIdRead {
+    std::string md5;
+    ChartMeta meta;
+};
+
+// The one reader of a chart file's id, for the scan and hash_chart_file.
+// Throws when the file cannot be read or holds no id (a .sng with no notes
+// file, a .srb whose metadata ends before its checksum).
+SongIdRead song_id_read(BCRYPT_ALG_HANDLE alg, ChartKind kind, const std::string& path) {
+    SongIdRead out;
+    switch (kind) {
+        case ChartKind::Folder:
+            out.md5 = stream_md5(alg, path);
+            break;
+        case ChartKind::Sng: {
+            const ByteSource src = file_byte_source(path);
+            const std::vector<uint8_t> head = sng_read_head(src);
+            const SngNotes notes = sng_read_notes(src, head);
+            Md5Hash hash(alg);
+            hash.feed(notes.bytes.data(), notes.bytes.size());
+            out.md5 = hash.hex();
+            out.meta = parse_sng_metadata(head);
+            break;
+        }
+        case ChartKind::Srb: {
+            const SrbMetadataRead read = srb_read_metadata(file_byte_source(path));
+            if (!read.fields.checksum)
+                throw KindedError(ErrorKind::ChartUnreadable,
+                                  "SRB metadata ends before its checksum: " + path);
+            out.md5 = id_hex(read.fields.checksum->data());
+            out.meta = srb_chart_meta(read);
+            break;
+        }
+    }
+    return out;
 }
 
 // One chart file in its folder's listing, as the scan records it: its kind,
@@ -330,14 +385,12 @@ std::map<std::string, std::string> read_song_ini_keys(const std::string& path) {
     return keys;
 }
 
-// Hashes the whole chart file with MD5, the same way the library scan does.
-// So the result here always matches the hyhash already stored in the
-// results/charts rows for that chart.
+// The scan's own reader (song_id_read), so the result here always matches the
+// hyhash already stored in the results/charts rows for that chart.
 std::string hash_chart_file(const std::string& path) {
     try {
         Md5Provider md5;
-        HashedFile hf = stream_md5(md5.handle(), path, 0);
-        return hf.md5;
+        return song_id_read(md5.handle(), chart_kind_of(path), path).md5;
     } catch (const std::exception&) {
         return {};
     }
@@ -635,19 +688,11 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
                     if (!results[i]) {
                         if (!md5) md5.emplace();
                         ScanItem item;
-                        ChartMeta meta;
-                        if (pc.kind != ChartKind::Folder) {
-                            HashedFile hf =
-                                stream_md5(md5->handle(), pc.notes_path, kSngHeadCapture);
-                            item.md5 = std::move(hf.md5);
-                            meta = pc.kind == ChartKind::Sng
-                                       ? parse_sng_metadata(hf.head)
-                                       : parse_srb_metadata(memory_byte_source(hf.head));
-                        } else {
-                            HashedFile hf = stream_md5(md5->handle(), pc.notes_path, 0);
-                            item.md5 = std::move(hf.md5);
-                            meta = read_metadata_ini(pc.ini_path);
-                        }
+                        SongIdRead read = song_id_read(md5->handle(), pc.kind, pc.notes_path);
+                        item.md5 = std::move(read.md5);
+                        ChartMeta meta = pc.kind == ChartKind::Folder
+                                             ? read_metadata_ini(pc.ini_path)
+                                             : std::move(read.meta);
                         item.title = std::move(meta.title);
                         item.artist = std::move(meta.artist);
                         item.charter = std::move(meta.charter);

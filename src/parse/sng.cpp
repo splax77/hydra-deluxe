@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 
+#include "core/error_kind.h"
 #include "core/little_endian.h"
 
 namespace hydra {
@@ -145,6 +146,22 @@ std::optional<std::vector<uint8_t>> sng_decode_file(const std::vector<uint8_t>& 
     std::optional<std::vector<uint8_t>> out(std::in_place);
     if (!sng_decode_file_into(buf, entry, *out)) return std::nullopt;
     return out;
+}
+
+SngNotes sng_read_notes(const ByteSource& src, const std::vector<uint8_t>& head) {
+    // Which entry is the notes file is pick_notes_file's question.
+    const std::vector<SngFileEntry> entries = sng_read_file_table(head);
+    std::vector<std::string> names;
+    names.reserve(entries.size());
+    for (const SngFileEntry& e : entries) names.push_back(e.name);
+    const std::optional<NotesFilePick> pick = pick_notes_file(names);
+    // A file-level failure is a KindedError, not a ChartFileError: the
+    // per-note catches swallow ChartFileError.
+    if (!pick) throw KindedError(ErrorKind::ChartUnreadable, "No chart files found in SNG file.");
+
+    std::optional<std::vector<uint8_t>> bytes = sng_read_file(src, head, entries[pick->index]);
+    if (!bytes) throw KindedError(ErrorKind::ChartUnreadable, "Truncated SNG file.");
+    return SngNotes{std::move(*bytes), pick->format};
 }
 
 }  // namespace hydra

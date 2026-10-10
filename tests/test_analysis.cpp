@@ -708,10 +708,12 @@ TEST_CASE("discover_charts: a song with no usable name reads (unknown)") {
         std::ofstream ini(root / "no_name" / "song.ini", std::ios::binary);
         ini << "[song]\nartist = Someone\n";
     }
-    // A .sng whose embedded name is empty.
+    // A .sng whose embedded name is empty. It holds a notes file: without one
+    // it has no id and the scan lists it as an error.
     {
         const std::vector<uint8_t> sng =
-            testsng::make_sng({{"name", ""}, {"artist", "Someone"}, {"charter", "C"}}, {});
+            testsng::make_sng({{"name", ""}, {"artist", "Someone"}, {"charter", "C"}},
+                              {{"notes.chart", hydra::read_file_bytes(chart)}});
         std::ofstream f(root / "blank.sng", std::ios::binary);
         f.write(reinterpret_cast<const char*>(sng.data()),
                 static_cast<std::streamsize>(sng.size()));
