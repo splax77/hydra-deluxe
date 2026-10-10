@@ -744,12 +744,12 @@ target_link_libraries(hydra_tests PRIVATE hydra_replay_json)
 # ---- fuzz targets (HYDRA_FUZZ only) ----------------------------------------
 # One libFuzzer exe per tests/fuzz/fuzz_<name>.cpp, so a new file is a new
 # target; tests/fuzz/harness.h owns the parsers and the body each exe runs.
-# libFuzzer supplies main. The
-# fuzzer and AddressSanitizer flags go on each exe's compile as two separate
-# options. They stay off the link line: link.exe ignores them (LNK4044) and
-# picks both runtimes from the objects instead (/INFERASANLIBS, its default).
-# hydra_fuzz builds them all, and is what the fuzz preset builds; the rest of
-# the build-fuzz tree is not meant to be built.
+# libFuzzer supplies main. The fuzzer and AddressSanitizer flags are the
+# directory-wide compile options set above, so these exes get them like every
+# other target. They stay off the link line: link.exe ignores them (LNK4044)
+# and picks both runtimes from the objects instead (/INFERASANLIBS, its
+# default). hydra_fuzz builds them all, and is what the fuzz preset builds; the
+# rest of the build-fuzz tree is not meant to be built.
 if(HYDRA_FUZZ)
     add_custom_target(hydra_fuzz)
     file(GLOB hydra_fuzz_sources CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/tests/fuzz/fuzz_*.cpp)
@@ -758,7 +758,6 @@ if(HYDRA_FUZZ)
         add_executable(${hydra_fuzz_exe} ${hydra_fuzz_source})
         target_link_libraries(${hydra_fuzz_exe} PRIVATE
             hydra_core hydra_audio hydra_image hydra_warnings)
-        target_compile_options(${hydra_fuzz_exe} PRIVATE /fsanitize=fuzzer /fsanitize=address)
         add_dependencies(hydra_fuzz ${hydra_fuzz_exe})
     endforeach()
 endif()
