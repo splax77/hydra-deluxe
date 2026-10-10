@@ -817,9 +817,10 @@ DrawnTable read_drawn_table(ImGuiTestContext* ctx) {
 // 1. The test charts after one song's analysis has landed (the column-widths
 //    handoff's Burnout case): its new Best path text must not be cut while
 //    room sits unused at the table's right.
-// 2. More than 100 rows, one of them with a Best path as long as the longest
-//    in the user's library (1,128 characters, measured in the handoff). That
-//    row may be cut; every other row on screen must fit.
+// 2. Enough rows for usual_of (column_widths.cpp) to leave one out, one of
+//    them with a Best path as long as the longest in the user's library
+//    (1,128 characters, measured in the handoff). That row may be cut; every
+//    other row on screen must fit.
 void test_library_text_fits(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -844,7 +845,7 @@ void test_library_text_fits(ImGuiTestContext* ctx) {
 
     // Rows that are all short, save one, each with a stored result.
     reset_app(h);
-    constexpr size_t kRows = 200;  // past 100, so 99 rows in 100 leave the outlier out
+    constexpr size_t kRows = 200;  // enough for usual_of to leave the outlier out
     const std::string outlier_title = "Row 000";
     std::vector<hydra::store::ChartLibraryEntry> charts(kRows);
     for (size_t i = 0; i < kRows; ++i) {
