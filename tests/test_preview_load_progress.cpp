@@ -271,12 +271,11 @@ TEST_CASE("a Preview load cancelled while opening a 300 MB Opus stem stops promp
         job.start();
         // Cancel only once the stem's open has reported bytes. A cancel that
         // lands before the open starts reads 0 bytes at both ends and would
-        // pass without testing the 4 MB step. Capped at 10 s.
-        const auto started = std::chrono::steady_clock::now();
-        while (job.progress().bytes_done == 0 && !job.finished() &&
-               std::chrono::steady_clock::now() - started < std::chrono::seconds(10))
-            Sleep(1);
-        REQUIRE_MESSAGE(job.progress().bytes_done > 0, "the open never reported a byte in 10 s");
+        // pass without testing the 4 MB step.
+        wait_until([&] { return job.progress().bytes_done > 0 || job.finished(); },
+                   "the stem's open to report its first bytes");
+        REQUIRE_MESSAGE(job.progress().bytes_done > 0,
+                        "the load finished before the open reported a byte");
         REQUIRE_FALSE(job.finished());  // still opening the big stem
         const auto t0 = std::chrono::steady_clock::now();
         job.cancel();
