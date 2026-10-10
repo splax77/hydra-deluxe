@@ -88,7 +88,7 @@ OwnerRule parse_rule(const json& row, const std::string& rules_file, size_t inde
                    {"question", "owner", "owner_file", "owner_symbol", "date", "decision",
                     "added_by", "pattern", "calls_owner", "owner_files", "exempt", "must_match",
                     "must_not_match", "owner_lines", "scope", "function_file", "function",
-                    "scan_comments", "note", "language"},
+                    "scan_comments", "note", "language", "anchor"},
                    where);
         r.owner = required_string(row, "owner", where);
         r.owner_file = required_string(row, "owner_file", where);
@@ -97,6 +97,7 @@ OwnerRule parse_rule(const json& row, const std::string& rules_file, size_t inde
         r.decision = required_string(row, "decision", where);
         r.added_by = required_string(row, "added_by", where);
         r.pattern = required_string(row, "pattern", where);
+        r.anchor = optional_string(row, "anchor");
         r.calls_owner = optional_string(row, "calls_owner");
         r.owner_files = optional_strings(row, "owner_files");
         if (row.contains("exempt"))
@@ -251,8 +252,24 @@ std::vector<CompiledRule> compile_rules() {
 // The one verdict: does this line answer the rule's question without calling
 // its owner? The self-test and the scan both ask it.
 bool flags_line(const CompiledRule& c, const std::string& line) {
+    if (!c.rule->anchor.empty() && line.find(c.rule->anchor) == std::string::npos) return false;
     if (!std::regex_search(line, c.pattern)) return false;
     return c.rule->calls_owner.empty() || !std::regex_search(line, c.calls_owner);
+}
+
+// The anchor guard: one message per must_match line or owner line that lacks
+// the row's anchor. flags_line skips such a line before the regex runs, so an
+// anchor that misses one of the row's own examples could hide a real match.
+std::vector<std::string> anchor_misses(const OwnerRule& r) {
+    std::vector<std::string> out;
+    if (r.anchor.empty()) return out;
+    std::vector<std::string> lines = r.must_match;
+    for (const OwnerLine& o : r.owner_lines) lines.push_back(o.line_text);
+    for (const std::string& line : lines)
+        if (line.find(r.anchor) == std::string::npos)
+            out.push_back(r.rules_file + ": \"" + r.question + "\": anchor \"" + r.anchor +
+                          "\" is not in its own example: " + line);
+    return out;
 }
 
 // Owner lines first, so an owner line is used before a baseline entry with
@@ -288,6 +305,10 @@ TEST_CASE("single-owner listed lines each cover one line of source") {
 
 TEST_CASE("single-owner rules match their own examples") {
     for (const CompiledRule& c : compile_rules()) {
+        for (const std::string& miss : anchor_misses(*c.rule)) {
+            INFO(miss);
+            CHECK(false);
+        }
         for (const std::string& line : c.rule->must_match) {
             INFO(c.rule->question << " should flag: " << line);
             CHECK(flags_line(c, line));
@@ -477,4 +498,26 @@ TEST_CASE("single-owner: the owner-gone guard and the loader fail on a made-up r
     no_question.erase("question");
     CHECK_THROWS_WITH(parse_rule(no_question, "rules/made_up.json", 2),
                       "rules/made_up.json: row 3: missing field \"question\"");
+}
+
+TEST_CASE("single-owner: the anchor guard fails on a made-up row") {
+    OwnerRule r;
+    r.question = "Is this a made-up question?";
+    r.rules_file = "rules/made_up.json";
+    r.pattern = "made_up\\(|other_name\\(";
+    r.anchor = "made_up(";
+    r.must_match = {"x = made_up(1);"};
+    r.owner_lines = {{"src/a.cpp", "return made_up(2);", "the owner"}};
+    CHECK(anchor_misses(r).empty());
+    // The regex flags this line, but the anchor would skip it.
+    r.must_match.push_back("y = other_name(3);");
+    r.owner_lines.push_back({"src/a.cpp", "return other_name(4);", "the owner"});
+    const std::vector<std::string> misses = anchor_misses(r);
+    REQUIRE(misses.size() == 2);
+    CHECK(misses[0] ==
+          "rules/made_up.json: \"Is this a made-up question?\": anchor \"made_up(\" is not in its "
+          "own example: y = other_name(3);");
+    CHECK(misses[1] ==
+          "rules/made_up.json: \"Is this a made-up question?\": anchor \"made_up(\" is not in its "
+          "own example: return other_name(4);");
 }

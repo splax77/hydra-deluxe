@@ -28,6 +28,10 @@ struct OwnerRule {
     std::string question;                  // plain English, shown on failure
     std::string owner;                     // the one place that answers it
     std::string pattern;                   // ECMAScript regex, matched per line
+    // Optional plain text every match of `pattern` contains. The scan runs
+    // the regex only on lines that hold it, which is what keeps the scan fast;
+    // a self-test checks the row's own examples hold it (anchor_misses).
+    std::string anchor;
     std::string calls_owner;               // a line also matching this calls the owner: it passes
     std::vector<std::string> owner_files;  // repo-relative files that may match freely
     std::vector<Exempt> exempt;

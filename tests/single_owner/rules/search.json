@@ -9,6 +9,7 @@
       "decision": "audit finding 156",
       "added_by": "step-1 derive-once fixes",
       "pattern": "plusmeasure\\([^;]*sp_bars_to_measures\\(",
+      "anchor": "sp_bars_to_measures(",
       "owner_files": [
         "src/search/graph.cpp"
       ],
@@ -41,6 +42,7 @@
       "decision": "audit R7.29",
       "added_by": "step-1 derive-once fixes",
       "pattern": "depth_value\\s*=\\s*1'?000'?000('?000)?\\s*;",
+      "anchor": "depth_value",
       "must_match": [
         "o.depth_value = 1'000'000'000;",
         "o.depth_value = 1000000;"
@@ -65,6 +67,7 @@
       "decision": "step-1 derive-once review of fb1189b, finding 1 (2026-10-04)",
       "added_by": "step-1 derive-once fixes round 2",
       "pattern": "\\.target_act_ticks\\s*=",
+      "anchor": ".target_act_ticks",
       "must_match": [
         "o.target_act_ticks = want;",
         "options.target_act_ticks = ticks;"
@@ -150,6 +153,7 @@
       "decision": "step-1 derive-once review of track-r2, finding 2 (2026-10-07)",
       "added_by": "track-r2-review",
       "pattern": "PinnedWindow\\{\\s*[a-z_]\\w*\\s*\\}",
+      "anchor": "PinnedWindow{",
       "must_match": [
         "for (const int64_t t : sorted) windows.push_back(PinnedWindow{t});",
         "for (const int64_t t : ticks) out.push_back(PinnedWindow{t});"
@@ -180,6 +184,7 @@
       "decision": "D48",
       "added_by": "O3a",
       "pattern": "^(?:(?!//).)*[\"'][^\"'\\w]*(Clone Hero|CH) 1\\.[01]\\b",
+      "anchor": " 1.",
       "calls_owner": "\\bfill_rule_(name|description)\\(",
       "must_match": [
         "out.fills = s.legacy_fills ? \"Clone Hero 1.0\" : \"Clone Hero 1.1\";",
@@ -218,6 +223,7 @@
       "decision": "D53, D54",
       "added_by": "FX2-R",
       "pattern": "legacy\\w*\\s*\\?\\s*(hydra::)?FillDeadlineRule::Ch1[01]",
+      "anchor": "FillDeadlineRule::Ch1",
       "calls_owner": "\\bfill_rule_for\\(",
       "must_match": [
         "options.lens.legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;",
@@ -303,6 +309,7 @@
       "decision": "D53, D54",
       "added_by": "J3-2",
       "pattern": "std::min\\([^;]*(cap[^;]*phrase|phrase[^;]*cap)",
+      "anchor": "std::min(",
       "must_match": [
         "return std::min(*sp_meter_cap_, sp_phrase_count_);",
         "return std::min(sp_cap, std::max(sp_phrase_count, 1));"
@@ -332,6 +339,7 @@
       "decision": "D53, D54",
       "added_by": "J3-2",
       "pattern": "activation_fill_deadline_ms\\.value_or\\(",
+      "anchor": "activation_fill_deadline_ms.value_or(",
       "must_match": [
         "v.activation_fill_deadline_ms = o->activation_fill_deadline_ms.value_or(0.0);"
       ],
@@ -353,6 +361,7 @@
       "decision": "D53, D54",
       "added_by": "J4-5",
       "pattern": "fill_length - 4 \\* res",
+      "anchor": "fill_length - 4 * res",
       "must_match": [
         "const int64_t tick_e = fill_end - fill_length - 4 * res;"
       ],
@@ -373,6 +382,7 @@
       "decision": "D53, D54",
       "added_by": "J4-1",
       "pattern": "\\bint\\s+(depth_value|kDefaultDepthValue)\\s*=\\s*4\\s*;",
+      "anchor": "alue",
       "must_match": [
         "int depth_value = 4;"
       ],
@@ -398,6 +408,7 @@
       "decision": "D53, D54, D85",
       "added_by": "J4-1",
       "pattern": "\\bhard_ms_filter\\s*=\\s*true",
+      "anchor": "hard_ms_filter",
       "must_match": [
         "options.hard_ms_filter = true;",
         "allzero.hard_ms_filter = true;"

@@ -9,6 +9,7 @@
       "decision": "audit finding 218, the code half (phase 3 task C4b)",
       "added_by": "C4b",
       "pattern": "IM_COL32\\(\\s*160\\s*,\\s*160\\s*,\\s*160\\b|\\b160\\s*/\\s*255\\.0f?\\s*,\\s*160\\s*/\\s*255\\.0f?\\s*,\\s*160\\s*/\\s*255\\b",
+      "anchor": "160",
       "must_match": [
         "inline const ImVec4 kDisabledInputTextColor{160 / 255.0f, 160 / 255.0f, 160 / 255.0f, 1.0f};",
         "dl->AddText(pos, IM_COL32(160, 160, 160, 255), label);"
@@ -65,6 +66,7 @@
       "decision": "D48",
       "added_by": "C4b",
       "pattern": "IM_COL32\\(\\s*255\\s*,\\s*204\\s*,\\s*51\\b|\\b255\\s*/\\s*255\\.0f?\\s*,\\s*204\\s*/\\s*255\\.0f?\\s*,\\s*51\\s*/\\s*255\\b",
+      "anchor": "255",
       "must_match": [
         "IM_COL32(255, 204, 51, 255), \"SP\");",
         "const ImU32 accent = drain.active ? IM_COL32(255, 204, 51, 255)  // SP gold"
@@ -141,6 +143,7 @@
       "decision": "M_D review, library finding 5, round 2 library finding 5 (phase 3 tasks FX-L, FX2-L)",
       "added_by": "FX-L",
       "pattern": "\\bquery(\\(\\)|_)\\.empty\\(\\)",
+      "anchor": ".empty()",
       "must_match": [
         "const bool searching = !app.library.query().empty();",
         "if (app.library.query().empty()) return;",
@@ -252,6 +255,7 @@
       "decision": "storage-T2 sign-off (library-layout chip refs)",
       "added_by": "storage-T2",
       "pattern": "\"chip(all|new|stale|done)\"",
+      "anchor": "\"chip",
       "must_match": [
         "{StatusChip::All, \"chipall\"},",
         "{StatusChip::Analyzed, \"chipdone\"},"
@@ -296,6 +300,7 @@
       "decision": "derive-once review of M_D, library finding 4 (phase 3 task FX-P)",
       "added_by": "FX-P",
       "pattern": "\\[[^\\]]*\\]\\s*\\(const std::string&\\s*\\w+\\)\\s*\\{\\s*return ImGui::CalcTextSize\\(\\w+\\.c_str\\(\\)\\)\\.x;",
+      "anchor": "return ImGui::CalcTextSize(",
       "must_match": [
         "current, box_w - chrome, [](const std::string& s) { return ImGui::CalcTextSize(s.c_str()).x; });"
       ],
@@ -314,6 +319,7 @@
       "decision": "D50, D56",
       "added_by": "FX2-P",
       "pattern": "\\btransport_?\\.length_ms\\(\\)",
+      "anchor": ".length_ms()",
       "must_match": [
         "transport_.length_ms());",
         "return hydra::app::build_time_box(scene_, transport_.now_ms(), transport_.length_ms());"
@@ -340,6 +346,7 @@
       "decision": "derive-once review of M_D round 2, library finding 3 (phase 3 task FX2-P)",
       "added_by": "FX2-P",
       "pattern": "\"%\\.0f%%\"",
+      "anchor": "\"%.0f%%\"",
       "must_match": [
         "std::snprintf(overlay, sizeof(overlay), \"%.0f%%\", f * 100.0f);",
         "std::snprintf(overlay, sizeof(overlay), \"%.0f%%\", lp.fraction * 100.0f);"
@@ -366,6 +373,7 @@
       "decision": "audit finding 208 (phase 6 task J1-2)",
       "added_by": "J1-2",
       "pattern": "(^|[^0-9.])18\\.0f",
+      "anchor": "18.0f",
       "must_match": [
         "(resource_dir + \"ShipporiAntiqueB1-Regular.ttf\").c_str(), 18.0f);",
         "if (add_font_file(path, 18.0f, &merge)) break;"
@@ -395,6 +403,7 @@
       "decision": "MEM-F derive-once review round 1, finding 1 (2026-10-07)",
       "added_by": "MEM-F",
       "pattern": "find_last_of\\(\\s*\"(/\\\\\\\\|\\\\\\\\/)\"\\)",
+      "anchor": "find_last_of(",
       "must_match": [
         "const size_t slash = path.find_last_of(\"/\\\\\");",
         "const size_t pos = p.find_last_of(\"\\\\/\");"
@@ -416,6 +425,7 @@
       "decision": "D54",
       "added_by": "J1-2",
       "pattern": "ImGui_ImplWin32_GetDpiScaleFor(Monitor|Hwnd)\\b",
+      "anchor": "ImGui_ImplWin32_GetDpiScaleFor",
       "must_match": [
         "float main_scale = ImGui_ImplWin32_GetDpiScaleForMonitor(",
         "const float window_scale = ImGui_ImplWin32_GetDpiScaleForHwnd(hwnd);"
@@ -435,6 +445,7 @@
       "decision": "audit finding 211 (phase 6 task J1-2)",
       "added_by": "J1-2",
       "pattern": ">\\s*0\\.0f\\s*&&.*<\\s*1\\.0f",
+      "anchor": "0.0f",
       "must_match": [
         "if (end == value.c_str() || *end != '\\0' || !(v > 0.0f && v < 1.0f)) return;",
         "if (!(share > 0.0f && share < 1.0f) || share == g_layout.library_share) return;"
@@ -462,6 +473,7 @@
       "decision": "audit finding 270 (phase 6 task J1-2)",
       "added_by": "J1-2",
       "pattern": "0\\.10?f\\s*,\\s*0\\.11f\\s*,\\s*0\\.13f",
+      "anchor": "0.11f",
       "must_match": [
         "const ImVec4 clear_color = ImVec4(0.10f, 0.11f, 0.13f, 1.00f);",
         "const float clear[4] = {0.10f, 0.11f, 0.13f, 1.0f};"
@@ -517,6 +529,7 @@
       "decision": "derive-once review of cw-t2 (2026-10-10), kind A",
       "added_by": "cw-t2-review",
       "pattern": "std::min\\(\\s*[\\w.]+\\.(right|bottom)\\s*,\\s*[\\w.]+\\.(right|bottom)\\s*\\)\\s*-\\s*std::max\\(\\s*[\\w.]+\\.(left|top)\\b",
+      "anchor": "std::min(",
       "must_match": [
         "const int w = std::min(band.right, area.right) - std::max(band.left, area.left);",
         "const long long h = std::min(r.bottom, area.bottom) - std::max(r.top, area.top);"
@@ -549,6 +562,7 @@
       "decision": "derive-once review of cw-t2 (2026-10-10), kind A",
       "added_by": "cw-t2-review",
       "pattern": "\\bMarkIniSettingsDirty\\s*\\(",
+      "anchor": "MarkIniSettingsDirty",
       "must_match": [
         "if (ImGui::GetCurrentContext()) ImGui::MarkIniSettingsDirty();"
       ],
@@ -596,6 +610,7 @@
       "decision": "D53",
       "added_by": "J2-4",
       "pattern": "\\b(batch_job\\s*&&\\s*!\\s*((a|app)\\.)?batch_job->snapshot\\(\\)\\.finished|view_job\\s*&&\\s*!\\s*((a|app)\\.)?view_job->finished\\(\\))",
+      "anchor": "finished",
       "must_match": [
         "if (batch_job && !batch_job->snapshot().finished) return;",
         "if (view_job && !view_job->finished()) view_job->cancel();",
@@ -635,6 +650,7 @@
       "decision": "D53",
       "added_by": "J2-4",
       "pattern": "\\blibrary_total\\b",
+      "anchor": "library_total",
       "must_match": [
         "const int64_t analyzable = searching ? static_cast<int64_t>(app.library_match_count()) : app.library_total;"
       ],
@@ -656,6 +672,7 @@
       "decision": "D54",
       "added_by": "J2-4",
       "pattern": "\\bkReportCheckSeconds\\b|_checked_at\\s*(<|>=)",
+      "anchor": "heck",
       "owner_files": [
         "src/ui/app_state.h"
       ],
@@ -679,6 +696,7 @@
       "decision": "D53",
       "added_by": "J2-4",
       "pattern": "finished_\\.store\\(true\\)",
+      "anchor": "finished_.store(true)",
       "owner_files": [
         "src/ui/job_base.h"
       ],
@@ -702,6 +720,7 @@
       "decision": "D53",
       "added_by": "J2-4",
       "pattern": "\"Analyze search \\(",
+      "anchor": "\"Analyze search (",
       "calls_owner": "\\banalyze_search_label\\(",
       "owner_files": [
         "src/ui/library_toolbar.cpp"
@@ -729,6 +748,7 @@
       "decision": "D53",
       "added_by": "J2-4",
       "pattern": "items_\\.push_back\\(\\s*\\{\\s*\\w+\\.md5|\\bScanItem(\\s+\\w+)?\\s*\\{\\s*\\w+\\.md5\\b",
+      "anchor": ".md5",
       "owner_files": [
         "src/ui/library_jobs.cpp"
       ],
@@ -779,6 +799,7 @@
       "decision": "p6-uicrash (the crash this fix addresses)",
       "added_by": "p6-uicrash",
       "pattern": "\\b(app|a)\\.(batch_running|analyze_running)\\(\\)",
+      "anchor": "_running",
       "calls_owner": "\\bsettings_lock\\b",
       "must_match": [
         "const bool batch_busy = app.batch_running();"
@@ -801,6 +822,7 @@
       "decision": "D51",
       "added_by": "RW-T4",
       "pattern": "\"A batch is running\\.\"",
+      "anchor": "\"A batch is running.\"",
       "must_match": [
         "set_status(\"A batch is running.\");",
         "if (batch_running()) set_status(\"A batch is running.\");"
@@ -828,6 +850,7 @@
       "decision": "audit finding 143 (phase 7 task LB2)",
       "added_by": "LB2",
       "pattern": "\\bnotespath\\s*(==|!=)\\s*(\\w+(\\.|->))*selected|\\bselected(\\w*(\\.|->))*notespath\\s*(==|!=)|\\brow_key\\(\\s*\\*?(\\w+(\\.|->))*selected\\b",
+      "anchor": "selected",
       "must_match": [
         "return selected && row.notespath == selected->notespath;",
         "if (view_row(i).notespath != selected->notespath) continue;",
@@ -863,6 +886,7 @@
       "decision": "audit finding 143",
       "added_by": "MEM-L",
       "pattern": "(\\.|->)notespath\\s*(==|!=)\\s*[\\w.\\[\\]()*>-]*notespath\\b|\\.(emplace|find)\\([^;]*\\bentry\\.notespath\\b",
+      "anchor": "notespath",
       "owner_files": [
         "src/ui/library_model.h"
       ],
@@ -888,6 +912,7 @@
       "decision": "D51",
       "added_by": "LB2",
       "pattern": "chartfolders\\.empty\\(\\)[^;]*scan_job|scan_job[^;]*chartfolders\\.empty\\(\\)|if\\s*\\(\\s*scan_job\\s*&&\\s*!\\s*scan_job->snapshot\\(\\)\\.finished\\)\\s*return;",
+      "anchor": "scan_job",
       "must_match": [
         "const bool can_scan = !app.settings.chartfolders.empty() && !batch_busy && !app.scan_job;",
         "if (!app.settings.chartfolders.empty() && !app.scan_job) {",
@@ -920,6 +945,7 @@
       "decision": "audit finding 109 (phase 7 task LB2)",
       "added_by": "LB2",
       "pattern": "&&\\s*!?\\s*[\\w.]*(->\\w+\\(\\))*->(finished\\(\\)|snapshot\\(\\)\\.finished|loading\\(\\)|busy\\(\\))\\)\\s*return true;",
+      "anchor": "return true;",
       "must_match": [
         "if (a.scan_job && !a.scan_job->snapshot().finished) return true;",
         "if (a.report_job && !a.report_job->finished()) return true;",
@@ -945,6 +971,7 @@
       "decision": "D53, D54",
       "added_by": "J3-3",
       "pattern": "\\b(104|200)\\.0f\\b",
+      "anchor": ".0f",
       "exempt": [
         {
           "file": "tests/test_overlay_layout.cpp",
@@ -1022,6 +1049,7 @@
       "decision": "D53, D54",
       "added_by": "J3-5",
       "pattern": "\\* 1\\.25f|\\* 1\\.8f|\\* 1\\.2f",
+      "anchor": "* 1.",
       "must_match": [
         "const float line_h = size * 1.25f;",
         "const float score_size = score.available ? size * 1.8f : size;"
@@ -1158,6 +1186,7 @@
       "decision": "finding 126 (drawn_path)",
       "added_by": "preview-keeps-place",
       "pattern": "\\bdrawn_path\\(|std::optional<Path>\\(\\*drawn\\)",
+      "anchor": "drawn",
       "must_match": [
         "const Path* drawn = drawn_path(path_, chart_changed_);",
         "drawn ? std::optional<Path>(*drawn) : std::nullopt, sp_cap_, rules_, key.noteshuffle,"
@@ -1192,6 +1221,7 @@
       "decision": "derive-once review of preview-keeps-place (finding 2)",
       "added_by": "preview-keeps-place",
       "pattern": "\\bapp::build_preview_scene\\(",
+      "anchor": "app::build_preview_scene(",
       "must_match": [
         "app::build_preview_scene(ps.song, path, sp_cap_, rules_, audio_end_ms, song_length_ms);",
         "app::PreviewScene scene = app::build_preview_scene("
@@ -1218,6 +1248,7 @@
       "decision": "D53, D54",
       "added_by": "J3-5",
       "pattern": "overlay_path_key\\(\\)\\.rfind\\(|rfind\\(\\w*overlay_key\\w*, 0\\)|\\boverlay_key_path_part\\(",
+      "anchor": "overlay_",
       "must_match": [
         "if (jump && pc->overlay_path_key().rfind(ui.overlay_key, 0) == 0) {",
         "return h.app->preview->overlay_path_key().rfind(first_key, 0) == 0;"
@@ -1253,6 +1284,7 @@
       "decision": "D53, D54",
       "added_by": "J3-5",
       "pattern": "\\.pro\\s*=\\s*pro_?\\b|\\.pro\\s*[!=]=\\s*\\w+\\.pro\\b",
+      "anchor": ".pro",
       "must_match": [
         "track_opts.pro = pro_;",
         "if (pending_track_ && pending_track_opts_.pro == opts.pro)"
@@ -1288,6 +1320,7 @@
       "decision": "D53, D54",
       "added_by": "J4-3",
       "pattern": "CalcTextSize\\(.*FramePadding\\.x \\* 2",
+      "anchor": "FramePadding.x * 2",
       "owner_files": [
         "src/ui/widgets.h"
       ],
@@ -1437,6 +1470,7 @@
       "decision": "D48",
       "added_by": "DBUP-B",
       "pattern": "elapsed_s\\s*<\\s*kTimeLeftAfterSeconds",
+      "anchor": "kTimeLeftAfterSeconds",
       "must_match": [
         "if (step != Step::Opening || elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0))",
         "if (step != Step::Copying || elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0))"
@@ -1466,6 +1500,7 @@
       "decision": "D87",
       "added_by": "DBUP-B",
       "pattern": "(>=|<)\\s*kViewProgressDelaySeconds\\b|\\bkViewProgressDelaySeconds\\s*(<=|>)",
+      "anchor": "kViewProgressDelaySeconds",
       "must_match": [
         ".count() >= kViewProgressDelaySeconds;",
         "store_open_job->elapsed_s() >= kViewProgressDelaySeconds;",
@@ -1498,6 +1533,7 @@
       "decision": "report windows plan, T5 orchestrator answer 1 (2026-10-08)",
       "added_by": "RW-T5",
       "pattern": "\\bIsResetDisplayOrderRequest\\b|\\bIsSettingsRequestLoad\\b",
+      "anchor": "Request",
       "must_match": [
         "bool reset = table->IsSettingsRequestLoad;",
         "if (reset) table->IsResetDisplayOrderRequest = true;",
@@ -1534,6 +1570,7 @@
       "decision": "report windows plan, T5 brief (the table uses the Library table's flags)",
       "added_by": "RW-T5",
       "pattern": "\\bImGuiTableFlags_SizingStretchProp\\b",
+      "anchor": "ImGuiTableFlags_SizingStretchProp",
       "must_match": [
         "ImGuiTableFlags_SizingStretchProp;",
         "ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_SizingStretchProp;"
@@ -1563,6 +1600,7 @@
       "decision": "derive-once review of RW-T5 (finding 2)",
       "added_by": "RW-T5",
       "pattern": "\\bowner_before\\b",
+      "anchor": "owner_before",
       "must_match": [
         "return !w.owner_before(p) && !p.owner_before(w);",
         "!p.owner_before(w)"
@@ -1592,6 +1630,7 @@
       "decision": "derive-once review of RW-T6 (finding 4)",
       "added_by": "RW-J3",
       "pattern": "= slot\\.batch_finished",
+      "anchor": "= slot.batch_finished",
       "must_match": [
         "in.batch_finished = slot.batch_finished;"
       ],
@@ -1619,6 +1658,7 @@
       "decision": "derive-once review of RW-T5 (finding 4)",
       "added_by": "RW-T5",
       "pattern": "SetCursorPosX\\(ImGui::GetCursorPosX\\(\\)\\s*\\+|>\\s*ImGui::GetCursorPosX\\(\\)\\)\\s*ImGui::SetCursorPosX\\(",
+      "anchor": "ImGui::GetCursorPosX()",
       "must_match": [
         "if (w < avail) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - w);",
         "ImGui::SetCursorPosX(ImGui::GetCursorPosX() +",

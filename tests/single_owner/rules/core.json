@@ -121,6 +121,7 @@
       "decision": "ADR 0020",
       "added_by": "gate-fix",
       "pattern": "utf8_to_wide\\(",
+      "anchor": "utf8_to_wide(",
       "owner_files": [
         "src/core/winstr.cpp",
         "src/core/winstr.h"
@@ -240,6 +241,7 @@
       "decision": "audit findings 1 and 32",
       "added_by": "step-1 derive-once fixes",
       "pattern": "\\.ticks\\(\\)\\s*>\\s*end\\.ticks\\(\\)|\\btick\\s*>\\s*w\\.deact_tick\\b",
+      "anchor": "tick",
       "calls_owner": "after_sp_end\\(",
       "must_match": [
         "choice.late = c->timecode.ticks() > end.ticks();",
@@ -260,6 +262,7 @@
       "decision": "audit finding 146",
       "added_by": "step-1 derive-once fixes",
       "pattern": "ticks\\(\\)\\s*(==|>|<)\\s*\\*?sqout_tick\\b",
+      "anchor": "sqout_tick",
       "owner_files": [
         "src/core/backend_value.h"
       ],
@@ -287,6 +290,7 @@
       "decision": "ADR 0014, D34",
       "added_by": "step-1 derive-once fixes",
       "pattern": "\\bkind\\s*==\\s*SpEndKind::SqIn\\b",
+      "anchor": "SpEndKind::SqIn",
       "must_match": [
         "if (s.tick == tick && s.kind == SpEndKind::SqIn) return true;",
         "if (s.kind == SpEndKind::SqIn) out.push_back(s.tick);"
@@ -318,6 +322,7 @@
       "decision": "CONTEXT.md",
       "added_by": "step-1 derive-once fixes",
       "pattern": "skips\\s*==\\s*0\\b",
+      "anchor": "skips",
       "must_match": [
         "const bool can_be_e0 = has_ms_filter_ && p.currentskips == 0;",
         "return e_offset < kEarlyFillWindowMs && skips == 0;"
@@ -349,6 +354,7 @@
       "decision": "D102",
       "added_by": "allzero-e1",
       "pattern": "\\bskips(\\(\\))?\\s*(==\\s*1|!=\\s*0)\\b",
+      "anchor": "skips",
       "must_match": [
         "if (act.skips() != 0) return false;",
         "return skips == 0 || skips == 1;"
@@ -375,6 +381,7 @@
       "decision": "ADR 0021",
       "added_by": "step-1 derive-once fixes",
       "pattern": "[<>]=?\\s*static_cast<uint8_t>\\(SpEndKind::",
+      "anchor": "static_cast<uint8_t>(SpEndKind::",
       "owner_files": [
         "src/core/model.h"
       ],
@@ -397,6 +404,7 @@
       "decision": "D35",
       "added_by": "step-1 derive-once fixes",
       "pattern": "\\bkEarlyFillWindowMs\\b",
+      "anchor": "kEarlyFillWindowMs",
       "must_match": [
         "if (e_offset < kEarlyFillWindowMs) ok = true;",
         "return d - hydra::kEarlyFillWindowMs;"
@@ -432,6 +440,7 @@
       "decision": "ADR 0014",
       "added_by": "step-1 derive-once fixes",
       "pattern": "(^|[^\\w.>])sqout_tick\\s*(=(?!=)|\\.\\s*(reset|emplace)\\s*\\()|\\b\\w+\\s*(\\.|->)\\s*sqout_tick\\s*(=(?!=)|\\.\\s*(reset|emplace)\\s*\\()",
+      "anchor": "sqout_tick",
       "must_match": [
         "act.sqout_tick = 200;",
         "a->sqout_tick.reset();",
@@ -486,6 +495,7 @@
       "decision": "ADR 0013",
       "added_by": "step-1 derive-once fixes round 2",
       "pattern": "\\bkind\\s*==\\s*SpEndKind::Clamped\\b",
+      "anchor": "SpEndKind::Clamped",
       "must_match": [
         "if (it->kind == SpEndKind::Clamped) return it->tick;",
         "if (sp_end_steps[s].kind == SpEndKind::Clamped) return sp_end_steps[s].tick;"
@@ -538,6 +548,7 @@
       "decision": "ADR 0014",
       "added_by": "step-1 derive-once fixes",
       "pattern": "[<>]=?\\s*(\\w+::)*kSqueezeWindowMs|(\\w+::)*kSqueezeWindowMs\\s*[<>]",
+      "anchor": "kSqueezeWindowMs",
       "must_match": [
         "x < kSqueezeWindowMs",
         "x < hydra::kSqueezeWindowMs",
@@ -565,6 +576,7 @@
       "decision": "D41",
       "added_by": "step-1 derive-once fixes",
       "pattern": "clamp\\([^;]*[-, ]500\\b|within 500 ms",
+      "anchor": "500",
       "must_match": [
         "app.settings.mslimit_value = std::clamp(app.settings.mslimit_value, -500, 500);",
         "app.settings.backendlimit_value = std::clamp(app.settings.backendlimit_value, 0, 500);",
@@ -585,6 +597,7 @@
       "decision": "step-1 derive-once review finding 9 (2026-10-04)",
       "added_by": "step-1 derive-once fixes",
       "pattern": "fabs\\([^)]*\\)\\s*<\\s*500(\\.0)?\\b",
+      "anchor": "fabs(",
       "must_match": [
         "CHECK((std::fabs(*b.offset_ms) < 500.0 || act.is_sqout_backend(b)));",
         "if (std::fabs(*copy.offset_ms) < 500.0) want.push_back(copy);"
@@ -605,6 +618,7 @@
       "decision": "T10+T11 derive-once review finding 4 (2026-10-04)",
       "added_by": "T10 T11 derive-once fixes",
       "pattern": "for \\(const Path&\\s*\\w+\\s*:\\s*\\w+\\.variants\\)\\s*\\w+\\(\\w+\\);",
+      "anchor": "for (const Path&",
       "must_match": [
         "for (const Path& v : p.variants) scan(v);",
         "for (const Path& w : root.variants) check(w);"
@@ -625,6 +639,7 @@
       "decision": "D36",
       "added_by": "d36-review-fixes",
       "pattern": "for \\(const (hydra::)?Path\\* \\w+ : all_tied\\(\\w+\\.paths\\)\\) \\w+\\.push_back\\(",
+      "anchor": ".push_back(",
       "must_match": [
         "for (const Path* p : all_tied(rec.paths)) all.push_back(p);",
         "for (const hydra::Path* v : all_tied(r.paths)) out.push_back(v);"
@@ -646,6 +661,7 @@
       "decision": "D36",
       "added_by": "d36-review-fixes",
       "pattern": "\\bsqout_chord\\b(?![s.])",
+      "anchor": "sqout_chord",
       "must_match": [
         "// the one core::sqout_chord names. A typed offset is matched",
         "// The engine squeezes out only the chord core::sqout_chord names for this"
@@ -697,6 +713,7 @@
       "decision": "step-1 derive-once review of track-r2, finding 4 (2026-10-07)",
       "added_by": "track-r2",
       "pattern": "sqout_offset_ms\\s*&&\\s*!|!\\s*\\w+\\s*&&\\s*[\\w.>-]*sqout_offset_ms|!\\s*[\\w.>-]*sqout_offset_ms\\s*\\|\\|",
+      "anchor": "sqout_offset_ms",
       "must_match": [
         "if (!squeezed_out && w.sqout_offset_ms) squeezed_out = resolve_sqout_note(song, w).tick;",
         "if (!w.sqout_offset_ms || w.sqout_tick) continue;",
@@ -731,6 +748,7 @@
       "decision": "step-1 derive-once review of de4e23a, finding 2 (2026-10-04)",
       "added_by": "step-1 derive-once fixes round 3",
       "pattern": "\\bsqins\\[\\s*[a-z_]\\w*(\\+\\+)?\\s*\\]",
+      "anchor": "sqins[",
       "must_match": [
         "rate_note(sq.offset_ms, sq.is_free(), out.scales->sqins[j++], hit_window_ms);",
         "if (j >= scales->sqins.size() || differs(scales->sqins[j], *sq.transfer)) {"
@@ -755,6 +773,7 @@
       "decision": "step-1 derive-once review of cc2e1d9, finding 4 (2026-10-04)",
       "added_by": "step-1 derive-once fixes round 4",
       "pattern": "\\.(early|late)\\s*[!=]=\\s*1\\.0\\b",
+      "anchor": "1.0",
       "must_match": [
         "return s.early == 1.0 && s.late == 1.0;",
         "if (act.transfer_pre.early != 1.0 || act.transfer_pre.late != 1.0)"
@@ -777,6 +796,7 @@
       "decision": "D83",
       "added_by": "REPLAYTIE",
       "pattern": "tick %lld \\(%\\.2f ms\\)",
+      "anchor": "tick %lld (%.2f ms)",
       "must_match": [
         "std::snprintf(one, sizeof(one), \"tick %lld (%.2f ms)\",",
         "std::snprintf(one, sizeof(one), \"%stick %lld (%.2f ms)\", can.empty() ? \"\" : \" or \","
@@ -883,6 +903,7 @@
       "decision": "D48",
       "added_by": "FX-L",
       "pattern": "\\btick_at_ms\\(",
+      "anchor": "tick_at_ms(",
       "must_match": [
         "const int64_t end_tick = std::llround(timing->ms_index().tick_at_ms(*song_length_ms));",
         "const int64_t t = std::round(timing->ms_index().tick_at_ms(ms));",
@@ -925,6 +946,7 @@
       "decision": "audit finding 249",
       "added_by": "M_C fix prod",
       "pattern": "totalscore\\(\\)\\s*==[^;]*pathstring\\(\\)|pathstring_verbose\\(\\{\\}\\)\\s*\\+\\s*\"\\|\"",
+      "anchor": "pathstring",
       "must_match": [
         "if (p->totalscore() == score && p->pathstring() == notation)",
         "return path->pathstring_verbose({}) + \"|\" + std::to_string(path->totalscore());"
@@ -970,6 +992,7 @@
       "decision": "container ranged-reads derive-once review of cbd1ee6, finding 2 (2026-10-04)",
       "added_by": "container ranged reads",
       "pattern": "\\.read\\s*=\\s*\\[",
+      "anchor": ".read",
       "owner_files": [
         "src/core/winstr.cpp",
         "tests/byte_source_util.h"
@@ -997,6 +1020,7 @@
       "decision": "ADR 0024",
       "added_by": "container ranged reads",
       "pattern": "constexpr\\s+size_t\\s+k\\w*First\\w*Read\\s*=",
+      "anchor": "constexpr",
       "must_match": [
         "constexpr size_t kSngFirstRead = 64 * 1024;",
         "constexpr size_t kFirstRead = 64 * 1024;"
@@ -1027,6 +1051,7 @@
       "decision": "container ranged-reads derive-once reviews of 8229b6e (finding 1) and 860cbd8 (finding 3), 2026-10-04",
       "added_by": "container ranged reads",
       "pattern": "\\w+\\.size\\(\\)\\s*(<=?|>=?|[!=]=)\\s*\\w+\\.size\\b(?!\\()|\\w+\\.size\\s*(<=?|>=?|[!=]=)\\s*\\w+\\.size\\(\\)",
+      "anchor": ".size()",
       "must_match": [
         "if (needed <= head.size() || head.size() == src.size) return head;",
         "if (bytes.size() != src.size) return std::nullopt;",
@@ -1053,6 +1078,7 @@
       "decision": "container ranged-reads derive-once reviews of 8229b6e (finding 2) and 860cbd8 (finding 3), 2026-10-04",
       "added_by": "container ranged reads",
       "pattern": "\\.read\\(\\s*0\\s*,\\s*((static_cast<size_t>\\(|\\(size_t\\)\\s*)?\\w+\\.size\\)?|SIZE_MAX|std::numeric_limits<size_t>::max\\(\\))\\s*\\)",
+      "anchor": ".read(",
       "must_match": [
         "return load_songbytes_mid(src.read(0, static_cast<size_t>(src.size)), pro, bass2x,",
         "std::vector<uint8_t> all = src.read(0, src.size);",
@@ -1104,6 +1130,7 @@
       "decision": "derive-once review of M_D round 2, library finding 8 (phase 3 task FX2-P)",
       "added_by": "FX2-P",
       "pattern": "[!=]=\\s*(app::)?(PreviewLane|NoteColor)::Red\\b|\\b(PreviewLane|NoteColor)::Red\\s*[!=]=",
+      "anchor": "::Red",
       "must_match": [
         "g.cymbal = pro && n.cymbal && n.lane != PreviewLane::Red;",
         "if (c == NoteColor::Red) return false;"
@@ -1123,6 +1150,7 @@
       "decision": "D51",
       "added_by": "E2",
       "pattern": "\\bcombo\\w*\\)?\\s*%\\s*10\\b|\\bcombo\\w*\\s*[<>]=?\\s*(10|20|30)\\b|\\b(10|20|30)\\s*[<>]=?\\s*combo",
+      "anchor": "combo",
       "must_match": [
         "const int mod = (chord.count() + combo) % 10;",
         "return (combo_ % 10 == 7) ? \"high\" : \"low\";",
@@ -1194,6 +1222,7 @@
       "decision": "audit finding 251",
       "added_by": "J1-5",
       "pattern": "\\b(pos|slash)\\s*[!=]=\\s*(std::string::)?npos\\b.*\\.substr\\(\\s*0\\s*,\\s*(pos|slash)\\s*\\)",
+      "anchor": ".substr(",
       "must_match": [
         "return pos == std::string::npos ? std::string() : p.substr(0, pos);",
         "return pos == std::string::npos ? std::string(\".\") : path.substr(0, pos);",
@@ -1249,6 +1278,7 @@
       "decision": "review of M6-J1a, finding 1 (phase 6 wave J1 sweep)",
       "added_by": "M6-J1-fixprod",
       "pattern": "\\bfolder\\s*\\+\\s*\"\\\\\\\\\"\\s*\\+",
+      "anchor": "folder",
       "must_match": [
         "return ini ? folder + \"\\\\\" + ini->name : std::string();",
         "if (!e.is_dir && is_song_ini(e.name)) return folder + \"\\\\\" + e.name;"
@@ -1277,6 +1307,7 @@
       "decision": "D53, D54",
       "added_by": "J1-1",
       "pattern": "[<>]=?\\s*(\\w+::)*kSqueezeWindowMs|(\\w+::)*kSqueezeWindowMs\\s*[<>]",
+      "anchor": "kSqueezeWindowMs",
       "must_match": [
         "c.ms - phrase_note->ms < kSqueezeWindowMs)",
         "if (!long_after && c.ms - last_phrase->ms > kSqueezeWindowMs)",
@@ -1303,6 +1334,7 @@
       "decision": "D51, D58",
       "added_by": "TM",
       "pattern": "keys_at\\([^()]*\\)\\)*\\s*[<>]|(^|[^-])[<>]=?\\s*(\\w+(\\.|->))?keys_at\\(",
+      "anchor": "keys_at(",
       "must_match": [
         "while (i > 0 && static_cast<double>(idx.keys_at(i)) > ticks) --i;",
         "if (mi.keys_at(i) <= tick) s = i;",
@@ -1415,6 +1447,7 @@
       "decision": "D53, D54",
       "added_by": "J2-1",
       "pattern": "\\.substr\\(\\s*\\w+\\.size\\(\\)\\s*\\+\\s*1\\s*\\)",
+      "anchor": ".substr(",
       "exempt": [
         {
           "file": "src/app/analysis.cpp",
@@ -1452,6 +1485,7 @@
       "decision": "derive-once review of RW-T7 (finding 1)",
       "added_by": "RW-T7",
       "pattern": "\\.(compare|substr)\\(\\s*\\w+\\.size\\(\\)\\s*-\\s*\\w+\\.size\\(\\)|\\brfind\\([^;]*==\\s*\\w+\\.size\\(\\)\\s*-\\s*\\w+\\.size\\(\\)",
+      "anchor": ".size()",
       "must_match": [
         "text.compare(text.size() - tail.size(), tail.size(), tail) == 0;",
         "return s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;",
@@ -1491,6 +1525,7 @@
       "decision": "D53",
       "added_by": "J2-5",
       "pattern": "\\b(write|read)_u32_le\\(",
+      "anchor": "_u32_le(",
       "must_match": [
         "write_u32_le(out, static_cast<uint32_t>(b.rows[i].ghost));",
         "const uint32_t tag_ms = read_u32_le(p);                        p += 4;"
@@ -1513,6 +1548,7 @@
       "decision": "D53",
       "added_by": "J2-2",
       "pattern": "totalscore\\(\\)\\s*>\\s*\\w+->totalscore\\(\\)",
+      "anchor": "->totalscore()",
       "must_match": [
         "return a->totalscore() > b->totalscore();"
       ],
@@ -1536,6 +1572,7 @@
       "decision": "D53, D54",
       "added_by": "J2-7",
       "pattern": "\\btotalscore\\(\\)\\s*-\\s*(\\w+(\\.|->))?score_solo\\b",
+      "anchor": "totalscore()",
       "must_match": [
         "return stars_for_score(star_cutoffs(path), path.totalscore() - path.score_solo);",
         "int64_t multscore = totalscore() - score_solo;"
@@ -1568,6 +1605,7 @@
       "decision": "D53, D54",
       "added_by": "J2-7",
       "pattern": "\\bcutoffs?(\\[[^\\]]*\\])?\\s*\\+\\s*(\\w+(\\.|->))?solo_bonus\\b",
+      "anchor": "solo_bonus",
       "must_match": [
         "ImGui::TextUnformatted(group_thousands(cutoff + sc.solo_bonus).c_str());",
         "IM_CHECK(text.find(hydra::group_thousands(cutoff + sc.solo_bonus)) != std::string::npos);"
@@ -1599,6 +1637,7 @@
       "decision": "D53, D54",
       "added_by": "J2-7",
       "pattern": "\\bkSoloBonusPerNote\\)?\\s*\\*|\\*\\s*(\\w+::)*kSoloBonusPerNote\\b",
+      "anchor": "kSoloBonusPerNote",
       "must_match": [
         "store_soloscore(kSoloBonusPerNote * timestamp.chord.count());",
         "ts.flag_solo ? static_cast<int64_t>(kSoloBonusPerNote) * ts.chord.count() : 0;",
@@ -1632,6 +1671,7 @@
       "decision": "D53, D54",
       "added_by": "J2-7",
       "pattern": "\\bcombo_?\\s*\\+=\\s*.*\\bcount\\(\\)",
+      "anchor": "count()",
       "must_match": [
         "combo_ += timestamp.chord.count();",
         "combo += ts.chord.count();"
@@ -1657,6 +1697,7 @@
       "decision": "derive-once review of track-r1, proposed scan rules (2026-10-07)",
       "added_by": "finding-164-test-copy",
       "pattern": "\\b\\w*combo_?\\s*=\\s*(category_scores\\(|\\w+\\.combo_after\\b)",
+      "anchor": "combo",
       "must_match": [
         "combo = category_scores(ts.chord, combo).combo_after;",
         "combo_ = category_scores(timestamp.chord, combo_).combo_after;",
@@ -1692,6 +1733,7 @@
       "decision": "D53",
       "added_by": "J2-6",
       "pattern": "&\\s*0x7F\\)\\s*<<\\s*21",
+      "anchor": "0x7F)",
       "must_match": [
         "std::size_t tag = (static_cast<std::size_t>(d[6] & 0x7F) << 21) |",
         "pos = 10 + ((static_cast<std::size_t>(b[6] & 0x7F) << 21) | ((b[7] & 0x7F) << 14) |"
@@ -1722,6 +1764,7 @@
       "decision": "D51",
       "added_by": "RP",
       "pattern": "SP cap 4\\b",
+      "anchor": "SP cap 4",
       "must_match": [
         "{k:'optimal', t:'Hydra opt', num:true,  d:'The optimal score Hydra found for the chart at SP cap 4, the Clone Hero rule.'},",
         "\"at SP cap 4: analyze them, then compare again.\";"
@@ -1741,6 +1784,7 @@
       "decision": "D51",
       "added_by": "LB1",
       "pattern": "static_cast<int>\\(\\s*(hydra::)?kDefaultHitWindowMs\\s*\\)",
+      "anchor": "kDefaultHitWindowMs",
       "must_match": [
         "int hit_window_ms = static_cast<int>(kDefaultHitWindowMs);",
         "int hit_window_ms = static_cast<int>(kDefaultHitWindowMs));",
@@ -1765,6 +1809,7 @@
       "decision": "D53, D54",
       "added_by": "J3-1",
       "pattern": "(\\.|->)points\\s*-\\s*value\\b",
+      "anchor": "points",
       "owner_files": [
         "src/core/backend_value.h"
       ],
@@ -1790,6 +1835,7 @@
       "decision": "D53, D54",
       "added_by": "J3-1",
       "pattern": "offset_ms\\.value_or\\(",
+      "anchor": "offset_ms.value_or(",
       "must_match": [
         "double off = offset_ms.value_or(0.0);",
         "if (within_squeeze_window(bsq.offset_ms.value_or(0.0)) || is_sqout_backend(bsq))"
@@ -1809,6 +1855,7 @@
       "decision": "D53, D54",
       "added_by": "J3-1",
       "pattern": "[!=]=\\s*NoteColor::Kick\\b.*(is2x|cymbal|\\)\\s*\\{\\s*$)",
+      "anchor": "NoteColor::Kick",
       "must_match": [
         "if (color == NoteColor::Kick) {",
         "return c == NoteColor::Kick || allows_cymbals(c);",
@@ -1907,6 +1954,7 @@
       "decision": "D53, D54",
       "added_by": "J3-1",
       "pattern": "multiplier\\(\\)\\)\\s*\\+\\s*\"x\"",
+      "anchor": "multiplier())",
       "must_match": [
         "s += std::to_string(multsqueezes[i].multiplier()) + \"x\";"
       ],
@@ -1934,6 +1982,7 @@
       "decision": "D53, D54",
       "added_by": "J3-1",
       "pattern": "variant_tail\\.(begin|end|empty)\\(\\)",
+      "anchor": "variant_tail.",
       "must_match": [
         "out.insert(out.end(), variant_tail.begin(), variant_tail.end());",
         "return !activations.empty() || !variant_tail.empty();"
@@ -1956,6 +2005,7 @@
       "decision": "D53, D54",
       "added_by": "J3-1",
       "pattern": "score_base\\s*\\+\\s*score_combo\\s*\\+\\s*score_sp|\\bbase\\s*\\+\\s*combo\\s*\\+\\s*sp\\s*\\+\\s*solo\\b",
+      "anchor": "combo",
       "must_match": [
         "return score_base + score_combo + score_sp + score_solo + score_accents +",
         "int64_t total() const { return base + combo + sp + solo + accent + ghost; }"
@@ -2067,6 +2117,7 @@
       "decision": "D53",
       "added_by": "J3-6",
       "pattern": "\\+=\\s*\\w+\\.tied_pathcount\\(\\)",
+      "anchor": ".tied_pathcount()",
       "must_match": [
         "for (const Path& p : record.paths) pathcount += p.tied_pathcount();"
       ],
@@ -2084,6 +2135,7 @@
       "decision": "audit finding 346",
       "added_by": "J3-9",
       "pattern": "(^|[(,=!&|?:{]|\\breturn)\\s*\\*\\s*(\\w+(\\.|->)|\\w+\\(\\)(\\.|->))*offset_ms\\b",
+      "anchor": "offset_ms",
       "must_match": [
         "!core::counted_without_squeeze(*row.row.offset_ms, backend_leeway_ms));",
         "const double o = *bsq.offset_ms;",
@@ -2112,6 +2164,7 @@
       "decision": "D53, D54",
       "added_by": "J3-3",
       "pattern": "SqOutPosition::(Exact|NoSqOut)\\b",
+      "anchor": "SqOutPosition::",
       "calls_owner": "\\bsqout_position\\(",
       "owner_files": [
         "src/core/backend_value.h"
@@ -2138,6 +2191,7 @@
       "decision": "D53, D54",
       "added_by": "J4-6",
       "pattern": "\\bWideCharToMultiByte\\(",
+      "anchor": "WideCharToMultiByte(",
       "must_match": [
         "int len = WideCharToMultiByte(CP_UTF8, 0, d.c_str(), -1, nullptr, 0,",
         "WideCharToMultiByte(CP_UTF8, 0, d.c_str(), -1, &out[0], len, nullptr,"
@@ -2160,6 +2214,7 @@
       "decision": "D53, D54",
       "added_by": "J4-5",
       "pattern": "to_multiplier\\([\\w.]+ \\+ 1",
+      "anchor": "to_multiplier(",
       "must_match": [
         "const int first_cut = notes[0].basescore() * to_multiplier(combo + 1);",
         "notes[i].basescore() * to_multiplier(combo + 1 + static_cast<int>(i));",
@@ -2182,6 +2237,7 @@
       "decision": "D53, D54",
       "added_by": "J4-5",
       "pattern": "\\.cum\\.total\\(\\)\\s*-\\s*",
+      "anchor": ".cum.total()",
       "must_match": [
         "CHECK(scene.score.steps[1].total == r.chords[1].cum.total() - r.chords[1].points.solo);"
       ],
@@ -2202,6 +2258,7 @@
       "decision": "D53, D54",
       "added_by": "J4-5",
       "pattern": "score_ghosts\\s*=\\s*\\w+\\.ghost",
+      "anchor": "score_ghosts",
       "must_match": [
         "p.score_ghosts = s.ghost;"
       ],
@@ -2231,6 +2288,7 @@
       "decision": "D53, D54",
       "added_by": "J4-3",
       "pattern": "sp_cap = 4;",
+      "anchor": "sp_cap = 4;",
       "must_match": [
         "h.app->settings.sp_cap = 4;"
       ],
@@ -2293,6 +2351,7 @@
       "decision": "D86",
       "added_by": "G1",
       "pattern": "[<>]\\s*[\\w.\\[\\]\\s\\-]*\\.basescore\\(\\)",
+      "anchor": ".basescore()",
       "must_match": [
         "while (j > 0 && bx < out.n[j - 1].basescore()) {",
         "return a.basescore() < b.basescore();"

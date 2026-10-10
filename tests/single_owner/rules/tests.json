@@ -9,6 +9,7 @@
       "decision": "T10+T11 derive-once review finding 2 (2026-10-04)",
       "added_by": "T10 T11 derive-once fixes",
       "pattern": "const ScoreGraphEdge\\*\\s+deact_edge_at\\(",
+      "anchor": "const ScoreGraphEdge*",
       "owner_files": [
         "tests/record_fixtures.h"
       ],
@@ -32,6 +33,7 @@
       "decision": "T10+T11 derive-once review finding 3 (2026-10-04)",
       "added_by": "T10 T11 derive-once fixes",
       "pattern": "^\\s*((inline|static)\\s+)?EngineOptions\\s+\\w+\\(\\)\\s*\\{",
+      "anchor": "EngineOptions",
       "owner_files": [
         "tests/record_fixtures.h"
       ],
@@ -55,6 +57,7 @@
       "decision": "D36",
       "added_by": "d36-review-fixes",
       "pattern": "branch_edge\\)\\s*\\w+\\s*=\\s*\\w+->branch_edge->dest;",
+      "anchor": "->branch_edge->dest;",
       "must_match": [
         "if (b->branch_edge) sp = b->branch_edge->dest;",
         "if (!sp_start && n->branch_edge) sp_start = n->branch_edge->dest;"
@@ -76,6 +79,7 @@
       "decision": "D36",
       "added_by": "d36-review-fixes",
       "pattern": "=\\s*bank_check::phrase_ends\\(\\w+\\);",
+      "anchor": "bank_check::phrase_ends(",
       "must_match": [
         "const std::set<int64_t> phrase_ends = bank_check::phrase_ends(song);",
         "std::set<int64_t> ends = bank_check::phrase_ends(s);"
@@ -97,6 +101,7 @@
       "decision": "T10+T11 derive-once review finding 5 (2026-10-04)",
       "added_by": "T10 T11 derive-once fixes",
       "pattern": "for \\(const Activation&\\s*\\w+\\s*:.*\\)\\s*\\w+\\.push_back\\(\\w+\\.timecode\\.ticks\\(\\)\\)",
+      "anchor": "for (const Activation&",
       "owner_files": [
         "tests/record_fixtures.h"
       ],
@@ -120,6 +125,7 @@
       "decision": "this file's own rule (one scan, new rules are rows)",
       "added_by": "step-1 derive-once fixes",
       "pattern": "recursive_directory_iterator\\(root\\s*/\\s*sub\\)",
+      "anchor": "recursive_directory_iterator(root",
       "owner_files": [
         "tests/source_tree.h"
       ],
@@ -144,6 +150,7 @@
       "decision": "this file's own rule (one scan, new rules are rows)",
       "added_by": "step-1 derive-once fixes round 2",
       "pattern": "\\bHYDRA_SOURCE_DIR\\b",
+      "anchor": "HYDRA_SOURCE_DIR",
       "owner_files": [
         "tests/source_tree.h"
       ],
@@ -199,6 +206,7 @@
       "decision": "audit finding 117",
       "added_by": "step-2 derive-once fixes",
       "pattern": "tdefl_compress_mem_to_heap",
+      "anchor": "tdefl_compress_mem_to_heap",
       "owner_files": [
         "tests/srb_util.h"
       ],
@@ -223,6 +231,7 @@
       "decision": "step-2 derive-once review of 11b9d44, finding 6",
       "added_by": "step-2 derive-once fixes round 2",
       "pattern": "\"\\[(Song|SyncTrack)\\]\\\\n",
+      "anchor": "]\\n",
       "owner_files": [
         "tests/chart_text.h"
       ],
@@ -285,6 +294,7 @@
       "decision": "step-2 derive-once review of dbeb3a3, finding 2",
       "added_by": "step-2 derive-once fixes round 2",
       "pattern": "\\{Difficulty::(Hard|Medium|Easy), \\d",
+      "anchor": "{Difficulty::",
       "owner_files": [
         "tests/difficulty_literals.h"
       ],
@@ -310,6 +320,7 @@
       "decision": "step-1 derive-once review of de4e23a, finding 4 (2026-10-04)",
       "added_by": "step-1 derive-once fixes round 3",
       "pattern": "^\\s*(inline\\s+)?void\\s+collect_(variants|tied)\\s*\\(",
+      "anchor": "collect_",
       "must_match": [
         "void collect_variants(const Path& p, std::vector<const Path*>& out) {",
         "inline void collect_tied(const Path& p, std::vector<const Path*>& out) {"
@@ -337,6 +348,7 @@
       "decision": "D34",
       "added_by": "step-1 derive-once fixes round 4",
       "pattern": "if \\(s\\.kind == (hydra::)?SpEndKind::SqIn\\) (\\+\\+\\w+|\\w+\\.push_back\\(s\\.tick\\));",
+      "anchor": "SpEndKind::SqIn) ",
       "must_match": [
         "if (s.kind == SpEndKind::SqIn) ticks.push_back(s.tick);",
         "if (s.kind == SpEndKind::SqIn) ++sqin_steps;"
@@ -358,6 +370,7 @@
       "decision": "step-1 derive-once review of 9a3373b, finding 1 (2026-10-04)",
       "added_by": "step-1 derive-once fixes round 5",
       "pattern": "for \\(const (hydra::)?Path& \\w+ : [\\w.>-]+\\) collect_tied\\(",
+      "anchor": ") collect_tied(",
       "must_match": [
         "for (const Path& root : rec.paths) collect_tied(root, vs);",
         "for (const Path& r : rec.paths) collect_tied(r, all);"
@@ -413,6 +426,7 @@
       "decision": "audit finding 293 (phase 6 task J1-2)",
       "added_by": "J1-2",
       "pattern": "\\bD3D11CreateDevice\\(",
+      "anchor": "D3D11CreateDevice(",
       "must_match": [
         "if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, &want, 1,"
       ],
@@ -441,6 +455,7 @@
       "decision": "audit finding 294 (phase 6 task J1-2)",
       "added_by": "J1-2",
       "pattern": "==\\s*\"all\"",
+      "anchor": "\"all\"",
       "must_match": [
         "if (what == \"all\" || what == t->Name) {",
         "bool found = w == \"all\";"
@@ -495,6 +510,7 @@
       "decision": "D53, D54",
       "added_by": "J1-1",
       "pattern": "\\bflag_sp\\s*=(?!=)",
+      "anchor": "flag_sp",
       "must_match": [
         "ts.flag_sp = tick == 3256;",
         "ts.flag_sp = phrase;",
@@ -527,6 +543,7 @@
       "decision": "D53",
       "added_by": "J1-4",
       "pattern": "HYDRA_TESTDATA_DIR\\) \\+ \"/audio/",
+      "anchor": "HYDRA_TESTDATA_DIR) + \"/audio/",
       "must_match": [
         "return hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + \"/audio/\" + name);",
         "copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + \"/audio/sine220.ogg\", d + \"\\\\song.ogg\");"
@@ -556,6 +573,7 @@
       "decision": "D53",
       "added_by": "J1-4",
       "pattern": "\\b(double|float|auto)\\s+estimate_freq_hz\\s*\\(",
+      "anchor": "estimate_freq_hz",
       "must_match": [
         "double estimate_freq_hz(const DecodedAudio& a) {",
         "double estimate_freq_hz(const DecodedAudio& a, int channel) {"
@@ -584,6 +602,7 @@
       "decision": "derive-once review 8aa5f401 finding 2 (settings reset button, 2026-10-09)",
       "added_by": "settings-reset-button",
       "pattern": "=\\s*\\[&\\]\\([^)]*\\)\\s*\\{\\s*return visible_text\\(h\\)\\.find\\(",
+      "anchor": "return visible_text(h).find(",
       "must_match": [
         "auto shows = [&](const char* text) { return visible_text(h).find(text) != std::string::npos; };",
         "auto on_screen = [&](const char* s) { return visible_text(h).find(s) != std::string::npos; };"
@@ -637,6 +656,7 @@
       "decision": "D53",
       "added_by": "J2-2",
       "pattern": "\\.record\\.paths\\.empty\\(\\)\\)\\s*(continue|return)",
+      "anchor": ".record.paths.empty())",
       "owner_files": [
         "tests/corpus_util.h"
       ],
@@ -664,6 +684,7 @@
       "decision": "D54",
       "added_by": "J2-2",
       "pattern": "0\\.03928|0\\.04045",
+      "anchor": "0.0",
       "owner_files": [
         "tests/wcag_util.h"
       ],
@@ -689,6 +710,7 @@
       "decision": "phase 6 task J2-6 derive-once review, finding 1",
       "added_by": "J2-6",
       "pattern": "\\{\\s*'I',\\s*'D',\\s*'3'",
+      "anchor": "'I',",
       "must_match": [
         "std::vector<uint8_t> t = bytes({'I', 'D', '3', 3, 0, flags, 0, 0, 0, 20});",
         "std::vector<uint8_t> tagged = {'I', 'D', '3', 3, 0, 0, 0, 0, 0, 20};",
@@ -717,6 +739,7 @@
       "decision": "D53, D87",
       "added_by": "storage-T2",
       "pattern": "(Analyze this song|Re-analyze)\"",
+      "anchor": "nalyze",
       "owner_files": [
         "tests/ui/uitest_details.cpp"
       ],
@@ -744,6 +767,7 @@
       "decision": "D53, D54",
       "added_by": "J4-6",
       "pattern": "\\b(GetTempPath\\w*|GetTempFileName\\w*|temp_directory_path)\\(",
+      "anchor": "emp",
       "must_match": [
         "GetTempPathW(MAX_PATH, tmp);",
         "DWORD n = GetTempPathW(MAX_PATH, buf);",
@@ -807,6 +831,7 @@
       "decision": "D53, D54",
       "added_by": "J4-4",
       "pattern": "depth_value\\s*=\\s*2;|\"depth_value=2",
+      "anchor": "depth_value",
       "owner_files": [
         "tests/scratch_settings.h"
       ],
@@ -834,6 +859,7 @@
       "decision": "D53, D54",
       "added_by": "J4-4",
       "pattern": "FontSizeBase \\*",
+      "anchor": "FontSizeBase *",
       "must_match": [
         "const float size = st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi;",
         "const float size = s.FontSizeBase * s.FontScaleMain * s.FontScaleDpi;"
@@ -862,6 +888,7 @@
       "decision": "D53, D54",
       "added_by": "J4-4",
       "pattern": "pick_preview_path\\(ctx, \\d",
+      "anchor": "pick_preview_path(ctx, ",
       "must_match": [
         "pick_preview_path(ctx, 0);",
         "pick_preview_path(ctx, 1);"

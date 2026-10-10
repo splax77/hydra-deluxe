@@ -9,6 +9,7 @@
       "decision": "phase 7 M7-1 derive-once review round 2, finding 1 (2026-10-04)",
       "added_by": "M7-1",
       "pattern": "\\{\\s*\"cymbal\"\\s*,",
+      "anchor": "\"cymbal\"",
       "must_match": [
         "{\"cymbal\", n.cymbal},",
         "lanes.push_back(nlohmann::json{{\"color\", color_str(n.colortype)}, {\"cymbal\", n.is_cymbal()}});"
@@ -35,6 +36,7 @@
       "decision": "D53",
       "added_by": "J2-6",
       "pattern": "act\\[\"sqout_tick\"\\]",
+      "anchor": "act[\"sqout_tick\"]",
       "must_match": [
         "if (act.contains(\"sqout_tick\") && act[\"sqout_tick\"].is_number() &&",
         "w.sqout_tick = act[\"sqout_tick\"].get<int64_t>();"

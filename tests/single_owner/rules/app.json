@@ -55,6 +55,7 @@
       "decision": "perf follow-up B (docs/handoffs/2026-10-06-perf-speedups-wave2-handoff.md)",
       "added_by": "perf-bench-fills",
       "pattern": "\\bSettings::load\\(\\)",
+      "anchor": "Settings::load()",
       "owner_files": [
         "src/app/config.cpp"
       ],
@@ -129,6 +130,7 @@
       "decision": "D87",
       "added_by": "storage-T2",
       "pattern": "\\b(hash_chart_file|chart_files_unchanged|chart_files_sig)\\(",
+      "anchor": "chart_file",
       "owner_files": [
         "src/app/analysis.h",
         "src/app/analysis.cpp"
@@ -155,6 +157,7 @@
       "decision": "D91",
       "added_by": "storage-T2",
       "pattern": "Not analyzed yet",
+      "anchor": "Not analyzed yet",
       "owner_files": [
         "src/app/user_messages.h"
       ],
@@ -207,6 +210,7 @@
       "decision": "derive-once review of RW-T3, finding 2 (2026-10-08)",
       "added_by": "RW-J1",
       "pattern": "\\(\\s*beyond_edge_ms\\(",
+      "anchor": "beyond_edge_ms(",
       "must_match": [
         "return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));",
         "\"Beyond \" + std::to_string(static_cast<int64_t>(beyond_edge_ms(w))) + \" ms\"",
@@ -235,6 +239,7 @@
       "decision": "derive-once review of RW-T3, finding 3 (2026-10-08)",
       "added_by": "RW-J1",
       "pattern": "\\btiers\\[\\s*\\w+\\.size\\(\\)\\s*-\\s*[12]\\s*\\]|\\btiers\\.back\\(\\)",
+      "anchor": "tiers",
       "must_match": [
         "if (tier_name == tiers[tiers.size() - 2].name)",
         "if (tier_name == tiers.back().name) return \"No squeezes\";",
@@ -268,6 +273,7 @@
       "decision": "M_D review, library finding 1, round 2 library finding 6 (phase 3 tasks FX-L, FX2-L)",
       "added_by": "FX-L",
       "pattern": "case (app::)?DynamicsRow::\\w+:|return note\\.is2x \\? DynamicsRow::|==\\s*(app::)?DynamicsRow::\\w+",
+      "anchor": "DynamicsRow::",
       "must_match": [
         "case app::DynamicsRow::GreenTom:     return ImVec4(0.15f, 0.75f, 0.20f, 1.0f);",
         "case DynamicsRow::GreenCymbal:  return pad(NoteColor::Green, NoteCymbalType::Cymbal);",
@@ -296,6 +302,7 @@
       "decision": "Note Shuffle wave derive-once review (ns-review) finding 1 (2026-10-09)",
       "added_by": "ns-fix",
       "pattern": "[<>]=?\\s*(static_cast<\\w+>\\(\\s*)?(app::)?DynamicsRow::(GreenTom|Kick)\\b",
+      "anchor": "DynamicsRow::",
       "must_match": [
         "for (size_t i = 0; i <= static_cast<size_t>(DynamicsRow::GreenTom); ++i) t += rows[i];",
         "for (size_t i = 0; i <= static_cast<size_t>(DynamicsRow::GreenTom); ++i)",
@@ -386,6 +393,7 @@
       "decision": "derive-once review of RW-T3, finding 5 (2026-10-08)",
       "added_by": "RW-J1",
       "pattern": "(percent_steps|format_percent)\\([^;]*,\\s*2\\)",
+      "anchor": "percent",
       "must_match": [
         "row.pct_h = percent_steps(s.score, opt, 2);",
         "return has_percent(r) ? format_percent(r.actual, *r.optimal, 2) : std::string(kDash);"
@@ -405,6 +413,7 @@
       "decision": "phase 3 task C4a",
       "added_by": "M_C fix prod",
       "pattern": "std::clamp\\([^;]*/\\s*\\*?\\w*length\\w*\\s*,\\s*0\\.0\\s*,\\s*1\\.0",
+      "anchor": "std::clamp(",
       "must_match": [
         "const double at = std::clamp(at / *song_length_ms, 0.0, 1.0);",
         "marks.push_back(std::clamp(a.ms / length_ms, 0.0, 1.0));"
@@ -430,6 +439,7 @@
       "decision": "D69",
       "added_by": "FX-P",
       "pattern": "notes\\.back\\(\\)|sequence\\.back\\(\\)\\.timecode\\.ms\\(\\)",
+      "anchor": ".back()",
       "must_match": [
         "if (scene.has_notes) scene.song_length_ms = scene.notes.back().ms;",
         "return song.sequence.back().timecode.ms();",
@@ -457,6 +467,7 @@
       "decision": "D48",
       "added_by": "FX-P",
       "pattern": "\\b\\w+\\.ms\\s*<=\\s*now\\w*\\b|now\\w*\\s*>=\\s*\\w+\\.ms\\b|\\bnote_ms\\s*<=\\s*now_ms\\b",
+      "anchor": "now",
       "must_match": [
         "if (a.has_sp_end && a.ms <= now && now < a.sp_end_ms) return &a;",
         "if (now_ms >= s.ms) last = &s;",
@@ -485,6 +496,7 @@
       "decision": "D48",
       "added_by": "K1a",
       "pattern": "\\.toLocaleString\\(\\)",
+      "anchor": ".toLocaleString()",
       "must_match": [
         "idx.textContent = (++n).toLocaleString();",
         "['Paths shown', rows.length.toLocaleString()],"
@@ -507,6 +519,7 @@
       "decision": "audit finding 51",
       "added_by": "FX-R",
       "pattern": "\\.toFixed\\(",
+      "anchor": ".toFixed(",
       "must_match": [
         "['num', r.mult.toFixed(3)],",
         "? (withPct.reduce((a, r) => a + r.pct, 0) / withPct.length).toFixed(2) + '%' : DASH;"
@@ -558,6 +571,7 @@
       "decision": "audit finding 72, phase 7 task SE1",
       "added_by": "SE1",
       "pattern": "(volume|percent|pct)\\w*\\)*\\s*/\\s*100\\b",
+      "anchor": "100",
       "calls_owner": "volume_gain\\(",
       "must_match": [
         "transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);",
@@ -584,6 +598,7 @@
       "decision": "D53",
       "added_by": "J1-6",
       "pattern": "\\b(ChartLibraryEntry(\\s+\\w+)?\\s*\\{|entries\\.push_back\\(\\s*\\{)\\s*\\w+\\.md5\\b",
+      "anchor": ".md5",
       "owner_files": [
         "src/app/analysis.cpp"
       ],
@@ -611,6 +626,7 @@
       "decision": "D54",
       "added_by": "J1-6",
       "pattern": "std::max\\(\\s*1\\s*,\\s*(std::min\\(\\s*)?(worker\\w*|guess)\\b",
+      "anchor": "std::max(",
       "must_match": [
         "workers_ = std::max(1, workers);",
         "std::min(count, static_cast<size_t>(std::max(1, worker_count)));"
@@ -638,6 +654,7 @@
       "decision": "D53",
       "added_by": "J1-6",
       "pattern": "\\bto_lower_ascii\\(.*\\b(md5|hash|hyhash|identifier)\\b",
+      "anchor": "to_lower_ascii(",
       "must_match": [
         "by_hash.emplace(to_lower_ascii(r.hyhash), std::move(r));",
         "in_library.insert(to_lower_ascii(e.md5));",
@@ -666,6 +683,7 @@
       "decision": "derive-once review of M7-2c, finding 1 (phase 7 task PV join)",
       "added_by": "M7-2c",
       "pattern": "\\bsig_of\\(",
+      "anchor": "sig_of(",
       "must_match": [
         "pc.sig = sig_of(*notes, found_ini);",
         "return sig_unchanged(sig, sig_of(*notes, ini));"
@@ -697,6 +715,7 @@
       "decision": "D53",
       "added_by": "J2-1",
       "pattern": "\"[^\"]*\\\\\\\\resource",
+      "anchor": "\\\\resource",
       "must_match": [
         "options.resource_dir.empty() ? app::exe_dir() + \"\\\\resource\" : options.resource_dir;",
         "const std::string dir = hydra::app::exe_dir() + \"\\\\resource\\\\\";"
@@ -752,6 +771,7 @@
       "decision": "D53",
       "added_by": "J2-5",
       "pattern": "\\b0 to 7\\b",
+      "anchor": "0 to 7",
       "must_match": [
         "constexpr const char* kStarsError = \"stars: needs a number from 0 to 7\";"
       ],
@@ -773,6 +793,7 @@
       "decision": "D53",
       "added_by": "J2-5",
       "pattern": "QueryField::Any",
+      "anchor": "QueryField::Any",
       "calls_owner": "term_applies_to\\(",
       "must_match": [
         "case QueryField::Any:"
@@ -794,6 +815,7 @@
       "decision": "D53",
       "added_by": "J2-5",
       "pattern": "QueryField::Any",
+      "anchor": "QueryField::Any",
       "calls_owner": "term_applies_to\\(",
       "must_match": [
         "if (field != QueryField::Any && term.field != QueryField::Any && term.field != field)"
@@ -815,6 +837,7 @@
       "decision": "D53",
       "added_by": "J2-5",
       "pattern": "(\\b\\w+\\.)?\\bghost\\s*\\+\\s*\\w*\\.?accent\\b(?!\\s*\\+)",
+      "anchor": "accent",
       "must_match": [
         "bool has_dynamics() const { return ghost + accent > 0; }",
         "int dyn = played.ghost + played.accent;"
@@ -868,6 +891,7 @@
       "decision": "D53, D77",
       "added_by": "RW-T7",
       "pattern": "\\.(insert|emplace)\\([^)]*\\.hyhash",
+      "anchor": ".hyhash",
       "must_match": [
         "songs.insert(r.hyhash);",
         "if (seen.insert(r.hyhash).second) n += r.copies;",
@@ -898,6 +922,7 @@
       "decision": "D53",
       "added_by": "J2-2",
       "pattern": "r\\.delta\\s*[<>]\\s*0\\s*\\?",
+      "anchor": "r.delta",
       "must_match": [
         "const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.delta < 0 ? 'num neg' : 'num');",
         ": (r.delta < 0 ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));",
@@ -1008,6 +1033,7 @@
       "decision": "D69",
       "added_by": "J3-6",
       "pattern": "sequence\\.back\\(\\)\\.timecode\\.ms\\(\\)",
+      "anchor": "sequence.back().timecode.ms()",
       "must_match": [
         "const double expected = song.sequence.back().timecode.ms();"
       ],
@@ -1064,6 +1090,7 @@
       "decision": "D53, D54",
       "added_by": "J3-3",
       "pattern": "\"m1\\.1\\.0\"",
+      "anchor": "\"m1.1.0\"",
       "must_match": [
         "box.position = scene.timing ? format_measure(*scene.timing, now_tick) : \"m1.1.0\";"
       ],
@@ -1084,6 +1111,7 @@
       "decision": "D53, D54",
       "added_by": "J3-3",
       "pattern": "##backends",
+      "anchor": "##backends",
       "must_match": [
         "std::snprintf(id, sizeof(id), \"##backends%d_%d_%d_%d\", a.number, static_cast<int>(w_timing),",
         "const std::string prefix = \"##backends\" + std::to_string(number) + \"_\";"
@@ -1141,6 +1169,7 @@
       "decision": "D53, D54",
       "added_by": "J3-4",
       "pattern": "now_ms < 0\\.0 \\? 0\\.0 : now_ms|now_ms > len \\? len",
+      "anchor": "now_ms ",
       "must_match": [
         "const double now = now_ms < 0.0 ? 0.0 : now_ms;"
       ],
@@ -1168,6 +1197,7 @@
       "decision": "D53, D54",
       "added_by": "J3-4",
       "pattern": "sp_meter\\.segments\\.empty\\(\\)",
+      "anchor": "sp_meter.segments.empty()",
       "must_match": [
         "if (!scene.timing || scene.sp_meter.segments.empty()) return box;",
         "return !scene_.sp_meter.segments.empty();"
@@ -1196,6 +1226,7 @@
       "decision": "D53, D54",
       "added_by": "J3-4",
       "pattern": "has_sp_end && (struck_at\\(now, a\\.ms\\)|a\\.sp_end_ms > a\\.ms)",
+      "anchor": "has_sp_end && ",
       "must_match": [
         "if (a.has_sp_end && struck_at(now, a.ms) && now < a.sp_end_ms) return &a;",
         "if (a.has_sp_end && a.sp_end_ms > a.ms)"
@@ -1218,6 +1249,7 @@
       "decision": "D53, D54",
       "added_by": "J3-4",
       "pattern": "span\\.end_tick\\s*[!=]=\\s*a\\.tick",
+      "anchor": "span.end_tick",
       "must_match": [
         "if (f.state != app::PreviewFillState::Taken || f.span.end_tick != a.tick) continue;"
       ],
@@ -1272,6 +1304,7 @@
       "decision": "D69, D75",
       "added_by": "SL1",
       "pattern": "\\bSongLength::found\\s*\\(",
+      "anchor": "SongLength::found",
       "must_match": [
         "return store::SongLength::found(",
         "length_ = store::SongLength::found(app::chart_song_length_ms(",
@@ -1300,6 +1333,7 @@
       "decision": "D53, D54",
       "added_by": "J4-5",
       "pattern": "\\.tick_resolution\\s*=\\s*",
+      "anchor": ".tick_resolution",
       "must_match": [
         "scene.tick_resolution = timing.tick_resolution();",
         "s.tick_resolution = 1000;"
@@ -1323,6 +1357,7 @@
       "decision": "audit finding 240",
       "added_by": "H1",
       "pattern": "RecordKey\\{[^}]*run\\.chartmode",
+      "anchor": "run.chartmode",
       "must_match": [
         "store::RecordKey{it.md5, run.chartmode, run.cap_query(), run.lens}, *rec);",
         "store::RecordKey{it.md5, run.chartmode, run.cap_query(), run.lens}, rec);"
@@ -1346,6 +1381,7 @@
       "decision": "D89, D92",
       "added_by": "storage-T5",
       "pattern": "chart_library_count\\(\\)\\s*==\\s*0",
+      "anchor": "chart_library_count()",
       "must_match": [
         "} else if (store.chart_library_count() == 0) {",
         "if (old_store.chart_library_count() == 0 || new_store.chart_library_count() == 0)"
@@ -1403,6 +1439,7 @@
       "decision": "D53, D54",
       "added_by": "J4-4",
       "pattern": "\"##\" \\+ std::to_string\\(",
+      "anchor": "\"##\" + std::to_string(",
       "must_match": [
         "const std::string item = hydra::app::preview_path_label(b) + \"##\" + std::to_string(i);",
         "hydra::app::preview_path_label(list.buttons[index]) + \"##\" + std::to_string(index);"
@@ -1434,6 +1471,7 @@
       "decision": "D72, D73",
       "added_by": "RD1",
       "pattern": "plain_error_block\\(",
+      "anchor": "plain_error_block(",
       "exempt": [
         {
           "file": "src/ui/main.cpp",
@@ -1474,6 +1512,7 @@
       "decision": "D53, D54",
       "added_by": "J4-2",
       "pattern": "LIKE \\?",
+      "anchor": "LIKE ?",
       "must_match": [
         "if (search) sql += \" WHERE name LIKE ? OR artist LIKE ? OR charter LIKE ?\";"
       ],
@@ -1517,6 +1556,7 @@
       "decision": "D72",
       "added_by": "DB1",
       "pattern": "\\bplain_error\\(.*\\+.*(\\bplain_error_detail\\(|\\bwhat\\(\\))|(\\bplain_error_detail\\(|\\bwhat\\(\\)).*\\+.*\\bplain_error\\(",
+      "anchor": "plain_error(",
       "must_match": [
         "std::string text = app::plain_error(e) + \"\\n\" + e.what();",
         "msg = plain_error_detail(e) + \"\\n\\n\" + plain_error(e);"
@@ -1602,6 +1642,7 @@
       "decision": "D79",
       "added_by": "COUNT-B",
       "pattern": "\\b\\w*store\\w*(\\.|->)counts\\(\\)",
+      "anchor": "counts()",
       "must_match": [
         "auto [songs, records] = store.counts();",
         "const auto n = app.store->counts().first;"
@@ -1628,6 +1669,7 @@
       "decision": "D79",
       "added_by": "COUNT-B",
       "pattern": "\\brebuild_chart_library\\s*\\(",
+      "anchor": "rebuild_chart_library",
       "owner_files": [
         "src/store/record_store.h",
         "src/store/record_store.cpp"
@@ -1682,6 +1724,7 @@
       "decision": "D86",
       "added_by": "W1",
       "pattern": "\\b(begin|commit)_save_group\\s*\\(",
+      "anchor": "_save_group",
       "owner_files": [
         "src/store/record_store.h",
         "src/store/record_store.cpp",
@@ -1706,6 +1749,7 @@
       "decision": "D86",
       "added_by": "S1",
       "pattern": "std::vector<uint8_t>\\s+\\w+\\s*\\(\\s*1\\s*<<\\s*20\\s*\\)",
+      "anchor": "std::vector<uint8_t>",
       "must_match": [
         "std::vector<uint8_t> buf(1 << 20);",
         "std::vector<uint8_t> fresh(1<<20);"
@@ -1736,6 +1780,7 @@
       "decision": "ADR 0028",
       "added_by": "song-id-archives",
       "pattern": "chart[- ]file MD5",
+      "anchor": "file MD5",
       "must_match": [
         "// chart-file MD5 (the join key)",
         "// `identifier` is the Clone Hero chart-file MD5"
@@ -1761,6 +1806,7 @@
       "decision": "D103",
       "added_by": "RW-T5",
       "pattern": "\\bSpecsCount\\b[^;]*[<>]=?\\s*[2-9]\\b",
+      "anchor": "SpecsCount",
       "must_match": [
         "for (int i = 0; i < specs->SpecsCount && i < 2; ++i)",
         "if (specs->SpecsCount > 2) push_sort(sort);"
@@ -1784,6 +1830,7 @@
       "decision": "E3 (findings 180, 243, 245 and 56)",
       "added_by": "E3",
       "pattern": "\\bdepth_mode\\s*(==|!=|>=|<=|>|<)\\s*[01]\\b|case\\s+1\\s*:.*depth",
+      "anchor": "depth",
       "must_match": [
         "if (depth_mode != 0) return DepthMode::Points;",
         "case 1: s.depth = DepthMode::Points; break;"

@@ -9,6 +9,7 @@
       "decision": "audit findings 182 and R7.21",
       "added_by": "FX-P",
       "pattern": "\\*\\s*1000(\\.0)?\\s*/\\s*[\\w.>()-]*([sS]ample_?[rR]ate|[rR]ate)|\\*\\s*[\\w.>-]*([sS]ample_?[rR]ate|[rR]ate)\\w*(\\(\\))?\\s*/\\s*1000(\\.0)?\\b",
+      "anchor": "1000",
       "must_match": [
         "seek_frames(static_cast<int64_t>(std::llround(ms * sample_rate_ / 1000.0)));",
         "return sample_rate_ > 0 ? length_ * 1000.0 / sample_rate_ : 0.0;",
@@ -43,6 +44,7 @@
       "decision": "D69",
       "added_by": "M7-2c",
       "pattern": "\\w*chart_ms\\s*[+-]\\s*audio_offset_ms|\\bms\\s*[+-]\\s*audio_offset_ms_|-\\s*audio_offset_ms\\b",
+      "anchor": "audio_offset_ms",
       "must_match": [
         "playhead_->seek_ms(ms + audio_offset_ms_);",
         "return chart_ms + audio_offset_ms;",
@@ -75,6 +77,7 @@
       "decision": "D53",
       "added_by": "J1-4",
       "pattern": "gain < 0\\.0f \\? 0\\.0f",
+      "anchor": "gain < 0.0f ? 0.0f",
       "must_match": [
         "gain_ = gain < 0.0f ? 0.0f : gain;"
       ],
@@ -99,6 +102,7 @@
       "decision": "D54",
       "added_by": "J1-4",
       "pattern": "ma_data_converter_config_init\\(",
+      "anchor": "ma_data_converter_config_init(",
       "must_match": [
         "ma_data_converter_config cfg = ma_data_converter_config_init(",
         "s->init_converter(ma_data_converter_config_init("
@@ -146,6 +150,7 @@
       "decision": "D53",
       "added_by": "J2-6",
       "pattern": "std::min\\(kMaxReservoir",
+      "anchor": "std::min(kMaxReservoir",
       "must_match": [
         "reserv = std::min(kMaxReservoir, std::min(reserv, back) + static_cast<int>(s.own[j]));",
         "reserv = std::min(kMaxReservoir, std::min(reserv, static_cast<int>(s.back[j])) +"
@@ -174,6 +179,7 @@
       "decision": "D53",
       "added_by": "J2-6",
       "pattern": "\\b511\\b",
+      "anchor": "511",
       "must_match": [
         "constexpr int kMaxReservoir = 511;  // dr_mp3's MA_DR_MP3_MAX_BITRESERVOIR_BYTES"
       ],
@@ -206,6 +212,7 @@
       "decision": "D53, D54",
       "added_by": "J3-5",
       "pattern": "\\bfile_size_bytes\\(\\s*\\w+(\\.|->)path\\b",
+      "anchor": "file_size_bytes(",
       "must_match": [
         "n = file_size_bytes(s.path);"
       ],

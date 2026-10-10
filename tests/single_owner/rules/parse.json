@@ -9,6 +9,7 @@
       "decision": "D27",
       "added_by": "step-2 derive-once fixes",
       "pattern": "(tpm_changes|timesig_changes)\\[[^\\]]*\\]\\s*=[^=]",
+      "anchor": "_changes",
       "must_match": [
         "song.tpm_changes[0] = 768;",
         "fixture.tpm_changes[2880] = 1440;",
@@ -109,6 +110,7 @@
       "decision": "M_D review finding 1 and round 2 finding 5 (phase 3 tasks FX-R and FX2-R)",
       "added_by": "FX2-R",
       "pattern": "charter\\s*=\\s*(trim\\()?(app::)?strip_rich_tags\\(",
+      "anchor": "strip_rich_tags(",
       "calls_owner": "\\bdisplay_charter\\(",
       "must_match": [
         "row.charter = trim(strip_rich_tags(meta.ref_charter));",
@@ -152,6 +154,7 @@
       "decision": "D53",
       "added_by": "J1-5",
       "pattern": "\\bkSrbHeaderSize\\s*,",
+      "anchor": "kSrbHeaderSize",
       "owner_files": [
         "src/parse/srb.cpp"
       ],
@@ -177,6 +180,7 @@
       "decision": "audit finding 189",
       "added_by": "J1-5",
       "pattern": "\\bis_song_ini\\s*\\(",
+      "anchor": "is_song_ini",
       "owner_files": [
         "src/parse/chart_files.cpp",
         "src/parse/chart_files.h"
@@ -224,6 +228,7 @@
       "decision": "D54",
       "added_by": "J2-3",
       "pattern": "sequence\\[[^\\]]*\\+\\s*1\\s*\\]\\.flag_solo",
+      "anchor": "].flag_solo",
       "must_match": [
         "i + 1 >= n || !song.sequence[i + 1].flag_solo;",
         "if (song.sequence[k + 1].flag_solo) continue;"
@@ -314,6 +319,7 @@
       "decision": "D53",
       "added_by": "J2-5",
       "pattern": "ends_with_ci\\(\\s*[^\"\\s].*\"\\.(sng|srb|mid|chart)\"",
+      "anchor": "ends_with_ci(",
       "owner_files": [
         "src/parse/chart_files.cpp"
       ],
@@ -344,6 +350,7 @@
       "decision": "D74",
       "added_by": "AF2",
       "pattern": "\\b(?!combo)\\w+\\s*\\+=\\s*\\w+(\\.|->)chord\\.count\\(\\)|\\bnotecount\\s*\\+=",
+      "anchor": "count",
       "calls_owner": "\\bnote_count\\(\\)",
       "must_match": [
         "p.notecount += e.notecount;",
@@ -373,6 +380,7 @@
       "decision": "D53, D54",
       "added_by": "J3-4",
       "pattern": "\\b(in_solo|solo_start|solo_last)\\b",
+      "anchor": "solo",
       "owner_files": [
         "src/parse/song.cpp"
       ],
@@ -397,6 +405,7 @@
       "decision": "D86",
       "added_by": "P1",
       "pattern": "\\bnote_(on|off)\\s*\\[[^\\]]*\\]\\s*=(?!=)\\s*[^\\s{]",
+      "anchor": "note_",
       "calls_owner": "\\bmidi_note_is_read\\(",
       "must_match": [
         "f.note_on[n] = (n >= base && n <= base + 4) || (n == kick2x && bass2x) || marker;",
@@ -446,6 +455,7 @@
       "decision": "MEM-P derive-once review (memory audit fix 2): the reserve count and the walk had each spelled it",
       "added_by": "MEM-P-review",
       "pattern": "\\b\\w+(\\.|->)time\\s*[!=]=\\s*0\\b",
+      "anchor": "time",
       "must_match": [
         "if (msg.time != 0) ++pushes;",
         "if (msg.time != 0) {",
@@ -477,6 +487,7 @@
       "decision": "MEM-P derive-once review (memory audit fix 2): the reserve count and the walk had each spelled it",
       "added_by": "MEM-P-review",
       "pattern": "\\b\\w+\\s*->\\s*tick\\s*[!=]=\\s*\\w+\\s*->\\s*tick\\b|\\b\\w+\\[[^\\]]+\\]\\.tick\\s*[!=]=\\s*\\w+\\[[^\\]]+\\]\\.tick\\b",
+      "anchor": "tick",
       "must_match": [
         "while (q != end && q->tick == p->tick) ++q;",
         "if (lines[i].tick != lines[i - 1].tick) ++ticks;"
@@ -506,6 +517,7 @@
       "decision": "D86",
       "added_by": "P1",
       "pattern": "\\bis_handled_note\\s*\\(|\\bis_midi_marker_pitch\\s*\\(",
+      "anchor": "is_",
       "must_match": [
         "if (!is_handled_note(note, base_, kick2x_pitch_)) return {};",
         "if (is_noteoff && !is_midi_marker_pitch(note)) return {};",
@@ -553,6 +565,7 @@
       "decision": "D86",
       "added_by": "P1",
       "pattern": "\\bfast_leading_int\\s*\\(|\\blean_(stoi|stoll|try_parse_int)\\b",
+      "anchor": "lea",
       "must_match": [
         "int lean_stoi(std::string_view w) {",
         "if (fast_leading_int(w, 9, v)) return v;"
@@ -593,6 +606,7 @@
       "decision": "D86",
       "added_by": "P1",
       "pattern": "\\bsplit_ws_view\\s*\\(",
+      "anchor": "split_ws_view",
       "must_match": [
         "const ChartWords t = split_ws_view(valuestr);"
       ],
@@ -622,6 +636,7 @@
       "decision": "D86",
       "added_by": "P1",
       "pattern": "\\bCOp\\s+(ChartParser::)?optype\\s*\\(",
+      "anchor": "optype",
       "must_match": [
         "COp optype(const ChartDataEntry& e, int64_t tick);",
         "COp ChartParser::optype(const ChartDataEntry& e, int64_t tick) {"
@@ -652,6 +667,7 @@
       "decision": "D86",
       "added_by": "P1",
       "pattern": "\\bread_varlen\\s*\\(",
+      "anchor": "read_varlen",
       "must_match": [
         "pending += static_cast<int64_t>(read_varlen(data, pos, end));"
       ],
@@ -686,6 +702,7 @@
       "decision": "D86",
       "added_by": "P1",
       "pattern": "\\bkDrumsTrackName\\b|\\bkEventsTrackName\\b|\\btracks\\s*\\[\\s*0\\s*\\]",
+      "anchor": "rack",
       "must_match": [
         "if (track.name != kDrumsTrackName) continue;",
         "const bool drums = !drums_seen && track.name == kDrumsTrackName;",

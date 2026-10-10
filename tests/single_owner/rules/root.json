@@ -9,6 +9,7 @@
       "decision": "D53",
       "added_by": "J2-1",
       "pattern": "Hydra\\.Hydra|Hydra Deluxe",
+      "anchor": "Hydra",
       "must_match": [
         "inline constexpr const wchar_t* kWindowTitleW = L\"Hydra Deluxe\";",
         "inline constexpr const wchar_t* kAppUserModelIDW = L\"Hydra.Hydra\";",

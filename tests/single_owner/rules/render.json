@@ -40,6 +40,7 @@
       "decision": "D54",
       "added_by": "J1-3",
       "pattern": "\\btoggle_at\\s*\\(",
+      "anchor": "toggle_at",
       "must_match": [
         "inst.overdrive = toggle_at(overdrive_, t);",
         "CHECK(toggle_at(ivs, 1.0) == Toggle::Start);"
@@ -64,6 +65,7 @@
       "decision": "audit finding 223",
       "added_by": "J1-3",
       "pattern": "Toggle::Start\\s*\\|\\|.*Toggle::Restart|!=\\s*Toggle::Empty\\s*&&.*!=\\s*Toggle::End",
+      "anchor": "Toggle::",
       "must_match": [
         "on = tg == Toggle::Start || tg == Toggle::Restart || tg == Toggle::On;",
         "bool toggle_on(Toggle t) { return t != Toggle::Empty && t != Toggle::End; }"
@@ -90,6 +92,7 @@
       "decision": "audit R7.15",
       "added_by": "J1-3",
       "pattern": "&\\s*(st\\.)?fill_\\s*,\\s*&\\s*(st\\.)?fill_taken_\\s*,\\s*&\\s*(st\\.)?sp_active_\\s*,\\s*&\\s*(st\\.)?fill_lane_ivs_\\b",
+      "anchor": "fill_lane_ivs_",
       "must_match": [
         "{&st.fill_, &st.fill_taken_, &st.sp_active_, &st.fill_lane_ivs_})",
         "sorted_edges({&st.fill_, &st.fill_taken_, &st.sp_active_, &st.fill_lane_ivs_});"
@@ -114,6 +117,7 @@
       "decision": "D53",
       "added_by": "J1-3",
       "pattern": "\\binst\\.fill_lane_pad\\b",
+      "anchor": "inst.fill_lane_pad",
       "must_match": [
         "if (inst.fill_lane_pad) { pad = inst.fill_lane_pad; break; }",
         "inst.fill_lane_pad = li.pad;"
@@ -148,6 +152,7 @@
       "decision": "D54",
       "added_by": "J2-8",
       "pattern": "\\b(?:speed\\s*\\*\\s*(?:cfg\\.track|T)\\.secs_future|(?:cfg\\.track|T)\\.secs_future\\s*\\*\\s*speed)\\b",
+      "anchor": ".secs_future",
       "must_match": [
         "const double far_time = now_s + speed * cfg.track.secs_future;",
         "const double far_t = now_s + speed * T.secs_future;",
@@ -225,6 +230,7 @@
       "decision": "D54",
       "added_by": "J2-8",
       "pattern": "\\.vertices\\.push_back\\(",
+      "anchor": ".vertices.push_back(",
       "must_match": [
         "m.vertices.push_back(a);",
         "m.vertices.push_back(b);",
@@ -295,6 +301,7 @@
       "decision": "D54",
       "added_by": "J2-8",
       "pattern": "\\.find\\(\\s*' '",
+      "anchor": ".find(",
       "must_match": [
         "size_t end = text.find(' ', start);"
       ],
@@ -351,6 +358,7 @@
       "decision": "D53, D54",
       "added_by": "J3-4",
       "pattern": "n\\.lane == PreviewLane::Kick",
+      "anchor": "n.lane == PreviewLane::Kick",
       "must_match": [
         "if (n.lane == PreviewLane::Kick) {"
       ],

@@ -9,6 +9,7 @@
       "decision": "J3-7 (findings 229, 230, 231, 271, 272 and the probe's unit factor)",
       "added_by": "J3-7",
       "pattern": "\\b0x4000000\\b",
+      "anchor": "0x4000000",
       "language": "py",
       "must_match": [
         "module_end = proc.module_base + 0x4000000"
@@ -36,6 +37,7 @@
       "decision": "J3-7 (findings 229, 230, 231, 271, 272 and the probe's unit factor)",
       "added_by": "J3-7",
       "pattern": "struct\\.unpack(_from)?\\(",
+      "anchor": "struct.unpack",
       "language": "py",
       "must_match": [
         "return struct.unpack_from(\"<d\", raw, off)[0]",
@@ -74,6 +76,7 @@
       "decision": "J3-7 (findings 229, 230, 231, 271, 272 and the probe's unit factor)",
       "added_by": "J3-7",
       "pattern": "&\\s*C\\.PRECISION_MODE_BIT\\)|flags\\s*&\\s*C\\.PRECISION_MODE_BIT",
+      "anchor": "C.PRECISION_MODE_BIT",
       "language": "py",
       "must_match": [
         "return (flags & C.PRECISION_MODE_BIT) != 0",
@@ -102,6 +105,7 @@
       "decision": "J3-7 (findings 229, 230, 231, 271, 272 and the probe's unit factor)",
       "added_by": "J3-7",
       "pattern": "k32\\.(Read|Write)ProcessMemory\\(",
+      "anchor": "ProcessMemory(",
       "language": "py",
       "must_match": [
         "ok = self._win32.k32.ReadProcessMemory(",
@@ -135,6 +139,7 @@
       "decision": "J3-7 (findings 229, 230, 231, 271, 272 and the probe's unit factor)",
       "added_by": "J3-7",
       "pattern": "\\b\\w*(_s|_S|raw|est|clock|back|front)\\s*\\*\\s*1000(\\.0)?(?![\\d.])|\\b\\w*(_ms|_MS)\\s*/\\s*1000(\\.0)?(?![\\d.])|\\)\\s*[*/]\\s*1000(\\.0)?(?![\\d.])|\\b(ms\\[\\d+\\]|s(\\[\\d+\\])?)\\s*[*/]\\s*1000(\\.0)?(?![\\d.])",
+      "anchor": "1000",
       "language": "py",
       "must_match": [
         "window_ms=dbl(C.OFF_TOTAL_WINDOW) * 1000.0,",
@@ -198,6 +203,7 @@
       "decision": "J3-7 (findings 229, 230, 231, 271, 272 and the probe's unit factor)",
       "added_by": "J3-7",
       "pattern": "return\\s+(self\\.)?(module_base|BASE)\\s*\\+\\s*rva",
+      "anchor": "return",
       "language": "py",
       "must_match": [
         "return BASE + rva"
@@ -226,6 +232,7 @@
       "decision": "J3-8 (findings 232 to 236, 238, 239, 273, 328)",
       "added_by": "J3-8",
       "pattern": "\\b\\w*SETTLE_MS\\s*=(?!=)",
+      "anchor": "SETTLE_MS",
       "language": "py",
       "must_match": [
         "SETTLE_MS = 250        # wait this long past the note before reading the result",
@@ -254,6 +261,7 @@
       "decision": "J3-8 (findings 232 to 236, 238, 239, 273, 328)",
       "added_by": "J3-8",
       "pattern": "\\b(after|score_after)\\s*>\\s*(before|score_before)\\b|\\bafter_score\\s*>\\s*before_score\\b|\\.score\\s*>\\s*\\w+\\.score\\b",
+      "anchor": "ore",
       "language": "py",
       "must_match": [
         "hit = after_score > before_score",
@@ -284,6 +292,7 @@
       "decision": "J3-8 (findings 232 to 236, 238, 239, 273, 328)",
       "added_by": "J3-8",
       "pattern": "\\bFindWindowW\\b",
+      "anchor": "FindWindowW",
       "language": "py",
       "must_match": [
         "ch_hwnd = user32.FindWindowW(None, \"Clone Hero\")",
@@ -312,6 +321,7 @@
       "decision": "J3-8 (findings 232 to 236, 238, 239, 273, 328)",
       "added_by": "J3-8",
       "pattern": "\\b\\w*KICK\\s*=\\s*0\\b",
+      "anchor": "KICK",
       "language": "py",
       "must_match": [
         "KICK = 0  # .chart drum lane 0; play_chart.py maps it to the kick key"
@@ -398,6 +408,7 @@
       "decision": "J3-8 (findings 232 to 236, 238, 239, 273, 328)",
       "added_by": "J3-8 fix",
       "pattern": "\"song\\.ogg\"",
+      "anchor": "\"song.ogg\"",
       "language": "py",
       "must_match": [
         "music_stream=\"song.ogg\""
@@ -445,6 +456,7 @@
       "decision": "J3-8 (findings 232 to 236, 238, 239, 273, 328)",
       "added_by": "J3-8",
       "pattern": "/\\s*60000(\\.0)?\\b|\\*\\s*\\w+\\s*/\\s*60000",
+      "anchor": "60000",
       "language": "py",
       "must_match": [
         "self.assertEqual(P.RESOLUTION * P.BPM / 60000.0, 1.0)"
@@ -472,6 +484,7 @@
       "decision": "J3-8 (findings 232 to 236, 238, 239, 273, 328)",
       "added_by": "J3-8",
       "pattern": "\\*\\*\\s*exponent\\b",
+      "anchor": "exponent",
       "language": "py",
       "must_match": [
         "return ((t * c1 - (t ** exponent) * c2) * c3 - c4) / divisor",
@@ -528,6 +541,7 @@
       "decision": "J3-8 (findings 232 to 236, 238, 239, 273, 328)",
       "added_by": "J3-8",
       "pattern": "\\b0\\.003\\b",
+      "anchor": "0.003",
       "language": "py",
       "must_match": [
         "def press_chord(self, lanes: Iterable[int], *, hold_s: float = 0.003,",
