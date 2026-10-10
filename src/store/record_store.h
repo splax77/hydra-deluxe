@@ -181,11 +181,9 @@ struct PreparedRow {
 // mismatch would file the result under settings it doesn't belong to.
 PreparedRow prepare_row(const RecordKey& key, const HydraRecord& record);
 
-// Schema 2's results table: the columns it shares with this build's table
-// (what upgrade_results_key copies across) and its CREATE TABLE text (read
-// only by the store test, to build a schema 2 file).
+// The columns schema 2's results table shares with this build's table (what
+// upgrade_results_key copies across).
 extern const char* const kSchema2ResultsColumns;
-extern const char* const kSchema2ResultsTableSql;
 
 // The results version this build stamps on a row and accepts (ADR 0018; not
 // the app version). For
