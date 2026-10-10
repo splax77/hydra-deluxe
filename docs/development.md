@@ -138,7 +138,7 @@ DLLs, and the installer refuses a staging folder that holds one.
 
 The vendored SQLite is built without its memory-use counters and without
 shared cache. Hydra uses neither, and leaving them out trims a little of
-SQLite's own work; `tests/test_store.cpp` checks both. SQLite's default sync
+SQLite's own work; `tests/test_store_open.cpp` checks both. SQLite's default sync
 level for WAL mode is not set at build time, because the store sets it itself
 on every open (`record_store.cpp`). The store also caps the write-ahead log
 (`hydra.db-wal`) there, at `kJournalSizeLimitBytes` (D93; ADR 0026).

@@ -289,8 +289,9 @@ TEST_CASE("sng: a container without a notes file is a scan error") {
     CHECK(app::hash_chart_file(path).empty());
 }
 
-// The chart-files pins live here because test_song.cpp belongs to another
-// task this phase.
+// The chart-files pins live here because test_song.cpp belonged to another
+// task when they were written. That file has since split; its own chart_files
+// cases are in test_song_parse.cpp.
 TEST_CASE("chart_files: pick_notes_file takes the first notes.mid, else the last notes.chart") {
     const std::optional<NotesFilePick> mid =
         pick_notes_file({"song.ogg", "notes.chart", "NOTES.MID", "notes.chart"});

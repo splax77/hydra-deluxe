@@ -357,7 +357,7 @@ TEST_CASE("dynamics_breakdown: dynamic() counts ghosts and accents and not norma
 // (before count_dynamics read Chord::note_list). This chart is the corpus's
 // best cover: every row has notes, and it has the most nonzero counts. No
 // corpus chart has ghost kicks as well; the Won't Get Fooled Again fixture in
-// test_song.cpp has those but no 2x kicks.
+// test_song_parse.cpp has those but no 2x kicks.
 TEST_CASE("dynamics_breakdown: every row's counts on The Decade Of Statues, pinned") {
     const std::string path =
         std::string(HYDRA_TESTDATA_DIR) +

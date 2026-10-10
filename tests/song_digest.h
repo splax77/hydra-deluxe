@@ -1,7 +1,7 @@
 // The digests that prove a change left Hydra's output identical. One owner,
 // shared by hydra_bench's --engine and --parse modes (tools/bench.cpp) and the
 // tests that pin digests (tests/test_perf_digest.cpp, and the crafted edge
-// files in tests/test_song.cpp), so the tool and the tests can never hash
+// files in tests/test_song_parse.cpp), so the tool and the tests can never hash
 // differently.
 //
 // row_hash covers one chart's answer: the whole engine result (record_hash)

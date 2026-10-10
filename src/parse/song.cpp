@@ -157,8 +157,8 @@ bool try_parse_int(std::string_view s, int64_t& out) {
 // The disco markers both formats read are matched by hand, each exactly the
 // whole-string regex it replaced (named beside it). The dynamics marker is not
 // a regex any more: it is Clone Hero's two exact strings (finding 64). The tests
-// "... disco markers match the regexes they replaced" in test_song.cpp check
-// the disco markers through both parsers, with every byte value in every
+// "... disco markers match the regexes they replaced" in test_song_parse.cpp
+// check the disco markers through both parsers, with every byte value in every
 // position that matters; test_dynamics_tag.cpp pins the dynamics strings.
 //
 // What the regex pieces meant, as std::regex (ECMAScript, char) reads them:

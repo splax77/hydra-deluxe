@@ -629,7 +629,8 @@ add_executable(hydra_tests
 # hydra_render: the highway geometry, meshes, and a WARP offscreen-render test —
 # hence d3d11/dxgi (a headless WARP device) and d3dcompiler (runtime HLSL).
 # hydra_ui: test_app_click and the AppState tests split from it build a real
-# AppState on a scratch store. Only the window-independent half is exercised; nothing here opens a window or a device.
+# AppState on a scratch store. Only the window-independent half is exercised;
+# nothing here opens a window or a device.
 target_link_libraries(hydra_tests PRIVATE
     hydra_ui hydra_dm hydra_audio hydra_render hydra_image d3d11 dxgi d3dcompiler
     hydra_warnings)

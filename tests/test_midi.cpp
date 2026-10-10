@@ -50,7 +50,7 @@ json event_view(const hydra::MidiFile& mid) {
     return view;
 }
 
-// smf() now lives in midi_util.h so test_song.cpp can build files too.
+// smf() now lives in midi_util.h so test_song_parse.cpp can build files too.
 using testmidi::smf;
 
 }  // namespace

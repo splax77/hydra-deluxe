@@ -27,8 +27,8 @@ using namespace hydra;
 // ---- parser cases moved in from the deleted grab bag (wave B, task 2.2) ----
 
 // Finding R7.7; D27. The time box checks stay with the parse: the Preview reads
-// the parser's order, and a copy of this fixture in test_preview_view.cpp would
-// be a clone the single-owner scan refuses.
+// the parser's order, and a copy of this fixture in test_preview_boxes.cpp
+// would be a clone the single-owner scan refuses.
 TEST_CASE(".mid: practice sections from several EVENTS tracks come out in tick order, and the "
           "time box names the one in force") {
     using namespace testmidi;

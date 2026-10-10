@@ -230,7 +230,7 @@ TEST_CASE("jobs: a failed chart reads in plain words and keeps the raw text") {
 // D79: a run that fails as a whole is not a library row. It finishes with its
 // error shown and counts no chart. A pool of no workers is one such failure.
 // (The store read that D72 item 4 covered now happens in the confirm, before
-// the job: test_app_state.)
+// the job: test_app_library.cpp.)
 TEST_CASE("jobs: a batch that fails as a whole shows its error and counts no chart") {
     RecordStore store(":memory:");
     std::atomic<int> started{0};
