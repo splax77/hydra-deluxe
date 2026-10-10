@@ -49,8 +49,19 @@ rules/tests.json, owners under tools/ in rules/tools.json, and owners at the
 repository root in rules/root.json. The rows that read Python files go in
 rules/probe.json.
 
-The loader reads every `.json` file in that folder (`load_tables` in
-tests/single_owner/scan.cpp), so a new area file needs no code change.
+The loader reads every `.json` file in that folder, and in the folders one
+level down (`rule_files` in tests/single_owner/scan.cpp), so a new area file
+needs no code change.
+
+**2026-10-10: a new row may go in its own file.** Eight commits on main's
+first-parent line changed rules/tests.json on 2026-10-10 alone (`git log
+--first-parent`, up to a69a2a4b), most of them by adding a row at the end of
+its array. Two branches that each add a row at the end of one array conflict
+every time. So a new row may instead go
+in a new file in a folder named after its area, for example
+rules/tests/scratch_paths.json, in the same `{"rules": [...]}` form. A failure
+names that file by its path, as `rules/tests/scratch_paths.json`. The rows
+already in an area file stay where they are; nothing is moved.
 
 ## What a row carries
 
