@@ -791,7 +791,7 @@
           "why": "temp_path, the owner"
         },
         {
-          "file": "tests/test_winstr.cpp",
+          "file": "tests/test_helpers.cpp",
           "line_text": "GetTempPathW(MAX_PATH, tmp);",
           "why": "the temp_util case reads the temp folder once, the input its pins start from"
         }
@@ -799,7 +799,7 @@
       "scope": [
         "tests"
       ],
-      "note": "Production's own temp folder for the shell (copy_to_short_temp in src/app/report_files.cpp) answers a different question (audit R7.12), so only tests/ is scanned. The temp_util case in test_winstr.cpp reads the temp folder once as its input. Decided by: audit finding 287; phase 6 tasks J4-6 and J4-7 (D53, D54)"
+      "note": "Production's own temp folder for the shell (copy_to_short_temp in src/app/report_files.cpp) answers a different question (audit R7.12), so only tests/ is scanned. The temp_util case in test_helpers.cpp reads the temp folder once as its input. Decided by: audit finding 287; phase 6 tasks J4-6 and J4-7 (D53, D54)"
     },
     {
       "question": "Are two engine results the same answer? (tests)",
