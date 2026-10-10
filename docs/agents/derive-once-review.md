@@ -87,6 +87,14 @@ Do not rebuild the old code to see a test fail first. Quote the implementer's re
 
 You may make one build to prove a disagreement between two copies, and one more if your own fixes in step 3 touch C++. Then run `build-cpp\Release\hydra_tests.exe` with a `-tc=` filter, or `hydra_replay`, one at a time. Never run the full suite.
 
+**Hook changes: check gates with the replay tool.** To see how a shell gate under `~\.claude\hooks` judges commands, never write a probe that starts a new PowerShell per case. A fresh PowerShell costs about a second each, and one review spent 9 of its 22 minutes that way. Use `hooks\tests\replay_shell_corpus.ps1` instead. It runs every call through the gates you name inside one process, the way the dispatcher does, at about 40 ms a call:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File <worktree>\hooks\tests\replay_shell_corpus.ps1 -Corpus <corpus.jsonl> -Out <scratch folder> -Gates "<full path to gate>.ps1" -Jobs 8 [-Sample n]
+```
+
+Run it once against main's copy of the gate and once against the worktree's, then compare the two `results.jsonl` files. `hooks\tests\replay_extract.py` builds a corpus from past transcripts. For hand-written cases, write them as corpus lines in that script's output shape and feed the small file to the same tool. A replay is not a test file, so it does not count against your test limit.
+
 ## Output
 
 Write your review to a file in your scratchpad. Submit it once, at step 2 or step 5. The file must contain these two lines exactly, each on its own line:
