@@ -241,8 +241,9 @@ them has one owner. This list points at each; read the owner for the rule.
   around a report and hands it over with `set_report_frame_insets`. The popup
   patch in `third_party/imgui/imgui.cpp` keeps popups inside their window
   (D103 item 15).
-- **Column widths.** `src/ui/column_widths.h` holds the one rule every table
-  in the app sizes its columns by, the report tables included. Its header
+- **Column widths.** `src/ui/column_widths.h` holds the one rule every data table
+  sizes its columns by. The two-column key-and-value forms (the settings bar,
+  the batch dialog) are not data tables and keep ImGui's own fit. Its header
   comment says how a table uses it.
 - **Chip colours.** `chip_color` in `src/ui/theme.{h,cpp}`.
 - **The reports' state.** AppState holds both reports as `ReportSlot`s,
