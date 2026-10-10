@@ -1036,8 +1036,11 @@ std::string rule_body(const std::string& css, const std::string& selector) {
     auto blank = [](char c) { return std::isspace(static_cast<unsigned char>(c)) != 0; };
     for (size_t at = css.find(selector); at != std::string::npos;
          at = css.find(selector, at + 1)) {
-        if (at > 0 && !blank(css[at - 1]) && css[at - 1] != '}' && css[at - 1] != '{')
-            continue;
+        // Only a selector that starts its rule: the text before it, past any
+        // spaces, is the start of `css` or the end of the rule before.
+        size_t before = at;
+        while (before > 0 && blank(css[before - 1])) --before;
+        if (before > 0 && css[before - 1] != '}' && css[before - 1] != '{') continue;
         size_t open = at + selector.size();
         while (open < css.size() && blank(css[open])) ++open;
         if (open >= css.size() || css[open] != '{') continue;
