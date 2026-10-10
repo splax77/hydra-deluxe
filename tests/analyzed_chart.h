@@ -1,6 +1,7 @@
 // One analyzed corpus chart, shared by the view-model tests that need a real
-// result to draw from. The Song Details tests (test_path_view.cpp) and the
-// Preview tests (test_preview_boxes.cpp, test_preview_scene.cpp) both read it.
+// result to draw from. The Song Details tests (test_activation_rows.cpp,
+// test_path_list.cpp) and the Preview tests (test_preview_boxes.cpp, and
+// test_preview_scene.cpp through preview_song_fixtures.h) all read it.
 
 #ifndef HYDRA_TESTS_ANALYZED_CHART_H
 #define HYDRA_TESTS_ANALYZED_CHART_H
