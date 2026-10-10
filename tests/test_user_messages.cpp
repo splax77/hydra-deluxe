@@ -119,7 +119,7 @@ TEST_CASE("user_messages: stale_text names the real cause") {
 
 // D91: the not-analyzed row's tooltip names the click and the batch, and no
 // button (there is none).
-TEST_CASE("user_messages: the not-analyzed tooltip is D91's sentence") {
+TEST_CASE("user_messages: the not-analyzed tooltip names the click and the batch") {
     CHECK(std::string(hydra::app::kNotAnalyzedText) ==
           "Not analyzed yet. Click the song or run a batch to analyze it.");
 }
