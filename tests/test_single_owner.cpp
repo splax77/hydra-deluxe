@@ -6471,7 +6471,6 @@ struct KnownClone {
 // later fix; removing one means removing its entry here.
 const std::vector<KnownClone>& known_clones() {
     static const std::vector<KnownClone> k = {
-        {"src/audio/ma_reader.cpp", "src/audio/vorbis_reader.cpp", 9, R"x(pos_ += done;)x"},
         {"tests/test_app_state.cpp", "tests/test_song_panel_state.cpp", 11, R"x(char hash[32];)x"},
         {"tests/test_audio_player.cpp", "tests/test_preview_transport.cpp", 10, R"x(namespace {)x"},
         {"tests/test_path_view.cpp", "tests/test_path_view.cpp", 12, R"x(HydraRecord rec;)x"},
