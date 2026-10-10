@@ -32,7 +32,7 @@ TEST_CASE("PreviewAudioDevice opens and starts the default output device") {
                             pulls.fetch_add(1);
                             return int64_t{0};
                         }));
-    device->start();
+    REQUIRE_NOTHROW(device->start());  // throws if the device won't start
     REQUIRE(device->started());
 
     // A capped wait for the device thread's first pull. The 2 s cap is the
