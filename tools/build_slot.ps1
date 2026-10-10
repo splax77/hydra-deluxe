@@ -15,6 +15,8 @@
 # it passed, otherwise its exit code, or 1 when it threw. tools\new_worktree.ps1
 # calls it the same way (with &) after it makes a new worktree. Call it; do
 # not dot-source it, because its -Repo and -Target would replace the caller's.
+# A very long -Repo path can break MSBuild's 260-character limit (seen
+# 2026-10-10 under the scratchpad), so put old-release worktrees on a short path.
 #
 # -SlotDir points at another folder, for a dry run that must not take a real
 # slot:
@@ -82,13 +84,19 @@ if (-not $Repo) { throw 'give -Repo <worktree> (or -DryRun -SlotDir <folder>)' }
 
 $slot = Get-BuildSlot -Owner $Repo -Dir $dir
 $code = 0
+# Older checkouts' build_cpp.ps1 builds the current folder, so the build runs
+# from inside -Repo; otherwise an old release would rebuild the caller's tree.
+$pushed = $false
 try {
+    Push-Location -LiteralPath $Repo -ErrorAction Stop
+    $pushed = $true
     if ($Target) { & (Join-Path $Repo 'build_cpp.ps1') -Target $Target } else { & (Join-Path $Repo 'build_cpp.ps1') }
     if ($LASTEXITCODE) { $code = $LASTEXITCODE }
 } catch {
     Write-Host "build failed in ${Repo}: $_"
     $code = 1
 } finally {
+    if ($pushed) { Pop-Location }
     Release-BuildSlot $slot
 }
 exit $code
