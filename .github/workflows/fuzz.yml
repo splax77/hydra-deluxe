@@ -1,0 +1,113 @@
+# Fuzzing: once a week, each file parser gets ten minutes of random input from
+# libFuzzer, built with AddressSanitizer. A crash, a hang or a memory error
+# fails that target's job and uploads the input that caused it. See "Fuzzing
+# the file parsers" in docs/development.md.
+
+name: Fuzz
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"  # Mondays, 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The seed folders, written once and shared by every target. The .sng and
+  # .srb seeds come from the test fixtures, so this job needs hydra_tests.
+  seeds:
+    name: Fuzz seeds
+    runs-on: windows-2025
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+
+      - name: Build hydra_tests
+        run: .\build_cpp.ps1 -Target hydra_tests
+
+      - name: Write the seed folders
+        run: .\tools\fuzz_seeds.ps1 -OutDir seeds -TestsExe build-cpp\Release\hydra_tests.exe
+
+      - name: Keep the seeds for the fuzz jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-seeds
+          path: seeds
+          retention-days: 1
+
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    needs: seeds
+    runs-on: windows-2025
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # The targets in tests/fuzz/harness.h (kTargets), one exe each.
+        target: [chart, mid, sng, srb, audio, image]
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+
+      # Puts the compiler's folder on PATH. The ASan runtime DLL the fuzz exes
+      # load lives there, as in ci.yml's asan job.
+      - name: Set up the Visual Studio developer shell
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build fuzz_${{ matrix.target }}
+        run: .\build_cpp.ps1 -Preset fuzz -Target fuzz_${{ matrix.target }}
+
+      - name: Fetch the seeds
+        uses: actions/download-artifact@v4
+        with:
+          name: fuzz-seeds
+          path: seeds
+
+      # The corpus the fuzzer grew on earlier runs. Each run saves under a key
+      # of its own and restores the newest one, so coverage builds up week by
+      # week.
+      - name: Restore the grown corpus
+        uses: actions/cache/restore@v4
+        with:
+          path: corpus
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+
+      # libFuzzer adds new inputs to the first folder (corpus) and only reads
+      # the seeds. Its exit code is nonzero on a crash, a hang past -timeout
+      # or a memory blowup past -rss_limit_mb, which fails the job.
+      - name: Fuzz for ten minutes
+        run: |
+          New-Item -ItemType Directory -Force corpus, crashes | Out-Null
+          $extra = @()
+          if ('${{ matrix.target }}' -eq 'chart') { $extra += '-dict=tests/fuzz/chart.dict' }
+          & .\build-fuzz\Release\fuzz_${{ matrix.target }}.exe corpus seeds\${{ matrix.target }} `
+              -max_total_time=600 -timeout=10 -rss_limit_mb=2048 -artifact_prefix=crashes\ @extra
+          exit $LASTEXITCODE
+
+      - name: Save the grown corpus
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: corpus
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+
+      # The input that broke the parser. Copy it into testdata/fuzz/<target>/
+      # with the fix (testdata/fuzz/README.md).
+      - name: Upload the crash files
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes-${{ matrix.target }}
+          path: crashes
+          if-no-files-found: ignore

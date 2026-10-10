@@ -34,6 +34,11 @@ compile_commands.json
 
 # second build tree used when Hydra.exe is running and build-cpp cannot relink
 build-rel/
+# Test-only build trees: the asan, coverage and fuzz presets. build-fuzz\seeds
+# is where tools/fuzz_seeds.ps1 writes by default.
+build-asan/
+build-coverage/
+build-fuzz/
 
 # Python bytecode (tools/ch_probe and friends)
 __pycache__/
