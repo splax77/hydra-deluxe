@@ -221,8 +221,10 @@ void draw_star(ImDrawList* dl, ImVec2 min, float size, bool filled, ImU32 col) {
     const ImVec2 c(min.x + r, min.y + r);
     ImVec2 pts[kPoints * 2];
     for (int i = 0; i < kPoints * 2; ++i) {
-        // Start at the top point and go clockwise, outer and inner in turn.
-        const float a = -1.5707964f + static_cast<float>(i) * (3.1415927f / kPoints);
+        // Start at the top point and go clockwise, outer and inner in turn:
+        // a quarter turn back from the right, then a half turn over kPoints
+        // steps.
+        const float a = IM_PI * (-0.5f + static_cast<float>(i) / kPoints);
         const float rad = (i % 2 == 0) ? r : r * kInner;
         pts[i] = ImVec2(c.x + std::cos(a) * rad, c.y + std::sin(a) * rad);
     }
