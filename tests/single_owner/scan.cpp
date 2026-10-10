@@ -321,12 +321,15 @@ struct CompiledRule {
     std::regex calls_owner;
 };
 
-std::vector<CompiledRule> compile_rules() {
+CompiledRule compile_rule(const OwnerRule& r) {
     const auto flags = std::regex::ECMAScript | std::regex::optimize;
+    return {&r, std::regex(r.pattern, flags),
+            std::regex(r.calls_owner.empty() ? "$^" : r.calls_owner, flags)};
+}
+
+std::vector<CompiledRule> compile_rules() {
     std::vector<CompiledRule> out;
-    for (const OwnerRule& r : rules())
-        out.push_back({&r, std::regex(r.pattern, flags),
-                       std::regex(r.calls_owner.empty() ? "$^" : r.calls_owner, flags)});
+    for (const OwnerRule& r : rules()) out.push_back(compile_rule(r));
     return out;
 }
 
@@ -360,7 +363,7 @@ std::vector<ListedLine> listed_lines() {
     for (const OwnerRule& r : rules())
         for (const OwnerLine& o : r.owner_lines)
             out.push_back({r.question, o.file, o.line_text,
-                           "owner line no longer matches (update it)"});
+                           "owner line no longer matches (update it)", r.rules_file});
     for (const KnownCopy& k : known_copies())
         out.push_back({k.question, k.file, k.line_text,
                        "baseline entry no longer matches (remove it)"});
@@ -424,15 +427,73 @@ bool in_scope(const OwnerRule& r, const std::string& sub, const std::string& rel
     return false;
 }
 
+// What the row scan carries from one file to the next.
+struct ScanState {
+    const std::vector<CompiledRule>& compiled;
+    const std::vector<ListedLine>& listed;
+    std::vector<bool> used;              // which listed entries a line took
+    std::vector<std::string> problems;
+    std::vector<int> functions_found;    // per compiled row
+};
+
+ScanState start_scan(const std::vector<CompiledRule>& compiled, const std::vector<ListedLine>& listed) {
+    return {compiled, listed, std::vector<bool>(listed.size(), false), {},
+            std::vector<int>(compiled.size(), 0)};
+}
+
+// The row scan of one file: `rel` is its repo-relative path, `py` says it is
+// Python, `in` reads its text. A flagged line that no listed line covers
+// becomes a problem.
+void scan_file(ScanState& s, const std::string& rel, bool py, std::istream& in) {
+    const std::string sub = rel.substr(0, rel.find('/'));  // the top folder
+    std::string line;
+    int lineno = 0;
+    std::vector<bool> in_function(s.compiled.size(), false);
+    while (std::getline(in, line)) {
+        ++lineno;
+        const std::string t = hydra::trim(line);
+        if (t.empty()) continue;
+        const bool comment = py ? t[0] == '#' : is_line_comment(t);
+        for (size_t ci = 0; ci < s.compiled.size(); ++ci) {
+            const CompiledRule& c = s.compiled[ci];
+            const OwnerRule& rule = *c.rule;
+            if ((rule.language == "py") != py) continue;
+            if (!in_scope(rule, sub, rel)) continue;
+            if (comment && !rule.scan_comments) continue;
+            if (!rule.function.empty()) {
+                if (rel != rule.function_file) continue;
+                if (!in_function[ci] && line.find(rule.function) != std::string::npos) {
+                    in_function[ci] = true;
+                    ++s.functions_found[ci];
+                }
+                if (!in_function[ci]) continue;
+                if (line == "}") in_function[ci] = false;
+            }
+            bool skip = false;
+            for (const std::string& o : rule.owner_files) skip = skip || rel == o;
+            for (const Exempt& x : rule.exempt) skip = skip || rel == x.file;
+            if (skip || !flags_line(c, line)) continue;
+            const Take take = take_listed_line(s.listed, s.used, rule.question, rel, t);
+            if (take == Take::taken) continue;
+            const std::string where = rel + ":" + std::to_string(lineno);
+            if (take == Take::used_up)
+                s.problems.push_back(where + ": a second copy of a listed line (each "
+                                     "entry covers one line) answers \"" +
+                                     rule.question + "\": " + t + rule_suffix(rule.rules_file));
+            else
+                s.problems.push_back(where + ": answers \"" + rule.question +
+                                     "\", which belongs to " + rule.owner + ": " + t +
+                                     rule_suffix(rule.rules_file));
+        }
+    }
+}
+
 TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
     const fs::path root = sourcetree::root();
     const std::vector<CompiledRule> compiled = compile_rules();
-
     const std::vector<ListedLine> listed = listed_lines();
-    std::vector<bool> used(listed.size(), false);  // which listed entries a line took
-    std::vector<std::string> problems;
+    ScanState scan = start_scan(compiled, listed);
     int files = 0;
-    std::vector<int> functions_found(compiled.size(), 0);
     sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
             // A Python row ("language": "py") reads .py files only, so a
             // __pycache__ .pyc is never read; every other row reads C++.
@@ -440,68 +501,61 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
             if (!is_cpp_source(path) && !py) return;
             // These files hold made-up rows and their examples as text.
             if (rel.compare(0, 19, "tests/single_owner/") == 0) return;
-            const std::string sub = rel.substr(0, rel.find('/'));  // the top folder
             ++files;
             std::ifstream in(path);
-            std::string line;
-            int lineno = 0;
-            std::vector<bool> in_function(compiled.size(), false);
-            while (std::getline(in, line)) {
-                ++lineno;
-                const std::string t = hydra::trim(line);
-                if (t.empty()) continue;
-                const bool comment = py ? t[0] == '#' : is_line_comment(t);
-                for (size_t ci = 0; ci < compiled.size(); ++ci) {
-                    const CompiledRule& c = compiled[ci];
-                    const OwnerRule& rule = *c.rule;
-                    if ((rule.language == "py") != py) continue;
-                    if (!in_scope(rule, sub, rel)) continue;
-                    if (comment && !rule.scan_comments) continue;
-                    if (!rule.function.empty()) {
-                        if (rel != rule.function_file) continue;
-                        if (!in_function[ci] && line.find(rule.function) != std::string::npos) {
-                            in_function[ci] = true;
-                            ++functions_found[ci];
-                        }
-                        if (!in_function[ci]) continue;
-                        if (line == "}") in_function[ci] = false;
-                    }
-                    bool skip = false;
-                    for (const std::string& o : rule.owner_files) skip = skip || rel == o;
-                    for (const Exempt& x : rule.exempt) skip = skip || rel == x.file;
-                    if (skip || !flags_line(c, line)) continue;
-                    const Take take = take_listed_line(listed, used, rule.question, rel, t);
-                    if (take == Take::taken) continue;
-                    const std::string where = rel + ":" + std::to_string(lineno);
-                    if (take == Take::used_up)
-                        problems.push_back(where + ": a second copy of a listed line (each "
-                                           "entry covers one line) answers \"" +
-                                           rule.question + "\": " + t);
-                    else
-                        problems.push_back(where + ": answers \"" + rule.question +
-                                           "\", which belongs to " + rule.owner + ": " + t);
-                }
-            }
+            scan_file(scan, rel, py, in);
     });
     // A function-scoped rule found its function exactly once; a renamed or
     // moved function would otherwise leave the rule checking nothing.
     for (size_t ci = 0; ci < compiled.size(); ++ci) {
         const OwnerRule& rule = *compiled[ci].rule;
         if (rule.function.empty()) continue;
-        INFO(rule.question << ": \"" << rule.function << "\" in " << rule.function_file);
-        CHECK(functions_found[ci] == 1);
+        INFO(rule.question << ": \"" << rule.function << "\" in " << rule.function_file
+                           << rule_suffix(rule.rules_file));
+        CHECK(scan.functions_found[ci] == 1);
     }
     // A rule scoped to single files names files that exist; a renamed one
     // would otherwise leave the rule checking nothing.
     for (const CompiledRule& c : compiled) {
         for (const std::string& s : c.rule->scope) {
             if (s.find('/') == std::string::npos) continue;
-            INFO(c.rule->question << ": scoped to " << s);
+            INFO(c.rule->question << ": scoped to " << s << rule_suffix(c.rule->rules_file));
             CHECK(fs::is_regular_file(root / fs::u8path(s)));
         }
     }
     CHECK(files > 100);  // the scan found the sources
-    check_scan(problems, listed, used);
+    check_scan(scan.problems, listed, scan.used);
+}
+
+TEST_CASE("single-owner: the row scan's messages, pinned on a made-up file") {
+    OwnerRule r;
+    r.question = "Is this a made-up question?";
+    r.owner = "made_up in src/a.cpp";
+    r.rules_file = "rules/made_up.json";
+    r.pattern = "made_up\\(";
+    r.anchor = "made_up(";
+    r.owner_lines = {{"src/a.cpp", "return made_up(1);", "the owner"},
+                     {"src/a.cpp", "return made_up(9);", "the owner, gone"}};
+    const std::vector<CompiledRule> compiled = {compile_rule(r)};
+    std::vector<ListedLine> listed;
+    for (const OwnerLine& o : r.owner_lines)
+        listed.push_back({r.question, o.file, o.line_text, "owner line no longer matches (update it)",
+                          r.rules_file});
+    ScanState scan = start_scan(compiled, listed);
+    std::istringstream in("int f() {\n  return made_up(1);\n}\n// made_up(2) in a comment\n"
+                          "x = made_up(3);\n  return made_up(1);\n");
+    scan_file(scan, "src/a.cpp", false, in);
+    REQUIRE(scan.problems.size() == 2);
+    CHECK(scan.problems[0] ==
+          "src/a.cpp:5: answers \"Is this a made-up question?\", which belongs to made_up in "
+          "src/a.cpp: x = made_up(3); (rule: rules/made_up.json)");
+    CHECK(scan.problems[1] ==
+          "src/a.cpp:6: a second copy of a listed line (each entry covers one line) answers \"Is "
+          "this a made-up question?\": return made_up(1); (rule: rules/made_up.json)");
+    CHECK_FALSE(scan.used[1]);
+    CHECK(stale_message(listed[1]) ==
+          "owner line no longer matches (update it): src/a.cpp: return made_up(9); (rule: "
+          "rules/made_up.json)");
 }
 
 // The walk reads only .cpp and .h files under src, tools and tests, so a row
@@ -522,7 +576,7 @@ TEST_CASE("single-owner rules hold in the single files outside the walk") {
                 const std::string t = hydra::trim(line);
                 if (is_line_comment(t) && !c.rule->scan_comments) continue;
                 INFO(s << " answers \"" << c.rule->question << "\", which belongs to "
-                       << c.rule->owner << ": " << t);
+                       << c.rule->owner << ": " << t << rule_suffix(c.rule->rules_file));
                 CHECK_FALSE(flags_line(c, line));
             }
         }

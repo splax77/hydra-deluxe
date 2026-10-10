@@ -21,7 +21,19 @@ struct ListedLine {
     std::string file;       // repo-relative, forward slashes
     std::string line_text;  // trimmed
     std::string stale;      // the message when no source line uses it
+    std::string rules_file; // the row's "rules/<area>.json", or empty for a baseline entry
 };
+
+// The end of every failure the row scan gives about one row, so the fixer
+// opens the right file.
+inline std::string rule_suffix(const std::string& rules_file) {
+    return rules_file.empty() ? std::string() : " (rule: " + rules_file + ")";
+}
+
+// The failure for a listed line no source line took.
+inline std::string stale_message(const ListedLine& l) {
+    return l.stale + ": " + l.file + ": " + l.line_text + rule_suffix(l.rules_file);
+}
 
 enum class Take { taken, used_up, unlisted };
 
@@ -61,7 +73,7 @@ inline void check_scan(std::vector<std::string> problems, const std::vector<List
                        const std::vector<bool>& used) {
     for (size_t i = 0; i < listed.size(); ++i) {
         if (used[i]) continue;
-        problems.push_back(listed[i].stale + ": " + listed[i].file + ": " + listed[i].line_text);
+        problems.push_back(stale_message(listed[i]));
     }
     std::ostringstream report;
     for (const std::string& p : problems) report << p << "\n";
