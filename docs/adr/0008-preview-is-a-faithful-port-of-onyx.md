@@ -26,7 +26,8 @@ writing it is 5.7/255, almost all of it the capture's gamma. The trade-off is
 that the repo now carries Onyx's GPL-3 art and a line-for-line shader port, so
 Hydra is a private, non-distributable build unless relicensed. Keep the assets
 verbatim and the numbers in `3d-config.json`; when the look must change, change
-Onyx's inputs (config, assets), not the draw code, and re-capture the golden.
+Onyx's inputs (config, assets), not the draw code, and re-capture the golden
+by the steps in `testdata/preview/README.md`.
 
 ## Hydra's own Preview numbers (D48, Q33)
 
