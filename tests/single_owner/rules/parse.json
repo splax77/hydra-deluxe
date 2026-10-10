@@ -270,27 +270,27 @@
       ],
       "owner_lines": [
         {
-          "file": "tests/test_report.cpp",
+          "file": "tests/test_report_rows.cpp",
           "line_text": "CHECK(hydra::ends_with(four.subtitle, \"SP cap 4 bars\"));",
           "why": "checks a report subtitle's tail, not a file format"
         },
         {
-          "file": "tests/test_report.cpp",
+          "file": "tests/test_report_rows.cpp",
           "line_text": "CHECK(hydra::ends_with(report::generate_report(store, fixture_options(1)).subtitle, \"SP cap 1 bar\"));",
           "why": "checks a report subtitle's tail, not a file format"
         },
         {
-          "file": "tests/test_report.cpp",
+          "file": "tests/test_report_rows.cpp",
           "line_text": "CHECK(hydra::ends_with(report::generate_report(store, fixture_options(1000)).subtitle,",
           "why": "checks a report subtitle's tail, not a file format"
         },
         {
-          "file": "tests/test_report.cpp",
+          "file": "tests/test_report_rows.cpp",
           "line_text": "CHECK(hydra::ends_with(report::generate_report(store, fixture_options(4, /*legacy_fills=*/true))",
           "why": "checks a report subtitle's tail, not a file format"
         },
         {
-          "file": "tests/test_report.cpp",
+          "file": "tests/test_report_rows.cpp",
           "line_text": "CHECK(hydra::ends_with(ch10.subtitle, \"SP cap 4 bars — Clone Hero 1.0 fills\"));",
           "why": "checks a report subtitle's tail, not a file format"
         },

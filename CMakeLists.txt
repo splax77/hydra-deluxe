@@ -559,7 +559,7 @@ add_executable(hydra_tests
     tests/test_store.cpp
     tests/test_upgrade_files.cpp
     tests/test_analysis.cpp
-    tests/test_report.cpp
+    tests/test_report_rows.cpp
     tests/report_samples.cpp
     tests/test_report_view.cpp
     tests/test_config.cpp
