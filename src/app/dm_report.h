@@ -1,6 +1,7 @@
 // Comparison report: one dmleaderboards user's actual scores against Hydra's
 // computed optimal for the same charts. It joins the fetched scores to stored
-// records by chart-file MD5 (leaderboard `identifier` == Hydra `hyhash`); the
+// records by Clone Hero's song id (leaderboard `identifier` == Hydra `hyhash`,
+// whose rule is song_id_read's, in app/analysis.cpp); the
 // comparison window draws the rows.
 //
 // "Above optimal" is expected, not an error: Hydra's optimal intentionally
@@ -52,7 +53,7 @@ struct DmReportRow {
     std::string song;
     std::string artist;
     std::string charter;
-    std::string identifier;             // chart-file MD5 (the join key)
+    std::string identifier;             // Clone Hero's song id (the join key)
     int64_t actual = 0;                 // score the player posted
     std::optional<int64_t> optimal;     // Hydra best-path score; unset with no current result
     std::optional<int64_t> delta;       // optimal - actual (points left)

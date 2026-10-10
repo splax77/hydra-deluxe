@@ -46,10 +46,10 @@ struct DmUser {
 // One score a user has posted, from GET /api/user/{id}/scores. The endpoint
 // returns two arrays, `scores` (metadata known) and `unknown_scores` (title/
 // artist unknown to DMBot); both are flattened here and told apart by `known`.
-// `identifier` is the Clone Hero chart-file MD5 — the exact join key against
-// Hydra's hyhash.
+// `identifier` is Clone Hero's song id — the exact join key against Hydra's
+// hyhash (song_id_read in app/analysis.cpp is its rule).
 struct DmScore {
-    std::string identifier;     // 32-char MD5 hex (lowercased by fetch)
+    std::string identifier;     // 32 hex digits (lowercased by fetch)
     std::string song_name;
     std::string artist;
     std::string charter;        // charter_refs joined with ", "

@@ -5475,6 +5475,24 @@ const std::vector<OwnerRule>& rules() {
          {{"src/app/analysis.cpp", "thread_local std::vector<uint8_t> buf(1 << 20);",
            "stream_md5, the owner"}},
          {"src/app/analysis.cpp"}},
+        // ADR 0028: a hyhash is Clone Hero's song id, which for a .sng or .srb
+        // is not the MD5 of the chart file. Comments that still called it one
+        // were wrong, so comments are scanned too; they name the owner instead.
+        {"What does a hyhash identify (the old 'chart-file MD5' wording)?",
+         "song_id_read in src/app/analysis.cpp",
+         R"(chart[- ]file MD5)",
+         "",
+         {},
+         {},
+         "ADR 0028 and the derive-once review of 36be3a70 (finding 1)",
+         {"// chart-file MD5 (the join key)", "// `identifier` is the Clone Hero chart-file MD5"},
+         {"// Clone Hero's song id (the join key)",
+          "{\"What buffer does a chart file's MD5 read through?\","},
+         {},
+         {"src", "tools", "tests"},
+         "",
+         "",
+         true},
         // An empty fingerprint is what a gone file or a folder chart without
         // its song.ini gives, so it can never show a chart unchanged. The
         // cache read, the rescan's test and the click's save all ask
