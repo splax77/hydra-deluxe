@@ -21,6 +21,7 @@
 
 #include "app/preview_source.h"
 #include "audio/stem_reader.h"
+#include "audio_chart_fixtures.h"  // audiochart::short_chart_with_long_audio, write_text_file
 #include "audio_util.h"  // read_fixture
 #include "audio/stream_mix.h"
 #include "core/winstr.h"
@@ -70,6 +71,17 @@ hydra::store::ChartLibraryEntry entry_for(const std::string& notespath) {
 template <class Job>
 void wait_finished(const Job& job) {
     wait_until([&] { return job.finished(); }, "the load job to finish");
+}
+
+// The length of the stem at `path` mixed alone with no front pad.
+int64_t plain_frames(const std::string& path) {
+    std::vector<std::unique_ptr<hydra::audio::StemReader>> one;
+    hydra::app::PreviewAudioStem s;
+    s.label = "song";
+    s.path = path;
+    one.push_back(hydra::audio::open_stem_reader(s));
+    hydra::audio::StreamMix plain(std::move(one), 48000, 2, 0);
+    return plain.length_frames();
 }
 
 // ---- a big Ogg Opus file from the test fixture -----------------------------
@@ -334,13 +346,7 @@ TEST_CASE("a Preview load turns a negative chart offset into front silence") {
         CHECK(r.audio->channels() == 2);
 
         // The same stem mixed with no pad, for its length.
-        std::vector<std::unique_ptr<hydra::audio::StemReader>> one;
-        hydra::app::PreviewAudioStem s;
-        s.label = "song";
-        s.path = song;
-        one.push_back(hydra::audio::open_stem_reader(s));
-        hydra::audio::StreamMix plain(std::move(one), 48000, 2, 0);
-        CHECK(r.audio->length_frames() == plain.length_frames() + 12000);  // 250 ms at 48 kHz
+        CHECK(r.audio->length_frames() == plain_frames(song) + 12000);  // 250 ms at 48 kHz
 
         // The first 250 ms are silence.
         std::vector<float> head(12000 * 2, 1.0f);
@@ -353,4 +359,43 @@ TEST_CASE("a Preview load turns a negative chart offset into front silence") {
     remove_file(notes);
     remove_file(ini);
     RemoveDirectoryW(hydra::utf8_to_wide(dir).c_str());
+}
+
+// A stem that will not open is skipped; the song plays on the others. The
+// junk is a stem file holding bytes no audio opener recognises.
+TEST_CASE("a Preview load plays the good stem when another stem will not open") {
+    const std::string junk = "not audio";
+    const uint64_t sine_bytes = hydra::file_size_bytes(testaudio::fixture_path("sine220.ogg"));
+
+    SUBCASE("song.ogg is the sine and drums.ogg is junk") {
+        const std::string notes = audiochart::short_chart_with_long_audio("loadjunk_drums");
+        audiochart::write_text_file(hydra::parent_folder(notes) + "\\drums.ogg", junk);
+
+        PreviewLoadJob job(entry_for(notes), true, true, hydra::Difficulty::Expert, std::nullopt,
+                           4);
+        job.start();
+        wait_finished(job);
+        REQUIRE(job.ok());
+        // Both stems were found: the bar's total counts the junk stem's bytes.
+        CHECK(job.progress().bytes_total == sine_bytes + junk.size());
+        PreviewLoadJob::Result r = job.take_result();
+        REQUIRE(r.audio != nullptr);
+        // Only the sine was mixed: the same length as the sine alone.
+        CHECK(r.audio->length_frames() == plain_frames(testaudio::fixture_path("sine220.ogg")));
+        CHECK(r.audio_end_ms.has_value());
+    }
+
+    SUBCASE("the junk stem is the only one") {
+        const std::string notes = audiochart::short_chart_with_long_audio("loadjunk_only");
+        audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ogg", junk);
+
+        PreviewLoadJob job(entry_for(notes), true, true, hydra::Difficulty::Expert, std::nullopt,
+                           4);
+        job.start();
+        wait_finished(job);
+        REQUIRE(job.ok());
+        CHECK(job.progress().bytes_total == junk.size());
+        PreviewLoadJob::Result r = job.take_result();
+        CHECK_FALSE(r.audio_end_ms.has_value());
+    }
 }

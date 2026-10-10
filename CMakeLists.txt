@@ -480,6 +480,7 @@ add_executable(hydra_tests
     tests/test_stem_reader.cpp
     tests/test_audio_mixer.cpp
     tests/test_stream_mix.cpp
+    tests/test_song_audio.cpp
     tests/test_audio_player.cpp
     tests/test_audio_device.cpp
     tests/test_obj_loader.cpp
