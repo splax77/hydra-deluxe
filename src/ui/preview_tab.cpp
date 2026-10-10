@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <climits>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <optional>
@@ -199,6 +200,38 @@ void draw_scrub_marks(const std::vector<double>& marks) {
 // next-activation box's and the gauge's "SP" label all step by it.
 float line_height(float size) { return size * 1.25f; }
 
+// The score box's star row: kMaxStars stars, each as tall as a line of text
+// at `size`, with a fifth of that between them. The overlay font has no star
+// glyph, so draw_star draws each one as a shape.
+float star_gap(float size) { return size * 0.2f; }
+float star_row_width(float size) {
+    return size * static_cast<float>(kMaxStars) + star_gap(size) * (kMaxStars - 1);
+}
+
+// One five-point star `size` tall with its top-left at `min`: filled in `col`
+// when `filled`, else an outline in `col`. The shape is concave, so the fill
+// goes through AddConcavePolyFilled.
+void draw_star(ImDrawList* dl, ImVec2 min, float size, bool filled, ImU32 col) {
+    constexpr int kPoints = 5;
+    // Inner radius over outer, and the outline's width over the star's
+    // height: both as the user's approved mock drew its stars.
+    constexpr float kInner = 0.47f;
+    constexpr float kStroke = 0.07f;
+    const float r = size * 0.5f;
+    const ImVec2 c(min.x + r, min.y + r);
+    ImVec2 pts[kPoints * 2];
+    for (int i = 0; i < kPoints * 2; ++i) {
+        // Start at the top point and go clockwise, outer and inner in turn.
+        const float a = -1.5707964f + static_cast<float>(i) * (3.1415927f / kPoints);
+        const float rad = (i % 2 == 0) ? r : r * kInner;
+        pts[i] = ImVec2(c.x + std::cos(a) * rad, c.y + std::sin(a) * rad);
+    }
+    if (filled)
+        dl->AddConcavePolyFilled(pts, kPoints * 2, col);
+    else
+        dl->AddPolyline(pts, kPoints * 2, col, ImDrawFlags_Closed, std::max(1.0f, size * kStroke));
+}
+
 // Every text overlay box's extents at one scale (finding R7.18). The fit pass
 // asks at scale 1 to choose the scale, the draw pass at the chosen one, so
 // each box's size is worked out here only.
@@ -239,14 +272,22 @@ OverlayBoxSizes overlay_box_sizes(float scale, const render::PreviewConfig& cfg,
     s.time_w = s.margin + time_text_w + s.pad * 2.0f;
     s.time_h = s.margin + s.line_h * static_cast<float>(line_count) + s.pad;
 
-    // The running score in large type, then its detail line at the time
-    // box's size; "Score unavailable" is at the time box's size too.
+    // The running score in large type, then the star row, its detail line
+    // and the next star's line, each one line at the time box's size; "Score
+    // unavailable" is at the time box's size too and has no stars.
     s.score_size = score.available ? s.size * 1.8f : s.size;
     s.score_line_h = s.score_size * 1.2f;
     float score_text_w = text_width(s.score_size, score.score.c_str());
-    if (!score.detail.empty())
-        score_text_w = std::max(score_text_w, text_width(s.size, score.detail.c_str()));
-    const float score_lines_h = s.score_line_h + (score.detail.empty() ? 0.0f : s.line_h);
+    float score_lines_h = s.score_line_h;
+    if (score.available) {
+        score_text_w = std::max(score_text_w, star_row_width(s.size));
+        score_lines_h += s.line_h;
+    }
+    for (const std::string* l : {&score.detail, &score.next_star}) {
+        if (l->empty()) continue;
+        score_text_w = std::max(score_text_w, text_width(s.size, l->c_str()));
+        score_lines_h += s.line_h;
+    }
     s.score_w = s.margin + score_text_w + s.pad * 2.0f;
     s.score_h = s.pad + score_lines_h + s.pad;
 
@@ -572,10 +613,13 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
                         IM_COL32(255, 255, 255, 255), lines[i]);
 
         // The score box, under the time box in the same panel style: the
-        // running score in large type, then "x<mult> · combo <n>" in light
-        // grey. Absent until the chart is analyzed; "Score unavailable" (at
-        // the time box's size) when the path can't be replayed to its stored
-        // score. Right corners rounded, since it sits against the left edge.
+        // running score in large type, a row of star shapes (earned ones
+        // filled in the Star Power gold, the rest grey outlines), then
+        // "x<mult> · combo <n>" and "star <n> in <points>" in light grey.
+        // Absent until the chart is analyzed; "Score unavailable" (at the
+        // time box's size, no stars) when the path can't be replayed to its
+        // stored score. Right corners rounded, since it sits against the left
+        // edge.
         if (score.shown) {
             ImVec2 s_min(origin.x, box_max.y + sz.gap);
             ImVec2 s_max(origin.x + sz.score_w, s_min.y + sz.score_h);
@@ -583,10 +627,25 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
                               ImDrawFlags_RoundCornersRight);
             dl->AddText(font, sz.score_size, ImVec2(origin.x + margin, s_min.y + pad),
                         IM_COL32(255, 255, 255, 255), score.score.c_str());
-            if (!score.detail.empty())
-                dl->AddText(font, size,
-                            ImVec2(origin.x + margin, s_min.y + pad + sz.score_line_h),
-                            IM_COL32(200, 200, 200, 255), score.detail.c_str());
+            float y = s_min.y + pad + sz.score_line_h;
+            const ImU32 grey = IM_COL32(200, 200, 200, 255);
+            if (score.available) {
+                const ImU32 earned = ImGui::GetColorU32(kStarPowerColor);
+                const ImU32 unearned = IM_COL32(138, 138, 138, 255);
+                // Centred in its line, as the text lines' glyphs sit.
+                const float star_y = y + (line_h - size) * 0.5f;
+                for (int i = 0; i < kMaxStars; ++i) {
+                    const bool on = i < score.stars;
+                    draw_star(dl, ImVec2(origin.x + margin + (size + star_gap(size)) * i, star_y),
+                              size, on, on ? earned : unearned);
+                }
+                y += line_h;
+            }
+            for (const std::string* l : {&score.detail, &score.next_star}) {
+                if (l->empty()) continue;
+                dl->AddText(font, size, ImVec2(origin.x + margin, y), grey, l->c_str());
+                y += line_h;
+            }
         }
 
         // The next activation, bottom-left in the same panel style: its number

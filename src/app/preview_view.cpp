@@ -208,13 +208,14 @@ SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& t
 // when replay_stored_path says the replay stands for the path.
 //
 // Replayed scores-only: the rows' chord_code and notes stay empty. This reads
-// only ms, cum_onscreen_total, multiplier_shown, multiplier_after and
+// only ms, cum_onscreen_total, cum, multiplier_shown, multiplier_after and
 // combo_after off each row, plus result.final through faithful(); nothing
 // else in this file reads a replay row.
 PreviewScore build_score(const Song& song, const Path* path, const core::Rules& rules) {
     PreviewScore score;
     if (path == nullptr) return score;  // None
     score.state = PreviewScore::State::Unavailable;
+    score.cutoffs = star_cutoffs(*path);
     try {
         ReplayOptions options;
         options.scores_only = true;
@@ -222,8 +223,11 @@ PreviewScore build_score(const Song& song, const Path* path, const core::Rules& 
         if (!pr.faithful()) return score;
         score.steps.reserve(pr.result.chords.size());
         for (const ReplayChord& c : pr.result.chords)
+            // cum is the running sum of every chord's points, solo bonus kept
+            // apart, so this is score_without_solo (core/stars.h) at this chord.
             score.steps.push_back({c.ms, c.cum_onscreen_total, c.multiplier_shown,
-                                   c.multiplier_after, c.combo_after});
+                                   c.multiplier_after, c.combo_after,
+                                   c.cum.total() - c.cum.solo});
     } catch (const std::exception&) {
         score.steps.clear();
         return score;  // Unavailable
@@ -568,6 +572,13 @@ PreviewScoreBox build_score_box(const PreviewScene& scene, double now_ms, double
     char buf[64];
     std::snprintf(buf, sizeof buf, "x%d \xC2\xB7 combo %d", shown, at.combo);
     box.detail = buf;
+
+    // The star counter, on the score stars count (core/stars.h).
+    const StarCutoffs& cut = scene.score.cutoffs;
+    box.stars = stars_for_score(cut, at.score_without_solo);
+    if (box.stars < kMaxStars)
+        box.next_star = "star " + std::to_string(box.stars + 1) + " in " +
+                        group_thousands(cut.cutoffs[box.stars] - at.score_without_solo);
     return box;
 }
 

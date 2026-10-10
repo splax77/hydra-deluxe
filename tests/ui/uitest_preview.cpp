@@ -12,6 +12,7 @@
 
 #include "app/preview_view.h"
 #include "core/model.h"
+#include "core/stars.h"   // path_stars
 #include "core/winstr.h"  // fopen_utf8
 #include "imgui_internal.h"
 #include "parse/song.h"  // no_notes_message
@@ -252,6 +253,10 @@ void test_preview_controls(ImGuiTestContext* ctx) {
     IM_CHECK(end.available);
     const hydra::Path* shown = h.app->viewed.record->all_paths().front();
     IM_CHECK_STR_EQ(end.score.c_str(), hydra::group_thousands(shown->totalscore()).c_str());
+    // And the stars the details header shows for that path (path_stars), with
+    // the next-star line gone only at the most there are.
+    IM_CHECK_EQ(end.stars, hydra::path_stars(*shown));
+    IM_CHECK_EQ(end.next_star.empty(), end.stars == hydra::kMaxStars);
 
     // 5 s jumps, clamped to 0 and to where playback stops (the audio's end,
     // or the last note when the audio is shorter). The library's charts have

@@ -25,6 +25,7 @@
 #include "core/model.h"
 #include "core/replay.h"
 #include "core/squeeze_rating.h"
+#include "core/stars.h"
 #include "core/timing.h"  // sp_bars_to_measures
 #include "analyzed_chart.h"
 #include "corpus_util.h"
@@ -448,6 +449,90 @@ TEST_CASE("score box: the analyzed chart ends on the path's total") {
     }
     PreviewScoreBox end = score_box_at(scene, last_note_ms(scene));
     CHECK(end.score == group_thousands(best.totalscore()));
+}
+
+// ---- the score box's star counter ---------------------------------------
+
+TEST_CASE("score box stars: before the first chord no star is earned") {
+    // The fill song's first note is at tick 480, 500 ms.
+    Song song = make_fill_song();
+    Path path = priced_path(song, {});
+    PreviewScene scene = build_preview_scene(song, &path);
+    REQUIRE(scene.score.state == PreviewScore::State::Ready);
+    PreviewScoreBox box = score_box_at(scene, 100.0);
+    CHECK(box.stars == 0);
+    CHECK(box.next_star == "star 1 in " + group_thousands(star_cutoffs(path).cutoffs[0]));
+    // Pinned from one run on 2026-10-10.
+    CHECK(box.next_star == "star 1 in 20");
+}
+
+TEST_CASE("score box stars: the analyzed chart ends on the path's own star count") {
+    const AnalysisResult& r = corpus::analyzed_by_ten_scores();
+    const Path& best = r.record.best_path();
+    PreviewScene scene = build_preview_scene(r.song, &best);
+    REQUIRE(scene.score.state == PreviewScore::State::Ready);
+    PreviewScoreBox end = score_box_at(scene, last_note_ms(scene));
+    // path_stars is the number the details header shows.
+    CHECK(end.stars == path_stars(best));
+    CHECK(end.next_star.empty() == (end.stars == kMaxStars));
+    // Pinned from one run on 2026-10-10: this chart's best path earns all
+    // seven, so the next-star line is gone.
+    CHECK(end.stars == 7);
+    CHECK(end.next_star.empty());
+}
+
+TEST_CASE("score box stars: a solo's bonus raises the score but not the stars") {
+    // Hand song: chords at 0, 250, 500 and 750 ms. The solo is the chords at
+    // 250 and 500 ms, so its whole bonus is paid on the chord at 500 ms. The
+    // literals below were pinned from one run on 2026-10-10. This path's
+    // cutoffs: 3 stars at 380, 4 at 760 (star_cutoffs).
+    Song song = make_hand_song();
+    Path path = priced_path(song, {});
+    REQUIRE(path.score_solo == 200);
+    PreviewScene scene = build_preview_scene(song, &path);
+    REQUIRE(scene.score.state == PreviewScore::State::Ready);
+    REQUIRE(scene.score.cutoffs.cutoffs[2] == 380);
+
+    // Inside the solo: the bonus is still withheld.
+    const PreviewScoreBox before = score_box_at(scene, 400.0);
+    CHECK(before.score == "180");
+    CHECK(before.stars == 1);
+    CHECK(before.next_star == "star 2 in 10");
+
+    // The solo's last chord: the on-screen score jumps by that chord's own
+    // points plus the whole bonus, and passes the 3-star cutoff. The stars
+    // move by the chord's own points alone, so the box still shows 2 stars.
+    const PreviewScoreBox after = score_box_at(scene, 500.0);
+    CHECK(after.score == "480");
+    CHECK(after.stars == 2);
+    CHECK(after.next_star == "star 3 in 100");
+    const PreviewScoreStep& s1 = scene.score.steps[1];
+    const PreviewScoreStep& s2 = scene.score.steps[2];
+    CHECK(s2.total - s1.total ==
+          (s2.score_without_solo - s1.score_without_solo) + path.score_solo);
+
+    // At the end the box agrees with the path's own count (path_stars), and
+    // the gap is still counted without the bonus.
+    const PreviewScoreBox end = score_box_at(scene, 1000.0);
+    CHECK(end.score == "580");
+    CHECK(end.stars == path_stars(path));
+    CHECK(end.stars == 3);
+    CHECK(end.next_star == "star 4 in 380");
+}
+
+TEST_CASE("score box stars: no score, no stars") {
+    Song song = make_hand_song();
+    PreviewScoreBox none = score_box_at(build_preview_scene(song, nullptr), 600.0);
+    CHECK(none.stars == 0);
+    CHECK(none.next_star.empty());
+
+    Path wrong = priced_path(song, {});
+    wrong.score_base += 1;
+    PreviewScoreBox unavailable = score_box_at(build_preview_scene(song, &wrong), 600.0);
+    REQUIRE(unavailable.shown);
+    REQUIRE_FALSE(unavailable.available);
+    CHECK(unavailable.stars == 0);
+    CHECK(unavailable.next_star.empty());
 }
 
 // ---- SP drain box -------------------------------------------------------
