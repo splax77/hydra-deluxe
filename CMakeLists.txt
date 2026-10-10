@@ -491,6 +491,7 @@ add_executable(hydra_tests
     tests/test_preview_clock.cpp
     tests/test_preview_transport.cpp
     tests/test_image_decode.cpp
+    tests/test_icons.cpp
     tests/test_preview_renderer.cpp
     tests/test_dynamics_breakdown.cpp
     tests/test_song.cpp
