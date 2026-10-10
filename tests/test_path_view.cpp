@@ -14,6 +14,7 @@
 #include "app/display_format.h"
 #include "app/path_view.h"
 #include "app/preview_view.h"  // path_overlay_key
+#include "analyzed_chart.h"
 #include "corpus_util.h"
 #include "record_fixtures.h"
 #include "scratch_settings.h"
@@ -23,18 +24,8 @@ using namespace hydra::app;
 
 namespace {
 
-// One analyzed corpus chart (the first that yields paths), shared across
-// cases: analysis is the slow part.
-const AnalysisResult& analyzed() {
-    static const AnalysisResult result = [] {
-        AnalysisSettings settings;
-        settings.depth_mode = DepthMode::Scores;
-        settings.depth_value = 10;
-        settings.ms_filter = 10.0;
-        return corpus::first_analyzed_with_paths(settings);
-    }();
-    return result;
-}
+// One analyzed corpus chart (see analyzed_chart.h), shared across cases.
+const AnalysisResult& analyzed() { return corpus::analyzed_by_ten_scores(); }
 
 // Burnout (Green Day, charter Hoph2o), analyzed the way the GUI tests
 // analyze it: Expert, Pro Drums, 2x Bass, SP cap 4, 2 scores, 10 ms limit.
@@ -1026,10 +1017,12 @@ TEST_CASE("squeeze sentences: a SqIn on the SP end is free, like its rating (D13
                                   0) == 0);
 }
 
-TEST_CASE("backend table: a counted row inside SP shows its early-scale eff. figure") {
-    // Sun of Nothing act 5: early frontend hits reach the SP end x1.60, so
-    // the note 400 ms inside SP is effectively 307.7 ms from being lost.
-    HydraRecord rec;
+namespace {
+
+// Sun of Nothing act 5 as a one-activation path: early frontend hits reach
+// the SP end x1.60, and one counted Green backend row (260 points) sits
+// 400 ms inside SP.
+Path sun_of_nothing_act5() {
     Activation act;
     test::set_skips(act, 0);
     act.e_offset = 300.0;  // not e-critical
@@ -1041,6 +1034,16 @@ TEST_CASE("backend table: a counted row inside SP shows its early-scale eff. fig
     act.backends.push_back(row);
     Path p;
     p.activations.push_back(act);
+    return p;
+}
+
+}  // namespace
+
+TEST_CASE("backend table: a counted row inside SP shows its early-scale eff. figure") {
+    // Sun of Nothing act 5: early frontend hits reach the SP end x1.60, so
+    // the note 400 ms inside SP is effectively 307.7 ms from being lost.
+    HydraRecord rec;
+    const Path p = sun_of_nothing_act5();
 
     ActivationsView v = build_activations(p, rec, nullptr, 85.0);
     REQUIRE(v.acts.size() == 1);
@@ -1095,19 +1098,9 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
 TEST_CASE("backend table: the tooltip names the normal budget at one decimal in both places") {
     // A hit window of 85.25 ms makes the normal budget 170.5 ms. D57 item 2:
     // the tooltip writes it once, at one decimal, and says it twice, so it
-    // never reads "171 ms" beside "170.5 ms".
+    // never reads "171 ms" beside "170.5 ms". The path is the x1.60 one above.
     HydraRecord rec;
-    Activation act;
-    test::set_skips(act, 0);
-    act.e_offset = 300.0;  // not e-critical
-    test::set_transfer(act, TransferScale{1.6, 1.0});
-    BackendSqueeze row;
-    row.chord.add_note(NoteColor::Green);
-    row.points = 260;
-    row.offset_ms = -400.0;
-    act.backends.push_back(row);
-    Path p;
-    p.activations.push_back(act);
+    const Path p = sun_of_nothing_act5();
 
     ActivationsView v = build_activations(p, rec, nullptr, 85.25);
     REQUIRE(v.acts.size() == 1);

@@ -25,6 +25,7 @@
 #include "core/replay.h"
 #include "core/squeeze_rating.h"
 #include "core/timing.h"  // sp_bars_to_measures
+#include "analyzed_chart.h"
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "record_fixtures.h"
@@ -188,17 +189,8 @@ Song make_overfill_song() {
                                      {6768},        {7500}});
 }
 
-// One analyzed corpus chart (the first that yields paths), shared across cases.
-const AnalysisResult& analyzed() {
-    static const AnalysisResult result = [] {
-        AnalysisSettings settings;
-        settings.depth_mode = DepthMode::Scores;
-        settings.depth_value = 10;
-        settings.ms_filter = 10.0;
-        return corpus::first_analyzed_with_paths(settings);
-    }();
-    return result;
-}
+// One analyzed corpus chart (see analyzed_chart.h), shared across cases.
+const AnalysisResult& analyzed() { return corpus::analyzed_by_ten_scores(); }
 
 // A path whose stored score is what the replay prices it at, so the scene
 // trusts it. The corpus case proves the replay against the engine; these

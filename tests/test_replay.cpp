@@ -47,40 +47,58 @@
 using namespace hydra;
 using json = nlohmann::json;
 
-TEST_CASE("replay reproduces the engine's score for every corpus path") {
+namespace {
+
+// What a walk over every stored corpus path found.
+struct CorpusPathRun {
     int charts = 0, paths = 0, mismatches = 0;
-    std::string first_diff;
+    std::string first_diff;  // the first mismatch, named by chart and path
+};
 
-    // The GUI's defaults, straight from app::Settings rather than five
-    // hand-written literals: cap 4, score range 4, 10 ms.
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-
+// Walks every stored path of every corpus chart `cfg` analyzes. `check` is
+// called with the chart's song and one stored path; it returns "" when the
+// path passes, or what differs.
+template <class Check>
+CorpusPathRun check_every_corpus_path(const app::AnalysisSettings& cfg, Check check) {
+    CorpusPathRun run;
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
         if (song.is_empty()) continue;
-        ++charts;
+        ++run.charts;
 
         const HydraRecord& rec = corpus::analyzed(path, cfg);
 
         for (const Path* p : rec.all_paths()) {
-            ++paths;
-            const PathReplay pr = replay_stored_path(song, *p);
-            REQUIRE(pr.all_windows());
-
-            if (!pr.totals_match()) {
-                ++mismatches;
-                if (first_diff.empty())
-                    first_diff = path + " [" + p->pathstring() + "]: replay " +
-                                 std::to_string(pr.result.final.total()) + " vs stored " +
-                                 std::to_string(p->totalscore());
-            }
+            ++run.paths;
+            const std::string diff = check(song, *p);
+            if (diff.empty()) continue;
+            ++run.mismatches;
+            if (run.first_diff.empty()) run.first_diff = path + " [" + p->pathstring() + "]" + diff;
         }
     }
+    return run;
+}
 
-    CHECK(charts > 0);
-    CHECK(paths > 0);
-    INFO("first mismatch: " << first_diff);
-    CHECK(mismatches == 0);
+}  // namespace
+
+TEST_CASE("replay reproduces the engine's score for every corpus path") {
+    // The GUI's defaults, straight from app::Settings rather than five
+    // hand-written literals: cap 4, score range 4, 10 ms.
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+
+    const CorpusPathRun run = check_every_corpus_path(
+        cfg, [](const Song& song, const Path& p) -> std::string {
+            const PathReplay pr = replay_stored_path(song, p);
+            REQUIRE(pr.all_windows());
+            if (pr.totals_match()) return "";
+            return ": replay " + std::to_string(pr.result.final.total()) + " vs stored " +
+                   std::to_string(p.totalscore());
+        });
+
+    CHECK(run.charts > 0);
+    CHECK(run.paths > 0);
+    INFO("first mismatch: " << run.first_diff);
+    CHECK(run.mismatches == 0);
 }
 
 // The combo the game's counter shows once a chord is hit. The Preview's score
@@ -145,29 +163,19 @@ TEST_CASE("replay: a solo's bonus reaches the on-screen total on the section's l
 // same squeezes. That is the whole contract: "activate exactly here" must not
 // change how the engine scores what happens next.
 TEST_CASE("targeted search reproduces every corpus path") {
-    int charts = 0, paths = 0, mismatches = 0;
-    std::string first_diff;
-
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
 
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
-        if (song.is_empty()) continue;
-        ++charts;
+    const CorpusPathRun run = check_every_corpus_path(
+        cfg, [&cfg](const Song& song, const Path& p) -> std::string {
+            const std::vector<Activation> want_acts = p.all_activations();
 
-        const HydraRecord& rec = corpus::analyzed(path, cfg);
-
-        for (const Path* p : rec.all_paths()) {
-            ++paths;
-            const std::vector<Activation> want_acts = p->all_activations();
-
-            const std::vector<Path> got = search_target(song, cfg, test::act_ticks(*p));
+            const std::vector<Path> got = search_target(song, cfg, test::act_ticks(p));
 
             // Somewhere in the returned variants must be this exact path.
             const Path* match = nullptr;
             const std::vector<const Path*> targeted = flatten_paths(got);
             for (const Path* q : targeted) {
-                if (q->totalscore() != p->totalscore()) continue;
+                if (q->totalscore() != p.totalscore()) continue;
                 const std::vector<Activation> qa = q->all_activations();
                 if (qa.size() != want_acts.size()) continue;
                 bool same = true;
@@ -185,26 +193,20 @@ TEST_CASE("targeted search reproduces every corpus path") {
                 if (same) { match = q; break; }
             }
 
-            if (!match) {
-                ++mismatches;
-                if (first_diff.empty())
-                    first_diff = path + " [" + p->pathstring() + "] score " +
-                                 std::to_string(p->totalscore()) + ": " +
-                                 std::to_string(targeted.size()) +
-                                 " targeted path(s), none matching";
-                continue;
-            }
+            if (!match)
+                return " score " + std::to_string(p.totalscore()) + ": " +
+                       std::to_string(targeted.size()) + " targeted path(s), none matching";
 
             // The recovered path also has to replay to its own score, which is
             // the invariant the first test pins for search-found paths.
             CHECK(replay_stored_path(song, *match).totals_match());
-        }
-    }
+            return "";
+        });
 
-    CHECK(charts > 0);
-    REQUIRE(paths >= 300);
-    INFO("first mismatch: " << first_diff);
-    CHECK(mismatches == 0);
+    CHECK(run.charts > 0);
+    REQUIRE(run.paths >= 300);
+    INFO("first mismatch: " << run.first_diff);
+    CHECK(run.mismatches == 0);
 }
 
 namespace {
@@ -333,12 +335,13 @@ TEST_CASE("replay without Star Power scores no doubling at all") {
     CHECK(r.chords.back().cum_onscreen_total == r.final.total());
 }
 
-// Round and Round's shape on a hand-built chart: a window whose squeeze-out
-// sits on an R+Y phrase chord ~479 ms past the SP end. That chord is outside
-// the window and outside the leeway, so it earns no doubling at all -- the
-// squeeze-out changes nothing. The chord on the deactivation node is paid.
-TEST_CASE("a squeezed-out chord past the leeway earns nothing") {
-    // 4/4, 120 BPM, 192 ticks per beat: 768 ticks and 2000 ms per measure.
+namespace {
+
+// Round and Round's shape on a hand-built chart: six R+Y chords, 192 ticks a
+// beat, 120 BPM, 768 ticks (2000 ms) a measure. Ticks 0, 768, 1536, 2304,
+// 3072 are 0, 2000, 4000, 6000, 8000 ms; the phrase chord at 3256 is
+// 8479.2 ms.
+Song squeeze_chart() {
     Song song(192);
     song.bpm_changes[0] = 120.0;
     song.build_timing();
@@ -350,6 +353,17 @@ TEST_CASE("a squeezed-out chord past the leeway earns nothing") {
         if (tick == 3256) test::mark_phrase_end(ts, tick, song.tick_resolution());
         song.sequence.push_back(ts);
     }
+    return song;
+}
+
+}  // namespace
+
+// Round and Round's shape (squeeze_chart): a window whose squeeze-out sits
+// on an R+Y phrase chord ~479 ms past the SP end. That chord is outside the
+// window and outside the leeway, so it earns no doubling at all -- the
+// squeeze-out changes nothing. The chord on the deactivation node is paid.
+TEST_CASE("a squeezed-out chord past the leeway earns nothing") {
+    const Song song = squeeze_chart();
 
     ReplayWindow w;
     w.act_tick = 0;
@@ -1580,25 +1594,6 @@ std::string compact_line(const ReplayResult& r) {
 // Built lines against pinned ones, printed as literals on a mismatch
 // (record_fixtures.h).
 using test::check_lines;
-
-// Six R+Y chords on the chart of "a squeezed-out chord past the leeway earns
-// nothing": 192 ticks a beat, 120 BPM, 768 ticks (2000 ms) a measure. Ticks
-// 0, 768, 1536, 2304, 3072 are 0, 2000, 4000, 6000, 8000 ms; the phrase chord
-// at 3256 is 8479.2 ms.
-Song squeeze_chart() {
-    Song song(192);
-    song.bpm_changes[0] = 120.0;
-    song.build_timing();
-    for (int64_t tick : {0, 768, 1536, 2304, 3072, 3256}) {
-        SongTimestamp ts;
-        ts.timecode = song.timecode(tick);
-        ts.chord.add_note(NoteColor::Red);
-        ts.chord.add_note(NoteColor::Yellow);
-        if (tick == 3256) test::mark_phrase_end(ts, tick, song.tick_resolution());
-        song.sequence.push_back(ts);
-    }
-    return song;
-}
 
 ReplayWindow window(int64_t act, int64_t deact, std::optional<int64_t> sqout = std::nullopt) {
     ReplayWindow w;
