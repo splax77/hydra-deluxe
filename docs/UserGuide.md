@@ -336,25 +336,63 @@ Older versions saved the reports as web pages, `hydra_paths.html` and `hydra_dmc
 
 ### Compare with dmleaderboards
 
-`Compare with dmleaderboards...` compares a [dmleaderboards.com](https://dmleaderboards.com) player's posted scores with your stored optimals. Pick a player from the searchable list in the **Compare dmleaderboards user** box; Hydra Deluxe remembers the last pick. Picking a player closes the box and opens the comparison in its own window, titled `dmleaderboards: <player> — Hydra`. Hydra Deluxe fetches the player's scores and matches them to your analyzed songs by chart hash.
-
-The comparison window works like the path report window. It has the same header, strips, tiles, controls, table, keyboard and placement. Its header reads `Hydra vs dmleaderboards` and also has `Compare another player...`, which reopens the box. There is one comparison window, so comparing another player replaces what it shows.
-
-While the scores load, the window says `Fetching scores and building the report...` and `The leaderboard server can take a moment to wake up.`, over a moving bar. The server gives no count, so the bar only shows that work is happening. `Cancel` closes the window and reopens the player list. `Refresh` fetches the player's scores again and rebuilds the comparison.
-
-The table lists each score, Hydra Deluxe's optimal, the points left, and a status per row. It starts sorted by points left, most first. A score played at normal speed that Hydra Deluxe has a result for reads `Under optimal`, `At optimal` or `Above optimal`. A score played at any other speed reads Other speed. The rest read Not analyzed or Not in your library. The status dropdown shows one status at a time, or `All charts`.
-
-Clicking a row selects its song, as in the path report. A row whose status is `not in library` has no song to select, so clicking it does nothing, and hovering it says `Not in your library`.
-
-The header line gives the player's total number of scores. The tiles count only the rows that pass the filters: `Scores shown`, then the scores under, at and above optimal, the ones for songs you haven't analyzed, and the ones for songs not in your library. Scores played at a speed other than 100% get their own status, Other speed. Clone Hero keeps a separate leaderboard for each speed, and Hydra Deluxe's optimal is for normal speed, so those rows show Hydra's numbers but aren't compared with its optimal.
-
-Rows above optimal are expected, not errors. Hydra Deluxe's optimal leaves out several score backends on purpose. Many leaderboard scores were also set on older Clone Hero versions, whose fill rules allowed totals that are impossible now.
+`Compare with dmleaderboards...` compares a [dmleaderboards.com](https://dmleaderboards.com) player's posted scores with your stored optimals. Pick a player from the searchable list in the `Compare dmleaderboards user` box; Hydra Deluxe remembers the last pick. Picking a player closes the box and opens the comparison in its own window, titled `dmleaderboards: <player> — Hydra`. Hydra Deluxe fetches the player's scores and matches them to your analyzed songs by chart hash.
 
 The comparison needs Expert, an SP cap of 4, `1.0 fills` off and Note Shuffle off. The leaderboard only holds Expert scores played under Clone Hero's rules, and its scores don't say whether Note Shuffle was on. Only songs analyzed under the current settings can match, so analyze your library first for a full comparison.
 
-The comparison goes out of date the same way the path report does, with the same strips. A batch marks it. So does a change to the difficulty, Pro Drums, 2x Bass, Note Shuffle, `1.0 fills`, the score range or the path limit, because those decide which of your results it compared against.
+The first request after a while can take tens of seconds, because the leaderboard's server has to wake up. While the scores load, the window says `Fetching scores and building the report...` and `The leaderboard server can take a moment to wake up.`, over a moving bar. The server gives no count, so the bar only shows that work is happening. `Cancel` closes the window and reopens the player list.
 
-The first request after a while can take tens of seconds, because the leaderboard's server has to wake up.
+The comparison window has the same layout, keyboard and placement as the path report window (see [Report windows](#report-windows)). Its header reads `Hydra vs dmleaderboards`, and its line gives the player's name and total number of scores. Next to `Refresh`, which fetches the player's scores again and rebuilds the comparison, the header has `Compare another player...`, which reopens the box. There is one comparison window, so comparing another player replaces what it shows. Closing the window doesn't keep the comparison: to see it again, pick the player again, which fetches the scores again.
+
+Every row gets one status. The status dropdown shows one status at a time, or `All charts`. These are its entries:
+
+| Status | Which scores get it |
+| --- | --- |
+| `Under optimal` | Scores played at 100% speed that are below Hydra Deluxe's optimal for the chart. |
+| `At optimal` | Scores played at 100% speed that equal it. |
+| `Above optimal` | Scores played at 100% speed that are higher than it. |
+| `Not analyzed (in your library)` | Scores for a chart in your library that has no current result for this mode at SP cap 4. |
+| `No paths (analyzed, none kept)` | Scores for a chart that was analyzed, but whose analysis kept no path. |
+| `Not in your library` | Scores for a chart the last scan didn't find. |
+| `Other speed` | Scores played at a speed other than 100%. |
+
+A score played at another speed is always `Other speed`, whatever else is true of it. Clone Hero keeps a separate leaderboard for each speed, and Hydra Deluxe's optimal is for normal speed. So `Other speed` rows show Hydra Deluxe's numbers when it has them, but aren't compared with its optimal.
+
+Rows above optimal are expected, not errors. Hydra Deluxe's optimal leaves out several score backends on purpose. Many leaderboard scores were also set on older Clone Hero versions, whose fill rules allowed totals that are impossible now.
+
+The tiles count only the rows that pass the filters:
+
+| Tile | What it shows |
+| --- | --- |
+| `Scores shown` | Every row that passes, whatever its status. |
+| `Under optimal`, `At optimal`, `Above optimal` | The rows with each of those statuses. |
+| `Not analyzed` | The `Not analyzed (in your library)` rows. |
+| `Not in library` | The `Not in your library` rows. |
+| `Other speed` | The `Other speed` rows. |
+| `Avg % of optimal` | The average of the `% of opt` column, over the rows that have one. |
+| `Points left on table` | The points left on the `Under optimal` rows, added up. |
+
+`No paths (analyzed, none kept)` rows have no tile of their own, but `Scores shown` counts them.
+
+The search box matches the song, artist and charter. The table starts sorted by points left, most first. Its columns:
+
+| Column | What it shows |
+| --- | --- |
+| `Song`, `Artist`, `Charter` | The chart's song, artist and charter. |
+| `Actual` | The score the player posted. |
+| `Hydra opt` | The optimal score Hydra Deluxe found for the chart at SP cap 4, the Clone Hero rule. |
+| `Points left` | `Hydra opt` minus `Actual`. A score above optimal reads how far over it is, as `+N over`. |
+| `% of opt` | `Actual` as a percent of `Hydra opt`. Only for scores played at 100% speed. |
+| `FC` | A check mark for a full combo: every note hit. |
+| `Percent` | The percent the leaderboard lists for this score. |
+| `Speed` | The playback speed the score was set at. 100% is normal speed. |
+| `Rank` | The score's rank on this chart's leaderboard. |
+| `Posted` | The date the score was posted. |
+| `Status` | The row's status, from the table above. |
+
+Clicking a row selects its song, as in the path report. A `Not in your library` row has no song to select, so clicking it does nothing, the `Up` and `Down` arrows pass over it, and hovering it says `Not in your library`.
+
+The comparison goes out of date the same way the path report does, with the same strips. A batch marks it. So does a change to the difficulty, Pro Drums, 2x Bass, Note Shuffle, `1.0 fills`, the score range or the path limit, because those decide which of your results it compared against.
 
 ## Scoring rules (`hydra_rules.ini`)
 
