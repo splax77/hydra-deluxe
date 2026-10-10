@@ -66,17 +66,21 @@ add_compile_options($<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:C,CXX>>:/Zi>)
 # /DEBUG turns off /OPT:REF and /OPT:ICF unless they are named, so they are
 # named to keep the exes as lean as before. /PDBALTPATH stores only the .pdb's
 # file name in the exe, not the build folder's path, which the installer's
-# "no repo path" check would refuse. It is set below, after HYDRA_ASAN.
+# "no repo path" check would refuse. A debugger, the AddressSanitizer
+# symbolizer and the coverage tool all look for that name beside the exe.
+# The name is written out, not given as the linker's %_PDB%, because the
+# Visual Studio generator doubles each % twice (CMake issue 15865), and the
+# exes then stored "%%%Hydra.pdb%%%". tests/test_build_flags.cpp checks it.
 add_link_options($<$<CONFIG:Release>:/DEBUG>
                  $<$<CONFIG:Release>:/OPT:REF>
-                 $<$<CONFIG:Release>:/OPT:ICF>)
+                 $<$<CONFIG:Release>:/OPT:ICF>
+                 "$<$<CONFIG:Release>:/PDBALTPATH:$<TARGET_PDB_FILE_NAME:$<TARGET_PROPERTY:NAME>>>")
 
 # The coverage build: a test-only build that maps which lines of src\ the
 # tests reach, in build-coverage\ via the coverage preset. It never ships.
 # Microsoft.CodeCoverage.Console can only instrument a native exe linked with
-# /PROFILE, and it reads the .pdb through the path stored in the exe, so this
-# build keeps the full path (the /PDBALTPATH branch below). The CI coverage
-# job and "The coverage report" in docs/development.md own the rest.
+# /PROFILE. The CI coverage job and "The coverage report" in
+# docs/development.md own the rest.
 option(HYDRA_COVERAGE "Code coverage test build (the coverage preset turns it on; never ships)" OFF)
 if(HYDRA_COVERAGE)
     message(STATUS "Code coverage: on (every exe links with /PROFILE)")
@@ -106,12 +110,6 @@ if(HYDRA_ASAN)
     foreach(lang C CXX)
         string(REPLACE "/RTC1" "" CMAKE_${lang}_FLAGS_DEBUG "${CMAKE_${lang}_FLAGS_DEBUG}")
     endforeach()
-elseif(NOT HYDRA_COVERAGE)
-    # The AddressSanitizer build keeps the .pdb's full path, because its
-    # symbolizer (llvm-symbolizer) cannot follow a bare name and its reports
-    # would name no functions. The coverage build keeps it too (above). Neither
-    # build ships.
-    add_link_options($<$<CONFIG:Release>:/PDBALTPATH:%_PDB%>)
 endif()
 
 # The fuzz build: libFuzzer targets that feed random bytes to the file parsers
@@ -571,6 +569,11 @@ target_compile_definitions(hydra_tests PRIVATE
     HYDRA_ASSET_DIR="${CMAKE_SOURCE_DIR}/assets/preview"
     HYDRA_SOURCE_DIR="${CMAKE_SOURCE_DIR}"  # tests/single_owner scans src/, tools/ and tests/
 )
+# The coverage tool rewrites the exe it instruments, .pdb name included, so
+# tests/test_build_flags.cpp has no linker output to check in that build.
+if(HYDRA_COVERAGE)
+    target_compile_definitions(hydra_tests PRIVATE HYDRA_COVERAGE)
+endif()
 
 # ---- hydra_uitest: the headless GUI test runner ----------------------------
 # Runs the real ImGui UI with no window, driven by the Dear ImGui Test Engine;

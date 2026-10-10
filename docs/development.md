@@ -133,7 +133,9 @@ the `.ipdb` alone. Nothing stale can reach a shipped exe.
 
 Each Release exe gets a symbol file (`.pdb`) beside it, for profilers and
 crash dumps. The exe records only the symbol file's name, never the build
-folder's path. No symbol file ships: the install rules name only the exes and
+folder's path; `tests/test_build_flags.cpp` checks that name. Debuggers, the
+ASan symbolizer and the coverage tool all find the symbol file by that name
+beside the exe. No symbol file ships: the install rules name only the exes and
 DLLs, and the installer refuses a staging folder that holds one.
 
 The vendored SQLite is built without its memory-use counters and without
