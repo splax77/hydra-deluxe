@@ -74,7 +74,7 @@ the tests only.
 .\build_cpp.ps1              # configure + build everything (Release), dev tools too
 .\build_cpp.ps1 -Preset ship -Package   # zip a release without the GUI tests
 .\build_cpp.ps1 -Target hydra_tests
-.\build-cpp\Release\hydra_tests.exe    # run the test suite
+ctest --test-dir build-cpp -C Release -j 4 -R hydra_tests --output-on-failure   # run the test suite in its slices (tests/shards.txt)
 ```
 
 To build the Windows installer (needs Inno Setup 6:
@@ -152,10 +152,6 @@ won't start without both beside it. `hydra_use_mimalloc` at the bottom of
 `CMakeLists.txt` owns which exes link it and how, and puts both DLLs in the
 build folder; the install rules stage them beside the shipped exes.
 
-To run the leak checks (`hydra::test::leak_checked` in `tests/leak_check.h`), build
-with `.\build_cpp.ps1 -Target hydra_tests -Config Debug` and run
-`build-cpp\Debug\hydra_tests.exe` with `MIMALLOC_DISABLE_REDIRECT=1` set.
-
 Four speed flags stay out on purpose. `/fp:fast` and `/fp:contract` let the
 compiler reorder or fuse floating-point math, which can move a computed timing
 or score in its last bit, and every stored result must stay byte-identical.
@@ -167,6 +163,17 @@ The tests run against the checked-in chart corpus under `testdata/input/`;
 nothing else is needed. `hydra_tests` asserts structural invariants and
 lossless round-trips over that corpus. GUI changes are checked headlessly with
 `hydra_uitest`; see [agents/ui-testing.md](agents/ui-testing.md).
+
+The Python and PowerShell tools have their own tests, and none needs a C++
+build. Run them from the repository root:
+
+    py -m pytest tools/ch_probe/tests tools/test_compare_db.py -q
+    pwsh -NoProfile -File tools/test_mutation_probe.ps1
+    pwsh -NoProfile -File tools/test_derive_once_precheck.ps1
+
+Name the two pytest paths rather than `tools/` as a whole: the scripts in
+`tools/ch_probe/experiments/` look like tests to pytest and drive the real
+game.
 
 The program's name on screen is "Hydra Deluxe", but its files keep their older
 names: `Hydra.exe`, `hydra.db`, `hydra_settings.ini`, `hydra_ui.ini` and the
@@ -312,9 +319,13 @@ and `hydra_uitest` with `build_cpp.ps1`, exactly as above, so a compiler
 warning fails the run. Then it runs `hydra_tests` and the headless GUI tests
 in `hydra_uitest`.
 
-One test is left out on GitHub: the one that opens the real sound output
-(`tests/test_audio_device.cpp`), because hosted runners have no audio device.
-Run it locally. A newer push to the same branch or pull request cancels the
+A second job, beside it, runs the tool tests above with no C++ build. It
+checks out the whole history, because the precheck self-test checks two real
+commit ranges and skips them in a shallow clone.
+
+One slice of the tests is left out on GitHub: the one that opens the real
+sound output, because hosted runners have no audio device. `tests/shards.txt`
+marks which slice that is. Run it locally. A newer push to the same branch or pull request cancels the
 run it replaces.
 
 ## Other developer notes in this folder

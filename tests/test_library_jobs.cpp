@@ -30,6 +30,7 @@
 #include "temp_util.h"
 #include "ui/dm_jobs.h"
 #include "ui/library_jobs.h"
+#include "wait_util.h"
 
 using hydra::app::AnalysisResult;
 using hydra::app::AnalysisSettings;
@@ -42,16 +43,7 @@ using hydra::ui::BatchJob;
 namespace {
 
 using namespace std::chrono_literals;
-
-template <class Pred>
-bool wait_until(Pred pred, std::chrono::milliseconds limit = 10s) {
-    const auto until = std::chrono::steady_clock::now() + limit;
-    while (!pred()) {
-        if (std::chrono::steady_clock::now() > until) return false;
-        std::this_thread::sleep_for(1ms);
-    }
-    return true;
-}
+using testwait::wait_until;
 
 std::vector<ChartLibraryEntry> fake_charts(int n) {
     std::vector<ChartLibraryEntry> charts;
@@ -87,7 +79,7 @@ hydra::app::ChartAnalyzer gated_failure(std::atomic<int>& started, std::atomic<b
     return [&started, &release, error, kind](const std::string&, const AnalysisSettings&,
                                              const std::function<void(float)>&) -> AnalysisResult {
         ++started;
-        while (!release.load()) std::this_thread::sleep_for(1ms);
+        wait_until([&release] { return release.load(); }, "the test to release the chart");
         throw hydra::KindedError(kind, error);
     };
 }
@@ -129,11 +121,11 @@ TEST_CASE("jobs: pause lets the chart in flight finish and starts no new one") {
     job.set_analyzer_for_test(gated_failure(started, release, "MD5 hashing failed"),
                               /*workers=*/1);
     job.start();
-    REQUIRE(wait_until([&] { return started.load() == 1; }));
+    wait_until([&] { return started.load() == 1; }, "the first chart to start");
 
     job.pause();
     release = true;
-    REQUIRE(wait_until([&] { return job.snapshot().completed == 1; }));
+    wait_until([&] { return job.snapshot().completed == 1; }, "the chart in flight to finish");
     std::this_thread::sleep_for(200ms);
     CHECK(started.load() == 1);  // nothing new started while paused
     BatchJob::Snapshot paused = job.snapshot();
@@ -141,7 +133,7 @@ TEST_CASE("jobs: pause lets the chart in flight finish and starts no new one") {
     CHECK_FALSE(paused.eta_s.has_value());
 
     job.resume();
-    REQUIRE(wait_until([&] { return job.snapshot().finished; }));
+    wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
     BatchJob::Snapshot done = job.snapshot();
     CHECK(started.load() == 3);
     CHECK(done.completed == 3);
@@ -163,7 +155,7 @@ TEST_CASE("jobs: stop while paused ends the run and fails nothing") {
     CHECK(job.snapshot().paused);
 
     job.stop();
-    REQUIRE(wait_until([&] { return job.snapshot().finished; }, 5s));
+    wait_until([&] { return job.snapshot().finished; }, "the stopped batch to finish");
     BatchJob::Snapshot s = job.snapshot();
     CHECK(started.load() == 0);
     CHECK(s.completed == 0);
@@ -180,7 +172,7 @@ TEST_CASE("jobs: the snapshot names the chart being analyzed and freezes its clo
     job.set_analyzer_for_test(gated_failure(started, release, "MD5 hashing failed"),
                               /*workers=*/1);
     job.start();
-    REQUIRE(wait_until([&] { return started.load() == 1; }));
+    wait_until([&] { return started.load() == 1; }, "the first chart to start");
 
     BatchJob::Snapshot running = job.snapshot();
     CHECK(running.current_title == "fake 0");
@@ -189,7 +181,7 @@ TEST_CASE("jobs: the snapshot names the chart being analyzed and freezes its clo
     CHECK_FALSE(running.eta_s.has_value());
 
     release = true;
-    REQUIRE(wait_until([&] { return job.snapshot().finished; }));
+    wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
     BatchJob::Snapshot done = job.snapshot();
     CHECK(done.current_title.empty());
     CHECK(done.current_artist.empty());
@@ -208,10 +200,10 @@ TEST_CASE("jobs: the progress line's artist reads (unknown) when it is only tags
     job.set_analyzer_for_test(gated_failure(started, release, "MD5 hashing failed"),
                               /*workers=*/1);
     job.start();
-    REQUIRE(wait_until([&] { return started.load() == 1; }));
+    wait_until([&] { return started.load() == 1; }, "the first chart to start");
     CHECK(job.snapshot().current_artist == "(unknown)");
     release = true;
-    REQUIRE(wait_until([&] { return job.snapshot().finished; }));
+    wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
 }
 
 TEST_CASE("jobs: a failed chart reads in plain words and keeps the raw text") {
@@ -224,7 +216,7 @@ TEST_CASE("jobs: a failed chart reads in plain words and keeps the raw text") {
                       hydra::ErrorKind::SongFileMissing),
         1);
     job.start();
-    REQUIRE(wait_until([&] { return job.snapshot().finished; }));
+    wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
     BatchJob::Snapshot s = job.snapshot();
     REQUIRE(s.failures.size() == 1);
     REQUIRE(s.failure_details.size() == 1);
@@ -245,7 +237,7 @@ TEST_CASE("jobs: a batch that fails as a whole shows its error and counts no cha
     BatchJob job(plan_of(fake_charts(2)), test_run(), store);
     job.set_analyzer_for_test(gated_failure(started, release, "never analyzed"), /*workers=*/0);
     job.start();
-    REQUIRE(wait_until([&] { return job.snapshot().finished; }));
+    wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
 
     const BatchJob::Snapshot s = job.snapshot();
     CHECK(started.load() == 0);
@@ -271,7 +263,7 @@ TEST_CASE("jobs: the snapshot's counts come from the batch in one piece") {
         },
         /*workers=*/1);
     job.start();
-    REQUIRE(wait_until([&] { return job.snapshot().finished; }));
+    wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
 
     const BatchJob::Snapshot s = job.snapshot();
     CHECK(s.analyzed == 2);
@@ -343,7 +335,7 @@ TEST_CASE("jobs: a finished batch hands the memory its charts freed back to Wind
         BatchJob job(plan_of(fake_charts(4)), test_run(), store);
         job.set_analyzer_for_test(analyzer_carrying_chart_bytes(real), /*workers=*/2);
         job.start();
-        REQUIRE(wait_until([&] { return job.snapshot().finished; }));
+        wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
     });
 }
 
@@ -363,7 +355,7 @@ TEST_CASE("jobs: a finished report build hands the memory its charts freed back 
                                  run);
         hydra::ui::set_report_analyzer_for_test({});
         job.start();
-        REQUIRE(wait_until([&] { return job.finished(); }));
+        wait_until([&] { return job.finished(); }, "the report build to finish");
         INFO(job.message());
         REQUIRE(job.ok());  // the chart was analyzed: the build has rows
     });
@@ -390,7 +382,7 @@ TEST_CASE("jobs: an empty report shows generate_report's reason, or the app's ow
     hydra::ui::ReportJob orphaned(no_library, run.cap_query(), run.lens,
                                   hydra::kDefaultHitWindowMs, run);
     orphaned.start();
-    REQUIRE(wait_until([&] { return orphaned.finished(); }));
+    wait_until([&] { return orphaned.finished(); }, "the report with no library to finish");
     CHECK_FALSE(orphaned.ok());
     CHECK(orphaned.message() == std::string(hydra::app::report::kNoChartLibrary));
 
@@ -398,7 +390,7 @@ TEST_CASE("jobs: an empty report shows generate_report's reason, or the app's ow
     hydra::ui::ReportJob nothing(empty, run.cap_query(), run.lens,
                                  hydra::kDefaultHitWindowMs, run);
     nothing.start();
-    REQUIRE(wait_until([&] { return nothing.finished(); }));
+    wait_until([&] { return nothing.finished(); }, "the report with no results to finish");
     CHECK_FALSE(nothing.ok());
     CHECK(nothing.message() ==
           hydra::app::plain_error(hydra::KindedError(hydra::ErrorKind::NoRecords, "x")));
@@ -416,7 +408,7 @@ TEST_CASE("jobs: a report job lets go of the batch's rows once its pass is done"
     hydra::ui::ReportJob job(store, run.cap_query(), run.lens, 85.5, run, std::move(seed));
     REQUIRE(job.seed_charts_for_test() == 1);
     job.start();
-    REQUIRE(wait_until([&] { return job.finished(); }));
+    wait_until([&] { return job.finished(); }, "the report job to finish");
     CHECK(job.seed_charts_for_test() == 0);
 }
 
@@ -430,25 +422,25 @@ TEST_CASE("jobs: a cancelled leaderboard fetch is not an error") {
 
     // What the WinHTTP fetch does when cancel lands between read chunks.
     hydra::net::set_fetcher([](const std::string&, const std::atomic<bool>* cancel) -> std::string {
-        while (!cancel->load()) std::this_thread::sleep_for(1ms);
+        wait_until([cancel] { return cancel->load(); }, "the fetch to be cancelled");
         throw std::runtime_error("cancelled");
     });
     hydra::ui::DmReportJob thrown(store, "1", "someone", "jobs-test", hydra::store::Lens{});
     thrown.start();
     thrown.cancel();
-    REQUIRE(wait_until([&] { return thrown.finished(); }));
+    wait_until([&] { return thrown.finished(); }, "the cancelled fetch to finish");
     CHECK_FALSE(thrown.ok());
     CHECK(thrown.message().empty());
 
     // The server answers after the cancel: nothing is written or opened.
     hydra::net::set_fetcher([](const std::string&, const std::atomic<bool>* cancel) -> std::string {
-        while (!cancel->load()) std::this_thread::sleep_for(1ms);
+        wait_until([cancel] { return cancel->load(); }, "the fetch to be cancelled");
         return "{}";
     });
     hydra::ui::DmReportJob late(store, "1", "someone", "jobs-test", hydra::store::Lens{});
     late.start();
     late.cancel();
-    REQUIRE(wait_until([&] { return late.finished(); }));
+    wait_until([&] { return late.finished(); }, "the late fetch to finish");
     CHECK_FALSE(late.ok());
     CHECK(late.message().empty());
     CHECK(opens == 0);
@@ -464,7 +456,7 @@ TEST_CASE("jobs: a failed leaderboard fetch says what to do") {
     });
     hydra::ui::DmFetchUsersJob job;
     job.start();
-    REQUIRE(wait_until([&] { return job.finished(); }));
+    wait_until([&] { return job.finished(); }, "the failed fetch to finish");
     CHECK_FALSE(job.ok());
     CHECK(job.message() ==
           "Hydra couldn't reach dmleaderboards. Check your internet connection and try again.");

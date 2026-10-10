@@ -8,7 +8,6 @@
 #include <cctype>
 #include <cstdint>
 #include <fstream>
-#include <regex>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -595,21 +594,62 @@ TEST_CASE(".chart: [Song] Offset is read in seconds") {
 //
 // The parsers used std::regex for the disco-flip markers and the .chart section
 // header, and still match them exactly as those regexes did. All of them match
-// by hand now, for speed. The disco and section-header cases keep the old
-// regexes as the oracle. The dynamics tag has no regex oracle any more: it is
-// Clone Hero's two exact strings (finding 64, D24), so its cases check against
-// those two strings. Every case drives the real parsers with strings built
-// around every byte value, so any difference in what matches shows up.
+// by hand now, for speed. The disco and section-header cases read their
+// expected answers from tables pinned from those regexes on 2026-10-10 at
+// 013f4c66; the regexes themselves are gone. The dynamics tag is Clone Hero's
+// two exact strings (finding 64, D24), so its cases check against those two
+// strings. Every case drives the real parsers with strings built around every
+// byte value, so any difference in what matches shows up.
 
 namespace {
 
-const std::regex& oracle_disco_on() {
-    static const std::regex r(R"(\[?mix.3.drums\d?d\]?)");
-    return r;
+// For one disco marker shape: the bytes that turn the flip on and the bytes
+// that turn it off. Any other byte leaves the flip as it was.
+struct ByteRange {
+    int lo, hi;
+};
+struct DiscoShapeAnswer {
+    std::vector<ByteRange> on, off;
+};
+
+bool in_ranges(const std::vector<ByteRange>& ranges, int byte) {
+    for (const ByteRange& r : ranges)
+        if (byte >= r.lo && byte <= r.hi) return true;
+    return false;
 }
-const std::regex& oracle_disco_off() {
-    static const std::regex r(R"(\[?mix.3.drums\d?(dnoflip)?\]?)");
-    return r;
+
+// One row per shape in disco_candidates, in its order. Pinned from the
+// regexes the parsers replaced, on 2026-10-10 at 013f4c66.
+const DiscoShapeAnswer kChartDiscoAnswers[9] = {
+    {{{0x00, 0x09}, {0x0B, 0x0C}, {0x0E, 0xFF}}, {}},
+    {{{0x00, 0x09}, {0x0B, 0x0C}, {0x0E, 0xFF}}, {}},
+    {{{0x30, 0x39}}, {}},
+    {{{0x64, 0x64}}, {{0x30, 0x39}, {0x5D, 0x5D}}},
+    {{}, {{0x30, 0x39}}},
+    {{{0x5D, 0x5D}}, {}},
+    {{{0x5B, 0x5B}}, {}},
+    {{{0x64, 0x64}}, {{0x5D, 0x5D}}},
+    {{{0x5B, 0x5B}}, {}},
+};
+// The same for the MIDI reader. It differs only from byte 0x80 up, because
+// the MIDI reader stores text as latin-1 decoded to UTF-8, so those bytes
+// reached the regex as two. Pinned the same way.
+const DiscoShapeAnswer kMidDiscoAnswers[9] = {
+    {{{0x00, 0x09}, {0x0B, 0x0C}, {0x0E, 0x7F}}, {}},
+    {{{0x00, 0x09}, {0x0B, 0x0C}, {0x0E, 0x7F}}, {}},
+    {{{0x30, 0x39}}, {}},
+    {{{0x64, 0x64}}, {{0x30, 0x39}, {0x5D, 0x5D}}},
+    {{}, {{0x30, 0x39}}},
+    {{{0x5D, 0x5D}}, {}},
+    {{{0x5B, 0x5B}}, {}},
+    {{{0x64, 0x64}}, {{0x5D, 0x5D}}},
+    {{{0x5B, 0x5B}}, {}},
+};
+
+bool want_flip(const DiscoShapeAnswer& a, int byte, bool prior_on) {
+    if (in_ranges(a.on, byte)) return true;
+    if (in_ranges(a.off, byte)) return false;
+    return prior_on;
 }
 
 // Disco markers with byte `b` placed in every spot the regexes care about.
@@ -620,20 +660,6 @@ std::vector<std::string> disco_candidates(char b) {
             c + "mix_3_drums0d", "mix_3_drums0" + c, c + "mix_3_drums0d]"};
 }
 
-// The MIDI reader stores each text byte as latin-1 decoded to UTF-8.
-std::string latin1_to_utf8(const std::string& s) {
-    std::string out;
-    for (unsigned char b : s) {
-        if (b < 0x80) {
-            out.push_back(static_cast<char>(b));
-        } else {
-            out.push_back(static_cast<char>(0xC0 | (b >> 6)));
-            out.push_back(static_cast<char>(0x80 | (b & 0x3F)));
-        }
-    }
-    return out;
-}
-
 }  // namespace
 
 TEST_CASE(".chart: disco markers match the regexes they replaced") {
@@ -642,7 +668,9 @@ TEST_CASE(".chart: disco markers match the regexes they replaced") {
         const char b = static_cast<char>(byte);
         // A .chart event word never holds whitespace or '=' (both split it).
         if (std::isspace(static_cast<unsigned char>(b)) || b == '=') continue;
-        for (const std::string& marker : disco_candidates(b)) {
+        const std::vector<std::string> markers = disco_candidates(b);
+        for (size_t shape = 0; shape < markers.size(); ++shape) {
+            const std::string& marker = markers[shape];
             for (bool prior_on : {false, true}) {
                 const std::vector<uint8_t> data = testchart::chart_bytes(testchart::section(
                     "ExpertDrums", std::string(prior_on ? "  0 = E mix_3_drums0d\n" : "") +
@@ -650,13 +678,10 @@ TEST_CASE(".chart: disco markers match the regexes they replaced") {
                 const Song song = load_songbytes_chart(data, true, true);
                 REQUIRE(song.sequence.size() == 2);
 
-                const bool off = std::regex_match(marker, oracle_disco_off());
-                const bool on = std::regex_match(marker, oracle_disco_on());
-                const bool want_flip = off ? false : on ? true : prior_on;
                 // A flipped red pad reads as a yellow cymbal.
                 const bool flipped = song.sequence[1].chord.at(NoteColor::Yellow).has_value();
-                CHECK_MESSAGE(flipped == want_flip,
-                              "byte " << byte << " marker index, prior " << prior_on);
+                CHECK_MESSAGE(flipped == want_flip(kChartDiscoAnswers[shape], byte, prior_on),
+                              "byte " << byte << ", shape " << shape << ", prior " << prior_on);
                 ++checked;
             }
         }
@@ -669,10 +694,9 @@ TEST_CASE(".mid: disco markers match the regexes they replaced") {
     int checked = 0;
     for (int byte = 0; byte < 256; ++byte) {
         const char b = static_cast<char>(byte);
-        for (const std::string& marker : disco_candidates(b)) {
-            const std::string as_read = latin1_to_utf8(marker);
-            const bool on = std::regex_match(as_read, oracle_disco_on());
-            const bool off = std::regex_match(as_read, oracle_disco_off());
+        const std::vector<std::string> markers = disco_candidates(b);
+        for (size_t shape = 0; shape < markers.size(); ++shape) {
+            const std::string& marker = markers[shape];
             for (bool prior_on : {false, true}) {
                 std::vector<std::vector<uint8_t>> ev = {track_name("PART DRUMS"), set_tempo()};
                 if (prior_on) ev.push_back(text_event("mix_3_drums0d"));
@@ -682,9 +706,9 @@ TEST_CASE(".mid: disco markers match the regexes they replaced") {
                 ev.push_back(end_of_track());
                 const Song song = load_songbytes_mid(smf(concat(ev)), true, true);
                 REQUIRE(song.sequence.size() == 2);
-                const bool want_flip = on ? true : off ? false : prior_on;
                 const bool flipped = song.sequence[1].chord.at(NoteColor::Yellow).has_value();
-                CHECK_MESSAGE(flipped == want_flip, "byte " << byte << ", prior " << prior_on);
+                CHECK_MESSAGE(flipped == want_flip(kMidDiscoAnswers[shape], byte, prior_on),
+                              "byte " << byte << ", shape " << shape << ", prior " << prior_on);
                 ++checked;
             }
         }
@@ -696,32 +720,54 @@ TEST_CASE(".mid: disco markers match the regexes they replaced") {
 }
 
 TEST_CASE(".chart: section headers are found as the regex found them") {
-    // The first line outside a section must hold a `[name]`, found as
-    // std::regex_search(`\[.*\]`) found it: leftmost '[', greedy to the last
-    // ']' reachable without crossing a '\r'. No header throws ChartFileError;
-    // a header that is not [Song] leaves the chart without its [Song] section.
-    static const std::regex header(R"(\[.*\])");
-    const std::vector<std::string> lines = {
-        "[Song]", "x[Song]", "[Song]x", "[Song] [x]", "[[Song]", "[Song]]",
-        "[So\rng]", "[Song\r]", "[x\r][Song]", "[x\r]]", "]Song[", "[", "Song",
-        "[]", "\x01[Song]", "[\r[Song]", "[a\r[b]", "[Song]\r]", "[x]\r[Song]",
-        "\xC3\xA9[Song]\xC3\xA9", "[S\xC3\xA9]",
+    // The first line outside a section must hold a `[name]`. No header throws
+    // ChartFileError; a header that is not [Song] leaves the chart without its
+    // [Song] section, which throws out_of_range. Each line's outcome was pinned
+    // from the regex the parser replaced, on 2026-10-10 at 013f4c66.
+    enum class Outcome { NoHeader, SongHeader, OtherHeader };
+    struct HeaderCase {
+        const char* line;
+        Outcome outcome;
     };
-    for (const std::string& raw : lines) {
+    const HeaderCase cases[] = {
+        {"[Song]", Outcome::SongHeader},
+        {"x[Song]", Outcome::SongHeader},
+        {"[Song]x", Outcome::SongHeader},
+        {"[Song] [x]", Outcome::OtherHeader},
+        {"[[Song]", Outcome::OtherHeader},
+        {"[Song]]", Outcome::OtherHeader},
+        {"[So\rng]", Outcome::NoHeader},
+        {"[Song\r]", Outcome::NoHeader},
+        {"[x\r][Song]", Outcome::SongHeader},
+        {"[x\r]]", Outcome::NoHeader},
+        {"]Song[", Outcome::NoHeader},
+        {"[", Outcome::NoHeader},
+        {"Song", Outcome::NoHeader},
+        {"[]", Outcome::OtherHeader},
+        {"\x01[Song]", Outcome::SongHeader},
+        {"[\r[Song]", Outcome::SongHeader},
+        {"[a\r[b]", Outcome::OtherHeader},
+        {"[Song]\r]", Outcome::SongHeader},
+        {"[x]\r[Song]", Outcome::OtherHeader},
+        {"\xC3\xA9[Song]\xC3\xA9", Outcome::SongHeader},
+        {"[S\xC3\xA9]", Outcome::OtherHeader},
+    };
+    for (const HeaderCase& c : cases) {
+        const std::string raw = c.line;
+        CAPTURE(raw);
         const std::string text = raw + "\n{\n  Resolution = 192\n}\n"
                                        "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n";
         const std::vector<uint8_t> data(text.begin(), text.end());
-        const std::string line = trim(raw);
-        std::smatch m;
-        if (!std::regex_search(line, m, header)) {
-            CHECK_THROWS_AS(load_songbytes_chart(data, true, true), ChartFileError);
-            continue;
-        }
-        const std::string bracket = m.str(0);
-        if (bracket.substr(1, bracket.size() - 2) == "Song") {
-            CHECK_MESSAGE(load_songbytes_chart(data, true, true).tick_resolution() == 192, raw);
-        } else {
-            CHECK_THROWS_AS(load_songbytes_chart(data, true, true), std::out_of_range);
+        switch (c.outcome) {
+            case Outcome::NoHeader:
+                CHECK_THROWS_AS(load_songbytes_chart(data, true, true), ChartFileError);
+                break;
+            case Outcome::SongHeader:
+                CHECK(load_songbytes_chart(data, true, true).tick_resolution() == 192);
+                break;
+            case Outcome::OtherHeader:
+                CHECK_THROWS_AS(load_songbytes_chart(data, true, true), std::out_of_range);
+                break;
         }
     }
 }

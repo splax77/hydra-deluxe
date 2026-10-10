@@ -868,12 +868,17 @@ TEST_CASE("rebuild_overlay_fields: equals a full build on random overlays") {
                           "overlay " + std::to_string(i) + " -> " + std::to_string(j));
 }
 
-TEST_CASE("rebuild_overlay_fields: equals a full build on every corpus chart and stored path") {
+// Every stored path of every 8th corpus chart with notes, in chart_paths()
+// order. The random-overlay test above covers the property; this one keeps it
+// honest on real charts. A sample, not the whole corpus, because each swap
+// costs about 40 ms and the whole corpus took 20 s (user decision 2026-10-10).
+TEST_CASE("rebuild_overlay_fields: equals a full build on every 8th corpus chart's stored paths") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    int charts = 0, swaps = 0;
+    int with_notes = 0, charts = 0, swaps = 0;
     for (const std::string& chart : corpus::chart_paths()) {
         const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
         if (song.is_empty()) continue;
+        if (with_notes++ % 8 != 0) continue;
         ++charts;
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         // The base (what the Preview's first scene job builds the timeline

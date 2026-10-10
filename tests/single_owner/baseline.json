@@ -1,30 +1,5 @@
 {
-  "known_copies": [
-    {
-      "question": "Where does a right-aligned item start?",
-      "file": "src/ui/paths_tab.cpp",
-      "line_text": "if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);",
-      "removed_by": "a follow-up to RW-T5's review: align_right calls move_to_right_edge"
-    },
-    {
-      "question": "Where does a right-aligned item start?",
-      "file": "src/ui/library_dialogs.cpp",
-      "line_text": "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);",
-      "removed_by": "a follow-up to RW-T5's review, once T4, which owns this file now, has merged"
-    },
-    {
-      "question": "Where does a right-aligned item start?",
-      "file": "src/ui/library_toolbar.cpp",
-      "line_text": "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);",
-      "removed_by": "a follow-up to RW-T5's review"
-    },
-    {
-      "question": "Does a string end with a tail?",
-      "file": "tests/test_config.cpp",
-      "line_text": "CHECK(dir.substr(dir.size() - tail.size()) == tail);",
-      "removed_by": "a follow-up to RW-T7's review: the check calls hydra::ends_with, and the chart-format row lists that line"
-    }
-  ],
+  "known_copies": [],
   "known_clones": [
     {
       "file_a": "src/audio/ma_reader.cpp",
@@ -37,12 +12,6 @@
       "file_b": "tests/test_song_panel_state.cpp",
       "lines": 11,
       "first": "char hash[32];"
-    },
-    {
-      "file_a": "tests/test_audio_player.cpp",
-      "file_b": "tests/test_preview_transport.cpp",
-      "lines": 10,
-      "first": "namespace {"
     },
     {
       "file_a": "tests/test_highway_draw.cpp",

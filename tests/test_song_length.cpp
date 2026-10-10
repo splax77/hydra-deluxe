@@ -136,7 +136,7 @@ TEST_CASE("song length: a .sng's song_length key and a .srb's song_length_ms fie
     for (const ScanItem& item : items) {
         CAPTURE(item.notespath);
         REQUIRE(item.timing.has_value());
-        // The backfill's own read agrees with the scan's (open question 3).
+        // The backfill's own read agrees with the scan's.
         CHECK(hydra::app::read_chart_timing_meta(item.notespath) == *item.timing);
         if (hydra::chart_format_of(item.notespath) == hydra::ChartFormat::Sng) {
             CHECK(item.timing->length_ms == 150000.0);

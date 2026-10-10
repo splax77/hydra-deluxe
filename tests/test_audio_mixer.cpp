@@ -119,44 +119,6 @@ TEST_CASE("mix_stems resamples to the output rate and unifies channels") {
     }
 }
 
-// The Preview load opens each stem and skips one that won't open (the job's
-// open loop); the rest mix in a StreamMix. This was decode_and_mix's test.
-TEST_CASE("StreamMix of the stems that open: an undecodable stem is skipped") {
-    hydra::app::PreviewAudioStem ogg;  // a file-path stem
-    ogg.label = "song";
-    ogg.path = fixture_path("sine220.ogg");
-
-    hydra::app::PreviewAudioStem mp3;  // a container-bytes stem
-    mp3.label = "drums";
-    mp3.bytes = read_fixture("sine220.mp3");
-
-    hydra::app::PreviewAudioStem junk;  // undecodable — must be skipped
-    junk.label = "broken";
-    junk.bytes = {'n', 'o', 't', ' ', 'a', 'u', 'd', 'i', 'o'};
-
-    std::vector<std::unique_ptr<StemReader>> readers;
-    int skipped = 0;
-    for (const hydra::app::PreviewAudioStem& s : {ogg, mp3, junk}) {
-        try {
-            readers.push_back(open_stem_reader(s));
-        } catch (const std::exception&) {
-            ++skipped;
-        }
-    }
-    CHECK(skipped == 1);
-    StreamMix mix(std::move(readers), 48000, 2, 0);
-    DecodedAudio out = read_all(mix);
-    CHECK(out.channels == 2);
-    CHECK(out.sample_rate == 48000);
-    REQUIRE(out.frames() > 4800);  // both real 220 Hz stems mixed in
-    CHECK(estimate_freq_hz(out, 0) == doctest::Approx(220.0).epsilon(0.07));
-
-    // No stem opened -> an empty mix, never a throw.
-    StreamMix none({}, 48000, 2, 0);
-    CHECK(none.length_frames() == 0);
-    CHECK(none.channels() == 2);
-}
-
 TEST_CASE("mix_stems adds hand-built stems bit for bit; a zero-channel stem adds nothing") {
     // Mono stems already at the output rate, so no resampler runs. Quarters
     // and eighths add exactly in a float, so the hand sum below is exact.

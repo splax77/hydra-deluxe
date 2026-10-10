@@ -136,8 +136,7 @@ void render_actions_row(AppState& app) {
 
     if (show_report) {
         ImGui::SameLine();
-        const float right = ImGui::GetContentRegionMax().x - report_w;
-        if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);
+        move_to_right_edge(report_w);
         if (ImGui::Button(building ? "Building path report..." : "Open path report",
                           ImVec2(report_w, 0.0f)))
             app.show_path_report();

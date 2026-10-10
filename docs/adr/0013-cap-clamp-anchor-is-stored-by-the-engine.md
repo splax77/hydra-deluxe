@@ -15,8 +15,9 @@ is a tie, and a tie does not clamp. The end is pinned only while the meter is
 full. As the meter drains, a later phrase that fits under the cap extends the
 end again from where it was pinned, and the clamp anchor stays the earlier
 note.
-`ScoreGraph::extend_deacts` owns this rule, and the test "SP cap overfill: a
-later unclamped extension keeps the earlier clamp_tick" pins it.
+`ScoreGraph::extend_deacts` owns this rule, and the "a later unclamped
+extension keeps the earlier clamp_tick" row of the test "SP cap overfill:
+where the end lands and which note clamped it" pins it.
 
 The search knows the clamp anchor exactly: it is the collecting note it
 compared against the cap while extending the window. But at copy-out it

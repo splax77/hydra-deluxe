@@ -56,7 +56,7 @@ mismatch falls back to the exact slow path: restart and decode forward
 over 4 GiB gets no seek points at all, so every seek in it takes the exact
 slow path.
 
-Resampling: miniaudio 0.11.25's `ma_data_converter_reset` leaves the resampler
+Resampling: miniaudio 0.11.25's ma_data_converter_reset leaves the resampler
 filter broken (it zeroes a filter coefficient instead of the filter history).
 So at each seek `StreamMix` re-creates the converter in a memory block it
 allocated up front. That gives a fresh converter and allocates nothing in the

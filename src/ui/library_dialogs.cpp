@@ -458,8 +458,7 @@ void render_batch_strip(AppState& app) {
         ImGui::TextUnformatted(batch_counts(s).c_str());
         const float time_w = ImGui::CalcTextSize(time.c_str()).x;
         ImGui::SameLine();
-        const float right = ImGui::GetContentRegionMax().x - time_w;
-        if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);
+        move_to_right_edge(time_w);
         ImGui::TextUnformatted(time.c_str());
         ImGui::PopStyleColor();
     }

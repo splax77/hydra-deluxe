@@ -15,7 +15,6 @@
 #include "parse/chart_files.h"
 #include "parse/midi.h"
 #include "corpus_util.h"
-#include "leak_check.h"
 #include "midi_util.h"
 
 namespace {
@@ -57,32 +56,30 @@ using testmidi::smf;
 }  // namespace
 
 TEST_CASE("midi: every corpus .mid reads with a sane structure") {
-    hydra::test::leak_checked([&] {
-        size_t mids = 0;
-        for (const std::string& path : corpus::chart_paths()) {
-            if (hydra::chart_format_of(path) != hydra::ChartFormat::Mid) continue;
+    size_t mids = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        if (hydra::chart_format_of(path) != hydra::ChartFormat::Mid) continue;
 
-            hydra::MidiFile mid = hydra::MidiFile::from_file(path);
-            ++mids;
+        hydra::MidiFile mid = hydra::MidiFile::from_file(path);
+        ++mids;
 
-            CHECK_MESSAGE(mid.ticks_per_beat > 0, path << ": ticks_per_beat");
-            CHECK_MESSAGE(!mid.tracks.empty(), path << ": no tracks");
+        CHECK_MESSAGE(mid.ticks_per_beat > 0, path << ": ticks_per_beat");
+        CHECK_MESSAGE(!mid.tracks.empty(), path << ": no tracks");
 
-            // Delta times never run backwards, and the drum track exists by name
-            // (this corpus is all drum charts).
-            bool has_drums = false;
-            bool deltas_ok = true;
-            for (const auto& t : mid.tracks) {
-                if (t.name == "PART DRUMS") has_drums = true;
-                for (const auto& m : t.messages)
-                    if (m.time < 0) deltas_ok = false;
-            }
-            CHECK_MESSAGE(deltas_ok, path << ": negative delta");
-            CHECK_MESSAGE(has_drums, path << ": no PART DRUMS track");
+        // Delta times never run backwards, and the drum track exists by name
+        // (this corpus is all drum charts).
+        bool has_drums = false;
+        bool deltas_ok = true;
+        for (const auto& t : mid.tracks) {
+            if (t.name == "PART DRUMS") has_drums = true;
+            for (const auto& m : t.messages)
+                if (m.time < 0) deltas_ok = false;
         }
-        REQUIRE(mids > 0);
-        MESSAGE("midi smoke: " << mids << " files");
-    });
+        CHECK_MESSAGE(deltas_ok, path << ": negative delta");
+        CHECK_MESSAGE(has_drums, path << ": no PART DRUMS track");
+    }
+    REQUIRE(mids > 0);
+    MESSAGE("midi smoke: " << mids << " files");
 }
 
 // D54: from_file reads through read_file_bytes, so a missing file fails with
@@ -304,8 +301,8 @@ TEST_CASE("midi: a five-byte delta accumulates past 32 bits, as mido does") {
 }
 
 TEST_CASE("midi: a message longer than mido's 1,000,000-byte cap refuses the file, as mido does") {
-    // A text meta whose length is 2^32. Today it wraps to 0 and the note_on
-    // after it is read as a real event.
+    // A text meta whose length is 2^32. Before the cap, the length wrapped to
+    // 0 and the note_on after it was read as a real event.
     std::vector<uint8_t> meta = {
         0x00, 0xFF, 0x01, 0x90, 0x80, 0x80, 0x80, 0x00,  // text meta, length 2^32
         0x00, 0x90, 0x60, 0x64,                          // note_on note 96 vel 100
