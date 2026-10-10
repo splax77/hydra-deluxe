@@ -242,7 +242,8 @@ int run_parallel(uitest::Harness& h, const std::vector<std::string>& wanted, int
 }  // namespace
 
 // How many test processes run at once when --jobs is not given. The user
-// chose 4, CI's count (CI and test tooling plan, decision 3, 2026-10-10).
+// chose it (CI and test tooling plan, decision 3, 2026-10-10). CMakeLists.txt
+// reads this line to book ctest's slots for hydra_uitest, so keep its form.
 constexpr int kDefaultJobs = 4;
 
 int main() {

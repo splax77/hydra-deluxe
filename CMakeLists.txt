@@ -609,11 +609,17 @@ add_test(NAME hydra_tests_shards_cover_all
             -Config $<CONFIG> -Exe $<TARGET_FILE:hydra_tests>)
 
 add_test(NAME hydra_uitest COMMAND hydra_uitest --all)
-# The GUI runner can start test processes of its own (its job count lives in
-# tests/ui/uitest_main.cpp), so ctest -j books it four slots and does not start
-# hydra_tests slices beside its children. Four is the count CI's --jobs uses
-# (task 3 of docs/superpowers/plans/2026-10-10-ci-test-tooling.md).
-set_tests_properties(hydra_uitest PROPERTIES PROCESSORS 4)
+# The GUI runner starts test processes of its own, kDefaultJobs at once
+# (tests/ui/uitest_main.cpp, which owns that count). ctest -j books it that
+# many slots, so it does not start hydra_tests slices beside its children.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    ${CMAKE_SOURCE_DIR}/tests/ui/uitest_main.cpp)
+file(STRINGS ${CMAKE_SOURCE_DIR}/tests/ui/uitest_main.cpp hydra_uitest_jobs_line
+     REGEX "^constexpr int kDefaultJobs = [0-9]+;")
+if(NOT hydra_uitest_jobs_line MATCHES "= ([0-9]+)")
+    message(FATAL_ERROR "tests/ui/uitest_main.cpp: cannot find 'constexpr int kDefaultJobs = N;'")
+endif()
+set_tests_properties(hydra_uitest PROPERTIES PROCESSORS ${CMAKE_MATCH_1})
 
 # ---- packaging -----------------------------------------------------------
 # `cpack -G ZIP` (or build_cpp.ps1 -Package) produces Hydra-<ver>-win64.zip:
