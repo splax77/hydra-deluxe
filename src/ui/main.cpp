@@ -100,6 +100,33 @@ static unsigned monitor_dpi(HMONITOR monitor)
     return dpi > 0 ? static_cast<unsigned>(dpi) : 0;
 }
 
+// The frame Windows puts around a report window's client area on a monitor
+// at `dpi`, for report_placement. The style is the one the Win32 backend gives
+// a viewport with a title bar and a taskbar button
+// (ImGui_ImplWin32_GetWin32StyleFromViewportFlags in imgui_impl_win32.cpp;
+// report_window_class asks for both), and the measuring call is the one its
+// ImGui_ImplWin32_AdjustWindowRect makes. AdjustWindowRectExForDpi is loaded
+// at run time, as the backend loads it, because Windows before 10 (1607) has
+// none; there the plain call answers at the system DPI.
+static hydra::ui::FrameInsets report_frame_insets(unsigned dpi)
+{
+    using AdjustForDpiFn = BOOL(WINAPI*)(LPRECT, DWORD, BOOL, DWORD, UINT);
+    static const AdjustForDpiFn adjust_for_dpi = [] {
+        const HMODULE user32 = ::GetModuleHandleW(L"user32.dll");
+        return user32 ? reinterpret_cast<AdjustForDpiFn>(
+                            ::GetProcAddress(user32, "AdjustWindowRectExForDpi"))
+                      : nullptr;
+    }();
+    constexpr DWORD style = WS_OVERLAPPEDWINDOW, ex_style = WS_EX_APPWINDOW;
+    RECT r{ 0, 0, 0, 0 };
+    if (!(adjust_for_dpi && dpi != 0 && adjust_for_dpi(&r, style, FALSE, ex_style, dpi)))
+    {
+        r = RECT{ 0, 0, 0, 0 };
+        ::AdjustWindowRectEx(&r, style, FALSE, ex_style);
+    }
+    return { -r.left, -r.top, r.right, r.bottom };
+}
+
 // Keeps the remembered placement current as the user moves, resizes,
 // maximizes and restores the window. The un-maximized rectangle is read only
 // while the window is neither maximized nor minimized, so a Hydra closed
@@ -256,10 +283,13 @@ int main()
 
     // setup_imgui assumed the primary monitor's scale. A window reopened on
     // another monitor may need a different one.
-    const float window_scale = hydra::ui::ui_scale_for_dpi(
-        monitor_dpi(::MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST)));
+    const unsigned window_dpi = monitor_dpi(::MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST));
+    const float window_scale = hydra::ui::ui_scale_for_dpi(window_dpi);
     if (window_scale != main_scale)
         hydra::ui::set_ui_scale(window_scale);
+    // Report windows open on the main window's monitor, so its DPI sets
+    // their frame; WM_DPICHANGED measures it again.
+    hydra::ui::set_report_frame_insets(report_frame_insets(window_dpi));
 
     win32_backend_up = ImGui_ImplWin32_Init(hwnd);
     if (!win32_backend_up)
@@ -546,6 +576,7 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
                        suggested->right - suggested->left, suggested->bottom - suggested->top,
                        SWP_NOZORDER | SWP_NOACTIVATE);
         g_PendingUiScale = hydra::ui::ui_scale_for_dpi(HIWORD(wParam));
+        hydra::ui::set_report_frame_insets(report_frame_insets(HIWORD(wParam)));
         return 0;
     }
     case WM_SYSCOMMAND:

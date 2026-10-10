@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "imgui.h"
+#include "imgui_internal.h"  // SettingsDirtyTimer, to see what marks the ini for saving
 
 #include "temp_util.h"
 #include "ui/app_shell.h"
@@ -82,6 +83,183 @@ TEST_CASE("app_shell: the [Hydra][Window] text round-trips") {
     hydra::ui::parse_window_placement_line("Size=0,0", junk);
     hydra::ui::parse_window_placement_line("Colour=blue", junk);
     CHECK_FALSE(junk.valid);
+}
+
+// ---- Report windows: report_placement --------------------------------------
+//
+// The user's monitor from the 2026-10-10 handoff: 2,560 x 1,440, here with a
+// stand-in 48-pixel taskbar at the bottom, so the work area is 2,560 x 1,392.
+const std::vector<ScreenRect> kUserMonitor = {{0, 0, 2560, 1392}};
+// The same monitor with a 1,920 x 1,080 one to its right, 40-pixel taskbar.
+const std::vector<ScreenRect> kUserTwoMonitors = {{0, 0, 2560, 1392}, {2560, 0, 4480, 1040}};
+// The frame Windows puts around a report window at 96 DPI. Measured on
+// 2026-10-10 (Windows 11, build 26200) with one call,
+// AdjustWindowRectExForDpi(&r, WS_OVERLAPPEDWINDOW, FALSE, WS_EX_APPWINDOW, 96)
+// on an empty rectangle, which came back {-8, -31, 8, 8}.
+const hydra::ui::FrameInsets kFrame96 = {8, 31, 8, 8};
+// A normal main window: outer {100, 100, 1380, 820}, so this client area.
+const ScreenRect kMainClient = {108, 131, 1372, 812};
+
+using hydra::ui::ReportPlacement;
+using hydra::ui::report_placement;
+
+TEST_CASE("app_shell: a saved report bigger than the screen is fitted, frame included") {
+    // The user's hydra_ui.ini: ViewportPos=0,23 Size=2560,1417, the whole
+    // monitor below a 23-pixel band. Grown by the frame it is
+    // {-8, -8, 2568, 1448}; capped to the work area's 2,560 x 1,392 it is
+    // {-8, -8, 2552, 1384}; moved 8 right and 8 down to sit inside, it is
+    // {0, 0, 2560, 1392}; less the frame, the client is {8, 31, 2552, 1384}.
+    const ReportPlacement p = report_placement(ScreenRect{0, 23, 2560, 1440}, false, false,
+                                               kMainClient, kUserMonitor, kFrame96);
+    CHECK(p.client == ScreenRect{8, 31, 2552, 1384});
+    CHECK_FALSE(p.maximized);
+}
+
+TEST_CASE("app_shell: a report opens maximized when the main window is maximized") {
+    // A maximized main window's client on that work area. The report's client
+    // is the work area less the frame: {0+8, 0+31, 2560-8, 1392-8}.
+    const ReportPlacement p = report_placement(std::nullopt, false, true,
+                                               ScreenRect{0, 23, 2560, 1392}, kUserMonitor,
+                                               kFrame96);
+    CHECK(p.client == ScreenRect{8, 31, 2552, 1384});
+    CHECK(p.maximized);
+
+    // A saved, fitting rectangle does not stop it.
+    const ReportPlacement saved = report_placement(ScreenRect{300, 200, 1500, 900}, false, true,
+                                                   ScreenRect{0, 23, 2560, 1392}, kUserMonitor,
+                                                   kFrame96);
+    CHECK(saved.client == ScreenRect{8, 31, 2552, 1384});
+    CHECK(saved.maximized);
+}
+
+TEST_CASE("app_shell: a first open from a normal main window copies it and fits") {
+    // Outer {100, 100, 1380, 820} is inside the work area: unchanged.
+    const ReportPlacement p = report_placement(std::nullopt, false, false, kMainClient,
+                                               kUserMonitor, kFrame96);
+    CHECK(p.client == kMainClient);
+    CHECK_FALSE(p.maximized);
+
+    // A main window hanging off the bottom-right corner. Outer
+    // {1592, 969, 2608, 1408} fits in size; moved 48 left and 16 up it is
+    // {1544, 953, 2560, 1392}, so the client is {1552, 984, 2552, 1384}.
+    const ReportPlacement corner = report_placement(std::nullopt, false, false,
+                                                    ScreenRect{1600, 1000, 2600, 1400},
+                                                    kUserMonitor, kFrame96);
+    CHECK(corner.client == ScreenRect{1552, 984, 2552, 1384});
+    CHECK_FALSE(corner.maximized);
+}
+
+TEST_CASE("app_shell: a saved report on a monitor that is gone opens over the main window") {
+    const ReportPlacement p = report_placement(ScreenRect{3000, 100, 4000, 800}, false, false,
+                                               kMainClient, kUserMonitor, kFrame96);
+    CHECK(p.client == kMainClient);
+    CHECK_FALSE(p.maximized);
+}
+
+TEST_CASE("app_shell: a report saved maximized reopens maximized") {
+    const ReportPlacement p = report_placement(ScreenRect{300, 200, 1500, 900}, true, false,
+                                               kMainClient, kUserMonitor, kFrame96);
+    CHECK(p.client == ScreenRect{8, 31, 2552, 1384});
+    CHECK(p.maximized);
+}
+
+TEST_CASE("app_shell: a saved report is fitted into the monitor holding its title bar") {
+    // Fits on the right-hand monitor: outer {2592, 29, 4408, 1008}. Unchanged.
+    const ReportPlacement fits = report_placement(ScreenRect{2600, 60, 4400, 1000}, false, false,
+                                                  kMainClient, kUserTwoMonitors, kFrame96);
+    CHECK(fits.client == ScreenRect{2600, 60, 4400, 1000});
+    CHECK_FALSE(fits.maximized);
+
+    // That monitor's whole height below a 23-pixel band. Outer
+    // {2552, -8, 4488, 1088}; its title band is 1,920 wide on the right-hand
+    // monitor and 8 wide on the left one, so the right-hand one holds it.
+    // Capped to 1,920 x 1,040 it is {2552, -8, 4472, 1032}; moved 8 right and
+    // 8 down it is {2560, 0, 4480, 1040}; the client is {2568, 31, 4472, 1032}.
+    const ReportPlacement big = report_placement(ScreenRect{2560, 23, 4480, 1080}, false, false,
+                                                 kMainClient, kUserTwoMonitors, kFrame96);
+    CHECK(big.client == ScreenRect{2568, 31, 4472, 1032});
+    CHECK_FALSE(big.maximized);
+}
+
+TEST_CASE("app_shell: with no frame and no monitor list a report keeps the main window's rectangle") {
+    // The GUI test runner's case for the frame: zero insets, so a maximized
+    // report's client is the whole work area.
+    const ReportPlacement runner = report_placement(std::nullopt, false, true,
+                                                    ScreenRect{0, 0, 1280, 800},
+                                                    {{0, 0, 1280, 800}}, hydra::ui::FrameInsets{});
+    CHECK(runner.client == ScreenRect{0, 0, 1280, 800});
+    CHECK(runner.maximized);
+
+    // No monitors known: nothing to fit into.
+    const ReportPlacement none = report_placement(std::nullopt, false, false, kMainClient, {},
+                                                  kFrame96);
+    CHECK(none.client == kMainClient);
+    CHECK_FALSE(none.maximized);
+}
+
+TEST_CASE("app_shell: a report's placement key is its window's ### ID") {
+    CHECK(hydra::ui::report_placement_key("Path report \xE2\x80\x94 Hydra###pathreport") ==
+          "pathreport");
+    CHECK(hydra::ui::report_placement_key("dmleaderboards: someone \xE2\x80\x94 Hydra###dmreport") ==
+          "dmreport");
+    CHECK(hydra::ui::report_placement_key("plain") == "plain");
+}
+
+TEST_CASE("app_shell: the [Hydra][Window:pathreport] text round-trips") {
+    WindowPlacement p;
+    p.valid = true;
+    p.normal = {8, 31, 2552, 1384};
+    p.maximized = true;
+    const std::string text = hydra::ui::format_window_placement(p);
+    CHECK(text == "Pos=8,31\nSize=2544,1353\nMaximized=1\n");
+
+    WindowPlacement back;
+    std::istringstream lines(text);
+    for (std::string line; std::getline(lines, line);)
+        hydra::ui::parse_window_placement_line(line, back);
+    CHECK(back == p);
+}
+
+TEST_CASE("app_shell: hydra_ui.ini keeps each report's placement in its own section") {
+    const std::filesystem::path dir = hydra::os_path(testtemp::temp_dir("app_shell_reports"));
+    const std::filesystem::path ini = dir / "hydra_ui.ini";
+    {
+        std::ofstream f(ini);
+        f << "[Hydra][Window]\nPos=100,100\nSize=1280,720\nMaximized=0\n\n"
+             "[Hydra][Window:pathreport]\nPos=8,31\nSize=2544,1353\nMaximized=1\n\n";
+    }
+
+    hydra::ui::setup_imgui(test_options(ini.string()));
+    const WindowPlacement path = hydra::ui::report_window_placement("pathreport");
+    CHECK(path.valid);
+    CHECK(path.normal == ScreenRect{8, 31, 2552, 1384});
+    CHECK(path.maximized);
+    CHECK_FALSE(hydra::ui::report_window_placement("dmreport").valid);
+    // The main window's section is still its own.
+    CHECK(hydra::ui::window_placement().normal == ScreenRect{100, 100, 1380, 820});
+
+    // Remembering the same placement leaves the ini alone; a new one marks it
+    // for saving.
+    const ImGuiContext& g = *ImGui::GetCurrentContext();
+    REQUIRE(g.SettingsDirtyTimer <= 0.0f);
+    hydra::ui::remember_report_placement("pathreport", path);
+    CHECK(g.SettingsDirtyTimer <= 0.0f);
+    WindowPlacement dm;
+    dm.valid = true;
+    dm.normal = {2600, 60, 4400, 1000};
+    hydra::ui::remember_report_placement("dmreport", dm);
+    CHECK(g.SettingsDirtyTimer > 0.0f);
+    hydra::ui::shutdown_imgui();  // DestroyContext writes the ini
+
+    std::ifstream f(ini);
+    std::stringstream text;
+    text << f.rdbuf();
+    CHECK(text.str().find("[Hydra][Window:pathreport]\nPos=8,31\nSize=2544,1353\nMaximized=1\n") !=
+          std::string::npos);
+    CHECK(text.str().find("[Hydra][Window:dmreport]\nPos=2600,60\nSize=1800,940\nMaximized=0\n") !=
+          std::string::npos);
+    f.close();
+    std::filesystem::remove_all(dir);
 }
 
 TEST_CASE("app_shell: the UI scale for a monitor DPI") {

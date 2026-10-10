@@ -8,6 +8,7 @@
 #ifndef HYDRA_UI_APP_SHELL_H
 #define HYDRA_UI_APP_SHELL_H
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -54,10 +55,13 @@ struct ScreenRect {
     bool operator!=(const ScreenRect& o) const { return !(*this == o); }
 };
 
-// Where the main window was when Hydra last closed.
+// Where the main window, or a report window, was when it last closed.
 struct WindowPlacement {
     bool valid = false;  // false: nothing saved yet, so use the default
-    ScreenRect normal;   // the un-maximized rectangle
+    // The un-maximized rectangle: the whole outer window for the main window
+    // (what CreateWindow takes), the client area for a report window (what
+    // ImGui takes).
+    ScreenRect normal;
     bool maximized = false;
     bool operator==(const WindowPlacement& o) const {
         return valid == o.valid && normal == o.normal && maximized == o.maximized;
@@ -147,11 +151,72 @@ void set_ui_scale(float scale);
 // ImGui window keeps setup_imgui's settings. Pass it to SetNextWindowClass.
 ImGuiWindowClass report_window_class();
 
-// Call before Begin(name) on every frame the report window shows. When the
-// window opens, a saved rectangle (from hydra_ui.ini, or from an earlier
-// open this session) that fails placement_on_screen falls back to the
-// first-open placement, as does a window with nothing saved: the main
-// window's own position and size (D103 item 14).
+// The OS frame around a report window's client area, in pixels on each side:
+// what Windows adds to the rectangle ImGui asks for. main.cpp measures it for
+// the style the Win32 backend gives a report window; the GUI test runner has
+// no OS windows and leaves it at zero.
+struct FrameInsets {
+    int left = 0, top = 0, right = 0, bottom = 0;
+};
+
+// Where a report window opens: its client rectangle (ImGui's own units: the
+// area inside the OS frame) and whether it opens maximized.
+struct ReportPlacement {
+    ScreenRect client;
+    bool maximized = false;
+    bool operator==(const ReportPlacement& o) const {
+        return client == o.client && maximized == o.maximized;
+    }
+};
+
+// Where a report window opens, worked out with no window. `saved_client` and
+// `saved_maximized` are what the report was last time (nothing for a first
+// open); `main_maximized` and `main_client` describe the main window now.
+//
+// A report opens maximized when the main window is maximized or the report
+// was saved maximized; its client rectangle is then the main window's work
+// area less the frame (Windows sizes a maximized window itself, so this is
+// only the size until it does). Otherwise it reopens at the saved rectangle
+// when placement_on_screen passes, else over the main window, and its whole
+// outer window, frame included, is fitted into the work area holding its
+// title bar: shrunk to that area's size, then moved inside it.
+ReportPlacement report_placement(const std::optional<ScreenRect>& saved_client,
+                                 bool saved_maximized,
+                                 bool main_maximized,
+                                 const ScreenRect& main_client,
+                                 const std::vector<ScreenRect>& work_areas,
+                                 const FrameInsets& frame);
+
+// The frame report_placement uses, from main.cpp: at startup and whenever
+// the main window lands on a monitor with another DPI.
+void set_report_frame_insets(const FrameInsets& frame);
+
+// The name a report's placement is kept under in hydra_ui.ini, as a
+// [Hydra][Window:<key>] section: the window name's "###" ID part
+// ("pathreport" for "Path report — Hydra###pathreport"), or the whole name
+// when it has none.
+std::string report_placement_key(std::string_view window_name);
+
+// A report's saved placement, from its [Hydra][Window:<key>] section, then
+// whatever place_report_window noted since. For a report, `normal` is the
+// client rectangle, as report_placement takes it. valid is false when
+// nothing was saved.
+WindowPlacement report_window_placement(std::string_view key);
+// Records a report's placement; hydra_ui.ini is marked for saving only when
+// it changed.
+void remember_report_placement(std::string_view key, const WindowPlacement& p);
+
+// Call before Begin(name) on every frame the report window shows.
+//
+// When the window opens, it is placed by report_placement, from the saved
+// placement (the [Hydra][Window:<key>] section, else ImGui's own [Window]
+// entry, from a hydra_ui.ini written before that section existed) and the
+// main window's. A report that opens maximized is maximized on a later
+// frame, once ImGui has made its OS window (D103 item 14).
+//
+// While the report's OS window exists, every frame notes whether it is
+// maximized and, when it is neither maximized nor minimized, its client
+// rectangle, through remember_report_placement.
 void place_report_window(const char* name);
 
 // Everything ImGui drew this frame, as text, in draw order. Filled by
