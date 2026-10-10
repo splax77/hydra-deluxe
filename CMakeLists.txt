@@ -528,15 +528,15 @@ add_executable(hydra_tests
     tests/test_long_paths.cpp
     tests/test_single_owner.cpp
     tests/test_docs_match_code.cpp
-    tests/test_s2_difficulty_table.cpp
-    tests/test_s2_disco.cpp
-    tests/test_s2_kick2x.cpp
-    tests/test_s2_phrase_end.cpp
-    tests/test_s2_fill_landing.cpp
+    tests/test_difficulty_table.cpp
+    tests/test_disco_flip.cpp
+    tests/test_kick2x.cpp
+    tests/test_phrase_end.cpp
+    tests/test_fill_landing.cpp
     tests/test_s2_dynamics_tag.cpp
     tests/test_s2_parser_owners.cpp
-    tests/test_s2_offspeed.cpp
-    tests/test_s2_deact_extension.cpp
+    tests/test_dm_other_speed.cpp
+    tests/test_sp_end_clamp.cpp
     tests/test_perf_digest.cpp
     tests/test_note_shuffle.cpp
     tests/test_wait_util.cpp
