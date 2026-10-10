@@ -266,7 +266,7 @@ The next activation box, at the top right under the drain box, starts with the n
 
 With no song selected, the tab says `Select a song to preview.` While a chart loads, it shows `Loading preview:` and the current step over a progress bar. If the chart can't be loaded, it shows `Preview failed:` and the reason in orange, with the error itself dimmed under it.
 
-If Hydra Deluxe can't use your sound device, the Preview still draws and plays the chart, without sound. An orange line says `Hydra couldn't use your audio device; the preview is muted.`, and hovering it shows the device's own message.
+If Hydra Deluxe can't use your audio device, the Preview still draws and plays the chart, without sound. An orange line says `Hydra couldn't use your audio device; the preview is muted.`, and hovering it shows the device's own message.
 
 On a computer where Hydra Deluxe can't get a graphics device to draw with, the tab shows only `Preview is unavailable (no render device).`
 
