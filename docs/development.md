@@ -168,6 +168,17 @@ nothing else is needed. `hydra_tests` asserts structural invariants and
 lossless round-trips over that corpus. GUI changes are checked headlessly with
 `hydra_uitest`; see [agents/ui-testing.md](agents/ui-testing.md).
 
+The Python and PowerShell tools have their own tests, and none needs a C++
+build. Run them from the repository root:
+
+    py -m pytest tools/ch_probe/tests tools/test_compare_db.py -q
+    pwsh -NoProfile -File tools/test_mutation_probe.ps1
+    pwsh -NoProfile -File tools/test_derive_once_precheck.ps1
+
+Name the two pytest paths rather than `tools/` as a whole: the scripts in
+`tools/ch_probe/experiments/` look like tests to pytest and drive the real
+game.
+
 The program's name on screen is "Hydra Deluxe", but its files keep their older
 names: `Hydra.exe`, `hydra.db`, `hydra_settings.ini`, `hydra_ui.ini` and the
 `C:\Program Files\Hydra` install folder. That way an upgrade from an earlier
@@ -311,6 +322,10 @@ the same generator the default CMake preset names. It builds `hydra_tests`
 and `hydra_uitest` with `build_cpp.ps1`, exactly as above, so a compiler
 warning fails the run. Then it runs `hydra_tests` and the headless GUI tests
 in `hydra_uitest`.
+
+A second job, beside it, runs the tool tests above with no C++ build. It
+checks out the whole history, because the precheck self-test checks two real
+commit ranges and skips them in a shallow clone.
 
 One test is left out on GitHub: the one that opens the real sound output
 (`tests/test_audio_device.cpp`), because hosted runners have no audio device.
