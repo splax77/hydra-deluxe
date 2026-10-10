@@ -273,6 +273,7 @@ TEST_CASE("report view sort: first directions, empty values sink, two keys, stab
                        folded_key(std::string("ete"))) == 0);
 }
 
+// User-chosen wording: "Hardest ms" (D48 Q7), "hardest squeeze or required early fill" (D51 call 5), definitions as hover text (D103 item 4).
 TEST_CASE("path report columns: the page's fifteen, in order, word for word") {
     const auto cols = path_report_view::path_columns(kWindow);
     CHECK(ids(cols) == std::vector<std::string>{"song", "artist", "charter", "mode", "path",
@@ -388,6 +389,7 @@ TEST_CASE("path report: Timing choices and the keep-rule") {
     CHECK_FALSE(beyond_best(other_beyond));
 }
 
+// User-chosen wording: Status's Other speed sentence (D31) and No paths sentence (D62 item 1), definitions as hover text (D103 item 4).
 TEST_CASE("dm comparison columns: the page's thirteen, in order, word for word") {
     const auto cols = dm_report_view::dm_columns();
     CHECK(ids(cols) == std::vector<std::string>{"song", "artist", "charter", "actual",
