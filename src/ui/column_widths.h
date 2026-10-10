@@ -55,7 +55,8 @@ struct ColumnSpec {
     // (Title, Artist, Song, Path...). Numbers and chips never cut.
     bool may_cut = false;
     // Extra width every cell adds beside its text: a chip's outline padding
-    // (2 * FramePadding.x). The header does not get it.
+    // (report_frame::column_spec sets it, from the same chip_pad the chip is
+    // drawn with). The header does not get it.
     float padding = 0.0f;
     // Measures this column's header and cells. In the app, measure_in_font() with
     // the column's font; in a unit test, a fake.
@@ -125,8 +126,10 @@ struct ColumnLayout {
     // the spacing. More than room.available means the table scrolls sideways.
     float inner_width = 0.0f;
     // The inner width with every cut column at its header's width: the
-    // narrowest the table gets before it scrolls. The report window's own
-    // minimum width reads this.
+    // narrowest the table gets before it scrolls. This is the whole table's
+    // minimum. A report window's own minimum width is only its first five
+    // columns (D103 item 14), so it does not read this; see
+    // report_frame::note_min_size.
     float min_inner_width = 0.0f;
 };
 
