@@ -3,14 +3,16 @@
 # and its question. It is for a review of old rows: a row whose owner is now
 # the only way to spell the answer can be retired by hand.
 #
-# The rows live in tests/single_owner/rules/*.json; their fields are read by
-# load_tables in tests/single_owner/scan.cpp, which this script follows.
+# The rows live in tests/single_owner/rules/; which files hold them (rule_files)
+# and how their fields are read (load_rules) is decided in
+# tests/single_owner/scan.cpp, which this script follows.
 #
 # From the repo root:
 #   pwsh -NoProfile -File tools\single_owner_rows.ps1 [-Before 2026-10-05] [-Area ui]
 #
 # -Before keeps rows added before that day (YYYY-MM-DD). -Area keeps one rules
 # file, named without its folder or .json (ui for rules/ui.json).
+# (-Area ui matches a file named ui.json in any rules folder.)
 
 param(
     [string] $Before = '',
@@ -26,7 +28,16 @@ if ($Before -ne '' -and $Before -notmatch '^\d{4}-\d{2}-\d{2}$') {
     exit 2
 }
 
-$files = Get-ChildItem -Path $rulesDir -Filter '*.json' | Sort-Object Name
+# The files are the ones rule_files in scan.cpp lists: .json files in the
+# folder and in the folders one level down, each named by its path under
+# rules/, in name order (byte by byte, as the scan sorts them).
+$files = @(Get-ChildItem -Path $rulesDir -Filter '*.json' -Recurse -Depth 1 -File | ForEach-Object {
+    [pscustomobject]@{ Name = ([System.IO.Path]::GetRelativePath($rulesDir, $_.FullName) -replace '\\', '/'); BaseName = $_.BaseName; FullName = $_.FullName }
+})
+$names = [string[]]@($files | ForEach-Object { $_.Name })
+$byName = @{}; foreach ($f in $files) { $byName[$f.Name] = $f }
+[System.Array]::Sort($names, [System.StringComparer]::Ordinal)
+$files = @($names | ForEach-Object { $byName[$_] })
 if ($Area -ne '') {
     $files = @($files | Where-Object { $_.BaseName -eq $Area })
     if ($files.Count -eq 0) {
