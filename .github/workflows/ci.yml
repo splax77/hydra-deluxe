@@ -1,7 +1,7 @@
 # Continuous integration: build Hydra and run its tests on every push to main
-# and every pull request into main. The local hooks are the first gate; this
-# is the backstop for a commit made outside them. See "Continuous integration"
-# in docs/development.md.
+# and every pull request into main, and the slow AddressSanitizer job once a
+# night. The local hooks are the first gate; this is the backstop for a commit
+# made outside them. See "Continuous integration" in docs/development.md.
 
 name: CI
 
@@ -10,10 +10,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
 
 # A newer push to the same branch or pull request cancels the run it replaces.
+# The event is in the group, so a push never cancels the nightly run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 permissions:
@@ -29,6 +33,7 @@ env:
 jobs:
   build-and-test:
     name: Build and test (Windows, Release)
+    if: github.event_name != 'schedule'
     # The default CMake preset uses the Visual Studio 2026 generator. The
     # windows-2025 image ships VS 2026 since GitHub's June 2026 migration.
     runs-on: windows-2025
@@ -60,8 +65,12 @@ jobs:
   # memory error (an overrun, a use after free) and prints where it happened.
   # The asan preset runs on the Windows heap instead of mimalloc; the build
   # never ships. See "The AddressSanitizer build" in docs/development.md.
+  # It is slow, so it runs nightly and on a manual run, not on every push (the
+  # user's call, 2026-10-10; "Continuous integration" in docs/development.md
+  # gives the timing).
   asan:
     name: AddressSanitizer (Windows, Release)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: windows-2025
     timeout-minutes: 60
     defaults:
@@ -170,6 +179,7 @@ jobs:
 
   tool-tests:
     name: Tool tests (Python and PowerShell)
+    if: github.event_name != 'schedule'
     runs-on: windows-2025
     timeout-minutes: 30
     defaults:
