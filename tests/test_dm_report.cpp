@@ -31,7 +31,7 @@
 #include "core/model.h"
 #include "app/dm_report.h"
 #include "app/dm_report_view.h"  // dm_search_text
-#include "app/report.h"          // Tile, ChipToken
+#include "app/report.h"          // Tile, ChipToken, kNoChartLibrary
 #include "app/user_messages.h"
 #include "core/error_kind.h"
 #include "core/strutil.h"
@@ -799,9 +799,7 @@ TEST_CASE("collect_dm_rows: a database with no chart library stops with the path
     } catch (const KindedError& e) {
         stopped = true;
         CHECK(e.kind() == ErrorKind::AlreadyPlain);
-        CHECK(app::plain_error(e) ==
-              "This database has no chart library. Run hydra_batch without folder arguments, or "
-              "scan in Hydra, to build one.");
+        CHECK(app::plain_error(e) == std::string(app::report::kNoChartLibrary));
     }
     CHECK(stopped);
 }

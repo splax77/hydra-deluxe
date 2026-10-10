@@ -16,6 +16,7 @@
 
 #include "app/analysis.h"
 #include "app/fill_report.h"
+#include "app/report.h"  // kNoChartLibrary
 #include "core/model.h"
 #include "corpus_util.h"
 #include "display_fixtures.h"  // kTagOnlyTitle
@@ -618,9 +619,7 @@ TEST_CASE("generate_fill_report: a database with no chart library stops with the
     store::RecordStore new_store(":memory:");
     test::store_batch_result(old_store, key_for(kBoth, true));
     put_ch11(new_store, kBoth, 1050000, 4, "new-path-L");
-    const std::string sentence =
-        "This database has no chart library. Run hydra_batch without folder arguments, or "
-        "scan in Hydra, to build one.";
+    const std::string sentence = app::report::kNoChartLibrary;
     const app::fill_report::GeneratedFillReport result =
         app::fill_report::generate_fill_report(old_store, new_store, kMode,
                                                store::CapQuery::at(kCloneHeroSpCap),

@@ -839,9 +839,7 @@ TEST_CASE("a report on results with no chart library says the library is missing
     CHECK(page.rows == 0);
     CHECK(page.paths.empty());
     CHECK(page.empty_reason == report::EmptyReason::NoLibrary);
-    CHECK(page.why_empty ==
-          "This database has no chart library. Run hydra_batch without folder arguments, or "
-          "scan in Hydra, to build one.");
+    CHECK(page.why_empty == std::string(report::kNoChartLibrary));
 }
 
 TEST_CASE("a chart whose file fails to load is left off the report and listed") {
