@@ -340,8 +340,8 @@ crash, an AddressSanitizer report or a hang is a bug.
 
 Build them with the `fuzz` preset, which sits on the AddressSanitizer build,
 and write the seed folders (the checked-in files each fuzzer starts from).
-`tools\fuzz_seeds.ps1` needs a built `hydra_tests` for the `.sng` and `.srb`
-seeds; its header says why.
+`tools\fuzz_seeds.ps1` needs a built `hydra_tests`, which does the writing;
+its header says why.
 
 ```
 .\build_cpp.ps1 -Preset fuzz -Target hydra_fuzz
@@ -351,11 +351,13 @@ seeds; its header says why.
 
 Run one target from a Visual Studio developer shell, for as long as you like.
 The first folder is the corpus the fuzzer grows; the second holds the seeds.
-The `.chart` target also takes a dictionary of the reader's keywords.
+The `.chart` target also takes a dictionary of the reader's keywords. Add the
+`-timeout` and `-rss_limit_mb` limits the workflow's fuzz step uses, so a hang
+or a memory blowup stops the run the same way it does there.
 
 ```
 mkdir corpus\chart
-.\build-fuzz\Release\fuzz_chart.exe corpus\chart build-fuzz\seeds\chart -dict=tests\fuzz\chart.dict -max_total_time=3600 -timeout=10 -rss_limit_mb=2048
+.\build-fuzz\Release\fuzz_chart.exe corpus\chart build-fuzz\seeds\chart -dict=tests\fuzz\chart.dict -max_total_time=3600
 ```
 
 The progress lines count coverage as `ft:` (features), not the `cov:` that
@@ -367,7 +369,7 @@ A finding becomes a permanent test by copying the file into
 `testdata/fuzz/<target>/`, where `tests/test_fuzz_regressions.cpp` replays it
 (see `testdata/fuzz/README.md`). Check it in with the parser fix, never
 before, or the suite goes red. `.github/workflows/fuzz.yml` runs every target
-for ten minutes once a week and uploads any finding as an artifact.
+for a fixed time once a week and uploads any finding as an artifact.
 
 ## Continuous integration
 
