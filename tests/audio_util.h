@@ -1,9 +1,9 @@
 // The audio test helpers the audio tests share: where a fixture under
 // testdata/audio lives, its bytes, a small ID3 tag, a PCM16 WAV writer, a block
-// reader and a sample-difference measure for a MixSource, and a rough frequency
-// check for the 220 Hz sine fixtures. Audit finding 277: test_audio_decode.cpp,
-// test_audio_mixer.cpp and test_stream_mix.cpp each kept their own copies
-// before.
+// reader and a sample-difference measure for a MixSource, a rough frequency
+// check for the 220 Hz sine fixtures, and a recognizable stereo ramp. Audit
+// finding 277: test_audio_decode.cpp, test_audio_mixer.cpp and
+// test_stream_mix.cpp each kept their own copies before.
 
 #ifndef HYDRA_TESTS_AUDIO_UTIL_H
 #define HYDRA_TESTS_AUDIO_UTIL_H
@@ -69,6 +69,21 @@ inline std::vector<uint8_t> pcm16_wav(int channels, uint32_t rate,
     put_u32(o, data_len);
     for (int16_t s : samples) put_u16(o, static_cast<uint16_t>(s));
     return o;
+}
+
+// `frames` stereo frames at 48 kHz where frame i holds {L=i, R=i+0.5}, so a
+// copied block is trivially recognizable. Shared by test_audio_player.cpp and
+// test_preview_transport.cpp.
+inline hydra::audio::DecodedAudio make_ramp(int frames) {
+    hydra::audio::DecodedAudio a;
+    a.channels = 2;
+    a.sample_rate = 48000;
+    a.samples.resize(static_cast<std::size_t>(frames) * 2);
+    for (int i = 0; i < frames; ++i) {
+        a.samples[i * 2] = static_cast<float>(i);
+        a.samples[i * 2 + 1] = static_cast<float>(i) + 0.5f;
+    }
+    return a;
 }
 
 // Reads `frames` frames from `src` (or to its end) in `block`-frame pieces.
