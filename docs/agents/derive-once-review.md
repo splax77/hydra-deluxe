@@ -97,12 +97,15 @@ Run it once against main's copy of the gate and once against the worktree's, the
 
 ## Output
 
-Write your review to a file in your scratchpad. Submit it once, at step 2 or step 5. The file must contain these two lines exactly, each on its own line:
+Write your review to a file in your scratchpad. Submit it once, at step 2 or step 5. The file must contain these three lines exactly, each on its own line:
 
 ```
 Key: <the 40-character hash of the tip you are signing off: the key you were given if you committed nothing, else your last commit>
 Verdict: CLEAN
+Scope: full
 ```
+
+The gate refuses a file with no `Scope:` line. That way a forgotten line can never record a resolution review as a full one. A resolution review writes `Scope: resolution` instead (see "Resolution review").
 
 Then, in plain English, one short paragraph each:
 
