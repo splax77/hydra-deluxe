@@ -26,6 +26,7 @@
 #include "db_file_util.h"  // exec_on_file
 #include "display_fixtures.h"  // kTagOnlyTitle
 #include "net/dmbot_client.h"
+#include "scoped_hook.h"
 #include "store/record_store.h"
 #include "temp_util.h"
 #include "ui/dm_jobs.h"
@@ -350,10 +351,10 @@ TEST_CASE("jobs: a finished report build hands the memory its charts freed back 
     hydra::test::name_chart(store, "fake0", "fake 0");
     hydra::test::store_batch_result(store, "fake0", run.cap_query().exact);
     check_job_hands_memory_back("report build", [&] {
-        hydra::ui::set_report_analyzer_for_test(analyzer_carrying_chart_bytes(real));
+        const ScopedHook seam(hydra::ui::set_report_analyzer_for_test,
+                              analyzer_carrying_chart_bytes(real));
         hydra::ui::ReportJob job(store, run.cap_query(), run.lens, hydra::kDefaultHitWindowMs,
                                  run);
-        hydra::ui::set_report_analyzer_for_test({});
         job.start();
         wait_until([&] { return job.finished(); }, "the report build to finish");
         INFO(job.message());
@@ -414,29 +415,36 @@ TEST_CASE("jobs: a report job lets go of the batch's rows once its pass is done"
 
 TEST_CASE("jobs: a cancelled leaderboard fetch is not an error") {
     int opens = 0;
-    hydra::app::set_open_in_browser([&](const std::wstring&) {
+    // Before the jobs, which join the threads that call these.
+    const ScopedHook browser(hydra::app::set_open_in_browser, [&](const std::wstring&) {
         ++opens;
         return true;
     });
     RecordStore store(":memory:");
 
     // What the WinHTTP fetch does when cancel lands between read chunks.
-    hydra::net::set_fetcher([](const std::string&, const std::atomic<bool>* cancel) -> std::string {
-        wait_until([cancel] { return cancel->load(); }, "the fetch to be cancelled");
-        throw std::runtime_error("cancelled");
-    });
-    hydra::ui::DmReportJob thrown(store, "1", "someone", "jobs-test", hydra::store::Lens{});
-    thrown.start();
-    thrown.cancel();
-    wait_until([&] { return thrown.finished(); }, "the cancelled fetch to finish");
-    CHECK_FALSE(thrown.ok());
-    CHECK(thrown.message().empty());
+    {
+        const ScopedHook fetcher(
+            hydra::net::set_fetcher,
+            [](const std::string&, const std::atomic<bool>* cancel) -> std::string {
+                wait_until([cancel] { return cancel->load(); }, "the fetch to be cancelled");
+                throw std::runtime_error("cancelled");
+            });
+        hydra::ui::DmReportJob thrown(store, "1", "someone", "jobs-test", hydra::store::Lens{});
+        thrown.start();
+        thrown.cancel();
+        wait_until([&] { return thrown.finished(); }, "the cancelled fetch to finish");
+        CHECK_FALSE(thrown.ok());
+        CHECK(thrown.message().empty());
+    }
 
     // The server answers after the cancel: nothing is written or opened.
-    hydra::net::set_fetcher([](const std::string&, const std::atomic<bool>* cancel) -> std::string {
-        wait_until([cancel] { return cancel->load(); }, "the fetch to be cancelled");
-        return "{}";
-    });
+    const ScopedHook fetcher(
+        hydra::net::set_fetcher,
+        [](const std::string&, const std::atomic<bool>* cancel) -> std::string {
+            wait_until([cancel] { return cancel->load(); }, "the fetch to be cancelled");
+            return "{}";
+        });
     hydra::ui::DmReportJob late(store, "1", "someone", "jobs-test", hydra::store::Lens{});
     late.start();
     late.cancel();
@@ -444,16 +452,14 @@ TEST_CASE("jobs: a cancelled leaderboard fetch is not an error") {
     CHECK_FALSE(late.ok());
     CHECK(late.message().empty());
     CHECK(opens == 0);
-
-    hydra::net::set_fetcher({});
-    hydra::app::set_open_in_browser({});
 }
 
 TEST_CASE("jobs: a failed leaderboard fetch says what to do") {
-    hydra::net::set_fetcher([](const std::string&, const std::atomic<bool>*) -> std::string {
-        throw hydra::KindedError(hydra::ErrorKind::NetUnreachable,
-                                 "could not send the request (error 12029)");
-    });
+    const ScopedHook fetcher(
+        hydra::net::set_fetcher, [](const std::string&, const std::atomic<bool>*) -> std::string {
+            throw hydra::KindedError(hydra::ErrorKind::NetUnreachable,
+                                     "could not send the request (error 12029)");
+        });
     hydra::ui::DmFetchUsersJob job;
     job.start();
     wait_until([&] { return job.finished(); }, "the failed fetch to finish");
@@ -461,7 +467,6 @@ TEST_CASE("jobs: a failed leaderboard fetch says what to do") {
     CHECK(job.message() ==
           "Hydra couldn't reach dmleaderboards. Check your internet connection and try again.");
     CHECK(job.error() == "could not send the request (error 12029)");
-    hydra::net::set_fetcher({});
 }
 
 // Finding 212: run_guarded and AnalyzeJob::start's thread-start catch record a
