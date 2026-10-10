@@ -325,7 +325,7 @@ TEST_CASE("library model: Best path sorts by score, with unscored rows last both
 
 // A result whose analysis kept no path is Analyzed, but it has no best path,
 // so a stars: or squeeze filter has nothing to test on it (D51 call 11).
-TEST_CASE("library model: a Ready row with no paths is Analyzed but has no facts (D51 Q11)") {
+TEST_CASE("library model: a Ready row with no paths is Analyzed but has no facts") {
     LibraryModel m;
     m.set_charts({chart("empty", "Empty", "A", "C", "common"),
                   chart("scored", "Scored", "A", "C", "common")});

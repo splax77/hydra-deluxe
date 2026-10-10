@@ -232,10 +232,19 @@ them has one owner. This list points at each; read the owner for the rule.
   struct. It never sorts, counts or filters by itself. The thin files
   `src/ui/path_report_window.cpp` and `src/ui/dm_report_window.cpp` fill it
   in for each report.
-- **The OS window and its placement.** `report_window_class` and
-  `place_report_window` in `src/ui/app_shell.{h,cpp}` (D103 item 14). The
-  popup patch in `third_party/imgui/imgui.cpp` keeps popups inside their
-  window (D103 item 15).
+- **The OS window and its placement.** `report_window_class` in
+  `src/ui/app_shell.{h,cpp}` makes each report its own OS window.
+  `report_placement` beside it decides where a report opens and whether it
+  opens maximized, and `place_report_window` applies that and notes where the
+  window is, in the `[Hydra][Window:<key>]` sections of `hydra_ui.ini` (D103
+  item 14; ADR 0027 says how it behaves). `main.cpp` measures the OS frame
+  around a report and hands it over with `set_report_frame_insets`. The popup
+  patch in `third_party/imgui/imgui.cpp` keeps popups inside their window
+  (D103 item 15).
+- **Column widths.** `src/ui/column_widths.h` holds the one rule every data table
+  sizes its columns by. The two-column key-and-value forms (the settings bar,
+  the batch dialog) are not data tables and keep ImGui's own fit. Its header
+  comment says how a table uses it.
 - **Chip colours.** `chip_color` in `src/ui/theme.{h,cpp}`.
 - **The reports' state.** AppState holds both reports as `ReportSlot`s,
   `path_report` and `dm_report`, in `src/ui/app_state.h`, with the functions
@@ -329,6 +338,47 @@ makes; `tools\test_mutation_probe.ps1` is its self-test.
 
 Run it before a release, on the scoring and path code. It is not meant for
 every merge: it is slow, and a survivor is a prompt to look, not a failure.
+
+## Fuzzing the file parsers
+
+A fuzzer feeds a parser random bytes, keeps the inputs that reach new code,
+and mutates those. Hydra has one libFuzzer exe per kind of file it reads. The
+list is `kTargets` in `tests/fuzz/harness.h`, which also holds the one body
+every exe runs. A file the parser turns away with an exception is fine. A
+crash, an AddressSanitizer report or a hang is a bug.
+
+Build them with the `fuzz` preset, which sits on the AddressSanitizer build,
+and write the seed folders (the checked-in files each fuzzer starts from).
+`tools\fuzz_seeds.ps1` needs a built `hydra_tests`, which does the writing;
+its header says why.
+
+```
+.\build_cpp.ps1 -Preset fuzz -Target hydra_fuzz
+.\build_cpp.ps1 -Target hydra_tests
+.\tools\fuzz_seeds.ps1
+```
+
+Run one target from a Visual Studio developer shell, for as long as you like.
+The first folder is the corpus the fuzzer grows; the second holds the seeds.
+The `.chart` target also takes a dictionary of the reader's keywords. Add the
+`-timeout` and `-rss_limit_mb` limits the workflow's fuzz step uses, so a hang
+or a memory blowup stops the run the same way it does there.
+
+```
+mkdir corpus\chart
+.\build-fuzz\Release\fuzz_chart.exe corpus\chart build-fuzz\seeds\chart -dict=tests\fuzz\chart.dict -max_total_time=3600
+```
+
+The progress lines count coverage as `ft:` (features), not the `cov:` that
+clang's libFuzzer prints. A rising `ft:` means the fuzzer is still finding new
+code. On a finding it stops and writes `crash-<hash>` (or `timeout-`,
+`oom-`) in the current folder; `-artifact_prefix=<folder>\` puts it elsewhere.
+
+A finding becomes a permanent test by copying the file into
+`testdata/fuzz/<target>/`, where `tests/test_fuzz_regressions.cpp` replays it
+(see `testdata/fuzz/README.md`). Check it in with the parser fix, never
+before, or the suite goes red. `.github/workflows/fuzz.yml` runs every target
+for a fixed time once a week and uploads any finding as an artifact.
 
 ## Continuous integration
 

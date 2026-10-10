@@ -1,0 +1,1036 @@
+{
+  "rules": [
+    {
+      "question": "Which deactivation edge has this SP end, in a test?",
+      "owner": "deact_edge_at in tests/record_fixtures.h",
+      "owner_file": "tests/record_fixtures.h",
+      "owner_symbol": "deact_edge_at",
+      "date": "2026-10-04",
+      "decision": "T10+T11 derive-once review finding 2 (2026-10-04)",
+      "added_by": "T10 T11 derive-once fixes",
+      "pattern": "const ScoreGraphEdge\\*\\s+deact_edge_at\\(",
+      "anchor": "const ScoreGraphEdge*",
+      "owner_files": [
+        "tests/record_fixtures.h"
+      ],
+      "must_match": [
+        "const ScoreGraphEdge* deact_edge_at(const ScoreGraph& graph, int64_t tick) {",
+        "const ScoreGraphEdge* deact_edge_at(const ScoreGraph& graph, int64_t end_tick) {"
+      ],
+      "must_not_match": [
+        "const ScoreGraphEdge* e = deact_edge_at(graph, 13440);"
+      ],
+      "scope": [
+        "tests"
+      ]
+    },
+    {
+      "question": "Which search options keep every branch, in a test?",
+      "owner": "wide_search in tests/record_fixtures.h",
+      "owner_file": "tests/record_fixtures.h",
+      "owner_symbol": "wide_search",
+      "date": "2026-10-04",
+      "decision": "T10+T11 derive-once review finding 3 (2026-10-04)",
+      "added_by": "T10 T11 derive-once fixes",
+      "pattern": "^\\s*((inline|static)\\s+)?EngineOptions\\s+\\w+\\(\\)\\s*\\{",
+      "anchor": "EngineOptions",
+      "owner_files": [
+        "tests/record_fixtures.h"
+      ],
+      "must_match": [
+        "EngineOptions keep_losers() {",
+        "static EngineOptions keep_all() {"
+      ],
+      "must_not_match": [
+        "EngineOptions o;"
+      ],
+      "scope": [
+        "tests"
+      ]
+    },
+    {
+      "question": "Where does the graph's SP track start, in a test?",
+      "owner": "sp_track_start in tests/record_fixtures.h",
+      "owner_file": "tests/record_fixtures.h",
+      "owner_symbol": "sp_track_start",
+      "date": "2026-10-04",
+      "decision": "D36",
+      "added_by": "d36-review-fixes",
+      "pattern": "branch_edge\\)\\s*\\w+\\s*=\\s*\\w+->branch_edge->dest;",
+      "anchor": "->branch_edge->dest;",
+      "must_match": [
+        "if (b->branch_edge) sp = b->branch_edge->dest;",
+        "if (!sp_start && n->branch_edge) sp_start = n->branch_edge->dest;"
+      ],
+      "must_not_match": [
+        "if (sp->branch_edge && sp->branch_edge->dest->timecode.ticks() == end_tick)"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "Decided by: D36 derive-once review finding 3 (2026-10-04)"
+    },
+    {
+      "question": "Does every stored path of one record bank in order, in a test?",
+      "owner": "bank_check::check_record_banks in tests/bank_check.h",
+      "owner_file": "tests/bank_check.h",
+      "owner_symbol": "check_record_banks",
+      "date": "2026-10-04",
+      "decision": "D36",
+      "added_by": "d36-review-fixes",
+      "pattern": "=\\s*bank_check::phrase_ends\\(\\w+\\);",
+      "anchor": "bank_check::phrase_ends(",
+      "must_match": [
+        "const std::set<int64_t> phrase_ends = bank_check::phrase_ends(song);",
+        "std::set<int64_t> ends = bank_check::phrase_ends(s);"
+      ],
+      "must_not_match": [
+        "inline std::set<int64_t> phrase_ends(const hydra::Song& song) {"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "Decided by: D36 derive-once review finding 2 (2026-10-04)"
+    },
+    {
+      "question": "Which ticks does a path activate on, in a test?",
+      "owner": "act_ticks in tests/record_fixtures.h",
+      "owner_file": "tests/record_fixtures.h",
+      "owner_symbol": "act_ticks",
+      "date": "2026-10-04",
+      "decision": "T10+T11 derive-once review finding 5 (2026-10-04)",
+      "added_by": "T10 T11 derive-once fixes",
+      "pattern": "for \\(const Activation&\\s*\\w+\\s*:.*\\)\\s*\\w+\\.push_back\\(\\w+\\.timecode\\.ticks\\(\\)\\)",
+      "anchor": "for (const Activation&",
+      "owner_files": [
+        "tests/record_fixtures.h"
+      ],
+      "must_match": [
+        "for (const Activation& a : acts) ticks.push_back(a.timecode.ticks());",
+        "for (const Activation& a : p.all_activations()) t.push_back(a.timecode.ticks());"
+      ],
+      "must_not_match": [
+        "for (const SongTimestamp& ts : song.sequence) ticks.push_back(ts.timecode.ticks());"
+      ],
+      "scope": [
+        "tests"
+      ]
+    },
+    {
+      "question": "Which test walks the source tree?",
+      "owner": "sourcetree::for_each_source_file in tests/source_tree.h",
+      "owner_file": "tests/source_tree.h",
+      "owner_symbol": "for_each_source_file",
+      "date": "2026-10-04",
+      "decision": "this file's own rule (one scan, new rules are rows)",
+      "added_by": "step-1 derive-once fixes",
+      "pattern": "recursive_directory_iterator\\(root\\s*/\\s*sub\\)",
+      "anchor": "recursive_directory_iterator(root",
+      "owner_files": [
+        "tests/source_tree.h"
+      ],
+      "must_match": [
+        "for (const fs::directory_entry& e : fs::recursive_directory_iterator(root / sub)) {",
+        "for (const auto& e : fs::recursive_directory_iterator(root/sub))"
+      ],
+      "must_not_match": [
+        "for (const auto& e : std::filesystem::directory_iterator(dir)) {"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "Decided by: this file's own rule (one scan, new rules are rows); step-1 derive-once review finding 12 (2026-10-04); one walker for the docs test too (phase 4 join, 2026-10-04)"
+    },
+    {
+      "question": "Which test reads the source tree?",
+      "owner": "sourcetree::root in tests/source_tree.h",
+      "owner_file": "tests/source_tree.h",
+      "owner_symbol": "sourcetree::root",
+      "date": "2026-10-04",
+      "decision": "this file's own rule (one scan, new rules are rows)",
+      "added_by": "step-1 derive-once fixes round 2",
+      "pattern": "\\bHYDRA_SOURCE_DIR\\b",
+      "anchor": "HYDRA_SOURCE_DIR",
+      "owner_files": [
+        "tests/source_tree.h"
+      ],
+      "must_match": [
+        "std::ifstream in(std::string(HYDRA_SOURCE_DIR) + \"/src/app/preview_view.cpp\");",
+        "const fs::path root = fs::u8path(HYDRA_SOURCE_DIR);"
+      ],
+      "must_not_match": [
+        "return load_songpath(std::string(HYDRA_INPUT_DIR) + \"/test_fast_tempo/\" + name, true, true);"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "Decided by: this file's own rule (one scan, new rules are rows); step-1 derive-once review of fb1189b, finding 5 (2026-10-04); one reader for the docs test too (phase 4 join, 2026-10-04)"
+    },
+    {
+      "question": "Which test helper writes MThd/MTrk chunks?",
+      "owner": "smf_tracks in tests/midi_util.h",
+      "owner_file": "tests/midi_util.h",
+      "owner_symbol": "smf_tracks",
+      "date": "2026-10-04",
+      "decision": "audit finding 286",
+      "added_by": "step-2 derive-once fixes",
+      "pattern": "'M', 'T', '(h', 'd|r', 'k)'|\"MTrk\"",
+      "owner_files": [
+        "tests/midi_util.h"
+      ],
+      "must_match": [
+        "d.insert(d.end(), {'M', 'T', 'r', 'k'});",
+        "const char* tag = \"MTrk\";"
+      ],
+      "must_not_match": [
+        "smf(concat({track_name(\"PART DRUMS\"), end_of_track()}))"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/test_midi.cpp",
+          "line_text": "'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, 0xE8, 0x00,  // div < 0",
+          "why": "a deliberately broken header (a negative division), which smf_tracks cannot write"
+        }
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "Step-2 derive-once review of 11b9d44, finding 3 (audit finding 286). Decided by: audit finding 286; step-2 derive-once review of 11b9d44, finding 3"
+    },
+    {
+      "question": "Which test helper deflates a container stream?",
+      "owner": "deflate_raw in tests/srb_util.h",
+      "owner_file": "tests/srb_util.h",
+      "owner_symbol": "deflate_raw",
+      "date": "2026-10-04",
+      "decision": "audit finding 117",
+      "added_by": "step-2 derive-once fixes",
+      "pattern": "tdefl_compress_mem_to_heap",
+      "anchor": "tdefl_compress_mem_to_heap",
+      "owner_files": [
+        "tests/srb_util.h"
+      ],
+      "must_match": [
+        "void* p = tdefl_compress_mem_to_heap(src.data(), src.size(), &out_len,",
+        "p = tdefl_compress_mem_to_heap(a, n, &len, 0);"
+      ],
+      "must_not_match": [
+        "deflate_raw(meta)"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "Step-2 derive-once review of 11b9d44, finding 4 (audit finding 117). Decided by: audit finding 117; step-2 derive-once review of 11b9d44, finding 4"
+    },
+    {
+      "question": "Which test helper writes a .chart [Song] or [SyncTrack] header?",
+      "owner": "chart_text in tests/chart_text.h",
+      "owner_file": "tests/chart_text.h",
+      "owner_symbol": "chart_text",
+      "date": "2026-10-04",
+      "decision": "step-2 derive-once review of 11b9d44, finding 6",
+      "added_by": "step-2 derive-once fixes round 2",
+      "pattern": "\"\\[(Song|SyncTrack)\\]\\\\n",
+      "anchor": "]\\n",
+      "owner_files": [
+        "tests/chart_text.h"
+      ],
+      "must_match": [
+        "\"[SyncTrack]\\n{\\n  0 = TS 4\\n  0 = B 120000\\n}\\n\"",
+        "\"[SyncTrack]\\n{\\n  0 = TS 3 3\\n}\\n\"",
+        "\"[SyncTrack]\\n{\\n\" + sync + \"}\\n\"",
+        "\"[SyncTrack]\\n\"",
+        "\"[Song]\\n\"",
+        "std::string s = \"[Song]\\n{\\n  Resolution = \" + resolution + \"\\n}\\n\""
+      ],
+      "must_not_match": [
+        "testchart::section(\"Song\", \"  Resolution = 192\\n\")",
+        "testchart::section(\"SyncTrack\", testchart::kSync44At120)",
+        "write_bytes(ini, bytes_of(\"[Song]\\r\\nDelay = -250\\r\\n\"));"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/test_song.cpp",
+          "line_text": "\"[SyncTrack]\\n{\\n  0 = TS 4\\n  0 = B 120000\\n}\\n\";",
+          "why": "\"section headers are found as the regex found them\" puts an arbitrary first line in front of this header, which chart_text cannot write"
+        },
+        {
+          "file": "tests/test_song.cpp",
+          "line_text": "const std::string song = \"[Song]\\n{\\n  Resolution = 192\\n}\\n\";",
+          "why": "\"malformed lines keep their handling\" joins the sections with stray text between them, which chart_text cannot write"
+        },
+        {
+          "file": "tests/test_song.cpp",
+          "line_text": "const std::string sync = \"[SyncTrack]\\n{\\n  0 = TS 4\\n  0 = B 120000\\n}\\n\";",
+          "why": "\"malformed lines keep their handling\" joins the sections with stray text between them, which chart_text cannot write"
+        },
+        {
+          "file": "tests/test_song.cpp",
+          "line_text": "Song s = parse(song + \"[Song]\\n{\\n  Resolution = 480\\n}\\n\" + sync +",
+          "why": "\"malformed lines keep their handling\" repeats the [Song] section to pin that the later one replaces it, which chart_text cannot write"
+        },
+        {
+          "file": "tests/test_app_state.cpp",
+          "line_text": "{ std::ofstream f(chart); f << \"[Song]\\n\"; }",
+          "why": "a placeholder .chart that only has to exist on disk; no case parses it"
+        },
+        {
+          "file": "tests/test_app_state.cpp",
+          "line_text": "{ std::ofstream f(chart); f << \"[Song]\\n\"; }",
+          "why": "a placeholder .chart that only has to exist on disk; no case parses it"
+        }
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "Step-2 derive-once review of 11b9d44, finding 6, widened by the review of dbeb3a3, finding 1: any string literal that opens a [Song] or [SyncTrack] section, so a header typed across several source lines, or one that takes its lines as a parameter, is caught on its first line. The test_song.cpp lines build deliberately malformed charts from raw pieces; the test_app_state.cpp lines write a placeholder file. Decided by: step-2 derive-once review of 11b9d44, finding 6; review of dbeb3a3, finding 1"
+    },
+    {
+      "question": "Which test types a difficulty's kick pitch or other per-difficulty value?",
+      "owner": "kLiterals in tests/difficulty_literals.h",
+      "owner_file": "tests/difficulty_literals.h",
+      "owner_symbol": "kLiterals",
+      "date": "2026-10-04",
+      "decision": "step-2 derive-once review of dbeb3a3, finding 2",
+      "added_by": "step-2 derive-once fixes round 2",
+      "pattern": "\\{Difficulty::(Hard|Medium|Easy), \\d",
+      "anchor": "{Difficulty::",
+      "owner_files": [
+        "tests/difficulty_literals.h"
+      ],
+      "must_match": [
+        "{Difficulty::Hard, 480},",
+        "{Difficulty::Easy, 60, 59, '0'}"
+      ],
+      "must_not_match": [
+        "{hydra::Difficulty::Hard, 84, 83, 85, '2', \"Hard\", \"HardDrums\"},",
+        "for (Difficulty d : {Difficulty::Hard, Difficulty::Medium, Difficulty::Easy}) {"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "Step-2 derive-once review of dbeb3a3, finding 2. A test's own per-difficulty table pairs a difficulty with a number; a plain list of difficulties to walk is not flagged. The owner's rows carry the hydra:: prefix, so they do not match. Loose by design: a table spelled another way needs a review reading."
+    },
+    {
+      "question": "Which test walks a path's tied variants?",
+      "owner": "collect_tied in tests/record_fixtures.h",
+      "owner_file": "tests/record_fixtures.h",
+      "owner_symbol": "collect_tied",
+      "date": "2026-10-04",
+      "decision": "step-1 derive-once review of de4e23a, finding 4 (2026-10-04)",
+      "added_by": "step-1 derive-once fixes round 3",
+      "pattern": "^\\s*(inline\\s+)?void\\s+collect_(variants|tied)\\s*\\(",
+      "anchor": "collect_",
+      "must_match": [
+        "void collect_variants(const Path& p, std::vector<const Path*>& out) {",
+        "inline void collect_tied(const Path& p, std::vector<const Path*>& out) {"
+      ],
+      "must_not_match": [
+        "void collect_paths(const Path& p, std::vector<const Path*>& out) {"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/record_fixtures.h",
+          "line_text": "inline void collect_tied(const Path& p, std::vector<const Path*>& out) {",
+          "why": "collect_tied, the owner"
+        }
+      ],
+      "scope": [
+        "tests"
+      ]
+    },
+    {
+      "question": "Does each SqIn have its own step, never repeated or squeezed out?",
+      "owner": "check_one_step_per_sqin in tests/bank_check.h (its ticks from sqin_phrase_ticks)",
+      "owner_file": "tests/bank_check.h",
+      "owner_symbol": "check_one_step_per_sqin",
+      "date": "2026-10-04",
+      "decision": "D34",
+      "added_by": "step-1 derive-once fixes round 4",
+      "pattern": "if \\(s\\.kind == (hydra::)?SpEndKind::SqIn\\) (\\+\\+\\w+|\\w+\\.push_back\\(s\\.tick\\));",
+      "anchor": "SpEndKind::SqIn) ",
+      "must_match": [
+        "if (s.kind == SpEndKind::SqIn) ticks.push_back(s.tick);",
+        "if (s.kind == SpEndKind::SqIn) ++sqin_steps;"
+      ],
+      "must_not_match": [
+        "for (const int64_t t : hydra::sqin_phrase_ticks(act)) sqin_phrases.insert(t);"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "A test that gathers a window's SqIn steps to count or compare them restates D34's check. The check reads the window's SqIn step ticks from sqin_phrase_ticks (src/core/replay.cpp), as check_spent_phrases does, so no line in tests/ matches. Decided by: D34; step-1 derive-once review of cc2e1d9, finding 3 (2026-10-04)"
+    },
+    {
+      "question": "Which paths are tied under any root of this list?",
+      "owner": "test::all_tied in tests/record_fixtures.h",
+      "owner_file": "tests/record_fixtures.h",
+      "owner_symbol": "all_tied",
+      "date": "2026-10-04",
+      "decision": "step-1 derive-once review of 9a3373b, finding 1 (2026-10-04)",
+      "added_by": "step-1 derive-once fixes round 5",
+      "pattern": "for \\(const (hydra::)?Path& \\w+ : [\\w.>-]+\\) collect_tied\\(",
+      "anchor": ") collect_tied(",
+      "must_match": [
+        "for (const Path& root : rec.paths) collect_tied(root, vs);",
+        "for (const Path& r : rec.paths) collect_tied(r, all);"
+      ],
+      "must_not_match": [
+        "collect_tied(p, tied);"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/record_fixtures.h",
+          "line_text": "for (const Path& r : roots) collect_tied(r, out);",
+          "why": "test::all_tied, the owner"
+        }
+      ],
+      "scope": [
+        "tests"
+      ]
+    },
+    {
+      "question": "When are two Songs the same in a test?",
+      "owner": "testsong::songs_equal in tests/song_equal.h",
+      "owner_file": "tests/song_equal.h",
+      "owner_symbol": "songs_equal",
+      "date": "2026-10-04",
+      "decision": "audit finding 122",
+      "added_by": "container ranged reads",
+      "pattern": "(bool|void)\\s+\\w*(same|equal)\\w*\\(const (hydra::)?Song&|\\.sequence\\[i\\]\\.timecode\\.ticks\\(\\)\\s*==",
+      "must_match": [
+        "void check_same_notes(const Song& got, const Song& want) {",
+        "CHECK(via_bytes.sequence[i].timecode.ticks() == via_path.sequence[i].timecode.ticks());"
+      ],
+      "must_not_match": [
+        "CHECK(testsong::songs_equal(direct, via_srb));"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/song_equal.h",
+          "line_text": "inline bool songs_equal(const hydra::Song& a, const hydra::Song& b) {",
+          "why": "testsong::songs_equal, the owner"
+        }
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "Decided by: audit finding 122; container ranged-reads derive-once review of cbd1ee6, finding 1 (2026-10-04)"
+    },
+    {
+      "question": "How do the tests make a D3D11 device?",
+      "owner": "warp::make_device in tests/warp_util.h",
+      "owner_file": "tests/warp_util.h",
+      "owner_symbol": "make_device",
+      "date": "2026-10-04",
+      "decision": "audit finding 293 (phase 6 task J1-2)",
+      "added_by": "J1-2",
+      "pattern": "\\bD3D11CreateDevice\\(",
+      "anchor": "D3D11CreateDevice(",
+      "must_match": [
+        "if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, &want, 1,"
+      ],
+      "must_not_match": [
+        "HRESULT res = D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,",
+        "if (!warp::make_device(device, context)) {"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/warp_util.h",
+          "line_text": "HRESULT hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, &want, 1,",
+          "why": "warp::make_device, the owner"
+        }
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "D3D11CreateDeviceAndSwapChain (Hydra.exe's window) is another question; the parenthesis keeps it out."
+    },
+    {
+      "question": "Which GUI tests does a name select?",
+      "owner": "uitest::selects in tests/ui/uitest_harness.cpp",
+      "owner_file": "tests/ui/uitest_harness.cpp",
+      "owner_symbol": "selects",
+      "date": "2026-10-04",
+      "decision": "audit finding 294 (phase 6 task J1-2)",
+      "added_by": "J1-2",
+      "pattern": "==\\s*\"all\"",
+      "anchor": "\"all\"",
+      "must_match": [
+        "if (what == \"all\" || what == t->Name) {",
+        "bool found = w == \"all\";"
+      ],
+      "must_not_match": [
+        "if (uitest::selects(w, t->Name)) {",
+        "if (a == \"--all\") wanted.push_back(\"all\");"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/ui/uitest_harness.cpp",
+          "line_text": "return what == \"all\" || what == test_name;",
+          "why": "uitest::selects, the owner"
+        }
+      ],
+      "scope": [
+        "tests"
+      ]
+    },
+    {
+      "question": "Which test helper builds a .sng?",
+      "owner": "make_sng in tests/sng_util.h",
+      "owner_file": "tests/sng_util.h",
+      "owner_symbol": "make_sng",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J1-5",
+      "pattern": "\"SNGPKG\"|\\bstd::vector<uint8_t>\\s+make_sng\\s*\\(",
+      "owner_files": [
+        "tests/sng_util.h"
+      ],
+      "must_match": [
+        "std::string header = \"SNGPKG\";",
+        "std::vector<uint8_t> make_sng(",
+        "inline std::vector<uint8_t> make_sng("
+      ],
+      "must_not_match": [
+        "std::vector<uint8_t> buf = make_sng({{\"name\", \"Song\"}}, {});",
+        "const std::vector<uint8_t> whole = make_sng({{\"name\", \"Song\"}}, {});"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "A .sng's magic, or a make_sng definition (the return type right before the name; a call assigns to a variable in between). Decided by: audit finding 117; phase 6 task J1-5 (D53)"
+    },
+    {
+      "question": "What fields does a phrase-end note carry in a hand-built Song?",
+      "owner": "mark_phrase_end in tests/record_fixtures.h",
+      "owner_file": "tests/record_fixtures.h",
+      "owner_symbol": "mark_phrase_end",
+      "date": "2026-10-04",
+      "decision": "D53, D54",
+      "added_by": "J1-1",
+      "pattern": "\\bflag_sp\\s*=(?!=)",
+      "anchor": "flag_sp",
+      "must_match": [
+        "ts.flag_sp = tick == 3256;",
+        "ts.flag_sp = phrase;",
+        "ts.flag_sp = true;"
+      ],
+      "must_not_match": [
+        "if (!ts.flag_sp) continue;",
+        "if (x.flag_solo != y.flag_solo || x.flag_sp != y.flag_sp) return false;",
+        "CHECK(song.sequence[0].flag_sp == true);",
+        "if (phrase) test::mark_phrase_end(ts, tick, song.tick_resolution());"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/record_fixtures.h",
+          "line_text": "ts.flag_sp = true;",
+          "why": "mark_phrase_end, the owner"
+        }
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "A hand-built phrase end sets the flag and the phrase start together, as the parser's close_sp_phrase does, through one fixture helper. Reads and comparisons of the flag are not assignments. Decided by: audit finding 300; phase 6 task J1-1 (D53, D54)"
+    },
+    {
+      "question": "Which test helper reads an audio fixture?",
+      "owner": "fixture_path and read_fixture in tests/audio_util.h",
+      "owner_file": "tests/audio_util.h",
+      "owner_symbol": "fixture_path",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J1-4",
+      "pattern": "HYDRA_TESTDATA_DIR\\) \\+ \"/audio/",
+      "anchor": "HYDRA_TESTDATA_DIR) + \"/audio/",
+      "must_match": [
+        "return hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + \"/audio/\" + name);",
+        "copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + \"/audio/sine220.ogg\", d + \"\\\\song.ogg\");"
+      ],
+      "must_not_match": [
+        "ogg.path = fixture_path(\"sine220.ogg\");",
+        "#ifndef HYDRA_TESTDATA_DIR"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/audio_util.h",
+          "line_text": "return std::string(HYDRA_TESTDATA_DIR) + \"/audio/\" + name;",
+          "why": "fixture_path, the owner (read_fixture reads through it)"
+        }
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "No closing quote after /audio/, so a build that names the file inside the literal is caught too (review of M6-J1c finding 1). Decided by: audit finding 277, folded under D53 (phase 6 task J1-4)"
+    },
+    {
+      "question": "Which test helper estimates a tone's frequency?",
+      "owner": "estimate_freq_hz in tests/audio_util.h",
+      "owner_file": "tests/audio_util.h",
+      "owner_symbol": "estimate_freq_hz",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J1-4",
+      "pattern": "\\b(double|float|auto)\\s+estimate_freq_hz\\s*\\(",
+      "anchor": "estimate_freq_hz",
+      "must_match": [
+        "double estimate_freq_hz(const DecodedAudio& a) {",
+        "double estimate_freq_hz(const DecodedAudio& a, int channel) {"
+      ],
+      "must_not_match": [
+        "CHECK(estimate_freq_hz(out, 0) == doctest::Approx(220.0).epsilon(0.07));"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/audio_util.h",
+          "line_text": "inline double estimate_freq_hz(const hydra::audio::DecodedAudio& a, int channel) {",
+          "why": "estimate_freq_hz, the owner"
+        }
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "Decided by: audit finding 277, folded under D53 (phase 6 task J1-4)"
+    },
+    {
+      "question": "Is this text on screen in a GUI test?",
+      "owner": "on_screen in tests/ui/uitest_harness.cpp",
+      "owner_file": "tests/ui/uitest_harness.cpp",
+      "owner_symbol": "on_screen",
+      "date": "2026-10-09",
+      "decision": "derive-once review 8aa5f401 finding 2 (settings reset button, 2026-10-09)",
+      "added_by": "settings-reset-button",
+      "pattern": "=\\s*\\[&\\]\\([^)]*\\)\\s*\\{\\s*return visible_text\\(h\\)\\.find\\(",
+      "anchor": "return visible_text(h).find(",
+      "must_match": [
+        "auto shows = [&](const char* text) { return visible_text(h).find(text) != std::string::npos; };",
+        "auto on_screen = [&](const char* s) { return visible_text(h).find(s) != std::string::npos; };"
+      ],
+      "must_not_match": [
+        "return visible_text(h).find(s) != std::string::npos;",
+        "IM_CHECK(wait_until(ctx, [&] { return on_screen(h, \"(locked)\"); }, 5));"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "A GUI test's own lambda for \"is this text on screen\", the copy three tests once typed."
+    },
+    {
+      "question": "Which rows does a test show when it wants every row? (tests)",
+      "owner": "every_row in tests/report_samples.h",
+      "owner_file": "tests/report_samples.h",
+      "owner_symbol": "every_row",
+      "date": "2026-10-08",
+      "decision": "derive-once review of RW-T7 (finding 2)",
+      "added_by": "RW-T7",
+      "pattern": "\\b\\w+\\[(\\w+)\\]\\s*=\\s*\\1\\s*;|\\bstd::iota\\(",
+      "must_match": [
+        "for (size_t i = 0; i < rows.size(); ++i) shown[i] = i;",
+        "for (size_t i = 0; i < shown.size(); ++i) shown[i] = i;",
+        "std::iota(shown.begin(), shown.end(), size_t{0});"
+      ],
+      "must_not_match": [
+        "CHECK(report::path_tiles({a, a2, b}, every_row(3), 85.0)[0].value == \"2\");",
+        "out[i] = in[i];",
+        "counts[i] = i2;"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/report_samples.h",
+          "line_text": "for (size_t i = 0; i < n; ++i) shown[i] = i;",
+          "why": "every_row, the owner"
+        }
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "A test building the index list 0..n-1 itself, by a loop that sets each slot to its own index or by std::iota."
+    },
+    {
+      "question": "Which corpus chart is the first with paths?",
+      "owner": "charts_with_paths and its forms (analyzed_with_paths, first_chart_with_paths, first_analyzed_with_paths) in tests/corpus_util.h",
+      "owner_file": "tests/corpus_util.h",
+      "owner_symbol": "charts_with_paths",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-2",
+      "pattern": "\\.record\\.paths\\.empty\\(\\)\\)\\s*(continue|return)",
+      "anchor": ".record.paths.empty())",
+      "owner_files": [
+        "tests/corpus_util.h"
+      ],
+      "must_match": [
+        "if (result.song.is_empty() || result.record.paths.empty()) continue;",
+        "if (r.song.is_empty() || r.record.paths.empty()) continue;",
+        "if (!r.song.is_empty() && !r.record.paths.empty()) return r;",
+        "if (!r.record.paths.empty()) return {p, r.record.best_path()};"
+      ],
+      "must_not_match": [
+        "for (const AnalysisResult& result : corpus::analyzed_with_paths(settings, names.size())) {",
+        "CHECK(!r.paths.empty());"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "Walking the corpus for the first charts that analyze to a path, skipping the rest (continue) or stopping on the first (return). Decided by: audit finding 277; phase 6 task J2-2 (D53); the return form added by task J4-4"
+    },
+    {
+      "question": "What is the contrast of two colours?",
+      "owner": "tests/wcag_util.h",
+      "owner_file": "tests/wcag_util.h",
+      "owner_symbol": "contrast_ratio",
+      "date": "2026-10-04",
+      "decision": "D54",
+      "added_by": "J2-2",
+      "pattern": "0\\.03928|0\\.04045",
+      "anchor": "0.0",
+      "owner_files": [
+        "tests/wcag_util.h"
+      ],
+      "must_match": [
+        "return c <= 0.03928 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);",
+        "return c <= 0.04045f ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);"
+      ],
+      "must_not_match": [
+        "return testwcag::relative_luminance(channel(1), channel(3), channel(5));"
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "The WCAG relative-luminance formula, typed once with 2.2's threshold. Decided by: audit finding 288; D54 (the WCAG 2.2 threshold, 0.04045); phase 6 task J2-2"
+    },
+    {
+      "question": "Which test helper builds a small ID3v2 tag?",
+      "owner": "id3_tag in tests/audio_util.h",
+      "owner_file": "tests/audio_util.h",
+      "owner_symbol": "id3_tag",
+      "date": "2026-10-05",
+      "decision": "phase 6 task J2-6 derive-once review, finding 1",
+      "added_by": "J2-6",
+      "pattern": "\\{\\s*'I',\\s*'D',\\s*'3'",
+      "anchor": "'I',",
+      "must_match": [
+        "std::vector<uint8_t> t = bytes({'I', 'D', '3', 3, 0, flags, 0, 0, 0, 20});",
+        "std::vector<uint8_t> tagged = {'I', 'D', '3', 3, 0, 0, 0, 0, 0, 20};",
+        "CHECK(sniff_format(bytes({'I', 'D', '3', 3, 0, 0})) == AudioFormat::Mp3);"
+      ],
+      "must_not_match": [
+        "std::vector<uint8_t> tagged = id3_tag(0);"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/audio_util.h",
+          "line_text": "std::vector<uint8_t> t = {'I', 'D', '3', 3, 0, static_cast<uint8_t>(flags),",
+          "why": "id3_tag, the owner"
+        }
+      ],
+      "scope": [
+        "tests"
+      ]
+    },
+    {
+      "question": "Where may the removed Analyze button's labels appear?",
+      "owner": "test_no_analyze_button in tests/ui/uitest_details.cpp, which checks they are gone",
+      "owner_file": "tests/ui/uitest_details.cpp",
+      "owner_symbol": "test_no_analyze_button",
+      "date": "2026-10-07",
+      "decision": "D53, D87",
+      "added_by": "storage-T2",
+      "pattern": "(Analyze this song|Re-analyze)\"",
+      "anchor": "nalyze",
+      "owner_files": [
+        "tests/ui/uitest_details.cpp"
+      ],
+      "must_match": [
+        "return h.app->viewed.status == hydra::store::RecordStatus::NotAnalyzed ? \"**/Analyze this song\"",
+        ": \"**/Re-analyze\";"
+      ],
+      "must_not_match": [
+        "IM_CHECK(visible_text(h).find(\"Also re-analyze\") != std::string::npos);",
+        "\"from different rules in hydra_rules.ini. Re-analyze to refresh it.\");",
+        "\"Click the song or run a batch to refresh it.\""
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "The removed Analyze button's two labels typed as text (D87 item 6: a click analyzes). Only the GUI test that checks the button is gone may name them. The closing quote keeps the \"Re-analyze to refresh it.\" sentences out. Decided by: audit finding 289; phase 6 task J2-4 (D53); D87 item 6"
+    },
+    {
+      "question": "How does a test build a per-process scratch path?",
+      "owner": "temp_path and temp_dir in tests/temp_util.h",
+      "owner_file": "tests/temp_util.h",
+      "owner_symbol": "temp_path",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-6",
+      "pattern": "\\b(GetTempPath\\w*|GetTempFileName\\w*|temp_directory_path)\\(",
+      "anchor": "emp",
+      "must_match": [
+        "GetTempPathW(MAX_PATH, tmp);",
+        "DWORD n = GetTempPathW(MAX_PATH, buf);",
+        "GetTempPathA(MAX_PATH, dir);",
+        "GetTempFileNameA(dir, \"hyd\", 0, buf);",
+        "dir = fs::temp_directory_path() /",
+        "const fs::path dir = fs::temp_directory_path() /",
+        "std::filesystem::temp_directory_path() / \"hydra_app_shell_test\";",
+        "CHECK(app::load_rules_file(std::filesystem::temp_directory_path() /"
+      ],
+      "must_not_match": [
+        "const std::string path = testtemp::temp_path(\"report_file\", \".html\");",
+        "root = hydra::os_path(testtemp::temp_dir(std::string(\"docs_\") + tag));",
+        "dir = hydra::os_path(testtemp::temp_dir(std::string(\"cli_\") + name));",
+        "std::string path = testtemp::temp_path(\"dynamics_store\", \".db\");"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/temp_util.h",
+          "line_text": "GetTempPathW(MAX_PATH, tmp);",
+          "why": "temp_path, the owner"
+        },
+        {
+          "file": "tests/test_winstr.cpp",
+          "line_text": "GetTempPathW(MAX_PATH, tmp);",
+          "why": "the temp_util case reads the temp folder once, the input its pins start from"
+        }
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "Production's own temp folder for the shell (copy_to_short_temp in src/app/report_files.cpp) answers a different question (audit R7.12), so only tests/ is scanned. The temp_util case in test_winstr.cpp reads the temp folder once as its input. Decided by: audit finding 287; phase 6 tasks J4-6 and J4-7 (D53, D54)"
+    },
+    {
+      "question": "Are two engine results the same answer? (tests)",
+      "owner": "digest::record_hash in tests/song_digest.h",
+      "owner_file": "tests/song_digest.h",
+      "owner_symbol": "record_hash",
+      "date": "2026-10-07",
+      "decision": "D53, D54",
+      "added_by": "storage-T5",
+      "pattern": "\\b(record_bytes|flatten_record|encode_path_node)\\s*\\(",
+      "must_match": [
+        "CHECK_MESSAGE(record_bytes(tall) == record_bytes(built), \"a song with \"",
+        "const HydraRecord back = store::rebuild_record(store::flatten_record(rec));"
+      ],
+      "must_not_match": [
+        "CHECK_MESSAGE(digest::record_hash(tall) == digest::record_hash(built),"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "hydra.db stores no path details (D87), so no serializer is left to compare records through; a test that brings one back is a second answer to the hasher's question (R16). Decided by: audit finding 301; phase 6 task J4-1 (D53, D54); storage-T5 (R16)"
+    },
+    {
+      "question": "Which settings do the GUI tests and the Burnout reference results run under? (tests)",
+      "owner": "scratch_settings in tests/scratch_settings.h",
+      "owner_file": "tests/scratch_settings.h",
+      "owner_symbol": "scratch_settings",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-4",
+      "pattern": "depth_value\\s*=\\s*2;|\"depth_value=2",
+      "anchor": "depth_value",
+      "owner_files": [
+        "tests/scratch_settings.h"
+      ],
+      "must_match": [
+        "f << \"depth_value=2\\n\";  // keep analyses short",
+        "settings.depth_value = 2;"
+      ],
+      "must_not_match": [
+        "settings.depth_value = 10;",
+        "const AnalysisSettings settings = scratch_settings().to_analysis_settings();"
+      ],
+      "scope": [
+        "tests/ui/uitest_harness.cpp",
+        "tests/test_path_view.cpp",
+        "tests/test_stars.cpp"
+      ],
+      "note": "The GUI harness writes its ini from scratch_settings(), and the Burnout reference cases run through its to_analysis_settings. Other depths in these files are a case's own input. Decided by: audit finding 280; phase 6 task J4-4 (D53, D54)"
+    },
+    {
+      "question": "At what pixel size does ImGui draw text? (tests)",
+      "owner": "text_measurer in tests/ui/uitest_harness.cpp",
+      "owner_file": "tests/ui/uitest_harness.cpp",
+      "owner_symbol": "text_measurer",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-4",
+      "pattern": "FontSizeBase \\*",
+      "anchor": "FontSizeBase *",
+      "must_match": [
+        "const float size = st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi;",
+        "const float size = s.FontSizeBase * s.FontScaleMain * s.FontScaleDpi;"
+      ],
+      "must_not_match": [
+        "widest = (std::max)(widest, text_width(label.c_str(), hydra::ui::g_mono_font));"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/ui/uitest_harness.cpp",
+          "line_text": "const float size = st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi;",
+          "why": "text_measurer, the owner: text_width calls it"
+        }
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "The font size ImGui draws text at, for a GUI test that measures text itself. Decided by: audit finding 295; phase 6 task J4-4 (D53, D54)"
+    },
+    {
+      "question": "Which path does the Preview picker's test click?",
+      "owner": "pick_preview_path in tests/ui/uitest_preview.cpp, by the button's path pointer",
+      "owner_file": "tests/ui/uitest_preview.cpp",
+      "owner_symbol": "pick_preview_path",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-4",
+      "pattern": "pick_preview_path\\(ctx, \\d",
+      "anchor": "pick_preview_path(ctx, ",
+      "must_match": [
+        "pick_preview_path(ctx, 0);",
+        "pick_preview_path(ctx, 1);"
+      ],
+      "must_not_match": [
+        "pick_preview_path(ctx, other);",
+        "pick_preview_path(ctx, h.app->viewed.record->all_paths()[1]);"
+      ],
+      "scope": [
+        "tests/ui/uitest_preview.cpp"
+      ],
+      "note": "pick_preview_path finds the button whose path pointer is the one asked for, so no caller names a place in the list. It lives in an unnamed namespace in uitest_preview.cpp, so only that file can call it. Decided by: audit finding 352; phase 6 task J4-4 (D53, D54)"
+    },
+    {
+      "question": "How is one chart's parse digest worked out in a test?",
+      "owner": "digest::chart_parse_hash in tests/song_digest.h",
+      "owner_file": "tests/song_digest.h",
+      "owner_symbol": "chart_parse_hash",
+      "date": "2026-10-06",
+      "decision": "D86",
+      "added_by": "P1",
+      "pattern": "\\b(with_dynamics|failure_hash|song_digest)\\s*\\(",
+      "owner_files": [
+        "tests/song_digest.h"
+      ],
+      "must_match": [
+        "got = digest::with_dynamics(",
+        "h = digest::failure_hash(digest::failure_text(e));",
+        "digest::song_digest(song),"
+      ],
+      "must_not_match": [
+        "const uint64_t got = digest::chart_parse_hash(edge_dir() + e.file, run.settings, &fail);",
+        "#include \"song_digest.h\""
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "A test that hashes a chart's parse calls chart_parse_hash, so the tests cannot drift from each other when the digest gains a part. tools/bench.cpp keeps its own loop to time the parts apart, and is outside this row's scope. Decided by: the speedups plan, task P1 (D86); derive-once review of P1"
+    },
+    {
+      "question": "How is a made-up replay window drawn from a song's chords?",
+      "owner": "window_over in tests/replay_windows.h",
+      "owner_file": "tests/replay_windows.h",
+      "owner_symbol": "window_over",
+      "date": "2026-10-10",
+      "decision": "derive-once review of ct-w2, finding 1 (2026-10-10)",
+      "added_by": "ct-w2-review",
+      "pattern": "\\b\\w+\\.(act_tick|deact_tick|sqout_tick)\\s*=\\s*[^;]*(sequence\\[|tick_of\\()",
+      "anchor": "t_tick",
+      "must_match": [
+        "w.act_tick = tick_of(a);",
+        "w.act_tick = song.sequence[a].timecode.ticks();"
+      ],
+      "must_not_match": [
+        "return testreplay::window_over(song, a, len, offset, pick);",
+        "w.act_tick = 0;"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/replay_windows.h",
+          "line_text": "w.act_tick = song.sequence[a].timecode.ticks();",
+          "why": "window_over, the owner"
+        },
+        {
+          "file": "tests/replay_windows.h",
+          "line_text": "w.deact_tick = song.sequence[d].timecode.ticks() + deact_offset;",
+          "why": "window_over, the owner"
+        },
+        {
+          "file": "tests/replay_windows.h",
+          "line_text": "w.sqout_tick = song.sequence[q].timecode.ticks();",
+          "why": "window_over, the owner"
+        }
+      ],
+      "scope": [
+        "tests",
+        "tools"
+      ],
+      "note": "A made-up window's ticks read off a song's chords. Windows built from literal ticks are not flagged; only ones read off a sequence. Decided by: derive-once review of ct-w2, finding 1 (2026-10-10); plan 2026-10-10-ci-test-tooling task 7"
+    },
+    {
+      "question": "How many GUI test processes does the CI runner start at once?",
+      "owner": "kDefaultJobs in tests/ui/uitest_main.cpp",
+      "owner_file": "tests/ui/uitest_main.cpp",
+      "owner_symbol": "kDefaultJobs",
+      "date": "2026-10-10",
+      "decision": "CI and test tooling plan, decision 3 (2026-10-10)",
+      "added_by": "ct-t4-review",
+      "pattern": "hydra_uitest\\S*\\s+.*--jobs\\b",
+      "anchor": "hydra_uitest",
+      "must_match": [
+        "run: .\\build-asan\\Release\\hydra_uitest.exe --all --jobs 4"
+      ],
+      "must_not_match": [
+        "run: .\\build-cpp\\Release\\hydra_uitest.exe --all",
+        "run: .\\build-asan\\Release\\hydra_uitest.exe --all"
+      ],
+      "scope": [
+        ".github/workflows/ci.yml"
+      ],
+      "note": "A CI step that gives the GUI runner its own --jobs count. The count is kDefaultJobs's, so a step runs plain --all. The walk reads no .yml file, so the case that checks the single files outside it reads ci.yml (the way it reads installer/hydra.iss). Decided by: CI and test tooling plan, decision 3 (2026-10-10); derive-once review of ct-t4"
+    },
+    {
+      "question": "Which codelex language reads a file with this extension?",
+      "owner": "language_of_extension in tests/code_lexer.h",
+      "owner_file": "tests/code_lexer.h",
+      "owner_symbol": "language_of_extension",
+      "date": "2026-10-10",
+      "decision": "D107",
+      "added_by": "so-t1-review",
+      "pattern": "\\b(ext\\w*|extension\\(\\)(\\.\\w+\\(\\))?)\\s*==\\s*\"\\.(py|ps1|psm1|hlsl)\"",
+      "anchor": "\".",
+      "must_match": [
+        "if (ext == \".py\") return codelex::Lang::Python;",
+        "const bool py = path.extension() == \".py\";",
+        "else if (ext == \".ps1\")"
+      ],
+      "must_not_match": [
+        "return codelex::language_of_extension(path.extension().string());",
+        "const fs::path ext = path.extension();"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/code_lexer.h",
+          "line_text": "if (ext == \".cpp\" || ext == \".h\" || ext == \".c\" || ext == \".hlsl\") return Lang::Cpp;",
+          "why": "language_of_extension, the owner"
+        },
+        {
+          "file": "tests/code_lexer.h",
+          "line_text": "if (ext == \".py\") return Lang::Python;",
+          "why": "language_of_extension, the owner"
+        },
+        {
+          "file": "tests/code_lexer.h",
+          "line_text": "if (ext == \".ps1\" || ext == \".psm1\") return Lang::PowerShell;",
+          "why": "language_of_extension, the owner"
+        }
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "The scan's own folder (tests/single_owner/) is outside the walk, so scan.cpp calls the owner without this row checking it. Added by the derive-once review of so-t1, which folded three copies of the mapping (scan.cpp twice, test_docs_match_code.cpp once)."
+    }
+  ]
+}

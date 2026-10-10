@@ -13,7 +13,7 @@ where AI review only sometimes does.
 
 ## What the scan does
 
-The scan lives in tests/test_single_owner.cpp, next to the row scan, and reads
+The scan lives in tests/single_owner/clones.cpp, next to the row scan, and reads
 the same files through tests/source_tree.h. That keeps one scan of the source
 tree, as the review's kind E asks.
 
@@ -42,7 +42,8 @@ So the window is eight (`kCloneWindowLines`).
 The 26 blocks found on 2026-10-05 are listed in `known_clones`, so the test
 passed on the day it arrived. A new copy fails. An entry that no longer
 matches a block also fails, so the list can only get shorter. When a fix
-removes a copy, its entry goes too.
+removes a copy, its entry goes too. Since ADR 0029, `known_clones` lives in
+tests/single_owner/baseline.json, and every entry carries a `remove_by` date.
 
 Each entry is keyed on the two files, the block's length in code lines and
 its first code line. Line numbers are left out, so an edit elsewhere in either

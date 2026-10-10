@@ -4,8 +4,8 @@
 // bundles), so tests fabricate one the way parse/srb.h reads it: 16 header
 // bytes, a deflated metadata block, the deflated notes, then any trailing
 // streams (real bundles carry audio and art there, which the notes reader
-// skips). Audit finding 117: test_srb.cpp, test_preview_source.cpp and
-// test_s2_parser_owners.cpp all build theirs through here.
+// skips). Audit finding 117: test_srb.cpp and test_preview_source.cpp both
+// build theirs through here.
 
 #ifndef HYDRA_TESTS_SRB_UTIL_H
 #define HYDRA_TESTS_SRB_UTIL_H

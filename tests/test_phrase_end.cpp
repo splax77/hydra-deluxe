@@ -96,7 +96,8 @@ TEST_CASE("phrase end: a phrase running past the last note flags that note") {
     CHECK(mid_flags(1440) == want);
 }
 
-TEST_CASE("phrase end: an unsorted .chart drum section is read in tick order (D47)") {
+// D47.
+TEST_CASE("phrase end: an unsorted .chart drum section is read in tick order") {
     // The file writes chords at 0, 768, 384, 1536, with an SP phrase and a fill
     // both spanning 0-500. Read in tick order, the last chord inside the
     // phrase and the chord the fill lands on are the same one: 384. Before

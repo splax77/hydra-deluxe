@@ -161,7 +161,8 @@ TEST_CASE("dmbot JSON parsers handle canned payloads") {
     CHECK_THROWS_AS(net::parse_users_json("{\"a\":1}"), std::runtime_error);
 }
 
-TEST_CASE("collect_dm_rows answers above-optimal beside the status (D64)") {
+// D64.
+TEST_CASE("collect_dm_rows answers above-optimal beside the status") {
     // A score at another speed that beats the optimal keeps reading "+N
     // over". Its status is "other speed", so the row carries the
     // above-optimal answer collect_dm_rows already gave, next to the delta;
@@ -642,7 +643,8 @@ TEST_CASE("collect_dm_rows tells not analyzed from not in library") {
     CHECK(stats.not_in_library == 1);
 }
 
-TEST_CASE("collect_dm_rows: a Ready record with no paths reads \"no paths\" (D51 call 11)") {
+// D51 call 11.
+TEST_CASE("collect_dm_rows: a Ready record with no paths reads \"no paths\"") {
     store::RecordStore store(":memory:");
     const int64_t optimal = fill_store(store);
     REQUIRE(optimal > 0);
@@ -695,7 +697,8 @@ TEST_CASE("collect_dm_rows: a Ready record with no paths reads \"no paths\" (D51
     CHECK(defined);
 }
 
-TEST_CASE("why_not_comparable names the missing Clone Hero rule (170)") {
+// Finding 170.
+TEST_CASE("why_not_comparable names the missing Clone Hero rule") {
     using app::dm_report::why_not_comparable;
     const std::string expert = "Needs Expert: the leaderboard only has Expert scores.";
     const std::string cap =
@@ -728,7 +731,8 @@ TEST_CASE("why_not_comparable names the missing Clone Hero rule (170)") {
     CHECK(refused);
 }
 
-TEST_CASE("why_not_comparable refuses Note Shuffle, and only Note Shuffle changes (D104 item 6)") {
+// D104 item 6.
+TEST_CASE("why_not_comparable refuses Note Shuffle, and only Note Shuffle changes") {
     using app::dm_report::why_not_comparable;
     const std::string shuffle =
         "dmleaderboards scores don't say whether Note Shuffle was on, so they can't be "

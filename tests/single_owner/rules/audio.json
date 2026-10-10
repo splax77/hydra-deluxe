@@ -1,0 +1,254 @@
+{
+  "rules": [
+    {
+      "question": "How many ms do audio frames last, and how many frames do ms hold?",
+      "owner": "ms_of_frames and frames_of_ms in src/audio/frames.h",
+      "owner_file": "src/audio/frames.h",
+      "owner_symbol": "ms_of_frames",
+      "date": "2026-10-04",
+      "decision": "audit findings 182 and R7.21",
+      "added_by": "FX-P",
+      "pattern": "\\*\\s*1000(\\.0)?\\s*/\\s*[\\w.>()-]*([sS]ample_?[rR]ate|[rR]ate)|\\*\\s*[\\w.>-]*([sS]ample_?[rR]ate|[rR]ate)\\w*(\\(\\))?\\s*/\\s*1000(\\.0)?\\b",
+      "anchor": "1000",
+      "must_match": [
+        "seek_frames(static_cast<int64_t>(std::llround(ms * sample_rate_ / 1000.0)));",
+        "return sample_rate_ > 0 ? length_ * 1000.0 / sample_rate_ : 0.0;",
+        "return static_cast<double>(audio.length_frames()) * 1000.0 / audio.sample_rate() -",
+        "front_pad = static_cast<int64_t>(std::llround(-offset_ms * kOutRate / 1000.0));"
+      ],
+      "must_not_match": [
+        "return audio::ms_of_frames(audio.length_frames(), audio.sample_rate()) - audio_offset_ms;",
+        "front_pad = audio::frames_of_ms(-offset_ms, kOutRate);",
+        "const double seconds = ms / 1000.0;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/audio/frames.h",
+          "line_text": "return sample_rate > 0 ? static_cast<double>(frames) * 1000.0 / sample_rate : 0.0;",
+          "why": "ms_of_frames, the owner"
+        },
+        {
+          "file": "src/audio/frames.h",
+          "line_text": "return static_cast<int64_t>(std::llround(ms * sample_rate / 1000.0));",
+          "why": "frames_of_ms, the owner"
+        }
+      ],
+      "note": "Frames times 1000 over a sample rate, or ms times a rate over 1000, written out instead of calling the frames helpers. Decided by: audit findings 182 and R7.21; derive-once review of M_D, preview finding 2 (phase 3 task FX-P)"
+    },
+    {
+      "question": "How does chart time become audio time, and back?",
+      "owner": "audio_ms_of_chart_ms and chart_ms_of_audio_ms in src/audio/frames.h",
+      "owner_file": "src/audio/frames.h",
+      "owner_symbol": "audio_ms_of_chart_ms",
+      "date": "2026-10-05",
+      "decision": "D69",
+      "added_by": "M7-2c",
+      "pattern": "\\w*chart_ms\\s*[+-]\\s*audio_offset_ms|\\bms\\s*[+-]\\s*audio_offset_ms_|-\\s*audio_offset_ms\\b",
+      "anchor": "audio_offset_ms",
+      "must_match": [
+        "playhead_->seek_ms(ms + audio_offset_ms_);",
+        "return chart_ms + audio_offset_ms;",
+        "return audio::ms_of_frames(audio.length_frames(), audio.sample_rate()) - audio_offset_ms;"
+      ],
+      "must_not_match": [
+        "playhead_->seek_ms(audio_ms_of_chart_ms(ms, audio_offset_ms_));",
+        "front_pad = frames_of_ms(-offset_ms, kOutRate);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/audio/frames.h",
+          "line_text": "return chart_ms + audio_offset_ms;",
+          "why": "audio_ms_of_chart_ms, the owner"
+        },
+        {
+          "file": "src/audio/frames.h",
+          "line_text": "return audio_ms - audio_offset_ms;",
+          "why": "chart_ms_of_audio_ms, the owner"
+        }
+      ],
+      "note": "Moving between chart time and audio time with the offset written out, either way, instead of calling the sync rule's two owners. Decided by: derive-once review of M7-2c, finding 2 (phase 7 task PV join); moved into hydra_audio by D69 (phase 7 task AL1)"
+    },
+    {
+      "question": "What is the lowest legal output gain?",
+      "owner": "Playhead::set_gain in src/audio/player.h",
+      "owner_file": "src/audio/player.h",
+      "owner_symbol": "set_gain",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J1-4",
+      "pattern": "gain < 0\\.0f \\? 0\\.0f",
+      "anchor": "gain < 0.0f ? 0.0f",
+      "must_match": [
+        "gain_ = gain < 0.0f ? 0.0f : gain;"
+      ],
+      "must_not_match": [
+        "float gain() const { return gain_; }"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/audio/player.h",
+          "line_text": "void set_gain(float gain) { gain_ = gain < 0.0f ? 0.0f : gain; }",
+          "why": "Playhead::set_gain, the owner"
+        }
+      ],
+      "note": "---- audio owners (phase 6 task J1-4) ---- The frame pair's row is phase 3's (\"How many ms do audio frames last...\", above). Decided by: audit finding 225, folded under D53 (phase 6 task J1-4)"
+    },
+    {
+      "question": "How is a stem converted to the output format?",
+      "owner": "stem_converter_config in src/audio/mixer.cpp",
+      "owner_file": "src/audio/mixer.cpp",
+      "owner_symbol": "stem_converter_config",
+      "date": "2026-10-04",
+      "decision": "D54",
+      "added_by": "J1-4",
+      "pattern": "ma_data_converter_config_init\\(",
+      "anchor": "ma_data_converter_config_init(",
+      "must_match": [
+        "ma_data_converter_config cfg = ma_data_converter_config_init(",
+        "s->init_converter(ma_data_converter_config_init("
+      ],
+      "must_not_match": [
+        "s->init_converter(sc.config);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/audio/mixer.cpp",
+          "line_text": "c.config = ma_data_converter_config_init(",
+          "why": "stem_converter_config, the owner"
+        }
+      ],
+      "note": "Decided by: audit finding R7.28; D54 records miniaudio's converter defaults as they are"
+    },
+    {
+      "question": "How many frames are the Opus packet and pre-roll?",
+      "owner": "frames_of_ms in src/audio/frames.h",
+      "owner_file": "src/audio/frames.h",
+      "owner_symbol": "frames_of_ms",
+      "date": "2026-10-05",
+      "decision": "D53",
+      "added_by": "J2-6",
+      "pattern": "\\b(5760|19200)\\b",
+      "must_match": [
+        "constexpr int kMaxFrame = 5760;        // 120 ms, the largest Opus packet",
+        "constexpr int64_t kPreRoll = 19200;    // 400 ms decoder warm-up before a seek target"
+      ],
+      "must_not_match": [
+        "const int kMaxFrame = static_cast<int>(frames_of_ms(120.0, kRate));",
+        "const int64_t kPreRoll = frames_of_ms(400.0, kRate);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Decided by: audit finding 227; phase 6 task J2-6 (D53)"
+    },
+    {
+      "question": "How many reservoir bytes does an MP3 frame leave?",
+      "owner": "reservoir_after in src/audio/ma_reader.cpp",
+      "owner_file": "src/audio/ma_reader.cpp",
+      "owner_symbol": "reservoir_after",
+      "date": "2026-10-05",
+      "decision": "D53",
+      "added_by": "J2-6",
+      "pattern": "std::min\\(kMaxReservoir",
+      "anchor": "std::min(kMaxReservoir",
+      "must_match": [
+        "reserv = std::min(kMaxReservoir, std::min(reserv, back) + static_cast<int>(s.own[j]));",
+        "reserv = std::min(kMaxReservoir, std::min(reserv, static_cast<int>(s.back[j])) +"
+      ],
+      "must_not_match": [
+        "reserv = reservoir_after(reserv, back, s.own[j]);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/audio/ma_reader.cpp",
+          "line_text": "return std::min(kMaxReservoir, std::min(reserv, back) + own);",
+          "why": "reservoir_after, the owner"
+        }
+      ],
+      "scope": [
+        "src/audio/ma_reader.cpp"
+      ],
+      "note": "Decided by: audit R7.24; phase 6 task J2-6 (D53)"
+    },
+    {
+      "question": "How big is dr_mp3's bit reservoir?",
+      "owner": "MA_DR_MP3_MAX_BITRESERVOIR_BYTES, in the copied dr_mp3 declarations of src/audio/ma_reader.cpp",
+      "owner_file": "src/audio/ma_reader.cpp",
+      "owner_symbol": "MA_DR_MP3_MAX_BITRESERVOIR_BYTES",
+      "date": "2026-10-05",
+      "decision": "D53",
+      "added_by": "J2-6",
+      "pattern": "\\b511\\b",
+      "anchor": "511",
+      "must_match": [
+        "constexpr int kMaxReservoir = 511;  // dr_mp3's MA_DR_MP3_MAX_BITRESERVOIR_BYTES"
+      ],
+      "must_not_match": [
+        "constexpr int kMaxReservoir = MA_DR_MP3_MAX_BITRESERVOIR_BYTES;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/audio/ma_reader.cpp",
+          "line_text": "#define MA_DR_MP3_MAX_BITRESERVOIR_BYTES      511",
+          "why": "the macro, in the verbatim dr_mp3 copy"
+        },
+        {
+          "file": "src/audio/ma_reader.cpp",
+          "line_text": "ma_uint8 header[4], reserv_buf[511];",
+          "why": "dr_mp3's own struct field, in the verbatim copy (kept byte for byte)"
+        }
+      ],
+      "scope": [
+        "src/audio/ma_reader.cpp"
+      ],
+      "note": "The copied dr_mp3 declarations are verbatim and guarded by the miniaudio version static_assert, so their two 511s stay. Decided by: audit R7.24; phase 6 task J2-6 (D53)"
+    },
+    {
+      "question": "How big is a Preview stem?",
+      "owner": "MappedFile::size in src/audio/mapped_file.h",
+      "owner_file": "src/audio/mapped_file.h",
+      "owner_symbol": "size",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-5",
+      "pattern": "\\bfile_size_bytes\\(\\s*\\w+(\\.|->)path\\b",
+      "anchor": "file_size_bytes(",
+      "must_match": [
+        "n = file_size_bytes(s.path);"
+      ],
+      "must_not_match": [
+        "REQUIRE(hydra::file_size_bytes(song) >= 300000000ull);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A stem's size read from its path on disk: the load maps every loose stem first and takes the mapped size. Decided by: audit finding R7.25; phase 6 task J3-5 (D53, D54)"
+    },
+    {
+      "question": "Where does a stem reader's seek land when it reaches the end of the stem?",
+      "owner": "seek_clamp_or_end in src/audio/stem_reader.h",
+      "owner_file": "src/audio/stem_reader.h",
+      "owner_symbol": "seek_clamp_or_end",
+      "date": "2026-10-10",
+      "decision": "D107",
+      "added_by": "so-t5a-review",
+      "pattern": "\\bframe = std::clamp<int64_t>\\(frame,",
+      "anchor": "frame = std::clamp<int64_t>(frame,",
+      "must_match": [
+        "frame = std::clamp<int64_t>(frame, 0, length_);"
+      ],
+      "must_not_match": [
+        "if (seek_clamp_or_end(frame, length_, pos_, at_end_)) return;",
+        "pos_ = std::clamp<int64_t>(frame, 0, length_);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/audio/stem_reader.h",
+          "line_text": "frame = std::clamp<int64_t>(frame, 0, length);",
+          "why": "seek_clamp_or_end, the owner"
+        }
+      ],
+      "note": "Only a seek that assigns the clamp back to `frame` counts. A stream's own position (pos_ = std::clamp(frame, ...) in stream_mix.cpp and player.cpp) has no end flag to set and answers a different question. Decided by: derive-once review of so-t5a, finding 1 (2026-10-10); D107"
+    }
+  ]
+}

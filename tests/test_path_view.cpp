@@ -199,7 +199,8 @@ TEST_CASE("build_path_list: score groups and the all-0 dedupe rule") {
     CHECK(wb.buttons.back().detail == "100 below optimal");
 }
 
-TEST_CASE("build_path_list: one duplicate hides only itself (D51 Q4b)") {
+// D51 Q4b.
+TEST_CASE("build_path_list: one duplicate hides only itself") {
     const HydraRecord& rec = analyzed().record;
     REQUIRE_FALSE(rec.paths.empty());
     const Path& first = rec.paths.front();
@@ -412,7 +413,8 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
           "x0.95 (early) at SqIn 2's SP end.");
 }
 
-TEST_CASE("kTransferScaleHint names the note SP is measured from (D17)") {
+// D17.
+TEST_CASE("kTransferScaleHint names the note SP is measured from") {
     CHECK(std::string(kTransferScaleHint) ==
           "SP length is measured in measures, so frontend timing\n"
           "reaches the SP end scaled by the measure-length ratio.\n"
@@ -932,7 +934,8 @@ TEST_CASE("squeeze sentences: SqIn, SqOut, and what a squeeze-out costs") {
     CHECK(s.warn);
 }
 
-TEST_CASE("squeeze sentences: a SqIn on the SP end is free, like its rating (D13)") {
+// D13.
+TEST_CASE("squeeze sentences: a SqIn on the SP end is free, like its rating") {
     HydraRecord rec;
     auto sentence_at = [&rec](double offset) {
         Activation act;

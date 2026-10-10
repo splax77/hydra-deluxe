@@ -1824,7 +1824,7 @@ TEST_CASE("banked_phrase_in_reach banks exactly what activation_can_squeeze refu
 // Real charts do this (Thrice - Deadbolt, SoundHaven - Triad). A phrase is
 // squeezed in once, so the second end offers the window's next phrase, and
 // here there is none. The chart is hand-made (120 BPM, resolution 480).
-TEST_CASE("squeeze rule: twin SP ends a tick apart squeeze one phrase in once (D34)") {
+TEST_CASE("squeeze rule: twin SP ends a tick apart squeeze one phrase in once") {
     const Song song = load_songpath(
         std::string(HYDRA_INPUT_DIR) + "/test_folded_sqin/twin_end_nodes.chart", true, true);
     const app::AnalysisSettings cfg = test::scores_settings(2);
@@ -1849,7 +1849,7 @@ TEST_CASE("squeeze rule: twin SP ends a tick apart squeeze one phrase in once (D
 // squeeze too, so its SqIn or SqOut sat 1.04 ms off and a SqOut ended SP at
 // a node its record never names. Each window is checked in a targeted
 // search (search_target) of its own activation, so no fold hides it.
-TEST_CASE("squeeze rule: twin SP ends a tick apart each squeeze only their own path (D36)") {
+TEST_CASE("squeeze rule: twin SP ends a tick apart each squeeze only their own path") {
     const Song song = load_songpath(
         std::string(HYDRA_INPUT_DIR) + "/test_folded_sqin/twin_end_nodes.chart", true, true);
     const app::AnalysisSettings cfg = test::scores_settings(2);
@@ -1990,7 +1990,7 @@ TEST_CASE("tied variants: a variant folded between windows keeps its own banked 
 // and the same verdict at every fill ahead, so the search folds one into the
 // other there, and the variant used to show its leader's offset and passed
 // fills.
-TEST_CASE("tied variants: a variant folded between windows keeps its own early fill (D38)") {
+TEST_CASE("tied variants: a variant folded between windows keeps its own early fill") {
     const Song song = build_tail_song({{0, true, false}, {768, true, false},
                                        {2304, false, true}, {3072, false, true},
                                        {5760, true, false}, {8448, true, false},

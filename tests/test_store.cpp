@@ -1834,7 +1834,8 @@ TEST_CASE("get_summaries answers a whole library in chunks") {
     CHECK(ready == 3);
 }
 
-TEST_CASE("a file from before AL loses its songlength table") {
+// Plan task AL (p7-al2), which removed the songlength table.
+TEST_CASE("opening a database that still has the old songlength table drops it") {
     // D69 replaced D58 item 5: the per-difficulty length table goes.
     const std::string path = testtemp::temp_path("song_length_old", ".db");
     std::remove(path.c_str());
