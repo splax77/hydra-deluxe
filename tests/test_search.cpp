@@ -182,10 +182,6 @@ TEST_CASE("note total: the engine, the Song and the Dynamics tab agree on every 
     MESSAGE("checked " << checked << " chart and 2x Bass pairs");
 }
 
-// The legacy Clone Hero 1.0 fill rule is a whole different spawn deadline, so
-// it reshapes which activations exist at all. That must still produce a normal,
-// complete record -- the score itself is not pinned here (it is a different
-// game's answer, and tests/test_fill_deadline.cpp pins the math instead).
 // A multiplier squeeze depends on the combo alone, and a full-combo path
 // never breaks combo, so the list is one fact about the chart. The graph
 // finds it once; analyze_chart hands that one list to the record.
@@ -224,6 +220,10 @@ TEST_CASE("the graph finds the chart's multiplier squeezes once, in chart order"
     CHECK(with_squeezes > 0);
 }
 
+// The legacy Clone Hero 1.0 fill rule is a whole different spawn deadline, so
+// it reshapes which activations exist at all. That must still produce a normal,
+// complete record -- the score itself is not pinned here (it is a different
+// game's answer, and tests/test_fill_deadline.cpp pins the math instead).
 TEST_CASE("legacy fill deadline analyzes a chart end to end") {
     int analyzed = 0;
 
@@ -255,14 +255,20 @@ TEST_CASE("legacy fill deadline analyzes a chart end to end") {
     CHECK(analyzed > 0);
 }
 
-// The engine stamps each activation with its frontend transfer scales at
-// copy-out, through frontend_transfer_scales, from the SP-end steps it just
-// stored. This pins the stored values against a live recompute from those
-// steps across the corpus -- and with them the ratios the squeeze detail
-// lines and eff. figures show.
-TEST_CASE("stored transfer scales match the display-layer recomputation") {
-    int charts = 0, acts = 0, nonflat = 0, mismatches = 0;
+namespace {
 
+// What a walk over every activation of every corpus chart found.
+struct CorpusActivationRun {
+    int charts = 0, mismatches = 0;
+};
+
+// Walks every activation of every corpus chart, analyzed with the settings
+// below. `check` is called with the chart's song and one activation; it
+// returns "" when the activation passes, or what is wrong. A chart stops at
+// its first bad activation, and the first eight bad charts fail by name.
+template <class Check>
+CorpusActivationRun check_every_corpus_activation(Check check) {
+    CorpusActivationRun run;
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, true, true);
         if (song.is_empty()) continue;
@@ -278,89 +284,91 @@ TEST_CASE("stored transfer scales match the display-layer recomputation") {
         } catch (const ChartFileError&) {
             continue;
         }
-        ++charts;
+        ++run.charts;
 
         std::string d;
         for (const Path* p : record->all_paths()) {
             for (const Activation& act : p->all_activations()) {
-                ++acts;
-                if (const std::string why = corpus::unknown_scale_reason(act); !why.empty()) {
-                    d = why;
-                    break;
-                }
-                // Non-flat counts the SP end's scale and every SqIn's scale.
-                // unknown_scale_reason above proved each one known.
-                auto flat = [](const TransferScale& s) {
-                    return !is_scaled(s.early) && !is_scaled(s.late);
-                };
-                bool any_scaled = !flat(*act.transfer_post);
-                for (const SPSqueeze& sq : act.sqinouts)
-                    if (sq.kind == SqueezeKind::SqIn && !flat(*sq.transfer)) any_scaled = true;
-                if (any_scaled) ++nonflat;
-
-                auto scales = frontend_transfer_scales(act, song.timing());
-                if (!scales) {
-                    d = "display recomputation returned no scales";
-                    break;
-                }
-                auto differs = [](const TransferScale& a, const TransferScale& b) {
-                    return std::abs(a.early - b.early) > 1e-9 ||
-                           std::abs(a.late - b.late) > 1e-9;
-                };
-                if (differs(scales->post, *act.transfer_post)) {
-                    d = "stored scales diverge from recomputation";
-                    break;
-                }
-                // A non-positive scale is caught by unknown_scale_reason, above.
-                // Each SqIn's stored scale, in SqIn order as
-                // stored_transfer_scales pairs them, against the recomputed one.
-                const std::optional<ActTransferScales> stored = stored_transfer_scales(act);
-                if (!stored || !std::equal(stored->sqins.begin(), stored->sqins.end(),
-                                           scales->sqins.begin(), scales->sqins.end(),
-                                           [&](const TransferScale& a, const TransferScale& b) {
-                                               return !differs(a, b);
-                                           })) {
-                    d = "a SqIn's stored scale diverges from recomputation";
-                    break;
-                }
-
-                // Copy-out stamps deact_tick on every activation it produces
-                // (blob v4), so a record fresh off the engine should never be
-                // missing it.
-                if (!act.deact_tick().has_value()) {
-                    d = "activation missing deact_tick";
-                    break;
-                }
-
-                // A backend row's offset_ms is the gap from the deactivation
-                // node to that row, in ms. Walking a row's offset back to a
-                // tick has to land on the same node copy-out stamped -- if it
-                // didn't, the backend rows and deact_tick would be describing
-                // two different SP ends.
-                for (const BackendSqueeze& b : act.backends) {
-                    if (!b.offset_ms.has_value()) continue;
-                    const int64_t implied =
-                        *b.offset_ms == 0.0
-                            ? b.timecode.ticks()
-                            : std::llround(song.timing().ms_index().tick_at_ms(
-                                  b.timecode.ms() - *b.offset_ms));
-                    if (implied != *act.deact_tick()) {
-                        d = "backend-implied deact tick disagrees with the stored one";
-                        break;
-                    }
-                }
+                d = check(song, act);
                 if (!d.empty()) break;
             }
             if (!d.empty()) break;
         }
-        if (!d.empty() && ++mismatches <= 8)
+        if (!d.empty() && ++run.mismatches <= 8)
             CHECK_MESSAGE(false, path << " " << d);
     }
+    return run;
+}
 
-    CHECK(mismatches == 0);
-    REQUIRE(charts > 0);
+}  // namespace
+
+// The engine stamps each activation with its frontend transfer scales at
+// copy-out, through frontend_transfer_scales, from the SP-end steps it just
+// stored. This pins the stored values against a live recompute from those
+// steps across the corpus -- and with them the ratios the squeeze detail
+// lines and eff. figures show.
+TEST_CASE("stored transfer scales match the display-layer recomputation") {
+    int acts = 0, nonflat = 0;
+
+    const CorpusActivationRun run = check_every_corpus_activation(
+        [&](const Song& song, const Activation& act) -> std::string {
+            ++acts;
+            if (const std::string why = corpus::unknown_scale_reason(act); !why.empty())
+                return why;
+            // Non-flat counts the SP end's scale and every SqIn's scale.
+            // unknown_scale_reason above proved each one known.
+            auto flat = [](const TransferScale& s) {
+                return !is_scaled(s.early) && !is_scaled(s.late);
+            };
+            bool any_scaled = !flat(*act.transfer_post);
+            for (const SPSqueeze& sq : act.sqinouts)
+                if (sq.kind == SqueezeKind::SqIn && !flat(*sq.transfer)) any_scaled = true;
+            if (any_scaled) ++nonflat;
+
+            auto scales = frontend_transfer_scales(act, song.timing());
+            if (!scales) return "display recomputation returned no scales";
+            auto differs = [](const TransferScale& a, const TransferScale& b) {
+                return std::abs(a.early - b.early) > 1e-9 || std::abs(a.late - b.late) > 1e-9;
+            };
+            if (differs(scales->post, *act.transfer_post))
+                return "stored scales diverge from recomputation";
+            // A non-positive scale is caught by unknown_scale_reason, above.
+            // Each SqIn's stored scale, in SqIn order as
+            // stored_transfer_scales pairs them, against the recomputed one.
+            const std::optional<ActTransferScales> stored = stored_transfer_scales(act);
+            if (!stored || !std::equal(stored->sqins.begin(), stored->sqins.end(),
+                                       scales->sqins.begin(), scales->sqins.end(),
+                                       [&](const TransferScale& a, const TransferScale& b) {
+                                           return !differs(a, b);
+                                       }))
+                return "a SqIn's stored scale diverges from recomputation";
+
+            // Copy-out stamps deact_tick on every activation it produces
+            // (blob v4), so a record fresh off the engine should never be
+            // missing it.
+            if (!act.deact_tick().has_value()) return "activation missing deact_tick";
+
+            // A backend row's offset_ms is the gap from the deactivation
+            // node to that row, in ms. Walking a row's offset back to a
+            // tick has to land on the same node copy-out stamped -- if it
+            // didn't, the backend rows and deact_tick would be describing
+            // two different SP ends.
+            for (const BackendSqueeze& b : act.backends) {
+                if (!b.offset_ms.has_value()) continue;
+                const int64_t implied =
+                    *b.offset_ms == 0.0 ? b.timecode.ticks()
+                                        : std::llround(song.timing().ms_index().tick_at_ms(
+                                              b.timecode.ms() - *b.offset_ms));
+                if (implied != *act.deact_tick())
+                    return "backend-implied deact tick disagrees with the stored one";
+            }
+            return "";
+        });
+
+    CHECK(run.mismatches == 0);
+    REQUIRE(run.charts > 0);
     REQUIRE(acts > 0);
-    MESSAGE("checked " << acts << " activations on " << charts << " charts ("
+    MESSAGE("checked " << acts << " activations on " << run.charts << " charts ("
                        << nonflat << " with a non-flat scale)");
 }
 
@@ -370,63 +378,33 @@ TEST_CASE("stored transfer scales match the display-layer recomputation") {
 // backends for every path that deactivates there, squeezed out or not, so the
 // record build has to trim per activation; this pins that it does.
 TEST_CASE("no activation keeps backends past its squeezed-out note") {
-    int charts = 0, sqout_acts = 0, mismatches = 0;
+    int sqout_acts = 0;
 
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true);
-        if (song.is_empty()) continue;
+    const CorpusActivationRun run = check_every_corpus_activation(
+        [&](const Song&, const Activation& act) -> std::string {
+            bool has_sqout = false;
+            for (const SPSqueeze& sq : act.sqinouts)
+                if (sq.kind == SqueezeKind::SqOut) has_sqout = true;
+            if (!has_sqout) return "";
+            ++sqout_acts;
 
-        const HydraRecord* record = nullptr;
-        try {
-            SearchSettings cfg;
-            cfg.sp_cap = 4;
-            cfg.depth_mode = DepthMode::Scores;
-            cfg.depth_value = 4;
-            cfg.ms_filter = std::nullopt;
-            record = &corpus::analyzed(path, cfg);
-        } catch (const ChartFileError&) {
-            continue;
-        }
-        ++charts;
-
-        std::string d;
-        for (const Path* p : record->all_paths()) {
-            for (const Activation& act : p->all_activations()) {
-                bool has_sqout = false;
-                for (const SPSqueeze& sq : act.sqinouts)
-                    if (sq.kind == SqueezeKind::SqOut) has_sqout = true;
-                if (!has_sqout) continue;
-                ++sqout_acts;
-
-                // The engine stamps the squeezed-out chord's tick (record
-                // v6); everything is compared by tick, never by ms.
-                if (!act.sqout_tick) {
-                    d = "squeeze-out activation missing sqout_tick";
-                    break;
-                }
-                int on_sqout = 0;
-                for (const BackendSqueeze& b : act.backends) {
-                    const core::SqOutPosition pos =
-                        core::sqout_position(b.timecode.ticks(), act.sqout_tick);
-                    if (pos == core::SqOutPosition::After) {
-                        d = "backend past the sqout note";
-                        break;
-                    }
-                    if (pos == core::SqOutPosition::Exact) ++on_sqout;
-                }
-                if (d.empty() && on_sqout != 1)
-                    d = "not exactly one backend row on the sqout tick";
-                if (!d.empty()) break;
+            // The engine stamps the squeezed-out chord's tick (record
+            // v6); everything is compared by tick, never by ms.
+            if (!act.sqout_tick) return "squeeze-out activation missing sqout_tick";
+            int on_sqout = 0;
+            for (const BackendSqueeze& b : act.backends) {
+                const core::SqOutPosition pos =
+                    core::sqout_position(b.timecode.ticks(), act.sqout_tick);
+                if (pos == core::SqOutPosition::After) return "backend past the sqout note";
+                if (pos == core::SqOutPosition::Exact) ++on_sqout;
             }
-            if (!d.empty()) break;
-        }
-        if (!d.empty() && ++mismatches <= 8)
-            CHECK_MESSAGE(false, path << " " << d);
-    }
+            if (on_sqout != 1) return "not exactly one backend row on the sqout tick";
+            return "";
+        });
 
-    CHECK(mismatches == 0);
-    REQUIRE(charts > 0);
-    MESSAGE("checked " << sqout_acts << " squeeze-out activations on " << charts
+    CHECK(run.mismatches == 0);
+    REQUIRE(run.charts > 0);
+    MESSAGE("checked " << sqout_acts << " squeeze-out activations on " << run.charts
                        << " charts");
 }
 
@@ -930,143 +908,104 @@ TEST_CASE("a 4-bar graph built at the song's phrase count stores the same paths"
 // what the timing warning has to point at, so the search stamps that note's
 // tick onto the activation as clamp_tick.
 
-TEST_CASE("SP cap overfill: a mid-SP phrase that clamps records the "
-          "collecting note") {
-    // Cap 2 bars. Two SP phrases fill the meter before the activation at
-    // tick 2304 (meter 2), whose plain end is 4 measures later at 5376.
-    // The phrase collected at 3072, mid-SP, wants to push the end out by 2
-    // more measures to 4608 + 1536 = ... no -- the pending end simply moves
-    // to min(prev_end + 2 measures, 3072 + 2*cap measures). prev_end + 2
-    // measures is 5376 + 1536 = 6912; the cap ceiling is 3072 + 4*768 =
-    // 6144. The ceiling is smaller, so it wins: the end is pinned to 6144,
-    // and clamp_tick records the note that pinned it, 3072.
-    Song song = build_tail_song({{0, true, false},
-                                 {768, true, false},
-                                 {2304, false, true},
-                                 {3072, true, false},
-                                 {3840},
-                                 {4608},
-                                 {5376},
-                                 {6000}});
+// Every row below shares one activation. Cap 2 bars. Two SP phrases fill the
+// meter before the activation at tick 2304 (meter 2), whose plain end is 4
+// measures later at 5376. Each row then adds mid-SP phrases and pins where
+// the end lands and which note, if any, clamped it. A row with steps also
+// pins the end's history and the note each step's end is anchored on.
+struct OverfillCase {
+    const char* name;
+    const char* why;
+    std::vector<TailNote> notes;
+    int64_t deact;
+    std::optional<int64_t> clamp;  // unset: no step clamped the end
+    std::vector<SpEndStep> steps;  // empty: this row does not pin the history
+    std::vector<int64_t> anchors;  // end_anchor_tick of each step in `steps`
+};
 
-    ScoreGraph graph(song, 2);
-    std::vector<Path> paths =
-        run_search(graph, EngineOptions{});
+TEST_CASE("SP cap overfill: where the end lands and which note clamped it") {
+    const std::vector<OverfillCase> cases = {
+        {"a mid-SP phrase that clamps records the collecting note",
+         "The phrase collected at 3072, mid-SP, moves the pending end to "
+         "min(prev_end + 2 measures, 3072 + 2*cap measures). prev_end + 2 "
+         "measures is 5376 + 1536 = 6912; the cap ceiling is 3072 + 4*768 = "
+         "6144. The ceiling is smaller, so it wins: the end is pinned to 6144, "
+         "and clamp_tick records the note that pinned it, 3072.",
+         {{0, true, false}, {768, true, false}, {2304, false, true},
+          {3072, true, false}, {3840}, {4608}, {5376}, {6000}},
+         6144, 3072, {}, {}},
+        {"a mid-SP phrase that only ties the cap does not clamp",
+         "Same cap and activation as above, but the mid-SP phrase lands at 3840 "
+         "instead of 3072. Now both options land on the same tick: prev_end + 2 "
+         "measures is 5376 + 1536 = 6912, and the cap ceiling is 3840 + 4*768 = "
+         "6912 too. A tie means the plain extension wins, not the cap -- so this "
+         "is not a clamp, and clamp_tick stays unset.",
+         {{0, true, false}, {768, true, false}, {2304, false, true},
+          {3840, true, false}, {4608}, {5376}, {6000}, {6500}},
+         6912, std::nullopt, {}, {}},
+        {"a later unclamped extension keeps the earlier clamp_tick",
+         "Same cap and activation, but SP is extended twice. The first mid-SP "
+         "phrase, at 3072, clamps exactly as in the first case above: the end is "
+         "pinned to 6144, with clamp_tick 3072. The second phrase, at 5760, "
+         "wants to move the end again -- the cap ceiling from THAT note would be "
+         "5760 + 4*768 = 8832, but the plain +2-measure step from the current "
+         "end (6144 + 1536 = 7680) is smaller and wins instead. Because this "
+         "second extension is not itself a clamp, the note that pinned the "
+         "window stays the first one: clamp_tick is still 3072, even though the "
+         "end has moved again. The chart ends at 7500, before the SP end at "
+         "7680, so this is the same \"SP outlasts the chart\" case as the tests "
+         "above: the tail rows are synthesized against the tracked end rather "
+         "than a real deactivation.",
+         {{0, true, false}, {768, true, false}, {2304, false, true},
+          {3072, true, false}, {3840}, {4608}, {5376}, {5760, true, false},
+          {6000}, {6768}, {7500}},
+         7680, 3072, {}, {}},
+        {"a second clamp in the same window replaces clamp_tick, and each "
+         "clamp is a step the anchor follows",
+         "Same cap and activation. The phrase at 3072 clamps as in the first "
+         "case: the end is pinned to 6144. The phrase at 3840 then clamps again: "
+         "the plain step from the current end is 6144 + 1536 = 7680, but the "
+         "cap ceiling from 3840 is 3840 + 4*768 = 6912, which is smaller. The "
+         "end is now pinned by the later note, so clamp_tick moves to 3840.",
+         {{0, true, false}, {768, true, false}, {2304, false, true},
+          {3072, true, false}, {3840, true, false}, {4608}, {5376}, {6000},
+          {6768}, {7500}},
+         6912, 3840,
+         {{2304, 5376, SpEndKind::Activation},
+          {3072, 6144, SpEndKind::Clamped},
+          {3840, 6912, SpEndKind::Clamped}},
+         {2304, 3072, 3840}},
+    };
 
-    const Activation& act = last_act(paths);
-    CHECK(act.sp_meter() == 2);
-    CHECK(act.timecode.ticks() == 2304);
+    for (const OverfillCase& c : cases) {
+        SUBCASE(c.name) {
+            INFO(c.why);
+            Song song = build_tail_song(c.notes);
+            ScoreGraph graph(song, 2);
+            const std::vector<Path> paths = run_search(graph, EngineOptions{});
 
-    auto deact = activation_deact_tick(act);
-    REQUIRE(deact.has_value());
-    CHECK(*deact == 6144);
+            const Activation& act = last_act(paths);
+            CHECK(act.sp_meter() == 2);
+            CHECK(act.timecode.ticks() == 2304);
 
-    REQUIRE(act.clamp_tick().has_value());
-    CHECK(*act.clamp_tick() == 3072);
-}
+            const std::optional<int64_t> deact = activation_deact_tick(act);
+            REQUIRE(deact.has_value());
+            CHECK(*deact == c.deact);
 
-TEST_CASE("SP cap overfill: a mid-SP phrase that only ties the cap does "
-          "not clamp") {
-    // Same cap and activation as above, but the mid-SP phrase lands at 3840
-    // instead of 3072. Now both options land on the same tick: prev_end + 2
-    // measures is 5376 + 1536 = 6912, and the cap ceiling is 3840 + 4*768 =
-    // 6912 too. A tie means the plain extension wins, not the cap -- so this
-    // is not a clamp, and clamp_tick stays unset.
-    Song song = build_tail_song({{0, true, false},
-                                 {768, true, false},
-                                 {2304, false, true},
-                                 {3840, true, false},
-                                 {4608},
-                                 {5376},
-                                 {6000},
-                                 {6500}});
+            if (c.clamp) {
+                REQUIRE(act.clamp_tick().has_value());
+                CHECK(*act.clamp_tick() == *c.clamp);
+            } else {
+                CHECK_FALSE(act.clamp_tick().has_value());
+            }
 
-    ScoreGraph graph(song, 2);
-    std::vector<Path> paths =
-        run_search(graph, EngineOptions{});
-
-    const Activation& act = last_act(paths);
-    CHECK(act.sp_meter() == 2);
-
-    auto deact = activation_deact_tick(act);
-    REQUIRE(deact.has_value());
-    CHECK(*deact == 6912);
-
-    CHECK_FALSE(act.clamp_tick().has_value());
-}
-
-TEST_CASE("SP cap overfill: a later unclamped extension keeps the earlier "
-          "clamp_tick") {
-    // Same cap and activation, but SP is extended twice. The first mid-SP
-    // phrase, at 3072, clamps exactly as in the first case above: the end is
-    // pinned to 6144, with clamp_tick 3072. The second phrase, at 5760,
-    // wants to move the end again -- the cap ceiling from THAT note would be
-    // 5760 + 4*768 = 8832, but the plain +2-measure step from the current
-    // end (6144 + 1536 = 7680) is smaller and wins instead. Because this
-    // second extension is not itself a clamp, the note that pinned the
-    // window stays the first one: clamp_tick is still 3072, even though the
-    // end has moved again.
-    Song song = build_tail_song({{0, true, false},
-                                 {768, true, false},
-                                 {2304, false, true},
-                                 {3072, true, false},
-                                 {3840},
-                                 {4608},
-                                 {5376},
-                                 {5760, true, false},
-                                 {6000},
-                                 {6768},
-                                 {7500}});
-
-    ScoreGraph graph(song, 2);
-    std::vector<Path> paths =
-        run_search(graph, EngineOptions{});
-
-    const Activation& act = last_act(paths);
-    CHECK(act.sp_meter() == 2);
-
-    // The chart ends at 7500, before the SP end at 7680, so this is the same
-    // "SP outlasts the chart" case as the tests above: the tail rows are
-    // synthesized against the tracked end rather than a real deactivation.
-    auto deact = activation_deact_tick(act);
-    REQUIRE(deact.has_value());
-    CHECK(*deact == 7680);
-
-    REQUIRE(act.clamp_tick().has_value());
-    CHECK(*act.clamp_tick() == 3072);
-}
-
-TEST_CASE("SP cap overfill: a second clamp in the same window replaces "
-          "clamp_tick") {
-    // Same cap and activation. The phrase at 3072 clamps as in the first
-    // case: the end is pinned to 6144. The phrase at 3840 then clamps again:
-    // the plain step from the current end is 6144 + 1536 = 7680, but the
-    // cap ceiling from 3840 is 3840 + 4*768 = 6912, which is smaller. The
-    // end is now pinned by the later note, so clamp_tick moves to 3840.
-    Song song = build_tail_song({{0, true, false},
-                                 {768, true, false},
-                                 {2304, false, true},
-                                 {3072, true, false},
-                                 {3840, true, false},
-                                 {4608},
-                                 {5376},
-                                 {6000},
-                                 {6768},
-                                 {7500}});
-
-    ScoreGraph graph(song, 2);
-    std::vector<Path> paths =
-        run_search(graph, EngineOptions{});
-
-    const Activation& act = last_act(paths);
-    CHECK(act.timecode.ticks() == 2304);
-
-    auto deact = activation_deact_tick(act);
-    REQUIRE(deact.has_value());
-    CHECK(*deact == 6912);
-
-    REQUIRE(act.clamp_tick().has_value());
-    CHECK(*act.clamp_tick() == 3840);
+            if (!c.steps.empty()) {
+                CHECK(act.sp_end_steps == c.steps);
+                for (size_t i = 0; i < c.anchors.size(); ++i)
+                    CHECK(act.end_anchor_tick(i) == c.anchors[i]);
+            }
+        }
+    }
 }
 
 TEST_CASE("collected phrases: none when no phrase lands during the activation") {
@@ -1209,25 +1148,6 @@ TEST_CASE("SP end history: a squeeze-out measures from the deact node") {
         CHECK(act->end_anchor_tick(*act->squeeze_end_step(i)) == 5760);
     }
     CHECK(sqouts == 1);
-}
-
-TEST_CASE("SP end history: clamps are steps, and the anchor follows them") {
-    Song song = build_tail_song({{0, true, false}, {768, true, false},
-                                 {2304, false, true}, {3072, true, false},
-                                 {3840, true, false}, {4608}, {5376}, {6000},
-                                 {6768}, {7500}});
-    ScoreGraph graph(song, 2);
-    const std::vector<Path> paths = run_search(graph, EngineOptions{});
-    REQUIRE(!paths.empty());
-    const Activation& act = paths.front().activations.front();
-    CHECK((act.sp_end_steps == std::vector<SpEndStep>{
-               {2304, 5376, SpEndKind::Activation},
-               {3072, 6144, SpEndKind::Clamped},
-               {3840, 6912, SpEndKind::Clamped}}));
-    CHECK(act.clamp_tick() == std::optional<int64_t>(3840));
-    CHECK(act.end_anchor_tick(0) == 2304);
-    CHECK(act.end_anchor_tick(1) == 3072);
-    CHECK(act.end_anchor_tick(2) == 3840);
 }
 
 TEST_CASE("search: scales anchor on the collecting note and the SqIn's own end") {
@@ -1836,8 +1756,8 @@ TEST_CASE("tied variants: the banked-phrase charts analyze and every variant pri
 // included, so those offers are gone. What these charts still check: they
 // analyze, and every squeeze-out ends SP at the end its record names. The
 // fold this test was written for (a variant's Clamped step on its leader's
-// SqIn phrase, relabelled SqIn) no longer happens on them; test_s2_deact_
-// extension.cpp's "folded variant's Clamped step" case covers it now.
+// SqIn phrase, relabelled SqIn) no longer happens on them;
+// test_sp_end_clamp.cpp's "folded variant's Clamped step" case covers it now.
 TEST_CASE("clamped_sqin charts: every squeeze-out ends SP at the end its record names") {
     const app::AnalysisSettings cfg = test::scores_settings(3);
     for (const std::string name : {"clamped_sqin_a.chart", "clamped_sqin_b.chart"}) {

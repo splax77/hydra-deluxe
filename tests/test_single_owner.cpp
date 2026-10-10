@@ -2500,6 +2500,21 @@ const std::vector<OwnerRule>& rules() {
          {"s->init_converter(sc.config);"},
          {{"src/audio/mixer.cpp", "c.config = ma_data_converter_config_init(",
            "stem_converter_config, the owner"}}},
+        // Only a seek that assigns the clamp back to `frame` counts. A stream's
+        // own position (pos_ = std::clamp(frame, ...) in stream_mix.cpp and
+        // player.cpp) has no end flag to set and answers a different question.
+        {"Where does a stem reader's seek land when it reaches the end of the stem?",
+         "seek_clamp_or_end in src/audio/stem_reader.h",
+         R"(\bframe = std::clamp<int64_t>\(frame,)",
+         "",
+         {},
+         {},
+         "derive-once review of so-t5a, finding 1 (2026-10-10); D107",
+         {"frame = std::clamp<int64_t>(frame, 0, length_);"},
+         {"if (seek_clamp_or_end(frame, length_, pos_, at_end_)) return;",
+          "pos_ = std::clamp<int64_t>(frame, 0, length_);"},
+         {{"src/audio/stem_reader.h", "frame = std::clamp<int64_t>(frame, 0, length);",
+           "seek_clamp_or_end, the owner"}}},
         {"Which test helper reads an audio fixture?",
          "fixture_path and read_fixture in tests/audio_util.h",
          // No closing quote after /audio/, so a build that names the file
@@ -2759,7 +2774,9 @@ const std::vector<OwnerRule>& rules() {
            R"(CHECK(hydra::ends_with(ch10.subtitle, "SP cap 4 bars — Clone Hero 1.0 fills"));)",
            "checks a report subtitle's tail, not a file format"},
           {"tests/test_dm_report.cpp", "CHECK(hydra::ends_with(phrase, clause));",
-           "checks the counts phrase's last clause, not a file format"}},
+           "checks the counts phrase's last clause, not a file format"},
+          {"tests/test_config.cpp", "CHECK(hydra::ends_with(dir, tail));",
+           "checks the resource folder's name, not a file format"}},
          {"tests"}},
         // A string's tail compared by hand, under any name: the text's size
         // minus the tail's size picks where the tail starts.
@@ -4078,22 +4095,22 @@ const std::vector<OwnerRule>& rules() {
          {"std::string first_measure_label() { return format_measure(Timecode{}); }"},
          {},
          {"src"}},
+        // The id no longer carries the column widths (the width rule sizes the
+        // table each frame). It is built once and handed to begin_small_table,
+        // which names the same table to table_room and BeginTable.
         {"What id does an activation's backend table get?",
-         "backend_table_id in src/app/path_view.cpp",
+         "render_backend_table in src/ui/paths_tab.cpp",
          R"(##backends)",
          "",
          {},
          {},
-         "audit finding 291; phase 6 task J3-3 (D53, D54)",
+         "audit finding 291; phase 6 task J3-3 (D53, D54); one-column-width-rule plan, Part 4 "
+         "(backend_table_id removed)",
          {R"x(std::snprintf(id, sizeof(id), "##backends%d_%d_%d_%d", a.number, static_cast<int>(w_timing),)x",
           R"x(const std::string prefix = "##backends" + std::to_string(number) + "_";)x"},
-         {"app::backend_table_id(a.number, static_cast<int>(w_timing), static_cast<int>(w_chord),"},
-         {{"src/app/path_view.cpp",
-           R"x(std::snprintf(id, sizeof(id), "##backends%d_%d_%d_%d", number, w_timing, w_chord, w_points);)x",
-           "backend_table_id, the owner"},
-          {"tests/test_path_view.cpp",
-           R"x(CHECK(backend_table_id(1, 48, 40, 56) == "##backends1_48_40_56");)x",
-           "the owner's pinned case: finding 291's own example as a literal (D42)"}},
+         {"id, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable, specs, a.backends.size(),"},
+         {{"src/ui/paths_tab.cpp", R"x(std::snprintf(id, sizeof(id), "##backends%d", a.number);)x",
+           "render_backend_table, the owner: it hands the id to begin_small_table"}},
          {"src", "tests"}},
         // A letter before the figure: a badge's wording, not a decimal such
         // as "2.999 ms" in a leeway case.
@@ -4734,6 +4751,25 @@ const std::vector<OwnerRule>& rules() {
           "const store::RecordKey key = settings.record_key(it.md5);"},
          {},
          {"tests", "tools"}},
+        // A made-up window's ticks read off a song's chords. Windows built
+        // from literal ticks are not flagged; only ones read off a sequence.
+        {"How is a made-up replay window drawn from a song's chords?",
+         "window_over in tests/replay_windows.h",
+         R"(\b\w+\.(act_tick|deact_tick|sqout_tick)\s*=\s*[^;]*(sequence\[|tick_of\())",
+         "",
+         {},
+         {},
+         "derive-once review of ct-w2, finding 1 (2026-10-10); plan 2026-10-10-ci-test-tooling task 7",
+         {"w.act_tick = tick_of(a);", "w.act_tick = song.sequence[a].timecode.ticks();"},
+         {"return testreplay::window_over(song, a, len, offset, pick);",
+          "w.act_tick = 0;"},
+         {{"tests/replay_windows.h", "w.act_tick = song.sequence[a].timecode.ticks();",
+           "window_over, the owner"},
+          {"tests/replay_windows.h", "w.deact_tick = song.sequence[d].timecode.ticks() + deact_offset;",
+           "window_over, the owner"},
+          {"tests/replay_windows.h", "w.sqout_tick = song.sequence[q].timecode.ticks();",
+           "window_over, the owner"}},
+         {"tests", "tools"}},
         // hydra.db stores no path details (D87), so no serializer is left to
         // compare records through; a test that brings one back is a second
         // answer to the hasher's question (R16).
@@ -4801,7 +4837,7 @@ const std::vector<OwnerRule>& rules() {
         // The font size ImGui draws text at, for a GUI test that measures
         // text itself.
         {"At what pixel size does ImGui draw text? (tests)",
-         "text_width in tests/ui/uitest_harness.cpp",
+         "text_measurer in tests/ui/uitest_harness.cpp",
          R"(FontSizeBase \*)",
          "",
          {},
@@ -4812,7 +4848,7 @@ const std::vector<OwnerRule>& rules() {
          {"widest = (std::max)(widest, text_width(label.c_str(), hydra::ui::g_mono_font));"},
          {{"tests/ui/uitest_harness.cpp",
            "const float size = st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi;",
-           "text_width, the owner"}},
+           "text_measurer, the owner: text_width calls it"}},
          {"tests"}},
         // The Preview picker's "label##index" id. The library's chip id
         // (")##" + c.id) is another widget's and does not fit.
@@ -5641,22 +5677,35 @@ const std::vector<OwnerRule>& rules() {
           {"src/ui/widgets.h", "if (reset) table->IsResetDisplayOrderRequest = true;",
            "keep_table_column_order, the owner"}},
          {"src"}},
-        // The report tables open with the Library table's flags and add to
-        // them; a second list of those flags would drift from the first.
-        {"Which flags does a Library-style table open with?",
-         "base_table_flags in src/ui/widgets.h",
-         R"(\bImGuiTableFlags_SizingStretchProp\b)",
+        // A table on the width rule opens with the rule's flags: table_flags,
+        // or scroll_fixed_flags plus a tab's own look. A table that lists the
+        // rule's flags itself, or the stretch sizing the rule replaced, builds
+        // a second flag set that drifts from the rule's.
+        {"Which flags does a table on the width rule open with?",
+         "table_flags and scroll_fixed_flags in src/ui/column_widths.cpp",
+         R"(\bImGuiTableFlags_(SizingStretchProp|ScrollX|Hideable|Sortable)\b)",
          "",
          {},
          {},
          "report windows plan, T5 brief (the table uses the Library table's flags); "
-         "derive-once review of RW-T5 (finding 1)",
+         "derive-once review of RW-T5 (finding 1); one-column-width-rule plan, Part 1 "
+         "(table_flags replaces base_table_flags) and Part 4 (after wave 2)",
          {"ImGuiTableFlags_SizingStretchProp;",
-          "ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_SizingStretchProp;"},
-         {"const int table_flags = ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg;",
-          "return base_table_flags() | ImGuiTableFlags_SortMulti;"},
-         {{"src/ui/widgets.h", "ImGuiTableFlags_SizingStretchProp;",
-           "base_table_flags, the owner: render_table and report_frame::table_flags call it"}},
+          "ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_SizingStretchProp;",
+          "return ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable | ImGuiTableFlags_Sortable |",
+          "ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit,"},
+         {"ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |",
+          "ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable, specs, a.backends.size(),",
+          "table_flags() | ImGuiTableFlags_SortMulti, ImVec2(0.0f, height),",
+          "return ImGui::BeginTable(\"##settingsform\", 2, ImGuiTableFlags_SizingFixedFit);"},
+         {{"src/ui/column_widths.cpp", "return ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit;",
+           "scroll_fixed_flags, the owner: table_flags and begin_small_table call it"},
+          {"src/ui/column_widths.cpp",
+           "return scroll_fixed_flags() | ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable |",
+           "table_flags, the owner: the Library and the report tables call it"},
+          {"src/ui/column_widths.cpp",
+           "ImGuiTableFlags_Sortable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg |",
+           "table_flags, the owner"}},
          {"src"}},
         // Each report window rebuilds its view when AppState hands it a new
         // result; both ask the one template whether the result changed.
@@ -5723,27 +5772,117 @@ const std::vector<OwnerRule>& rules() {
          {{"src/ui/widgets.h", "if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);",
            "move_to_right_edge, the owner: report_frame's cell, row number and right_align call it"}},
          {"src"}},
+        // The Library table's cells and its column widths both read a row's
+        // text for a column, so the table takes it from library_cell_text and
+        // never from the row's fields. Only the table's file is scanned: the
+        // reports and the search keep rows of their own with the same field
+        // names.
+        {"What text does a Library table cell show?",
+         "library_cell_text in src/ui/library_model.cpp",
+         R"(\brow\.(title|artist|charter)\b|\brow\.entry\.rootfolder\b|\bbest_label\(\)|\bbest_path_label\()",
+         "",
+         {},
+         {},
+         "derive-once review of cw-t4 (finding 1)",
+         {"cell_text(row.artist, spans);", "overlay_matches(title_pos, row.title, spans, x);",
+          "line.text = row.entry.rootfolder;", "text_ellipsized(row.best_label().c_str());",
+          "const std::string shown = best_path_label(status, bestpath, summary);"},
+         {"const std::string text = library_cell_text(row, column);",
+          "const std::string title = library_cell_text(row, kColumnTitle);",
+          "const LibraryRow& row = rows[index];"},
+         {},
+         {"src/ui/library_table.cpp"}},
+        // The row height of a table is a line plus the cell padding above and
+        // below. A table that sizes itself to its rows asks the owner.
+        {"How tall is a small table that shows its header and every row?",
+         "table_outer_height in src/ui/column_widths.cpp",
+         R"(CellPadding\.y)",
+         "",
+         {"src/ui/column_widths.cpp"},
+         {},
+         "derive-once review of cw-t5 (the height was worked out once per tab file)",
+         {"float height = static_cast<float>(rows + 1) * (ImGui::GetFontSize() + style.CellPadding.y * 2.0f);",
+          "const float padding = style.CellPadding.y * 2.0f;"},
+         {"float height = line + padding;"},
+         {},
+         {"src"}},
+        // A small table whose rows are all at hand runs the same frame every
+        // time: measure, read the room, place, open at its height, set the
+        // columns up, apply. Only begin_small_table asks for the height; a
+        // table that does it by hand is running that frame a second time. The
+        // Library and the report tables keep a cache and size themselves.
+        {"How does a small table that shows all its rows begin?",
+         "begin_small_table in src/ui/column_widths.cpp",
+         R"(\btable_outer_height\()",
+         "",
+         {"src/ui/column_widths.cpp", "src/ui/column_widths.h"},
+         {},
+         "derive-once review of cw-w2 (the Paths, Dynamics and Stars tables each ran the frame)",
+         {"ImVec2(0.0f, table_outer_height(rows.size(), layout, room)),",
+          "ImVec2(0.0f, table_outer_height(a.backends.size(), layout, room, heights)),"},
+         {"if (!begin_small_table(id, ImGuiTableFlags_RowBg, specs, rows.size(),"},
+         {},
+         {"src"}},
+        // ImGui adds its cell padding on both sides of every column. The rule
+        // adds it for the whole table (table_room's spacing) and for a few
+        // columns (first_columns_min_width); a window that adds it itself is
+        // working out the same sum from the same style number.
+        {"How much room does ImGui add around each column?",
+         "table_room and first_columns_min_width in src/ui/column_widths.cpp",
+         R"(\bCellPadding\.x\b|\bCellPaddingX\b)",
+         "",
+         {"src/ui/column_widths.cpp"},
+         {},
+         "derive-once review of cw-t3 (note A) and cw-w2",
+         {"w += narrowest.widths[c] + style.CellPadding.x * 2.0f;",
+          "table->CellPaddingX * 2.0f * static_cast<float>(shown);"},
+         {"m.columns_w = first_columns_min_width(widths, specs, room, 5);"},
+         {},
+         {"src"}},
+        // The backend table's cells and its column widths both read a row's
+        // text for a column, so a cell draws backend_cell and never the row's
+        // fields. Only the tab's file is scanned: path_view.cpp builds the
+        // rows and sets those fields.
+        {"What text does a backend table cell show?",
+         "backend_cell in src/ui/paths_tab.cpp",
+         R"(\brow\.(timing|chord|points|rating)\b)",
+         "",
+         {},
+         {},
+         "derive-once review of cw-w2 (the cell text was read in two places)",
+         {"ImGui::TextUnformatted(row.timing.c_str());", "ImGui::TextUnformatted(row.rating.c_str());",
+          "ImGui::CalcTextSize(row.rating.c_str(), nullptr, false, layout.widths[kRatingColumn]).y);"},
+         {"ImGui::TextUnformatted(backend_cell(row, 0).c_str());",
+          "ImGui::TextUnformatted(backend_cell(row, kRatingColumn).c_str());"},
+         {{"src/ui/paths_tab.cpp", "case 0: return row.timing;",
+           "backend_cell, the owner: the cells and the width measure call it"},
+          {"src/ui/paths_tab.cpp", "case 1: return row.chord;", "backend_cell, the owner"},
+          {"src/ui/paths_tab.cpp", "case 2: return row.points;", "backend_cell, the owner"},
+          {"src/ui/paths_tab.cpp", "default: return row.rating;", "backend_cell, the owner"}},
+         {"src/ui/paths_tab.cpp"}},
+        // A CI step that gives the GUI runner its own --jobs count. The count
+        // is kDefaultJobs's, so a step runs plain --all. The walk reads no
+        // .yml file, so the case that checks the single files outside it
+        // reads ci.yml (the way it reads installer/hydra.iss).
+        {"How many GUI test processes does the CI runner start at once?",
+         "kDefaultJobs in tests/ui/uitest_main.cpp",
+         R"(hydra_uitest\S*\s+.*--jobs\b)",
+         "",
+         {},
+         {},
+         "CI and test tooling plan, decision 3 (2026-10-10); derive-once review of ct-t4",
+         {R"(run: .\build-asan\Release\hydra_uitest.exe --all --jobs 4)"},
+         {R"(run: .\build-cpp\Release\hydra_uitest.exe --all)",
+          R"(run: .\build-asan\Release\hydra_uitest.exe --all)"},
+         {},
+         {".github/workflows/ci.yml"}},
     };
     return r;
 }
 
 const std::vector<KnownCopy>& known_copies() {
     // Copies found in files the change that found them could not edit.
-    static const std::vector<KnownCopy> k = {
-        {"Where does a right-aligned item start?", "src/ui/paths_tab.cpp",
-         "if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);",
-         "a follow-up to RW-T5's review: align_right calls move_to_right_edge"},
-        {"Where does a right-aligned item start?", "src/ui/library_dialogs.cpp",
-         "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);",
-         "a follow-up to RW-T5's review, once T4, which owns this file now, has merged"},
-        {"Where does a right-aligned item start?", "src/ui/library_toolbar.cpp",
-         "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);",
-         "a follow-up to RW-T5's review"},
-        {"Does a string end with a tail?", "tests/test_config.cpp",
-         "CHECK(dir.substr(dir.size() - tail.size()) == tail);",
-         "a follow-up to RW-T7's review: the check calls hydra::ends_with, and the chart-format "
-         "row lists that line"},
-    };
+    static const std::vector<KnownCopy> k = {};
     return k;
 }
 
@@ -6471,22 +6610,8 @@ struct KnownClone {
 // later fix; removing one means removing its entry here.
 const std::vector<KnownClone>& known_clones() {
     static const std::vector<KnownClone> k = {
-        {"src/audio/ma_reader.cpp", "src/audio/vorbis_reader.cpp", 9, R"x(pos_ += done;)x"},
-        {"tests/test_app_state.cpp", "tests/test_song_panel_state.cpp", 11, R"x(char hash[32];)x"},
-        {"tests/test_audio_player.cpp", "tests/test_preview_transport.cpp", 10, R"x(namespace {)x"},
-        {"tests/test_highway_draw.cpp", "tests/test_track_state.cpp", 9, R"x(SongTiming timing(480, {{0, 1920}}, {{0, 300.0}});)x"},
-        {"tests/test_highway_draw.cpp", "tests/test_track_state.cpp", 8, R"x(using namespace hydra;)x"},
-        {"tests/test_highway_draw.cpp", "tests/test_track_state.cpp", 10, R"x(return s;)x"},
-        {"tests/test_path_view.cpp", "tests/test_path_view.cpp", 12, R"x(HydraRecord rec;)x"},
-        {"tests/test_path_view.cpp", "tests/test_preview_view.cpp", 8, R"x(const AnalysisResult& analyzed() {)x"},
-        {"tests/test_preview_controller.cpp", "tests/test_preview_controller.cpp", 11, R"x(using namespace hydra;)x"},
-        {"tests/test_replay.cpp", "tests/test_replay.cpp", 10, R"x(int charts = 0, paths = 0, mismatches = 0;)x"},
-        {"tests/test_replay.cpp", "tests/test_replay.cpp", 10, R"x(Song song(192);)x"},
-        {"tests/test_search.cpp", "tests/test_search.cpp", 17, R"x(for (const std::string& path : corpus::chart_paths()) {)x"},
         {"tests/test_search.cpp", "tests/test_search.cpp", 10, R"x(Song song = build_tail_song({{0, true, false},)x"},
         {"tests/test_search.cpp", "tests/test_search.cpp", 9, R"x({768, true, false},)x"},
-        {"tests/test_store.cpp", "tests/test_store.cpp", 8, R"x(for (const std::string& path : corpus::chart_paths()) {)x"},
-        {"tests/ui/uitest_batch_reports.cpp", "tests/ui/uitest_batch_reports.cpp", 9, R"x(Harness& h = harness(ctx);)x"},
     };
     return k;
 }

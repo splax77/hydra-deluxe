@@ -6,14 +6,11 @@
 
 #include "doctest.h"
 
-#include <algorithm>
 #include <cstdint>
-#include <cstdio>
 #include <string>
 #include <vector>
 
 #include "app/dynamics_breakdown.h"
-#include "env_util.h"
 #include "midi_util.h"
 #include "parse/song.h"
 #include "ui/details_parts.h"
@@ -146,24 +143,4 @@ TEST_CASE("dynamics tag: the Dynamics tab's Chart line") {
     bd.marks_before_tag = 1234;
     CHECK(dynamics_enabled_text(bd) ==
           "Dynamics enabled: from 4:01 on (1,234 earlier markings ignored by Clone Hero)");
-}
-
-// Dev aid, not a pinned case. Set HYDRA_DYNAMICS_TAG_CHARTS to a list of
-// notes.mid paths separated by ';', then run -tc="dynamics tag dev aid*" to
-// print each chart's Expert Pro Drums Chart line as the tab would show it.
-TEST_CASE("dynamics tag dev aid: print the Chart line for real charts") {
-    const auto list = read_env("HYDRA_DYNAMICS_TAG_CHARTS");
-    if (!list) return;
-    size_t from = 0;
-    while (from <= list->size()) {
-        const size_t to = std::min(list->find(';', from), list->size());
-        const std::string path = list->substr(from, to - from);
-        from = to + 1;
-        if (path.empty()) continue;
-        const Song song = load_songpath_mid(path, true, app::kDynamicsParseBass2x);
-        const app::DynamicsBreakdown bd = app::count_dynamics(song);
-        std::printf("%s\n  %s (tag tick %lld)\n", path.c_str(),
-                    ui::detail::dynamics_enabled_text(bd).c_str(),
-                    static_cast<long long>(song.dynamics_late_tag_tick.value_or(-1)));
-    }
 }

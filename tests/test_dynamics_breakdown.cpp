@@ -80,7 +80,7 @@ Song make_test_song() {
 }  // namespace
 
 // ---------------------------------------------------------------------------
-// Test 1: hand-built Song gives expected per-row counts.
+// A hand-built Song gives the expected per-row counts.
 // ---------------------------------------------------------------------------
 
 TEST_CASE("dynamics_breakdown: hand-built song row counts") {
@@ -126,7 +126,7 @@ TEST_CASE("dynamics_breakdown: hand-built song row counts") {
 }
 
 // ---------------------------------------------------------------------------
-// Test 2: played_total with and without bass2x.
+// played_total with and without bass2x.
 // ---------------------------------------------------------------------------
 
 TEST_CASE("dynamics_breakdown: played_total includes/excludes 2x kick") {
@@ -153,7 +153,7 @@ TEST_CASE("dynamics_breakdown: played_total includes/excludes 2x kick") {
 }
 
 // ---------------------------------------------------------------------------
-// Test 3: real chart — Alpha Wolf "Acid Romance" (MIDI, pro, bass2x).
+// A real chart: Alpha Wolf "Acid Romance" (MIDI, pro, bass2x).
 //
 // Cross-checked with the standalone dyn.py MIDI counter.
 // ---------------------------------------------------------------------------
@@ -207,7 +207,7 @@ TEST_CASE("dynamics_breakdown: Alpha Wolf - Acid Romance (real chart)") {
 }
 
 // ---------------------------------------------------------------------------
-// Test 4: MIDI chart without ENABLE_CHART_DYNAMICS => dynamics_enabled false.
+// A MIDI chart without ENABLE_CHART_DYNAMICS has dynamics_enabled false.
 // ---------------------------------------------------------------------------
 
 TEST_CASE("dynamics_breakdown: no ENABLE_CHART_DYNAMICS tag") {

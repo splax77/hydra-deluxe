@@ -55,9 +55,10 @@ struct ColumnSpec {
     // (Title, Artist, Song, Path...). Numbers and chips never cut.
     bool may_cut = false;
     // Extra width every cell adds beside its text: a chip's outline padding
-    // (2 * FramePadding.x). The header does not get it.
+    // (report_frame::column_spec sets it, from the same chip_pad the chip is
+    // drawn with). The header does not get it.
     float padding = 0.0f;
-    // Measures this column's header and cells. In the app, text_width() with
+    // Measures this column's header and cells. In the app, measure_in_font() with
     // the column's font; in a unit test, a fake.
     WidthOf width_of;
 };
@@ -125,8 +126,10 @@ struct ColumnLayout {
     // the spacing. More than room.available means the table scrolls sideways.
     float inner_width = 0.0f;
     // The inner width with every cut column at its header's width: the
-    // narrowest the table gets before it scrolls. The report window's own
-    // minimum width reads this.
+    // narrowest the table gets before it scrolls. This is the whole table's
+    // minimum. A report window's own minimum width is only its first five
+    // columns (D103 item 14), so it does not read this; see
+    // report_frame::note_min_size.
     float min_inner_width = 0.0f;
 };
 
@@ -141,17 +144,23 @@ ColumnLayout place_columns(const MeasuredWidths& measured, const std::vector<Col
 
 // ---- The ImGui side -------------------------------------------------------
 
-// The flags every table starts from. ScrollX lets the table scroll sideways
-// when its columns don't fit; the rule sets every column's width itself, so
-// ImGui's own sizing policy has nothing left to decide.
+// The flags the rule needs from any table that goes through it. ScrollX lets
+// the table scroll sideways when its columns don't fit; the rule sets every
+// column's width itself, so ImGui's own sizing policy has nothing left to
+// decide. A table with its own look (borders, no sorting) adds its own flags
+// to these.
+ImGuiTableFlags scroll_fixed_flags();
+
+// The flags the Library and the report tables start from: scroll_fixed_flags
+// plus the list look they share (sorting, hiding, resizing, row stripes).
 ImGuiTableFlags table_flags();
 
 // A WidthOf that measures in `font` at `size`, as ImGui would draw it. The
 // one-argument form uses the current font size; with no font, the current
 // font. Call it inside a frame; keep the result only for one measure, since
 // a UI scale change changes the size.
-WidthOf text_width(ImFont* font, float size);
-WidthOf text_width(ImFont* font = nullptr);
+WidthOf measure_in_font(ImFont* font, float size);
+WidthOf measure_in_font(ImFont* font = nullptr);
 
 // The room table `str_id` has this frame, for place_columns. Call it before
 // BeginTable, in the window the table goes in, with the outer width that
@@ -161,6 +170,43 @@ WidthOf text_width(ImFont* font = nullptr);
 // vertical scrollbar. Before the table's first frame it assumes no spacing,
 // every column shown and no header wider than its text.
 TableRoom table_room(const char* str_id, float outer_width, std::size_t column_count);
+
+// The width the first `count` columns take with no room to share: each at its
+// narrowest (a cut column at its header's width) plus ImGui's cell padding on
+// both sides, every one counted as shown. Only `room.header_drawn` is read.
+// The report window's minimum width asks for its first five columns (D103
+// item 14).
+float first_columns_min_width(const MeasuredWidths& measured, const std::vector<ColumnSpec>& specs,
+                              const TableRoom& room, std::size_t count);
+
+// The outer height of a small table that shows its header and all `rows`
+// rows, so it never scrolls up and down. A table that scrolls sideways is a
+// child window, and an outer height of 0 would stretch it to the bottom of
+// its box; pass this to BeginTable instead. Each row is one line high, or
+// taller where `cell_heights[row]` (the height of that row's tallest wrapped
+// cell; rows past the end of it, and an empty list, are one line) says so.
+// When `layout` is wider than `room`, the horizontal scrollbar's height is
+// added. Call it with the font the cells draw in pushed.
+float table_outer_height(std::size_t rows, const ColumnLayout& layout, const TableRoom& room,
+                         const std::vector<float>& cell_heights = {});
+
+// How tall each row's tallest wrapped cell is, given this frame's layout (for
+// table_outer_height's `cell_heights`).
+using CellHeights = std::function<std::vector<float>(const ColumnLayout&)>;
+
+// The whole frame of a small table whose rows are all at hand, up to and
+// including BeginTable and the column setup: it measures `rows` rows now
+// (they are a handful, so there is no cache to keep), reads the room, places
+// the columns, opens table `str_id` at the height table_outer_height gives
+// with `look` added to scroll_fixed_flags(), sets every column up and applies
+// the widths. A table of more rows keeps its measure and runs the frame in
+// the header comment by hand. Returns what BeginTable returned; when true, the
+// caller draws the headers and rows and calls EndTable. `wrapped_heights`, if
+// given, is called with the layout and returns table_outer_height's
+// `cell_heights`. Call it with the font the cells draw in pushed.
+bool begin_small_table(const char* str_id, ImGuiTableFlags look,
+                       const std::vector<ColumnSpec>& specs, std::size_t rows,
+                       const CellText& text, const CellHeights& wrapped_heights = {});
 
 // TableSetupColumn for column `column`, as a fixed-width column at the
 // rule's width. `flags` adds the table's own column flags (sort, hide); any

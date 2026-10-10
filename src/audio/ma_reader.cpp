@@ -219,12 +219,7 @@ public:
     }
 
     void seek(int64_t frame) override {
-        frame = std::clamp<int64_t>(frame, 0, length_);
-        if (frame >= length_) {
-            at_end_ = true;
-            pos_ = length_;
-            return;
-        }
+        if (seek_clamp_or_end(frame, length_, pos_, at_end_)) return;
         if (counted_.counted()) {
             // As in read(): a decode error ends the stem, and failed() stays true.
             if (counted_.seek(frame, static_cast<int64_t>(kSkipChunk), pos_, at_end_,
@@ -427,12 +422,7 @@ public:
     }
 
     void seek(int64_t frame) override {
-        frame = std::clamp<int64_t>(frame, 0, length_);
-        if (frame >= length_) {
-            at_end_ = true;
-            pos_ = length_;
-            return;
-        }
+        if (seek_clamp_or_end(frame, length_, pos_, at_end_)) return;
         if (frame == pos_ && !at_end_) return;
         // A short hop forward: decode ahead from here. That stays bit-exact
         // with a straight read, and is cheaper than a table seek.

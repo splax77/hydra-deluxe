@@ -32,22 +32,18 @@ inline const app::AnalysisSettings& default_settings() {
     return settings;
 }
 
-inline void parse_chart(const std::vector<uint8_t>& bytes) {
+// The four byte loaders in parse/song.h share one signature, so the settings
+// are handed over in one place.
+using SongLoader = Song (*)(const std::vector<uint8_t>&, bool, bool, Difficulty,
+                            const core::Rules&, bool);
+inline void parse_song(SongLoader load, const std::vector<uint8_t>& bytes) {
     const app::AnalysisSettings& s = default_settings();
-    (void)load_songbytes_chart(bytes, s.prodrums, s.bass2x, s.difficulty, s.rules, s.noteshuffle);
+    (void)load(bytes, s.prodrums, s.bass2x, s.difficulty, s.rules, s.noteshuffle);
 }
-inline void parse_mid(const std::vector<uint8_t>& bytes) {
-    const app::AnalysisSettings& s = default_settings();
-    (void)load_songbytes_mid(bytes, s.prodrums, s.bass2x, s.difficulty, s.rules, s.noteshuffle);
-}
-inline void parse_sng(const std::vector<uint8_t>& bytes) {
-    const app::AnalysisSettings& s = default_settings();
-    (void)load_songbytes_sng(bytes, s.prodrums, s.bass2x, s.difficulty, s.rules, s.noteshuffle);
-}
-inline void parse_srb(const std::vector<uint8_t>& bytes) {
-    const app::AnalysisSettings& s = default_settings();
-    (void)load_songbytes_srb(bytes, s.prodrums, s.bass2x, s.difficulty, s.rules, s.noteshuffle);
-}
+inline void parse_chart(const std::vector<uint8_t>& bytes) { parse_song(load_songbytes_chart, bytes); }
+inline void parse_mid(const std::vector<uint8_t>& bytes) { parse_song(load_songbytes_mid, bytes); }
+inline void parse_sng(const std::vector<uint8_t>& bytes) { parse_song(load_songbytes_sng, bytes); }
+inline void parse_srb(const std::vector<uint8_t>& bytes) { parse_song(load_songbytes_srb, bytes); }
 // decode_audio sniffs the container itself (sniff_format) before it picks a
 // decoder, so this one target covers the sniffer too.
 inline void parse_audio(const std::vector<uint8_t>& bytes) {

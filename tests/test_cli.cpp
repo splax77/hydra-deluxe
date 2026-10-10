@@ -18,11 +18,13 @@
 #include <iterator>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/user_messages.h"  // kDatabaseOpenSentence
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "db_file_util.h"  // write_junk_db
@@ -32,6 +34,7 @@
 #include "search/graph.h"
 #include "store/record_store.h"
 #include "temp_util.h"
+#include "wait_util.h"
 
 #if !defined(HYDRA_BATCH_EXE) || !defined(HYDRA_FILLCOMPARE_EXE)
 #error "the CLI exe paths must be defined (see CMakeLists.txt)"
@@ -49,7 +52,8 @@ struct RunResult {
     std::string output;  // stdout and stderr, interleaved
 };
 
-// Runs `exe` with `args`, waits for it, and captures everything it prints.
+// Runs `exe` with `args`, waits for it, and captures everything it prints. A
+// run past testwait::kWaitCap is killed, and the test fails naming it.
 RunResult run_exe(const fs::path& exe, const std::vector<std::string>& args) {
     std::wstring cmd = L"\"" + exe.wstring() + L"\"";
     for (const std::string& a : args) cmd += L" \"" + hydra::utf8_to_wide(a) + L"\"";
@@ -71,17 +75,34 @@ RunResult run_exe(const fs::path& exe, const std::vector<std::string>& args) {
     CloseHandle(write_end);  // the child holds its own copy
     REQUIRE_MESSAGE(started, "could not start " << exe.u8string());
 
+    // The pipe is drained on its own thread: a read blocks until the child
+    // writes or exits, so reading here would leave nothing to time the run.
     RunResult r;
-    char buf[4096];
-    DWORD got = 0;
-    while (ReadFile(read_end, buf, sizeof(buf), &got, nullptr) && got > 0)
-        r.output.append(buf, got);
+    std::thread reader([&r, read_end] {
+        char buf[4096];
+        DWORD got = 0;
+        while (ReadFile(read_end, buf, sizeof(buf), &got, nullptr) && got > 0)
+            r.output.append(buf, got);
+    });
+    const DWORD cap_ms = static_cast<DWORD>(testwait::kWaitCap.count());
+    const bool timed_out = WaitForSingleObject(pi.hProcess, cap_ms) == WAIT_TIMEOUT;
+    if (timed_out) {
+        TerminateProcess(pi.hProcess, 1);
+        // Once the child is gone, so is the pipe's only write end, and the
+        // reader's ReadFile returns.
+        WaitForSingleObject(pi.hProcess, cap_ms);
+    }
+    reader.join();
     CloseHandle(read_end);
-    WaitForSingleObject(pi.hProcess, INFINITE);
     DWORD code = 0;
     GetExitCodeProcess(pi.hProcess, &code);
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
+    std::string command = exe.filename().u8string();
+    for (const std::string& a : args) command += " " + a;
+    REQUIRE_MESSAGE(!timed_out, command << " ran past " << testwait::cap_text(testwait::kWaitCap)
+                                        << " and was stopped; it printed:\n"
+                                        << r.output);
     r.exit_code = static_cast<int>(code);
     return r;
 }
@@ -202,9 +223,7 @@ TEST_CASE("hydra_batch and hydra_fillcompare say why a database won't open") {
         INFO(exe.filename().u8string() << " printed: " << r.output);
         CHECK(r.exit_code == 2);
         // Two checks, because the console's text mode turns each "\n" into "\r\n".
-        CHECK(contains(r.output,
-                       "Hydra couldn't open its database (hydra.db). Check that no other copy "
-                       "of Hydra is running and that the Hydra folder isn't read-only."));
+        CHECK(contains(r.output, hydra::app::kDatabaseOpenSentence));
         CHECK(contains(r.output, "sqlite exec failed: file is not a database"));
     }
 }

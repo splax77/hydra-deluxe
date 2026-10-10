@@ -11,14 +11,18 @@
 
 #include "doctest.h"
 
+#include <rapidcheck.h>
+
 #include <algorithm>
-#include <chrono>
 #include <cstdint>
 #include <cstdio>
-#include <filesystem>
+#include <cstdlib>
 #include <optional>
+#include <ostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -30,8 +34,8 @@
 #include "core/backend_value.h"
 #include "core/model.h"
 #include "core/replay.h"
-#include "env_util.h"
 #include "replay_json.h"
+#include "replay_windows.h"
 #include "core/scoring.h"
 #include "core/sqout_chord.h"
 #include "core/timing.h"
@@ -47,40 +51,58 @@
 using namespace hydra;
 using json = nlohmann::json;
 
-TEST_CASE("replay reproduces the engine's score for every corpus path") {
+namespace {
+
+// What a walk over every stored corpus path found.
+struct CorpusPathRun {
     int charts = 0, paths = 0, mismatches = 0;
-    std::string first_diff;
+    std::string first_diff;  // the first mismatch, named by chart and path
+};
 
-    // The GUI's defaults, straight from app::Settings rather than five
-    // hand-written literals: cap 4, score range 4, 10 ms.
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-
+// Walks every stored path of every corpus chart `cfg` analyzes. `check` is
+// called with the chart's song and one stored path; it returns "" when the
+// path passes, or what differs.
+template <class Check>
+CorpusPathRun check_every_corpus_path(const app::AnalysisSettings& cfg, Check check) {
+    CorpusPathRun run;
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
         if (song.is_empty()) continue;
-        ++charts;
+        ++run.charts;
 
         const HydraRecord& rec = corpus::analyzed(path, cfg);
 
         for (const Path* p : rec.all_paths()) {
-            ++paths;
-            const PathReplay pr = replay_stored_path(song, *p);
-            REQUIRE(pr.all_windows());
-
-            if (!pr.totals_match()) {
-                ++mismatches;
-                if (first_diff.empty())
-                    first_diff = path + " [" + p->pathstring() + "]: replay " +
-                                 std::to_string(pr.result.final.total()) + " vs stored " +
-                                 std::to_string(p->totalscore());
-            }
+            ++run.paths;
+            const std::string diff = check(song, *p);
+            if (diff.empty()) continue;
+            ++run.mismatches;
+            if (run.first_diff.empty()) run.first_diff = path + " [" + p->pathstring() + "]" + diff;
         }
     }
+    return run;
+}
 
-    CHECK(charts > 0);
-    CHECK(paths > 0);
-    INFO("first mismatch: " << first_diff);
-    CHECK(mismatches == 0);
+}  // namespace
+
+TEST_CASE("replay reproduces the engine's score for every corpus path") {
+    // The GUI's defaults, straight from app::Settings rather than five
+    // hand-written literals: cap 4, score range 4, 10 ms.
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+
+    const CorpusPathRun run = check_every_corpus_path(
+        cfg, [](const Song& song, const Path& p) -> std::string {
+            const PathReplay pr = replay_stored_path(song, p);
+            REQUIRE(pr.all_windows());
+            if (pr.totals_match()) return "";
+            return ": replay " + std::to_string(pr.result.final.total()) + " vs stored " +
+                   std::to_string(p.totalscore());
+        });
+
+    CHECK(run.charts > 0);
+    CHECK(run.paths > 0);
+    INFO("first mismatch: " << run.first_diff);
+    CHECK(run.mismatches == 0);
 }
 
 // The combo the game's counter shows once a chord is hit. The Preview's score
@@ -145,29 +167,19 @@ TEST_CASE("replay: a solo's bonus reaches the on-screen total on the section's l
 // same squeezes. That is the whole contract: "activate exactly here" must not
 // change how the engine scores what happens next.
 TEST_CASE("targeted search reproduces every corpus path") {
-    int charts = 0, paths = 0, mismatches = 0;
-    std::string first_diff;
-
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
 
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
-        if (song.is_empty()) continue;
-        ++charts;
+    const CorpusPathRun run = check_every_corpus_path(
+        cfg, [&cfg](const Song& song, const Path& p) -> std::string {
+            const std::vector<Activation> want_acts = p.all_activations();
 
-        const HydraRecord& rec = corpus::analyzed(path, cfg);
-
-        for (const Path* p : rec.all_paths()) {
-            ++paths;
-            const std::vector<Activation> want_acts = p->all_activations();
-
-            const std::vector<Path> got = search_target(song, cfg, test::act_ticks(*p));
+            const std::vector<Path> got = search_target(song, cfg, test::act_ticks(p));
 
             // Somewhere in the returned variants must be this exact path.
             const Path* match = nullptr;
             const std::vector<const Path*> targeted = flatten_paths(got);
             for (const Path* q : targeted) {
-                if (q->totalscore() != p->totalscore()) continue;
+                if (q->totalscore() != p.totalscore()) continue;
                 const std::vector<Activation> qa = q->all_activations();
                 if (qa.size() != want_acts.size()) continue;
                 bool same = true;
@@ -185,26 +197,20 @@ TEST_CASE("targeted search reproduces every corpus path") {
                 if (same) { match = q; break; }
             }
 
-            if (!match) {
-                ++mismatches;
-                if (first_diff.empty())
-                    first_diff = path + " [" + p->pathstring() + "] score " +
-                                 std::to_string(p->totalscore()) + ": " +
-                                 std::to_string(targeted.size()) +
-                                 " targeted path(s), none matching";
-                continue;
-            }
+            if (!match)
+                return " score " + std::to_string(p.totalscore()) + ": " +
+                       std::to_string(targeted.size()) + " targeted path(s), none matching";
 
             // The recovered path also has to replay to its own score, which is
             // the invariant the first test pins for search-found paths.
             CHECK(replay_stored_path(song, *match).totals_match());
-        }
-    }
+            return "";
+        });
 
-    CHECK(charts > 0);
-    REQUIRE(paths >= 300);
-    INFO("first mismatch: " << first_diff);
-    CHECK(mismatches == 0);
+    CHECK(run.charts > 0);
+    REQUIRE(run.paths >= 300);
+    INFO("first mismatch: " << run.first_diff);
+    CHECK(run.mismatches == 0);
 }
 
 namespace {
@@ -333,12 +339,13 @@ TEST_CASE("replay without Star Power scores no doubling at all") {
     CHECK(r.chords.back().cum_onscreen_total == r.final.total());
 }
 
-// Round and Round's shape on a hand-built chart: a window whose squeeze-out
-// sits on an R+Y phrase chord ~479 ms past the SP end. That chord is outside
-// the window and outside the leeway, so it earns no doubling at all -- the
-// squeeze-out changes nothing. The chord on the deactivation node is paid.
-TEST_CASE("a squeezed-out chord past the leeway earns nothing") {
-    // 4/4, 120 BPM, 192 ticks per beat: 768 ticks and 2000 ms per measure.
+namespace {
+
+// Round and Round's shape on a hand-built chart: six R+Y chords, 192 ticks a
+// beat, 120 BPM, 768 ticks (2000 ms) a measure. Ticks 0, 768, 1536, 2304,
+// 3072 are 0, 2000, 4000, 6000, 8000 ms; the phrase chord at 3256 is
+// 8479.2 ms.
+Song squeeze_chart() {
     Song song(192);
     song.bpm_changes[0] = 120.0;
     song.build_timing();
@@ -350,6 +357,17 @@ TEST_CASE("a squeezed-out chord past the leeway earns nothing") {
         if (tick == 3256) test::mark_phrase_end(ts, tick, song.tick_resolution());
         song.sequence.push_back(ts);
     }
+    return song;
+}
+
+}  // namespace
+
+// Round and Round's shape (squeeze_chart): a window whose squeeze-out sits
+// on an R+Y phrase chord ~479 ms past the SP end. That chord is outside the
+// window and outside the leeway, so it earns no doubling at all -- the
+// squeeze-out changes nothing. The chord on the deactivation node is paid.
+TEST_CASE("a squeezed-out chord past the leeway earns nothing") {
+    const Song song = squeeze_chart();
 
     ReplayWindow w;
     w.act_tick = 0;
@@ -1369,27 +1387,32 @@ TEST_CASE("chord_score_table: literal rows on a hand-built chart") {
 }
 
 TEST_CASE("replay multipliers agree with the combo on every corpus chord") {
-    Song song = load_songpath(corpus::first_chart_with_suffix(".mid"), true, true);
-    REQUIRE_FALSE(song.is_empty());
-    const ReplayResult r = replay_path(song, {});
-
-    for (size_t i = 0; i < r.chords.size(); ++i) {
-        const ReplayChord& c = r.chords[i];
-        REQUIRE_FALSE(c.notes.empty());
-        // The chord's multiplier is its first note's; multiplier_after is its
-        // last note's.
-        CHECK(c.multiplier == c.notes.front().multiplier);
-        CHECK(c.multiplier_after == c.notes.back().multiplier);
-        // What the disc shows after this chord is what the next chord starts
-        // from: the old field's value on the next chord.
-        if (i + 1 < r.chords.size())
-            CHECK(c.multiplier_after == to_multiplier(r.chords[i + 1].combo_before));
-        // A note's dynamics bonus is part of what it pays, never more.
-        for (const ReplayNote& n : c.notes) {
-            CHECK(n.dynamics_bonus >= 0);
-            CHECK(n.dynamics_bonus < n.sp_points);
+    int charts = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, true, true);
+        if (song.is_empty()) continue;
+        ++charts;
+        const ReplayResult r = replay_path(song, {});
+        INFO(path);
+        for (size_t i = 0; i < r.chords.size(); ++i) {
+            const ReplayChord& c = r.chords[i];
+            REQUIRE_FALSE(c.notes.empty());
+            // The chord's multiplier is its first note's; multiplier_after is
+            // its last note's.
+            CHECK(c.multiplier == c.notes.front().multiplier);
+            CHECK(c.multiplier_after == c.notes.back().multiplier);
+            // What the disc shows after this chord is what the next chord
+            // starts from: the old field's value on the next chord.
+            if (i + 1 < r.chords.size())
+                CHECK(c.multiplier_after == to_multiplier(r.chords[i + 1].combo_before));
+            // A note's dynamics bonus is part of what it pays, never more.
+            for (const ReplayNote& n : c.notes) {
+                CHECK(n.dynamics_bonus >= 0);
+                CHECK(n.dynamics_bonus < n.sp_points);
+            }
         }
     }
+    CHECK(charts > 0);
 }
 
 TEST_CASE("replay score fields: one list in schema order") {
@@ -1482,44 +1505,7 @@ std::string first_result_difference(const ReplayResult& a, const ReplayResult& b
     return "";
 }
 
-// A small deterministic generator, so the synthetic windows are the same on
-// every run and every machine.
-struct Lcg {
-    uint64_t state;
-    uint32_t next() {
-        state = state * 6364136223846793005ULL + 1442695040888963407ULL;
-        return static_cast<uint32_t>(state >> 33);
-    }
-};
-
-// `count` made-up windows over `song`: random activation chords, windows of
-// 1 to 60 chords that overlap freely, deactivation nodes that are sometimes a
-// few ticks off a chord, and a squeeze-out chord on about a quarter of them
-// (anywhere from 3 chords before the SP end to 3 after, so some sit before D).
-std::vector<ReplayWindow> synthetic_windows(const Song& song, size_t count,
-                                            uint64_t seed) {
-    std::vector<ReplayWindow> out;
-    const size_t n = song.sequence.size();
-    if (n == 0) return out;
-    Lcg rng{seed};
-    out.reserve(count);
-    for (size_t j = 0; j < count; ++j) {
-        const size_t a = rng.next() % n;
-        const size_t len = 1 + rng.next() % 60;
-        const size_t d = std::min(a + len, n - 1);
-        ReplayWindow w;
-        w.act_tick = song.sequence[a].timecode.ticks();
-        w.deact_tick = song.sequence[d].timecode.ticks() +
-                       (rng.next() % 3 == 0 ? static_cast<int64_t>(rng.next() % 10) : 0);
-        if (rng.next() % 4 == 0) {
-            const size_t lo = d >= 3 ? d - 3 : 0;
-            const size_t q = std::min(lo + rng.next() % 7, n - 1);
-            w.sqout_tick = song.sequence[q].timecode.ticks();
-        }
-        out.push_back(w);
-    }
-    return out;
-}
+using testreplay::synthetic_windows;
 
 // Leeways that stress the exit rule: the real 3 ms, none, a negative one, and
 // one wide enough that chords well past D keep counting.
@@ -1581,25 +1567,6 @@ std::string compact_line(const ReplayResult& r) {
 // (record_fixtures.h).
 using test::check_lines;
 
-// Six R+Y chords on the chart of "a squeezed-out chord past the leeway earns
-// nothing": 192 ticks a beat, 120 BPM, 768 ticks (2000 ms) a measure. Ticks
-// 0, 768, 1536, 2304, 3072 are 0, 2000, 4000, 6000, 8000 ms; the phrase chord
-// at 3256 is 8479.2 ms.
-Song squeeze_chart() {
-    Song song(192);
-    song.bpm_changes[0] = 120.0;
-    song.build_timing();
-    for (int64_t tick : {0, 768, 1536, 2304, 3072, 3256}) {
-        SongTimestamp ts;
-        ts.timecode = song.timecode(tick);
-        ts.chord.add_note(NoteColor::Red);
-        ts.chord.add_note(NoteColor::Yellow);
-        if (tick == 3256) test::mark_phrase_end(ts, tick, song.tick_resolution());
-        song.sequence.push_back(ts);
-    }
-    return song;
-}
-
 ReplayWindow window(int64_t act, int64_t deact, std::optional<int64_t> sqout = std::nullopt) {
     ReplayWindow w;
     w.act_tick = act;
@@ -1608,45 +1575,79 @@ ReplayWindow window(int64_t act, int64_t deact, std::optional<int64_t> sqout = s
     return w;
 }
 
+// How many rows break a rule, and the first of them.
+struct BadRows {
+    size_t count = 0;
+    size_t first = 0;
+    void add(size_t i) {
+        if (count++ == 0) first = i;
+    }
+};
+
 // Each row's SP points must be the sum of what each window pays it alone,
 // and SP pays the chord exactly when one of them does. Single-window replays
 // are scores-only to keep this quick; their score fields are a full replay's.
-void check_windows_add_up(const Song& song, const std::vector<ReplayWindow>& wl,
-                          const core::Rules& rules, const ReplayResult& all,
-                          const std::string& what) {
+BadRows rows_not_adding_up(const Song& song, const std::vector<ReplayWindow>& wl,
+                           const core::Rules& rules, const ReplayResult& all) {
     ReplayOptions scores;
     scores.scores_only = true;
     std::vector<int64_t> sum(all.chords.size(), 0);
     std::vector<bool> paid(all.chords.size(), false);
     for (const ReplayWindow& w : wl) {
         const ReplayResult one = replay_path(song, {w}, rules, scores);
-        REQUIRE(one.chords.size() == all.chords.size());
+        if (one.chords.size() != all.chords.size())
+            throw std::logic_error("a one-window replay has another row count");
         for (size_t i = 0; i < one.chords.size(); ++i) {
             sum[i] += one.chords[i].points.sp;
             if (one.chords[i].in_sp) paid[i] = true;
         }
     }
-    size_t bad = 0, first = 0;
+    BadRows bad;
     for (size_t i = 0; i < all.chords.size(); ++i)
-        if ((all.chords[i].points.sp != sum[i] || all.chords[i].in_sp != paid[i]) && bad++ == 0)
-            first = i;
-    INFO(what << ": first row that does not add up: " << first);
-    CHECK(bad == 0);
+        if (all.chords[i].points.sp != sum[i] || all.chords[i].in_sp != paid[i]) bad.add(i);
+    return bad;
+}
+
+void check_windows_add_up(const Song& song, const std::vector<ReplayWindow>& wl,
+                          const core::Rules& rules, const ReplayResult& all,
+                          const std::string& what) {
+    const BadRows bad = rows_not_adding_up(song, wl, rules, all);
+    INFO(what << ": first row that does not add up: " << bad.first);
+    CHECK(bad.count == 0);
 }
 
 // What every row of any replay holds: SP paid the chord exactly when it paid
 // it points (D2), and the disc doubles exactly then.
-void check_disc_follows_payment(const ReplayResult& r, const std::string& what) {
-    size_t bad = 0, first = 0;
+BadRows rows_off_payment(const ReplayResult& r) {
+    BadRows bad;
     for (size_t i = 0; i < r.chords.size(); ++i) {
         const ReplayChord& c = r.chords[i];
-        if ((c.in_sp != (c.points.sp > 0) ||
-             c.multiplier_shown != shown_multiplier(c.multiplier_after, c.in_sp)) &&
-            bad++ == 0)
-            first = i;
+        if (c.in_sp != (c.points.sp > 0) ||
+            c.multiplier_shown != shown_multiplier(c.multiplier_after, c.in_sp))
+            bad.add(i);
     }
-    INFO(what << ": first row whose disc does not follow SP's payment: " << first);
-    CHECK(bad == 0);
+    return bad;
+}
+
+void check_disc_follows_payment(const ReplayResult& r, const std::string& what) {
+    const BadRows bad = rows_off_payment(r);
+    INFO(what << ": first row whose disc does not follow SP's payment: " << bad.first);
+    CHECK(bad.count == 0);
+}
+
+// The corpus chart with the most chords, and its path.
+const Song& longest_corpus_song(std::string& path_out) {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    const Song* longest = nullptr;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        if (!longest || song.sequence.size() > longest->sequence.size()) {
+            longest = &song;
+            path_out = path;
+        }
+    }
+    if (!longest) throw std::logic_error("the chart corpus is empty");
+    return *longest;
 }
 
 }  // namespace
@@ -1813,17 +1814,8 @@ TEST_CASE("replay: disjoint windows that squeeze out a one-note chord on D") {
 // them in another order gives the same rows, and each row's SP points are
 // what the windows pay it one at a time.
 TEST_CASE("replay: window order does not matter and SP points add up window by window") {
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    const Song* longest = nullptr;
     std::string longest_path;
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
-        if (!longest || song.sequence.size() > longest->sequence.size()) {
-            longest = &song;
-            longest_path = path;
-        }
-    }
-    REQUIRE(longest != nullptr);
+    const Song* longest = &longest_corpus_song(longest_path);
     REQUIRE(longest->sequence.size() > 500);
     INFO("chart: " << longest_path << " (" << longest->sequence.size() << " chords)");
 
@@ -1843,6 +1835,82 @@ TEST_CASE("replay: window order does not matter and SP points add up window by w
         check_disc_follows_payment(r, what);
         check_windows_add_up(*longest, few, rules, replay_path(*longest, few, rules), what);
     }
+}
+
+// How RapidCheck prints a window in a counterexample.
+namespace hydra {
+void showValue(const ReplayWindow& w, std::ostream& os) {
+    os << "{act " << w.act_tick << ", deact " << w.deact_tick;
+    if (w.sqout_tick) os << ", sqout " << *w.sqout_tick;
+    os << "}";
+}
+}  // namespace hydra
+
+// The case above as a RapidCheck property, the trial of plan
+// 2026-10-10-ci-test-tooling (task 7). The same three checks run on made-up
+// windows over the same chart, one leeway variant per test, and a failure is
+// shrunk to the fewest, smallest windows that still break a check. The seed
+// is fixed so the suite runs the same tests every time (decision 7); a
+// failure prints the RC_PARAMS line that replays it.
+TEST_CASE("replay: window order does not matter and windows add up, shrunk by RapidCheck") {
+    std::string longest_path;
+    const Song& song = longest_corpus_song(longest_path);
+    const size_t n = song.sequence.size();
+    REQUIRE(n > 500);
+    INFO("chart: " << longest_path << " (" << n << " chords)");
+    const std::vector<core::Rules> variants = leeway_variants();
+
+    // One window: the same draws synthetic_windows makes from its Lcg, with
+    // the same odds (all in tests/replay_windows.h), so RapidCheck can shrink
+    // them. testreplay::window_over turns the draws into the window.
+    using testreplay::kDeactOffsetOneIn;
+    using testreplay::kDeactOffsetRange;
+    using testreplay::kMaxWindowChords;
+    using testreplay::kSqoutOneIn;
+    using testreplay::kSqoutPicks;
+    const rc::Gen<ReplayWindow> one_window = rc::gen::map(
+        rc::gen::tuple(
+            rc::gen::inRange<size_t>(0, n), rc::gen::inRange<size_t>(1, kMaxWindowChords + 1),
+            rc::gen::weightedOneOf<int64_t>(
+                {{kDeactOffsetOneIn - 1, rc::gen::just<int64_t>(0)},
+                 {1, rc::gen::inRange<int64_t>(0, kDeactOffsetRange)}}),
+            rc::gen::weightedOneOf<int>(
+                {{kSqoutOneIn - 1, rc::gen::just(-1)},
+                 {1, rc::gen::inRange(0, static_cast<int>(kSqoutPicks))}})),
+        [&song](const std::tuple<size_t, size_t, int64_t, int>& t) {
+            return testreplay::window_over(song, std::get<0>(t), std::get<1>(t), std::get<2>(t),
+                                           std::get<3>(t));
+        });
+
+    const auto property = [&] {
+        const size_t v = *rc::gen::inRange<size_t>(0, variants.size());
+        const std::vector<ReplayWindow> wl =
+            *rc::gen::container<std::vector<ReplayWindow>>(one_window);
+        const core::Rules& rules = variants[v];
+        RC_LOG() << rules_label(rules) << "\n";
+        const ReplayResult r = replay_path(song, wl, rules);
+        const std::vector<ReplayWindow> reversed(wl.rbegin(), wl.rend());
+        RC_ASSERT(first_result_difference(r, replay_path(song, reversed, rules)) == "");
+        const BadRows disc = rows_off_payment(r);
+        RC_LOG() << "first row whose disc does not follow SP's payment: " << disc.first << "\n";
+        RC_ASSERT(disc.count == 0u);
+        const BadRows sum = rows_not_adding_up(song, wl, rules, r);
+        RC_LOG() << "first row that does not add up: " << sum.first << "\n";
+        RC_ASSERT(sum.count == 0u);
+    };
+
+    // RapidCheck reads RC_PARAMS once, on its first check. When the caller
+    // has not set it, the seed is fixed here.
+    size_t env_len = 0;
+    getenv_s(&env_len, nullptr, 0, "RC_PARAMS");
+    if (env_len == 0) _putenv_s("RC_PARAMS", "seed=1");
+    rc::detail::TestMetadata metadata;
+    metadata.id = metadata.description = "replay window order and sums";
+    const rc::detail::TestResult result = rc::detail::checkTestable(property, metadata);
+    std::ostringstream message;
+    rc::detail::printResultMessage(result, message);
+    INFO(message.str());
+    CHECK(result.is<rc::detail::SuccessResult>());
 }
 
 // Every stored path on the corpus: the disc follows what SP paid on every
@@ -1901,44 +1969,4 @@ TEST_CASE("replay: scores_only leaves chord_code and notes empty and every score
     CHECK(runs > 0);
     INFO("first difference: " << first_diff);
     CHECK(first_diff.empty());
-}
-
-// Timing on the real stress chart, for the record (Task 9 of the
-// 2026-10-03 preview-loading plan). Skipped by default; run it with
-//   hydra_tests.exe -tc="replay timing*" --no-skip
-// HYDRA_REPLAY_BENCH_CHART overrides the chart path.
-TEST_CASE("replay timing: 2,000 activations on the Discography chart" * doctest::skip()) {
-    const std::string chart = read_env("HYDRA_REPLAY_BENCH_CHART").value_or(
-        "C:\\Clone Hero\\songs\\Misc Downloads\\blink-182 - Discography\\notes.mid");
-    if (!std::filesystem::exists(std::filesystem::u8path(chart))) {
-        MESSAGE("chart not found, skipped: " << chart);
-        return;
-    }
-    const Song song = load_songpath(chart, true, true);
-    REQUIRE_FALSE(song.is_empty());
-    const std::vector<ReplayWindow> wl = synthetic_windows(song, 2000, 7);
-    const core::Rules rules = core::default_rules();
-    ReplayOptions scores;
-    scores.scores_only = true;
-
-    using clock = std::chrono::steady_clock;
-    auto best_ms = [](auto&& fn) {
-        double best = 1e300;
-        for (int run = 0; run < 3; ++run) {
-            const auto t0 = clock::now();
-            fn();
-            const double ms =
-                std::chrono::duration<double, std::milli>(clock::now() - t0).count();
-            best = std::min(best, ms);
-        }
-        return best;
-    };
-    ReplayResult b, c, z;
-    const double new_ms = best_ms([&] { b = replay_path(song, wl, rules); });
-    const double lean_ms = best_ms([&] { c = replay_path(song, wl, rules, scores); });
-    const double none_ms = best_ms([&] { z = replay_path(song, {}, rules); });
-    CHECK(first_result_difference(b, c, true).empty());
-    MESSAGE(song.sequence.size() << " chords, " << wl.size() << " windows, best of 3:"
-            << " open-window walk " << new_ms << " ms, scores-only " << lean_ms
-            << " ms, no windows " << none_ms << " ms");
 }

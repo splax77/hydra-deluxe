@@ -25,6 +25,7 @@
 #include "core/replay.h"
 #include "core/squeeze_rating.h"
 #include "core/timing.h"  // sp_bars_to_measures
+#include "analyzed_chart.h"
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "record_fixtures.h"
@@ -177,8 +178,9 @@ void check_curve_well_formed(const SpMeterCurve& curve) {
     }
 }
 
-// The engine fixture from test_search.cpp ("SP cap overfill: a second clamp
-// in the same window replaces clamp_tick"), rebuilt with each phrase's start
+// The engine fixture from test_search.cpp (the "a second clamp in the same
+// window replaces clamp_tick" row of "SP cap overfill: where the end lands and
+// which note clamped it"), rebuilt with each phrase's start
 // tick set so the Preview draws the phrases. 192 ticks per beat, 4/4, 120
 // BPM: a measure is 768 ticks and 2000 ms.
 Song make_overfill_song() {
@@ -188,17 +190,8 @@ Song make_overfill_song() {
                                      {6768},        {7500}});
 }
 
-// One analyzed corpus chart (the first that yields paths), shared across cases.
-const AnalysisResult& analyzed() {
-    static const AnalysisResult result = [] {
-        AnalysisSettings settings;
-        settings.depth_mode = DepthMode::Scores;
-        settings.depth_value = 10;
-        settings.ms_filter = 10.0;
-        return corpus::first_analyzed_with_paths(settings);
-    }();
-    return result;
-}
+// One analyzed corpus chart (see analyzed_chart.h), shared across cases.
+const AnalysisResult& analyzed() { return corpus::analyzed_by_ten_scores(); }
 
 // A path whose stored score is what the replay prices it at, so the scene
 // trusts it. The corpus case proves the replay against the engine; these

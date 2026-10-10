@@ -16,50 +16,15 @@
 #include "app/preview_view.h"
 #include "corpus_util.h"
 #include "record_fixtures.h"
+#include "preview_scene_fixtures.h"
 #include "render/track_state.h"
 
 using namespace hydra;
 using namespace hydra::app;
 using namespace hydra::render;
+using namespace hydra::test_fixtures;
 
 namespace {
-
-PreviewNote note(double ms, PreviewLane lane, bool cymbal = false, bool ghost = false,
-                 bool accent = false) {
-    PreviewNote n;
-    n.ms = ms;
-    n.tick = static_cast<int64_t>(ms);  // 1 tick per ms keeps ticks distinct
-    n.lane = lane;
-    n.cymbal = cymbal;
-    n.ghost = ghost;
-    n.accent = accent;
-    return n;
-}
-
-PreviewSpan span(double start_ms, double end_ms) {
-    PreviewSpan s;
-    s.start_ms = start_ms;
-    s.end_ms = end_ms;
-    s.start_tick = static_cast<int64_t>(start_ms);
-    s.end_tick = static_cast<int64_t>(end_ms);
-    return s;
-}
-
-PreviewFill fill(PreviewSpan s, PreviewFillState state) {
-    PreviewFill f;
-    f.span = s;
-    f.state = state;
-    return f;
-}
-
-// One tick per millisecond (60 BPM at 1000 ticks per beat), matching note()
-// and span() above, so half a tick is 0.5 ms and the edges these cases expect
-// (1.0005, 0.2505, ...) are the same as before spans moved to ticks.
-PreviewScene timed_scene() {
-    PreviewScene s;
-    s.timing = SongTiming(1000, {{0, 4000}}, {{0, 60.0}});
-    return s;
-}
 
 const TrackInstant* find(const std::vector<TrackInstant>& v, double t) {
     for (const TrackInstant& i : v)
@@ -542,29 +507,11 @@ TEST_CASE("make_lane_bounds: two touching taken fills each light their own lane"
 
 namespace {
 
-// At 480 ticks a beat and 300 BPM: an SP phrase from tick 0 to its last note
-// on tick 480, and a note one tick later on 481. One tick here is 0.417 ms,
-// shorter than the old half-millisecond margin.
+// A note on tick 0, the phrase's last note on tick 480, and one a tick later
+// on 481 (see phrase_to_tick_480_scene for the timing and the phrase).
 PreviewScene phrase_then_next_tick_scene() {
-    SongTiming timing(480, {{0, 1920}}, {{0, 300.0}});
-    auto at_tick = [&](int64_t tick, PreviewLane lane) {
-        PreviewNote n;
-        n.tick = tick;
-        n.ms = timing.ms_index().at(tick);
-        n.lane = lane;
-        return n;
-    };
-    PreviewScene scene;
-    scene.timing = timing;
-    scene.notes = {at_tick(0, PreviewLane::Red), at_tick(480, PreviewLane::Yellow),
-                   at_tick(481, PreviewLane::Blue)};
-    PreviewSpan phrase;
-    phrase.start_tick = 0;
-    phrase.end_tick = 480;
-    phrase.start_ms = timing.ms_index().at(0);
-    phrase.end_ms = timing.ms_index().at(480);
-    scene.sp_phrases = {phrase};
-    return scene;
+    return phrase_to_tick_480_scene(
+        {{0, PreviewLane::Red}, {480, PreviewLane::Yellow}, {481, PreviewLane::Blue}});
 }
 
 }  // namespace
@@ -868,12 +815,17 @@ TEST_CASE("rebuild_overlay_fields: equals a full build on random overlays") {
                           "overlay " + std::to_string(i) + " -> " + std::to_string(j));
 }
 
-TEST_CASE("rebuild_overlay_fields: equals a full build on every corpus chart and stored path") {
+// Every stored path of every 8th corpus chart with notes, in chart_paths()
+// order. The random-overlay test above covers the property; this one keeps it
+// honest on real charts. A sample, not the whole corpus, because each swap
+// costs about 40 ms and the whole corpus took 20 s (user decision 2026-10-10).
+TEST_CASE("rebuild_overlay_fields: equals a full build on every 8th corpus chart's stored paths") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    int charts = 0, swaps = 0;
+    int with_notes = 0, charts = 0, swaps = 0;
     for (const std::string& chart : corpus::chart_paths()) {
         const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
         if (song.is_empty()) continue;
+        if (with_notes++ % 8 != 0) continue;
         ++charts;
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         // The base (what the Preview's first scene job builds the timeline

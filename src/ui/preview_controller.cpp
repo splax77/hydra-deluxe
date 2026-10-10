@@ -313,8 +313,9 @@ void PreviewController::poll() {
                               transport_.channels(), transport_.sample_rate(), source);
                 audio_device_->start();
             } catch (const std::exception& e) {
-                // No device: still previewable, just muted. A warning, not
-                // error_, which the panel treats as fatal.
+                // The device would not open or would not start (each throws
+                // from PreviewAudioDevice): still previewable, just muted. A
+                // warning, not error_, which the panel treats as fatal.
                 audio_device_.reset();
                 audio_warning_ = e.what();
             }

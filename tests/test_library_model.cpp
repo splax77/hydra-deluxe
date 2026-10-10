@@ -350,9 +350,80 @@ TEST_CASE("library model: one chart in two folders gets both rows updated") {
     CHECK(m.set_summary_for("same", ready(1000, "1", 3, 0.0)) == 0);
 }
 
-TEST_CASE("library model: filtering 20,000 charts takes under 20 ms") {
-    // query_matches runs for every row on every applied keystroke, so the
-    // whole pass has to fit well inside a frame.
+TEST_CASE("library model: library_cell_text is what each column shows") {
+    using hydra::ui::library_cell_text;
+    const LibraryModel m = sample();
+    // Rows 0 (analyzed), 3 (tags in the charter) and 5 (no result) are in
+    // scan order, as sample() lists them.
+    CHECK(library_cell_text(m.rows()[0], hydra::ui::kColumnTitle) == "Burnout");
+    CHECK(library_cell_text(m.rows()[0], hydra::ui::kColumnArtist) == "Green Day");
+    CHECK(library_cell_text(m.rows()[0], hydra::ui::kColumnCharter) == "Hoph2o");
+    CHECK(library_cell_text(m.rows()[0], hydra::ui::kColumnFolder) ==
+          "common\\Summer Blast _25 Setlist\\Tier 4");
+    CHECK(library_cell_text(m.rows()[0], hydra::ui::kColumnBestPath) == "378,315  3- 1 2");
+    CHECK(library_cell_text(m.rows()[3], hydra::ui::kColumnCharter) == "Bloodline");
+    CHECK(library_cell_text(m.rows()[5], hydra::ui::kColumnBestPath) == "Not analyzed");
+}
+
+TEST_CASE("library model: only the Best path cell reads the row's summary") {
+    // The table re-measures just the Best path column when a summary changes
+    // (update_column_widths), so no other cell's text may depend on it.
+    using hydra::ui::library_cell_text;
+    LibraryModel m = sample();
+    std::vector<std::string> before;
+    for (int c = 0; c < hydra::ui::kLibraryColumnCount; ++c)
+        before.push_back(library_cell_text(m.rows()[0], c));
+    REQUIRE(m.set_summary_for("burnout", stale()) == 1);
+    for (int c = 0; c < hydra::ui::kLibraryColumnCount; ++c) {
+        INFO("column " << c);
+        if (c == hydra::ui::kColumnBestPath)
+            CHECK(library_cell_text(m.rows()[0], c) != before[static_cast<size_t>(c)]);
+        else
+            CHECK(library_cell_text(m.rows()[0], c) == before[static_cast<size_t>(c)]);
+    }
+}
+
+TEST_CASE("library model: rows_version moves when the rows are replaced and at no other time") {
+    LibraryModel m = sample();
+    const std::uint64_t first = m.rows_version();
+    m.set_summary_for("chair", ready(1000, "1", 3, 0.0));
+    m.set_query("burnout");
+    m.set_chip(StatusChip::Analyzed);
+    m.set_sort(LibrarySort::Artist, false);
+    CHECK(m.rows_version() == first);
+    m.set_charts({chart("a", "A", "X", "Y", "common")});
+    CHECK(m.rows_version() != first);
+}
+
+TEST_CASE("library model: take_summary_changes hands back the changed rows once") {
+    LibraryModel m;
+    m.set_charts({chart("same", "Song", "A", "C", "Pack 1"), chart("one", "Other", "A", "C", "Pack 1"),
+                  chart("same", "Song", "A", "C", "Pack 2")});
+    CHECK(m.take_summary_changes().empty());  // no summary has landed yet
+    SummaryLookup none;
+    // Row 1 has nothing new to show, so it is not listed.
+    m.set_summaries({ready(1000, "1", 3, 0.0), none, ready(2000, "2", 3, 0.0)});
+    CHECK(m.take_summary_changes() == std::vector<size_t>{0, 2});
+    CHECK(m.take_summary_changes().empty());  // it forgot them
+
+    // Indices are rows(), not the table's order.
+    m.set_sort(LibrarySort::Title, false);
+    m.set_summary_for("same", stale());
+    CHECK(m.take_summary_changes() == std::vector<size_t>{0, 2});
+    // The same answer again changes nothing.
+    m.set_summary_for("same", stale());
+    CHECK(m.take_summary_changes().empty());
+
+    // New rows: what was listed for the old ones means nothing.
+    m.set_summary_for("one", ready(5, "1", 3, 0.0));
+    m.set_charts({chart("a", "A", "X", "Y", "common")});
+    CHECK(m.take_summary_changes().empty());
+}
+
+TEST_CASE("library model: filtering 20,000 charts keeps the pinned row counts") {
+    // query_matches runs for every row on every applied keystroke. The times
+    // are printed for a person to read; a timing belongs in hydra_bench, not
+    // in a pass/fail check that a busy machine can fail.
     std::vector<ChartLibraryEntry> charts;
     std::vector<SummaryLookup> summaries;
     charts.reserve(20000);
@@ -375,22 +446,24 @@ TEST_CASE("library model: filtering 20,000 charts takes under 20 ms") {
             << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count()
             << " ms");
 
-    for (const char* q : {"s", "song 1", "\"tier 4\"", "artist 07 song", "charter", "stars:7",
-                          "squeeze<=20 pack", "zzqx", ""}) {
-        // Best of five: on a busy machine one run can lose its time slice
-        // and read 50 ms for 2 ms of work. The fastest run is the filter's
-        // own cost. set_query skips a repeat of the same text, so a
-        // different query goes in (untimed) before each timed one.
-        double ms = 1e9;
-        for (int rep = 0; rep < 5; ++rep) {
-            m.set_query("~reset~");
-            t0 = std::chrono::steady_clock::now();
-            m.set_query(q);
-            ms = std::min(ms, std::chrono::duration<double, std::milli>(
-                                  std::chrono::steady_clock::now() - t0).count());
-        }
-        MESSAGE("query \"" << std::string(q) << "\": " << ms << " ms, " << m.order().size() << " rows");
-        CHECK(ms < 20.0);
+    // Each query's row count over the rows built above, pinned from one run
+    // on 2026-10-10 at 013f4c66.
+    struct QueryRows {
+        const char* query;
+        size_t rows;
+    };
+    for (const QueryRows& qr : {QueryRows{"s", 20000}, QueryRows{"song 1", 18152},
+                                QueryRows{"\"tier 4\"", 2857}, QueryRows{"artist 07 song", 2526},
+                                QueryRows{"charter", 20000}, QueryRows{"stars:7", 0},
+                                QueryRows{"squeeze<=20 pack", 1561}, QueryRows{"zzqx", 0},
+                                QueryRows{"", 20000}}) {
+        t0 = std::chrono::steady_clock::now();
+        m.set_query(qr.query);
+        const double ms =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        MESSAGE("query \"" << std::string(qr.query) << "\": " << ms << " ms, " << m.order().size()
+                           << " rows");
+        CHECK_MESSAGE(m.order().size() == qr.rows, "query \"" << std::string(qr.query) << "\"");
     }
     t0 = std::chrono::steady_clock::now();
     m.set_sort(LibrarySort::BestPath, false);

@@ -3,19 +3,19 @@
 // showing the same chart at the same time.
 //
 // Fixture (testdata/preview/golden.json, captured by hand from Onyx — see
-// docs/adr/0008 for the procedure):
-//   { "chart": "notes.mid", "time_ms": 32000, "width": 900, "height": 800,
-//     "pro": true, "bass2x": true, "tolerance": 20,
+// testdata/preview/README.md for the procedure):
+//   { "chart": "notes.mid", "time_ms": ..., "width": ..., "height": ...,
+//     "crop": [x, y, w, h],           // the highway area inside the screenshot
+//     "pro": true, "bass2x": true, "tolerance": ...,
+//     "pixel_delta": ..., "tile_percent": ..., "frame_percent": ...,
 //     "mask": [[x, y, w, h], ...] }   // rectangles to ignore (Onyx's text)
-// plus golden_onyx.png next to it. Without the fixture the test reports that
-// it skipped, so the suite passes before the capture exists.
-//
-// Dev aid: set HYDRA_PREVIEW_DUMP="<chart path>|<time ms>|<out.bmp>" to
-// render any chart at any time to a BMP (the failing golden comparison also
-// writes build-cpp/preview_actual.bmp).
+// plus golden_onyx.png next to it. Every key is required; a missing file or
+// key fails the test. The README there says what the thresholds mean. A
+// failing comparison writes preview_actual.bmp to the working folder.
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -35,7 +35,6 @@
 #include "core/winstr.h"
 #include "env_util.h"
 #include "render/preview_renderer.h"
-#include "render/track_state.h"  // note_in_span
 #include "ui/preview_load_job.h"  // track_options
 #include "warp_util.h"
 
@@ -133,31 +132,158 @@ std::vector<float> half_res(const std::vector<uint8_t>& rgba, int w, int h, int&
     return out;
 }
 
+// Each half-res pixel's largest channel delta between `a` and `g`, or -1 for a
+// pixel the caller masks out. `masked` takes half-res coordinates.
+template <typename Masked>
+std::vector<float> max_channel_deltas(const std::vector<float>& a, const std::vector<float>& g, int ow,
+                                      int oh, Masked masked) {
+    std::vector<float> out(static_cast<size_t>(ow) * oh, -1.0f);
+    for (int y = 0; y < oh; ++y)
+        for (int x = 0; x < ow; ++x) {
+            if (masked(x, y)) continue;
+            const size_t i = static_cast<size_t>(y) * ow + x;
+            float m = 0.0f;
+            for (int c = 0; c < 3; ++c) m = (std::max)(m,std::fabs(a[i * 3 + c] - g[i * 3 + c]));
+            out[i] = m;
+        }
+    return out;
+}
+
+constexpr int kTile = 16;  // tile side in half-res pixels; the user's decision of 2026-10-10 (plan "User decisions" item 3)
+
+// For one per-pixel delta D: the share of unmasked pixels whose delta is over D,
+// in the worst kTile by kTile tile and in the whole frame. Edge tiles are
+// partial; a tile's share is over its own unmasked pixels.
+struct OverShare {
+    double worst_tile_percent = 0.0;
+    int worst_tx = -1, worst_ty = -1;  // tile column and row
+    double frame_percent = 0.0;
+};
+
+// The share of `unmasked` pixels that are `over` D, in percent (0 when none are
+// unmasked). The one place a share is worked out: tile, frame and the CSV use it.
+double percent_over(size_t over, size_t unmasked) {
+    return unmasked ? 100.0 * static_cast<double>(over) / static_cast<double>(unmasked) : 0.0;
+}
+
+// One tile's counts: unmasked pixels, and those over D.
+struct TileCount {
+    size_t unmasked = 0, over = 0;
+    double percent() const { return percent_over(over, unmasked); }
+};
+
+std::vector<TileCount> tile_counts(const std::vector<float>& delta, int ow, int oh, float d, int& tw,
+                                   int& th) {
+    tw = (ow + kTile - 1) / kTile;
+    th = (oh + kTile - 1) / kTile;
+    std::vector<TileCount> t(static_cast<size_t>(tw) * th);
+    for (int y = 0; y < oh; ++y)
+        for (int x = 0; x < ow; ++x) {
+            const float v = delta[static_cast<size_t>(y) * ow + x];
+            if (v < 0.0f) continue;
+            TileCount& c = t[static_cast<size_t>(y / kTile) * tw + x / kTile];
+            ++c.unmasked;
+            if (v > d) ++c.over;
+        }
+    return t;
+}
+
+OverShare over_share(const std::vector<float>& delta, int ow, int oh, float d) {
+    int tw, th;
+    const std::vector<TileCount> t = tile_counts(delta, ow, oh, d, tw, th);
+    OverShare s;
+    size_t unmasked = 0, over = 0;
+    for (int ty = 0; ty < th; ++ty)
+        for (int tx = 0; tx < tw; ++tx) {
+            const TileCount& c = t[static_cast<size_t>(ty) * tw + tx];
+            unmasked += c.unmasked;
+            over += c.over;
+            if (c.unmasked == 0) continue;
+            const double p = c.percent();
+            if (p > s.worst_tile_percent || s.worst_tx < 0) {
+                s.worst_tile_percent = p;
+                s.worst_tx = tx;
+                s.worst_ty = ty;
+            }
+        }
+    s.frame_percent = percent_over(over, unmasked);
+    return s;
+}
+
+// Where the worst tile sits, in tile numbers and in full-size pixels (a tile is
+// kTile half-res pixels, so twice that at full size).
+std::string worst_tile_text(const OverShare& s) {
+    const int side = kTile * 2;
+    return "tile (" + std::to_string(s.worst_tx) + ", " + std::to_string(s.worst_ty) + "), full-res x " +
+           std::to_string(s.worst_tx * side) + ".." + std::to_string((s.worst_tx + 1) * side) + ", y " +
+           std::to_string(s.worst_ty * side) + ".." + std::to_string((s.worst_ty + 1) * side);
+}
+
+// The delta at percentile `q` (0..100) of the unmasked pixels.
+float delta_percentile(const std::vector<float>& delta, double q) {
+    std::vector<float> v;
+    for (float x : delta)
+        if (x >= 0.0f) v.push_back(x);
+    if (v.empty()) return 0.0f;
+    const size_t k = (std::min)(v.size() - 1, static_cast<size_t>(q / 100.0 * static_cast<double>(v.size())));
+    std::nth_element(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(k), v.end());
+    return v[k];
+}
+
+// Dev aid: the per-tile map (percent over the fixture's pixel_delta) and the
+// histogram of per-pixel deltas (integer bins), as CSV in the working folder.
+void write_delta_csvs(const std::vector<float>& delta, int ow, int oh, float d) {
+    std::ofstream tiles("preview_tiles.csv");
+    tiles << "tile_x,tile_y,half_x,half_y,unmasked,pct_over_" << d << "\n";
+    int tw = 0, th = 0;
+    const std::vector<TileCount> t = tile_counts(delta, ow, oh, d, tw, th);
+    for (int ty = 0; ty < th; ++ty)
+        for (int tx = 0; tx < tw; ++tx) {
+            const TileCount& c = t[static_cast<size_t>(ty) * tw + tx];
+            tiles << tx << "," << ty << "," << tx * kTile << "," << ty * kTile << "," << c.unmasked << ","
+                  << c.percent() << "\n";
+        }
+    std::vector<size_t> hist(256, 0);
+    for (float x : delta)
+        if (x >= 0.0f) ++hist[(std::min<size_t>)(255, static_cast<size_t>(x))];
+    std::ofstream h("preview_delta_hist.csv");
+    h << "delta,pixels\n";
+    for (size_t i = 0; i < hist.size(); ++i) h << i << "," << hist[i] << "\n";
+}
+
 }  // namespace
 
 TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
     const std::string spec_path = kFixtureDir + "/golden.json";
-    if (!file_exists_utf8(spec_path)) {
-        MESSAGE("golden fixture absent (" << spec_path << "): skipped");
-        return;
-    }
+    const std::string png_path = kFixtureDir + "/golden_onyx.png";
+    INFO("golden fixture: " << spec_path);
+    REQUIRE(file_exists_utf8(spec_path));
+    REQUIRE(file_exists_utf8(png_path));
     std::string spec_text = read_file_text(spec_path);
     nlohmann::json spec = nlohmann::json::parse(spec_text);
-    const std::string chart = kFixtureDir + "/" + spec.value("chart", "notes.mid");
-    double time_ms = spec.value("time_ms", 0.0);
+    for (const char* key : {"chart", "time_ms", "width", "height", "crop", "pro", "bass2x", "tolerance",
+                            "pixel_delta", "tile_percent", "frame_percent", "mask"}) {
+        INFO("golden.json key: " << key);
+        REQUIRE(spec.contains(key));
+    }
+    const std::string chart = kFixtureDir + "/" + spec["chart"].get<std::string>();
+    double time_ms = spec["time_ms"].get<double>();
     if (const auto t = read_env("HYDRA_PREVIEW_GOLDEN_TIME")) time_ms = std::atof(t->c_str());  // dev aid
-    const int w = spec.value("width", 0), h = spec.value("height", 0);
-    const bool pro = spec.value("pro", true), bass2x = spec.value("bass2x", true);
-    const double tolerance = spec.value("tolerance", 20.0);
+    const int w = spec["width"].get<int>(), h = spec["height"].get<int>();
+    const bool pro = spec["pro"].get<bool>(), bass2x = spec["bass2x"].get<bool>();
+    const double tolerance = spec["tolerance"].get<double>();
+    const float pixel_delta = spec["pixel_delta"].get<float>();
+    const double tile_percent = spec["tile_percent"].get<double>();
+    const double frame_percent = spec["frame_percent"].get<double>();
     REQUIRE(w > 0);
     REQUIRE(h > 0);
 
-    std::vector<uint8_t> golden_bytes = read_file_bytes(kFixtureDir + "/golden_onyx.png");
+    std::vector<uint8_t> golden_bytes = read_file_bytes(png_path);
     REQUIRE(!golden_bytes.empty());
     image::DecodedImage golden = image::decode_image(golden_bytes);
-    // The screenshot may be the whole Onyx window; "crop": [x, y, w, h]
-    // names the highway area inside it (the part Hydra renders).
-    if (spec.contains("crop")) {
+    // The screenshot is the whole Onyx window; "crop": [x, y, w, h] names the
+    // highway area inside it (the part Hydra renders).
+    {
         std::vector<int> c = spec["crop"].get<std::vector<int>>();
         REQUIRE(c.size() == 4);
         REQUIRE(c[2] == w);
@@ -177,29 +303,34 @@ TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
     REQUIRE(golden.height == h);
 
     std::vector<uint8_t> actual = render_chart(chart, time_ms, w, h, pro, bass2x);
-    if (read_env("HYDRA_PREVIEW_GOLDEN_DUMP")) {
+    const bool dump = read_env("HYDRA_PREVIEW_GOLDEN_DUMP").has_value();
+    if (dump) {
         write_bmp("preview_actual.bmp", actual, w, h);
         write_bmp("preview_golden.bmp", golden.rgba, w, h);
     }
 
     // Masks (in full-res pixels) cover Onyx's on-screen text.
     std::vector<std::vector<int>> masks;
-    if (spec.contains("mask"))
-        for (const auto& m : spec["mask"]) masks.push_back(m.get<std::vector<int>>());
+    for (const auto& m : spec["mask"]) {
+        masks.push_back(m.get<std::vector<int>>());
+        REQUIRE(masks.back().size() == 4);
+    }
     auto masked = [&](int x, int y) {
         for (const auto& m : masks)
-            if (m.size() == 4 && x >= m[0] && x < m[0] + m[2] && y >= m[1] && y < m[1] + m[3]) return true;
+            if (x >= m[0] && x < m[0] + m[2] && y >= m[1] && y < m[1] + m[3]) return true;
         return false;
     };
 
     int ow, oh;
     std::vector<float> a = half_res(actual, w, h, ow, oh);
     std::vector<float> g = half_res(golden.rgba, w, h, ow, oh);
+    // Is this half-res pixel masked? The one place a half-res pixel meets the full-res masks.
+    auto masked_half = [&](int x, int y) { return masked(x * 2, y * 2); };
     double err = 0.0;
     size_t n = 0;
     for (int y = 0; y < oh; ++y)
         for (int x = 0; x < ow; ++x) {
-            if (masked(x * 2, y * 2)) continue;
+            if (masked_half(x, y)) continue;
             for (int c = 0; c < 3; ++c) {
                 err += std::fabs(a[(static_cast<size_t>(y) * ow + x) * 3 + c] -
                                  g[(static_cast<size_t>(y) * ow + x) * 3 + c]);
@@ -208,61 +339,29 @@ TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
         }
     const double mae = n ? err / static_cast<double>(n) : 0.0;
     MESSAGE("golden mean abs error: " << mae << " / 255 (tolerance " << tolerance << ")");
-    if (mae >= tolerance) write_bmp("preview_actual.bmp", actual, w, h);
-    CHECK(mae < tolerance);
-}
 
-TEST_CASE("preview dump (dev aid, HYDRA_PREVIEW_DUMP)") {
-    const std::optional<std::string> env = read_env("HYDRA_PREVIEW_DUMP");
-    if (!env) return;
-    const std::string& spec = *env;
-    size_t a = spec.find('|'), b = spec.rfind('|');
-    REQUIRE(a != std::string::npos);
-    REQUIRE(b != a);
-    const std::string chart = spec.substr(0, a);
-    const double time_ms = std::atof(spec.substr(a + 1, b - a - 1).c_str());
-    const std::string out = spec.substr(b + 1);
-    const int w = 900, h = 800;
-    const bool bass2x = !read_env("HYDRA_PREVIEW_DUMP_NO2X");
-    std::vector<uint8_t> px = render_chart(chart, time_ms, w, h, true, bass2x);
-    write_bmp(out, px, w, h);
-    MESSAGE("wrote " << out);
-    // Where Hydra thinks that time is, for lining up with Onyx's time box.
-    app::PreviewScene scene = app::build_preview_scene(load_songpath(chart, true, bass2x), nullptr);
-    app::PreviewTimeBox box = app::build_time_box(scene, time_ms, app::last_note_ms(scene));
-    MESSAGE("time box: " << box.timestamp << " | " << box.position << " of " << box.length
-                         << " | " << box.tempo << " | " << box.section_line);
-    for (size_t i = 0; i < scene.tempos.size() && i < 6; ++i)
-        MESSAGE("tempo[" << i << "] tick " << scene.tempos[i].tick << " ms " << scene.tempos[i].ms
-                         << " bpm " << scene.tempos[i].bpm);
-    MESSAGE("first note ms " << (scene.notes.empty() ? -1.0 : scene.notes.front().ms)
-                             << " tick " << (scene.notes.empty() ? -1 : scene.notes.front().tick));
-    // The notes in the visible window, for lining up against an Onyx frame.
-    for (const app::PreviewNote& n : scene.notes) {
-        if (n.ms < time_ms - 500.0 || n.ms > time_ms + 1500.0) continue;
-        bool in_sp = false;
-        for (const app::PreviewSpan& s : scene.sp_phrases)
-            if (render::note_in_span(scene, s, n)) in_sp = true;
-        std::string flags;
-        if (n.cymbal) flags += " cymbal";
-        if (n.ghost) flags += " ghost";
-        if (n.accent) flags += " accent";
-        if (in_sp) flags += " SP";
-        MESSAGE("note +" << (n.ms - time_ms) << " ms tick " << n.tick << " lane "
-                         << static_cast<int>(n.lane) << flags);
+    // The per-pixel delta and tile budgets. testdata/preview/README.md says what
+    // the keys mean and where their values came from.
+    const std::vector<float> delta = max_channel_deltas(a, g, ow, oh, masked_half);
+    MESSAGE("max-channel delta percentiles: p50 " << delta_percentile(delta, 50.0) << ", p90 "
+                                                  << delta_percentile(delta, 90.0) << ", p99 "
+                                                  << delta_percentile(delta, 99.0) << ", p99.9 "
+                                                  << delta_percentile(delta, 99.9));
+    const OverShare s = over_share(delta, ow, oh, pixel_delta);
+    const std::string worst_tile_at = worst_tile_text(s);
+    MESSAGE("over delta " << pixel_delta << ": worst tile " << s.worst_tile_percent << "% (budget "
+                          << tile_percent << "%) at " << worst_tile_at << "; whole frame " << s.frame_percent
+                          << "% (budget " << frame_percent << "%)");
+    if (dump) write_delta_csvs(delta, ow, oh, pixel_delta);
+    // Each budget is decided once here; the bitmap and the CHECKs both read these.
+    const bool mean_ok = mae < tolerance;
+    const bool tile_ok = s.worst_tile_percent <= tile_percent;
+    const bool frame_ok = s.frame_percent <= frame_percent;
+    if (!mean_ok || !tile_ok || !frame_ok) {
+        write_bmp("preview_actual.bmp", actual, w, h);
+        MESSAGE("wrote preview_actual.bmp; the worst tile is at " << worst_tile_at);
     }
-    for (const app::PreviewSpan& s : scene.sp_phrases)
-        if (s.end_ms >= time_ms - 2000.0 && s.start_ms <= time_ms + 3000.0)
-            MESSAGE("sp phrase " << s.start_ms << " .. " << s.end_ms << " ms");
-    std::ofstream tcsv(out + ".tempos.csv");
-    for (const app::PreviewTempo& t : scene.tempos) tcsv << t.ms << "," << t.tick << "," << t.bpm << "\n";
-    // Every note as CSV (ms,tick,lane,cymbal,sp) beside the image.
-    std::ofstream csv(out + ".csv");
-    for (const app::PreviewNote& n : scene.notes) {
-        bool in_sp = false;
-        for (const app::PreviewSpan& s : scene.sp_phrases)
-            if (render::note_in_span(scene, s, n)) in_sp = true;
-        csv << n.ms << "," << n.tick << "," << static_cast<int>(n.lane) << "," << (n.cymbal ? 1 : 0)
-            << "," << (in_sp ? 1 : 0) << "\n";
-    }
+    CHECK_MESSAGE(mean_ok, "mean " << mae << " is not under tolerance " << tolerance);
+    CHECK_MESSAGE(tile_ok, "worst tile " << s.worst_tile_percent << "% is over its budget " << tile_percent << "%");
+    CHECK_MESSAGE(frame_ok, "whole frame " << s.frame_percent << "% is over its budget " << frame_percent << "%");
 }

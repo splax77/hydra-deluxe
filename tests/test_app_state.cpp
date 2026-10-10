@@ -13,7 +13,6 @@
 
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -30,6 +29,7 @@
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
+#include "app/user_messages.h"  // kDatabaseReadSentence
 #include "audio_chart_fixtures.h"
 #include "core/error_kind.h"
 #include "core/model.h"
@@ -37,8 +37,11 @@
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file, scalar_on_file, write_junk_db
 #include "display_fixtures.h"  // store_batch_result, old_build_row
+#include "library_fixtures.h"  // library_entry
 #include "net/dmbot_client.h"   // set_fetcher
 #include "parse/song.h"
+#include "scoped_hook.h"
+#include "scratch_paths.h"
 #include "store/record_store.h"
 #include "temp_util.h"
 #include "ui/app_state.h"
@@ -46,7 +49,9 @@
 #include "ui/library_parts.h"  // analyze_search_label
 #include "ui/library_jobs.h"  // set_app_batch_analyzer_for_test
 #include "ui/report_window.h"  // path_report_input
+#include "wait_util.h"
 
+using hydra::app::kDatabaseReadSentence;
 using hydra::app::Settings;
 using hydra::store::ChartLibraryEntry;
 using hydra::store::RecordKey;
@@ -55,6 +60,7 @@ using hydra::store::RecordStore;
 using hydra::ui::AppState;
 using hydra::ui::GenerationWatcher;
 using hydra::ui::ViewedSong;
+using testwait::wait_until;
 
 namespace {
 
@@ -68,60 +74,6 @@ const int kSeededCap = 4;
 const int kChartCount = 60;
 
 using testtemp::temp_path;
-
-// What a failed database read shows (D73 item 1).
-const std::string kDatabaseReadSentence =
-    "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is "
-    "running, then try again.";
-
-// Points app::ini_path()/db_path() at scratch files for one test, then puts
-// the process back the way it was. commit_settings writes the INI through
-// Settings::save(), so without this a test would overwrite the developer's
-// real hydra_settings.ini.
-struct ScratchPaths {
-    hydra::app::PathOverrides previous;
-    std::string ini;
-    std::string db;
-    std::string rules;
-
-    explicit ScratchPaths(const char* tag)
-        : previous(hydra::app::path_overrides()),
-          ini(temp_path(tag, ".ini")),
-          db(temp_path(tag, ".db")),
-          rules(temp_path(tag, "_rules.ini")) {
-        std::remove(ini.c_str());
-        std::remove(db.c_str());
-        std::remove(rules.c_str());
-        hydra::app::PathOverrides overrides = previous;
-        overrides.ini_path = ini;
-        overrides.db_path = db;
-        overrides.rules_path = rules;
-        hydra::app::set_path_overrides(overrides);
-    }
-
-    ~ScratchPaths() {
-        hydra::app::set_path_overrides(previous);
-        std::remove(ini.c_str());
-        std::remove(db.c_str());
-        std::remove(rules.c_str());
-    }
-};
-
-// A library row whose chart file does not exist: a click on it lands on
-// FileMissing and starts no job.
-ChartLibraryEntry library_entry(int i) {
-    char hash[32];
-    std::snprintf(hash, sizeof(hash), "hash%03d", i);
-    ChartLibraryEntry e;
-    e.md5 = hash;
-    e.title = std::string("Song ") + hash;
-    e.artist = "Artist";
-    e.charter = "Charter";
-    e.notespath = std::string("C:\\charts\\") + hash + "\\notes.chart";
-    e.rootfolder = "C:\\charts";
-    e.sig = "sig";
-    return e;
-}
 
 // A library of kChartCount charts, exactly one of which (entry 0) has a
 // stored record, under the default chart mode at the default cap. The record
@@ -203,12 +155,12 @@ std::unique_ptr<AppState> app_with(const ScratchPaths& paths,
 // Runs frames until the click's job, and any request waiting on it, has
 // ended and tick() has collected it, as the app's frames would.
 void settle(AppState& app) {
-    for (int i = 0; i < 12000; ++i) {
-        app.tick(0.0);
-        if (app.view_settled()) return;
-        Sleep(5);
-    }
-    FAIL("the click's job never ended");
+    wait_until(
+        [&] {
+            app.tick(0.0);
+            return app.view_settled();
+        },
+        "the click's job to end");
 }
 
 // Clicks `entry` and waits for its analysis.
@@ -233,26 +185,23 @@ const hydra::ui::LibraryRow& row_of(const AppState& app, const std::string& md5)
 struct ViewLatch {
     std::shared_ptr<std::atomic<bool>> open = std::make_shared<std::atomic<bool>>(false);
     std::shared_ptr<std::atomic<int>> entered = std::make_shared<std::atomic<int>>(0);
-    ViewLatch() {
-        hydra::ui::set_view_analyzer_for_test(
-            [open = open, entered = entered](const std::string& path,
-                                             const hydra::app::AnalysisSettings& settings,
-                                             const std::function<void(float)>& on_progress) {
-                ++*entered;
-                while (!open->load()) Sleep(1);
-                on_progress(0.0f);  // throws when the job was cancelled
-                return hydra::app::analyze_chart_file(path, settings, on_progress);
-            });
-    }
-    ~ViewLatch() {
-        release();
-        hydra::ui::set_view_analyzer_for_test(nullptr);
-    }
+    // After open and entered, which it copies; cleared after the release below.
+    const ScopedHook seam{
+        hydra::ui::set_view_analyzer_for_test,
+        [open = open, entered = entered](const std::string& path,
+                                         const hydra::app::AnalysisSettings& settings,
+                                         const std::function<void(float)>& on_progress) {
+            ++*entered;
+            wait_until([&open] { return open->load(); }, "the test to open the latch");
+            on_progress(0.0f);  // throws when the job was cancelled
+            return hydra::app::analyze_chart_file(path, settings, on_progress);
+        }};
+    ~ViewLatch() { release(); }
     void release() { open->store(true); }
     // Waits until `n` jobs have reached the latch.
     void wait_entered(int n) {
-        for (int i = 0; i < 12000 && entered->load() < n; ++i) Sleep(1);
-        REQUIRE(entered->load() >= n);
+        wait_until([&] { return entered->load() >= n; },
+                   std::to_string(n) + " jobs to reach the latch");
     }
 };
 
@@ -816,14 +765,16 @@ TEST_CASE("a burst of setting changes ends with one analysis of the final settin
     latch.release();
 
     std::set<int> started{first_generation};
-    for (int i = 0; i < 12000 && (app->view_job || app->view_pending); ++i) {
-        // While a request waits, the job still running is an older one.
-        if (app->view_pending) CHECK(app->view_job != nullptr);
-        app->tick(0.0);
-        if (app->view_job) started.insert(app->view_job->generation());
-        Sleep(5);
-    }
-    REQUIRE_FALSE(app->view_job);
+    wait_until(
+        [&] {
+            if (!app->view_job && !app->view_pending) return true;
+            // While a request waits, the job still running is an older one.
+            if (app->view_pending) CHECK(app->view_job != nullptr);
+            app->tick(0.0);
+            if (app->view_job) started.insert(app->view_job->generation());
+            return false;
+        },
+        "the held click jobs and the waiting request to end");
     CHECK(started == std::set<int>{first_generation, final_generation});
     CHECK(latch.entered->load() == 2);
 
@@ -979,7 +930,7 @@ void run_redo_batch_over(AppState& app, const std::string& search);  // below
 // Waits for the path report's job, then collects it as the app's frame does.
 void finish_path_report(AppState& app) {
     REQUIRE(app.report_job != nullptr);
-    while (!app.report_job->finished()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    wait_until([&] { return app.report_job->finished(); }, "the path report's job to finish");
     app.update_background_jobs();
     REQUIRE(app.report_job == nullptr);
 }
@@ -987,17 +938,19 @@ void finish_path_report(AppState& app) {
 // The same for the comparison's job.
 void finish_dm_report(AppState& app) {
     REQUIRE(app.dm_report_job != nullptr);
-    while (!app.dm_report_job->finished())
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    wait_until([&] { return app.dm_report_job->finished(); }, "the comparison's job to finish");
     app.update_background_jobs();
     REQUIRE(app.dm_report_job == nullptr);
 }
 
 // A report analyzer that waits for `release`, then analyzes as the app does.
+// Declare `release` BEFORE the AppState: the app joins the job's thread in
+// its destructor, so a failed check before the release must not destroy the
+// flag while the job still reads it.
 hydra::app::ChartAnalyzer held_report_analyzer(std::atomic<bool>& release) {
     return [&release](const std::string& path, const hydra::app::AnalysisSettings& s,
                       const std::function<void(float)>& on_progress) {
-        while (!release.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        wait_until([&release] { return release.load(); }, "the test to release the report");
         return hydra::app::analyze_chart_file(path, s, on_progress);
     };
 }
@@ -1015,14 +968,16 @@ std::unique_ptr<AppState> app_with_result(const ScratchPaths& paths, const char*
 
 TEST_CASE("a path report request builds it in memory, one build at a time") {
     ScratchPaths paths("appstate_pathreq");
+    std::atomic<bool> release{false};
     std::unique_ptr<AppState> app = app_with_result(paths, "pathreq");
     CHECK(app->library_has_analyzed());
     CHECK(app->path_report_build() == ReportBuild::None);
 
-    std::atomic<bool> release{false};
-    hydra::ui::set_report_analyzer_for_test(held_report_analyzer(release));
-    app->request_path_report();
-    hydra::ui::set_report_analyzer_for_test({});
+    {
+        const ScopedHook hold(hydra::ui::set_report_analyzer_for_test,
+                              held_report_analyzer(release));
+        app->request_path_report();
+    }
     REQUIRE(app->report_job != nullptr);
     const hydra::ui::ReportJob* first = app->report_job.get();
     CHECK(app->path_report_build() == ReportBuild::Building);
@@ -1030,11 +985,11 @@ TEST_CASE("a path report request builds it in memory, one build at a time") {
     CHECK(app->report_job.get() == first);
     // The job's progress, for the window's "Analyzing n of N records": the
     // pass has listed its one chart and holds it at the analyzer.
-    while (app->report_job->progress().second == 0)
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    wait_until([&] { return app->report_job->progress().second != 0; },
+               "the report's pass to list its chart");
     CHECK(app->report_job->progress() == std::make_pair(0, 1));
     release = true;
-    while (!app->report_job->finished()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    wait_until([&] { return app->report_job->finished(); }, "the path report's job to finish");
     CHECK(app->report_job->progress() == std::make_pair(1, 1));
     finish_path_report(*app);
 
@@ -1108,11 +1063,13 @@ TEST_CASE("a path report built on opening its window says so; Refresh's does not
 
 TEST_CASE("closing the path report mid-build cancels the build, and nothing lands") {
     ScratchPaths paths("appstate_pathclosebuild");
-    std::unique_ptr<AppState> app = app_with_result(paths, "pathclosebuild");
     std::atomic<bool> release{false};
-    hydra::ui::set_report_analyzer_for_test(held_report_analyzer(release));
-    app->show_path_report();
-    hydra::ui::set_report_analyzer_for_test({});
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathclosebuild");
+    {
+        const ScopedHook hold(hydra::ui::set_report_analyzer_for_test,
+                              held_report_analyzer(release));
+        app->show_path_report();
+    }
     REQUIRE(app->path_report_build() == ReportBuild::Building);
 
     app->close_path_report();
@@ -1123,8 +1080,8 @@ TEST_CASE("closing the path report mid-build cancels the build, and nothing land
 
     // The stopped job finishes; it never lands in the slot.
     release = true;
-    while (!app->parked_reports.front()->finished())
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    wait_until([&] { return app->parked_reports.front()->finished(); },
+               "the stopped report job to finish");
     app->update_background_jobs();
     CHECK(app->parked_reports.empty());
     CHECK(app->path_report.result == nullptr);
@@ -1138,11 +1095,13 @@ TEST_CASE("closing the path report mid-build cancels the build, and nothing land
 
 TEST_CASE("reopening the path report after a cancelled build builds it again") {
     ScratchPaths paths("appstate_pathclosecancelled");
-    std::unique_ptr<AppState> app = app_with_result(paths, "pathclosecancelled");
     std::atomic<bool> release{false};
-    hydra::ui::set_report_analyzer_for_test(held_report_analyzer(release));
-    app->show_path_report();
-    hydra::ui::set_report_analyzer_for_test({});
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathclosecancelled");
+    {
+        const ScopedHook hold(hydra::ui::set_report_analyzer_for_test,
+                              held_report_analyzer(release));
+        app->show_path_report();
+    }
     app->cancel_path_report();  // the window's Cancel
     release = true;
     finish_path_report(*app);
@@ -1211,11 +1170,13 @@ TEST_CASE("the path report goes out of date on a batch or a setting it was built
 
 TEST_CASE("a setting changed during a build leaves that build out of date") {
     ScratchPaths paths("appstate_pathduring");
-    std::unique_ptr<AppState> app = app_with_result(paths, "pathduring");
     std::atomic<bool> release{false};
-    hydra::ui::set_report_analyzer_for_test(held_report_analyzer(release));
-    app->request_path_report();
-    hydra::ui::set_report_analyzer_for_test({});
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathduring");
+    {
+        const ScopedHook hold(hydra::ui::set_report_analyzer_for_test,
+                              held_report_analyzer(release));
+        app->request_path_report();
+    }
     app->settings.mslimit_enabled = !app->settings.mslimit_enabled;
     app->commit_settings();
     release = true;
@@ -1226,16 +1187,18 @@ TEST_CASE("a setting changed during a build leaves that build out of date") {
 
 TEST_CASE("Cancel ends a path report build as cancelled and keeps the last report") {
     ScratchPaths paths("appstate_pathcancel");
+    std::atomic<bool> release{false};
     std::unique_ptr<AppState> app = app_with_result(paths, "pathcancel");
     app->request_path_report();
     finish_path_report(*app);
     const auto kept = app->path_report.result;
     REQUIRE(kept != nullptr);
 
-    std::atomic<bool> release{false};
-    hydra::ui::set_report_analyzer_for_test(held_report_analyzer(release));
-    app->request_path_report();
-    hydra::ui::set_report_analyzer_for_test({});
+    {
+        const ScopedHook hold(hydra::ui::set_report_analyzer_for_test,
+                              held_report_analyzer(release));
+        app->request_path_report();
+    }
     app->cancel_path_report();
     release = true;
     finish_path_report(*app);
@@ -1299,21 +1262,25 @@ const char* const kDmScoresJson =
 // last comparison.
 TEST_CASE("picking a player opens the comparison; Refresh reuses the player") {
     ScratchPaths paths("appstate_dmreport");
-    std::unique_ptr<AppState> app = app_on(paths);
+    // Before the app, which joins the fetch's thread: the fetcher reads them.
     std::mutex m;
     std::vector<std::string> score_urls;
     std::atomic<bool> hold{false};
-    hydra::net::set_fetcher([&](const std::string& url,
-                                const std::atomic<bool>* cancel) -> std::string {
+    // After what it reads, before the app: the fetch's thread calls it.
+    const ScopedHook fetcher(hydra::net::set_fetcher, [&](const std::string& url,
+                                                          const std::atomic<bool>* cancel)
+                                                          -> std::string {
         if (url.find("/all-users") != std::string::npos) return kDmUsersJson;
         {
             std::lock_guard<std::mutex> lock(m);
             score_urls.push_back(url);
         }
-        while (hold.load() && !cancel->load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        wait_until([&] { return !hold.load() || cancel->load(); },
+                   "the test to stop holding or cancel the fetch");
         if (cancel->load()) throw std::runtime_error("cancelled");
         return kDmScoresJson;
     });
+    std::unique_ptr<AppState> app = app_on(paths);
 
     app->start_dm_report("111", "alice");
     CHECK(app->dm_report.window_open);
@@ -1347,20 +1314,20 @@ TEST_CASE("picking a player opens the comparison; Refresh reuses the player") {
     app->cancel_dm_report();
     CHECK(app->dm_report_build() == ReportBuild::Cancelled);
     CHECK(app->dm_report.result == kept);
-    while (!app->parked_dm_reports.empty()) {
-        app->update_background_jobs();
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
+    wait_until(
+        [&] {
+            app->update_background_jobs();
+            return app->parked_dm_reports.empty();
+        },
+        "the cancelled comparison to be collected");
 
     // The window's "Compare another player..." opens the picker again.
     app->dm_picker_open = false;
     app->reopen_dm_picker();
     CHECK(app->dm_picker_open);
     CHECK(app->dm_picker_popup_pending);
-    if (app->dm_fetch_job) {
-        while (!app->dm_fetch_job->finished()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    hydra::net::set_fetcher({});
+    if (app->dm_fetch_job)
+        wait_until([&] { return app->dm_fetch_job->finished(); }, "the player list's fetch to finish");
 }
 
 // The search runs in memory over every chart; a word matches inside a title.
@@ -1394,16 +1361,16 @@ namespace {
 // Starts a Redo batch with a test analyzer, and removes it from the global
 // seam at once so no later batch inherits it.
 void start_redo_batch(AppState& app, hydra::app::ChartAnalyzer analyzer) {
-    hydra::ui::set_app_batch_analyzer_for_test(std::move(analyzer), 1);
-    app.start_batch(true);
-    hydra::ui::set_app_batch_analyzer_for_test(nullptr, 1);
+    {
+        const ScopedHook seam(hydra::ui::set_app_batch_analyzer_for_test, std::move(analyzer), 1);
+        app.start_batch(true);
+    }
     REQUIRE(app.batch_job != nullptr);
 }
 
 // Waits until the batch has finished (however it ends).
 void wait_batch_finished(AppState& app) {
-    while (!app.batch_job->snapshot().finished)
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    wait_until([&] { return app.batch_job->snapshot().finished; }, "the batch to finish");
 }
 
 // Runs a Redo batch over the one chart `search` finds and waits for it to
@@ -1501,10 +1468,7 @@ void start_batch_until_stopped(AppState& app) {
     start_redo_batch(app, [](const std::string&, const hydra::app::AnalysisSettings&,
                              const std::function<void(float)>& on_progress)
                               -> hydra::app::AnalysisResult {
-        for (;;) {
-            on_progress(0.0f);
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
+        testwait::tick_until_thrown([&] { on_progress(0.0f); }, "the test to press Stop");
     });
     REQUIRE(app.batch_running());
 }
@@ -1573,9 +1537,8 @@ RowsOlderThanScan rows_older_than_scan(const ScratchPaths& paths, const std::str
     s.app->settings.chartfolders = {s.kept.rootfolder};
     s.app->start_scan();
     REQUIRE(s.app->scan_job != nullptr);
-    for (int i = 0; i < 12000 && !s.app->scan_job->snapshot().finished; ++i) Sleep(5);
+    wait_until([&] { return s.app->scan_job->snapshot().finished; }, "the scan to finish");
     const auto progress = s.app->scan_job->snapshot();
-    REQUIRE(progress.finished);
     REQUIRE(progress.charts_found == 1);
     REQUIRE(s.app->library_shown_count() == 2);  // no frame has read the new table
     return s;
@@ -1657,7 +1620,7 @@ TEST_CASE("the post-batch report lists the batch's cap and lens, not the live se
     CHECK(app->report_job->cap() == hydra::store::CapQuery::at(4));
     CHECK(app->report_job->lens() == batch_lens);
     CHECK_FALSE(app->report_job->lens() == app->settings.lens());
-    while (!app->report_job->finished()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    wait_until([&] { return app->report_job->finished(); }, "the batch's report job to finish");
 }
 
 // D103 item 28's 2026-10-09 answer: the finished strip shows "Open
@@ -1666,6 +1629,7 @@ TEST_CASE("the post-batch report lists the batch's cap and lens, not the live se
 // in the window then refreshed, a close, and a new batch.
 TEST_CASE("the strip's report_started holds through a cancel, a refresh and a close") {
     ScratchPaths paths("appstate_batchlanded");
+    std::atomic<bool> release{false};
     std::unique_ptr<AppState> app = app_with_result(paths, "batchlanded");
     const std::string title = app->library_row_at(0).title;
     CHECK_FALSE(app->report_started);
@@ -1673,10 +1637,11 @@ TEST_CASE("the strip's report_started holds through a cancel, a refresh and a cl
     // The batch's own report is cancelled in the window, then refreshed: the
     // refresh's rows are the strip's to show, though its cause is Request.
     run_redo_batch_over(*app, title);
-    std::atomic<bool> release{false};
-    hydra::ui::set_report_analyzer_for_test(held_report_analyzer(release));
-    app->update_background_jobs();  // starts the batch's own report, held
-    hydra::ui::set_report_analyzer_for_test({});
+    {
+        const ScopedHook hold(hydra::ui::set_report_analyzer_for_test,
+                              held_report_analyzer(release));
+        app->update_background_jobs();  // starts the batch's own report, held
+    }
     REQUIRE(app->report_job != nullptr);
     app->cancel_path_report();
     release = true;
@@ -1702,22 +1667,20 @@ TEST_CASE("the strip's report_started holds through a cancel, a refresh and a cl
 // when the finished strip is dismissed.
 TEST_CASE("a stopped batch lets go of its report rows when it ends") {
     ScratchPaths paths("appstate_stopseed");
+    std::atomic<int> calls{0};  // before the app, which joins the batch's thread
     std::unique_ptr<AppState> app = app_on(paths);
     const hydra::app::AnalysisResult real =
         corpus::first_analyzed_with_paths(app->settings.batch_run().settings);
-    std::atomic<int> calls{0};
-    // The first chart is saved; the second runs until Stop.
-    start_redo_batch(*app, [&](const std::string&, const hydra::app::AnalysisSettings&,
-                               const std::function<void(float)>& on_progress)
+    // The first chart is saved; the second runs until Stop. `real` is copied
+    // in, since it is declared after the app.
+    start_redo_batch(*app, [&calls, real](const std::string&, const hydra::app::AnalysisSettings&,
+                                          const std::function<void(float)>& on_progress)
                                -> hydra::app::AnalysisResult {
         if (calls++ == 0) return real;
-        for (;;) {
-            on_progress(0.0f);
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
+        testwait::tick_until_thrown([&] { on_progress(0.0f); }, "the test to press Stop");
     });
-    while (app->batch_job->snapshot().analyzed < 1)
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    wait_until([&] { return app->batch_job->snapshot().analyzed >= 1; },
+               "the first chart to be saved");
     stop_batch(*app);
     app->update_background_jobs();
 
@@ -1762,14 +1725,16 @@ TEST_CASE("the batch runs the plan the confirm showed, with no second store read
 
     // Stored after the confirm opened: a second read would now skip this chart.
     hydra::test::store_batch_result(*app.store, library_entry(2).md5, Settings{}.sp_cap);
-    hydra::ui::set_app_batch_analyzer_for_test(
-        [](const std::string&, const hydra::app::AnalysisSettings&,
-           const std::function<void(float)>&) -> hydra::app::AnalysisResult {
-            throw std::runtime_error("no chart file in this test");
-        },
-        1);
-    app.start_batch(false);
-    hydra::ui::set_app_batch_analyzer_for_test(nullptr, 1);
+    {
+        const ScopedHook seam(
+            hydra::ui::set_app_batch_analyzer_for_test,
+            [](const std::string&, const hydra::app::AnalysisSettings&,
+               const std::function<void(float)>&) -> hydra::app::AnalysisResult {
+                throw std::runtime_error("no chart file in this test");
+            },
+            1);
+        app.start_batch(false);
+    }
     REQUIRE(app.batch_job != nullptr);
     wait_batch_finished(app);
 
@@ -1804,17 +1769,19 @@ TEST_CASE("the startup open runs on its own thread and tick collects the store a
 
     // Hold the open at its first report, as the GUI test's gate does.
     std::mutex mu;
-    std::condition_variable cv;
-    bool open = false;
+    std::atomic<bool> open{false};
     std::vector<hydra::ui::StoreOpenProgress::Step> steps;
-    hydra::ui::set_store_open_gate_for_test(
+    const ScopedHook gate(
+        hydra::ui::set_store_open_gate_for_test,
         [&](const hydra::ui::StoreOpenProgress& p, const std::function<bool()>& cancelled) {
-            std::unique_lock<std::mutex> lock(mu);
-            steps.push_back(p.step);
-            cv.wait_for(lock, std::chrono::seconds(10), [&] { return open || cancelled(); });
+            {
+                std::lock_guard<std::mutex> lock(mu);
+                steps.push_back(p.step);
+            }
+            wait_until([&] { return open.load() || cancelled(); },
+                       "the test to let the open go on");
         });
     AppState app;
-    hydra::ui::set_store_open_gate_for_test(nullptr);
 
     // The constructor returned with the open still held: nothing is ready,
     // the job counts as running, and a tick collects nothing.
@@ -1824,13 +1791,9 @@ TEST_CASE("the startup open runs on its own thread and tick collects the store a
     app.tick(0.0);
     CHECK_FALSE(app.store_ready());
 
-    {
-        std::lock_guard<std::mutex> lock(mu);
-        open = true;
-    }
-    cv.notify_all();
-    while (app.store_open_job && !app.store_open_job->finished())
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    open = true;
+    wait_until([&] { return !app.store_open_job || app.store_open_job->finished(); },
+               "the startup open to finish");
     app.tick(0.0);
 
     REQUIRE(app.store_ready());
@@ -1849,14 +1812,14 @@ TEST_CASE("an AppState closed during its startup open stops the open") {
     ScratchPaths paths("appstate_startclose");
     seeded_store(paths.db).reset();
     std::atomic<bool> gave_up{false};
-    hydra::ui::set_store_open_gate_for_test(
+    const ScopedHook gate(
+        hydra::ui::set_store_open_gate_for_test,
         [&](const hydra::ui::StoreOpenProgress&, const std::function<bool()>& cancelled) {
-            while (!cancelled()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            wait_until(cancelled, "the closing app to cancel the open");
             gave_up = true;
         });
     {
         AppState app;
-        hydra::ui::set_store_open_gate_for_test(nullptr);
         CHECK_FALSE(app.store_ready());
     }  // the destructor cancels the held open and joins it
     CHECK(gave_up);
@@ -1867,13 +1830,13 @@ TEST_CASE("a library read that fails after the startup open is the status line's
     seeded_store(paths.db).reset();
     // Dropped once the store is open (it would make a missing table again),
     // just before the library read.
-    hydra::ui::set_store_open_gate_for_test(
+    const ScopedHook gate(
+        hydra::ui::set_store_open_gate_for_test,
         [&](const hydra::ui::StoreOpenProgress& p, const std::function<bool()>&) {
             if (p.step == hydra::ui::StoreOpenProgress::Step::LoadingLibrary)
                 hydra::test::exec_on_file(paths.db, "DROP TABLE charts; DROP TABLE results;");
         });
     AppState app;
-    hydra::ui::set_store_open_gate_for_test(nullptr);
     app.wait_store_open();
     REQUIRE(app.store_ready());
     CHECK(app.library.rows().empty());

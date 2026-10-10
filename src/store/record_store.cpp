@@ -246,27 +246,13 @@ constexpr size_t kOldRulesFingerprintBytes = 8;
 
 }  // namespace
 
-// Schema 2's results table, declared in record_store.h. The column list is
-// what upgrade_results_key copies across; the rebuild fills the other two,
-// legacy_fills and rules_fp. The table text's only reader is the store test,
-// which builds a schema 2 file from it.
+// The columns schema 2's results table shares with this build's, declared in
+// record_store.h. upgrade_results_key copies them across; the rebuild fills
+// the other two, legacy_fills and rules_fp.
 const char* const kSchema2ResultsColumns =
     "result_id, hyhash, chartmode, hyversion, sp_cap, ms_enabled, ms_value, depth_mode,"
     " depth_value, bestpath, score, actcount, maxskip, hardest_ms, avgmult,"
     " notecount, sqin_count, sqout_count, pathcount, stars";
-const char* const kSchema2ResultsTableSql =
-    "CREATE TABLE results ("
-    "  result_id INTEGER PRIMARY KEY, hyhash TEXT NOT NULL,"
-    "  chartmode TEXT NOT NULL, hyversion TEXT NOT NULL,"
-    "  sp_cap INTEGER NOT NULL, ms_enabled INTEGER NOT NULL,"
-    "  ms_value INTEGER NOT NULL, depth_mode INTEGER NOT NULL,"
-    "  depth_value INTEGER NOT NULL, bestpath TEXT NOT NULL,"
-    "  structure BLOB NOT NULL, score INTEGER, actcount INTEGER,"
-    "  maxskip INTEGER, hardest_ms REAL, avgmult REAL, notecount INTEGER,"
-    "  sqin_count INTEGER, sqout_count INTEGER, pathcount INTEGER,"
-    "  stars INTEGER,"
-    "  UNIQUE (hyhash, chartmode, sp_cap, ms_enabled, ms_value, depth_mode,"
-    "          depth_value))";
 
 namespace {
 
@@ -1262,18 +1248,6 @@ std::string not_in_library(const char* hash) {
     return std::string("NOT EXISTS (SELECT 1 FROM charts WHERE charts.md5 = ") + hash + ")";
 }
 }  // namespace
-
-void RecordStore::delete_results_without_chart() {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
-    exec("BEGIN");
-    try {
-        purge_charts_not_in_library("delete_results_without_chart");
-        exec("COMMIT");
-    } catch (...) {
-        rollback_if_open(db_);
-        throw;
-    }
-}
 
 void RecordStore::reidentify_chart(const std::string& notespath, const std::string& new_md5,
                                    const std::string& new_sig) {

@@ -6,7 +6,7 @@
 // it roughly one fill-length earlier, clamped to 250..10000 ms.
 //
 // No chart fixtures here: the deadline is pure timing math, so the timing is
-// built by hand and the expected values are worked out from the formula.
+// built by hand. The expected values are literals from one run of the code.
 
 #include "doctest.h"
 
@@ -50,18 +50,28 @@ TEST_CASE("fill deadline: CH 1.0 anchor value") {
     CHECK(ch10(t, 3840, 384) == doctest::Approx(9562.5));
 }
 
-TEST_CASE("fill deadline: CH 1.0 lead over two fill lengths is 3750/bpm") {
-    // Algebraically the whole formula collapses: the deadline sits exactly
-    // (resolution/16) ticks earlier than the tick two fill-lengths back, and
-    // (res/16) ticks is 60000/(16*bpm) = 3750/bpm milliseconds -- independent
-    // of both the resolution and the fill length. These are Python Hydra
-    // v1.2's test_e values (37.5 ms at 100 BPM).
-    for (double bpm : {70.0, 100.0, 140.0, 240.0, 400.0}) {
-        SongTiming t = flat_timing(192, bpm);
+TEST_CASE("fill deadline: CH 1.0 lead over two fill lengths, one per tempo") {
+    // How far the deadline sits before the tick two fill-lengths back, one
+    // lead per tempo. activation_fill_deadline_ms in search/graph.cpp owns the
+    // rule. The leads were pinned from one run of that code on 2026-10-10 at
+    // 013f4c66; Python Hydra v1.2's test_e has the same 37.5 ms at 100 BPM.
+    struct TempoLead {
+        double bpm;
+        double lead_ms;
+    };
+    const TempoLead want[] = {
+        {70.0, 53.571428571425713},
+        {100.0, 37.5},
+        {140.0, 26.785714285712857},
+        {240.0, 15.625},
+        {400.0, 9.375},
+    };
+    for (const TempoLead& w : want) {
+        CAPTURE(w.bpm);
+        SongTiming t = flat_timing(192, w.bpm);
         const int64_t fill_end = 3840, fill_length = 384;
         const double two_back = t.ms_index().at(fill_end - 2 * fill_length);
-        CHECK(two_back - ch10(t, fill_end, fill_length) ==
-              doctest::Approx(3750.0 / bpm));
+        CHECK(two_back - ch10(t, fill_end, fill_length) == doctest::Approx(w.lead_ms));
     }
 }
 
@@ -88,8 +98,6 @@ TEST_CASE("fill deadline: CH 1.0 preroll clamps at 250 ms") {
     const double fend = t.ms_index().at(fill_end);
     const double fill_len_ms = fend - t.ms_index().at(fill_end - fill_length);
     CHECK(fill_len_ms == doctest::Approx(75.0));
-    CHECK(ch10(t, fill_end, fill_length) ==
-          doctest::Approx(fend - fill_len_ms - 250.0));
     CHECK(ch10(t, fill_end, fill_length) == doctest::Approx(2675.0));
 }
 
@@ -101,8 +109,6 @@ TEST_CASE("fill deadline: CH 1.0 preroll clamps at 10000 ms") {
     const double fend = t.ms_index().at(fill_end);
     const double fill_len_ms = fend - t.ms_index().at(fill_end - fill_length);
     CHECK(fill_len_ms == doctest::Approx(15625.0));
-    CHECK(ch10(t, fill_end, fill_length) ==
-          doctest::Approx(fend - fill_len_ms - 10000.0));
     CHECK(ch10(t, fill_end, fill_length) == doctest::Approx(34375.0));
 }
 

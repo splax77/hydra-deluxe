@@ -11,10 +11,12 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/dynamics_breakdown.h"
 #include "core/model.h"
 #include "core/stars.h"
 #include "imgui_internal.h"
 #include "ui/app_state.h"
+#include "ui/column_widths.h"
 #include "ui/details_view.h"
 #include "ui/library_jobs.h"  // set_view_analyzer_for_test
 #include "ui/library_parts.h"  // settings_at_defaults
@@ -52,6 +54,19 @@ hydra::store::RecordStatus row0_status_at_cap(Harness& h, int cap) {
     hydra::app::Settings at = h.app->settings;
     at.sp_cap = cap;
     return h.app->store->get_summary(at.record_key(h.app->library_row_at(0).entry.md5)).status;
+}
+
+// The tables drawn in the last two frames whose column `column` has header
+// `header`, in the order ImGui made them.
+std::vector<ImGuiTable*> drawn_tables(int column, const char* header) {
+    ImGuiContext& g = *ImGui::GetCurrentContext();
+    std::vector<ImGuiTable*> found;
+    for (int n = 0; n < g.Tables.GetMapSize(); ++n) {
+        ImGuiTable* t = g.Tables.TryGetMapData(n);
+        if (!t || t->LastFrameActive < g.FrameCount - 2 || t->ColumnsCount <= column) continue;
+        if (std::strcmp(ImGui::TableGetColumnName(t, column), header) == 0) found.push_back(t);
+    }
+    return found;
 }
 
 // Waits for the open song's analysis (wait_song_analyzed); true when it
@@ -221,6 +236,21 @@ void test_dynamics(ImGuiTestContext* ctx) {
     IM_CHECK(text.find("2x kicks:") != std::string::npos);
     // The doctest pins 5 ghosts for this chart (all from the red snare).
     IM_CHECK(text.find("Ghosts: 5") != std::string::npos);
+    // The kicks table's All is as wide as the width rule gives it for its
+    // three rows: the kicks, the 2x kicks and all kicks (2x Bass on).
+    {
+        const hydra::app::DynamicsBreakdown& bd = *h.app->viewed.dynamics;
+        const std::vector<std::string> all = {
+            hydra::group_thousands(bd.row(hydra::app::DynamicsRow::Kick).all()),
+            hydra::group_thousands(bd.row(hydra::app::DynamicsRow::Kick2x).all()),
+            hydra::group_thousands(bd.kicks_total(true).all())};
+        ImGuiTable* kicks = nullptr;
+        for (ImGuiTable* t : drawn_tables(0, "Pad"))
+            if (t->ID == t->OuterWindow->GetID("##kicktable")) kicks = t;
+        IM_CHECK(kicks != nullptr);
+        if (ctx->IsError()) return;
+        IM_CHECK_EQ(kicks->Columns[4].WidthGiven, rule_width("All", all));
+    }
 
     // Toggle 2x Bass off via app state: the song is analyzed again under it
     // (D90 item 1), and the Dynamics tab shows the 2x kicks as not counted.
@@ -387,6 +417,15 @@ void test_stars(ImGuiTestContext* ctx) {
     for (int64_t with_solo : sc.with_solo)
         IM_CHECK(text.find(hydra::group_thousands(with_solo)) != std::string::npos);
     IM_CHECK(text.find("4.4") != std::string::npos);
+    // Cutoff is as wide as the width rule gives it for the seven cutoffs.
+    {
+        std::vector<std::string> cutoffs;
+        for (int64_t cutoff : sc.cutoffs) cutoffs.push_back(hydra::group_thousands(cutoff));
+        const std::vector<ImGuiTable*> tables = drawn_tables(2, "Cutoff");
+        IM_CHECK_EQ(tables.size(), size_t{1});
+        if (ctx->IsError()) return;
+        IM_CHECK_EQ(tables[0]->Columns[2].WidthGiven, rule_width("Cutoff", cutoffs));
+    }
 
     // ---- A song with no drum solo ----
     h.app->show_details = false;

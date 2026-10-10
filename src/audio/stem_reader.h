@@ -13,6 +13,7 @@
 #ifndef HYDRA_AUDIO_STEM_READER_H
 #define HYDRA_AUDIO_STEM_READER_H
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -110,6 +111,25 @@ struct DecodeStep {
     bool more = false;
     bool error = false;
 };
+
+// The first step of every reader's seek (MaReader, Mp3Reader, VorbisReader,
+// OpusReader). Clamps `frame` into [0, length]. When that lands on the end,
+// the stem stops there (at_end set) and this returns true: the seek is done.
+// Otherwise it returns false and the reader moves its decoder to `frame`.
+inline bool seek_clamp_or_end(int64_t& frame, int64_t length, bool& at_end) {
+    frame = std::clamp<int64_t>(frame, 0, length);
+    if (frame < length) return false;
+    at_end = true;
+    return true;
+}
+
+// The same for a reader that keeps the frame its next read returns in `pos`:
+// at the end, `pos` is the length.
+inline bool seek_clamp_or_end(int64_t& frame, int64_t length, int64_t& pos, bool& at_end) {
+    if (!seek_clamp_or_end(frame, length, at_end)) return false;
+    pos = length;
+    return true;
+}
 
 // A stem whose header says it has 0 frames, shared by MaReader and
 // VorbisReader. The 0 means "unknown" (RFC 9639 for FLAC; stb_vorbis says it

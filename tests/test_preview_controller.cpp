@@ -28,12 +28,14 @@
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "render/track_state.h"
+#include "scratch_paths.h"  // ScopedPathOverrides
 #include "store/record_store.h"
 #include "temp_util.h"
 #include "app/config.h"
 #include "ui/library_jobs.h"  // ViewJob
 #include "ui/preview_controller.h"
 #include "ui/preview_load_job.h"
+#include "wait_util.h"
 #include "warp_util.h"
 
 #ifndef HYDRA_TESTDATA_DIR
@@ -45,42 +47,45 @@ using hydra::store::ChartLibraryEntry;
 using hydra::ui::ViewJob;
 using hydra::ui::PreviewController;
 using hydra::ui::PreviewLoadJob;
+using testwait::wait_until;
 
 namespace {
 
-// Wait up to 60 s for a job's worker to finish.
+// Waits for a job's worker to finish.
 template <class Job>
 void wait_finished(const Job& job) {
-    for (int i = 0; i < 1200 && !job.finished(); ++i) Sleep(50);
-    REQUIRE(job.finished());
+    wait_until([&] { return job.finished(); }, "the load job to finish");
 }
 
-// Polls until the first load has landed (loading()), for at most 60 s.
+// Polls until the first load has landed (loading()).
 void wait_loaded(PreviewController& pc) {
-    for (int i = 0; i < 1200 && pc.loading(); ++i) {
-        pc.poll();
-        Sleep(50);
-    }
-    REQUIRE_FALSE(pc.loading());
+    wait_until(
+        [&] {
+            pc.poll();
+            return !pc.loading();
+        },
+        "the Preview's first load to land");
 }
 
-// Polls until every Preview thread is done (busy(), finding 109), for at
-// most 12 s.
+// Polls until every Preview thread is done (busy(), finding 109).
 void settle(PreviewController& pc) {
-    for (int i = 0; i < 1200 && pc.busy(); ++i) {
-        pc.poll();
-        Sleep(10);
-    }
-    REQUIRE_FALSE(pc.busy());
+    wait_until(
+        [&] {
+            pc.poll();
+            return !pc.busy();
+        },
+        "every Preview thread to finish");
 }
 
 // Polls until the overlay drawn is `path_key`'s (shows_path), or a failed
-// build set the error and nothing more will land, for at most 12 s.
+// build set the error and nothing more will land.
 void wait_for_path(PreviewController& pc, const std::string& path_key) {
-    for (int i = 0; i < 1200 && !pc.shows_path(path_key) && !pc.has_error(); ++i) {
-        pc.poll();
-        Sleep(10);
-    }
+    wait_until(
+        [&] {
+            pc.poll();
+            return pc.shows_path(path_key) || pc.has_error();
+        },
+        "the overlay for " + path_key + " to land");
 }
 
 // An audio device factory that fails as a PC with no device would, so
@@ -134,19 +139,30 @@ void check_same_track(const hydra::render::TrackState& got,
     }
 }
 
+// The settings every analysis in this file runs with.
+hydra::app::AnalysisSettings analysis_settings() {
+    hydra::app::AnalysisSettings settings;
+    settings.depth_mode = hydra::DepthMode::Scores;
+    settings.depth_value = 2;
+    settings.ms_filter = 10.0;
+    return settings;
+}
+
+// `chart` analyzed with analysis_settings(); the test stops unless Hydra
+// found a path on it.
+hydra::app::AnalysisResult analyze_with_paths(const std::string& chart) {
+    hydra::app::AnalysisResult analyzed = hydra::app::analyze_chart_file(chart, analysis_settings());
+    REQUIRE_FALSE(analyzed.record.paths.empty());
+    return analyzed;
+}
+
 // A corpus chart Hydra finds at least one path on, and its best path.
 struct AnalyzedChart {
     std::string chart;
     hydra::Path best;
 };
 AnalyzedChart first_chart_with_a_path() {
-    using namespace hydra;
-    using namespace hydra::app;
-    AnalysisSettings settings;
-    settings.depth_mode = DepthMode::Scores;
-    settings.depth_value = 2;
-    settings.ms_filter = 10.0;
-    const corpus::ChartWithPaths found = corpus::first_chart_with_paths(settings);
+    const corpus::ChartWithPaths found = corpus::first_chart_with_paths(analysis_settings());
     return {found.chart, found.result.record.best_path()};
 }
 
@@ -353,6 +369,37 @@ TEST_CASE("with no audio device the Preview still loads, muted, with a warning")
     CHECK(pc.audio_warning().empty());
 }
 
+// A device that opens but won't start takes the same path as one that won't
+// open (D109): the chart loads, the clock plays, the device is let go and
+// the warning names the step that failed.
+TEST_CASE("with an audio device that won't start the Preview still loads, muted, with a warning") {
+    // A headless device (nothing real opens) whose start() is forced to
+    // fail; the guard puts both switches back when the case ends.
+    struct SwitchRestore {
+        bool headless;
+        bool start_fails;
+        ~SwitchRestore() {
+            hydra::audio::set_start_fails(start_fails);
+            hydra::audio::set_headless(headless);
+        }
+    } restore{hydra::audio::set_headless(true), hydra::audio::set_start_fails(true)};
+
+    PreviewController pc(nullptr, nullptr);
+    pc.open(entry_for(chart_with_audio()), true, true, Difficulty::Expert, nullptr, "", 4);
+    wait_loaded(pc);
+
+    CHECK(pc.has_audio());        // the stem decoded; only the device failed
+    CHECK_FALSE(pc.has_error());  // so no "Preview failed"
+    CHECK_FALSE(pc.has_audio_device());
+    CHECK(pc.audio_warning() == "PreviewAudioDevice: ma_device_start failed");
+    CHECK(pc.scrub_end_ms() > 0.0);  // the scene is there to draw
+    pc.play();
+    CHECK(pc.playing());          // the clock runs without a device
+
+    pc.close();
+    CHECK(pc.audio_warning().empty());
+}
+
 // The Preview's look is the renderer's 3d-config.json and nothing else
 // (finding 220): there is no default-built struct behind it. Only the first
 // render builds the renderer, so asking before then fails loudly.
@@ -364,18 +411,14 @@ TEST_CASE("preview_config: asked before the first render it fails loudly") {
 // Finding 193: a missing Preview file reads its kind's sentence, the one D51
 // call 25 chose, and the raw text stays for the details line.
 TEST_CASE("a Preview asset failure reads Reinstall Hydra, with the raw text as its detail") {
-    const hydra::app::PathOverrides previous = hydra::app::path_overrides();
-    hydra::app::PathOverrides overrides = previous;
-    overrides.asset_dir = testtemp::temp_path("no_preview_assets", "");
-    hydra::app::set_path_overrides(overrides);
-    {
-        PreviewController pc(nullptr, nullptr);
-        CHECK(pc.render(64, 64) == nullptr);
-        CHECK(pc.error() ==
-              "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.");
-        CHECK(pc.error_detail().rfind("PreviewRenderer: missing", 0) == 0);
-    }
-    hydra::app::set_path_overrides(previous);
+    const ScopedPathOverrides no_assets([](hydra::app::PathOverrides& o) {
+        o.asset_dir = testtemp::temp_path("no_preview_assets", "");
+    });
+    PreviewController pc(nullptr, nullptr);
+    CHECK(pc.render(64, 64) == nullptr);
+    CHECK(pc.error() ==
+          "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.");
+    CHECK(pc.error_detail().rfind("PreviewRenderer: missing", 0) == 0);
 }
 
 namespace {
@@ -405,28 +448,23 @@ TEST_CASE("closing the Preview frees its render targets; reopening draws again (
     Microsoft::WRL::ComPtr<ID3D11Device> dev;
     Microsoft::WRL::ComPtr<ID3D11DeviceContext> ctx;
     REQUIRE(warp::make_device(dev, ctx));
-    const hydra::app::PathOverrides previous = hydra::app::path_overrides();
-    hydra::app::PathOverrides overrides = previous;
-    overrides.asset_dir = HYDRA_ASSET_DIR;
-    hydra::app::set_path_overrides(overrides);
-    {
-        const std::string notes = short_chart_with_long_audio("prevctl_release");
-        PreviewController pc(dev.Get(), ctx.Get());
-        open_and_load(pc, notes);
-        ID3D11ShaderResourceView* srv = pc.render(64, 64);
-        REQUIRE(srv != nullptr);
+    const ScopedPathOverrides assets(
+        [](hydra::app::PathOverrides& o) { o.asset_dir = HYDRA_ASSET_DIR; });
+    const std::string notes = short_chart_with_long_audio("prevctl_release");
+    PreviewController pc(dev.Get(), ctx.Get());
+    open_and_load(pc, notes);
+    ID3D11ShaderResourceView* srv = pc.render(64, 64);
+    REQUIRE(srv != nullptr);
 
-        // Hold the shown texture: once freed, this is its only reference.
-        Microsoft::WRL::ComPtr<ID3D11Resource> shown;
-        srv->GetResource(&shown);
-        pc.close();
-        shown->AddRef();
-        CHECK(shown->Release() == 1);  // Release returns the count left
+    // Hold the shown texture: once freed, this is its only reference.
+    Microsoft::WRL::ComPtr<ID3D11Resource> shown;
+    srv->GetResource(&shown);
+    pc.close();
+    shown->AddRef();
+    CHECK(shown->Release() == 1);  // Release returns the count left
 
-        open_and_load(pc, notes);
-        CHECK(pc.render(64, 64) != nullptr);
-    }
-    hydra::app::set_path_overrides(previous);
+    open_and_load(pc, notes);
+    CHECK(pc.render(64, 64) != nullptr);
 }
 
 // The scrubber ends at the song's length (D75), here the 3 s song.ini
@@ -462,11 +500,7 @@ TEST_CASE("a jump past the end of the Preview stops at the audio's end") {
 TEST_CASE("switching paths builds the new overlay off the UI thread") {
     using namespace hydra;
     using namespace hydra::app;
-    AnalysisSettings settings;
-    settings.depth_mode = DepthMode::Scores;
-    settings.depth_value = 2;
-    settings.ms_filter = 10.0;
-    const corpus::ChartWithPaths found = corpus::first_chart_with_paths(settings);
+    const corpus::ChartWithPaths found = corpus::first_chart_with_paths(analysis_settings());
     const std::string& chart = found.chart;
     const Path& best = found.result.record.best_path();
     const std::string best_key = path_overlay_key(&best);
@@ -494,12 +528,7 @@ TEST_CASE("shows_path: the same path at another cap, and a different path") {
     using namespace hydra;
     using namespace hydra::app;
     const std::string chart = chart_with_audio();
-    AnalysisSettings settings;
-    settings.depth_mode = DepthMode::Scores;
-    settings.depth_value = 2;
-    settings.ms_filter = 10.0;
-    const AnalysisResult analyzed = analyze_chart_file(chart, settings);
-    REQUIRE_FALSE(analyzed.record.paths.empty());
+    const AnalysisResult analyzed = analyze_with_paths(chart);
     const Path& best = analyzed.record.best_path();
     const std::string best_key = path_overlay_key(&best);
     // Another path's key: the best one's with its last character changed.
@@ -679,12 +708,14 @@ TEST_CASE("a second mode change during a notes reload wins") {
 
     pc.open(entry, true, false, Difficulty::Hard, nullptr, "", 4);
     pc.open(entry, true, false, Difficulty::Medium, nullptr, "", 4);
-    for (int i = 0; i < 1200 && pc.busy(); ++i) {
-        pc.poll();
-        CHECK(pc.playback_end_ms() != doctest::Approx(1000.0));  // Hard's never lands
-        Sleep(10);
-    }
-    REQUIRE_FALSE(pc.busy());
+    wait_until(
+        [&] {
+            if (!pc.busy()) return true;
+            pc.poll();
+            CHECK(pc.playback_end_ms() != doctest::Approx(1000.0));  // Hard's never lands
+            return false;
+        },
+        "every Preview thread to finish");
     CHECK_FALSE(pc.has_error());
     CHECK(pc.playback_end_ms() == doctest::Approx(1500.0));
 }
@@ -697,12 +728,7 @@ TEST_CASE("the Preview hides the path when the chart file changed since its reco
     using namespace hydra;
     using namespace hydra::app;
     const std::string chart = chart_with_audio();
-    AnalysisSettings settings;
-    settings.depth_mode = DepthMode::Scores;
-    settings.depth_value = 2;
-    settings.ms_filter = 10.0;
-    const AnalysisResult analyzed = analyze_chart_file(chart, settings);
-    REQUIRE_FALSE(analyzed.record.paths.empty());
+    const AnalysisResult analyzed = analyze_with_paths(chart);
     const Path& best = analyzed.record.best_path();
     const std::string best_key = path_overlay_key(&best);
 

@@ -1,9 +1,9 @@
 // The docs say what the code does. Three checks over the decision records
 // and the guides:
 //
-// 1. Every backticked code name in them still exists somewhere under src/,
-//    tools/ or tests/. A name that left the code fails with the doc, the line
-//    and the name, so the fixer knows which sentence to edit.
+// 1. Every backticked code name in them is still a name the code uses (see
+//    code_words for which words count). A name that left the code fails with
+//    the doc, the line and the name, so the fixer knows which sentence to edit.
 // 2. The User Guide's hydra_rules.ini sample, read by the app's own rules-file
 //    reader, equals core::Rules{}.
 // 3. A default written in prose carries a marker right after it,
@@ -28,6 +28,7 @@
 
 #include "app/config.h"
 #include "app/rules_file.h"
+#include "code_lexer.h"
 #include "core/model.h"
 #include "core/rules.h"
 #include "core/strutil.h"
@@ -56,16 +57,18 @@ std::vector<std::string> read_lines(const fs::path& p) {
     return out;
 }
 
-// Every docs/adr/*.md, CONTEXT.md, the User Guide, development.md and the
-// cap-clamped squeeze note.
+// Every docs/adr/*.md and docs/agents/*.md, the README, CONTEXT.md, the User
+// Guide, development.md and the cap-clamped squeeze note.
 std::vector<Doc> docs() {
     const fs::path root = sourcetree::root();
     std::vector<std::string> rels;
-    for (const auto& e : fs::directory_iterator(root / "docs" / "adr")) {
-        if (e.path().extension() != ".md") continue;
-        rels.push_back(fs::relative(e.path(), root).generic_u8string());
+    for (const char* dir : {"adr", "agents"}) {
+        for (const auto& e : fs::directory_iterator(root / "docs" / dir)) {
+            if (e.path().extension() != ".md") continue;
+            rels.push_back(fs::relative(e.path(), root).generic_u8string());
+        }
     }
-    for (const char* rel : {"CONTEXT.md", "docs/UserGuide.md", "docs/development.md",
+    for (const char* rel : {"README.md", "CONTEXT.md", "docs/UserGuide.md", "docs/development.md",
                             "docs/cap-clamped-squeeze-frontend-anchor.md"})
         rels.push_back(rel);
     std::vector<Doc> out;
@@ -89,36 +92,63 @@ bool is_fence(const std::string& line) { return hydra::trim(line).rfind("```", 0
 
 // ---- check 1: code names exist -----------------------------------------
 
-// Every identifier-like word in src/, tools/ and tests/, comments and
-// strings included. This file is left out: its allow-list would otherwise
-// vouch for the names it lists.
+// Adds every identifier-like word in text[begin, end) to `words`.
+void add_words(const std::string& text, size_t begin, size_t end, std::set<std::string>& words) {
+    size_t i = begin;
+    while (i < end) {
+        const unsigned char c = static_cast<unsigned char>(text[i]);
+        if (std::isalnum(c) || c == '_') {
+            size_t j = i;
+            while (j < end && (std::isalnum(static_cast<unsigned char>(text[j])) || text[j] == '_'))
+                ++j;
+            words.insert(text.substr(i, j - i));
+            i = j;
+        } else {
+            ++i;
+        }
+    }
+}
+
+// The words check 1 accepts as real code names. The user chose this level on
+// 2026-10-10 (the single-owner redesign plan, question 7): a comment never
+// vouches for a name, and a test's string literal never does either, because
+// production strings name real INI keys, chart tags and stored columns while
+// test strings name made-up ones. This file is left out: its allow-list would
+// otherwise vouch for the names it lists.
 std::set<std::string> code_words() {
     std::set<std::string> words;
     sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
             const fs::path ext = path.extension();
-            if (ext != ".cpp" && ext != ".h" && ext != ".c" && ext != ".py" &&
-                ext != ".ps1" && ext != ".hlsl")
+            codelex::Lang lang;
+            if (ext == ".cpp" || ext == ".h" || ext == ".c" || ext == ".hlsl")
+                lang = codelex::Lang::Cpp;
+            else if (ext == ".py")
+                lang = codelex::Lang::Python;
+            else if (ext == ".ps1")
+                lang = codelex::Lang::PowerShell;
+            else
                 return;
             if (rel == "tests/test_docs_match_code.cpp") return;
+            const bool strings_count = rel.rfind("tests/", 0) != 0;
             std::ifstream in(path, std::ios::binary);
             std::ostringstream ss;
             ss << in.rdbuf();
             const std::string text = ss.str();
-            size_t i = 0;
-            while (i < text.size()) {
-                const unsigned char c = static_cast<unsigned char>(text[i]);
-                if (std::isalnum(c) || c == '_') {
-                    size_t j = i;
-                    while (j < text.size() &&
-                           (std::isalnum(static_cast<unsigned char>(text[j])) || text[j] == '_'))
-                        ++j;
-                    words.insert(text.substr(i, j - i));
-                    i = j;
-                } else {
-                    ++i;
-                }
-            }
+            for (const codelex::Piece& p : codelex::split(text, lang))
+                if (p.kind == codelex::Kind::Code || (p.kind == codelex::Kind::String && strings_count))
+                    add_words(text, p.begin, p.end, words);
     });
+    // Build targets, options and CMake functions: hydra_batch, HYDRA_LTCG,
+    // hydra_use_mimalloc and the like.
+    std::ifstream in(sourcetree::root() / "CMakeLists.txt");
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    const std::string cmake = ss.str();
+    static const std::regex target(
+        R"(\b(?:add_executable|add_library|add_custom_target|option|function|macro)\s*\(\s*([A-Za-z_]\w*))");
+    for (auto it = std::sregex_iterator(cmake.begin(), cmake.end(), target);
+         it != std::sregex_iterator(); ++it)
+        words.insert((*it)[1].str());
     return words;
 }
 
@@ -178,6 +208,19 @@ const std::vector<Allowed>& allowed() {
         // ADR 0015's decision names it, and its dated line records that it
         // was removed later (34137fb).
         {"docs/adr/0015", "from_code", "ADR 0015 records that it is gone"},
+        // hydra_report, the command-line report tool, was deleted when the
+        // reports became Hydra windows (D103 item 5). ADR 0027 records the
+        // deletion; ADRs 0002 and 0010 carry dated notes that it is gone.
+        {"docs/adr/0002", "hydra_report", "ADR 0002's dated note records that it is gone"},
+        {"docs/adr/0010", "hydra_report", "ADR 0010's dated note records that it is gone"},
+        {"docs/adr/0027", "hydra_report", "ADR 0027 records that it is gone"},
+        // ADR 0014 records that the edge's sqout_time field went with T10's
+        // clamp-origin guard.
+        {"docs/adr/0014", "sqout_time", "ADR 0014 records that it is gone"},
+        // ADRs 0017 and 0021 record that the single stored transfer_pre pair
+        // was replaced by one scale per SqIn.
+        {"docs/adr/0017", "transfer_pre", "ADR 0017 records that it is gone"},
+        {"docs/adr/0021", "transfer_pre", "ADR 0021 records that it is gone"},
     };
     return a;
 }
@@ -323,7 +366,7 @@ TEST_CASE("docs match code: every backticked code name exists in src/, tools/ or
                     if (!words.count(p)) missing += (missing.empty() ? "" : ", ") + p;
                 problems.push_back(d.rel + ":" + std::to_string(i + 1) + ": `" +
                                    line.substr(open + 1, close - open - 1) + "` names " +
-                                   missing + ", which no file under src/, tools/ or tests/ has");
+                                   missing + ", which the code does not use (see code_words)");
             }
         }
     }
@@ -443,4 +486,56 @@ TEST_CASE("docs match code: what counts as a code name") {
     CHECK(code_name_parts("hydra_rules.ini").empty());
     CHECK(code_name_parts("hydra_batch --legacy-fills").empty());
     CHECK(code_name_parts("[ENABLE_CHART_DYNAMICS]").empty());
+}
+
+namespace {
+
+// The pieces of `text` as "C:", "#:" or "S:" (code, comment, string) plus the
+// piece's text.
+std::vector<std::string> lexed(const std::string& text, codelex::Lang lang) {
+    std::vector<std::string> out;
+    for (const codelex::Piece& p : codelex::split(text, lang)) {
+        const char* tag = p.kind == codelex::Kind::Code      ? "C:"
+                          : p.kind == codelex::Kind::Comment ? "#:"
+                                                             : "S:";
+        out.push_back(tag + text.substr(p.begin, p.end - p.begin));
+    }
+    return out;
+}
+
+using V = std::vector<std::string>;
+
+}  // namespace
+
+TEST_CASE("code lexer: C++ and Python comments and string literals") {
+    const auto cpp = codelex::Lang::Cpp;
+    const auto py = codelex::Lang::Python;
+    // C++ line and block comments.
+    CHECK(lexed("a // c\nb", cpp) == V{"C:a ", "#:// c", "C:\nb"});
+    CHECK(lexed("a /* c\nd */ b", cpp) == V{"C:a ", "#:/* c\nd */", "C: b"});
+    // A string with an escaped quote, and a comment marker inside a string.
+    CHECK(lexed(R"(x = "q\"r" + y)", cpp) == V{"C:x = ", R"(S:"q\"r")", "C: + y"});
+    CHECK(lexed(R"("// no" z)", cpp) == V{R"(S:"// no")", "C: z"});
+    // A raw string holds a quote and a parenthesis without ending.
+    CHECK(lexed(R"--(s = R"d(a")b)d"; t)--", cpp) ==
+          V{"C:s = ", R"--(S:R"d(a")b)d")--", "C:; t"});
+    // A character literal, and a digit separator that is not one.
+    CHECK(lexed(R"(c = '\''; n = 1'000;)", cpp) == V{"C:c = ", R"(S:'\'')", "C:; n = 1'000;"});
+    // Python line comments.
+    CHECK(lexed("a # c\nb", py) == V{"C:a ", "#:# c", "C:\nb"});
+    // Single and double quotes, with an escape; a prefix belongs to its string.
+    CHECK(lexed(R"(x = 'q\'r' + "s")", py) == V{"C:x = ", R"(S:'q\'r')", "C: + ", R"(S:"s")"});
+    CHECK(lexed("rb'x' y", py) == V{"S:rb'x'", "C: y"});
+    // Triple-quoted strings span lines and hold a lone quote and a #.
+    CHECK(lexed("'''a\n#b''' c", py) == V{"S:'''a\n#b'''", "C: c"});
+    CHECK(lexed(R"("""a"b""" c)", py) == V{R"(S:"""a"b""")", "C: c"});
+    // PowerShell: # and <# #> comments, a string that ends in a backslash, a
+    // backtick-escaped quote, a doubled quote, and a here-string.
+    const auto ps = codelex::Lang::PowerShell;
+    CHECK(lexed("a # c\nb", ps) == V{"C:a ", "#:# c", "C:\nb"});
+    CHECK(lexed("a <# c\n#d #> b", ps) == V{"C:a ", "#:<# c\n#d #>", "C: b"});
+    CHECK(lexed(R"(x = 'C:\' + y # c)", ps) == V{"C:x = ", R"(S:'C:\')", "C: + y ", "#:# c"});
+    CHECK(lexed("\"a`\"# b\" c", ps) == V{"S:\"a`\"# b\"", "C: c"});
+    CHECK(lexed("'it''s # not' z", ps) == V{"S:'it''s # not'", "C: z"});
+    CHECK(lexed("@'\na # b\n'@ c", ps) == V{"S:@'\na # b\n'@", "C: c"});
 }

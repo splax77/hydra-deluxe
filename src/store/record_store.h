@@ -181,11 +181,9 @@ struct PreparedRow {
 // mismatch would file the result under settings it doesn't belong to.
 PreparedRow prepare_row(const RecordKey& key, const HydraRecord& record);
 
-// Schema 2's results table: the columns it shares with this build's table
-// (what upgrade_results_key copies across) and its CREATE TABLE text (read
-// only by the store test, to build a schema 2 file).
+// The columns schema 2's results table shares with this build's table (what
+// upgrade_results_key copies across).
 extern const char* const kSchema2ResultsColumns;
-extern const char* const kSchema2ResultsTableSql;
 
 // The results version this build stamps on a row and accepts (ADR 0018; not
 // the app version). For
@@ -505,21 +503,14 @@ public:
     // Replaces the whole library with `items`: a scan always fully
     // supersedes the previous one. All or nothing: a failure keeps the
     // previous scan's rows. Stamps the table with kChartMetaStamp. In the
-    // same transaction it deletes what the library no longer lists, as
-    // delete_results_without_chart does (D87 item 4).
+    // same transaction it deletes the results of every chart the library no
+    // longer lists (D87 item 4; purge_charts_not_in_library).
     void rebuild_chart_library(const std::vector<ChartLibraryEntry>& items);
-
-    // Deletes the results of every chart the library no longer lists (D87
-    // item 4). Which charts the library lists: not_in_library in
-    // record_store.cpp. A listed chart keeps every row, in every chart mode,
-    // Stale ones included. One transaction. A database with no library rows
-    // loses every result, so only callers that own the library call this.
-    void delete_results_without_chart();
 
     // One chart's files changed since the scan (D87 item 3): the library row
     // at `notespath` takes the hash and fingerprint the files now give, and
-    // whatever the old hash leaves unlisted is deleted, as
-    // delete_results_without_chart does, in the same transaction. A path the
+    // whatever the old hash leaves unlisted is deleted, by
+    // purge_charts_not_in_library, in the same transaction. A path the
     // library doesn't list changes nothing. The hash can be the row's own,
     // for files only saved again (D96); ui::ViewJob::run decides when a
     // click calls this.
@@ -617,9 +608,13 @@ private:
     // Hydra 1.8.4's Auto saved (user decision 7, 2026-09-27), and marks it
     // done in `meta`.
     void delete_auto_results();
-    // The body of delete_results_without_chart, for the callers that already
-    // hold the lock and an open transaction (rebuild_chart_library and
-    // reidentify_chart). `caller` names the operation in the error message.
+    // Deletes the results of every chart the library no longer lists (D87
+    // item 4). Which charts the library lists: not_in_library in
+    // record_store.cpp. A listed chart keeps every row, in every chart mode,
+    // Stale ones included. A database with no library rows loses every
+    // result. The callers (rebuild_chart_library and reidentify_chart) own
+    // the library and already hold the lock and an open transaction.
+    // `caller` names the operation in the error message.
     void purge_charts_not_in_library(const char* caller);
     std::optional<std::string> meta_get(const std::string& key);
     void meta_set(const std::string& key, const std::string& value);

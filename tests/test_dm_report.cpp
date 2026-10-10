@@ -31,7 +31,7 @@
 #include "core/model.h"
 #include "app/dm_report.h"
 #include "app/dm_report_view.h"  // dm_search_text
-#include "app/report.h"          // Tile, ChipToken
+#include "app/report.h"          // Tile, ChipToken, kNoChartLibrary
 #include "app/user_messages.h"
 #include "core/error_kind.h"
 #include "core/strutil.h"
@@ -329,51 +329,25 @@ TEST_CASE("status_token: each status's chip colour, as the page's STATUS_CLASS g
     CHECK(status_token("something else") == ChipToken::tn);
 }
 
-TEST_CASE("collect_dm_rows: a blank stored song name reads (unknown)") {
+TEST_CASE("collect_dm_rows: the stored names go through display_title, display_artist and "
+          "display_charter") {
+    // test_song.cpp pins what those three do. This checks only that the page
+    // calls them: one tagged name each.
     store::RecordStore store(":memory:");
-    const int64_t optimal = fill_store(store, "");
+    const int64_t optimal = fill_store(store);
+    test::name_chart(store, kHash, "<b>Bold Title</b>", test::kTagOnlyTitle, " <b>Bob</b> ");
 
     // The leaderboard has no metadata for it, so the row falls back to the
-    // matched record, whose stored name is blank.
+    // matched record's stored names.
     net::DmScore unknown_meta = make_score(kHash, optimal - 10);
     unknown_meta.known = false;
 
-    std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
-        store, {unknown_meta}, kMode, store::Lens{});
-    REQUIRE(rows.size() == 1);
-    CHECK(rows[0].song == kUnknownTitle);
-
-    // A stored title made only of tags reads the same fallback.
-    store::RecordStore tags_only(":memory:");
-    fill_store(tags_only, test::kTagOnlyTitle);
-    rows = app::dm_report::collect_dm_rows(tags_only, {unknown_meta}, kMode, store::Lens{});
-    REQUIRE(rows.size() == 1);
-    CHECK(rows[0].song == kUnknownTitle);
-
-    // A bold stored title reads without its tags.
-    store::RecordStore bold(":memory:");
-    fill_store(bold, "<b>Bold Title</b>");
-    rows = app::dm_report::collect_dm_rows(bold, {unknown_meta}, kMode, store::Lens{});
+    const std::vector<DmReportRow> rows =
+        app::dm_report::collect_dm_rows(store, {unknown_meta}, kMode, store::Lens{});
     REQUIRE(rows.size() == 1);
     CHECK(rows[0].song == "Bold Title");
-
-    // A stored artist made only of tags reads "(unknown)" by the title's
-    // rule (D50 item 5); a charter made only of tags keeps today's blank.
-    test::name_chart(tags_only, kHash, "Stored Title", test::kTagOnlyTitle, test::kTagOnlyTitle);
-    rows = app::dm_report::collect_dm_rows(tags_only, {unknown_meta}, kMode, store::Lens{});
-    REQUIRE(rows.size() == 1);
     CHECK(rows[0].artist == kUnknownTitle);
-    CHECK(rows[0].charter == "");
-
-    // An empty artist and the scan's placeholder read "(unknown)" too (D56
-    // item 2); a charter loses the spaces at its ends (display_charter).
-    for (const char* artist : {"", kUnknownArtist}) {
-        test::name_chart(tags_only, kHash, "Stored Title", artist, " <b>Bob</b> ");
-        rows = app::dm_report::collect_dm_rows(tags_only, {unknown_meta}, kMode, store::Lens{});
-        REQUIRE(rows.size() == 1);
-        CHECK(rows[0].artist == kUnknownTitle);
-        CHECK(rows[0].charter == "Bob");
-    }
+    CHECK(rows[0].charter == "Bob");
 }
 
 // D74 item 2: the leaderboard's own names go through the same display owners
@@ -799,9 +773,7 @@ TEST_CASE("collect_dm_rows: a database with no chart library stops with the path
     } catch (const KindedError& e) {
         stopped = true;
         CHECK(e.kind() == ErrorKind::AlreadyPlain);
-        CHECK(app::plain_error(e) ==
-              "This database has no chart library. Run hydra_batch without folder arguments, or "
-              "scan in Hydra, to build one.");
+        CHECK(app::plain_error(e) == std::string(app::report::kNoChartLibrary));
     }
     CHECK(stopped);
 }

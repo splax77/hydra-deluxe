@@ -17,6 +17,7 @@
 #include "app/user_messages.h"
 #include "render/highway_draw.h"  // track_height
 #include "render/preview_renderer.h"
+#include "preview_scene_fixtures.h"
 #include "temp_util.h"
 #include "ui/preview_load_job.h"  // track_options
 #include "warp_util.h"
@@ -27,8 +28,10 @@
 
 using namespace hydra::render;
 using hydra::app::PreviewLane;
-using hydra::app::PreviewNote;
 using hydra::app::PreviewScene;
+using hydra::test_fixtures::note;
+using hydra::test_fixtures::span;
+using hydra::test_fixtures::timed_scene;
 using Microsoft::WRL::ComPtr;
 
 namespace {
@@ -49,15 +52,6 @@ int count_non_background(const PreviewConfig& cfg, const std::vector<uint8_t>& i
     int n = 0;
     for (size_t i = 0; i < img.size(); i += 4)
         if (!is_background(cfg, &img[i])) ++n;
-    return n;
-}
-
-PreviewNote note_at(double ms, PreviewLane lane, bool cymbal = false) {
-    PreviewNote n;
-    n.ms = ms;
-    n.tick = static_cast<int64_t>(ms);
-    n.lane = lane;
-    n.cymbal = cymbal;
     return n;
 }
 
@@ -118,9 +112,9 @@ TEST_CASE("PreviewRenderer: a gem at the strike line adds drawn pixels (WARP)") 
 
     PreviewScene with_notes;
     with_notes.has_notes = true;
-    with_notes.notes.push_back(note_at(1100.0, PreviewLane::Kick));
-    with_notes.notes.push_back(note_at(1100.0, PreviewLane::Red));
-    with_notes.notes.push_back(note_at(1300.0, PreviewLane::Yellow, true));
+    with_notes.notes.push_back(note(1100.0, PreviewLane::Kick));
+    with_notes.notes.push_back(note(1100.0, PreviewLane::Red));
+    with_notes.notes.push_back(note(1300.0, PreviewLane::Yellow, true));
     with_notes.song_length_ms = 1300.0;
     r.set_scene(with_notes);
     r.render(1000.0);
@@ -144,22 +138,17 @@ TEST_CASE("PreviewRenderer: SP phrase energy gems and active SP floor change pix
 
     PreviewScene plain;
     plain.has_notes = true;
-    plain.notes.push_back(note_at(1200.0, PreviewLane::Green));
+    plain.notes.push_back(note(1200.0, PreviewLane::Green));
     r.set_scene(plain);
     r.render(1000.0);
     std::vector<uint8_t> a = warp::read_pixels(dev.Get(), ctx.Get(), r.texture_srv(), W, H);
 
     PreviewScene lit = plain;
     // Spans end half a tick past their last note through the song's timing,
-    // so a scene with a phrase carries one: one tick per ms (60 BPM at 1000
-    // ticks per beat), matching note_at().
-    lit.timing = hydra::SongTiming(1000, {{0, 4000}}, {{0, 60.0}});
-    hydra::app::PreviewSpan phrase;
-    phrase.start_ms = 1100.0;
-    phrase.end_ms = 1200.0;
-    phrase.start_tick = 1100;
-    phrase.end_tick = 1200;
-    lit.sp_phrases.push_back(phrase);
+    // so a scene with a phrase carries one: timed_scene()'s, which matches
+    // note() and span().
+    lit.timing = timed_scene().timing;
+    lit.sp_phrases.push_back(span(1100.0, 1200.0));
     hydra::app::PreviewActivation act;
     act.ms = 900.0;
     act.has_sp_end = true;
@@ -189,16 +178,11 @@ TEST_CASE("PreviewRenderer: a prebuilt track state draws the same pixels (WARP)"
     const int W = 160, H = 120;
     PreviewScene scene;
     scene.has_notes = true;
-    scene.notes.push_back(note_at(1100.0, PreviewLane::Kick));
-    scene.notes.push_back(note_at(1150.0, PreviewLane::Yellow, true));
-    scene.notes.push_back(note_at(1200.0, PreviewLane::Green));
-    scene.timing = hydra::SongTiming(1000, {{0, 4000}}, {{0, 60.0}});
-    hydra::app::PreviewSpan phrase;
-    phrase.start_ms = 1100.0;
-    phrase.end_ms = 1200.0;
-    phrase.start_tick = 1100;
-    phrase.end_tick = 1200;
-    scene.sp_phrases.push_back(phrase);
+    scene.notes.push_back(note(1100.0, PreviewLane::Kick));
+    scene.notes.push_back(note(1150.0, PreviewLane::Yellow, true));
+    scene.notes.push_back(note(1200.0, PreviewLane::Green));
+    scene.timing = timed_scene().timing;
+    scene.sp_phrases.push_back(span(1100.0, 1200.0));
     hydra::app::PreviewActivation act;
     act.ms = 900.0;
     act.has_sp_end = true;
@@ -263,8 +247,8 @@ TEST_CASE("PreviewRenderer: released targets are freed and come back drawing the
     r.resize(W, H);
     PreviewScene scene;
     scene.has_notes = true;
-    scene.notes.push_back(note_at(1100.0, PreviewLane::Kick));
-    scene.notes.push_back(note_at(1300.0, PreviewLane::Yellow, true));
+    scene.notes.push_back(note(1100.0, PreviewLane::Kick));
+    scene.notes.push_back(note(1300.0, PreviewLane::Yellow, true));
     scene.song_length_ms = 1300.0;
     r.set_scene(scene);
     r.render(1000.0);

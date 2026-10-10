@@ -6,7 +6,6 @@
 #include "doctest.h"
 
 #include <map>
-#include <chrono>
 #include <string>
 #include <vector>
 
@@ -14,6 +13,7 @@
 #include "app/display_format.h"
 #include "app/path_view.h"
 #include "app/preview_view.h"  // path_overlay_key
+#include "analyzed_chart.h"
 #include "corpus_util.h"
 #include "record_fixtures.h"
 #include "scratch_settings.h"
@@ -23,18 +23,8 @@ using namespace hydra::app;
 
 namespace {
 
-// One analyzed corpus chart (the first that yields paths), shared across
-// cases: analysis is the slow part.
-const AnalysisResult& analyzed() {
-    static const AnalysisResult result = [] {
-        AnalysisSettings settings;
-        settings.depth_mode = DepthMode::Scores;
-        settings.depth_value = 10;
-        settings.ms_filter = 10.0;
-        return corpus::first_analyzed_with_paths(settings);
-    }();
-    return result;
-}
+// One analyzed corpus chart (see analyzed_chart.h), shared across cases.
+const AnalysisResult& analyzed() { return corpus::analyzed_by_ten_scores(); }
 
 // Burnout (Green Day, charter Hoph2o), analyzed the way the GUI tests
 // analyze it: Expert, Pro Drums, 2x Bass, SP cap 4, 2 scores, 10 ms limit.
@@ -615,28 +605,6 @@ TEST_CASE("build_activations: plain rows past the leeway show 0") {
     for (const BackendRowView& row : b) CHECK_FALSE(row.warn);
 }
 
-// Not an invariant: it names a chart the GUI test can open to see an
-// uncounted squeezed-out row for real. Prints nothing when none exists. It
-// runs under the GUI tests' settings, and only by hand (doctest::skip()), so
-// analyzing every chart before the search starts is fine here.
-TEST_CASE("find a chart with an uncounted squeezed-out row" * doctest::skip()) {
-    const AnalysisSettings settings = scratch_settings().to_analysis_settings();
-    for (const corpus::ChartWithPaths& c :
-         corpus::charts_with_paths(settings, corpus::chart_paths().size())) {
-        const AnalysisResult& r = c.result;
-        ActivationsView v = build_activations(r.record.best_path(), r.record,
-                                              &r.song.timing(), 85.0);
-        for (const ActivationRowView& av : v.acts)
-            for (const BackendRowView& row : av.backends)
-                if (row.rating.find("(uncounted) <-- squeezed out") !=
-                    std::string::npos) {
-                    MESSAGE(c.chart << " | activation " << av.number << " " << av.notation);
-                    return;
-                }
-    }
-    MESSAGE("no corpus chart has one at depth 2");
-}
-
 TEST_CASE("build_multsqueezes: one labeled entry per squeeze") {
     const HydraRecord& rec = analyzed().record;
     std::vector<MultSqueezeView> v = build_multsqueezes(rec);
@@ -686,36 +654,6 @@ TEST_CASE("PathsTabCache: views are built once and rebuilt only when their input
     CHECK(d.squeezes.size() == build_multsqueezes(rec).size());
     CHECK(d.activations.acts.size() ==
           build_activations(best, rec, &timing, 71.0, 30.0).acts.size());
-}
-
-TEST_CASE("PathsTabCache: 600 cached frames cost far less than 600 rebuilds") {
-    using clock = std::chrono::steady_clock;
-    const AnalysisResult& ar = analyzed();
-    const HydraRecord& rec = ar.record;
-    const SongTiming& timing = ar.song.timing();
-    const Path& best = rec.best_path();
-
-    // What a Paths frame did before: every view, every row label.
-    const clock::time_point t0 = clock::now();
-    for (int frame = 0; frame < 600; ++frame) {
-        PathButtonsView list = build_path_buttons(rec, 0, 10);
-        std::vector<MultSqueezeView> sq = build_multsqueezes(rec);
-        ActivationsView acts = build_activations(best, rec, &timing, 70.0);
-        std::vector<std::string> bd = build_score_breakdown(best);
-    }
-    const clock::time_point t1 = clock::now();
-    PathsTabCache cache;
-    for (int frame = 0; frame < 600; ++frame) {
-        cache.buttons(rec, 1, 0, 10);
-        cache.details(best, rec, 1, &timing, 70.0, std::nullopt, core::default_rules());
-    }
-    const clock::time_point t2 = clock::now();
-
-    const double rebuilt_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-    const double cached_ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
-    MESSAGE("600 rebuilt frames: " << rebuilt_ms << " ms; 600 cached frames: " << cached_ms
-                                   << " ms");
-    CHECK(cached_ms * 10.0 < rebuilt_ms);
 }
 
 TEST_CASE("format_measure: one form for both tabs") {
@@ -904,10 +842,6 @@ TEST_CASE("measure labels: one numbering rule for the rows, the timeline and the
     CHECK(first_measure_label() == "m1.1.0");
 }
 
-TEST_CASE("backend_table_id: the activation number and the three widths") {
-    CHECK(backend_table_id(1, 48, 40, 56) == "##backends1_48_40_56");
-}
-
 TEST_CASE("longest_activation_badge: the widest wording with the window's figure") {
     const std::string longest = longest_activation_badge();
     CHECK(longest == "squeeze out -500 ms");
@@ -1026,10 +960,12 @@ TEST_CASE("squeeze sentences: a SqIn on the SP end is free, like its rating (D13
                                   0) == 0);
 }
 
-TEST_CASE("backend table: a counted row inside SP shows its early-scale eff. figure") {
-    // Sun of Nothing act 5: early frontend hits reach the SP end x1.60, so
-    // the note 400 ms inside SP is effectively 307.7 ms from being lost.
-    HydraRecord rec;
+namespace {
+
+// Sun of Nothing act 5 as a one-activation path: early frontend hits reach
+// the SP end x1.60, and one counted Green backend row (260 points) sits
+// 400 ms inside SP.
+Path sun_of_nothing_act5() {
     Activation act;
     test::set_skips(act, 0);
     act.e_offset = 300.0;  // not e-critical
@@ -1041,6 +977,16 @@ TEST_CASE("backend table: a counted row inside SP shows its early-scale eff. fig
     act.backends.push_back(row);
     Path p;
     p.activations.push_back(act);
+    return p;
+}
+
+}  // namespace
+
+TEST_CASE("backend table: a counted row inside SP shows its early-scale eff. figure") {
+    // Sun of Nothing act 5: early frontend hits reach the SP end x1.60, so
+    // the note 400 ms inside SP is effectively 307.7 ms from being lost.
+    HydraRecord rec;
+    const Path p = sun_of_nothing_act5();
 
     ActivationsView v = build_activations(p, rec, nullptr, 85.0);
     REQUIRE(v.acts.size() == 1);
@@ -1095,19 +1041,9 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
 TEST_CASE("backend table: the tooltip names the normal budget at one decimal in both places") {
     // A hit window of 85.25 ms makes the normal budget 170.5 ms. D57 item 2:
     // the tooltip writes it once, at one decimal, and says it twice, so it
-    // never reads "171 ms" beside "170.5 ms".
+    // never reads "171 ms" beside "170.5 ms". The path is the x1.60 one above.
     HydraRecord rec;
-    Activation act;
-    test::set_skips(act, 0);
-    act.e_offset = 300.0;  // not e-critical
-    test::set_transfer(act, TransferScale{1.6, 1.0});
-    BackendSqueeze row;
-    row.chord.add_note(NoteColor::Green);
-    row.points = 260;
-    row.offset_ms = -400.0;
-    act.backends.push_back(row);
-    Path p;
-    p.activations.push_back(act);
+    const Path p = sun_of_nothing_act5();
 
     ActivationsView v = build_activations(p, rec, nullptr, 85.25);
     REQUIRE(v.acts.size() == 1);

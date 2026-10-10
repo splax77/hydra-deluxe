@@ -19,26 +19,14 @@
 #include "audio/stream_mix.h"
 #include "display_fixtures.h"  // audio_tail_chart
 #include "ui/preview_transport.h"
+#include "audio_util.h"
 
 using hydra::audio::DecodedAudio;
 using hydra::audio::Playhead;
 using hydra::ui::PreviewTransport;
+using testaudio::make_ramp;
 
 namespace {
-
-// `frames` stereo frames at 48 kHz where frame i holds {L=i, R=i+0.5}, so a
-// copied block is trivially recognizable (as in test_audio_player).
-DecodedAudio make_ramp(int frames) {
-    DecodedAudio a;
-    a.channels = 2;
-    a.sample_rate = 48000;
-    a.samples.resize(static_cast<size_t>(frames) * 2);
-    for (int i = 0; i < frames; ++i) {
-        a.samples[i * 2] = static_cast<float>(i);
-        a.samples[i * 2 + 1] = static_cast<float>(i) + 0.5f;
-    }
-    return a;
-}
 
 // A playhead `ms` milliseconds long at 48 kHz stereo.
 std::unique_ptr<Playhead> make_playhead(double ms) {

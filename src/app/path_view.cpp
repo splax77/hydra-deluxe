@@ -67,12 +67,6 @@ std::string format_measure(const SongTiming& timing, int64_t tick) {
 // needs no timing.
 std::string first_measure_label() { return format_measure(Timecode{}); }
 
-std::string backend_table_id(int number, int w_timing, int w_chord, int w_points) {
-    char id[64];
-    std::snprintf(id, sizeof(id), "##backends%d_%d_%d_%d", number, w_timing, w_chord, w_points);
-    return id;
-}
-
 namespace {
 
 // The badge's word for each part Activation::badge_timing() can name.

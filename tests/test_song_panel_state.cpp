@@ -12,7 +12,6 @@
 
 #include <atomic>
 #include <chrono>
-#include <cstdio>
 #include <functional>
 #include <memory>
 #include <stdexcept>
@@ -22,10 +21,13 @@
 
 #include "app/config.h"
 #include "core/winstr.h"
+#include "library_fixtures.h"  // library_entry
+#include "scoped_hook.h"
+#include "scratch_paths.h"
 #include "store/record_store.h"
-#include "temp_util.h"
 #include "ui/app_state.h"
 #include "ui/library_jobs.h"  // set_app_batch_analyzer_for_test
+#include "wait_util.h"
 
 using hydra::app::Settings;
 using hydra::store::ChartLibraryEntry;
@@ -34,48 +36,10 @@ using hydra::ui::AppState;
 
 namespace {
 
-using testtemp::temp_path;
-
-// Scratch INI and DB for one test; the process's paths come back afterwards.
-struct ScratchPaths {
-    hydra::app::PathOverrides previous;
-    std::string ini, db;
-    explicit ScratchPaths(const char* tag)
-        : previous(hydra::app::path_overrides()),
-          ini(temp_path(tag, ".ini")),
-          db(temp_path(tag, ".db")) {
-        std::remove(ini.c_str());
-        std::remove(db.c_str());
-        hydra::app::PathOverrides o = previous;
-        o.ini_path = ini;
-        o.db_path = db;
-        hydra::app::set_path_overrides(o);
-    }
-    ~ScratchPaths() {
-        hydra::app::set_path_overrides(previous);
-        std::remove(ini.c_str());
-        std::remove(db.c_str());
-    }
-};
-
-ChartLibraryEntry entry(int i) {
-    char hash[32];
-    std::snprintf(hash, sizeof(hash), "hash%03d", i);
-    ChartLibraryEntry e;
-    e.md5 = hash;
-    e.title = std::string("Song ") + hash;
-    e.artist = "Artist";
-    e.charter = "Charter";
-    e.notespath = std::string("C:\\charts\\") + hash + "\\notes.chart";
-    e.rootfolder = "C:\\charts";
-    e.sig = "sig";
-    return e;
-}
-
 std::unique_ptr<AppState> app_with_library(const ScratchPaths& paths, int charts) {
     auto store = std::make_unique<RecordStore>(paths.db);
     std::vector<ChartLibraryEntry> all;
-    for (int i = 0; i < charts; ++i) all.push_back(entry(i));
+    for (int i = 0; i < charts; ++i) all.push_back(library_entry(i));
     store->rebuild_chart_library(all);
     auto app = std::make_unique<AppState>(Settings{}, std::move(store));
     REQUIRE(app->view_row_count() >= 3);
@@ -109,7 +73,7 @@ TEST_CASE("song panel: next and previous walk the view and never wrap") {
 TEST_CASE("song panel: a song outside the view has no neighbours") {
     ScratchPaths paths("panel_outside");
     auto app = app_with_library(paths, 20);
-    app->select(entry(999));  // not in the library at all
+    app->select(library_entry(999));  // not in the library at all
     CHECK_FALSE(app->can_select_relative(1));
     CHECK_FALSE(app->can_select_relative(-1));
 }
@@ -145,24 +109,27 @@ TEST_CASE("song panel: nothing is locked while idle") {
 // under load). Only a batch locks the settings now (D90 item 2).
 TEST_CASE("song panel: a running batch locks the settings as a batch, then unlocks") {
     ScratchPaths paths("panel_batchlock");
+    std::atomic<bool> release{false};  // before the app, which joins the batch's thread
     auto app = app_with_library(paths, 5);
-    std::atomic<bool> release{false};
-    hydra::ui::set_app_batch_analyzer_for_test(
-        [&release](const std::string&, const hydra::app::AnalysisSettings&,
-                   const std::function<void(float)>&) -> hydra::app::AnalysisResult {
-            while (!release.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            throw std::runtime_error("no chart file in this test");
-        },
-        1);
-    app->start_batch(false);
-    hydra::ui::set_app_batch_analyzer_for_test(nullptr, 1);
+    {
+        const ScopedHook seam(
+            hydra::ui::set_app_batch_analyzer_for_test,
+            [&release](const std::string&, const hydra::app::AnalysisSettings&,
+                       const std::function<void(float)>&) -> hydra::app::AnalysisResult {
+                testwait::wait_until([&release] { return release.load(); },
+                                     "the test to release the chart");
+                throw std::runtime_error("no chart file in this test");
+            },
+            1);
+        app->start_batch(false);
+    }
     REQUIRE(app->batch_job != nullptr);
     CHECK(app->settings_lock() == AppState::SettingsLock::Batch);
     CHECK(app->settings_locked());
 
     release = true;
-    while (!app->batch_job->snapshot().finished)
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    testwait::wait_until([&] { return app->batch_job->snapshot().finished; },
+                         "the batch to finish");
     CHECK(app->settings_lock() == AppState::SettingsLock::None);
     CHECK_FALSE(app->settings_locked());
 }

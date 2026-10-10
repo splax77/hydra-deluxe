@@ -151,11 +151,14 @@ public:
     const std::string& error() const { return error_; }
     const std::string& error_detail() const { return error_detail_; }
 
-    // Set when the audio output device would not open. Not an error: the
-    // chart still loads, draws and plays on the clock, just muted. The panel
-    // shows one warning line and keeps drawing.
+    // Set when the audio output device failed (the catch in poll() decides
+    // that). Not an error: the chart still loads, draws and plays on the
+    // clock, just muted. The panel shows one warning line and keeps drawing.
     bool has_audio_warning() const { return !audio_warning_.empty(); }
     const std::string& audio_warning() const { return audio_warning_; }
+
+    // Whether an output device is held. False after a device failure.
+    bool has_audio_device() const { return audio_device_ != nullptr; }
 
     // The chart file is not the one its record was analyzed from: its hash
     // (app::hash_chart_file, the scan's rule) differs from the entry's md5.

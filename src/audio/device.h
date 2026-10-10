@@ -21,8 +21,14 @@ namespace hydra::audio {
 
 // Process-wide switch for harnesses with no sound card (the GUI test runner):
 // when set, PreviewAudioDevice opens nothing and start() only tracks state,
-// so Play/Pause stays testable without touching a real device.
-void set_headless(bool headless);
+// so Play/Pause stays testable without touching a real device. Returns the
+// value it replaces, so a caller can put it back.
+bool set_headless(bool headless);
+
+// Test-only switch: when set, every PreviewAudioDevice::start() fails as if
+// miniaudio's start step had, so a test can reach that failure without a
+// broken sound card. Returns the value it replaces, like set_headless.
+bool set_start_fails(bool fails);
 
 class PreviewAudioDevice {
 public:
@@ -39,7 +45,12 @@ public:
     PreviewAudioDevice(const PreviewAudioDevice&) = delete;
     PreviewAudioDevice& operator=(const PreviewAudioDevice&) = delete;
 
+    // Starts the device. Throws std::runtime_error if it won't start; the
+    // caller drops the device then, as when the constructor throws.
     void start();
+
+    // Whether start() got the device running (or, headless, was called).
+    bool started() const;
 
 private:
     struct Impl;

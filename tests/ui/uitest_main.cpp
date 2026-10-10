@@ -6,10 +6,12 @@
 //   hydra_uitest --list                list the tests
 //   options: --keep-temp  --shots <dir>  --jobs <n>
 //
-// --jobs <n> runs each chosen test in its own hydra_uitest process, at most n
-// at once, and prints their results in the usual order. Each process has its
-// own scratch folder and a fresh ImGui context, so no test sees another's
-// leftovers. Without --jobs the tests run one after another in this process.
+// --all, or more than one --test, runs each chosen test in its own
+// hydra_uitest process, at most --jobs at once (kDefaultJobs when not given),
+// and prints their results in registration order. Each process has its own
+// scratch folder and a fresh ImGui context, so no test sees another's
+// leftovers. A single --test, or a --script, runs in this process: a script
+// needs the engine here, and one test is the debugging case.
 //
 // Prints [PASS]/[FAIL] per test and exits 0 only if everything passed.
 
@@ -30,6 +32,7 @@
 #include <string>
 #include <vector>
 
+#include "../wait_util.h"  // tests/ is not on the runner's include path
 #include "core/winstr.h"
 #include "uitest_harness.h"
 
@@ -89,6 +92,8 @@ struct Child {
     std::string log;
     HANDLE process = nullptr;
     DWORD exit_code = 1;
+    ULONGLONG started_ms = 0;  // GetTickCount64 at launch
+    bool timed_out = false;    // ran past testwait::kUitestProcessCap and was killed
 };
 
 // Starts `hydra_uitest --test <name>` with its stdout and stderr in c.log.
@@ -111,10 +116,11 @@ bool launch_child(Child& c, const std::wstring& exe, const std::vector<std::stri
     if (!ok) return false;
     CloseHandle(pi.hThread);
     c.process = pi.hProcess;
+    c.started_ms = GetTickCount64();
     return true;
 }
 
-// --jobs: every chosen test in its own process, at most `jobs` at once.
+// Every chosen test in its own process, at most `jobs` at once.
 int run_parallel(uitest::Harness& h, const std::vector<std::string>& wanted, int jobs,
                  const std::vector<std::string>& passthrough) {
     // The chosen tests in registration order, the order --all runs them in.
@@ -138,7 +144,8 @@ int run_parallel(uitest::Harness& h, const std::vector<std::string>& wanted, int
         for (const Child& c : children) found = found || uitest::selects(w, c.name.c_str());
         if (!found) {
             std::fprintf(stderr,
-                         "hydra_uitest: no test \"%s\" (--jobs runs named tests, not scripts)\n",
+                         "hydra_uitest: no test \"%s\" (a script runs only on its own; try "
+                         "--list)\n",
                          w.c_str());
             return 2;
         }
@@ -162,17 +169,40 @@ int run_parallel(uitest::Harness& h, const std::vector<std::string>& wanted, int
             ++next;
         }
         if (running.empty()) continue;
+        // Wait no longer than the oldest running child has left of its cap.
+        const ULONGLONG cap_ms = static_cast<ULONGLONG>(testwait::kUitestProcessCap.count());
+        const ULONGLONG now = GetTickCount64();
+        ULONGLONG wait_ms = cap_ms;
+        size_t oldest = 0;
+        for (size_t j = 0; j < running.size(); ++j) {
+            const ULONGLONG ran = now - children[running[j]].started_ms;
+            const ULONGLONG left = ran >= cap_ms ? 0 : cap_ms - ran;
+            if (left < wait_ms) {
+                wait_ms = left;
+                oldest = j;
+            }
+        }
         std::vector<HANDLE> handles;
         for (size_t i : running) handles.push_back(children[i].process);
         const DWORD r = WaitForMultipleObjects(static_cast<DWORD>(handles.size()), handles.data(),
-                                               FALSE, INFINITE);
-        if (r >= WAIT_OBJECT_0 + handles.size()) {
+                                               FALSE, static_cast<DWORD>(wait_ms));
+        size_t k = 0;
+        if (r == WAIT_TIMEOUT) {
+            // The oldest child ran past its cap: stop it and count it failed.
+            k = oldest;
+            Child& late = children[running[k]];
+            TerminateProcess(late.process, 1);
+            WaitForSingleObject(late.process, static_cast<DWORD>(testwait::kWaitCap.count()));
+            late.timed_out = true;
+        } else if (r < WAIT_OBJECT_0 + handles.size()) {
+            k = r - WAIT_OBJECT_0;
+        } else {
             std::fprintf(stderr, "hydra_uitest: waiting on the test processes failed\n");
             return 1;
         }
-        const size_t k = r - WAIT_OBJECT_0;
         Child& c = children[running[k]];
         GetExitCodeProcess(c.process, &c.exit_code);
+        if (c.timed_out) c.exit_code = 1;
         CloseHandle(c.process);
         c.process = nullptr;
         running.erase(running.begin() + static_cast<std::ptrdiff_t>(k));
@@ -192,8 +222,12 @@ int run_parallel(uitest::Harness& h, const std::vector<std::string>& wanted, int
         std::fputs(text.c_str(), stdout);
         if (c.exit_code != 0) {
             ++failed;
+            if (c.timed_out)
+                std::printf("[FAIL] hydra/%s\n---- log ----\nthe test process ran past %s and "
+                            "was stopped\n---- end ----\n",
+                            c.name.c_str(), testwait::cap_text(testwait::kUitestProcessCap).c_str());
             // A crash prints no result line of its own.
-            if (text.find("[FAIL]") == std::string::npos)
+            else if (text.find("[FAIL]") == std::string::npos)
                 std::printf("[FAIL] hydra/%s\n---- log ----\nthe test process ended with exit "
                             "code 0x%08lX and printed no result\n---- end ----\n",
                             c.name.c_str(), static_cast<unsigned long>(c.exit_code));
@@ -207,9 +241,14 @@ int run_parallel(uitest::Harness& h, const std::vector<std::string>& wanted, int
 
 }  // namespace
 
+// How many test processes run at once when --jobs is not given. The user
+// chose it (CI and test tooling plan, decision 3, 2026-10-10). CMakeLists.txt
+// reads this line to book ctest's slots for hydra_uitest, so keep its form.
+constexpr int kDefaultJobs = 4;
+
 int main() {
     bool list = false;
-    int jobs = 1;
+    int jobs = kDefaultJobs;
     std::vector<std::string> wanted;       // test names, "all", or a script path
     std::vector<std::string> passthrough;  // options each --jobs child gets too
     uitest::Harness h;
@@ -263,7 +302,11 @@ int main() {
         return 0;
     }
 
-    if (jobs > 1) {
+    // One entry that is not "all" is a single test or a script: it runs here.
+    // Anything more goes to fresh processes, so --all means the same in
+    // ctest, CI and by hand.
+    const bool in_process = wanted.size() == 1 && wanted[0] != "all";
+    if (!in_process) {
         const int rc = run_parallel(h, wanted, jobs, passthrough);
         h.shutdown();
         return rc;
