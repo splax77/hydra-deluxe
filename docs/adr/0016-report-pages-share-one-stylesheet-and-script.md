@@ -22,9 +22,9 @@ size a few columns differently, scoped by a class on `.wrap`. The comparison
 pages look records up through one `report::records_by_hash`.
 
 Page bytes are not pinned. A page change is checked in a real browser instead:
-`hydra_tests --no-skip -tc="report pages: write samples*"` writes one sample
-page of each kind, and rendering those in headless Edge before and after the
-change shows whether a reader would see any difference.
+render the pages in headless Edge before and after the change, and see
+whether a reader would see any difference. (A test used to write sample
+pages for this; see the 2026-10-10 note below.)
 
 ## What this costs
 
