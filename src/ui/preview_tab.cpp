@@ -200,8 +200,9 @@ void draw_scrub_marks(const std::vector<double>& marks) {
 float line_height(float size) { return size * 1.25f; }
 
 // The next-activation box's notation line over its other lines' size. The
-// user approved it through the Preview mock on 2026-10-10 (option B: 17 px
-// over a 12 px body, docs/handoffs/2026-10-10-preview-next-act-stars-mock).
+// user approved the ratio through the Preview mock on 2026-10-10 (option B,
+// in docs/handoffs/2026-10-10-preview-next-act-stars-mock), where the mock's
+// own sizes are its source.
 constexpr float kNextActNotationScale = 17.0f / 12.0f;
 
 // Every text overlay box's extents at one scale (finding R7.18). The fit pass
