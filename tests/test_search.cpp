@@ -182,10 +182,6 @@ TEST_CASE("note total: the engine, the Song and the Dynamics tab agree on every 
     MESSAGE("checked " << checked << " chart and 2x Bass pairs");
 }
 
-// The legacy Clone Hero 1.0 fill rule is a whole different spawn deadline, so
-// it reshapes which activations exist at all. That must still produce a normal,
-// complete record -- the score itself is not pinned here (it is a different
-// game's answer, and tests/test_fill_deadline.cpp pins the math instead).
 // A multiplier squeeze depends on the combo alone, and a full-combo path
 // never breaks combo, so the list is one fact about the chart. The graph
 // finds it once; analyze_chart hands that one list to the record.
@@ -224,6 +220,10 @@ TEST_CASE("the graph finds the chart's multiplier squeezes once, in chart order"
     CHECK(with_squeezes > 0);
 }
 
+// The legacy Clone Hero 1.0 fill rule is a whole different spawn deadline, so
+// it reshapes which activations exist at all. That must still produce a normal,
+// complete record -- the score itself is not pinned here (it is a different
+// game's answer, and tests/test_fill_deadline.cpp pins the math instead).
 TEST_CASE("legacy fill deadline analyzes a chart end to end") {
     int analyzed = 0;
 
@@ -948,9 +948,8 @@ struct OverfillCase {
 TEST_CASE("SP cap overfill: where the end lands and which note clamped it") {
     const std::vector<OverfillCase> cases = {
         {"a mid-SP phrase that clamps records the collecting note",
-         "The phrase collected at 3072, mid-SP, wants to push the end out by 2 "
-         "more measures to 4608 + 1536 = ... no -- the pending end simply moves "
-         "to min(prev_end + 2 measures, 3072 + 2*cap measures). prev_end + 2 "
+         "The phrase collected at 3072, mid-SP, moves the pending end to "
+         "min(prev_end + 2 measures, 3072 + 2*cap measures). prev_end + 2 "
          "measures is 5376 + 1536 = 6912; the cap ceiling is 3072 + 4*768 = "
          "6144. The ceiling is smaller, so it wins: the end is pinned to 6144, "
          "and clamp_tick records the note that pinned it, 3072.",
