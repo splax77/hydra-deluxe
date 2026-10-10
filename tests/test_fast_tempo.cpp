@@ -281,7 +281,7 @@ TEST_CASE("fast tempo: a phrase a SqIn spent banks no bar when SP ends before it
 //                     at 16896.
 // Each chart must offer the next phrase both ways (in and out), analyze, and
 // keep every variant priced as it is alone.
-TEST_CASE("fast tempo: an SP end offers the next phrase after a banked or spent one (D34)") {
+TEST_CASE("fast tempo: an SP end offers the next phrase after a banked or spent one") {
     struct Want {
         std::string name;
         int64_t skipped;  // the banked or spent phrase
@@ -328,7 +328,7 @@ TEST_CASE("fast tempo: an SP end offers the next phrase after a banked or spent 
 // 14016 after SP ran out. Before D36 the search squeezed out 9696 (the first
 // in the window), kept 11040's and 14016's extensions, ended at 15648 and
 // stored the end 13440.
-TEST_CASE("fast tempo: a squeeze-out at an SP end gives back only the newest phrase (D36)") {
+TEST_CASE("fast tempo: a squeeze-out at an SP end gives back only the newest phrase") {
     const Song song = fixture("node_before_phrase.chart");
     const app::AnalysisSettings cfg = scores_settings(3);
     HydraRecord rec;
@@ -354,7 +354,7 @@ TEST_CASE("fast tempo: a squeeze-out at an SP end gives back only the newest phr
 // in or out, the phrase is 13248. Before D36 the SP end 14784 offered 11712
 // or 13152 (the first not yet squeezed in), and a folded variant took its
 // leader's choice of the two.
-TEST_CASE("fast tempo: early_sqin_twice offers its window one squeeze, 13248 at 16224 (D36)") {
+TEST_CASE("fast tempo: early_sqin_twice offers its window one squeeze, 13248 at 16224") {
     const Song song = fixture("early_sqin_twice.chart");
     const app::AnalysisSettings cfg = scores_settings(2);
     HydraRecord rec;
@@ -454,7 +454,7 @@ std::string target_text(const std::vector<Path>& kept) {
 // phrase is hit mid-SP. Seed 5's second window starts full, so it gains
 // '0- 0+-' (in place of '0- 0', same 6,750), '0- 0++' (a tied variant at
 // 7,150) and '0- 0-' (6,550). The best, 7,550, is unchanged.
-TEST_CASE("search_target: a path missing a named activation is dropped, the rest kept (D45)") {
+TEST_CASE("search_target: a path missing a named activation is dropped, the rest kept") {
     const FuzzChart fc = fuzz_chart(5);
     const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
     const Song song = load_songbytes_chart(bytes, true, true);
@@ -710,7 +710,7 @@ TEST_CASE("search_target: a full pin no path realizes names its window and why")
 // returns what search_target over the ticks returns (D45's answer above).
 // D45's unrealizable set still fails on 12865, a tick that is no fill node,
 // now found by the binary search over the prefix length.
-TEST_CASE("search_target: activation pins return the tick search's paths and its failing tick (D45)") {
+TEST_CASE("search_target: activation pins return the tick search's paths and its failing tick") {
     const FuzzChart fc = fuzz_chart(5);
     const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
     const Song song = load_songbytes_chart(bytes, true, true);

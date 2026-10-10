@@ -991,7 +991,7 @@ TEST_CASE("a typed squeeze-out on a phrase banked before the activation is refus
 // squeeze. Before the end the engine offers the window's newest phrase
 // (D36), here the one after the banked chord. The replay accepts a typed
 // squeeze-out on it, and warns about it, as the engine would squeeze it.
-TEST_CASE("a typed squeeze-out on the phrase after a banked one is the engine's (D34)") {
+TEST_CASE("a typed squeeze-out on the phrase after a banked one is the engine's") {
     // Phrase chords at 2928 (banked: the activation is on 3000) and 3036,
     // 375 ms and 93.75 ms before D = 3072.
     const Song song = song_with({{0, false}, {768, false}, {2928, true},
@@ -1141,7 +1141,7 @@ TEST_CASE("squeeze_window_phrases: the phrase chords strictly inside the window,
 // end is this SP end, the first phrase after it not squeezed in; else
 // nothing. A step that moved the end from here while the list lacks its
 // phrase is an impossible state, and throws.
-TEST_CASE("offered_phrase: the newest step's phrase early, the first unsqueezed one late (D36)") {
+TEST_CASE("offered_phrase: the newest step's phrase early, the first unsqueezed one late") {
     const std::vector<int64_t> window = {2928, 3036, 3100, 3200};  // the end is 3072
     const auto tick = [](int64_t t) { return t; };
     const auto none = [](int64_t) { return false; };
@@ -1165,7 +1165,8 @@ TEST_CASE("offered_phrase: the newest step's phrase early, the first unsqueezed 
 
 // The replay's form of the rule (core::sqout_chords): a typed window has no
 // history, so either side; a stored window that ended plainly, only late.
-TEST_CASE("sqout_chords: a window's newest phrase at or before D, or the first after D (D36)") {
+// D36.
+TEST_CASE("sqout_chords: a window's newest phrase at or before D, or the first after D") {
     const Song s = song_with({{0, false}, {768, false}, {2928, true}, {3000, false},
                               {3036, true}, {3072, false}, {3100, true}, {3200, true}});
     const Timecode d = s.timecode(3072);
