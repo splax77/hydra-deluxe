@@ -1,5 +1,5 @@
 // One owner per rule, checked where a grep can check it. The rows are data,
-// in tests/single_owner/rules/ (one JSON file per area), and the baselines are
+// in tests/single_owner/rules/ (rule_files below says which files), and the baselines are
 // in tests/single_owner/baseline.json; load_tables below is their one reader.
 // Each row names a question, the one place that answers it, and a pattern for
 // the text that answers it. A matching line anywhere else fails here, unless
@@ -31,8 +31,10 @@
 #include <string>
 #include <vector>
 
+#include "../audio_chart_fixtures.h"  // write_text_file
 #include "../code_lexer.h"
 #include "../source_tree.h"
+#include "../temp_util.h"
 #include "core/strutil.h"
 #include "core/winstr.h"
 #include "json.hpp"
@@ -46,7 +48,7 @@ namespace {
 
 // ---- Reading the rows and the baselines ----
 //
-// Rule files are read in file-name order and rows in file order. A missing
+// Rule files are read in name order (rule_files) and rows in file order. A missing
 // required field, a field the loader does not know, or a value of the wrong
 // type fails with the rules file and the row's question, so a typo cannot
 // drop a field quietly.
@@ -223,24 +225,40 @@ struct RuleTables {
     std::vector<KnownClone> clones;
 };
 
-RuleTables load_tables() {
-    const fs::path root = sourcetree::root();
-    std::vector<fs::path> files;
-    for (const fs::directory_entry& e : fs::directory_iterator(root / fs::u8path(kRulesDir)))
-        if (e.is_regular_file() && e.path().extension() == ".json") files.push_back(e.path());
-    std::sort(files.begin(), files.end(), [](const fs::path& x, const fs::path& y) {
-        return x.filename() < y.filename();
-    });
-    RuleTables t;
-    for (const fs::path& p : files) {
-        const std::string name = "rules/" + p.filename().generic_u8string();
+// The rules files under `dir`, each with the name the scan reports it by, in
+// name order: the area files in `dir` itself, and the files one folder down,
+// in a folder named after an area (ADR 0029).
+std::vector<std::pair<std::string, fs::path>> rule_files(const fs::path& dir) {
+    std::vector<std::pair<std::string, fs::path>> files;
+    for (const fs::directory_entry& e : fs::directory_iterator(dir)) {
+        const std::string name = "rules/" + e.path().filename().generic_u8string();
+        if (e.is_regular_file() && e.path().extension() == ".json") files.push_back({name, e.path()});
+        if (!e.is_directory()) continue;
+        for (const fs::directory_entry& f : fs::directory_iterator(e.path()))
+            if (f.is_regular_file() && f.path().extension() == ".json")
+                files.push_back({name + "/" + f.path().filename().generic_u8string(), f.path()});
+    }
+    std::sort(files.begin(), files.end());
+    return files;
+}
+
+std::vector<OwnerRule> load_rules(const fs::path& dir) {
+    std::vector<OwnerRule> rules;
+    for (const auto& [name, p] : rule_files(dir)) {
         const json doc = read_json_file(p, name);
         check_keys(doc, {"rules"}, name);
         if (!doc.contains("rules") || !doc.at("rules").is_array())
             throw std::runtime_error(name + ": missing field \"rules\"");
         const json& rows = doc.at("rules");
-        for (size_t i = 0; i < rows.size(); ++i) t.rules.push_back(parse_rule(rows[i], name, i));
+        for (size_t i = 0; i < rows.size(); ++i) rules.push_back(parse_rule(rows[i], name, i));
     }
+    return rules;
+}
+
+RuleTables load_tables() {
+    const fs::path root = sourcetree::root();
+    RuleTables t;
+    t.rules = load_rules(root / fs::u8path(kRulesDir));
 
     const std::string name = "baseline.json";
     const json doc = read_json_file(root / fs::u8path(kBaselineFile), name);
@@ -758,6 +776,32 @@ TEST_CASE("single-owner: the owner-gone guard and the loader fail on a made-up r
     no_question.erase("question");
     CHECK_THROWS_WITH(parse_rule(no_question, "rules/made_up.json", 2),
                       "rules/made_up.json: row 3: missing field \"question\"");
+}
+
+TEST_CASE("single-owner: a row in an area's folder is loaded and named by its path") {
+    const std::string dir = testtemp::temp_dir("single_owner_rules");
+    testtemp::remove_dir(dir);
+    fs::create_directories(hydra::os_path(dir + "\\made_up"));
+    const std::string row = R"({"owner": "x in y", "owner_file": "src/core/winstr.cpp",
+        "owner_symbol": "fits_shell", "decision": "D0", "added_by": "rl-glob", "pattern": "x", )";
+    audiochart::write_text_file(dir + "\\made_up.json",
+        R"({"rules": [)" + row + R"("question": "Is this an area row?", "date": "2026-10-10"}]})");
+    audiochart::write_text_file(dir + "\\made_up\\topic.json",
+        R"({"rules": [)" + row + R"("question": "Is this a topic row?", "date": "2026-10-10"}]})");
+    audiochart::write_text_file(dir + "\\made_up\\notes.txt", "not a rules file");
+
+    const std::vector<OwnerRule> rows = load_rules(hydra::os_path(dir));
+    REQUIRE(rows.size() == 2);
+    CHECK(rows[0].question == "Is this an area row?");
+    CHECK(rows[0].rules_file == "rules/made_up.json");
+    CHECK(rows[1].question == "Is this a topic row?");
+    CHECK(rows[1].rules_file == "rules/made_up/topic.json");
+
+    audiochart::write_text_file(dir + "\\made_up\\topic.json",
+        R"({"rules": [)" + row + R"("question": "Is this a topic row?"}]})");
+    CHECK_THROWS_WITH(load_rules(hydra::os_path(dir)),
+                      "rules/made_up/topic.json: \"Is this a topic row?\": missing field \"date\"");
+    testtemp::remove_dir(dir);
 }
 
 TEST_CASE("single-owner: no baseline entry is past its remove_by date") {

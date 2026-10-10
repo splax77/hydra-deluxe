@@ -525,105 +525,15 @@ foreach(tool IN ITEMS hydra_batch hydra_fillcompare)
 endforeach()
 
 # ---- hydra_tests: the doctest harness ------------------------------------
+# The glob finds the test files, so a new one needs no edit here; it is the
+# fuzz targets' form (below). The sources it does not match are listed by hand.
+file(GLOB hydra_test_sources CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/tests/test_*.cpp)
 add_executable(hydra_tests
-    tests/test_main.cpp
-    tests/test_strutil.cpp
-    tests/test_library_query.cpp
-    tests/test_helpers.cpp
-    tests/test_timing.cpp
-    tests/test_chord_code.cpp
-    tests/test_winstr.cpp
-    tests/test_midi.cpp
-    tests/test_model.cpp
-    tests/test_squeeze_rating.cpp
-    tests/test_stars.cpp
-    tests/test_theme.cpp
-    tests/test_batch_text.cpp
-    tests/test_display_format.cpp
-    tests/test_activation_rows.cpp
-    tests/test_path_list.cpp
-    tests/test_preview_boxes.cpp
-    tests/test_preview_scene.cpp
-    tests/test_sp_meter_curve.cpp
-    tests/test_preview_source.cpp
-    tests/test_audio_decode.cpp
-    tests/test_stem_reader.cpp
-    tests/test_audio_mixer.cpp
-    tests/test_stream_mix.cpp
-    tests/test_song_audio.cpp
-    tests/test_audio_player.cpp
-    tests/test_audio_device.cpp
-    tests/test_obj_loader.cpp
-    tests/test_preview_config.cpp
-    tests/test_track_state.cpp
-    tests/test_highway_draw.cpp
-    tests/test_overlay_layout.cpp
-    tests/test_preview_golden.cpp
-    tests/test_preview_clock.cpp
-    tests/test_preview_transport.cpp
-    tests/test_image_decode.cpp
-    tests/test_icons.cpp
-    tests/test_preview_renderer.cpp
-    tests/test_dynamics_breakdown.cpp
-    tests/test_song_parse.cpp
-    tests/test_song_input.cpp
-    tests/test_sng.cpp
-    tests/test_srb.cpp
-    tests/test_fuzz_regressions.cpp
-    tests/test_engine_sweeps.cpp
-    tests/test_fills_and_skips.cpp
-    tests/test_sp_end.cpp
-    tests/test_tied_variants.cpp
-    tests/test_fast_tempo.cpp
-    tests/test_search_target.cpp
-    tests/test_replay.cpp
-    tests/test_replay_windows.cpp
-    tests/test_store_results.cpp
-    tests/test_store_open.cpp
-    tests/test_store_library.cpp
-    tests/test_upgrade_files.cpp
-    tests/test_analysis.cpp
-    tests/test_report_rows.cpp
-    tests/test_report_page.cpp
+    ${hydra_test_sources}
     tests/report_samples.cpp
-    tests/test_report_view.cpp
-    tests/test_config.cpp
-    tests/test_rules.cpp
-    tests/test_dm_report.cpp
-    tests/test_user_messages.cpp
-    tests/test_library_jobs.cpp
-    tests/test_fill_deadline.cpp
-    tests/test_fill_report.cpp
-    tests/test_app_click.cpp
-    tests/test_app_settings.cpp
-    tests/test_app_reports.cpp
-    tests/test_app_library.cpp
-    tests/test_song_panel_state.cpp
-    tests/test_library_model.cpp
-    tests/test_app_shell.cpp
-    tests/test_column_widths.cpp
-    tests/test_label_layout.cpp
-    tests/test_activation_row_layout.cpp
-    tests/test_preview_controller.cpp
-    tests/test_preview_load_progress.cpp
-    tests/test_song_length.cpp
-    tests/test_utf8_paths.cpp
-    tests/test_long_paths.cpp
     tests/single_owner/scan.cpp
     tests/single_owner/clones.cpp
     tests/single_owner/special.cpp
-    tests/test_docs_match_code.cpp
-    tests/test_difficulty_table.cpp
-    tests/test_disco_flip.cpp
-    tests/test_kick2x.cpp
-    tests/test_phrase_end.cpp
-    tests/test_fill_landing.cpp
-    tests/test_dynamics_tag.cpp
-    tests/test_dm_other_speed.cpp
-    tests/test_sp_end_clamp.cpp
-    tests/test_perf_digest.cpp
-    tests/test_note_shuffle.cpp
-    tests/test_wait_util.cpp
 )
 # hydra_dm: test_dm_report exercises the leaderboards join and JSON parsers.
 # hydra_audio: test_audio_decode exercises the stem decoders and mixer.
@@ -753,9 +663,9 @@ target_compile_definitions(hydra_replay PRIVATE
 )
 
 # ---- CLI end-to-end tests ------------------------------------------------
-# tests/test_cli.cpp runs the two console tools as real processes, so
-# building the tests builds the tools first and tells the tests where they are.
-target_sources(hydra_tests PRIVATE tests/test_cli.cpp)
+# tests/test_cli.cpp (one of the globbed sources above) runs the two console
+# tools as real processes, so building the tests builds the tools first and
+# tells the tests where they are.
 add_dependencies(hydra_tests hydra_batch hydra_fillcompare)
 target_compile_definitions(hydra_tests PRIVATE
     HYDRA_BATCH_EXE="$<TARGET_FILE:hydra_batch>"

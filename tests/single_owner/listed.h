@@ -21,7 +21,7 @@ struct ListedLine {
     std::string file;       // repo-relative, forward slashes
     std::string line_text;  // trimmed
     std::string stale;      // the message when no source line uses it
-    std::string rules_file; // the row's "rules/<area>.json", or empty for a baseline entry
+    std::string rules_file; // the row's rules file (named by rule_files in scan.cpp), or empty for a baseline entry
 };
 
 // The end of every failure the row scan gives about one row, so the fixer
