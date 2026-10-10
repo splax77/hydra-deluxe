@@ -355,6 +355,7 @@ target_include_directories(hydra_dm PRIVATE third_party/json)
 add_library(hydra_ui STATIC
     src/ui/app_shell.cpp
     src/ui/app_state.cpp
+    src/ui/column_widths.cpp
     src/ui/details_panel.cpp
     src/ui/dm_jobs.cpp
     src/ui/dynamics_tab.cpp
@@ -515,6 +516,7 @@ add_executable(hydra_tests
     tests/test_song_panel_state.cpp
     tests/test_library_model.cpp
     tests/test_app_shell.cpp
+    tests/test_column_widths.cpp
     tests/test_label_layout.cpp
     tests/test_activation_row_layout.cpp
     tests/test_preview_controller.cpp
