@@ -572,6 +572,7 @@ add_executable(hydra_tests
     tests/test_app_click.cpp
     tests/test_app_settings.cpp
     tests/test_app_reports.cpp
+    tests/test_app_library.cpp
     tests/test_song_panel_state.cpp
     tests/test_library_model.cpp
     tests/test_app_shell.cpp
