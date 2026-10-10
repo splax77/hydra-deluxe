@@ -44,7 +44,7 @@
       ],
       "function_file": "src/app/preview_view.cpp",
       "function": "SpMeterCurve build_sp_meter_curve(",
-      "note": "Was its own test in test_preview_view.cpp (findings 147 and 159): the path gauge's body never touches the chart's phrases, the collected list, the bank count, the cap rule or the squeeze-in rule (that one lives in refill_tick). Scoped to that one function. Decided by: audit findings 147 and 159; step-1 derive-once review of fb1189b, finding 5 (2026-10-04)"
+      "note": "Was its own Preview test, in the file now split into test_sp_meter_curve.cpp and its siblings (findings 147 and 159): the path gauge's body never touches the chart's phrases, the collected list, the bank count, the cap rule or the squeeze-in rule (that one lives in refill_tick). Scoped to that one function. Decided by: audit findings 147 and 159; step-1 derive-once review of fb1189b, finding 5 (2026-10-04)"
     },
     {
       "question": "Which fill rule does a command-line run use?",
