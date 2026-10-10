@@ -2500,6 +2500,21 @@ const std::vector<OwnerRule>& rules() {
          {"s->init_converter(sc.config);"},
          {{"src/audio/mixer.cpp", "c.config = ma_data_converter_config_init(",
            "stem_converter_config, the owner"}}},
+        // Only a seek that assigns the clamp back to `frame` counts. A stream's
+        // own position (pos_ = std::clamp(frame, ...) in stream_mix.cpp and
+        // player.cpp) has no end flag to set and answers a different question.
+        {"Where does a stem reader's seek land when it reaches the end of the stem?",
+         "seek_clamp_or_end in src/audio/stem_reader.h",
+         R"(\bframe = std::clamp<int64_t>\(frame,)",
+         "",
+         {},
+         {},
+         "derive-once review of so-t5a, finding 1 (2026-10-10); D107",
+         {"frame = std::clamp<int64_t>(frame, 0, length_);"},
+         {"if (seek_clamp_or_end(frame, length_, pos_, at_end_)) return;",
+          "pos_ = std::clamp<int64_t>(frame, 0, length_);"},
+         {{"src/audio/stem_reader.h", "frame = std::clamp<int64_t>(frame, 0, length);",
+           "seek_clamp_or_end, the owner"}}},
         {"Which test helper reads an audio fixture?",
          "fixture_path and read_fixture in tests/audio_util.h",
          // No closing quote after /audio/, so a build that names the file
@@ -6494,21 +6509,9 @@ struct KnownClone {
 // later fix; removing one means removing its entry here.
 const std::vector<KnownClone>& known_clones() {
     static const std::vector<KnownClone> k = {
-        {"src/audio/ma_reader.cpp", "src/audio/vorbis_reader.cpp", 9, R"x(pos_ += done;)x"},
         {"tests/test_app_state.cpp", "tests/test_song_panel_state.cpp", 11, R"x(char hash[32];)x"},
-        {"tests/test_highway_draw.cpp", "tests/test_track_state.cpp", 9, R"x(SongTiming timing(480, {{0, 1920}}, {{0, 300.0}});)x"},
-        {"tests/test_highway_draw.cpp", "tests/test_track_state.cpp", 8, R"x(using namespace hydra;)x"},
-        {"tests/test_highway_draw.cpp", "tests/test_track_state.cpp", 10, R"x(return s;)x"},
-        {"tests/test_path_view.cpp", "tests/test_path_view.cpp", 12, R"x(HydraRecord rec;)x"},
-        {"tests/test_path_view.cpp", "tests/test_preview_view.cpp", 8, R"x(const AnalysisResult& analyzed() {)x"},
-        {"tests/test_preview_controller.cpp", "tests/test_preview_controller.cpp", 11, R"x(using namespace hydra;)x"},
-        {"tests/test_replay.cpp", "tests/test_replay.cpp", 10, R"x(int charts = 0, paths = 0, mismatches = 0;)x"},
-        {"tests/test_replay.cpp", "tests/test_replay.cpp", 10, R"x(Song song(192);)x"},
-        {"tests/test_search.cpp", "tests/test_search.cpp", 17, R"x(for (const std::string& path : corpus::chart_paths()) {)x"},
         {"tests/test_search.cpp", "tests/test_search.cpp", 10, R"x(Song song = build_tail_song({{0, true, false},)x"},
         {"tests/test_search.cpp", "tests/test_search.cpp", 9, R"x({768, true, false},)x"},
-        {"tests/test_store.cpp", "tests/test_store.cpp", 8, R"x(for (const std::string& path : corpus::chart_paths()) {)x"},
-        {"tests/ui/uitest_batch_reports.cpp", "tests/ui/uitest_batch_reports.cpp", 9, R"x(Harness& h = harness(ctx);)x"},
     };
     return k;
 }

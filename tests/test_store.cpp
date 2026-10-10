@@ -30,6 +30,7 @@
 #include <utility>
 #include <vector>
 
+#include "app/analysis.h"
 #include "app/user_messages.h"
 #include "core/error_kind.h"
 #include "core/model.h"
@@ -144,30 +145,19 @@ TEST_CASE("a saved result reads back its best path and summary across the corpus
 }
 
 TEST_CASE("RecordStore maintenance: has_record, list_records, counts") {
-    std::optional<HydraRecord> record;
-    for (const std::string& path : corpus::chart_paths()) {
-        Song s = load_songpath(path, true, true);
-        if (s.is_empty()) continue;
-        try {
-            SearchSettings settings;
-            settings.sp_cap = 4;
-            settings.depth_mode = DepthMode::Scores;
-            settings.depth_value = 10;
-            settings.ms_filter = std::nullopt;
-            record = analyze_chart(s, settings);
-        } catch (const ChartFileError&) {
-            continue;
-        }
-        break;
-    }
-    REQUIRE(record.has_value());
+    app::AnalysisSettings settings;
+    settings.sp_cap = 4;
+    settings.depth_mode = DepthMode::Scores;
+    settings.depth_value = 10;
+    settings.ms_filter = std::nullopt;
+    const HydraRecord record = corpus::first_analyzed_with_paths(settings).record;
 
     const CapQuery at4 = CapQuery::at(4);
     RecordStore store(":memory:");
     CHECK_FALSE(store.has_record(RecordKey{"h1", "Expert Pro Drums, 2x Bass", at4}));
 
     store.rebuild_chart_library({chart_entry("h1", "Song A")});
-    store.add_record(RecordKey{"h1", "Expert Pro Drums, 2x Bass", at4}, *record);
+    store.add_record(RecordKey{"h1", "Expert Pro Drums, 2x Bass", at4}, record);
     CHECK(store.has_record(RecordKey{"h1", "Expert Pro Drums, 2x Bass", at4}));
     CHECK_FALSE(store.has_record(RecordKey{"h1", "Expert Pro Drums, 2x Bass", CapQuery::at(8)}));
 
@@ -175,7 +165,7 @@ TEST_CASE("RecordStore maintenance: has_record, list_records, counts") {
         store.list_records(std::nullopt, at4, Lens{}, SortColumn::Score, true);
     REQUIRE(listing.size() == 1);
     CHECK(listing[0].ref_name == "Song A");
-    CHECK(listing[0].bestpath == record->best_path().pathstring());
+    CHECK(listing[0].bestpath == record.best_path().pathstring());
 
     auto [ncharts, nrecords] = store.counts();
     CHECK(ncharts == 1);
@@ -183,10 +173,28 @@ TEST_CASE("RecordStore maintenance: has_record, list_records, counts") {
 
     // A row stamped with a different version is stale for this store: it
     // doesn't count as "already analyzed".
-    store.add_row(test::old_build_row(RecordKey{"h2", "Expert Pro Drums, 2x Bass", at4}, *record));
+    store.add_row(test::old_build_row(RecordKey{"h2", "Expert Pro Drums, 2x Bass", at4}, record));
     CHECK(store.counts().second == 2);
     CHECK_FALSE(store.has_record(RecordKey{"h2", "Expert Pro Drums, 2x Bass", at4}));
 }
+
+namespace {
+
+// One analyzed corpus chart, for the stamp and cap-identity tests below: the
+// first chart with paths (corpus_util.h), its record at 4 bars.
+const app::AnalysisResult& fixture() {
+    static const app::AnalysisResult f = [] {
+        app::AnalysisSettings settings;
+        settings.sp_cap = 4;
+        settings.depth_mode = DepthMode::Scores;
+        settings.depth_value = 0;
+        settings.ms_filter = std::nullopt;
+        return corpus::first_analyzed_with_paths(settings);
+    }();
+    return f;
+}
+
+}  // namespace
 
 TEST_CASE("RecordStore results stamp: every accepted stamp reads Ready, others Stale") {
     // The stamp is not the app version (ADR 0018). Only "2.4.0" reads
@@ -204,21 +212,7 @@ TEST_CASE("RecordStore results stamp: every accepted stamp reads Ready, others S
     CHECK(current_record_version() == std::string(kResultsStamp.written));
 
     const CapQuery at4 = CapQuery::at(4);
-    HydraRecord record;
-    for (const std::string& path : corpus::chart_paths()) {
-        Song s = load_songpath(path, true, true);
-        if (s.is_empty()) continue;
-        try {
-            SearchSettings settings;
-            settings.sp_cap = 4;
-            settings.depth_mode = DepthMode::Scores;
-            settings.depth_value = 0;
-            record = analyze_chart(s, settings);
-        } catch (const ChartFileError&) {
-            continue;
-        }
-        break;
-    }
+    const HydraRecord& record = fixture().record;
     REQUIRE_FALSE(record.paths.empty());
 
     RecordStore store(":memory:");
@@ -244,34 +238,6 @@ TEST_CASE("RecordStore results stamp: every accepted stamp reads Ready, others S
 }
 
 namespace {
-
-// One analyzed corpus chart, for the cap-identity tests below.
-struct Fixture {
-    Song song;
-    HydraRecord record;  // at 4 bars
-};
-const Fixture& fixture() {
-    static Fixture f = [] {
-        for (const std::string& path : corpus::chart_paths()) {
-            Song s = load_songpath(path, true, true);
-            if (s.is_empty()) continue;
-            try {
-                SearchSettings settings;
-                settings.sp_cap = 4;
-                settings.depth_mode = DepthMode::Scores;
-                settings.depth_value = 0;
-                settings.ms_filter = std::nullopt;
-                HydraRecord r = analyze_chart(s, settings);
-                if (r.paths.empty()) continue;
-                return Fixture{std::move(s), std::move(r)};
-            } catch (const ChartFileError&) {
-                continue;
-            }
-        }
-        throw std::runtime_error("no corpus chart analyzed");
-    }();
-    return f;
-}
 
 // The same record relabeled as if it had run at another cap. The paths are
 // the 4-bar paths, which is fine: these tests check which row a lookup picks,

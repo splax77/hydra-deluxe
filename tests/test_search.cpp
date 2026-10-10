@@ -255,14 +255,20 @@ TEST_CASE("legacy fill deadline analyzes a chart end to end") {
     CHECK(analyzed > 0);
 }
 
-// The engine stamps each activation with its frontend transfer scales at
-// copy-out, through frontend_transfer_scales, from the SP-end steps it just
-// stored. This pins the stored values against a live recompute from those
-// steps across the corpus -- and with them the ratios the squeeze detail
-// lines and eff. figures show.
-TEST_CASE("stored transfer scales match the display-layer recomputation") {
-    int charts = 0, acts = 0, nonflat = 0, mismatches = 0;
+namespace {
 
+// What a walk over every activation of every corpus chart found.
+struct CorpusActivationRun {
+    int charts = 0, mismatches = 0;
+};
+
+// Walks every activation of every corpus chart, analyzed with the settings
+// below. `check` is called with the chart's song and one activation; it
+// returns "" when the activation passes, or what is wrong. A chart stops at
+// its first bad activation, and the first eight bad charts fail by name.
+template <class Check>
+CorpusActivationRun check_every_corpus_activation(Check check) {
+    CorpusActivationRun run;
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, true, true);
         if (song.is_empty()) continue;
@@ -278,89 +284,91 @@ TEST_CASE("stored transfer scales match the display-layer recomputation") {
         } catch (const ChartFileError&) {
             continue;
         }
-        ++charts;
+        ++run.charts;
 
         std::string d;
         for (const Path* p : record->all_paths()) {
             for (const Activation& act : p->all_activations()) {
-                ++acts;
-                if (const std::string why = corpus::unknown_scale_reason(act); !why.empty()) {
-                    d = why;
-                    break;
-                }
-                // Non-flat counts the SP end's scale and every SqIn's scale.
-                // unknown_scale_reason above proved each one known.
-                auto flat = [](const TransferScale& s) {
-                    return !is_scaled(s.early) && !is_scaled(s.late);
-                };
-                bool any_scaled = !flat(*act.transfer_post);
-                for (const SPSqueeze& sq : act.sqinouts)
-                    if (sq.kind == SqueezeKind::SqIn && !flat(*sq.transfer)) any_scaled = true;
-                if (any_scaled) ++nonflat;
-
-                auto scales = frontend_transfer_scales(act, song.timing());
-                if (!scales) {
-                    d = "display recomputation returned no scales";
-                    break;
-                }
-                auto differs = [](const TransferScale& a, const TransferScale& b) {
-                    return std::abs(a.early - b.early) > 1e-9 ||
-                           std::abs(a.late - b.late) > 1e-9;
-                };
-                if (differs(scales->post, *act.transfer_post)) {
-                    d = "stored scales diverge from recomputation";
-                    break;
-                }
-                // A non-positive scale is caught by unknown_scale_reason, above.
-                // Each SqIn's stored scale, in SqIn order as
-                // stored_transfer_scales pairs them, against the recomputed one.
-                const std::optional<ActTransferScales> stored = stored_transfer_scales(act);
-                if (!stored || !std::equal(stored->sqins.begin(), stored->sqins.end(),
-                                           scales->sqins.begin(), scales->sqins.end(),
-                                           [&](const TransferScale& a, const TransferScale& b) {
-                                               return !differs(a, b);
-                                           })) {
-                    d = "a SqIn's stored scale diverges from recomputation";
-                    break;
-                }
-
-                // Copy-out stamps deact_tick on every activation it produces
-                // (blob v4), so a record fresh off the engine should never be
-                // missing it.
-                if (!act.deact_tick().has_value()) {
-                    d = "activation missing deact_tick";
-                    break;
-                }
-
-                // A backend row's offset_ms is the gap from the deactivation
-                // node to that row, in ms. Walking a row's offset back to a
-                // tick has to land on the same node copy-out stamped -- if it
-                // didn't, the backend rows and deact_tick would be describing
-                // two different SP ends.
-                for (const BackendSqueeze& b : act.backends) {
-                    if (!b.offset_ms.has_value()) continue;
-                    const int64_t implied =
-                        *b.offset_ms == 0.0
-                            ? b.timecode.ticks()
-                            : std::llround(song.timing().ms_index().tick_at_ms(
-                                  b.timecode.ms() - *b.offset_ms));
-                    if (implied != *act.deact_tick()) {
-                        d = "backend-implied deact tick disagrees with the stored one";
-                        break;
-                    }
-                }
+                d = check(song, act);
                 if (!d.empty()) break;
             }
             if (!d.empty()) break;
         }
-        if (!d.empty() && ++mismatches <= 8)
+        if (!d.empty() && ++run.mismatches <= 8)
             CHECK_MESSAGE(false, path << " " << d);
     }
+    return run;
+}
 
-    CHECK(mismatches == 0);
-    REQUIRE(charts > 0);
+}  // namespace
+
+// The engine stamps each activation with its frontend transfer scales at
+// copy-out, through frontend_transfer_scales, from the SP-end steps it just
+// stored. This pins the stored values against a live recompute from those
+// steps across the corpus -- and with them the ratios the squeeze detail
+// lines and eff. figures show.
+TEST_CASE("stored transfer scales match the display-layer recomputation") {
+    int acts = 0, nonflat = 0;
+
+    const CorpusActivationRun run = check_every_corpus_activation(
+        [&](const Song& song, const Activation& act) -> std::string {
+            ++acts;
+            if (const std::string why = corpus::unknown_scale_reason(act); !why.empty())
+                return why;
+            // Non-flat counts the SP end's scale and every SqIn's scale.
+            // unknown_scale_reason above proved each one known.
+            auto flat = [](const TransferScale& s) {
+                return !is_scaled(s.early) && !is_scaled(s.late);
+            };
+            bool any_scaled = !flat(*act.transfer_post);
+            for (const SPSqueeze& sq : act.sqinouts)
+                if (sq.kind == SqueezeKind::SqIn && !flat(*sq.transfer)) any_scaled = true;
+            if (any_scaled) ++nonflat;
+
+            auto scales = frontend_transfer_scales(act, song.timing());
+            if (!scales) return "display recomputation returned no scales";
+            auto differs = [](const TransferScale& a, const TransferScale& b) {
+                return std::abs(a.early - b.early) > 1e-9 || std::abs(a.late - b.late) > 1e-9;
+            };
+            if (differs(scales->post, *act.transfer_post))
+                return "stored scales diverge from recomputation";
+            // A non-positive scale is caught by unknown_scale_reason, above.
+            // Each SqIn's stored scale, in SqIn order as
+            // stored_transfer_scales pairs them, against the recomputed one.
+            const std::optional<ActTransferScales> stored = stored_transfer_scales(act);
+            if (!stored || !std::equal(stored->sqins.begin(), stored->sqins.end(),
+                                       scales->sqins.begin(), scales->sqins.end(),
+                                       [&](const TransferScale& a, const TransferScale& b) {
+                                           return !differs(a, b);
+                                       }))
+                return "a SqIn's stored scale diverges from recomputation";
+
+            // Copy-out stamps deact_tick on every activation it produces
+            // (blob v4), so a record fresh off the engine should never be
+            // missing it.
+            if (!act.deact_tick().has_value()) return "activation missing deact_tick";
+
+            // A backend row's offset_ms is the gap from the deactivation
+            // node to that row, in ms. Walking a row's offset back to a
+            // tick has to land on the same node copy-out stamped -- if it
+            // didn't, the backend rows and deact_tick would be describing
+            // two different SP ends.
+            for (const BackendSqueeze& b : act.backends) {
+                if (!b.offset_ms.has_value()) continue;
+                const int64_t implied =
+                    *b.offset_ms == 0.0 ? b.timecode.ticks()
+                                        : std::llround(song.timing().ms_index().tick_at_ms(
+                                              b.timecode.ms() - *b.offset_ms));
+                if (implied != *act.deact_tick())
+                    return "backend-implied deact tick disagrees with the stored one";
+            }
+            return "";
+        });
+
+    CHECK(run.mismatches == 0);
+    REQUIRE(run.charts > 0);
     REQUIRE(acts > 0);
-    MESSAGE("checked " << acts << " activations on " << charts << " charts ("
+    MESSAGE("checked " << acts << " activations on " << run.charts << " charts ("
                        << nonflat << " with a non-flat scale)");
 }
 
@@ -370,63 +378,33 @@ TEST_CASE("stored transfer scales match the display-layer recomputation") {
 // backends for every path that deactivates there, squeezed out or not, so the
 // record build has to trim per activation; this pins that it does.
 TEST_CASE("no activation keeps backends past its squeezed-out note") {
-    int charts = 0, sqout_acts = 0, mismatches = 0;
+    int sqout_acts = 0;
 
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true);
-        if (song.is_empty()) continue;
+    const CorpusActivationRun run = check_every_corpus_activation(
+        [&](const Song&, const Activation& act) -> std::string {
+            bool has_sqout = false;
+            for (const SPSqueeze& sq : act.sqinouts)
+                if (sq.kind == SqueezeKind::SqOut) has_sqout = true;
+            if (!has_sqout) return "";
+            ++sqout_acts;
 
-        const HydraRecord* record = nullptr;
-        try {
-            SearchSettings cfg;
-            cfg.sp_cap = 4;
-            cfg.depth_mode = DepthMode::Scores;
-            cfg.depth_value = 4;
-            cfg.ms_filter = std::nullopt;
-            record = &corpus::analyzed(path, cfg);
-        } catch (const ChartFileError&) {
-            continue;
-        }
-        ++charts;
-
-        std::string d;
-        for (const Path* p : record->all_paths()) {
-            for (const Activation& act : p->all_activations()) {
-                bool has_sqout = false;
-                for (const SPSqueeze& sq : act.sqinouts)
-                    if (sq.kind == SqueezeKind::SqOut) has_sqout = true;
-                if (!has_sqout) continue;
-                ++sqout_acts;
-
-                // The engine stamps the squeezed-out chord's tick (record
-                // v6); everything is compared by tick, never by ms.
-                if (!act.sqout_tick) {
-                    d = "squeeze-out activation missing sqout_tick";
-                    break;
-                }
-                int on_sqout = 0;
-                for (const BackendSqueeze& b : act.backends) {
-                    const core::SqOutPosition pos =
-                        core::sqout_position(b.timecode.ticks(), act.sqout_tick);
-                    if (pos == core::SqOutPosition::After) {
-                        d = "backend past the sqout note";
-                        break;
-                    }
-                    if (pos == core::SqOutPosition::Exact) ++on_sqout;
-                }
-                if (d.empty() && on_sqout != 1)
-                    d = "not exactly one backend row on the sqout tick";
-                if (!d.empty()) break;
+            // The engine stamps the squeezed-out chord's tick (record
+            // v6); everything is compared by tick, never by ms.
+            if (!act.sqout_tick) return "squeeze-out activation missing sqout_tick";
+            int on_sqout = 0;
+            for (const BackendSqueeze& b : act.backends) {
+                const core::SqOutPosition pos =
+                    core::sqout_position(b.timecode.ticks(), act.sqout_tick);
+                if (pos == core::SqOutPosition::After) return "backend past the sqout note";
+                if (pos == core::SqOutPosition::Exact) ++on_sqout;
             }
-            if (!d.empty()) break;
-        }
-        if (!d.empty() && ++mismatches <= 8)
-            CHECK_MESSAGE(false, path << " " << d);
-    }
+            if (on_sqout != 1) return "not exactly one backend row on the sqout tick";
+            return "";
+        });
 
-    CHECK(mismatches == 0);
-    REQUIRE(charts > 0);
-    MESSAGE("checked " << sqout_acts << " squeeze-out activations on " << charts
+    CHECK(run.mismatches == 0);
+    REQUIRE(run.charts > 0);
+    MESSAGE("checked " << sqout_acts << " squeeze-out activations on " << run.charts
                        << " charts");
 }
 
