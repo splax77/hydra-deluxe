@@ -407,29 +407,27 @@ std::atomic<int> g_gate_allowed{0};
 std::atomic<int> g_gate_started{0};
 }  // namespace
 
-BatchGate::BatchGate(int workers) {
+BatchGate::BatchGate(int workers)
+    : seam_(hydra::ui::set_app_batch_analyzer_for_test,
+            [](const std::string& path, const hydra::app::AnalysisSettings& settings,
+               const std::function<void(float)>& on_progress) {
+                const int n = ++g_gate_started;
+                testwait::wait_until(
+                    [&] {
+                        if (n <= g_gate_allowed.load()) return true;
+                        on_progress(0.0f);  // throws once Stop is pressed
+                        return false;
+                    },
+                    "the test to let chart " + std::to_string(n) + " through the batch gate");
+                return hydra::app::analyze_chart_file(path, settings, on_progress);
+            },
+            workers) {
     g_gate_allowed = 0;
     g_gate_started = 0;
-    hydra::ui::set_app_batch_analyzer_for_test(
-        [](const std::string& path, const hydra::app::AnalysisSettings& settings,
-           const std::function<void(float)>& on_progress) {
-            const int n = ++g_gate_started;
-            testwait::wait_until(
-                [&] {
-                    if (n <= g_gate_allowed.load()) return true;
-                    on_progress(0.0f);  // throws once Stop is pressed
-                    return false;
-                },
-                "the test to let chart " + std::to_string(n) + " through the batch gate");
-            return hydra::app::analyze_chart_file(path, settings, on_progress);
-        },
-        workers);
 }
 
-BatchGate::~BatchGate() {
-    g_gate_allowed = INT_MAX;
-    hydra::ui::set_app_batch_analyzer_for_test(nullptr, 1);
-}
+// The gate opens here; seam_ removes the seam after.
+BatchGate::~BatchGate() { g_gate_allowed = INT_MAX; }
 
 void BatchGate::allow(int charts) { g_gate_allowed = charts; }
 
@@ -442,28 +440,26 @@ std::atomic<bool> g_view_gate_open{true};
 std::atomic<int> g_view_gate_started{0};
 }  // namespace
 
-ViewGate::ViewGate() {
+ViewGate::ViewGate()
+    : seam_(hydra::ui::set_view_analyzer_for_test,
+            [](const std::string& path, const hydra::app::AnalysisSettings& settings,
+               const std::function<void(float)>& on_progress) {
+                ++g_view_gate_started;
+                testwait::wait_until(
+                    [&] {
+                        if (g_view_gate_open.load()) return true;
+                        on_progress(0.0f);  // throws once Cancel or a setting change stops it
+                        return false;
+                    },
+                    "the test to open the click's gate");
+                return hydra::app::analyze_chart_file(path, settings, on_progress);
+            }) {
     g_view_gate_open = false;
     g_view_gate_started = 0;
-    hydra::ui::set_view_analyzer_for_test(
-        [](const std::string& path, const hydra::app::AnalysisSettings& settings,
-           const std::function<void(float)>& on_progress) {
-            ++g_view_gate_started;
-            testwait::wait_until(
-                [&] {
-                    if (g_view_gate_open.load()) return true;
-                    on_progress(0.0f);  // throws once Cancel or a setting change stops it
-                    return false;
-                },
-                "the test to open the click's gate");
-            return hydra::app::analyze_chart_file(path, settings, on_progress);
-        });
 }
 
-ViewGate::~ViewGate() {
-    g_view_gate_open = true;
-    hydra::ui::set_view_analyzer_for_test(nullptr);
-}
+// The gate opens here; seam_ removes the seam after.
+ViewGate::~ViewGate() { g_view_gate_open = true; }
 
 void ViewGate::open() { g_view_gate_open = true; }
 
@@ -476,24 +472,23 @@ std::atomic<bool> g_open_gate_open{true};
 std::atomic<int> g_open_gate_started{0};
 }  // namespace
 
-OpenGate::OpenGate() {
+OpenGate::OpenGate()
+    : seam_(hydra::ui::set_store_open_gate_for_test,
+            [](const hydra::ui::StoreOpenProgress& progress,
+               const std::function<bool()>& cancelled) {
+                // Hold at the copy, where the upgrade's screen has all its words.
+                if (progress.step != hydra::ui::StoreOpenProgress::Step::Copying) return;
+                if (g_open_gate_open.load()) return;
+                ++g_open_gate_started;
+                testwait::wait_until([&] { return g_open_gate_open.load() || cancelled(); },
+                                     "the test to open the startup open's gate");
+            }) {
     g_open_gate_open = false;
     g_open_gate_started = 0;
-    hydra::ui::set_store_open_gate_for_test(
-        [](const hydra::ui::StoreOpenProgress& progress, const std::function<bool()>& cancelled) {
-            // Hold at the copy, where the upgrade's screen has all its words.
-            if (progress.step != hydra::ui::StoreOpenProgress::Step::Copying) return;
-            if (g_open_gate_open.load()) return;
-            ++g_open_gate_started;
-            testwait::wait_until([&] { return g_open_gate_open.load() || cancelled(); },
-                                 "the test to open the startup open's gate");
-        });
 }
 
-OpenGate::~OpenGate() {
-    g_open_gate_open = true;
-    hydra::ui::set_store_open_gate_for_test(nullptr);
-}
+// The gate opens here; seam_ removes the seam after.
+OpenGate::~OpenGate() { g_open_gate_open = true; }
 
 void OpenGate::open() { g_open_gate_open = true; }
 

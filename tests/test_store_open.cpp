@@ -35,6 +35,7 @@
 #include "library_fixtures.h"  // library_row
 #include "old_layout_fixture.h"  // detail_layout_sql and the old layout's counts
 #include "record_fixtures.h"
+#include "scoped_hook.h"
 #include "store/record_store.h"
 #include "store/stored_versions.h"
 #include "store/upgrade_files.h"
@@ -329,9 +330,10 @@ TEST_CASE("a fresh file left by an earlier run is removed and the upgrade runs")
 TEST_CASE("a run stopped between the two renames opens as the upgraded file") {
     const std::string path = testtemp::temp_path("upgrade_between_renames", ".db");
     seed_old_layout(path);
-    stop_copy_upgrade_after_step_aside_for_test(true);
-    CHECK_THROWS(RecordStore(path));
-    stop_copy_upgrade_after_step_aside_for_test(false);
+    {
+        const ScopedHook stop(stop_copy_upgrade_after_step_aside_for_test, true);
+        CHECK_THROWS(RecordStore(path));
+    }
     // The state a kill there leaves: the original stepped aside, the fresh
     // file complete, nothing under the database's name.
     REQUIRE_FALSE(file_exists_utf8(path));

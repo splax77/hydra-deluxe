@@ -20,6 +20,7 @@
 #include <dxgi.h>
 #include <wrl/client.h>
 
+#include "../scoped_hook.h"
 #include "imgui_te_context.h"
 #include "imgui_te_engine.h"
 #include "ui/app_shell.h"
@@ -150,6 +151,9 @@ public:
     void allow(int charts);
     // Charts that have reached the gate so far (1 = the first is held there).
     int started() const;
+
+private:
+    ScopedHook seam_;
 };
 
 // Holds a click's analysis open until the test lets it through. A test chart
@@ -167,6 +171,9 @@ public:
     ViewGate& operator=(const ViewGate&) = delete;
     void open();
     int started() const;
+
+private:
+    ScopedHook seam_;
 };
 
 // Holds the app's store open on its worker thread until the test lets it
@@ -184,6 +191,9 @@ public:
     OpenGate& operator=(const OpenGate&) = delete;
     void open();
     int started() const;
+
+private:
+    ScopedHook seam_;
 };
 
 // All text ImGui drew last frame plus the status line, for substring checks.

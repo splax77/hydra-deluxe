@@ -10,8 +10,9 @@
 // that can call it, so declare the guard before the object that joins those
 // threads (the AppState or the job).
 //
-// The seams have no getter, so the destructor puts back the empty hook, which
-// is what each seam starts with and what every test leaves.
+// The seams have no getter, so the destructor puts back the empty hook (off,
+// for an on/off switch), which is what each seam starts with and what every
+// test leaves.
 
 #ifndef HYDRA_TESTS_SCOPED_HOOK_H
 #define HYDRA_TESTS_SCOPED_HOOK_H
