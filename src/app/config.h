@@ -185,6 +185,14 @@ struct Settings {
     // wins. nullopt when no choice spells it.
     std::optional<Settings> with_chartmode(const std::string& chartmode) const;
 
+    // These settings with the eight the Analysis settings panel shows put back
+    // to a default-constructed Settings': Difficulty, Pro Drums, 2x Bass, Note
+    // Shuffle, the SP cap, 1.0 fills, the score range and the path limit. The
+    // rest (folders, volume, hit window, rules) are kept. The panel's "Reset
+    // to defaults" button applies it, and the settings button's summary
+    // compares against it, so the summary only names what a reset undoes.
+    Settings with_analysis_defaults() const;
+
     AnalysisSettings to_analysis_settings() const;
 
     // The backend display window as the view-model wants it: the value when

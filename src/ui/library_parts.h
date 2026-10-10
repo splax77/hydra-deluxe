@@ -81,6 +81,14 @@ std::string settings_changes_summary(const app::Settings& s);
 // The settings button's label: "Analysis settings: " and the summary above,
 // ending in " (locked)" while the settings are locked.
 std::string settings_button_label(const app::Settings& s, bool locked);
+// True when the summary above reads "defaults": nothing for "Reset to
+// defaults" to undo, so the button greys out.
+bool settings_at_defaults(const app::Settings& s);
+// The line the settings panel shows while a batch holds the settings.
+inline constexpr const char* kSettingsLockedText = "Stop the batch to change these.";
+// "Reset to defaults"'s tooltip: "Resets: " and the summary above, or why
+// the button is greyed out (locked, or already the defaults).
+std::string reset_settings_tooltip(const app::Settings& s, bool locked);
 
 // What the library area says when there are no charts: add a folder first,
 // or scan the folders you have.

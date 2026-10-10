@@ -7,6 +7,8 @@
 #include "core/model.h"  // counted
 #include "ui/library_parts.h"
 
+#include <functional>
+
 using hydra::counted;
 using hydra::app::Settings;
 using namespace hydra::ui::detail;
@@ -129,6 +131,58 @@ TEST_CASE("settings button: lists only the settings that differ from the default
     CHECK(settings_button_label(s, true) ==
           "Analysis settings: Hard \xC2\xB7 Note Shuffle \xC2\xB7 SP cap 5 bars \xC2\xB7 "
           "Path limit 20 ms (locked)");
+}
+
+TEST_CASE("settings reset: puts back each panel setting and keeps the rest") {
+    // Each of the panel's settings on its own: the summary names it, and the
+    // reset clears it.
+    const std::function<void(Settings&)> changes[] = {
+        [](Settings& t) { t.view_difficulty = "Hard"; },
+        [](Settings& t) { t.view_prodrums = false; },
+        [](Settings& t) { t.view_bass2x = false; },
+        [](Settings& t) { t.view_noteshuffle = true; },
+        [](Settings& t) { t.sp_cap = 5; },
+        [](Settings& t) { t.legacy_fills = true; },
+        [](Settings& t) { t.depth_value = 100; },
+        [](Settings& t) { t.depth_mode = 1; },
+        [](Settings& t) { t.mslimit_enabled = false; },
+        [](Settings& t) { t.mslimit_value = 20; },
+    };
+    for (const auto& change : changes) {
+        Settings t;
+        change(t);
+        CHECK(!settings_at_defaults(t));
+        CHECK(settings_at_defaults(t.with_analysis_defaults()));
+    }
+
+    // All at once, with the settings the panel doesn't show changed too.
+    Settings s;
+    for (const auto& change : changes) change(s);
+    s.chartfolders = {"C:/Songs"};
+    s.preview_volume = 75;
+    s.hit_window_ms = 60.5;
+    s.backendlimit_enabled = true;
+    s.auto_open_report = true;
+    s.dm_last_user = "1234";
+    const Settings r = s.with_analysis_defaults();
+    CHECK(settings_changes_summary(r) == "defaults");
+    CHECK(r.chartmode_key() == Settings{}.chartmode_key());
+    CHECK(r.chartfolders == s.chartfolders);
+    CHECK(r.preview_volume == 75);
+    CHECK(r.hit_window_ms == 60.5);
+    CHECK(r.backendlimit_enabled);
+    CHECK(r.auto_open_report);
+    CHECK(r.dm_last_user == "1234");
+}
+
+TEST_CASE("settings reset: the tooltip says what a click undoes, or why it can't") {
+    Settings s;
+    CHECK(reset_settings_tooltip(s, false) == "The settings are already the defaults.");
+    CHECK(reset_settings_tooltip(s, true) == "Stop the batch to change these.");
+    s.view_prodrums = false;
+    s.sp_cap = 5;
+    CHECK(reset_settings_tooltip(s, false) == "Resets: Pro Drums off \xC2\xB7 SP cap 5 bars");
+    CHECK(reset_settings_tooltip(s, true) == "Stop the batch to change these.");
 }
 
 TEST_CASE("batch text: cap 1 reads 1 bar and cap 1000 reads 1,000 bars") {

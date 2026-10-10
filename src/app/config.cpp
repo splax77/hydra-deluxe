@@ -278,6 +278,22 @@ std::string Settings::chartmode_key() const {
     return key;
 }
 
+Settings Settings::with_analysis_defaults() const {
+    const Settings d;
+    Settings out = *this;
+    out.view_difficulty = d.view_difficulty;
+    out.view_prodrums = d.view_prodrums;
+    out.view_bass2x = d.view_bass2x;
+    out.view_noteshuffle = d.view_noteshuffle;
+    out.sp_cap = d.sp_cap;
+    out.legacy_fills = d.legacy_fills;
+    out.depth_value = d.depth_value;
+    out.depth_mode = d.depth_mode;
+    out.mslimit_enabled = d.mslimit_enabled;
+    out.mslimit_value = d.mslimit_value;
+    return out;
+}
+
 std::optional<Settings> Settings::with_chartmode(const std::string& chartmode) const {
     for (Difficulty d : kAllDifficulties) {
         for (bool prodrums : {true, false}) {

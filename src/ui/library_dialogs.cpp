@@ -97,8 +97,9 @@ BatchSettingsSummary batch_settings_summary(const app::Settings& s) {
 }
 
 std::string settings_changes_summary(const app::Settings& s) {
-    // The defaults are a default-constructed Settings' (app/config.h).
-    const app::Settings d;
+    // The defaults are the ones "Reset to defaults" puts back
+    // (Settings::with_analysis_defaults), so a reset always reads "defaults".
+    const app::Settings d = s.with_analysis_defaults();
     std::string out;
     const auto add = [&out](const std::string& phrase) {
         if (!out.empty()) out += " \xC2\xB7 ";
@@ -121,6 +122,16 @@ std::string settings_changes_summary(const app::Settings& s) {
 
 std::string settings_button_label(const app::Settings& s, bool locked) {
     return "Analysis settings: " + settings_changes_summary(s) + (locked ? " (locked)" : "");
+}
+
+bool settings_at_defaults(const app::Settings& s) {
+    return settings_changes_summary(s) == "defaults";
+}
+
+std::string reset_settings_tooltip(const app::Settings& s, bool locked) {
+    if (locked) return kSettingsLockedText;
+    if (settings_at_defaults(s)) return "The settings are already the defaults.";
+    return "Resets: " + settings_changes_summary(s);
 }
 
 std::string scan_folders_found_text(int64_t folders_seen) {

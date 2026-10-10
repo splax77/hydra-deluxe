@@ -193,16 +193,32 @@ void render_paths_group(AppState& app, bool locked) {
     ImGui::EndTable();
 }
 
-// The panel's body: the three groups, then the lock line while a batch
-// holds the settings (only a batch locks them, D90 item 2).
+// "Reset to defaults": puts the panel's eight settings back in one change,
+// so the open song re-analyzes once. Greyed out while locked or when there
+// is nothing to undo; the tooltip says which, or what the click undoes.
+void render_reset_button(AppState& app, bool locked) {
+    const bool off = locked || settings_at_defaults(app.settings);
+    begin_disabled_button(off);
+    if (ImGui::Button("Reset to defaults")) {
+        app.settings = app.settings.with_analysis_defaults();
+        app.commit_settings();
+    }
+    end_disabled_button(off);
+    overflow_tooltip(reset_settings_tooltip(app.settings, locked).c_str());
+}
+
+// The panel's body: the three groups, the reset button under a line, then
+// the lock line while a batch holds the settings (only a batch locks them,
+// D90 item 2).
 void render_panel(AppState& app, bool locked) {
     render_chart_group(app, locked);
     render_rules_group(app, locked);
     render_paths_group(app, locked);
+    ImGui::Separator();
+    render_reset_button(app, locked);
     if (locked) {
-        ImGui::Separator();
         ImGui::PushStyleColor(ImGuiCol_Text, kSubtleTextColor);
-        ImGui::TextUnformatted("Stop the batch to change these.");
+        ImGui::TextUnformatted(kSettingsLockedText);
         ImGui::PopStyleColor();
     }
 }

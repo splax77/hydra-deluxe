@@ -17,6 +17,7 @@
 #include "ui/app_state.h"
 #include "ui/details_view.h"
 #include "ui/library_jobs.h"  // set_view_analyzer_for_test
+#include "ui/library_parts.h"  // settings_at_defaults
 #include "ui/fonts.h"  // px()
 #include "ui/library_view.h"  // library_split_width
 #include "ui/preview_controller.h"
@@ -1083,7 +1084,11 @@ void test_settings_lock(ImGuiTestContext* ctx) {
     IM_CHECK((ctx->ItemInfo("**/##spcap").ItemFlags & ImGuiItemFlags_Disabled) != 0);
     IM_CHECK((ctx->ItemInfo("**/##prodrums").ItemFlags & ImGuiItemFlags_Disabled) != 0);
     IM_CHECK((ctx->ItemInfo("**/##noteshuffle").ItemFlags & ImGuiItemFlags_Disabled) != 0);
-    IM_CHECK((ctx->ItemInfo("**/##mslimit").ItemFlags & ImGuiItemFlags_Disabled) != 0);    close_settings_panel(ctx);
+    IM_CHECK((ctx->ItemInfo("**/##mslimit").ItemFlags & ImGuiItemFlags_Disabled) != 0);
+    // The reset is greyed by the lock, not by having nothing to undo.
+    IM_CHECK(!hydra::ui::detail::settings_at_defaults(h.app->settings));
+    IM_CHECK((ctx->ItemInfo("**/Reset to defaults").ItemFlags & ImGuiItemFlags_Disabled) != 0);
+    close_settings_panel(ctx);
 
     h.app->batch_job->stop();
     IM_CHECK(wait_until(ctx, [&] { return !h.app->batch_running(); }, 300));

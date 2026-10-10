@@ -237,6 +237,45 @@ void test_settings_button(ImGuiTestContext* ctx) {
     close_settings_panel(ctx);
 }
 
+// "Reset to defaults" in the settings panel: greyed out at the defaults; after
+// two changes one click puts both back, saves the INI, keeps the folders, and
+// leaves the panel open with the button greyed again.
+void test_settings_reset(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    auto shows = [&](const char* text) { return visible_text(h).find(text) != std::string::npos; };
+    auto reset_off = [&] {
+        return (ctx->ItemInfo("**/Reset to defaults").ItemFlags & ImGuiItemFlags_Disabled) != 0;
+    };
+    const std::vector<std::string> folders = h.app->settings.chartfolders;
+    // The scratch INI keeps a smaller score range; start from the defaults.
+    h.app->settings.depth_value = hydra::app::Settings{}.depth_value;
+    h.app->commit_settings();
+    IM_CHECK(wait_until(ctx, [&] { return shows("Analysis settings: defaults"); }, 5));
+
+    ImGuiWindow* panel = open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(reset_off());
+    ctx->ItemUncheck("**/##prodrums");
+    ctx->ItemInputValue("**/##spcap", 5);
+    IM_CHECK(wait_until(
+        ctx, [&] { return shows("Analysis settings: Pro Drums off \xC2\xB7 SP cap 5 bars"); }, 5));
+    IM_CHECK(!reset_off());
+
+    ctx->ItemClick("**/Reset to defaults");
+    IM_CHECK(wait_until(ctx, [&] { return shows("Analysis settings: defaults"); }, 5));
+    IM_CHECK(h.app->settings.view_prodrums);
+    IM_CHECK(h.app->settings.sp_cap == hydra::kCloneHeroSpCap);
+    IM_CHECK(h.app->settings.chartfolders == folders);
+    const hydra::app::Settings saved = hydra::app::Settings::load_file(h.ini_path);
+    IM_CHECK(saved.view_prodrums);
+    IM_CHECK(saved.sp_cap == hydra::kCloneHeroSpCap);
+    ctx->Yield(2);
+    IM_CHECK(ctx->GetWindowByRef("//$FOCUSED") == panel);
+    IM_CHECK(reset_off());
+    close_settings_panel(ctx);
+}
+
 // A bad hydra_rules.ini: the app still opens and scans, the error naming the
 // key stays on screen, Analyze library is disabled, and a click analyzes
 // nothing: the song's row stays Not analyzed (D87 item 9).
@@ -716,6 +755,7 @@ const std::vector<TestEntry>& library_tests() {
         {"difficulty", test_difficulty},
         {"note-shuffle-switch", test_note_shuffle_switch},
         {"settings-button", test_settings_button},
+        {"settings-reset", test_settings_reset},
         {"rules-error", test_rules_error},
         {"library-state-per-app", test_library_state_per_app},
         {"view-settings", test_view_settings},
