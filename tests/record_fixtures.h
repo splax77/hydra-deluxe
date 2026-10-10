@@ -174,6 +174,36 @@ inline Song clamp_song() {
                             {{0, 120.0}, {2700, 60.0}});
 }
 
+// Two SP phrases, then a fill at 2304. At cap 4 the activation there runs
+// past the chart's last note (5280). Several cases share this song.
+inline Song past_last_note_song() {
+    return build_tail_song({{0, true, false},
+                            {768, true, false},
+                            {1536},
+                            {2304, false, true},
+                            {3072},
+                            {3840},
+                            {4608},
+                            {5136},
+                            {5280}});
+}
+
+// The same shape, but the note at 3840 ends an SP phrase, collected while
+// the activation from 2304 is running. Several cases share this song.
+inline Song mid_sp_phrase_song() {
+    return build_tail_song({{0, true, false},
+                            {768, true, false},
+                            {1536},
+                            {2304, false, true},
+                            {3072},
+                            {3840, true, false},
+                            {4608},
+                            {5376},
+                            {6144},
+                            {6720},
+                            {6816}});
+}
+
 // A squeeze window that reaches back past the activation. At 4000 BPM a
 // measure (768 ticks) lasts 60 ms, so the 500 ms squeeze window spans more
 // than eight measures. Phrases at 0, 768 and 1536 bank three bars before the
@@ -572,6 +602,11 @@ inline void check_lines(const std::vector<std::string>& got, const std::vector<s
         for (const std::string& l : got) literals += "    \"" + l + "\",\n";
     INFO(what << " built:\n" << literals);
     CHECK(got == want);
+}
+
+// A tick's time in ms on a hand-built song, read off the song's own tempo map.
+inline double tick_ms(const Song& song, int64_t tick) {
+    return song.timing().ms_index().at(tick);
 }
 
 }  // namespace hydra::test

@@ -34,8 +34,6 @@
 #include "search/engine.h"
 #include "search/graph.h"
 #include "search/pather.h"
-#include "sp_past_end_songs.h"
-#include "tick_ms.h"
 
 using namespace hydra;
 
@@ -56,9 +54,8 @@ namespace {
 // only bring that one copy into this file.
 using test::TailNote;
 using test::build_tail_song;
-// A tick's ms (tick_ms.h).
+// A tick's ms, and the two SP-past-the-end songs (record_fixtures.h).
 using test::tick_ms;
-// The two SP-past-the-end songs (sp_past_end_songs.h).
 using test::past_last_note_song;
 using test::mid_sp_phrase_song;
 

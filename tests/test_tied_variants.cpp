@@ -25,14 +25,13 @@
 #include "search/engine.h"
 #include "search/graph.h"
 #include "search/pather.h"
-#include "tick_ms.h"
 
 using namespace hydra;
 
 namespace {
 
 // A hand-built 4/4 120 BPM song (record_fixtures.h owns the note type and the
-// song builder); a tick's ms (tick_ms.h).
+// song builder); a tick's ms (also record_fixtures.h).
 using test::TailNote;
 using test::build_tail_song;
 using test::tick_ms;

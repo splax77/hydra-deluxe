@@ -35,7 +35,6 @@
 #include "search/graph.h"
 #include "search/pather.h"
 #include "song_digest.h"  // record_hash
-#include "sp_past_end_songs.h"
 
 using namespace hydra;
 
@@ -490,7 +489,7 @@ TEST_CASE("score graph: the backend rows are sized once, one per chord") {
 
 namespace {
 
-// The two SP-past-the-end songs (sp_past_end_songs.h), for the cases below.
+// The two SP-past-the-end songs (record_fixtures.h), for the cases below.
 using test::past_last_note_song;
 using test::mid_sp_phrase_song;
 
