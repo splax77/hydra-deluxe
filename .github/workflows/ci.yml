@@ -84,7 +84,7 @@ jobs:
         run: .\build_cpp.ps1 -Preset asan -Target hydra_uitest
 
       - name: Run hydra_uitest
-        run: .\build-asan\Release\hydra_uitest.exe --all --jobs 4
+        run: .\build-asan\Release\hydra_uitest.exe --all
 
   tool-tests:
     name: Tool tests (Python and PowerShell)

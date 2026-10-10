@@ -5744,6 +5744,22 @@ const std::vector<OwnerRule>& rules() {
          {{"src/ui/widgets.h", "if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);",
            "move_to_right_edge, the owner: report_frame's cell, row number and right_align call it"}},
          {"src"}},
+        // A CI step that gives the GUI runner its own --jobs count. The count
+        // is kDefaultJobs's, so a step runs plain --all. The walk reads no
+        // .yml file, so the case that checks the single files outside it
+        // reads ci.yml (the way it reads installer/hydra.iss).
+        {"How many GUI test processes does the CI runner start at once?",
+         "kDefaultJobs in tests/ui/uitest_main.cpp",
+         R"(hydra_uitest\S*\s+.*--jobs\b)",
+         "",
+         {},
+         {},
+         "CI and test tooling plan, decision 3 (2026-10-10); derive-once review of ct-t4",
+         {R"(run: .\build-asan\Release\hydra_uitest.exe --all --jobs 4)"},
+         {R"(run: .\build-cpp\Release\hydra_uitest.exe --all)",
+          R"(run: .\build-asan\Release\hydra_uitest.exe --all)"},
+         {},
+         {".github/workflows/ci.yml"}},
     };
     return r;
 }
