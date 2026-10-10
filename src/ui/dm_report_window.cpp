@@ -25,6 +25,8 @@ namespace view_rules = app::dm_report_view;
 struct DmWindow {
     std::weak_ptr<const GeneratedDmReport> built_from;
     std::unique_ptr<TableView<DmReportRow>> view;
+    // The view's rows measured for the column-width rule; goes with them.
+    MeasuredWidths widths;
     std::vector<view_rules::StatusChoice> choices;
     std::vector<std::string> labels;
     int status = 0;
@@ -48,6 +50,7 @@ void apply_filters(DmWindow& w) {
 void rebuild(DmWindow& w, const std::shared_ptr<const GeneratedDmReport>& result) {
     w.memory.reset();
     w.view.reset();
+    w.widths = {};
     w.status = 0;
     w.tiles_dirty = true;
     w.built_from = result;
@@ -57,6 +60,7 @@ void rebuild(DmWindow& w, const std::shared_ptr<const GeneratedDmReport>& result
     for (const DmReportRow& r : result->rows) texts.push_back(view_rules::dm_search_text(r));
     w.view = std::make_unique<TableView<DmReportRow>>(result->rows, std::move(texts),
                                                       view_rules::dm_columns());
+    w.widths = report_frame::measure(*w.view);
     w.view->set_sort({view_rules::dm_first_sort()});
     w.choices = view_rules::status_choices();
     w.labels.clear();
@@ -93,7 +97,7 @@ void draw_body(DmWindow& w, const report_frame::Frame& frame, const DmReportInpu
         return r.status != app::dm_report::kStatusNotInLibrary;
     };
     look.unclickable_hint = "Not in your library";
-    report_frame::table("##dmtable", w.memory, view, look, input.callbacks,
+    report_frame::table("##dmtable", w.memory, view, w.widths, look, input.callbacks,
                         ImGui::GetContentRegionAvail().y - report_frame::footer_height(frame));
 }
 

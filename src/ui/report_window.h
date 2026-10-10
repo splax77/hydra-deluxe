@@ -28,6 +28,10 @@
 #include "ui/report_state.h"  // ReportBuild, ReportOutOfDate
 #include "ui/theme.h"
 #include "ui/widgets.h"  // hint, overflow_tooltip, keep_table_column_order
+// After widgets.h: its text_ellipsized hands render::ellipsize the name
+// text_width, which column_widths.h overloads; seen first, that name is no
+// longer one function and the call does not compile.
+#include "ui/column_widths.h"
 
 namespace hydra::ui {
 
@@ -232,10 +236,35 @@ void cell(const std::string& text, const app::report_view::CellLook& look,
           app::report_view::Tone tone, bool numeric);
 void chip(const std::string& text, app::report::ChipToken token);
 
+// ---- The columns, as the width rule (ui/column_widths.h) sees them ---------
+
+// The "#" column's text for the row drawn `k`th (from 0).
+std::string row_number(size_t k);
+// The "#" column, and one of the view's columns drawn in `look`.
+ColumnSpec row_number_spec();
+ColumnSpec column_spec(const std::string& title, const app::report_view::CellLook& look);
+
+// The table's columns for the rule: the "#" column, then the view's.
+template <class Row>
+std::vector<ColumnSpec> column_specs(const std::vector<app::report_view::Column<Row>>& columns) {
+    std::vector<ColumnSpec> specs{row_number_spec()};
+    for (const app::report_view::Column<Row>& c : columns) specs.push_back(column_spec(c.title, c.look));
+    return specs;
+}
+
+// Every row of `view` measured for the rule, the filtered-out rows too, so
+// the columns keep their widths while the user searches. Call it inside a
+// frame, when the view is made and when the measure goes stale.
+template <class Row>
+MeasuredWidths measure(const app::report_view::TableView<Row>& view) {
+    const std::vector<app::report_view::Column<Row>>& columns = view.columns();
+    const std::vector<Row>& rows = view.rows();
+    return measure_widths(column_specs(columns), rows.size(), [&](size_t r, size_t c) {
+        return c == 0 ? row_number(r) : columns[c - 1].cell(rows[r]);
+    });
+}
+
 // The parts of the table that need ImGui's internals.
-ImGuiTableFlags table_flags();
-// The "#" column's width for `rows` rows.
-float row_number_width(size_t rows);
 // The gold bar at a best path's left edge, beside the row just drawn.
 void best_bar();
 // Hands the table a sort (table column index and direction, first key
@@ -247,9 +276,11 @@ using HeaderSort = std::vector<std::pair<int, app::report_view::SortDir>>;
 bool table_settled();
 void push_sort(const HeaderSort& sort);
 std::optional<HeaderSort> header_sort();
-// Records the first five columns' width and where the table starts, for the
-// next frame's minimum size. Call inside the table, after its headers.
-void measure_columns(Memory& memory, const std::vector<std::string>& titles);
+// Records the first five columns' width, each at the narrowest the width rule
+// gives it in `room`, and where the table starts, for the next frame's
+// minimum size (D103 item 14). Call inside the table, after its headers.
+void note_min_size(Memory& memory, const MeasuredWidths& widths,
+                   const std::vector<ColumnSpec>& specs, const TableRoom& room);
 
 // How each report marks its rows.
 template <class Row>
@@ -261,11 +292,14 @@ struct RowLook {
 };
 
 // The table: the "#" column, then the view's columns, its rows in the view's
-// order. Header clicks sort the view; a row click or an arrow key selects a
-// row and calls row_click.
+// order, each column as wide as the width rule (ui/column_widths.h) says.
+// `widths` is the view's measure, kept beside it by the window; it is taken
+// again here when it has gone stale. Header clicks sort the view; a row click
+// or an arrow key selects a row and calls row_click.
 template <class Row>
 void table(const char* id, Memory& memory, app::report_view::TableView<Row>& view,
-           const RowLook<Row>& look, const ReportCallbacks& callbacks, float height) {
+           MeasuredWidths& widths, const RowLook<Row>& look, const ReportCallbacks& callbacks,
+           float height) {
     using app::report_view::Column;
     using app::report_view::SortDir;
     using app::report_view::SortSpec;
@@ -301,24 +335,25 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
         }
     }
 
-    if (!ImGui::BeginTable(id, static_cast<int>(columns.size()) + 1, table_flags(),
-                           ImVec2(0.0f, height)))
+    const std::vector<ColumnSpec> specs = column_specs(columns);
+    if (widths.stale()) widths = measure(view);
+    const TableRoom room = table_room(id, 0.0f, specs.size());
+    const ColumnLayout layout = place_columns(widths, specs, room);
+    // SortMulti for the Shift+click second sort (D103 item 1).
+    if (!ImGui::BeginTable(id, static_cast<int>(specs.size()),
+                           table_flags() | ImGuiTableFlags_SortMulti, ImVec2(0.0f, height),
+                           layout.inner_width))
         return;
     ImGui::TableSetupScrollFreeze(1, 1);  // the "#" column and the header row
-    ImGui::TableSetupColumn("#",
-                            ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort |
-                                ImGuiTableColumnFlags_NoHide,
-                            row_number_width(rows.size()));
-    std::vector<std::string> titles{"#"};
+    setup_column(specs[0], layout, 0, ImGuiTableColumnFlags_NoSort | ImGuiTableColumnFlags_NoHide);
     for (size_t c = 0; c < columns.size(); ++c) {
         const bool down = view.first_direction(columns[c].id) == SortDir::Descending;
-        ImGui::TableSetupColumn(columns[c].title.c_str(),
-                                ImGuiTableColumnFlags_WidthStretch |
-                                    (down ? ImGuiTableColumnFlags_PreferSortDescending
-                                          : ImGuiTableColumnFlags_PreferSortAscending));
-        titles.push_back(columns[c].title);
+        setup_column(specs[c + 1], layout, static_cast<int>(c) + 1,
+                     down ? ImGuiTableColumnFlags_PreferSortDescending
+                          : ImGuiTableColumnFlags_PreferSortAscending);
     }
     keep_table_column_order();  // imgui#9519, as in the Library table
+    apply_column_widths(layout);
 
     // The table opens in the view's sort, whatever an earlier run left. A
     // table's first frame sets its own first sort after this, so the view's
@@ -333,21 +368,21 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
         memory.sort_pushed = true;
     }
     if (std::optional<HeaderSort> sort = memory.sort_pushed ? header_sort() : std::nullopt) {
-        std::vector<SortSpec> specs;
+        std::vector<SortSpec> sort_specs;
         for (const auto& [index, dir] : *sort)
-            if (index >= 1) specs.push_back({columns[static_cast<size_t>(index) - 1].id, dir});
-        view.set_sort(std::move(specs));
+            if (index >= 1) sort_specs.push_back({columns[static_cast<size_t>(index) - 1].id, dir});
+        view.set_sort(std::move(sort_specs));
     }
 
     // The headers, each with its column's definition on hover.
     ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
     for (int c = 0; c <= static_cast<int>(columns.size()); ++c) {
         if (!ImGui::TableSetColumnIndex(c)) continue;
-        ImGui::TableHeader(titles[static_cast<size_t>(c)].c_str());
+        ImGui::TableHeader(specs[static_cast<size_t>(c)].header.c_str());
         if (c > 0 && !columns[static_cast<size_t>(c) - 1].definition.empty())
             overflow_tooltip(columns[static_cast<size_t>(c) - 1].definition.c_str());
     }
-    measure_columns(memory, titles);
+    note_min_size(memory, widths, specs, room);
 
     const std::vector<size_t>& order = view.visible();
     ImGuiListClipper clipper;
@@ -363,7 +398,7 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
             // One Selectable spans the row, labeled with its row number
             // (right-aligned, dim), so the whole row is one click target.
             ImGui::TableSetColumnIndex(0);
-            const std::string number = group_thousands(static_cast<int64_t>(k) + 1);
+            const std::string number = row_number(static_cast<size_t>(k));
             move_to_right_edge(ImGui::CalcTextSize(number.c_str()).x);
             ImGui::PushStyleColor(ImGuiCol_Text, kDimTextColor);
             const bool clicked = ImGui::Selectable(
