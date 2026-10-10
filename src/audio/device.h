@@ -25,6 +25,11 @@ namespace hydra::audio {
 // value it replaces, so a caller can put it back.
 bool set_headless(bool headless);
 
+// Test-only switch: when set, every PreviewAudioDevice::start() fails as if
+// miniaudio's start step had, so a test can reach that failure without a
+// broken sound card. Returns the value it replaces, like set_headless.
+bool set_start_fails(bool fails);
+
 class PreviewAudioDevice {
 public:
     // Fills `out` with `frame_count` interleaved f32 frames and returns the
@@ -40,6 +45,8 @@ public:
     PreviewAudioDevice(const PreviewAudioDevice&) = delete;
     PreviewAudioDevice& operator=(const PreviewAudioDevice&) = delete;
 
+    // Starts the device. Throws std::runtime_error if it won't start; the
+    // caller drops the device then, as when the constructor throws.
     void start();
 
     // Whether start() got the device running (or, headless, was called).

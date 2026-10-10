@@ -1562,34 +1562,48 @@
       "note": "The imgui#9519 workaround: a table that can't reorder asks ImGui to reset its column order after an ini load. Every table calls the one helper; a second inline copy (the Library table had one) fails."
     },
     {
-      "question": "Which flags does a Library-style table open with?",
-      "owner": "base_table_flags in src/ui/widgets.h",
-      "owner_file": "src/ui/widgets.h",
-      "owner_symbol": "base_table_flags",
+      "question": "Which flags does a table on the width rule open with?",
+      "owner": "table_flags and scroll_fixed_flags in src/ui/column_widths.cpp",
+      "owner_file": "src/ui/column_widths.cpp",
+      "owner_symbol": "table_flags",
       "date": "2026-10-08",
       "decision": "report windows plan, T5 brief (the table uses the Library table's flags)",
       "added_by": "RW-T5",
-      "pattern": "\\bImGuiTableFlags_SizingStretchProp\\b",
-      "anchor": "ImGuiTableFlags_SizingStretchProp",
+      "pattern": "\\bImGuiTableFlags_(SizingStretchProp|ScrollX|Hideable|Sortable)\\b",
+      "anchor": "ImGuiTableFlags_",
       "must_match": [
         "ImGuiTableFlags_SizingStretchProp;",
-        "ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_SizingStretchProp;"
+        "ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_SizingStretchProp;",
+        "return ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable | ImGuiTableFlags_Sortable |",
+        "ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit,"
       ],
       "must_not_match": [
-        "const int table_flags = ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg;",
-        "return base_table_flags() | ImGuiTableFlags_SortMulti;"
+        "ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |",
+        "ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable, specs, a.backends.size(),",
+        "table_flags() | ImGuiTableFlags_SortMulti, ImVec2(0.0f, height),",
+        "return ImGui::BeginTable(\"##settingsform\", 2, ImGuiTableFlags_SizingFixedFit);"
       ],
       "owner_lines": [
         {
-          "file": "src/ui/widgets.h",
-          "line_text": "ImGuiTableFlags_SizingStretchProp;",
-          "why": "base_table_flags, the owner: render_table and report_frame::table_flags call it"
+          "file": "src/ui/column_widths.cpp",
+          "line_text": "return ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit;",
+          "why": "scroll_fixed_flags, the owner: table_flags and begin_small_table call it"
+        },
+        {
+          "file": "src/ui/column_widths.cpp",
+          "line_text": "return scroll_fixed_flags() | ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable |",
+          "why": "table_flags, the owner: the Library and the report tables call it"
+        },
+        {
+          "file": "src/ui/column_widths.cpp",
+          "line_text": "ImGuiTableFlags_Sortable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg |",
+          "why": "table_flags, the owner"
         }
       ],
       "scope": [
         "src"
       ],
-      "note": "The report tables open with the Library table's flags and add to them; a second list of those flags would drift from the first. Decided by: report windows plan, T5 brief (the table uses the Library table's flags); derive-once review of RW-T5 (finding 1)"
+      "note": "A table on the width rule opens with the rule's flags: table_flags, or scroll_fixed_flags plus a tab's own look. A table that lists the rule's flags itself, or the stretch sizing the rule replaced, builds a second flag set that drifts from the rule's. Decided by: report windows plan, T5 brief (the table uses the Library table's flags); derive-once review of RW-T5 (finding 1); one-column-width-rule plan, Part 1 (table_flags replaces base_table_flags) and Part 4 (after wave 2)"
     },
     {
       "question": "Is a report window still showing the result its view was built from?",
@@ -1681,6 +1695,184 @@
         "src"
       ],
       "note": "Right-aligning the next item: in a table cell, or at the end of a line once the line-fit check (fits_on_line) has said it fits."
+    },
+    {
+      "question": "What id does an activation's backend table get?",
+      "owner": "render_backend_table in src/ui/paths_tab.cpp",
+      "owner_file": "src/ui/paths_tab.cpp",
+      "owner_symbol": "render_backend_table",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-3",
+      "pattern": "##backends",
+      "anchor": "##backends",
+      "must_match": [
+        "std::snprintf(id, sizeof(id), \"##backends%d_%d_%d_%d\", a.number, static_cast<int>(w_timing),",
+        "const std::string prefix = \"##backends\" + std::to_string(number) + \"_\";"
+      ],
+      "must_not_match": [
+        "id, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable, specs, a.backends.size(),"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/paths_tab.cpp",
+          "line_text": "std::snprintf(id, sizeof(id), \"##backends%d\", a.number);",
+          "why": "render_backend_table, the owner: it hands the id to begin_small_table"
+        }
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "The id no longer carries the column widths (the width rule sizes the table each frame). It is built once and handed to begin_small_table, which names the same table to table_room and BeginTable. Decided by: audit finding 291; phase 6 task J3-3 (D53, D54); one-column-width-rule plan, Part 4 (backend_table_id removed)"
+    },
+    {
+      "question": "What text does a Library table cell show?",
+      "owner": "library_cell_text in src/ui/library_model.cpp",
+      "owner_file": "src/ui/library_model.cpp",
+      "owner_symbol": "library_cell_text",
+      "date": "2026-10-10",
+      "decision": "derive-once review of cw-t4 (finding 1)",
+      "added_by": "cw-t4-review",
+      "pattern": "\\brow\\.(title|artist|charter)\\b|\\brow\\.entry\\.rootfolder\\b|\\bbest_label\\(\\)|\\bbest_path_label\\(",
+      "must_match": [
+        "cell_text(row.artist, spans);",
+        "overlay_matches(title_pos, row.title, spans, x);",
+        "line.text = row.entry.rootfolder;",
+        "text_ellipsized(row.best_label().c_str());",
+        "const std::string shown = best_path_label(status, bestpath, summary);"
+      ],
+      "must_not_match": [
+        "const std::string text = library_cell_text(row, column);",
+        "const std::string title = library_cell_text(row, kColumnTitle);",
+        "const LibraryRow& row = rows[index];"
+      ],
+      "scope": [
+        "src/ui/library_table.cpp"
+      ],
+      "note": "The Library table's cells and its column widths both read a row's text for a column, so the table takes it from library_cell_text and never from the row's fields. Only the table's file is scanned: the reports and the search keep rows of their own with the same field names."
+    },
+    {
+      "question": "How tall is a small table that shows its header and every row?",
+      "owner": "table_outer_height in src/ui/column_widths.cpp",
+      "owner_file": "src/ui/column_widths.cpp",
+      "owner_symbol": "table_outer_height",
+      "date": "2026-10-10",
+      "decision": "derive-once review of cw-t5 (the height was worked out once per tab file)",
+      "added_by": "cw-t5-review",
+      "pattern": "CellPadding\\.y",
+      "anchor": "CellPadding.y",
+      "owner_files": [
+        "src/ui/column_widths.cpp"
+      ],
+      "must_match": [
+        "float height = static_cast<float>(rows + 1) * (ImGui::GetFontSize() + style.CellPadding.y * 2.0f);",
+        "const float padding = style.CellPadding.y * 2.0f;"
+      ],
+      "must_not_match": [
+        "float height = line + padding;"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The row height of a table is a line plus the cell padding above and below. A table that sizes itself to its rows asks the owner."
+    },
+    {
+      "question": "How does a small table that shows all its rows begin?",
+      "owner": "begin_small_table in src/ui/column_widths.cpp",
+      "owner_file": "src/ui/column_widths.cpp",
+      "owner_symbol": "begin_small_table",
+      "date": "2026-10-10",
+      "decision": "derive-once review of cw-w2 (the Paths, Dynamics and Stars tables each ran the frame)",
+      "added_by": "cw-w2-review",
+      "pattern": "\\btable_outer_height\\(",
+      "anchor": "table_outer_height(",
+      "owner_files": [
+        "src/ui/column_widths.cpp",
+        "src/ui/column_widths.h"
+      ],
+      "must_match": [
+        "ImVec2(0.0f, table_outer_height(rows.size(), layout, room)),",
+        "ImVec2(0.0f, table_outer_height(a.backends.size(), layout, room, heights)),"
+      ],
+      "must_not_match": [
+        "if (!begin_small_table(id, ImGuiTableFlags_RowBg, specs, rows.size(),"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A small table whose rows are all at hand runs the same frame every time: measure, read the room, place, open at its height, set the columns up, apply. Only begin_small_table asks for the height; a table that does it by hand is running that frame a second time. The Library and the report tables keep a cache and size themselves."
+    },
+    {
+      "question": "How much room does ImGui add around each column?",
+      "owner": "table_room and first_columns_min_width in src/ui/column_widths.cpp",
+      "owner_file": "src/ui/column_widths.cpp",
+      "owner_symbol": "table_room",
+      "date": "2026-10-10",
+      "decision": "derive-once review of cw-t3 (note A) and cw-w2",
+      "added_by": "cw-w2-review",
+      "pattern": "\\bCellPadding\\.x\\b|\\bCellPaddingX\\b",
+      "anchor": "CellPadding",
+      "owner_files": [
+        "src/ui/column_widths.cpp"
+      ],
+      "must_match": [
+        "w += narrowest.widths[c] + style.CellPadding.x * 2.0f;",
+        "table->CellPaddingX * 2.0f * static_cast<float>(shown);"
+      ],
+      "must_not_match": [
+        "m.columns_w = first_columns_min_width(widths, specs, room, 5);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "ImGui adds its cell padding on both sides of every column. The rule adds it for the whole table (table_room's spacing) and for a few columns (first_columns_min_width); a window that adds it itself is working out the same sum from the same style number."
+    },
+    {
+      "question": "What text does a backend table cell show?",
+      "owner": "backend_cell in src/ui/paths_tab.cpp",
+      "owner_file": "src/ui/paths_tab.cpp",
+      "owner_symbol": "backend_cell",
+      "date": "2026-10-10",
+      "decision": "derive-once review of cw-w2 (the cell text was read in two places)",
+      "added_by": "cw-w2-review",
+      "pattern": "\\brow\\.(timing|chord|points|rating)\\b",
+      "anchor": "row.",
+      "must_match": [
+        "ImGui::TextUnformatted(row.timing.c_str());",
+        "ImGui::TextUnformatted(row.rating.c_str());",
+        "ImGui::CalcTextSize(row.rating.c_str(), nullptr, false, layout.widths[kRatingColumn]).y);"
+      ],
+      "must_not_match": [
+        "ImGui::TextUnformatted(backend_cell(row, 0).c_str());",
+        "ImGui::TextUnformatted(backend_cell(row, kRatingColumn).c_str());"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/paths_tab.cpp",
+          "line_text": "case 0: return row.timing;",
+          "why": "backend_cell, the owner: the cells and the width measure call it"
+        },
+        {
+          "file": "src/ui/paths_tab.cpp",
+          "line_text": "case 1: return row.chord;",
+          "why": "backend_cell, the owner"
+        },
+        {
+          "file": "src/ui/paths_tab.cpp",
+          "line_text": "case 2: return row.points;",
+          "why": "backend_cell, the owner"
+        },
+        {
+          "file": "src/ui/paths_tab.cpp",
+          "line_text": "default: return row.rating;",
+          "why": "backend_cell, the owner"
+        }
+      ],
+      "scope": [
+        "src/ui/paths_tab.cpp"
+      ],
+      "note": "The backend table's cells and its column widths both read a row's text for a column, so a cell draws backend_cell and never the row's fields. Only the tab's file is scanned: path_view.cpp builds the rows and sets those fields."
     }
   ]
 }

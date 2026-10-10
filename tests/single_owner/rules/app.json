@@ -1103,41 +1103,6 @@
       "note": "Tests pin the shown text and may type it. Decided by: audit R7.27; phase 6 task J3-3 (D53, D54)"
     },
     {
-      "question": "What id does an activation's backend table get?",
-      "owner": "backend_table_id in src/app/path_view.cpp",
-      "owner_file": "src/app/path_view.cpp",
-      "owner_symbol": "backend_table_id",
-      "date": "2026-10-05",
-      "decision": "D53, D54",
-      "added_by": "J3-3",
-      "pattern": "##backends",
-      "anchor": "##backends",
-      "must_match": [
-        "std::snprintf(id, sizeof(id), \"##backends%d_%d_%d_%d\", a.number, static_cast<int>(w_timing),",
-        "const std::string prefix = \"##backends\" + std::to_string(number) + \"_\";"
-      ],
-      "must_not_match": [
-        "app::backend_table_id(a.number, static_cast<int>(w_timing), static_cast<int>(w_chord),"
-      ],
-      "owner_lines": [
-        {
-          "file": "src/app/path_view.cpp",
-          "line_text": "std::snprintf(id, sizeof(id), \"##backends%d_%d_%d_%d\", number, w_timing, w_chord, w_points);",
-          "why": "backend_table_id, the owner"
-        },
-        {
-          "file": "tests/test_path_view.cpp",
-          "line_text": "CHECK(backend_table_id(1, 48, 40, 56) == \"##backends1_48_40_56\");",
-          "why": "the owner's pinned case: finding 291's own example as a literal (D42)"
-        }
-      ],
-      "scope": [
-        "src",
-        "tests"
-      ],
-      "note": "Decided by: audit finding 291; phase 6 task J3-3 (D53, D54)"
-    },
-    {
       "question": "What is the longest badge an activation row can show?",
       "owner": "longest_activation_badge in src/app/path_view.cpp",
       "owner_file": "src/app/path_view.cpp",

@@ -145,14 +145,6 @@ inline void move_to_right_edge(float w) {
     if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);
 }
 
-// The flags a Library-style table opens with: the Library table's own, which
-// the report tables take and add to.
-inline ImGuiTableFlags base_table_flags() {
-    return ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable | ImGuiTableFlags_Sortable |
-           ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuterH |
-           ImGuiTableFlags_SizingStretchProp;
-}
-
 // Keeps the current table's columns in the order they were set up. Call it
 // right after the table's TableSetupColumn calls. Dear ImGui 1.93 WIP
 // (ocornut/imgui#9519) loads a sort-only hydra_ui.ini entry into a table

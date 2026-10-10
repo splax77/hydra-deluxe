@@ -40,6 +40,7 @@
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file, scalar_on_file, write_junk_db
 #include "display_fixtures.h"  // add_stale_rows, old_build_row, other_rules_record
+#include "library_fixtures.h"  // library_row
 #include "old_layout_fixture.h"  // detail_layout_sql and the old layout's counts
 #include "parse/song.h"
 #include "record_fixtures.h"
@@ -83,17 +84,6 @@ const std::vector<Config> kMatrix = {
     {"cap4.scores.200.ms20", 4, DepthMode::Scores, 200, 20.0},
     {"cap8.scores.200", 8, DepthMode::Scores, 200, std::nullopt},
 };
-
-// One library row for `md5`, named `title`.
-ChartLibraryEntry chart_entry(const char* md5, const char* title) {
-    return ChartLibraryEntry{md5,
-                             title,
-                             "Artist",
-                             "Charter",
-                             std::string("C:\\charts\\") + md5 + "\\notes.chart",
-                             "C:\\charts",
-                             std::string("sig-") + md5};
-}
 
 }  // namespace
 
@@ -156,7 +146,7 @@ TEST_CASE("RecordStore maintenance: has_record, list_records, counts") {
     RecordStore store(":memory:");
     CHECK_FALSE(store.has_record(RecordKey{"h1", "Expert Pro Drums, 2x Bass", at4}));
 
-    store.rebuild_chart_library({chart_entry("h1", "Song A")});
+    store.rebuild_chart_library({library_row("h1", "Song A")});
     store.add_record(RecordKey{"h1", "Expert Pro Drums, 2x Bass", at4}, record);
     CHECK(store.has_record(RecordKey{"h1", "Expert Pro Drums, 2x Bass", at4}));
     CHECK_FALSE(store.has_record(RecordKey{"h1", "Expert Pro Drums, 2x Bass", CapQuery::at(8)}));
@@ -794,10 +784,10 @@ void seed_old_layout(const std::string& path) {
     for (const std::string& f : with_side_files(path)) std::remove(f.c_str());
     {
         RecordStore seed(path);
-        seed.rebuild_chart_library({chart_entry("ready", "Ready"), chart_entry("empty", "Empty"),
-                                    chart_entry("build", "Build"), chart_entry("rules", "Rules"),
-                                    chart_entry("both", "Both"),
-                                    chart_entry("nostars", "No stars")});
+        seed.rebuild_chart_library({library_row("ready", "Ready"), library_row("empty", "Empty"),
+                                    library_row("build", "Build"), library_row("rules", "Rules"),
+                                    library_row("both", "Both"),
+                                    library_row("nostars", "No stars")});
         seed.set_engine_mode(kSeedEngineMode);
         seed.add_record(kReady, at_cap(8));
         seed.add_record(kOtherMode, at_cap(8));
@@ -1278,7 +1268,7 @@ TEST_CASE("a failed library rebuild keeps the previous scan") {
     std::remove(path.c_str());
     {
         RecordStore store(path);
-        store.rebuild_chart_library({chart_entry("a", "A"), chart_entry("b", "B")});
+        store.rebuild_chart_library({library_row("a", "A"), library_row("b", "B")});
     }
     exec_on_file(path,
                  "CREATE TRIGGER refuse_boom BEFORE INSERT ON charts WHEN NEW.md5 = 'boom'"
@@ -1286,13 +1276,13 @@ TEST_CASE("a failed library rebuild keeps the previous scan") {
     {
         RecordStore store(path);
         CHECK_THROWS(
-            store.rebuild_chart_library({chart_entry("c", "C"), chart_entry("boom", "Boom")}));
+            store.rebuild_chart_library({library_row("c", "C"), library_row("boom", "Boom")}));
         CHECK(store.chart_library_count() == 2);
         const ChartLibraryCache cache = store.chart_library_cache();
         CHECK(cache.count("C:\\charts\\a\\notes.chart") == 1);
         CHECK(cache.count("C:\\charts\\b\\notes.chart") == 1);
         // No transaction was left open: the next rebuild goes through.
-        store.rebuild_chart_library({chart_entry("c", "C")});
+        store.rebuild_chart_library({library_row("c", "C")});
         CHECK(store.chart_library_count() == 1);
     }
     std::remove(path.c_str());
@@ -1312,7 +1302,7 @@ TEST_CASE("a charts table from before the sig column still rebuilds") {
         RecordStore store(path);
         CHECK(store.chart_library_count() == 1);
         CHECK(store.chart_library_cache().empty());  // no fingerprints yet
-        store.rebuild_chart_library({chart_entry("b", "B")});
+        store.rebuild_chart_library({library_row("b", "B")});
         CHECK(store.chart_library_count() == 1);
         CHECK(store.chart_library_cache().at("C:\\charts\\b\\notes.chart").sig == "sig-b");
     }
@@ -1324,8 +1314,8 @@ TEST_CASE("a result's names follow the latest scan") {
     // result's names come from the library (kNamingCopiesSql), so a rescan
     // after song.ini changed renames it.
     RecordStore store(":memory:");
-    const ChartLibraryEntry first = chart_entry("h", "Scanned Title");
-    ChartLibraryEntry second = chart_entry("h", "Second Copy");
+    const ChartLibraryEntry first = library_row("h", "Scanned Title");
+    ChartLibraryEntry second = library_row("h", "Second Copy");
     second.notespath = "C:\\charts\\copy\\notes.chart";
     store.rebuild_chart_library({first, second});
     store.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
@@ -1339,7 +1329,7 @@ TEST_CASE("a result's names follow the latest scan") {
     // it.
     CHECK(listed().ref_name == "Scanned Title");
 
-    ChartLibraryEntry renamed = chart_entry("h", "New Title");
+    ChartLibraryEntry renamed = library_row("h", "New Title");
     renamed.artist = "New Artist";
     renamed.charter = "New Charter";
     store.rebuild_chart_library({renamed, second});
@@ -1348,7 +1338,7 @@ TEST_CASE("a result's names follow the latest scan") {
     CHECK(listed().ref_charter == "New Charter");
 
     // A chart the scan found but nobody analyzed has no result to count.
-    store.rebuild_chart_library({renamed, chart_entry("x", "Never Analyzed")});
+    store.rebuild_chart_library({renamed, library_row("x", "Never Analyzed")});
     CHECK(store.counts().first == 1);
 }
 
@@ -1548,9 +1538,7 @@ void check_read_fails(const std::function<void()>& read) {
     } catch (const hydra::KindedError& e) {
         INFO(e.what());
         CHECK(e.kind() == hydra::ErrorKind::DatabaseRead);
-        CHECK(hydra::app::plain_error(e) ==
-              "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra "
-              "is running, then try again.");
+        CHECK(hydra::app::plain_error(e) == hydra::app::kDatabaseReadSentence);
     }
 }
 
@@ -1869,10 +1857,10 @@ TEST_CASE("the scan's first copy names a chart whatever copy was analyzed") {
     // the first copy it listed. Every chart takes its names from the library
     // (kNamingCopiesSql), a single copy included.
     RecordStore store(":memory:");
-    const ChartLibraryEntry first = chart_entry("h", "Scanned Title");
-    ChartLibraryEntry second = chart_entry("h", "Second Copy");
+    const ChartLibraryEntry first = library_row("h", "Scanned Title");
+    ChartLibraryEntry second = library_row("h", "Second Copy");
     second.notespath = "C:\\charts\\copy\\notes.chart";
-    store.rebuild_chart_library({first, second, chart_entry("s", "Single Copy")});
+    store.rebuild_chart_library({first, second, library_row("s", "Single Copy")});
 
     store.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
     store.add_record(RecordKey{"s", "mode", CapQuery::at(4)}, at_cap(4));
@@ -1890,7 +1878,7 @@ TEST_CASE("the scan cache is dropped when its reader stamp is not current") {
     // reads every chart again and stamps the table it writes.
     const std::string path = testtemp::temp_path("chart_meta_stamp", ".db");
     std::remove(path.c_str());
-    const ChartLibraryEntry entry = chart_entry("a", "A");
+    const ChartLibraryEntry entry = library_row("a", "A");
     {
         RecordStore store(path);
         store.rebuild_chart_library({entry});
@@ -2023,9 +2011,9 @@ void save_chart(RecordStore& store, const std::string& hash, const std::string& 
     store.save_analysis(prepare_row(RecordKey{hash, mode, CapQuery::at(4)}, at_cap(4)));
 }
 
-// chart_entry's row for another folder holding the same chart.
+// library_row's row for another folder holding the same chart.
 ChartLibraryEntry second_copy(const char* md5) {
-    ChartLibraryEntry copy = chart_entry(md5, "Copy");
+    ChartLibraryEntry copy = library_row(md5, "Copy");
     copy.notespath = std::string("C:\\other\\") + md5 + "\\notes.chart";
     copy.rootfolder = "C:\\other";
     return copy;
@@ -2038,7 +2026,7 @@ TEST_CASE("a scan that drops a chart deletes its stored rows") {
     std::remove(path.c_str());
     {
         RecordStore store(path);
-        store.rebuild_chart_library({chart_entry("a", "A"), chart_entry("b", "B")});
+        store.rebuild_chart_library({library_row("a", "A"), library_row("b", "B")});
         save_chart(store, "a");
         save_chart(store, "b");
     }
@@ -2046,7 +2034,7 @@ TEST_CASE("a scan that drops a chart deletes its stored rows") {
     REQUIRE(results_of(path, "b") == 1);
     {
         RecordStore store(path);
-        store.rebuild_chart_library({chart_entry("a", "A")});
+        store.rebuild_chart_library({library_row("a", "A")});
     }
     CHECK(results_of(path, "b") == 0);
     CHECK(results_of(path, "a") == 1);
@@ -2058,7 +2046,7 @@ TEST_CASE("a chart with two library copies keeps its rows when one copy leaves")
     std::remove(path.c_str());
     {
         RecordStore store(path);
-        store.rebuild_chart_library({chart_entry("a", "A"), second_copy("a")});
+        store.rebuild_chart_library({library_row("a", "A"), second_copy("a")});
         save_chart(store, "a");
     }
     REQUIRE(results_of(path, "a") == 1);
@@ -2076,7 +2064,7 @@ TEST_CASE("a library chart keeps its rows for other chart modes, including Stale
     std::remove(path.c_str());
     {
         RecordStore store(path);
-        store.rebuild_chart_library({chart_entry("a", "A"), chart_entry("b", "B")});
+        store.rebuild_chart_library({library_row("a", "A"), library_row("b", "B")});
         save_chart(store, "a", "mode");
         save_chart(store, "a", "other mode");
         test::add_stale_rows(store, at_cap(8), RecordKey{"a", "build", CapQuery::at(8)},
@@ -2089,7 +2077,7 @@ TEST_CASE("a library chart keeps its rows for other chart modes, including Stale
     REQUIRE(results_of(path, "a") == 5);
     {
         RecordStore store(path);
-        store.rebuild_chart_library({chart_entry("a", "A")});
+        store.rebuild_chart_library({library_row("a", "A")});
     }
     CHECK(results_of(path, "a") == 5);
     CHECK(results_of(path, "b") == 0);
@@ -2099,10 +2087,10 @@ TEST_CASE("a library chart keeps its rows for other chart modes, including Stale
 TEST_CASE("reidentify_chart moves the library row to the new md5 and deletes the old md5's rows") {
     const std::string path = testtemp::temp_path("reidentify_moves", ".db");
     std::remove(path.c_str());
-    const ChartLibraryEntry a = chart_entry("a", "A");
+    const ChartLibraryEntry a = library_row("a", "A");
     {
         RecordStore store(path);
-        store.rebuild_chart_library({a, chart_entry("b", "B")});
+        store.rebuild_chart_library({a, library_row("b", "B")});
         save_chart(store, "a");
         save_chart(store, "b");
     }
@@ -2128,7 +2116,7 @@ TEST_CASE("reidentify_chart keeps the old md5's rows while another library row h
     const ChartLibraryEntry copy = second_copy("a");
     {
         RecordStore store(path);
-        store.rebuild_chart_library({chart_entry("a", "A"), copy});
+        store.rebuild_chart_library({library_row("a", "A"), copy});
         save_chart(store, "a");
     }
     REQUIRE(results_of(path, "a") == 1);
@@ -2148,7 +2136,7 @@ TEST_CASE("a scan that fails partway through its deletes keeps the dropped chart
     std::remove(path.c_str());
     {
         RecordStore store(path);
-        store.rebuild_chart_library({chart_entry("a", "A"), chart_entry("b", "B")});
+        store.rebuild_chart_library({library_row("a", "A"), library_row("b", "B")});
         save_chart(store, "a");
         save_chart(store, "b");
     }
@@ -2158,7 +2146,7 @@ TEST_CASE("a scan that fails partway through its deletes keeps the dropped chart
                  " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
     {
         RecordStore store(path);
-        CHECK_THROWS(store.rebuild_chart_library({chart_entry("a", "A")}));
+        CHECK_THROWS(store.rebuild_chart_library({library_row("a", "A")}));
         CHECK(store.chart_library_count() == 2);
     }
     CHECK(results_of(path, "b") == 1);

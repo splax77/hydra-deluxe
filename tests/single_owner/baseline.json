@@ -2,15 +2,6 @@
   "known_copies": [],
   "known_clones": [
     {
-      "file_a": "tests/test_app_state.cpp",
-      "file_b": "tests/test_song_panel_state.cpp",
-      "lines": 11,
-      "first": "char hash[32];",
-      "date": "2026-10-05",
-      "added_by": "MR1",
-      "remove_by": "2026-10-19"
-    },
-    {
       "file_a": "tests/test_search.cpp",
       "file_b": "tests/test_search.cpp",
       "lines": 10,

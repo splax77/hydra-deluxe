@@ -19,6 +19,17 @@ inline constexpr const char* kSomethingWentWrong =
     "Something went wrong. Try again, and if it keeps happening, report it with the "
     "details below.";
 
+// What a database that won't open reads as (ErrorKind::DatabaseOpen). Tests
+// that see it reach the user compare against this name, not a copy of the words.
+inline constexpr const char* kDatabaseOpenSentence =
+    "Hydra couldn't open its database (hydra.db). Check that no other copy of Hydra is "
+    "running and that the Hydra folder isn't read-only.";
+
+// What a failed database read reads as (ErrorKind::DatabaseRead, D73 item 1).
+inline constexpr const char* kDatabaseReadSentence =
+    "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is "
+    "running, then try again.";
+
 // What happened and what to do, in at most two short sentences. The sentence
 // comes from the error's kind (core/error_kind.h), through the one switch,
 // kind_sentence in user_messages.cpp; the error's words never pick it. Running
