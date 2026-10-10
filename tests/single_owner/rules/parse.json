@@ -146,6 +146,30 @@
       "note": "The first notes.mid, else the last notes.chart. A loop over a listing that takes a notes file's format from an entry's name, or the scan's \"mid if found, else chart\", writes that preference again. Naming the one .srb notes stream (md.notes_filename) is a different question: there is only one stream to name. Decided by: audit finding 186; phase 6 task J1-5 (D53)"
     },
     {
+      "question": "Which corpus files are notes files?",
+      "owner": "notes_file_format in src/parse/chart_files.cpp",
+      "owner_file": "src/parse/chart_files.cpp",
+      "owner_symbol": "notes_file_format",
+      "date": "2026-10-10",
+      "decision": "derive-once review of ct-t6b (2026-10-10)",
+      "added_by": "ct-w3a-join",
+      "pattern": "\\bnotes\\.(chart|mid)\\b",
+      "anchor": "notes.",
+      "must_match": [
+        "$charts = Get-ChildItem $corpus -Recurse -Filter 'notes.chart'",
+        "$mids = Get-ChildItem $corpus -Recurse -Filter 'notes.mid'"
+      ],
+      "must_not_match": [
+        "for (const std::string& p : corpus::chart_paths()) if (chart_format_of(p) == ChartFormat::Chart) chart.push_back(p);",
+        "run: .\\tools\\fuzz_seeds.ps1 -OutDir seeds -TestsExe build-cpp\\Release\\hydra_tests.exe"
+      ],
+      "scope": [
+        ".github/workflows/fuzz.yml",
+        ".github/workflows/ci.yml"
+      ],
+      "note": "A workflow step that picks corpus charts by their file names. The seeds come from the case \"fuzz seeds\" in tests/test_fuzz_regressions.cpp, which reads the corpus through chart_format_of. The walk reads no .yml file, so the case that checks the single files outside it reads these. tools/fuzz_seeds.ps1, where the copy was found, is not in scope: no scan case reads a .ps1 file under tools/."
+    },
+    {
       "question": "Where does an .srb's metadata stream start?",
       "owner": "srb_read_metadata in src/parse/srb.cpp",
       "owner_file": "src/parse/srb.cpp",

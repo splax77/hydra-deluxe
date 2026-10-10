@@ -1,50 +1,22 @@
 // Non-ASCII install folders. Hydra runs from wherever the user put it, and a
 // folder like C:\Users\Zoë\... is a UTF-8 path in our std::strings. The narrow
 // CRT and std::fstream calls read such a path through the ANSI code page and
-// miss the file, so every reader goes through core/winstr's wide calls.
+// miss the file, so every reader goes through core/winstr's wide calls. The
+// Preview renderer's case lives with its other cases in
+// test_preview_renderer.cpp.
 
 #include "doctest.h"
 
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-
 #include <cstdio>
-#include <filesystem>
 #include <stdexcept>
 #include <string>
 
 #include "app/config.h"
 #include "core/winstr.h"
-#include "render/preview_renderer.h"
 #include "temp_util.h"
-#include "warp_util.h"
 
-#ifndef HYDRA_ASSET_DIR
-#error "HYDRA_ASSET_DIR must be defined (see CMakeLists.txt)"
-#endif
-
-namespace fs = std::filesystem;
-
-namespace {
-
-// A fresh, empty scratch folder (testtemp::temp_dir) whose name holds a
-// non-ASCII "Zoë", as a UTF-8 string.
-std::string non_ascii_dir(const char* tag) {
-    const std::string dir = testtemp::temp_dir(std::string("Zo\xC3\xAB_") + tag);
-    std::error_code ec;
-    fs::remove_all(hydra::os_path(dir), ec);
-    fs::create_directories(hydra::os_path(dir));
-    return dir;
-}
-
-void remove_dir(const std::string& utf8_dir) {
-    std::error_code ec;
-    fs::remove_all(fs::path(hydra::utf8_to_wide(utf8_dir)), ec);
-}
-
-}  // namespace
+using testtemp::non_ascii_dir;
+using testtemp::remove_dir;
 
 TEST_CASE("read_file_text reads a file under a non-ASCII folder") {
     const std::string dir = non_ascii_dir("text");
@@ -71,19 +43,5 @@ TEST_CASE("the settings INI saves and loads under a non-ASCII folder") {
     hydra::app::Settings back = hydra::app::Settings::load_file(ini);
     CHECK(back.depth_value == 7);
     CHECK(back.dm_last_user == "111");
-    remove_dir(dir);
-}
-
-TEST_CASE("the Preview renderer loads its assets from a non-ASCII folder (WARP)") {
-    Microsoft::WRL::ComPtr<ID3D11Device> dev;
-    Microsoft::WRL::ComPtr<ID3D11DeviceContext> ctx;
-    REQUIRE(warp::make_device(dev, ctx));
-    const std::string dir = non_ascii_dir("assets");
-    fs::copy(fs::u8path(HYDRA_ASSET_DIR), fs::path(hydra::utf8_to_wide(dir)),
-             fs::copy_options::recursive | fs::copy_options::overwrite_existing);
-
-    // Before the fix this threw "PreviewRenderer: missing ...\3d-config.json".
-    hydra::render::PreviewRenderer r(dev.Get(), ctx.Get(), dir);
-    CHECK(r.config().hydra.msaa == 4);
     remove_dir(dir);
 }

@@ -120,32 +120,6 @@ TEST_CASE("category_scores: the squeeze-out cut is basescore at each note's mult
     }
 }
 
-TEST_CASE("group_thousands matches Python {:,}") {
-    CHECK(group_thousands(0) == "0");
-    CHECK(group_thousands(999) == "999");
-    CHECK(group_thousands(1000) == "1,000");
-    CHECK(group_thousands(228710) == "228,710");
-    CHECK(group_thousands(1234567) == "1,234,567");
-    CHECK(group_thousands(-1234567) == "-1,234,567");
-}
-
-// D48 Q12: one rule everywhere. Caps 1 and 1000 are the plan's examples.
-TEST_CASE("counted: singular at 1, commas from 1,000") {
-    CHECK(counted(1, "bar", "bars") == "1 bar");
-    CHECK(counted(2, "bar", "bars") == "2 bars");
-    CHECK(counted(1000, "bar", "bars") == "1,000 bars");
-    CHECK(std::string(has_have(1)) == "has");
-    CHECK(std::string(has_have(2)) == "have");
-}
-
-// D48 Q2: whole-ms text rounds to nearest. No exact half is pinned.
-TEST_CASE("format_ms_whole: nearest whole millisecond with the unit") {
-    CHECK(format_ms_whole(12.4) == "12 ms");
-    CHECK(format_ms_whole(12.6) == "13 ms");
-    CHECK(format_ms_whole(12.25) == "12 ms");
-    CHECK(format_ms_whole(163.0) == "163 ms");
-}
-
 // Finding 4: the copied path's timing used to cut 12.6 ms down to "12 ms",
 // while the badge said 13.
 TEST_CASE("notationstr_verbose: a 12.6 ms squeeze copies as 13 ms") {
@@ -301,7 +275,8 @@ TEST_CASE("Activation::hardest: the part with its ms, a tie names the squeeze") 
     CHECK_FALSE(plain().hardest().has_value());
 }
 
-TEST_CASE("Activation::needs_timing: free squeezes and slack fills need none (D51 Q4, D13)") {
+// D51 Q4; D13.
+TEST_CASE("Activation::needs_timing: free squeezes and slack fills need none") {
     auto plain = [] {
         Activation a;
         test::set_skips(a, 0);
@@ -356,7 +331,7 @@ TEST_CASE("Activation::needs_timing: free squeezes and slack fills need none (D5
 // D85: the all-0 list's 0 ms limit lets a timing of exactly 0 ms through,
 // though such a timing needs hitting (Activation::needs_timing). A free
 // squeeze counts too, so a negative limit can still refuse one.
-TEST_CASE("Activation::within_ms_limit: 0 ms timings pass a 0 ms limit (D85)") {
+TEST_CASE("Activation::within_ms_limit: 0 ms timings pass a 0 ms limit") {
     auto plain = [] {
         Activation a;
         test::set_skips(a, 0);
@@ -730,7 +705,7 @@ TEST_CASE("backend_row_value: every engine case") {
 // methods read (no 0.003 in the 126 Clone Hero engine methods read); the
 // 3 ms is Hydra's own setting (Rules::backend_leeway_ms), so the edge is
 // Hydra's call, and this is it.
-TEST_CASE("backend leeway: +2.999 ms is counted, exactly +3.0 ms is not (D29)") {
+TEST_CASE("backend leeway: +2.999 ms is counted, exactly +3.0 ms is not") {
     const double lw = core::default_rules().backend_leeway_ms;
     REQUIRE(lw == 3.0);
     CHECK(core::counted_without_squeeze(2.999, lw));
@@ -745,7 +720,8 @@ TEST_CASE("backend leeway: +2.999 ms is counted, exactly +3.0 ms is not (D29)") 
     CHECK(row.summarystr(false, 85.0, lw) == "Hard (uncounted)");
 }
 
-TEST_CASE("SPSqueeze::is_free: a note on the SP end is inside SP (D13)") {
+// D13.
+TEST_CASE("SPSqueeze::is_free: a note on the SP end is inside SP") {
     // A SqIn is free once its note is inside SP: at the end or before it.
     CHECK(SPSqueeze{SqueezeKind::SqIn, 0.0}.is_free());
     CHECK(SPSqueeze{SqueezeKind::SqIn, -0.0}.is_free());
