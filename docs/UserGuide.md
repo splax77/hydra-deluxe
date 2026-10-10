@@ -1,20 +1,20 @@
 # Hydra Deluxe User Guide
 
-This guide walks through Hydra Deluxe's screen in the order you meet it. First the toolbar, then the analysis settings, then the library and its search. After that comes the song panel with its four tabs, then analyzing the whole library, and last the reports.
+This guide walks through Hydra Deluxe's screen in the order you meet it: the toolbar, the analysis settings, the library and its search, the song panel with its four tabs, analyzing the whole library, and last the reports.
 
-It covers Hydra Deluxe. The public Hydra by DragonDelgar has a different screen; see [how the two differ](differences-from-public-hydra.md). For what the path notation and squeezes mean, see the [public Hydra wiki](https://github.com/DragonDelgar/hydra/wiki).
+It covers Hydra Deluxe only. The public Hydra by DragonDelgar has a different screen; see [how the two differ](differences-from-public-hydra.md). For what the path notation and squeezes mean, see the [public Hydra wiki](https://github.com/DragonDelgar/hydra/wiki).
 
 ## The main screen
 
-Hydra Deluxe has one main screen. The toolbar runs along the top. Its **Analysis settings** button opens the settings panel. The library fills the rest of the window.
+Hydra Deluxe has one main screen. The toolbar runs along the top, and the library fills the rest of the window. The toolbar's `Analysis settings` button opens the settings panel.
 
-Click a song and the **song panel** opens beside the library. Drag the library's right edge to give either side more room. Hydra Deluxe remembers the width.
+Click a song and the song panel opens beside the library. Drag the library's right edge to give either side more room. Hydra Deluxe remembers the width.
 
-When something goes wrong, a message appears under the toolbar. A plain notice fades by itself. A problem stays in orange until you dismiss it with its `X`.
+When something happens that you should know about, a message appears under the toolbar. A plain notice fades by itself. A problem stays, in orange, until you dismiss it with its `X`.
 
 ### The first start after updating
 
-Your library and results live in a file called `hydra.db`, next to the program. A new version sometimes stores less in that file than an older one did. Then the first start after updating rewrites the file in the new layout. This happens once.
+Your library and results live in a file called `hydra.db`, next to the program. A new version sometimes stores less in that file than an older one did. When it does, the first start after updating rewrites the file in the new layout. This happens once.
 
 A quick update shows nothing: the window opens and the library appears. If it takes a moment, a box in the middle of the window says:
 
@@ -36,69 +36,95 @@ Hydra Deluxe closes when you dismiss the box. Nothing in `hydra.db` has changed.
 
 ### Toolbar
 
-**`Manage folders... (N)`** opens the **Song folders** window. N is how many folders you have. Add your Clone Hero song folder (or any folder of charts) with `Add folder...`. Hydra Deluxe finds every chart in its subfolders. Each folder has a red `X` to remove it, with a confirmation, because removing a folder changes what the next scan finds.
+The toolbar holds, from left to right, `Manage folders... (N)`, `Scan library`, `Analyze library...`, `Compare with dmleaderboards...` and the `Analysis settings` button. `Open path report` sits at the right edge once there is something to report.
 
-Hydra Deluxe reads `notes.mid`/`notes.chart` + `song.ini` folders, `.sng` archives, and the `.srb` bundles Clone Hero's built-in setlist ships with. Adding the game's own `Clone Hero_Data\StreamingAssets\songs` folder brings in the default songs too.
+`Manage folders... (N)` opens the `Song folders` window, where you choose which folders Hydra Deluxe reads. N is how many folders you have. Click `Add folder...` and pick your Clone Hero song folder, or any folder of charts. Hydra Deluxe finds every chart in its subfolders too. Each folder in the list has a red `X` that removes it, after you confirm. `Close` closes the window. After you add or remove a folder, and while at least one folder is left, a `Scan now` button appears beside `Close`. It closes the window and starts a scan, because a changed list only takes effect when you scan.
 
-**`Scan library`** reads your folders and updates the song list. A song needs a valid ini file to show up. A song that fails is skipped, and the scan window lists the problems when it finishes. Re-scans are fast: a chart whose file size and timestamp haven't changed is not read again. You can cancel a scan part-way; the old library stays as it was.
+Removing a folder takes its songs out of the list at the next scan, and that scan also deletes the saved results of the songs it took out. If you add the folder back later, its songs come back as `Not analyzed`.
 
-Songs stay in the list until the next scan, even if you changed their files. After you add, remove or edit songs, scan again.
+Hydra Deluxe reads `notes.mid` or `notes.chart` folders with a `song.ini`, `.sng` archives, and the `.srb` bundles that Clone Hero's built-in setlist ships with. Adding the game's own `Clone Hero_Data\StreamingAssets\songs` folder brings in the default songs too.
 
-**`Analyze library...`** analyzes many songs at once, in the background. While a search narrows the list, the button reads **`Analyze search (N)...`** and only analyzes the N songs your search shows. A filter Hydra Deluxe can't read narrows nothing, so with only `stars:9` typed the button still reads `Analyze library...`. See [Analyzing the whole library](#analyzing-the-whole-library).
+`Scan library` reads your folders and updates the song list. A song needs a valid ini file to show up. A song that fails is skipped, and the scan window lists the problems when it finishes. Re-scans are fast, because a chart whose file size and timestamp haven't changed is not read again. You can cancel a scan part-way, and the old library stays as it was. Songs stay in the list as they were until the next scan, even if you changed their files, so scan again after you add, remove or edit songs.
 
-**`Compare with dmleaderboards...`** compares a player's leaderboard scores with your stored results. See [Reports](#reports).
+`Analyze library...` analyzes many songs at once, in the background. While a search narrows the list, the button reads `Analyze search (N)...` and analyzes only the N songs your search shows. A filter Hydra Deluxe can't read narrows nothing, so with only `stars:9` typed the button still reads `Analyze library...`. See [Analyzing the whole library](#analyzing-the-whole-library).
 
-**`Analysis settings: ...`** shows the settings your analyses run under, and opens the panel where you change them. See [Analysis settings](#analysis-settings).
+`Compare with dmleaderboards...` compares a player's leaderboard scores with your stored results. It works only under Expert, an SP cap of 4, `1.0 fills` off and Note Shuffle off. With any other settings the button is greyed out, and hovering it says which setting is in the way. See [Reports](#reports).
 
-**`Open path report`** opens the path report in its own window. It appears once your library has analyzed songs, and it stays while a report is open or building. While a batch's report builds, it reads **`Building path report...`**. You can still click it, and the window shows the build's progress. See [Reports](#reports).
+`Analysis settings: ...` shows the settings your analyses run under, and opens the panel where you change them. See [Analysis settings](#analysis-settings).
+
+`Open path report` opens the path report in its own window. It appears once your library has analyzed songs, and it stays while a report is open or building. While a batch's report builds, it reads `Building path report...`. You can still click it, and the window shows the build's progress. See [Reports](#reports).
+
+While a batch runs, `Scan library` and `Analyze library...` are greyed out, and hovering them says `Busy: a batch is running.` `Scan library` is also greyed out while a scan runs and when you have no folders. `Analyze library...` is also greyed out when there is nothing to analyze, and while `hydra_rules.ini` has an error.
 
 ## Analysis settings
 
-The `Analysis settings` button sits on the toolbar, after `Compare with dmleaderboards...`. Its label names only the settings you have changed from their defaults, joined with ` · `, for example `Analysis settings: Hard · Note Shuffle`. With every setting at its default it reads `Analysis settings: defaults`. When the window is too narrow for the whole label, the label is cut short; hover over the button to read all of it.
+The `Analysis settings` button sits on the toolbar, after `Compare with dmleaderboards...`. Click it to open the settings panel, which holds every setting that shapes an analysis.
 
-Click the button to open the settings panel. It holds every setting that shapes an analysis, in three groups: **Chart** (Difficulty, Pro Drums, 2x Bass, Note Shuffle), **Clone Hero rules** (SP cap, 1.0 fills) and **Paths kept** (Score range, Path limit). A change applies the moment you make it, and there is no Apply button. Ticking a box leaves the panel open. Click outside the panel or press `Escape` to close it.
+The button's label names only the settings you have changed from their defaults, joined with ` · `, for example `Analysis settings: Hard · Note Shuffle`. With every setting at its default it reads `Analysis settings: defaults`. When the window is too narrow for the whole label, the label is cut short; hover over the button to read all of it.
 
-At the bottom of the panel, **`Reset to defaults`** puts every setting in the panel back to its default in one click, so the button reads `Analysis settings: defaults` again. It leaves your song folders and everything outside the panel alone. Hover over it to see what it will undo, for example `Resets: Pro Drums off · SP cap 5 bars`. It is greyed out when the settings are already the defaults.
+The panel has three groups. A change applies the moment you make it, and there is no Apply button. Ticking a box leaves the panel open. Click outside the panel or press `Escape` to close it.
 
-Each setting applies to every song, not just the one you have open. A result is saved together with the settings it ran under. Change a setting and the library shows the results for the new settings; a combination you haven't analyzed yet shows its songs as Not analyzed. Change it back and the old results come back, with no batch to run. A song open in the panel is analyzed again under the new settings, the same as clicking it.
+| Group | Setting | Default |
+|---|---|---|
+| `Chart` | `Difficulty` | Expert |
+| `Chart` | `Pro Drums` | on |
+| `Chart` | `2x Bass` | on |
+| `Chart` | `Note Shuffle` | off |
+| `Clone Hero rules` | `SP cap` | 4 bars |
+| `Clone Hero rules` | `1.0 fills` | off |
+| `Paths kept` | `Score range` | 4<!-- default: kDefaultDepthValue --> scores |
+| `Paths kept` | `Path limit` | on<!-- default: Settings::mslimit_enabled -->, 10 ms<!-- default: Settings::mslimit_value --> |
+
+At the bottom of the panel, `Reset to defaults` puts every setting in the panel back to its default in one click, so the button reads `Analysis settings: defaults` again. It leaves your song folders and everything outside the panel alone. Hover over it to see what it will undo, for example `Resets: Pro Drums off · SP cap 5 bars`. It is greyed out when the settings are already the defaults.
+
+Each setting applies to every song, not only the one you have open. A result is saved together with the settings it ran under. Change a setting and the library shows the results for the new settings; a combination you haven't analyzed yet shows its songs as `Not analyzed`. Change it back and the old results come back, with no batch to run. A song open in the panel is analyzed again under the new settings, the same as clicking it.
 
 While a batch runs, the settings are locked. The button's label ends in ` (locked)`. The panel still opens, but its controls and `Reset to defaults` are greyed out and it says `Stop the batch to change these.` Opening a song never locks them. Changing a setting while the song is still analyzing starts it again under the new settings.
 
-**Difficulty.** Which charted difficulty to analyze, path and preview: Expert, Hard, Medium or Easy.
+### What each setting does
 
-**Pro Drums.** Analyze with cymbals and toms as separate notes, the way Clone Hero scores Pro Drums.
+`Difficulty` picks which charted difficulty to analyze, path and preview: Expert, Hard, Medium or Easy.
 
-**2x Bass.** Include the chart's 2x kicks, like Clone Hero's Double Kick modifier. It works at every difficulty. Each difficulty has its own 2x kicks, though few charts have any below Expert.
+`Pro Drums` analyzes with cymbals and toms as separate notes, the way Clone Hero scores Pro Drums.
 
-For example, say you have a song open with 2x Bass on and want to see it with 1x bass. Untick 2x Bass and the song is analyzed again without its 2x kicks. Tick it again and the 2x result comes back.
+`2x Bass` includes the chart's 2x kicks, like Clone Hero's Double Kick modifier. It works at every difficulty. Each difficulty has its own 2x kicks, though few charts have any below Expert. For example, say you have a song open with 2x Bass on and want to see it with 1x bass. Untick `2x Bass` and the song is analyzed again without its 2x kicks. Tick it again and the 2x result comes back.
 
-**Note Shuffle.** Score the chart the way Clone Hero 1.1's Note Shuffle modifier rearranges it. The game moves notes between pads, and the move is the same every time for a given chart and drum setting. So each Difficulty, Pro Drums and 2x Bass choice gets its own shuffled result, kept beside the unshuffled one. The Paths, Preview, Stars and Dynamics tabs and batches all use the shuffled chart while it's on. If Clone Hero would freeze trying to shuffle a chart, that chart shows no path, and a sentence saying so takes its place. The leaderboard comparison is off while Note Shuffle is on, because leaderboard scores don't say whether it was used.
+`Note Shuffle` scores the chart the way Clone Hero 1.1's Note Shuffle modifier rearranges it. The game moves notes between pads, and the move is the same every time for a given chart and drum setting. So each Difficulty, Pro Drums and 2x Bass choice gets its own shuffled result, kept beside the unshuffled one. The Paths, Preview, Stars and Dynamics tabs and batches all use the shuffled chart while it's on. If Clone Hero would freeze trying to shuffle a chart, that chart shows no path, and a sentence saying so takes its place. The leaderboard comparison is off while Note Shuffle is on, because leaderboard scores don't say whether it was used.
 
-**SP cap.** The most bars of Star Power the meter can hold during the analysis. 4 is Clone Hero's rule and the default. Leave it at 4 for paths you mean to play. Any other number is a what-if: its scores can't be reached in the game. At 1 bar no path can activate Star Power, and the Paths tab says so. Results are kept per cap, so a 4-bar result and a 16-bar result for the same song sit side by side. The leaderboard comparison only runs at 4 bars.
+`SP cap` is the most bars of Star Power the meter can hold during the analysis. 4 is Clone Hero's rule and the default. Leave it at 4 for paths you mean to play. Any other number is a what-if: its scores can't be reached in the game. At 1 bar no path can activate Star Power, and the Paths tab says so. Results are kept per cap, so a 4-bar result and a 16-bar result for the same song sit side by side. The leaderboard comparison only runs at 4 bars.
 
-**1.0 fills.** Spawn drum fills by Clone Hero 1.0's rule instead of 1.1's. A fill only appears if your Star Power was ready in time. Clone Hero 1.1 wants it ready 4 beats before the fill. 1.0 wanted it about one fill-length before, so short fills were looser and long fills stricter. Leave it off for current Clone Hero. Tick it to price a run played on 1.0. Results are kept per rule, so a song can hold a 1.1 result and a 1.0 result side by side. The leaderboard comparison needs it off. Everywhere else, Hydra Deluxe names the two rules `Clone Hero 1.0` and `Clone Hero 1.1`, or `CH 1.0` and `CH 1.1` in narrow columns.
+`1.0 fills` spawns drum fills by Clone Hero 1.0's rule instead of 1.1's. A fill only appears if your Star Power was ready in time. Clone Hero 1.1 wants it ready 4 beats before the fill. 1.0 wanted it about one fill-length before, so short fills were looser and long fills stricter. Leave it off for current Clone Hero, and tick it to price a run played on 1.0. Results are kept per rule, so a song can hold a 1.1 result and a 1.0 result side by side. The leaderboard comparison needs it off. Everywhere else, Hydra Deluxe names the two rules `Clone Hero 1.0` and `Clone Hero 1.1`, or `CH 1.0` and `CH 1.1` in narrow columns.
 
-**Score range.** How many extra paths below optimal to keep. The dropdown picks the unit. `scores` keeps the next few distinct scores under optimal. `points` keeps every path within that many points of optimal. These paths are a little worse, but handy when the optimal path is awkward to play. More paths make the analysis slower.
+`Score range` sets how many extra paths below optimal to keep, and its dropdown picks the unit. `scores` keeps the next few distinct scores under optimal. `points` keeps every path within that many points of optimal. These paths are a little worse, but handy when the optimal path is awkward to play. More paths make the analysis slower.
 
-**Path limit.** When ticked, an extra path is kept only when its hardest squeeze or required early fill is within this many milliseconds. That keeps alternates you can realistically hit. A path that ties the best score is kept even when its timing is over the limit, and its figure shows in orange; below the best score, a path over the limit is dropped. It starts on<!-- default: Settings::mslimit_enabled --> at 10 ms<!-- default: Settings::mslimit_value -->. Lower or negative values demand more slack. The limit compares raw milliseconds: for a squeeze, the gap at the SP end; for an early fill, the gap at the fill deadline. It does not account for frontend timing scaling (see the Paths tab), so a kept path can be a bit harder than its number suggests where an activation's scale line is orange.
+`Path limit`, when ticked, keeps an extra path only when its hardest squeeze or required early fill is within this many milliseconds. That keeps alternates you can realistically hit. A path that ties the best score is kept even when its timing is over the limit, and its figure shows in orange; below the best score, a path over the limit is dropped. Lower or negative values demand more slack. The limit compares raw milliseconds: for a squeeze, the gap at the SP end; for an early fill, the gap at the fill deadline. It does not account for frontend timing scaling (see the Paths tab), so a kept path can be a bit harder than its number suggests where an activation's scale line is orange.
 
 ## Searching the library
 
-The library lists every song from the latest scan. Its columns are **Title**, **Artist**, **Charter**, **Folder** and **Best path**. Click a column heading to sort by it. Columns can be hidden, and Hydra Deluxe remembers which ones and the sort. Each text column is first made wide enough for almost all of its entries. A rare entry much longer than the rest ends in `…`; hover over it to read all of it. Room left over then goes to the text columns that still cut an entry, so long text is cut only when the window has no room to spare. Columns that never cut, such as numbers, are as wide as their widest entry. When the window is too narrow, the text columns give way first, and once they are down to their headings the table scrolls sideways. Every table in Hydra Deluxe sizes its columns this way. You can drag a column's edge to resize it, but the width lasts only until Hydra Deluxe sizes that column again: when a change to its entries or to the window's width gives it a new width, and at every start. The columns always stay in this order. While the song panel is open, the Charter and Folder columns step aside to save room, and the folder shows under the title. Song names show without Clone Hero's colour and style tags, here and in the report windows. A name that is nothing but tags reads `(unknown)`.
+The library lists every song from the latest scan, one row per song. Click a song to open it. Its columns are `Title`, `Artist`, `Charter`, `Folder` and `Best path`.
 
-The **Best path** cell shows the song's state under the current analysis settings:
+Click a column heading to sort by it. Right-click the heading row to hide or show a column; every column but `Title` can be hidden. Hydra Deluxe remembers which columns are hidden and the sort. While the song panel is open, the `Charter` and `Folder` columns hide to save room, and they come back when you close it. The columns always stay in this order.
 
-- `Not analyzed` means there is no result yet.
-- A score and a path, like `378,315  3- 1 2`, is the optimal path.
-- `Stale` means the result is out of date. Either another version of the app made it, or it was made under different rules in `hydra_rules.ini`. Click the song or run a batch to refresh it. If the cause was a rules edit, switching the rules back brings the result back.
+Song names show without Clone Hero's colour and style tags, here and in the report windows. A name that is nothing but tags reads `(unknown)`.
 
-Hover the cell for the same explanation.
+Each text column is first made wide enough for almost all of its entries. A rare entry much longer than the rest ends in `…`; hover over it to read all of it. Room left over then goes to the text columns that still cut an entry, so long text is cut only when the window has no room to spare. Columns that never cut, such as numbers, are as wide as their widest entry. When the window is too narrow, the text columns give way first, and once they are down to their headings the table scrolls sideways. Every table in Hydra Deluxe sizes its columns this way. You can drag a column's edge to resize it, but the width lasts only until Hydra Deluxe sizes that column again: when a change to its entries or to the window's width gives it a new width, and at every start.
+
+The `Best path` cell shows the song's state under the current analysis settings:
+
+| The cell shows | It means |
+|---|---|
+| `Not analyzed` | There is no result yet. |
+| A score and a path, like `378,315  3- 1 2` | The optimal path. |
+| `Stale` | The result is out of date. Either another version of the app made it, or it was made under different rules in `hydra_rules.ini`. Click the song or run a batch to refresh it. If the cause was a rules edit, switching the rules back brings the result back. |
+| Nothing | The song was analyzed, but the analysis kept no path. Its panel says `No paths found.` |
+
+Hover a `Not analyzed` or `Stale` cell for the same explanation.
 
 The chips above the table filter by state: `All`, `Not analyzed`, `Stale` and `Analyzed`, each with its count. A chip with a count of 0 is greyed out.
 
 ### The search box
 
-Type in the search box to narrow the list. `Ctrl+F` jumps to it. `Escape` or its `X` clears it. The heading above shows how many songs match, like `Library 5 of 97 charts`.
+Type in the search box to narrow the list. `Ctrl+F` jumps to it. `Escape` or its `X` clears it. The heading above shows how many songs match, like `Library 5 of 97 charts`. The text that matched is highlighted in gold.
 
 Searching ignores case and accents, so `ALLISTER` finds Allister and `beyonce` finds Beyoncé. Colour and style tags in song names are ignored too. The examples below come from Hydra Deluxe's test library.
 
@@ -115,56 +141,81 @@ Searching ignores case and accents, so `ALLISTER` finds Allister and `beyonce` f
 
 You can mix them: `charter:hoph2o stars:7`. `squeeze<N` means the same as `squeeze<=N`: at most N. A path that needs no timing passes any squeeze limit.
 
-`stars:` and `squeeze<=` only look at current results. A song that is not analyzed, or whose result is Stale, never matches them. A filter Hydra Deluxe can't read, like `stars:9`, shows a short note under the search box and is left out of the search.
+`stars:` and `squeeze<=` only look at current results. A song that is not analyzed, or whose result is `Stale`, never matches them. A filter Hydra Deluxe can't read, like `stars:9`, shows a short note under the search box and is left out of the search.
+
+While you search for words and the `Folder` or `Charter` column is hidden, each row gets a second line under its title. That line shows the song's folder. When the search matched the charter instead, and the `Charter` column is hidden, the line reads `charted by` and the charter's name. The matched text is highlighted in gold there too.
 
 Under the table, a search shows a `Clear search` button. When a match came from a column that is hidden, a note there says so, like `Matched on folder.`
 
 ## The song panel
 
-Click a song to open its panel beside the library. The top shows the title, the artist and the charter. The `<` and `>` buttons step to the previous and next song in the list. The `X` button, or `Escape`, closes the panel.
+Click a song to open its panel beside the library. Opening a song analyzes it under the current settings and shows its paths. The top shows the title, the artist and the charter. The `<` and `>` buttons step to the previous and next song in the list. The `X` button, or `Escape`, closes the panel.
 
-**`Hide library`**, left of `<`, gives the song panel the whole window. It then reads `Show library`, which puts the library back at the width you left it. `<` and `>` still step through the list while it's hidden. Closing the panel always brings the library back. Hydra Deluxe remembers the choice, so the next song opens the same way, even after a restart.
+`Hide library`, left of `<`, gives the song panel the whole window. It then reads `Show library`, which puts the library back at the width you left it. `<` and `>` still step through the list while it's hidden. Closing the panel always brings the library back. Hydra Deluxe remembers the choice, so the next song opens the same way, even after a restart.
 
-Opening a song analyzes it under the current settings. Most songs take a few milliseconds, so the paths simply appear. A song that takes longer than 0.15 seconds shows `Analyzing chart...` with a progress bar and a `Cancel` button. Cancelling shows `Analysis cancelled.` with a `Try again` button, and nothing is saved for that song. Closing the panel or clicking another song cancels it the same way.
+Below the header is the headline: the best score, its path, and one line like `Optimal path · 7 stars`. Under it are four tabs: `Paths`, `Preview`, `Dynamics` and `Stars`.
 
-When the analysis finishes, the song's result is saved to the library if it was missing, Stale or different. So the library row and the panel always show the same numbers.
+Most songs take a few milliseconds to analyze, so the paths appear at once. A song that takes longer than 0.15 seconds shows `Analyzing chart...` with a progress bar and a `Cancel` button. Cancelling shows `Analysis cancelled.` with a `Try again` button, and nothing is saved for that song. Closing the panel or clicking another song cancels it the same way.
 
-Below the header is the headline: the best score, its path, and one line like `Optimal path · 7 stars`.
+When the analysis finishes, the song's result is saved to the library if it was missing, `Stale` or different. So the library row and the panel always show the same numbers.
+
+If the analysis fails, the panel says why in orange, with the error itself dimmed under it, and a `Continue` button. `Continue` clears the panel. A song the analysis kept no path for shows `No paths found.`
 
 If the song's file has moved or been deleted since the last scan, the panel says `Song file not found.` and offers a `Rescan library` button. Its library row and result stay. If the chart was edited since the last scan, opening it reads the edited file, and the library row follows.
 
-The panel has four tabs: **Paths**, **Preview**, **Dynamics** and **Stars**.
-
 ## Paths tab
 
-The left side lists the paths the analysis kept, grouped by score. Each score is a fold that shows the score and how many paths share it, like `378,315  1 path` on Burnout; click it to hide or show those paths. **Optimal** comes first. When several paths tie for the top score, all of them are optimal, because playing any of them earns the same score. Then come the extra paths under a heading like **Within 2 scores**. Last is **Best all-0 path**: the best path that activates at the first chance every time, with no skips. An early fill it lets pass reads **E1** and still counts as no skip: if you don't get that fill, the next one is your first chance anyway. Every squeeze and early fill on it is 0 ms or easier. It also shows how far it falls below optimal. Click a path to show it on the right.
+The Paths tab lists the paths the analysis kept on the left. Click a path to show its activations on the right.
+
+The list is grouped by score. Each score is a fold that shows the score and how many paths share it, like `378,315  1 path` on Burnout; click it to hide or show those paths. `Optimal` comes first. When several paths tie for the top score, all of them are optimal, because playing any of them earns the same score. Then come the extra paths under a heading like `Within 2 scores`.
+
+Last comes `Best all-0 path`: the best path that activates at the first chance every time, with no skips. An early fill it lets pass reads `E1` and still counts as no skip: if you don't get that fill, the next one is your first chance anyway. Every squeeze and early fill on it is 0 ms or easier. It also shows how far it falls below optimal. This heading appears only when the all-0 path isn't already in the list above it, and it can hold several paths that tie.
 
 Each path shows its own hardest timing right after it, like `3- 1 2   163.0 ms` under the `378,315` fold: the hardest squeeze or required early fill that path needs. It turns orange past the difficult limit. A path that needs no timing shows nothing there.
 
-The right side starts with a summary, like `Activations 3 · no SP left over`. Under it, a timeline runs from the first measure to the end of the song, with a mark for each activation. The song's length is the one the chart's own files state (the `song_length` line in song.ini, the same key in a .sng, or the length stored in a .srb). A chart that states none ends at its last Expert drum note. Hydra Deluxe never opens the audio to find it, so a chart with no audio still gets a timeline. A song with a long outro ends its last mark well before the right edge. A mark is outlined in orange only when its row's timing is orange too. A chart with no length at all, meaning no stated length and no Expert drum notes, shows no marks.
+### The activations
 
-Each activation is one row. It shows the activation's number, its notation, its measure (like `m32.1.0`), the bars of SP banked when you activate (like `1 bar` or `2 bars`), and a badge for its hardest timing, like `squeeze out 163 ms` or `early fill 20 ms`. An activation that skips fills keeps its early fill badge when its Star Power is ready no earlier than the fill's deadline, because that timing decides whether the first fill shows up. An early fill with time to spare has nothing to time, so it gets no badge. A squeeze that happens on its own still gets one when nothing else on the row needs timing, with a figure of 0 or below: `squeeze in -316 ms` means the phrase's last note already lands 316 ms before Star Power ends. Click a row to open it, or use `Expand all` and `Collapse all`.
+The right side starts with a summary, like `Activations 3 · no SP left over`. Under it, a timeline runs from the first measure to the end of the song, with a gold mark for each activation. Hover the timeline to read which activation a mark is. A mark is outlined when its row has a timing badge, in orange only when that timing is orange too.
 
-An open row shows:
+The timeline's length is the song's length as the chart's own files state it: the `song_length` line in song.ini, the same key in a .sng, or the length stored in a .srb. A chart that states none ends at its last Expert drum note. Hydra Deluxe never opens the audio to find it, so a chart with no audio still gets a timeline. A song with a long outro ends its last mark well before the right edge. A chart with no length at all, meaning no stated length and no Expert drum notes, shows no marks.
 
-- **Chord**: the chord you activate on. On a multi-note chord, do a frontend squeeze: hit the activation note first, so the other notes score with the Star Power multiplier.
-- **`Show in Preview >`**: jumps the Preview tab to this activation.
-- The early fill timing, when the activation has one (the `E` notation), like `Early fill: 0.0 ms (required)`. A positive number means you must hit that many ms early to make the fill show up. A negative number is slack, so the fill shows up with room to spare.
-- A plain sentence for each squeeze: which note to hit early or late, by how much, and what it's worth. Notes are named the way the Dynamics tab names them, like `Green tom` or `Yellow cymbal`.
-- **Backend timings**: the notes near the end of Star Power, with a short lead-in above the table.
+Each activation is one row. It shows the activation's number, its notation, its measure (like `m32.1.0`), the bars of SP banked when you activate (like `1 bar` or `2 bars`), and a badge for its hardest timing, like `squeeze out 163 ms` or `early fill 20 ms`. Click a row to open it, or use `Expand all` and `Collapse all`. The first row starts open.
 
-A backend squeeze means hitting the note at the SP end early, so it lands inside Star Power. The note at `0.0 ms` is exactly where SP ends; the others are the notes just before and after it. If the last activation's SP runs past the end of the chart, the table lists the notes before that end, so every timing is negative. The rating beside each note is a rough guide to how hard it is to fit into Star Power. A note the path doesn't count is tagged `(uncounted)`, squeeze-out notes included, like `Free SqOut (uncounted)`. For double backend squeezes, look for notes from the backend leeway up to the hit window. The leeway is 3 ms<!-- default: Rules::backend_leeway_ms --> by default (`backend_leeway_ms` in `hydra_rules.ini`). The hit window is 85 ms by default (`hit_window_ms`, below).
+An activation that skips fills keeps its early fill badge when its Star Power is ready no earlier than the fill's deadline, because that timing decides whether the first fill shows up. An early fill with time to spare has nothing to time, so it gets no badge. A squeeze that happens on its own still gets one when nothing else on the row needs timing, with a figure of 0 or below: `squeeze in -316 ms` means the phrase's last note already lands 316 ms before Star Power ends.
 
-Star Power length is measured in measures, not milliseconds. If the SP end falls where measures last a different time than at the activation (a tempo or time signature change), frontend timing only partly carries to the SP end. Hitting the activation 50 ms late might move the SP end only 25 ms. Whenever the scale isn't x1.00, the opened row shows it, early first: `Frontend timing scales x0.99 (early) / x4.45 (late) at the SP end.` Late and early hits can scale differently when the activation or the SP end sits right on a change. A side that is x1.00 is left out. If a SqIn moved the SP end, that earlier end gets its own clause. The line is orange when the scale changes a squeeze or backend figure, and those backend rows show an effective timing (`eff.`). Otherwise it is gray.
+An open row shows these, in order:
 
-Sometimes a phrase collected during Star Power would push the meter past the SP cap, so the cap cuts the SP end short. A phrase that only brings the meter exactly to the cap doesn't count. When the cap cuts the end short, the note that filled the meter, not the activation, is now the one whose timing moves the SP end. The scale line and the eff. figures are measured from that note. The row shows an overfill warning, like `SP overfilled at m40.1.0`, when that matters: when the row lists a squeeze, or a backend note the path squeezes out or doesn't count.
+1. The chord you activate on. On a multi-note chord, do a frontend squeeze: hit the activation note first, so the other notes score with the Star Power multiplier.
+2. `Show in Preview >`, which jumps the Preview tab to this activation.
+3. The early fill timing, when the activation has one (the `E` notation), like `Early fill: 0.0 ms (required)`. A positive number means you must hit that many ms early to make the fill show up. A negative number is slack, so the fill shows up with room to spare.
+4. A plain sentence for each squeeze: which note to hit early or late, by how much, and what it's worth. Notes are named the way the Dynamics tab names them, like `Green tom` or `Yellow cymbal`.
+5. `Backend timings`, a fold that starts open: the notes near the end of Star Power, with a short lead-in above the table.
 
-Below the activations:
+### Backend timings
 
-- **`Multiplier squeeze`** lists the multiplier squeezes in the song. When the combo multiplier goes up on a multi-note chord, hitting the more valuable notes (cymbals, dynamics) a little later scores them on the higher multiplier. It's why two FCs of the same song can differ by 15 points. `2x` means it happens as the multiplier reaches 2x (10 notes in), and so on.
-- **`Score breakdown`** shows the score this path should get, in the same categories as Clone Hero's results screen. It includes multiplier, frontend and backend squeezes. A double squeeze only counts when the backend note lands within a small leeway past the SP end, 3 ms<!-- default: Rules::backend_leeway_ms --> by default (`backend_leeway_ms` in `hydra_rules.ini`).
-- **`Copy path`** copies the selected path's notation. `Ctrl+C` does the same and flashes `Copied!`.
-- **`Hide backend rows beyond`** hides backend rows more than this many ms from the SP end. It starts off<!-- default: Settings::backendlimit_enabled -->, with 50 ms<!-- default: Settings::backendlimit_value --> in the box. A note the path squeezes out always shows. This only changes the display. It is not an analysis setting, so changing it never re-analyzes anything.
+A backend squeeze means hitting the note at the SP end early, so it lands inside Star Power. In the `Backend timings` table, the note at `0.0 ms` is exactly where SP ends; the others are the notes just before and after it. If the last activation's SP runs past the end of the chart, the table lists the notes before that end, so every timing is negative.
+
+The rating beside each note is a rough guide to how hard it is to fit into Star Power. A note the path doesn't count is tagged `(uncounted)`, squeeze-out notes included, like `Free SqOut (uncounted)`. For double backend squeezes, look for notes from the backend leeway up to the hit window. The leeway is 3 ms<!-- default: Rules::backend_leeway_ms --> by default (`backend_leeway_ms` in `hydra_rules.ini`). The hit window is 85 ms by default (`hit_window_ms`, below).
+
+### Frontend timing scale and overfill
+
+Star Power length is measured in measures, not milliseconds. If the SP end falls where measures last a different time than at the activation (a tempo or time signature change), frontend timing only partly carries to the SP end. Hitting the activation 50 ms late might move the SP end only 25 ms.
+
+Whenever the scale isn't x1.00, the opened row shows it, early first: `Frontend timing scales x0.99 (early) / x4.45 (late) at the SP end.` Late and early hits can scale differently when the activation or the SP end sits right on a change. A side that is x1.00 is left out. If a SqIn moved the SP end, that earlier end gets its own clause. The line is orange when the scale changes a squeeze or backend figure, and those backend rows show an effective timing (`eff.`). Otherwise it is gray.
+
+Sometimes a phrase collected during Star Power would push the meter past the SP cap, so the cap cuts the SP end short. A phrase that only brings the meter exactly to the cap doesn't count. When the cap cuts the end short, the note that filled the meter is the one whose timing moves the SP end, instead of the activation. The scale line and the eff. figures are measured from that note. The row shows an overfill warning, like `SP overfilled at m40.1.0`, when that matters: when the row lists a squeeze, or a backend note the path squeezes out or doesn't count.
+
+### Below the activations
+
+Under the activation rows are two folds, `Multiplier squeeze` and `Score breakdown`. Both start open.
+
+`Multiplier squeeze` lists the multiplier squeezes in the song. When the combo multiplier goes up on a multi-note chord, hitting the more valuable notes (cymbals, dynamics) a little later scores them on the higher multiplier. This is why two FCs of the same song can differ by 15 points. `2x` means it happens as the multiplier reaches 2x (10 notes in), and so on.
+
+`Score breakdown` shows the score this path should get, in the same categories as Clone Hero's results screen. It includes multiplier, frontend and backend squeezes. A double squeeze only counts when the backend note lands within a small leeway past the SP end, 3 ms<!-- default: Rules::backend_leeway_ms --> by default (`backend_leeway_ms` in `hydra_rules.ini`).
+
+`Copy path` copies the selected path's notation. `Ctrl+C` does the same and flashes `Copied!`.
+
+`Hide backend rows beyond` hides backend rows more than this many ms from the SP end. It starts off<!-- default: Settings::backendlimit_enabled -->, with 50 ms<!-- default: Settings::backendlimit_value --> in the box. A note the path squeezes out always shows. This only changes the display. It is not an analysis setting, so changing it never re-analyzes anything.
 
 One more setting feeds these displays: `hit_window_ms` in `hydra_settings.ini` (default 85, the Clone Hero Pro Drums hit window per side). It has no control on screen yet.
 
@@ -174,50 +225,75 @@ The Preview plays the chart as a 3D note highway, in time with the song's audio.
 
 Where Star Power runs out, a bright teal line crosses the floor and a small teal triangle sits just outside each railing, level with the line. A note just before the end can cover the line, but the triangles stay in view, so you can always see exactly where SP stops.
 
-The Preview follows the Analysis settings. Change the difficulty, Pro Drums, 2x Bass or Note Shuffle and that mode's notes appear in place. The song keeps playing, or stays paused, at the same spot. If the chart has no notes for that mode, the Preview pauses where it is and says so, like `No Hard Pro Drums notes in this chart.` Switch back and the notes return at that spot. If the chart file changed since it was analyzed, the Preview draws no path and shows `This chart changed since it was analyzed. Click the song again to see its path.`
+### Choosing what to watch
 
-**`Showing`** picks which path to draw. It lists the same paths as the Paths tab, in the same order. The all-0 path reads like `0 0 0 0  (best all-0)`.
+`Showing` picks which path to draw. It lists the same paths as the Paths tab, in the same order. The all-0 path reads like `0 0 0 0  (best all-0)`.
 
-**`< Act`** and **`Act >`** jump to the previous and next activation. The `[` and `]` keys do the same. `Show in Preview >` on the Paths tab lands here too. A jump lands on the activation chord with it already hit: the gem shows struck, and the score box counts it.
+`< Act` and `Act >` jump to the previous and next activation. `Show in Preview >` on the Paths tab lands here too. A jump lands on the activation chord with it already hit: the gem shows struck, and the score box counts it.
 
-The transport buttons are `-5s`, `< 5 Ticks`, `Play`/`Pause`, `5 Ticks >` and `+5s`, with a volume slider beside them. The keys:
+The transport buttons are `-5s`, `< 5 Ticks`, `Play`/`Pause`, `5 Ticks >` and `+5s`, with a volume slider beside them. Each has a key:
 
-- `Space` plays and pauses.
-- `Left` and `Right` arrows jump 5 seconds.
-- `,` (comma) and `.` (period) step 5 ticks.
-- `[` and `]` jump between activations.
+| Key | Does |
+|---|---|
+| `Space` | play and pause |
+| `Left` and `Right` arrows | jump 5 seconds |
+| `,` (comma) and `.` (period) | step 5 ticks |
+| `[` and `]` | jump to the previous and next activation |
 
 The same keys are drawn as keycaps in a bar under the highway, in the buttons' order. Each button's tooltip names its key too.
 
 The scrubber under the highway shows where you are. Its gold marks are the path's activations, in the same gold as the next-activation box. The scrubber measures position against the song's length, like the Paths timeline, so an activation sits at the same spot on both. A chart with no length still scrubs, up to where playback ends, but the Paths timeline shows no marks for it, so there is nothing to line up. Audio that runs past the song's length still plays.<!-- owners: scrub_end_ms (the scrubber's end), app::song_length_ms (the song's length) --> The beat lines run on to the end of the audio.
 
-The boxes on the highway:
+### When the settings or the chart change
 
-- **Time box** (top left): the measure you're at and the measure where playback ends, the tempo and time signature, and the practice section when the chart has them. Playback ends at the end of the audio (or at the last note, when the audio stops first), and the clock beside the scrubber counts to that same point.
-- **Score box** (under it): the running score in large type, then a row of seven stars, then the multiplier and combo, like `x4 · combo 212`. The stars you have earned so far are filled in gold. A last line says which star comes next and how many points it still needs, like `star 3 in 595`; once you have all seven, that line goes away. Stars count your score without the solo bonus, as Clone Hero does, so a solo's bonus raises the score but never the stars. The box appears once the song is analyzed. It reads `Score unavailable` when the path can't be replayed to its stored score.
-- **SP meter** (right edge): a gauge of banked Star Power, one line per bar, with the bars shown under it. It rises one bar at each phrase you collect and drains through each activation, reaching empty exactly where the path's SP ends. It holds as many bars as the result's SP cap. Before the song is analyzed, it uses the SP cap from the Analysis settings, the one the next analysis will run at.
-- **Drain box** (top right, beside the meter): how long one bar of SP lasts at the current tempo, like `1 bar / 2.5 s`. While SP is running on the path it reads `SP drain` and `empties in` the time left, in teal like the floor. Otherwise it reads `SP drain (if activated)` and `full meter`: how long a full meter would last at the current tempo.
-- **Next activation** (top right, under the drain box): the next activation's number, where it is, and its chord, then the activation in path notation with its timings, like `5+ (100 ms)`. `Copy path` includes the same text for each activation.
+The Preview follows the Analysis settings. Change the difficulty, Pro Drums, 2x Bass or Note Shuffle and that mode's notes appear in place. The song keeps playing, or stays paused, at the same spot. If the chart has no notes for that mode, the Preview pauses where it is and says so, like `No Hard Pro Drums notes in this chart.` Switch back and the notes return at that spot.
+
+If the chart file changed since it was analyzed, the Preview draws no path and shows `This chart changed since it was analyzed. Click the song again to see its path.`
+
+### The boxes on the highway
+
+The time box, at the top left, shows the measure you're at and the measure where playback ends, the tempo and time signature, and the practice section when the chart has them. Playback ends at the end of the audio (or at the last note, when the audio stops first), and the clock beside the scrubber counts to that same point.
+
+The score box, under it, shows the running score in large type, then a row of seven stars, then the multiplier and combo, like `x4 · combo 212`. The stars you have earned so far are filled in gold. A last line says which star comes next and how many points it still needs, like `star 3 in 595`; once you have all seven, that line goes away. Stars count your score without the solo bonus, as Clone Hero does, so a solo's bonus raises the score but never the stars. The box appears once the song is analyzed. It reads `Score unavailable` when the path can't be replayed to its stored score.
+
+The SP meter, at the right edge, is a gauge of banked Star Power, one line per bar, with the bars shown under it. It rises one bar at each phrase you collect and drains through each activation, reaching empty exactly where the path's SP ends. It holds as many bars as the result's SP cap. Before the song is analyzed, it uses the SP cap from the Analysis settings, the one the next analysis will run at.
+
+The drain box, at the top right beside the meter, shows how long one bar of SP lasts at the current tempo, like `1 bar / 2.5 s`. While SP is running on the path it reads `SP drain` and `empties in` the time left, in teal like the floor. Otherwise it reads `SP drain (if activated)` and `full meter`: how long a full meter would last at the current tempo.
+
+The next activation box, at the top right under the drain box, starts with the next activation's number, like `Next: activation 2 of 3`. Under that is the activation in path notation with its timings, like `5+ (100 ms)`, and then where it is and its chord. After the last activation the box goes away. `Copy path` includes the same text for each activation.
+
+### Other things the Preview can show
+
+With no song selected, the tab says `Select a song to preview.` While a chart loads, it shows `Loading preview:` and the current step over a progress bar. If the chart can't be loaded, it shows `Preview failed:` and the reason in orange, with the error itself dimmed under it.
+
+If Hydra Deluxe can't use your sound device, the Preview still draws and plays the chart, without sound. An orange line says `Hydra couldn't use your audio device; the preview is muted.`, and hovering it shows the device's own message.
+
+On a computer where Hydra Deluxe can't get a graphics device to draw with, the tab shows only `Preview is unavailable (no render device).`
 
 ## Dynamics tab
 
 This tab counts the chart's ghost and accent notes. Ghosts and accents are the soft and hard hits that score double in Clone Hero.
 
-The **Pads** table shows, for each pad (and each cymbal separately under Pro Drums), how many notes are ghosts, accents and normal hits. **Kicks** does the same for kicks, with 2x kicks on their own row and a line saying how many kick notes are 2x. Percentages round to the nearest whole number. When 2x Bass is off, the 2x kick row stays visible but greyed out, and both All kicks and the totals leave it out. **Totals** adds them up.
+The `Pads` table shows, for each pad (and each cymbal separately under Pro Drums), how many notes are ghosts, accents and normal hits. `Kicks` does the same for kicks, with 2x kicks on their own row and a line saying how many kick notes are 2x. Percentages round to the nearest whole number. When 2x Bass is off, the 2x kick row stays visible but greyed out, and both All kicks and the totals leave it out. `Totals` adds them up.
 
-The **Chart** box says whether the chart has dynamics turned on. A MIDI chart has to opt in with a tag. Without that tag Clone Hero ignores the velocity markings and plays every note as a normal hit. Hydra Deluxe reads the chart the same way, so the tab shows no ghost or accent counts. It says `This chart has no ghost or accent notes.`, and the Chart box says `Dynamics enabled: no (markings ignored by Clone Hero)`. When the tag only comes partway through the chart, the markings before it are ignored too, and the Chart box says how many there were.
+The `Chart` box says whether the chart has dynamics turned on. A MIDI chart has to opt in with a tag. Without that tag Clone Hero ignores the velocity markings and plays every note as a normal hit. Hydra Deluxe reads the chart the same way, so the tab shows no ghost or accent counts. It says `This chart has no ghost or accent notes.`, and the Chart box says `Dynamics enabled: no (markings ignored by Clone Hero)`. When the tag only comes partway through the chart, the markings before it are ignored too, and the Chart box says how many there were.
 
 Counts are worked out when you open the song, together with its paths. Nothing is saved, so they always match the chart file as it is now.
 
 ## Stars tab
 
-This tab shows the score you need for each star.
+This tab shows the score you need for each star. A star counts once your score, without the solo bonus, reaches its cutoff.
 
-**Base score** is every note hit once at 1x, with no Star Power. **Solo bonus** is the chart's full solo bonus. The solo bonus does not count toward stars: Clone Hero compares your score without it.
+Above the table, `Base score` is every note hit once at 1x, with no Star Power. When the chart has a solo, `Solo bonus` is its full solo bonus. The solo bonus does not count toward stars, because Clone Hero compares your score without it.
 
-The table lists stars 1 to 7. **Multiplier** is what the base score is multiplied by (0.1, 0.5, 1.0, 2.0, 2.8, 3.6 and 4.4). **Cutoff** is the score that earns the star, rounded up. **With full solo bonus** is the cutoff plus the whole solo bonus: what the results screen shows at that cutoff if you also collect every solo bonus.
+The table has one row for each of stars 1 to 7:
 
-A star counts once your score, without the solo bonus, reaches its cutoff.
+| Column | What it shows |
+|---|---|
+| `Stars` | the star |
+| `Multiplier` | what the base score is multiplied by: 0.1, 0.5, 1.0, 2.0, 2.8, 3.6 and 4.4 |
+| `Cutoff` | the score that earns the star, rounded up |
+| `With full solo bonus` | the cutoff plus the whole solo bonus: what the results screen shows at that cutoff if you also collect every solo bonus. This column shows only when the chart has a solo. |
 
 ## Analyzing the whole library
 
