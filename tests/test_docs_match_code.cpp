@@ -118,16 +118,10 @@ void add_words(const std::string& text, size_t begin, size_t end, std::set<std::
 std::set<std::string> code_words() {
     std::set<std::string> words;
     sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
-            const fs::path ext = path.extension();
-            codelex::Lang lang;
-            if (ext == ".cpp" || ext == ".h" || ext == ".c" || ext == ".hlsl")
-                lang = codelex::Lang::Cpp;
-            else if (ext == ".py")
-                lang = codelex::Lang::Python;
-            else if (ext == ".ps1")
-                lang = codelex::Lang::PowerShell;
-            else
-                return;
+            const std::optional<codelex::Lang> read_as =
+                codelex::language_of_extension(path.extension().string());
+            if (!read_as) return;
+            const codelex::Lang lang = *read_as;
             if (rel == "tests/test_docs_match_code.cpp") return;
             const bool strings_count = rel.rfind("tests/", 0) != 0;
             std::ifstream in(path, std::ios::binary);

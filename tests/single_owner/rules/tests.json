@@ -990,6 +990,47 @@
         ".github/workflows/ci.yml"
       ],
       "note": "A CI step that gives the GUI runner its own --jobs count. The count is kDefaultJobs's, so a step runs plain --all. The walk reads no .yml file, so the case that checks the single files outside it reads ci.yml (the way it reads installer/hydra.iss). Decided by: CI and test tooling plan, decision 3 (2026-10-10); derive-once review of ct-t4"
+    },
+    {
+      "question": "Which codelex language reads a file with this extension?",
+      "owner": "language_of_extension in tests/code_lexer.h",
+      "owner_file": "tests/code_lexer.h",
+      "owner_symbol": "language_of_extension",
+      "date": "2026-10-10",
+      "decision": "D107",
+      "added_by": "so-t1-review",
+      "pattern": "\\b(ext\\w*|extension\\(\\)(\\.\\w+\\(\\))?)\\s*==\\s*\"\\.(py|ps1|psm1|hlsl)\"",
+      "anchor": "\".",
+      "must_match": [
+        "if (ext == \".py\") return codelex::Lang::Python;",
+        "const bool py = path.extension() == \".py\";",
+        "else if (ext == \".ps1\")"
+      ],
+      "must_not_match": [
+        "return codelex::language_of_extension(path.extension().string());",
+        "const fs::path ext = path.extension();"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/code_lexer.h",
+          "line_text": "if (ext == \".cpp\" || ext == \".h\" || ext == \".c\" || ext == \".hlsl\") return Lang::Cpp;",
+          "why": "language_of_extension, the owner"
+        },
+        {
+          "file": "tests/code_lexer.h",
+          "line_text": "if (ext == \".py\") return Lang::Python;",
+          "why": "language_of_extension, the owner"
+        },
+        {
+          "file": "tests/code_lexer.h",
+          "line_text": "if (ext == \".ps1\" || ext == \".psm1\") return Lang::PowerShell;",
+          "why": "language_of_extension, the owner"
+        }
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "The scan's own folder (tests/single_owner/) is outside the walk, so scan.cpp calls the owner without this row checking it. Added by the derive-once review of so-t1, which folded three copies of the mapping (scan.cpp twice, test_docs_match_code.cpp once)."
     }
   ]
 }

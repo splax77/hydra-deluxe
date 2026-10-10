@@ -33,6 +33,7 @@
 #include "../code_lexer.h"
 #include "../source_tree.h"
 #include "core/strutil.h"
+#include "core/winstr.h"
 #include "json.hpp"
 #include "listed.h"
 #include "rows.h"
@@ -291,12 +292,10 @@ const std::vector<KnownClone>& known_clones() { return tables().clones; }
 
 namespace {
 
-// The language codelex reads a file in, by its extension.
+// The language codelex reads a file in (codelex::language_of_extension), or
+// C++ for a file it does not know.
 codelex::Lang lexer_language(const fs::path& path) {
-    const fs::path ext = path.extension();
-    if (ext == ".py") return codelex::Lang::Python;
-    if (ext == ".ps1" || ext == ".psm1") return codelex::Lang::PowerShell;
-    return codelex::Lang::Cpp;
+    return codelex::language_of_extension(path.extension().string()).value_or(codelex::Lang::Cpp);
 }
 
 // Whether a trimmed line is all comment in `lang`, as codelex splits it.
@@ -519,7 +518,7 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
     sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
             // A Python row ("language": "py") reads .py files only, so a
             // __pycache__ .pyc is never read; every other row reads C++.
-            const bool py = path.extension() == ".py";
+            const bool py = lexer_language(path) == codelex::Lang::Python;
             if (!is_cpp_source(path) && !py) return;
             // These files hold made-up rows and their examples as text.
             if (rel.compare(0, 19, "tests/single_owner/") == 0) return;
