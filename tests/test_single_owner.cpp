@@ -2597,6 +2597,23 @@ const std::vector<OwnerRule>& rules() {
            R"re(return s.search_depth_mode() == DepthMode::Scores ? counted(s.depth_value, "score", "scores"))re",
            "score_range_value: the GUI's counted display wording, which the batch confirm and the "
            "settings button share (settings summary button handoff, 2026-10-09)"}}},
+        // Reading the yes/no back out of the summary's wording: a new wording
+        // would leave the reset button never greyed. The owner asks the list
+        // of changed settings directly.
+        {"Is anything left for a reset to undo?",
+         "settings_at_defaults in src/ui/library_dialogs.cpp",
+         R"re((==|!=)\s*"(Analysis settings: )?defaults|"defaults"\s*(==|!=)|settings_(changes_summary|button_label)\([^()]*\)\s*(==|!=))re",
+         "",
+         {},
+         {},
+         "derive-once review 8aa5f401 finding 1(a) (settings reset button, 2026-10-09)",
+         {R"(return settings_changes_summary(s) == "defaults";)",
+          R"(if (settings_changes_summary(s) == "defaults") {)",
+          R"(const bool off = settings_button_label(app.settings, false) == "Analysis settings: defaults";)"},
+         {R"(return out.empty() ? "defaults" : out;)",
+          "return settings_change_phrases(s).empty();",
+          "const std::string label = settings_button_label(app.settings, locked);"},
+         {}},
         // The two strings typed anywhere but CMakeLists.txt, which the walk
         // does not read (so no owner line is listed). The installer script is
         // checked by the case below this table's scan.

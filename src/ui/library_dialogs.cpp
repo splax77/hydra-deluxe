@@ -17,6 +17,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace hydra::ui {
 
@@ -96,15 +97,16 @@ BatchSettingsSummary batch_settings_summary(const app::Settings& s) {
     return out;
 }
 
-std::string settings_changes_summary(const app::Settings& s) {
+namespace {
+
+// One phrase per panel setting that differs from its default, in panel order.
+// settings_changes_summary words it; settings_at_defaults asks if it's empty.
+std::vector<std::string> settings_change_phrases(const app::Settings& s) {
     // The defaults are the ones "Reset to defaults" puts back
-    // (Settings::with_analysis_defaults), so a reset always reads "defaults".
+    // (Settings::with_analysis_defaults), so a reset always leaves none.
     const app::Settings d = s.with_analysis_defaults();
-    std::string out;
-    const auto add = [&out](const std::string& phrase) {
-        if (!out.empty()) out += " \xC2\xB7 ";
-        out += phrase;
-    };
+    std::vector<std::string> out;
+    const auto add = [&out](const std::string& phrase) { out.push_back(phrase); };
     if (s.difficulty() != d.difficulty()) add(difficulty_name(s.difficulty()));
     if (s.view_prodrums != d.view_prodrums) add(s.view_prodrums ? "Pro Drums" : "Pro Drums off");
     if (s.effective_bass2x() != d.effective_bass2x())
@@ -117,6 +119,17 @@ std::string settings_changes_summary(const app::Settings& s) {
         add("Score range " + score_range_value(s));
     if (s.mslimit_enabled != d.mslimit_enabled || s.mslimit_value != d.mslimit_value)
         add(s.mslimit_enabled ? "Path limit " + path_limit_ms_value(s) : "Path limit off");
+    return out;
+}
+
+}  // namespace
+
+std::string settings_changes_summary(const app::Settings& s) {
+    std::string out;
+    for (const std::string& phrase : settings_change_phrases(s)) {
+        if (!out.empty()) out += " \xC2\xB7 ";
+        out += phrase;
+    }
     return out.empty() ? "defaults" : out;
 }
 
@@ -125,7 +138,7 @@ std::string settings_button_label(const app::Settings& s, bool locked) {
 }
 
 bool settings_at_defaults(const app::Settings& s) {
-    return settings_changes_summary(s) == "defaults";
+    return settings_change_phrases(s).empty();
 }
 
 std::string reset_settings_tooltip(const app::Settings& s, bool locked) {
