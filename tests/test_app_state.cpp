@@ -1496,7 +1496,7 @@ TEST_CASE("is_selected_row: the selected row is the one with its notespath, not 
 
 // Every way to start a scan is refused while a batch runs, and the status
 // line says why, as news that fades (D51 call 24, D62 item 4).
-TEST_CASE("a scan cannot start during a batch, and the status line says so (D51 Q24)") {
+TEST_CASE("a scan cannot start during a batch, and the status line says so") {
     ScratchPaths paths("appstate_scanbatch");
     std::unique_ptr<AppState> app = app_on(paths);
     app->settings.chartfolders = {"C:\\charts"};
@@ -1692,7 +1692,7 @@ TEST_CASE("a stopped batch lets go of its report rows when it ends") {
 // The confirm counts library rows, every copy included, like the library
 // does (D76), and reads which have a result from the store, not from the
 // library's cached rows.
-TEST_CASE("the confirm counts every library row, and rows with a result from the store (D76)") {
+TEST_CASE("the confirm counts every library row, and rows with a result from the store") {
     ScratchPaths paths("appstate_confirm");
     auto store = std::make_unique<RecordStore>(paths.db);
     const ChartLibraryEntry first = library_entry(1);

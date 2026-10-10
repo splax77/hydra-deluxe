@@ -1,7 +1,7 @@
 // The repo's own source tree, as the tests that read it see it. This is the
 // one place a test reads HYDRA_SOURCE_DIR (the repo root CMakeLists.txt passes
-// in) and the one place a test walks src/, tools/ and tests/. The scan in
-// tests/test_single_owner.cpp and the docs check in
+// in) and the one place a test walks src/, tools/ and tests/. The scans in
+// tests/single_owner/ and the docs check in
 // tests/test_docs_match_code.cpp both come here, so a third test that reads
 // the tree calls these instead of growing its own walker.
 #pragma once

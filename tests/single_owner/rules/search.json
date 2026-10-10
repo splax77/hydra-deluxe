@@ -1,0 +1,486 @@
+{
+  "rules": [
+    {
+      "question": "Where does SP end, counting bars as measures?",
+      "owner": "add_act_edge and add_deact_edge in src/search/graph.cpp",
+      "owner_file": "src/search/graph.cpp",
+      "owner_symbol": "add_act_edge",
+      "date": "2026-10-04",
+      "decision": "audit finding 156",
+      "added_by": "step-1 derive-once fixes",
+      "pattern": "plusmeasure\\([^;]*sp_bars_to_measures\\(",
+      "anchor": "sp_bars_to_measures(",
+      "owner_files": [
+        "src/search/graph.cpp"
+      ],
+      "exempt": [
+        {
+          "file": "tests/test_timing.cpp",
+          "why": "it tests plusmeasure itself and pins its result as a literal tick"
+        }
+      ],
+      "must_match": [
+        "song.timing().plusmeasure(act.timecode, sp_bars_to_measures(act.sp_meter())).ticks());",
+        "song.timing().plusmeasure(end, sp_bars_to_measures(1)).ticks();"
+      ],
+      "must_not_match": [
+        "CHECK(st.plusmeasure(act.timecode, 16).ticks() == 21840);"
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "Decided by: audit finding 156; step-1 derive-once review findings 8 and 10 (2026-10-04)"
+    },
+    {
+      "question": "What points band keeps every path?",
+      "owner": "kKeepEveryPathBand in src/search/pather.h",
+      "owner_file": "src/search/pather.h",
+      "owner_symbol": "kKeepEveryPathBand",
+      "date": "2026-10-04",
+      "decision": "audit R7.29",
+      "added_by": "step-1 derive-once fixes",
+      "pattern": "depth_value\\s*=\\s*1'?000'?000('?000)?\\s*;",
+      "anchor": "depth_value",
+      "must_match": [
+        "o.depth_value = 1'000'000'000;",
+        "o.depth_value = 1000000;"
+      ],
+      "must_not_match": [
+        "cfg.depth_value = 40;",
+        "o.depth_value = kKeepEveryPathBand;"
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "Decided by: audit R7.29; step-1 derive-once review finding 13 (2026-10-04)"
+    },
+    {
+      "question": "Does a test run its own targeted search?",
+      "owner": "search_target in src/search/pather.cpp",
+      "owner_file": "src/search/pather.cpp",
+      "owner_symbol": "search_target",
+      "date": "2026-10-04",
+      "decision": "step-1 derive-once review of fb1189b, finding 1 (2026-10-04)",
+      "added_by": "step-1 derive-once fixes round 2",
+      "pattern": "\\.target_act_ticks\\s*=",
+      "anchor": ".target_act_ticks",
+      "must_match": [
+        "o.target_act_ticks = want;",
+        "options.target_act_ticks = ticks;"
+      ],
+      "must_not_match": [
+        "const std::vector<Path> kept = search_target(song, cfg, want);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/search/pather.cpp",
+          "line_text": "options.target_act_ticks = ticks;",
+          "why": "search_target, the owner"
+        },
+        {
+          "file": "tests/test_search.cpp",
+          "line_text": "pinned.target_act_ticks = ticks;",
+          "why": "tests EngineOptions' plumbing, not search_target's filter"
+        },
+        {
+          "file": "tests/test_search.cpp",
+          "line_text": "opts.target_act_ticks = std::vector<int64_t>{5760, 17280};",
+          "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
+        },
+        {
+          "file": "tests/test_search.cpp",
+          "line_text": "opts.target_act_ticks = std::vector<int64_t>{5760, 17280};",
+          "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
+        },
+        {
+          "file": "tests/test_search.cpp",
+          "line_text": "opts.target_act_ticks = std::vector<int64_t>{5760, 17280};",
+          "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
+        },
+        {
+          "file": "tests/test_search.cpp",
+          "line_text": "target.target_act_ticks = std::vector<int64_t>{7680};",
+          "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
+        },
+        {
+          "file": "tests/test_search.cpp",
+          "line_text": "a_then_late.target_act_ticks = std::vector<int64_t>{2304, 7680};",
+          "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
+        },
+        {
+          "file": "tests/test_search.cpp",
+          "line_text": "opts.target_act_ticks = std::vector<int64_t>{28800};",
+          "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
+        },
+        {
+          "file": "tests/test_search.cpp",
+          "line_text": "opts.target_act_ticks = std::vector<int64_t>{19200};",
+          "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
+        },
+        {
+          "file": "tests/test_preview_view.cpp",
+          "line_text": "opts.target_act_ticks = std::vector<int64_t>{28800};",
+          "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
+        },
+        {
+          "file": "tests/test_preview_view.cpp",
+          "line_text": "opts.target_act_ticks = std::vector<int64_t>{5760, 17280};",
+          "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
+        },
+        {
+          "file": "tests/test_replay.cpp",
+          "line_text": "opts.target_act_ticks = std::vector<int64_t>{28800};",
+          "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "A test that sets EngineOptions' target ticks runs the engine's targeted search itself. The lines listed test the engine's target mode on hand-built songs (each pins its own answer); a test that wants search_target's answer calls search_target."
+    },
+    {
+      "question": "How does a list of activation ticks become pins?",
+      "owner": "activation_pins in src/search/pather.cpp",
+      "owner_file": "src/search/pather.cpp",
+      "owner_symbol": "activation_pins",
+      "date": "2026-10-07",
+      "decision": "step-1 derive-once review of track-r2, finding 2 (2026-10-07)",
+      "added_by": "track-r2-review",
+      "pattern": "PinnedWindow\\{\\s*[a-z_]\\w*\\s*\\}",
+      "anchor": "PinnedWindow{",
+      "must_match": [
+        "for (const int64_t t : sorted) windows.push_back(PinnedWindow{t});",
+        "for (const int64_t t : ticks) out.push_back(PinnedWindow{t});"
+      ],
+      "must_not_match": [
+        "search_target(song, cfg, {PinnedWindow{3168}, PinnedWindow{12864}});"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/search/pather.cpp",
+          "line_text": "for (const int64_t t : ticks) out.push_back(PinnedWindow{t});",
+          "why": "activation_pins, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "A tick list becomes activation-only pins in one place: sorted, each tick once. A pin built from a variable in a loop restates that. Literal-tick pins in tests do not match."
+    },
+    {
+      "question": "Which rule names a fill deadline?",
+      "owner": "fill_rule_name in src/search/graph.h",
+      "owner_file": "src/search/graph.h",
+      "owner_symbol": "fill_rule_name",
+      "date": "2026-10-04",
+      "decision": "D48",
+      "added_by": "O3a",
+      "pattern": "^(?:(?!//).)*[\"'][^\"'\\w]*(Clone Hero|CH) 1\\.[01]\\b",
+      "anchor": " 1.",
+      "calls_owner": "\\bfill_rule_(name|description)\\(",
+      "must_match": [
+        "out.fills = s.legacy_fills ? \"Clone Hero 1.0\" : \"Clone Hero 1.1\";",
+        "{k:'s10',     t:'CH 1.0',      num:true},",
+        "<h1>Fill spawn <span class=\"accent\">CH 1.0 vs CH 1.1</span></h1>",
+        "if (options.lens.legacy_fills) cap_label += \" — Clone Hero 1.0 fills\";"
+      ],
+      "must_not_match": [
+        "const char* ch10 = hydra::engine_mode_stamp(hydra::FillDeadlineRule::Ch10);",
+        "help_marker(\"Spawn drum fills by Clone Hero 1.0's rule instead of 1.1's. A fill only \"",
+        "\"--legacy-fills would write Clone Hero 1.0 results into the \"",
+        "std::string fills;        // \"Clone Hero 1.1\" or \"Clone Hero 1.0\"",
+        "ImGui::Checkbox(\"1.0 fills\", &s.legacy_fills);",
+        "out.fills = hydra::fill_rule_name(rule, hydra::FillRuleNameStyle::Long);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/search/graph.h",
+          "line_text": "if (rule == FillDeadlineRule::Ch10) return is_short ? \"CH 1.0\" : \"Clone Hero 1.0\";",
+          "why": "fill_rule_name, the owner: Clone Hero 1.0's two names"
+        },
+        {
+          "file": "src/search/graph.h",
+          "line_text": "return is_short ? \"CH 1.1\" : \"Clone Hero 1.1\";",
+          "why": "fill_rule_name, the owner: Clone Hero 1.1's two names"
+        }
+      ],
+      "note": "---- one name per fill rule (phase 3 task O3a) ---- A quoted string (C++ or the reports' JavaScript and HTML) whose first word is a game version's name is a label for a fill rule. A sentence that only mentions the version later on is prose, and a trailing // comment is not a label, so neither is flagged. The \"1.0 fills\" checkbox keeps its own words (docs/adr/0010). Decided by: audit finding 55; D48, Q13 (phase 3 task O3a)"
+    },
+    {
+      "question": "Which fill rule does a legacy_fills flag mean?",
+      "owner": "fill_rule_for in src/search/graph.h",
+      "owner_file": "src/search/graph.h",
+      "owner_symbol": "fill_rule_for",
+      "date": "2026-10-04",
+      "decision": "D53, D54",
+      "added_by": "FX2-R",
+      "pattern": "legacy\\w*\\s*\\?\\s*(hydra::)?FillDeadlineRule::Ch1[01]",
+      "anchor": "FillDeadlineRule::Ch1",
+      "calls_owner": "\\bfill_rule_for\\(",
+      "must_match": [
+        "options.lens.legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;",
+        "return legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;"
+      ],
+      "must_not_match": [
+        "fill_rule_for(settings.legacy_fill_deadline), settings.rules);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/search/graph.h",
+          "line_text": "return legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;",
+          "why": "fill_rule_for, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "A legacy_fills flag (a setting, a Lens or a switch) turned into a rule by a ternary of its own. Decided by: M_D review finding 3 and round 2 finding 5 (phase 3 tasks FX-R and FX2-R); widened to tests by audit finding 177 / phase 6 task J4-1 (D53, D54)"
+    },
+    {
+      "question": "Which fill rule does a database's stamp name?",
+      "owner": "fill_rule_from_stamp in src/search/graph.h",
+      "owner_file": "src/search/graph.h",
+      "owner_symbol": "fill_rule_from_stamp",
+      "date": "2026-10-04",
+      "decision": "M_D review round 2 findings 2 and 5 (phase 3 task FX2-R)",
+      "added_by": "FX2-R",
+      "pattern": "engine_mode\\(\\)\\s*==|\"ch1[01]\"",
+      "calls_owner": "\\bfill_rule_from_stamp\\(",
+      "owner_files": [
+        "src/search/graph.h"
+      ],
+      "must_match": [
+        "if (store->engine_mode() == std::string(",
+        "const std::string legacy = mode && *mode == \"ch10\" ? \"1\" : \"0\";",
+        "legacy_fills = stamp == \"ch10\" ? \"1\" : \"0\";",
+        "if (m == \"ch11\") return;"
+      ],
+      "must_not_match": [
+        "if (mode && hydra::fill_rule_from_stamp(*mode) != expected)",
+        "legacy_fills = stamped_fill_rule() == FillDeadlineRule::Ch10 ? \"1\" : \"0\";"
+      ],
+      "note": "A database's engine_mode stamp compared by hand: through the store's accessor, or any line spelling a rule's stamp text, which only engine_mode_stamp in search/graph.h may write. Decided by: M_D review round 2 findings 2 and 5 (phase 3 task FX2-R); widened by the M7-2b review, finding 4"
+    },
+    {
+      "question": "What is the best score allowed to eliminate a path in its group?",
+      "owner": "Engine::best_eligible_score in src/search/engine.cpp",
+      "owner_file": "src/search/engine.cpp",
+      "owner_symbol": "Engine::best_eligible_score",
+      "date": "2026-10-04",
+      "decision": "phase 7 M7-1 derive-once review round 2, finding 2 (2026-10-04)",
+      "added_by": "M7-1",
+      "pattern": "if \\(!can_outscore\\(|beating_\\.back\\(\\)",
+      "must_match": [
+        "if (!can_outscore(idx)) continue;",
+        "const int64_t best = beating_.empty() ? 0 : beating_.back();"
+      ],
+      "must_not_match": [
+        "if (can_outscore(idx)) beating_.push_back(cur_[(size_t)idx].score);",
+        "return !filtered_[(size_t)idx] ||"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/search/engine.cpp",
+          "line_text": "if (!can_outscore(idx)) continue;",
+          "why": "best_eligible_score, the owner"
+        }
+      ],
+      "scope": [
+        "src/search/engine.cpp"
+      ],
+      "note": "reduce_group reads this one answer both where a tied over-limit path is folded and where an over-limit leader is dropped."
+    },
+    {
+      "question": "How tall can the SP meter get?",
+      "owner": "max_sp_bars in src/search/graph.cpp",
+      "owner_file": "src/search/graph.cpp",
+      "owner_symbol": "max_sp_bars",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-2",
+      "pattern": "std::min\\([^;]*(cap[^;]*phrase|phrase[^;]*cap)",
+      "anchor": "std::min(",
+      "must_match": [
+        "return std::min(*sp_meter_cap_, sp_phrase_count_);",
+        "return std::min(sp_cap, std::max(sp_phrase_count, 1));"
+      ],
+      "must_not_match": [
+        "bank = std::min(bank + 1.0, cap);",
+        "return std::max(max_sp_bars(sp_cap, sp_phrase_count), 1);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/search/graph.cpp",
+          "line_text": "return std::min(*sp_meter_cap, sp_phrase_count);",
+          "why": "max_sp_bars, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "graph_build_cap's floor of one is the pather's own and stays there. Decided by: audit finding 260; phase 6 task J3-2 (D53, D54)"
+    },
+    {
+      "question": "What does the engine read when an activation edge has no fill deadline?",
+      "owner": "enumerate and index_fills in src/search/engine.cpp",
+      "owner_file": "src/search/engine.cpp",
+      "owner_symbol": "enumerate",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-2",
+      "pattern": "activation_fill_deadline_ms\\.value_or\\(",
+      "anchor": "activation_fill_deadline_ms.value_or(",
+      "must_match": [
+        "v.activation_fill_deadline_ms = o->activation_fill_deadline_ms.value_or(0.0);"
+      ],
+      "must_not_match": [
+        "v.activation_fill_deadline_ms = o->activation_fill_deadline_ms",
+        "fills.emplace_back(n.tick, deadline);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Only activation edges carry a deadline; the engine refuses one without it instead of filling in a number. Decided by: audit R7.35; phase 6 task J3-2 (D53, D54)"
+    },
+    {
+      "question": "By what millisecond must a 1.1 fill spawn? (tests)",
+      "owner": "activation_fill_deadline_ms in src/search/graph.cpp",
+      "owner_file": "src/search/graph.cpp",
+      "owner_symbol": "activation_fill_deadline_ms",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-5",
+      "pattern": "fill_length - 4 \\* res",
+      "anchor": "fill_length - 4 * res",
+      "must_match": [
+        "const int64_t tick_e = fill_end - fill_length - 4 * res;"
+      ],
+      "must_not_match": [
+        "CHECK(ch11(t, fill_end, fill_lengths[f]) == doctest::Approx(want[r][b][f]));"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "---- phase 6 task J4-5: unit tests read production constants ---- A test that types the 1.1 deadline's tick math again instead of pinning the ms from one run. Decided by: audit finding 263; phase 6 task J4-5 (D53, D54)"
+    },
+    {
+      "question": "What is the default search depth?",
+      "owner": "kDefaultDepthValue in src/search/pather.h",
+      "owner_file": "src/search/pather.h",
+      "owner_symbol": "kDefaultDepthValue",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-1",
+      "pattern": "\\bint\\s+(depth_value|kDefaultDepthValue)\\s*=\\s*4\\s*;",
+      "anchor": "alue",
+      "must_match": [
+        "int depth_value = 4;"
+      ],
+      "must_not_match": [
+        "int depth_value = kDefaultDepthValue;",
+        "cfg.depth_value = 4;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/search/pather.h",
+          "line_text": "constexpr int kDefaultDepthValue = 4;",
+          "why": "kDefaultDepthValue, the owner"
+        }
+      ],
+      "note": "A struct default, not a test input: the leading int keeps lines that set a depth on a built options struct out. Decided by: audit finding 181; phase 6 task J4-1 (D53, D54)"
+    },
+    {
+      "question": "Which options make the all-0 search?",
+      "owner": "allzero_options in src/search/pather.cpp",
+      "owner_file": "src/search/pather.cpp",
+      "owner_symbol": "allzero_options",
+      "date": "2026-10-05",
+      "decision": "D53, D54, D85",
+      "added_by": "J4-1",
+      "pattern": "\\bhard_ms_filter\\s*=\\s*true",
+      "anchor": "hard_ms_filter",
+      "must_match": [
+        "options.hard_ms_filter = true;",
+        "allzero.hard_ms_filter = true;"
+      ],
+      "must_not_match": [
+        "const std::vector<Path> z = run_search(graph, allzero_options());",
+        "hard_ms_filter_(options.hard_ms_filter),"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/search/pather.cpp",
+          "line_text": "options.hard_ms_filter = true;",
+          "why": "allzero_options, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "Decided by: audit finding 284; phase 6 task J4-1 (D53, D54); D85"
+    },
+    {
+      "question": "Which settings change a stored analysis?",
+      "owner": "settings_key in src/search/pather.cpp",
+      "owner_file": "src/search/pather.cpp",
+      "owner_symbol": "settings_key",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-1",
+      "pattern": "\\bs\\.legacy_fill_deadline\\s*<<|\\brules\\.fingerprint\\(\\)\\s*<<",
+      "must_match": [
+        "k << s.legacy_fill_deadline << '|' << s.rules.fingerprint() << '|';"
+      ],
+      "must_not_match": [
+        "<< static_cast<int>(settings.difficulty) << '|' << hydra::settings_key(settings);",
+        "<< rules.fingerprint();"
+      ],
+      "scope": [
+        "tests",
+        "tools"
+      ],
+      "note": "A key streamed field by field. The owner is in src, so no line in scope is an owner line. Decided by: audit finding 275; phase 6 task J4-1 (D53, D54)"
+    },
+    {
+      "question": "Does this path need any timing, and what is the all-0 list's 0 ms limit?",
+      "owner": "allzero_options in src/search/pather.cpp (the 0 ms limit) and Path::needs_timing in src/core/model.cpp (the zero test)",
+      "owner_file": "src/search/pather.cpp",
+      "owner_symbol": "allzero_options",
+      "date": "2026-10-04",
+      "decision": "E3 (findings 180, 243, 245 and 56), D85",
+      "added_by": "E3",
+      "pattern": "difficulty\\(\\)\\.value_or\\(0(\\.0+)?\\)\\s*(<=|>|<|>=)\\s*0(\\.0+)?(?![\\d.])|value_or\\(0(\\.0+)?\\)\\s*<=\\s*0(\\.0+)?(?![\\d.])|ms_filter\\s*=\\s*(std::optional<double>\\()?0(\\.0+)?(?![\\d.])|within_(ms_)?limit\\(\\s*0(\\.0+)?\\s*\\)",
+      "must_match": [
+        "if (p.difficulty().value_or(0) <= 0) continue;",
+        "const bool zero = d.value_or(0.0) <= 0;",
+        "options.ms_filter = std::optional<double>(0);",
+        "if (best.within_ms_limit(0.0)) return;"
+      ],
+      "must_not_match": [
+        "if (best.is_allzero() && best.within_ms_limit(*allzero_options().ms_filter)) return;",
+        "options.ms_filter = 0.5;",
+        "options.ms_filter = 10;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/search/pather.cpp",
+          "line_text": "options.ms_filter = 0.0;",
+          "why": "allzero_options, the owner of the 0 ms limit (D85)"
+        }
+      ],
+      "note": "Was the E3/D85 test case, which pinned the whole line; now a row, so a drift asks for the owner line to be updated. The shortcut that skips the all-0 pass reads the limit from allzero_options."
+    }
+  ]
+}

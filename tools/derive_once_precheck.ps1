@@ -25,9 +25,9 @@ Each line reads:  <kind> <file>:<line>  <what was found>  -- <why it counts>
 The kind letters are the merge-gate audit's (2026-10-04, section 4): A a
 production rule written twice, C a copied test helper or fixture, B a test
 that recomputes what production computes, D a number with no decision, E a
-source scan outside the one scan file. A line ending "(known copy: ...)" is
-already in known_copies() of tests/test_single_owner.cpp with the fix that
-removes it.
+source scan outside the one scan. A line ending "(known copy: ...)" is
+already in the known copies of tests/single_owner/baseline.json with the fix
+that removes it.
 
 WHICH FILES
 
@@ -37,34 +37,34 @@ folder or a Python file named test_*.py, at any depth (tools/tests/a.py and
 tools/test_a.py count); every other file is production code
 (Test-TestFile). Wherever a check below says "test file", it means this
 rule. The script reads no .ps1 file, so it never reads itself or its
-self-test. No check matches the added lines of tests/test_single_owner.cpp
-against its spellings, because that file's literals are pattern examples
-(Test-SkippedFile). The file is still read in three ways: its rows and
-known copies are loaded (THE SCAN ROWS), check 1 compares the helpers it
-defines with the others, and check 4 reads the rule rows a range adds to it.
+self-test. No check matches the added lines of the scan's own files against
+its spellings, because their literals are pattern examples
+(Test-SkippedFile). They are still read in three ways: the rows and known
+copies are loaded (THE SCAN ROWS), check 1 compares the helpers the scan
+defines with the others, and check 4 reads the rule rows a range adds.
 
 THE SCAN ROWS
 
-tests/test_single_owner.cpp owns every "this is a copy" pattern it has a row
-for. This script does not keep its own copy of those patterns: it reads the
-rows (question, owner, pattern, calls-owner pattern, owner files, exempt
-files, owner lines, scope, function limit, comment rule) and known_copies()
-from that file at the range's last commit, or at -RulesAt, and applies them
-to the added .cpp and .h lines the way the scan does. An owner line passes,
-unless this range wrote that owner line; then it is printed so the reviewer
-judges its reason. The kind comes from the file and the row's owner: a line
-in production code is A; in a test file, a row owned by tests/source_tree.h
-is E, a row owned by another test header is C, and a row owned by
-production code is B. Checks
-1, 2 and 4 print the C, the B and A, and the E lines of this list. Each
-row's must-match and must-not-match examples are tried too; a line starting
-"precheck:" says a row could not be read as expected, either because .NET
-reads its pattern differently from the scan's std::regex or because a scan
-struct's members moved (the self-test names that case). The patterns the checks below still hold are for questions no
-row asks, each with a comment saying why.
+The single-owner scan owns every "this is a copy" pattern it has a row for.
+Its rows live in tests/single_owner/rules/*.json and its known copies in
+tests/single_owner/baseline.json. This script does not keep its own copy of
+those patterns: it reads both at the range's last commit, or at -RulesAt,
+and applies the rows to the added lines the way the scan does (Get-RowHits).
+An owner line passes, unless this range wrote that owner line; then it is
+printed so the reviewer judges its reason. The kind comes from the file and
+the row's owner: a line in production code is A; in a test file, a row
+owned by tests/source_tree.h is E, a row owned by another test header is C,
+and a row owned by production code is B. Checks 1, 2 and 4 print the C, the
+B and A, and the E lines of this list. Each row's must-match and
+must-not-match examples are tried too; a line starting "precheck:" says a
+row could not be read as expected, because .NET reads its pattern
+differently from the scan's std::regex. The patterns the checks below still
+hold are for questions no row asks, each with a comment saying why.
 
 Scoring an old range against today's rows: -RulesAt HEAD. At the range's own
 last commit the scan already passes, so its rows mostly show known copies.
+A commit from before the rules moved to JSON has no rule files, so a range
+that ends there needs -RulesAt a later commit to apply any rows.
 
 THE CHECKS
 
@@ -162,8 +162,8 @@ THE CHECKS
    included) with "src" before the call's first closing parenthesis. A
    one-line text match: a bare glob(), a src path on the receiver as in
    Path("src").rglob(...), or src after a nested call's ")" is not flagged.
-   Then every rule row the range adds to rules() in
-   tests/test_single_owner.cpp is checked for an empty or missing must-match
+   Then every rule row the range adds to the rule files in
+   tests/single_owner/rules/ is checked for an empty or missing must-match
    or must-not-match list, and for a negative lookahead that names variables
    inside its pattern (an exemption no owner line records, which applies in
    every file).
@@ -188,7 +188,7 @@ param(
     [string]$Repo = '.',
     [switch]$WholeTree,
     [string[]]$Disable = @(),
-    # The commit whose tests/test_single_owner.cpp gives the scan rows and
+    # The commit whose tests/single_owner/ files give the scan rows and
     # known copies. Default: the range's last commit. Scoring an old range
     # against today's rows passes -RulesAt HEAD.
     [string]$RulesAt = ''
@@ -267,8 +267,8 @@ function Get-TopFolder([string]$File) {
     if ($i -lt 0) { return '' }
     $File.Substring(0, $i)
 }
-# Is this a C++ file? The extensions are the scan's own: the scan in
-# tests/test_single_owner.cpp reads a file only when its extension is exactly
+# Is this a C++ file? The extensions are the scan's own: the single-owner
+# scan reads a file only when its extension is exactly
 # .cpp or .h, so the precheck reads the same files and no others. Check 4
 # uses the same $cppExt to spot a source file's path written in a test.
 $cppExt = '\.(cpp|h)'
@@ -335,8 +335,7 @@ function Blank-Inner([string]$s) {
 }
 # A text with its comments blanked, read with one of the two lexers above;
 # with -AndStrings the text inside each string or char literal is blanked
-# too. The self-test loads this function from this file's text to read the
-# scan structs, so it never strips comments its own way.
+# too.
 function Remove-Comments([regex]$Lex, [string]$Text, [switch]$AndStrings) {
     $Lex.Replace($Text, { param($m)
         if ($m.Groups['c'].Success) { Blank $m.Value } elseif ($AndStrings) { Blank-Inner $m.Value } else { $m.Value } })
@@ -415,188 +414,89 @@ function Add-Item([string]$Kind, [string]$File, [int]$Line, [string]$What, [stri
     $items.Add([pscustomobject]@{ Kind = $Kind; File = $File; Line = $Line; What = $What; Why = $Why })
 }
 
-# known_copies() of tests/test_single_owner.cpp: file -> list of (line text, fix)
+# Where the scan keeps its rows (one JSON file per area) and its known
+# copies. This script reads both at $rulesRev and keeps no copy of either.
+$rulesDir = 'tests/single_owner/rules'
+$baselineFile = 'tests/single_owner/baseline.json'
+# The baseline's known copies: file -> list of (line text, fix)
 $known = @{}
-$scanFile = 'tests/test_single_owner.cpp'
-# Which .cpp, .h or .py file does the precheck not read line by line? Only
-# the scan file, whose strings and literals are pattern examples. Every check
-# that reads added lines asks here. This script and its self-test need no
-# entry: they are .ps1, and every check reads only .cpp, .h and .py files.
-# (Check 1's helper list still reads the scan file's helpers, so a helper
-# copied out of it is found; check 4 reads the rule rows a range adds to it.)
-function Test-SkippedFile([string]$File) { $File -eq $scanFile }
+# Which .cpp, .h or .py file does the precheck not read line by line? The
+# scan's own files, whose strings and literals are pattern examples: the
+# rule files and the scan's C++ in tests/single_owner/, and the file the
+# scan's C++ lived in before it moved there (old ranges still add lines to
+# it). Every check that reads added lines asks here. This script and its
+# self-test need no entry: they are .ps1, and every check reads only .cpp,
+# .h and .py files. (Check 1's helper list still reads the scan's helpers,
+# so a helper copied out of them is found; check 4 reads the rule rows a
+# range adds.)
+function Test-SkippedFile([string]$File) { $File.StartsWith('tests/single_owner/') -or $File -eq 'tests/test_single_owner.cpp' }
 
-# Splits a braced initializer list into its top-level elements, each as
-# (start offset, end offset) in the text, using the string-blanked view so
-# braces and commas inside strings do not count. An element is a braced
-# list outside any parentheses; Get-CloseBrace says where it ends.
-function Get-TopElements([object]$V, [int]$Open, [int]$Close) {
+# The objects of one JSON array in a rules or baseline file, in file order,
+# each with its file, its first and last line, and its opening brace: the
+# objects listed under the key $Key of the object that opens at $Parent (-1
+# for the file's top object). ConvertFrom-Json gives no lines, so they come
+# from the brace matcher (Get-Braces); a JSON string lexes as a C++ string,
+# so a brace or a key inside one never counts. An object's key is the last
+# '"key": [' before it, outside its earlier siblings.
+function Get-JsonObjects([object]$V, [string]$File, [int]$Parent, [string]$Key) {
     $out = [System.Collections.Generic.List[object]]::new()
-    $parens = 0
-    for ($i = $Open + 1; $i -lt $Close; $i++) {
-        $ch = $V.CodeText[$i]
-        if ($ch -eq '(') { $parens++ }
-        elseif ($ch -eq ')') { $parens-- }
-        elseif ($ch -eq '{') {
-            $end = Get-CloseBrace $V $i $Close
-            if ($end -lt 0) { break }
-            if ($parens -eq 0) { $out.Add(@($i, $end)) }
-            $i = $end
+    if (-not $V.PSObject.Properties['Children']) {
+        # Each brace's direct children, built once per view.
+        $kids = @{}
+        $braces = Get-Braces $V
+        foreach ($o in ($braces.Parent.Keys | Sort-Object)) {
+            $p = $braces.Parent[$o]
+            if (-not $kids.ContainsKey($p)) { $kids[$p] = [System.Collections.Generic.List[int]]::new() }
+            $kids[$p].Add($o)
         }
+        $V | Add-Member -NotePropertyName Children -NotePropertyValue $kids
     }
-    ,$out
-}
-function Split-Fields([string]$Code, [int]$Open, [int]$Close) {
-    $out = [System.Collections.Generic.List[object]]::new()
-    $depth = 0; $start = $Open + 1
-    for ($i = $Open + 1; $i -lt $Close; $i++) {
-        $ch = $Code[$i]
-        if ('{(['.Contains($ch)) { $depth++ }
-        elseif ('})]'.Contains($ch)) { $depth-- }
-        elseif ($ch -eq ',' -and $depth -eq 0) { $out.Add(@($start, $i)); $start = $i + 1 }
-    }
-    if ($Close -gt $start -and $Code.Substring($start, $Close - $start).Trim()) { $out.Add(@($start, $Close)) }
-    ,$out
-}
-$escRx = [regex]'\\(x[0-9A-Fa-f]+|[0-7]{1,3}|.)'
-# The string literals in a text, each as the text it holds. Where a literal
-# starts and ends is the C++ lexer's answer ($cppLex), so a char literal such
-# as '"' is a char literal here too and never opens a string; this function
-# only takes the text out of each string.
-function Get-Strings([string]$Text) {
-    $out = [System.Collections.Generic.List[string]]::new()
-    foreach ($m in $cppLex.Matches($Text)) {
-        $lit = $m.Groups['s'].Value
-        if (-not $m.Groups['s'].Success -or $lit[0] -eq "'") { continue }  # a comment or a char literal
-        if ($m.Groups['d'].Success) {
-            # A raw string, R"d(...)d": the text between the parentheses, as written.
-            $d = $m.Groups['d'].Length
-            $out.Add($lit.Substring($d + 3, $lit.Length - 2 * $d - 5)); continue
+    if ($Parent -lt 0) { $Parent = $V.CodeText.IndexOf('{') }
+    $children = @(if ($V.Children.ContainsKey($Parent)) { $V.Children[$Parent] })
+    $keyRx = [regex]::new('"[^"\n]*"\s*:\s*\[', 'RightToLeft')
+    $from = $Parent + 1; $cur = $null
+    foreach ($open in $children) {
+        $m = $keyRx.Match($V.CodeText, $from, $open - $from)
+        if ($m.Success) { $cur = $V.NcText.Substring($m.Index + 1, $V.NcText.IndexOf('"', $m.Index + 1) - $m.Index - 1) }
+        $close = Get-CloseBrace $V $open $V.CodeText.Length
+        if ($close -lt 0) { break }
+        if ($cur -eq $Key) {
+            $out.Add([pscustomobject]@{ File = $File; Open = $open; Line = (Get-LineOf $V $open); LastLine = (Get-LineOf $V $close) })
         }
-        # C++ escapes, decoded in one pass so "\\n" stays a backslash and an n.
-        $out.Add($escRx.Replace($lit.Substring(1, $lit.Length - 2), {
-            param($e)
-            $c = $e.Groups[1].Value
-            switch -CaseSensitive -Regex ($c) {
-                '^n$' { return "`n" }
-                '^t$' { return "`t" }
-                '^r$' { return "`r" }
-                '^x[0-9A-Fa-f]' { return [string][char][Convert]::ToInt32($c.Substring(1), 16) }
-                '^[0-7]+$' { return [string][char][Convert]::ToInt32($c, 8) }
-                default { return $c }
-            }
-        }))
+        $from = $close + 1
     }
     ,$out
 }
-# The strings of one field, adjacent literals joined ("a" "b" is "ab").
-function Get-FieldText([object]$V, [object]$Field) {
-    (Get-Strings $V.NcText.Substring($Field[0], $Field[1] - $Field[0])) -join ''
-}
-# The elements of a braced list held in one field, each as its own fields.
-function Get-ListItems([object]$V, [object]$Field) {
-    $open = $V.CodeText.IndexOf('{', $Field[0])
-    if ($open -lt 0 -or $open -ge $Field[1]) { return ,@() }
-    $close = Get-CloseBrace $V $open $Field[1]
-    if ($close -lt 0) { return ,@() }
-    Split-Fields $V.CodeText $open $close  # one list object, not unrolled
-}
-# The body of a function named $Name in a file: offsets of its opening and
-# closing brace in the string-blanked text.
-function Find-FunctionBody([object]$V, [string]$Name) {
-    $m = [regex]::Match($V.CodeText, "\b$([regex]::Escape($Name))\s*\(\s*\)\s*\{")
-    if (-not $m.Success) { return $null }
-    $open = $m.Index + $m.Length - 1
-    $close = Get-CloseBrace $V $open $V.CodeText.Length
-    if ($close -lt 0) { return $null }
-    @($open, $close)
-}
-function Get-InitList([object]$V, [int]$BodyOpen, [int]$BodyClose) {
-    # the first "= {" inside the body is the static table's initializer
-    $m = [regex]::new('=\s*\{').Match($V.CodeText, $BodyOpen, $BodyClose - $BodyOpen)
-    if (-not $m.Success) { return $null }
-    $open = $m.Index + $m.Length - 1
-    $close = Get-CloseBrace $V $open $BodyClose
-    if ($close -lt 0) { return $null }
-    @($open, $close)
-}
-
-# The elements of the table a function returns (rules() or known_copies()),
-# each with its fields and its first and last line in the scan file.
-function Get-TableElements([object]$V, [string]$Function) {
-    $out = [System.Collections.Generic.List[object]]::new()
-    $body = Find-FunctionBody $V $Function
-    if (-not $body) { return ,$out }
-    $init = Get-InitList $V $body[0] $body[1]
-    if (-not $init) { return ,$out }
-    foreach ($el in (Get-TopElements $V $init[0] $init[1])) {
-        $out.Add([pscustomobject]@{
-            Fields = (Split-Fields $V.CodeText $el[0] $el[1])
-            Line = (Get-LineOf $V $el[0])
-            LastLine = (Get-LineOf $V $el[1])
-        })
-    }
-    ,$out
-}
-# Was any line of this scan-file element added by the range? Only meaningful
-# when the rows are read from the range's own last commit.
+# Was any line of this JSON object added by the range? Only meaningful when
+# the rows are read from the range's own last commit.
 function Test-ElementAdded([object]$El) {
     if ($rulesRev -ne $tip) { return $false }
-    for ($i = $El.Line; $i -le $El.LastLine; $i++) { if (Test-Added $scanFile $i) { return $true } }
+    for ($i = $El.Line; $i -le $El.LastLine; $i++) { if (Test-Added $El.File $i) { return $true } }
     $false
 }
 
-# The scan's rows, read from tests/test_single_owner.cpp at $rulesRev. The
-# scan file owns every question its rows ask; checks 1, 2 and 4 apply these
-# rows to the added lines the way the scan does, and keep their own patterns
-# only for questions no row asks.
-#
-# A row is a braced list read by position, so the reader needs the order of
-# each struct's members. This table is the one place that order is written
-# here: the reader asks it for a column by member name, and the self-test
-# reads this table and checks it against the structs in the scan file, so a
-# member added or moved there fails the self-test by name.
-$ScanStructFields = @{
-    OwnerRule = @('question', 'owner', 'pattern', 'calls_owner', 'owner_files', 'exempt', 'decided_by',
-                  'must_match', 'must_not_match', 'owner_lines', 'scope', 'function_file', 'function', 'scan_comments')
-    Exempt    = @('file', 'why')
-    OwnerLine = @('file', 'line_text', 'why')
-    KnownCopy = @('question', 'file', 'line_text', 'removed_by')
-}
-# The column of one member of one of those structs.
-function Get-Col([string]$Struct, [string]$Member) {
-    $i = [array]::IndexOf($ScanStructFields[$Struct], $Member)
-    if ($i -lt 0) { throw "$warnPrefix$Struct has no member $Member in `$ScanStructFields" }
-    $i
-}
+# The scan's rows, read from the rule files in $rulesDir at $rulesRev, and
+# its known copies, read from $baselineFile there. The scan owns every
+# question its rows ask; checks 1, 2 and 4 apply these rows to the added
+# lines the way the scan does, and keep their own patterns only for
+# questions no row asks. The field names are the scan's loader's.
 $rows = [System.Collections.Generic.List[object]]::new()
 $rowWarnings = [System.Collections.Generic.List[string]]::new()
-# One field of a row as text, as a list of strings, and as a list of structs
-# (each struct its strings and its lines). Every list comes back as one
-# object behind a leading comma, and callers take it as it is or loop over it
-# with foreach. PowerShell unrolls an array a function or script block hands
-# back, and a one-item array unrolls to its item: a row with one exempt file
-# once read as the single characters of that file's name (M0 review 2,
-# finding 1). Wrapping a comma-returned list in @() nests it instead.
-function Get-RowText([object]$V, [object]$Fields, [int]$K) {
-    if ($Fields.Count -gt $K) { Get-FieldText $V $Fields[$K] } else { '' }
+# One JSON list field as a string array; a missing field is an empty list.
+# The list comes back behind a leading comma, because PowerShell unrolls an
+# array a function hands back, and a one-item array unrolls to its item: a
+# row with one exempt file once read as the single characters of that file's
+# name (M0 review 2, finding 1).
+function Get-JsonStrings([object]$Value) {
+    ,[string[]]@($Value | Where-Object { $null -ne $_ } | ForEach-Object { "$_" })
 }
-function Get-RowList([object]$V, [object]$Fields, [int]$K) {
-    if ($Fields.Count -le $K) { return ,[string[]]@() }
-    ,[string[]]@(foreach ($i in (Get-ListItems $V $Fields[$K])) { Get-FieldText $V $i })
-}
-function Get-RowStructs([object]$V, [object]$Fields, [int]$K) {
-    $out = [System.Collections.Generic.List[object]]::new()
-    if ($Fields.Count -gt $K) {
-        foreach ($i in (Get-ListItems $V $Fields[$K])) {
-            $out.Add([pscustomobject]@{
-                Strings = [string[]]@(foreach ($s in (Get-ListItems $V $i)) { Get-FieldText $V $s })
-                Line = (Get-LineOf $V $i[0])
-                LastLine = (Get-LineOf $V $i[1])
-            })
-        }
-    }
-    ,$out
+# The parsed objects of one JSON list field, matched in order with the line
+# spans Get-JsonObjects found for them; the two readings must agree on the
+# count, or the file is not what this reader expects.
+function Get-JsonItems([object]$Value, [object]$Spans, [string]$What) {
+    $items = @($Value | Where-Object { $null -ne $_ })
+    if ($items.Count -ne $Spans.Count) { throw "$warnPrefix${What}: $($items.Count) objects parsed, $($Spans.Count) found by brace; cannot place them on lines" }
+    ,$items
 }
 function New-StdRegex([string]$Pattern) {
     # The scan uses std::regex's ECMAScript grammar; .NET's ECMAScript mode is
@@ -604,41 +504,46 @@ function New-StdRegex([string]$Pattern) {
     # and the example check below says when the two readings differ.
     try { [regex]::new($Pattern, 'ECMAScript') } catch { [regex]::new($Pattern) }
 }
-$scanAt = @(Invoke-Git @('ls-tree', '--name-only', $rulesRev, '--', $scanFile))
-if ($scanAt.Count) {
-    $sv = Get-Views $scanFile $rulesRev
-    $ex = @{ File = (Get-Col Exempt file) }
-    $ol = @{ File = (Get-Col OwnerLine file); Text = (Get-Col OwnerLine line_text); Why = (Get-Col OwnerLine why) }
-    $sc = Get-Col OwnerRule scan_comments
-    foreach ($el in (Get-TableElements $sv 'rules')) {
-        $f = $el.Fields
-        if ($f.Count -le (Get-Col OwnerRule pattern)) { continue }
+$ruleFiles = @(Invoke-Git @('ls-tree', '--name-only', $rulesRev, '--', "$rulesDir/") | Where-Object { $_ -match '\.json$' })
+foreach ($rf in $ruleFiles) {
+    $rv = Get-Views $rf $rulesRev
+    $doc = (Get-TipText $rf $rulesRev) | ConvertFrom-Json
+    $spans = Get-JsonObjects $rv $rf -1 'rules'
+    $jrows = Get-JsonItems $doc.rules $spans "$rf rules"
+    for ($i = 0; $i -lt $jrows.Count; $i++) {
+        $j = $jrows[$i]; $el = $spans[$i]
+        $olSpans = Get-JsonObjects $rv $rf $el.Open 'owner_lines'
+        $jols = Get-JsonItems $j.owner_lines $olSpans "$rf ""$($j.question)"" owner_lines"
         $row = [pscustomobject]@{
-            Question = (Get-RowText $sv $f (Get-Col OwnerRule question)); Owner = (Get-RowText $sv $f (Get-Col OwnerRule owner))
-            Pattern = (Get-RowText $sv $f (Get-Col OwnerRule pattern)); CallsOwner = (Get-RowText $sv $f (Get-Col OwnerRule calls_owner))
-            OwnerFiles = (Get-RowList $sv $f (Get-Col OwnerRule owner_files))
-            Exempt = [string[]]@(foreach ($e in (Get-RowStructs $sv $f (Get-Col OwnerRule exempt))) { if ($e.Strings.Count -gt $ex.File) { $e.Strings[$ex.File] } })
-            MustMatch = (Get-RowList $sv $f (Get-Col OwnerRule must_match)); MustNotMatch = (Get-RowList $sv $f (Get-Col OwnerRule must_not_match))
-            OwnerLines = [object[]]@(foreach ($o in (Get-RowStructs $sv $f (Get-Col OwnerRule owner_lines))) {
-                if ($o.Strings.Count -le $ol.Why) { continue }
-                [pscustomobject]@{ File = $o.Strings[$ol.File]; Text = $o.Strings[$ol.Text].Trim(); Why = $o.Strings[$ol.Why]; Added = (Test-ElementAdded $o) }
+            Question = "$($j.question)"; Owner = "$($j.owner)"; Pattern = "$($j.pattern)"; CallsOwner = "$($j.calls_owner)"
+            OwnerFiles = (Get-JsonStrings $j.owner_files)
+            Exempt = (Get-JsonStrings @($j.exempt | Where-Object { $null -ne $_ } | ForEach-Object { $_.file }))
+            MustMatch = (Get-JsonStrings $j.must_match); MustNotMatch = (Get-JsonStrings $j.must_not_match)
+            OwnerLines = [object[]]@(for ($k = 0; $k -lt $jols.Count; $k++) {
+                $o = $jols[$k]
+                [pscustomobject]@{ File = "$($o.file)"; Text = "$($o.line_text)".Trim(); Why = "$($o.why)"; Added = (Test-ElementAdded $olSpans[$k]) }
             })
-            Scope = (Get-RowList $sv $f (Get-Col OwnerRule scope))
-            FunctionFile = (Get-RowText $sv $f (Get-Col OwnerRule function_file)); Function = (Get-RowText $sv $f (Get-Col OwnerRule function))
-            ScanComments = ($f.Count -gt $sc -and $sv.CodeText.Substring($f[$sc][0], $f[$sc][1] - $f[$sc][0]).Trim() -eq 'true')
-            Line = $el.Line; Added = (Test-ElementAdded $el); Rx = $null; CallsRx = $null
+            Scope = (Get-JsonStrings $j.scope)
+            FunctionFile = "$($j.function_file)"; Function = "$($j.function)"
+            ScanComments = ($j.scan_comments -eq $true)
+            # A Python row (the probe's) reads only .py files; every other row reads C++.
+            Python = ("$($j.language)" -eq 'py')
+            File = $rf; Line = $el.Line; Added = (Test-ElementAdded $el); Rx = $null; CallsRx = $null
         }
         $row.Rx = New-StdRegex $row.Pattern
         if ($row.CallsOwner) { $row.CallsRx = New-StdRegex $row.CallsOwner }
         $rows.Add($row)
     }
-    $kc = @{ Question = (Get-Col KnownCopy question); File = (Get-Col KnownCopy file); Text = (Get-Col KnownCopy line_text); Fix = (Get-Col KnownCopy removed_by) }
-    foreach ($el in (Get-TableElements $sv 'known_copies')) {
-        $vals = @(foreach ($x in $el.Fields) { Get-FieldText $sv $x })
-        if ($vals.Count -le $kc.Fix) { continue }
-        $file = $vals[$kc.File]
+}
+if (@(Invoke-Git @('ls-tree', '--name-only', $rulesRev, '--', $baselineFile)).Count) {
+    $bv = Get-Views $baselineFile $rulesRev
+    $doc = (Get-TipText $baselineFile $rulesRev) | ConvertFrom-Json
+    $spans = Get-JsonObjects $bv $baselineFile -1 'known_copies'
+    $kcs = Get-JsonItems $doc.known_copies $spans "$baselineFile known_copies"
+    for ($i = 0; $i -lt $kcs.Count; $i++) {
+        $k = $kcs[$i]; $file = "$($k.file)"
         if (-not $known.ContainsKey($file)) { $known[$file] = [System.Collections.Generic.List[object]]::new() }
-        $known[$file].Add([pscustomobject]@{ Question = $vals[$kc.Question]; Text = $vals[$kc.Text].Trim(); Fix = $vals[$kc.Fix]; Added = (Test-ElementAdded $el) })
+        $known[$file].Add([pscustomobject]@{ Question = "$($k.question)"; Text = "$($k.line_text)".Trim(); Fix = "$($k.removed_by)"; Added = (Test-ElementAdded $spans[$i]) })
     }
 }
 # The scan's one verdict (flags_line): the line matches the pattern and does
@@ -658,7 +563,7 @@ foreach ($r in $rows) {
 # or as an owner line this range wrote. The self-test loads these three from
 # this file to recognise the wording, so rewording one here cannot leave its
 # whole-tree check reading nothing.
-function Format-RowWhy([string]$Owner) { "the scan row in $scanFile gives this question to $Owner" }
+function Format-RowWhy([string]$File, [string]$Owner) { "the scan row in $File gives this question to $Owner" }
 function Format-KnownCopy([string]$Fix) { "known copy: $Fix" }
 function Format-OwnerLineNote([string]$Why) { "this range lists it as an owner line: ""$Why""; check that reason" }
 function Get-KnownCopy([string]$File, [string[]]$LineTexts) {
@@ -706,8 +611,10 @@ function Get-RowHits {
     if ($null -ne $script:RowHits) { return $script:RowHits }
     $hits = [System.Collections.Generic.List[object]]::new()
     foreach ($f in $added.Keys) {
-        if (-not (Test-CppPath $f) -or (Test-SkippedFile $f)) { continue }
-        $covering = @($rows | Where-Object { Test-RowCovers $_ $f })
+        if (Test-SkippedFile $f) { continue }
+        $py = Test-PyPath $f
+        if (-not ((Test-CppPath $f) -or $py)) { continue }
+        $covering = @($rows | Where-Object { $_.Python -eq $py -and (Test-RowCovers $_ $f) })
         if (-not $covering.Count) { continue }
         $v = Get-Views $f
         $trimmed = @($v.Raw | ForEach-Object { $_.Trim() })
@@ -715,7 +622,7 @@ function Get-RowHits {
         foreach ($ln in (Get-AddedLines $f $v.Raw.Count)) {
             $t = $trimmed[$ln - 1]
             if (-not $t) { continue }
-            $isComment = $t.StartsWith('//')
+            $isComment = $t.StartsWith($(if ($py) { '#' } else { '//' }))
             foreach ($r in $covering) {
                 if ($isComment -and -not $r.ScanComments) { continue }
                 if ($r.Function) {
@@ -757,7 +664,7 @@ function Get-RowHits {
 function Add-RowItems([string[]]$Kinds) {
     foreach ($h in (Get-RowHits)) {
         if ($Kinds -notcontains $h.Kind) { continue }
-        $why = Format-RowWhy $h.Row.Owner
+        $why = Format-RowWhy $h.Row.File $h.Row.Owner
         if ($h.Note) { $why += " ($($h.Note))" }
         Add-Item $h.Kind $h.File $h.Line "answers ""$($h.Row.Question)"": $($h.Text)" $why
     }
@@ -918,7 +825,7 @@ function Invoke-Check1 {
 
     # Copied fixtures a scan row names: the MIDI chunk tags, the .srb
     # deflate, the .chart header, the per-difficulty table, the tied-variant
-    # walks and the SqIn step check are rows in tests/test_single_owner.cpp.
+    # walks and the SqIn step check are rows in tests/single_owner/rules/.
     Add-RowItems @('C')
 
     # Fixture spellings no scan row asks about yet, outside the shared header
@@ -953,7 +860,7 @@ function Invoke-Check2 {
     # Recomputes a scan row names: the SP-end offset, the typed 500 squeeze
     # window, "== 1.0" on a transfer scale, the plain SP end rebuilt with
     # plusmeasure, and a test setting target_act_ticks are rows in
-    # tests/test_single_owner.cpp. A production line a row flags (kind A)
+    # tests/single_owner/rules/. A production line a row flags (kind A)
     # prints here too.
     Add-RowItems @('B', 'A')
 
@@ -1275,22 +1182,22 @@ function Invoke-Check4 {
                 if ($t -match ('\b(ifstream|fopen|_wfopen|open_file\w*)\b[^;]*(' + $cppExt + '"|"[^"]*/?src/)')) { $what = 'opens a source file' }
             }
             if ($what) {
-                Add-Item 'E' $f $ln "$($what): $($t.Trim())" "$scanFile is the one scan of the source tree; make this a row there"
+                Add-Item 'E' $f $ln "$($what): $($t.Trim())" "the single-owner scan is the one scan of the source tree; make this a row in $rulesDir"
             }
         }
     }
-    # New rule rows in the scan file: the rows read above, with Added set
+    # New rule rows in the rule files: the rows read above, with Added set
     # when the range wrote any of their lines (only when the rows are read
     # from the range's own last commit).
     foreach ($r in ($rows | Where-Object Added)) {
         $lists = [ordered]@{ 'must-match' = $r.MustMatch; 'must-not-match' = $r.MustNotMatch }
         foreach ($name in $lists.Keys) {
             if ($lists[$name].Count -eq 0) {
-                Add-Item 'E' $scanFile $r.Line "scan row ""$($r.Question)"" has no $name examples" 'every scan row ships with lines it must match and must not match, so the self-test proves its pattern'
+                Add-Item 'E' $r.File $r.Line "scan row ""$($r.Question)"" has no $name examples" 'every scan row ships with lines it must match and must not match, so the self-test proves its pattern'
             }
         }
         if ($r.Pattern -match '\(\?<?!\(?[A-Za-z_]\w*(\|[A-Za-z_]\w*)*\)?\\s\*\(?\\?\.') {
-            Add-Item 'E' $scanFile $r.Line "scan row ""$($r.Question)"" exempts variable names inside its pattern ($($Matches[0])...)" 'an exemption in the pattern applies in every file; list the allowed lines as owner lines with their reason'
+            Add-Item 'E' $r.File $r.Line "scan row ""$($r.Question)"" exempts variable names inside its pattern ($($Matches[0])...)" 'an exemption in the pattern applies in every file; list the allowed lines as owner lines with their reason'
         }
     }
 }
@@ -1328,8 +1235,8 @@ for ($checkNo = 1; $checkNo -le $checks.Count; $checkNo++) {
     if ($Disable -notcontains $checkNo) { & $checks[$checkNo - 1] }
 }
 
-foreach ($w in $rowWarnings) { Write-Host "$warnPrefix$w (this row could not be read as expected: std::regex and .NET may read its pattern differently, or a scan struct's members moved and `$ScanStructFields is out of date; trust the scan)" }
-if (-not $scanAt.Count) { Write-Host "$warnPrefix$scanFile is not at $($rulesRev.Substring(0, 7)), so no scan rows were applied" }
+foreach ($w in $rowWarnings) { Write-Host "$warnPrefix$w (this row could not be read as expected: std::regex and .NET may read its pattern differently; trust the scan)" }
+if (-not $ruleFiles.Count) { Write-Host "$warnPrefix$rulesDir has no rule files at $($rulesRev.Substring(0, 7)), so no scan rows were applied" }
 
 $order = @{ C = 0; B = 1; A = 2; D = 3; E = 4 }
 $sorted = $items | Sort-Object @{ e = { $order[$_.Kind] } }, File, Line, What -Unique

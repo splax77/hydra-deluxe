@@ -8,10 +8,11 @@ Self-test for tools/derive_once_precheck.ps1.
 
 Part 1 builds a tiny git repository in a temp folder. Its main branch holds
 one test helper, one ADR that decides a 45-second deadline, and a copy of
-this repository's tests/test_single_owner.cpp, so the scan rows the script
-reads are today's. A feature branch adds one renamed copy of the helper, one
-recomputed offset, one undecided number (37), the decided 45, one stray
-source scan, a new scan row with no must-match examples, and two lines the
+this repository's scan rule files and baseline (the precheck's $rulesDir and
+$baselineFile), so the scan rows the script reads are today's. A feature
+branch adds one renamed copy of the helper, one recomputed offset, one
+undecided number (37), the decided 45, one stray source scan, a new rule
+file with a scan row with no must-match examples, and two lines the
 scan rows list as must-not-match (a gap between two chart ticks, a "!= SqIn"
 skip). The script must report the five planted items (check 4 has two), and
 must not report the decided 45 or the two
@@ -93,14 +94,6 @@ function Assert-Expectations([string]$Label, [string[]]$Lines, [object[]]$Expect
     }
 }
 
-# ------------------------------------------- part 0: the scan structs' order
-#
-# The precheck reads each scan row by position, in the member order its
-# $ScanStructFields table gives. That table is read here from the precheck's
-# own text (as a literal, without running the script), and each struct's
-# member names are read, in order, from tests/test_single_owner.cpp. A member
-# added, removed or moved there fails here by name, instead of as a pile of
-# "precheck:" warnings.
 $tokens = $null; $parseErrors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($precheck, [ref]$tokens, [ref]$parseErrors)
 # One definition in the precheck's text, by name: a variable's assignment
@@ -113,31 +106,11 @@ function Find-PrecheckAst([string]$Name) {
     if (-not $found) { throw "the self-test cannot find $Name in $precheck" }
     $found
 }
-$structFields = (Find-PrecheckAst '$ScanStructFields').Right.Expression.SafeGetValue()
-# The precheck's C++ lexer and its comment blanking, loaded from its text, so
-# a comment is whatever the precheck says it is (strings included).
-. ([scriptblock]::Create((@('$cppLex', 'Blank', 'Remove-Comments') | ForEach-Object { (Find-PrecheckAst $_).Extent.Text }) -join "`n"))
-# The scan file's path is the precheck's $scanFile; this repository's copy is
-# read once, for the struct check here and for the fixture below.
-$scanFile = (Find-PrecheckAst '$scanFile').Right.Expression.SafeGetValue()
 $warnPrefix = (Find-PrecheckAst '$warnPrefix').Right.Expression.SafeGetValue()
-$repoScanText = [System.IO.File]::ReadAllText((Join-Path $repoRoot $scanFile))
-$scanSource = Remove-Comments $cppLex $repoScanText
-foreach ($struct in $structFields.Keys) {
-    $m = [regex]::Match($scanSource, "\bstruct\s+$struct\s*\{(?<body>[^{}]*)\}\s*;")
-    $inStruct = @(if ($m.Success) {
-        foreach ($decl in ($m.Groups['body'].Value -split ';')) {
-            $d = ($decl -replace '=[\s\S]*$', '').Trim()
-            if ($d -match '([A-Za-z_]\w*)$') { $Matches[1] }
-        }
-    })
-    $inPrecheck = @($structFields[$struct])
-    if (($inStruct -join ',') -ne ($inPrecheck -join ',')) {
-        $script:Failures.Add("${struct}'s fields changed; update the column positions in $precheck " +
-            "($scanFile has: $(if ($inStruct.Count) { $inStruct -join ', ' } else { 'no such struct' }); " +
-            "`$ScanStructFields has: $($inPrecheck -join ', '))")
-    } else { $script:Passes++ }
-}
+# Where the scan keeps its rows and known copies: the precheck's $rulesDir
+# and $baselineFile, loaded from its text.
+$rulesDir = (Find-PrecheckAst '$rulesDir').Right.Expression.SafeGetValue()
+$baselineFile = (Find-PrecheckAst '$baselineFile').Right.Expression.SafeGetValue()
 
 # ------------------------------------------------------------ part 1: fixture
 
@@ -177,9 +150,13 @@ int sum_values(const std::vector<int>& values) {
 
 The batch test's deadline is 45 seconds.
 '@
-    # The scan rows come from this repository's own scan file, so the
-    # fixture tests the rows as they are today and copies none of them.
-    Write-Fixture $scanFile $repoScanText
+    # The scan rows come from this repository's own rule files and
+    # baseline, so the fixture tests the rows as they are today and copies
+    # none of them.
+    foreach ($rf in @(Get-ChildItem -LiteralPath (Join-Path $repoRoot $rulesDir) -Filter *.json)) {
+        Write-Fixture "$rulesDir/$($rf.Name)" ([System.IO.File]::ReadAllText($rf.FullName))
+    }
+    Write-Fixture $baselineFile ([System.IO.File]::ReadAllText((Join-Path $repoRoot $baselineFile)))
     Invoke-FixtureGit @('add', '-A')
     Invoke-FixtureGit @('commit', '-q', '-m', 'main')
     Invoke-FixtureGit @('checkout', '-q', '-b', 'feature')
@@ -231,10 +208,21 @@ TEST_CASE("model.h mentions the window") {
 '@
     # Check 4 again: a new scan row with no must-match examples, read from
     # the rows the script already parsed (M0 review 2, finding 3).
-    $tableOpen = 'static const std::vector<OwnerRule> r = {'
-    if (-not $repoScanText.Contains($tableOpen)) { throw "the fixture cannot find '$tableOpen' in $scanFile" }
-    Write-Fixture $scanFile ($repoScanText.Replace($tableOpen, $tableOpen +
-        "`n        {""Which planted row has no examples?"", ""nobody"", R""re(\bplanted_no_examples\b)re"", """", {}, {}, ""fixture"", {}, {""int planted_must_not = 0;""}},"))
+    $plantedRules = "$rulesDir/fixture.json"
+    Write-Fixture $plantedRules @'
+{
+  "rules": [
+    {
+      "question": "Which planted row has no examples?",
+      "owner": "nobody",
+      "pattern": "\\bplanted_no_examples\\b",
+      "must_not_match": [
+        "int planted_must_not = 0;"
+      ]
+    }
+  ]
+}
+'@
     Invoke-FixtureGit @('add', '-A')
     Invoke-FixtureGit @('commit', '-q', '-m', 'feature')
 
@@ -244,7 +232,7 @@ TEST_CASE("model.h mentions the window") {
         @('B', 'tests/test_offsets.cpp', 'How far is a note from an SP end.*end\.ms\(\)', 2),
         @('D', 'tests/test_offsets.cpp', '\b37 in:', 3),
         @('E', 'tests/test_stray_scan.cpp', 'HYDRA_SOURCE_DIR', 4),
-        @('E', $scanFile, 'planted row has no examples.*no must-match examples', 4)
+        @('E', $plantedRules, 'planted row has no examples.*no must-match examples', 4)
     )
     $absent = @('\b45 in:', '^[A-E] tests/helpers_a\.cpp:', '^[A-E] tests/test_offsets\.cpp:\d+  .*timecode\(69120\)',
                 '^[A-E] tests/test_offsets\.cpp:\d+  .*SpEndKind::SqIn')
@@ -285,7 +273,7 @@ TEST_CASE("model.h mentions the window") {
         else { $script:Passes++ }
     }
     # The feature range is small: its count is pinned from one run.
-    Assert-Size 'size, small range' $featureOutput '33 changed lines \(33 added, 0 deleted\)' $false
+    Assert-Size 'size, small range' $featureOutput '44 changed lines \(44 added, 0 deleted\)' $false
     # A range over the threshold, but only in the folders left out of the
     # count, gets no note.
     $overLimit = (1..($largeRangeLines + 1) | ForEach-Object { "line $_" }) -join "`n"
@@ -356,7 +344,7 @@ if (-not $FixtureOnly) {
     # reason fails here by name instead of leaving this check reading nothing.
     . ([scriptblock]::Create((@('Format-RowWhy', 'Format-KnownCopy', 'Format-OwnerLineNote') | ForEach-Object { (Find-PrecheckAst $_).Extent.Text }) -join "`n"))
     function ConvertTo-WordingRx([string]$Text) { [regex]::Escape($Text).Replace('<ANY>', '.*') }
-    $rowRx = ConvertTo-WordingRx (Format-RowWhy '<ANY>')
+    $rowRx = ConvertTo-WordingRx (Format-RowWhy '<ANY>' '<ANY>')
     $listedRx = '\((?:' + (ConvertTo-WordingRx (Format-KnownCopy '<ANY>')) + '|' + (ConvertTo-WordingRx (Format-OwnerLineNote '<ANY>')) + ')'
     $wt = Invoke-Precheck $repoRoot 'HEAD' $DisableCheck -WholeTree
     $rowItems = @($wt | Where-Object { $_ -match $rowRx })

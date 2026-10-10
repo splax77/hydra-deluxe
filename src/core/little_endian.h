@@ -1,6 +1,6 @@
 // The one reader and writer of a little-endian number. Every reader and writer
-// calls it; the scan row in tests/test_single_owner.cpp keeps it so. It lives
-// in core/ because parse/ cannot include store/.
+// calls it; the scan rows in tests/single_owner/rules/core.json keep it so.
+// It lives in core/ because parse/ cannot include store/.
 //
 // Neither function checks bounds. Each caller checks its own first, because
 // each one handles short input its own way.

@@ -24,7 +24,7 @@ block and most notes streams in one read. Doubling keeps a big stream to a
 handful of reads and at most about twice its size off disk. The user chose
 these sizes on 2026-10-04. They change only how many bytes are read, never
 what a load returns. `kFirstPieceRead` and `next_piece_read` in
-`src/core/winstr.h` hold them; a scan row in `tests/test_single_owner.cpp`
+`src/core/winstr.h` hold them; a scan row in `tests/single_owner/rules/core.json`
 keeps the first-read size in that one place.
 
 One path for every source. A file and a buffer already in memory are both a

@@ -12,7 +12,7 @@ You write no new feature code. You only fix what the join itself breaks: a confl
 
 Run `git log --first-parent <fork>..main --oneline` to see every commit `main` gained since the wave forked. For each one that touches code, note the owner functions it added or moved, from its subject, its diff and its ADR or `CONTEXT.md` lines.
 
-Then run `git diff <fork>..main -- tests/test_single_owner.cpp`. Each scan row those commits added names a question and its owner file. Together these are the owners the wave branch must call.
+Then run `git diff <fork>..main -- tests/single_owner/rules/`. Each scan row those commits added names a question and its owner file. Together these are the owners the wave branch must call.
 
 If `main` gained nothing since the fork, say so and skip to step 2.
 
@@ -26,7 +26,7 @@ If a fold would change a displayed text, a score or a stored record, stop and re
 
 Merge each task branch onto the wave branch in the order your brief gives, one at a time, with `git merge --no-ff --no-commit <task branch>`. Resolve the join, then commit it with separate `-m` arguments and the preamble's trailers, never on stdin. Hold the last task's merge uncommitted until step 4 passes, so the join fixes land in that merge commit.
 
-When two tasks both append rows to `tests/test_single_owner.cpp`, git merges the appended blocks badly. Rebuild the file as the wave branch's version plus the other task's added rows, relative to the fork. Do the same for any other file two tasks both appended to.
+When two tasks both append rows to the same file under `tests/single_owner/rules/`, git merges the appended blocks badly. Rebuild the file as the wave branch's version plus the other task's added rows, relative to the fork. Do the same for any other file two tasks both appended to.
 
 Resolve every conflict inside the merge commit. Never rebase, amend, reset or force-move a branch. If a conflict is between two different answers to one question, not just two edits to nearby lines, stop and report both sides.
 

@@ -130,7 +130,8 @@ int note_total(const Song& song) {
 
 }  // namespace
 
-TEST_CASE("D105: songs F1 (.mid) and F2 (.chart) read as Clone Hero played them") {
+// D105.
+TEST_CASE("a 2x kick and a normal kick on one tick read as Clone Hero played songs F1 (.mid) and F2 (.chart)") {
     // The game-test songs from docs/audit/note-shuffle/game-tests (README,
     // "F1 and F2"), copied here. Nine chords, each with a red snare. Chord 3
     // has a normal kick then a 2x kick in the file, chord 5 the same pair the
@@ -153,7 +154,8 @@ TEST_CASE("D105: songs F1 (.mid) and F2 (.chart) read as Clone Hero played them"
     }
 }
 
-TEST_CASE("D105 .mid: the merged kick keeps the ghost or accent from either kick") {
+// D105.
+TEST_CASE(".mid: a 2x kick merged with a normal kick keeps a ghost mark from either kick") {
     // Clone Hero ORs the two kicks' flags (0x215B8C0), so a mark on either
     // kick lands on the merged 2x kick, in both file orders. Ticks 0 and 64
     // put the ghost on the normal kick, then on the 2x kick.
@@ -171,7 +173,8 @@ TEST_CASE("D105 .mid: the merged kick keeps the ghost or accent from either kick
     CHECK(load_songbytes_mid(mid, true, /*bass2x=*/false).sequence.empty());
 }
 
-TEST_CASE("D105 .mid: a ghost and an accent kick on one tick merge into an accent") {
+// D105.
+TEST_CASE(".mid: a ghost and an accent kick on one tick merge into an accent") {
     // Clone Hero's merged kick carries both marks (0x215B8C0), and its
     // note-list builder (0x20D4BE0) plays a note with both as an accent. So
     // the merged 2x kick is an accent in both file orders.
@@ -206,7 +209,8 @@ TEST_CASE(".chart: a pad with both an accent and a ghost marker is an accent") {
     }
 }
 
-TEST_CASE("D105 .mid: a kick the 2x Bass setting removes leaves no mark before the tag") {
+// D105.
+TEST_CASE(".mid: a kick the 2x Bass setting removes leaves no mark before the dynamics tag") {
     // The Dynamics tab counts ghost and accent velocities read before a late
     // [ENABLE_CHART_DYNAMICS] tag. A kick that 2x Bass off removes is never
     // priced, so its mark doesn't count, wherever the tag sits.

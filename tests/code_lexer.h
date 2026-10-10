@@ -6,11 +6,13 @@
 // it ends a broken single-line string at the end of its line instead of
 // running on through the file.
 //
-// The docs check in tests/test_docs_match_code.cpp uses it. Its own case is
-// "code lexer: ..." in that file.
+// The docs check in tests/test_docs_match_code.cpp and the owner-gone guard
+// in tests/single_owner/scan.cpp use it. Its own case is "code lexer: ..." in
+// tests/test_docs_match_code.cpp.
 #pragma once
 
 #include <cctype>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -278,6 +280,16 @@ inline std::vector<Piece> split_powershell(const std::string& t) {
 }
 
 }  // namespace detail
+
+// The language a file is read in, by its extension (with the dot, as
+// std::filesystem::path::extension gives it), or nothing when the lexer does
+// not read such files. The one place that maps an extension to a Lang.
+inline std::optional<Lang> language_of_extension(const std::string& ext) {
+    if (ext == ".cpp" || ext == ".h" || ext == ".c" || ext == ".hlsl") return Lang::Cpp;
+    if (ext == ".py") return Lang::Python;
+    if (ext == ".ps1" || ext == ".psm1") return Lang::PowerShell;
+    return std::nullopt;
+}
 
 // The pieces of `text`, in order, covering all of it.
 inline std::vector<Piece> split(const std::string& text, Lang lang) {
