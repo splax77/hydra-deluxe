@@ -321,10 +321,12 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         return;
     }
 
-    // No audio output device: the chart previews muted. One line says so and
-    // the highway below draws as usual; the device's own message is a hover away.
+    // The audio output device failed (PreviewController::audio_warning): the
+    // chart previews muted. One line says so (D109's words) and the highway
+    // below draws as usual; the device's own message is a hover away.
     if (pc->has_audio_warning()) {
-        ImGui::TextColored(kWarningColor, "No audio device found; the preview is muted.");
+        ImGui::TextColored(kWarningColor,
+                           "Hydra couldn't use your audio device; the preview is muted.");
         hint(pc->audio_warning().c_str());
     }
     // The chart file changed since its record was analyzed: the highway

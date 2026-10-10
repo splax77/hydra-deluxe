@@ -25,6 +25,7 @@
 #include "imgui_internal.h"  // RenderArrow
 #include "ui/activation_row_layout.h"
 #include "ui/app_state.h"
+#include "ui/column_widths.h"
 #include "ui/details_view.h"
 #include "ui/fonts.h"
 #include "ui/label_layout.h"
@@ -334,6 +335,41 @@ void squeeze_box(int act_number, size_t k, const app::TextLine& s) {
     ImGui::PopStyleColor(3);
 }
 
+// The backend table's columns, all in the mono font. Timing, Chord and Points
+// never cut; Rating takes what room is left, and wraps inside it.
+constexpr size_t kRatingColumn = 3;
+std::vector<ColumnSpec> backend_column_specs() {
+    const WidthOf mono = measure_in_font(g_mono_font);
+    return {{"Timing", false, 0.0f, mono},
+            {"Chord", false, 0.0f, mono},
+            {"Points", false, 0.0f, mono},
+            {"Rating", true, 0.0f, mono}};
+}
+
+// Column `c`'s text in a backend row, the text its cell draws.
+std::string backend_cell(const app::BackendRowView& row, size_t c) {
+    switch (c) {
+        case 0: return row.timing;
+        case 1: return row.chord;
+        case 2: return row.points;
+        default: return row.rating;
+    }
+}
+
+// How tall each backend row's Rating is once it wraps at the width the rule
+// gave that column, for table_outer_height. Call it with the mono font pushed.
+std::vector<float> backend_rating_heights(const app::ActivationRowView& a,
+                                          const ColumnLayout& layout) {
+    std::vector<float> heights;
+    heights.reserve(a.backends.size());
+    for (const app::BackendRowView& row : a.backends)
+        heights.push_back(
+            ImGui::CalcTextSize(backend_cell(row, kRatingColumn).c_str(), nullptr, false,
+                                layout.widths[kRatingColumn])
+                .y);
+    return heights;
+}
+
 // The backend rows of one activation, in the columns the old table had.
 void render_backend_table(const app::ActivationRowView& a) {
     ImGui::PushTextWrapPos(0.0f);
@@ -344,48 +380,33 @@ void render_backend_table(const app::ActivationRowView& a) {
         return;
     }
     ImGui::PushFont(g_mono_font, 0.0f);
-    // Timing, Chord and Points are as wide as their widest cell or heading, so
-    // Rating keeps the rest. A table's column widths are set only when it is
-    // first made (after that they are the user's to drag), so the id carries
-    // the widths: a row list that needs other widths gets a fresh table.
-    float w_timing = ImGui::CalcTextSize("Timing").x;
-    float w_chord = ImGui::CalcTextSize("Chord").x;
-    float w_points = ImGui::CalcTextSize("Points").x;
-    for (const app::BackendRowView& row : a.backends) {
-        w_timing = std::max(w_timing, ImGui::CalcTextSize(row.timing.c_str()).x);
-        w_chord = std::max(w_chord, ImGui::CalcTextSize(row.chord.c_str()).x);
-        w_points = std::max(w_points, ImGui::CalcTextSize(row.points.c_str()).x);
-    }
-    w_timing = std::ceil(w_timing);
-    w_chord = std::ceil(w_chord);
-    w_points = std::ceil(w_points);
-    const std::string id =
-        app::backend_table_id(a.number, static_cast<int>(w_timing), static_cast<int>(w_chord),
-                              static_cast<int>(w_points));
-    if (ImGui::BeginTable(id.c_str(), 4,
-                          ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |
-                              ImGuiTableFlags_SizingFixedFit)) {
-        ImGui::TableSetupColumn("Timing", ImGuiTableColumnFlags_WidthFixed, w_timing);
-        ImGui::TableSetupColumn("Chord", ImGuiTableColumnFlags_WidthFixed, w_chord);
-        ImGui::TableSetupColumn("Points", ImGuiTableColumnFlags_WidthFixed, w_points);
-        ImGui::TableSetupColumn("Rating", ImGuiTableColumnFlags_WidthStretch);
+    // Every column is as wide as the width rule (ui/column_widths.h) says.
+    // The rows are a handful, so they are measured each frame.
+    const std::vector<ColumnSpec> specs = backend_column_specs();
+    char id[32];
+    std::snprintf(id, sizeof(id), "##backends%d", a.number);
+    if (begin_small_table(
+            id, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable, specs, a.backends.size(),
+            [&](size_t r, size_t c) { return backend_cell(a.backends[r], c); },
+            [&](const ColumnLayout& layout) { return backend_rating_heights(a, layout); })) {
         ImGui::TableHeadersRow();
         for (const app::BackendRowView& row : a.backends) {
             ImGui::TableNextRow();
+            // Every cell draws backend_cell, the text its column is measured from.
             ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted(row.timing.c_str());
+            ImGui::TextUnformatted(backend_cell(row, 0).c_str());
             if (!row.tooltip.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
                 ImGui::SetTooltip("%s", row.tooltip.c_str());
             ImGui::TableSetColumnIndex(1);
-            ImGui::TextUnformatted(row.chord.c_str());
+            ImGui::TextUnformatted(backend_cell(row, 1).c_str());
             ImGui::TableSetColumnIndex(2);
-            ImGui::TextUnformatted(row.points.c_str());
-            ImGui::TableSetColumnIndex(3);
+            ImGui::TextUnformatted(backend_cell(row, 2).c_str());
+            ImGui::TableSetColumnIndex(kRatingColumn);
             // Rating wraps inside its cell: at the narrowest panel the
             // squeezed-out note is longer than the column is wide.
             if (row.warn) ImGui::PushStyleColor(ImGuiCol_Text, kWarningColor);
             ImGui::PushTextWrapPos(0.0f);
-            ImGui::TextUnformatted(row.rating.c_str());
+            ImGui::TextUnformatted(backend_cell(row, kRatingColumn).c_str());
             ImGui::PopTextWrapPos();
             if (row.warn) ImGui::PopStyleColor();
         }

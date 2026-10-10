@@ -16,6 +16,7 @@
 #include "core/strutil.h"
 #include "core/version.h"
 #include "core/winstr.h"
+#include "scratch_paths.h"
 #include "temp_util.h"
 
 using hydra::app::AnalysisSettings;
@@ -137,13 +138,9 @@ TEST_CASE("command-line settings take the fill rule from the flag, the rest from
     // hydra_batch and hydra_bench both load through load_for_command_line, so
     // a bench digest matches a batch run whatever the app's "1.0 fills" box
     // was left on (perf follow-up B).
-    const hydra::app::PathOverrides previous = hydra::app::path_overrides();
-    const std::string path = testtemp::temp_path("cmdline_fills", ".ini");
-    hydra::app::PathOverrides overrides = previous;
-    overrides.ini_path = path;
-    hydra::app::set_path_overrides(overrides);
+    const ScratchPaths paths("cmdline_fills");
     auto write_ini = [&](const std::string& text) {
-        std::ofstream f(path, std::ios::trunc);
+        std::ofstream f(paths.ini, std::ios::trunc);
         f << text;
     };
 
@@ -157,9 +154,6 @@ TEST_CASE("command-line settings take the fill rule from the flag, the rest from
     const Settings on = Settings::load_for_command_line(true);
     CHECK(on.legacy_fills);
     CHECK(on.batch_run().lens.legacy_fills == 1);
-
-    hydra::app::set_path_overrides(previous);
-    std::remove(path.c_str());
 }
 
 TEST_CASE("a missing INI yields defaults") {

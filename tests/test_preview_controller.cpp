@@ -28,6 +28,7 @@
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "render/track_state.h"
+#include "scratch_paths.h"  // ScopedPathOverrides
 #include "store/record_store.h"
 #include "temp_util.h"
 #include "app/config.h"
@@ -368,6 +369,37 @@ TEST_CASE("with no audio device the Preview still loads, muted, with a warning")
     CHECK(pc.audio_warning().empty());
 }
 
+// A device that opens but won't start takes the same path as one that won't
+// open (D109): the chart loads, the clock plays, the device is let go and
+// the warning names the step that failed.
+TEST_CASE("with an audio device that won't start the Preview still loads, muted, with a warning") {
+    // A headless device (nothing real opens) whose start() is forced to
+    // fail; the guard puts both switches back when the case ends.
+    struct SwitchRestore {
+        bool headless;
+        bool start_fails;
+        ~SwitchRestore() {
+            hydra::audio::set_start_fails(start_fails);
+            hydra::audio::set_headless(headless);
+        }
+    } restore{hydra::audio::set_headless(true), hydra::audio::set_start_fails(true)};
+
+    PreviewController pc(nullptr, nullptr);
+    pc.open(entry_for(chart_with_audio()), true, true, Difficulty::Expert, nullptr, "", 4);
+    wait_loaded(pc);
+
+    CHECK(pc.has_audio());        // the stem decoded; only the device failed
+    CHECK_FALSE(pc.has_error());  // so no "Preview failed"
+    CHECK_FALSE(pc.has_audio_device());
+    CHECK(pc.audio_warning() == "PreviewAudioDevice: ma_device_start failed");
+    CHECK(pc.scrub_end_ms() > 0.0);  // the scene is there to draw
+    pc.play();
+    CHECK(pc.playing());          // the clock runs without a device
+
+    pc.close();
+    CHECK(pc.audio_warning().empty());
+}
+
 // The Preview's look is the renderer's 3d-config.json and nothing else
 // (finding 220): there is no default-built struct behind it. Only the first
 // render builds the renderer, so asking before then fails loudly.
@@ -379,18 +411,14 @@ TEST_CASE("preview_config: asked before the first render it fails loudly") {
 // Finding 193: a missing Preview file reads its kind's sentence, the one D51
 // call 25 chose, and the raw text stays for the details line.
 TEST_CASE("a Preview asset failure reads Reinstall Hydra, with the raw text as its detail") {
-    const hydra::app::PathOverrides previous = hydra::app::path_overrides();
-    hydra::app::PathOverrides overrides = previous;
-    overrides.asset_dir = testtemp::temp_path("no_preview_assets", "");
-    hydra::app::set_path_overrides(overrides);
-    {
-        PreviewController pc(nullptr, nullptr);
-        CHECK(pc.render(64, 64) == nullptr);
-        CHECK(pc.error() ==
-              "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.");
-        CHECK(pc.error_detail().rfind("PreviewRenderer: missing", 0) == 0);
-    }
-    hydra::app::set_path_overrides(previous);
+    const ScopedPathOverrides no_assets([](hydra::app::PathOverrides& o) {
+        o.asset_dir = testtemp::temp_path("no_preview_assets", "");
+    });
+    PreviewController pc(nullptr, nullptr);
+    CHECK(pc.render(64, 64) == nullptr);
+    CHECK(pc.error() ==
+          "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.");
+    CHECK(pc.error_detail().rfind("PreviewRenderer: missing", 0) == 0);
 }
 
 namespace {
@@ -420,28 +448,23 @@ TEST_CASE("closing the Preview frees its render targets; reopening draws again (
     Microsoft::WRL::ComPtr<ID3D11Device> dev;
     Microsoft::WRL::ComPtr<ID3D11DeviceContext> ctx;
     REQUIRE(warp::make_device(dev, ctx));
-    const hydra::app::PathOverrides previous = hydra::app::path_overrides();
-    hydra::app::PathOverrides overrides = previous;
-    overrides.asset_dir = HYDRA_ASSET_DIR;
-    hydra::app::set_path_overrides(overrides);
-    {
-        const std::string notes = short_chart_with_long_audio("prevctl_release");
-        PreviewController pc(dev.Get(), ctx.Get());
-        open_and_load(pc, notes);
-        ID3D11ShaderResourceView* srv = pc.render(64, 64);
-        REQUIRE(srv != nullptr);
+    const ScopedPathOverrides assets(
+        [](hydra::app::PathOverrides& o) { o.asset_dir = HYDRA_ASSET_DIR; });
+    const std::string notes = short_chart_with_long_audio("prevctl_release");
+    PreviewController pc(dev.Get(), ctx.Get());
+    open_and_load(pc, notes);
+    ID3D11ShaderResourceView* srv = pc.render(64, 64);
+    REQUIRE(srv != nullptr);
 
-        // Hold the shown texture: once freed, this is its only reference.
-        Microsoft::WRL::ComPtr<ID3D11Resource> shown;
-        srv->GetResource(&shown);
-        pc.close();
-        shown->AddRef();
-        CHECK(shown->Release() == 1);  // Release returns the count left
+    // Hold the shown texture: once freed, this is its only reference.
+    Microsoft::WRL::ComPtr<ID3D11Resource> shown;
+    srv->GetResource(&shown);
+    pc.close();
+    shown->AddRef();
+    CHECK(shown->Release() == 1);  // Release returns the count left
 
-        open_and_load(pc, notes);
-        CHECK(pc.render(64, 64) != nullptr);
-    }
-    hydra::app::set_path_overrides(previous);
+    open_and_load(pc, notes);
+    CHECK(pc.render(64, 64) != nullptr);
 }
 
 // The scrubber ends at the song's length (D75), here the 3 s song.ini

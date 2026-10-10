@@ -32,9 +32,12 @@ void data_callback(ma_device* device, void* output, const void* /*input*/,
 
 namespace {
 std::atomic<bool> g_headless{false};
-}
+std::atomic<bool> g_start_fails{false};
+}  // namespace
 
 bool set_headless(bool headless) { return g_headless.exchange(headless); }
+
+bool set_start_fails(bool fails) { return g_start_fails.exchange(fails); }
 
 struct PreviewAudioDevice::Impl {
     Playback playback;
@@ -69,11 +72,11 @@ PreviewAudioDevice::~PreviewAudioDevice() {
 
 void PreviewAudioDevice::start() {
     if (!impl_ || impl_->started) return;
-    if (!impl_->inited) {  // headless
-        impl_->started = true;
-        return;
-    }
-    if (ma_device_start(&impl_->device) == MA_SUCCESS) impl_->started = true;
+    // Headless (not inited) starts nothing; set_start_fails forces the failure.
+    const bool ok = !g_start_fails.load() &&
+                    (!impl_->inited || ma_device_start(&impl_->device) == MA_SUCCESS);
+    if (!ok) throw std::runtime_error("PreviewAudioDevice: ma_device_start failed");
+    impl_->started = true;
 }
 
 bool PreviewAudioDevice::started() const { return impl_ && impl_->started; }

@@ -149,21 +149,25 @@ ColumnLayout place_columns(const MeasuredWidths& measured, const std::vector<Col
 
 // ---- The ImGui side -------------------------------------------------------
 
-ImGuiTableFlags table_flags() {
-    return ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable | ImGuiTableFlags_Sortable |
-           ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg |
-           ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_SizingFixedFit;
+ImGuiTableFlags scroll_fixed_flags() {
+    return ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit;
 }
 
-WidthOf text_width(ImFont* font, float size) {
+ImGuiTableFlags table_flags() {
+    return scroll_fixed_flags() | ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable |
+           ImGuiTableFlags_Sortable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg |
+           ImGuiTableFlags_BordersOuterH;
+}
+
+WidthOf measure_in_font(ImFont* font, float size) {
     return [font, size](std::string_view s) {
         if (s.empty()) return 0.0f;
         return font->CalcTextSizeA(size, FLT_MAX, 0.0f, s.data(), s.data() + s.size()).x;
     };
 }
 
-WidthOf text_width(ImFont* font) {
-    return text_width(font ? font : ImGui::GetFont(), ImGui::GetFontSize());
+WidthOf measure_in_font(ImFont* font) {
+    return measure_in_font(font ? font : ImGui::GetFont(), ImGui::GetFontSize());
 }
 
 TableRoom table_room(const char* str_id, float outer_width, std::size_t column_count) {
@@ -199,11 +203,55 @@ TableRoom table_room(const char* str_id, float outer_width, std::size_t column_c
     return room;
 }
 
+float first_columns_min_width(const MeasuredWidths& measured, const std::vector<ColumnSpec>& specs,
+                              const TableRoom& room, std::size_t count) {
+    TableRoom none;
+    none.header_drawn = room.header_drawn;
+    const ColumnLayout narrowest = place_columns(measured, specs, none);
+    const float padding = ImGui::GetStyle().CellPadding.x * 2.0f;
+    float width = 0.0f;
+    for (std::size_t c = 0; c < narrowest.widths.size() && c < count; ++c)
+        width += narrowest.widths[c] + padding;
+    return width;
+}
+
+float table_outer_height(std::size_t rows, const ColumnLayout& layout, const TableRoom& room,
+                        const std::vector<float>& cell_heights) {
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float line = ImGui::GetFontSize();
+    const float padding = style.CellPadding.y * 2.0f;
+    // The header row, then each row: a line, or its wrapped cell when taller
+    // (TableGetHeaderRowHeight is a line plus the padding above and below).
+    float height = line + padding;
+    for (std::size_t r = 0; r < rows; ++r)
+        height += (std::max)(line, r < cell_heights.size() ? cell_heights[r] : 0.0f) + padding;
+    if (layout.inner_width > room.available) height += style.ScrollbarSize;
+    return height;
+}
+
 void setup_column(const ColumnSpec& spec, const ColumnLayout& layout, int column,
                   ImGuiTableColumnFlags flags, ImGuiID user_id) {
     flags = (flags & ~ImGuiTableColumnFlags_WidthMask_) | ImGuiTableColumnFlags_WidthFixed;
     ImGui::TableSetupColumn(spec.header.c_str(), flags,
                             layout.widths[static_cast<std::size_t>(column)], user_id);
+}
+
+bool begin_small_table(const char* str_id, ImGuiTableFlags look,
+                       const std::vector<ColumnSpec>& specs, std::size_t rows,
+                       const CellText& text, const CellHeights& wrapped_heights) {
+    const MeasuredWidths measured = measure_widths(specs, rows, text);
+    const TableRoom room = table_room(str_id, 0.0f, specs.size());
+    const ColumnLayout layout = place_columns(measured, specs, room);
+    const std::vector<float> heights =
+        wrapped_heights ? wrapped_heights(layout) : std::vector<float>{};
+    if (!ImGui::BeginTable(str_id, static_cast<int>(specs.size()), look | scroll_fixed_flags(),
+                           ImVec2(0.0f, table_outer_height(rows, layout, room, heights)),
+                           layout.inner_width))
+        return false;
+    for (std::size_t c = 0; c < specs.size(); ++c)
+        setup_column(specs[c], layout, static_cast<int>(c));
+    apply_column_widths(layout);
+    return true;
 }
 
 void apply_column_widths(const ColumnLayout& layout) {
