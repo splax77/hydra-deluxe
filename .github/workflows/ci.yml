@@ -49,3 +49,32 @@ jobs:
       # or the network (docs/agents/ui-testing.md).
       - name: Run hydra_uitest
         run: .\build-cpp\Release\hydra_uitest.exe --all --jobs 4
+
+  tool-tests:
+    name: Tool tests (Python and PowerShell)
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      # The full history, so the precheck self-test's two real commit ranges
+      # are in the clone; without them it skips that part.
+      - name: Check out the code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install pytest
+        run: py -m pip install pytest
+
+      # Only these two paths: tools\ch_probe\experiments holds scripts that
+      # pytest would collect and that drive the real game.
+      - name: Run the Python tool tests
+        run: py -m pytest tools/ch_probe/tests tools/test_compare_db.py -q
+
+      - name: Run the mutation probe self-test
+        run: pwsh -NoProfile -File tools/test_mutation_probe.ps1
+
+      - name: Run the derive-once precheck self-test
+        run: pwsh -NoProfile -File tools/test_derive_once_precheck.ps1
