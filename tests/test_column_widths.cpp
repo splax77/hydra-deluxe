@@ -49,6 +49,24 @@ void check_same(const MeasuredWidths& a, const MeasuredWidths& b) {
     CHECK(a.cell_widths == b.cell_widths);
 }
 
+// A headless ImGui context with the app's fonts, for driving real tables with
+// no window or renderer. It shuts ImGui down when the test ends.
+struct HeadlessImGui {
+    HeadlessImGui() {
+        hydra::ui::ImGuiSetupOptions opts;
+        opts.dpi_scale = 1.0f;
+        opts.ini_file = "-";
+        opts.resource_dir = corpus::resource_root();
+        hydra::ui::setup_imgui(opts);
+        ImGuiIO& io = ImGui::GetIO();
+        io.DisplaySize = ImVec2(800.0f, 600.0f);
+        io.DeltaTime = 1.0f / 60.0f;
+        // No renderer is attached, so say the fonts need no texture upload.
+        io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+    }
+    ~HeadlessImGui() { hydra::ui::shutdown_imgui(); }
+};
+
 // A column of `rows` cells: every cell `usual` characters long except the
 // last, which is `widest` characters long.
 std::vector<std::string> one_long(std::size_t rows, std::size_t usual, std::size_t widest) {
@@ -70,7 +88,7 @@ Rows side_by_side(const std::vector<std::vector<std::string>>& columns) {
 //   "Artist"    header 60.  Every cell 11 chars = 110.
 //   "Best path" header 90.  200 cells of 10 chars = 100, and the last row's
 //               cell is 1,200 chars = 12,000, the outlier.
-// The usual width (the cell at sorted index ceil(0.99 * 201) - 1 = 198) is
+// The usual width (usual_of, column_widths.cpp, skips the one outlier) is
 // 150, 110 and 100; the widest is 150, 110 and 12,000.
 const std::vector<ColumnSpec> kOutlierSpecs = {spec("Title", true), spec("Artist", true),
                                                spec("Best path", true)};
@@ -183,16 +201,7 @@ TEST_CASE("column_widths: a column that never cuts is at least as wide as its dr
 }
 
 TEST_CASE("column_widths: table_room reads a sorted header's drawn width from the last frame") {
-    hydra::ui::ImGuiSetupOptions opts;
-    opts.dpi_scale = 1.0f;
-    opts.ini_file = "-";
-    opts.resource_dir = corpus::resource_root();
-    hydra::ui::setup_imgui(opts);
-    ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize = ImVec2(800.0f, 600.0f);
-    io.DeltaTime = 1.0f / 60.0f;
-    // No renderer is attached, so say the fonts need no texture upload.
-    io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+    HeadlessImGui imgui;
 
     TableRoom room;
     float plain_text = 0.0f;
@@ -219,7 +228,6 @@ TEST_CASE("column_widths: table_room reads a sorted header's drawn width from th
     // column that is sorted shows it. Both are wider than their text.
     CHECK(room.header_drawn[0] > plain_text);
     CHECK(room.header_drawn[1] > sorted_text);
-    hydra::ui::shutdown_imgui();
 }
 
 TEST_CASE("column_widths: with room to spare, cut columns stop at their measured width") {
@@ -340,13 +348,12 @@ TEST_CASE("column_widths: one outlier row does not take the room from the other 
 
 TEST_CASE("column_widths: the usual width is the widest below 100 rows, and skips one outlier at 100") {
     // Header "H" = 10. 99 rows: 98 cells of 3 chars = 30 and one of 9 = 90.
-    // Sorted index ceil(0.99 * 99) - 1 = 98, the last: the widest, 90.
+    // Too few rows to skip any: the usual width is the widest, 90.
     const std::vector<ColumnSpec> specs = {spec("H", true)};
     const Rows ninety_nine = side_by_side({one_long(99, 3, 9)});
     CHECK(hydra::ui::measure_widths(specs, 99, cells(ninety_nine)).usual_widths ==
           std::vector<float>{90.0f});
-    // 100 rows: 99 of 30 and one of 90. Sorted index ceil(0.99 * 100) - 1 =
-    // 98, a 30.
+    // 100 rows: 99 of 30 and one of 90. The one long row is skipped: 30.
     const Rows hundred = side_by_side({one_long(100, 3, 9)});
     CHECK(hydra::ui::measure_widths(specs, 100, cells(hundred)).usual_widths ==
           std::vector<float>{30.0f});
@@ -376,7 +383,7 @@ TEST_CASE("column_widths: when the usual widths don't fit, they are shared in pr
 TEST_CASE("column_widths: a column that reaches its widest hands the rest on") {
     // Two cut columns of 100 rows, headers "A" and "B" = 10 each.
     //   A: 99 cells of 10 chars = 100, one of 12 chars = 120. Usual 100
-    //      (sorted index ceil(0.99 * 100) - 1 = 98), widest 120.
+    //      (the one long row is skipped), widest 120.
     //   B: 99 cells of 10 chars = 100, one of 100 chars = 1000. Usual 100,
     //      widest 1000.
     // Available 410, spacing 10: leftover 400, 200 past the usual widths. A's
@@ -435,23 +442,6 @@ TEST_CASE("column_widths: the outlier row shrinking is an update that equals a f
 }
 
 namespace {
-
-// A headless ImGui context for driving a real table through
-// apply_column_widths, with no window or renderer.
-struct HeadlessImGui {
-    HeadlessImGui() {
-        hydra::ui::ImGuiSetupOptions opts;
-        opts.dpi_scale = 1.0f;
-        opts.ini_file = "-";
-        opts.resource_dir = corpus::resource_root();
-        hydra::ui::setup_imgui(opts);
-        ImGuiIO& io = ImGui::GetIO();
-        io.DisplaySize = ImVec2(800.0f, 600.0f);
-        io.DeltaTime = 1.0f / 60.0f;
-        io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
-    }
-    ~HeadlessImGui() { hydra::ui::shutdown_imgui(); }
-};
 
 const std::vector<ColumnSpec> kApplySpecs = {spec("A", true), spec("B", true), spec("C", true)};
 
@@ -561,11 +551,7 @@ TEST_CASE("column_widths timing: 40,000 rows" * doctest::test_suite("column_widt
         }
     const CellText text = [&rows](std::size_t r, std::size_t c) { return rows[r][c]; };
 
-    hydra::ui::ImGuiSetupOptions opts;
-    opts.dpi_scale = 1.0f;
-    opts.ini_file = "-";
-    opts.resource_dir = corpus::resource_root();
-    hydra::ui::setup_imgui(opts);
+    HeadlessImGui imgui;
     ImFont* font = ImGui::GetIO().Fonts->Fonts.Size > 0 ? ImGui::GetIO().Fonts->Fonts[0] : nullptr;
     const bool real = font != nullptr;
     const hydra::ui::WidthOf width_of =
@@ -605,5 +591,4 @@ TEST_CASE("column_widths timing: 40,000 rows" * doctest::test_suite("column_widt
         "  full measure %.2f ms, widest-row update %.2f ms, one-cell update %.4f ms\n",
         real ? "real font, ImFont::CalcTextSizeA" : "no font loaded: 10 px fake", kRowsCount,
         kColumns, full_ms, column_ms, cell_ms);
-    hydra::ui::shutdown_imgui();
 }
