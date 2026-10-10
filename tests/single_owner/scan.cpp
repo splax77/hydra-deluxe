@@ -30,6 +30,7 @@
 #include <string>
 #include <vector>
 
+#include "../code_lexer.h"
 #include "../source_tree.h"
 #include "core/strutil.h"
 #include "json.hpp"
@@ -290,29 +291,50 @@ const std::vector<KnownClone>& known_clones() { return tables().clones; }
 
 namespace {
 
+// The language codelex reads a file in, by its extension.
+codelex::Lang lexer_language(const fs::path& path) {
+    const fs::path ext = path.extension();
+    if (ext == ".py") return codelex::Lang::Python;
+    if (ext == ".ps1" || ext == ".psm1") return codelex::Lang::PowerShell;
+    return codelex::Lang::Cpp;
+}
+
+// Whether a trimmed line is all comment in `lang`, as codelex splits it.
+bool whole_line_comment(const std::string& trimmed, codelex::Lang lang) {
+    const std::vector<codelex::Piece> pieces = codelex::split(trimmed, lang);
+    return pieces.size() == 1 && pieces[0].kind == codelex::Kind::Comment;
+}
+
+// Whether `text` names `symbol` as a whole word outside its comments, as
+// codelex splits them. A string literal counts as naming it.
+bool names_outside_comments(const std::string& text, const std::string& symbol, codelex::Lang lang) {
+    if (symbol.empty()) return false;
+    for (const codelex::Piece& p : codelex::split(text, lang)) {
+        if (p.kind == codelex::Kind::Comment) continue;
+        for (size_t at = text.find(symbol, p.begin); at != std::string::npos && at + symbol.size() <= p.end;
+             at = text.find(symbol, at + 1)) {
+            const size_t end = at + symbol.size();
+            if ((at == 0 || !is_word_byte(text[at - 1])) &&
+                (end == text.size() || !is_word_byte(text[end])))
+                return true;
+        }
+    }
+    return false;
+}
+
 // The owner-gone guard: empty when the row's owner_file exists under `root`
-// and names owner_symbol as a whole word outside comments (comments as the
-// clone scan's clone_line_text drops them), else the failure message.
+// and names owner_symbol (names_outside_comments), else the failure message.
 std::string owner_gone(const OwnerRule& r, const fs::path& root) {
     const std::string gone = r.rules_file + ": \"" + r.question +
                              "\": owner gone: name the new owner or retire the row (" +
                              r.owner_file + ", " + r.owner_symbol + ")";
     const fs::path path = root / fs::u8path(r.owner_file);
-    if (r.owner_symbol.empty() || !fs::is_regular_file(path)) return gone;
-    std::ifstream in(path);
-    std::string line;
-    bool in_comment = false;
-    while (std::getline(in, line)) {
-        const std::string code = clone_line_text(line, in_comment);
-        for (size_t at = code.find(r.owner_symbol); at != std::string::npos;
-             at = code.find(r.owner_symbol, at + 1)) {
-            const size_t end = at + r.owner_symbol.size();
-            if ((at == 0 || !is_word_byte(code[at - 1])) &&
-                (end == code.size() || !is_word_byte(code[end])))
-                return {};
-        }
-    }
-    return gone;
+    if (!fs::is_regular_file(path)) return gone;
+    std::ifstream in(path, std::ios::binary);
+    std::ostringstream text;
+    text << in.rdbuf();
+    return names_outside_comments(text.str(), r.owner_symbol, lexer_language(path)) ? std::string()
+                                                                                    : gone;
 }
 
 struct CompiledRule {
@@ -453,7 +475,7 @@ void scan_file(ScanState& s, const std::string& rel, bool py, std::istream& in) 
         ++lineno;
         const std::string t = hydra::trim(line);
         if (t.empty()) continue;
-        const bool comment = py ? t[0] == '#' : is_line_comment(t);
+        const bool comment = py ? whole_line_comment(t, codelex::Lang::Python) : is_line_comment(t);
         for (size_t ci = 0; ci < s.compiled.size(); ++ci) {
             const CompiledRule& c = s.compiled[ci];
             const OwnerRule& rule = *c.rule;
@@ -612,6 +634,14 @@ TEST_CASE("single-owner: the owner-gone guard and the loader fail on a made-up r
     r.owner_symbol = "fits_shell";
     r.owner_file = "src/core/no_such_file.cpp";
     CHECK_FALSE(owner_gone(r, sourcetree::root()).empty());
+    // A name only in a comment, trailing or whole-line, is not the owner.
+    const codelex::Lang cpp = codelex::Lang::Cpp, py = codelex::Lang::Python;
+    CHECK(names_outside_comments("bool fits_shell(int n);\n", "fits_shell", cpp));
+    CHECK_FALSE(names_outside_comments("int n = 1;  // fits_shell\n", "fits_shell", cpp));
+    CHECK_FALSE(names_outside_comments("/* fits_shell */ int n;\n", "fits_shell", cpp));
+    CHECK(names_outside_comments("def fits_shell(n):\n", "fits_shell", py));
+    CHECK_FALSE(names_outside_comments("n = 1  # fits_shell\n", "fits_shell", py));
+    CHECK_FALSE(names_outside_comments("int fits_shell_x;\n", "fits_shell", cpp));
 
     json row = json::parse(R"({"question": "Is this a made-up question?", "owner": "x in y",
         "owner_file": "src/core/winstr.cpp", "owner_symbol": "fits_shell", "date": "2026-10-10",

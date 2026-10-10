@@ -81,8 +81,8 @@ inline void check_scan(std::vector<std::string> problems, const std::vector<List
     CHECK(problems.empty());
 }
 
-// Defined with the clone scan in clones.cpp; the owner-gone guard in scan.cpp
-// reads source the same way.
+// Defined with the clone scan in clones.cpp. The owner-gone guard in scan.cpp
+// uses is_word_byte for its whole-word check.
 std::string clone_line_text(std::string_view line, bool& in_comment);
 bool is_word_byte(char c);
 
