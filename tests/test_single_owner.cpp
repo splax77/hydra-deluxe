@@ -6475,7 +6475,6 @@ const std::vector<KnownClone>& known_clones() {
         {"tests/test_audio_player.cpp", "tests/test_preview_transport.cpp", 10, R"x(namespace {)x"},
         {"tests/test_path_view.cpp", "tests/test_path_view.cpp", 12, R"x(HydraRecord rec;)x"},
         {"tests/test_path_view.cpp", "tests/test_preview_view.cpp", 8, R"x(const AnalysisResult& analyzed() {)x"},
-        {"tests/test_preview_controller.cpp", "tests/test_preview_controller.cpp", 11, R"x(using namespace hydra;)x"},
         {"tests/test_replay.cpp", "tests/test_replay.cpp", 10, R"x(int charts = 0, paths = 0, mismatches = 0;)x"},
         {"tests/test_replay.cpp", "tests/test_replay.cpp", 10, R"x(Song song(192);)x"},
         {"tests/test_search.cpp", "tests/test_search.cpp", 17, R"x(for (const std::string& path : corpus::chart_paths()) {)x"},
