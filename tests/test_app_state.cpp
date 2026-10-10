@@ -37,8 +37,10 @@
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file, scalar_on_file, write_junk_db
 #include "display_fixtures.h"  // store_batch_result, old_build_row
+#include "library_fixtures.h"  // library_entry
 #include "net/dmbot_client.h"   // set_fetcher
 #include "parse/song.h"
+#include "scratch_paths.h"
 #include "store/record_store.h"
 #include "temp_util.h"
 #include "ui/app_state.h"
@@ -71,55 +73,6 @@ const int kSeededCap = 4;
 const int kChartCount = 60;
 
 using testtemp::temp_path;
-
-// Points app::ini_path()/db_path() at scratch files for one test, then puts
-// the process back the way it was. commit_settings writes the INI through
-// Settings::save(), so without this a test would overwrite the developer's
-// real hydra_settings.ini.
-struct ScratchPaths {
-    hydra::app::PathOverrides previous;
-    std::string ini;
-    std::string db;
-    std::string rules;
-
-    explicit ScratchPaths(const char* tag)
-        : previous(hydra::app::path_overrides()),
-          ini(temp_path(tag, ".ini")),
-          db(temp_path(tag, ".db")),
-          rules(temp_path(tag, "_rules.ini")) {
-        std::remove(ini.c_str());
-        std::remove(db.c_str());
-        std::remove(rules.c_str());
-        hydra::app::PathOverrides overrides = previous;
-        overrides.ini_path = ini;
-        overrides.db_path = db;
-        overrides.rules_path = rules;
-        hydra::app::set_path_overrides(overrides);
-    }
-
-    ~ScratchPaths() {
-        hydra::app::set_path_overrides(previous);
-        std::remove(ini.c_str());
-        std::remove(db.c_str());
-        std::remove(rules.c_str());
-    }
-};
-
-// A library row whose chart file does not exist: a click on it lands on
-// FileMissing and starts no job.
-ChartLibraryEntry library_entry(int i) {
-    char hash[32];
-    std::snprintf(hash, sizeof(hash), "hash%03d", i);
-    ChartLibraryEntry e;
-    e.md5 = hash;
-    e.title = std::string("Song ") + hash;
-    e.artist = "Artist";
-    e.charter = "Charter";
-    e.notespath = std::string("C:\\charts\\") + hash + "\\notes.chart";
-    e.rootfolder = "C:\\charts";
-    e.sig = "sig";
-    return e;
-}
 
 // A library of kChartCount charts, exactly one of which (entry 0) has a
 // stored record, under the default chart mode at the default cap. The record
