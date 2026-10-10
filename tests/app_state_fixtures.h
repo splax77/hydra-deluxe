@@ -45,7 +45,8 @@ inline constexpr int kChartCount = 60;
 // A library of kChartCount charts, exactly one of which (entry 0) has a
 // stored record, under the default chart mode at the default cap. The record
 // itself is empty: a current-version row with no paths reads back as Ready
-// (see test_store), and these tests only care which row a lookup finds.
+// (see test_store_results.cpp), and these tests only care which row a lookup
+// finds.
 inline std::unique_ptr<hydra::store::RecordStore> seeded_store(const std::string& db) {
     auto store = std::make_unique<hydra::store::RecordStore>(db);
 

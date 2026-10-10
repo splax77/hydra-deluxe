@@ -457,10 +457,10 @@ TEST_CASE("generate_report reports a 1.0-fills database under the 1.0 rule") {
 
 TEST_CASE("collect_rows: the library names go through display_title, display_artist and "
           "display_charter") {
-    // test_song.cpp pins what those three do. This checks only that the page
-    // calls them: one tagged name each. The page names a chart by its library
-    // row (the naming copy, kNamingCopiesSql's pick), so a rescan's names
-    // replace store_tied's own.
+    // test_song_input.cpp pins what those three do. This checks only that the
+    // page calls them: one tagged name each. The page names a chart by its
+    // library row (the naming copy, kNamingCopiesSql's pick), so a rescan's
+    // names replace store_tied's own.
     store::RecordStore store(":memory:");
     std::vector<store::ChartLibraryEntry> library;
     store_tied(store, library, "u0", 4);

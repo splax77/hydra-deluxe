@@ -146,7 +146,7 @@ inline Activation sp_act_at(const Song& song, int64_t tick, int sp_meter, int64_
     return a;
 }
 
-// The engine fixture from test_search.cpp (the "a second clamp in the same
+// The engine fixture from test_sp_end.cpp (the "a second clamp in the same
 // window replaces clamp_tick" row of "SP cap overfill: where the end lands and
 // which note clamped it"), rebuilt with each phrase's start
 // tick set so the Preview draws the phrases. 192 ticks per beat, 4/4, 120

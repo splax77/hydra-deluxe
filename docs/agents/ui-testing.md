@@ -116,7 +116,7 @@ The path report and the dmleaderboards comparison are their own windows (ADR 002
 
 Their tests live in `tests/ui/uitest_report_windows.cpp`, in two groups.
 
-The first group opens the windows on sample rows, with no AppState. The test's own GUI function (`draw_windows`) draws both windows from a `ReportWindowInput` it fills itself, and records what each button hands back. The rows are the shared samples in `tests/report_samples.{h,cpp}`, the same ones `tests/test_report.cpp` pins the tiles on. These tests are `report-window-sort`, `report-window-filters`, `report-window-states`, `report-window-keys` and `report-windows-both`.
+The first group opens the windows on sample rows, with no AppState. The test's own GUI function (`draw_windows`) draws both windows from a `ReportWindowInput` it fills itself, and records what each button hands back. The rows are the shared samples in `tests/report_samples.{h,cpp}`, the same ones `tests/test_report_page.cpp` pins the tiles on. These tests are `report-window-sort`, `report-window-filters`, `report-window-states`, `report-window-keys` and `report-windows-both`.
 
 The second group goes end to end through AppState: the toolbar, the batch strip, the dm picker and the analysis settings. These are `report-window-open-path`, `report-window-dm-handover`, `report-window-row-click`, `report-window-reopen`, `report-window-reopen-keeps-filters` and `report-window-out-of-date`. They use the canned dmleaderboards API above and never reach the real server.
 

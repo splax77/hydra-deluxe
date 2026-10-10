@@ -48,7 +48,7 @@ their offsets, squeeze-out tick, backend rows, bank arrivals, early-fill
 offset and passed fills, and the trailing bank. It does not compare transfer
 scales; they come from the activation note and the steps, so they match when
 those match. One helper in tests/record_fixtures.h (`lone_pricing`) holds
-that comparison for this guard and the test_search.cpp fixtures. The guard
+that comparison for this guard and the test_tied_variants.cpp fixtures. The guard
 runs at the app's defaults and at score range 40 with caps 4 and 2, because
 the defaults hold almost no ties. Only a root of that search is an answer,
 because a root was never folded. Sometimes the lone search ties the variant
@@ -63,7 +63,7 @@ the e_offset at the first of them. The activation its leader takes next is
 stored with the variant's own facts: its own passed fills, then the ones both
 passed after the fold, and the e_offset the early-fill rule gives its own
 ready time. The display reads those stored facts. The tied-variant
-lone-pricing tests in test_search.cpp and test_fast_tempo.cpp now compare the
+lone-pricing tests in test_tied_variants.cpp and test_fast_tempo.cpp now compare the
 early-fill offset and passed fills too. No score moved. On the corpus, one
 listed path changes (The Agonist - Thank You, Pain, cap 4, score range 40,
 10 ms limit: '2 0 2' becomes '2 0 5'), and no "Early fill" line changes.

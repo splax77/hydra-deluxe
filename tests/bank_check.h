@@ -1,5 +1,6 @@
-// The lasting bank-list checks (D3, finding 89), shared by the corpus test
-// (test_search.cpp) and the fast-tempo charts (test_fast_tempo.cpp).
+// The lasting bank-list checks (D3, finding 89), shared by the corpus tests
+// (test_sp_end.cpp), the tied-variant fixtures (test_tied_variants.cpp) and
+// the fast-tempo charts (test_fast_tempo.cpp).
 //
 // These are facts the chart and the window give on their own. They do not
 // restate when the engine says a bar arrives. A banked bar arrives on a real

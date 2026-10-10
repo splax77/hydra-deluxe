@@ -85,10 +85,13 @@ TEST_CASE("the fill page carries the shared stylesheet and script") {
     // "a row's search text is folded" case pins that fold). These checks
     // stand for the facts, not the exact expressions, so a rewrite of the same
     // logic passes. The script holds no fold of its own: no lowercasing and
-    // no accented letter, raw or escaped.
+    // no accented letter, raw or escaped. Every typed word must match (D56
+    // item 1), so the script keeps an every-word test; a change to any-word
+    // matching (`.some(`) fails here.
     const std::string script = html::kReportJs;
     CHECK(script.find("FOLD[") != std::string::npos);
     CHECK(script.find(".search") != std::string::npos);
+    CHECK(script.find(".every(") != std::string::npos);
     CHECK(script.find("toLowerCase") == std::string::npos);
     CHECK(std::none_of(script.begin(), script.end(),
                        [](char c) { return static_cast<unsigned char>(c) >= 0x80; }));

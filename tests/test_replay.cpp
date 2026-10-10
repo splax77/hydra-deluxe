@@ -258,8 +258,9 @@ TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
 }  // namespace
 
 // Decision D3: a tied variant is stored as a branch of its leader, but its
-// facts are its own. The fixtures in test_search.cpp prove the mechanism on
-// purpose-built charts; this guard catches any later case they do not shape.
+// facts are its own. The fixtures in test_tied_variants.cpp prove the
+// mechanism on purpose-built charts; this guard catches any later case they do
+// not shape.
 //
 // The app's defaults (cap 4, score range 4) hold few ties, and none of them
 // folded while SP ran or banked bars at different ticks from its leader. So
