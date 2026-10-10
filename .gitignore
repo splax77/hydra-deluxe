@@ -17,10 +17,13 @@ local/*
 # downloads it; ~25 MB, never committed). Installer output lands in build-cpp/.
 installer/redist/
 
-# C++ build trees (CMake presets: default, vs2022, ship) and IDE state.
+# C++ build trees (one per CMake preset; CMakePresets.json names each folder)
+# and IDE state.
 build-cpp/
 build-cpp-vs2022/
 build-ship/
+build-asan/
+build-fuzz/
 .vs/
 out/
 CMakeUserPresets.json

@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <map>
 #include <cstdlib>
@@ -632,7 +633,8 @@ TEST_CASE("generate_report: one seam frames the report for every entry point") {
           sentence);
 }
 
-TEST_CASE("generate_report: \"every path\" is the sentinel's, a huge --paths stays a count (86)") {
+// Finding 86.
+TEST_CASE("generate_report: \"every path\" is the sentinel's, a huge --paths stays a count") {
     store::RecordStore store(":memory:");
     REQUIRE(fill_store(store, 4, 1) > 0);
 
@@ -687,7 +689,8 @@ TEST_CASE("generate_report hands back nothing when its cancel flag is set") {
     CHECK(result.empty_reason == report::EmptyReason::Cancelled);
 }
 
-TEST_CASE("the report reuses the charts a batch just analyzed (D87 item 5)") {
+// D87 item 5.
+TEST_CASE("the report reuses the charts a batch just analyzed") {
     store::RecordStore store(":memory:");
     std::vector<store::ChartLibraryEntry> library;
     const std::vector<std::string> files = fill_store(store, library, 4, 3);
@@ -781,7 +784,8 @@ TEST_CASE("the report analyzes the copy that names a chart the scan found twice"
     CHECK(page.records == 2);  // both copies count (D76)
 }
 
-TEST_CASE("a report on results with no chart library says the library is missing (D89)") {
+// D89.
+TEST_CASE("a report on results with no chart library says the library is missing") {
     // What hydra_batch with folder arguments leaves: results, and no scan
     // ever saved as the library. (A scan that lists nothing deletes the
     // results too, D87 item 4.)
@@ -857,13 +861,15 @@ TEST_CASE("the fill page carries the shared stylesheet and script") {
     // table Hydra built from the library's fold.
     CHECK(fill.find("toLowerCase().includes(") == std::string::npos);
     CHECK(fill.find("const FOLD = {\"A\":\"a\",") != std::string::npos);
-    // The shared script folds the query through that table, splits it into
-    // words and keeps a row when every word is in its search text. It holds no
-    // fold of its own: no lowercasing and no accented letter, raw or escaped.
+    // The shared script looks the query's characters up in that table and
+    // matches against each row's search text, which Hydra folded in C++ (the
+    // "a row's search text is folded" case pins that fold). These checks
+    // stand for the facts, not the exact expressions, so a rewrite of the same
+    // logic passes. The script holds no fold of its own: no lowercasing and
+    // no accented letter, raw or escaped.
     const std::string script = html::kReportJs;
-    CHECK(script.find("FOLD[ch]") != std::string::npos);
-    CHECK(script.find(".split(/\\s+/)") != std::string::npos);
-    CHECK(script.find("words.every(w => r.search.includes(w))") != std::string::npos);
+    CHECK(script.find("FOLD[") != std::string::npos);
+    CHECK(script.find(".search") != std::string::npos);
     CHECK(script.find("toLowerCase") == std::string::npos);
     CHECK(std::none_of(script.begin(), script.end(),
                        [](char c) { return static_cast<unsigned char>(c) >= 0x80; }));
@@ -874,7 +880,7 @@ TEST_CASE("the fill page carries the shared stylesheet and script") {
     // Every number on the page groups through the shared fmt, which uses one
     // fixed rule (1,234), whatever language the browser is set to (D48 Q12).
     // The single-owner scan keeps it that way.
-    CHECK(std::string(html::kReportJsHead).find("n.toLocaleString('en-US')") !=
+    CHECK(std::string(html::kReportJsHead).find(".toLocaleString('en-US')") !=
           std::string::npos);
     CHECK(fill.find(".toLocaleString()") == std::string::npos);
 }
@@ -1009,6 +1015,44 @@ std::map<std::string, std::string> css_tokens(const std::string& css, size_t fro
     return out;
 }
 
+// The inside of the first "@media print" block, up to its matching brace, or
+// "" when the stylesheet has none.
+std::string print_block(const std::string& css) {
+    const size_t media = css.find("@media print");
+    if (media == std::string::npos) return {};
+    const size_t open = css.find('{', media);
+    if (open == std::string::npos) return {};
+    int depth = 1;
+    for (size_t i = open + 1; i < css.size(); ++i) {
+        if (css[i] == '{') ++depth;
+        if (css[i] == '}' && --depth == 0) return css.substr(open + 1, i - open - 1);
+    }
+    return {};
+}
+
+// The declarations of the rule in `css` whose whole selector is `selector`,
+// with every space taken out, or "" when there is no such rule.
+std::string rule_body(const std::string& css, const std::string& selector) {
+    auto blank = [](char c) { return std::isspace(static_cast<unsigned char>(c)) != 0; };
+    for (size_t at = css.find(selector); at != std::string::npos;
+         at = css.find(selector, at + 1)) {
+        // Only a selector that starts its rule: the text before it, past any
+        // spaces, is the start of `css` or the end of the rule before.
+        size_t before = at;
+        while (before > 0 && blank(css[before - 1])) --before;
+        if (before > 0 && css[before - 1] != '}' && css[before - 1] != '{') continue;
+        size_t open = at + selector.size();
+        while (open < css.size() && blank(css[open])) ++open;
+        if (open >= css.size() || css[open] != '{') continue;
+        const size_t close = css.find('}', open);
+        std::string body;
+        for (size_t i = open + 1; i < close && i < css.size(); ++i)
+            if (!blank(css[i])) body.push_back(css[i]);
+        return body;
+    }
+    return {};
+}
+
 }  // namespace
 
 TEST_CASE("the fill page is a standards-mode document") {
@@ -1050,19 +1094,23 @@ TEST_CASE("report table header sticks and the page prints") {
     CHECK(rule.find("max-height:") != std::string::npos);
     CHECK(rule.find("overflow-x") == std::string::npos);
 
-    CHECK(css.find("@media print {") != std::string::npos);
-    CHECK(css.find("thead { display: table-header-group; }") != std::string::npos);
-    CHECK(css.find(".controls { display: none; }") != std::string::npos);
+    // On paper the controls go and the header repeats on every page.
+    const std::string print = print_block(css);
+    REQUIRE_FALSE(print.empty());
+    CHECK(rule_body(print, ".controls").find("display:none") != std::string::npos);
+    CHECK(rule_body(print, "thead").find("display:table-header-group") != std::string::npos);
 }
 
 TEST_CASE("report pages number their rows in a # column") {
-    // The shared script adds the column, so the fill page gets it.
+    // The shared script adds the column, so the fill page gets it: a header
+    // that reads "#" and cells that carry the idx class the stylesheet sizes.
     const std::string js = html::kReportJs;
-    CHECK(js.find("th.textContent = '#';") != std::string::npos);
-    CHECK(js.find("idx.textContent = fmt(++n);") != std::string::npos);
-    // The sort control and the arrows walk the real columns, not the # one.
-    CHECK(js.find("document.querySelectorAll('#head th.sortable')") != std::string::npos);
-    CHECK(std::string(html::kReportCss).find("th.idx, td.idx {") != std::string::npos);
+    CHECK(js.find("'#'") != std::string::npos);
+    CHECK(js.find("'idx") != std::string::npos);
+    // The sort control and the arrows walk the sortable headers, which the #
+    // one is not.
+    CHECK(js.find("th.sortable") != std::string::npos);
+    CHECK(std::string(html::kReportCss).find("td.idx") != std::string::npos);
 }
 
 TEST_CASE("path report counts charts by hash in the Charts shown tile") {

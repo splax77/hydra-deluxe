@@ -184,9 +184,12 @@ struct ReportPlacement {
 // open); `main_maximized` and `main_client` describe the main window now.
 //
 // A report opens maximized when the main window is maximized or the report
-// was saved maximized; its client rectangle is then the main window's work
-// area less the frame (Windows sizes a maximized window itself, so this is
-// only the size until it does). Otherwise it reopens at the saved rectangle
+// was saved maximized; its client rectangle is then a work area less the
+// frame (Windows sizes a maximized window itself, so this is only the size
+// until it does). A report saved maximized whose saved rectangle passes
+// placement_on_screen takes the work area holding that rectangle's title bar,
+// so it reopens on the monitor it was saved on; any other maximized open
+// takes the main window's work area. Otherwise it reopens at the saved rectangle
 // when placement_on_screen passes, else over the main window, and its whole
 // outer window, frame included, is fitted into the work area holding its
 // title bar: shrunk to that area's size, then moved inside it.

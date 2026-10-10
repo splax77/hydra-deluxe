@@ -27,6 +27,7 @@
 #include "byte_source_util.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
+#include "midi_util.h"
 #include "parse/song.h"
 #include "parse/srb.h"
 #include "song_equal.h"
@@ -137,6 +138,21 @@ TEST_CASE("srb: a truncated file reads as an unreadable chart") {
               "Hydra couldn't read this chart file. It may be damaged or in a format Hydra "
               "doesn't support; try downloading the song again.");
     }
+}
+
+// Finding 61; D27.
+TEST_CASE("srb: the notes entry is found by its exact name, never by its extension") {
+    using namespace testmidi;
+    const std::vector<uint8_t> mid =
+        smf(concat({track_name("PART DRUMS"), set_tempo(), note_on(96, 100), end_of_track()}));
+    // "song.chart" is not a notes name. Before, the .srb trusted the extension
+    // and read these MIDI bytes as .chart text, which failed. Now the name
+    // decides nothing, so the stream's bytes do, and it loads as MIDI.
+    CHECK(load_songbytes_srb(make_srb(make_metadata("song.chart"), mid), true, true)
+              .sequence.size() == 1);
+    // The exact names decide, in any case.
+    CHECK(load_songbytes_srb(make_srb(make_metadata("NOTES.MID"), mid), true, true)
+              .sequence.size() == 1);
 }
 
 namespace {
