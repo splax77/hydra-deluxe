@@ -232,10 +232,18 @@ them has one owner. This list points at each; read the owner for the rule.
   struct. It never sorts, counts or filters by itself. The thin files
   `src/ui/path_report_window.cpp` and `src/ui/dm_report_window.cpp` fill it
   in for each report.
-- **The OS window and its placement.** `report_window_class` and
-  `place_report_window` in `src/ui/app_shell.{h,cpp}` (D103 item 14). The
-  popup patch in `third_party/imgui/imgui.cpp` keeps popups inside their
-  window (D103 item 15).
+- **The OS window and its placement.** `report_window_class` in
+  `src/ui/app_shell.{h,cpp}` makes each report its own OS window.
+  `report_placement` beside it decides where a report opens and whether it
+  opens maximized, and `place_report_window` applies that and notes where the
+  window is, in the `[Hydra][Window:<key>]` sections of `hydra_ui.ini` (D103
+  item 14; ADR 0027 says how it behaves). `main.cpp` measures the OS frame
+  around a report and hands it over with `set_report_frame_insets`. The popup
+  patch in `third_party/imgui/imgui.cpp` keeps popups inside their window
+  (D103 item 15).
+- **Column widths.** `src/ui/column_widths.h` holds the one rule every table
+  in the app sizes its columns by, the report tables included. Its header
+  comment says how a table uses it.
 - **Chip colours.** `chip_color` in `src/ui/theme.{h,cpp}`.
 - **The reports' state.** AppState holds both reports as `ReportSlot`s,
   `path_report` and `dm_report`, in `src/ui/app_state.h`, with the functions
