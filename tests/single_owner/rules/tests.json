@@ -927,6 +927,69 @@
         "tests"
       ],
       "note": "A test that hashes a chart's parse calls chart_parse_hash, so the tests cannot drift from each other when the digest gains a part. tools/bench.cpp keeps its own loop to time the parts apart, and is outside this row's scope. Decided by: the speedups plan, task P1 (D86); derive-once review of P1"
+    },
+    {
+      "question": "How is a made-up replay window drawn from a song's chords?",
+      "owner": "window_over in tests/replay_windows.h",
+      "owner_file": "tests/replay_windows.h",
+      "owner_symbol": "window_over",
+      "date": "2026-10-10",
+      "decision": "derive-once review of ct-w2, finding 1 (2026-10-10)",
+      "added_by": "ct-w2-review",
+      "pattern": "\\b\\w+\\.(act_tick|deact_tick|sqout_tick)\\s*=\\s*[^;]*(sequence\\[|tick_of\\()",
+      "anchor": "t_tick",
+      "must_match": [
+        "w.act_tick = tick_of(a);",
+        "w.act_tick = song.sequence[a].timecode.ticks();"
+      ],
+      "must_not_match": [
+        "return testreplay::window_over(song, a, len, offset, pick);",
+        "w.act_tick = 0;"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/replay_windows.h",
+          "line_text": "w.act_tick = song.sequence[a].timecode.ticks();",
+          "why": "window_over, the owner"
+        },
+        {
+          "file": "tests/replay_windows.h",
+          "line_text": "w.deact_tick = song.sequence[d].timecode.ticks() + deact_offset;",
+          "why": "window_over, the owner"
+        },
+        {
+          "file": "tests/replay_windows.h",
+          "line_text": "w.sqout_tick = song.sequence[q].timecode.ticks();",
+          "why": "window_over, the owner"
+        }
+      ],
+      "scope": [
+        "tests",
+        "tools"
+      ],
+      "note": "A made-up window's ticks read off a song's chords. Windows built from literal ticks are not flagged; only ones read off a sequence. Decided by: derive-once review of ct-w2, finding 1 (2026-10-10); plan 2026-10-10-ci-test-tooling task 7"
+    },
+    {
+      "question": "How many GUI test processes does the CI runner start at once?",
+      "owner": "kDefaultJobs in tests/ui/uitest_main.cpp",
+      "owner_file": "tests/ui/uitest_main.cpp",
+      "owner_symbol": "kDefaultJobs",
+      "date": "2026-10-10",
+      "decision": "CI and test tooling plan, decision 3 (2026-10-10)",
+      "added_by": "ct-t4-review",
+      "pattern": "hydra_uitest\\S*\\s+.*--jobs\\b",
+      "anchor": "hydra_uitest",
+      "must_match": [
+        "run: .\\build-asan\\Release\\hydra_uitest.exe --all --jobs 4"
+      ],
+      "must_not_match": [
+        "run: .\\build-cpp\\Release\\hydra_uitest.exe --all",
+        "run: .\\build-asan\\Release\\hydra_uitest.exe --all"
+      ],
+      "scope": [
+        ".github/workflows/ci.yml"
+      ],
+      "note": "A CI step that gives the GUI runner its own --jobs count. The count is kDefaultJobs's, so a step runs plain --all. The walk reads no .yml file, so the case that checks the single files outside it reads ci.yml (the way it reads installer/hydra.iss). Decided by: CI and test tooling plan, decision 3 (2026-10-10); derive-once review of ct-t4"
     }
   ]
 }

@@ -81,12 +81,7 @@ public:
     }
 
     void seek(int64_t frame) override {
-        frame = std::clamp<int64_t>(frame, 0, length_);
-        if (frame >= length_) {
-            at_end_ = true;
-            pos_ = length_;
-            return;
-        }
+        if (seek_clamp_or_end(frame, length_, pos_, at_end_)) return;
         if (counted_.counted()) {
             // stb_vorbis can't tell a decode error from the end, so a skip that
             // stops early only ends the stem.

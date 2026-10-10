@@ -14,8 +14,11 @@ namespace hydra::app {
 // just freed a lot at once. It takes some ms, so it does not belong in a loop.
 void return_freed_memory();
 
-// Committed memory in bytes as mimalloc's mi_process_info reports it, for
-// tests and measurements.
+// Committed memory in bytes, for tests and measurements. On mimalloc it is
+// what mi_process_info reports, which covers mimalloc's heap. A build without
+// mimalloc (HYDRA_MIMALLOC in CMakeLists.txt; only the AddressSanitizer build)
+// reports the whole process's private committed bytes instead, a larger
+// figure, so no test compares the two builds' numbers.
 size_t committed_bytes();
 
 // Whether this process's malloc and free really go to mimalloc. False when

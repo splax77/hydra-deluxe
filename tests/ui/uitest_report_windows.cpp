@@ -40,6 +40,7 @@ namespace uitest {
 // Defined in uitest_batch_reports.cpp.
 bool batch_search(ImGuiTestContext* ctx, const std::string& search);
 void dismiss_done(ImGuiTestContext* ctx);
+void start_library_batch(ImGuiTestContext* ctx);
 
 namespace {
 
@@ -849,9 +850,7 @@ void test_out_of_date(ImGuiTestContext* ctx) {
         ctx->SetRef("//Hydra");
         ctx->ItemInputValue("**/##search", "");
         IM_CHECK_RETV(wait_until(ctx, [&] { return h.app->search.empty(); }, 5), );
-        ctx->ItemClick("Analyze library...");
-        ctx->SetRef("//Analyze library");
-        ctx->ItemClick("Start analyzing");
+        start_library_batch(ctx);
         IM_CHECK_RETV(wait_until(ctx, [&] { return gate.started() >= 1; }, 30), );
         h.app->batch_job->stop();
         IM_CHECK_RETV(wait_until(ctx, [&] { return h.app->batch_job->snapshot().finished; }, 300), );

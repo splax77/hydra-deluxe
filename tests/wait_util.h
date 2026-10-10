@@ -1,7 +1,7 @@
 // The one place a test waits for another thread or process, and the one home
 // of how long it may wait. Every wait stops at a cap, so a hung job fails the
-// test that waited instead of freezing the run until CI's own limit. The user
-// chose both caps on 2026-10-10.
+// test that waited instead of freezing the run until CI's own limit. The caps
+// are the user's decision D108 (docs/audit/2026-10-03-fix-decisions.md).
 //
 // No doctest here: the GUI test runner (tests/ui) uses it too.
 

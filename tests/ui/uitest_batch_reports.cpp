@@ -43,6 +43,16 @@ bool wait_report_landed(ImGuiTestContext* ctx) {
 
 }  // namespace
 
+// Start a whole-library batch from the main window, through the confirm.
+// Leaves the ref on the confirm. Shared with uitest_report_windows.cpp, which
+// declares it.
+void start_library_batch(ImGuiTestContext* ctx) {
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick("Analyze library...");
+    ctx->SetRef("//Analyze library");
+    ctx->ItemClick("Start analyzing");
+}
+
 // Narrow the library to charts matching `search` and batch them through the
 // confirm; waits for the batch and its report to finish. Shared with
 // uitest_report_windows.cpp, which declares it.
@@ -101,10 +111,7 @@ void test_batch_strip_drift(ImGuiTestContext* ctx) {
     scan_library(ctx);
     if (ctx->IsError()) return;
     BatchGate gate;
-    ctx->SetRef("//Hydra");
-    ctx->ItemClick("Analyze library...");
-    ctx->SetRef("//Analyze library");
-    ctx->ItemClick("Start analyzing");
+    start_library_batch(ctx);
     IM_CHECK(wait_until(ctx, [&] { return gate.started() >= 1; }, 30));
     IM_CHECK(wait_until(ctx, [&] { return child_window(ctx, "//Hydra/##batchstrip") != nullptr; }, 5));
     ctx->Yield(2);  // auto-sized children settle a frame after their content changes
@@ -414,10 +421,7 @@ void test_batch_pause_stop(ImGuiTestContext* ctx) {
     // two clicks. Hold the first chart at the gate; every click below then
     // lands while the run is provably still going.
     BatchGate gate;
-    ctx->SetRef("//Hydra");
-    ctx->ItemClick("Analyze library...");
-    ctx->SetRef("//Analyze library");
-    ctx->ItemClick("Start analyzing");
+    start_library_batch(ctx);
     IM_CHECK(wait_until(ctx, [&] {
         return h.app->batch_job && !h.app->batch_job->snapshot().preparing;
     }, 30));
@@ -452,10 +456,7 @@ void test_batch_strip_workers(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     constexpr int kWorkers = 3;
     BatchGate gate(kWorkers);
-    ctx->SetRef("//Hydra");
-    ctx->ItemClick("Analyze library...");
-    ctx->SetRef("//Analyze library");
-    ctx->ItemClick("Start analyzing");
+    start_library_batch(ctx);
 
     // Frames run for a while with nothing let through. A fourth chart can
     // never reach the gate: every worker is busy. Three workers and a
@@ -695,10 +696,7 @@ void test_batch_chip_count(ImGuiTestContext* ctx) {
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
-    ctx->SetRef("//Hydra");
-    ctx->ItemClick("Analyze library...");
-    ctx->SetRef("//Analyze library");
-    ctx->ItemClick("Start analyzing");
+    start_library_batch(ctx);
     IM_CHECK(wait_until(ctx, [&] {
         return h.app->batch_job && h.app->batch_job->snapshot().finished;
     }, 300));

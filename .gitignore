@@ -3,6 +3,7 @@
 
 # User data the app/CLIs write next to the executable.
 *.db
+!testdata/store/*.db
 hydra_settings.ini
 hydra_ui.ini
 

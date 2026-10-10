@@ -278,13 +278,17 @@ TEST_CASE("jobs: the snapshot's counts come from the batch in one piece") {
 // D88: every exe runs on mimalloc, this one too. An exe whose link puts
 // mimalloc.dll after another DLL keeps the Windows heap without a word; the
 // memory wave's join did that to every GUI exe. The Debug runtime is never
-// redirected, so only a Release build can tell.
-#ifdef NDEBUG
+// redirected, so only a Release build can tell. A build without mimalloc
+// (HYDRA_MIMALLOC in CMakeLists.txt) has nothing to check.
+#if defined(NDEBUG) && defined(HYDRA_MIMALLOC)
 TEST_CASE("allocator: malloc goes to mimalloc") {
     CHECK(hydra::app::malloc_redirected());
 }
 #endif
 
+// The hand-back tests measure mimalloc's purge, so a build without mimalloc
+// (HYDRA_MIMALLOC in CMakeLists.txt) leaves them out.
+#ifdef HYDRA_MIMALLOC
 namespace {
 
 // The memory each chart's result carries in the hand-back tests below.
@@ -360,6 +364,7 @@ TEST_CASE("jobs: a finished report build hands the memory its charts freed back 
         REQUIRE(job.ok());  // the chart was analyzed: the build has rows
     });
 }
+#endif  // HYDRA_MIMALLOC
 
 TEST_CASE("jobs: a report job carries the cap and lens it was built from") {
     RecordStore store(":memory:");

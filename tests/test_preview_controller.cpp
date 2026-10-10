@@ -138,19 +138,30 @@ void check_same_track(const hydra::render::TrackState& got,
     }
 }
 
+// The settings every analysis in this file runs with.
+hydra::app::AnalysisSettings analysis_settings() {
+    hydra::app::AnalysisSettings settings;
+    settings.depth_mode = hydra::DepthMode::Scores;
+    settings.depth_value = 2;
+    settings.ms_filter = 10.0;
+    return settings;
+}
+
+// `chart` analyzed with analysis_settings(); the test stops unless Hydra
+// found a path on it.
+hydra::app::AnalysisResult analyze_with_paths(const std::string& chart) {
+    hydra::app::AnalysisResult analyzed = hydra::app::analyze_chart_file(chart, analysis_settings());
+    REQUIRE_FALSE(analyzed.record.paths.empty());
+    return analyzed;
+}
+
 // A corpus chart Hydra finds at least one path on, and its best path.
 struct AnalyzedChart {
     std::string chart;
     hydra::Path best;
 };
 AnalyzedChart first_chart_with_a_path() {
-    using namespace hydra;
-    using namespace hydra::app;
-    AnalysisSettings settings;
-    settings.depth_mode = DepthMode::Scores;
-    settings.depth_value = 2;
-    settings.ms_filter = 10.0;
-    const corpus::ChartWithPaths found = corpus::first_chart_with_paths(settings);
+    const corpus::ChartWithPaths found = corpus::first_chart_with_paths(analysis_settings());
     return {found.chart, found.result.record.best_path()};
 }
 
@@ -466,11 +477,7 @@ TEST_CASE("a jump past the end of the Preview stops at the audio's end") {
 TEST_CASE("switching paths builds the new overlay off the UI thread") {
     using namespace hydra;
     using namespace hydra::app;
-    AnalysisSettings settings;
-    settings.depth_mode = DepthMode::Scores;
-    settings.depth_value = 2;
-    settings.ms_filter = 10.0;
-    const corpus::ChartWithPaths found = corpus::first_chart_with_paths(settings);
+    const corpus::ChartWithPaths found = corpus::first_chart_with_paths(analysis_settings());
     const std::string& chart = found.chart;
     const Path& best = found.result.record.best_path();
     const std::string best_key = path_overlay_key(&best);
@@ -498,12 +505,7 @@ TEST_CASE("shows_path: the same path at another cap, and a different path") {
     using namespace hydra;
     using namespace hydra::app;
     const std::string chart = chart_with_audio();
-    AnalysisSettings settings;
-    settings.depth_mode = DepthMode::Scores;
-    settings.depth_value = 2;
-    settings.ms_filter = 10.0;
-    const AnalysisResult analyzed = analyze_chart_file(chart, settings);
-    REQUIRE_FALSE(analyzed.record.paths.empty());
+    const AnalysisResult analyzed = analyze_with_paths(chart);
     const Path& best = analyzed.record.best_path();
     const std::string best_key = path_overlay_key(&best);
     // Another path's key: the best one's with its last character changed.
@@ -703,12 +705,7 @@ TEST_CASE("the Preview hides the path when the chart file changed since its reco
     using namespace hydra;
     using namespace hydra::app;
     const std::string chart = chart_with_audio();
-    AnalysisSettings settings;
-    settings.depth_mode = DepthMode::Scores;
-    settings.depth_value = 2;
-    settings.ms_filter = 10.0;
-    const AnalysisResult analyzed = analyze_chart_file(chart, settings);
-    REQUIRE_FALSE(analyzed.record.paths.empty());
+    const AnalysisResult analyzed = analyze_with_paths(chart);
     const Path& best = analyzed.record.best_path();
     const std::string best_key = path_overlay_key(&best);
 

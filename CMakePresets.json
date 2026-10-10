@@ -25,6 +25,15 @@
         "HYDRA_UITEST_ATTACHED": { "type": "BOOL", "value": "OFF" },
         "HYDRA_LTCG": { "type": "BOOL", "value": "ON" }
       }
+    },
+    {
+      "name": "asan",
+      "displayName": "AddressSanitizer test build (never ships)",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build-asan",
+      "cacheVariables": {
+        "HYDRA_ASAN": { "type": "BOOL", "value": "ON" }
+      }
     }
   ],
   "buildPresets": [
@@ -41,6 +50,11 @@
     {
       "name": "ship",
       "configurePreset": "ship",
+      "configuration": "Release"
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan",
       "configuration": "Release"
     }
   ]

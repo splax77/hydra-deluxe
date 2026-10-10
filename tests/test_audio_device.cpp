@@ -10,9 +10,9 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
-#include <thread>
 
 #include "audio/device.h"
+#include "wait_util.h"
 
 using namespace hydra::audio;
 
@@ -37,14 +37,10 @@ TEST_CASE("PreviewAudioDevice opens and starts the default output device") {
 
     // A capped wait for the device thread's first pull. The 2 s cap is the
     // user's number (test fidelity plan, Task 7): a hang detector, not a
-    // timing test. This loop switches to tests/wait_util.h once that lands.
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    while (pulls.load() == 0 && std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::yield();
-    }
-    if (pulls.load() == 0) {
-        FAIL("the device started but its thread never pulled audio within 2 s");
-    }
+    // timing test.
+    testwait::wait_until([&pulls] { return pulls.load() != 0; },
+                         "the device thread to pull audio (it never did)",
+                         std::chrono::seconds(2));
 
     device.reset();  // stops the device and waits for the callback first
 }
