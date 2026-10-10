@@ -122,7 +122,7 @@
           "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
         },
         {
-          "file": "tests/test_preview_boxes.cpp",
+          "file": "tests/test_preview_scene.cpp",
           "line_text": "opts.target_act_ticks = std::vector<int64_t>{28800};",
           "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
         },

@@ -529,6 +529,7 @@ add_executable(hydra_tests
     tests/test_display_format.cpp
     tests/test_path_view.cpp
     tests/test_preview_boxes.cpp
+    tests/test_preview_scene.cpp
     tests/test_preview_source.cpp
     tests/test_audio_decode.cpp
     tests/test_stem_reader.cpp
