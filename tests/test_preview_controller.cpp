@@ -28,6 +28,7 @@
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "render/track_state.h"
+#include "scratch_paths.h"  // ScopedPathOverrides
 #include "store/record_store.h"
 #include "temp_util.h"
 #include "app/config.h"
@@ -368,18 +369,14 @@ TEST_CASE("preview_config: asked before the first render it fails loudly") {
 // Finding 193: a missing Preview file reads its kind's sentence, the one D51
 // call 25 chose, and the raw text stays for the details line.
 TEST_CASE("a Preview asset failure reads Reinstall Hydra, with the raw text as its detail") {
-    const hydra::app::PathOverrides previous = hydra::app::path_overrides();
-    hydra::app::PathOverrides overrides = previous;
-    overrides.asset_dir = testtemp::temp_path("no_preview_assets", "");
-    hydra::app::set_path_overrides(overrides);
-    {
-        PreviewController pc(nullptr, nullptr);
-        CHECK(pc.render(64, 64) == nullptr);
-        CHECK(pc.error() ==
-              "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.");
-        CHECK(pc.error_detail().rfind("PreviewRenderer: missing", 0) == 0);
-    }
-    hydra::app::set_path_overrides(previous);
+    const ScopedPathOverrides no_assets([](hydra::app::PathOverrides& o) {
+        o.asset_dir = testtemp::temp_path("no_preview_assets", "");
+    });
+    PreviewController pc(nullptr, nullptr);
+    CHECK(pc.render(64, 64) == nullptr);
+    CHECK(pc.error() ==
+          "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.");
+    CHECK(pc.error_detail().rfind("PreviewRenderer: missing", 0) == 0);
 }
 
 namespace {
@@ -409,28 +406,23 @@ TEST_CASE("closing the Preview frees its render targets; reopening draws again (
     Microsoft::WRL::ComPtr<ID3D11Device> dev;
     Microsoft::WRL::ComPtr<ID3D11DeviceContext> ctx;
     REQUIRE(warp::make_device(dev, ctx));
-    const hydra::app::PathOverrides previous = hydra::app::path_overrides();
-    hydra::app::PathOverrides overrides = previous;
-    overrides.asset_dir = HYDRA_ASSET_DIR;
-    hydra::app::set_path_overrides(overrides);
-    {
-        const std::string notes = short_chart_with_long_audio("prevctl_release");
-        PreviewController pc(dev.Get(), ctx.Get());
-        open_and_load(pc, notes);
-        ID3D11ShaderResourceView* srv = pc.render(64, 64);
-        REQUIRE(srv != nullptr);
+    const ScopedPathOverrides assets(
+        [](hydra::app::PathOverrides& o) { o.asset_dir = HYDRA_ASSET_DIR; });
+    const std::string notes = short_chart_with_long_audio("prevctl_release");
+    PreviewController pc(dev.Get(), ctx.Get());
+    open_and_load(pc, notes);
+    ID3D11ShaderResourceView* srv = pc.render(64, 64);
+    REQUIRE(srv != nullptr);
 
-        // Hold the shown texture: once freed, this is its only reference.
-        Microsoft::WRL::ComPtr<ID3D11Resource> shown;
-        srv->GetResource(&shown);
-        pc.close();
-        shown->AddRef();
-        CHECK(shown->Release() == 1);  // Release returns the count left
+    // Hold the shown texture: once freed, this is its only reference.
+    Microsoft::WRL::ComPtr<ID3D11Resource> shown;
+    srv->GetResource(&shown);
+    pc.close();
+    shown->AddRef();
+    CHECK(shown->Release() == 1);  // Release returns the count left
 
-        open_and_load(pc, notes);
-        CHECK(pc.render(64, 64) != nullptr);
-    }
-    hydra::app::set_path_overrides(previous);
+    open_and_load(pc, notes);
+    CHECK(pc.render(64, 64) != nullptr);
 }
 
 // The scrubber ends at the song's length (D75), here the 3 s song.ini
