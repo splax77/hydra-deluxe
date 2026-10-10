@@ -2500,6 +2500,21 @@ const std::vector<OwnerRule>& rules() {
          {"s->init_converter(sc.config);"},
          {{"src/audio/mixer.cpp", "c.config = ma_data_converter_config_init(",
            "stem_converter_config, the owner"}}},
+        // Only a seek that assigns the clamp back to `frame` counts. A stream's
+        // own position (pos_ = std::clamp(frame, ...) in stream_mix.cpp and
+        // player.cpp) has no end flag to set and answers a different question.
+        {"Where does a stem reader's seek land when it reaches the end of the stem?",
+         "seek_clamp_or_end in src/audio/stem_reader.h",
+         R"(\bframe = std::clamp<int64_t>\(frame,)",
+         "",
+         {},
+         {},
+         "derive-once review of so-t5a, finding 1 (2026-10-10); D107",
+         {"frame = std::clamp<int64_t>(frame, 0, length_);"},
+         {"if (seek_clamp_or_end(frame, length_, pos_, at_end_)) return;",
+          "pos_ = std::clamp<int64_t>(frame, 0, length_);"},
+         {{"src/audio/stem_reader.h", "frame = std::clamp<int64_t>(frame, 0, length);",
+           "seek_clamp_or_end, the owner"}}},
         {"Which test helper reads an audio fixture?",
          "fixture_path and read_fixture in tests/audio_util.h",
          // No closing quote after /audio/, so a build that names the file
