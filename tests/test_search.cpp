@@ -524,6 +524,15 @@ Song mid_sp_phrase_song() {
                             {6816}});
 }
 
+// The chart for cap 2 where two mid-SP phrases, at 3072 and 3840, each clamp
+// the end. Several cases below share these notes.
+std::vector<TailNote> double_clamp_notes() {
+    return {{0, true, false},    {768, true, false},  {2304, false, true},
+            {3072, true, false}, {3840, true, false}, {4608},
+            {5376},              {6000},              {6768},
+            {7500}};
+}
+
 // The best path's final activation, which every case here expects to be one
 // that never deactivated.
 const Activation& last_act(const std::vector<Path>& paths) {
@@ -959,9 +968,7 @@ TEST_CASE("SP cap overfill: where the end lands and which note clamped it") {
          "the plain step from the current end is 6144 + 1536 = 7680, but the "
          "cap ceiling from 3840 is 3840 + 4*768 = 6912, which is smaller. The "
          "end is now pinned by the later note, so clamp_tick moves to 3840.",
-         {{0, true, false}, {768, true, false}, {2304, false, true},
-          {3072, true, false}, {3840, true, false}, {4608}, {5376}, {6000},
-          {6768}, {7500}},
+         double_clamp_notes(),
          6912, 3840,
          {{2304, 5376, SpEndKind::Activation},
           {3072, 6144, SpEndKind::Clamped},
@@ -1025,10 +1032,7 @@ TEST_CASE("collected phrases: two phrases under a full meter are both recorded, 
     // The cap-2 clamp fixture: both phrases are collected while active, and
     // the second is the note the cap pinned the end to. A clamped phrase
     // counts as collected.
-    Song song = build_tail_song({{0, true, false}, {768, true, false},
-                                 {2304, false, true}, {3072, true, false},
-                                 {3840, true, false}, {4608}, {5376}, {6000},
-                                 {6768}, {7500}});
+    Song song = build_tail_song(double_clamp_notes());
     ScoreGraph graph(song, 2);
     std::vector<Path> paths = run_search(graph, EngineOptions{});
     REQUIRE(!paths.empty());
