@@ -1,0 +1,21 @@
+# The slices hydra_tests runs in under CTest, so `ctest -j 4` runs them side by
+# side. This file is the only place the slices are written down.
+#
+# Each line is a slice name, then doctest -sf= patterns separated by commas.
+# Slices are whole source files. CMakeLists.txt turns each line into the CTest
+# entry hydra_tests_<name>, and adds hydra_tests_rest for every file no line
+# names, so a new test file runs there without an edit here.
+# hydra_tests_shards_cover_all (tools/check_shards.ps1) fails unless the
+# entries together run every test case exactly once.
+#
+# Balanced on 2026-10-10 from the per-case times in
+# docs/handoffs/2026-10-10-test-audit/suite-durations.txt, assuming the
+# 18-second corpus case in test_track_state.cpp is cut to about 1.5 s.
+
+single_owner *test_single_owner.cpp,*test_library_jobs.cpp,*test_replay.cpp
+track_state *test_track_state.cpp,*test_preview_controller.cpp
+app_store *test_app_state.cpp,*test_store.cpp,*test_search.cpp,*test_cli.cpp
+
+# Opens the real sound output. CI has no audio device and skips this entry by
+# name; a local ctest still runs it.
+audio_device *test_audio_device.cpp
