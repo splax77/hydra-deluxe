@@ -1,7 +1,7 @@
 # Hydra Deluxe
-Score optimizer / path viewer for Clone Hero drums!
+Hydra Deluxe finds the best Star Power paths for Clone Hero drums and shows you how to play them.
 
-Featuring a song browsing UI to make information convenient to access even for large song libraries.
+Its song browser keeps the information easy to reach, even in a large song library.
 
 <br><p align="center"><img src="/resource/icon_app.png" width="200"></p>
 
@@ -9,26 +9,30 @@ Hydra Deluxe grew out of [DragonDelgar's Hydra](https://github.com/DragonDelgar/
 
 ## What Hydra Deluxe does
 
-Hydra Deluxe reads your Clone Hero drum charts and finds the Star Power paths that give the best score. It keeps a few paths just below optimal too, in case the best one is awkward to play.
+Hydra Deluxe reads your Clone Hero drum charts and finds the Star Power paths that give the best score. It also keeps a few paths just below optimal, in case the best one is awkward to play.
 
 For each path it tells you how to play it. Each activation says where it is, which chord to activate on, and which squeezes it needs. Each squeeze is a sentence saying which note to hit early or late, by how much, and what it's worth. A score breakdown matches the categories on Clone Hero's results screen.
 
-The **Preview** plays the chart as a 3D note highway with the song's audio. It draws the path on it, with a running score and a Star Power meter. The **Dynamics** tab counts ghost and accent notes. The **Stars** tab shows the score each star needs.
+The **Preview** plays the chart as a 3D note highway with the song's audio. It draws the path on the highway, with a running score, a Star Power meter, the stars you've earned so far and the next activation in path notation. The **Dynamics** tab counts ghost and accent notes. The **Stars** tab shows the score each star needs.
 
-It can analyze your whole library in the background and build a sortable HTML report of every song's paths. It can also compare a player's [dmleaderboards](https://dmleaderboards.com) scores with your optimals.
+One `Analysis settings` button holds every setting an analysis runs under: difficulty, Pro Drums, 2x Bass, Clone Hero 1.1's Note Shuffle modifier, the SP cap and more. Each result is saved with its settings, so switching back brings the old results straight back. The search box takes filters such as `artist:`, `charter:`, `stars:7` and `squeeze<=20`. A few of Hydra Deluxe's own judgment calls, such as how much a squeeze-out costs, can be changed in `hydra_rules.ini`.
+
+Hydra Deluxe can analyze your whole library in the background. It then builds a path report of every song's paths, which opens in its own window, where you can sort and search it. It can also compare a player's [dmleaderboards](https://dmleaderboards.com) scores with your optimals.
 
 It reads `.mid`, `.chart`, `.sng` and `.srb` charts, on any difficulty, with or without Pro Drums and 2x Bass.
 
 ## Getting started
 
-1. Download the installer (the `-setup.exe` file) from the [latest release](https://github.com/splax77/hydra-deluxe/releases/latest) and run it. It installs to `C:\Program Files\Hydra`, adds a Start Menu shortcut, and installs the Microsoft VC++ runtime if your PC doesn't have it. The installer isn't code-signed, so Windows SmartScreen may warn — choose "More info" → "Run anyway".
+Hydra Deluxe runs on 64-bit Windows. The installer asks for admin rights, because it installs into `C:\Program Files`.
+
+1. Download the installer (the `-setup.exe` file) from the [latest release](https://github.com/splax77/hydra-deluxe/releases/latest) and run it. It installs to `C:\Program Files\Hydra`, adds a Start Menu shortcut, and installs the Microsoft VC++ runtime if your PC doesn't have it. The installer isn't code-signed, so Windows SmartScreen may warn you. If it does, choose "More info", then "Run anyway".
 2. Run Hydra Deluxe from the Start Menu.
-3. Click `Manage folders...`, then `Add folder...`, and pick your Clone Hero songs folder (or whichever folder contains the songs you want to add).
+3. Click `Manage folders...`, then `Add folder...`, and pick your Clone Hero songs folder (or whichever folder holds the songs you want to add).
 4. Click `Scan library`.
-5. Once it's done, songs appear in a table. Type in the search box to find the song you want to get the path for, then click on the song. Its panel opens beside the library, and the song is analyzed.
-6. Once it's done, paths appear. The first path is optimal. There may be other paths tied for optimal, listed under the same score. Below that are some of the next-highest scores and their paths, which could come in handy if the optimal path is too annoying or difficult.
+5. When the scan finishes, your songs appear in a table. Type in the search box to find the song you want a path for, then click the song. Its panel opens beside the library, and Hydra Deluxe analyzes the song.
+6. When the analysis finishes, the paths appear. The first path is optimal. Other paths tied for optimal are listed under the same score. Below them are some of the next-highest scores and their paths, which come in handy if the optimal path is too annoying or difficult.
 7. Click a path on the left side of the panel to show its activations on the right side.
-8. Use `<` and `>` to step to the previous or next song, or close the panel with its `X` (or `Escape`) to go back to browsing.
+8. Use `<` and `>` to step to the previous or next song. To go back to browsing, close the panel with its `X` (or `Escape`).
 
 The [User Guide](docs/UserGuide.md) explains every button and tab, in the order you meet them.
 
@@ -44,11 +48,13 @@ The wiki's own user guide describes the public app's older screen, not this one.
 
 ## Good to know
 
-**Paths at an SP cap other than 4 can't be played.** Clone Hero's Star Power meter holds 4 bars. The **SP cap** setting lets you raise that to see what the cap costs a chart. Scores at any other cap are a what-if, not paths to play.
+**Paths at an SP cap other than 4 can't be played.** Clone Hero's Star Power meter holds 4 bars. The `SP cap` setting lets you raise that to see what the cap costs a chart. Scores at any other cap are a what-if. You can't reach them in the game.
 
-**Your data stays put.** Your library, results and settings live next to Hydra.exe in `C:\Program Files\Hydra`. Reports are saved in your `Documents\Hydra` folder. Upgrading keeps everything. The first start after an upgrade may take a moment to update your library file. That happens once, and your charts and results are kept. The [user guide](docs/UserGuide.md#the-first-start-after-updating) shows what you'll see. Uninstalling keeps your data too; delete the folder yourself if you really want it gone.
+**Your data stays in the install folder.** Your library, results and settings live next to Hydra.exe in `C:\Program Files\Hydra`. The reports live in their windows and aren't saved as files. Versions before 2.4.0 saved them as web pages in your `Documents\Hydra` folder; the [User Guide](docs/UserGuide.md#old-report-files) says what to do with those.
 
-**Had this app installed back when it was called Hydra?** Hydra Deluxe is the same program under a new name. It installs over that copy and keeps your library and results. Coming from DragonDelgar's public Hydra instead? See [moving from the public version](docs/differences-from-public-hydra.md#moving-from-the-public-version).
+**Upgrading keeps your library and settings.** Your saved results carry over too. A release that changes how charts are analyzed marks them `Stale` until each song is analyzed again, as 2.1.0 and 2.4.0 did. Open a song or run a batch to bring its result up to date. The first start after an upgrade may take a moment to update your library file. That happens once, and your charts and results are kept. The [User Guide](docs/UserGuide.md#the-first-start-after-updating) shows what you'll see. Uninstalling keeps your data too. To remove it, delete the folder yourself.
+
+**Hydra Deluxe is the app that was called Hydra up to version 1.9.7.** It is the same program under a new name. It installs over that copy and keeps your library and results. If you're coming from DragonDelgar's public Hydra instead, see [moving from the public version](docs/differences-from-public-hydra.md#moving-from-the-public-version).
 
 ## Acknowledgements
 - DragonDelgar, who wrote Hydra and whose public version this one grew from
