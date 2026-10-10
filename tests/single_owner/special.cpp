@@ -4,11 +4,10 @@
 #include "doctest.h"
 
 #include <filesystem>
-#include <fstream>
-#include <sstream>
 #include <string>
 
 #include "../source_tree.h"
+#include "core/winstr.h"
 #include "rows.h"
 
 namespace fs = std::filesystem;
@@ -21,11 +20,8 @@ using namespace single_owner;
 // src/parse next to src/search and src/core. Moved here from
 // a stamps test; the repo root comes from tests/source_tree.h.
 TEST_CASE("single-owner: the results stamp's bump rule names the chart readers (D23)") {
-    std::ifstream in(sourcetree::root() / "src" / "store" / "stored_versions.h");
-    REQUIRE(in.good());
-    std::stringstream ss;
-    ss << in.rdbuf();
-    const std::string text = ss.str();
+    const std::string text =
+        hydra::read_file_text((sourcetree::root() / "src" / "store" / "stored_versions.h").u8string());
     const size_t stamp = text.find("kResultsStamp{");
     REQUIRE(stamp != std::string::npos);
     const size_t banner = text.rfind("// ---- Results", stamp);
@@ -48,13 +44,7 @@ TEST_CASE("single-owner: the User Guide quotes the Preview's changed-chart line 
                 if (o.file == "src/ui/preview_tab.cpp") owner = &o;
     REQUIRE(owner != nullptr);
 
-    const auto slurp = [](const fs::path& p) {
-        std::ifstream in(p);
-        REQUIRE(in.good());
-        std::stringstream ss;
-        ss << in.rdbuf();
-        return ss.str();
-    };
+    const auto slurp = [](const fs::path& p) { return hydra::read_file_text(p.u8string()); };
     INFO("owner line: " << owner->line_text);
     REQUIRE(slurp(sourcetree::root() / fs::u8path(owner->file)).find(owner->line_text) !=
             std::string::npos);

@@ -329,11 +329,10 @@ std::string owner_gone(const OwnerRule& r, const fs::path& root) {
                              r.owner_file + ", " + r.owner_symbol + ")";
     const fs::path path = root / fs::u8path(r.owner_file);
     if (!fs::is_regular_file(path)) return gone;
-    std::ifstream in(path, std::ios::binary);
-    std::ostringstream text;
-    text << in.rdbuf();
-    return names_outside_comments(text.str(), r.owner_symbol, lexer_language(path)) ? std::string()
-                                                                                    : gone;
+    return names_outside_comments(hydra::read_file_text(path.u8string()), r.owner_symbol,
+                                  lexer_language(path))
+               ? std::string()
+               : gone;
 }
 
 struct CompiledRule {
