@@ -56,7 +56,7 @@ Your brief gives the task id and session id. Use the model line your brief gives
 
 Commit before your 110th tool call, and after each finished step. An agent that runs out of calls with nothing committed leaves nothing behind. Never amend, rebase, reset or move a branch. Never push.
 
-You also have a time limit. At 20 minutes of real time, counted from your first tool call, start wrapping up: commit what passes and report what is unfinished, so a fresh agent can take the rest. At 30 minutes the progress hook stops you, the same way it does at the tool-call budget. After that, only git commands, your status line and your final report get through, so commit and report. Whichever limit comes first applies.
+You also have a time limit. At 20 minutes of real time, counted from your first tool call, start wrapping up: commit what passes and report what is unfinished, so a fresh agent can take the rest. At 30 minutes the progress hook stops you, the same way it does at the tool-call budget. After that, only git commands, your status line and your final report get through, so commit and report. Whichever limit comes first applies. A reviewer hands nothing on: at either warning it stops fixing, signs off what it fixed and lists the rest in its review's Notes (D107 item 5).
 
 ## Helpers and waiting
 
