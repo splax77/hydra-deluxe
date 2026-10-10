@@ -153,8 +153,10 @@ The batch test's deadline is 45 seconds.
     # The scan rows come from this repository's own rule files and
     # baseline, so the fixture tests the rows as they are today and copies
     # none of them.
-    foreach ($rf in @(Get-ChildItem -LiteralPath (Join-Path $repoRoot $rulesDir) -Filter *.json)) {
-        Write-Fixture "$rulesDir/$($rf.Name)" ([System.IO.File]::ReadAllText($rf.FullName))
+    $rulesRoot = Join-Path $repoRoot $rulesDir
+    foreach ($rf in @(Get-ChildItem -LiteralPath $rulesRoot -Filter *.json -Recurse -File)) {
+        $rel = [System.IO.Path]::GetRelativePath($rulesRoot, $rf.FullName) -replace '\\', '/'
+        Write-Fixture "$rulesDir/$rel" ([System.IO.File]::ReadAllText($rf.FullName))
     }
     Write-Fixture $baselineFile ([System.IO.File]::ReadAllText((Join-Path $repoRoot $baselineFile)))
     Invoke-FixtureGit @('add', '-A')
@@ -208,7 +210,9 @@ TEST_CASE("model.h mentions the window") {
 '@
     # Check 4 again: a new scan row with no must-match examples, read from
     # the rows the script already parsed (M0 review 2, finding 3).
-    $plantedRules = "$rulesDir/fixture.json"
+    # It sits one folder down, as a row in its own file may (ADR 0029), so the
+    # check also proves the script reads rules files in an area's folder.
+    $plantedRules = "$rulesDir/planted/fixture.json"
     Write-Fixture $plantedRules @'
 {
   "rules": [
