@@ -364,7 +364,9 @@ std::vector<float> backend_rating_heights(const app::ActivationRowView& a,
     heights.reserve(a.backends.size());
     for (const app::BackendRowView& row : a.backends)
         heights.push_back(
-            ImGui::CalcTextSize(row.rating.c_str(), nullptr, false, layout.widths[kRatingColumn]).y);
+            ImGui::CalcTextSize(backend_cell(row, kRatingColumn).c_str(), nullptr, false,
+                                layout.widths[kRatingColumn])
+                .y);
     return heights;
 }
 
@@ -400,20 +402,21 @@ void render_backend_table(const app::ActivationRowView& a) {
         ImGui::TableHeadersRow();
         for (const app::BackendRowView& row : a.backends) {
             ImGui::TableNextRow();
+            // Every cell draws backend_cell, the text its column is measured from.
             ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted(row.timing.c_str());
+            ImGui::TextUnformatted(backend_cell(row, 0).c_str());
             if (!row.tooltip.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
                 ImGui::SetTooltip("%s", row.tooltip.c_str());
             ImGui::TableSetColumnIndex(1);
-            ImGui::TextUnformatted(row.chord.c_str());
+            ImGui::TextUnformatted(backend_cell(row, 1).c_str());
             ImGui::TableSetColumnIndex(2);
-            ImGui::TextUnformatted(row.points.c_str());
-            ImGui::TableSetColumnIndex(3);
+            ImGui::TextUnformatted(backend_cell(row, 2).c_str());
+            ImGui::TableSetColumnIndex(kRatingColumn);
             // Rating wraps inside its cell: at the narrowest panel the
             // squeezed-out note is longer than the column is wide.
             if (row.warn) ImGui::PushStyleColor(ImGuiCol_Text, kWarningColor);
             ImGui::PushTextWrapPos(0.0f);
-            ImGui::TextUnformatted(row.rating.c_str());
+            ImGui::TextUnformatted(backend_cell(row, kRatingColumn).c_str());
             ImGui::PopTextWrapPos();
             if (row.warn) ImGui::PopStyleColor();
         }

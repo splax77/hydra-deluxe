@@ -5792,6 +5792,27 @@ const std::vector<OwnerRule>& rules() {
          {"ImVec2(0.0f, table_outer_height(rows.size(), layout, room)),"},
          {},
          {"src"}},
+        // The backend table's cells and its column widths both read a row's
+        // text for a column, so a cell draws backend_cell and never the row's
+        // fields. Only the tab's file is scanned: path_view.cpp builds the
+        // rows and sets those fields.
+        {"What text does a backend table cell show?",
+         "backend_cell in src/ui/paths_tab.cpp",
+         R"(\brow\.(timing|chord|points|rating)\b)",
+         "",
+         {},
+         {},
+         "derive-once review of cw-w2 (the cell text was read in two places)",
+         {"ImGui::TextUnformatted(row.timing.c_str());", "ImGui::TextUnformatted(row.rating.c_str());",
+          "ImGui::CalcTextSize(row.rating.c_str(), nullptr, false, layout.widths[kRatingColumn]).y);"},
+         {"ImGui::TextUnformatted(backend_cell(row, 0).c_str());",
+          "ImGui::TextUnformatted(backend_cell(row, kRatingColumn).c_str());"},
+         {{"src/ui/paths_tab.cpp", "case 0: return row.timing;",
+           "backend_cell, the owner: the cells and the width measure call it"},
+          {"src/ui/paths_tab.cpp", "case 1: return row.chord;", "backend_cell, the owner"},
+          {"src/ui/paths_tab.cpp", "case 2: return row.points;", "backend_cell, the owner"},
+          {"src/ui/paths_tab.cpp", "default: return row.rating;", "backend_cell, the owner"}},
+         {"src/ui/paths_tab.cpp"}},
     };
     return r;
 }
