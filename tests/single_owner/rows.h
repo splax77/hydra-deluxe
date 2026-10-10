@@ -54,6 +54,9 @@ struct OwnerRule {
     // Whole-line comments are skipped unless this is set (a rule about a
     // name that comments must not use).
     bool scan_comments = false;
+    // The language of the files the row reads: empty for C++, "py" for
+    // Python. The row scan in scan.cpp says which files each one is.
+    std::string language;
 };
 
 struct KnownCopy {
