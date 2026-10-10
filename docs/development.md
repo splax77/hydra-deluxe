@@ -416,9 +416,12 @@ and `hydra_uitest` with `build_cpp.ps1`, exactly as above, so a compiler
 warning fails the run. Then it runs `hydra_tests` and the headless GUI tests
 in `hydra_uitest`.
 
-The `asan` job, beside it, builds the same tests with the `asan` preset and
-runs them (see "The AddressSanitizer build" above). Any memory error it finds
-fails the run.
+The `asan` job builds the same tests with the `asan` preset and runs them (see
+"The AddressSanitizer build" above). Any memory error it finds fails the run.
+It runs once a night and when someone starts the workflow by hand, not on
+every push: its first run, on 2026-10-10, took 20m41s against 6m16s for the
+main job.
+Start it by hand from the Actions tab after a change to memory-heavy code.
 
 On pushes to `main` only, a `coverage` job builds the tests with the `coverage`
 preset and writes the coverage report (see "The coverage report" above). It
