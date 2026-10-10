@@ -725,6 +725,25 @@ const std::vector<OwnerRule>& rules() {
           {"tests/test_app_state.cpp", R"({ std::ofstream f(chart); f << "[Song]\n"; })",
            "a placeholder .chart that only has to exist on disk; no case parses it"}},
          {"tests"}},
+        // Test fidelity leftovers, item 2: test_store.cpp and test_app_state.cpp
+        // each had their own copy. A count with a WHERE clause asks something
+        // else and is left alone.
+        {"Which test helper counts a database file's results rows?",
+         "results_rows_in in tests/db_file_util.h",
+         R"("SELECT COUNT\(\*\) FROM results")",
+         "",
+         {"tests/db_file_util.h"},
+         {},
+         "test fidelity leftovers, item 2 (the user, 2026-10-10)",
+         {R"(return scalar_on_file(path, "SELECT COUNT(*) FROM results");)",
+          R"(CHECK(hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results") == 0);)"},
+         {"CHECK(results_rows_in(path) == kSeedResults);",
+          R"(return scalar_on_file(path, "SELECT COUNT(*) FROM results WHERE hyhash = '" + hash + "'");)"},
+         {{"tests/ui/uitest_library.cpp",
+           R"(IM_CHECK_EQ(number_in_file(h.db_path, "SELECT COUNT(*) FROM results"), int64_t{2});)",
+           "a GUI script, which cannot include db_file_util.h because that header fails "
+           "through doctest"}},
+         {"tests"}},
         // Step-2 derive-once review of dbeb3a3, finding 2. A test's own
         // per-difficulty table pairs a difficulty with a number; a plain list
         // of difficulties to walk is not flagged. The owner's rows carry the
