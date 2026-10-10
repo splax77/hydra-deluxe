@@ -541,6 +541,7 @@ add_executable(hydra_tests
     tests/test_batch_text.cpp
     tests/test_display_format.cpp
     tests/test_activation_rows.cpp
+    tests/test_path_list.cpp
     tests/test_preview_view.cpp
     tests/test_preview_source.cpp
     tests/test_audio_decode.cpp
