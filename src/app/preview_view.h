@@ -131,6 +131,10 @@ struct PreviewActivation {
     // setting's words; chord is empty when the record has none.
     std::string measure;
     Chord chord;
+    // The activation in path notation with its timings, copied whole from
+    // Activation::notationstr_verbose (its one owner) for the next-activation
+    // box.
+    std::string notation;
 };
 
 // A beat line on the highway: a bar line, a beat line, or the fainter
@@ -383,14 +387,17 @@ std::optional<double> activation_jump_ms(const PreviewScene& scene, double now_m
 
 // The box at the highway's bottom-left: the first activation at or after the
 // playhead (the same half-millisecond slack), read at the moment the time box
-// shows for `now_ms` and `length_ms` (shown_ms), "Next: activation 1 of 3" and
-// "at m32.1.0 · [Kick - Green cymbal]". The chord's notes are named by
-// Chord::rowstr in the words of `pro_drums`, the Pro Drums setting: "Red
-// snare" with it on, plain "Red" with it off (D48, Q11). Hidden past the last
-// activation and when the scene has no path.
+// shows for `now_ms` and `length_ms` (shown_ms), "Next: activation 1 of 3",
+// then the activation's notation, then "at m32.1.0 · [Kick - Green cymbal]".
+// The chord's notes are named by Chord::rowstr in the words of `pro_drums`,
+// the Pro Drums setting: "Red snare" with it on, plain "Red" with it off (D48,
+// Q11). Hidden past the last activation and when the scene has no path.
 struct PreviewNextActBox {
     bool shown = false;
     std::string header;
+    // The activation's PreviewActivation::notation, whose owner is
+    // Activation::notationstr_verbose. The Preview draws it as one piece.
+    std::string notation;
     std::string detail;
 };
 PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms, double length_ms,
