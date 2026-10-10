@@ -58,11 +58,10 @@ std::string relpath(const std::string& target, const std::string& base) {
 
 // ---- MD5 (Windows CNG), mirroring hashlib.file_digest(f, "md5") ----------
 //
-// A folder chart's id (results.hyhash) is the MD5 of all of its notes file's
-// bytes, and a .sng's the MD5 of the notes file inside it (song_id_read
-// below). A file is streamed in chunks (like Python's file_digest) instead of
-// read into one buffer, with the algorithm provider opened once per scan
-// worker instead of once per file.
+// The MD5 machinery song_id_read (below) uses; which bytes make a chart's id
+// is song_id_read's rule, not this section's. A file is streamed in chunks
+// (like Python's file_digest) instead of read into one buffer, with the
+// algorithm provider opened once per scan worker instead of once per file.
 
 class Md5Provider {
 public:

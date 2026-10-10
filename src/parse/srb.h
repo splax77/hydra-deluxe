@@ -87,7 +87,8 @@ struct SrbMetadata {
     // Clone Hero's id for the song: the game, its song cache and
     // dmleaderboards all key the song by these bytes. It is usually the MD5
     // of the notes stream, but not always (4 of the 30 shipped files differ),
-    // so it is read, never recomputed. Empty when the block ends before it.
+    // so song_id_read (app/analysis.cpp) reads it and never recomputes it.
+    // Empty when the block ends before it.
     std::optional<SrbChecksum> checksum;
 };
 

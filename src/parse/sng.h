@@ -81,8 +81,8 @@ std::optional<std::vector<uint8_t>> sng_read_file(const ByteSource& src,
 
 // The notes file inside a .sng: its decoded bytes and its format (Mid or
 // Chart). pick_notes_file says which entry it is. The note loader reads its
-// notes here, and the scan hashes these bytes for the song's id (Clone Hero
-// identifies a .sng by the MD5 of its notes file), so both take the same file.
+// notes here, and the scan reads the song's id from these same bytes
+// (song_id_read in app/analysis.cpp), so both take the same file.
 // Throws KindedError(ChartUnreadable) when the table names no notes file or
 // the entry runs past the end of the file.
 struct SngNotes {

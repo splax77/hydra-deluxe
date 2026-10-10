@@ -73,9 +73,9 @@ inline constexpr StampRule<std::string_view, 1> kResultsStamp{"2.4.0", {"2.4.0"}
 // as the meta row chart_meta_version. A stale or missing stamp drops the
 // whole rescan cache, so the next scan reads every chart once (D51 call 12).
 // 1 = the first stamp. 2 = the scan also reads each chart's stated length
-// and delay (store::ChartTimingMeta, D75). 3 = a .sng's id is the MD5 of its
-// notes file and an .srb's its stored checksum, as Clone Hero identifies them
-// (both were the MD5 of the whole container). Their saved results no longer
+// and delay (store::ChartTimingMeta, D75). 3 = a .sng's and an .srb's id
+// became Clone Hero's song id (song_id_read, ADR 0028); before, both were the
+// MD5 of the whole container. Their saved results no longer
 // match any chart and are dropped by the next scan; the user accepted that.
 inline constexpr StampRule<int, 1> kChartMetaStamp{3, {3}};
 
