@@ -58,9 +58,11 @@ The `Analysis settings` button sits on the toolbar, after `Compare with dmleader
 
 Click the button to open the settings panel. It holds every setting that shapes an analysis, in three groups: **Chart** (Difficulty, Pro Drums, 2x Bass, Note Shuffle), **Clone Hero rules** (SP cap, 1.0 fills) and **Paths kept** (Score range, Path limit). A change applies the moment you make it, and there is no Apply button. Ticking a box leaves the panel open. Click outside the panel or press `Escape` to close it.
 
+At the bottom of the panel, **`Reset to defaults`** puts every setting in the panel back to its default in one click, so the button reads `Analysis settings: defaults` again. It leaves your song folders and everything outside the panel alone. Hover over it to see what it will undo, for example `Resets: Pro Drums off · SP cap 5 bars`. It is greyed out when the settings are already the defaults.
+
 Each setting applies to every song, not just the one you have open. A result is saved together with the settings it ran under. Change a setting and the library shows the results for the new settings; a combination you haven't analyzed yet shows its songs as Not analyzed. Change it back and the old results come back, with no batch to run. A song open in the panel is analyzed again under the new settings, the same as clicking it.
 
-While a batch runs, the settings are locked. The button's label ends in ` (locked)`. The panel still opens, but its controls are greyed out and it says `Stop the batch to change these.` Opening a song never locks them. Changing a setting while the song is still analyzing starts it again under the new settings.
+While a batch runs, the settings are locked. The button's label ends in ` (locked)`. The panel still opens, but its controls and `Reset to defaults` are greyed out and it says `Stop the batch to change these.` Opening a song never locks them. Changing a setting while the song is still analyzing starts it again under the new settings.
 
 **Difficulty.** Which charted difficulty to analyze, path and preview: Expert, Hard, Medium or Easy.
 
