@@ -31,7 +31,7 @@ using hydra::fuzz::kTargets;
 
 namespace {
 
-const fs::path kFuzzRoot = fs::u8path(HYDRA_TESTDATA_DIR "/fuzz");
+const fs::path kFuzzRoot = fs::u8path(corpus::testdata_root() + "/fuzz");
 
 // A saved input, or something else in the folder (.gitkeep, notes) whose name
 // starts with a dot or is the README.
@@ -103,10 +103,10 @@ TEST_CASE("fuzz seeds: write every target's seed folder when HYDRA_FUZZ_SEED_DIR
 
     // Every file in the audio fixture folder, and the PNG the preview tests
     // compare against.
-    for (const fs::directory_entry& e : fs::directory_iterator(fs::u8path(HYDRA_TESTDATA_DIR "/audio")))
+    for (const fs::directory_entry& e : fs::directory_iterator(fs::u8path(corpus::testdata_root() + "/audio")))
         if (e.is_regular_file())
             put("audio", e.path().filename().u8string(), hydra::read_file_bytes(e.path().u8string()));
-    for (const fs::directory_entry& e : fs::directory_iterator(fs::u8path(HYDRA_TESTDATA_DIR "/preview")))
+    for (const fs::directory_entry& e : fs::directory_iterator(fs::u8path(corpus::testdata_root() + "/preview")))
         if (e.is_regular_file() && e.path().extension() == ".png")
             put("image", e.path().filename().u8string(), hydra::read_file_bytes(e.path().u8string()));
 

@@ -29,16 +29,11 @@
 #include "parse/song.h"
 #include "search/pather.h"
 #include "store/record_store.h"
-
-#ifndef HYDRA_INPUT_DIR
-#error "HYDRA_INPUT_DIR must be defined (see CMakeLists.txt)"
-#endif
+#include "testdata_dirs.h"  // root, testdata_root
 
 namespace corpus {
 
 using json = nlohmann::json;
-
-inline std::string root() { return HYDRA_INPUT_DIR; }
 
 // The library row a scan would write for the chart file at `notespath`: its
 // md5 and fingerprint come from the scan's own owners (hash_chart_file and

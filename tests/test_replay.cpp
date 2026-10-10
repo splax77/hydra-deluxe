@@ -553,7 +553,7 @@ TEST_CASE("windows read from a path JSON match the ones read from the record") {
 // before.
 TEST_CASE("a dump carries each window's SqIn phrases back to the replay") {
     const Song song = load_songpath(
-        std::string(HYDRA_INPUT_DIR) + "/test_fast_tempo/spent_then_next.chart", true, true);
+        corpus::root() + "/test_fast_tempo/spent_then_next.chart", true, true);
     const HydraRecord rec = analyze_chart(song, test::scores_settings(2));
     const std::vector<const Path*> all = rec.all_paths();
     const json dumped = paths_json(all, song.timing());

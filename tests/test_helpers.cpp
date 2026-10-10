@@ -113,7 +113,7 @@ TEST_CASE("scratch_settings: the GUI tests' settings are the app's defaults at d
     CHECK(s.depth_value == 2);
     CHECK(s.auto_open_report == false);
     REQUIRE(s.chartfolders.size() == 1);
-    CHECK(s.chartfolders[0] == HYDRA_INPUT_DIR);
+    CHECK(s.chartfolders[0] == corpus::root());
     CHECK(s.sp_cap == Settings{}.sp_cap);
     CHECK(s.mslimit_value == Settings{}.mslimit_value);
     const AnalysisSettings a = scratch_settings().to_analysis_settings();

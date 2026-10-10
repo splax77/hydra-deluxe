@@ -8,10 +8,6 @@
 #include "corpus_util.h"
 #include "parse/song.h"
 
-#ifndef HYDRA_TESTDATA_DIR
-#error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
-#endif
-
 using namespace hydra;
 using namespace hydra::app;
 
@@ -160,8 +156,7 @@ TEST_CASE("dynamics_breakdown: played_total includes/excludes 2x kick") {
 
 TEST_CASE("dynamics_breakdown: Alpha Wolf - Acid Romance (real chart)") {
     const std::string path =
-        std::string(HYDRA_TESTDATA_DIR) +
-        "/input/common/IB24/T3/Alpha Wolf - Acid Romance/notes.mid";
+        corpus::root() + "/common/IB24/T3/Alpha Wolf - Acid Romance/notes.mid";
     const Song song = load_songpath_mid(path, /*pro=*/true, /*bass2x=*/true);
     const DynamicsBreakdown bd = count_dynamics(song);
 
@@ -212,8 +207,7 @@ TEST_CASE("dynamics_breakdown: Alpha Wolf - Acid Romance (real chart)") {
 
 TEST_CASE("dynamics_breakdown: no ENABLE_CHART_DYNAMICS tag") {
     const std::string path =
-        std::string(HYDRA_TESTDATA_DIR) +
-        "/input/test_flammarker/flammarker_authored.mid";
+        corpus::root() + "/test_flammarker/flammarker_authored.mid";
     const Song song = load_songpath_mid(path, /*pro=*/true, /*bass2x=*/true);
 
     CHECK_FALSE(song.dynamics_enabled);
@@ -360,8 +354,8 @@ TEST_CASE("dynamics_breakdown: dynamic() counts ghosts and accents and not norma
 // test_song_parse.cpp has those but no 2x kicks.
 TEST_CASE("dynamics_breakdown: every row's counts on The Decade Of Statues, pinned") {
     const std::string path =
-        std::string(HYDRA_TESTDATA_DIR) +
-        "/input/common/Summer Blast _25 Setlist/Tier 6/"
+        corpus::root() +
+        "/common/Summer Blast _25 Setlist/Tier 6/"
         "Between the Buried and Me - (B) The Decade Of Statues/notes.mid";
     const Song song = load_songpath_mid(path, /*pro=*/true, /*bass2x=*/true);
     const DynamicsBreakdown bd = count_dynamics(song);

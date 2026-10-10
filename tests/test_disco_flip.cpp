@@ -13,10 +13,7 @@
 #include "difficulty_literals.h"
 #include "midi_util.h"
 #include "parse/song.h"
-
-#ifndef HYDRA_INPUT_DIR
-#error "HYDRA_INPUT_DIR must be defined (see CMakeLists.txt)"
-#endif
+#include "testdata_dirs.h"  // root
 
 using namespace hydra;
 
@@ -120,8 +117,8 @@ TEST_CASE("disco: Band Like That keeps its lower difficulties' hi-hat on yellow"
     // 11: 151 red and 40 yellow inside the spans, where Hard has 40 red and 151
     // yellow as authored).
     using app::DynamicsRow;
-    const std::string path = std::string(HYDRA_INPUT_DIR) +
-                             "/common/IB24/T2/fanclubwallet - Band Like That/notes.mid";
+    const std::string path =
+        corpus::root() + "/common/IB24/T2/fanclubwallet - Band Like That/notes.mid";
     for (Difficulty d : {Difficulty::Hard, Difficulty::Medium, Difficulty::Easy}) {
         const std::string name = difficulty_name(d);
         CAPTURE(name);

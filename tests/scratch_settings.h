@@ -12,14 +12,11 @@
 #define HYDRA_TESTS_SCRATCH_SETTINGS_H
 
 #include "app/config.h"
-
-#ifndef HYDRA_INPUT_DIR
-#error "HYDRA_INPUT_DIR must be defined (see CMakeLists.txt)"
-#endif
+#include "testdata_dirs.h"  // root
 
 inline hydra::app::Settings scratch_settings() {
     hydra::app::Settings s;
-    s.chartfolders = {HYDRA_INPUT_DIR};
+    s.chartfolders = {corpus::root()};
     s.auto_open_report = false;
     s.depth_value = 2;
     return s;
