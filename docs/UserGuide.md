@@ -259,8 +259,9 @@ Both report windows have the same layout. From top to bottom:
 | --- | --- |
 | Out-of-date strip | Only when the report is out of date (below). |
 | Header | `Hydra` and the report's name, a line saying what the report covers, `Built HH:MM` (when it was built) and `Refresh`, which builds it again. |
+| Notice strip | Only when the report has a notice. The path report uses it for charts it left out (see below). |
 | Tiles | Numbers that sum up the rows that pass the filters. They change as you filter. |
-| Controls | A search box, a dropdown and, on the right, a count line saying how many rows pass. |
+| Controls | A search box, a dropdown and, on the right, a count line saying how many rows pass. The path report also has `Best path only`. |
 | Table | One row per path or score. Hover a column heading to see what the column means. |
 | Footer | A dim note under the table. |
 
@@ -299,7 +300,7 @@ The timing dropdown starts at `All timing tiers`. Each other entry shows only th
 | Entry | Paths it shows |
 | --- | --- |
 | `Normal`, `Hard`, `Extreme`, `Insane`, `Insane+` | Paths whose hardest timing falls in that band, from easiest to hardest. `Normal` takes timings up to 2.0 ms. |
-| `Beyond N ms` | Paths whose hardest timing is past N ms, more than twice the hit window. |
+| `Beyond N ms` | Paths whose hardest timing is past N ms, more than twice the hit window. At the default hit window of 85 ms, N is 170. |
 | `No squeezes` | Paths that need no squeeze and no required early fill. |
 
 `Best path only` starts ticked. It keeps just the optimal paths. When paths tie for the top score, it keeps every one of them, because each is optimal. `Clear filters` leaves it as it is.
@@ -388,7 +389,7 @@ The search box matches the song, artist and charter. The table starts sorted by 
 | `Speed` | The playback speed the score was set at. 100% is normal speed. |
 | `Rank` | The score's rank on this chart's leaderboard. |
 | `Posted` | The date the score was posted. |
-| `Status` | The row's status, from the table above. |
+| `Status` | The row's status, written in lowercase in the table (`under optimal`, `not analyzed`, `not in library`). The dropdown spells out the same statuses, as in the table above. |
 
 Clicking a row selects its song, as in the path report. A `Not in your library` row has no song to select, so clicking it does nothing, the `Up` and `Down` arrows pass over it, and hovering it says `Not in your library`.
 
