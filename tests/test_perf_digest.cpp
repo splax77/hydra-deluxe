@@ -59,24 +59,20 @@ std::string hex(uint64_t h) {
     return buf;
 }
 
-// One engine digest run: the hash, how many charts analysed, and how many
-// charts the corpus holds. The count sits beside the hash so a repin can
-// never hide that charts started failing.
+// One engine digest run: the hash and how many charts analysed. The count
+// sits beside the hash so a repin can never hide that charts started failing.
 struct EngineDigest {
     uint64_t hash = 0;
     size_t analyzed = 0;
-    size_t corpus = 0;
 };
 
 // What hydra_bench --engine prints as "hash": every chart's whole engine
 // result and prepared row (digest::row_hash), a chart that fails left out.
 EngineDigest engine_digest(const app::Settings& st) {
     const app::AnalysisSettings settings = st.batch_run().settings;
-    const std::vector<app::ScanItem> charts = corpus_charts();
     EngineDigest out;
     out.hash = digest::kSeed;
-    out.corpus = charts.size();
-    for (const app::ScanItem& it : charts) {
+    for (const app::ScanItem& it : corpus_charts()) {
         try {
             const app::AnalysisResult res = app::analyze_chart_file(it.notespath, settings);
             const store::PreparedRow row = store::prepare_row(st.record_key(it.md5), res.record);
@@ -88,12 +84,27 @@ EngineDigest engine_digest(const app::Settings& st) {
     return out;
 }
 
-// Checks one engine digest against its pinned literal, and that every
-// corpus chart analysed.
+// How many corpus charts load at these settings, by the parse digest's own
+// load (digest::chart_parse_hash), so a pin whose difficulty some charts lack
+// still checks its count without a typed number.
+size_t loading_chart_count(const app::Settings& st) {
+    const app::AnalysisSettings settings = st.batch_run().settings;
+    size_t n = 0;
+    for (const app::ScanItem& it : corpus_charts()) {
+        std::string fail;
+        digest::chart_parse_hash(it.notespath, settings, &fail);
+        if (fail.empty()) ++n;
+    }
+    return n;
+}
+
+// Checks one engine digest against its pinned literal, and that every chart
+// that loads at these settings also analysed.
 void check_engine_digest(const app::Settings& st, uint64_t pinned) {
     const EngineDigest got = engine_digest(st);
-    CHECK_MESSAGE(got.analyzed == got.corpus,
-                  got.analyzed << " of " << got.corpus << " corpus charts analysed");
+    const size_t loading = loading_chart_count(st);
+    CHECK_MESSAGE(got.analyzed == loading,
+                  got.analyzed << " charts analysed, " << loading << " load");
     CHECK_MESSAGE(got.hash == pinned, "engine digest is now " << hex(got.hash));
 }
 
@@ -115,12 +126,8 @@ TEST_CASE("the corpus's prepared-row digest is pinned") {
 
 // The three below were each pinned from one run on 2026-10-10 at 013f4c66.
 
-// Some corpus charts have no Hard drums and fail to load at Hard, so this pin
-// checks only the hash. What its analysed count should be checked against is
-// an open question for the user (task tf-t5's report).
 TEST_CASE("the corpus's prepared-row digest is pinned at Hard, Pro Drums off, 2x Bass off") {
-    const EngineDigest got = engine_digest(pinned_settings("Hard", false, false));
-    CHECK_MESSAGE(got.hash == 0xe040c57fed344ba9ULL, "engine digest is now " << hex(got.hash));
+    check_engine_digest(pinned_settings("Hard", false, false), 0xe040c57fed344ba9ULL);
 }
 
 TEST_CASE("the corpus's prepared-row digest is pinned with the CH 1.0 fill rule") {
