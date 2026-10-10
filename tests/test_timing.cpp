@@ -9,7 +9,9 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <utility>
 
+#include "app/preview_view.h"  // PreviewTimeSig
 #include "core/timing.h"
 #include "corpus_util.h"
 #include "parse/song.h"
@@ -222,3 +224,27 @@ TEST_CASE("timing: one SP bar is two measures") {
     hydra::SongTiming st(480, tpm, bpm);
     CHECK(st.plusmeasure(st.timecode(0), hydra::sp_bars_to_measures(2)).ticks() == 7680);
 }
+
+// Findings 258 and 319; D27.
+TEST_CASE("timing: a new Song and an empty Preview scene read the one default meter, and "
+          "apply_timesig sets a meter with its signature") {
+    const hydra::Song song(192);
+    CHECK(song.tpm_changes == std::map<int64_t, int64_t>{{0, 768}});
+    CHECK(song.timesig_changes.at(0) ==
+          std::make_pair(hydra::kDefaultTimeSigNumerator, hydra::kDefaultTimeSigDenominator));
+
+    // Fixtures set a meter and its signature together, through the owner.
+    hydra::Song fixture(480);
+    hydra::apply_timesig(fixture, 2880, 3, 4);
+    CHECK(fixture.tpm_changes.at(2880) == 1440);
+    CHECK(fixture.timesig_changes.at(2880) == std::make_pair(3, 4));
+
+    // A scene built from nothing reads Song's default, not a literal of its own.
+    const hydra::app::PreviewTimeSig none;
+    CHECK(none.numerator == hydra::kDefaultTimeSigNumerator);
+    CHECK(none.denominator == hydra::kDefaultTimeSigDenominator);
+}
+
+// "No meter is written by hand outside apply_timesig" and "the Preview's time
+// box keeps no 4/4 literal of its own" are rows in test_single_owner.cpp, the
+// one scan of the source tree.
