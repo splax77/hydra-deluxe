@@ -113,10 +113,8 @@ void add_words(const std::string& text, size_t begin, size_t end, std::set<std::
 // 2026-10-10 (the single-owner redesign plan, question 7): a comment never
 // vouches for a name, and a test's string literal never does either, because
 // production strings name real INI keys, chart tags and stored columns while
-// test strings name made-up ones. PowerShell is read with the Python rules
-// (both use # comments and quoted strings), so the inside of a <# #> block
-// still counts. This file is left out: its allow-list would otherwise vouch
-// for the names it lists.
+// test strings name made-up ones. This file is left out: its allow-list would
+// otherwise vouch for the names it lists.
 std::set<std::string> code_words() {
     std::set<std::string> words;
     sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
@@ -124,8 +122,10 @@ std::set<std::string> code_words() {
             codelex::Lang lang;
             if (ext == ".cpp" || ext == ".h" || ext == ".c" || ext == ".hlsl")
                 lang = codelex::Lang::Cpp;
-            else if (ext == ".py" || ext == ".ps1")
+            else if (ext == ".py")
                 lang = codelex::Lang::Python;
+            else if (ext == ".ps1")
+                lang = codelex::Lang::PowerShell;
             else
                 return;
             if (rel == "tests/test_docs_match_code.cpp") return;
@@ -529,4 +529,13 @@ TEST_CASE("code lexer: C++ and Python comments and string literals") {
     // Triple-quoted strings span lines and hold a lone quote and a #.
     CHECK(lexed("'''a\n#b''' c", py) == V{"S:'''a\n#b'''", "C: c"});
     CHECK(lexed(R"("""a"b""" c)", py) == V{R"(S:"""a"b""")", "C: c"});
+    // PowerShell: # and <# #> comments, a string that ends in a backslash, a
+    // backtick-escaped quote, a doubled quote, and a here-string.
+    const auto ps = codelex::Lang::PowerShell;
+    CHECK(lexed("a # c\nb", ps) == V{"C:a ", "#:# c", "C:\nb"});
+    CHECK(lexed("a <# c\n#d #> b", ps) == V{"C:a ", "#:<# c\n#d #>", "C: b"});
+    CHECK(lexed(R"(x = 'C:\' + y # c)", ps) == V{"C:x = ", R"(S:'C:\')", "C: + y ", "#:# c"});
+    CHECK(lexed("\"a`\"# b\" c", ps) == V{"S:\"a`\"# b\"", "C: c"});
+    CHECK(lexed("'it''s # not' z", ps) == V{"S:'it''s # not'", "C: z"});
+    CHECK(lexed("@'\na # b\n'@ c", ps) == V{"S:@'\na # b\n'@", "C: c"});
 }

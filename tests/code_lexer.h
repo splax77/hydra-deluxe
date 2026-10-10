@@ -1,6 +1,7 @@
 // Splits a source file's text into code, comments and string literals, so a
 // test that reads the repo's own sources can tell a name the code uses from a
-// name a comment or a string only mentions. It knows C++ and Python. It is a
+// name a comment or a string only mentions. It knows C++, Python and PowerShell
+// (the three differ in comment markers and string escapes). It is a
 // lexer for this repo's tests, not a compiler: it does not expand macros, and
 // it ends a broken single-line string at the end of its line instead of
 // running on through the file.
@@ -15,7 +16,7 @@
 
 namespace codelex {
 
-enum class Lang { Cpp, Python };
+enum class Lang { Cpp, Python, PowerShell };
 enum class Kind { Code, Comment, String };
 
 // One run of text of one kind: text.substr(begin, end - begin). A string
@@ -204,11 +205,88 @@ inline std::vector<Piece> split_python(const std::string& t) {
     return out;
 }
 
+// The end of a PowerShell quoted string that opened at `open` with quote q: one
+// past the closing quote, or the end of the text when it never closes. A
+// doubled quote stays inside the string, and a double-quoted string also
+// treats a backtick as an escape. PowerShell strings may span lines.
+inline size_t ps_quoted_end(const std::string& t, size_t open, char q) {
+    size_t i = open + 1;
+    while (i < t.size()) {
+        const char c = t[i];
+        if (c == '`' && q == '"' && i + 1 < t.size()) {
+            i += 2;
+            continue;
+        }
+        if (c == q) {
+            if (i + 1 < t.size() && t[i + 1] == q) {
+                i += 2;
+                continue;
+            }
+            return i + 1;
+        }
+        ++i;
+    }
+    return t.size();
+}
+
+// The end of a PowerShell here-string whose "@" is at `at` (@' or @" at the
+// end of its line, closed by '@ or "@ at the start of a later line): one past
+// the closing "@". Returns `at` when there is no here-string there.
+inline size_t ps_here_string_end(const std::string& t, size_t at) {
+    if (at + 1 >= t.size() || (t[at + 1] != '\'' && t[at + 1] != '"')) return at;
+    size_t j = at + 2;
+    while (j < t.size() && (t[j] == ' ' || t[j] == '\t' || t[j] == '\r')) ++j;
+    if (j >= t.size() || t[j] != '\n') return at;
+    const size_t close = t.find(std::string("\n") + t[at + 1] + "@", j);
+    return close == std::string::npos ? t.size() : close + 3;
+}
+
+inline std::vector<Piece> split_powershell(const std::string& t) {
+    std::vector<Piece> out;
+    size_t i = 0;
+    size_t code_from = 0;
+    auto flush_code = [&](size_t upto) {
+        add(out, Kind::Code, code_from, upto);
+    };
+    while (i < t.size()) {
+        const char c = t[i];
+        size_t e = i;
+        Kind kind = Kind::String;
+        if (c == '<' && i + 1 < t.size() && t[i + 1] == '#') {
+            kind = Kind::Comment;
+            e = t.find("#>", i + 2);
+            e = e == std::string::npos ? t.size() : e + 2;
+        } else if (c == '#') {
+            kind = Kind::Comment;
+            e = t.find('\n', i);
+            if (e == std::string::npos) e = t.size();
+        } else if (c == '@') {
+            e = ps_here_string_end(t, i);
+        } else if (c == '"' || c == '\'') {
+            e = ps_quoted_end(t, i, c);
+        }
+        if (e == i) {
+            ++i;
+            continue;
+        }
+        flush_code(i);
+        add(out, kind, i, e);
+        i = code_from = e;
+    }
+    flush_code(t.size());
+    return out;
+}
+
 }  // namespace detail
 
 // The pieces of `text`, in order, covering all of it.
 inline std::vector<Piece> split(const std::string& text, Lang lang) {
-    return lang == Lang::Cpp ? detail::split_cpp(text) : detail::split_python(text);
+    switch (lang) {
+        case Lang::Cpp: return detail::split_cpp(text);
+        case Lang::Python: return detail::split_python(text);
+        case Lang::PowerShell: return detail::split_powershell(text);
+    }
+    return {};
 }
 
 }  // namespace codelex
