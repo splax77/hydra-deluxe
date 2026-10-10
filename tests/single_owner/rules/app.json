@@ -1117,7 +1117,7 @@
         "const float badge_w = text(18);  // \"squeeze out 999 ms\", the longest wording"
       ],
       "must_not_match": [
-        "TEST_CASE(\"backend leeway: +2.999 ms is counted, exactly +3.0 ms is not (D29)\") {",
+        "TEST_CASE(\"backend leeway: +2.999 ms is counted, exactly +3.0 ms is not\") {",
         "const float badge_w = text(static_cast<int>(hydra::app::longest_activation_badge().size()));"
       ],
       "scope": [

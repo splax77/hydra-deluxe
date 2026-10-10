@@ -34,6 +34,7 @@
 #include "search/engine.h"
 #include "search/graph.h"
 #include "search/pather.h"
+#include "sp_past_end_songs.h"
 #include "tick_ms.h"
 
 using namespace hydra;
@@ -57,6 +58,18 @@ using test::TailNote;
 using test::build_tail_song;
 // A tick's ms (tick_ms.h).
 using test::tick_ms;
+// The two SP-past-the-end songs (sp_past_end_songs.h).
+using test::past_last_note_song;
+using test::mid_sp_phrase_song;
+
+// The chart for cap 2 where two mid-SP phrases, at 3072 and 3840, each clamp
+// the end. Several cases below share these notes.
+std::vector<TailNote> double_clamp_notes() {
+    return {{0, true, false},    {768, true, false},  {2304, false, true},
+            {3072, true, false}, {3840, true, false}, {4608},
+            {5376},              {6000},              {6768},
+            {7500}};
+}
 
 // The best path's final activation, which every case here expects to be one
 // that never deactivated.
@@ -71,15 +84,7 @@ const Activation& last_act(const std::vector<Path>& paths) {
 TEST_CASE("SP past the last note: backends measured from the tracked SP end") {
     // Two SP phrases, then an activation at tick 2304 with a 2-bar meter, so
     // SP ends 4 measures later at tick 5376. The chart stops at 5280.
-    Song song = build_tail_song({{0, true, false},
-                                 {768, true, false},
-                                 {1536},
-                                 {2304, false, true},
-                                 {3072},
-                                 {3840},
-                                 {4608},
-                                 {5136},
-                                 {5280}});
+    Song song = past_last_note_song();
 
     ScoreGraph graph(song, 4);
     std::vector<Path> paths =
@@ -120,17 +125,7 @@ TEST_CASE("SP past the last note: a mid-activation phrase extends the end") {
     // activation. That pushes the pending deactivation two measures out, from
     // tick 5376 to 6912 -- an extension the measure-count fallback (2 measures
     // per SP bar, from a meter still recorded as 2) cannot see.
-    Song song = build_tail_song({{0, true, false},
-                                 {768, true, false},
-                                 {1536},
-                                 {2304, false, true},
-                                 {3072},
-                                 {3840, true, false},
-                                 {4608},
-                                 {5376},
-                                 {6144},
-                                 {6720},
-                                 {6816}});
+    Song song = mid_sp_phrase_song();
 
     ScoreGraph graph(song, 4);
     std::vector<Path> paths =
@@ -163,9 +158,7 @@ TEST_CASE("SP past the last note: a mid-activation phrase extends the end") {
 // last note), but it sits 625 ms before the SP end at 5376, so the engine
 // must not copy it into the activation.
 TEST_CASE("SP past the last note: tail rows use the 500 ms window from the SP end") {
-    Song song = build_tail_song({{0, true, false}, {768, true, false}, {1536},
-                                 {2304, false, true}, {3072}, {3840}, {4608},
-                                 {5136}, {5280}});
+    Song song = past_last_note_song();
     ScoreGraph graph(song, 4);
     const std::vector<Path> paths = run_search(graph, EngineOptions{});
     const Activation& act = last_act(paths);
@@ -332,9 +325,7 @@ TEST_CASE("SP cap overfill: where the end lands and which note clamped it") {
          "the plain step from the current end is 6144 + 1536 = 7680, but the "
          "cap ceiling from 3840 is 3840 + 4*768 = 6912, which is smaller. The "
          "end is now pinned by the later note, so clamp_tick moves to 3840.",
-         {{0, true, false}, {768, true, false}, {2304, false, true},
-          {3072, true, false}, {3840, true, false}, {4608}, {5376}, {6000},
-          {6768}, {7500}},
+         double_clamp_notes(),
          6912, 3840,
          {{2304, 5376, SpEndKind::Activation},
           {3072, 6144, SpEndKind::Clamped},
@@ -374,9 +365,7 @@ TEST_CASE("SP cap overfill: where the end lands and which note clamped it") {
 }
 
 TEST_CASE("collected phrases: none when no phrase lands during the activation") {
-    Song song = build_tail_song({{0, true, false}, {768, true, false}, {1536},
-                                 {2304, false, true}, {3072}, {3840}, {4608},
-                                 {5136}, {5280}});
+    Song song = past_last_note_song();
     ScoreGraph graph(song, 4);
     // The paths are held in a named vector: last_act returns a reference into
     // it, so it has to outlive the checks below.
@@ -389,9 +378,7 @@ TEST_CASE("collected phrases: none when no phrase lands during the activation") 
 TEST_CASE("collected phrases: one phrase mid-activation is recorded") {
     // The fixture of "SP past the last note: a mid-activation phrase extends
     // the end": the phrase ending at 3840 is collected while SP is active.
-    Song song = build_tail_song({{0, true, false}, {768, true, false}, {1536},
-                                 {2304, false, true}, {3072}, {3840, true, false},
-                                 {4608}, {5376}, {6144}, {6720}, {6816}});
+    Song song = mid_sp_phrase_song();
     ScoreGraph graph(song, 4);
     const std::vector<Path> paths = run_search(graph, EngineOptions{});
     const Activation& act = last_act(paths);
@@ -402,10 +389,7 @@ TEST_CASE("collected phrases: two phrases under a full meter are both recorded, 
     // The cap-2 clamp fixture: both phrases are collected while active, and
     // the second is the note the cap pinned the end to. A clamped phrase
     // counts as collected.
-    Song song = build_tail_song({{0, true, false}, {768, true, false},
-                                 {2304, false, true}, {3072, true, false},
-                                 {3840, true, false}, {4608}, {5376}, {6000},
-                                 {6768}, {7500}});
+    Song song = build_tail_song(double_clamp_notes());
     ScoreGraph graph(song, 2);
     std::vector<Path> paths = run_search(graph, EngineOptions{});
     REQUIRE(!paths.empty());
@@ -569,15 +553,8 @@ TEST_CASE("search: no fresh record stores an unknown transfer scale (constructed
         int cap;
     };
     std::vector<Case> cases;
-    cases.push_back({"SP past the last note",
-                     test::build_tail_song({{0, true}, {768, true}, {1536}, {2304, false, true},
-                                            {3072}, {3840}, {4608}, {5136}, {5280}}),
-                     4});
-    cases.push_back({"mid-SP phrase, SP past the end",
-                     test::build_tail_song({{0, true}, {768, true}, {1536}, {2304, false, true},
-                                            {3072}, {3840, true}, {4608}, {5376}, {6144},
-                                            {6720}, {6816}}),
-                     4});
+    cases.push_back({"SP past the last note", past_last_note_song(), 4});
+    cases.push_back({"mid-SP phrase, SP past the end", mid_sp_phrase_song(), 4});
     cases.push_back({"SqIn then a collection", test::sqin_then_collect_song(), 4});
     cases.push_back({"cap clamp", test::clamp_song(), 2});
     cases.push_back({"tempo change on the activation tick",

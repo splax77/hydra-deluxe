@@ -35,6 +35,7 @@
 #include "search/graph.h"
 #include "search/pather.h"
 #include "song_digest.h"  // record_hash
+#include "sp_past_end_songs.h"
 
 using namespace hydra;
 
@@ -489,23 +490,16 @@ TEST_CASE("score graph: the backend rows are sized once, one per chord") {
 
 namespace {
 
-// The hand-built song builder (record_fixtures.h), for the two cases below.
-using test::build_tail_song;
+// The two SP-past-the-end songs (sp_past_end_songs.h), for the cases below.
+using test::past_last_note_song;
+using test::mid_sp_phrase_song;
 
 }  // namespace
 
 // run_search takes its knobs in one EngineOptions value, so no two flags can
 // be swapped at a call site. Each knob must still do its own job.
 TEST_CASE("run_search: EngineOptions carries each knob to the engine") {
-    Song song = build_tail_song({{0, true, false},
-                                 {768, true, false},
-                                 {1536},
-                                 {2304, false, true},
-                                 {3072},
-                                 {3840},
-                                 {4608},
-                                 {5136},
-                                 {5280}});
+    Song song = past_last_note_song();
     ScoreGraph graph(song, 4);
 
     // The defaults are a plain best-path search: score depth 0, no limit.
@@ -580,17 +574,7 @@ TEST_CASE("settings_key: the text for SearchSettings{} is pinned, and every fiel
 TEST_CASE("a 4-bar graph built at the song's phrase count stores the same paths") {
     std::vector<Song> songs;
     // Hand-built, three phrases, one of them collected mid-SP.
-    songs.push_back(build_tail_song({{0, true, false},
-                                     {768, true, false},
-                                     {1536},
-                                     {2304, false, true},
-                                     {3072},
-                                     {3840, true, false},
-                                     {4608},
-                                     {5376},
-                                     {6144},
-                                     {6720},
-                                     {6816}}));
+    songs.push_back(mid_sp_phrase_song());
     for (const std::string& path : corpus::chart_paths()) {
         Song s = load_songpath(path, true, true);
         if (!s.is_empty() && s.sp_phrase_count() < kCloneHeroSpCap)

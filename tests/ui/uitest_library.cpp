@@ -802,7 +802,7 @@ void test_startup_screen(ImGuiTestContext* ctx) {
             IM_CHECK(!fs::exists(fs::u8path(file)));
     // The two results with stars came across; the one without did not. The
     // detail tables are gone.
-    IM_CHECK_EQ(number_in_file(h.db_path, "SELECT COUNT(*) FROM results"), int64_t{2});
+    IM_CHECK_EQ(number_in_file(h.db_path, hydra::test::kResultsRowCountSql), int64_t{2});
     IM_CHECK_EQ(number_in_file(h.db_path, hydra::test::kDetailTablesCountSql), int64_t{0});
 }
 
