@@ -20,9 +20,10 @@ materials and draw in Onyx's order, so they look native.
 
 "Faithful" is checked, not asserted: `tests/test_preview_golden.cpp` renders
 the chart in `testdata/preview/` at the moment captured in `golden_onyx.png`
-(a paused Onyx window, cropped by `golden.json`) and requires the mean
-per-channel difference to stay under the fixture's tolerance; at the time of
-writing it is 5.7/255, almost all of it the capture's gamma. The trade-off is
+(a paused Onyx window, cropped by `golden.json`) and requires the frame to
+stay within the thresholds in `golden.json`, which `testdata/preview/README.md`
+explains; at the time of writing the mean difference is 5.7/255, almost all of
+it the capture's gamma. The trade-off is
 that the repo now carries Onyx's GPL-3 art and a line-for-line shader port, so
 Hydra is a private, non-distributable build unless relicensed. Keep the assets
 verbatim and the numbers in `3d-config.json`; when the look must change, change

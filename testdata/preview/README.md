@@ -26,14 +26,14 @@ The test reads every key in `golden.json` and fails if one is missing.
 ## Recapturing
 
 Recapture only when the look must change on purpose, after changing Onyx's
-inputs as ADR 0008 describes. The test's `crop` and `width`/`height` must come
-out the same, 1372 by 714, or the comparison no longer lines up.
+inputs as ADR 0008 describes. The `crop` size must equal `width` and `height`
+in `golden.json` (the test checks this), or the comparison no longer lines up.
 
 1. Install the Onyx build you are capturing from and note its version for the
    `_comment`.
 2. Open the chart in this folder in Onyx's previewer and pick Expert Pro Drums.
-3. Size the Onyx window so the screenshot is 1372 pixels wide and the highway
-   area is 714 pixels tall. *To confirm at the next recapture:* the window size
+3. Size the Onyx window so the screenshot is as wide as `golden.json`'s `width`
+   and the highway area is as tall as its `height`. *To confirm at the next recapture:* the window size
    Onyx was set to, and whether the screenshot includes the title bar, are not
    recorded anywhere.
 4. Pause at exactly 0:36.913. *To confirm at the next recapture:* how the pause
@@ -52,16 +52,16 @@ out the same, 1372 by 714, or the comparison no longer lines up.
 
 ## The thresholds
 
-The test shrinks both frames to half size and compares them there, skipping the
-masked pixels. Four keys in `golden.json` set how close they must be:
+The test file owns the measurement: `max_channel_deltas` finds each pixel's
+difference, `over_share` finds the worst tile and the whole frame, and `kTile`
+is the tile size. This page only says what each key is for. Four keys in
+`golden.json` set how close the frames must be, all in units of that code:
 
-1. `tolerance` caps the mean difference per colour channel, out of 255.
-2. `pixel_delta` is the line between a matching pixel and a wrong one. A pixel
-   counts as wrong when its largest channel difference is over this value, out
-   of 255.
-3. `tile_percent` caps the share of wrong pixels in the worst 16 by 16 tile of the
-   half-size frame.
-   This catches a small wrong piece, like a missing note, that the mean hides.
+1. `tolerance` caps the mean difference, out of 255.
+2. `pixel_delta` is the line between a matching pixel and a wrong one, out of
+   255.
+3. `tile_percent` caps the share of wrong pixels in the worst tile. This catches
+   a small wrong piece, like a missing note, that the mean hides.
 4. `frame_percent` caps the share of wrong pixels in the whole frame.
 
 The user chose these values on 2026-10-10 from a measurement of two renders.
