@@ -305,6 +305,13 @@ bool whole_line_comment(const std::string& trimmed, codelex::Lang lang) {
     return pieces.size() == 1 && pieces[0].kind == codelex::Kind::Comment;
 }
 
+// Whether a trimmed line is a comment line the row scans skip, in the language
+// the file is read in. Both row scans ask this: C++ keeps is_line_comment's
+// test, every other language is split by codelex.
+bool skipped_comment_line(const std::string& trimmed, codelex::Lang lang) {
+    return lang == codelex::Lang::Cpp ? is_line_comment(trimmed) : whole_line_comment(trimmed, lang);
+}
+
 // Whether `text` names `symbol` as a whole word outside its comments, as
 // codelex splits them. A string literal counts as naming it.
 bool names_outside_comments(const std::string& text, const std::string& symbol, codelex::Lang lang) {
@@ -503,7 +510,7 @@ void scan_file(ScanState& s, const std::string& rel, bool py, std::istream& in) 
         ++lineno;
         const std::string t = hydra::trim(line);
         if (t.empty()) continue;
-        const bool comment = py ? whole_line_comment(t, codelex::Lang::Python) : is_line_comment(t);
+        const bool comment = skipped_comment_line(t, py ? codelex::Lang::Python : codelex::Lang::Cpp);
         for (size_t ci = 0; ci < s.compiled.size(); ++ci) {
             const CompiledRule& c = s.compiled[ci];
             const OwnerRule& rule = *c.rule;
@@ -618,7 +625,7 @@ void scan_single_file(const CompiledRule& c, const std::string& rel, std::istrea
         ++lineno;
         const std::string t = hydra::trim(line);
         if (t.empty()) continue;
-        if (whole_line_comment(t, lang) && !c.rule->scan_comments) continue;
+        if (skipped_comment_line(t, lang) && !c.rule->scan_comments) continue;
         if (flags_line(c, line))
             problems.push_back(answers_message(*c.rule, rel + ":" + std::to_string(lineno), t));
     }
@@ -680,6 +687,12 @@ TEST_CASE("single-owner: a row scoped to a file the walk does not read is read h
                           ".github/workflows/made_up.yml:2: answers \"Is this a made-up "
                           "question?\", which belongs to made_up in src/a.cpp: run: made_up(2) "
                           "(rule: rules/made_up.json)"});
+    // C++ (and a file codelex does not know) skips "//" lines only; the other
+    // languages skip what codelex calls a comment.
+    CHECK(skipped_comment_line("// x", codelex::Lang::Cpp));
+    CHECK_FALSE(skipped_comment_line("/* x */", codelex::Lang::Cpp));
+    CHECK(skipped_comment_line("# x", codelex::Lang::PowerShell));
+    CHECK_FALSE(skipped_comment_line("x # y", codelex::Lang::Yaml));
     r.scan_comments = true;
     problems.clear();
     std::istringstream ps1_again(ps1);
