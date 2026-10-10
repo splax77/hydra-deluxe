@@ -212,28 +212,33 @@ void test_note_shuffle_switch(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return !compare_disabled(); }, 5));
 }
 
+// A fresh app with every analysis setting at its default, the settings button
+// reading so. The scratch INI keeps a smaller score range; this puts the
+// default one back.
+void reset_app_at_default_settings(ImGuiTestContext* ctx, Harness& h) {
+    reset_app(h);
+    h.app->settings.depth_value = hydra::app::Settings{}.depth_value;
+    h.app->commit_settings();
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Analysis settings: defaults"); }, 5));
+}
+
 // The settings button (settings summary button handoff, 2026-10-09): it
 // reads "defaults" with every setting at its default, its label follows a
 // ticked box, and the panel stays open after the tick.
 void test_settings_button(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    reset_app(h);
-    auto shows = [&](const char* text) { return visible_text(h).find(text) != std::string::npos; };
-    // The scratch INI keeps a smaller score range; a default start has the
-    // default one.
-    h.app->settings.depth_value = hydra::app::Settings{}.depth_value;
-    h.app->commit_settings();
-    IM_CHECK(wait_until(ctx, [&] { return shows("Analysis settings: defaults"); }, 5));
+    reset_app_at_default_settings(ctx, h);
 
     ImGuiWindow* panel = open_settings_panel(ctx);
-    if (ctx->IsError()) return;    ctx->ItemCheck("**/##noteshuffle");
-    IM_CHECK(wait_until(ctx, [&] { return shows("Analysis settings: Note Shuffle"); }, 5));
+    if (ctx->IsError()) return;
+    ctx->ItemCheck("**/##noteshuffle");
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Analysis settings: Note Shuffle"); }, 5));
     // Ticking a box leaves the panel open, still the window with focus.
     ctx->Yield(2);
     IM_CHECK(ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
     IM_CHECK(ctx->GetWindowByRef("//$FOCUSED") == panel);
     ctx->ItemUncheck("**/##noteshuffle");
-    IM_CHECK(wait_until(ctx, [&] { return shows("Analysis settings: defaults"); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Analysis settings: defaults"); }, 5));
     close_settings_panel(ctx);
 }
 
@@ -242,16 +247,11 @@ void test_settings_button(ImGuiTestContext* ctx) {
 // leaves the panel open with the button greyed again.
 void test_settings_reset(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    reset_app(h);
-    auto shows = [&](const char* text) { return visible_text(h).find(text) != std::string::npos; };
+    reset_app_at_default_settings(ctx, h);
     auto reset_off = [&] {
         return (ctx->ItemInfo("**/Reset to defaults").ItemFlags & ImGuiItemFlags_Disabled) != 0;
     };
     const std::vector<std::string> folders = h.app->settings.chartfolders;
-    // The scratch INI keeps a smaller score range; start from the defaults.
-    h.app->settings.depth_value = hydra::app::Settings{}.depth_value;
-    h.app->commit_settings();
-    IM_CHECK(wait_until(ctx, [&] { return shows("Analysis settings: defaults"); }, 5));
 
     ImGuiWindow* panel = open_settings_panel(ctx);
     if (ctx->IsError()) return;
@@ -259,11 +259,13 @@ void test_settings_reset(ImGuiTestContext* ctx) {
     ctx->ItemUncheck("**/##prodrums");
     ctx->ItemInputValue("**/##spcap", 5);
     IM_CHECK(wait_until(
-        ctx, [&] { return shows("Analysis settings: Pro Drums off \xC2\xB7 SP cap 5 bars"); }, 5));
+        ctx,
+        [&] { return on_screen(h, "Analysis settings: Pro Drums off \xC2\xB7 SP cap 5 bars"); },
+        5));
     IM_CHECK(!reset_off());
 
     ctx->ItemClick("**/Reset to defaults");
-    IM_CHECK(wait_until(ctx, [&] { return shows("Analysis settings: defaults"); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Analysis settings: defaults"); }, 5));
     IM_CHECK(h.app->settings.view_prodrums);
     IM_CHECK(h.app->settings.sp_cap == hydra::kCloneHeroSpCap);
     IM_CHECK(h.app->settings.chartfolders == folders);

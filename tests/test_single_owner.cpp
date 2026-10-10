@@ -2614,6 +2614,21 @@ const std::vector<OwnerRule>& rules() {
           "return settings_change_phrases(s).empty();",
           "const std::string label = settings_button_label(app.settings, locked);"},
          {}},
+        // A GUI test's own lambda for "is this text on screen", the copy three
+        // tests once typed.
+        {"Is this text on screen in a GUI test?",
+         "on_screen in tests/ui/uitest_harness.cpp",
+         R"(=\s*\[&\]\([^)]*\)\s*\{\s*return visible_text\(h\)\.find\()",
+         "",
+         {},
+         {},
+         "derive-once review 8aa5f401 finding 2 (settings reset button, 2026-10-09)",
+         {R"(auto shows = [&](const char* text) { return visible_text(h).find(text) != std::string::npos; };)",
+          R"(auto on_screen = [&](const char* s) { return visible_text(h).find(s) != std::string::npos; };)"},
+         {"return visible_text(h).find(s) != std::string::npos;",
+          R"re(IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "(locked)"); }, 5));)re"},
+         {},
+         {"tests"}},
         // The two strings typed anywhere but CMakeLists.txt, which the walk
         // does not read (so no owner line is listed). The installer script is
         // checked by the case below this table's scan.

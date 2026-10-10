@@ -579,24 +579,23 @@ void test_panel_hide_library(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     auto library = [&] { return ctx->WindowInfo("//Hydra/##library").Window; };
     auto panel = [&] { return ctx->WindowInfo("//Hydra/##songpanel").Window; };
-    auto on_screen = [&](const char* s) { return visible_text(h).find(s) != std::string::npos; };
 
     open_details(ctx, 0);
     if (ctx->IsError()) return;
     ctx->Yield(2);
     const float room = library()->Size.x + panel()->Size.x;
     const float shared = library()->Size.x;
-    IM_CHECK(on_screen("Hide library"));
+    IM_CHECK(on_screen(h, "Hide library"));
     IM_CHECK(!hydra::ui::library_hidden());
 
     ctx->SetRef("//Hydra");
     ctx->ItemClick("**/Hide library");
     ctx->Yield(3);
     IM_CHECK(hydra::ui::library_hidden());
-    IM_CHECK(on_screen("Show library"));
-    IM_CHECK(!on_screen("Hide library"));
+    IM_CHECK(on_screen(h, "Show library"));
+    IM_CHECK(!on_screen(h, "Hide library"));
     IM_CHECK_FLOAT_NEAR_EQ(panel()->Size.x, room, 1.0f);
-    IM_CHECK(!on_screen("Library"));  // the pane's heading is gone
+    IM_CHECK(!on_screen(h, "Library"));  // the pane's heading is gone
 
     // Next song still works with the library hidden.
     const std::string first = h.app->selected->notespath;
@@ -621,7 +620,7 @@ void test_panel_hide_library(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/Show library");
     ctx->Yield(3);
     IM_CHECK(!hydra::ui::library_hidden());
-    IM_CHECK(on_screen("Hide library"));
+    IM_CHECK(on_screen(h, "Hide library"));
     IM_CHECK_FLOAT_NEAR_EQ(library()->Size.x, shared, 1.0f);
     IM_CHECK_FLOAT_NEAR_EQ(library()->Size.x + panel()->Size.x, room, 1.0f);
 }
@@ -1043,7 +1042,6 @@ void test_settings_lock(ImGuiTestContext* ctx) {
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
-    auto shows = [&](const char* text) { return visible_text(h).find(text) != std::string::npos; };
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
     IM_CHECK((ctx->ItemInfo("**/##spcap").ItemFlags & ImGuiItemFlags_Disabled) == 0);
@@ -1061,8 +1059,8 @@ void test_settings_lock(ImGuiTestContext* ctx) {
         if (ctx->IsError()) return;
         IM_CHECK((ctx->ItemInfo("**/##spcap").ItemFlags & ImGuiItemFlags_Disabled) == 0);
         IM_CHECK((ctx->ItemInfo("**/##prodrums").ItemFlags & ImGuiItemFlags_Disabled) == 0);
-        IM_CHECK(!shows("Stop the batch to change these."));
-        IM_CHECK(!shows("(locked)"));
+        IM_CHECK(!on_screen(h, "Stop the batch to change these."));
+        IM_CHECK(!on_screen(h, "(locked)"));
         close_settings_panel(ctx);
         ctx->ItemClick("**/X##closepanel");
         ctx->Yield(3);
@@ -1075,10 +1073,10 @@ void test_settings_lock(ImGuiTestContext* ctx) {
     h.app->start_batch(false);
     IM_CHECK(wait_until(ctx, [&] { return gate.started() >= 1; }, 30));
     IM_CHECK(h.app->batch_running());
-    IM_CHECK(wait_until(ctx, [&] { return shows("(locked)"); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "(locked)"); }, 5));
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
-    IM_CHECK(wait_until(ctx, [&] { return shows("Stop the batch to change these."); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Stop the batch to change these."); }, 5));
     IM_CHECK((ctx->ItemInfo(settings_control(ctx, "##prodrums", "##difficulty")).ItemFlags &
               ImGuiItemFlags_Disabled) != 0);
     IM_CHECK((ctx->ItemInfo("**/##spcap").ItemFlags & ImGuiItemFlags_Disabled) != 0);
@@ -1093,7 +1091,7 @@ void test_settings_lock(ImGuiTestContext* ctx) {
     h.app->batch_job->stop();
     IM_CHECK(wait_until(ctx, [&] { return !h.app->batch_running(); }, 300));
     IM_CHECK(wait_until(ctx, [&] { return !jobs_busy(h); }, 120));
-    IM_CHECK(wait_until(ctx, [&] { return !shows("(locked)"); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return !on_screen(h, "(locked)"); }, 5));
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
     IM_CHECK((ctx->ItemInfo("**/##spcap").ItemFlags & ImGuiItemFlags_Disabled) == 0);
