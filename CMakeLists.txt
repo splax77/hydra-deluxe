@@ -540,7 +540,8 @@ add_executable(hydra_tests
     tests/test_theme.cpp
     tests/test_batch_text.cpp
     tests/test_display_format.cpp
-    tests/test_path_view.cpp
+    tests/test_activation_rows.cpp
+    tests/test_path_list.cpp
     tests/test_preview_boxes.cpp
     tests/test_preview_scene.cpp
     tests/test_sp_meter_curve.cpp
