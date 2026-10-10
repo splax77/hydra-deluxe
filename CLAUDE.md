@@ -24,7 +24,7 @@ Merges and commits on `main` that touch code need a review from a fresh agent fi
 
 ### Doc review
 
-Documents Claude publishes need a review from a fresh agent first. Hooks enforce it in repos whose `main` holds a `.doc-review-gate` marker, as this one does. Four steps are gated: a move of `main`, local or pushed, that adds or changes Markdown under `docs/` or the top-level `CLAUDE.md`, `CONTEXT.md` or `README.md`; an Artifact publish; a plan or decision question; and text posted with `gh`. The details are in `docs/superpowers/plans/2026-10-08-doc-review-gate.md`. Dispatch the reviewer with `docs/agents/doc-review.md`, the key and the review kind the hook's message gives. Only the user can skip a review, by typing `waive doc-review <key>` in chat.
+Documents Claude publishes need a review from a fresh agent first. Hooks enforce it in repos whose `main` holds a `.doc-review-gate` marker, as this one does. Four steps are gated: a move of `main`, local or pushed, that adds or changes Markdown under `docs/` or the top-level `CLAUDE.md`, `CONTEXT.md` or `README.md`; an Artifact publish; a plan shown with ExitPlanMode; and text posted with `gh`. Two folders under `docs/` are not gated: `docs/handoffs/`, because the next session checks a handoff against the code anyway, and `docs/superpowers/plans/`, because the user approved a plan before it is committed. Questions to the user are not gated either. The details are in `docs/superpowers/plans/2026-10-08-doc-review-gate.md`. Dispatch the reviewer with `docs/agents/doc-review.md`, the key and the review kind the hook's message gives. Only the user can skip a review, by typing `waive doc-review <key>` in chat.
 
 ## Agent rules
 
