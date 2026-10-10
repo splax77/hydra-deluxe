@@ -43,8 +43,12 @@ std::map<std::string, WindowPlacement, std::less<>> g_report_placements;
 // The OS frame around a report window, from main.cpp.
 FrameInsets g_report_frame;
 // The reports that opened maximized and wait for ImGui to make their OS
-// window, by report_placement_key.
+// window, by report_placement_key. follow_report_os_window moves each one to
+// g_maximize_due once its OS window exists.
 std::set<std::string, std::less<>> g_maximize_pending;
+// The report OS windows to maximize between frames, drained by
+// maximize_due_report_windows.
+std::vector<HWND> g_maximize_due;
 // A report's [Hydra] section is "[Hydra][Window:<key>]".
 constexpr std::string_view kReportSectionPrefix = "Window:";
 
@@ -424,6 +428,7 @@ void setup_imgui(const ImGuiSetupOptions& options) {
     g_placement = WindowPlacement{};
     g_report_placements.clear();
     g_maximize_pending.clear();
+    g_maximize_due.clear();
     g_layout = Layout{};
     ImGuiSettingsHandler placement_handler;
     placement_handler.TypeName = "Hydra";
@@ -526,8 +531,8 @@ std::optional<ScreenRect> saved_rect(const char* name, std::string_view key) {
 
 // Every frame an open report's OS window exists: note whether it is
 // maximized and, while it is neither maximized nor minimized, its client
-// rectangle (observed_placement), then carry out a maximize that waited for
-// the window.
+// rectangle (observed_placement), then hand a maximize that waited for the
+// window to maximize_due_report_windows.
 void follow_report_os_window(const std::string& key, const ImGuiWindow& w) {
     if (!w.ViewportOwned || !w.Viewport) return;
     const HWND hwnd = static_cast<HWND>(w.Viewport->PlatformHandleRaw);
@@ -536,7 +541,7 @@ void follow_report_os_window(const std::string& key, const ImGuiWindow& w) {
     remember_report_placement(
         key, observed_placement(hwnd, report_window_placement(key), WindowRect::Client));
 
-    if (g_maximize_pending.erase(key) > 0) ::ShowWindow(hwnd, SW_MAXIMIZE);
+    if (g_maximize_pending.erase(key) > 0) g_maximize_due.push_back(hwnd);
 }
 
 }  // namespace
@@ -576,6 +581,17 @@ void place_report_window(const char* name) {
     ImGui::SetNextWindowSize(ImVec2(static_cast<float>(p.client.width()),
                                     static_cast<float>(p.client.height())),
                              ImGuiCond_Always);
+}
+
+void maximize_due_report_windows() {
+    // Between frames, so the WM_SIZE this sends reaches ImGui at the start of
+    // the next frame, where it reads OS window sizes (UpdateViewportsNewFrame
+    // in third_party/imgui/imgui.cpp). Sent during a frame, the request was
+    // cleared at that frame's end before ImGui read it, and the report kept
+    // drawing at its un-maximized size, stretched to fill the window.
+    for (const HWND hwnd : g_maximize_due)
+        if (::IsWindow(hwnd)) ::ShowWindow(hwnd, SW_MAXIMIZE);
+    g_maximize_due.clear();
 }
 
 void run_frame(AppState& app, FrameText* capture) {
