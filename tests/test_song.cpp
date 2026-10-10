@@ -691,7 +691,7 @@ TEST_CASE(".mid: disco markers match the regexes they replaced") {
     }
     // The dynamics marker's two exact spellings are pinned as literal lists in
     // "dynamics tag: only Clone Hero's two exact spellings count"
-    // (test_s2_dynamics_tag.cpp).
+    // (test_dynamics_tag.cpp).
     CHECK(checked > 4000);
 }
 
