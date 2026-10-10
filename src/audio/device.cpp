@@ -34,7 +34,7 @@ namespace {
 std::atomic<bool> g_headless{false};
 }
 
-void set_headless(bool headless) { g_headless.store(headless); }
+bool set_headless(bool headless) { return g_headless.exchange(headless); }
 
 struct PreviewAudioDevice::Impl {
     Playback playback;
@@ -75,5 +75,7 @@ void PreviewAudioDevice::start() {
     }
     if (ma_device_start(&impl_->device) == MA_SUCCESS) impl_->started = true;
 }
+
+bool PreviewAudioDevice::started() const { return impl_ && impl_->started; }
 
 }  // namespace hydra::audio
