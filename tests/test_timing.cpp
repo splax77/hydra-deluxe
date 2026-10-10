@@ -246,5 +246,5 @@ TEST_CASE("timing: a new Song and an empty Preview scene read the one default me
 }
 
 // "No meter is written by hand outside apply_timesig" and "the Preview's time
-// box keeps no 4/4 literal of its own" are rows in test_single_owner.cpp, the
-// one scan of the source tree.
+// box keeps no 4/4 literal of its own" are rows in
+// tests/single_owner/rules/parse.json, read by the one scan of the source tree.

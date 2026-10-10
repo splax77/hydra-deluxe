@@ -581,7 +581,9 @@ add_executable(hydra_tests
     tests/test_song_length.cpp
     tests/test_utf8_paths.cpp
     tests/test_long_paths.cpp
-    tests/test_single_owner.cpp
+    tests/single_owner/scan.cpp
+    tests/single_owner/clones.cpp
+    tests/single_owner/special.cpp
     tests/test_docs_match_code.cpp
     tests/test_difficulty_table.cpp
     tests/test_disco_flip.cpp
@@ -628,7 +630,7 @@ target_compile_definitions(hydra_tests PRIVATE
     HYDRA_TESTDATA_DIR="${CMAKE_SOURCE_DIR}/testdata"
     HYDRA_INPUT_DIR="${CMAKE_SOURCE_DIR}/testdata/input"
     HYDRA_ASSET_DIR="${CMAKE_SOURCE_DIR}/assets/preview"
-    HYDRA_SOURCE_DIR="${CMAKE_SOURCE_DIR}"  # test_single_owner scans src/ and tools/
+    HYDRA_SOURCE_DIR="${CMAKE_SOURCE_DIR}"  # tests/single_owner scans src/, tools/ and tests/
 )
 
 # ---- hydra_uitest: the headless GUI test runner ----------------------------

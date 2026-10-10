@@ -31,9 +31,9 @@ Earlier rounds found the same five kinds of copy again and again. Name the kind 
 - **B.** A test that recomputes what production computes, instead of calling it or pinning a literal.
 - **C.** A copied test helper or fixture.
 - **D.** A number or rule with no user decision behind it, or a doc or comment stating the rule differently from the code.
-- **E.** A source scan outside `tests/test_single_owner.cpp`, or a scan row loose enough to let copies through.
+- **E.** A source scan outside `tests/single_owner/`, or a scan row loose enough to let copies through.
 
-The precheck covers B to E. Quote its lines for those kinds; do not hunt for them again. Check each quoted line is real (open the file at that line) and drop any that are not, saying why. Then spend your pass on kind A. Kind A is the review's real job, and no script can find it. The one exception is a pasted block: the clone scan in `tests/test_single_owner.cpp` (ADR 0025) already fails on any pasted block at least `kCloneWindowLines` code lines long. So spend review time on the copies it can't see: shorter ones, renamed ones, and the same rule worked out a different way. A change that adds an entry to `known_clones` is a finding. In earlier rounds, kind A also came from the fix rounds themselves and from old code several reviewers had passed, so read the changed functions' callers and neighbours, not only the diff lines.
+The precheck covers B to E. Quote its lines for those kinds; do not hunt for them again. Check each quoted line is real (open the file at that line) and drop any that are not, saying why. Then spend your pass on kind A. Kind A is the review's real job, and no script can find it. The one exception is a pasted block: the clone scan in `tests/single_owner/clones.cpp` (ADR 0025) already fails on any pasted block at least `kCloneWindowLines` code lines long. So spend review time on the copies it can't see: shorter ones, renamed ones, and the same rule worked out a different way. A change that adds an entry to `known_clones` is a finding. In earlier rounds, kind A also came from the fix rounds themselves and from old code several reviewers had passed, so read the changed functions' callers and neighbours, not only the diff lines.
 
 ## How to review
 
@@ -49,7 +49,7 @@ Rules: a grep that finds nothing proves nothing, so say where you looked. Never 
 
 **Read everything, once.** There is one review per change. Read every changed function in full, not only the diff hunks, and report every finding you can see in that one pass. Nobody gets a second look after you. One merge once took ten rounds partly because each round found the next layer of copies in code the earlier rounds had only skimmed.
 
-**A kind A fix ends in a scan row.** Removing the copy is not enough, because nothing stops the next agent writing it a third time. A kind A finding counts as fixed only when one of two things is true. Either the fix adds a row to `tests/test_single_owner.cpp` that would flag the removed copy if it came back. Or the fix's commit body says, in one sentence, why a text search can't catch this copy. You do one or the other when you fix it (step 3 below).
+**A kind A fix ends in a scan row.** Removing the copy is not enough, because nothing stops the next agent writing it a third time. A kind A finding counts as fixed only when one of two things is true. Either the fix adds a row that would flag the removed copy if it came back. The row goes in the owner's area file under `tests/single_owner/rules/`, and it needs every field `parse_rule` in `tests/single_owner/scan.cpp` requires. ADR 0029 lists those fields, says what each one means, and says which area file is the owner's. Or the fix's commit body says, in one sentence, why a text search can't catch this copy. You do one or the other when you fix it (step 3 below).
 
 **A comment that restates a rule is kind D.** A comment, header or doc line that spells out what a rule matches, instead of naming the function that owns it, is a second copy, even when it agrees with the code today. Name the owner it should point to.
 
@@ -67,7 +67,7 @@ The user decided in D107 (`docs/audit/2026-10-03-fix-decisions.md`) that a chang
    - **Sweep the whole range for its question.** Do not stop at the copies you listed. Grep every file the range touches, and their callers, for the inputs the question reads: the fields, constants and units, not just the names. For a kind C finding, grep `tests/` for every other definition of the helper, by name and by its body.
    - **Fold every copy into the owner.** Each copy calls the owner. A test calls production code or pins a literal from one run; it never computes an expected value.
    - **Prove nothing is left.** Run the grep again. It must find only the owner, or only lines the scan already lists as known.
-   - **For kind A, add the scan row** to `tests/test_single_owner.cpp`, or give the one-sentence reason no text search can catch the copy (see "A kind A fix ends in a scan row").
+   - **For kind A, add the scan row** to the owner's area file under `tests/single_owner/rules/`, or give the one-sentence reason no text search can catch the copy (see "A kind A fix ends in a scan row").
    - **Run the tests for that finding** with `-tc=` or `-sf=` filters, and the scan test `build-cpp\Release\hydra_tests.exe -tc="single-owner*"` if you added a row. Never the full suite.
    - **Commit that finding alone.** The commit body carries the grep you ran and its one-line result, and for kind A the scan row's question or the reason no row fits. Then the trailers from the preamble, with your own agent id in `Agent:`.
 4. **Run the precheck** on the range, now ending at your last commit. It must print nothing new; fix anything it prints the same way.
@@ -103,7 +103,7 @@ Then, in plain English, one short paragraph each:
 - **Precheck lines dropped**: any precheck line you found not to be a real copy, with one sentence why.
 - **Notes**: things worth fixing that don't block, such as a question for the user (see "A finding you should not fix yourself"), wording under `tools/` (see "Developer tools: wording is a note") or a gap in a single owner's list. If the precheck printed a large-range note, quote it here word for word, and repeat it in your final message. It is a warning for the orchestrator, not a finding, so it never changes the verdict.
 - **Touched, already on the fix list**: audit findings this change moves without fixing.
-- **Scan rows added**: for each kind A finding, the row you added to `tests/test_single_owner.cpp` (its question and owner file), or the one sentence saying why a text search can't catch it.
+- **Scan rows added**: for each kind A finding, the row you added under `tests/single_owner/rules/` (its question and rules file), or the one sentence saying why a text search can't catch it.
 - **Where I looked**: files and functions read.
 
 Submit with:
