@@ -20,6 +20,7 @@
 #include "imgui.h"
 #include "imgui_internal.h"  // ImGuiSelectableFlags_SpanAvailWidth
 #include "ui/app_state.h"
+#include "ui/column_widths.h"
 #include "ui/fonts.h"
 #include "ui/library_model.h"
 #include "ui/theme.h"
@@ -226,27 +227,67 @@ SecondLine second_line(const app::LibraryQuery& q, const LibraryRow& row, bool f
     return line;
 }
 
+// The table's columns as the width rule (ui/column_widths.h) sees them. Each
+// one is text that ends in "…" when its cell is too short, so each may cut.
+// The Best path cell draws in the mono font, so it is measured in it.
+std::vector<ColumnSpec> library_column_specs() {
+    const WidthOf text = measure_in_font();
+    const WidthOf mono = measure_in_font(g_mono_font);
+    std::vector<ColumnSpec> specs(kLibraryColumnCount);
+    specs[kColumnTitle] = {"Title", true, 0.0f, text};
+    specs[kColumnArtist] = {"Artist", true, 0.0f, text};
+    specs[kColumnCharter] = {"Charter", true, 0.0f, text};
+    specs[kColumnFolder] = {"Folder", true, 0.0f, text};
+    specs[kColumnBestPath] = {"Best path", true, 0.0f, mono};
+    return specs;
+}
+
+// Brings the table's cached measure up to date: all of it when the rows were
+// replaced or the UI scale changed, else only the cells whose row got a new
+// summary. Of the table's columns only Best path reads the summary
+// (library_cell_text).
+void update_column_widths(AppState& app) {
+    LibraryViewState::ColumnWidths& cache = app.library_ui.column_widths;
+    const std::vector<LibraryRow>& rows = app.library.rows();
+    const CellText text = [&rows](size_t r, size_t c) {
+        return library_cell_text(rows[r], static_cast<int>(c));
+    };
+    const std::vector<size_t> changed = app.library.take_summary_changes();
+    if (cache.measured.stale() || cache.rows_version != app.library.rows_version()) {
+        cache.specs = library_column_specs();
+        cache.measured = measure_widths(cache.specs, rows.size(), text);
+        cache.rows_version = app.library.rows_version();
+        return;
+    }
+    if (!changed.empty())
+        update_cells(cache.measured, cache.specs, kColumnBestPath, changed, rows.size(), text);
+}
+
 SecondLineUse render_table(AppState& app, ImVec2 size) {
     SecondLineUse used;
-    if (!ImGui::BeginTable("##librarytable", kLibraryColumnCount, base_table_flags(), size))
+    update_column_widths(app);
+    LibraryViewState::ColumnWidths& widths = app.library_ui.column_widths;
+    const std::vector<ColumnSpec>& columns = widths.specs;
+    widths.room = table_room("##librarytable", size.x, columns.size());
+    const ColumnLayout layout = place_columns(widths.measured, columns, widths.room);
+    if (!ImGui::BeginTable("##librarytable", kLibraryColumnCount, table_flags(), size,
+                           layout.inner_width))
         return used;
 
     ImGui::TableSetupScrollFreeze(0, 1);  // the header row stays on screen
-    ImGui::TableSetupColumn("Title",
-                            ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_DefaultSort |
-                                ImGuiTableColumnFlags_NoHide,
-                            1.0f, static_cast<ImGuiID>(LibrarySort::Title));
-    ImGui::TableSetupColumn("Artist", ImGuiTableColumnFlags_WidthStretch, 0.75f,
-                            static_cast<ImGuiID>(LibrarySort::Artist));
-    ImGui::TableSetupColumn("Charter", ImGuiTableColumnFlags_WidthStretch, 0.5f,
-                            static_cast<ImGuiID>(LibrarySort::Charter));
-    ImGui::TableSetupColumn("Folder", ImGuiTableColumnFlags_WidthStretch, 0.75f,
-                            static_cast<ImGuiID>(LibrarySort::Folder));
+    setup_column(columns[kColumnTitle], layout, kColumnTitle,
+                 ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_NoHide,
+                 static_cast<ImGuiID>(LibrarySort::Title));
+    setup_column(columns[kColumnArtist], layout, kColumnArtist, 0,
+                 static_cast<ImGuiID>(LibrarySort::Artist));
+    setup_column(columns[kColumnCharter], layout, kColumnCharter, 0,
+                 static_cast<ImGuiID>(LibrarySort::Charter));
+    setup_column(columns[kColumnFolder], layout, kColumnFolder, 0,
+                 static_cast<ImGuiID>(LibrarySort::Folder));
     // Highest score first on the first click.
-    ImGui::TableSetupColumn("Best path",
-                            ImGuiTableColumnFlags_WidthStretch |
-                                ImGuiTableColumnFlags_PreferSortDescending,
-                            1.0f, static_cast<ImGuiID>(LibrarySort::BestPath));
+    setup_column(columns[kColumnBestPath], layout, kColumnBestPath,
+                 ImGuiTableColumnFlags_PreferSortDescending,
+                 static_cast<ImGuiID>(LibrarySort::BestPath));
 
     // Charter and Folder make way for the song panel: hidden when it opens,
     // shown when it closes. In between, the header's right-click menu shows
@@ -254,6 +295,7 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
     // T9: read app.details_open() here once it exists.
     // The columns always stay in the order set up above (imgui#9519).
     keep_table_column_order();
+    apply_column_widths(layout);
 
     const bool panel_open = app.details_open();
     if (app.library_ui.columns_for_panel != panel_open) {
@@ -359,20 +401,17 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
             }
 
             // Every column but Title can be hidden from the header menu, and a
-            // hidden column's TableSetColumnIndex returns false.
-            if (ImGui::TableSetColumnIndex(kColumnArtist))
-                cell_text(row.artist,
-                          searching_words ? app::match_spans(q, app::QueryField::Artist, row.artist)
-                                          : std::vector<app::MatchSpan>{});
-            if (ImGui::TableSetColumnIndex(kColumnCharter))
-                cell_text(row.charter,
-                          searching_words ? app::match_spans(q, app::QueryField::Charter, row.charter)
-                                          : std::vector<app::MatchSpan>{});
-            if (ImGui::TableSetColumnIndex(kColumnFolder))
-                cell_text(row.entry.rootfolder,
-                          searching_words
-                              ? app::match_spans(q, app::QueryField::Folder, row.entry.rootfolder)
-                              : std::vector<app::MatchSpan>{});
+            // hidden column's TableSetColumnIndex returns false. Each cell
+            // draws library_cell_text, the text its column is measured from.
+            const auto searched_cell = [&](int column, app::QueryField field) {
+                if (!ImGui::TableSetColumnIndex(column)) return;
+                const std::string text = library_cell_text(row, column);
+                cell_text(text, searching_words ? app::match_spans(q, field, text)
+                                                : std::vector<app::MatchSpan>{});
+            };
+            searched_cell(kColumnArtist, app::QueryField::Artist);
+            searched_cell(kColumnCharter, app::QueryField::Charter);
+            searched_cell(kColumnFolder, app::QueryField::Folder);
 
             if (!ImGui::TableSetColumnIndex(kColumnBestPath)) {
                 ImGui::PopID();
@@ -383,7 +422,7 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
                                                                             : kNewSongColor;
             ImGui::PushStyleColor(ImGuiCol_Text, color);
             ImGui::PushFont(g_mono_font, 0.0f);
-            text_ellipsized(row.best_label().c_str());
+            text_ellipsized(library_cell_text(row, kColumnBestPath).c_str());
             ImGui::PopFont();
             ImGui::PopStyleColor();
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
