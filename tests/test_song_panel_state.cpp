@@ -26,6 +26,7 @@
 #include "temp_util.h"
 #include "ui/app_state.h"
 #include "ui/library_jobs.h"  // set_app_batch_analyzer_for_test
+#include "wait_util.h"
 
 using hydra::app::Settings;
 using hydra::store::ChartLibraryEntry;
@@ -150,7 +151,8 @@ TEST_CASE("song panel: a running batch locks the settings as a batch, then unloc
     hydra::ui::set_app_batch_analyzer_for_test(
         [&release](const std::string&, const hydra::app::AnalysisSettings&,
                    const std::function<void(float)>&) -> hydra::app::AnalysisResult {
-            while (!release.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            testwait::wait_until([&release] { return release.load(); },
+                                 "the test to release the chart");
             throw std::runtime_error("no chart file in this test");
         },
         1);
@@ -161,8 +163,8 @@ TEST_CASE("song panel: a running batch locks the settings as a batch, then unloc
     CHECK(app->settings_locked());
 
     release = true;
-    while (!app->batch_job->snapshot().finished)
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    testwait::wait_until([&] { return app->batch_job->snapshot().finished; },
+                         "the batch to finish");
     CHECK(app->settings_lock() == AppState::SettingsLock::None);
     CHECK_FALSE(app->settings_locked());
 }
