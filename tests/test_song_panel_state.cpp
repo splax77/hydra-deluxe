@@ -108,8 +108,8 @@ TEST_CASE("song panel: nothing is locked while idle") {
 // under load). Only a batch locks the settings now (D90 item 2).
 TEST_CASE("song panel: a running batch locks the settings as a batch, then unlocks") {
     ScratchPaths paths("panel_batchlock");
+    std::atomic<bool> release{false};  // before the app, which joins the batch's thread
     auto app = app_with_library(paths, 5);
-    std::atomic<bool> release{false};
     hydra::ui::set_app_batch_analyzer_for_test(
         [&release](const std::string&, const hydra::app::AnalysisSettings&,
                    const std::function<void(float)>&) -> hydra::app::AnalysisResult {

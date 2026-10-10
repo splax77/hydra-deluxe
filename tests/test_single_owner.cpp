@@ -4736,6 +4736,25 @@ const std::vector<OwnerRule>& rules() {
           "const store::RecordKey key = settings.record_key(it.md5);"},
          {},
          {"tests", "tools"}},
+        // A made-up window's ticks read off a song's chords. Windows built
+        // from literal ticks are not flagged; only ones read off a sequence.
+        {"How is a made-up replay window drawn from a song's chords?",
+         "window_over in tests/replay_windows.h",
+         R"(\b\w+\.(act_tick|deact_tick|sqout_tick)\s*=\s*[^;]*(sequence\[|tick_of\())",
+         "",
+         {},
+         {},
+         "derive-once review of ct-w2, finding 1 (2026-10-10); plan 2026-10-10-ci-test-tooling task 7",
+         {"w.act_tick = tick_of(a);", "w.act_tick = song.sequence[a].timecode.ticks();"},
+         {"return testreplay::window_over(song, a, len, offset, pick);",
+          "w.act_tick = 0;"},
+         {{"tests/replay_windows.h", "w.act_tick = song.sequence[a].timecode.ticks();",
+           "window_over, the owner"},
+          {"tests/replay_windows.h", "w.deact_tick = song.sequence[d].timecode.ticks() + deact_offset;",
+           "window_over, the owner"},
+          {"tests/replay_windows.h", "w.sqout_tick = song.sequence[q].timecode.ticks();",
+           "window_over, the owner"}},
+         {"tests", "tools"}},
         // hydra.db stores no path details (D87), so no serializer is left to
         // compare records through; a test that brings one back is a second
         // answer to the hasher's question (R16).
@@ -6460,7 +6479,6 @@ struct KnownClone {
 const std::vector<KnownClone>& known_clones() {
     static const std::vector<KnownClone> k = {
         {"src/audio/ma_reader.cpp", "src/audio/vorbis_reader.cpp", 9, R"x(pos_ += done;)x"},
-        {"tests/test_audio_player.cpp", "tests/test_preview_transport.cpp", 10, R"x(namespace {)x"},
         {"tests/test_highway_draw.cpp", "tests/test_track_state.cpp", 9, R"x(SongTiming timing(480, {{0, 1920}}, {{0, 300.0}});)x"},
         {"tests/test_highway_draw.cpp", "tests/test_track_state.cpp", 8, R"x(using namespace hydra;)x"},
         {"tests/test_highway_draw.cpp", "tests/test_track_state.cpp", 10, R"x(return s;)x"},

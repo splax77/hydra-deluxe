@@ -946,6 +946,9 @@ void finish_dm_report(AppState& app) {
 }
 
 // A report analyzer that waits for `release`, then analyzes as the app does.
+// Declare `release` BEFORE the AppState: the app joins the job's thread in
+// its destructor, so a failed check before the release must not destroy the
+// flag while the job still reads it.
 hydra::app::ChartAnalyzer held_report_analyzer(std::atomic<bool>& release) {
     return [&release](const std::string& path, const hydra::app::AnalysisSettings& s,
                       const std::function<void(float)>& on_progress) {
@@ -967,11 +970,11 @@ std::unique_ptr<AppState> app_with_result(const ScratchPaths& paths, const char*
 
 TEST_CASE("a path report request builds it in memory, one build at a time") {
     ScratchPaths paths("appstate_pathreq");
+    std::atomic<bool> release{false};
     std::unique_ptr<AppState> app = app_with_result(paths, "pathreq");
     CHECK(app->library_has_analyzed());
     CHECK(app->path_report_build() == ReportBuild::None);
 
-    std::atomic<bool> release{false};
     hydra::ui::set_report_analyzer_for_test(held_report_analyzer(release));
     app->request_path_report();
     hydra::ui::set_report_analyzer_for_test({});
@@ -1060,8 +1063,8 @@ TEST_CASE("a path report built on opening its window says so; Refresh's does not
 
 TEST_CASE("closing the path report mid-build cancels the build, and nothing lands") {
     ScratchPaths paths("appstate_pathclosebuild");
-    std::unique_ptr<AppState> app = app_with_result(paths, "pathclosebuild");
     std::atomic<bool> release{false};
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathclosebuild");
     hydra::ui::set_report_analyzer_for_test(held_report_analyzer(release));
     app->show_path_report();
     hydra::ui::set_report_analyzer_for_test({});
@@ -1090,8 +1093,8 @@ TEST_CASE("closing the path report mid-build cancels the build, and nothing land
 
 TEST_CASE("reopening the path report after a cancelled build builds it again") {
     ScratchPaths paths("appstate_pathclosecancelled");
-    std::unique_ptr<AppState> app = app_with_result(paths, "pathclosecancelled");
     std::atomic<bool> release{false};
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathclosecancelled");
     hydra::ui::set_report_analyzer_for_test(held_report_analyzer(release));
     app->show_path_report();
     hydra::ui::set_report_analyzer_for_test({});
@@ -1163,8 +1166,8 @@ TEST_CASE("the path report goes out of date on a batch or a setting it was built
 
 TEST_CASE("a setting changed during a build leaves that build out of date") {
     ScratchPaths paths("appstate_pathduring");
-    std::unique_ptr<AppState> app = app_with_result(paths, "pathduring");
     std::atomic<bool> release{false};
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathduring");
     hydra::ui::set_report_analyzer_for_test(held_report_analyzer(release));
     app->request_path_report();
     hydra::ui::set_report_analyzer_for_test({});
@@ -1178,13 +1181,13 @@ TEST_CASE("a setting changed during a build leaves that build out of date") {
 
 TEST_CASE("Cancel ends a path report build as cancelled and keeps the last report") {
     ScratchPaths paths("appstate_pathcancel");
+    std::atomic<bool> release{false};
     std::unique_ptr<AppState> app = app_with_result(paths, "pathcancel");
     app->request_path_report();
     finish_path_report(*app);
     const auto kept = app->path_report.result;
     REQUIRE(kept != nullptr);
 
-    std::atomic<bool> release{false};
     hydra::ui::set_report_analyzer_for_test(held_report_analyzer(release));
     app->request_path_report();
     hydra::ui::set_report_analyzer_for_test({});
@@ -1251,10 +1254,11 @@ const char* const kDmScoresJson =
 // last comparison.
 TEST_CASE("picking a player opens the comparison; Refresh reuses the player") {
     ScratchPaths paths("appstate_dmreport");
-    std::unique_ptr<AppState> app = app_on(paths);
+    // Before the app, which joins the fetch's thread: the fetcher reads them.
     std::mutex m;
     std::vector<std::string> score_urls;
     std::atomic<bool> hold{false};
+    std::unique_ptr<AppState> app = app_on(paths);
     hydra::net::set_fetcher([&](const std::string& url,
                                 const std::atomic<bool>* cancel) -> std::string {
         if (url.find("/all-users") != std::string::npos) return kDmUsersJson;
@@ -1615,6 +1619,7 @@ TEST_CASE("the post-batch report lists the batch's cap and lens, not the live se
 // in the window then refreshed, a close, and a new batch.
 TEST_CASE("the strip's report_started holds through a cancel, a refresh and a close") {
     ScratchPaths paths("appstate_batchlanded");
+    std::atomic<bool> release{false};
     std::unique_ptr<AppState> app = app_with_result(paths, "batchlanded");
     const std::string title = app->library_row_at(0).title;
     CHECK_FALSE(app->report_started);
@@ -1622,7 +1627,6 @@ TEST_CASE("the strip's report_started holds through a cancel, a refresh and a cl
     // The batch's own report is cancelled in the window, then refreshed: the
     // refresh's rows are the strip's to show, though its cause is Request.
     run_redo_batch_over(*app, title);
-    std::atomic<bool> release{false};
     hydra::ui::set_report_analyzer_for_test(held_report_analyzer(release));
     app->update_background_jobs();  // starts the batch's own report, held
     hydra::ui::set_report_analyzer_for_test({});
@@ -1651,13 +1655,14 @@ TEST_CASE("the strip's report_started holds through a cancel, a refresh and a cl
 // when the finished strip is dismissed.
 TEST_CASE("a stopped batch lets go of its report rows when it ends") {
     ScratchPaths paths("appstate_stopseed");
+    std::atomic<int> calls{0};  // before the app, which joins the batch's thread
     std::unique_ptr<AppState> app = app_on(paths);
     const hydra::app::AnalysisResult real =
         corpus::first_analyzed_with_paths(app->settings.batch_run().settings);
-    std::atomic<int> calls{0};
-    // The first chart is saved; the second runs until Stop.
-    start_redo_batch(*app, [&](const std::string&, const hydra::app::AnalysisSettings&,
-                               const std::function<void(float)>& on_progress)
+    // The first chart is saved; the second runs until Stop. `real` is copied
+    // in, since it is declared after the app.
+    start_redo_batch(*app, [&calls, real](const std::string&, const hydra::app::AnalysisSettings&,
+                                          const std::function<void(float)>& on_progress)
                                -> hydra::app::AnalysisResult {
         if (calls++ == 0) return real;
         testwait::tick_until_thrown([&] { on_progress(0.0f); }, "the test to press Stop");

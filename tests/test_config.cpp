@@ -308,55 +308,14 @@ TEST_CASE("chartmode_key builds its difficulty word from difficulty()") {
     CHECK(s.chartmode_key().rfind("Expert ", 0) == 0);
 }
 
-TEST_CASE("chartmode_key names the view flags") {
-    // All four Expert keys, byte for byte: every record already in a user's
-    // store is filed under one of these, so none of them may ever move.
-    Settings s;
-    CHECK(s.chartmode_key() == "Expert Pro Drums, 2x Bass");
-    s.view_bass2x = false;
-    CHECK(s.chartmode_key() == "Expert Pro Drums, 1x Bass");
-    s.view_prodrums = false;
-    CHECK(s.chartmode_key() == "Expert Drums, 1x Bass");
-    s.view_bass2x = true;
-    CHECK(s.chartmode_key() == "Expert Drums, 2x Bass");
-}
-
-TEST_CASE("chartmode_key: 2x Bass applies at every difficulty (D20)") {
-    Settings s;
-    s.view_difficulty = "Hard";
-    s.view_prodrums = true;
-    s.view_bass2x = true;  // Clone Hero's Double Kick works at every difficulty
-    CHECK(s.difficulty() == hydra::Difficulty::Hard);
-    CHECK(s.effective_bass2x());
-    CHECK(s.chartmode_key() == "Hard Pro Drums, 2x Bass");
-    CHECK(s.to_analysis_settings().bass2x);
-    CHECK(s.to_analysis_settings().difficulty == hydra::Difficulty::Hard);
-
-    s.view_bass2x = false;
-    CHECK_FALSE(s.effective_bass2x());
-    CHECK(s.chartmode_key() == "Hard Pro Drums, 1x Bass");
-    s.view_prodrums = false;
-    CHECK(s.chartmode_key() == "Hard Drums, 1x Bass");
-    s.view_difficulty = "Medium";
-    CHECK(s.chartmode_key() == "Medium Drums, 1x Bass");
-    s.view_bass2x = true;
-    CHECK(s.chartmode_key() == "Medium Drums, 2x Bass");
-    s.view_difficulty = "Easy";
-    CHECK(s.chartmode_key() == "Easy Drums, 2x Bass");
-
-    // Expert's keys don't move (the case above pins all four byte for byte).
-    s.view_difficulty = "Expert";
-    s.view_prodrums = true;
-    CHECK(s.chartmode_key() == "Expert Pro Drums, 2x Bass");
-}
-
 namespace {
 
 // One Difficulty, Pro Drums and 2x Bass choice, with the key it spells with
 // Note Shuffle off and on. The off keys are the ones already in users'
-// stores, so they never move; the on keys are D104's.
+// stores, so they never move, byte for byte; the on keys are D104's.
 struct ModeCase {
     const char* difficulty;
+    hydra::Difficulty level;  // what difficulty() reads from that word
     bool prodrums;
     bool bass2x;
     const char* key_off;
@@ -364,22 +323,22 @@ struct ModeCase {
 };
 
 const ModeCase kModeCases[] = {
-    {"Expert", true, true, "Expert Pro Drums, 2x Bass", "Expert Pro Drums, 2x Bass, Note Shuffle"},
-    {"Expert", true, false, "Expert Pro Drums, 1x Bass", "Expert Pro Drums, 1x Bass, Note Shuffle"},
-    {"Expert", false, true, "Expert Drums, 2x Bass", "Expert Drums, 2x Bass, Note Shuffle"},
-    {"Expert", false, false, "Expert Drums, 1x Bass", "Expert Drums, 1x Bass, Note Shuffle"},
-    {"Hard", true, true, "Hard Pro Drums, 2x Bass", "Hard Pro Drums, 2x Bass, Note Shuffle"},
-    {"Hard", true, false, "Hard Pro Drums, 1x Bass", "Hard Pro Drums, 1x Bass, Note Shuffle"},
-    {"Hard", false, true, "Hard Drums, 2x Bass", "Hard Drums, 2x Bass, Note Shuffle"},
-    {"Hard", false, false, "Hard Drums, 1x Bass", "Hard Drums, 1x Bass, Note Shuffle"},
-    {"Medium", true, true, "Medium Pro Drums, 2x Bass", "Medium Pro Drums, 2x Bass, Note Shuffle"},
-    {"Medium", true, false, "Medium Pro Drums, 1x Bass", "Medium Pro Drums, 1x Bass, Note Shuffle"},
-    {"Medium", false, true, "Medium Drums, 2x Bass", "Medium Drums, 2x Bass, Note Shuffle"},
-    {"Medium", false, false, "Medium Drums, 1x Bass", "Medium Drums, 1x Bass, Note Shuffle"},
-    {"Easy", true, true, "Easy Pro Drums, 2x Bass", "Easy Pro Drums, 2x Bass, Note Shuffle"},
-    {"Easy", true, false, "Easy Pro Drums, 1x Bass", "Easy Pro Drums, 1x Bass, Note Shuffle"},
-    {"Easy", false, true, "Easy Drums, 2x Bass", "Easy Drums, 2x Bass, Note Shuffle"},
-    {"Easy", false, false, "Easy Drums, 1x Bass", "Easy Drums, 1x Bass, Note Shuffle"},
+    {"Expert", hydra::Difficulty::Expert, true, true, "Expert Pro Drums, 2x Bass", "Expert Pro Drums, 2x Bass, Note Shuffle"},
+    {"Expert", hydra::Difficulty::Expert, true, false, "Expert Pro Drums, 1x Bass", "Expert Pro Drums, 1x Bass, Note Shuffle"},
+    {"Expert", hydra::Difficulty::Expert, false, true, "Expert Drums, 2x Bass", "Expert Drums, 2x Bass, Note Shuffle"},
+    {"Expert", hydra::Difficulty::Expert, false, false, "Expert Drums, 1x Bass", "Expert Drums, 1x Bass, Note Shuffle"},
+    {"Hard", hydra::Difficulty::Hard, true, true, "Hard Pro Drums, 2x Bass", "Hard Pro Drums, 2x Bass, Note Shuffle"},
+    {"Hard", hydra::Difficulty::Hard, true, false, "Hard Pro Drums, 1x Bass", "Hard Pro Drums, 1x Bass, Note Shuffle"},
+    {"Hard", hydra::Difficulty::Hard, false, true, "Hard Drums, 2x Bass", "Hard Drums, 2x Bass, Note Shuffle"},
+    {"Hard", hydra::Difficulty::Hard, false, false, "Hard Drums, 1x Bass", "Hard Drums, 1x Bass, Note Shuffle"},
+    {"Medium", hydra::Difficulty::Medium, true, true, "Medium Pro Drums, 2x Bass", "Medium Pro Drums, 2x Bass, Note Shuffle"},
+    {"Medium", hydra::Difficulty::Medium, true, false, "Medium Pro Drums, 1x Bass", "Medium Pro Drums, 1x Bass, Note Shuffle"},
+    {"Medium", hydra::Difficulty::Medium, false, true, "Medium Drums, 2x Bass", "Medium Drums, 2x Bass, Note Shuffle"},
+    {"Medium", hydra::Difficulty::Medium, false, false, "Medium Drums, 1x Bass", "Medium Drums, 1x Bass, Note Shuffle"},
+    {"Easy", hydra::Difficulty::Easy, true, true, "Easy Pro Drums, 2x Bass", "Easy Pro Drums, 2x Bass, Note Shuffle"},
+    {"Easy", hydra::Difficulty::Easy, true, false, "Easy Pro Drums, 1x Bass", "Easy Pro Drums, 1x Bass, Note Shuffle"},
+    {"Easy", hydra::Difficulty::Easy, false, true, "Easy Drums, 2x Bass", "Easy Drums, 2x Bass, Note Shuffle"},
+    {"Easy", hydra::Difficulty::Easy, false, false, "Easy Drums, 1x Bass", "Easy Drums, 1x Bass, Note Shuffle"},
 };
 
 }  // namespace
@@ -391,6 +350,11 @@ TEST_CASE("chartmode_key: Note Shuffle off leaves every key as it was, on adds a
         s.view_difficulty = c.difficulty;
         s.view_prodrums = c.prodrums;
         s.view_bass2x = c.bass2x;
+        CHECK(s.difficulty() == c.level);
+        CHECK(s.to_analysis_settings().difficulty == c.level);
+        // The 2x Bass box counts at every difficulty, not only Expert (D20).
+        CHECK(s.effective_bass2x() == c.bass2x);
+        CHECK(s.to_analysis_settings().bass2x == c.bass2x);
         CHECK_FALSE(s.view_noteshuffle);  // off by default
         CHECK(s.chartmode_key() == c.key_off);
         s.view_noteshuffle = true;

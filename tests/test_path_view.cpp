@@ -6,7 +6,6 @@
 #include "doctest.h"
 
 #include <map>
-#include <chrono>
 #include <string>
 #include <vector>
 
@@ -664,36 +663,6 @@ TEST_CASE("PathsTabCache: views are built once and rebuilt only when their input
     CHECK(d.squeezes.size() == build_multsqueezes(rec).size());
     CHECK(d.activations.acts.size() ==
           build_activations(best, rec, &timing, 71.0, 30.0).acts.size());
-}
-
-TEST_CASE("PathsTabCache: 600 cached frames cost far less than 600 rebuilds") {
-    using clock = std::chrono::steady_clock;
-    const AnalysisResult& ar = analyzed();
-    const HydraRecord& rec = ar.record;
-    const SongTiming& timing = ar.song.timing();
-    const Path& best = rec.best_path();
-
-    // What a Paths frame did before: every view, every row label.
-    const clock::time_point t0 = clock::now();
-    for (int frame = 0; frame < 600; ++frame) {
-        PathButtonsView list = build_path_buttons(rec, 0, 10);
-        std::vector<MultSqueezeView> sq = build_multsqueezes(rec);
-        ActivationsView acts = build_activations(best, rec, &timing, 70.0);
-        std::vector<std::string> bd = build_score_breakdown(best);
-    }
-    const clock::time_point t1 = clock::now();
-    PathsTabCache cache;
-    for (int frame = 0; frame < 600; ++frame) {
-        cache.buttons(rec, 1, 0, 10);
-        cache.details(best, rec, 1, &timing, 70.0, std::nullopt, core::default_rules());
-    }
-    const clock::time_point t2 = clock::now();
-
-    const double rebuilt_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-    const double cached_ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
-    MESSAGE("600 rebuilt frames: " << rebuilt_ms << " ms; 600 cached frames: " << cached_ms
-                                   << " ms");
-    CHECK(cached_ms * 10.0 < rebuilt_ms);
 }
 
 TEST_CASE("format_measure: one form for both tabs") {

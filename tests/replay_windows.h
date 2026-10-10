@@ -23,10 +23,39 @@ struct Lcg {
     }
 };
 
-// `count` made-up windows over `song`: random activation chords, windows of
-// 1 to 60 chords that overlap freely, deactivation nodes that are sometimes a
-// few ticks off a chord, and a squeeze-out chord on about a quarter of them
-// (anywhere from 3 chords before the SP end to 3 after, so some sit before D).
+// The shape of a made-up window. Windows are 1 to kMaxWindowChords chords
+// long and overlap freely. About one in kDeactOffsetOneIn has its deactivation
+// node 0 to kDeactOffsetRange - 1 ticks off a chord. About one in kSqoutOneIn
+// has a squeeze-out chord, kSqoutBefore chords before the SP end up to
+// kSqoutBefore after it (so some sit before D).
+constexpr size_t kMaxWindowChords = 60;
+constexpr size_t kDeactOffsetOneIn = 3;
+constexpr int64_t kDeactOffsetRange = 10;
+constexpr size_t kSqoutOneIn = 4;
+constexpr size_t kSqoutBefore = 3;
+constexpr size_t kSqoutPicks = 2 * kSqoutBefore + 1;
+
+// One made-up window over `song` (which must have chords) from already drawn
+// numbers: the activation chord `a`, its length in chords, the deactivation
+// node's offset in ticks, and the squeeze-out pick (0 to kSqoutPicks - 1, or
+// -1 for none). Every generator of made-up windows, the Lcg one below and a
+// property test's, draws its numbers and calls this, so the shape is here once.
+inline hydra::ReplayWindow window_over(const hydra::Song& song, size_t a, size_t len,
+                                       int64_t deact_offset, int sqout_pick) {
+    const size_t n = song.sequence.size();
+    const size_t d = std::min(a + len, n - 1);
+    hydra::ReplayWindow w;
+    w.act_tick = song.sequence[a].timecode.ticks();
+    w.deact_tick = song.sequence[d].timecode.ticks() + deact_offset;
+    if (sqout_pick >= 0) {
+        const size_t lo = d >= kSqoutBefore ? d - kSqoutBefore : 0;
+        const size_t q = std::min(lo + static_cast<size_t>(sqout_pick), n - 1);
+        w.sqout_tick = song.sequence[q].timecode.ticks();
+    }
+    return w;
+}
+
+// `count` made-up windows over `song`, drawn from an Lcg seeded with `seed`.
 inline std::vector<hydra::ReplayWindow> synthetic_windows(const hydra::Song& song, size_t count,
                                                           uint64_t seed) {
     std::vector<hydra::ReplayWindow> out;
@@ -36,18 +65,12 @@ inline std::vector<hydra::ReplayWindow> synthetic_windows(const hydra::Song& son
     out.reserve(count);
     for (size_t j = 0; j < count; ++j) {
         const size_t a = rng.next() % n;
-        const size_t len = 1 + rng.next() % 60;
-        const size_t d = std::min(a + len, n - 1);
-        hydra::ReplayWindow w;
-        w.act_tick = song.sequence[a].timecode.ticks();
-        w.deact_tick = song.sequence[d].timecode.ticks() +
-                       (rng.next() % 3 == 0 ? static_cast<int64_t>(rng.next() % 10) : 0);
-        if (rng.next() % 4 == 0) {
-            const size_t lo = d >= 3 ? d - 3 : 0;
-            const size_t q = std::min(lo + rng.next() % 7, n - 1);
-            w.sqout_tick = song.sequence[q].timecode.ticks();
-        }
-        out.push_back(w);
+        const size_t len = 1 + rng.next() % kMaxWindowChords;
+        const int64_t offset =
+            rng.next() % kDeactOffsetOneIn == 0 ? static_cast<int64_t>(rng.next() % kDeactOffsetRange) : 0;
+        const int pick =
+            rng.next() % kSqoutOneIn == 0 ? static_cast<int>(rng.next() % kSqoutPicks) : -1;
+        out.push_back(window_over(song, a, len, offset, pick));
     }
     return out;
 }
