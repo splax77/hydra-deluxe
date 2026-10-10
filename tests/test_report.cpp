@@ -633,7 +633,8 @@ TEST_CASE("generate_report: one seam frames the report for every entry point") {
           sentence);
 }
 
-TEST_CASE("generate_report: \"every path\" is the sentinel's, a huge --paths stays a count (86)") {
+// Finding 86.
+TEST_CASE("generate_report: \"every path\" is the sentinel's, a huge --paths stays a count") {
     store::RecordStore store(":memory:");
     REQUIRE(fill_store(store, 4, 1) > 0);
 
@@ -688,7 +689,8 @@ TEST_CASE("generate_report hands back nothing when its cancel flag is set") {
     CHECK(result.empty_reason == report::EmptyReason::Cancelled);
 }
 
-TEST_CASE("the report reuses the charts a batch just analyzed (D87 item 5)") {
+// D87 item 5.
+TEST_CASE("the report reuses the charts a batch just analyzed") {
     store::RecordStore store(":memory:");
     std::vector<store::ChartLibraryEntry> library;
     const std::vector<std::string> files = fill_store(store, library, 4, 3);
@@ -782,7 +784,8 @@ TEST_CASE("the report analyzes the copy that names a chart the scan found twice"
     CHECK(page.records == 2);  // both copies count (D76)
 }
 
-TEST_CASE("a report on results with no chart library says the library is missing (D89)") {
+// D89.
+TEST_CASE("a report on results with no chart library says the library is missing") {
     // What hydra_batch with folder arguments leaves: results, and no scan
     // ever saved as the library. (A scan that lists nothing deletes the
     // results too, D87 item 4.)

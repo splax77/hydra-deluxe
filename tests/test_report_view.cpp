@@ -160,7 +160,8 @@ std::vector<DmReportRow> dm_sample() {
 
 }  // namespace
 
-TEST_CASE("report view search: folded words in any order, nothing more (D56 item 1)") {
+// D56 item 1.
+TEST_CASE("report view search: folded words in any order, nothing more") {
     using report_view::search_matches;
     using report_view::search_words;
     CHECK(search_words("  Beyonc\xC3\xA9   HALO ") == std::vector<std::string>{"beyonce", "halo"});
@@ -217,7 +218,8 @@ TEST_CASE("report view: search, keep-rule, clear_search and the count line") {
           "1,234 of 56,789 paths");
 }
 
-TEST_CASE("report view count line: the noun follows counted on the total (D103 item 18)") {
+// D103 item 18.
+TEST_CASE("report view count line: the noun follows counted on the total") {
     TableView<ReportRow> view = path_view({path_row("Halo", "Beyonce", "A", "1", 300, 1.0, true)});
     CHECK(view.count_line(path_report_view::kNoun) == "1 of 1 path");
     view.set_search("nope");
