@@ -1,0 +1,1 @@
+rapidcheck @ 2c3c4365aca21ef4e612768fdc95b1ce8b39a651 (https://github.com/emil-e/rapidcheck, branch: master, 2026-10-05); only what the library build needs is vendored: CMakeLists.txt, include/, src/, LICENSE.md, pkg-config.pc.cmake, and the ext/ and extras/ CMakeLists.txt files (every option they test is off)

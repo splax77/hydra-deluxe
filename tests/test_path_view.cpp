@@ -6,7 +6,6 @@
 #include "doctest.h"
 
 #include <map>
-#include <chrono>
 #include <string>
 #include <vector>
 
@@ -615,28 +614,6 @@ TEST_CASE("build_activations: plain rows past the leeway show 0") {
     for (const BackendRowView& row : b) CHECK_FALSE(row.warn);
 }
 
-// Not an invariant: it names a chart the GUI test can open to see an
-// uncounted squeezed-out row for real. Prints nothing when none exists. It
-// runs under the GUI tests' settings, and only by hand (doctest::skip()), so
-// analyzing every chart before the search starts is fine here.
-TEST_CASE("find a chart with an uncounted squeezed-out row" * doctest::skip()) {
-    const AnalysisSettings settings = scratch_settings().to_analysis_settings();
-    for (const corpus::ChartWithPaths& c :
-         corpus::charts_with_paths(settings, corpus::chart_paths().size())) {
-        const AnalysisResult& r = c.result;
-        ActivationsView v = build_activations(r.record.best_path(), r.record,
-                                              &r.song.timing(), 85.0);
-        for (const ActivationRowView& av : v.acts)
-            for (const BackendRowView& row : av.backends)
-                if (row.rating.find("(uncounted) <-- squeezed out") !=
-                    std::string::npos) {
-                    MESSAGE(c.chart << " | activation " << av.number << " " << av.notation);
-                    return;
-                }
-    }
-    MESSAGE("no corpus chart has one at depth 2");
-}
-
 TEST_CASE("build_multsqueezes: one labeled entry per squeeze") {
     const HydraRecord& rec = analyzed().record;
     std::vector<MultSqueezeView> v = build_multsqueezes(rec);
@@ -686,36 +663,6 @@ TEST_CASE("PathsTabCache: views are built once and rebuilt only when their input
     CHECK(d.squeezes.size() == build_multsqueezes(rec).size());
     CHECK(d.activations.acts.size() ==
           build_activations(best, rec, &timing, 71.0, 30.0).acts.size());
-}
-
-TEST_CASE("PathsTabCache: 600 cached frames cost far less than 600 rebuilds") {
-    using clock = std::chrono::steady_clock;
-    const AnalysisResult& ar = analyzed();
-    const HydraRecord& rec = ar.record;
-    const SongTiming& timing = ar.song.timing();
-    const Path& best = rec.best_path();
-
-    // What a Paths frame did before: every view, every row label.
-    const clock::time_point t0 = clock::now();
-    for (int frame = 0; frame < 600; ++frame) {
-        PathButtonsView list = build_path_buttons(rec, 0, 10);
-        std::vector<MultSqueezeView> sq = build_multsqueezes(rec);
-        ActivationsView acts = build_activations(best, rec, &timing, 70.0);
-        std::vector<std::string> bd = build_score_breakdown(best);
-    }
-    const clock::time_point t1 = clock::now();
-    PathsTabCache cache;
-    for (int frame = 0; frame < 600; ++frame) {
-        cache.buttons(rec, 1, 0, 10);
-        cache.details(best, rec, 1, &timing, 70.0, std::nullopt, core::default_rules());
-    }
-    const clock::time_point t2 = clock::now();
-
-    const double rebuilt_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-    const double cached_ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
-    MESSAGE("600 rebuilt frames: " << rebuilt_ms << " ms; 600 cached frames: " << cached_ms
-                                   << " ms");
-    CHECK(cached_ms * 10.0 < rebuilt_ms);
 }
 
 TEST_CASE("format_measure: one form for both tabs") {

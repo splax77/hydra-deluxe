@@ -23,6 +23,7 @@
 
 #include "../scratch_settings.h"
 #include "../temp_util.h"
+#include "../wait_util.h"
 #include "../warp_util.h"  // tests/ is not on the runner's include path
 
 #include "app/allocator.h"
@@ -264,8 +265,17 @@ static void wait_for_gpu(Harness& h) {
     if (FAILED(h.device->CreateQuery(&qd, &done))) return;
     h.context->End(done.Get());
     BOOL finished = FALSE;
-    while (h.context->GetData(done.Get(), &finished, sizeof(finished), 0) == S_FALSE)
-        std::this_thread::yield();
+    try {
+        testwait::wait_until(
+            [&] { return h.context->GetData(done.Get(), &finished, sizeof(finished), 0) != S_FALSE; },
+            "the GPU to finish its frames");
+    } catch (const testwait::WaitTimeout& e) {
+        // This runs on the test engine's thread, where a throw would end the
+        // process with no message, so say why and stop here.
+        std::fprintf(stderr, "hydra_uitest: %s\n", e.what());
+        std::fflush(stderr);
+        std::_Exit(1);
+    }
 }
 
 void Harness::stop() {
@@ -404,10 +414,13 @@ BatchGate::BatchGate(int workers) {
         [](const std::string& path, const hydra::app::AnalysisSettings& settings,
            const std::function<void(float)>& on_progress) {
             const int n = ++g_gate_started;
-            while (n > g_gate_allowed.load()) {
-                on_progress(0.0f);  // throws once Stop is pressed
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
+            testwait::wait_until(
+                [&] {
+                    if (n <= g_gate_allowed.load()) return true;
+                    on_progress(0.0f);  // throws once Stop is pressed
+                    return false;
+                },
+                "the test to let chart " + std::to_string(n) + " through the batch gate");
             return hydra::app::analyze_chart_file(path, settings, on_progress);
         },
         workers);
@@ -436,10 +449,13 @@ ViewGate::ViewGate() {
         [](const std::string& path, const hydra::app::AnalysisSettings& settings,
            const std::function<void(float)>& on_progress) {
             ++g_view_gate_started;
-            while (!g_view_gate_open.load()) {
-                on_progress(0.0f);  // throws once Cancel or a setting change stops it
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
+            testwait::wait_until(
+                [&] {
+                    if (g_view_gate_open.load()) return true;
+                    on_progress(0.0f);  // throws once Cancel or a setting change stops it
+                    return false;
+                },
+                "the test to open the click's gate");
             return hydra::app::analyze_chart_file(path, settings, on_progress);
         });
 }
@@ -469,8 +485,8 @@ OpenGate::OpenGate() {
             if (progress.step != hydra::ui::StoreOpenProgress::Step::Copying) return;
             if (g_open_gate_open.load()) return;
             ++g_open_gate_started;
-            while (!g_open_gate_open.load() && !cancelled())
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            testwait::wait_until([&] { return g_open_gate_open.load() || cancelled(); },
+                                 "the test to open the startup open's gate");
         });
 }
 

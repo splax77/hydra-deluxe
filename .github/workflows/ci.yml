@@ -49,7 +49,7 @@ jobs:
       # The GUI tests draw offscreen on the software GPU and never touch sound
       # or the network (docs/agents/ui-testing.md).
       - name: Run hydra_uitest
-        run: .\build-cpp\Release\hydra_uitest.exe --all --jobs 4
+        run: .\build-cpp\Release\hydra_uitest.exe --all
 
   # The same tests built with AddressSanitizer, which stops a test at the first
   # memory error (an overrun, a use after free) and prints where it happened.
