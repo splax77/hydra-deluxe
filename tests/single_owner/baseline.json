@@ -1,23 +1,4 @@
 {
   "known_copies": [],
-  "known_clones": [
-    {
-      "file_a": "tests/test_search.cpp",
-      "file_b": "tests/test_search.cpp",
-      "lines": 10,
-      "first": "Song song = build_tail_song({{0, true, false},",
-      "date": "2026-10-05",
-      "added_by": "MR1",
-      "remove_by": "2026-10-19"
-    },
-    {
-      "file_a": "tests/test_search.cpp",
-      "file_b": "tests/test_search.cpp",
-      "lines": 9,
-      "first": "{768, true, false},",
-      "date": "2026-10-05",
-      "added_by": "MR1",
-      "remove_by": "2026-10-19"
-    }
-  ]
+  "known_clones": []
 }
