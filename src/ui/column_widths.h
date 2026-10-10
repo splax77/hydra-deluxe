@@ -108,6 +108,12 @@ struct TableRoom {
     // Per column, whether ImGui shows it (the user can hide columns). Empty:
     // every column is shown. Hidden columns take no room.
     std::vector<bool> shown;
+    // Per column, how wide ImGui drew the column's header last frame, with
+    // the room it keeps for the sort arrow and sort-order digit, which text
+    // alone does not give. place_columns never goes below it, so a sorted
+    // column is never cut in its header. Empty, or 0 for a column: not known
+    // yet (the table's first frame); the header's text width stands alone.
+    std::vector<float> header_drawn;
 };
 
 // This frame's widths.
@@ -128,7 +134,8 @@ struct ColumnLayout {
 // is left in proportion to their measured widths, each between its header's
 // width and its measured width; one pinned at its header's width leaves the
 // rest to the others. When even the headers do not fit, every cut column is
-// at its header's width and the table scrolls.
+// at its header's width and the table scrolls. A header's width is its text
+// or, when wider, room.header_drawn; a column is never narrower than it.
 ColumnLayout place_columns(const MeasuredWidths& measured, const std::vector<ColumnSpec>& specs,
                            const TableRoom& room);
 
@@ -150,8 +157,9 @@ WidthOf text_width(ImFont* font = nullptr);
 // BeginTable, in the window the table goes in, with the outer width that
 // BeginTable gets (0 or less: ImGui's usual "the rest of the line" rule). It
 // reads what ImGui knew of the table last frame: its spacing, its hidden
-// columns and whether it showed a vertical scrollbar. Before the table's
-// first frame it assumes no spacing and every column shown.
+// columns, the width each header was drawn at and whether it showed a
+// vertical scrollbar. Before the table's first frame it assumes no spacing,
+// every column shown and no header wider than its text.
 TableRoom table_room(const char* str_id, float outer_width, std::size_t column_count);
 
 // TableSetupColumn for column `column`, as a fixed-width column at the

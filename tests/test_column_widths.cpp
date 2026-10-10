@@ -120,6 +120,73 @@ TEST_CASE("column_widths: when the minimums don't fit, the inner width is their 
     CHECK(l.min_inner_width == 160.0f);
 }
 
+TEST_CASE("column_widths: a header drawn wider than its text (the sort arrow) lifts the floor") {
+    const MeasuredWidths m = hydra::ui::measure_widths(kSpecs, kRows.size(), cells(kRows));
+    // Artist's header is drawn 80 wide: its text 60 plus 20 for the sort
+    // arrow. Available 170, spacing 10: leftover 110. Song 110 * 200 / 300 =
+    // 73.3, Artist 110 * 100 / 300 = 36.7, below its floor of 80, so Artist
+    // sits at 80. Song gets the 30 left, below its own header's 40, so Song
+    // sits at 40. Inner width 50 + 40 + 80 + 10 = 180, more than 170: scrolls.
+    const ColumnLayout l =
+        hydra::ui::place_columns(m, kSpecs, TableRoom{170.0f, 10.0f, {}, {0.0f, 0.0f, 80.0f}});
+    CHECK(l.widths == std::vector<float>{50.0f, 40.0f, 80.0f});
+    CHECK(l.inner_width == 180.0f);
+    CHECK(l.min_inner_width == 180.0f);
+}
+
+TEST_CASE("column_widths: a column that never cuts is at least as wide as its drawn header") {
+    const MeasuredWidths m = hydra::ui::measure_widths(kSpecs, kRows.size(), cells(kRows));
+    // Num's cells are 50 and its text header 30, but it is drawn 70 wide.
+    // Available 1000, spacing 10: Num 70, Song 200, Artist 100.
+    // Inner width 70 + 200 + 100 + 10 = 380. Minimum: 70 + 40 + 60 + 10 = 180.
+    // A drawn width under the text's (Song's 20 against 40) changes nothing.
+    const ColumnLayout l = hydra::ui::place_columns(
+        m, kSpecs, TableRoom{1000.0f, 10.0f, {}, {70.0f, 20.0f, 0.0f}});
+    CHECK(l.widths == std::vector<float>{70.0f, 200.0f, 100.0f});
+    CHECK(l.inner_width == 380.0f);
+    CHECK(l.min_inner_width == 180.0f);
+}
+
+TEST_CASE("column_widths: table_room reads a sorted header's drawn width from the last frame") {
+    hydra::ui::ImGuiSetupOptions opts;
+    opts.dpi_scale = 1.0f;
+    opts.ini_file = "-";
+    opts.resource_dir = std::string(HYDRA_TESTDATA_DIR) + "/../resource";
+    hydra::ui::setup_imgui(opts);
+    ImGuiIO& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(800.0f, 600.0f);
+    io.DeltaTime = 1.0f / 60.0f;
+    // No renderer is attached, so say the fonts need no texture upload.
+    io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+
+    TableRoom room;
+    float plain_text = 0.0f;
+    float sorted_text = 0.0f;
+    for (int frame = 0; frame < 3; ++frame) {
+        ImGui::NewFrame();
+        ImGui::SetNextWindowSize(ImVec2(600.0f, 300.0f));
+        ImGui::Begin("column_widths test");
+        // The headers' text alone, as the rule's own measure would take it.
+        plain_text = std::ceil(hydra::ui::text_width()("Plain"));
+        sorted_text = std::ceil(hydra::ui::text_width()("Sorted"));
+        room = hydra::ui::table_room("##t", 0.0f, 2);
+        if (ImGui::BeginTable("##t", 2, hydra::ui::table_flags(), ImVec2(0.0f, 100.0f))) {
+            ImGui::TableSetupColumn("Plain", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+            ImGui::TableSetupColumn("Sorted", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_DefaultSort, 100.0f);
+            ImGui::TableHeadersRow();
+            ImGui::EndTable();
+        }
+        ImGui::End();
+        ImGui::EndFrame();
+    }
+    REQUIRE(room.header_drawn.size() == 2);
+    // A sortable column keeps room for the arrow, sorted or not, and the
+    // column that is sorted shows it. Both are wider than their text.
+    CHECK(room.header_drawn[0] > plain_text);
+    CHECK(room.header_drawn[1] > sorted_text);
+    hydra::ui::shutdown_imgui();
+}
+
 TEST_CASE("column_widths: with room to spare, cut columns stop at their measured width") {
     const MeasuredWidths m = hydra::ui::measure_widths(kSpecs, kRows.size(), cells(kRows));
     // Available 1000, spacing 10: leftover 940, more than Song's 200 plus

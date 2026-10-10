@@ -84,8 +84,18 @@ ColumnLayout place_columns(const MeasuredWidths& measured, const std::vector<Col
     const std::size_t n = specs.size();
     auto shown = [&](std::size_t c) { return room.shown.empty() || room.shown[c]; };
 
+    // A header is as wide as its text, or as ImGui drew it last frame when
+    // that is wider (the sort arrow and sort-order digit take room too). A
+    // column is never narrower than its header.
+    std::vector<float> header(n), wide(n);
+    for (std::size_t c = 0; c < n; ++c) {
+        header[c] = measured.header_widths[c];
+        if (c < room.header_drawn.size()) header[c] = std::max(header[c], std::ceil(room.header_drawn[c]));
+        wide[c] = std::max(measured.widths[c], header[c]);
+    }
+
     ColumnLayout layout;
-    layout.widths = measured.widths;
+    layout.widths = wide;
 
     // What the columns that never cut take, and each cut column's floor.
     float fixed = 0.0f;
@@ -94,10 +104,10 @@ ColumnLayout place_columns(const MeasuredWidths& measured, const std::vector<Col
     for (std::size_t c = 0; c < n; ++c) {
         if (!shown(c)) continue;
         if (specs[c].may_cut) {
-            floors += measured.header_widths[c];
+            floors += header[c];
             open.push_back(c);
         } else {
-            fixed += measured.widths[c];
+            fixed += wide[c];
         }
     }
 
@@ -109,15 +119,14 @@ ColumnLayout place_columns(const MeasuredWidths& measured, const std::vector<Col
     for (bool pinned = true; pinned && !open.empty();) {
         pinned = false;
         float total = 0.0f;
-        for (std::size_t c : open) total += measured.widths[c];
+        for (std::size_t c : open) total += wide[c];
         // Every share in a pass comes from the same leftover and total.
         const float pass_leftover = leftover;
         for (auto it = open.begin(); it != open.end();) {
-            const float share =
-                total > 0.0f ? pass_leftover * measured.widths[*it] / total : 0.0f;
-            if (share < measured.header_widths[*it]) {
-                layout.widths[*it] = measured.header_widths[*it];
-                leftover -= measured.header_widths[*it];
+            const float share = total > 0.0f ? pass_leftover * wide[*it] / total : 0.0f;
+            if (share < header[*it]) {
+                layout.widths[*it] = header[*it];
+                leftover -= header[*it];
                 it = open.erase(it);
                 pinned = true;
             } else {
@@ -126,8 +135,8 @@ ColumnLayout place_columns(const MeasuredWidths& measured, const std::vector<Col
         }
         if (pinned) continue;
         for (std::size_t c : open)
-            layout.widths[c] = std::min(std::floor(leftover * measured.widths[c] / total),
-                                        measured.widths[c]);
+            layout.widths[c] =
+                total > 0.0f ? std::min(std::floor(leftover * wide[c] / total), wide[c]) : 0.0f;
     }
 
     float sum = 0.0f;
@@ -170,10 +179,16 @@ TableRoom table_room(const char* str_id, float outer_width, std::size_t column_c
     if (table->InnerWindow != table->OuterWindow)
         room.available -= table->InnerWindow->ScrollbarSizes.x;
     room.shown.resize(column_count);
+    room.header_drawn.resize(column_count);
     int shown = 0;
     for (std::size_t c = 0; c < column_count; ++c) {
-        room.shown[c] = table->Columns[static_cast<int>(c)].IsEnabled;
+        const ImGuiTableColumn& column = table->Columns[static_cast<int>(c)];
+        room.shown[c] = column.IsEnabled;
         if (room.shown[c]) ++shown;
+        // The header's ideal width as TableHeader recorded it, text plus the
+        // room for the sort arrow and digit; ImGui's own auto-fit reads the
+        // same two numbers (TableGetColumnWidthAuto).
+        room.header_drawn[c] = std::max(0.0f, column.ContentMaxXHeadersIdeal - column.WorkMinX);
     }
     // ImGui's spacing for that many columns, from its own numbers for this
     // table (TableUpdateLayout, imgui_tables.cpp).
