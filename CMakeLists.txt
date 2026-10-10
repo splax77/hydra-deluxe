@@ -66,11 +66,40 @@ add_compile_options($<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:C,CXX>>:/Zi>)
 # /DEBUG turns off /OPT:REF and /OPT:ICF unless they are named, so they are
 # named to keep the exes as lean as before. /PDBALTPATH stores only the .pdb's
 # file name in the exe, not the build folder's path, which the installer's
-# "no repo path" check would refuse.
+# "no repo path" check would refuse. It is set below, after HYDRA_ASAN.
 add_link_options($<$<CONFIG:Release>:/DEBUG>
                  $<$<CONFIG:Release>:/OPT:REF>
-                 $<$<CONFIG:Release>:/OPT:ICF>
-                 $<$<CONFIG:Release>:/PDBALTPATH:%_PDB%>)
+                 $<$<CONFIG:Release>:/OPT:ICF>)
+
+# The AddressSanitizer build: a test-only build that catches memory bugs (an
+# overrun, a use after free) where they happen, in build-asan\ via the asan
+# preset. It never ships. Every target is compiled with it, third-party code
+# too, because a process that is only partly sanitized misses errors
+# (Microsoft's asan-known-issues page). Incremental linking and /RTC are
+# unsupported beside it. mimalloc's heap redirect would hide the heap from it,
+# so this build runs on the Windows heap (HYDRA_MIMALLOC below).
+option(HYDRA_ASAN "AddressSanitizer test build (the asan preset turns it on; never ships)" OFF)
+# mimalloc for every exe (D88, hydra_use_mimalloc at the bottom of this file).
+# Only the AddressSanitizer build turns it off.
+option(HYDRA_MIMALLOC "Run every exe on mimalloc (D88)" ON)
+if(HYDRA_ASAN)
+    if(HYDRA_MIMALLOC)
+        message(STATUS "AddressSanitizer: on, so mimalloc is off for this build")
+        set(HYDRA_MIMALLOC OFF)
+    else()
+        message(STATUS "AddressSanitizer: on")
+    endif()
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/fsanitize=address>)
+    add_link_options(/INCREMENTAL:NO)
+    foreach(lang C CXX)
+        string(REPLACE "/RTC1" "" CMAKE_${lang}_FLAGS_DEBUG "${CMAKE_${lang}_FLAGS_DEBUG}")
+    endforeach()
+else()
+    # The AddressSanitizer build keeps the .pdb's full path, because its
+    # symbolizer (llvm-symbolizer) cannot follow a bare name and its reports
+    # would name no functions. That build never ships.
+    add_link_options($<$<CONFIG:Release>:/PDBALTPATH:%_PDB%>)
+endif()
 
 # __FILE__ names the source relative to the repo, not by its absolute path.
 # Opus's safety checks (OPUS_HARDENING) store __FILE__ for their error message,
@@ -193,22 +222,24 @@ add_subdirectory(third_party/opus EXCLUDE_FROM_ALL)
 # mimalloc-redirect.dll. These options are the ones the trial measured
 # (docs/handoffs/2026-10-07-mimalloc-trial.md); everything else stays at
 # mimalloc's release defaults. hydra_use_mimalloc (bottom of this file) owns
-# which exes link it and how.
-set(MI_BUILD_SHARED ON CACHE BOOL "" FORCE)
-set(MI_OVERRIDE ON CACHE BOOL "" FORCE)
-set(MI_WIN_REDIRECT ON CACHE BOOL "" FORCE)
-set(MI_BUILD_STATIC OFF CACHE BOOL "" FORCE)
-set(MI_BUILD_OBJECT OFF CACHE BOOL "" FORCE)
-set(MI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-# mimalloc's CMake compiles `git describe` into the DLL whenever the top-level
-# source folder holds a .git folder, and then reconfigures on every change to
-# the git index. The measured build came from the source tarball, which has
-# no .git, so Git stays hidden from it here.
-set(CMAKE_DISABLE_FIND_PACKAGE_Git TRUE)
-add_subdirectory(third_party/mimalloc EXCLUDE_FROM_ALL)
-unset(CMAKE_DISABLE_FIND_PACKAGE_Git)
-# mimalloc takes HYDRA_LTCG like every target, so the installer's DLL is
-# link-time optimized, which the trial did not measure (user decision D99).
+# which exes link it and how. HYDRA_MIMALLOC off leaves it out entirely.
+if(HYDRA_MIMALLOC)
+    set(MI_BUILD_SHARED ON CACHE BOOL "" FORCE)
+    set(MI_OVERRIDE ON CACHE BOOL "" FORCE)
+    set(MI_WIN_REDIRECT ON CACHE BOOL "" FORCE)
+    set(MI_BUILD_STATIC OFF CACHE BOOL "" FORCE)
+    set(MI_BUILD_OBJECT OFF CACHE BOOL "" FORCE)
+    set(MI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    # mimalloc's CMake compiles `git describe` into the DLL whenever the
+    # top-level source folder holds a .git folder, and then reconfigures on
+    # every change to the git index. The measured build came from the source
+    # tarball, which has no .git, so Git stays hidden from it here.
+    set(CMAKE_DISABLE_FIND_PACKAGE_Git TRUE)
+    add_subdirectory(third_party/mimalloc EXCLUDE_FROM_ALL)
+    unset(CMAKE_DISABLE_FIND_PACKAGE_Git)
+    # mimalloc takes HYDRA_LTCG like every target, so the installer's DLL is
+    # link-time optimized, which the trial did not measure (user decision D99).
+endif()
 
 # ---- hydra_image: the single stb_image TU (shared PNG/JPEG decode) --------
 # stb_image's implementation may be compiled in exactly one TU across the binary
@@ -283,8 +314,13 @@ target_link_libraries(hydra_core PRIVATE bcrypt shell32 shlwapi ole32 uuid hydra
 # and linking it here too makes CMake move it after hydra_core on each exe's
 # link line, behind d3d11.dll, where mimalloc-redirect.dll gives up and leaves
 # malloc on the Windows heap.
-target_include_directories(hydra_core PRIVATE
-                           $<TARGET_PROPERTY:mimalloc,INTERFACE_INCLUDE_DIRECTORIES>)
+# HYDRA_MIMALLOC is PUBLIC so the tests that check the redirect (and the GUI
+# runner's start check) are compiled only where there is one.
+if(HYDRA_MIMALLOC)
+    target_include_directories(hydra_core PRIVATE
+                               $<TARGET_PROPERTY:mimalloc,INTERFACE_INCLUDE_DIRECTORIES>)
+    target_compile_definitions(hydra_core PUBLIC HYDRA_MIMALLOC)
+endif()
 
 # ---- hydra_audio: the Preview audio engine (decode + mix + player) -------
 # Decodes chart stems to float PCM, mixes them, and (GUI-side) drives the
@@ -632,9 +668,11 @@ install(TARGETS Hydra hydra_batch hydra_fillcompare RUNTIME DESTINATION .)
 # Every exe above needs mimalloc's two DLLs beside it to start (see
 # hydra_use_mimalloc). install(FILES) rather than install(TARGETS), so
 # mimalloc's import library stays out of the stage.
-install(FILES $<TARGET_FILE:mimalloc>
-              "${CMAKE_SOURCE_DIR}/third_party/mimalloc/bin/mimalloc-redirect.dll"
-        DESTINATION .)
+if(HYDRA_MIMALLOC)
+    install(FILES $<TARGET_FILE:mimalloc>
+                  "${CMAKE_SOURCE_DIR}/third_party/mimalloc/bin/mimalloc-redirect.dll"
+            DESTINATION .)
+endif()
 install(DIRECTORY resource/ DESTINATION resource)
 install(DIRECTORY assets/ DESTINATION assets)
 # THIRD_PARTY_NOTICES.txt carries the licence of every vendored library
@@ -735,4 +773,6 @@ function(hydra_use_mimalloc)
         endif()
     endforeach()
 endfunction()
-hydra_use_mimalloc()
+if(HYDRA_MIMALLOC)
+    hydra_use_mimalloc()
+endif()

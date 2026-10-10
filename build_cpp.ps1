@@ -5,6 +5,7 @@
 #   .\build_cpp.ps1 -Configure   # force a reconfigure first
 #   .\build_cpp.ps1 -Target hydra_tests
 #   .\build_cpp.ps1 -Preset ship # the installer's build, in build-ship\
+#   .\build_cpp.ps1 -Preset asan -Target hydra_tests  # AddressSanitizer, in build-asan\
 #   .\build_cpp.ps1 -Package     # build, then zip a release (CPack)
 #
 # CMake and MSVC ship with Visual Studio, so this finds the VS-bundled cmake.exe
@@ -18,7 +19,8 @@ param(
     [string]$Config = "",
     # default: dev build in build-cpp. vs2022: the VS 2022 generator, in its
     # own folder. ship: the installer's build (no attached GUI tests).
-    [ValidateSet("default", "vs2022", "ship")]
+    # asan: the AddressSanitizer test build, which never ships.
+    [ValidateSet("default", "vs2022", "ship", "asan")]
     [string]$Preset = "default"
 )
 
