@@ -560,17 +560,8 @@ TEST_CASE("texture_file names every texture") {
 
 TEST_CASE("build_highway_draws: a chord one tick after a phrase ends draws plain") {
     PreviewConfig cfg = shipped_preview_config();
-    SongTiming timing(480, {{0, 1920}}, {{0, 300.0}});
-    auto at_tick = [&](int64_t tick, PreviewLane lane) { return note_at_tick(timing, tick, lane); };
-    PreviewScene scene;
-    scene.timing = timing;
-    scene.notes = {at_tick(480, PreviewLane::Yellow), at_tick(481, PreviewLane::Blue)};
-    PreviewSpan phrase;
-    phrase.start_tick = 0;
-    phrase.end_tick = 480;
-    phrase.start_ms = 0.0;
-    phrase.end_ms = timing.ms_index().at(480);
-    scene.sp_phrases = {phrase};
+    PreviewScene scene =
+        phrase_to_tick_480_scene({{480, PreviewLane::Yellow}, {481, PreviewLane::Blue}});
     TrackState st = build_track_state(scene, TrackStateOptions{});
     std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 0.0, 1.0);
 

@@ -3,6 +3,8 @@
 #pragma once
 
 #include <cstdint>
+#include <initializer_list>
+#include <utility>
 
 #include "app/preview_view.h"
 #include "core/timing.h"
@@ -55,6 +57,25 @@ inline app::PreviewNote note_at_tick(const SongTiming& timing, int64_t tick,
     n.ms = timing.ms_index().at(tick);
     n.lane = lane;
     return n;
+}
+
+// At 480 ticks a beat and 300 BPM, a scene with an SP phrase from tick 0 to
+// tick 480 and `notes` (tick, lane) on their ticks. One tick here is 0.417 ms,
+// shorter than the old half-millisecond margin, so a note on tick 481 sits
+// just outside the phrase.
+inline app::PreviewScene phrase_to_tick_480_scene(
+    std::initializer_list<std::pair<int64_t, app::PreviewLane>> notes) {
+    SongTiming timing(480, {{0, 1920}}, {{0, 300.0}});
+    app::PreviewScene scene;
+    scene.timing = timing;
+    for (const auto& [tick, lane] : notes) scene.notes.push_back(note_at_tick(timing, tick, lane));
+    app::PreviewSpan phrase;
+    phrase.start_tick = 0;
+    phrase.end_tick = 480;
+    phrase.start_ms = timing.ms_index().at(0);
+    phrase.end_ms = timing.ms_index().at(480);
+    scene.sp_phrases = {phrase};
+    return scene;
 }
 
 }  // namespace hydra::test_fixtures
