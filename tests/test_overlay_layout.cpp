@@ -100,6 +100,9 @@ TEST_CASE("overlay_scale: full size with room, floored when narrow, clear in bet
         b.right_h = 70.0f;
         b.right_top = 10.0f;
         b.right_edge = static_cast<float>(w) - 30.0f;
+        b.next_w = 250.0f;
+        b.next_h = 90.0f;
+        b.next_top = 86.0f;
         b.gap = 6.0f;
         return b;
     };
@@ -116,13 +119,24 @@ TEST_CASE("overlay_scale: full size with room, floored when narrow, clear in bet
         if (s > kOverlayMinScale && s < 1.0f) {
             saw_partial = true;
             const float left_room = highway_span_at(cfg, w, h, b.left_h).left - b.gap;
-            const float right_room =
-                b.right_edge - highway_span_at(cfg, w, h, b.right_top + b.right_h).right - b.gap;
             CHECK(b.left_w * s <= left_room + 0.01f);
-            CHECK(b.right_w * s <= right_room + 0.01f);
+            CHECK(b.right_w * s <=
+                  right_room(cfg, w, h, b.right_edge, b.right_top + b.right_h, b.gap) + 0.01f);
+            CHECK(b.next_w * s <=
+                  right_room(cfg, w, h, b.right_edge, b.next_top + b.next_h, b.gap) + 0.01f);
         }
     }
     CHECK(saw_partial);
+    // The next-activation box, lower down where the highway is wider, is the
+    // box that limits the scale at some width.
+    bool saw_next_limit = false;
+    for (int w = 150; w <= 1200; w += 10) {
+        OverlayBoxes b = boxes(w);
+        const float with_next = overlay_scale(cfg, w, h, b);
+        b.next_w = 0.0f;
+        if (overlay_scale(cfg, w, h, b) > with_next) saw_next_limit = true;
+    }
+    CHECK(saw_next_limit);
     // No boxes: nothing to fit.
     CHECK(overlay_scale(cfg, 300, h, OverlayBoxes{}) == 1.0f);
 }
@@ -178,60 +192,108 @@ TEST_CASE("wrap_words: the last words kept together") {
     CHECK(wrap_words("2 of 3", 10.0f, ten_per_char, 3) == std::vector<std::string>{"2 of 3"});
 }
 
-TEST_CASE("widest_word: the widest run between spaces, the last words as one") {
-    CHECK(widest_word("Next: activation 2 of 3", ten_per_char) == 100.0f);  // "activation"
-    CHECK(widest_word("Next: activation 2 of 3", ten_per_char, 3) == 100.0f);
-    CHECK(widest_word("Next: activation 120 of 400", ten_per_char, 3) == 100.0f);
-    CHECK(widest_word("Next: activation 1200 of 4000", ten_per_char, 3) == 120.0f);
-    CHECK(widest_word("at m58.1.0 \xC2\xB7 [Kick - YellowCym]", ten_per_char) == 100.0f);
-    CHECK(widest_word("", ten_per_char) == 0.0f);
-}
-
-TEST_CASE("next-activation box: off the lane at the bottom, one scale for the whole path") {
-    // The Preview at the song panel's narrowest (820 px at a 1,280 px window),
-    // the box's text 15 px monospace at about 9 px a character.
+TEST_CASE("right_room: from the highway's right edge to the box's, less the gap") {
     PreviewConfig cfg = shipped_preview_config();
     const int w = 800, h = 450;
-    const float margin = 10.0f, pad = 8.0f, gap = 6.0f;
-    auto nine_per_char = [](const std::string& s) { return 0.9f * ten_per_char(s); };
-    // Burnout's three next boxes; the second's chord is the long one.
-    const std::vector<std::string> lines = {
-        "Next: activation 1 of 3", "at m32.1.0 \xC2\xB7 [Kick - GreenCym]",
-        "Next: activation 2 of 3", "at m58.1.0 \xC2\xB7 [Kick - YellowCym - GreenCym]",
-        "Next: activation 3 of 3", "at m75.1.0 \xC2\xB7 [Kick - GreenCym]",
-    };
-    const float room = bottom_left_room(cfg, w, h, gap);
-    CHECK(room ==doctest::Approx(highway_span_at(cfg, w, h, static_cast<float>(h)).left - gap));
-    // The long line on one line would cover the lane even at the smallest scale,
-    // so no scale could fix it: the box has to wrap.
-    CHECK((margin + nine_per_char(lines[3]) + pad * 2.0f) * kOverlayMinScale > room);
+    const float room = right_room(cfg, w, h, 700.0f, 100.0f, 6.0f);
+    CHECK(room > 0.0f);
+    // The box's right edge and the gap move the room one for one.
+    CHECK(right_room(cfg, w, h, 750.0f, 100.0f, 6.0f) == doctest::Approx(room + 50.0f));
+    CHECK(right_room(cfg, w, h, 700.0f, 100.0f, 0.0f) == doctest::Approx(room + 6.0f));
+    // The highway widens downward, so a lower row has less room.
+    CHECK(right_room(cfg, w, h, 700.0f, 300.0f, 6.0f) < room);
+    // A box whose right edge is on the highway's edge has none.
+    const float edge = highway_span_at(cfg, w, h, 100.0f).right;
+    CHECK(right_room(cfg, w, h, edge, 100.0f, 0.0f) == doctest::Approx(0.0f));
+}
 
-    // The scale counts the widest word of any of the path's boxes, so it is
-    // the same whichever box shows, and here it is full size.
-    float word = 0.0f;
-    for (const std::string& l : lines) word = std::max(word, widest_word(l, nine_per_char));
-    OverlayBoxes boxes;
-    boxes.bottom_left_w = margin + word + pad * 2.0f;
-    boxes.gap = gap;
-    const float scale = overlay_scale(cfg, w, h, boxes);
-    CHECK(scale == 1.0f);
-    // Each line wrapped to the room at the bottom keeps the box off the lane.
-    for (const std::string& l : lines) {
-        for (const std::string& part : wrap_words(l, room - margin - pad * 2.0f, nine_per_char))
-            CHECK(margin + nine_per_char(part) + pad * 2.0f <= room);
+namespace {
+// A next-activation box's three pieces at `scale`: the header, the notation
+// at 17/12 of the body's size, the "at ..." line. The body text is 15 px
+// monospace at about 9 px a character, its line 18.75 px.
+std::vector<TextPiece> next_pieces(const std::string& header, const std::string& notation,
+                                   const std::string& detail, float scale) {
+    auto body = [scale](const std::string& s) { return 0.9f * scale * ten_per_char(s); };
+    auto big = [scale](const std::string& s) { return 1.275f * scale * ten_per_char(s); };
+    return {{header, body, 18.75f * scale, 3},
+            {notation, big, 26.5625f * scale, kKeepWhole},
+            {detail, body, 18.75f * scale}};
+}
+
+struct NextBox {
+    std::string header, notation, detail;
+};
+// Burnout's three boxes (the second's chord is the long one); the third's
+// notation is the User Guide's example, a long one.
+const std::vector<NextBox> kBurnout = {
+    {"Next: activation 1 of 3", "3- (163 ms)", "at m32.1.0 \xC2\xB7 [Kick - GreenCym]"},
+    {"Next: activation 2 of 3", "1", "at m58.1.0 \xC2\xB7 [Kick - YellowCym - GreenCym]"},
+    {"Next: activation 3 of 3", "5+ (100 ms)", "at m75.1.0 \xC2\xB7 [Kick - GreenCym]"},
+};
+}  // namespace
+
+TEST_CASE("wrap_right_box: one line a piece when it fits") {
+    PreviewConfig cfg = shipped_preview_config();
+    const int w = 1600, h = 450;  // wide: lots of room beside the highway
+    // The widest line is each box's "at ..." line: 30, 42 and 30 characters at
+    // 9 px (read off a run).
+    const float widest[] = {270.0f, 378.0f, 270.0f};
+    for (size_t k = 0; k < kBurnout.size(); ++k) {
+        const NextBox& b = kBurnout[k];
+        const std::vector<TextPiece> pieces = next_pieces(b.header, b.notation, b.detail, 1.0f);
+        const WrappedText t = wrap_right_box(cfg, w, h, w - 30.0f, 86.0f, 8.0f, 6.0f, pieces);
+        REQUIRE(t.lines.size() == 3);
+        for (size_t i = 0; i < 3; ++i)
+            CHECK(t.lines[i] == std::vector<std::string>{pieces[i].text});
+        CHECK(t.text_h == doctest::Approx(64.0625f));
+        CHECK(t.text_w == doctest::Approx(widest[k]));
     }
-    // A cramped image: the widest word sets the scale, and every wrapped
-    // line still clears the highway at it.
-    const int tight_w = 620;  // about 100 px of room at the bottom
-    const float tight_room = bottom_left_room(cfg, tight_w, h, gap);
-    const float tight = overlay_scale(cfg, tight_w, h, boxes);
-    REQUIRE(tight < 1.0f);
-    REQUIRE(tight > kOverlayMinScale);
-    auto scaled = [&](const std::string& s) { return nine_per_char(s) * tight; };
-    for (const std::string& l : lines) {
-        for (const std::string& part :
-             wrap_words(l, tight_room - (margin + pad * 2.0f) * tight, scaled))
-            CHECK((margin + pad * 2.0f) * tight + scaled(part) <= tight_room + 0.01f);
+}
+
+TEST_CASE("wrap_right_box: off the lane at its lowest row, one scale for the whole path") {
+    // The Preview at the song panel's narrowest (820 px at a 1,280 px window):
+    // the drain box 70 px tall at row 10, the next box under it.
+    PreviewConfig cfg = shipped_preview_config();
+    const int h = 450;
+    const float pad = 8.0f, gap = 6.0f, drain_top = 10.0f, drain_h = 70.0f;
+    for (int w : {800, 620}) {
+        CAPTURE(w);
+        const float edge = static_cast<float>(w) - 30.0f;
+        // The scale reserves the largest box the path shows, wrapped at scale 1.
+        OverlayBoxes boxes;
+        boxes.right_edge = edge;
+        boxes.right_w = 150.0f;
+        boxes.right_h = drain_h;
+        boxes.right_top = drain_top;
+        boxes.next_top = drain_top + drain_h + gap;
+        boxes.gap = gap;
+        for (const NextBox& b : kBurnout) {
+            const WrappedText t = wrap_right_box(cfg, w, h, edge, boxes.next_top, pad, gap,
+                                                 next_pieces(b.header, b.notation, b.detail, 1.0f));
+            boxes.next_w = std::max(boxes.next_w, t.text_w + pad * 2.0f);
+            boxes.next_h = std::max(boxes.next_h, t.text_h + pad * 2.0f);
+        }
+        const float s = overlay_scale(cfg, w, h, boxes);
+        REQUIRE(s > kOverlayMinScale);
+        // At that scale every box, wrapped to the room at its own lowest row,
+        // keeps every line off the lane, and is no larger than reserved.
+        const float top = drain_top + (drain_h + gap) * s;
+        for (const NextBox& b : kBurnout) {
+            const WrappedText t = wrap_right_box(cfg, w, h, edge, top, pad * s, gap,
+                                                 next_pieces(b.header, b.notation, b.detail, s));
+            const float box_h = t.text_h + pad * 2.0f * s;
+            CHECK(t.text_w + pad * 2.0f * s <= right_room(cfg, w, h, edge, top + box_h, gap) + 0.01f);
+            CHECK(box_h <= boxes.next_h * s + 0.01f);
+            // The notation stays one line.
+            CHECK(t.lines[1] == std::vector<std::string>{b.notation});
+            // The "at ..." line wraps at both widths.
+            CHECK(t.lines[2].size() > 1);
+        }
+        // Full size at the wider one; the narrower one shrinks the boxes.
+        if (w == 800)
+            CHECK(s == 1.0f);
+        else
+            CHECK(s < 1.0f);
     }
 }
 

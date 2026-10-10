@@ -36,13 +36,11 @@
 #include "env_util.h"
 #include "render/preview_renderer.h"
 #include "ui/preview_load_job.h"  // track_options
+#include "testdata_dirs.h"  // testdata_root
 #include "warp_util.h"
 
 #ifndef HYDRA_ASSET_DIR
 #error "HYDRA_ASSET_DIR must be defined (see CMakeLists.txt)"
-#endif
-#ifndef HYDRA_TESTDATA_DIR
-#error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
 #endif
 
 using namespace hydra;
@@ -51,7 +49,7 @@ using Microsoft::WRL::ComPtr;
 
 namespace {
 
-const std::string kFixtureDir = std::string(HYDRA_TESTDATA_DIR) + "/preview";
+const std::string kFixtureDir = corpus::testdata_root() + "/preview";
 
 // Write tightly-packed RGBA (top row first) as a 24-bit BMP.
 void write_bmp(const std::string& path, const std::vector<uint8_t>& rgba, int w, int h) {

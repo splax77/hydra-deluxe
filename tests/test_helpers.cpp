@@ -1,4 +1,4 @@
-// Checks for two test helpers that other test files lean on.
+// Checks for three test helpers that other test files lean on.
 //
 // tests/corpus_util.h caches corpus parses and analyses for the whole run.
 // Its checks pin what the corpus loops rely on: one answer per chart and
@@ -7,6 +7,9 @@
 //
 // tests/temp_util.h builds every test's per-process scratch path. Its check
 // pins that the names it hands back sit where the helper says they do.
+//
+// tests/scratch_settings.h holds the settings the GUI tests and the Burnout
+// reference cases run under. Its check pins them against the app's defaults.
 
 #include "doctest.h"
 
@@ -23,10 +26,13 @@
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "parse/song.h"
+#include "scratch_settings.h"
 #include "search/pather.h"
 #include "temp_util.h"
 
 using namespace hydra;
+using hydra::app::AnalysisSettings;
+using hydra::app::Settings;
 
 TEST_CASE("corpus cache: one parse and one analysis per chart and settings") {
     const std::string path = corpus::first_chart_with_notes();
@@ -100,4 +106,17 @@ TEST_CASE("temp_util: the scratch path is the temp folder, the tag and this proc
     std::error_code ec;
     std::filesystem::remove_all(hydra::os_path(dir), ec);
     std::filesystem::remove_all(hydra::os_path(zoe), ec);
+}
+
+TEST_CASE("scratch_settings: the GUI tests' settings are the app's defaults at depth 2") {
+    const Settings s = scratch_settings();
+    CHECK(s.depth_value == 2);
+    CHECK(s.auto_open_report == false);
+    REQUIRE(s.chartfolders.size() == 1);
+    CHECK(s.chartfolders[0] == corpus::root());
+    CHECK(s.sp_cap == Settings{}.sp_cap);
+    CHECK(s.mslimit_value == Settings{}.mslimit_value);
+    const AnalysisSettings a = scratch_settings().to_analysis_settings();
+    CHECK(a.depth_value == 2);
+    CHECK(a.depth_mode == DepthMode::Scores);
 }

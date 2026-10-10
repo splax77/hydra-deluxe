@@ -4,7 +4,11 @@
      coverage report" in docs/development.md. Each pattern is a regular
      expression over the source paths the .pdb records. Those paths are
      relative to the repo (CMakeLists.txt trims the prefix with /d1trimfile),
-     so a pattern may not count on a backslash in front of the folder name. -->
+     so a pattern may not count on a backslash in front of the folder name.
+     The exes are instrumented on disk before the tests run, so "collect" needs
+     no dynamic instrumentation. Left on, it injects itself into every process
+     it starts, which loads ucrtbase.dll before mimalloc-redirect.dll, so malloc
+     stays on the Windows heap and the mimalloc tests fail (CI run 38082177556). -->
 <Configuration>
   <CodeCoverage>
     <Sources>
@@ -13,5 +17,7 @@
         <Source>^(.*\\)?tests\\.*</Source>
       </Exclude>
     </Sources>
+    <EnableStaticNativeInstrumentation>True</EnableStaticNativeInstrumentation>
+    <EnableDynamicNativeInstrumentation>False</EnableDynamicNativeInstrumentation>
   </CodeCoverage>
 </Configuration>

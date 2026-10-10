@@ -11,6 +11,7 @@
 
 #include "app/analysis.h"
 #include "core/model.h"
+#include "core/replay.h"
 #include "core/scoring.h"
 #include "core/stars.h"
 #include "core/timing.h"
@@ -150,6 +151,17 @@ TEST_CASE("stars: score_without_solo is the total minus the solo bonus") {
     CHECK(path.totalscore() == 6680);
     CHECK(score_without_solo(path) == 4680);
     CHECK(path_stars(path) == 6);
+
+    // A replay's running score is the same six categories, so the ReplayScore
+    // form gives the same answer for the same numbers.
+    ReplayScore running;
+    running.base = 1000;
+    running.ghost = 100;
+    running.accent = 200;
+    running.combo = 3380;
+    running.solo = 2000;
+    CHECK(running.total() == 6680);
+    CHECK(score_without_solo(running) == 4680);
 }
 
 TEST_CASE("stars: the table is the game's first seven multipliers") {

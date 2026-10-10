@@ -25,6 +25,7 @@
 
 #include "core/model.h"
 #include "core/rules.h"
+#include "core/stars.h"
 #include "core/timing.h"
 #include "app/path_view.h"
 #include "parse/song.h"
@@ -131,6 +132,10 @@ struct PreviewActivation {
     // setting's words; chord is empty when the record has none.
     std::string measure;
     Chord chord;
+    // The activation in path notation with its timings, copied whole from
+    // Activation::notationstr_verbose (its one owner) for the next-activation
+    // box.
+    std::string notation;
 };
 
 // A beat line on the highway: a bar line, a beat line, or the fainter
@@ -206,6 +211,9 @@ struct PreviewScoreStep {
     int multiplier = 1;   // the game's disc once the chord is hit (ReplayChord::multiplier_shown)
     int multiplier_plain = 1;  // the combo multiplier alone, never doubled (ReplayChord::multiplier_after)
     int combo = 0;        // notes hit so far, this chord included
+    // The running score the star counter reads: the score stars count, as
+    // core/stars.h says, taken off the replay's running sums (ReplayChord::cum).
+    int64_t score_without_solo = 0;
 };
 
 // The running score for the path the overlay shows.
@@ -219,6 +227,9 @@ struct PreviewScore {
     enum class State { None, Unavailable, Ready };
     State state = State::None;
     std::vector<PreviewScoreStep> steps;
+    // The path's star cutoffs (core/stars.h's star_cutoffs), which the score
+    // box's star counter reads. Filled whenever there is a path.
+    StarCutoffs cutoffs;
 };
 
 // The whole chart as the Preview draws it. Notes are in tick order. Spans are
@@ -302,11 +313,20 @@ PreviewTimeBox build_time_box(const PreviewScene& scene, double now_ms,
 // multiplier, as the game's disc drops at the SP end rather than at the next
 // chord. Hidden (`shown` false) when the scene has no path; "Score
 // unavailable" with an empty `detail` when the replay could not be trusted.
+//
+// The star counter reads the same last chord. `stars` is stars_for_score
+// (core/stars.h, the rule's home) on that chord's score_without_solo, so a
+// solo's bonus raises `score` but never the stars. `next_star` is
+// "star <n> in <points>": the next star's number and the points still needed
+// for it, with thousands separators. It is empty at kMaxStars. Neither is
+// set unless `available`.
 struct PreviewScoreBox {
     bool shown = false;
     bool available = false;
     std::string score;
     std::string detail;
+    int stars = 0;
+    std::string next_star;
 };
 
 PreviewScoreBox build_score_box(const PreviewScene& scene, double now_ms, double length_ms);
@@ -381,16 +401,19 @@ std::optional<double> song_fraction(double ms, double length_ms);
 std::optional<double> activation_jump_ms(const PreviewScene& scene, double now_ms,
                                          int direction);
 
-// The box at the highway's bottom-left: the first activation at or after the
+// The box under the SP drain box, top right: the first activation at or after the
 // playhead (the same half-millisecond slack), read at the moment the time box
-// shows for `now_ms` and `length_ms` (shown_ms), "Next: activation 1 of 3" and
-// "at m32.1.0 · [Kick - Green cymbal]". The chord's notes are named by
-// Chord::rowstr in the words of `pro_drums`, the Pro Drums setting: "Red
-// snare" with it on, plain "Red" with it off (D48, Q11). Hidden past the last
-// activation and when the scene has no path.
+// shows for `now_ms` and `length_ms` (shown_ms), "Next: activation 1 of 3",
+// then the activation's notation, then "at m32.1.0 · [Kick - Green cymbal]".
+// The chord's notes are named by Chord::rowstr in the words of `pro_drums`,
+// the Pro Drums setting: "Red snare" with it on, plain "Red" with it off (D48,
+// Q11). Hidden past the last activation and when the scene has no path.
 struct PreviewNextActBox {
     bool shown = false;
     std::string header;
+    // The activation's PreviewActivation::notation, whose owner is
+    // Activation::notationstr_verbose. The Preview draws it as one piece.
+    std::string notation;
     std::string detail;
 };
 PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms, double length_ms,

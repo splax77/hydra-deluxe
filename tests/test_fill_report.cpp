@@ -477,8 +477,8 @@ TEST_CASE("generate_fill_report: tally and framing behind one seam") {
 
 TEST_CASE("collect_fill_rows: the names go through display_title, display_artist and "
           "display_charter") {
-    // test_song.cpp pins what those three do. This checks only that the page
-    // calls them: one tagged name each, in both databases.
+    // test_song_input.cpp pins what those three do. This checks only that the
+    // page calls them: one tagged name each, in both databases.
     store::RecordStore old_store(":memory:");
     store::RecordStore new_store(":memory:");
     put_ch10(old_store, kBoth, 1000000, 3, "old-path");

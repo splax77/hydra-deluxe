@@ -35,11 +35,13 @@
 #include "library_fixtures.h"  // library_row
 #include "old_layout_fixture.h"  // detail_layout_sql and the old layout's counts
 #include "record_fixtures.h"
+#include "scoped_hook.h"
 #include "store/record_store.h"
 #include "store/stored_versions.h"
 #include "store/upgrade_files.h"
 #include "store_fixtures.h"  // at_cap, no_paths_at_cap
 #include "temp_util.h"
+#include "testdata_dirs.h"  // testdata_root
 
 using namespace hydra;
 using namespace hydra::store;
@@ -329,9 +331,10 @@ TEST_CASE("a fresh file left by an earlier run is removed and the upgrade runs")
 TEST_CASE("a run stopped between the two renames opens as the upgraded file") {
     const std::string path = testtemp::temp_path("upgrade_between_renames", ".db");
     seed_old_layout(path);
-    stop_copy_upgrade_after_step_aside_for_test(true);
-    CHECK_THROWS(RecordStore(path));
-    stop_copy_upgrade_after_step_aside_for_test(false);
+    {
+        const ScopedHook stop(stop_copy_upgrade_after_step_aside_for_test, true);
+        CHECK_THROWS(RecordStore(path));
+    }
     // The state a kill there leaves: the original stepped aside, the fresh
     // file complete, nothing under the database's name.
     REQUIRE_FALSE(file_exists_utf8(path));
@@ -519,7 +522,7 @@ TEST_CASE("a database a real old release wrote opens with no path details, its r
     };
     for (const OldDatabase& f : fixtures) {
         INFO(std::string(f.file));
-        const std::string source = std::string(HYDRA_TESTDATA_DIR) + "/store/" + f.file;
+        const std::string source = corpus::testdata_root() + "/store/" + f.file;
         REQUIRE(std::filesystem::exists(source));
         // The store opens in WAL mode, which would write beside the checked-in
         // file, so it opens a copy.

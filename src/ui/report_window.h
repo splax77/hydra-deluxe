@@ -269,8 +269,6 @@ void best_bar();
 // change it. A key a Shift+click adds past kMaxSortKeys (app/report_view.h)
 // is dropped.
 using HeaderSort = std::vector<std::pair<int, app::report_view::SortDir>>;
-// Whether the current table is past its first frame.
-bool table_settled();
 void push_sort(const HeaderSort& sort);
 std::optional<HeaderSort> header_sort();
 // Records the first five columns' width, each at the narrowest the width rule

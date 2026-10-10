@@ -46,7 +46,8 @@ defines with the others, and check 4 reads the rule rows a range adds.
 THE SCAN ROWS
 
 The single-owner scan owns every "this is a copy" pattern it has a row for.
-Its rows live in tests/single_owner/rules/*.json and its known copies in
+Its rows live in tests/single_owner/rules/ (rule_files in scan.cpp says which
+files) and its known copies in
 tests/single_owner/baseline.json. This script does not keep its own copy of
 those patterns: it reads both at the range's last commit, or at -RulesAt,
 and applies the rows to the added lines the way the scan does (Get-RowHits).
@@ -414,8 +415,7 @@ function Add-Item([string]$Kind, [string]$File, [int]$Line, [string]$What, [stri
     $items.Add([pscustomobject]@{ Kind = $Kind; File = $File; Line = $Line; What = $What; Why = $Why })
 }
 
-# Where the scan keeps its rows (one JSON file per area) and its known
-# copies. This script reads both at $rulesRev and keeps no copy of either.
+# Where the scan keeps its rows and its known copies. This script reads both at $rulesRev and keeps no copy of either.
 $rulesDir = 'tests/single_owner/rules'
 $baselineFile = 'tests/single_owner/baseline.json'
 # The baseline's known copies: file -> list of (line text, fix)
@@ -504,7 +504,12 @@ function New-StdRegex([string]$Pattern) {
     # and the example check below says when the two readings differ.
     try { [regex]::new($Pattern, 'ECMAScript') } catch { [regex]::new($Pattern) }
 }
-$ruleFiles = @(Invoke-Git @('ls-tree', '--name-only', $rulesRev, '--', "$rulesDir/") | Where-Object { $_ -match '\.json$' })
+# Which files are rules files is answered by rule_files in
+# tests/single_owner/scan.cpp: .json files in the folder and in the folders
+# one level down, in name order. This follows it (names sort byte by byte, as
+# the scan's do).
+$ruleFiles = @(Invoke-Git @('ls-tree', '-r', '--name-only', $rulesRev, '--', "$rulesDir/") | Where-Object { $_.Substring($rulesDir.Length + 1) -match '^([^/]+/)?[^/]+\.json$' })
+[System.Array]::Sort($ruleFiles, [System.StringComparer]::Ordinal)
 foreach ($rf in $ruleFiles) {
     $rv = Get-Views $rf $rulesRev
     $doc = (Get-TipText $rf $rulesRev) | ConvertFrom-Json

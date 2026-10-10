@@ -16,13 +16,7 @@
 #include "difficulty_literals.h"
 #include "midi_util.h"
 #include "parse/song.h"
-
-#ifndef HYDRA_INPUT_DIR
-#error "HYDRA_INPUT_DIR must be defined (see CMakeLists.txt)"
-#endif
-#ifndef HYDRA_TESTDATA_DIR
-#error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
-#endif
+#include "testdata_dirs.h"  // root, testdata_root
 
 using namespace hydra;
 
@@ -99,7 +93,7 @@ TEST_CASE("Dynamics: Car Bomb - The Sentinel at Hard counts Hard's own kicks") {
     // first on those ticks), and Totals said 1,719 instead of 2,038.
     using app::DynamicsRow;
     const std::string path =
-        std::string(HYDRA_INPUT_DIR) + "/common/IB24/T7/Car Bomb - The Sentinel/notes.mid";
+        corpus::root() + "/common/IB24/T7/Car Bomb - The Sentinel/notes.mid";
     const app::DynamicsBreakdown bd = app::count_dynamics(
         load_songpath(path, /*pro=*/true, app::kDynamicsParseBass2x, Difficulty::Hard));
     CHECK(bd.row(DynamicsRow::Kick).all() == 1147);
@@ -139,7 +133,7 @@ TEST_CASE("a 2x kick and a normal kick on one tick read as Clone Hero played son
     // Clone Hero 1.1 showed a kick on chords 1 and 9 only, 11 notes, with 2x
     // kick off, and one kick on chords 1, 3, 5, 7 and 9, 14 notes, with it on
     // (FINDINGS.md, "Game tests").
-    const std::string dir = std::string(HYDRA_TESTDATA_DIR) + "/kick2x_merge/";
+    const std::string dir = corpus::testdata_root() + "/kick2x_merge/";
     for (const char* file : {"notes.mid", "notes.chart"}) {
         CAPTURE(file);
         for (bool pro : {true, false}) {

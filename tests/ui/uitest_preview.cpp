@@ -12,6 +12,7 @@
 
 #include "app/preview_view.h"
 #include "core/model.h"
+#include "core/stars.h"   // path_stars
 #include "core/winstr.h"  // fopen_utf8
 #include "imgui_internal.h"
 #include "parse/song.h"  // no_notes_message
@@ -252,6 +253,10 @@ void test_preview_controls(ImGuiTestContext* ctx) {
     IM_CHECK(end.available);
     const hydra::Path* shown = h.app->viewed.record->all_paths().front();
     IM_CHECK_STR_EQ(end.score.c_str(), hydra::group_thousands(shown->totalscore()).c_str());
+    // And the stars the details header shows for that path (path_stars), with
+    // the next-star line gone only at the most there are.
+    IM_CHECK_EQ(end.stars, hydra::path_stars(*shown));
+    IM_CHECK_EQ(end.next_star.empty(), end.stars == hydra::kMaxStars);
 
     // 5 s jumps, clamped to 0 and to where playback stops (the audio's end,
     // or the last note when the audio is shorter). The library's charts have
@@ -287,6 +292,45 @@ void test_preview_controls(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(pc.time_box().position.c_str(), mb0.c_str());
 }
 
+// The overlay's boxes as drawn, found by the names preview_tab gives them: no
+// box overlaps another or the gauge, and the next-activation box stands under
+// the drain box (D111 item 3) with their right edges lined up and the left
+// column's gap between them. A box not on screen is left out. Returns how
+// many boxes it found.
+int check_overlay_boxes(ImGuiTestContext* ctx) {
+    const char* const ids[] = {"**/##time_box", "**/##score_box", "**/##drain_box",
+                               "**/##next_act_box", "**/##sp_gauge"};
+    enum { kTime, kScore, kDrain, kNext, kGauge, kCount };
+    ImRect r[kCount];
+    bool on[kCount] = {};
+    int found = 0;
+    for (int i = 0; i < kCount; ++i) {
+        const ImGuiTestItemInfo info = ctx->ItemInfo(ids[i], ImGuiTestOpFlags_NoError);
+        on[i] = info.ID != 0;
+        if (on[i]) r[i] = info.RectFull, ++found;
+    }
+    for (int i = 0; i < kCount; ++i)
+        for (int j = i + 1; j < kCount; ++j)
+            if (on[i] && on[j] && r[i].Overlaps(r[j])) {
+                ctx->LogError("%s overlaps %s", ids[i], ids[j]);
+                IM_CHECK_NO_RET(!r[i].Overlaps(r[j]));
+            }
+    if (on[kNext] && on[kDrain]) {
+        // Two sums that come to the same pixel can differ by float rounding
+        // alone. The allowance is the one this file's other position checks
+        // (test_layout_drift) already use for "did not move".
+        constexpr float kSamePlace = 0.01f;
+        IM_CHECK_NO_RET(r[kNext].Min.y >= r[kDrain].Max.y);
+        IM_CHECK_NO_RET(std::fabs(r[kNext].Max.x - r[kDrain].Max.x) <= kSamePlace);
+        if (on[kTime] && on[kScore]) {
+            const float right_gap = r[kNext].Min.y - r[kDrain].Max.y;
+            const float left_gap = r[kScore].Min.y - r[kTime].Max.y;
+            IM_CHECK_NO_RET(std::fabs(right_gap - left_gap) <= kSamePlace);
+        }
+    }
+    return found;
+}
+
 // The SP drain box beside the gauge. Its values are build_drain_box's, pinned
 // by the unit tests; this checks the panel feeds it the playhead and the
 // viewed path, and saves a frame of the active box to look at.
@@ -312,6 +356,10 @@ void test_preview_drain_box(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(idle.header.c_str(), "SP drain (if activated)");
     IM_CHECK(idle.rate.rfind("1 bar / ", 0) == 0);
     IM_CHECK(idle.detail.rfind("full meter ", 0) == 0);
+    // All five drawn, the next-activation box under the drain box.
+    IM_CHECK(pc.next_act_box().shown);
+    ctx->Yield(2);
+    IM_CHECK_EQ(check_overlay_boxes(ctx), 5);
 
     // Somewhere the path has SP running. Walk the playhead to find it, so the
     // test needs no timing of its own.
@@ -329,6 +377,7 @@ void test_preview_drain_box(ImGuiTestContext* ctx) {
 
     // A frame of the active box, for a person to look at.
     ctx->Yield(2);
+    check_overlay_boxes(ctx);
     IM_CHECK(screenshot(ctx, "drain-box-active.png"));
 }
 
@@ -364,12 +413,14 @@ void test_preview_overlay_fit(ImGuiTestContext* ctx) {
     h.app->library_ui.panel_was_open = false;
     ctx->Yield(5);
     IM_CHECK_EQ(pc.overlay_scale(), 1.0f);  // a wide panel: full size
+    check_overlay_boxes(ctx);
     IM_CHECK(screenshot(ctx, "overlay-fit-wide.png"));
 
     DisplayWidth narrow(h, 640);
     ctx->Yield(5);
     IM_CHECK(pc.overlay_scale() < 1.0f);
     IM_CHECK(pc.overlay_scale() >= hydra::render::kOverlayMinScale);
+    check_overlay_boxes(ctx);
     IM_CHECK(screenshot(ctx, "overlay-fit-narrow.png"));
 }
 
@@ -602,6 +653,7 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
     }, 30));
     IM_CHECK(pc.position_ms() > 0.0);
     IM_CHECK_STR_EQ(pc.next_act_box().header.c_str(), "Next: activation 1 of 3");
+    IM_CHECK_STR_EQ(pc.next_act_box().notation.c_str(), "3- (163 ms)");
     IM_CHECK(pc.next_act_box().detail.rfind("at m32.1.0", 0) == 0);
 }
 
@@ -823,6 +875,7 @@ void test_preview_overlay_steady(ImGuiTestContext* ctx) {
             IM_CHECK(pc.jump_activation(+1));
             ctx->Yield(2);
             if (act == 1) IM_CHECK_STR_EQ(pc.time_box().position.c_str(), "m32.1.0");
+            IM_CHECK_EQ(check_overlay_boxes(ctx), 5);
             if (act == 2) {
                 IM_CHECK_STR_EQ(pc.time_box().position.c_str(), "m58.1.0");
                 // The long chord's box, wrapped beside the lane.
@@ -858,7 +911,11 @@ void test_preview_activation_jumps(ImGuiTestContext* ctx) {
 
     pc.seek_ms(0.0);
     IM_CHECK_STR_EQ(pc.next_act_box().header.c_str(), "Next: activation 1 of 3");
+    IM_CHECK_STR_EQ(pc.next_act_box().notation.c_str(), "3- (163 ms)");
     IM_CHECK_STR_EQ(pc.next_act_box().detail.c_str(), "at m32.1.0 \xC2\xB7 [Kick - Green cymbal]");
+    // The box with its notation line, for a person to look at.
+    ctx->Yield(2);
+    IM_CHECK(screenshot(ctx, "next-act-notation.png"));
 
     ctx->ItemClick("**/Act >##nextact");
     const double act1 = pc.position_ms();
@@ -867,6 +924,7 @@ void test_preview_activation_jumps(ImGuiTestContext* ctx) {
     ctx->KeyPress(ImGuiKey_RightBracket);
     IM_CHECK_STR_EQ(pc.time_box().position.c_str(), "m58.1.0");
     IM_CHECK_STR_EQ(pc.next_act_box().header.c_str(), "Next: activation 2 of 3");
+    IM_CHECK_STR_EQ(pc.next_act_box().notation.c_str(), "1");
     ctx->KeyPress(ImGuiKey_LeftBracket);
     IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), act1, 0.5);
     // Nothing before the first activation: the playhead stays.

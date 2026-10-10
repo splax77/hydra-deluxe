@@ -16,8 +16,10 @@
 #include "ui/widgets.h"
 
 #include <algorithm>
+#include <array>
 #include <cfloat>
 #include <climits>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <optional>
@@ -195,9 +197,61 @@ void draw_scrub_marks(const std::vector<double>& marks) {
     }
 }
 
+// Names a drawn overlay box as an item, so hydra_uitest can find where it
+// landed by `label` ("**/##next_act_box"). It takes no room, no input and no
+// keyboard focus. The label goes to the test engine the way a widget's does;
+// without the engine that line does nothing.
+void name_box(const char* label, ImVec2 min, ImVec2 max) {
+    ImGuiContext& g = *ImGui::GetCurrentContext();
+    (void)g;  // read only by the test-engine hook
+    const ImGuiID id = ImGui::GetID(label);
+    ImGui::ItemAdd(ImRect(min, max), id, nullptr, ImGuiItemFlags_NoNav);
+    IMGUI_TEST_ENGINE_ITEM_INFO(id, label, g.LastItemData.StatusFlags);
+}
+
 // One line of overlay text at `size`: the time box's, the drain box's, the
 // next-activation box's and the gauge's "SP" label all step by it.
 float line_height(float size) { return size * 1.25f; }
+
+// The next-activation box's notation line over its other lines' size. The
+// user approved the ratio through the Preview mock on 2026-10-10 (option B,
+// in docs/handoffs/2026-10-10-preview-next-act-stars-mock), where the mock's
+// own sizes are its source.
+constexpr float kNextActNotationScale = 17.0f / 12.0f;
+
+// The score box's star row: kMaxStars stars, each as tall as a line of text
+// at `size`, with a fifth of that between them. The overlay font has no star
+// glyph, so draw_star draws each one as a shape.
+float star_gap(float size) { return size * 0.2f; }
+float star_row_width(float size) {
+    return size * static_cast<float>(kMaxStars) + star_gap(size) * (kMaxStars - 1);
+}
+
+// One five-point star `size` tall with its top-left at `min`: filled in `col`
+// when `filled`, else an outline in `col`. The shape is concave, so the fill
+// goes through AddConcavePolyFilled.
+void draw_star(ImDrawList* dl, ImVec2 min, float size, bool filled, ImU32 col) {
+    constexpr int kPoints = 5;
+    // Inner radius over outer, and the outline's width over the star's
+    // height: both as the user's approved mock drew its stars.
+    constexpr float kInner = 0.47f;
+    constexpr float kStroke = 0.07f;
+    const float r = size * 0.5f;
+    const ImVec2 c(min.x + r, min.y + r);
+    ImVec2 pts[kPoints * 2];
+    for (int i = 0; i < kPoints * 2; ++i) {
+        // Start at the top point and go clockwise, outer and inner in turn:
+        // a quarter turn back from the right, then a half turn over kPoints
+        // steps.
+        const float a = IM_PI * (-0.5f + static_cast<float>(i) / kPoints);
+        const float rad = (i % 2 == 0) ? r : r * kInner;
+        pts[i] = ImVec2(c.x + std::cos(a) * rad, c.y + std::sin(a) * rad);
+    }
+    if (filled)
+        dl->AddConcavePolyFilled(pts, kPoints * 2, col);
+    else
+        dl->AddPolyline(pts, kPoints * 2, col, ImDrawFlags_Closed, std::max(1.0f, size * kStroke));
+}
 
 // Every text overlay box's extents at one scale (finding R7.18). The fit pass
 // asks at scale 1 to choose the scale, the draw pass at the chosen one, so
@@ -239,14 +293,22 @@ OverlayBoxSizes overlay_box_sizes(float scale, const render::PreviewConfig& cfg,
     s.time_w = s.margin + time_text_w + s.pad * 2.0f;
     s.time_h = s.margin + s.line_h * static_cast<float>(line_count) + s.pad;
 
-    // The running score in large type, then its detail line at the time
-    // box's size; "Score unavailable" is at the time box's size too.
+    // The running score in large type, then the star row, its detail line
+    // and the next star's line, each one line at the time box's size; "Score
+    // unavailable" is at the time box's size too and has no stars.
     s.score_size = score.available ? s.size * 1.8f : s.size;
     s.score_line_h = s.score_size * 1.2f;
     float score_text_w = text_width(s.score_size, score.score.c_str());
-    if (!score.detail.empty())
-        score_text_w = std::max(score_text_w, text_width(s.size, score.detail.c_str()));
-    const float score_lines_h = s.score_line_h + (score.detail.empty() ? 0.0f : s.line_h);
+    float score_lines_h = s.score_line_h;
+    if (score.available) {
+        score_text_w = std::max(score_text_w, star_row_width(s.size));
+        score_lines_h += s.line_h;
+    }
+    for (const std::string* l : {&score.detail, &score.next_star}) {
+        if (l->empty()) continue;
+        score_text_w = std::max(score_text_w, text_width(s.size, l->c_str()));
+        score_lines_h += s.line_h;
+    }
     s.score_w = s.margin + score_text_w + s.pad * 2.0f;
     s.score_h = s.pad + score_lines_h + s.pad;
 
@@ -475,7 +537,8 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
                      ImVec2(static_cast<float>(w), static_cast<float>(h)));
 
         // The text overlays: the time box and score box top-left, the SP drain
-        // box top-right beside the gauge. They share one scale, fitted by
+        // box top-right beside the gauge, and the next-activation box under
+        // the drain box (D111 item 3). They share one scale, fitted by
         // render::overlay_scale so they sit beside the highway: their
         // configured size whenever there is room, smaller in a narrow window,
         // never below kOverlayMinScale (under that they overlap rather than
@@ -528,28 +591,54 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
             fit.left_w = std::max(fit.left_w, sz1.score_w);
             fit.left_h += sz1.gap + sz1.score_h;
         }
+        // The right column's right edge, in image pixels: the drain box's, and
+        // the next-activation box's under it.
+        const float right_edge = gauge_left - d_gap - origin.x;
+        fit.right_edge = right_edge;
         if (drain_drawn) {
             fit.right_w = sz1.drain_w;
             fit.right_h = sz1.drain_h;
-            fit.right_edge = gauge_left - d_gap - origin.x;
             fit.right_top = v_margin;
         }
-        // The next-activation box stands on the image's bottom edge, where
-        // the highway is widest, and wraps its lines to the room there. So
-        // the scale needs room only for its widest word, taken over every box
-        // this path shows: the same all through playback, whichever
-        // activation is next, and after the last one.
+        // The next-activation box's top: under the drain box, with the gap
+        // the left column keeps between its boxes, or in the drain box's
+        // place when that is hidden.
+        auto next_top_at = [&](const OverlayBoxSizes& s) {
+            return v_margin + (drain_drawn ? s.drain_h + s.gap : 0.0f);
+        };
+        // Its lines: the header, the notation in larger type, then where it
+        // is and its chord. The header's count ("2 of 3") stays on one line,
+        // and the notation never breaks.
         auto width_at = [&](float sz) {
             return [&text_width, sz](const std::string& s) { return text_width(sz, s.c_str()); };
         };
-        // The header's count ("2 of 3") stays on one line.
         constexpr size_t kHeaderCountWords = 3;
-        float next_word_w1 = 0.0f;
-        for (const hydra::app::PreviewNextActBox& b : pc->next_act_boxes())
-            next_word_w1 = std::max({next_word_w1,
-                                     render::widest_word(b.header, width_at(sz1.size), kHeaderCountWords),
-                                     render::widest_word(b.detail, width_at(sz1.size))});
-        if (next_word_w1 > 0.0f) fit.bottom_left_w = sz1.margin + next_word_w1 + sz1.pad * 2.0f;
+        auto next_sizes = [](const OverlayBoxSizes& s) {
+            return std::array<float, 3>{s.size, s.size * kNextActNotationScale, s.size};
+        };
+        auto next_pieces = [&](const hydra::app::PreviewNextActBox& b, const OverlayBoxSizes& s) {
+            const std::array<float, 3> sizes = next_sizes(s);
+            return std::vector<render::TextPiece>{
+                {b.header, width_at(sizes[0]), line_height(sizes[0]), kHeaderCountWords},
+                {b.notation, width_at(sizes[1]), b.notation.empty() ? 0.0f : line_height(sizes[1]),
+                 render::kKeepWhole},
+                {b.detail, width_at(sizes[2]), line_height(sizes[2])},
+            };
+        };
+        // Wrapped to the room beside the highway at the box's lowest row.
+        auto wrap_next = [&](const std::vector<render::TextPiece>& pieces, const OverlayBoxSizes& s) {
+            return render::wrap_right_box(pcfg, w, h, right_edge, next_top_at(s), s.pad, sz1.gap,
+                                          pieces);
+        };
+        // The scale reserves the largest box this path shows, so it stays
+        // the same all through playback, whichever activation is next, and
+        // after the last one.
+        for (const hydra::app::PreviewNextActBox& b : pc->next_act_boxes()) {
+            const render::WrappedText t = wrap_next(next_pieces(b, sz1), sz1);
+            fit.next_w = std::max(fit.next_w, t.text_w + sz1.pad * 2.0f);
+            fit.next_h = std::max(fit.next_h, t.text_h + sz1.pad * 2.0f);
+        }
+        fit.next_top = next_top_at(sz1);
         fit.gap = sz1.gap;
         const float scale = render::overlay_scale(pcfg, w, h, fit);
         pc->set_overlay_scale(scale);
@@ -567,57 +656,44 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         ImVec2 box_max(origin.x + sz.time_w, origin.y + sz.time_h);
         dl->AddRectFilled(box_min, box_max, IM_COL32(0, 0, 0, 128), corner,
                           ImDrawFlags_RoundCornersBottomRight);
+        name_box("##time_box", box_min, box_max);
         for (int i = 0; i < line_count; ++i)
             dl->AddText(font, size, ImVec2(origin.x + margin, origin.y + margin + line_h * i),
                         IM_COL32(255, 255, 255, 255), lines[i]);
 
         // The score box, under the time box in the same panel style: the
-        // running score in large type, then "x<mult> · combo <n>" in light
-        // grey. Absent until the chart is analyzed; "Score unavailable" (at
-        // the time box's size) when the path can't be replayed to its stored
-        // score. Right corners rounded, since it sits against the left edge.
+        // running score in large type, a row of star shapes (earned ones
+        // filled in the Star Power gold, the rest grey outlines), then
+        // "x<mult> · combo <n>" and "star <n> in <points>" in light grey.
+        // Absent until the chart is analyzed; "Score unavailable" (at the
+        // time box's size, no stars) when the path can't be replayed to its
+        // stored score. Right corners rounded, since it sits against the left
+        // edge.
         if (score.shown) {
             ImVec2 s_min(origin.x, box_max.y + sz.gap);
             ImVec2 s_max(origin.x + sz.score_w, s_min.y + sz.score_h);
             dl->AddRectFilled(s_min, s_max, IM_COL32(0, 0, 0, 128), corner,
                               ImDrawFlags_RoundCornersRight);
+            name_box("##score_box", s_min, s_max);
             dl->AddText(font, sz.score_size, ImVec2(origin.x + margin, s_min.y + pad),
                         IM_COL32(255, 255, 255, 255), score.score.c_str());
-            if (!score.detail.empty())
-                dl->AddText(font, size,
-                            ImVec2(origin.x + margin, s_min.y + pad + sz.score_line_h),
-                            IM_COL32(200, 200, 200, 255), score.detail.c_str());
-        }
-
-        // The next activation, bottom-left in the same panel style: its number
-        // in the best-path gold the scrubber's marks use, then where it is
-        // and its chord. Hidden past the last one.
-        // A line too wide for the room beside the highway at the bottom
-        // wraps at its spaces, so the box grows up rather than over the lane.
-        if (next.shown) {
-            const float text_room =
-                render::bottom_left_room(pcfg, w, h, sz1.gap) - margin - pad * 2.0f;
-            const std::vector<std::string> head =
-                render::wrap_words(next.header, text_room, width_at(size), kHeaderCountWords);
-            const std::vector<std::string> body =
-                render::wrap_words(next.detail, text_room, width_at(size));
-            float nw = 0.0f;
-            for (const std::string& l : head) nw = std::max(nw, text_width(size, l.c_str()));
-            for (const std::string& l : body) nw = std::max(nw, text_width(size, l.c_str()));
-            const float n_lines = static_cast<float>(head.size() + body.size());
-            const ImVec2 n_min(origin.x, img_max.y - (pad * 2.0f + line_h * n_lines));
-            const ImVec2 n_max(origin.x + margin + nw + pad * 2.0f, img_max.y);
-            dl->AddRectFilled(n_min, n_max, IM_COL32(0, 0, 0, 128), corner,
-                              ImDrawFlags_RoundCornersTopRight);
-            float y = n_min.y + pad;
-            const ImU32 head_color = ImGui::GetColorU32(kBestPathColor);
-            for (const std::string& l : head) {
-                dl->AddText(font, size, ImVec2(origin.x + margin, y), head_color, l.c_str());
+            float y = s_min.y + pad + sz.score_line_h;
+            const ImU32 grey = IM_COL32(200, 200, 200, 255);
+            if (score.available) {
+                const ImU32 earned = ImGui::GetColorU32(kStarPowerColor);
+                const ImU32 unearned = IM_COL32(138, 138, 138, 255);
+                // Centred in its line, as the text lines' glyphs sit.
+                const float star_y = y + (line_h - size) * 0.5f;
+                for (int i = 0; i < kMaxStars; ++i) {
+                    const bool on = i < score.stars;
+                    draw_star(dl, ImVec2(origin.x + margin + (size + star_gap(size)) * i, star_y),
+                              size, on, on ? earned : unearned);
+                }
                 y += line_h;
             }
-            for (const std::string& l : body) {
-                dl->AddText(font, size, ImVec2(origin.x + margin, y), IM_COL32(255, 255, 255, 255),
-                            l.c_str());
+            for (const std::string* l : {&score.detail, &score.next_star}) {
+                if (l->empty()) continue;
+                dl->AddText(font, size, ImVec2(origin.x + margin, y), grey, l->c_str());
                 y += line_h;
             }
         }
@@ -646,6 +722,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
             ImVec2 gauge_max(img_max.x - inset, img_max.y - v_margin - label_h);
             if (gauge_max.y > gauge_min.y) {
                 dl->AddRectFilled(gauge_min, gauge_max, IM_COL32(0, 0, 0, 128), px(4.0f));
+                name_box("##sp_gauge", gauge_min, gauge_max);
 
                 // The meter floored its cap at the setting's minimum
                 // (preview_view.cpp, finding 139).
@@ -686,6 +763,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
             ImVec2 d_min(gauge_left - d_gap - sz.drain_w, origin.y + v_margin);
             ImVec2 d_max(gauge_left - d_gap, d_min.y + sz.drain_h);
             dl->AddRectFilled(d_min, d_max, IM_COL32(0, 0, 0, 128), corner);
+            name_box("##drain_box", d_min, d_max);
             const render::Color& sp_teal = pcfg.hydra.sp_active_color;
             const ImU32 accent =
                 drain.active ? ImGui::GetColorU32(ImVec4(sp_teal.r, sp_teal.g, sp_teal.b, sp_teal.a))
@@ -696,6 +774,34 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
                 dl->AddText(font, size,
                             ImVec2(d_max.x - pad - lw, d_min.y + pad + line_h * static_cast<float>(i)),
                             colors[i], d_lines[i]);
+            }
+        }
+
+        // The next activation, under the drain box in the same panel style,
+        // right edges lined up and its text left-aligned: its number in the
+        // best-path gold the scrubber's marks use, then its notation in
+        // larger type, then where it is and its chord. Hidden past the last
+        // one. A line too wide for the room beside the highway wraps at its
+        // spaces, so the box grows down rather than over the lane; the
+        // notation is one line, never split.
+        if (next.shown) {
+            const std::vector<render::TextPiece> pieces = next_pieces(next, sz);
+            const render::WrappedText t = wrap_next(pieces, sz);
+            const ImVec2 n_max(origin.x + right_edge,
+                               origin.y + next_top_at(sz) + t.text_h + pad * 2.0f);
+            const ImVec2 n_min(n_max.x - t.text_w - pad * 2.0f, origin.y + next_top_at(sz));
+            dl->AddRectFilled(n_min, n_max, IM_COL32(0, 0, 0, 128), corner);
+            name_box("##next_act_box", n_min, n_max);
+            const ImU32 white = IM_COL32(255, 255, 255, 255);
+            // Per piece, in next_pieces' order.
+            const ImU32 colors[3] = {ImGui::GetColorU32(kBestPathColor), white, white};
+            const std::array<float, 3> sizes = next_sizes(sz);
+            float y = n_min.y + pad;
+            for (size_t i = 0; i < pieces.size(); ++i) {
+                for (const std::string& l : t.lines[i]) {
+                    dl->AddText(font, sizes[i], ImVec2(n_min.x + pad, y), colors[i], l.c_str());
+                    y += pieces[i].line_h;
+                }
             }
         }
     }

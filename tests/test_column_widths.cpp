@@ -6,12 +6,16 @@
 #include "doctest.h"
 
 #include <chrono>
+#include <cmath>
 #include <cstdio>
+#include <functional>
 #include <string>
 #include <vector>
 
 #include "imgui.h"
+#include "imgui_internal.h"  // ImGuiTable, for the apply_column_widths tests
 
+#include "testdata_dirs.h"  // resource_root
 #include "ui/app_shell.h"
 #include "ui/column_widths.h"
 #include "ui/fonts.h"
@@ -41,6 +45,55 @@ void check_same(const MeasuredWidths& a, const MeasuredWidths& b) {
     CHECK(a.widths == b.widths);
     CHECK(a.header_widths == b.header_widths);
     CHECK(a.widest_row == b.widest_row);
+    CHECK(a.usual_widths == b.usual_widths);
+    CHECK(a.cell_widths == b.cell_widths);
+}
+
+// A headless ImGui context with the app's fonts, for driving real tables with
+// no window or renderer. It shuts ImGui down when the test ends.
+struct HeadlessImGui {
+    HeadlessImGui() {
+        hydra::ui::ImGuiSetupOptions opts;
+        opts.dpi_scale = 1.0f;
+        opts.ini_file = "-";
+        opts.resource_dir = corpus::resource_root();
+        hydra::ui::setup_imgui(opts);
+        ImGuiIO& io = ImGui::GetIO();
+        io.DisplaySize = ImVec2(800.0f, 600.0f);
+        io.DeltaTime = 1.0f / 60.0f;
+        // No renderer is attached, so say the fonts need no texture upload.
+        io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+    }
+    ~HeadlessImGui() { hydra::ui::shutdown_imgui(); }
+};
+
+// A column of `rows` cells: every cell `usual` characters long except the
+// last, which is `widest` characters long.
+std::vector<std::string> one_long(std::size_t rows, std::size_t usual, std::size_t widest) {
+    std::vector<std::string> column(rows, std::string(usual, 'a'));
+    column.back() = std::string(widest, 'a');
+    return column;
+}
+
+// Rows from columns given side by side.
+Rows side_by_side(const std::vector<std::vector<std::string>>& columns) {
+    Rows rows(columns.front().size());
+    for (std::size_t r = 0; r < rows.size(); ++r)
+        for (const auto& column : columns) rows[r].push_back(column[r]);
+    return rows;
+}
+
+// The Library's case in miniature: 201 rows, three cut columns.
+//   "Title"     header 50.  Every cell 15 chars = 150.
+//   "Artist"    header 60.  Every cell 11 chars = 110.
+//   "Best path" header 90.  200 cells of 10 chars = 100, and the last row's
+//               cell is 1,200 chars = 12,000, the outlier.
+// The usual width (usual_of, column_widths.cpp, skips the one outlier) is
+// 150, 110 and 100; the widest is 150, 110 and 12,000.
+const std::vector<ColumnSpec> kOutlierSpecs = {spec("Title", true), spec("Artist", true),
+                                               spec("Best path", true)};
+Rows outlier_rows() {
+    return side_by_side({one_long(201, 15, 15), one_long(201, 11, 11), one_long(201, 10, 1200)});
 }
 
 // The three-column table the placing tests share:
@@ -148,16 +201,7 @@ TEST_CASE("column_widths: a column that never cuts is at least as wide as its dr
 }
 
 TEST_CASE("column_widths: table_room reads a sorted header's drawn width from the last frame") {
-    hydra::ui::ImGuiSetupOptions opts;
-    opts.dpi_scale = 1.0f;
-    opts.ini_file = "-";
-    opts.resource_dir = std::string(HYDRA_TESTDATA_DIR) + "/../resource";
-    hydra::ui::setup_imgui(opts);
-    ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize = ImVec2(800.0f, 600.0f);
-    io.DeltaTime = 1.0f / 60.0f;
-    // No renderer is attached, so say the fonts need no texture upload.
-    io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+    HeadlessImGui imgui;
 
     TableRoom room;
     float plain_text = 0.0f;
@@ -184,7 +228,6 @@ TEST_CASE("column_widths: table_room reads a sorted header's drawn width from th
     // column that is sorted shows it. Both are wider than their text.
     CHECK(room.header_drawn[0] > plain_text);
     CHECK(room.header_drawn[1] > sorted_text);
-    hydra::ui::shutdown_imgui();
 }
 
 TEST_CASE("column_widths: with room to spare, cut columns stop at their measured width") {
@@ -253,13 +296,14 @@ TEST_CASE("column_widths: a one-cell update equals a full measure") {
         CHECK(m.widths == std::vector<float>{50.0f});
         check_same(m, hydra::ui::measure_widths(specs, rows.size(), cells(rows)));
     }
-    SUBCASE("the widest got narrower: the column is measured again") {
-        // Row 1 becomes "aa" = 20. Row 0's 30 is now the widest. One call for
-        // the changed cell, then the header and three rows: 5 calls.
+    SUBCASE("the widest got narrower: the widest is found again without measuring") {
+        // Row 1 becomes "aa" = 20. Row 0's 30 is now the widest. The measure
+        // keeps every cell's width, so only the changed cell is measured: one
+        // call (the old rule measured the whole column again here, 5 calls).
         rows[1][0] = "aa";
         calls = 0;
         hydra::ui::update_cells(m, specs, 0, {1}, rows.size(), cells(rows));
-        CHECK(calls == 5);
+        CHECK(calls == 1);
         CHECK(m.widths == std::vector<float>{30.0f});
         CHECK(m.widest_row[0] == 0u);
         check_same(m, hydra::ui::measure_widths(specs, rows.size(), cells(rows)));
@@ -286,6 +330,209 @@ TEST_CASE("column_widths: a one-cell update equals a full measure") {
     }
 }
 
+TEST_CASE("column_widths: one outlier row does not take the room from the other columns") {
+    const Rows rows = outlier_rows();
+    const MeasuredWidths m = hydra::ui::measure_widths(kOutlierSpecs, rows.size(), cells(rows));
+    CHECK(m.usual_widths == std::vector<float>{150.0f, 110.0f, 100.0f});
+    CHECK(m.widths == std::vector<float>{150.0f, 110.0f, 12000.0f});
+    // Available 1000, spacing 10, no column that never cuts: leftover 990.
+    // The usual widths 150 + 110 + 100 = 360 fit, so each gets its usual
+    // width, and the 630 left goes to the one column still short of its
+    // widest: Best path, 100 + 630 = 730. Inner width 990 + 10 = 1000.
+    const ColumnLayout l =
+        hydra::ui::place_columns(m, kOutlierSpecs, TableRoom{1000.0f, 10.0f, {}});
+    CHECK(l.widths == std::vector<float>{150.0f, 110.0f, 730.0f});
+    CHECK(l.inner_width == 1000.0f);
+    CHECK(l.min_inner_width == 210.0f);
+}
+
+TEST_CASE("column_widths: the usual width is the widest below 100 rows, and skips one outlier at 100") {
+    // Header "H" = 10. 99 rows: 98 cells of 3 chars = 30 and one of 9 = 90.
+    // Too few rows to skip any: the usual width is the widest, 90.
+    const std::vector<ColumnSpec> specs = {spec("H", true)};
+    const Rows ninety_nine = side_by_side({one_long(99, 3, 9)});
+    CHECK(hydra::ui::measure_widths(specs, 99, cells(ninety_nine)).usual_widths ==
+          std::vector<float>{90.0f});
+    // 100 rows: 99 of 30 and one of 90. The one long row is skipped: 30.
+    const Rows hundred = side_by_side({one_long(100, 3, 9)});
+    CHECK(hydra::ui::measure_widths(specs, 100, cells(hundred)).usual_widths ==
+          std::vector<float>{30.0f});
+    // A header wider than the usual cell sets it: "Header" = 60.
+    CHECK(hydra::ui::measure_widths({spec("Header", true)}, 100, cells(hundred)).usual_widths ==
+          std::vector<float>{60.0f});
+    // No rows: the header.
+    CHECK(hydra::ui::measure_widths(specs, 0, cells(hundred)).usual_widths ==
+          std::vector<float>{10.0f});
+}
+
+TEST_CASE("column_widths: when the usual widths don't fit, they are shared in proportion") {
+    const Rows rows = outlier_rows();
+    const MeasuredWidths m = hydra::ui::measure_widths(kOutlierSpecs, rows.size(), cells(rows));
+    // Available 330, spacing 10: leftover 320, less than the usual 360.
+    // First pass, in proportion to 150, 110 and 100 (total 360): Title
+    // 133.3, Artist 97.8, Best path 88.9, below its header's 90, so Best path
+    // is pinned at 90. Second pass, 230 left between 150 and 110 (total
+    // 260): Title 132.7 -> 132, Artist 97.3 -> 97, both above their headers.
+    // Inner width 132 + 97 + 90 + 10 = 329.
+    const ColumnLayout l =
+        hydra::ui::place_columns(m, kOutlierSpecs, TableRoom{330.0f, 10.0f, {}});
+    CHECK(l.widths == std::vector<float>{132.0f, 97.0f, 90.0f});
+    CHECK(l.inner_width == 329.0f);
+}
+
+TEST_CASE("column_widths: a column that reaches its widest hands the rest on") {
+    // Two cut columns of 100 rows, headers "A" and "B" = 10 each.
+    //   A: 99 cells of 10 chars = 100, one of 12 chars = 120. Usual 100
+    //      (the one long row is skipped), widest 120.
+    //   B: 99 cells of 10 chars = 100, one of 100 chars = 1000. Usual 100,
+    //      widest 1000.
+    // Available 410, spacing 10: leftover 400, 200 past the usual widths. A's
+    // gap (20) is the smaller, so A gets all of it, 120, and B the 180 left,
+    // 280. No room is left over: inner width 120 + 280 + 10 = 410.
+    const std::vector<ColumnSpec> specs = {spec("A", true), spec("B", true)};
+    const Rows rows = side_by_side({one_long(100, 10, 12), one_long(100, 10, 100)});
+    const MeasuredWidths m = hydra::ui::measure_widths(specs, rows.size(), cells(rows));
+    const ColumnLayout l = hydra::ui::place_columns(m, specs, TableRoom{410.0f, 10.0f, {}});
+    CHECK(l.widths == std::vector<float>{120.0f, 280.0f});
+    CHECK(l.inner_width == 410.0f);
+}
+
+TEST_CASE("column_widths: spare room grows the smallest gap first, ties in column order") {
+    // Three cut columns of 100 rows, headers "X", "Y", "Z" = 10 each, spacing 0.
+    //   X: usual 10 chars = 100, widest 13 chars = 130, gap 30.
+    //   Y: usual 100, widest 11 chars = 110, gap 10.
+    //   Z: usual 100, widest 110, gap 10, tied with Y but after it.
+    const std::vector<ColumnSpec> specs = {spec("X", true), spec("Y", true), spec("Z", true)};
+    const Rows rows =
+        side_by_side({one_long(100, 10, 13), one_long(100, 10, 11), one_long(100, 10, 11)});
+    const MeasuredWidths m = hydra::ui::measure_widths(specs, rows.size(), cells(rows));
+    SUBCASE("15 to spare: Y fills its gap, Z gets the 5 left, X nothing") {
+        const ColumnLayout l = hydra::ui::place_columns(m, specs, TableRoom{315.0f, 0.0f, {}});
+        CHECK(l.widths == std::vector<float>{100.0f, 110.0f, 105.0f});
+        CHECK(l.inner_width == 315.0f);
+    }
+    SUBCASE("45 to spare: Y and Z fill theirs, X gets the 25 left") {
+        const ColumnLayout l = hydra::ui::place_columns(m, specs, TableRoom{345.0f, 0.0f, {}});
+        CHECK(l.widths == std::vector<float>{125.0f, 110.0f, 110.0f});
+        CHECK(l.inner_width == 345.0f);
+    }
+}
+
+TEST_CASE("column_widths: the outlier row shrinking is an update that equals a full measure") {
+    int calls = 0;
+    std::vector<ColumnSpec> specs = kOutlierSpecs;
+    specs[2].width_of = [&](std::string_view s) {
+        ++calls;
+        return ten_px(s);
+    };
+    Rows rows = outlier_rows();
+    MeasuredWidths m = hydra::ui::measure_widths(specs, rows.size(), cells(rows));
+    REQUIRE(m.widths[2] == 12000.0f);
+    REQUIRE(m.widest_row[2] == 200u);
+    // The outlier's text becomes "aaaaa" = 50. Every other row is 100, so
+    // the widest is 100, first held by row 0. Only the changed cell is
+    // measured: one call.
+    rows[200][2] = "aaaaa";
+    calls = 0;
+    hydra::ui::update_cells(m, specs, 2, {200}, rows.size(), cells(rows));
+    CHECK(calls == 1);
+    CHECK(m.widths[2] == 100.0f);
+    CHECK(m.widest_row[2] == 0u);
+    check_same(m, hydra::ui::measure_widths(specs, rows.size(), cells(rows)));
+}
+
+namespace {
+
+const std::vector<ColumnSpec> kApplySpecs = {spec("A", true), spec("B", true), spec("C", true)};
+
+ColumnLayout layout_of(std::vector<float> widths) {
+    ColumnLayout l;
+    l.widths = std::move(widths);
+    return l;
+}
+
+// One frame of table "##a" in window "apply test" with the rule's widths
+// `layout`. `before_apply`, if given, runs after the column setup and just
+// before apply_column_widths. Returns the table.
+ImGuiTable* apply_frame(const ColumnLayout& layout,
+                        const std::function<void(ImGuiTable*)>& before_apply = {}) {
+    ImGuiTable* table = nullptr;
+    ImGui::NewFrame();
+    ImGui::SetNextWindowSize(ImVec2(600.0f, 300.0f));
+    ImGui::Begin("apply test");
+    if (ImGui::BeginTable("##a", 3, hydra::ui::table_flags(), ImVec2(0.0f, 100.0f))) {
+        for (int c = 0; c < 3; ++c) hydra::ui::setup_column(kApplySpecs[c], layout, c);
+        table = ImGui::GetCurrentTable();
+        if (before_apply) before_apply(table);
+        hydra::ui::apply_column_widths(layout);
+        ImGui::TableHeadersRow();
+        ImGui::EndTable();
+    }
+    ImGui::End();
+    ImGui::EndFrame();
+    return table;
+}
+
+}  // namespace
+
+TEST_CASE("column_widths: a column hidden from the start gets the rule's width the frame it shows") {
+    HeadlessImGui imgui;
+    // The saved settings hide column B at 90 px, so ImGui never lays it out
+    // before it shows (as hydra_ui.ini did to the Library's Charter and
+    // Folder). The table's id comes from a frame that opens only the window.
+    ImGui::NewFrame();
+    ImGui::Begin("apply test");
+    const ImGuiID id = ImGui::GetID("##a");
+    ImGui::End();
+    ImGui::EndFrame();
+    char ini[96];
+    std::snprintf(ini, sizeof ini, "[Table][0x%08X,3]\nColumn 1 Width=90 Visible=0\n", id);
+    ImGui::LoadIniSettingsFromMemory(ini);
+
+    const ColumnLayout rule = layout_of({100.0f, 150.0f, 80.0f});
+    ImGuiTable* table = nullptr;
+    for (int frame = 0; frame < 3; ++frame) table = apply_frame(rule);
+    REQUIRE(table != nullptr);
+    REQUIRE_FALSE(table->Columns[1].IsEnabled);
+    // The user shows it: the header menu asks for it the frame before.
+    table = apply_frame(rule, [](ImGuiTable*) { ImGui::TableSetColumnEnabled(1, true); });
+    CHECK(table->Columns[1].IsEnabled);
+    CHECK(table->Columns[1].WidthGiven == 150.0f);
+}
+
+TEST_CASE("column_widths: a width ImGui changed by itself is put back") {
+    HeadlessImGui imgui;
+    const ColumnLayout rule = layout_of({100.0f, 150.0f, 80.0f});
+    ImGuiTable* table = nullptr;
+    for (int frame = 0; frame < 3; ++frame) table = apply_frame(rule);
+    REQUIRE(table != nullptr);
+    REQUIRE(table->Columns[0].WidthGiven == 100.0f);
+    // "Size column to fit" in the header menu: ImGui fits column A to its
+    // header "A", narrower than the rule's 100.
+    ImGui::TableSetColumnWidthAutoSingle(table, 0);
+    table = apply_frame(rule);
+    REQUIRE(table->Columns[0].WidthGiven < 100.0f);
+    table = apply_frame(rule);
+    CHECK(table->Columns[0].WidthGiven == 100.0f);
+}
+
+TEST_CASE("column_widths: a dragged column keeps the drag until the rule's width changes") {
+    HeadlessImGui imgui;
+    ImGuiTable* table = nullptr;
+    for (int frame = 0; frame < 3; ++frame) table = apply_frame(layout_of({100.0f, 150.0f, 80.0f}));
+    REQUIRE(table != nullptr);
+    // The user drags B's border to 200 and lets go: ImGui queues the width
+    // the frame the mouse is held, exactly as its own border does.
+    table->ResizedColumn = 1;
+    table->ResizedColumnNextWidth = 200.0f;
+    table->InstanceInteracted = 0;
+    for (int frame = 0; frame < 3; ++frame) table = apply_frame(layout_of({100.0f, 150.0f, 80.0f}));
+    CHECK(table->Columns[1].WidthGiven == 200.0f);
+    // The rule's width for B changes: the rule's width wins again.
+    for (int frame = 0; frame < 2; ++frame) table = apply_frame(layout_of({100.0f, 170.0f, 80.0f}));
+    CHECK(table->Columns[1].WidthGiven == 170.0f);
+}
+
 // Prints how long the three measures take on a Library-sized table, with the
 // app's real font when one loads. It never fails on the numbers. Skip it with
 // -tse=column_widths_timing.
@@ -304,11 +551,7 @@ TEST_CASE("column_widths timing: 40,000 rows" * doctest::test_suite("column_widt
         }
     const CellText text = [&rows](std::size_t r, std::size_t c) { return rows[r][c]; };
 
-    hydra::ui::ImGuiSetupOptions opts;
-    opts.dpi_scale = 1.0f;
-    opts.ini_file = "-";
-    opts.resource_dir = std::string(HYDRA_TESTDATA_DIR) + "/../resource";
-    hydra::ui::setup_imgui(opts);
+    HeadlessImGui imgui;
     ImFont* font = ImGui::GetIO().Fonts->Fonts.Size > 0 ? ImGui::GetIO().Fonts->Fonts[0] : nullptr;
     const bool real = font != nullptr;
     const hydra::ui::WidthOf width_of =
@@ -335,7 +578,8 @@ TEST_CASE("column_widths timing: 40,000 rows" * doctest::test_suite("column_widt
     hydra::ui::update_cells(m, specs, column, {other}, kRowsCount, text);
     const double cell_ms = ms(Clock::now() - t1);
 
-    // One column: the widest row gets narrower, so the column is measured again.
+    // The widest row gets narrower: the widest and usual widths are worked
+    // out again from the kept cell widths, with one cell measured.
     REQUIRE(m.widest_row[column].has_value());
     rows[*m.widest_row[column]][column] = "short";
     const Clock::time_point t2 = Clock::now();
@@ -344,8 +588,7 @@ TEST_CASE("column_widths timing: 40,000 rows" * doctest::test_suite("column_widt
 
     std::printf(
         "column_widths timing (%s, %zu rows x %zu columns):\n"
-        "  full measure %.2f ms, one-column measure %.2f ms, one-cell update %.4f ms\n",
+        "  full measure %.2f ms, widest-row update %.2f ms, one-cell update %.4f ms\n",
         real ? "real font, ImFont::CalcTextSizeA" : "no font loaded: 10 px fake", kRowsCount,
         kColumns, full_ms, column_ms, cell_ms);
-    hydra::ui::shutdown_imgui();
 }

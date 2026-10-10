@@ -35,10 +35,7 @@
 #include "core/winstr.h"
 #include "store/record_store.h"
 #include "temp_util.h"
-
-#ifndef HYDRA_INPUT_DIR
-#error "HYDRA_INPUT_DIR must be defined (see CMakeLists.txt)"
-#endif
+#include "testdata_dirs.h"  // root
 
 namespace fs = std::filesystem;
 
@@ -86,7 +83,7 @@ void copy_file_to(const std::string& from_utf8, const std::string& to_utf8) {
     std::fclose(f);
 }
 
-const std::string kChartDir = std::string(HYDRA_INPUT_DIR) + "/common/IB24/T1/Allister - Overrated";
+const std::string kChartDir = corpus::root() + "/common/IB24/T1/Allister - Overrated";
 const std::string kOpus = testaudio::fixture_path("sine220.opus");
 
 }  // namespace

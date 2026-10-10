@@ -258,8 +258,9 @@ TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
 }  // namespace
 
 // Decision D3: a tied variant is stored as a branch of its leader, but its
-// facts are its own. The fixtures in test_search.cpp prove the mechanism on
-// purpose-built charts; this guard catches any later case they do not shape.
+// facts are its own. The fixtures in test_tied_variants.cpp prove the
+// mechanism on purpose-built charts; this guard catches any later case they do
+// not shape.
 //
 // The app's defaults (cap 4, score range 4) hold few ties, and none of them
 // folded while SP ran or banked bars at different ticks from its leader. So
@@ -552,7 +553,7 @@ TEST_CASE("windows read from a path JSON match the ones read from the record") {
 // before.
 TEST_CASE("a dump carries each window's SqIn phrases back to the replay") {
     const Song song = load_songpath(
-        std::string(HYDRA_INPUT_DIR) + "/test_fast_tempo/spent_then_next.chart", true, true);
+        corpus::root() + "/test_fast_tempo/spent_then_next.chart", true, true);
     const HydraRecord rec = analyze_chart(song, test::scores_settings(2));
     const std::vector<const Path*> all = rec.all_paths();
     const json dumped = paths_json(all, song.timing());

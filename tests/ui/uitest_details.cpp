@@ -9,6 +9,7 @@
 
 #include "uitest_harness.h"
 
+#include "../scoped_hook.h"
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
@@ -750,14 +751,13 @@ void test_layout_sweep(ImGuiTestContext* ctx) {
 // The click's analysis fails with a long path in its error, through the
 // test seam: the engine has no input the harness can give that fails this way.
 struct FailingAnalyzer {
-    explicit FailingAnalyzer(std::string what) {
-        hydra::ui::set_view_analyzer_for_test(
-            [what](const std::string&, const hydra::app::AnalysisSettings&,
-                   const std::function<void(float)>&) -> hydra::app::AnalysisResult {
-                throw std::runtime_error(what);
-            });
-    }
-    ~FailingAnalyzer() { hydra::ui::set_view_analyzer_for_test(nullptr); }
+    explicit FailingAnalyzer(std::string what)
+        : seam(hydra::ui::set_view_analyzer_for_test,
+               [what](const std::string&, const hydra::app::AnalysisSettings&,
+                      const std::function<void(float)>&) -> hydra::app::AnalysisResult {
+                   throw std::runtime_error(what);
+               }) {}
+    ScopedHook seam;
 };
 
 // A long error message wraps inside its window instead of running past the

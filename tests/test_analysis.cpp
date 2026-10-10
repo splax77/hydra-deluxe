@@ -41,16 +41,12 @@
 #include "store/record_store.h"
 #include "temp_util.h"
 
-#ifndef HYDRA_TESTDATA_DIR
-#error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
-#endif
-
 using namespace hydra::app;
 
 using hydra::file_exists_utf8;
 
 TEST_CASE("discover_charts walks the corpus without throwing") {
-    auto [items, errors] = discover_charts({std::string(HYDRA_INPUT_DIR)});
+    auto [items, errors] = discover_charts({corpus::root()});
     CHECK(errors.empty());
 
     for (const ScanItem& item : items) {
@@ -86,8 +82,8 @@ ScanItem chart_item(const std::string& chart) {
 // separate metadata reads), so this pins the digests, metadata, and discovery
 // set across any scan implementation change.
 TEST_CASE("discover_charts output matches the checked-in scan snapshot") {
-    const std::string input = HYDRA_INPUT_DIR;
-    std::ifstream f(std::string(HYDRA_TESTDATA_DIR) + "/scan_snapshot.json",
+    const std::string input = corpus::root();
+    std::ifstream f(corpus::testdata_root() + "/scan_snapshot.json",
                     std::ios::binary);
     REQUIRE_MESSAGE(bool(f), "missing testdata/scan_snapshot.json");
     std::stringstream ss;
@@ -119,7 +115,7 @@ TEST_CASE("discover_charts output matches the checked-in scan snapshot") {
 }
 
 TEST_CASE("rescan cache reproduces the scan without reading chart files") {
-    const std::string input = HYDRA_INPUT_DIR;
+    const std::string input = corpus::root();
     auto [items, errors] = discover_charts({input});
     REQUIRE(errors.empty());
     REQUIRE(!items.empty());
@@ -730,7 +726,7 @@ TEST_CASE("discover_charts: a song with no usable name reads (unknown)") {
 }
 
 TEST_CASE("rescan cache: an old placeholder or blank title reads (unknown)") {
-    const std::string input = HYDRA_INPUT_DIR;
+    const std::string input = corpus::root();
     auto [items, errors] = discover_charts({input});
     REQUIRE(!items.empty());
 
@@ -969,7 +965,7 @@ TEST_CASE("the scan's folder count is reported while the walk runs, from the cal
         if (std::this_thread::get_id() != caller) all_on_caller = false;
         seen.push_back(n);
     };
-    auto [items, errors] = discover_charts({std::string(HYDRA_INPUT_DIR)}, callbacks, nullptr);
+    auto [items, errors] = discover_charts({corpus::root()}, callbacks, nullptr);
     CHECK(errors.empty());
     CHECK(all_on_caller);
     REQUIRE(seen.size() > 1);

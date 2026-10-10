@@ -140,7 +140,7 @@ DLLs, and the installer refuses a staging folder that holds one.
 
 The vendored SQLite is built without its memory-use counters and without
 shared cache. Hydra uses neither, and leaving them out trims a little of
-SQLite's own work; `tests/test_store.cpp` checks both. SQLite's default sync
+SQLite's own work; `tests/test_store_open.cpp` checks both. SQLite's default sync
 level for WAL mode is not set at build time, because the store sets it itself
 on every open (`record_store.cpp`). The store also caps the write-ahead log
 (`hydra.db-wal`) there, at `kJournalSizeLimitBytes` (D93; ADR 0026).
@@ -221,13 +221,17 @@ instrument a native exe. Instrumenting rewrites the exe in place so it records
 each line it runs. The build never ships.
 
 The `coverage` job in `.github/workflows/ci.yml` holds the whole recipe and
-runs on pushes to main only. It instruments the exes, starts a collection
-session, runs the tests inside it (the unit-test slices one at a time),
-converts the result to Cobertura (a common XML coverage format), and turns
-that into an HTML report with ReportGenerator. The HTML is the run's
+runs on pushes to main only. It instruments the exes, then runs each test
+step inside the tool's `collect` command (the unit-test slices one at a time).
+`collect` records every instrumented process the command starts and ends when
+the command ends, so no collector outlives its step. It merges the two results,
+converts them to Cobertura (a common XML coverage format), and turns that into
+an HTML report with ReportGenerator. The HTML is the run's
 `coverage-report` artifact, and the line-coverage summary is on the run's
 summary page.
-`tools\coverage.settings.xml` leaves `third_party\` and `tests\` out of it.
+`tools\coverage.settings.xml` leaves `third_party\` and `tests\` out of it. It
+also turns off the tool's dynamic instrumentation: left on, it injects itself
+into each test process ahead of mimalloc, and the mimalloc tests fail.
 
 To instrument again after a test run, relink first (delete the exe and build).
 
@@ -261,7 +265,8 @@ them has one owner. This list points at each; read the owner for the rule.
   `src/ui/app_shell.{h,cpp}` makes each report its own OS window.
   `report_placement` beside it decides where a report opens and whether it
   opens maximized, and `place_report_window` applies that and notes where the
-  window is, in the `[Hydra][Window:<key>]` sections of `hydra_ui.ini` (D103
+  window is (`maximize_due_report_windows` does the maximize itself, between
+  frames, called from `main.cpp`), in the `[Hydra][Window:<key>]` sections of `hydra_ui.ini` (D103
   item 14; ADR 0027 says how it behaves). `main.cpp` measures the OS frame
   around a report and hands it over with `set_report_frame_insets`. The popup
   patch in `third_party/imgui/imgui.cpp` keeps popups inside their window
@@ -427,7 +432,8 @@ Start it by hand from the Actions tab after a change to memory-heavy code.
 
 On pushes to `main` only, a `coverage` job builds the tests with the `coverage`
 preset and writes the coverage report (see "The coverage report" above). It
-never fails a run over a low number.
+never fails a run over a low number. Its proving run (run 38083092803, on
+2026-10-10) took 11.5 minutes.
 
 Another job runs the tool tests above with no C++ build. It
 checks out the whole history, because the precheck self-test checks two real

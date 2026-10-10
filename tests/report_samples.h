@@ -1,7 +1,7 @@
 // The sample report rows the tests share: the six path rows and four
-// leaderboard scores the samples page shows. tests/test_report.cpp pins the
-// tiles on them, and the GUI tests (tests/ui/uitest_report_windows.cpp) open
-// both report windows on them. Linked into hydra_tests and
+// leaderboard scores the samples page shows. tests/test_report_page.cpp pins
+// the tiles on them, and the GUI tests (tests/ui/uitest_report_windows.cpp)
+// open both report windows on them. Linked into hydra_tests and
 // hydra_uitest_harness, so there is one copy. every_row, the shown list a
 // tile test passes for a window with no filter, lives here too.
 

@@ -1,5 +1,5 @@
 // One owner per rule, checked where a grep can check it. The rows are data,
-// in tests/single_owner/rules/ (one JSON file per area), and the baselines are
+// in tests/single_owner/rules/ (rule_files below says which files), and the baselines are
 // in tests/single_owner/baseline.json; load_tables below is their one reader.
 // Each row names a question, the one place that answers it, and a pattern for
 // the text that answers it. A matching line anywhere else fails here, unless
@@ -23,6 +23,7 @@
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <optional>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -30,8 +31,10 @@
 #include <string>
 #include <vector>
 
+#include "../audio_chart_fixtures.h"  // write_text_file
 #include "../code_lexer.h"
 #include "../source_tree.h"
+#include "../temp_util.h"
 #include "core/strutil.h"
 #include "core/winstr.h"
 #include "json.hpp"
@@ -45,7 +48,7 @@ namespace {
 
 // ---- Reading the rows and the baselines ----
 //
-// Rule files are read in file-name order and rows in file order. A missing
+// Rule files are read in name order (rule_files) and rows in file order. A missing
 // required field, a field the loader does not know, or a value of the wrong
 // type fails with the rules file and the row's question, so a typo cannot
 // drop a field quietly.
@@ -222,24 +225,40 @@ struct RuleTables {
     std::vector<KnownClone> clones;
 };
 
-RuleTables load_tables() {
-    const fs::path root = sourcetree::root();
-    std::vector<fs::path> files;
-    for (const fs::directory_entry& e : fs::directory_iterator(root / fs::u8path(kRulesDir)))
-        if (e.is_regular_file() && e.path().extension() == ".json") files.push_back(e.path());
-    std::sort(files.begin(), files.end(), [](const fs::path& x, const fs::path& y) {
-        return x.filename() < y.filename();
-    });
-    RuleTables t;
-    for (const fs::path& p : files) {
-        const std::string name = "rules/" + p.filename().generic_u8string();
+// The rules files under `dir`, each with the name the scan reports it by, in
+// name order: the area files in `dir` itself, and the files one folder down,
+// in a folder named after an area (ADR 0029).
+std::vector<std::pair<std::string, fs::path>> rule_files(const fs::path& dir) {
+    std::vector<std::pair<std::string, fs::path>> files;
+    for (const fs::directory_entry& e : fs::directory_iterator(dir)) {
+        const std::string name = "rules/" + e.path().filename().generic_u8string();
+        if (e.is_regular_file() && e.path().extension() == ".json") files.push_back({name, e.path()});
+        if (!e.is_directory()) continue;
+        for (const fs::directory_entry& f : fs::directory_iterator(e.path()))
+            if (f.is_regular_file() && f.path().extension() == ".json")
+                files.push_back({name + "/" + f.path().filename().generic_u8string(), f.path()});
+    }
+    std::sort(files.begin(), files.end());
+    return files;
+}
+
+std::vector<OwnerRule> load_rules(const fs::path& dir) {
+    std::vector<OwnerRule> rules;
+    for (const auto& [name, p] : rule_files(dir)) {
         const json doc = read_json_file(p, name);
         check_keys(doc, {"rules"}, name);
         if (!doc.contains("rules") || !doc.at("rules").is_array())
             throw std::runtime_error(name + ": missing field \"rules\"");
         const json& rows = doc.at("rules");
-        for (size_t i = 0; i < rows.size(); ++i) t.rules.push_back(parse_rule(rows[i], name, i));
+        for (size_t i = 0; i < rows.size(); ++i) rules.push_back(parse_rule(rows[i], name, i));
     }
+    return rules;
+}
+
+RuleTables load_tables() {
+    const fs::path root = sourcetree::root();
+    RuleTables t;
+    t.rules = load_rules(root / fs::u8path(kRulesDir));
 
     const std::string name = "baseline.json";
     const json doc = read_json_file(root / fs::u8path(kBaselineFile), name);
@@ -302,6 +321,13 @@ codelex::Lang lexer_language(const fs::path& path) {
 bool whole_line_comment(const std::string& trimmed, codelex::Lang lang) {
     const std::vector<codelex::Piece> pieces = codelex::split(trimmed, lang);
     return pieces.size() == 1 && pieces[0].kind == codelex::Kind::Comment;
+}
+
+// Whether a trimmed line is a comment line the row scans skip, in the language
+// the file is read in. Both row scans ask this: C++ keeps is_line_comment's
+// test, every other language is split by codelex.
+bool skipped_comment_line(const std::string& trimmed, codelex::Lang lang) {
+    return lang == codelex::Lang::Cpp ? is_line_comment(trimmed) : whole_line_comment(trimmed, lang);
 }
 
 // Whether `text` names `symbol` as a whole word outside its comments, as
@@ -447,6 +473,35 @@ bool in_scope(const OwnerRule& r, const std::string& sub, const std::string& rel
     return false;
 }
 
+// The language the walk reads the file `rel` in, or nothing when the walk does
+// not read it. The walk and the case for the single files outside it both ask
+// this, so a file is read by exactly one of them.
+std::optional<codelex::Lang> walk_language(const std::string& rel) {
+    if (!sourcetree::walk_visits(rel)) return std::nullopt;
+    // These files hold made-up rows and their examples as text.
+    if (rel.compare(0, 19, "tests/single_owner/") == 0) return std::nullopt;
+    // A Python row ("language": "py") reads .py files only, so a __pycache__
+    // .pyc is never read; every other row reads C++.
+    const fs::path path = fs::u8path(rel);
+    if (is_cpp_source(path)) return codelex::Lang::Cpp;
+    if (lexer_language(path) == codelex::Lang::Python) return codelex::Lang::Python;
+    return std::nullopt;
+}
+
+// Whether the walk reads the file `rel` for this row: it reads the file at
+// all, and in the row's language.
+bool walk_reads_for(const OwnerRule& r, const std::string& rel) {
+    const std::optional<codelex::Lang> lang = walk_language(rel);
+    return lang && (*lang == codelex::Lang::Python) == (r.language == "py");
+}
+
+// The message for line `t` at `where` (file:line) that answers the row's
+// question without its owner. Both scans give it.
+std::string answers_message(const OwnerRule& rule, const std::string& where, const std::string& t) {
+    return where + ": answers \"" + rule.question + "\", which belongs to " + rule.owner + ": " + t +
+           rule_suffix(rule.rules_file);
+}
+
 // What the row scan carries from one file to the next.
 struct ScanState {
     const std::vector<CompiledRule>& compiled;
@@ -473,7 +528,7 @@ void scan_file(ScanState& s, const std::string& rel, bool py, std::istream& in) 
         ++lineno;
         const std::string t = hydra::trim(line);
         if (t.empty()) continue;
-        const bool comment = py ? whole_line_comment(t, codelex::Lang::Python) : is_line_comment(t);
+        const bool comment = skipped_comment_line(t, py ? codelex::Lang::Python : codelex::Lang::Cpp);
         for (size_t ci = 0; ci < s.compiled.size(); ++ci) {
             const CompiledRule& c = s.compiled[ci];
             const OwnerRule& rule = *c.rule;
@@ -501,9 +556,7 @@ void scan_file(ScanState& s, const std::string& rel, bool py, std::istream& in) 
                                      "entry covers one line) answers \"" +
                                      rule.question + "\": " + t + rule_suffix(rule.rules_file));
             else
-                s.problems.push_back(where + ": answers \"" + rule.question +
-                                     "\", which belongs to " + rule.owner + ": " + t +
-                                     rule_suffix(rule.rules_file));
+                s.problems.push_back(answers_message(rule, where, t));
         }
     }
 }
@@ -515,15 +568,11 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
     ScanState scan = start_scan(compiled, listed);
     int files = 0;
     sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
-            // A Python row ("language": "py") reads .py files only, so a
-            // __pycache__ .pyc is never read; every other row reads C++.
-            const bool py = lexer_language(path) == codelex::Lang::Python;
-            if (!is_cpp_source(path) && !py) return;
-            // These files hold made-up rows and their examples as text.
-            if (rel.compare(0, 19, "tests/single_owner/") == 0) return;
+            const std::optional<codelex::Lang> lang = walk_language(rel);
+            if (!lang) return;
             ++files;
             std::ifstream in(path);
-            scan_file(scan, rel, py, in);
+            scan_file(scan, rel, *lang == codelex::Lang::Python, in);
     });
     // A function-scoped rule found its function exactly once; a renamed or
     // moved function would otherwise leave the rule checking nothing.
@@ -578,29 +627,95 @@ TEST_CASE("single-owner: the row scan's messages, pinned on a made-up file") {
           "rules/made_up.json)");
 }
 
-// The walk reads only .cpp and .h files under src, tools and tests, so a row
-// scoped to a single file outside them (installer/hydra.iss, Inno Setup's
-// script) is checked here, with the same verdict. No listed line covers such
-// a file, so any flagged line fails. Comment lines are skipped as the walk
-// skips them.
+namespace {
+
+// The row scan of one single file the walk does not read for this row: `rel`
+// names it, and its extension picks the language its comments are read in
+// (lexer_language); `in` reads its text. No listed line covers such a file,
+// so each flagged line is a problem. Comment lines are skipped as the walk
+// skips them, unless the row sets scan_comments.
+void scan_single_file(const CompiledRule& c, const std::string& rel, std::istream& in,
+                      std::vector<std::string>& problems) {
+    const codelex::Lang lang = lexer_language(fs::u8path(rel));
+    std::string line;
+    int lineno = 0;
+    while (std::getline(in, line)) {
+        ++lineno;
+        const std::string t = hydra::trim(line);
+        if (t.empty()) continue;
+        if (skipped_comment_line(t, lang) && !c.rule->scan_comments) continue;
+        if (flags_line(c, line))
+            problems.push_back(answers_message(*c.rule, rel + ":" + std::to_string(lineno), t));
+    }
+}
+
+}  // namespace
+
+// A row scoped to a single file the walk does not read for it (a workflow, the
+// installer script, a .ps1 under tools/) is checked here, with the same
+// verdict.
 TEST_CASE("single-owner rules hold in the single files outside the walk") {
+    std::vector<std::string> problems;
     for (const CompiledRule& c : compile_rules()) {
         for (const std::string& s : c.rule->scope) {
-            const std::string top = s.substr(0, s.find('/'));
-            if (s.find('/') == std::string::npos || top == "src" || top == "tools" || top == "tests")
-                continue;
+            if (s.find('/') == std::string::npos || walk_reads_for(*c.rule, s)) continue;
             std::ifstream in(sourcetree::root() / fs::u8path(s));
+            INFO(c.rule->question << ": scoped to " << s << rule_suffix(c.rule->rules_file));
             REQUIRE(in.good());
-            std::string line;
-            while (std::getline(in, line)) {
-                const std::string t = hydra::trim(line);
-                if (is_line_comment(t) && !c.rule->scan_comments) continue;
-                INFO(s << " answers \"" << c.rule->question << "\", which belongs to "
-                       << c.rule->owner << ": " << t << rule_suffix(c.rule->rules_file));
-                CHECK_FALSE(flags_line(c, line));
-            }
+            scan_single_file(c, s, in, problems);
         }
     }
+    std::ostringstream report;
+    for (const std::string& p : problems) report << p << "\n";
+    INFO(report.str());
+    CHECK(problems.empty());
+}
+
+TEST_CASE("single-owner: a row scoped to a file the walk does not read is read here") {
+    OwnerRule r;
+    r.question = "Is this a made-up question?";
+    r.owner = "made_up in src/a.cpp";
+    r.rules_file = "rules/made_up.json";
+    r.pattern = "made_up\\(";
+    r.anchor = "made_up(";
+    // The walk reads C++ and Python under its folders, each for rows in that
+    // language, and nothing else; the single-files case reads the rest.
+    CHECK(walk_reads_for(r, "src/core/winstr.cpp"));
+    CHECK_FALSE(walk_reads_for(r, "tools/fuzz_seeds.ps1"));
+    CHECK_FALSE(walk_reads_for(r, "tools/made_up.py"));
+    CHECK_FALSE(walk_reads_for(r, ".github/workflows/ci.yml"));
+    CHECK_FALSE(walk_reads_for(r, "tests/single_owner/scan.cpp"));
+    r.language = "py";
+    CHECK(walk_reads_for(r, "tools/made_up.py"));
+    CHECK_FALSE(walk_reads_for(r, "src/core/winstr.cpp"));
+    r.language.clear();
+
+    // A .ps1 is read with PowerShell's comments and a .yml with YAML's: only
+    // the code lines are flagged, unless the row reads comments too.
+    const std::string ps1 = "# made_up(1)\n<# made_up(2) #>\n$x = made_up(3)  # trailing\n";
+    const std::string yml = "# made_up(1)\n  run: made_up(2)\n";
+    std::vector<std::string> problems;
+    std::istringstream ps1_in(ps1), yml_in(yml);
+    scan_single_file(compile_rule(r), "tools/made_up.ps1", ps1_in, problems);
+    scan_single_file(compile_rule(r), ".github/workflows/made_up.yml", yml_in, problems);
+    CHECK(problems == std::vector<std::string>{
+                          "tools/made_up.ps1:3: answers \"Is this a made-up question?\", which "
+                          "belongs to made_up in src/a.cpp: $x = made_up(3)  # trailing (rule: "
+                          "rules/made_up.json)",
+                          ".github/workflows/made_up.yml:2: answers \"Is this a made-up "
+                          "question?\", which belongs to made_up in src/a.cpp: run: made_up(2) "
+                          "(rule: rules/made_up.json)"});
+    // C++ (and a file codelex does not know) skips "//" lines only; the other
+    // languages skip what codelex calls a comment.
+    CHECK(skipped_comment_line("// x", codelex::Lang::Cpp));
+    CHECK_FALSE(skipped_comment_line("/* x */", codelex::Lang::Cpp));
+    CHECK(skipped_comment_line("# x", codelex::Lang::PowerShell));
+    CHECK_FALSE(skipped_comment_line("x # y", codelex::Lang::Yaml));
+    r.scan_comments = true;
+    problems.clear();
+    std::istringstream ps1_again(ps1);
+    scan_single_file(compile_rule(r), "tools/made_up.ps1", ps1_again, problems);
+    CHECK(problems.size() == 3);
 }
 
 TEST_CASE("single-owner: every row's owner is still where the row says") {
@@ -661,6 +776,32 @@ TEST_CASE("single-owner: the owner-gone guard and the loader fail on a made-up r
     no_question.erase("question");
     CHECK_THROWS_WITH(parse_rule(no_question, "rules/made_up.json", 2),
                       "rules/made_up.json: row 3: missing field \"question\"");
+}
+
+TEST_CASE("single-owner: a row in an area's folder is loaded and named by its path") {
+    const std::string dir = testtemp::temp_dir("single_owner_rules");
+    testtemp::remove_dir(dir);
+    fs::create_directories(hydra::os_path(dir + "\\made_up"));
+    const std::string row = R"({"owner": "x in y", "owner_file": "src/core/winstr.cpp",
+        "owner_symbol": "fits_shell", "decision": "D0", "added_by": "rl-glob", "pattern": "x", )";
+    audiochart::write_text_file(dir + "\\made_up.json",
+        R"({"rules": [)" + row + R"("question": "Is this an area row?", "date": "2026-10-10"}]})");
+    audiochart::write_text_file(dir + "\\made_up\\topic.json",
+        R"({"rules": [)" + row + R"("question": "Is this a topic row?", "date": "2026-10-10"}]})");
+    audiochart::write_text_file(dir + "\\made_up\\notes.txt", "not a rules file");
+
+    const std::vector<OwnerRule> rows = load_rules(hydra::os_path(dir));
+    REQUIRE(rows.size() == 2);
+    CHECK(rows[0].question == "Is this an area row?");
+    CHECK(rows[0].rules_file == "rules/made_up.json");
+    CHECK(rows[1].question == "Is this a topic row?");
+    CHECK(rows[1].rules_file == "rules/made_up/topic.json");
+
+    audiochart::write_text_file(dir + "\\made_up\\topic.json",
+        R"({"rules": [)" + row + R"("question": "Is this a topic row?"}]})");
+    CHECK_THROWS_WITH(load_rules(hydra::os_path(dir)),
+                      "rules/made_up/topic.json: \"Is this a topic row?\": missing field \"date\"");
+    testtemp::remove_dir(dir);
 }
 
 TEST_CASE("single-owner: no baseline entry is past its remove_by date") {

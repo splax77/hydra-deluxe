@@ -1,11 +1,16 @@
 // The one column-width rule every table in the app uses (plan:
 // docs/superpowers/plans/2026-10-10-one-column-width-rule.md, Part 1).
 //
-// A column is as wide as the widest thing it shows: its header or its widest
-// cell, in the cell's own font, with any per-cell padding. Columns that may
-// cut their text share what is left after the others, and give way first when
-// the window is narrow. Once each of them is down to its header's width, the
-// table scrolls sideways instead.
+// A column that never cuts is as wide as the widest thing it shows: its
+// header or its widest cell, in the cell's own font, with any per-cell
+// padding. Columns that may cut their text share what is left after the
+// others. Each first gets its usual width, the width that fits all but its
+// rarest long cells (kUsualShare in column_widths.cpp says how rare), so one
+// very long cell cannot take the room from the rest. Room still spare then
+// grows the columns that are still cut, up to their widest. When the window
+// is too narrow for the usual widths, the cut columns give way first; once
+// each of them is down to its header's width, the table scrolls sideways
+// instead.
 //
 // The rule has three steps, and only the last one touches ImGui:
 //
@@ -76,6 +81,13 @@ struct MeasuredWidths {
     // Per column: the row whose cell is the widest. Empty when the header is
     // at least as wide as every cell (or there are no rows).
     std::vector<std::optional<std::size_t>> widest_row;
+    // Per column: the usual width, the one that fits all but the rarest long
+    // cells (see usual_of in column_widths.cpp), or the header's width when
+    // that is wider. Never more than `widths`.
+    std::vector<float> usual_widths;
+    // Per column, per row: that cell's width, padding included. update_cells
+    // works from these, so it never measures an unchanged row's text again.
+    std::vector<std::vector<float>> cell_widths;
     // g_ui_scale (ui/fonts.h) when the measure was taken. Zero: never measured.
     float scale = 0.0f;
 
@@ -91,9 +103,9 @@ MeasuredWidths measure_widths(const std::vector<ColumnSpec>& specs, std::size_t 
 
 // Brings one column of `measured` up to date after the text of `changed_rows`
 // changed, and nothing else did (the same rows, the same scale). The result
-// equals a fresh measure_widths. It measures only the changed cells, unless
-// the row that held the column's widest cell got narrower; then it measures
-// that one column again.
+// equals a fresh measure_widths. It measures only the changed cells, and
+// works the column's widest and usual widths out again from the cell widths
+// it keeps.
 void update_cells(MeasuredWidths& measured, const std::vector<ColumnSpec>& specs,
                   std::size_t column, const std::vector<std::size_t>& changed_rows,
                   std::size_t row_count, const CellText& text);
@@ -133,12 +145,19 @@ struct ColumnLayout {
     float min_inner_width = 0.0f;
 };
 
-// Columns that may not cut get their measured width. Cut columns share what
-// is left in proportion to their measured widths, each between its header's
-// width and its measured width; one pinned at its header's width leaves the
-// rest to the others. When even the headers do not fit, every cut column is
-// at its header's width and the table scrolls. A header's width is its text
-// or, when wider, room.header_drawn; a column is never narrower than it.
+// Columns that may not cut get their widest width. Cut columns share what is
+// left:
+//   - When it covers their usual widths, each gets its usual width. The rest
+//     goes to the columns still short of their widest, the smallest gap
+//     first (ties in column order); each gets its whole gap while the rest
+//     lasts, and the first that doesn't fit gets what remains. No room is
+//     left over while a cut column is below its widest.
+//   - When it doesn't, they share it in proportion to their usual widths,
+//     each at least its header's width; one pinned at its header's width
+//     leaves the rest to the others. When even the headers do not fit, every
+//     cut column is at its header's width and the table scrolls.
+// A header's width is its text or, when wider, room.header_drawn; a column is
+// never narrower than it.
 ColumnLayout place_columns(const MeasuredWidths& measured, const std::vector<ColumnSpec>& specs,
                            const TableRoom& room);
 
@@ -214,11 +233,19 @@ bool begin_small_table(const char* str_id, ImGuiTableFlags look,
 void setup_column(const ColumnSpec& spec, const ColumnLayout& layout, int column,
                   ImGuiTableColumnFlags flags = 0, ImGuiID user_id = 0);
 
+// Whether the current table is past its first frame. A table's first frame
+// loads its saved state from hydra_ui.ini after the caller's setup, so
+// whatever must win over that state waits until this is true. False when
+// there is no current table.
+bool table_settled();
+
 // Hands the rule's widths to the current table. Call it right after the
 // setup_column calls, before the first row. It waits until the table has
 // settled (its first frame loads saved widths from hydra_ui.ini over
-// anything set earlier), then sets each column whose rule width differs from
-// the one it last set for that table. A column the user dragged keeps the
+// anything set earlier). Then it sets each column whose rule width differs
+// from the one it last set, or whose width ImGui changed by itself since (its
+// own auto-fit, a UI scale change). A hidden column gets its width too, so
+// it has it the frame it shows. A column the user dragged keeps the
 // drag until the rule's width for it changes. What it last set lives in the
 // table's window state, never in hydra_ui.ini.
 void apply_column_widths(const ColumnLayout& layout);

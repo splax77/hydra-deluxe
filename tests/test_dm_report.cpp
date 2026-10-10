@@ -332,8 +332,8 @@ TEST_CASE("status_token: each status's chip colour, as the page's STATUS_CLASS g
 
 TEST_CASE("collect_dm_rows: the stored names go through display_title, display_artist and "
           "display_charter") {
-    // test_song.cpp pins what those three do. This checks only that the page
-    // calls them: one tagged name each.
+    // test_song_input.cpp pins what those three do. This checks only that the
+    // page calls them: one tagged name each.
     store::RecordStore store(":memory:");
     const int64_t optimal = fill_store(store);
     test::name_chart(store, kHash, "<b>Bold Title</b>", test::kTagOnlyTitle, " <b>Bob</b> ");

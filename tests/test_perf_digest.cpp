@@ -23,10 +23,7 @@
 #include "parse/song.h"
 #include "song_digest.h"
 #include "store/record_store.h"
-
-#ifndef HYDRA_INPUT_DIR
-#error "HYDRA_INPUT_DIR must be defined (see CMakeLists.txt)"
-#endif
+#include "testdata_dirs.h"  // root
 
 using namespace hydra;
 
@@ -49,7 +46,7 @@ app::Settings pinned_settings(const char* difficulty, bool pro, bool bass2x) {
 // The corpus as hydra_bench takes a folder: scanned, each chart once as its
 // first copy, in scan order.
 std::vector<app::ScanItem> corpus_charts() {
-    auto [items, errors] = app::discover_charts({HYDRA_INPUT_DIR});
+    auto [items, errors] = app::discover_charts({corpus::root()});
     return app::plan_batch(items, {}).todo;
 }
 
