@@ -34,6 +34,16 @@
       "cacheVariables": {
         "HYDRA_ASAN": { "type": "BOOL", "value": "ON" }
       }
+    },
+    {
+      "name": "fuzz",
+      "displayName": "libFuzzer targets on the AddressSanitizer build (never ships)",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build-fuzz",
+      "cacheVariables": {
+        "HYDRA_ASAN": { "type": "BOOL", "value": "ON" },
+        "HYDRA_FUZZ": { "type": "BOOL", "value": "ON" }
+      }
     }
   ],
   "buildPresets": [
@@ -56,6 +66,12 @@
       "name": "asan",
       "configurePreset": "asan",
       "configuration": "Release"
+    },
+    {
+      "name": "fuzz",
+      "configurePreset": "fuzz",
+      "configuration": "Release",
+      "targets": ["hydra_fuzz"]
     }
   ]
 }
