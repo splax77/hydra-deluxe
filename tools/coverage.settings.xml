@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Settings for Microsoft.CodeCoverage.Console in the CI coverage job, so the
+     report maps Hydra's own code and nothing else. The recipe lives in "The
+     coverage report" in docs/development.md. Each pattern is a regular
+     expression over the source paths the .pdb records. Those paths are
+     relative to the repo (CMakeLists.txt trims the prefix with /d1trimfile),
+     so a pattern may not count on a backslash in front of the folder name. -->
+<Configuration>
+  <CodeCoverage>
+    <Sources>
+      <Exclude>
+        <Source>^(.*\\)?third_party\\.*</Source>
+        <Source>^(.*\\)?tests\\.*</Source>
+      </Exclude>
+    </Sources>
+  </CodeCoverage>
+</Configuration>

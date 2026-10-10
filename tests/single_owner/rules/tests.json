@@ -984,12 +984,38 @@
       ],
       "must_not_match": [
         "run: .\\build-cpp\\Release\\hydra_uitest.exe --all",
-        "run: .\\build-asan\\Release\\hydra_uitest.exe --all"
+        "run: .\\build-asan\\Release\\hydra_uitest.exe --all",
+        "run: .\\build-coverage\\Release\\hydra_uitest.exe --all"
       ],
       "scope": [
         ".github/workflows/ci.yml"
       ],
       "note": "A CI step that gives the GUI runner its own --jobs count. The count is kDefaultJobs's, so a step runs plain --all. The walk reads no .yml file, so the case that checks the single files outside it reads ci.yml (the way it reads installer/hydra.iss). Decided by: CI and test tooling plan, decision 3 (2026-10-10); derive-once review of ct-t4"
+    },
+    {
+      "question": "Which fuzz targets exist?",
+      "owner": "kTargets in tests/fuzz/harness.h",
+      "owner_file": "tests/fuzz/harness.h",
+      "owner_symbol": "kTargets",
+      "date": "2026-10-10",
+      "decision": "derive-once review of ct-t6b (2026-10-10)",
+      "added_by": "ct-w3a-join",
+      "pattern": "^(?=.*\\bchart\\b)(?=.*\\bmid\\b)(?=.*\\bsng\\b)(?=.*\\bsrb\\b)(?=.*\\baudio\\b)(?=.*\\bimage\\b)",
+      "anchor": "srb",
+      "must_match": [
+        "target: [chart, mid, sng, srb, audio, image]",
+        "foreach ($t in 'chart', 'mid', 'sng', 'srb', 'audio', 'image') {"
+      ],
+      "must_not_match": [
+        "target: ${{ fromJson(needs.seeds.outputs.targets) }}",
+        "if ('${{ matrix.target }}' -eq 'chart') { $extra += '-dict=tests/fuzz/chart.dict' }",
+        "target: [chart, mid, sng, srb]"
+      ],
+      "scope": [
+        ".github/workflows/fuzz.yml",
+        ".github/workflows/ci.yml"
+      ],
+      "note": "A workflow line that lists the targets itself: all six names on one line, in any order. The fuzz job's matrix comes from the seeds job's folder list instead. The walk reads no .yml file, so the case that checks the single files outside it reads these. A .ps1 under tools/ is not in scope: no scan case reads one."
     },
     {
       "question": "Which codelex language reads a file with this extension?",

@@ -26,6 +26,28 @@
         "installer/hydra.iss"
       ],
       "note": "The two strings typed anywhere but CMakeLists.txt, which the walk does not read (so no owner line is listed). The installer script is checked by the case below this table's scan. Decided by: audit finding 257; phase 6 task J2-1 (D53)"
+    },
+    {
+      "question": "Which ctest entries does a hosted CI runner skip?",
+      "owner": "HOSTED_CTEST_FILTER in .github/workflows/ci.yml",
+      "owner_file": ".github/workflows/ci.yml",
+      "owner_symbol": "HOSTED_CTEST_FILTER",
+      "date": "2026-10-10",
+      "decision": "tests/shards.txt (CI skips the audio_device entry by name); derive-once review of ct-t5",
+      "added_by": "ct-t5-review",
+      "pattern": "\\bctest\\b.*-E\\s+audio_device",
+      "anchor": "audio_device",
+      "must_match": [
+        "run: ctest --test-dir build-coverage -C Release -j 1 -R hydra_tests -E audio_device --output-on-failure"
+      ],
+      "must_not_match": [
+        "run: ctest --test-dir build-cpp -C Release -j 4 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure",
+        "HOSTED_CTEST_FILTER: -R hydra_tests -E audio_device"
+      ],
+      "scope": [
+        ".github/workflows/ci.yml"
+      ],
+      "note": "A CI step that runs ctest names the entries a hosted runner skips through the workflow's one filter, so the skipped entry is written once. The walk reads no .yml file, so the case that checks the single files outside it reads ci.yml. Carried from tests/test_single_owner.cpp at the ct-w3a join."
     }
   ]
 }
