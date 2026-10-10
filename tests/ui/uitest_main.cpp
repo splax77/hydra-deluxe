@@ -6,10 +6,12 @@
 //   hydra_uitest --list                list the tests
 //   options: --keep-temp  --shots <dir>  --jobs <n>
 //
-// --jobs <n> runs each chosen test in its own hydra_uitest process, at most n
-// at once, and prints their results in the usual order. Each process has its
-// own scratch folder and a fresh ImGui context, so no test sees another's
-// leftovers. Without --jobs the tests run one after another in this process.
+// --all, or more than one --test, runs each chosen test in its own
+// hydra_uitest process, at most --jobs at once (kDefaultJobs when not given),
+// and prints their results in registration order. Each process has its own
+// scratch folder and a fresh ImGui context, so no test sees another's
+// leftovers. A single --test, or a --script, runs in this process: a script
+// needs the engine here, and one test is the debugging case.
 //
 // Prints [PASS]/[FAIL] per test and exits 0 only if everything passed.
 
@@ -118,7 +120,7 @@ bool launch_child(Child& c, const std::wstring& exe, const std::vector<std::stri
     return true;
 }
 
-// --jobs: every chosen test in its own process, at most `jobs` at once.
+// Every chosen test in its own process, at most `jobs` at once.
 int run_parallel(uitest::Harness& h, const std::vector<std::string>& wanted, int jobs,
                  const std::vector<std::string>& passthrough) {
     // The chosen tests in registration order, the order --all runs them in.
@@ -142,7 +144,8 @@ int run_parallel(uitest::Harness& h, const std::vector<std::string>& wanted, int
         for (const Child& c : children) found = found || uitest::selects(w, c.name.c_str());
         if (!found) {
             std::fprintf(stderr,
-                         "hydra_uitest: no test \"%s\" (--jobs runs named tests, not scripts)\n",
+                         "hydra_uitest: no test \"%s\" (a script runs only on its own; try "
+                         "--list)\n",
                          w.c_str());
             return 2;
         }
@@ -238,9 +241,13 @@ int run_parallel(uitest::Harness& h, const std::vector<std::string>& wanted, int
 
 }  // namespace
 
+// How many test processes run at once when --jobs is not given. The user
+// chose 4, CI's count (CI and test tooling plan, decision 3, 2026-10-10).
+constexpr int kDefaultJobs = 4;
+
 int main() {
     bool list = false;
-    int jobs = 1;
+    int jobs = kDefaultJobs;
     std::vector<std::string> wanted;       // test names, "all", or a script path
     std::vector<std::string> passthrough;  // options each --jobs child gets too
     uitest::Harness h;
@@ -294,7 +301,11 @@ int main() {
         return 0;
     }
 
-    if (jobs > 1) {
+    // One entry that is not "all" is a single test or a script: it runs here.
+    // Anything more goes to fresh processes, so --all means the same in
+    // ctest, CI and by hand.
+    const bool in_process = wanted.size() == 1 && wanted[0] != "all";
+    if (!in_process) {
         const int rc = run_parallel(h, wanted, jobs, passthrough);
         h.shutdown();
         return rc;

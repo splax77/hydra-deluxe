@@ -11,25 +11,25 @@ Use this instead of launching `Hydra.exe` and taking screenshots. Reach for a sc
 ```
 
 ```bash
-.\build-cpp\Release\hydra_uitest.exe --all --jobs 4
+.\build-cpp\Release\hydra_uitest.exe --all
 ```
 
 Agents do not run `--all`. They run only the tests for their own change, with `--test <name>`; the rule is in `docs/agents/brief-preamble.md`. The main session runs the whole suite once per merge.
 
 | Command | What it does |
 |---|---|
-| `hydra_uitest --all` | run every checked-in test, one after another |
-| `hydra_uitest --all --jobs <n>` | run every test in its own process, at most n at once |
-| `hydra_uitest --test scan` | run one test (repeatable) |
+| `hydra_uitest --all` | run every checked-in test, each in its own process |
+| `hydra_uitest --test scan` | run one test, in this process; give `--test` more than once and each test gets its own process |
+| `--jobs <n>` | how many test processes run at once (default: `kDefaultJobs` in `uitest_main.cpp`) |
 | `hydra_uitest --list` | list the tests |
 | `hydra_uitest --script file.txt` | run a command file (see below) |
 | `--keep-temp` | keep the scratch folder (DB, INI) and print its path |
 | `--shots <dir>` | where `screenshot` files go (default: the scratch folder) |
 | `--db <file>` | start each test from a copy of this database instead of an empty one (the file itself is never opened). A missing file is an error. Close Hydra first: a database it has open is not a clean copy |
 
-Output is `[PASS]`/`[FAIL]` per test. A failed test prints the engine's log. The log names the check that failed (like `uitest_library.cpp:120`) and every action before it. The exit code is 0 only when everything passed. `ctest` runs it too.
+Output is `[PASS]`/`[FAIL]` per test. A failed test prints the engine's log. The log names the check that failed (like `uitest_library.cpp:120`) and every action before it. A run of more than one test ends with an `N of M passed` line. The exit code is 0 only when everything passed. `ctest` runs `--all` too, so ctest, CI and a run by hand all mean the same thing.
 
-**Running tests in parallel.** `--jobs <n>` starts each test as its own `hydra_uitest --test <name>` process, at most n at once. Each process has its own scratch folder and a fresh ImGui context, so no test sees another's leftovers. The results still print in the usual order. The full suite took about 14 s at `--jobs 4`, against about 22 s one after another. Those two times were written on 2026-09-27 (commit 66309530) with no run count or spread recorded, and have not been measured again. The suite then had about 60 tests (60 of 60 passed on 2026-10-03, `docs/handoffs/2026-10-03-preview-loading-audit.md`) and has 85 now (`hydra_uitest --list`), so today's times will differ. `--jobs` runs named tests only, not scripts.
+**One run mode.** A run of more than one test gives each test its own `hydra_uitest --test <name>` process, at most `--jobs` at once. Each process has its own scratch folder and a fresh ImGui context, so no test sees another's leftovers, and the order the tests run in does not matter. The results print in registration order. A single `--test`, or a `--script`, runs in the one process instead: a script needs the test engine in that process, and one test is the debugging case. A script runs only on its own, never beside other tests. `hydra_uitest --list` prints the current tests. [MAIN SESSION: fill from the merge run, then delete this bracket. The sentence reads: "The full suite took about X s at the default job count, measured on YYYY-MM-DD at commit HASH over N runs (spread A to B s)."]
 
 The 97 test charts analyze in a blink: a whole-library batch can start and finish between two frames. So a test that looks at a running batch (the strip, Pause, Stop, the settings lock) makes a `BatchGate` before it starts the batch. The gate holds each chart until the test lets it through with `allow(n)`, and `started()` says how many charts have reached it. The run is then provably still going when the test looks, however busy the machine is. The gate runs the batch on one worker unless given a count: `BatchGate gate(3)` runs three, so three charts sit at the gate at once (`batch-strip-workers` tests the strip that way).
 
@@ -126,7 +126,7 @@ The second group goes end to end through AppState: the toolbar, the batch strip,
 .\build-cpp\Release\Hydra.exe --uitest scan
 ```
 
-Runs the same test inside the real window at human speed, with the Test Engine's own panel showing. Accepts a test name, `all`, or a command-file path. Results and any `text`/`state`/`dump` output go to `hydra_uitest.log` next to the exe (`--uitest-log <file>` to change); the window stays open afterwards so the end state can be inspected. Attached mode also runs on the scratch library, never on the real `hydra.db` — the tests wipe their DB at start.
+Runs the same test inside the real window at human speed, with the Test Engine's own panel showing. Accepts a test name, `all`, or a command-file path. Here `all` runs every test one after another in the one window, so a test can see the previous test's leftovers; `hydra_uitest --all` is the run that counts. Results and any `text`/`state`/`dump` output go to `hydra_uitest.log` next to the exe (`--uitest-log <file>` to change); the window stays open afterwards so the end state can be inspected. Attached mode also runs on the scratch library, never on the real `hydra.db` — the tests wipe their DB at start.
 
 Attached mode exists only in dev builds (`build-cpp`). The installer builds with the `ship` preset, which leaves the GUI tests out, so an installed Hydra.exe ignores `--uitest`.
 
@@ -134,7 +134,7 @@ Attached mode exists only in dev builds (`build-cpp`). The installer builds with
 
 Tests are split by area into four files: `uitest_library.cpp`, `uitest_details.cpp`, `uitest_preview.cpp` and `uitest_batch_reports.cpp`. Each file ends with an entry table (`library_tests()`, `details_tests()`, and so on). Write the test in the file for its area, then add `{"thing", test_thing}` to that file's table. `uitest_paths.cpp` holds the Paths tab tests and registers them itself, from `register_paths_tests`. `uitest_report_windows.cpp` registers its own: the sample-row tests from `register_report_window_tests`, and the end-to-end ones from `report_window_flow_tests()`, which `register_tests` calls last.
 
-`register_tests` in `uitest_tests.cpp` walks the four tables. Its `kRunOrder` list keeps the order the tests had before the split, because one ImGui context carries tab and input state from one test to the next under `--all`. A test that isn't on the list runs after the listed ones, in its file's order, so a new test needs no line there. A renamed test must be renamed in `kRunOrder` too, or the runner stops with an error.
+`register_tests` in `uitest_tests.cpp` registers the four tables, then the Paths tab and report window tests. Order does not matter, because every run of more than one test gives each test its own process. So a new or renamed test needs no other change.
 
 Template:
 
@@ -171,9 +171,9 @@ Rules of thumb:
 
 - `tests/ui/uitest_harness.{h,cpp}` — WARP device, offscreen target, engine setup, scratch files, seams, `wait_until`, `dump_*`, `screenshot`, and the shared helpers every area file calls.
 - `tests/ui/uitest_script.cpp` — the command-file interpreter.
-- `tests/ui/uitest_tests.cpp` — `register_tests` and its `kRunOrder` list.
+- `tests/ui/uitest_tests.cpp` — `register_tests`.
 - `tests/ui/uitest_library.cpp`, `uitest_details.cpp`, `uitest_preview.cpp`, `uitest_batch_reports.cpp` — the checked-in tests by area, each with its entry table.
 - `tests/ui/uitest_paths.cpp` — the Paths tab tests.
 - `tests/ui/uitest_report_windows.cpp` — the report windows' tests; their sample rows are in `tests/report_samples.{h,cpp}`.
-- `tests/ui/uitest_main.cpp` — the CLI and `--jobs`.
+- `tests/ui/uitest_main.cpp` — the CLI and the one-process-per-test runner.
 - `src/ui/app_shell.{h,cpp}` — `setup_imgui` / `run_frame`, shared by `Hydra.exe` and the runner. `run_frame` can capture every string ImGui drew (`FrameText`), which is what `text`/`wait-text` read.
