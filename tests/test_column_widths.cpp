@@ -12,7 +12,7 @@
 
 #include "imgui.h"
 
-#include "testdata_dirs.h"  // testdata_root
+#include "testdata_dirs.h"  // resource_root
 #include "ui/app_shell.h"
 #include "ui/column_widths.h"
 #include "ui/fonts.h"
@@ -152,7 +152,7 @@ TEST_CASE("column_widths: table_room reads a sorted header's drawn width from th
     hydra::ui::ImGuiSetupOptions opts;
     opts.dpi_scale = 1.0f;
     opts.ini_file = "-";
-    opts.resource_dir = corpus::testdata_root() + "/../resource";
+    opts.resource_dir = corpus::resource_root();
     hydra::ui::setup_imgui(opts);
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = ImVec2(800.0f, 600.0f);
@@ -308,7 +308,7 @@ TEST_CASE("column_widths timing: 40,000 rows" * doctest::test_suite("column_widt
     hydra::ui::ImGuiSetupOptions opts;
     opts.dpi_scale = 1.0f;
     opts.ini_file = "-";
-    opts.resource_dir = corpus::testdata_root() + "/../resource";
+    opts.resource_dir = corpus::resource_root();
     hydra::ui::setup_imgui(opts);
     ImFont* font = ImGui::GetIO().Fonts->Fonts.Size > 0 ? ImGui::GetIO().Fonts->Fonts[0] : nullptr;
     const bool real = font != nullptr;

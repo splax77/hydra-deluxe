@@ -23,6 +23,10 @@ inline std::string root() { return HYDRA_INPUT_DIR; }
 // so a caller there fails to compile.
 #ifdef HYDRA_TESTDATA_DIR
 inline std::string testdata_root() { return HYDRA_TESTDATA_DIR; }
+
+// resource, the repo's fonts and icons folder, for the tests that set ImGui
+// up. It sits beside testdata in the repo, so it hangs off testdata_root().
+inline std::string resource_root() { return testdata_root() + "/../resource"; }
 #endif
 
 }  // namespace corpus
