@@ -532,4 +532,14 @@ TEST_CASE("code lexer: C++ and Python comments and string literals") {
     CHECK(lexed("\"a`\"# b\" c", ps) == V{"S:\"a`\"# b\"", "C: c"});
     CHECK(lexed("'it''s # not' z", ps) == V{"S:'it''s # not'", "C: z"});
     CHECK(lexed("@'\na # b\n'@ c", ps) == V{"S:@'\na # b\n'@", "C: c"});
+    // YAML: a # after a space is a comment and one inside a word is not; a
+    // quote opens a string where a value starts, and is an apostrophe inside
+    // a plain value.
+    const auto yml = codelex::Lang::Yaml;
+    CHECK(lexed("a: 1 # c\nb", yml) == V{"C:a: 1 ", "#:# c", "C:\nb"});
+    CHECK(lexed("# c\n  run: x#y", yml) == V{"#:# c", "C:\n  run: x#y"});
+    CHECK(lexed("a: 'it''s # no' z", yml) == V{"C:a: ", "S:'it''s # no'", "C: z"});
+    CHECK(lexed(R"(a: "q\"# r")", yml) == V{"C:a: ", R"(S:"q\"# r")"});
+    CHECK(lexed("run: echo it's # c", yml) == V{"C:run: echo it's ", "#:# c"});
+    CHECK(lexed("- [x, 'y']", yml) == V{"C:- [x, ", "S:'y'", "C:]"});
 }

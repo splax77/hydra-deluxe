@@ -165,9 +165,10 @@
       ],
       "scope": [
         ".github/workflows/fuzz.yml",
-        ".github/workflows/ci.yml"
+        ".github/workflows/ci.yml",
+        "tools/fuzz_seeds.ps1"
       ],
-      "note": "A workflow step that picks corpus charts by their file names. The seeds come from the case \"fuzz seeds\" in tests/test_fuzz_regressions.cpp, which reads the corpus through chart_format_of. The walk reads no .yml file, so the case that checks the single files outside it reads these. tools/fuzz_seeds.ps1, where the copy was found, is not in scope: no scan case reads a .ps1 file under tools/."
+      "note": "A workflow step or script that picks corpus charts by their file names. tools/fuzz_seeds.ps1 is where the copy was found. The seeds come from the case \"fuzz seeds\" in tests/test_fuzz_regressions.cpp, which reads the corpus through chart_format_of. The walk reads none of these files, so the case that checks the single files outside it reads them."
     },
     {
       "question": "Where does an .srb's metadata stream start?",
