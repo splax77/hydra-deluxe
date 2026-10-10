@@ -34,6 +34,15 @@
       "cacheVariables": {
         "HYDRA_ASAN": { "type": "BOOL", "value": "ON" }
       }
+    },
+    {
+      "name": "coverage",
+      "displayName": "Code coverage test build (never ships)",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build-coverage",
+      "cacheVariables": {
+        "HYDRA_COVERAGE": { "type": "BOOL", "value": "ON" }
+      }
     }
   ],
   "buildPresets": [
@@ -55,6 +64,11 @@
     {
       "name": "asan",
       "configurePreset": "asan",
+      "configuration": "Release"
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage",
       "configuration": "Release"
     }
   ]

@@ -206,6 +206,28 @@ redirect are left out of it, and so is the GUI runner's start check for it.
 ASan keeps freed memory to itself during a run, so a test's memory use looks
 higher than usual; that is how ASan works, not a leak.
 
+### The coverage report
+
+The coverage report is a map of which lines in `src\` the tests reach. It is
+not a score: there is no threshold, and nothing fails when the number drops.
+
+`.\build_cpp.ps1 -Preset coverage -Target hydra_tests` builds into
+`build-coverage\`. That build links with `/PROFILE`, which
+`Microsoft.CodeCoverage.Console` (shipped with Visual Studio, under
+`Common7\IDE\Extensions\Microsoft\CodeCoverage.Console`) needs before it can
+instrument a native exe. Instrumenting rewrites the exe in place so it records
+each line it runs. The build never ships.
+
+The `coverage` job in `.github/workflows/ci.yml` holds the whole recipe and
+runs on pushes to main only. It instruments the exes, starts a collection
+session, runs the tests inside it one process at a time, converts the result
+to Cobertura (a common XML coverage format), and turns that into an HTML
+report with ReportGenerator. The HTML is the run's `coverage-report` artifact,
+and the line-coverage summary is on the run's summary page.
+`tools\coverage.settings.xml` leaves `third_party\` and `tests\` out of it.
+
+To instrument again after a test run, relink first (delete the exe and build).
+
 ## The report windows
 
 The path report and the dmleaderboards comparison are Hydra windows, each its
