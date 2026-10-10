@@ -245,48 +245,90 @@ If the database holds no results at all once a batch ends, as when every song in
 
 ## Reports
 
-### The path report
+### Report windows
 
 Hydra Deluxe has two reports: the path report and the dmleaderboards comparison. Each one opens in its own window. It's a real Windows window with its own taskbar button, so you can drag it to another monitor and keep it open while you use the rest of Hydra Deluxe. It minimizes and restores with Hydra Deluxe and sits in front of the main window. Both windows can be open at once.
 
 The first time a report window opens, it covers the main window, at the same size and place. After that it opens where you last left it, and maximized if you left it maximized, on the monitor it was on. While the main window is maximized, a report window opens maximized too. If the monitor a report was on is no longer connected, the window opens over the main window again, or maximized on the main window's monitor if it was maximized. A report window always fits on its monitor, its frame included. The placement is saved in `hydra_ui.ini`, next to the program.
 
+The main window's place is saved in `hydra_ui.ini` too. Hydra Deluxe reopens where you closed it, at the same size, and maximized if you left it maximized. If that spot is on no monitor now, because a monitor was unplugged or moved, it opens at its default place and size.
+
+Both report windows have the same layout. From top to bottom:
+
+| Part | What it shows |
+| --- | --- |
+| Out-of-date strip | Only when the report is out of date (below). |
+| Header | `Hydra` and the report's name, a line saying what the report covers, `Built HH:MM` (when it was built) and `Refresh`, which builds it again. |
+| Tiles | Numbers that sum up the rows that pass the filters. They change as you filter. |
+| Controls | A search box, a dropdown and, on the right, a count line saying how many rows pass. |
+| Table | One row per path or score. Hover a column heading to see what the column means. |
+| Footer | A dim note under the table. |
+
+Click a column heading to sort by it, and click it again to flip the order. Shift+click another heading to add a second sort. Empty values always sink to the bottom. Text columns sort the way the Library does. To hide or show a column, right-click a column heading and pick it from the menu. The row number column always stays. Columns are sized the way the Library's are, so a width you drag lasts only until Hydra Deluxe sizes that column again.
+
+When no row passes the filters, the window says `Nothing matches those filters.` `Clear filters` then empties the search and sets the dropdown back to its first entry.
+
+The window never changes its rows behind your back. After a batch, a report built before it shows a strip: `Your library changed since this report was built (a batch finished at HH:MM).` Changing a setting the report depends on shows `The settings changed since this report was built.` Each report's section below lists the settings that count for it. The old rows stay readable under the strip. `Refresh` builds the report again and clears the strip.
+
+`Tab` moves through the controls and the table. The `Up` and `Down` arrows move the row selection, and each move selects the song, like a click. `Escape` or `Ctrl+W` closes the window, and so does its `X`. While you're typing in the search box, `Escape` doesn't close the window: the first press empties the box, as in the Library's search. Closing a report window doesn't keep the report to show again. The path report is built again when you reopen it, and the comparison fetches the player's scores again when you pick the player again.
+
 ### The path report
 
-The **path report** is one table of every analyzed song's paths, squeeze timings and scores. It lists every chart mode (each difficulty, with or without Pro Drums, 2x Bass and Note Shuffle) analyzed at the current SP cap, fill rule, path limit and score range. Each chart and mode shows its top 5 paths.
+The path report is one table of every analyzed song's paths, squeeze timings and scores. It lists every chart mode (each difficulty, with or without Pro Drums, 2x Bass and Note Shuffle) analyzed at the current SP cap, fill rule, path limit and score range. Each chart and mode shows its top 5 paths.
 
 A finished batch builds it. `Open path report` on the toolbar opens it at any time. Hydra Deluxe keeps the report in memory, not in a file. So the first time you open it after starting Hydra Deluxe, it builds a fresh one. Closing the window lets the report go, to save memory, and opening it again builds a fresh one too. The window keeps your search, timing choice, `Best path only` and sort for it. `Refresh` and a batch's new report start them over. If a build is still running when you close the window, it stops. A report a batch builds while the window is closed waits for you to open it.
 
-Hydra Deluxe keeps only each song's summary, so building the report analyzes those songs again, on all cores. Songs a batch just analyzed are reused. On a large library that takes a few seconds. While it builds, the window shows a bar reading `Analyzing n of N records` and a `Cancel` button. A record is one song in one mode, so a song analyzed in two modes counts twice. When a batch already analyzed everything, the bar just moves, with no count. While `hydra_rules.ini` has an error, analysis is off. A window with no report to show then says so instead of building. Cancelling shows `Report cancelled.` with `Try again`. If the build fails, the window says `The path report could not be built.`, with the reason and `Try again`.
+Hydra Deluxe keeps only each song's summary, so building the report analyzes those songs again, on the same cores a batch uses. Songs a batch just analyzed are reused. On a large library that takes a few seconds. While it builds, the window shows a bar reading `Analyzing n of N records` and a `Cancel` button. A record is one song in one mode, so a song analyzed in two modes counts twice. When a batch already analyzed everything, the bar just moves, with no count. While `hydra_rules.ini` has an error, analysis is off. A window with no report to show then says so instead of building. Cancelling shows `Report cancelled.` with `Try again`. If the build fails, the window says `The path report could not be built.`, with the reason and `Try again`.
 
-The window is titled `Path report — Hydra`. From top to bottom it has:
+The window is titled `Path report — Hydra`, and its header reads `Hydra Path Index`. A song whose file can't be read any more is left out of the report. A strip under the header then says `Left out: N charts whose file couldn't be read.`, and `Show files` lists their file paths.
 
-- **The header.** `Hydra Path Index`, a line saying what the report covers, `Built HH:MM` (when it was built), and `Refresh`, which builds it again.
-- **Strips,** only when one applies. A song whose file can't be read any more is left out of the report. A strip then says `Left out: N charts whose file couldn't be read.`, and `Show files` lists their file paths. Another strip says when the report is out of date (below).
-- **Tiles.** Five numbers that sum up the rows that pass the filters, like `Charts shown` and `Paths shown`. The **Hardest ms** tile is the hardest squeeze or required early fill any of those paths needs. The tiles change as you filter.
-- **The controls.** A search box, a timing dropdown (`All timing tiers`, or one tier) and `Best path only`. On the right, a count line says how many paths pass, like `120 of 4,512 paths`.
-- **The table.** One row per path. Hover a column heading to see what the column means.
-- **The footer.** A dim note under the table.
+The five tiles sum up the paths that pass the filters:
 
-`Best path only` starts ticked. It keeps just the optimal paths. When paths tie for the top score, it keeps every one of them, because each is optimal.
+| Tile | What it counts |
+| --- | --- |
+| `Charts shown` | The charts those paths belong to. |
+| `Paths shown` | The paths themselves. |
+| `Hardest ms` | The hardest squeeze or required early fill any of those paths needs. |
+| `Past N ms` | The paths in the `Beyond N ms` timing tier, the hardest one. |
+| `Highest skip` | The most fills any one activation on those paths passes over. |
 
-The search box ignores case and accents. Every word you type must appear somewhere in the song, artist, charter or path the row shows, and the words can match different fields. Quotes and the Library's field prefixes, like `artist:`, are ordinary words here. When no row passes the filters, the window says `Nothing matches those filters.` `Clear filters` then empties the search and sets the dropdown back to all. It leaves `Best path only` as it is.
+The controls are a search box, a timing dropdown and `Best path only`. On the right, a count line says how many paths pass, like `120 of 4,512 paths`.
 
-The table starts sorted by score, highest first. Click a column heading to sort by it, and click it again to flip the order. Shift+click another heading to add a second sort. Empty values always sink to the bottom. Text columns sort the way the Library does. Columns can be hidden, and they are sized the way the Library's are, so a width you drag lasts only until Hydra Deluxe sizes that column again.
+The timing dropdown starts at `All timing tiers`. Each other entry shows only the paths in one timing tier. A path's tier comes from its `Hardest ms`, measured in steps of your hit window:
+
+| Entry | Paths it shows |
+| --- | --- |
+| `Normal`, `Hard`, `Extreme`, `Insane`, `Insane+` | Paths whose hardest timing falls in that band, from easiest to hardest. `Normal` takes timings up to 2.0 ms. |
+| `Beyond N ms` | Paths whose hardest timing is past N ms, more than twice the hit window. |
+| `No squeezes` | Paths that need no squeeze and no required early fill. |
+
+`Best path only` starts ticked. It keeps just the optimal paths. When paths tie for the top score, it keeps every one of them, because each is optimal. `Clear filters` leaves it as it is.
+
+The search box ignores case and accents. Every word you type must appear somewhere in the song, artist, charter or path the row shows, and the words can match different fields. Quotes and the Library's field prefixes, like `artist:`, are ordinary words here.
+
+The table has one row per path and starts sorted by score, highest first. Its columns:
+
+| Column | What it shows |
+| --- | --- |
+| `Song`, `Artist`, `Charter` | The chart's song, artist and charter. |
+| `Mode` | The difficulty and drum options the path was found for. |
+| `Path` | The path in path notation: one entry per activation, with its skip count and squeeze symbols. |
+| `Score` | The total score the path reaches. |
+| `Acts` | Activations: how many times the path uses Star Power. |
+| `Max skip` | The most fills any one activation passes over before activating. |
+| `Hardest ms` | The hardest squeeze or required early fill the path needs, in raw ms. A dash means it needs none. |
+| `Timing` | The path's timing tier, the bands the timing dropdown lists. |
+| `Early fill (ms)` | The hardest early fill (E0) on the path: how many ms early you must hit to summon the fill. Negative means slack. A dash means the path has none. |
+| `Avg multiplier` | The score without solo bonuses divided by the base score (every note at 1x). |
+| `SqIn` | SP phrase notes squeezed into an active Star Power window (`+` in the path). |
+| `SqOut` | SP phrase notes squeezed out of an active Star Power window (`-` in the path). |
+| `Notes` | Notes in the chart. |
 
 Click a row to select that song in Hydra Deluxe, the same as clicking it in the library. If the row is for another chart mode, say Hard instead of Expert, the analysis settings switch to that mode first. That way the Paths tab shows the same path as the row. While a batch runs, the analysis settings are locked. A row of another mode then selects nothing, and the status line says `A batch is running.`
 
 If nothing is analyzed under the current settings but other results exist, the report says so and names the settings it looked under, like `Nothing is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills).` It then suggests analyzing with these settings or changing them. Only an empty database says no records are stored yet.
 
-**When the report is out of date.** The window never changes its rows behind your back. After a batch, a report built before it shows a strip: `Your library changed since this report was built (a batch finished at HH:MM).` Changing a setting the report depends on shows `The settings changed since this report was built.` For the path report those settings are the SP cap, `1.0 fills`, the score range and the path limit. Switching the difficulty, Pro Drums, 2x Bass or Note Shuffle doesn't count, because the report already lists every chart mode. The old rows stay readable under the strip. `Refresh` builds the report again and clears it.
-
-**Keyboard.** `Tab` moves through the controls and the table. The `Up` and `Down` arrows move the row selection, and each move selects the song, like a click. `Escape` or `Ctrl+W` closes the window, and so does its `X`. While you're typing in the search box, `Escape` doesn't close it. Closing the path report lets it go, as described under the path report above. Closing the comparison keeps it in memory, so it opens again at once.
-
-The finished batch strip offers:
-
-- **`Open report`** opens the path report window. The strip's second line reads `The path report is ready.` Once you close the path report window, the report is gone, so the line and the button go too. The toolbar's `Open path report` still opens it.
-- **`Open automatically`**: Open the path report as soon as it's built. It covers only the path report. The strip is the only place to change it, so it stays after you close the path report window. It hides while a report builds and after a build fails.
-- Its `X` dismisses the strip.
+The settings the path report depends on are the SP cap, `1.0 fills`, the score range and the path limit. Changing one marks the report out of date. Switching the difficulty, Pro Drums, 2x Bass or Note Shuffle doesn't, because the report already lists every chart mode.
 
 ### Old report files
 
