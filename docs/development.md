@@ -339,6 +339,47 @@ makes; `tools\test_mutation_probe.ps1` is its self-test.
 Run it before a release, on the scoring and path code. It is not meant for
 every merge: it is slow, and a survivor is a prompt to look, not a failure.
 
+## Fuzzing the file parsers
+
+A fuzzer feeds a parser random bytes, keeps the inputs that reach new code,
+and mutates those. Hydra has one libFuzzer exe per kind of file it reads. The
+list is `kTargets` in `tests/fuzz/harness.h`, which also holds the one body
+every exe runs. A file the parser turns away with an exception is fine. A
+crash, an AddressSanitizer report or a hang is a bug.
+
+Build them with the `fuzz` preset, which sits on the AddressSanitizer build,
+and write the seed folders (the checked-in files each fuzzer starts from).
+`tools\fuzz_seeds.ps1` needs a built `hydra_tests`, which does the writing;
+its header says why.
+
+```
+.\build_cpp.ps1 -Preset fuzz -Target hydra_fuzz
+.\build_cpp.ps1 -Target hydra_tests
+.\tools\fuzz_seeds.ps1
+```
+
+Run one target from a Visual Studio developer shell, for as long as you like.
+The first folder is the corpus the fuzzer grows; the second holds the seeds.
+The `.chart` target also takes a dictionary of the reader's keywords. Add the
+`-timeout` and `-rss_limit_mb` limits the workflow's fuzz step uses, so a hang
+or a memory blowup stops the run the same way it does there.
+
+```
+mkdir corpus\chart
+.\build-fuzz\Release\fuzz_chart.exe corpus\chart build-fuzz\seeds\chart -dict=tests\fuzz\chart.dict -max_total_time=3600
+```
+
+The progress lines count coverage as `ft:` (features), not the `cov:` that
+clang's libFuzzer prints. A rising `ft:` means the fuzzer is still finding new
+code. On a finding it stops and writes `crash-<hash>` (or `timeout-`,
+`oom-`) in the current folder; `-artifact_prefix=<folder>\` puts it elsewhere.
+
+A finding becomes a permanent test by copying the file into
+`testdata/fuzz/<target>/`, where `tests/test_fuzz_regressions.cpp` replays it
+(see `testdata/fuzz/README.md`). Check it in with the parser fix, never
+before, or the suite goes red. `.github/workflows/fuzz.yml` runs every target
+for a fixed time once a week and uploads any finding as an artifact.
+
 ## Continuous integration
 
 GitHub builds Hydra and runs its tests on every push to `main` and on every

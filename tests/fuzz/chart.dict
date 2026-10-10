@@ -1,0 +1,29 @@
+# libFuzzer dictionary for fuzz_chart (-dict=tests/fuzz/chart.dict).
+# Words the .chart reader looks for, so the fuzzer builds real sections and
+# lines sooner than random bytes would. The names come from the reader in
+# src/parse/song.cpp (ChartParser, classify_chart_line, the disco markers);
+# a word it stops reading is harmless here, only slower to be useful.
+
+section_song="[Song]"
+section_sync="[SyncTrack]"
+section_events="[Events]"
+section_expert="[ExpertDrums]"
+section_hard="[HardDrums]"
+section_medium="[MediumDrums]"
+section_easy="[EasyDrums]"
+open="{"
+close="}"
+eq=" = "
+newline="\x0d\x0a"
+resolution="Resolution"
+offset="Offset"
+note="N "
+sp="S "
+event="E "
+timesig="TS "
+bpm="B "
+solo="solo"
+soloend="soloend"
+practice="section "
+disco_on="mix_3_drums0d"
+disco_off="mix_3_drums0dnoflip"
