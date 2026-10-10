@@ -691,7 +691,7 @@ TEST_CASE(".chart: an Offset that is not a plain number is absent") {
 // Finding R7.5; D27.
 TEST_CASE("song.ini: a delay that is not a plain number is absent") {
     namespace fs = std::filesystem;
-    const fs::path dir = hydra::os_path(testtemp::temp_dir("s2_delay"));
+    const fs::path dir = hydra::os_path(testtemp::temp_dir("song_ini_delay"));
     const fs::path ini = dir / "song.ini";
     auto delay = [&](const std::string& value) {
         {
