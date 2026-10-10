@@ -7,6 +7,7 @@
 
 #include <cctype>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <stdexcept>
 #include <string>
@@ -15,6 +16,7 @@
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
+#include "app/preview_source.h"  // read_ini_delay_ms
 #include "app/user_messages.h"
 #include "core/error_kind.h"
 #include "core/model.h"
@@ -28,6 +30,7 @@
 #include "parse/song.h"
 #include "song_digest.h"
 #include "source_tree.h"
+#include "temp_util.h"
 #include "ui/preview_controller.h"  // PreviewSongKey
 
 #ifndef HYDRA_TESTDATA_DIR
@@ -588,6 +591,110 @@ TEST_CASE(".chart: [Song] Offset is read in seconds") {
 
     Song plain = load_songbytes_chart(multidiff::chart_bytes(), true, true);
     CHECK_FALSE(plain.chart_offset_s.has_value());
+}
+
+// Finding R7.7; D27. The time box's half of this check is in
+// test_preview_view.cpp.
+TEST_CASE(".mid: practice sections from several EVENTS tracks come out in tick order") {
+    using namespace testmidi;
+    const std::vector<uint8_t> tempo = concat({set_tempo(), end_of_track()});
+    const std::vector<uint8_t> drums =
+        concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()});
+    // First EVENTS track: Intro at 0, Chorus at 1920.
+    const std::vector<uint8_t> events1 =
+        concat({track_name("EVENTS"), text_event("[section Intro]"),
+                after(1920, text_event("[section Chorus]")), end_of_track()});
+    // Second EVENTS track: Verse at 960.
+    const std::vector<uint8_t> events2 =
+        concat({track_name("EVENTS"), after(960, text_event("[section Verse]")),
+                end_of_track()});
+    const Song song = load_songbytes_mid(smf_tracks({tempo, drums, events1, events2}), true, true);
+
+    REQUIRE(song.practice_sections.size() == 3);
+    CHECK(song.practice_sections[0].name == "Intro");
+    CHECK(song.practice_sections[1].name == "Verse");
+    CHECK(song.practice_sections[1].tick == 960);
+    CHECK(song.practice_sections[2].name == "Chorus");
+}
+
+// Finding 331; D27.
+TEST_CASE("Chord: a cymbal, ghost or accent on a missing note is a chart-file error") {
+    // hydra:: because windows.h declares a GDI function named Chord.
+    hydra::Chord c;
+    c.add_note(NoteColor::Red);
+    CHECK_THROWS_AS(c.apply_cymbal(NoteColor::Yellow), ChartFileError);
+    CHECK_THROWS_AS(c.apply_ghost(NoteColor::Yellow), ChartFileError);
+    CHECK_THROWS_AS(c.apply_accent(NoteColor::Blue), ChartFileError);
+    c.apply_ghost(NoteColor::Red);
+    CHECK(c.at(NoteColor::Red)->is_ghost());
+}
+
+// Finding 331; D27.
+TEST_CASE(".chart: a modifier with no note under it is skipped") {
+    // Tick 0: red alone, plus a yellow cymbal, a yellow ghost and a yellow
+    // accent marker with no yellow note to change. Tick 384: a cymbal marker
+    // with no chord at all. Tick 768: a yellow note whose cymbal marker is real.
+    const std::string drums =
+        "  0 = N 1 0\n  0 = N 66 0\n  0 = N 41 0\n  0 = N 35 0\n"
+        "  384 = N 66 0\n"
+        "  768 = N 2 0\n  768 = N 66 0\n";
+    const std::vector<uint8_t> data =
+        testchart::chart_bytes(testchart::section("ExpertDrums", drums));
+    REQUIRE_NOTHROW(load_songbytes_chart(data, true, true));
+    const Song song = load_songbytes_chart(data, true, true);
+    REQUIRE(song.sequence.size() == 2);
+    CHECK(song.sequence[0].chord.code() == ".n...");
+    CHECK(song.sequence[1].timecode.ticks() == 768);
+    CHECK(song.sequence[1].chord.code() == "..N..");
+}
+
+// Finding R7.5; D27.
+TEST_CASE("parse_finite_number: reads only a whole finite number") {
+    CHECK(parse_finite_number("0.25") == 0.25);
+    CHECK(parse_finite_number(" -250 ") == -250.0);
+    CHECK(parse_finite_number("+500") == 500.0);
+    CHECK(parse_finite_number("1e3") == 1000.0);
+    for (const char* bad : {"", "  ", "500ms", "0.25s", "nan", "NaN", "inf", "-inf",
+                            "1e999", "soon", "+-5", "5 5", "0x1F4"}) {
+        CAPTURE(bad);
+        CHECK_FALSE(parse_finite_number(bad).has_value());
+    }
+}
+
+// Finding R7.5; D27.
+TEST_CASE(".chart: an Offset that is not a plain number is absent") {
+    auto offset = [](const std::string& text) {
+        return load_songbytes_chart(
+                   testchart::chart_bytes(testchart::section("ExpertDrums", "  0 = N 1 0\n"), 192,
+                                          "  Offset = " + text + "\n"),
+                   true, true)
+            .chart_offset_s;
+    };
+    CHECK(offset("0.25") == 0.25);
+    CHECK(offset("1") == 1.0);
+    CHECK(offset("-0.5") == -0.5);
+    CHECK_FALSE(offset("500ms").has_value());  // 500 seconds before this change
+    CHECK_FALSE(offset("0.25s").has_value());
+    CHECK_FALSE(offset("nan").has_value());
+}
+
+// Finding R7.5; D27.
+TEST_CASE("song.ini: a delay that is not a plain number is absent") {
+    namespace fs = std::filesystem;
+    const fs::path dir = hydra::os_path(testtemp::temp_dir("s2_delay"));
+    const fs::path ini = dir / "song.ini";
+    auto delay = [&](const std::string& value) {
+        {
+            std::ofstream f(ini, std::ios::binary | std::ios::trunc);
+            f << "[song]\ndelay = " << value << "\n";
+        }
+        return app::read_ini_delay_ms(ini.u8string());
+    };
+    CHECK(delay("1016") == 1016.0);
+    CHECK_FALSE(delay("nan").has_value());  // NaN before, and it beat the Offset
+    CHECK_FALSE(delay("inf").has_value());
+    CHECK_FALSE(delay("250ms").has_value());
+    fs::remove_all(dir);
 }
 
 // ---- the parsers' hand matchers against the regexes they replaced ----------
