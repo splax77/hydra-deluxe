@@ -46,6 +46,23 @@ inline std::string temp_dir(const std::string& tag) {
     return dir;
 }
 
+// A fresh, empty scratch folder whose name holds a non-ASCII "Zoë" (as UTF-8)
+// ahead of the tag. For the tests that prove a reader copes with a path the
+// ANSI code page cannot spell.
+inline std::string non_ascii_dir(const std::string& tag) {
+    const std::string dir = temp_dir("Zo\xC3\xAB_" + tag);
+    std::error_code ec;
+    std::filesystem::remove_all(hydra::os_path(dir), ec);
+    std::filesystem::create_directories(hydra::os_path(dir));
+    return dir;
+}
+
+// Deletes a scratch folder and what is in it. Nothing happens if it is gone.
+inline void remove_dir(const std::string& utf8_dir) {
+    std::error_code ec;
+    std::filesystem::remove_all(hydra::os_path(utf8_dir), ec);
+}
+
 // Writes `data` to `path` byte for byte, replacing the file. The one writer
 // for a test's binary fixture files; a text file goes through
 // audiochart::write_text_file.

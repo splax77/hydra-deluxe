@@ -8,7 +8,6 @@
 #include "doctest.h"
 
 #include <cstdio>
-#include <filesystem>
 #include <stdexcept>
 #include <string>
 
@@ -16,26 +15,8 @@
 #include "core/winstr.h"
 #include "temp_util.h"
 
-namespace fs = std::filesystem;
-
-namespace {
-
-// A fresh, empty scratch folder (testtemp::temp_dir) whose name holds a
-// non-ASCII "Zoë", as a UTF-8 string.
-std::string non_ascii_dir(const char* tag) {
-    const std::string dir = testtemp::temp_dir(std::string("Zo\xC3\xAB_") + tag);
-    std::error_code ec;
-    fs::remove_all(hydra::os_path(dir), ec);
-    fs::create_directories(hydra::os_path(dir));
-    return dir;
-}
-
-void remove_dir(const std::string& utf8_dir) {
-    std::error_code ec;
-    fs::remove_all(fs::path(hydra::utf8_to_wide(utf8_dir)), ec);
-}
-
-}  // namespace
+using testtemp::non_ascii_dir;
+using testtemp::remove_dir;
 
 TEST_CASE("read_file_text reads a file under a non-ASCII folder") {
     const std::string dir = non_ascii_dir("text");
