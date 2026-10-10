@@ -79,7 +79,7 @@ TEST_CASE("build_activations: the early fill reads positive = early on both line
 }
 
 TEST_CASE("build_activations: rows and backend rows line up") {
-    const AnalysisResult& ar = analyzed();
+    const AnalysisResult& ar = corpus::analyzed_by_ten_scores();
     const Path& best = ar.record.best_path();
     const SongTiming& timing = ar.song.timing();
 

@@ -1,5 +1,6 @@
-// Made-up replay windows over a real song, shared by tests/test_replay.cpp
-// and hydra_bench's --replay timing (tools/bench.cpp).
+// Made-up replay windows over a real song, shared by
+// tests/test_replay_windows.cpp and hydra_bench's --replay timing
+// (tools/bench.cpp).
 
 #ifndef HYDRA_TESTS_REPLAY_WINDOWS_H
 #define HYDRA_TESTS_REPLAY_WINDOWS_H

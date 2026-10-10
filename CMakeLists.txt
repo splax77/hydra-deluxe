@@ -542,7 +542,9 @@ add_executable(hydra_tests
     tests/test_display_format.cpp
     tests/test_activation_rows.cpp
     tests/test_path_list.cpp
-    tests/test_preview_view.cpp
+    tests/test_preview_boxes.cpp
+    tests/test_preview_scene.cpp
+    tests/test_sp_meter_curve.cpp
     tests/test_preview_source.cpp
     tests/test_audio_decode.cpp
     tests/test_stem_reader.cpp
@@ -563,17 +565,24 @@ add_executable(hydra_tests
     tests/test_icons.cpp
     tests/test_preview_renderer.cpp
     tests/test_dynamics_breakdown.cpp
-    tests/test_song.cpp
+    tests/test_song_parse.cpp
+    tests/test_song_input.cpp
     tests/test_sng.cpp
     tests/test_srb.cpp
     tests/test_fuzz_regressions.cpp
-    tests/test_search.cpp
+    tests/test_engine_sweeps.cpp
+    tests/test_fills_and_skips.cpp
+    tests/test_sp_end.cpp
+    tests/test_tied_variants.cpp
     tests/test_fast_tempo.cpp
+    tests/test_search_target.cpp
     tests/test_replay.cpp
+    tests/test_replay_windows.cpp
     tests/test_store.cpp
     tests/test_upgrade_files.cpp
     tests/test_analysis.cpp
-    tests/test_report.cpp
+    tests/test_report_rows.cpp
+    tests/test_report_page.cpp
     tests/report_samples.cpp
     tests/test_report_view.cpp
     tests/test_config.cpp
