@@ -119,7 +119,7 @@ struct LibraryViewState {
     // fresh model reads the header's current sort on its first frame.
     bool sort_synced = false;
     // The panel state the table last fitted its Charter and Folder columns
-    // to; unset = fit them on the next frame.
+    // to; unset = fit them on the table's next frame past its first.
     std::optional<bool> columns_for_panel;
     // The selection (notespath) the table last scrolled to, so it scrolls
     // only when the selection changes (the panel's Previous/Next song).
