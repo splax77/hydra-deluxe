@@ -1,5 +1,6 @@
 // The audio test helpers the audio tests share: where a fixture under
-// testdata/audio lives, its bytes, a small ID3 tag, a PCM16 WAV writer, a block
+// testdata/audio lives, its bytes, the FLAC fixture with its length zeroed, a
+// small ID3 tag, a PCM16 WAV writer, a block
 // reader and a sample-difference measure for a MixSource, a rough frequency
 // check for the 220 Hz sine fixtures, and a recognizable stereo ramp. Audit
 // finding 277: test_audio_decode.cpp, test_audio_mixer.cpp and
@@ -12,8 +13,11 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
+
+#include "doctest.h"
 
 #include "bytes_util.h"
 
@@ -45,6 +49,22 @@ inline std::vector<uint8_t> id3_tag(int flags) {
                               0,   0,   0,   20};
     t.resize(t.size() + 20 + ((flags & 0x10) ? 10 : 0), 0);
     return t;
+}
+
+// The FLAC fixture with its STREAMINFO total-samples field set to 0, which
+// RFC 9639 reads as "length unknown" (an encoder writing to a pipe leaves it
+// so). The 36-bit field follows the 20-bit sample rate, 3-bit channels and
+// 5-bit bits-per-sample fields: the low 4 bits of STREAMINFO byte 13 and all of
+// bytes 14 to 17, where STREAMINFO starts 8 bytes into the file ("fLaC" and
+// the block header). Shared by test_stem_reader.cpp and test_stream_mix.cpp.
+inline std::vector<uint8_t> flac_with_unknown_length() {
+    std::vector<uint8_t> b = read_fixture("sine220.flac");
+    REQUIRE(b.size() > 8 + 18);
+    REQUIRE(std::memcmp(b.data(), "fLaC", 4) == 0);
+    uint8_t* info = b.data() + 8;
+    info[13] = static_cast<uint8_t>(info[13] & 0xF0);
+    for (int i = 14; i <= 17; ++i) info[i] = 0;
+    return b;
 }
 
 // A canonical 44-byte-header PCM16 WAV around `samples`, interleaved
