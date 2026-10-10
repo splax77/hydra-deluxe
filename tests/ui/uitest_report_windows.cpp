@@ -3,7 +3,9 @@
 // (tests/report_samples.h) through ReportWindowInput, the struct AppState
 // fills in the app, and drive the window by its labels. Their own GUI
 // function draws the windows; only report-window-states' analysis-off step
-// fills the input from AppState (path_report_input). The rest (task 6)
+// fills the input from AppState (path_report_input). Three more work the same
+// way: the column widths and the window's fit to the screen (one column-width
+// rule plan, Part 3). The rest (task 6)
 // run end to end: the app draws both windows itself from run_frame while a
 // slot's window_open is set, so they have no GUI function. Under hydra_uitest
 // there is no platform backend, so each report window draws inside the main
@@ -64,6 +66,10 @@ struct Fixture {
     int compares = 0;
     int closes = 0;
     std::string text;  // what the windows drew last frame
+    // report-window-column-widths: when set, each frame notes the path
+    // table's widths as the rule gives them (note_rule_widths).
+    bool want_rule_widths = false;
+    std::vector<float> rule_widths;
 };
 
 Fixture& fixture() {
@@ -116,6 +122,32 @@ void reset_fixture() {
     f.dm.callbacks = recording_callbacks(f.dm_clicks);
 }
 
+ImGuiWindow* path_window();
+
+// The path table's widths this frame as the production rule gives them: the
+// sample rows measured by the window's own measure, placed in the room
+// table_room reads inside the path window. It appends to the path window,
+// drawn earlier this frame, so table_room sees the room the table had.
+void note_rule_widths() {
+    Fixture& f = fixture();
+    f.rule_widths.clear();
+    ImGuiWindow* window = path_window();
+    if (!f.path_open || !window || !f.path.result) return;
+    namespace view_rules = hydra::app::path_report_view;
+    const GeneratedReport& report = *f.path.result;
+    std::vector<std::string> texts;
+    for (const auto& r : report.paths) texts.push_back(view_rules::path_search_text(r));
+    const hydra::app::report_view::TableView<hydra::app::report::ReportRow> view(
+        report.paths, std::move(texts), view_rules::path_columns(report.hit_window_ms));
+    const std::vector<hydra::ui::ColumnSpec> specs =
+        hydra::ui::report_frame::column_specs(view.columns());
+    ImGui::Begin(window->Name);
+    const hydra::ui::TableRoom room = hydra::ui::table_room("##pathtable", 0.0f, specs.size());
+    f.rule_widths =
+        hydra::ui::place_columns(hydra::ui::report_frame::measure(view), specs, room).widths;
+    ImGui::End();
+}
+
 // The test's GUI function: both windows, every frame, with their text kept.
 void draw_windows(ImGuiTestContext*) {
     Fixture& f = fixture();
@@ -125,6 +157,7 @@ void draw_windows(ImGuiTestContext*) {
     ImGuiContext& g = *ImGui::GetCurrentContext();
     f.text.assign(g.LogBuffer.begin(), g.LogBuffer.end());
     ImGui::LogFinish();
+    if (f.want_rule_widths) note_rule_widths();
 }
 
 // Today at hour:minute, local time.
@@ -389,6 +422,126 @@ void test_both(ImGuiTestContext* ctx) {
     IM_CHECK(dm_window() != nullptr);
     IM_CHECK(shows("of 6 paths"));
     IM_CHECK(shows("4 of 4 scores"));
+}
+
+// ---- Column widths and the window's size (one column-width rule) ----------
+
+// The path table as ImGui holds it, with the ref on the path window.
+ImGuiTable* path_table(ImGuiTestContext* ctx) {
+    ctx->SetRef(path_window());
+    return ImGui::TableFindByID(ctx->GetID("##pathtable"));
+}
+
+// In a narrow window the chips and numbers show in full and the table
+// scrolls sideways. A cut cell draws past ImGui's text log, so a label in the
+// frame's text was drawn whole.
+void test_chip_label(ImGuiTestContext* ctx) {
+    reset_app(harness(ctx));
+    reset_fixture();
+    open_path_all_rows(ctx);
+    if (ctx->IsError()) return;
+    ctx->WindowResize("", ImVec2(900.0f, 600.0f));
+    ctx->Yield(3);
+    Fixture& f = fixture();
+    const double hit = report_samples::kSampleHitWindowMs;
+    const std::vector<hydra::app::report::ReportRow>& rows = f.path.result->paths;
+
+    // Every row's Timing chip, Song B's "Beyond" tier among them (171 ms).
+    for (const auto& r : rows)
+        IM_CHECK(shows(hydra::app::path_report_view::tier_label(r.tier, hit)));
+
+    ImGuiTable* table = path_table(ctx);
+    IM_CHECK_RETV(table != nullptr && table->InnerWindow != nullptr, );
+    IM_CHECK(table->InnerWindow->ScrollbarX);
+
+    // Every number column's cells, read at both ends of the sideways scroll
+    // (a column scrolled out of view draws nothing).
+    const auto columns = hydra::app::path_report_view::path_columns(hit);
+    std::vector<bool> read(columns.size(), false);
+    for (bool right_end : {false, true}) {
+        ImGui::SetScrollX(table->InnerWindow, right_end ? table->InnerWindow->ScrollMax.x : 0.0f);
+        ctx->Yield(3);
+        for (size_t c = 0; c < columns.size(); ++c) {
+            if (!columns[c].numeric || !table->Columns[static_cast<int>(c) + 1].IsRequestOutput)
+                continue;
+            read[c] = true;
+            for (const auto& r : rows) IM_CHECK(shows(columns[c].cell(r)));
+        }
+    }
+    for (size_t c = 0; c < columns.size(); ++c)
+        if (columns[c].numeric) IM_CHECK(read[c]);
+}
+
+// With the window wide, every column is as wide as the rule says for the
+// sample rows.
+void test_column_widths(ImGuiTestContext* ctx) {
+    reset_app(harness(ctx));
+    reset_fixture();
+    open_path_all_rows(ctx);
+    if (ctx->IsError()) return;
+    Fixture& f = fixture();
+    f.want_rule_widths = true;
+    ctx->Yield(3);
+    ImGuiTable* table = path_table(ctx);
+    IM_CHECK_RETV(table != nullptr, );
+    IM_CHECK_RETV(static_cast<size_t>(table->ColumnsCount) == f.rule_widths.size(), );
+    for (int c = 0; c < table->ColumnsCount; ++c) {
+        ctx->LogInfo("column %d (%s)", c, ImGui::TableGetColumnName(table, c));
+        IM_CHECK_EQ(table->Columns[c].WidthGiven, f.rule_widths[static_cast<size_t>(c)]);
+    }
+    f.want_rule_widths = false;
+}
+
+// A saved size bigger than the screen (the user's hydra_ui.ini) opens fitted
+// to it; with the main window maximized the report opens at the whole work
+// area. The runner's work area is its display, and it has no OS frame.
+void test_fits_screen(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    reset_fixture();
+    const hydra::ui::WindowPlacement main_before = hydra::ui::window_placement();
+    const ImVec2 origin = ImGui::GetMainViewport()->Pos;
+    const ImVec2 display(static_cast<float>(h.width), static_cast<float>(h.height));
+    Fixture& f = fixture();
+    // Shut, so the next opening is placed afresh (an open window stays put).
+    ctx->Yield(2);
+
+    // The user's entry: a 2,560 x 1,440 monitor less a 23 px title band.
+    const char* big_ini = "[Window][###pathreport]\nViewportPos=0,23\nSize=2560,1417\n";
+    ImGui::LoadIniSettingsFromMemory(big_ini);
+    f.path_open = true;
+    ctx->Yield(3);
+    ImGuiWindow* w = path_window();
+    IM_CHECK_RETV(w != nullptr, );
+    IM_CHECK_LE(w->SizeFull.x, display.x);
+    IM_CHECK_LE(w->SizeFull.y, display.y);
+    IM_CHECK_GE(w->Pos.x, origin.x);
+    IM_CHECK_GE(w->Pos.y, origin.y);
+    IM_CHECK_LE(w->Pos.x + w->SizeFull.x, origin.x + display.x);
+    IM_CHECK_LE(w->Pos.y + w->SizeFull.y, origin.y + display.y);
+    f.path_open = false;
+    ctx->Yield(2);
+
+    // A small saved size, but the main window is maximized: the work area.
+    const char* small_ini = "[Window][###pathreport]\nPos=100,100\nSize=600,400\n";
+    ImGui::LoadIniSettingsFromMemory(small_ini);
+    hydra::ui::WindowPlacement maximized = main_before;
+    maximized.valid = true;
+    maximized.maximized = true;
+    hydra::ui::remember_window_placement(maximized);
+    f.path_open = true;
+    ctx->Yield(3);
+    w = path_window();
+    IM_CHECK(w != nullptr);
+    if (w) {
+        IM_CHECK_EQ(w->Pos.x, origin.x);
+        IM_CHECK_EQ(w->Pos.y, origin.y);
+        IM_CHECK_EQ(w->SizeFull.x, display.x);
+        IM_CHECK_EQ(w->SizeFull.y, display.y);
+    }
+    f.path_open = false;
+    ctx->Yield(2);
+    hydra::ui::remember_window_placement(main_before);
 }
 
 // ---- End to end, through AppState (task 6) --------------------------------
@@ -915,6 +1068,9 @@ void register_report_window_tests(Harness& h) {
         {"report-window-sort", test_sort},     {"report-window-filters", test_filters},
         {"report-window-states", test_states}, {"report-window-keys", test_keys},
         {"report-windows-both", test_both},
+        {"report-window-chip-label", test_chip_label},
+        {"report-window-column-widths", test_column_widths},
+        {"report-window-fits-screen", test_fits_screen},
     };
     for (const TestEntry& e : kTests) {
         ImGuiTest* t = IM_REGISTER_TEST(h.engine, "hydra", e.name);

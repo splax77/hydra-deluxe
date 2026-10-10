@@ -29,6 +29,8 @@ namespace view_rules = app::path_report_view;
 struct PathWindow {
     std::weak_ptr<const GeneratedReport> built_from;
     std::unique_ptr<TableView<ReportRow>> view;
+    // The view's rows measured for the column-width rule; goes with them.
+    MeasuredWidths widths;
     std::vector<view_rules::TimingChoice> choices;
     std::vector<std::string> labels;
     int timing = 0;
@@ -57,6 +59,7 @@ void apply_filters(PathWindow& w) {
 void drop_rows(PathWindow& w) {
     if (w.view) w.sort = w.view->sort();
     w.view.reset();
+    w.widths = {};
     w.tiles.clear();
 }
 
@@ -81,6 +84,7 @@ void rebuild(PathWindow& w, const std::shared_ptr<const GeneratedReport>& result
     for (const ReportRow& r : result->paths) texts.push_back(view_rules::path_search_text(r));
     w.view = std::make_unique<TableView<ReportRow>>(
         result->paths, std::move(texts), view_rules::path_columns(result->hit_window_ms));
+    w.widths = report_frame::measure(*w.view);
     // A kept sort naming a column these rows lack falls back to the first.
     const auto has_column = [&w](const app::report_view::SortSpec& s) {
         const auto& cols = w.view->columns();
@@ -128,7 +132,7 @@ void draw_body(PathWindow& w, const report_frame::Frame& frame, const PathReport
     report_frame::RowLook<ReportRow> look;
     look.best = [](const ReportRow& r) { return r.optimal; };
     look.chip = [](const ReportRow& r) { return app::report::tier_token(r.tok); };
-    report_frame::table("##pathtable", w.memory, view, look, input.callbacks,
+    report_frame::table("##pathtable", w.memory, view, w.widths, look, input.callbacks,
                         ImGui::GetContentRegionAvail().y - report_frame::footer_height(frame));
 }
 

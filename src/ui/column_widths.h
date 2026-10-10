@@ -55,9 +55,10 @@ struct ColumnSpec {
     // (Title, Artist, Song, Path...). Numbers and chips never cut.
     bool may_cut = false;
     // Extra width every cell adds beside its text: a chip's outline padding
-    // (2 * FramePadding.x). The header does not get it.
+    // (report_frame::column_spec sets it, from the same chip_pad the chip is
+    // drawn with). The header does not get it.
     float padding = 0.0f;
-    // Measures this column's header and cells. In the app, text_width() with
+    // Measures this column's header and cells. In the app, measure_in_font() with
     // the column's font; in a unit test, a fake.
     WidthOf width_of;
 };
@@ -125,8 +126,10 @@ struct ColumnLayout {
     // the spacing. More than room.available means the table scrolls sideways.
     float inner_width = 0.0f;
     // The inner width with every cut column at its header's width: the
-    // narrowest the table gets before it scrolls. The report window's own
-    // minimum width reads this.
+    // narrowest the table gets before it scrolls. This is the whole table's
+    // minimum. A report window's own minimum width is only its first five
+    // columns (D103 item 14), so it does not read this; see
+    // report_frame::note_min_size.
     float min_inner_width = 0.0f;
 };
 
@@ -141,17 +144,23 @@ ColumnLayout place_columns(const MeasuredWidths& measured, const std::vector<Col
 
 // ---- The ImGui side -------------------------------------------------------
 
-// The flags every table starts from. ScrollX lets the table scroll sideways
-// when its columns don't fit; the rule sets every column's width itself, so
-// ImGui's own sizing policy has nothing left to decide.
+// The flags the rule needs from any table that goes through it. ScrollX lets
+// the table scroll sideways when its columns don't fit; the rule sets every
+// column's width itself, so ImGui's own sizing policy has nothing left to
+// decide. A table with its own look (borders, no sorting) adds its own flags
+// to these.
+ImGuiTableFlags scroll_fixed_flags();
+
+// The flags the Library and the report tables start from: scroll_fixed_flags
+// plus the list look they share (sorting, hiding, resizing, row stripes).
 ImGuiTableFlags table_flags();
 
 // A WidthOf that measures in `font` at `size`, as ImGui would draw it. The
 // one-argument form uses the current font size; with no font, the current
 // font. Call it inside a frame; keep the result only for one measure, since
 // a UI scale change changes the size.
-WidthOf text_width(ImFont* font, float size);
-WidthOf text_width(ImFont* font = nullptr);
+WidthOf measure_in_font(ImFont* font, float size);
+WidthOf measure_in_font(ImFont* font = nullptr);
 
 // The room table `str_id` has this frame, for place_columns. Call it before
 // BeginTable, in the window the table goes in, with the outer width that
