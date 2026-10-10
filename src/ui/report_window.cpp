@@ -433,16 +433,7 @@ std::optional<HeaderSort> header_sort() {
 
 void note_min_size(Memory& m, const MeasuredWidths& widths, const std::vector<ColumnSpec>& specs,
                    const TableRoom& room) {
-    // The rule's widths with no room to share: each column at its narrowest.
-    // Every column counts as shown here, as the first five always did.
-    TableRoom none;
-    none.header_drawn = room.header_drawn;
-    const ColumnLayout narrowest = place_columns(widths, specs, none);
-    const ImGuiStyle& style = ImGui::GetStyle();
-    float w = 0.0f;
-    for (size_t c = 0; c < narrowest.widths.size() && c < 5; ++c)
-        w += narrowest.widths[c] + style.CellPadding.x * 2.0f;
-    m.columns_w = w;
+    m.columns_w = first_columns_min_width(widths, specs, room, 5);
     const ImGuiTable* table = ImGui::GetCurrentTable();
     m.table_top = table->OuterRect.Min.y - table->OuterWindow->Pos.y;
 }

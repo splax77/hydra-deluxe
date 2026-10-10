@@ -203,6 +203,18 @@ TableRoom table_room(const char* str_id, float outer_width, std::size_t column_c
     return room;
 }
 
+float first_columns_min_width(const MeasuredWidths& measured, const std::vector<ColumnSpec>& specs,
+                              const TableRoom& room, std::size_t count) {
+    TableRoom none;
+    none.header_drawn = room.header_drawn;
+    const ColumnLayout narrowest = place_columns(measured, specs, none);
+    const float padding = ImGui::GetStyle().CellPadding.x * 2.0f;
+    float width = 0.0f;
+    for (std::size_t c = 0; c < narrowest.widths.size() && c < count; ++c)
+        width += narrowest.widths[c] + padding;
+    return width;
+}
+
 float table_outer_height(std::size_t rows, const ColumnLayout& layout, const TableRoom& room,
                         const std::vector<float>& cell_heights) {
     const ImGuiStyle& style = ImGui::GetStyle();

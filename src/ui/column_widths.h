@@ -171,6 +171,14 @@ WidthOf measure_in_font(ImFont* font = nullptr);
 // every column shown and no header wider than its text.
 TableRoom table_room(const char* str_id, float outer_width, std::size_t column_count);
 
+// The width the first `count` columns take with no room to share: each at its
+// narrowest (a cut column at its header's width) plus ImGui's cell padding on
+// both sides, every one counted as shown. Only `room.header_drawn` is read.
+// The report window's minimum width asks for its first five columns (D103
+// item 14).
+float first_columns_min_width(const MeasuredWidths& measured, const std::vector<ColumnSpec>& specs,
+                              const TableRoom& room, std::size_t count);
+
 // The outer height of a small table that shows its header and all `rows`
 // rows, so it never scrolls up and down. A table that scrolls sideways is a
 // child window, and an outer height of 0 would stretch it to the bottom of

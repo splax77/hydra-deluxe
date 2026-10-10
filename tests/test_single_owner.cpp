@@ -5809,6 +5809,22 @@ const std::vector<OwnerRule>& rules() {
          {"if (!begin_small_table(id, ImGuiTableFlags_RowBg, specs, rows.size(),"},
          {},
          {"src"}},
+        // ImGui adds its cell padding on both sides of every column. The rule
+        // adds it for the whole table (table_room's spacing) and for a few
+        // columns (first_columns_min_width); a window that adds it itself is
+        // working out the same sum from the same style number.
+        {"How much room does ImGui add around each column?",
+         "table_room and first_columns_min_width in src/ui/column_widths.cpp",
+         R"(\bCellPadding\.x\b|\bCellPaddingX\b)",
+         "",
+         {"src/ui/column_widths.cpp"},
+         {},
+         "derive-once review of cw-t3 (note A) and cw-w2",
+         {"w += narrowest.widths[c] + style.CellPadding.x * 2.0f;",
+          "table->CellPaddingX * 2.0f * static_cast<float>(shown);"},
+         {"m.columns_w = first_columns_min_width(widths, specs, room, 5);"},
+         {},
+         {"src"}},
         // The backend table's cells and its column widths both read a row's
         // text for a column, so a cell draws backend_cell and never the row's
         // fields. Only the tab's file is scanned: path_view.cpp builds the
