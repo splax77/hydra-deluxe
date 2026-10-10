@@ -77,7 +77,7 @@ Every number below was read from the checked-in file (a copy of it, so nothing w
 
 The v2.1.0 file says `user_version` 0, not 4. That is what the real release writes: commit `87a588d5` ("Store SQL says each thing once"), which is in v2.1.0, stopped setting `user_version` at all, and the file was created fresh by that build. A test that tells schema 4 apart should check for the `rules_fp` column, not `user_version`.
 
-The schema 2 files have no `legacy_fills` column. On upgrade, `RecordStore::upgrade_results_key` would decide it from the file's `engine_mode` stamp through `stamped_fill_rule`. But today's open keeps none of the v1.8.4 rows: they have a score and no stars, and the copy upgrade leaves such rows out (ADR 0026). So after the open both v1.8.4 files hold 0 results rows, and nothing in them shows which fill rule a row would get.
+The schema 2 files have no `legacy_fills` column; `RecordStore::upgrade_results_key` owns how a row gets one. But today's open keeps none of the v1.8.4 rows: they have a score and no stars, and the copy upgrade leaves such rows out (ADR 0026 owns that rule). So after the open both v1.8.4 files hold 0 results rows, and nothing in them shows which fill rule a row would get.
 
 The `charts` table exists in all four files but holds no rows. `hydra_batch` never fills it; the app's library scan does. So these files cannot pin "the charts rows keep their names". The song names live in `songmeta` instead, which is one of the detail tables the summary-only upgrade drops.
 
@@ -105,14 +105,14 @@ Every row stores `ms_enabled` 1, `ms_value` 10, `depth_mode` 0 and `depth_value`
 
 ### Rules fingerprint
 
-Today's `rules_fp_of` in `src/store/record_store.cpp` reads the fingerprint at the 0-based offset `kOldRulesFingerprintOffset` (4) for `kOldRulesFingerprintBytes` (8) bytes. In SQL that is `substr(structure, 5, 8)`: byte 5 counting from 1, as the plan said.
+An old row's rules fingerprint sits inside its `structure` blob, at the place `rules_fp_of` in `src/store/record_store.cpp` reads. These are the bytes it reads there.
 
-Every row of every file holds the same 8 bytes there, because every run used the default rules:
+Every row of every file holds the same 8 bytes, because every run used the default rules:
 
 - bytes in file order: `f24c606966e9d270`
 - the same bytes read as a little-endian 64-bit number: `0x70d2e96669604cf2`
 
-The v2.1.0 file's `rules_fp` column already holds exactly those 8 bytes on all three rows. After the upgrade, `rules_fp` on every row of every file should equal them.
+The v2.1.0 file's `rules_fp` column already holds exactly those 8 bytes on all three rows. After the upgrade, `rules_fp` on every row the open keeps should equal them (the two v1.8.4 files keep no rows).
 
 The first 4 bytes of the blob (the path format) are `06000000` in the three older files and `07000000` in the v2.1.0 file.
 
