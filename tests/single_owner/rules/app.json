@@ -1774,6 +1774,32 @@
         "src"
       ],
       "note": "A table's header sort can hold more keys than a report sorts by, so the window cuts it to the report's limit, read from the owner. Decided by: D103 item 1 (Shift+click adds a second key); derive-once review of RW-T5 (finding 3)"
+    },
+    {
+      "question": "What does the Score range's INI depth_mode int mean?",
+      "owner": "Settings::search_depth_mode in src/app/config.cpp",
+      "owner_file": "src/app/config.cpp",
+      "owner_symbol": "search_depth_mode",
+      "date": "2026-10-04",
+      "decision": "E3 (findings 180, 243, 245 and 56)",
+      "added_by": "E3",
+      "pattern": "\\bdepth_mode\\s*(==|!=|>=|<=|>|<)\\s*[01]\\b|case\\s+1\\s*:.*depth",
+      "must_match": [
+        "if (depth_mode != 0) return DepthMode::Points;",
+        "case 1: s.depth = DepthMode::Points; break;"
+      ],
+      "must_not_match": [
+        "s.depth_mode = search_depth_mode();",
+        "if (settings.depth_mode == DepthMode::Points) {"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/config.cpp",
+          "line_text": "return depth_mode == 1 ? DepthMode::Points : DepthMode::Scores;",
+          "why": "Settings::search_depth_mode, the owner"
+        }
+      ],
+      "note": "Was the E3 test case, which pinned the whole line; now a row, so a drift asks for the owner line to be updated. The owner is the one line that compares the int, however the comparison is spelled."
     }
   ]
 }

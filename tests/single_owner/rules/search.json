@@ -441,6 +441,35 @@
         "tools"
       ],
       "note": "A key streamed field by field. The owner is in src, so no line in scope is an owner line. Decided by: audit finding 275; phase 6 task J4-1 (D53, D54)"
+    },
+    {
+      "question": "Does this path need any timing, and what is the all-0 list's 0 ms limit?",
+      "owner": "allzero_options in src/search/pather.cpp (the 0 ms limit) and Path::needs_timing in src/core/model.cpp (the zero test)",
+      "owner_file": "src/search/pather.cpp",
+      "owner_symbol": "allzero_options",
+      "date": "2026-10-04",
+      "decision": "E3 (findings 180, 243, 245 and 56), D85",
+      "added_by": "E3",
+      "pattern": "difficulty\\(\\)\\.value_or\\(0(\\.0+)?\\)\\s*(<=|>|<|>=)\\s*0(\\.0+)?(?![\\d.])|value_or\\(0(\\.0+)?\\)\\s*<=\\s*0(\\.0+)?(?![\\d.])|ms_filter\\s*=\\s*(std::optional<double>\\()?0(\\.0+)?(?![\\d.])|within_(ms_)?limit\\(\\s*0(\\.0+)?\\s*\\)",
+      "must_match": [
+        "if (p.difficulty().value_or(0) <= 0) continue;",
+        "const bool zero = d.value_or(0.0) <= 0;",
+        "options.ms_filter = std::optional<double>(0);",
+        "if (best.within_ms_limit(0.0)) return;"
+      ],
+      "must_not_match": [
+        "if (best.is_allzero() && best.within_ms_limit(*allzero_options().ms_filter)) return;",
+        "options.ms_filter = 0.5;",
+        "options.ms_filter = 10;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/search/pather.cpp",
+          "line_text": "options.ms_filter = 0.0;",
+          "why": "allzero_options, the owner of the 0 ms limit (D85)"
+        }
+      ],
+      "note": "Was the E3/D85 test case, which pinned the whole line; now a row, so a drift asks for the owner line to be updated. The shortcut that skips the all-0 pass reads the limit from allzero_options."
     }
   ]
 }
