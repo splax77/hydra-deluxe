@@ -3,12 +3,13 @@
 // showing the same chart at the same time.
 //
 // Fixture (testdata/preview/golden.json, captured by hand from Onyx — see
-// docs/adr/0008 for the procedure):
-//   { "chart": "notes.mid", "time_ms": 32000, "width": 900, "height": 800,
-//     "pro": true, "bass2x": true, "tolerance": 20,
+// testdata/preview/README.md for the procedure):
+//   { "chart": "notes.mid", "time_ms": ..., "width": ..., "height": ...,
+//     "crop": [x, y, w, h],           // the highway area inside the screenshot
+//     "pro": true, "bass2x": true, "tolerance": ...,
 //     "mask": [[x, y, w, h], ...] }   // rectangles to ignore (Onyx's text)
-// plus golden_onyx.png next to it. Without the fixture the test reports that
-// it skipped, so the suite passes before the capture exists.
+// plus golden_onyx.png next to it. Every key is required; a missing file or
+// key fails the test.
 //
 // Dev aid: set HYDRA_PREVIEW_DUMP="<chart path>|<time ms>|<out.bmp>" to
 // render any chart at any time to a BMP (the failing golden comparison also
@@ -252,27 +253,31 @@ void write_delta_csvs(const std::vector<float>& delta, int ow, int oh) {
 
 TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
     const std::string spec_path = kFixtureDir + "/golden.json";
-    if (!file_exists_utf8(spec_path)) {
-        MESSAGE("golden fixture absent (" << spec_path << "): skipped");
-        return;
-    }
+    const std::string png_path = kFixtureDir + "/golden_onyx.png";
+    INFO("golden fixture: " << spec_path);
+    REQUIRE(file_exists_utf8(spec_path));
+    REQUIRE(file_exists_utf8(png_path));
     std::string spec_text = read_file_text(spec_path);
     nlohmann::json spec = nlohmann::json::parse(spec_text);
-    const std::string chart = kFixtureDir + "/" + spec.value("chart", "notes.mid");
-    double time_ms = spec.value("time_ms", 0.0);
+    for (const char* key : {"chart", "time_ms", "width", "height", "crop", "pro", "bass2x", "tolerance", "mask"}) {
+        INFO("golden.json key: " << key);
+        REQUIRE(spec.contains(key));
+    }
+    const std::string chart = kFixtureDir + "/" + spec["chart"].get<std::string>();
+    double time_ms = spec["time_ms"].get<double>();
     if (const auto t = read_env("HYDRA_PREVIEW_GOLDEN_TIME")) time_ms = std::atof(t->c_str());  // dev aid
-    const int w = spec.value("width", 0), h = spec.value("height", 0);
-    const bool pro = spec.value("pro", true), bass2x = spec.value("bass2x", true);
-    const double tolerance = spec.value("tolerance", 20.0);
+    const int w = spec["width"].get<int>(), h = spec["height"].get<int>();
+    const bool pro = spec["pro"].get<bool>(), bass2x = spec["bass2x"].get<bool>();
+    const double tolerance = spec["tolerance"].get<double>();
     REQUIRE(w > 0);
     REQUIRE(h > 0);
 
-    std::vector<uint8_t> golden_bytes = read_file_bytes(kFixtureDir + "/golden_onyx.png");
+    std::vector<uint8_t> golden_bytes = read_file_bytes(png_path);
     REQUIRE(!golden_bytes.empty());
     image::DecodedImage golden = image::decode_image(golden_bytes);
-    // The screenshot may be the whole Onyx window; "crop": [x, y, w, h]
-    // names the highway area inside it (the part Hydra renders).
-    if (spec.contains("crop")) {
+    // The screenshot is the whole Onyx window; "crop": [x, y, w, h] names the
+    // highway area inside it (the part Hydra renders).
+    {
         std::vector<int> c = spec["crop"].get<std::vector<int>>();
         REQUIRE(c.size() == 4);
         REQUIRE(c[2] == w);
@@ -300,11 +305,13 @@ TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
 
     // Masks (in full-res pixels) cover Onyx's on-screen text.
     std::vector<std::vector<int>> masks;
-    if (spec.contains("mask"))
-        for (const auto& m : spec["mask"]) masks.push_back(m.get<std::vector<int>>());
+    for (const auto& m : spec["mask"]) {
+        masks.push_back(m.get<std::vector<int>>());
+        REQUIRE(masks.back().size() == 4);
+    }
     auto masked = [&](int x, int y) {
         for (const auto& m : masks)
-            if (m.size() == 4 && x >= m[0] && x < m[0] + m[2] && y >= m[1] && y < m[1] + m[3]) return true;
+            if (x >= m[0] && x < m[0] + m[2] && y >= m[1] && y < m[1] + m[3]) return true;
         return false;
     };
 
