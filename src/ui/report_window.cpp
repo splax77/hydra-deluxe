@@ -39,6 +39,9 @@ void right_align(float width) {
 
 float button_w(const char* label) { return button_slot_width(label); }
 
+// The room a chip keeps on each side of its text, inside its outline.
+float chip_pad() { return ImGui::GetStyle().FramePadding.x; }
+
 // The width of buttons laid out on one line.
 float buttons_w(const std::vector<const char*>& labels) {
     float w = 0.0f;
@@ -357,30 +360,40 @@ void cell(const std::string& text, const app::report_view::CellLook& look, Tone 
 }
 
 void chip(const std::string& text, ChipToken token) {
+    // The whole label, never cut: the width rule sized the column for it
+    // (column_spec adds the padding), and a narrow window scrolls instead.
     const ImVec4 color = chip_color(token);
-    const float pad = ImGui::GetStyle().FramePadding.x;
+    const float pad = chip_pad();
     const ImVec2 pos = ImGui::GetCursorScreenPos();
-    const float avail = ImGui::GetContentRegionAvail().x;
-    const float w = (std::min)(ImGui::CalcTextSize(text.c_str()).x + pad * 2.0f, avail);
-    const float h = ImGui::GetTextLineHeight();
-    // The pages drew the no-squeeze and not-in-library chips (tn) without an
-    // outline.
-    if (token != ChipToken::tn)
-        ImGui::GetWindowDrawList()->AddRect(pos, ImVec2(pos.x + w, pos.y + h),
-                                            ImGui::GetColorU32(color), h * 0.5f);
     ImGui::SetCursorScreenPos(ImVec2(pos.x + pad, pos.y));
     ImGui::PushStyleColor(ImGuiCol_Text, color);
-    text_ellipsized(text.c_str(), (std::max)(0.0f, w - pad * 2.0f));
+    ImGui::TextUnformatted(text.c_str());
     ImGui::PopStyleColor();
+    // The pages drew the no-squeeze and not-in-library chips (tn) without an
+    // outline.
+    if (token != ChipToken::tn) {
+        const float h = ImGui::GetTextLineHeight();
+        ImGui::GetWindowDrawList()->AddRect(pos, ImVec2(ImGui::GetItemRectMax().x + pad, pos.y + h),
+                                            ImGui::GetColorU32(color), h * 0.5f);
+    }
 }
 
-ImGuiTableFlags table_flags() {
-    // SortMulti for the Shift+click second sort (D103 item 1).
-    return base_table_flags() | ImGuiTableFlags_SortMulti;
+std::string row_number(size_t k) { return group_thousands(static_cast<int64_t>(k) + 1); }
+
+ColumnSpec row_number_spec() {
+    ColumnSpec s;
+    s.header = "#";
+    s.width_of = measure_in_font();
+    return s;
 }
 
-float row_number_width(size_t rows) {
-    return ImGui::CalcTextSize(group_thousands(static_cast<int64_t>(rows)).c_str()).x;
+ColumnSpec column_spec(const std::string& title, const app::report_view::CellLook& look) {
+    ColumnSpec s;
+    s.header = title;
+    s.may_cut = look.truncate;
+    if (look.chip) s.padding = chip_pad() * 2.0f;
+    s.width_of = measure_in_font(look.mono ? g_mono_font : nullptr);
+    return s;
 }
 
 void best_bar() {
@@ -418,12 +431,9 @@ std::optional<HeaderSort> header_sort() {
     return sort;
 }
 
-void measure_columns(Memory& m, const std::vector<std::string>& titles) {
-    const ImGuiStyle& style = ImGui::GetStyle();
-    float w = 0.0f;
-    for (size_t c = 0; c < titles.size() && c < 5; ++c)
-        w += ImGui::CalcTextSize(titles[c].c_str()).x + style.CellPadding.x * 2.0f;
-    m.columns_w = w;
+void note_min_size(Memory& m, const MeasuredWidths& widths, const std::vector<ColumnSpec>& specs,
+                   const TableRoom& room) {
+    m.columns_w = first_columns_min_width(widths, specs, room, 5);
     const ImGuiTable* table = ImGui::GetCurrentTable();
     m.table_top = table->OuterRect.Min.y - table->OuterWindow->Pos.y;
 }

@@ -13,6 +13,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -27,6 +28,7 @@
 #include "app/path_view.h"
 #include "core/rules.h"
 #include "store/record_store.h"
+#include "ui/column_widths.h"
 #include "ui/dm_jobs.h"
 #include "ui/generation.h"
 #include "ui/library_jobs.h"
@@ -138,6 +140,17 @@ struct LibraryViewState {
     // The Analysis settings panel was open at the end of last frame, so an
     // Esc that closed it this frame can be told apart (render_settings_button).
     bool settings_panel_was_open = false;
+    // The table's column widths, from the one width rule (ui/column_widths.h):
+    // the columns as the rule sees them, their measure (which keeps the UI
+    // scale it was taken at) and the LibraryModel::rows_version() it read.
+    // The room the table had this frame is kept too, so a GUI test can hand
+    // the rule the same inputs the table did.
+    struct ColumnWidths {
+        std::vector<ColumnSpec> specs;
+        MeasuredWidths measured;
+        std::uint64_t rows_version = 0;
+        TableRoom room;
+    } column_widths;
 };
 
 // The open song as the engine analyzed it on the click (D87 item 1). Nothing
