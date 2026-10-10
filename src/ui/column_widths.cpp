@@ -149,21 +149,25 @@ ColumnLayout place_columns(const MeasuredWidths& measured, const std::vector<Col
 
 // ---- The ImGui side -------------------------------------------------------
 
-ImGuiTableFlags table_flags() {
-    return ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable | ImGuiTableFlags_Sortable |
-           ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg |
-           ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_SizingFixedFit;
+ImGuiTableFlags scroll_fixed_flags() {
+    return ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit;
 }
 
-WidthOf text_width(ImFont* font, float size) {
+ImGuiTableFlags table_flags() {
+    return scroll_fixed_flags() | ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable |
+           ImGuiTableFlags_Sortable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg |
+           ImGuiTableFlags_BordersOuterH;
+}
+
+WidthOf measure_in_font(ImFont* font, float size) {
     return [font, size](std::string_view s) {
         if (s.empty()) return 0.0f;
         return font->CalcTextSizeA(size, FLT_MAX, 0.0f, s.data(), s.data() + s.size()).x;
     };
 }
 
-WidthOf text_width(ImFont* font) {
-    return text_width(font ? font : ImGui::GetFont(), ImGui::GetFontSize());
+WidthOf measure_in_font(ImFont* font) {
+    return measure_in_font(font ? font : ImGui::GetFont(), ImGui::GetFontSize());
 }
 
 TableRoom table_room(const char* str_id, float outer_width, std::size_t column_count) {
