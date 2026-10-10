@@ -315,11 +315,13 @@ TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
     int ow, oh;
     std::vector<float> a = half_res(actual, w, h, ow, oh);
     std::vector<float> g = half_res(golden.rgba, w, h, ow, oh);
+    // Is this half-res pixel masked? The one place a half-res pixel meets the full-res masks.
+    auto masked_half = [&](int x, int y) { return masked(x * 2, y * 2); };
     double err = 0.0;
     size_t n = 0;
     for (int y = 0; y < oh; ++y)
         for (int x = 0; x < ow; ++x) {
-            if (masked(x * 2, y * 2)) continue;
+            if (masked_half(x, y)) continue;
             for (int c = 0; c < 3; ++c) {
                 err += std::fabs(a[(static_cast<size_t>(y) * ow + x) * 3 + c] -
                                  g[(static_cast<size_t>(y) * ow + x) * 3 + c]);
@@ -331,8 +333,7 @@ TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
 
     // The per-pixel delta and tile budgets. testdata/preview/README.md says what
     // the keys mean and where their values came from.
-    const std::vector<float> delta =
-        max_channel_deltas(a, g, ow, oh, [&](int x, int y) { return masked(x * 2, y * 2); });
+    const std::vector<float> delta = max_channel_deltas(a, g, ow, oh, masked_half);
     MESSAGE("max-channel delta percentiles: p50 " << delta_percentile(delta, 50.0) << ", p90 "
                                                   << delta_percentile(delta, 90.0) << ", p99 "
                                                   << delta_percentile(delta, 99.0) << ", p99.9 "
