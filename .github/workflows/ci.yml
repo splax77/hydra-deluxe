@@ -22,9 +22,9 @@ permissions:
 jobs:
   build-and-test:
     name: Build and test (Windows, Release)
-    # The default CMake preset uses the Visual Studio 2026 generator, so the
-    # job asks for the image that ships VS 2026 by name.
-    runs-on: windows-2025-vs2026
+    # The default CMake preset uses the Visual Studio 2026 generator. The
+    # windows-2025 image ships VS 2026 since GitHub's June 2026 migration.
+    runs-on: windows-2025
     timeout-minutes: 60
     defaults:
       run:
@@ -53,7 +53,7 @@ jobs:
 
   tool-tests:
     name: Tool tests (Python and PowerShell)
-    runs-on: windows-2025-vs2026
+    runs-on: windows-2025
     timeout-minutes: 30
     defaults:
       run:
