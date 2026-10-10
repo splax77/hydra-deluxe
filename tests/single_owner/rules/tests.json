@@ -255,17 +255,17 @@
           "why": "\"section headers are found as the regex found them\" puts an arbitrary first line in front of this header, which chart_text cannot write"
         },
         {
-          "file": "tests/test_song_parse.cpp",
+          "file": "tests/test_song_input.cpp",
           "line_text": "const std::string song = \"[Song]\\n{\\n  Resolution = 192\\n}\\n\";",
           "why": "\"malformed lines keep their handling\" joins the sections with stray text between them, which chart_text cannot write"
         },
         {
-          "file": "tests/test_song_parse.cpp",
+          "file": "tests/test_song_input.cpp",
           "line_text": "const std::string sync = \"[SyncTrack]\\n{\\n  0 = TS 4\\n  0 = B 120000\\n}\\n\";",
           "why": "\"malformed lines keep their handling\" joins the sections with stray text between them, which chart_text cannot write"
         },
         {
-          "file": "tests/test_song_parse.cpp",
+          "file": "tests/test_song_input.cpp",
           "line_text": "Song s = parse(song + \"[Song]\\n{\\n  Resolution = 480\\n}\\n\" + sync +",
           "why": "\"malformed lines keep their handling\" repeats the [Song] section to pin that the later one replaces it, which chart_text cannot write"
         },
@@ -283,7 +283,7 @@
       "scope": [
         "tests"
       ],
-      "note": "Step-2 derive-once review of 11b9d44, finding 6, widened by the review of dbeb3a3, finding 1: any string literal that opens a [Song] or [SyncTrack] section, so a header typed across several source lines, or one that takes its lines as a parameter, is caught on its first line. The test_song_parse.cpp lines build deliberately malformed charts from raw pieces; the test_app_state.cpp lines write a placeholder file. Decided by: step-2 derive-once review of 11b9d44, finding 6; review of dbeb3a3, finding 1"
+      "note": "Step-2 derive-once review of 11b9d44, finding 6, widened by the review of dbeb3a3, finding 1: any string literal that opens a [Song] or [SyncTrack] section, so a header typed across several source lines, or one that takes its lines as a parameter, is caught on its first line. The test_song_parse.cpp and test_song_input.cpp lines build deliberately malformed charts from raw pieces; the test_app_state.cpp lines write a placeholder file. Decided by: step-2 derive-once review of 11b9d44, finding 6; review of dbeb3a3, finding 1"
     },
     {
       "question": "Which test types a difficulty's kick pitch or other per-difficulty value?",
