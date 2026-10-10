@@ -1,9 +1,14 @@
 #include "ui/details_parts.h"
 
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "app/dynamics_breakdown.h"
 #include "core/model.h"  // group_thousands, counted
 #include "imgui.h"
 #include "ui/app_state.h"  // ViewedSong
+#include "ui/column_widths.h"
 #include "ui/fonts.h"
 #include "ui/library_parts.h"  // format_duration
 #include "ui/theme.h"
@@ -32,40 +37,96 @@ ImVec4 pad_color(app::DynamicsRow row) {
     return lane_color(app::dynamics_row_info(row).color);
 }
 
+// The dot's radius, and the room the dot item takes before the pad's name.
+float pad_dot_radius() { return px(5.0f); }
+float pad_dot_item_width() { return 2.0f * pad_dot_radius() + px(4.0f); }
+
 // Draw a small filled circle in `color` before the next text on this line.
 void pad_dot(const ImVec4& color) {
-    float r = px(5.0f);
+    float r = pad_dot_radius();
     ImVec2 p = ImGui::GetCursorScreenPos();
     float y_off = (ImGui::GetTextLineHeight() - 2.0f * r) * 0.5f;
     ImGui::GetWindowDrawList()->AddCircleFilled(
         ImVec2(p.x + r, p.y + y_off + r), r,
         ImGui::ColorConvertFloat4ToU32(color));
-    ImGui::Dummy(ImVec2(2.0f * r + px(4.0f), ImGui::GetTextLineHeight()));
+    ImGui::Dummy(ImVec2(pad_dot_item_width(), ImGui::GetTextLineHeight()));
     ImGui::SameLine();
 }
 
-// A row in the Ghost/Accent/Normal/All table. `disabled` dims the text.
-void dynamics_table_row(const char* label, const app::DynamicsCounts& c,
-                        bool disabled, const ImVec4* dot_color = nullptr) {
-    ImGui::TableNextRow();
-    // The style's own disabled text grey: it reads on the dark panel.
-    if (disabled)
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+// One row of a Ghost/Accent/Normal/All table, as its cells read.
+struct DynamicsTableRow {
+    std::string cells[5];  // Pad, Ghost, Accent, Normal, All
+    bool disabled = false;
+    std::optional<ImVec4> dot;
+};
 
-    ImGui::TableNextColumn();
-    if (dot_color) pad_dot(*dot_color);
-    ImGui::TextUnformatted(label);
+DynamicsTableRow dynamics_table_row(const std::string& label, const app::DynamicsCounts& c,
+                                    bool disabled, std::optional<ImVec4> dot = std::nullopt) {
+    return {{label, group_thousands(c.ghost), group_thousands(c.accent),
+             group_thousands(c.normal), group_thousands(c.all())},
+            disabled,
+            dot};
+}
 
-    ImGui::TableNextColumn();
-    ImGui::Text("%s", group_thousands(c.ghost).c_str());
-    ImGui::TableNextColumn();
-    ImGui::Text("%s", group_thousands(c.accent).c_str());
-    ImGui::TableNextColumn();
-    ImGui::Text("%s", group_thousands(c.normal).c_str());
-    ImGui::TableNextColumn();
-    ImGui::Text("%s", group_thousands(c.all()).c_str());
+// The columns of both tables. Pad is a name and may cut; the counts never do.
+// Every Pad cell is measured with the dot's room beside it (the item and the
+// gap after it), including "All kicks", which has no dot.
+std::vector<ColumnSpec> dynamics_column_specs() {
+    const WidthOf text = measure_in_font();
+    const float dot = pad_dot_item_width() + ImGui::GetStyle().ItemSpacing.x;
+    return {{"Pad", true, dot, text},
+            {dynamic_label(NoteDynamicType::Ghost), false, 0.0f, text},
+            {dynamic_label(NoteDynamicType::Accent), false, 0.0f, text},
+            {"Normal", false, 0.0f, text},
+            {"All", false, 0.0f, text}};
+}
 
-    if (disabled) ImGui::PopStyleColor();
+// The outer height that shows a table's header and `rows` one-line rows, so
+// it never scrolls up and down. (A table that scrolls sideways is a child
+// window, and a height of 0 would stretch it to the bottom of the box.) Each
+// row is ImGui's own row height, a line plus the cell padding above and below
+// (TableGetHeaderRowHeight). When the columns overflow the room, the
+// horizontal scrollbar takes its own height too.
+float one_line_table_height(size_t rows, const ColumnLayout& layout, const TableRoom& room) {
+    const ImGuiStyle& style = ImGui::GetStyle();
+    float height = static_cast<float>(rows + 1) * (ImGui::GetFontSize() + style.CellPadding.y * 2.0f);
+    if (layout.inner_width > room.available) height += style.ScrollbarSize;
+    return height;
+}
+
+// A Ghost/Accent/Normal/All table, its columns as wide as the width rule
+// (ui/column_widths.h) says. The rows are a handful, so they are measured
+// each frame. A disabled row is dimmed.
+void dynamics_table(const char* id, const std::vector<DynamicsTableRow>& rows) {
+    const std::vector<ColumnSpec> specs = dynamics_column_specs();
+    const MeasuredWidths measured = measure_widths(
+        specs, rows.size(), [&](size_t r, size_t c) { return rows[r].cells[c]; });
+    const TableRoom room = table_room(id, 0.0f, specs.size());
+    const ColumnLayout layout = place_columns(measured, specs, room);
+    if (!ImGui::BeginTable(id, static_cast<int>(specs.size()),
+                           ImGuiTableFlags_RowBg | scroll_fixed_flags(),
+                           ImVec2(0.0f, one_line_table_height(rows.size(), layout, room)),
+                           layout.inner_width))
+        return;
+    for (size_t c = 0; c < specs.size(); ++c) setup_column(specs[c], layout, static_cast<int>(c));
+    apply_column_widths(layout);
+    ImGui::TableHeadersRow();
+
+    for (const DynamicsTableRow& row : rows) {
+        ImGui::TableNextRow();
+        // The style's own disabled text grey: it reads on the dark panel.
+        if (row.disabled)
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TableNextColumn();
+        if (row.dot) pad_dot(*row.dot);
+        text_ellipsized(row.cells[0].c_str());
+        for (size_t c = 1; c < specs.size(); ++c) {
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(row.cells[c].c_str());
+        }
+        if (row.disabled) ImGui::PopStyleColor();
+    }
+    ImGui::EndTable();
 }
 
 }  // namespace
@@ -121,29 +182,20 @@ void render_dynamics_panel(AppState& app) {
     // Pads section.
     ImGui::SeparatorText("Pads");
 
-    const int table_flags = ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg;
-    if (ImGui::BeginTable("##padtable", 5, table_flags)) {
-        ImGui::TableSetupColumn("Pad");
-        ImGui::TableSetupColumn(dynamic_label(NoteDynamicType::Ghost).c_str());
-        ImGui::TableSetupColumn(dynamic_label(NoteDynamicType::Accent).c_str());
-        ImGui::TableSetupColumn("Normal");
-        ImGui::TableSetupColumn("All");
-        ImGui::TableHeadersRow();
-
+    {
         // The pad rows (app::is_pad_row), in DynamicsRow order.
         // With Pro Drums off, skip the three Cymbal rows.
+        std::vector<DynamicsTableRow> rows;
         for (int i = 0; i < static_cast<int>(app::DynamicsRow::Count); ++i) {
             auto r = static_cast<app::DynamicsRow>(i);
             if (!app::is_pad_row(r)) continue;
             // Skip cymbal rows when not pro.
             if (!pro && app::dynamics_row_info(r).cymbal) continue;
             const app::DynamicsCounts& c = bd.row(r);
-            bool disabled = !c.has_dynamics();
-            ImVec4 dot = pad_color(r);
-            dynamics_table_row(app::dynamics_row_label(r, pro).c_str(), c,
-                               disabled, &dot);
+            rows.push_back(dynamics_table_row(app::dynamics_row_label(r, pro), c,
+                                              !c.has_dynamics(), pad_color(r)));
         }
-        ImGui::EndTable();
+        dynamics_table("##padtable", rows);
     }
 
     // Kicks section.
@@ -152,35 +204,21 @@ void render_dynamics_panel(AppState& app) {
     // How many of the chart's kick notes are 2x, counted or not.
     ImGui::TextWrapped("%s", app::dynamics_kick2x_line(bd).c_str());
 
-    if (ImGui::BeginTable("##kicktable", 5, table_flags)) {
-        ImGui::TableSetupColumn("Pad");
-        ImGui::TableSetupColumn(dynamic_label(NoteDynamicType::Ghost).c_str());
-        ImGui::TableSetupColumn(dynamic_label(NoteDynamicType::Accent).c_str());
-        ImGui::TableSetupColumn("Normal");
-        ImGui::TableSetupColumn("All");
-        ImGui::TableHeadersRow();
-
-        {
-            const app::DynamicsCounts& k = bd.row(app::DynamicsRow::Kick);
-            ImVec4 kdot = pad_color(app::DynamicsRow::Kick);
-            dynamics_table_row(app::dynamics_row_label(app::DynamicsRow::Kick, pro).c_str(), k,
-                               !k.has_dynamics(), &kdot);
-        }
-        {
-            const app::DynamicsCounts& k2 = bd.row(app::DynamicsRow::Kick2x);
-            // With 2x Bass off, always draw the 2x kick row disabled
-            // but keep its numbers.
-            bool disabled = !bass2x || !k2.has_dynamics();
-            ImVec4 k2dot = pad_color(app::DynamicsRow::Kick2x);
-            dynamics_table_row(app::dynamics_row_label(app::DynamicsRow::Kick2x, pro).c_str(),
-                               k2, disabled, &k2dot);
-        }
-        {
-            // The same kicks Totals counts (finding 12).
-            const app::DynamicsCounts ktot = bd.kicks_total(bass2x);
-            dynamics_table_row("All kicks", ktot, !ktot.has_dynamics());
-        }
-        ImGui::EndTable();
+    {
+        std::vector<DynamicsTableRow> rows;
+        const app::DynamicsCounts& k = bd.row(app::DynamicsRow::Kick);
+        rows.push_back(dynamics_table_row(app::dynamics_row_label(app::DynamicsRow::Kick, pro), k,
+                                          !k.has_dynamics(), pad_color(app::DynamicsRow::Kick)));
+        const app::DynamicsCounts& k2 = bd.row(app::DynamicsRow::Kick2x);
+        // With 2x Bass off, always draw the 2x kick row disabled
+        // but keep its numbers.
+        rows.push_back(dynamics_table_row(app::dynamics_row_label(app::DynamicsRow::Kick2x, pro),
+                                          k2, !bass2x || !k2.has_dynamics(),
+                                          pad_color(app::DynamicsRow::Kick2x)));
+        // The same kicks Totals counts (finding 12).
+        const app::DynamicsCounts ktot = bd.kicks_total(bass2x);
+        rows.push_back(dynamics_table_row("All kicks", ktot, !ktot.has_dynamics()));
+        dynamics_table("##kicktable", rows);
     }
 
     ImGui::EndChild();
