@@ -1,0 +1,30 @@
+{
+  "rules": [
+    {
+      "question": "What name and taskbar identity does the app present?",
+      "owner": "HYDRA_APP_NAME and HYDRA_APP_USER_MODEL_ID in CMakeLists.txt",
+      "owner_file": "CMakeLists.txt",
+      "owner_symbol": "HYDRA_APP_NAME",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-1",
+      "pattern": "Hydra\\.Hydra|Hydra Deluxe",
+      "must_match": [
+        "inline constexpr const wchar_t* kWindowTitleW = L\"Hydra Deluxe\";",
+        "inline constexpr const wchar_t* kAppUserModelIDW = L\"Hydra.Hydra\";",
+        "AppName=Hydra Deluxe"
+      ],
+      "must_not_match": [
+        "inline constexpr const wchar_t* kWindowTitleW = HYDRA_WIDEN(HYDRA_APP_NAME);",
+        "AppName={#HYDRA_APP_NAME}",
+        "DefaultDirName={autopf}\\Hydra",
+        "OutputBaseFilename=HydraDeluxe-{#HYDRA_VERSION}-setup"
+      ],
+      "scope": [
+        "src",
+        "installer/hydra.iss"
+      ],
+      "note": "The two strings typed anywhere but CMakeLists.txt, which the walk does not read (so no owner line is listed). The installer script is checked by the case below this table's scan. Decided by: audit finding 257; phase 6 task J2-1 (D53)"
+    }
+  ]
+}

@@ -1,0 +1,2347 @@
+{
+  "rules": [
+    {
+      "question": "Does the Windows shell take a path this long?",
+      "owner": "fits_shell in src/core/winstr.cpp",
+      "owner_file": "src/core/winstr.cpp",
+      "owner_symbol": "fits_shell",
+      "date": "2026-10-03",
+      "decision": "ADR 0020",
+      "added_by": "t1scan",
+      "pattern": "((\\.|->)(size|length)\\(\\)|\\b(wcs|str)len\\s*\\(([^()]|\\([^()]*\\))*\\))(\\s*[-+]\\s*[\\w.]+)*\\s*(==|!=|[<>]=?)\\s*(MAX_PATH|259|260)\\b|\\b(MAX_PATH|259|260)(\\s*[-+]\\s*[\\w.]+)*\\s*(==|!=|[<>]=?)\\s*[\\w.:>()-]*((\\.|->)(size|length)\\(\\)|\\b(wcs|str)len\\s*\\()",
+      "must_match": [
+        "if (path.size() < MAX_PATH) return path;",
+        "if (copy.native().size() >= MAX_PATH) return {};",
+        "return s.size() < MAX_PATH ? s : L\"\";",
+        "if (wcslen(p) >= MAX_PATH) return false;",
+        "if (MAX_PATH > name.length()) ok = true;",
+        "if (path.size() - 4 < MAX_PATH) return path;",
+        "if (name.length() >= 260) return false;",
+        "if (260 <= s.size()) ok = false;",
+        "if (MAX_PATH - 1 > wcslen(p)) ok = true;",
+        "if (path.size() <= 259) return path;",
+        "if (path.size() > 259) return {};",
+        "if (path.size() == 260) return {};",
+        "if (path.size() != 260) ok = true;",
+        "if (259 >= s.length()) ok = true;",
+        "if (260 == p->size()) return {};",
+        "if (p->size() < MAX_PATH) return p;",
+        "if (wcslen(path.c_str()) >= MAX_PATH) return false;",
+        "if (MAX_PATH <= strlen(s.c_str())) ok = false;"
+      ],
+      "must_not_match": [
+        "wchar_t tmp[MAX_PATH + 1];",
+        "GetTempPathW(MAX_PATH + 1, tmp);",
+        "if (n == 0 || n > MAX_PATH) return {};",
+        "constexpr size_t kPlainPathLimit = MAX_PATH - 12;",
+        "const int kWidth = 260;",
+        "if (n > 260) return;",
+        "if (rows.size() > 2600) return;",
+        "if (rows.size() == 2590) return;",
+        "if (12600 < rows.size()) return;",
+        "std::wstring buf(MAX_PATH, L'\\0');",
+        "if (fits_shell(path)) return path;",
+        "if (!fits_shell(copy.native())) return {};"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/winstr.cpp",
+          "line_text": "return path.size() < MAX_PATH && !has_namespace_prefix(path);",
+          "why": "fits_shell, the owner: shell_path, open_in_browser and copy_to_short_temp call it"
+        }
+      ],
+      "note": "Only length comparisons count. Sizing a buffer against MAX_PATH (GetTempPathW in copy_to_short_temp) asks whether a result fitted, which audit R7.12 calls a different question. A length is .size(), .length() (through . or ->), strlen or wcslen. The limit may be spelled MAX_PATH, 260 or 259, on either side of any comparison (<, <=, >, >=, ==, !=), and either side may carry a little arithmetic (size() - 4 < MAX_PATH). A length held in a plain variable is not caught: `n > MAX_PATH` is also how a buffer-fit check reads. winstr.cpp is not exempt as a file: only fits_shell's one line is listed. Decided by: ADR 0020 (the shell takes nothing of 260 or more, and no prefixed path); one owner put on the fix list by the user 2026-10-03 (audit R7.12 addendum)"
+    },
+    {
+      "question": "How many bytes does a file hold?",
+      "owner": "open_handle_size_bytes in src/core/winstr.cpp (list_dir uses the folder listing's size by decision D39)",
+      "owner_file": "src/core/winstr.cpp",
+      "owner_symbol": "open_handle_size_bytes",
+      "date": "2026-10-03",
+      "decision": "D39",
+      "added_by": "t1scan",
+      "pattern": "(^|[^\\w])(std::)?(_?f(tell|seek)(i64|o)?|GetFileSize(Ex)?|GetCompressedFileSize[AW]?|GetFileInformationByHandle(Ex)?|_?filelength(i64)?|_?fstat(64|i64)?|(tell|seek)g|file_size)\\s*\\(|\\b(nFileSize(High|Low)|st_size|SEEK_END|FILE_END)\\b",
+      "must_match": [
+        "long n = std::ftell(f);",
+        "std::fseek(f, 0, SEEK_END);",
+        "const long long size = _ftelli64(f);",
+        "if (!GetFileSizeEx(file, &size)) return;",
+        "e.size = (static_cast<uint64_t>(fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;",
+        "const auto n = fs::file_size(hydra::os_path(p));",
+        "in.seekg(0, std::ios::end);",
+        "return st.st_size;"
+      ],
+      "must_not_match": [
+        "const uint64_t n = hydra::file_size_bytes(path);",
+        "const std::vector<uint8_t> bytes = hydra::read_file_bytes(path);",
+        "MA_DR_MP3_SEEK_END,",
+        "const size_t n = bytes.size();",
+        "return hydra::open_file_size_bytes(f).value_or(static_cast<ImU64>(-1));",
+        "const std::optional<uint64_t> size = hydra::open_handle_size_bytes(file);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/winstr.cpp",
+          "line_text": "if (!GetFileSizeEx(h, &size) || size.QuadPart < 0) return std::nullopt;",
+          "why": "open_handle_size_bytes, the owner: the other size helpers call it"
+        },
+        {
+          "file": "src/core/winstr.cpp",
+          "line_text": "e.size = (static_cast<uint64_t>(fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;",
+          "why": "list_dir keeps the folder listing's size for the rescan cache, because opening every library file would slow scans: the user's decision D39 (2026-10-04)"
+        }
+      ],
+      "note": "Every way this codebase works out a file's size: the stdio seek and tell (32- and 64-bit), stream seekg/tellg, the Win32 size calls and the size fields of their find and attribute data, the CRT's filelength and fstat, std::filesystem's file_size, and a seek to the end. open_handle_size_bytes owns sizing a file, open or by path: open_file_size_bytes (a stdio stream), file_size_bytes and read_file_bytes call it. list_dir uses the listing's size by D39. winstr.cpp is not exempt as a file: only those two lines are listed. Decided by: no ADR records it. Audit R7.11 names read_file_bytes the owner (fix read-file-bytes-owner); its 64-bit size came from the user's \"make all of those fixes\" (2026-10-03, preview-loading-fixes plan); the open-file helpers are the user's decision D39 (2026-10-04, audit R7.25)"
+    },
+    {
+      "question": "How is a long path prefixed for Win32?",
+      "owner": "win32_path in src/core/winstr.cpp",
+      "owner_file": "src/core/winstr.cpp",
+      "owner_symbol": "win32_path",
+      "date": "2026-10-03",
+      "decision": "ADR 0020",
+      "added_by": "t1scan",
+      "pattern": "\\\\\\\\\\\\\\\\\\?\\\\\\\\",
+      "owner_files": [
+        "src/core/winstr.cpp"
+      ],
+      "must_match": [
+        "return L\"\\\\\\\\?\\\\\" + full;"
+      ],
+      "must_not_match": [
+        "return L\"\\\\\\\\\" + s.substr(8);"
+      ]
+    },
+    {
+      "question": "How does a path become a wide string for Windows?",
+      "owner": "win32_path and os_path in src/core/winstr.cpp",
+      "owner_file": "src/core/winstr.cpp",
+      "owner_symbol": "win32_path",
+      "date": "2026-10-04",
+      "decision": "ADR 0020",
+      "added_by": "gate-fix",
+      "pattern": "utf8_to_wide\\(",
+      "owner_files": [
+        "src/core/winstr.cpp",
+        "src/core/winstr.h"
+      ],
+      "exempt": [
+        {
+          "file": "src/net/dmbot_client.cpp",
+          "why": "it converts a URL, not a path"
+        },
+        {
+          "file": "src/ui/main.cpp",
+          "why": "it converts the startup message box's text, not a path"
+        }
+      ],
+      "must_match": [
+        "std::wstring w = hydra::utf8_to_wide(path);",
+        "const std::wstring p = win32_path(utf8_to_wide(s));"
+      ],
+      "must_not_match": [
+        "std::wstring w = hydra::win32_path(path);"
+      ],
+      "note": "utf8_to_wide is for text; a path takes win32_path."
+    },
+    {
+      "question": "How does a raw Windows file call get a path it accepts at any length?",
+      "owner": "win32_path in src/core/winstr.cpp",
+      "owner_file": "src/core/winstr.cpp",
+      "owner_symbol": "win32_path",
+      "date": "2026-10-04",
+      "decision": "ADR 0020",
+      "added_by": "gate-fix",
+      "pattern": "FindFirstFile|CreateFileW|CreateFileA|fopen\\(|_wfreopen|_wopen|_wstat|GetFileAttributes|DeleteFile|MoveFile|CopyFile|CreateDirectory|RemoveDirectory|sqlite3_open",
+      "calls_owner": "win32_path\\(",
+      "owner_files": [
+        "src/core/winstr.cpp",
+        "src/core/winstr.h"
+      ],
+      "must_match": [
+        "HANDLE h = CreateFileW(w.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);",
+        "FILE* f = _wfopen(w.c_str(), L\"rb\");"
+      ],
+      "must_not_match": [
+        "HANDLE h = CreateFileW(win32_path(p).c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);",
+        "std::FILE* f = hydra::fopen_utf8(path, L\"rb\");"
+      ]
+    },
+    {
+      "question": "How does a std::filesystem call or file stream get a path it accepts at any length?",
+      "owner": "os_path in src/core/winstr.cpp",
+      "owner_file": "src/core/winstr.cpp",
+      "owner_symbol": "os_path",
+      "date": "2026-10-04",
+      "decision": "ADR 0020",
+      "added_by": "gate-fix",
+      "pattern": "^(?=.*(filesystem::|fs::)).*::((absolute|canonical|weakly_canonical|relative|proximate|copy|copy_file|copy_symlink|create_directory|create_directories|create_directory_symlink|create_hard_link|create_symlink|current_path|equivalent|exists|file_size|hard_link_count|is_block_file|is_character_file|is_directory|is_empty|is_fifo|is_other|is_regular_file|is_socket|is_symlink|last_write_time|permissions|read_symlink|remove|remove_all|rename|resize_file|space|status|symlink_status)\\s*\\(|((recursive_)?directory_iterator|directory_entry)\\s*(\\w+\\s*)?[({])(?!\\s*[)}])|^(?!.*#include).*fstream(\\s|[({](?!\\s*[)}]))",
+      "calls_owner": "os_path\\(",
+      "must_match": [
+        "fs::create_directories(dir);",
+        "std::ifstream in(path);",
+        "for (const auto& e : std::filesystem::directory_iterator(dir)) {",
+        "for (const auto& e : fs::recursive_directory_iterator(root)) {",
+        "std::filesystem::path outpath = std::filesystem::absolute(std::filesystem::u8path(out));",
+        "const fs::file_status st = fs::status(p);",
+        "if (fs::equivalent(a, b)) return;",
+        "const fs::space_info s = fs::space(dir);",
+        "fs::current_path(dir);",
+        "std::filesystem::directory_iterator it(dir);",
+        "std::filesystem::recursive_directory_iterator it(root, ec);",
+        "for (auto& e : std::filesystem::directory_iterator{dir}) {",
+        "for (auto& e : fs::recursive_directory_iterator{root}) {",
+        "const fs::directory_entry entry(p);",
+        "if (fs::is_empty(dir)) return;",
+        "const fs::path rel = fs::relative(p, base);",
+        "const fs::path rel = fs::proximate(p, base);",
+        "fs::resize_file(p, 0);",
+        "fs::permissions(p, fs::perms::owner_write);",
+        "const auto st = fs::symlink_status(p);",
+        "fs::create_symlink(target, link);",
+        "fs::create_directory_symlink(target, link);",
+        "fs::create_hard_link(target, link);",
+        "fs::copy_symlink(from, to);",
+        "const fs::path t = fs::read_symlink(p);",
+        "const auto n = fs::hard_link_count(p);",
+        "if (fs::is_symlink(p)) return;",
+        "if (fs::is_block_file(p) || fs::is_character_file(p)) return;",
+        "if (fs::is_fifo(p) || fs::is_socket(p) || fs::is_other(p)) return;",
+        "if (fs::exists (p)) return;",
+        "const std::string s = slurp(std::ifstream(path));",
+        "std::ofstream{path} << text;"
+      ],
+      "must_not_match": [
+        "fs::create_directories(hydra::os_path(dir));",
+        "#include <fstream>",
+        "#include <filesystem>",
+        "std::ifstream in(hydra::os_path(path));",
+        "const fs::path p = dir / name;",
+        "for (const auto& e : fs::recursive_directory_iterator(hydra::os_path(root))) {",
+        "std::filesystem::path outpath = std::filesystem::absolute(hydra::os_path(std::filesystem::u8path(out)));",
+        "std::filesystem::directory_iterator it(hydra::os_path(dir), ec);",
+        "for (; it != fs::directory_iterator(); ++it) {",
+        "const fs::path cwd = fs::current_path();",
+        "for (const fs::directory_entry& e : list) {",
+        "const fs::file_status st = e.status();",
+        "if (e.is_directory()) continue;",
+        "const fs::path tmp = fs::temp_directory_path(ec);",
+        "void write(std::ofstream& out);",
+        "const RecordStatusView& PathsTabCache::status(const store::RecordLookup& lookup,"
+      ],
+      "note": "A std::filesystem call (a line naming filesystem:: or fs:: that calls one of these) or a file stream. The list is every std::filesystem free function that takes a path, plus the two directory iterators and directory_entry, which read the disk when built from a path: as a temporary, a named variable or with braces. An empty argument list is no path (fs::current_path(), an end iterator), so it passes. No file is exempt, winstr included."
+    },
+    {
+      "question": "Is this phrase chord after the SP end?",
+      "owner": "after_sp_end in src/core/backend_value.h",
+      "owner_file": "src/core/backend_value.h",
+      "owner_symbol": "after_sp_end",
+      "date": "2026-10-04",
+      "decision": "audit findings 1 and 32",
+      "added_by": "step-1 derive-once fixes",
+      "pattern": "\\.ticks\\(\\)\\s*>\\s*end\\.ticks\\(\\)|\\btick\\s*>\\s*w\\.deact_tick\\b",
+      "calls_owner": "after_sp_end\\(",
+      "must_match": [
+        "choice.late = c->timecode.ticks() > end.ticks();",
+        "const bool past_deact = row.tick > w.deact_tick;"
+      ],
+      "must_not_match": [
+        "if (s.tick > var.fold_tick)",
+        "choice.late = core::after_sp_end(c->timecode.ticks(), end.ticks());"
+      ],
+      "note": "A chord exactly on the SP end is not after it. Decided by: audit findings 1 and 32; step-1 derive-once review finding 1 (2026-10-04)"
+    },
+    {
+      "question": "Is this row the squeezed-out chord, or past it?",
+      "owner": "sqout_position in src/core/backend_value.h",
+      "owner_file": "src/core/backend_value.h",
+      "owner_symbol": "sqout_position",
+      "date": "2026-10-04",
+      "decision": "audit finding 146",
+      "added_by": "step-1 derive-once fixes",
+      "pattern": "ticks\\(\\)\\s*(==|>|<)\\s*\\*?sqout_tick\\b",
+      "owner_files": [
+        "src/core/backend_value.h"
+      ],
+      "must_match": [
+        "return sqout_tick.has_value() && bsq.timecode.ticks() == *sqout_tick;",
+        "if (b.timecode.ticks() == *sqout_tick) return &b;"
+      ],
+      "must_not_match": [
+        "if (row_tick < *sqout_tick) return SqOutPosition::Before;",
+        "return core::sqout_position(bsq.timecode.ticks(), sqout_tick) == core::SqOutPosition::Exact;"
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "Tests too (J3-2): a test asks sqout_position. Decided by: audit finding 146; step-1 derive-once review finding 5 (2026-10-04)"
+    },
+    {
+      "question": "Is this SP-end step a squeeze-in?",
+      "owner": "is_sqin_kind in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "is_sqin_kind",
+      "date": "2026-10-04",
+      "decision": "ADR 0014, D34",
+      "added_by": "step-1 derive-once fixes",
+      "pattern": "\\bkind\\s*==\\s*SpEndKind::SqIn\\b",
+      "must_match": [
+        "if (s.tick == tick && s.kind == SpEndKind::SqIn) return true;",
+        "if (s.kind == SpEndKind::SqIn) out.push_back(s.tick);"
+      ],
+      "must_not_match": [
+        "if (s.kind != SpEndKind::SqIn) continue;",
+        "if (is_sqin_kind(s.kind)) out.push_back(s.tick);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.h",
+          "line_text": "inline bool is_sqin_kind(SpEndKind kind) { return kind == SpEndKind::SqIn; }",
+          "why": "is_sqin_kind, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "Tests too (step-1 derive-once sweep after the review of cc2e1d9): a test asks is_sqin_kind, is_sqin_step_on or sqin_phrase_ticks. Decided by: ADR 0014 (D34: the window holds an SqIn step on that phrase); step-1 derive-once review findings 2 and 3 (2026-10-04)"
+    },
+    {
+      "question": "Does an E0 need nothing passed over?",
+      "owner": "is_e0 in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "is_e0",
+      "date": "2026-10-04",
+      "decision": "CONTEXT.md",
+      "added_by": "step-1 derive-once fixes",
+      "pattern": "skips\\s*==\\s*0\\b",
+      "must_match": [
+        "const bool can_be_e0 = has_ms_filter_ && p.currentskips == 0;",
+        "return e_offset < kEarlyFillWindowMs && skips == 0;"
+      ],
+      "must_not_match": [
+        "CHECK(act.skips() == 0);",
+        "if (is_e0(e_offset, p.currentskips)) ++over;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.h",
+          "line_text": "return e_offset < kEarlyFillWindowMs && skips == 0;",
+          "why": "is_e0, the owner"
+        },
+        {
+          "file": "src/core/model.h",
+          "line_text": "return skips == 0 || (skips == 1 && is_e0(e_offset, 0));",
+          "why": "allzero_activation, the owner of the all-0 rule (D102), asks is_e0 for the E"
+        }
+      ],
+      "note": "Decided by: CONTEXT.md (E0); step-1 derive-once review finding 4 (2026-10-04)"
+    },
+    {
+      "question": "Does an activation fit the all-0 rule?",
+      "owner": "allzero_activation in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "allzero_activation",
+      "date": "2026-10-07",
+      "decision": "D102",
+      "added_by": "allzero-e1",
+      "pattern": "\\bskips(\\(\\))?\\s*(==\\s*1|!=\\s*0)\\b",
+      "must_match": [
+        "if (act.skips() != 0) return false;",
+        "return skips == 0 || skips == 1;"
+      ],
+      "must_not_match": [
+        "if (!allzero_activation(act.e_offset, act.skips())) return false;",
+        "if (theirs[i].skips() != mine[i].skips())"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.h",
+          "line_text": "return skips == 0 || (skips == 1 && is_e0(e_offset, 0));",
+          "why": "allzero_activation, the owner"
+        }
+      ],
+      "note": "Decided by: D102 (the all-0 path allows an E1), 2026-10-07"
+    },
+    {
+      "question": "Which SP-end kinds are valid?",
+      "owner": "kLastSpEndKind in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "kLastSpEndKind",
+      "date": "2026-10-04",
+      "decision": "ADR 0021",
+      "added_by": "step-1 derive-once fixes",
+      "pattern": "[<>]=?\\s*static_cast<uint8_t>\\(SpEndKind::",
+      "owner_files": [
+        "src/core/model.h"
+      ],
+      "must_match": [
+        "if (kind > static_cast<uint8_t>(SpEndKind::SqIn))",
+        "if (kind >= static_cast<uint8_t>(SpEndKind::Clamped))"
+      ],
+      "must_not_match": [
+        "w.u8(static_cast<uint8_t>(s.kind));",
+        "if (kind > static_cast<uint8_t>(kLastSpEndKind))"
+      ],
+      "note": "Decided by: ADR 0021 (the SP-end history); step-1 derive-once review finding 7 (2026-10-04)"
+    },
+    {
+      "question": "Who reads the early-fill window?",
+      "owner": "fill_refuses and is_e0 in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "fill_refuses",
+      "date": "2026-10-04",
+      "decision": "D35",
+      "added_by": "step-1 derive-once fixes",
+      "pattern": "\\bkEarlyFillWindowMs\\b",
+      "must_match": [
+        "if (e_offset < kEarlyFillWindowMs) ok = true;",
+        "return d - hydra::kEarlyFillWindowMs;"
+      ],
+      "must_not_match": [
+        "if (is_e0(e_offset, 0)) ok = true;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.h",
+          "line_text": "constexpr double kEarlyFillWindowMs = 60.0;",
+          "why": "the constant itself"
+        },
+        {
+          "file": "src/core/model.h",
+          "line_text": "inline bool fill_refuses(double e_offset) { return e_offset < -kEarlyFillWindowMs; }",
+          "why": "fill_refuses, the owner of the refusal"
+        },
+        {
+          "file": "src/core/model.h",
+          "line_text": "return e_offset < kEarlyFillWindowMs && skips == 0;",
+          "why": "is_e0, the owner of the E0"
+        }
+      ],
+      "note": "Was its own walker in test_model.cpp (review finding 12). Decided by: review of D35, finding A; step-1 derive-once review finding 12 (2026-10-04)"
+    },
+    {
+      "question": "Who writes an activation's sqout_tick?",
+      "owner": "Activation::set_sqout in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "Activation::set_sqout",
+      "date": "2026-10-04",
+      "decision": "ADR 0014",
+      "added_by": "step-1 derive-once fixes",
+      "pattern": "(^|[^\\w.>])sqout_tick\\s*(=(?!=)|\\.\\s*(reset|emplace)\\s*\\()|\\b\\w+\\s*(\\.|->)\\s*sqout_tick\\s*(=(?!=)|\\.\\s*(reset|emplace)\\s*\\()",
+      "must_match": [
+        "act.sqout_tick = 200;",
+        "a->sqout_tick.reset();",
+        "sqout_tick.emplace(5);",
+        "w.sqout_tick = 5;"
+      ],
+      "must_not_match": [
+        "if (act.sqout_tick == t)",
+        "w.opt_i64(act.sqout_tick);",
+        "if (a.sqout_tick != b.sqout_tick) return false;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.cpp",
+          "line_text": "sqout_tick = tick;",
+          "why": "set_sqout, the one writer"
+        },
+        {
+          "file": "src/core/model.cpp",
+          "line_text": "sqout_tick.reset();",
+          "why": "set_sqout, undoing its write when no row is on the tick"
+        },
+        {
+          "file": "src/core/replay.cpp",
+          "line_text": "win.sqout_tick = w.sqout_tick;",
+          "why": "the replay's own window (ReplayWindow), not an Activation"
+        },
+        {
+          "file": "src/core/replay.cpp",
+          "line_text": "w.sqout_tick = row->timecode.ticks();",
+          "why": "the replay's own window (replay.cpp's Window), not an Activation"
+        },
+        {
+          "file": "src/core/replay.cpp",
+          "line_text": "w.sqout_tick = n.tick;",
+          "why": "resolve_window_sqout, on a typed or dumped window (ReplayWindow), not an Activation"
+        },
+        {
+          "file": "tools/replay_json.cpp",
+          "line_text": "w.sqout_tick = act[\"sqout_tick\"].get<int64_t>();",
+          "why": "a window read from hydra_replay's JSON (ReplayWindow), not an Activation"
+        }
+      ],
+      "note": "Was its own walker in test_model.cpp (review finding 12). The replay keeps its own windows (ReplayWindow, and replay.cpp's Window) with a field of the same name; those are always named w or win, and a write to w.sqout_tick or win.sqout_tick is not flagged. Decided by: ADR 0014 (the squeeze-out is stored once); step-1 derive-once review finding 12 (2026-10-04)"
+    },
+    {
+      "question": "Is this SP-end step a clamp?",
+      "owner": "is_clamp_kind in src/core/model.h (last_clamp_tick asks it)",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "is_clamp_kind",
+      "date": "2026-10-04",
+      "decision": "ADR 0013",
+      "added_by": "step-1 derive-once fixes round 2",
+      "pattern": "\\bkind\\s*==\\s*SpEndKind::Clamped\\b",
+      "must_match": [
+        "if (it->kind == SpEndKind::Clamped) return it->tick;",
+        "if (sp_end_steps[s].kind == SpEndKind::Clamped) return sp_end_steps[s].tick;"
+      ],
+      "must_not_match": [
+        "mit->second.clamped ? SpEndKind::Clamped"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.h",
+          "line_text": "inline bool is_clamp_kind(SpEndKind kind) { return kind == SpEndKind::Clamped; }",
+          "why": "is_clamp_kind, the owner"
+        }
+      ],
+      "note": "Decided by: ADR 0013 (the clamp note is stored); step-1 derive-once review of fb1189b, finding 2 (2026-10-04); T10+T11 derive-once review finding 6 (2026-10-04)"
+    },
+    {
+      "question": "Does this SP end offer the window its newest phrase?",
+      "owner": "core::offered_phrase in src/core/sqout_chord.h",
+      "owner_file": "src/core/sqout_chord.h",
+      "owner_symbol": "offered_phrase",
+      "date": "2026-10-04",
+      "decision": "D36",
+      "added_by": "D36 extreme-tempo gaps",
+      "pattern": "\\b(sqout_at|newest_moved_from)\\s*[!=]=(?!\\s*NO_TIME\\b)",
+      "must_match": [
+        "if (newest.sqout_at == d)",
+        "if (newest_moved_from == sp_end)",
+        "return s.sqout_at != node_tick;"
+      ],
+      "must_not_match": [
+        "const int64_t at = ends_[(size_t)p.end_tail].sqout_at;",
+        "newest.sqout_at == NO_TIME ? std::nullopt : std::optional<int64_t>(newest.sqout_at),"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/sqout_chord.h",
+          "line_text": "if (newest_moved_from == sp_end && !squeezed_in(newest_tick)) {",
+          "why": "offered_phrase, the owner"
+        }
+      ],
+      "note": "D36: an SP end offers a window its newest phrase only when that phrase's step moved the end from there. Comparing a step's moved- from end to an SP end anywhere else restates the early side. Decided by: D36 (extreme-tempo gaps, 2026-10-04)"
+    },
+    {
+      "question": "Is a value inside the squeeze window?",
+      "owner": "within_squeeze_window in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "within_squeeze_window",
+      "date": "2026-10-04",
+      "decision": "ADR 0014",
+      "added_by": "step-1 derive-once fixes",
+      "pattern": "[<>]=?\\s*(\\w+::)*kSqueezeWindowMs|(\\w+::)*kSqueezeWindowMs\\s*[<>]",
+      "must_match": [
+        "x < kSqueezeWindowMs",
+        "x < hydra::kSqueezeWindowMs",
+        "hydra::kSqueezeWindowMs > x"
+      ],
+      "must_not_match": [
+        "clamp(v, 0, hydra::kSqueezeWindowMs)",
+        "static_cast<int>(kSqueezeWindowMs));"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.h",
+          "line_text": "return std::fabs(offset_from_sp_end_ms) < kSqueezeWindowMs;",
+          "why": "within_squeeze_window, the owner"
+        }
+      ],
+      "note": "Was part of a walker in test_squeeze_rating.cpp (review finding 12). An optional namespace prefix (hydra::kSqueezeWindowMs) must not hide a comparison. Decided by: ADR 0014; step-1 plan (one squeeze window); step-1 derive-once review finding 12 (2026-10-04)"
+    },
+    {
+      "question": "Is the squeeze window typed as 500?",
+      "owner": "kSqueezeWindowMs in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "kSqueezeWindowMs",
+      "date": "2026-10-04",
+      "decision": "D41",
+      "added_by": "step-1 derive-once fixes",
+      "pattern": "clamp\\([^;]*[-, ]500\\b|within 500 ms",
+      "must_match": [
+        "app.settings.mslimit_value = std::clamp(app.settings.mslimit_value, -500, 500);",
+        "app.settings.backendlimit_value = std::clamp(app.settings.backendlimit_value, 0, 500);",
+        "label = \"within 500 ms of the SP end\";"
+      ],
+      "must_not_match": [
+        "app.settings.mslimit_value = std::clamp(app.settings.mslimit_value, -window, window);",
+        "x = std::clamp(x, 0, 5000);"
+      ],
+      "note": "The rest of that walker. The Path limit's ceiling is the squeeze window too (decision D41), so no clamp is exempt. Decided by: step-1 plan (one squeeze window); the user's decision D41 (2026-10-04: the Path limit's ±500 ms ceiling is the squeeze window)"
+    },
+    {
+      "question": "Is a note inside the squeeze window, typed as 500 in a test?",
+      "owner": "within_squeeze_window in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "within_squeeze_window",
+      "date": "2026-10-04",
+      "decision": "step-1 derive-once review finding 9 (2026-10-04)",
+      "added_by": "step-1 derive-once fixes",
+      "pattern": "fabs\\([^)]*\\)\\s*<\\s*500(\\.0)?\\b",
+      "must_match": [
+        "CHECK((std::fabs(*b.offset_ms) < 500.0 || act.is_sqout_backend(b)));",
+        "if (std::fabs(*copy.offset_ms) < 500.0) want.push_back(copy);"
+      ],
+      "must_not_match": [
+        "if (n.ms < time_ms - 500.0 || n.ms > time_ms + 1500.0) continue;"
+      ],
+      "scope": [
+        "tests"
+      ]
+    },
+    {
+      "question": "Which paths did a search return, tied variants included, in a test?",
+      "owner": "flatten_paths in src/core/model.h (HydraRecord::all_paths for a record)",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "flatten_paths",
+      "date": "2026-10-04",
+      "decision": "T10+T11 derive-once review finding 4 (2026-10-04)",
+      "added_by": "T10 T11 derive-once fixes",
+      "pattern": "for \\(const Path&\\s*\\w+\\s*:\\s*\\w+\\.variants\\)\\s*\\w+\\(\\w+\\);",
+      "must_match": [
+        "for (const Path& v : p.variants) scan(v);",
+        "for (const Path& w : root.variants) check(w);"
+      ],
+      "must_not_match": [
+        "for (const Path& v : path.variants) collect_payloads(v, out);"
+      ],
+      "scope": [
+        "tests"
+      ]
+    },
+    {
+      "question": "Every stored path of a record, tied variants included, in a test?",
+      "owner": "HydraRecord::all_paths in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "HydraRecord::all_paths",
+      "date": "2026-10-04",
+      "decision": "D36",
+      "added_by": "d36-review-fixes",
+      "pattern": "for \\(const (hydra::)?Path\\* \\w+ : all_tied\\(\\w+\\.paths\\)\\) \\w+\\.push_back\\(",
+      "must_match": [
+        "for (const Path* p : all_tied(rec.paths)) all.push_back(p);",
+        "for (const hydra::Path* v : all_tied(r.paths)) out.push_back(v);"
+      ],
+      "must_not_match": [
+        "for (const Path* p : rec.all_allzero_paths()) all.push_back(p);"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "all_paths already walks every root's tied variants (flatten_paths), so adding all_tied's list to it checks each variant twice. Decided by: D36 derive-once review finding 1 (2026-10-04)"
+    },
+    {
+      "question": "Which chords can this SP end squeeze out (the deleted sqout_chord's name)?",
+      "owner": "core::sqout_chords in src/core/sqout_chord.h",
+      "owner_file": "src/core/sqout_chord.h",
+      "owner_symbol": "sqout_chords",
+      "date": "2026-10-04",
+      "decision": "D36",
+      "added_by": "d36-review-fixes",
+      "pattern": "\\bsqout_chord\\b(?![s.])",
+      "must_match": [
+        "// the one core::sqout_chord names. A typed offset is matched",
+        "// The engine squeezes out only the chord core::sqout_chord names for this"
+      ],
+      "must_not_match": [
+        "core::sqout_chords(song, deact_tc, w.act_tick, w.sqin_ticks, false);",
+        "#include \"core/sqout_chord.h\""
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "scan_comments": true,
+      "note": "D36 deleted core::sqout_chord; a comment that still names it points at nothing. Comments are scanned too, since that is where it lived. Decided by: D36 derive-once review finding 10 (2026-10-04)"
+    },
+    {
+      "question": "How far is a note from an SP end, in a test?",
+      "owner": "offset_from_sp_end in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "offset_from_sp_end",
+      "date": "2026-10-04",
+      "decision": "step-1 derive-once review findings 8, 9 and R7.30 (2026-10-04)",
+      "added_by": "step-1 derive-once fixes",
+      "pattern": "\\.ms\\(\\)\\s*-\\s*(end\\.ms\\(\\)|end_ms\\b)|(sqout_ms|offset_ms|own_ms)\\s*==?\\s*\\w+\\.timecode\\(|-\\s*\\w+\\.timecode\\([^;]*\\b(\\w*end|deact_tick\\(\\))\\)*\\.ms\\(\\)|\\w*_ms\\([^;]*\\)\\s*-\\s*\\w*end\\w*_ms\\b",
+      "must_match": [
+        "CHECK(got.timing == c->timecode.ms() - end.ms());",
+        "copy.offset_ms = b.timecode.ms() - end_ms;",
+        "CHECK(s.sqout_ms == song.timecode(3456).ms() - song.timecode(5376).ms());",
+        "song.timecode(*a.sqout_tick).ms() - song.timecode(*a.deact_tick()).ms());",
+        "doctest::Approx(tick_ms(song, 5280) - end_ms).epsilon(1e-9));",
+        "const double off = note_ms(song, t) - sp_end_ms;"
+      ],
+      "must_not_match": [
+        "double gap = st.timecode(69120).ms() - st.timecode(68880).ms();",
+        "double gap = tick_ms(song, b) - tick_ms(song, a);"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "Decided by: step-1 derive-once review findings 8, 9 and R7.30 (2026-10-04); T10+T11 derive-once review finding 1 and its round-2 follow-up (2026-10-04)"
+    },
+    {
+      "question": "Does a typed window still need its squeeze-out chord resolved?",
+      "owner": "sqout_needs_resolving in src/core/replay.cpp",
+      "owner_file": "src/core/replay.cpp",
+      "owner_symbol": "sqout_needs_resolving",
+      "date": "2026-10-07",
+      "decision": "step-1 derive-once review of track-r2, finding 4 (2026-10-07)",
+      "added_by": "track-r2",
+      "pattern": "sqout_offset_ms\\s*&&\\s*!|!\\s*\\w+\\s*&&\\s*[\\w.>-]*sqout_offset_ms|!\\s*[\\w.>-]*sqout_offset_ms\\s*\\|\\|",
+      "must_match": [
+        "if (!squeezed_out && w.sqout_offset_ms) squeezed_out = resolve_sqout_note(song, w).tick;",
+        "if (!w.sqout_offset_ms || w.sqout_tick) continue;",
+        "if (w.sqout_offset_ms && !w.sqout_tick)"
+      ],
+      "must_not_match": [
+        "std::optional<double> sqout_offset_ms;",
+        "if (w.sqout_offset_ms || w.sqout_tick) continue;",
+        "if (!w.sqout_offset_ms)",
+        "if (sqout_needs_resolving(w))"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/replay.cpp",
+          "line_text": "return w.sqout_offset_ms && !w.sqout_tick;",
+          "why": "sqout_needs_resolving, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "Whether a window's squeeze-out still needs its chord found is sqout_needs_resolving's answer; resolve_window_sqout acts on it. A window that is \"settled\" (ambiguous_window_warnings) or an offset read alone asks a different question and does not match."
+    },
+    {
+      "question": "Which transfer scale belongs to this SqIn?",
+      "owner": "sqin_rank in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "sqin_rank",
+      "date": "2026-10-04",
+      "decision": "step-1 derive-once review of de4e23a, finding 2 (2026-10-04)",
+      "added_by": "step-1 derive-once fixes round 3",
+      "pattern": "\\bsqins\\[\\s*[a-z_]\\w*(\\+\\+)?\\s*\\]",
+      "must_match": [
+        "rate_note(sq.offset_ms, sq.is_free(), out.scales->sqins[j++], hit_window_ms);",
+        "if (j >= scales->sqins.size() || differs(scales->sqins[j], *sq.transfer)) {"
+      ],
+      "must_not_match": [
+        "sq->transfer = scales->sqins[sqin_rank(first, sq, is_sqin_squeeze)];",
+        "CHECK(scales->sqins[0].late == doctest::Approx(1.0));"
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "A SqIn's transfer scale sits at its SqIn rank. Indexing the list with a hand-kept counter restates that rank; index it with sqin_rank, or compare whole lists (stored_transfer_scales pairs them). Literal-index pins in tests do not match."
+    },
+    {
+      "question": "Is this transfer scale x1.00?",
+      "owner": "is_scaled in src/core/squeeze_rating.h",
+      "owner_file": "src/core/squeeze_rating.h",
+      "owner_symbol": "is_scaled",
+      "date": "2026-10-04",
+      "decision": "step-1 derive-once review of cc2e1d9, finding 4 (2026-10-04)",
+      "added_by": "step-1 derive-once fixes round 4",
+      "pattern": "\\.(early|late)\\s*[!=]=\\s*1\\.0\\b",
+      "must_match": [
+        "return s.early == 1.0 && s.late == 1.0;",
+        "if (act.transfer_pre.early != 1.0 || act.transfer_pre.late != 1.0)"
+      ],
+      "must_not_match": [
+        "CHECK(scales->sqins[0].late == doctest::Approx(1.0));"
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ]
+    },
+    {
+      "question": "How does a typed SqOut refusal name a chord in a list?",
+      "owner": "the chord_text lambda in resolve_sqout_note, src/core/replay.cpp",
+      "owner_file": "src/core/replay.cpp",
+      "owner_symbol": "chord_text",
+      "date": "2026-10-06",
+      "decision": "D83",
+      "added_by": "REPLAYTIE",
+      "pattern": "tick %lld \\(%\\.2f ms\\)",
+      "must_match": [
+        "std::snprintf(one, sizeof(one), \"tick %lld (%.2f ms)\",",
+        "std::snprintf(one, sizeof(one), \"%stick %lld (%.2f ms)\", can.empty() ? \"\" : \" or \","
+      ],
+      "must_not_match": [
+        "named += chord_text(tied[i]);",
+        "can += chord_text(c);",
+        "\"tick %lld (%.2f ms from the SP end)\\n\","
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/replay.cpp",
+          "line_text": "std::snprintf(one, sizeof(one), \"tick %lld (%.2f ms)\", (long long)ts->timecode.ticks(),",
+          "why": "chord_text, the owner"
+        }
+      ],
+      "note": "---- how a SqOut refusal names a chord (REPLAYTIE review) ---- resolve_sqout_note's refusals list chords through one local lambda; a second hand-written format would drift from it. Decided by: derive-once review of 0997980, finding 1 (D83)"
+    },
+    {
+      "question": "How is a count written next to its noun?",
+      "owner": "counted (and has_have, for the verb after it) in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "counted",
+      "date": "2026-10-04",
+      "decision": "D48",
+      "added_by": "O1",
+      "pattern": "==\\s*1\\s*\\?\\s*(\"|one\\b)|%\\w+ bars?\\b|\" bars?\"|group_thousands\\([^;]*\\)\\s*\\+\\s*\" (charts?|records?|songs?|paths?|scores?(?! higher)|rows?|notes?)\\b|%[sd] (charts|records|songs|paths|scores|rows|notes)\\b",
+      "calls_owner": "\\b(counted|has_have)\\(",
+      "must_match": [
+        "return group_thousands(n) + \" \" + (n == 1 ? one : many);",
+        "view.lines.push_back(\"SP cap:  \" + std::to_string(*record.sp_cap) + \" bars\");",
+        "std::printf(\"SP cap     : %d bars\\n\", settings.sp_cap);",
+        "group_thousands(out.stats.total) + \" charts in \" + chartmode + \": \" +",
+        "\"Compared %s charts: %s same, %s 1.0 higher, %s 1.1 higher, \""
+      ],
+      "must_not_match": [
+        "view.lines.push_back(\"Path limit:  off\");",
+        "s.depth_mode = depth_mode == 1 ? DepthMode::Points : DepthMode::Scores;",
+        "ImGui::TextUnformatted(\"bars\");",
+        "hydra::counted(report.rows, \"path row\", \"path rows\").c_str());",
+        "group_thousands(out.stats.ch11_higher) + \" score higher under 1.1, \" +"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.cpp",
+          "line_text": "return group_thousands(n) + \" \" + (n == 1 ? one : many);",
+          "why": "counted, the owner"
+        },
+        {
+          "file": "src/core/model.cpp",
+          "line_text": "return n == 1 ? \"has\" : \"have\";",
+          "why": "has_have, the owner"
+        }
+      ],
+      "note": "---- counts and whole-ms timings (phase 3 task O1) ---- A test on exactly 1 that picks a word, or a number with \" bar\" or \" bars\" typed after it. counted owns the rule and has_have the verb a sentence puts after such a count. \"score higher\" is the verb after a count of charts, not a noun. Decided by: D48, Q12 (audit finding 14; phase 3 task O1; M_D review finding 4)"
+    },
+    {
+      "question": "How is a timing written in whole ms?",
+      "owner": "format_ms_whole in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "format_ms_whole",
+      "date": "2026-10-04",
+      "decision": "D48",
+      "added_by": "O1",
+      "pattern": "%\\.0f ?ms|static_cast<(long long|long|int|int64_t)>\\([^;]*\\)\\)\\s*\\+\\s*\" ms\"|\\bl{0,2}round\\([^;]*\\+\\s*\" ms\"",
+      "calls_owner": "\\bformat_ms_whole\\(",
+      "exempt": [
+        {
+          "file": "src/core/replay.cpp",
+          "why": "it prints the fixed 500 ms squeeze window, not a timing"
+        },
+        {
+          "file": "tools/replay.cpp",
+          "why": "it prints the fixed 500 ms squeeze window, not a timing"
+        }
+      ],
+      "must_match": [
+        "std::snprintf(buf, sizeof(buf), \"%s %.0f ms\", what, *hardest);",
+        "std::to_string(static_cast<long long>(sq.difficulty())) + \" ms\");",
+        "\"Effectively %.1fms on the normal %.0fms scale:\\n\"",
+        "std::to_string(std::llround(ms)) + \" ms\";",
+        "std::to_string(std::lround(ms)) + \" ms\";"
+      ],
+      "must_not_match": [
+        "std::snprintf(buf, sizeof(buf), \"%.1f ms\", ms);",
+        "std::snprintf(buf, sizeof(buf), \"%.1f\", ms);",
+        "const long long total = std::llround(ms);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.cpp",
+          "line_text": "return std::to_string(std::lround(ms)) + \" ms\";",
+          "why": "format_ms_whole, the owner"
+        }
+      ],
+      "note": "A timing printed as a whole number of ms: printf's %.0f with or without a space before \"ms\", or a cast, round, lround or llround with \" ms\" after it. Decided by: D48, Q2 (audit findings 4 and 18; phase 3 task O1; M_D review round 2, library finding 6)"
+    },
+    {
+      "question": "Which tick does a screen show at a time?",
+      "owner": "SongTiming::display_tick_at_ms in src/core/timing.cpp",
+      "owner_file": "src/core/timing.cpp",
+      "owner_symbol": "SongTiming::display_tick_at_ms",
+      "date": "2026-10-04",
+      "decision": "D48",
+      "added_by": "FX-L",
+      "pattern": "\\btick_at_ms\\(",
+      "must_match": [
+        "const int64_t end_tick = std::llround(timing->ms_index().tick_at_ms(*song_length_ms));",
+        "const int64_t t = std::round(timing->ms_index().tick_at_ms(ms));",
+        "const int64_t t = static_cast<int64_t>(ms_.tick_at_ms(ms));",
+        "timing->ms_index().tick_at_ms(ms));"
+      ],
+      "must_not_match": [
+        "const int64_t end_tick = timing->display_tick_at_ms(*song_length_ms);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/timing.cpp",
+          "line_text": "const int64_t tick = std::llround(ms_.tick_at_ms(ms));",
+          "why": "display_tick_at_ms, the owner"
+        },
+        {
+          "file": "src/core/timing.cpp",
+          "line_text": "double MsIndex::tick_at_ms(double ms) const {",
+          "why": "the ms-to-tick map itself"
+        },
+        {
+          "file": "src/core/timing.h",
+          "line_text": "double tick_at_ms(double ms) const;",
+          "why": "the ms-to-tick map's declaration"
+        },
+        {
+          "file": "src/core/timing.cpp",
+          "line_text": "double t = ms_.tick_at_ms(act_hit_ms);",
+          "why": "sp_end_ms keeps the fractional tick for its continuous map; no screen shows it"
+        }
+      ],
+      "note": "A time turned into a tick outside the timing code. display_tick_at_ms is the one rule for which tick a screen shows at a time (D48, Q23). The row flags every raw tick_at_ms call, so a rounding of any kind (llround, round, floor, a cast) is caught, and so is one split over two lines, whose second line still holds the call. The second line of \"std::llround(\\n timing->ms_index().tick_at_ms(ms));\". Decided by: D48, Q23 (audit finding 183; M_D review, reports finding 7, round 2 library finding 6)"
+    },
+    {
+      "question": "Is this the same path as that one?",
+      "owner": "path_identity in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "path_identity",
+      "date": "2026-10-04",
+      "decision": "audit finding 249",
+      "added_by": "M_C fix prod",
+      "pattern": "totalscore\\(\\)\\s*==[^;]*pathstring\\(\\)|pathstring_verbose\\(\\{\\}\\)\\s*\\+\\s*\"\\|\"",
+      "must_match": [
+        "if (p->totalscore() == score && p->pathstring() == notation)",
+        "return path->pathstring_verbose({}) + \"|\" + std::to_string(path->totalscore());"
+      ],
+      "must_not_match": [
+        "if (path_identity(*p) == identity) return view;"
+      ],
+      "note": "Two paths compared by score and notation, or keyed by notation and score glued together, instead of by path_identity. Decided by: audit finding 249; derive-once review of M_C (6d86f1c), proposed scan row 2 (2026-10-04)"
+    },
+    {
+      "question": "What is the two-hit budget at the identity scale?",
+      "owner": "nominal_budget_ms beside squeeze_budget_ms in src/core/squeeze_rating.cpp",
+      "owner_file": "src/core/squeeze_rating.cpp",
+      "owner_symbol": "nominal_budget_ms",
+      "date": "2026-10-04",
+      "decision": "phase 3 task C4c",
+      "added_by": "M_C fix prod",
+      "pattern": "\\b2(\\.0)?\\s*\\*\\s*(w|hit_window\\w*|kDefaultHitWindowMs)\\b|\\b(w|hit_window\\w*|kDefaultHitWindowMs)\\s*\\*\\s*2(\\.0)?\\b|squeeze_budget_ms\\(\\s*(1(\\.0)?|kIdentityScale)\\s*,|\\*\\s*2\\.0\\s*/\\s*\\(1\\.0\\s*\\+",
+      "must_match": [
+        "{\"Insane+\", \"t4\", 2 * w},",
+        "{\"Insane+\", \"t4\", squeeze_budget_ms(1.0, w)},",
+        "const double budget = hit_window_ms * 2;",
+        "return std::abs(offset_ms) * 2.0 / (1.0 + transfer_r);"
+      ],
+      "must_not_match": [
+        "{\"Insane+\", \"t4\", nominal_budget_ms(w)},"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/squeeze_rating.cpp",
+          "line_text": "return squeeze_budget_ms(kIdentityScale, hit_window_ms);",
+          "why": "nominal_budget_ms, the owner"
+        }
+      ],
+      "note": "The two-hit budget written out as twice the window (either way round), as squeeze_budget_ms at a hand-typed identity scale, or the backend rescale written out as 2 / (1 + r), instead of nominal_budget_ms and squeeze_budget_ms. Decided by: phase 3 task C4c; derive-once review of M_C (6d86f1c), finding 3, and round 2, finding 2 (2026-10-04)"
+    },
+    {
+      "question": "How does a ByteSource read its bytes?",
+      "owner": "file_byte_source and memory_byte_source in src/core/winstr.cpp; testbytes::counting in tests/byte_source_util.h",
+      "owner_file": "src/core/winstr.cpp",
+      "owner_symbol": "file_byte_source",
+      "date": "2026-10-04",
+      "decision": "container ranged-reads derive-once review of cbd1ee6, finding 2 (2026-10-04)",
+      "added_by": "container ranged reads",
+      "pattern": "\\.read\\s*=\\s*\\[",
+      "owner_files": [
+        "src/core/winstr.cpp",
+        "tests/byte_source_util.h"
+      ],
+      "must_match": [
+        "src.read = [file, total = *size](uint64_t offset, size_t length) {",
+        "out.read = [inner, &bytes_read](uint64_t offset, size_t length) {"
+      ],
+      "must_not_match": [
+        "const std::vector<uint8_t> b = src.read(0, 16);"
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "A ByteSource's reads come from a file or from memory, and tests count them through one wrapper; a lambda written elsewhere would be a second reader of the same bytes."
+    },
+    {
+      "question": "How much of a container is read first?",
+      "owner": "kFirstPieceRead in src/core/winstr.h (reads then grow by next_piece_read)",
+      "owner_file": "src/core/winstr.h",
+      "owner_symbol": "kFirstPieceRead",
+      "date": "2026-10-04",
+      "decision": "ADR 0024",
+      "added_by": "container ranged reads",
+      "pattern": "constexpr\\s+size_t\\s+k\\w*First\\w*Read\\s*=",
+      "must_match": [
+        "constexpr size_t kSngFirstRead = 64 * 1024;",
+        "constexpr size_t kFirstRead = 64 * 1024;"
+      ],
+      "must_not_match": [
+        "std::vector<uint8_t> head = src.read(0, kFirstPieceRead);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/winstr.h",
+          "line_text": "constexpr size_t kFirstPieceRead = 64 * 1024;",
+          "why": "kFirstPieceRead, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "Decided by: ADR 0024 (the user chose 64 KB, then double, on 2026-10-04)"
+    },
+    {
+      "question": "Has a ByteSource run out?",
+      "owner": "the short-read rule on ByteSource in src/core/winstr.h",
+      "owner_file": "src/core/winstr.h",
+      "owner_symbol": "ByteSource",
+      "date": "2026-10-04",
+      "decision": "container ranged-reads derive-once reviews of 8229b6e (finding 1) and 860cbd8 (finding 3), 2026-10-04",
+      "added_by": "container ranged reads",
+      "pattern": "\\w+\\.size\\(\\)\\s*(<=?|>=?|[!=]=)\\s*\\w+\\.size\\b(?!\\()|\\w+\\.size\\s*(<=?|>=?|[!=]=)\\s*\\w+\\.size\\(\\)",
+      "must_match": [
+        "if (needed <= head.size() || head.size() == src.size) return head;",
+        "if (bytes.size() != src.size) return std::nullopt;",
+        "if (head.size() >= src.size) return head;",
+        "if (src.size == head.size()) return head;"
+      ],
+      "must_not_match": [
+        "if (bytes.size() != n) return std::nullopt;  // the file shrank since it was opened",
+        "if (needed <= head.size() || head.size() < asked) return head;"
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "A file can shrink after it was sized, so comparing what was read with the stated size can wait forever (sng_read_head did)."
+    },
+    {
+      "question": "What are all of a ByteSource's bytes?",
+      "owner": "read_all in src/core/winstr.cpp",
+      "owner_file": "src/core/winstr.cpp",
+      "owner_symbol": "read_all",
+      "date": "2026-10-04",
+      "decision": "container ranged-reads derive-once reviews of 8229b6e (finding 2) and 860cbd8 (finding 3), 2026-10-04",
+      "added_by": "container ranged reads",
+      "pattern": "\\.read\\(\\s*0\\s*,\\s*((static_cast<size_t>\\(|\\(size_t\\)\\s*)?\\w+\\.size\\)?|SIZE_MAX|std::numeric_limits<size_t>::max\\(\\))\\s*\\)",
+      "must_match": [
+        "return load_songbytes_mid(src.read(0, static_cast<size_t>(src.size)), pro, bass2x,",
+        "std::vector<uint8_t> all = src.read(0, src.size);",
+        "std::vector<uint8_t> all = src.read(0, SIZE_MAX);",
+        "std::vector<uint8_t> all = src.read(0, (size_t)src.size);"
+      ],
+      "must_not_match": [
+        "std::vector<uint8_t> head = src.read(0, asked);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/winstr.cpp",
+          "line_text": "return src.read(0, static_cast<size_t>(src.size));",
+          "why": "read_all, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ]
+    },
+    {
+      "question": "How many bytes from a position does a buffer hold?",
+      "owner": "range_length in src/core/winstr.cpp",
+      "owner_file": "src/core/winstr.cpp",
+      "owner_symbol": "range_length",
+      "date": "2026-10-04",
+      "decision": "container ranged-reads derive-once review of 860cbd8, finding 2 (2026-10-04)",
+      "added_by": "container ranged reads",
+      "pattern": "std::min\\(\\s*\\w+\\s*-\\s*\\w+\\s*,\\s*k\\w+\\)|\\w+\\s*>=\\s*\\w+\\)\\s*return\\s*\\{\\s*nullptr\\s*,\\s*0\\s*\\}",
+      "must_match": [
+        "if (pos >= size) return {nullptr, 0};",
+        "const size_t n = std::min(size - pos, kMaxPiece);"
+      ],
+      "must_not_match": [
+        "return static_cast<size_t>(std::min<uint64_t>(length, available));"
+      ],
+      "scope": [
+        "src"
+      ]
+    },
+    {
+      "question": "Which drum lanes can carry a cymbal?",
+      "owner": "allows_cymbals in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "allows_cymbals",
+      "date": "2026-10-04",
+      "decision": "derive-once review of M_D round 2, library finding 8 (phase 3 task FX2-P)",
+      "added_by": "FX2-P",
+      "pattern": "[!=]=\\s*(app::)?(PreviewLane|NoteColor)::Red\\b|\\b(PreviewLane|NoteColor)::Red\\s*[!=]=",
+      "must_match": [
+        "g.cymbal = pro && n.cymbal && n.lane != PreviewLane::Red;",
+        "if (c == NoteColor::Red) return false;"
+      ],
+      "must_not_match": [
+        "g.cymbal = pro && n.cymbal && allows_cymbals(app::color_of(n.lane));",
+        "case PreviewLane::Red:    return Pad::Red;"
+      ],
+      "note": "\"Not the red lane\" written as the cymbal rule instead of asking allows_cymbals, which names the three lanes that carry one."
+    },
+    {
+      "question": "Where does the combo multiplier step up?",
+      "owner": "to_multiplier in src/core/timing.cpp",
+      "owner_file": "src/core/timing.cpp",
+      "owner_symbol": "to_multiplier",
+      "date": "2026-10-04",
+      "decision": "D51",
+      "added_by": "E2",
+      "pattern": "\\bcombo\\w*\\)?\\s*%\\s*10\\b|\\bcombo\\w*\\s*[<>]=?\\s*(10|20|30)\\b|\\b(10|20|30)\\s*[<>]=?\\s*combo",
+      "must_match": [
+        "const int mod = (chord.count() + combo) % 10;",
+        "return (combo_ % 10 == 7) ? \"high\" : \"low\";",
+        "if (combo >= 20) return 3;",
+        "if (30 <= combo_after) ok = true;"
+      ],
+      "must_not_match": [
+        "if (to_multiplier(combo + 1) < to_multiplier(combo + chord.count())) ok = true;",
+        "if (count % 10 == 0) return;",
+        "if (combo > 100) return;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/timing.cpp",
+          "line_text": "if (combo < 10) return 1;",
+          "why": "to_multiplier, the owner"
+        },
+        {
+          "file": "src/core/timing.cpp",
+          "line_text": "if (combo < 20) return 2;",
+          "why": "to_multiplier, the owner"
+        },
+        {
+          "file": "src/core/timing.cpp",
+          "line_text": "if (combo < 30) return 3;",
+          "why": "to_multiplier, the owner"
+        }
+      ],
+      "note": "Task E2: the multiplier steps live in to_multiplier only. A combo tested against 10, 20 or 30, or taken mod 10, is a second answer (MultSqueeze::applies held one before D51 call 3). Decided by: D51 calls 3 and 13 (audit findings 49 and 335), 2026-10-04"
+    },
+    {
+      "question": "What text turns an INI setting on or off?",
+      "owner": "parse_bool in src/core/strutil.cpp",
+      "owner_file": "src/core/strutil.cpp",
+      "owner_symbol": "parse_bool",
+      "date": "2026-10-04",
+      "decision": "audit finding 68 (code-only: on/off text is 0 or 1 only), phase 7 task SE1",
+      "added_by": "SE1",
+      "pattern": "[!=]=\\s*\"(0|1|true|false|yes|no)\"",
+      "must_match": [
+        "else if (key == \"is_rescan\") s.is_rescan = (value == \"1\");",
+        "bool flag_bool(const std::string& v) { return v == \"1\" || v == \"true\" || v == \"yes\"; }",
+        "if (v != \"0\") on = true;"
+      ],
+      "must_not_match": [
+        "if (a.ms == \"off\") s.mslimit_enabled = false;",
+        "if (const std::optional<bool> on = parse_bool(line.value)) s.**b = *on;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/strutil.cpp",
+          "line_text": "if (text == \"1\") return true;",
+          "why": "parse_bool, the owner"
+        },
+        {
+          "file": "src/core/strutil.cpp",
+          "line_text": "if (text == \"0\") return false;",
+          "why": "parse_bool, the owner"
+        }
+      ],
+      "note": "Phase 7 task SE1: the Settings owner."
+    },
+    {
+      "question": "What is a path's parent folder?",
+      "owner": "parent_folder in src/core/winstr.cpp",
+      "owner_file": "src/core/winstr.cpp",
+      "owner_symbol": "parent_folder",
+      "date": "2026-10-04",
+      "decision": "audit finding 251",
+      "added_by": "J1-5",
+      "pattern": "\\b(pos|slash)\\s*[!=]=\\s*(std::string::)?npos\\b.*\\.substr\\(\\s*0\\s*,\\s*(pos|slash)\\s*\\)",
+      "must_match": [
+        "return pos == std::string::npos ? std::string() : p.substr(0, pos);",
+        "return pos == std::string::npos ? std::string(\".\") : path.substr(0, pos);",
+        "return slash == std::string::npos ? std::string(\".\") : path.substr(0, slash);"
+      ],
+      "must_not_match": [
+        "return slash == std::string::npos ? path : path.substr(slash + 1);",
+        "return dot == std::string::npos ? b : b.substr(0, dot);",
+        "size_t slash = path.find_last_of(\"/\\\\\");"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/winstr.cpp",
+          "line_text": "return pos == std::string::npos ? std::string() : p.substr(0, pos);",
+          "why": "parent_folder, the owner"
+        }
+      ],
+      "note": "Keyed on the cut beside its \"no separator\" test, not on find_last_of: a file's base name (substr(slash + 1)) and a name's stem (substr(0, dot)) find the same separator for other questions. Decided by: audit finding 251; the scan's rule, kept for the stored rootfolder (phase 6 task J1-5, decided at launch)"
+    },
+    {
+      "question": "Did a ShellExecute launch succeed?",
+      "owner": "shell_execute_ok in src/core/winstr.cpp",
+      "owner_file": "src/core/winstr.cpp",
+      "owner_symbol": "shell_execute_ok",
+      "date": "2026-10-04",
+      "decision": "audit finding 217",
+      "added_by": "J1-5",
+      "pattern": "reinterpret_cast<\\s*(INT_PTR|intptr_t|LONG_PTR)\\s*>\\s*\\(\\s*\\w+\\s*\\)\\s*>\\s*32\\b|\\(\\s*(INT_PTR|intptr_t|LONG_PTR)\\s*\\)\\s*\\w+\\s*>\\s*32\\b",
+      "must_match": [
+        "return reinterpret_cast<INT_PTR>(rc) > 32;",
+        "return reinterpret_cast<INT_PTR>(r) > 32;  // ShellExecute's documented success test",
+        "if ((INT_PTR)h > 32) ok = true;"
+      ],
+      "must_not_match": [
+        "return shell_execute_ok(rc);",
+        "ov.OffsetHigh = static_cast<DWORD>(at >> 32);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/winstr.cpp",
+          "line_text": "return reinterpret_cast<INT_PTR>(shell_execute_result) > 32;",
+          "why": "shell_execute_ok, the owner"
+        }
+      ],
+      "note": "The \"above 32\" test on ShellExecute's result. Which code makes the call is the \"Which code launches the Windows shell?\" row. Decided by: audit finding 217; ShellExecute's documented rule (32 and below means failure)"
+    },
+    {
+      "question": "How are a folder and a file name joined?",
+      "owner": "join_folder in src/core/winstr.cpp",
+      "owner_file": "src/core/winstr.cpp",
+      "owner_symbol": "join_folder",
+      "date": "2026-10-04",
+      "decision": "review of M6-J1a, finding 1 (phase 6 wave J1 sweep)",
+      "added_by": "M6-J1-fixprod",
+      "pattern": "\\bfolder\\s*\\+\\s*\"\\\\\\\\\"\\s*\\+",
+      "must_match": [
+        "return ini ? folder + \"\\\\\" + ini->name : std::string();",
+        "if (!e.is_dir && is_song_ini(e.name)) return folder + \"\\\\\" + e.name;"
+      ],
+      "must_not_match": [
+        "return (last == '\\\\' || last == '/') ? a + b : a + \"\\\\\" + b;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/winstr.cpp",
+          "line_text": "return (last == '\\\\' || last == '/') ? folder + name : folder + \"\\\\\" + name;",
+          "why": "join_folder, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A folder and a file name glued with a bare backslash. join_folder adds none when the folder already ends in a slash, which a bare join gets wrong. The owner's own line is listed, so a second copy of it fails too."
+    },
+    {
+      "question": "Is a value inside the squeeze window? (tests)",
+      "owner": "within_squeeze_window in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "within_squeeze_window",
+      "date": "2026-10-04",
+      "decision": "D53, D54",
+      "added_by": "J1-1",
+      "pattern": "[<>]=?\\s*(\\w+::)*kSqueezeWindowMs|(\\w+::)*kSqueezeWindowMs\\s*[<>]",
+      "must_match": [
+        "c.ms - phrase_note->ms < kSqueezeWindowMs)",
+        "if (!long_after && c.ms - last_phrase->ms > kSqueezeWindowMs)",
+        "if (hydra::kSqueezeWindowMs > gap) continue;"
+      ],
+      "must_not_match": [
+        "CHECK(kSqueezeWindowMs == 500.0);",
+        "const double offsets[] = {0.0, 180.0, -300.0, kSqueezeWindowMs - 1.0,",
+        "out[\"kSqueezeWindowMs\"] = {false, hydra::kSqueezeWindowMs};",
+        "-static_cast<int>(hydra::kSqueezeWindowMs));",
+        "if (!long_after && !within_squeeze_window(c.ms - last_phrase->ms))"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "The same pattern as \"Is a value inside the squeeze window?\", over tests/. That row's scope stays src and tools; rows are append-only. Arithmetic and == on the constant (test_squeeze_rating.cpp) and storing it (test_docs_match_code.cpp) answer other questions. Decided by: audit finding 283; phase 6 task J1-1 (D53, D54)"
+    },
+    {
+      "question": "Which meter section is a tick measured in?",
+      "owner": "MeasureIndex::section_at in src/core/timing.cpp",
+      "owner_file": "src/core/timing.cpp",
+      "owner_symbol": "MeasureIndex::section_at",
+      "date": "2026-10-04",
+      "decision": "D51, D58",
+      "added_by": "TM",
+      "pattern": "keys_at\\([^()]*\\)\\)*\\s*[<>]|(^|[^-])[<>]=?\\s*(\\w+(\\.|->))?keys_at\\(",
+      "must_match": [
+        "while (i > 0 && static_cast<double>(idx.keys_at(i)) > ticks) --i;",
+        "if (mi.keys_at(i) <= tick) s = i;",
+        "while (s + 1 < n && tick >= mi->keys_at(s + 1)) ++s;"
+      ],
+      "must_not_match": [
+        "if (j < len && handled_ticks == idx.keys_at(j)) {",
+        "const int64_t section_end = last_section ? last_tick : mi.keys_at(i + 1);",
+        "static_cast<double>(idx.keys_at(s) - idx.starts_at(s)) /",
+        "const int64_t first = mi->keys_at(i);",
+        "const int i = idx.section_at(static_cast<int64_t>(std::ceil(ticks)));"
+      ],
+      "note": "Picking a tick's meter section by ordering it against the sections' first ticks. section_at answers that with keys_ directly, so no keys_at ordering is the owner's. An equality test against a section start (plusmeasure's barline check), reading a section's bounds, and the measure-space entry in tick_at_measures_f answer other questions. Decided by: audit finding 58; D51 call 22; phase 7 task TM (D58)"
+    },
+    {
+      "question": "How are a folder and a file name joined? (any name, not only folder)",
+      "owner": "join_folder in src/core/winstr.cpp",
+      "owner_file": "src/core/winstr.cpp",
+      "owner_symbol": "join_folder",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-1",
+      "pattern": "\\+\\s*\"\\\\\\\\\\w|\\+=\\s*\"\\\\\\\\\"",
+      "must_match": [
+        "return exe_dir() + \"\\\\hydra.db\";",
+        "if (resource_dir.back() != '\\\\' && resource_dir.back() != '/') resource_dir += \"\\\\\";"
+      ],
+      "must_not_match": [
+        "return (last == '\\\\' || last == '/') ? folder + name : folder + \"\\\\\" + name;",
+        "constexpr std::wstring_view kLongPrefix = L\"\\\\\\\\?\\\\\";",
+        "case '\\\\': out += \"\\\\\\\\\"; break;",
+        "return join_folder(exe_dir(), \"hydra.db\");"
+      ],
+      "scope": [
+        "src",
+        "tools"
+      ],
+      "note": "The join row above, for any name: a string literal that starts with a backslash and a name, glued on with +, or a bare backslash added with +=. join_folder's own \"\\\\\" is followed by a quote, not a name. Rows are append-only, so the first row stays as it is. Decided by: audit finding 209; phase 6 task J2-1 (D53)"
+    },
+    {
+      "question": "How is text compared ignoring ASCII case, and which bytes are whitespace?",
+      "owner": "lower_ascii, equals_ci, starts_with(_ci), ends_with(_ci) and is_ascii_space in src/core/strutil.cpp",
+      "owner_file": "src/core/strutil.cpp",
+      "owner_symbol": "lower_ascii",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-1",
+      "pattern": "std::tolower\\(|\\b(bool|char)\\s+(starts_with|starts_with_ci|ends_with|ends_with_ci|equals_ci|iequals_ascii|is_ascii_space|ascii_lower|lower_ascii)\\s*\\([^;]*$",
+      "must_match": [
+        "bool starts_with(std::string_view s, std::string_view prefix) {",
+        "bool ends_with(std::string_view s, std::string_view suffix) {",
+        "return std::tolower(static_cast<unsigned char>(a)) =="
+      ],
+      "must_not_match": [
+        "bool starts_with(std::string_view s, std::string_view prefix);",
+        "bool starts_with_any(std::string_view s, std::initializer_list<std::string_view> prefixes) {",
+        "if (starts_with(what, \"cannot write \")) return kReportWrite;",
+        "c = lower_ascii(c);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/strutil.cpp",
+          "line_text": "char lower_ascii(char c) {",
+          "why": "lower_ascii, the owner"
+        },
+        {
+          "file": "src/core/strutil.cpp",
+          "line_text": "bool is_ascii_space(char c) {",
+          "why": "is_ascii_space, the owner"
+        },
+        {
+          "file": "src/core/strutil.cpp",
+          "line_text": "bool equals_ci(std::string_view a, std::string_view b) {",
+          "why": "equals_ci, the owner"
+        },
+        {
+          "file": "src/core/strutil.cpp",
+          "line_text": "bool starts_with(std::string_view s, std::string_view prefix) {",
+          "why": "starts_with, the owner"
+        },
+        {
+          "file": "src/core/strutil.cpp",
+          "line_text": "bool starts_with_ci(std::string_view s, std::string_view prefix) {",
+          "why": "starts_with_ci, the owner"
+        },
+        {
+          "file": "src/core/strutil.cpp",
+          "line_text": "bool ends_with(std::string_view s, std::string_view suffix) {",
+          "why": "ends_with, the owner"
+        },
+        {
+          "file": "src/core/strutil.cpp",
+          "line_text": "bool ends_with_ci(std::string_view s, std::string_view suffix) {",
+          "why": "ends_with_ci, the owner"
+        },
+        {
+          "file": "src/core/winstr.cpp",
+          "line_text": "bool starts_with(const std::wstring& s, std::wstring_view prefix) {",
+          "why": "the wide prefix test winstr keeps for its long-path prefixes (J2-1, decided at launch)"
+        }
+      ],
+      "note": "A byte lowered through the C locale, or a private definition of one of strutil's ASCII helpers (a definition line has no ; after its open paren). C2's wide starts_with in winstr.cpp stays where it is (J2-1, decided at launch). Decided by: audit finding 201; phase 6 task J2-1 (D53)"
+    },
+    {
+      "question": "How is a scanned path keyed in the scan snapshot?",
+      "owner": "relative_slash_path in src/core/strutil.cpp",
+      "owner_file": "src/core/strutil.cpp",
+      "owner_symbol": "relative_slash_path",
+      "date": "2026-10-04",
+      "decision": "D53, D54",
+      "added_by": "J2-1",
+      "pattern": "\\.substr\\(\\s*\\w+\\.size\\(\\)\\s*\\+\\s*1\\s*\\)",
+      "exempt": [
+        {
+          "file": "src/app/analysis.cpp",
+          "why": "relpath: the library's stored relative path (a separator is required and backslashes stay), not the snapshot key"
+        }
+      ],
+      "must_match": [
+        "p = p.substr(rel.size() + 1);",
+        "rel = rel.substr(root.size() + 1);"
+      ],
+      "must_not_match": [
+        "return slash == std::string::npos ? path : path.substr(slash + 1);",
+        "const std::string tail = s.substr(s.size() - 4);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/strutil.cpp",
+          "line_text": "path = path.substr(root.size() + 1);",
+          "why": "relative_slash_path, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "The root and one more byte cut off a path. relpath in analysis.cpp cuts only after a separator and keeps backslashes: Python's os.path.relpath for the library's stored path, another question. Decided by: audit finding 274; phase 6 task J2-1 (D53, D54)"
+    },
+    {
+      "question": "Does a string end with a tail?",
+      "owner": "ends_with and ends_with_ci in src/core/strutil.cpp",
+      "owner_file": "src/core/strutil.cpp",
+      "owner_symbol": "ends_with",
+      "date": "2026-10-08",
+      "decision": "derive-once review of RW-T7 (finding 1)",
+      "added_by": "RW-T7",
+      "pattern": "\\.(compare|substr)\\(\\s*\\w+\\.size\\(\\)\\s*-\\s*\\w+\\.size\\(\\)|\\brfind\\([^;]*==\\s*\\w+\\.size\\(\\)\\s*-\\s*\\w+\\.size\\(\\)",
+      "must_match": [
+        "text.compare(text.size() - tail.size(), tail.size(), tail) == 0;",
+        "return s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;",
+        "CHECK(phrase.substr(phrase.size() - clause.size()) == clause);",
+        "return s.rfind(suffix) == s.size() - suffix.size();"
+      ],
+      "must_not_match": [
+        "CHECK(hydra::ends_with(four.subtitle, \"SP cap 4 bars\"));",
+        "const std::string tail = s.substr(s.size() - 4);",
+        "return slash == std::string::npos ? path : path.substr(slash + 1);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/strutil.cpp",
+          "line_text": "return s.size() >= suffix.size() && s.substr(s.size() - suffix.size()) == suffix;",
+          "why": "ends_with, the owner"
+        },
+        {
+          "file": "src/core/strutil.cpp",
+          "line_text": "return s.size() >= suffix.size() && equals_ci(s.substr(s.size() - suffix.size()), suffix);",
+          "why": "ends_with_ci, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "A string's tail compared by hand, under any name: the text's size minus the tail's size picks where the tail starts."
+    },
+    {
+      "question": "How is a little-endian number written byte by byte?",
+      "owner": "append_le_u32 and read_le_u32 in src/core/little_endian.h",
+      "owner_file": "src/core/little_endian.h",
+      "owner_symbol": "append_le_u32",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-5",
+      "pattern": "\\b(write|read)_u32_le\\(",
+      "must_match": [
+        "write_u32_le(out, static_cast<uint32_t>(b.rows[i].ghost));",
+        "const uint32_t tag_ms = read_u32_le(p);                        p += 4;"
+      ],
+      "must_not_match": [
+        "w.u32(static_cast<uint32_t>(b.rows[i].ghost));",
+        "const uint32_t tag_ms = r.u32();"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A private byte-by-byte little-endian helper. src/core/little_endian.h is the codec; the store's own read_le/write_le are task J3-6's and are not in this row. Decided by: audit finding 195 (the Dynamics half); phase 6 task J2-5 (D53)"
+    },
+    {
+      "question": "In what order does a record list its paths?",
+      "owner": "HydraRecord::all_paths, in the order pather::read builds",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "all_paths",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-2",
+      "pattern": "totalscore\\(\\)\\s*>\\s*\\w+->totalscore\\(\\)",
+      "must_match": [
+        "return a->totalscore() > b->totalscore();"
+      ],
+      "must_not_match": [
+        "CHECK(all[i]->totalscore() <= all[i - 1]->totalscore());",
+        "const std::vector<const Path*> paths = record->all_paths();"
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "A record's paths come best first from all_paths() (pather::read sorts the roots; each variant sits under its parent). Sorting them by score again is a second answer. Decided by: audit finding 169; phase 6 task J2-2 (D53)"
+    },
+    {
+      "question": "What is a path's score without the solo bonus?",
+      "owner": "score_without_solo in src/core/stars.cpp",
+      "owner_file": "src/core/stars.cpp",
+      "owner_symbol": "score_without_solo",
+      "date": "2026-10-04",
+      "decision": "D53, D54",
+      "added_by": "J2-7",
+      "pattern": "\\btotalscore\\(\\)\\s*-\\s*(\\w+(\\.|->))?score_solo\\b",
+      "must_match": [
+        "return stars_for_score(star_cutoffs(path), path.totalscore() - path.score_solo);",
+        "int64_t multscore = totalscore() - score_solo;"
+      ],
+      "must_not_match": [
+        "return score_base + score_combo + score_sp + score_solo + score_accents +",
+        "return stars_for_score(star_cutoffs(path), score_without_solo(path));",
+        "CHECK(path.totalscore() == 6680);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/stars.cpp",
+          "line_text": "int64_t score_without_solo(const Path& path) { return path.totalscore() - path.score_solo; }",
+          "why": "score_without_solo, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "The game counts stars on the total less the solo bonus. Adding the categories up into the total is a different question. Decided by: audit finding 166; phase 6 task J2-7 (D53, D54)"
+    },
+    {
+      "question": "What score shows at a star cutoff with the full solo bonus?",
+      "owner": "star_cutoffs filling StarCutoffs::with_solo in src/core/stars.cpp",
+      "owner_file": "src/core/stars.cpp",
+      "owner_symbol": "star_cutoffs",
+      "date": "2026-10-04",
+      "decision": "D53, D54",
+      "added_by": "J2-7",
+      "pattern": "\\bcutoffs?(\\[[^\\]]*\\])?\\s*\\+\\s*(\\w+(\\.|->))?solo_bonus\\b",
+      "must_match": [
+        "ImGui::TextUnformatted(group_thousands(cutoff + sc.solo_bonus).c_str());",
+        "IM_CHECK(text.find(hydra::group_thousands(cutoff + sc.solo_bonus)) != std::string::npos);"
+      ],
+      "must_not_match": [
+        "ImGui::TextUnformatted(group_thousands(sc.with_solo[stars - 1]).c_str());",
+        "out.solo_bonus = path.score_solo;",
+        "const bool has_solo = sc.solo_bonus > 0;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/stars.cpp",
+          "line_text": "out.with_solo[stars - 1] = out.cutoffs[stars - 1] + out.solo_bonus;",
+          "why": "star_cutoffs, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "The Stars tab's \"With full solo bonus\" column and its GUI test read StarCutoffs::with_solo instead of adding the two themselves. Decided by: audit finding 166; phase 6 task J2-7 (D53, D54)"
+    },
+    {
+      "question": "How many solo-bonus points does a chord earn?",
+      "owner": "solo_bonus in src/core/scoring.cpp",
+      "owner_file": "src/core/scoring.cpp",
+      "owner_symbol": "solo_bonus",
+      "date": "2026-10-04",
+      "decision": "D53, D54",
+      "added_by": "J2-7",
+      "pattern": "\\bkSoloBonusPerNote\\)?\\s*\\*|\\*\\s*(\\w+::)*kSoloBonusPerNote\\b",
+      "must_match": [
+        "store_soloscore(kSoloBonusPerNote * timestamp.chord.count());",
+        "ts.flag_solo ? static_cast<int64_t>(kSoloBonusPerNote) * ts.chord.count() : 0;",
+        "int solo = ts.chord.count() * hydra::kSoloBonusPerNote;"
+      ],
+      "must_not_match": [
+        "CHECK(kSoloBonusPerNote == 100);",
+        "inline constexpr int kSoloBonusPerNote = 100;",
+        "store_soloscore(solo_bonus(timestamp.chord, timestamp.flag_solo));"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/scoring.cpp",
+          "line_text": "return flag_solo ? kSoloBonusPerNote * chord.count() : 0;",
+          "why": "solo_bonus, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "The constant multiplied by a note count. Pinning the constant (test_model.cpp) is not an answer. Decided by: audit finding 163; phase 6 task J2-7 (D53, D54)"
+    },
+    {
+      "question": "What is the combo after a chord?",
+      "owner": "CategoryScores::combo_after in src/core/scoring.h",
+      "owner_file": "src/core/scoring.h",
+      "owner_symbol": "combo_after",
+      "date": "2026-10-04",
+      "decision": "D53, D54",
+      "added_by": "J2-7",
+      "pattern": "\\bcombo_?\\s*\\+=\\s*.*\\bcount\\(\\)",
+      "must_match": [
+        "combo_ += timestamp.chord.count();",
+        "combo += ts.chord.count();"
+      ],
+      "must_not_match": [
+        "combo += 1;",
+        "note_scores.combo_after = combo;",
+        "combo_ = scores.combo_after;"
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "A running combo stepped by a whole chord's note count. The scorer steps one note at a time (combo += 1), so it has no owner line. Decided by: audit finding 164; phase 6 task J2-7 (D53, D54)"
+    },
+    {
+      "question": "What is the combo before a chord?",
+      "owner": "chord_score_table in src/core/scoring.cpp",
+      "owner_file": "src/core/scoring.cpp",
+      "owner_symbol": "chord_score_table",
+      "date": "2026-10-07",
+      "decision": "derive-once review of track-r1, proposed scan rules (2026-10-07)",
+      "added_by": "finding-164-test-copy",
+      "pattern": "\\b\\w*combo_?\\s*=\\s*(category_scores\\(|\\w+\\.combo_after\\b)",
+      "must_match": [
+        "combo = category_scores(ts.chord, combo).combo_after;",
+        "combo_ = category_scores(timestamp.chord, combo_).combo_after;",
+        "running_combo = category_scores(c, running_combo).combo_after;",
+        "combo = s.combo_after;"
+      ],
+      "must_not_match": [
+        "const CategoryScores sg = category_scores(ts.chord, combo);",
+        "if (combo == category_scores(c, 0).combo_after) ok = true;",
+        "row.combo_before = combo;",
+        "row.combo_after = sg.combo_after;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/scoring.cpp",
+          "line_text": "combo = sg.combo_after;",
+          "why": "chord_score_table, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "A running combo carried chord to chord through category_scores, in one statement or two, is a second walk of the chart. chord_score_table is the one walk; read its rows' combo_before and combo_after instead. Decided by: derive-once review of track-r1, proposed scan rules (2026-10-07); audit finding 164"
+    },
+    {
+      "question": "How long is an ID3v2 tag, and what sits behind it?",
+      "owner": "id3v2_tag_length in src/core/audio_sniff.cpp",
+      "owner_file": "src/core/audio_sniff.cpp",
+      "owner_symbol": "id3v2_tag_length",
+      "date": "2026-10-05",
+      "decision": "D53",
+      "added_by": "J2-6",
+      "pattern": "&\\s*0x7F\\)\\s*<<\\s*21",
+      "must_match": [
+        "std::size_t tag = (static_cast<std::size_t>(d[6] & 0x7F) << 21) |",
+        "pos = 10 + ((static_cast<std::size_t>(b[6] & 0x7F) << 21) | ((b[7] & 0x7F) << 14) |"
+      ],
+      "must_not_match": [
+        "std::size_t pos = id3v2_tag_length(b.data(), b.size());"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/audio_sniff.cpp",
+          "line_text": "const std::size_t body = (static_cast<std::size_t>(data[6] & 0x7F) << 21) |",
+          "why": "id3v2_tag_length, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "Decided by: audit R7.23; phase 6 task J2-6 (D53)"
+    },
+    {
+      "question": "Which SP cap does the leaderboard comparison name?",
+      "owner": "kCloneHeroSpCap in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "kCloneHeroSpCap",
+      "date": "2026-10-05",
+      "decision": "D51",
+      "added_by": "RP",
+      "pattern": "SP cap 4\\b",
+      "must_match": [
+        "{k:'optimal', t:'Hydra opt', num:true,  d:'The optimal score Hydra found for the chart at SP cap 4, the Clone Hero rule.'},",
+        "\"at SP cap 4: analyze them, then compare again.\";"
+      ],
+      "must_not_match": [
+        "\"at SP cap \" + std::to_string(kCloneHeroSpCap) + \": analyze them, then compare again.\";",
+        "\"SP cap 40\""
+      ],
+      "note": "---- report pages (phase 7 task RP) ---- Clone Hero's SP cap written as text, where the leaderboard page names it. Decided by: audit finding 170, D51's code-only calls (phase 7 task RP)"
+    },
+    {
+      "question": "What is the hit window's default?",
+      "owner": "kDefaultHitWindowMs in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "kDefaultHitWindowMs",
+      "date": "2026-10-05",
+      "decision": "D51",
+      "added_by": "LB1",
+      "pattern": "static_cast<int>\\(\\s*(hydra::)?kDefaultHitWindowMs\\s*\\)",
+      "must_match": [
+        "int hit_window_ms = static_cast<int>(kDefaultHitWindowMs);",
+        "int hit_window_ms = static_cast<int>(kDefaultHitWindowMs));",
+        "CHECK(s.hit_window_ms == static_cast<int>(hydra::kDefaultHitWindowMs));"
+      ],
+      "must_not_match": [
+        "double hit_window_ms = kDefaultHitWindowMs;",
+        "bool open_when_done, double hit_window_ms = kDefaultHitWindowMs);"
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "The hit window's default cut to a whole number. The setting, the report job and the report keep its decimal (D51 call 15). Decided by: audit finding 140; D51 call 15 (phase 7 task LB1)"
+    },
+    {
+      "question": "What does squeezing out a row cost?",
+      "owner": "core::sqout_cost in src/core/backend_value.h",
+      "owner_file": "src/core/backend_value.h",
+      "owner_symbol": "sqout_cost",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-1",
+      "pattern": "(\\.|->)points\\s*-\\s*value\\b",
+      "owner_files": [
+        "src/core/backend_value.h"
+      ],
+      "must_match": [
+        "const int lost = row.points - value;",
+        "\" <-- squeezed out (-%d)\", bsq.points - value);"
+      ],
+      "must_not_match": [
+        "return points - backend_row_value(offset_ms, points, sqout_points, SqOutPosition::Exact,",
+        "const int lost = core::sqout_cost(off, row.points, row.sqout_points, leeway_ms);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The row's full SP value less what backend_row_value pays it as the squeezed-out chord. Decided by: audit finding 150; phase 6 task J3-1 (D53, D54)"
+    },
+    {
+      "question": "What is a backend row's offset?",
+      "owner": "BackendSqueeze::offset in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "BackendSqueeze::offset",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-1",
+      "pattern": "offset_ms\\.value_or\\(",
+      "must_match": [
+        "double off = offset_ms.value_or(0.0);",
+        "if (within_squeeze_window(bsq.offset_ms.value_or(0.0)) || is_sqout_backend(bsq))"
+      ],
+      "must_not_match": [
+        "if (!sqout || !sqout->offset_ms || *sqout->offset_ms != sq.offset_ms)",
+        "const double off = offset();"
+      ],
+      "note": "The value_or fallback. A bare dereference of the optional reads the same fact; the J3-9 row at the end of rules() scans for those. Decided by: audit finding 346; phase 6 task J3-1 (D53, D54)"
+    },
+    {
+      "question": "Which lanes may carry a flag, and what does the flag mean?",
+      "owner": "lane_allows_flag, set_lane_flag and lane_flag in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "lane_allows_flag",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-1",
+      "pattern": "[!=]=\\s*NoteColor::Kick\\b.*(is2x|cymbal|\\)\\s*\\{\\s*$)",
+      "must_match": [
+        "if (color == NoteColor::Kick) {",
+        "return c == NoteColor::Kick || allows_cymbals(c);",
+        "if (note.colortype == NoteColor::Kick) return note.is2x ? \"2x kick\" : \"Kick\";"
+      ],
+      "must_not_match": [
+        "set_lane_flag(add_note(NoteColor::Kick));",
+        "if (note.colortype == NoteColor::Kick) return lane_flag(note) ? \"2x kick\" : \"Kick\";",
+        "CHECK(k2.colortype == NoteColor::Kick);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.cpp",
+          "line_text": "return c == NoteColor::Kick || allows_cymbals(c);",
+          "why": "lane_allows_flag, the owner"
+        },
+        {
+          "file": "src/core/model.cpp",
+          "line_text": "if (note.colortype == NoteColor::Kick) note.is2x = true;",
+          "why": "set_lane_flag, the owner"
+        },
+        {
+          "file": "src/core/model.cpp",
+          "line_text": "return note.colortype == NoteColor::Kick ? note.is2x : note.is_cymbal();",
+          "why": "lane_flag, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "A comparison with the kick lane beside a flag field, or opening a branch, decides the flag split itself. Decided by: audit finding 190; phase 6 task J3-1 (D53, D54)"
+    },
+    {
+      "question": "What is a note's dynamic called in text?",
+      "owner": "dynamic_str and dynamic_label in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "dynamic_str",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-1",
+      "pattern": "\"[ (]*(Ghost|Accent)\\)?\"",
+      "must_match": [
+        "ImGui::TableSetupColumn(\"Ghost\");",
+        "case NoteDynamicType::Ghost: mod = \" (Ghost)\"; break;"
+      ],
+      "must_not_match": [
+        "ImGui::TableSetupColumn(dynamic_label(NoteDynamicType::Ghost).c_str());",
+        "lines.push_back(\"Ghost Notes:      \" + right10(path.score_ghosts));"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Tests pin the shown text and may type it. \"Ghost Notes:\" is a score category's name, a different question. Decided by: audit finding 241; phase 6 task J3-1 (D53, D54)"
+    },
+    {
+      "question": "How is a squeeze kind spelled?",
+      "owner": "SPSqueeze::type_name in src/core/model.h, read back by squeeze_kind_from_name",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "type_name",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-1",
+      "pattern": "\"(SqIn|SqOut)\"",
+      "must_match": [
+        "if (sq.value(\"kind\", std::string()) != \"SqOut\") continue;"
+      ],
+      "must_not_match": [
+        "if (squeeze_kind_from_name(sq.value(\"kind\", std::string())) != SqueezeKind::SqOut)"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.h",
+          "line_text": "return kind == SqueezeKind::SqIn ? \"SqIn\" : \"SqOut\";",
+          "why": "type_name, the owner"
+        },
+        {
+          "file": "src/app/path_report_view.cpp",
+          "line_text": "cols.push_back(count_column(\"sqin\", \"SqIn\",",
+          "why": "a column title the user reads, not a kind read from data (derive-once review of RW-T3, finding 1)"
+        },
+        {
+          "file": "src/app/path_report_view.cpp",
+          "line_text": "cols.push_back(count_column(\"sqout\", \"SqOut\",",
+          "why": "a column title the user reads, not a kind read from data (derive-once review of RW-T3, finding 1)"
+        }
+      ],
+      "note": "Test JSON fixtures pin the wire format and stay out of scope. Decided by: audit finding 203; phase 6 task J3-1 (D53, D54)"
+    },
+    {
+      "question": "How is a multiplier squeeze written as text?",
+      "owner": "MultSqueeze::notationstr in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "MultSqueeze::notationstr",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-1",
+      "pattern": "multiplier\\(\\)\\)\\s*\\+\\s*\"x\"",
+      "must_match": [
+        "s += std::to_string(multsqueezes[i].multiplier()) + \"x\";"
+      ],
+      "must_not_match": [
+        "s += multsqueezes[i].notationstr();"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.cpp",
+          "line_text": "return std::to_string(multiplier()) + \"x\";",
+          "why": "MultSqueeze::notationstr, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Decided by: audit finding 248; phase 6 task J3-1 (D53, D54)"
+    },
+    {
+      "question": "Which activations does a path have, and in what order?",
+      "owner": "ActivationWalk (Path::walk_activations) in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "ActivationWalk",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-1",
+      "pattern": "variant_tail\\.(begin|end|empty)\\(\\)",
+      "must_match": [
+        "out.insert(out.end(), variant_tail.begin(), variant_tail.end());",
+        "return !activations.empty() || !variant_tail.empty();"
+      ],
+      "must_not_match": [
+        "v.variant_tail.clear();",
+        "for (size_t i = vp; i < mine.size(); ++i) v.variant_tail.push_back(mine[i]);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "prepare_variants writes the tail; only reading it is the question. Decided by: audit finding 268; phase 6 task J3-1 (D53, D54)"
+    },
+    {
+      "question": "What is a path's total score?",
+      "owner": "score_total in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "score_total",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-1",
+      "pattern": "score_base\\s*\\+\\s*score_combo\\s*\\+\\s*score_sp|\\bbase\\s*\\+\\s*combo\\s*\\+\\s*sp\\s*\\+\\s*solo\\b",
+      "must_match": [
+        "return score_base + score_combo + score_sp + score_solo + score_accents +",
+        "int64_t total() const { return base + combo + sp + solo + accent + ghost; }"
+      ],
+      "must_not_match": [
+        "return score_base + score_ghosts + score_accents;",
+        "p.score += (int64_t)e.basescore + e.comboscore + e.spscore + e.soloscore +"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.h",
+          "line_text": "return base + combo + sp + solo + accents + ghosts;",
+          "why": "score_total, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The engine's running p.score is a different sum, per edge; task J3-2 checks it against score_total at copy-out. Decided by: audit finding 165; phase 6 task J3-1 (D53, D54)"
+    },
+    {
+      "question": "How many SP bars does an activation need?",
+      "owner": "kSpActivationBars in src/core/timing.h",
+      "owner_file": "src/core/timing.h",
+      "owner_symbol": "kSpActivationBars",
+      "date": "2026-10-05",
+      "decision": "D54",
+      "added_by": "J3-2",
+      "pattern": "\\bsp\\s*(<|>=)\\s*2\\b|\\bkept\\s*<\\s*2\\b|for \\(int sp = 2\\b|sp_cap\\s*==\\s*1\\b",
+      "must_match": [
+        "if (p.sp < 2 || !has_value(p.sp_ready_ms)) return 0;",
+        "if (kept < 2 && sp >= 2) {",
+        "for (int sp = 2; sp <= max_sp_bars(); ++sp) {",
+        "const bool one_bar_cap = record.sp_cap && *record.sp_cap == 1;"
+      ],
+      "must_not_match": [
+        "if (p.sp < kSpActivationBars) return false;",
+        "inline constexpr int kSpActivationBars = 2;"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "---- phase 6 task J3-2: the graph, the engine and the replay ---- The engine's message \"a variant under 2 bars at its fold passed a fill\" names the number in words and is not a comparison. Decided by: audit finding 334; D54 (kSpActivationBars, a code-only call); M7-2a review row 3; phase 6 task J3-2"
+    },
+    {
+      "question": "How is a little-endian number written byte by byte? (any width or name)",
+      "owner": "read_le and append_le in src/core/little_endian.h (rules_fp_bytes and testbytes::put_le call the writer)",
+      "owner_file": "src/core/little_endian.h",
+      "owner_symbol": "read_le",
+      "date": "2026-10-05",
+      "decision": "D53",
+      "added_by": "J3-9",
+      "pattern": "\\b(uint16_t|uint32_t|uint64_t|size_t|void|std::vector<uint8_t>)\\s+(read|write)_(u16_|u32_|u64_)?le\\(|<<\\s*\\(8\\s*\\*\\s*i\\)|>>\\s*\\(8\\s*\\*\\s*i\\)|\\b\\w*le(16|32|64)\\s*\\(\\s*const\\s+(uint8_t|unsigned char)\\s*\\*|\\|\\s*\\(*\\s*(static_cast<\\w+>|u?int\\d*_t)?\\s*\\(*\\s*[\\w.>-]+\\[[^\\]]*\\]\\s*\\)*\\s*<<\\s*8\\b",
+      "must_match": [
+        "uint64_t read_le(const std::vector<uint8_t>& b, size_t at, int bytes) {",
+        "std::vector<uint8_t> write_le(uint64_t v, int bytes) {",
+        "for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(buf[pos + i]) << (8 * i);",
+        "for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(buf[pos + i]) << (8 * i);",
+        "len |= static_cast<uint32_t>(meta[pos + i]) << (8 * i);",
+        "for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(bytes_[pos_++]) << (8 * i);",
+        "uint32_t le32(const uint8_t* p) {",
+        "int64_t le64(const uint8_t* p) {",
+        "return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |",
+        "link->preskip = pos[10] | (pos[11] << 8);",
+        "link->gain_q78 = static_cast<int16_t>(pos[16] | (pos[17] << 8));",
+        "skip_remaining = op.packet[10] | (static_cast<int>(op.packet[11]) << 8);",
+        "const uint32_t first_four = uint32_t(structure[0]) | uint32_t(structure[1]) << 8 |",
+        "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));"
+      ],
+      "must_not_match": [
+        "void BinaryWriter::u32(uint32_t v) {",
+        "out.push_back(static_cast<uint8_t>(v >> 8));",
+        "const uint32_t len = core::read_le_u32(meta.data() + pos);",
+        "uint64_t blob_size = core::read_le_u64(buf.data() + cursor + 16);",
+        "constexpr uint32_t read_le_u32(const uint8_t* p) { return read_le<uint32_t>(p); }",
+        "link->gain_q78 = static_cast<int16_t>(core::read_le_u16(pos + 16));",
+        "(uint32_t(d[at + 2]) << 8) | uint32_t(d[at + 3]);",
+        "return int16_t((uint16_t(d[at]) << 8) | uint16_t(d[at + 1]));",
+        "case 10: k2 ^= static_cast<uint64_t>(tail[9]) << 8;    [[fallthrough]];",
+        "link->channels = pos[9];",
+        "void BinaryWriter::u32(uint32_t v) { core::append_le_u32(bytes, v); }",
+        "void BinaryWriter::u64(uint64_t v) { core::append_le_u64(bytes, v); }",
+        "hydra::core::append_le(out, v, bytes);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/little_endian.h",
+          "line_text": "for (std::size_t i = 0; i < sizeof(T); ++i) v = static_cast<T>(v | (static_cast<T>(p[i]) << (8 * i)));",
+          "why": "read_le, the owner of reading"
+        },
+        {
+          "file": "src/core/little_endian.h",
+          "line_text": "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));",
+          "why": "append_le, the owner of writing"
+        }
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "A hand-written little-endian helper beside the shared codec. The byte-at-a-time shift loop is the form most copies use, whatever the helper is called. A fully unrolled helper with no telling name is not caught. The hash's byte loops store no number, so they are listed as owner lines, not copies (review of J3-6 finding 1). The J2-5 row's question is the same with the u32 helper names; the suffix keeps the two rows' questions apart. Reading moved down to core/ in task J3-9d, because parse/ cannot include store/; the pattern also catches a helper named for its width alone (le32) and the second byte of an unrolled read OR-ed in shifted by 8. A big-endian read (MIDI) and the hash's XOR-ed tail bytes are other questions and are not flagged. Decided by: audit finding 195, folded under D53 (phase 6 tasks J3-6 and J3-9d); widened by review of J3-6 finding 1 and by J3-9d; tests scanned since the J3 join; writing folded in the J3 review fix"
+    },
+    {
+      "question": "How many paths did a record keep?",
+      "owner": "HydraRecord::all_paths in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "all_paths",
+      "date": "2026-10-05",
+      "decision": "D53",
+      "added_by": "J3-6",
+      "pattern": "\\+=\\s*\\w+\\.tied_pathcount\\(\\)",
+      "must_match": [
+        "for (const Path& p : record.paths) pathcount += p.tied_pathcount();"
+      ],
+      "must_not_match": [
+        "tied_count += v.tied_count;"
+      ],
+      "note": "Summing each root's tied count instead of counting all_paths(). Decided by: audit finding 172, folded under D53 (phase 6 task J3-6)"
+    },
+    {
+      "question": "What is a backend row's offset? (a bare dereference)",
+      "owner": "BackendSqueeze::offset in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "BackendSqueeze::offset",
+      "date": "2026-10-05",
+      "decision": "audit finding 346",
+      "added_by": "J3-9",
+      "pattern": "(^|[(,=!&|?:{]|\\breturn)\\s*\\*\\s*(\\w+(\\.|->)|\\w+\\(\\)(\\.|->))*offset_ms\\b",
+      "must_match": [
+        "!core::counted_without_squeeze(*row.row.offset_ms, backend_leeway_ms));",
+        "const double o = *bsq.offset_ms;",
+        "const double stored_ms = *act.sqout_row()->offset_ms;"
+      ],
+      "must_not_match": [
+        "const double o = bsq.offset();",
+        "*w.sqout_offset_ms);",
+        "const double t = scale * offset_ms;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.cpp",
+          "line_text": "return *offset_ms;",
+          "why": "BackendSqueeze::offset, the owner"
+        }
+      ],
+      "note": "---- the J3 join's leftovers (task J3-9) ---- The J3-1 offset row above catches the value_or fallback; this one catches a bare dereference of the same optional. The star must follow an opening, an operator or return, so a product with a local named offset_ms is not flagged. Tests pin stored offsets and stay out of scope. Decided by: audit finding 346; the J3 join (task J3-9)"
+    },
+    {
+      "question": "Which position does a backend row take when the Paths tab prices it?",
+      "owner": "core::sqout_position in src/core/backend_value.h",
+      "owner_file": "src/core/backend_value.h",
+      "owner_symbol": "sqout_position",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-3",
+      "pattern": "SqOutPosition::(Exact|NoSqOut)\\b",
+      "calls_owner": "\\bsqout_position\\(",
+      "owner_files": [
+        "src/core/backend_value.h"
+      ],
+      "must_match": [
+        "br.squeezed_out ? core::SqOutPosition::Exact",
+        "off, row.points, row.sqout_points, core::SqOutPosition::Exact, leeway_ms);"
+      ],
+      "must_not_match": [
+        "core::sqout_position(bsq.timecode.ticks(), act.sqout_tick),",
+        "return core::sqout_position(bsq.timecode.ticks(), sqout_tick) == core::SqOutPosition::Exact;"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "---- phase 6 tasks J3-3, J3-4 and J3-5 ---- A line that asks sqout_position for the position, as Activation::is_sqout_backend does, passes. Decided by: audit findings 150 and 346; phase 6 task J3-3 (D53, D54)"
+    },
+    {
+      "question": "How is wide text converted to UTF-8 in a test?",
+      "owner": "wide_to_utf8 in src/core/winstr.cpp",
+      "owner_file": "src/core/winstr.cpp",
+      "owner_symbol": "wide_to_utf8",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-6",
+      "pattern": "\\bWideCharToMultiByte\\(",
+      "must_match": [
+        "int len = WideCharToMultiByte(CP_UTF8, 0, d.c_str(), -1, nullptr, 0,",
+        "WideCharToMultiByte(CP_UTF8, 0, d.c_str(), -1, &out[0], len, nullptr,"
+      ],
+      "must_not_match": [
+        "return hydra::wide_to_utf8(dir.wstring());",
+        "MultiByteToWideChar(CP_UTF8, 0, s.data(), n, out.data(), len);"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "The owner lives in src, so no line under tests/ is an owner line. Decided by: audit finding 287 (test_srb.cpp's hand conversion); phase 6 task J4-6 (D53, D54)"
+    },
+    {
+      "question": "What multiplier does each note in a chord score at? (tests)",
+      "owner": "category_scores in src/core/scoring.cpp",
+      "owner_file": "src/core/scoring.cpp",
+      "owner_symbol": "category_scores",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-5",
+      "pattern": "to_multiplier\\([\\w.]+ \\+ 1",
+      "must_match": [
+        "const int first_cut = notes[0].basescore() * to_multiplier(combo + 1);",
+        "notes[i].basescore() * to_multiplier(combo + 1 + static_cast<int>(i));",
+        "CHECK(c.multiplier == to_multiplier(c.combo_before + 1));"
+      ],
+      "must_not_match": [
+        "CHECK(c.multiplier_after == to_multiplier(r.chords[i + 1].combo_before));"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "A test that adds one to a combo to find a note's multiplier, where category_scores already stamps it. Decided by: audit finding 266; phase 6 task J4-5 (D53, D54)"
+    },
+    {
+      "question": "What running total does the score box show during a solo? (tests)",
+      "owner": "replay_path's cum_onscreen_total in src/core/replay.cpp",
+      "owner_file": "src/core/replay.cpp",
+      "owner_symbol": "replay_path",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-5",
+      "pattern": "\\.cum\\.total\\(\\)\\s*-\\s*",
+      "must_match": [
+        "CHECK(scene.score.steps[1].total == r.chords[1].cum.total() - r.chords[1].points.solo);"
+      ],
+      "must_not_match": [
+        "CHECK(c.cum_onscreen_total <= c.cum.total());"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "A test that takes the solo bonus back off the running total itself. Decided by: audit finding 281; phase 6 task J4-5 (D53, D54)"
+    },
+    {
+      "question": "Which Path field holds which ReplayScore category?",
+      "owner": "score_of and assign_score in src/core/replay.cpp",
+      "owner_file": "src/core/replay.cpp",
+      "owner_symbol": "score_of",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-5",
+      "pattern": "score_ghosts\\s*=\\s*\\w+\\.ghost",
+      "must_match": [
+        "p.score_ghosts = s.ghost;"
+      ],
+      "must_not_match": [
+        "s.ghost = path.score_ghosts;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/replay.cpp",
+          "line_text": "path.score_ghosts = s.ghost;",
+          "why": "assign_score, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "Copying a ReplayScore into a Path field by field anywhere but assign_score. Decided by: audit finding 282; phase 6 task J4-5 (D53, D54)"
+    },
+    {
+      "question": "Which SP cap does the leaderboard comparison need? (tests)",
+      "owner": "kCloneHeroSpCap in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "kCloneHeroSpCap",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-3",
+      "pattern": "sp_cap = 4;",
+      "must_match": [
+        "h.app->settings.sp_cap = 4;"
+      ],
+      "must_not_match": [
+        "h.app->settings.sp_cap = 8;",
+        "h.app->settings.sp_cap = 6;",
+        "h.app->settings.sp_cap = hydra::kCloneHeroSpCap;"
+      ],
+      "scope": [
+        "tests/ui/uitest_batch_reports.cpp",
+        "tests/ui/uitest_details.cpp",
+        "tests/ui/uitest_harness.cpp",
+        "tests/ui/uitest_harness.h",
+        "tests/ui/uitest_library.cpp",
+        "tests/ui/uitest_main.cpp",
+        "tests/ui/uitest_paths.cpp",
+        "tests/ui/uitest_preview.cpp",
+        "tests/ui/uitest_script.cpp",
+        "tests/ui/uitest_tests.cpp"
+      ],
+      "note": "The GUI tests put the cap back where the Compare button accepts it. Other caps they set are deliberate what-ifs, and the unit tests' engine settings are a different question. Decided by: audit finding 296; phase 6 task J4-3 (D53, D54)"
+    },
+    {
+      "question": "Is a timing inside a ms limit?",
+      "owner": "timing_within_limit in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "timing_within_limit",
+      "date": "2026-10-06",
+      "decision": "D85",
+      "added_by": "ALLZERO",
+      "pattern": "(<=|[^-]>)\\s*\\*?(\\w+(\\.|->))*(limit_ms|ms_filter_)\\b|(<=|[^-]>)\\s*(\\*\\s*(\\w+(\\.|->))*|(\\w+(\\.|->))+)squeeze_max_ms\\b|\\b(limit_ms|ms_filter_|squeeze_max_ms)\\s*(>=|<)",
+      "must_match": [
+        "if (sq.difficulty() > limit_ms) return false;",
+        "return !e || *e <= limit_ms;",
+        "bool within_ms_limit(double ms) const { return !has_ms_filter_ || ms <= ms_filter_; }",
+        "if (limit_ms >= d) return true;",
+        "if (q.squeeze_max_ms && facts.hardest_ms && *facts.hardest_ms > *q.squeeze_max_ms)"
+      ],
+      "must_not_match": [
+        "if (!sq.within_limit(ms_filter_)) return false;",
+        "!timing_within_limit(*facts.hardest_ms, *q.squeeze_max_ms))",
+        "return fill_within_limit(a.e_offset, a.skips, ms_filter_);",
+        "if (has_ms_filter_ && !fill_within_limit(e_offset, p.currentskips, ms_filter_)) ++over;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.h",
+          "line_text": "inline bool timing_within_limit(double ms, double limit_ms) { return ms <= limit_ms; }",
+          "why": "timing_within_limit, the owner"
+        }
+      ],
+      "note": "Any comparison against a ms limit by its name, on either side. The walks (Engine::act_within_limit, Activation::within_ms_limit) call SPSqueeze::within_limit and fill_within_limit, which ask the owner. Decided by: derive-once review of D85, finding 1; audit finding 152"
+    },
+    {
+      "question": "In what order does a chord list its notes?",
+      "owner": "Chord::note_list in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "Chord::note_list",
+      "date": "2026-10-06",
+      "decision": "D86",
+      "added_by": "G1",
+      "pattern": "[<>]\\s*[\\w.\\[\\]\\s\\-]*\\.basescore\\(\\)",
+      "must_match": [
+        "while (j > 0 && bx < out.n[j - 1].basescore()) {",
+        "return a.basescore() < b.basescore();"
+      ],
+      "must_not_match": [
+        "const int at_1x = note.basescore();"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.cpp",
+          "line_text": "while (j > 0 && bx < out.notes_[j - 1].basescore()) {",
+          "why": "Chord::note_list, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A chord's note order prices it: ties keep lane order, and the first note is the one a squeeze-out takes. One function sorts; a second sort on basescore, stable_sort's comparator or an insertion sort's shift test, could break ties another way. Decided by: D86, the speedups plan's task G1"
+    },
+    {
+      "question": "How many notes can a chord hold?",
+      "owner": "Chord::kLanes in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "kLanes",
+      "date": "2026-10-06",
+      "decision": "the G1 derive-once review (finding 1), widened by the wave 1 join review",
+      "added_by": "G1",
+      "pattern": "std::array<\\s*(std::optional<\\s*)?(ChordNote|NoteCymbalType)\\s*>?\\s*,\\s*\\d+\\s*>|\\bkLanes\\s*=\\s*\\d+",
+      "must_match": [
+        "std::array<std::optional<ChordNote>, 5> notemap_{};",
+        "std::array<ChordNote, 5> notes_{};",
+        "std::array<NoteCymbalType, 5> flag_cymbals_{};"
+      ],
+      "must_not_match": [
+        "std::array<ChordNote, kLanes> notes_{};",
+        "std::array<std::optional<ChordNote>, kLanes> notemap_{};",
+        "std::array<NoteCymbalType, Chord::kLanes> flag_cymbals_{};"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.h",
+          "line_text": "static constexpr size_t kLanes = 5;",
+          "why": "Chord::kLanes, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A chord's per-lane arrays must agree on its size: note_list copies every slot of notemap_ into NoteList, so a NoteList one lane short would be written past its end, and the MIDI parser's cymbal flags hold one slot per lane too. All read the one count."
+    }
+  ]
+}

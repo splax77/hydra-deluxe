@@ -1,0 +1,126 @@
+{
+  "known_copies": [
+    {
+      "question": "Where does a right-aligned item start?",
+      "file": "src/ui/paths_tab.cpp",
+      "line_text": "if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);",
+      "removed_by": "a follow-up to RW-T5's review: align_right calls move_to_right_edge"
+    },
+    {
+      "question": "Where does a right-aligned item start?",
+      "file": "src/ui/library_dialogs.cpp",
+      "line_text": "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);",
+      "removed_by": "a follow-up to RW-T5's review, once T4, which owns this file now, has merged"
+    },
+    {
+      "question": "Where does a right-aligned item start?",
+      "file": "src/ui/library_toolbar.cpp",
+      "line_text": "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);",
+      "removed_by": "a follow-up to RW-T5's review"
+    },
+    {
+      "question": "Does a string end with a tail?",
+      "file": "tests/test_config.cpp",
+      "line_text": "CHECK(dir.substr(dir.size() - tail.size()) == tail);",
+      "removed_by": "a follow-up to RW-T7's review: the check calls hydra::ends_with, and the chart-format row lists that line"
+    }
+  ],
+  "known_clones": [
+    {
+      "file_a": "src/audio/ma_reader.cpp",
+      "file_b": "src/audio/vorbis_reader.cpp",
+      "lines": 9,
+      "first": "pos_ += done;"
+    },
+    {
+      "file_a": "tests/test_app_state.cpp",
+      "file_b": "tests/test_song_panel_state.cpp",
+      "lines": 11,
+      "first": "char hash[32];"
+    },
+    {
+      "file_a": "tests/test_audio_player.cpp",
+      "file_b": "tests/test_preview_transport.cpp",
+      "lines": 10,
+      "first": "namespace {"
+    },
+    {
+      "file_a": "tests/test_highway_draw.cpp",
+      "file_b": "tests/test_track_state.cpp",
+      "lines": 9,
+      "first": "SongTiming timing(480, {{0, 1920}}, {{0, 300.0}});"
+    },
+    {
+      "file_a": "tests/test_highway_draw.cpp",
+      "file_b": "tests/test_track_state.cpp",
+      "lines": 8,
+      "first": "using namespace hydra;"
+    },
+    {
+      "file_a": "tests/test_highway_draw.cpp",
+      "file_b": "tests/test_track_state.cpp",
+      "lines": 10,
+      "first": "return s;"
+    },
+    {
+      "file_a": "tests/test_path_view.cpp",
+      "file_b": "tests/test_path_view.cpp",
+      "lines": 12,
+      "first": "HydraRecord rec;"
+    },
+    {
+      "file_a": "tests/test_path_view.cpp",
+      "file_b": "tests/test_preview_view.cpp",
+      "lines": 8,
+      "first": "const AnalysisResult& analyzed() {"
+    },
+    {
+      "file_a": "tests/test_preview_controller.cpp",
+      "file_b": "tests/test_preview_controller.cpp",
+      "lines": 11,
+      "first": "using namespace hydra;"
+    },
+    {
+      "file_a": "tests/test_replay.cpp",
+      "file_b": "tests/test_replay.cpp",
+      "lines": 10,
+      "first": "int charts = 0, paths = 0, mismatches = 0;"
+    },
+    {
+      "file_a": "tests/test_replay.cpp",
+      "file_b": "tests/test_replay.cpp",
+      "lines": 10,
+      "first": "Song song(192);"
+    },
+    {
+      "file_a": "tests/test_search.cpp",
+      "file_b": "tests/test_search.cpp",
+      "lines": 17,
+      "first": "for (const std::string& path : corpus::chart_paths()) {"
+    },
+    {
+      "file_a": "tests/test_search.cpp",
+      "file_b": "tests/test_search.cpp",
+      "lines": 10,
+      "first": "Song song = build_tail_song({{0, true, false},"
+    },
+    {
+      "file_a": "tests/test_search.cpp",
+      "file_b": "tests/test_search.cpp",
+      "lines": 9,
+      "first": "{768, true, false},"
+    },
+    {
+      "file_a": "tests/test_store.cpp",
+      "file_b": "tests/test_store.cpp",
+      "lines": 8,
+      "first": "for (const std::string& path : corpus::chart_paths()) {"
+    },
+    {
+      "file_a": "tests/ui/uitest_batch_reports.cpp",
+      "file_b": "tests/ui/uitest_batch_reports.cpp",
+      "lines": 9,
+      "first": "Harness& h = harness(ctx);"
+    }
+  ]
+}
