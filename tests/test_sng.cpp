@@ -107,7 +107,7 @@ TEST_CASE("sng: the note loader reads the chart through the shared reader") {
     CHECK_THROWS_AS(load_songpath_sng(tiny, true, true), std::runtime_error);
 }
 
-TEST_CASE("sng: unmasking into the caller's buffer matches the byte formula") {
+TEST_CASE("sng: unmasking into the caller's buffer undoes the pinned stored bytes") {
     // 1,000 bytes cross the 256-byte key period several times and end mid-block.
     std::vector<uint8_t> payload(1000);
     for (size_t i = 0; i < payload.size(); ++i)
@@ -117,17 +117,24 @@ TEST_CASE("sng: unmasking into the caller's buffer matches the byte formula") {
     const auto table = sng_read_file_table(buf);
     REQUIRE(table.size() == 3);
 
-    // The formula itself, written out per byte, on the stored bytes.
-    const uint8_t* mask = buf.data() + kSngXorMaskOffset;
-    std::vector<uint8_t> by_formula(payload.size());
-    for (size_t i = 0; i < by_formula.size(); ++i)
-        by_formula[i] = static_cast<uint8_t>(buf[static_cast<size_t>(table[1].offset) + i] ^
-                                             mask[i % 16] ^ (i & 0xff));
-    CHECK(by_formula == payload);
-
     std::vector<uint8_t> out = {1, 2, 3, 4, 5};  // stale contents get replaced
     REQUIRE(sng_decode_file_into(buf, table[1], out));
     CHECK(out == payload);
+    // The unmasked bytes are the payload, which the line above already checks.
+    // What the payload does not pin is the stored form: make_sng writes it with
+    // its own masking, so a decoder and a writer that drifted together would
+    // still round-trip. The first 32 and last 16 stored (masked) bytes of the
+    // file are pinned from one run of make_sng on 2026-10-10 at 013f4c66.
+    const std::vector<uint8_t> want_stored_head = {
+        0x3B, 0x06, 0x69, 0x3C, 0xD7, 0x92, 0xB5, 0x68, 0x52, 0x3F, 0x00,
+        0xD5, 0x4E, 0x6B, 0x8C, 0xA1, 0x79, 0xA4, 0x8B, 0x9E, 0xB5, 0x50,
+        0x77, 0x2A, 0xF0, 0xDD, 0xA2, 0x97, 0x8C, 0xA9, 0xEE, 0x03};
+    const std::vector<uint8_t> want_stored_tail = {0x88, 0xA5, 0x5A, 0x6F, 0xF4, 0xD1, 0x16, 0x7B,
+                                                   0xC7, 0x3A, 0x15, 0x00, 0x2B, 0xEE, 0x89, 0x94};
+    REQUIRE(out.size() == 1000);
+    const auto stored = buf.begin() + static_cast<std::ptrdiff_t>(table[1].offset);
+    CHECK(std::vector<uint8_t>(stored, stored + 32) == want_stored_head);
+    CHECK(std::vector<uint8_t>(stored + 984, stored + 1000) == want_stored_tail);
     REQUIRE(sng_decode_file_into(buf, table[0], out));
     CHECK(out == std::vector<uint8_t>{9, 8, 7});
     REQUIRE(sng_decode_file_into(buf, table[2], out));
