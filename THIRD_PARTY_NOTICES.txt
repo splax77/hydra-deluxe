@@ -3,7 +3,8 @@ Hydra Deluxe third-party notices
 Hydra Deluxe itself is licensed under the GPL (see LICENSE). It is built
 with the libraries below, whose code is compiled into the shipped programs
 or ships beside them as a DLL. Each library's own licence follows, as it
-appears in the copy vendored under third_party/ in Hydra's source.
+appears in the copy vendored under third_party/ in Hydra's source. The last
+entry, RapidCheck, is built into Hydra's test program only and does not ship.
 
 
 ==============================================================================
@@ -441,3 +442,21 @@ https://datatracker.ietf.org/ipr/1914/
 
 Broadcom Corporation:
 https://datatracker.ietf.org/ipr/1526/
+
+
+==============================================================================
+RapidCheck (Emil Eriksson)
+Version: rapidcheck @ 2c3c4365aca21ef4e612768fdc95b1ce8b39a651 (https://github.com/emil-e/rapidcheck, branch: master, 2026-10-05)
+Used in: hydra_tests.exe only (Hydra's test program; it does not ship)
+==============================================================================
+
+Copyright (c) 2014-2015, Emil Eriksson
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

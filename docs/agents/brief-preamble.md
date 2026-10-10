@@ -60,7 +60,7 @@ You also have a time limit. At 20 minutes of real time, counted from your first 
 
 ## Helpers and waiting
 
-Run every helper and long command in the foreground. Never use `run_in_background`, and never end your turn waiting for a job. You have no helper agents; do the work yourself.
+Run every helper and long command in the foreground. Never use run_in_background, and never end your turn waiting for a job. You have no helper agents; do the work yourself.
 
 ## Every step has a stop condition
 

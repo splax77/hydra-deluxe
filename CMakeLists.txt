@@ -8,8 +8,8 @@
 #
 # Third-party code is vendored under third_party/ and built here, so there is
 # nothing to install but a compiler + CMake. THIRD_PARTY_NOTICES.txt lists
-# every library that ships, with its licence; doctest is vendored for the
-# tests only.
+# every library that ships, with its licence, and RapidCheck. doctest and
+# RapidCheck are vendored for the tests only.
 #
 # Configure/build (CMake and MSVC come from Visual Studio; see build_cpp.ps1):
 #   cmake --preset default
@@ -480,6 +480,7 @@ add_executable(hydra_tests
     tests/test_stem_reader.cpp
     tests/test_audio_mixer.cpp
     tests/test_stream_mix.cpp
+    tests/test_song_audio.cpp
     tests/test_audio_player.cpp
     tests/test_audio_device.cpp
     tests/test_obj_loader.cpp
@@ -491,6 +492,7 @@ add_executable(hydra_tests
     tests/test_preview_clock.cpp
     tests/test_preview_transport.cpp
     tests/test_image_decode.cpp
+    tests/test_icons.cpp
     tests/test_preview_renderer.cpp
     tests/test_dynamics_breakdown.cpp
     tests/test_song.cpp
@@ -526,15 +528,15 @@ add_executable(hydra_tests
     tests/test_long_paths.cpp
     tests/test_single_owner.cpp
     tests/test_docs_match_code.cpp
-    tests/test_s2_difficulty_table.cpp
-    tests/test_s2_disco.cpp
-    tests/test_s2_kick2x.cpp
-    tests/test_s2_phrase_end.cpp
-    tests/test_s2_fill_landing.cpp
+    tests/test_difficulty_table.cpp
+    tests/test_disco_flip.cpp
+    tests/test_kick2x.cpp
+    tests/test_phrase_end.cpp
+    tests/test_fill_landing.cpp
     tests/test_s2_dynamics_tag.cpp
     tests/test_s2_parser_owners.cpp
-    tests/test_s2_offspeed.cpp
-    tests/test_s2_deact_extension.cpp
+    tests/test_dm_other_speed.cpp
+    tests/test_sp_end_clamp.cpp
     tests/test_perf_digest.cpp
     tests/test_note_shuffle.cpp
     tests/test_wait_util.cpp
@@ -558,6 +560,14 @@ target_include_directories(hydra_tests PRIVATE
 # doctest.h specializes std::tuple, which newer MSVC flags (C5285); harmless.
 target_compile_options(hydra_tests PRIVATE /wd5285)
 
+# ---- third_party: RapidCheck (property tests, for hydra_tests only) -------
+# EXCLUDE_FROM_ALL: it builds only because hydra_tests links it, and its own
+# install() rules stay out of the installer's staging. SYSTEM: its headers
+# are third-party, so they stay out of the hydra_warnings /W4 /WX sweep, like
+# stb_image.h above.
+add_subdirectory(third_party/rapidcheck EXCLUDE_FROM_ALL SYSTEM)
+target_link_libraries(hydra_tests PRIVATE rapidcheck)
+
 # Where the chart corpus and fixtures live, so tests find them regardless of
 # the working directory.
 target_compile_definitions(hydra_tests PRIVATE
@@ -576,8 +586,42 @@ target_link_libraries(hydra_uitest PRIVATE
     hydra_uitest_harness d3d11 dxgi d3dcompiler hydra_warnings)
 
 enable_testing()
-add_test(NAME hydra_tests COMMAND hydra_tests)
+
+# hydra_tests runs as slices of whole source files, one CTest entry each, so
+# `ctest -j` runs them side by side. tests/shards.txt owns the slices and says
+# how its lines become entries; hydra_tests_rest takes every file the list does
+# not name. tools/check_shards.ps1 checks the registered entries add up to the
+# whole suite.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    ${CMAKE_SOURCE_DIR}/tests/shards.txt)
+file(STRINGS ${CMAKE_SOURCE_DIR}/tests/shards.txt hydra_shard_lines REGEX "^[^#]")
+set(hydra_shard_patterns "")
+foreach(hydra_shard_line IN LISTS hydra_shard_lines)
+    if(NOT hydra_shard_line MATCHES "^([a-z0-9_]+)[ \t]+([^ \t]+)[ \t]*$")
+        message(FATAL_ERROR "tests/shards.txt: cannot read the line '${hydra_shard_line}'")
+    endif()
+    add_test(NAME hydra_tests_${CMAKE_MATCH_1} COMMAND hydra_tests "-sf=${CMAKE_MATCH_2}")
+    list(APPEND hydra_shard_patterns "${CMAKE_MATCH_2}")
+endforeach()
+list(JOIN hydra_shard_patterns "," hydra_shard_patterns)
+add_test(NAME hydra_tests_rest COMMAND hydra_tests "-sfe=${hydra_shard_patterns}")
+add_test(NAME hydra_tests_shards_cover_all
+    COMMAND pwsh -NoProfile -File ${CMAKE_SOURCE_DIR}/tools/check_shards.ps1
+            -Ctest ${CMAKE_CTEST_COMMAND} -BuildDir ${CMAKE_BINARY_DIR}
+            -Config $<CONFIG> -Exe $<TARGET_FILE:hydra_tests>)
+
 add_test(NAME hydra_uitest COMMAND hydra_uitest --all)
+# The GUI runner starts test processes of its own, kDefaultJobs at once
+# (tests/ui/uitest_main.cpp, which owns that count). ctest -j books it that
+# many slots, so it does not start hydra_tests slices beside its children.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    ${CMAKE_SOURCE_DIR}/tests/ui/uitest_main.cpp)
+file(STRINGS ${CMAKE_SOURCE_DIR}/tests/ui/uitest_main.cpp hydra_uitest_jobs_line
+     REGEX "^constexpr int kDefaultJobs = [0-9]+;")
+if(NOT hydra_uitest_jobs_line MATCHES "= ([0-9]+)")
+    message(FATAL_ERROR "tests/ui/uitest_main.cpp: cannot find 'constexpr int kDefaultJobs = N;'")
+endif()
+set_tests_properties(hydra_uitest PROPERTIES PROCESSORS ${CMAKE_MATCH_1})
 
 # ---- packaging -----------------------------------------------------------
 # `cpack -G ZIP` (or build_cpp.ps1 -Package) produces Hydra-<ver>-win64.zip:

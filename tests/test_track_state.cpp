@@ -507,23 +507,11 @@ TEST_CASE("make_lane_bounds: two touching taken fills each light their own lane"
 
 namespace {
 
-// At 480 ticks a beat and 300 BPM: an SP phrase from tick 0 to its last note
-// on tick 480, and a note one tick later on 481. One tick here is 0.417 ms,
-// shorter than the old half-millisecond margin.
+// A note on tick 0, the phrase's last note on tick 480, and one a tick later
+// on 481 (see phrase_to_tick_480_scene for the timing and the phrase).
 PreviewScene phrase_then_next_tick_scene() {
-    SongTiming timing(480, {{0, 1920}}, {{0, 300.0}});
-    auto at_tick = [&](int64_t tick, PreviewLane lane) { return note_at_tick(timing, tick, lane); };
-    PreviewScene scene;
-    scene.timing = timing;
-    scene.notes = {at_tick(0, PreviewLane::Red), at_tick(480, PreviewLane::Yellow),
-                   at_tick(481, PreviewLane::Blue)};
-    PreviewSpan phrase;
-    phrase.start_tick = 0;
-    phrase.end_tick = 480;
-    phrase.start_ms = timing.ms_index().at(0);
-    phrase.end_ms = timing.ms_index().at(480);
-    scene.sp_phrases = {phrase};
-    return scene;
+    return phrase_to_tick_480_scene(
+        {{0, PreviewLane::Red}, {480, PreviewLane::Yellow}, {481, PreviewLane::Blue}});
 }
 
 }  // namespace

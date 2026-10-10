@@ -2500,6 +2500,21 @@ const std::vector<OwnerRule>& rules() {
          {"s->init_converter(sc.config);"},
          {{"src/audio/mixer.cpp", "c.config = ma_data_converter_config_init(",
            "stem_converter_config, the owner"}}},
+        // Only a seek that assigns the clamp back to `frame` counts. A stream's
+        // own position (pos_ = std::clamp(frame, ...) in stream_mix.cpp and
+        // player.cpp) has no end flag to set and answers a different question.
+        {"Where does a stem reader's seek land when it reaches the end of the stem?",
+         "seek_clamp_or_end in src/audio/stem_reader.h",
+         R"(\bframe = std::clamp<int64_t>\(frame,)",
+         "",
+         {},
+         {},
+         "derive-once review of so-t5a, finding 1 (2026-10-10); D107",
+         {"frame = std::clamp<int64_t>(frame, 0, length_);"},
+         {"if (seek_clamp_or_end(frame, length_, pos_, at_end_)) return;",
+          "pos_ = std::clamp<int64_t>(frame, 0, length_);"},
+         {{"src/audio/stem_reader.h", "frame = std::clamp<int64_t>(frame, 0, length);",
+           "seek_clamp_or_end, the owner"}}},
         {"Which test helper reads an audio fixture?",
          "fixture_path and read_fixture in tests/audio_util.h",
          // No closing quote after /audio/, so a build that names the file
@@ -4736,6 +4751,25 @@ const std::vector<OwnerRule>& rules() {
           "const store::RecordKey key = settings.record_key(it.md5);"},
          {},
          {"tests", "tools"}},
+        // A made-up window's ticks read off a song's chords. Windows built
+        // from literal ticks are not flagged; only ones read off a sequence.
+        {"How is a made-up replay window drawn from a song's chords?",
+         "window_over in tests/replay_windows.h",
+         R"(\b\w+\.(act_tick|deact_tick|sqout_tick)\s*=\s*[^;]*(sequence\[|tick_of\())",
+         "",
+         {},
+         {},
+         "derive-once review of ct-w2, finding 1 (2026-10-10); plan 2026-10-10-ci-test-tooling task 7",
+         {"w.act_tick = tick_of(a);", "w.act_tick = song.sequence[a].timecode.ticks();"},
+         {"return testreplay::window_over(song, a, len, offset, pick);",
+          "w.act_tick = 0;"},
+         {{"tests/replay_windows.h", "w.act_tick = song.sequence[a].timecode.ticks();",
+           "window_over, the owner"},
+          {"tests/replay_windows.h", "w.deact_tick = song.sequence[d].timecode.ticks() + deact_offset;",
+           "window_over, the owner"},
+          {"tests/replay_windows.h", "w.sqout_tick = song.sequence[q].timecode.ticks();",
+           "window_over, the owner"}},
+         {"tests", "tools"}},
         // hydra.db stores no path details (D87), so no serializer is left to
         // compare records through; a test that brings one back is a second
         // answer to the hasher's question (R16).
@@ -6460,7 +6494,6 @@ struct KnownClone {
 const std::vector<KnownClone>& known_clones() {
     static const std::vector<KnownClone> k = {
         {"tests/test_app_state.cpp", "tests/test_song_panel_state.cpp", 11, R"x(char hash[32];)x"},
-        {"tests/test_audio_player.cpp", "tests/test_preview_transport.cpp", 10, R"x(namespace {)x"},
         {"tests/test_search.cpp", "tests/test_search.cpp", 10, R"x(Song song = build_tail_song({{0, true, false},)x"},
         {"tests/test_search.cpp", "tests/test_search.cpp", 9, R"x({768, true, false},)x"},
     };

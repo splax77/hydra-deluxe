@@ -301,8 +301,8 @@ TEST_CASE("midi: a five-byte delta accumulates past 32 bits, as mido does") {
 }
 
 TEST_CASE("midi: a message longer than mido's 1,000,000-byte cap refuses the file, as mido does") {
-    // A text meta whose length is 2^32. Today it wraps to 0 and the note_on
-    // after it is read as a real event.
+    // A text meta whose length is 2^32. Before the cap, the length wrapped to
+    // 0 and the note_on after it was read as a real event.
     std::vector<uint8_t> meta = {
         0x00, 0xFF, 0x01, 0x90, 0x80, 0x80, 0x80, 0x00,  // text meta, length 2^32
         0x00, 0x90, 0x60, 0x64,                          // note_on note 96 vel 100

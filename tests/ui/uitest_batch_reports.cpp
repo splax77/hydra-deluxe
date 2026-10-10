@@ -41,16 +41,17 @@ bool wait_report_landed(ImGuiTestContext* ctx) {
     }, 60);
 }
 
+}  // namespace
+
 // Start a whole-library batch from the main window, through the confirm.
-// Leaves the ref on the confirm.
+// Leaves the ref on the confirm. Shared with uitest_report_windows.cpp, which
+// declares it.
 void start_library_batch(ImGuiTestContext* ctx) {
     ctx->SetRef("//Hydra");
     ctx->ItemClick("Analyze library...");
     ctx->SetRef("//Analyze library");
     ctx->ItemClick("Start analyzing");
 }
-
-}  // namespace
 
 // Narrow the library to charts matching `search` and batch them through the
 // confirm; waits for the batch and its report to finish. Shared with

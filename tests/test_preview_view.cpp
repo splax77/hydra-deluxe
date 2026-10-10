@@ -178,8 +178,9 @@ void check_curve_well_formed(const SpMeterCurve& curve) {
     }
 }
 
-// The engine fixture from test_search.cpp ("SP cap overfill: a second clamp
-// in the same window replaces clamp_tick"), rebuilt with each phrase's start
+// The engine fixture from test_search.cpp (the "a second clamp in the same
+// window replaces clamp_tick" row of "SP cap overfill: where the end lands and
+// which note clamped it"), rebuilt with each phrase's start
 // tick set so the Preview draws the phrases. 192 ticks per beat, 4/4, 120
 // BPM: a measure is 768 ticks and 2000 ms.
 Song make_overfill_song() {

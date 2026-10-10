@@ -277,16 +277,12 @@ public:
     }
 
     void seek(int64_t frame) override {
-        frame = std::clamp<int64_t>(frame, 0, length_);
         pcm_count_ = 0;
         pcm_pos_ = 0;
         // No early return on failed_: a seek to before the damage plays again
         // from there (start_link resets the decoder and clears at_end_), while
         // failed_ stays set so decode_audio still reports the damaged stream.
-        if (frame == length_) {
-            at_end_ = true;
-            return;
-        }
+        if (seek_clamp_or_end(frame, length_, at_end_)) return;
         std::size_t li = 0;
         while (li + 1 < links_.size() && links_[li + 1].start_frame <= frame) ++li;
         const Link& l = links_[li];
