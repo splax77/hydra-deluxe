@@ -1,7 +1,8 @@
-// Tests for app/preview_view: the note-highway view-model the Preview tab
-// renders. A hand-built song pins the note/lane/attribute mapping and the
-// shaded spans exactly; the corpus cases confirm the SP-phrase-start the parser
-// now keeps, and that an analyzed chart's overlay lines up with its path.
+// Tests for app/preview_view's overlay boxes: the time box, the score box, the
+// drain box, the next activation box, the scrub marks and the playhead steps
+// the Preview tab draws over the highway. The scene itself has its own file
+// (test_preview_scene.cpp); the shared hand-built songs live in
+// preview_song_fixtures.h.
 
 #include "doctest.h"
 
