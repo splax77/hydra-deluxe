@@ -170,7 +170,7 @@
       ],
       "exempt": [
         {
-          "file": "tests/test_store.cpp",
+          "file": "tests/test_store_results.cpp",
           "why": "checks that only a Ready answer carries the stored summary columns, the fields the owner reads"
         }
       ],
@@ -187,7 +187,7 @@
         "src",
         "tests"
       ],
-      "note": "A summary's score or stars tested for presence: whether the record has a scored best path. test_store checks the stored columns themselves, which is what the owner reads. Decided by: D51 call 11; audit finding 88 (phase 7 task LB2)"
+      "note": "A summary's score or stars tested for presence: whether the record has a scored best path. test_store_results checks the stored columns themselves, which is what the owner reads. Decided by: D51 call 11; audit finding 88 (phase 7 task LB2)"
     },
     {
       "question": "Where do the format and fingerprint sit in a structure blob?",
