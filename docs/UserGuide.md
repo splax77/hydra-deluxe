@@ -84,7 +84,7 @@ For example, say you have a song open with 2x Bass on and want to see it with 1x
 
 ## Searching the library
 
-The library lists every song from the latest scan. Its columns are **Title**, **Artist**, **Charter**, **Folder** and **Best path**. Click a column heading to sort by it. Columns can be resized and hidden, and Hydra Deluxe remembers them, the sort included. The columns always stay in this order. While the song panel is open, the Charter and Folder columns step aside to save room, and the folder shows under the title. Song names show without Clone Hero's colour and style tags, here and in the report windows. A name that is nothing but tags reads `(unknown)`.
+The library lists every song from the latest scan. Its columns are **Title**, **Artist**, **Charter**, **Folder** and **Best path**. Click a column heading to sort by it. Columns can be hidden, and Hydra Deluxe remembers which ones and the sort. Each column is as wide as its widest entry. When the window is too narrow, the text columns give way first and cut long text with `…`, and once they are down to their headings the table scrolls sideways. Every table in Hydra Deluxe sizes its columns this way. You can drag a column's edge to resize it, but the width lasts only until Hydra Deluxe sizes the columns again: when what they show changes, when a text column shares out a new window width, and at every start. The columns always stay in this order. While the song panel is open, the Charter and Folder columns step aside to save room, and the folder shows under the title. Song names show without Clone Hero's colour and style tags, here and in the report windows. A name that is nothing but tags reads `(unknown)`.
 
 The **Best path** cell shows the song's state under the current analysis settings:
 
@@ -240,7 +240,7 @@ When it finishes, the strip changes to a summary: how many songs were analyzed, 
 
 Hydra Deluxe has two reports: the path report and the dmleaderboards comparison. Each one opens in its own window. It's a real Windows window with its own taskbar button, so you can drag it to another monitor and keep it open while you use the rest of Hydra Deluxe. It minimizes and restores with Hydra Deluxe and sits in front of the main window. Both windows can be open at once.
 
-The first time a report window opens, it covers the main window, at the same size and place. After that it opens where you last left it. If that spot is on a monitor that's no longer connected, the window opens over the main window again. The placement is saved in `hydra_ui.ini`, next to the program.
+The first time a report window opens, it covers the main window, at the same size and place. After that it opens where you last left it, and maximized if you left it maximized, on the monitor it was on. While the main window is maximized, a report window opens maximized too. If the monitor a report was on is no longer connected, the window opens over the main window again, or maximized on the main window's monitor if it was maximized. A report window always fits on its monitor, its frame included. The placement is saved in `hydra_ui.ini`, next to the program.
 
 ### The path report
 
@@ -263,7 +263,7 @@ The window is titled `Path report — Hydra`. From top to bottom it has:
 
 The search box ignores case and accents. Every word you type must appear somewhere in the song, artist, charter or path the row shows, and the words can match different fields. Quotes and the Library's field prefixes, like `artist:`, are ordinary words here. When no row passes the filters, the window says `Nothing matches those filters.` `Clear filters` then empties the search and sets the dropdown back to all. It leaves `Best path only` as it is.
 
-The table starts sorted by score, highest first. Click a column heading to sort by it, and click it again to flip the order. Shift+click another heading to add a second sort. Empty values always sink to the bottom. Text columns sort the way the Library does. Columns can be resized and hidden, and Hydra Deluxe remembers their widths.
+The table starts sorted by score, highest first. Click a column heading to sort by it, and click it again to flip the order. Shift+click another heading to add a second sort. Empty values always sink to the bottom. Text columns sort the way the Library does. Columns can be hidden, and they are sized the way the Library's are, so a width you drag doesn't last.
 
 Click a row to select that song in Hydra Deluxe, the same as clicking it in the library. If the row is for another chart mode, say Hard instead of Expert, the analysis settings switch to that mode first. That way the Paths tab shows the same path as the row. While a batch runs, the analysis settings are locked. A row of another mode then selects nothing, and the status line says `A batch is running.`
 
