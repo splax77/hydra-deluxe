@@ -30,6 +30,7 @@
 #include <string>
 #include <vector>
 
+#include "../wait_util.h"  // tests/ is not on the runner's include path
 #include "core/winstr.h"
 #include "uitest_harness.h"
 
@@ -89,6 +90,8 @@ struct Child {
     std::string log;
     HANDLE process = nullptr;
     DWORD exit_code = 1;
+    ULONGLONG started_ms = 0;  // GetTickCount64 at launch
+    bool timed_out = false;    // ran past testwait::kUitestProcessCap and was killed
 };
 
 // Starts `hydra_uitest --test <name>` with its stdout and stderr in c.log.
@@ -111,6 +114,7 @@ bool launch_child(Child& c, const std::wstring& exe, const std::vector<std::stri
     if (!ok) return false;
     CloseHandle(pi.hThread);
     c.process = pi.hProcess;
+    c.started_ms = GetTickCount64();
     return true;
 }
 
@@ -162,17 +166,40 @@ int run_parallel(uitest::Harness& h, const std::vector<std::string>& wanted, int
             ++next;
         }
         if (running.empty()) continue;
+        // Wait no longer than the oldest running child has left of its cap.
+        const ULONGLONG cap_ms = static_cast<ULONGLONG>(testwait::kUitestProcessCap.count());
+        const ULONGLONG now = GetTickCount64();
+        ULONGLONG wait_ms = cap_ms;
+        size_t oldest = 0;
+        for (size_t j = 0; j < running.size(); ++j) {
+            const ULONGLONG ran = now - children[running[j]].started_ms;
+            const ULONGLONG left = ran >= cap_ms ? 0 : cap_ms - ran;
+            if (left < wait_ms) {
+                wait_ms = left;
+                oldest = j;
+            }
+        }
         std::vector<HANDLE> handles;
         for (size_t i : running) handles.push_back(children[i].process);
         const DWORD r = WaitForMultipleObjects(static_cast<DWORD>(handles.size()), handles.data(),
-                                               FALSE, INFINITE);
-        if (r >= WAIT_OBJECT_0 + handles.size()) {
+                                               FALSE, static_cast<DWORD>(wait_ms));
+        size_t k = 0;
+        if (r == WAIT_TIMEOUT) {
+            // The oldest child ran past its cap: stop it and count it failed.
+            k = oldest;
+            Child& late = children[running[k]];
+            TerminateProcess(late.process, 1);
+            WaitForSingleObject(late.process, static_cast<DWORD>(testwait::kWaitCap.count()));
+            late.timed_out = true;
+        } else if (r < WAIT_OBJECT_0 + handles.size()) {
+            k = r - WAIT_OBJECT_0;
+        } else {
             std::fprintf(stderr, "hydra_uitest: waiting on the test processes failed\n");
             return 1;
         }
-        const size_t k = r - WAIT_OBJECT_0;
         Child& c = children[running[k]];
         GetExitCodeProcess(c.process, &c.exit_code);
+        if (c.timed_out) c.exit_code = 1;
         CloseHandle(c.process);
         c.process = nullptr;
         running.erase(running.begin() + static_cast<std::ptrdiff_t>(k));
@@ -192,8 +219,12 @@ int run_parallel(uitest::Harness& h, const std::vector<std::string>& wanted, int
         std::fputs(text.c_str(), stdout);
         if (c.exit_code != 0) {
             ++failed;
+            if (c.timed_out)
+                std::printf("[FAIL] hydra/%s\n---- log ----\nthe test process ran past %s and "
+                            "was stopped\n---- end ----\n",
+                            c.name.c_str(), testwait::cap_text(testwait::kUitestProcessCap).c_str());
             // A crash prints no result line of its own.
-            if (text.find("[FAIL]") == std::string::npos)
+            else if (text.find("[FAIL]") == std::string::npos)
                 std::printf("[FAIL] hydra/%s\n---- log ----\nthe test process ended with exit "
                             "code 0x%08lX and printed no result\n---- end ----\n",
                             c.name.c_str(), static_cast<unsigned long>(c.exit_code));
