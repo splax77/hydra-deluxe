@@ -1,4 +1,4 @@
-// Pins the 97-chart corpus's digests, the same ones hydra_bench's --engine
+// Pins the chart corpus's digests, the same ones hydra_bench's --engine
 // and --parse modes print, so a change meant to leave Hydra's output alone
 // (the speedups plan, D86) fails here if it moves a single field of the
 // engine's answer.
@@ -59,20 +59,42 @@ std::string hex(uint64_t h) {
     return buf;
 }
 
+// One engine digest run: the hash, how many charts analysed, and how many
+// charts the corpus holds. The count sits beside the hash so a repin can
+// never hide that charts started failing.
+struct EngineDigest {
+    uint64_t hash = 0;
+    size_t analyzed = 0;
+    size_t corpus = 0;
+};
+
 // What hydra_bench --engine prints as "hash": every chart's whole engine
 // result and prepared row (digest::row_hash), a chart that fails left out.
-uint64_t engine_digest(const app::Settings& st) {
+EngineDigest engine_digest(const app::Settings& st) {
     const app::AnalysisSettings settings = st.batch_run().settings;
-    uint64_t all = digest::kSeed;
-    for (const app::ScanItem& it : corpus_charts()) {
+    const std::vector<app::ScanItem> charts = corpus_charts();
+    EngineDigest out;
+    out.hash = digest::kSeed;
+    out.corpus = charts.size();
+    for (const app::ScanItem& it : charts) {
         try {
             const app::AnalysisResult res = app::analyze_chart_file(it.notespath, settings);
             const store::PreparedRow row = store::prepare_row(st.record_key(it.md5), res.record);
-            all = digest::fold(all, digest::row_hash(row, res.record));
+            out.hash = digest::fold(out.hash, digest::row_hash(row, res.record));
+            ++out.analyzed;
         } catch (const std::exception&) {
         }
     }
-    return all;
+    return out;
+}
+
+// Checks one engine digest against its pinned literal, and that every
+// corpus chart analysed.
+void check_engine_digest(const app::Settings& st, uint64_t pinned) {
+    const EngineDigest got = engine_digest(st);
+    CHECK_MESSAGE(got.analyzed == got.corpus,
+                  got.analyzed << " of " << got.corpus << " corpus charts analysed");
+    CHECK_MESSAGE(got.hash == pinned, "engine digest is now " << hex(got.hash));
 }
 
 // What hydra_bench --parse prints as "hash": every chart's parsed song and
@@ -88,8 +110,30 @@ uint64_t parse_digest(const app::Settings& st) {
 }  // namespace
 
 TEST_CASE("the corpus's prepared-row digest is pinned") {
-    const uint64_t got = engine_digest(pinned_settings("Expert", true, true));
-    CHECK_MESSAGE(got == 0xb95d0ccd1b78b25dULL, "engine digest is now " << hex(got));
+    check_engine_digest(pinned_settings("Expert", true, true), 0xb95d0ccd1b78b25dULL);
+}
+
+// The three below were each pinned from one run on 2026-10-10 at 013f4c66.
+
+// Some corpus charts have no Hard drums and fail to load at Hard, so this pin
+// checks only the hash. What its analysed count should be checked against is
+// an open question for the user (task tf-t5's report).
+TEST_CASE("the corpus's prepared-row digest is pinned at Hard, Pro Drums off, 2x Bass off") {
+    const EngineDigest got = engine_digest(pinned_settings("Hard", false, false));
+    CHECK_MESSAGE(got.hash == 0xe040c57fed344ba9ULL, "engine digest is now " << hex(got.hash));
+}
+
+TEST_CASE("the corpus's prepared-row digest is pinned with the CH 1.0 fill rule") {
+    app::Settings s = pinned_settings("Expert", true, true);
+    s.legacy_fills = true;
+    check_engine_digest(s, 0x768e40e5ea908c08ULL);
+}
+
+TEST_CASE("the corpus's prepared-row digest is pinned with Note Shuffle on and the ms limit off") {
+    app::Settings s = pinned_settings("Expert", true, true);
+    s.view_noteshuffle = true;
+    s.mslimit_enabled = false;
+    check_engine_digest(s, 0x961d9a8ad453baa0ULL);
 }
 
 TEST_CASE("the corpus's parse digest is pinned") {
