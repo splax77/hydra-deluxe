@@ -69,17 +69,6 @@ std::vector<ImGuiTable*> drawn_tables(int column, const char* header) {
     return found;
 }
 
-// Column 0 of a one-column spec list, as the width rule places it for
-// `cells` measured in the UI's text font at the size the UI draws text in
-// (text_width's size). A column that never cuts takes its measured width,
-// whatever the room.
-float rule_width(const char* header, const std::vector<std::string>& cells) {
-    const std::vector<hydra::ui::ColumnSpec> specs = {{header, false, 0.0f, text_measurer()}};
-    const hydra::ui::MeasuredWidths measured = hydra::ui::measure_widths(
-        specs, cells.size(), [&](size_t r, size_t) { return cells[r]; });
-    return hydra::ui::place_columns(measured, specs, hydra::ui::TableRoom{}).widths[0];
-}
-
 // Waits for the open song's analysis (wait_song_analyzed); true when it
 // landed with paths.
 bool analyzed_with_paths(ImGuiTestContext* ctx) {

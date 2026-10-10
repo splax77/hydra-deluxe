@@ -515,12 +515,9 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     IM_CHECK(d != nullptr && !d->activations.acts.empty());
     if (ctx->IsError()) return;
     const std::vector<hydra::app::BackendRowView>& rows = d->activations.acts[0].backends;
-    const std::vector<hydra::ui::ColumnSpec> points = {
-        {"Points", false, 0.0f, text_measurer(hydra::ui::g_mono_font)}};
-    const hydra::ui::MeasuredWidths measured = hydra::ui::measure_widths(
-        points, rows.size(), [&](size_t r, size_t) { return rows[r].points; });
-    IM_CHECK_EQ(t->Columns[2].WidthGiven,
-                hydra::ui::place_columns(measured, points, hydra::ui::TableRoom{}).widths[0]);
+    std::vector<std::string> points;
+    for (const hydra::app::BackendRowView& row : rows) points.push_back(row.points);
+    IM_CHECK_EQ(t->Columns[2].WidthGiven, rule_width("Points", points, hydra::ui::g_mono_font));
     // And the table stays inside the details column.
     ImGuiWindow* details = window_named("##pathdetails");
     IM_CHECK_LE(details->ContentSize.x, details->ContentRegionRect.GetWidth() + 0.5f);

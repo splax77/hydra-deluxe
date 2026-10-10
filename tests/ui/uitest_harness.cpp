@@ -654,6 +654,13 @@ hydra::ui::WidthOf text_measurer(ImFont* font) {
 
 float text_width(const char* s, ImFont* font) { return text_measurer(font)(s); }
 
+float rule_width(const char* header, const std::vector<std::string>& cells, ImFont* font) {
+    const std::vector<hydra::ui::ColumnSpec> specs = {{header, false, 0.0f, text_measurer(font)}};
+    const hydra::ui::MeasuredWidths measured = hydra::ui::measure_widths(
+        specs, cells.size(), [&](size_t r, size_t) { return cells[r]; });
+    return hydra::ui::place_columns(measured, specs, hydra::ui::TableRoom{}).widths[0];
+}
+
 // Scan testdata/input through the UI and land on the populated library.
 void scan_library(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);

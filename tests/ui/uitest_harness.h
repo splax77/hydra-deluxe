@@ -226,6 +226,12 @@ float text_width(const char* s, ImFont* font = nullptr);
 // for a test that checks a column against the rule.
 hydra::ui::WidthOf text_measurer(ImFont* font = nullptr);
 
+// The width the production rule gives a one-column table that never cuts, for
+// `cells` under `header`, measured in `font` as text_measurer does. What a
+// test expects of a Dynamics, Stars or backend table column.
+float rule_width(const char* header, const std::vector<std::string>& cells,
+                 ImFont* font = nullptr);
+
 // ---- the checked-in C++ tests ---------------------------------------------
 
 // One checked-in test: the name --test and --list use, and its body.
