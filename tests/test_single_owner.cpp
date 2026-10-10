@@ -6475,7 +6475,6 @@ struct KnownClone {
 const std::vector<KnownClone>& known_clones() {
     static const std::vector<KnownClone> k = {
         {"tests/test_app_state.cpp", "tests/test_song_panel_state.cpp", 11, R"x(char hash[32];)x"},
-        {"tests/test_audio_player.cpp", "tests/test_preview_transport.cpp", 10, R"x(namespace {)x"},
         {"tests/test_path_view.cpp", "tests/test_path_view.cpp", 12, R"x(HydraRecord rec;)x"},
         {"tests/test_path_view.cpp", "tests/test_preview_view.cpp", 8, R"x(const AnalysisResult& analyzed() {)x"},
         {"tests/test_replay.cpp", "tests/test_replay.cpp", 10, R"x(int charts = 0, paths = 0, mismatches = 0;)x"},
