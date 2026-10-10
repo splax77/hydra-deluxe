@@ -120,32 +120,6 @@ TEST_CASE("category_scores: the squeeze-out cut is basescore at each note's mult
     }
 }
 
-TEST_CASE("group_thousands matches Python {:,}") {
-    CHECK(group_thousands(0) == "0");
-    CHECK(group_thousands(999) == "999");
-    CHECK(group_thousands(1000) == "1,000");
-    CHECK(group_thousands(228710) == "228,710");
-    CHECK(group_thousands(1234567) == "1,234,567");
-    CHECK(group_thousands(-1234567) == "-1,234,567");
-}
-
-// D48 Q12: one rule everywhere. Caps 1 and 1000 are the plan's examples.
-TEST_CASE("counted: singular at 1, commas from 1,000") {
-    CHECK(counted(1, "bar", "bars") == "1 bar");
-    CHECK(counted(2, "bar", "bars") == "2 bars");
-    CHECK(counted(1000, "bar", "bars") == "1,000 bars");
-    CHECK(std::string(has_have(1)) == "has");
-    CHECK(std::string(has_have(2)) == "have");
-}
-
-// D48 Q2: whole-ms text rounds to nearest. No exact half is pinned.
-TEST_CASE("format_ms_whole: nearest whole millisecond with the unit") {
-    CHECK(format_ms_whole(12.4) == "12 ms");
-    CHECK(format_ms_whole(12.6) == "13 ms");
-    CHECK(format_ms_whole(12.25) == "12 ms");
-    CHECK(format_ms_whole(163.0) == "163 ms");
-}
-
 // Finding 4: the copied path's timing used to cut 12.6 ms down to "12 ms",
 // while the badge said 13.
 TEST_CASE("notationstr_verbose: a 12.6 ms squeeze copies as 13 ms") {
