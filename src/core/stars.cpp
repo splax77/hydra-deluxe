@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+#include "core/replay.h"
+
 namespace hydra {
 
 int64_t star_cutoff(int64_t base, int stars) {
@@ -31,6 +33,8 @@ int stars_for_score(const StarCutoffs& cutoffs, int64_t score_without_solo) {
 }
 
 int64_t score_without_solo(const Path& path) { return path.totalscore() - path.score_solo; }
+
+int64_t score_without_solo(const ReplayScore& score) { return score.total() - score.solo; }
 
 int path_stars(const Path& path) {
     return stars_for_score(star_cutoffs(path), score_without_solo(path));

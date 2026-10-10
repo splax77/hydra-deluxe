@@ -223,11 +223,9 @@ PreviewScore build_score(const Song& song, const Path* path, const core::Rules& 
         if (!pr.faithful()) return score;
         score.steps.reserve(pr.result.chords.size());
         for (const ReplayChord& c : pr.result.chords)
-            // cum is the running sum of every chord's points, solo bonus kept
-            // apart, so this is score_without_solo (core/stars.h) at this chord.
             score.steps.push_back({c.ms, c.cum_onscreen_total, c.multiplier_shown,
                                    c.multiplier_after, c.combo_after,
-                                   c.cum.total() - c.cum.solo});
+                                   score_without_solo(c.cum)});
     } catch (const std::exception&) {
         score.steps.clear();
         return score;  // Unavailable

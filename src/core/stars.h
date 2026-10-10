@@ -16,6 +16,8 @@
 
 namespace hydra {
 
+struct ReplayScore;  // core/replay.h
+
 inline constexpr int kMaxStars = 7;
 
 // 1 through 7 stars. The game's table has two more entries (5.2 and 6.0),
@@ -47,6 +49,10 @@ int stars_for_score(const StarCutoffs& cutoffs, int64_t score_without_solo);
 // A path's score as the game counts it for stars: its total minus its solo
 // bonus.
 int64_t score_without_solo(const Path& path);
+
+// The same, for a replay's running score (ReplayChord::cum at one chord, or
+// ReplayResult::final), so the Preview's star counter reads it at every chord.
+int64_t score_without_solo(const ReplayScore& score);
 
 // The stars a path earns: score_without_solo against its own cutoffs. The one
 // place a star count is worked out.

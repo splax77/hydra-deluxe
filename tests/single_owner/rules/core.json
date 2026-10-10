@@ -1571,15 +1571,18 @@
       "date": "2026-10-04",
       "decision": "D53, D54",
       "added_by": "J2-7",
-      "pattern": "\\btotalscore\\(\\)\\s*-\\s*(\\w+(\\.|->))?score_solo\\b",
-      "anchor": "totalscore()",
+      "pattern": "\\b(totalscore|total)\\(\\)\\s*-\\s*(\\w+(\\.|->))*(score_)?solo\\b",
+      "anchor": "total",
       "must_match": [
         "return stars_for_score(star_cutoffs(path), path.totalscore() - path.score_solo);",
-        "int64_t multscore = totalscore() - score_solo;"
+        "int64_t multscore = totalscore() - score_solo;",
+        "steps.push_back({c.ms, c.cum.total() - c.cum.solo});"
       ],
       "must_not_match": [
         "return score_base + score_combo + score_sp + score_solo + score_accents +",
         "return stars_for_score(star_cutoffs(path), score_without_solo(path));",
+        "score_without_solo(c.cum),",
+        "row.cum_onscreen_total = cum.total() - solo_pending;",
         "CHECK(path.totalscore() == 6680);"
       ],
       "owner_lines": [
@@ -1587,6 +1590,11 @@
           "file": "src/core/stars.cpp",
           "line_text": "int64_t score_without_solo(const Path& path) { return path.totalscore() - path.score_solo; }",
           "why": "score_without_solo, the owner"
+        },
+        {
+          "file": "src/core/stars.cpp",
+          "line_text": "int64_t score_without_solo(const ReplayScore& score) { return score.total() - score.solo; }",
+          "why": "score_without_solo for a replay's running score, the owner's second overload"
         }
       ],
       "scope": [
@@ -1594,7 +1602,7 @@
         "tools",
         "tests"
       ],
-      "note": "The game counts stars on the total less the solo bonus. Adding the categories up into the total is a different question. Decided by: audit finding 166; phase 6 task J2-7 (D53, D54)"
+      "note": "The game counts stars on the total less the solo bonus, whether the total is a Path's or a replay's running ReplayScore (the Preview's star counter, D111). Adding the categories up into the total is a different question. Decided by: audit finding 166; phase 6 task J2-7 (D53, D54)"
     },
     {
       "question": "What score shows at a star cutoff with the full solo bonus?",
