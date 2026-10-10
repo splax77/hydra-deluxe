@@ -3,8 +3,11 @@
 
 #include "doctest.h"
 
+#include "app/analysis.h"  // AnalysisSettings
 #include "app/config.h"
 #include "core/model.h"  // counted
+#include "search/pather.h"  // settings_key
+#include "store/record_store.h"  // CapQuery, Lens
 #include "ui/library_parts.h"
 
 #include <functional>
@@ -166,7 +169,20 @@ TEST_CASE("settings reset: puts back each panel setting and keeps the rest") {
     s.dm_last_user = "1234";
     const Settings r = s.with_analysis_defaults();
     CHECK(settings_changes_summary(r) == "defaults");
-    CHECK(r.chartmode_key() == Settings{}.chartmode_key());
+    // Everything a stored result is keyed by, and everything the analysis
+    // reads, matches the defaults', so a keyed setting the reset misses
+    // fails here.
+    const Settings d;
+    CHECK(r.chartmode_key() == d.chartmode_key());
+    CHECK(r.cap_query() == d.cap_query());
+    CHECK(r.lens() == d.lens());
+    const hydra::app::AnalysisSettings ra = r.to_analysis_settings();
+    const hydra::app::AnalysisSettings da = d.to_analysis_settings();
+    CHECK(hydra::settings_key(ra) == hydra::settings_key(da));
+    CHECK(ra.prodrums == da.prodrums);
+    CHECK(ra.bass2x == da.bass2x);
+    CHECK(ra.noteshuffle == da.noteshuffle);
+    CHECK(ra.difficulty == da.difficulty);
     CHECK(r.chartfolders == s.chartfolders);
     CHECK(r.preview_volume == 75);
     CHECK(r.hit_window_ms == 60.5);
