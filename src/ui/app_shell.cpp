@@ -47,6 +47,14 @@ FrameInsets g_report_frame;
 std::set<std::string, std::less<>> g_maximize_pending;
 // A report's [Hydra] section is "[Hydra][Window:<key>]".
 constexpr std::string_view kReportSectionPrefix = "Window:";
+
+// Asks ImGui to save hydra_ui.ini soon. WndProc can run before the context
+// exists (CreateWindow sends its first WM_SIZE early); a remembered value is
+// kept either way.
+void mark_ini_dirty() {
+    if (ImGui::GetCurrentContext()) ImGui::MarkIniSettingsDirty();
+}
+
 // What hydra_ui.ini said, then what the user dragged the split to and the
 // library button set since.
 Layout g_layout;
@@ -189,9 +197,7 @@ WindowPlacement window_placement() { return g_placement; }
 void remember_window_placement(const WindowPlacement& p) {
     if (p == g_placement) return;
     g_placement = p;
-    // WndProc can run before the context exists (CreateWindow sends its
-    // first WM_SIZE early); the placement is kept either way.
-    if (ImGui::GetCurrentContext()) ImGui::MarkIniSettingsDirty();
+    mark_ini_dirty();
 }
 
 std::string report_placement_key(std::string_view window_name) {
@@ -207,7 +213,7 @@ WindowPlacement report_window_placement(std::string_view key) {
 void remember_report_placement(std::string_view key, const WindowPlacement& p) {
     if (p == report_window_placement(key)) return;
     g_report_placements.insert_or_assign(std::string(key), p);
-    if (ImGui::GetCurrentContext()) ImGui::MarkIniSettingsDirty();
+    mark_ini_dirty();
 }
 
 void set_report_frame_insets(const FrameInsets& frame) { g_report_frame = frame; }
@@ -308,7 +314,7 @@ float library_share() { return g_layout.library_share; }
 void remember_library_share(float share) {
     if (!share_is_valid(share) || share == g_layout.library_share) return;
     g_layout.library_share = share;
-    if (ImGui::GetCurrentContext()) ImGui::MarkIniSettingsDirty();
+    mark_ini_dirty();
 }
 
 bool library_hidden() { return g_layout.library_hidden; }
@@ -316,7 +322,7 @@ bool library_hidden() { return g_layout.library_hidden; }
 void remember_library_hidden(bool hidden) {
     if (hidden == g_layout.library_hidden) return;
     g_layout.library_hidden = hidden;
-    if (ImGui::GetCurrentContext()) ImGui::MarkIniSettingsDirty();
+    mark_ini_dirty();
 }
 
 float ui_scale_for_dpi(unsigned dpi) {
