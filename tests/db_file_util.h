@@ -34,6 +34,11 @@ inline int64_t scalar_on_file(const std::string& path, const std::string& sql) {
     return *v;
 }
 
+// How many rows a database file's results table holds.
+inline int64_t results_rows_in(const std::string& path) {
+    return scalar_on_file(path, kResultsRowCountSql);
+}
+
 // Writes a file of junk bytes at `path`, where a database should be.
 inline void write_junk_db(const std::string& path) {
     std::ofstream f(hydra::os_path(path), std::ios::binary);

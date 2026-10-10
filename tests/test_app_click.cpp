@@ -27,7 +27,7 @@
 #include "core/model.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
-#include "db_file_util.h"  // exec_on_file, scalar_on_file
+#include "db_file_util.h"  // exec_on_file, scalar_on_file, results_rows_in
 #include "display_fixtures.h"  // store_batch_result, old_build_row
 #include "library_fixtures.h"  // library_entry
 #include "parse/song.h"
@@ -48,10 +48,6 @@ using hydra::ui::ViewedSong;
 namespace {
 
 using testtemp::temp_path;
-
-int64_t results_rows(const ScratchPaths& paths) {
-    return hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results");
-}
 
 // Makes every later change to a library row fail, so a click's
 // reidentify_chart throws.
@@ -96,7 +92,7 @@ TEST_CASE("clicking a Ready song shows its paths and stores nothing new") {
     std::unique_ptr<AppState> app = app_with(paths, {song});
     click(*app, song);
     REQUIRE(app->viewed.ready());
-    const int64_t rows = results_rows(paths);
+    const int64_t rows = hydra::test::results_rows_in(paths.db);
     const int64_t id = result_id(paths, song.md5);
 
     app->close_details();
@@ -104,7 +100,7 @@ TEST_CASE("clicking a Ready song shows its paths and stores nothing new") {
 
     REQUIRE(app->viewed.ready());
     CHECK_FALSE(app->viewed.record->paths.empty());
-    CHECK(results_rows(paths) == rows);
+    CHECK(hydra::test::results_rows_in(paths.db) == rows);
     CHECK(result_id(paths, song.md5) == id);
 }
 
@@ -181,7 +177,7 @@ TEST_CASE("a click whose re-identify fails shows the error and saves nothing") {
     CHECK_FALSE(app->viewed.record.has_value());
     // The row keeps its old hash, and nothing was saved under either hash.
     CHECK(app->selected->md5 == scanned.md5);
-    CHECK(hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results") == 0);
+    CHECK(hydra::test::results_rows_in(paths.db) == 0);
 }
 
 // D96: a chart saved again with the same content has a new size-and-time
@@ -231,7 +227,7 @@ TEST_CASE("a touched chart whose fingerprint save fails shows the error and save
     CHECK_FALSE(app->viewed.message.empty());
     CHECK_FALSE(app->viewed.record.has_value());
     CHECK(app->selected->sig == scanned.sig);
-    CHECK(hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results") == 0);
+    CHECK(hydra::test::results_rows_in(paths.db) == 0);
 }
 
 namespace {
@@ -448,7 +444,7 @@ TEST_CASE("a bad hydra_rules.ini names the key and keeps analysis off") {
     CHECK(app.viewed.state == ViewedSong::State::RulesBroken);
     CHECK_FALSE(app.viewed.record.has_value());
     CHECK(app.viewed.dynamics.has_value());
-    CHECK(hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results") == 0);
+    CHECK(hydra::test::results_rows_in(paths.db) == 0);
     app.start_batch(false);
     CHECK(app.batch_job == nullptr);
 }
