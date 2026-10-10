@@ -845,7 +845,7 @@
       ],
       "scope": [
         "tests/ui/uitest_harness.cpp",
-        "tests/test_path_view.cpp",
+        "tests/test_activation_rows.cpp",
         "tests/test_stars.cpp"
       ],
       "note": "The GUI harness writes its ini from scratch_settings(), and the Burnout reference cases run through its to_analysis_settings. Other depths in these files are a case's own input. Decided by: audit finding 280; phase 6 task J4-4 (D53, D54)"
