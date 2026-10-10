@@ -10,11 +10,8 @@
 //     "pixel_delta": ..., "tile_percent": ..., "frame_percent": ...,
 //     "mask": [[x, y, w, h], ...] }   // rectangles to ignore (Onyx's text)
 // plus golden_onyx.png next to it. Every key is required; a missing file or
-// key fails the test. The README there says what the thresholds mean.
-//
-// Dev aid: set HYDRA_PREVIEW_DUMP="<chart path>|<time ms>|<out.bmp>" to
-// render any chart at any time to a BMP (the failing golden comparison also
-// writes build-cpp/preview_actual.bmp).
+// key fails the test. The README there says what the thresholds mean. A
+// failing comparison writes preview_actual.bmp to the working folder.
 
 #include "doctest.h"
 
@@ -38,7 +35,6 @@
 #include "core/winstr.h"
 #include "env_util.h"
 #include "render/preview_renderer.h"
-#include "render/track_state.h"  // note_in_span
 #include "ui/preview_load_job.h"  // track_options
 #include "warp_util.h"
 
@@ -352,59 +348,4 @@ TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
     CHECK(mae < tolerance);
     CHECK(s.worst_tile_percent <= tile_percent);
     CHECK(s.frame_percent <= frame_percent);
-}
-
-TEST_CASE("preview dump (dev aid, HYDRA_PREVIEW_DUMP)") {
-    const std::optional<std::string> env = read_env("HYDRA_PREVIEW_DUMP");
-    if (!env) return;
-    const std::string& spec = *env;
-    size_t a = spec.find('|'), b = spec.rfind('|');
-    REQUIRE(a != std::string::npos);
-    REQUIRE(b != a);
-    const std::string chart = spec.substr(0, a);
-    const double time_ms = std::atof(spec.substr(a + 1, b - a - 1).c_str());
-    const std::string out = spec.substr(b + 1);
-    const int w = 900, h = 800;
-    const bool bass2x = !read_env("HYDRA_PREVIEW_DUMP_NO2X");
-    std::vector<uint8_t> px = render_chart(chart, time_ms, w, h, true, bass2x);
-    write_bmp(out, px, w, h);
-    MESSAGE("wrote " << out);
-    // Where Hydra thinks that time is, for lining up with Onyx's time box.
-    app::PreviewScene scene = app::build_preview_scene(load_songpath(chart, true, bass2x), nullptr);
-    app::PreviewTimeBox box = app::build_time_box(scene, time_ms, app::last_note_ms(scene));
-    MESSAGE("time box: " << box.timestamp << " | " << box.position << " of " << box.length
-                         << " | " << box.tempo << " | " << box.section_line);
-    for (size_t i = 0; i < scene.tempos.size() && i < 6; ++i)
-        MESSAGE("tempo[" << i << "] tick " << scene.tempos[i].tick << " ms " << scene.tempos[i].ms
-                         << " bpm " << scene.tempos[i].bpm);
-    MESSAGE("first note ms " << (scene.notes.empty() ? -1.0 : scene.notes.front().ms)
-                             << " tick " << (scene.notes.empty() ? -1 : scene.notes.front().tick));
-    // The notes in the visible window, for lining up against an Onyx frame.
-    for (const app::PreviewNote& n : scene.notes) {
-        if (n.ms < time_ms - 500.0 || n.ms > time_ms + 1500.0) continue;
-        bool in_sp = false;
-        for (const app::PreviewSpan& s : scene.sp_phrases)
-            if (render::note_in_span(scene, s, n)) in_sp = true;
-        std::string flags;
-        if (n.cymbal) flags += " cymbal";
-        if (n.ghost) flags += " ghost";
-        if (n.accent) flags += " accent";
-        if (in_sp) flags += " SP";
-        MESSAGE("note +" << (n.ms - time_ms) << " ms tick " << n.tick << " lane "
-                         << static_cast<int>(n.lane) << flags);
-    }
-    for (const app::PreviewSpan& s : scene.sp_phrases)
-        if (s.end_ms >= time_ms - 2000.0 && s.start_ms <= time_ms + 3000.0)
-            MESSAGE("sp phrase " << s.start_ms << " .. " << s.end_ms << " ms");
-    std::ofstream tcsv(out + ".tempos.csv");
-    for (const app::PreviewTempo& t : scene.tempos) tcsv << t.ms << "," << t.tick << "," << t.bpm << "\n";
-    // Every note as CSV (ms,tick,lane,cymbal,sp) beside the image.
-    std::ofstream csv(out + ".csv");
-    for (const app::PreviewNote& n : scene.notes) {
-        bool in_sp = false;
-        for (const app::PreviewSpan& s : scene.sp_phrases)
-            if (render::note_in_span(scene, s, n)) in_sp = true;
-        csv << n.ms << "," << n.tick << "," << static_cast<int>(n.lane) << "," << (n.cymbal ? 1 : 0)
-            << "," << (in_sp ? 1 : 0) << "\n";
-    }
 }
