@@ -12,8 +12,10 @@
 #include <cstring>
 #include <exception>
 #include <limits>
+#include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 
 #include "imgui.h"
@@ -34,6 +36,25 @@ namespace {
 
 // What hydra_ui.ini said, then what main.cpp reported since.
 WindowPlacement g_placement;
+// Each report window's placement by report_placement_key: what hydra_ui.ini
+// said, then what place_report_window noted since. A map, so the pointer
+// placement_read_open hands ImGui stays put as entries are added.
+std::map<std::string, WindowPlacement, std::less<>> g_report_placements;
+// The OS frame around a report window, from main.cpp.
+FrameInsets g_report_frame;
+// The reports that opened maximized and wait for ImGui to make their OS
+// window, by report_placement_key.
+std::set<std::string, std::less<>> g_maximize_pending;
+// A report's [Hydra] section is "[Hydra][Window:<key>]".
+constexpr std::string_view kReportSectionPrefix = "Window:";
+
+// Asks ImGui to save hydra_ui.ini soon. WndProc can run before the context
+// exists (CreateWindow sends its first WM_SIZE early); a remembered value is
+// kept either way.
+void mark_ini_dirty() {
+    if (ImGui::GetCurrentContext()) ImGui::MarkIniSettingsDirty();
+}
+
 // What hydra_ui.ini said, then what the user dragged the split to and the
 // library button set since.
 Layout g_layout;
@@ -88,12 +109,16 @@ bool read_int_pair(std::string_view text, int& a, int& b) {
     return r2.ec == std::errc() && r2.ptr == last;
 }
 
-// The [Hydra][Window] and [Hydra][Layout] sections' handler. ImGui calls
-// ReadOpen for each "[Hydra][<name>]" header and ReadLine for each line under
-// it, and WriteAll whenever it saves the file.
+// The [Hydra][Window], [Hydra][Window:<key>] and [Hydra][Layout] sections'
+// handler. ImGui calls ReadOpen for each "[Hydra][<name>]" header and
+// ReadLine for each line under it, and WriteAll whenever it saves the file.
 void* placement_read_open(ImGuiContext*, ImGuiSettingsHandler*, const char* name) {
     if (std::strcmp(name, "Window") == 0) return &g_placement;
     if (std::strcmp(name, "Layout") == 0) return &g_layout;
+    const std::string_view section(name);
+    if (section.substr(0, kReportSectionPrefix.size()) == kReportSectionPrefix &&
+        section.size() > kReportSectionPrefix.size())
+        return &g_report_placements[std::string(section.substr(kReportSectionPrefix.size()))];
     return nullptr;
 }
 
@@ -110,6 +135,14 @@ void placement_write_all(ImGuiContext*, ImGuiSettingsHandler* handler, ImGuiText
         out->append(format_window_placement(g_placement).c_str());
         out->append("\n");
     }
+    for (const auto& [key, placement] : g_report_placements) {
+        if (!placement.valid) continue;
+        out->appendf("[%s][%.*s%s]\n", handler->TypeName,
+                     static_cast<int>(kReportSectionPrefix.size()), kReportSectionPrefix.data(),
+                     key.c_str());
+        out->append(format_window_placement(placement).c_str());
+        out->append("\n");
+    }
     out->appendf("[%s][Layout]\n", handler->TypeName);
     out->append(format_layout(g_layout).c_str());
     out->append("\n");
@@ -117,13 +150,31 @@ void placement_write_all(ImGuiContext*, ImGuiSettingsHandler* handler, ImGuiText
 
 }  // namespace
 
+namespace {
+
+// The band along the top of `r` where its title bar is.
+ScreenRect title_band(const ScreenRect& r) {
+    return {r.left, r.top, r.right, r.top + kMinVisiblePx};
+}
+
+// How far two rectangles overlap across and down; zero or less on an axis
+// where they miss.
+struct Overlap {
+    int w, h;
+};
+Overlap overlap_of(const ScreenRect& a, const ScreenRect& b) {
+    return {std::min(a.right, b.right) - std::max(a.left, b.left),
+            std::min(a.bottom, b.bottom) - std::max(a.top, b.top)};
+}
+
+}  // namespace
+
 bool placement_on_screen(const ScreenRect& r, const std::vector<ScreenRect>& work_areas) {
     if (r.width() < kMinVisiblePx || r.height() < kMinVisiblePx) return false;
-    const ScreenRect title_band{r.left, r.top, r.right, r.top + kMinVisiblePx};
+    const ScreenRect band = title_band(r);
     for (const ScreenRect& area : work_areas) {
-        const int w = std::min(title_band.right, area.right) - std::max(title_band.left, area.left);
-        const int h = std::min(title_band.bottom, area.bottom) - std::max(title_band.top, area.top);
-        if (w >= kMinVisiblePx && h >= kMinVisiblePx / 2) return true;
+        const Overlap o = overlap_of(band, area);
+        if (o.w >= kMinVisiblePx && o.h >= kMinVisiblePx / 2) return true;
     }
     return false;
 }
@@ -155,9 +206,115 @@ WindowPlacement window_placement() { return g_placement; }
 void remember_window_placement(const WindowPlacement& p) {
     if (p == g_placement) return;
     g_placement = p;
-    // WndProc can run before the context exists (CreateWindow sends its
-    // first WM_SIZE early); the placement is kept either way.
-    if (ImGui::GetCurrentContext()) ImGui::MarkIniSettingsDirty();
+    mark_ini_dirty();
+}
+
+WindowPlacement observed_placement(void* handle, const WindowPlacement& last, WindowRect which) {
+    const HWND hwnd = static_cast<HWND>(handle);
+    if (!hwnd || ::IsIconic(hwnd)) return last;
+    WindowPlacement p = last;
+    p.maximized = ::IsZoomed(hwnd) != FALSE;
+    if (p.maximized) return p;
+
+    RECT r;
+    bool read = false;
+    if (which == WindowRect::Outer) {
+        read = ::GetWindowRect(hwnd, &r) != FALSE;
+    } else {
+        // The client area in screen pixels. Not GetWindowPlacement, whose
+        // rectangle is the outer window in workspace coordinates.
+        RECT client;
+        POINT origin{0, 0};
+        read = ::GetClientRect(hwnd, &client) && ::ClientToScreen(hwnd, &origin);
+        r = {origin.x, origin.y, origin.x + client.right, origin.y + client.bottom};
+    }
+    if (read) {
+        p.normal = {r.left, r.top, r.right, r.bottom};
+        p.valid = true;
+    }
+    return p;
+}
+
+std::string report_placement_key(std::string_view window_name) {
+    const size_t id = window_name.find("###");
+    return std::string(id == std::string_view::npos ? window_name : window_name.substr(id + 3));
+}
+
+WindowPlacement report_window_placement(std::string_view key) {
+    const auto it = g_report_placements.find(key);
+    return it == g_report_placements.end() ? WindowPlacement{} : it->second;
+}
+
+void remember_report_placement(std::string_view key, const WindowPlacement& p) {
+    if (p == report_window_placement(key)) return;
+    g_report_placements.insert_or_assign(std::string(key), p);
+    mark_ini_dirty();
+}
+
+void set_report_frame_insets(const FrameInsets& frame) { g_report_frame = frame; }
+
+namespace {
+
+ScreenRect grown(const ScreenRect& r, const FrameInsets& f) {
+    return {r.left - f.left, r.top - f.top, r.right + f.right, r.bottom + f.bottom};
+}
+
+ScreenRect shrunk(const ScreenRect& r, const FrameInsets& f) {
+    return {r.left + f.left, r.top + f.top, r.right - f.right, r.bottom - f.bottom};
+}
+
+// The work area `r` overlaps most, or nullptr when it overlaps none.
+const ScreenRect* area_overlapping_most(const ScreenRect& r, const std::vector<ScreenRect>& areas) {
+    const ScreenRect* best = nullptr;
+    long long best_overlap = 0;
+    for (const ScreenRect& area : areas) {
+        const Overlap o = overlap_of(r, area);
+        if (o.w <= 0 || o.h <= 0) continue;
+        const long long size = static_cast<long long>(o.w) * o.h;
+        if (size > best_overlap) {
+            best_overlap = size;
+            best = &area;
+        }
+    }
+    return best;
+}
+
+// `outer` no bigger than `area`, then moved the least distance that puts it
+// inside.
+ScreenRect fitted_into(ScreenRect outer, const ScreenRect& area) {
+    outer.right = outer.left + std::min(outer.width(), area.width());
+    outer.bottom = outer.top + std::min(outer.height(), area.height());
+    int dx = 0, dy = 0;
+    if (outer.right > area.right) dx = area.right - outer.right;
+    if (outer.left + dx < area.left) dx = area.left - outer.left;
+    if (outer.bottom > area.bottom) dy = area.bottom - outer.bottom;
+    if (outer.top + dy < area.top) dy = area.top - outer.top;
+    return {outer.left + dx, outer.top + dy, outer.right + dx, outer.bottom + dy};
+}
+
+}  // namespace
+
+ReportPlacement report_placement(const std::optional<ScreenRect>& saved_client,
+                                 bool saved_maximized,
+                                 bool main_maximized,
+                                 const ScreenRect& main_client,
+                                 const std::vector<ScreenRect>& work_areas,
+                                 const FrameInsets& frame) {
+    const ScreenRect* main_area = area_overlapping_most(main_client, work_areas);
+    if (!main_area && !work_areas.empty()) main_area = &work_areas.front();
+
+    if (main_maximized || saved_maximized)
+        return {main_area ? shrunk(*main_area, frame) : main_client, true};
+
+    const ScreenRect candidate =
+        saved_client && placement_on_screen(*saved_client, work_areas) ? *saved_client
+                                                                       : main_client;
+    const ScreenRect outer = grown(candidate, frame);
+    // Taken on the outer window, where the title bar really is.
+    const ScreenRect* area = area_overlapping_most(title_band(outer), work_areas);
+    if (!area) area = main_area;
+    if (!area) return {candidate, false};
+    return {shrunk(fitted_into(outer, *area), frame), false};
 }
 
 std::string format_layout(const Layout& layout) {
@@ -192,7 +349,7 @@ float library_share() { return g_layout.library_share; }
 void remember_library_share(float share) {
     if (!share_is_valid(share) || share == g_layout.library_share) return;
     g_layout.library_share = share;
-    if (ImGui::GetCurrentContext()) ImGui::MarkIniSettingsDirty();
+    mark_ini_dirty();
 }
 
 bool library_hidden() { return g_layout.library_hidden; }
@@ -200,7 +357,7 @@ bool library_hidden() { return g_layout.library_hidden; }
 void remember_library_hidden(bool hidden) {
     if (hidden == g_layout.library_hidden) return;
     g_layout.library_hidden = hidden;
-    if (ImGui::GetCurrentContext()) ImGui::MarkIniSettingsDirty();
+    mark_ini_dirty();
 }
 
 float ui_scale_for_dpi(unsigned dpi) {
@@ -260,6 +417,8 @@ void setup_imgui(const ImGuiSetupOptions& options) {
     // frame (ImGui skips its own first-frame read once this has run), so
     // main.cpp can put the window back before it is shown.
     g_placement = WindowPlacement{};
+    g_report_placements.clear();
+    g_maximize_pending.clear();
     g_layout = Layout{};
     ImGuiSettingsHandler placement_handler;
     placement_handler.TypeName = "Hydra";
@@ -341,11 +500,15 @@ std::vector<ScreenRect> imgui_work_areas() {
     return areas;
 }
 
-// Where the window was last: the live window when it has shown this session,
-// else its hydra_ui.ini entry (ImGui saves a window that had its own OS
-// window relative to that window, and any other relative to the main
-// window). Nothing when there is neither.
-std::optional<ScreenRect> saved_rect(const char* name) {
+// Where the window was last, un-maximized: its [Hydra][Window:<key>] entry
+// when there is one (the OS window's own rectangle, noted while it showed),
+// else the live window when it has shown this session (the GUI test runner,
+// which has no OS windows to note), else ImGui's own [Window] entry from
+// hydra_ui.ini (ImGui saves a window that had its own OS window relative to
+// that window, and any other relative to the main window). Nothing when there
+// is none of these.
+std::optional<ScreenRect> saved_rect(const char* name, std::string_view key) {
+    if (const WindowPlacement p = report_window_placement(key); p.valid) return p.normal;
     if (const ImGuiWindow* w = ImGui::FindWindowByName(name))
         return screen_rect(w->Pos, w->SizeFull);
     const ImGuiWindowSettings* s = ImGui::FindWindowSettingsByID(ImHashStr(name));
@@ -354,6 +517,21 @@ std::optional<ScreenRect> saved_rect(const char* name) {
                                         : ImGui::GetMainViewport()->Pos;
     return screen_rect(ImVec2(origin.x + s->Pos.x, origin.y + s->Pos.y),
                        ImVec2(s->Size.x, s->Size.y));
+}
+
+// Every frame an open report's OS window exists: note whether it is
+// maximized and, while it is neither maximized nor minimized, its client
+// rectangle (observed_placement), then carry out a maximize that waited for
+// the window.
+void follow_report_os_window(const std::string& key, const ImGuiWindow& w) {
+    if (!w.ViewportOwned || !w.Viewport) return;
+    const HWND hwnd = static_cast<HWND>(w.Viewport->PlatformHandleRaw);
+    if (!hwnd || ::IsIconic(hwnd)) return;  // no OS window (yet, or in the test runner)
+
+    remember_report_placement(
+        key, observed_placement(hwnd, report_window_placement(key), WindowRect::Client));
+
+    if (g_maximize_pending.erase(key) > 0) ::ShowWindow(hwnd, SW_MAXIMIZE);
 }
 
 }  // namespace
@@ -367,16 +545,32 @@ ImGuiWindowClass report_window_class() {
 }
 
 void place_report_window(const char* name) {
+    const std::string key = report_placement_key(name);
     const ImGuiWindow* w = ImGui::FindWindowByName(name);
-    if (w && w->WasActive) return;  // already open: it stays where it is
-    const std::optional<ScreenRect> saved = saved_rect(name);
-    if (saved && placement_on_screen(*saved, imgui_work_areas())) return;
+    if (w && w->WasActive) {  // already open: it stays where it is
+        follow_report_os_window(key, *w);
+        return;
+    }
 
-    // The first-open placement (D103 item 14). An explicit size also stops
-    // ImGui fitting the window to its content, so one frame is enough.
+    const WindowPlacement saved = report_window_placement(key);
     const ImGuiViewport* main_viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(main_viewport->Pos, ImGuiCond_Always);
-    ImGui::SetNextWindowSize(main_viewport->Size, ImGuiCond_Always);
+    const ReportPlacement p =
+        report_placement(saved_rect(name, key), saved.valid && saved.maximized,
+                         window_placement().maximized,
+                         screen_rect(main_viewport->Pos, main_viewport->Size),
+                         imgui_work_areas(), g_report_frame);
+    if (p.maximized)
+        g_maximize_pending.insert(key);
+    else
+        g_maximize_pending.erase(key);
+
+    // An explicit size also stops ImGui fitting the window to its content,
+    // so one frame is enough.
+    ImGui::SetNextWindowPos(ImVec2(static_cast<float>(p.client.left), static_cast<float>(p.client.top)),
+                            ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(p.client.width()),
+                                    static_cast<float>(p.client.height())),
+                             ImGuiCond_Always);
 }
 
 void run_frame(AppState& app, FrameText* capture) {
