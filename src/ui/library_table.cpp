@@ -23,7 +23,6 @@
 #include "ui/column_widths.h"
 #include "ui/fonts.h"
 #include "ui/library_model.h"
-#include "ui/report_window.h"  // report_frame::table_settled
 #include "ui/theme.h"
 #include "ui/widgets.h"
 
@@ -301,11 +300,8 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
     // after this point, so a column saved hidden would win over the panel.
     // The panel's choice goes in once that frame is over, as the report
     // tables wait to push their sort (report_frame::table).
-    // It goes in before apply_column_widths, which reads whether each column
-    // shows in this frame's layout, so a column the panel shows gets its
-    // width the same frame.
     const bool panel_open = app.details_open();
-    if (report_frame::table_settled() && app.library_ui.columns_for_panel != panel_open) {
+    if (table_settled() && app.library_ui.columns_for_panel != panel_open) {
         ImGui::TableSetColumnEnabled(kColumnCharter, !panel_open);
         ImGui::TableSetColumnEnabled(kColumnFolder, !panel_open);
         app.library_ui.columns_for_panel = panel_open;

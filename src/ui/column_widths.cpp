@@ -28,7 +28,7 @@ float cell_width(const ColumnSpec& spec, const std::string& text) {
 
 // The usual width of cells `cells`: the width at kUsualShare of the way up
 // the sorted widths, nearest rank (sorted index ceil(kUsualShare * n) - 1).
-// With fewer than 100 cells that is the widest. Never below `header`.
+// With too few cells to skip any, that is the widest. Never below `header`.
 float usual_of(std::vector<float> cells, float header) {
     if (cells.empty()) return header;
     const auto rank = static_cast<std::size_t>(std::ceil(kUsualShare * static_cast<double>(cells.size())));
@@ -296,9 +296,14 @@ bool begin_small_table(const char* str_id, ImGuiTableFlags look,
     return true;
 }
 
+bool table_settled() {
+    const ImGuiTable* table = ImGui::GetCurrentTable();
+    return table && !table->IsInitializing;
+}
+
 void apply_column_widths(const ColumnLayout& layout) {
+    if (!table_settled()) return;
     ImGuiTable* table = ImGui::GetCurrentTable();
-    if (!table || table->IsInitializing) return;
     // Per column, the rule's width last set and whether the user has dragged
     // the column since, kept in the table's own window state (never saved to
     // hydra_ui.ini).
@@ -308,43 +313,35 @@ void apply_column_widths(const ColumnLayout& layout) {
     const int n = (std::min)(table->ColumnsCount, static_cast<int>(layout.widths.size()));
     for (int c = 0; c < n; ++c) {
         ImGuiTableColumn& column = table->Columns[c];
-        // Whether this frame's layout shows the column: what TableUpdateLayout
-        // will read (imgui_tables.cpp), which can differ from last frame's
-        // IsEnabled when the column is being shown or hidden this frame.
-        const bool shows = (column.IsUserEnabledNextFrame || !(table->Flags & ImGuiTableFlags_Hideable) ||
-                            (column.Flags & ImGuiTableColumnFlags_NoHide)) &&
-                           !(column.Flags & ImGuiTableColumnFlags_Disabled);
-        // ImGui clamps a width set on a hidden column it has never laid out
-        // to its minimum, so a hidden column waits until it shows.
-        if (!shows) continue;
         const float width = layout.widths[static_cast<std::size_t>(c)];
         const ImGuiID key = ImHashData(&c, sizeof(c), seed);
         const ImGuiID drag_key = ImHashData(&c, sizeof(c), drag_seed);
         const float last = memory.GetFloat(key, -1.0f);
-        // A drag in progress, or one let go of last frame: ImGui applies the
-        // dragged width inside the layout (TableApplyQueuedRequests), after
-        // this call, so the drag wins this frame. Remember it.
+        // A drag in progress, or one let go of last frame. A drag in progress
+        // has its width applied by ImGui inside the layout
+        // (TableApplyQueuedRequests), after this call; a drag let go of is
+        // already in the column's request. Either way the drag wins this
+        // frame. Remember it.
         if (table->ResizedColumn == c || table->LastResizedColumn == c) {
             memory.SetBool(drag_key, true);
             memory.SetFloat(key, width);
             continue;
         }
+        const float request = (std::max)(width, table->MinColumnWidth);
         if (last == width) {
             // A drag holds until the rule's width for the column changes.
             if (memory.GetBool(drag_key)) continue;
             // Anything else that changed the width (ImGui's own auto-fit, a
             // UI scale change rescaling saved widths) is put back.
-            if (column.WidthRequest == (std::max)(width, table->MinColumnWidth)) continue;
+            if (column.WidthRequest == request) continue;
         }
-        if (column.WidthMax <= 0.0f) {
-            // Never laid out (hidden since the table was made): ImGui's own
-            // setter would clamp to the minimum, so set what it would set
-            // with no clamp. The layout still clamps what it gives.
-            column.WidthRequest = (std::max)(width, table->MinColumnWidth);
-            table->IsSettingsDirty = true;
-        } else {
-            ImGui::TableSetColumnWidth(c, width);
-        }
+        // The request is set directly, with no clamp. ImGui's setter
+        // (TableSetColumnWidth) clamps to the column's last laid-out maximum,
+        // which a hidden column never refreshes (zero if it was hidden since
+        // the table was made), and the layout clamps what it gives anyway. The
+        // columns are all fixed width, so the setter does no more than this.
+        column.WidthRequest = request;
+        table->IsSettingsDirty = true;
         memory.SetFloat(key, width);
         memory.SetBool(drag_key, false);
     }

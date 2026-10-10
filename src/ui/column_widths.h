@@ -233,13 +233,19 @@ bool begin_small_table(const char* str_id, ImGuiTableFlags look,
 void setup_column(const ColumnSpec& spec, const ColumnLayout& layout, int column,
                   ImGuiTableColumnFlags flags = 0, ImGuiID user_id = 0);
 
+// Whether the current table is past its first frame. A table's first frame
+// loads its saved state from hydra_ui.ini after the caller's setup, so
+// whatever must win over that state waits until this is true. False when
+// there is no current table.
+bool table_settled();
+
 // Hands the rule's widths to the current table. Call it right after the
 // setup_column calls, before the first row. It waits until the table has
 // settled (its first frame loads saved widths from hydra_ui.ini over
-// anything set earlier). Then it sets each shown column whose rule width
-// differs from the one it last set, or whose width ImGui changed by itself
-// since (its own auto-fit, a UI scale change). A hidden column is left alone
-// and gets its width the frame it shows. A column the user dragged keeps the
+// anything set earlier). Then it sets each column whose rule width differs
+// from the one it last set, or whose width ImGui changed by itself since (its
+// own auto-fit, a UI scale change). A hidden column gets its width too, so
+// it has it the frame it shows. A column the user dragged keeps the
 // drag until the rule's width for it changes. What it last set lives in the
 // table's window state, never in hydra_ui.ini.
 void apply_column_widths(const ColumnLayout& layout);

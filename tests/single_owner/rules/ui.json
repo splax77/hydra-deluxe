@@ -1606,6 +1606,36 @@
       "note": "A table on the width rule opens with the rule's flags: table_flags, or scroll_fixed_flags plus a tab's own look. A table that lists the rule's flags itself, or the stretch sizing the rule replaced, builds a second flag set that drifts from the rule's. Decided by: report windows plan, T5 brief (the table uses the Library table's flags); derive-once review of RW-T5 (finding 1); one-column-width-rule plan, Part 1 (table_flags replaces base_table_flags) and Part 4 (after wave 2)"
     },
     {
+      "question": "Is the current table past its first frame?",
+      "owner": "table_settled in src/ui/column_widths.cpp",
+      "owner_file": "src/ui/column_widths.cpp",
+      "owner_symbol": "table_settled",
+      "date": "2026-10-10",
+      "decision": "derive-once review of the columns-by-usual-width change (D110): the Library's panel columns wait on it as the report tables do",
+      "added_by": "cwf-review",
+      "pattern": "\\bIsInitializing\\b",
+      "anchor": "IsInitializing",
+      "must_match": [
+        "return table && !table->IsInitializing;",
+        "bool table_settled() { return !ImGui::GetCurrentTable()->IsInitializing; }"
+      ],
+      "must_not_match": [
+        "if (!report_frame::table_settled()) return;",
+        "if (table_settled() && app.library_ui.columns_for_panel != panel_open) {"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/column_widths.cpp",
+          "line_text": "return table && !table->IsInitializing;",
+          "why": "table_settled, the owner: apply_column_widths, the Library table and the report tables call it"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A table's first frame loads its saved state from hydra_ui.ini after the caller's setup, so code that must win over that state asks table_settled. A second reading of the table's IsInitializing (the report window had its own, the width rule another) fails."
+    },
+    {
       "question": "Is a report window still showing the result its view was built from?",
       "owner": "report_frame::same_result in src/ui/report_window.h",
       "owner_file": "src/ui/report_window.h",

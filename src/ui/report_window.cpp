@@ -405,8 +405,6 @@ void best_bar() {
                                               ImGui::GetColorU32(kBestPathColor));
 }
 
-bool table_settled() { return !ImGui::GetCurrentTable()->IsInitializing; }
-
 void push_sort(const HeaderSort& sort) {
     for (size_t i = 0; i < sort.size(); ++i)
         ImGui::TableSetColumnSortDirection(sort[i].first,
