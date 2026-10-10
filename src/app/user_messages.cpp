@@ -13,16 +13,10 @@ namespace {
 constexpr const char* kDatabaseWrite =
     "Hydra couldn't save to its database (hydra.db). Check that the disk isn't full and "
     "that no other copy of Hydra is running, then try again.";
-constexpr const char* kDatabaseOpen =
-    "Hydra couldn't open its database (hydra.db). Check that no other copy of Hydra is "
-    "running and that the Hydra folder isn't read-only.";
 constexpr const char* kDatabaseUpgrade =
     "Hydra couldn't update its library file (hydra.db) for this version. Your charts and "
     "results were not changed. Check that no other copy of Hydra or hydra_batch is running "
     "and that the disk isn't full, then start Hydra again.";
-constexpr const char* kDatabaseRead =
-    "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is "
-    "running, then try again.";
 constexpr const char* kChartUnreadable =
     "Hydra couldn't read this chart file. It may be damaged or in a format Hydra doesn't "
     "support; try downloading the song again.";
@@ -79,10 +73,10 @@ std::string timing_refusal_sentence(std::string_view what) {
 std::optional<std::string> kind_sentence(const KindedError& e) {
     switch (e.kind()) {
         case ErrorKind::Cancelled: return kStopped;
-        case ErrorKind::DatabaseOpen: return kDatabaseOpen;
+        case ErrorKind::DatabaseOpen: return kDatabaseOpenSentence;
         case ErrorKind::DatabaseUpgrade: return kDatabaseUpgrade;
         case ErrorKind::DatabaseWrite: return kDatabaseWrite;
-        case ErrorKind::DatabaseRead: return kDatabaseRead;
+        case ErrorKind::DatabaseRead: return kDatabaseReadSentence;
         case ErrorKind::SongFileMissing: return kSongFileMissing;
         case ErrorKind::HashFailed: return kHashFailed;
         case ErrorKind::ChartUnreadable: return kChartUnreadable;

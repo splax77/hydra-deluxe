@@ -14,6 +14,7 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/user_messages.h"  // kDatabaseReadSentence
 #include "core/model.h"
 #include "imgui_internal.h"
 #include "ui/app_state.h"
@@ -620,9 +621,7 @@ void test_analyze_db_fails(ImGuiTestContext* ctx) {
     ctx->SetRef("//Hydra");
     ctx->ItemClick("Analyze library...");
     ctx->Yield(3);
-    const std::string sentence =
-        "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is "
-        "running, then try again.";
+    const std::string sentence = hydra::app::kDatabaseReadSentence;
     IM_CHECK(h.frame_text.text.find(sentence) != std::string::npos);
     IM_CHECK(h.app->status_is_problem);
     IM_CHECK(!h.app->batch_confirm_pending);

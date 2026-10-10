@@ -1557,9 +1557,7 @@ void check_read_fails(const std::function<void()>& read) {
     } catch (const hydra::KindedError& e) {
         INFO(e.what());
         CHECK(e.kind() == hydra::ErrorKind::DatabaseRead);
-        CHECK(hydra::app::plain_error(e) ==
-              "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra "
-              "is running, then try again.");
+        CHECK(hydra::app::plain_error(e) == hydra::app::kDatabaseReadSentence);
     }
 }
 

@@ -29,6 +29,7 @@
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
+#include "app/user_messages.h"  // kDatabaseReadSentence
 #include "audio_chart_fixtures.h"
 #include "core/error_kind.h"
 #include "core/model.h"
@@ -47,6 +48,7 @@
 #include "ui/report_window.h"  // path_report_input
 #include "wait_util.h"
 
+using hydra::app::kDatabaseReadSentence;
 using hydra::app::Settings;
 using hydra::store::ChartLibraryEntry;
 using hydra::store::RecordKey;
@@ -69,11 +71,6 @@ const int kSeededCap = 4;
 const int kChartCount = 60;
 
 using testtemp::temp_path;
-
-// What a failed database read shows (D73 item 1).
-const std::string kDatabaseReadSentence =
-    "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is "
-    "running, then try again.";
 
 // Points app::ini_path()/db_path() at scratch files for one test, then puts
 // the process back the way it was. commit_settings writes the INI through
