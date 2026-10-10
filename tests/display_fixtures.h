@@ -17,6 +17,7 @@
 #include "app/preview_view.h"  // last_note_ms, for the audio-tail sanity case
 #include "core/model.h"
 #include "core/rules.h"
+#include "library_fixtures.h"  // library_row
 #include "parse/song.h"
 #include "record_fixtures.h"
 #include "store/record_store.h"
@@ -131,15 +132,7 @@ inline void name_chart(store::RecordStore& store, const std::string& md5,
     rows.erase(std::remove_if(rows.begin(), rows.end(),
                               [&](const store::ChartLibraryEntry& e) { return e.md5 == md5; }),
                rows.end());
-    store::ChartLibraryEntry entry;
-    entry.md5 = md5;
-    entry.title = title;
-    entry.artist = artist;
-    entry.charter = charter;
-    entry.notespath = "C:\\charts\\" + md5 + "\\notes.chart";
-    entry.rootfolder = "C:\\charts";
-    entry.sig = "sig-" + md5;
-    rows.push_back(entry);
+    rows.push_back(library_row(md5, title, artist, charter));
     store.rebuild_chart_library(rows);
 }
 

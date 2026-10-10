@@ -13,6 +13,7 @@
 #include "imgui_internal.h"
 #include "ui/app_shell.h"  // remember_library_share
 #include "ui/app_state.h"
+#include "ui/column_widths.h"
 #include "ui/details_view.h"  // kMinLibraryW
 #include "ui/fonts.h"  // px()
 #include "ui/library_model.h"
@@ -616,6 +617,62 @@ void test_library_layout(ImGuiTestContext* ctx) {
     IM_CHECK_GE(row.Max.x, table->Columns[table->RightMostEnabledColumn].WorkMaxX);
 }
 
+// Every column is as wide as the one width rule (ui/column_widths.h) says for
+// the scanned rows. The expected widths come from the production
+// place_columns on the table's own measure and room, never worked out here.
+// At the narrowest library, with all five columns on, Title stops at its
+// header's width and the table scrolls sideways instead.
+void test_library_column_widths(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    ctx->Yield(3);  // the table settles, then takes the rule's widths
+    ImGuiTable* table = library_table();
+    IM_CHECK_RETV(table != nullptr && table->InnerWindow != nullptr, );
+    const hydra::ui::LibraryViewState::ColumnWidths& cache = h.app->library_ui.column_widths;
+    IM_CHECK_EQ(cache.specs.size(), static_cast<size_t>(hydra::ui::kLibraryColumnCount));
+    IM_CHECK_EQ(cache.rows_version, h.app->library.rows_version());
+    hydra::ui::ColumnLayout layout;
+    auto check_rule_widths = [&] {
+        layout = hydra::ui::place_columns(cache.measured, cache.specs, cache.room);
+        for (int c = 0; c < table->ColumnsCount; ++c) {
+            if (!table->Columns[c].IsEnabled) continue;
+            ctx->LogInfo("column %d: %.1f, rule %.1f", c, table->Columns[c].WidthGiven,
+                         layout.widths[static_cast<size_t>(c)]);
+            IM_CHECK_EQ(table->Columns[c].WidthGiven, layout.widths[static_cast<size_t>(c)]);
+        }
+    };
+    for (int c = 0; c < table->ColumnsCount; ++c) IM_CHECK(table->Columns[c].IsEnabled);
+    check_rule_widths();
+    if (ctx->IsError()) return;
+    IM_CHECK(!table->InnerWindow->ScrollbarX);  // the wide library fits every column
+
+    // The song panel opens and the library goes as narrow as it gets. The
+    // panel hides Charter and Folder; they come back from the header menu, so
+    // the five headers alone are wider than the library.
+    ctx->SetRef("//Hydra");
+    const std::string title = h.app->library_row_at(0).title;
+    ctx->ItemClick(("**/" + escape_ref(title)).c_str());
+    IM_CHECK(wait_until(ctx, [&] { return h.app->selected && h.app->selected->title == title; },
+                        5));
+    hydra::ui::remember_library_share(0.01f);
+    h.app->library_ui.panel_was_open = false;  // the split sets its width next frame
+    ctx->Yield(3);
+    ctx->TableSetColumnEnabled(table->ID, "Charter", true);
+    ctx->TableSetColumnEnabled(table->ID, "Folder", true);
+    ctx->Yield(3);
+    for (int c = 0; c < table->ColumnsCount; ++c) IM_CHECK(table->Columns[c].IsEnabled);
+    check_rule_widths();
+    if (ctx->IsError()) return;
+    const float title_w = table->Columns[hydra::ui::kColumnTitle].WidthGiven;
+    IM_CHECK_LT(title_w, cache.measured.widths[hydra::ui::kColumnTitle]);  // cut
+    IM_CHECK_GE(title_w, cache.measured.header_widths[hydra::ui::kColumnTitle]);
+    IM_CHECK_EQ(layout.inner_width, layout.min_inner_width);  // every cut column at its floor
+    IM_CHECK_GT(layout.inner_width, cache.room.available);
+    IM_CHECK(table->InnerWindow->ScrollbarX);
+}
+
 // A hydra_ui.ini that only records a sort on Best path (what sorting by it,
 // quitting and restarting leaves) keeps the columns in their order. Dear
 // ImGui (ocornut/imgui#9519) used to move the sorted column to the front.
@@ -765,6 +822,7 @@ const std::vector<TestEntry>& library_tests() {
         {"library-sort-scroll", test_library_sort_scroll},
         {"library-column-order", test_library_column_order},
         {"library-layout", test_library_layout},
+        {"library-column-widths", test_library_column_widths},
         {"library-twin-rows", test_library_twin_rows},
         {"startup-screen", test_startup_screen},
     };

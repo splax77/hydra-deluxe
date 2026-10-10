@@ -105,11 +105,6 @@ struct ActivationsView {
     std::string timeline_end;
 };
 
-// The ImGui id of activation `number`'s backend table, given its three fixed
-// column widths in whole pixels (render_backend_table in ui/paths_tab.cpp says
-// why the widths are in it). The GUI test finds the table by the same call.
-std::string backend_table_id(int number, int w_timing, int w_chord, int w_points);
-
 // `timing` may be null: the record's own transfer scales are used
 // (see rate_activation).
 // `backend_limit_ms` hides backend rows beyond +/- that many ms, squeezed-out
@@ -294,6 +289,9 @@ public:
     PathsTabUi& ui() { return ui_; }
     const PathsTabUi& ui() const { return ui_; }
 
+    // The details details() last built, as the tab drew them; null before
+    // the first. For tests.
+    const Details* built_details() const { return details_builds_ > 0 ? &details_ : nullptr; }
     // How many times each view was built; for tests.
     int details_builds() const { return details_builds_; }
     int buttons_builds() const { return buttons_builds_; }

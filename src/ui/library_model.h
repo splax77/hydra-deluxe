@@ -11,6 +11,7 @@
 #define HYDRA_UI_LIBRARY_MODEL_H
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -87,6 +88,10 @@ std::string chip_label(StatusChip chip, size_t count);
 std::string best_path_label(store::RecordStatus status, const std::string& bestpath,
                             const store::PathSummary& summary);
 
+// The text the table shows in column `column` (kColumnTitle...) of `row`:
+// what each cell draws, and what the column's width is measured from.
+std::string library_cell_text(const LibraryRow& row, int column);
+
 // Rows the current query matches, by status. The chips show these; the
 // selected chip never changes them.
 struct ChipCounts {
@@ -110,6 +115,16 @@ public:
     // One chart's new answer, applied to every row that lists it (a chart can
     // sit in two folders). Returns how many rows changed.
     size_t set_summary_for(const std::string& md5, const store::SummaryLookup& lookup);
+
+    // Changes when set_charts replaces the rows, and at no other time: a new
+    // summary changes a row's text but not which rows there are. The table
+    // measures its column widths again when this moves.
+    std::uint64_t rows_version() const { return rows_version_; }
+    // The rows (indices into rows()) whose summary changed since the last
+    // call, which this call forgets. set_charts forgets them too, since every
+    // row is new then. The table re-measures just these rows' cells in the
+    // columns whose text reads the summary.
+    std::vector<size_t> take_summary_changes();
 
     void set_query(std::string_view text);
     void set_chip(StatusChip chip);
@@ -137,8 +152,14 @@ private:
     void resort();     // rebuilds sorted_ from rows_ and the sort
     void refilter();   // rebuilds order_ and counts_ from sorted_, the query and the chip
     void summaries_changed();
+    // Applies one lookup to row `index` and records the row for
+    // take_summary_changes when it changed. The one place a row's summary is
+    // replaced, so the record can never miss a row.
+    bool apply_summary_at(size_t index, const store::SummaryLookup& lookup);
 
     std::vector<LibraryRow> rows_;
+    std::uint64_t rows_version_ = 0;
+    std::vector<size_t> summary_changes_;  // take_summary_changes
     std::vector<size_t> sorted_;  // every row, in sort order
     std::vector<size_t> order_;
     std::string query_text_;

@@ -24,6 +24,7 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/user_messages.h"  // kDatabaseOpenSentence
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "db_file_util.h"  // write_junk_db
@@ -222,9 +223,7 @@ TEST_CASE("hydra_batch and hydra_fillcompare say why a database won't open") {
         INFO(exe.filename().u8string() << " printed: " << r.output);
         CHECK(r.exit_code == 2);
         // Two checks, because the console's text mode turns each "\n" into "\r\n".
-        CHECK(contains(r.output,
-                       "Hydra couldn't open its database (hydra.db). Check that no other copy "
-                       "of Hydra is running and that the Hydra folder isn't read-only."));
+        CHECK(contains(r.output, hydra::app::kDatabaseOpenSentence));
         CHECK(contains(r.output, "sqlite exec failed: file is not a database"));
     }
 }

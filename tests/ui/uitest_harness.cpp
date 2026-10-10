@@ -646,11 +646,20 @@ std::string escape_ref(const std::string& label) {
     return out;
 }
 
-float text_width(const char* s, ImFont* font) {
+hydra::ui::WidthOf text_measurer(ImFont* font) {
     const ImGuiStyle& st = ImGui::GetStyle();
     const float size = st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi;
     if (!font) font = ImGui::GetIO().FontDefault ? ImGui::GetIO().FontDefault : ImGui::GetFont();
-    return font->CalcTextSizeA(size, FLT_MAX, 0.0f, s).x;
+    return hydra::ui::measure_in_font(font, size);
+}
+
+float text_width(const char* s, ImFont* font) { return text_measurer(font)(s); }
+
+float rule_width(const char* header, const std::vector<std::string>& cells, ImFont* font) {
+    const std::vector<hydra::ui::ColumnSpec> specs = {{header, false, 0.0f, text_measurer(font)}};
+    const hydra::ui::MeasuredWidths measured = hydra::ui::measure_widths(
+        specs, cells.size(), [&](size_t r, size_t) { return cells[r]; });
+    return hydra::ui::place_columns(measured, specs, hydra::ui::TableRoom{}).widths[0];
 }
 
 // Scan testdata/input through the UI and land on the populated library.
