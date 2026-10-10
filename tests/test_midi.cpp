@@ -435,3 +435,19 @@ TEST_CASE("midi: the lean reader refuses a file where the full reader does") {
     CHECK_THROWS_WITH_AS(hydra::MidiFile::lean(not_midi.data(), not_midi.size(), lean_test_filter()),
                          "not a MIDI file: missing MThd header", hydra::MidiError);
 }
+
+TEST_CASE("midi: a file with no track chunk is refused by both readers") {
+    // A bare header, and a header whose length field points past the end of
+    // the file (the fuzzer's crash, testdata/fuzz/mid/), so the chunk walk
+    // finds no MTrk. The song parser reads the timing track by index, so both
+    // readers must refuse such a file.
+    const std::vector<uint8_t> bare = {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 1, 0, 0, 0, 96};
+    const std::vector<uint8_t> long_header = {'M', 'T', 'h', 'd', 0, 2, 0, 6, 0, 1, 0, 1, 0, 96,
+                                              'M', 'T', 'r', 'k', 0, 0, 0, 4, 0, 0xFF, 0x2F, 0};
+    for (const std::vector<uint8_t>& file : {bare, long_header}) {
+        CHECK_THROWS_WITH_AS(hydra::MidiFile{file}, "not a MIDI file: no MTrk track",
+                             hydra::MidiError);
+        CHECK_THROWS_WITH_AS(hydra::MidiFile::lean(file.data(), file.size(), lean_test_filter()),
+                             "not a MIDI file: no MTrk track", hydra::MidiError);
+    }
+}

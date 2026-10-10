@@ -160,8 +160,9 @@ bool meta_message(int meta_type, const uint8_t* payload, size_t len,
 
 // The header checks and the chunk walk both readers share. Sets the file's
 // format and ticks per beat, then hands each MTrk chunk's byte range to
-// on_track in file order. Throws MidiError on a file that is not MIDI or
-// counts time in SMPTE frames.
+// on_track in file order. Throws MidiError on a file that is not MIDI, counts
+// time in SMPTE frames, or holds no MTrk chunk (the song parser reads the
+// timing track by index, MidiFile::kTimingTrack).
 template <class OnTrack>
 void walk_chunks(const uint8_t* data, size_t size, int& format, int& ticks_per_beat,
                  OnTrack&& on_track) {
@@ -183,6 +184,7 @@ void walk_chunks(const uint8_t* data, size_t size, int& format, int& ticks_per_b
     ticks_per_beat = division;
 
     size_t pos = 8 + header_len;
+    bool any_track = false;
     while (pos < size) {
         if (pos + 4 > size ||
             data[pos] != 'M' || data[pos + 1] != 'T' ||
@@ -197,8 +199,10 @@ void walk_chunks(const uint8_t* data, size_t size, int& format, int& ticks_per_b
         size_t start = pos + 8;
         size_t end = std::min(start + chunk_len, size);
         on_track(start, end);
+        any_track = true;
         pos = start + chunk_len;
     }
+    if (!any_track) throw MidiError("not a MIDI file: no MTrk track");
 }
 
 // The one walk over a track's bytes: deltas, running status, metas, sysex and
