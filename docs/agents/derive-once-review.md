@@ -4,7 +4,7 @@ You are reviewing a change before it reaches `main`. You did not write it. Your 
 
 You run on Sonnet. You use no helper agents and start no background jobs; do every read yourself, in the foreground. Helper readers once parked a review round for 27 of its 35 minutes.
 
-Read `docs/agents/brief-preamble.md` first. Its status-line, reading, editing, test, commit and when-blocked rules apply to you. As the reviewer you commit nothing. As the checker you commit only the last fixes you make yourself (see "One review, one fix, one check").
+Read `docs/agents/brief-preamble.md` first. Its status-line, reading, editing, test, commit and when-blocked rules apply to you. You fix your own findings and commit the fixes (see "Review, fix, sign off").
 
 Append one line to `C:\Users\Patrick\.claude\hooks\state\status\<your agent id>.md` every 10 tool calls or 5 minutes, form `HH:MM done ... | next: ...`. Use `& "C:/Users/Patrick/.claude/hooks/status_append.ps1" <your agent id> "<line>"` to write it.
 
@@ -14,7 +14,7 @@ Every fact, rule or calculation in Hydra is derived in exactly one place. Everyt
 
 ## What you get
 
-The orchestrator gives you a **key** (a 40-character hash) and a **range**. For a merge the range is `main...<key>`; read it with `git diff main...<key>` and `git log main..<key>`. For a direct commit on `main` the range is the staged change; read it with `git diff --cached`. It also gives you the branch's worktree and the name (or agent id) of the agent that wrote the change. As the reviewer you are read-only throughout, and as the checker until your fix step: do not edit, stage, commit or check out anything.
+The orchestrator gives you a **key** (a 40-character hash) and a **range**. For a merge the range is `main...<key>`; read it with `git diff main...<key>` and `git log main..<key>`. For a direct commit on `main` the range is the staged change; read it with `git diff --cached`. It also gives you the branch's worktree, the name (or agent id) of the agent that wrote the change, and the task and session ids for your commit trailers. Until your review file is written, you are read-only: do not edit, stage, commit or check out anything. Then you fix your findings in the branch's worktree.
 
 It also hands you two things, so you do not redo work already done:
 
@@ -49,7 +49,7 @@ Rules: a grep that finds nothing proves nothing, so say where you looked. Never 
 
 **Read everything, once.** There is one review per change. Read every changed function in full, not only the diff hunks, and report every finding you can see in that one pass. Nobody gets a second look after you. One merge once took ten rounds partly because each round found the next layer of copies in code the earlier rounds had only skimmed.
 
-**A kind A fix ends in a scan row.** Removing the copy is not enough, because nothing stops the next agent writing it a third time. A kind A finding counts as fixed only when one of two things is true. Either the fix adds a row to `tests/test_single_owner.cpp` that would flag the removed copy if it came back. Or the fix's commit body says, in one sentence, why a text search can't catch this copy. The checker checks this when it signs off (see step 4 below).
+**A kind A fix ends in a scan row.** Removing the copy is not enough, because nothing stops the next agent writing it a third time. A kind A finding counts as fixed only when one of two things is true. Either the fix adds a row to `tests/test_single_owner.cpp` that would flag the removed copy if it came back. Or the fix's commit body says, in one sentence, why a text search can't catch this copy. You do one or the other when you fix it (step 3 below).
 
 **A comment that restates a rule is kind D.** A comment, header or doc line that spells out what a rule matches, instead of naming the function that owns it, is a second copy, even when it agrees with the code today. Name the owner it should point to.
 
@@ -57,25 +57,25 @@ Rules: a grep that finds nothing proves nothing, so say where you looked. Never 
 
 Under `tools/` (developer tools, not shipped in Hydra) a comment, header or doc line that states a rule differently from code that behaves correctly is a note, not a finding. List it under "Notes" and write `Verdict: CLEAN` if nothing else is wrong. A copy that can give two different answers on a real input is still a finding there, and so is a comment that would mislead someone into changing working code. In `src/`, `tests/` and every shipped file, every kind D wording finding still blocks. The user decided this in D59.
 
-## One review, one fix, one check
+## Review, fix, sign off
 
-The user decided in D61 that a review runs as one review, one fix and one check, with no further rounds. In D106 the user decided that each of those steps is a fresh agent. No agent is woken up again after its turn ends: the progress hook counts an agent's 30 minutes from its first call and never restarts the count, so an agent woken after a long review would be stopped at once.
-
-Your dispatch says whether you are the reviewer or the checker.
-
-**As the reviewer:**
+The user decided in D107 (`docs/audit/2026-10-03-fix-decisions.md`) that a change gets one review, by one fresh agent, which fixes its own findings and signs off. There is no separate fixer, no checker and no second round, and nothing goes back to the user. When the change also holds documents, you are their reviewer too: your dispatch hands you `docs/agents/doc-review.md` and the documents' keys, and you follow that page for them. No agent is woken up again after its turn ends: the progress hook counts an agent's 30 minutes from its first call and never restarts the count.
 
 1. **Review** the range as this page describes and write your review file.
-2. **If it is CLEAN,** submit it (see "Output") and report. You are done.
-3. **If it has findings,** do not submit. Report to the orchestrator: the review file's full path, the tip you reviewed, and one plain sentence per finding. Then end your turn. The orchestrator sends a fresh agent to fix them (`docs/agents/fix-round.md`), then a fresh checker.
+2. **If there are no findings,** submit it (see "Output") on the key you were given and report. You are done.
+3. **Fix every finding,** in the branch's worktree, one finding per commit. For each one:
+   - **Sweep the whole range for its question.** Do not stop at the copies you listed. Grep every file the range touches, and their callers, for the inputs the question reads: the fields, constants and units, not just the names. For a kind C finding, grep `tests/` for every other definition of the helper, by name and by its body.
+   - **Fold every copy into the owner.** Each copy calls the owner. A test calls production code or pins a literal from one run; it never computes an expected value.
+   - **Prove nothing is left.** Run the grep again. It must find only the owner, or only lines the scan already lists as known.
+   - **For kind A, add the scan row** to `tests/test_single_owner.cpp`, or give the one-sentence reason no text search can catch the copy (see "A kind A fix ends in a scan row").
+   - **Run the tests for that finding** with `-tc=` or `-sf=` filters, and the scan test `build-cpp\Release\hydra_tests.exe -tc="single-owner*"` if you added a row. Never the full suite.
+   - **Commit that finding alone.** The commit body carries the grep you ran and its one-line result, and for kind A the scan row's question or the reason no row fits. Then the trailers from the preamble, with your own agent id in `Agent:`.
+4. **Run the precheck** on the range, now ending at your last commit. It must print nothing new; fix anything it prints the same way.
+5. **Sign off.** Update your review file: the key is now your last commit, the verdict is `Verdict: CLEAN`, and under each finding say how you fixed it and in which commit. Submit it and report.
 
-**As the checker:** your dispatch gives you the branch's worktree, the range (now ending at the fixer's new tip), the first review file, the tip it reviewed, the fixer's new tip, the fixer's report, and the task and session ids for your commit trailers. You wrote none of them, and the code is the source of truth, not the report.
+While you fix, never write a new copy while removing an old one: if a fix needs a helper, look in the owner or `tests/` for one first. A comment that describes what a rule matches is a new copy too; name the owner instead. If a finding turns out to be wrong when you look closer, leave the code and say why under Notes, with the truth table that shows the difference.
 
-4. **Check the fixes.** Read `git diff <the tip reviewed> <the fixer's new tip>` and the functions that diff touches. Check that each finding is fixed at every copy, and that the diff added no new copy, including a comment that restates a rule. For each kind A finding, check that the fix added a scan row whose must-match examples include the removed copy's line, or that its commit body gives the one-sentence reason a text search can't catch it. A row that would not flag the copy does not count.
-5. **Fix anything left yourself,** in the branch's worktree. Follow the preamble's editing and commit rules, with your own agent id in the `Agent:` trailer. Run the precheck on the range and the named tests for what you touched. Small leftovers are the expected case. A missing scan row for a kind A fix is one of them: add the row yourself.
-6. **Write the final review** on the tip you end on: your own last commit from step 5, or the fixer's new tip if you committed nothing. `Verdict: CLEAN`. List what the fixer fixed and what you fixed, with commit hashes. Submit it and report.
-
-The one exception: a leftover that needs the user (a new number, a change to what the user sees or what is stored, a choice between two behaviours) or that is too big to fix in about 30 tool calls. Do not fix it. Submit `Verdict: FINDINGS` naming it, and report it to the orchestrator, which takes it to the user. If your dispatch has no fixer's new tip, stop and report that.
+**A finding you should not fix yourself.** Some fixes need the user: a new number (a threshold, floor, tolerance or band), a change to a displayed text, a score or a stored record, or a choice between two behaviours. Do not make those changes. Write the finding under Notes as a question for the user, in game terms, and sign off CLEAN on the rest. The orchestrator passes your Notes to the user. It does not hold the merge for them.
 
 The merge gate accepts your CLEAN review even though you wrote some of the commits, as long as you did not write all of them.
 
@@ -83,25 +83,25 @@ The merge gate accepts your CLEAN review even though you wrote some of the commi
 
 Do not rebuild the old code to see a test fail first. Quote the implementer's red line from its report instead. Two reviewers once spent nine minutes rebuilding at the base commit to prove what the report already showed.
 
-You may make one build to prove a disagreement between two copies, and one more if your own fixes in step 5 touch C++. Then run `build-cpp\Release\hydra_tests.exe` with a `-tc=` filter, or `hydra_replay`, one at a time. Never run the full suite.
+You may make one build to prove a disagreement between two copies, and one more if your own fixes in step 3 touch C++. Then run `build-cpp\Release\hydra_tests.exe` with a `-tc=` filter, or `hydra_replay`, one at a time. Never run the full suite.
 
 ## Output
 
-Write your review to a file in your scratchpad. Submit it when the review is CLEAN on the first pass, or at step 6, or for the one exception; never at step 3. The file must contain these two lines exactly, each on its own line:
+Write your review to a file in your scratchpad. Submit it once, at step 2 or step 5. The file must contain these two lines exactly, each on its own line:
 
 ```
-Key: <the 40-character hash of the tip you are signing off: as the reviewer, the key you were given; as the checker, the tip from step 6>
+Key: <the 40-character hash of the tip you are signing off: the key you were given if you committed nothing, else your last commit>
 Verdict: CLEAN
 ```
 
-Use `Verdict: FINDINGS` instead if there is at least one finding. Write `CLEAN` only when there are none. Then, in plain English, one short paragraph each:
+Then, in plain English, one short paragraph each:
 
 - **Questions this change answers**: each one, and the function that owns it after this change.
-- **Findings**: one paragraph per finding. For each, the kind letter, the question, every copy (function, file, lines), the truth table when the copies are worded differently, the input where they disagree if they do, and the owner you propose. For a B to E finding, quote the precheck line it came from.
+- **Findings**: one paragraph per finding. For each, the kind letter, the question, every copy (function, file, lines), the truth table when the copies are worded differently, the input where they disagree if they do, and the owner. For a B to E finding, quote the precheck line it came from. Then how you fixed it, with the commit hash.
 - **Precheck lines dropped**: any precheck line you found not to be a real copy, with one sentence why.
-- **Notes**: things worth fixing that don't block, such as wording under `tools/` (see "Developer tools: wording is a note") or a gap in a single owner's list. If the precheck printed a large-range note, quote it here word for word, and repeat it in your final message. It is a warning for the orchestrator, not a finding, so it never changes the verdict.
+- **Notes**: things worth fixing that don't block, such as a question for the user (see "A finding you should not fix yourself"), wording under `tools/` (see "Developer tools: wording is a note") or a gap in a single owner's list. If the precheck printed a large-range note, quote it here word for word, and repeat it in your final message. It is a warning for the orchestrator, not a finding, so it never changes the verdict.
 - **Touched, already on the fix list**: audit findings this change moves without fixing.
-- **Proposed scan rules**: for any finding a grep can guard, a row for `tests/test_single_owner.cpp`: the question, the owner file, and a pattern with two lines it must match and one it must not. Every kind A finding gets one here, or one sentence saying why a text search can't catch it.
+- **Scan rows added**: for each kind A finding, the row you added to `tests/test_single_owner.cpp` (its question and owner file), or the one sentence saying why a text search can't catch it.
 - **Where I looked**: files and functions read.
 
 Submit with:
@@ -112,4 +112,12 @@ Submit with:
 
 Run it in its own call, with nothing before or after it. Type the key and the path out in full: the gate refuses a `$variable`, a backtick, brackets, `;`, `&`, `|`, `<` or `>` inside either one. If your file path has one of those, copy the file to a plain path first.
 
-Your final message: the verdict, the key, the review file path, and one plain sentence per finding, saying who fixed it and in which commit. For a kind A finding, that sentence also names the scan row's question, or the reason no row can catch it. End with the precheck's large-range note, if it printed one.
+Your final message: the key you signed off, the review file path, and one plain sentence per finding, saying how you fixed it and in which commit. For a kind A finding, that sentence also names the scan row's question, or the reason no row can catch it. Then any questions for the user from your Notes. End with the precheck's large-range note, if it printed one.
+
+## For the orchestrator
+
+These rules are for the session that runs the merge.
+
+Before the review, run the precheck on the range and fix what it prints. Keep merges small enough to review in one read. The precheck prints the range's size, and a large-range note when it is over the threshold that `tools/derive_once_precheck.ps1` owns. A range with that note should go in as two or more merges.
+
+Dispatch one fresh Sonnet reviewer per change. Give it the key, the range, the branch's worktree, the precheck output, the author's report, the author's name or agent id (from its spawn result), and the task and session ids for its commit trailers. When the change holds documents, give it `docs/agents/doc-review.md` too, with each document's key and the sources you declared for it. When it reports, check its signed-off tip against the branch, run the full suite once on the joined tree, and merge that tip. To see what main still needs before a merge, run `& "C:/Users/Patrick/.claude/hooks/main_move_check.ps1" <branch> -Repo "<main checkout>"`; it asks the ref gate's own judge and changes nothing. A hook runs the same check before every `git merge` on main and denies one the ref gate would refuse, so a refused merge never leaves the checkout rewritten. Pass any questions from its Notes to the user. Never start another review of the same change.

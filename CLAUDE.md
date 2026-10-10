@@ -20,7 +20,7 @@ To verify anything in the GUI, run `hydra_uitest` (headless, drives the real UI 
 
 ### Derive-once review
 
-Merges and commits on `main` that touch code need a review from a fresh agent first. A hook enforces it. Dispatch the reviewer with `docs/agents/derive-once-review.md`, the key and the range the hook's message gives. Only the user can skip a review, by typing `waive derive-once <key>` in chat. Never ask the user to waive one to save time.
+Merges and commits on `main` that touch code need a review from a fresh agent first. A hook enforces it. Dispatch the reviewer with `docs/agents/derive-once-review.md`, the key and the range the hook's message gives. When the change also holds documents, the same reviewer reviews them with `docs/agents/doc-review.md` (rule 5). Only the user can skip a review, by typing `waive derive-once <key>` in chat. Never ask the user to waive one to save time.
 
 ### Doc review
 
@@ -34,9 +34,9 @@ These hold for the main session and every agent it sends out. Hooks enforce most
 2. Planning agents run on Fable. Code executors run on Opus. Code reviewers run on Sonnet. Read-only scouts run on Sonnet.
 3. No work starts without the user's approval. Every plan and every build waits for the user's yes before it begins. In this rule a build means any piece of work: writing code, editing hooks, or launching agents to do either. A change that only touches code needs no approval of its design: pick the design and recommend it, but the build still waits for the yes. A change to a display in the app or a stored record also takes its design to the user first. When the user asks for one specific edit, the request is the approval. Compiling and running tests inside approved work need no separate yes.
 4. Agents never stall or go quiet for long. When they hit a problem, they fail loudly: stop and say what broke.
-5. A reviewer agent must clear the derive-once audit before a change merges (see above). One round of review at most: the reviewer reports, a fresh agent fixes once, and a second fresh agent checks the fixes, fixes anything left and signs off. No agent is woken up again after its turn ends. When the main session wrote a document, it makes the fixes itself; the reviewer and the checker are still fresh agents.
+5. One review per change, then done. One fresh reviewer agent reads the change's code and documents, fixes every finding itself, commits its fixes and signs off. Then the change merges. There is no separate fixer, no checker and no second round, and nothing goes back to the user (D107). No agent is woken up again after its turn ends.
 6. Agents run in parallel, in workflows, while the main session merges. Waves of parallel agents are fine. Never queue independent tasks one after another.
-7. Agents write a status line every 10 tool calls and every 5 minutes. At 100 tool calls an agent starts wrapping up: it commits what it has and hands the rest to a fresh agent. 150 tool calls is a hard stop (80 for a reviewer). Time works the same way. At 20 minutes of real time an agent starts wrapping up, and 30 minutes is a hard stop. Whichever limit comes first applies.
+7. Agents write a status line every 10 tool calls and every 5 minutes. At 100 tool calls an agent starts wrapping up: it commits what it has and hands the rest to a fresh agent. 150 tool calls is a hard stop. Time works the same way. At 20 minutes of real time an agent starts wrapping up, and 30 minutes is a hard stop. Whichever limit comes first applies.
 8. Nobody runs a full library test without the user's explicit permission, asked for in chat first. That covers the main session and every agent, and any run over the user's whole song library (for example `hydra_batch` with no arguments, or a whole-library compare or timing run). Ask only when nothing smaller can answer the question. Otherwise test on the checked-in chart corpus in `testdata/input` (about 115 charts) or on the few charts the change touches.
 9. Never trust another agent's summary or the comments it left behind. The code and the source data are the source of truth. Check a claim against them before you repeat it or act on it.
 

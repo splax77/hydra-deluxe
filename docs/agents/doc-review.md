@@ -20,7 +20,7 @@ The agent that dispatched you gives you five things. The **key** is a 40-charact
 
 Before anything else, run `& "C:/Users/Patrick/.claude/hooks/doc_review_key.ps1" "<saved text path>"`. If it does not print the key you were given, stop and report both keys. You would be reviewing a different text from the one the gate will check.
 
-As the reviewer you are read-only throughout. As the checker you are read-only until your fix step. Never run `doc_review_sources.ps1`: it records whoever runs it as the document's author, and the submit gate refuses a review from an author (plan sections 3.7 and 4). Never do the publish step yourself; the author does that with your final text.
+Until your review file is written you are read-only; then you fix the text yourself (see "Review, fix, sign off"). Never run `doc_review_sources.ps1`: it records whoever runs it as the document's author, and the submit gate refuses a review from an author (plan sections 3.7 and 4). Never do the publish step yourself; the author does that with your final text.
 
 If the dispatch is missing the sources file, stop and report it. A review with nothing to trace against is a style check, and the submit gate refuses it anyway.
 
@@ -74,47 +74,37 @@ Do not judge whether the text "reads like AI". That check is unreliable [S1], an
 
 A wrong claim counts worse than a gap the document flags honestly [S8]. A sentence that says "one run, spread unknown" or "not checked; I looked in X" is correct, and it is not a finding. So a finding never says "just delete the caveat". Its fix is to source the claim, mark it unverified, or correct it.
 
-## One review, one fix, one check
+## Review, fix, sign off
 
-The user decided in D61 (`docs/audit/2026-10-03-fix-decisions.md`) that a review runs as one review, one fix and one check, with no further rounds. In D106 the user decided that no agent is woken up again after its turn ends. The progress hook counts an agent's 30 minutes from its first call and never restarts the count, so an agent woken after a long review would be stopped at once. So the review and the check are each a fresh agent. The main session is the author of plans and decision questions (plan section 3.4) and of any document it wrote, and then it makes the fix itself. Otherwise a fresh agent the main session sends makes the fix (D106 item 5).
-
-Your dispatch says whether you are the reviewer, the fixer or the checker.
-
-**As the reviewer:**
+The user decided in D107 (`docs/audit/2026-10-03-fix-decisions.md`) that a document gets one review, by one fresh agent, which fixes its own findings and signs off. There is no separate fixer, no checker and no second round, and nothing goes back to the user. When the change also holds code, you review the code too, with `docs/agents/derive-once-review.md`. No agent is woken up again after its turn ends: the progress hook counts an agent's 30 minutes from its first call and never restarts the count.
 
 1. **Review** the document as this page describes, and write your review file.
-2. **If it is CLEAN,** submit it (see "Output") and report. You are done.
-3. **If it has findings,** do not submit. Report to the main session: the review file's full path and one plain sentence per finding. Then end your turn.
+2. **If there are no findings,** submit it (see "Output") on the key you were given and report. You are done.
+3. **Fix every finding** against the sources, and add no new unsourced claim while you do. Edit the text where the author will publish it from: the file in the branch's worktree for a commit, the page file for an Artifact, the file at `planFilePath` for a plan, or the file the author will post for `gh` text. For a commit, commit your fix in the branch's worktree, with the preamble's trailers and your own agent id in `Agent:`. For a decision question, copy the pending JSON to your scratch folder and edit only its strings; once you have its final key (next step), save it as `hooks\state\doc_review\fixed\<that key>.json`. The key helper puts question JSON into one standard layout before hashing, so layout changes do not matter. If a finding turns out to be wrong when you look closer, leave the text and say why under Notes.
+4. **Compute the final key** with `& "C:/Users/Patrick/.claude/hooks/doc_review_key.ps1" "<fixed file>"`. Nobody computes a key any other way (plan section 3.8).
+5. **Sign off.** Update your review file: the key is the final key, `Base:` names the key you were given, the verdict is `Verdict: CLEAN`, and under each finding say how you fixed it. Submit it and report. When the text you sign off is a plan, a page or `gh` text in the author's file, name that file in the submit (see "Output") so the gate keeps the text you signed off.
 
-**As the fixer:** your dispatch gives you the first review file and the file to edit. You did not write the document or the review. Check each finding against the sources before you change anything, fix the ones that are right, and edit only that file. Leave the edit uncommitted: the commit waits for the check. If a finding is wrong, leave the text and say why in your report. Never run `doc_review_sources.ps1` and never submit. Report each finding with what you changed, then end your turn.
+**A finding you should not fix yourself.** Some fixes need the user: a new number, a change to what the user sees or what is stored, or a choice between two behaviours. Do not make those changes. Write the finding under Notes as a question for the user and sign off CLEAN on the rest. The main session passes your Notes to the user. It does not hold the publish for them.
 
-**As the checker:** your dispatch gives you the five things for the key the first review was on, the first review file, and where the fixed text is. You wrote none of them. Skip the cold read: your review file copies the first review's Restatement and Findings, and says under each finding whether it was fixed, and by whom.
-
-4. **Check the fixes.** Read the fixed text and check each finding there, against the sources. Check also that the fix added no new unsourced claim.
-5. **Fix anything left yourself.** Small leftovers are the expected case. Edit the text where the dispatch says the author will publish it from: the file in the branch's worktree for a commit, the page file for an Artifact, the file at `planFilePath` for a plan, or the file the author will post for `gh` text. For a commit, do not commit your fix. This overrides the preamble's commit rule. The submit gate refuses a reviewer named in the `Agent:` trailer of a commit that holds the document, so leave the file edited and uncommitted, and name it in your report; the author commits it. For a decision question, start from the fixed question your dispatch names, never the first review's pending JSON. With nothing left to fix, sign off that file's key at step 6. Otherwise copy it to your scratch folder and edit only its strings; step 6 gives the new key, and then you save it as `hooks\state\doc_review\fixed\<that key>.json`. The key helper puts question JSON into one standard layout before hashing, so layout changes do not matter.
-6. **Compute the final key** with `& "C:/Users/Patrick/.claude/hooks/doc_review_key.ps1" "<fixed file>"`. Nobody computes a key any other way (plan section 3.8). Write the final review on that key, with `Base:` naming the key you were given, and `Verdict: CLEAN`. Submit it and report. When the text you sign off is a plan, a page or `gh` text in the author's file, name that file in the submit (see "Output"), whoever edited it, so the gate keeps the text you signed off.
-
-The one exception: a leftover that needs the user, or is too big to fix in about 30 tool calls. A new number, a change to what the user sees or what is stored, or a choice between two behaviours needs the user. The 30 is the main session's guide, not a user decision (D61). Do not fix it. Submit `Verdict: FINDINGS` naming it, and report it; the main session takes it to the user. If your dispatch does not say where the fixed text is, stop and report that.
-
-The gate accepts your CLEAN review of the text you fixed, because its `Base:` line leads back to a text someone else wrote. How it checks that chain is the library's rule, in `C:\Users\Patrick\.claude\hooks\lib\doc_review_rules.ps1` (plan section 3.8).
+The gate accepts your CLEAN review of the text you fixed, because its `Base:` line leads back to a text someone else wrote. It also accepts your own commit of that fix, because you did not write the version you were given. How it checks both is the library's rule, in `C:\Users\Patrick\.claude\hooks\lib\doc_review_rules.ps1` (plan section 3.8).
 
 ## Output
 
 Write your review to a file in your scratchpad. Submit it when the review is CLEAN on the first pass, or at step 6, or for the one exception; never at step 3. The file must contain these lines exactly, each on its own line:
 
 ```
-Key: <the 40-character key of the text you are signing off: the key you were given, or the new key from step 6>
+Key: <the 40-character key of the text you are signing off: the key you were given, or the final key of your fixed text>
 Base: <the key you were given; only when the text you sign off differs from it>
 Verdict: CLEAN
 ```
 
-Use `Verdict: FINDINGS` instead if there is at least one finding left. Write `CLEAN` only when there are none. Then, in plain English, one short paragraph each:
+Then, in plain English, one short paragraph each:
 
-- **Restatement**: your step 1 sentences, as you wrote them before opening the sources. The checker copies the first review's.
-- **Findings**: one paragraph per finding, most serious first. For each, quote the claim, name the source you opened, and say what that source actually says. Then give the fix.
+- **Restatement**: your step 1 sentences, as you wrote them before opening the sources.
+- **Findings**: one paragraph per finding, most serious first. For each, quote the claim, name the source you opened, and say what that source actually says. Then say how you fixed it.
 - **Numbers checked**: each number you recomputed or traced, and its result. A small table (claim, source, result) is fine when there are more than a few.
 - **References opened**: each reference you opened, and whether it says what it is cited for.
-- **Notes**: things worth fixing that do not block.
+- **Notes**: things worth fixing that do not block, including any question for the user.
 - **Where I looked**: the files, folders, commits and pages you read, and what you could not check and why.
 
 Submit with:
@@ -123,7 +113,7 @@ Submit with:
 & "C:/Users/Patrick/.claude/hooks/doc_review_submit.ps1" <key> "<full path to your review file>"
 ```
 
-When the text you sign off at step 6 is a plan, a page or `gh` text in the author's file, add that file's full path as a third word, whoever edited it:
+When the text you sign off is a plan, a page or `gh` text in the author's file, add that file's full path as a third word:
 
 ```
 & "C:/Users/Patrick/.claude/hooks/doc_review_submit.ps1" <key> "<full path to your review file>" "<full path to the fixed file>"
@@ -133,7 +123,7 @@ The helper then keeps a copy of the text you signed off, so the next edit of tha
 
 Run it in its own call, with nothing before or after it. Type the key and the paths out in full, with no variables and no special characters; the submit gate refuses any other shape (plan section 4 describes it). If a file path has unusual characters, copy the file to a plain path first.
 
-Your final message: the verdict, the key, the base if any, the review file path, where the final text is, and one plain sentence per finding saying who fixed it.
+Your final message: the key you signed off, the base if any, the review file path, where the final text is (with the commit hash for a commit), one plain sentence per finding saying how you fixed it, and any questions for the user from your Notes.
 
 ## The edit review
 
@@ -149,4 +139,4 @@ You get this kind for a decision question that is not already inside a reviewed 
 
 There is no cold read and no style pass. Write your own pick from the sources first [S19][S5]. Then do four checks, and nothing else. The predicate the question describes is quoted from the code, and the quote matches the code. Each option has a concrete example from each end. The options and their order do not lean toward one answer. Every number in the question names its source.
 
-The review, the fix and the check, the output lines and the submit are the same as above. Write the fixed question as steps 5 and 6 say, under `hooks\state\doc_review\fixed\`.
+The review, the fix, the output lines and the submit are the same as above. Save the fixed question under `hooks\state\doc_review\fixed\`, as "Review, fix, sign off" says.

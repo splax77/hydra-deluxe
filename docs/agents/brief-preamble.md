@@ -72,13 +72,13 @@ If your last two status lines show the same step and no new result, you are not 
 
 ## Review findings
 
-No agent is woken up again after its turn ends. When a review finds problems in your change, the main session sends a fresh agent to fix them and another fresh agent to check the fixes (D106 in `docs/audit/2026-10-03-fix-decisions.md`). Your job ends with your report. If your brief sends you to fix review findings in code, follow `docs/agents/fix-round.md`; in a document, follow `docs/agents/doc-review.md`.
+No agent is woken up again after its turn ends. Your job ends with your report. One fresh reviewer then reviews your change, fixes what it finds itself and signs off (D107 in `docs/audit/2026-10-03-fix-decisions.md`). Nothing comes back to you.
 
 ## The code is the source of truth
 
 Never trust another agent's summary, report or leftover comments. The code and the source data are the source of truth. Before you repeat a claim or act on it, check it against them.
 
-This is about claims of fact. Follow your brief's instructions. Treat a reviewer's finding as a claim: check it in the code, fix it if it is right, and if it is wrong, say why in your report (`docs/agents/fix-round.md` says how).
+This is about claims of fact. Follow your brief's instructions. Treat a claim in a report or a review as a claim: check it in the code before you act on it.
 
 ## When blocked
 
