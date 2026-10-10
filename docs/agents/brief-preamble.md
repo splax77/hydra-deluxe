@@ -72,7 +72,7 @@ If your last two status lines show the same step and no new result, you are not 
 
 ## Review findings
 
-No agent is woken up again after its turn ends. Your job ends with your report. One fresh reviewer then reviews your change, fixes what it finds itself and signs off (D107 in `docs/audit/2026-10-03-fix-decisions.md`). Nothing comes back to you.
+No agent is woken up again after its turn ends. Your job ends with your report. One fresh reviewer then reviews your change, fixes what it finds itself and signs off (D107 in `docs/audit/2026-10-03-fix-decisions.md`). Nothing comes back to you. If you are that reviewer, nobody reviews your fixes; your own sign-off is the last check.
 
 ## The code is the source of truth
 

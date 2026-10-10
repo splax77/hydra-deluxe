@@ -16,7 +16,7 @@ AI-written documents keep shipping four kinds of failure that a reader cannot se
 
 ## What you get
 
-The agent that dispatched you gives you five things. The **key** is a 40-character hash of the document's exact text; plan section 4 of `docs/superpowers/plans/2026-10-08-doc-review-gate.md` says how it is made. The **saved text** is the exact document that was about to go out: a file under `C:\Users\Patrick\.claude\hooks\state\doc_review\pending\`, or for a commit the file at the branch's tip in its worktree. The **sources file**, at `hooks\state\doc_review\sources\<key>.txt`, lists what the author worked from, one source per line with a few words on what each supports. The **kind** of review is full, edit or question. For an edit review you also get the reviewed version (the last version a reviewer signed off, under `hooks\state\doc_review\reviewed\`) and the changed lines. Your `Base:` line never names the reviewed version; it names only the key you were given (step 6). Last, the dispatch names the author: an agent id, or the main session.
+The agent that dispatched you gives you five things. The **key** is a 40-character hash of the document's exact text; plan section 4 of `docs/superpowers/plans/2026-10-08-doc-review-gate.md` says how it is made. The **saved text** is the exact document that was about to go out: a file under `C:\Users\Patrick\.claude\hooks\state\doc_review\pending\`, or for a commit the file at the branch's tip in its worktree. The **sources file**, at `hooks\state\doc_review\sources\<key>.txt`, lists what the author worked from, one source per line with a few words on what each supports. The **kind** of review is full, edit or question. For an edit review you also get the reviewed version (the last version a reviewer signed off, under `hooks\state\doc_review\reviewed\`) and the changed lines. Your `Base:` line never names the reviewed version; it names only the key you were given (step 5 of "Review, fix, sign off"). Last, the dispatch names the author: an agent id, or the main session.
 
 Before anything else, run `& "C:/Users/Patrick/.claude/hooks/doc_review_key.ps1" "<saved text path>"`. If it does not print the key you were given, stop and report both keys. You would be reviewing a different text from the one the gate will check.
 
@@ -90,7 +90,7 @@ The gate accepts your CLEAN review of the text you fixed, because its `Base:` li
 
 ## Output
 
-Write your review to a file in your scratchpad. Submit it when the review is CLEAN on the first pass, or at step 6, or for the one exception; never at step 3. The file must contain these lines exactly, each on its own line:
+Write your review to a file in your scratchpad. Submit it once, at step 2 or step 5 of "Review, fix, sign off". The file must contain these lines exactly, each on its own line:
 
 ```
 Key: <the 40-character key of the text you are signing off: the key you were given, or the final key of your fixed text>
