@@ -157,15 +157,24 @@ ScreenRect title_band(const ScreenRect& r) {
     return {r.left, r.top, r.right, r.top + kMinVisiblePx};
 }
 
+// How far two rectangles overlap across and down; zero or less on an axis
+// where they miss.
+struct Overlap {
+    int w, h;
+};
+Overlap overlap_of(const ScreenRect& a, const ScreenRect& b) {
+    return {std::min(a.right, b.right) - std::max(a.left, b.left),
+            std::min(a.bottom, b.bottom) - std::max(a.top, b.top)};
+}
+
 }  // namespace
 
 bool placement_on_screen(const ScreenRect& r, const std::vector<ScreenRect>& work_areas) {
     if (r.width() < kMinVisiblePx || r.height() < kMinVisiblePx) return false;
     const ScreenRect band = title_band(r);
     for (const ScreenRect& area : work_areas) {
-        const int w = std::min(band.right, area.right) - std::max(band.left, area.left);
-        const int h = std::min(band.bottom, area.bottom) - std::max(band.top, area.top);
-        if (w >= kMinVisiblePx && h >= kMinVisiblePx / 2) return true;
+        const Overlap o = overlap_of(band, area);
+        if (o.w >= kMinVisiblePx && o.h >= kMinVisiblePx / 2) return true;
     }
     return false;
 }
@@ -233,11 +242,11 @@ const ScreenRect* area_overlapping_most(const ScreenRect& r, const std::vector<S
     const ScreenRect* best = nullptr;
     long long best_overlap = 0;
     for (const ScreenRect& area : areas) {
-        const long long w = std::min(r.right, area.right) - std::max(r.left, area.left);
-        const long long h = std::min(r.bottom, area.bottom) - std::max(r.top, area.top);
-        if (w <= 0 || h <= 0) continue;
-        if (w * h > best_overlap) {
-            best_overlap = w * h;
+        const Overlap o = overlap_of(r, area);
+        if (o.w <= 0 || o.h <= 0) continue;
+        const long long size = static_cast<long long>(o.w) * o.h;
+        if (size > best_overlap) {
+            best_overlap = size;
             best = &area;
         }
     }
