@@ -429,8 +429,8 @@ Start it by hand from the Actions tab after a change to memory-heavy code.
 
 On pushes to `main` only, a `coverage` job builds the tests with the `coverage`
 preset and writes the coverage report (see "The coverage report" above). It
-never fails a run over a low number. Its proving run, on 2026-10-10, took
-11.5 minutes.
+never fails a run over a low number. Its proving run (run 38083092803, on
+2026-10-10) took 11.5 minutes.
 
 Another job runs the tool tests above with no C++ build. It
 checks out the whole history, because the precheck self-test checks two real

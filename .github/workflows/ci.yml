@@ -107,8 +107,9 @@ jobs:
     name: Coverage report (Windows, Release)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: windows-2025
-    # The proving run on 2026-10-10 (run 38083092803) took 11.5 minutes. Each
-    # step has its own cap, set from its time in that run with room to spare.
+    # The caps here, the job's and each step's, are set from the proving run's
+    # times with room to spare. "Continuous integration" in docs/development.md
+    # gives that run and its time.
     timeout-minutes: 20
     defaults:
       run:
@@ -147,7 +148,7 @@ jobs:
       # ends, with the command's exit code. No collector outlives its step.
       # The tool's own options go before "--"; everything after it is the
       # command. (A collector started with --server-mode --background hung
-      # the first run on main, run 38076842216, for 70 minutes.)
+      # the first run on main, run 38076842216, until it was cancelled.)
       # The unit-test slices run one at a time here. The GUI runner keeps its
       # own job count (tests/ui/uitest_main.cpp), as in the other jobs.
       - name: Run hydra_tests
