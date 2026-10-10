@@ -29,6 +29,7 @@
 #include "temp_util.h"
 #include "ui/preview_load_job.h"
 #include "ui/widgets.h"  // progress_fraction
+#include "wait_util.h"
 
 #ifndef HYDRA_TESTDATA_DIR
 #error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
@@ -38,6 +39,7 @@ using hydra::ui::ByteRateClock;
 using hydra::ui::PreviewLoadJob;
 using P = PreviewLoadJob::Progress;
 using S = PreviewLoadJob::Step;
+using testwait::wait_until;
 
 namespace {
 
@@ -67,8 +69,7 @@ hydra::store::ChartLibraryEntry entry_for(const std::string& notespath) {
 
 template <class Job>
 void wait_finished(const Job& job) {
-    for (int i = 0; i < 1200 && !job.finished(); ++i) Sleep(50);
-    REQUIRE(job.finished());
+    wait_until([&] { return job.finished(); }, "the load job to finish");
 }
 
 // ---- a big Ogg Opus file from the test fixture -----------------------------
@@ -268,16 +269,21 @@ TEST_CASE("a Preview load cancelled while opening a 300 MB Opus stem stops promp
         PreviewLoadJob job(entry_for(notes), true, true, hydra::Difficulty::Expert, std::nullopt,
                            4);
         job.start();
-        Sleep(50);
+        // Cancel only once the stem's open has reported bytes. A cancel that
+        // lands before the open starts reads 0 bytes at both ends and would
+        // pass without testing the 4 MB step. Capped at 10 s.
+        const auto started = std::chrono::steady_clock::now();
+        while (job.progress().bytes_done == 0 && !job.finished() &&
+               std::chrono::steady_clock::now() - started < std::chrono::seconds(10))
+            Sleep(1);
+        REQUIRE_MESSAGE(job.progress().bytes_done > 0, "the open never reported a byte in 10 s");
         REQUIRE_FALSE(job.finished());  // still opening the big stem
         const auto t0 = std::chrono::steady_clock::now();
         job.cancel();
         // Read after the cancel, so every byte past this mark was opened
         // while the job already knew it was cancelled.
         const uint64_t at_cancel = job.progress().bytes_done;
-        while (!job.finished() &&
-               std::chrono::steady_clock::now() - t0 < std::chrono::seconds(10))
-            Sleep(1);
+        wait_until([&] { return job.finished(); }, "the cancelled load to finish");
         const double ms = std::chrono::duration<double, std::milli>(
                               std::chrono::steady_clock::now() - t0)
                               .count();
@@ -285,7 +291,6 @@ TEST_CASE("a Preview load cancelled while opening a 300 MB Opus stem stops promp
         CAPTURE(ms);
         CAPTURE(at_cancel);
         CAPTURE(at_stop);
-        CHECK(job.finished());
         // Prompt means the cancel was noticed at the next 4 MB report, not
         // after the whole 300 MB file. Counted in bytes, not milliseconds: a
         // busy machine slows the stop but never moves where it happens.

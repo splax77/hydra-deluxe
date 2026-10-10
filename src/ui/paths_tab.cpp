@@ -83,8 +83,7 @@ void flow_next(float w, float spacing) {
 // else on the next.
 void align_right(float w) {
     if (fits_on_line(w, ImGui::GetStyle().ItemSpacing.x)) ImGui::SameLine();
-    const float room = ImGui::GetContentRegionAvail().x - w;
-    if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);
+    move_to_right_edge(w);
 }
 
 // ---- the path list ----------------------------------------------------------

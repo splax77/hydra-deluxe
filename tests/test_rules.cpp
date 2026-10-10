@@ -458,15 +458,11 @@ TEST_CASE("rules: the default stamp is built once and matches a fresh record") {
     CHECK(core::RulesStamp::none().retired_auto == core::kNoRulesFingerprint);
 }
 
-TEST_CASE("rules: a run is stamped with the rules fingerprint at every cap") {
+TEST_CASE("rules: a run is stamped with the rules fingerprint at cap 4 and at cap 8") {
+    const Song& song = corpus::song(corpus::first_chart_with_notes(), true, true);
     SearchSettings settings;
-    for (const std::string& path : corpus::chart_paths()) {
-        Song song = load_songpath(path, true, true);
-        if (song.is_empty()) continue;
-        settings.sp_cap = 8;
-        CHECK(analyze_chart(song, settings).rules_fingerprint == settings.rules.fingerprint());
-        settings.sp_cap = 4;
-        CHECK(analyze_chart(song, settings).rules_fingerprint == settings.rules.fingerprint());
-        break;
-    }
+    settings.sp_cap = 8;
+    CHECK(analyze_chart(song, settings).rules_fingerprint == settings.rules.fingerprint());
+    settings.sp_cap = 4;
+    CHECK(analyze_chart(song, settings).rules_fingerprint == settings.rules.fingerprint());
 }
