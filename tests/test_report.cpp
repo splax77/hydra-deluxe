@@ -476,72 +476,28 @@ TEST_CASE("generate_report reports a 1.0-fills database under the 1.0 rule") {
     CHECK(ch11.why_empty == report::nothing_under_settings(4, "Clone Hero 1.1 fills"));
 }
 
-TEST_CASE("collect_rows: a blank or old-placeholder song name reads (unknown)") {
+TEST_CASE("collect_rows: the library names go through display_title, display_artist and "
+          "display_charter") {
+    // test_song.cpp pins what those three do. This checks only that the page
+    // calls them: one tagged name each. The page names a chart by its library
+    // row (the naming copy, kNamingCopiesSql's pick), so a rescan's names
+    // replace store_tied's own.
     store::RecordStore store(":memory:");
-    // Library names written before the fallback existed, a title with a
-    // bold tag, and H1's title made only of tags. Each pairs with the name
-    // the report shows. The page names a chart by its library row (the
-    // naming copy, kNamingCopiesSql's pick).
-    const std::vector<std::pair<std::string, std::string>> names = {
-        {"", kUnknownTitle},
-        {"<unknown title>", kUnknownTitle},
-        {"<b>Bold</b> Song", "Bold Song"},
-        {test::kTagOnlyTitle, kUnknownTitle},
-    };
     std::vector<store::ChartLibraryEntry> library;
-    for (size_t i = 0; i < names.size(); ++i) store_tied(store, library, "u" + std::to_string(i), 4);
-    const auto rename = [&](size_t i, const std::string& title, const std::string& artist,
-                            const std::string& charter) {
-        library[i].title = title;
-        library[i].artist = artist;
-        library[i].charter = charter;
-        store.rebuild_chart_library(library);
-    };
-    for (size_t i = 0; i < names.size(); ++i)
-        rename(i, names[i].first, "<i>Artist</i>", "<b>Charter</b>");
-    report::ReportOptions options = fixture_options(4);
-    options.max_paths = 100;
-    const auto collect = [&] {
-        return report::collect_rows(store, report::ReportSeed{}, options).rows;
-    };
+    store_tied(store, library, "u0", 4);
+    library[0].title = "<b>Bold Title</b>";
+    library[0].artist = test::kTagOnlyTitle;
+    library[0].charter = " <b>Bob</b> ";
+    store.rebuild_chart_library(library);
 
-    std::vector<report::ReportRow> rows = collect();
+    const std::vector<report::ReportRow> rows =
+        report::collect_rows(store, report::ReportSeed{}, fixture_options(4)).rows;
     REQUIRE(!rows.empty());
     for (const report::ReportRow& row : rows) {
-        INFO(row.hyhash);
-        const size_t i = static_cast<size_t>(std::stoi(row.hyhash.substr(1)));
-        CHECK(row.song == names[i].second);
-        // Artist and charter lose their tags too.
-        CHECK(row.artist == "Artist");
-        CHECK(row.charter == "Charter");
-    }
-
-    // An artist made only of tags reads "(unknown)" by the title's rule
-    // (D50 item 5); a charter made only of tags keeps today's blank.
-    // A rescan's names replace the last ones.
-    rename(0, "Song", test::kTagOnlyTitle, test::kTagOnlyTitle);
-    rows = collect();
-    bool saw_u0 = false;
-    for (const report::ReportRow& row : rows) {
-        if (row.hyhash != "u0") continue;
-        saw_u0 = true;
-        CHECK(row.artist == kUnknownTitle);
-        CHECK(row.charter == "");
-    }
-    CHECK(saw_u0);
-
-    // The scan's artist placeholder reads "(unknown)" too (D56 item 2), and a
-    // charter loses its tags and the spaces at its ends (display_charter).
-    rename(0, "Song", kUnknownArtist, " <b>Bob</b> ");
-    rows = collect();
-    saw_u0 = false;
-    for (const report::ReportRow& row : rows) {
-        if (row.hyhash != "u0") continue;
-        saw_u0 = true;
+        CHECK(row.song == "Bold Title");
         CHECK(row.artist == kUnknownTitle);
         CHECK(row.charter == "Bob");
     }
-    CHECK(saw_u0);
 }
 
 TEST_CASE("fill_rule_for: the legacy_fills flag and the file stamp each name one fill rule") {
@@ -838,9 +794,7 @@ TEST_CASE("a report on results with no chart library says the library is missing
     CHECK(page.rows == 0);
     CHECK(page.paths.empty());
     CHECK(page.empty_reason == report::EmptyReason::NoLibrary);
-    CHECK(page.why_empty ==
-          "This database has no chart library. Run hydra_batch without folder arguments, or "
-          "scan in Hydra, to build one.");
+    CHECK(page.why_empty == std::string(report::kNoChartLibrary));
 }
 
 TEST_CASE("a chart whose file fails to load is left off the report and listed") {

@@ -16,6 +16,7 @@
 
 #include "app/analysis.h"
 #include "app/fill_report.h"
+#include "app/report.h"  // kNoChartLibrary
 #include "core/model.h"
 #include "corpus_util.h"
 #include "display_fixtures.h"  // kTagOnlyTitle
@@ -474,52 +475,22 @@ TEST_CASE("generate_fill_report: tally and framing behind one seam") {
           "in either database. Analyze with these settings, or change them.");
 }
 
-TEST_CASE("collect_fill_rows: a blank stored song name reads (unknown)") {
+TEST_CASE("collect_fill_rows: the names go through display_title, display_artist and "
+          "display_charter") {
+    // test_song.cpp pins what those three do. This checks only that the page
+    // calls them: one tagged name each, in both databases.
     store::RecordStore old_store(":memory:");
     store::RecordStore new_store(":memory:");
+    put_ch10(old_store, kBoth, 1000000, 3, "old-path");
+    put_ch11(new_store, kBoth, 1000000, 3, "new-path");
+    for (store::RecordStore* s : {&old_store, &new_store})
+        test::name_chart(*s, kBoth, "<b>Bold Title</b>", test::kTagOnlyTitle, " <b>Bob</b> ");
 
-    // A blank library name. The rename goes in after put()'s own "Song aa11".
-    put_ch10(old_store,kBoth, 1000000, 3, "old-path");
-    put_ch11(new_store,kBoth, 1000000, 3, "new-path");
-    test::name_chart(old_store, kBoth, "", "Test Artist", "Test Charter");
-    test::name_chart(new_store, kBoth, "", "Test Artist", "Test Charter");
-
-    std::vector<FillCompareRow> rows = compare(old_store, new_store);
-    REQUIRE(rows.size() == 1);
-    CHECK(rows[0].song == kUnknownTitle);
-
-    // A title made only of tags reads the same fallback.
-    test::name_chart(new_store, kBoth, test::kTagOnlyTitle, "Test Artist", "Test Charter");
-    rows = compare(old_store, new_store);
-    REQUIRE(rows.size() == 1);
-    CHECK(rows[0].song == kUnknownTitle);
-
-    // A bold title, artist and charter read without their tags.
-    test::name_chart(new_store, kBoth, "<b>Bold Title</b>", "<i>Tagged Artist</i>",
-                     "<color=#FF8000>Tagged Charter</color>");
-    rows = compare(old_store, new_store);
+    const std::vector<FillCompareRow> rows = compare(old_store, new_store);
     REQUIRE(rows.size() == 1);
     CHECK(rows[0].song == "Bold Title");
-    CHECK(rows[0].artist == "Tagged Artist");
-    CHECK(rows[0].charter == "Tagged Charter");
-
-    // An artist made only of tags reads "(unknown)" by the title's rule
-    // (D50 item 5); a charter made only of tags keeps today's blank.
-    test::name_chart(new_store, kBoth, "Song", test::kTagOnlyTitle, test::kTagOnlyTitle);
-    rows = compare(old_store, new_store);
-    REQUIRE(rows.size() == 1);
     CHECK(rows[0].artist == kUnknownTitle);
-    CHECK(rows[0].charter == "");
-
-    // An empty artist and the scan's placeholder read "(unknown)" too (D56
-    // item 2); a charter loses the spaces at its ends (display_charter).
-    for (const char* artist : {"", kUnknownArtist}) {
-        test::name_chart(new_store, kBoth, "Song", artist, " <b>Bob</b> ");
-        rows = compare(old_store, new_store);
-        REQUIRE(rows.size() == 1);
-        CHECK(rows[0].artist == kUnknownTitle);
-        CHECK(rows[0].charter == "Bob");
-    }
+    CHECK(rows[0].charter == "Bob");
 }
 
 TEST_CASE("generate_fill_report: one chart reads \"1 chart\" in the subtitle") {
@@ -618,9 +589,7 @@ TEST_CASE("generate_fill_report: a database with no chart library stops with the
     store::RecordStore new_store(":memory:");
     test::store_batch_result(old_store, key_for(kBoth, true));
     put_ch11(new_store, kBoth, 1050000, 4, "new-path-L");
-    const std::string sentence =
-        "This database has no chart library. Run hydra_batch without folder arguments, or "
-        "scan in Hydra, to build one.";
+    const std::string sentence = app::report::kNoChartLibrary;
     const app::fill_report::GeneratedFillReport result =
         app::fill_report::generate_fill_report(old_store, new_store, kMode,
                                                store::CapQuery::at(kCloneHeroSpCap),
