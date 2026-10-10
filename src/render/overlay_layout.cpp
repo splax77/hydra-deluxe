@@ -116,16 +116,6 @@ std::vector<std::string> wrap_words(const std::string& text, float max_w,
     return lines;
 }
 
-float widest_word(const std::string& text,
-                  const std::function<float(const std::string&)>& width_of, size_t keep_last) {
-    // At width 0 every break wrap_words allows is taken, so its widest line is
-    // the narrowest box it can make.
-    float widest = 0.0f;
-    for (const std::string& line : wrap_words(text, 0.0f, width_of, keep_last))
-        widest = std::max(widest, width_of(line));
-    return widest;
-}
-
 WrappedText wrap_right_box(const PreviewConfig& cfg, int width, int height, float right_edge,
                            float top, float pad, float gap, const std::vector<TextPiece>& pieces) {
     auto wrap_all = [&](float max_w) {

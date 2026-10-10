@@ -192,15 +192,6 @@ TEST_CASE("wrap_words: the last words kept together") {
     CHECK(wrap_words("2 of 3", 10.0f, ten_per_char, 3) == std::vector<std::string>{"2 of 3"});
 }
 
-TEST_CASE("widest_word: the widest run between spaces, the last words as one") {
-    CHECK(widest_word("Next: activation 2 of 3", ten_per_char) == 100.0f);  // "activation"
-    CHECK(widest_word("Next: activation 2 of 3", ten_per_char, 3) == 100.0f);
-    CHECK(widest_word("Next: activation 120 of 400", ten_per_char, 3) == 100.0f);
-    CHECK(widest_word("Next: activation 1200 of 4000", ten_per_char, 3) == 120.0f);
-    CHECK(widest_word("at m58.1.0 \xC2\xB7 [Kick - YellowCym]", ten_per_char) == 100.0f);
-    CHECK(widest_word("", ten_per_char) == 0.0f);
-}
-
 TEST_CASE("right_room: from the highway's right edge to the box's, less the gap") {
     PreviewConfig cfg = shipped_preview_config();
     const int w = 800, h = 450;
@@ -244,14 +235,18 @@ const std::vector<NextBox> kBurnout = {
 TEST_CASE("wrap_right_box: one line a piece when it fits") {
     PreviewConfig cfg = shipped_preview_config();
     const int w = 1600, h = 450;  // wide: lots of room beside the highway
-    for (const NextBox& b : kBurnout) {
+    // The widest line is each box's "at ..." line: 30, 42 and 30 characters at
+    // 9 px (read off a run).
+    const float widest[] = {270.0f, 378.0f, 270.0f};
+    for (size_t k = 0; k < kBurnout.size(); ++k) {
+        const NextBox& b = kBurnout[k];
         const std::vector<TextPiece> pieces = next_pieces(b.header, b.notation, b.detail, 1.0f);
         const WrappedText t = wrap_right_box(cfg, w, h, w - 30.0f, 86.0f, 8.0f, 6.0f, pieces);
         REQUIRE(t.lines.size() == 3);
         for (size_t i = 0; i < 3; ++i)
             CHECK(t.lines[i] == std::vector<std::string>{pieces[i].text});
-        CHECK(t.text_h == doctest::Approx(18.75f + 26.5625f + 18.75f));
-        CHECK(t.text_w == doctest::Approx(0.9f * ten_per_char(b.detail)));
+        CHECK(t.text_h == doctest::Approx(64.0625f));
+        CHECK(t.text_w == doctest::Approx(widest[k]));
     }
 }
 

@@ -306,8 +306,7 @@
         "size_t end = text.find(' ', start);"
       ],
       "must_not_match": [
-        "while (start < text.size() && text[start] == ' ') ++start;",
-        "for (const std::string& line : wrap_words(text, 0.0f, width_of, keep_last))"
+        "while (start < text.size() && text[start] == ' ') ++start;"
       ],
       "owner_lines": [
         {
@@ -319,7 +318,7 @@
       "scope": [
         "src/render/overlay_layout.cpp"
       ],
-      "note": "Where a Preview text box's line may break: wrap_words walks the spaces, and widest_word takes the widest line it makes at width 0. Decided by: audit finding 75; phase 6 task J2-8 (D54)"
+      "note": "Where a Preview text box's line may break: wrap_words walks the spaces. Decided by: audit finding 75; phase 6 task J2-8 (D54)"
     },
     {
       "question": "Whose numbers does the Preview draw with?",
