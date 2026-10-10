@@ -436,12 +436,17 @@ static void replay_mode(const std::string& chart) {
         }
         return best;
     };
-    const double full_ms = best_ms([&] { replay_path(song, wl, g_rules); });
-    const double lean_ms = best_ms([&] { replay_path(song, wl, g_rules, scores); });
-    const double none_ms = best_ms([&] { replay_path(song, {}, g_rules); });
+    // The results are kept and printed, so no build can drop the calls.
+    ReplayResult full, lean, none;
+    const double full_ms = best_ms([&] { full = replay_path(song, wl, g_rules); });
+    const double lean_ms = best_ms([&] { lean = replay_path(song, wl, g_rules, scores); });
+    const double none_ms = best_ms([&] { none = replay_path(song, {}, g_rules); });
     std::printf("%zu chords, %zu windows, best of 3: open-window walk %.1f ms, "
                 "scores-only %.1f ms, no windows %.1f ms\n",
                 song.sequence.size(), wl.size(), full_ms, lean_ms, none_ms);
+    std::printf("SP points: %lld with the windows (scores-only %lld), %lld without\n",
+                static_cast<long long>(full.final.sp), static_cast<long long>(lean.final.sp),
+                static_cast<long long>(none.final.sp));
 }
 
 // Upgrade mode:
