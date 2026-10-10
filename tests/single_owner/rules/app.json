@@ -175,24 +175,24 @@
       "date": "2026-10-08",
       "decision": "derive-once review of RW-T2, finding 2 (2026-10-08)",
       "added_by": "RW-T2",
-      "pattern": "\"(\\\\x[eE]2\\\\x80\\\\x94|\\\\u2014)\"|^(?:(?!//).)*\"â\"",
+      "pattern": "\"(\\\\x[eE]2\\\\x80\\\\x94|\\\\u2014)\"|^(?:(?!//).)*\"—\"",
       "must_match": [
         ": std::string(\"\\xe2\\x80\\x94\"));",
         "std::string acts_txt = (r.old_acts ? std::to_string(*r.old_acts) : std::string(\"\\xe2\\x80\\x94\"));",
         "inline constexpr const char* kDash = \"\\xE2\\x80\\x94\";  // U+2014 EM DASH",
-        "return r.posted.empty() ? \"â\" : r.posted;",
+        "return r.posted.empty() ? \"—\" : r.posted;",
         "const char* dash = \"\\u2014\";"
       ],
       "must_not_match": [
         "std::string average = report::kDash;",
-        "std::string subtitle = username + \" â \" +",
+        "std::string subtitle = username + \" — \" +",
         "const DASH = '\\u2014';",
-        "x = 1;  // reads \"â\" when empty"
+        "x = 1;  // reads \"—\" when empty"
       ],
       "owner_lines": [
         {
           "file": "src/app/report.h",
-          "line_text": "inline constexpr const char* kDash = \"â\";",
+          "line_text": "inline constexpr const char* kDash = \"—\";",
           "why": "kDash, the owner"
         }
       ],

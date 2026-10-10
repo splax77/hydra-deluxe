@@ -8,19 +8,19 @@
       "date": "2026-10-04",
       "decision": "D48",
       "added_by": "O3b",
-      "pattern": "RenderTextEllipsis|EllipsisChar|\\\\xE2\\\\x80\\\\xA6|^(?:(?!//).)*\"(?:(?!//)[^\"])*â¦",
+      "pattern": "RenderTextEllipsis|EllipsisChar|\\\\xE2\\\\x80\\\\xA6|^(?:(?!//).)*\"(?:(?!//)[^\"])*…",
       "must_match": [
         "font->RenderChar(draw, size, ImVec2(IM_TRUNC(pos.x + kept_w), pos.y), col, font->EllipsisChar);",
         "ImGui::RenderTextEllipsis(window->DrawList, pos, ImVec2(max_x, pos.y + text_size.y),",
         "return text.substr(0, end) + \"\\xE2\\x80\\xA6\";",
-        "return text.substr(0, end) + \"â¦\";",
-        "const char* tail = \"â¦\";"
+        "return text.substr(0, end) + \"…\";",
+        "const char* tail = \"…\";"
       ],
       "must_not_match": [
         "text_ellipsized(text.c_str());",
         "const std::string shown = ellipsize(label, w, ten_per_char);",
-        "// ends in \"â¦\" rather than vanish",
-        "label = \"a\";  // ends in â¦ when cut"
+        "// ends in \"…\" rather than vanish",
+        "label = \"a\";  // ends in … when cut"
       ],
       "owner_lines": [
         {
