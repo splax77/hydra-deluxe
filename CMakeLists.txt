@@ -71,6 +71,18 @@ add_link_options($<$<CONFIG:Release>:/DEBUG>
                  $<$<CONFIG:Release>:/OPT:REF>
                  $<$<CONFIG:Release>:/OPT:ICF>)
 
+# The coverage build: a test-only build that maps which lines of src\ the
+# tests reach, in build-coverage\ via the coverage preset. It never ships.
+# Microsoft.CodeCoverage.Console can only instrument a native exe linked with
+# /PROFILE, and it reads the .pdb through the path stored in the exe, so this
+# build keeps the full path (the /PDBALTPATH branch below). The CI coverage
+# job and "The coverage report" in docs/development.md own the rest.
+option(HYDRA_COVERAGE "Code coverage test build (the coverage preset turns it on; never ships)" OFF)
+if(HYDRA_COVERAGE)
+    message(STATUS "Code coverage: on (every exe links with /PROFILE)")
+    add_link_options(/PROFILE)
+endif()
+
 # The AddressSanitizer build: a test-only build that catches memory bugs (an
 # overrun, a use after free) where they happen, in build-asan\ via the asan
 # preset. It never ships. Every target is compiled with it, third-party code
@@ -94,10 +106,11 @@ if(HYDRA_ASAN)
     foreach(lang C CXX)
         string(REPLACE "/RTC1" "" CMAKE_${lang}_FLAGS_DEBUG "${CMAKE_${lang}_FLAGS_DEBUG}")
     endforeach()
-else()
+elseif(NOT HYDRA_COVERAGE)
     # The AddressSanitizer build keeps the .pdb's full path, because its
     # symbolizer (llvm-symbolizer) cannot follow a bare name and its reports
-    # would name no functions. That build never ships.
+    # would name no functions. The coverage build keeps it too (above). Neither
+    # build ships.
     add_link_options($<$<CONFIG:Release>:/PDBALTPATH:%_PDB%>)
 endif()
 
@@ -516,7 +529,7 @@ add_executable(hydra_tests
     tests/test_main.cpp
     tests/test_strutil.cpp
     tests/test_library_query.cpp
-    tests/test_corpus_cache.cpp
+    tests/test_helpers.cpp
     tests/test_timing.cpp
     tests/test_chord_code.cpp
     tests/test_winstr.cpp

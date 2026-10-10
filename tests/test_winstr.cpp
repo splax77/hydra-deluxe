@@ -7,7 +7,6 @@
 
 #include <cstdint>
 #include <cstdio>
-#include <filesystem>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -20,7 +19,6 @@
 #include <winioctl.h>  // FSCTL_SET_SPARSE
 
 #include "app/user_messages.h"
-#include "core/strutil.h"
 #include "core/winstr.h"
 #include "temp_util.h"
 
@@ -146,7 +144,7 @@ TEST_CASE("file_size_bytes matches a small file's bytes and throws for a missing
 }
 
 // Finding 251's table, the rule the scan's stored rootfolder has always used.
-TEST_CASE("parent_folder: the audit's four rows") {
+TEST_CASE("parent_folder: a file's folder, a trailing slash's parent, and empty for a bare name") {
     CHECK(hydra::parent_folder("C:\\a\\b\\notes.mid") == "C:\\a\\b");
     CHECK(hydra::parent_folder("C:\\a\\b\\") == "C:\\a");
     CHECK(hydra::parent_folder("notes.mid").empty());
@@ -278,33 +276,4 @@ TEST_CASE("utf8_argv reads this process's command line") {
     const std::vector<std::string> args = hydra::utf8_argv();
     REQUIRE_FALSE(args.empty());
     CHECK(args[0].find("hydra_tests") != std::string::npos);
-}
-
-// tests/temp_util.h owns every test's per-process scratch name (audit finding
-// 287). The temp folder is read from Windows once here, as the input; the rest
-// is the helper's own output.
-TEST_CASE("temp_util: the scratch path is the temp folder, the tag and this process") {
-    wchar_t tmp[MAX_PATH];
-    GetTempPathW(MAX_PATH, tmp);
-    const std::string temp = hydra::wide_to_utf8(tmp);
-    const std::string pid = std::to_string(GetCurrentProcessId());
-
-    const std::string file = testtemp::temp_path("probe", ".db");
-    CHECK(hydra::starts_with(file, temp));
-    CHECK(file.find("hydra_test_probe_") != std::string::npos);
-    CHECK(hydra::ends_with_ci(file, "_" + pid + ".db"));
-
-    const std::string dir = testtemp::temp_dir("probe");
-    CHECK(hydra::is_directory_utf8(dir));
-    CHECK(hydra::starts_with(dir, temp));
-    CHECK(hydra::ends_with_ci(dir, "_" + pid));
-
-    // A non-ASCII tag ("Zoë" as UTF-8) names a folder that exists.
-    const std::string zoe = testtemp::temp_dir("Zo\xC3\xAB");
-    CHECK(hydra::is_directory_utf8(zoe));
-    CHECK(zoe.find("Zo\xC3\xAB") != std::string::npos);
-
-    std::error_code ec;
-    std::filesystem::remove_all(hydra::os_path(dir), ec);
-    std::filesystem::remove_all(hydra::os_path(zoe), ec);
 }
