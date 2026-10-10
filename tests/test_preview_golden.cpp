@@ -149,7 +149,7 @@ std::vector<float> max_channel_deltas(const std::vector<float>& a, const std::ve
     return out;
 }
 
-constexpr int kTile = 16;  // tile side in half-res pixels (32 at full size), from the plan's Task 2
+constexpr int kTile = 16;  // tile side in half-res pixels; the user's decision of 2026-10-10 (plan "User decisions" item 3)
 
 // For one per-pixel delta D: the share of unmasked pixels whose delta is over D,
 // in the worst kTile by kTile tile and in the whole frame. Edge tiles are
@@ -208,6 +208,15 @@ OverShare over_share(const std::vector<float>& delta, int ow, int oh, float d) {
         }
     s.frame_percent = percent_over(over, unmasked);
     return s;
+}
+
+// Where the worst tile sits, in tile numbers and in full-size pixels (a tile is
+// kTile half-res pixels, so twice that at full size).
+std::string worst_tile_text(const OverShare& s) {
+    const int side = kTile * 2;
+    return "tile (" + std::to_string(s.worst_tx) + ", " + std::to_string(s.worst_ty) + "), full-res x " +
+           std::to_string(s.worst_tx * side) + ".." + std::to_string((s.worst_tx + 1) * side) + ", y " +
+           std::to_string(s.worst_ty * side) + ".." + std::to_string((s.worst_ty + 1) * side);
 }
 
 // The delta at percentile `q` (0..100) of the unmasked pixels.
@@ -339,20 +348,20 @@ TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
                                                   << delta_percentile(delta, 99.0) << ", p99.9 "
                                                   << delta_percentile(delta, 99.9));
     const OverShare s = over_share(delta, ow, oh, pixel_delta);
+    const std::string worst_tile_at = worst_tile_text(s);
     MESSAGE("over delta " << pixel_delta << ": worst tile " << s.worst_tile_percent << "% (budget "
-                          << tile_percent << "%) at tile (" << s.worst_tx << ", " << s.worst_ty
-                          << "), full-res x " << s.worst_tx * kTile * 2 << ".." << (s.worst_tx + 1) * kTile * 2
-                          << ", y " << s.worst_ty * kTile * 2 << ".." << (s.worst_ty + 1) * kTile * 2
-                          << "; whole frame " << s.frame_percent << "% (budget " << frame_percent << "%)");
+                          << tile_percent << "%) at " << worst_tile_at << "; whole frame " << s.frame_percent
+                          << "% (budget " << frame_percent << "%)");
     if (dump) write_delta_csvs(delta, ow, oh, pixel_delta);
+    // Each budget is decided once here; the bitmap and the CHECKs both read these.
+    const bool mean_ok = mae < tolerance;
     const bool tile_ok = s.worst_tile_percent <= tile_percent;
     const bool frame_ok = s.frame_percent <= frame_percent;
-    if (mae >= tolerance || !tile_ok || !frame_ok) {
+    if (!mean_ok || !tile_ok || !frame_ok) {
         write_bmp("preview_actual.bmp", actual, w, h);
-        MESSAGE("wrote preview_actual.bmp; the worst tile is at full-res x "
-                << s.worst_tx * kTile * 2 << ", y " << s.worst_ty * kTile * 2 << " (" << kTile * 2 << " px square)");
+        MESSAGE("wrote preview_actual.bmp; the worst tile is at " << worst_tile_at);
     }
-    CHECK(mae < tolerance);
-    CHECK(s.worst_tile_percent <= tile_percent);
-    CHECK(s.frame_percent <= frame_percent);
+    CHECK_MESSAGE(mean_ok, "mean " << mae << " is not under tolerance " << tolerance);
+    CHECK_MESSAGE(tile_ok, "worst tile " << s.worst_tile_percent << "% is over its budget " << tile_percent << "%");
+    CHECK_MESSAGE(frame_ok, "whole frame " << s.frame_percent << "% is over its budget " << frame_percent << "%");
 }
