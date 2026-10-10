@@ -435,7 +435,9 @@ TEST_CASE("library model: filtering 20,000 charts keeps the pinned row counts") 
         std::snprintf(charter, sizeof(charter), "<color=#e02222>Char</color>ter %d", i % 30);
         std::snprintf(folder, sizeof(folder), "Pack %03d\\Tier %d", i % 200, i % 7);
         charts.push_back(chart(md5, title, artist, charter, folder));
-        summaries.push_back(i % 3 == 0 ? ready(300000 + i, "1 2 3", 5 + i % 3, i % 90)
+        // Only every third row has a summary, so its stars step on i / 3 to
+        // give 5, 6 and 7 among those rows.
+        summaries.push_back(i % 3 == 0 ? ready(300000 + i, "1 2 3", 5 + (i / 3) % 3, i % 90)
                                        : SummaryLookup{});
     }
     LibraryModel m;
@@ -447,14 +449,14 @@ TEST_CASE("library model: filtering 20,000 charts keeps the pinned row counts") 
             << " ms");
 
     // Each query's row count over the rows built above, pinned from one run
-    // on 2026-10-10 at 013f4c66.
+    // on 2026-10-10 at 3782c333 plus the stars change above.
     struct QueryRows {
         const char* query;
         size_t rows;
     };
     for (const QueryRows& qr : {QueryRows{"s", 20000}, QueryRows{"song 1", 18152},
                                 QueryRows{"\"tier 4\"", 2857}, QueryRows{"artist 07 song", 2526},
-                                QueryRows{"charter", 20000}, QueryRows{"stars:7", 0},
+                                QueryRows{"charter", 20000}, QueryRows{"stars:7", 2222},
                                 QueryRows{"squeeze<=20 pack", 1561}, QueryRows{"zzqx", 0},
                                 QueryRows{"", 20000}}) {
         t0 = std::chrono::steady_clock::now();
