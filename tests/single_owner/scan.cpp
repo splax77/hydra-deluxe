@@ -13,102 +13,31 @@
 // recomputes an engine fact, or walks the source tree itself) cover tests/.
 // The long-path rules (ADR 0020) are rows here too, so a new one-place rule
 // is a new row, not a new walker. The walk itself, and the repo root, come
-// from tests/source_tree.h. The clone scan at the end of this file (ADR 0025)
-// reads the same walk for blocks of code pasted into two places.
+// from tests/source_tree.h. The clone scan in clones.cpp (ADR 0025) reads the
+// same walk for blocks of code pasted into two places.
 #include "doctest.h"
 
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
-#include <istream>
 #include <regex>
 #include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <string_view>
-#include <tuple>
-#include <unordered_map>
-#include <utility>
 #include <vector>
 
+#include "../source_tree.h"
 #include "core/strutil.h"
 #include "json.hpp"
-#include "source_tree.h"
+#include "listed.h"
+#include "rows.h"
 
 namespace fs = std::filesystem;
+using namespace single_owner;
 
 namespace {
-
-// A file whose matches answer a different question than the rule's.
-struct Exempt {
-    std::string file;  // repo-relative, forward slashes
-    std::string why;
-};
-
-// One line inside the owner that answers the question. A rule that lists its
-// owner's lines instead of naming the whole file guards the owner too: a
-// second answer added there fails like one anywhere else.
-struct OwnerLine {
-    std::string file;       // repo-relative, forward slashes
-    std::string line_text;  // the line with leading and trailing space trimmed
-    std::string why;        // the owner, or the recorded decision that allows it
-};
-
-struct OwnerRule {
-    std::string question;                  // plain English, shown on failure
-    std::string owner;                     // the one place that answers it
-    std::string pattern;                   // ECMAScript regex, matched per line
-    std::string calls_owner;               // a line also matching this calls the owner: it passes
-    std::vector<std::string> owner_files;  // repo-relative files that may match freely
-    std::vector<Exempt> exempt;
-    std::string date;                      // the day the row was added
-    std::string decision;                  // ADR, D-number or review key that decided it
-    std::string added_by;                  // the task or review that added the row
-    std::string note;                      // why the pattern is shaped as it is
-    // The owner-gone guard (owner_gone) checks this file still names this
-    // symbol, so a moved or deleted owner cannot leave the row checking nothing.
-    std::string owner_file;                // repo-relative
-    std::string owner_symbol;
-    std::string rules_file;                // the file the row came from, as "rules/<area>.json"
-    std::vector<std::string> must_match;   // lines the rule flags
-    std::vector<std::string> must_not_match;
-    std::vector<OwnerLine> owner_lines;    // the owner's own lines; each must still match
-    // Top folders scanned, or single repo-relative files; empty means src and
-    // tools.
-    std::vector<std::string> scope;
-    // When set, the rule checks only one function's body in one file: from
-    // the line in function_file that contains unction to the next line
-    // that is a lone "}". The scan fails if it never finds that line.
-    std::string function_file;
-    std::string function;
-    // Whole-line comments are skipped unless this is set (a rule about a
-    // name that comments must not use).
-    bool scan_comments = false;
-};
-
-struct KnownCopy {
-    std::string question;   // equals a rule's question
-    std::string file;       // repo-relative, forward slashes
-    std::string line_text;  // the line with leading and trailing space trimmed
-    std::string removed_by; // the fix that deletes it
-};
-
-// A copy the clone scan tolerates for now. The key survives edits elsewhere in
-// either file: the two files, the block's length and its first line. Line
-// numbers are not part of it.
-struct KnownClone {
-    std::string file_a;  // the earlier file in sorted path order
-    std::string file_b;  // the same as file_a when a file repeats itself
-    int lines;           // code lines, as clone_line_text counts them
-    std::string first;   // the block's first code line, as clone_line_text gives it
-};
-
-// Defined with the clone scan below; the owner-gone guard reads source the
-// same way.
-std::string clone_line_text(std::string_view line, bool& in_comment);
-bool is_word_byte(char c);
 
 // ---- Reading the rows and the baselines ----
 //
@@ -264,9 +193,17 @@ const RuleTables& tables() {
     return t;
 }
 
+}  // namespace
+
+namespace single_owner {
+
 const std::vector<OwnerRule>& rules() { return tables().rules; }
 const std::vector<KnownCopy>& known_copies() { return tables().copies; }
 const std::vector<KnownClone>& known_clones() { return tables().clones; }
+
+}  // namespace single_owner
+
+namespace {
 
 // The owner-gone guard: empty when the row's owner_file exists under `root`
 // and names owner_symbol as a whole word outside comments (comments as the
@@ -315,15 +252,6 @@ bool flags_line(const CompiledRule& c, const std::string& line) {
     return c.rule->calls_owner.empty() || !std::regex_search(line, c.calls_owner);
 }
 
-// A line the scan accepts by its exact text: an owner's own line or a
-// baseline copy. Both kinds go in one list and follow one rule.
-struct ListedLine {
-    std::string question;
-    std::string file;       // repo-relative, forward slashes
-    std::string line_text;  // trimmed
-    std::string stale;      // the message when no source line uses it
-};
-
 // Owner lines first, so an owner line is used before a baseline entry with
 // the same text.
 std::vector<ListedLine> listed_lines() {
@@ -336,52 +264,6 @@ std::vector<ListedLine> listed_lines() {
         out.push_back({k.question, k.file, k.line_text,
                        "baseline entry no longer matches (remove it)"});
     return out;
-}
-
-enum class Take { taken, used_up, unlisted };
-
-// Each listed entry covers exactly one line of source: the first entry with
-// this question, file and text that no earlier line used takes it. A
-// word-for-word copy finds every such entry used (used_up).
-Take take_listed_line(const std::vector<ListedLine>& listed, std::vector<bool>& used,
-                      const std::string& question, const std::string& file,
-                      const std::string& text) {
-    bool any = false;
-    for (size_t i = 0; i < listed.size(); ++i) {
-        const ListedLine& l = listed[i];
-        if (l.question != question || l.file != file || l.line_text != text) continue;
-        any = true;
-        if (!used[i]) {
-            used[i] = true;
-            return Take::taken;
-        }
-    }
-    return any ? Take::used_up : Take::unlisted;
-}
-
-// Whether a file the walk finds is C++ source, the files the C++ scans read.
-bool is_cpp_source(const fs::path& path) {
-    const fs::path ext = path.extension();
-    return ext == ".cpp" || ext == ".h";
-}
-
-// Whether a trimmed source line is a comment line, which the scans skip.
-bool is_line_comment(std::string_view trimmed) {
-    return hydra::starts_with(trimmed, "//");
-}
-
-// How a scan that lists lines ends: each entry no source line took is stale,
-// and the case fails with one line per problem.
-void check_scan(std::vector<std::string> problems, const std::vector<ListedLine>& listed,
-                const std::vector<bool>& used) {
-    for (size_t i = 0; i < listed.size(); ++i) {
-        if (used[i]) continue;
-        problems.push_back(listed[i].stale + ": " + listed[i].file + ": " + listed[i].line_text);
-    }
-    std::ostringstream report;
-    for (const std::string& p : problems) report << p << "\n";
-    INFO(report.str());
-    CHECK(problems.empty());
 }
 
 }  // namespace
@@ -448,8 +330,8 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
     std::vector<int> functions_found(compiled.size(), 0);
     sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
             if (!is_cpp_source(path)) return;
-            // This file holds every rule's examples as text.
-            if (rel == "tests/test_single_owner.cpp") return;
+            // These files hold made-up rows and their examples as text.
+            if (rel.compare(0, 19, "tests/single_owner/") == 0) return;
             const std::string sub = rel.substr(0, rel.find('/'));  // the top folder
             ++files;
             std::ifstream in(path);
@@ -511,100 +393,6 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
     }
     CHECK(files > 100);  // the scan found the sources
     check_scan(problems, listed, used);
-}
-
-// D23: a change under src/parse that alters what a chart reads as must bump
-// the results stamp. The rule is a comment, which does not compile and which
-// the row scan skips, so this case reads it: the block between the "Results"
-// banner and the kResultsStamp line in src/store/stored_versions.h must name
-// src/parse next to src/search and src/core. Moved here from
-// a stamps test; the repo root comes from tests/source_tree.h.
-TEST_CASE("single-owner: the results stamp's bump rule names the chart readers (D23)") {
-    std::ifstream in(sourcetree::root() / "src" / "store" / "stored_versions.h");
-    REQUIRE(in.good());
-    std::stringstream ss;
-    ss << in.rdbuf();
-    const std::string text = ss.str();
-    const size_t stamp = text.find("kResultsStamp{");
-    REQUIRE(stamp != std::string::npos);
-    const size_t banner = text.rfind("// ---- Results", stamp);
-    REQUIRE(banner != std::string::npos);
-    const std::string rule = text.substr(banner, stamp - banner);
-    CHECK(rule.find("src/search") != std::string::npos);
-    CHECK(rule.find("src/core") != std::string::npos);
-    CHECK(rule.find("src/parse") != std::string::npos);
-}
-
-// D94: the User Guide quotes the Preview's changed-chart line in backticks.
-// The sentence is read off the owner line of the row that guards it, and that
-// line is checked against src/ui/preview_tab.cpp, so the words are typed only
-// in the code and in that row.
-TEST_CASE("single-owner: the User Guide quotes the Preview's changed-chart line as the code has it") {
-    const OwnerLine* owner = nullptr;
-    for (const OwnerRule& r : rules())
-        if (r.question == "What does the Preview say when the chart changed since it was analyzed?")
-            for (const OwnerLine& o : r.owner_lines)
-                if (o.file == "src/ui/preview_tab.cpp") owner = &o;
-    REQUIRE(owner != nullptr);
-
-    const auto slurp = [](const fs::path& p) {
-        std::ifstream in(p);
-        REQUIRE(in.good());
-        std::stringstream ss;
-        ss << in.rdbuf();
-        return ss.str();
-    };
-    INFO("owner line: " << owner->line_text);
-    REQUIRE(slurp(sourcetree::root() / fs::u8path(owner->file)).find(owner->line_text) !=
-            std::string::npos);
-
-    // The C++ literal on that line, between its first and last double quote.
-    const size_t open = owner->line_text.find('"');
-    const size_t close = owner->line_text.rfind('"');
-    REQUIRE(open != std::string::npos);
-    REQUIRE(close > open);
-    const std::string sentence = owner->line_text.substr(open + 1, close - open - 1);
-    REQUIRE(sentence.find('\\') == std::string::npos);  // no escapes to undo
-
-    INFO("docs/UserGuide.md should quote `" << sentence << "`");
-    CHECK(slurp(sourcetree::root() / "docs" / "UserGuide.md").find("`" + sentence + "`") !=
-          std::string::npos);
-}
-
-// E3 (findings 180, 243, 245 and 56): "does this path need any timing?" is
-// Path::needs_timing's, so no code line under src/ or tools/ asks it with a
-// zero test of its own. The all-0 list's 0 ms limit (D85) is set in one
-// place, allzero_options, and the shortcut that skips the all-0 pass reads it
-// from there. What the Score range's INI int means is
-// Settings::search_depth_mode's, the one line in src/app/config.cpp that
-// compares it, however the comparison is spelled. Comment lines are skipped
-// like the row scan does.
-TEST_CASE("single-owner: the all-0 limit and the depth-mode int each have one owner (E3, D85)") {
-    const std::regex zero_limit(
-        R"(difficulty\(\)\.value_or\(0(\.0+)?\)\s*(<=|>|<|>=)\s*0(\.0+)?(?![\d.]))"
-        R"(|value_or\(0(\.0+)?\)\s*<=\s*0(\.0+)?(?![\d.]))"
-        R"(|ms_filter\s*=\s*(std::optional<double>\()?0(\.0+)?(?![\d.]))"
-        R"(|within_(ms_)?limit\(\s*0(\.0+)?\s*\))");
-    const std::regex depth_int(R"(\bdepth_mode\s*(==|!=|>=|<=|>|<)\s*[01]\b|case\s+1\s*:.*depth)");
-    std::vector<std::string> zero_hits, depth_hits;
-    sourcetree::for_each_source_file([&](const fs::path& file, const std::string& rel) {
-        if (rel.compare(0, 6, "tests/") == 0) return;
-        if (!is_cpp_source(file)) return;
-        std::ifstream in(file);
-        std::string line;
-        while (std::getline(in, line)) {
-            const std::string t = hydra::trim(line);
-            if (is_line_comment(t)) continue;
-            if (std::regex_search(t, zero_limit)) zero_hits.push_back(rel + ": " + t);
-            if (std::regex_search(t, depth_int)) depth_hits.push_back(rel + ": " + t);
-        }
-    });
-    REQUIRE_MESSAGE(zero_hits.size() == 1,
-                    (zero_hits.size() < 2 ? std::string() : zero_hits[1]));
-    CHECK(zero_hits.front() == "src/search/pather.cpp: options.ms_filter = 0.0;");
-    REQUIRE(depth_hits.size() == 1);
-    CHECK(depth_hits.front() ==
-          "src/app/config.cpp: return depth_mode == 1 ? DepthMode::Points : DepthMode::Scores;");
 }
 
 // The walk reads only .cpp and .h files under src, tools and tests, so a row
@@ -836,282 +624,6 @@ TEST_CASE("single-owner: the Clone Hero probe's facts each have one owner (J3-7,
             }
         }
     });
-    check_scan(problems, listed, used);
-}
-
-// ---- Copied blocks of code (task MR1, ADR 0025) ----
-//
-// A block of code pasted into a second place is the plainest way to write a
-// rule twice, and a text scan finds every one. This scan reads the .cpp and
-// .h files the row scan reads and fails on any run of kCloneWindowLines code
-// lines that appears in two places, in two files or twice in one. Overlapping
-// runs merge into one copied block, named once with both places. The
-// baseline (known_clones) lists the copies that were already there; like
-// known_copies, it only shrinks. Vendored code in third_party/ is outside the
-// walk (tests/source_tree.h), so it is never read.
-
-namespace {
-
-// How many code lines in a row count as a copy. The user's decision is D82
-// item 1 in docs/audit/2026-10-03-fix-decisions.md; ADR 0025 says why.
-constexpr int kCloneWindowLines = 8;
-
-// One line the clone scan compares, and where it sits in its file.
-struct CodeLine {
-    std::string text;  // as clone_line_text gives it
-    int lineno;        // 1-based, in the file as written
-};
-
-// A file as the clone scan sees it: only the lines that count.
-struct CodeFile {
-    std::string file;  // repo-relative, forward slashes
-    std::vector<CodeLine> lines;
-};
-
-// A letter, digit or underscore, or any byte of a UTF-8 character. A line
-// with none of these is only braces and punctuation.
-bool is_word_byte(char c) {
-    const unsigned char u = static_cast<unsigned char>(c);
-    return (u >= 'a' && u <= 'z') || (u >= 'A' && u <= 'Z') || (u >= '0' && u <= '9') ||
-           u == '_' || u >= 0x80;
-}
-
-// The text the clone scan compares for one line of source, or empty when the
-// line doesn't count: a blank line, a comment-only line, an #include, or a
-// line of only braces and punctuation. Ends are trimmed and every inner run of
-// whitespace becomes one space. A comment line is one is_line_comment names.
-// The clone scan also skips /* */ comments, which the row scans read as code,
-// because comment text pasted twice is not a rule written twice; in_comment
-// carries such a comment from one line to the next.
-std::string clone_line_text(std::string_view line, bool& in_comment) {
-    std::string_view t = hydra::trim_view(line);
-    if (in_comment) {
-        const size_t end = t.find("*/");
-        if (end == std::string_view::npos) return {};
-        in_comment = false;
-        t = hydra::trim_view(t.substr(end + 2));
-    }
-    if (hydra::starts_with(t, "/*")) {
-        const size_t end = t.find("*/", 2);
-        if (end == std::string_view::npos) {
-            in_comment = true;
-            return {};
-        }
-        t = hydra::trim_view(t.substr(end + 2));
-    }
-    if (is_line_comment(t) || hydra::starts_with(t, "#include")) return {};
-    if (std::none_of(t.begin(), t.end(), is_word_byte)) return {};
-    std::string out;
-    bool gap = false;
-    for (const char c : t) {
-        if (hydra::is_ascii_space(c)) {
-            gap = true;
-            continue;
-        }
-        if (gap) out += ' ';
-        gap = false;
-        out += c;
-    }
-    return out;
-}
-
-CodeFile read_code_lines(const std::string& rel, std::istream& in) {
-    CodeFile f{rel, {}};
-    std::string line;
-    int lineno = 0;
-    bool in_comment = false;
-    while (std::getline(in, line)) {
-        ++lineno;
-        std::string t = clone_line_text(line, in_comment);
-        if (!t.empty()) f.lines.push_back({std::move(t), lineno});
-    }
-    return f;
-}
-
-// One place a copied block sits.
-struct CloneSide {
-    std::string file;
-    int first_line;  // as written, first and last code line of the block
-    int last_line;
-};
-
-// A block of code found in two places. `a` comes before `b` in the files'
-// order, or earlier in the file when a file repeats itself.
-struct CloneRegion {
-    CloneSide a, b;
-    int lines;          // code lines in the block, as clone_line_text counts them
-    std::string first;  // the block's first code line
-};
-
-// Every block of at least `window` code lines that appears in two places in
-// `files`. A block found in three places is three pairs. Two runs in one file
-// that overlap each other are not a copy.
-std::vector<CloneRegion> find_clones(const std::vector<CodeFile>& files, int window) {
-    // Each distinct line becomes a number, so a run's key is its numbers'
-    // bytes and the map's own hash does the rest.
-    std::unordered_map<std::string, int> ids;
-    std::vector<std::vector<int>> coded(files.size());
-    for (size_t f = 0; f < files.size(); ++f)
-        for (const CodeLine& l : files[f].lines)
-            coded[f].push_back(ids.emplace(l.text, static_cast<int>(ids.size())).first->second);
-    std::unordered_map<std::string, std::vector<std::pair<int, int>>> runs;  // key -> (file, start)
-    for (size_t f = 0; f < files.size(); ++f) {
-        const std::vector<int>& c = coded[f];
-        for (size_t i = 0; i + static_cast<size_t>(window) <= c.size(); ++i) {
-            const std::string key(reinterpret_cast<const char*>(c.data() + i),
-                                  sizeof(int) * static_cast<size_t>(window));
-            runs[key].push_back({static_cast<int>(f), static_cast<int>(i)});
-        }
-    }
-    // Each matching pair of runs, the earlier place first. Runs went in by
-    // file, then by start, so each list is already in that order.
-    struct Pair {
-        int fa, ia, fb, ib;
-    };
-    std::vector<Pair> pairs;
-    for (const auto& [key, at] : runs)
-        for (size_t x = 0; x < at.size(); ++x)
-            for (size_t y = x + 1; y < at.size(); ++y) {
-                const auto [fa, ia] = at[x];
-                const auto [fb, ib] = at[y];
-                if (fa == fb && ib < ia + window) continue;
-                pairs.push_back({fa, ia, fb, ib});
-            }
-    // Pairs of runs that each step one line further in both places are one
-    // block: sort them so those follow each other.
-    const auto order = [](const Pair& p) { return std::make_tuple(p.fa, p.fb, p.ib - p.ia, p.ia); };
-    std::sort(pairs.begin(), pairs.end(),
-              [&](const Pair& x, const Pair& y) { return order(x) < order(y); });
-    std::vector<CloneRegion> out;
-    for (size_t s = 0; s < pairs.size();) {
-        size_t e = s;
-        while (e + 1 < pairs.size() && pairs[e + 1].fa == pairs[s].fa &&
-               pairs[e + 1].fb == pairs[s].fb &&
-               pairs[e + 1].ib - pairs[e + 1].ia == pairs[s].ib - pairs[s].ia &&
-               pairs[e + 1].ia == pairs[e].ia + 1)
-            ++e;
-        const Pair& p = pairs[s];
-        const int last = pairs[e].ia - p.ia + window - 1;  // the block's last line, from its start
-        const std::vector<CodeLine>& la = files[p.fa].lines;
-        const std::vector<CodeLine>& lb = files[p.fb].lines;
-        out.push_back({{files[p.fa].file, la[p.ia].lineno, la[p.ia + last].lineno},
-                       {files[p.fb].file, lb[p.ib].lineno, lb[p.ib + last].lineno},
-                       last + 1,
-                       la[p.ia].text});
-        s = e + 1;
-    }
-    return out;
-}
-
-// The question every clone entry answers, so the baseline goes through
-// take_listed_line like every other listed line.
-const char* const kCloneQuestion = "Is this block of code written in two places?";
-
-ListedLine clone_listed_line(const std::string& file_a, const std::string& file_b, int lines,
-                             const std::string& first) {
-    return {kCloneQuestion, file_a + " and " + file_b,
-            std::to_string(lines) + " lines from: " + first,
-            "baseline clone no longer found (remove it)"};
-}
-
-// Every .cpp and .h the walk finds, in sorted path order.
-std::vector<CodeFile> read_source_code() {
-    std::vector<CodeFile> files;
-    sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
-        if (!is_cpp_source(path)) return;
-        std::ifstream in(path);
-        files.push_back(read_code_lines(rel, in));
-    });
-    std::sort(files.begin(), files.end(),
-              [](const CodeFile& x, const CodeFile& y) { return x.file < y.file; });
-    return files;
-}
-
-}  // namespace
-
-TEST_CASE("single-owner: the clone scan matches its own examples (MR1)") {
-    bool in_comment = false;
-    CHECK(clone_line_text("  int  a =\t1;  ", in_comment) == "int a = 1;");
-    CHECK(clone_line_text("   ", in_comment).empty());
-    CHECK(clone_line_text("   // a note", in_comment).empty());
-    CHECK(clone_line_text("#include <vector>", in_comment).empty());
-    CHECK(clone_line_text("});", in_comment).empty());
-    CHECK(clone_line_text("x = 0;  // kept", in_comment) == "x = 0; // kept");
-    CHECK(clone_line_text("/* opens", in_comment).empty());
-    CHECK(in_comment);
-    CHECK(clone_line_text("int inside = 1;", in_comment).empty());
-    CHECK(clone_line_text("closes */ int after = 2;", in_comment) == "int after = 2;");
-    CHECK_FALSE(in_comment);
-
-    // Made-up files. `block` is ten different code lines; `seven` is its
-    // first seven.
-    std::string block, seven;
-    for (int i = 0; i < 10; ++i) {
-        const std::string line = "v" + std::to_string(i) + " = f(" + std::to_string(i) + ");\n";
-        block += line;
-        if (i < 7) seven += line;
-    }
-    const auto file = [](const std::string& rel, const std::string& text) {
-        std::istringstream in(text);
-        return read_code_lines(rel, in);
-    };
-
-    // Ten shared lines are one block, named once with both places. Blank
-    // lines, comments and braces around one copy don't hide it.
-    std::vector<CloneRegion> r = find_clones(
-        {file("src/a.cpp", "only_a();\n" + block),
-         file("src/b.cpp", "{\n\n// note\n" + block + "}\n")},
-        8);
-    REQUIRE(r.size() == 1);
-    CHECK(r[0].lines == 10);
-    CHECK(r[0].first == "v0 = f(0);");
-    CHECK(r[0].a.file == "src/a.cpp");
-    CHECK(r[0].a.first_line == 2);
-    CHECK(r[0].a.last_line == 11);
-    CHECK(r[0].b.file == "src/b.cpp");
-    CHECK(r[0].b.first_line == 4);
-    CHECK(r[0].b.last_line == 13);
-
-    // Seven shared lines are shorter than a window of 8.
-    CHECK(find_clones({file("src/a.cpp", seven + "x();\n"), file("src/b.cpp", "y();\n" + seven)}, 8)
-              .empty());
-
-    // A file that repeats its own block is a copy too.
-    r = find_clones({file("src/a.cpp", block + "mid();\n" + block)}, 8);
-    REQUIRE(r.size() == 1);
-    CHECK(r[0].a.file == r[0].b.file);
-    CHECK(r[0].a.first_line == 1);
-    CHECK(r[0].b.first_line == 12);
-
-    // Nine copies of one line overlap themselves: no copy.
-    std::string same;
-    for (int i = 0; i < 9; ++i) same += "x++;\n";
-    CHECK(find_clones({file("src/a.cpp", same)}, 8).empty());
-
-    // A block in three places is three pairs.
-    CHECK(find_clones({file("src/a.cpp", block), file("src/b.cpp", block), file("src/c.cpp", block)}, 8)
-              .size() == 3);
-}
-
-TEST_CASE("single-owner: no block of code is written in two places (MR1)") {
-    const std::vector<CodeFile> files = read_source_code();
-    CHECK(files.size() > 100);  // the scan found the sources
-    std::vector<ListedLine> listed;
-    for (const KnownClone& k : known_clones())
-        listed.push_back(clone_listed_line(k.file_a, k.file_b, k.lines, k.first));
-    std::vector<bool> used(listed.size(), false);
-    std::vector<std::string> problems;
-    for (const CloneRegion& c : find_clones(files, kCloneWindowLines)) {
-        const ListedLine l = clone_listed_line(c.a.file, c.b.file, c.lines, c.first);
-        if (take_listed_line(listed, used, l.question, l.file, l.line_text) == Take::taken)
-            continue;
-        problems.push_back(c.a.file + ":" + std::to_string(c.a.first_line) + "-" +
-                           std::to_string(c.a.last_line) + " and " + c.b.file + ":" +
-                           std::to_string(c.b.first_line) + "-" + std::to_string(c.b.last_line) +
-                           " hold the same " + std::to_string(c.lines) +
-                           " code lines, from: " + c.first +
-                           " (move them into one place both can call)");
-    }
     check_scan(problems, listed, used);
 }
 
