@@ -211,7 +211,7 @@ TEST_CASE("allzero_activation: no skips, or an E1") {
 // The early-fill window has one owner: model.h states both halves of it, the
 // fill that refuses (fill_refuses) and the E0 (is_e0). That only model.h
 // reads kEarlyFillWindowMs is a row of the single-owner scan
-// (test_single_owner.cpp); this checks the two halves' edges.
+// (tests/single_owner/rules/core.json); this checks the two halves' edges.
 TEST_CASE("early-fill window: the refusal and the E0 edges") {
     CHECK(fill_e_offset(10000.0, 10050.0) == -50.0);
     CHECK_FALSE(fill_refuses(-kEarlyFillWindowMs));  // exactly 60 ms late still spawns

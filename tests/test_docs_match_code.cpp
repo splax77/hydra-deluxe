@@ -11,8 +11,8 @@
 //    the marker equals the value in code. For a flag the marker follows "on"
 //    or "off".
 //
-// It finds the repo and walks the code through tests/source_tree.h, as
-// tests/test_single_owner.cpp does.
+// It finds the repo and walks the code through tests/source_tree.h, as the
+// scans in tests/single_owner/ do.
 #include "doctest.h"
 
 #include <cctype>

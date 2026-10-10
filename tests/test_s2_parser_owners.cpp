@@ -161,8 +161,8 @@ TEST_CASE("s2 owners: Song's default meter is written once, through apply_timesi
 }
 
 // "No meter is written by hand outside apply_timesig" and "the Preview's time
-// box keeps no 4/4 literal of its own" are rows in test_single_owner.cpp, the
-// one scan of the source tree.
+// box keeps no 4/4 literal of its own" are rows in
+// tests/single_owner/rules/parse.json, read by the one scan of the source tree.
 
 TEST_CASE("s2 owners: a container's notes entry is found by its exact name (61)") {
     using namespace testmidi;

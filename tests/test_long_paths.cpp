@@ -3,7 +3,7 @@
 // file call goes through core/winstr's win32_path, which adds the \\?\ prefix
 // that lifts the limit; these pin that the conversion is right and that each
 // kind of file Hydra touches opens at that depth. That no code goes around it
-// is checked by the source scan in test_single_owner.cpp.
+// is checked by the single-owner rows in tests/single_owner/rules/core.json.
 
 #include "doctest.h"
 
