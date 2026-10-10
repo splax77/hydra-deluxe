@@ -167,10 +167,7 @@ size_t LibraryModel::set_summaries(const std::vector<store::SummaryLookup>& look
     size_t changed = 0;
     const size_t n = std::min(rows_.size(), lookups.size());
     for (size_t i = 0; i < n; ++i)
-        if (apply_summary(rows_[i], lookups[i])) {
-            summary_changes_.push_back(i);
-            ++changed;
-        }
+        if (apply_summary_at(i, lookups[i])) ++changed;
     if (changed > 0) summaries_changed();
     return changed;
 }
@@ -178,12 +175,15 @@ size_t LibraryModel::set_summaries(const std::vector<store::SummaryLookup>& look
 size_t LibraryModel::set_summary_for(const std::string& md5, const store::SummaryLookup& lookup) {
     size_t changed = 0;
     for (size_t i = 0; i < rows_.size(); ++i)
-        if (rows_[i].entry.md5 == md5 && apply_summary(rows_[i], lookup)) {
-            summary_changes_.push_back(i);
-            ++changed;
-        }
+        if (rows_[i].entry.md5 == md5 && apply_summary_at(i, lookup)) ++changed;
     if (changed > 0) summaries_changed();
     return changed;
+}
+
+bool LibraryModel::apply_summary_at(size_t index, const store::SummaryLookup& lookup) {
+    if (!apply_summary(rows_[index], lookup)) return false;
+    summary_changes_.push_back(index);  // take_summary_changes
+    return true;
 }
 
 void LibraryModel::summaries_changed() {

@@ -152,6 +152,10 @@ private:
     void resort();     // rebuilds sorted_ from rows_ and the sort
     void refilter();   // rebuilds order_ and counts_ from sorted_, the query and the chip
     void summaries_changed();
+    // Applies one lookup to row `index` and records the row for
+    // take_summary_changes when it changed. The one place a row's summary is
+    // replaced, so the record can never miss a row.
+    bool apply_summary_at(size_t index, const store::SummaryLookup& lookup);
 
     std::vector<LibraryRow> rows_;
     std::uint64_t rows_version_ = 0;
