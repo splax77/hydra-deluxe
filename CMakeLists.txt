@@ -564,7 +564,8 @@ add_executable(hydra_tests
     tests/test_icons.cpp
     tests/test_preview_renderer.cpp
     tests/test_dynamics_breakdown.cpp
-    tests/test_song.cpp
+    tests/test_song_parse.cpp
+    tests/test_song_input.cpp
     tests/test_sng.cpp
     tests/test_srb.cpp
     tests/test_fuzz_regressions.cpp
