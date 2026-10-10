@@ -7,7 +7,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude/festive-montalcini-d69dad]
   pull_request:
     branches: [main]
   schedule:
@@ -105,7 +105,7 @@ jobs:
   # See "The coverage report" in docs/development.md.
   coverage:
     name: Coverage report (Windows, Release)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/festive-montalcini-d69dad')
     runs-on: windows-2025
     timeout-minutes: 45
     defaults:
