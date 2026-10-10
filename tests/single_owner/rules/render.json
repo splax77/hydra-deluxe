@@ -1,0 +1,405 @@
+{
+  "rules": [
+    {
+      "question": "How is a long label cut to fit its space?",
+      "owner": "ellipsize in src/render/overlay_layout.cpp",
+      "owner_file": "src/render/overlay_layout.cpp",
+      "owner_symbol": "ellipsize",
+      "date": "2026-10-04",
+      "decision": "D48",
+      "added_by": "O3b",
+      "pattern": "RenderTextEllipsis|EllipsisChar|\\\\xE2\\\\x80\\\\xA6|^(?:(?!//).)*\"(?:(?!//)[^\"])*…",
+      "must_match": [
+        "font->RenderChar(draw, size, ImVec2(IM_TRUNC(pos.x + kept_w), pos.y), col, font->EllipsisChar);",
+        "ImGui::RenderTextEllipsis(window->DrawList, pos, ImVec2(max_x, pos.y + text_size.y),",
+        "return text.substr(0, end) + \"\\xE2\\x80\\xA6\";",
+        "return text.substr(0, end) + \"…\";",
+        "const char* tail = \"…\";"
+      ],
+      "must_not_match": [
+        "text_ellipsized(text.c_str());",
+        "const std::string shown = ellipsize(label, w, ten_per_char);",
+        "// ends in \"…\" rather than vanish",
+        "label = \"a\";  // ends in … when cut"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/render/overlay_layout.cpp",
+          "line_text": "static const std::string kEllipsis = \"\\xE2\\x80\\xA6\";",
+          "why": "ellipsize, the owner: the one ellipsis a cut ends in"
+        }
+      ],
+      "note": "Cutting a label to end in \"…\": ImGui's own ellipsis renderer, its ellipsis glyph, the \"…\" bytes typed out as escapes, or a \"…\" typed straight into a string before any // comment. ellipsize is the one rule (no trailing space, an exact fit allowed); text_ellipsized cuts through it. The last alternative is built from the three UTF-8 bytes of \"…\", so this file holds no raw one in a pattern. Decided by: audit finding 70; D48, Q18 (phase 3 task O3b)"
+    },
+    {
+      "question": "What state does a span have at an instant?",
+      "owner": "SpanSweep in src/render/track_state.h and src/render/track_state.cpp",
+      "owner_file": "src/render/track_state.h",
+      "owner_symbol": "SpanSweep",
+      "date": "2026-10-04",
+      "decision": "D54",
+      "added_by": "J1-3",
+      "pattern": "\\btoggle_at\\s*\\(",
+      "anchor": "toggle_at",
+      "must_match": [
+        "inst.overdrive = toggle_at(overdrive_, t);",
+        "CHECK(toggle_at(ivs, 1.0) == Toggle::Start);"
+      ],
+      "must_not_match": [
+        "CHECK(sweep.at(1.0) == Toggle::Start);",
+        "inst.overdrive = overdrive_.at(t);"
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "J1-3 (phase 6): the track state's owners. toggle_at was a second copy of the span rule beside SpanSweep and is deleted (D54). Decided by: audit R7.13; D54 (toggle_at deleted, not kept as a test oracle)"
+    },
+    {
+      "question": "Is a span on after this instant?",
+      "owner": "toggle_on_after in src/render/track_state.h",
+      "owner_file": "src/render/track_state.h",
+      "owner_symbol": "toggle_on_after",
+      "date": "2026-10-04",
+      "decision": "audit finding 223",
+      "added_by": "J1-3",
+      "pattern": "Toggle::Start\\s*\\|\\|.*Toggle::Restart|!=\\s*Toggle::Empty\\s*&&.*!=\\s*Toggle::End",
+      "anchor": "Toggle::",
+      "must_match": [
+        "on = tg == Toggle::Start || tg == Toggle::Restart || tg == Toggle::On;",
+        "bool toggle_on(Toggle t) { return t != Toggle::Empty && t != Toggle::End; }"
+      ],
+      "must_not_match": [
+        "bool on = first == Toggle::End || first == Toggle::Restart || first == Toggle::On;",
+        "on = toggle_on_after(inst.*field);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/render/track_state.h",
+          "line_text": "return t == Toggle::Start || t == Toggle::Restart || t == Toggle::On;",
+          "why": "toggle_on_after, the owner"
+        }
+      ],
+      "note": "\"On before this instant\" (End, Restart, On: the state entering a window) is a different question and is not flagged."
+    },
+    {
+      "question": "Which overlay spans does the timeline merge?",
+      "owner": "TrackState::merge_overlay_edges in src/render/track_state.cpp",
+      "owner_file": "src/render/track_state.cpp",
+      "owner_symbol": "TrackState::merge_overlay_edges",
+      "date": "2026-10-04",
+      "decision": "audit R7.15",
+      "added_by": "J1-3",
+      "pattern": "&\\s*(st\\.)?fill_\\s*,\\s*&\\s*(st\\.)?fill_taken_\\s*,\\s*&\\s*(st\\.)?sp_active_\\s*,\\s*&\\s*(st\\.)?fill_lane_ivs_\\b",
+      "anchor": "fill_lane_ivs_",
+      "must_match": [
+        "{&st.fill_, &st.fill_taken_, &st.sp_active_, &st.fill_lane_ivs_})",
+        "sorted_edges({&st.fill_, &st.fill_taken_, &st.sp_active_, &st.fill_lane_ivs_});"
+      ],
+      "must_not_match": [
+        "for (const std::vector<TrackState::Interval>* ivs : {&st.overdrive_, &st.solo_})"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/render/track_state.cpp",
+          "line_text": "sorted_edges({&fill_, &fill_taken_, &sp_active_, &fill_lane_ivs_});",
+          "why": "merge_overlay_edges, the one merge build_track_state and rebuild_overlay_fields use"
+        }
+      ]
+    },
+    {
+      "question": "Which pad colours a fill lane?",
+      "owner": "LaneSweep and TrackState::make_lane_bounds in src/render/track_state.cpp",
+      "owner_file": "src/render/track_state.cpp",
+      "owner_symbol": "LaneSweep",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J1-3",
+      "pattern": "\\binst\\.fill_lane_pad\\b",
+      "anchor": "inst.fill_lane_pad",
+      "must_match": [
+        "if (inst.fill_lane_pad) { pad = inst.fill_lane_pad; break; }",
+        "inst.fill_lane_pad = li.pad;"
+      ],
+      "must_not_match": [
+        "const std::optional<Pad> pad = opened ? opened->fill_lane_pad : entering;",
+        "for (const LaneSpan& s : state.make_lane_bounds(win, near_t, far_t)) {"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/render/track_state.cpp",
+          "line_text": "inst.fill_lane_pad.reset();",
+          "why": "TrackState::FieldSweep, which asks LaneSweep"
+        },
+        {
+          "file": "src/render/track_state.cpp",
+          "line_text": "if (std::optional<size_t> w = lane_pad_.at(t)) inst.fill_lane_pad = lanes_[*w].pad;",
+          "why": "TrackState::FieldSweep, which asks LaneSweep"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The tests read the per-instant pad under other names (i.fill_lane_pad, taken->fill_lane_pad), so the row scans src only. Decided by: audit R7.14 and finding 76; D53 item 3 (two touching taken fills each light their own lane)"
+    },
+    {
+      "question": "Where is the far end of the highway?",
+      "owner": "far_time in src/render/highway_draw.cpp",
+      "owner_file": "src/render/highway_draw.cpp",
+      "owner_symbol": "far_time",
+      "date": "2026-10-04",
+      "decision": "D54",
+      "added_by": "J2-8",
+      "pattern": "\\b(?:speed\\s*\\*\\s*(?:cfg\\.track|T)\\.secs_future|(?:cfg\\.track|T)\\.secs_future\\s*\\*\\s*speed)\\b",
+      "anchor": ".secs_future",
+      "must_match": [
+        "const double far_time = now_s + speed * cfg.track.secs_future;",
+        "const double far_t = now_s + speed * T.secs_future;",
+        "const double far_t = T.secs_future * speed;"
+      ],
+      "must_not_match": [
+        "const double far_t = far_time(cfg, now_s, speed);",
+        "CHECK(c.track.secs_future == doctest::Approx(1.35));"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/render/highway_draw.cpp",
+          "line_text": "return now_s + speed * cfg.track.secs_future;",
+          "why": "far_time, the owner"
+        }
+      ],
+      "note": "---- phase 6 task J2-8: render callers and the Onyx numbers ---- The highway's far end is now plus speed times secs_future; time_to_z, z_to_time and the draw list's window all ask far_time. Decided by: audit finding 224; phase 6 task J2-8 (D54)"
+    },
+    {
+      "question": "Where does the track rectangle sit, and at what size?",
+      "owner": "track_rect in src/render/highway_draw.cpp",
+      "owner_file": "src/render/highway_draw.cpp",
+      "owner_symbol": "track_rect",
+      "date": "2026-10-04",
+      "decision": "D54",
+      "added_by": "J2-8",
+      "pattern": "std::max\\(\\s*1\\s*,\\s*(?:width|height)\\s*\\)|static_cast<float>\\([^()]*\\)\\s*/\\s*static_cast<float>\\((?:\\w+\\.)*(?:th|track_h|track_height)\\)|\\b(?:\\w+\\.)*(?:h|height)\\s*-\\s*(?:\\w+\\.)*(?:th|track_h|track_height)\\b|static_cast<float>\\((?:\\w+\\.)*(?:th|track_h|track_height)\\)\\s*/\\s*static_cast<float>\\(",
+      "must_match": [
+        "const int w = std::max(1, width);",
+        "const int h = std::max(1, height);",
+        "const HighwayCamera cam = make_camera(cfg, static_cast<float>(w) / static_cast<float>(th));",
+        "out.y = static_cast<float>(h - th) + (1.0f - XMVectorGetY(ndc)) * 0.5f * static_cast<float>(th);",
+        "return highway_span_at(cfg, width, height, static_cast<float>(std::max(1, height))).left - gap;",
+        "d.width = std::max(1, width);",
+        "d.height = std::max(1, height);",
+        "HighwayCamera cam = make_camera(cfg, static_cast<float>(d.width) / static_cast<float>(d.track_h));",
+        "fc.rect_max = XMFLOAT2(1.0f, -1.0f + 2.0f * static_cast<float>(d.track_h) / static_cast<float>(d.height));"
+      ],
+      "must_not_match": [
+        "const int want = std::max(1, cfg.hydra.msaa);",
+        "XMFLOAT2(1.0f, 1.0f - 2.0f * static_cast<float>(d.rect.top) / static_cast<float>(d.rect.height));",
+        "const HighwayCamera cam = make_camera(cfg, r.aspect);",
+        "r.track_height = std::max(1, t);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/render/highway_draw.cpp",
+          "line_text": "r.width = std::max(1, width);",
+          "why": "track_rect, the owner"
+        },
+        {
+          "file": "src/render/highway_draw.cpp",
+          "line_text": "r.height = std::max(1, height);",
+          "why": "track_rect, the owner"
+        },
+        {
+          "file": "src/render/highway_draw.cpp",
+          "line_text": "r.top = r.height - r.track_height;",
+          "why": "track_rect, the owner"
+        },
+        {
+          "file": "src/render/highway_draw.cpp",
+          "line_text": "r.aspect = static_cast<float>(r.width) / static_cast<float>(r.track_height);",
+          "why": "track_rect, the owner"
+        }
+      ],
+      "note": "The track rectangle: the size floor (below 1 counts as 1), the camera aspect (width over track height) and the bottom anchor (the track's top row is the image height less the track height). The last alternative is the renderer's old fade rectangle, which divided the track height by the image height; it now converts track_rect's top row to screen coordinates. Decided by: audit finding 221; phase 6 task J2-8 (D54)"
+    },
+    {
+      "question": "In what order does a polygon become triangles?",
+      "owner": "push_fan in src/render/obj_loader.cpp",
+      "owner_file": "src/render/obj_loader.cpp",
+      "owner_symbol": "push_fan",
+      "date": "2026-10-04",
+      "decision": "D54",
+      "added_by": "J2-8",
+      "pattern": "\\.vertices\\.push_back\\(",
+      "anchor": ".vertices.push_back(",
+      "must_match": [
+        "m.vertices.push_back(a);",
+        "m.vertices.push_back(b);",
+        "m.vertices.push_back(c);",
+        "m.vertices.push_back(a);",
+        "m.vertices.push_back(c);",
+        "m.vertices.push_back(d);",
+        "mesh.vertices.push_back(make_vertex(corners[0]));"
+      ],
+      "must_not_match": [
+        "for (int k = 0; k < 3; ++k) sorted.push_back(mesh.vertices[tri * 3 + k]);",
+        "push_fan(m, {a, b, c, d});"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/render/obj_loader.cpp",
+          "line_text": "mesh.vertices.push_back(corners[0]);",
+          "why": "push_fan, the owner"
+        },
+        {
+          "file": "src/render/obj_loader.cpp",
+          "line_text": "mesh.vertices.push_back(corners[i]);",
+          "why": "push_fan, the owner"
+        },
+        {
+          "file": "src/render/obj_loader.cpp",
+          "line_text": "mesh.vertices.push_back(corners[i + 1]);",
+          "why": "push_fan, the owner"
+        }
+      ],
+      "scope": [
+        "src/render/obj_loader.cpp"
+      ],
+      "note": "A polygon becomes triangles as a fan from its first corner (Onyx's triangulate). load_obj's faces and the built flat and box meshes all push their vertices through push_fan. Decided by: audit finding 226; phase 6 task J2-8 (D54)"
+    },
+    {
+      "question": "Which X edge of a railing faces away from the lanes?",
+      "owner": "railing_outer_x in src/render/highway_draw.cpp",
+      "owner_file": "src/render/highway_draw.cpp",
+      "owner_symbol": "railing_outer_x",
+      "date": "2026-10-06",
+      "decision": "D81",
+      "added_by": "SPTRI",
+      "pattern": "\\bright\\s*\\?\\s*x2\\s*:\\s*x1\\b|railing_x\\(\\s*cfg\\s*,\\s*(?:true|false)\\s*,",
+      "must_match": [
+        "const float outer = right ? x2 : x1;",
+        "railing_x(cfg, false, xl, inner);"
+      ],
+      "must_not_match": [
+        "railing_x(cfg, right, rail.lo[0], rail.hi[0]);",
+        "const float outer = railing_outer_x(cfg, right);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/render/highway_draw.cpp",
+          "line_text": "return right ? x2 : x1;",
+          "why": "railing_outer_x, the owner"
+        }
+      ],
+      "note": "Which end of a railing's X extent is its outer edge. railing_x owns the extent; railing_outer_x picks the outer end, and the SP end markers and highway_span_at ask it. A railing_x call with a literal side is how a caller picked an end by hand. Decided by: SPTRI derive-once review, finding 1 (D81)"
+    },
+    {
+      "question": "Where may a line break fall in a Preview text box?",
+      "owner": "wrap_words in src/render/overlay_layout.cpp",
+      "owner_file": "src/render/overlay_layout.cpp",
+      "owner_symbol": "wrap_words",
+      "date": "2026-10-04",
+      "decision": "D54",
+      "added_by": "J2-8",
+      "pattern": "\\.find\\(\\s*' '",
+      "anchor": ".find(",
+      "must_match": [
+        "size_t end = text.find(' ', start);"
+      ],
+      "must_not_match": [
+        "while (start < text.size() && text[start] == ' ') ++start;",
+        "for (const std::string& line : wrap_words(text, 0.0f, width_of, keep_last))"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/render/overlay_layout.cpp",
+          "line_text": "size_t next = text.find(' ', end);",
+          "why": "wrap_words, the owner"
+        }
+      ],
+      "scope": [
+        "src/render/overlay_layout.cpp"
+      ],
+      "note": "Where a Preview text box's line may break: wrap_words walks the spaces, and widest_word takes the widest line it makes at width 0. Decided by: audit finding 75; phase 6 task J2-8 (D54)"
+    },
+    {
+      "question": "Whose numbers does the Preview draw with?",
+      "owner": "assets/preview/3d-config.json, read by load_preview_config (docs/adr/0008)",
+      "owner_file": "src/render/preview_config.cpp",
+      "owner_symbol": "load_preview_config",
+      "date": "2026-10-04",
+      "decision": "D54",
+      "added_by": "J2-8",
+      "pattern": "^(?!\\s*float [rx] = ).*(?:\\b\\w+\\s*=\\s*-?\\d|\\w\\{[^}]*\\d)",
+      "must_match": [
+        "float secs_future = 1.35f;  // events this far ahead sit at z_future",
+        "Color background{0x1c / 255.0f, 0x1d / 255.0f, 0x2b / 255.0f, 1};",
+        "Vec3 camera_position{0, 1.4f, 3};",
+        "LightConfig light{{0, -0.5f, 0.5f}};",
+        "int msaa = 4;  // mirrors Onyx's prefMSAA default",
+        "float y = -1;  // the floor"
+      ],
+      "must_not_match": [
+        "float r = 1, g = 1, b = 1, a = 1;",
+        "float x = 0, y = 0, z = 0;",
+        "float secs_future{};  // events this far ahead sit at z_future",
+        "LightConfig light{};"
+      ],
+      "scope": [
+        "src/render/preview_config.h"
+      ],
+      "note": "The Preview's numbers live in assets/preview/3d-config.json alone; a PreviewConfig that was not loaded holds zeros. A field set to a number, or a brace initializer holding one, would be a second copy. Color's white and Vec3's origin are the types' own defaults, not Onyx's numbers, so their two member lines are left out. Decided by: audit finding 220; phase 6 task J2-8 (D54)"
+    },
+    {
+      "question": "Which gem does a Preview note draw as?",
+      "owner": "pad_of in src/render/track_state.cpp",
+      "owner_file": "src/render/track_state.cpp",
+      "owner_symbol": "pad_of",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-4",
+      "pattern": "n\\.lane == PreviewLane::Kick",
+      "anchor": "n.lane == PreviewLane::Kick",
+      "must_match": [
+        "if (n.lane == PreviewLane::Kick) {"
+      ],
+      "must_not_match": [
+        "case PreviewLane::Kick:   break;",
+        "CHECK(scene.notes[3].lane == PreviewLane::Kick);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Decided by: audit finding 190; phase 6 task J3-4 (D53, D54)"
+    },
+    {
+      "question": "Where does a highway span end, and how fast does a target glow fade? (tests)",
+      "owner": "kSpanEndTicks in src/render/track_state.h and targets.secs_light in assets/preview/3d-config.json",
+      "owner_file": "src/render/track_state.h",
+      "owner_symbol": "kSpanEndTicks",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-5",
+      "pattern": "1\\.5005|0\\.1666666",
+      "must_match": [
+        "CHECK(c.hi[2] == doctest::Approx(time_to_z(cfg, now, 1.5005, 1.0)));",
+        "CHECK(c.alpha == doctest::Approx(1.0f - 0.05f / 0.1666666f));",
+        "CHECK(c.alpha == doctest::Approx(1.0f - 0.15f / 0.1666666f));",
+        "CHECK(c.hi[2] == doctest::Approx(time_to_z(cfg, 1.0, 1.5005, 1.0)));"
+      ],
+      "must_not_match": [
+        "doctest::Approx(time_to_z(cfg, now, 1.5 + kSpanEndTicks / 1000.0, 1.0)));"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/test_preview_config.cpp",
+          "line_text": "CHECK(c.track.targets_secs_light == doctest::Approx(0.1666666));",
+          "why": "the config test pins the shipped json's own value (D54, item 220)"
+        }
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "The highway's half-tick span end and the glow's fade length typed into the draw tests as numbers. Decided by: audit finding 276 (the highway half); phase 6 task J4-5 (D53, D54)"
+    }
+  ]
+}

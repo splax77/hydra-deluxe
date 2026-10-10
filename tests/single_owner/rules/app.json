@@ -1,0 +1,1817 @@
+{
+  "rules": [
+    {
+      "question": "Which code launches the Windows shell?",
+      "owner": "open_in_browser (src/app/report_files.cpp)",
+      "owner_file": "src/app/report_files.cpp",
+      "owner_symbol": "open_in_browser",
+      "date": "2026-10-04",
+      "decision": "ADR 0020",
+      "added_by": "gate-fix",
+      "pattern": "ShellExecute|CreateProcess",
+      "owner_files": [
+        "src/app/report_files.cpp"
+      ],
+      "must_match": [
+        "ShellExecuteW(nullptr, L\"open\", p.c_str(), nullptr, nullptr, SW_SHOWNORMAL);",
+        "CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi);"
+      ],
+      "must_not_match": [
+        "hydra::app::open_in_browser(page);"
+      ],
+      "note": "The shell takes no long or prefixed path (fits_shell), so only open_in_browser launches it, with shell_path's short form. Decided by: ADR 0020 (The shell: Open report and Show in folder)"
+    },
+    {
+      "question": "Does the path gauge work out an SP fact itself?",
+      "owner": "the stored facts build_sp_meter_curve reads (bank_rise_ticks, sp_end_steps, refill_tick)",
+      "owner_file": "src/app/preview_view.cpp",
+      "owner_symbol": "build_sp_meter_curve",
+      "date": "2026-10-04",
+      "decision": "audit findings 147 and 159",
+      "added_by": "step-1 derive-once fixes round 2",
+      "pattern": "sp_phrases|collected_phrase_ticks|sp_meter\\(\\)|sp_bars_to_measures|std::min\\(|SqIn",
+      "must_match": [
+        "for (int64_t t : song.sp_phrases()) {",
+        "const int bars = act.sp_meter();",
+        "end = std::min(end, cap_end);",
+        "if (s.kind == SpEndKind::SqIn) continue;"
+      ],
+      "must_not_match": [
+        "const int64_t at = act.refill_tick(k);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "function_file": "src/app/preview_view.cpp",
+      "function": "SpMeterCurve build_sp_meter_curve(",
+      "note": "Was its own test in test_preview_view.cpp (findings 147 and 159): the path gauge's body never touches the chart's phrases, the collected list, the bank count, the cap rule or the squeeze-in rule (that one lives in refill_tick). Scoped to that one function. Decided by: audit findings 147 and 159; step-1 derive-once review of fb1189b, finding 5 (2026-10-04)"
+    },
+    {
+      "question": "Which fill rule does a command-line run use?",
+      "owner": "Settings::load_for_command_line in src/app/config.cpp",
+      "owner_file": "src/app/config.cpp",
+      "owner_symbol": "Settings::load_for_command_line",
+      "date": "2026-10-07",
+      "decision": "perf follow-up B (docs/handoffs/2026-10-06-perf-speedups-wave2-handoff.md)",
+      "added_by": "perf-bench-fills",
+      "pattern": "\\bSettings::load\\(\\)",
+      "anchor": "Settings::load()",
+      "owner_files": [
+        "src/app/config.cpp"
+      ],
+      "exempt": [
+        {
+          "file": "src/ui/app_state.cpp",
+          "why": "the GUI is where the 1.0 fills setting lives"
+        },
+        {
+          "file": "src/cli/fillcompare.cpp",
+          "why": "hydra_fillcompare sets each side's fill rule itself (collect_fill_rows in src/app/fill_report.cpp)"
+        }
+      ],
+      "must_match": [
+        "hydra::app::Settings settings = hydra::app::Settings::load();",
+        "app::Settings st = app::Settings::load();"
+      ],
+      "must_not_match": [
+        "hydra::app::Settings settings = hydra::app::Settings::load_for_command_line(legacy_fills);",
+        "app::Settings st = app::Settings::load_for_command_line(g_legacy_fills);"
+      ],
+      "note": "A command-line tool that reads the app's INI by plain load() keeps the app's \"1.0 fills\" box, so its run (and a bench digest) changes with whatever the GUI was left on."
+    },
+    {
+      "question": "Why is a stored result out of date?",
+      "owner": "stale_text in src/app/user_messages.cpp",
+      "owner_file": "src/app/user_messages.cpp",
+      "owner_symbol": "stale_text",
+      "date": "2026-10-04",
+      "decision": "D48",
+      "added_by": "O3b",
+      "pattern": "another Hydra version|different rules in hydra_rules|Re-analyze to refresh|run a batch to refresh",
+      "must_match": [
+        "hint(\"Analyzed by another Hydra version, or under different rules in \"",
+        "\"from different rules in hydra_rules.ini. Re-analyze to refresh it.\");",
+        "\"hydra_rules.ini. Re-analyze to refresh.\");"
+      ],
+      "must_not_match": [
+        "} else if (status == store::RecordStatus::Stale) {",
+        "\"hydra_rules.ini has a line Hydra can't read. Fix or delete that line, then restart \""
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/user_messages.cpp",
+          "line_text": "cause = \"another Hydra version or from different rules in hydra_rules.ini\";",
+          "why": "stale_text, the owner: both causes (today's sentence)"
+        },
+        {
+          "file": "src/app/user_messages.cpp",
+          "line_text": "cause = \"another Hydra version\";",
+          "why": "stale_text, the owner: another Hydra version"
+        },
+        {
+          "file": "src/app/user_messages.cpp",
+          "line_text": "cause = \"different rules in hydra_rules.ini\";",
+          "why": "stale_text, the owner: different rules"
+        },
+        {
+          "file": "src/app/user_messages.cpp",
+          "line_text": "\". Click the song or run a batch to refresh it.\";",
+          "why": "stale_text, the owner: the sentence's ending (D87 item 6)"
+        }
+      ],
+      "note": "---- app and UI helper owners (phase 3 task O3b) ---- The out-of-date sentence, by any of its pieces: the cause it names or the \"Re-analyze to refresh\" it ends on. stale_text names the store's real cause; every screen shows its sentence. Decided by: audit finding 13; D48, Q17 (phase 3 task O3b)"
+    },
+    {
+      "question": "Has a chart file changed since its library row was made?",
+      "owner": "chart_changed_since in src/app/analysis.cpp",
+      "owner_file": "src/app/analysis.cpp",
+      "owner_symbol": "chart_changed_since",
+      "date": "2026-10-07",
+      "decision": "D87",
+      "added_by": "storage-T2",
+      "pattern": "\\b(hash_chart_file|chart_files_unchanged|chart_files_sig)\\(",
+      "anchor": "chart_file",
+      "owner_files": [
+        "src/app/analysis.h",
+        "src/app/analysis.cpp"
+      ],
+      "must_match": [
+        "if (app::chart_files_unchanged(entry_.notespath, entry_.sig)) return false;",
+        "const std::string hash = app::hash_chart_file(entry_.notespath);",
+        "out_.new_sig = app::chart_files_sig(song_.notespath);"
+      ],
+      "must_not_match": [
+        "app::chart_changed_since(entry_.notespath, entry_.sig);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Whether a chart file changed since its library row was made. The Preview's load and the click's job both ask chart_changed_since, so the two never disagree; the fingerprint and the hash have no other caller in src or tools. src only: tools/replay.cpp hashes a chart to look it up by path, which is a different question. Decided by: storage-T2 review finding 2 (D87 item 3)"
+    },
+    {
+      "question": "What does a library row with no result say when hovered?",
+      "owner": "kNotAnalyzedText in src/app/user_messages.h",
+      "owner_file": "src/app/user_messages.h",
+      "owner_symbol": "kNotAnalyzedText",
+      "date": "2026-10-07",
+      "decision": "D91",
+      "added_by": "storage-T2",
+      "pattern": "Not analyzed yet",
+      "anchor": "Not analyzed yet",
+      "owner_files": [
+        "src/app/user_messages.h"
+      ],
+      "must_match": [
+        "ImGui::SetTooltip(\"Not analyzed yet. Open the song and press \\\"Analyze this \"",
+        "\"Not analyzed yet. Click the song or run a batch to analyze it.\";"
+      ],
+      "must_not_match": [
+        "ImGui::SetTooltip(\"%s\", app::kNotAnalyzedText);"
+      ],
+      "note": "The not-analyzed row's tooltip. The old copy was split over two source lines, so a rule on the whole sentence missed it; this one matches the sentence's first words, which sit on one line however the rest is split. kNotAnalyzedText is the one place it is typed. Decided by: D91 (2026-10-07)"
+    },
+    {
+      "question": "What text shows where a value is missing?",
+      "owner": "kDash in src/app/report.h",
+      "owner_file": "src/app/report.h",
+      "owner_symbol": "kDash",
+      "date": "2026-10-08",
+      "decision": "derive-once review of RW-T2, finding 2 (2026-10-08)",
+      "added_by": "RW-T2",
+      "pattern": "\"(\\\\x[eE]2\\\\x80\\\\x94|\\\\u2014)\"|^(?:(?!//).)*\"—\"",
+      "must_match": [
+        ": std::string(\"\\xe2\\x80\\x94\"));",
+        "std::string acts_txt = (r.old_acts ? std::to_string(*r.old_acts) : std::string(\"\\xe2\\x80\\x94\"));",
+        "inline constexpr const char* kDash = \"\\xE2\\x80\\x94\";  // U+2014 EM DASH",
+        "return r.posted.empty() ? \"—\" : r.posted;",
+        "const char* dash = \"\\u2014\";"
+      ],
+      "must_not_match": [
+        "std::string average = report::kDash;",
+        "std::string subtitle = username + \" — \" +",
+        "const DASH = '\\u2014';",
+        "x = 1;  // reads \"—\" when empty"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/report.h",
+          "line_text": "inline constexpr const char* kDash = \"—\";",
+          "why": "kDash, the owner"
+        }
+      ],
+      "note": "A string that is only an em dash, typed as escaped bytes, as a \\u escape, or as the raw character before any // comment. kDash is the one such string; a dash inside longer text (a subtitle's separator) is not this question. As with the ellipsis row, the raw alternative is built from the three UTF-8 bytes."
+    },
+    {
+      "question": "How is the Beyond edge written in ms?",
+      "owner": "beyond_edge_text in src/app/report.cpp",
+      "owner_file": "src/app/report.cpp",
+      "owner_symbol": "beyond_edge_text",
+      "date": "2026-10-08",
+      "decision": "derive-once review of RW-T3, finding 2 (2026-10-08)",
+      "added_by": "RW-J1",
+      "pattern": "\\(\\s*beyond_edge_ms\\(",
+      "anchor": "beyond_edge_ms(",
+      "must_match": [
+        "return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));",
+        "\"Beyond \" + std::to_string(static_cast<int64_t>(beyond_edge_ms(w))) + \" ms\"",
+        "return format_ms_whole(beyond_edge_ms(w));"
+      ],
+      "must_not_match": [
+        "return \"Beyond \" + report::beyond_edge_text(hit_window_ms) + \" ms\";",
+        "double beyond_edge_ms(double hit_window_ms) {",
+        "const DATA_EDGE = DATA.beyond_edge_ms;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/report.cpp",
+          "line_text": "return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));",
+          "why": "beyond_edge_text, the owner"
+        }
+      ],
+      "note": "The Beyond edge handed straight to a cast, a rounding or a formatter is a second way of writing it. format_ms_whole is not a stand-in: the review found the two differ on a fractional edge."
+    },
+    {
+      "question": "Which timing_tiers entries are the open ones?",
+      "owner": "beyond_tier and none_tier in src/app/report.cpp",
+      "owner_file": "src/app/report.cpp",
+      "owner_symbol": "beyond_tier",
+      "date": "2026-10-08",
+      "decision": "derive-once review of RW-T3, finding 3 (2026-10-08)",
+      "added_by": "RW-J1",
+      "pattern": "\\btiers\\[\\s*\\w+\\.size\\(\\)\\s*-\\s*[12]\\s*\\]|\\btiers\\.back\\(\\)",
+      "anchor": "tiers",
+      "must_match": [
+        "if (tier_name == tiers[tiers.size() - 2].name)",
+        "if (tier_name == tiers.back().name) return \"No squeezes\";",
+        "const TimingTier& none = tiers.back();"
+      ],
+      "must_not_match": [
+        "if (tier_name == report::beyond_tier(tiers).name)",
+        "if (tier_name == report::none_tier(tiers).name) return \"No squeezes\";",
+        "CHECK(choices[i + 1].tier == std::optional<std::string>(tiers[i].name));"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/report.cpp",
+          "line_text": "return tiers[tiers.size() - 2];",
+          "why": "beyond_tier, the owner"
+        },
+        {
+          "file": "src/app/report.cpp",
+          "line_text": "const TimingTier& none_tier(const std::vector<TimingTier>& tiers) { return tiers.back(); }",
+          "why": "none_tier, the owner"
+        }
+      ],
+      "note": "Picking an open band out of a timing_tiers table by its place in the table. beyond_tier and none_tier are the one answer."
+    },
+    {
+      "question": "Which table says what a Dynamics row holds?",
+      "owner": "kDynamicsRows in src/app/dynamics_breakdown.cpp",
+      "owner_file": "src/app/dynamics_breakdown.cpp",
+      "owner_symbol": "kDynamicsRows",
+      "date": "2026-10-04",
+      "decision": "M_D review, library finding 1, round 2 library finding 6 (phase 3 tasks FX-L, FX2-L)",
+      "added_by": "FX-L",
+      "pattern": "case (app::)?DynamicsRow::\\w+:|return note\\.is2x \\? DynamicsRow::|==\\s*(app::)?DynamicsRow::\\w+",
+      "anchor": "DynamicsRow::",
+      "must_match": [
+        "case app::DynamicsRow::GreenTom:     return ImVec4(0.15f, 0.75f, 0.20f, 1.0f);",
+        "case DynamicsRow::GreenCymbal:  return pad(NoteColor::Green, NoteCymbalType::Cymbal);",
+        "return note.is2x ? DynamicsRow::Kick2x : DynamicsRow::Kick;",
+        "if (!pro && (r == app::DynamicsRow::YellowCymbal ||"
+      ],
+      "must_not_match": [
+        "ImVec4 dot = pad_color(r);",
+        "const DynamicsRowInfo& info = dynamics_row_info(r);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/dynamics_breakdown.cpp",
+          "line_text": "if (r == DynamicsRow::Count) return std::string();",
+          "why": "dynamics_row_label's guard: Count marks the end of the rows and names no row"
+        }
+      ],
+      "note": "---- M_D review follow-ups (phase 3 task FX-L) ---- A switch over the Dynamics rows, the 2x test that picks a kick row, or a test of a row against a named row (the old cymbal-row hide was \"r == app::DynamicsRow::YellowCymbal || ...\"): a second table of which note each row holds. The one table is kDynamicsRows in dynamics_breakdown.cpp, read through dynamics_row_info and dynamics_row_for."
+    },
+    {
+      "question": "Which Dynamics rows are pad rows?",
+      "owner": "is_pad_row in src/app/dynamics_breakdown.cpp",
+      "owner_file": "src/app/dynamics_breakdown.cpp",
+      "owner_symbol": "is_pad_row",
+      "date": "2026-10-09",
+      "decision": "Note Shuffle wave derive-once review (ns-review) finding 1 (2026-10-09)",
+      "added_by": "ns-fix",
+      "pattern": "[<>]=?\\s*(static_cast<\\w+>\\(\\s*)?(app::)?DynamicsRow::(GreenTom|Kick)\\b",
+      "anchor": "DynamicsRow::",
+      "must_match": [
+        "for (size_t i = 0; i <= static_cast<size_t>(DynamicsRow::GreenTom); ++i) t += rows[i];",
+        "for (size_t i = 0; i <= static_cast<size_t>(DynamicsRow::GreenTom); ++i)",
+        "for (int i = 0; i <= static_cast<int>(app::DynamicsRow::GreenTom); ++i) {",
+        "const bool pad = i <= static_cast<size_t>(app::DynamicsRow::GreenTom);",
+        "if (r < app::DynamicsRow::Kick) t += bd.row(r);"
+      ],
+      "must_not_match": [
+        "{DynamicsRow::GreenTom,     NoteColor::Green,  false, false},",
+        "const app::DynamicsCounts& k = bd.row(app::DynamicsRow::Kick);",
+        "if (!app::is_pad_row(r)) continue;",
+        "auto r = static_cast<app::DynamicsRow>(i);"
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "Which Dynamics rows are pads, decided by cutting the row order at a named row. Four copies once did (pads_total, dynamics_for_settings, the Dynamics tab's pad table and a Note Shuffle test); a row added or moved in the enum would have split them. is_pad_row reads the row table instead."
+    },
+    {
+      "question": "Which words name a comparison row's status?",
+      "owner": "the kStatus constants in src/app/dm_report.h",
+      "owner_file": "src/app/dm_report.h",
+      "owner_symbol": "kStatusUnderOptimal",
+      "date": "2026-10-08",
+      "decision": "derive-once review of RW-T3, finding 4 (2026-10-08)",
+      "added_by": "RW-J1",
+      "pattern": "\"(under optimal|at optimal|above optimal|not analyzed|no paths|not in library|other speed)\"",
+      "must_match": [
+        "if (!r.delta || r.status == \"other speed\") return Tone::Dim;",
+        "{std::string(\"under optimal\"), \"Under optimal\"},",
+        "if (r.status == \"under optimal\") ++stats.under_optimal;",
+        "row.status = \"no paths\";",
+        "if (status == \"not analyzed\" || status == \"no paths\" || status == \"other speed\")",
+        "<option value=\"under optimal\">Under optimal</option>"
+      ],
+      "must_not_match": [
+        "if (!r.delta || r.status == dm_report::kStatusOtherSpeed) return Tone::Dim;",
+        "{\"Under optimal\", group_thousands(stats.under_optimal)},",
+        "group_thousands(stats.under_optimal) + \" under optimal, \" +"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/dm_report.h",
+          "line_text": "inline constexpr const char* kStatusUnderOptimal = \"under optimal\";",
+          "why": "the owner"
+        },
+        {
+          "file": "src/app/dm_report.h",
+          "line_text": "inline constexpr const char* kStatusAtOptimal = \"at optimal\";",
+          "why": "the owner"
+        },
+        {
+          "file": "src/app/dm_report.h",
+          "line_text": "inline constexpr const char* kStatusAboveOptimal = \"above optimal\";",
+          "why": "the owner"
+        },
+        {
+          "file": "src/app/dm_report.h",
+          "line_text": "inline constexpr const char* kStatusNoPaths = \"no paths\";",
+          "why": "the owner"
+        },
+        {
+          "file": "src/app/dm_report.h",
+          "line_text": "inline constexpr const char* kStatusNotAnalyzed = \"not analyzed\";",
+          "why": "the owner"
+        },
+        {
+          "file": "src/app/dm_report.h",
+          "line_text": "inline constexpr const char* kStatusNotInLibrary = \"not in library\";",
+          "why": "the owner"
+        },
+        {
+          "file": "src/app/dm_report.h",
+          "line_text": "inline constexpr const char* kStatusOtherSpeed = \"other speed\";",
+          "why": "the owner"
+        }
+      ],
+      "note": "A comparison status word typed in double quotes, an HTML attribute value included. Only single quotes stay out."
+    },
+    {
+      "question": "How many decimals does % of opt carry?",
+      "owner": "kPercentDecimals in src/app/dm_report.h",
+      "owner_file": "src/app/dm_report.h",
+      "owner_symbol": "kPercentDecimals",
+      "date": "2026-10-08",
+      "decision": "derive-once review of RW-T3, finding 5 (2026-10-08)",
+      "added_by": "RW-J1",
+      "pattern": "(percent_steps|format_percent)\\([^;]*,\\s*2\\)",
+      "anchor": "percent",
+      "must_match": [
+        "row.pct_h = percent_steps(s.score, opt, 2);",
+        "return has_percent(r) ? format_percent(r.actual, *r.optimal, 2) : std::string(kDash);"
+      ],
+      "must_not_match": [
+        "return total > 0 ? format_percent(part, total, 0) : \"0%\";",
+        "return has_percent(r) ? format_percent(r.actual, *r.optimal, dm_report::kPercentDecimals)"
+      ],
+      "note": "A comparison percent written with its decimals typed in. kPercentDecimals is the one count."
+    },
+    {
+      "question": "How far into the song is this moment, as a share?",
+      "owner": "song_fraction in src/app/preview_view.cpp",
+      "owner_file": "src/app/preview_view.cpp",
+      "owner_symbol": "song_fraction",
+      "date": "2026-10-04",
+      "decision": "phase 3 task C4a",
+      "added_by": "M_C fix prod",
+      "pattern": "std::clamp\\([^;]*/\\s*\\*?\\w*length\\w*\\s*,\\s*0\\.0\\s*,\\s*1\\.0",
+      "anchor": "std::clamp(",
+      "must_match": [
+        "const double at = std::clamp(at / *song_length_ms, 0.0, 1.0);",
+        "marks.push_back(std::clamp(a.ms / length_ms, 0.0, 1.0));"
+      ],
+      "must_not_match": [
+        "marks.push_back(*song_fraction(a.ms, length_ms));"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/preview_view.cpp",
+          "line_text": "return std::clamp(ms / length_ms, 0.0, 1.0);",
+          "why": "song_fraction, the owner"
+        }
+      ],
+      "note": "A moment's ms over the song length, clamped to 0..1, worked out anywhere but song_fraction. Decided by: phase 3 task C4a; derive-once review of M_C (6d86f1c), finding 4 (2026-10-04)"
+    },
+    {
+      "question": "When is the song's last note?",
+      "owner": "last_drawn_note in src/app/preview_view.cpp",
+      "owner_file": "src/app/preview_view.cpp",
+      "owner_symbol": "last_drawn_note",
+      "date": "2026-10-04",
+      "decision": "D69",
+      "added_by": "FX-P",
+      "pattern": "notes\\.back\\(\\)|sequence\\.back\\(\\)\\.timecode\\.ms\\(\\)",
+      "anchor": ".back()",
+      "must_match": [
+        "if (scene.has_notes) scene.song_length_ms = scene.notes.back().ms;",
+        "return song.sequence.back().timecode.ms();",
+        "const int64_t last_tick = scene.notes.back().tick;"
+      ],
+      "must_not_match": [
+        "scene.song_length_ms = song_length_ms.value_or(0.0);",
+        "const int64_t last_tick = last->tick;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/preview_view.cpp",
+          "line_text": "return scene.notes.empty() ? nullptr : &scene.notes.back();",
+          "why": "last_drawn_note, the owner"
+        }
+      ],
+      "note": "---- the Preview (derive-once review of M_D, phase 3 task FX-P) ---- The last drawn note, or the last timestamp's onset, read anywhere but last_drawn_note. The song's length has its own owner (app::song_length_ms, D75), whose backup is listed below. Decided by: audit finding 9; derive-once review of M_D, preview finding 1 (phase 3 task FX-P); re-pointed by D69 (phase 7 task AL1)"
+    },
+    {
+      "question": "Is a note struck with the playhead at now?",
+      "owner": "struck_at in src/app/preview_view.h",
+      "owner_file": "src/app/preview_view.h",
+      "owner_symbol": "struck_at",
+      "date": "2026-10-04",
+      "decision": "D48",
+      "added_by": "FX-P",
+      "pattern": "\\b\\w+\\.ms\\s*<=\\s*now\\w*\\b|now\\w*\\s*>=\\s*\\w+\\.ms\\b|\\bnote_ms\\s*<=\\s*now_ms\\b",
+      "anchor": "now",
+      "must_match": [
+        "if (a.has_sp_end && a.ms <= now && now < a.sp_end_ms) return &a;",
+        "if (now_ms >= s.ms) last = &s;",
+        "return note_ms <= now_ms;"
+      ],
+      "must_not_match": [
+        "if (w && struck_at(now, w->first) && now < w->second) return &a;",
+        "return struck_at(now, s.ms);",
+        "if (now < a.sp_end_ms) return &a;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/preview_view.h",
+          "line_text": "inline bool struck_at(double now_ms, double note_ms) { return note_ms <= now_ms; }",
+          "why": "struck_at, the owner"
+        }
+      ],
+      "note": "A note's ms compared with the playhead by hand instead of through struck_at. Decided by: D48, Q27; derive-once review of M_D, preview finding 4 (phase 3 task FX-P)"
+    },
+    {
+      "question": "Which locale groups thousands on a report page?",
+      "owner": "fmt in src/app/html_page.cpp",
+      "owner_file": "src/app/html_page.cpp",
+      "owner_symbol": "fmt",
+      "date": "2026-10-04",
+      "decision": "D48",
+      "added_by": "K1a",
+      "pattern": "\\.toLocaleString\\(\\)",
+      "anchor": ".toLocaleString()",
+      "must_match": [
+        "idx.textContent = (++n).toLocaleString();",
+        "['Paths shown', rows.length.toLocaleString()],"
+      ],
+      "must_not_match": [
+        "const fmt = n => n === null || n === undefined ? DASH : n.toLocaleString('en-US');",
+        "['Paths shown', fmt(rows.length)],"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "---- the report pages (phase 3 task K1a) ---- A bare toLocaleString() groups by the browser's own language, so a German browser prints 1.234 under a subtitle that says 1,234. The pages' shared fmt groups with one fixed rule. The pages live in src/app; a scope entry with a slash names one file, so the row scans all of src, where nothing else has one. Decided by: audit findings 14 and 99; D48, Q12 (phase 3 task K1a)"
+    },
+    {
+      "question": "How is a number rounded on a report page?",
+      "owner": "the C++ text the payload carries: format_percent and percent_steps, format_avg_mult and format_ms in src/app/display_format.cpp",
+      "owner_file": "src/app/display_format.cpp",
+      "owner_symbol": "format_percent",
+      "date": "2026-10-04",
+      "decision": "audit finding 51",
+      "added_by": "FX-R",
+      "pattern": "\\.toFixed\\(",
+      "anchor": ".toFixed(",
+      "must_match": [
+        "['num', r.mult.toFixed(3)],",
+        "? (withPct.reduce((a, r) => a + r.pct, 0) / withPct.length).toFixed(2) + '%' : DASH;"
+      ],
+      "must_not_match": [
+        "['num', r.mult_text],",
+        "avgPct = Math.floor(h / 100) + '.' + String(h % 100).padStart(2, '0') + '%';"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "toFixed rounds the float a page holds, which can tip an exact half the wrong way (99.005% read 99.00%). The pages show numbers the C++ wrote as text, or work in whole numbers the C++ sent. Decided by: audit finding 51; M_D review findings 2 and 8 (phase 3 task FX-R)"
+    },
+    {
+      "question": "What range may a number setting hold?",
+      "owner": "Settings::clamp in src/app/config.cpp (the key table)",
+      "owner_file": "src/app/config.cpp",
+      "owner_symbol": "Settings::clamp",
+      "date": "2026-10-04",
+      "decision": "D51",
+      "added_by": "SE1",
+      "pattern": "\\b(mslimit_value|backendlimit_value|preview_volume|depth_value|depth_mode|sp_cap|hit_window_ms|volume_pct_)\\s*=\\s*(std::(clamp|max|min)\\(|[^;]*>\\s*100\\s*\\?)|\\b(sp_)?cap\\s*<\\s*1\\b|std::max\\(\\s*1\\s*,[^;]*cap\\b",
+      "calls_owner": "Settings::clamp\\(",
+      "owner_files": [
+        "src/app/config.cpp"
+      ],
+      "must_match": [
+        "app.settings.sp_cap = std::max(1, cap);",
+        "app.settings.backendlimit_value = std::clamp(app.settings.backendlimit_value, 0,",
+        "volume_pct_ = percent < 0 ? 0 : percent > 100 ? 100 : percent;",
+        "curve.cap = sp_cap < 1 ? 1 : sp_cap;",
+        "if (cap < 1)",
+        "const int cap = std::max(1, pc->sp_meter_cap());"
+      ],
+      "must_not_match": [
+        "app.settings.mslimit_value = Settings::clamp(&Settings::mslimit_value, v);",
+        "workers_ = std::max(1, workers);",
+        "d.width = std::max(1, width);",
+        "const int window = static_cast<int>(kSqueezeWindowMs);"
+      ],
+      "note": "A setting's range, or the cap floor of 1 bar, worked out again outside the key table. Decided by: D51 Q14 (nearest edge of the box's range, volume 0 to 100) and Q16 (a 1-bar cap stays allowed); audit findings 138, 139, 322; phase 7 task SE1"
+    },
+    {
+      "question": "What gain does a volume percent play at?",
+      "owner": "Settings::volume_gain in src/app/config.cpp",
+      "owner_file": "src/app/config.cpp",
+      "owner_symbol": "Settings::volume_gain",
+      "date": "2026-10-04",
+      "decision": "audit finding 72, phase 7 task SE1",
+      "added_by": "SE1",
+      "pattern": "(volume|percent|pct)\\w*\\)*\\s*/\\s*100\\b",
+      "anchor": "100",
+      "calls_owner": "volume_gain\\(",
+      "must_match": [
+        "transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);",
+        "const float gain = percent / 100.0f;"
+      ],
+      "must_not_match": [
+        "transport_.set_gain(Settings::volume_gain(volume_pct_));",
+        "const double bars = phrase_count / 4.0;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/config.cpp",
+          "line_text": "return static_cast<float>(clamp(&Settings::preview_volume, percent)) / 100.0f;",
+          "why": "volume_gain, the owner"
+        }
+      ]
+    },
+    {
+      "question": "How does a scan row become a library entry?",
+      "owner": "to_library_entry in src/app/analysis.cpp",
+      "owner_file": "src/app/analysis.cpp",
+      "owner_symbol": "to_library_entry",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J1-6",
+      "pattern": "\\b(ChartLibraryEntry(\\s+\\w+)?\\s*\\{|entries\\.push_back\\(\\s*\\{)\\s*\\w+\\.md5\\b",
+      "anchor": ".md5",
+      "owner_files": [
+        "src/app/analysis.cpp"
+      ],
+      "must_match": [
+        "entries.push_back({it.md5, it.title, it.artist, it.charter, it.notespath,",
+        "store::ChartLibraryEntry e{item.md5, item.title, item.artist, item.charter,"
+      ],
+      "must_not_match": [
+        "for (const ScanItem& it : items) entries.push_back(to_library_entry(it));",
+        "items_.push_back({e.md5, e.title, e.artist, e.charter, e.notespath, e.rootfolder});"
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "A brace list of a scan row's fields, md5 first, pushed into the library's entries or built as a ChartLibraryEntry. The ScanJob's list of ScanItems read back from the library (items_) is the other direction, a different question. Decided by: audit finding 256; phase 6 task J1-6 (D53)"
+    },
+    {
+      "question": "How many workers does a batch get?",
+      "owner": "batch_worker_count in src/app/analysis.cpp",
+      "owner_file": "src/app/analysis.cpp",
+      "owner_symbol": "batch_worker_count",
+      "date": "2026-10-04",
+      "decision": "D54",
+      "added_by": "J1-6",
+      "pattern": "std::max\\(\\s*1\\s*,\\s*(std::min\\(\\s*)?(worker\\w*|guess)\\b",
+      "anchor": "std::max(",
+      "must_match": [
+        "workers_ = std::max(1, workers);",
+        "std::min(count, static_cast<size_t>(std::max(1, worker_count)));"
+      ],
+      "must_not_match": [
+        "const int w = std::max(1, width);",
+        "const int cap = std::max(1, pc->sp_meter_cap());",
+        "const size_t nworkers = std::min(count, static_cast<size_t>(worker_count));"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/analysis.cpp",
+          "line_text": "return std::max(1, std::min(guess, kBatchMaxWorkers));",
+          "why": "batch_worker_count, the owner"
+        }
+      ],
+      "note": "A floor of 1 on a worker count. batch_worker_count keeps the floor (D54 records its rule as it is); run_work_pool refuses a count below 1 rather than raising it. Decided by: audit R7.22; D54 (the worker rule recorded as it is)"
+    },
+    {
+      "question": "How is a chart hash spelled for matching?",
+      "owner": "normalize_chart_hash in src/app/analysis.cpp",
+      "owner_file": "src/app/analysis.cpp",
+      "owner_symbol": "normalize_chart_hash",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J1-6",
+      "pattern": "\\bto_lower_ascii\\(.*\\b(md5|hash|hyhash|identifier)\\b",
+      "anchor": "to_lower_ascii(",
+      "must_match": [
+        "by_hash.emplace(to_lower_ascii(r.hyhash), std::move(r));",
+        "in_library.insert(to_lower_ascii(e.md5));",
+        "s.identifier = to_lower_ascii(jstr(entry, \"identifier\"));"
+      ],
+      "must_not_match": [
+        "const std::string key = to_lower_ascii(raw_key);",
+        "std::string key = to_lower_ascii(line.substr(0, eq));",
+        "in_library.insert(normalize_chart_hash(e.md5));"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/analysis.cpp",
+          "line_text": "std::string normalize_chart_hash(std::string_view hash) { return to_lower_ascii(hash); }",
+          "why": "normalize_chart_hash, the owner"
+        }
+      ],
+      "note": "Lowering a hash, a leaderboard identifier or a stored md5 so two spellings match. Lowering an ini key or a search query is a different question. Decided by: audit finding 192; phase 6 task J1-6 (D53)"
+    },
+    {
+      "question": "Which files make up a chart's fingerprint?",
+      "owner": "pending_chart_of in src/app/analysis.cpp",
+      "owner_file": "src/app/analysis.cpp",
+      "owner_symbol": "pending_chart_of",
+      "date": "2026-10-05",
+      "decision": "derive-once review of M7-2c, finding 1 (phase 7 task PV join)",
+      "added_by": "M7-2c",
+      "pattern": "\\bsig_of\\(",
+      "anchor": "sig_of(",
+      "must_match": [
+        "pc.sig = sig_of(*notes, found_ini);",
+        "return sig_unchanged(sig, sig_of(*notes, ini));"
+      ],
+      "must_not_match": [
+        "return sig_of_chart(entries, notes);",
+        "const std::optional<PendingChart> now = pending_chart_of(dir, e, entries);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/analysis.cpp",
+          "line_text": "std::string sig_of(const DirEntry& notes, const DirEntry* ini) {",
+          "why": "sig_of, the string format pending_chart_of uses"
+        },
+        {
+          "file": "src/app/analysis.cpp",
+          "line_text": "pc.sig = sig_of(chart, ini);",
+          "why": "pending_chart_of, the owner"
+        }
+      ],
+      "note": "Fingerprinting a chart's files by hand: anything that calls sig_of has chosen which files go in. Only pending_chart_of chooses, and the scan walk and chart_files_sig both ask it."
+    },
+    {
+      "question": "Where is the resource folder?",
+      "owner": "resource_dir in src/app/config.cpp",
+      "owner_file": "src/app/config.cpp",
+      "owner_symbol": "resource_dir",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-1",
+      "pattern": "\"[^\"]*\\\\\\\\resource",
+      "anchor": "\\\\resource",
+      "must_match": [
+        "options.resource_dir.empty() ? app::exe_dir() + \"\\\\resource\" : options.resource_dir;",
+        "const std::string dir = hydra::app::exe_dir() + \"\\\\resource\\\\\";"
+      ],
+      "must_not_match": [
+        "std::string resource_dir() { return join_folder(exe_dir(), \"resource\"); }",
+        "#include \"ui/resource.h\""
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A string literal naming the resource folder under the exe. The owner joins the bare name \"resource\", so no line matches it. Decided by: audit finding 209; phase 6 task J2-1 (D53)"
+    },
+    {
+      "question": "How do the analysis settings read as text?",
+      "owner": "describe_settings in src/app/config.cpp",
+      "owner_file": "src/app/config.cpp",
+      "owner_symbol": "describe_settings",
+      "date": "2026-10-04",
+      "decision": "D53, D54",
+      "added_by": "J2-1",
+      "pattern": "DepthMode::\\w+.*\"(scores|points)\"|score range %d|%dms limit",
+      "must_match": [
+        "case hydra::DepthMode::Scores: depth_name = \"scores\"; break;",
+        "case hydra::DepthMode::Points: depth_name = \"points\"; break;",
+        "std::printf(\"Settings: the GUI default (SP cap %d, score range %d, %dms limit).\\n\\n\","
+      ],
+      "must_not_match": [
+        "const char* modes[] = {\"scores\", \"points\"};",
+        "hydra::counted(out.stats.total, \"score\", \"scores\") + \": \" +",
+        "if (a.depth_mode) s.depth_mode = *a.depth_mode == \"points\" ? 1 : 0;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/config.cpp",
+          "line_text": "const char* unit = settings.depth_mode == DepthMode::Points ? \"points\" : \"scores\";",
+          "why": "describe_settings, the owner"
+        },
+        {
+          "file": "src/ui/library_dialogs.cpp",
+          "line_text": "return s.search_depth_mode() == DepthMode::Scores ? counted(s.depth_value, \"score\", \"scores\")",
+          "why": "score_range_value: the GUI's counted display wording, which the batch confirm and the settings button share (settings summary button handoff, 2026-10-09)"
+        }
+      ],
+      "note": "A depth unit word chosen from the search's enum, or bench's header words. The GUI's own wordings (\"Within 4 scores\", the score-range box) are separate display text. The GUI's counted \"4 scores\" for the batch confirm and the settings button names the enum, and is listed with the owner's lines as that display text. Decided by: audit finding 206; phase 6 task J2-1 (D53, D54)"
+    },
+    {
+      "question": "What does the stars filter say when its number is out of range?",
+      "owner": "stars_error in src/app/library_query.cpp",
+      "owner_file": "src/app/library_query.cpp",
+      "owner_symbol": "stars_error",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-5",
+      "pattern": "\\b0 to 7\\b",
+      "anchor": "0 to 7",
+      "must_match": [
+        "constexpr const char* kStarsError = \"stars: needs a number from 0 to 7\";"
+      ],
+      "must_not_match": [
+        "return \"stars: needs a number from 0 to \" + std::to_string(kMaxStars);",
+        "std::optional<int> stars;             // stars:N, N in 0..kMaxStars"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The stars filter's range typed out as text. The owner builds the top of the range from kMaxStars, so no line matches it. The tests pin the whole sentence on purpose, so they are outside the scope. Decided by: audit finding 171; phase 6 task J2-5 (D53)"
+    },
+    {
+      "question": "Does a term apply to a column? (matching)",
+      "owner": "term_applies_to in src/app/library_query.cpp",
+      "owner_file": "src/app/library_query.cpp",
+      "owner_symbol": "term_applies_to",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-5",
+      "pattern": "QueryField::Any",
+      "anchor": "QueryField::Any",
+      "calls_owner": "term_applies_to\\(",
+      "must_match": [
+        "case QueryField::Any:"
+      ],
+      "must_not_match": [
+        "if (term_applies_to(term.field, c.column) && contains(c.text, term.folded))",
+        "return term_applies_to(QueryField::Any, column);"
+      ],
+      "function_file": "src/app/library_query.cpp",
+      "function": "bool term_matches(",
+      "note": "Whether a term limited to one field counts in a column. Matching and highlighting each asked it their own way; both now call the owner. Any line naming QueryField::Any inside either function answers it again. Decided by: audit finding 204; phase 6 task J2-5 (D53)"
+    },
+    {
+      "question": "Does a term apply to a column? (highlighting)",
+      "owner": "term_applies_to in src/app/library_query.cpp",
+      "owner_file": "src/app/library_query.cpp",
+      "owner_symbol": "term_applies_to",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-5",
+      "pattern": "QueryField::Any",
+      "anchor": "QueryField::Any",
+      "calls_owner": "term_applies_to\\(",
+      "must_match": [
+        "if (field != QueryField::Any && term.field != QueryField::Any && term.field != field)"
+      ],
+      "must_not_match": [
+        "if (!term_applies_to(term.field, field)) continue;",
+        "return term_applies_to(QueryField::Any, column);"
+      ],
+      "function_file": "src/app/library_query.cpp",
+      "function": "std::vector<MatchSpan> match_spans(",
+      "note": "Decided by: audit finding 204; phase 6 task J2-5 (D53)"
+    },
+    {
+      "question": "How many dynamic notes does a count hold?",
+      "owner": "DynamicsCounts::dynamic in src/app/dynamics_breakdown.h",
+      "owner_file": "src/app/dynamics_breakdown.h",
+      "owner_symbol": "dynamic",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-5",
+      "pattern": "(\\b\\w+\\.)?\\bghost\\s*\\+\\s*\\w*\\.?accent\\b(?!\\s*\\+)",
+      "anchor": "accent",
+      "must_match": [
+        "bool has_dynamics() const { return ghost + accent > 0; }",
+        "int dyn = played.ghost + played.accent;"
+      ],
+      "must_not_match": [
+        "int all() const { return ghost + accent + normal; }",
+        "int dyn = played.dynamic();",
+        "bool has_dynamics() const { return dynamic() > 0; }"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/dynamics_breakdown.h",
+          "line_text": "int dynamic() const { return ghost + accent; }",
+          "why": "DynamicsCounts::dynamic, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "Ghosts plus accents, on a bare count or through a variable. The three-way sum that goes on to add normals is all(), another question. Decided by: audit finding 205; phase 6 task J2-5 (D53)"
+    },
+    {
+      "question": "Where does the Beyond tier start on the report page?",
+      "owner": "beyond_edge_ms and tier_for, carried in the payload by src/app/report.cpp",
+      "owner_file": "src/app/report.cpp",
+      "owner_symbol": "beyond_edge_ms",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-2",
+      "pattern": "Math\\.max\\(\\.\\.\\.DATA\\.tiers|r\\.ms\\s*>=?\\s*BEYOND",
+      "must_match": [
+        "const BEYOND = Math.max(...DATA.tiers.filter(t => t.cutoff !== null).map(t => t.cutoff));",
+        "const beyond = rows.filter(r => r.ms !== null && r.ms > BEYOND).length;"
+      ],
+      "must_not_match": [
+        "const beyond = rows.filter(r => r.tier === 'Beyond').length;",
+        "return name === 'Beyond' ? 'Beyond ' + DATA.beyond_edge_ms + ' ms'"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The path report's page script once found the Beyond edge as the largest tier cutoff and counted rows past it by their ms. The page now reads the edge from the payload and counts rows whose tier tier_for already set to Beyond. Decided by: audit finding 155; phase 6 task J2-2 (D53)"
+    },
+    {
+      "question": "How many charts does a path report list?",
+      "owner": "charts_counted in src/app/report.cpp",
+      "owner_file": "src/app/report.cpp",
+      "owner_symbol": "charts_counted",
+      "date": "2026-10-08",
+      "decision": "D53, D77",
+      "added_by": "RW-T7",
+      "pattern": "\\.(insert|emplace)\\([^)]*\\.hyhash",
+      "anchor": ".hyhash",
+      "must_match": [
+        "songs.insert(r.hyhash);",
+        "if (seen.insert(r.hyhash).second) n += r.copies;",
+        "if (seen.insert(rows[k].hyhash).second) n += rows[k].copies;",
+        "if (seen.insert(rows[shown[k]].hyhash).second) n += rows[shown[k]].copies;"
+      ],
+      "must_not_match": [
+        "out.songs = charts_counted(rows, every_row);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/report.cpp",
+          "line_text": "if (seen.insert(rows[i].hyhash).second) charts += rows[i].copies;",
+          "why": "charts_counted, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The subtitle's chart count and the Charts shown tile come from one file-local helper in report.cpp. Decided by: audit finding 242; phase 6 task J2-2 (D53); D77 (copies)"
+    },
+    {
+      "question": "Which side of a report comparison is higher?",
+      "owner": "the status field set by collect_dm_rows and collect_fill_rows, and the above_optimal field collect_dm_rows sets from the same comparison",
+      "owner_file": "src/app/dm_report.cpp",
+      "owner_symbol": "collect_dm_rows",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-2",
+      "pattern": "r\\.delta\\s*[<>]\\s*0\\s*\\?",
+      "anchor": "r.delta",
+      "must_match": [
+        "const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.delta < 0 ? 'num neg' : 'num');",
+        ": (r.delta < 0 ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));",
+        "const left = under.reduce((a, r) => a + (r.delta > 0 ? r.delta : 0), 0);",
+        "const deltaCls = !hasDelta ? 'num dim' : (r.delta > 0 ? 'num pos'"
+      ],
+      "must_not_match": [
+        "row.status = above       ? \"above optimal\"",
+        "row.status = delta == 0 ? \"same\" : (delta > 0 ? \"1.1 higher\" : \"1.0 higher\");",
+        "const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.status === 'above optimal' ? 'num neg' : 'num');",
+        "row.above_optimal = above;",
+        ": (r.above_optimal ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "collect_dm_rows and collect_fill_rows set each row's status from the one comparison; the page scripts read it instead of testing the delta's sign. The leaderboard row also keeps that answer in above_optimal, which an off-speed status hides (D64). The C++ assignments carry no `r.` and are the owner. Decided by: audit finding 168; phase 6 task J2-2 (D53)"
+    },
+    {
+      "question": "How many charts did a batch analyze, skip and fail?",
+      "owner": "run_batch in src/app/analysis.cpp (BatchProgress's counts)",
+      "owner_file": "src/app/analysis.cpp",
+      "owner_symbol": "run_batch",
+      "date": "2026-10-05",
+      "decision": "D51, D76",
+      "added_by": "LB1",
+      "pattern": "size\\(\\)\\)?\\s*-\\s*(\\w+(\\.|->))?total\\b|\\bcompleted\\s*-\\s*(\\w+(\\.|->))?failed\\b",
+      "must_match": [
+        "snap_.skipped = static_cast<int>(items_.size()) - p.total;",
+        "skipped = static_cast<int>(scanitems.size()) - p.total;",
+        "skipped = scanitems.size() - p.total;",
+        "return counted(s.completed - s.failed, \"analyzed\", \"analyzed\") + \" \\xC2\\xB7 \" +",
+        "const int kept = s.completed - s.failed;"
+      ],
+      "must_not_match": [
+        "progress.completed = progress.analyzed + progress.failed;",
+        "snap_.completed = p.completed;",
+        "for (int i = static_cast<int>(digits.size()) - 1; i >= 0; --i) {"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A batch count worked out again from other counts: \"skipped\" as the scan list less the total, or \"analyzed\" as finished less failed. BatchProgress carries every count, filled by run_batch. Decided by: audit finding 142; D51 call 26 (phase 7 task LB1); D76 (every copy counted)"
+    },
+    {
+      "question": "Which Difficulty, Pro Drums, 2x Bass and Note Shuffle choices spell a chart mode key?",
+      "owner": "Settings::with_chartmode in src/app/config.cpp",
+      "owner_file": "src/app/config.cpp",
+      "owner_symbol": "Settings::with_chartmode",
+      "date": "2026-10-09",
+      "decision": "derive-once review of RW-T4 (key 4979976), finding 1",
+      "added_by": "ns-t2c",
+      "pattern": "\\bview_difficulty\\s*=\\s*difficulty_name\\(\\s*\\w+\\s*\\)|\\.chartmode_key\\(\\)\\s*(==|!=)\\s*[A-Za-z_]\\w*\\s*\\)",
+      "must_match": [
+        "mode.view_difficulty = difficulty_name(difficulty);",
+        "if (mode.chartmode_key() != chartmode) continue;",
+        "if (settings.chartmode_key() == wanted) return true;"
+      ],
+      "must_not_match": [
+        "s.view_difficulty = difficulty_name(s.difficulty());",
+        "if (chartmode != settings.chartmode_key()) {",
+        "CHECK(s.chartmode_key() == \"Expert Pro Drums, 2x Bass\");",
+        "std::optional<Settings> mode = settings.with_chartmode(chartmode);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/config.cpp",
+          "line_text": "mode.view_difficulty = difficulty_name(d);",
+          "why": "Settings::with_chartmode, the owner"
+        },
+        {
+          "file": "src/app/config.cpp",
+          "line_text": "if (mode.chartmode_key() == chartmode) return mode;",
+          "why": "Settings::with_chartmode, the owner"
+        }
+      ],
+      "note": "A search over the view choices for a chart mode: a difficulty set from a loop's enum, or a built key tested against a wanted one. report.cpp's settings_for_mode and AppState::select_chart each had one before the RW-T4 review."
+    },
+    {
+      "question": "Why can't these settings be compared with the leaderboard?",
+      "owner": "why_not_comparable in src/app/dm_report.cpp",
+      "owner_file": "src/app/dm_report.cpp",
+      "owner_symbol": "why_not_comparable",
+      "date": "2026-10-05",
+      "decision": "audit finding 170 (phase 7 tasks RP and LB2)",
+      "added_by": "LB2",
+      "pattern": "Needs (Expert:|SP cap|%s fills|Clone Hero 1\\.1 fills)|untick \\\\\"1\\.0 fills\\\\\"",
+      "owner_files": [
+        "src/app/dm_report.cpp"
+      ],
+      "must_match": [
+        "ImGui::SetTooltip(\"Needs Expert: the leaderboard only has Expert scores.\");",
+        "ImGui::SetTooltip(\"Needs SP cap %d, Clone Hero's rule: the leaderboard's scores \"",
+        "ImGui::SetTooltip(\"Needs %s fills: untick \\\"1.0 fills\\\". The leaderboard is \""
+      ],
+      "must_not_match": [
+        "ImGui::SetTooltip(\"%s\", refused.c_str());",
+        "ImGui::SetTooltip(\"Compare a dmleaderboards.com player's scores against your library\");"
+      ],
+      "note": "The Compare button's three refusal sentences typed outside the gate."
+    },
+    {
+      "question": "When is the song's last note? (tests)",
+      "owner": "last_drawn_note in src/app/preview_view.cpp, and last_note_ms for its onset",
+      "owner_file": "src/app/preview_view.cpp",
+      "owner_symbol": "last_drawn_note",
+      "date": "2026-10-05",
+      "decision": "D69",
+      "added_by": "J3-6",
+      "pattern": "sequence\\.back\\(\\)\\.timecode\\.ms\\(\\)",
+      "anchor": "sequence.back().timecode.ms()",
+      "must_match": [
+        "const double expected = song.sequence.back().timecode.ms();"
+      ],
+      "must_not_match": [
+        "const double expected = hydra::app::last_note_ms(scene);",
+        "scene.song_length_ms = song_length_ms.value_or(0.0);"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "Decided by: audit finding 191, the store test's compare (phase 6 task J3-6); re-pointed by D69 (phase 7 task AL2)"
+    },
+    {
+      "question": "How is a measure number written as a label?",
+      "owner": "measure_label in src/app/path_view.cpp",
+      "owner_file": "src/app/path_view.cpp",
+      "owner_symbol": "measure_label",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-3",
+      "pattern": "\"m\" \\+ std::to_string|TextDisabled\\(\"m1\"\\)|measure_beats_ticks\\(\\)\\[0\\] \\+ 1",
+      "exempt": [
+        {
+          "file": "src/parse/song.cpp",
+          "why": "the parser steps its measure map by measure numbers there; it writes no label"
+        }
+      ],
+      "must_match": [
+        "\"m\" + std::to_string((long long)timing->timecode(end_tick).measure_beats_ticks()[0] + 1);",
+        "ImGui::TextDisabled(\"m1\");"
+      ],
+      "must_not_match": [
+        "view.timeline_end = measure_label(timing->timecode(end_tick));",
+        "ImGui::TextDisabled(\"%s\", view.timeline_start.c_str());"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/path_view.cpp",
+          "line_text": "return \"m\" + std::to_string((long long)tc.measure_beats_ticks()[0] + 1);",
+          "why": "measure_label, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Decided by: audit findings 183 and 184; phase 6 task J3-3 (D53, D54)"
+    },
+    {
+      "question": "How is the first measure spelled?",
+      "owner": "first_measure_label in src/app/path_view.cpp",
+      "owner_file": "src/app/path_view.cpp",
+      "owner_symbol": "first_measure_label",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-3",
+      "pattern": "\"m1\\.1\\.0\"",
+      "anchor": "\"m1.1.0\"",
+      "must_match": [
+        "box.position = scene.timing ? format_measure(*scene.timing, now_tick) : \"m1.1.0\";"
+      ],
+      "must_not_match": [
+        "std::string first_measure_label() { return format_measure(Timecode{}); }"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Tests pin the shown text and may type it. Decided by: audit R7.27; phase 6 task J3-3 (D53, D54)"
+    },
+    {
+      "question": "What is the longest badge an activation row can show?",
+      "owner": "longest_activation_badge in src/app/path_view.cpp",
+      "owner_file": "src/app/path_view.cpp",
+      "owner_symbol": "longest_activation_badge",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-3",
+      "pattern": "[a-z] 999 ms|text\\(18\\)",
+      "must_match": [
+        "check(\"m1024.1.120\", \"m1024.1.120\", \"12 bars\", \"early fill 999 ms\");",
+        "check(\"m1024.1.120\", \"m1024.1.120\", \"12 bars\", \"squeeze out 999 ms\");",
+        "const float badge_w = text(18);  // \"squeeze out 999 ms\", the longest wording"
+      ],
+      "must_not_match": [
+        "TEST_CASE(\"backend leeway: +2.999 ms is counted, exactly +3.0 ms is not (D29)\") {",
+        "const float badge_w = text(static_cast<int>(hydra::app::longest_activation_badge().size()));"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "A letter before the figure: a badge's wording, not a decimal such as \"2.999 ms\" in a leeway case. Decided by: audit finding 292; phase 6 task J3-3 (D53, D54)"
+    },
+    {
+      "question": "Which moment do the Preview's overlay boxes read?",
+      "owner": "shown_ms in src/app/preview_view.cpp",
+      "owner_file": "src/app/preview_view.cpp",
+      "owner_symbol": "shown_ms",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-4",
+      "pattern": "now_ms < 0\\.0 \\? 0\\.0 : now_ms|now_ms > len \\? len",
+      "anchor": "now_ms ",
+      "must_match": [
+        "const double now = now_ms < 0.0 ? 0.0 : now_ms;"
+      ],
+      "must_not_match": [
+        "const double now = shown_ms(now_ms, length_ms);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/preview_view.cpp",
+          "line_text": "return now_ms < 0.0 ? 0.0 : (now_ms > len ? len : now_ms);",
+          "why": "shown_ms, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Decided by: audit finding 185; phase 6 task J3-4 (D53, D54)"
+    },
+    {
+      "question": "Does the Preview scene have an SP gauge?",
+      "owner": "PreviewScene::has_sp_gauge in src/app/preview_view.h",
+      "owner_file": "src/app/preview_view.h",
+      "owner_symbol": "has_sp_gauge",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-4",
+      "pattern": "sp_meter\\.segments\\.empty\\(\\)",
+      "anchor": "sp_meter.segments.empty()",
+      "must_match": [
+        "if (!scene.timing || scene.sp_meter.segments.empty()) return box;",
+        "return !scene_.sp_meter.segments.empty();"
+      ],
+      "must_not_match": [
+        "if (!scene.has_sp_gauge()) return box;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/preview_view.h",
+          "line_text": "bool has_sp_gauge() const { return timing.has_value() && !sp_meter.segments.empty(); }",
+          "why": "has_sp_gauge, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Tests pin the fact that a scene has no curve; those are assertions, not a predicate. Decided by: audit finding 216; phase 6 task J3-4 (D53, D54)"
+    },
+    {
+      "question": "Over which stretch is an activation's Star Power running?",
+      "owner": "PreviewActivation::sp_window in src/app/preview_view.h",
+      "owner_file": "src/app/preview_view.h",
+      "owner_symbol": "sp_window",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-4",
+      "pattern": "has_sp_end && (struck_at\\(now, a\\.ms\\)|a\\.sp_end_ms > a\\.ms)",
+      "anchor": "has_sp_end && ",
+      "must_match": [
+        "if (a.has_sp_end && struck_at(now, a.ms) && now < a.sp_end_ms) return &a;",
+        "if (a.has_sp_end && a.sp_end_ms > a.ms)"
+      ],
+      "must_not_match": [
+        "if (w && struck_at(now, w->first) && now < w->second) return &a;",
+        "if (const std::optional<std::pair<double, double>> w = a.sp_window())"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Decided by: audit finding 157; phase 6 task J3-4 (D53, D54)"
+    },
+    {
+      "question": "Which fill did an activation take?",
+      "owner": "apply_preview_overlay's mark in src/app/preview_view.cpp, stored as PreviewActivation::taken_fill",
+      "owner_file": "src/app/preview_view.cpp",
+      "owner_symbol": "apply_preview_overlay",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-4",
+      "pattern": "span\\.end_tick\\s*[!=]=\\s*a\\.tick",
+      "anchor": "span.end_tick",
+      "must_match": [
+        "if (f.state != app::PreviewFillState::Taken || f.span.end_tick != a.tick) continue;"
+      ],
+      "must_not_match": [
+        "if (next_fill >= fills.size() || fills[next_fill].span.end_tick != tick)"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The owner is apply_preview_overlay's mark, which stores the fill on the activation (PreviewActivation::taken_fill); readers take it from there instead of searching the fills again. Decided by: audit finding 175; phase 6 task J3-4 (D53, D54)"
+    },
+    {
+      "question": "How long is this song?",
+      "owner": "song_length_ms and chart_song_length_ms in src/app/song_length.cpp; the only mix is mix_song_stems in src/audio/song_audio.cpp, for the Preview's playback",
+      "owner_file": "src/app/song_length.cpp",
+      "owner_symbol": "song_length_ms",
+      "date": "2026-10-05",
+      "decision": "D75",
+      "added_by": "AL1",
+      "pattern": "make_(unique|shared)<\\s*(\\w+::)*StreamMix\\s*>|\\b(\\w+::)*StreamMix\\s+\\w+\\s*[({]|\\baudio_end_chart_ms\\s*\\((?!\\s*const\\b)",
+      "owner_files": [
+        "src/audio/song_audio.cpp"
+      ],
+      "must_match": [
+        "auto mix = std::make_unique<audio::StreamMix>(std::move(readers), kOutRate, kOutChannels,",
+        "auto mix = std::make_unique<hydra::audio::StreamMix>(std::move(readers), kOutRate, kOutChannels,",
+        "const std::optional<double> audio_end_ms = audio_end_chart_ms(*mix, offset_ms);",
+        "audio::StreamMix mix(std::move(readers), 48000, 2, 0);"
+      ],
+      "must_not_match": [
+        "audio::SongMix song_mix = audio::mix_song_stems(std::move(readers), ps.audio_offset_ms);",
+        "std::optional<double> audio_end_chart_ms(const Audio& audio, double audio_offset_ms) {"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/preview_transport.cpp",
+          "line_text": "playhead_ ? audio_end_chart_ms(*playhead_, audio_offset_ms_) : std::nullopt;",
+          "why": "PreviewTransport::load's playback range (D48), not a song length"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "---- a song's length comes from its metadata, never its audio (D75) ---- The owner (app::song_length_ms) opens no audio. A song's stems mixed, or the audio's end asked of a mix, anywhere but the Preview's own mix step is a length worked out from audio again. The transport asks the audio's end of its playhead for the playback range (D48), which is not a song length; that line is allowed. Decided by: D75 (a song's length comes from its chart metadata); phase 7 task AL1, task SL1"
+    },
+    {
+      "question": "What does a failed length read leave in the store?",
+      "owner": "analysis_song_length in src/app/analysis.cpp",
+      "owner_file": "src/app/analysis.cpp",
+      "owner_symbol": "analysis_song_length",
+      "date": "2026-10-05",
+      "decision": "D69, D75",
+      "added_by": "SL1",
+      "pattern": "\\bSongLength::found\\s*\\(",
+      "anchor": "SongLength::found",
+      "must_match": [
+        "return store::SongLength::found(",
+        "length_ = store::SongLength::found(app::chart_song_length_ms(",
+        "wr.length = SongLength::found(len);"
+      ],
+      "must_not_match": [
+        "static SongLength found(std::optional<double> ms) { return SongLength{true, ms}; }",
+        "store::SongLength analysis_song_length(const std::optional<store::ChartTimingMeta>& scanned,",
+        "wr.length = analysis_song_length(item.timing, item.notespath, ar.song, settings);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/analysis.cpp",
+          "line_text": "return store::SongLength::found(",
+          "why": "analysis_song_length, the owner"
+        }
+      ],
+      "note": "The owner's answer turned into a stored length anywhere but the one helper an analysis saves through, so no third try/catch decides what a failed read leaves. Decided by: derive-once review of AL2, finding 1 (D69); D75, task SL1"
+    },
+    {
+      "question": "How many ticks per quarter note does the Preview scene have?",
+      "owner": "PreviewScene::timing in src/app/preview_view.h",
+      "owner_file": "src/app/preview_view.h",
+      "owner_symbol": "timing",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-5",
+      "pattern": "\\.tick_resolution\\s*=\\s*",
+      "anchor": ".tick_resolution",
+      "must_match": [
+        "scene.tick_resolution = timing.tick_resolution();",
+        "s.tick_resolution = 1000;"
+      ],
+      "must_not_match": [
+        "CHECK(scene.timing->tick_resolution() == 480);"
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "A field written beside PreviewScene::timing that holds its resolution a second time. Decided by: audit finding 135; phase 6 task J4-5 (D53, D54)"
+    },
+    {
+      "question": "Which RecordKey does a tool or test file a chart's result under?",
+      "owner": "Settings::record_key in src/app/config.cpp",
+      "owner_file": "src/app/config.cpp",
+      "owner_symbol": "Settings::record_key",
+      "date": "2026-10-06",
+      "decision": "audit finding 240",
+      "added_by": "H1",
+      "pattern": "RecordKey\\{[^}]*run\\.chartmode",
+      "anchor": "run.chartmode",
+      "must_match": [
+        "store::RecordKey{it.md5, run.chartmode, run.cap_query(), run.lens}, *rec);",
+        "store::RecordKey{it.md5, run.chartmode, run.cap_query(), run.lens}, rec);"
+      ],
+      "must_not_match": [
+        "store::PreparedRow row = store::prepare_row(st.record_key(it.md5), *rec);",
+        "const store::RecordKey key = settings.record_key(it.md5);"
+      ],
+      "scope": [
+        "tests",
+        "tools"
+      ],
+      "note": "A key put together from a BatchRun's fields. The owner is in src, so no line in scope is an owner line. run_batch's own key in src/app/analysis.cpp holds only a BatchRun and is out of scope. Decided by: audit finding 240; H1 derive-once review finding 1 (2026-10-06)"
+    },
+    {
+      "question": "Does this database have a chart library to report on?",
+      "owner": "report::lacks_chart_library in src/app/report.cpp",
+      "owner_file": "src/app/report.cpp",
+      "owner_symbol": "lacks_chart_library",
+      "date": "2026-10-07",
+      "decision": "D89, D92",
+      "added_by": "storage-T5",
+      "pattern": "chart_library_count\\(\\)\\s*==\\s*0",
+      "anchor": "chart_library_count()",
+      "must_match": [
+        "} else if (store.chart_library_count() == 0) {",
+        "if (old_store.chart_library_count() == 0 || new_store.chart_library_count() == 0)"
+      ],
+      "must_not_match": [
+        "} else if (lacks_chart_library(store)) {",
+        "if (report::lacks_chart_library(store))"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/report.cpp",
+          "line_text": "return any_results && store.chart_library_count() == 0;",
+          "why": "lacks_chart_library, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A page that decides \"no chart library\" itself could stop where the path report does not, or say it in other words (D89 item 2, D92). Decided by: D89 item 2, D92 (task storage-T5)"
+    },
+    {
+      "question": "Does the library list this chart?",
+      "owner": "report::library_lists in src/app/report.cpp",
+      "owner_file": "src/app/report.cpp",
+      "owner_symbol": "library_lists",
+      "date": "2026-10-07",
+      "decision": "D87, D92",
+      "added_by": "som-a",
+      "pattern": "\\blibrary\\w*\\.(find|end|count|contains)\\(|\\bfiles\\.(find|end|count|contains)\\(",
+      "must_match": [
+        "if (library.find(hash) == library.end()) continue;",
+        "const auto file = files.find(hash);",
+        "if (file == files.end()) continue;"
+      ],
+      "must_not_match": [
+        "if (!library_lists(library, hash)) continue;",
+        "slot.file = &files.at(hash);",
+        "const auto listed = copies.find(md5);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/report.cpp",
+          "line_text": "return library.find(hash) != library.end();",
+          "why": "library_lists, the owner"
+        }
+      ],
+      "note": "The path report and records_by_hash once each tested \"is this chart in the library\" against their own map (the naming-copy files and the copies). A page that looks a chart up in a library map itself can disagree with them about which charts the library lists. Decided by: D87 item 4, D92 (task som-a)"
+    },
+    {
+      "question": "How is a picker item's id spelled?",
+      "owner": "path_item_id in src/app/path_view.h",
+      "owner_file": "src/app/path_view.h",
+      "owner_symbol": "path_item_id",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-4",
+      "pattern": "\"##\" \\+ std::to_string\\(",
+      "anchor": "\"##\" + std::to_string(",
+      "must_match": [
+        "const std::string item = hydra::app::preview_path_label(b) + \"##\" + std::to_string(i);",
+        "hydra::app::preview_path_label(list.buttons[index]) + \"##\" + std::to_string(index);"
+      ],
+      "must_not_match": [
+        "group_thousands(static_cast<int64_t>(n)) + \")##\" + c.id;",
+        "const std::string item = hydra::app::path_item_id(hydra::app::preview_path_label(b), i);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/path_view.h",
+          "line_text": "return label + \"##\" + std::to_string(index);",
+          "why": "path_item_id, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "The Preview picker's \"label##index\" id. The library's chip id (\")##\" + c.id) is another widget's and does not fit. Decided by: audit finding 352; phase 6 task J4-4 (D53, D54)"
+    },
+    {
+      "question": "How does a command-line tool end on an error?",
+      "owner": "tool_error in src/app/user_messages.cpp",
+      "owner_file": "src/app/user_messages.cpp",
+      "owner_symbol": "tool_error",
+      "date": "2026-10-05",
+      "decision": "D72, D73",
+      "added_by": "RD1",
+      "pattern": "plain_error_block\\(",
+      "anchor": "plain_error_block(",
+      "exempt": [
+        {
+          "file": "src/ui/main.cpp",
+          "why": "the startup message box shows the block in a window (D72 item 1)"
+        }
+      ],
+      "must_match": [
+        "std::fprintf(stderr, \"%s\\n\", hydra::app::plain_error_block(e).c_str());"
+      ],
+      "must_not_match": [
+        "return hydra::app::tool_error(e, 2);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/user_messages.h",
+          "line_text": "std::string plain_error_block(const std::exception& e);",
+          "why": "the declaration"
+        },
+        {
+          "file": "src/app/user_messages.cpp",
+          "line_text": "std::string plain_error_block(const std::exception& e) {",
+          "why": "the definition"
+        },
+        {
+          "file": "src/app/user_messages.cpp",
+          "line_text": "std::fprintf(stderr, \"%s\\n\", plain_error_block(e).c_str());",
+          "why": "tool_error"
+        }
+      ],
+      "note": "A tool that prints an error's block itself is a second way for a tool to end on an error (D73 review finding 2). Decided by: D72 item 5, D73 item 4"
+    },
+    {
+      "question": "Which library charts match a typed search?",
+      "owner": "query_matches in src/app/library_query.cpp",
+      "owner_file": "src/app/library_query.cpp",
+      "owner_symbol": "query_matches",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-2",
+      "pattern": "LIKE \\?",
+      "anchor": "LIKE ?",
+      "must_match": [
+        "if (search) sql += \" WHERE name LIKE ? OR artist LIKE ? OR charter LIKE ?\";"
+      ],
+      "must_not_match": [
+        "\" ORDER BY name LIMIT ? OFFSET ?\");"
+      ],
+      "note": "The library's search folds case and accents and knows field prefixes; an SQL LIKE would be a second, disagreeing rule. Decided by: audit finding 113; phase 6 task J4-2 (D53, D54)"
+    },
+    {
+      "question": "Which plain sentence does this failure show?",
+      "owner": "plain_error's switch on ErrorKind in src/app/user_messages.cpp",
+      "owner_file": "src/app/user_messages.cpp",
+      "owner_symbol": "plain_error",
+      "date": "2026-10-05",
+      "decision": "D51, D71",
+      "added_by": "p7-er1",
+      "pattern": "\\b(what|error)(\\(\\))?\\)?\\s*[!=]=\\s*\"|\\b(starts_with|ends_with|starts_with_any)\\(\\s*(\\w+\\.)?(what|error)(\\(\\))?\\s*,|\\b(what|error)(\\(\\))?\\)?\\.(find|rfind|compare)\\(|\\b(what|error)(\\(\\))?\\)?\\.substr\\(.*\\)\\s*[!=]=",
+      "must_match": [
+        "if (what == \"cancelled\") return kStopped;",
+        "if (starts_with(what, \"cannot write \")) return kReportWrite;",
+        "if (what.find(\"(error 12002)\") != std::string_view::npos) return kNetTimeout;",
+        "if (what.substr(0, prefix.size()) == prefix) return true;",
+        "if (std::string(e.what()).rfind(\"x\", 0) == 0) return true;"
+      ],
+      "must_not_match": [
+        "error_ = e.what();",
+        "if (job.error().empty()) return;",
+        "std::string what = e.what();"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The thrower names the kind; reading the exception's words back is a second answer, anywhere in src, user_messages.cpp included. Decided by: audit finding 193 and R7.20; phase 7 tasks ER1 and ER2 (D51 call 25, D71)"
+    },
+    {
+      "question": "How do an error's sentence and its raw text read as one block?",
+      "owner": "plain_error_block in src/app/user_messages.cpp",
+      "owner_file": "src/app/user_messages.cpp",
+      "owner_symbol": "plain_error_block",
+      "date": "2026-10-05",
+      "decision": "D72",
+      "added_by": "DB1",
+      "pattern": "\\bplain_error\\(.*\\+.*(\\bplain_error_detail\\(|\\bwhat\\(\\))|(\\bplain_error_detail\\(|\\bwhat\\(\\)).*\\+.*\\bplain_error\\(",
+      "anchor": "plain_error(",
+      "must_match": [
+        "std::string text = app::plain_error(e) + \"\\n\" + e.what();",
+        "msg = plain_error_detail(e) + \"\\n\\n\" + plain_error(e);"
+      ],
+      "must_not_match": [
+        "set_problem(app::plain_error(e));",
+        "std::fprintf(stderr, \"%s\\n\", hydra::app::plain_error_block(e).c_str());"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/user_messages.cpp",
+          "line_text": "return plain_error(e) + \"\\n\\n\" + plain_error_detail(e);",
+          "why": "plain_error_block, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The startup message box and the command-line tools show an error's sentence and raw text together; gluing the two on one line anywhere else is a second layout of that block. Decided by: D72 items 1 and 5 (task DB1)"
+    },
+    {
+      "question": "How many library rows has a batch analyzed, failed or skipped?",
+      "owner": "BatchProgress, written only by run_batch, with plan_batch's skipped, in src/app/analysis.cpp",
+      "owner_file": "src/app/analysis.cpp",
+      "owner_symbol": "BatchProgress",
+      "date": "2026-10-05",
+      "decision": "D76, D79",
+      "added_by": "COUNT-B",
+      "pattern": "\\+\\+\\s*[\\w.>-]*\\b(done|completed|analyzed|failed|skipped)\\b|\\b(done|completed|analyzed|failed|skipped)\\s*\\+\\+|failures\\.size\\(\\)",
+      "must_match": [
+        "++snap_.failed;",
+        "++done;",
+        "const std::string head = counted((int64_t)s.failures.size(), \"chart\", \"charts\") +",
+        "std::printf(\"  ...and %zu more.\\n\", failures.size() - 20);"
+      ],
+      "must_not_match": [
+        "const std::string head = counted(s.failed, \"chart\", \"charts\") + \" failed##batchfailures\";",
+        "for (int i = 0; i < shown; ++i) std::printf(\"  %s\\n\", failures[i].c_str());",
+        "snap_.failed = p.failed;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/analysis.cpp",
+          "line_text": "if (wr.failed) ++progress.failed;",
+          "why": "run_batch, the owner"
+        },
+        {
+          "file": "src/app/analysis.cpp",
+          "line_text": "else ++progress.analyzed;",
+          "why": "run_batch, the owner"
+        },
+        {
+          "file": "src/app/analysis.cpp",
+          "line_text": "++plan.skipped;",
+          "why": "plan_batch, the owner of skipped"
+        },
+        {
+          "file": "src/app/analysis.cpp",
+          "line_text": "++done;",
+          "why": "discover_charts' scan progress, not a batch count"
+        },
+        {
+          "file": "src/ui/library_dialogs.cpp",
+          "line_text": "for (size_t i = 0; i < s.failures.size(); ++i) {",
+          "why": "walks the failure lines; the heading reads s.failed"
+        }
+      ],
+      "scope": [
+        "src/app/analysis.cpp",
+        "src/cli/batch.cpp",
+        "src/ui/library_jobs.cpp",
+        "src/ui/library_dialogs.cpp",
+        "src/ui/app_state.cpp"
+      ],
+      "note": "D79 B3: every batch number is BatchProgress's. A count of the failure lines, or a counter of its own, is a second count. Decided by: D76, D79 item B3 (task COUNT-B)"
+    },
+    {
+      "question": "Does a line print the store's raw row count as a count of charts?",
+      "owner": "BatchProgress and the library table count charts (D76, D79); holds_results in src/app/report.cpp is the one reader of RecordStore::counts()",
+      "owner_file": "src/app/report.cpp",
+      "owner_symbol": "library",
+      "date": "2026-10-05",
+      "decision": "D79",
+      "added_by": "COUNT-B",
+      "pattern": "\\b\\w*store\\w*(\\.|->)counts\\(\\)",
+      "anchor": "counts()",
+      "must_match": [
+        "auto [songs, records] = store.counts();",
+        "const auto n = app.store->counts().first;"
+      ],
+      "must_not_match": [
+        "CHECK(m.counts().all == 6);",
+        "const ChipCounts& counts = app.library.counts();"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/report.cpp",
+          "line_text": "bool holds_results(store::RecordStore& store) { return store.counts().second > 0; }",
+          "why": "holds_results, the owner: it asks only whether the store is empty"
+        }
+      ],
+      "note": "D79 B5: RecordStore::counts() adds up every stored row at every setting, so a line that printed it next to the batch's counts read as a second chart count. This row flags every call to a store's counts() in src/ and tools/. The one call kept is holds_results in src/app/report.cpp, which asks only whether the store is empty. Decided by: D79 item 2 (task COUNT-B)"
+    },
+    {
+      "question": "How does a finished scan become the library?",
+      "owner": "save_scan_as_library in src/app/analysis.cpp",
+      "owner_file": "src/app/analysis.cpp",
+      "owner_symbol": "save_scan_as_library",
+      "date": "2026-10-05",
+      "decision": "D79",
+      "added_by": "COUNT-B",
+      "pattern": "\\brebuild_chart_library\\s*\\(",
+      "anchor": "rebuild_chart_library",
+      "owner_files": [
+        "src/store/record_store.h",
+        "src/store/record_store.cpp"
+      ],
+      "must_match": [
+        "store_.rebuild_chart_library(entries);",
+        "store->rebuild_chart_library(entries);"
+      ],
+      "must_not_match": [
+        "if (const std::optional<std::string> problem = app::save_scan_as_library(*store, items))",
+        "step_done(s, \"rebuild_chart_library\");"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/analysis.cpp",
+          "line_text": "store.rebuild_chart_library(entries);",
+          "why": "save_scan_as_library, the owner"
+        }
+      ],
+      "note": "D79 B4: Scan library, hydra_batch and the bench tool each saved a scan their own way. One function saves it, so every one leaves the same library behind. Decided by: D79 item 1 (task COUNT-B)"
+    },
+    {
+      "question": "How many charts does the confirm's batch cover, run and skip?",
+      "owner": "BatchPlan::todo_rows and BatchPlan::skipped in src/app/analysis.cpp, read through AppState's batch_scope_charts() and batch_scope_with_result()",
+      "owner_file": "src/app/analysis.cpp",
+      "owner_symbol": "BatchPlan::todo_rows",
+      "date": "2026-10-05",
+      "decision": "D79",
+      "added_by": "COUNT-B",
+      "pattern": "\\bint64_t\\s+batch_scope_\\w+\\s*=|=\\s*total\\s*-\\s*with\\b",
+      "must_match": [
+        "int64_t batch_scope_charts = 0;",
+        "const int64_t without = total - with;"
+      ],
+      "must_not_match": [
+        "int64_t batch_scope_charts() const { return batch_redo_plan.todo_rows(); }",
+        "const int64_t to_run = app.batch_plan_for(app.batch_redo).todo_rows();"
+      ],
+      "scope": [
+        "src/ui/app_state.cpp",
+        "src/ui/app_state.h",
+        "src/ui/library_dialogs.cpp"
+      ],
+      "note": "D79 B2: every number the confirm shows is read off its plans. A field that holds a plan's count, or a subtraction of one count from another, is a second answer to \"how many will run\". Decided by: D79 item B2 (task COUNT-B)"
+    },
+    {
+      "question": "Which code saves charts in groups?",
+      "owner": "run_batch in src/app/analysis.cpp",
+      "owner_file": "src/app/analysis.cpp",
+      "owner_symbol": "run_batch",
+      "date": "2026-10-06",
+      "decision": "D86",
+      "added_by": "W1",
+      "pattern": "\\b(begin|commit)_save_group\\s*\\(",
+      "anchor": "_save_group",
+      "owner_files": [
+        "src/store/record_store.h",
+        "src/store/record_store.cpp",
+        "src/app/analysis.cpp"
+      ],
+      "must_match": [
+        "store.begin_save_group();",
+        "store_->commit_save_group();"
+      ],
+      "must_not_match": [
+        "if (!store.save_group_open()) {",
+        "bool save_group_open() const { return group_open_; }"
+      ],
+      "note": "D86 items 1 and 2: the batch's writer is the one caller that saves charts in groups, and the one that retries a lost group's charts alone. Another caller opening a group would hold the store lock without that retry. Decided by: D86 items 1 and 2 (task W1)"
+    },
+    {
+      "question": "What buffer does a chart file's MD5 read through?",
+      "owner": "stream_md5's one thread_local buffer in src/app/analysis.cpp",
+      "owner_file": "src/app/analysis.cpp",
+      "owner_symbol": "stream_md5",
+      "date": "2026-10-06",
+      "decision": "D86",
+      "added_by": "S1",
+      "pattern": "std::vector<uint8_t>\\s+\\w+\\s*\\(\\s*1\\s*<<\\s*20\\s*\\)",
+      "anchor": "std::vector<uint8_t>",
+      "must_match": [
+        "std::vector<uint8_t> buf(1 << 20);",
+        "std::vector<uint8_t> fresh(1<<20);"
+      ],
+      "must_not_match": [
+        "constexpr size_t kSngHeadCapture = 1 << 20;",
+        "std::vector<uint8_t> head;",
+        "constexpr size_t kSrbMaxMetadata = 1 << 20;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/analysis.cpp",
+          "line_text": "thread_local std::vector<uint8_t> buf(1 << 20);",
+          "why": "stream_md5, the owner"
+        }
+      ],
+      "scope": [
+        "src/app/analysis.cpp"
+      ],
+      "note": "S1: a fresh zero-filled megabyte per hashed file cost the library scan measurable time, so each hashing thread keeps one buffer. Decided by: D86 speedups plan, task S1"
+    },
+    {
+      "question": "What does a hyhash identify (the old 'chart-file MD5' wording)?",
+      "owner": "song_id_read in src/app/analysis.cpp",
+      "owner_file": "src/app/analysis.cpp",
+      "owner_symbol": "song_id_read",
+      "date": "2026-10-10",
+      "decision": "ADR 0028",
+      "added_by": "song-id-archives",
+      "pattern": "chart[- ]file MD5",
+      "anchor": "file MD5",
+      "must_match": [
+        "// chart-file MD5 (the join key)",
+        "// `identifier` is the Clone Hero chart-file MD5"
+      ],
+      "must_not_match": [
+        "// Clone Hero's song id (the join key)",
+        "{\"What buffer does a chart file's MD5 read through?\","
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "scan_comments": true,
+      "note": "ADR 0028: a hyhash is Clone Hero's song id, which for a .sng or .srb is not the MD5 of the chart file. Comments that still called it one were wrong, so comments are scanned too; they name the owner instead. Decided by: ADR 0028 and the derive-once review of 36be3a70 (finding 1)"
+    },
+    {
+      "question": "How many sort keys may a report hold?",
+      "owner": "kMaxSortKeys in src/app/report_view.h",
+      "owner_file": "src/app/report_view.h",
+      "owner_symbol": "kMaxSortKeys",
+      "date": "2026-10-08",
+      "decision": "D103",
+      "added_by": "RW-T5",
+      "pattern": "\\bSpecsCount\\b[^;]*[<>]=?\\s*[2-9]\\b",
+      "anchor": "SpecsCount",
+      "must_match": [
+        "for (int i = 0; i < specs->SpecsCount && i < 2; ++i)",
+        "if (specs->SpecsCount > 2) push_sort(sort);"
+      ],
+      "must_not_match": [
+        "if ((specs->SpecsDirty || !app.library_ui.sort_synced) && specs->SpecsCount > 0) {",
+        "for (int i = 0; i < specs->SpecsCount && i < max_keys; ++i)",
+        "if (specs->SpecsCount > max_keys) push_sort(sort);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A table's header sort can hold more keys than a report sorts by, so the window cuts it to the report's limit, read from the owner. Decided by: D103 item 1 (Shift+click adds a second key); derive-once review of RW-T5 (finding 3)"
+    },
+    {
+      "question": "What does the Score range's INI depth_mode int mean?",
+      "owner": "Settings::search_depth_mode in src/app/config.cpp",
+      "owner_file": "src/app/config.cpp",
+      "owner_symbol": "search_depth_mode",
+      "date": "2026-10-04",
+      "decision": "E3 (findings 180, 243, 245 and 56)",
+      "added_by": "E3",
+      "pattern": "\\bdepth_mode\\s*(==|!=|>=|<=|>|<)\\s*[01]\\b|case\\s+1\\s*:.*depth",
+      "anchor": "depth",
+      "must_match": [
+        "if (depth_mode != 0) return DepthMode::Points;",
+        "case 1: s.depth = DepthMode::Points; break;"
+      ],
+      "must_not_match": [
+        "s.depth_mode = search_depth_mode();",
+        "if (settings.depth_mode == DepthMode::Points) {"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/config.cpp",
+          "line_text": "return depth_mode == 1 ? DepthMode::Points : DepthMode::Scores;",
+          "why": "Settings::search_depth_mode, the owner"
+        }
+      ],
+      "note": "Was the E3 test case, which pinned the whole line; now a row, so a drift asks for the owner line to be updated. The owner is the one line that compares the int, however the comparison is spelled."
+    }
+  ]
+}

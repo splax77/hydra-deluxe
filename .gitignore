@@ -17,10 +17,13 @@ local/*
 # downloads it; ~25 MB, never committed). Installer output lands in build-cpp/.
 installer/redist/
 
-# C++ build trees (CMake presets: default, vs2022, ship) and IDE state.
+# C++ build trees (one per CMake preset; CMakePresets.json names each folder)
+# and IDE state.
 build-cpp/
 build-cpp-vs2022/
 build-ship/
+build-asan/
+build-fuzz/
 .vs/
 out/
 CMakeUserPresets.json
@@ -35,6 +38,11 @@ compile_commands.json
 
 # second build tree used when Hydra.exe is running and build-cpp cannot relink
 build-rel/
+# Test-only build trees: the asan, coverage and fuzz presets. build-fuzz\seeds
+# is where tools/fuzz_seeds.ps1 writes by default.
+build-asan/
+build-coverage/
+build-fuzz/
 
 # Python bytecode (tools/ch_probe and friends)
 __pycache__/

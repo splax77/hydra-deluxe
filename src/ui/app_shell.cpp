@@ -303,16 +303,21 @@ ReportPlacement report_placement(const std::optional<ScreenRect>& saved_client,
     const ScreenRect* main_area = area_overlapping_most(main_client, work_areas);
     if (!main_area && !work_areas.empty()) main_area = &work_areas.front();
 
-    if (main_maximized || saved_maximized)
-        return {main_area ? shrunk(*main_area, frame) : main_client, true};
-
-    const ScreenRect candidate =
-        saved_client && placement_on_screen(*saved_client, work_areas) ? *saved_client
-                                                                       : main_client;
+    const bool saved_on_screen = saved_client && placement_on_screen(*saved_client, work_areas);
+    const ScreenRect candidate = saved_on_screen ? *saved_client : main_client;
     const ScreenRect outer = grown(candidate, frame);
     // Taken on the outer window, where the title bar really is.
     const ScreenRect* area = area_overlapping_most(title_band(outer), work_areas);
     if (!area) area = main_area;
+
+    if (main_maximized || saved_maximized) {
+        // A report saved maximized goes back to its own monitor (the user's
+        // decision of 2026-10-10); any other maximized open uses the main
+        // window's.
+        const ScreenRect* max_area = saved_maximized && saved_on_screen ? area : main_area;
+        return {max_area ? shrunk(*max_area, frame) : main_client, true};
+    }
+
     if (!area) return {candidate, false};
     return {shrunk(fitted_into(outer, *area), frame), false};
 }

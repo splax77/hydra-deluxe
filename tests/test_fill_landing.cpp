@@ -140,7 +140,8 @@ TEST_CASE("fill landing: an earlier chord before the fill start is no candidate"
     CHECK(*song.sequence[1].activation_length == 10);
 }
 
-TEST_CASE("fill landing: a fill before the first note keeps the window's bound (B2 not adopted)") {
+// D30: Clone Hero's one-side fallback (option B2) is not adopted.
+TEST_CASE("fill landing: a fill before the first note keeps the window's bound, not Clone Hero's fallback") {
     // Fill 0-50 has no chord before its end, and the first chord after it
     // (192) is far outside the window, so it is dropped. Clone Hero's 0x5DE030
     // would take the 192 chord; D30 keeps the bound.
@@ -158,7 +159,8 @@ TEST_CASE("fill landing: a fill before the first note keeps the window's bound (
     CHECK(song.features.empty());  // an authored fill landed: no generated ones
 }
 
-TEST_CASE("fill landing: a fill past the last note keeps its start bound (B2 not adopted)") {
+// D30: Clone Hero's one-side fallback (option B2) is not adopted.
+TEST_CASE("fill landing: a fill past the last note keeps its start bound, not Clone Hero's fallback") {
     // Fill 500-600 has no chord after it, and the last chord before its end
     // (384) is before its start, so it is dropped. Clone Hero's 0x5DE030 would
     // move 384's fill to it; D30 keeps 384's own fill, 300-384.

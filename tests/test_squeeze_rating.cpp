@@ -110,7 +110,8 @@ TEST_CASE("frontend_transfer_scales: each SqIn reads its own stored end") {
     CHECK_FALSE(frontend_transfer_scales(act, st).has_value());
 }
 
-TEST_CASE("frontend_transfer_scales: a clamp moves the front anchor (D1)") {
+// D1.
+TEST_CASE("frontend_transfer_scales: a clamp moves the front anchor") {
     using K = SpEndKind;
     // 120 BPM until 2700, then 60 (finding 28's worked example, at 192 tpq).
     std::map<int64_t, int64_t> tpm{{0, 768}};
@@ -554,7 +555,8 @@ TEST_CASE("rate_activation: a SqIn reads its SqIn scale, by its side of the end"
     CHECK(r.scale_governs);
 }
 
-TEST_CASE("rate_activation: a SqIn on the SP end is free, so it reads its SqIn scale's early side (D13)") {
+// D13.
+TEST_CASE("rate_activation: a SqIn on the SP end is free, so it reads its SqIn scale's early side") {
     // Only one side scaled, so the figure shows which side was read.
     auto figure = [](TransferScale sqin_scale, double offset) {
         Activation act;

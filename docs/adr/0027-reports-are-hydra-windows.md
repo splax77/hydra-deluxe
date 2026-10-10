@@ -102,24 +102,46 @@ replaces. **Keep it when ImGui is updated.** After an update, search
 One old quirk is left alone. A long help tooltip in a very narrow window is
 cut off at its right edge. It did that before viewports too.
 
-## Placement and `hydra_ui.ini` (D103 item 14)
+## Placement and `hydra_ui.ini` (D103 item 14, changed 2026-10-10)
 
-A report window first opens at the main window's position and size. After
-that, Hydra remembers where it was. Its minimum size is where the controls row
-and the first five columns still fit, measured from the content.
+A report window first opens over the main window, at its size and place.
+After that, Hydra remembers where each report was and whether it was
+maximized. Whenever the main window is maximized, a report opens maximized
+too, on the main window's monitor unless the report was saved maximized
+somewhere else (below). Its minimum size is where the controls row and the
+first five columns still fit, measured from the content.
 
-The placement lives in `hydra_ui.ini`, with the rest of ImGui's window
-settings. A report window has its own OS window, so ImGui saves its section
-(`[Window][###pathreport]` or `[Window][###dmreport]`) with two extra lines,
-`ViewportPos=x,y` and `ViewportId=0x...`. Its `Pos` is then relative to that
-viewport. Older `hydra_ui.ini` files have no such lines, and ImGui reads them
-as before.
+The placement lives in `hydra_ui.ini`, in a section of Hydra's own for each
+report: `[Hydra][Window:pathreport]` and `[Hydra][Window:dmreport]`, beside
+the main window's `[Hydra][Window]`. ImGui's own `[Window]` entry keeps only a
+position and size, so it can't say a report was maximized. While a report's OS
+window shows, Hydra notes on every frame whether it is maximized, and, while
+it is neither maximized nor minimized, where its client area is. (The client
+area is the part inside the OS frame.) So a maximized report still knows the
+size to go back to. A `hydra_ui.ini` from before these sections has only
+ImGui's entry, and Hydra reads that instead.
 
-A saved spot can be on a monitor that has since been unplugged
+A report saved maximized reopens maximized on the monitor it was saved on,
+the one that holds its saved title bar. If that monitor is gone, it opens
+maximized on the main window's monitor. ImGui makes the report's OS window
+only after the frame the report opens on, so the maximize waits for a later
+frame.
+
+When neither the report nor the main window is maximized, the report reopens
+at its saved spot. That spot can be on a monitor that has since been unplugged
 ([ocornut/imgui#4236](https://github.com/ocornut/imgui/issues/4236)). So every
 open checks the saved rectangle with `placement_on_screen`, the same check the
 main window uses. A spot that is off every monitor falls back to the main
-window's rectangle. `place_report_window` in src/ui/app_shell.h owns this.
+window's. The whole window, OS frame included, is then fitted onto the monitor
+that holds its title bar. Before 2026-10-10 nothing fitted it. Windows added
+the frame around a saved full-screen size, so the report hung past the
+screen's edges every time it opened (plan
+docs/superpowers/plans/2026-10-10-one-column-width-rule.md, Part 2).
+
+`report_placement` in src/ui/app_shell.h owns the rule for where a report
+opens. `place_report_window` beside it reads the saved placement, applies the
+answer and notes the window's place. The frame's size comes from main.cpp,
+which measures it for the report windows' style at each monitor's DPI.
 
 ## What this costs
 

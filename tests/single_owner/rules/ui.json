@@ -1,0 +1,1878 @@
+{
+  "rules": [
+    {
+      "question": "Which grey is dimmed or disabled text?",
+      "owner": "kDimTextColor in src/ui/theme.h",
+      "owner_file": "src/ui/theme.h",
+      "owner_symbol": "kDimTextColor",
+      "date": "2026-10-04",
+      "decision": "audit finding 218, the code half (phase 3 task C4b)",
+      "added_by": "C4b",
+      "pattern": "IM_COL32\\(\\s*160\\s*,\\s*160\\s*,\\s*160\\b|\\b160\\s*/\\s*255\\.0f?\\s*,\\s*160\\s*/\\s*255\\.0f?\\s*,\\s*160\\s*/\\s*255\\b",
+      "anchor": "160",
+      "must_match": [
+        "inline const ImVec4 kDisabledInputTextColor{160 / 255.0f, 160 / 255.0f, 160 / 255.0f, 1.0f};",
+        "dl->AddText(pos, IM_COL32(160, 160, 160, 255), label);"
+      ],
+      "must_not_match": [
+        "inline const ImVec4& kDisabledInputTextColor = kDimTextColor;",
+        "inline const ImVec4 kNewSongColor{145 / 255.0f, 145 / 255.0f, 145 / 255.0f, 1.0f};"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/theme.h",
+          "line_text": "inline const ImVec4 kDimTextColor{160 / 255.0f, 160 / 255.0f, 160 / 255.0f, 1.0f};",
+          "why": "kDimTextColor, the owner"
+        }
+      ],
+      "note": "---- named UI colours (phase 3 task C4b) ---- A colour typed as numbers, in ImVec4 (n / 255.0f) or IM_COL32 form. theme.h names each one once; everything else reads the name."
+    },
+    {
+      "question": "Which teal is the hover colour for buttons, frames and headers?",
+      "owner": "kButtonHoveredColor in src/ui/theme.h",
+      "owner_file": "src/ui/theme.h",
+      "owner_symbol": "kButtonHoveredColor",
+      "date": "2026-10-05",
+      "decision": "D74",
+      "added_by": "AF1",
+      "pattern": "IM_COL32\\(\\s*0\\s*,\\s*10[04]\\s*,\\s*10[04]\\b|\\b0(\\s*/\\s*255\\.0f?)?\\s*,\\s*10[04]\\s*/\\s*255\\.0f?\\s*,\\s*10[04]\\s*/\\s*255\\b",
+      "must_match": [
+        "colors[ImGuiCol_FrameBgHovered] = ImVec4(0, 100 / 255.0f, 100 / 255.0f, 1.0f);",
+        "colors[ImGuiCol_HeaderHovered] = ImVec4(0, 104 / 255.0f, 104 / 255.0f, 1.0f);",
+        "inline const ImVec4 kFrameHoveredColor{0 / 255.0f, 100 / 255.0f, 100 / 255.0f, 1.0f};",
+        "ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(0, 104, 104, 255));"
+      ],
+      "must_not_match": [
+        "colors[ImGuiCol_FrameBgHovered] = kFrameHoveredColor;",
+        "inline const ImVec4& kFrameHoveredColor = kButtonHoveredColor;",
+        "inline const ImVec4 kButtonActiveColor{0 / 255.0f, 88 / 255.0f, 88 / 255.0f, 1.0f};",
+        "IM_COL32(200, 100, 100, 255)"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/theme.h",
+          "line_text": "inline const ImVec4 kButtonHoveredColor{0 / 255.0f, 104 / 255.0f, 104 / 255.0f, 1.0f};",
+          "why": "kButtonHoveredColor, the owner"
+        }
+      ],
+      "note": "The pattern also catches the old frame/header teal, the second hover teal D74 folded into the button one, so it can't come back. Decided by: audit finding 218, the code half (phase 3 task C4b); D74 item 1, one hover teal"
+    },
+    {
+      "question": "Which gold is Star Power?",
+      "owner": "kStarPowerColor in src/ui/theme.h",
+      "owner_file": "src/ui/theme.h",
+      "owner_symbol": "kStarPowerColor",
+      "date": "2026-10-04",
+      "decision": "D48",
+      "added_by": "C4b",
+      "pattern": "IM_COL32\\(\\s*255\\s*,\\s*204\\s*,\\s*51\\b|\\b255\\s*/\\s*255\\.0f?\\s*,\\s*204\\s*/\\s*255\\.0f?\\s*,\\s*51\\s*/\\s*255\\b",
+      "anchor": "255",
+      "must_match": [
+        "IM_COL32(255, 204, 51, 255), \"SP\");",
+        "const ImU32 accent = drain.active ? IM_COL32(255, 204, 51, 255)  // SP gold"
+      ],
+      "must_not_match": [
+        "ImGui::GetColorU32(kStarPowerColor));",
+        "inline const ImVec4 kBestPathColor{250 / 255.0f, 210 / 255.0f, 0 / 255.0f, 1.0f};"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/theme.h",
+          "line_text": "inline const ImVec4 kStarPowerColor{255 / 255.0f, 204 / 255.0f, 51 / 255.0f, 1.0f};",
+          "why": "kStarPowerColor, the owner"
+        }
+      ],
+      "note": "Decided by: audit finding 136, the naming half; D48, Q26 (phase 3 task C4b)"
+    },
+    {
+      "question": "How long does a UI confirmation stay, and how often does the UI re-check?",
+      "owner": "AppState in src/ui/app_state.h",
+      "owner_file": "src/ui/app_state.h",
+      "owner_symbol": "AppState",
+      "date": "2026-10-04",
+      "decision": "D48",
+      "added_by": "C4b",
+      "pattern": "\\b(now|GetTime\\(\\))\\s*-\\s*[\\w.:>-]+\\s*[<>]=?\\s*\\d",
+      "owner_files": [
+        "src/ui/app_state.h"
+      ],
+      "must_match": [
+        "if (!shown || now - d.done_at > 0.5) analyze_job.reset();",
+        "if (copied_at >= 0.0 && ImGui::GetTime() - copied_at < 2.0) {",
+        "(snap.finished || now - batch_refreshed_at_ >= 1.0)) {"
+      ],
+      "must_not_match": [
+        "now - details_ui.file_checked_at >= kFileCheckSeconds) {",
+        "if (copied_at >= 0.0 && ImGui::GetTime() - copied_at < AppState::kCopiedSeconds) {"
+      ],
+      "note": "---- named UI timings (phase 3 task C4b) ---- A time-since (now - x, or ImGui::GetTime() - x) compared against a bare number of seconds. AppState names each one beside kFileCheckSeconds; everything else reads the name. Decided by: audit finding R7.33; D48, Q33 (phase 3 task C4b)"
+    },
+    {
+      "question": "What does the Preview say when the chart changed since it was analyzed?",
+      "owner": "the changed-chart line in src/ui/preview_tab.cpp",
+      "owner_file": "src/ui/preview_tab.cpp",
+      "owner_symbol": "changed",
+      "date": "2026-10-07",
+      "decision": "D51, D94",
+      "added_by": "storage-cleanup",
+      "pattern": "This chart changed since|\\bwas analyzed\\.",
+      "must_match": [
+        "\"This chart changed since it was analyzed. Analyze it again to see its path.\");",
+        "\"This chart changed since it \"",
+        "\"was analyzed. Click the song again to see its path.\");"
+      ],
+      "must_not_match": [
+        "// Has the chart changed since it was analyzed (finding 126)? First the",
+        "const bool changed = app::chart_changed_since(entry_.notespath, entry_.sig);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/preview_tab.cpp",
+          "line_text": "\"This chart changed since it was analyzed. Click the song again to see its path.\");",
+          "why": "the owner (D94)"
+        }
+      ],
+      "note": "The Preview's line for a chart file that changed after it was analyzed. It is typed once, in preview_tab.cpp; the User Guide quotes it. The owner line pins D94's words. Decided by: D51 call 18; D94 (2026-10-07)"
+    },
+    {
+      "question": "Is the typed search narrowing the library?",
+      "owner": "LibraryModel::searching in src/ui/library_model.h",
+      "owner_file": "src/ui/library_model.h",
+      "owner_symbol": "searching",
+      "date": "2026-10-04",
+      "decision": "M_D review, library finding 5, round 2 library finding 5 (phase 3 tasks FX-L, FX2-L)",
+      "added_by": "FX-L",
+      "pattern": "\\bquery(\\(\\)|_)\\.empty\\(\\)",
+      "anchor": ".empty()",
+      "must_match": [
+        "const bool searching = !app.library.query().empty();",
+        "if (app.library.query().empty()) return;",
+        "if (query_.empty()) return sorted_;"
+      ],
+      "must_not_match": [
+        "app.library.set_query(search);",
+        "const bool searching = app.library.searching();",
+        "if (!searching()) return sorted_;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/library_model.h",
+          "line_text": "bool searching() const { return !query_.empty(); }",
+          "why": "searching, the owner"
+        }
+      ],
+      "note": "\"Is the typed search narrowing the library?\" asked of the query, from outside the model or inside it. LibraryModel::searching answers it, from the model's own query_."
+    },
+    {
+      "question": "How does a song-panel row keep its place while the panel holds?",
+      "owner": "detail::draw_held_row in src/ui/details_panel.cpp",
+      "owner_file": "src/ui/details_panel.cpp",
+      "owner_symbol": "detail::draw_held_row",
+      "date": "2026-10-09",
+      "decision": "the user's approval in chat 2026-10-09 (the headline and the Showing row hold their space during a re-analysis)",
+      "added_by": "headline-holds-space",
+      "pattern": "(\\.|->)keep\\(|\\.height\\s*=\\s*ImGui::GetItemRectSize\\(\\)|ImGui::Dummy\\(ImVec2\\(0(\\.0f?)?,\\s*\\*",
+      "must_match": [
+        "if (const std::optional<float> held = row.keep(app.view_holds_space()))",
+        "if (auto h = app.details_ui.headline.keep(hold)) ImGui::Dummy(ImVec2(0, *h));",
+        "ImGui::Dummy(ImVec2(0.0f, *held));",
+        "if (drew) row.height = ImGui::GetItemRectSize().y;",
+        "row.height = ImGui::GetItemRectSize().y;"
+      ],
+      "must_not_match": [
+        "const float h = ImGui::GetItemRectSize().y;",
+        "ImGui::Dummy(ImVec2(w, h));",
+        "draw_held_row(app, row);",
+        "if (keep(v)) {",
+        "w.view->set_keep(view_rules::dm_keep(w.choices[0].status));"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/details_panel.cpp",
+          "line_text": "if (const std::optional<float> held = row.keep(app.view_holds_space()))",
+          "why": "draw_held_row, the owner"
+        },
+        {
+          "file": "src/ui/details_panel.cpp",
+          "line_text": "ImGui::Dummy(ImVec2(0.0f, *held));",
+          "why": "draw_held_row, the owner"
+        },
+        {
+          "file": "src/ui/details_panel.cpp",
+          "line_text": "if (drew) row.height = ImGui::GetItemRectSize().y;",
+          "why": "draw_held_row, the owner"
+        }
+      ],
+      "note": "A song-panel row's hold-and-measure step, any of its three parts: asking a HeldRow for its kept height, filling that height with an empty Dummy, or storing the drawn group's height. draw_held_row does all three for every held row. Decided by: the user's approval in chat 2026-10-09 (the headline and the Showing row hold their space during a re-analysis); derive-once review of headline-holds-space (55928d3c), finding 1"
+    },
+    {
+      "question": "Which word names a record's status?",
+      "owner": "status_label in src/ui/library_model.cpp",
+      "owner_file": "src/ui/library_model.cpp",
+      "owner_symbol": "status_label",
+      "date": "2026-10-04",
+      "decision": "audit finding 87",
+      "added_by": "M_C fix prod",
+      "pattern": "\"(Not analyzed|Analyzed|Stale)\"",
+      "must_match": [
+        "{StatusChip::Stale, \"Stale\", \"chipstale\"},",
+        "case store::RecordStatus::Ready: return \"Analyzed\";"
+      ],
+      "must_not_match": [
+        "return status_label(status);",
+        "{StatusChip::All, \"chipall\"},"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/library_model.cpp",
+          "line_text": "case store::RecordStatus::Ready: return \"Analyzed\";",
+          "why": "status_label, the owner"
+        },
+        {
+          "file": "src/ui/library_model.cpp",
+          "line_text": "case store::RecordStatus::Stale: return \"Stale\";",
+          "why": "status_label, the owner"
+        },
+        {
+          "file": "src/ui/library_model.cpp",
+          "line_text": "return \"Not analyzed\";",
+          "why": "status_label, the owner"
+        },
+        {
+          "file": "src/app/dm_report.cpp",
+          "line_text": "{\"Not analyzed\", group_thousands(stats.not_analyzed)},",
+          "why": "dm_tiles' tile label for dm_report::kStatusNotAnalyzed, a score's state in this mode at Clone Hero's cap, not a library record's status (derive-once review of RW-T2, finding 1)"
+        }
+      ],
+      "note": "---- phase 3 wave C owners (derive-once review of M_C) ---- A status word typed in quotes. The library chips, the Best path cell and the uitest state dump all ask status_label. Decided by: audit finding 87; derive-once review of M_C (6d86f1c), finding 2 (2026-10-04)"
+    },
+    {
+      "question": "What does a status chip's button label read?",
+      "owner": "chip_label in src/ui/library_model.cpp",
+      "owner_file": "src/ui/library_model.cpp",
+      "owner_symbol": "chip_label",
+      "date": "2026-10-07",
+      "decision": "storage-T2 sign-off (library-layout chip refs)",
+      "added_by": "storage-T2",
+      "pattern": "\"chip(all|new|stale|done)\"",
+      "anchor": "\"chip",
+      "must_match": [
+        "{StatusChip::All, \"chipall\"},",
+        "{StatusChip::Analyzed, \"chipdone\"},"
+      ],
+      "must_not_match": [
+        "const std::string label = chip_label(chip, n);",
+        "if (chip == StatusChip::Stale) hint(app::stale_text(true, true).c_str());"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/library_model.cpp",
+          "line_text": "const char* id = \"chipall\";",
+          "why": "chip_label, the owner"
+        },
+        {
+          "file": "src/ui/library_model.cpp",
+          "line_text": "case StatusChip::NotAnalyzed: id = \"chipnew\"; break;",
+          "why": "chip_label, the owner"
+        },
+        {
+          "file": "src/ui/library_model.cpp",
+          "line_text": "case StatusChip::Stale: id = \"chipstale\"; break;",
+          "why": "chip_label, the owner"
+        },
+        {
+          "file": "src/ui/library_model.cpp",
+          "line_text": "case StatusChip::Analyzed: id = \"chipdone\"; break;",
+          "why": "chip_label, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A filter chip's button id typed as text. chip_label builds the whole label (word, count, id), and render_chips and the GUI tests ask it. src only: the GUI tests also pin whole labels as literals, which a text search cannot tell from a label built by hand, so the test that looks chips up by a computed label is reviewed, not scanned."
+    },
+    {
+      "question": "How wide does a string draw in the current font?",
+      "owner": "text_width in src/ui/widgets.h",
+      "owner_file": "src/ui/widgets.h",
+      "owner_symbol": "text_width",
+      "date": "2026-10-04",
+      "decision": "derive-once review of M_D, library finding 4 (phase 3 task FX-P)",
+      "added_by": "FX-P",
+      "pattern": "\\[[^\\]]*\\]\\s*\\(const std::string&\\s*\\w+\\)\\s*\\{\\s*return ImGui::CalcTextSize\\(\\w+\\.c_str\\(\\)\\)\\.x;",
+      "anchor": "return ImGui::CalcTextSize(",
+      "must_match": [
+        "current, box_w - chrome, [](const std::string& s) { return ImGui::CalcTextSize(s.c_str()).x; });"
+      ],
+      "must_not_match": [
+        "const std::string shown = render::ellipsize(current, box_w - chrome, text_width);",
+        "auto text_width = [font](float sz, const char* s) {"
+      ],
+      "note": "A measuring lambda handed to ellipsize with text_width's own body."
+    },
+    {
+      "question": "Where does the Preview's playback stop?",
+      "owner": "PreviewController::playback_end_ms in src/ui/preview_controller.cpp",
+      "owner_file": "src/ui/preview_controller.cpp",
+      "owner_symbol": "PreviewController::playback_end_ms",
+      "date": "2026-10-04",
+      "decision": "D50, D56",
+      "added_by": "FX2-P",
+      "pattern": "\\btransport_?\\.length_ms\\(\\)",
+      "anchor": ".length_ms()",
+      "must_match": [
+        "transport_.length_ms());",
+        "return hydra::app::build_time_box(scene_, transport_.now_ms(), transport_.length_ms());"
+      ],
+      "must_not_match": [
+        "return hydra::app::build_time_box(scene_, transport_.now_ms(), playback_end_ms());",
+        "scrub_marks_cache_.length_ms = length;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/preview_controller.cpp",
+          "line_text": "double PreviewController::playback_end_ms() const { return transport_.length_ms(); }",
+          "why": "PreviewController::playback_end_ms, the owner"
+        }
+      ],
+      "note": "---- the Preview, round 2 (derive-once review of M_D, phase 3 task FX2-P) ---- The transport's length read straight off it, beside the accessor that names it as where playback stops. Decided by: D50 item 4 and D56 item 3; derive-once review of M_D round 2, preview finding C (phase 3 task FX2-P)"
+    },
+    {
+      "question": "How is a progress bar's percent written?",
+      "owner": "progress_bar_percent in src/ui/widgets.h",
+      "owner_file": "src/ui/widgets.h",
+      "owner_symbol": "progress_bar_percent",
+      "date": "2026-10-04",
+      "decision": "derive-once review of M_D round 2, library finding 3 (phase 3 task FX2-P)",
+      "added_by": "FX2-P",
+      "pattern": "\"%\\.0f%%\"",
+      "anchor": "\"%.0f%%\"",
+      "must_match": [
+        "std::snprintf(overlay, sizeof(overlay), \"%.0f%%\", f * 100.0f);",
+        "std::snprintf(overlay, sizeof(overlay), \"%.0f%%\", lp.fraction * 100.0f);"
+      ],
+      "must_not_match": [
+        "ImGui::SliderInt(\"##volume\", &volume, 0, 100, \"%d%%\")",
+        "progress_bar_percent(lp.fraction);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/widgets.h",
+          "line_text": "std::snprintf(overlay, sizeof(overlay), \"%.0f%%\", fraction * 100.0f);",
+          "why": "progress_bar_percent, the owner"
+        }
+      ],
+      "note": "A progress bar's \"42%\" overlay typed beside the widget that draws it."
+    },
+    {
+      "question": "What size do the UI fonts load at?",
+      "owner": "kFontSize in src/ui/app_shell.cpp",
+      "owner_file": "src/ui/app_shell.cpp",
+      "owner_symbol": "kFontSize",
+      "date": "2026-10-04",
+      "decision": "audit finding 208 (phase 6 task J1-2)",
+      "added_by": "J1-2",
+      "pattern": "(^|[^0-9.])18\\.0f",
+      "anchor": "18.0f",
+      "must_match": [
+        "(resource_dir + \"ShipporiAntiqueB1-Regular.ttf\").c_str(), 18.0f);",
+        "if (add_font_file(path, 18.0f, &merge)) break;"
+      ],
+      "must_not_match": [
+        "g_mono_font = add_font_file(join_folder(fonts_dir, \"CourierPrime-Regular.ttf\"), kFontSize);",
+        "const float w = 118.0f;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/app_shell.cpp",
+          "line_text": "constexpr float kFontSize = 18.0f;",
+          "why": "kFontSize, the owner"
+        }
+      ],
+      "scope": [
+        "src/ui/app_shell.cpp"
+      ],
+      "note": "The CJK fallback is merged into the main font, and ImGui scales merged glyphs by the ratio of the two sizes, so every load reads the one size."
+    },
+    {
+      "question": "Does the font loader cut a file name off a path itself?",
+      "owner": "ImGui's AddFontFromFileTTF; Hydra does not name font sources",
+      "owner_file": "src/ui/app_shell.cpp",
+      "owner_symbol": "AddFontFromFileTTF",
+      "date": "2026-10-07",
+      "decision": "MEM-F derive-once review round 1, finding 1 (2026-10-07)",
+      "added_by": "MEM-F",
+      "pattern": "find_last_of\\(\\s*\"(/\\\\\\\\|\\\\\\\\/)\"\\)",
+      "anchor": "find_last_of(",
+      "must_match": [
+        "const size_t slash = path.find_last_of(\"/\\\\\");",
+        "const size_t pos = p.find_last_of(\"\\\\/\");"
+      ],
+      "must_not_match": [
+        "const std::string fonts_dir = join_folder(base, \"resource\");"
+      ],
+      "scope": [
+        "src/ui/app_shell.cpp"
+      ],
+      "note": "A font source's name only labels ImGui's own debug windows, which Hydra never opens; naming the mapped fonts copied a path rule."
+    },
+    {
+      "question": "Where does the startup UI scale come from?",
+      "owner": "ui_scale_for_dpi in src/ui/app_shell.cpp",
+      "owner_file": "src/ui/app_shell.cpp",
+      "owner_symbol": "ui_scale_for_dpi",
+      "date": "2026-10-04",
+      "decision": "D54",
+      "added_by": "J1-2",
+      "pattern": "ImGui_ImplWin32_GetDpiScaleFor(Monitor|Hwnd)\\b",
+      "anchor": "ImGui_ImplWin32_GetDpiScaleFor",
+      "must_match": [
+        "float main_scale = ImGui_ImplWin32_GetDpiScaleForMonitor(",
+        "const float window_scale = ImGui_ImplWin32_GetDpiScaleForHwnd(hwnd);"
+      ],
+      "must_not_match": [
+        "const float window_scale = hydra::ui::ui_scale_for_dpi(",
+        "ImGui_ImplWin32_EnableDpiAwareness();"
+      ],
+      "note": "Decided by: D54 (audit finding 210)"
+    },
+    {
+      "question": "Is a library split share valid?",
+      "owner": "share_is_valid in src/ui/app_shell.cpp",
+      "owner_file": "src/ui/app_shell.cpp",
+      "owner_symbol": "share_is_valid",
+      "date": "2026-10-04",
+      "decision": "audit finding 211 (phase 6 task J1-2)",
+      "added_by": "J1-2",
+      "pattern": ">\\s*0\\.0f\\s*&&.*<\\s*1\\.0f",
+      "anchor": "0.0f",
+      "must_match": [
+        "if (end == value.c_str() || *end != '\\0' || !(v > 0.0f && v < 1.0f)) return;",
+        "if (!(share > 0.0f && share < 1.0f) || share == g_layout.library_share) return;"
+      ],
+      "must_not_match": [
+        "if (!share_is_valid(share) || share == g_layout.library_share) return;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/app_shell.cpp",
+          "line_text": "bool share_is_valid(float share) { return share > 0.0f && share < 1.0f; }",
+          "why": "share_is_valid, the owner"
+        }
+      ],
+      "scope": [
+        "src/ui/app_shell.cpp"
+      ]
+    },
+    {
+      "question": "What colour clears the frame?",
+      "owner": "kClearColor in src/ui/app_shell.h",
+      "owner_file": "src/ui/app_shell.h",
+      "owner_symbol": "kClearColor",
+      "date": "2026-10-04",
+      "decision": "audit finding 270 (phase 6 task J1-2)",
+      "added_by": "J1-2",
+      "pattern": "0\\.10?f\\s*,\\s*0\\.11f\\s*,\\s*0\\.13f",
+      "anchor": "0.11f",
+      "must_match": [
+        "const ImVec4 clear_color = ImVec4(0.10f, 0.11f, 0.13f, 1.00f);",
+        "const float clear[4] = {0.10f, 0.11f, 0.13f, 1.0f};"
+      ],
+      "must_not_match": [
+        "context->ClearRenderTargetView(rtv.Get(), hydra::ui::kClearColor);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/app_shell.h",
+          "line_text": "inline constexpr float kClearColor[4] = {0.10f, 0.11f, 0.13f, 1.00f};",
+          "why": "kClearColor, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ]
+    },
+    {
+      "question": "Is a Hydra OS window maximized, and where does it sit un-maximized?",
+      "owner": "observed_placement in src/ui/app_shell.cpp",
+      "owner_file": "src/ui/app_shell.cpp",
+      "owner_symbol": "observed_placement",
+      "date": "2026-10-10",
+      "decision": "derive-once review of cw-t2 (2026-10-10), kind A",
+      "added_by": "cw-t2-review",
+      "pattern": "\\b(IsZoomed|GetWindowPlacement)\\s*\\(",
+      "must_match": [
+        "p.maximized = ::IsZoomed(hWnd) != FALSE;",
+        "const bool maximized = ::IsZoomed(hwnd) != FALSE;"
+      ],
+      "must_not_match": [
+        "hydra::ui::remember_window_placement(hydra::ui::observed_placement("
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/app_shell.cpp",
+          "line_text": "p.maximized = ::IsZoomed(hwnd) != FALSE;",
+          "why": "observed_placement, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ]
+    },
+    {
+      "question": "How far do two screen rectangles overlap?",
+      "owner": "overlap_of in src/ui/app_shell.cpp",
+      "owner_file": "src/ui/app_shell.cpp",
+      "owner_symbol": "overlap_of",
+      "date": "2026-10-10",
+      "decision": "derive-once review of cw-t2 (2026-10-10), kind A",
+      "added_by": "cw-t2-review",
+      "pattern": "std::min\\(\\s*[\\w.]+\\.(right|bottom)\\s*,\\s*[\\w.]+\\.(right|bottom)\\s*\\)\\s*-\\s*std::max\\(\\s*[\\w.]+\\.(left|top)\\b",
+      "anchor": "std::min(",
+      "must_match": [
+        "const int w = std::min(band.right, area.right) - std::max(band.left, area.left);",
+        "const long long h = std::min(r.bottom, area.bottom) - std::max(r.top, area.top);"
+      ],
+      "must_not_match": [
+        "const Overlap o = overlap_of(band, area);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/app_shell.cpp",
+          "line_text": "return {std::min(a.right, b.right) - std::max(a.left, b.left),",
+          "why": "overlap_of, the owner (across)"
+        },
+        {
+          "file": "src/ui/app_shell.cpp",
+          "line_text": "std::min(a.bottom, b.bottom) - std::max(a.top, b.top)};",
+          "why": "overlap_of, the owner (down)"
+        }
+      ],
+      "scope": [
+        "src"
+      ]
+    },
+    {
+      "question": "How does a remembered placement or layout ask for hydra_ui.ini to be saved?",
+      "owner": "mark_ini_dirty in src/ui/app_shell.cpp",
+      "owner_file": "src/ui/app_shell.cpp",
+      "owner_symbol": "mark_ini_dirty",
+      "date": "2026-10-10",
+      "decision": "derive-once review of cw-t2 (2026-10-10), kind A",
+      "added_by": "cw-t2-review",
+      "pattern": "\\bMarkIniSettingsDirty\\s*\\(",
+      "anchor": "MarkIniSettingsDirty",
+      "must_match": [
+        "if (ImGui::GetCurrentContext()) ImGui::MarkIniSettingsDirty();"
+      ],
+      "must_not_match": [
+        "mark_ini_dirty();"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/app_shell.cpp",
+          "line_text": "if (ImGui::GetCurrentContext()) ImGui::MarkIniSettingsDirty();",
+          "why": "mark_ini_dirty, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ]
+    },
+    {
+      "question": "Is anything left for a reset to undo?",
+      "owner": "settings_at_defaults in src/ui/library_dialogs.cpp",
+      "owner_file": "src/ui/library_dialogs.cpp",
+      "owner_symbol": "settings_at_defaults",
+      "date": "2026-10-09",
+      "decision": "derive-once review 8aa5f401 finding 1(a) (settings reset button, 2026-10-09)",
+      "added_by": "settings-reset-button",
+      "pattern": "(==|!=)\\s*\"(Analysis settings: )?defaults|\"defaults\"\\s*(==|!=)|settings_(changes_summary|button_label)\\([^()]*\\)\\s*(==|!=)",
+      "must_match": [
+        "return settings_changes_summary(s) == \"defaults\";",
+        "if (settings_changes_summary(s) == \"defaults\") {",
+        "const bool off = settings_button_label(app.settings, false) == \"Analysis settings: defaults\";"
+      ],
+      "must_not_match": [
+        "return out.empty() ? \"defaults\" : out;",
+        "return settings_change_phrases(s).empty();",
+        "const std::string label = settings_button_label(app.settings, locked);"
+      ],
+      "note": "Reading the yes/no back out of the summary's wording: a new wording would leave the reset button never greyed. The owner asks the list of changed settings directly."
+    },
+    {
+      "question": "Is a batch or an analysis running?",
+      "owner": "batch_running in src/ui/app_state.cpp",
+      "owner_file": "src/ui/app_state.cpp",
+      "owner_symbol": "batch_running",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-4",
+      "pattern": "\\b(batch_job\\s*&&\\s*!\\s*((a|app)\\.)?batch_job->snapshot\\(\\)\\.finished|view_job\\s*&&\\s*!\\s*((a|app)\\.)?view_job->finished\\(\\))",
+      "anchor": "finished",
+      "must_match": [
+        "if (batch_job && !batch_job->snapshot().finished) return;",
+        "if (view_job && !view_job->finished()) view_job->cancel();",
+        "const bool batch_busy = app.batch_job && !app.batch_job->snapshot().finished;",
+        "if (a.view_job && !a.view_job->finished()) return true;"
+      ],
+      "must_not_match": [
+        "if (scan_job && !scan_job->snapshot().finished) return;",
+        "a.batch_job ? (a.batch_job->snapshot().finished ? \"finished\" : \"running\") : \"-\",",
+        "if (batch_job && !batch_finish_seen_ && batch_job->snapshot().finished) {",
+        "if (view_thread_alive()) view_job->cancel();"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/app_state.cpp",
+          "line_text": "bool AppState::batch_running() const { return batch_job && !batch_job->snapshot().finished; }",
+          "why": "batch_running, the owner"
+        },
+        {
+          "file": "src/ui/app_state.cpp",
+          "line_text": "bool AppState::view_thread_alive() const { return view_job && !view_job->finished(); }",
+          "why": "view_thread_alive, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "---- app state, jobs and the toolbar (phase 6 task J2-4) ---- A batch or analyze job tested for \"held and not finished\". The scan job's guard is a different job with no owner yet; the GUI harness's dump prints each job's state, a different question. Decided by: audit finding 254; phase 6 task J2-4 (D53); storage-T2 review finding 3 (the click's job)"
+    },
+    {
+      "question": "How many charts does the library hold?",
+      "owner": "LibraryModel::rows() in src/ui/library_model.h",
+      "owner_file": "src/ui/library_model.h",
+      "owner_symbol": "rows",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-4",
+      "pattern": "\\blibrary_total\\b",
+      "anchor": "library_total",
+      "must_match": [
+        "const int64_t analyzable = searching ? static_cast<int64_t>(app.library_match_count()) : app.library_total;"
+      ],
+      "must_not_match": [
+        "const int64_t analyzable = searching ? static_cast<int64_t>(app.library_match_count()) : library_size;"
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "A cached copy of the library's chart count. The model's own rows are the count; the cache is gone, so no line may name it. Decided by: audit finding 131; phase 6 task J2-4 (D53)"
+    },
+    {
+      "question": "How long does the UI trust a cached file-exists answer?",
+      "owner": "AppState::cached_file_check in src/ui/app_state.h",
+      "owner_file": "src/ui/app_state.h",
+      "owner_symbol": "cached_file_check",
+      "date": "2026-10-04",
+      "decision": "D54",
+      "added_by": "J2-4",
+      "pattern": "\\bkReportCheckSeconds\\b|_checked_at\\s*(<|>=)",
+      "anchor": "heck",
+      "owner_files": [
+        "src/ui/app_state.h"
+      ],
+      "must_match": [
+        "now - details_ui.file_checked_at >= kFileCheckSeconds) {",
+        "now - library_ui.report_checked_at >= kReportCheckSeconds) {",
+        "if (library_ui.report_checked_at < 0.0 ||"
+      ],
+      "must_not_match": [
+        "details_ui.file_checked_at = -1.0;",
+        "library_ui.report_checked_at = -1.0;  // a new report: look at once"
+      ],
+      "note": "A \"checked at\" time tested against an interval, or the report check's own interval, which D54 folded into kFileCheckSeconds. Decided by: audit finding 207; D54 (one interval, one caching helper)"
+    },
+    {
+      "question": "What does a failed job record?",
+      "owner": "ResultJobBase::fail in src/ui/job_base.h",
+      "owner_file": "src/ui/job_base.h",
+      "owner_symbol": "fail",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-4",
+      "pattern": "finished_\\.store\\(true\\)",
+      "anchor": "finished_.store(true)",
+      "owner_files": [
+        "src/ui/job_base.h"
+      ],
+      "must_match": [
+        "finished_.store(true);"
+      ],
+      "must_not_match": [
+        "bool finished() const { return finished_.load(); }"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Publishing a job's finished flag by hand. Every job ends through run_guarded or fail in job_base.h. Decided by: audit finding 212; phase 6 task J2-4 (D53)"
+    },
+    {
+      "question": "What does the batch button say while a search is typed?",
+      "owner": "analyze_search_label in src/ui/library_toolbar.cpp",
+      "owner_file": "src/ui/library_toolbar.cpp",
+      "owner_symbol": "analyze_search_label",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-4",
+      "pattern": "\"Analyze search \\(",
+      "anchor": "\"Analyze search (",
+      "calls_owner": "\\banalyze_search_label\\(",
+      "owner_files": [
+        "src/ui/library_toolbar.cpp"
+      ],
+      "must_match": [
+        "? \"Analyze search (\" + group_thousands(analyzable) + \")...\"",
+        "\"Analyze search (\" +"
+      ],
+      "must_not_match": [
+        "CHECK(hydra::ui::detail::analyze_search_label(1) == \"Analyze search (1)...\");",
+        "const std::string label = searching ? analyze_search_label(analyzable) : \"Analyze library...\";"
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "The batch button's search label typed as text. Decided by: audit finding 290; phase 6 task J2-4 (D53)"
+    },
+    {
+      "question": "How does a library entry become a scan row?",
+      "owner": "scan_item_of in src/ui/library_jobs.cpp",
+      "owner_file": "src/ui/library_jobs.cpp",
+      "owner_symbol": "scan_item_of",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-4",
+      "pattern": "items_\\.push_back\\(\\s*\\{\\s*\\w+\\.md5|\\bScanItem(\\s+\\w+)?\\s*\\{\\s*\\w+\\.md5\\b",
+      "anchor": ".md5",
+      "owner_files": [
+        "src/ui/library_jobs.cpp"
+      ],
+      "must_match": [
+        "items_.push_back({e.md5, e.title, e.artist, e.charter, e.notespath, e.rootfolder});",
+        "app::ScanItem item{e.md5, e.title, e.artist};"
+      ],
+      "must_not_match": [
+        "entries.push_back({item.md5, item.title, item.artist, item.charter, item.notespath,",
+        "for (const store::ChartLibraryEntry& e : entries) items_.push_back(scan_item_of(e));"
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "A scan row built from a library entry's fields by position. The forward direction (a scan row into the library) is the row above owned by to_library_entry. Decided by: audit finding 256 (the reverse, from the phase 6 ledger); phase 6 task J2-4 (D53)"
+    },
+    {
+      "question": "Which charts does a batch analyze?",
+      "owner": "the rows the library screen hands over: AppState::open_batch_confirm and BatchJob's vector constructor (src/ui/app_state.cpp, src/ui/library_jobs.h)",
+      "owner_file": "src/ui/app_state.cpp",
+      "owner_symbol": "rows",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-4",
+      "pattern": "BatchJob\\(std::optional<std::string>|list_chart_library\\(\\s*search",
+      "must_match": [
+        "BatchJob(std::optional<std::string> search, app::BatchRun run,",
+        ": store_.list_chart_library(search_, 0, -1);  // LIMIT -1 = no limit"
+      ],
+      "must_not_match": [
+        "library.set_charts(store->list_chart_library(std::nullopt, 0, -1));  // -1 = no limit",
+        "BatchJob(std::vector<store::ChartLibraryEntry> charts, app::BatchRun run,"
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "A batch that picks its own charts with the store's SQL search. The library screen's own search decides which rows match. Decided by: audit finding 113; phase 6 task J2-4 (D53)"
+    },
+    {
+      "question": "What locks the analysis settings?",
+      "owner": "settings_lock in src/ui/app_state.cpp",
+      "owner_file": "src/ui/app_state.cpp",
+      "owner_symbol": "settings_lock",
+      "date": "2026-10-05",
+      "decision": "p6-uicrash (the crash this fix addresses)",
+      "added_by": "p6-uicrash",
+      "pattern": "\\b(app|a)\\.(batch_running|analyze_running)\\(\\)",
+      "anchor": "_running",
+      "calls_owner": "\\bsettings_lock\\b",
+      "must_match": [
+        "const bool batch_busy = app.batch_running();"
+      ],
+      "must_not_match": [
+        "const AppState::SettingsLock lock = app.settings_lock();",
+        "const bool locked = lock != AppState::SettingsLock::None;"
+      ],
+      "scope": [
+        "src/ui/settings_bar.cpp"
+      ],
+      "note": "The settings button's lock decision: read once per frame and handed to both the button and its panel, so a batch ending mid-frame cannot leave the button saying \"(locked)\" over enabled controls."
+    },
+    {
+      "question": "What does the status line say when a running batch turns a request away?",
+      "owner": "AppState::kBatchRunningStatus in src/ui/app_state.h",
+      "owner_file": "src/ui/app_state.h",
+      "owner_symbol": "kBatchRunningStatus",
+      "date": "2026-10-08",
+      "decision": "D51",
+      "added_by": "RW-T4",
+      "pattern": "\"A batch is running\\.\"",
+      "anchor": "\"A batch is running.\"",
+      "must_match": [
+        "set_status(\"A batch is running.\");",
+        "if (batch_running()) set_status(\"A batch is running.\");"
+      ],
+      "must_not_match": [
+        "set_status(\"A scan is running.\");",
+        "ImGui::SetTooltip(\"Busy: a batch is running.\");",
+        "set_status(kBatchRunningStatus);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/app_state.h",
+          "line_text": "static constexpr const char* kBatchRunningStatus = \"A batch is running.\";",
+          "why": "AppState::kBatchRunningStatus, the owner"
+        }
+      ],
+      "note": "The sentence written out where a request is turned away. Tests pin it as a literal, so the row covers src and tools only. Decided by: D51 call 24; derive-once review of RW-T4 (key 4979976), finding 2"
+    },
+    {
+      "question": "Which library row is the selected one?",
+      "owner": "AppState::is_selected_row in src/ui/app_state.cpp",
+      "owner_file": "src/ui/app_state.cpp",
+      "owner_symbol": "AppState::is_selected_row",
+      "date": "2026-10-05",
+      "decision": "audit finding 143 (phase 7 task LB2)",
+      "added_by": "LB2",
+      "pattern": "\\bnotespath\\s*(==|!=)\\s*(\\w+(\\.|->))*selected|\\bselected(\\w*(\\.|->))*notespath\\s*(==|!=)|\\brow_key\\(\\s*\\*?(\\w+(\\.|->))*selected\\b",
+      "anchor": "selected",
+      "must_match": [
+        "return selected && row.notespath == selected->notespath;",
+        "if (view_row(i).notespath != selected->notespath) continue;",
+        "if (rows[order[k]].entry.notespath == selected_path) {",
+        "const bool selected = !selected_path.empty() && row.entry.notespath == selected_path;",
+        "analyze_job->song().notespath == selected->notespath;",
+        "if (selected->notespath == e.notespath) return true;",
+        "if (selected->notespath != row.notespath) continue;",
+        "if (selected->notespath == view_row(i).notespath) return i;"
+      ],
+      "must_not_match": [
+        "const std::string selected_path = app.selected ? app.selected->notespath : std::string();",
+        "const bool selected = app.is_selected_row(row.entry);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/app_state.cpp",
+          "line_text": "return selected && row_key(row) == row_key(*selected);",
+          "why": "is_selected_row, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "---- app state, library screen and toolbar (phase 7 task LB2) ---- A row's notespath compared with the selection's. Tests that check which song a click selected read the selection first and are left alone."
+    },
+    {
+      "question": "What tells one library row from another?",
+      "owner": "row_key in src/ui/library_model.h",
+      "owner_file": "src/ui/library_model.h",
+      "owner_symbol": "row_key",
+      "date": "2026-10-07",
+      "decision": "audit finding 143",
+      "added_by": "MEM-L",
+      "pattern": "(\\.|->)notespath\\s*(==|!=)\\s*[\\w.\\[\\]()*>-]*notespath\\b|\\.(emplace|find)\\([^;]*\\bentry\\.notespath\\b",
+      "anchor": "notespath",
+      "owner_files": [
+        "src/ui/library_model.h"
+      ],
+      "must_match": [
+        "if (copy.notespath == row.notespath) {",
+        "place.emplace(library.rows()[matched[k]].entry.notespath, k);"
+      ],
+      "must_not_match": [
+        "return x.entry.notespath < y.entry.notespath;",
+        "by_path_.emplace(plan_.todo[i].notespath, i);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Two library rows (or a row and a store entry) told apart by their notespath read straight off, not through the owner's key: a click picking its copy, or a batch matching rows to store entries. Decided by: audit finding 143; MEM-L review finding 1"
+    },
+    {
+      "question": "May a library scan start now?",
+      "owner": "AppState::can_scan in src/ui/app_state.cpp",
+      "owner_file": "src/ui/app_state.cpp",
+      "owner_symbol": "AppState::can_scan",
+      "date": "2026-10-05",
+      "decision": "D51",
+      "added_by": "LB2",
+      "pattern": "chartfolders\\.empty\\(\\)[^;]*scan_job|scan_job[^;]*chartfolders\\.empty\\(\\)|if\\s*\\(\\s*scan_job\\s*&&\\s*!\\s*scan_job->snapshot\\(\\)\\.finished\\)\\s*return;",
+      "anchor": "scan_job",
+      "must_match": [
+        "const bool can_scan = !app.settings.chartfolders.empty() && !batch_busy && !app.scan_job;",
+        "if (!app.settings.chartfolders.empty() && !app.scan_job) {",
+        "if (scan_job && !scan_job->snapshot().finished) return;"
+      ],
+      "must_not_match": [
+        "const bool scan_off = !app.can_scan();",
+        "if (app.library_ui.folders_changed && !app.settings.chartfolders.empty()) {",
+        "if (app.scan_job) ImGui::OpenPopup(\"Scanning charts\");"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/app_state.cpp",
+          "line_text": "return !settings.chartfolders.empty() && !scan_job && !batch_running();",
+          "why": "can_scan, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "Song folders and the scan job tested together, or the old scan-only guard in start_scan. Decided by: audit finding R7.3; D51 call 24 (phase 7 task LB2)"
+    },
+    {
+      "question": "Is any background job still running?",
+      "owner": "AppState::any_job_running in src/ui/app_state.cpp",
+      "owner_file": "src/ui/app_state.cpp",
+      "owner_symbol": "AppState::any_job_running",
+      "date": "2026-10-05",
+      "decision": "audit finding 109 (phase 7 task LB2)",
+      "added_by": "LB2",
+      "pattern": "&&\\s*!?\\s*[\\w.]*(->\\w+\\(\\))*->(finished\\(\\)|snapshot\\(\\)\\.finished|loading\\(\\)|busy\\(\\))\\)\\s*return true;",
+      "anchor": "return true;",
+      "must_match": [
+        "if (a.scan_job && !a.scan_job->snapshot().finished) return true;",
+        "if (a.report_job && !a.report_job->finished()) return true;",
+        "if (a.preview && a.preview->loading()) return true;"
+      ],
+      "must_not_match": [
+        "bool jobs_busy(Harness& h) { return h.app->any_job_running(); }",
+        "if (!job || !job->finished()) return;",
+        "if (!h.app->preview->loading()) return true;"
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "A job list of its own: one job tested for \"held and not finished\" and the answer returned as busy. A wait on one Preview load (no \"held and\" test) is a different question."
+    },
+    {
+      "question": "Where do the measure and the bars start on an activation row?",
+      "owner": "kRowMeasureX and kRowMinBarsX in src/ui/activation_row_layout.h",
+      "owner_file": "src/ui/activation_row_layout.h",
+      "owner_symbol": "kRowMeasureX",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-3",
+      "pattern": "\\b(104|200)\\.0f\\b",
+      "anchor": ".0f",
+      "exempt": [
+        {
+          "file": "tests/test_overlay_layout.cpp",
+          "why": "the Preview overlay's own test widths, not an activation row"
+        },
+        {
+          "file": "tests/test_column_widths.cpp",
+          "why": "the column-width rule's fake-font column widths, not an activation row"
+        }
+      ],
+      "must_match": [
+        "CHECK(l.measure_x == doctest::Approx(104.0f));"
+      ],
+      "must_not_match": [
+        "CHECK(l.measure_x == doctest::Approx(kRowMeasureX));"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/activation_row_layout.h",
+          "line_text": "inline constexpr float kRowMeasureX = 104.0f;   // where the measure starts",
+          "why": "kRowMeasureX, the owner"
+        },
+        {
+          "file": "src/ui/activation_row_layout.h",
+          "line_text": "inline constexpr float kRowMinBarsX = 200.0f;   // the bars never start before this",
+          "why": "kRowMinBarsX, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "Decided by: audit finding 276; phase 6 task J3-3 (D53, D54)"
+    },
+    {
+      "question": "How far does a Preview jump move, and what do its controls call it?",
+      "owner": "kJumpSeconds and kTickStep in src/ui/preview_tab.cpp",
+      "owner_file": "src/ui/preview_tab.cpp",
+      "owner_symbol": "kJumpSeconds",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-5",
+      "pattern": "->jump_ms\\(\\s*-?\\d|\"[^\"]*\\b(5 seconds|5 ticks|5 Ticks)\\b[^\"]*\"|\"[-+]5s\"|\\b(kJumpSeconds|kTickStep)\\s*=\\s*\\d",
+      "must_match": [
+        "if (ImGui::Button(\"-5s\")) pc->jump_ms(-5000.0);",
+        "{{\",\", \".\"}, \"5 ticks\"},"
+      ],
+      "must_not_match": [
+        "pc.jump_ms(5000.0);",
+        "inline constexpr double kAudioTailMs = 5000.0;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/preview_tab.cpp",
+          "line_text": "constexpr int kJumpSeconds = 5;",
+          "why": "kJumpSeconds, the owner"
+        },
+        {
+          "file": "src/ui/preview_tab.cpp",
+          "line_text": "constexpr int kTickStep = 5;",
+          "why": "kTickStep, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A jump through the controller pointer with a number typed in, a quoted control word naming the step, or a second definition of either constant. The tests drive the controller with typed distances (pc.jump_ms(5000.0)) and pin the shown text, so src only. Decided by: audit finding 215; phase 6 task J3-5 (D53, D54)"
+    },
+    {
+      "question": "How big is each Preview overlay box at a scale?",
+      "owner": "overlay_box_sizes and line_height in src/ui/preview_tab.cpp",
+      "owner_file": "src/ui/preview_tab.cpp",
+      "owner_symbol": "overlay_box_sizes",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-5",
+      "pattern": "\\* 1\\.25f|\\* 1\\.8f|\\* 1\\.2f",
+      "anchor": "* 1.",
+      "must_match": [
+        "const float line_h = size * 1.25f;",
+        "const float score_size = score.available ? size * 1.8f : size;"
+      ],
+      "must_not_match": [
+        "const float line_h = line_height(size);",
+        "s.pad = px(8.0f) * scale;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/preview_tab.cpp",
+          "line_text": "float line_height(float size) { return size * 1.25f; }",
+          "why": "line_height, the owner"
+        },
+        {
+          "file": "src/ui/preview_tab.cpp",
+          "line_text": "s.score_size = score.available ? s.size * 1.8f : s.size;",
+          "why": "overlay_box_sizes, the owner"
+        },
+        {
+          "file": "src/ui/preview_tab.cpp",
+          "line_text": "s.score_line_h = s.score_size * 1.2f;",
+          "why": "overlay_box_sizes, the owner"
+        }
+      ],
+      "scope": [
+        "src/ui/preview_tab.cpp"
+      ],
+      "note": "highway_draw.cpp and overlay_layout.cpp have their own factors under J2-8's rows, so only the tab is scanned. Decided by: audit finding R7.18; phase 6 task J3-5 (D53, D54)"
+    },
+    {
+      "question": "When a Preview scene lands or is dropped, what moves with it?",
+      "owner": "PreviewController::show_scene in src/ui/preview_controller.cpp",
+      "owner_file": "src/ui/preview_controller.cpp",
+      "owner_symbol": "PreviewController::show_scene",
+      "date": "2026-10-09",
+      "decision": "derive-once review of preview-keeps-place (finding 1)",
+      "added_by": "preview-keeps-place",
+      "pattern": "\\b(scene_|pending_track_|pending_track_opts_|scene_path_key_)\\s*=(?!=)",
+      "must_match": [
+        "scene_ = std::move(out.scene);",
+        "pending_track_ = std::move(result.track_state);",
+        "pending_track_opts_ = out.track_opts;",
+        "scene_path_key_ = job_path_key_;"
+      ],
+      "must_not_match": [
+        "if (pending_track_ && pending_track_opts_ == opts)",
+        "pending_track_.reset();",
+        "scene_path_key_.clear();",
+        "show_scene(std::move(out.scene), std::move(out.track_state), out.track_opts,"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/preview_controller.cpp",
+          "line_text": "scene_ = std::move(scene);",
+          "why": "show_scene, the owner"
+        },
+        {
+          "file": "src/ui/preview_controller.cpp",
+          "line_text": "pending_track_ = std::move(track);",
+          "why": "show_scene, the owner"
+        },
+        {
+          "file": "src/ui/preview_controller.cpp",
+          "line_text": "pending_track_opts_ = track_opts;",
+          "why": "show_scene, the owner"
+        },
+        {
+          "file": "src/ui/preview_controller.cpp",
+          "line_text": "scene_path_key_ = std::move(path_key);",
+          "why": "show_scene, the owner"
+        }
+      ],
+      "scope": [
+        "src/ui/preview_controller.cpp"
+      ],
+      "note": "The first load, a notes reload and an overlay build each used to swap their scene in by hand; close() and a failed notes reload dropped it the same way."
+    },
+    {
+      "question": "What does the Preview controller remember when open() is asked for a path?",
+      "owner": "PreviewController::record_request in src/ui/preview_controller.cpp",
+      "owner_file": "src/ui/preview_controller.cpp",
+      "owner_symbol": "PreviewController::record_request",
+      "date": "2026-10-09",
+      "decision": "derive-once review of preview-keeps-place (finding 3)",
+      "added_by": "preview-keeps-place",
+      "pattern": "\\b(path_|requested_path_key_|path_key_)\\s*=(?!=)|\\bsp_cap_\\s*=\\s*sp_cap\\b",
+      "must_match": [
+        "path_ = path ? std::optional<Path>(*path) : std::nullopt;",
+        "requested_path_key_ = path_key;",
+        "path_key_ = overlay_key(path_key, sp_cap_);",
+        "sp_cap_ = sp_cap;"
+      ],
+      "must_not_match": [
+        "requested_path_key_.clear();",
+        "if (sp_cap == sp_cap_ && path_key == requested_path_key_) return;",
+        "job_path_key_ = path_key_;",
+        "sp_cap_ = kCloneHeroSpCap;",
+        "scene_path_key_ = std::move(path_key);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/preview_controller.cpp",
+          "line_text": "path_ = path ? std::optional<Path>(*path) : std::nullopt;",
+          "why": "record_request, the owner"
+        },
+        {
+          "file": "src/ui/preview_controller.cpp",
+          "line_text": "sp_cap_ = sp_cap;",
+          "why": "record_request, the owner"
+        },
+        {
+          "file": "src/ui/preview_controller.cpp",
+          "line_text": "requested_path_key_ = path_key;",
+          "why": "record_request, the owner"
+        },
+        {
+          "file": "src/ui/preview_controller.cpp",
+          "line_text": "path_key_ = overlay_key(path_key, sp_cap);",
+          "why": "record_request, the owner"
+        }
+      ],
+      "scope": [
+        "src/ui/preview_controller.cpp"
+      ],
+      "note": "open()'s three branches each used to write these by hand. close() only forgets them (clear, reset, the default cap), so it is not a copy."
+    },
+    {
+      "question": "Which path does a Preview build the controller starts draw?",
+      "owner": "PreviewController::path_to_draw in src/ui/preview_controller.cpp",
+      "owner_file": "src/ui/preview_controller.cpp",
+      "owner_symbol": "PreviewController::path_to_draw",
+      "date": "2026-10-09",
+      "decision": "finding 126 (drawn_path)",
+      "added_by": "preview-keeps-place",
+      "pattern": "\\bdrawn_path\\(|std::optional<Path>\\(\\*drawn\\)",
+      "anchor": "drawn",
+      "must_match": [
+        "const Path* drawn = drawn_path(path_, chart_changed_);",
+        "drawn ? std::optional<Path>(*drawn) : std::nullopt, sp_cap_, rules_, key.noteshuffle,"
+      ],
+      "must_not_match": [
+        "path_to_draw(), sp_cap_, rules_,",
+        "path_ = path ? std::optional<Path>(*path) : std::nullopt;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/preview_controller.cpp",
+          "line_text": "const Path* drawn = drawn_path(path_, chart_changed_);",
+          "why": "path_to_draw, the owner"
+        },
+        {
+          "file": "src/ui/preview_controller.cpp",
+          "line_text": "return drawn ? std::optional<Path>(*drawn) : std::nullopt;",
+          "why": "path_to_draw, the owner"
+        }
+      ],
+      "scope": [
+        "src/ui/preview_controller.cpp"
+      ],
+      "note": "The overlay build and the notes reload each used to work this out and copy it inline. Decided by: finding 126 (drawn_path); derive-once review of preview-keeps-place (finding 3)"
+    },
+    {
+      "question": "How is a Preview job's scene and highway built from a mode's notes?",
+      "owner": "build_scene_and_highway in src/ui/preview_load_job.cpp",
+      "owner_file": "src/ui/preview_load_job.cpp",
+      "owner_symbol": "build_scene_and_highway",
+      "date": "2026-10-09",
+      "decision": "derive-once review of preview-keeps-place (finding 2)",
+      "added_by": "preview-keeps-place",
+      "pattern": "\\bapp::build_preview_scene\\(",
+      "anchor": "app::build_preview_scene(",
+      "must_match": [
+        "app::build_preview_scene(ps.song, path, sp_cap_, rules_, audio_end_ms, song_length_ms);",
+        "app::PreviewScene scene = app::build_preview_scene("
+      ],
+      "must_not_match": [
+        "built->scene = app::build_preview_base(song, audio_end_ms, song_length_ms);",
+        "PreviewScene build_preview_scene(const Song& song, const Path* path, int sp_cap,"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/preview_load_job.cpp",
+          "line_text": "app::build_preview_scene(song, path, sp_cap, rules, audio_end_ms, song_length_ms);",
+          "why": "build_scene_and_highway, the owner"
+        }
+      ],
+      "note": "The first load and the notes reload each used to build their scene and its highway inline. The path-free base has its own owner, build_scene_base, and calls app::build_preview_base instead."
+    },
+    {
+      "question": "Is the drawn overlay the selected path's?",
+      "owner": "PreviewController::shows_path in src/ui/preview_controller.cpp",
+      "owner_file": "src/ui/preview_controller.cpp",
+      "owner_symbol": "PreviewController::shows_path",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-5",
+      "pattern": "overlay_path_key\\(\\)\\.rfind\\(|rfind\\(\\w*overlay_key\\w*, 0\\)|\\boverlay_key_path_part\\(",
+      "anchor": "overlay_",
+      "must_match": [
+        "if (jump && pc->overlay_path_key().rfind(ui.overlay_key, 0) == 0) {",
+        "return h.app->preview->overlay_path_key().rfind(first_key, 0) == 0;"
+      ],
+      "must_not_match": [
+        "if (jump && pc->shows_path(ui.overlay_key)) {",
+        "IM_CHECK(h.app->preview->overlay_path_key() != first_overlay);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/preview_controller.cpp",
+          "line_text": "std::string overlay_key_path_part(const std::string& key) {",
+          "why": "the one reader of an overlay key's path part, beside overlay_key"
+        },
+        {
+          "file": "src/ui/preview_controller.cpp",
+          "line_text": "return !scene_path_key_.empty() && overlay_key_path_part(scene_path_key_) == path_key;",
+          "why": "shows_path, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "A prefix test on a drawn overlay key, or a read of the key's path part (overlay_key_path_part) anywhere but shows_path. Tests may still compare two keys whole. Decided by: audit finding 340; phase 6 task J3-5 (D53, D54)"
+    },
+    {
+      "question": "Which highway options does the Preview draw with?",
+      "owner": "track_options in src/ui/preview_load_job.h",
+      "owner_file": "src/ui/preview_load_job.h",
+      "owner_symbol": "track_options",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-5",
+      "pattern": "\\.pro\\s*=\\s*pro_?\\b|\\.pro\\s*[!=]=\\s*\\w+\\.pro\\b",
+      "anchor": ".pro",
+      "must_match": [
+        "track_opts.pro = pro_;",
+        "if (pending_track_ && pending_track_opts_.pro == opts.pro)"
+      ],
+      "must_not_match": [
+        "plain.pro = false;",
+        "if (pending_track_ && pending_track_opts_ == opts)"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/preview_load_job.h",
+          "line_text": "opts.pro = pro;",
+          "why": "track_options, the owner"
+        },
+        {
+          "file": "src/render/track_state.h",
+          "line_text": "return a.pro == b.pro;",
+          "why": "TrackStateOptions::operator==, the struct's own compare"
+        }
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "Every test builds its options through track_options too (the J3 join folded the golden and renderer tests), so all of tests is scanned. Decided by: audit finding R7.16; phase 6 task J3-5 (D53, D54); widened to all tests by the J3 join"
+    },
+    {
+      "question": "How wide is a button?",
+      "owner": "button_slot_width in src/ui/widgets.h",
+      "owner_file": "src/ui/widgets.h",
+      "owner_symbol": "button_slot_width",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-3",
+      "pattern": "CalcTextSize\\(.*FramePadding\\.x \\* 2",
+      "anchor": "FramePadding.x * 2",
+      "owner_files": [
+        "src/ui/widgets.h"
+      ],
+      "must_match": [
+        "return ImGui::CalcTextSize(label, nullptr, true).x + ImGui::GetStyle().FramePadding.x * 2.0f;",
+        "ImGui::CalcTextSize(label.c_str(), nullptr, true).x + style.FramePadding.x * 2.0f;",
+        "const float clear_w = ImGui::CalcTextSize(\"X\").x + style.FramePadding.x * 2.0f;"
+      ],
+      "must_not_match": [
+        "const float six_digits = ImGui::CalcTextSize(widest_digits(6).c_str()).x +",
+        "const float clear_w = button_slot_width(\"X##clearsearch\");"
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "A button's width is its label's plus the frame padding each side. An input with step buttons adds the buttons too, a different question (the Score range box measures its sample on its own line). Decided by: audit finding 213; phase 6 task J4-3 (D53, D54)"
+    },
+    {
+      "question": "Does the next item fit on this line?",
+      "owner": "fits_in_row and fits_on_line in src/ui/widgets.h",
+      "owner_file": "src/ui/widgets.h",
+      "owner_symbol": "fits_in_row",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-3",
+      "pattern": "GetItemRectMax\\(\\)\\.x \\+ \\w+(\\.ItemSpacing\\.x)?\\s*\\+|line_end \\+ .*<= right_edge|\\w+ \\+ \\w+_w > \\w*width\\b",
+      "owner_files": [
+        "src/ui/widgets.h"
+      ],
+      "must_match": [
+        "if (ImGui::GetItemRectMax().x + style.ItemSpacing.x + w <= right_edge)",
+        "if (line_end + ImGui::GetStyle().ItemSpacing.x + w <= right_edge) ImGui::SameLine();",
+        "if (line_end + separator_w + block_w[i] <= right_edge) {",
+        "if (x > 0.0f && x + group_w > width) {"
+      ],
+      "must_not_match": [
+        "if (fits_in_row(line_end + separator_w, block_w[i], right_edge)) {",
+        "if (fits_on_line(w, ImGui::GetStyle().ItemSpacing.x)) ImGui::SameLine();",
+        "if (x > 0.0f && !fits_in_row(x, group_w, width)) {"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Placing an item after the last one and comparing with a right edge. Decided by: audit finding 214; phase 6 task J4-3 (D53, D54); the key bar's form added by task J4-4"
+    },
+    {
+      "question": "How wide can six digits get?",
+      "owner": "widest_digits in src/ui/widgets.h",
+      "owner_file": "src/ui/widgets.h",
+      "owner_symbol": "widest_digits",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-3",
+      "pattern": "\"(0{6}|9{6})\"",
+      "must_match": [
+        "const float six_digits = ImGui::CalcTextSize(\"000000\").x + style.FramePadding.x * 2.0f +",
+        "ImGui::CalcTextSize(\"999999\").x + ImGui::GetStyle().FramePadding.x * 2.0f;"
+      ],
+      "must_not_match": [
+        "h.app->settings.depth_value = 999999;",
+        ": \"00000000000000000000000000000000\";"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/ui/uitest_library.cpp",
+          "line_text": "IM_CHECK_STR_EQ(widest.c_str(), \"000000\");",
+          "why": "the pin of one measured run of widest_digits(6) (D42)"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "A quoted run of six 0s or 9s is a hand-picked \"widest six digits\". The GUI test's pin is the one measured answer (D42). Decided by: audit finding 112; phase 6 task J4-3 (D53 item 2, D54)"
+    },
+    {
+      "question": "How wide is the library with the song panel open?",
+      "owner": "library_split_width and library_split_bounds in src/ui/library_view.cpp",
+      "owner_file": "src/ui/library_view.cpp",
+      "owner_symbol": "library_split_width",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-3",
+      "pattern": "px\\(32[01]\\.0f\\)|room - min_panel|((^|[^.>\\w])\\w+|\\)(\\.x)?)\\s*-\\s*(\\w+::)*px\\((\\w+::)*kMinSongPanelW",
+      "must_match": [
+        "const float min_library = px(320.0f);",
+        "const float max_library = std::max(min_library, avail_w - px(kMinSongPanelW));",
+        "const float opened = (std::min)(hydra::ui::kDefaultLibraryShare * room, room - min_panel);",
+        "IM_CHECK_FLOAT_NEAR_EQ(library()->Size.x, (std::max)(hydra::ui::px(320.0f), 0.3f * room), 1.0f);",
+        "IM_CHECK_LE(lib->Size.x, hydra::ui::px(321.0f));",
+        "const float want = room - hydra::ui::px(hydra::ui::kMinSongPanelW);",
+        "const float w = ImGui::GetContentRegionAvail().x - hydra::ui::px(hydra::ui::kMinSongPanelW);"
+      ],
+      "must_not_match": [
+        "IM_CHECK_RETV(std::fabs(panel->Size.x - hydra::ui::px(hydra::ui::kMinSongPanelW)) <= 1.0f,",
+        "IM_CHECK_LE(lib->Size.x, hydra::ui::px(hydra::ui::kMinLibraryW) + 1.0f);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/library_view.cpp",
+          "line_text": "return {min_w, std::max(min_w, room - px(kMinSongPanelW))};",
+          "why": "library_split_bounds, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "The library's floor beside the panel, or the panel's floor taken off the room. The Paths tests' check that the panel sits at its own minimum is a different question. Decided by: audit finding 120; phase 6 task J4-3 (D53, D54)"
+    },
+    {
+      "question": "Which column is Best path, and how many columns are there?",
+      "owner": "kColumnTitle to kColumnBestPath and kLibraryColumnCount in src/ui/library_model.h",
+      "owner_file": "src/ui/library_model.h",
+      "owner_symbol": "kColumnTitle",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-3",
+      "pattern": "best = 4;|BeginTable\\(\"##librarytable\", 5|constexpr int kColumn\\w+ = \\d",
+      "owner_files": [
+        "src/ui/library_model.h"
+      ],
+      "must_match": [
+        "const int best = 4;  // Best path's column index",
+        "if (!ImGui::BeginTable(\"##librarytable\", 5, flags, size)) return used;",
+        "constexpr int kColumnBestPath = 4;"
+      ],
+      "must_not_match": [
+        "const int best = hydra::ui::kColumnBestPath;",
+        "if (!ImGui::BeginTable(\"##librarytable\", kLibraryColumnCount, flags, size)) return used;"
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "Decided by: audit finding 297; phase 6 task J4-3 (D53, D54)"
+    },
+    {
+      "question": "Is a job old enough, with a known rate, to show its time left, and in what words?",
+      "owner": "gated_time_left_text in src/ui/preview_load_job.cpp",
+      "owner_file": "src/ui/preview_load_job.cpp",
+      "owner_symbol": "gated_time_left_text",
+      "date": "2026-10-07",
+      "decision": "D48",
+      "added_by": "DBUP-B",
+      "pattern": "elapsed_s\\s*<\\s*kTimeLeftAfterSeconds",
+      "anchor": "kTimeLeftAfterSeconds",
+      "must_match": [
+        "if (step != Step::Opening || elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0))",
+        "if (step != Step::Copying || elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0))"
+      ],
+      "must_not_match": [
+        "return gated_time_left_text(elapsed_s, time_left_s);",
+        "if (step != Step::Copying) return \"\";"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/preview_load_job.cpp",
+          "line_text": "if (elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0)) return \"\";",
+          "why": "gated_time_left_text, the owner: PreviewLoadJob::Progress::time_left_text and StoreOpenProgress::time_left_text call it"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The Preview loader and the startup open both show a time-left line; each checks only its own step and asks the owner for the rest. Decided by: D48 Q20 (the words), DBUP answer 4 (the startup open reuses the Preview's gate); derive-once review of the DBUP join (F1)"
+    },
+    {
+      "question": "Has a job run long enough for its progress to show?",
+      "owner": "AppState::progress_delay_passed in src/ui/app_state.h",
+      "owner_file": "src/ui/app_state.h",
+      "owner_symbol": "progress_delay_passed",
+      "date": "2026-10-07",
+      "decision": "D87",
+      "added_by": "DBUP-B",
+      "pattern": "(>=|<)\\s*kViewProgressDelaySeconds\\b|\\bkViewProgressDelaySeconds\\s*(<=|>)",
+      "anchor": "kViewProgressDelaySeconds",
+      "must_match": [
+        ".count() >= kViewProgressDelaySeconds;",
+        "store_open_job->elapsed_s() >= kViewProgressDelaySeconds;",
+        "if (elapsed < kViewProgressDelaySeconds) return false;",
+        "return kViewProgressDelaySeconds <= waited;"
+      ],
+      "must_not_match": [
+        "progress_delay_passed(store_open_job->elapsed_s());",
+        "static constexpr double kViewProgressDelaySeconds = 0.15;",
+        "const double delay = hydra::ui::AppState::kViewProgressDelaySeconds;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/app_state.h",
+          "line_text": "return elapsed_s >= kViewProgressDelaySeconds;",
+          "why": "AppState::progress_delay_passed, the owner: view_progress_shown and store_open_shown call it"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The click's progress box and the startup screen both wait out the same delay; each works out its own elapsed time and asks the owner. Decided by: D87 item 6 (the 0.15 s delay), DBUP answer 2 (the startup screen follows it); derive-once review of the DBUP join (F2)"
+    },
+    {
+      "question": "Who keeps a table's columns in their set-up order (imgui#9519)?",
+      "owner": "keep_table_column_order in src/ui/widgets.h",
+      "owner_file": "src/ui/widgets.h",
+      "owner_symbol": "keep_table_column_order",
+      "date": "2026-10-08",
+      "decision": "report windows plan, T5 orchestrator answer 1 (2026-10-08)",
+      "added_by": "RW-T5",
+      "pattern": "\\bIsResetDisplayOrderRequest\\b|\\bIsSettingsRequestLoad\\b",
+      "anchor": "Request",
+      "must_match": [
+        "bool reset = table->IsSettingsRequestLoad;",
+        "if (reset) table->IsResetDisplayOrderRequest = true;",
+        "table->IsResetDisplayOrderRequest = true;"
+      ],
+      "must_not_match": [
+        "keep_table_column_order();",
+        "keep_table_column_order();  // imgui#9519, as in the Library table",
+        "reset = table->Columns[n].DisplayOrder != n;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/widgets.h",
+          "line_text": "bool reset = table->IsSettingsRequestLoad;",
+          "why": "keep_table_column_order, the owner: render_table and report_frame::table call it"
+        },
+        {
+          "file": "src/ui/widgets.h",
+          "line_text": "if (reset) table->IsResetDisplayOrderRequest = true;",
+          "why": "keep_table_column_order, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The imgui#9519 workaround: a table that can't reorder asks ImGui to reset its column order after an ini load. Every table calls the one helper; a second inline copy (the Library table had one) fails."
+    },
+    {
+      "question": "Which flags does a table on the width rule open with?",
+      "owner": "table_flags and scroll_fixed_flags in src/ui/column_widths.cpp",
+      "owner_file": "src/ui/column_widths.cpp",
+      "owner_symbol": "table_flags",
+      "date": "2026-10-08",
+      "decision": "report windows plan, T5 brief (the table uses the Library table's flags)",
+      "added_by": "RW-T5",
+      "pattern": "\\bImGuiTableFlags_(SizingStretchProp|ScrollX|Hideable|Sortable)\\b",
+      "anchor": "ImGuiTableFlags_",
+      "must_match": [
+        "ImGuiTableFlags_SizingStretchProp;",
+        "ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_SizingStretchProp;",
+        "return ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable | ImGuiTableFlags_Sortable |",
+        "ImGuiTableFlags_Borders | ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit,"
+      ],
+      "must_not_match": [
+        "ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |",
+        "ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable, specs, a.backends.size(),",
+        "table_flags() | ImGuiTableFlags_SortMulti, ImVec2(0.0f, height),",
+        "return ImGui::BeginTable(\"##settingsform\", 2, ImGuiTableFlags_SizingFixedFit);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/column_widths.cpp",
+          "line_text": "return ImGuiTableFlags_ScrollX | ImGuiTableFlags_SizingFixedFit;",
+          "why": "scroll_fixed_flags, the owner: table_flags and begin_small_table call it"
+        },
+        {
+          "file": "src/ui/column_widths.cpp",
+          "line_text": "return scroll_fixed_flags() | ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable |",
+          "why": "table_flags, the owner: the Library and the report tables call it"
+        },
+        {
+          "file": "src/ui/column_widths.cpp",
+          "line_text": "ImGuiTableFlags_Sortable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg |",
+          "why": "table_flags, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A table on the width rule opens with the rule's flags: table_flags, or scroll_fixed_flags plus a tab's own look. A table that lists the rule's flags itself, or the stretch sizing the rule replaced, builds a second flag set that drifts from the rule's. Decided by: report windows plan, T5 brief (the table uses the Library table's flags); derive-once review of RW-T5 (finding 1); one-column-width-rule plan, Part 1 (table_flags replaces base_table_flags) and Part 4 (after wave 2)"
+    },
+    {
+      "question": "Is a report window still showing the result its view was built from?",
+      "owner": "report_frame::same_result in src/ui/report_window.h",
+      "owner_file": "src/ui/report_window.h",
+      "owner_symbol": "same_result",
+      "date": "2026-10-08",
+      "decision": "derive-once review of RW-T5 (finding 2)",
+      "added_by": "RW-T5",
+      "pattern": "\\bowner_before\\b",
+      "anchor": "owner_before",
+      "must_match": [
+        "return !w.owner_before(p) && !p.owner_before(w);",
+        "!p.owner_before(w)"
+      ],
+      "must_not_match": [
+        "ImGui::SetCursorPosX(buttons_x);",
+        "if (!report_frame::same_result(w.built_from, input.result)) rebuild(w, input.result);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/report_window.h",
+          "line_text": "return !w.owner_before(p) && !p.owner_before(w);",
+          "why": "report_frame::same_result, the owner: both report windows call it"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Each report window rebuilds its view when AppState hands it a new result; both ask the one template whether the result changed."
+    },
+    {
+      "question": "Which slot fields feed a report window's input?",
+      "owner": "input_from_slot in src/ui/report_window.h",
+      "owner_file": "src/ui/report_window.h",
+      "owner_symbol": "input_from_slot",
+      "date": "2026-10-08",
+      "decision": "derive-once review of RW-T6 (finding 4)",
+      "added_by": "RW-J3",
+      "pattern": "= slot\\.batch_finished",
+      "anchor": "= slot.batch_finished",
+      "must_match": [
+        "in.batch_finished = slot.batch_finished;"
+      ],
+      "must_not_match": [
+        "slot.batch_finished = batch_finished;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/report_window.h",
+          "line_text": "in.batch_finished = slot.batch_finished;",
+          "why": "input_from_slot, the owner: path_report_input and dm_report_input call it"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Both window inputs start from one copy of a report slot's fields. A window file that read a slot field itself would be a second copy. AppState writes the slot, which this pattern leaves alone."
+    },
+    {
+      "question": "Where does a right-aligned item start?",
+      "owner": "move_to_right_edge in src/ui/widgets.h",
+      "owner_file": "src/ui/widgets.h",
+      "owner_symbol": "move_to_right_edge",
+      "date": "2026-10-08",
+      "decision": "derive-once review of RW-T5 (finding 4)",
+      "added_by": "RW-T5",
+      "pattern": "SetCursorPosX\\(ImGui::GetCursorPosX\\(\\)\\s*\\+|>\\s*ImGui::GetCursorPosX\\(\\)\\)\\s*ImGui::SetCursorPosX\\(",
+      "anchor": "ImGui::GetCursorPosX()",
+      "must_match": [
+        "if (w < avail) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - w);",
+        "ImGui::SetCursorPosX(ImGui::GetCursorPosX() +",
+        "ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - width);",
+        "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);"
+      ],
+      "must_not_match": [
+        "ImGui::SetCursorPosX(buttons_x);",
+        "ImGui::SetCursorPosX(left_x + text_w + style.ItemSpacing.x);",
+        "move_to_right_edge(ImGui::CalcTextSize(number.c_str()).x);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/widgets.h",
+          "line_text": "if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);",
+          "why": "move_to_right_edge, the owner: report_frame's cell, row number and right_align call it"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Right-aligning the next item: in a table cell, or at the end of a line once the line-fit check (fits_on_line) has said it fits."
+    },
+    {
+      "question": "What id does an activation's backend table get?",
+      "owner": "render_backend_table in src/ui/paths_tab.cpp",
+      "owner_file": "src/ui/paths_tab.cpp",
+      "owner_symbol": "render_backend_table",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J3-3",
+      "pattern": "##backends",
+      "anchor": "##backends",
+      "must_match": [
+        "std::snprintf(id, sizeof(id), \"##backends%d_%d_%d_%d\", a.number, static_cast<int>(w_timing),",
+        "const std::string prefix = \"##backends\" + std::to_string(number) + \"_\";"
+      ],
+      "must_not_match": [
+        "id, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable, specs, a.backends.size(),"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/paths_tab.cpp",
+          "line_text": "std::snprintf(id, sizeof(id), \"##backends%d\", a.number);",
+          "why": "render_backend_table, the owner: it hands the id to begin_small_table"
+        }
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "The id no longer carries the column widths (the width rule sizes the table each frame). It is built once and handed to begin_small_table, which names the same table to table_room and BeginTable. Decided by: audit finding 291; phase 6 task J3-3 (D53, D54); one-column-width-rule plan, Part 4 (backend_table_id removed)"
+    },
+    {
+      "question": "What text does a Library table cell show?",
+      "owner": "library_cell_text in src/ui/library_model.cpp",
+      "owner_file": "src/ui/library_model.cpp",
+      "owner_symbol": "library_cell_text",
+      "date": "2026-10-10",
+      "decision": "derive-once review of cw-t4 (finding 1)",
+      "added_by": "cw-t4-review",
+      "pattern": "\\brow\\.(title|artist|charter)\\b|\\brow\\.entry\\.rootfolder\\b|\\bbest_label\\(\\)|\\bbest_path_label\\(",
+      "must_match": [
+        "cell_text(row.artist, spans);",
+        "overlay_matches(title_pos, row.title, spans, x);",
+        "line.text = row.entry.rootfolder;",
+        "text_ellipsized(row.best_label().c_str());",
+        "const std::string shown = best_path_label(status, bestpath, summary);"
+      ],
+      "must_not_match": [
+        "const std::string text = library_cell_text(row, column);",
+        "const std::string title = library_cell_text(row, kColumnTitle);",
+        "const LibraryRow& row = rows[index];"
+      ],
+      "scope": [
+        "src/ui/library_table.cpp"
+      ],
+      "note": "The Library table's cells and its column widths both read a row's text for a column, so the table takes it from library_cell_text and never from the row's fields. Only the table's file is scanned: the reports and the search keep rows of their own with the same field names."
+    },
+    {
+      "question": "How tall is a small table that shows its header and every row?",
+      "owner": "table_outer_height in src/ui/column_widths.cpp",
+      "owner_file": "src/ui/column_widths.cpp",
+      "owner_symbol": "table_outer_height",
+      "date": "2026-10-10",
+      "decision": "derive-once review of cw-t5 (the height was worked out once per tab file)",
+      "added_by": "cw-t5-review",
+      "pattern": "CellPadding\\.y",
+      "anchor": "CellPadding.y",
+      "owner_files": [
+        "src/ui/column_widths.cpp"
+      ],
+      "must_match": [
+        "float height = static_cast<float>(rows + 1) * (ImGui::GetFontSize() + style.CellPadding.y * 2.0f);",
+        "const float padding = style.CellPadding.y * 2.0f;"
+      ],
+      "must_not_match": [
+        "float height = line + padding;"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The row height of a table is a line plus the cell padding above and below. A table that sizes itself to its rows asks the owner."
+    },
+    {
+      "question": "How does a small table that shows all its rows begin?",
+      "owner": "begin_small_table in src/ui/column_widths.cpp",
+      "owner_file": "src/ui/column_widths.cpp",
+      "owner_symbol": "begin_small_table",
+      "date": "2026-10-10",
+      "decision": "derive-once review of cw-w2 (the Paths, Dynamics and Stars tables each ran the frame)",
+      "added_by": "cw-w2-review",
+      "pattern": "\\btable_outer_height\\(",
+      "anchor": "table_outer_height(",
+      "owner_files": [
+        "src/ui/column_widths.cpp",
+        "src/ui/column_widths.h"
+      ],
+      "must_match": [
+        "ImVec2(0.0f, table_outer_height(rows.size(), layout, room)),",
+        "ImVec2(0.0f, table_outer_height(a.backends.size(), layout, room, heights)),"
+      ],
+      "must_not_match": [
+        "if (!begin_small_table(id, ImGuiTableFlags_RowBg, specs, rows.size(),"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A small table whose rows are all at hand runs the same frame every time: measure, read the room, place, open at its height, set the columns up, apply. Only begin_small_table asks for the height; a table that does it by hand is running that frame a second time. The Library and the report tables keep a cache and size themselves."
+    },
+    {
+      "question": "How much room does ImGui add around each column?",
+      "owner": "table_room and first_columns_min_width in src/ui/column_widths.cpp",
+      "owner_file": "src/ui/column_widths.cpp",
+      "owner_symbol": "table_room",
+      "date": "2026-10-10",
+      "decision": "derive-once review of cw-t3 (note A) and cw-w2",
+      "added_by": "cw-w2-review",
+      "pattern": "\\bCellPadding\\.x\\b|\\bCellPaddingX\\b",
+      "anchor": "CellPadding",
+      "owner_files": [
+        "src/ui/column_widths.cpp"
+      ],
+      "must_match": [
+        "w += narrowest.widths[c] + style.CellPadding.x * 2.0f;",
+        "table->CellPaddingX * 2.0f * static_cast<float>(shown);"
+      ],
+      "must_not_match": [
+        "m.columns_w = first_columns_min_width(widths, specs, room, 5);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "ImGui adds its cell padding on both sides of every column. The rule adds it for the whole table (table_room's spacing) and for a few columns (first_columns_min_width); a window that adds it itself is working out the same sum from the same style number."
+    },
+    {
+      "question": "What text does a backend table cell show?",
+      "owner": "backend_cell in src/ui/paths_tab.cpp",
+      "owner_file": "src/ui/paths_tab.cpp",
+      "owner_symbol": "backend_cell",
+      "date": "2026-10-10",
+      "decision": "derive-once review of cw-w2 (the cell text was read in two places)",
+      "added_by": "cw-w2-review",
+      "pattern": "\\brow\\.(timing|chord|points|rating)\\b",
+      "anchor": "row.",
+      "must_match": [
+        "ImGui::TextUnformatted(row.timing.c_str());",
+        "ImGui::TextUnformatted(row.rating.c_str());",
+        "ImGui::CalcTextSize(row.rating.c_str(), nullptr, false, layout.widths[kRatingColumn]).y);"
+      ],
+      "must_not_match": [
+        "ImGui::TextUnformatted(backend_cell(row, 0).c_str());",
+        "ImGui::TextUnformatted(backend_cell(row, kRatingColumn).c_str());"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/paths_tab.cpp",
+          "line_text": "case 0: return row.timing;",
+          "why": "backend_cell, the owner: the cells and the width measure call it"
+        },
+        {
+          "file": "src/ui/paths_tab.cpp",
+          "line_text": "case 1: return row.chord;",
+          "why": "backend_cell, the owner"
+        },
+        {
+          "file": "src/ui/paths_tab.cpp",
+          "line_text": "case 2: return row.points;",
+          "why": "backend_cell, the owner"
+        },
+        {
+          "file": "src/ui/paths_tab.cpp",
+          "line_text": "default: return row.rating;",
+          "why": "backend_cell, the owner"
+        }
+      ],
+      "scope": [
+        "src/ui/paths_tab.cpp"
+      ],
+      "note": "The backend table's cells and its column widths both read a row's text for a column, so a cell draws backend_cell and never the row's fields. Only the tab's file is scanned: path_view.cpp builds the rows and sets those fields."
+    }
+  ]
+}

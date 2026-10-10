@@ -101,6 +101,24 @@ else()
     add_link_options($<$<CONFIG:Release>:/PDBALTPATH:%_PDB%>)
 endif()
 
+# The fuzz build: libFuzzer targets that feed random bytes to the file parsers
+# (tests/fuzz/), in build-fuzz\ via the fuzz preset. It never ships. It sits on
+# the AddressSanitizer build above, which reports the memory errors the fuzzer
+# provokes. Every target is compiled for the fuzzer too, not just the harness
+# files, because libFuzzer steers by coverage counters that only instrumented
+# code has, and the parsers and decoders live in the libraries. The targets
+# themselves are near the end of this file (hydra_fuzz).
+option(HYDRA_FUZZ "libFuzzer targets for the file parsers (the fuzz preset turns it on; never ships)" OFF)
+if(HYDRA_FUZZ)
+    if(NOT HYDRA_ASAN)
+        message(FATAL_ERROR "HYDRA_FUZZ needs HYDRA_ASAN=ON: the fuzzer finds memory "
+                            "errors through AddressSanitizer. Use the fuzz preset, "
+                            "which turns both on.")
+    endif()
+    message(STATUS "libFuzzer: on, every target instrumented for it")
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/fsanitize=fuzzer>)
+endif()
+
 # __FILE__ names the source relative to the repo, not by its absolute path.
 # Opus's safety checks (OPUS_HARDENING) store __FILE__ for their error message,
 # which put the builder's folder path into the shipped Hydra.exe 28 times.
@@ -534,6 +552,7 @@ add_executable(hydra_tests
     tests/test_song.cpp
     tests/test_sng.cpp
     tests/test_srb.cpp
+    tests/test_fuzz_regressions.cpp
     tests/test_search.cpp
     tests/test_fast_tempo.cpp
     tests/test_replay.cpp
@@ -562,7 +581,9 @@ add_executable(hydra_tests
     tests/test_song_length.cpp
     tests/test_utf8_paths.cpp
     tests/test_long_paths.cpp
-    tests/test_single_owner.cpp
+    tests/single_owner/scan.cpp
+    tests/single_owner/clones.cpp
+    tests/single_owner/special.cpp
     tests/test_docs_match_code.cpp
     tests/test_difficulty_table.cpp
     tests/test_disco_flip.cpp
@@ -570,7 +591,6 @@ add_executable(hydra_tests
     tests/test_phrase_end.cpp
     tests/test_fill_landing.cpp
     tests/test_dynamics_tag.cpp
-    tests/test_s2_parser_owners.cpp
     tests/test_dm_other_speed.cpp
     tests/test_sp_end_clamp.cpp
     tests/test_perf_digest.cpp
@@ -610,7 +630,7 @@ target_compile_definitions(hydra_tests PRIVATE
     HYDRA_TESTDATA_DIR="${CMAKE_SOURCE_DIR}/testdata"
     HYDRA_INPUT_DIR="${CMAKE_SOURCE_DIR}/testdata/input"
     HYDRA_ASSET_DIR="${CMAKE_SOURCE_DIR}/assets/preview"
-    HYDRA_SOURCE_DIR="${CMAKE_SOURCE_DIR}"  # test_single_owner scans src/ and tools/
+    HYDRA_SOURCE_DIR="${CMAKE_SOURCE_DIR}"  # tests/single_owner scans src/, tools/ and tests/
 )
 
 # ---- hydra_uitest: the headless GUI test runner ----------------------------
@@ -722,6 +742,27 @@ target_include_directories(hydra_replay_json PUBLIC tools third_party/json)
 target_link_libraries(hydra_replay_json PUBLIC hydra_core PRIVATE hydra_warnings)
 target_link_libraries(hydra_replay PRIVATE hydra_replay_json)
 target_link_libraries(hydra_tests PRIVATE hydra_replay_json)
+
+# ---- fuzz targets (HYDRA_FUZZ only) ----------------------------------------
+# One libFuzzer exe per tests/fuzz/fuzz_<name>.cpp, so a new file is a new
+# target; tests/fuzz/harness.h owns the parsers and the body each exe runs.
+# libFuzzer supplies main. The fuzzer and AddressSanitizer flags are the
+# directory-wide compile options set above, so these exes get them like every
+# other target. They stay off the link line: link.exe ignores them (LNK4044)
+# and picks both runtimes from the objects instead (/INFERASANLIBS, its
+# default). hydra_fuzz builds them all, and is what the fuzz preset builds; the
+# rest of the build-fuzz tree is not meant to be built.
+if(HYDRA_FUZZ)
+    add_custom_target(hydra_fuzz)
+    file(GLOB hydra_fuzz_sources CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/tests/fuzz/fuzz_*.cpp)
+    foreach(hydra_fuzz_source IN LISTS hydra_fuzz_sources)
+        get_filename_component(hydra_fuzz_exe ${hydra_fuzz_source} NAME_WE)
+        add_executable(${hydra_fuzz_exe} ${hydra_fuzz_source})
+        target_link_libraries(${hydra_fuzz_exe} PRIVATE
+            hydra_core hydra_audio hydra_image hydra_warnings)
+        add_dependencies(hydra_fuzz ${hydra_fuzz_exe})
+    endforeach()
+endif()
 
 # ---- long-path awareness, for every executable ---------------------------
 # One manifest, merged into each exe by the linker, declares Hydra long-path

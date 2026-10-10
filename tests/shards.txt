@@ -12,7 +12,7 @@
 # docs/handoffs/2026-10-10-test-audit/suite-durations.txt, assuming the
 # 18-second corpus case in test_track_state.cpp is cut to about 1.5 s.
 
-single_owner *test_single_owner.cpp,*test_library_jobs.cpp,*test_replay.cpp
+single_owner *single_owner*,*test_library_jobs.cpp,*test_replay.cpp
 track_state *test_track_state.cpp,*test_preview_controller.cpp
 app_store *test_app_state.cpp,*test_store.cpp,*test_search.cpp,*test_cli.cpp
 

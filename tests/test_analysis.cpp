@@ -751,6 +751,67 @@ TEST_CASE("rescan cache: an old placeholder or blank title reads (unknown)") {
     for (const ScanItem& it : items2) CHECK(it.title == hydra::kUnknownTitle);
 }
 
+// Finding 60; D27.
+TEST_CASE("discover_charts: a blank or missing artist or charter reads the placeholder, "
+          "fresh and from the rescan cache") {
+    CHECK(hydra::artist_or_unknown("") == hydra::kUnknownArtist);
+    CHECK(hydra::charter_or_unknown("") == hydra::kUnknownCharter);
+    CHECK(hydra::artist_or_unknown("X") == "X");
+    CHECK(std::string(hydra::kUnknownArtist) == "<unknown artist>");
+    CHECK(std::string(hydra::kUnknownCharter) == "<unknown charter>");
+
+    namespace fs = std::filesystem;
+    const std::string chart = corpus::first_chart_with_suffix(".chart");
+    REQUIRE(!chart.empty());
+    const fs::path root = hydra::os_path(testtemp::temp_dir("blank_artist_charter"));
+    fs::remove_all(root);
+    // "artist =" and "charter =" present but blank (56 library song.ini files
+    // have a blank charter).
+    fs::create_directories(root / "blank");
+    fs::copy_file(fs::u8path(chart), root / "blank" / "notes.chart");
+    {
+        std::ofstream ini(root / "blank" / "song.ini", std::ios::binary);
+        ini << "[song]\nname = N\nartist =\ncharter =\n";
+    }
+    // Both keys missing.
+    fs::create_directories(root / "missing");
+    fs::copy_file(fs::u8path(chart), root / "missing" / "notes.chart");
+    {
+        std::ofstream ini(root / "missing" / "song.ini", std::ios::binary);
+        ini << "[song]\nname = N\n";
+    }
+
+    auto [items, errors] = discover_charts({root.u8string()});
+    CHECK(errors.empty());
+    REQUIRE(items.size() == 2);
+    for (const ScanItem& it : items) {
+        CAPTURE(it.notespath);
+        CHECK(it.artist == hydra::kUnknownArtist);
+        CHECK(it.charter == hydra::kUnknownCharter);
+    }
+
+    // A rescan-cache row from before this change still holds the blanks. The
+    // scan reads it through the same fallback.
+    hydra::store::RecordStore store(":memory:");
+    std::vector<hydra::store::ChartLibraryEntry> entries;
+    for (const ScanItem& it : items) {
+        hydra::store::ChartLibraryEntry e = to_library_entry(it);
+        e.artist.clear();
+        e.charter.clear();
+        entries.push_back(std::move(e));
+    }
+    store.rebuild_chart_library(entries);
+    hydra::store::ChartLibraryCache cache = store.chart_library_cache();
+    auto [cached, errors2] = discover_charts({root.u8string()}, ScanCallbacks{}, &cache);
+    CHECK(errors2.empty());
+    REQUIRE(cached.size() == 2);
+    for (const ScanItem& it : cached) {
+        CHECK(it.artist == hydra::kUnknownArtist);
+        CHECK(it.charter == hydra::kUnknownCharter);
+    }
+    fs::remove_all(root);
+}
+
 namespace {
 
 // This process's scratch folder for one scan fixture (testtemp::temp_dir).

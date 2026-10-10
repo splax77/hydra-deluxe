@@ -1,0 +1,710 @@
+{
+  "rules": [
+    {
+      "question": "Which meta key holds the fill-rule stamp?",
+      "owner": "kEngineModeKey in src/store/record_store.cpp",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "kEngineModeKey",
+      "date": "2026-10-05",
+      "decision": "audit R7.26 (M7-2b review, finding 1",
+      "added_by": "M7-2b",
+      "pattern": "\"engine_mode\"",
+      "anchor": "\"engine_mode\"",
+      "must_match": [
+        "if (const std::optional<std::string> mode = meta_get(\"engine_mode\"))",
+        "return meta_get(\"engine_mode\");",
+        "meta_set(\"engine_mode\", mode);"
+      ],
+      "must_not_match": [
+        "if (const std::optional<std::string> mode = engine_mode())",
+        "return meta_get(kEngineModeKey);",
+        "meta_set(kEngineModeKey, mode);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "constexpr const char* kEngineModeKey = \"engine_mode\";",
+          "why": "kEngineModeKey, the owner"
+        }
+      ],
+      "note": "The meta key the stamp is stored under, typed anywhere but its one constant. RecordStore::engine_mode and set_engine_mode read and write through it. Decided by: audit R7.26 (M7-2b review, finding 1; the key typed once by phase 6 task J4-2)"
+    },
+    {
+      "question": "Which copy names a chart the scan found twice?",
+      "owner": "kNamingCopiesSql in src/store/record_store.h",
+      "owner_file": "src/store/record_store.h",
+      "owner_symbol": "kNamingCopiesSql",
+      "date": "2026-10-05",
+      "decision": "D51, D63",
+      "added_by": "M7-2b",
+      "pattern": "MIN\\(rowid\\)|GROUP BY md5",
+      "must_match": [
+        "\" FROM (SELECT md5, name, artist, charter, MIN(rowid) FROM charts GROUP BY md5)\""
+      ],
+      "must_not_match": [
+        "kNamingCopiesSql + \" AS c WHERE songmeta.hyhash = c.md5\")"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/store/record_store.h",
+          "line_text": "\"(SELECT md5, name, artist, charter, MIN(rowid) AS naming_rowid, COUNT(*) AS copies\"",
+          "why": "kNamingCopiesSql, the owner"
+        },
+        {
+          "file": "src/store/record_store.h",
+          "line_text": "\" GROUP BY md5)\";",
+          "why": "kNamingCopiesSql, the owner"
+        }
+      ],
+      "note": "The charts table grouped by md5 to pick a copy, outside the one query that does it. Decided by: D51 call 10 and D63 (task ST2)"
+    },
+    {
+      "question": "Which library copy of a chart does a pass analyze?",
+      "owner": "kNamingCopiesSql in src/store/record_store.h (the naming copy), read through RecordStore::naming_copy_paths",
+      "owner_file": "src/store/record_store.h",
+      "owner_symbol": "kNamingCopiesSql",
+      "date": "2026-10-07",
+      "decision": "D51, D63, D76",
+      "added_by": "storage-T3",
+      "pattern": "\\.emplace\\(normalize_chart_hash\\(\\w+\\.md5\\),\\s*&\\w+\\)",
+      "anchor": ".emplace(normalize_chart_hash(",
+      "must_match": [
+        "for (const store::ChartLibraryEntry& e : library) files.emplace(normalize_chart_hash(e.md5), &e);",
+        "by_hash.emplace(normalize_chart_hash(entry.md5), &entry);"
+      ],
+      "must_not_match": [
+        "const auto naming = naming_copy_files.find(normalize_chart_hash(listing.hyhash));",
+        "files.emplace(normalize_chart_hash(md5), std::move(path));"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A pass over the library that picks a chart's file from its own listing, instead of the naming copy, can open another copy's file than the batch did (storage-T3 review, finding 1). Decided by: D51 call 10, D63 and D76 (storage-T3 review, finding 1)"
+    },
+    {
+      "question": "What text is a record's best path?",
+      "owner": "best_path_text in src/store/record_store.cpp",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "best_path_text",
+      "date": "2026-10-04",
+      "decision": "ST1 (audit findings 116 and 132)",
+      "added_by": "M7-1",
+      "pattern": "best_path\\(\\)\\.pathstring\\(\\)",
+      "anchor": "best_path().pathstring()",
+      "must_match": [
+        "return record.paths.empty() ? std::string() : record.best_path().pathstring();",
+        "{\"bestpath\", best ? rec.best_path().pathstring() : std::string()}};"
+      ],
+      "must_not_match": [
+        "CHECK(p->pathstring() == \"0 E3+ E5 E1\");"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "return record.paths.empty() ? std::string() : record.best_path().pathstring();",
+          "why": "best_path_text, the owner"
+        }
+      ],
+      "note": "The bestpath column and hydra_replay's result block both show this text, so they read it from one function. Decided by: ST1 (audit findings 116 and 132); phase 7 M7-1 derive-once review finding 2 (2026-10-04)"
+    },
+    {
+      "question": "Which rules was a stored row made under (SQL)?",
+      "owner": "rules_fp_of in src/store/record_store.cpp",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "rules_fp_of",
+      "date": "2026-10-04",
+      "decision": "ST1 (audit findings 116 and 132)",
+      "added_by": "M7-1",
+      "pattern": "substr\\(\\s*structure\\s*,\\s*5\\s*,\\s*8\\s*\\)",
+      "anchor": "structure",
+      "must_match": [
+        "\" WHERE substr(structure,5,8) = ?\");",
+        "\"DELETE FROM results WHERE substr(structure,5,8) = ?\"}) {"
+      ],
+      "must_not_match": [
+        "\") AND substr(structure,1,4) IN (\" + placeholders(kPathFormatStamp.accepted.size()) +"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "rules_fp_of builds the SQL from the column or parameter it is given, so its own line never spells structure's bytes 5 to 12. Decided by: ST1 (audit findings 116 and 132); phase 7 M7-1 derive-once review finding 4 (2026-10-04)"
+    },
+    {
+      "question": "Which fill rule does a record key name?",
+      "owner": "Lens::from in src/store/record_store.h",
+      "owner_file": "src/store/record_store.h",
+      "owner_symbol": "from",
+      "date": "2026-10-04",
+      "decision": "D53",
+      "added_by": "J2-2",
+      "pattern": "legacy_fills\\s*\\?\\s*1\\s*:\\s*0",
+      "anchor": "legacy_fills",
+      "owner_files": [
+        "src/store/record_store.h"
+      ],
+      "must_match": [
+        "lens.legacy_fills = legacy_fills ? 1 : 0;"
+      ],
+      "must_not_match": [
+        "store::Lens::from(std::nullopt, 0, 0, legacy_fills)};",
+        "old_lens.legacy_fills = 1;"
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "A record key's fill flag is encoded once, by Lens::from. Decided by: audit finding 240; phase 6 task J2-2 (D53)"
+    },
+    {
+      "question": "Does this result have a scored best path?",
+      "owner": "PathSummary::has_scored_best_path in src/store/record_store.h",
+      "owner_file": "src/store/record_store.h",
+      "owner_symbol": "has_scored_best_path",
+      "date": "2026-10-05",
+      "decision": "D51",
+      "added_by": "LB2",
+      "pattern": "\\bsummary\\.(score|stars)\\.has_value\\(\\)|!\\s*(\\w+\\.)*summary\\.score\\b|\\bsummary\\.(score|stars)\\s*\\?",
+      "anchor": "summary.",
+      "owner_files": [
+        "src/store/record_store.h"
+      ],
+      "exempt": [
+        {
+          "file": "tests/test_store.cpp",
+          "why": "checks that only a Ready answer carries the stored summary columns, the fields the owner reads"
+        }
+      ],
+      "must_match": [
+        "const bool xs = x.summary.score.has_value();",
+        "if (!summary.score) return bestpath;",
+        "row.summary.score ? hydra::group_thousands(*row.summary.score) : \"-\";"
+      ],
+      "must_not_match": [
+        "const bool xs = x.summary.has_scored_best_path();",
+        "if (summary.stars) facts += \" \\xC2\\xB7 \" + counted(*summary.stars, \"star\", \"stars\");"
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "A summary's score or stars tested for presence: whether the record has a scored best path. test_store checks the stored columns themselves, which is what the owner reads. Decided by: D51 call 11; audit finding 88 (phase 7 task LB2)"
+    },
+    {
+      "question": "Where do the format and fingerprint sit in a structure blob?",
+      "owner": "kOldRulesFingerprintOffset, kOldRulesFingerprintBytes and rules_fp_of in src/store/record_store.cpp",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "kOldRulesFingerprintOffset",
+      "date": "2026-10-05",
+      "decision": "D53",
+      "added_by": "J3-6",
+      "pattern": "substr\\(\\s*(\\w+\\.)?structure\\s*,\\s*\\d|read_le\\(structure_head",
+      "anchor": "structure",
+      "must_match": [
+        "\") AND substr(structure,1,4) IN (\" + placeholders(kPathFormatStamp.accepted.size()) +",
+        "std::string(\"SELECT hyhash, hyversion, bestpath, result_id, substr(structure,1,12), \") +",
+        "\"r.hyversion, r.result_id, substr(r.structure,1,12) \"",
+        "kPathFormatStamp.is_current(static_cast<uint32_t>(read_le(structure_head, 0, 4)));"
+      ],
+      "must_not_match": [
+        "return head_field_sql(blob, kRulesFingerprintOffset, kRulesFingerprintBytes);"
+      ],
+      "note": "---- phase 6 task J3-6: store rows and bytes ---- A structure blob's head offset typed as a digit in SQL, or read by hand in C++. Only an older file still has the blob (D87); the upgrade reads its fingerprint through the named offsets. Decided by: audit finding 194, folded under D53 (phase 6 task J3-6)"
+    },
+    {
+      "question": "Why is a stored row Stale?",
+      "owner": "rank_row in src/store/record_store.cpp",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "rank_row",
+      "date": "2026-10-05",
+      "decision": "D53",
+      "added_by": "J3-6",
+      "pattern": "stale_reasons\\(|layout_is_current\\(",
+      "must_match": [
+        "stale_reasons(best.hyversion, best.structure, rules_fingerprint_);"
+      ],
+      "must_not_match": [
+        "const Candidate& rank = picker.rank(*won);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A second read of a row's head to say why it is Stale. Decided by: audit finding 196, folded under D53 (phase 6 task J3-6)"
+    },
+    {
+      "question": "Is this still the row the report walk listed?",
+      "owner": "RecordKey::operator== in src/store/record_store.h",
+      "owner_file": "src/store/record_store.h",
+      "owner_symbol": "operator",
+      "date": "2026-10-05",
+      "decision": "D53",
+      "added_by": "J3-6",
+      "pattern": "!=\\s*meta\\.(hyhash|chartmode|sp_cap)\\b",
+      "anchor": "meta.",
+      "must_match": [
+        "if (column_text(stmt, 0) != meta.hyhash) return false;"
+      ],
+      "must_not_match": [
+        "if (column_text(stmt, 2) != meta.hyversion) return false;"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "One identity column compared at a time instead of a RecordKey. Decided by: audit finding 197, folded under D53 (phase 6 task J3-6)"
+    },
+    {
+      "question": "Which PathSummary fields must match? (tests)",
+      "owner": "PathSummary::operator== in src/store/record_store.h",
+      "owner_file": "src/store/record_store.h",
+      "owner_symbol": "operator",
+      "date": "2026-10-05",
+      "decision": "D53",
+      "added_by": "J3-6",
+      "pattern": "\\bdiff_summary\\s*\\(",
+      "anchor": "diff_summary",
+      "must_match": [
+        "std::string diff_summary(const PathSummary& a, const PathSummary& b) {"
+      ],
+      "must_not_match": [
+        "CHECK(summarize_record(back) == summarize_record(rec));"
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "Decided by: audit finding 121, folded under D53 (phase 6 task J3-6)"
+    },
+    {
+      "question": "Which columns did schema 2 have? (tests)",
+      "owner": "kSchema2ResultsColumns in src/store/record_store.cpp",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "kSchema2ResultsColumns",
+      "date": "2026-10-05",
+      "decision": "D53",
+      "added_by": "J3-6",
+      "pattern": "result_id, hyhash, chartmode, hyversion,",
+      "anchor": "result_id, hyhash, chartmode, hyversion,",
+      "must_match": [
+        "\"INSERT INTO results SELECT result_id, hyhash, chartmode, hyversion,\""
+      ],
+      "must_not_match": [
+        "std::string(\"INSERT INTO results (\") + kSchema2ResultsColumns +"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "\"result_id, hyhash, chartmode, hyversion, sp_cap, ms_enabled, ms_value, depth_mode,\"",
+          "why": "kSchema2ResultsColumns, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tests"
+      ],
+      "note": "Schema 2's column list typed out again. Decided by: audit finding 267, folded under D53 (phase 6 task J3-6)"
+    },
+    {
+      "question": "Which rows were stored at this SP cap?",
+      "owner": "cap_match in src/store/record_store.cpp",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "cap_match",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-2",
+      "pattern": "sp_cap=\\?",
+      "anchor": "sp_cap=?",
+      "must_match": [
+        "sql += \" AND \" + p + \"sp_cap=?\";",
+        "sql += \" AND sp_cap=?\";"
+      ],
+      "must_not_match": [
+        "sql += \" AND \" + cap_match(a);",
+        "sql += \" AND \" + cap_match(\"\");"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "return std::string(a) + \"sp_cap=?\";",
+          "why": "cap_match, the owner"
+        },
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "purge(\"hyhash=? AND chartmode=? AND sp_cap=? AND \" + lens_match(\"\") + \" AND rules_fp = ?\",",
+          "why": "write_row's purge: the row's own unique key, not a lookup"
+        }
+      ],
+      "note": "write_row's replace purge matches the row's own unique key, bound from the row's stored cap, not a lookup's CapQuery. Decided by: audit finding 252; phase 6 task J4-2 (D53, D54)"
+    },
+    {
+      "question": "Which columns hold a path summary, and how many?",
+      "owner": "kSummaryColumnList and kSummaryColumnCount in src/store/record_store.cpp",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "kSummaryColumnList",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-2",
+      "pattern": "(\\?,){9}\\?",
+      "must_match": [
+        "kSummaryColumnList + \", rules_fp) VALUES (?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?,?, \" +"
+      ],
+      "must_not_match": [
+        "placeholders(kSummaryColumnCount) + \", \" + rules_fp_of(structure_param.c_str()) +"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The INSERT and list_records build their summary slots from the list and its count, so a typed run of the ten placeholders is a second spelling of the list. Decided by: audit finding 253; phase 6 task J4-2 (D53, D54)"
+    },
+    {
+      "question": "Which columns hold a path summary, and how many? (slots)",
+      "owner": "kSummaryColumnList and kSummaryColumnCount in src/store/record_store.cpp",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "kSummaryColumnList",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-2",
+      "pattern": "column_(text|blob|int|int64|opt_i64|opt_f64)\\(s,\\s*1[6-9]\\)|sqlite3_column_\\w+\\(s,\\s*1[6-9]\\)|read_summary\\(s,\\s*\\d",
+      "anchor": "(s,",
+      "must_match": [
+        "listing.sp_cap = sqlite3_column_int(s, 16);",
+        "rank_row(column_text(s, 17), column_blob(s, 19),",
+        "offered.push_back({std::move(hyhash), column_text(s, 2), read_summary(s, 5)});"
+      ],
+      "must_not_match": [
+        "listing.sp_cap = sqlite3_column_int(s, kAfterSummary);",
+        "rank_row(column_text(s, kAfterSummary + 1), column_blob(s, kAfterSummary + 3),",
+        "{std::move(hyhash), column_text(s, 2), read_summary(s, kFirstSummary)});"
+      ],
+      "scope": [
+        "src/store/record_store.cpp"
+      ],
+      "note": "list_records' slots after the summary, and where each SELECT's summary starts, are counted from the column lists. Decided by: audit finding 253; phase 6 task J4-2 (D53, D54); get_summaries' start slot, J4 join"
+    },
+    {
+      "question": "Does the charts table have the sig column?",
+      "owner": "has_column in src/store/record_store.cpp",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "has_column",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-2",
+      "pattern": "pragma_table_info\\(",
+      "anchor": "pragma_table_info(",
+      "must_match": [
+        "Stmt probe = prepare(db_, \"SELECT COUNT(*) FROM pragma_table_info('charts') \""
+      ],
+      "must_not_match": [
+        "std::string sql = std::string(\"PRAGMA table_info(\") + table + \")\";"
+      ],
+      "note": "The constructor adds the sig column on every open, so nothing asks the table whether it has it. has_column's PRAGMA table_info is a different spelling; the tests' seeding helpers are out of scope. Decided by: audit finding 299; phase 6 task J4-2 (D53, D54)"
+    },
+    {
+      "question": "Did a database statement's step succeed, and what kind is its failure?",
+      "owner": "step_row (reads) and step_done (writes) in src/store/record_store.cpp",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "step_row",
+      "date": "2026-10-05",
+      "decision": "D73",
+      "added_by": "RD1",
+      "pattern": "sqlite3_step\\(",
+      "anchor": "sqlite3_step(",
+      "must_match": [
+        "while (sqlite3_step(s) == SQLITE_ROW) out.insert(column_text(s, 0));",
+        "if (sqlite3_step(s) != SQLITE_DONE)",
+        "sqlite3_step(songs);"
+      ],
+      "must_not_match": [
+        "while (step_row(s)) out.insert(column_text(s, 0));",
+        "step_done(s, \"meta_set\");"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "const int rc = sqlite3_step(s);",
+          "why": "step_row"
+        },
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "if (sqlite3_step(s) != SQLITE_DONE)",
+          "why": "step_done"
+        }
+      ],
+      "note": "A read that took a failed step for \"no more rows\" answered empty (D73). Every step goes through the read owner or the write owner."
+    },
+    {
+      "question": "Did a database statement compile, and what kind is its failure?",
+      "owner": "prepare_as in src/store/record_store.cpp",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "prepare_as",
+      "date": "2026-10-05",
+      "decision": "D73",
+      "added_by": "RD1",
+      "pattern": "sqlite3_prepare",
+      "anchor": "sqlite3_prepare",
+      "must_match": [
+        "if (sqlite3_prepare_v2(db, sql, -1, &s.p, nullptr) != SQLITE_OK)"
+      ],
+      "must_not_match": [
+        "Stmt s = prepare_read(db_, \"SELECT value FROM meta WHERE key=?\");"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "if (sqlite3_prepare_v2(db, sql, -1, &s.p, nullptr) != SQLITE_OK)",
+          "why": "prepare_as"
+        }
+      ],
+      "note": "A read that failed to compile read the save sentence (D73)."
+    },
+    {
+      "question": "Which schema is this database at?",
+      "owner": "the has_column probes in RecordStore::RecordStore (src/store/record_store.cpp)",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "has_column",
+      "date": "2026-10-05",
+      "decision": "D53, D54",
+      "added_by": "J4-2",
+      "pattern": "user_version",
+      "anchor": "user_version",
+      "must_match": [
+        "exec(\"PRAGMA user_version = 3\");",
+        "// Three tables carry an analysis (schema user_version 3):"
+      ],
+      "must_not_match": [
+        "// Three tables carry an analysis:",
+        "if (!has_column(\"charts\", \"sig\")) exec(\"ALTER TABLE charts ADD COLUMN sig TEXT\");"
+      ],
+      "scan_comments": true,
+      "note": "Hydra never writes the slot (D53 item 1); the column checks are the one upgrade gate. Comments are read so the header names no number. Decided by: audit finding 298; phase 6 task J4-2 (D53 item 1, D54)"
+    },
+    {
+      "question": "Does this chart have a current result under these settings?",
+      "owner": "RecordStore::get_summaries' winner, through Candidate::ready (rank_row) in src/store/record_store.cpp",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "RecordStore::get_summaries",
+      "date": "2026-10-05",
+      "decision": "D79",
+      "added_by": "COUNT-B",
+      "pattern": "==\\s*[\\w.>-]*\\bfixed\\b|rules_fp_bytes\\([^)]*\\bfixed\\b|row_readable_sql\\(\\)\\s*\\+\\s*\"\\s*AND",
+      "must_match": [
+        "bind_blob(s, idx++, rules_fp_bytes(rules.fixed));",
+        "\"(\" + row_readable_sql() + \" AND \" + rules_fp_of(\"structure\") + \" = ?)\";",
+        "if (head->rules_fingerprint == rules_fingerprint_.fixed) out.insert(hyhash);"
+      ],
+      "must_not_match": [
+        "const std::vector<uint8_t> auto_fp = rules_fp_bytes(rules_fingerprint_.retired_auto);",
+        "purge(\"hyhash=? AND chartmode=? AND NOT \" + row_readable_sql(),",
+        "if (found[i].status == RecordStatus::Ready) out.insert(candidates[i]);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "return rules_fp_bytes(stamp.fixed);",
+          "why": "ready_rules_fp: this process's fingerprint as rank_row takes it; rank_row alone compares it"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "D79 B1: the batch's skip list and the library's Analyzed chip once read two spellings of Ready, one in SQL. A second spelling compares a row's rules with this process's in SQL or by hand. Decided by: D79 item B1 (task COUNT-B)"
+    },
+    {
+      "question": "How many library rows does a chart on a page count as when the library doesn't list it?",
+      "owner": "RecordStore::copies_of in src/store/record_store.cpp",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "RecordStore::copies_of",
+      "date": "2026-10-05",
+      "decision": "D77, D79",
+      "added_by": "COUNT-P",
+      "pattern": "\\bcopies\\s*=\\s*1\\s*;|\\bcopies\\w*\\.(find|end)\\(",
+      "anchor": "copies",
+      "must_match": [
+        "int copies = 1;",
+        "const auto listed = copies.find(meta.hyhash);",
+        "if (listed != copies.end()) row.copies = listed->second;"
+      ],
+      "must_not_match": [
+        "row.copies = store::RecordStore::copies_of(library, hash);",
+        "int copies = 0;",
+        "for (const auto& [md5, n] : store.library_copies()) by_hash[normalize_chart_hash(md5)] += n;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "const auto listed = copies.find(md5);",
+          "why": "copies_of, the owner"
+        },
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "return listed == copies.end() ? 1 : listed->second;",
+          "why": "copies_of, the owner"
+        }
+      ],
+      "note": "A chart on a page that the library doesn't list still counts. One function says how much; a page that looks a chart up in the copies map itself, or starts its count at a default, is a second answer. Decided by: D77 item 2, D79 item 3 (task COUNT-P)"
+    },
+    {
+      "question": "Which stored rows belong to a chart no library row lists?",
+      "owner": "not_in_library in src/store/record_store.cpp",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "not_in_library",
+      "date": "2026-10-07",
+      "decision": "D87",
+      "added_by": "storage-T1",
+      "pattern": "charts\\.md5 = ",
+      "anchor": "charts.md5 = ",
+      "must_match": [
+        "NOT EXISTS (SELECT 1 FROM charts WHERE charts.md5 = results.hyhash)",
+        "\"SELECT 1 FROM charts WHERE charts.md5 = \" + col"
+      ],
+      "must_not_match": [
+        "bind_text(s, 1, item.md5);",
+        "kNamingCopiesSql + \" AS c WHERE songmeta.hyhash = c.md5\")"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "return std::string(\"NOT EXISTS (SELECT 1 FROM charts WHERE charts.md5 = \") + hash + \")\";",
+          "why": "not_in_library, the owner"
+        }
+      ],
+      "note": "The scan's purge and reidentify_chart both ask this of results; a second SQL spelling could keep rows the other drops. Decided by: D87 items 3 and 4 (task storage-T1 review finding 1)"
+    },
+    {
+      "question": "How many charts does a page or its tool count?",
+      "owner": "each row's copies from RecordStore::copies_of, added up by generate_report, tally_fill_rows and the fill page's stats() through the payload's \"k\"",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "copies_of",
+      "date": "2026-10-05",
+      "decision": "D79",
+      "added_by": "COUNT-P",
+      "pattern": "\\['Charts',\\s*fmt\\(rows\\.length\\)|rows\\.filter\\(r\\s*=>\\s*r\\.status\\s*===\\s*s\\)\\.length|\\+\\+stats\\.|stats\\.total\\s*=\\s*static_cast<int>\\(rows\\.size\\(\\)\\)",
+      "must_match": [
+        "['Charts', fmt(rows.length)],",
+        "const n = s => rows.filter(r => r.status === s).length;",
+        "if (r.status == \"same\") ++stats.same;",
+        "stats.total = static_cast<int>(rows.size());"
+      ],
+      "must_not_match": [
+        "['Charts', fmt(charts(rows))],",
+        "const n = s => charts(rows.filter(r => r.status === s));",
+        "if (r.status == \"same\") stats.same += r.copies;",
+        "const beyond = rows.filter(r => r.tier === 'Beyond').length;"
+      ],
+      "scope": [
+        "src/app/report.cpp",
+        "src/app/fill_report.cpp",
+        "src/cli/fillcompare.cpp"
+      ],
+      "note": "The path report and the fill comparison count charts by adding up each row's copies, in C++ and in the fill page's script alike. Counting rows instead drops every extra copy. The leaderboard comparison counts posted scores, not charts (D79), so it is not scanned. Decided by: D79 item 3 (task COUNT-P)"
+    },
+    {
+      "question": "When does the WAL checkpoint threshold change, and when is the log emptied?",
+      "owner": "RecordStore::BatchWrites in src/store/record_store.cpp",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "RecordStore::BatchWrites",
+      "date": "2026-10-06",
+      "decision": "D86",
+      "added_by": "W1",
+      "pattern": "wal_(auto)?checkpoint",
+      "anchor": "checkpoint",
+      "owner_files": [
+        "src/store/record_store.h",
+        "src/store/record_store.cpp"
+      ],
+      "must_match": [
+        "exec(\"PRAGMA wal_autocheckpoint=10000\");",
+        "sqlite3_exec(db, \"PRAGMA wal_checkpoint(TRUNCATE)\", nullptr, nullptr, nullptr);",
+        "sqlite3_wal_checkpoint_v2(db, nullptr, SQLITE_CHECKPOINT_TRUNCATE, nullptr, nullptr);"
+      ],
+      "must_not_match": [
+        "const store::RecordStore::BatchWrites batch_writes(store);",
+        "exec(\"PRAGMA journal_mode=WAL\");"
+      ],
+      "note": "D86 item 3: the checkpoint threshold changes only while a batch runs, and the log is emptied only when it ends. A second place that sets either one is a second answer. Decided by: D86 item 3 (task W1)"
+    },
+    {
+      "question": "Is a transaction still open, or has sqlite already rolled it back?",
+      "owner": "transaction_open in src/store/record_store.cpp",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "transaction_open",
+      "date": "2026-10-06",
+      "decision": "derive-once review of task W1 (finding 1)",
+      "added_by": "W1",
+      "pattern": "sqlite3_get_autocommit\\s*\\(",
+      "anchor": "sqlite3_get_autocommit",
+      "must_match": [
+        "if (!sqlite3_get_autocommit(db)) sqlite3_exec(db, \"ROLLBACK\", nullptr, nullptr, nullptr);",
+        "} else if (sqlite3_get_autocommit(db_)) {"
+      ],
+      "must_not_match": [
+        "if (transaction_open(db_)) {",
+        "} else if (transaction_open(db_)) {"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "bool transaction_open(sqlite3* db) { return !sqlite3_get_autocommit(db); }",
+          "why": "transaction_open, the owner: rollback_if_open and save_analysis call it"
+        }
+      ],
+      "note": "After a failure, rollback_if_open and a grouped save_analysis both need to know whether sqlite already rolled the transaction back. Only the helper asks sqlite; record_store.cpp is not exempt as a file, so a second ask there fails like one anywhere else."
+    },
+    {
+      "question": "Could this stored fingerprint ever show a chart unchanged?",
+      "owner": "sig_can_show_unchanged in src/store/record_store.h",
+      "owner_file": "src/store/record_store.h",
+      "owner_symbol": "sig_can_show_unchanged",
+      "date": "2026-10-07",
+      "decision": "D96",
+      "added_by": "som-d",
+      "pattern": "\\b(sig|stored|stored_sig|new_sig|old_sig)(\\.|->)empty\\(\\)|\\bsig\\b\\s*(==|!=)\\s*(\"\"|std::string\\(\\))",
+      "must_match": [
+        "if (sig.empty()) continue;",
+        "return !stored.empty() && stored == now;",
+        "if (now->sig.empty()) return;",
+        "if (it->second.sig.empty()) skip = true;",
+        "if (stored_sig.empty()) return {};"
+      ],
+      "must_not_match": [
+        "if (!sig_can_show_unchanged(sig)) continue;",
+        "return store::sig_can_show_unchanged(stored) && stored == now;",
+        "if (sig_of(notes, ini).size() > 3) return;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/store/record_store.h",
+          "line_text": "inline bool sig_can_show_unchanged(const std::string& sig) { return !sig.empty(); }",
+          "why": "sig_can_show_unchanged, the owner: chart_library_cache, sig_unchanged and ViewJob::run call it"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "An empty fingerprint is what a gone file or a folder chart without its song.ini gives, so it can never show a chart unchanged. The cache read, the rescan's test and the click's save all ask store::sig_can_show_unchanged, which sits in store/ so every layer can call it. Only a variable named for a fingerprint is caught, as the three callers name theirs. Decided by: D96 (an empty fingerprint never shows a chart unchanged) and its follow-up in the audit fix decisions"
+    },
+    {
+      "question": "Which files make up a database on disk?",
+      "owner": "with_side_files in src/store/upgrade_files.cpp",
+      "owner_file": "src/store/upgrade_files.cpp",
+      "owner_symbol": "with_side_files",
+      "date": "2026-10-07",
+      "decision": "ADR 0026",
+      "added_by": "DBUP-review",
+      "pattern": "\"-(wal|shm)\"",
+      "owner_files": [
+        "src/store/upgrade_files.cpp"
+      ],
+      "must_match": [
+        "return {db, db + \"-wal\", db + \"-shm\"};",
+        "for (const char* suffix : {\"\", \"-wal\", \"-shm\"}) fs::remove(path + suffix);"
+      ],
+      "must_not_match": [
+        "for (const std::string& f : with_side_files(path)) std::remove(f.c_str());",
+        "\"' is open in another program: its -wal or -shm file stayed \");"
+      ],
+      "scope": [
+        "src",
+        "tools"
+      ],
+      "note": "A WAL database's log and index sit beside it under SQLite's two suffixes. The upgrade's file rule names them once; code that sweeps or checks a database's files asks it (with_side_files, remove_with_side_files, side_files_present). Decided by: derive-once review of the DBUP join (F4); ADR 0026, the upgrade"
+    }
+  ]
+}

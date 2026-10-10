@@ -94,7 +94,8 @@ doctest::Approx ms(double v) { return doctest::Approx(v).epsilon(1e-9); }
 // gone, because where the end moved now has one answer, the path's own step.
 // So the step's facts are pinned: end 6528, Clamped, moved from 5376, which
 // can give 3456 back.
-TEST_CASE("finding 37: the squeeze-out edge expects extend_deacts' clamped end") {
+// Finding 37.
+TEST_CASE("SP end clamp: the squeeze-out edge expects extend_deacts' clamped end") {
     const Song song = build_fast_song(kOneActivation);
     const ScoreGraph graph(song, 2);
     const ScoreGraphEdge* e = deact_edge_at(graph, 5376);
@@ -110,7 +111,8 @@ TEST_CASE("finding 37: the squeeze-out edge expects extend_deacts' clamped end")
     CHECK(x->sqout_node);
 }
 
-TEST_CASE("finding 37: a clamped window still offers its squeeze-out") {
+// Finding 37.
+TEST_CASE("SP end clamp: a clamped window still offers its squeeze-out") {
     const Song song = build_fast_song(kOneActivation);
     const ScoreGraph graph(song, 2);
     const std::vector<SqOutSeen> seen =
@@ -123,7 +125,8 @@ TEST_CASE("finding 37: a clamped window still offers its squeeze-out") {
     }
 }
 
-TEST_CASE("finding 37: two ends clamped to one tick each keep their own squeeze-out") {
+// Finding 37.
+TEST_CASE("SP end clamp: two ends clamped to one tick each keep their own squeeze-out") {
     const Song song = build_fast_song(kTwoActivations);
     for (int64_t act : {int64_t{2304}, int64_t{2496}}) {
         // A targeted search (search_target): only this activation exists, so
@@ -162,7 +165,8 @@ const std::vector<TailNote> kTiedClamps = {
     {10368, true}, {14208, false, true}, {14592, false, true}, {14976, true},
     {15744},       {18048},              {18816},             {19584}};
 
-TEST_CASE("finding 37: tied paths clamped from different ends keep their own squeeze-outs") {
+// Finding 37.
+TEST_CASE("SP end clamp: tied paths clamped from different ends keep their own squeeze-outs") {
     const Song song = build_fast_song(kTiedClamps);
     const ScoreGraph graph(song, 2);
     const std::vector<Path> paths = run_search(graph, test::wide_search());
@@ -203,7 +207,8 @@ const std::vector<TailNote> kPlainTiesClamp = {
     {0, true},  {768, true}, {1920, false, true}, {2112, false, true}, {3456, true},
     {4608},     {6000},      {6528},              {7000},              {7680}};
 
-TEST_CASE("finding 37: a plain bar tying the ceiling squeezes out only for its own end") {
+// Finding 37.
+TEST_CASE("SP end clamp: a plain bar tying the ceiling squeezes out only for its own end") {
     const Song song = build_fast_song(kPlainTiesClamp);
     const ScoreGraph graph(song, 2);
     const ScoreGraphEdge* plain = deact_edge_at(graph, 4992);
@@ -276,7 +281,8 @@ const std::vector<TailNote> kFoldSharedClamp = {
     {10752, false, true},                {11520, true},       {12864, true},
     {13824},       {16896},              {17664},             {18432}};
 
-TEST_CASE("finding 37: a folded variant's Clamped step on its leader's SqIn phrase becomes SqIn") {
+// Finding 37.
+TEST_CASE("SP end clamp: a folded variant's Clamped step on its leader's SqIn phrase becomes SqIn") {
     const Song song = test::build_tempo_song(kFoldSharedClamp, {{0, 1200.0}});
     const ScoreGraph graph(song, 2);
     const std::vector<Path> paths = run_search(graph, test::wide_search());
@@ -313,7 +319,8 @@ TEST_CASE("finding 37: a folded variant's Clamped step on its leader's SqIn phra
     CHECK(folded);
 }
 
-TEST_CASE("finding 37: an unclamped window is unchanged") {
+// Finding 37.
+TEST_CASE("SP end clamp: an unclamped window is unchanged") {
     // At cap 3 the ceiling is 3456 + 6 * 768 = 8064, later than 6912, so
     // nothing clamps and the plain bar is extend_deacts' answer too.
     const Song song = build_fast_song(kOneActivation);

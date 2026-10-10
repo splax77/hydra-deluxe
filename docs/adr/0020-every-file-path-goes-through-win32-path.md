@@ -44,7 +44,8 @@ path even on an opted-in machine, so the long-path tests prove Hydra's handling
 and not the machine's setting.
 
 A test keeps the rule from drifting. "single-owner rules hold across src/,
-tools/ and tests/" (tests/test_single_owner.cpp) reads every source file in
+tools/ and tests/" (tests/single_owner/scan.cpp, with these rows in
+tests/single_owner/rules/core.json since ADR 0029) reads every source file in
 `src` and `tools`. It fails on any raw Windows file call outside winstr.cpp
 whose line doesn't call `win32_path`. It fails on a file stream, or a
 `std::filesystem` call that takes a path, whose line doesn't call `os_path`.

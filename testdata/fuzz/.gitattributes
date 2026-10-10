@@ -1,0 +1,5 @@
+# A saved fuzz input must replay byte for byte, whatever its name, so git
+# never converts its line endings.
+* -text
+README.md text
+.gitattributes text
