@@ -107,6 +107,17 @@ std::string best_path_label(store::RecordStatus status, const std::string& bestp
 
 std::string LibraryRow::best_label() const { return best_path_label(status, bestpath, summary); }
 
+std::string library_cell_text(const LibraryRow& row, int column) {
+    switch (static_cast<LibrarySort>(column)) {
+        case LibrarySort::Title: return row.title;
+        case LibrarySort::Artist: return row.artist;
+        case LibrarySort::Charter: return row.charter;
+        case LibrarySort::Folder: return row.entry.rootfolder;
+        case LibrarySort::BestPath: return row.best_label();
+    }
+    return {};
+}
+
 size_t ChipCounts::of(StatusChip chip) const {
     switch (chip) {
         case StatusChip::NotAnalyzed: return not_analyzed;
@@ -133,8 +144,16 @@ void LibraryModel::set_charts(std::vector<store::ChartLibraryEntry> charts) {
         entry = {};  // the rest of the scan's row goes now, not when the load ends
         rows_.push_back(std::move(row));
     }
+    ++rows_version_;
+    summary_changes_.clear();
     resort();
     refilter();
+}
+
+std::vector<size_t> LibraryModel::take_summary_changes() {
+    std::vector<size_t> out;
+    out.swap(summary_changes_);
+    return out;
 }
 
 std::vector<std::string> LibraryModel::hashes() const {
@@ -148,15 +167,21 @@ size_t LibraryModel::set_summaries(const std::vector<store::SummaryLookup>& look
     size_t changed = 0;
     const size_t n = std::min(rows_.size(), lookups.size());
     for (size_t i = 0; i < n; ++i)
-        if (apply_summary(rows_[i], lookups[i])) ++changed;
+        if (apply_summary(rows_[i], lookups[i])) {
+            summary_changes_.push_back(i);
+            ++changed;
+        }
     if (changed > 0) summaries_changed();
     return changed;
 }
 
 size_t LibraryModel::set_summary_for(const std::string& md5, const store::SummaryLookup& lookup) {
     size_t changed = 0;
-    for (LibraryRow& row : rows_)
-        if (row.entry.md5 == md5 && apply_summary(row, lookup)) ++changed;
+    for (size_t i = 0; i < rows_.size(); ++i)
+        if (rows_[i].entry.md5 == md5 && apply_summary(rows_[i], lookup)) {
+            summary_changes_.push_back(i);
+            ++changed;
+        }
     if (changed > 0) summaries_changed();
     return changed;
 }
