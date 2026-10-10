@@ -87,9 +87,19 @@ bytes of UTF-8 text. They always appear in this order:
 Text can carry Clone Hero's colour and italic tags, such as `<color=#FFB300>` or
 `<i>`. Several charter fields are coloured letter by letter.
 
-After the eight fields comes 123 to 235 bytes of binary data. It probably holds
-difficulty ratings, the preview start time and the sizes of the other parts.
-Hydra does not decode it.
+After the eight fields comes 123 to 235 bytes of binary data. Hydra reads its
+start, in this order (`srb_parse_metadata` in `src/parse/srb.cpp`):
+
+| Field | Size |
+|-------|------|
+| difficulty ratings | 12 bytes, skipped |
+| preview start time | 4 bytes, skipped |
+| icon name | a text field, skipped |
+| two track numbers | 4 bytes each, skipped |
+| song length in ms | 4 bytes, read |
+| checksum | 16 bytes, read: the song's id (see "Scanning the library") |
+
+Hydra does not read the bytes after the checksum.
 
 ### Stream 2: the chart
 
@@ -182,8 +192,8 @@ If no audio comes out, the Preview falls back to any loose audio files in the
 same folder as the `.srb`, as it would for a song folder.
 
 A `.srb` has no delay setting that Hydra reads, so only the chart's own
-`Offset` lines the audio up with the notes. A delay may hide in the undecoded
-binary data after the eight text fields; nobody has checked.
+`Offset` lines the audio up with the notes. A delay may hide in the binary data
+after the checksum, which Hydra does not read; nobody has checked.
 
 ### When a file is broken
 
@@ -201,10 +211,21 @@ again."
 `tests/test_srb.cpp` builds fake `.srb` files at test time. Each one is a
 16-byte header, a compressed song-info block, a compressed chart taken from the
 test corpus, and a compressed filler stream standing in for the rest. The tests
-check four things. A wrapped chart parses exactly like the same chart loose.
-An odd notes filename falls back to sniffing the bytes. Broken files throw an
-error instead of crashing. The scan picks up the name, artist and charter,
-including the blank-name fallback.
+check these things:
+
+- A wrapped chart parses exactly like the same chart loose.
+- An odd notes filename falls back to sniffing the bytes.
+- Broken files throw an error instead of crashing.
+- The song-info reader finds the song length and the checksum.
+- The scan picks up the name, artist and charter, including the blank-name
+  fallback.
+- The scan's id is the stored checksum, not the MD5 (a 32-digit fingerprint)
+  of the chart inside.
+- A song-info block that ends before its checksum is a scan error.
+
+Two values in the tests come from real files: the 16-byte checksum of No Known
+Suspects (so the id tests use a real song's id) and Biology's song length,
+196,905 ms. Every container around them is made up.
 
 The encrypted audio section has no automated test yet. One would need a fake
 audio blob encrypted with the same key. The facts above about it were checked
@@ -214,8 +235,8 @@ by decrypting the start of every blob in the 30 real files.
 
 The container reader is `src/parse/srb.h` and `src/parse/srb.cpp`. The header
 file repeats the layout in a comment. The chart loader is `load_songpath_srb`
-in `src/parse/song.cpp`. The library scan reads the song info in
-`parse_srb_metadata` in `src/app/analysis.cpp`. The audio extraction and
+in `src/parse/song.cpp`. The library scan reads the song info and the id in
+`song_id_read` in `src/app/analysis.cpp`. The audio extraction and
 decryption live in `src/app/preview_source.cpp`.
 
 If a change to `srb.cpp` alters which notes a chart ends up with, two stamps in
