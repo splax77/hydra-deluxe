@@ -15,6 +15,9 @@
 // can be compared for identical output (engine_mode and parse_mode below say
 // what each covers). The digests themselves live in tests/song_digest.h,
 // which tests/test_perf_digest.cpp shares to pin the corpus's values.
+//
+// --replay times the replay on one chart and --upgrade times a database
+// upgrade (replay_mode and upgrade_mode below).
 
 #include <algorithm>
 #include <chrono>
@@ -36,10 +39,12 @@
 #include "app/rules_file.h"
 #include "app/user_messages.h"
 #include "core/model.h"
+#include "core/replay.h"
 #include "core/strutil.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "parse/song.h"
+#include "replay_windows.h"
 #include "search/graph.h"
 #include "search/pather.h"
 #include "song_digest.h"
@@ -406,6 +411,83 @@ static void dump_db(const std::string& dbpath, const std::string& outpath,
     std::printf("dumped %zu rows from %s\n", rows.size(), dbpath.c_str());
 }
 
+// Replay mode:
+//   hydra_bench --replay <chart file>
+// Times core::replay_path on one chart (pro drums, 2x bass) with 2,000 made-up
+// windows (testreplay::synthetic_windows, seed 7), best of 3: the full replay,
+// the scores-only one and one with no windows. The blink-182 Discography chart
+// was the stress chart (Task 9 of the 2026-10-03 preview-loading plan). That
+// the scores-only replay matches the full one is test_replay.cpp's job.
+static void replay_mode(const std::string& chart) {
+    const Song song = load_songpath(chart, true, true);
+    if (song.is_empty()) {
+        std::printf("no notes in %s\n", chart.c_str());
+        return;
+    }
+    const std::vector<ReplayWindow> wl = testreplay::synthetic_windows(song, 2000, 7);
+    ReplayOptions scores;
+    scores.scores_only = true;
+    auto best_ms = [](auto&& fn) {
+        double best = 1e300;
+        for (int run = 0; run < 3; ++run) {
+            const clk::time_point t0 = clk::now();
+            fn();
+            best = std::min(best, secs_since(t0) * 1000.0);
+        }
+        return best;
+    };
+    const double full_ms = best_ms([&] { replay_path(song, wl, g_rules); });
+    const double lean_ms = best_ms([&] { replay_path(song, wl, g_rules, scores); });
+    const double none_ms = best_ms([&] { replay_path(song, {}, g_rules); });
+    std::printf("%zu chords, %zu windows, best of 3: open-window walk %.1f ms, "
+                "scores-only %.1f ms, no windows %.1f ms\n",
+                song.sequence.size(), wl.size(), full_ms, lean_ms, none_ms);
+}
+
+// Upgrade mode:
+//   hydra_bench --upgrade <db file>
+// Opens the file as the app would, which upgrades an older layout for good,
+// and prints how long each step of the open took. Point it at a scratch copy
+// of a real library file (db, -wal and -shm together), never at the live one.
+static void upgrade_mode(const std::string& dbpath) {
+    if (!file_exists_utf8(dbpath)) {
+        std::printf("no such file: %s\n", dbpath.c_str());
+        return;
+    }
+    const uint64_t bytes_before = file_size_bytes(dbpath);
+    const clk::time_point start = clk::now();
+    std::vector<std::pair<store::OpenStep, clk::time_point>> began;
+    store::OpenProgress last;
+    const store::OpenProgressFn record = [&](const store::OpenProgress& p) {
+        if (began.empty() || began.back().first != p.step) began.emplace_back(p.step, clk::now());
+        last = p;
+        return true;
+    };
+    { store::RecordStore db(dbpath, core::RulesStamp::of(g_rules), record); }
+    const clk::time_point end = clk::now();
+
+    auto name = [](store::OpenStep s) {
+        switch (s) {
+            case store::OpenStep::Opening: return "Opening";
+            case store::OpenStep::UpdatingResultsKey: return "UpdatingResultsKey";
+            case store::OpenStep::Copying: return "Copying";
+            case store::OpenStep::Finishing: return "Finishing";
+        }
+        return "?";
+    };
+    for (size_t i = 0; i < began.size(); ++i) {
+        const clk::time_point to = i + 1 < began.size() ? began[i + 1].second : end;
+        std::printf("%s: %.3f s\n", name(began[i].first),
+                    std::chrono::duration<double>(to - began[i].second).count());
+    }
+    std::printf("total: %.3f s\n", std::chrono::duration<double>(end - start).count());
+    std::printf("rows copied: %lld of %lld\n", static_cast<long long>(last.rows_done),
+                static_cast<long long>(last.rows_total));
+    std::printf("file: %llu bytes before, %llu bytes after\n",
+                static_cast<unsigned long long>(bytes_before),
+                static_cast<unsigned long long>(file_size_bytes(dbpath)));
+}
+
 static int bench_main() {
     // --rules <path> and the legacy fills flag may sit anywhere; take them out
     // so the positional mode checks below see the same argv they always did.
@@ -433,6 +515,14 @@ static int bench_main() {
         return 2;
     }
 
+    if (argc > 2 && argv[1] == "--replay") {
+        replay_mode(argv[2]);
+        return 0;
+    }
+    if (argc > 2 && argv[1] == "--upgrade") {
+        upgrade_mode(argv[2]);
+        return 0;
+    }
     if (argc > 3 && argv[1] == "--dump-db") {
         std::string dumprel;
         for (int i = 4; i < argc; ++i)

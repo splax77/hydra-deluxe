@@ -41,3 +41,10 @@ are Hydra windows (D103, ADR 0027), and their pages, their `PAGE` objects and
 the CSS and script only they used are gone. The fill-spawn comparison, which
 only `hydra_fillcompare` makes, is now the one page that uses the shared
 stylesheet and script. The headless-Edge check above still applies to it.
+
+## Note, 2026-10-10: the sample writer is gone
+
+The test that wrote the sample pages was removed with the suite's other dev
+aids (user decision 2026-10-10). The headless-Edge check now renders the page
+`hydra_fillcompare` writes, before and after the change, from the same two
+result files.
