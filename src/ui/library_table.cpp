@@ -290,20 +290,23 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
                  ImGuiTableColumnFlags_PreferSortDescending,
                  static_cast<ImGuiID>(LibrarySort::BestPath));
 
+    // The columns always stay in the order set up above (imgui#9519).
+    keep_table_column_order();
+
     // Charter and Folder make way for the song panel: hidden when it opens,
     // shown when it closes. In between, the header's right-click menu shows
     // or hides any column but Title.
-    // T9: read app.details_open() here once it exists.
-    // The columns always stay in the order set up above (imgui#9519).
-    keep_table_column_order();
-    apply_column_widths(layout);
-
+    // On the table's first frame ImGui loads hydra_ui.ini's saved column state
+    // after this point, so a column saved hidden would win over the panel.
+    // The panel's choice goes in once that frame is over, as the report
+    // tables wait to push their sort (report_frame::table).
     const bool panel_open = app.details_open();
-    if (app.library_ui.columns_for_panel != panel_open) {
+    if (table_settled() && app.library_ui.columns_for_panel != panel_open) {
         ImGui::TableSetColumnEnabled(kColumnCharter, !panel_open);
         ImGui::TableSetColumnEnabled(kColumnFolder, !panel_open);
         app.library_ui.columns_for_panel = panel_open;
     }
+    apply_column_widths(layout);
     ImGui::TableHeadersRow();
 
     if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs()) {
