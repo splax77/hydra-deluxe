@@ -16,50 +16,15 @@
 #include "app/preview_view.h"
 #include "corpus_util.h"
 #include "record_fixtures.h"
+#include "preview_scene_fixtures.h"
 #include "render/track_state.h"
 
 using namespace hydra;
 using namespace hydra::app;
 using namespace hydra::render;
+using namespace hydra::test_fixtures;
 
 namespace {
-
-PreviewNote note(double ms, PreviewLane lane, bool cymbal = false, bool ghost = false,
-                 bool accent = false) {
-    PreviewNote n;
-    n.ms = ms;
-    n.tick = static_cast<int64_t>(ms);  // 1 tick per ms keeps ticks distinct
-    n.lane = lane;
-    n.cymbal = cymbal;
-    n.ghost = ghost;
-    n.accent = accent;
-    return n;
-}
-
-PreviewSpan span(double start_ms, double end_ms) {
-    PreviewSpan s;
-    s.start_ms = start_ms;
-    s.end_ms = end_ms;
-    s.start_tick = static_cast<int64_t>(start_ms);
-    s.end_tick = static_cast<int64_t>(end_ms);
-    return s;
-}
-
-PreviewFill fill(PreviewSpan s, PreviewFillState state) {
-    PreviewFill f;
-    f.span = s;
-    f.state = state;
-    return f;
-}
-
-// One tick per millisecond (60 BPM at 1000 ticks per beat), matching note()
-// and span() above, so half a tick is 0.5 ms and the edges these cases expect
-// (1.0005, 0.2505, ...) are the same as before spans moved to ticks.
-PreviewScene timed_scene() {
-    PreviewScene s;
-    s.timing = SongTiming(1000, {{0, 4000}}, {{0, 60.0}});
-    return s;
-}
 
 const TrackInstant* find(const std::vector<TrackInstant>& v, double t) {
     for (const TrackInstant& i : v)
@@ -547,13 +512,7 @@ namespace {
 // shorter than the old half-millisecond margin.
 PreviewScene phrase_then_next_tick_scene() {
     SongTiming timing(480, {{0, 1920}}, {{0, 300.0}});
-    auto at_tick = [&](int64_t tick, PreviewLane lane) {
-        PreviewNote n;
-        n.tick = tick;
-        n.ms = timing.ms_index().at(tick);
-        n.lane = lane;
-        return n;
-    };
+    auto at_tick = [&](int64_t tick, PreviewLane lane) { return note_at_tick(timing, tick, lane); };
     PreviewScene scene;
     scene.timing = timing;
     scene.notes = {at_tick(0, PreviewLane::Red), at_tick(480, PreviewLane::Yellow),

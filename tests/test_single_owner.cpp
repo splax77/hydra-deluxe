@@ -6471,16 +6471,10 @@ struct KnownClone {
 // later fix; removing one means removing its entry here.
 const std::vector<KnownClone>& known_clones() {
     static const std::vector<KnownClone> k = {
-        {"src/audio/ma_reader.cpp", "src/audio/vorbis_reader.cpp", 9, R"x(pos_ += done;)x"},
         {"tests/test_app_state.cpp", "tests/test_song_panel_state.cpp", 11, R"x(char hash[32];)x"},
         {"tests/test_audio_player.cpp", "tests/test_preview_transport.cpp", 10, R"x(namespace {)x"},
-        {"tests/test_highway_draw.cpp", "tests/test_track_state.cpp", 9, R"x(SongTiming timing(480, {{0, 1920}}, {{0, 300.0}});)x"},
-        {"tests/test_highway_draw.cpp", "tests/test_track_state.cpp", 8, R"x(using namespace hydra;)x"},
-        {"tests/test_highway_draw.cpp", "tests/test_track_state.cpp", 10, R"x(return s;)x"},
-        {"tests/test_preview_controller.cpp", "tests/test_preview_controller.cpp", 11, R"x(using namespace hydra;)x"},
         {"tests/test_search.cpp", "tests/test_search.cpp", 10, R"x(Song song = build_tail_song({{0, true, false},)x"},
         {"tests/test_search.cpp", "tests/test_search.cpp", 9, R"x({768, true, false},)x"},
-        {"tests/ui/uitest_batch_reports.cpp", "tests/ui/uitest_batch_reports.cpp", 9, R"x(Harness& h = harness(ctx);)x"},
     };
     return k;
 }
