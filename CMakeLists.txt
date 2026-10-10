@@ -8,8 +8,8 @@
 #
 # Third-party code is vendored under third_party/ and built here, so there is
 # nothing to install but a compiler + CMake. THIRD_PARTY_NOTICES.txt lists
-# every library that ships, with its licence; doctest is vendored for the
-# tests only.
+# every library that ships, with its licence, and RapidCheck. doctest and
+# RapidCheck are vendored for the tests only.
 #
 # Configure/build (CMake and MSVC come from Visual Studio; see build_cpp.ps1):
 #   cmake --preset default
@@ -557,6 +557,14 @@ target_include_directories(hydra_tests PRIVATE
 )
 # doctest.h specializes std::tuple, which newer MSVC flags (C5285); harmless.
 target_compile_options(hydra_tests PRIVATE /wd5285)
+
+# ---- third_party: RapidCheck (property tests, for hydra_tests only) -------
+# EXCLUDE_FROM_ALL: it builds only because hydra_tests links it, and its own
+# install() rules stay out of the installer's staging. SYSTEM: its headers
+# are third-party, so they stay out of the hydra_warnings /W4 /WX sweep, like
+# stb_image.h above.
+add_subdirectory(third_party/rapidcheck EXCLUDE_FROM_ALL SYSTEM)
+target_link_libraries(hydra_tests PRIVATE rapidcheck)
 
 # Where the chart corpus and fixtures live, so tests find them regardless of
 # the working directory.
