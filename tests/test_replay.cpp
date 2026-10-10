@@ -11,12 +11,18 @@
 
 #include "doctest.h"
 
+#include <rapidcheck.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <optional>
+#include <ostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -1574,45 +1580,79 @@ ReplayWindow window(int64_t act, int64_t deact, std::optional<int64_t> sqout = s
     return w;
 }
 
+// How many rows break a rule, and the first of them.
+struct BadRows {
+    size_t count = 0;
+    size_t first = 0;
+    void add(size_t i) {
+        if (count++ == 0) first = i;
+    }
+};
+
 // Each row's SP points must be the sum of what each window pays it alone,
 // and SP pays the chord exactly when one of them does. Single-window replays
 // are scores-only to keep this quick; their score fields are a full replay's.
-void check_windows_add_up(const Song& song, const std::vector<ReplayWindow>& wl,
-                          const core::Rules& rules, const ReplayResult& all,
-                          const std::string& what) {
+BadRows rows_not_adding_up(const Song& song, const std::vector<ReplayWindow>& wl,
+                           const core::Rules& rules, const ReplayResult& all) {
     ReplayOptions scores;
     scores.scores_only = true;
     std::vector<int64_t> sum(all.chords.size(), 0);
     std::vector<bool> paid(all.chords.size(), false);
     for (const ReplayWindow& w : wl) {
         const ReplayResult one = replay_path(song, {w}, rules, scores);
-        REQUIRE(one.chords.size() == all.chords.size());
+        if (one.chords.size() != all.chords.size())
+            throw std::logic_error("a one-window replay has another row count");
         for (size_t i = 0; i < one.chords.size(); ++i) {
             sum[i] += one.chords[i].points.sp;
             if (one.chords[i].in_sp) paid[i] = true;
         }
     }
-    size_t bad = 0, first = 0;
+    BadRows bad;
     for (size_t i = 0; i < all.chords.size(); ++i)
-        if ((all.chords[i].points.sp != sum[i] || all.chords[i].in_sp != paid[i]) && bad++ == 0)
-            first = i;
-    INFO(what << ": first row that does not add up: " << first);
-    CHECK(bad == 0);
+        if (all.chords[i].points.sp != sum[i] || all.chords[i].in_sp != paid[i]) bad.add(i);
+    return bad;
+}
+
+void check_windows_add_up(const Song& song, const std::vector<ReplayWindow>& wl,
+                          const core::Rules& rules, const ReplayResult& all,
+                          const std::string& what) {
+    const BadRows bad = rows_not_adding_up(song, wl, rules, all);
+    INFO(what << ": first row that does not add up: " << bad.first);
+    CHECK(bad.count == 0);
 }
 
 // What every row of any replay holds: SP paid the chord exactly when it paid
 // it points (D2), and the disc doubles exactly then.
-void check_disc_follows_payment(const ReplayResult& r, const std::string& what) {
-    size_t bad = 0, first = 0;
+BadRows rows_off_payment(const ReplayResult& r) {
+    BadRows bad;
     for (size_t i = 0; i < r.chords.size(); ++i) {
         const ReplayChord& c = r.chords[i];
-        if ((c.in_sp != (c.points.sp > 0) ||
-             c.multiplier_shown != shown_multiplier(c.multiplier_after, c.in_sp)) &&
-            bad++ == 0)
-            first = i;
+        if (c.in_sp != (c.points.sp > 0) ||
+            c.multiplier_shown != shown_multiplier(c.multiplier_after, c.in_sp))
+            bad.add(i);
     }
-    INFO(what << ": first row whose disc does not follow SP's payment: " << first);
-    CHECK(bad == 0);
+    return bad;
+}
+
+void check_disc_follows_payment(const ReplayResult& r, const std::string& what) {
+    const BadRows bad = rows_off_payment(r);
+    INFO(what << ": first row whose disc does not follow SP's payment: " << bad.first);
+    CHECK(bad.count == 0);
+}
+
+// The corpus chart with the most chords, and its path.
+const Song& longest_corpus_song(std::string& path_out) {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    const Song* longest = nullptr;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        if (!longest || song.sequence.size() > longest->sequence.size()) {
+            longest = &song;
+            path_out = path;
+        }
+    }
+    if (!longest) throw std::logic_error("the chart corpus is empty");
+    return *longest;
 }
 
 }  // namespace
@@ -1779,17 +1819,8 @@ TEST_CASE("replay: disjoint windows that squeeze out a one-note chord on D") {
 // them in another order gives the same rows, and each row's SP points are
 // what the windows pay it one at a time.
 TEST_CASE("replay: window order does not matter and SP points add up window by window") {
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    const Song* longest = nullptr;
     std::string longest_path;
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
-        if (!longest || song.sequence.size() > longest->sequence.size()) {
-            longest = &song;
-            longest_path = path;
-        }
-    }
-    REQUIRE(longest != nullptr);
+    const Song* longest = &longest_corpus_song(longest_path);
     REQUIRE(longest->sequence.size() > 500);
     INFO("chart: " << longest_path << " (" << longest->sequence.size() << " chords)");
 
@@ -1809,6 +1840,83 @@ TEST_CASE("replay: window order does not matter and SP points add up window by w
         check_disc_follows_payment(r, what);
         check_windows_add_up(*longest, few, rules, replay_path(*longest, few, rules), what);
     }
+}
+
+// How RapidCheck prints a window in a counterexample.
+namespace hydra {
+void showValue(const ReplayWindow& w, std::ostream& os) {
+    os << "{act " << w.act_tick << ", deact " << w.deact_tick;
+    if (w.sqout_tick) os << ", sqout " << *w.sqout_tick;
+    os << "}";
+}
+}  // namespace hydra
+
+// The case above as a RapidCheck property, the trial of plan
+// 2026-10-10-ci-test-tooling (task 7). The same three checks run on made-up
+// windows over the same chart, one leeway variant per test, and a failure is
+// shrunk to the fewest, smallest windows that still break a check. The seed
+// is fixed so the suite runs the same tests every time (decision 7); a
+// failure prints the RC_PARAMS line that replays it.
+TEST_CASE("replay: window order does not matter and windows add up, shrunk by RapidCheck") {
+    std::string longest_path;
+    const Song& song = longest_corpus_song(longest_path);
+    const size_t n = song.sequence.size();
+    REQUIRE(n > 500);
+    INFO("chart: " << longest_path << " (" << n << " chords)");
+    const std::vector<core::Rules> variants = leeway_variants();
+    const auto tick_of = [&song](size_t i) { return song.sequence[i].timecode.ticks(); };
+
+    // One window: an activation chord, a length of 1 to 60 chords, a
+    // deactivation node sometimes a few ticks off its chord, and on about a
+    // quarter of them a squeeze-out chord from 3 before the SP end to 3 after.
+    const rc::Gen<ReplayWindow> one_window = rc::gen::map(
+        rc::gen::tuple(rc::gen::inRange<size_t>(0, n), rc::gen::inRange<size_t>(1, 61),
+                       rc::gen::weightedOneOf<int64_t>({{2, rc::gen::just<int64_t>(0)},
+                                                        {1, rc::gen::inRange<int64_t>(1, 10)}}),
+                       rc::gen::weightedOneOf<int>({{3, rc::gen::just(-1)},
+                                                    {1, rc::gen::inRange(0, 7)}})),
+        [&](const std::tuple<size_t, size_t, int64_t, int>& t) {
+            const size_t a = std::get<0>(t);
+            const size_t d = std::min(a + std::get<1>(t), n - 1);
+            ReplayWindow w;
+            w.act_tick = tick_of(a);
+            w.deact_tick = tick_of(d) + std::get<2>(t);
+            if (std::get<3>(t) >= 0) {
+                const size_t lo = d >= 3 ? d - 3 : 0;
+                w.sqout_tick = tick_of(std::min(lo + static_cast<size_t>(std::get<3>(t)), n - 1));
+            }
+            return w;
+        });
+
+    const auto property = [&] {
+        const size_t v = *rc::gen::inRange<size_t>(0, variants.size());
+        const std::vector<ReplayWindow> wl =
+            *rc::gen::container<std::vector<ReplayWindow>>(one_window);
+        const core::Rules& rules = variants[v];
+        RC_LOG() << rules_label(rules) << "\n";
+        const ReplayResult r = replay_path(song, wl, rules);
+        const std::vector<ReplayWindow> reversed(wl.rbegin(), wl.rend());
+        RC_ASSERT(first_result_difference(r, replay_path(song, reversed, rules)) == "");
+        const BadRows disc = rows_off_payment(r);
+        RC_LOG() << "first row whose disc does not follow SP's payment: " << disc.first << "\n";
+        RC_ASSERT(disc.count == 0u);
+        const BadRows sum = rows_not_adding_up(song, wl, rules, r);
+        RC_LOG() << "first row that does not add up: " << sum.first << "\n";
+        RC_ASSERT(sum.count == 0u);
+    };
+
+    // RapidCheck reads RC_PARAMS once, on its first check. When the caller
+    // has not set it, the seed is fixed here.
+    size_t env_len = 0;
+    getenv_s(&env_len, nullptr, 0, "RC_PARAMS");
+    if (env_len == 0) _putenv_s("RC_PARAMS", "seed=1");
+    rc::detail::TestMetadata metadata;
+    metadata.id = metadata.description = "replay window order and sums";
+    const rc::detail::TestResult result = rc::detail::checkTestable(property, metadata);
+    std::ostringstream message;
+    rc::detail::printResultMessage(result, message);
+    INFO(message.str());
+    CHECK(result.is<rc::detail::SuccessResult>());
 }
 
 // Every stored path on the corpus: the disc follows what SP paid on every
