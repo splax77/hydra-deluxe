@@ -1,7 +1,7 @@
 # Continuous integration: build Hydra and run its tests on every push to main
-# and every pull request into main. The local hooks are the first gate; this
-# is the backstop for a commit made outside them. See "Continuous integration"
-# in docs/development.md.
+# and every pull request into main, and the slow AddressSanitizer job once a
+# night. The local hooks are the first gate; this is the backstop for a commit
+# made outside them. See "Continuous integration" in docs/development.md.
 
 name: CI
 
@@ -10,18 +10,30 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
 
 # A newer push to the same branch or pull request cancels the run it replaces.
+# The event is in the group, so a push never cancels the nightly run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
+# Which ctest entries a hosted runner runs. The excluded entry opens the
+# default sound output, and hosted runners have no audio device (tests/shards.txt
+# owns the entry). -R keeps hydra_uitest out of the ctest steps: the steps after
+# them run it on its own.
+env:
+  HOSTED_CTEST_FILTER: -R hydra_tests -E audio_device
+
 jobs:
   build-and-test:
     name: Build and test (Windows, Release)
+    if: github.event_name != 'schedule'
     # The default CMake preset uses the Visual Studio 2026 generator. The
     # windows-2025 image ships VS 2026 since GitHub's June 2026 migration.
     runs-on: windows-2025
@@ -37,11 +49,9 @@ jobs:
       - name: Build hydra_tests
         run: .\build_cpp.ps1 -Target hydra_tests
 
-      # The slices of tests/shards.txt, side by side. The excluded entry opens
-      # the default sound output, and hosted runners have no audio device.
-      # -R keeps hydra_uitest out until the step below has built it.
+      # The slices of tests/shards.txt, side by side.
       - name: Run hydra_tests
-        run: ctest --test-dir build-cpp -C Release -j 4 -R hydra_tests -E audio_device --output-on-failure
+        run: ctest --test-dir build-cpp -C Release -j 4 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
 
       - name: Build hydra_uitest
         run: .\build_cpp.ps1 -Target hydra_uitest
@@ -55,8 +65,12 @@ jobs:
   # memory error (an overrun, a use after free) and prints where it happened.
   # The asan preset runs on the Windows heap instead of mimalloc; the build
   # never ships. See "The AddressSanitizer build" in docs/development.md.
+  # It is slow, so it runs nightly and on a manual run, not on every push (the
+  # user's call, 2026-10-10; "Continuous integration" in docs/development.md
+  # gives the timing).
   asan:
     name: AddressSanitizer (Windows, Release)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: windows-2025
     timeout-minutes: 60
     defaults:
@@ -78,7 +92,7 @@ jobs:
         run: .\build_cpp.ps1 -Preset asan -Target hydra_tests
 
       - name: Run hydra_tests
-        run: ctest --test-dir build-asan -C Release -j 4 -R hydra_tests -E audio_device --output-on-failure
+        run: ctest --test-dir build-asan -C Release -j 4 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
 
       - name: Build hydra_uitest
         run: .\build_cpp.ps1 -Preset asan -Target hydra_uitest
@@ -86,8 +100,86 @@ jobs:
       - name: Run hydra_uitest
         run: .\build-asan\Release\hydra_uitest.exe --all
 
+  # A map of which lines of src\ the tests reach. It informs and never blocks
+  # (no threshold), so it runs on pushes to main only, not on pull requests.
+  # See "The coverage report" in docs/development.md.
+  coverage:
+    name: Coverage report (Windows, Release)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: windows-2025
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      COVERAGE_SESSION: hydra_ci
+      COVERAGE_OUT: ${{ github.workspace }}\coverage-out
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+
+      - name: Build hydra_tests and hydra_uitest
+        run: |
+          .\build_cpp.ps1 -Preset coverage -Target hydra_tests
+          .\build_cpp.ps1 -Preset coverage -Target hydra_uitest
+
+      # Puts the tool's path in CC for the later steps. The CLI tests start
+      # hydra_batch and hydra_fillcompare as child processes, so those two are
+      # instrumented as well.
+      - name: Instrument the exes
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -all -products * -property installationPath
+          $cc = Get-ChildItem -Recurse -Filter Microsoft.CodeCoverage.Console.exe (Join-Path $vs 'Common7\IDE\Extensions\Microsoft\CodeCoverage.Console') | Select-Object -First 1
+          if (-not $cc) { throw "Microsoft.CodeCoverage.Console.exe not found under $vs" }
+          "CC=$($cc.FullName)" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force $env:COVERAGE_OUT | Out-Null
+          foreach ($exe in 'hydra_tests', 'hydra_batch', 'hydra_fillcompare', 'hydra_uitest') {
+            & $cc.FullName instrument "build-coverage\Release\$exe.exe" --session-id $env:COVERAGE_SESSION --settings tools\coverage.settings.xml --nologo
+            if ($LASTEXITCODE) { throw "instrument $exe failed" }
+          }
+
+      # Start-Process, not the call operator: the server outlives this step,
+      # and a child holding the step's output pipe would keep it waiting.
+      - name: Start the collection session
+        run: |
+          Start-Process -FilePath $env:CC -RedirectStandardOutput "$env:COVERAGE_OUT\collect.log" -ArgumentList @(
+            'collect', '--server-mode', '--background', '--session-id', $env:COVERAGE_SESSION,
+            '--settings', 'tools\coverage.settings.xml', '--output', "$env:COVERAGE_OUT\hydra.coverage", '--nologo') -Wait
+          Get-Content "$env:COVERAGE_OUT\collect.log"
+
+      # The unit-test slices run one at a time here. The GUI runner keeps its
+      # own job count (tests/ui/uitest_main.cpp), as in the other jobs.
+      - name: Run hydra_tests
+        run: ctest --test-dir build-coverage -C Release -j 1 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
+
+      - name: Run hydra_uitest
+        run: .\build-coverage\Release\hydra_uitest.exe --all
+
+      - name: Close the session and convert
+        if: always()
+        run: |
+          & $env:CC shutdown $env:COVERAGE_SESSION --nologo
+          & $env:CC merge "$env:COVERAGE_OUT\hydra.coverage" -f cobertura -o "$env:COVERAGE_OUT\cobertura.xml" --nologo
+          if ($LASTEXITCODE) { throw "merge failed" }
+
+      - name: Install ReportGenerator
+        run: dotnet tool install dotnet-reportgenerator-globaltool --tool-path "$env:RUNNER_TEMP\rg"
+
+      - name: Write the HTML report and the summary
+        run: |
+          & "$env:RUNNER_TEMP\rg\reportgenerator.exe" "-reports:$env:COVERAGE_OUT\cobertura.xml" "-targetdir:$env:COVERAGE_OUT\html" "-sourcedirs:$env:GITHUB_WORKSPACE" "-reporttypes:Html;MarkdownSummaryGithub"
+          if ($LASTEXITCODE) { throw "reportgenerator failed" }
+          Get-Content "$env:COVERAGE_OUT\html\SummaryGithub.md" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload the HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage-out/html
+
   tool-tests:
     name: Tool tests (Python and PowerShell)
+    if: github.event_name != 'schedule'
     runs-on: windows-2025
     timeout-minutes: 30
     defaults:

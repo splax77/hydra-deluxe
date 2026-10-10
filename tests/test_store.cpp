@@ -38,7 +38,7 @@
 #include "core/stars.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
-#include "db_file_util.h"  // exec_on_file, scalar_on_file, write_junk_db
+#include "db_file_util.h"  // exec_on_file, scalar_on_file, results_rows_in, write_junk_db
 #include "display_fixtures.h"  // add_stale_rows, old_build_row, other_rules_record
 #include "library_fixtures.h"  // library_row
 #include "old_layout_fixture.h"  // detail_layout_sql and the old layout's counts
@@ -59,6 +59,7 @@ using hydra::test::write_junk_db;
 // One integer straight out of a database file: how these tests look at a
 // table without the store growing an accessor for it.
 using hydra::test::scalar_on_file;
+using hydra::test::results_rows_in;
 
 namespace {
 
@@ -801,7 +802,7 @@ void seed_old_layout(const std::string& path) {
     // no-paths row has neither, by design, and stays (R17).
     exec_on_file(path, "UPDATE results SET stars = NULL WHERE hyhash = 'nostars'");
     REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM charts") == kSeedCharts);
-    REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM results") == kSeedResults);
+    REQUIRE(results_rows_in(path) == kSeedResults);
     REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM meta") == kSeedMeta);
     REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM results WHERE hyhash = 'empty'"
                                  " AND stars IS NULL AND score IS NULL") == 1);
@@ -857,7 +858,7 @@ void check_old_file_whole(const std::string& path) {
     CHECK(detail_tables_in(path) == 5);
     CHECK(structure_columns_in(path) == 1);
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM charts") == kSeedCharts);
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM results") == kSeedResults);
+    CHECK(results_rows_in(path) == kSeedResults);
     CHECK_FALSE(file_exists_utf8(upgrading_path(path)));
     CHECK_FALSE(file_exists_utf8(old_path(path)));
 }
@@ -1174,10 +1175,6 @@ ChartPairs chart_pairs_on_file(const std::string& path) {
 int64_t results_columns_named(const std::string& path, const std::string& column) {
     return scalar_on_file(path, "SELECT COUNT(*) FROM pragma_table_info('results') WHERE name = '" +
                                     column + "'");
-}
-
-int64_t results_rows_in(const std::string& path) {
-    return scalar_on_file(path, "SELECT COUNT(*) FROM results");
 }
 
 }  // namespace
