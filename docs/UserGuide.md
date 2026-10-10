@@ -221,18 +221,27 @@ A star counts once your score, without the solo bonus, reaches its cutoff.
 
 ## Analyzing the whole library
 
-`Analyze library...` analyzes every song in the library. While a search narrows the list, `Analyze search (N)...` analyzes only the N songs the search shows.
+`Analyze library...` analyzes the songs in your library in one background run, called a batch. While a search narrows the list, the button reads `Analyze search (N)...` and analyzes only the N songs the search shows.
 
-First a window titled **Analyze library** asks you to confirm. It says how many songs it will analyze and lists the settings it will use. To change those, cancel and edit the Analysis settings. Songs that already have a result are skipped, unless you tick `Also re-analyze charts that already have a result`. Click `Start analyzing` to begin, or `Cancel`.
+First a window titled `Analyze library` asks you to confirm. It says how many songs it will analyze and lists the settings it will use: `Difficulty`, `SP cap`, `Fills`, `Score range` and `Path limit`. To change those, cancel and edit the Analysis settings. Click `Start analyzing` to begin, or `Cancel`.
 
-The batch runs in the background, using all but one of your CPU cores. You can keep browsing and open songs while it runs. A strip under the toolbar shows its progress: how many songs are done, the song being analyzed, the time so far and, after a few songs, an estimate of the time left, like `about 1:30 left`. An open song's panel already shows the engine's result, so the batch only updates its library row.
+A batch skips songs that already have a current result under these settings. A `Stale` result isn't current, so a batch runs those songs again with no box ticked. To analyze the songs with a current result again too, tick `Also re-analyze charts that already have a result`. When every song already has a current result and the box is off, the window says `Every chart here already has a result.` and `Start analyzing` stays greyed out.
 
-- **`Pause`** holds the batch. **`Resume`** carries on.
-- **`Stop`** ends it. Every result finished so far is kept.
+The batch uses all but one of your CPU cores, and 8 at most. You can keep browsing and open songs while it runs. A strip under the toolbar shows its progress: how many songs are done, the song being analyzed, the time so far and, after a few songs, an estimate of the time left, like `about 1:30 left`. An open song's panel already shows the engine's result, so the batch only updates its library row.
 
-The Analysis settings stay locked until the batch ends.
+`Pause` holds the batch, and `Resume` carries on. `Stop` ends it and keeps every result finished so far. The Analysis settings stay locked until the batch ends.
 
-When it finishes, the strip changes to a summary: how many songs were analyzed, failed and skipped, and how long it took. Songs that failed are listed with the reason. A stopped batch keeps its results but builds no report.
+When the batch ends, the strip changes to a summary: how many songs were analyzed, failed and skipped, and how long it took. Songs that failed are listed under `N charts failed`, each with the reason. A finished batch then builds the [path report](#the-path-report). A stopped batch keeps its results but builds no report, because a report of part of the library would read as the whole of it.
+
+Once the report is built, the summary strip offers these:
+
+| Control | What it does |
+| --- | --- |
+| `Open report` | Opens the path report window. The strip's second line reads `The path report is ready.` Once you close the path report window, the report is gone, so the line and the button go too. The toolbar's `Open path report` still opens it. |
+| `Open automatically` | Opens the path report as soon as it's built. It covers only the path report. The strip is the only place to change it, so it stays after you close the path report window. It hides while a report builds and after a build fails. |
+| `X` | Dismisses the strip. |
+
+If the database holds no results at all once a batch ends, as when every song in your first batch fails, the strip says `The path report could not be built.` and `None of the songs in this run could be analyzed, so there is no report to show.`
 
 ## Reports
 
