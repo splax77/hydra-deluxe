@@ -398,7 +398,7 @@ The comparison goes out of date the same way the path report does, with the same
 
 A few of Hydra Deluxe's rules are judgment calls, not facts read from Clone Hero. You can change them in `hydra_rules.ini`, a plain text file next to Hydra.exe. The app and every command line tool read the same file.
 
-The file is optional. A missing file, or a missing line, means the default below. Each line is `key = value`. A line starting with `#` is a comment. There are no `[section]` headers.
+The file is optional. A missing file, or a missing line, means the default below. Each line is `key = value`. A `#` starts a comment, either on a line of its own or after a value on the same line. There are no `[section]` headers.
 
 ```ini
 # Hydra Deluxe's defaults
@@ -413,17 +413,19 @@ fill_land_slop_beats = 0.03125
 
 What each line does:
 
-- **`backend_leeway_ms`** (default 3.0 ms<!-- default: Rules::backend_leeway_ms -->, must be 0 or more): a backend note that lands less than this far past the Star Power end still counts in the score. Exactly this far past it does not.
-- **`sqout_rule`** (default `first_note`; `first_note` and `whole_chord` are the only values): what a squeeze-out costs. `first_note` removes the Star Power doubling from one note of the chord (the lowest-value one). `whole_chord` removes it from every note in the chord.
-- **`max_tied_paths`** (default `4`, must be 1 or more): how many paths Hydra Deluxe keeps at one score: one count per score, whichever side of the Path limit each path falls on; paths inside the limit come first. More paths means longer lists and slower analysis.
-- **`fill_cooldown_measures`** (default `4`, must be 1 or more): for charts with no authored fills, how many measures must pass after an activation point before Hydra Deluxe places the next one.
-- **`fill_max_distance_beats`** (default `0.5`, must be 0 or more): for charts with no authored fills, how far from a measure line a note can sit and still get a fill.
-- **`fill_length_measures`** (default `0.5`, must be above 0): for charts with no authored fills, how long each fill Hydra Deluxe places is, in measures.
-- **`fill_land_slop_beats`** (default `0.03125`, a 32nd of a beat, must be 0 or more): how close after a fill's end a note must be for the fill to land on it. Hydra Deluxe adds one tick to this, as Clone Hero does, so even `0` lets a note one tick late take the fill. It applies only to fills written in the chart.
+| Key | Default | Allowed values | What it sets |
+| --- | --- | --- | --- |
+| `backend_leeway_ms` | 3.0 ms<!-- default: Rules::backend_leeway_ms --> | 0 or more | A backend note that lands less than this far past the Star Power end still counts in the score. Exactly this far past it does not. |
+| `sqout_rule` | `first_note` | `first_note` or `whole_chord` | What a squeeze-out costs. `first_note` removes the Star Power doubling from one note of the chord (the lowest-value one). `whole_chord` removes it from every note in the chord. |
+| `max_tied_paths` | `4` | A whole number, 1 or more | How many paths Hydra Deluxe keeps at one score. It's one count per score, whichever side of the Path limit each path falls on, and paths inside the limit come first. More paths means longer lists and slower analysis. |
+| `fill_cooldown_measures` | `4` | A whole number, 1 or more | For charts with no authored fills: how many measures must pass after an activation point before Hydra Deluxe places the next one. |
+| `fill_max_distance_beats` | `0.5` | 0 or more | For charts with no authored fills: how far from a measure line a note can sit and still get a fill. |
+| `fill_length_measures` | `0.5` | Above 0 | For charts with no authored fills: how long each fill Hydra Deluxe places is, in measures. |
+| `fill_land_slop_beats` | `0.03125` (a 32nd of a beat) | 0 or more | How close after a fill's end a note must be for the fill to land on it. Hydra Deluxe adds one tick to this, as Clone Hero does, so even `0` lets a note one tick late take the fill. It applies only to fills written in the chart. |
 
 Older files may still have `auto_cap_ladder` or `auto_budget_s` lines. Hydra Deluxe reads and ignores them, so those files keep working.
 
-A value Hydra Deluxe can't read, or a key it doesn't know, is an error that names the key. The command line tools print the error and stop with exit code 2. The app still opens and shows the error, but analysis stays off until you fix the file and restart Hydra Deluxe. Hydra Deluxe never analyzes on the defaults behind your back.
+A value Hydra Deluxe can't read, a key it doesn't know, or a line with no `=` is an error. The error names the key, or quotes the line. The command line tools print the error and stop with exit code 2. The app still opens and shows the error, but analysis stays off until you fix the file and restart Hydra Deluxe. Hydra Deluxe never analyzes on the defaults behind your back.
 
 Every result remembers the rules it was made with. After you change the file, results made under the old rules show `Stale` until you click the song or run a batch. Switching the rules back brings those results back.
 
