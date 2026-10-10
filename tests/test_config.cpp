@@ -7,20 +7,27 @@
 #include <algorithm>
 #include <cstdio>
 #include <fstream>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "app/analysis.h"  // AnalysisSettings
 #include "app/config.h"
 #include "core/model.h"
 #include "core/strutil.h"
 #include "core/version.h"
 #include "core/winstr.h"
 #include "scratch_paths.h"
+#include "search/pather.h"  // settings_key
+#include "store/record_store.h"  // CapQuery, Lens
 #include "temp_util.h"
+#include "ui/library_parts.h"  // settings_at_defaults, settings_changes_summary
 
 using hydra::app::AnalysisSettings;
 using hydra::app::Settings;
+using hydra::ui::detail::settings_at_defaults;
+using hydra::ui::detail::settings_changes_summary;
 
 namespace {
 
@@ -586,6 +593,64 @@ TEST_CASE("to_analysis_settings maps depth_mode onto the search's enum") {
 
     s.depth_mode = 7;  // out of range: falls back to scores, never a bad enum
     CHECK(s.to_analysis_settings().depth_mode == hydra::DepthMode::Scores);
+}
+
+// The reset is Settings::with_analysis_defaults. The panel's own words for
+// what differs (settings_at_defaults, settings_changes_summary in
+// ui/library_parts.h) are the probe, so the panel and the reset agree.
+TEST_CASE("settings reset: puts back each panel setting and keeps the rest") {
+    // Each of the panel's settings on its own: the summary names it, and the
+    // reset clears it.
+    const std::function<void(Settings&)> changes[] = {
+        [](Settings& t) { t.view_difficulty = "Hard"; },
+        [](Settings& t) { t.view_prodrums = false; },
+        [](Settings& t) { t.view_bass2x = false; },
+        [](Settings& t) { t.view_noteshuffle = true; },
+        [](Settings& t) { t.sp_cap = 5; },
+        [](Settings& t) { t.legacy_fills = true; },
+        [](Settings& t) { t.depth_value = 100; },
+        [](Settings& t) { t.depth_mode = 1; },
+        [](Settings& t) { t.mslimit_enabled = false; },
+        [](Settings& t) { t.mslimit_value = 20; },
+    };
+    for (const auto& change : changes) {
+        Settings t;
+        change(t);
+        CHECK(!settings_at_defaults(t));
+        CHECK(settings_at_defaults(t.with_analysis_defaults()));
+    }
+
+    // All at once, with the settings the panel doesn't show changed too.
+    Settings s;
+    for (const auto& change : changes) change(s);
+    s.chartfolders = {"C:/Songs"};
+    s.preview_volume = 75;
+    s.hit_window_ms = 60.5;
+    s.backendlimit_enabled = true;
+    s.auto_open_report = true;
+    s.dm_last_user = "1234";
+    const Settings r = s.with_analysis_defaults();
+    CHECK(settings_changes_summary(r) == "defaults");
+    // Everything a stored result is keyed by, and everything the analysis
+    // reads, matches the defaults', so a keyed setting the reset misses
+    // fails here.
+    const Settings d;
+    CHECK(r.chartmode_key() == d.chartmode_key());
+    CHECK(r.cap_query() == d.cap_query());
+    CHECK(r.lens() == d.lens());
+    const hydra::app::AnalysisSettings ra = r.to_analysis_settings();
+    const hydra::app::AnalysisSettings da = d.to_analysis_settings();
+    CHECK(hydra::settings_key(ra) == hydra::settings_key(da));
+    CHECK(ra.prodrums == da.prodrums);
+    CHECK(ra.bass2x == da.bass2x);
+    CHECK(ra.noteshuffle == da.noteshuffle);
+    CHECK(ra.difficulty == da.difficulty);
+    CHECK(r.chartfolders == s.chartfolders);
+    CHECK(r.preview_volume == 75);
+    CHECK(r.hit_window_ms == 60.5);
+    CHECK(r.backendlimit_enabled);
+    CHECK(r.auto_open_report);
+    CHECK(r.dm_last_user == "1234");
 }
 
 TEST_CASE("config: resource_dir is the resource folder beside the exe") {
