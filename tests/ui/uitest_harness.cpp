@@ -181,10 +181,11 @@ const ImGuiTest* Harness::running_test() const {
 }
 
 bool Harness::init() {
-#ifdef NDEBUG
+#if defined(NDEBUG) && defined(HYDRA_MIMALLOC)
     // This runner links what Hydra.exe links, so a link order that leaves
     // malloc on the Windows heap here does the same to the app (D88). The
-    // Debug runtime is never redirected.
+    // Debug runtime is never redirected, and a build without mimalloc
+    // (HYDRA_MIMALLOC in CMakeLists.txt) has no redirect to check.
     if (!hydra::app::malloc_redirected()) {
         std::fprintf(stderr, "hydra_uitest: malloc is not going to mimalloc; mimalloc.dll "
                              "must come first in the exe's imports (CMakeLists.txt)\n");
