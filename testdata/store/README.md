@@ -77,7 +77,7 @@ Every number below was read from the checked-in file (a copy of it, so nothing w
 
 The v2.1.0 file says `user_version` 0, not 4. That is what the real release writes: commit `87a588d5` ("Store SQL says each thing once"), which is in v2.1.0, stopped setting `user_version` at all, and the file was created fresh by that build. A test that tells schema 4 apart should check for the `rules_fp` column, not `user_version`.
 
-The schema 2 files have no `legacy_fills` column. On upgrade, `RecordStore::upgrade_results_key` fills it from the file's `engine_mode` stamp through `stamped_fill_rule`. So the plain v1.8.4 file's rows should come out 0, and the `--legacy-fills` file's rows should come out 1.
+The schema 2 files have no `legacy_fills` column. On upgrade, `RecordStore::upgrade_results_key` would decide it from the file's `engine_mode` stamp through `stamped_fill_rule`. But today's open keeps none of the v1.8.4 rows: they have a score and no stars, and the copy upgrade leaves such rows out (ADR 0026). So after the open both v1.8.4 files hold 0 results rows, and nothing in them shows which fill rule a row would get.
 
 The `charts` table exists in all four files but holds no rows. `hydra_batch` never fills it; the app's library scan does. So these files cannot pin "the charts rows keep their names". The song names live in `songmeta` instead, which is one of the detail tables the summary-only upgrade drops.
 

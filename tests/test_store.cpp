@@ -1112,46 +1112,6 @@ HydraRecord legacy_at_cap(int cap) {
     return r;
 }
 
-// Turns a file this build wrote back into schema 3: the results table without
-// its rules_fp column and with a key that leaves it out, every row and
-// result_id kept. A schema 3 row's rules fingerprint lived in its structure
-// blob, after the 4-byte path format, so the blob is rebuilt that way.
-void downgrade_to_schema3(const std::string& path) {
-    exec_on_file(path,
-                 ("ALTER TABLE results RENAME TO r4;"
-                 "CREATE TABLE results ("
-                 "  result_id INTEGER PRIMARY KEY, hyhash TEXT NOT NULL,"
-                 "  chartmode TEXT NOT NULL, hyversion TEXT NOT NULL,"
-                 "  sp_cap INTEGER NOT NULL, ms_enabled INTEGER NOT NULL,"
-                 "  ms_value INTEGER NOT NULL, depth_mode INTEGER NOT NULL,"
-                 "  depth_value INTEGER NOT NULL, legacy_fills INTEGER NOT NULL DEFAULT 0,"
-                 "  bestpath TEXT NOT NULL, structure BLOB NOT NULL, score INTEGER,"
-                 "  actcount INTEGER, maxskip INTEGER, hardest_ms REAL, avgmult REAL,"
-                 "  notecount INTEGER, sqin_count INTEGER, sqout_count INTEGER,"
-                 "  pathcount INTEGER, stars INTEGER,"
-                 "  UNIQUE (hyhash, chartmode, sp_cap, ms_enabled, ms_value, depth_mode,"
-                 "          depth_value, legacy_fills));" +
-                     std::string("INSERT INTO results (") + kSchema2ResultsColumns +
-                     ", legacy_fills, structure) SELECT " + kSchema2ResultsColumns +
-                     ", legacy_fills, unhex('07000000' || hex(rules_fp)) FROM r4;"
-                     "DROP TABLE r4;")
-                     .c_str());
-}
-
-// Turns a file this build wrote back into schema 2: schema 3 (above) without
-// its legacy_fills column, every row and result_id kept, user_version 2.
-void downgrade_to_schema2(const std::string& path) {
-    downgrade_to_schema3(path);
-    exec_on_file(path, (std::string("ALTER TABLE results RENAME TO r3;") +
-                        kSchema2ResultsTableSql + ";INSERT INTO results (" +
-                        kSchema2ResultsColumns + ", structure) SELECT " +
-                        kSchema2ResultsColumns +
-                        ", structure FROM r3;"
-                        "DROP TABLE r3;"
-                 "PRAGMA user_version = 2;")
-                           .c_str());
-}
-
 }  // namespace
 
 TEST_CASE("1.0 and 1.1 results for one chart sit side by side") {
@@ -1184,67 +1144,22 @@ TEST_CASE("prepare_row refuses a key that names the other fill rule") {
     CHECK(prepare_row(ch10, legacy_at_cap(4)).lens.legacy_fills == 1);
 }
 
-TEST_CASE("a schema 2 database keeps its results, filed under Clone Hero 1.1") {
-    const std::string path = testtemp::temp_path("schema2", ".db");
-    std::remove(path.c_str());
-    const RecordKey key{"h", "mode", CapQuery::at(4)};
-    int64_t id_before = 0;
-    {
-        RecordStore seed(path);
-        seed.add_record(key, at_cap(4));
-    }
-    id_before = scalar_on_file(path,"SELECT result_id FROM results");
-    downgrade_to_schema2(path);
-    REQUIRE(scalar_on_file(path,"SELECT COUNT(*) FROM pragma_table_info('results')"
-                         " WHERE name='legacy_fills'") == 0);
-    {
-        RecordStore store(path);
-        // Still Ready: its rules come back out of the old blob.
-        CHECK(store.get_summary(key).status == RecordStatus::Ready);
-        CHECK(store.get_summary(RecordKey{"h", "mode", CapQuery::at(4), kLegacy}).status ==
-              RecordStatus::NotAnalyzed);
-    }
-    CHECK(scalar_on_file(path,"SELECT result_id FROM results") == id_before);
-    CHECK(scalar_on_file(path,"SELECT legacy_fills FROM results") == 0);
-    CHECK(structure_columns_in(path) == 0);
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM sqlite_master WHERE name='results_schema2'") == 0);
-    std::remove(path.c_str());
-}
-
-TEST_CASE("a schema 2 database hydra_batch --legacy-fills filled is filed under 1.0") {
-    const std::string path = testtemp::temp_path("schema2_ch10", ".db");
-    std::remove(path.c_str());
-    const RecordKey ch10{"h", "mode", CapQuery::at(4), kLegacy};
-    {
-        RecordStore seed(path);
-        seed.add_record(ch10, legacy_at_cap(4));
-        seed.set_engine_mode(engine_mode_stamp(FillDeadlineRule::Ch10));
-    }
-    downgrade_to_schema2(path);
-    {
-        RecordStore store(path);
-        CHECK(store.get_summary(ch10).status == RecordStatus::Ready);
-        CHECK(store.get_summary(RecordKey{"h", "mode", CapQuery::at(4)}).status ==
-              RecordStatus::NotAnalyzed);
-    }
-    std::remove(path.c_str());
-}
-
 // ---- real old databases (testdata/store, test fidelity plan task 1) --------
 
 namespace {
 
 // One file in testdata/store and what today's open makes of it. The fields
 // before the open are the README's "Facts the tests pin"; the fields after it
-// were pinned from one run on 2026-10-10 at a5935954.
+// were pinned from one run on 2026-10-10 at a5935954 (v2.0.0, v2.1.0) and at
+// d6c48705 (the two v1.8.4 files).
 struct OldDatabase {
     const char* file;
     int64_t user_version;
     bool has_legacy_fills_column;
     bool has_rules_fp_column;
-    // The results rows the first open keeps.
+    // The results rows the first open keeps: all 3, or none.
     int64_t rows_after_open;
-    // The fill rule every kept row is filed under.
+    // The fill rule every kept row is filed under (0 where none is kept).
     int legacy_fills;
     // The steps the first open reported, each once.
     std::vector<OpenStep> steps;
@@ -1311,13 +1226,16 @@ int64_t results_rows_in(const std::string& path) {
 
 }  // namespace
 
-TEST_CASE("a database a real old release wrote opens with every result Stale and no path details") {
+TEST_CASE("a database a real old release wrote opens with no path details, its results Stale or,"
+          " before the stars column, left for a re-run") {
     using S = OpenStep;
-    // The two v1.8.4 files are not here yet: their results table has no
-    // stars column, so today's open keeps none of their rows. Whether that
-    // is the answer to pin is an open question (tf-t1b report); until then
-    // the synthetic schema 2 cases above stay.
     const std::vector<OldDatabase> fixtures = {
+        // v1.8.4 had no stars column, so the copy keeps none of its rows
+        // (docs/adr/0026-the-store-keeps-summaries-the-engine-gives-details.md).
+        {"v1.8.4-schema2.db", 2, false, false, 0, 0,
+         {S::Opening, S::UpdatingResultsKey, S::Copying, S::Finishing}},
+        {"v1.8.4-schema2-legacy-fills.db", 2, false, false, 0, 0,
+         {S::Opening, S::UpdatingResultsKey, S::Copying, S::Finishing}},
         {"v2.0.0-schema3.db", 3, true, false, 3, 0,
          {S::Opening, S::UpdatingResultsKey, S::Copying, S::Finishing}},
         // v2.1.0 stopped setting user_version (README "Schema and stamps"),
@@ -1340,22 +1258,32 @@ TEST_CASE("a database a real old release wrote opens with every result Stale and
         CHECK(results_columns_named(path, "rules_fp") == (f.has_rules_fp_column ? 1 : 0));
         REQUIRE(chart_pairs_on_file(path) == old_database_pairs());
 
+        const bool kept = f.rows_after_open > 0;
+        const ChartPairs pairs_after = kept ? old_database_pairs() : ChartPairs{};
         ProgressLog log;
         {
             RecordStore store(path, core::default_stamp(), log.fn());
             CHECK(store.counts().second == f.rows_after_open);
-            // Each was written by an older build, so the store's own status
-            // call reads it Stale, never Ready.
             for (const char* h : kOldDatabaseHashes) {
                 INFO(std::string(h));
-                const SummaryLookup got = store.get_summary(old_database_key(h, f.legacy_fills));
-                CHECK(got.status == RecordStatus::Stale);
-                CHECK(got.stale_build);
+                if (kept) {
+                    // Each was written by an older build, so the store's own
+                    // status call reads it Stale, never Ready.
+                    const SummaryLookup got =
+                        store.get_summary(old_database_key(h, f.legacy_fills));
+                    CHECK(got.status == RecordStatus::Stale);
+                    CHECK(got.stale_build);
+                } else {
+                    // No row is left under either fill rule.
+                    for (int legacy_fills : {0, 1})
+                        CHECK(store.get_summary(old_database_key(h, legacy_fills)).status ==
+                              RecordStatus::NotAnalyzed);
+                }
             }
         }
         CHECK(log.steps() == f.steps);
         CHECK(results_rows_in(path) == f.rows_after_open);
-        CHECK(chart_pairs_on_file(path) == old_database_pairs());
+        CHECK(chart_pairs_on_file(path) == pairs_after);
         CHECK(scalar_on_file(path, std::string("SELECT COUNT(*) FROM results WHERE lower(hex(rules_fp))"
                                                " <> '") +
                                        kOldDatabaseRulesFpHex + "'") == 0);
@@ -1363,7 +1291,7 @@ TEST_CASE("a database a real old release wrote opens with every result Stale and
                                        std::to_string(f.legacy_fills)) == 0);
         check_upgraded_files(path);
 
-        // A second open finds nothing to upgrade and keeps every row.
+        // A second open finds nothing to upgrade and keeps what the first kept.
         ProgressLog again;
         {
             RecordStore store(path, core::default_stamp(), again.fn());
@@ -1371,7 +1299,7 @@ TEST_CASE("a database a real old release wrote opens with every result Stale and
         }
         CHECK(again.steps() == std::vector<OpenStep>{S::Opening});
         CHECK(results_rows_in(path) == f.rows_after_open);
-        CHECK(chart_pairs_on_file(path) == old_database_pairs());
+        CHECK(chart_pairs_on_file(path) == pairs_after);
         remove_db(path);
     }
 }
