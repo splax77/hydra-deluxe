@@ -140,6 +140,28 @@ TEST_CASE("srb: a truncated file reads as an unreadable chart") {
     }
 }
 
+// The fuzzer's testdata/fuzz/srb/endless-zeros.srb. Its notes stream's
+// Huffman table leaves codes unassigned, and miniz decodes an unassigned code
+// as the literal 0 while reading no bits, so the stream makes zero bytes
+// without end. It used to run to the 1 GB cap (kSrbMaxStream) before failing,
+// seconds in a release build and past 30 s in the fuzz build. Deflate makes
+// at most 1032 bytes per compressed byte, so the inflater now calls it
+// corrupt as soon as the output passes that.
+TEST_CASE("srb: a stream that makes bytes from no input is corrupt, not inflated to the cap") {
+    const std::vector<uint8_t> file = {0x00, 0x00, 0xBD, 0xBD, 0xBD, 0xBD, 0xBD, 0xBD, 0x01,
+                                       0x1F, 0x00, 0x3F, 0x6E, 0x71, 0x73, 0x73, 0x73, 0x73,
+                                       0x21, 0x9B, 0x00, 0x00, 0xF4, 0x00, 0x00, 0x00, 0x00,
+                                       0x01, 0x08, 0x01, 0x00, 0x00, 0x0A};
+    CHECK_THROWS_WITH(load_songbytes_srb(file, true, true), "SRB stream is corrupt.");
+    try {
+        load_songbytes_srb(file, true, true);
+    } catch (const std::exception& e) {
+        CHECK(app::plain_error(e) ==
+              "Hydra couldn't read this chart file. It may be damaged or in a format Hydra "
+              "doesn't support; try downloading the song again.");
+    }
+}
+
 // Finding 61; D27.
 TEST_CASE("srb: the notes entry is found by its exact name, never by its extension") {
     using namespace testmidi;

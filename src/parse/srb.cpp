@@ -18,6 +18,13 @@ namespace {
 // or a size of 0 once the file has ended.
 using NextInput = std::function<std::pair<const uint8_t*, size_t>()>;
 
+// The most deflate output one compressed byte can make: a 258-byte match
+// takes at least 2 bits (a 1-bit length code and a 1-bit distance code), so
+// 4 matches per byte. Output past this many bytes per byte read means the
+// decoder is making bytes from no input. miniz does that for a Huffman table
+// with unassigned codes: it reads such a code as the literal 0 in 0 bits.
+constexpr uint64_t kMaxBytesPerInputByte = 4 * 258;
+
 // The one inflate loop: both entry points feed it, the whole buffer at once
 // or the file in growing reads. Returns the decompressed bytes and sets
 // `consumed` to the stream's compressed length.
@@ -59,6 +66,10 @@ std::vector<uint8_t> inflate_raw(const NextInput& next_input, size_t max_out,
             throw KindedError(ErrorKind::ChartUnreadable, "SRB stream is corrupt.");
         }
         out.insert(out.end(), chunk, chunk + (sizeof(chunk) - s.avail_out));
+        if (out.size() > uint64_t{s.total_in} * kMaxBytesPerInputByte) {
+            mz_inflateEnd(&s);
+            throw KindedError(ErrorKind::ChartUnreadable, "SRB stream is corrupt.");
+        }
         if (out.size() > max_out) {
             mz_inflateEnd(&s);
             throw KindedError(ErrorKind::ChartUnreadable, "SRB stream exceeds size limit.");

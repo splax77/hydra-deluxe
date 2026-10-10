@@ -201,6 +201,12 @@ Every read has a size cap. The song info may inflate to at most 1 MB. Any
 other stream may inflate to at most 1 GB. Real charts are far smaller; the caps
 only exist to stop a hostile file from filling memory.
 
+A stream also may not make more than 1,032 bytes for each compressed byte
+read. That is the most real deflate data can make: a 258-byte repeat in 2
+bits. A damaged table of codes can make the decompression library (miniz)
+produce zero bytes without reading anything, and this rule stops it at once
+instead of at the 1 GB cap.
+
 A damaged, cut-off or oversized stream raises an error inside the reader. The
 player sees the standard message: "Hydra couldn't read this chart file. It may
 be damaged or in a format Hydra doesn't support; try downloading the song
