@@ -1015,9 +1015,10 @@
       ],
       "scope": [
         ".github/workflows/fuzz.yml",
-        ".github/workflows/ci.yml"
+        ".github/workflows/ci.yml",
+        "tools/fuzz_seeds.ps1"
       ],
-      "note": "A workflow line that lists the targets itself: all six names on one line, in any order. The fuzz job's matrix comes from the seeds job's folder list instead. The walk reads no .yml file, so the case that checks the single files outside it reads these. A .ps1 under tools/ is not in scope: no scan case reads one."
+      "note": "A workflow or script line that lists the targets itself: all six names on one line, in any order. The fuzz job's matrix comes from the seeds job's folder list instead. The walk reads none of these files, so the case that checks the single files outside it reads them."
     },
     {
       "question": "Which codelex language reads a file with this extension?",
@@ -1027,12 +1028,13 @@
       "date": "2026-10-10",
       "decision": "D107",
       "added_by": "so-t1-review",
-      "pattern": "\\b(ext\\w*|extension\\(\\)(\\.\\w+\\(\\))?)\\s*==\\s*\"\\.(py|ps1|psm1|hlsl)\"",
+      "pattern": "\\b(ext\\w*|extension\\(\\)(\\.\\w+\\(\\))?)\\s*==\\s*\"\\.(py|ps1|psm1|hlsl|yml|yaml)\"",
       "anchor": "\".",
       "must_match": [
         "if (ext == \".py\") return codelex::Lang::Python;",
         "const bool py = path.extension() == \".py\";",
-        "else if (ext == \".ps1\")"
+        "else if (ext == \".ps1\")",
+        "if (path.extension() == \".yml\") lang = codelex::Lang::Yaml;"
       ],
       "must_not_match": [
         "return codelex::language_of_extension(path.extension().string());",
@@ -1052,6 +1054,11 @@
         {
           "file": "tests/code_lexer.h",
           "line_text": "if (ext == \".ps1\" || ext == \".psm1\") return Lang::PowerShell;",
+          "why": "language_of_extension, the owner"
+        },
+        {
+          "file": "tests/code_lexer.h",
+          "line_text": "if (ext == \".yml\" || ext == \".yaml\") return Lang::Yaml;",
           "why": "language_of_extension, the owner"
         }
       ],
