@@ -1,16 +1,30 @@
+// Checks for two test helpers that other test files lean on.
+//
 // tests/corpus_util.h caches corpus parses and analyses for the whole run.
-// These checks pin what the corpus loops rely on: one answer per chart and
+// Its checks pin what the corpus loops rely on: one answer per chart and
 // settings, the same answer a direct call gives, and a failure that repeats
 // instead of turning into a silent empty result.
+//
+// tests/temp_util.h builds every test's per-process scratch path. Its check
+// pins that the names it hands back sit where the helper says they do.
 
 #include "doctest.h"
 
+#include <filesystem>
 #include <string>
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+
 #include "core/model.h"
+#include "core/strutil.h"
+#include "core/winstr.h"
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "search/pather.h"
+#include "temp_util.h"
 
 using namespace hydra;
 
@@ -57,4 +71,33 @@ TEST_CASE("corpus cache: a failure is thrown again on every call") {
                          "No Hard Pro Drums notes in this chart.", NoNotesError);
     CHECK_THROWS_WITH_AS(corpus::analyzed(no_hard, hard),
                          "No Hard Pro Drums notes in this chart.", NoNotesError);
+}
+
+// tests/temp_util.h owns every test's per-process scratch name (audit finding
+// 287). The temp folder is read from Windows once here, as the input; the rest
+// is the helper's own output.
+TEST_CASE("temp_util: the scratch path is the temp folder, the tag and this process") {
+    wchar_t tmp[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp);
+    const std::string temp = hydra::wide_to_utf8(tmp);
+    const std::string pid = std::to_string(GetCurrentProcessId());
+
+    const std::string file = testtemp::temp_path("probe", ".db");
+    CHECK(hydra::starts_with(file, temp));
+    CHECK(file.find("hydra_test_probe_") != std::string::npos);
+    CHECK(hydra::ends_with_ci(file, "_" + pid + ".db"));
+
+    const std::string dir = testtemp::temp_dir("probe");
+    CHECK(hydra::is_directory_utf8(dir));
+    CHECK(hydra::starts_with(dir, temp));
+    CHECK(hydra::ends_with_ci(dir, "_" + pid));
+
+    // A non-ASCII tag ("Zoë" as UTF-8) names a folder that exists.
+    const std::string zoe = testtemp::temp_dir("Zo\xC3\xAB");
+    CHECK(hydra::is_directory_utf8(zoe));
+    CHECK(zoe.find("Zo\xC3\xAB") != std::string::npos);
+
+    std::error_code ec;
+    std::filesystem::remove_all(hydra::os_path(dir), ec);
+    std::filesystem::remove_all(hydra::os_path(zoe), ec);
 }

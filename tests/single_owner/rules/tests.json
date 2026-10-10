@@ -791,7 +791,7 @@
           "why": "temp_path, the owner"
         },
         {
-          "file": "tests/test_winstr.cpp",
+          "file": "tests/test_helpers.cpp",
           "line_text": "GetTempPathW(MAX_PATH, tmp);",
           "why": "the temp_util case reads the temp folder once, the input its pins start from"
         }
@@ -799,7 +799,7 @@
       "scope": [
         "tests"
       ],
-      "note": "Production's own temp folder for the shell (copy_to_short_temp in src/app/report_files.cpp) answers a different question (audit R7.12), so only tests/ is scanned. The temp_util case in test_winstr.cpp reads the temp folder once as its input. Decided by: audit finding 287; phase 6 tasks J4-6 and J4-7 (D53, D54)"
+      "note": "Production's own temp folder for the shell (copy_to_short_temp in src/app/report_files.cpp) answers a different question (audit R7.12), so only tests/ is scanned. The temp_util case in test_helpers.cpp reads the temp folder once as its input. Decided by: audit finding 287; phase 6 tasks J4-6 and J4-7 (D53, D54)"
     },
     {
       "question": "Are two engine results the same answer? (tests)",
@@ -984,12 +984,38 @@
       ],
       "must_not_match": [
         "run: .\\build-cpp\\Release\\hydra_uitest.exe --all",
-        "run: .\\build-asan\\Release\\hydra_uitest.exe --all"
+        "run: .\\build-asan\\Release\\hydra_uitest.exe --all",
+        "run: .\\build-coverage\\Release\\hydra_uitest.exe --all"
       ],
       "scope": [
         ".github/workflows/ci.yml"
       ],
       "note": "A CI step that gives the GUI runner its own --jobs count. The count is kDefaultJobs's, so a step runs plain --all. The walk reads no .yml file, so the case that checks the single files outside it reads ci.yml (the way it reads installer/hydra.iss). Decided by: CI and test tooling plan, decision 3 (2026-10-10); derive-once review of ct-t4"
+    },
+    {
+      "question": "Which fuzz targets exist?",
+      "owner": "kTargets in tests/fuzz/harness.h",
+      "owner_file": "tests/fuzz/harness.h",
+      "owner_symbol": "kTargets",
+      "date": "2026-10-10",
+      "decision": "derive-once review of ct-t6b (2026-10-10)",
+      "added_by": "ct-w3a-join",
+      "pattern": "^(?=.*\\bchart\\b)(?=.*\\bmid\\b)(?=.*\\bsng\\b)(?=.*\\bsrb\\b)(?=.*\\baudio\\b)(?=.*\\bimage\\b)",
+      "anchor": "srb",
+      "must_match": [
+        "target: [chart, mid, sng, srb, audio, image]",
+        "foreach ($t in 'chart', 'mid', 'sng', 'srb', 'audio', 'image') {"
+      ],
+      "must_not_match": [
+        "target: ${{ fromJson(needs.seeds.outputs.targets) }}",
+        "if ('${{ matrix.target }}' -eq 'chart') { $extra += '-dict=tests/fuzz/chart.dict' }",
+        "target: [chart, mid, sng, srb]"
+      ],
+      "scope": [
+        ".github/workflows/fuzz.yml",
+        ".github/workflows/ci.yml"
+      ],
+      "note": "A workflow line that lists the targets itself: all six names on one line, in any order. The fuzz job's matrix comes from the seeds job's folder list instead. The walk reads no .yml file, so the case that checks the single files outside it reads these. A .ps1 under tools/ is not in scope: no scan case reads one."
     },
     {
       "question": "Which codelex language reads a file with this extension?",
@@ -1031,6 +1057,38 @@
         "tests"
       ],
       "note": "The scan's own folder (tests/single_owner/) is outside the walk, so scan.cpp calls the owner without this row checking it. Added by the derive-once review of so-t1, which folded three copies of the mapping (scan.cpp twice, test_docs_match_code.cpp once)."
+    },
+    {
+      "question": "How many rows does a test database's results table hold?",
+      "owner": "kResultsRowCountSql in tests/db_file_sql.h, read by results_rows_in in tests/db_file_util.h",
+      "owner_file": "tests/db_file_sql.h",
+      "owner_symbol": "kResultsRowCountSql",
+      "date": "2026-10-10",
+      "decision": "test fidelity leftovers, item 2 (the user, 2026-10-10)",
+      "added_by": "tf-leftovers",
+      "pattern": "\"SELECT COUNT\\(\\*\\) FROM results\"",
+      "anchor": "SELECT COUNT(*) FROM results\"",
+      "must_match": [
+        "return scalar_on_file(path, \"SELECT COUNT(*) FROM results\");",
+        "CHECK(hydra::test::scalar_on_file(paths.db, \"SELECT COUNT(*) FROM results\") == 0);",
+        "IM_CHECK_EQ(number_in_file(h.db_path, \"SELECT COUNT(*) FROM results\"), int64_t{2});"
+      ],
+      "must_not_match": [
+        "CHECK(results_rows_in(path) == kSeedResults);",
+        "return scalar_on_file(path, \"SELECT COUNT(*) FROM results WHERE hyhash = '\" + hash + \"'\");",
+        "IM_CHECK_EQ(number_in_file(h.db_path, hydra::test::kResultsRowCountSql), int64_t{2});"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/db_file_sql.h",
+          "line_text": "inline constexpr const char* kResultsRowCountSql = \"SELECT COUNT(*) FROM results\";",
+          "why": "kResultsRowCountSql, the owner"
+        }
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "The constant lives in db_file_sql.h, which has no doctest in it, so the GUI scripts read the same text as the doctest suite. A count with a WHERE clause asks something else, so the pattern needs the closing quote right after the table name."
     }
   ]
 }
