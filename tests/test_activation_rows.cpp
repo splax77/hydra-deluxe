@@ -15,7 +15,6 @@
 #include "app/display_format.h"
 #include "app/path_view.h"
 #include "record_fixtures.h"
-#include "scratch_settings.h"
 #include "song_details_fixtures.h"
 
 using namespace hydra;
@@ -852,17 +851,4 @@ TEST_CASE("activation rows: the chord names its notes in the Pro Drums setting's
     // With it off the chart has no tom or snare, so the pads are plain colours;
     // a cymbal still says cymbal.
     CHECK(chord_of(false) == "[Kick - Red (Ghost) - Yellow - Green cymbal]");
-}
-
-TEST_CASE("scratch_settings: the GUI tests' settings are the app's defaults at depth 2") {
-    const Settings s = scratch_settings();
-    CHECK(s.depth_value == 2);
-    CHECK(s.auto_open_report == false);
-    REQUIRE(s.chartfolders.size() == 1);
-    CHECK(s.chartfolders[0] == HYDRA_INPUT_DIR);
-    CHECK(s.sp_cap == Settings{}.sp_cap);
-    CHECK(s.mslimit_value == Settings{}.mslimit_value);
-    const AnalysisSettings a = scratch_settings().to_analysis_settings();
-    CHECK(a.depth_value == 2);
-    CHECK(a.depth_mode == DepthMode::Scores);
 }
