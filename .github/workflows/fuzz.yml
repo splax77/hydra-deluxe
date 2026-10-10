@@ -1,7 +1,7 @@
-# Fuzzing: once a week, each file parser gets ten minutes of random input from
-# libFuzzer, built with AddressSanitizer. A crash, a hang or a memory error
-# fails that target's job and uploads the input that caused it. See "Fuzzing
-# the file parsers" in docs/development.md.
+# Fuzzing: once a week, each file parser gets a time-boxed run of random input
+# from libFuzzer, built with AddressSanitizer. A crash, a hang or a memory
+# error fails that target's job and uploads the input that caused it. See
+# "Fuzzing the file parsers" in docs/development.md.
 
 name: Fuzz
 
@@ -14,12 +14,16 @@ permissions:
   contents: read
 
 jobs:
-  # The seed folders, written once and shared by every target. The .sng and
-  # .srb seeds come from the test fixtures, so this job needs hydra_tests.
+  # The seed folders, written once and shared by every target. hydra_tests
+  # writes them (tools/fuzz_seeds.ps1), one folder per target in kTargets
+  # (tests/fuzz/harness.h), and the fuzz job below takes its matrix from those
+  # folder names, so the target list lives in kTargets alone.
   seeds:
     name: Fuzz seeds
     runs-on: windows-2025
     timeout-minutes: 60
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
     defaults:
       run:
         shell: pwsh
@@ -32,6 +36,12 @@ jobs:
 
       - name: Write the seed folders
         run: .\tools\fuzz_seeds.ps1 -OutDir seeds -TestsExe build-cpp\Release\hydra_tests.exe
+
+      - name: List the targets
+        id: targets
+        run: |
+          $names = @(Get-ChildItem seeds -Directory | ForEach-Object Name)
+          Add-Content -Path $env:GITHUB_OUTPUT -Value ('targets=' + (ConvertTo-Json -Compress -InputObject $names))
 
       - name: Keep the seeds for the fuzz jobs
         uses: actions/upload-artifact@v4
@@ -48,8 +58,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The targets in tests/fuzz/harness.h (kTargets), one exe each.
-        target: [chart, mid, sng, srb, audio, image]
+        # One exe per target (kTargets, tests/fuzz/harness.h), named by the
+        # seeds job from the seed folders.
+        target: ${{ fromJson(needs.seeds.outputs.targets) }}
     defaults:
       run:
         shell: pwsh
@@ -86,7 +97,7 @@ jobs:
       # libFuzzer adds new inputs to the first folder (corpus) and only reads
       # the seeds. Its exit code is nonzero on a crash, a hang past -timeout
       # or a memory blowup past -rss_limit_mb, which fails the job.
-      - name: Fuzz for ten minutes
+      - name: Fuzz ${{ matrix.target }}
         run: |
           New-Item -ItemType Directory -Force corpus, crashes | Out-Null
           $extra = @()
