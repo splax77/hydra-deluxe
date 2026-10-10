@@ -144,9 +144,9 @@ TEST_CASE("srb: a truncated file reads as an unreadable chart") {
 // Huffman table leaves codes unassigned, and miniz decodes an unassigned code
 // as the literal 0 while reading no bits, so the stream makes zero bytes
 // without end. It used to run to the 1 GB cap (kSrbMaxStream) before failing,
-// seconds in a release build and past 30 s in the fuzz build. Deflate makes
-// at most 1032 bytes per compressed byte, so the inflater now calls it
-// corrupt as soon as the output passes that.
+// seconds in a release build and past 30 s in the fuzz build. The inflater now
+// calls it corrupt as soon as the output passes what the bytes read could
+// make (kMaxBytesPerInputByte in parse/srb.cpp owns that limit).
 TEST_CASE("srb: a stream that makes bytes from no input is corrupt, not inflated to the cap") {
     const std::vector<uint8_t> file = {0x00, 0x00, 0xBD, 0xBD, 0xBD, 0xBD, 0xBD, 0xBD, 0x01,
                                        0x1F, 0x00, 0x3F, 0x6E, 0x71, 0x73, 0x73, 0x73, 0x73,
