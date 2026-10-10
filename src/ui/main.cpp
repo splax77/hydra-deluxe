@@ -128,22 +128,11 @@ static hydra::ui::FrameInsets report_frame_insets(unsigned dpi)
 }
 
 // Keeps the remembered placement current as the user moves, resizes,
-// maximizes and restores the window. The un-maximized rectangle is read only
-// while the window is neither maximized nor minimized, so a Hydra closed
-// while maximized still restores to the size it had before.
+// maximizes and restores the window (observed_placement says what it keeps).
 static void note_window_placement(HWND hWnd)
 {
-    if (::IsIconic(hWnd))
-        return;
-    hydra::ui::WindowPlacement p = hydra::ui::window_placement();
-    p.maximized = ::IsZoomed(hWnd) != FALSE;
-    RECT r;
-    if (!p.maximized && ::GetWindowRect(hWnd, &r))
-    {
-        p.normal = { r.left, r.top, r.right, r.bottom };
-        p.valid = true;
-    }
-    hydra::ui::remember_window_placement(p);
+    hydra::ui::remember_window_placement(hydra::ui::observed_placement(
+        hWnd, hydra::ui::window_placement(), hydra::ui::WindowRect::Outer));
 }
 
 // True when an OS window ImGui made beside the main one (a report window, or

@@ -91,6 +91,16 @@ WindowPlacement window_placement();
 // settings: a few seconds later, and again when ImGui shuts down.
 void remember_window_placement(const WindowPlacement& p);
 
+// Which rectangle of an OS window a WindowPlacement's `normal` holds.
+enum class WindowRect { Outer, Client };
+
+// What `last` becomes when `hwnd` (an HWND) is looked at now: maximized is
+// read from the window, and its rectangle only while it is neither maximized
+// nor minimized, so the un-maximized one survives a maximize. A minimized or
+// missing window leaves `last` as it was. The one place that asks Windows
+// whether a Hydra window is maximized or where it sits.
+WindowPlacement observed_placement(void* hwnd, const WindowPlacement& last, WindowRect which);
+
 // ---- The library/song-panel split, kept in hydra_ui.ini ---------------
 
 // The library's share of the main window's width while the song panel is

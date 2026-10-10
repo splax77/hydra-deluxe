@@ -209,6 +209,32 @@ void remember_window_placement(const WindowPlacement& p) {
     mark_ini_dirty();
 }
 
+WindowPlacement observed_placement(void* handle, const WindowPlacement& last, WindowRect which) {
+    const HWND hwnd = static_cast<HWND>(handle);
+    if (!hwnd || ::IsIconic(hwnd)) return last;
+    WindowPlacement p = last;
+    p.maximized = ::IsZoomed(hwnd) != FALSE;
+    if (p.maximized) return p;
+
+    RECT r;
+    bool read = false;
+    if (which == WindowRect::Outer) {
+        read = ::GetWindowRect(hwnd, &r) != FALSE;
+    } else {
+        // The client area in screen pixels. Not GetWindowPlacement, whose
+        // rectangle is the outer window in workspace coordinates.
+        RECT client;
+        POINT origin{0, 0};
+        read = ::GetClientRect(hwnd, &client) && ::ClientToScreen(hwnd, &origin);
+        r = {origin.x, origin.y, origin.x + client.right, origin.y + client.bottom};
+    }
+    if (read) {
+        p.normal = {r.left, r.top, r.right, r.bottom};
+        p.valid = true;
+    }
+    return p;
+}
+
 std::string report_placement_key(std::string_view window_name) {
     const size_t id = window_name.find("###");
     return std::string(id == std::string_view::npos ? window_name : window_name.substr(id + 3));
@@ -495,24 +521,15 @@ std::optional<ScreenRect> saved_rect(const char* name, std::string_view key) {
 
 // Every frame an open report's OS window exists: note whether it is
 // maximized and, while it is neither maximized nor minimized, its client
-// rectangle in screen pixels (the one Windows restores it to), then carry out
-// a maximize that waited for the window. The client rectangle is read
-// directly, not through GetWindowPlacement, whose rcNormalPosition is the
-// outer window in workspace coordinates and would need converting back.
+// rectangle (observed_placement), then carry out a maximize that waited for
+// the window.
 void follow_report_os_window(const std::string& key, const ImGuiWindow& w) {
     if (!w.ViewportOwned || !w.Viewport) return;
     const HWND hwnd = static_cast<HWND>(w.Viewport->PlatformHandleRaw);
     if (!hwnd || ::IsIconic(hwnd)) return;  // no OS window (yet, or in the test runner)
 
-    WindowPlacement p = report_window_placement(key);
-    p.maximized = ::IsZoomed(hwnd) != FALSE;
-    RECT client;
-    POINT origin{0, 0};
-    if (!p.maximized && ::GetClientRect(hwnd, &client) && ::ClientToScreen(hwnd, &origin)) {
-        p.normal = {origin.x, origin.y, origin.x + client.right, origin.y + client.bottom};
-        p.valid = true;
-    }
-    remember_report_placement(key, p);
+    remember_report_placement(
+        key, observed_placement(hwnd, report_window_placement(key), WindowRect::Client));
 
     if (g_maximize_pending.erase(key) > 0) ::ShowWindow(hwnd, SW_MAXIMIZE);
 }
