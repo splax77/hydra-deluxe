@@ -572,6 +572,7 @@ add_executable(hydra_tests
     tests/test_search.cpp
     tests/test_fast_tempo.cpp
     tests/test_replay.cpp
+    tests/test_replay_windows.cpp
     tests/test_store.cpp
     tests/test_upgrade_files.cpp
     tests/test_analysis.cpp
