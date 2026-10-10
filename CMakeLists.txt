@@ -527,7 +527,7 @@ add_executable(hydra_tests
     tests/test_single_owner.cpp
     tests/test_docs_match_code.cpp
     tests/test_difficulty_table.cpp
-    tests/test_s2_disco.cpp
+    tests/test_disco_flip.cpp
     tests/test_s2_kick2x.cpp
     tests/test_s2_phrase_end.cpp
     tests/test_s2_fill_landing.cpp
