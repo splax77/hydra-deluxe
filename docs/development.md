@@ -425,7 +425,9 @@ Start it by hand from the Actions tab after a change to memory-heavy code.
 
 On pushes to `main` only, a `coverage` job builds the tests with the `coverage`
 preset and writes the coverage report (see "The coverage report" above). It
-never fails a run over a low number.
+never fails a run over a low number. The job is switched off for now: its
+first run hung while starting the coverage collector, and it stays off until
+that step is fixed and proven.
 
 Another job runs the tool tests above with no C++ build. It
 checks out the whole history, because the precheck self-test checks two real
