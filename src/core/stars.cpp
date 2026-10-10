@@ -32,9 +32,9 @@ int stars_for_score(const StarCutoffs& cutoffs, int64_t score_without_solo) {
     return stars;
 }
 
-int64_t score_without_solo(const Path& path) { return path.totalscore() - path.score_solo; }
-
 int64_t score_without_solo(const ReplayScore& score) { return score.total() - score.solo; }
+
+int64_t score_without_solo(const Path& path) { return score_without_solo(score_of(path)); }
 
 int path_stars(const Path& path) {
     return stars_for_score(star_cutoffs(path), score_without_solo(path));

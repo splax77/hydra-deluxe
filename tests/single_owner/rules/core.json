@@ -1588,13 +1588,8 @@
       "owner_lines": [
         {
           "file": "src/core/stars.cpp",
-          "line_text": "int64_t score_without_solo(const Path& path) { return path.totalscore() - path.score_solo; }",
-          "why": "score_without_solo, the owner"
-        },
-        {
-          "file": "src/core/stars.cpp",
           "line_text": "int64_t score_without_solo(const ReplayScore& score) { return score.total() - score.solo; }",
-          "why": "score_without_solo for a replay's running score, the owner's second overload"
+          "why": "score_without_solo, the owner; the Path overload reads a Path through score_of into this"
         }
       ],
       "scope": [
