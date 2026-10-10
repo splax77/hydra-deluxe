@@ -553,6 +553,7 @@ add_executable(hydra_tests
     tests/test_sng.cpp
     tests/test_srb.cpp
     tests/test_fuzz_regressions.cpp
+    tests/test_engine_sweeps.cpp
     tests/test_sp_end.cpp
     tests/test_fast_tempo.cpp
     tests/test_replay.cpp

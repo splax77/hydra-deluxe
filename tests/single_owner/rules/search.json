@@ -82,7 +82,7 @@
           "why": "search_target, the owner"
         },
         {
-          "file": "tests/test_sp_end.cpp",
+          "file": "tests/test_engine_sweeps.cpp",
           "line_text": "pinned.target_act_ticks = ticks;",
           "why": "tests EngineOptions' plumbing, not search_target's filter"
         },
