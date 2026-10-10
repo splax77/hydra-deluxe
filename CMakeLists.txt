@@ -191,7 +191,7 @@ target_include_directories(sqlite3 PUBLIC third_party/sqlite)
 target_compile_options(sqlite3 PRIVATE /W1)
 # Two options from SQLite's compile-time list that trim its own CPU: no
 # memory-use counters (Hydra never reads them) and no shared cache (Hydra
-# opens its own connections). tests/test_store.cpp checks both are built in.
+# opens its own connections). tests/test_store_open.cpp checks both are built in.
 # The WAL sync default is left alone: record_store.cpp sets it on every open.
 target_compile_definitions(sqlite3 PRIVATE SQLITE_DEFAULT_MEMSTATUS=0 SQLITE_OMIT_SHARED_CACHE)
 
@@ -577,7 +577,9 @@ add_executable(hydra_tests
     tests/test_search_target.cpp
     tests/test_replay.cpp
     tests/test_replay_windows.cpp
-    tests/test_store.cpp
+    tests/test_store_results.cpp
+    tests/test_store_open.cpp
+    tests/test_store_library.cpp
     tests/test_upgrade_files.cpp
     tests/test_analysis.cpp
     tests/test_report_rows.cpp
