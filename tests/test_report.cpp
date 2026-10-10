@@ -116,8 +116,8 @@ report::ReportOptions fixture_options(int cap, bool legacy_fills = false) {
     return options;
 }
 
-store::ChartLibraryEntry library_entry(const std::string& md5, const std::string& title,
-                                       const std::string& notespath) {
+store::ChartLibraryEntry library_entry_for_file(const std::string& md5, const std::string& title,
+                                                const std::string& notespath) {
     store::ChartLibraryEntry e;
     e.md5 = md5;
     e.title = title;
@@ -142,7 +142,7 @@ std::vector<std::string> fill_store(store::RecordStore& store,
         const std::string hyhash = "h" + std::to_string(files.size());
         const std::string title = "Title " + std::to_string(files.size());
         store.add_record(fixture_settings(cap).record_key(hyhash), c.result.record);
-        library.push_back(library_entry(hyhash, title, c.chart));
+        library.push_back(library_entry_for_file(hyhash, title, c.chart));
         files.push_back(c.chart);
     }
     store.rebuild_chart_library(library);
@@ -220,7 +220,7 @@ void store_tied(store::RecordStore& store, std::vector<store::ChartLibraryEntry>
     store::RecordKey key = fixture_settings(cap, legacy_fills).record_key(hyhash);
     if (chartmode) key.chartmode = *chartmode;
     store.add_record(key, record);
-    library.push_back(library_entry(hyhash, "Tied " + hyhash, kTiedFile));
+    library.push_back(library_entry_for_file(hyhash, "Tied " + hyhash, kTiedFile));
     store.rebuild_chart_library(library);
 }
 
@@ -460,7 +460,7 @@ TEST_CASE("generate_report reports a 1.0-fills database under the 1.0 rule") {
         corpus::charts_with_paths(legacy.batch_run().settings, 1);
     REQUIRE(charts.size() == 1);
     store.add_record(legacy.record_key("h0"), charts[0].result.record);
-    store.rebuild_chart_library({library_entry("h0", "Title 0", charts[0].chart)});
+    store.rebuild_chart_library({library_entry_for_file("h0", "Title 0", charts[0].chart)});
     store.set_engine_mode(engine_mode_stamp(FillDeadlineRule::Ch10));
 
     const report::GeneratedReport ch10 =
@@ -892,7 +892,7 @@ TEST_CASE("records_by_hash keys every listed record by its lower-case hash") {
     AnalysisSettings settings;
     settings.depth_value = 0;
     const AnalysisResult result = corpus::first_analyzed_with_paths(settings);
-    store.rebuild_chart_library({library_entry("ABCDEF0123", "Title", "C:\\songs\\t.chart")});
+    store.rebuild_chart_library({library_entry_for_file("ABCDEF0123", "Title", "C:\\songs\\t.chart")});
     store.add_record(store::RecordKey{"ABCDEF0123", "mode", store::CapQuery::at(4)},
                      result.record);
 

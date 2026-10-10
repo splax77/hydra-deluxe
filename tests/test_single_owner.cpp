@@ -6610,7 +6610,6 @@ struct KnownClone {
 // later fix; removing one means removing its entry here.
 const std::vector<KnownClone>& known_clones() {
     static const std::vector<KnownClone> k = {
-        {"tests/test_app_state.cpp", "tests/test_song_panel_state.cpp", 11, R"x(char hash[32];)x"},
         {"tests/test_search.cpp", "tests/test_search.cpp", 10, R"x(Song song = build_tail_song({{0, true, false},)x"},
         {"tests/test_search.cpp", "tests/test_search.cpp", 9, R"x({768, true, false},)x"},
     };
