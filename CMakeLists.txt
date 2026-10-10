@@ -66,11 +66,10 @@ add_compile_options($<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:C,CXX>>:/Zi>)
 # /DEBUG turns off /OPT:REF and /OPT:ICF unless they are named, so they are
 # named to keep the exes as lean as before. /PDBALTPATH stores only the .pdb's
 # file name in the exe, not the build folder's path, which the installer's
-# "no repo path" check would refuse.
+# "no repo path" check would refuse. It is set below, after HYDRA_ASAN.
 add_link_options($<$<CONFIG:Release>:/DEBUG>
                  $<$<CONFIG:Release>:/OPT:REF>
-                 $<$<CONFIG:Release>:/OPT:ICF>
-                 $<$<CONFIG:Release>:/PDBALTPATH:%_PDB%>)
+                 $<$<CONFIG:Release>:/OPT:ICF>)
 
 # The AddressSanitizer build: a test-only build that catches memory bugs (an
 # overrun, a use after free) where they happen, in build-asan\ via the asan
@@ -95,6 +94,11 @@ if(HYDRA_ASAN)
     foreach(lang C CXX)
         string(REPLACE "/RTC1" "" CMAKE_${lang}_FLAGS_DEBUG "${CMAKE_${lang}_FLAGS_DEBUG}")
     endforeach()
+else()
+    # The AddressSanitizer build keeps the .pdb's full path, because its
+    # symbolizer (llvm-symbolizer) cannot follow a bare name and its reports
+    # would name no functions. That build never ships.
+    add_link_options($<$<CONFIG:Release>:/PDBALTPATH:%_PDB%>)
 endif()
 
 # __FILE__ names the source relative to the repo, not by its absolute path.
