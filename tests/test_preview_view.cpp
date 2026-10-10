@@ -27,7 +27,6 @@
 #include "core/timing.h"  // sp_bars_to_measures
 #include "analyzed_chart.h"
 #include "corpus_util.h"
-#include "midi_util.h"
 #include "parse/song.h"
 #include "record_fixtures.h"
 #include "search/engine.h"
@@ -618,31 +617,6 @@ TEST_CASE("build_time_box: the time signature in force, as the chart wrote it") 
     // A scene built from nothing reads the chart default.
     CHECK(build_time_box(PreviewScene{}, 0.0, 0.0).tempo == "BPM 0.000 " + kDot + " 4/4");
     CHECK(build_time_box(PreviewScene{}, 0.0, 0.0).position == "m1.1.0");
-}
-
-// Finding R7.7; D27. The parser's half, the section order itself, is in
-// test_song.cpp.
-TEST_CASE("build_time_box: a .mid's sections from several EVENTS tracks name the section in force") {
-    using namespace testmidi;
-    const std::vector<uint8_t> tempo = concat({set_tempo(), end_of_track()});
-    const std::vector<uint8_t> drums =
-        concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()});
-    // First EVENTS track: Intro at 0, Chorus at 1920.
-    const std::vector<uint8_t> events1 =
-        concat({track_name("EVENTS"), text_event("[section Intro]"),
-                after(1920, text_event("[section Chorus]")), end_of_track()});
-    // Second EVENTS track: Verse at 960.
-    const std::vector<uint8_t> events2 =
-        concat({track_name("EVENTS"), after(960, text_event("[section Verse]")),
-                end_of_track()});
-    const Song song = load_songbytes_mid(smf_tracks({tempo, drums, events1, events2}), true, true);
-
-    // The time box names the section the playhead is in. At 120 BPM and 480
-    // ticks a beat, tick 1000 is 1041.67 ms (Verse) and tick 2000 is 2083.33 ms
-    // (Chorus). Before the sort it said Intro, then Verse.
-    const PreviewScene scene = build_preview_scene(song, nullptr);
-    CHECK(build_time_box(scene, 1041.7, 3000.0).section_line == "Section Verse");
-    CHECK(build_time_box(scene, 2083.4, 3000.0).section_line == "Section Chorus");
 }
 
 TEST_CASE("build_preview_scene: no path means no overlay") {

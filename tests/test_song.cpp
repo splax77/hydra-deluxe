@@ -17,6 +17,7 @@
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
 #include "app/preview_source.h"  // read_ini_delay_ms
+#include "app/preview_view.h"    // build_time_box
 #include "app/user_messages.h"
 #include "core/error_kind.h"
 #include "core/model.h"
@@ -593,9 +594,11 @@ TEST_CASE(".chart: [Song] Offset is read in seconds") {
     CHECK_FALSE(plain.chart_offset_s.has_value());
 }
 
-// Finding R7.7; D27. The time box's half of this check is in
-// test_preview_view.cpp.
-TEST_CASE(".mid: practice sections from several EVENTS tracks come out in tick order") {
+// Finding R7.7; D27. The time box checks stay with the parse: the Preview reads
+// the parser's order, and a copy of this fixture in test_preview_view.cpp would
+// be a clone the single-owner scan refuses.
+TEST_CASE(".mid: practice sections from several EVENTS tracks come out in tick order, and the "
+          "time box names the one in force") {
     using namespace testmidi;
     const std::vector<uint8_t> tempo = concat({set_tempo(), end_of_track()});
     const std::vector<uint8_t> drums =
@@ -615,6 +618,13 @@ TEST_CASE(".mid: practice sections from several EVENTS tracks come out in tick o
     CHECK(song.practice_sections[1].name == "Verse");
     CHECK(song.practice_sections[1].tick == 960);
     CHECK(song.practice_sections[2].name == "Chorus");
+
+    // The time box names the section the playhead is in. At 120 BPM and 480
+    // ticks a beat, tick 1000 is 1041.67 ms (Verse) and tick 2000 is 2083.33 ms
+    // (Chorus). Before the sort it said Intro, then Verse.
+    const app::PreviewScene scene = app::build_preview_scene(song, nullptr);
+    CHECK(app::build_time_box(scene, 1041.7, 3000.0).section_line == "Section Verse");
+    CHECK(app::build_time_box(scene, 2083.4, 3000.0).section_line == "Section Chorus");
 }
 
 // Finding 331; D27.
