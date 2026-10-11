@@ -150,9 +150,8 @@ std::map<std::string, std::string> read_song_ini_keys(const std::string& path);
 
 // The settings a batch run applies uniformly. Everything the search itself
 // reads lives on the SearchSettings base; the ChartReading base
-// (parse/chart_reading.h) is the
-// parse-time choices, so a function that takes a ChartReading takes these
-// settings as they are.
+// (parse/chart_reading.h) is the parse-time choices, so a function that takes
+// a ChartReading takes these settings as they are.
 struct AnalysisSettings : SearchSettings, ChartReading {
     const ChartReading& reading() const { return *this; }
     ChartReading& reading() { return *this; }
