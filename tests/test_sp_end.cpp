@@ -179,7 +179,7 @@ TEST_CASE("SP past the last note: tail rows use the 500 ms window from the SP en
 TEST_CASE("graph: every deactivation edge lists the chords squeeze_window_phrases names") {
     int edges = 0, claimed = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true);
+        const Song& song = corpus::song(path, ChartReading{});
         if (song.is_empty()) continue;
         const ScoreGraph graph(song, 4);
 
@@ -445,7 +445,7 @@ TEST_CASE("collected phrases: two phrases under a full meter are both recorded, 
 TEST_CASE("collected phrases: the corpus agrees with the squeezes and the SP end") {
     int sqouts_seen = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true);
+        const Song& song = corpus::song(path, ChartReading{});
         if (song.is_empty()) continue;
         ScoreGraph graph(song, 4);
         for (const Path& p : run_search(graph, EngineOptions{DepthMode::Scores, 1})) {
@@ -637,7 +637,7 @@ TEST_CASE("search: no fresh record stores an unknown transfer scale (constructed
 TEST_CASE("squeeze-out: one SqOut, last, and its offset is the search's and D's, on every corpus path") {
     int sqouts = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true);
+        const Song& song = corpus::song(path, ChartReading{});
         if (song.is_empty()) continue;
         ScoreGraph graph(song, 4);
         CAPTURE(path);
@@ -762,8 +762,7 @@ TEST_CASE("SP end history: every corpus activation is consistent") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int acts = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song =
-            corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
+        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
         if (song.is_empty()) continue;
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         std::vector<const Path*> all = rec.all_paths();
@@ -829,8 +828,7 @@ TEST_CASE("Bank: every corpus path banks in order") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int acts = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song =
-            corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
+        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
         if (song.is_empty()) continue;
         CAPTURE(chart);
         acts += bank_check::check_record_banks(song, corpus::analyzed(chart, cfg));
@@ -844,7 +842,7 @@ TEST_CASE("Bank: every corpus path banks in order") {
 // chart timestamp, the SP track's deactivation edges, and the rows those
 // edges held as their own copies then.
 TEST_CASE("graph: a deactivation edge's rows are a range of the graph's rows") {
-    const Song& song = corpus::song(corpus::first_chart_with_notes(), true, true);
+    const Song& song = corpus::song(corpus::first_chart_with_notes(), ChartReading{});
     const ScoreGraph graph(song, 4);
     const size_t all = graph.all_backends().size();
     CHECK(all == 622);

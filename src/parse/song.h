@@ -5,9 +5,9 @@
 // meter maps. The MidiParser and ChartParser live in the .cpp; callers use the
 // load_songpath_* functions.
 //
-// Every load_songpath* function takes a ChartReading (parse/chart_reading.h):
-// which notes to read. It has no default, so every caller says which reading
-// it means. The load_songbytes_* functions still take the choices one by one.
+// Every load_songpath* and load_songbytes_* function takes a ChartReading
+// (parse/chart_reading.h): which notes to read. It has no default, so every
+// caller says which reading it means.
 
 #ifndef HYDRA_PARSE_SONG_H
 #define HYDRA_PARSE_SONG_H
@@ -298,10 +298,9 @@ void apply_timesig(Song& song, int64_t tick, int numerator, int denominator);
 inline constexpr const char* kNoteShuffleFreezeDetail =
     "Note Shuffle: Clone Hero's redraw never ends on this chart";
 
-// `noteshuffle` (ChartReading::noteshuffle for the load_songpath* family) is
-// the Note Shuffle switch (D104). Off, the chart is read as
-// written. On, load_songbytes_mid and load_songbytes_chart finish by
-// shuffling the chords (apply_note_shuffle in parse/note_shuffle.h), and
+// ChartReading::noteshuffle is the Note Shuffle switch (D104). Off, the chart
+// is read as written. On, load_songbytes_mid and load_songbytes_chart finish
+// by shuffling the chords (apply_note_shuffle in parse/note_shuffle.h), and
 // every other loader ends at one of those two. A chart the game freezes on
 // throws KindedError(ErrorKind::NoteShuffleFreezes) instead of returning.
 Song load_songpath_mid(const std::string& path, const ChartReading& reading,
@@ -313,23 +312,15 @@ Song load_songpath_sng(const std::string& path, const ChartReading& reading,
 Song load_songpath_srb(const std::string& path, const ChartReading& reading,
                        const core::Rules& rules = core::default_rules());
 
-Song load_songbytes_mid(const std::vector<uint8_t>& data, bool pro, bool bass2x,
-                        Difficulty difficulty = Difficulty::Expert,
-                        const core::Rules& rules = core::default_rules(),
-                        bool noteshuffle = false);
-Song load_songbytes_chart(const std::vector<uint8_t>& data, bool pro, bool bass2x,
-                          Difficulty difficulty = Difficulty::Expert,
-                          const core::Rules& rules = core::default_rules(),
-                          bool noteshuffle = false);
+Song load_songbytes_mid(const std::vector<uint8_t>& data, const ChartReading& reading,
+                        const core::Rules& rules = core::default_rules());
+Song load_songbytes_chart(const std::vector<uint8_t>& data, const ChartReading& reading,
+                          const core::Rules& rules = core::default_rules());
 // A whole .sng / .srb container's bytes, as read from disk.
-Song load_songbytes_sng(const std::vector<uint8_t>& container, bool pro, bool bass2x,
-                        Difficulty difficulty = Difficulty::Expert,
-                        const core::Rules& rules = core::default_rules(),
-                        bool noteshuffle = false);
-Song load_songbytes_srb(const std::vector<uint8_t>& container, bool pro, bool bass2x,
-                        Difficulty difficulty = Difficulty::Expert,
-                        const core::Rules& rules = core::default_rules(),
-                        bool noteshuffle = false);
+Song load_songbytes_sng(const std::vector<uint8_t>& container, const ChartReading& reading,
+                        const core::Rules& rules = core::default_rules());
+Song load_songbytes_srb(const std::vector<uint8_t>& container, const ChartReading& reading,
+                        const core::Rules& rules = core::default_rules());
 
 // The file at `path` parsed from `bytes`, its contents already read by the
 // caller: dispatch on path's extension like load_songpath, without touching

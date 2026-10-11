@@ -179,7 +179,7 @@ const Song& longest_corpus_song(std::string& path_out) {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     const Song* longest = nullptr;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        const Song& song = corpus::song(path, cfg.reading());
         if (!longest || song.sequence.size() > longest->sequence.size()) {
             longest = &song;
             path_out = path;
@@ -460,7 +460,7 @@ TEST_CASE("replay: on every corpus path the disc follows SP's payment and window
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int charts = 0, runs = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        const Song& song = corpus::song(path, cfg.reading());
         if (song.is_empty()) continue;
         ++charts;
         const HydraRecord& rec = corpus::analyzed(path, cfg);

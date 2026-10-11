@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "app/config.h"  // chartmode_key
 #include "core/rules.h"
 #include "core/strutil.h"
 #include "json.hpp"
@@ -160,22 +161,19 @@ struct Outcome {
 
 }  // namespace detail
 
-// The Song for one corpus chart, parsed once per run for these load options
-// (the arguments load_songpath takes).
-inline const hydra::Song& song(const std::string& path, bool pro, bool bass2x,
-                               hydra::Difficulty difficulty = hydra::Difficulty::Expert,
+// The Song for one corpus chart, parsed once per run for this reading and
+// these rules (the arguments load_songpath takes).
+inline const hydra::Song& song(const std::string& path, const hydra::ChartReading& reading,
                                const hydra::core::Rules& rules = hydra::core::default_rules()) {
     static std::map<std::string, detail::Outcome<hydra::Song>> cache;
     std::ostringstream key;
     key.precision(17);
-    key << path << '|' << pro << '|' << bass2x << '|' << static_cast<int>(difficulty) << '|'
-        << rules.fingerprint();
+    key << path << '|' << hydra::app::chartmode_key(reading) << '|' << rules.fingerprint();
     auto [it, fresh] = cache.try_emplace(key.str());
     detail::Outcome<hydra::Song>& o = it->second;
     if (fresh) {
         try {
-            o.value.emplace(hydra::load_songpath(
-                path, hydra::ChartReading{difficulty, pro, bass2x, false}, rules));
+            o.value.emplace(hydra::load_songpath(path, reading, rules));
         } catch (...) {
             o.error = std::current_exception();
         }
@@ -190,7 +188,7 @@ namespace detail {
 // notes when `with_notes` is true, or has none when it is false.
 inline std::string first_chart_where(hydra::Difficulty difficulty, bool with_notes) {
     for (const std::string& p : chart_paths()) {
-        if (song(p, true, true, difficulty).is_empty() != with_notes) return p;
+        if (song(p, hydra::ChartReading{difficulty}).is_empty() != with_notes) return p;
     }
     throw std::runtime_error(std::string("no corpus chart ") +
                              (with_notes ? "has" : "lacks") + " notes at that difficulty");
@@ -228,22 +226,21 @@ inline std::string settings_key(const hydra::SearchSettings& s) {
 }
 
 // One corpus chart analyzed under `settings`, once per run: the record
-// analyze_chart_file would return (parsed with settings.prodrums, bass2x,
-// difficulty and rules, checked with require_notes, then analyze_chart).
+// analyze_chart_file would return (parsed with settings' reading and rules,
+// checked with require_notes, then analyze_chart).
 // Throws what analyze_chart_file throws: NoNotesError when the chart has no
 // notes at that difficulty, ChartFileError when the file cannot be read.
 inline const hydra::HydraRecord& analyzed(const std::string& path,
                                           const hydra::app::AnalysisSettings& settings) {
     static std::map<std::string, detail::Outcome<hydra::HydraRecord>> cache;
     std::ostringstream key;
-    key << path << '|' << settings.prodrums << '|' << settings.bass2x << '|'
-        << static_cast<int>(settings.difficulty) << '|' << settings_key(settings);
+    key << path << '|' << hydra::app::chartmode_key(settings.reading()) << '|'
+        << settings_key(settings);
     auto [it, fresh] = cache.try_emplace(key.str());
     detail::Outcome<hydra::HydraRecord>& o = it->second;
     if (fresh) {
         try {
-            const hydra::Song& s = song(path, settings.prodrums, settings.bass2x,
-                                        settings.difficulty, settings.rules);
+            const hydra::Song& s = song(path, settings.reading(), settings.rules);
             hydra::require_notes(s, settings.difficulty, settings.prodrums);
             o.value.emplace(hydra::analyze_chart(s, settings));
         } catch (...) {

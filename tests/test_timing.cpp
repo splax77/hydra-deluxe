@@ -19,7 +19,7 @@
 TEST_CASE("timing: corpus conversions are monotone and consistent") {
     size_t charts = 0, samples = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        const hydra::Song& song = corpus::song(path, true, true);
+        const hydra::Song& song = corpus::song(path, hydra::ChartReading{});
         if (song.is_empty()) continue;
         ++charts;
 

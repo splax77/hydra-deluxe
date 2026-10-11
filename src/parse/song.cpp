@@ -1934,36 +1934,33 @@ void apply_shuffle_switch(Song& song, bool pro, bool noteshuffle) {
 
 }  // namespace
 
-Song load_songbytes_mid(const std::vector<uint8_t>& data, bool pro,
-                        bool bass2x, Difficulty difficulty, const core::Rules& rules,
-                        bool noteshuffle) {
+Song load_songbytes_mid(const std::vector<uint8_t>& data, const ChartReading& reading,
+                        const core::Rules& rules) {
     // The lean file is gone once parse_mid_lean returns.
-    Song song = parse_mid_lean(data, pro, bass2x, difficulty, rules);
-    apply_shuffle_switch(song, pro, noteshuffle);
+    Song song = parse_mid_lean(data, reading.prodrums, reading.bass2x, reading.difficulty, rules);
+    apply_shuffle_switch(song, reading.prodrums, reading.noteshuffle);
     trim_parsed_song(song);
     return song;
 }
 
-Song load_songbytes_chart(const std::vector<uint8_t>& data, bool pro,
-                          bool bass2x, Difficulty difficulty, const core::Rules& rules,
-                          bool noteshuffle) {
+Song load_songbytes_chart(const std::vector<uint8_t>& data, const ChartReading& reading,
+                          const core::Rules& rules) {
     // The parser and its sections are gone by the end of this statement.
-    Song song = ChartParser(rules).parse(data, pro, bass2x, difficulty);
-    apply_shuffle_switch(song, pro, noteshuffle);
+    Song song =
+        ChartParser(rules).parse(data, reading.prodrums, reading.bass2x, reading.difficulty);
+    apply_shuffle_switch(song, reading.prodrums, reading.noteshuffle);
     trim_parsed_song(song);
     return song;
 }
 
 Song load_songpath_mid(const std::string& path, const ChartReading& reading,
                        const core::Rules& rules) {
-    return load_songbytes_mid(read_file_bytes(path), reading.prodrums, reading.bass2x,
-                              reading.difficulty, rules, reading.noteshuffle);
+    return load_songbytes_mid(read_file_bytes(path), reading, rules);
 }
 
 Song load_songpath_chart(const std::string& path, const ChartReading& reading,
                          const core::Rules& rules) {
-    return load_songbytes_chart(read_file_bytes(path), reading.prodrums, reading.bass2x,
-                                reading.difficulty, rules, reading.noteshuffle);
+    return load_songbytes_chart(read_file_bytes(path), reading, rules);
 }
 
 namespace {
@@ -1971,16 +1968,15 @@ namespace {
 // The one notes reader for each container kind, whether the bytes come from
 // disk in pieces or from a buffer in memory (the Preview reads the whole file
 // once and shares it; its notes are picked out the same way).
-Song load_container_sng(const ByteSource& src, bool pro, bool bass2x,
-                        Difficulty difficulty, const core::Rules& rules, bool noteshuffle) {
+Song load_container_sng(const ByteSource& src, const ChartReading& reading,
+                        const core::Rules& rules) {
     const SngNotes notes = sng_read_notes(src, sng_read_head(src));
-    if (notes.format == ChartFormat::Mid)
-        return load_songbytes_mid(notes.bytes, pro, bass2x, difficulty, rules, noteshuffle);
-    return load_songbytes_chart(notes.bytes, pro, bass2x, difficulty, rules, noteshuffle);
+    if (notes.format == ChartFormat::Mid) return load_songbytes_mid(notes.bytes, reading, rules);
+    return load_songbytes_chart(notes.bytes, reading, rules);
 }
 
-Song load_container_srb(const ByteSource& src, bool pro, bool bass2x,
-                        Difficulty difficulty, const core::Rules& rules, bool noteshuffle) {
+Song load_container_srb(const ByteSource& src, const ChartReading& reading,
+                        const core::Rules& rules) {
     // Stream 1 (metadata) names the notes file; stream 2 is its bytes.
     // srb_read_metadata reads stream 1 and refuses a source too short for it.
     const SrbMetadataRead read = srb_read_metadata(src);
@@ -2002,22 +1998,20 @@ Song load_container_srb(const ByteSource& src, bool pro, bool bass2x,
     else  // Unexpected filename: sniff the payload instead.
         is_mid = is_midi_header(notebytes.data(), notebytes.size());
 
-    if (is_mid) return load_songbytes_mid(notebytes, pro, bass2x, difficulty, rules, noteshuffle);
-    return load_songbytes_chart(notebytes, pro, bass2x, difficulty, rules, noteshuffle);
+    if (is_mid) return load_songbytes_mid(notebytes, reading, rules);
+    return load_songbytes_chart(notebytes, reading, rules);
 }
 
 }  // namespace
 
-Song load_songbytes_sng(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
-                        Difficulty difficulty, const core::Rules& rules, bool noteshuffle) {
-    return load_container_sng(memory_byte_source(buf), pro, bass2x, difficulty, rules,
-                              noteshuffle);
+Song load_songbytes_sng(const std::vector<uint8_t>& buf, const ChartReading& reading,
+                        const core::Rules& rules) {
+    return load_container_sng(memory_byte_source(buf), reading, rules);
 }
 
-Song load_songbytes_srb(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
-                        Difficulty difficulty, const core::Rules& rules, bool noteshuffle) {
-    return load_container_srb(memory_byte_source(buf), pro, bass2x, difficulty, rules,
-                              noteshuffle);
+Song load_songbytes_srb(const std::vector<uint8_t>& buf, const ChartReading& reading,
+                        const core::Rules& rules) {
+    return load_container_srb(memory_byte_source(buf), reading, rules);
 }
 
 // A container on disk is read in pieces: its header, then only the notes. The
@@ -2025,14 +2019,12 @@ Song load_songbytes_srb(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
 // the notes never need.
 Song load_songpath_sng(const std::string& path, const ChartReading& reading,
                        const core::Rules& rules) {
-    return load_container_sng(file_byte_source(path), reading.prodrums, reading.bass2x,
-                              reading.difficulty, rules, reading.noteshuffle);
+    return load_container_sng(file_byte_source(path), reading, rules);
 }
 
 Song load_songpath_srb(const std::string& path, const ChartReading& reading,
                        const core::Rules& rules) {
-    return load_container_srb(file_byte_source(path), reading.prodrums, reading.bass2x,
-                              reading.difficulty, rules, reading.noteshuffle);
+    return load_container_srb(file_byte_source(path), reading, rules);
 }
 
 Song load_songpath_from_bytes(const std::string& path, const std::vector<uint8_t>& bytes,
@@ -2042,21 +2034,11 @@ Song load_songpath_from_bytes(const std::string& path, const std::vector<uint8_t
 
 Song load_songpath_reading(const ByteSource& src, const std::string& path,
                            const ChartReading& reading, const core::Rules& rules) {
-    const bool pro = reading.prodrums;
-    const bool bass2x = reading.bass2x;
-    const Difficulty difficulty = reading.difficulty;
-    const bool noteshuffle = reading.noteshuffle;
     switch (chart_format_of(path)) {
-        case ChartFormat::Mid:
-            return load_songbytes_mid(read_all(src), pro, bass2x, difficulty, rules,
-                                      noteshuffle);
-        case ChartFormat::Chart:
-            return load_songbytes_chart(read_all(src), pro, bass2x, difficulty, rules,
-                                        noteshuffle);
-        case ChartFormat::Sng:
-            return load_container_sng(src, pro, bass2x, difficulty, rules, noteshuffle);
-        case ChartFormat::Srb:
-            return load_container_srb(src, pro, bass2x, difficulty, rules, noteshuffle);
+        case ChartFormat::Mid: return load_songbytes_mid(read_all(src), reading, rules);
+        case ChartFormat::Chart: return load_songbytes_chart(read_all(src), reading, rules);
+        case ChartFormat::Sng: return load_container_sng(src, reading, rules);
+        case ChartFormat::Srb: return load_container_srb(src, reading, rules);
         case ChartFormat::None: break;
     }
     throw KindedError(ErrorKind::ChartUnreadable, "unexpected chart type: " + path);

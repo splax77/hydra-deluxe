@@ -81,7 +81,7 @@ TEST_CASE("a saved result reads back its best path and summary across the corpus
     int checks = 0, mismatches = 0;
 
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true);
+        const Song& song = corpus::song(path, ChartReading{});
         if (song.is_empty()) continue;
 
         for (const Config& cfg : kMatrix) {

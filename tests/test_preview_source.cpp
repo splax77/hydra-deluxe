@@ -503,8 +503,8 @@ TEST_CASE("container charts give the same Song, stems and offset as the chart in
         const std::string path = fixture_dir() + "\\" + c.file;
         write_bytes(path, c.container);
         for (Difficulty d : {Difficulty::Expert, Difficulty::Hard}) {
-            const Song expected = c.is_mid ? load_songbytes_mid(mid, true, true, d)
-                                           : load_songbytes_chart(chart, true, true, d);
+            const Song expected = c.is_mid ? load_songbytes_mid(mid, ChartReading{d})
+                                           : load_songbytes_chart(chart, ChartReading{d});
             const std::string want = song_text(expected);
             const ChartReading reading{d};
             CHECK(song_text(load_songpath(path, reading)) == want);

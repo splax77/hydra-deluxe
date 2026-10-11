@@ -39,11 +39,11 @@ TEST_CASE(".mid: each difficulty reads its own 2x kick pitch, as Clone Hero does
     for (size_t i = 0; i < std::size(testdiff::kLiterals); ++i) {
         const testdiff::Literals& w = testdiff::kLiterals[i];
         CAPTURE(w.name);
-        const Song on = load_songbytes_mid(mid, true, true, w.d);
+        const Song on = load_songbytes_mid(mid, ChartReading{w.d});
         REQUIRE(on.sequence.size() == 1);
         CHECK(on.sequence[0].timecode.ticks() == static_cast<int64_t>(i * kStep));
         CHECK(on.sequence[0].chord.at(NoteColor::Kick)->is2x);
-        CHECK(load_songbytes_mid(mid, true, false, w.d).sequence.empty());
+        CHECK(load_songbytes_mid(mid, ChartReading{w.d, true, false}).sequence.empty());
     }
 }
 
@@ -55,7 +55,7 @@ TEST_CASE(".mid: Expert's 2x kick never swallows a Hard kick on the same tick") 
     const std::vector<uint8_t> mid = smf(concat(
         {track_name("PART DRUMS"), set_tempo(), note_on(95, 100), note_on(84, 100),
          end_of_track()}));
-    const Song hard = load_songbytes_mid(mid, true, /*bass2x=*/true, Difficulty::Hard);
+    const Song hard = load_songbytes_mid(mid, ChartReading{Difficulty::Hard});
     REQUIRE(hard.sequence.size() == 1);
     REQUIRE(hard.sequence[0].chord.at(NoteColor::Kick).has_value());
     CHECK_FALSE(hard.sequence[0].chord.at(NoteColor::Kick)->is2x);
@@ -65,11 +65,12 @@ TEST_CASE(".chart: N 32 is a 2x kick only in the section being read") {
     const std::vector<uint8_t> data =
         testchart::chart_bytes(testchart::section("ExpertDrums", "  0 = N 32 0\n") +
                                testchart::section("HardDrums", "  192 = N 1 0\n  384 = N 32 0\n"));
-    const Song on = load_songbytes_chart(data, true, true, Difficulty::Hard);
+    const Song on = load_songbytes_chart(data, ChartReading{Difficulty::Hard});
     REQUIRE(on.sequence.size() == 2);  // Expert's tick-0 N 32 is not Hard's
     CHECK(on.sequence[1].timecode.ticks() == 384);
     CHECK(on.sequence[1].chord.at(NoteColor::Kick)->is2x);
-    CHECK(load_songbytes_chart(data, true, false, Difficulty::Hard).sequence.size() == 1);
+    CHECK(load_songbytes_chart(data, ChartReading{Difficulty::Hard, true, false}).sequence.size() ==
+          1);
 }
 
 TEST_CASE("Dynamics: one kick total follows the 2x Bass setting") {
@@ -162,12 +163,13 @@ TEST_CASE(".mid: a 2x kick merged with a normal kick keeps a ghost mark from eit
          note_on(96, 1), note_on(95, 100),             // tick 0: ghost normal, plain 2x
          after(64, note_on(95, 1)), note_on(96, 100),  // tick 64: ghost 2x, plain normal
          end_of_track()}));
-    const Song on = load_songbytes_mid(mid, true, /*bass2x=*/true);
+    const Song on = load_songbytes_mid(mid, ChartReading{});
     REQUIRE(on.sequence.size() == 2);
     CHECK(on.sequence[0].chord.code() == "G....");
     CHECK(on.sequence[1].chord.code() == "G....");
     // With 2x Bass off the merged kick is a 2x kick, so it goes: no chords.
-    CHECK(load_songbytes_mid(mid, true, /*bass2x=*/false).sequence.empty());
+    CHECK(load_songbytes_mid(mid, ChartReading{Difficulty::Expert, true, /*bass2x=*/false})
+              .sequence.empty());
 }
 
 // D105.
@@ -181,12 +183,13 @@ TEST_CASE(".mid: a ghost and an accent kick on one tick merge into an accent") {
          note_on(96, 127), note_on(95, 1),             // tick 0: accent normal, ghost 2x
          after(64, note_on(95, 1)), note_on(96, 127),  // tick 64: ghost 2x, accent normal
          end_of_track()}));
-    const Song on = load_songbytes_mid(mid, true, /*bass2x=*/true);
+    const Song on = load_songbytes_mid(mid, ChartReading{});
     REQUIRE(on.sequence.size() == 2);
     CHECK(on.sequence[0].chord.code() == "A....");
     CHECK(on.sequence[1].chord.code() == "A....");
     // With 2x Bass off the merged kick is a 2x kick, so it goes: no chords.
-    CHECK(load_songbytes_mid(mid, true, /*bass2x=*/false).sequence.empty());
+    CHECK(load_songbytes_mid(mid, ChartReading{Difficulty::Expert, true, /*bass2x=*/false})
+              .sequence.empty());
 }
 
 TEST_CASE(".chart: a pad with both an accent and a ghost marker is an accent") {
@@ -199,7 +202,7 @@ TEST_CASE(".chart: a pad with both an accent and a ghost marker is an accent") {
         "  192 = N 1 0\n  192 = N 40 0\n  192 = N 34 0\n"));
     for (bool pro : {true, false}) {
         CAPTURE(pro);
-        const Song song = load_songbytes_chart(data, pro, true);
+        const Song song = load_songbytes_chart(data, ChartReading{Difficulty::Expert, pro, true});
         REQUIRE(song.sequence.size() == 2);
         CHECK(song.sequence[0].chord.code() == ".a...");
         CHECK(song.sequence[1].chord.code() == ".a...");
@@ -219,21 +222,23 @@ TEST_CASE(".mid: a kick the 2x Bass setting removes leaves no mark before the dy
              after(64, note_on(97, 1)),                           // tick 64: ghost red
              after(64, text_event("[ENABLE_CHART_DYNAMICS]")), note_on(97, 100),
              end_of_track()}));
-        const Song off = load_songbytes_mid(mid, true, /*bass2x=*/false);
+        const Song off =
+            load_songbytes_mid(mid, ChartReading{Difficulty::Expert, true, /*bass2x=*/false});
         CHECK(off.dynamics_marks_before_tag == 1);
         REQUIRE(off.dynamics_late_tag_tick.has_value());
         CHECK(*off.dynamics_late_tag_tick == 128);
-        CHECK(load_songbytes_mid(mid, true, /*bass2x=*/true).dynamics_marks_before_tag == 2);
+        CHECK(load_songbytes_mid(mid, ChartReading{}).dynamics_marks_before_tag == 2);
     }
     SUBCASE("the tag between the two kicks on their own tick") {
         const std::vector<uint8_t> mid = smf(concat(
             {track_name("PART DRUMS"), set_tempo(), note_on(96, 1),
              text_event("[ENABLE_CHART_DYNAMICS]"), note_on(95, 100), note_on(97, 100),
              end_of_track()}));
-        const Song off = load_songbytes_mid(mid, true, /*bass2x=*/false);
+        const Song off =
+            load_songbytes_mid(mid, ChartReading{Difficulty::Expert, true, /*bass2x=*/false});
         CHECK(off.dynamics_marks_before_tag == 0);
         CHECK_FALSE(off.dynamics_late_tag_tick.has_value());
-        const Song on = load_songbytes_mid(mid, true, /*bass2x=*/true);
+        const Song on = load_songbytes_mid(mid, ChartReading{});
         CHECK(on.dynamics_marks_before_tag == 1);
         CHECK(on.dynamics_late_tag_tick == std::optional<int64_t>(0));
     }

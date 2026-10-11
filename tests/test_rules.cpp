@@ -248,7 +248,7 @@ TEST_CASE("rules: the leeway changes what the engine counts") {
 
     bool any_moved = false;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true);
+        const Song& song = corpus::song(path, ChartReading{});
         if (song.is_empty()) continue;
         auto best = [&](const core::Rules& r) {
             ScoreGraph graph(song, 4, FillDeadlineRule::Ch11, r);
@@ -272,7 +272,7 @@ TEST_CASE("rules: max_tied_paths caps the tied paths the engine keeps") {
     one.max_tied_paths = 1;
     int charts = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true);
+        const Song& song = corpus::song(path, ChartReading{});
         if (song.is_empty()) continue;
         ScoreGraph graph(song, 4, FillDeadlineRule::Ch11, one);
         std::vector<Path> paths = run_search(graph, EngineOptions{});
@@ -387,7 +387,7 @@ TEST_CASE("rules: a path over the Path limit below the best score is dropped eve
 TEST_CASE("rules: the engine's tied count matches the recount") {
     int charts = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true);
+        const Song& song = corpus::song(path, ChartReading{});
         if (song.is_empty()) continue;
         ScoreGraph graph(song, 4, FillDeadlineRule::Ch11, core::default_rules());
         std::vector<Path> paths;
@@ -480,7 +480,7 @@ TEST_CASE("rules: the default stamp is built once and matches a fresh record") {
 }
 
 TEST_CASE("rules: a run is stamped with the rules fingerprint at cap 4 and at cap 8") {
-    const Song& song = corpus::song(corpus::first_chart_with_notes(), true, true);
+    const Song& song = corpus::song(corpus::first_chart_with_notes(), ChartReading{});
     SearchSettings settings;
     settings.sp_cap = 8;
     CHECK(analyze_chart(song, settings).rules_fingerprint == settings.rules.fingerprint());
