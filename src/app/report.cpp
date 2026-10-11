@@ -149,19 +149,44 @@ std::string beyond_edge_text(double hit_window_ms) {
     return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));
 }
 
+namespace {
+
+// One listing a page shows, with its chart hash keyed like
+// library_copies_by_hash.
+struct LibraryListing {
+    std::string hash;
+    store::RecordListing listing;
+};
+
+// list_records' listings for one chart mode (every mode when none), cap and
+// lens, best score first, keeping those whose chart `library` lists
+// (library_lists). The store lists results the library doesn't, and no page
+// shows one (D87 item 4, D92). records_by_hash and collect_rows both list
+// through here.
+std::vector<LibraryListing> listings_the_library_lists(
+    store::RecordStore& store, const std::unordered_map<std::string, int>& library,
+    const std::optional<std::string>& chartmode, const store::CapQuery& cap,
+    const store::Lens& lens) {
+    std::vector<LibraryListing> out;
+    for (store::RecordListing& r : store.list_records(chartmode, cap, lens,
+                                                       store::SortColumn::Score,
+                                                       /*descending=*/true)) {
+        std::string hash = normalize_chart_hash(r.hyhash);
+        if (!library_lists(library, hash)) continue;
+        out.push_back({std::move(hash), std::move(r)});
+    }
+    return out;
+}
+
+}  // namespace
+
 std::unordered_map<std::string, store::RecordListing> records_by_hash(
     store::RecordStore& store, const std::string& chartmode, const store::CapQuery& cap,
     const store::Lens& lens) {
     const std::unordered_map<std::string, int> library = library_copies_by_hash(store);
     std::unordered_map<std::string, store::RecordListing> by_hash;
-    for (store::RecordListing& r : store.list_records(chartmode, cap, lens,
-                                                       store::SortColumn::Score,
-                                                       /*descending=*/true)) {
-        std::string hash = normalize_chart_hash(r.hyhash);
-        // A result whose chart the library doesn't list is not on the page (D92).
-        if (!library_lists(library, hash)) continue;
-        by_hash.emplace(std::move(hash), std::move(r));
-    }
+    for (LibraryListing& l : listings_the_library_lists(store, library, chartmode, cap, lens))
+        by_hash.emplace(std::move(l.hash), std::move(l.listing));
     return by_hash;
 }
 
@@ -226,12 +251,10 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
     std::vector<Slot> slots;
     std::vector<size_t> to_analyze;  // slot indexes this pass analyzes
     std::unordered_map<std::string, AnalysisSettings> mode_settings;
-    for (store::RecordListing& listing :
-         store.list_records(std::nullopt, options.cap, options.lens, store::SortColumn::Score,
-                            /*descending=*/true)) {
-        const std::string hash = normalize_chart_hash(listing.hyhash);
-        // A result whose chart left the library is not on the page (D87 item 4).
-        if (!library_lists(copies, hash)) continue;
+    for (LibraryListing& listed :
+         listings_the_library_lists(store, copies, std::nullopt, options.cap, options.lens)) {
+        const std::string& hash = listed.hash;
+        store::RecordListing& listing = listed.listing;
         Slot slot;
         // Both maps come from kNamingCopiesSql, so a listed chart has a file.
         slot.file = &files.at(hash);
@@ -425,12 +448,17 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
     return out;
 }
 
+PageSettings PageSettings::of(const Settings& settings) {
+    // generate_report is asked for one SP cap and one lens, and labels its
+    // tiers from the hit window. It lists every chart mode, and
+    // settings_for_mode gives each mode the run's search settings with only
+    // that mode's own parse choices, so the mode the analysis settings show
+    // reaches no row.
+    return PageSettings{settings.cap_query(), settings.lens(), settings.hit_window_ms};
+}
+
 bool settings_change_touches(const Settings& before, const Settings& after) {
-    // generate_report is asked for one SP cap and one lens. It lists every
-    // chart mode, and settings_for_mode gives each mode the run's search
-    // settings with only that mode's own parse choices, so the mode the
-    // analysis settings show reaches no row.
-    return before.cap_query() != after.cap_query() || before.lens() != after.lens();
+    return PageSettings::of(before) != PageSettings::of(after);
 }
 
 }  // namespace hydra::app::report
