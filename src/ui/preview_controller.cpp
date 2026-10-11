@@ -76,12 +76,13 @@ void drop_finished(std::vector<std::unique_ptr<Job>>& retired) {
 
 PreviewController::~PreviewController() { close(); }
 
-void PreviewController::open(const store::ChartLibraryEntry& entry, bool pro,
-                             bool bass2x, Difficulty difficulty,
-                             const Path* path, const std::string& path_key,
-                             int sp_cap, const core::Rules& rules, bool noteshuffle) {
+void PreviewController::open(const store::ChartLibraryEntry& entry,
+                             const app::ChartReading& reading, const Path* path,
+                             const std::string& path_key, int sp_cap,
+                             const core::Rules& rules) {
     rules_ = rules;
-    const PreviewSongKey key{entry.md5, difficulty, pro, bass2x, noteshuffle};
+    const PreviewSongKey key{entry.md5, reading.difficulty, reading.prodrums, reading.bass2x,
+                             reading.noteshuffle};
     if (active_ && open_key_ == key) {
         // Same chart, same overlay: nothing to do, and nothing built.
         if (sp_cap == sp_cap_ && path_key == requested_path_key_) return;
@@ -106,11 +107,12 @@ void PreviewController::open(const store::ChartLibraryEntry& entry, bool pro,
     active_ = true;
     error_.clear();
     error_detail_.clear();
-    pro_ = pro;
+    pro_ = reading.prodrums;
     record_request(path, path_key, sp_cap);
     job_path_key_ = path_key_;
-    job_ = std::make_unique<PreviewLoadJob>(entry, pro, bass2x, difficulty, path_, sp_cap_,
-                                            rules, noteshuffle);
+    job_ = std::make_unique<PreviewLoadJob>(entry, reading.prodrums, reading.bass2x,
+                                            reading.difficulty, path_, sp_cap_, rules,
+                                            reading.noteshuffle);
     job_->start();
 }
 
