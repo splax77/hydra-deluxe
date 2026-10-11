@@ -753,7 +753,7 @@ TEST_CASE("rebuild_overlay_fields: keeps the drum lanes") {
     to.activations.clear();
     for (PreviewFill& f : to.fills) f.state = PreviewFillState::Hidden;
     for (const PreviewScene* s : {&from, &to}) {
-        TrackState st = build_track_state(s == &from ? to : from,TrackStateOptions{});
+        TrackState st = build_track_state(s == &from ? to : from, TrackStateOptions{});
         rebuild_overlay_fields(st, *s);
         const TrackState want = build_track_state(*s, TrackStateOptions{});
         REQUIRE(st.instants().size() == want.instants().size());
