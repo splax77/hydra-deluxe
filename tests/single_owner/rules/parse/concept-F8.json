@@ -1,0 +1,30 @@
+{
+  "rules": [
+    {
+      "question": "Do these bytes start with a MIDI file's header tag?",
+      "owner": "is_midi_header in src/parse/midi.cpp",
+      "owner_file": "src/parse/midi.cpp",
+      "owner_symbol": "is_midi_header",
+      "date": "2026-10-11",
+      "decision": "D114 (concept audit finding M62)",
+      "added_by": "concept-F8",
+      "pattern": "\"MThd\"|'M'.*'T'.*'h'.*'d'",
+      "must_match": [
+        "is_mid = notebytes.size() >= 4 && std::memcmp(notebytes.data(), \"MThd\", 4) == 0;",
+        "if (size < 14 || data[0] != 'M' || data[1] != 'T' ||  data[2] != 'h' || data[3] != 'd') {"
+      ],
+      "must_not_match": [
+        "is_mid = is_midi_header(notebytes.data(), notebytes.size());",
+        "throw MidiError(\"not a MIDI file: missing MThd header\");"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/parse/midi.cpp",
+          "line_text": "return size >= 4 && data[0] == 'M' && data[1] == 'T' && data[2] == 'h' && data[3] == 'd';",
+          "why": "is_midi_header, the owner"
+        }
+      ],
+      "note": "The header tag was spelled twice, once as a quoted string in the .srb notes sniff and once as four characters in the reader's header check. Both spellings are caught; the reader's error message names the tag inside a longer string and is not a test. Decided by: D114, concept audit finding M62"
+    }
+  ]
+}

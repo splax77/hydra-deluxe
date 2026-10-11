@@ -1989,7 +1989,7 @@ Song load_container_srb(const ByteSource& src, bool pro, bool bass2x,
     else if (named == ChartFormat::Chart)
         is_mid = false;
     else  // Unexpected filename: sniff the payload instead.
-        is_mid = notebytes.size() >= 4 && std::memcmp(notebytes.data(), "MThd", 4) == 0;
+        is_mid = is_midi_header(notebytes.data(), notebytes.size());
 
     if (is_mid) return load_songbytes_mid(notebytes, pro, bass2x, difficulty, rules, noteshuffle);
     return load_songbytes_chart(notebytes, pro, bass2x, difficulty, rules, noteshuffle);
