@@ -89,7 +89,7 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
 std::string hash_chart_file(const std::string& path);
 
 // The fingerprint a chart's files give now, as the scan would store it in
-// `sig` (ScanItem::sig, ChartLibraryEntry::sig); pending_chart_of in
+// `sig` (ChartLibraryEntry::sig); pending_chart_of in
 // analysis.cpp decides which files that covers. Empty when the file is gone or
 // a folder chart has no song.ini. chart_changed_since compares against it; a
 // click that finds an edited chart stores it with the new hash
