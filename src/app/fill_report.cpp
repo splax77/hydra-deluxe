@@ -351,7 +351,7 @@ GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
         // The rule's length is fill_rule_description's to say; this sentence
         // only names the rule.
         fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Long) +
-        "'s wait is usually the longer one, so short fills got stricter and most "
+        "'s deadline usually falls earlier, so short fills got stricter and most "
         "charts tie or drop. "
         "Long fills got looser, which is where the rare gains come from. "
         "Delta is the 1.1 score minus the 1.0 score.";
