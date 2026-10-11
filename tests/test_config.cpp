@@ -397,6 +397,17 @@ TEST_CASE("with_chartmode rebuilds the settings behind every key, shuffled or no
     CHECK_FALSE(base.with_chartmode("Expert Pro Drums, 2x Bass, Shuffled").has_value());
 }
 
+TEST_CASE("with_reading: reading() gives back the reading written, the rest kept") {
+    Settings base;
+    base.sp_cap = 7;
+    const hydra::app::ChartReading hard{hydra::Difficulty::Hard, false, false, true};
+    const Settings s = base.with_reading(hard);
+    CHECK(s.reading() == hard);
+    CHECK(s.view_difficulty == "Hard");
+    CHECK(s.sp_cap == 7);
+    CHECK(base.with_reading(base.reading()).chartmode_key() == base.chartmode_key());
+}
+
 TEST_CASE("view_noteshuffle: off by default, and the INI key loads and saves it") {
     CHECK_FALSE(Settings{}.view_noteshuffle);
     CHECK_FALSE(load_ini_text("ns_missing", "view_prodrums=1\n").view_noteshuffle);

@@ -288,6 +288,15 @@ ChartReading Settings::reading() const {
     return ChartReading{difficulty(), view_prodrums, effective_bass2x(), view_noteshuffle};
 }
 
+Settings Settings::with_reading(const ChartReading& r) const {
+    Settings out = *this;
+    out.view_difficulty = difficulty_name(r.difficulty);
+    out.view_prodrums = r.prodrums;
+    out.view_bass2x = r.bass2x;
+    out.view_noteshuffle = r.noteshuffle;
+    return out;
+}
+
 std::string Settings::chartmode_key() const { return app::chartmode_key(reading()); }
 
 Settings Settings::with_analysis_defaults() const {
@@ -315,14 +324,10 @@ std::optional<Settings> Settings::with_chartmode(const std::string& chartmode) c
         for (bool prodrums : {true, false}) {
             for (bool bass2x : {true, false}) {
                 for (bool noteshuffle : {false, true}) {
-                    Settings mode = *this;
-                    mode.view_difficulty = difficulty_name(d);
-                    mode.view_prodrums = prodrums;
-                    mode.view_bass2x = bass2x;
-                    mode.view_noteshuffle = noteshuffle;
-                    // The key is read back through reading(), so the search
-                    // spells it as every other reader does.
-                    if (mode.chartmode_key() == chartmode) return mode;
+                    // Spelled by app::chartmode_key, as every other reader
+                    // spells it, and written back through with_reading.
+                    const ChartReading r{d, prodrums, bass2x, noteshuffle};
+                    if (app::chartmode_key(r) == chartmode) return with_reading(r);
                 }
             }
         }

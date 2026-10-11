@@ -964,17 +964,19 @@
     },
     {
       "question": "Which Difficulty, Pro Drums, 2x Bass and Note Shuffle choices spell a chart mode key?",
-      "owner": "Settings::with_chartmode in src/app/config.cpp",
+      "owner": "Settings::with_chartmode in src/app/config.cpp, which writes the reading it finds through Settings::with_reading (concept audit M19)",
       "owner_file": "src/app/config.cpp",
       "owner_symbol": "Settings::with_chartmode",
       "date": "2026-10-09",
       "decision": "derive-once review of RW-T4 (key 4979976), finding 1",
       "added_by": "ns-t2c",
-      "pattern": "\\bview_difficulty\\s*=\\s*difficulty_name\\(\\s*\\w+\\s*\\)|\\.chartmode_key\\(\\)\\s*(==|!=)\\s*[A-Za-z_]\\w*\\s*\\)",
+      "pattern": "\\bview_difficulty\\s*=\\s*difficulty_name\\(\\s*[\\w.]+\\s*\\)|\\bchartmode_key\\(\\s*[\\w.]*\\s*\\)\\s*(==|!=)\\s*[A-Za-z_]\\w*\\s*\\)",
       "must_match": [
         "mode.view_difficulty = difficulty_name(difficulty);",
+        "out.view_difficulty = difficulty_name(r.difficulty);",
         "if (mode.chartmode_key() != chartmode) continue;",
-        "if (settings.chartmode_key() == wanted) return true;"
+        "if (settings.chartmode_key() == wanted) return true;",
+        "if (app::chartmode_key(r) == chartmode) return with_reading(r);"
       ],
       "must_not_match": [
         "s.view_difficulty = difficulty_name(s.difficulty());",
@@ -985,12 +987,12 @@
       "owner_lines": [
         {
           "file": "src/app/config.cpp",
-          "line_text": "mode.view_difficulty = difficulty_name(d);",
-          "why": "Settings::with_chartmode, the owner"
+          "line_text": "out.view_difficulty = difficulty_name(r.difficulty);",
+          "why": "Settings::with_reading, the one place a whole reading is written onto the settings"
         },
         {
           "file": "src/app/config.cpp",
-          "line_text": "if (mode.chartmode_key() == chartmode) return mode;",
+          "line_text": "if (app::chartmode_key(r) == chartmode) return with_reading(r);",
           "why": "Settings::with_chartmode, the owner"
         }
       ],

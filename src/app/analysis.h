@@ -149,8 +149,9 @@ std::map<std::string, std::string> read_song_ini_keys(const std::string& path);
 
 // The four choices that pick which notes a chart is read as: the difficulty,
 // Pro Drums, 2x Bass and Note Shuffle. Settings::reading() (app/config.h) is
-// where they are read off the settings. What carries them takes this one
-// value, so a fifth choice is added here and in Settings (concept audit M19).
+// where they are read off the settings, and Settings::with_reading where they
+// are written back. What carries them takes this one value, so a fifth choice
+// is added here and in those two (concept audit M19).
 // The defaults read a chart as written, at Expert.
 struct ChartReading {
     Difficulty difficulty = Difficulty::Expert;
