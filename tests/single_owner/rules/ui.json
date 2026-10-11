@@ -237,11 +237,6 @@
           "file": "src/ui/library_model.cpp",
           "line_text": "return \"Not analyzed\";",
           "why": "status_label, the owner"
-        },
-        {
-          "file": "src/app/dm_report.cpp",
-          "line_text": "{\"Not analyzed\", group_thousands(stats.not_analyzed)},",
-          "why": "dm_tiles' tile label for dm_report::kStatusNotAnalyzed, a score's state in this mode at Clone Hero's cap, not a library record's status (derive-once review of RW-T2, finding 1)"
         }
       ],
       "note": "---- phase 3 wave C owners (derive-once review of M_C) ---- A status word typed in quotes. The library chips, the Best path cell and the uitest state dump all ask status_label. Decided by: audit finding 87; derive-once review of M_C (6d86f1c), finding 2 (2026-10-04)"

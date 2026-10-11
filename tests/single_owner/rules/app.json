@@ -331,13 +331,13 @@
       "date": "2026-10-08",
       "decision": "derive-once review of RW-T3, finding 4 (2026-10-08)",
       "added_by": "RW-J1",
-      "pattern": "\"(under optimal|at optimal|above optimal|not analyzed|no paths|not in library|other speed)\"",
+      "pattern": "\"(under optimal|at optimal|above optimal|no current result|no paths|not in library|other speed)\"",
       "must_match": [
         "if (!r.delta || r.status == \"other speed\") return Tone::Dim;",
         "{std::string(\"under optimal\"), \"Under optimal\"},",
         "if (r.status == \"under optimal\") ++stats.under_optimal;",
         "row.status = \"no paths\";",
-        "if (status == \"not analyzed\" || status == \"no paths\" || status == \"other speed\")",
+        "if (status == \"no current result\" || status == \"no paths\" || status == \"other speed\")",
         "<option value=\"under optimal\">Under optimal</option>"
       ],
       "must_not_match": [
@@ -368,7 +368,7 @@
         },
         {
           "file": "src/app/dm_report.h",
-          "line_text": "inline constexpr const char* kStatusNotAnalyzed = \"not analyzed\";",
+          "line_text": "inline constexpr const char* kStatusNoCurrentResult = \"no current result\";",
           "why": "the owner"
         },
         {

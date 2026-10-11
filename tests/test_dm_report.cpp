@@ -254,6 +254,12 @@ TEST_CASE("generate_dm_report hands over its rows, subtitle, footer, player and 
     CHECK(result.footer.rfind("Actual scores from dmleaderboards.com against Hydra's optimal for " +
                                   std::string(kMode) + ".",
                               0) == 0);
+    // The last sentence, in the "no current result" words (D114 item 1).
+    const std::string last_sentence =
+        " Charts with no current result are in your library without a result for this mode at "
+        "SP cap 4: analyze them, then compare again.";
+    REQUIRE(result.footer.size() > last_sentence.size());
+    CHECK(result.footer.substr(result.footer.size() - last_sentence.size()) == last_sentence);
 
     // No scores: the player and mode are still named, and nothing else is.
     const app::dm_report::GeneratedDmReport none =
@@ -295,7 +301,7 @@ TEST_CASE("dm_tiles: the tiles count only the scores shown") {
     for (const app::report::Tile& t : app::dm_report::dm_tiles(rows, {0}))
         labels.push_back(t.label);
     CHECK(labels == std::vector<std::string>{"Scores shown", "Under optimal", "At optimal",
-                                             "Above optimal", "Not analyzed", "Not in library",
+                                             "Above optimal", "No current result", "Not in library",
                                              "Other speed", "Avg % of optimal",
                                              "Points left on table"});
     // A "no paths" score has no tile of its own; Scores shown counts it (D62
@@ -322,7 +328,7 @@ TEST_CASE("status_token: each status's chip colour, as the page's STATUS_CLASS g
     CHECK(status_token("under optimal") == ChipToken::t0);
     CHECK(status_token("at optimal") == ChipToken::t0);
     CHECK(status_token("above optimal") == ChipToken::t1);
-    CHECK(status_token("not analyzed") == ChipToken::muted);
+    CHECK(status_token("no current result") == ChipToken::muted);
     CHECK(status_token("no paths") == ChipToken::muted);
     CHECK(status_token("other speed") == ChipToken::muted);
     CHECK(status_token("not in library") == ChipToken::tn);
@@ -605,7 +611,7 @@ TEST_CASE("http transport: a 200 reply is read in full, a 404 keeps its message"
     }
 }
 
-TEST_CASE("collect_dm_rows tells not analyzed from not in library") {
+TEST_CASE("collect_dm_rows tells no current result from not in library") {
     store::RecordStore store(":memory:");
     const int64_t optimal = fill_store(store);
     REQUIRE(optimal > 0);
@@ -630,7 +636,7 @@ TEST_CASE("collect_dm_rows tells not analyzed from not in library") {
         kMode, store::Lens{});
     REQUIRE(rows.size() == 3);
     CHECK(rows[0].status == "under optimal");
-    CHECK(rows[1].status == "not analyzed");
+    CHECK(rows[1].status == "no current result");
     CHECK(rows[2].status == "not in library");
     CHECK_FALSE(rows[1].optimal.has_value());
 

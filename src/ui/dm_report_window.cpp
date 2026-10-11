@@ -96,7 +96,8 @@ void draw_body(DmWindow& w, const report_frame::Frame& frame, const DmReportInpu
     look.clickable = [](const DmReportRow& r) {
         return r.status != app::dm_report::kStatusNotInLibrary;
     };
-    look.unclickable_hint = "Not in your library";
+    look.unclickable_hint =
+        app::dm_report::status_words(app::dm_report::kStatusNotInLibrary).name;
     report_frame::table("##dmtable", w.memory, view, w.widths, look, input.callbacks,
                         ImGui::GetContentRegionAvail().y - report_frame::footer_height(frame));
 }

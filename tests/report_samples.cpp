@@ -77,7 +77,7 @@ std::vector<dm_report::DmReportRow> sample_dm_rows() {
     add_dm("Song B", 251000, 250000, -1000, 10040, "above optimal", true, false, 1);
     add_dm("Song C", 90000, std::nullopt, std::nullopt, std::nullopt, "not in library", false,
            false, std::nullopt);
-    add_dm("Song D", 80000, std::nullopt, std::nullopt, std::nullopt, "not analyzed", false,
+    add_dm("Song D", 80000, std::nullopt, std::nullopt, std::nullopt, "no current result", false,
            false, std::nullopt);
     return dm;
 }

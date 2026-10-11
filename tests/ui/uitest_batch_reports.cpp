@@ -253,7 +253,7 @@ void test_dm_compare_flow(ImGuiTestContext* ctx) {
     // Pick alice, and the choice is remembered (D103 item 8).
     pick_alice(ctx);
     if (ctx->IsError()) return;
-    // Nothing is analyzed yet, so the one score is "not analyzed".
+    // Nothing is analyzed yet, so the one score has "no current result".
     IM_CHECK_EQ(h.app->dm_report.result->stats.not_analyzed, 1);
     IM_CHECK_EQ(h.app->dm_report.result->stats.under_optimal, 0);
     IM_CHECK_STR_EQ(h.app->dm_report.result->username.c_str(), "alice");
