@@ -774,7 +774,7 @@ TEST_CASE("the Preview trusts the scan's fingerprint and does not re-hash an unc
     // The fingerprint and md5 come from the scan itself.
     auto [items, errors] = app::discover_charts({dir});
     REQUIRE(items.size() == 1);
-    const ChartLibraryEntry scanned = app::to_library_entry(items[0]);
+    const ChartLibraryEntry& scanned = items[0];
     CHECK_FALSE(app::chart_changed_since(scanned.notespath, scanned.sig).has_value());
     CHECK(app::chart_changed_since(scanned.notespath, "").has_value());
 

@@ -67,9 +67,7 @@ BatchRun test_run() {
 
 // The plan the confirm would hand over for `charts` when none has a result.
 hydra::app::BatchPlan plan_of(const std::vector<ChartLibraryEntry>& charts) {
-    std::vector<hydra::app::ScanItem> items;
-    for (const ChartLibraryEntry& e : charts) items.push_back(hydra::ui::scan_item_of(e));
-    return hydra::app::plan_batch(items, {});
+    return hydra::app::plan_batch(charts, {});
 }
 
 // A chart that counts itself, waits for `release`, then fails with `error`,
@@ -494,24 +492,4 @@ TEST_CASE("jobs: a failed job records the raw text, the plain message, not ok an
     CHECK(cancelled.message().empty());
     CHECK_FALSE(cancelled.ok());
     CHECK(cancelled.finished());
-}
-
-// The batch turns each library entry into a scan row through scan_item_of.
-TEST_CASE("jobs: scan_item_of copies a library entry's fields by name") {
-    ChartLibraryEntry e;
-    e.md5 = "md5 a";
-    e.title = "title b";
-    e.artist = "artist c";
-    e.charter = "charter d";
-    e.notespath = "notes e.chart";
-    e.rootfolder = "root f";
-    e.sig = "sig g";
-    const hydra::app::ScanItem item = hydra::ui::scan_item_of(e);
-    CHECK(item.md5 == "md5 a");
-    CHECK(item.title == "title b");
-    CHECK(item.artist == "artist c");
-    CHECK(item.charter == "charter d");
-    CHECK(item.notespath == "notes e.chart");
-    CHECK(item.rootfolder == "root f");
-    CHECK(item.sig.empty());  // as the batch's rows have always had it
 }

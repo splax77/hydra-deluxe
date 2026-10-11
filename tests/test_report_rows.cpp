@@ -218,14 +218,12 @@ struct CountingAnalyzer {
     }
 };
 
-// The scan rows a batch over the first `count` charts of `library` reads,
-// each made by the GUI's own conversion, ui::scan_item_of.
+// The scan rows a batch over the first `count` charts of `library` reads: the
+// library entries themselves (app::ScanItem is the entry's own type).
 std::vector<ScanItem> scan_items(const std::vector<store::ChartLibraryEntry>& library,
                                  size_t count) {
-    std::vector<ScanItem> items;
-    for (size_t i = 0; i < count && i < library.size(); ++i)
-        items.push_back(ui::scan_item_of(library[i]));
-    return items;
+    return std::vector<ScanItem>(library.begin(),
+                                 library.begin() + std::min(count, library.size()));
 }
 
 }  // namespace

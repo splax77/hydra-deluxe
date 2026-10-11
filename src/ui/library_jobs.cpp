@@ -271,18 +271,6 @@ std::optional<double> batch_eta_s(double elapsed_s, int completed, int total) {
     return elapsed_s / completed * (total - completed);
 }
 
-app::ScanItem scan_item_of(const store::ChartLibraryEntry& e) {
-    app::ScanItem item;
-    item.md5 = e.md5;
-    item.title = e.title;
-    item.artist = e.artist;
-    item.charter = e.charter;
-    item.notespath = e.notespath;
-    item.rootfolder = e.rootfolder;
-    item.timing = e.timing;
-    return item;
-}
-
 BatchJob::BatchJob(app::BatchPlan plan, app::BatchRun run, store::RecordStore& store)
     : plan_(std::move(plan)),
       run_(std::move(run)),

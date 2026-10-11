@@ -418,26 +418,10 @@ std::optional<ChartNow> chart_changed_since(const std::string& notespath,
 
 std::string normalize_chart_hash(std::string_view hash) { return to_lower_ascii(hash); }
 
-store::ChartLibraryEntry to_library_entry(const ScanItem& item) {
-    store::ChartLibraryEntry e;
-    e.md5 = item.md5;
-    e.title = item.title;
-    e.artist = item.artist;
-    e.charter = item.charter;
-    e.notespath = item.notespath;
-    e.rootfolder = item.rootfolder;
-    e.sig = item.sig;
-    e.timing = item.timing;
-    return e;
-}
-
 std::optional<std::string> save_scan_as_library(store::RecordStore& store,
                                                 const std::vector<ScanItem>& items) {
-    std::vector<store::ChartLibraryEntry> entries;
-    entries.reserve(items.size());
-    for (const ScanItem& item : items) entries.push_back(to_library_entry(item));
     try {
-        store.rebuild_chart_library(entries);
+        store.rebuild_chart_library(items);
     } catch (const std::exception& e) {
         return std::string("Failed to write chart library: ") + e.what();
     }
@@ -676,14 +660,8 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
                 try {
                     auto it = cache.find(pc.notes_path);
                     if (it != cache.end() && sig_unchanged(it->second.sig, pc.sig)) {
-                        // Field by field, like to_library_entry: seven
-                        // strings in a positional list could swap unseen.
-                        ScanItem item;
-                        item.md5 = it->second.md5;
-                        item.title = it->second.title;
-                        item.artist = it->second.artist;
-                        item.charter = it->second.charter;
-                        item.timing = it->second.timing;
+                        // The stored entry, with where the walk found it now.
+                        ScanItem item = it->second;
                         item.notespath = pc.notes_path;
                         item.rootfolder = pc.rootfolder;
                         item.sig = pc.sig;

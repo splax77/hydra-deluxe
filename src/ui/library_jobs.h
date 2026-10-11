@@ -224,11 +224,6 @@ inline constexpr int kEtaMinFinished = 3;
 // charts still to go. Empty until kEtaMinFinished charts have finished.
 std::optional<double> batch_eta_s(double elapsed_s, int completed, int total);
 
-// A library entry as the batch's scan row: the fields of the same names, with
-// `sig` left empty (nothing the batch runs reads it). The other direction is
-// app::to_library_entry; this one can move beside it once analysis.h is free.
-app::ScanItem scan_item_of(const store::ChartLibraryEntry& e);
-
 class BatchJob : public JobBase {
 public:
     // Runs exactly this plan (app::plan_batch), the one the confirm showed
