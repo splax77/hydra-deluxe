@@ -277,27 +277,6 @@ TEST_CASE("field fixture: What's My Age Again? (Sync Chart) SqOut") {
     CHECK(stamped.is_difficult());
 }
 
-TEST_CASE("activation_deact_tick: the stored node, read back") {
-    // activation_deact_tick derives nothing any more: it just hands back
-    // act.deact_tick(). No SongTiming is needed to test that.
-
-    // Set: returns exactly what was stored.
-    Activation act;
-    test::set_plain_window(act, 46080);
-    CHECK(activation_deact_tick(act) == 46080);
-
-    // A timecode and sp_meter at hand but no deact_tick: nullopt. This is the
-    // point of the change -- there is no measure-count fallback any more.
-    Activation stale;
-    stale.timecode = Timecode::raw(3840);
-    test::set_sp_meter(stale, 2);
-    CHECK(!activation_deact_tick(stale).has_value());
-
-    // A bare, default-constructed activation: nullopt.
-    Activation bare;
-    CHECK(!activation_deact_tick(bare).has_value());
-}
-
 TEST_CASE("field fixture: Dumpweed SqOut end anchored on the deact node") {
     // Field-verified: blink-182 - Dumpweed (Hoph2o), Expert Pro Drums 2x,
     // activation "1-" at m19.1.0 (tick 34560), sp_meter 2. The player

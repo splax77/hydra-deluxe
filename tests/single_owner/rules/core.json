@@ -750,7 +750,7 @@
       "pattern": "\\bsqins\\[\\s*[a-z_]\\w*(\\+\\+)?\\s*\\]",
       "anchor": "sqins[",
       "must_match": [
-        "rate_note(sq.offset_ms, sq.is_free(), out.scales->sqins[j++], hit_window_ms);",
+        "rate_note(sq.offset_ms, sq.needs_no_timing(), out.scales->sqins[j++], hit_window_ms);",
         "if (j >= scales->sqins.size() || differs(scales->sqins[j], *sq.transfer)) {"
       ],
       "must_not_match": [

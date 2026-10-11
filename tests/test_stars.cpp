@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "core/backend_value.h"
 #include "core/model.h"
 #include "core/replay.h"
 #include "core/scoring.h"
@@ -91,6 +92,46 @@ TEST_CASE("scoring: one note's value at combos 0, 9 and 29, by category") {
             CHECK(n.sqout_reduction == n.sp);
         }
     }
+}
+
+TEST_CASE("scoring: squeezing out any chord always costs points") {
+    // A counted row's cost is core::sqout_cost, which comes to the chord's
+    // sqout_reduction, so it can never be 0 (path_view's squeeze sentence
+    // relies on that). Every pad, every ghost/accent, the flag each lane can
+    // carry (lane_allows_flag, set_lane_flag), every combo band, both
+    // squeeze-out rules; one-note chords and the chord on all five pads.
+    const NoteColor pads[] = {NoteColor::Kick, NoteColor::Red, NoteColor::Yellow,
+                              NoteColor::Blue, NoteColor::Green};
+    const NoteDynamicType dynamics[] = {NoteDynamicType::Normal, NoteDynamicType::Ghost,
+                                        NoteDynamicType::Accent};
+    const core::SqOutRule rules[] = {core::SqOutRule::FirstNote, core::SqOutRule::WholeChord};
+    std::vector<Chord> chords;
+    Chord all_pads;
+    for (NoteColor pad : pads) {
+        all_pads.at(pad) = ChordNote{pad};
+        for (NoteDynamicType dyn : dynamics)
+            for (bool flagged : {false, true}) {
+                if (flagged && !lane_allows_flag(pad)) continue;
+                ChordNote note{pad, dyn};
+                if (flagged) set_lane_flag(note);
+                chords.push_back(chord_of({note}));
+            }
+    }
+    chords.push_back(all_pads);
+    // Every combo up to the first one at the top multiplier (to_multiplier's
+    // own bands), so every band is walked.
+    const int top_multiplier = to_multiplier(1'000'000);
+    for (const Chord& chord : chords)
+        for (core::SqOutRule rule : rules)
+            for (int combo = 0;; ++combo) {
+                CAPTURE(chord.rowstr());
+                CAPTURE(combo);
+                const CategoryScores sg = category_scores(chord, combo, nullptr, rule);
+                CHECK(sg.sqout_reduction > 0);
+                // An offset of 0 ms is counted whatever the leeway.
+                CHECK(core::sqout_cost(0.0, sg.sp, sg.sqout_sp(), 0.0) > 0);
+                if (to_multiplier(combo) == top_multiplier) break;
+            }
 }
 
 TEST_CASE("scoring: combo_after is the combo plus the chord's notes") {

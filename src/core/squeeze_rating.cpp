@@ -19,10 +19,6 @@ std::optional<TransferScale> transfer_scale_between(int64_t anchor_tick,
     return TransferScale{end_early / front_early, end_late / front_late};
 }
 
-std::optional<int64_t> activation_deact_tick(const Activation& act) {
-    return act.deact_tick();
-}
-
 std::optional<ActTransferScales> frontend_transfer_scales(const Activation& act,
                                                           const SongTiming& timing) {
     // D and the note whose timing moves it, from the stored steps.
@@ -140,11 +136,12 @@ ActivationRating rate_activation(const Activation& act,
             out.note_effective_ms.push_back(std::nullopt);
             continue;
         }
-        // A free SqIn's note is inside SP (SPSqueeze::is_free, D13). Its
-        // stored scale is the one at its SqIn rank.
+        // A SqIn that needs no timing has its note inside SP
+        // (SPSqueeze::needs_no_timing, D13). Its stored scale is the one at
+        // its SqIn rank.
         const TransferScale& at_end =
             out.scales->sqins[sqin_rank(act.sqinouts.begin(), it, is_sqin_squeeze)];
-        const NoteRating n = rate_note(sq.offset_ms, sq.is_free(), at_end, hit_window_ms);
+        const NoteRating n = rate_note(sq.offset_ms, sq.needs_no_timing(), at_end, hit_window_ms);
         out.scale_governs |= n.effective_ms.has_value();
         out.note_effective_ms.push_back(n.effective_ms);
     }

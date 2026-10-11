@@ -11,7 +11,6 @@
 
 #include "app/config.h"          // Settings: the sp_cap setting's floor
 #include "app/display_format.h"  // clock_str
-#include "core/squeeze_rating.h"
 #include "core/replay.h"
 
 namespace hydra::app {
@@ -370,7 +369,7 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
             pa.bank_rise_ticks = a.bank_rise_ticks;
             for (size_t k = 0; k < a.sp_end_steps.size(); ++k)
                 pa.sp_end_changes.push_back({a.refill_tick(k), a.sp_end_steps[k].end_tick});
-            if (std::optional<int64_t> d = activation_deact_tick(a)) {
+            if (std::optional<int64_t> d = a.deact_tick()) {
                 pa.has_sp_end = true;
                 pa.sp_end_tick = *d;
                 pa.sp_end_ms = timing.ms_index().at(*d);
