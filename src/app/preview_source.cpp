@@ -140,9 +140,9 @@ constexpr double kOffsetDirection = 1.0;
 }  // namespace
 
 bool is_audio_filename(const std::string& filename) {
-    return ends_with_ci(filename, ".ogg") || ends_with_ci(filename, ".opus") ||
-           ends_with_ci(filename, ".mp3") || ends_with_ci(filename, ".wav") ||
-           ends_with_ci(filename, ".flac");
+    for (const audio::AudioExtension& a : audio::kAudioExtensions)
+        if (ends_with_ci(filename, a.extension)) return true;
+    return false;
 }
 
 bool is_song_stem(const std::string& filename) {

@@ -1,0 +1,32 @@
+{
+  "rules": [
+    {
+      "question": "Which file extensions are audio a stem may have?",
+      "owner": "kAudioExtensions in src/core/audio_sniff.h",
+      "owner_file": "src/core/audio_sniff.h",
+      "owner_symbol": "kAudioExtensions",
+      "date": "2026-10-11",
+      "decision": "D114 (concept audit finding M64)",
+      "added_by": "concept-G3",
+      "pattern": "ends_with_ci\\([^)]*\"\\.(ogg|opus|mp3|wav|flac)\"",
+      "anchor": "ends_with_ci(",
+      "owner_files": [
+        "src/core/audio_sniff.h"
+      ],
+      "must_match": [
+        "return ends_with_ci(filename, \".ogg\") || ends_with_ci(filename, \".opus\") ||",
+        "if (ends_with_ci(name, \".flac\")) continue;"
+      ],
+      "must_not_match": [
+        "if (ends_with_ci(filename, a.extension)) return true;",
+        "{\".ogg\", AudioFormat::OggVorbis},",
+        "if (ends_with_ci(notespath, \".sng\")) {"
+      ],
+      "scope": [
+        "src",
+        "tools"
+      ],
+      "note": "Catches a second audio extension list written as suffix tests. Tests are out of scope because a test of ends_with_ci itself passes an audio extension as plain text. A second byte sniff is a different spelling and lives with sniff_format. Decided by: D114, concept audit finding M64"
+    }
+  ]
+}
