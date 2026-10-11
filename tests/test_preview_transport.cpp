@@ -276,21 +276,52 @@ TEST_CASE("an audio offset seeks the playhead ahead of the clock") {
     CHECK(playhead->position_ms() == doctest::Approx(750.0));
 }
 
-// The scrubber's right edge is the song's length (D75). On the audio-tail
-// chart, which states 6000 ms, a drag to that edge seeks to 6000 ms, past the
-// last note at 1000 ms.
+// The scrubber's right edge comes from the transport's range (D114 item 17).
+// On the audio-tail chart, which states 6000 ms, a drag to that edge seeks to
+// 6000 ms, past the last note at 1000 ms.
 TEST_CASE("scrubber: a drag to the right end seeks to the song's length") {
     const hydra::test::AudioTailChart c = hydra::test::audio_tail_chart();
     PreviewTransport transport([] { return 0.0; });
     transport.load(make_playhead(c.audio_end_ms), c.last_note_ms);
+    transport.set_song_length_ms(c.audio_end_ms);
     CHECK(transport.length_ms() == doctest::Approx(6000.0));  // the tail still plays
 
-    const double right_end = hydra::app::scrub_end_ms(c.audio_end_ms, transport.length_ms());
+    const double right_end = transport.range().scrub_end_ms;
     transport.seek_ms(right_end);
     CHECK(transport.now_ms() == doctest::Approx(6000.0));
 
     // With no usable song length the edge stays the transport's length.
-    CHECK(hydra::app::scrub_end_ms(0.0, transport.length_ms()) == doctest::Approx(6000.0));
+    transport.set_song_length_ms(0.0);
+    CHECK(transport.range().scrub_end_ms == doctest::Approx(6000.0));
+}
+
+// A stated length longer than the notes and the audio (E > L): the scrubber
+// ends where playback does, so a drag to its right end lands there and the
+// thumb stays at the edge. The gold marks are still placed by the song length.
+TEST_CASE("scrubber: a stated length past playback ends the scrubber at playback's end") {
+    PreviewTransport transport([] { return 0.0; });
+    transport.load(make_playhead(5000.0), 1000.0);
+    transport.set_song_length_ms(9000.0);
+
+    const hydra::app::PlayheadRange r = transport.range();
+    CHECK(r.playback_end_ms == doctest::Approx(5000.0));
+    CHECK(r.scrub_end_ms == doctest::Approx(5000.0));
+    CHECK(r.marks_length_ms == doctest::Approx(9000.0));
+
+    transport.seek_ms(r.scrub_end_ms);
+    CHECK(transport.now_ms() == doctest::Approx(r.scrub_end_ms));
+    CHECK(hydra::app::scrub_thumb_ms(transport.now_ms(), r.scrub_end_ms) ==
+          doctest::Approx(r.scrub_end_ms));
+}
+
+// No notes and no audio: the clock still runs free, so the scrubber spans
+// the stated length.
+TEST_CASE("scrubber: with no playback end the scrubber spans the song length") {
+    PreviewTransport transport([] { return 0.0; });
+    transport.set_song_length_ms(4000.0);
+    CHECK(transport.range().scrub_end_ms == doctest::Approx(4000.0));
+    transport.unload();
+    CHECK_FALSE(transport.song_length_ms().has_value());
 }
 
 // The transport's audio end comes from audio_end_chart_ms, the owner the load

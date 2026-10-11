@@ -682,8 +682,8 @@ TEST_CASE("song_fraction: has_song_length takes only a positive length") {
 // The audio-tail chart: the last note is at 1000 ms and the audio stops 5 s
 // later, at 6000 ms. One activation on the note at tick 1440 (750 ms); one
 // bar of SP runs two measures, so its window ends at tick 5280. The scrubber
-// is built the way the Preview builds it (its right edge from scrub_end_ms
-// over the song's length) and the Paths timeline over the same length
+// is built the way the Preview builds it (its marks from playhead_range's
+// marks_length_ms over the song's length) and the Paths timeline over the same length
 // (app::song_length_ms, D75; this chart's stated length is its 6000 ms), and
 // the two marks must be the same number.
 TEST_CASE("scrub marks: an activation sits at the Paths timeline's fraction when the audio outlasts the notes") {
@@ -693,7 +693,7 @@ TEST_CASE("scrub marks: an activation sits at the Paths timeline's fraction when
     const PreviewScene scene = build_preview_scene(c.song, &path, kCloneHeroSpCap,
                                                    core::default_rules(), c.audio_end_ms);
     const std::vector<double> marks =
-        build_scrub_marks(scene, scrub_end_ms(c.audio_end_ms, c.audio_end_ms));
+        build_scrub_marks(scene, playhead_range(c.audio_end_ms, c.audio_end_ms).marks_length_ms);
     REQUIRE(marks.size() == 1);
     CHECK(marks[0] == doctest::Approx(0.125));
 
@@ -710,7 +710,7 @@ TEST_CASE("scrub marks: an activation sits at the Paths timeline's fraction when
 // the way to that end.
 TEST_CASE("scrub marks: a playhead past the last note parks the thumb at the right end") {
     const test::AudioTailChart c = test::audio_tail_chart();
-    const double end = scrub_end_ms(c.audio_end_ms, c.audio_end_ms);
+    const double end = playhead_range(c.audio_end_ms, c.audio_end_ms).scrub_end_ms;
     CHECK(end == doctest::Approx(6000.0));
     CHECK(scrub_thumb_ms(c.audio_end_ms, end) == doctest::Approx(6000.0));
     CHECK(scrub_thumb_ms(3000.0, end) == doctest::Approx(3000.0));  // in the tail

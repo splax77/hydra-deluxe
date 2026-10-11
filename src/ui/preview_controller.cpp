@@ -153,7 +153,7 @@ void PreviewController::take_notes_job() {
     if (notes_job_->ok()) {
         PreviewNotesJob::Result result = notes_job_->take_result();
         song_ = std::make_shared<const Song>(std::move(result.song));
-        song_length_ms_ = result.song_length_ms;
+        transport_.set_song_length_ms(result.song_length_ms);
         pro_ = notes_job_->pro();
         show_scene(std::move(result.scene), std::move(result.track_state), result.track_opts,
                    job_path_key_);
@@ -172,7 +172,7 @@ void PreviewController::take_notes_job() {
         // Drop the old notes so no later overlay is built on them. The
         // transport stays loaded: switching back reloads only the notes.
         song_.reset();
-        song_length_ms_.reset();
+        transport_.set_song_length_ms(std::nullopt);
         show_scene({}, std::nullopt, {}, {});
         scene_base_.reset();
         base_started_ = false;
@@ -195,7 +195,7 @@ void PreviewController::start_scene_job() {
     retire(scene_job_, retired_scene_jobs_);
     scene_job_ = std::make_unique<PreviewSceneJob>(song_, scene_base_, path_to_draw(), sp_cap_,
                                                    rules_, path_key_, track_opts(), audio_end_ms_,
-                                                   song_length_ms_);
+                                                   transport_.song_length_ms());
     scene_job_->start();
 }
 
@@ -224,7 +224,6 @@ void PreviewController::close() {
     show_scene({}, std::nullopt, {}, {});
     song_.reset();
     audio_end_ms_.reset();
-    song_length_ms_.reset();
     scene_base_.reset();
     path_.reset();
     sp_cap_ = kCloneHeroSpCap;
@@ -278,7 +277,7 @@ void PreviewController::poll() {
     }
     if (base_due()) {
         base_job_ = std::make_unique<PreviewBaseJob>(song_, track_opts(), audio_end_ms_,
-                                                     song_length_ms_);
+                                                     transport_.song_length_ms());
         base_job_->start();
         base_started_ = true;
     }
@@ -290,7 +289,6 @@ void PreviewController::poll() {
         PreviewLoadJob::Result result = job_->take_result();
         song_ = std::make_shared<const Song>(std::move(result.song));
         audio_end_ms_ = result.audio_end_ms;
-        song_length_ms_ = result.song_length_ms;
         chart_changed_ = result.chart_changed;
         show_scene(std::move(result.scene), std::move(result.track_state), result.track_opts,
                    job_path_key_);
@@ -298,6 +296,7 @@ void PreviewController::poll() {
         transport_.set_gain(app::Settings::volume_gain(volume_pct_));
         transport_.load(std::make_unique<audio::Playhead>(std::move(result.audio)),
                         hydra::app::last_note_ms(scene_), result.audio_offset_ms);
+        transport_.set_song_length_ms(result.song_length_ms);
         // Open the output device only when there is audio to play; a chart with
         // no locatable stems previews silently (the highway still draws).
         if (transport_.has_audio()) {
@@ -396,13 +395,9 @@ bool PreviewController::playing() const { return transport_.playing(); }
 
 double PreviewController::position_ms() const { return transport_.now_ms(); }
 
-// The scrubber's range: the song's length the load worked out
-// (app::chart_song_length_ms, D75), so the slider and its gold marks end where
-// the Paths timeline does. A chart with no length falls back to
-// playback_end_ms() (app::scrub_end_ms, D70 item 1).
-double PreviewController::scrub_end_ms() const {
-    return hydra::app::scrub_end_ms(song_length_ms_, playback_end_ms());
-}
+// The scrubber's right edge, from the transport's one range value
+// (app::PlayheadRange, D114 item 17).
+double PreviewController::scrub_end_ms() const { return transport_.range().scrub_end_ms; }
 
 // Where playback stops: the transport's length, the later of the last note
 // and the audio's end. Every reader in this class asks here.
@@ -457,7 +452,8 @@ hydra::app::PreviewDrainBox PreviewController::drain_box() const {
 }
 
 const std::vector<double>& PreviewController::scrub_marks() const {
-    const double length = scrub_end_ms();
+    // Placed by the song's length, not the scrubber's edge (D114 item 17).
+    const double length = transport_.range().marks_length_ms;
     if (!cache_fresh(scrub_marks_cache_) || scrub_marks_cache_.length_ms != length) {
         scrub_marks_ = hydra::app::build_scrub_marks(scene_, length);
         stamp(scrub_marks_cache_);

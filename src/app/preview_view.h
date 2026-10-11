@@ -377,18 +377,35 @@ double step_tick_ms(const PreviewScene& scene, double now_ms, double length_ms,
                     int delta_ticks);
 
 // Where each activation of the shown path sits on the scrubber: its onset over
-// `length_ms` (the scrubber's right edge, scrub_end_ms), clamped to 0..1, in
+// `length_ms` (PlayheadRange::marks_length_ms), clamped to 0..1, in
 // activation order. Empty with no path or no length.
 std::vector<double> build_scrub_marks(const PreviewScene& scene, double length_ms);
 
-// The Preview scrubber's right edge. It is the song's length,
-// `song_length_ms` (app::song_length_ms, D75), when has_song_length says that
-// length is usable. A chart with no length has its edge at
-// `playback_length_ms`, the transport's length (D70 item 1).
-double scrub_end_ms(std::optional<double> song_length_ms, double playback_length_ms);
+// Where the Preview's playhead can be, as one value (D114 item 17).
+// PreviewTransport::range() is its one maker; the time box, the scrubber, its
+// thumb and its gold marks all read it.
+struct PlayheadRange {
+    // Where playback stops (PreviewTransport::length_ms). The time box's
+    // moment is held inside [0, playback_end_ms]. 0 means no notes and no
+    // audio: the clock then runs free.
+    double playback_end_ms = 0.0;
+    // The length the gold marks are placed by: the song's length
+    // (app::song_length_ms, D75) when has_song_length says it is usable,
+    // else playback_end_ms (D70 item 1). The Paths timeline uses the same.
+    double marks_length_ms = 0.0;
+    // The scrubber's right edge: no further than playback can reach, so the
+    // shorter of marks_length_ms and playback_end_ms. With a playback end of
+    // 0 nothing stops the clock, so it is marks_length_ms.
+    double scrub_end_ms = 0.0;
+};
+
+// The range for a song length (as app::song_length_ms answers it) and a
+// playback end (as PreviewTransport::length_ms answers it).
+PlayheadRange playhead_range(std::optional<double> song_length_ms, double playback_end_ms);
 
 // Where the scrubber's thumb sits with the playhead at `now_ms`. It follows
-// the playhead and stays parked at `scrub_end_ms` should playback run past it.
+// the playhead and stays parked at `scrub_end_ms` (PlayheadRange::scrub_end_ms)
+// should playback run past it.
 double scrub_thumb_ms(double now_ms, double scrub_end_ms);
 
 // Is `length_ms` a song length the timeline can use? Only a positive length
