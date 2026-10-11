@@ -31,11 +31,22 @@ const double NO_DOUBLE = std::numeric_limits<double>::quiet_NaN();
 inline bool has_value(double v) { return !std::isnan(v); }
 
 const int64_t NO_TIME = -1;
-const int32_t SQ_IN = 0;
-const int32_t SQ_OUT = 1;
 const int32_t DEACT_NONE = 0;
 const int32_t DEACT_NORMAL = 1;
 const int32_t DEACT_SQINOUT = 2;
+
+// Names for the search path's score slots (Path::sc below). The core Path's
+// six score fields are the one list of categories; these only name the slot
+// that holds each one.
+enum ScoreSlot : int {
+    kSlotBase,
+    kSlotCombo,
+    kSlotSp,
+    kSlotSolo,
+    kSlotAccents,
+    kSlotGhosts,
+    kSlotCount
+};
 
 const int32_t NODE_BROKEN = -2;
 
@@ -214,7 +225,7 @@ struct Act {
 };
 struct SqNode {
     int32_t prev;
-    int32_t kind;
+    SqueezeKind kind;
     double offset;
 };
 // One tick in a chain of ticks (a bank arrival or a passed-over fill),
@@ -285,7 +296,7 @@ struct Path {
     int32_t act_tail;
     int32_t var_head;
     int32_t tied_count;
-    int32_t sc[6];
+    int32_t sc[kSlotCount];
     int64_t score;
     int64_t sp_end_time;
     // The running activation's SP-end steps so far (an index into ends_),
@@ -338,7 +349,7 @@ struct OutAct {
     int64_t sqout_phrase;
 };
 struct OutSq {
-    int32_t kind;
+    SqueezeKind kind;
     double offset;
 };
 
@@ -463,7 +474,7 @@ private:
         acts_.push_back(acts_[(size_t)tail]);
         return (int32_t)acts_.size() - 1;
     }
-    int32_t push_sq(int32_t prev, int32_t kind, double offset) {
+    int32_t push_sq(int32_t prev, SqueezeKind kind, double offset) {
         SqNode s;
         s.prev = prev;
         s.kind = kind;
@@ -817,14 +828,14 @@ void Engine::advance(Path& p) {
     const EdgeView e = edge(n.adv_edge);
     const ScoreGraphEdge* eo = eobj(n.adv_edge);
 
-    p.sc[0] += e.basescore;
-    p.sc[1] += e.comboscore;
-    p.sc[2] += e.spscore;
-    p.sc[3] += e.soloscore;
-    p.sc[4] += e.accentscore;
-    p.sc[5] += e.ghostscore;
-    p.score += (int64_t)e.basescore + e.comboscore + e.spscore + e.soloscore +
-               e.accentscore + e.ghostscore;
+    p.sc[kSlotBase] += e.basescore;
+    p.sc[kSlotCombo] += e.comboscore;
+    p.sc[kSlotSp] += e.spscore;
+    p.sc[kSlotSolo] += e.soloscore;
+    p.sc[kSlotAccents] += e.accentscore;
+    p.sc[kSlotGhosts] += e.ghostscore;
+    p.score += score_total(e.basescore, e.comboscore, e.spscore, e.soloscore,
+                           e.accentscore, e.ghostscore);
 
     const int32_t sp_n = (int32_t)eo->sp_times.size();
 
@@ -959,7 +970,7 @@ bool Engine::branch_activate(Path& p, Path* child) {
     c.bank_tail = -1;
     acts_[(size_t)c.act_tail].skip_tail = p.skip_tail;
     c.skip_tail = -1;
-    c.sc[2] += e.frontend_points;
+    c.sc[kSlotSp] += e.frontend_points;
     c.score += e.frontend_points;
     c.skipped_e_offset = NO_DOUBLE;
     c.sp_ready_ms = NO_DOUBLE;
@@ -1028,10 +1039,11 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
     c.sp_end_time = NO_TIME;
     c.end_tail = -1;
     // A squeeze-out banks one bar when the player hits the phrase: just after
-    // SP ends for an early phrase, on its own tick for a late one.
+    // SP ends for an early phrase, on its own tick for a late one. The
+    // choice's `late` is this edge's answer to core::after_sp_end, stamped
+    // by the graph (add_deact_edge).
     const int64_t sp_end = node(e.dest).tick;
-    c.bank_tail = sq ? push_tick(banks_, -1, core::after_sp_end(sq->chord, sp_end) ? sq->chord : sp_end)
-                     : -1;
+    c.bank_tail = sq ? push_tick(banks_, -1, sq->late ? sq->chord : sp_end) : -1;
 
     c.act_tail = clone_tail(p.act_tail);
     if (c.act_tail >= 0) {
@@ -1044,7 +1056,7 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
         // rebuild checks it once for every stored window, variants included.
         a.end_tail = sq ? trim_ends(p.end_tail, sq->chord) : p.end_tail;
         if (sq) {
-            a.sq_tail = push_sq(a.sq_tail, SQ_OUT, sq->timing);
+            a.sq_tail = push_sq(a.sq_tail, SqueezeKind::SqOut, sq->timing);
             a.sqout_phrase = sq->chord;
         }
     }
@@ -1072,7 +1084,7 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
     }
 
     if (sp_delta) {
-        c.sc[2] += sp_delta;
+        c.sc[kSlotSp] += sp_delta;
         c.score += sp_delta;
     }
 
@@ -1104,7 +1116,7 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
     p.act_tail = clone_tail(p.act_tail);
     if (p.act_tail >= 0) {
         Act& a = acts_[(size_t)p.act_tail];
-        a.sq_tail = push_sq(a.sq_tail, SQ_IN, sq->timing);
+        a.sq_tail = push_sq(a.sq_tail, SqueezeKind::SqIn, sq->timing);
     }
 
     // The squeeze-in's step. A late one's phrase comes after this node and is
@@ -1138,8 +1150,7 @@ bool Engine::act_within_limit(int32_t act) const {
     if (act < 0 || !has_ms_filter_) return true;
     const Act& a = acts_[(size_t)act];
     for (int32_t s = a.sq_tail; s >= 0; s = sqs_[(size_t)s].prev) {
-        const bool is_in = sqs_[(size_t)s].kind == SQ_IN;
-        const SPSqueeze sq{is_in ? SqueezeKind::SqIn : SqueezeKind::SqOut, sqs_[(size_t)s].offset};
+        const SPSqueeze sq{sqs_[(size_t)s].kind, sqs_[(size_t)s].offset};
         if (!sq.within_limit(ms_filter_)) return false;
     }
     return fill_within_limit(a.e_offset, a.skips, ms_filter_);
@@ -1545,7 +1556,7 @@ void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var)
     // sqout_phrase is the squeezed-out chord.
     int64_t give_back = NO_TIME;
     for (int32_t k = own.sq_begin; k < own.sq_end; ++k)
-        if (out_sqs_[(size_t)k].kind == SQ_OUT && own.deact_edge >= 0)
+        if (out_sqs_[(size_t)k].kind == SqueezeKind::SqOut && own.deact_edge >= 0)
             give_back = own.sqout_phrase;
 
     // An early SqIn the leader took after the fold may sit on a phrase from
@@ -1564,7 +1575,7 @@ void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var)
     const auto lead_sqs = out_sqs_.begin() + lead.sq_begin;
     const size_t sqins_before_fold =
         sqin_rank(lead_sqs, lead_sqs + var.fold_sq_count,
-                  [](const auto& sq) { return sq.kind == SQ_IN; });
+                  [](const auto& sq) { return sq.kind == SqueezeKind::SqIn; });
     std::vector<int64_t> relabel_at;
     const auto lead_last = out_ends_.begin() + lead.end_end;
     for (auto s = nth_sqin_step(out_ends_.begin() + lead.end_begin, lead_last, sqins_before_fold);
@@ -1712,19 +1723,20 @@ void Engine::emit_path(const Path& p) {
     // The search ranks by its running p.score; the record stores the six
     // categories. Every stored total passes through here (a variant copies its
     // leader's, ADR 0017), so this is where the two must agree (audit 165).
-    const int64_t six = score_total(p.sc[0], p.sc[1], p.sc[2], p.sc[3], p.sc[4], p.sc[5]);
+    const int64_t six = score_total(p.sc[kSlotBase], p.sc[kSlotCombo], p.sc[kSlotSp],
+                                    p.sc[kSlotSolo], p.sc[kSlotAccents], p.sc[kSlotGhosts]);
     if (p.score != six)
         throw std::logic_error("copy-out: the search's running score " +
                                std::to_string(p.score) +
                                " differs from its six categories' total " +
                                std::to_string(six));
     OutPath op;
-    op.score_base = p.sc[0];
-    op.score_combo = p.sc[1];
-    op.score_sp = p.sc[2];
-    op.score_solo = p.sc[3];
-    op.score_accents = p.sc[4];
-    op.score_ghosts = p.sc[5];
+    op.score_base = p.sc[kSlotBase];
+    op.score_combo = p.sc[kSlotCombo];
+    op.score_sp = p.sc[kSlotSp];
+    op.score_solo = p.sc[kSlotSolo];
+    op.score_accents = p.sc[kSlotAccents];
+    op.score_ghosts = p.sc[kSlotGhosts];
     op.var_point = -1;
     op.depth = 0;
     op.tied_count = p.tied_count;
@@ -1959,12 +1971,12 @@ std::vector<MPath> rebuild(const ScoreGraph& graph, const Enum& en,
             double searched_sqout_ms = 0.0;
             for (int k = oa.sq_begin; k < oa.sq_end; ++k) {
                 const OutSq& os = out_sqs[(size_t)k];
-                if (os.kind == SQ_OUT) {
+                if (os.kind == SqueezeKind::SqOut) {
                     took_sqout = true;
                     searched_sqout_ms = os.offset;
                     continue;
                 }
-                act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, os.offset});
+                act.sqinouts.push_back(SPSqueeze{os.kind, os.offset});
             }
 
             // A squeezed-out note is hit after SP has already ended, and every

@@ -28,10 +28,11 @@ namespace hydra {
 // A fill only appears in-game if the player's SP meter was already full by
 // some deadline before the fill. The two versions disagree on that deadline:
 //
-//   * Ch11 — Clone Hero 1.1 and later: a flat 4 beats before the fill starts.
-//     This is Hydra's normal rule and the default everywhere.
+//   * Ch11 — Clone Hero 1.1 and later: a flat lead in beats before the fill
+//     starts (kCh11FillLeadBeats). This is Hydra's normal rule and the
+//     default everywhere.
 //   * Ch10 — Clone Hero 1.0, as Python Hydra 1.2 modelled it: roughly one
-//     fill-length of lead time before the fill, clamped to 250..10000 ms.
+//     fill-length of lead time, clamped (activation_fill_deadline_ms).
 //
 // Ch10 answers "what could a 1.0 player have reached?": the app's "1.0 fills"
 // setting and hydra_batch --legacy-fills. A stored result carries the rule it
@@ -71,13 +72,19 @@ inline const char* fill_rule_name(FillDeadlineRule rule, FillRuleNameStyle style
     return is_short ? "CH 1.1" : "Clone Hero 1.1";
 }
 
+// Clone Hero 1.1's fill deadline: how many beats before a fill starts the SP
+// meter must already be full. activation_fill_deadline_ms computes with it
+// and fill_rule_description words it.
+inline constexpr int kCh11FillLeadBeats = 4;
+
 // One sentence saying when each rule's fill deadline falls. The "1.0 fills"
 // tooltip and the fill comparison report's footer both print it.
 inline std::string fill_rule_description(FillDeadlineRule rule) {
     const std::string name = fill_rule_name(rule, FillRuleNameStyle::Long);
     return rule == FillDeadlineRule::Ch10
                ? name + " set the deadline about one fill-length before the fill starts."
-               : name + " sets the deadline 4 beats before the fill starts.";
+               : name + " sets the deadline " + std::to_string(kCh11FillLeadBeats) +
+                     " beats before the fill starts.";
 }
 
 // The latest a player's SP may become ready and still have this fill spawn.

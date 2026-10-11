@@ -31,8 +31,8 @@ inline bool paid_by_sp_walk(double offset_ms) { return offset_ms <= 0.0; }
 
 // The same edge by tick: is this chord after the SP end? A chord exactly on
 // the end is not, so it agrees with paid_by_sp_walk wherever time runs
-// forwards (parse refuses timing that does not, D6). The graph's late
-// squeeze choice and the engine's squeeze-out bank tick ask it.
+// forwards (parse refuses timing that does not, D6). The graph stamps its
+// answer on each squeeze choice (SqueezeChoice::late); the engine reads that.
 inline bool after_sp_end(int64_t chord_tick, int64_t end_tick) { return chord_tick > end_tick; }
 
 // Counted under Star Power with no squeeze: at or before the SP end, or

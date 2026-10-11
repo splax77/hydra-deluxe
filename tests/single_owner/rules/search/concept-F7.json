@@ -1,0 +1,101 @@
+{
+  "rules": [
+    {
+      "question": "What is a path's running score, given its six score categories?",
+      "owner": "score_total in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "score_total",
+      "date": "2026-10-11",
+      "decision": "D114 (concept audit M30)",
+      "added_by": "concept-audit-F7",
+      "pattern": "\\.score\\s*\\+=\\s*(\\(int64_t\\)\\s*)?\\w+\\.\\w*score\\s*\\+",
+      "anchor": "score",
+      "calls_owner": "\\bscore_total\\(",
+      "must_match": [
+        "p.score += (int64_t)e.basescore + e.comboscore + e.spscore + e.soloscore +",
+        "path.score += edge.basescore + edge.comboscore;"
+      ],
+      "must_not_match": [
+        "p.score += score_total(e.basescore, e.comboscore, e.spscore, e.soloscore,",
+        "c.score += frontend_points;",
+        "c.score += sp_delta;"
+      ],
+      "note": "A running score built by adding category fields by hand next to the owner. This catches only the hand sum; a seventh category arrives under a new name, so no text search catches a category missing from the sum, and emit_path's runtime check in src/search/engine.cpp is the guard for that. Decided by: concept audit M30 (D114, task F7)"
+    },
+    {
+      "question": "Which search graph does a set of search settings build?",
+      "owner": "search_graph in src/search/pather.cpp",
+      "owner_file": "src/search/pather.cpp",
+      "owner_symbol": "search_graph",
+      "date": "2026-10-11",
+      "decision": "D114 (concept audit M35)",
+      "added_by": "concept-audit-F7",
+      "pattern": "\\bScoreGraph\\b.*\\bfill_rule_for\\(|\\bfill_rule_for\\([^)]*\\)\\s*,\\s*[\\w.>-]*rules\\s*\\)",
+      "anchor": "fill_rule_for(",
+      "calls_owner": "\\bsearch_graph\\(",
+      "must_match": [
+        "ScoreGraph graph(song, cap, fill_rule_for(legacy_fills), rules);",
+        "fill_rule_for(settings.legacy_fill_deadline), settings.rules);"
+      ],
+      "must_not_match": [
+        "const FillDeadlineRule rule = fill_rule_for(options.lens.legacy_fills);",
+        "out.fills = fill_rule_name(fill_rule_for(s.legacy_fills), FillRuleNameStyle::Long);",
+        "const ScoreGraph graph = search_graph(song, settings);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/search/pather.cpp",
+          "line_text": "fill_rule_for(settings.legacy_fill_deadline), settings.rules);",
+          "why": "search_graph, the owner: the graph's fill rule and rules from the settings"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A ScoreGraph built from settings by hand instead of through search_graph, which every analysis and target search shares (D45). Scoped to src: tools/bench.cpp times the build by itself and keeps its copy, and tests build graphs at chosen caps on purpose. Decided by: concept audit M35 (D114, task F7)"
+    },
+    {
+      "question": "How many beats before a fill does Clone Hero 1.1's fill deadline fall, in words?",
+      "owner": "fill_rule_description in src/search/graph.h (the number is kCh11FillLeadBeats)",
+      "owner_file": "src/search/graph.h",
+      "owner_symbol": "fill_rule_description",
+      "date": "2026-10-11",
+      "decision": "D114 (concept audit M38)",
+      "added_by": "concept-audit-F7",
+      "pattern": "\"[^\"]*\\b(4|[Ff]our) beats\\b",
+      "anchor": " beats",
+      "calls_owner": "\\bfill_rule_description\\(",
+      "must_match": [
+        ": name + \" sets the deadline 4 beats before the fill starts.\";",
+        "ImGui::TextUnformatted(\"The deadline is four beats before the fill.\");"
+      ],
+      "must_not_match": [
+        "\" beats before the fill starts.\";",
+        "// The E threshold: a fixed lead in beats before the fill marker."
+      ],
+      "note": "A sentence that states the 1.1 fill lead's number by hand. fill_rule_description writes it from kCh11FillLeadBeats, so the sentence follows the code. Tests pin the full sentence as a literal on purpose and are out of scope. Decided by: concept audit M38 (D114, task F7)"
+    },
+    {
+      "question": "Which kind of squeeze is this, SqIn or SqOut?",
+      "owner": "SqueezeKind in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "SqueezeKind",
+      "date": "2026-10-11",
+      "decision": "D114 (concept audit M43)",
+      "added_by": "concept-audit-F7",
+      "pattern": "\\bSQ_(IN|OUT)\\b",
+      "anchor": "SQ_",
+      "must_match": [
+        "const int32_t SQ_IN = 0;",
+        "if (os.kind == SQ_OUT) {"
+      ],
+      "must_not_match": [
+        "if (os.kind == SqueezeKind::SqOut) {"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Hand-typed integer constants for the two squeeze kinds, a second mapping beside the enum with nothing tying them. The engine's flat records hold SqueezeKind itself. Decided by: concept audit M43 (D114, task F7)"
+    }
+  ]
+}
