@@ -26,6 +26,7 @@
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "multidiff_chart.h"
+#include "parse/chart_files.h"
 #include "parse/song.h"
 #include "sng_util.h"
 #include "srb_util.h"
@@ -74,6 +75,15 @@ std::vector<uint8_t> chart_with_offset(const std::string& seconds) {
 }
 
 }  // namespace
+
+TEST_CASE("is_container: a .sng or .srb is a container, a loose notes file is not") {
+    CHECK(is_container(chart_format_of("bundle.SNG")));
+    CHECK(is_container(chart_format_of("pack.srb")));
+    CHECK_FALSE(is_container(chart_format_of("notes.mid")));
+    CHECK_FALSE(is_container(chart_format_of("notes.chart")));
+    CHECK_FALSE(is_container(chart_format_of("readme.txt")));
+    CHECK_FALSE(is_container(chart_format_of("")));
+}
 
 TEST_CASE("is_audio_filename / looks_like_audio recognize the formats") {
     CHECK(is_audio_filename("song.ogg"));

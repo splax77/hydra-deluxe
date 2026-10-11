@@ -24,6 +24,11 @@ enum class ChartFormat { None, Mid, Chart, Sng, Srb };
 // ".sng", ".srb". Anything else is None.
 ChartFormat chart_format_of(std::string_view path);
 
+// Whether a chart format is a container: one file that holds the notes and the
+// audio as entries, rather than a loose notes file in a song folder. The one
+// list of container formats; a new archive format is added here.
+bool is_container(ChartFormat format);
+
 // A notes file by its exact name, any case, wherever it sits: loose in a song
 // folder, or as an entry inside a .sng or .srb. "notes.mid" is Mid,
 // "notes.chart" is Chart, anything else is None. The one name rule for both.

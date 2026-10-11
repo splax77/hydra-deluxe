@@ -337,8 +337,7 @@ PreviewSource resolve_preview_source_reading(const FileBytesReader& read_bytes,
 
 namespace {
 bool is_container_path(const std::string& notespath) {
-    const ChartFormat format = chart_format_of(notespath);
-    return format == ChartFormat::Sng || format == ChartFormat::Srb;
+    return is_container(chart_format_of(notespath));
 }
 }  // namespace
 

@@ -1,0 +1,32 @@
+{
+  "rules": [
+    {
+      "question": "Is this chart format a container (one file holding the notes and the audio)?",
+      "owner": "is_container in src/parse/chart_files.cpp",
+      "owner_file": "src/parse/chart_files.cpp",
+      "owner_symbol": "is_container",
+      "date": "2026-10-11",
+      "decision": "D114 (concept audit finding M63)",
+      "added_by": "concept-G3",
+      "pattern": "ChartFormat::(Sng|Srb)\\b.*\\|\\|.*ChartFormat::(Sng|Srb)\\b",
+      "anchor": "ChartFormat::",
+      "owner_files": [
+        "src/parse/chart_files.cpp"
+      ],
+      "must_match": [
+        "return format == ChartFormat::Sng || format == ChartFormat::Srb;",
+        "if (f == ChartFormat::Srb || f == ChartFormat::Sng) {"
+      ],
+      "must_not_match": [
+        "return is_container(chart_format_of(notespath));",
+        "case ChartFormat::Sng: return ChartKind::Sng;",
+        "} else if (chart_format_of(notespath) == ChartFormat::Sng) {"
+      ],
+      "scope": [
+        "src",
+        "tools"
+      ],
+      "note": "Catches a second list of the container formats written as an either-or test. A switch that names each format on its own case line spells no pair, so text cannot catch it; the scan's chart_kind_of in app/analysis.cpp is one, and tells the hasher which reader to use. A test of one format alone (is it a .sng) is a different question and is not flagged. Decided by: D114, concept audit finding M63"
+    }
+  ]
+}
