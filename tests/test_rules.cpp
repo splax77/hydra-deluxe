@@ -141,6 +141,15 @@ TEST_CASE("rules: a bad value or an unknown key is an error that names the key")
           std::string::npos);
 }
 
+TEST_CASE("rules: a whole-number key takes a whole value written as a decimal") {
+    // D114 item 24: "4.0" and "1e1" are whole, so they load as 4 and 10.
+    core::Rules r = app::load_rules_file(write_rules("wholedec",
+        "max_tied_paths = 4.0\n"
+        "fill_cooldown_measures = 1e1\n"));
+    CHECK(r.max_tied_paths == 4);
+    CHECK(r.fill_cooldown_measures == 10);
+}
+
 TEST_CASE("rules: no rules value has the no-rules fingerprint") {
     // Task 2 opens the store with kNoRulesFingerprint when the file is bad,
     // so no stored row can read Ready. That only works if no real rules
