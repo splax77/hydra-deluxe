@@ -9,11 +9,11 @@
 // core/model.h).
 //
 // The deactivation node itself is not worked out here. The search stamps it
-// onto every activation it produces, and everything below reads that field.
+// onto every activation it produces, and everything below reads it through
+// Activation::deact_tick.
 //
-// Three functions are the module's entries:
+// Two functions are the module's entries:
 //   rate_activation()          -- the details display's only interface.
-//   activation_deact_tick()    -- the Preview's, for the active SP window.
 //   frontend_transfer_scales() -- the engine's copy-out stamp, read from the
 //                                 stored SP-end steps, so a record's stored
 //                                 ratios and a live recompute agree.
@@ -49,13 +49,6 @@ struct ActTransferScales {
 std::optional<TransferScale> transfer_scale_between(int64_t anchor_tick,
                                                     int64_t end_tick,
                                                     const SongTiming& timing);
-
-// The activation's deactivation node D, in ticks: where its Star Power runs
-// out, phrases collected mid-SP included. This does not work anything out.
-// The search knew D and wrote it onto the record, so this hands back
-// act.deact_tick and nothing else. nullopt means the record was written
-// before blob v4 and simply does not say.
-std::optional<int64_t> activation_deact_tick(const Activation& act);
 
 // The activation's transfer scales, from the stored SP-end steps only:
 // `post` from deact_anchor_tick() to deact_tick(), each SqIn from

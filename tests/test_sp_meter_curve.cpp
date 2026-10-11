@@ -124,7 +124,7 @@ TEST_CASE("sp meter curve: a phrase collected mid-activation jumps the meter a b
     check_curve_well_formed(c);
 
     REQUIRE(scene.activations.size() == 1);
-    std::optional<int64_t> deact = activation_deact_tick(path.activations[0]);
+    std::optional<int64_t> deact = path.activations[0].deact_tick();
     REQUIRE(deact.has_value());
     CHECK(*deact == 15360);  // 3840 + 6 measures
     CHECK(scene.activations[0].sp_end_ms == doctest::Approx(16000.0));
@@ -240,7 +240,7 @@ TEST_CASE("sp meter curve: two clamped collections refill twice and empty at the
     REQUIRE(paths.front().activations.size() == 1);
     const Activation& act = paths.front().activations.front();
     REQUIRE(act.timecode.ticks() == 2304);
-    REQUIRE(activation_deact_tick(act) == std::optional<int64_t>(6912));
+    REQUIRE(act.deact_tick() == std::optional<int64_t>(6912));
     // Extra parentheses: the braced list's comma would split the macro.
     REQUIRE((act.collected_phrase_ticks() == std::vector<int64_t>{3072, 3840}));
 

@@ -19,10 +19,6 @@ std::optional<TransferScale> transfer_scale_between(int64_t anchor_tick,
     return TransferScale{end_early / front_early, end_late / front_late};
 }
 
-std::optional<int64_t> activation_deact_tick(const Activation& act) {
-    return act.deact_tick();
-}
-
 std::optional<ActTransferScales> frontend_transfer_scales(const Activation& act,
                                                           const SongTiming& timing) {
     // D and the note whose timing moves it, from the stored steps.

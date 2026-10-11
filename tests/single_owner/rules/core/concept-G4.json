@@ -22,6 +22,37 @@
         "src"
       ],
       "note": "The old name came back. The word \"Free\" on screen belongs to BackendSqueeze::summarystr and means a different thing, so the squeeze's own test is named for what it asks. Decided by: D114, concept audit finding M41"
+    },
+    {
+      "question": "Where does this activation's Star Power end (its deactivation tick)?",
+      "owner": "Activation::deact_tick in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "deact_tick",
+      "date": "2026-10-11",
+      "decision": "D114 (concept audit finding M44)",
+      "added_by": "concept-G4",
+      "pattern": "sp_end_steps\\.back\\(\\)",
+      "anchor": "sp_end_steps.back()",
+      "owner_lines": [
+        {
+          "file": "src/core/model.cpp",
+          "line_text": "return sp_end_steps.back().end_tick;",
+          "why": "Activation::deact_tick, the owner"
+        }
+      ],
+      "must_match": [
+        "const int64_t end = act.sp_end_steps.back().end_tick;",
+        "if (std::optional<int64_t> d = a.sp_end_steps.back().end_tick) {"
+      ],
+      "must_not_match": [
+        "if (std::optional<int64_t> d = a.deact_tick()) {",
+        "pa.sp_end_changes.push_back({a.refill_tick(k), a.sp_end_steps[k].end_tick});"
+      ],
+      "scope": [
+        "src",
+        "tools"
+      ],
+      "note": "A second reader of the last SP-end step. Call Activation::deact_tick. Tests are out of scope because a few of them move the last step's end on purpose to make a different path. Decided by: D114, concept audit finding M44"
     }
   ]
 }

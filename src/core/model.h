@@ -673,8 +673,8 @@ struct Activation {
 // sp_end_steps and the scales above are stored data only. Everything that
 // derives or judges them — transfer_scale_between, frontend_transfer_scales,
 // and the display-layer rating built on them — lives in
-// core/squeeze_rating.h. activation_deact_tick lives there too, but it
-// derives nothing: it just hands back deact_tick().
+// core/squeeze_rating.h. The deactivation node itself is read through
+// Activation::deact_tick, here.
 
 // A read-only walk over a path's activations: its own, then the variant tail
 // it shares with its parent -- the order all_activations() copies them in.

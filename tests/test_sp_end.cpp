@@ -112,7 +112,7 @@ TEST_CASE("SP past the last note: backends measured from the tracked SP end") {
           doctest::Approx(offset_from_sp_end(tick_ms(song, 5280), end_ms)).epsilon(1e-9));
 
     // And the rows put the SP end back exactly where the engine had it.
-    auto deact = activation_deact_tick(act);
+    auto deact = act.deact_tick();
     REQUIRE(deact.has_value());
     CHECK(*deact == end_tick);
 }
@@ -140,7 +140,7 @@ TEST_CASE("SP past the last note: a mid-activation phrase extends the end") {
         CHECK(*b.offset_ms < 0.0);
     }
 
-    auto deact = activation_deact_tick(act);
+    auto deact = act.deact_tick();
     REQUIRE(deact.has_value());
     CHECK(*deact == extended_tick);
     CHECK(*deact != plain_tick);
@@ -387,7 +387,7 @@ TEST_CASE("SP cap overfill: where the end lands and which note clamped it") {
             CHECK(act.sp_meter() == 2);
             CHECK(act.timecode.ticks() == 2304);
 
-            const std::optional<int64_t> deact = activation_deact_tick(act);
+            const std::optional<int64_t> deact = act.deact_tick();
             REQUIRE(deact.has_value());
             CHECK(*deact == c.deact);
 
