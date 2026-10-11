@@ -29,6 +29,8 @@ XMFLOAT3 transform(const XMFLOAT4X4& m, float x, float y, float z) {
     return out;
 }
 
+bool is_lane_tex(TextureId t) { return t >= TextureId::LaneRed && t <= TextureId::LaneGreen; }
+
 std::vector<const DrawCommand*> of_mesh(const std::vector<DrawCommand>& cmds, MeshId id) {
     std::vector<const DrawCommand*> out;
     for (const DrawCommand& c : cmds)
@@ -205,7 +207,7 @@ TEST_CASE("build_highway_draws: order and geometry for a frame") {
     // timed_scene() has one tick per millisecond, hence the 1000.
     int lanes = 0;
     for (const DrawCommand& c : cmds) {
-        if (c.material.texture >= TextureId::LaneRed && c.material.texture <= TextureId::LaneGreen) {
+        if (is_lane_tex(c.material.texture)) {
             ++lanes;
             CHECK(c.lo[2] == doctest::Approx(time_to_z(cfg, now, 1.3, 1.0)));
             CHECK(c.hi[2] ==
@@ -435,7 +437,7 @@ TEST_CASE("build_highway_draws: the taken fill lights its lane with the lit targ
     std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0, 1.0);
     int lanes = 0, lit_green = 0;
     for (const DrawCommand& c : cmds) {
-        if (c.material.texture >= TextureId::LaneRed && c.material.texture <= TextureId::LaneGreen) {
+        if (is_lane_tex(c.material.texture)) {
             ++lanes;
             CHECK(c.alpha == doctest::Approx(1.0f));  // taken fills are full strength
         }
@@ -516,7 +518,7 @@ TEST_CASE("build_highway_draws: an offered fill's strips are dimmed") {
     std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0, 1.0);
     int lanes = 0, lit = 0;
     for (const DrawCommand& c : cmds) {
-        if (c.material.texture >= TextureId::LaneRed && c.material.texture <= TextureId::LaneGreen) {
+        if (is_lane_tex(c.material.texture)) {
             ++lanes;
             CHECK(c.alpha == doctest::Approx(cfg.hydra.fill_offered_alpha));
         }
@@ -535,14 +537,11 @@ TEST_CASE("build_highway_draws: a hidden fill draws no lane strips") {
     std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0, 1.0);
     int lanes = 0;
     for (const DrawCommand& c : cmds)
-        if (c.material.texture >= TextureId::LaneRed && c.material.texture <= TextureId::LaneGreen)
-            ++lanes;
+        if (is_lane_tex(c.material.texture)) ++lanes;
     CHECK(lanes == 0);
 }
 
 namespace {
-
-bool is_lane_tex(TextureId t) { return t >= TextureId::LaneRed && t <= TextureId::LaneGreen; }
 
 bool same_draw(const DrawCommand& a, const DrawCommand& b) {
     for (int k = 0; k < 3; ++k)
@@ -580,9 +579,10 @@ TEST_CASE("build_highway_draws: drum lanes light their own pads in the lane text
         Pad pad;
         double t1, t2;
     };
-    const Want want[] = {{TextureId::LaneRed, Pad::Red, 1.5, 1.7005},
-                         {TextureId::LaneYellow, Pad::Yellow, 1.2, 1.4005},
-                         {TextureId::LaneBlue, Pad::Blue, 1.5, 1.7005}};
+    const double end = kSpanEndTicks / 1000.0;  // one tick per millisecond
+    const Want want[] = {{TextureId::LaneRed, Pad::Red, 1.5, 1.7 + end},
+                         {TextureId::LaneYellow, Pad::Yellow, 1.2, 1.4 + end},
+                         {TextureId::LaneBlue, Pad::Blue, 1.5, 1.7 + end}};
     for (size_t i = 0; i < 3; ++i) {
         const DrawCommand& c = *strips[i];
         INFO("strip " << i);
