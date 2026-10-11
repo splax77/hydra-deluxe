@@ -357,10 +357,18 @@ void AppState::update_view_job() {
     // A late result from an older request: dropped by generation.
     if (job->generation() != view_generation.n) return;
 
+    JobOutcome outcome = job->outcome();
+    // The click's one exception to outcome()'s order: a run that finished
+    // and was then cancelled is dropped, not shown. That Cancel is the
+    // panel's Cancel button (closing the panel drops the run above, by
+    // generation), and nothing is saved for a song whose analysis the user
+    // stopped, as close_details says (D87 item 11).
+    if (outcome == JobOutcome::Done && job->is_cancelled()) outcome = JobOutcome::Cancelled;
+
     ViewedSong v;
-    if (job->is_cancelled()) {
+    if (outcome == JobOutcome::Cancelled) {
         v.state = ViewedSong::State::Cancelled;
-    } else if (!job->ok()) {
+    } else if (outcome == JobOutcome::Failed) {
         v.state = ViewedSong::State::Failed;
         v.message = job->message();
         v.error = job->error();
@@ -752,19 +760,23 @@ template <class Result, class Job>
 ReportBuild land_report(ReportSlot<Result>& slot, const Job& job) {
     const ReportOutOfDate during =
         std::exchange(slot.out_of_date_during_build, ReportOutOfDate::None);
-    if (job.ok()) {
-        slot.result = job.result();
-        slot.built_at = std::chrono::system_clock::now();
-        slot.out_of_date = during;
-        slot.last = ReportBuild::Ready;
-        slot.message.clear();
-        slot.error.clear();
-    } else if (job.is_cancelled()) {
-        slot.mark_cancelled();
-    } else {
-        slot.last = ReportBuild::Failed;
-        slot.message = job.message();
-        slot.error = job.error();
+    switch (job.outcome()) {
+        case JobOutcome::Done:
+            slot.result = job.result();
+            slot.built_at = std::chrono::system_clock::now();
+            slot.out_of_date = during;
+            slot.last = ReportBuild::Ready;
+            slot.message.clear();
+            slot.error.clear();
+            break;
+        case JobOutcome::Cancelled:
+            slot.mark_cancelled();
+            break;
+        case JobOutcome::Failed:
+            slot.last = ReportBuild::Failed;
+            slot.message = job.message();
+            slot.error = job.error();
+            break;
     }
     return slot.last;
 }
