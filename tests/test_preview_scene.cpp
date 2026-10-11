@@ -402,6 +402,11 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
         return "notes";
     if (!spans_eq(a.sp_phrases, b.sp_phrases)) return "sp_phrases";
     if (!spans_eq(a.solos, b.solos)) return "solos";
+    if (!std::equal(a.drum_lanes.begin(), a.drum_lanes.end(), b.drum_lanes.begin(),
+                    b.drum_lanes.end(), [&](const PreviewDrumLane& x, const PreviewDrumLane& y) {
+                        return span_eq(x.span, y.span) && x.pads == y.pads;
+                    }))
+        return "drum_lanes";
     if (!std::equal(a.fills.begin(), a.fills.end(), b.fills.begin(), b.fills.end(),
                     [&](const PreviewFill& x, const PreviewFill& y) {
                         return span_eq(x.span, y.span) && x.state == y.state;
