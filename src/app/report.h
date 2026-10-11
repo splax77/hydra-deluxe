@@ -311,7 +311,8 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
 // The user settings generate_report reads, stated once. A new read of a
 // setting by the page joins this list, and settings_change_touches compares
 // through it. The chart mode is not here: the page lists every mode
-// (settings_for_mode).
+// (settings_for_mode). The rules are not here either: hydra_rules.ini is read
+// once at start-up (AppState), so no open page outlives a change to them.
 struct PageSettings {
     store::CapQuery cap;
     store::Lens lens;
