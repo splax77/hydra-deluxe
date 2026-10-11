@@ -245,6 +245,9 @@ struct BatchRun {
     // The SP cap this run's results are filed under and looked up by:
     // CapQuery::at is the owner.
     store::CapQuery cap_query() const { return store::CapQuery::at(settings.sp_cap); }
+
+    // Everything this run's results are filed under but the chart.
+    store::ResultSettings filed_under() const { return {chartmode, cap_query(), lens}; }
 };
 
 // The charts a batch under `run` skips because they already have a result

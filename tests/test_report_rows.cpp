@@ -86,11 +86,8 @@ ChartAnalyzer fixture_analyzer() {
 // A report over the fixtures' results at SP cap `cap`: their cap, lens and
 // settings, analyzed by fixture_analyzer.
 report::ReportOptions fixture_options(int cap, bool legacy_fills = false) {
-    const BatchRun run = fixture_settings(cap, legacy_fills).batch_run();
     report::ReportOptions options;
-    options.cap = run.cap_query();
-    options.lens = run.lens;
-    options.run = run;
+    options.run = fixture_settings(cap, legacy_fills).batch_run();
     options.analyze = fixture_analyzer();
     return options;
 }
@@ -706,9 +703,8 @@ TEST_CASE("the report reuses the charts a batch just analyzed") {
                     std::invalid_argument);
     other.rows = seed.rows;
     CHECK_THROWS_AS(report::generate_report(store, options, other), std::invalid_argument);
-    // So is a report whose settings are not its cap and lens, or missing.
-    options.run = fixture_settings(5).batch_run();
-    CHECK_THROWS_AS(report::generate_report(store, options), std::invalid_argument);
+    // So is a report with no analysis settings: its run is what picks the
+    // records it lists.
     options.run.reset();
     CHECK_THROWS_AS(report::generate_report(store, options), std::invalid_argument);
 }

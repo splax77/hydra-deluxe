@@ -110,9 +110,7 @@ std::vector<ReportRow> chart_rows(const HydraRecord& record, int64_t max_paths) 
 
 ReportSeed ReportSeed::for_run(const BatchRun& run, int64_t max_paths) {
     ReportSeed seed;
-    seed.chartmode = run.chartmode;
-    seed.cap = run.cap_query();
-    seed.lens = run.lens;
+    seed.filed_under = run.filed_under();
     seed.max_paths = max_paths;
     return seed;
 }
@@ -226,11 +224,8 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
     if (!options.run)
         throw std::invalid_argument("collect_rows: the report has no analysis settings");
     const BatchRun& run = *options.run;
-    if (run.cap_query() != options.cap || run.lens != options.lens)
-        throw std::invalid_argument(
-            "collect_rows: the analysis settings are not the report's cap and lens");
-    if (!seed.rows.empty() && (seed.cap != options.cap || seed.lens != options.lens ||
-                               seed.max_paths < options.max_paths))
+    if (!seed.rows.empty() &&
+        (seed.filed_under != run.filed_under() || seed.max_paths < options.max_paths))
         throw std::invalid_argument("collect_rows: the batch's rows are for other settings");
 
     // Which file each library chart is analyzed from (RecordStore::naming_copy_paths),
@@ -252,13 +247,13 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
     std::vector<size_t> to_analyze;  // slot indexes this pass analyzes
     std::unordered_map<std::string, AnalysisSettings> mode_settings;
     for (LibraryListing& listed :
-         listings_the_library_lists(store, copies, std::nullopt, options.cap, options.lens)) {
+         listings_the_library_lists(store, copies, std::nullopt, run.cap_query(), run.lens)) {
         const std::string& hash = listed.hash;
         store::RecordListing& listing = listed.listing;
         Slot slot;
         // Both maps come from kNamingCopiesSql, so a listed chart has a file.
         slot.file = &files.at(hash);
-        if (listing.chartmode == seed.chartmode) {
+        if (listing.chartmode == seed.filed_under.chartmode) {
             const auto seeded = seed.rows.find(hash);
             if (seeded != seed.rows.end()) slot.seeded = &seeded->second;
         }
@@ -388,7 +383,9 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
     }
     out.failures = std::move(collected.failures);
     const std::vector<ReportRow>& rows = collected.rows;
-    const FillDeadlineRule rule = fill_rule_for(options.lens.legacy_fills);
+    // collect_rows refused a report with no run, so it is set here.
+    const BatchRun& run = *options.run;
+    const FillDeadlineRule rule = fill_rule_for(run.lens.legacy_fills);
     out.rows = static_cast<int64_t>(rows.size());
     if (rows.empty()) {
         // Nothing listed. Either the database is empty, or it holds results
@@ -404,7 +401,7 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
         } else {
             out.empty_reason = EmptyReason::NothingUnderSettings;
             out.why_empty = nothing_under_settings(
-                options.cap.exact,
+                run.cap_query().exact,
                 std::string(fill_rule_name(rule, FillRuleNameStyle::Long)) + " fills");
         }
         return out;
@@ -425,9 +422,9 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
                             : "every mode at the current cap, top " +
                                   hydra::counted(options.max_paths, "path", "paths") +
                                   " per chart and mode";
-    std::string cap_label = "SP cap " + bars_text(options.cap.exact);
+    std::string cap_label = "SP cap " + bars_text(run.cap_query().exact);
     // The normal rule goes unsaid, so a 1.1 page reads as it always has.
-    if (options.lens.legacy_fills)
+    if (run.lens.legacy_fills)
         cap_label += std::string(" — ") + fill_rule_name(rule, FillRuleNameStyle::Long) + " fills";
     std::string subtitle = hydra::counted(out.records, "record", "records") + " across " +
                            hydra::counted(out.songs, "chart", "charts") + " — " + shown +

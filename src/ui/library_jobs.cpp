@@ -64,8 +64,8 @@ std::string read_library(store::RecordStore& store, const app::Settings& setting
 
 void read_library_summaries(store::RecordStore& store, const app::Settings& settings,
                             LibraryModel& library) {
-    library.set_summaries(store.get_summaries(library.hashes(), settings.chartmode_key(),
-                                              settings.cap_query(), settings.lens()));
+    library.set_summaries(
+        store.get_summaries(library.hashes(), settings.record_key({}).settings()));
 }
 
 StoreOpenJob::StoreOpenJob(std::string db_path, core::RulesStamp rules, app::Settings settings)
@@ -586,8 +586,6 @@ void ReportJob::run() {
         // generate_report.
         app::report::ReportOptions options;
         options.max_paths = app::report::kDefaultReportPaths;
-        options.cap = cap_;
-        options.lens = lens_;
         options.hit_window_ms = hit_window_ms_;
         options.db_path = app::db_path();
         // Closing Hydra sets this. Without it the window waits for the whole

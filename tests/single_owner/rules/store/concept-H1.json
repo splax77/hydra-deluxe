@@ -1,0 +1,31 @@
+{
+  "rules": [
+    {
+      "question": "Which settings pick a stored result: chart mode, SP cap and lens?",
+      "owner": "Settings::record_key in src/app/config.cpp (store::ResultSettings is the type)",
+      "owner_file": "src/app/config.cpp",
+      "owner_symbol": "record_key",
+      "date": "2026-10-11",
+      "decision": "concept audit M12 (code-only, D114 fix wave, task H1)",
+      "added_by": "concept-H1",
+      "pattern": "chartmode_key\\(\\)\\s*,\\s*[\\w.>-]*cap_query\\(\\)",
+      "scope": ["src", "tools"],
+      "must_match": [
+        "store.analyzed_hashes(s.chartmode_key(), s.cap_query(), s.lens());",
+        "store.get_summaries(hashes, settings.chartmode_key(), settings.cap_query(), settings.lens());"
+      ],
+      "must_not_match": [
+        "store.get_summaries(library.hashes(), settings.record_key({}).settings()));",
+        "    return BatchRun{chartmode_key(), lens(), to_analysis_settings()};"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/config.cpp",
+          "line_text": "return store::RecordKey{hyhash, chartmode_key(), cap_query(), lens()};",
+          "why": "Settings::record_key, the owner"
+        }
+      ],
+      "note": "A result is filed under (chart, chart mode, SP cap, lens); store::ResultSettings is that identity without the chart and RecordKey embeds it. This row flags a caller re-assembling the three parts from Settings. It cannot see the parts passed as already-named variables, so the type (lookups take a ResultSettings) is the real guard."
+    }
+  ]
+}
