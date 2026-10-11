@@ -53,6 +53,27 @@
         "src"
       ],
       "note": "A ScoreGraph built from settings by hand instead of through search_graph, which every analysis and target search shares (D45). Scoped to src: tools/bench.cpp times the build by itself and keeps its copy, and tests build graphs at chosen caps on purpose. Decided by: concept audit M35 (D114, task F7)"
+    },
+    {
+      "question": "How many beats before a fill does Clone Hero 1.1's fill deadline fall, in words?",
+      "owner": "fill_rule_description in src/search/graph.h (the number is kCh11FillLeadBeats)",
+      "owner_file": "src/search/graph.h",
+      "owner_symbol": "fill_rule_description",
+      "date": "2026-10-11",
+      "decision": "D114 (concept audit M38)",
+      "added_by": "concept-audit-F7",
+      "pattern": "\"[^\"]*\\b(4|[Ff]our) beats\\b",
+      "anchor": " beats",
+      "calls_owner": "\\bfill_rule_description\\(",
+      "must_match": [
+        ": name + \" sets the deadline 4 beats before the fill starts.\";",
+        "ImGui::TextUnformatted(\"The deadline is four beats before the fill.\");"
+      ],
+      "must_not_match": [
+        "\" beats before the fill starts.\";",
+        "// The E threshold: a fixed lead in beats before the fill marker."
+      ],
+      "note": "A sentence that states the 1.1 fill lead's number by hand. fill_rule_description writes it from kCh11FillLeadBeats, so the sentence follows the code. Tests pin the full sentence as a literal on purpose and are out of scope. Decided by: concept audit M38 (D114, task F7)"
     }
   ]
 }

@@ -64,9 +64,9 @@ double activation_fill_deadline_ms(const SongTiming& timing,
                                    int64_t fill_length_ticks,
                                    FillDeadlineRule rule) {
     if (rule == FillDeadlineRule::Ch11) {
-        // E threshold is 4 beats before the fill marker.
+        // The E threshold: a fixed lead in beats before the fill marker.
         int64_t tick_E =
-            fill_end_tick - fill_length_ticks - 4 * timing.tick_resolution();
+            fill_end_tick - fill_length_ticks - kCh11FillLeadBeats * timing.tick_resolution();
         return timing.timecode(tick_E).ms();
     }
 
