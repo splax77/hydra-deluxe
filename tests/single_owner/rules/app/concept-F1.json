@@ -1,0 +1,32 @@
+{
+  "rules": [
+    {
+      "question": "How does a report view turn a value the row may lack into a sort key?",
+      "owner": "optional_key in src/app/report_view.h",
+      "owner_file": "src/app/report_view.h",
+      "owner_symbol": "optional_key",
+      "date": "2026-10-11",
+      "decision": "D114 (concept audit M06, code-only)",
+      "added_by": "concept-audit-F1",
+      "pattern": "\\?\\s*SortKey\\{[^}]*\\}\\s*:\\s*SortKey\\{\\}",
+      "anchor": "SortKey{}",
+      "must_match": [
+        "return ms ? SortKey{*ms} : SortKey{};",
+        "return has_percent(r) ? SortKey{static_cast<double>(*r.pct_h)} : SortKey{};"
+      ],
+      "must_not_match": [
+        "return has_percent(r) ? optional_key(r.pct_h) : SortKey{};",
+        "return r.posted.empty() ? SortKey{} : SortKey{r.posted};",
+        "c.sort_key = [](const ReportRow& r) { return optional_key(r.ms); };"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/report_view.h",
+          "line_text": "return v ? SortKey{static_cast<double>(*v)} : SortKey{};",
+          "why": "the one conversion every report view's optional columns call"
+        }
+      ],
+      "note": "The path view's ms_key and the DM view's own optional_key were two copies of this conversion; both now call the shared one. A column with its own reason to give an empty key (the DM view's posted date, a percent shown only beside an optimal score) writes the condition and calls optional_key or SortKey{} for the empty case, which this row does not flag."
+    }
+  ]
+}

@@ -9,30 +9,15 @@ namespace hydra::app::path_report_view {
 
 using report_view::CellLook;
 using report::kDash;
+using report_view::optional_key;
 using report_view::SortKey;
+using report_view::text_column;
 
 namespace {
 
 // A timing cell: the app's own text (format_ms), or a dash with none.
 std::string ms_cell(const std::optional<double>& ms) {
     return ms ? format_ms(*ms) : std::string(kDash);
-}
-
-SortKey ms_key(const std::optional<double>& ms) {
-    return ms ? SortKey{*ms} : SortKey{};
-}
-
-// A column of text read straight from the row.
-Column<ReportRow> text_column(std::string id, std::string title, std::string definition,
-                              std::string ReportRow::*field, CellLook look) {
-    Column<ReportRow> c;
-    c.id = std::move(id);
-    c.title = std::move(title);
-    c.definition = std::move(definition);
-    c.sort_key = [field](const ReportRow& r) { return SortKey{r.*field}; };
-    c.cell = [field](const ReportRow& r) { return r.*field; };
-    c.look = look;
-    return c;
 }
 
 // A column of whole numbers read straight from the row, grouped in
@@ -108,7 +93,7 @@ std::vector<Column<ReportRow>> path_columns(double hit_window_ms) {
             "The hardest squeeze or required early fill the path needs, in ms: the gap at the "
             "SP end, or at the fill deadline. It leaves out the frontend timing scale. A dash "
             "means it needs none.";
-        c.sort_key = [](const ReportRow& r) { return ms_key(r.ms); };
+        c.sort_key = [](const ReportRow& r) { return optional_key(r.ms); };
         c.cell = [](const ReportRow& r) { return ms_cell(r.ms); };
         cols.push_back(std::move(c));
     }
@@ -134,7 +119,7 @@ std::vector<Column<ReportRow>> path_columns(double hit_window_ms) {
         c.definition =
             "The hardest early fill on the path (written E0 in the path): how many ms early you "
             "must hit to summon the fill. Negative means slack. A dash means the path has none.";
-        c.sort_key = [](const ReportRow& r) { return ms_key(r.efill); };
+        c.sort_key = [](const ReportRow& r) { return optional_key(r.efill); };
         c.cell = [](const ReportRow& r) { return ms_cell(r.efill); };
         cols.push_back(std::move(c));
     }
