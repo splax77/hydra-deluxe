@@ -308,8 +308,25 @@ struct GeneratedReport {
 GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& options,
                                 const ReportSeed& seed = ReportSeed{});
 
+// The user settings generate_report reads, stated once. A new read of a
+// setting by the page joins this list, and settings_change_touches compares
+// through it. The chart mode is not here: the page lists every mode
+// (settings_for_mode).
+struct PageSettings {
+    store::CapQuery cap;
+    store::Lens lens;
+    double hit_window_ms = kDefaultHitWindowMs;
+
+    static PageSettings of(const Settings& settings);
+    bool operator==(const PageSettings& other) const {
+        return cap == other.cap && lens == other.lens && hit_window_ms == other.hit_window_ms;
+    }
+    bool operator!=(const PageSettings& other) const { return !(*this == other); }
+};
+
 // Whether moving from `before` to `after` changes a setting the path report
-// reads, so a report built under `before` is out of date (D103 item 22).
+// reads (PageSettings), so a report built under `before` is out of date
+// (D103 item 22).
 bool settings_change_touches(const Settings& before, const Settings& after);
 
 }  // namespace hydra::app::report

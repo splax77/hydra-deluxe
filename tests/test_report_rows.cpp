@@ -867,6 +867,15 @@ TEST_CASE("settings_change_touches: the path report reads the SP cap and the len
     CHECK_FALSE(app::report::settings_change_touches(before, auto_open));
 }
 
+// The path report labels its timing tiers, its "Past N ms" tile and its
+// footer from the hit window, so a new window makes an open page out of date.
+TEST_CASE("settings_change_touches: the path report reads the hit window") {
+    const app::Settings before;
+    app::Settings window = before;
+    window.hit_window_ms = before.hit_window_ms + 10.0;
+    CHECK(app::report::settings_change_touches(before, window));
+}
+
 // The path report window's "Analyzing n of N records" reads these calls.
 TEST_CASE("generate_report tells its progress chart by chart, from 0 to the whole") {
     store::RecordStore store(":memory:");

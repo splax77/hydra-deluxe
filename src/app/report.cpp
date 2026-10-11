@@ -425,12 +425,17 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
     return out;
 }
 
+PageSettings PageSettings::of(const Settings& settings) {
+    // generate_report is asked for one SP cap and one lens, and labels its
+    // tiers from the hit window. It lists every chart mode, and
+    // settings_for_mode gives each mode the run's search settings with only
+    // that mode's own parse choices, so the mode the analysis settings show
+    // reaches no row.
+    return PageSettings{settings.cap_query(), settings.lens(), settings.hit_window_ms};
+}
+
 bool settings_change_touches(const Settings& before, const Settings& after) {
-    // generate_report is asked for one SP cap and one lens. It lists every
-    // chart mode, and settings_for_mode gives each mode the run's search
-    // settings with only that mode's own parse choices, so the mode the
-    // analysis settings show reaches no row.
-    return before.cap_query() != after.cap_query() || before.lens() != after.lens();
+    return PageSettings::of(before) != PageSettings::of(after);
 }
 
 }  // namespace hydra::app::report
