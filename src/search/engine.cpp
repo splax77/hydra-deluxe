@@ -31,8 +31,6 @@ const double NO_DOUBLE = std::numeric_limits<double>::quiet_NaN();
 inline bool has_value(double v) { return !std::isnan(v); }
 
 const int64_t NO_TIME = -1;
-const int32_t SQ_IN = 0;
-const int32_t SQ_OUT = 1;
 const int32_t DEACT_NONE = 0;
 const int32_t DEACT_NORMAL = 1;
 const int32_t DEACT_SQINOUT = 2;
@@ -227,7 +225,7 @@ struct Act {
 };
 struct SqNode {
     int32_t prev;
-    int32_t kind;
+    SqueezeKind kind;
     double offset;
 };
 // One tick in a chain of ticks (a bank arrival or a passed-over fill),
@@ -351,7 +349,7 @@ struct OutAct {
     int64_t sqout_phrase;
 };
 struct OutSq {
-    int32_t kind;
+    SqueezeKind kind;
     double offset;
 };
 
@@ -476,7 +474,7 @@ private:
         acts_.push_back(acts_[(size_t)tail]);
         return (int32_t)acts_.size() - 1;
     }
-    int32_t push_sq(int32_t prev, int32_t kind, double offset) {
+    int32_t push_sq(int32_t prev, SqueezeKind kind, double offset) {
         SqNode s;
         s.prev = prev;
         s.kind = kind;
@@ -1058,7 +1056,7 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
         // rebuild checks it once for every stored window, variants included.
         a.end_tail = sq ? trim_ends(p.end_tail, sq->chord) : p.end_tail;
         if (sq) {
-            a.sq_tail = push_sq(a.sq_tail, SQ_OUT, sq->timing);
+            a.sq_tail = push_sq(a.sq_tail, SqueezeKind::SqOut, sq->timing);
             a.sqout_phrase = sq->chord;
         }
     }
@@ -1118,7 +1116,7 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
     p.act_tail = clone_tail(p.act_tail);
     if (p.act_tail >= 0) {
         Act& a = acts_[(size_t)p.act_tail];
-        a.sq_tail = push_sq(a.sq_tail, SQ_IN, sq->timing);
+        a.sq_tail = push_sq(a.sq_tail, SqueezeKind::SqIn, sq->timing);
     }
 
     // The squeeze-in's step. A late one's phrase comes after this node and is
@@ -1152,8 +1150,7 @@ bool Engine::act_within_limit(int32_t act) const {
     if (act < 0 || !has_ms_filter_) return true;
     const Act& a = acts_[(size_t)act];
     for (int32_t s = a.sq_tail; s >= 0; s = sqs_[(size_t)s].prev) {
-        const bool is_in = sqs_[(size_t)s].kind == SQ_IN;
-        const SPSqueeze sq{is_in ? SqueezeKind::SqIn : SqueezeKind::SqOut, sqs_[(size_t)s].offset};
+        const SPSqueeze sq{sqs_[(size_t)s].kind, sqs_[(size_t)s].offset};
         if (!sq.within_limit(ms_filter_)) return false;
     }
     return fill_within_limit(a.e_offset, a.skips, ms_filter_);
@@ -1559,7 +1556,7 @@ void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var)
     // sqout_phrase is the squeezed-out chord.
     int64_t give_back = NO_TIME;
     for (int32_t k = own.sq_begin; k < own.sq_end; ++k)
-        if (out_sqs_[(size_t)k].kind == SQ_OUT && own.deact_edge >= 0)
+        if (out_sqs_[(size_t)k].kind == SqueezeKind::SqOut && own.deact_edge >= 0)
             give_back = own.sqout_phrase;
 
     // An early SqIn the leader took after the fold may sit on a phrase from
@@ -1578,7 +1575,7 @@ void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var)
     const auto lead_sqs = out_sqs_.begin() + lead.sq_begin;
     const size_t sqins_before_fold =
         sqin_rank(lead_sqs, lead_sqs + var.fold_sq_count,
-                  [](const auto& sq) { return sq.kind == SQ_IN; });
+                  [](const auto& sq) { return sq.kind == SqueezeKind::SqIn; });
     std::vector<int64_t> relabel_at;
     const auto lead_last = out_ends_.begin() + lead.end_end;
     for (auto s = nth_sqin_step(out_ends_.begin() + lead.end_begin, lead_last, sqins_before_fold);
@@ -1974,12 +1971,12 @@ std::vector<MPath> rebuild(const ScoreGraph& graph, const Enum& en,
             double searched_sqout_ms = 0.0;
             for (int k = oa.sq_begin; k < oa.sq_end; ++k) {
                 const OutSq& os = out_sqs[(size_t)k];
-                if (os.kind == SQ_OUT) {
+                if (os.kind == SqueezeKind::SqOut) {
                     took_sqout = true;
                     searched_sqout_ms = os.offset;
                     continue;
                 }
-                act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, os.offset});
+                act.sqinouts.push_back(SPSqueeze{os.kind, os.offset});
             }
 
             // A squeezed-out note is hit after SP has already ended, and every

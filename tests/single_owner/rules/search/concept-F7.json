@@ -74,6 +74,28 @@
         "// The E threshold: a fixed lead in beats before the fill marker."
       ],
       "note": "A sentence that states the 1.1 fill lead's number by hand. fill_rule_description writes it from kCh11FillLeadBeats, so the sentence follows the code. Tests pin the full sentence as a literal on purpose and are out of scope. Decided by: concept audit M38 (D114, task F7)"
+    },
+    {
+      "question": "Which kind of squeeze is this, SqIn or SqOut?",
+      "owner": "SqueezeKind in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "SqueezeKind",
+      "date": "2026-10-11",
+      "decision": "D114 (concept audit M43)",
+      "added_by": "concept-audit-F7",
+      "pattern": "\\bSQ_(IN|OUT)\\b",
+      "anchor": "SQ_",
+      "must_match": [
+        "const int32_t SQ_IN = 0;",
+        "if (os.kind == SQ_OUT) {"
+      ],
+      "must_not_match": [
+        "if (os.kind == SqueezeKind::SqOut) {"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Hand-typed integer constants for the two squeeze kinds, a second mapping beside the enum with nothing tying them. The engine's flat records hold SqueezeKind itself. Decided by: concept audit M43 (D114, task F7)"
     }
   ]
 }
