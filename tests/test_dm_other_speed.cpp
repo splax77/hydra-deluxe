@@ -78,11 +78,11 @@ TEST_CASE("s2 offspeed: the counts sentence names other speeds only when there a
     st.not_in_library = 1;
     st.other_speed = 1;
     CHECK(app::dm_report::counts_phrase(st) ==
-          "1 under optimal, 0 at optimal, 1 above optimal, 0 not analyzed, "
+          "1 under optimal, 0 at optimal, 1 above optimal, 0 no current result, "
           "1 not in your library, 1 at another speed");
     st.other_speed = 0;
     CHECK(app::dm_report::counts_phrase(st) ==
-          "1 under optimal, 0 at optimal, 1 above optimal, 0 not analyzed, "
+          "1 under optimal, 0 at optimal, 1 above optimal, 0 no current result, "
           "1 not in your library");
 }
 
