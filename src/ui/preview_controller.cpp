@@ -497,7 +497,7 @@ bool PreviewController::jump_activation(int direction) {
 }
 
 bool PreviewController::seek_activation(size_t index) {
-    if (!active_ || job_ || index >= scene_.activations.size()) return false;
+    if (!has_activations() || index >= scene_.activations.size()) return false;
     transport_.seek_ms(scene_.activations[index].ms);
     return true;
 }
