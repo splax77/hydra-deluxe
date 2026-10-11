@@ -637,8 +637,7 @@ void AppState::cancel_dm_report() {
     dm_report_job->cancel();
     parked_dm_reports.push_back(std::move(dm_report_job));
     dm_report_job.reset();
-    dm_report.last = ReportBuild::Cancelled;
-    dm_report.out_of_date_during_build = ReportOutOfDate::None;
+    dm_report.mark_cancelled();
 }
 
 void AppState::start_dm_fetch() {
@@ -761,7 +760,7 @@ ReportBuild land_report(ReportSlot<Result>& slot, const Job& job) {
         slot.message.clear();
         slot.error.clear();
     } else if (job.is_cancelled()) {
-        slot.last = ReportBuild::Cancelled;
+        slot.mark_cancelled();
     } else {
         slot.last = ReportBuild::Failed;
         slot.message = job.message();

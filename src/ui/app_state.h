@@ -216,6 +216,16 @@ struct ReportSlot {
     // from Refresh or a batch starts them over. The path report only;
     // AppState::collect_path_report sets it.
     bool built_on_open = false;
+
+    // A build stopped by Cancel. The outcome reads Cancelled, and an
+    // out-of-date event that landed during the stopped build is dropped with
+    // it. The last good result, its message and its out-of-date mark stay.
+    // The path report lands here through land_report when its job stops; the
+    // comparison calls it at the press, because its job is parked at once.
+    void mark_cancelled() {
+        last = ReportBuild::Cancelled;
+        out_of_date_during_build = ReportOutOfDate::None;
+    }
 };
 
 using PathReportSlot = ReportSlot<app::report::GeneratedReport>;
