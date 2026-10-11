@@ -459,9 +459,9 @@ TEST_CASE("the post-batch report lists the batch's cap and lens, not the live se
     app->update_background_jobs();
 
     REQUIRE(app->report_job != nullptr);
-    CHECK(app->report_job->cap() == hydra::store::CapQuery::at(4));
-    CHECK(app->report_job->lens() == batch_lens);
-    CHECK_FALSE(app->report_job->lens() == app->settings.lens());
+    CHECK(app->report_job->filed_under().cap == hydra::store::CapQuery::at(4));
+    CHECK(app->report_job->filed_under().lens == batch_lens);
+    CHECK_FALSE(app->report_job->filed_under().lens == app->settings.lens());
     wait_until([&] { return app->report_job->finished(); }, "the batch's report job to finish");
 }
 

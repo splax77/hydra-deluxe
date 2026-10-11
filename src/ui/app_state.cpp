@@ -617,9 +617,7 @@ void AppState::update_background_jobs() {
             // not whatever the analysis settings hold now, analyzed under the
             // batch's settings, reusing the charts the batch just analyzed
             // (D87 item 5).
-            const app::BatchRun& run = batch_job->batch_run();
-            launch_path_report(run.cap_query(), run.lens, run, std::move(seed),
-                               PathReportCause::Batch);
+            launch_path_report(batch_job->batch_run(), std::move(seed), PathReportCause::Batch);
         }
     }
 
@@ -719,19 +717,19 @@ void AppState::request_path_report(PathReportCause cause) {
     if (!store || analysis_blocked()) return;
     if (report_job && !report_job->finished()) return;
     collect_path_report();  // one that finished this frame lands first
-    launch_path_report(settings.cap_query(), settings.lens(), settings.batch_run(), {}, cause);
+    launch_path_report(settings.batch_run(), {}, cause);
 }
 
-void AppState::launch_path_report(store::CapQuery cap, store::Lens lens, app::BatchRun run,
-                                  app::report::ReportSeed seed, PathReportCause cause) {
+void AppState::launch_path_report(app::BatchRun run, app::report::ReportSeed seed,
+                                  PathReportCause cause) {
     // A build still running read an older library: it stops between charts,
     // and waits parked rather than freezing the window until then.
     if (report_job && !report_job->finished()) {
         report_job->cancel();
         parked_reports.push_back(std::move(report_job));
     }
-    report_job = std::make_unique<ReportJob>(*store, cap, lens, settings.hit_window_ms,
-                                             std::move(run), std::move(seed));
+    report_job = std::make_unique<ReportJob>(*store, std::move(run), settings.hit_window_ms,
+                                             std::move(seed));
     path_report_cause_ = cause;
     path_report.out_of_date_during_build = ReportOutOfDate::None;
     report_job->start();

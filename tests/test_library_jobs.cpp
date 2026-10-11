@@ -357,8 +357,7 @@ TEST_CASE("jobs: a finished report build hands the memory its charts freed back 
     check_job_hands_memory_back("report build", [&] {
         const ScopedHook seam(hydra::ui::set_report_analyzer_for_test,
                               analyzer_carrying_chart_bytes(real));
-        hydra::ui::ReportJob job(store, run.cap_query(), run.lens, hydra::kDefaultHitWindowMs,
-                                 run);
+        hydra::ui::ReportJob job(store, run);
         job.start();
         wait_until([&] { return job.finished(); }, "the report build to finish");
         INFO(job.message());
@@ -367,13 +366,13 @@ TEST_CASE("jobs: a finished report build hands the memory its charts freed back 
 }
 #endif  // HYDRA_MIMALLOC
 
-TEST_CASE("jobs: a report job carries the cap and lens it was built from") {
+TEST_CASE("jobs: a report job lists the records filed under its run") {
     RecordStore store(":memory:");
-    const hydra::store::CapQuery cap = hydra::store::CapQuery::at(6);
-    const hydra::store::Lens lens = hydra::store::Lens::from(std::optional<int>(20), 1, 7);
-    const hydra::ui::ReportJob job(store, cap, lens, 85.5);
-    CHECK(job.cap() == cap);
-    CHECK(job.lens() == lens);
+    BatchRun run = test_run();
+    run.lens = hydra::store::Lens::from(std::optional<int>(20), 1, 7);
+    const hydra::ui::ReportJob job(store, run, 85.5);
+    CHECK(job.filed_under() == run.filed_under());
+    CHECK(job.filed_under().lens == run.lens);
     CHECK(job.hit_window_ms() == 85.5);  // the decimal is kept (D51 call 15)
 }
 
@@ -385,16 +384,14 @@ TEST_CASE("jobs: an empty report shows generate_report's reason, or the app's ow
 
     RecordStore no_library(":memory:");
     hydra::test::store_batch_result(no_library, "orphan", run.cap_query().exact);
-    hydra::ui::ReportJob orphaned(no_library, run.cap_query(), run.lens,
-                                  hydra::kDefaultHitWindowMs, run);
+    hydra::ui::ReportJob orphaned(no_library, run);
     orphaned.start();
     wait_until([&] { return orphaned.finished(); }, "the report with no library to finish");
     CHECK_FALSE(orphaned.ok());
     CHECK(orphaned.message() == std::string(hydra::app::report::kNoChartLibrary));
 
     RecordStore empty(":memory:");
-    hydra::ui::ReportJob nothing(empty, run.cap_query(), run.lens,
-                                 hydra::kDefaultHitWindowMs, run);
+    hydra::ui::ReportJob nothing(empty, run);
     nothing.start();
     wait_until([&] { return nothing.finished(); }, "the report with no results to finish");
     CHECK_FALSE(nothing.ok());
@@ -411,7 +408,7 @@ TEST_CASE("jobs: a report job lets go of the batch's rows once its pass is done"
     const BatchRun run = test_run();
     hydra::app::report::ReportSeed seed = hydra::app::report::ReportSeed::for_run(run);
     seed.rows["fake0"] = {};
-    hydra::ui::ReportJob job(store, run.cap_query(), run.lens, 85.5, run, std::move(seed));
+    hydra::ui::ReportJob job(store, run, 85.5, std::move(seed));
     REQUIRE(job.seed_charts_for_test() == 1);
     job.start();
     wait_until([&] { return job.finished(); }, "the report job to finish");

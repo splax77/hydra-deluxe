@@ -180,12 +180,7 @@ ScanProgress ScanJob::snapshot() const {
 void ScanJob::run() {
     // The previous scan's rows: any chart whose files are unchanged
     // (sig_unchanged) reuses its md5/metadata without being read again.
-    store::ChartLibraryCache cache;
-    try {
-        cache = store_.chart_library_cache();
-    } catch (const std::exception&) {
-        // No cache is only a slow scan, not a failed one.
-    }
+    const store::ChartLibraryCache cache = app::load_scan_cache(store_);
 
     app::ScanCallbacks callbacks;
     callbacks.on_folders = [this](int n) {
@@ -201,8 +196,7 @@ void ScanJob::run() {
     };
     callbacks.cancel = &cancel_;
 
-    auto [items, errors] =
-        app::discover_charts(rootfolders_, callbacks, cache.empty() ? nullptr : &cache);
+    auto [items, errors] = app::discover_charts(rootfolders_, callbacks, cache);
 
     {
         std::lock_guard<std::mutex> lock(mu_);
@@ -560,14 +554,11 @@ void set_report_analyzer_for_test(app::ChartAnalyzer analyze) {
     g_report_analyzer = std::move(analyze);
 }
 
-ReportJob::ReportJob(store::RecordStore& store, store::CapQuery cap, store::Lens lens,
-                     double hit_window_ms, std::optional<app::BatchRun> run,
+ReportJob::ReportJob(store::RecordStore& store, app::BatchRun run, double hit_window_ms,
                      app::report::ReportSeed seed)
     : store_(store),
-      cap_(cap),
-      lens_(lens),
-      hit_window_ms_(hit_window_ms),
       run_(std::move(run)),
+      hit_window_ms_(hit_window_ms),
       seed_(std::move(seed)),
       analyze_(g_report_analyzer) {}
 

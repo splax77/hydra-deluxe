@@ -669,7 +669,7 @@ TEST_CASE("1.0 and 1.1 results for one chart sit side by side") {
     CHECK(store.counts().second == 2);
     CHECK(store.get_summary(ch10).status == RecordStatus::Ready);
     CHECK(store.get_summary(ch11).status == RecordStatus::Ready);
-    CHECK(store.analyzed_hashes("mode", CapQuery::at(4), kLegacy).count("h") == 1);
+    CHECK(store.analyzed_hashes(ResultSettings{"mode", CapQuery::at(4), kLegacy}).count("h") == 1);
 
     // Re-analyzing under 1.0 replaces only the 1.0 row.
     store.add_record(ch10, legacy_at_cap(4));
@@ -764,13 +764,14 @@ TEST_CASE("analyzed_hashes names exactly the charts has_record would skip") {
     store.add_record(RecordKey{"other_mode", "other", CapQuery::at(4)}, at_cap(4));
 
     for (const CapQuery& cap : {CapQuery::at(4), CapQuery::at(8)}) {
-        const std::unordered_set<std::string> got = store.analyzed_hashes("mode", cap, Lens{});
+        const std::unordered_set<std::string> got =
+            store.analyzed_hashes(ResultSettings{"mode", cap, Lens{}});
         for (const char* h : charts) {
             INFO(h);
             CHECK((got.count(h) == 1) == store.has_record(RecordKey{h, "mode", cap}));
         }
     }
-    CHECK(store.analyzed_hashes("mode", CapQuery::at(4), Lens{}) ==
+    CHECK(store.analyzed_hashes(ResultSettings{"mode", CapQuery::at(4), Lens{}}) ==
           std::unordered_set<std::string>{"ready"});
 }
 
@@ -789,8 +790,9 @@ TEST_CASE("analyzed_hashes names exactly the charts get_summaries reads as Ready
 
     std::vector<std::string> library = charts;
     library.push_back("ready");  // a second folder's copy
-    const std::vector<SummaryLookup> chips = store.get_summaries(library, "mode", cap, Lens{});
-    const std::unordered_set<std::string> skip = store.analyzed_hashes("mode", cap, Lens{});
+    const ResultSettings want{"mode", cap, Lens{}};
+    const std::vector<SummaryLookup> chips = store.get_summaries(library, want);
+    const std::unordered_set<std::string> skip = store.analyzed_hashes(want);
     for (size_t i = 0; i < library.size(); ++i) {
         INFO(library[i]);
         CHECK((chips[i].status == RecordStatus::Ready) == (skip.count(library[i]) == 1));
@@ -817,7 +819,7 @@ TEST_CASE("get_summaries answers a page the same as get_summary row by row") {
     };
     for (const auto& [cap, statuses] : want) {
         const std::vector<SummaryLookup> got =
-            store.get_summaries(page, "mode", CapQuery::at(cap), Lens{});
+            store.get_summaries(page, ResultSettings{"mode", CapQuery::at(cap), Lens{}});
         REQUIRE(got.size() == page.size());
         for (size_t i = 0; i < page.size(); ++i) {
             INFO(page[i] << " at " << cap);
@@ -831,7 +833,7 @@ TEST_CASE("get_summaries answers a page the same as get_summary row by row") {
                                           : std::string()));
         }
     }
-    CHECK(store.get_summaries({}, "mode", CapQuery::at(4), Lens{}).empty());
+    CHECK(store.get_summaries({}, ResultSettings{"mode", CapQuery::at(4), Lens{}}).empty());
 }
 
 // ---- library summaries (interface redesign, Task 7) ------------------------
@@ -847,7 +849,8 @@ TEST_CASE("a saved result stores its best path's star count") {
     CHECK(*expected.stars == path_stars(best));
 
     const std::vector<SummaryLookup> got =
-        store.get_summaries({"ready", "stale", "none"}, "mode", CapQuery::at(4), Lens{});
+        store.get_summaries({"ready", "stale", "none"},
+                            ResultSettings{"mode", CapQuery::at(4), Lens{}});
     REQUIRE(got.size() == 3);
     CHECK(got[0].status == RecordStatus::Ready);
     CHECK(got[0].summary.score == best.totalscore());
@@ -885,7 +888,7 @@ TEST_CASE("get_summaries answers a whole library in chunks") {
 
     const auto t0 = std::chrono::steady_clock::now();
     const std::vector<SummaryLookup> got =
-        store.get_summaries(hashes, "mode", CapQuery::at(4), Lens{});
+        store.get_summaries(hashes, ResultSettings{"mode", CapQuery::at(4), Lens{}});
     const double ms =
         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     MESSAGE("get_summaries on 20,000 hashes: " << ms << " ms");

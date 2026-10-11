@@ -195,14 +195,8 @@ int batch_main() {
         // of being read again. A run over the app's own folders saves its scan
         // as the library afterwards, as Scan library does (D79); a run over
         // folder arguments leaves the library alone.
-        hydra::store::ChartLibraryCache cache;
-        try {
-            cache = store.chart_library_cache();
-        } catch (const std::exception&) {
-            // No cache is only a slower scan.
-        }
         auto [scanitems, folder_errors] = hydra::app::discover_charts(
-            folders, hydra::app::ScanCallbacks{}, cache.empty() ? nullptr : &cache);
+            folders, hydra::app::ScanCallbacks{}, hydra::app::load_scan_cache(store));
         if (folder_args.empty()) {
             if (const std::optional<std::string> problem =
                     hydra::app::save_scan_as_library(store, scanitems))

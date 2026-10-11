@@ -1,0 +1,24 @@
+{
+  "rules": [
+    {
+      "question": "What rescan cache does a scan get, and what does an empty or unreadable one mean?",
+      "owner": "app::load_scan_cache and app::discover_charts in src/app/analysis.cpp",
+      "owner_file": "src/app/analysis.cpp",
+      "owner_symbol": "load_scan_cache",
+      "date": "2026-10-11",
+      "decision": "concept audit M26 (code-only, D114 fix wave, task H1b)",
+      "added_by": "concept-H1b",
+      "pattern": "cache\\.empty\\(\\) \\? nullptr",
+      "scope": ["src", "tools"],
+      "must_match": [
+        "        app::discover_charts(rootfolders_, callbacks, cache.empty() ? nullptr : &cache);",
+        "            folders, hydra::app::ScanCallbacks{}, cache.empty() ? nullptr : &cache);"
+      ],
+      "must_not_match": [
+        "    auto [items, errors] = app::discover_charts(rootfolders_, callbacks, cache);",
+        "    if (!cache.empty()) std::printf(\"  (rescan cache: %zu rows)\\n\", cache.size());"
+      ],
+      "note": "discover_charts takes the cache by reference and an empty cache is no help, so a caller has nothing to turn into a null pointer. load_scan_cache owns the swallowed read failure; each caller keeps its own save gate."
+    }
+  ]
+}

@@ -125,7 +125,7 @@ TEST_CASE("rescan cache reproduces the scan without reading chart files") {
     for (const ScanItem& it : items) entries.push_back(to_library_entry(it));
     store.rebuild_chart_library(entries);
 
-    hydra::store::ChartLibraryCache cache = store.chart_library_cache();
+    const hydra::store::ChartLibraryCache cache = load_scan_cache(store);
     CHECK(cache.size() == items.size());
 
     int last_cached = 0, last_done = 0;
@@ -134,7 +134,7 @@ TEST_CASE("rescan cache reproduces the scan without reading chart files") {
         last_done = done;
         last_cached = cached;
     };
-    auto [items2, errors2] = discover_charts({input}, callbacks, &cache);
+    auto [items2, errors2] = discover_charts({input}, callbacks, cache);
     CHECK(errors2.empty());
 
     // Every chart came out of the cache (no file was opened for content)...
@@ -742,7 +742,7 @@ TEST_CASE("rescan cache: an old placeholder or blank title reads (unknown)") {
     store.rebuild_chart_library(entries);
     hydra::store::ChartLibraryCache cache = store.chart_library_cache();
 
-    auto [items2, errors2] = discover_charts({input}, ScanCallbacks{}, &cache);
+    auto [items2, errors2] = discover_charts({input}, ScanCallbacks{}, cache);
     REQUIRE(items2.size() == items.size());
     for (const ScanItem& it : items2) CHECK(it.title == hydra::kUnknownTitle);
 }
@@ -798,7 +798,7 @@ TEST_CASE("discover_charts: a blank or missing artist or charter reads the place
     }
     store.rebuild_chart_library(entries);
     hydra::store::ChartLibraryCache cache = store.chart_library_cache();
-    auto [cached, errors2] = discover_charts({root.u8string()}, ScanCallbacks{}, &cache);
+    auto [cached, errors2] = discover_charts({root.u8string()}, ScanCallbacks{}, cache);
     CHECK(errors2.empty());
     REQUIRE(cached.size() == 2);
     for (const ScanItem& it : cached) {
@@ -965,7 +965,7 @@ TEST_CASE("the scan's folder count is reported while the walk runs, from the cal
         if (std::this_thread::get_id() != caller) all_on_caller = false;
         seen.push_back(n);
     };
-    auto [items, errors] = discover_charts({corpus::root()}, callbacks, nullptr);
+    auto [items, errors] = discover_charts({corpus::root()}, callbacks);
     CHECK(errors.empty());
     CHECK(all_on_caller);
     REQUIRE(seen.size() > 1);

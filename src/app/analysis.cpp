@@ -443,6 +443,14 @@ std::optional<std::string> save_scan_as_library(store::RecordStore& store,
     return std::nullopt;
 }
 
+store::ChartLibraryCache load_scan_cache(store::RecordStore& store) {
+    try {
+        return store.chart_library_cache();
+    } catch (const std::exception&) {
+        return {};  // no cache is only a slower scan
+    }
+}
+
 store::ChartTimingMeta read_chart_timing_meta(const std::string& notespath) {
     switch (chart_kind_of(notespath)) {
         case ChartKind::Sng:
@@ -626,7 +634,7 @@ void walk_folders(const std::vector<std::string>& rootfolders, const ScanCallbac
 
 std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
     const std::vector<std::string>& rootfolders, const ScanCallbacks& callbacks,
-    const store::ChartLibraryCache* cache) {
+    const store::ChartLibraryCache& cache) {
     std::vector<std::string> errors;
     const std::atomic<bool>* cancel = callbacks.cancel;
 
@@ -665,23 +673,21 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
                 const PendingChart& pc = pending[i];
                 ReadNote note;
                 try {
-                    if (cache) {
-                        auto it = cache->find(pc.notes_path);
-                        if (it != cache->end() && sig_unchanged(it->second.sig, pc.sig)) {
-                            // Field by field, like to_library_entry: seven
-                            // strings in a positional list could swap unseen.
-                            ScanItem item;
-                            item.md5 = it->second.md5;
-                            item.title = it->second.title;
-                            item.artist = it->second.artist;
-                            item.charter = it->second.charter;
-                            item.timing = it->second.timing;
-                            item.notespath = pc.notes_path;
-                            item.rootfolder = pc.rootfolder;
-                            item.sig = pc.sig;
-                            results[i] = std::move(item);
-                            note.cached = true;
-                        }
+                    auto it = cache.find(pc.notes_path);
+                    if (it != cache.end() && sig_unchanged(it->second.sig, pc.sig)) {
+                        // Field by field, like to_library_entry: seven
+                        // strings in a positional list could swap unseen.
+                        ScanItem item;
+                        item.md5 = it->second.md5;
+                        item.title = it->second.title;
+                        item.artist = it->second.artist;
+                        item.charter = it->second.charter;
+                        item.timing = it->second.timing;
+                        item.notespath = pc.notes_path;
+                        item.rootfolder = pc.rootfolder;
+                        item.sig = pc.sig;
+                        results[i] = std::move(item);
+                        note.cached = true;
                     }
                     if (!results[i]) {
                         if (!md5) md5.emplace();
@@ -735,11 +741,8 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
 }
 
 std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
-    const std::vector<std::string>& rootfolders,
-    const std::function<void(int)>& cb_progress) {
-    ScanCallbacks callbacks;
-    callbacks.on_folders = cb_progress;
-    return discover_charts(rootfolders, callbacks, nullptr);
+    const std::vector<std::string>& rootfolders, const ScanCallbacks& callbacks) {
+    return discover_charts(rootfolders, callbacks, store::ChartLibraryCache{});
 }
 
 // ---- analysis -------------------------------------------------------------

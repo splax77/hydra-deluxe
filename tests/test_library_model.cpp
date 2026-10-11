@@ -21,6 +21,7 @@ using hydra::store::CapQuery;
 using hydra::store::ChartLibraryEntry;
 using hydra::store::PreparedRow;
 using hydra::store::RecordKey;
+using hydra::store::ResultSettings;
 using hydra::store::RecordStatus;
 using hydra::store::SummaryLookup;
 using hydra::ui::LibraryModel;
@@ -96,8 +97,8 @@ std::vector<hydra::ui::LibraryRow> stale_rows() {
     m.set_charts({chart("build", "Build", "A", "C", "common"),
                   chart("rules", "Rules", "A", "C", "common"),
                   chart("both", "Both", "A", "C", "common")});
-    m.set_summaries(
-        store.get_summaries(m.hashes(), "mode", CapQuery::at(8), hydra::store::Lens{}));
+    m.set_summaries(store.get_summaries(
+        m.hashes(), ResultSettings{"mode", CapQuery::at(8), hydra::store::Lens{}}));
     return m.rows();
 }
 

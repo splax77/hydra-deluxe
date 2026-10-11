@@ -82,19 +82,18 @@ struct ScanCallbacks {
 // back the serial walk's order and decides each folder's root (walk_folders
 // in analysis.cpp). Hashing/metadata reads then run on a thread pool of the
 // same size. Results keep the walk's order.
-// `cache` (from RecordStore::chart_library_cache), if given, lets a chart
-// whose fingerprint is unchanged reuse its previous md5/metadata
-// without any file I/O. A failing chart file is skipped with an error entry;
+// `cache` (load_scan_cache) lets a chart whose fingerprint is unchanged reuse
+// its previous md5/metadata without any file I/O; an empty cache is no help,
+// so every chart is read. A failing chart file is skipped with an error entry;
 // its folder's other charts and subtree still scan (unlike the Python
 // original, which dropped the whole folder).
 std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
     const std::vector<std::string>& rootfolders, const ScanCallbacks& callbacks,
-    const store::ChartLibraryCache* cache = nullptr);
+    const store::ChartLibraryCache& cache);
 
-// Compatibility form: folder progress only, no cache, no cancel.
+// The same scan with no rescan cache.
 std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
-    const std::vector<std::string>& rootfolders,
-    const std::function<void(int)>& cb_progress = nullptr);
+    const std::vector<std::string>& rootfolders, const ScanCallbacks& callbacks = {});
 
 // The chart file's hyhash: the id Clone Hero gives the song (song_id_read in
 // analysis.cpp is the rule). It is the same id the
@@ -153,6 +152,11 @@ store::ChartLibraryEntry to_library_entry(const ScanItem& item);
 // the scan shows.
 std::optional<std::string> save_scan_as_library(store::RecordStore& store,
                                                 const std::vector<ScanItem>& items);
+
+// The last saved scan, as the rescan cache discover_charts takes. A store
+// that cannot be read gives an empty cache: no cache is only a slower scan,
+// not a failed one.
+store::ChartLibraryCache load_scan_cache(store::RecordStore& store);
 
 // The [song] section of a song.ini as lower-cased key -> value, with the
 // value's leading blanks trimmed. A key seen twice keeps its last value.
