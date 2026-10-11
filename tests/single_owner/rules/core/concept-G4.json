@@ -53,6 +53,34 @@
         "tools"
       ],
       "note": "A second reader of the last SP-end step. Call Activation::deact_tick. Tests are out of scope because a few of them move the last step's end on purpose to make a different path. Decided by: D114, concept audit finding M44"
+    },
+    {
+      "question": "What does squeezing out this row cost?",
+      "owner": "core::sqout_cost in src/core/backend_value.h",
+      "owner_file": "src/core/backend_value.h",
+      "owner_symbol": "sqout_cost",
+      "date": "2026-10-11",
+      "decision": "D114 (concept audit finding M45)",
+      "added_by": "concept-G4",
+      "pattern": "\\bpoints\\s*-\\s*(core::)?backend_row_value\\(",
+      "anchor": "backend_row_value(",
+      "owner_files": [
+        "src/core/backend_value.h"
+      ],
+      "must_match": [
+        "const int lost = row.points - core::backend_row_value(off, row.points, row.sqout_points,",
+        "return points - backend_row_value(offset_ms, points, sqout_points, SqOutPosition::Exact,"
+      ],
+      "must_not_match": [
+        "const int lost = core::sqout_cost(off, row.points, row.sqout_points, leeway_ms);",
+        "sp_points += core::backend_row_value(offset, sg.sp, sg.sqout_sp, pos,"
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "A squeeze-out's cost worked out again from the row's value. Call core::sqout_cost. Decided by: D114, concept audit finding M45"
     }
   ]
 }

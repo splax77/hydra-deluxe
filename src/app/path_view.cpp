@@ -132,15 +132,15 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
             text = "Hit " + note + " " + when + " so it lands after Star Power ends.";
             if (squeezed_out) {
                 // What the squeeze-out costs: core::sqout_cost, which the
-                // table's "(-N)" reads too.
+                // table's "(-N)" reads too. A counted row's cost is never 0
+                // (test_stars.cpp, "squeezing out any chord always costs
+                // points").
                 const BackendSqueeze& row = squeezed_out->row;
                 const double off = row.offset();
                 if (core::counted_without_squeeze(off, leeway_ms)) {
                     const int lost = core::sqout_cost(off, row.points, row.sqout_points, leeway_ms);
-                    text += lost > 0 ? " It scores " + std::to_string(lost) +
-                                           " fewer points, and its SP phrase banks for later."
-                                     : std::string(" It costs no points, and its SP phrase "
-                                                   "banks for later.");
+                    text += " It scores " + std::to_string(lost) +
+                            " fewer points, and its SP phrase banks for later.";
                 } else {
                     text += " It costs no points, because Hydra's score never counted that "
                             "note under Star Power, and its SP phrase banks for later.";
