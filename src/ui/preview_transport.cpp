@@ -45,6 +45,7 @@ void PreviewTransport::unload() {
     std::lock_guard<std::mutex> lock(mu_);
     playhead_.reset();
     length_ms_ = 0.0;
+    song_length_ms_.reset();
     audio_offset_ms_ = 0.0;
     clock_.pause();
     clock_.seek_ms(0.0);
@@ -90,6 +91,14 @@ void PreviewTransport::seek_ms(double ms) {
 bool PreviewTransport::playing() const { return clock_.playing(); }
 
 double PreviewTransport::length_ms() const { return length_ms_; }
+
+void PreviewTransport::set_song_length_ms(std::optional<double> song_length_ms) {
+    song_length_ms_ = song_length_ms;
+}
+
+app::PlayheadRange PreviewTransport::range() const {
+    return app::playhead_range(song_length_ms_, length_ms_);
+}
 
 bool PreviewTransport::has_audio() const {
     std::lock_guard<std::mutex> lock(mu_);

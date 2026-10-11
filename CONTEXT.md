@@ -385,9 +385,12 @@ or Offset. A chart whose metadata states none gets the start of its last
 Expert drum note instead (2x kick included). No audio is opened for it.
 `app::song_length_ms` works it out (D75), and the store keeps one per song. The
 Paths timeline measures against the length, so a song with none shows no marks
-there. The Preview's scrubber measures against it too when there is one. With
-none, the scrubber uses the transport's playback range instead (D48, D70 item
-1), which is not a song length. `scrub_end_ms` owns that choice.
+there. The Preview's gold marks on the scrubber are placed by it too when there
+is one. With none, they use the transport's playback range instead (D48, D70
+item 1), which is not a song length. The scrubber itself ends no further than
+playback can reach: the shorter of the song length and the playback end (D114
+item 17). `playhead_range` owns both choices, and `PreviewTransport::range()`
+hands out the result.
 
 **Mixer**:
 The step that reads a chart's stems at one shared position, resamples them to

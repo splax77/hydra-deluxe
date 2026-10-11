@@ -479,6 +479,23 @@ TEST_CASE("scrub marks: the Preview's scrubber ends at the song's length") {
           doctest::Approx(2100.0));
 }
 
+// A song.ini stating 9 s over 5 s of audio and a last note at 100 ms: the
+// scrubber ends where playback does (D114 item 17), so a drag to its right end
+// lands on it and the thumb does not snap back.
+TEST_CASE("scrub marks: a stated length past playback ends the scrubber at playback's end") {
+    PreviewController pc(nullptr, nullptr);
+    const std::string notes = short_chart_with_long_audio("prevctl_scrub_past");
+    audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini",
+                                "[song]\nsong_length = 9000\n");
+    open_and_load(pc, notes);
+
+    CHECK(pc.playback_end_ms() == doctest::Approx(5000.0));
+    CHECK(pc.scrub_end_ms() == doctest::Approx(5000.0));
+    pc.seek_ms(pc.scrub_end_ms());
+    CHECK(hydra::app::scrub_thumb_ms(pc.position_ms(), pc.scrub_end_ms()) ==
+          doctest::Approx(pc.scrub_end_ms()));
+}
+
 // Playback still runs to the audio's end (D48), past the song's length: a
 // jump past the end stops there. Same chart: length 3 s, the sine runs 5 s.
 TEST_CASE("a jump past the end of the Preview stops at the audio's end") {

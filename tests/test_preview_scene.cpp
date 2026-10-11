@@ -46,19 +46,16 @@ TEST_CASE("build_preview_scene: notes carry lane and drum attributes") {
     CHECK(red.lane == PreviewLane::Red);
     CHECK(red.tick == 0);
     CHECK(red.ms == doctest::Approx(0.0));
-    CHECK_FALSE(red.solo);
 
     const PreviewNote& yellow = scene.notes[1];
     CHECK(yellow.lane == PreviewLane::Yellow);
     CHECK(yellow.cymbal);
     CHECK(yellow.ghost);
-    CHECK(yellow.solo);
     CHECK(yellow.ms == doctest::Approx(250.0));
 
     const PreviewNote& blue = scene.notes[2];
     CHECK(blue.lane == PreviewLane::Blue);
     CHECK(blue.accent);
-    CHECK(blue.solo);
 
     // The chord at tick 720 expands to Kick (2x) then Green, in KRYBG order.
     CHECK(scene.notes[3].lane == PreviewLane::Kick);
@@ -132,13 +129,10 @@ TEST_CASE("build_preview_scene: solo spans come from the song's solo sections") 
     CHECK(scene.solos[0].end_tick == 480);
 
     // The span is the song's section, not a join of the flags: with no
-    // section there is no span, though each note still says it is in a solo.
+    // section there is no span, though the notes still carry the solo flag.
     song.solo_sections.clear();
     PreviewScene none = build_preview_scene(song, nullptr);
     CHECK(none.solos.empty());
-    REQUIRE(none.notes.size() > 2);
-    CHECK(none.notes[1].solo);
-    CHECK(none.notes[2].solo);
 }
 
 TEST_CASE("build_preview_scene: drum lanes come from the song's drum lanes") {
@@ -414,8 +408,7 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
                     [](const PreviewNote& x, const PreviewNote& y) {
                         return x.tick == y.tick && x.ms == y.ms && x.measure == y.measure &&
                                x.lane == y.lane && x.cymbal == y.cymbal && x.ghost == y.ghost &&
-                               x.accent == y.accent && x.double_kick == y.double_kick &&
-                               x.solo == y.solo;
+                               x.accent == y.accent && x.double_kick == y.double_kick;
                     }))
         return "notes";
     if (!spans_eq(a.sp_phrases, b.sp_phrases)) return "sp_phrases";

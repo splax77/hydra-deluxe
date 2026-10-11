@@ -1,0 +1,24 @@
+{
+  "rules": [
+    {
+      "question": "Does the Preview's scrubber have a usable right edge?",
+      "owner": "has_song_length in src/app/preview_view.cpp",
+      "owner_file": "src/app/preview_view.cpp",
+      "owner_symbol": "has_song_length",
+      "date": "2026-10-11",
+      "decision": "D114 item 22 (M51)",
+      "added_by": "concept-audit-F5",
+      "pattern": "len_s > 0\\.0f",
+      "must_match": [
+        "    if (ImGui::SliderFloat(\"##scrub\", &pos_s, 0.0f, len_s > 0.0f ? len_s : 1.0f, \"\"))"
+      ],
+      "must_not_match": [
+        "    const float len_s = hydra::app::has_song_length(scrub_len_ms)"
+      ],
+      "scope": [
+        "src/ui/preview_tab.cpp"
+      ],
+      "note": "The tab once asked 'above zero' of the scrubber's edge on its own float copy. It asks has_song_length of the edge now; the 1 s fallback stays as an ImGui guard. Scoped to the tab: the transport's own 'above zero' answers a different question (is there a playback range to stop at). Decided by: D114 item 22, concept audit M51."
+    }
+  ]
+}

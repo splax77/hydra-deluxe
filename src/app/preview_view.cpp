@@ -47,7 +47,6 @@ PreviewNote note_from(const SongTimestamp& ts, const ChordNote& n) {
     pn.ghost = n.is_ghost();
     pn.accent = n.is_accent();
     pn.double_kick = n.is2x;
-    pn.solo = ts.flag_solo;
     return pn;
 }
 
@@ -652,9 +651,14 @@ std::vector<double> build_scrub_marks(const PreviewScene& scene, double length_m
     return marks;
 }
 
-double scrub_end_ms(std::optional<double> song_length_ms, double playback_length_ms) {
-    return song_length_ms && has_song_length(*song_length_ms) ? *song_length_ms
-                                                               : playback_length_ms;
+PlayheadRange playhead_range(std::optional<double> song_length_ms, double playback_end_ms) {
+    PlayheadRange r;
+    r.playback_end_ms = playback_end_ms;
+    r.marks_length_ms = song_length_ms && has_song_length(*song_length_ms) ? *song_length_ms
+                                                                           : playback_end_ms;
+    r.scrub_end_ms = playback_end_ms > 0.0 ? std::min(r.marks_length_ms, playback_end_ms)
+                                           : r.marks_length_ms;
+    return r;
 }
 
 double scrub_thumb_ms(double now_ms, double scrub_end_ms) {

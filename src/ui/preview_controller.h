@@ -189,8 +189,8 @@ public:
     void toggle();
     bool playing() const;
     double position_ms() const;
-    // Where the scrubber ends: the song's length (app::song_length_ms, D75),
-    // or playback_end_ms() for a chart with none (app::scrub_end_ms).
+    // Where the scrubber ends: PreviewTransport::range()'s scrub_end_ms
+    // (app::PlayheadRange, D114 item 17).
     double scrub_end_ms() const;
     // Where playback stops: the later of the last note and the audio's end
     // (PreviewTransport::length_ms). Play, the clock and jumps run to here.
@@ -229,8 +229,8 @@ public:
     // The SP drain box the panel draws beside the gauge.
     hydra::app::PreviewDrainBox drain_box() const;
 
-    // The drawn path's activations on the scrubber, as fractions of
-    // scrub_end_ms() (app::build_scrub_marks). Empty until a path's scene is in.
+    // The drawn path's activations on the scrubber, as fractions of the
+    // range's marks_length_ms (app::build_scrub_marks). Empty until a path's scene is in.
     // Built once per scene and length, then cached (see SceneCache below);
     // the reference holds until the next call.
     const std::vector<double>& scrub_marks() const;
@@ -247,6 +247,12 @@ public:
 
     // The number under the SP gauge, "2.5/4" (app::sp_meter_readout).
     std::string sp_meter_readout() const;
+
+    // Can the activation jumps move the playhead? True when the drawn path
+    // has activations and no load is running, the same gate jump_activation
+    // and seek_activation apply. The "< Act" and "Act >" buttons grey on it
+    // (D114 item 22).
+    bool has_activations() const;
 
     // Move the playhead to the previous (-1) or next (+1) activation of the
     // drawn path (app::activation_jump_ms). Playing stays playing, as with
@@ -341,10 +347,9 @@ private:
     // Result::audio_end_ms), kept with the song so every base built for it
     // runs the beat lines to the same end. Empty without audio.
     std::optional<double> audio_end_ms_;
-    // The song's length (the load's Result::song_length_ms, D75), kept the
-    // same way: the scrubber ends at it and every base's SP meter closes at
-    // it. Empty when the chart has none.
-    std::optional<double> song_length_ms_;
+    // The song's length (the load's Result::song_length_ms, D75) lives on
+    // the transport (PreviewTransport::song_length_ms), which owns the
+    // playhead's range; every base's SP meter closes at it.
     // The song's path-free scene and timeline, shared read-only with scene
     // jobs so a path change builds only the overlay. poll() starts base_job_
     // to build it once the load has landed (a scene job that runs first

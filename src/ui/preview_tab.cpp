@@ -426,7 +426,8 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     // Read once per frame (the controller caches it per scene); the
     // scrubber's gold ticks below draw from the same list.
     const std::vector<double>& scrub_marks = pc->scrub_marks();
-    const bool no_acts = scrub_marks.empty();
+    // Greyed exactly when a jump would do nothing, a load included.
+    const bool no_acts = !pc->has_activations();
     // Each tooltip follows its button's disabled block, so it is not drawn in
     // the greyed-out colours, and overflow_tooltip shows it even while the
     // button is greyed out.
@@ -476,14 +477,17 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     if (ImGui::IsItemDeactivatedAfterEdit()) app.commit_settings();
 
     // The clock drives the scrubber, so a chart with no audio still scrubs.
-    // The scrubber's end is PreviewController::scrub_end_ms (the song's length,
-    // app::song_length_ms, D75);
-    // should playback run past it, the thumb waits at the right end.
+    // The scrubber's end is PreviewController::scrub_end_ms (the transport's
+    // range, app::PlayheadRange); should playback run past it, the thumb
+    // waits at the right end.
     const hydra::app::PreviewTimeBox box = pc->time_box();
     const double scrub_len_ms = pc->scrub_end_ms();
     float pos_s =
         static_cast<float>(hydra::app::scrub_thumb_ms(pc->position_ms(), scrub_len_ms) / 1000.0);
-    const float len_s = static_cast<float>(scrub_len_ms / 1000.0);
+    // A slider cannot have an empty range, so with no usable edge it spans 1 s.
+    const float len_s = hydra::app::has_song_length(scrub_len_ms)
+                            ? static_cast<float>(scrub_len_ms / 1000.0)
+                            : 1.0f;
     // The clock's slot fits its widest form: every digit drawn as the widest one.
     std::string readout_sample = box.timestamp;
     const char widest = widest_digits(1)[0];
@@ -494,7 +498,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     ImGui::PopFont();
     ImGui::SetNextItemWidth(std::max(px(120.0f), ImGui::GetContentRegionAvail().x - readout_w -
                                                      ImGui::GetStyle().ItemSpacing.x));
-    if (ImGui::SliderFloat("##scrub", &pos_s, 0.0f, len_s > 0.0f ? len_s : 1.0f, ""))
+    if (ImGui::SliderFloat("##scrub", &pos_s, 0.0f, len_s, ""))
         pc->seek_ms(static_cast<double>(pos_s) * 1000.0);
     // Holding the scrubber pauses playback (Onyx's rule); release resumes.
     pc->set_scrubbing(ImGui::IsItemActive());

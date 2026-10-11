@@ -51,7 +51,7 @@ struct PreviewNotes {
     app::PreviewSong ps;
     // app::chart_song_length_ms (D75). Empty when the owner gives none or its
     // read failed: the scrubber then ends where playback does
-    // (app::scrub_end_ms).
+    // (app::playhead_range).
     std::optional<double> song_length_ms;
 };
 

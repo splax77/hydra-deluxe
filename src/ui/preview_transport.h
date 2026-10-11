@@ -23,6 +23,7 @@
 #include <optional>
 
 #include "app/preview_clock.h"
+#include "app/preview_view.h"  // PlayheadRange
 #include "audio/frames.h"
 #include "audio/player.h"
 
@@ -47,9 +48,8 @@ public:
     // audio::mix_song_stems). length_ms() becomes the playback range: the
     // later of `last_note_ms` and the audio's end in chart time, so the audio
     // plays out and a chart with no audio still plays to its last note (D48,
-    // Q25). It is where playback stops, not a song length: the scrubber ends
-    // at the song's length (app::song_length_ms, D75), through
-    // app::scrub_end_ms. Resets the playhead to the offset, paused.
+    // Q25). It is where playback stops, not a song length; range() puts the
+    // two together. Resets the playhead to the offset, paused.
     void load(std::unique_ptr<audio::Playhead> playhead, double last_note_ms,
               double audio_offset_ms = 0.0);
     void unload();  // drop the playhead, back to an empty paused transport
@@ -69,6 +69,14 @@ public:
     bool playing() const;
     double length_ms() const;  // the playback range (see load), not the song's length
     bool has_audio() const;  // a loaded playhead with > 0 frames
+
+    // The song's length as the load worked out (app::song_length_ms, D75),
+    // or none. unload() clears it.
+    void set_song_length_ms(std::optional<double> song_length_ms);
+    std::optional<double> song_length_ms() const { return song_length_ms_; }
+    // Where the playhead can be: one value the time box, the scrubber, its
+    // thumb and its marks all read (app::playhead_range, D114 item 17).
+    app::PlayheadRange range() const;
 
     // The song time now. If playing and at/after the end, pauses and pins the
     // time to length_ms() (the stop-at-end rule) — so call this once per frame
@@ -94,6 +102,7 @@ private:
 
     app::PreviewClock clock_;  // GUI thread only
     double length_ms_ = 0.0;
+    std::optional<double> song_length_ms_;
     double audio_offset_ms_ = 0.0;  // as audio_ms_of_chart_ms takes it
     float gain_ = 1.0f;
     mutable std::mutex mu_;  // guards playhead_ (device thread pulls, GUI controls)
