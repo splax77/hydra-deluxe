@@ -590,13 +590,11 @@ void Song::check_activations(const core::Rules& rules) {
     // order here: measures are only ever added at or above the current max.
     std::map<int64_t, Cell> measuremap;
 
-    // SongIter: walk the sequence, advancing at most one tpm/bpm mark each step.
-    std::vector<int64_t> tpm_keys, bpm_keys;
+    // SongIter: walk the sequence, advancing at most one tpm mark each step.
+    std::vector<int64_t> tpm_keys;
     for (const auto& kv : tpm_changes) tpm_keys.push_back(kv.first);
-    for (const auto& kv : bpm_changes) bpm_keys.push_back(kv.first);
-    size_t tpm_pos = 0, bpm_pos = 0;
+    size_t tpm_pos = 0;
     int64_t tpm = tpm_keys.empty() ? 0 : tpm_changes[tpm_keys[tpm_pos++]];
-    if (!bpm_keys.empty()) bpm_pos++;  // bpm value itself is unused here
 
     Timecode downbeat_ref = start_time();
 
@@ -615,7 +613,6 @@ void Song::check_activations(const core::Rules& rules) {
                 ++tpm_pos;
             }
         }
-        if (bpm_pos < bpm_keys.size() && tick >= bpm_keys[bpm_pos]) ++bpm_pos;
 
         int64_t m0 = ts.timecode.measure_beats_ticks()[0];
         for (int64_t measure : {m0 + 1, m0 + 2}) {
