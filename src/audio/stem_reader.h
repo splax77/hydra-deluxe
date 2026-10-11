@@ -69,8 +69,10 @@ struct StemBytes {
     std::size_t size() const { return mapped ? mapped->size() : owned.size(); }
 };
 
-struct OpenCancelled : KindedError {
-    OpenCancelled() : KindedError(ErrorKind::Cancelled, "cancelled") {}
+// An audio open stopped by its progress callback. Its own type exists because
+// preview_load_job.cpp and song_audio.cpp catch it by type.
+struct OpenCancelled : Cancelled {
+    OpenCancelled() = default;
 };
 // bytes_done / bytes_total; return false to cancel (open throws OpenCancelled).
 using OpenProgress = std::function<bool(uint64_t bytes_done, uint64_t bytes_total)>;

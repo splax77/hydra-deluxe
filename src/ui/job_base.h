@@ -19,10 +19,10 @@
 namespace hydra::ui {
 
 // Thrown by JobBase::throw_if_cancelled() between a job's steps. run_guarded
-// turns it into a failed run whose error() reads "cancelled". Its kind is
-// Cancelled.
-struct JobCancelled : KindedError {
-    JobCancelled() : KindedError(ErrorKind::Cancelled, "cancelled") {}
+// turns it into a failed run whose error() reads Cancelled's text. Its own
+// type exists so library_jobs.cpp can catch a job's stop by type.
+struct JobCancelled : Cancelled {
+    JobCancelled() = default;
 };
 
 // Common lifecycle for every job: an owning worker thread, a cancel flag the

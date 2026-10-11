@@ -1,0 +1,33 @@
+{
+  "rules": [
+    {
+      "question": "How is \"this step was asked to stop\" thrown?",
+      "owner": "Cancelled in src/core/error_kind.h",
+      "owner_file": "src/core/error_kind.h",
+      "owner_symbol": "Cancelled",
+      "date": "2026-10-11",
+      "decision": "concept audit M79 (D114 fix wave, task F4)",
+      "added_by": "concept-audit-F4",
+      "pattern": "KindedError\\(\\s*ErrorKind::Cancelled",
+      "anchor": "ErrorKind::Cancelled",
+      "must_match": [
+        "[[noreturn]] void throw_cancelled() { throw KindedError(ErrorKind::Cancelled, \"cancelled\"); }",
+        "OpenCancelled() : KindedError(ErrorKind::Cancelled, \"cancelled\") {}",
+        "throw KindedError( ErrorKind::Cancelled, \"opening the database was stopped\");"
+      ],
+      "must_not_match": [
+        "throw Cancelled(\"opening the database was stopped\");",
+        "if (e.kind() == ErrorKind::Cancelled || e.kind() == ErrorKind::DatabaseUpgrade) throw;",
+        "case ErrorKind::Cancelled: return kStopped;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/error_kind.h",
+          "line_text": ": KindedError(ErrorKind::Cancelled, what) {}",
+          "why": "Cancelled, the owner"
+        }
+      ],
+      "note": "A stop is thrown as Cancelled or a type derived from it (ui::JobCancelled, audio::OpenCancelled), so the kind is built once. Reading the kind back (e.kind() == ErrorKind::Cancelled) is a catch, not a throw, and passes."
+    }
+  ]
+}
