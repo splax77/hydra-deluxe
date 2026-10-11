@@ -17,6 +17,7 @@
 
 #include "app/analysis.h"
 #include "core/audio_sniff.h"
+#include "core/bounds.h"
 #include "core/little_endian.h"
 #include "core/strutil.h"
 #include "core/winstr.h"
@@ -247,7 +248,7 @@ std::vector<PreviewAudioStem> srb_audio_from(const std::vector<uint8_t>& buf,
     // all bits set, which is why it is taken as blob 0's tag rather than a
     // count.  Which tag means which instrument is unknown, so stems are
     // labelled by position.
-    if (offset + 8 > buf.size()) return stems;
+    if (!core::fits(buf, offset, 8)) return stems;
     size_t cursor = offset + 8;  // skip the leading u64
 
     // Blob 0 has no type prefix; all subsequent blobs do.
@@ -256,16 +257,16 @@ std::vector<PreviewAudioStem> srb_audio_from(const std::vector<uint8_t>& buf,
     while (cursor < buf.size()) {
         if (stop()) break;
         if (!first) {
-            if (cursor + 8 > buf.size()) break;
+            if (!core::fits(buf, cursor, 8)) break;
             cursor += 8;  // skip the type_id prefix
         }
-        if (cursor + 24 > buf.size()) break;
+        if (!core::fits(buf, cursor, 24)) break;
 
         const uint8_t* header = buf.data() + cursor;
         uint64_t blob_size = core::read_le_u64(buf.data() + cursor + 16);
         cursor += 24;
 
-        if (blob_size > buf.size() - cursor) break;
+        if (!core::fits(buf, cursor, blob_size)) break;
 
         std::vector<uint8_t> plain;
         if (srb_decrypt_blob(buf.data() + cursor, static_cast<size_t>(blob_size),

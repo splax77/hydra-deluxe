@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 
+#include "core/bounds.h"
 #include "core/error_kind.h"
 #include "core/little_endian.h"
 
@@ -10,14 +11,8 @@ namespace hydra {
 
 namespace {
 
-// n bytes starting at pos lie inside something of `size` bytes (no overflow
-// for any pos or n). The one bounds rule for the header walk and the entries.
-bool fits(uint64_t size, uint64_t pos, uint64_t n) {
-    return pos <= size && n <= size - pos;
-}
-bool fits(const std::vector<uint8_t>& buf, size_t pos, uint64_t n) {
-    return fits(buf.size(), pos, n);
-}
+// The header walk and the entries ask core/bounds.h.
+using core::fits;
 
 std::string string_at(const std::vector<uint8_t>& buf, size_t pos, size_t len) {
     return std::string(reinterpret_cast<const char*>(buf.data() + pos), len);

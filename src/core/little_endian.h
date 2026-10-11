@@ -2,8 +2,9 @@
 // calls it; the scan rows in tests/single_owner/rules/core.json keep it so.
 // It lives in core/ because parse/ cannot include store/.
 //
-// Neither function checks bounds. Each caller checks its own first, because
-// each one handles short input its own way.
+// Neither function checks bounds. Each caller asks core/bounds.h first and
+// decides for itself what short input means, because each one handles it its
+// own way.
 
 #ifndef HYDRA_CORE_LITTLE_ENDIAN_H
 #define HYDRA_CORE_LITTLE_ENDIAN_H
