@@ -348,7 +348,9 @@ store::CapQuery Settings::cap_query() const {
 store::Lens Settings::lens() const {
     return store::Lens::from(
         mslimit_enabled ? std::optional<int>(mslimit_value) : std::nullopt,
-        depth_mode, depth_value, legacy_fills);
+        // The unit the search runs with (search_depth_mode), not the raw int,
+        // so the lens stays canonical (concept audit M14).
+        search_depth_mode() == DepthMode::Points ? 1 : 0, depth_value, legacy_fills);
 }
 
 store::RecordKey Settings::record_key(const std::string& hyhash) const {

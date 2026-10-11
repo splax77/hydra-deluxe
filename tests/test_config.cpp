@@ -599,6 +599,17 @@ TEST_CASE("to_analysis_settings maps depth_mode onto the search's enum") {
     CHECK(s.to_analysis_settings().depth_mode == hydra::DepthMode::Scores);
 }
 
+// The lens files a result by the unit the search ran with (search_depth_mode),
+// so an int the search reads as scores files beside 0, never as a third row.
+TEST_CASE("lens: depth_mode is the search's unit, so a stray int files as scores") {
+    Settings s;
+    s.depth_mode = 7;
+    CHECK(s.lens().depth_mode == 0);
+    CHECK(s.lens() == Settings{}.lens());
+    s.depth_mode = 1;
+    CHECK(s.lens().depth_mode == 1);
+}
+
 // The reset is Settings::with_analysis_defaults. The panel's own words for
 // what differs (settings_at_defaults, settings_changes_summary in
 // ui/library_parts.h) are the probe, so the panel and the reset agree.
