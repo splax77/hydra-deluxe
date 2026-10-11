@@ -133,6 +133,18 @@ The scout applied Hydra's lit-pad rule from `song.cpp` in its own script and did
 
 I did not count the real library.
 
+## Library scan (2026-10-11)
+
+With the user's yes in chat, I read every .mid and .chart in Hydra's library and ran the double-lane timer rule on every double lane. The library list is the `charts` table of the installed `hydra.db` (copied first): 19,499 charts. I scanned 19,415 of them, the 15,031 .mid and 4,384 .chart files. The 84 .sng and .srb containers were not scanned. 3 files failed to parse. It read files only, ran no Hydra analysis, and took 103 s. The script is `play/library_scan.py`.
+
+3,801 charts have at least one lane. At Expert there are 12,683 lanes: 8,813 single and 3,870 double, in 3,799 charts. The timer rule would fire on **none** of the 3,870 Expert double lanes. Their median gap between lit notes is 0.077 s and the longest is 0.676 s.
+
+It would fire on 19 double lanes at Easy, Medium and Hard, in 9 charts. They are listed in `play/library_double_lane_breaks.csv`. Many are tiny lanes of 2 to 20 notes with one lit pad and a gap over a second, such as the 2-note Medium lane in Dream Theater's *As I Am* and the 20-note Easy and Medium lanes in Architects' *Seeing Red*.
+
+The stored results in the database are all Expert (37,692 rows, every chart mode starts with "Expert"), and the settings file has `view_difficulty=Expert`. So none of those 19 lanes has been analyzed by Hydra. Hydra can analyze the lower difficulties if the setting changes.
+
+Caveats: the lit pads come from the census script's copy of Hydra's rule, not from Hydra's parser. The timer rule rests on my reading of the code and has not been seen in the game. Both could shift a count, but the Expert answer is zero by a wide margin.
+
 ## The .mid reader, checked
 
 The .mid reader maps a lane marker's note-on velocity to a difficulty at 0x2155378 to 0x2155442 (`f2155200_mid_reader_lane_case.asm`), with a second copy at 0x2156E68. Velocity 21 to 30 gives Easy, 31 to 40 Medium, 41 to 50 Hard and 51 or more Expert. Velocity 20 or less also gives Expert, because the compare falls through to the same value. That matches D112 item 2. Pitch 126 makes a single lane and pitch 127 a double lane. The lane object is made with its start, its length and the kind (`lane_ctor_2116390.asm`). I did not see the note-off pairing, so "length comes from the note-off" rests on the reader receiving a start and a length.
@@ -148,7 +160,7 @@ The .mid reader maps a lane marker's note-on velocity to a difficulty at 0x21553
 
 1. **The grant rule: model it?** My recommendation is no. It changes no score and opens no new timing.
 2. **The double-lane timer: model it?** It is the one lane rule that can lower a perfect score. In `testdata` it never fires. Options: leave it out and say so in one public sentence; or add a check that flags a double lane whose lit notes leave a 0.75 s stretch without both pads (no score change, a warning only); or apply the combo break in the engine, which changes stored results and bumps the results stamp.
-3. **Count the library?** Ask for permission to count double lanes in your real library that would trip the timer. That needs your yes in chat, and the count would settle option 2.
+3. **Library count: done.** No Expert double lane in the library trips the timer, so for the Expert difficulty Hydra analyzes today the timer does not matter. It would matter only for 19 lower-difficulty lanes in 9 charts that Hydra has never analyzed. That favors option 2's first choice, leave it out and say so.
 4. **A game test for the timer.** A chart with a double lane whose pads alternate every 0.5 s, played by the bot or by hand, would show the break at once. It would confirm the rule before anyone changes the engine.
 5. **Public wording.** One sentence in the user guide and `docs/differences-from-public-hydra.md`. It goes through the public-doc review.
 6. **Fix the lane count.** D112 and this folder's README say 50 lanes, and the tool prints 49. Correct it or say which file made it 50.
