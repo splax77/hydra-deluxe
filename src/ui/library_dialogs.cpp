@@ -50,11 +50,9 @@ bool enter_pressed() {
            ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false);
 }
 
-// "21 analyzed · 0 failed · 1 skipped (already had a result)".
+// The strip's counts, worded by app::batch_counts_text.
 std::string batch_counts(const BatchJob::Snapshot& s) {
-    return counted(s.analyzed, "analyzed", "analyzed") + " \xC2\xB7 " +
-           counted(s.failed, "failed", "failed") + " \xC2\xB7 " +
-           counted(s.skipped, "skipped", "skipped") + " (already had a result)";
+    return app::batch_counts_text(s.analyzed, s.failed, s.skipped);
 }
 
 // The setting values both summaries print, each said once: the batch

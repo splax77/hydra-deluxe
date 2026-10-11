@@ -256,11 +256,10 @@ int batch_main() {
     double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
 
-    // Library rows, every copy of a chart counted (D76).
-    std::printf("\nAnalyzed %s, skipped %s already stored, %s failed in %.1fs.\n",
-                hydra::group_thousands(last.analyzed).c_str(),
-                hydra::group_thousands(last.skipped).c_str(),
-                hydra::group_thousands(last.failed).c_str(), elapsed);
+    // Library rows, every copy of a chart counted (D76), in the app's words.
+    std::printf("\n%s in %.1fs.\n",
+                hydra::app::batch_counts_text(last.analyzed, last.failed, last.skipped).c_str(),
+                elapsed);
 
     // The first 20 failure lines; the count is the progress's.
     constexpr int kFailuresShown = 20;

@@ -187,7 +187,9 @@ TEST_CASE("hydra_batch stamps a new database with the rule it ran under") {
     // Every number is the batch's progress, in library rows (D79); the
     // store's raw row count is not printed.
     CHECK(contains(r.output, "[1/1] "));
-    CHECK(contains(r.output, "Analyzed 1, skipped 0 already stored, 0 failed in "));
+    // The closing counts are the app's strip words (D114 item 10).
+    CHECK(contains(r.output,
+                   "\n1 analyzed \xC2\xB7 0 failed \xC2\xB7 0 skipped (already had a result) in "));
     CHECK_FALSE(contains(r.output, "Store now holds"));
     {
         hydra::store::RecordStore store(normal);
