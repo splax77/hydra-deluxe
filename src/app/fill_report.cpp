@@ -47,7 +47,7 @@ const char* const kBody = R"page(<div class="wrap fill">
       <select id="sortby"></select>
       <button id="sortdir" type="button" title="Switch between highest-first and lowest-first"></button>
     </span>
-    <input type="search" id="q" aria-label="Search charts" placeholder="Search song, artist, or charter">
+    <input type="search" id="q" aria-label="Search charts" placeholder="__SEARCH_HINT__">
     <select id="status" aria-label="Status">
       <option value="">All charts</option>
       <option value="__ST_NEW_HIGHER__">1.1 higher</option>
@@ -188,6 +188,9 @@ std::string build_page_template() {
     }
     status_js += "}";
     page = replace_all(std::move(page), "__STATUS__", status_js);
+    // The search box's hint is the report windows' (html_page.h).
+    page = replace_all(std::move(page), "__SEARCH_HINT__",
+                       html::html_escape(html::kSearchChartsHint));
     std::string tile = kInBothPhrase;
     tile[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(tile[0])));
     std::string tile_js;

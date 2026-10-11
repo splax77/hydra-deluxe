@@ -48,13 +48,6 @@
         "    ImGui::TextUnformatted(app::html::kNothingMatches);",
         "    if (report_frame::search_box(w.memory, \"Search song, artist, charter, or path notation\"))"
       ],
-      "owner_lines": [
-        {
-          "file": "src/app/fill_report.cpp",
-          "line_text": "<input type=\"search\" id=\"q\" aria-label=\"Search charts\" placeholder=\"Search song, artist, or charter\">",
-          "why": "the fill page's search box markup; H3 does not own fill_report.cpp, so moving it onto kSearchChartsHint (a placeholder page_template fills) is left for the task that owns it"
-        }
-      ],
       "scope": [
         "src"
       ],
