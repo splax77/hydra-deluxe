@@ -569,6 +569,12 @@ private:
     // any throw from it into a failed open.
     void set_up_schema();
     void exec(const char* sql);
+    // Runs `work` inside one BEGIN ... COMMIT. A throw from it rolls back
+    // and is rethrown. Defined in record_store.cpp, its only user. The save
+    // paths keep their own frame: savepoints and save groups are another
+    // shape.
+    template <class F>
+    void in_transaction(F work);
     bool has_column(const char* table, const char* column);
     bool has_table(const char* table);
     void create_result_tables();

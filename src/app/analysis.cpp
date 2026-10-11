@@ -46,12 +46,11 @@ namespace {
 // nested under `base` (or equal to it). Falls back to the raw target for any
 // path that isn't, which discover_charts's own walk never produces.
 std::string relpath(const std::string& target, const std::string& base) {
-    std::string t = target, b = base;
-    while (!t.empty() && (t.back() == '\\' || t.back() == '/')) t.pop_back();
-    while (!b.empty() && (b.back() == '\\' || b.back() == '/')) b.pop_back();
+    const std::string t = trim_trailing_separators(target);
+    const std::string b = trim_trailing_separators(base);
     if (t == b) return ".";
     if (t.size() > b.size() && t.compare(0, b.size(), b) == 0 &&
-        (t[b.size()] == '\\' || t[b.size()] == '/'))
+        is_path_separator(t[b.size()]))
         return t.substr(b.size() + 1);
     return t;
 }
@@ -724,10 +723,12 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
         // it: a fresh song.ini, .sng or .srb read, or the rescan cache holding
         // an older scan's blank or "<unknown title>". What a screen shows is
         // decided later by display_title, display_artist and display_charter;
-        // a stored "<unknown artist>" shows as "(unknown)" (D56 item 2).
-        r->title = title_or_unknown(std::move(r->title));
-        r->artist = artist_or_unknown(std::move(r->artist));
-        r->charter = charter_or_unknown(std::move(r->charter));
+        // a stored "<unknown artist>" shows as "(unknown)" (D56 item 2). Each
+        // field is trimmed here once, before its fallback, whatever the file
+        // format (D114 item 15).
+        r->title = title_or_unknown(trim(r->title));
+        r->artist = artist_or_unknown(trim(r->artist));
+        r->charter = charter_or_unknown(trim(r->charter));
         scanitems.push_back(std::move(*r));
     }
     return {scanitems, errors};

@@ -120,9 +120,17 @@ bool shell_execute_ok(void* shell_execute_result) {
     return reinterpret_cast<INT_PTR>(shell_execute_result) > 32;
 }
 
+bool is_path_separator(char c) {
+    return c == '\\' || c == '/';
+}
+
+std::string trim_trailing_separators(std::string path) {
+    while (!path.empty() && is_path_separator(path.back())) path.pop_back();
+    return path;
+}
+
 std::string parent_folder(const std::string& path) {
-    std::string p = path;
-    while (!p.empty() && (p.back() == '\\' || p.back() == '/')) p.pop_back();
+    const std::string p = trim_trailing_separators(path);
     const size_t pos = p.find_last_of("\\/");
     return pos == std::string::npos ? std::string() : p.substr(0, pos);
 }

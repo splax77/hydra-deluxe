@@ -493,6 +493,18 @@ KindedError group_lost_error() {
 
 }  // namespace
 
+template <class F>
+void RecordStore::in_transaction(F work) {
+    exec("BEGIN");
+    try {
+        work();
+        exec("COMMIT");
+    } catch (...) {
+        rollback_if_open(db_);
+        throw;
+    }
+}
+
 // The bestpath column writes this text (prepare_row), and hydra_replay's
 // result block shows it.
 std::string best_path_text(const HydraRecord& record) {
@@ -749,8 +761,7 @@ void RecordStore::upgrade_results_key() {
         return;  // schema 4 already
     }
     report(OpenStep::UpdatingResultsKey);
-    exec("BEGIN");
-    try {
+    in_transaction([&] {
         exec("ALTER TABLE results RENAME TO results_before_upgrade");
         create_result_tables();
         exec((std::string("INSERT INTO results (") + kSchema2ResultsColumns +
@@ -758,11 +769,7 @@ void RecordStore::upgrade_results_key() {
               legacy_fills + ", " + rules_fp_of("structure") + " FROM results_before_upgrade")
                  .c_str());
         exec("DROP TABLE results_before_upgrade");
-        exec("COMMIT");
-    } catch (...) {
-        rollback_if_open(db_);
-        throw;
-    }
+    });
 }
 
 void RecordStore::open_file(const std::string& dbpath) {
@@ -854,11 +861,11 @@ void RecordStore::copy_upgrade(const std::string& dbpath) {
 
         // (4) One transaction on the fresh file. Only it is written; the old
         //     file is only read.
-        exec("BEGIN");
-        exec((std::string("DELETE FROM ") + kFreshSchema + ".meta").c_str());
-        for (const char* table : kKeptTables)
-            copy_table(table, kept_rows(table), rows_done, rows_total);
-        exec("COMMIT");
+        in_transaction([&] {
+            exec((std::string("DELETE FROM ") + kFreshSchema + ".meta").c_str());
+            for (const char* table : kKeptTables)
+                copy_table(table, kept_rows(table), rows_done, rows_total);
+        });
         report(OpenStep::Finishing, rows_done, rows_total);
 
         // (5) Fold the fresh file's log into it, which syncs it to disk, then
@@ -1157,14 +1164,7 @@ void RecordStore::add_record(const RecordKey& key, const HydraRecord& record) {
 
 void RecordStore::add_row(const PreparedRow& row) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
-    exec("BEGIN");
-    try {
-        write_row(row);
-        exec("COMMIT");
-    } catch (...) {
-        rollback_if_open(db_);
-        throw;
-    }
+    in_transaction([&] { write_row(row); });
 }
 
 void RecordStore::delete_results_where(const std::string& where,
@@ -1252,8 +1252,7 @@ std::string not_in_library(const char* hash) {
 void RecordStore::reidentify_chart(const std::string& notespath, const std::string& new_md5,
                                    const std::string& new_sig) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
-    exec("BEGIN");
-    try {
+    in_transaction([&] {
         {
             CachedStmt s =
                 use_write(db_, stmt_cache_, "UPDATE charts SET md5 = ?, sig = ? WHERE path = ?");
@@ -1263,11 +1262,7 @@ void RecordStore::reidentify_chart(const std::string& notespath, const std::stri
             step_done(s, "reidentify_chart");
         }
         purge_charts_not_in_library("reidentify_chart");
-        exec("COMMIT");
-    } catch (...) {
-        rollback_if_open(db_);
-        throw;
-    }
+    });
 }
 
 void RecordStore::purge_charts_not_in_library(const char* caller) {
@@ -1287,17 +1282,12 @@ void RecordStore::delete_auto_results() {
     // fingerprint is ever an Auto one. A new result for the same chart, cap
     // and lens outranks such a row (WinnerPicker).
     const std::vector<uint8_t> auto_fp = rules_fp_bytes(rules_fingerprint_.retired_auto);
-    exec("BEGIN");
-    try {
+    in_transaction([&] {
         delete_results_where(
             "rules_fp = ?", [&](sqlite3_stmt* s) { bind_blob(s, 1, auto_fp); },
             "deleting Auto results");
         meta_set(kAutoResultsDeletedKey, "1");
-        exec("COMMIT");
-    } catch (...) {
-        rollback_if_open(db_);
-        throw;
-    }
+    });
 }
 
 SummaryLookup RecordStore::get_summary(const RecordKey& key) {
@@ -1518,8 +1508,7 @@ void RecordStore::rebuild_chart_library(const std::vector<ChartLibraryEntry>& it
     // a failure anywhere rolls back to the previous scan's rows, which are
     // also the rescan cache. The table is emptied rather than dropped, so its
     // columns and index stay as they are.
-    exec("BEGIN");
-    try {
+    in_transaction([&] {
         exec("DELETE FROM charts");
         Stmt s = prepare_write(db_,
             "INSERT INTO charts (md5, name, artist, charter, path, folder, sig,"
@@ -1543,11 +1532,7 @@ void RecordStore::rebuild_chart_library(const std::vector<ChartLibraryEntry>& it
         purge_charts_not_in_library("rebuild_chart_library");
         // The readers that filled these rows answer for them (kChartMetaStamp).
         meta_set(kChartMetaKey, std::to_string(kChartMetaStamp.written));
-        exec("COMMIT");
-    } catch (...) {
-        rollback_if_open(db_);
-        throw;
-    }
+    });
 }
 
 ChartLibraryCache RecordStore::chart_library_cache() {
