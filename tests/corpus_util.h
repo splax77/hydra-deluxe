@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "app/config.h"  // chartmode_key
 #include "core/rules.h"
 #include "core/strutil.h"
 #include "json.hpp"
@@ -158,15 +159,6 @@ struct Outcome {
     std::exception_ptr error;
 };
 
-// A ChartReading as one piece of a cache key, naming every field, so two
-// readings never share a cached entry.
-inline std::string reading_key(const hydra::ChartReading& r) {
-    std::ostringstream k;
-    k << static_cast<int>(r.difficulty) << '|' << r.prodrums << '|' << r.bass2x << '|'
-      << r.noteshuffle;
-    return k.str();
-}
-
 }  // namespace detail
 
 // The Song for one corpus chart, parsed once per run for this reading and
@@ -176,7 +168,7 @@ inline const hydra::Song& song(const std::string& path, const hydra::ChartReadin
     static std::map<std::string, detail::Outcome<hydra::Song>> cache;
     std::ostringstream key;
     key.precision(17);
-    key << path << '|' << detail::reading_key(reading) << '|' << rules.fingerprint();
+    key << path << '|' << hydra::app::chartmode_key(reading) << '|' << rules.fingerprint();
     auto [it, fresh] = cache.try_emplace(key.str());
     detail::Outcome<hydra::Song>& o = it->second;
     if (fresh) {
@@ -242,7 +234,7 @@ inline const hydra::HydraRecord& analyzed(const std::string& path,
                                           const hydra::app::AnalysisSettings& settings) {
     static std::map<std::string, detail::Outcome<hydra::HydraRecord>> cache;
     std::ostringstream key;
-    key << path << '|' << detail::reading_key(settings.reading()) << '|'
+    key << path << '|' << hydra::app::chartmode_key(settings.reading()) << '|'
         << settings_key(settings);
     auto [it, fresh] = cache.try_emplace(key.str());
     detail::Outcome<hydra::HydraRecord>& o = it->second;
