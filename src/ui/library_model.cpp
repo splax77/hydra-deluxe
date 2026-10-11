@@ -41,19 +41,29 @@ app::RowFacts facts_of(const LibraryRow& row) {
     return app::RowFacts{row.summary.stars, row.summary.hardest_ms};
 }
 
+}  // namespace
+
+// Beside facts_of on purpose: a summary field the library starts to read
+// (here, in best_path_label or in the Best path sort) joins this list, or a
+// refresh keeps the row's old value.
+bool LibraryRow::shows_same_as(const store::SummaryLookup& lookup) const {
+    return status == lookup.status && stale_build == lookup.stale_build &&
+           stale_rules == lookup.stale_rules && bestpath == lookup.bestpath &&
+           summary.score == lookup.summary.score && summary.stars == lookup.summary.stars &&
+           summary.hardest_ms == lookup.summary.hardest_ms;
+}
+
+namespace {
+
 bool matches_query(const app::LibraryQuery& q, const LibraryRow& row) {
     return q.empty() || app::query_matches(q, row.searchable, facts_of(row));
 }
 
 // Applies one lookup to one row. False when nothing the library shows or
-// filters on changed, so a refresh that finds the same answers costs no
-// re-sort.
+// filters on changed (LibraryRow::shows_same_as), so a refresh that finds
+// the same answers costs no re-sort.
 bool apply_summary(LibraryRow& row, const store::SummaryLookup& lookup) {
-    if (row.status == lookup.status && row.stale_build == lookup.stale_build &&
-        row.stale_rules == lookup.stale_rules && row.bestpath == lookup.bestpath &&
-        row.summary.score == lookup.summary.score && row.summary.stars == lookup.summary.stars &&
-        row.summary.hardest_ms == lookup.summary.hardest_ms)
-        return false;
+    if (row.shows_same_as(lookup)) return false;
     row.status = lookup.status;
     row.stale_build = lookup.stale_build;
     row.stale_rules = lookup.stale_rules;

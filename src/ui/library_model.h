@@ -73,6 +73,9 @@ struct LibraryRow {
     store::PathSummary summary;           // set when Ready (T7)
     // The Best path cell, made when it is drawn (best_path_label).
     std::string best_label() const;
+    // Whether `lookup` changes nothing the library shows, filters or sorts on:
+    // the one list of the lookup's fields the library reads.
+    bool shows_same_as(const store::SummaryLookup& lookup) const;
 };
 
 // The word for a record's status: "Analyzed", "Stale" or "Not analyzed". The

@@ -255,6 +255,17 @@ TEST_CASE("library model: a name sorts on the text its cell shows, not the store
     CHECK(titles(m) == std::vector<std::string>{"!!! Song", "(unknown)", "Zebra", "Apple"});
 }
 
+TEST_CASE("library model: a lookup that differs only in a field the library never reads changes nothing") {
+    LibraryModel m = sample();
+    const hydra::ui::LibraryRow& burnout = m.rows()[0];  // ready(378315, "3- 1 2", 7, 163.0)
+    SummaryLookup same = ready(378315, "3- 1 2", 7, 163.0);
+    same.summary.actcount = 4;
+    CHECK(burnout.shows_same_as(same));
+    CHECK(m.set_summary_for("burnout", same) == 0);
+    CHECK_FALSE(burnout.shows_same_as(ready(378315, "3- 1 2", 6, 163.0)));
+    CHECK_FALSE(burnout.shows_same_as(stale()));
+}
+
 TEST_CASE("library model: status_label is the one source of the three status words") {
     using hydra::ui::status_label;
     CHECK(std::string(status_label(RecordStatus::Ready)) == "Analyzed");
