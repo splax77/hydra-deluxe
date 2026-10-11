@@ -1,0 +1,62 @@
+file,fmt,dup_of,diff,kind,start,end,len_ticks,len_sec,dropped,lit,lit_nonpro,nonkick_notes,chords,kick_notes,notes_on_lit,notes_on_unlit,sp_boundaries,sp_overlap
+common/IB24/T3/CHON - Book (feat. Matt Garstka)/notes.mid,mid,,Expert,single,102720,103695,975,1.06,0,G,G,13,0,0,13,0,0,1
+common/IB24/T3/The Ghost Inside - Get What You Give - 02 - Outlive/notes.mid,mid,,Expert,single,152640,153360,720,0.476,0,G,G,7,0,0,7,0,0,0
+common/IB24/T3/Trivium - Feast of Fire/notes.mid,mid,,Expert,double,11520,18115,6595,4.631,0,GY,GY,55,0,0,55,0,0,0
+common/IB24/T4/1.O.M. - Apex/notes.chart,chart,,Easy,single,125280,128520,3240,2.7,0,Y,Y,27,0,0,27,0,0,0
+common/IB24/T4/1.O.M. - Apex/notes.chart,chart,,Easy,single,129120,132120,3000,2.5,0,B,B,25,0,0,25,0,0,0
+common/IB24/T4/1.O.M. - Apex/notes.chart,chart,,Medium,single,125280,128520,3240,2.7,0,Y,Y,27,0,0,27,0,0,0
+common/IB24/T4/1.O.M. - Apex/notes.chart,chart,,Medium,single,129120,132120,3000,2.5,0,B,B,25,0,0,25,0,0,0
+common/IB24/T4/1.O.M. - Apex/notes.chart,chart,,Hard,single,125280,128520,3240,2.7,0,Y,Y,27,0,0,27,0,0,0
+common/IB24/T4/1.O.M. - Apex/notes.chart,chart,,Hard,single,129120,132120,3000,2.5,0,B,B,25,0,0,25,0,0,0
+common/IB24/T4/1.O.M. - Apex/notes.chart,chart,,Expert,single,125280,128520,3240,2.7,0,Y,Y,27,0,0,27,0,0,0
+common/IB24/T4/1.O.M. - Apex/notes.chart,chart,,Expert,single,129120,132120,3000,2.5,0,B,B,25,0,0,25,0,0,0
+common/IB24/T6/Fallen Monarch - Blight/notes.chart,chart,,Expert,single,54144,54864,720,1.25,0,R,R,24,8,16,16,8,0,0
+"common/IB24/T6/black midi - Sugar／Tzu (Smoochums, Vasasasasa)/notes.mid",mid,,Expert,single,19200,22981,3781,2.784,0,R,R,64,0,0,64,0,0,0
+"common/IB24/T6/black midi - Sugar／Tzu (Smoochums, Vasasasasa)/notes.mid",mid,,Expert,single,48720,49041,321,0.237,0,R,R,5,0,0,5,0,0,1
+common/IB24/T7/DOMi & JD Beck - Zildjian LIVE! Performance 2020/notes.mid,mid,,Expert,single,208320,209055,735,0.525,0,B,B,7,0,0,7,0,1,0
+common/IB24/T7/DOMi & JD Beck - Zildjian LIVE! Performance 2020/notes.mid,mid,,Expert,single,209280,210255,975,0.696,0,G,G,9,0,0,9,0,0,0
+common/IB24/T7/DOMi & JD Beck - Zildjian LIVE! Performance 2020/notes.mid,mid,,Expert,double,210480,216135,5655,4.039,0,BG,BG,48,0,0,48,0,0,0
+common/IB24/T7/DOMi & JD Beck - Zildjian LIVE! Performance 2020/notes.mid,mid,,Expert,double,444480,449415,4935,3.525,0,BG,BG,42,0,0,42,0,0,0
+common/IB24/T7/DOMi & JD Beck - Zildjian LIVE! Performance 2020/notes.mid,mid,,Expert,single,449760,450255,495,0.354,0,B,B,5,0,0,5,0,0,0
+common/IB24/T7/SoundHaven - Snowball Earth [Indistinct]/notes.mid,mid,,Expert,single,79520,79920,400,0.361,0,R,R,5,0,0,5,0,0,0
+common/Summer Blast _25 Setlist/Tier 1/Jason Paige - Pokemon Theme/notes.chart,chart,,Easy,single,81200,81680,480,0.414,0,B,B,6,0,0,6,0,0,0
+common/Summer Blast _25 Setlist/Tier 1/Jason Paige - Pokemon Theme/notes.chart,chart,,Medium,single,81200,81680,480,0.414,0,B,B,6,0,0,6,0,0,0
+common/Summer Blast _25 Setlist/Tier 1/Jason Paige - Pokemon Theme/notes.chart,chart,,Hard,single,81200,81680,480,0.414,0,B,B,6,0,0,6,0,0,0
+common/Summer Blast _25 Setlist/Tier 1/Jason Paige - Pokemon Theme/notes.chart,chart,,Expert,single,81120,81600,480,0.414,0,B,B,7,0,0,7,0,0,0
+common/Summer Blast _25 Setlist/Tier 3/Jack Wall - Snakeskin Boots [highfine]/notes.chart,chart,,Expert,single,19328,19488,160,0.266,0,R,R,6,0,0,6,0,0,0
+common/Summer Blast _25 Setlist/Tier 4/Avenged Sevenfold - Unbound (The Wild Ride)/notes.mid,mid,,Expert,single,314960,315840,880,0.786,0,R,R,12,0,1,11,1,0,0
+common/Summer Blast _25 Setlist/Tier 4/Avenged Sevenfold - Unbound (The Wild Ride)/notes.mid,mid,,Expert,single,315920,316400,480,0.429,0,R,R,6,0,0,6,0,0,0
+common/Summer Blast _25 Setlist/Tier 4/Avenged Sevenfold - Unbound (The Wild Ride)/notes.mid,mid,,Expert,single,339920,340800,880,0.786,0,R,R,12,0,1,11,1,0,0
+common/Summer Blast _25 Setlist/Tier 4/Avenged Sevenfold - Unbound (The Wild Ride)/notes.mid,mid,,Expert,single,340880,341280,400,0.357,0,R,R,6,0,1,5,1,0,0
+common/Summer Blast _25 Setlist/Tier 4/Avenged Sevenfold - Unbound (The Wild Ride)/notes.mid,mid,,Expert,double,360000,361200,1200,1.071,0,GY,GY,15,0,0,15,0,0,0
+common/Summer Blast _25 Setlist/Tier 4/Rush - YYZ/notes.mid,mid,,Expert,double,318000,319455,1455,1.464,0,GY,GY,19,0,0,19,0,0,0
+common/Summer Blast _25 Setlist/Tier 5/Gavin Harrison - White Mist [The Pineapple Thief]/notes.mid,mid,,Expert,single,220800,225555,4755,5.08,0,R,R,80,0,0,80,0,0,0
+common/Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart,chart,,Expert,single,29856,29940,84,0.202,0,R,R,5,1,1,4,1,0,0
+common/Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart,chart,,Expert,single,34464,34512,48,0.115,0,R,R,3,0,1,3,0,0,0
+common/Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart,chart,,Expert,single,36000,36048,48,0.115,0,R,R,3,0,1,3,0,0,0
+common/Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart,chart,,Expert,single,39008,39056,48,0.115,0,R,R,3,0,0,3,0,0,0
+common/Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart,chart,,Expert,single,39088,39136,48,0.115,0,R,R,4,0,0,4,0,0,0
+common/Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart,chart,,Expert,single,39168,39232,64,0.154,0,R,R,5,0,0,5,0,0,0
+common/Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart,chart,,Expert,single,57504,57576,72,0.173,0,R,R,5,1,1,4,1,0,0
+common/Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart,chart,,Expert,single,59040,59112,72,0.173,0,R,R,5,1,0,4,1,0,0
+common/Summer Blast _25 Setlist/Tier 6/Between the Buried and Me - (B) The Decade Of Statues/notes.mid,mid,,Expert,double,315360,321150,5790,2.413,0,GY,GY,25,0,0,25,0,0,0
+common/Summer Blast _25 Setlist/Tier 6/Between the Buried and Me - (B) The Decade Of Statues/notes.mid,mid,,Expert,single,638880,641070,2190,1.441,0,Y,Y,19,0,0,19,0,0,0
+common/Summer Blast _25 Setlist/Tier 6/Casiopea - Swallow/notes.mid,mid,,Expert,single,317120,320015,2895,2.752,0,Y,Y,37,0,0,37,0,0,0
+common/Summer Blast _25 Setlist/Tier 6/Casiopea - Swallow/notes.mid,mid,,Expert,single,321120,322875,1755,1.668,0,G,G,30,0,0,30,0,0,0
+"common/Summer Blast _25 Setlist/Tier 6/The Agonist - Thank You, Pain/notes.chart",chart,,Easy,double,167280,173760,6480,8.308,0,GY,GY,108,0,0,108,0,0,0
+"common/Summer Blast _25 Setlist/Tier 6/The Agonist - Thank You, Pain/notes.chart",chart,,Medium,double,167280,173760,6480,8.308,0,GY,GY,108,0,0,108,0,0,0
+"common/Summer Blast _25 Setlist/Tier 6/The Agonist - Thank You, Pain/notes.chart",chart,,Hard,double,167280,173760,6480,8.308,0,GY,GY,108,0,0,108,0,0,0
+"common/Summer Blast _25 Setlist/Tier 6/The Agonist - Thank You, Pain/notes.chart",chart,,Expert,double,167280,173760,6480,8.308,0,GY,GY,108,0,0,108,0,0,0
+common/Summer Blast _25 Setlist/Tier 7/SoundHaven - Focus [Ariana Grande]/notes.mid,mid,,Expert,single,124437,124665,228,0.285,0,R,R,5,0,0,5,0,0,1
+common/Summer Blast _25 Setlist/Tier 7/SoundHaven - Focus [Ariana Grande]/notes.mid,mid,,Expert,single,130800,132495,1695,2.119,0,R,R,50,0,4,50,0,0,0
+common/Summer Blast _25 Setlist/Tier 8/Travis Orbin - Dr. Jackle_Dr. Jekyll [Miles Davis]/notes.mid,mid,,Expert,single,44230,44445,215,0.169,0,R,R,5,0,0,4,1,0,0
+common/Summer Blast _25 Setlist/Tier 8/Travis Orbin - Dr. Jackle_Dr. Jekyll [Miles Davis]/notes.mid,mid,,Expert,single,59710,59925,215,0.171,0,R,R,6,0,0,4,2,0,0
+common/Summer Blast _25 Setlist/Tier 8/Travis Orbin - Dr. Jackle_Dr. Jekyll [Miles Davis]/notes.mid,mid,,Expert,single,68470,68685,215,0.167,0,R,R,6,0,0,4,2,0,0
+common/Summer Blast _25 Setlist/Tier 8/Travis Orbin - Dr. Jackle_Dr. Jekyll [Miles Davis]/notes.mid,mid,,Expert,single,173350,173565,215,0.165,0,R,R,5,0,0,4,1,0,0
+common/Summer Blast _25 Setlist/Tier 8/Travis Orbin - Dr. Jackle_Dr. Jekyll [Miles Davis]/notes.mid,mid,,Expert,single,199270,199485,215,0.173,0,R,R,5,0,0,4,1,0,0
+common/Summer Blast _25 Setlist/Tier 8/Travis Orbin - Dr. Jackle_Dr. Jekyll [Miles Davis]/notes.mid,mid,,Expert,single,250750,250905,155,0.124,0,R,R,4,0,0,3,1,0,0
+common/Summer Blast _25 Setlist/Tier 8/Travis Orbin - Dr. Jackle_Dr. Jekyll [Miles Davis]/notes.mid,mid,,Expert,single,251230,251385,155,0.124,0,R,R,4,0,0,3,1,0,0
+common/Summer Blast _25 Setlist/Tier 8/Travis Orbin - Dr. Jackle_Dr. Jekyll [Miles Davis]/notes.mid,mid,,Expert,single,251950,252105,155,0.124,0,R,R,4,0,0,3,1,0,0
+common/Summer Blast _25 Setlist/Tier 8/Travis Orbin - Dr. Jackle_Dr. Jekyll [Miles Davis]/notes.mid,mid,,Expert,single,252430,252585,155,0.124,0,R,R,4,0,0,3,1,0,0
+common/Summer Blast _25 Setlist/Tier 8/Travis Orbin - Dr. Jackle_Dr. Jekyll [Miles Davis]/notes.mid,mid,,Expert,single,298080,298365,285,0.225,0,Y,Y,5,0,0,5,0,0,0
+common/Summer Blast _25 Setlist/Tier 8/Travis Orbin - Dr. Jackle_Dr. Jekyll [Miles Davis]/notes.mid,mid,,Expert,single,426240,428415,2175,1.546,0,R,R,37,0,0,37,0,0,0
