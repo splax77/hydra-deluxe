@@ -22,13 +22,13 @@
 namespace hydra::ui::detail {
 
 std::string legacy_fills_help_text() {
-    return std::string("Spawn drum fills by ") +
-           fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Long) +
-           "'s rule instead of 1.1's. A fill only appears if your Star Power was "
-           "ready in time. " +
+    const std::string old_rule = fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Long);
+    const std::string new_rule = fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Long);
+    return "Spawn drum fills by " + old_rule + "'s rule instead of " + new_rule +
+           "'s. A fill only appears if your Star Power was ready in time. " +
            fill_rule_description(FillDeadlineRule::Ch11) + " " +
-           fill_rule_description(FillDeadlineRule::Ch10) +
-           " For runs played on 1.0; current Clone Hero plays by 1.1.";
+           fill_rule_description(FillDeadlineRule::Ch10) + " Tick this only for runs played on " +
+           old_rule + ".";
 }
 
 namespace {
@@ -80,7 +80,7 @@ bool setting_checkbox(const char* id, bool* value, bool locked) {
 
 void render_chart_group(AppState& app, bool locked) {
     if (!begin_group("Chart")) return;
-    begin_row("Difficulty", "Which charted difficulty to analyze, path and preview");
+    begin_row("Difficulty", "Analyze and preview the chart at this difficulty.");
     ImGui::SetNextItemWidth(px(90));
     const char* names[std::size(kAllDifficulties)];
     for (size_t i = 0; i < std::size(kAllDifficulties); ++i)
@@ -123,8 +123,8 @@ void render_chart_group(AppState& app, bool locked) {
 void render_rules_group(AppState& app, bool locked) {
     if (!begin_group("Clone Hero rules")) return;
     begin_row("SP cap", (std::to_string(kCloneHeroSpCap) +
-                         " bars is Clone Hero's rule. Higher caps are what-ifs; their scores "
-                         "are not achievable in game.")
+                         " bars is Clone Hero's rule. Any other cap is a what-if: its scores "
+                         "can't be reached in the game.")
                             .c_str());
     ImGui::SetNextItemWidth(px(90));
     begin_disabled_input(locked);

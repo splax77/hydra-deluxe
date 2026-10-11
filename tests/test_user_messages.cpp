@@ -117,6 +117,13 @@ TEST_CASE("user_messages: stale_text names the real cause") {
     CHECK(std::string(hydra::app::kNoPathsFound) == "No paths found.");
 }
 
+// The Stale chip stands for many rows, so it names both causes.
+TEST_CASE("user_messages: the Stale chip's tooltip names both causes") {
+    CHECK(hydra::app::stale_chip_text() ==
+          "Out of date: these results came from another Hydra version or from different rules "
+          "in hydra_rules.ini. Click a song or run a batch to refresh them.");
+}
+
 // D91: the not-analyzed row's tooltip names the click and the batch, and no
 // button (there is none).
 TEST_CASE("user_messages: the not-analyzed tooltip names the click and the batch") {

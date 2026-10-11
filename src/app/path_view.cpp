@@ -209,20 +209,17 @@ std::string multsqueeze_summary(const std::vector<MultSqueezeView>& squeezes) {
 }
 
 const char* const kTransferScaleHint =
-    "SP length is measured in measures, so frontend timing\n"
-    "reaches the SP end scaled by the measure-length ratio.\n"
-    "Early and late hits scale differently when the note SP is\n"
-    "measured from (the activation, or the collecting note when\n"
-    "the cap clamps) or the SP end sits exactly on a signature\n"
-    "or tempo change.";
+    "Star Power length is counted in measures, not milliseconds. Where measures at the SP end "
+    "last a different time than at the activation, only part of your activation timing carries "
+    "to the SP end. Hitting the activation 50 ms late might move the SP end only 25 ms. Early "
+    "and late hits can scale differently when the activation or the SP end sits right on a "
+    "tempo or time signature change.";
 
 const char* const kOverfillHint =
-    "SP lasts a set number of measures from the note it is\n"
-    "tied to -- normally the activation. When a mid-SP phrase\n"
-    "fills the meter to the cap, the end is measured from that\n"
-    "phrase's last note instead, so that note's timing is what\n"
-    "moves the end. The ms figures here are still measured at\n"
-    "the SP end; only the note you move them with changes.";
+    "A phrase collected during Star Power would have pushed the meter past the SP cap, so the "
+    "cap cut the SP end short. The note that filled the meter now moves the SP end, instead of "
+    "the activation. The ms figures are still measured at the SP end. Only the note whose "
+    "timing moves them changes.";
 
 // `record` fed the old footer's "SP meter" line, gone with the old Paths tab;
 // the parameter stays so the callers keep their shape.

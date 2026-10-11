@@ -177,7 +177,7 @@ TEST_CASE("fill rule names: one long and one short name per rule, and no (legacy
 TEST_CASE("fill rule descriptions: one sentence per rule") {
     const std::string d10 = hydra::fill_rule_description(FillDeadlineRule::Ch10);
     const std::string d11 = hydra::fill_rule_description(FillDeadlineRule::Ch11);
-    CHECK(d10 == "Clone Hero 1.0 gave you until about one fill-length before the fill.");
-    CHECK(d11 == "Clone Hero 1.1 made it a flat 4 beats.");
+    CHECK(d10 == "Clone Hero 1.0 set the deadline about one fill-length before the fill starts.");
+    CHECK(d11 == "Clone Hero 1.1 sets the deadline 4 beats before the fill starts.");
     CHECK(d10 != d11);
 }

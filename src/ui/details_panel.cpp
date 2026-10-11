@@ -47,7 +47,7 @@ void render_panel_header(AppState& app) {
     if (ImGui::Button(hidden ? "Show library" : "Hide library", ImVec2(library_w, button)))
         remember_library_hidden(!hidden);
     hint(hidden ? "Put the library back beside this song"
-                : "Give this song the whole window; < and > still step through the list");
+                : "Give this song the whole window. < and > still step through the list.");
     ImGui::SameLine();
     const bool can_prev = app.can_select_relative(-1);
     begin_disabled_button(!can_prev);

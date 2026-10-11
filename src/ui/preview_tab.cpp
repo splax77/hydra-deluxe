@@ -427,12 +427,18 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     // scrubber's gold ticks below draw from the same list.
     const std::vector<double>& scrub_marks = pc->scrub_marks();
     const bool no_acts = scrub_marks.empty();
+    // Each tooltip follows its button's disabled block, so it is not drawn in
+    // the greyed-out colours, and overflow_tooltip shows it even while the
+    // button is greyed out.
     begin_disabled_button(no_acts);
     if (ImGui::Button("< Act##prevact")) pc->jump_activation(-1);
+    end_disabled_button(no_acts);
+    overflow_tooltip("Previous activation ([)");
     ImGui::SameLine();
+    begin_disabled_button(no_acts);
     if (ImGui::Button("Act >##nextact")) pc->jump_activation(+1);
     end_disabled_button(no_acts);
-    hint("Previous or next activation ([ and ])");
+    overflow_tooltip("Next activation (])");
     ImGui::SameLine(0.0f, px(16.0f));
     if (ImGui::Button(back_jump.c_str())) pc->jump_ms(-kJumpMs);
     hint(back_jump_tip.c_str());

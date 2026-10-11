@@ -736,7 +736,7 @@ TEST_CASE("why_not_comparable refuses Note Shuffle, and only Note Shuffle change
     using app::dm_report::why_not_comparable;
     const std::string shuffle =
         "dmleaderboards scores don't say whether Note Shuffle was on, so they can't be "
-        "compared with a shuffled path.";
+        "compared with a shuffled path. Untick Note Shuffle to compare.";
     CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, false, true) == shuffle);
     // An earlier rule still names the reason first.
     CHECK(why_not_comparable(Difficulty::Hard, kCloneHeroSpCap, false, true) ==

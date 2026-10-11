@@ -1,6 +1,6 @@
 // Step 2, task 7: off-speed leaderboard scores get their own status (D25,
-// finding 222). Clone Hero keeps a leaderboard per speed and Hydra's optimal
-// is computed at base speed, so an off-speed score is shown but not compared.
+// finding 222). Hydra's optimal is computed for normal speed only, so an
+// off-speed score is shown but not compared.
 
 #include "doctest.h"
 

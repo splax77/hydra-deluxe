@@ -181,7 +181,7 @@ void test_note_shuffle_switch(ImGuiTestContext* ctx) {
     };
     const std::string refused =
         "dmleaderboards scores don't say whether Note Shuffle was on, so they can't be "
-        "compared with a shuffled path.";
+        "compared with a shuffled path. Untick Note Shuffle to compare.";
 
     IM_CHECK(!h.app->settings.view_noteshuffle);
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Expert Pro Drums, 2x Bass");

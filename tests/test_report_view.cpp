@@ -300,12 +300,12 @@ TEST_CASE("path report columns: the page's fifteen, in order, word for word") {
         "The total score the path reaches.",
         "Activations: how many times the path uses Star Power.",
         "The most fills any one activation passes over before activating.",
-        "The hardest squeeze or required early fill the path needs, in raw ms. A dash means it needs none.",
+        "The hardest squeeze or required early fill the path needs, in ms: the gap at the SP end, or at the fill deadline. It leaves out the frontend timing scale. A dash means it needs none.",
         "How hard Hardest ms is, in bands of your hit window. Beyond means more than twice the hit window.",
-        "The hardest early fill (E0) on the path: how many ms early you must hit to summon the fill. Negative means slack. A dash means the path has none.",
+        "The hardest early fill on the path (written E0 in the path): how many ms early you must hit to summon the fill. Negative means slack. A dash means the path has none.",
         "Average multiplier: the score without solo bonuses divided by the base score (every note at 1x).",
-        "SP phrase notes squeezed into an active Star Power window (+ in the path).",
-        "SP phrase notes squeezed out of an active Star Power window (- in the path).",
+        "SP phrase notes squeezed into an active SP window (+ in the path).",
+        "SP phrase notes squeezed out of an active SP window (- in the path).",
         "Notes in the chart.",
     });
     // The page's cell classes.
@@ -416,11 +416,11 @@ TEST_CASE("dm comparison columns: the page's thirteen, in order, word for word")
         "Hydra opt minus Actual. Marked over when the posted score is higher.",
         "Actual as a percent of Hydra opt. Only for scores played at 100% speed.",
         "Full combo: every note hit.",
-        "The percent the leaderboard lists for this score.",
+        "The percent of notes the player hit.",
         "The playback speed the score was set at. 100% is normal speed.",
-        "The score rank on this chart leaderboard.",
+        "The score's rank on this chart's leaderboard.",
         "The date the score was posted.",
-        "Under optimal, At optimal or Above optimal when Hydra has a result. Not analyzed: the chart is in your library but has no current result for this mode at SP cap 4. No paths: analyzed, but the analysis kept no path. Not in your library: the last scan did not find it. Other speed: played at a speed other than 100%. Clone Hero keeps a separate leaderboard per speed, so it is shown but not compared.",
+        "Under optimal, At optimal or Above optimal when Hydra has a result. Not analyzed: the chart is in your library but has no current result for this mode at SP cap 4. No paths: analyzed, but the analysis kept no path. Not in your library: the last scan did not find it. Other speed: played at a speed other than 100%. Hydra's optimal is for 100% only, so the score is shown but not compared.",
     });
     CHECK(cols[0].look.truncate);
     CHECK(cols[1].look.dim);

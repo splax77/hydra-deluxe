@@ -105,7 +105,8 @@ std::vector<Column<ReportRow>> path_columns(double hit_window_ms) {
         c.title = "Hardest ms";
         c.numeric = true;
         c.definition =
-            "The hardest squeeze or required early fill the path needs, in raw ms. A dash "
+            "The hardest squeeze or required early fill the path needs, in ms: the gap at the "
+            "SP end, or at the fill deadline. It leaves out the frontend timing scale. A dash "
             "means it needs none.";
         c.sort_key = [](const ReportRow& r) { return ms_key(r.ms); };
         c.cell = [](const ReportRow& r) { return ms_cell(r.ms); };
@@ -131,8 +132,8 @@ std::vector<Column<ReportRow>> path_columns(double hit_window_ms) {
         c.title = "Early fill (ms)";
         c.numeric = true;
         c.definition =
-            "The hardest early fill (E0) on the path: how many ms early you must hit to summon "
-            "the fill. Negative means slack. A dash means the path has none.";
+            "The hardest early fill on the path (written E0 in the path): how many ms early you "
+            "must hit to summon the fill. Negative means slack. A dash means the path has none.";
         c.sort_key = [](const ReportRow& r) { return ms_key(r.efill); };
         c.cell = [](const ReportRow& r) { return ms_cell(r.efill); };
         cols.push_back(std::move(c));
@@ -150,12 +151,12 @@ std::vector<Column<ReportRow>> path_columns(double hit_window_ms) {
         cols.push_back(std::move(c));
     }
     cols.push_back(count_column("sqin", "SqIn",
-                                "SP phrase notes squeezed into an active Star Power window (+ "
-                                "in the path).",
+                                "SP phrase notes squeezed into an active SP window (+ in the "
+                                "path).",
                                 &ReportRow::sqin, false));
     cols.push_back(count_column("sqout", "SqOut",
-                                "SP phrase notes squeezed out of an active Star Power window (- "
-                                "in the path).",
+                                "SP phrase notes squeezed out of an active SP window (- in the "
+                                "path).",
                                 &ReportRow::sqout, false));
     cols.push_back(count_column("notes", "Notes", "Notes in the chart.", &ReportRow::notes, true));
     return cols;

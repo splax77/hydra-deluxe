@@ -15,7 +15,7 @@
 #include <vector>
 
 #include "app/library_query.h"
-#include "app/user_messages.h"  // stale_text, kNotAnalyzedText
+#include "app/user_messages.h"  // stale_text, stale_chip_text, kNotAnalyzedText
 #include "core/model.h"         // group_thousands, counted
 #include "imgui.h"
 #include "imgui_internal.h"  // ImGuiSelectableFlags_SpanAvailWidth
@@ -93,7 +93,7 @@ void render_search_box(AppState& app) {
         ImGui::InputTextWithHint("##search", "Search title, artist, charter or folder", buf,
                                  sizeof(buf), ImGuiInputTextFlags_EscapeClearsAll);
     ImGui::PopFont();
-    hint("Ctrl+F jumps here. Escape clears it.");
+    hint("Ctrl+F jumps here. Esc clears it.");
     if (edited) ui.search_pending = true;
 
     // An emptied box applies at once; typing applies at most once per the
@@ -153,9 +153,7 @@ void render_chips(AppState& app) {
             ImGui::SameLine();
         const bool on = app.library.chip() == chip;
         if (chip_button(label.c_str(), on, !on && n == 0)) app.library.set_chip(chip);
-        // The chip stands for many rows with either cause, so its hint names
-        // both.
-        if (chip == StatusChip::Stale) hint(app::stale_text(true, true).c_str());
+        if (chip == StatusChip::Stale) hint(app::stale_chip_text().c_str());
     }
 }
 

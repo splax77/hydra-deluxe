@@ -167,10 +167,10 @@ TEST_CASE("batch text: the confirm's Fills line names the fill rule") {
 // D74 item 4: the tooltip's deadline sentences are the ones the reports use.
 TEST_CASE("batch text: the 1.0 fills help text uses the shared fill-rule sentences") {
     CHECK(legacy_fills_help_text() ==
-          "Spawn drum fills by Clone Hero 1.0's rule instead of 1.1's. A fill only appears if "
-          "your Star Power was ready in time. Clone Hero 1.1 made it a flat 4 beats. Clone "
-          "Hero 1.0 gave you until about one fill-length before the fill. For runs played on "
-          "1.0; current Clone Hero plays by 1.1.");
+          "Spawn drum fills by Clone Hero 1.0's rule instead of Clone Hero 1.1's. A fill only "
+          "appears if your Star Power was ready in time. Clone Hero 1.1 sets the deadline 4 "
+          "beats before the fill starts. Clone Hero 1.0 set the deadline about one fill-length "
+          "before the fill starts. Tick this only for runs played on Clone Hero 1.0.");
 }
 
 TEST_CASE("batch text: the empty library says what to do next") {

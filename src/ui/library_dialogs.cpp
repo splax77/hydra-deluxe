@@ -478,7 +478,7 @@ void render_batch_strip(AppState& app) {
     if (button_in_slot("Stop", stop_w)) app.batch_job->stop();
     end_disabled_button(stopping);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
-        ImGui::SetTooltip("Keeps the %s already finished",
+        ImGui::SetTooltip("Keeps the %s already finished.",
                           counted(s.analyzed, "chart", "charts").c_str());
     }
     ImGui::EndChild();

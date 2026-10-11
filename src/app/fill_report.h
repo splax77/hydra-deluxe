@@ -3,9 +3,8 @@
 // app/dm_report.h.
 //
 // A drum fill only spawns if the player's SP meter filled up by some deadline.
-// Clone Hero 1.0 set that deadline about one fill-length before the fill;
-// Clone Hero 1.1 made it a flat 4 beats (search/graph.h FillDeadlineRule).
-// Short fills therefore got stricter and long fills got looser, so most charts
+// Each rule's deadline is fill_rule_description's to say (search/graph.h).
+// Under 1.1 short fills got stricter and long fills got looser, so most charts
 // lose or tie under 1.1 and a few gain.
 //
 // Each result carries its rule in its key (store::Lens::legacy_fills,

@@ -177,8 +177,8 @@ void render_path_list(const app::PathButtonsView& list, const Path*& selected_pa
             ImGui::TextDisabled("%s", heading);
             if (b.group == Group::AllZero)
                 hint("The best path that activates at the first chance every time "
-                     "(no skips). An early fill it lets pass (E1) counts as no skip. "
-                     "Every squeeze and early fill on it is 0 ms or easier.");
+                     "(no skips). An early fill it lets pass (written E1 in the path) still "
+                     "counts as no skip. Every squeeze and early fill on it is 0 ms or easier.");
         }
         if (new_fold) {
             hidden = false;
@@ -440,7 +440,7 @@ void render_activation_body(size_t i, const app::ActivationRowView& a, app::Path
         ImGui::TextUnformatted(a.scale_warning.c_str());
         ImGui::PopTextWrapPos();
         ImGui::PopStyleColor();
-        hint(app::kTransferScaleHint);
+        overflow_tooltip(app::kTransferScaleHint);
     }
     if (!a.overfill_warning.empty()) {
         {
@@ -449,7 +449,7 @@ void render_activation_body(size_t i, const app::ActivationRowView& a, app::Path
             ImGui::TextUnformatted(a.overfill_warning.c_str());
             ImGui::PopTextWrapPos();
         }
-        hint(app::kOverfillHint);
+        overflow_tooltip(app::kOverfillHint);
     }
 
     char label[48];
@@ -524,7 +524,7 @@ void render_path_footer(AppState& app, const app::PathsTabCache::Details& d,
     fold_button("Score breakdown##breakdown", ui.breakdown_open);
     flow_next(button_slot_width("Copy path"), px(24.0f));
     if (ImGui::Button("Copy path")) copy_selected_path(app);
-    hint("Ctrl+C also copies the selected path");
+    hint("Ctrl+C also copies the selected path.");
     const double copied_at = app.details_ui.copied_at;
     if (copied_at >= 0.0 && ImGui::GetTime() - copied_at < AppState::kCopiedSeconds) {
         flow_next(ImGui::CalcTextSize("Copied!").x, spacing);
@@ -553,6 +553,9 @@ void render_path_footer(AppState& app, const app::PathsTabCache::Details& d,
     ImGui::Spacing();
     if (ImGui::Checkbox("Hide backend rows beyond##backendlimit", &app.settings.backendlimit_enabled))
         app.commit_settings();
+    // On the checkbox, and shown even while the row is greyed out.
+    overflow_tooltip("Hides backend rows beyond +/- this many ms; squeezed-out notes always "
+                     "show. Display only: changing it never re-analyzes.");
     ImGui::SameLine();
     const bool limit_off = !app.settings.backendlimit_enabled;
     begin_disabled_input(limit_off);
@@ -565,8 +568,6 @@ void render_path_footer(AppState& app, const app::PathsTabCache::Details& d,
     ImGui::SameLine();
     ImGui::TextUnformatted("ms");
     end_disabled_input(limit_off);
-    hint("Hides backend rows beyond +/- this many ms; squeezed-out notes always "
-         "show. Display only: changing it never re-analyzes.");
 }
 
 }  // namespace

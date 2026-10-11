@@ -118,7 +118,7 @@ void render_actions_row(AppState& app) {
         if (compare_off)
             ImGui::SetTooltip("%s", refused.c_str());
         else
-            ImGui::SetTooltip("Compare a dmleaderboards.com player's scores against your library");
+            ImGui::SetTooltip("Compare a dmleaderboards player's scores against your library.");
     }
 
     // The path report, at the right, once there is something to report or

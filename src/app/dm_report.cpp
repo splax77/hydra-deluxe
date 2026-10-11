@@ -44,7 +44,7 @@ std::string why_not_comparable(Difficulty difficulty, int sp_cap, bool legacy_fi
     // D104 item 6: a board score never records its modifiers.
     if (note_shuffle)
         return "dmleaderboards scores don't say whether Note Shuffle was on, so they can't be "
-               "compared with a shuffled path.";
+               "compared with a shuffled path. Untick Note Shuffle to compare.";
     return std::string();
 }
 
@@ -102,9 +102,9 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
         row.charter = display_charter(board_names ? s.charter : rec->ref_charter);
         if (row.charter.empty() && rec) row.charter = display_charter(rec->ref_charter);
 
-        // Hydra's optimal is a base-speed answer, and Clone Hero keeps a
-        // leaderboard per speed. An off-speed score shows Hydra's numbers when
-        // it has them, but is never called under, at or above optimal.
+        // Hydra's optimal is for normal speed only. An off-speed score shows
+        // Hydra's numbers when it has them, but is never called under, at or
+        // above optimal.
         const bool base = net::is_base_speed(s.speed);
         if (rec && rec->summary.has_scored_best_path()) {
             int64_t opt = *rec->summary.score;

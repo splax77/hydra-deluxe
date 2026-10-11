@@ -130,16 +130,34 @@ int run_tool(const std::function<int()>& body) {
     }
 }
 
+namespace {
+
+// The two causes a stored result can be out of date for. stale_text and
+// stale_chip_text both read them, so each is written once.
+constexpr const char* kStaleBuildCause = "another Hydra version";
+constexpr const char* kStaleRulesCause = "different rules in hydra_rules.ini";
+
+std::string both_stale_causes() {
+    return std::string(kStaleBuildCause) + " or from " + kStaleRulesCause;
+}
+
+}  // namespace
+
 std::string stale_text(bool build, bool rules) {
     std::string cause;
     if (build == rules)  // both, or neither: name both
-        cause = "another Hydra version or from different rules in hydra_rules.ini";
+        cause = both_stale_causes();
     else if (build)
-        cause = "another Hydra version";
+        cause = kStaleBuildCause;
     else
-        cause = "different rules in hydra_rules.ini";
+        cause = kStaleRulesCause;
     return "Out of date: this result came from " + cause +
            ". Click the song or run a batch to refresh it.";
+}
+
+std::string stale_chip_text() {
+    return "Out of date: these results came from " + both_stale_causes() +
+           ". Click a song or run a batch to refresh them.";
 }
 
 }  // namespace hydra::app

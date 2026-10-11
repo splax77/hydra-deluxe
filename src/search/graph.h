@@ -71,13 +71,13 @@ inline const char* fill_rule_name(FillDeadlineRule rule, FillRuleNameStyle style
     return is_short ? "CH 1.1" : "Clone Hero 1.1";
 }
 
-// One sentence saying when each rule's fill deadline falls, in the words the
-// fill comparison report's footer uses.
+// One sentence saying when each rule's fill deadline falls. The "1.0 fills"
+// tooltip and the fill comparison report's footer both print it.
 inline std::string fill_rule_description(FillDeadlineRule rule) {
     const std::string name = fill_rule_name(rule, FillRuleNameStyle::Long);
     return rule == FillDeadlineRule::Ch10
-               ? name + " gave you until about one fill-length before the fill."
-               : name + " made it a flat 4 beats.";
+               ? name + " set the deadline about one fill-length before the fill starts."
+               : name + " sets the deadline 4 beats before the fill starts.";
 }
 
 // The latest a player's SP may become ready and still have this fill spawn.

@@ -262,7 +262,7 @@
       ],
       "must_not_match": [
         "const std::string label = chip_label(chip, n);",
-        "if (chip == StatusChip::Stale) hint(app::stale_text(true, true).c_str());"
+        "if (chip == StatusChip::Stale) hint(app::stale_chip_text().c_str());"
       ],
       "owner_lines": [
         {

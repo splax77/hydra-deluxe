@@ -218,12 +218,11 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
 // D17.
 TEST_CASE("kTransferScaleHint names the note SP is measured from") {
     CHECK(std::string(kTransferScaleHint) ==
-          "SP length is measured in measures, so frontend timing\n"
-          "reaches the SP end scaled by the measure-length ratio.\n"
-          "Early and late hits scale differently when the note SP is\n"
-          "measured from (the activation, or the collecting note when\n"
-          "the cap clamps) or the SP end sits exactly on a signature\n"
-          "or tempo change.");
+          "Star Power length is counted in measures, not milliseconds. Where measures at the SP "
+          "end last a different time than at the activation, only part of your activation "
+          "timing carries to the SP end. Hitting the activation 50 ms late might move the SP "
+          "end only 25 ms. Early and late hits can scale differently when the activation or the "
+          "SP end sits right on a tempo or time signature change.");
 }
 
 TEST_CASE("build_activations: overfill warning text") {

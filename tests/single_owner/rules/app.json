@@ -100,23 +100,23 @@
       "owner_lines": [
         {
           "file": "src/app/user_messages.cpp",
-          "line_text": "cause = \"another Hydra version or from different rules in hydra_rules.ini\";",
-          "why": "stale_text, the owner: both causes (today's sentence)"
+          "line_text": "constexpr const char* kStaleBuildCause = \"another Hydra version\";",
+          "why": "stale_text, the owner: another Hydra version, written once for stale_text and stale_chip_text"
         },
         {
           "file": "src/app/user_messages.cpp",
-          "line_text": "cause = \"another Hydra version\";",
-          "why": "stale_text, the owner: another Hydra version"
-        },
-        {
-          "file": "src/app/user_messages.cpp",
-          "line_text": "cause = \"different rules in hydra_rules.ini\";",
-          "why": "stale_text, the owner: different rules"
+          "line_text": "constexpr const char* kStaleRulesCause = \"different rules in hydra_rules.ini\";",
+          "why": "stale_text, the owner: different rules, written once for stale_text and stale_chip_text"
         },
         {
           "file": "src/app/user_messages.cpp",
           "line_text": "\". Click the song or run a batch to refresh it.\";",
           "why": "stale_text, the owner: the sentence's ending (D87 item 6)"
+        },
+        {
+          "file": "src/app/user_messages.cpp",
+          "line_text": "\". Click a song or run a batch to refresh them.\";",
+          "why": "stale_chip_text, beside the owner: the Stale chip's ending (tooltip wording approved 2026-10-10)"
         }
       ],
       "note": "---- app and UI helper owners (phase 3 task O3b) ---- The out-of-date sentence, by any of its pieces: the cause it names or the \"Re-analyze to refresh\" it ends on. stale_text names the store's real cause; every screen shows its sentence. Decided by: audit finding 13; D48, Q17 (phase 3 task O3b)"
@@ -1020,7 +1020,7 @@
       ],
       "must_not_match": [
         "ImGui::SetTooltip(\"%s\", refused.c_str());",
-        "ImGui::SetTooltip(\"Compare a dmleaderboards.com player's scores against your library\");"
+        "ImGui::SetTooltip(\"Compare a dmleaderboards player's scores against your library.\");"
       ],
       "note": "The Compare button's three refusal sentences typed outside the gate."
     },

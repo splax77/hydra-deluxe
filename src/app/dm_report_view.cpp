@@ -125,7 +125,7 @@ std::vector<Column<DmReportRow>> dm_columns() {
     }
     {
         Column<DmReportRow> c = column("percent", "Percent", true,
-                                       "The percent the leaderboard lists for this score.");
+                                       "The percent of notes the player hit.");
         c.sort_key = [](const DmReportRow& r) { return SortKey{static_cast<double>(r.percent)}; };
         c.cell = [](const DmReportRow& r) { return std::to_string(r.percent) + "%"; };
         cols.push_back(std::move(c));
@@ -140,7 +140,7 @@ std::vector<Column<DmReportRow>> dm_columns() {
     }
     {
         Column<DmReportRow> c =
-            column("rank", "Rank", true, "The score rank on this chart leaderboard.");
+            column("rank", "Rank", true, "The score's rank on this chart's leaderboard.");
         c.sort_key = [](const DmReportRow& r) { return optional_key(r.rank); };
         c.cell = [](const DmReportRow& r) {
             return r.rank ? "#" + std::to_string(*r.rank) : std::string(kDash);
@@ -167,8 +167,8 @@ std::vector<Column<DmReportRow>> dm_columns() {
             "the chart is in your library but has no current result for this mode at SP cap "
             "__SP_CAP__. No paths: analyzed, but the analysis kept no path. Not in your "
             "library: the last scan did not find it. Other speed: played at a speed other than "
-            "__BASE_SPEED__%. Clone Hero keeps a separate leaderboard per speed, so it is shown "
-            "but not compared.");
+            "__BASE_SPEED__%. Hydra's optimal is for __BASE_SPEED__% only, so the score is "
+            "shown but not compared.");
         c.sort_key = [](const DmReportRow& r) { return SortKey{r.status}; };
         c.cell = [](const DmReportRow& r) { return r.status; };
         c.look.chip = true;

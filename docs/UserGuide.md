@@ -83,7 +83,7 @@ While a batch runs, the settings are locked. The button's label ends in ` (locke
 
 ### What each setting does
 
-`Difficulty` picks which charted difficulty to analyze, path and preview: Expert, Hard, Medium or Easy.
+`Difficulty` picks the difficulty to analyze and preview: Expert, Hard, Medium or Easy.
 
 `Pro Drums` analyzes with cymbals and toms as separate notes, the way Clone Hero scores Pro Drums.
 
@@ -393,12 +393,12 @@ The table has one row per path and starts sorted by score, highest first. Its co
 | `Score` | The total score the path reaches. |
 | `Acts` | Activations: how many times the path uses Star Power. |
 | `Max skip` | The most fills any one activation passes over before activating. |
-| `Hardest ms` | The hardest squeeze or required early fill the path needs, in raw ms. A dash means it needs none. |
+| `Hardest ms` | The hardest squeeze or required early fill the path needs, in ms: the gap at the SP end, or at the fill deadline. It leaves out the frontend timing scale. A dash means it needs none. |
 | `Timing` | The path's timing tier, the bands the timing dropdown lists. |
-| `Early fill (ms)` | The hardest early fill (E0) on the path: how many ms early you must hit to summon the fill. Negative means slack. A dash means the path has none. |
+| `Early fill (ms)` | The hardest early fill on the path (written `E0` in the path): how many ms early you must hit to summon the fill. Negative means slack. A dash means the path has none. |
 | `Avg multiplier` | The score without solo bonuses divided by the base score (every note at 1x). |
-| `SqIn` | SP phrase notes squeezed into an active Star Power window (`+` in the path). |
-| `SqOut` | SP phrase notes squeezed out of an active Star Power window (`-` in the path). |
+| `SqIn` | SP phrase notes squeezed into an active SP window (`+` in the path). |
+| `SqOut` | SP phrase notes squeezed out of an active SP window (`-` in the path). |
 | `Notes` | Notes in the chart. |
 
 Click a row to select that song in Hydra Deluxe, the same as clicking it in the library. If the row is for another chart mode, say Hard instead of Expert, the analysis settings switch to that mode first. That way the Paths tab shows the same path as the row. While a batch runs, the analysis settings are locked. A row of another mode then selects nothing, and the status line says `A batch is running.`
@@ -433,7 +433,7 @@ Every row gets one status. The status dropdown shows one status at a time, or `A
 | `Not in your library` | Scores for a chart the last scan didn't find. |
 | `Other speed` | Scores played at a speed other than 100%. |
 
-A score played at another speed is always `Other speed`, whatever else is true of it. Clone Hero keeps a separate leaderboard for each speed, and Hydra Deluxe's optimal is for normal speed. So `Other speed` rows show Hydra Deluxe's numbers when it has them, but aren't compared with its optimal.
+A score played at another speed is always `Other speed`, whatever else is true of it. Hydra Deluxe's optimal is for normal speed. So `Other speed` rows show Hydra Deluxe's numbers when it has them, but aren't compared with its optimal.
 
 Rows above optimal are expected, not errors. Hydra Deluxe's optimal leaves out several score backends on purpose. Many leaderboard scores were also set on older Clone Hero versions, whose fill rules allowed totals that are impossible now.
 
@@ -461,7 +461,7 @@ The search box matches the song, artist and charter. The table starts sorted by 
 | `Points left` | `Hydra opt` minus `Actual`. A score above optimal reads how far over it is, as `+N over`. |
 | `% of opt` | `Actual` as a percent of `Hydra opt`. Only for scores played at 100% speed. |
 | `FC` | A check mark for a full combo: every note hit. |
-| `Percent` | The percent the leaderboard lists for this score. |
+| `Percent` | The percent of notes the player hit. |
 | `Speed` | The playback speed the score was set at. 100% is normal speed. |
 | `Rank` | The score's rank on this chart's leaderboard. |
 | `Posted` | The date the score was posted. |

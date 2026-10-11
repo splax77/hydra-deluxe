@@ -28,9 +28,9 @@ namespace hydra::net {
 // in without touching callers.
 inline constexpr const char* kDefaultApiBase = "https://dmbot-kb5j.onrender.com/api";
 
-// The playback speed, in percent, that counts as normal play. Clone Hero keeps
-// a separate leaderboard per speed, and Hydra's optimal is computed at this
-// speed only, so only these scores can be compared with it.
+// The playback speed, in percent, that counts as normal play. Hydra's optimal
+// is computed for normal speed only, so only these scores can be compared
+// with it.
 inline constexpr int kBaseSpeedPercent = 100;
 inline bool is_base_speed(int speed_percent) { return speed_percent == kBaseSpeedPercent; }
 
