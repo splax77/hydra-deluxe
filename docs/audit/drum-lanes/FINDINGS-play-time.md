@@ -145,27 +145,27 @@ The stored results in the database are all Expert (37,692 rows, every chart mode
 
 Here is every lane the timer would fire on, one row per lane. A chart appears more than once when several of its lanes qualify or when more than one difficulty does. The longest gap is between lit notes, and a combo break can come sooner than that gap suggests, because a round needs both pads. No Expert lane is in the list.
 
-| Artist | Song | Difficulty | Lit pads | Notes in lane | Longest gap between lit notes (s) | First combo break (s into song) |
-|---|---|---|---|---|---|---|
-| An Endless Sporadic | Impulse | Medium | GY | 4 | 0.6 | 65.55 |
-| An Endless Sporadic | Impulse | Medium | GY | 18 | 0.6 | 258.646 |
-| An Endless Sporadic | Impulse | Easy | GY | 4 | 0.6 | 65.55 |
-| An Endless Sporadic | Impulse | Easy | GY | 6 | 0.514 | 151.779 |
-| An Endless Sporadic | Impulse | Easy | GY | 5 | 0.834 | 195.379 |
-| An Endless Sporadic | Impulse | Easy | GY | 17 | 1.2 | 258.646 |
-| Architects | Seeing Red | Hard | G | 37 | 6.402 | 9.713 |
-| Architects | Seeing Red | Medium | G | 20 | 6.585 | 9.53 |
-| Architects | Seeing Red | Easy | G | 20 | 6.585 | 9.53 |
-| Counterparts | Heaven Let Them Die (Full EP) | Hard | G | 11 | 1.477 | 46.066 |
-| Dream Theater | As I Am | Medium | G | 2 | 0.923 | 443.715 |
-| Halcyon Way | Desecration Day | Easy | G | 3 | 0.968 | 255.266 |
-| Leprous | Forced Entry | Medium | B | 11 | 1.107 | 28.52 |
-| Leprous | Forced Entry | Easy | B | 11 | 1.107 | 28.52 |
-| Mastodon | Stargasm | Medium | GY | 19 | 0.513 | 270.475 |
-| Mastodon | Stargasm | Easy | GY | 19 | 0.513 | 270.475 |
-| Opeth | The Baying of the Hounds | Medium | GY | 12 | 0.625 | 7.875 |
-| Opeth | The Baying of the Hounds | Easy | GY | 12 | 0.625 | 7.875 |
-| Smashing Pumpkins | Here Is No Why | Easy | G | 2 | 1.101 | 220.448 |
+| Artist | Song | Charter | Difficulty | Lit pads | Notes in lane | Longest gap between lit notes (s) | First combo break (s into song) |
+|---|---|---|---|---|---|---|---|
+| An Endless Sporadic | Impulse | armchairsum65, YourDailyFill | Medium | GY | 4 | 0.6 | 65.55 |
+| An Endless Sporadic | Impulse | armchairsum65, YourDailyFill | Medium | GY | 18 | 0.6 | 258.646 |
+| An Endless Sporadic | Impulse | armchairsum65, YourDailyFill | Easy | GY | 4 | 0.6 | 65.55 |
+| An Endless Sporadic | Impulse | armchairsum65, YourDailyFill | Easy | GY | 6 | 0.514 | 151.779 |
+| An Endless Sporadic | Impulse | armchairsum65, YourDailyFill | Easy | GY | 5 | 0.834 | 195.379 |
+| An Endless Sporadic | Impulse | armchairsum65, YourDailyFill | Easy | GY | 17 | 1.2 | 258.646 |
+| Architects | Seeing Red | sylvexite | Hard | G | 37 | 6.402 | 9.713 |
+| Architects | Seeing Red | sylvexite | Medium | G | 20 | 6.585 | 9.53 |
+| Architects | Seeing Red | sylvexite | Easy | G | 20 | 6.585 | 9.53 |
+| Counterparts | Heaven Let Them Die (Full EP) | FigNeutered, SirMonkfish | Hard | G | 11 | 1.477 | 46.066 |
+| Dream Theater | As I Am | Onyxite, Grinnz | Medium | G | 2 | 0.923 | 443.715 |
+| Halcyon Way | Desecration Day | armchairsum65, ThatAuthoringGroup | Easy | G | 3 | 0.968 | 255.266 |
+| Leprous | Forced Entry | armchairsum65, Doxophobia | Medium | B | 11 | 1.107 | 28.52 |
+| Leprous | Forced Entry | armchairsum65, Doxophobia | Easy | B | 11 | 1.107 | 28.52 |
+| Mastodon | Stargasm | MMSRhino | Medium | GY | 19 | 0.513 | 270.475 |
+| Mastodon | Stargasm | MMSRhino | Easy | GY | 19 | 0.513 | 270.475 |
+| Opeth | The Baying of the Hounds | armchairsum65, Sideshow, JackDaMaster, Parama | Medium | GY | 12 | 0.625 | 7.875 |
+| Opeth | The Baying of the Hounds | armchairsum65, Sideshow, JackDaMaster, Parama | Easy | GY | 12 | 0.625 | 7.875 |
+| Smashing Pumpkins | Here Is No Why | armchairsum65, DemonUnicorns | Easy | G | 2 | 1.101 | 220.448 |
 
 The full list of every chart with any lane (3,801 charts, with single and double lane counts per difficulty and how many double lanes would trip the timer) is `play/library_all_charts_with_lanes.csv`.
 
