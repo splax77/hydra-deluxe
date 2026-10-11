@@ -98,21 +98,21 @@ std::vector<SoloSection> find_solo_sections(const std::vector<SongTimestamp>& se
 }
 
 // A chord's pads as a drum lane sees them: how many non-kick notes it has,
-// and the lowest and highest of them in Clone Hero's note-bit order. That
-// order is red, the yellow, blue and green toms, then the yellow, blue and
-// green cymbals, as read from the game's lane builder. Kicks never count.
+// and the lowest and highest of them in Clone Hero's note-bit order (the
+// game's lane builder compares lane_bit values). Kicks never count.
 struct LanePads {
     int count = 0;
     NoteColor lowest = NoteColor::Red;
     NoteColor highest = NoteColor::Red;
 };
 
-// Where a note sits in that bit order: a pad's colour step from red, with
-// every cymbal after every tom.
+// Where a note sits in that bit order: the position of its lane bit
+// (lane_bit, parse/note_shuffle.h), so the order is read off the game's bit
+// table and has no second copy here.
 int lane_bit_rank(const ChordNote& note) {
-    const int step = static_cast<int>(note.colortype) - static_cast<int>(NoteColor::Red);
-    constexpr int kToms = static_cast<int>(NoteColor::Green) - static_cast<int>(NoteColor::Red);
-    return note.is_cymbal() ? kToms + step : step;
+    int rank = 0;
+    for (uint32_t bit = lane_bit(note); (bit & 1u) == 0; bit >>= 1) ++rank;
+    return rank;
 }
 
 LanePads lane_pads(const Chord& chord) {
@@ -590,13 +590,11 @@ void Song::check_activations(const core::Rules& rules) {
     // order here: measures are only ever added at or above the current max.
     std::map<int64_t, Cell> measuremap;
 
-    // SongIter: walk the sequence, advancing at most one tpm/bpm mark each step.
-    std::vector<int64_t> tpm_keys, bpm_keys;
+    // SongIter: walk the sequence, advancing at most one tpm mark each step.
+    std::vector<int64_t> tpm_keys;
     for (const auto& kv : tpm_changes) tpm_keys.push_back(kv.first);
-    for (const auto& kv : bpm_changes) bpm_keys.push_back(kv.first);
-    size_t tpm_pos = 0, bpm_pos = 0;
+    size_t tpm_pos = 0;
     int64_t tpm = tpm_keys.empty() ? 0 : tpm_changes[tpm_keys[tpm_pos++]];
-    if (!bpm_keys.empty()) bpm_pos++;  // bpm value itself is unused here
 
     Timecode downbeat_ref = start_time();
 
@@ -615,7 +613,6 @@ void Song::check_activations(const core::Rules& rules) {
                 ++tpm_pos;
             }
         }
-        if (bpm_pos < bpm_keys.size() && tick >= bpm_keys[bpm_pos]) ++bpm_pos;
 
         int64_t m0 = ts.timecode.measure_beats_ticks()[0];
         for (int64_t measure : {m0 + 1, m0 + 2}) {
@@ -1691,15 +1688,35 @@ COp ChartParser::optype(const ChartLine& e, int64_t tick) {
     return {};
 }
 
+// The colour of a .chart pad's note number, or nullopt for a number that is
+// not a pad.
+std::optional<NoteColor> chart_pad_color(int value) {
+    switch (value) {
+        case 1: return NoteColor::Red;
+        case 2: return NoteColor::Yellow;
+        case 3: return NoteColor::Blue;
+        case 4: return NoteColor::Green;
+        default: return std::nullopt;
+    }
+}
+
+// A Pro Drums cymbal marker's note number is its pad's number plus this
+// (N 66 marks pad 2).
+constexpr int kChartCymbalMarkerBase = 64;
+
 // An N line's op, by its note number.
 COp ChartParser::note_optype(int value) const {
     constexpr CPhase N = CPhase::Notes, M = CPhase::NoteMods;
+    if (const std::optional<NoteColor> pad = chart_pad_color(value))
+        return cop_color(N, CAct::Note, *pad);
+    // Which pads can carry a cymbal is allows_cymbals' rule.
+    if (const std::optional<NoteColor> pad = chart_pad_color(value - kChartCymbalMarkerBase);
+        pad && allows_cymbals(*pad)) {
+        if (mode_pro_) return cop_color(M, CAct::Cymbal, *pad);
+        return {};
+    }
     switch (value) {
         case 0: return cop_flag(N, CAct::Kick, false);
-        case 1: return cop_color(N, CAct::Note, NoteColor::Red);
-        case 2: return cop_color(N, CAct::Note, NoteColor::Yellow);
-        case 3: return cop_color(N, CAct::Note, NoteColor::Blue);
-        case 4: return cop_color(N, CAct::Note, NoteColor::Green);
         // The 2x kick, read whatever the 2x Bass setting: it can take a
         // normal kick on its tick with it (D105).
         case 32: return cop_flag(N, CAct::Kick, true);
@@ -1711,15 +1728,6 @@ COp ChartParser::note_optype(int value) const {
         case 41: return cop_color(M, CAct::Ghost, NoteColor::Yellow);
         case 42: return cop_color(M, CAct::Ghost, NoteColor::Blue);
         case 43: return cop_color(M, CAct::Ghost, NoteColor::Green);
-        case 66:
-            if (mode_pro_) return cop_color(M, CAct::Cymbal, NoteColor::Yellow);
-            return {};
-        case 67:
-            if (mode_pro_) return cop_color(M, CAct::Cymbal, NoteColor::Blue);
-            return {};
-        case 68:
-            if (mode_pro_) return cop_color(M, CAct::Cymbal, NoteColor::Green);
-            return {};
         default: return {};
     }
 }
@@ -1992,7 +2000,7 @@ Song load_container_srb(const ByteSource& src, bool pro, bool bass2x,
     else if (named == ChartFormat::Chart)
         is_mid = false;
     else  // Unexpected filename: sniff the payload instead.
-        is_mid = notebytes.size() >= 4 && std::memcmp(notebytes.data(), "MThd", 4) == 0;
+        is_mid = is_midi_header(notebytes.data(), notebytes.size());
 
     if (is_mid) return load_songbytes_mid(notebytes, pro, bass2x, difficulty, rules, noteshuffle);
     return load_songbytes_chart(notebytes, pro, bass2x, difficulty, rules, noteshuffle);

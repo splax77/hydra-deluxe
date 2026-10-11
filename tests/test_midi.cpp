@@ -437,6 +437,18 @@ TEST_CASE("midi: the lean reader refuses a file where the full reader does") {
                          "not a MIDI file: missing MThd header", hydra::MidiError);
 }
 
+TEST_CASE("midi: is_midi_header reads the first four bytes only") {
+    // The header comes from the test writer (testmidi::smf_tracks), so the
+    // tag is not spelled a second time here.
+    std::vector<uint8_t> file = testmidi::smf_tracks({});
+    CHECK(hydra::is_midi_header(file.data(), 4));
+    CHECK(hydra::is_midi_header(file.data(), file.size()));
+    CHECK_FALSE(hydra::is_midi_header(file.data(), 3));  // too short to hold the tag
+    CHECK_FALSE(hydra::is_midi_header(file.data(), 0));
+    file[3] ^= 0x20;  // the tag's last letter, in the other case
+    CHECK_FALSE(hydra::is_midi_header(file.data(), file.size()));
+}
+
 TEST_CASE("midi: a file with no track chunk is refused by both readers") {
     // A bare header, and a header whose length field points past the end of
     // the file (the fuzzer's crash, testdata/fuzz/mid/), so the chunk walk

@@ -10,11 +10,18 @@
 #ifndef HYDRA_PARSE_NOTE_SHUFFLE_H
 #define HYDRA_PARSE_NOTE_SHUFFLE_H
 
+#include <cstdint>
 #include <vector>
 
 #include "parse/song.h"
 
 namespace hydra {
+
+// The game's drum lane bit for a note: its colour, and for a cymbal pad its
+// cymbal flag. The one home of the game's lane bit values and of their
+// order; a drum lane's lowest and highest pads (lane_pads in song.cpp) are
+// read off them. Throws std::logic_error for a note with no lane.
+uint32_t lane_bit(const ChordNote& note);
 
 // Shuffled: the sequence now holds the game's shuffled chords. GameFreezes:
 // the game never finishes shuffling this chart (it hangs while loading), and

@@ -166,8 +166,7 @@ bool meta_message(int meta_type, const uint8_t* payload, size_t len,
 template <class OnTrack>
 void walk_chunks(const uint8_t* data, size_t size, int& format, int& ticks_per_beat,
                  OnTrack&& on_track) {
-    if (size < 14 || data[0] != 'M' || data[1] != 'T' ||
-        data[2] != 'h' || data[3] != 'd') {
+    if (size < 14 || !is_midi_header(data, size)) {
         throw MidiError("not a MIDI file: missing MThd header");
     }
 
@@ -356,6 +355,10 @@ TrackScan scan_track(const uint8_t* data, size_t pos, size_t end,
 }
 
 }  // namespace
+
+bool is_midi_header(const uint8_t* data, size_t size) {
+    return size >= 4 && data[0] == 'M' && data[1] == 'T' && data[2] == 'h' && data[3] == 'd';
+}
 
 const char* message_type_name(Message::Type type) {
     switch (type) {

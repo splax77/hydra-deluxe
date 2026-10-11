@@ -33,6 +33,11 @@ public:
     explicit MidiError(const std::string& what) : KindedError(ErrorKind::ChartUnreadable, what) {}
 };
 
+// Whether `size` bytes at `data` start with a MIDI file's header tag. The one
+// home of that test: the reader's header check and the .srb notes sniff
+// (parse/song.cpp) both ask here.
+bool is_midi_header(const uint8_t* data, size_t size);
+
 // How many values a MIDI data byte holds: the MIDI file format keeps its top
 // bit clear.
 inline constexpr int kMidiDataValues = 128;
