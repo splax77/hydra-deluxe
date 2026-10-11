@@ -614,6 +614,25 @@ TEST_CASE("save_file replaces the settings file through a temp and a rename") {
     std::remove(path.c_str());
 }
 
+// A save that cannot land (here the target is read-only, so the rename is
+// refused) reports false, leaves the old file whole and leaves no .tmp.
+TEST_CASE("save_file that cannot land keeps the old file whole and leaves no .tmp") {
+    namespace fs = std::filesystem;
+    const std::string path = testtemp::temp_path("settings_readonly", ".ini");
+    Settings s;
+    s.sp_cap = 6;
+    REQUIRE(s.save_file(path));
+    const fs::perms writes = fs::perms::owner_write | fs::perms::group_write | fs::perms::others_write;
+    fs::permissions(path, writes, fs::perm_options::remove);
+    s.sp_cap = 3;
+    const bool saved = s.save_file(path);
+    fs::permissions(path, writes, fs::perm_options::add);
+    CHECK_FALSE(saved);
+    CHECK(Settings::load_file(path).sp_cap == 6);
+    CHECK_FALSE(fs::exists(path + ".tmp"));
+    std::remove(path.c_str());
+}
+
 // The lens files a result by the unit the search ran with (search_depth_mode),
 // so an int the search reads as scores files beside 0, never as a third row.
 TEST_CASE("lens: depth_mode is the search's unit, so a stray int files as scores") {
