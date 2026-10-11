@@ -14,6 +14,7 @@
 #include "core/strutil.h"
 #include "parse/chart_files.h"
 #include "parse/midi.h"
+#include "parse/song.h"
 #include "corpus_util.h"
 #include "midi_util.h"
 
@@ -451,4 +452,72 @@ TEST_CASE("midi: a file with no track chunk is refused by both readers") {
         CHECK_THROWS_WITH_AS(hydra::MidiFile::lean(file.data(), file.size(), lean_test_filter()),
                              "not a MIDI file: no MTrk track", hydra::MidiError);
     }
+}
+
+// ---- drum lanes (Song::drum_lanes) ----------------------------------------
+
+namespace {
+
+// One drum track: a lane note `pitch` held at `velocity` from tick 0 to tick
+// 240, over a red at tick 0 on Expert (97), Hard (85), Medium (73) and Easy
+// (61), and a yellow at tick 120 on each.
+std::vector<uint8_t> lane_mid(uint8_t pitch, uint8_t velocity) {
+    using namespace testmidi;
+    return smf(concat({
+        track_name("PART DRUMS"),
+        set_tempo(),
+        note_on(pitch, velocity),
+        note_on(97, 100),
+        note_on(85, 100),
+        note_on(73, 100),
+        note_on(61, 100),
+        after(120, note_on(98, 100)),
+        note_on(86, 100),
+        note_on(74, 100),
+        note_on(62, 100),
+        after(120, note_off(pitch)),
+        end_of_track(),
+    }));
+}
+
+size_t lanes_at(const std::vector<uint8_t>& mid, hydra::Difficulty difficulty) {
+    return hydra::load_songbytes_mid(mid, true, true, difficulty).drum_lanes.size();
+}
+
+}  // namespace
+
+TEST_CASE("mid: a lane's velocity picks the lowest difficulty that shows it") {
+    using hydra::Difficulty;
+    // 45 is Hard's band: Hard and Expert show it, Medium and Easy do not.
+    const std::vector<uint8_t> hard = lane_mid(126, 45);
+    CHECK(lanes_at(hard, Difficulty::Expert) == 1);
+    CHECK(lanes_at(hard, Difficulty::Hard) == 1);
+    CHECK(lanes_at(hard, Difficulty::Medium) == 0);
+    CHECK(lanes_at(hard, Difficulty::Easy) == 0);
+    // 96 is outside every band, so Expert only.
+    const std::vector<uint8_t> expert = lane_mid(126, 96);
+    CHECK(lanes_at(expert, Difficulty::Expert) == 1);
+    CHECK(lanes_at(expert, Difficulty::Hard) == 0);
+    // 25 is Easy's band: every difficulty shows it.
+    const std::vector<uint8_t> easy = lane_mid(126, 25);
+    for (Difficulty d : hydra::kAllDifficulties) CHECK(lanes_at(easy, d) == 1);
+}
+
+TEST_CASE("mid: 126 is a single lane and 127 a double, note-on to note-off") {
+    const hydra::Song single =
+        hydra::load_songbytes_mid(lane_mid(126, 96), true, true, hydra::Difficulty::Expert);
+    REQUIRE(single.drum_lanes.size() == 1);
+    CHECK(single.drum_lanes[0].start_tick == 0);
+    CHECK(single.drum_lanes[0].end_tick == 240);
+    CHECK_FALSE(single.drum_lanes[0].double_lane);
+    CHECK(single.drum_lanes[0].pads == std::vector<hydra::NoteColor>{hydra::NoteColor::Red});
+
+    // Red alone, then yellow: the double lane lights both.
+    const hydra::Song dbl =
+        hydra::load_songbytes_mid(lane_mid(127, 96), true, true, hydra::Difficulty::Expert);
+    REQUIRE(dbl.drum_lanes.size() == 1);
+    CHECK(dbl.drum_lanes[0].end_tick == 240);
+    CHECK(dbl.drum_lanes[0].double_lane);
+    CHECK(dbl.drum_lanes[0].pads ==
+          std::vector<hydra::NoteColor>{hydra::NoteColor::Red, hydra::NoteColor::Yellow});
 }

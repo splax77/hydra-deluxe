@@ -142,10 +142,10 @@ TEST_CASE("the corpus's prepared-row digest is pinned with Note Shuffle on and t
 
 TEST_CASE("the corpus's parse digest is pinned") {
     const uint64_t got = parse_digest(pinned_settings("Expert", true, true));
-    CHECK_MESSAGE(got == 0x40c54a484d033934ULL, "parse digest is now " << hex(got));
+    CHECK_MESSAGE(got == 0x30d0bf84617905baULL, "parse digest is now " << hex(got));
 }
 
 TEST_CASE("the corpus's parse digest is pinned at Hard, Pro Drums off, 2x Bass off") {
     const uint64_t got = parse_digest(pinned_settings("Hard", false, false));
-    CHECK_MESSAGE(got == 0x1b8cb6f31677c12dULL, "parse digest is now " << hex(got));
+    CHECK_MESSAGE(got == 0xb54fab6f44865a9cULL, "parse digest is now " << hex(got));
 }

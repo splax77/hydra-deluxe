@@ -97,6 +97,96 @@ std::vector<SoloSection> find_solo_sections(const std::vector<SongTimestamp>& se
     return sections;
 }
 
+// A chord's pads as a drum lane sees them: how many non-kick notes it has,
+// and the lowest and highest of them in Clone Hero's note-bit order. That
+// order is red, the yellow, blue and green toms, then the yellow, blue and
+// green cymbals, as read from the game's lane builder. Kicks never count.
+struct LanePads {
+    int count = 0;
+    NoteColor lowest = NoteColor::Red;
+    NoteColor highest = NoteColor::Red;
+};
+
+// Where a note sits in that bit order: a pad's colour step from red, with
+// every cymbal after every tom.
+int lane_bit_rank(const ChordNote& note) {
+    const int step = static_cast<int>(note.colortype) - static_cast<int>(NoteColor::Red);
+    constexpr int kToms = static_cast<int>(NoteColor::Green) - static_cast<int>(NoteColor::Red);
+    return note.is_cymbal() ? kToms + step : step;
+}
+
+LanePads lane_pads(const Chord& chord) {
+    LanePads out;
+    int low_rank = 0, high_rank = 0;
+    for (const ChordNote& note : chord.note_list()) {
+        if (note.colortype == NoteColor::Kick) continue;
+        const int rank = lane_bit_rank(note);
+        if (out.count == 0 || rank < low_rank) {
+            low_rank = rank;
+            out.lowest = note.colortype;
+        }
+        if (out.count == 0 || rank > high_rank) {
+            high_rank = rank;
+            out.highest = note.colortype;
+        }
+        ++out.count;
+    }
+    return out;
+}
+
+// The one place a drum lane's pads are worked out (Clone Hero's rule, chosen
+// by the user). Both parsers call it with the lanes their chart shows at the
+// loaded difficulty, once the sequence is finished and before Note Shuffle
+// runs, as the game builds its lanes before its shuffle. Each lane starts at
+// the first chord with a pad from one tick before the lane to its end; a lane
+// with none there is dropped. A single lane lights that chord's lowest pad. A
+// double lane also lights the highest pad of a second chord: the same chord
+// when it has two pads or more, otherwise the next chord with a pad, wherever
+// it falls. The game's own cut-off for a lane whose notes start late is
+// unknown, so none is applied (the user's decision). Returned in lane-start
+// order, each lane's pads in red-to-green order with a repeated colour once.
+std::vector<DrumLane> light_drum_lanes(std::vector<DrumLane> lanes,
+                                       const std::vector<SongTimestamp>& sequence) {
+    std::stable_sort(lanes.begin(), lanes.end(), [](const DrumLane& a, const DrumLane& b) {
+        return a.start_tick < b.start_tick;
+    });
+    std::vector<DrumLane> lit;
+    lit.reserve(lanes.size());
+    for (DrumLane& lane : lanes) {
+        auto it = std::lower_bound(sequence.begin(), sequence.end(), lane.start_tick - 1,
+                                   [](const SongTimestamp& ts, int64_t tick) {
+                                       return ts.timecode.ticks() < tick;
+                                   });
+        LanePads first;
+        for (; it != sequence.end() && it->timecode.ticks() < lane.end_tick; ++it) {
+            first = lane_pads(it->chord);
+            if (first.count > 0) break;
+        }
+        if (first.count == 0) continue;
+        lane.pads = {first.lowest};
+        if (lane.double_lane) {
+            std::optional<NoteColor> second;
+            if (first.count >= 2) {
+                second = first.highest;
+            } else {
+                for (auto next = it + 1; next != sequence.end(); ++next) {
+                    const LanePads p = lane_pads(next->chord);
+                    if (p.count > 0) {
+                        second = p.highest;
+                        break;
+                    }
+                }
+            }
+            if (second && *second != first.lowest) lane.pads.push_back(*second);
+            std::sort(lane.pads.begin(), lane.pads.end(), [](NoteColor a, NoteColor b) {
+                return static_cast<int>(a) < static_cast<int>(b);
+            });
+        }
+        lit.push_back(std::move(lane));
+    }
+    return lit;
+}
+
 // The chart readers' one integer fast path, for the common case of a plain
 // number: reads the leading [-]digits of w, as std::strtol and std::strtoll
 // read them, when there are 1 to max_digits of them, and says how many bytes
@@ -577,7 +667,7 @@ enum class MPhase { None, Time, Pre, PreDelayed, Notes, PostDelayed };
 // tick's handlers cost no allocation (they used to be std::function closures).
 enum class MAct : uint8_t {
     None, Note, Kick, FillStart, StoreFillEnd, SpStart, SpEnd, Tom, Flam,
-    Solo, Dynamics, Disco, Tempo, TimeSig,
+    Solo, Dynamics, Disco, Tempo, TimeSig, LaneStart, LaneEnd,
 };
 
 struct MOp {
@@ -586,8 +676,8 @@ struct MOp {
     NoteColor color = NoteColor::Kick;                  // Note, Tom
     NoteDynamicType dyn = NoteDynamicType::Normal;      // Note, Kick
     NoteCymbalType cymbal = NoteCymbalType::Normal;     // Tom
-    bool flag = false;     // Kick: is2x; Flam/Solo/Disco: on
-    int64_t tick = 0;      // FillStart/StoreFillEnd/SpStart/SpEnd/Dynamics/Tempo/TimeSig
+    bool flag = false;     // Kick: is2x; Flam/Solo/Disco: on; LaneStart/LaneEnd: double
+    int64_t tick = 0;      // FillStart/StoreFillEnd/SpStart/SpEnd/Dynamics/Tempo/TimeSig/Lane*
     uint32_t tempo = 0;    // Tempo
     int num = 0, den = 0;  // TimeSig
 
@@ -673,10 +763,33 @@ constexpr int kBlueTomMarkerPitch = 111;
 constexpr int kGreenTomMarkerPitch = 112;
 constexpr int kSpMarkerPitch = 116;
 constexpr int kFillMarkerPitch = 120;
+// Drum lanes (Song::drum_lanes): a single lane and a double lane, held from
+// note-on to note-off. The note-on's velocity says which difficulties show
+// it (midi_lane_lowest_difficulty).
+constexpr int kSingleLaneMarkerPitch = 126;
+constexpr int kDoubleLaneMarkerPitch = 127;
 constexpr int kMarkerPitches[] = {
     kSoloMarkerPitch,     kFlamMarkerPitch, kYellowTomMarkerPitch, kBlueTomMarkerPitch,
-    kGreenTomMarkerPitch, kSpMarkerPitch,   kFillMarkerPitch,
+    kGreenTomMarkerPitch, kSpMarkerPitch,   kFillMarkerPitch,      kSingleLaneMarkerPitch,
+    kDoubleLaneMarkerPitch,
 };
+
+// The lowest difficulty a .mid drum lane shows on, from its note-on
+// velocity: Clone Hero's rule, which the user chose for the Preview's lanes.
+// The lane shows on that difficulty and every one above it.
+Difficulty midi_lane_lowest_difficulty(int velocity) {
+    if (velocity >= 21 && velocity <= 30) return Difficulty::Easy;
+    if (velocity >= 31 && velocity <= 40) return Difficulty::Medium;
+    if (velocity >= 41 && velocity <= 50) return Difficulty::Hard;
+    return Difficulty::Expert;
+}
+
+// Whether a lane whose lowest difficulty is `lowest` shows at `difficulty`.
+// Difficulty lists the hardest first, so every difficulty at or before
+// `lowest` in it is at least as hard.
+bool midi_lane_shows_at(Difficulty lowest, Difficulty difficulty) {
+    return static_cast<int>(difficulty) <= static_cast<int>(lowest);
+}
 
 constexpr int lowest_marker_pitch() {
     int lowest = kMarkerPitches[0];
@@ -777,6 +890,16 @@ private:
     }
     void op_flam(bool enabled) { flag_flam_ = enabled; }
     void op_solo(bool on) { flag_solo_ = on; }
+    // A drum lane's note-on and note-off. The lane is recorded whole at its
+    // note-off and lit once every chord is read (light_drum_lanes). A note-off
+    // with no lane open records nothing, and a lane never closed is dropped,
+    // as an open fill is.
+    void op_lane_start(int64_t tick, bool double_lane) { lane_start_tick_[double_lane] = tick; }
+    void op_lane_end(int64_t tick, bool double_lane) {
+        std::optional<int64_t>& start = lane_start_tick_[double_lane];
+        if (start) lanes_.push_back({*start, tick, double_lane, {}});
+        start.reset();
+    }
     void op_note(NoteColor color, NoteDynamicType dyn) {
         ChordNote& note = chord_.add_note(color);  // may throw ChartFileError
         note.dynamictype = dynamics_enabled_ ? dyn : NoteDynamicType::Normal;
@@ -816,6 +939,7 @@ private:
     // with this N open or close a disco section here. parse() sets it from
     // difficulty_chart_codes.
     char mix_digit_ = 0;
+    Difficulty difficulty_ = Difficulty::Expert;  // set by parse()
 
     Chord chord_;
     std::vector<const Message*> msg_buffer_;
@@ -832,6 +956,10 @@ private:
     int marks_before_tag_ = 0;  // ghost/accent velocities read before the tag
     bool kick_mark_before_tag_ = false;  // this tick's kick counted in marks_before_tag_
     std::optional<int64_t> sp_start_tick_;
+    // The open single [0] and double [1] lane's note-on tick, and every lane
+    // closed so far, lit after pass 2.
+    std::array<std::optional<int64_t>, 2> lane_start_tick_{};
+    std::vector<DrumLane> lanes_;
 };
 
 MOp MidiParser::optype(const Message& msg, int64_t tick) {
@@ -874,6 +1002,16 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
                 case kYellowTomMarkerPitch: return mop_tom(NoteColor::Yellow, NoteCymbalType::Normal);
                 case kFlamMarkerPitch: return mop_flag(MAct::Flam, true);
                 case kSoloMarkerPitch: return mop_flag(MAct::Solo, true);
+                case kSingleLaneMarkerPitch:
+                case kDoubleLaneMarkerPitch: {
+                    // A lane this difficulty does not show opens nothing, so
+                    // its note-off closes nothing.
+                    if (!midi_lane_shows_at(midi_lane_lowest_difficulty(velocity), difficulty_))
+                        return {};
+                    MOp op = mop_tick(MPhase::Pre, MAct::LaneStart, tick);
+                    op.flag = note == kDoubleLaneMarkerPitch;
+                    return op;
+                }
                 default:
                     return {};
             }
@@ -897,6 +1035,12 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
                 // Pinned by ".mid: the note on the solo marker's note-off
                 // tick is outside the solo".
                 return mop_flag(MAct::Solo, false);
+            case kSingleLaneMarkerPitch:
+            case kDoubleLaneMarkerPitch: {
+                MOp op = mop_tick(MPhase::Pre, MAct::LaneEnd, tick);
+                op.flag = note == kDoubleLaneMarkerPitch;
+                return op;
+            }
             default:
                 return {};
         }
@@ -943,6 +1087,8 @@ void MidiParser::run(const MOp& op) {
         case MAct::Disco: op_disco(op.flag); break;
         case MAct::Tempo: op_tempo(op.tick, op.tempo); break;
         case MAct::TimeSig: op_timesig(op.tick, op.num, op.den); break;
+        case MAct::LaneStart: op_lane_start(op.tick, op.flag); break;
+        case MAct::LaneEnd: op_lane_end(op.tick, op.flag); break;
     }
 }
 
@@ -1002,6 +1148,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
     base_ = difficulty_base_pitch(difficulty);
     kick2x_pitch_ = difficulty_chart_codes(difficulty).kick2x_pitch();
     mix_digit_ = difficulty_chart_codes(difficulty).mix_digit;
+    difficulty_ = difficulty;
 
     Song song(mid.ticks_per_beat);
     song_ = &song;
@@ -1031,6 +1178,8 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
         dynamics_enabled_ = false;
         fill_start_tick_.reset();
         fills_.clear();
+        lane_start_tick_ = {};
+        lanes_.clear();
         marks_before_tag_ = 0;
         // push_timestamp runs at each tick change and once at the end, and
         // emits at most one chord each time, so that count sizes the sequence
@@ -1068,6 +1217,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
     }
     sort_practice_sections(song.practice_sections);
     song.solo_sections = find_solo_sections(song.sequence);
+    song.drum_lanes = light_drum_lanes(std::move(lanes_), song.sequence);
 
     song.check_activations(rules_);
     return song;
@@ -1253,16 +1403,16 @@ enum class CPhase { None, Time, Notes, NoteMods, Pre, Post, PostDelayed };
 // its phase: a plain tagged struct, so a tick's handlers cost no allocation.
 enum class CAct : uint8_t {
     None, Disco, Tempo, TimeSig, Solo, Note, Kick, Accent, Ghost, Cymbal,
-    SpStart, SpEnd, FillStart,
+    SpStart, SpEnd, FillStart, Lane,
 };
 
 struct COp {
     CPhase phase = CPhase::None;
     CAct act = CAct::None;
     NoteColor color = NoteColor::Kick;  // Note, Accent, Ghost, Cymbal
-    bool flag = false;                  // Disco, Solo: on
-    int64_t a = 0;   // Tempo/TimeSig/SpStart/FillStart: tick; SpEnd: start
-    int64_t b = 0;   // SpStart/FillStart/SpEnd: end tick
+    bool flag = false;                  // Disco, Solo: on; Lane: double
+    int64_t a = 0;   // Tempo/TimeSig/SpStart/FillStart/Lane: tick; SpEnd: start
+    int64_t b = 0;   // SpStart/FillStart/SpEnd/Lane: end tick
     double bpm = 0;  // Tempo
     int num = 0, den = 0;  // TimeSig
 
@@ -1326,6 +1476,11 @@ private:
     // An S 64 line: the fill is recorded whole and placed once every chord
     // is read (place_authored_fills).
     void op_fillstart(int64_t start, int64_t end) { fills_.push_back({start, end}); }
+    // An S 65 or S 66 line: the lane is recorded whole and lit once every
+    // chord is read (light_drum_lanes).
+    void op_lane(int64_t start, int64_t end, bool double_lane) {
+        lanes_.push_back({start, end, double_lane, {}});
+    }
     void op_sp_start(int64_t start, int64_t end) {
         sp_start_tick_ = start;
         sp_end_tick_ = end;
@@ -1360,7 +1515,13 @@ private:
     std::optional<int64_t> sp_start_tick_;
     std::optional<int64_t> sp_end_tick_;
     std::vector<AuthoredFill> fills_;  // every authored fill, placed after the section
+    std::vector<DrumLane> lanes_;      // every drum lane, lit after the section
 };
+
+// The .chart phrase numbers of a single and a double drum lane
+// (Song::drum_lanes), written in the difficulty's own drum section.
+constexpr int kChartSingleLanePhrase = 65;
+constexpr int kChartDoubleLanePhrase = 66;
 
 // The first match of the regex `\[.*\]` searched in `line`, as std::regex finds
 // it: the leftmost '[' that some later ']' closes with only regex_dot bytes
@@ -1517,6 +1678,11 @@ COp ChartParser::optype(const ChartLine& e, int64_t tick) {
             if (e.value == 2) return cop_span(CPhase::Pre, CAct::SpStart, tick, tick + e.length);
             if (e.value == 64)
                 return cop_span(CPhase::PostDelayed, CAct::FillStart, tick, tick + e.length);
+            if (e.value == kChartSingleLanePhrase || e.value == kChartDoubleLanePhrase) {
+                COp op = cop_span(CPhase::Pre, CAct::Lane, tick, tick + e.length);
+                op.flag = e.value == kChartDoubleLanePhrase;
+                return op;
+            }
             return {};
         case LineKind::Prop:
         case LineKind::None:
@@ -1573,6 +1739,7 @@ void ChartParser::run(const COp& op) {
         case CAct::SpStart: op_sp_start(op.a, op.b); break;
         case CAct::SpEnd: op_sp_end(op.a, op.b); break;
         case CAct::FillStart: op_fillstart(op.a, op.b); break;
+        case CAct::Lane: op_lane(op.a, op.b, op.flag); break;
     }
 }
 
@@ -1706,6 +1873,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
         sort_practice_sections(song.practice_sections);
     }
     song.solo_sections = find_solo_sections(song.sequence);
+    song.drum_lanes = light_drum_lanes(std::move(lanes_), song.sequence);
 
     // .chart ghosts and accents are explicit per-note flags (N 34-37 accent,
     // N 40-43 ghost), applied unconditionally, so a .chart has no opt-in
@@ -1746,8 +1914,10 @@ Song parse_mid_lean(const std::vector<uint8_t>& data, bool pro, bool bass2x,
 
 // The Note Shuffle switch, applied once a parser has finished the song: the
 // fill, solo and Star Power passes inside the parsers read only ticks and
-// flags, never a pad, so they see the same chords either way. Both public
-// byte loaders end here.
+// flags, never a pad, so they see the same chords either way. The drum-lane
+// pass does read pads, and it runs before this on purpose: Clone Hero builds
+// its lanes before its shuffle, so a lane keeps the chart's own pads. Both
+// public byte loaders end here.
 void apply_shuffle_switch(Song& song, bool pro, bool noteshuffle) {
     if (!noteshuffle) return;
     if (apply_note_shuffle(song.sequence, pro) == NoteShuffleResult::GameFreezes)

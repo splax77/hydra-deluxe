@@ -12,13 +12,20 @@
 
 namespace testsong {
 
-// Tick resolution, the meter and tempo maps, the features, and per note the
-// tick, chord code, solo and SP flags and fill length.
+// Tick resolution, the meter and tempo maps, the features, the drum lanes,
+// and per note the tick, chord code, solo and SP flags and fill length.
 inline bool songs_equal(const hydra::Song& a, const hydra::Song& b) {
     if (a.tick_resolution() != b.tick_resolution()) return false;
     if (a.tpm_changes != b.tpm_changes) return false;
     if (a.bpm_changes != b.bpm_changes) return false;
     if (a.features != b.features) return false;
+    if (a.drum_lanes.size() != b.drum_lanes.size()) return false;
+    for (size_t i = 0; i < a.drum_lanes.size(); ++i) {
+        const hydra::DrumLane& x = a.drum_lanes[i];
+        const hydra::DrumLane& y = b.drum_lanes[i];
+        if (x.start_tick != y.start_tick || x.end_tick != y.end_tick) return false;
+        if (x.double_lane != y.double_lane || x.pads != y.pads) return false;
+    }
     if (a.sequence.size() != b.sequence.size()) return false;
     for (size_t i = 0; i < a.sequence.size(); ++i) {
         const hydra::SongTimestamp& x = a.sequence[i];
