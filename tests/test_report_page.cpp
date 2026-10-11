@@ -71,7 +71,7 @@ TEST_CASE("write_report_file swaps the page in and leaves no .tmp behind") {
 TEST_CASE("the fill page carries the shared stylesheet and script") {
     const std::string fill = fill_report::build_fill_html({}, "sub", "foot");
     CHECK(fill.find(html::report_css()) != std::string::npos);
-    CHECK(fill.find(html::kReportJs) != std::string::npos);
+    CHECK(fill.find(html::report_js()) != std::string::npos);
     // Rules no page used, and the theme switch nothing ever sets, are gone.
     CHECK(fill.find(".delta {") == std::string::npos);
     CHECK(fill.find(".rank {") == std::string::npos);
@@ -179,6 +179,14 @@ TEST_CASE("dm_tiles: the four sample scores") {
 }
 
 // ---- the page shell ----------------------------------------------------------
+
+// M07: the page's empty state is the windows' sentence, written in by C++.
+TEST_CASE("page_template writes the windows' empty-state sentence into the script") {
+    const std::string page = html::page_template("t", "", "");
+    CHECK(page.find("empty.textContent = \"Nothing matches those filters.\";") !=
+          std::string::npos);
+    CHECK(page.find("__NOTHING_MATCHES__") == std::string::npos);
+}
 
 namespace {
 

@@ -26,6 +26,39 @@
         "src"
       ],
       "note": "The comparison's status words, apart from the table cell (the kStatus* word, app.json's row), live once in kStatusWords. A tile, dropdown, hover or counts word typed elsewhere is a second spelling that can drift from the table. Decided by: D114 items 1 and 2, concept audit M01 and M02."
+    },
+    {
+      "question": "What does a report say when nothing matches its filters, and what does its chart search box hint?",
+      "owner": "kNothingMatches and kSearchChartsHint in src/app/html_page.h",
+      "owner_file": "src/app/html_page.h",
+      "owner_symbol": "kNothingMatches",
+      "date": "2026-10-11",
+      "decision": "D114 item 22 (M07, code-only)",
+      "added_by": "concept-audit-H3",
+      "pattern": "Nothing matches those filters|Search song, artist, or charter",
+      "owner_files": [
+        "src/app/html_page.h"
+      ],
+      "must_match": [
+        "    ImGui::TextUnformatted(\"Nothing matches those filters.\");",
+        "  empty.textContent = 'Nothing matches those filters.';",
+        "    if (report_frame::search_box(w.memory, \"Search song, artist, or charter\")) apply_filters(w);"
+      ],
+      "must_not_match": [
+        "    ImGui::TextUnformatted(app::html::kNothingMatches);",
+        "    if (report_frame::search_box(w.memory, \"Search song, artist, charter, or path notation\"))"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/fill_report.cpp",
+          "line_text": "<input type=\"search\" id=\"q\" aria-label=\"Search charts\" placeholder=\"Search song, artist, or charter\">",
+          "why": "the fill page's search box markup; H3 does not own fill_report.cpp, so moving it onto kSearchChartsHint (a placeholder page_template fills) is left for the task that owns it"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The report windows and the fill page share these two phrases; the page is built from hydra_core, so the home is html_page.h, not GUI code. A third copy typed elsewhere would drift. Decided by: D114 item 22, concept audit M07."
     }
   ]
 }

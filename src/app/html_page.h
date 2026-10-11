@@ -37,6 +37,12 @@ inline constexpr uint32_t kChipRgbT4 = 0xe07ac0;
 inline constexpr uint32_t kChipRgbT5 = 0xa78bfa;
 inline constexpr uint32_t kChipRgbTn = 0x949aa6;
 
+// ---- words the report windows and the fill page share ---------------------
+// The empty state's sentence and the search box's hint (M07). They live here
+// for the same reason as the colours above.
+inline constexpr const char* kNothingMatches = "Nothing matches those filters.";
+inline constexpr const char* kSearchChartsHint = "Search song, artist, or charter";
+
 // ---- the shared report page -----------------------------------------------
 // The fill page is one stylesheet and one script wrapped around its own
 // title, body markup and PAGE settings (docs/adr/0016). Both stay ASCII: this
@@ -47,6 +53,8 @@ inline constexpr uint32_t kChipRgbTn = 0x949aa6;
 const std::string& report_css();
 extern const char* const kReportJsHead;  // the data tag, DATA, DASH, fmt
 extern const char* const kReportJs;      // sorting, filtering, drawing, first render
+// kReportJs as the page carries it, with kNothingMatches written in.
+const std::string& report_js();
 
 // One page's template: a whole standards-mode document (doctype, <html
 // lang="en">, head, body) with the shared stylesheet and script around the
