@@ -46,6 +46,7 @@ int64_t Playhead::read_frames(float* out, int64_t frame_count) {
     int64_t avail = length_ - position_;
     int64_t n = std::min<int64_t>(frame_count, std::max<int64_t>(avail, 0));
 
+    int64_t got = 0;
     std::size_t written = 0;
     if (n > 0) {
         // A seek (or resume after one) moved the playhead: move the source
@@ -55,7 +56,7 @@ int64_t Playhead::read_frames(float* out, int64_t frame_count) {
             source_->seek(position_);
             source_position_ = position_;
         }
-        const int64_t got = std::clamp<int64_t>(source_->read(out, n), 0, n);
+        got = std::clamp<int64_t>(source_->read(out, n), 0, n);
         source_position_ += got;
         written = static_cast<std::size_t>(got) * channels_;
         if (gain_ != 1.0f)
@@ -66,12 +67,15 @@ int64_t Playhead::read_frames(float* out, int64_t frame_count) {
     if (written < total)
         std::memset(out + written, 0, (total - written) * sizeof(float));
 
+    // The clock moves the full span even when the source came up short, so
+    // the audio stays in step with the master clock; only the return value
+    // reports the shortfall.
     position_ += n;
     if (position_ >= length_) {
         position_ = length_;  // clamp; the master clock rests at the end
         playing_ = false;     // auto-pause at end of stream
     }
-    return n;
+    return got;
 }
 
 }  // namespace hydra::audio
