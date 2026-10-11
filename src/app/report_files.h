@@ -31,16 +31,24 @@ bool open_in_browser(const std::wstring& path);
 // shows the same page.
 std::filesystem::path copy_to_short_temp(const std::filesystem::path& page);
 
+// How write_file_replacing lays down line ends. The caller picks, because
+// the two files it writes differ (D114 item 28).
+enum class LineEnds {
+    AsGiven,  // the bytes exactly as passed: the report page
+    Crlf,     // a Windows text file, each "\n" written as "\r\n": the settings file
+};
+
 // Writes `bytes` to a "<path>.tmp" sibling first and then renames it over
 // the target, so a reader never sees a half-written file: the previous one
 // stays whole right up until the new one is complete. False when the temp
 // file won't open or write, or the swap fails; the temp is removed then.
 // The one write-then-rename helper (D114 item 20): the report page and the
-// settings file both save through it.
-bool write_file_replacing(const std::filesystem::path& outpath, const std::string& bytes);
+// settings file both save through it, each with its own LineEnds.
+bool write_file_replacing(const std::filesystem::path& outpath, const std::string& bytes,
+                          LineEnds ends);
 
-// Writes a built page to disk through write_file_replacing. Throws
-// std::runtime_error("cannot write <path>") when it fails.
+// Writes a built page to disk through write_file_replacing, bytes as given.
+// Throws std::runtime_error("cannot write <path>") when it fails.
 void write_report_file(const std::filesystem::path& outpath, const std::string& html);
 
 }  // namespace hydra::app

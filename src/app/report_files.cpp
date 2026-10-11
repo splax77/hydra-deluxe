@@ -86,7 +86,8 @@ bool open_in_browser(const std::wstring& path) {
     return !copy.empty() && shell_open(copy.wstring());
 }
 
-bool write_file_replacing(const std::filesystem::path& outpath, const std::string& bytes) {
+bool write_file_replacing(const std::filesystem::path& outpath, const std::string& bytes,
+                          LineEnds ends) {
     // A reader can open the file at any moment, including mid-write. The
     // bytes go to a temp name first and are swapped into place with one
     // rename once complete. On FAT and exFAT a replacing rename is a delete
@@ -98,7 +99,11 @@ bool write_file_replacing(const std::filesystem::path& outpath, const std::strin
     tmp += ".tmp";
     std::error_code ec;
 
-    std::ofstream f(os_path(tmp), std::ios::binary | std::ios::trunc);
+    // Text mode is Windows' own "\n" to "\r\n" conversion, the one the
+    // settings file was written with before it came through here.
+    std::ios::openmode mode = std::ios::out | std::ios::trunc;
+    if (ends == LineEnds::AsGiven) mode |= std::ios::binary;
+    std::ofstream f(os_path(tmp), mode);
     if (!f) return false;
     f << bytes;
     f.close();
@@ -116,7 +121,7 @@ bool write_file_replacing(const std::filesystem::path& outpath, const std::strin
 }
 
 void write_report_file(const std::filesystem::path& outpath, const std::string& html) {
-    if (!write_file_replacing(outpath, html))
+    if (!write_file_replacing(outpath, html, LineEnds::AsGiven))
         throw KindedError(ErrorKind::ReportWrite, "cannot write " + outpath.u8string());
 }
 
