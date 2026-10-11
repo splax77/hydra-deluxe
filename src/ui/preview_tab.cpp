@@ -255,21 +255,19 @@ void draw_star(ImDrawList* dl, ImVec2 min, float size, bool filled, ImU32 col) {
 
 // Every text overlay box's extents at one scale (finding R7.18). The fit pass
 // asks at scale 1 to choose the scale, the draw pass at the chosen one, so
-// each box's size is worked out here only.
-struct OverlayBoxSizes {
+// each box's size is worked out here only. The heights and the gap between
+// two panels are render::OverlayHeights, which overlay_tops stacks; the caller
+// sets its top_margin.
+struct OverlayBoxSizes : render::OverlayHeights {
     float size = 0.0f;    // the time box's text size
     float margin = 0.0f;  // from the image's corner to the text
     float pad = 0.0f;     // inside a panel, around its text
-    float gap = 0.0f;     // between two panels
     float line_h = 0.0f;  // line_height(size)
     float time_w = 0.0f;  // the time box, margin and pads included
-    float time_h = 0.0f;
     float score_size = 0.0f;    // the running score's text size
     float score_line_h = 0.0f;  // the running score's line
     float score_w = 0.0f;       // the score box, margin and pads included
-    float score_h = 0.0f;       // the score box, pads included
     float drain_w = 0.0f;       // the drain box, pads included
-    float drain_h = 0.0f;
 };
 
 // `lines` are the time box's lines, `score` the score box, `d_lines` the
@@ -594,8 +592,9 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         // Every box's top, from render::overlay_tops, at the sizes' scale.
         // The right column starts at the gauge's margin, which is not scaled.
         auto tops_at = [&](const OverlayBoxSizes& s) {
-            return render::overlay_tops({s.time_h, s.score_h, s.drain_h, s.gap, v_margin},
-                                        drain_drawn, score.shown);
+            render::OverlayHeights heights = s;
+            heights.top_margin = v_margin;
+            return render::overlay_tops(heights, drain_drawn, score.shown);
         };
         const OverlayBoxSizes sz1 =
             overlay_box_sizes(1.0f, pcfg, lines, line_count, score, d_lines, text_width);
