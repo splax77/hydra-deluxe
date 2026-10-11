@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -92,27 +93,34 @@ BatchSettingsSummary batch_settings_summary(const app::Settings& s) {
 
 namespace {
 
-// One phrase per panel setting that differs from its default, in panel order.
+// One panel setting in the summary's words, as `s` has it.
+std::string change_phrase(const app::Settings& s, const app::SettingsText& values,
+                          app::AnalysisSetting setting) {
+    using app::AnalysisSetting;
+    switch (setting) {
+    case AnalysisSetting::Difficulty: return difficulty_name(s.difficulty());
+    case AnalysisSetting::ProDrums: return s.view_prodrums ? "Pro Drums" : "Pro Drums off";
+    case AnalysisSetting::Bass2x: return s.effective_bass2x() ? "2x Bass" : "2x Bass off";
+    case AnalysisSetting::NoteShuffle:
+        return s.view_noteshuffle ? "Note Shuffle" : "Note Shuffle off";
+    case AnalysisSetting::SpCap: return "SP cap " + values.cap;
+    case AnalysisSetting::Fills: return s.legacy_fills ? "1.0 fills" : "1.0 fills off";
+    case AnalysisSetting::ScoreRange: return "Score range " + values.depth;
+    case AnalysisSetting::PathLimit: return "Path limit " + values.timing;
+    }
+    // A panel setting added to app::AnalysisSetting without words here; the
+    // Reset test in tests/test_config.cpp walks every one and fails on this.
+    throw std::logic_error("settings summary: a panel setting has no phrase");
+}
+
+// One phrase per panel setting that differs from its default, in panel order
+// (Settings::analysis_changes, which is what a reset undoes).
 // settings_changes_summary words it; settings_at_defaults asks if it's empty.
 std::vector<std::string> settings_change_phrases(const app::Settings& s) {
-    // The defaults are the ones "Reset to defaults" puts back
-    // (Settings::with_analysis_defaults), so a reset always leaves none.
-    const app::Settings d = s.with_analysis_defaults();
     const app::SettingsText values = setting_values(s);
     std::vector<std::string> out;
-    const auto add = [&out](const std::string& phrase) { out.push_back(phrase); };
-    if (s.difficulty() != d.difficulty()) add(difficulty_name(s.difficulty()));
-    if (s.view_prodrums != d.view_prodrums) add(s.view_prodrums ? "Pro Drums" : "Pro Drums off");
-    if (s.effective_bass2x() != d.effective_bass2x())
-        add(s.effective_bass2x() ? "2x Bass" : "2x Bass off");
-    if (s.view_noteshuffle != d.view_noteshuffle)
-        add(s.view_noteshuffle ? "Note Shuffle" : "Note Shuffle off");
-    if (s.sp_cap != d.sp_cap) add("SP cap " + values.cap);
-    if (s.legacy_fills != d.legacy_fills) add(s.legacy_fills ? "1.0 fills" : "1.0 fills off");
-    if (s.depth_value != d.depth_value || s.search_depth_mode() != d.search_depth_mode())
-        add("Score range " + values.depth);
-    if (s.mslimit_enabled != d.mslimit_enabled || s.mslimit_value != d.mslimit_value)
-        add("Path limit " + values.timing);
+    for (const app::AnalysisSetting setting : s.analysis_changes())
+        out.push_back(change_phrase(s, values, setting));
     return out;
 }
 
