@@ -132,10 +132,10 @@ DynamicsBreakdown count_dynamics(const Song& song) {
 
 // ---- the count's parse ------------------------------------------------------
 
-Song load_dynamics_song(const std::string& notespath, bool pro, Difficulty difficulty,
-                        bool noteshuffle) {
-    return load_songpath(notespath,
-                         ChartReading{difficulty, pro, kDynamicsParseBass2x, noteshuffle});
+Song load_dynamics_song(const std::string& notespath, const ChartReading& reading) {
+    ChartReading counted = reading;
+    counted.bass2x = kDynamicsParseBass2x;
+    return load_songpath(notespath, counted);
 }
 
 bool analysis_parse_counts_dynamics(bool bass2x) { return bass2x == kDynamicsParseBass2x; }
@@ -148,8 +148,9 @@ DynamicsBreakdown dynamics_for_settings(const std::string& notespath, const Char
     // Bass off a shuffled chart's pads can differ from the count's own
     // 2x-kept parse. Kicks never move, so the kick rows still come from it.
     const bool pads_differ = reading.noteshuffle && !analysis_parse_counts_dynamics(reading.bass2x);
-    DynamicsBreakdown bd = count_dynamics(load_dynamics_song(
-        notespath, reading.prodrums, reading.difficulty, reading.noteshuffle && !pads_differ));
+    ChartReading counted = reading;
+    counted.noteshuffle = reading.noteshuffle && !pads_differ;
+    DynamicsBreakdown bd = count_dynamics(load_dynamics_song(notespath, counted));
     if (!pads_differ) return bd;
     const DynamicsBreakdown pads = count_dynamics(
         analysis_song ? *analysis_song

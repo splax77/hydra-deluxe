@@ -78,7 +78,7 @@ PreviewNotes read_preview_notes(const store::ChartLibraryEntry& entry,
     try {
         notes.song_length_ms = app::chart_song_length_ms(
             app::chart_timing_meta(entry.timing, entry.notespath), entry.notespath, notes.ps.song,
-            reading.difficulty, reading.bass2x, rules, container);
+            reading, rules, container);
     } catch (const std::exception&) {
     }
     // A chart with no charting in this mode would otherwise build an empty

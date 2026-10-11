@@ -1087,8 +1087,8 @@ TEST_CASE("Note Shuffle switch: the Dynamics pads follow the analysis's shuffle"
             app::dynamics_for_settings(path, {Difficulty::Expert, true, bass2x, true}, nullptr);
         const app::DynamicsBreakdown pads =
             app::count_dynamics(load_shuffle_song(a2, true, bass2x, true));
-        const app::DynamicsBreakdown kicks = app::count_dynamics(
-            app::load_dynamics_song(path, true, Difficulty::Expert, false));
+        const app::DynamicsBreakdown kicks =
+            app::count_dynamics(app::load_dynamics_song(path, pro_bass2x()));
         for (size_t i = 0; i < bd.rows.size(); ++i) {
             CAPTURE(i);
             const bool pad = app::is_pad_row(static_cast<app::DynamicsRow>(i));

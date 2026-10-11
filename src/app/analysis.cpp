@@ -846,7 +846,7 @@ store::SongLength analysis_song_length(const std::optional<store::ChartTimingMet
     try {
         return store::SongLength::found(
             chart_song_length_ms(chart_timing_meta(scanned, notespath), notespath, song,
-                                 settings.difficulty, settings.bass2x, settings.rules));
+                                 settings.reading(), settings.rules));
     } catch (const std::exception&) {
         return {};
     }

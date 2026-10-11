@@ -136,13 +136,13 @@ DynamicsBreakdown count_dynamics(const Song& song);
 // row never holds Expert's.
 constexpr bool kDynamicsParseBass2x = true;
 
-// The Dynamics count's own parse of a chart at `difficulty` and `pro`: 2x
-// kicks kept, the parser's default rules, and no notes check, so a
-// difficulty with no charting counts as all zero. `noteshuffle` is the Note
-// Shuffle switch, the same one the analysis reads (D104 item 1): a shuffled
-// note keeps its ghost or accent but can land on another pad.
-Song load_dynamics_song(const std::string& notespath, bool pro, Difficulty difficulty,
-                        bool noteshuffle = false);
+// The Dynamics count's own parse of a chart as `reading` (ChartReading, in
+// parse/chart_reading.h), with the parser's default rules and no notes check,
+// so a difficulty with no charting counts as all zero. The reading's 2x Bass
+// is overridden: the parse always uses kDynamicsParseBass2x. Its Note Shuffle
+// switch is the same one the analysis reads (D104 item 1): a shuffled note
+// keeps its ghost or accent but can land on another pad.
+Song load_dynamics_song(const std::string& notespath, const ChartReading& reading);
 
 // Whether a song an analysis parsed with `bass2x`, at the count's own
 // difficulty, pro and Note Shuffle switch, counts exactly as

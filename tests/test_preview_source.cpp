@@ -52,6 +52,9 @@ std::vector<uint8_t> bytes_of(const std::string& s) {
     return std::vector<uint8_t>(s.begin(), s.end());
 }
 
+// Expert with Pro Drums and 2x Bass on, Note Shuffle off.
+const ChartReading kProBass2x{Difficulty::Expert, true, true, false};
+
 // .sng fixtures come from testsng::make_sng (tests/sng_util.h).
 
 // ---- .srb fixture --------------------------------------------------------
@@ -161,7 +164,7 @@ TEST_CASE("extract_sng_audio: audio entries come back XOR-demasked") {
     CHECK(stems[1].bytes == drums);
 
     // resolve_preview_source parses the embedded chart and returns the audio.
-    PreviewSource src = resolve_preview_source(path, true, true);
+    PreviewSource src = resolve_preview_source(path, kProBass2x);
     CHECK_FALSE(src.song.is_empty());
     CHECK(src.stems.size() == 2);
 }
@@ -185,7 +188,7 @@ TEST_CASE("extract_srb_audio: trailing audio streams inflate; art is skipped") {
     write_bytes(bare, make_srb(notes, {}));
     CHECK(extract_srb_audio(bare).empty());
 
-    PreviewSource src = resolve_preview_source(path, true, true);
+    PreviewSource src = resolve_preview_source(path, kProBass2x);
     CHECK_FALSE(src.song.is_empty());
     CHECK(src.stems.size() == 1);
 }
@@ -219,7 +222,7 @@ TEST_CASE("resolve_preview_source: a .srb with no extractable audio falls "
 
     CHECK(extract_srb_audio(dir + "\\bundle.srb").empty());
 
-    PreviewSource src = resolve_preview_source(dir + "\\bundle.srb", true, true);
+    PreviewSource src = resolve_preview_source(dir + "\\bundle.srb", kProBass2x);
     CHECK_FALSE(src.song.is_empty());
     REQUIRE(src.stems.size() == 1);
     CHECK(src.stems[0].label == "song");
@@ -233,7 +236,7 @@ TEST_CASE("resolve_preview_source: a loose chart parses and finds its audio") {
     write_bytes(dir + "\\notes.chart", notes);
     write_bytes(dir + "\\song.ogg", bytes_of("OggS audio"));
 
-    PreviewSource src = resolve_preview_source(dir + "\\notes.chart", true, true);
+    PreviewSource src = resolve_preview_source(dir + "\\notes.chart", kProBass2x);
     CHECK_FALSE(src.song.is_empty());
     REQUIRE(src.stems.size() == 1);
     CHECK(src.stems[0].label == "song");
@@ -254,14 +257,14 @@ TEST_CASE("containers pass the difficulty through to the chart inside") {
     write_bytes(srb, make_srb(notes, {}, "notes.chart"));
 
     for (const std::string& path : {sng, srb}) {
-        CHECK(resolve_preview_source(path, true, true).song.sequence.size() ==
+        CHECK(resolve_preview_source(path, kProBass2x).song.sequence.size() ==
               multidiff::kExpertChords);
-        CHECK(resolve_preview_source(path, true, true, Difficulty::Hard)
+        CHECK(resolve_preview_source(path, ChartReading{Difficulty::Hard, true, true, false})
                   .song.sequence.size() == multidiff::kHardChords);
-        CHECK(resolve_preview_source(path, true, true, Difficulty::Easy)
+        CHECK(resolve_preview_source(path, ChartReading{Difficulty::Easy, true, true, false})
                   .song.sequence.size() == multidiff::kEasyChords);
         // No [MediumDrums] section: an empty song, not a fallback.
-        CHECK(resolve_preview_source(path, true, true, Difficulty::Medium)
+        CHECK(resolve_preview_source(path, ChartReading{Difficulty::Medium, true, true, false})
                   .song.is_empty());
     }
 
@@ -309,7 +312,7 @@ TEST_CASE("resolve_preview_source reads delay from a song.ini in any case") {
     write_bytes(dir + "\\notes.chart", multidiff::chart_bytes());
     write_bytes(dir + "\\Song.INI", bytes_of("[song]\ndelay = 500\n"));
     const PreviewSource src =
-        resolve_preview_source(dir + "\\notes.chart", true, true, Difficulty::Expert);
+        resolve_preview_source(dir + "\\notes.chart", kProBass2x);
     CHECK(src.audio_offset_ms == doctest::Approx(500.0));
 }
 
@@ -333,26 +336,26 @@ TEST_CASE("resolve_preview_source: a .sng's metadata delay replaces the chart Of
     const std::string with_delay = fixture_dir() + "\\delay500.sng";
     write_bytes(with_delay,
                 testsng::make_sng({{"name", "X"}, {"delay", "500"}}, {{"notes.chart", notes}}));
-    CHECK(resolve_preview_source(with_delay, true, true).audio_offset_ms ==
+    CHECK(resolve_preview_source(with_delay, kProBass2x).audio_offset_ms ==
           doctest::Approx(500.0));
 
     // A delay of 0 counts as unset (the Lunaris rule), whatever the key's case.
     const std::string zero_delay = fixture_dir() + "\\delay0.sng";
     write_bytes(zero_delay, testsng::make_sng({{"Delay", "0"}}, {{"notes.chart", notes}}));
-    CHECK(resolve_preview_source(zero_delay, true, true).audio_offset_ms ==
+    CHECK(resolve_preview_source(zero_delay, kProBass2x).audio_offset_ms ==
           doctest::Approx(250.0));
 
     // No delay key at all: the chart's Offset applies.
     const std::string no_delay = fixture_dir() + "\\nodelay.sng";
     write_bytes(no_delay, testsng::make_sng({{"name", "X"}}, {{"notes.chart", notes}}));
-    CHECK(resolve_preview_source(no_delay, true, true).audio_offset_ms ==
+    CHECK(resolve_preview_source(no_delay, kProBass2x).audio_offset_ms ==
           doctest::Approx(250.0));
 }
 
 TEST_CASE("resolve_preview_source: a .srb uses its chart's Offset") {
     const std::string path = fixture_dir() + "\\offset.srb";
     write_bytes(path, make_srb(chart_with_offset("0.25"), {}, "notes.chart"));
-    CHECK(resolve_preview_source(path, true, true).audio_offset_ms ==
+    CHECK(resolve_preview_source(path, kProBass2x).audio_offset_ms ==
           doctest::Approx(250.0));
 }
 
@@ -416,7 +419,7 @@ TEST_CASE("resolve_preview_source reads a .sng or .srb from disk once") {
         CAPTURE(path);
         CountingReader count;
         const PreviewSource src =
-            resolve_preview_source_reading(count.reader(), path, true, true);
+            resolve_preview_source_reading(count.reader(), path, kProBass2x);
         CHECK(count.reads.size() == 1);
         CHECK(count.reads[path] == 1);
         CHECK_FALSE(src.song.is_empty());
@@ -428,7 +431,7 @@ TEST_CASE("resolve_preview_source reads a .sng or .srb from disk once") {
     const std::string dir = make_subdir("readonce_loose");
     write_bytes(dir + "\\notes.chart", notes);
     CountingReader loose;
-    CHECK_FALSE(resolve_preview_source_reading(loose.reader(), dir + "\\notes.chart", true, true)
+    CHECK_FALSE(resolve_preview_source_reading(loose.reader(), dir + "\\notes.chart", kProBass2x)
                     .song.is_empty());
     CHECK(loose.reads.empty());
 }
@@ -448,10 +451,10 @@ TEST_CASE("the song and stem halves share one container read and match the whole
         CountingReader count;
         const SharedBytes container = read_preview_container(count.reader(), path);
         REQUIRE(container != nullptr);
-        const PreviewSong ps = resolve_preview_song(path, container, ChartReading{Difficulty::Expert, true, true});
+        const PreviewSong ps = resolve_preview_song(path, container, kProBass2x);
         const std::vector<PreviewAudioStem> stems = resolve_preview_stems(path, container);
         CHECK(count.reads[path] == 1);
-        const PreviewSource whole = resolve_preview_source(path, true, true);
+        const PreviewSource whole = resolve_preview_source(path, kProBass2x);
         CHECK(ps.song.chart_offset_s == whole.song.chart_offset_s);
         CHECK(ps.audio_offset_ms == whole.audio_offset_ms);
         REQUIRE(stems.size() == 1);
@@ -510,7 +513,7 @@ TEST_CASE("container charts give the same Song, stems and offset as the chart in
             CHECK(song_text(load_songpath(path, reading)) == want);
             CHECK(song_text(load_songpath_from_bytes(path, c.container, reading)) == want);
 
-            const PreviewSource src = resolve_preview_source(path, true, true, d);
+            const PreviewSource src = resolve_preview_source(path, reading);
             CHECK(song_text(src.song) == want);
             REQUIRE(src.stems.size() == c.stems.size());
             for (size_t i = 0; i < c.stems.size(); ++i) {
