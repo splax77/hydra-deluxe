@@ -172,7 +172,7 @@ TEST_CASE("the Preview load builds the highway timeline on its worker") {
     const AnalyzedChart a = first_chart_with_a_path();
     for (bool pro : {true, false}) {
         CAPTURE(pro);
-        PreviewLoadJob job(entry_for(a.chart), pro, true, Difficulty::Expert, a.best, 4);
+        PreviewLoadJob job(entry_for(a.chart), {Difficulty::Expert, pro, true}, a.best, 4);
         job.start();
         wait_finished(job);
         REQUIRE(job.ok());
@@ -192,7 +192,7 @@ TEST_CASE("the Preview load runs the beat lines to the end of the audio") {
     const std::string notes = short_chart_with_long_audio("prevctl_grid_len");
     audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini",
                                 "[song]\nsong_length = 3000\n");
-    PreviewLoadJob job(entry_for(notes), true, true, Difficulty::Expert, std::nullopt, 4);
+    PreviewLoadJob job(entry_for(notes), {Difficulty::Expert, true, true}, std::nullopt, 4);
     job.start();
     wait_finished(job);
     REQUIRE(job.ok());
@@ -218,7 +218,7 @@ TEST_CASE("the Preview load runs the beat lines to the end of the audio") {
 // over it, and gets the same scene and timeline.
 TEST_CASE("the Preview overlay job builds the highway timeline on its worker") {
     const AnalyzedChart a = first_chart_with_a_path();
-    PreviewLoadJob load(entry_for(a.chart), true, true, Difficulty::Expert, std::nullopt, 4);
+    PreviewLoadJob load(entry_for(a.chart), {Difficulty::Expert, true, true}, std::nullopt, 4);
     load.start();
     wait_finished(load);
     REQUIRE(load.ok());
@@ -262,8 +262,8 @@ TEST_CASE("the Preview overlay job builds the highway timeline on its worker") {
 // was given. A scene job that has no base yet builds one the same way, so
 // the beat lines still reach the audio's end after a path change.
 TEST_CASE("the Preview base job builds the path-free scene and timeline") {
-    PreviewLoadJob load(entry_for(short_chart_with_long_audio()), true, true, Difficulty::Expert,
-                        std::nullopt, 4);
+    PreviewLoadJob load(entry_for(short_chart_with_long_audio()),
+                        {Difficulty::Expert, true, true}, std::nullopt, 4);
     load.start();
     wait_finished(load);
     REQUIRE(load.ok());
@@ -317,8 +317,8 @@ TEST_CASE("track_options: one builder, compared whole") {
 // Closing the details window joins the load's thread on the UI thread. A
 // job that ignored its cancel flag ran its whole parse, decode and mix first.
 TEST_CASE("a cancelled Preview load stops before decoding") {
-    PreviewLoadJob job(entry_for(corpus::first_chart_with_suffix(".chart")), true, true,
-                       Difficulty::Expert, std::nullopt, 4);
+    PreviewLoadJob job(entry_for(corpus::first_chart_with_suffix(".chart")),
+                       {Difficulty::Expert, true, true}, std::nullopt, 4);
     job.cancel();  // the window closed before the worker got going
     job.start();
     wait_finished(job);
@@ -833,23 +833,23 @@ TEST_CASE("the Preview volume is the settings owner's: default and clamp") {
 
 TEST_CASE("the Preview's song key: another difficulty, Pro Drums or 2x Bass makes a different song") {
     using hydra::ui::PreviewSongKey;
-    const PreviewSongKey key{"prevctl", Difficulty::Expert, /*pro=*/true, /*bass2x=*/false};
-    const PreviewSongKey same{"prevctl", Difficulty::Expert, /*pro=*/true, /*bass2x=*/false};
+    const PreviewSongKey key{"prevctl", {Difficulty::Expert, /*prodrums=*/true, /*bass2x=*/false}};
+    const PreviewSongKey same{"prevctl", {Difficulty::Expert, /*prodrums=*/true, /*bass2x=*/false}};
     CHECK(key == same);
     CHECK_FALSE(key != same);
 
     PreviewSongKey hard = key;
-    hard.difficulty = Difficulty::Hard;
+    hard.reading.difficulty = Difficulty::Hard;
     CHECK(key != hard);
     CHECK_FALSE(key == hard);
 
     PreviewSongKey plain = key;
-    plain.pro = false;
+    plain.reading.prodrums = false;
     CHECK(key != plain);
     CHECK_FALSE(key == plain);
 
     PreviewSongKey bass = key;
-    bass.bass2x = true;
+    bass.reading.bass2x = true;
     CHECK(key != bass);
     CHECK_FALSE(key == bass);
 }

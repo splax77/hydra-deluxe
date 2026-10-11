@@ -23,7 +23,7 @@
 #include <string>
 #include <vector>
 
-#include "app/config.h"  // ChartReading
+#include "app/analysis.h"  // ChartReading
 #include "app/preview_view.h"
 #include "core/model.h"  // Path
 #include "parse/song.h"
@@ -48,20 +48,15 @@ class PreviewBaseJob;
 struct PreviewSceneBase;
 
 // What the Preview calls the same song: one chart (its md5) under one
-// app::ChartReading, which open() copies in field by field. Another reading
-// is another song and loads its own notes (D48, Q22; D104 item 1). On a chart whose first load
-// finished, only the notes reload: the audio and the playhead stay (see
-// PreviewController::open).
+// app::ChartReading. Another reading is another song and loads its own notes
+// (D48, Q22; D104 item 1). On a chart whose first load finished, only the
+// notes reload: the audio and the playhead stay (see PreviewController::open).
 struct PreviewSongKey {
     std::string md5;
-    Difficulty difficulty = Difficulty::Expert;
-    bool pro = false;
-    bool bass2x = false;
-    bool noteshuffle = false;
+    app::ChartReading reading;
 
     bool operator==(const PreviewSongKey& o) const {
-        return md5 == o.md5 && difficulty == o.difficulty && pro == o.pro &&
-               bass2x == o.bass2x && noteshuffle == o.noteshuffle;
+        return md5 == o.md5 && reading == o.reading;
     }
     bool operator!=(const PreviewSongKey& o) const { return !(*this == o); }
 };
