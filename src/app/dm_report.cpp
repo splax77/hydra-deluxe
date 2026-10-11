@@ -34,7 +34,7 @@ std::string why_not_comparable(Difficulty difficulty, int sp_cap, bool legacy_fi
                                bool note_shuffle) {
     if (difficulty != Difficulty::Expert)
         return "Needs Expert: the leaderboard only has Expert scores.";
-    if (sp_cap != kCloneHeroSpCap)
+    if (!is_clone_hero_cap(sp_cap))
         return "Needs SP cap " + std::to_string(kCloneHeroSpCap) +
                ", Clone Hero's rule: the leaderboard's scores were played under it.";
     if (legacy_fills)
@@ -53,15 +53,14 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
                                          const std::string& chartmode,
                                          const store::Lens& lens) {
     // The Clone Hero rules come from why_not_comparable. Of its four inputs,
-    // the fill rule arrives in `lens` and Note Shuffle in `chartmode`, read
-    // back through its owner. The cap is forced to Clone Hero's below, and the
-    // difficulty is folded into `chartmode`, so the caller's settings take
-    // that rule to the same owner (the library toolbar asks it for all four
-    // before a comparison can start).
-    const std::optional<Settings> mode = Settings{}.with_chartmode(chartmode);
-    const std::string refused =
-        why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, lens.legacy_fills != 0,
-                           mode && mode->view_noteshuffle);
+    // the fill rule arrives in `lens`, and the difficulty and Note Shuffle in
+    // `chartmode`, read back through its owner. The cap is forced to Clone
+    // Hero's below, so it is passed as that. The window's rebuild buttons
+    // reach here without the toolbar's check, so this call is the gate for
+    // them (D114 item 6).
+    const Settings mode = Settings{}.with_known_chartmode(chartmode);
+    const std::string refused = why_not_comparable(mode.difficulty(), kCloneHeroSpCap,
+                                                   lens.legacy_fills != 0, mode.view_noteshuffle);
     if (!refused.empty()) throw KindedError(ErrorKind::AlreadyPlain, refused);
     // The page compares library charts only, as the path report does (D92).
     if (report::lacks_chart_library(store))

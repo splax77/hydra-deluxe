@@ -751,16 +751,11 @@
       "owner_lines": [
         {
           "file": "src/app/config.cpp",
-          "line_text": "const char* unit = settings.depth_mode == DepthMode::Points ? \"points\" : \"scores\";",
-          "why": "describe_settings, the owner"
-        },
-        {
-          "file": "src/ui/library_dialogs.cpp",
-          "line_text": "return s.search_depth_mode() == DepthMode::Scores ? counted(s.depth_value, \"score\", \"scores\")",
-          "why": "score_range_value: the GUI's counted display wording, which the batch confirm and the settings button share (settings summary button handoff, 2026-10-09)"
+          "line_text": "return depth_mode == DepthMode::Points ? counted(depth_value, \"point\", \"points\")",
+          "why": "score_range_text, which describe_settings reads: the owner"
         }
       ],
-      "note": "A depth unit word chosen from the search's enum, or bench's header words. The GUI's own wordings (\"Within 4 scores\", the score-range box) are separate display text. The GUI's counted \"4 scores\" for the batch confirm and the settings button names the enum, and is listed with the owner's lines as that display text. Decided by: audit finding 206; phase 6 task J2-1 (D53, D54)"
+      "note": "A depth unit word chosen from the search's enum, or bench's header words. Since D114 item 9 the batch confirm, the settings button, the Paths tab's \"Within\" heading and hydra_batch's header all read score_range_text, so the owner's line is the only one. Decided by: audit finding 206; phase 6 task J2-1 (D53, D54); concept audit M15 (D114 item 9)"
     },
     {
       "question": "What does the stars filter say when its number is out of range?",

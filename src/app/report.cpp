@@ -68,10 +68,7 @@ void place_rows(std::vector<ReportRow>& out, const std::vector<ReportRow>& rows,
 // mode.
 AnalysisSettings settings_for_mode(const BatchRun& run, const std::string& chartmode) {
     if (chartmode == run.chartmode) return run.settings;
-    const std::optional<Settings> mode = Settings{}.with_chartmode(chartmode);
-    if (!mode)
-        throw std::runtime_error("No analysis settings give the chart mode \"" + chartmode + "\".");
-    AnalysisSettings out = mode->to_analysis_settings();
+    AnalysisSettings out = Settings{}.with_known_chartmode(chartmode).to_analysis_settings();
     static_cast<SearchSettings&>(out) = run.settings;
     return out;
 }
@@ -405,7 +402,7 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
                             : "every mode at the current cap, top " +
                                   hydra::counted(options.max_paths, "path", "paths") +
                                   " per chart and mode";
-    std::string cap_label = "SP cap " + hydra::counted(options.cap.exact, "bar", "bars");
+    std::string cap_label = "SP cap " + bars_text(options.cap.exact);
     // The normal rule goes unsaid, so a 1.1 page reads as it always has.
     if (options.lens.legacy_fills)
         cap_label += std::string(" — ") + fill_rule_name(rule, FillRuleNameStyle::Long) + " fills";

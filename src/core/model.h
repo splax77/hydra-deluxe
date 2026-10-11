@@ -35,6 +35,10 @@ namespace hydra {
 // whose scores are not achievable in game.
 inline constexpr int kCloneHeroSpCap = 4;
 
+// Whether an SP cap is Clone Hero's rule rather than a what-if. The batch
+// confirm's words and the leaderboard gate both ask here.
+constexpr bool is_clone_hero_cap(int sp_cap) { return sp_cap == kCloneHeroSpCap; }
+
 // A chart file that does not work. Chord and
 // the parsers raise it; the parsers swallow it per-op exactly as Python does.
 // Its kind is ChartUnreadable unless the thrower names another (a refused

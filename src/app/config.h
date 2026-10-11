@@ -185,6 +185,10 @@ struct Settings {
     // wins. nullopt when no choice spells it.
     std::optional<Settings> with_chartmode(const std::string& chartmode) const;
 
+    // with_chartmode for a caller that cannot go on without the mode: throws
+    // std::runtime_error, naming the text, when no choice spells it.
+    Settings with_known_chartmode(const std::string& chartmode) const;
+
     // These settings with the eight the Analysis settings panel shows put back
     // to a default-constructed Settings': Difficulty, Pro Drums, 2x Bass, Note
     // Shuffle, the SP cap, 1.0 fills, the score range and the path limit. The
@@ -216,12 +220,21 @@ struct Settings {
     BatchRun batch_run() const;
 };
 
-// The search settings a run uses, as the words a tool's header prints. The
-// one place they are spelled; hydra_batch's header lines are filled from them.
+// A count of Star Power bars in words, "4 bars" or "1 bar": the SP cap and
+// the meter both read it.
+std::string bars_text(int bars);
+
+// A score range in words, the number before its unit: "4 scores", "1 point",
+// "2,000 points".
+std::string score_range_text(DepthMode depth_mode, int depth_value);
+
+// The search settings a run uses, in the app's words (D114 item 9). The batch
+// confirm, the settings button and hydra_batch's header read the same values;
+// each caller supplies its own labels.
 struct SettingsText {
-    std::string depth;   // the unit word, then the number: "scores 4", "points 4"
-    std::string cap;     // the SP cap as a count of bars: "4 bars", "1 bar"
-    std::string timing;  // the ms limit: "10 ms", or "none" when it is off
+    std::string depth;   // the score range: score_range_text
+    std::string cap;     // the SP cap: bars_text
+    std::string timing;  // the path limit: "10 ms", or "off"
 };
 SettingsText describe_settings(const AnalysisSettings& settings);
 

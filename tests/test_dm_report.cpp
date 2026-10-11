@@ -763,6 +763,36 @@ TEST_CASE("why_not_comparable refuses Note Shuffle, and only Note Shuffle change
               .size() == 1);
 }
 
+// D114 item 6 (M17): Refresh, Try again and "Compare another player..." reach
+// the join without the toolbar's gate, so the join reads the difficulty back
+// from the mode text and refuses a non-Expert one with the toolbar's sentence.
+TEST_CASE("collect_dm_rows refuses a non-Expert chart mode with the toolbar's sentence") {
+    store::RecordStore store(":memory:");
+    REQUIRE(fill_store(store) > 0);
+    const std::string expert = "Needs Expert: the leaderboard only has Expert scores.";
+    for (const std::string mode : {"Hard Pro Drums, 2x Bass", "Easy Drums, 1x Bass"}) {
+        CAPTURE(mode);
+        bool refused = false;
+        try {
+            app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)}, mode, store::Lens{});
+        } catch (const KindedError& e) {
+            refused = true;
+            CHECK(e.kind() == ErrorKind::AlreadyPlain);
+            CHECK(app::plain_error(e) == expert);
+        }
+        CHECK(refused);
+    }
+}
+
+// M17: a mode text the parser can't read is refused, not treated as comparable.
+TEST_CASE("collect_dm_rows refuses a chart mode it cannot read") {
+    store::RecordStore store(":memory:");
+    REQUIRE(fill_store(store) > 0);
+    CHECK_THROWS_AS(app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)},
+                                                    "not a chart mode", store::Lens{}),
+                    std::exception);
+}
+
 // ---- results the library doesn't list (D92) ---------------------------------
 
 TEST_CASE("collect_dm_rows: a database with no chart library stops with the path report's "

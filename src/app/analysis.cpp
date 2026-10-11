@@ -777,6 +777,12 @@ int batch_worker_count() {
     return std::max(1, std::min(guess, kBatchMaxWorkers));
 }
 
+std::string batch_counts_text(int analyzed, int failed, int skipped) {
+    return counted(analyzed, "analyzed", "analyzed") + " \xC2\xB7 " +
+           counted(failed, "failed", "failed") + " \xC2\xB7 " +
+           counted(skipped, "skipped", "skipped") + " (already had a result)";
+}
+
 namespace {
 
 struct WorkResult {

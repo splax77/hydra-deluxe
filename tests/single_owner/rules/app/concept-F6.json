@@ -1,0 +1,102 @@
+{
+  "rules": [
+    {
+      "question": "May these settings be compared with the leaderboard? (the difficulty a caller passes)",
+      "owner": "why_not_comparable in src/app/dm_report.cpp",
+      "owner_file": "src/app/dm_report.cpp",
+      "owner_symbol": "why_not_comparable",
+      "date": "2026-10-11",
+      "decision": "D114 item 6 (concept audit M17)",
+      "added_by": "concept-F6",
+      "pattern": "why_not_comparable\\(\\s*Difficulty::Expert",
+      "must_match": [
+        "why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, lens.legacy_fills != 0,"
+      ],
+      "must_not_match": [
+        "const std::string refused = why_not_comparable(mode.difficulty(), kCloneHeroSpCap,",
+        "app::dm_report::why_not_comparable(app.settings.difficulty(), app.settings.sp_cap,"
+      ],
+      "note": "A caller that hands the gate a literal Expert instead of the difficulty it was given. collect_dm_rows did, so the comparison window's Refresh built a Hard page the toolbar refuses."
+    },
+    {
+      "question": "Is this SP cap Clone Hero's rule?",
+      "owner": "is_clone_hero_cap in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "is_clone_hero_cap",
+      "date": "2026-10-11",
+      "decision": "concept audit M17, second half (code-only)",
+      "added_by": "concept-F6",
+      "pattern": "[!=]=\\s*kCloneHeroSpCap\\b|\\bkCloneHeroSpCap\\s*[!=]=",
+      "owner_files": [
+        "src/core/model.h"
+      ],
+      "must_match": [
+        "(s.sp_cap == kCloneHeroSpCap ? \" (Clone Hero's rule)\" : \" (a what-if)\");",
+        "if (sp_cap != kCloneHeroSpCap)"
+      ],
+      "must_not_match": [
+        "inline constexpr int kCloneHeroSpCap = 4;",
+        "report::records_by_hash(store, chartmode, store::CapQuery::at(kCloneHeroSpCap), lens);",
+        "if (!is_clone_hero_cap(sp_cap))"
+      ],
+      "note": "A cap compared with Clone Hero's by hand. The batch confirm's \"(a what-if)\" and the leaderboard gate each did."
+    },
+    {
+      "question": "How are a batch's three counts worded?",
+      "owner": "batch_counts_text in src/app/analysis.cpp",
+      "owner_file": "src/app/analysis.cpp",
+      "owner_symbol": "batch_counts_text",
+      "date": "2026-10-11",
+      "decision": "D114 item 10 (concept audit M24)",
+      "added_by": "concept-F6",
+      "pattern": "already stored|already had a result",
+      "owner_files": [
+        "src/app/analysis.cpp"
+      ],
+      "must_match": [
+        "std::printf(\"\\nAnalyzed %s, skipped %s already stored, %s failed in %.1fs.\\n\",",
+        "counted(s.skipped, \"skipped\", \"skipped\") + \" (already had a result)\";"
+      ],
+      "must_not_match": [
+        "hydra::app::batch_counts_text(last.analyzed, last.failed, last.skipped).c_str(),",
+        "return app::batch_counts_text(s.analyzed, s.failed, s.skipped);"
+      ],
+      "note": "The skipped count's gloss typed outside its owner. hydra_batch's closing line said \"already stored\" while the app's strip said \"already had a result\"."
+    },
+    {
+      "question": "How are a score range and a count of SP bars worded?",
+      "owner": "score_range_text and bars_text in src/app/config.cpp",
+      "owner_file": "src/app/config.cpp",
+      "owner_symbol": "score_range_text",
+      "date": "2026-10-11",
+      "decision": "D114 item 9 (concept audit M15)",
+      "added_by": "concept-F6",
+      "pattern": "counted\\([^,]+,\\s*\"(score|point|bar)\"",
+      "owner_files": [
+        "src/app/config.cpp"
+      ],
+      "must_match": [
+        "std::string sp_cap_value(const app::Settings& s) { return counted(s.sp_cap, \"bar\", \"bars\"); }",
+        "? counted(depth_value, \"point\", \"points\")",
+        "std::string cap_label = \"SP cap \" + hydra::counted(options.cap.exact, \"bar\", \"bars\");"
+      ],
+      "must_not_match": [
+        "std::string cap_label = \"SP cap \" + bars_text(options.cap.exact);",
+        "return \"Within \" + score_range_text(depth_mode, depth_value);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/dm_report.cpp",
+          "line_text": "username + \" — \" + hydra::counted(out.stats.total, \"score\", \"scores\");",
+          "why": "counts a player's leaderboard scores, not a score range"
+        },
+        {
+          "file": "src/ui/library_dialogs.cpp",
+          "line_text": "const std::string scores = counted(u.total_scores, \"score\", \"scores\");",
+          "why": "counts a player's leaderboard scores in the player picker, not a score range"
+        }
+      ],
+      "note": "A score-range unit or the SP bar noun typed beside a count outside its owner. The Paths tab's \"Within\" heading, the batch confirm, the path report's subtitle and the meter's bars each had their own."
+    }
+  ]
+}

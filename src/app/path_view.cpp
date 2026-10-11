@@ -1,5 +1,5 @@
 #include "app/path_view.h"
-#include "app/config.h"  // Settings::search_depth_mode
+#include "app/config.h"  // Settings::search_depth_mode, bars_text, score_range_text
 #include "app/display_format.h"
 #include "app/preview_view.h"  // song_fraction, has_song_length
 
@@ -19,10 +19,6 @@
 namespace hydra::app {
 
 namespace {
-
-std::string bars_text(int bars) {
-    return counted(bars, "bar", "bars");
-}
 
 // The separator the new labels use: " · " (U+00B7 in UTF-8).
 const char* const kDot = " \xC2\xB7 ";
@@ -472,11 +468,9 @@ PathListView build_path_list(const HydraRecord& record) {
 
 namespace {
 
-// The heading over the non-optimal paths, spelled from the depth mode.
+// The heading over the non-optimal paths, worded by score_range_text.
 std::string within_label(DepthMode depth_mode, int depth_value) {
-    return "Within " + (depth_mode == DepthMode::Points
-                            ? counted(depth_value, "point", "points")
-                            : counted(depth_value, "score", "scores"));
+    return "Within " + score_range_text(depth_mode, depth_value);
 }
 
 }  // namespace

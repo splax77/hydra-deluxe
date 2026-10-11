@@ -182,12 +182,18 @@ TEST_CASE("hydra_batch stamps a new database with the rule it ran under") {
     INFO(r.output);
     REQUIRE(r.exit_code == 0);
     CHECK(contains(r.output, "Tester - CLI Fixture"));
-    CHECK(contains(r.output, "Fill rule  : Clone Hero 1.1"));
+    // The header uses the app's names and words (D114 items 9 and 23).
+    CHECK(contains(r.output, "Score range: 4 scores"));
+    CHECK(contains(r.output, "SP cap     : 4 bars"));
+    CHECK(contains(r.output, "Path limit : 10 ms"));
+    CHECK(contains(r.output, "Fills      : Clone Hero 1.1"));
     CHECK(contains(r.output, "Found 1 chart."));
     // Every number is the batch's progress, in library rows (D79); the
     // store's raw row count is not printed.
     CHECK(contains(r.output, "[1/1] "));
-    CHECK(contains(r.output, "Analyzed 1, skipped 0 already stored, 0 failed in "));
+    // The closing counts are the app's strip words (D114 item 10).
+    CHECK(contains(r.output,
+                   "\n1 analyzed \xC2\xB7 0 failed \xC2\xB7 0 skipped (already had a result) in "));
     CHECK_FALSE(contains(r.output, "Store now holds"));
     {
         hydra::store::RecordStore store(normal);
@@ -201,7 +207,7 @@ TEST_CASE("hydra_batch stamps a new database with the rule it ran under") {
     r = run_exe(box.batch, {"--legacy-fills", "--db", legacy, box.folder()});
     INFO(r.output);
     REQUIRE(r.exit_code == 0);
-    CHECK(contains(r.output, "Fill rule  : Clone Hero 1.0"));
+    CHECK(contains(r.output, "Fills      : Clone Hero 1.0"));
     CHECK(!contains(r.output, "(legacy)"));
     hydra::store::RecordStore store(legacy);
     CHECK(store.engine_mode() == std::optional<std::string>(kCh10));

@@ -223,6 +223,11 @@ struct BatchProgress {
     std::string current_title;
 };
 
+// A batch's three counts as the app's strip and hydra_batch's closing line
+// both say them: "21 analyzed · 0 failed · 1 skipped (already had a result)"
+// (D114 item 10). Each caller adds its own lead-in and ending.
+std::string batch_counts_text(int analyzed, int failed, int skipped);
+
 // The default batch pool size: one core is left for the UI (or shell) and for
 // whatever else the machine is doing; capped so peak memory (a discography
 // chart can reach hundreds of MB) stays bounded.
