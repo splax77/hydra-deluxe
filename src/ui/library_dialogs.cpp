@@ -165,7 +165,7 @@ void render_folder_manager(AppState& app) {
     // deleting a library source was previously a single un-undoable click.
     std::optional<size_t>& confirm_remove = app.library_ui.confirm_remove;
 
-    if (!ImGui::BeginPopupModal("Song folders", nullptr,
+    if (!ImGui::BeginPopupModal(kFoldersModalId, nullptr,
                                 ImGuiWindowFlags_AlwaysAutoResize)) {
         return;
     }
@@ -268,7 +268,7 @@ void render_folder_manager(AppState& app) {
 
 void render_scan_modal(AppState& app) {
     pin_next_modal_width(px(kProgressBoxWidth));
-    if (!ImGui::BeginPopupModal("Scanning charts", nullptr,
+    if (!ImGui::BeginPopupModal(kScanModalId, nullptr,
                                 ImGuiWindowFlags_AlwaysAutoResize)) {
         return;
     }
@@ -382,7 +382,7 @@ void render_batch_confirm(AppState& app) {
     ImGui::PopTextWrapPos();
     ImGui::Spacing();
 
-    const bool can_start = to_run > 0 && !app.analysis_blocked();
+    const bool can_start = to_run > 0 && app.can_analyze();
     const float start_w = button_slot_width("Start analyzing");
     const float cancel_w = button_slot_width("Cancel");
     ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - start_w - cancel_w -

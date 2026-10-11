@@ -17,6 +17,63 @@
         "        ImGui::TextColored(kWarningColor, \"%s\", app::kAnalysisOffSentence);"
       ],
       "note": "The song panel once had its own shorter sentence for a bad hydra_rules.ini. It shows the toolbar's sentence now, without the file's error, because the toolbar above already shows that. Decided by: D114 item 13, concept audit M82."
+    },
+    {
+      "question": "How is a refusal because a batch is running worded on the greyed buttons?",
+      "owner": "AppState::kBatchRunningStatus in src/ui/app_state.h",
+      "owner_file": "src/ui/app_state.h",
+      "owner_symbol": "kBatchRunningStatus",
+      "date": "2026-10-11",
+      "decision": "D114 item 12 (M81)",
+      "added_by": "concept-audit-G1",
+      "pattern": "[Bb]usy: a batch",
+      "must_match": [
+        "            ImGui::SetTooltip(\"Busy: a batch is running.\");"
+      ],
+      "must_not_match": [
+        "            ImGui::SetTooltip(\"%s\", AppState::kBatchRunningStatus);  // D114 item 12"
+      ],
+      "note": "The greyed Scan and Analyze buttons' tooltip once said 'Busy: a batch is running.' while the status line said 'A batch is running.'. Both read kBatchRunningStatus now; the ui.json row on that sentence catches a copy of it, and this row catches the old tooltip coming back. Decided by: D114 item 12, concept audit M81."
+    },
+    {
+      "question": "What id do the scan and folder modals open by?",
+      "owner": "kScanModalId and kFoldersModalId in src/ui/library_parts.h",
+      "owner_file": "src/ui/library_parts.h",
+      "owner_symbol": "kScanModalId",
+      "date": "2026-10-11",
+      "decision": "concept audit M84 (code-only)",
+      "added_by": "concept-audit-G1",
+      "pattern": "\"(Scanning charts|Song folders)\"",
+      "owner_files": ["src/ui/library_parts.h"],
+      "must_match": [
+        "        ImGui::OpenPopup(\"Scanning charts\");",
+        "    if (!ImGui::BeginPopupModal(\"Song folders\", nullptr,"
+      ],
+      "must_not_match": [
+        "        if (app.scan_job) ImGui::OpenPopup(detail::kScanModalId);",
+        "    if (!ImGui::BeginPopupModal(kFoldersModalId, nullptr,"
+      ],
+      "note": "These two modal ids cross a file boundary: the toolbar and the library view open them, library_dialogs.cpp owns them. A one-sided rename means the modal never opens, with no error. The uitests name the same labels on purpose and are outside this row's scope. Found by: concept audit M84."
+    },
+    {
+      "question": "May a batch start now (rules file good, no batch running)?",
+      "owner": "AppState::can_analyze in src/ui/app_state.cpp",
+      "owner_file": "src/ui/app_state.cpp",
+      "owner_symbol": "AppState::can_analyze",
+      "date": "2026-10-11",
+      "decision": "concept audit M80 (code-only)",
+      "added_by": "concept-audit-G1",
+      "pattern": "analysis_blocked\\(\\)[^;]*batch_(running|busy)|batch_(running\\(\\)|busy)[^;]*analysis_blocked\\(\\)",
+      "owner_files": ["src/ui/app_state.cpp"],
+      "must_match": [
+        "    const bool analyze_off = analyzable == 0 || app.analysis_blocked() || batch_busy;",
+        "    if (app.batch_running() || app.analysis_blocked()) return;"
+      ],
+      "must_not_match": [
+        "    const bool analyze_off = analyzable == 0 || !app.can_analyze();",
+        "    if (app.analysis_blocked()) {"
+      ],
+      "note": "The toolbar, the confirm and start_batch each tested the two conditions themselves. They call can_analyze now. A copy that splits the pair across two statements is not caught; the pattern catches the one-expression spelling. Found by: concept audit M80."
     }
   ]
 }

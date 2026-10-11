@@ -476,13 +476,20 @@ public:
     enum class SettingsLock { None, Batch };
     SettingsLock settings_lock() const;
     bool settings_locked() const { return settings_lock() != SettingsLock::None; }
-    // The status line's sentence when a running batch turns a request away
-    // (D51 call 24).
+    // The one sentence for a request a running batch turns away: the status
+    // line's, and the greyed Scan and Analyze buttons' tooltip (D51 call 24,
+    // D114 item 12).
     static constexpr const char* kBatchRunningStatus = "A batch is running.";
     // Whether a library scan may start now: there are song folders, no scan
     // job is held (its modal is still up until Continue), and no batch is
     // running. start_scan enforces it; the toolbar button reads it.
     bool can_scan() const;
+    // Whether a batch may start now, whatever it would cover: hydra_rules.ini
+    // is good and no batch is running. start_batch enforces it; the toolbar's
+    // Analyze button and the confirm's Start read it. Each screen asks its own
+    // "is there anything to analyze?" on top, because they count different
+    // things (matched rows, rows still to do).
+    bool can_analyze() const;
     // Whether any background job is still working: the startup open, scan, batch, the click's
     // job (a waiting request included), path report, the two leaderboard jobs, and
     // the Preview's jobs. A finished job waiting to be collected counts as

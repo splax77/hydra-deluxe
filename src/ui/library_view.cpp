@@ -182,7 +182,7 @@ void render_main_window(AppState& app) {
     if (app.request_scan) {
         app.request_scan = false;
         app.start_scan();
-        if (app.scan_job) ImGui::OpenPopup("Scanning charts");
+        if (app.scan_job) ImGui::OpenPopup(detail::kScanModalId);
     }
 
     detail::render_actions_row(app);
