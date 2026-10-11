@@ -86,34 +86,38 @@ bool open_in_browser(const std::wstring& path) {
     return !copy.empty() && shell_open(copy.wstring());
 }
 
-void write_report_file(const std::filesystem::path& outpath, const std::string& html) {
-    // A reader can open the page at any moment, including while we're
-    // mid-write. To make sure they never see a half-written page, we finish
-    // writing under a temp name first and only swap it into place with one
-    // rename once it's complete.
+bool write_file_replacing(const std::filesystem::path& outpath, const std::string& bytes) {
+    // A reader can open the file at any moment, including mid-write. The
+    // bytes go to a temp name first and are swapped into place with one
+    // rename once complete. On FAT and exFAT a replacing rename is a delete
+    // and then a rename (store/upgrade_files.cpp says why the library swap
+    // cannot accept that); a stop between the two loses the old file, which
+    // is acceptable here because a report page and the settings are written
+    // again on the next save.
     std::filesystem::path tmp = outpath;
     tmp += ".tmp";
-    const auto cannot_write = [&outpath] {
-        return KindedError(ErrorKind::ReportWrite, "cannot write " + outpath.u8string());
-    };
+    std::error_code ec;
 
     std::ofstream f(os_path(tmp), std::ios::binary | std::ios::trunc);
-    if (!f) throw cannot_write();
-    f << html;
+    if (!f) return false;
+    f << bytes;
     f.close();
     if (!f) {
-        std::error_code ec;
         std::filesystem::remove(os_path(tmp), ec);
-        throw cannot_write();
+        return false;
     }
+    std::filesystem::rename(os_path(tmp), os_path(outpath), ec);
+    if (ec) {
+        std::error_code ignored;
+        std::filesystem::remove(os_path(tmp), ignored);
+        return false;
+    }
+    return true;
+}
 
-    try {
-        std::filesystem::rename(os_path(tmp), os_path(outpath));
-    } catch (const std::filesystem::filesystem_error&) {
-        std::error_code ec;
-        std::filesystem::remove(os_path(tmp), ec);
-        throw cannot_write();
-    }
+void write_report_file(const std::filesystem::path& outpath, const std::string& html) {
+    if (!write_file_replacing(outpath, html))
+        throw KindedError(ErrorKind::ReportWrite, "cannot write " + outpath.u8string());
 }
 
 }  // namespace hydra::app

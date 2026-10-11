@@ -7,10 +7,14 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <variant>
+
+#include "app/report_files.h"  // write_file_replacing
 
 #include "core/model.h"
 #include "core/strutil.h"
@@ -216,9 +220,9 @@ Settings Settings::load_file(const std::string& path) {
 bool Settings::save() const { return save_file(ini_path()); }
 
 bool Settings::save_file(const std::string& path) const {
-    std::ofstream f(os_path(path), std::ios::trunc);
-    if (!f) return false;
-
+    // Built in memory, then saved through write_file_replacing (D114 item 20),
+    // so a stopped write leaves the old file whole.
+    std::ostringstream f;
     for (const Key& k : keys()) {
         if (auto b = std::get_if<bool Settings::*>(&k.member)) {
             f << k.name << "=" << (this->**b ? 1 : 0) << "\n";
@@ -236,7 +240,7 @@ bool Settings::save_file(const std::string& path) const {
                 f << k.name << "=" << item << "\n";
         }
     }
-    return f.good();
+    return write_file_replacing(std::filesystem::u8path(path), f.str());
 }
 
 int Settings::clamp(int Settings::* field, int value) {

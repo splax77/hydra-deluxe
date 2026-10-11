@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <optional>
@@ -597,6 +598,20 @@ TEST_CASE("to_analysis_settings maps depth_mode onto the search's enum") {
 
     s.depth_mode = 7;  // out of range: falls back to scores, never a bad enum
     CHECK(s.to_analysis_settings().depth_mode == hydra::DepthMode::Scores);
+}
+
+// save_file goes through write_file_replacing (D114 item 20): a second save
+// replaces the first whole and leaves no .tmp beside it.
+TEST_CASE("save_file replaces the settings file through a temp and a rename") {
+    const std::string path = testtemp::temp_path("settings_replace", ".ini");
+    Settings s;
+    s.sp_cap = 6;
+    REQUIRE(s.save_file(path));
+    s.sp_cap = 3;
+    REQUIRE(s.save_file(path));
+    CHECK(Settings::load_file(path).sp_cap == 3);
+    CHECK_FALSE(std::filesystem::exists(path + ".tmp"));
+    std::remove(path.c_str());
 }
 
 // The lens files a result by the unit the search ran with (search_depth_mode),

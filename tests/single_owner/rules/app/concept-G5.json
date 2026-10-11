@@ -1,0 +1,31 @@
+{
+  "rules": [
+    {
+      "question": "How is a file written so a reader never sees half of it?",
+      "owner": "write_file_replacing in src/app/report_files.cpp",
+      "owner_file": "src/app/report_files.cpp",
+      "owner_symbol": "write_file_replacing",
+      "date": "2026-10-11",
+      "decision": "D114 item 20 (M74)",
+      "added_by": "concept-audit-G5",
+      "pattern": "\\bios(_base)?::trunc\\b",
+      "must_match": [
+        "std::ofstream f(os_path(path), std::ios::trunc);"
+      ],
+      "must_not_match": [
+        "std::ofstream f(os_path(path), std::ios::binary);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/report_files.cpp",
+          "line_text": "std::ofstream f(os_path(tmp), std::ios::binary | std::ios::trunc);",
+          "why": "write_file_replacing, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A file opened with trunc is written in place, so a stop mid-write leaves half a file. Shipped code writes through write_file_replacing instead; the library file swap (store/upgrade_files.cpp) has its own renames and recovery and opens nothing with trunc. Decided by: D114 item 20, concept audit M74."
+    }
+  ]
+}
