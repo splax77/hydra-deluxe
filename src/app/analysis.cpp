@@ -46,12 +46,11 @@ namespace {
 // nested under `base` (or equal to it). Falls back to the raw target for any
 // path that isn't, which discover_charts's own walk never produces.
 std::string relpath(const std::string& target, const std::string& base) {
-    std::string t = target, b = base;
-    while (!t.empty() && (t.back() == '\\' || t.back() == '/')) t.pop_back();
-    while (!b.empty() && (b.back() == '\\' || b.back() == '/')) b.pop_back();
+    const std::string t = trim_trailing_separators(target);
+    const std::string b = trim_trailing_separators(base);
     if (t == b) return ".";
     if (t.size() > b.size() && t.compare(0, b.size(), b) == 0 &&
-        (t[b.size()] == '\\' || t[b.size()] == '/'))
+        is_path_separator(t[b.size()]))
         return t.substr(b.size() + 1);
     return t;
 }

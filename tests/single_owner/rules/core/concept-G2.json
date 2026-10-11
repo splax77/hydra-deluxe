@@ -1,0 +1,36 @@
+{
+  "rules": [
+    {
+      "question": "Which characters separate a path's parts?",
+      "owner": "is_path_separator in src/core/winstr.cpp",
+      "owner_file": "src/core/winstr.cpp",
+      "owner_symbol": "is_path_separator",
+      "date": "2026-10-11",
+      "decision": "concept audit M75 (code-only)",
+      "added_by": "concept-G2",
+      "pattern": "==\\s*'\\\\\\\\'\\s*\\|\\|",
+      "scope": ["src"],
+      "owner_lines": [
+        {
+          "file": "src/core/winstr.cpp",
+          "line_text": "return c == '\\\\' || c == '/';",
+          "why": "the owner's own body"
+        },
+        {
+          "file": "src/core/winstr.cpp",
+          "line_text": "return (last == '\\\\' || last == '/') ? folder + name : folder + \"\\\\\" + name;",
+          "why": "join_folder, beside the owner in the same file; rules/core.json quotes this line as join_folder's owner line, so it keeps its own spelling"
+        }
+      ],
+      "must_match": [
+        "while (!t.empty() && (t.back() == '\\\\' || t.back() == '/')) t.pop_back();",
+        "return (last == '\\\\' || last == '/') ? folder + name : folder + \"\\\\\" + name;"
+      ],
+      "must_not_match": [
+        "while (!path.empty() && is_path_separator(path.back())) path.pop_back();",
+        "if (c == '\\\\') c = '/';"
+      ],
+      "note": "M75 found the trailing-separator trim spelled three times (parent_folder once, relpath twice) and the separator test twice more. trim_trailing_separators and is_path_separator in core/winstr now own them. base_name in preview_source.cpp keeps its own find_last_of cut: its callers never pass a trailing separator. Decided by: concept audit M75 (code-only, 2026-10-11)"
+    }
+  ]
+}

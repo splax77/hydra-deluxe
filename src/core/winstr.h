@@ -57,6 +57,14 @@ std::wstring shell_path(const std::wstring& path);
 // an error code. The one place that reads that documented rule.
 bool shell_execute_ok(void* shell_execute_result);
 
+// Whether c separates a path's parts. The one place Hydra's path helpers
+// decide which characters do.
+bool is_path_separator(char c);
+
+// The path without any separators (is_path_separator) at its end. "C:\a\b\"
+// gives "C:\a\b"; a path of only separators gives an empty string.
+std::string trim_trailing_separators(std::string path);
+
 // A path's parent folder: trailing slashes or backslashes are dropped, then
 // the path is cut at its last one. Empty when no separator is left (a bare
 // name, or an empty path). "C:\a\b\" gives "C:\a", as the library scan has

@@ -144,6 +144,14 @@ TEST_CASE("file_size_bytes matches a small file's bytes and throws for a missing
 }
 
 // Finding 251's table, the rule the scan's stored rootfolder has always used.
+TEST_CASE("trim_trailing_separators: drops every slash or backslash at the end, and only there") {
+    CHECK(hydra::trim_trailing_separators("C:\\a\\b\\") == "C:\\a\\b");
+    CHECK(hydra::trim_trailing_separators("C:\\a/b/\\/") == "C:\\a/b");
+    CHECK(hydra::trim_trailing_separators("C:\\a\\b") == "C:\\a\\b");
+    CHECK(hydra::trim_trailing_separators("\\\\").empty());
+    CHECK(hydra::trim_trailing_separators("").empty());
+}
+
 TEST_CASE("parent_folder: a file's folder, a trailing slash's parent, and empty for a bare name") {
     CHECK(hydra::parent_folder("C:\\a\\b\\notes.mid") == "C:\\a\\b");
     CHECK(hydra::parent_folder("C:\\a\\b\\") == "C:\\a");
