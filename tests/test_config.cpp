@@ -19,7 +19,7 @@
 #include "core/version.h"
 #include "core/winstr.h"
 #include "scratch_paths.h"
-#include "search/pather.h"  // settings_key
+#include "search/pather.h"  // kDefaultDepthValue, SearchSettings
 #include "store/record_store.h"  // CapQuery, Lens
 #include "temp_util.h"
 #include "ui/library_parts.h"  // settings_at_defaults, settings_changes_summary
@@ -644,7 +644,6 @@ TEST_CASE("settings reset: puts back each panel setting and keeps the rest") {
     CHECK(r.lens() == d.lens());
     const hydra::app::AnalysisSettings ra = r.to_analysis_settings();
     const hydra::app::AnalysisSettings da = d.to_analysis_settings();
-    CHECK(hydra::settings_key(ra) == hydra::settings_key(da));
     CHECK(ra.prodrums == da.prodrums);
     CHECK(ra.bass2x == da.bass2x);
     CHECK(ra.noteshuffle == da.noteshuffle);

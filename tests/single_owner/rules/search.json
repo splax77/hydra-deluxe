@@ -432,28 +432,6 @@
       "note": "Decided by: audit finding 284; phase 6 task J4-1 (D53, D54); D85"
     },
     {
-      "question": "Which settings change a stored analysis?",
-      "owner": "settings_key in src/search/pather.cpp",
-      "owner_file": "src/search/pather.cpp",
-      "owner_symbol": "settings_key",
-      "date": "2026-10-05",
-      "decision": "D53, D54",
-      "added_by": "J4-1",
-      "pattern": "\\bs\\.legacy_fill_deadline\\s*<<|\\brules\\.fingerprint\\(\\)\\s*<<",
-      "must_match": [
-        "k << s.legacy_fill_deadline << '|' << s.rules.fingerprint() << '|';"
-      ],
-      "must_not_match": [
-        "<< static_cast<int>(settings.difficulty) << '|' << hydra::settings_key(settings);",
-        "<< rules.fingerprint();"
-      ],
-      "scope": [
-        "tests",
-        "tools"
-      ],
-      "note": "A key streamed field by field. The owner is in src, so no line in scope is an owner line. Decided by: audit finding 275; phase 6 task J4-1 (D53, D54)"
-    },
-    {
       "question": "Does this path need any timing, and what is the all-0 list's 0 ms limit?",
       "owner": "allzero_options in src/search/pather.cpp (the 0 ms limit) and Path::needs_timing in src/core/model.cpp (the zero test)",
       "owner_file": "src/search/pather.cpp",

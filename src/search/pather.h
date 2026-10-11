@@ -43,11 +43,6 @@ struct SearchSettings {
     core::Rules rules = core::default_rules();
 };
 
-// The settings as one line of text, naming every field that changes a stored
-// analysis. The test cache (corpus::analyzed) keys its analyses by it. A new
-// SearchSettings field that changes the result must be added here.
-std::string settings_key(const SearchSettings& settings);
-
 // A points band wide enough to keep every path: a real chart scores a few
 // million at most. The band is compared as `score + depth_value < best` in
 // int64 arithmetic, so it cannot overflow. search_target uses it, and so do

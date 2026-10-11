@@ -209,6 +209,23 @@ inline std::string first_chart_without_notes(hydra::Difficulty difficulty) {
     return detail::first_chart_where(difficulty, false);
 }
 
+// The search settings as one line of text, naming every field that changes a
+// stored analysis: the key `analyzed` caches by. The app's own key is
+// store::Lens (Settings::lens); this is test support only. A new
+// SearchSettings field that changes the result must be added here, and the
+// "every field moves it" case in test_engine_sweeps.cpp pins that.
+inline std::string settings_key(const hydra::SearchSettings& s) {
+    std::ostringstream k;
+    k.precision(17);
+    k << s.sp_cap << '|';
+    k << static_cast<int>(s.depth_mode) << '|' << s.depth_value << '|';
+    if (s.ms_filter) k << *s.ms_filter;
+    else k << "none";
+    k << '|';
+    k << s.legacy_fill_deadline << '|' << s.rules.fingerprint() << '|';
+    return k.str();
+}
+
 // One corpus chart analyzed under `settings`, once per run: the record
 // analyze_chart_file would return (parsed with settings.prodrums, bass2x,
 // difficulty and rules, checked with require_notes, then analyze_chart).
@@ -219,7 +236,7 @@ inline const hydra::HydraRecord& analyzed(const std::string& path,
     static std::map<std::string, detail::Outcome<hydra::HydraRecord>> cache;
     std::ostringstream key;
     key << path << '|' << settings.prodrums << '|' << settings.bass2x << '|'
-        << static_cast<int>(settings.difficulty) << '|' << hydra::settings_key(settings);
+        << static_cast<int>(settings.difficulty) << '|' << settings_key(settings);
     auto [it, fresh] = cache.try_emplace(key.str());
     detail::Outcome<hydra::HydraRecord>& o = it->second;
     if (fresh) {

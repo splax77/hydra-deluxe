@@ -543,12 +543,13 @@ TEST_CASE("allzero_options: no skips, a hard 0 ms limit, everything else default
     CHECK_FALSE(z.target_act_ticks.has_value());
 }
 
-// The test cache keys a stored analysis by settings_key. The default's text is
-// pinned from one run, so the key's shape cannot drift, and each SearchSettings
-// field must move it, so a field left out of the key shows up here.
+// The test cache keys a stored analysis by corpus::settings_key. The default's
+// text is pinned from one run, so the key's shape cannot drift, and each
+// SearchSettings field must move it, so a field left out of the key shows up
+// here.
 TEST_CASE("settings_key: the text for SearchSettings{} is pinned, and every field moves it") {
     const SearchSettings plain{};
-    const std::string key = settings_key(plain);
+    const std::string key = corpus::settings_key(plain);
     CHECK(key == "4|0|4|none|0|8129816903421021426|");
 
     std::vector<SearchSettings> changed(6, plain);
@@ -560,7 +561,7 @@ TEST_CASE("settings_key: the text for SearchSettings{} is pinned, and every fiel
     changed[5].rules.max_tied_paths += 1;
     for (size_t i = 0; i < changed.size(); ++i) {
         INFO("changed field " << i);
-        CHECK(settings_key(changed[i]) != key);
+        CHECK(corpus::settings_key(changed[i]) != key);
     }
 }
 
