@@ -215,8 +215,8 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
           "x0.95 (early) at SqIn 2's SP end.");
 }
 
-// D17.
-TEST_CASE("kTransferScaleHint names the note SP is measured from") {
+// D17 (wording since rewritten to the tooltip style the user approved on 2026-10-10).
+TEST_CASE("kTransferScaleHint explains the measure scaling") {
     CHECK(std::string(kTransferScaleHint) ==
           "Star Power length is counted in measures, not milliseconds. Where measures at the SP "
           "end last a different time than at the activation, only part of your activation "
