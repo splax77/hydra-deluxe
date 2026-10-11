@@ -6,4 +6,6 @@ These are disassembly listings of Clone Hero 1.1.0.6142's `GameAssembly.dll`, ma
 
 Two scripts from the same day check the facts against `testdata`. `midlanes.py <notes.mid>` prints a .mid's lane notes (pitch 126 or 127) and the Expert pads after the first one. `lanediff.py <folder>` lists every lane where the game's pad rule and Onyx's differ (4 of 50 in `testdata`). Run them with `py -I`.
 
-The listing of the .mid reader's lane case (around RVA 0x2156990) was not kept.
+The listing of the .mid reader's lane case (around RVA 0x2156990) was not kept in the first pass. The second pass saved it as `play/f2155200_mid_reader_lane_case.asm`.
+
+`FINDINGS-play-time.md` is what the game does with lanes during play (miss-to-hit grants, the double-lane combo timer, hit timing). Its listings and scripts are in `play/`.
