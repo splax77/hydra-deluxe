@@ -52,8 +52,8 @@ deactivation edge's destination tick, or the Star Power end it tracked when
 Star Power outlasted the chart. Blob format version 4 stores it. Path node
 payload version 2 carries the new activation layout.
 
-`activation_deact_tick()` was kept for a while as a wrapper that returned the
-field and nothing else; it is gone too, and callers read
+A free-function wrapper that returned the field and nothing else was kept for
+a while; it is gone too, and callers read
 `Activation::deact_tick()` directly. `deact_tick_from_rows()` and
 `deact_tick_for()` are gone.
 
