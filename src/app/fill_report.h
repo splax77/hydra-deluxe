@@ -24,6 +24,22 @@
 
 namespace hydra::app::fill_report {
 
+// The six statuses a row can carry. collect_fill_rows writes them,
+// tally_fill_rows counts by them, and the page's dropdown, chips and tiles
+// read them through the STATUS object build_fill_html writes into the script.
+inline constexpr const char* kStatusSame = "same";
+inline constexpr const char* kStatusOldHigher = "1.0 higher";
+inline constexpr const char* kStatusNewHigher = "1.1 higher";
+inline constexpr const char* kStatusOnlyOld = "only 1.0";
+inline constexpr const char* kStatusOnlyNew = "only 1.1";
+// A record on each side but not a score on each: one side scored, or
+// neither kept a path.
+inline constexpr const char* kStatusInBoth = "in both";
+
+// What the subtitle calls the kStatusInBoth charts; the tile reads it with a
+// capital (D114 item 2).
+inline constexpr const char* kInBothPhrase = "in both, not both scored";
+
 // One table row: one chart as both databases scored it. Every score field is
 // optional because a chart may be stored in only one of the two.
 struct FillCompareRow {
@@ -33,9 +49,7 @@ struct FillCompareRow {
     std::string old_path, new_path;
     std::optional<int> old_acts, new_acts;
     std::optional<int> notes;
-    // "same" | "1.0 higher" | "1.1 higher" | "only 1.0" | "only 1.1" |
-    // "in both" (a record on each side, a score on one only).
-    // Exact literals: tally_fill_rows and the page's chip colors compare them.
+    // One of the kStatus* constants above.
     std::string status;
     // How many library rows the chart counts as, from the 1.1 database's
     // library (D79 item 3): what tally_fill_rows and the page's tiles add up.

@@ -299,7 +299,7 @@ TEST_CASE("collect_fill_rows: copies come from the 1.1 library, an unlisted char
     CHECK(result.html.find(
               "4 charts in Expert Pro Drums, 2x Bass: 2 score higher under 1.1, "
               "0 higher under 1.0, 0 unchanged, 2 in one database only, "
-              "0 with a score on one side only") != std::string::npos);
+              "0 in both, not both scored") != std::string::npos);
     CHECK(result.html.find("{\"k\":2,") != std::string::npos);
 }
 
@@ -330,10 +330,18 @@ TEST_CASE("fill page: the tiles add up the copies tally_fill_rows adds up") {
     CHECK(st.in_both == 6);
 
     const std::string html = app::fill_report::build_fill_html(rows, "sub", "foot");
+    // The script's STATUS object carries fill_report.h's six words, and the
+    // tiles count by its names.
+    CHECK(html.find("const STATUS = {sameScore: \"same\", oldHigher: \"1.0 higher\", "
+                    "newHigher: \"1.1 higher\", onlyOld: \"only 1.0\", onlyNew: \"only 1.1\", "
+                    "inBoth: \"in both\"};") != std::string::npos);
     for (size_t i = 0; i < statuses.size(); ++i) {
         CAPTURE(statuses[i]);
         CHECK(html.find("{\"k\":" + std::to_string(i + 1) + ",") != std::string::npos);
-        CHECK(html.find("n('" + statuses[i] + "')") != std::string::npos);
+    }
+    for (const char* name : {"sameScore", "oldHigher", "newHigher", "onlyOld", "onlyNew", "inBoth"}) {
+        CAPTURE(name);
+        CHECK(html.find(std::string("n(STATUS.") + name + ")") != std::string::npos);
     }
     CHECK(html.find("const charts = rs => rs.reduce((a, r) => a + r.k, 0);") !=
           std::string::npos);
@@ -348,11 +356,11 @@ TEST_CASE("fill page: the tiles add up the copies tally_fill_rows adds up") {
     CHECK(html.find("const charts = ", defined + 1) == std::string::npos);
     CHECK(html.find("  count: charts,\n") != std::string::npos);
     CHECK(html.find("const countOf = PAGE.count || (rs => rs.length);") != std::string::npos);
-    CHECK(html.find("fmt(countOf(rows)) + ' of ' + fmt(countOf(ROWS)) + ' ' + PAGE.noun;") !=
-          std::string::npos);
+    CHECK(html.find("fmt(countOf(rows)) + ' of ' + PAGE.total;") != std::string::npos);
+    CHECK(html.find("  total: \"21 charts\",\n") != std::string::npos);
     // No status counted on the page that the C++ never assigns.
     size_t counted = 0;
-    for (const char* call : {"(n('", " n('"})
+    for (const char* call : {"(n(STATUS.", " n(STATUS."})
         for (size_t at = html.find(call); at != std::string::npos; at = html.find(call, at + 1))
             ++counted;
     CHECK(counted == statuses.size());
@@ -400,18 +408,56 @@ TEST_CASE("build_fill_html substitutes every placeholder") {
     CHECK(html.find("'+' + r.delta.toLocaleString()") == std::string::npos);
 }
 
+// D114 item 3: each text column carries the windows' folded sort text, and
+// the script compares those fields as they are, with no browser collation.
+TEST_CASE("build_fill_html: text columns sort on the windows' folded text") {
+    FillCompareRow r;
+    r.song = "\xC3\x89tude";  // Étude
+    r.artist = "ABBA";
+    r.charter = "Me";
+    r.old_path = "0 1 3 0+";
+    r.new_path = "0 1 3 0- 0";
+    r.status = app::fill_report::kStatusSame;
+    const std::string html = app::fill_report::build_fill_html({r}, "sub", "foot");
+    CHECK(html.find(",\"song_s\":\"etude\",\"artist_s\":\"abba\",\"charter_s\":\"me\","
+                    "\"p10_s\":\"0 1 3 0+\",\"p11_s\":\"0 1 3 0- 0\",\"status_s\":\"same\"}") !=
+          std::string::npos);
+    for (const char* sort : {"sort:'song_s'", "sort:'artist_s'", "sort:'charter_s'",
+                             "sort:'p10_s'", "sort:'p11_s'", "sort:'status_s'"}) {
+        CAPTURE(sort);
+        CHECK(html.find(sort) != std::string::npos);
+    }
+    CHECK(html.find("localeCompare") == std::string::npos);
+    CHECK(html.find("const field = COLS.find(c => c.k === sortKey).sort || sortKey;") !=
+          std::string::npos);
+}
+
+// D114 item 4: one chart reads "1 of 1 chart", as the windows' count lines do.
+TEST_CASE("build_fill_html: the count line's total is singular at one chart") {
+    FillCompareRow r;
+    r.status = app::fill_report::kStatusSame;
+    r.copies = 1;
+    const std::string one = app::fill_report::build_fill_html({r}, "sub", "foot");
+    CHECK(one.find("  total: \"1 chart\",\n") != std::string::npos);
+    CHECK(one.find("__COUNT_TOTAL__") == std::string::npos);
+    CHECK(one.find("PAGE.noun") == std::string::npos);
+    r.copies = 1000;
+    const std::string many = app::fill_report::build_fill_html({r}, "sub", "foot");
+    CHECK(many.find("  total: \"1,000 charts\",\n") != std::string::npos);
+}
+
 TEST_CASE("build_fill_html colours and sums the delta from the status") {
     // collect_fill_rows already decided which side is higher when it set the
     // row's status; the cell's colour, its "+" and the gains and losses tiles
     // read that answer instead of testing the delta's sign again.
     const std::string html = app::fill_report::build_fill_html({}, "sub", "foot");
-    CHECK(html.find("r.status === '1.1 higher'") != std::string::npos);
-    CHECK(html.find("r.status === '1.0 higher'") != std::string::npos);
-    CHECK(html.find("(r.status === '1.1 higher' ? '+' : '') + fmt(r.delta)") !=
+    CHECK(html.find("r.status === STATUS.newHigher") != std::string::npos);
+    CHECK(html.find("r.status === STATUS.oldHigher") != std::string::npos);
+    CHECK(html.find("(r.status === STATUS.newHigher ? '+' : '') + fmt(r.delta)") !=
           std::string::npos);
-    CHECK(html.find("const gains = rows.filter(r => r.status === '1.1 higher')") !=
+    CHECK(html.find("const gains = rows.filter(r => r.status === STATUS.newHigher)") !=
           std::string::npos);
-    CHECK(html.find("const losses = rows.filter(r => r.status === '1.0 higher')") !=
+    CHECK(html.find("const losses = rows.filter(r => r.status === STATUS.oldHigher)") !=
           std::string::npos);
     CHECK(html.find("r.delta > 0 ?") == std::string::npos);
     CHECK(html.find("r.delta < 0 ?") == std::string::npos);
@@ -538,13 +584,16 @@ TEST_CASE("collect_fill_rows: a record on both sides with a score on one is in b
     CHECK(app::fill_report::tally_fill_rows(rows).in_both == 1);
     const std::string html = app::fill_report::build_fill_html(rows, "sub", "foot");
     CHECK(html.find("<option value=\"in both\">In both</option>") != std::string::npos);
+    CHECK(html.find("__ST_") == std::string::npos);
     CHECK(html.find("'no paths'") != std::string::npos);
     CHECK(html.find("'no score'") == std::string::npos);
 }
 
 TEST_CASE("generate_fill_report: a score on one side only is counted, and the parts add up") {
-    // D52: the subtitle and the tiles count the "in both" rows as charts with
-    // a score on one side only, so every chart lands in exactly one part.
+    // The subtitle and the tiles count the "in both" rows as one part, so
+    // every chart lands in exactly one part. D114 item 2 words that part "in
+    // both, not both scored" (it was D52's "a score on one side only", which
+    // a chart with no paths on either side made false).
     constexpr const char* kOneSided = "dd44ee55ff6677889900aa11bb22cc33";
     store::RecordStore old_store(":memory:");
     store::RecordStore new_store(":memory:");
@@ -571,12 +620,13 @@ TEST_CASE("generate_fill_report: a score on one side only is counted, and the pa
     CHECK(result.html.find(
               "4 charts in Expert Pro Drums, 2x Bass: 1 score higher under 1.1, "
               "0 higher under 1.0, 0 unchanged, 2 in one database only, "
-              "1 with a score on one side only") != std::string::npos);
+              "1 in both, not both scored") != std::string::npos);
     // The tiles get a matching one after "Only one side", counted from the
     // rows the table shows, like the tiles before it.
-    CHECK(result.html.find("['Only one side', fmt(n('only 1.0') + n('only 1.1'))],\n"
-                           "      ['Score on one side only', fmt(n('in both'))],") !=
+    CHECK(result.html.find("['Only one side', fmt(n(STATUS.onlyOld) + n(STATUS.onlyNew))],\n"
+                           "      [\"In both, not both scored\", fmt(n(STATUS.inBoth))],") !=
           std::string::npos);
+    CHECK(result.html.find("Score on one side only") == std::string::npos);
 }
 
 // ---- results the library doesn't list (D92) ---------------------------------

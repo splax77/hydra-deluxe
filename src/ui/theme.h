@@ -87,7 +87,8 @@ inline const ImVec4 kProblemStripBg{58 / 255.0f, 38 / 255.0f, 18 / 255.0f, 1.0f}
 // The colour a report window's chip is drawn in, its outline and its words
 // both: the path report's Timing chips and the comparison's Status chips
 // (report::tier_token and dm_report::status_token pick the token). The one
-// home of the chip colours.
+// home of which colour each token takes; the tier colours themselves are
+// app/html_page.h's kChipRgb*, shared with the fill page.
 ImVec4 chip_color(app::report::ChipToken token);
 
 // Applies the app-wide accent (teal buttons/headers, matching

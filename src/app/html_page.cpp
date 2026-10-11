@@ -114,7 +114,9 @@ const char* const kEnd = "</body>\n</html>\n";
 
 }  // namespace
 
-const char* const kReportCss = R"css(:root {
+namespace {
+
+const char* const kReportCssTemplate = R"css(:root {
   color-scheme: light dark;
   --paper: #faf9f7;
   --surface: #ffffff;
@@ -134,8 +136,8 @@ const char* const kReportCss = R"css(:root {
     --paper: #101219; --surface: #171a22; --raised: #1e222c;
     --ink: #e9e7e2; --muted: #8f95a1; --rule: #282d39;
     --sp: #f0b429; --sp-soft: #3a2e12;
-    --t0: #4fbf94; --t3: #f2686b;
-    --tn: #949aa6;
+    --t0: __CHIP_T0__; --t3: __CHIP_T3__;
+    --tn: __CHIP_TN__;
     --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
   }
 }
@@ -257,9 +259,10 @@ td.path { max-width: 230px; }
   font-size: 11px; font-weight: 600; letter-spacing: .01em;
   border: 1px solid currentColor;
 }
-/* "1.1 higher" is the interesting, rare case, so it gets the strong green;
-   "1.0 higher" (the common drop) is red, ties are neutral, and the two
-   one-sided statuses are muted so they read as missing data, not a result. */
+/* A gain under the new rule (s-newhigh) is the interesting, rare case, so it
+   gets the strong green; a drop (s-oldhigh, the common one) is red, ties are
+   neutral, and the one-sided statuses are muted so they read as missing
+   data, not a result. */
 .s-newhigh{color:var(--t0); border-color:var(--t0)} .s-oldhigh{color:var(--t3)} .s-same{color:var(--tn)} .s-only{color:var(--muted); border-color:transparent}
 
 .empty { padding: 40px; text-align: center; color: var(--muted); }
@@ -288,6 +291,22 @@ footer p { margin: 0 0 8px; }
   td.trunc, .song { max-width: none; white-space: normal; }
 }
 )css";
+
+std::string css_hex(uint32_t rgb) {
+    char buf[8];
+    std::snprintf(buf, sizeof(buf), "#%06x", static_cast<unsigned>(rgb & 0xffffffu));
+    return buf;
+}
+
+}  // namespace
+
+const std::string& report_css() {
+    static const std::string css = replace_all(
+        replace_all(replace_all(kReportCssTemplate, "__CHIP_T0__", css_hex(kChipRgbT0)),
+                    "__CHIP_T3__", css_hex(kChipRgbT3)),
+        "__CHIP_TN__", css_hex(kChipRgbTn));
+    return css;
+}
 
 const char* const kReportJsHead = R"js(<script id="data" type="application/json">__DATA__</script>
 <script>
@@ -329,12 +348,16 @@ function visible() {
 function render() {
   const rows = visible();
   const dir = sortDir;
+  // A text column names its sort field (`sort`): the text folded in C++ the
+  // way the windows fold it, so the order here is theirs. Equal keys keep
+  // their order.
+  const field = COLS.find(c => c.k === sortKey).sort || sortKey;
   rows.sort((a, b) => {
-    let x = a[sortKey], y = b[sortKey];
+    let x = a[field], y = b[field];
     // Nulls always sort to the bottom, whichever direction is active.
     if (x === null || x === undefined) return 1;
     if (y === null || y === undefined) return -1;
-    if (typeof x === 'string') return dir * x.localeCompare(y);
+    if (typeof x === 'string') return dir * (x < y ? -1 : (x > y ? 1 : 0));
     return dir * (x - y);
   });
 
@@ -386,8 +409,8 @@ function render() {
   const empty = document.getElementById('empty');
   empty.textContent = 'Nothing matches those filters.';
   empty.hidden = rows.length > 0;
-  document.getElementById('count').textContent =
-    fmt(countOf(rows)) + ' of ' + fmt(countOf(ROWS)) + ' ' + PAGE.noun;
+  // PAGE.total is every row's count with its noun, worded in C++.
+  document.getElementById('count').textContent = fmt(countOf(rows)) + ' of ' + PAGE.total;
 
   const el = document.getElementById('stats');
   el.textContent = '';
@@ -475,7 +498,7 @@ std::string page_template(const char* title, const char* body, const char* page_
     page += "<title>";
     page += title;
     page += "</title>\n<style>\n";
-    page += kReportCss;
+    page += report_css();
     page += "</style>\n</head>\n<body>\n";
     page += body;
     page += kReportJsHead;

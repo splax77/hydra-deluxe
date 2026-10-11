@@ -1,24 +1,35 @@
 #include "ui/theme.h"
 
+#include <cstdint>
 #include <stdexcept>
 
+#include "app/html_page.h"  // kChipRgb*
 #include "app/report.h"  // ChipToken
 
 namespace hydra::ui {
 
+namespace {
+
+ImVec4 opaque_rgb(uint32_t rgb) {
+    return ImVec4(((rgb >> 16) & 0xff) / 255.0f, ((rgb >> 8) & 0xff) / 255.0f,
+                  (rgb & 0xff) / 255.0f, 1.0f);
+}
+
+}  // namespace
+
 ImVec4 chip_color(app::report::ChipToken token) {
     using app::report::ChipToken;
-    // The tiers are the HTML pages' dark-scheme --t0 to --t5 and --tn
-    // (html_page.cpp's kReportCss), which the windows keep (D103). The dim
-    // chip is the theme's dimmed text.
+    // The tiers are html_page.h's kChipRgb* colours, which the fill page's
+    // dark scheme also reads for its --t0, --t3 and --tn (D103 kept them for
+    // the windows). The dim chip is the theme's dimmed text.
     switch (token) {
-        case ChipToken::t0: return ImVec4(0x4f / 255.0f, 0xbf / 255.0f, 0x94 / 255.0f, 1.0f);
-        case ChipToken::t1: return ImVec4(0xe0 / 255.0f, 0xb1 / 255.0f, 0x3f / 255.0f, 1.0f);
-        case ChipToken::t2: return ImVec4(0xf0 / 255.0f, 0x89 / 255.0f, 0x4e / 255.0f, 1.0f);
-        case ChipToken::t3: return ImVec4(0xf2 / 255.0f, 0x68 / 255.0f, 0x6b / 255.0f, 1.0f);
-        case ChipToken::t4: return ImVec4(0xe0 / 255.0f, 0x7a / 255.0f, 0xc0 / 255.0f, 1.0f);
-        case ChipToken::t5: return ImVec4(0xa7 / 255.0f, 0x8b / 255.0f, 0xfa / 255.0f, 1.0f);
-        case ChipToken::tn: return ImVec4(0x94 / 255.0f, 0x9a / 255.0f, 0xa6 / 255.0f, 1.0f);
+        case ChipToken::t0: return opaque_rgb(app::html::kChipRgbT0);
+        case ChipToken::t1: return opaque_rgb(app::html::kChipRgbT1);
+        case ChipToken::t2: return opaque_rgb(app::html::kChipRgbT2);
+        case ChipToken::t3: return opaque_rgb(app::html::kChipRgbT3);
+        case ChipToken::t4: return opaque_rgb(app::html::kChipRgbT4);
+        case ChipToken::t5: return opaque_rgb(app::html::kChipRgbT5);
+        case ChipToken::tn: return opaque_rgb(app::html::kChipRgbTn);
         case ChipToken::muted: return kDimTextColor;
     }
     throw std::invalid_argument("chip_color: unknown chip token");

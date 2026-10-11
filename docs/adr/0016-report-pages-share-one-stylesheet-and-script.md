@@ -15,7 +15,7 @@ the filters keep, how a row is drawn and which stats sit above the table.
 Everything else is shared: sorting, the header arrows, drawing rows, the count
 line, the stats tiles and the deferred first render.
 
-The stylesheet (`html::kReportCss`) and the script (`html::kReportJs`) live in
+The stylesheet (`html::report_css()`) and the script (`html::kReportJs`) live in
 `app/html_page.cpp`. They stay ASCII because hydra_core is not built with
 /utf-8; a glyph is an HTML entity or a `\uXXXX` escape. The comparison pages
 size a few columns differently, scoped by a class on `.wrap`. The comparison

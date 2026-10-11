@@ -1,5 +1,6 @@
 #include "app/fill_report.h"
 
+#include <cctype>
 #include <map>
 #include <unordered_map>
 #include <utility>
@@ -7,6 +8,7 @@
 #include "app/html_page.h"
 #include "app/library_query.h"  // search_field
 #include "app/report.h"  // records_by_hash
+#include "app/report_view.h"  // folded_key
 #include "core/model.h"  // group_thousands, counted
 #include "core/strutil.h"  // replace_all
 #include "parse/song.h"  // display_title, display_artist, display_charter
@@ -48,12 +50,12 @@ const char* const kBody = R"page(<div class="wrap fill">
     <input type="search" id="q" aria-label="Search charts" placeholder="Search song, artist, or charter">
     <select id="status" aria-label="Status">
       <option value="">All charts</option>
-      <option value="1.1 higher">1.1 higher</option>
-      <option value="1.0 higher">1.0 higher</option>
-      <option value="same">Same score</option>
-      <option value="only 1.0">Only in 1.0 db</option>
-      <option value="only 1.1">Only in 1.1 db</option>
-      <option value="in both">In both</option>
+      <option value="__ST_NEW_HIGHER__">1.1 higher</option>
+      <option value="__ST_OLD_HIGHER__">1.0 higher</option>
+      <option value="__ST_SAME__">Same score</option>
+      <option value="__ST_ONLY_OLD__">Only in 1.0 db</option>
+      <option value="__ST_ONLY_NEW__">Only in 1.1 db</option>
+      <option value="__ST_IN_BOTH__">In both</option>
     </select>
     <span class="count" id="count"></span>
   </div>
@@ -71,14 +73,16 @@ const char* const kBody = R"page(<div class="wrap fill">
 
 )page";
 
-const char* const kPageJs = R"page(const STATUS_CLASS = {'1.1 higher':'s-newhigh', '1.0 higher':'s-oldhigh',
-                      'same':'s-same', 'only 1.0':'s-only', 'only 1.1':'s-only',
-                      'in both':'s-only'};
+const char* const kPageJs = R"page(// STATUS: fill_report.h's kStatus* words, written in by page_template.
+const STATUS = __STATUS__;
+const STATUS_CLASS = {[STATUS.newHigher]:'s-newhigh', [STATUS.oldHigher]:'s-oldhigh',
+                      [STATUS.sameScore]:'s-same', [STATUS.onlyOld]:'s-only',
+                      [STATUS.onlyNew]:'s-only', [STATUS.inBoth]:'s-only'};
 
 // A chart in both databases whose record on one side kept no path reads "no
 // paths" on that side (D51 call 11); any other missing score reads as a dash.
 function scoreText(r, s) {
-  return s === null && r.status === 'in both' ? 'no paths' : fmt(s);
+  return s === null && r.status === STATUS.inBoth ? 'no paths' : fmt(s);
 }
 
 // How many charts a set of rows counts as: each row's library copies, "k", as
@@ -89,22 +93,23 @@ const charts = rs => rs.reduce((a, r) => a + r.k, 0);
 
 const PAGE = {
   rows: DATA,
-  noun: 'charts',
+  // Every row's copies with their noun, from counted: "1 chart", "2 charts".
+  total: __COUNT_TOTAL__,
   count: charts,
   sortKey: 'delta',
   sortDir: -1,
   cols: [
-    {k:'song',    t:'Song',        num:false},
-    {k:'artist',  t:'Artist',      num:false},
-    {k:'charter', t:'Charter',     num:false},
+    {k:'song',    t:'Song',        num:false, sort:'song_s'},
+    {k:'artist',  t:'Artist',      num:false, sort:'artist_s'},
+    {k:'charter', t:'Charter',     num:false, sort:'charter_s'},
     {k:'s10',     t:'__OLD_RULE__',      num:true},
     {k:'s11',     t:'__NEW_RULE__',      num:true},
     {k:'delta',   t:'Delta',       num:true},
-    {k:'p10',     t:'__OLD_RULE__ path', num:false},
-    {k:'p11',     t:'__NEW_RULE__ path', num:false},
+    {k:'p10',     t:'__OLD_RULE__ path', num:false, sort:'p10_s'},
+    {k:'p11',     t:'__NEW_RULE__ path', num:false, sort:'p11_s'},
     {k:'acts',    t:'Acts',        num:true},
     {k:'notes',   t:'Notes',       num:true},
-    {k:'status',  t:'Status',      num:false},
+    {k:'status',  t:'Status',      num:false, sort:'status_s'},
   ],
   controls: [['q', 'input'], ['status', 'change']],
   // The search box is matched against each row's search text in the shared
@@ -115,10 +120,10 @@ const PAGE = {
   },
   cells(r) {
     const hasDelta = r.delta !== null && r.delta !== undefined;
-    const deltaCls = !hasDelta ? 'num dim' : (r.status === '1.1 higher' ? 'num pos'
-                   : (r.status === '1.0 higher' ? 'num neg' : 'num dim'));
+    const deltaCls = !hasDelta ? 'num dim' : (r.status === STATUS.newHigher ? 'num pos'
+                   : (r.status === STATUS.oldHigher ? 'num neg' : 'num dim'));
     const deltaTxt = !hasDelta ? DASH
-                   : (r.status === '1.1 higher' ? '+' : '') + fmt(r.delta);
+                   : (r.status === STATUS.newHigher ? '+' : '') + fmt(r.delta);
     return [
       ['song trunc', r.song],
       ['dim trunc artist', r.artist],
@@ -136,15 +141,15 @@ const PAGE = {
   stats(rows) {
     const n = s => charts(rows.filter(r => r.status === s));
     // The points tiles add each chart's delta once, not once per copy (D79).
-    const gains = rows.filter(r => r.status === '1.1 higher').reduce((a, r) => a + r.delta, 0);
-    const losses = rows.filter(r => r.status === '1.0 higher').reduce((a, r) => a - r.delta, 0);
+    const gains = rows.filter(r => r.status === STATUS.newHigher).reduce((a, r) => a + r.delta, 0);
+    const losses = rows.filter(r => r.status === STATUS.oldHigher).reduce((a, r) => a - r.delta, 0);
     return [
       ['Charts', fmt(charts(rows))],
-      ['1.1 higher', fmt(n('1.1 higher'))],
-      ['1.0 higher', fmt(n('1.0 higher'))],
-      ['Same', fmt(n('same'))],
-      ['Only one side', fmt(n('only 1.0') + n('only 1.1'))],
-      ['Score on one side only', fmt(n('in both'))],
+      [STATUS.newHigher, fmt(n(STATUS.newHigher))],
+      [STATUS.oldHigher, fmt(n(STATUS.oldHigher))],
+      ['Same', fmt(n(STATUS.sameScore))],
+      ['Only one side', fmt(n(STATUS.onlyOld) + n(STATUS.onlyNew))],
+      [__IN_BOTH_TILE__, fmt(n(STATUS.inBoth))],
       ['Points gained in 1.1', fmt(gains)],
       ['Points lost in 1.1', fmt(losses)],
     ];
@@ -152,13 +157,50 @@ const PAGE = {
 };
 )page";
 
+// The kStatus* constants: each placeholder the dropdown markup carries, and
+// the name the script's STATUS object gives it.
+struct StatusSlot {
+    const char* placeholder;
+    const char* js_name;
+    const char* word;
+};
+constexpr StatusSlot kStatusSlots[] = {
+    {"__ST_SAME__", "sameScore", kStatusSame},
+    {"__ST_OLD_HIGHER__", "oldHigher", kStatusOldHigher},
+    {"__ST_NEW_HIGHER__", "newHigher", kStatusNewHigher},
+    {"__ST_ONLY_OLD__", "onlyOld", kStatusOnlyOld},
+    {"__ST_ONLY_NEW__", "onlyNew", kStatusOnlyNew},
+    {"__ST_IN_BOTH__", "inBoth", kStatusInBoth},
+};
+
 // The page shell, built once on first use. The title, heading and column
-// names read each rule's short name from fill_rule_name.
+// names read each rule's short name from fill_rule_name; the dropdown, the
+// script's STATUS and the in-both tile read fill_report.h's words.
+std::string build_page_template() {
+    std::string page = html::page_template(kTitle, kBody, kPageJs);
+    std::string status_js = "{";
+    for (const StatusSlot& s : kStatusSlots) {
+        page = replace_all(std::move(page), s.placeholder, html::html_escape(s.word));
+        if (status_js.size() > 1) status_js += ", ";
+        status_js += s.js_name;
+        status_js += ": ";
+        json_escape_into(status_js, s.word);
+    }
+    status_js += "}";
+    page = replace_all(std::move(page), "__STATUS__", status_js);
+    std::string tile = kInBothPhrase;
+    tile[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(tile[0])));
+    std::string tile_js;
+    json_escape_into(tile_js, tile);
+    page = replace_all(std::move(page), "__IN_BOTH_TILE__", tile_js);
+    page = replace_all(std::move(page), "__OLD_RULE__",
+                       fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Short));
+    return replace_all(std::move(page), "__NEW_RULE__",
+                       fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Short));
+}
+
 const std::string& page_template() {
-    static const std::string page = replace_all(
-        replace_all(html::page_template(kTitle, kBody, kPageJs), "__OLD_RULE__",
-                          fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Short)),
-        "__NEW_RULE__", fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Short));
+    static const std::string page = build_page_template();
     return page;
 }
 
@@ -230,13 +272,14 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
         if (old_scored && new_scored) {
             int64_t delta = *row.new_score - *row.old_score;
             row.delta = delta;
-            row.status = delta == 0 ? "same" : (delta > 0 ? "1.1 higher" : "1.0 higher");
+            row.status = delta == 0 ? kStatusSame
+                                    : (delta > 0 ? kStatusNewHigher : kStatusOldHigher);
         } else if (!new_rec) {
-            row.status = "only 1.0";
+            row.status = kStatusOnlyOld;
         } else if (!old_rec) {
-            row.status = "only 1.1";
+            row.status = kStatusOnlyNew;
         } else {
-            row.status = "in both";
+            row.status = kStatusInBoth;
         }
         rows.push_back(std::move(row));
     }
@@ -250,12 +293,12 @@ FillCompareStats tally_fill_rows(const std::vector<FillCompareRow>& rows) {
     FillCompareStats stats;
     for (const FillCompareRow& r : rows) {
         stats.total += r.copies;
-        if (r.status == "same") stats.same += r.copies;
-        else if (r.status == "1.0 higher") stats.ch10_higher += r.copies;
-        else if (r.status == "1.1 higher") stats.ch11_higher += r.copies;
-        else if (r.status == "only 1.0") stats.only_old += r.copies;
-        else if (r.status == "only 1.1") stats.only_new += r.copies;
-        else if (r.status == "in both") stats.in_both += r.copies;
+        if (r.status == kStatusSame) stats.same += r.copies;
+        else if (r.status == kStatusOldHigher) stats.ch10_higher += r.copies;
+        else if (r.status == kStatusNewHigher) stats.ch11_higher += r.copies;
+        else if (r.status == kStatusOnlyOld) stats.only_old += r.copies;
+        else if (r.status == kStatusOnlyNew) stats.only_new += r.copies;
+        else if (r.status == kStatusInBoth) stats.in_both += r.copies;
     }
     return stats;
 }
@@ -305,11 +348,28 @@ std::string build_fill_html(const std::vector<FillCompareRow>& rows,
         data += ",\"notes\":" + opt_num(r.notes);
         data += ",\"status\":";
         json_escape_into(data, r.status);
+        // Each text column's sort field: its text as the windows compare it
+        // (report_view::folded_key), which the page's script compares as is
+        // (D114 item 3).
+        for (const auto& [name, text] :
+             {std::pair<const char*, const std::string*>{"song_s", &r.song},
+              {"artist_s", &r.artist}, {"charter_s", &r.charter}, {"p10_s", &r.old_path},
+              {"p11_s", &r.new_path}, {"status_s", &r.status}}) {
+            data += ",\"";
+            data += name;
+            data += "\":";
+            json_escape_into(data, std::get<std::string>(
+                                       report_view::folded_key(report_view::SortKey{*text})));
+        }
         data.push_back('}');
     }
     data.push_back(']');
-    return html::render_page(page_template().c_str(), std::move(data), subtitle,
-                             footer);
+    // The count line's total, worded by counted so one chart reads "1 of 1
+    // chart" (D114 item 4).
+    std::string total;
+    json_escape_into(total, counted(tally_fill_rows(rows).total, "chart", "charts"));
+    const std::string page = replace_all(page_template(), "__COUNT_TOTAL__", total);
+    return html::render_page(page.c_str(), std::move(data), subtitle, footer);
 }
 
 GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
@@ -342,8 +402,7 @@ GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
         group_thousands(out.stats.ch10_higher) + " higher under 1.0, " +
         group_thousands(out.stats.same) + " unchanged, " +
         group_thousands(out.stats.only_old + out.stats.only_new) +
-        " in one database only, " + group_thousands(out.stats.in_both) +
-        " with a score on one side only";
+        " in one database only, " + group_thousands(out.stats.in_both) + " " + kInBothPhrase;
     std::string footer =
         "A drum fill only appears if your Star Power meter filled up in time. " +
         fill_rule_description(FillDeadlineRule::Ch10) + " " +

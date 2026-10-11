@@ -67,7 +67,7 @@ TEST_CASE("write_report_file swaps the page in and leaves no .tmp behind") {
 
 TEST_CASE("the fill page carries the shared stylesheet and script") {
     const std::string fill = fill_report::build_fill_html({}, "sub", "foot");
-    CHECK(fill.find(html::kReportCss) != std::string::npos);
+    CHECK(fill.find(html::report_css()) != std::string::npos);
     CHECK(fill.find(html::kReportJs) != std::string::npos);
     // Rules no page used, and the theme switch nothing ever sets, are gone.
     CHECK(fill.find(".delta {") == std::string::npos);
@@ -260,7 +260,7 @@ TEST_CASE("the fill page is a standards-mode document") {
 }
 
 TEST_CASE("report colours meet WCAG contrast in both themes") {
-    const std::string css = html::kReportCss;
+    const std::string css = html::report_css();
     const std::map<std::string, std::string> light = css_tokens(css, 0);
     const std::map<std::string, std::string> dark =
         css_tokens(css, css.find("prefers-color-scheme: dark"));
@@ -277,10 +277,16 @@ TEST_CASE("report colours meet WCAG contrast in both themes") {
         CHECK(contrast(theme->at("sp"), theme->at("surface")) >= 3.0);
         CHECK(contrast(theme->at("sp"), theme->at("raised")) >= 3.0);
     }
+    // The dark scheme's chip colours are the windows' (html_page.h's
+    // kChipRgb*), written in when the stylesheet is built.
+    CHECK(dark.at("t0") == "#4fbf94");
+    CHECK(dark.at("t3") == "#f2686b");
+    CHECK(dark.at("tn") == "#949aa6");
+    CHECK(css.find("__CHIP_") == std::string::npos);
 }
 
 TEST_CASE("report table header sticks and the page prints") {
-    const std::string css = html::kReportCss;
+    const std::string css = html::report_css();
     const size_t at = css.find(".tablewrap {");
     REQUIRE(at != std::string::npos);
     const std::string rule = css.substr(at, css.find('}', at) - at);
@@ -305,7 +311,7 @@ TEST_CASE("report pages number their rows in a # column") {
     // The sort control and the arrows walk the sortable headers, which the #
     // one is not.
     CHECK(js.find("th.sortable") != std::string::npos);
-    CHECK(std::string(html::kReportCss).find("td.idx") != std::string::npos);
+    CHECK(std::string(html::report_css()).find("td.idx") != std::string::npos);
 }
 
 TEST_CASE("path report counts charts by hash in the Charts shown tile") {
