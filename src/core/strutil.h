@@ -62,8 +62,8 @@ bool ends_with_ci(std::string_view s, std::string_view suffix);
 // keys were written that way, so the rule stays. An empty root strips nothing.
 std::string relative_slash_path(std::string_view path, std::string_view root);
 
-// The number a chart file's text spells, read one way for every such number
-// (.chart Offset, song.ini and .sng delay): spaces at either end are allowed,
+// The number a hand-written text file spells, read one way for every such
+// number (chart and song files, and hydra_rules.ini): spaces at either end are allowed,
 // then an optional '+', then one finite decimal number and nothing else.
 // Anything else ("500ms", "0.25s", "nan", "inf", "", "0x1F4") is absent.
 // Locale-independent.

@@ -219,8 +219,8 @@ private:
     // and rebuilt from the scene's fill states and activations.
     void set_overlay_intervals(const app::PreviewScene& scene);
     // Merge the overlay's edges into the path-free instants (dropping any
-    // instant only an old overlay made), then sweep every span field. The
-    // one merge both build_track_state and rebuild_overlay_fields use.
+    // instant only an old overlay made), then sweep every span field.
+    // Only rebuild_overlay_fields calls it; build_track_state goes through that.
     void merge_overlay_edges();
     // Every instant's span fields from the intervals, in one sweep.
     void sweep_span_fields();
