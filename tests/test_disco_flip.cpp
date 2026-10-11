@@ -62,7 +62,7 @@ TEST_CASE(".mid: a disco marker flips only the difficulty it names") {
             const std::string at = std::string(difficulty_name(parsed.d)) + ", marker " +
                                    mid_on(marked.mix);
             CAPTURE(at);
-            CHECK(flipped(load_songbytes_mid(mid, true, true, parsed.d)) ==
+            CHECK(flipped(load_songbytes_mid(mid, ChartReading{parsed.d})) ==
                   (parsed.d == marked.d));
         }
     }
@@ -75,7 +75,7 @@ TEST_CASE(".chart: a section obeys only the disco marker naming its own difficul
                                    chart_on(marked.mix);
             CAPTURE(at);
             const Song song = load_songbytes_chart(
-                chart_with(parsed.section, {chart_on(marked.mix)}), true, true, parsed.d);
+                chart_with(parsed.section, {chart_on(marked.mix)}), ChartReading{parsed.d});
             CHECK(flipped(song) == (parsed.d == marked.d));
         }
     }
@@ -87,10 +87,10 @@ TEST_CASE("disco flip needs Pro Drums, in both formats and at every difficulty")
         CAPTURE(name);
         const std::vector<uint8_t> mid = mid_with({mid_on(x.mix)});
         const std::vector<uint8_t> chart = chart_with(x.section, {chart_on(x.mix)});
-        CHECK(flipped(load_songbytes_mid(mid, true, true, x.d)));
-        CHECK(flipped(load_songbytes_chart(chart, true, true, x.d)));
-        CHECK_FALSE(flipped(load_songbytes_mid(mid, false, true, x.d)));
-        CHECK_FALSE(flipped(load_songbytes_chart(chart, false, true, x.d)));
+        CHECK(flipped(load_songbytes_mid(mid, ChartReading{x.d})));
+        CHECK(flipped(load_songbytes_chart(chart, ChartReading{x.d})));
+        CHECK_FALSE(flipped(load_songbytes_mid(mid, ChartReading{x.d, false, true})));
+        CHECK_FALSE(flipped(load_songbytes_chart(chart, ChartReading{x.d, false, true})));
     }
 }
 
@@ -101,10 +101,10 @@ TEST_CASE("disco: dnoflip still closes the section (Hydra's rule, not Clone Hero
         CAPTURE(name);
         const std::string mid_off = std::string("[mix ") + x.mix + " drums0dnoflip]";
         const std::string chart_off = std::string("mix_") + x.mix + "_drums0dnoflip";
-        CHECK_FALSE(flipped(load_songbytes_mid(mid_with({mid_on(x.mix), mid_off}), true,
-                                               true, x.d)));
+        CHECK_FALSE(flipped(load_songbytes_mid(mid_with({mid_on(x.mix), mid_off}),
+                                               ChartReading{x.d})));
         CHECK_FALSE(flipped(load_songbytes_chart(
-            chart_with(x.section, {chart_on(x.mix), chart_off}), true, true, x.d)));
+            chart_with(x.section, {chart_on(x.mix), chart_off}), ChartReading{x.d})));
     }
 }
 

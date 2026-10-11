@@ -42,7 +42,7 @@ TEST_CASE("search invariants hold across the corpus and config knobs") {
     int charts = 0, mismatches = 0;
 
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true);
+        const Song& song = corpus::song(path, ChartReading{});
         if (song.is_empty()) continue;
         ++charts;
 
@@ -136,7 +136,7 @@ TEST_CASE("note total: every path of How You Remind Me stores the Song's note co
     const std::string chart = corpus::root() +
                               "/common/Summer Blast _25 Setlist/Tier 1/Nickelback - How You Remind Me/"
                               "notes.chart";
-    const Song& song = corpus::song(chart, true, true);
+    const Song& song = corpus::song(chart, ChartReading{});
     CHECK(song.note_count() == 905);
     const HydraRecord& rec = corpus::analyzed(chart, note_total_settings());
     int paths = 0;
@@ -156,12 +156,13 @@ TEST_CASE("note total: the engine, the Song and the Dynamics tab agree on every 
         for (const bool bass2x : {false, true}) {
             CAPTURE(path);
             CAPTURE(bass2x);
-            const Song& song = corpus::song(path, true, bass2x);
+            const Song& song = corpus::song(path, ChartReading{Difficulty::Expert, true, bass2x});
             if (song.is_empty()) continue;
             const int total = song.note_count();
 
             const app::DynamicsBreakdown bd =
-                app::count_dynamics(corpus::song(path, true, app::kDynamicsParseBass2x));
+                app::count_dynamics(corpus::song(
+                    path, ChartReading{Difficulty::Expert, true, app::kDynamicsParseBass2x}));
             CHECK(bd.played_total(bass2x).all() == total);
 
             app::AnalysisSettings a;
@@ -188,7 +189,7 @@ TEST_CASE("note total: the engine, the Song and the Dynamics tab agree on every 
 TEST_CASE("the graph finds the chart's multiplier squeezes once, in chart order") {
     int charts = 0, with_squeezes = 0, analyzed = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true);
+        const Song& song = corpus::song(path, ChartReading{});
         if (song.is_empty()) continue;
         ++charts;
 
@@ -228,7 +229,7 @@ TEST_CASE("legacy fill deadline analyzes a chart end to end") {
     int analyzed = 0;
 
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true);
+        const Song& song = corpus::song(path, ChartReading{});
         if (song.is_empty()) continue;
 
         std::optional<HydraRecord> legacy;
@@ -270,7 +271,7 @@ template <class Check>
 CorpusActivationRun check_every_corpus_activation(Check check) {
     CorpusActivationRun run;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true);
+        const Song& song = corpus::song(path, ChartReading{});
         if (song.is_empty()) continue;
 
         const HydraRecord* record = nullptr;
@@ -424,7 +425,7 @@ TEST_CASE("search_allzero returns only all-0 paths inside the 0 ms limit") {
     std::set<std::string> e1_charts;
 
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true);
+        const Song& song = corpus::song(path, ChartReading{});
         if (song.is_empty()) continue;
 
         ScoreGraph graph(song, 4);
@@ -477,7 +478,7 @@ TEST_CASE("score graph: the backend rows are sized once, one per chord") {
     // with one row per chord and no spare room from growing a row at a time.
     int built = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true);
+        const Song& song = corpus::song(path, ChartReading{});
         if (song.is_empty()) continue;
         const ScoreGraph graph(song, 4);
         ++built;

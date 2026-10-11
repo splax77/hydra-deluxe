@@ -43,7 +43,8 @@ TEST_CASE(".mid: practice sections from several EVENTS tracks come out in tick o
     const std::vector<uint8_t> events2 =
         concat({track_name("EVENTS"), after(960, text_event("[section Verse]")),
                 end_of_track()});
-    const Song song = load_songbytes_mid(smf_tracks({tempo, drums, events1, events2}), true, true);
+    const Song song =
+        load_songbytes_mid(smf_tracks({tempo, drums, events1, events2}), ChartReading{});
 
     REQUIRE(song.practice_sections.size() == 3);
     CHECK(song.practice_sections[0].name == "Intro");
@@ -82,8 +83,8 @@ TEST_CASE(".chart: a modifier with no note under it is skipped") {
         "  768 = N 2 0\n  768 = N 66 0\n";
     const std::vector<uint8_t> data =
         testchart::chart_bytes(testchart::section("ExpertDrums", drums));
-    REQUIRE_NOTHROW(load_songbytes_chart(data, true, true));
-    const Song song = load_songbytes_chart(data, true, true);
+    REQUIRE_NOTHROW(load_songbytes_chart(data, ChartReading{}));
+    const Song song = load_songbytes_chart(data, ChartReading{});
     REQUIRE(song.sequence.size() == 2);
     CHECK(song.sequence[0].chord.code() == ".n...");
     CHECK(song.sequence[1].timecode.ticks() == 768);
@@ -109,7 +110,7 @@ TEST_CASE(".chart: an Offset that is not a plain number is absent") {
         return load_songbytes_chart(
                    testchart::chart_bytes(testchart::section("ExpertDrums", "  0 = N 1 0\n"), 192,
                                           "  Offset = " + text + "\n"),
-                   true, true)
+                   ChartReading{})
             .chart_offset_s;
     };
     CHECK(offset("0.25") == 0.25);
@@ -146,7 +147,7 @@ TEST_CASE(".chart: malformed lines keep their handling") {
     const std::string sync = "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n";
     auto parse = [](const std::string& text) {
         const std::vector<uint8_t> data(text.begin(), text.end());
-        return load_songbytes_chart(data, true, true);
+        return load_songbytes_chart(data, ChartReading{});
     };
 
     // A blank line outside a section is not a header: the chart is refused.

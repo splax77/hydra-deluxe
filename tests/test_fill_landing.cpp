@@ -36,7 +36,7 @@ int64_t chart_landing(int64_t res, int64_t after,
                            line(0, "N 1 0") + line(2 * res, "S 64 " + std::to_string(2 * res)) +
                                line(3 * res, "N 1 0") + line(4 * res + after, "N 1 0")),
         res);
-    return activation_tick(load_songbytes_chart(data, true, true, Difficulty::Expert, rules));
+    return activation_tick(load_songbytes_chart(data, ChartReading{Difficulty::Expert}, rules));
 }
 
 // The same shape as a .mid at 480 ticks per beat: chords at 0 and 1440, the
@@ -52,7 +52,7 @@ int64_t mid_landing(uint8_t after) {
         {after, 0x90, 97, 100},         // tick 1920 + after: red
         testmidi::end_of_track(),
     });
-    return activation_tick(load_songbytes_mid(testmidi::smf(track), true, true));
+    return activation_tick(load_songbytes_mid(testmidi::smf(track), ChartReading{}));
 }
 
 }  // namespace
@@ -89,7 +89,7 @@ TEST_CASE("fill landing: a fill is placed even when the next fill starts before 
         "  180 = S 64 100\n"   // fill B: 180-280, starts before a chord reaches 200
         "  250 = N 2 0\n"      // B's only chord, inside B
         "  400 = N 3 0\n"));
-    const Song song = load_songbytes_chart(data, true, true);
+    const Song song = load_songbytes_chart(data, ChartReading{});
     REQUIRE(song.sequence.size() == 4);
     CHECK_FALSE(song.sequence[0].has_activation());
     REQUIRE(song.sequence[1].has_activation());
@@ -114,7 +114,7 @@ TEST_CASE("fill landing: a fill is placed even when the next fill starts before 
         {0x83, 0x60, 0x90, 99, 100},     // tick 1200: blue
         end_of_track(),
     });
-    const Song song = load_songbytes_mid(smf(track), true, true);
+    const Song song = load_songbytes_mid(smf(track), ChartReading{});
     REQUIRE(song.sequence.size() == 4);
     CHECK_FALSE(song.sequence[0].has_activation());
     REQUIRE(song.sequence[1].has_activation());
@@ -133,7 +133,7 @@ TEST_CASE("fill landing: an earlier chord before the fill start is no candidate"
         "  99 = N 1 0\n"
         "  100 = S 64 4\n"
         "  110 = N 2 0\n"));
-    const Song song = load_songbytes_chart(data, true, true);
+    const Song song = load_songbytes_chart(data, ChartReading{});
     REQUIRE(song.sequence.size() == 2);
     CHECK_FALSE(song.sequence[0].has_activation());
     REQUIRE(song.sequence[1].has_activation());
@@ -151,7 +151,7 @@ TEST_CASE("fill landing: a fill before the first note keeps the window's bound, 
         "  192 = N 0 0\n"
         "  300 = S 64 84\n"    // fill 300-384, lands on 384
         "  384 = N 1 0\n"));
-    const Song song = load_songbytes_chart(data, true, true);
+    const Song song = load_songbytes_chart(data, ChartReading{});
     REQUIRE(song.sequence.size() == 2);
     CHECK_FALSE(song.sequence[0].has_activation());
     REQUIRE(song.sequence[1].has_activation());
@@ -170,7 +170,7 @@ TEST_CASE("fill landing: a fill past the last note keeps its start bound, not Cl
         "  300 = S 64 84\n"
         "  384 = N 1 0\n"
         "  500 = S 64 100\n"));
-    const Song song = load_songbytes_chart(data, true, true);
+    const Song song = load_songbytes_chart(data, ChartReading{});
     REQUIRE(song.sequence.size() == 2);
     REQUIRE(song.sequence[1].has_activation());
     CHECK(*song.sequence[1].activation_length == 84);

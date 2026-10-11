@@ -493,7 +493,7 @@ std::vector<uint8_t> lane_mid(uint8_t pitch, uint8_t velocity) {
 }
 
 size_t lanes_at(const std::vector<uint8_t>& mid, hydra::Difficulty difficulty) {
-    return hydra::load_songbytes_mid(mid, true, true, difficulty).drum_lanes.size();
+    return hydra::load_songbytes_mid(mid, hydra::ChartReading{difficulty}).drum_lanes.size();
 }
 
 }  // namespace
@@ -516,8 +516,8 @@ TEST_CASE("mid: a lane's velocity picks the lowest difficulty that shows it") {
 }
 
 TEST_CASE("mid: 126 is a single lane and 127 a double, note-on to note-off") {
-    const hydra::Song single =
-        hydra::load_songbytes_mid(lane_mid(126, 96), true, true, hydra::Difficulty::Expert);
+    const hydra::Song single = hydra::load_songbytes_mid(
+        lane_mid(126, 96), hydra::ChartReading{hydra::Difficulty::Expert});
     REQUIRE(single.drum_lanes.size() == 1);
     CHECK(single.drum_lanes[0].start_tick == 0);
     CHECK(single.drum_lanes[0].end_tick == 240);
@@ -525,8 +525,8 @@ TEST_CASE("mid: 126 is a single lane and 127 a double, note-on to note-off") {
     CHECK(single.drum_lanes[0].pads == std::vector<hydra::NoteColor>{hydra::NoteColor::Red});
 
     // Red alone, then yellow: the double lane lights both.
-    const hydra::Song dbl =
-        hydra::load_songbytes_mid(lane_mid(127, 96), true, true, hydra::Difficulty::Expert);
+    const hydra::Song dbl = hydra::load_songbytes_mid(
+        lane_mid(127, 96), hydra::ChartReading{hydra::Difficulty::Expert});
     REQUIRE(dbl.drum_lanes.size() == 1);
     CHECK(dbl.drum_lanes[0].end_tick == 240);
     CHECK(dbl.drum_lanes[0].double_lane);

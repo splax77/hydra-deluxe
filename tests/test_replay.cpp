@@ -64,7 +64,7 @@ template <class Check>
 CorpusPathRun check_every_corpus_path(const app::AnalysisSettings& cfg, Check check) {
     CorpusPathRun run;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        const Song& song = corpus::song(path, cfg.reading());
         if (song.is_empty()) continue;
         ++run.charts;
 
@@ -136,7 +136,7 @@ TEST_CASE("replay: combo_after is the combo once the chord is hit") {
 // chord. The chart is kTwoSolosDrums (tests/chart_text.h).
 TEST_CASE("replay: a solo's bonus reaches the on-screen total on the section's last chord") {
     const Song song =
-        load_songbytes_chart(testchart::chart_bytes(testchart::kTwoSolosDrums), true, true);
+        load_songbytes_chart(testchart::chart_bytes(testchart::kTwoSolosDrums), ChartReading{});
     REQUIRE(song.solo_sections.size() == 2);
     REQUIRE(song.solo_sections[0].first == 0);
     REQUIRE(song.solo_sections[0].last == 1);
@@ -233,8 +233,7 @@ struct TiedVariantCount {
 TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
     TiedVariantCount n;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song =
-            corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
+        const Song& song = corpus::song(path, cfg.reading(), cfg.rules);
         if (song.is_empty()) continue;
         const HydraRecord& rec = corpus::analyzed(path, cfg);
 
@@ -300,7 +299,7 @@ TEST_CASE("targeted search rejects a tick that is not a fill") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
 
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        const Song& song = corpus::song(path, cfg.reading());
         if (song.is_empty()) continue;
         const HydraRecord& rec = corpus::analyzed(path, cfg);
         if (rec.paths.empty()) continue;
@@ -511,7 +510,7 @@ TEST_CASE("windows read from a path JSON match the ones read from the record") {
 
     int checked = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        const Song& song = corpus::song(chart, cfg.reading());
         if (song.is_empty()) continue;
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         if (rec.paths.empty()) continue;
@@ -594,7 +593,7 @@ TEST_CASE("paths_json writes every field the dump readers use") {
 
     bool checked = false;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        const Song& song = corpus::song(chart, cfg.reading());
         if (song.is_empty()) continue;
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         const std::vector<const Path*> all = rec.all_paths();
@@ -634,7 +633,7 @@ TEST_CASE("result block: an empty record writes a null score and an empty bestpa
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     bool checked = false;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        const Song& song = corpus::song(chart, cfg.reading());
         if (song.is_empty()) continue;
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         if (rec.paths.empty()) continue;
@@ -1366,7 +1365,7 @@ TEST_CASE("chord_score_table: literal rows on a hand-built chart") {
 TEST_CASE("replay multipliers agree with the combo on every corpus chord") {
     int charts = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true);
+        const Song& song = corpus::song(path, ChartReading{});
         if (song.is_empty()) continue;
         ++charts;
         const ReplayResult r = replay_path(song, {});
@@ -1425,7 +1424,7 @@ TEST_CASE("replay: scores_only leaves chord_code and notes empty and every score
     std::string first_diff;
 
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        const Song& song = corpus::song(path, cfg.reading());
         if (song.is_empty()) continue;
         const HydraRecord& rec = corpus::analyzed(path, cfg);
         for (const Path* p : rec.all_paths()) {

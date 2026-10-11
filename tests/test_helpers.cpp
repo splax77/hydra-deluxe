@@ -37,9 +37,9 @@ using hydra::app::Settings;
 TEST_CASE("corpus cache: one parse and one analysis per chart and settings") {
     const std::string path = corpus::first_chart_with_notes();
 
-    const Song& a = corpus::song(path, true, true);
-    CHECK(&corpus::song(path, true, true) == &a);
-    CHECK(&corpus::song(path, true, true, Difficulty::Hard) != &a);
+    const Song& a = corpus::song(path, ChartReading{});
+    CHECK(&corpus::song(path, ChartReading{}) == &a);
+    CHECK(&corpus::song(path, ChartReading{Difficulty::Hard}) != &a);
 
     SearchSettings cfg;
     cfg.sp_cap = 4;
