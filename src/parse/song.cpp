@@ -1688,15 +1688,35 @@ COp ChartParser::optype(const ChartLine& e, int64_t tick) {
     return {};
 }
 
+// The colour of a .chart pad's note number, or nullopt for a number that is
+// not a pad.
+std::optional<NoteColor> chart_pad_color(int value) {
+    switch (value) {
+        case 1: return NoteColor::Red;
+        case 2: return NoteColor::Yellow;
+        case 3: return NoteColor::Blue;
+        case 4: return NoteColor::Green;
+        default: return std::nullopt;
+    }
+}
+
+// A Pro Drums cymbal marker's note number is its pad's number plus this
+// (N 66 marks pad 2).
+constexpr int kChartCymbalMarkerBase = 64;
+
 // An N line's op, by its note number.
 COp ChartParser::note_optype(int value) const {
     constexpr CPhase N = CPhase::Notes, M = CPhase::NoteMods;
+    if (const std::optional<NoteColor> pad = chart_pad_color(value))
+        return cop_color(N, CAct::Note, *pad);
+    // Which pads can carry a cymbal is allows_cymbals' rule.
+    if (const std::optional<NoteColor> pad = chart_pad_color(value - kChartCymbalMarkerBase);
+        pad && allows_cymbals(*pad)) {
+        if (mode_pro_) return cop_color(M, CAct::Cymbal, *pad);
+        return {};
+    }
     switch (value) {
         case 0: return cop_flag(N, CAct::Kick, false);
-        case 1: return cop_color(N, CAct::Note, NoteColor::Red);
-        case 2: return cop_color(N, CAct::Note, NoteColor::Yellow);
-        case 3: return cop_color(N, CAct::Note, NoteColor::Blue);
-        case 4: return cop_color(N, CAct::Note, NoteColor::Green);
         // The 2x kick, read whatever the 2x Bass setting: it can take a
         // normal kick on its tick with it (D105).
         case 32: return cop_flag(N, CAct::Kick, true);
@@ -1708,15 +1728,6 @@ COp ChartParser::note_optype(int value) const {
         case 41: return cop_color(M, CAct::Ghost, NoteColor::Yellow);
         case 42: return cop_color(M, CAct::Ghost, NoteColor::Blue);
         case 43: return cop_color(M, CAct::Ghost, NoteColor::Green);
-        case 66:
-            if (mode_pro_) return cop_color(M, CAct::Cymbal, NoteColor::Yellow);
-            return {};
-        case 67:
-            if (mode_pro_) return cop_color(M, CAct::Cymbal, NoteColor::Blue);
-            return {};
-        case 68:
-            if (mode_pro_) return cop_color(M, CAct::Cymbal, NoteColor::Green);
-            return {};
         default: return {};
     }
 }
