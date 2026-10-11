@@ -182,6 +182,10 @@ M28: `template <class F> void RecordStore::in_transaction(F work)` does BEGIN, w
 
 M75: `trim_trailing_separators` in `core/winstr`; `parent_folder` and `relpath` (`analysis.cpp` 48 to 57) call it; `base_name` in `preview_source.cpp` is left (its callers never pass a trailing separator). Scan row: `back\(\) == '\\\\'` outside `winstr.cpp`, in `rules/core/concept-G2.json`.
 
+### G2b. M20 and M21, split off from G2 (added by the main session)
+
+G2's executor finished M23, M75 and M28 and hit its time limit before M21; its M20 purge change worked but was reverted because `tests/single_owner/rules/store.json`'s "sp_cap" row quotes the old purge line as an owner line, and G2 did not own that file. G2b does M20 and M21 exactly as written above, forked from main after G2 merges. It owns G2's files plus `tests/single_owner/rules/store.json` (to drop or update that owner line; that row already covers `sp_cap=?`, so M20 needs no new row of its own for the purge). Same tests as G2's row, plus uitest `scan`. M20 first (small), then M21.
+
 ### G3. File formats and bounds
 
 M63: `is_container(ChartFormat)` beside `chart_format_of` in `chart_files.h`; `is_container_path` calls it and the two bare `== ChartFormat::Sng` tests in `preview_source.cpp` read through it where they mean "a container". `chart_kind_of` in `analysis.cpp` is left as it is (its switch spells no pair, and G2 owns that file this wave). Scan row: a line naming both `ChartFormat::Sng` and `ChartFormat::Srb` joined by `||` outside `chart_files.*`, in `rules/parse/concept-G3.json`.
