@@ -1,5 +1,6 @@
 #include "ui/library_parts.h"
 
+#include "app/display_format.h"  // kFactSeparator
 #include "app/user_messages.h"
 #include "core/model.h"
 #include "core/strutil.h"
@@ -17,6 +18,7 @@
 #include <cstdio>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -78,9 +80,9 @@ std::string format_duration(double seconds) {
 BatchSettingsSummary batch_settings_summary(const app::Settings& s) {
     BatchSettingsSummary out;
     out.difficulty = difficulty_name(s.difficulty());
-    if (s.view_prodrums) out.difficulty += " \xC2\xB7 Pro Drums";
-    if (s.effective_bass2x()) out.difficulty += " \xC2\xB7 2x Bass";
-    if (s.view_noteshuffle) out.difficulty += " \xC2\xB7 Note Shuffle";
+    if (s.view_prodrums) out.difficulty += app::kFactSeparator + std::string("Pro Drums");
+    if (s.effective_bass2x()) out.difficulty += app::kFactSeparator + std::string("2x Bass");
+    if (s.view_noteshuffle) out.difficulty += app::kFactSeparator + std::string("Note Shuffle");
     const app::SettingsText values = setting_values(s);
     out.sp_cap =
         values.cap + (is_clone_hero_cap(s.sp_cap) ? " (Clone Hero's rule)" : " (a what-if)");
@@ -92,27 +94,34 @@ BatchSettingsSummary batch_settings_summary(const app::Settings& s) {
 
 namespace {
 
-// One phrase per panel setting that differs from its default, in panel order.
+// One panel setting in the summary's words, as `s` has it.
+std::string change_phrase(const app::Settings& s, const app::SettingsText& values,
+                          app::AnalysisSetting setting) {
+    using app::AnalysisSetting;
+    switch (setting) {
+    case AnalysisSetting::Difficulty: return difficulty_name(s.difficulty());
+    case AnalysisSetting::ProDrums: return s.view_prodrums ? "Pro Drums" : "Pro Drums off";
+    case AnalysisSetting::Bass2x: return s.effective_bass2x() ? "2x Bass" : "2x Bass off";
+    case AnalysisSetting::NoteShuffle:
+        return s.view_noteshuffle ? "Note Shuffle" : "Note Shuffle off";
+    case AnalysisSetting::SpCap: return "SP cap " + values.cap;
+    case AnalysisSetting::Fills: return s.legacy_fills ? "1.0 fills" : "1.0 fills off";
+    case AnalysisSetting::ScoreRange: return "Score range " + values.depth;
+    case AnalysisSetting::PathLimit: return "Path limit " + values.timing;
+    }
+    // A panel setting added to app::AnalysisSetting without words here; the
+    // Reset test in tests/test_config.cpp walks every one and fails on this.
+    throw std::logic_error("settings summary: a panel setting has no phrase");
+}
+
+// One phrase per panel setting that differs from its default, in panel order
+// (Settings::analysis_changes, which is what a reset undoes).
 // settings_changes_summary words it; settings_at_defaults asks if it's empty.
 std::vector<std::string> settings_change_phrases(const app::Settings& s) {
-    // The defaults are the ones "Reset to defaults" puts back
-    // (Settings::with_analysis_defaults), so a reset always leaves none.
-    const app::Settings d = s.with_analysis_defaults();
     const app::SettingsText values = setting_values(s);
     std::vector<std::string> out;
-    const auto add = [&out](const std::string& phrase) { out.push_back(phrase); };
-    if (s.difficulty() != d.difficulty()) add(difficulty_name(s.difficulty()));
-    if (s.view_prodrums != d.view_prodrums) add(s.view_prodrums ? "Pro Drums" : "Pro Drums off");
-    if (s.effective_bass2x() != d.effective_bass2x())
-        add(s.effective_bass2x() ? "2x Bass" : "2x Bass off");
-    if (s.view_noteshuffle != d.view_noteshuffle)
-        add(s.view_noteshuffle ? "Note Shuffle" : "Note Shuffle off");
-    if (s.sp_cap != d.sp_cap) add("SP cap " + values.cap);
-    if (s.legacy_fills != d.legacy_fills) add(s.legacy_fills ? "1.0 fills" : "1.0 fills off");
-    if (s.depth_value != d.depth_value || s.search_depth_mode() != d.search_depth_mode())
-        add("Score range " + values.depth);
-    if (s.mslimit_enabled != d.mslimit_enabled || s.mslimit_value != d.mslimit_value)
-        add("Path limit " + values.timing);
+    for (const app::AnalysisSetting setting : s.analysis_changes())
+        out.push_back(change_phrase(s, values, setting));
     return out;
 }
 
@@ -121,7 +130,7 @@ std::vector<std::string> settings_change_phrases(const app::Settings& s) {
 std::string settings_changes_summary(const app::Settings& s) {
     std::string out;
     for (const std::string& phrase : settings_change_phrases(s)) {
-        if (!out.empty()) out += " \xC2\xB7 ";
+        if (!out.empty()) out += app::kFactSeparator;
         out += phrase;
     }
     return out.empty() ? "defaults" : out;
@@ -436,8 +445,10 @@ void render_batch_strip(AppState& app) {
         std::string line = stopping ? "Stopping..." : s.paused ? "Paused" : "Analyzing...";
         line += "  " + group_thousands(s.completed) + " of " + group_thousands(s.total);
         if (!s.current_title.empty() && !s.paused) {
+            // Not kFactSeparator: this one dot has two spaces each side, like
+            // the wide gap before the count, and stays as the strip shows it.
             line += "  \xC2\xB7  Now: " + s.current_title;
-            if (!s.current_artist.empty()) line += " \xC2\xB7 " + s.current_artist;
+            if (!s.current_artist.empty()) line += app::kFactSeparator + s.current_artist;
         }
         text_ellipsized(line.c_str());
 
@@ -447,7 +458,7 @@ void render_batch_strip(AppState& app) {
         ImGui::PopStyleColor(2);
 
         std::string time = format_duration(s.elapsed_s) + " elapsed";
-        if (s.eta_s) time += " \xC2\xB7 " + time_left_text(*s.eta_s);
+        if (s.eta_s) time += app::kFactSeparator + time_left_text(*s.eta_s);
         ImGui::PushStyleColor(ImGuiCol_Text, kStripText2);
         ImGui::TextUnformatted(batch_counts(s).c_str());
         const float time_w = ImGui::CalcTextSize(time.c_str()).x;
@@ -523,8 +534,9 @@ void render_batch_done(AppState& app) {
 
     ImGui::SetCursorPos(ImVec2(left_x, top_y));
     ImGui::PushTextWrapPos(left_x + text_w);
-    ImGui::TextWrapped("%s: %s \xC2\xB7 took %s", stopped ? "Stopped" : "Finished",
-                       batch_counts(s).c_str(), format_duration(s.elapsed_s).c_str());
+    ImGui::TextWrapped("%s: %s%stook %s", stopped ? "Stopped" : "Finished",
+                       batch_counts(s).c_str(), app::kFactSeparator,
+                       format_duration(s.elapsed_s).c_str());
     ImGui::PushStyleColor(ImGuiCol_Text, text2);
     if (stopped) {
         ImGui::TextWrapped("Every result finished before Stop is kept.");

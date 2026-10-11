@@ -662,34 +662,47 @@ TEST_CASE("lens: depth_mode is the search's unit, so a stray int files as scores
     CHECK(s.lens().depth_mode == 1);
 }
 
+// A value other than the field's default, for each kind of field in
+// kAnalysisFields: the other switch position, the next number, another
+// difficulty name.
+static void change_analysis_field(Settings& t, const hydra::app::AnalysisField& f) {
+    struct Change {
+        Settings& t;
+        void operator()(bool Settings::* m) const { t.*m = !(t.*m); }
+        void operator()(int Settings::* m) const { t.*m += 1; }
+        void operator()(std::string Settings::* m) const {
+            t.*m = t.*m == "Hard" ? "Expert" : "Hard";
+        }
+    };
+    std::visit(Change{t}, f.member);
+}
+
 // The reset is Settings::with_analysis_defaults. The panel's own words for
 // what differs (settings_at_defaults, settings_changes_summary in
-// ui/library_parts.h) are the probe, so the panel and the reset agree.
+// ui/library_parts.h) are the probe, so the panel and the reset agree. The
+// fields come from kAnalysisFields, the one list of them.
 TEST_CASE("settings reset: puts back each panel setting and keeps the rest") {
-    // Each of the panel's settings on its own: the summary names it, and the
-    // reset clears it.
-    const std::function<void(Settings&)> changes[] = {
-        [](Settings& t) { t.view_difficulty = "Hard"; },
-        [](Settings& t) { t.view_prodrums = false; },
-        [](Settings& t) { t.view_bass2x = false; },
-        [](Settings& t) { t.view_noteshuffle = true; },
-        [](Settings& t) { t.sp_cap = 5; },
-        [](Settings& t) { t.legacy_fills = true; },
-        [](Settings& t) { t.depth_value = 100; },
-        [](Settings& t) { t.depth_mode = 1; },
-        [](Settings& t) { t.mslimit_enabled = false; },
-        [](Settings& t) { t.mslimit_value = 20; },
-    };
-    for (const auto& change : changes) {
+    using hydra::app::AnalysisField;
+    using hydra::app::kAnalysisFields;
+    using hydra::app::KeyPart;
+    const Settings d;
+    // Each field on its own: the summary names its panel setting, the reset
+    // clears it, and it moves the key part its row names and no other.
+    for (const AnalysisField& f : kAnalysisFields) {
         Settings t;
-        change(t);
+        change_analysis_field(t, f);
         CHECK(!settings_at_defaults(t));
+        CHECK(t.analysis_changes() == std::vector<hydra::app::AnalysisSetting>{f.setting});
+        CHECK_NOTHROW(settings_changes_summary(t));
         CHECK(settings_at_defaults(t.with_analysis_defaults()));
+        CHECK((t.chartmode_key() != d.chartmode_key()) == (f.part == KeyPart::ChartMode));
+        CHECK(!(t.cap_query() == d.cap_query()) == (f.part == KeyPart::Cap));
+        CHECK(!(t.lens() == d.lens()) == (f.part == KeyPart::Lens));
     }
 
     // All at once, with the settings the panel doesn't show changed too.
     Settings s;
-    for (const auto& change : changes) change(s);
+    for (const AnalysisField& f : kAnalysisFields) change_analysis_field(s, f);
     s.chartfolders = {"C:/Songs"};
     s.preview_volume = 75;
     s.hit_window_ms = 60.5;
@@ -701,7 +714,6 @@ TEST_CASE("settings reset: puts back each panel setting and keeps the rest") {
     // Everything a stored result is keyed by, and everything the analysis
     // reads, matches the defaults', so a keyed setting the reset misses
     // fails here.
-    const Settings d;
     CHECK(r.chartmode_key() == d.chartmode_key());
     CHECK(r.cap_query() == d.cap_query());
     CHECK(r.lens() == d.lens());

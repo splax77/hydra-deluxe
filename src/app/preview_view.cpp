@@ -10,7 +10,7 @@
 #include <optional>
 
 #include "app/config.h"          // Settings: the sp_cap setting's floor
-#include "app/display_format.h"  // clock_str
+#include "app/display_format.h"  // clock_str, kFactSeparator
 #include "core/replay.h"
 
 namespace hydra::app {
@@ -532,7 +532,7 @@ PreviewTimeBox build_time_box(const PreviewScene& scene, double now_ms,
         [](int64_t v, const PreviewTimeSig& t) { return v < t.tick; });
     if (sig_past != scene.time_sigs.begin()) sig = *(sig_past - 1);
     char buf[64];
-    std::snprintf(buf, sizeof buf, "BPM %.3f \xC2\xB7 %d/%d", bpm, sig.numerator,
+    std::snprintf(buf, sizeof buf, "BPM %.3f%s%d/%d", bpm, kFactSeparator, sig.numerator,
                   sig.denominator);
     box.tempo = buf;
 
@@ -575,7 +575,7 @@ PreviewScoreBox build_score_box(const PreviewScene& scene, double now_ms, double
 
     box.score = group_thousands(at.total);
     char buf[64];
-    std::snprintf(buf, sizeof buf, "x%d \xC2\xB7 combo %d", shown, at.combo);
+    std::snprintf(buf, sizeof buf, "x%d%scombo %d", shown, kFactSeparator, at.combo);
     box.detail = buf;
 
     // The star counter, on the score stars count (core/stars.h).
@@ -699,7 +699,7 @@ PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms, d
     box.header = "Next: activation " + std::to_string(i + 1) + " of " + std::to_string(acts.size());
     box.notation = next->notation;
     box.detail = "at " + next->measure;
-    if (next->chord.count() > 0) box.detail += " \xC2\xB7 " + next->chord.rowstr(pro_drums);
+    if (next->chord.count() > 0) box.detail += kFactSeparator + next->chord.rowstr(pro_drums);
     return box;
 }
 

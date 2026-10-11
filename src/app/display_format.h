@@ -9,6 +9,11 @@
 
 namespace hydra::app {
 
+// The separator between two facts on one line of text: " · " (U+00B7 in UTF-8
+// with a space each side). Every screen joins facts with this one spelling; a
+// line that spells the dot another way says why beside it.
+inline constexpr char kFactSeparator[] = " \xC2\xB7 ";
+
 // round(v, 3), matching Python's correctly-rounded decimal rounding.
 double py_round3(double v);
 

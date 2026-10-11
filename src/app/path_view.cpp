@@ -20,9 +20,6 @@ namespace hydra::app {
 
 namespace {
 
-// The separator the new labels use: " · " (U+00B7 in UTF-8).
-const char* const kDot = " \xC2\xB7 ";
-
 // A multiplier as the scale line prints it: two decimals, or as many more as
 // it takes not to read as x1.00, up to kScaleIdentityDigits (derived from
 // is_scaled's tolerance), so a multiplier that governs a figure never prints
@@ -202,7 +199,7 @@ std::string multsqueeze_summary(const std::vector<MultSqueezeView>& squeezes) {
     int total = 0;
     for (const MultSqueezeView& s : squeezes) total += s.points;
     const std::string sum = "+" + group_thousands(total);
-    return squeezes.size() == 1 ? sum : std::to_string(squeezes.size()) + kDot + sum;
+    return squeezes.size() == 1 ? sum : std::to_string(squeezes.size()) + kFactSeparator + sum;
 }
 
 const char* const kTransferScaleHint =
@@ -400,7 +397,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
         const std::string left = path.leftover_sp() == 0
                                      ? std::string("no SP left over")
                                      : bars_text(path.leftover_sp()) + " of SP left over";
-        view.summary = std::to_string(view.acts.size()) + kDot + left;
+        view.summary = std::to_string(view.acts.size()) + kFactSeparator + left;
     }
     if (timing && song_length_ms && has_song_length(*song_length_ms)) {
         const int64_t end_tick = timing->display_tick_at_ms(*song_length_ms);
@@ -500,7 +497,7 @@ PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, in
                 counted(static_cast<int64_t>(fold->paths.size()), "path", "paths");
             b.title = b.notation;
         } else {
-            b.title = group_thousands(p->totalscore()) + kDot + b.notation;
+            b.title = group_thousands(p->totalscore()) + kFactSeparator + b.notation;
         }
         if (std::optional<double> hardest = p->difficulty()) {
             b.timing = format_ms(*hardest);
