@@ -1,6 +1,9 @@
 #include "app/rules_file.h"
 
+#include <cmath>
 #include <fstream>
+#include <limits>
+#include <optional>
 #include <string>
 #include <variant>
 
@@ -25,20 +28,19 @@ void check_min(const std::string& path, const core::RulesField& f, const std::st
     if (!f.min_allowed && d == f.min) bad(path, f.name, v, "above zero");
 }
 
+// What text is a number: core/strutil.h parse_finite_number (D114 item 8).
 double to_double(const std::string& path, const std::string& key, const std::string& v) {
-    size_t used = 0;
-    double d = 0;
-    try { d = std::stod(v, &used); } catch (...) { bad(path, key, v, "a number"); }
-    if (used != v.size()) bad(path, key, v, "a number");
-    return d;
+    const std::optional<double> d = parse_finite_number(v);
+    if (!d) bad(path, key, v, "a number");
+    return *d;
 }
 
 int to_int(const std::string& path, const std::string& key, const std::string& v) {
-    size_t used = 0;
-    int i = 0;
-    try { i = std::stoi(v, &used); } catch (...) { bad(path, key, v, "a whole number"); }
-    if (used != v.size()) bad(path, key, v, "a whole number");
-    return i;
+    const std::optional<double> d = parse_finite_number(v);
+    if (!d || *d != std::trunc(*d) || *d < std::numeric_limits<int>::min() ||
+        *d > std::numeric_limits<int>::max())
+        bad(path, key, v, "a whole number");
+    return static_cast<int>(*d);
 }
 
 // Sets the field `f` of `r` from the file's text `v`, or throws naming it.

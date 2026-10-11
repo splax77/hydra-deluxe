@@ -18,6 +18,9 @@
 namespace hydra::audio {
 
 std::shared_ptr<const MappedFile> MappedFile::open(const std::string& utf8_path) {
+    // Unlike core/winstr.h file_byte_source, this open does not share writers.
+    // A mapped file that another program shrinks can fault on read, so a file
+    // someone is writing is refused here (D114 item 19).
     HANDLE file = CreateFileW(hydra::win32_path(utf8_path).c_str(), GENERIC_READ,
                               FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                               FILE_ATTRIBUTE_NORMAL, nullptr);

@@ -352,9 +352,8 @@ TrackState build_track_state(const PreviewScene& scene, const TrackStateOptions&
         lo = hi;
     }
 
-    // Then the overlay's edges, by the same merge rebuild_overlay_fields uses.
-    st.set_overlay_intervals(scene);
-    st.merge_overlay_edges();
+    // Then the overlay's edges, the one way a path change adds them.
+    rebuild_overlay_fields(st, scene);
     return st;
 }
 
