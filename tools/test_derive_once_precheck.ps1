@@ -14,9 +14,14 @@ branch adds one renamed copy of the helper, one recomputed offset, one
 undecided number (37), the decided 45, one stray source scan, a new rule
 file with a scan row with no must-match examples, and two lines the
 scan rows list as must-not-match (a gap between two chart ticks, a "!= SqIn"
-skip). The script must report the five planted items (check 4 has two), and
-must not report the decided 45 or the two
-must-not-match lines. Then the fixture runs again once per check with that check
+skip). Main also holds two src/ files, and the feature adds two more with
+one second home per check 5 probe: a record sharing field names with one on
+main (some of them declared in comma lists), an enum name, a free helper
+name and a long string. The script must report the nine planted items
+(check 4 has two, check 5 four), and must not report the decided 45, the
+two must-not-match lines, or the near misses check 5 must pass (a record
+sharing too few names, a short string, a string main has only in a comment,
+an #include path). Then the fixture runs again once per check with that check
 turned off, and each of those runs must miss every item that check plants,
 which proves every check is needed for this test to pass. The list of checks
 is the precheck's own ($checks), so a new check with no planted item fails.
@@ -68,7 +73,8 @@ function Invoke-Precheck([string]$Repo, [string]$Range, [int[]]$Disable, [string
     foreach ($w in ($out | Where-Object { $_.StartsWith($warnPrefix) })) { $script:Failures.Add("${Range}: the precheck warned: $w") }
     # The whole output, for the range-size case, which reads the lines after the items.
     $script:LastOutput = $out
-    @($out | Where-Object { $_ -match '^[A-E] ' })
+    # The item lines: each starts with one of the precheck's kind letters.
+    @($out | Where-Object { $_ -match "^[$kindLetters] " })
 }
 
 # One expectation: a line starting with $Kind and $File whose text matches
@@ -90,7 +96,7 @@ function Assert-Expectations([string]$Label, [string[]]$Lines, [object[]]$Expect
         else { $script:Passes++ }
     }
     foreach ($l in $Lines) {
-        if ($l -notmatch '^[A-E] \S+:\d+  .+  -- .+$') { $script:Failures.Add("${Label}: not one plain item line: $l") }
+        if ($l -notmatch "^[$kindLetters] \S+:\d+  .+  -- .+$") { $script:Failures.Add("${Label}: not one plain item line: $l") }
     }
 }
 
@@ -111,6 +117,9 @@ $warnPrefix = (Find-PrecheckAst '$warnPrefix').Right.Expression.SafeGetValue()
 # and $baselineFile, loaded from its text.
 $rulesDir = (Find-PrecheckAst '$rulesDir').Right.Expression.SafeGetValue()
 $baselineFile = (Find-PrecheckAst '$baselineFile').Right.Expression.SafeGetValue()
+# The kind letters an item line can start with: the keys of the precheck's
+# $order, which sorts the items by kind.
+$kindLetters = -join @((Find-PrecheckAst '$order').Right.Expression.SafeGetValue().Keys | Sort-Object)
 
 # ------------------------------------------------------------ part 1: fixture
 
@@ -149,6 +158,50 @@ int sum_values(const std::vector<int>& values) {
 # 1. Test limits
 
 The batch test's deadline is 45 seconds.
+'@
+    # The first homes check 5 compares the feature's src/ files against: a
+    # record, an enum, a free helper and a long string. The record declares
+    # some fields in one comma list, which must count as separate names.
+    Write-Fixture 'src/core/old_types.h' @'
+#pragma once
+#include <string>
+#include <utility>
+
+namespace fx {
+
+struct SongEntry {
+    std::string title, artist;
+    std::string album;
+    std::pair<std::string, std::string> credit;
+    bool starred = false;
+};
+
+struct Letters {
+    int alpha;
+    int beta;
+    int gamma;
+    int delta;
+};
+
+enum class Verdict { Pass, Fail };
+
+}  // namespace fx
+'@
+    Write-Fixture 'src/core/old_helpers.cpp' @'
+#include "core/old_types.h"
+
+namespace fx {
+namespace {
+
+std::string trim_label(const std::string& s) { return s; }
+
+}  // namespace
+
+// Old wording: "a comment quoting text".
+const char* missing_text() { return "chart file is missing"; }
+const char* short_text() { return "too short"; }
+
+}  // namespace fx
 '@
     # The scan rows come from this repository's own rule files and
     # baseline, so the fixture tests the rows as they are today and copies
@@ -227,6 +280,53 @@ TEST_CASE("model.h mentions the window") {
   ]
 }
 '@
+    # Check 5: one second home per probe. A record sharing four field names
+    # with SongEntry (two of them on each side only through a comma list), an
+    # enum name already defined, a free helper name already defined, and a
+    # long string already written. Passed: a record sharing only three names
+    # with Letters, a short string, a string the other file has only in a
+    # comment, and an #include path both files write.
+    Write-Fixture 'src/app/new_types.h' @'
+#pragma once
+#include <string>
+#include <utility>
+
+namespace fx {
+
+struct LibraryRow {
+    std::string title;
+    std::string artist, album;
+    std::pair<std::string, std::string> credit;
+    int plays = 0;
+};
+
+struct Greek {
+    int alpha;
+    int beta;
+    int gamma;
+    int omega;
+};
+
+enum class Verdict { Good, Bad };
+
+}  // namespace fx
+'@
+    Write-Fixture 'src/app/new_helpers.cpp' @'
+#include "core/old_types.h"
+
+namespace fx {
+namespace {
+
+std::string trim_label(const std::string& s) { return s + " "; }
+
+}  // namespace
+
+const char* load_error() { return "chart file is missing"; }
+const char* brief_text() { return "too short"; }
+const char* quoted_text() { return "a comment quoting text"; }
+
+}  // namespace fx
+'@
     Invoke-FixtureGit @('add', '-A')
     Invoke-FixtureGit @('commit', '-q', '-m', 'feature')
 
@@ -236,10 +336,15 @@ TEST_CASE("model.h mentions the window") {
         @('B', 'tests/test_offsets.cpp', 'How far is a note from an SP end.*end\.ms\(\)', 2),
         @('D', 'tests/test_offsets.cpp', '\b37 in:', 3),
         @('E', 'tests/test_stray_scan.cpp', 'HYDRA_SOURCE_DIR', 4),
-        @('E', $plantedRules, 'planted row has no examples.*no must-match examples', 4)
+        @('E', $plantedRules, 'planted row has no examples.*no must-match examples', 4),
+        @('F', 'src/app/new_types.h', 'LibraryRow shares 4 field names with struct SongEntry at src/core/old_types\.h:\d+: album, artist, credit, title', 5),
+        @('F', 'src/app/new_types.h', 'enum class Verdict is also defined at src/core/old_types\.h:\d+', 5),
+        @('F', 'src/app/new_helpers.cpp', 'free function trim_label is also defined at src/core/old_helpers\.cpp:\d+', 5),
+        @('F', 'src/app/new_helpers.cpp', '"chart file is missing" is also written at src/core/old_helpers\.cpp:\d+', 5)
     )
     $absent = @('\b45 in:', '^[A-E] tests/helpers_a\.cpp:', '^[A-E] tests/test_offsets\.cpp:\d+  .*timecode\(69120\)',
-                '^[A-E] tests/test_offsets\.cpp:\d+  .*SpEndKind::SqIn')
+                '^[A-E] tests/test_offsets\.cpp:\d+  .*SpEndKind::SqIn',
+                '^\w src/core/', 'Greek', 'too short', 'a comment quoting text', '"core/old_types\.h"')
 
     $lines = Invoke-Precheck $fixture 'main...feature' $DisableCheck
     Assert-Expectations 'fixture' $lines $expect $absent
@@ -277,7 +382,7 @@ TEST_CASE("model.h mentions the window") {
         else { $script:Passes++ }
     }
     # The feature range is small: its count is pinned from one run.
-    Assert-Size 'size, small range' $featureOutput '44 changed lines \(44 added, 0 deleted\)' $false
+    Assert-Size 'size, small range' $featureOutput '81 changed lines \(81 added, 0 deleted\)' $false
     # A range over the threshold, but only in the folders left out of the
     # count, gets no note.
     $overLimit = (1..($largeRangeLines + 1) | ForEach-Object { "line $_" }) -join "`n"
