@@ -145,27 +145,27 @@ The stored results in the database are all Expert (37,692 rows, every chart mode
 
 Here is every lane the timer would fire on, one row per lane. A chart appears more than once when several of its lanes qualify or when more than one difficulty does. The longest gap is between lit notes, and a combo break can come sooner than that gap suggests, because a round needs both pads. No Expert lane is in the list.
 
-| Chart (full path) | Difficulty | Lit pads | Notes in lane | Longest gap between lit notes (s) | First combo break (s into song) |
-|---|---|---|---|---|---|
-| `C:\Clone Hero\songs\synchotic\Sync Charts\BirdmanExe Drive\Onyxite\Dream Theater\Dream Theater - As I Am\notes.mid` | Medium | G | 2 | 0.923 | 443.715 |
-| `C:\Clone Hero\songs\synchotic\Sync Charts\Drummer's Monthly Drive\Armchairsum65\Charts\Halcyon Way\Halcyon Way - Desecration Day\notes.chart` | Easy | G | 3 | 0.968 | 255.266 |
-| `C:\Clone Hero\songs\synchotic\Sync Charts\Drummer's Monthly Drive\Armchairsum65\Charts\Leprous\Leprous - Forced Entry\notes.chart` | Medium | B | 11 | 1.107 | 28.52 |
-| `C:\Clone Hero\songs\synchotic\Sync Charts\Drummer's Monthly Drive\Armchairsum65\Charts\Leprous\Leprous - Forced Entry\notes.chart` | Easy | B | 11 | 1.107 | 28.52 |
-| `C:\Clone Hero\songs\synchotic\Sync Charts\Drummer's Monthly Drive\Armchairsum65\Charts\Opeth\Opeth - The Baying of the Hounds\notes.chart` | Medium | GY | 12 | 0.625 | 7.875 |
-| `C:\Clone Hero\songs\synchotic\Sync Charts\Drummer's Monthly Drive\Armchairsum65\Charts\Opeth\Opeth - The Baying of the Hounds\notes.chart` | Easy | GY | 12 | 0.625 | 7.875 |
-| `C:\Clone Hero\songs\synchotic\Sync Charts\Drummer's Monthly Drive\Armchairsum65\Charts\Smashing Pumpkins\Smashing Pumpkins - Here Is No Why\notes.chart` | Easy | G | 2 | 1.101 | 220.448 |
-| `C:\Clone Hero\songs\synchotic\Sync Charts\Drummer's Monthly Drive\sylvexite\Architects\[2025-FULL] The Sky, The Earth & All Between\Architects - Seeing Red [sylvexite]\notes.chart` | Hard | G | 37 | 6.402 | 9.713 |
-| `C:\Clone Hero\songs\synchotic\Sync Charts\Drummer's Monthly Drive\sylvexite\Architects\[2025-FULL] The Sky, The Earth & All Between\Architects - Seeing Red [sylvexite]\notes.chart` | Medium | G | 20 | 6.585 | 9.53 |
-| `C:\Clone Hero\songs\synchotic\Sync Charts\Drummer's Monthly Drive\sylvexite\Architects\[2025-FULL] The Sky, The Earth & All Between\Architects - Seeing Red [sylvexite]\notes.chart` | Easy | G | 20 | 6.585 | 9.53 |
-| `C:\Clone Hero\songs\synchotic\Sync Charts\Drummer's Monthly Drive\Tournaments\Conquest Contenders 2 Setlist\3 - Rock Band is a Co-op game\3 - An Endless Sporadic - Impulse\notes.chart` | Medium | GY | 4 | 0.6 | 65.55 |
-| `C:\Clone Hero\songs\synchotic\Sync Charts\Drummer's Monthly Drive\Tournaments\Conquest Contenders 2 Setlist\3 - Rock Band is a Co-op game\3 - An Endless Sporadic - Impulse\notes.chart` | Medium | GY | 18 | 0.6 | 258.646 |
-| `C:\Clone Hero\songs\synchotic\Sync Charts\Drummer's Monthly Drive\Tournaments\Conquest Contenders 2 Setlist\3 - Rock Band is a Co-op game\3 - An Endless Sporadic - Impulse\notes.chart` | Easy | GY | 4 | 0.6 | 65.55 |
-| `C:\Clone Hero\songs\synchotic\Sync Charts\Drummer's Monthly Drive\Tournaments\Conquest Contenders 2 Setlist\3 - Rock Band is a Co-op game\3 - An Endless Sporadic - Impulse\notes.chart` | Easy | GY | 6 | 0.514 | 151.779 |
-| `C:\Clone Hero\songs\synchotic\Sync Charts\Drummer's Monthly Drive\Tournaments\Conquest Contenders 2 Setlist\3 - Rock Band is a Co-op game\3 - An Endless Sporadic - Impulse\notes.chart` | Easy | GY | 5 | 0.834 | 195.379 |
-| `C:\Clone Hero\songs\synchotic\Sync Charts\Drummer's Monthly Drive\Tournaments\Conquest Contenders 2 Setlist\3 - Rock Band is a Co-op game\3 - An Endless Sporadic - Impulse\notes.chart` | Easy | GY | 17 | 1.2 | 258.646 |
-| `C:\Clone Hero\songs\synchotic\Sync Charts\Drummer's Monthly Drive\Tournaments\Summer Blast 2024 Setlist\Tier 4\Mastodon - Stargasm\notes.chart` | Medium | GY | 19 | 0.513 | 270.475 |
-| `C:\Clone Hero\songs\synchotic\Sync Charts\Drummer's Monthly Drive\Tournaments\Summer Blast 2024 Setlist\Tier 4\Mastodon - Stargasm\notes.chart` | Easy | GY | 19 | 0.513 | 270.475 |
-| `C:\Clone Hero\songs\synchotic\Sync Charts\Fig Drum Charts\Counterparts\(2024) Heaven Let Them Die\Heaven Let Them Die (Full EP)\notes.chart` | Hard | G | 11 | 1.477 | 46.066 |
+| Artist | Song | Difficulty | Lit pads | Notes in lane | Longest gap between lit notes (s) | First combo break (s into song) |
+|---|---|---|---|---|---|---|
+| An Endless Sporadic | Impulse | Medium | GY | 4 | 0.6 | 65.55 |
+| An Endless Sporadic | Impulse | Medium | GY | 18 | 0.6 | 258.646 |
+| An Endless Sporadic | Impulse | Easy | GY | 4 | 0.6 | 65.55 |
+| An Endless Sporadic | Impulse | Easy | GY | 6 | 0.514 | 151.779 |
+| An Endless Sporadic | Impulse | Easy | GY | 5 | 0.834 | 195.379 |
+| An Endless Sporadic | Impulse | Easy | GY | 17 | 1.2 | 258.646 |
+| Architects | Seeing Red | Hard | G | 37 | 6.402 | 9.713 |
+| Architects | Seeing Red | Medium | G | 20 | 6.585 | 9.53 |
+| Architects | Seeing Red | Easy | G | 20 | 6.585 | 9.53 |
+| Counterparts | Heaven Let Them Die (Full EP) | Hard | G | 11 | 1.477 | 46.066 |
+| Dream Theater | As I Am | Medium | G | 2 | 0.923 | 443.715 |
+| Halcyon Way | Desecration Day | Easy | G | 3 | 0.968 | 255.266 |
+| Leprous | Forced Entry | Medium | B | 11 | 1.107 | 28.52 |
+| Leprous | Forced Entry | Easy | B | 11 | 1.107 | 28.52 |
+| Mastodon | Stargasm | Medium | GY | 19 | 0.513 | 270.475 |
+| Mastodon | Stargasm | Easy | GY | 19 | 0.513 | 270.475 |
+| Opeth | The Baying of the Hounds | Medium | GY | 12 | 0.625 | 7.875 |
+| Opeth | The Baying of the Hounds | Easy | GY | 12 | 0.625 | 7.875 |
+| Smashing Pumpkins | Here Is No Why | Easy | G | 2 | 1.101 | 220.448 |
 
 The full list of every chart with any lane (3,801 charts, with single and double lane counts per difficulty and how many double lanes would trip the timer) is `play/library_all_charts_with_lanes.csv`.
 
