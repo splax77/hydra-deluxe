@@ -142,6 +142,8 @@ void LibraryModel::set_charts(std::vector<store::ChartLibraryEntry> charts) {
         row.entry.notespath = std::move(entry.notespath);
         row.entry.rootfolder = std::move(entry.rootfolder);
         entry = {};  // the rest of the scan's row goes now, not when the load ends
+        for (int c = 0; c < kColumnBestPath; ++c)
+            row.sort_keys[static_cast<size_t>(c)] = app::fold_for_search(library_cell_text(row, c));
         rows_.push_back(std::move(row));
     }
     ++rows_version_;
@@ -229,11 +231,14 @@ void LibraryModel::resort() {
     // Equal keys fall back to title, folder, then file path, always
     // ascending: one fixed order, so a row never jumps on a refresh. The
     // folded strings sort without case or accents getting in the way.
-    auto tie_break = [this](size_t a, size_t b) {
+    auto name_key = [](const LibraryRow& r, int column) -> const std::string& {
+        return r.sort_keys[static_cast<size_t>(column)];
+    };
+    auto tie_break = [this, &name_key](size_t a, size_t b) {
         const LibraryRow& x = rows_[a];
         const LibraryRow& y = rows_[b];
-        if (int c = x.searchable.title.compare(y.searchable.title)) return c < 0;
-        if (int c = x.searchable.folder.compare(y.searchable.folder)) return c < 0;
+        if (int c = name_key(x, kColumnTitle).compare(name_key(y, kColumnTitle))) return c < 0;
+        if (int c = name_key(x, kColumnFolder).compare(name_key(y, kColumnFolder))) return c < 0;
         return x.entry.notespath < y.entry.notespath;
     };
 
@@ -259,18 +264,10 @@ void LibraryModel::resort() {
         return;
     }
 
-    auto key = [this](const LibraryRow& r) -> const std::string& {
-        switch (sort_column_) {
-            case LibrarySort::Artist: return r.searchable.artist;
-            case LibrarySort::Charter: return r.searchable.charter;
-            case LibrarySort::Folder: return r.searchable.folder;
-            case LibrarySort::Title:
-            case LibrarySort::BestPath: break;
-        }
-        return r.searchable.title;
-    };
+    const int column = static_cast<int>(sort_column_);
     std::sort(sorted_.begin(), sorted_.end(), [&](size_t a, size_t b) {
-        if (int c = key(rows_[a]).compare(key(rows_[b]))) return ascending_ ? c < 0 : c > 0;
+        if (int c = name_key(rows_[a], column).compare(name_key(rows_[b], column)))
+            return ascending_ ? c < 0 : c > 0;
         return tie_break(a, b);
     });
 }
