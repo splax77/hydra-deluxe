@@ -51,13 +51,16 @@ TilePairs tile_pairs(const std::vector<report::Tile>& tiles) {
 TEST_CASE("write_report_file swaps the page in and leaves no .tmp behind") {
     const std::string path = testtemp::temp_path("report_file", ".html");
 
-    hydra::app::write_report_file(path, "<html>old</html>");
-    hydra::app::write_report_file(path, "<html>new</html>");
+    hydra::app::write_report_file(path, "<html>old</html>\n");
+    hydra::app::write_report_file(path, "<html>\nnew\n</html>\n");
 
+    // The page's bytes land as given: no "\r\n" is added (D114 item 28 gives
+    // CRLF to the settings file only).
     std::ifstream in(path, std::ios::binary);
     std::ostringstream contents;
     contents << in.rdbuf();
-    CHECK(contents.str() == "<html>new</html>");
+    in.close();
+    CHECK(contents.str() == "<html>\nnew\n</html>\n");
 
     CHECK_FALSE(std::filesystem::exists(path + ".tmp"));
 

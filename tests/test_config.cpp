@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <vector>
@@ -611,6 +612,23 @@ TEST_CASE("save_file replaces the settings file through a temp and a rename") {
     REQUIRE(s.save_file(path));
     CHECK(Settings::load_file(path).sp_cap == 3);
     CHECK_FALSE(std::filesystem::exists(path + ".tmp"));
+    std::remove(path.c_str());
+}
+
+// The settings file keeps Windows CRLF line ends, the shape it had before it
+// went through write_file_replacing (D114 item 28).
+TEST_CASE("save_file writes CRLF line ends and no bare LF") {
+    const std::string path = testtemp::temp_path("settings_crlf", ".ini");
+    Settings s;
+    REQUIRE(s.save_file(path));
+    std::ifstream in(path, std::ios::binary);
+    const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    in.close();
+    CHECK(bytes.find("\r\n") != std::string::npos);
+    size_t bare_lf = 0;
+    for (size_t i = 0; i < bytes.size(); ++i)
+        if (bytes[i] == '\n' && (i == 0 || bytes[i - 1] != '\r')) ++bare_lf;
+    CHECK(bare_lf == 0);
     std::remove(path.c_str());
 }
 

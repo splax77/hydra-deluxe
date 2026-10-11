@@ -221,7 +221,8 @@ bool Settings::save() const { return save_file(ini_path()); }
 
 bool Settings::save_file(const std::string& path) const {
     // Built in memory, then saved through write_file_replacing (D114 item 20),
-    // so a stopped write leaves the old file whole.
+    // so a stopped write leaves the old file whole. The file keeps Windows
+    // CRLF line ends (D114 item 28).
     std::ostringstream f;
     for (const Key& k : keys()) {
         if (auto b = std::get_if<bool Settings::*>(&k.member)) {
@@ -240,7 +241,7 @@ bool Settings::save_file(const std::string& path) const {
                 f << k.name << "=" << item << "\n";
         }
     }
-    return write_file_replacing(std::filesystem::u8path(path), f.str());
+    return write_file_replacing(std::filesystem::u8path(path), f.str(), LineEnds::Crlf);
 }
 
 int Settings::clamp(int Settings::* field, int value) {
