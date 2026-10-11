@@ -59,6 +59,18 @@ private:
     std::optional<int> http_status_;
 };
 
+// The one error a step throws when it was asked to stop. Every layer that
+// stops on request throws this or a type derived from it, so the kind and the
+// raw text are built here once. Layers that catch their own stop by type
+// derive a named type from it (ui::JobCancelled, audio::OpenCancelled). A
+// thrower with a more telling raw text passes it; the plain sentence comes
+// from the kind either way.
+class Cancelled : public KindedError {
+public:
+    explicit Cancelled(const std::string& what = "cancelled")
+        : KindedError(ErrorKind::Cancelled, what) {}
+};
+
 }  // namespace hydra
 
 #endif  // HYDRA_CORE_ERROR_KIND_H

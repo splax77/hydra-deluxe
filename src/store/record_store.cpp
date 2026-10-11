@@ -968,7 +968,7 @@ void RecordStore::report(OpenStep step, int64_t rows_done, int64_t rows_total) {
     p.rows_done = rows_done;
     p.rows_total = rows_total;
     if (!progress_(p))
-        throw KindedError(ErrorKind::Cancelled, "opening the database was stopped");
+        throw Cancelled("opening the database was stopped");
 }
 
 RecordStore::~RecordStore() { close(); }

@@ -1,0 +1,57 @@
+{
+  "rules": [
+    {
+      "question": "What does Cancel leave in a report's slot?",
+      "owner": "ReportSlot::mark_cancelled in src/ui/app_state.h",
+      "owner_file": "src/ui/app_state.h",
+      "owner_symbol": "mark_cancelled",
+      "date": "2026-10-11",
+      "decision": "concept audit M78 (D114 fix wave, task F4)",
+      "added_by": "concept-audit-F4",
+      "pattern": "\\blast\\s*=\\s*ReportBuild::Cancelled",
+      "anchor": "ReportBuild::Cancelled",
+      "must_match": [
+        "dm_report.last = ReportBuild::Cancelled;",
+        "slot.last = ReportBuild::Cancelled;",
+        "path_report.last=ReportBuild::Cancelled;"
+      ],
+      "must_not_match": [
+        "dm_report.mark_cancelled();",
+        "if (slot.last == ReportBuild::Cancelled) return;",
+        "case ReportBuild::Cancelled:"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/app_state.h",
+          "line_text": "last = ReportBuild::Cancelled;",
+          "why": "ReportSlot::mark_cancelled, the owner"
+        }
+      ],
+      "note": "Setting a report slot's outcome to Cancelled by hand skips the second write (dropping the out-of-date event that landed during the stopped build). land_report and cancel_dm_report both call mark_cancelled. The row is stricter than the fix-wave brief's wording (which allowed app_state.cpp too): app_state.cpp has no copy left, so it gets none."
+    },
+    {
+      "question": "What does the open song panel say about its chart after the library is read again?",
+      "owner": "AppState::select and AppState::follow_selected_row in src/ui/app_state.cpp",
+      "owner_file": "src/ui/app_state.cpp",
+      "owner_symbol": "follow_selected_row",
+      "date": "2026-10-11",
+      "decision": "D114 item 7 (concept audit M29, task F4)",
+      "added_by": "concept-audit-F4",
+      "pattern": "\\bselected->\\w+\\s*=[^=]",
+      "anchor": "selected->",
+      "must_match": [
+        "selected->md5 = out.new_md5;",
+        "app.selected->title = row.title;"
+      ],
+      "must_not_match": [
+        "selected = std::move(*entry);",
+        "if (selected->md5 == md5) return;",
+        "for (const LibraryRow& r : library.rows()) if (is_selected_row(r.entry)) return;"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Patching one field of the panel's copy by hand leaves the others stale after a rescan. The panel's entry is replaced whole, by select or by follow_selected_row, which re-reads it by row_key."
+    }
+  ]
+}

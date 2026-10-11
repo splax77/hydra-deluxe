@@ -1,6 +1,6 @@
-// The two base classes every background job derives from: the thread +
-// cancel/finished lifecycle (JobBase) and the ok/error result surface on top
-// of it (ResultJobBase). Read by the job headers next to this one
+// The two base classes every background job derives from: the thread and
+// cancel lifecycle (JobBase) and the finished flag, ok/error result surface
+// and outcome on top of it (ResultJobBase). Read by the job headers next to this one
 // (library_jobs.h, preview_load_job.h, dm_jobs.h); the views only ever touch
 // the concrete jobs, never these directly.
 
@@ -19,22 +19,21 @@
 namespace hydra::ui {
 
 // Thrown by JobBase::throw_if_cancelled() between a job's steps. run_guarded
-// turns it into a failed run whose error() reads "cancelled". Its kind is
-// Cancelled.
-struct JobCancelled : KindedError {
-    JobCancelled() : KindedError(ErrorKind::Cancelled, "cancelled") {}
+// turns it into a failed run whose error() reads Cancelled's text. Its own
+// type exists so library_jobs.cpp can catch a job's stop by type.
+struct JobCancelled : Cancelled {
+    JobCancelled() = default;
 };
 
-// Common lifecycle for every job: an owning worker thread, a cancel flag the
-// worker polls, and a finished flag whose release-store publishes everything
-// the worker wrote before it (the render thread's finished() load acquires).
-// Derived destructors call shutdown() so the join happens while the derived
-// members the worker touches are still alive.
+// Common lifecycle for every job: an owning worker thread and a cancel flag
+// the worker polls. Derived destructors call shutdown() so the join happens
+// while the derived members the worker touches are still alive. It has no
+// finished flag: the scan and the batch publish theirs in their snapshots,
+// so only ResultJobBase, whose run sets it, offers finished().
 class JobBase {
 public:
     void cancel() { cancel_.store(true); }
     bool is_cancelled() const { return cancel_.load(); }
-    bool finished() const { return finished_.load(); }
 
     JobBase(const JobBase&) = delete;
     JobBase& operator=(const JobBase&) = delete;
@@ -57,13 +56,29 @@ protected:
 
     std::thread thread_;
     std::atomic<bool> cancel_{false};
-    std::atomic<bool> finished_{false};
 };
 
-// Adds the ok/error result surface and the guarded-run tail shared by the
-// jobs that produce one result instead of a mutex-guarded snapshot.
+// How a finished result job ended. ResultJobBase::outcome() is the one place
+// that weighs its two inputs, the run's return and the cancel flag.
+enum class JobOutcome { Done, Cancelled, Failed };
+
+// Adds the finished flag, the ok/error result surface and the guarded-run
+// tail shared by the jobs that produce one result instead of a mutex-guarded
+// snapshot. The finished flag's release-store publishes everything the
+// worker wrote before it (the render thread's finished() load acquires).
 class ResultJobBase : public JobBase {
 public:
+    bool finished() const { return finished_.load(); }
+    // How the run ended, read once finished() is true. A run that returned
+    // ok is Done even when a Cancel came after its last step: its result is
+    // whole, so the reports keep it (cancel_dm_report says the same). The
+    // click's analysis is the one exception, written beside its reader in
+    // AppState::update_view_job.
+    JobOutcome outcome() const {
+        if (ok_) return JobOutcome::Done;
+        if (is_cancelled()) return JobOutcome::Cancelled;
+        return JobOutcome::Failed;
+    }
     bool ok() const { return ok_; }
     // The raw exception text, for a small details line. Unchanged from
     // before: a cancelled job still reads "cancelled" here.
@@ -98,6 +113,7 @@ protected:
         finished_.store(true);
     }
 
+    std::atomic<bool> finished_{false};
     bool ok_ = false;
     std::string error_;
     std::string message_;

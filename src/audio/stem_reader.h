@@ -57,6 +57,12 @@ public:
     // the reader's life, even after a seek plays the stem again. decode_audio
     // uses it to keep failing loudly on a damaged stream, as the old decoders
     // did.
+    //
+    // Only MaReader and OpusReader report it. Mp3Reader and VorbisReader keep
+    // this default, so a damaged MP3 or Ogg Vorbis stem just ends short and
+    // decode_audio returns the shorter audio. decode_audio is the one reader
+    // of failed(): the Preview (StreamMix) never asks it, so there a stem that
+    // ends early plays as silence whatever its reader.
     virtual bool failed() const { return false; }
 };
 
@@ -69,8 +75,10 @@ struct StemBytes {
     std::size_t size() const { return mapped ? mapped->size() : owned.size(); }
 };
 
-struct OpenCancelled : KindedError {
-    OpenCancelled() : KindedError(ErrorKind::Cancelled, "cancelled") {}
+// An audio open stopped by its progress callback. Its own type exists because
+// preview_load_job.cpp and song_audio.cpp catch it by type.
+struct OpenCancelled : Cancelled {
+    OpenCancelled() = default;
 };
 // bytes_done / bytes_total; return false to cancel (open throws OpenCancelled).
 using OpenProgress = std::function<bool(uint64_t bytes_done, uint64_t bytes_total)>;

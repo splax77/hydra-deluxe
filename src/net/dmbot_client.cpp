@@ -44,7 +44,7 @@ struct Handle {
     throw KindedError(kind, what + " (error " + std::to_string(error) + ")");
 }
 
-[[noreturn]] void throw_cancelled() { throw KindedError(ErrorKind::Cancelled, "cancelled"); }
+[[noreturn]] void throw_cancelled() { throw Cancelled{}; }
 
 bool cancelled(const std::atomic<bool>* cancel) { return cancel && cancel->load(); }
 

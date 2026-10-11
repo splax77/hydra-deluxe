@@ -216,6 +216,16 @@ struct ReportSlot {
     // from Refresh or a batch starts them over. The path report only;
     // AppState::collect_path_report sets it.
     bool built_on_open = false;
+
+    // A build stopped by Cancel. The outcome reads Cancelled, and an
+    // out-of-date event that landed during the stopped build is dropped with
+    // it. The last good result, its message and its out-of-date mark stay.
+    // The path report lands here through land_report when its job stops; the
+    // comparison calls it at the press, because its job is parked at once.
+    void mark_cancelled() {
+        last = ReportBuild::Cancelled;
+        out_of_date_during_build = ReportOutOfDate::None;
+    }
 };
 
 using PathReportSlot = ReportSlot<app::report::GeneratedReport>;
@@ -289,7 +299,8 @@ public:
     std::string search;
     // Applies a search at once (the box throttles its own calls).
     void set_search(std::string text);
-    // Re-reads every chart and summary: at startup and after a scan.
+    // Re-reads every chart and summary: at startup and after a scan. The open
+    // song panel's entry follows its row (follow_selected_row).
     void reload_library();
     // Re-reads every row's summary: after a settings change or a batch step.
     void refresh_library_summaries();
@@ -677,6 +688,15 @@ private:
     // what it showed (D73 item 3). Every read whose answer a screen shows
     // goes through it.
     bool read_store(const std::function<void()>& read);
+    // Re-reads `selected` from its library row after reload_library.
+    void follow_selected_row();
+    // The library row for the chart `key` (row_key), or null.
+    const LibraryChart* library_row_for(const std::string& key) const;
+    // The store's entry for the chart `key`, listed under `md5`: the one
+    // lookup select and follow_selected_row share. Empty when none, or when
+    // the read failed (read_store said so).
+    std::optional<store::ChartLibraryEntry> read_entry(const std::string& key,
+                                                       const std::string& md5);
     bool batch_finish_seen_ = false;  // update_background_jobs saw this run end
 
     // Why a path report build started. Batch: the finished batch's own
