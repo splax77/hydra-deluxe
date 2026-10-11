@@ -57,6 +57,12 @@ public:
     // the reader's life, even after a seek plays the stem again. decode_audio
     // uses it to keep failing loudly on a damaged stream, as the old decoders
     // did.
+    //
+    // Only MaReader and OpusReader report it. Mp3Reader and VorbisReader keep
+    // this default, so a damaged MP3 or Ogg Vorbis stem just ends short and
+    // decode_audio returns the shorter audio. decode_audio is the one reader
+    // of failed(): the Preview (StreamMix) never asks it, so there a stem that
+    // ends early plays as silence whatever its reader.
     virtual bool failed() const { return false; }
 };
 
