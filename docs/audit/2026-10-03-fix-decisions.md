@@ -527,3 +527,13 @@ D95 addendum, 2026-10-08 (code-only, under call 1): the path report build analyz
 4. **Any note inside the lane counts.** The game drops a lane whose first note lands more than a small tolerance after its start. That tolerance is resolution × 12 divided by a value the game sets at runtime, and nobody has read that value. The user chose not to guess it. All 50 lanes in `testdata` start exactly on their first note.
 
 The game also reads lanes during play, to make the notes under a lane easier to hit. Hydra's engine does not, and this decision changes no score.
+
+**D113 (the concept duplication audit), 2026-10-11.** The derive-once reviews catch a rule written twice line by line, but not a module that builds its own version of an idea under its own names. The user asked for an audit of those module-level copies and approved its plan, `docs/superpowers/plans/2026-10-11-concept-duplication-audit.md`, with "go with recommendations". The plan's "User decisions" section holds the reasons; the decisions are:
+1. **Scope.** All of `src/`, no pilot. `tools/` and `tests/` wait.
+2. **Two scout waves.** Ten agents first (eight sibling groups and the two inventory scouts), then the other eight groups, fed the first wave's candidates.
+3. **The clue script.** It is saved beside the audit as a record, and its probes become a new check 5 in `tools/derive_once_precheck.ps1`. No second scanner goes under `tools/`.
+4. **Copies that agree today get fixed.** Every K1 finding in `src/` is fixed, in waves the user can stop between.
+5. **Decisions go here.** The audit's user decisions continue the D-numbers in this file.
+6. **Kind F.** The derive-once review gains a sixth kind letter, F, for a second home of an idea that already has one, and a step 8 that checks every new type, enum, status word set and helper family against `CONTEXT.md`.
+7. **Status words first.** The user-visible status words of the library, the DM page and the fill page are decided as one batch of questions before the fix wave, so the fix wave is code-only.
+8. **The clue thresholds.** A repeated string counts at 12 or more characters. A struct counts at 3 or more fields, and two structs match at 4 or more shared field names. On 2026-10-11 these gave 48 clues over `src/` (the plan's phase 1 counts). The first real run of check 5 may tune them, as a reviewed change.

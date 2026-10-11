@@ -50,7 +50,7 @@ One script, run once by the main session, prints clues that two modules share an
 
 Output: `docs/audit/2026-10-11-concept-audit/leads.md`, one line per clue with the files, grouped by the sibling group that will read it (phase 2) and marked with the concept it touches where one is obvious. The script itself is saved beside it as `leads.ps1` so the numbers can be reproduced; it is a record of the audit, not a tool, and it is not added under `tools/` (question 3).
 
-Who: the main session, since the probes already exist in this session's scratch and need only tidying. Cap: one hour of main-session time and one run; if a probe takes over five minutes on the tree, drop it and say so in `leads.md`. Stop condition: the file exists with every probe's count at the top.
+Who: the main session. The planner ran the probes as one-off commands and saved no script, so the main session writes `leads.ps1` from the five descriptions above; its counts should land near the ones listed, and any large gap is noted in `leads.md`. Cap: one hour of main-session time and one run; if a probe takes over five minutes on the tree, drop it and say so in `leads.md`. Stop condition: the file exists with every probe's count at the top.
 
 Thresholds: 12 characters, 4 shared fields, 3 fields minimum. These are numbers with no decision behind them, so they are question 8. They only shape the lead list; a lower threshold adds noise, a higher one drops clues, and neither changes what a finding is.
 
@@ -178,6 +178,8 @@ The biggest risk is false confidence in the scouts' verdicts, which is why no sc
 Left out on purpose: `tools/` and `tests/` (the user asked for `src/`; the test suite had its own audit on 2026-10-10 and the single-owner redesign fixed the known test copies); completeness rounds (see phase 4); any clone tool or semantic-diff tool (the single-owner redesign plan's prior-art section already found no C++ structural tool that runs on this Windows and MSVC setup, and the type-4 recall numbers above say a model reading alone is not one either); a hook change (see the gate section); and fixes to the line-level copies the 2026-10-03 audit already lists, which stay on that audit's fix list.
 
 ## User decisions needed before this starts
+
+**Approved 2026-10-11.** The user read a summary of this plan and replied "go with recommendations". Every recommendation below is the decision, recorded as D113 in `docs/audit/2026-10-03-fix-decisions.md`.
 
 1. **Scope.** `src/` only, all eleven folders, no pilot. Recommendation: yes, as asked. `tools/` and `tests/` wait.
 
