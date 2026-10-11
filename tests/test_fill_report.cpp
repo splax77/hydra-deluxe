@@ -403,6 +403,9 @@ TEST_CASE("build_fill_html substitutes every placeholder") {
     CHECK(html.find("{k:'p11',     t:'" + new_rule + " path',") != std::string::npos);
     CHECK(html.find("__OLD_RULE__") == std::string::npos);
     CHECK(html.find("__NEW_RULE__") == std::string::npos);
+    // The search box keeps its hint, now written in from html_page.h (M07).
+    CHECK(html.find("placeholder=\"Search song, artist, or charter\">") != std::string::npos);
+    CHECK(html.find("__SEARCH_HINT__") == std::string::npos);
     // Counts and deltas go through the page's shared fmt.
     CHECK(html.find(".toLocaleString()]") == std::string::npos);
     CHECK(html.find("'+' + r.delta.toLocaleString()") == std::string::npos);

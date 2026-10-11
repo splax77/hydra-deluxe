@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "app/dm_report_view.h"
+#include "app/html_page.h"  // kSearchChartsHint
 #include "app/user_messages.h"
 #include "imgui.h"
 #include "ui/app_state.h"  // dm_report_input
@@ -78,7 +79,7 @@ void draw_body(DmWindow& w, const report_frame::Frame& frame, const DmReportInpu
     }
     report_frame::tiles(w.tiles);
 
-    if (report_frame::search_box(w.memory, "Search song, artist, or charter")) apply_filters(w);
+    if (report_frame::search_box(w.memory, app::html::kSearchChartsHint)) apply_filters(w);
     if (report_frame::dropdown("##status", w.labels, w.status)) apply_filters(w);
     report_frame::count_line(w.memory, view.count_line(view_rules::kNoun));
 
@@ -97,7 +98,8 @@ void draw_body(DmWindow& w, const report_frame::Frame& frame, const DmReportInpu
     look.clickable = [](const DmReportRow& r) {
         return r.status != app::dm_report::kStatusNotInLibrary;
     };
-    look.unclickable_hint = "Not in your library";
+    look.unclickable_hint =
+        app::dm_report::status_words(app::dm_report::kStatusNotInLibrary).name;
     report_frame::table("##dmtable", w.memory, view, w.widths, look, input.callbacks,
                         ImGui::GetContentRegionAvail().y - report_frame::footer_height(frame));
 }

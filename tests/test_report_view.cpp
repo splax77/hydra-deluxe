@@ -421,7 +421,7 @@ TEST_CASE("dm comparison columns: the page's thirteen, in order, word for word")
         "The playback speed the score was set at. 100% is normal speed.",
         "The score's rank on this chart's leaderboard.",
         "The date the score was posted.",
-        "Under optimal, At optimal or Above optimal when Hydra has a result. Not analyzed: the chart is in your library but has no current result for this mode at SP cap 4. No paths: analyzed, but the analysis kept no path. Not in your library: the last scan did not find it. Other speed: played at a speed other than 100%. Hydra's optimal is for 100% only, so the score is shown but not compared.",
+        "Under optimal, At optimal or Above optimal when Hydra has a result. No current result: the chart is in your library without a result for this mode at SP cap 4. No paths: analyzed, but the analysis kept no path. Not in your library: the last scan did not find it. Other speed: played at a speed other than 100%. Hydra's optimal is for 100% only, so the score is shown but not compared.",
     });
     CHECK(cols[0].look.truncate);
     CHECK(cols[1].look.dim);
@@ -481,12 +481,12 @@ TEST_CASE("dm comparison: Status choices, the keep-rule, sort and count line") {
     }
     CHECK(labels == std::vector<std::string>{
                         "All charts", "Under optimal", "At optimal", "Above optimal",
-                        "Not analyzed (in your library)", "No paths (analyzed, none kept)",
+                        "No current result (in your library)", "No paths (analyzed, none kept)",
                         "Not in your library", "Other speed"});
     CHECK(statuses == std::vector<std::optional<std::string>>{
                           std::nullopt, std::string("under optimal"),
                           std::string("at optimal"), std::string("above optimal"),
-                          std::string("not analyzed"), std::string("no paths"),
+                          std::string("no current result"), std::string("no paths"),
                           std::string("not in library"), std::string("other speed")});
     // The window's start, new-result and Clear filters index keeps every status.
     CHECK_FALSE(choices[report_view::kEveryRowChoice].status.has_value());

@@ -19,16 +19,16 @@ namespace {
 // through it.
 void count_status(DmReportStats& stats, const DmReportRow& r) {
     ++stats.total;
-    if (r.status == kStatusUnderOptimal) ++stats.under_optimal;
-    else if (r.status == kStatusAtOptimal) ++stats.at_optimal;
-    else if (r.status == kStatusAboveOptimal) ++stats.above_optimal;
-    else if (r.status == kStatusNotAnalyzed) ++stats.not_analyzed;
-    else if (r.status == kStatusNoPaths) ++stats.no_paths;
-    else if (r.status == kStatusOtherSpeed) ++stats.other_speed;
-    else ++stats.not_in_library;
+    ++(stats.*status_words(r.status).count);
 }
 
 }  // namespace
+
+const StatusWords& status_words(const std::string& status) {
+    for (const StatusWords& w : kStatusWords)
+        if (status == w.status) return w;
+    return status_words(kStatusNotInLibrary);  // in the table, so this returns
+}
 
 std::string why_not_comparable(Difficulty difficulty, int sp_cap, bool legacy_fills,
                                bool note_shuffle) {
@@ -121,7 +121,7 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
             // A Ready result whose analysis kept no path (D51 call 11).
             row.status = kStatusNoPaths;
         } else {
-            row.status = report::library_lists(library, s.identifier) ? kStatusNotAnalyzed
+            row.status = report::library_lists(library, s.identifier) ? kStatusNoCurrentResult
                                                                        : kStatusNotInLibrary;
         }
         if (!base) row.status = kStatusOtherSpeed;
@@ -147,7 +147,8 @@ report::ChipToken status_token(const std::string& status) {
     using report::ChipToken;
     if (status == kStatusUnderOptimal || status == kStatusAtOptimal) return ChipToken::t0;
     if (status == kStatusAboveOptimal) return ChipToken::t1;
-    if (status == kStatusNotAnalyzed || status == kStatusNoPaths || status == kStatusOtherSpeed)
+    if (status == kStatusNoCurrentResult || status == kStatusNoPaths ||
+        status == kStatusOtherSpeed)
         return ChipToken::muted;
     // kStatusNotInLibrary, and a status the page has no class for.
     return ChipToken::tn;
@@ -177,31 +178,29 @@ std::vector<report::Tile> dm_tiles(const std::vector<DmReportRow>& rows,
     if (pct_rows > 0)
         average = format_percent(
             pct_sum, pct_rows * percent_steps(1, 1, kPercentDecimals), kPercentDecimals);
-    // A "no paths" row has no tile of its own (D62 item 1); Scores shown counts
-    // it.
-    return {
-        {"Scores shown", group_thousands(stats.total)},
-        {"Under optimal", group_thousands(stats.under_optimal)},
-        {"At optimal", group_thousands(stats.at_optimal)},
-        {"Above optimal", group_thousands(stats.above_optimal)},
-        {"Not analyzed", group_thousands(stats.not_analyzed)},
-        {"Not in library", group_thousands(stats.not_in_library)},
-        {"Other speed", group_thousands(stats.other_speed)},
-        {"Avg % of optimal", average},
-        {"Points left on table", group_thousands(points_left)},
-    };
+    // A status with no tile ("no paths", D62 item 1) still counts in Scores
+    // shown.
+    std::vector<report::Tile> tiles = {{"Scores shown", group_thousands(stats.total)}};
+    for (const StatusWords& w : kStatusWords)
+        if (w.tile) tiles.push_back({w.name, group_thousands(stats.*w.count)});
+    tiles.push_back({"Avg % of optimal", average});
+    tiles.push_back({"Points left on table", group_thousands(points_left)});
+    return tiles;
 }
 
 std::string counts_phrase(const DmReportStats& stats) {
-    std::string out = group_thousands(stats.under_optimal) + " under optimal, " +
-                      group_thousands(stats.at_optimal) + " at optimal, " +
-                      group_thousands(stats.above_optimal) + " above optimal, " +
-                      group_thousands(stats.not_analyzed) + " not analyzed, " +
-                      group_thousands(stats.not_in_library) + " not in your library";
-    // Only when there is one, so every other phrase reads as before (D62).
-    if (stats.no_paths > 0) out += ", " + group_thousands(stats.no_paths) + " with no paths";
-    if (stats.other_speed > 0)
-        out += ", " + hydra::counted(stats.other_speed, "at another speed", "at other speeds");
+    std::string out;
+    auto add = [&](const StatusWords& w) {
+        if (!out.empty()) out += ", ";
+        out += hydra::counted(stats.*w.count, w.count_one,
+                              w.count_many ? w.count_many : w.count_one);
+    };
+    // Every status always, then the ones named only when there are any, so
+    // every other phrase reads as before (D62).
+    for (const StatusWords& w : kStatusWords)
+        if (!w.count_when_any) add(w);
+    for (const StatusWords& w : kStatusWords)
+        if (w.count_when_any && stats.*w.count > 0) add(w);
     return out;
 }
 
@@ -225,8 +224,9 @@ GeneratedDmReport generate_dm_report(store::RecordStore& store,
         "Actual scores from dmleaderboards.com against Hydra's optimal for " + chartmode +
         ". Above-optimal scores are expected — Hydra's optimal excludes several score "
         "backends, and older Clone Hero versions allowed fills that are impossible now. "
-        "Not analyzed charts are in your library without a current result for this mode "
-        "at SP cap " + std::to_string(kCloneHeroSpCap) + ": analyze them, then compare again.";
+        "Charts with " + status_words(kStatusNoCurrentResult).count_one +
+        " are in your library without a result for this mode at SP cap " +
+        std::to_string(kCloneHeroSpCap) + ": analyze them, then compare again.";
     out.subtitle = std::move(subtitle);
     out.footer = std::move(footer);
     out.rows = std::move(rows);

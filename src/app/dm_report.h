@@ -30,6 +30,8 @@ namespace hydra::app::dm_report {
 
 // The words collect_dm_rows writes in DmReportRow::status, one per state a
 // score can be in. Every reader compares against these names, never the words.
+// Each word is also the Status cell's text; every other spelling of a status
+// is in kStatusWords below.
 // Hydra has a result, and the score is below, equal to or over its optimal.
 inline constexpr const char* kStatusUnderOptimal = "under optimal";
 inline constexpr const char* kStatusAtOptimal = "at optimal";
@@ -37,8 +39,9 @@ inline constexpr const char* kStatusAboveOptimal = "above optimal";
 // Hydra has a result, but its analysis kept no path (D51 call 11).
 inline constexpr const char* kStatusNoPaths = "no paths";
 // The last scan found the chart, but it has no current result at Clone Hero's
-// cap, kCloneHeroSpCap, for this mode.
-inline constexpr const char* kStatusNotAnalyzed = "not analyzed";
+// cap, kCloneHeroSpCap, for this mode: never analyzed there, or Stale (D114
+// item 1).
+inline constexpr const char* kStatusNoCurrentResult = "no current result";
 // The last scan never found the chart.
 inline constexpr const char* kStatusNotInLibrary = "not in library";
 // Played at a speed other than net::kBaseSpeedPercent: shown, never compared.
@@ -113,6 +116,55 @@ struct DmReportStats {
     int other_speed = 0;     // played off base speed: shown, not compared
     int no_paths = 0;        // analyzed, but the analysis kept no path
 };
+
+// How the comparison shows each status, apart from the table cell (the
+// kStatus* word itself). The tiles, the counts phrase, the footer, the
+// Status dropdown and hover, and the window's row hover read these (D114
+// items 1 and 2). In the dropdown's order.
+struct StatusWords {
+    const char* status;  // a kStatus* word
+    // Capitalised: the tile's label, the dropdown's label (before
+    // choice_note), the Status hover's lead word and the window's row hover.
+    const char* name;
+    // Whether it has a tile; kStatusNoPaths has none (D62 item 1).
+    bool tile;
+    const char* choice_note;  // after the name in the dropdown, or ""
+    // The counts phrase's words after the number: `count_one` for one, and
+    // `count_many` for more, or `count_one` again when it is nullptr.
+    const char* count_one;
+    const char* count_many;
+    // Whether the counts phrase names it only when it is above zero (D62).
+    bool count_when_any;
+    // The Status hover's text after "name: ", with dm_report_view's
+    // __SP_CAP__ and __BASE_SPEED__ placeholders. Empty for the three
+    // optimal statuses, which the hover's first sentence names together.
+    const char* gloss;
+    int DmReportStats::* count;  // the tally field that counts it
+};
+inline constexpr StatusWords kStatusWords[] = {
+    {kStatusUnderOptimal, "Under optimal", true, "", kStatusUnderOptimal, nullptr, false, "",
+     &DmReportStats::under_optimal},
+    {kStatusAtOptimal, "At optimal", true, "", kStatusAtOptimal, nullptr, false, "",
+     &DmReportStats::at_optimal},
+    {kStatusAboveOptimal, "Above optimal", true, "", kStatusAboveOptimal, nullptr, false, "",
+     &DmReportStats::above_optimal},
+    {kStatusNoCurrentResult, "No current result", true, " (in your library)",
+     kStatusNoCurrentResult, nullptr, false,
+     "the chart is in your library without a result for this mode at SP cap __SP_CAP__.",
+     &DmReportStats::not_analyzed},
+    {kStatusNoPaths, "No paths", false, " (analyzed, none kept)", "with no paths", nullptr,
+     true, "analyzed, but the analysis kept no path.", &DmReportStats::no_paths},
+    {kStatusNotInLibrary, "Not in your library", true, "", "not in your library", nullptr,
+     false, "the last scan did not find it.", &DmReportStats::not_in_library},
+    {kStatusOtherSpeed, "Other speed", true, "", "at another speed", "at other speeds", true,
+     "played at a speed other than __BASE_SPEED__%. Hydra's optimal is for __BASE_SPEED__% "
+     "only, so the score is shown but not compared.",
+     &DmReportStats::other_speed},
+};
+// The words for `status`. A status the page doesn't know reads as
+// kStatusNotInLibrary, the way tally_dm_rows counts it.
+const StatusWords& status_words(const std::string& status);
+
 DmReportStats tally_dm_rows(const std::vector<DmReportRow>& rows);
 // The same tally over the rows a window shows: `shown` holds their indices
 // into `rows`.
@@ -129,9 +181,9 @@ report::ChipToken status_token(const std::string& status);
 std::vector<report::Tile> dm_tiles(const std::vector<DmReportRow>& rows,
                                    const std::vector<size_t>& shown);
 
-// "1 under optimal, 0 at optimal, 1 above optimal, 0 not analyzed, 1 not in
-// your library", plus ", 1 with no paths" and ", 2 at other speeds" when
-// there are any. The comparison window shows it when the player had no scores.
+// Each status's count in kStatusWords' count words, such as "1 under
+// optimal, 0 at optimal, ...". The comparison window shows it when the player
+// had no scores.
 std::string counts_phrase(const DmReportStats& stats);
 
 struct GeneratedDmReport {

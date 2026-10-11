@@ -407,7 +407,7 @@ function render() {
   body.appendChild(frag);
 
   const empty = document.getElementById('empty');
-  empty.textContent = 'Nothing matches those filters.';
+  empty.textContent = __NOTHING_MATCHES__;
   empty.hidden = rows.length > 0;
   // PAGE.total is every row's count with its noun, worded in C++.
   document.getElementById('count').textContent = fmt(countOf(rows)) + ' of ' + PAGE.total;
@@ -493,6 +493,16 @@ requestAnimationFrame(() => setTimeout(() => setSort(sortKey, sortDir), 0));
 </script>
 )js";
 
+const std::string& report_js() {
+    // The empty-state sentence the report windows show too, as a JS string.
+    static const std::string js = [] {
+        std::string nothing_matches;
+        json_escape_into(nothing_matches, kNothingMatches);
+        return replace_all(kReportJs, "__NOTHING_MATCHES__", nothing_matches);
+    }();
+    return js;
+}
+
 std::string page_template(const char* title, const char* body, const char* page_js) {
     std::string page = kHead;
     page += "<title>";
@@ -517,7 +527,7 @@ std::string page_template(const char* title, const char* body, const char* page_
     fold += "};\n";
     page += replace_all(std::move(fold), "</", "<\\/");
     page += page_js;
-    page += kReportJs;
+    page += report_js();
     page += kEnd;
     return page;
 }

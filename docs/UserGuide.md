@@ -244,7 +244,7 @@ The transport buttons are `-5s`, `< 5 Ticks`, `Play`/`Pause`, `5 Ticks >` and `+
 
 The same keys are drawn as keycaps in a bar under the highway, in the buttons' order. Each button's tooltip names its key too.
 
-The scrubber under the highway shows where you are. Its gold marks are the path's activations, in the same gold as the next-activation box. The scrubber measures position against the song's length, like the Paths timeline, so an activation sits at the same spot on both. A chart with no length still scrubs, up to where playback ends, but the Paths timeline shows no marks for it, so there is nothing to line up. Audio that runs past the song's length still plays.<!-- owners: scrub_end_ms (the scrubber's end), app::song_length_ms (the song's length) --> The beat lines run on to the end of the audio.
+The scrubber under the highway shows where you are. Its gold marks are the path's activations, in the same gold as the next-activation box. The scrubber measures position against the song's length, like the Paths timeline, so an activation sits at the same spot on both. When the song's stated length runs past the last note and the audio, the scrubber ends where playback ends. A chart with no length still scrubs, up to where playback ends, but the Paths timeline shows no marks for it, so there is nothing to line up. Audio that runs past the song's length still plays.<!-- owners: scrub_end_ms (the scrubber's end), app::song_length_ms (the song's length) --> The beat lines run on to the end of the audio.
 
 ### When the settings or the chart change
 
@@ -430,7 +430,7 @@ Every row gets one status. The status dropdown shows one status at a time, or `A
 | `Under optimal` | Scores played at 100% speed that are below Hydra Deluxe's optimal for the chart. |
 | `At optimal` | Scores played at 100% speed that equal it. |
 | `Above optimal` | Scores played at 100% speed that are higher than it. |
-| `Not analyzed (in your library)` | Scores for a chart in your library that has no current result for this mode at SP cap 4. |
+| `No current result (in your library)` | Scores for a chart in your library that has no current result for this mode at SP cap 4. |
 | `No paths (analyzed, none kept)` | Scores for a chart that was analyzed, but whose analysis kept no path. |
 | `Not in your library` | Scores for a chart the last scan didn't find. |
 | `Other speed` | Scores played at a speed other than 100%. |
@@ -445,8 +445,8 @@ The tiles count only the rows that pass the filters:
 | --- | --- |
 | `Scores shown` | Every row that passes, whatever its status. |
 | `Under optimal`, `At optimal`, `Above optimal` | The rows with each of those statuses. |
-| `Not analyzed` | The `Not analyzed (in your library)` rows. |
-| `Not in library` | The `Not in your library` rows. |
+| `No current result` | The `No current result (in your library)` rows. |
+| `Not in your library` | The `Not in your library` rows. |
 | `Other speed` | The `Other speed` rows. |
 | `Avg % of optimal` | The average of the `% of opt` column, over the rows that have one. |
 | `Points left on table` | The points left on the `Under optimal` rows, added up. |
@@ -467,7 +467,7 @@ The search box matches the song, artist and charter. The table starts sorted by 
 | `Speed` | The playback speed the score was set at. 100% is normal speed. |
 | `Rank` | The score's rank on this chart's leaderboard. |
 | `Posted` | The date the score was posted. |
-| `Status` | The row's status, written in lowercase in the table (`under optimal`, `not analyzed`, `not in library`). The dropdown spells out the same statuses, as in the table above. |
+| `Status` | The row's status, written in lowercase in the table (`under optimal`, `no current result`, `not in library`). The dropdown spells out the same statuses, as in the table above. |
 
 Clicking a row selects its song, as in the path report. A `Not in your library` row has no song to select, so clicking it does nothing, the `Up` and `Down` arrows pass over it, and hovering it says `Not in your library`.
 

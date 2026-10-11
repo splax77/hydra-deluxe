@@ -1,0 +1,57 @@
+{
+  "rules": [
+    {
+      "question": "What does the comparison call a status on a tile, in the Status dropdown, in its hover or in the counts phrase?",
+      "owner": "kStatusWords in src/app/dm_report.h, read through status_words",
+      "owner_file": "src/app/dm_report.h",
+      "owner_symbol": "kStatusWords",
+      "date": "2026-10-11",
+      "decision": "D114 items 1 and 2 (M01, M02)",
+      "added_by": "concept-audit-H3",
+      "pattern": "\"(Under optimal|At optimal|Above optimal|No current result|No paths|Not in your library|not in your library|Not in library|Other speed|with no paths|at another speed|at other speeds)( \\([^)]*\\))?\"",
+      "owner_files": [
+        "src/app/dm_report.h"
+      ],
+      "must_match": [
+        "        {\"No current result\", group_thousands(stats.not_analyzed)},",
+        "        {std::string(kStatusNoPaths), \"No paths (analyzed, none kept)\"},",
+        "    look.unclickable_hint = \"Not in your library\";",
+        "        out += \", \" + hydra::counted(stats.other_speed, \"at another speed\", \"at other speeds\");"
+      ],
+      "must_not_match": [
+        "    look.unclickable_hint = app::dm_report::status_words(app::dm_report::kStatusNotInLibrary).name;",
+        "inline constexpr const char* kNoPathsFound = \"No paths found.\";"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The comparison's status words, apart from the table cell (the kStatus* word, app.json's row), live once in kStatusWords. A tile, dropdown, hover or counts word typed elsewhere is a second spelling that can drift from the table. Decided by: D114 items 1 and 2, concept audit M01 and M02."
+    },
+    {
+      "question": "What does a report say when nothing matches its filters, and what does its chart search box hint?",
+      "owner": "kNothingMatches and kSearchChartsHint in src/app/html_page.h",
+      "owner_file": "src/app/html_page.h",
+      "owner_symbol": "kNothingMatches",
+      "date": "2026-10-11",
+      "decision": "D114 item 22 (M07, code-only)",
+      "added_by": "concept-audit-H3",
+      "pattern": "Nothing matches those filters|Search song, artist, or charter",
+      "owner_files": [
+        "src/app/html_page.h"
+      ],
+      "must_match": [
+        "    ImGui::TextUnformatted(\"Nothing matches those filters.\");",
+        "  empty.textContent = 'Nothing matches those filters.';",
+        "    if (report_frame::search_box(w.memory, \"Search song, artist, or charter\")) apply_filters(w);"
+      ],
+      "must_not_match": [
+        "    ImGui::TextUnformatted(app::html::kNothingMatches);",
+        "    if (report_frame::search_box(w.memory, \"Search song, artist, charter, or path notation\"))"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The report windows and the fill page share these two phrases; the page is built from hydra_core, so the home is html_page.h, not GUI code. A third copy typed elsewhere would drift. Decided by: D114 item 22, concept audit M07."
+    }
+  ]
+}

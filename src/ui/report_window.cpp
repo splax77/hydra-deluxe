@@ -4,6 +4,7 @@
 #include <cfloat>
 #include <ctime>
 
+#include "app/html_page.h"   // kNothingMatches
 #include "imgui_internal.h"  // TableSetColumnSortDirection, the window's item rects
 #include "ui/app_shell.h"    // report_window_class, place_report_window
 #include "ui/fonts.h"        // g_mono_font, px
@@ -333,7 +334,7 @@ void count_line(Memory& m, const std::string& text) {
 
 bool nothing_matches() {
     ImGui::Spacing();
-    ImGui::TextUnformatted("Nothing matches those filters.");
+    ImGui::TextUnformatted(app::html::kNothingMatches);
     return ImGui::Button("Clear filters");
 }
 
