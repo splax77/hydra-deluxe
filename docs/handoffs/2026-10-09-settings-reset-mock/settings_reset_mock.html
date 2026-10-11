@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings reset mock</title>
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Shippori+Antique+B1&display=swap" rel="stylesheet">
+<style>
+/* Colours from src/ui/theme.h: window 37,37,38; button 0,122,122 (hover 0,104,104);
+   accent 0,180,180; dim text 160; subtle text 200; disabled button 100 face / 235 text. */
+:root{--page:#151516;--win:#252526;--frame:#333337;--framehov:#006868;--border:#4e4e4e;
+--text:#fafafa;--sub:#c8c8c8;--dim:#a0a0a0;--btn:#007a7a;--btnhov:#006868;--btnact:#005858;
+--accent:#00b4b4;--dis:#646464;--distext:#ebebeb;--chip:#3a3a3e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--text);font-family:'Shippori Antique B1',system-ui,sans-serif;font-size:13px}
+.mono{font-family:'Courier Prime',monospace}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:20px;font-weight:400;margin:0 0 6px}
+p{color:var(--sub);line-height:20px;margin:4px 0;max-width:860px}
+p b{font-weight:400;color:var(--text)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:16px 0 10px}
+.tab{background:var(--chip);color:var(--text);border:0;border-radius:12px;padding:5px 12px;font:inherit;cursor:pointer}
+.tab.on{background:var(--btn)}
+.mockctl{display:flex;gap:14px;flex-wrap:wrap;align-items:center;color:var(--sub);margin:6px 0 12px}
+.mockctl label{display:inline-flex;gap:6px;align-items:center;cursor:pointer}
+.mockctl input{accent-color:var(--accent)}
+.ghost{background:var(--chip);color:var(--text);border:0;padding:4px 10px;font:inherit;cursor:pointer;border-radius:3px}
+.explain{min-height:60px}
+.stage{background:var(--win);border:1px solid var(--border);border-radius:4px;padding:8px;min-height:470px;position:relative;overflow-x:auto}
+/* the action row */
+.row{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.abtn{background:var(--btn);color:var(--text);border:0;padding:3px 8px;font:inherit}
+.div{width:1px;align-self:stretch;background:var(--border);margin:0 6px}
+.sumbtn{display:inline-flex;align-items:center;gap:8px;background:var(--frame);color:var(--text);border:1px solid var(--border);padding:3px 8px;font:inherit;cursor:pointer}
+.sumbtn .arr{color:var(--sub);font-size:9px}
+/* the popup */
+.pop{position:absolute;left:520px;top:34px;background:var(--win);border:1px solid var(--border);padding:8px 10px 10px;box-shadow:0 6px 24px rgba(0,0,0,.55);width:258px}
+.sep{display:flex;align-items:center;gap:8px;color:var(--dim);margin:8px 0 4px}
+.sep::before{content:"";width:8px;height:1px;background:var(--border)}
+.sep::after{content:"";flex:1;height:1px;background:var(--border)}
+.sep.first{margin-top:2px}
+.head{display:flex;align-items:center;gap:8px;margin:0 0 2px}
+.head .sep{flex:1;margin:0}
+table.form{border-collapse:collapse}
+table.form td{padding:2px 0;vertical-align:middle;white-space:nowrap}
+table.form td.k{width:92px;padding-right:8px}
+.help{color:var(--dim);font-size:11px;margin-left:2px}
+.combo{display:inline-flex;align-items:stretch;background:var(--frame);height:21px}
+.combo select{background:transparent;color:var(--text);border:0;font:inherit;padding:0 4px;appearance:none;-webkit-appearance:none;cursor:pointer}
+.combo select option{background:var(--win)}
+.combo .dd{background:var(--btn);width:21px;display:flex;align-items:center;justify-content:center;font-size:9px;pointer-events:none}
+.num{display:inline-flex;align-items:center;gap:4px}
+.num input{background:var(--frame);color:var(--text);border:0;font:inherit;width:40px;height:21px;padding:0 6px}
+.num button{background:var(--btn);color:var(--text);border:0;width:21px;height:21px;font:inherit;cursor:pointer;padding:0}
+.num button:hover,.rbtn:hover{background:var(--btnhov)}
+.cbx{appearance:none;-webkit-appearance:none;width:19px;height:19px;background:var(--frame);margin:0;vertical-align:middle;cursor:pointer;position:relative}
+.cbx:checked::after{content:"";position:absolute;left:6px;top:2px;width:5px;height:10px;border:solid var(--accent);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.unit{margin-left:4px}
+.locked .num input,.locked .combo,.locked .cbx{color:var(--dim);background:#282828;pointer-events:none}
+.locked .num button,.locked .combo .dd{background:var(--dis);color:var(--distext);pointer-events:none}
+.lockline{color:var(--sub);border-top:1px solid var(--border);margin-top:8px;padding-top:6px}
+/* the reset button */
+.rbtn{background:var(--btn);color:var(--text);border:0;padding:3px 8px;font:inherit;cursor:pointer;white-space:nowrap}
+.rbtn:active{background:var(--btnact)}
+.rbtn.off{background:var(--dis);color:var(--distext);cursor:default}
+.foot{border-top:1px solid var(--border);margin-top:8px;padding-top:8px}
+.small{padding:1px 6px}
+/* option C: rows that differ from the default */
+.changed td.k .name{color:var(--accent)}
+.changed td.k .name::before{content:"●";font-size:8px;margin-right:4px;vertical-align:2px}
+/* tooltip */
+.tip{position:fixed;z-index:20;background:var(--win);border:1px solid var(--border);padding:4px 8px;max-width:340px;line-height:18px;pointer-events:none;display:none;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+.legend{margin-top:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Analysis settings: where the reset button goes</h1>
+<p>Each tab is a clickable mock of the settings panel as it looks today, with a reset button added in a different place. The controls work. Change anything and the button label above the panel updates, just like in the app. Hover the reset button to see its tooltip, then click it. The colours, wording and defaults come from the code (theme.h, settings_bar.cpp, library_dialogs.cpp, config.h). Nothing here talks to the real app.</p>
+
+<div class="tabs" id="tabs">
+  <button class="tab on" data-t="a">A · At the bottom</button>
+  <button class="tab" data-t="b">B · In the top corner</button>
+  <button class="tab" data-t="c">C · At the bottom, changes marked</button>
+</div>
+
+<div class="mockctl">
+  <button class="ghost" id="scramble">Change a few settings</button>
+  <label><input type="checkbox" id="lockbox"> Batch running (settings locked)</label>
+</div>
+
+<p class="explain" id="explain"></p>
+<div class="stage" id="stage"></div>
+
+<div class="legend">
+<p><b>Same in every option.</b> The button puts back the eight settings in this panel and nothing else. Your folders, preview volume and hit window stay as they are. It goes grey when the settings already read "defaults", and while a batch has them locked. There's no confirm box. The tooltip says what the click will undo, in the same words as the label above the panel.</p>
+<p><b>The defaults</b> are the app's built-in ones (config.h): Expert, Pro Drums on, 2x Bass on, Note Shuffle off, SP cap 4 bars, 1.0 fills off, Score range 4 scores, Path limit on at 10 ms.</p>
+</div>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+const DEF={diff:'Expert',pro:true,bass:true,shuffle:false,cap:4,fills:false,depth:4,mode:'scores',lim:true,ms:10};
+let S={...DEF}, tab='a', locked=false;
+
+// The app's own phrases (library_dialogs.cpp settings_changes_summary).
+const counted=(n,one,many)=>`${n} ${n===1?one:many}`;
+function changes(){
+  const out=[];
+  if(S.diff!==DEF.diff) out.push(S.diff);
+  if(S.pro!==DEF.pro) out.push(S.pro?'Pro Drums':'Pro Drums off');
+  if(S.bass!==DEF.bass) out.push(S.bass?'2x Bass':'2x Bass off');
+  if(S.shuffle!==DEF.shuffle) out.push(S.shuffle?'Note Shuffle':'Note Shuffle off');
+  if(S.cap!==DEF.cap) out.push('SP cap '+counted(S.cap,'bar','bars'));
+  if(S.fills!==DEF.fills) out.push(S.fills?'1.0 fills':'1.0 fills off');
+  if(S.depth!==DEF.depth||S.mode!==DEF.mode) out.push('Score range '+(S.mode==='scores'?counted(S.depth,'score','scores'):counted(S.depth,'point','points')));
+  if(S.lim!==DEF.lim||S.ms!==DEF.ms) out.push(S.lim?`Path limit ${S.ms} ms`:'Path limit off');
+  return out;
+}
+const summary=()=>{const c=changes(); return c.length?c.join(' · '):'defaults';};
+const atDefaults=()=>changes().length===0;
+const changedKey={diff:()=>S.diff!==DEF.diff,pro:()=>S.pro!==DEF.pro,bass:()=>S.bass!==DEF.bass,shuffle:()=>S.shuffle!==DEF.shuffle,
+  cap:()=>S.cap!==DEF.cap,fills:()=>S.fills!==DEF.fills,depth:()=>S.depth!==DEF.depth||S.mode!==DEF.mode,lim:()=>S.lim!==DEF.lim||S.ms!==DEF.ms};
+
+const HELP={
+ diff:"Which charted difficulty to analyze, path and preview",
+ pro:"Analyze with cymbals and toms as separate notes, the way Clone Hero scores Pro Drums.",
+ bass:"Include the chart's 2x kicks, like Clone Hero's Double Kick.",
+ shuffle:"Score the chart as Clone Hero 1.1's Note Shuffle modifier rearranges it. The rearrangement is the same every time for a given chart and drum setting.",
+ cap:"4 bars is Clone Hero's rule. Higher caps are what-ifs; their scores are not achievable in game.",
+ fills:"Spawn drum fills by Clone Hero 1.0's rule instead of 1.1's. A fill only appears if your Star Power was ready in time. For runs played on 1.0; current Clone Hero plays by 1.1.",
+ depth:"How many extra paths below optimal to keep: a number of scores, or of points. More paths take longer to analyze.",
+ lim:"Keep extra paths only when their hardest squeeze or required early fill is within this many ms. Lower or negative values demand more slack."
+};
+const cb=k=>`<input type="checkbox" class="cbx" data-k="${k}"${S[k]?' checked':''}>`;
+const num=k=>`<span class="num"><input class="mono" data-k="${k}" value="${S[k]}"${k==='ms'&&!S.lim?' disabled style="color:var(--dim);background:#282828"':''}><button data-step="${k}:-1">-</button><button data-step="${k}:1">+</button></span>`;
+const combo=(k,opts)=>`<span class="combo"><select data-k="${k}">${opts.map(o=>`<option${S[k]===o?' selected':''}>${o}</option>`).join('')}</select><span class="dd">▼</span></span>`;
+function rowHtml(k,name,ctl){
+  const ch=tab==='c'&&changedKey[k]();
+  return `<tr class="${ch?'changed':''}"><td class="k"><span class="name">${name}</span> <span class="help" data-tip="${HELP[k].replace(/"/g,'&quot;')}">(?)</span></td><td>${ctl}</td></tr>`;
+}
+const groups=()=>
+ `<table class="form">
+  ${rowHtml('diff','Difficulty',combo('diff',['Easy','Medium','Hard','Expert']))}
+  ${rowHtml('pro','Pro Drums',cb('pro'))}
+  ${rowHtml('bass','2x Bass',cb('bass'))}
+  ${rowHtml('shuffle','Note Shuffle',cb('shuffle'))}</table>
+  <div class="sep">Clone Hero rules</div><table class="form">
+  ${rowHtml('cap','SP cap',num('cap')+'<span class="unit">bars</span>')}
+  ${rowHtml('fills','1.0 fills',cb('fills'))}</table>
+  <div class="sep">Paths kept</div><table class="form">
+  ${rowHtml('depth','Score range',num('depth')+' '+combo('mode',['scores','points']))}
+  ${rowHtml('lim','Path limit',cb('lim')+' '+num('ms')+'<span class="unit">ms</span>')}</table>`;
+
+const resetOff=()=>locked||atDefaults();
+const resetBtn=(label,cls='')=>`<button class="rbtn ${cls}${resetOff()?' off':''}" id="reset">${label}</button>`;
+const lockLine=()=>locked?`<div class="lockline">Stop the batch to change these.</div>`:'';
+
+const VIEWS={
+ a:{explain:`<b>Option A: at the bottom.</b> A line under "Paths kept", then the button on its own. You read the settings top to bottom and finish at the reset. It's the usual place for a form's buttons. <b>Recommended:</b> it's hard to hit by accident, and it adds no clutter at the top.`,
+    body:()=>`<div class="sep first">Chart</div>${groups()}${locked?lockLine():`<div class="foot">${resetBtn('Reset to defaults')}</div>`}`},
+ b:{explain:`<b>Option B: in the top corner.</b> A small "Reset" sits at the right end of the "Chart" heading. The panel stays its current height. <b>Cost:</b> it's next to Difficulty, the control people change most, so it's easier to hit by mistake. The heading also gets busier.`,
+    body:()=>`<div class="head"><div class="sep first">Chart</div>${resetBtn('Reset','small')}</div>${groups()}${lockLine()}`},
+ c:{explain:`<b>Option C: at the bottom, with changes marked.</b> Same button as A. Every setting that differs from its default also gets a teal dot and teal name, so you can see what the reset will undo before you click. <b>Cost:</b> one more thing on screen, and teal already means "a button" elsewhere in the app.`,
+    body:()=>`<div class="sep first">Chart</div>${groups()}${locked?lockLine():`<div class="foot">${resetBtn('Reset to defaults')}</div>`}`}
+};
+
+const stage=document.getElementById('stage'), tip=document.getElementById('tip');
+function render(){
+  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
+  document.getElementById('explain').innerHTML=VIEWS[tab].explain;
+  stage.innerHTML=`<div class="row"><span class="abtn">Manage folders... (1)</span><span class="abtn">Scan library</span><span class="abtn">Analyze library...</span><span class="abtn">Compare with dmleaderboards...</span><span class="div"></span>
+   <span class="sumbtn">Analysis settings: ${summary()}${locked?' (locked)':''}<span class="arr">▼</span></span></div>
+   <div class="pop ${locked?'locked':''}">${VIEWS[tab].body()}</div>`;
+}
+const clampK=(k,v)=>{v=parseInt(v,10); if(isNaN(v)) v=DEF[k];
+  if(k==='cap') return Math.max(1,Math.min(99,v)); if(k==='depth') return Math.max(0,Math.min(999999,v));
+  if(k==='ms') return Math.max(-500,Math.min(500,v)); return v;};
+stage.addEventListener('change',e=>{const k=e.target.dataset.k; if(!k) return;
+  if(e.target.type==='checkbox') S[k]=e.target.checked; else if(e.target.tagName==='SELECT') S[k]=e.target.value; else S[k]=clampK(k,e.target.value);
+  render();});
+stage.addEventListener('click',e=>{
+  const st=e.target.closest('[data-step]'); if(st&&!locked){const [k,d]=st.dataset.step.split(':'); if(k==='ms'&&!S.lim) return; S[k]=clampK(k,S[k]+ +d); render(); return;}
+  if(e.target.closest('#reset')&&!resetOff()){S={...DEF}; tip.style.display='none'; render();}
+});
+function tipText(el){
+  if(el.dataset.tip) return el.dataset.tip;
+  if(el.id==='reset'){
+    if(locked) return 'Stop the batch to change these.';
+    if(atDefaults()) return 'The settings are already the defaults.';
+    return 'Resets: '+summary();
+  }
+  return null;
+}
+stage.addEventListener('mousemove',e=>{
+  const el=e.target.closest('[data-tip],#reset'); const t=el&&tipText(el);
+  if(!t){tip.style.display='none'; return;}
+  tip.textContent=t; tip.style.display='block';
+  tip.style.left=Math.min(e.clientX+14,window.innerWidth-tip.offsetWidth-8)+'px'; tip.style.top=(e.clientY+18)+'px';
+});
+stage.addEventListener('mouseleave',()=>tip.style.display='none');
+document.getElementById('tabs').addEventListener('click',e=>{const b=e.target.closest('.tab'); if(b){tab=b.dataset.t; render();}});
+document.getElementById('lockbox').addEventListener('change',e=>{locked=e.target.checked; render();});
+document.getElementById('scramble').addEventListener('click',()=>{S={...DEF,pro:false,cap:5,depth:6}; render();});
+render();
+</script>
+</body>
+</html>
