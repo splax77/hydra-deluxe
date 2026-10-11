@@ -211,7 +211,8 @@ std::string sort_column_sql(SortColumn c) {
 // means "written later". rules_fp is the fingerprint of the rules the row was
 // analyzed under (rules_fp_bytes), in the UNIQUE key: one row per chart,
 // mode, cap, lens and rules, so a result made under other rules sits beside
-// this build's (schema 4, D51 call 8).
+// this build's (schema 4, D51 call 8). The UNIQUE line is added from
+// key_columns where the table is made.
 constexpr const char* kResultsColumnDefs =
     "  result_id   INTEGER PRIMARY KEY,"
     "  hyhash      TEXT NOT NULL,"
@@ -234,9 +235,15 @@ constexpr const char* kResultsColumnDefs =
     "  sqout_count INTEGER,"
     "  pathcount   INTEGER,"
     "  stars       INTEGER,"
-    "  rules_fp    BLOB NOT NULL,"
-    "  UNIQUE (hyhash, chartmode, sp_cap, ms_enabled, ms_value, depth_mode, depth_value,"
-    "          legacy_fills, rules_fp)";
+    "  rules_fp    BLOB NOT NULL,";
+
+// A result row's identity, less rules_fp (a blob, bound on its own): the
+// chart, the mode and the cap, then the lens. The lens's names are in Lens's
+// field order, the order bind_lens binds them. The UNIQUE line, write_row's
+// insert list and lens_match are all built from these two lists.
+constexpr const char* kKeyHeadColumnList = "hyhash, chartmode, sp_cap";
+constexpr const char* kLensColumnList =
+    "ms_enabled, ms_value, depth_mode, depth_value, legacy_fills";
 
 // Where an older file's structure blob held the rules fingerprint: after its
 // 4-byte path format, 8 bytes. Only upgrade_results_key reads it, to fill the
@@ -282,22 +289,38 @@ constexpr int kSummaryColumnCount = count_list_names(kSummaryColumnList);
 static_assert(kSummaryColumnCount == 10,
               "bind_summary and read_summary walk ten slots: grow them with the list");
 
-// kSummaryColumnList with every name written as before + name + after,
-// joined by ", ": "r.score, r.actcount, ...".
-std::string summary_columns(const char* before, const char* after) {
+// bind_lens walks the lens's slots by hand, so the assert stops the build
+// when kLensColumnList grows and it doesn't.
+static_assert(count_list_names(kLensColumnList) == 5,
+              "bind_lens binds five slots: grow it and Lens with the list");
+
+// A comma-separated column list with every name written as before + name +
+// after, joined by `sep`: "r.score, r.actcount, ..." or "a=? AND b=?".
+std::string each_column(const char* list, const char* before, const char* after,
+                        const char* sep) {
     std::string out;
-    std::string_view rest = kSummaryColumnList;
+    std::string_view rest = list;
     while (!rest.empty()) {
         const size_t comma = rest.find(',');
         std::string_view name = rest.substr(0, comma);
         while (!name.empty() && name.front() == ' ') name.remove_prefix(1);
-        if (!out.empty()) out += ", ";
+        if (!out.empty()) out += sep;
         out += before;
         out += name;
         out += after;
         rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
     }
     return out;
+}
+
+// kSummaryColumnList through each_column, joined by ", ".
+std::string summary_columns(const char* before, const char* after) {
+    return each_column(kSummaryColumnList, before, after, ", ");
+}
+
+// The identity columns but rules_fp: kKeyHeadColumnList, then kLensColumnList.
+std::string key_columns() {
+    return std::string(kKeyHeadColumnList) + ", " + kLensColumnList;
 }
 
 // SQLite refuses a statement with more than 32,766 bound values (the vendored
@@ -316,9 +339,7 @@ constexpr size_t kHashesPerQuery = 10000;
 // "the row at alias `a` carries exactly this lens". Five bound parameters, in
 // Lens's field order. `a` is "" or "r.".
 std::string lens_match(const char* a) {
-    std::string p = a;
-    return "(" + p + "ms_enabled=? AND " + p + "ms_value=? AND " + p +
-           "depth_mode=? AND " + p + "depth_value=? AND " + p + "legacy_fills=?)";
+    return "(" + each_column(kLensColumnList, a, "=?", " AND ") + ")";
 }
 int bind_lens(sqlite3_stmt* s, int idx, const Lens& lens) {
     sqlite3_bind_int(s, idx, lens.ms_enabled);
@@ -1154,7 +1175,8 @@ void RecordStore::save_analysis(const PreparedRow& row) {
 }
 
 void RecordStore::create_result_tables() {
-    exec((std::string("CREATE TABLE IF NOT EXISTS results (") + kResultsColumnDefs + ");")
+    exec((std::string("CREATE TABLE IF NOT EXISTS results (") + kResultsColumnDefs +
+          "  UNIQUE (" + key_columns() + ", rules_fp));")
              .c_str());
 }
 
@@ -1204,32 +1226,30 @@ void RecordStore::write_row(const PreparedRow& row) {
     //     row the UNIQUE key would refuse a second copy of. Deleted
     //     explicitly rather than by INSERT OR REPLACE, so the re-insert takes
     //     a fresh result_id and the newest write ranks first.
-    purge("hyhash=? AND chartmode=? AND sp_cap=? AND " + lens_match("") + " AND rules_fp = ?",
+    purge("hyhash=? AND chartmode=? AND " + cap_match("") + " AND " + lens_match("") +
+              " AND rules_fp = ?",
           [&](sqlite3_stmt* s) {
               bind_text(s, 1, row.hyhash);
               bind_text(s, 2, row.chartmode);
-              sqlite3_bind_int(s, 3, row.sp_cap);
-              const int next = bind_lens(s, 4, row.lens);
+              const int next = bind_lens(s, bind_cap(s, 3, CapQuery::at(row.sp_cap)), row.lens);
               bind_blob(s, next, rules_fp);
           },
           "replace purge");
 
     // (3) The result.
     {
-        // The row's own columns; the summary columns follow, then rules_fp.
-        static constexpr const char* kRowColumns =
-            "hyhash, chartmode, hyversion, sp_cap, ms_enabled, ms_value, depth_mode,"
-            " depth_value, legacy_fills, bestpath";
-        static constexpr int kRowColumnCount = count_list_names(kRowColumns);
+        // The row's own columns: its identity (key_columns), then hyversion
+        // and bestpath; the summary columns follow, then rules_fp.
+        static const std::string kRowColumns = key_columns() + ", hyversion, bestpath";
+        static const int kRowColumnCount = count_list_names(kRowColumns.c_str());
         CachedStmt s = use_write(db_, stmt_cache_,
-            std::string("INSERT INTO results (") + kRowColumns + ", " + kSummaryColumnList +
+            "INSERT INTO results (" + kRowColumns + ", " + kSummaryColumnList +
              ", rules_fp) VALUES (" + placeholders(kRowColumnCount) + ", " +
              placeholders(kSummaryColumnCount) + ", ?)");
         bind_text(s, 1, row.hyhash);
         bind_text(s, 2, row.chartmode);
-        bind_text(s, 3, row.hyversion);
-        sqlite3_bind_int(s, 4, row.sp_cap);
-        bind_lens(s, 5, row.lens);
+        sqlite3_bind_int(s, 3, row.sp_cap);
+        bind_text(s, bind_lens(s, 4, row.lens), row.hyversion);
         bind_text(s, kRowColumnCount, row.bestpath);
         bind_summary(s, kRowColumnCount + 1, row.summary);
         bind_blob(s, kRowColumnCount + kSummaryColumnCount + 1, rules_fp);
@@ -1501,6 +1521,45 @@ std::pair<int64_t, int64_t> RecordStore::counts() {
 
 // ---- chart library ------------------------------------------------------
 
+namespace {
+
+// The charts table's columns as one library entry fills them, in the order
+// rebuild_chart_library writes them and read_library_entries reads them.
+constexpr const char* kLibraryColumnList =
+    "md5, name, artist, charter, path, folder, sig, stated_length_ms, delay_ms";
+// Both walk the slots by hand, so the assert stops the build when the list
+// grows and they don't.
+static_assert(count_list_names(kLibraryColumnList) == 9,
+              "rebuild_chart_library and read_library_entries walk nine slots: grow them "
+              "with the list");
+
+// The query read_library_entries reads; callers add a WHERE or an ORDER BY.
+std::string library_entry_select() {
+    return std::string("SELECT ") + kLibraryColumnList + " FROM charts";
+}
+
+// Every row `s` (a library_entry_select query) steps to. Rows an older scan
+// wrote never read their timing: none, not "none stated"; `timing_read`
+// (RecordStore::chart_meta_current) says which rows those are.
+std::vector<ChartLibraryEntry> read_library_entries(sqlite3_stmt* s, bool timing_read) {
+    std::vector<ChartLibraryEntry> out;
+    while (step_row(s)) {
+        ChartLibraryEntry e;
+        e.md5 = column_text(s, 0);
+        e.title = column_text(s, 1);
+        e.artist = column_text(s, 2);
+        e.charter = column_text(s, 3);
+        e.notespath = column_text(s, 4);
+        e.rootfolder = column_text(s, 5);
+        e.sig = column_text(s, 6);
+        if (timing_read) e.timing = ChartTimingMeta{column_opt_f64(s, 7), column_opt_f64(s, 8)};
+        out.push_back(std::move(e));
+    }
+    return out;
+}
+
+}  // namespace
+
 void RecordStore::rebuild_chart_library(const std::vector<ChartLibraryEntry>& items) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
@@ -1511,8 +1570,9 @@ void RecordStore::rebuild_chart_library(const std::vector<ChartLibraryEntry>& it
     in_transaction([&] {
         exec("DELETE FROM charts");
         Stmt s = prepare_write(db_,
-            "INSERT INTO charts (md5, name, artist, charter, path, folder, sig,"
-            " stated_length_ms, delay_ms) VALUES (?,?,?,?,?,?,?,?,?)");
+            (std::string("INSERT INTO charts (") + kLibraryColumnList + ") VALUES (" +
+             placeholders(count_list_names(kLibraryColumnList)) + ")")
+                .c_str());
         for (const ChartLibraryEntry& item : items) {
             sqlite3_reset(s);
             bind_text(s, 1, item.md5);
@@ -1544,15 +1604,11 @@ ChartLibraryCache RecordStore::chart_library_cache() {
     // The next scan reads every chart once and stamps what it writes.
     if (!chart_meta_current()) return cache;
 
-    Stmt s = prepare_read(db_,
-                          "SELECT path, sig, md5, name, artist, charter, stated_length_ms, delay_ms"
-                          " FROM charts");
-    while (step_row(s)) {
-        std::string sig = column_text(s, 1);
-        if (!sig_can_show_unchanged(sig)) continue;
-        cache[column_text(s, 0)] = {std::move(sig),      column_text(s, 2), column_text(s, 3),
-                                    column_text(s, 4),   column_text(s, 5),
-                                    {column_opt_f64(s, 6), column_opt_f64(s, 7)}};
+    Stmt s = prepare_read(db_, library_entry_select().c_str());
+    for (ChartLibraryEntry& e : read_library_entries(s, /*timing_read=*/true)) {
+        if (!sig_can_show_unchanged(e.sig)) continue;
+        std::string key = e.notespath;
+        cache[std::move(key)] = std::move(e);
     }
     return cache;
 }
@@ -1570,40 +1626,12 @@ int64_t RecordStore::chart_library_count() {
     return sqlite3_column_int64(s, 0);
 }
 
-namespace {
-
-// The columns a library entry is read from, in read_library_entries' order.
-constexpr const char* kLibraryEntrySelect =
-    "SELECT md5, name, artist, charter, path, folder, sig, stated_length_ms, delay_ms FROM charts";
-
-// Every row `s` (a kLibraryEntrySelect query) steps to. Rows an older scan
-// wrote never read their timing: none, not "none stated"; `timing_read`
-// (RecordStore::chart_meta_current) says which rows those are.
-std::vector<ChartLibraryEntry> read_library_entries(sqlite3_stmt* s, bool timing_read) {
-    std::vector<ChartLibraryEntry> out;
-    while (step_row(s)) {
-        ChartLibraryEntry e;
-        e.md5 = column_text(s, 0);
-        e.title = column_text(s, 1);
-        e.artist = column_text(s, 2);
-        e.charter = column_text(s, 3);
-        e.notespath = column_text(s, 4);
-        e.rootfolder = column_text(s, 5);
-        e.sig = column_text(s, 6);
-        if (timing_read) e.timing = ChartTimingMeta{column_opt_f64(s, 7), column_opt_f64(s, 8)};
-        out.push_back(std::move(e));
-    }
-    return out;
-}
-
-}  // namespace
-
 std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int limit) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
     const bool timing_read = chart_meta_current();
     Stmt s = prepare_read(
-        db_, (std::string(kLibraryEntrySelect) + " ORDER BY name LIMIT ? OFFSET ?").c_str());
+        db_, (library_entry_select() + " ORDER BY name LIMIT ? OFFSET ?").c_str());
     sqlite3_bind_int(s, 1, limit);
     sqlite3_bind_int(s, 2, offset);
     return read_library_entries(s, timing_read);
@@ -1613,7 +1641,7 @@ std::vector<ChartLibraryEntry> RecordStore::list_chart_library_copies(const std:
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
     const bool timing_read = chart_meta_current();
-    Stmt s = prepare_read(db_, (std::string(kLibraryEntrySelect) + " WHERE md5 = ?").c_str());
+    Stmt s = prepare_read(db_, (library_entry_select() + " WHERE md5 = ?").c_str());
     bind_text(s, 1, md5);
     return read_library_entries(s, timing_read);
 }

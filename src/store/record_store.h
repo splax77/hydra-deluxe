@@ -273,17 +273,11 @@ struct ChartLibraryEntry {
     std::optional<ChartTimingMeta> timing;
 };
 
-// What a rescan can reuse for a chart whose files are unchanged: keyed by
-// notespath, valid while `sig` still matches what the walk sees on disk.
-struct ChartCacheEntry {
-    std::string sig;
-    std::string md5;
-    std::string title;
-    std::string artist;
-    std::string charter;
-    ChartTimingMeta timing;
-};
-using ChartLibraryCache = std::unordered_map<std::string, ChartCacheEntry>;
+// What a rescan can reuse for a chart whose files are unchanged: the stored
+// entry, keyed by notespath, valid while `sig` still matches what the walk
+// sees on disk. Only rows the current readers stamped are listed, so every
+// entry's timing is set (chart_library_cache).
+using ChartLibraryCache = std::unordered_map<std::string, ChartLibraryEntry>;
 
 // Whether a stored fingerprint could ever show a chart's files unchanged. An
 // empty one is what a gone file or a folder chart without its song.ini gives

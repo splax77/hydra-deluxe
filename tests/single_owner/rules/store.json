@@ -324,14 +324,9 @@
           "file": "src/store/record_store.cpp",
           "line_text": "return std::string(a) + \"sp_cap=?\";",
           "why": "cap_match, the owner"
-        },
-        {
-          "file": "src/store/record_store.cpp",
-          "line_text": "purge(\"hyhash=? AND chartmode=? AND sp_cap=? AND \" + lens_match(\"\") + \" AND rules_fp = ?\",",
-          "why": "write_row's purge: the row's own unique key, not a lookup"
         }
       ],
-      "note": "write_row's replace purge matches the row's own unique key, bound from the row's stored cap, not a lookup's CapQuery. Decided by: audit finding 252; phase 6 task J4-2 (D53, D54)"
+      "note": "write_row's replace purge matches the row's own unique key through cap_match too, bound with bind_cap from CapQuery::at(row.sp_cap). Decided by: audit finding 252; phase 6 task J4-2 (D53, D54); concept audit M20"
     },
     {
       "question": "Which columns hold a path summary, and how many?",
