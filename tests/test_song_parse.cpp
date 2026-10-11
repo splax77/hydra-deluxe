@@ -70,7 +70,7 @@ void check_invariants(const Song& song, const std::string& what,
 TEST_CASE("song parse holds its invariants over the corpus") {
     int charts = 0, nonempty = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true);
+        const Song& song = corpus::song(path, ChartReading{});
         ++charts;
         if (song.is_empty()) continue;
         ++nonempty;
@@ -101,7 +101,7 @@ TEST_CASE("song parse holds its invariants at Hard too") {
     // exactly the same structure Expert does.
     int charts = 0, nonempty = 0, mids = 0, mids_nonempty = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true, Difficulty::Hard);
+        const Song& song = corpus::song(path, ChartReading{Difficulty::Hard});
         ++charts;
         const bool is_mid = chart_format_of(path) == ChartFormat::Mid;
         if (is_mid) ++mids;
@@ -124,10 +124,10 @@ TEST_CASE("song parse holds its invariants at Hard too") {
 TEST_CASE(".chart: each difficulty reads its own section") {
     const std::vector<uint8_t> data = multidiff::chart_bytes();
 
-    Song expert = load_songbytes_chart(data, true, true);
-    Song hard = load_songbytes_chart(data, true, true, Difficulty::Hard);
-    Song medium = load_songbytes_chart(data, true, true, Difficulty::Medium);
-    Song easy = load_songbytes_chart(data, true, true, Difficulty::Easy);
+    Song expert = load_songbytes_chart(data, ChartReading{});
+    Song hard = load_songbytes_chart(data, ChartReading{Difficulty::Hard});
+    Song medium = load_songbytes_chart(data, ChartReading{Difficulty::Medium});
+    Song easy = load_songbytes_chart(data, ChartReading{Difficulty::Easy});
 
     CHECK(expert.sequence.size() == multidiff::kExpertChords);
     CHECK(hard.sequence.size() == multidiff::kHardChords);
@@ -155,7 +155,7 @@ TEST_CASE(".chart: each difficulty reads its own section") {
     // The fill was charted, so no fills had to be synthesized.
     CHECK(hard.features.empty());
     // Pro cymbals are still a pro-drums-only reading at Hard.
-    Song hard_nonpro = load_songbytes_chart(data, false, true, Difficulty::Hard);
+    Song hard_nonpro = load_songbytes_chart(data, ChartReading{Difficulty::Hard, false, true});
     CHECK(hard_nonpro.sequence[1].chord.code() != hard.sequence[1].chord.code());
 
     check_invariants(hard, "multidiff [Hard]");
@@ -196,7 +196,7 @@ TEST_CASE(".chart: [Events] section markers become practice sections") {
                            "  768 = E \"section Verse 1\"\n"
                            "  1920 = E \"lighting (blackout)\"\n") +
         testchart::section("ExpertDrums", "  0 = N 0 0\n  192 = N 1 0\n"));
-    Song song = load_songbytes_chart(data, true, true);
+    Song song = load_songbytes_chart(data, ChartReading{});
 
     // Both spellings are read, non-section text events are not, and the file's
     // own order does not have to be sorted.
@@ -209,7 +209,7 @@ TEST_CASE(".chart: [Events] section markers become practice sections") {
     CHECK(song.practice_sections[2].name == "chorus_1a");
 
     // A chart with no [Events] section has no sections and still parses.
-    Song plain = load_songbytes_chart(multidiff::chart_bytes(), true, true);
+    Song plain = load_songbytes_chart(multidiff::chart_bytes(), ChartReading{});
     CHECK(plain.practice_sections.empty());
 }
 
@@ -245,7 +245,7 @@ std::vector<uint8_t> solo_marker_mid() {
 // In a .chart the `E soloend` event sits on the solo's last note, so that note
 // is in the solo. The parser runs solo end after the notes at its tick.
 TEST_CASE(".chart: the note on the solo end tick is in the solo") {
-    Song song = load_songbytes_chart(solo_end_chart(), true, true);
+    Song song = load_songbytes_chart(solo_end_chart(), ChartReading{});
     REQUIRE(song.sequence.size() == 4);
     CHECK(song.sequence[2].flag_solo);
     CHECK_FALSE(song.sequence[3].flag_solo);
@@ -257,7 +257,7 @@ TEST_CASE(".chart: time signatures are kept as written") {
     const std::vector<uint8_t> data = testchart::chart_bytes(
         testchart::section("ExpertDrums", "  0 = N 0 0\n  1536 = N 1 0\n"), 192, "",
         testchart::kSync44At120 + "  768 = TS 6 3\n  1344 = TS 3\n");
-    Song song = load_songbytes_chart(data, true, true);
+    Song song = load_songbytes_chart(data, ChartReading{});
 
     // 6/8 and 3/4 are both 576 ticks at 192 per quarter note.
     CHECK(song.tpm_changes.at(768) == 576);
@@ -275,7 +275,7 @@ TEST_CASE(".chart: time signatures are kept as written") {
 // In a .mid the solo is a held marker note (103); its note-off tick is where
 // the marker stops covering, so a note on that tick is outside the solo.
 TEST_CASE(".mid: the note on the solo marker's note-off tick is outside the solo") {
-    const Song song = load_songbytes_mid(solo_marker_mid(), true, true);
+    const Song song = load_songbytes_mid(solo_marker_mid(), ChartReading{});
     REQUIRE(song.sequence.size() == 3);
     CHECK(song.sequence[0].flag_solo);
     CHECK(song.sequence[1].flag_solo);
@@ -285,19 +285,19 @@ TEST_CASE(".mid: the note on the solo marker's note-off tick is outside the solo
 TEST_CASE("song: solo_sections lists each run of solo chords once") {
     // The two fixtures above: .chart chords 0 to 2 are in the solo, .mid
     // chords 0 and 1.
-    const Song chart = load_songbytes_chart(solo_end_chart(), true, true);
+    const Song chart = load_songbytes_chart(solo_end_chart(), ChartReading{});
     REQUIRE(chart.solo_sections.size() == 1);
     CHECK(chart.solo_sections[0].first == 0);
     CHECK(chart.solo_sections[0].last == 2);
 
-    const Song mid = load_songbytes_mid(solo_marker_mid(), true, true);
+    const Song mid = load_songbytes_mid(solo_marker_mid(), ChartReading{});
     REQUIRE(mid.solo_sections.size() == 1);
     CHECK(mid.solo_sections[0].first == 0);
     CHECK(mid.solo_sections[0].last == 1);
 
     // Two solos split by one plain chord: chords 0 and 1, then chord 3.
     const Song two =
-        load_songbytes_chart(testchart::chart_bytes(testchart::kTwoSolosDrums), true, true);
+        load_songbytes_chart(testchart::chart_bytes(testchart::kTwoSolosDrums), ChartReading{});
     REQUIRE(two.sequence.size() == 4);
     REQUIRE(two.solo_sections.size() == 2);
     CHECK(two.solo_sections[0].first == 0);
@@ -308,7 +308,7 @@ TEST_CASE("song: solo_sections lists each run of solo chords once") {
     // No solo at all: no sections.
     const Song plain = load_songbytes_chart(
         testchart::chart_bytes(testchart::section("ExpertDrums", "  0 = N 1 0\n  192 = N 2 0\n")),
-        true, true);
+        ChartReading{});
     REQUIRE(plain.sequence.size() == 2);
     CHECK(plain.solo_sections.empty());
 }
@@ -328,8 +328,8 @@ const DrumLane* lane_at(const Song& song, int64_t start) {
 
 Song lane_chart(const std::string& lines, bool pro = true, bool noteshuffle = false) {
     return load_songbytes_chart(testchart::chart_bytes(testchart::section("ExpertDrums", lines)),
-                                pro, true, Difficulty::Expert, core::default_rules(),
-                                noteshuffle);
+                                ChartReading{Difficulty::Expert, pro, true, noteshuffle},
+                                core::default_rules());
 }
 
 std::string common_chart(const char* rel) { return corpus::root() + "/common/" + rel; }
@@ -478,8 +478,8 @@ TEST_CASE(".chart: a lane shows on each difficulty whose section holds it") {
     const std::vector<uint8_t> data = testchart::chart_bytes(
         testchart::section("ExpertDrums", "  0 = N 1 0\n  0 = S 65 192\n") +
         testchart::section("HardDrums", "  0 = N 2 0\n"));
-    CHECK(load_songbytes_chart(data, true, true, Difficulty::Expert).drum_lanes.size() == 1);
-    const Song hard = load_songbytes_chart(data, true, true, Difficulty::Hard);
+    CHECK(load_songbytes_chart(data, ChartReading{Difficulty::Expert}).drum_lanes.size() == 1);
+    const Song hard = load_songbytes_chart(data, ChartReading{Difficulty::Hard});
     REQUIRE(hard.sequence.size() == 1);
     CHECK(hard.drum_lanes.empty());
 }
@@ -527,8 +527,9 @@ TEST_CASE("Song::note_count: the chart's note total under each 2x Bass setting")
         "  192 = N 32 0\n"
         "  384 = N 2 0\n"
         "  576 = N 32 0\n  576 = N 0 0\n"));
-    CHECK(load_songbytes_chart(data, true, /*bass2x=*/true).note_count() == 5);
-    CHECK(load_songbytes_chart(data, true, /*bass2x=*/false).note_count() == 2);
+    CHECK(load_songbytes_chart(data, ChartReading{}).note_count() == 5);
+    CHECK(load_songbytes_chart(data, ChartReading{Difficulty::Expert, true, /*bass2x=*/false})
+              .note_count() == 2);
     // A chart with no notes counts none.
     CHECK(Song(192).note_count() == 0);
 }
@@ -551,8 +552,8 @@ TEST_CASE(".mid: EVENTS text metas become practice sections") {
         end_of_track(),
     });
 
-    Song song = load_songbytes_mid(smf_tracks({tempo_track, events_track, drums_track}), true,
-                                   true);
+    Song song = load_songbytes_mid(smf_tracks({tempo_track, events_track, drums_track}),
+                                   ChartReading{});
     REQUIRE(song.sequence.size() == 1);
     REQUIRE(song.practice_sections.size() == 2);
     CHECK(song.practice_sections[0].tick == 0);
@@ -573,7 +574,7 @@ std::vector<uint8_t> chart_with(int64_t resolution, const std::string& sync) {
 // signature with a top number of 0 is the one line that is ignored instead.
 TEST_CASE(".chart: a timing line that can't measure time is refused") {
     const std::string ok = "  0 = TS 4\n  0 = B 120000\n";
-    CHECK_NOTHROW(load_songbytes_chart(chart_with(192, ok), true, true));
+    CHECK_NOTHROW(load_songbytes_chart(chart_with(192, ok), ChartReading{}));
     struct Bad {
         const char* sync;
         const char* error;
@@ -591,22 +592,22 @@ TEST_CASE(".chart: a timing line that can't measure time is refused") {
           Bad{"  0 = TS 4\n  0 = B 120000\n  384 = TS 4 -1\n",
               "the time signature at tick 384 has a bottom number that is out of range"}}) {
         CAPTURE(bad.sync);
-        CHECK_THROWS_WITH_AS(load_songbytes_chart(chart_with(192, bad.sync), true, true),
+        CHECK_THROWS_WITH_AS(load_songbytes_chart(chart_with(192, bad.sync), ChartReading{}),
                              bad.error, ChartFileError);
     }
-    CHECK_THROWS_WITH_AS(load_songbytes_chart(chart_with(0, ok), true, true),
+    CHECK_THROWS_WITH_AS(load_songbytes_chart(chart_with(0, ok), ChartReading{}),
                          "the chart's resolution is 0, and it must be above 0",
                          ChartFileError);
 }
 
 TEST_CASE(".chart: a TS 0 timing line is still ignored") {
     Song song = load_songbytes_chart(
-        chart_with(192, "  0 = TS 4\n  0 = B 120000\n  768 = TS 0\n"), true, true);
+        chart_with(192, "  0 = TS 4\n  0 = B 120000\n  768 = TS 0\n"), ChartReading{});
     CHECK(song.tpm_changes.size() == 1);
     CHECK(song.tpm_changes.at(0) == 768);
     // Ignored whatever its bottom number says.
     Song odd = load_songbytes_chart(
-        chart_with(192, "  0 = TS 4\n  0 = B 120000\n  768 = TS 0 40\n"), true, true);
+        chart_with(192, "  0 = TS 4\n  0 = B 120000\n  768 = TS 0 40\n"), ChartReading{});
     CHECK(odd.tpm_changes.size() == 1);
 }
 
@@ -619,16 +620,16 @@ TEST_CASE(".mid: a timing line that can't measure time") {
     };
     // TS 0/4: ignored, the 4/4 default stays (finding 100's crash).
     Song song = load_songbytes_mid(track({0x00, 0xFF, 0x58, 0x04, 0x00, 0x02, 0x18, 0x08}),
-                                   true, true);
+                                   ChartReading{});
     CHECK(song.tpm_changes.at(0) == 480 * 4);
     // A 0 us tempo would be an infinite BPM: refused, and the message says so
     // (D12) instead of calling it "not above 0 BPM".
-    CHECK_THROWS_WITH_AS(load_songbytes_mid(track(testmidi::set_tempo(0)), true, true),
+    CHECK_THROWS_WITH_AS(load_songbytes_mid(track(testmidi::set_tempo(0)), ChartReading{}),
                          "the tempo at tick 0 is infinite (0 microseconds per beat)",
                          ChartFileError);
     // A denominator exponent of 40: refused, never shifted.
     CHECK_THROWS_WITH_AS(
-        load_songbytes_mid(track({0x00, 0xFF, 0x58, 0x04, 0x04, 40, 0x18, 0x08}), true, true),
+        load_songbytes_mid(track({0x00, 0xFF, 0x58, 0x04, 0x04, 40, 0x18, 0x08}), ChartReading{}),
         "the time signature at tick 0 has a bottom number that is out of range",
         ChartFileError);
 }
@@ -642,10 +643,10 @@ TEST_CASE("a resolution that is 0 or negative is refused in both formats") {
          testmidi::note_on(96, 100), testmidi::end_of_track()}));
     mid[12] = 0x00;  // division = 0
     mid[13] = 0x00;
-    CHECK_THROWS_WITH_AS(load_songbytes_mid(mid, true, true),
+    CHECK_THROWS_WITH_AS(load_songbytes_mid(mid, ChartReading{}),
                          "the chart's resolution is 0, and it must be above 0", ChartFileError);
     CHECK_THROWS_WITH_AS(
-        load_songbytes_chart(chart_with(-192, "  0 = TS 4\n  0 = B 120000\n"), true, true),
+        load_songbytes_chart(chart_with(-192, "  0 = TS 4\n  0 = B 120000\n"), ChartReading{}),
         "the chart's resolution is -192, and it must be above 0", ChartFileError);
 }
 
@@ -666,7 +667,7 @@ TEST_CASE("mid: kick velocity is read as ghost/accent, like a pad's") {
     };
 
     SUBCASE("with [ENABLE_CHART_DYNAMICS]") {
-        Song song = load_songbytes_mid(drums_track(true), true, true);
+        Song song = load_songbytes_mid(drums_track(true), ChartReading{});
         REQUIRE(song.sequence.size() == 3);
 
         const auto& kick = song.sequence[0].chord.at(NoteColor::Kick);
@@ -689,7 +690,7 @@ TEST_CASE("mid: kick velocity is read as ghost/accent, like a pad's") {
     }
 
     SUBCASE("without the text event, every note is Normal") {
-        Song song = load_songbytes_mid(drums_track(false), true, true);
+        Song song = load_songbytes_mid(drums_track(false), ChartReading{});
         REQUIRE(song.sequence.size() == 3);
         CHECK(song.sequence[0].chord.at(NoteColor::Kick)->dynamictype ==
               NoteDynamicType::Normal);
@@ -771,7 +772,7 @@ TEST_CASE("mid: a stray SP note-off flags nothing") {
     ev.push_back({0x81, 0x70, 0x90, 96, 100});       // tick 480: kick, outside any phrase
     ev.push_back({0x81, 0x70, 0x80, 116, 0});        // tick 720: stray SP note-off
     ev.push_back(testmidi::end_of_track());
-    Song song = load_songbytes_mid(testmidi::smf(testmidi::concat(ev)), true, true);
+    Song song = load_songbytes_mid(testmidi::smf(testmidi::concat(ev)), ChartReading{});
 
     REQUIRE(song.sequence.size() == 2);
     CHECK(song.sequence[0].flag_sp);
@@ -784,11 +785,11 @@ TEST_CASE(".chart: [Song] Offset is read in seconds") {
     text.insert(text.find(at) + at.size(), "  Offset = 0.25\n");
     const std::vector<uint8_t> data(text.begin(), text.end());
 
-    Song song = load_songbytes_chart(data, true, true);
+    Song song = load_songbytes_chart(data, ChartReading{});
     REQUIRE(song.chart_offset_s.has_value());
     CHECK(*song.chart_offset_s == doctest::Approx(0.25));
 
-    Song plain = load_songbytes_chart(multidiff::chart_bytes(), true, true);
+    Song plain = load_songbytes_chart(multidiff::chart_bytes(), ChartReading{});
     CHECK_FALSE(plain.chart_offset_s.has_value());
 }
 
@@ -877,7 +878,7 @@ TEST_CASE(".chart: disco markers match the regexes they replaced") {
                 const std::vector<uint8_t> data = testchart::chart_bytes(testchart::section(
                     "ExpertDrums", std::string(prior_on ? "  0 = E mix_3_drums0d\n" : "") +
                                        "  0 = N 0 0\n  192 = E " + marker + "\n  192 = N 1 0\n"));
-                const Song song = load_songbytes_chart(data, true, true);
+                const Song song = load_songbytes_chart(data, ChartReading{});
                 REQUIRE(song.sequence.size() == 2);
 
                 // A flipped red pad reads as a yellow cymbal.
@@ -906,7 +907,7 @@ TEST_CASE(".mid: disco markers match the regexes they replaced") {
                 ev.push_back(after(480, text_event(marker)));  // tick 480
                 ev.push_back(note_on(97, 100));                    // tick 480: red
                 ev.push_back(end_of_track());
-                const Song song = load_songbytes_mid(smf(concat(ev)), true, true);
+                const Song song = load_songbytes_mid(smf(concat(ev)), ChartReading{});
                 REQUIRE(song.sequence.size() == 2);
                 const bool flipped = song.sequence[1].chord.at(NoteColor::Yellow).has_value();
                 CHECK_MESSAGE(flipped == want_flip(kMidDiscoAnswers[shape], byte, prior_on),
@@ -962,13 +963,13 @@ TEST_CASE(".chart: section headers are found as the regex found them") {
         const std::vector<uint8_t> data(text.begin(), text.end());
         switch (c.outcome) {
             case Outcome::NoHeader:
-                CHECK_THROWS_AS(load_songbytes_chart(data, true, true), ChartFileError);
+                CHECK_THROWS_AS(load_songbytes_chart(data, ChartReading{}), ChartFileError);
                 break;
             case Outcome::SongHeader:
-                CHECK(load_songbytes_chart(data, true, true).tick_resolution() == 192);
+                CHECK(load_songbytes_chart(data, ChartReading{}).tick_resolution() == 192);
                 break;
             case Outcome::OtherHeader:
-                CHECK_THROWS_AS(load_songbytes_chart(data, true, true), std::out_of_range);
+                CHECK_THROWS_AS(load_songbytes_chart(data, ChartReading{}), std::out_of_range);
                 break;
         }
     }

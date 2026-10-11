@@ -132,7 +132,7 @@ TEST_CASE("srb: a truncated file reads as an unreadable chart") {
                                           read_bytes(corpus_chart_path(".mid")), {});
     whole.resize(whole.size() / 2);
     try {
-        load_songbytes_srb(whole, true, true);
+        load_songbytes_srb(whole, ChartReading{});
         FAIL("a truncated .srb loaded");
     } catch (const std::exception& e) {
         CHECK(app::plain_error(e) ==
@@ -153,9 +153,9 @@ TEST_CASE("srb: a stream that makes bytes from no input is corrupt, not inflated
                                        0x1F, 0x00, 0x3F, 0x6E, 0x71, 0x73, 0x73, 0x73, 0x73,
                                        0x21, 0x9B, 0x00, 0x00, 0xF4, 0x00, 0x00, 0x00, 0x00,
                                        0x01, 0x08, 0x01, 0x00, 0x00, 0x0A};
-    CHECK_THROWS_WITH(load_songbytes_srb(file, true, true), "SRB stream is corrupt.");
+    CHECK_THROWS_WITH(load_songbytes_srb(file, ChartReading{}), "SRB stream is corrupt.");
     try {
-        load_songbytes_srb(file, true, true);
+        load_songbytes_srb(file, ChartReading{});
     } catch (const std::exception& e) {
         CHECK(app::plain_error(e) ==
               "Hydra couldn't read this chart file. It may be damaged or in a format Hydra "
@@ -171,10 +171,10 @@ TEST_CASE("srb: the notes entry is found by its exact name, never by its extensi
     // "song.chart" is not a notes name. Before, the .srb trusted the extension
     // and read these MIDI bytes as .chart text, which failed. Now the name
     // decides nothing, so the stream's bytes do, and it loads as MIDI.
-    CHECK(load_songbytes_srb(make_srb(make_metadata("song.chart"), mid), true, true)
+    CHECK(load_songbytes_srb(make_srb(make_metadata("song.chart"), mid), ChartReading{})
               .sequence.size() == 1);
     // The exact names decide, in any case.
-    CHECK(load_songbytes_srb(make_srb(make_metadata("NOTES.MID"), mid), true, true)
+    CHECK(load_songbytes_srb(make_srb(make_metadata("NOTES.MID"), mid), ChartReading{})
               .sequence.size() == 1);
 }
 
@@ -205,7 +205,7 @@ TEST_CASE("srb: the note loader reads the metadata and notes streams, not the re
     uint64_t bytes_read = 0;
     const Song via_reads = load_songpath_reading(
         testbytes::counting(file_byte_source(path), bytes_read), path, ChartReading{});
-    CHECK(songs_equal(via_reads, load_songbytes_srb(srb, true, true)));
+    CHECK(songs_equal(via_reads, load_songbytes_srb(srb, ChartReading{})));
     CHECK(bytes_read < (2u << 20));
 }
 
@@ -441,7 +441,8 @@ TEST_CASE("srb: one reader gives the metadata and where the notes stream starts"
     const std::vector<uint8_t> notebytes =
         srb_inflate_stream_reading(memory_byte_source(srb), got.notes_offset, kSrbMaxStream,
                                    nullptr);
-    CHECK(songs_equal(load_songbytes_mid(notebytes, true, true), load_songpath(src, ChartReading{})));
+    CHECK(songs_equal(load_songbytes_mid(notebytes, ChartReading{}),
+                      load_songpath(src, ChartReading{})));
 
     // Only a header, or junk where the metadata should be: it throws.
     const std::vector<uint8_t> header_only(srb.begin(), srb.begin() + kSrbHeaderSize);

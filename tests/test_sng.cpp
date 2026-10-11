@@ -99,7 +99,7 @@ TEST_CASE("sng: the note loader reads the chart through the shared reader") {
     const std::string path = sng_fixture_path("loader.sng");
     write_bytes(path, make_sng({{"name", "Song"}}, {{"song.ogg", {1, 2}}, {"NOTES.MID", tiny_mid()}}));
     CHECK(songs_equal(load_songpath_sng(path, ChartReading{}),
-                      load_songbytes_mid(tiny_mid(), true, true)));
+                      load_songbytes_mid(tiny_mid(), ChartReading{})));
 
     // A file too short to hold a table throws a clear error.
     const std::string tiny = sng_fixture_path("tiny.sng");
@@ -172,7 +172,7 @@ TEST_CASE("sng: the note loader reads the header and the notes, not the audio") 
 
     uint64_t bytes_read = 0;
     const Song via_reads = load_counting(path, bytes_read);
-    CHECK(songs_equal(via_reads, load_songbytes_sng(buf, true, true)));
+    CHECK(songs_equal(via_reads, load_songbytes_sng(buf, ChartReading{})));
     CHECK(bytes_read < (1u << 20));
     CHECK(bytes_read > 0);
 }
@@ -187,7 +187,7 @@ TEST_CASE("sng: a header longer than the first read still loads") {
     write_bytes(path, buf);
 
     uint64_t bytes_read = 0;
-    CHECK(songs_equal(load_counting(path, bytes_read), load_songbytes_sng(buf, true, true)));
+    CHECK(songs_equal(load_counting(path, bytes_read), load_songbytes_sng(buf, ChartReading{})));
 }
 
 // A file can shrink after it was opened and sized: the source then claims
@@ -216,7 +216,7 @@ TEST_CASE("sng: ranged reads fail a damaged container the way a whole read does"
     const std::string cut_path = sng_fixture_path("cut_notes.sng");
     write_bytes(cut_path, cut_notes);
     CHECK_THROWS_WITH(load_songpath(cut_path, ChartReading{}), "Truncated SNG file.");
-    CHECK_THROWS_WITH(load_songbytes_sng(cut_notes, true, true), "Truncated SNG file.");
+    CHECK_THROWS_WITH(load_songbytes_sng(cut_notes, ChartReading{}), "Truncated SNG file.");
 
     // The file table is cut: no notes entry is found.
     std::vector<uint8_t> cut_table(whole.begin(),
