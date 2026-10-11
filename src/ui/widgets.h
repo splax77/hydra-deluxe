@@ -32,13 +32,25 @@ inline void hint(const char* text) {
         ImGui::SetTooltip("%s", text);
 }
 
+// Draws `text` as a tooltip that wraps at a fixed width, so a long
+// explanation stays a readable block instead of one line across the screen.
+// Call it only once the item is known to be hovered.
+inline void wrapped_tooltip(const char* text) {
+    if (ImGui::BeginTooltip()) {
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
+        ImGui::TextUnformatted(text);
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
+}
+
 // The "(?)" marker after a setting's label: dimmed, with the explanation on
 // hover. Hovers even inside a disabled (locked) group.
 inline void help_marker(const char* text) {
     ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
     ImGui::TextDisabled("(?)");
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip("%s", text);
+        wrapped_tooltip(text);
 }
 
 // Warning-colored text for the current scope — RAII so the Pop can't drift
@@ -176,12 +188,7 @@ inline void overflow_tooltip(const char* text) {
     if (!ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal |
                               ImGuiHoveredFlags_AllowWhenDisabled))
         return;
-    if (ImGui::BeginTooltip()) {
-        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
-        ImGui::TextUnformatted(text);
-        ImGui::PopTextWrapPos();
-        ImGui::EndTooltip();
-    }
+    wrapped_tooltip(text);
 }
 
 // How wide `s` draws in the current font. The measurer every
