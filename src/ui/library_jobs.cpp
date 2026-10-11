@@ -505,7 +505,7 @@ void ViewJob::run() {
                     app::chart_changed_since(song_.notespath, song_.sig)) {
                 if (now->md5.empty())
                     throw std::runtime_error("could not read " + song_.notespath);
-                if (now->md5 != song_.md5 || store::sig_can_show_unchanged(now->sig)) {
+                if (now->differs_from(song_.md5) || store::sig_can_show_unchanged(now->sig)) {
                     out_.new_md5 = now->md5;
                     out_.new_sig = now->sig;
                     out_.files_changed = true;
