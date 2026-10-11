@@ -7,10 +7,12 @@
 #ifndef HYDRA_APP_CONFIG_H
 #define HYDRA_APP_CONFIG_H
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 #include "app/analysis.h"
@@ -82,6 +84,23 @@ struct ChartReading {
 // gains an ending (D104); with it off the key is the one Hydra has always
 // stored.
 std::string chartmode_key(const ChartReading& reading);
+
+// The settings the Analysis settings panel shows, in the panel's order.
+// kAnalysisFields says which Settings fields make up each one.
+enum class AnalysisSetting {
+    Difficulty,
+    ProDrums,
+    Bass2x,
+    NoteShuffle,
+    SpCap,
+    Fills,
+    ScoreRange,
+    PathLimit
+};
+
+// The part of a stored result's key an analysis field is filed under:
+// Settings::chartmode_key(), cap_query() or lens().
+enum class KeyPart { ChartMode, Cap, Lens };
 
 // Persisted user settings, mirroring HyAppUserSettings' fields. Loaded once at
 // startup and written back to disk on every change (matching Python's
@@ -216,13 +235,16 @@ struct Settings {
     // std::runtime_error, naming the text, when no choice spells it.
     Settings with_known_chartmode(const std::string& chartmode) const;
 
-    // These settings with the eight the Analysis settings panel shows put back
-    // to a default-constructed Settings': Difficulty, Pro Drums, 2x Bass, Note
-    // Shuffle, the SP cap, 1.0 fills, the score range and the path limit. The
-    // rest (folders, volume, hit window, rules) are kept. The panel's "Reset
-    // to defaults" button applies it, and the settings button's summary
-    // compares against it, so the summary only names what a reset undoes.
+    // These settings with every field in kAnalysisFields put back to a
+    // default-constructed Settings'; the rest (folders, volume, hit window,
+    // rules) are kept. The panel's "Reset to defaults" button applies it.
     Settings with_analysis_defaults() const;
+
+    // The panel settings with a field in kAnalysisFields that differs from a
+    // default-constructed Settings', each once, in the panel's order: what
+    // with_analysis_defaults would undo. The settings button's summary words
+    // these, so it only names what a reset undoes.
+    std::vector<AnalysisSetting> analysis_changes() const;
 
     AnalysisSettings to_analysis_settings() const;
 
@@ -246,6 +268,33 @@ struct Settings {
     // from this one Settings, so they cannot disagree.
     BatchRun batch_run() const;
 };
+
+// One field of the analysis set: the Settings member, the panel setting it
+// belongs to and the key part it is filed under. Its default is the one a
+// default-constructed Settings holds.
+struct AnalysisField {
+    std::variant<std::string Settings::*, bool Settings::*, int Settings::*> member;
+    AnalysisSetting setting;
+    KeyPart part;
+};
+
+// The analysis set, stated once: every field the Analysis settings panel
+// sets, in the panel's order. Settings::with_analysis_defaults and
+// Settings::analysis_changes read it, and the Reset test in
+// tests/test_config.cpp walks it, so a new analysis setting is a new row here
+// (concept audit M13). Nothing can notice a field left out of it.
+inline const std::array<AnalysisField, 10> kAnalysisFields{{
+    {&Settings::view_difficulty, AnalysisSetting::Difficulty, KeyPart::ChartMode},
+    {&Settings::view_prodrums, AnalysisSetting::ProDrums, KeyPart::ChartMode},
+    {&Settings::view_bass2x, AnalysisSetting::Bass2x, KeyPart::ChartMode},
+    {&Settings::view_noteshuffle, AnalysisSetting::NoteShuffle, KeyPart::ChartMode},
+    {&Settings::sp_cap, AnalysisSetting::SpCap, KeyPart::Cap},
+    {&Settings::legacy_fills, AnalysisSetting::Fills, KeyPart::Lens},
+    {&Settings::depth_value, AnalysisSetting::ScoreRange, KeyPart::Lens},
+    {&Settings::depth_mode, AnalysisSetting::ScoreRange, KeyPart::Lens},
+    {&Settings::mslimit_enabled, AnalysisSetting::PathLimit, KeyPart::Lens},
+    {&Settings::mslimit_value, AnalysisSetting::PathLimit, KeyPart::Lens},
+}};
 
 // A count of Star Power bars in words, "4 bars" or "1 bar": the SP cap and
 // the meter both read it.

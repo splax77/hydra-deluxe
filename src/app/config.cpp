@@ -221,7 +221,8 @@ bool Settings::save() const { return save_file(ini_path()); }
 
 bool Settings::save_file(const std::string& path) const {
     // Built in memory, then saved through write_file_replacing (D114 item 20),
-    // so a stopped write leaves the old file whole.
+    // so a stopped write leaves the old file whole. The file keeps Windows
+    // CRLF line ends (D114 item 28).
     std::ostringstream f;
     for (const Key& k : keys()) {
         if (auto b = std::get_if<bool Settings::*>(&k.member)) {
@@ -240,7 +241,7 @@ bool Settings::save_file(const std::string& path) const {
                 f << k.name << "=" << item << "\n";
         }
     }
-    return write_file_replacing(std::filesystem::u8path(path), f.str());
+    return write_file_replacing(std::filesystem::u8path(path), f.str(), LineEnds::Crlf);
 }
 
 int Settings::clamp(int Settings::* field, int value) {
@@ -292,16 +293,20 @@ std::string Settings::chartmode_key() const { return app::chartmode_key(reading(
 Settings Settings::with_analysis_defaults() const {
     const Settings d;
     Settings out = *this;
-    out.view_difficulty = d.view_difficulty;
-    out.view_prodrums = d.view_prodrums;
-    out.view_bass2x = d.view_bass2x;
-    out.view_noteshuffle = d.view_noteshuffle;
-    out.sp_cap = d.sp_cap;
-    out.legacy_fills = d.legacy_fills;
-    out.depth_value = d.depth_value;
-    out.depth_mode = d.depth_mode;
-    out.mslimit_enabled = d.mslimit_enabled;
-    out.mslimit_value = d.mslimit_value;
+    for (const AnalysisField& f : kAnalysisFields)
+        std::visit([&](auto member) { out.*member = d.*member; }, f.member);
+    return out;
+}
+
+std::vector<AnalysisSetting> Settings::analysis_changes() const {
+    const Settings d;
+    std::vector<AnalysisSetting> out;
+    for (const AnalysisField& f : kAnalysisFields) {
+        const bool differs =
+            std::visit([&](auto member) { return this->*member != d.*member; }, f.member);
+        if (differs && std::find(out.begin(), out.end(), f.setting) == out.end())
+            out.push_back(f.setting);
+    }
     return out;
 }
 

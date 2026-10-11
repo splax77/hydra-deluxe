@@ -447,9 +447,8 @@ public:
     // in chunks under SQLite's bound-value limit.
     std::vector<SummaryLookup> get_summaries(const std::vector<std::string>& hyhashes,
                                              const ResultSettings& want);
-    // The same lookup with the settings taken apart. Kept only for the store
-    // tests that still call it (test_store_open.cpp, test_library_model.cpp);
-    // new code passes a ResultSettings.
+    // The same lookup with the settings taken apart. Kept only for the tests
+    // that still call it; new code passes a ResultSettings.
     std::vector<SummaryLookup> get_summaries(const std::vector<std::string>& hyhashes,
                                              const std::string& chartmode,
                                              const CapQuery& cap, const Lens& lens) {
@@ -466,7 +465,7 @@ public:
     // answers for each chart, so the skip list and the library's Analyzed
     // chip cannot disagree (D79).
     std::unordered_set<std::string> analyzed_hashes(const ResultSettings& want);
-    // Kept for test_store_open.cpp, as get_summaries' loose form is.
+    // Kept for the tests, as get_summaries' loose form is.
     std::unordered_set<std::string> analyzed_hashes(const std::string& chartmode,
                                                     const CapQuery& cap, const Lens& lens) {
         return analyzed_hashes(ResultSettings{chartmode, cap, lens});

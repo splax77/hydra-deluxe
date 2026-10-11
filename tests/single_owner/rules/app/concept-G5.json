@@ -18,7 +18,7 @@
       "owner_lines": [
         {
           "file": "src/app/report_files.cpp",
-          "line_text": "std::ofstream f(os_path(tmp), std::ios::binary | std::ios::trunc);",
+          "line_text": "std::ios::openmode mode = std::ios::out | std::ios::trunc;",
           "why": "write_file_replacing, the owner"
         }
       ],

@@ -217,8 +217,8 @@ struct CollectedRows {
 };
 
 // The page's rows from a fresh analysis (D87 item 5). The charts are the ones
-// the library lists that the store holds a Ready row for at options.cap and
-// options.lens, in every chart mode; list_records says which, and names
+// the library lists that the store holds a Ready row for at options.run's SP
+// cap and lens, in every chart mode; list_records says which, and names
 // them. Each is analyzed from the file RecordStore::naming_copy_paths gives.
 // A result with no library row is left out (D87 item 4). Each chart
 // and mode gives up to options.max_paths rows, best score first. A chart the

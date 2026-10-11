@@ -463,6 +463,8 @@ void render_activation_body(size_t i, const app::ActivationRowView& a, app::Path
         label, ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_NoAutoOpenOnLog);
     if (tracked) ui.backends_open[i] = backends ? 1 : 0;
     ImGui::SameLine();
+    // Not kFactSeparator: a leading dot after the tree node, whose gap
+    // SameLine already gives.
     ImGui::TextDisabled("\xC2\xB7 %s", a.backends_label.c_str());
     if (backends) render_backend_table(a);
     ImGui::Unindent(px(48.0f));
