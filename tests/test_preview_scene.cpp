@@ -141,6 +141,24 @@ TEST_CASE("build_preview_scene: solo spans come from the song's solo sections") 
     CHECK(none.notes[2].solo);
 }
 
+TEST_CASE("build_preview_scene: drum lanes come from the song's drum lanes") {
+    Song song = make_hand_song();
+    CHECK(build_preview_scene(song, nullptr).drum_lanes.empty());
+
+    song.drum_lanes = {{240, 720, true, {NoteColor::Yellow, NoteColor::Green}},
+                       {720, 960, false, {NoteColor::Red}}};
+    PreviewScene scene = build_preview_scene(song, nullptr);
+    REQUIRE(scene.drum_lanes.size() == 2);
+    CHECK(scene.drum_lanes[0].span.start_tick == 240);
+    CHECK(scene.drum_lanes[0].span.end_tick == 720);
+    CHECK(scene.drum_lanes[0].span.start_ms == doctest::Approx(250.0));
+    CHECK(scene.drum_lanes[0].span.end_ms == doctest::Approx(750.0));
+    CHECK(scene.drum_lanes[0].pads ==
+          std::vector<PreviewLane>{PreviewLane::Yellow, PreviewLane::Green});
+    CHECK(scene.drum_lanes[1].span.start_tick == 720);
+    CHECK(scene.drum_lanes[1].pads == std::vector<PreviewLane>{PreviewLane::Red});
+}
+
 TEST_CASE("build_preview_scene: an unanalyzed chart offers every candidate fill") {
     Song song = make_fill_song();
     PreviewScene scene = build_preview_scene(song, nullptr);

@@ -292,6 +292,14 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
     for (const SoloSection& s : song.solo_sections)
         scene.solos.push_back(span_from_ticks(song, song.sequence[s.first].timecode.ticks(),
                                               song.sequence[s.last].timecode.ticks()));
+    // Drum lanes: each one's span as the chart wrote it, lighting the pads
+    // the parser chose (Song::drum_lanes; the rule is light_drum_lanes).
+    for (const DrumLane& l : song.drum_lanes) {
+        PreviewDrumLane d;
+        d.span = span_from_ticks(song, l.start_tick, l.end_tick);
+        for (NoteColor c : l.pads) d.pads.push_back(lane_of(c));
+        scene.drum_lanes.push_back(std::move(d));
+    }
 
     scene.has_notes = !scene.notes.empty();
     // The song's length is app::song_length_ms's answer (D75); the load hands
