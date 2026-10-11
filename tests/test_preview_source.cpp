@@ -449,7 +449,7 @@ TEST_CASE("the song and stem halves share one container read and match the whole
         CountingReader count;
         const SharedBytes container = read_preview_container(count.reader(), path);
         REQUIRE(container != nullptr);
-        const PreviewSong ps = resolve_preview_song(path, container, true, true);
+        const PreviewSong ps = resolve_preview_song(path, container, ChartReading{Difficulty::Expert, true, true});
         const std::vector<PreviewAudioStem> stems = resolve_preview_stems(path, container);
         CHECK(count.reads[path] == 1);
         const PreviewSource whole = resolve_preview_source(path, true, true);

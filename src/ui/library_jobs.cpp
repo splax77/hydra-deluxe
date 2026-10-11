@@ -517,8 +517,7 @@ void ViewJob::run() {
             // app::dynamics_for_settings.
             try {
                 out_.dynamics = app::dynamics_for_settings(
-                    path, settings_.prodrums, settings_.bass2x, settings_.difficulty,
-                    settings_.noteshuffle, out_.analysis ? &out_.analysis->song : nullptr);
+                    path, settings_.reading(), out_.analysis ? &out_.analysis->song : nullptr);
             } catch (const std::exception& e) {
                 out_.dynamics_error = e.what();
                 out_.dynamics_message = app::plain_error(e);

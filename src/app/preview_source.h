@@ -29,6 +29,7 @@
 #include <string>
 #include <vector>
 
+#include "app/analysis.h"  // ChartReading
 #include "core/rules.h"
 #include "parse/song.h"
 
@@ -99,11 +100,10 @@ struct PreviewSong {
     double audio_offset_ms = 0.0;  // as PreviewSource::audio_offset_ms
 };
 // `container` is read_preview_container's result for the same notespath.
+// `reading` is which notes to read the chart as (app::ChartReading).
 PreviewSong resolve_preview_song(const std::string& notespath, const SharedBytes& container,
-                                 bool pro, bool bass2x,
-                                 Difficulty difficulty = Difficulty::Expert,
-                                 const core::Rules& rules = core::default_rules(),
-                                 bool noteshuffle = false);
+                                 const ChartReading& reading,
+                                 const core::Rules& rules = core::default_rules());
 
 // Where chart time 0 sits in the audio of a chart already parsed
 // (PreviewSource::audio_offset_ms): the chart's own delay, from its song.ini

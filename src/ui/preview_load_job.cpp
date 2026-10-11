@@ -70,9 +70,7 @@ SceneAndHighway build_scene_and_highway(const Song& song, const Path* path, int 
 PreviewNotes read_preview_notes(const store::ChartLibraryEntry& entry,
                                 const app::SharedBytes& container,
                                 const app::ChartReading& reading, const core::Rules& rules) {
-    PreviewNotes notes{app::resolve_preview_song(entry.notespath, container, reading.prodrums,
-                                                 reading.bass2x, reading.difficulty, rules,
-                                                 reading.noteshuffle),
+    PreviewNotes notes{app::resolve_preview_song(entry.notespath, container, reading, rules),
                        std::nullopt};
     // The song's length, from the same owner analysis saves through (D75),
     // with the container already in hand. A failed read costs only the
