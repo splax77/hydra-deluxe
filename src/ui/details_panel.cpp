@@ -6,6 +6,7 @@
 #endif
 #include <windows.h>
 
+#include "app/display_format.h"  // kFactSeparator
 #include "app/path_view.h"
 #include "app/user_messages.h"  // stale_text, kNoPathsFound
 #include "core/model.h"
@@ -71,7 +72,7 @@ void render_panel_header(AppState& app) {
     ImGui::PopFont();
     std::string byline = display_artist(song.artist);
     const std::string charter = display_charter(song.charter);
-    if (!charter.empty()) byline += " \xC2\xB7 charted by " + charter;
+    if (!charter.empty()) byline += app::kFactSeparator + ("charted by " + charter);
     ImGui::PushStyleColor(ImGuiCol_Text, kSubtleTextColor);
     text_ellipsized(byline.c_str(), text_w);
     ImGui::PopStyleColor();
@@ -121,7 +122,7 @@ void render_headline(AppState& app) {
         // headline doesn't repeat the optimal one's.
         const store::PathSummary& summary = app.viewed.summary;
         std::string facts = "Optimal path";
-        if (summary.stars) facts += " \xC2\xB7 " + counted(*summary.stars, "star", "stars");
+        if (summary.stars) facts += app::kFactSeparator + counted(*summary.stars, "star", "stars");
         ImGui::PushStyleColor(ImGuiCol_Text, kSubtleTextColor);
         ImGui::TextUnformatted(facts.c_str());
         ImGui::PopStyleColor();
@@ -139,10 +140,13 @@ void render_panel_notices(AppState& app) {
             app.show_details = false;  // tick() runs close_details() on the edge
         }
     }
-    if (app.analysis_blocked())
-        ImGui::TextColored(kWarningColor,
-                           "Analysis is off until hydra_rules.ini is fixed and Hydra is "
-                           "restarted.");
+    // Without the file's error: the toolbar above already shows it (D114
+    // item 13).
+    if (app.analysis_blocked()) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(kWarningColor, "%s", app::kAnalysisOffSentence);
+        ImGui::PopTextWrapPos();
+    }
 }
 
 // The click's progress box, its cancel line and its error. Display only;

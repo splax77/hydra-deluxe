@@ -9,6 +9,7 @@
 
 #include "app/dm_report_view.h"
 #include "app/html_page.h"  // kSearchChartsHint
+#include "app/user_messages.h"
 #include "imgui.h"
 #include "ui/app_state.h"  // dm_report_input
 #include "ui/report_window.h"
@@ -121,8 +122,8 @@ void draw_dm_report_window(bool* open, const DmReportInput& input) {
     frame.heading = "vs dmleaderboards";
     // The picker box's two sentences; the server gives no count.
     frame.building_lines = {"Fetching scores and building the report...",
-                            "The leaderboard server can take a moment to wake up."};
-    frame.failure_sentence = "Could not build the report.";
+                            app::kLeaderboardWaking};
+    frame.failure_sentence = app::kComparisonFailed;
     frame.compare_another = true;
     // A player with no scores: the counts as the picker box gave them.
     if (result && !w.view) frame.empty_text = app::dm_report::counts_phrase(result->stats);

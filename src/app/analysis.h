@@ -115,6 +115,13 @@ std::string chart_files_sig(const std::string& notespath);
 struct ChartNow {
     std::string md5;  // hash_chart_file now; empty when the file cannot be read
     std::string sig;  // chart_files_sig, read once before the hash, as the scan does
+
+    // True when the file was read and hashes to something other than
+    // `stored_md5`. An unreadable file (empty md5) is never "different" here;
+    // each caller decides what that means for it.
+    bool differs_from(const std::string& stored_md5) const {
+        return !md5.empty() && md5 != stored_md5;
+    }
 };
 
 // The one answer to "has this chart changed since its library row was made,
@@ -122,8 +129,10 @@ struct ChartNow {
 // files still give `stored_sig`, so the stored md5 holds and nothing is
 // hashed. A missing `stored_sig`, a gone file or a folder chart without its
 // song.ini all count as changed, so the file is hashed with the scan's own
-// rule and the caller compares ChartNow::md5 with the row's md5 (an empty md5
-// means the file is unreadable, which is no change).
+// rule and the caller asks ChartNow::differs_from the row's md5. An empty md5
+// means the file is unreadable: the Preview load treats that as no change
+// (the parse error speaks for it), and the click's ViewJob fails with
+// "could not read <path>".
 std::optional<ChartNow> chart_changed_since(const std::string& notespath,
                                             const std::string& stored_sig);
 
@@ -245,6 +254,9 @@ struct BatchRun {
     // The SP cap this run's results are filed under and looked up by:
     // CapQuery::at is the owner.
     store::CapQuery cap_query() const { return store::CapQuery::at(settings.sp_cap); }
+
+    // Everything this run's results are filed under but the chart.
+    store::ResultSettings filed_under() const { return {chartmode, cap_query(), lens}; }
 };
 
 // The charts a batch under `run` skips because they already have a result

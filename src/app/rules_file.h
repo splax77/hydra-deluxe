@@ -8,6 +8,7 @@
 #define HYDRA_APP_RULES_FILE_H
 
 #include <filesystem>
+#include <optional>
 #include <string>
 
 #include "core/error_kind.h"
@@ -25,6 +26,13 @@ core::Rules load_rules_file(const std::filesystem::path& path);
 
 // exe_dir()\hydra_rules.ini, or PathOverrides::rules_path when set.
 std::filesystem::path default_rules_path();
+
+// How a command-line tool loads its rules: from `path` (its --rules) when
+// given, else default_rules_path(). On success it fills `rules` and returns 0.
+// A bad file prints rules_file_tool_text (app/user_messages.h) on stderr and
+// returns the tool's exit code. The app does not call this: it keeps running
+// with analysis off instead (AppState::rules_error).
+int load_tool_rules(const std::optional<std::string>& path, core::Rules& rules);
 
 }  // namespace hydra::app
 

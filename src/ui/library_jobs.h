@@ -422,10 +422,11 @@ void set_view_analyzer_for_test(app::ChartAnalyzer analyze);
 class ReportJob : public ResultJobBase {
 public:
     // hit_window_ms feeds the report's timing-tier bands (settings.hit_window_ms).
-    // cap/lens: which records the report lists (the user's current SP cap, ms
-    // limit and score range). `run` is the batch's settings the charts are
-    // analyzed under (ReportOptions::run; the report fails without it), and
-    // `seed` the rows the batch already worked out.
+    // `run` is the batch's settings the charts are analyzed under and the
+    // records the report lists are filed under (ReportOptions::run; the
+    // report fails without it), and `seed` the rows the batch already worked
+    // out. cap/lens are only handed back by cap() and lens(); the report
+    // reads the run's own.
     ReportJob(store::RecordStore& store, store::CapQuery cap, store::Lens lens,
               double hit_window_ms = kDefaultHitWindowMs,
               std::optional<app::BatchRun> run = std::nullopt,

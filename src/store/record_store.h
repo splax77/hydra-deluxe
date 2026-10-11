@@ -145,16 +145,35 @@ struct Lens {
     bool operator!=(const Lens& other) const { return !(*this == other); }
 };
 
-// One result's identity: the chart, the chart mode, the SP cap (ADR-0003) and
-// the lens.
-struct RecordKey {
-    std::string hyhash;
+// The settings a result is filed under, without the chart: the chart mode,
+// the SP cap (ADR-0003) and the lens. A lookup over many charts asks with
+// this; RecordKey adds the chart to it.
+struct ResultSettings {
     std::string chartmode;
     CapQuery cap;
     Lens lens;
+    // Spelled out rather than defaulted: this project builds as C++17.
+    bool operator==(const ResultSettings& other) const {
+        return chartmode == other.chartmode && cap == other.cap && lens == other.lens;
+    }
+    bool operator!=(const ResultSettings& other) const { return !(*this == other); }
+};
+
+// One result's identity: the chart and the ResultSettings it was filed under.
+struct RecordKey : ResultSettings {
+    std::string hyhash;
+
+    RecordKey() = default;
+    RecordKey(std::string hyhash_, std::string chartmode_, CapQuery cap_, Lens lens_ = {})
+        : ResultSettings{std::move(chartmode_), cap_, lens_}, hyhash(std::move(hyhash_)) {}
+    RecordKey(std::string hyhash_, ResultSettings settings_)
+        : ResultSettings(std::move(settings_)), hyhash(std::move(hyhash_)) {}
+
+    // The key without its chart.
+    const ResultSettings& settings() const { return *this; }
+
     bool operator==(const RecordKey& other) const {
-        return hyhash == other.hyhash && chartmode == other.chartmode &&
-               cap == other.cap && lens == other.lens;
+        return hyhash == other.hyhash && settings() == other.settings();
     }
     bool operator!=(const RecordKey& other) const { return !(*this == other); }
 };
@@ -427,8 +446,14 @@ public:
     // twice). The library asks it about every chart, so the hashes are sent
     // in chunks under SQLite's bound-value limit.
     std::vector<SummaryLookup> get_summaries(const std::vector<std::string>& hyhashes,
+                                             const ResultSettings& want);
+    // The same lookup with the settings taken apart. Kept only for the tests
+    // that still call it; new code passes a ResultSettings.
+    std::vector<SummaryLookup> get_summaries(const std::vector<std::string>& hyhashes,
                                              const std::string& chartmode,
-                                             const CapQuery& cap, const Lens& lens);
+                                             const CapQuery& cap, const Lens& lens) {
+        return get_summaries(hyhashes, ResultSettings{chartmode, cap, lens});
+    }
 
     // True when get_summary reads this exact key as Ready: get_summaries is
     // the one owner of "this chart has a current result under these
@@ -439,8 +464,12 @@ public:
     // lens: the batch's skip list for the whole library. get_summaries
     // answers for each chart, so the skip list and the library's Analyzed
     // chip cannot disagree (D79).
+    std::unordered_set<std::string> analyzed_hashes(const ResultSettings& want);
+    // Kept for the tests, as get_summaries' loose form is.
     std::unordered_set<std::string> analyzed_hashes(const std::string& chartmode,
-                                                    const CapQuery& cap, const Lens& lens);
+                                                    const CapQuery& cap, const Lens& lens) {
+        return analyzed_hashes(ResultSettings{chartmode, cap, lens});
+    }
 
     // How many rows the library table lists for each chart, by md5: the
     // `copies` the naming rule counts (D51 call 10). A chart the library

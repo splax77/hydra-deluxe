@@ -1,0 +1,54 @@
+{
+  "rules": [
+    {
+      "question": "What separates two facts on one line of text?",
+      "owner": "kFactSeparator in src/app/display_format.h",
+      "owner_file": "src/app/display_format.h",
+      "owner_symbol": "kFactSeparator",
+      "date": "2026-10-11",
+      "decision": "concept audit M46 (code-only)",
+      "added_by": "concept-audit-H2",
+      "pattern": "\\\\xC2\\\\xB7",
+      "must_match": [
+        "box.detail += \" \\xC2\\xB7 \" + next->chord.rowstr(pro_drums);",
+        "std::snprintf(buf, sizeof buf, \"x%d \\xC2\\xB7 combo %d\", shown, at.combo);",
+        "if (s.eta_s) time += \" \\xC2\\xB7 \" + time_left_text(*s.eta_s);"
+      ],
+      "must_not_match": [
+        "box.detail += kFactSeparator + next->chord.rowstr(pro_drums);",
+        "if (s.eta_s) time += app::kFactSeparator + time_left_text(*s.eta_s);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/display_format.h",
+          "line_text": "inline constexpr char kFactSeparator[] = \" \\xC2\\xB7 \";",
+          "why": "kFactSeparator, the owner"
+        },
+        {
+          "file": "src/app/analysis.cpp",
+          "line_text": "return counted(analyzed, \"analyzed\", \"analyzed\") + \" \\xC2\\xB7 \" +",
+          "why": "batch_counts_text still types the dot; analysis.cpp belonged to other tasks in wave 3, so its move to kFactSeparator is left for one of them"
+        },
+        {
+          "file": "src/app/analysis.cpp",
+          "line_text": "counted(failed, \"failed\", \"failed\") + \" \\xC2\\xB7 \" +",
+          "why": "batch_counts_text still types the dot; analysis.cpp belonged to other tasks in wave 3, so its move to kFactSeparator is left for one of them"
+        },
+        {
+          "file": "src/ui/library_dialogs.cpp",
+          "line_text": "line += \"  \\xC2\\xB7  Now: \" + s.current_title;",
+          "why": "the running strip's one wide dot, two spaces each side; kept as shown, with a comment beside it"
+        },
+        {
+          "file": "src/ui/paths_tab.cpp",
+          "line_text": "ImGui::TextDisabled(\"\\xC2\\xB7 %s\", a.backends_label.c_str());",
+          "why": "a leading dot after the backends tree node, not a separator between two facts; comment beside it"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The middle dot between facts was typed at each use in src/app and src/ui, with path_view.cpp's own kDot beside the literals. kFactSeparator is the one spelling now; a typed escape comes back only through this spelling. One row covers both folders, because a row's scope is a top folder or a single file. Decided by: concept audit M46."
+    }
+  ]
+}

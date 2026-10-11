@@ -259,6 +259,24 @@ TEST_CASE("hydra_batch refuses an unknown option") {
     CHECK_FALSE(fs::exists(fs::u8path(db)));
 }
 
+// D114 item 11: a bad hydra_rules.ini prints the tools' sentence and then the
+// loader's line, and the run stops before it opens the database.
+TEST_CASE("hydra_batch names a bad hydra_rules.ini and stops") {
+    CliSandbox box("bad_rules");
+    {
+        std::ofstream rules(box.dir / "hydra_rules.ini", std::ios::binary);
+        rules << "nope = 1\n";
+    }
+    const std::string db = box.db("untouched.db");
+    RunResult r = run_exe(box.batch, {"--db", db, box.folder()});
+    INFO(r.output);
+    CHECK(r.exit_code == 2);
+    // Two checks, because the console's text mode turns each "\n" into "\r\n".
+    CHECK(contains(r.output, "hydra_rules.ini has an error:"));
+    CHECK(contains(r.output, "hydra_rules.ini: unknown key \"nope\""));
+    CHECK_FALSE(fs::exists(fs::u8path(db)));
+}
+
 TEST_CASE("hydra_batch refuses a run whose fill rule disagrees with the database") {
     CliSandbox box("mismatch");
 
@@ -443,12 +461,12 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
     INFO(r.output);
     CHECK(r.exit_code == 0);
     CHECK(contains(r.output, "Compared 1 chart:"));
-    CHECK(contains(r.output, "0 only in 1.0, 0 only in 1.1, 0 with a score on one side only"));
+    CHECK(contains(r.output, "0 only in 1.0, 0 only in 1.1, 0 in both, not both scored"));
     // The file has no engine_mode stamp, so it never warns (D65, ADR 0010).
     CHECK(!contains(r.output, "Warning"));
 
-    // D52: a second chart with a record under both rules but a score under
-    // 1.1 only is counted as "with a score on one side only".
+    // D52, worded by D114 item 26: a second chart with a record under both
+    // rules but a score under 1.1 only is counted as "in both, not both scored".
     {
         const std::string chart = (box.songs / "fixture" / "notes.chart").u8string();
         const std::string one_sided = "dd44ee55ff6677889900aa11bb22cc33";
@@ -466,7 +484,7 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
                                               (box.dir / "two.html").u8string(), "--no-open"});
     INFO(two.output);
     CHECK(two.exit_code == 0);
-    // The parts add up to the total: 1 same + 1 with a score on one side.
+    // The parts add up to the total: 1 same + 1 in both, not both scored.
     CHECK(contains(two.output, "Compared 2 charts: 1 same, 0 1.0 higher, 0 1.1 higher, "
-                               "0 only in 1.0, 0 only in 1.1, 1 with a score on one side only"));
+                               "0 only in 1.0, 0 only in 1.1, 1 in both, not both scored"));
 }

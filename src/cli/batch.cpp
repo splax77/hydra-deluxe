@@ -107,13 +107,7 @@ int batch_main() {
     }
 
     hydra::app::Settings settings = hydra::app::Settings::load_for_command_line(legacy_fills);
-    try {
-        settings.rules = hydra::app::load_rules_file(
-            rulespath ? std::filesystem::u8path(*rulespath) : hydra::app::default_rules_path());
-    } catch (const hydra::app::RulesFileError& e) {
-        std::fprintf(stderr, "%s\n", e.what());
-        return 2;
-    }
+    if (const int code = hydra::app::load_tool_rules(rulespath, settings.rules)) return code;
     hydra::app::BatchRun run = settings.batch_run();
     const hydra::app::AnalysisSettings& analysis = run.settings;
     const std::string& chartmode = run.chartmode;

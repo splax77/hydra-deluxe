@@ -64,8 +64,8 @@ std::string read_library(store::RecordStore& store, const app::Settings& setting
 
 void read_library_summaries(store::RecordStore& store, const app::Settings& settings,
                             LibraryModel& library) {
-    library.set_summaries(store.get_summaries(library.hashes(), settings.chartmode_key(),
-                                              settings.cap_query(), settings.lens()));
+    library.set_summaries(
+        store.get_summaries(library.hashes(), settings.record_key({}).settings()));
 }
 
 StoreOpenJob::StoreOpenJob(std::string db_path, core::RulesStamp rules, app::Settings settings)
@@ -505,7 +505,7 @@ void ViewJob::run() {
                     app::chart_changed_since(song_.notespath, song_.sig)) {
                 if (now->md5.empty())
                     throw std::runtime_error("could not read " + song_.notespath);
-                if (now->md5 != song_.md5 || store::sig_can_show_unchanged(now->sig)) {
+                if (now->differs_from(song_.md5) || store::sig_can_show_unchanged(now->sig)) {
                     out_.new_md5 = now->md5;
                     out_.new_sig = now->sig;
                     out_.files_changed = true;
@@ -586,8 +586,6 @@ void ReportJob::run() {
         // generate_report.
         app::report::ReportOptions options;
         options.max_paths = app::report::kDefaultReportPaths;
-        options.cap = cap_;
-        options.lens = lens_;
         options.hit_window_ms = hit_window_ms_;
         options.db_path = app::db_path();
         // Closing Hydra sets this. Without it the window waits for the whole
