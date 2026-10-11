@@ -35,7 +35,8 @@ struct StatusChoice {
     std::string label;
 };
 
-// The Status dropdown's eight choices, in the page's order.
+// The Status dropdown's eight choices, in the page's order. The one that
+// keeps every status sits at report_view::kEveryRowChoice.
 std::vector<StatusChoice> status_choices();
 
 // The rows the Status control keeps: those whose status is `status`, or

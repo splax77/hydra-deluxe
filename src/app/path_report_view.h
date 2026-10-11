@@ -40,8 +40,8 @@ struct TimingChoice {
     std::string label;
 };
 
-// The Timing dropdown's choices, in order: the one that keeps every tier,
-// then one for each of timing_tiers(hit_window_ms).
+// The Timing dropdown's choices, in order: the one that keeps every tier, at
+// report_view::kEveryRowChoice, then one for each of timing_tiers(hit_window_ms).
 std::vector<TimingChoice> timing_choices(double hit_window_ms);
 
 // The rows the path report's controls keep: those labeled `tier` (every

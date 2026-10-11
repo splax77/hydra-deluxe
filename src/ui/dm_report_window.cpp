@@ -29,7 +29,7 @@ struct DmWindow {
     MeasuredWidths widths;
     std::vector<view_rules::StatusChoice> choices;
     std::vector<std::string> labels;
-    int status = 0;
+    int status = app::report_view::kEveryRowChoice;
     std::vector<app::report::Tile> tiles;
     bool tiles_dirty = true;
     report_frame::Memory memory;
@@ -51,7 +51,7 @@ void rebuild(DmWindow& w, const std::shared_ptr<const GeneratedDmReport>& result
     w.memory.reset();
     w.view.reset();
     w.widths = {};
-    w.status = 0;
+    w.status = app::report_view::kEveryRowChoice;
     w.tiles_dirty = true;
     w.built_from = result;
     if (!result || result->rows.empty()) return;
@@ -84,7 +84,7 @@ void draw_body(DmWindow& w, const report_frame::Frame& frame, const DmReportInpu
     if (view.visible().empty()) {
         if (report_frame::nothing_matches()) {
             w.memory.search[0] = '\0';
-            w.status = 0;
+            w.status = app::report_view::kEveryRowChoice;
             apply_filters(w);
         }
         return;

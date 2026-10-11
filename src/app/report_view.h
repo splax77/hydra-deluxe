@@ -34,6 +34,12 @@ struct SortSpec {
     SortDir dir = SortDir::Ascending;
 };
 
+// The index of the choice in a report's filter dropdown that keeps every
+// row. Each view's choice list (timing_choices, status_choices) puts that
+// choice here; a window starts on it, goes back to it for a new result, and
+// Clear filters resets to it.
+inline constexpr int kEveryRowChoice = 0;
+
 // How many sort keys a report table may hold (D103 item 1: Shift+click adds
 // a second key). TableView::set_sort and the window's header_sort read it.
 inline constexpr size_t kMaxSortKeys = 2;

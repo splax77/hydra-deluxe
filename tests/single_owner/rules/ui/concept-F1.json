@@ -1,0 +1,30 @@
+{
+  "rules": [
+    {
+      "question": "Which choice in a report window's filter dropdown keeps every row?",
+      "owner": "kEveryRowChoice in src/app/report_view.h",
+      "owner_file": "src/app/report_view.h",
+      "owner_symbol": "kEveryRowChoice",
+      "date": "2026-10-11",
+      "decision": "D114 (concept audit M10, code-only)",
+      "added_by": "concept-audit-F1",
+      "pattern": "\\b(timing|status)\\s*=\\s*0\\b",
+      "anchor": "0",
+      "must_match": [
+        "int timing = 0;",
+        "w.status = 0;",
+        "if (labels != w.labels) w.timing = 0;"
+      ],
+      "must_not_match": [
+        "int timing = app::report_view::kEveryRowChoice;",
+        "w.status = app::report_view::kEveryRowChoice;",
+        "int timing_rows = 0;"
+      ],
+      "scope": [
+        "src/ui/path_report_window.cpp",
+        "src/ui/dm_report_window.cpp"
+      ],
+      "note": "The two report windows once wrote the index of their dropdown's keep-everything choice as a literal 0 in their field default, their rebuild and their Clear filters branch. A literal index back in either window would reset to a real filter the day its choice list is reordered."
+    }
+  ]
+}
