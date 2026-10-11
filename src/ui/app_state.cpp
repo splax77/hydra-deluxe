@@ -447,10 +447,9 @@ void AppState::update_view_job() {
 store::PathSummary AppState::save_view_summary(const store::RecordKey& key,
                                                const app::AnalysisResult& result) {
     const store::PreparedRow row = store::prepare_row(key, result.record);
-    const std::vector<store::SummaryLookup> found =
-        store->get_summaries({key.hyhash}, key.chartmode, key.cap, key.lens);
-    const bool ready = !found.empty() && found.front().status == store::RecordStatus::Ready;
-    if (ready && found.front().summary == row.summary && found.front().bestpath == row.bestpath)
+    const store::SummaryLookup found = store->get_summary(key);
+    if (found.status == store::RecordStatus::Ready && found.summary == row.summary &&
+        found.bestpath == row.bestpath)
         return row.summary;  // the row already says what the engine says
     store->save_analysis(row);
     refresh_library_row(key.hyhash);  // its row's Best path cell and chip
@@ -880,8 +879,7 @@ void AppState::apply_settings() {
     // any of the last three moves, every cached lookup is answering the old
     // question and has to be re-asked.
     const app::Settings& before = committed_settings_;
-    if (settings.chartmode_key() != before.chartmode_key() ||
-        settings.cap_query() != before.cap_query() || settings.lens() != before.lens()) {
+    if (settings.record_key({}).settings() != before.record_key({}).settings()) {
         // The rows themselves come from the scan and stay; their summaries
         // are read again, and the open song is analyzed again under the new
         // settings, as a click would (D90 item 1).

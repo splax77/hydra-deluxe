@@ -167,9 +167,7 @@ std::vector<ReportRow> chart_rows(const HydraRecord& record, int64_t max_paths);
 struct ReportSeed {
     // What the batch filed its results under. A report under other settings
     // cannot use these rows, so collect_rows throws rather than list them.
-    std::string chartmode;
-    store::CapQuery cap;
-    store::Lens lens;
+    store::ResultSettings filed_under;
     // How many rows each chart keeps. A report asking for more throws.
     int64_t max_paths = kDefaultReportPaths;
     // chart_rows for each saved chart, by normalize_chart_hash of its md5.
@@ -181,9 +179,6 @@ struct ReportSeed {
 
 struct ReportOptions {
     int64_t max_paths = kDefaultReportPaths;
-    // Which records the page lists: the user's current SP cap and lens.
-    store::CapQuery cap = store::CapQuery::at(kCloneHeroSpCap);
-    store::Lens lens;
     double hit_window_ms = kDefaultHitWindowMs;
     std::string db_path;  // names the footer's source database
     // Set this and the pass stops between charts and generate_report hands
@@ -197,10 +192,10 @@ struct ReportOptions {
     // it once, with 0 of 0. Empty: no calls.
     std::function<void(int done, int total)> progress;
     // The settings the page's paths are analyzed under: Settings::batch_run()
-    // of the settings that filed the results. A chart mode other than the
-    // run's own is analyzed under the run's search settings with that mode's
-    // parse choices. Required: the report throws without one, and when its cap
-    // or lens is not `cap` and `lens`, rather than list another run's paths.
+    // of the settings that filed the results. Its SP cap and lens also pick
+    // which records the page lists. A chart mode other than the run's own is
+    // analyzed under the run's search settings with that mode's parse
+    // choices. Required: the report throws without one.
     std::optional<BatchRun> run;
     // What analyzes one chart. Empty means analyze_chart_file; a test passes
     // one to count the calls.
@@ -222,8 +217,8 @@ struct CollectedRows {
 };
 
 // The page's rows from a fresh analysis (D87 item 5). The charts are the ones
-// the library lists that the store holds a Ready row for at options.cap and
-// options.lens, in every chart mode; list_records says which, and names
+// the library lists that the store holds a Ready row for at options.run's SP
+// cap and lens, in every chart mode; list_records says which, and names
 // them. Each is analyzed from the file RecordStore::naming_copy_paths gives.
 // A result with no library row is left out (D87 item 4). Each chart
 // and mode gives up to options.max_paths rows, best score first. A chart the

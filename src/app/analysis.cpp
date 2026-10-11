@@ -832,7 +832,7 @@ std::unordered_set<std::string> charts_with_result(store::RecordStore& store,
                                                    const BatchRun& run, bool redo) {
     if (redo) return {};
     // RecordStore::analyzed_hashes decides what "already has a result" means.
-    return store.analyzed_hashes(run.chartmode, run.cap_query(), run.lens);
+    return store.analyzed_hashes(run.filed_under());
 }
 
 BatchPlan plan_batch(const std::vector<ScanItem>& items,
@@ -876,12 +876,12 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
                int worker_count, const BatchCallbacks& callbacks) {
     const AnalysisSettings& settings = run.settings;
     const std::atomic<bool>* cancel = callbacks.cancel;
-    const store::CapQuery cap = run.cap_query();
+    const store::ResultSettings filed_under = run.filed_under();
     const std::vector<ScanItem>& todo = plan.todo;
     report::ReportSeed* const seed = callbacks.report_seed;
     // A seed filed under other settings would hand the report rows it must
     // not show, so the run refuses it before its first chart.
-    if (seed && (seed->chartmode != run.chartmode || seed->cap != cap || seed->lens != run.lens))
+    if (seed && seed->filed_under != filed_under)
         throw std::invalid_argument("run_batch: the report seed is for other settings");
 
     BatchProgress progress;
@@ -960,7 +960,7 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
                 try {
                     AnalysisResult ar = analyze(item.notespath, settings, check_cancel);
                     wr.row = store::prepare_row(
-                        store::RecordKey{item.md5, run.chartmode, cap, run.lens}, ar.record);
+                        store::RecordKey{item.md5, filed_under}, ar.record);
                     if (seed) wr.report_rows = report::chart_rows(ar.record, seed->max_paths);
                 } catch (const AnalysisCancelled&) {
                     wr.cancelled = true;

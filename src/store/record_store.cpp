@@ -1311,12 +1311,12 @@ void RecordStore::delete_auto_results() {
 }
 
 SummaryLookup RecordStore::get_summary(const RecordKey& key) {
-    return get_summaries({key.hyhash}, key.chartmode, key.cap, key.lens).front();
+    return get_summaries({key.hyhash}, key.settings()).front();
 }
 
 std::vector<SummaryLookup> RecordStore::get_summaries(const std::vector<std::string>& hyhashes,
-                                                      const std::string& chartmode,
-                                                      const CapQuery& cap, const Lens& lens) {
+                                                      const ResultSettings& want) {
+    const std::string& chartmode = want.chartmode;
     std::vector<SummaryLookup> out(hyhashes.size());
     if (hyhashes.empty()) return out;
 
@@ -1352,7 +1352,7 @@ std::vector<SummaryLookup> RecordStore::get_summaries(const std::vector<std::str
             int idx = 1;
             bind_text(s, idx++, chartmode);
             for (size_t i = 0; i < n; ++i) bind_text(s, idx++, distinct[first + i]);
-            bind_candidate_filter(s, idx, cap, lens);
+            bind_candidate_filter(s, idx, want.cap, want.lens);
             while (step_row(s)) {
                 std::string hyhash = column_text(s, 0);
                 picker.offer(hyhash, chartmode,
@@ -1396,9 +1396,7 @@ bool RecordStore::has_record(const RecordKey& key) {
     return get_summary(key).status == RecordStatus::Ready;
 }
 
-std::unordered_set<std::string> RecordStore::analyzed_hashes(const std::string& chartmode,
-                                                             const CapQuery& cap,
-                                                             const Lens& lens) {
+std::unordered_set<std::string> RecordStore::analyzed_hashes(const ResultSettings& want) {
     // Every chart with a candidate row under these settings, then
     // get_summaries' answer for each (D79), so the batch skips exactly the
     // charts the library's Analyzed chip counts. One lock over both reads, so
@@ -1409,12 +1407,12 @@ std::unordered_set<std::string> RecordStore::analyzed_hashes(const std::string& 
         std::string sql = "SELECT DISTINCT hyhash FROM results WHERE chartmode=?";
         append_candidate_filter(sql, "");
         Stmt s = prepare_read(db_, sql.c_str());
-        bind_text(s, 1, chartmode);
-        bind_candidate_filter(s, 2, cap, lens);
+        bind_text(s, 1, want.chartmode);
+        bind_candidate_filter(s, 2, want.cap, want.lens);
         while (step_row(s)) candidates.push_back(column_text(s, 0));
     }
 
-    const std::vector<SummaryLookup> found = get_summaries(candidates, chartmode, cap, lens);
+    const std::vector<SummaryLookup> found = get_summaries(candidates, want);
     std::unordered_set<std::string> out;
     for (size_t i = 0; i < candidates.size(); ++i)
         if (found[i].status == RecordStatus::Ready) out.insert(candidates[i]);

@@ -186,7 +186,7 @@ void PreviewLoadJob::run() {
         std::future<bool> changed_check = std::async(std::launch::async, [this] {
             const std::optional<app::ChartNow> now =
                 app::chart_changed_since(entry_.notespath, entry_.sig);
-            return now && !now->md5.empty() && now->md5 != entry_.md5;
+            return now && now->differs_from(entry_.md5);
         });
 
         // Branch (b) on its own thread. If this branch throws, `stop` tells it
