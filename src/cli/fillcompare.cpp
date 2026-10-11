@@ -68,13 +68,7 @@ int fillcompare_main() {
     }
 
     hydra::app::Settings settings = hydra::app::Settings::load();
-    try {
-        settings.rules = hydra::app::load_rules_file(
-            rulespath ? std::filesystem::u8path(*rulespath) : hydra::app::default_rules_path());
-    } catch (const hydra::app::RulesFileError& e) {
-        std::fprintf(stderr, "%s\n", e.what());
-        return 2;
-    }
+    if (const int code = hydra::app::load_tool_rules(rulespath, settings.rules)) return code;
     std::string chartmode = settings.chartmode_key();
     hydra::store::CapQuery cap = settings.cap_query();
     hydra::store::Lens lens = settings.lens();

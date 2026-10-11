@@ -1,6 +1,7 @@
 #include "app/rules_file.h"
 
 #include <cmath>
+#include <cstdio>
 #include <fstream>
 #include <limits>
 #include <optional>
@@ -94,6 +95,16 @@ std::filesystem::path default_rules_path() {
     if (!path_overrides().rules_path.empty())
         return std::filesystem::u8path(path_overrides().rules_path);
     return std::filesystem::u8path(exe_dir()) / "hydra_rules.ini";
+}
+
+int load_tool_rules(const std::optional<std::string>& path, core::Rules& rules) {
+    try {
+        rules = load_rules_file(path ? std::filesystem::u8path(*path) : default_rules_path());
+    } catch (const RulesFileError& e) {
+        std::fprintf(stderr, "%s\n", e.what());
+        return 2;
+    }
+    return 0;
 }
 
 }  // namespace hydra::app

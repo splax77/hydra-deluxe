@@ -1,0 +1,30 @@
+{
+  "rules": [
+    {
+      "question": "What does a command-line tool do when hydra_rules.ini is bad?",
+      "owner": "load_tool_rules in src/app/rules_file.cpp",
+      "owner_file": "src/app/rules_file.cpp",
+      "owner_symbol": "load_tool_rules",
+      "date": "2026-10-11",
+      "decision": "concept audit M25 (code-only)",
+      "added_by": "concept-audit-G1",
+      "pattern": "catch \\(const (hydra::)?app::RulesFileError&",
+      "owner_files": ["src/app/rules_file.cpp"],
+      "exempt": [
+        {
+          "file": "src/ui/app_state.cpp",
+          "why": "The app answers a different question on purpose: it keeps running with analysis off (AppState::rules_error) instead of exiting."
+        }
+      ],
+      "must_match": [
+        "    } catch (const hydra::app::RulesFileError& e) {",
+        "    } catch (const app::RulesFileError& e) {"
+      ],
+      "must_not_match": [
+        "    if (const int code = hydra::app::load_tool_rules(rulespath, settings.rules)) return code;",
+        "    } catch (const RulesFileError& e) {"
+      ],
+      "note": "Four tools (hydra_batch, hydra_fillcompare, hydra_bench, hydra_replay) each caught the loader's error and printed it on their own. They call load_tool_rules now, so a fifth tool that catches it itself is flagged. Found by: concept audit M25."
+    }
+  ]
+}
