@@ -1,0 +1,39 @@
+{
+  "rules": [
+    {
+      "question": "How is a Preview text box's panel drawn?",
+      "owner": "draw_text_box in src/ui/preview_tab.cpp",
+      "owner_file": "src/ui/preview_tab.cpp",
+      "owner_symbol": "draw_text_box",
+      "date": "2026-10-11",
+      "decision": "D114 item 27 (concept audit fix wave, task G7)",
+      "added_by": "concept-audit-G7",
+      "pattern": "IM_COL32\\(0, 0, 0, 128\\)",
+      "anchor": "IM_COL32(0, 0, 0, 128)",
+      "must_match": [
+        "dl->AddRectFilled(box_min, box_max, IM_COL32(0, 0, 0, 128), corner,",
+        "dl->AddRectFilled(d_min, d_max, IM_COL32(0, 0, 0, 128), corner);"
+      ],
+      "must_not_match": [
+        "IM_COL32(0, 0, 0, 160), px(1.0f));",
+        "draw_text_box(dl, font, sz.time, ImVec2(origin.x, origin.y + tops.time), sz.inset, corner,"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/preview_tab.cpp",
+          "line_text": "dl->AddRectFilled(min, max, IM_COL32(0, 0, 0, 128), corner, flags);",
+          "why": "draw_text_box, the owner: every text box's panel"
+        },
+        {
+          "file": "src/ui/preview_tab.cpp",
+          "line_text": "dl->AddRectFilled(gauge_min, gauge_max, IM_COL32(0, 0, 0, 128), px(4.0f));",
+          "why": "the SP gauge, which is not a text box and keeps its own drawing"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Each Preview box once drew its own panel and placed its own text with its own inset and alignment, so the four boxes drifted apart. Every text box now goes through draw_text_box, sized by render::measure_text_box. A second translucent panel typed outside it is a box with rules of its own. The gauge's panel is the one allowed copy. Decided by: D114 item 27."
+    }
+  ]
+}

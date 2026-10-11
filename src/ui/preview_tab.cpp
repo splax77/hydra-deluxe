@@ -253,69 +253,129 @@ void draw_star(ImDrawList* dl, ImVec2 min, float size, bool filled, ImU32 col) {
         dl->AddPolyline(pts, kPoints * 2, col, ImDrawFlags_Closed, std::max(1.0f, size * kStroke));
 }
 
-// Every text overlay box's extents at one scale (finding R7.18). The fit pass
-// asks at scale 1 to choose the scale, the draw pass at the chosen one, so
-// each box's size is worked out here only.
-struct OverlayBoxSizes {
+// The one way a text box is drawn (D114 item 27): its panel at `min`, as big
+// as render::measure_text_box says and rounded at the corners `flags` names,
+// named `label` for hydra_uitest, then each line where
+// render::text_box_line_origins puts it.
+void draw_text_box(ImDrawList* dl, ImFont* font, const render::TextBox& box, ImVec2 min,
+                   float inset, float corner, ImDrawFlags flags, const char* label) {
+    const render::BoxExtent e = render::measure_text_box(box, inset);
+    const ImVec2 max(min.x + e.w, min.y + e.h);
+    dl->AddRectFilled(min, max, IM_COL32(0, 0, 0, 128), corner, flags);
+    name_box(label, min, max);
+    const std::vector<render::ImagePoint> at =
+        render::text_box_line_origins(box, {min.x, min.y}, inset);
+    for (size_t i = 0; i < box.lines.size(); ++i) {
+        const render::BoxLine& l = box.lines[i];
+        if (l.kind == render::BoxLine::Kind::Stars) {
+            // Centred in its line, as the text lines' glyphs sit.
+            const float y = at[i].y + (l.line_h - l.size) * 0.5f;
+            for (int s = 0; s < kMaxStars; ++s) {
+                const bool on = s < l.filled;
+                draw_star(dl, ImVec2(at[i].x + (l.size + star_gap(l.size)) * s, y), l.size, on,
+                          on ? l.color : l.off_color);
+            }
+        } else {
+            dl->AddText(font, l.size, ImVec2(at[i].x, at[i].y), l.color, l.text.c_str());
+        }
+    }
+}
+
+// One text line of a box, measured by `text_width(size, text)` in the
+// overlay font.
+template <class Measure>
+render::BoxLine text_line(const Measure& text_width, std::string text, float size, ImU32 color,
+                          float line_h) {
+    render::BoxLine l;
+    l.width = text_width(size, text.c_str());
+    l.text = std::move(text);
+    l.size = size;
+    l.color = color;
+    l.line_h = line_h;
+    return l;
+}
+
+// The time, score and drain boxes at one scale (finding R7.18), each
+// measured by render::measure_text_box. The fit pass asks at scale 1 to
+// choose the scale, the draw pass at the chosen one, so each box is described
+// here only. The heights and the gap between two panels are
+// render::OverlayHeights, which overlay_tops stacks; the caller sets its
+// top_margin.
+struct OverlayTextBoxes : render::OverlayHeights {
     float size = 0.0f;    // the time box's text size
-    float margin = 0.0f;  // from the image's corner to the text
-    float pad = 0.0f;     // inside a panel, around its text
-    float gap = 0.0f;     // between two panels
+    float inset = 0.0f;   // between every box's text and its panel's edge
     float line_h = 0.0f;  // line_height(size)
-    float time_w = 0.0f;  // the time box, margin and pads included
-    float time_h = 0.0f;
     float score_size = 0.0f;    // the running score's text size
     float score_line_h = 0.0f;  // the running score's line
-    float score_w = 0.0f;       // the score box, margin and pads included
-    float score_h = 0.0f;       // the score box, pads included
-    float drain_w = 0.0f;       // the drain box, pads included
-    float drain_h = 0.0f;
+    render::TextBox time, score, drain;
+    float time_w = 0.0f;
+    float score_w = 0.0f;
+    float drain_w = 0.0f;
 };
 
-// `lines` are the time box's lines, `score` the score box, `d_lines` the
-// drain box's three lines; `text_width(size, text)` measures in the overlay
-// font.
+// `lines` are the time box's lines, `score` the score box, `drain` the drain
+// box; `text_width(size, text)` measures in the overlay font.
 template <class Measure>
-OverlayBoxSizes overlay_box_sizes(float scale, const render::PreviewConfig& cfg,
-                                  const char* const* lines, int line_count,
-                                  const hydra::app::PreviewScoreBox& score,
-                                  const char* const (&d_lines)[3], const Measure& text_width) {
-    OverlayBoxSizes s;
+OverlayTextBoxes overlay_box_sizes(float scale, const render::PreviewConfig& cfg,
+                                    const char* const* lines, int line_count,
+                                    const hydra::app::PreviewScoreBox& score,
+                                    const hydra::app::PreviewDrainBox& drain,
+                                    const Measure& text_width) {
+    OverlayTextBoxes s;
     s.size = px(cfg.text.time_box_size) * scale;
-    s.margin = px(cfg.text.time_box_margin) * scale;
-    s.pad = px(8.0f) * scale;
+    s.inset = px(cfg.text.time_box_margin) * scale;
     s.gap = px(6.0f) * scale;
     s.line_h = line_height(s.size);
+    const ImU32 white = IM_COL32(255, 255, 255, 255);
+    const ImU32 grey = IM_COL32(200, 200, 200, 255);
 
-    float time_text_w = 0.0f;
     for (int i = 0; i < line_count; ++i)
-        time_text_w = std::max(time_text_w, text_width(s.size, lines[i]));
-    s.time_w = s.margin + time_text_w + s.pad * 2.0f;
-    s.time_h = s.margin + s.line_h * static_cast<float>(line_count) + s.pad;
+        s.time.lines.push_back(text_line(text_width, lines[i], s.size, white, s.line_h));
 
-    // The running score in large type, then the star row, its detail line
-    // and the next star's line, each one line at the time box's size; "Score
-    // unavailable" is at the time box's size too and has no stars.
+    // The running score in large type, then a row of star shapes (earned
+    // ones filled in the Star Power gold, the rest grey outlines), then
+    // "x<mult> · combo <n>" and "star <n> in <points>" in light grey, each one
+    // line at the time box's size. "Score unavailable" is at the time box's
+    // size too and has no stars.
     s.score_size = score.available ? s.size * 1.8f : s.size;
     s.score_line_h = s.score_size * 1.2f;
-    float score_text_w = text_width(s.score_size, score.score.c_str());
-    float score_lines_h = s.score_line_h;
+    s.score.lines.push_back(text_line(text_width, score.score, s.score_size, white, s.score_line_h));
     if (score.available) {
-        score_text_w = std::max(score_text_w, star_row_width(s.size));
-        score_lines_h += s.line_h;
+        render::BoxLine stars;
+        stars.kind = render::BoxLine::Kind::Stars;
+        stars.size = s.size;
+        stars.color = ImGui::GetColorU32(kStarPowerColor);
+        stars.off_color = IM_COL32(138, 138, 138, 255);
+        stars.filled = score.stars;
+        stars.width = star_row_width(s.size);
+        stars.line_h = s.line_h;
+        s.score.lines.push_back(stars);
     }
-    for (const std::string* l : {&score.detail, &score.next_star}) {
-        if (l->empty()) continue;
-        score_text_w = std::max(score_text_w, text_width(s.size, l->c_str()));
-        score_lines_h += s.line_h;
-    }
-    s.score_w = s.margin + score_text_w + s.pad * 2.0f;
-    s.score_h = s.pad + score_lines_h + s.pad;
+    for (const std::string* l : {&score.detail, &score.next_star})
+        if (!l->empty()) s.score.lines.push_back(text_line(text_width, *l, s.size, grey, s.line_h));
 
-    float drain_text_w = 0.0f;
-    for (const char* l : d_lines) drain_text_w = std::max(drain_text_w, text_width(s.size, l));
-    s.drain_w = drain_text_w + s.pad * 2.0f;
-    s.drain_h = s.line_h * 3.0f + s.pad * 2.0f;
+    // The drain box's header and detail lines in teal while SP runs on the
+    // path, grey when idle; the rate line is white. Teal means SP running
+    // everywhere (D48, Q26), so the text reads the same teal the floor starts
+    // from (the preview config's sp_active_color). The floor draws it
+    // darkened (sp_active_darken); the text uses it as is.
+    const render::Color& sp_teal = cfg.hydra.sp_active_color;
+    const ImU32 accent = drain.active
+                             ? ImGui::GetColorU32(ImVec4(sp_teal.r, sp_teal.g, sp_teal.b, sp_teal.a))
+                             : grey;
+    for (const std::string* l : {&drain.header, &drain.rate, &drain.detail})
+        s.drain.lines.push_back(
+            text_line(text_width, *l, s.size, l == &drain.rate ? white : accent, s.line_h));
+
+    const render::BoxExtent time = render::measure_text_box(s.time, s.inset);
+    const render::BoxExtent score_e = render::measure_text_box(s.score, s.inset);
+    const render::BoxExtent drain_e = render::measure_text_box(s.drain, s.inset);
+    s.time_w = time.w;
+    s.time_h = time.h;
+    s.score_w = score_e.w;
+    s.score_h = score_e.h;
+    s.drain_w = drain_e.w;
+    s.drain_h = drain_e.h;
     return s;
 }
 
@@ -580,26 +640,28 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         // The drain box is shown only over a scene with a gauge: it asks the
         // same has_sp_gauge itself (app::build_drain_box).
         const bool drain_drawn = drain.shown;
-        const char* d_lines[3] = {drain.header.c_str(), drain.rate.c_str(),
-                                  drain.detail.c_str()};
 
         // The gauge's geometry, which is not scaled.
         const float bar_w = px(14.0f);
-        const float inset = px(10.0f);
+        const float gauge_inset = px(10.0f);  // from the image's right edge
         const float v_margin = px(10.0f);
         const float d_gap = px(6.0f);  // between the drain box and the gauge
-        const float gauge_left = img_max.x - inset - bar_w;
+        const float gauge_left = img_max.x - gauge_inset - bar_w;
 
         // Scale-1 sizes, and the extents the fit needs (image pixels).
-        const OverlayBoxSizes sz1 =
-            overlay_box_sizes(1.0f, pcfg, lines, line_count, score, d_lines, text_width);
+        // Every box's top, from render::overlay_tops, at the sizes' scale.
+        // The right column starts at the gauge's margin, which is not scaled.
+        auto tops_at = [&](const OverlayTextBoxes& s) {
+            render::OverlayHeights heights = s;
+            heights.top_margin = v_margin;
+            return render::overlay_tops(heights, drain_drawn, score.shown);
+        };
+        const OverlayTextBoxes sz1 =
+            overlay_box_sizes(1.0f, pcfg, lines, line_count, score, drain, text_width);
+        const render::OverlayTops tops1 = tops_at(sz1);
         render::OverlayBoxes fit;
-        fit.left_w = sz1.time_w;
-        fit.left_h = sz1.time_h;
-        if (score.shown) {
-            fit.left_w = std::max(fit.left_w, sz1.score_w);
-            fit.left_h += sz1.gap + sz1.score_h;
-        }
+        fit.left_w = score.shown ? std::max(sz1.time_w, sz1.score_w) : sz1.time_w;
+        fit.left_h = tops1.left_bottom;
         // The right column's right edge, in image pixels: the drain box's, and
         // the next-activation box's under it.
         const float right_edge = gauge_left - d_gap - origin.x;
@@ -607,14 +669,9 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         if (drain_drawn) {
             fit.right_w = sz1.drain_w;
             fit.right_h = sz1.drain_h;
-            fit.right_top = v_margin;
+            fit.right_top = tops1.drain;
         }
-        // The next-activation box's top: under the drain box, with the gap
-        // the left column keeps between its boxes, or in the drain box's
-        // place when that is hidden.
-        auto next_top_at = [&](const OverlayBoxSizes& s) {
-            return v_margin + (drain_drawn ? s.drain_h + s.gap : 0.0f);
-        };
+        auto next_top_at = [&](const OverlayTextBoxes& s) { return tops_at(s).next; };
         // Its lines: the header, the notation in larger type, then where it
         // is and its chord. The header's count ("2 of 3") stays on one line,
         // and the notation never breaks.
@@ -622,10 +679,10 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
             return [&text_width, sz](const std::string& s) { return text_width(sz, s.c_str()); };
         };
         constexpr size_t kHeaderCountWords = 3;
-        auto next_sizes = [](const OverlayBoxSizes& s) {
+        auto next_sizes = [](const OverlayTextBoxes& s) {
             return std::array<float, 3>{s.size, s.size * kNextActNotationScale, s.size};
         };
-        auto next_pieces = [&](const hydra::app::PreviewNextActBox& b, const OverlayBoxSizes& s) {
+        auto next_pieces = [&](const hydra::app::PreviewNextActBox& b, const OverlayTextBoxes& s) {
             const std::array<float, 3> sizes = next_sizes(s);
             return std::vector<render::TextPiece>{
                 {b.header, width_at(sizes[0]), line_height(sizes[0]), kHeaderCountWords},
@@ -635,77 +692,55 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
             };
         };
         // Wrapped to the room beside the highway at the box's lowest row.
-        auto wrap_next = [&](const std::vector<render::TextPiece>& pieces, const OverlayBoxSizes& s) {
-            return render::wrap_right_box(pcfg, w, h, right_edge, next_top_at(s), s.pad, sz1.gap,
+        auto wrap_next = [&](const std::vector<render::TextPiece>& pieces, const OverlayTextBoxes& s) {
+            return render::wrap_right_box(pcfg, w, h, right_edge, next_top_at(s), s.inset, sz1.gap,
                                           pieces);
+        };
+        // The box itself: each wrapped line in its piece's size and colour,
+        // its number in the best-path gold the scrubber's marks use.
+        auto next_box = [&](const hydra::app::PreviewNextActBox& b, const OverlayTextBoxes& s) {
+            const std::vector<render::TextPiece> pieces = next_pieces(b, s);
+            const render::WrappedText t = wrap_next(pieces, s);
+            const std::array<float, 3> sizes = next_sizes(s);
+            const ImU32 white = IM_COL32(255, 255, 255, 255);
+            const ImU32 colors[3] = {ImGui::GetColorU32(kBestPathColor), white, white};
+            render::TextBox box;
+            for (size_t i = 0; i < pieces.size(); ++i)
+                for (const std::string& l : t.lines[i])
+                    box.lines.push_back(
+                        text_line(text_width, l, sizes[i], colors[i], pieces[i].line_h));
+            return box;
         };
         // The scale reserves the largest box this path shows, so it stays
         // the same all through playback, whichever activation is next, and
         // after the last one.
         for (const hydra::app::PreviewNextActBox& b : pc->next_act_boxes()) {
-            const render::WrappedText t = wrap_next(next_pieces(b, sz1), sz1);
-            fit.next_w = std::max(fit.next_w, t.text_w + sz1.pad * 2.0f);
-            fit.next_h = std::max(fit.next_h, t.text_h + sz1.pad * 2.0f);
+            const render::BoxExtent e = render::measure_text_box(next_box(b, sz1), sz1.inset);
+            fit.next_w = std::max(fit.next_w, e.w);
+            fit.next_h = std::max(fit.next_h, e.h);
         }
-        fit.next_top = next_top_at(sz1);
+        fit.next_top = tops1.next;
         fit.gap = sz1.gap;
         const float scale = render::overlay_scale(pcfg, w, h, fit);
         pc->set_overlay_scale(scale);
 
-        const OverlayBoxSizes sz =
-            overlay_box_sizes(scale, pcfg, lines, line_count, score, d_lines, text_width);
-        const float size = sz.size;
-        const float margin = sz.margin;
-        const float pad = sz.pad;
-        const float line_h = sz.line_h;
+        const OverlayTextBoxes sz =
+            overlay_box_sizes(scale, pcfg, lines, line_count, score, drain, text_width);
+        const render::OverlayTops tops = tops_at(sz);
         const float corner = px(6.0f) * scale;
 
-        // The time box.
-        ImVec2 box_min(origin.x, origin.y);
-        ImVec2 box_max(origin.x + sz.time_w, origin.y + sz.time_h);
-        dl->AddRectFilled(box_min, box_max, IM_COL32(0, 0, 0, 128), corner,
-                          ImDrawFlags_RoundCornersBottomRight);
-        name_box("##time_box", box_min, box_max);
-        for (int i = 0; i < line_count; ++i)
-            dl->AddText(font, size, ImVec2(origin.x + margin, origin.y + margin + line_h * i),
-                        IM_COL32(255, 255, 255, 255), lines[i]);
+        // The time box, in the image's top-left corner: its bottom-right
+        // corner rounded.
+        draw_text_box(dl, font, sz.time, ImVec2(origin.x, origin.y + tops.time), sz.inset, corner,
+                      ImDrawFlags_RoundCornersBottomRight, "##time_box");
 
-        // The score box, under the time box in the same panel style: the
-        // running score in large type, a row of star shapes (earned ones
-        // filled in the Star Power gold, the rest grey outlines), then
-        // "x<mult> · combo <n>" and "star <n> in <points>" in light grey.
-        // Absent until the chart is analyzed; "Score unavailable" (at the
-        // time box's size, no stars) when the path can't be replayed to its
-        // stored score. Right corners rounded, since it sits against the left
-        // edge.
-        if (score.shown) {
-            ImVec2 s_min(origin.x, box_max.y + sz.gap);
-            ImVec2 s_max(origin.x + sz.score_w, s_min.y + sz.score_h);
-            dl->AddRectFilled(s_min, s_max, IM_COL32(0, 0, 0, 128), corner,
-                              ImDrawFlags_RoundCornersRight);
-            name_box("##score_box", s_min, s_max);
-            dl->AddText(font, sz.score_size, ImVec2(origin.x + margin, s_min.y + pad),
-                        IM_COL32(255, 255, 255, 255), score.score.c_str());
-            float y = s_min.y + pad + sz.score_line_h;
-            const ImU32 grey = IM_COL32(200, 200, 200, 255);
-            if (score.available) {
-                const ImU32 earned = ImGui::GetColorU32(kStarPowerColor);
-                const ImU32 unearned = IM_COL32(138, 138, 138, 255);
-                // Centred in its line, as the text lines' glyphs sit.
-                const float star_y = y + (line_h - size) * 0.5f;
-                for (int i = 0; i < kMaxStars; ++i) {
-                    const bool on = i < score.stars;
-                    draw_star(dl, ImVec2(origin.x + margin + (size + star_gap(size)) * i, star_y),
-                              size, on, on ? earned : unearned);
-                }
-                y += line_h;
-            }
-            for (const std::string* l : {&score.detail, &score.next_star}) {
-                if (l->empty()) continue;
-                dl->AddText(font, size, ImVec2(origin.x + margin, y), grey, l->c_str());
-                y += line_h;
-            }
-        }
+        // The score box, under the time box. Absent until the chart is
+        // analyzed; "Score unavailable" when the path can't be replayed to
+        // its stored score. Right corners rounded, since it sits against the
+        // left edge.
+        if (score.shown)
+            draw_text_box(dl, font, sz.score, ImVec2(origin.x, origin.y + tops.score), sz.inset,
+                          corner, ImDrawFlags_RoundCornersRight, "##score_box");
 
         // The Star Power meter: a gauge down the image's right edge, filling
         // bottom-up as phrases are collected and draining while SP is active.
@@ -728,7 +763,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
                                img_max.y - v_margin - label_size),
                         IM_COL32(255, 255, 255, 255), readout.c_str());
             ImVec2 gauge_min(gauge_left, origin.y + v_margin + label_h);
-            ImVec2 gauge_max(img_max.x - inset, img_max.y - v_margin - label_h);
+            ImVec2 gauge_max(img_max.x - gauge_inset, img_max.y - v_margin - label_h);
             if (gauge_max.y > gauge_min.y) {
                 dl->AddRectFilled(gauge_min, gauge_max, IM_COL32(0, 0, 0, 128), px(4.0f));
                 name_box("##sp_gauge", gauge_min, gauge_max);
@@ -761,57 +796,27 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         }
 
         // The SP drain box, top-right just left of the gauge and level with
-        // its top, where the highway is narrowest; right-aligned in the time
-        // box's panel style. How long a bar of SP lasts at the playhead, then
-        // "empties in" (teal, SP running on the path) or "full meter" (grey,
-        // if activated here). Every number is build_drain_box's. Teal means
-        // SP running everywhere (D48, Q26), so the text reads the same teal
-        // the floor starts from (the preview config's sp_active_color). The
-        // floor draws it darkened (sp_active_darken); the text uses it as is.
-        if (drain_drawn) {
-            ImVec2 d_min(gauge_left - d_gap - sz.drain_w, origin.y + v_margin);
-            ImVec2 d_max(gauge_left - d_gap, d_min.y + sz.drain_h);
-            dl->AddRectFilled(d_min, d_max, IM_COL32(0, 0, 0, 128), corner);
-            name_box("##drain_box", d_min, d_max);
-            const render::Color& sp_teal = pcfg.hydra.sp_active_color;
-            const ImU32 accent =
-                drain.active ? ImGui::GetColorU32(ImVec4(sp_teal.r, sp_teal.g, sp_teal.b, sp_teal.a))
-                             : IM_COL32(200, 200, 200, 255);
-            const ImU32 colors[3] = {accent, IM_COL32(255, 255, 255, 255), accent};
-            for (int i = 0; i < 3; ++i) {
-                const float lw = text_width(size, d_lines[i]);
-                dl->AddText(font, size,
-                            ImVec2(d_max.x - pad - lw, d_min.y + pad + line_h * static_cast<float>(i)),
-                            colors[i], d_lines[i]);
-            }
-        }
+        // its top, where the highway is narrowest: how long a bar of SP lasts
+        // at the playhead, then "empties in" (SP running on the path) or
+        // "full meter" (if activated here). Every number is
+        // build_drain_box's; its colours are overlay_box_sizes'.
+        if (drain_drawn)
+            draw_text_box(dl, font, sz.drain,
+                          ImVec2(gauge_left - d_gap - sz.drain_w, origin.y + tops.drain), sz.inset,
+                          corner, ImDrawFlags_None, "##drain_box");
 
-        // The next activation, under the drain box in the same panel style,
-        // right edges lined up and its text left-aligned: its number in the
-        // best-path gold the scrubber's marks use, then its notation in
-        // larger type, then where it is and its chord. Hidden past the last
-        // one. A line too wide for the room beside the highway wraps at its
-        // spaces, so the box grows down rather than over the lane; the
-        // notation is one line, never split.
+        // The next activation, under the drain box with their right edges
+        // lined up: its number, then its notation in larger type, then where
+        // it is and its chord. Hidden past the last one. A line too wide for
+        // the room beside the highway wraps at its spaces, so the box grows
+        // down rather than over the lane; the notation is one line, never
+        // split.
         if (next.shown) {
-            const std::vector<render::TextPiece> pieces = next_pieces(next, sz);
-            const render::WrappedText t = wrap_next(pieces, sz);
-            const ImVec2 n_max(origin.x + right_edge,
-                               origin.y + next_top_at(sz) + t.text_h + pad * 2.0f);
-            const ImVec2 n_min(n_max.x - t.text_w - pad * 2.0f, origin.y + next_top_at(sz));
-            dl->AddRectFilled(n_min, n_max, IM_COL32(0, 0, 0, 128), corner);
-            name_box("##next_act_box", n_min, n_max);
-            const ImU32 white = IM_COL32(255, 255, 255, 255);
-            // Per piece, in next_pieces' order.
-            const ImU32 colors[3] = {ImGui::GetColorU32(kBestPathColor), white, white};
-            const std::array<float, 3> sizes = next_sizes(sz);
-            float y = n_min.y + pad;
-            for (size_t i = 0; i < pieces.size(); ++i) {
-                for (const std::string& l : t.lines[i]) {
-                    dl->AddText(font, sizes[i], ImVec2(n_min.x + pad, y), colors[i], l.c_str());
-                    y += pieces[i].line_h;
-                }
-            }
+            const render::TextBox n_box = next_box(next, sz);
+            const float next_w = render::measure_text_box(n_box, sz.inset).w;
+            draw_text_box(dl, font, n_box,
+                          ImVec2(origin.x + right_edge - next_w, origin.y + tops.next), sz.inset,
+                          corner, ImDrawFlags_None, "##next_act_box");
         }
     }
 
