@@ -352,15 +352,16 @@ struct SPSqueeze {
         return kind == SqueezeKind::SqIn ? "+" : "-";
     }
     bool is_difficult() const { return past_difficult_floor(difficulty()); }
-    // Is this squeeze inside a ms limit (timing_within_limit)? A free squeeze
-    // is asked too, by its own figure. The engine's limit checks and
-    // Activation::within_ms_limit ask it.
+    // Is this squeeze inside a ms limit (timing_within_limit)? A squeeze that
+    // needs no timing is asked too, by its own figure. The engine's limit
+    // checks and Activation::within_ms_limit ask it.
     bool within_limit(double limit_ms) const { return timing_within_limit(difficulty(), limit_ms); }
     // Whether the squeeze is already done with no frontend timing: the one
     // answer the rating and the sentence both read. The SP walk pays a note
-    // on the SP end (core::paid_by_sp_walk), so a SqIn there is already in
-    // and free, and a SqOut there still has to be hit late (D13).
-    bool is_free() const {
+    // on the SP end (core::paid_by_sp_walk), so a SqIn there is already in,
+    // and a SqOut there still has to be hit late (D13). The word "Free" on
+    // screen is BackendSqueeze::summarystr's, a different test.
+    bool needs_no_timing() const {
         const bool inside_sp = core::paid_by_sp_walk(offset_ms);
         return kind == SqueezeKind::SqIn ? inside_sp : !inside_sp;
     }

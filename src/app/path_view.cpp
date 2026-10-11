@@ -118,7 +118,8 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
         const SPSqueeze& sq = act.sqinouts[i];
         // timing() is the edge the sentence below prints: a SqOut must be hit
         // later than it, a SqIn earlier than it. Which wording applies
-        // is SPSqueeze::is_free's answer, the one the rating reads too (D13).
+        // is SPSqueeze::needs_no_timing's answer, the one the rating reads
+        // too (D13).
         const double t = sq.timing();
         const std::string edge = format_ms(std::fabs(t));
         std::string text;
@@ -126,8 +127,8 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
             const std::string note =
                 squeezed_out ? "the " + squeezed_out->row.chord.notationstr() + " note"
                              : std::string("the SP phrase's last note");
-            const std::string when = sq.is_free() ? "no more than " + edge + " early"
-                                                  : "more than " + edge + " late";
+            const std::string when = sq.needs_no_timing() ? "no more than " + edge + " early"
+                                                          : "more than " + edge + " late";
             text = "Hit " + note + " " + when + " so it lands after Star Power ends.";
             if (squeezed_out) {
                 // What the squeeze-out costs: core::sqout_cost, which the
@@ -148,8 +149,8 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
                 text += " Its SP phrase banks for later.";
             }
         } else {
-            std::string when = sq.is_free() ? "no more than " + edge + " late"
-                                            : "more than " + edge + " early";
+            std::string when = sq.needs_no_timing() ? "no more than " + edge + " late"
+                                                    : "more than " + edge + " early";
             // A SqIn has no backend row to carry its eff. figure (a SqOut's
             // sits on its squeezed-out row), so the sentence carries it.
             if (i < note_effective_ms.size() && note_effective_ms[i])

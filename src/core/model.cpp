@@ -486,14 +486,14 @@ std::optional<double> Activation::e_difficulty(bool verbose) const {
 namespace {
 
 // hardest() and badge_timing() in one place; they differ only in whether a
-// free squeeze takes part.
-std::optional<HardestTiming> hardest_part(const Activation& act, bool free_squeezes) {
+// squeeze that needs no timing takes part.
+std::optional<HardestTiming> hardest_part(const Activation& act, bool untimed_squeezes) {
     std::optional<HardestTiming> best;
     // Squeezes first, in list order, and only a strictly larger value takes
     // over: so a tie keeps the first squeeze, and the fill below must beat
     // every squeeze to be named.
     for (const SPSqueeze& sq : act.sqinouts) {
-        if (!free_squeezes && sq.is_free()) continue;
+        if (!untimed_squeezes && sq.needs_no_timing()) continue;
         const double d = sq.difficulty();
         if (!best || d > best->ms)
             best = HardestTiming{sq.kind == SqueezeKind::SqIn ? TimingPart::SqueezeIn
@@ -514,10 +514,10 @@ std::optional<HardestTiming> hardest_part(const Activation& act, bool free_squee
 }  // namespace
 
 std::optional<HardestTiming> Activation::hardest() const {
-    // Only timings that need hitting take part (D51 call 4, D13): a free
-    // squeeze (SPSqueeze::is_free) and an early fill with time to spare
-    // (early_fill_needs_timing) never name the hardest part.
-    return hardest_part(*this, /*free_squeezes=*/false);
+    // Only timings that need hitting take part (D51 call 4, D13): a squeeze
+    // that needs no timing (SPSqueeze::needs_no_timing) and an early fill with
+    // time to spare (early_fill_needs_timing) never name the hardest part.
+    return hardest_part(*this, /*untimed_squeezes=*/false);
 }
 
 std::optional<HardestTiming> Activation::badge_timing() const {
@@ -525,7 +525,7 @@ std::optional<HardestTiming> Activation::badge_timing() const {
     // none does a free squeeze get it (D80); fills still follow hardest()'s
     // rules, so this fallback only ever finds a free squeeze.
     if (std::optional<HardestTiming> h = hardest()) return h;
-    return hardest_part(*this, /*free_squeezes=*/true);
+    return hardest_part(*this, /*untimed_squeezes=*/true);
 }
 
 std::optional<double> Activation::difficulty() const {

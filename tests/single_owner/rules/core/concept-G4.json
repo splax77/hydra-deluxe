@@ -1,0 +1,27 @@
+{
+  "rules": [
+    {
+      "question": "Is this squeeze already done with no frontend timing?",
+      "owner": "SPSqueeze::needs_no_timing in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "needs_no_timing",
+      "date": "2026-10-11",
+      "decision": "D114 (concept audit finding M41)",
+      "added_by": "concept-G4",
+      "pattern": "\\bis_free\\b",
+      "anchor": "is_free",
+      "must_match": [
+        "if (!free_squeezes && sq.is_free()) continue;",
+        "const std::string when = sq.is_free() ? \"no more than \" + edge + \" early\""
+      ],
+      "must_not_match": [
+        "if (!untimed_squeezes && sq.needs_no_timing()) continue;",
+        "static inline bool mi_ptr_decode_canary_is_freed(uint32_t canary) {"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The old name came back. The word \"Free\" on screen belongs to BackendSqueeze::summarystr and means a different thing, so the squeeze's own test is named for what it asks. Decided by: D114, concept audit finding M41"
+    }
+  ]
+}

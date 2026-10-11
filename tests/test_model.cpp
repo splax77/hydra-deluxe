@@ -721,16 +721,18 @@ TEST_CASE("backend leeway: +2.999 ms is counted, exactly +3.0 ms is not") {
 }
 
 // D13.
-TEST_CASE("SPSqueeze::is_free: a note on the SP end is inside SP") {
-    // A SqIn is free once its note is inside SP: at the end or before it.
-    CHECK(SPSqueeze{SqueezeKind::SqIn, 0.0}.is_free());
-    CHECK(SPSqueeze{SqueezeKind::SqIn, -0.0}.is_free());
-    CHECK(SPSqueeze{SqueezeKind::SqIn, -0.001}.is_free());
-    CHECK_FALSE(SPSqueeze{SqueezeKind::SqIn, 0.001}.is_free());
-    // A SqOut is free once its note is already outside: past the end only.
-    CHECK_FALSE(SPSqueeze{SqueezeKind::SqOut, 0.0}.is_free());
-    CHECK_FALSE(SPSqueeze{SqueezeKind::SqOut, -0.001}.is_free());
-    CHECK(SPSqueeze{SqueezeKind::SqOut, 0.001}.is_free());
+TEST_CASE("SPSqueeze::needs_no_timing: a note on the SP end is inside SP") {
+    // A SqIn needs no timing once its note is inside SP: at the end or
+    // before it.
+    CHECK(SPSqueeze{SqueezeKind::SqIn, 0.0}.needs_no_timing());
+    CHECK(SPSqueeze{SqueezeKind::SqIn, -0.0}.needs_no_timing());
+    CHECK(SPSqueeze{SqueezeKind::SqIn, -0.001}.needs_no_timing());
+    CHECK_FALSE(SPSqueeze{SqueezeKind::SqIn, 0.001}.needs_no_timing());
+    // A SqOut needs no timing once its note is already outside: past the end
+    // only.
+    CHECK_FALSE(SPSqueeze{SqueezeKind::SqOut, 0.0}.needs_no_timing());
+    CHECK_FALSE(SPSqueeze{SqueezeKind::SqOut, -0.001}.needs_no_timing());
+    CHECK(SPSqueeze{SqueezeKind::SqOut, 0.001}.needs_no_timing());
 }
 
 TEST_CASE("difficulty names: one list, one spelling") {
