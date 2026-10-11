@@ -225,6 +225,8 @@ The Preview plays the chart as a 3D note highway, in time with the song's audio.
 
 Where Star Power runs out, a bright teal line crosses the floor and a small teal triangle sits just outside each railing, level with the line. A note just before the end can cover the line, but the triangles stay in view, so you can always see exactly where SP stops.
 
+Where the chart marks a drum roll or trill, the highway lights a lane under it, in the pad's colour. A roll lights one pad's lane, and a trill lights the lanes of the two pads it moves between. Hydra Deluxe picks the pads the way Clone Hero does, from the first notes under the lane, so a roll that starts on a crash lights only the roll's pad. A lane shows on the same difficulties as in Clone Hero. In Clone Hero a lane also makes its notes easier to hit. Hydra Deluxe only draws the lanes: its scores and timings don't include that help.
+
 ### Choosing what to watch
 
 `Showing` picks which path to draw. It lists the same paths as the Paths tab, in the same order. The all-0 path reads like `0 0 0 0  (best all-0)`.
