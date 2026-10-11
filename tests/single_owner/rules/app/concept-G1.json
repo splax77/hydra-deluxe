@@ -25,6 +25,27 @@
         "    } catch (const RulesFileError& e) {"
       ],
       "note": "Four tools (hydra_batch, hydra_fillcompare, hydra_bench, hydra_replay) each caught the loader's error and printed it on their own. They call load_tool_rules now, so a fifth tool that catches it itself is flagged. Found by: concept audit M25."
+    },
+    {
+      "question": "What does the user read when hydra_rules.ini is bad?",
+      "owner": "kAnalysisOffSentence and rules_file_tool_text in src/app/user_messages.h and .cpp",
+      "owner_file": "src/app/user_messages.cpp",
+      "owner_symbol": "rules_file_tool_text",
+      "date": "2026-10-11",
+      "decision": "D114 item 11 (M72)",
+      "added_by": "concept-audit-G1",
+      "pattern": "hydra_rules\\.ini has",
+      "owner_files": ["src/app/user_messages.h", "src/app/user_messages.cpp"],
+      "must_match": [
+        "    static constexpr const char* kAnalysisOffSentence = \"hydra_rules.ini has an error, so analysis is off\";",
+        "constexpr const char* kRulesFile = \"hydra_rules.ini has a line Hydra can't read.\";",
+        "        std::fprintf(stderr, \"hydra_rules.ini has an error:\\n%s\\n\", e.what());"
+      ],
+      "must_not_match": [
+        "        ImGui::TextColored(kWarningColor, \"%s\", app::kAnalysisOffSentence);",
+        "        std::fprintf(stderr, \"%s\\n\", rules_file_tool_text(e).c_str());"
+      ],
+      "note": "One state, a bad hydra_rules.ini, once had three wordings: the app's (on AppState), a dead kRulesFile sentence, and the tools' raw line. The app's sentence and the tools' lead-in both live in user_messages now. Decided by: D114 item 11, concept audit M72."
     }
   ]
 }

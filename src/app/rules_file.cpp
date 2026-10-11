@@ -9,6 +9,7 @@
 #include <variant>
 
 #include "app/config.h"
+#include "app/user_messages.h"
 #include "core/rules.h"
 #include "core/strutil.h"
 #include "core/winstr.h"
@@ -101,7 +102,7 @@ int load_tool_rules(const std::optional<std::string>& path, core::Rules& rules) 
     try {
         rules = load_rules_file(path ? std::filesystem::u8path(*path) : default_rules_path());
     } catch (const RulesFileError& e) {
-        std::fprintf(stderr, "%s\n", e.what());
+        std::fprintf(stderr, "%s\n", rules_file_tool_text(e).c_str());
         return 2;
     }
     return 0;

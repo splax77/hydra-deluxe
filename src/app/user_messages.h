@@ -30,6 +30,18 @@ inline constexpr const char* kDatabaseReadSentence =
     "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is "
     "running, then try again.";
 
+// What a bad hydra_rules.ini reads as in the app (ErrorKind::RulesFile, D114
+// items 11 and 13): analysis stays off while it is bad (AppState::rules_error).
+// The library toolbar and the path report window show it.
+inline constexpr const char* kAnalysisOffSentence =
+    "hydra_rules.ini has an error, so analysis is off until the file is fixed and "
+    "Hydra is restarted.";
+
+// What a command-line tool prints for a bad hydra_rules.ini (D114 item 11):
+// the tools' sentence, then the loader's line from `e`. The tools stop instead
+// of running on (app::load_tool_rules), so the app's sentence does not fit.
+std::string rules_file_tool_text(const std::exception& e);
+
 // What happened and what to do, in at most two short sentences. The sentence
 // comes from the error's kind (core/error_kind.h), through the one switch,
 // kind_sentence in user_messages.cpp; the error's words never pick it. Running

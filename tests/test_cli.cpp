@@ -259,6 +259,24 @@ TEST_CASE("hydra_batch refuses an unknown option") {
     CHECK_FALSE(fs::exists(fs::u8path(db)));
 }
 
+// D114 item 11: a bad hydra_rules.ini prints the tools' sentence and then the
+// loader's line, and the run stops before it opens the database.
+TEST_CASE("hydra_batch names a bad hydra_rules.ini and stops") {
+    CliSandbox box("bad_rules");
+    {
+        std::ofstream rules(box.dir / "hydra_rules.ini", std::ios::binary);
+        rules << "nope = 1\n";
+    }
+    const std::string db = box.db("untouched.db");
+    RunResult r = run_exe(box.batch, {"--db", db, box.folder()});
+    INFO(r.output);
+    CHECK(r.exit_code == 2);
+    // Two checks, because the console's text mode turns each "\n" into "\r\n".
+    CHECK(contains(r.output, "hydra_rules.ini has an error:"));
+    CHECK(contains(r.output, "hydra_rules.ini: unknown key \"nope\""));
+    CHECK_FALSE(fs::exists(fs::u8path(db)));
+}
+
 TEST_CASE("hydra_batch refuses a run whose fill rule disagrees with the database") {
     CliSandbox box("mismatch");
 

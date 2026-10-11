@@ -1,6 +1,7 @@
 #include "ui/library_parts.h"
 
 #include "app/dm_report.h"  // why_not_comparable
+#include "app/user_messages.h"
 #include "core/model.h"
 #include "imgui.h"
 #include "ui/fonts.h"
@@ -147,7 +148,7 @@ void render_actions_row(AppState& app) {
     // for as long as analysis is off.
     if (app.analysis_blocked()) {
         ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextColored(kWarningColor, "%s", AppState::kAnalysisOffSentence);
+        ImGui::TextColored(kWarningColor, "%s", app::kAnalysisOffSentence);
         ImGui::TextColored(kWarningColor, "%s", app.rules_error.c_str());
         ImGui::PopTextWrapPos();
     }

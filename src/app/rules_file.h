@@ -29,8 +29,8 @@ std::filesystem::path default_rules_path();
 
 // How a command-line tool loads its rules: from `path` (its --rules) when
 // given, else default_rules_path(). On success it fills `rules` and returns 0.
-// A bad file prints the loader's line on stderr and returns the tool's exit
-// code. The app does not call this: it keeps running
+// A bad file prints rules_file_tool_text (app/user_messages.h) on stderr and
+// returns the tool's exit code. The app does not call this: it keeps running
 // with analysis off instead (AppState::rules_error).
 int load_tool_rules(const std::optional<std::string>& path, core::Rules& rules);
 
