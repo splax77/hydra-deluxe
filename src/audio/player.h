@@ -62,7 +62,9 @@ public:
     // then reads from the current position and advances the clock, then
     // zero-fills any frames past the end and auto-pauses there. While paused,
     // writes silence and does not touch the source. Returns the count of real
-    // audio frames written (never counting the silence tail).
+    // audio frames written (never counting the silence tail). A source that
+    // comes up short still moves the clock by the full span asked for, up to
+    // the end; only the return value shows the shortfall.
     int64_t read_frames(float* out, int64_t frame_count);
 
 private:

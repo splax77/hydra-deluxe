@@ -45,15 +45,17 @@ struct DecodedAudio {
     bool empty() const { return samples.empty(); }
 };
 
-// Decode compressed audio bytes to float PCM. Throws std::runtime_error on an
-// unrecognized container or a decode failure.
+// Decode compressed audio bytes to float PCM. Throws a KindedError of kind
+// AudioDecode on an unrecognized container or a decode failure.
 DecodedAudio decode_audio(const uint8_t* data, std::size_t size);
 inline DecodedAudio decode_audio(const std::vector<uint8_t>& bytes) {
     return decode_audio(bytes.data(), bytes.size());
 }
 
 // Decode a Preview stem from whichever source it holds: its file on disk
-// (from_file()) or its already-extracted container bytes.
+// (from_file()) or its already-extracted container bytes. Throws as
+// open_stem_reader does, and a KindedError of kind AudioDecode on a decode
+// failure.
 DecodedAudio decode_stem(const app::PreviewAudioStem& stem);
 
 }  // namespace hydra::audio

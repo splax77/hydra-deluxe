@@ -19,8 +19,8 @@ class MappedFile {
 public:
     // Maps the whole file read-only. Other programs may still read it while it
     // is mapped. A zero-length file maps as empty (data() is null, size() 0).
-    // Throws std::runtime_error ("cannot open file: <path>") when the file
-    // can't be opened or mapped.
+    // Throws a KindedError of kind SongFileMissing when the file can't be
+    // opened or mapped.
     static std::shared_ptr<const MappedFile> open(const std::string& utf8_path);
 
     ~MappedFile();

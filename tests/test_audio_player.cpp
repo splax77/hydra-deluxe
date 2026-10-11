@@ -4,6 +4,7 @@
 
 #include "doctest.h"
 
+#include <memory>
 #include <vector>
 
 #include "audio/decode.h"
@@ -85,6 +86,34 @@ TEST_CASE("read_frames past the end zero-fills, auto-pauses, clamps position") {
     for (int i = 0; i < 8; ++i) CHECK(out[i] == doctest::Approx(expect[i]));
     CHECK(t.position_frames() == 5);  // clamped to length
     CHECK_FALSE(t.playing());         // auto-paused at the end
+}
+
+namespace {
+// A 10-frame stereo source at 48 kHz that hands back at most 2 frames per
+// read, each frame {L=7, R=7}, as a stream that comes up short would.
+class ShortSource : public MixSource {
+public:
+    int channels() const override { return 2; }
+    int sample_rate() const override { return 48000; }
+    int64_t length_frames() const override { return 10; }
+    int64_t read(float* out, int64_t frames) override {
+        const int64_t got = frames < 2 ? frames : 2;
+        for (int64_t i = 0; i < got * 2; ++i) out[i] = 7.0f;
+        return got;
+    }
+    void seek(int64_t) override {}
+};
+}  // namespace
+
+TEST_CASE("read_frames counts only the frames a short source really gave") {
+    Playhead t(std::make_unique<ShortSource>());
+    t.play();
+    std::vector<float> out(8, -1.0f);  // ask for 4 frames; the source gives 2
+    CHECK(t.read_frames(out.data(), 4) == 2);
+    CHECK(t.position_frames() == 4);  // the clock still moves the full 4
+    const float expect[] = {7, 7, 7, 7, 0, 0, 0, 0};  // the rest is silence
+    for (int i = 0; i < 8; ++i) CHECK(out[i] == expect[i]);
+    CHECK(t.playing());
 }
 
 TEST_CASE("seek clamps to the valid range in both frames and ms") {
