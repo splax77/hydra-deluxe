@@ -9,6 +9,9 @@ analyzes each chart, and shows the Star Power paths that give the best score.
 
 **Chart**:
 One playable song file (`.mid`, `.chart`, `.sng`, or `.srb`) plus its metadata.
+A file's format is `chart_format_of`'s answer. Whether it is a container (a
+`.sng` or `.srb` that packs the chart, its metadata and its audio into one
+file) is `is_container`'s. Both live in src/parse/chart_files.h.
 _Avoid_: song file, track
 
 **Library**:
@@ -17,6 +20,31 @@ The set of charts found by the latest scan of the user's folders.
 **Scan**:
 The pass that discovers charts in the configured folders and registers them in
 the library. Distinct from analysis.
+
+**Scanned chart**:
+One chart file as the last scan found it: its hash, names, file, folder,
+fingerprint (`sig`) and stated timing. `store::ChartLibraryEntry` in
+src/store/record_store.h is the shape, and `app::ScanItem` in
+src/app/analysis.h is another name for it, so the scan saves its rows as they
+are. The scan trims each name once in `discover_charts`, before
+`title_or_unknown`, `artist_or_unknown` and `charter_or_unknown` fill in a
+blank one (D114 item 15). `kChartMetaStamp` in src/store/stored_versions.h
+marks which reading of the names a stored row has.
+
+**Library row**:
+One line of the library table: one copy of a chart in one folder. Rows are
+told apart by `row_key` in src/ui/library_model.h, the chart's notes path,
+never its hash, because one chart in two folders is two rows. The selection,
+a click and a batch all compare it, and the open song panel re-reads its
+chart by it after a rescan, so the panel follows its row (D114 item 7).
+
+**Rescan cache**:
+The last saved scan, handed to the next one so a chart whose fingerprint has
+not changed is reused without reading its files. `load_scan_cache` in
+src/app/analysis.h is the one read of it; a store that cannot be read gives an
+empty cache, which only makes the scan slower. Whether one chart changed since
+its row was made is `chart_changed_since`'s answer, and `ChartNow::differs_from`
+compares the new hash with the stored one.
 
 **Analyze**:
 The search that computes a chart's paths as a record and saves its summary.
@@ -35,13 +63,40 @@ _Avoid_: stored record
 What the database keeps of a record: the score, stars, counts, hardest timing
 and best path, one row per chart and analysis settings. Its key is the chart
 and its analysis settings: the chart mode, the SP cap, the fill rule, the path
-limit and the score range, plus the rules it ran under. A summary row is stale
-unless both hold: it carries a results stamp this build accepts (a stamp that
+limit and the score range (the result identity, below), plus the rules it ran
+under. A summary row is stale unless both hold: it carries a results stamp this build accepts (a stamp that
 changes only when analysis output changes, not with every release; see
 src/store/stored_versions.h), and it was made under the rules in force. A
 lookup reports a chart as one of three statuses: not analyzed, stale, or
-ready. A listing returns only ready rows, so a stale row reads the same as no
-row at all.
+ready (the result status, below). A listing returns only ready rows, so a
+stale row reads the same as no row at all.
+
+**Result identity**:
+What a stored result is filed under. `store::ResultSettings` in
+src/store/record_store.h is the settings part: the chart mode, the SP cap
+(`store::CapQuery`) and the lens. `store::RecordKey` adds the chart's hash to
+it. A lookup over many charts asks with a `ResultSettings`, a lookup for one
+chart with a `RecordKey`. `Settings::record_key` builds the key from the app's
+settings, and `KeyPart` in src/app/config.h names the part each analysis
+setting is filed under.
+
+**Lens**:
+The part of a result's identity beyond the chart mode and the cap: the path
+limit, the score range (number and unit) and the fill rule. `store::Lens` in
+src/store/record_store.h keeps it in one canonical form, so equal settings
+compare equal: a path limit that is off is stored as 0, and the unit as the
+search reads it. `Settings::lens` builds it. The word is the code's only;
+nothing a player reads uses it.
+
+**Result status**:
+What the store says about a chart's result under the current settings: not
+analyzed (no row), stale (a row another build or other rules made), or ready.
+`store::RecordStatus` in src/store/record_store.h; only the store decides it.
+The library writes the three as "Not analyzed", "Stale" and "Analyzed"
+(`status_label` in src/ui/library_model.h), on its chips and in the Best path
+cell. A ready result may have kept no paths.
+_Avoid_: not analyzed (for the comparison page's wider state: that page says
+"no current result")
 
 **Library file upgrade**:
 The one-time rewrite of an older hydra.db into this version's smaller layout,
@@ -79,7 +134,38 @@ confirmed both defaults (D48, Q33); `Settings` in src/app/config.h owns them.
 The score range starts at 4<!-- default: kDefaultDepthValue --> scores below
 the best. `kDefaultDepthValue` in src/search/pather.h owns that number, and
 the search and `Settings` both start from it (D54).
+`kAnalysisFields` in src/app/config.h lists the ten `Settings` fields behind
+the eight settings, each with the part of the result identity it is filed
+under. The panel's Reset (`Settings::with_analysis_defaults`) and the settings
+button's summary (`Settings::analysis_changes`) read that list, so a new
+analysis setting is one new row there (concept audit M13).
 _Avoid_: view options
+
+**Chart reading**:
+The four choices that pick which notes a chart is read as: the difficulty, Pro
+Drums, 2x Bass and Note Shuffle. `app::ChartReading` in src/app/config.h holds
+them, and `Settings::reading` reads them off the settings, 2x Bass through
+`effective_bass2x`. Its stored spelling is the chart mode, such as "Expert Pro
+Drums, 2x Bass", written by `chartmode_key` and read back by
+`Settings::with_chartmode`. `to_analysis_settings` and the Preview's song key
+take the four from `reading`, so a fifth choice is added there.
+
+**Score range**:
+How far below the best score a kept path may fall: a number and a unit, scores
+or points. The unit is `DepthMode` in src/search/engine.h. The settings keep it
+as the ini's int, and `Settings::search_depth_mode` is the one reading of that
+int (1 is points, anything else scores). `score_range_text` in
+src/app/config.h writes it in words: "4 scores", "1 point".
+_Avoid_: depth (the code's word; nothing a player reads says it)
+
+**Settings in words**:
+How the search settings are written for the user. `describe_settings` in
+src/app/config.h gives the score range (`score_range_text`), the SP cap
+(`bars_text`: "4 bars", "1 bar") and the path limit ("10 ms" or "off") as
+`SettingsText`. The batch confirm, the settings button and `hydra_batch`'s
+header all read it, each with its own labels (D114 item 9). A fill rule's
+name is `fill_rule_name`'s, in src/search/graph.h.
+_Avoid_: Depth, Timing cap, none (for a path limit that is off)
 
 **Library search**:
 What the user types to narrow the library. Every word must match the title,
@@ -98,6 +184,22 @@ shows only once three charts have finished (`kEtaMinFinished` in
 src/ui/library_jobs.h). Decided in the approved
 docs/superpowers/specs/2026-09-27-ui-redesign-design.md ("The estimate appears
 once three charts have finished").
+
+**Batch counts**:
+A batch's three counts: analyzed, failed, and skipped (rows that already had a
+result). `run_batch` is the only writer of them (`BatchProgress` in
+src/app/analysis.h). `batch_counts_text` words them for both the app's
+finished strip and `hydra_batch`'s closing line, "21 analyzed · 0 failed · 1
+skipped (already had a result)" (D114 item 10).
+_Avoid_: already stored
+
+**Batch running**:
+While a batch runs, a scan or a second batch is turned away with one
+sentence, `AppState::kBatchRunningStatus` ("A batch is running.") in
+src/ui/app_state.h, on the status line and as the greyed buttons' tooltip
+(D114 item 12). `AppState::can_analyze` (the rules file is good and no batch
+runs) and `AppState::can_scan` are the gates the buttons and the starts read.
+_Avoid_: busy
 
 **UI timings**:
 How long the app's short-lived messages and refreshes wait. A click's
@@ -121,6 +223,96 @@ send and 120 s to receive, because the backend cold-starts after idle; it
 checks Cancel every 50 ms; and it accepts only HTTP status 200
 (src/net/dmbot_client.cpp; D48, Q33).
 
+### Reports and messages
+
+**In the library**:
+Whether the last scan's library lists a chart. `report::library_lists` in
+src/app/report.h is the one answer for every page, over
+`library_copies_by_hash`'s map (D87 item 4, D92). `records_by_hash` keeps
+only the results whose chart it lists.
+
+**Comparable chart mode**:
+Whether the analysis settings can be held against dmleaderboards scores, which
+are Clone Hero scores. `dm_report::why_not_comparable` in src/app/dm_report.h
+answers it: empty when they can, otherwise the sentence naming the first rule
+they break. The toolbar's button and `collect_dm_rows` (Refresh, Try again,
+"Compare another player...") both ask it with the real difficulty (D114 item
+6). Whether a cap is Clone Hero's is `is_clone_hero_cap` in src/core/model.h.
+
+**Comparison status**:
+What the comparison page says about one leaderboard score: under, at or above
+optimal, no paths, no current result, not in library, or other speed. The
+`kStatus*` words in src/app/dm_report.h are the Status cell's text, and
+`kStatusWords` beside them holds every other spelling: the tile, the dropdown
+label, the counts phrase and the hover. "No current result" means the library
+lists the chart but has no ready result for this mode at SP cap 4: never
+analyzed there, or stale (D114 item 1). Written as a sentence, a chart the
+scan never found is "not in your library" (D114 item 2).
+_Avoid_: not analyzed (the library's word for a narrower state)
+
+**Fill comparison status**:
+What `hydra_fillcompare`'s page says about one chart scored under both fill
+rules: same, 1.0 higher, 1.1 higher, only 1.0, only 1.1, or in both. The six
+are the `kStatus*` words in src/app/fill_report.h. `collect_fill_rows` writes
+them, `tally_fill_rows` counts them, and `build_fill_html` writes them into
+the page's script. "In both" means a result on each side but not a score on
+each; the subtitle and tile say `kInBothPhrase`, "in both, not both scored"
+(D114 item 2).
+
+**Report table**:
+A report window's sortable, filterable table. `report_view::TableView` and
+`report_view::Column` in src/app/report_view.h hold its rules: `text_column`
+builds a text column, `optional_key` sorts a value a row may lack, and empty
+values sink to the bottom whichever way a column sorts. `count_line` writes
+the "X of Y" line. Each filter dropdown keeps every row at `kEveryRowChoice`,
+which Clear filters goes back to. The empty table's sentence
+(`kNothingMatches`) and the search box's hint (`kSearchChartsHint`) live in
+src/app/html_page.h, because the fill page, built without the GUI, shows them
+too.
+
+**Text sort order**:
+How a text column sorts, in the library and in every report: on the text the
+cell shows, folded by `fold_for_search` (src/app/library_query.h), so case
+and accents don't split names apart. The library keeps one folded key per
+column (`LibraryRow::sort_keys`, from `library_cell_text`; D114 item 3). The
+report windows fold through `report_view::folded_key` and order with
+`compare_keys`. The fill page carries a sort field per text column made by the
+same `folded_key`, and its script only compares them.
+
+**Fact separator**:
+The " · " between facts on one line: a byline, a star count, a path's acts and
+score. `kFactSeparator` in src/app/display_format.h is the one spelling. Two
+dots spaced differently on purpose, in src/ui/library_dialogs.cpp and
+src/ui/paths_tab.cpp, say why beside them.
+
+**Plain error**:
+What a failure reads as: one short sentence picked by the error's kind
+(`ErrorKind` in src/core/error_kind.h), never by its words, with the raw text
+kept for a small details line. `plain_error` in src/app/user_messages.h gives
+the sentence through the one switch, `kind_sentence`, and `plain_error_detail`
+the raw text. A sentence more than one screen shows is a constant in the same
+header, such as `kPathReportFailed` and `kComparisonFailed` (D114 item 14).
+
+**Rules file error**:
+What a bad hydra_rules.ini does. In the app, analysis stays off, and the
+toolbar, the path report window and the song panel all show
+`kAnalysisOffSentence` (src/app/user_messages.h; D114 items 11 and 13). A
+command-line tool stops instead: `app::load_tool_rules` (src/app/rules_file.h)
+loads the rules for every tool and prints `rules_file_tool_text`, the tools'
+sentence and then the loader's line. Numbers in the file are read through
+`parse_finite_number` (src/core/strutil.h), so "nan", "inf" and hex are
+errors (D114 item 8).
+
+**Job outcome**:
+How a finished background job ended: done, cancelled or failed
+(`JobOutcome`). `ResultJobBase::outcome` in src/ui/job_base.h weighs the run's
+return and the Cancel flag in one place: a run that returned whole is done
+even when a Cancel came after its last step, so a report keeps it. The click's
+analysis is the one exception, written beside its reader,
+`AppState::update_view_job` (D114 item 21). A step asked to stop throws
+`hydra::Cancelled` (src/core/error_kind.h) or a type derived from it, and a
+report build stopped by Cancel is marked through `ReportSlot::mark_cancelled`.
+
 ### Paths
 
 **Path**:
@@ -129,6 +321,13 @@ is worth. Every path that ties the record's top score is optimal, not only the
 first one listed (D48). A path's average multiplier reads 0.000x when it has no
 scoring notes, instead of dividing by zero (`Path::avg_mult`); real charts
 never hit this (D48, Q33).
+
+**Score categories**:
+The six parts a path's score is made of: base (the notes), combo bonus, Star
+Power, solo bonus, accents and ghosts. `score_total` in src/core/model.h is
+the one sum, in the order `Path` stores them. `ReplayScore` in
+src/core/replay.h holds the same six (`kReplayScoreFields` names each), and
+`score_of` and `assign_score` are the only pairing between it and `Path`.
 
 **Activation**:
 One use of banked Star Power, written in path notation with its skip count and
@@ -205,7 +404,10 @@ was 57.7 ms.
 
 **Fill spawn deadline (CH 1.1)**:
 The latest your SP meter can fill up and still have a fill appear. Clone Hero
-1.1 puts it a flat 4 beats before the fill starts. Hydra's default rule. A
+1.1 puts it a flat 4 beats before the fill starts. Hydra's default rule.
+`kCh11FillLeadBeats` in src/search/graph.h owns the 4, and
+`fill_rule_description` writes it into the sentence the "1.0 fills" tooltip
+and the fill comparison page show. A
 beat here is a quarter note (the chart's resolution) in every meter, 6/8
 included; that is not verified against Clone Hero (docs/adr/0023).
 
@@ -254,7 +456,9 @@ and the collected phrases are read from it (docs/adr/0021).
 **Deact node**:
 The exact chart position where an activation's Star Power ends; backend
 squeeze timings are measured against it. The search stamps it onto the
-record as it runs, and nothing downstream re-derives it.
+record as it runs, and nothing downstream re-derives it: every reader asks
+`Activation::deact_tick` (src/core/model.h), which reads the last step of the
+SP-end history.
 _Avoid_: SP end tick (when the anchored search position is meant)
 
 **Cap-clamped window**:
@@ -276,7 +480,20 @@ warning.
 **Squeeze rating**:
 The displayed difficulty judgement of a squeeze: its rating label, its
 effective ms once the transfer scale is applied, and whether the scale is
-material enough to warn about.
+material enough to warn about. `rate_activation` in
+src/core/squeeze_rating.cpp works out the scales and effective ms
+(`rate_note` for each row). The Rating cell's word ("Easy", "Hard
+(uncounted)" and so on) is `BackendSqueeze::summarystr`'s, in
+src/core/model.cpp. That ladder differs from the report's timing tiers
+(`timing_tiers`), and the report's footer says the two can differ.
+
+**Needs no timing**:
+A squeeze that is already done with no frontend timing: a SqIn whose note the
+SP walk already pays, or a SqOut whose note it does not. `SPSqueeze::needs_no_timing`
+in src/core/model.h is the one answer, and the rating and the details sentence
+both read it. The word "Free" in the Rating cell is a different test,
+`BackendSqueeze::summarystr`'s, on a backend row's offset.
+_Avoid_: free (for this test)
 
 **Backend leeway**:
 How long after the SP end a note still scores under Star Power without a
@@ -372,6 +589,16 @@ early and SP never stops. A squeezed-out phrase's bar arrives when the player
 hits it: as SP ends for an early phrase, on its own note for a late one.
 Without a path it fills one bar per phrase and pins at the cap, since nothing
 spends it and there is no record to read.
+
+**Preview text box**:
+One of the four boxes of text over the Preview image: the time, score, SP
+drain and next-activation boxes. `render::TextBox` in
+src/render/overlay_layout.h describes one as its lines (`BoxLine`: a line of
+text, or the score box's star row). `measure_text_box` gives its size and
+`text_box_line_origins` where each line starts, so every box's text is
+left-aligned with one inset on all four sides (D114 item 27). `overlay_tops`
+is the one stacking order of the boxes, read by both the fit pass and the
+draw pass. The SP meter gauge is not a text box.
 
 **Stem**:
 One of the several audio files a chart may ship instead of a single mix (e.g.
