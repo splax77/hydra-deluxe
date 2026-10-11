@@ -402,7 +402,7 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
                             : "every mode at the current cap, top " +
                                   hydra::counted(options.max_paths, "path", "paths") +
                                   " per chart and mode";
-    std::string cap_label = "SP cap " + hydra::counted(options.cap.exact, "bar", "bars");
+    std::string cap_label = "SP cap " + bars_text(options.cap.exact);
     // The normal rule goes unsaid, so a 1.1 page reads as it always has.
     if (options.lens.legacy_fills)
         cap_label += std::string(" — ") + fill_rule_name(rule, FillRuleNameStyle::Long) + " fills";

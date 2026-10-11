@@ -178,14 +178,15 @@ int batch_main() {
         return 1;
     }
 
+    // The app's names and words for each setting (D114 items 9 and 23).
     std::printf("Database   : %s\n", db.c_str());
     std::printf("Chart mode : %s\n", chartmode.c_str());
     const hydra::app::SettingsText described = hydra::app::describe_settings(analysis);
-    std::printf("Depth      : %s\n", described.depth.c_str());
+    std::printf("Score range: %s\n", described.depth.c_str());
     std::printf("SP cap     : %s\n", described.cap.c_str());
-    std::printf("Timing cap : %s\n", described.timing.c_str());
+    std::printf("Path limit : %s\n", described.timing.c_str());
     std::printf("Squeeze win: %d ms\n", static_cast<int>(hydra::kSqueezeWindowMs));
-    std::printf("Fill rule  : %s\n",
+    std::printf("Fills      : %s\n",
                 hydra::fill_rule_name(run_rule, hydra::FillRuleNameStyle::Long));
     std::printf("Folders    : %zu\n", folders.size());
     for (const std::string& f : folders) std::printf("    %s\n", f.c_str());

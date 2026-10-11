@@ -665,20 +665,24 @@ TEST_CASE("config: resource_dir is the resource folder beside the exe") {
     CHECK(hydra::ends_with(dir, tail));
 }
 
-// The pieces are hydra_batch's header words; the expected text is the header
-// as it printed before describe_settings existed.
-TEST_CASE("config: describe_settings uses hydra_batch's header words") {
+// The pieces are the app's words for each setting, which the batch confirm,
+// the settings button and hydra_batch's header all print (D114 item 9).
+TEST_CASE("config: describe_settings uses the app's words") {
     Settings s;
     hydra::app::SettingsText text = hydra::app::describe_settings(s.to_analysis_settings());
-    CHECK(text.depth == "scores 4");
+    CHECK(text.depth == "4 scores");
     CHECK(text.cap == "4 bars");
     CHECK(text.timing == "10 ms");
 
     s.mslimit_enabled = false;
-    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).timing == "none");
+    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).timing == "off");
 
     s.depth_mode = 1;
-    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).depth == "points 4");
+    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).depth == "4 points");
+    s.depth_value = 1;
+    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).depth == "1 point");
+    s.depth_value = 2000;
+    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).depth == "2,000 points");
 
     s.sp_cap = 1;
     CHECK(hydra::app::describe_settings(s.to_analysis_settings()).cap == "1 bar");

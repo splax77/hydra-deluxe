@@ -55,17 +55,10 @@ std::string batch_counts(const BatchJob::Snapshot& s) {
     return app::batch_counts_text(s.analyzed, s.failed, s.skipped);
 }
 
-// The setting values both summaries print, each said once: the batch
-// confirm and the settings button wrap them in their own words.
-std::string sp_cap_value(const app::Settings& s) { return counted(s.sp_cap, "bar", "bars"); }
-
-std::string score_range_value(const app::Settings& s) {
-    return s.search_depth_mode() == DepthMode::Scores ? counted(s.depth_value, "score", "scores")
-                                                      : counted(s.depth_value, "point", "points");
-}
-
-std::string path_limit_ms_value(const app::Settings& s) {
-    return format_ms_whole(s.mslimit_value);
+// The setting values both summaries print, worded by app::describe_settings:
+// the batch confirm and the settings button wrap them in their own words.
+app::SettingsText setting_values(const app::Settings& s) {
+    return app::describe_settings(s.to_analysis_settings());
 }
 
 }  // namespace
@@ -87,11 +80,12 @@ BatchSettingsSummary batch_settings_summary(const app::Settings& s) {
     if (s.view_prodrums) out.difficulty += " \xC2\xB7 Pro Drums";
     if (s.effective_bass2x()) out.difficulty += " \xC2\xB7 2x Bass";
     if (s.view_noteshuffle) out.difficulty += " \xC2\xB7 Note Shuffle";
-    out.sp_cap = sp_cap_value(s) +
-                 (is_clone_hero_cap(s.sp_cap) ? " (Clone Hero's rule)" : " (a what-if)");
+    const app::SettingsText values = setting_values(s);
+    out.sp_cap =
+        values.cap + (is_clone_hero_cap(s.sp_cap) ? " (Clone Hero's rule)" : " (a what-if)");
     out.fills = fill_rule_name(fill_rule_for(s.legacy_fills), FillRuleNameStyle::Long);
-    out.score_range = score_range_value(s);
-    out.path_limit = s.mslimit_enabled ? path_limit_ms_value(s) : "off";
+    out.score_range = values.depth;
+    out.path_limit = values.timing;
     return out;
 }
 
@@ -103,6 +97,7 @@ std::vector<std::string> settings_change_phrases(const app::Settings& s) {
     // The defaults are the ones "Reset to defaults" puts back
     // (Settings::with_analysis_defaults), so a reset always leaves none.
     const app::Settings d = s.with_analysis_defaults();
+    const app::SettingsText values = setting_values(s);
     std::vector<std::string> out;
     const auto add = [&out](const std::string& phrase) { out.push_back(phrase); };
     if (s.difficulty() != d.difficulty()) add(difficulty_name(s.difficulty()));
@@ -111,12 +106,12 @@ std::vector<std::string> settings_change_phrases(const app::Settings& s) {
         add(s.effective_bass2x() ? "2x Bass" : "2x Bass off");
     if (s.view_noteshuffle != d.view_noteshuffle)
         add(s.view_noteshuffle ? "Note Shuffle" : "Note Shuffle off");
-    if (s.sp_cap != d.sp_cap) add("SP cap " + sp_cap_value(s));
+    if (s.sp_cap != d.sp_cap) add("SP cap " + values.cap);
     if (s.legacy_fills != d.legacy_fills) add(s.legacy_fills ? "1.0 fills" : "1.0 fills off");
     if (s.depth_value != d.depth_value || s.search_depth_mode() != d.search_depth_mode())
-        add("Score range " + score_range_value(s));
+        add("Score range " + values.depth);
     if (s.mslimit_enabled != d.mslimit_enabled || s.mslimit_value != d.mslimit_value)
-        add(s.mslimit_enabled ? "Path limit " + path_limit_ms_value(s) : "Path limit off");
+        add("Path limit " + values.timing);
     return out;
 }
 

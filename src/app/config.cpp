@@ -359,12 +359,18 @@ BatchRun Settings::batch_run() const {
     return BatchRun{chartmode_key(), lens(), to_analysis_settings()};
 }
 
+std::string bars_text(int bars) { return counted(bars, "bar", "bars"); }
+
+std::string score_range_text(DepthMode depth_mode, int depth_value) {
+    return depth_mode == DepthMode::Points ? counted(depth_value, "point", "points")
+                                           : counted(depth_value, "score", "scores");
+}
+
 SettingsText describe_settings(const AnalysisSettings& settings) {
     SettingsText text;
-    const char* unit = settings.depth_mode == DepthMode::Points ? "points" : "scores";
-    text.depth = std::string(unit) + " " + std::to_string(settings.depth_value);
-    text.cap = counted(settings.sp_cap, "bar", "bars");
-    text.timing = settings.ms_filter ? format_ms_whole(*settings.ms_filter) : std::string("none");
+    text.depth = score_range_text(settings.depth_mode, settings.depth_value);
+    text.cap = bars_text(settings.sp_cap);
+    text.timing = settings.ms_filter ? format_ms_whole(*settings.ms_filter) : std::string("off");
     return text;
 }
 
