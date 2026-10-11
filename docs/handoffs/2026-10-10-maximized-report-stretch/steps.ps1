@@ -12,7 +12,7 @@ foreach ($s in $Steps) {
     Start-Sleep -Seconds 6
   } elseif ($s -eq "esc") {
     Send-WindowMessage $h 0x0100 0x1B 0x00010001; Start-Sleep -Milliseconds 150; Send-WindowMessage $h 0x0101 0x1B 0xC0010001; Start-Sleep -Seconds 3
-  } elseif ($s -ne "start") { [HydraCaptureV1]::ShowWindow($h, $codes[$s]) | Out-Null; Start-Sleep -Seconds 3 }
+  } elseif ($s -ne "start") { Set-WindowShowState $h $codes[$s]; Start-Sleep -Seconds 3 }
   Save-WindowShot $h "$Prefix-$s.png"
 }
 Stop-Hydra $p

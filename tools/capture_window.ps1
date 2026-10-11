@@ -70,6 +70,13 @@ function Get-ClientWidth([IntPtr]$h) {
   $c.R
 }
 
+# Callers use these two instead of naming the type, so a version bump of the
+# type touches only this file.
+function Set-WindowForeground([IntPtr]$h) { [HydraCaptureV1]::SetForegroundWindow($h) | Out-Null }
+
+# $cmd is a ShowWindow SW_ code.
+function Set-WindowShowState([IntPtr]$h, [int]$cmd) { [HydraCaptureV1]::ShowWindow($h, $cmd) | Out-Null }
+
 function Send-WindowMessage([IntPtr]$h, [uint32]$msg, $w, $l) {
   [HydraCaptureV1]::PostMessage($h, $msg, [IntPtr]$w, [IntPtr]$l) | Out-Null
 }
