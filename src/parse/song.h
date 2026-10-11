@@ -170,6 +170,19 @@ struct SoloSection {
     size_t last = 0;
 };
 
+// One Clone Hero drum lane: the coloured strip the game shows down one pad
+// column (a single lane) or two (a double lane) during a roll or trill. It
+// runs from start_tick to end_tick. `pads` holds the one or two colour
+// columns it lights, in red-to-green order; which ones is light_drum_lanes's
+// rule in song.cpp. Display only: nothing in the search or the stored record
+// reads it.
+struct DrumLane {
+    int64_t start_tick = 0;
+    int64_t end_tick = 0;
+    bool double_lane = false;
+    std::vector<NoteColor> pads;
+};
+
 // How a refused-timing message starts. check_timing_maps and apply_timesig
 // in song.cpp build their messages from these; the error's kind,
 // ChartTimingRefused, is what picks its sentence.
@@ -235,6 +248,13 @@ public:
     // finished; see find_solo_sections in song.cpp. Display and replay only;
     // nothing stores it.
     std::vector<SoloSection> solo_sections;
+
+    // Drum lanes shown at the loaded difficulty, in lane-start order. Both
+    // parsers fill it once the sequence is finished and before Note Shuffle
+    // runs, so the pads are the chart's own; see light_drum_lanes in
+    // song.cpp. Display only; nothing in the search or the stored record
+    // reads it.
+    std::vector<DrumLane> drum_lanes;
 
     // Snapshot the timing indexes from the current maps. Called once the tempo
     // track has been fully mapped and before any timecode is made. Timing

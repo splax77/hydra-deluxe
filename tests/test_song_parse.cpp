@@ -7,6 +7,7 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <filesystem>
@@ -312,6 +313,182 @@ TEST_CASE("song: solo_sections lists each run of solo chords once") {
     CHECK(plain.solo_sections.empty());
 }
 
+// ---- drum lanes (Song::drum_lanes; the pad rule is light_drum_lanes) ----
+
+namespace {
+
+using Pads = std::vector<NoteColor>;
+
+// The lane of `song` that starts at `start`, or nullptr.
+const DrumLane* lane_at(const Song& song, int64_t start) {
+    const auto it = std::find_if(song.drum_lanes.begin(), song.drum_lanes.end(),
+                                 [start](const DrumLane& l) { return l.start_tick == start; });
+    return it == song.drum_lanes.end() ? nullptr : &*it;
+}
+
+Song lane_chart(const std::string& lines, bool pro = true, bool noteshuffle = false) {
+    return load_songbytes_chart(testchart::chart_bytes(testchart::section("ExpertDrums", lines)),
+                                pro, true, Difficulty::Expert, core::default_rules(),
+                                noteshuffle);
+}
+
+std::string common_chart(const char* rel) { return corpus::root() + "/common/" + rel; }
+
+}  // namespace
+
+// The five lanes the main session read out of testdata, each checked in its
+// file: the phrase line or the 126/127 note, and the notes under it.
+TEST_CASE("drum lanes: the testdata lanes, with the pads Clone Hero lights") {
+    struct Want {
+        const char* file;
+        Difficulty difficulty;
+        int64_t start, end;
+        bool double_lane;
+        Pads pads;
+    };
+    const Want wants[] = {
+        // S 65 3240 over a yellow cymbal.
+        {"IB24/T4/1.O.M. - Apex/notes.chart", Difficulty::Expert, 125280, 128520, false,
+         {NoteColor::Yellow}},
+        // S 65 84 starting on a red ghost and a blue cymbal: the lowest, red.
+        {"Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart", Difficulty::Expert,
+         29856, 29940, false, {NoteColor::Red}},
+        // S 66 6480 starting on a lone green cymbal; the next chord is a
+        // yellow cymbal.
+        {"Summer Blast _25 Setlist/Tier 6/The Agonist - Thank You, Pain/notes.chart",
+         Difficulty::Expert, 167280, 173760, true, {NoteColor::Yellow, NoteColor::Green}},
+        // 126 at velocity 96 over a run of pitch 100 (Expert green).
+        {"IB24/T3/CHON - Book (feat. Matt Garstka)/notes.mid", Difficulty::Expert, 102720,
+         103695, false, {NoteColor::Green}},
+        // 127 at velocity 96 over pitches 100 and 98 in turn.
+        {"Summer Blast _25 Setlist/Tier 4/Rush - YYZ/notes.mid", Difficulty::Expert, 318000,
+         319455, true, {NoteColor::Yellow, NoteColor::Green}},
+    };
+    for (const Want& w : wants) {
+        CAPTURE(w.file);
+        const Song song = load_songpath(common_chart(w.file), true, true, w.difficulty);
+        const DrumLane* lane = lane_at(song, w.start);
+        REQUIRE(lane != nullptr);
+        CHECK(lane->end_tick == w.end);
+        CHECK(lane->double_lane == w.double_lane);
+        CHECK(lane->pads == w.pads);
+    }
+
+    // Every lane line in each .chart's ExpertDrums section starts on a note,
+    // so none is dropped: two in Apex, eight in Victoria - Grow, one in The
+    // Agonist.
+    CHECK(load_songpath(common_chart(wants[0].file), true, true).drum_lanes.size() == 2);
+    CHECK(load_songpath(common_chart(wants[1].file), true, true).drum_lanes.size() == 8);
+    CHECK(load_songpath(common_chart(wants[2].file), true, true).drum_lanes.size() == 1);
+
+    // Both .mid lanes are velocity 96, Expert only: Hard shows neither.
+    for (const Want& w : {wants[3], wants[4]}) {
+        CAPTURE(w.file);
+        const Song hard = load_songpath(common_chart(w.file), true, true, Difficulty::Hard);
+        CHECK(lane_at(hard, w.start) == nullptr);
+    }
+}
+
+TEST_CASE(".chart: a double lane on a three-pad chord lights its lowest and highest") {
+    // Red, yellow cymbal and blue tom. In the game's bit order every cymbal
+    // comes after every tom, so the highest is the yellow cymbal and the
+    // blue tom between them is not lit.
+    const Song song = lane_chart("  0 = N 1 0\n  0 = N 2 0\n  0 = N 66 0\n  0 = N 3 0\n"
+                                 "  0 = S 66 192\n  96 = N 4 0\n");
+    REQUIRE(song.drum_lanes.size() == 1);
+    CHECK(song.drum_lanes[0].double_lane);
+    CHECK(song.drum_lanes[0].pads == Pads{NoteColor::Red, NoteColor::Yellow});
+
+    // With Pro Drums off there are no cymbals, so the blue tom is highest.
+    const Song plain = lane_chart("  0 = N 1 0\n  0 = N 2 0\n  0 = N 66 0\n  0 = N 3 0\n"
+                                  "  0 = S 66 192\n  96 = N 4 0\n",
+                                  /*pro=*/false);
+    REQUIRE(plain.drum_lanes.size() == 1);
+    CHECK(plain.drum_lanes[0].pads == Pads{NoteColor::Red, NoteColor::Blue});
+}
+
+TEST_CASE(".chart: a double lane on a one-pad chord takes the next chord with a pad") {
+    // Red, then a kick alone (skipped), then yellow tom and blue tom: the
+    // highest of those is blue.
+    const Song song = lane_chart("  0 = N 1 0\n  0 = S 66 192\n  48 = N 0 0\n"
+                                 "  96 = N 2 0\n  96 = N 3 0\n");
+    REQUIRE(song.drum_lanes.size() == 1);
+    CHECK(song.drum_lanes[0].pads == Pads{NoteColor::Red, NoteColor::Blue});
+
+    // Two reds in a row light one column, stored once.
+    const Song same = lane_chart("  0 = N 1 0\n  0 = S 66 192\n  96 = N 1 0\n");
+    REQUIRE(same.drum_lanes.size() == 1);
+    CHECK(same.drum_lanes[0].pads == Pads{NoteColor::Red});
+
+    // No later chord with a pad: only the first pad.
+    const Song last = lane_chart("  0 = N 4 0\n  0 = S 66 192\n  96 = N 0 0\n");
+    REQUIRE(last.drum_lanes.size() == 1);
+    CHECK(last.drum_lanes[0].pads == Pads{NoteColor::Green});
+}
+
+TEST_CASE(".chart: a lane over kicks only, or over nothing, is dropped") {
+    // Kicks inside the lane; the red at 192 sits on the lane's end, outside.
+    const Song kicks =
+        lane_chart("  0 = N 0 0\n  0 = S 65 192\n  96 = N 0 0\n  192 = N 1 0\n");
+    CHECK(kicks.drum_lanes.empty());
+    // A lane past the last note.
+    const Song empty = lane_chart("  0 = N 1 0\n  384 = S 65 192\n");
+    CHECK(empty.drum_lanes.empty());
+}
+
+TEST_CASE(".chart: a lane starts on the first pad from one tick before it to its end") {
+    // A note one tick before the lane counts.
+    const Song early = lane_chart("  99 = N 4 0\n  100 = S 65 50\n");
+    REQUIRE(early.drum_lanes.size() == 1);
+    CHECK(early.drum_lanes[0].pads == Pads{NoteColor::Green});
+    // Two ticks before does not; the blue inside the lane does.
+    const Song late = lane_chart("  98 = N 4 0\n  100 = S 65 50\n  140 = N 3 0\n");
+    REQUIRE(late.drum_lanes.size() == 1);
+    CHECK(late.drum_lanes[0].start_tick == 100);
+    CHECK(late.drum_lanes[0].end_tick == 150);
+    CHECK(late.drum_lanes[0].pads == Pads{NoteColor::Blue});
+}
+
+TEST_CASE(".chart: a lane shows on each difficulty whose section holds it") {
+    const std::vector<uint8_t> data = testchart::chart_bytes(
+        testchart::section("ExpertDrums", "  0 = N 1 0\n  0 = S 65 192\n") +
+        testchart::section("HardDrums", "  0 = N 2 0\n"));
+    CHECK(load_songbytes_chart(data, true, true, Difficulty::Expert).drum_lanes.size() == 1);
+    const Song hard = load_songbytes_chart(data, true, true, Difficulty::Hard);
+    REQUIRE(hard.sequence.size() == 1);
+    CHECK(hard.drum_lanes.empty());
+}
+
+TEST_CASE("drum lanes keep the chart's own pads with Note Shuffle on") {
+    // Victoria - Grow's eight lanes, read with Note Shuffle off and on. The
+    // shuffle redraws the pads, but the lanes are lit before it runs, as
+    // Clone Hero builds them, so they come out the same.
+    const std::string path =
+        common_chart("Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart");
+    const Song plain = load_songpath(path, true, true);
+    const Song shuffled =
+        load_songpath(path, true, true, Difficulty::Expert, core::default_rules(), true);
+    REQUIRE(plain.drum_lanes.size() == 8);
+    REQUIRE(shuffled.drum_lanes.size() == plain.drum_lanes.size());
+    for (size_t i = 0; i < plain.drum_lanes.size(); ++i) {
+        CAPTURE(i);
+        CHECK(shuffled.drum_lanes[i].start_tick == plain.drum_lanes[i].start_tick);
+        CHECK(shuffled.drum_lanes[i].end_tick == plain.drum_lanes[i].end_tick);
+        CHECK(shuffled.drum_lanes[i].pads == plain.drum_lanes[i].pads);
+    }
+    // And the shuffle did move a chord under a lane: the chord on the first
+    // lane's start tick differs between the two reads.
+    const auto chord_at = [](const Song& s, int64_t tick) {
+        for (const SongTimestamp& ts : s.sequence)
+            if (ts.timecode.ticks() == tick) return ts.chord.code();
+        return std::string();
+    };
+    bool moved = false;
+    for (const DrumLane& lane : plain.drum_lanes)
+        if (chord_at(plain, lane.start_tick) != chord_at(shuffled, lane.start_tick)) moved = true;
+    CHECK(moved);
+}
+
 TEST_CASE("Song::note_count: the chart's note total under each 2x Bass setting") {
     // Tick 0: a kick, a 2x kick on the same tick, and a red. Tick 192: a lone
     // 2x kick. Tick 384: a yellow. Tick 576: a 2x kick written before a kick
@@ -530,6 +707,8 @@ TEST_CASE("mid: the marker pitch table is the one list the parser reads") {
     // The marker pitches typed in the parser's switches before the table.
     for (int pitch : {103, 109, 110, 111, 112, 116, 120})
         CHECK_MESSAGE(is_midi_marker_pitch(pitch), pitch);
+    // The single and double drum lanes, added with Song::drum_lanes.
+    for (int pitch : {126, 127}) CHECK_MESSAGE(is_midi_marker_pitch(pitch), pitch);
     // Expert's 2x kick (95), kick (96) and Green (100), and the pitches on
     // either side of the solo and fill markers.
     for (int pitch : {95, 96, 100, 102, 104, 121})

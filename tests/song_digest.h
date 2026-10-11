@@ -187,8 +187,8 @@ inline uint64_t row_hash(const store::PreparedRow& r, const HydraRecord& record)
 // One parsed Song: resolution, the tempo, meter and time-signature maps,
 // every timestamp (its timecode in all four forms, each lane's note, the solo
 // and SP flags, the activation length and phrase start), the features, the
-// dynamics tag fields, the offset, the practice sections and the solo
-// sections.
+// dynamics tag fields, the offset, the practice sections, the solo sections
+// and the drum lanes.
 inline uint64_t song_digest(const Song& s) {
     uint64_t h = kSeed;
     auto v = [&](const auto& x) { h = fnv(h, &x, sizeof x); };
@@ -243,6 +243,14 @@ inline uint64_t song_digest(const Song& s) {
     for (const auto& p : s.solo_sections) {
         v(p.first);
         v(p.last);
+    }
+    for (const DrumLane& lane : s.drum_lanes) {
+        v(lane.start_tick);
+        v(lane.end_tick);
+        v(lane.double_lane);
+        const uint64_t pads = lane.pads.size();
+        v(pads);
+        for (NoteColor c : lane.pads) v(c);
     }
     return h;
 }
