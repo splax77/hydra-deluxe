@@ -14,6 +14,10 @@ ChartFormat chart_format_of(std::string_view path) {
     return ChartFormat::None;
 }
 
+bool is_container(ChartFormat format) {
+    return format == ChartFormat::Sng || format == ChartFormat::Srb;
+}
+
 ChartFormat notes_file_format(std::string_view filename) {
     const std::string low = to_lower_ascii(filename);
     if (low == "notes.mid") return ChartFormat::Mid;

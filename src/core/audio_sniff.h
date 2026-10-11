@@ -40,6 +40,25 @@ inline AudioFormat sniff_format(const std::vector<uint8_t>& bytes) {
     return sniff_format(bytes.data(), bytes.size());
 }
 
+// A file extension Hydra takes as audio, beside the format sniff_format
+// normally finds behind it.
+struct AudioExtension {
+    const char* extension;  // with its dot, lower case; matched in any case
+    AudioFormat format;
+};
+
+// The one list of audio formats a loose or .sng stem may have, each extension
+// beside its sniff_format value, so a new format is a one-place edit. A name
+// on this list is only a cheap pre-filter (app/preview_source.cpp
+// is_audio_filename): the bytes still decide whether the stem opens.
+inline constexpr AudioExtension kAudioExtensions[] = {
+    {".ogg", AudioFormat::OggVorbis},
+    {".opus", AudioFormat::OggOpus},
+    {".mp3", AudioFormat::Mp3},
+    {".wav", AudioFormat::Wav},
+    {".flac", AudioFormat::Flac},
+};
+
 // How many bytes the ID3v2 tag at the start of `data` spans: its 10-byte
 // header, the syncsafe size the header stores, and a 10-byte footer when the
 // header's footer flag is set. 0 when the bytes do not start "ID3" or are

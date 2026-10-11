@@ -147,8 +147,8 @@ std::optional<double> sng_delay_ms(const std::vector<uint8_t>& sng_bytes);
 double preview_audio_offset_ms(std::optional<double> ini_delay_ms,
                                std::optional<double> chart_offset_s);
 
-// True if `filename` ends in an audio extension Hydra can decode
-// (.ogg/.opus/.mp3/.wav/.flac), case-insensitive.
+// True if `filename` ends in an audio extension Hydra can decode (the list is
+// audio::kAudioExtensions, core/audio_sniff.h), case-insensitive.
 bool is_audio_filename(const std::string& filename);
 
 // True if `filename` is a song stem: an audio file (is_audio_filename) whose

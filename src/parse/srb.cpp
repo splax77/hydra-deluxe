@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <utility>
 
+#include "core/bounds.h"
 #include "core/error_kind.h"
 #include "core/little_endian.h"
 #include "miniz.h"
@@ -141,7 +142,7 @@ bool srb_parse_metadata(const std::vector<uint8_t>& meta, SrbMetadata& out) {
                              &out.year,           &out.description};
     // A little-endian u32 at `pos`, moving past it; false when it does not fit.
     const auto read_u32 = [&](uint32_t* into) {
-        if (sizeof(uint32_t) > meta.size() - pos) return false;
+        if (!core::fits(meta, pos, sizeof(uint32_t))) return false;
         *into = core::read_le_u32(meta.data() + pos);
         pos += sizeof(uint32_t);
         return true;
@@ -150,14 +151,14 @@ bool srb_parse_metadata(const std::vector<uint8_t>& meta, SrbMetadata& out) {
     // not fit.
     const auto read_string = [&](std::string* into) {
         uint32_t len = 0;
-        if (!read_u32(&len) || len > meta.size() - pos) return false;
+        if (!read_u32(&len) || !core::fits(meta, pos, len)) return false;
         if (into) into->assign(reinterpret_cast<const char*>(meta.data() + pos), len);
         pos += len;
         return true;
     };
     // `n` bytes skipped at `pos`; false when they do not fit.
     const auto skip = [&](size_t n) {
-        if (n > meta.size() - pos) return false;
+        if (!core::fits(meta, pos, n)) return false;
         pos += n;
         return true;
     };

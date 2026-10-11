@@ -25,6 +25,7 @@
 #include "app/analysis.h"
 #include "app/user_messages.h"
 #include "byte_source_util.h"
+#include "core/bounds.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "midi_util.h"
@@ -274,6 +275,20 @@ TEST_CASE("srb: metadata parser reads the string table") {
     std::vector<uint8_t> too_short = {'4', 'b'};
     SrbMetadata none;
     CHECK_FALSE(srb_parse_metadata(too_short, none));
+}
+
+// core::fits, the bounds test the metadata reader (and the .sng reader and the
+// Preview's .srb audio walk) asks before each read.
+TEST_CASE("srb: core::fits says whether n bytes at pos lie inside the buffer") {
+    CHECK(core::fits(10, 10, 0));    // nothing at the very end fits
+    CHECK(core::fits(10, 6, 4));     // the last four bytes
+    CHECK_FALSE(core::fits(10, 7, 4));
+    CHECK_FALSE(core::fits(10, 10, 1));
+    CHECK_FALSE(core::fits(10, 11, 0));  // pos past the end never fits
+    CHECK_FALSE(core::fits(10, 2, UINT64_MAX));  // a huge n never wraps to a yes
+    const std::vector<uint8_t> buf(16);
+    CHECK(core::fits(buf, 16, 0));
+    CHECK_FALSE(core::fits(buf, 16, 1));
 }
 
 // D75: the field after the string table that states the song's length. The
