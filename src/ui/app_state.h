@@ -299,7 +299,8 @@ public:
     std::string search;
     // Applies a search at once (the box throttles its own calls).
     void set_search(std::string text);
-    // Re-reads every chart and summary: at startup and after a scan.
+    // Re-reads every chart and summary: at startup and after a scan. The open
+    // song panel's entry follows its row (follow_selected_row).
     void reload_library();
     // Re-reads every row's summary: after a settings change or a batch step.
     void refresh_library_summaries();
@@ -687,6 +688,15 @@ private:
     // what it showed (D73 item 3). Every read whose answer a screen shows
     // goes through it.
     bool read_store(const std::function<void()>& read);
+    // Re-reads `selected` from its library row after reload_library.
+    void follow_selected_row();
+    // The library row for the chart `key` (row_key), or null.
+    const LibraryChart* library_row_for(const std::string& key) const;
+    // The store's entry for the chart `key`, listed under `md5`: the one
+    // lookup select and follow_selected_row share. Empty when none, or when
+    // the read failed (read_store said so).
+    std::optional<store::ChartLibraryEntry> read_entry(const std::string& key,
+                                                       const std::string& md5);
     bool batch_finish_seen_ = false;  // update_background_jobs saw this run end
 
     // Why a path report build started. Batch: the finished batch's own

@@ -2,7 +2,10 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <functional>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -10,6 +13,7 @@
 #include "uitest_harness.h"
 
 #include "../scoped_hook.h"
+#include "../testdata_dirs.h"  // corpus::root
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
@@ -472,6 +476,57 @@ void test_details_close_teardown(ImGuiTestContext* ctx) {
     ctx->SetRef("//Scanning charts");
     ctx->ItemClick("Continue");
     ctx->Yield(2);
+}
+
+// A rescan that reads a changed song.ini changes the open song panel too: the
+// panel re-reads its chart's entry by row_key, so its header follows the
+// library row (D114 item 7). One chart is copied to scratch so its song.ini
+// can be rewritten; the corpus itself is never touched.
+void test_panel_follows_rescan(ImGuiTestContext* ctx) {
+    namespace fs = std::filesystem;
+    Harness& h = harness(ctx);
+    reset_app(h);
+    const fs::path from = fs::u8path(corpus::root()) / "common" / "IB24" / "T1" / "Allister - Overrated";
+    const fs::path songs = fs::u8path(h.temp_dir) / "follow_rescan";
+    const fs::path chart = songs / "Allister - Overrated";
+    fs::remove_all(songs);
+    fs::create_directories(chart);
+    fs::copy_file(from / "notes.mid", chart / "notes.mid");
+    fs::copy_file(from / "song.ini", chart / "song.ini");
+    h.app->settings.chartfolders = {songs.u8string()};
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK_EQ(h.app->library_shown_count(), (size_t)1);
+    open_details(ctx, 0);
+    if (ctx->IsError()) return;
+    wait_song_analyzed(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(h.app->selected->title == "Overrated");
+
+    // The same chart under a new name; the notes file is unchanged.
+    std::string ini;
+    {
+        std::ifstream in(chart / "song.ini", std::ios::binary);
+        ini.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+    const std::string old_line = "name = Overrated";
+    const size_t at = ini.find(old_line);
+    IM_CHECK(at != std::string::npos);
+    if (ctx->IsError()) return;
+    ini.replace(at, old_line.size(), "name = Renamed By Rescan");
+    {
+        std::ofstream out(chart / "song.ini", std::ios::binary | std::ios::trunc);
+        out << ini;
+    }
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(h.app->details_open());
+    IM_CHECK_EQ(h.app->library_row_at(0).title, std::string("Renamed By Rescan"));
+    IM_CHECK_EQ(h.app->selected->title, h.app->library_row_at(0).title);
+    // What the user reads: the old name is gone from the panel header too.
+    ctx->Yield(2);
+    IM_CHECK(!on_screen(h, "Overrated"));
+    IM_CHECK(on_screen(h, "Renamed By Rescan"));
 }
 
 // The Preview's loading bar while a real load runs: every frame's label
@@ -1158,6 +1213,7 @@ const std::vector<TestEntry>& details_tests() {
         {"panel-prev-next", test_panel_prev_next},
         {"panel-headline", test_panel_headline},
         {"panel-close-cancels", test_panel_close_cancels},
+        {"panel-follows-rescan", test_panel_follows_rescan},
         {"settings-lock", test_settings_lock},
         {"view-cancel-try-again", test_view_cancel_try_again},
         {"view-rules-broken", test_view_rules_broken},

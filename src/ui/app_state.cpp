@@ -115,6 +115,36 @@ void AppState::reload_library() {
     const std::string problem = read_library(*store, settings, library);
     library.set_query(search);
     if (!problem.empty()) set_problem(problem);
+    follow_selected_row();
+}
+
+// The open song panel follows its library row after a reload (a rescan, or
+// reidentify_chart after a click found edited files): its entry is read
+// again by row_key, the lookup select uses (D114 item 7). A chart the reload
+// dropped keeps the panel as it was.
+void AppState::follow_selected_row() {
+    if (!selected) return;
+    for (const LibraryRow& r : library.rows()) {
+        if (!is_selected_row(r.entry)) continue;
+        if (std::optional<store::ChartLibraryEntry> entry = read_entry(row_key(r.entry), r.entry.md5))
+            selected = std::move(*entry);
+        return;
+    }
+}
+
+const LibraryChart* AppState::library_row_for(const std::string& key) const {
+    for (const LibraryRow& r : library.rows())
+        if (row_key(r.entry) == key) return &r.entry;
+    return nullptr;
+}
+
+std::optional<store::ChartLibraryEntry> AppState::read_entry(const std::string& key,
+                                                             const std::string& md5) {
+    std::vector<store::ChartLibraryEntry> copies;
+    if (!read_store([&] { copies = store->list_chart_library_copies(md5); })) return std::nullopt;
+    for (store::ChartLibraryEntry& copy : copies)
+        if (row_key(copy) == key) return std::move(copy);
+    return std::nullopt;
 }
 
 void AppState::refresh_library_summaries() {
@@ -229,26 +259,13 @@ void AppState::select(const LibraryChart& row) {
     if (reload_after_scan()) {
         // The clicked row as the new scan wrote it, which may be under a new
         // hash. None: the scan removed it, and the click opens nothing.
-        const LibraryChart* now = nullptr;
-        for (const LibraryRow& r : library.rows()) {
-            if (row_key(r.entry) == key) {
-                now = &r.entry;
-                break;
-            }
-        }
+        const LibraryChart* now = library_row_for(key);
         if (!now) return;
         md5 = now->md5;
     }
-    std::vector<store::ChartLibraryEntry> copies;
-    if (!read_store([&] { copies = store->list_chart_library_copies(md5); })) return;
-    for (const store::ChartLibraryEntry& copy : copies) {
-        if (row_key(copy) == key) {
-            select(copy);
-            return;
-        }
-    }
     // None: the rows are older than the store only when the reload after a
     // scan failed, and that read said so.
+    if (std::optional<store::ChartLibraryEntry> entry = read_entry(key, md5)) select(*entry);
 }
 
 void AppState::close_details() {
@@ -401,11 +418,7 @@ void AppState::update_view_job() {
                 return;
             }
             key.hyhash = out.new_md5;
-            if (is_selected_row(job->song())) {
-                selected->md5 = out.new_md5;
-                selected->sig = out.new_sig;
-            }
-            reload_library();
+            reload_library();  // the panel's entry follows its row (follow_selected_row)
         }
         if (job->analysis_off()) {
             v.state = ViewedSong::State::RulesBroken;
