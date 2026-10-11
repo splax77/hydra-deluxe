@@ -317,8 +317,7 @@ TEST_CASE("targeted search rejects a tick that is not a fill") {
 }
 
 TEST_CASE("replay without Star Power scores no doubling at all") {
-    Song song = load_songpath(corpus::first_chart_with_suffix(".mid"),
-                              ChartReading{Difficulty::Expert, true, true, false});
+    Song song = load_songpath(corpus::first_chart_with_suffix(".mid"), ChartReading{});
     REQUIRE_FALSE(song.is_empty());
 
     const ReplayResult r = replay_path(song, {});
@@ -554,8 +553,7 @@ TEST_CASE("windows read from a path JSON match the ones read from the record") {
 // before.
 TEST_CASE("a dump carries each window's SqIn phrases back to the replay") {
     const Song song = load_songpath(
-        corpus::root() + "/test_fast_tempo/spent_then_next.chart",
-        ChartReading{Difficulty::Expert, true, true, false});
+        corpus::root() + "/test_fast_tempo/spent_then_next.chart", ChartReading{});
     const HydraRecord rec = analyze_chart(song, test::scores_settings(2));
     const std::vector<const Path*> all = rec.all_paths();
     const json dumped = paths_json(all, song.timing());
@@ -686,8 +684,7 @@ TEST_CASE("paths_json prints the stored passed-over fills, not a guess") {
 // Power ran out and is not doubled; if they did not, it is. The window list
 // alone cannot tell the two apart, so the tool says so instead of guessing.
 TEST_CASE("a window ending on a phrase note with no offset is flagged") {
-    Song song = load_songpath(corpus::first_chart_with_suffix(".mid"),
-                              ChartReading{Difficulty::Expert, true, true, false});
+    Song song = load_songpath(corpus::first_chart_with_suffix(".mid"), ChartReading{});
     REQUIRE_FALSE(song.is_empty());
 
     const ReplayResult r = replay_path(song, {});
@@ -764,8 +761,7 @@ TEST_CASE("a window ending on a phrase note with no offset is flagged") {
 }
 
 TEST_CASE("per-note sp points sum to the chord's sp points") {
-    Song song = load_songpath(corpus::first_chart_with_suffix(".mid"),
-                              ChartReading{Difficulty::Expert, true, true, false});
+    Song song = load_songpath(corpus::first_chart_with_suffix(".mid"), ChartReading{});
     REQUIRE_FALSE(song.is_empty());
 
     // One window over the whole chart, so every chord is under Star Power and

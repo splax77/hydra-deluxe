@@ -408,6 +408,14 @@ TEST_CASE("with_reading: reading() gives back the reading written, the rest kept
     CHECK(base.with_reading(base.reading()).chartmode_key() == base.chartmode_key());
 }
 
+// The tests that write a bare ChartReading{} lean on this pin: change a default
+// and this case names it, instead of a dozen unrelated expectations moving.
+TEST_CASE("the default ChartReading is Expert, Pro Drums, 2x Bass, no Note Shuffle") {
+    CHECK(hydra::ChartReading{} ==
+          hydra::ChartReading{hydra::Difficulty::Expert, true, true, false});
+    CHECK(Settings{}.reading() == hydra::ChartReading{});
+}
+
 TEST_CASE("view_noteshuffle: off by default, and the INI key loads and saves it") {
     CHECK_FALSE(Settings{}.view_noteshuffle);
     CHECK_FALSE(load_ini_text("ns_missing", "view_prodrums=1\n").view_noteshuffle);

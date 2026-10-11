@@ -123,7 +123,7 @@ TEST_CASE("disco: Band Like That keeps its lower difficulties' hi-hat on yellow"
         const std::string name = difficulty_name(d);
         CAPTURE(name);
         const app::DynamicsBreakdown pro =
-            app::count_dynamics(load_songpath(path, ChartReading{d, true, true, false}));
+            app::count_dynamics(load_songpath(path, ChartReading{d}));
         const app::DynamicsBreakdown plain =
             app::count_dynamics(load_songpath(path, ChartReading{d, false, true, false}));
         CHECK(pro.row(DynamicsRow::RedSnare).all() == plain.row(DynamicsRow::RedSnare).all());
@@ -132,7 +132,7 @@ TEST_CASE("disco: Band Like That keeps its lower difficulties' hi-hat on yellow"
     }
     // Expert still flips inside its own sections.
     const app::DynamicsBreakdown pro = app::count_dynamics(
-        load_songpath(path, ChartReading{Difficulty::Expert, true, true, false}));
+        load_songpath(path, ChartReading{Difficulty::Expert}));
     const app::DynamicsBreakdown plain = app::count_dynamics(
         load_songpath(path, ChartReading{Difficulty::Expert, false, true, false}));
     CHECK(pro.row(DynamicsRow::RedSnare).all() != plain.row(DynamicsRow::RedSnare).all());
