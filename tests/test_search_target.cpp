@@ -78,7 +78,7 @@ std::string target_text(const std::vector<Path>& kept) {
 TEST_CASE("search_target: a path missing a named activation is dropped, the rest kept") {
     const FuzzChart fc = fuzz_chart(5);
     const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
-    const Song song = load_songbytes_chart(bytes, true, true);
+    const Song song = load_songbytes_chart(bytes, ChartReading{});
     const app::AnalysisSettings cfg = scores_settings(fc.cap);
     const std::vector<int64_t> want = {3168, 12864};
 
@@ -123,7 +123,7 @@ TEST_CASE("search_target: a variant that took every named activation outlives it
     REQUIRE(at != std::string::npos);
     fc.text.insert(at + last_phrase.size(), "  23040 = N 1 0\n");
     const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
-    const Song song = load_songbytes_chart(bytes, true, true);
+    const Song song = load_songbytes_chart(bytes, ChartReading{});
     const app::AnalysisSettings cfg = scores_settings(fc.cap);
     const std::vector<int64_t> want = {3168, 12864};
 
@@ -177,7 +177,7 @@ TEST_CASE("search_target: a variant that took every named activation outlives it
 TEST_CASE("search_target: a kept root's tied variant that missed a named activation is dropped") {
     const FuzzChart fc = fuzz_chart(199);
     const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
-    const Song song = load_songbytes_chart(bytes, true, true);
+    const Song song = load_songbytes_chart(bytes, ChartReading{});
     const app::AnalysisSettings cfg = scores_settings(fc.cap);
     const std::vector<int64_t> want = {4896, 12288, 21792};
 
@@ -264,7 +264,7 @@ TEST_CASE("search_target: every corpus path pinned in full comes back alone, the
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int paths = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        const Song& song = corpus::song(chart, cfg.reading());
         if (song.is_empty()) continue;
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         for (const Path* p : rec.all_paths()) {
@@ -288,7 +288,7 @@ TEST_CASE("search_target: every corpus path pinned in full comes back alone, the
 TEST_CASE("search_target: a full pin no path realizes names its window and why") {
     const FuzzChart fc = fuzz_chart(5);
     const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
-    const Song song = load_songbytes_chart(bytes, true, true);
+    const Song song = load_songbytes_chart(bytes, ChartReading{});
     const app::AnalysisSettings cfg = scores_settings(fc.cap);
     const std::vector<Path> kept = search_target(song, cfg, {3168, 12864});
     const Path* path = test::path_named(kept, "0+- 0-");
@@ -334,7 +334,7 @@ TEST_CASE("search_target: a full pin no path realizes names its window and why")
 TEST_CASE("search_target: activation pins return the tick search's paths and its failing tick") {
     const FuzzChart fc = fuzz_chart(5);
     const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
-    const Song song = load_songbytes_chart(bytes, true, true);
+    const Song song = load_songbytes_chart(bytes, ChartReading{});
     const app::AnalysisSettings cfg = scores_settings(fc.cap);
 
     std::vector<bool> promoted;
@@ -362,7 +362,7 @@ TEST_CASE("search_target: the binary search names the last or a middle window th
     for (const std::string& p : corpus::chart_paths())
         if (p.find("Mutemath - Allies") != std::string::npos) chart = p;
     REQUIRE_FALSE(chart.empty());
-    const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+    const Song& song = corpus::song(chart, cfg.reading());
     const HydraRecord& rec = corpus::analyzed(chart, cfg);
     REQUIRE_FALSE(rec.all_paths().empty());
     const std::vector<PinnedWindow> pins = pinned_windows(*rec.all_paths().front());

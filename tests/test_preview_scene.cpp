@@ -582,7 +582,7 @@ TEST_CASE("base + overlay: equals build_preview_scene on every corpus chart and 
     const AnalysisSettings cfg = Settings().to_analysis_settings();
     int charts = 0, paths = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        const Song& song = corpus::song(chart, cfg.reading());
         if (song.is_empty()) continue;
         ++charts;
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
@@ -692,7 +692,7 @@ TEST_CASE("preview fills: every stored passed-over fill is a fill in the scene")
     const AnalysisSettings cfg = Settings().to_analysis_settings();
     int ticks_checked = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        const Song& song = corpus::song(chart, cfg.reading());
         if (song.is_empty()) continue;
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         if (rec.paths.empty()) continue;

@@ -53,7 +53,7 @@ TEST_CASE("difficulty table: the .mid parser reads each difficulty's kick from i
     for (size_t i = 0; i < std::size(testdiff::kLiterals); ++i) {
         const testdiff::Literals& w = testdiff::kLiterals[i];
         CAPTURE(w.name);
-        const Song song = load_songbytes_mid(mid, true, true, w.d);
+        const Song song = load_songbytes_mid(mid, ChartReading{w.d});
         REQUIRE(song.sequence.size() == 1);
         CHECK(song.sequence[0].timecode.ticks() == static_cast<int64_t>(i * kBeat));
         CHECK(song.sequence[0].chord.at(NoteColor::Kick).has_value());

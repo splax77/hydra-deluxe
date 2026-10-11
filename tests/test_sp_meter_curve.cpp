@@ -641,7 +641,7 @@ TEST_CASE("sp meter curve: every corpus gauge starts at its spent bars and empti
     int charts = 0, windows = 0;
     for (const std::string& chart : corpus::chart_paths()) {
         CAPTURE(chart);
-        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
+        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
         if (song.is_empty()) continue;
         ++charts;
         const HydraRecord& rec = corpus::analyzed(chart, cfg);

@@ -277,8 +277,7 @@ TEST_CASE("stars: the base score is the sum of every note's basescore, on every 
     settings.depth_value = 10;
     settings.ms_filter = 10.0;
 
-    const Song& song = corpus::song(chart, settings.prodrums, settings.bass2x,
-                                    settings.difficulty, settings.rules);
+    const Song& song = corpus::song(chart, settings.reading(), settings.rules);
     const HydraRecord& record = corpus::analyzed(chart, settings);
     REQUIRE(!song.is_empty());
     REQUIRE(!record.paths.empty());

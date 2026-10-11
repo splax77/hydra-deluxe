@@ -908,7 +908,7 @@ TEST_CASE("rebuild_overlay_fields: equals a full build on every 8th corpus chart
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int with_notes = 0, charts = 0, swaps = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        const Song& song = corpus::song(chart, cfg.reading());
         if (song.is_empty()) continue;
         if (with_notes++ % 8 != 0) continue;
         ++charts;

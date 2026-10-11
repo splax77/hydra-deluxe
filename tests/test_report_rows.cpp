@@ -267,8 +267,7 @@ TEST_CASE("all_paths lists paths best first on every corpus chart") {
     settings.sp_cap = 4;
     int charts = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, settings.prodrums, settings.bass2x,
-                                        settings.difficulty, settings.rules);
+        const Song& song = corpus::song(chart, settings.reading(), settings.rules);
         if (song.is_empty()) continue;
         ++charts;
         const std::vector<const Path*> all = corpus::analyzed(chart, settings).all_paths();
