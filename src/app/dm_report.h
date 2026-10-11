@@ -123,11 +123,11 @@ struct DmReportStats {
 // items 1 and 2). In the dropdown's order.
 struct StatusWords {
     const char* status;  // a kStatus* word
-    // Capitalised: the dropdown's label (before choice_note), the Status
-    // hover's lead word and the window's row hover.
+    // Capitalised: the tile's label, the dropdown's label (before
+    // choice_note), the Status hover's lead word and the window's row hover.
     const char* name;
-    // The tile's label, or nullptr when the status has no tile (D62 item 1).
-    const char* tile;
+    // Whether it has a tile; kStatusNoPaths has none (D62 item 1).
+    bool tile;
     const char* choice_note;  // after the name in the dropdown, or ""
     // The counts phrase's words after the number: `count_one` for one, and
     // `count_many` for more, or `count_one` again when it is nullptr.
@@ -142,22 +142,21 @@ struct StatusWords {
     int DmReportStats::* count;  // the tally field that counts it
 };
 inline constexpr StatusWords kStatusWords[] = {
-    {kStatusUnderOptimal, "Under optimal", "Under optimal", "", kStatusUnderOptimal, nullptr,
-     false, "", &DmReportStats::under_optimal},
-    {kStatusAtOptimal, "At optimal", "At optimal", "", kStatusAtOptimal, nullptr, false, "",
+    {kStatusUnderOptimal, "Under optimal", true, "", kStatusUnderOptimal, nullptr, false, "",
+     &DmReportStats::under_optimal},
+    {kStatusAtOptimal, "At optimal", true, "", kStatusAtOptimal, nullptr, false, "",
      &DmReportStats::at_optimal},
-    {kStatusAboveOptimal, "Above optimal", "Above optimal", "", kStatusAboveOptimal, nullptr,
-     false, "", &DmReportStats::above_optimal},
-    {kStatusNoCurrentResult, "No current result", "No current result", " (in your library)",
+    {kStatusAboveOptimal, "Above optimal", true, "", kStatusAboveOptimal, nullptr, false, "",
+     &DmReportStats::above_optimal},
+    {kStatusNoCurrentResult, "No current result", true, " (in your library)",
      kStatusNoCurrentResult, nullptr, false,
      "the chart is in your library without a result for this mode at SP cap __SP_CAP__.",
      &DmReportStats::not_analyzed},
-    {kStatusNoPaths, "No paths", nullptr, " (analyzed, none kept)", "with no paths", nullptr,
+    {kStatusNoPaths, "No paths", false, " (analyzed, none kept)", "with no paths", nullptr,
      true, "analyzed, but the analysis kept no path.", &DmReportStats::no_paths},
-    {kStatusNotInLibrary, "Not in your library", "Not in library", "", "not in your library",
-     nullptr, false, "the last scan did not find it.", &DmReportStats::not_in_library},
-    {kStatusOtherSpeed, "Other speed", "Other speed", "", "at another speed",
-     "at other speeds", true,
+    {kStatusNotInLibrary, "Not in your library", true, "", "not in your library", nullptr,
+     false, "the last scan did not find it.", &DmReportStats::not_in_library},
+    {kStatusOtherSpeed, "Other speed", true, "", "at another speed", "at other speeds", true,
      "played at a speed other than __BASE_SPEED__%. Hydra's optimal is for __BASE_SPEED__% "
      "only, so the score is shown but not compared.",
      &DmReportStats::other_speed},

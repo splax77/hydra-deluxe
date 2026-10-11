@@ -182,7 +182,7 @@ std::vector<report::Tile> dm_tiles(const std::vector<DmReportRow>& rows,
     // shown.
     std::vector<report::Tile> tiles = {{"Scores shown", group_thousands(stats.total)}};
     for (const StatusWords& w : kStatusWords)
-        if (w.tile) tiles.push_back({w.tile, group_thousands(stats.*w.count)});
+        if (w.tile) tiles.push_back({w.name, group_thousands(stats.*w.count)});
     tiles.push_back({"Avg % of optimal", average});
     tiles.push_back({"Points left on table", group_thousands(points_left)});
     return tiles;

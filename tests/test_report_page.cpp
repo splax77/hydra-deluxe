@@ -172,7 +172,7 @@ TEST_CASE("dm_tiles: the four sample scores") {
                     {"At optimal", "0"},
                     {"Above optimal", "1"},
                     {"No current result", "1"},
-                    {"Not in library", "1"},
+                    {"Not in your library", "1"},
                     {"Other speed", "0"},
                     {"Avg % of optimal", "98.80%"},
                     {"Points left on table", "3,456"}});

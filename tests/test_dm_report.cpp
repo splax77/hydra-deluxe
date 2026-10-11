@@ -301,7 +301,7 @@ TEST_CASE("dm_tiles: the tiles count only the scores shown") {
     for (const app::report::Tile& t : app::dm_report::dm_tiles(rows, {0}))
         labels.push_back(t.label);
     CHECK(labels == std::vector<std::string>{"Scores shown", "Under optimal", "At optimal",
-                                             "Above optimal", "No current result", "Not in library",
+                                             "Above optimal", "No current result", "Not in your library",
                                              "Other speed", "Avg % of optimal",
                                              "Points left on table"});
     // A "no paths" score has no tile of its own; Scores shown counts it (D62
