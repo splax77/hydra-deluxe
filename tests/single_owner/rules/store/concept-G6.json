@@ -1,0 +1,31 @@
+{
+  "rules": [
+    {
+      "question": "Which stored listings does a report page show?",
+      "owner": "listings_the_library_lists in src/app/report.cpp",
+      "owner_file": "src/app/report.cpp",
+      "owner_symbol": "listings_the_library_lists",
+      "date": "2026-10-11",
+      "decision": "concept audit M08 (code-only, D114 fix wave, task G6)",
+      "added_by": "concept-G6",
+      "pattern": "[.>]list_records\\s*\\(",
+      "must_match": [
+        "for (store::RecordListing& r : store.list_records(chartmode, cap, lens,",
+        "auto rows = store->list_records(std::nullopt, cap, lens, order, true);"
+      ],
+      "must_not_match": [
+        "std::vector<RecordListing> RecordStore::list_records(",
+        "std::vector<RecordListing> list_records(",
+        "listings_the_library_lists(store, copies, std::nullopt, options.cap, options.lens)) {"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/report.cpp",
+          "line_text": "for (store::RecordListing& r : store.list_records(chartmode, cap, lens,",
+          "why": "listings_the_library_lists, the owner"
+        }
+      ],
+      "note": "The store lists results the library doesn't list, and every page drops them through library_lists. A second loop over list_records could forget the drop or key the hash another way. The SQL side of the same question (charts.md5 = results.hyhash) is store.json's not_in_library row."
+    }
+  ]
+}
