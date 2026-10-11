@@ -65,8 +65,8 @@ struct SongMix {
 };
 
 // Mixes `readers` for a chart whose time 0 sits `offset_ms` into the audio
-// (app::chart_audio_offset_ms). The Preview's load mixes here. Throws
-// std::runtime_error when the mix cannot be set up (StreamMix).
+// (app::chart_audio_offset_ms). The Preview's load mixes here. Throws a
+// KindedError of kind AudioDecode when the mix cannot be set up (StreamMix).
 SongMix mix_song_stems(std::vector<std::unique_ptr<StemReader>> readers, double offset_ms);
 
 }  // namespace hydra::audio

@@ -73,7 +73,8 @@ public:
     // `front_pad_frames` of silence come before every stem (a negative chart
     // offset). Each stem converts to out_rate / out_channels as it is read.
     // A null reader, or one with no channels or no rate, is dropped.
-    // Throws std::runtime_error if a converter cannot be set up.
+    // Throws a KindedError of kind AudioDecode if the output format is not
+    // playable or a converter cannot be set up.
     StreamMix(std::vector<std::unique_ptr<StemReader>> stems, int out_rate,
               int out_channels, int64_t front_pad_frames);
     ~StreamMix() override;
