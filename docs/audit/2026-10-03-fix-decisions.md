@@ -561,3 +561,4 @@ The game also reads lanes during play, to make the notes under a lane easier to 
 20. **Q20 (M74).** Writing a file through a temporary file and a rename becomes one helper, and the settings file is saved through it.
 21. **Q21 (M77).** Both landing orders stay: a finished report keeps its result after a late Cancel, and a click's analysis is dropped. One shared outcome function holds the rule, with the click's exception written beside it.
 22. **The code-only findings.** Every finding the questions file lists as code-only is fixed with the owner its verifier proposed; none was vetoed. That includes M52's visible side effect: the Preview's jump buttons grey during a load, where today they are live and do nothing.
+23. **The fill label in `hydra_batch`'s header (asked 2026-10-11, after item 9).** The header labels the fill setting "Fills", the batch confirm's label, not the panel's checkbox name "1.0 fills". The panel keeps its checkbox name.
