@@ -1,0 +1,24 @@
+{
+  "rules": [
+    {
+      "question": "Does shipped code key an analysis by the test cache's text key?",
+      "owner": "corpus::settings_key in tests/corpus_util.h (test support only; the app's key is store::Lens)",
+      "owner_file": "tests/corpus_util.h",
+      "owner_symbol": "settings_key",
+      "date": "2026-10-11",
+      "decision": "concept audit M18",
+      "added_by": "concept-audit-G5",
+      "pattern": "\\bsettings_key\\b",
+      "must_match": [
+        "std::string settings_key(const SearchSettings& settings);"
+      ],
+      "must_not_match": [
+        "const store::Lens lens = settings.lens();"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "settings_key once lived in src/search/pather.cpp with no caller in src/. It moved to tests/corpus_util.h, its only user; this row flags it coming back. Decided by: concept audit M18."
+    }
+  ]
+}

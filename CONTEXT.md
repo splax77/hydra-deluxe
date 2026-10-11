@@ -63,7 +63,8 @@ _Avoid_: edition, uncapped, SP meter
 **Analysis settings**:
 The eight settings that make up a record's identity, shown together in the
 analysis settings panel and applied to every song: difficulty, Pro Drums, 2x Bass and
-Note Shuffle (together the chart mode, spelled by `Settings::chartmode_key`),
+Note Shuffle (together the chart mode, read off the settings as a
+`ChartReading` by `Settings::reading` and spelled by `chartmode_key`),
 the SP cap, 1.0 fills (the fill spawn deadline),
 the score range, and the path limit.
 Changing one shows the library's summary rows under the new combination, and

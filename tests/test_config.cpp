@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <optional>
@@ -19,7 +20,7 @@
 #include "core/version.h"
 #include "core/winstr.h"
 #include "scratch_paths.h"
-#include "search/pather.h"  // settings_key
+#include "search/pather.h"  // kDefaultDepthValue, SearchSettings
 #include "store/record_store.h"  // CapQuery, Lens
 #include "temp_util.h"
 #include "ui/library_parts.h"  // settings_at_defaults, settings_changes_summary
@@ -599,6 +600,50 @@ TEST_CASE("to_analysis_settings maps depth_mode onto the search's enum") {
     CHECK(s.to_analysis_settings().depth_mode == hydra::DepthMode::Scores);
 }
 
+// save_file goes through write_file_replacing (D114 item 20): a second save
+// replaces the first whole and leaves no .tmp beside it.
+TEST_CASE("save_file replaces the settings file through a temp and a rename") {
+    const std::string path = testtemp::temp_path("settings_replace", ".ini");
+    Settings s;
+    s.sp_cap = 6;
+    REQUIRE(s.save_file(path));
+    s.sp_cap = 3;
+    REQUIRE(s.save_file(path));
+    CHECK(Settings::load_file(path).sp_cap == 3);
+    CHECK_FALSE(std::filesystem::exists(path + ".tmp"));
+    std::remove(path.c_str());
+}
+
+// A save that cannot land (here the target is read-only, so the rename is
+// refused) reports false, leaves the old file whole and leaves no .tmp.
+TEST_CASE("save_file that cannot land keeps the old file whole and leaves no .tmp") {
+    namespace fs = std::filesystem;
+    const std::string path = testtemp::temp_path("settings_readonly", ".ini");
+    Settings s;
+    s.sp_cap = 6;
+    REQUIRE(s.save_file(path));
+    const fs::perms writes = fs::perms::owner_write | fs::perms::group_write | fs::perms::others_write;
+    fs::permissions(path, writes, fs::perm_options::remove);
+    s.sp_cap = 3;
+    const bool saved = s.save_file(path);
+    fs::permissions(path, writes, fs::perm_options::add);
+    CHECK_FALSE(saved);
+    CHECK(Settings::load_file(path).sp_cap == 6);
+    CHECK_FALSE(fs::exists(path + ".tmp"));
+    std::remove(path.c_str());
+}
+
+// The lens files a result by the unit the search ran with (search_depth_mode),
+// so an int the search reads as scores files beside 0, never as a third row.
+TEST_CASE("lens: depth_mode is the search's unit, so a stray int files as scores") {
+    Settings s;
+    s.depth_mode = 7;
+    CHECK(s.lens().depth_mode == 0);
+    CHECK(s.lens() == Settings{}.lens());
+    s.depth_mode = 1;
+    CHECK(s.lens().depth_mode == 1);
+}
+
 // The reset is Settings::with_analysis_defaults. The panel's own words for
 // what differs (settings_at_defaults, settings_changes_summary in
 // ui/library_parts.h) are the probe, so the panel and the reset agree.
@@ -644,7 +689,6 @@ TEST_CASE("settings reset: puts back each panel setting and keeps the rest") {
     CHECK(r.lens() == d.lens());
     const hydra::app::AnalysisSettings ra = r.to_analysis_settings();
     const hydra::app::AnalysisSettings da = d.to_analysis_settings();
-    CHECK(hydra::settings_key(ra) == hydra::settings_key(da));
     CHECK(ra.prodrums == da.prodrums);
     CHECK(ra.bass2x == da.bass2x);
     CHECK(ra.noteshuffle == da.noteshuffle);

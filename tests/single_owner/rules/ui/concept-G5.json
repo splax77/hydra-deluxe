@@ -1,0 +1,31 @@
+{
+  "rules": [
+    {
+      "question": "Which chart reading makes the Preview another song?",
+      "owner": "PreviewController::open in src/ui/preview_controller.cpp, from an app::ChartReading (Settings::reading)",
+      "owner_file": "src/ui/preview_controller.cpp",
+      "owner_symbol": "PreviewSongKey",
+      "date": "2026-10-11",
+      "decision": "concept audit M19",
+      "added_by": "concept-audit-G5",
+      "pattern": "\\bPreviewSongKey(\\s+\\w+)?\\s*\\{\\s*[^}\\s]",
+      "must_match": [
+        "const PreviewSongKey key{entry.md5, difficulty, pro, bass2x, noteshuffle};",
+        "return PreviewSongKey{md5, r.difficulty, r.prodrums, r.bass2x, r.noteshuffle};"
+      ],
+      "must_not_match": [
+        "struct PreviewSongKey {",
+        "open_key_ = PreviewSongKey{};",
+        "PreviewSongKey open_key_;  // the song open() last loaded",
+        "void start_notes_job(const store::ChartLibraryEntry& entry, const PreviewSongKey& key);"
+      ],
+      "owner_files": [
+        "src/ui/preview_controller.cpp"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The Preview's song key is built in one place, from the ChartReading open() is handed. The four choices once travelled as a positional bool list, which has no spelling a search can match; the shared ChartReading value is the real guard, and this row only flags a second place building the key. Tests build keys on purpose, so the scope is src. Decided by: concept audit M19."
+    }
+  ]
+}

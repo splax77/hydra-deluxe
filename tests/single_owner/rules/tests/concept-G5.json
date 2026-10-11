@@ -1,0 +1,33 @@
+{
+  "rules": [
+    {
+      "question": "Which settings change a stored analysis?",
+      "owner": "corpus::settings_key in tests/corpus_util.h",
+      "owner_file": "tests/corpus_util.h",
+      "owner_symbol": "settings_key",
+      "date": "2026-10-11",
+      "decision": "D53, D54; concept audit M18",
+      "added_by": "concept-audit-G5",
+      "pattern": "\\bs\\.legacy_fill_deadline\\s*<<|\\brules\\.fingerprint\\(\\)\\s*<<",
+      "must_match": [
+        "k << s.legacy_fill_deadline << '|' << s.rules.fingerprint() << '|';"
+      ],
+      "must_not_match": [
+        "<< static_cast<int>(settings.difficulty) << '|' << settings_key(settings);",
+        "<< rules.fingerprint();"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/corpus_util.h",
+          "line_text": "k << s.legacy_fill_deadline << '|' << s.rules.fingerprint() << '|';",
+          "why": "corpus::settings_key, the owner"
+        }
+      ],
+      "scope": [
+        "tests",
+        "tools"
+      ],
+      "note": "A key streamed field by field. The app files a stored analysis under store::Lens; this text key is the test cache's only (corpus::analyzed). It moved out of src/search/pather.cpp because nothing in src/ called it (concept audit M18). Decided by: audit finding 275; phase 6 task J4-1 (D53, D54)"
+    }
+  ]
+}

@@ -31,12 +31,16 @@ bool open_in_browser(const std::wstring& path);
 // shows the same page.
 std::filesystem::path copy_to_short_temp(const std::filesystem::path& page);
 
-// Writes a built page to disk. The page is written to a "<path>.tmp" sibling
-// first and then renamed over the target, so a reader who opens the report
-// mid-write never sees a half-written page — the previous page stays
-// readable right up until the new one is complete. Throws
-// std::runtime_error("cannot write <path>") when the file won't open or the
-// swap fails.
+// Writes `bytes` to a "<path>.tmp" sibling first and then renames it over
+// the target, so a reader never sees a half-written file: the previous one
+// stays whole right up until the new one is complete. False when the temp
+// file won't open or write, or the swap fails; the temp is removed then.
+// The one write-then-rename helper (D114 item 20): the report page and the
+// settings file both save through it.
+bool write_file_replacing(const std::filesystem::path& outpath, const std::string& bytes);
+
+// Writes a built page to disk through write_file_replacing. Throws
+// std::runtime_error("cannot write <path>") when it fails.
 void write_report_file(const std::filesystem::path& outpath, const std::string& html);
 
 }  // namespace hydra::app

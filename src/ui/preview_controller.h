@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include "app/config.h"  // ChartReading
 #include "app/preview_view.h"
 #include "core/model.h"  // Path
 #include "parse/song.h"
@@ -46,11 +47,9 @@ class PreviewSceneJob;
 class PreviewBaseJob;
 struct PreviewSceneBase;
 
-// What the Preview calls the same song: one chart (its md5) at one
-// difficulty, with Pro Drums, 2x Bass and Note Shuffle on or off. These are
-// the inputs Settings::to_analysis_settings reads to pick the notes, so
-// another difficulty, Pro Drums, 2x Bass or Note Shuffle is another song and
-// loads its own notes (D48, Q22; D104 item 1). On a chart whose first load
+// What the Preview calls the same song: one chart (its md5) under one
+// app::ChartReading, which open() copies in field by field. Another reading
+// is another song and loads its own notes (D48, Q22; D104 item 1). On a chart whose first load
 // finished, only the notes reload: the audio and the playhead stay (see
 // PreviewController::open).
 struct PreviewSongKey {
@@ -91,10 +90,9 @@ public:
     // the Preview pauses where it is and shows the error. Another chart, or
     // the same chart while its first load runs or after it failed: a fresh
     // load from the start.
-    void open(const store::ChartLibraryEntry& entry, bool pro, bool bass2x,
-              Difficulty difficulty, const Path* path, const std::string& path_key,
-              int sp_cap, const core::Rules& rules = core::default_rules(),
-              bool noteshuffle = false);
+    void open(const store::ChartLibraryEntry& entry, const app::ChartReading& reading,
+              const Path* path, const std::string& path_key, int sp_cap,
+              const core::Rules& rules = core::default_rules());
     // Stop audio, drop the scene/transport, and join the load thread. Keeps the
     // renderer for reuse but frees its size-dependent targets (D95 call 4);
     // the next render() makes them again. Safe to call when nothing is open.

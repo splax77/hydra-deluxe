@@ -7,10 +7,14 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <variant>
+
+#include "app/report_files.h"  // write_file_replacing
 
 #include "core/model.h"
 #include "core/strutil.h"
@@ -216,9 +220,9 @@ Settings Settings::load_file(const std::string& path) {
 bool Settings::save() const { return save_file(ini_path()); }
 
 bool Settings::save_file(const std::string& path) const {
-    std::ofstream f(os_path(path), std::ios::trunc);
-    if (!f) return false;
-
+    // Built in memory, then saved through write_file_replacing (D114 item 20),
+    // so a stopped write leaves the old file whole.
+    std::ostringstream f;
     for (const Key& k : keys()) {
         if (auto b = std::get_if<bool Settings::*>(&k.member)) {
             f << k.name << "=" << (this->**b ? 1 : 0) << "\n";
@@ -236,7 +240,7 @@ bool Settings::save_file(const std::string& path) const {
                 f << k.name << "=" << item << "\n";
         }
     }
-    return f.good();
+    return write_file_replacing(std::filesystem::u8path(path), f.str());
 }
 
 int Settings::clamp(int Settings::* field, int value) {
@@ -264,20 +268,26 @@ Difficulty Settings::difficulty() const {
 // difficulty has its own 2x kicks; the box decides whether they are read.
 bool Settings::effective_bass2x() const { return view_bass2x; }
 
-std::string Settings::chartmode_key() const {
-    std::string prodrums = view_prodrums ? "Pro Drums" : "Drums";
+std::string chartmode_key(const ChartReading& reading) {
+    std::string prodrums = reading.prodrums ? "Pro Drums" : "Drums";
     // The four Expert keys are byte-for-byte the ones already in the store.
     // Below Expert a key ends "2x Bass" with the box on since D20; results
     // stored before that are re-analyzed by step 1's results-stamp bump.
-    std::string bass = effective_bass2x() ? "2x Bass" : "1x Bass";
-    // The word comes from difficulty(), so an uncleaned view_difficulty
-    // ("easy", "Legendary") still names a real difficulty (finding 134).
-    std::string key = std::string(difficulty_name(difficulty())) + " " + prodrums + ", " + bass;
+    std::string bass = reading.bass2x ? "2x Bass" : "1x Bass";
+    std::string key = std::string(difficulty_name(reading.difficulty)) + " " + prodrums + ", " + bass;
     // Only an ending, so a key stored before Note Shuffle existed still names
     // the unshuffled result (D104).
-    if (view_noteshuffle) key += ", Note Shuffle";
+    if (reading.noteshuffle) key += ", Note Shuffle";
     return key;
 }
+
+ChartReading Settings::reading() const {
+    // The difficulty comes from difficulty(), so an uncleaned view_difficulty
+    // ("easy", "Legendary") still names a real difficulty (finding 134).
+    return ChartReading{difficulty(), view_prodrums, effective_bass2x(), view_noteshuffle};
+}
+
+std::string Settings::chartmode_key() const { return app::chartmode_key(reading()); }
 
 Settings Settings::with_analysis_defaults() const {
     const Settings d;
@@ -305,6 +315,8 @@ std::optional<Settings> Settings::with_chartmode(const std::string& chartmode) c
                     mode.view_prodrums = prodrums;
                     mode.view_bass2x = bass2x;
                     mode.view_noteshuffle = noteshuffle;
+                    // The key is read back through reading(), so the search
+                    // spells it as every other reader does.
                     if (mode.chartmode_key() == chartmode) return mode;
                 }
             }
@@ -322,10 +334,11 @@ Settings Settings::with_known_chartmode(const std::string& chartmode) const {
 
 AnalysisSettings Settings::to_analysis_settings() const {
     AnalysisSettings s;
-    s.prodrums = view_prodrums;
-    s.bass2x = effective_bass2x();
-    s.noteshuffle = view_noteshuffle;
-    s.difficulty = difficulty();
+    const ChartReading r = reading();
+    s.prodrums = r.prodrums;
+    s.bass2x = r.bass2x;
+    s.noteshuffle = r.noteshuffle;
+    s.difficulty = r.difficulty;
     s.depth_mode = search_depth_mode();
     s.depth_value = depth_value;
     s.ms_filter = mslimit_enabled ? std::optional<double>(mslimit_value) : std::nullopt;
@@ -348,7 +361,9 @@ store::CapQuery Settings::cap_query() const {
 store::Lens Settings::lens() const {
     return store::Lens::from(
         mslimit_enabled ? std::optional<int>(mslimit_value) : std::nullopt,
-        depth_mode, depth_value, legacy_fills);
+        // The unit the search runs with (search_depth_mode), not the raw int,
+        // so the lens stays canonical (concept audit M14).
+        search_depth_mode() == DepthMode::Points ? 1 : 0, depth_value, legacy_fills);
 }
 
 store::RecordKey Settings::record_key(const std::string& hyhash) const {
