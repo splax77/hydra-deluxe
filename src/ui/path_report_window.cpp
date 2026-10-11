@@ -33,7 +33,7 @@ struct PathWindow {
     MeasuredWidths widths;
     std::vector<view_rules::TimingChoice> choices;
     std::vector<std::string> labels;
-    int timing = 0;
+    int timing = app::report_view::kEveryRowChoice;
     bool best_only = true;
     // The view's sort, kept while the window has no rows.
     std::vector<app::report_view::SortSpec> sort;
@@ -72,7 +72,7 @@ void rebuild(PathWindow& w, const std::shared_ptr<const GeneratedReport>& result
     if (keep) {
         std::copy(std::begin(kept.search), std::end(kept.search), std::begin(w.memory.search));
     } else {
-        w.timing = 0;
+        w.timing = app::report_view::kEveryRowChoice;
         w.best_only = true;
         w.sort.clear();
     }
@@ -98,7 +98,7 @@ void rebuild(PathWindow& w, const std::shared_ptr<const GeneratedReport>& result
     w.choices = view_rules::timing_choices(result->hit_window_ms);
     std::vector<std::string> labels;
     for (const view_rules::TimingChoice& c : w.choices) labels.push_back(c.label);
-    if (labels != w.labels) w.timing = 0;
+    if (labels != w.labels) w.timing = app::report_view::kEveryRowChoice;
     w.labels = std::move(labels);
     apply_filters(w);
 }
@@ -124,7 +124,7 @@ void draw_body(PathWindow& w, const report_frame::Frame& frame, const PathReport
         // Clear filters leaves Best path only as it is.
         if (report_frame::nothing_matches()) {
             w.memory.search[0] = '\0';
-            w.timing = 0;
+            w.timing = app::report_view::kEveryRowChoice;
             apply_filters(w);
         }
         return;

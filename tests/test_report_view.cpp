@@ -361,7 +361,8 @@ TEST_CASE("path report: Timing choices and the keep-rule") {
     const std::vector<TimingTier> tiers = timing_tiers(kWindow);
     const auto choices = path_report_view::timing_choices(kWindow);
     REQUIRE(choices.size() == tiers.size() + 1);
-    CHECK_FALSE(choices[0].tier.has_value());
+    // The window's start, new-result and Clear filters index keeps every tier.
+    CHECK_FALSE(choices[report_view::kEveryRowChoice].tier.has_value());
     CHECK(choices[0].label == "All timing tiers");
     for (size_t i = 0; i < tiers.size(); ++i) {
         CHECK(choices[i + 1].tier == std::optional<std::string>(tiers[i].name));
@@ -487,6 +488,8 @@ TEST_CASE("dm comparison: Status choices, the keep-rule, sort and count line") {
                           std::string("at optimal"), std::string("above optimal"),
                           std::string("not analyzed"), std::string("no paths"),
                           std::string("not in library"), std::string("other speed")});
+    // The window's start, new-result and Clear filters index keeps every status.
+    CHECK_FALSE(choices[report_view::kEveryRowChoice].status.has_value());
 
     TableView<DmReportRow> view = dm_view(dm_sample());
     view.set_sort({dm_report_view::dm_first_sort()});

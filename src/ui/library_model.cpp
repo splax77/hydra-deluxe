@@ -41,19 +41,29 @@ app::RowFacts facts_of(const LibraryRow& row) {
     return app::RowFacts{row.summary.stars, row.summary.hardest_ms};
 }
 
+}  // namespace
+
+// Beside facts_of on purpose: a summary field the library starts to read
+// (here, in best_path_label or in the Best path sort) joins this list, or a
+// refresh keeps the row's old value.
+bool LibraryRow::shows_same_as(const store::SummaryLookup& lookup) const {
+    return status == lookup.status && stale_build == lookup.stale_build &&
+           stale_rules == lookup.stale_rules && bestpath == lookup.bestpath &&
+           summary.score == lookup.summary.score && summary.stars == lookup.summary.stars &&
+           summary.hardest_ms == lookup.summary.hardest_ms;
+}
+
+namespace {
+
 bool matches_query(const app::LibraryQuery& q, const LibraryRow& row) {
     return q.empty() || app::query_matches(q, row.searchable, facts_of(row));
 }
 
 // Applies one lookup to one row. False when nothing the library shows or
-// filters on changed, so a refresh that finds the same answers costs no
-// re-sort.
+// filters on changed (LibraryRow::shows_same_as), so a refresh that finds
+// the same answers costs no re-sort.
 bool apply_summary(LibraryRow& row, const store::SummaryLookup& lookup) {
-    if (row.status == lookup.status && row.stale_build == lookup.stale_build &&
-        row.stale_rules == lookup.stale_rules && row.bestpath == lookup.bestpath &&
-        row.summary.score == lookup.summary.score && row.summary.stars == lookup.summary.stars &&
-        row.summary.hardest_ms == lookup.summary.hardest_ms)
-        return false;
+    if (row.shows_same_as(lookup)) return false;
     row.status = lookup.status;
     row.stale_build = lookup.stale_build;
     row.stale_rules = lookup.stale_rules;
@@ -142,6 +152,8 @@ void LibraryModel::set_charts(std::vector<store::ChartLibraryEntry> charts) {
         row.entry.notespath = std::move(entry.notespath);
         row.entry.rootfolder = std::move(entry.rootfolder);
         entry = {};  // the rest of the scan's row goes now, not when the load ends
+        for (int c = 0; c < kColumnBestPath; ++c)
+            row.sort_keys[static_cast<size_t>(c)] = app::fold_for_search(library_cell_text(row, c));
         rows_.push_back(std::move(row));
     }
     ++rows_version_;
@@ -229,11 +241,14 @@ void LibraryModel::resort() {
     // Equal keys fall back to title, folder, then file path, always
     // ascending: one fixed order, so a row never jumps on a refresh. The
     // folded strings sort without case or accents getting in the way.
-    auto tie_break = [this](size_t a, size_t b) {
+    auto name_key = [](const LibraryRow& r, int column) -> const std::string& {
+        return r.sort_keys[static_cast<size_t>(column)];
+    };
+    auto tie_break = [this, &name_key](size_t a, size_t b) {
         const LibraryRow& x = rows_[a];
         const LibraryRow& y = rows_[b];
-        if (int c = x.searchable.title.compare(y.searchable.title)) return c < 0;
-        if (int c = x.searchable.folder.compare(y.searchable.folder)) return c < 0;
+        if (int c = name_key(x, kColumnTitle).compare(name_key(y, kColumnTitle))) return c < 0;
+        if (int c = name_key(x, kColumnFolder).compare(name_key(y, kColumnFolder))) return c < 0;
         return x.entry.notespath < y.entry.notespath;
     };
 
@@ -259,18 +274,10 @@ void LibraryModel::resort() {
         return;
     }
 
-    auto key = [this](const LibraryRow& r) -> const std::string& {
-        switch (sort_column_) {
-            case LibrarySort::Artist: return r.searchable.artist;
-            case LibrarySort::Charter: return r.searchable.charter;
-            case LibrarySort::Folder: return r.searchable.folder;
-            case LibrarySort::Title:
-            case LibrarySort::BestPath: break;
-        }
-        return r.searchable.title;
-    };
+    const int column = static_cast<int>(sort_column_);
     std::sort(sorted_.begin(), sorted_.end(), [&](size_t a, size_t b) {
-        if (int c = key(rows_[a]).compare(key(rows_[b]))) return ascending_ ? c < 0 : c > 0;
+        if (int c = name_key(rows_[a], column).compare(name_key(rows_[b], column)))
+            return ascending_ ? c < 0 : c > 0;
         return tie_break(a, b);
     });
 }

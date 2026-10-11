@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <functional>
 #include <numeric>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -32,6 +33,12 @@ struct SortSpec {
     std::string column;
     SortDir dir = SortDir::Ascending;
 };
+
+// The index of the choice in a report's filter dropdown that keeps every
+// row. Each view's choice list (timing_choices, status_choices) puts that
+// choice here; a window starts on it, goes back to it for a new result, and
+// Clear filters resets to it.
+inline constexpr int kEveryRowChoice = 0;
 
 // How many sort keys a report table may hold (D103 item 1: Shift+click adds
 // a second key). TableView::set_sort and the window's header_sort read it.
@@ -65,6 +72,28 @@ struct Column {
     // Empty when every row of the column reads in its look's colour.
     std::function<Tone(const Row&)> tone;
 };
+
+// A value the row may lack, as a sort key: its number, or an empty key when
+// unset. Every report view's optional columns sort through this.
+template <class T>
+SortKey optional_key(const std::optional<T>& v) {
+    return v ? SortKey{static_cast<double>(*v)} : SortKey{};
+}
+
+// A column of text read straight from the row: it shows the text and sorts
+// on it.
+template <class Row>
+Column<Row> text_column(std::string id, std::string title, std::string definition,
+                        std::string Row::*field, CellLook look) {
+    Column<Row> c;
+    c.id = std::move(id);
+    c.title = std::move(title);
+    c.definition = std::move(definition);
+    c.sort_key = [field](const Row& r) { return SortKey{r.*field}; };
+    c.cell = [field](const Row& r) { return r.*field; };
+    c.look = look;
+    return c;
+}
 
 // The words a typed search matches on: the text folded with the library's
 // fold_for_search (app/library_query.h), split on whitespace. No query

@@ -219,8 +219,8 @@ TEST_CASE("library model: a title made only of tags reads (unknown)") {
 }
 
 TEST_CASE("library model: an artist made only of tags reads (unknown), and search keeps the stored text") {
-    // D50 item 5: the artist column follows the title's rule. Search and sort
-    // still read the stored text, so "(unknown)" is not a search hit.
+    // D50 item 5: the artist column follows the title's rule. The search still
+    // reads the stored text, so "(unknown)" is not a search hit.
     LibraryModel m;
     m.set_charts({chart("tags", "Song", hydra::test::kTagOnlyTitle, "Charter", "common")});
     REQUIRE(m.rows().size() == 1);
@@ -240,6 +240,30 @@ TEST_CASE("library model: an empty or placeholder artist reads (unknown), and th
     CHECK(m.rows()[0].artist == "(unknown)");
     CHECK(m.rows()[0].charter == "Bob");
     CHECK(m.rows()[1].artist == "(unknown)");
+}
+
+TEST_CASE("library model: a name sorts on the text its cell shows, not the stored text") {
+    // D114 item 3. A blank title and a placeholder artist show "(unknown)" and
+    // sort there; a leading space the cell trims no longer moves the row.
+    LibraryModel m;
+    m.set_charts({chart("blank", "", "1 Band", "C", "common"),
+                  chart("bang", "!!! Song", "<unknown artist>", "C", "common"),
+                  chart("space", " Zebra", "Band", "C", "common"),
+                  chart("apple", "Apple", "Cats", "C", "common")});
+    CHECK(titles(m) == std::vector<std::string>{"!!! Song", "(unknown)", "Apple", "Zebra"});
+    m.set_sort(LibrarySort::Artist, true);
+    CHECK(titles(m) == std::vector<std::string>{"!!! Song", "(unknown)", "Zebra", "Apple"});
+}
+
+TEST_CASE("library model: a lookup that differs only in a field the library never reads changes nothing") {
+    LibraryModel m = sample();
+    const hydra::ui::LibraryRow& burnout = m.rows()[0];  // ready(378315, "3- 1 2", 7, 163.0)
+    SummaryLookup same = ready(378315, "3- 1 2", 7, 163.0);
+    same.summary.actcount = 4;
+    CHECK(burnout.shows_same_as(same));
+    CHECK(m.set_summary_for("burnout", same) == 0);
+    CHECK_FALSE(burnout.shows_same_as(ready(378315, "3- 1 2", 6, 163.0)));
+    CHECK_FALSE(burnout.shows_same_as(stale()));
 }
 
 TEST_CASE("library model: status_label is the one source of the three status words") {

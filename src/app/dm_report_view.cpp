@@ -9,7 +9,9 @@ namespace hydra::app::dm_report_view {
 
 using report_view::CellLook;
 using report::kDash;
+using report_view::optional_key;
 using report_view::SortKey;
+using report_view::text_column;
 using report_view::Tone;
 
 namespace {
@@ -34,20 +36,6 @@ Column<DmReportRow> column(std::string id, std::string title, bool numeric,
     return c;
 }
 
-Column<DmReportRow> text_column(std::string id, std::string title,
-                                std::string DmReportRow::*field, CellLook look) {
-    Column<DmReportRow> c = column(std::move(id), std::move(title), false, "");
-    c.sort_key = [field](const DmReportRow& r) { return SortKey{r.*field}; };
-    c.cell = [field](const DmReportRow& r) { return r.*field; };
-    c.look = look;
-    return c;
-}
-
-template <class T>
-SortKey optional_key(const std::optional<T>& v) {
-    return v ? SortKey{static_cast<double>(*v)} : SortKey{};
-}
-
 // The row's percent of optimal, when the page had one: the payload carried
 // pct_h only beside an optimal score.
 bool has_percent(const DmReportRow& r) { return r.pct_h && r.optimal; }
@@ -61,9 +49,9 @@ std::vector<Column<DmReportRow>> dm_columns() {
     dim_trunc.dim = true;
 
     std::vector<Column<DmReportRow>> cols;
-    cols.push_back(text_column("song", "Song", &DmReportRow::song, trunc));
-    cols.push_back(text_column("artist", "Artist", &DmReportRow::artist, dim_trunc));
-    cols.push_back(text_column("charter", "Charter", &DmReportRow::charter, dim_trunc));
+    cols.push_back(text_column("song", "Song", "", &DmReportRow::song, trunc));
+    cols.push_back(text_column("artist", "Artist", "", &DmReportRow::artist, dim_trunc));
+    cols.push_back(text_column("charter", "Charter", "", &DmReportRow::charter, dim_trunc));
     {
         Column<DmReportRow> c = column("actual", "Actual", true, "The score the player posted.");
         c.sort_key = [](const DmReportRow& r) { return SortKey{static_cast<double>(r.actual)}; };
@@ -107,7 +95,7 @@ std::vector<Column<DmReportRow>> dm_columns() {
             "Actual as a percent of Hydra opt. Only for scores played at __BASE_SPEED__% "
             "speed.");
         c.sort_key = [](const DmReportRow& r) {
-            return has_percent(r) ? SortKey{static_cast<double>(*r.pct_h)} : SortKey{};
+            return has_percent(r) ? optional_key(r.pct_h) : SortKey{};
         };
         c.cell = [](const DmReportRow& r) {
             return has_percent(r) ? format_percent(r.actual, *r.optimal, dm_report::kPercentDecimals)

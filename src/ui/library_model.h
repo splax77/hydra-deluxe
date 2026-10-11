@@ -10,6 +10,7 @@
 #ifndef HYDRA_UI_LIBRARY_MODEL_H
 #define HYDRA_UI_LIBRARY_MODEL_H
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -60,7 +61,11 @@ inline const std::string& row_key(const store::ChartLibraryEntry& row) { return 
 struct LibraryRow {
     LibraryChart entry;
     std::string title, artist, charter;   // colour tags removed: what the table draws
-    app::SearchableRow searchable;        // folded copies, for matching and sorting
+    app::SearchableRow searchable;        // folded stored text, for matching
+    // What each column before Best path sorts on, by column index: the
+    // column's shown text (library_cell_text), folded. The Library sorts on
+    // the text it shows, not the stored text (D114 item 3).
+    std::array<std::string, kColumnBestPath> sort_keys;
     store::RecordStatus status = store::RecordStatus::NotAnalyzed;
     bool stale_build = false;             // why a Stale row is Stale (the store's
     bool stale_rules = false;             // SummaryLookup); the tooltip names it
@@ -68,6 +73,9 @@ struct LibraryRow {
     store::PathSummary summary;           // set when Ready (T7)
     // The Best path cell, made when it is drawn (best_path_label).
     std::string best_label() const;
+    // Whether `lookup` changes nothing the library shows, filters or sorts on:
+    // the one list of the lookup's fields the library reads.
+    bool shows_same_as(const store::SummaryLookup& lookup) const;
 };
 
 // The word for a record's status: "Analyzed", "Stale" or "Not analyzed". The

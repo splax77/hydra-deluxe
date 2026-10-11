@@ -1,0 +1,53 @@
+{
+  "rules": [
+    {
+      "question": "Which choice in a report window's filter dropdown keeps every row?",
+      "owner": "kEveryRowChoice in src/app/report_view.h",
+      "owner_file": "src/app/report_view.h",
+      "owner_symbol": "kEveryRowChoice",
+      "date": "2026-10-11",
+      "decision": "D114 (concept audit M10, code-only)",
+      "added_by": "concept-audit-F1",
+      "pattern": "\\b(timing|status)\\s*=\\s*0\\b",
+      "anchor": "0",
+      "must_match": [
+        "int timing = 0;",
+        "w.status = 0;",
+        "if (labels != w.labels) w.timing = 0;"
+      ],
+      "must_not_match": [
+        "int timing = app::report_view::kEveryRowChoice;",
+        "w.status = app::report_view::kEveryRowChoice;",
+        "int timing_rows = 0;"
+      ],
+      "scope": [
+        "src/ui/path_report_window.cpp",
+        "src/ui/dm_report_window.cpp"
+      ],
+      "note": "The two report windows once wrote the index of their dropdown's keep-everything choice as a literal 0 in their field default, their rebuild and their Clear filters branch. A literal index back in either window would reset to a real filter the day its choice list is reordered."
+    },
+    {
+      "question": "Which fields of a stored summary does the library read?",
+      "owner": "LibraryRow::shows_same_as in src/ui/library_model.cpp",
+      "owner_file": "src/ui/library_model.cpp",
+      "owner_symbol": "shows_same_as",
+      "date": "2026-10-11",
+      "decision": "D114 (concept audit M22, code-only)",
+      "added_by": "concept-audit-F1",
+      "pattern": "\\.summary\\.(actcount|maxskip|avgmult|notecount|sqin_count|sqout_count|pathcount)\\b|\\.summary\\.\\w+\\s*[!=]=\\s*\\w+\\.summary\\.\\w+",
+      "anchor": ".summary.",
+      "must_match": [
+        "return row.summary.actcount;",
+        "if (x.summary.pathcount != y.summary.pathcount) return true;",
+        "row.summary.score == lookup.summary.score && row.summary.stars == lookup.summary.stars &&"
+      ],
+      "must_not_match": [
+        "summary.score == lookup.summary.score && summary.stars == lookup.summary.stars &&",
+        "return app::RowFacts{row.summary.stars, row.summary.hardest_ms};",
+        "if (ready && found.front().summary == row.summary && found.front().bestpath == row.bestpath)",
+        "PathSummary summary; summary.actcount = 3;"
+      ],
+      "note": "The library decides whether a refreshed lookup changed a row by comparing only the fields it reads (shows_same_as). A line that reads one of the summary fields the library ignores means a new shown field: add it to shows_same_as first, then retire it from this pattern. A line that compares two summaries field by field is a second list of the fields the library reads (apply_summary once spelled that list out). The scope is all of src/ because a row's scope names a top folder or one file; nothing outside the library reads these fields through a .summary member today, and a reader that legitimately does gets an exempt entry."
+    }
+  ]
+}
