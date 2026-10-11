@@ -148,14 +148,14 @@ holds them, and `Settings::reading` reads them off the settings, 2x Bass through
 `effective_bass2x`; `Settings::with_reading` writes one back. Its stored
 spelling is the chart mode, such as "Expert Pro Drums, 2x Bass", written by
 `chartmode_key` and read back by `Settings::with_chartmode`.
-`AnalysisSettings` holds a `ChartReading` as a base. The `load_songpath`
-loaders take one, and so do the Preview's song key and load jobs,
-`resolve_preview_source`, `resolve_preview_song`, `chart_song_length_ms`,
+`AnalysisSettings` holds a `ChartReading` as a base. The `load_songpath` and
+`load_songbytes` loaders take one, and so do the Preview's song key and load
+jobs, `resolve_preview_source`, `resolve_preview_song`, `chart_song_length_ms`,
 `load_dynamics_song` and `dynamics_for_settings`. So a fifth choice is added
 to `ChartReading`, `reading` and `with_reading`, and the code that only passes
-a reading along needs no change. The `load_songpath` loaders in
-src/parse/song.cpp do unpack it, into the loose arguments of the
-`load_songbytes_*` functions, so a fifth choice reaches those too.
+a reading along needs no change. Only `load_songbytes_mid` and
+`load_songbytes_chart` in src/parse/song.cpp take it apart, where the parsers
+need the pieces.
 
 **Score range**:
 How far below the best score a kept path may fall: a number and a unit, scores
