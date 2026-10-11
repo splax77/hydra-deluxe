@@ -461,12 +461,12 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
     INFO(r.output);
     CHECK(r.exit_code == 0);
     CHECK(contains(r.output, "Compared 1 chart:"));
-    CHECK(contains(r.output, "0 only in 1.0, 0 only in 1.1, 0 with a score on one side only"));
+    CHECK(contains(r.output, "0 only in 1.0, 0 only in 1.1, 0 in both, not both scored"));
     // The file has no engine_mode stamp, so it never warns (D65, ADR 0010).
     CHECK(!contains(r.output, "Warning"));
 
-    // D52: a second chart with a record under both rules but a score under
-    // 1.1 only is counted as "with a score on one side only".
+    // D52, worded by D114 item 26: a second chart with a record under both
+    // rules but a score under 1.1 only is counted as "in both, not both scored".
     {
         const std::string chart = (box.songs / "fixture" / "notes.chart").u8string();
         const std::string one_sided = "dd44ee55ff6677889900aa11bb22cc33";
@@ -484,7 +484,7 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
                                               (box.dir / "two.html").u8string(), "--no-open"});
     INFO(two.output);
     CHECK(two.exit_code == 0);
-    // The parts add up to the total: 1 same + 1 with a score on one side.
+    // The parts add up to the total: 1 same + 1 in both, not both scored.
     CHECK(contains(two.output, "Compared 2 charts: 1 same, 0 1.0 higher, 0 1.1 higher, "
-                               "0 only in 1.0, 0 only in 1.1, 1 with a score on one side only"));
+                               "0 only in 1.0, 0 only in 1.1, 1 in both, not both scored"));
 }

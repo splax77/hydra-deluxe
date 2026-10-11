@@ -119,16 +119,18 @@ int fillcompare_main() {
     }
 
     const hydra::app::fill_report::FillCompareStats& stats = report.stats;
+    // The last count's words are the page's (D114 item 26).
     std::printf(
         "Compared %s: %s same, %s 1.0 higher, %s 1.1 higher, "
-        "%s only in 1.0, %s only in 1.1, %s with a score on one side only\n",
+        "%s only in 1.0, %s only in 1.1, %s %s\n",
         hydra::counted(stats.total, "chart", "charts").c_str(),
         hydra::group_thousands(stats.same).c_str(),
         hydra::group_thousands(stats.ch10_higher).c_str(),
         hydra::group_thousands(stats.ch11_higher).c_str(),
         hydra::group_thousands(stats.only_old).c_str(),
         hydra::group_thousands(stats.only_new).c_str(),
-        hydra::group_thousands(stats.in_both).c_str());
+        hydra::group_thousands(stats.in_both).c_str(),
+        hydra::app::fill_report::kInBothPhrase);
     std::printf("Wrote %s\n", out.c_str());
 
     if (open_when_done) {
