@@ -1,7 +1,6 @@
 #include "render/track_state.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstdint>
 #include <initializer_list>
@@ -220,15 +219,16 @@ public:
     explicit FieldSweep(const TrackState& st)
         : lanes_(st.fill_lane_), overdrive_(st.overdrive_), solo_(st.solo_), fill_(st.fill_),
           fill_taken_(st.fill_taken_), sp_active_(st.sp_active_), fill_lane_(st.fill_lane_ivs_),
-          lane_pad_(st.fill_lane_ivs_),
-          drum_lane_{SpanSweep(st.drum_lane_[0]), SpanSweep(st.drum_lane_[1]),
-                     SpanSweep(st.drum_lane_[2]), SpanSweep(st.drum_lane_[3])} {}
+          lane_pad_(st.fill_lane_ivs_) {
+        drum_lane_.reserve(kPads.size());
+        for (const std::vector<Iv>& ivs : st.drum_lane_) drum_lane_.emplace_back(ivs);
+    }
 
     void set(TrackInstant& inst) {
         const double t = inst.t;
         inst.overdrive = overdrive_.at(t);
         inst.solo = solo_.at(t);
-        for (Pad p : {Pad::Red, Pad::Yellow, Pad::Blue, Pad::Green})
+        for (Pad p : kPads)
             inst.*drum_lane_field(p) = drum_lane_[static_cast<size_t>(p)].at(t);
         inst.fill = fill_.at(t);
         inst.fill_taken = fill_taken_.at(t);
@@ -243,7 +243,7 @@ private:
     const std::vector<LaneInterval>& lanes_;
     SpanSweep overdrive_, solo_, fill_, fill_taken_, sp_active_, fill_lane_;
     LaneSweep lane_pad_;
-    std::array<SpanSweep, 4> drum_lane_;  // indexed by Pad
+    std::vector<SpanSweep> drum_lane_;  // indexed by Pad
 };
 
 void TrackState::set_overlay_intervals(const PreviewScene& scene) {
@@ -310,13 +310,15 @@ TrackState build_track_state(const PreviewScene& scene, const TrackStateOptions&
         push(s_of(scene.notes[i].ms), Event::Kind::Note, i);
     for (size_t i = 0; i < scene.beats.size(); ++i)
         push(s_of(scene.beats[i].ms), Event::Kind::Beat, i);
-    for (const std::vector<TrackState::Interval>* ivs :
-         {&st.overdrive_, &st.solo_, &st.drum_lane_[0], &st.drum_lane_[1], &st.drum_lane_[2],
-          &st.drum_lane_[3]})
-        for (const auto& iv : *ivs) {
+    auto push_edges = [&push](const std::vector<TrackState::Interval>& ivs) {
+        for (const auto& iv : ivs) {
             push(iv.first, Event::Kind::Edge, 0);
             push(iv.second, Event::Kind::Edge, 0);
         }
+    };
+    push_edges(st.overdrive_);
+    push_edges(st.solo_);
+    for (const auto& ivs : st.drum_lane_) push_edges(ivs);
     std::stable_sort(events.begin(), events.end(),
                      [](const Event& a, const Event& b) { return a.t < b.t; });
 

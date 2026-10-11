@@ -399,6 +399,35 @@
         "tests"
       ],
       "note": "The highway's half-tick span end and the glow's fade length typed into the draw tests as numbers. Decided by: audit finding 276 (the highway half); phase 6 task J4-5 (D53, D54)"
+    },
+    {
+      "question": "Which pads does a loop over the highway's pad columns visit?",
+      "owner": "kPads in src/render/track_state.h",
+      "owner_file": "src/render/track_state.h",
+      "owner_symbol": "kPads",
+      "date": "2026-10-10",
+      "decision": "D107 derive-once review of lanes-render",
+      "added_by": "lanes-render-review",
+      "pattern": "\\{\\s*Pad::Red\\s*,\\s*Pad::Yellow",
+      "anchor": "Pad::Red",
+      "must_match": [
+        "for (Pad p : {Pad::Red, Pad::Yellow, Pad::Blue, Pad::Green}) {"
+      ],
+      "must_not_match": [
+        "for (Pad p : kPads) {",
+        "case Pad::Red:    return TextureId::LaneRed;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/render/track_state.h",
+          "line_text": "constexpr std::array<Pad, 4> kPads = {Pad::Red, Pad::Yellow, Pad::Blue, Pad::Green};",
+          "why": "kPads, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The four pad columns listed by hand in each loop, which the draw code did four times before the drum lanes made it five. Decided by: D107 review of lanes-render"
     }
   ]
 }

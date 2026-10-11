@@ -300,10 +300,10 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
 
     // 4. Lane strips (depth off): a drum lane lights its own pads, then a fill
     //    window lights all four lanes (Onyx's BRE look), dimmed to
-    //    fill_offered_alpha for a fill the path passed
-    //    over and at full strength for the one it activates on. That fill's
-    //    activation lane then draws once more in the lit target texture, so
-    //    the lane to hit stands out from the other three.
+    //    fill_offered_alpha for a fill the path passed over and at full
+    //    strength for the one it activates on. That fill's activation lane
+    //    then draws once more in the lit target texture, so the lane to hit
+    //    stands out from the other three.
     {
         auto strip_tex = [&](Pad pad, double t1, double t2, TextureId tex, float alpha) {
             float x1, x2;
@@ -316,19 +316,18 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
         };
         // Clone Hero's drum lanes come first, as Onyx's drawLanes draws its
         // roll lanes before its BRE strips: each lit pad in its lane texture.
-        for (Pad p : {Pad::Red, Pad::Yellow, Pad::Blue, Pad::Green})
+        for (Pad p : kPads)
             for (const ToggleSpan& s :
                  state.make_toggle_bounds(win, near_t, far_t, drum_lane_field(p)))
                 if (s.on) strip(p, s.t1, s.t2, 1.0f);
         for (const ToggleSpan& s : state.make_toggle_bounds(win, near_t, far_t, &TrackInstant::fill)) {
             if (!s.on) continue;
-            for (Pad p : {Pad::Red, Pad::Yellow, Pad::Blue, Pad::Green})
-                strip(p, s.t1, s.t2, cfg.hydra.fill_offered_alpha);
+            for (Pad p : kPads) strip(p, s.t1, s.t2, cfg.hydra.fill_offered_alpha);
         }
         for (const ToggleSpan& s :
              state.make_toggle_bounds(win, near_t, far_t, &TrackInstant::fill_taken)) {
             if (!s.on) continue;
-            for (Pad p : {Pad::Red, Pad::Yellow, Pad::Blue, Pad::Green}) strip(p, s.t1, s.t2, 1.0f);
+            for (Pad p : kPads) strip(p, s.t1, s.t2, 1.0f);
         }
         // Each lit stretch carries its own pad, so two taken fills that touch
         // each light their own lane (D53 item 3).
@@ -337,7 +336,7 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
     }
 
     // 5. Strike line (Onyx targets) and the glow after a hit, depth off.
-    for (Pad p : {Pad::Red, Pad::Yellow, Pad::Blue, Pad::Green}) {
+    for (Pad p : kPads) {
         float x1, x2;
         pad_x(cfg, p, x1, x2);
         out.push_back(flat(x1, T.y, T.z_now + T.targets_z_past, x2, T.z_now + T.targets_z_future,
@@ -345,7 +344,7 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
     }
     {
         // Each lane glows from its most recent hit only; a kick lights nothing.
-        bool lit[4] = {false, false, false, false};
+        bool lit[kPads.size()] = {};
         for (auto it = win.rbegin(); it != win.rend(); ++it) {
             if (!struck(it->t) || it->t <= near_t) continue;
             const float alpha = static_cast<float>(1.0 - (now_s - it->t) / T.targets_secs_light);

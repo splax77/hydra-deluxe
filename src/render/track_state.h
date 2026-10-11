@@ -2,9 +2,9 @@
 // holds it (its `Map Double (CommonState DrumState)`): one entry per moment
 // anything happens, carrying the gems struck then and, for every span-like
 // thing (SP phrase, solo, drum lane, fill, Hydra's active SP window and
-// activation lane), whether that span starts, ends, restarts, is ongoing, or is absent at
-// that moment. The draw code walks the slice of instants inside the visible
-// time window and never touches the PreviewScene directly.
+// activation lane), whether that span starts, ends, restarts, is ongoing, or
+// is absent at that moment. The draw code walks the slice of instants inside
+// the visible time window and never touches the PreviewScene directly.
 //
 // Times are seconds (Onyx's unit). Device-free and unit-tested.
 
@@ -41,6 +41,10 @@ constexpr double kSpanEndTicks = 0.5;
 
 // The four pads, left to right. Kick is separate (TrackGem::kick).
 enum class Pad { Red = 0, Yellow = 1, Blue = 2, Green = 3 };
+
+// Every pad, in that order: the one list to loop over (a Pad's value indexes a
+// per-pad array of this size).
+constexpr std::array<Pad, 4> kPads = {Pad::Red, Pad::Yellow, Pad::Blue, Pad::Green};
 
 enum class Velocity { Ghost, Normal, Accent };
 
@@ -207,7 +211,7 @@ private:
     std::vector<double> base_t_;
     std::vector<Interval> overdrive_, solo_, fill_, fill_taken_, sp_active_;
     // The drum lanes' spans, one list per pad (indexed by Pad). Path-free.
-    std::array<std::vector<Interval>, 4> drum_lane_;
+    std::array<std::vector<Interval>, kPads.size()> drum_lane_;
     std::vector<LaneInterval> fill_lane_;
     std::vector<Interval> fill_lane_ivs_;  // fill_lane_'s spans alone, built once
 
