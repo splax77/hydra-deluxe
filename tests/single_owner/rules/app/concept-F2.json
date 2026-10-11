@@ -1,0 +1,27 @@
+{
+  "rules": [
+    {
+      "question": "Which words are the fill page's six row statuses?",
+      "owner": "the kStatus* constants in src/app/fill_report.h",
+      "owner_file": "src/app/fill_report.h",
+      "owner_symbol": "kStatusInBoth",
+      "owner_files": ["src/app/fill_report.h"],
+      "date": "2026-10-11",
+      "decision": "D114 item 2 (concept audit M02, fill half)",
+      "added_by": "concept-F2",
+      "pattern": "[\"'](same|1\\.0 higher|1\\.1 higher|only 1\\.0|only 1\\.1|in both)[\"']",
+      "must_match": [
+        "row.status = \"in both\";",
+        "if (r.status == \"1.0 higher\") stats.ch10_higher += r.copies;",
+        "return r => r.status === 'only 1.1';",
+        "<option value=\"same\">Same score</option>"
+      ],
+      "must_not_match": [
+        "row.status = kStatusInBoth;",
+        "[STATUS.sameScore]:'s-same',",
+        "{\"__ST_SAME__\", \"sameScore\", kStatusSame},"
+      ],
+      "note": "A status typed by hand in C++, in the page's markup or in its script. The script reads the words through the STATUS object page_template writes from these constants."
+    }
+  ]
+}

@@ -257,9 +257,10 @@ td.path { max-width: 230px; }
   font-size: 11px; font-weight: 600; letter-spacing: .01em;
   border: 1px solid currentColor;
 }
-/* "1.1 higher" is the interesting, rare case, so it gets the strong green;
-   "1.0 higher" (the common drop) is red, ties are neutral, and the two
-   one-sided statuses are muted so they read as missing data, not a result. */
+/* A gain under the new rule (s-newhigh) is the interesting, rare case, so it
+   gets the strong green; a drop (s-oldhigh, the common one) is red, ties are
+   neutral, and the one-sided statuses are muted so they read as missing
+   data, not a result. */
 .s-newhigh{color:var(--t0); border-color:var(--t0)} .s-oldhigh{color:var(--t3)} .s-same{color:var(--tn)} .s-only{color:var(--muted); border-color:transparent}
 
 .empty { padding: 40px; text-align: center; color: var(--muted); }
