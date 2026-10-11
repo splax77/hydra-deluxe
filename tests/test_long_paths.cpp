@@ -153,7 +153,8 @@ TEST_CASE("a chart folder past 260 characters scans, reads, and previews") {
     CHECK_FALSE(items[0].md5.empty());
 
     // The Preview finds the audio beside it and streams it.
-    hydra::app::PreviewSource src = hydra::app::resolve_preview_source(notes, true, false);
+    hydra::app::PreviewSource src = hydra::app::resolve_preview_source(
+        notes, hydra::ChartReading{hydra::Difficulty::Expert, true, false, false});
     CHECK_FALSE(src.song.sequence.empty());
     REQUIRE(src.stems.size() == 1);
     std::unique_ptr<hydra::audio::StemReader> reader = hydra::audio::open_stem_reader(src.stems[0]);

@@ -365,8 +365,7 @@ int cmd_score(const Args& a, const app::Settings& s) {
             "--path and --acts each name a path to score; give one or the "
             "other, not both");
 
-    Song song = load_songpath(a.chart, s.view_prodrums, s.effective_bass2x(),
-                              s.difficulty(), s.rules, s.view_noteshuffle);
+    Song song = load_songpath(a.chart, s.reading(), s.rules);
     if (song.is_empty()) {
         std::fprintf(stderr, "chart has no notes: %s\n", a.chart.c_str());
         return 1;
@@ -515,8 +514,7 @@ int cmd_target(const Args& a, const app::Settings& s) {
     const std::string hyhash = app::hash_chart_file(a.chart);
     const std::vector<int64_t> ticks = parse_ticks(a.ticks);
 
-    Song song = load_songpath(a.chart, s.view_prodrums, s.effective_bass2x(),
-                              s.difficulty(), s.rules, s.view_noteshuffle);
+    Song song = load_songpath(a.chart, s.reading(), s.rules);
     if (song.is_empty()) {
         std::fprintf(stderr, "chart has no notes: %s\n", a.chart.c_str());
         return 1;
@@ -598,8 +596,7 @@ void check_chart(const std::string& path, const core::Rules& rules, Tally* tally
     std::optional<Song> song_opt;
     try {
         song_opt.emplace(
-            load_songpath(path, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules,
-                          cfg.noteshuffle));
+            load_songpath(path, cfg.reading(), cfg.rules));
     } catch (const std::exception& e) {
         std::printf("SKIP %s (%s)\n", path.c_str(), e.what());
         ++tally->skipped;

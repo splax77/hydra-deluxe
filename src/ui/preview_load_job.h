@@ -16,12 +16,12 @@
 #include <string>
 #include <vector>
 
-#include "app/analysis.h"  // ChartReading
 #include "app/preview_source.h"
 #include "app/preview_view.h"
 #include "audio/stem_reader.h"
 #include "audio/stream_mix.h"
 #include "core/model.h"
+#include "parse/chart_reading.h"
 #include "parse/song.h"
 #include "render/track_state.h"
 #include "store/record_store.h"
@@ -56,14 +56,14 @@ struct PreviewNotes {
     std::optional<double> song_length_ms;
 };
 
-// Reads `entry`'s notes under one app::ChartReading from `container`,
+// Reads `entry`'s notes under one ChartReading from `container`,
 // app::read_preview_container's bytes for the same chart (null for a loose
 // chart). The first load and the notes reload both read through here. Throws
 // require_notes' error when the chart has no notes in this reading, so the
 // Preview says why instead of drawing a blank highway.
 PreviewNotes read_preview_notes(const store::ChartLibraryEntry& entry,
                                 const app::SharedBytes& container,
-                                const app::ChartReading& reading, const core::Rules& rules);
+                                const ChartReading& reading, const core::Rules& rules);
 
 // Turns "bytes done so far" readings into a time-left estimate for the
 // loading bar. The rate is measured over at least one second of the load's
@@ -108,7 +108,7 @@ std::string gated_time_left_text(double elapsed_s, double time_left_s);
 // an audio::Playhead. None of this runs on-frame.
 class PreviewLoadJob : public ResultJobBase {
 public:
-    PreviewLoadJob(store::ChartLibraryEntry entry, const app::ChartReading& reading,
+    PreviewLoadJob(store::ChartLibraryEntry entry, const ChartReading& reading,
                    std::optional<Path> path, int sp_cap,
                    core::Rules rules = core::default_rules());
     ~PreviewLoadJob() { shutdown(); }
@@ -184,7 +184,7 @@ private:
                                                                const std::atomic<bool>& stop);
 
     store::ChartLibraryEntry entry_;
-    app::ChartReading reading_;  // which notes to read, handed to the loader
+    ChartReading reading_;  // which notes to read, handed to the loader
     std::optional<Path> path_;
     int sp_cap_;  // the record's SP cap, used only to scale the preview's SP meter
     core::Rules rules_;  // copied: the job outlives the caller's settings
@@ -215,7 +215,7 @@ private:
 // first load's Result::audio_end_ms, which the beat lines run to.
 class PreviewNotesJob : public ResultJobBase {
 public:
-    PreviewNotesJob(store::ChartLibraryEntry entry, const app::ChartReading& reading,
+    PreviewNotesJob(store::ChartLibraryEntry entry, const ChartReading& reading,
                     std::optional<Path> path, int sp_cap, core::Rules rules,
                     std::optional<double> audio_end_ms);
     ~PreviewNotesJob() { shutdown(); }
@@ -243,7 +243,7 @@ private:
     void run();
 
     store::ChartLibraryEntry entry_;
-    app::ChartReading reading_;
+    ChartReading reading_;
     std::optional<Path> path_;
     int sp_cap_;
     core::Rules rules_;  // copied: the job outlives the caller's settings

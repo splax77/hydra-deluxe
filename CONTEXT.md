@@ -143,16 +143,19 @@ _Avoid_: view options
 
 **Chart reading**:
 The four choices that pick which notes a chart is read as: the difficulty, Pro
-Drums, 2x Bass and Note Shuffle. `app::ChartReading` in src/app/analysis.h holds
-them, and `Settings::reading` reads them off the settings, 2x Bass through
+Drums, 2x Bass and Note Shuffle. `ChartReading` in src/parse/chart_reading.h
+holds them, and `Settings::reading` reads them off the settings, 2x Bass through
 `effective_bass2x`; `Settings::with_reading` writes one back. Its stored
 spelling is the chart mode, such as "Expert Pro Drums, 2x Bass", written by
 `chartmode_key` and read back by `Settings::with_chartmode`.
-`AnalysisSettings` holds a `ChartReading` as a base, and the Preview's song key
-and load jobs, `resolve_preview_song` and `dynamics_for_settings` take one, so
-a fifth choice is added to `ChartReading`, `reading` and `with_reading`. The
-parsers themselves (`load_songpath`) and the whole-chart preview call
-`resolve_preview_source` still take the choices as separate arguments.
+`AnalysisSettings` holds a `ChartReading` as a base. The `load_songpath`
+loaders take one, and so do the Preview's song key and load jobs,
+`resolve_preview_source`, `resolve_preview_song`, `chart_song_length_ms`,
+`load_dynamics_song` and `dynamics_for_settings`. So a fifth choice is added
+to `ChartReading`, `reading` and `with_reading`, and the code that only passes
+a reading along needs no change. The `load_songpath` loaders in
+src/parse/song.cpp do unpack it, into the loose arguments of the
+`load_songbytes_*` functions, so a fifth choice reaches those too.
 
 **Score range**:
 How far below the best score a kept path may fall: a number and a unit, scores

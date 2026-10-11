@@ -286,8 +286,7 @@ inline uint64_t failure_hash(const std::string& text) { return fnv_str(kSeed, te
 inline uint64_t chart_parse_hash(const std::string& notespath, const app::AnalysisSettings& st,
                                  std::string* fail = nullptr) {
     try {
-        const Song song = load_songpath_with_notes(notespath, st.prodrums, st.bass2x,
-                                                   st.difficulty, st.rules, st.noteshuffle);
+        const Song song = load_songpath_with_notes(notespath, st.reading(), st.rules);
         const uint64_t h = song_digest(song);
         // The count needs the 2x kicks kept (app::analysis_parse_counts_dynamics).
         return app::analysis_parse_counts_dynamics(st.bass2x)

@@ -576,7 +576,7 @@ TEST_CASE("a 4-bar graph built at the song's phrase count stores the same paths"
     // Hand-built, three phrases, one of them collected mid-SP.
     songs.push_back(mid_sp_phrase_song());
     for (const std::string& path : corpus::chart_paths()) {
-        Song s = load_songpath(path, true, true);
+        Song s = load_songpath(path, ChartReading{});
         if (!s.is_empty() && s.sp_phrase_count() < kCloneHeroSpCap)
             songs.push_back(std::move(s));
     }

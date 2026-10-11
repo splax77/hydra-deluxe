@@ -56,16 +56,17 @@ std::optional<double> song_length_ms(const store::ChartTimingMeta& meta,
                                      std::optional<double> chart_offset_s,
                                      const ExpertChart& expert_chart);
 
-// song_length_ms for the chart at `notespath`, already parsed as `song` at
-// `difficulty` with 2x kick on or off (`bass2x`). The Offset is read from
+// song_length_ms for the chart at `notespath`, already parsed as `song` with
+// `reading` (ChartReading, in parse/chart_reading.h). The Offset is read from
 // `song`. The backup reads `song` too when it is the Expert chart with 2x
 // kick; otherwise the chart is parsed once more at Expert with 2x, from
 // `container` when given (read_preview_container's bytes, so a .sng or .srb
-// is not read from disk again). `rules` places that parse's fills, which no
-// note time depends on.
+// is not read from disk again). The reading's Pro Drums and Note Shuffle play
+// no part, because neither moves a note in time. `rules` places that parse's
+// fills, which no note time depends on.
 std::optional<double> chart_song_length_ms(const store::ChartTimingMeta& meta,
                                            const std::string& notespath, const Song& song,
-                                           Difficulty difficulty, bool bass2x,
+                                           const ChartReading& reading,
                                            const core::Rules& rules,
                                            const SharedBytes& container = nullptr);
 

@@ -61,8 +61,9 @@ void set_path_overrides(PathOverrides overrides);
 const PathOverrides& path_overrides();
 
 // ChartReading (the four choices that pick a chart's notes) lives in
-// app/analysis.h, beside the AnalysisSettings that holds it. Settings::reading()
-// and Settings::with_reading read it off and write it onto the settings.
+// parse/chart_reading.h, beside the parser's loaders that take it.
+// Settings::reading() and Settings::with_reading read it off and write it onto
+// the settings.
 
 // The stored chart mode a reading is filed under: "Expert Pro Drums, 2x
 // Bass", mirroring HyAppUserSettings.chartmode_key. With Note Shuffle on it

@@ -2,7 +2,7 @@
   "rules": [
     {
       "question": "Which chart reading makes the Preview another song?",
-      "owner": "PreviewController::open in src/ui/preview_controller.cpp, from an app::ChartReading (Settings::reading)",
+      "owner": "PreviewController::open in src/ui/preview_controller.cpp, from a ChartReading (Settings::reading)",
       "owner_file": "src/ui/preview_controller.cpp",
       "owner_symbol": "PreviewSongKey",
       "date": "2026-10-11",

@@ -29,8 +29,8 @@
 #include <string>
 #include <vector>
 
-#include "app/analysis.h"  // ChartReading
 #include "core/rules.h"
+#include "parse/chart_reading.h"
 #include "parse/song.h"
 
 namespace hydra::app {
@@ -58,15 +58,13 @@ struct PreviewSource {
 };
 
 // Parse `notespath` (any supported chart kind) and gather its audio.
-// pro/bass2x/difficulty/noteshuffle mirror the analysis toggles so the
-// previewed notes match the analyzed ones. rules places the fills the same
-// way analysis does. A .sng or .srb is read from disk once and the same bytes
-// feed the notes and the audio.
-PreviewSource resolve_preview_source(const std::string& notespath, bool pro,
-                                     bool bass2x,
-                                     Difficulty difficulty = Difficulty::Expert,
-                                     const core::Rules& rules = core::default_rules(),
-                                     bool noteshuffle = false);
+// `reading` is which notes to read the chart as (ChartReading, in
+// parse/chart_reading.h); the analysis's own reading makes the previewed notes
+// match the analyzed ones. rules places the fills the same way analysis does.
+// A .sng or .srb is read from disk once and the same bytes feed the notes and
+// the audio.
+PreviewSource resolve_preview_source(const std::string& notespath, const ChartReading& reading,
+                                     const core::Rules& rules = core::default_rules());
 
 // Reads a whole file's bytes, like read_file_bytes.
 using FileBytesReader = std::function<std::vector<uint8_t>(const std::string&)>;
@@ -75,11 +73,9 @@ using FileBytesReader = std::function<std::vector<uint8_t>(const std::string&)>;
 // (resolve_preview_source passes read_file_bytes). Tests pass a counting
 // wrapper to prove a .sng/.srb is read once. Loose charts don't use it.
 PreviewSource resolve_preview_source_reading(const FileBytesReader& read_bytes,
-                                             const std::string& notespath, bool pro,
-                                             bool bass2x,
-                                             Difficulty difficulty = Difficulty::Expert,
-                                             const core::Rules& rules = core::default_rules(),
-                                             bool noteshuffle = false);
+                                             const std::string& notespath,
+                                             const ChartReading& reading,
+                                             const core::Rules& rules = core::default_rules());
 
 // ---- the two halves, for a load that runs them side by side -------------
 //
@@ -100,7 +96,8 @@ struct PreviewSong {
     double audio_offset_ms = 0.0;  // as PreviewSource::audio_offset_ms
 };
 // `container` is read_preview_container's result for the same notespath.
-// `reading` is which notes to read the chart as (app::ChartReading).
+// `reading` is which notes to read the chart as (ChartReading, in
+// parse/chart_reading.h).
 PreviewSong resolve_preview_song(const std::string& notespath, const SharedBytes& container,
                                  const ChartReading& reading,
                                  const core::Rules& rules = core::default_rules());

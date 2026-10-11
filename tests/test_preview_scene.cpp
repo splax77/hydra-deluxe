@@ -322,7 +322,7 @@ TEST_CASE("parser keeps the SP-phrase start on the flagged note") {
     // parser flags as an SP-phrase end now also carries its start tick.
     bool checked_a_chart = false;
     for (const std::string& path : corpus::chart_paths()) {
-        Song song = load_songpath(path, /*pro=*/true, /*bass2x=*/true);
+        Song song = load_songpath(path, ChartReading{});
         int sp_notes = 0;
         for (const SongTimestamp& ts : song.sequence) {
             if (!ts.flag_sp) continue;

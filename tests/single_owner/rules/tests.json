@@ -159,7 +159,7 @@
         "const fs::path root = fs::u8path(HYDRA_SOURCE_DIR);"
       ],
       "must_not_match": [
-        "return load_songpath(std::string(HYDRA_INPUT_DIR) + \"/test_fast_tempo/\" + name, true, true);"
+        "return load_songpath(std::string(HYDRA_INPUT_DIR) + \"/test_fast_tempo/\" + name, ChartReading{});"
       ],
       "scope": [
         "tests"
@@ -180,12 +180,12 @@
         "tests/testdata_dirs.h"
       ],
       "must_match": [
-        "return load_songpath(std::string(HYDRA_INPUT_DIR) + \"/test_fast_tempo/\" + name, true, true);",
+        "return load_songpath(std::string(HYDRA_INPUT_DIR) + \"/test_fast_tempo/\" + name, ChartReading{});",
         "const fs::path kFuzzRoot = fs::u8path(HYDRA_TESTDATA_DIR \"/fuzz\");",
         "#ifndef HYDRA_TESTDATA_DIR"
       ],
       "must_not_match": [
-        "return load_songpath(corpus::root() + \"/test_fast_tempo/\" + name, true, true);",
+        "return load_songpath(corpus::root() + \"/test_fast_tempo/\" + name, ChartReading{});",
         "const std::string kFixtureDir = corpus::testdata_root() + \"/preview\";",
         "std::ifstream in(std::string(HYDRA_SOURCE_DIR) + \"/src/app/preview_view.cpp\");"
       ],

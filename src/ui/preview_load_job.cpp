@@ -69,7 +69,7 @@ SceneAndHighway build_scene_and_highway(const Song& song, const Path* path, int 
 
 PreviewNotes read_preview_notes(const store::ChartLibraryEntry& entry,
                                 const app::SharedBytes& container,
-                                const app::ChartReading& reading, const core::Rules& rules) {
+                                const ChartReading& reading, const core::Rules& rules) {
     PreviewNotes notes{app::resolve_preview_song(entry.notespath, container, reading, rules),
                        std::nullopt};
     // The song's length, from the same owner analysis saves through (D75),
@@ -78,7 +78,7 @@ PreviewNotes read_preview_notes(const store::ChartLibraryEntry& entry,
     try {
         notes.song_length_ms = app::chart_song_length_ms(
             app::chart_timing_meta(entry.timing, entry.notespath), entry.notespath, notes.ps.song,
-            reading.difficulty, reading.bass2x, rules, container);
+            reading, rules, container);
     } catch (const std::exception&) {
     }
     // A chart with no charting in this mode would otherwise build an empty
@@ -110,7 +110,7 @@ double ByteRateClock::update(double now_s, uint64_t bytes_done, uint64_t bytes_t
     return published_;
 }
 
-PreviewLoadJob::PreviewLoadJob(store::ChartLibraryEntry entry, const app::ChartReading& reading,
+PreviewLoadJob::PreviewLoadJob(store::ChartLibraryEntry entry, const ChartReading& reading,
                                std::optional<Path> path, int sp_cap, core::Rules rules)
     : entry_(std::move(entry)),
       reading_(reading),
@@ -301,7 +301,7 @@ std::string PreviewLoadJob::Progress::time_left_text() const {
     return gated_time_left_text(elapsed_s, time_left_s);
 }
 
-PreviewNotesJob::PreviewNotesJob(store::ChartLibraryEntry entry, const app::ChartReading& reading,
+PreviewNotesJob::PreviewNotesJob(store::ChartLibraryEntry entry, const ChartReading& reading,
                                  std::optional<Path> path, int sp_cap, core::Rules rules,
                                  std::optional<double> audio_end_ms)
     : entry_(std::move(entry)),

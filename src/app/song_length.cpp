@@ -41,19 +41,18 @@ std::optional<double> song_length_ms(const store::ChartTimingMeta& meta,
 
 std::optional<double> chart_song_length_ms(const store::ChartTimingMeta& meta,
                                            const std::string& notespath, const Song& song,
-                                           Difficulty difficulty, bool bass2x,
+                                           const ChartReading& reading,
                                            const core::Rules& rules,
                                            const SharedBytes& container) {
     std::optional<Song> reparsed;
     return song_length_ms(meta, song.chart_offset_s, [&]() -> const Song& {
-        if (difficulty == Difficulty::Expert && bass2x) return song;
+        if (reading.difficulty == Difficulty::Expert && reading.bass2x) return song;
         // Pro Drums only names a note's pad, never its time, so either value
         // gives the same last note.
         constexpr bool kPro = true;
-        reparsed.emplace(container ? load_songpath_from_bytes(notespath, *container, kPro, true,
-                                                              Difficulty::Expert, rules)
-                                   : load_songpath(notespath, kPro, true, Difficulty::Expert,
-                                                   rules));
+        const ChartReading expert{Difficulty::Expert, kPro, true, false};
+        reparsed.emplace(container ? load_songpath_from_bytes(notespath, *container, expert, rules)
+                                   : load_songpath(notespath, expert, rules));
         return *reparsed;
     });
 }

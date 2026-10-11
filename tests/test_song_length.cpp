@@ -42,9 +42,10 @@ ScanItem scan_one(const std::string& notespath) {
 // the scan's timing and the chart parsed once.
 std::optional<double> length_after_scan(const std::string& notespath) {
     const ScanItem item = scan_one(notespath);
-    const hydra::Song song = hydra::load_songpath(notespath, true, true);
-    return hydra::app::chart_song_length_ms(*item.timing, notespath, song, Difficulty::Expert,
-                                            true, hydra::core::default_rules());
+    const hydra::ChartReading reading{Difficulty::Expert, true, true, false};
+    const hydra::Song song = hydra::load_songpath(notespath, reading);
+    return hydra::app::chart_song_length_ms(*item.timing, notespath, song, reading,
+                                            hydra::core::default_rules());
 }
 
 // short_chart_with_long_audio's chart with `ini` as its song.ini.
@@ -106,15 +107,17 @@ TEST_CASE("song length: the backup reads the Expert chart with 2x kick, whatever
     const hydra::core::Rules& rules = hydra::core::default_rules();
 
     // Analyzed with 2x off: the 2x kick still ends the song.
-    const hydra::Song no_2x = hydra::load_songpath(notes, true, false);
-    std::optional<double> length = hydra::app::chart_song_length_ms(
-        none, notes, no_2x, Difficulty::Expert, false, rules);
+    const hydra::ChartReading expert_no_2x{Difficulty::Expert, true, false, false};
+    const hydra::Song no_2x = hydra::load_songpath(notes, expert_no_2x);
+    std::optional<double> length =
+        hydra::app::chart_song_length_ms(none, notes, no_2x, expert_no_2x, rules);
     REQUIRE(length.has_value());
     CHECK(*length == 200.0);
 
     // Analyzed at Hard: the Expert chart still ends the song.
-    const hydra::Song hard = hydra::load_songpath(notes, true, true, Difficulty::Hard);
-    length = hydra::app::chart_song_length_ms(none, notes, hard, Difficulty::Hard, true, rules);
+    const hydra::ChartReading hard_2x{Difficulty::Hard, true, true, false};
+    const hydra::Song hard = hydra::load_songpath(notes, hard_2x);
+    length = hydra::app::chart_song_length_ms(none, notes, hard, hard_2x, rules);
     REQUIRE(length.has_value());
     CHECK(*length == 200.0);
 }

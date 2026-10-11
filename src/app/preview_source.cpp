@@ -315,22 +315,19 @@ double preview_audio_offset_ms(std::optional<double> ini_delay_ms,
     return kOffsetDirection * ms;
 }
 
-PreviewSource resolve_preview_source(const std::string& notespath, bool pro,
-                                     bool bass2x, Difficulty difficulty,
-                                     const core::Rules& rules, bool noteshuffle) {
-    return resolve_preview_source_reading(read_file_bytes, notespath, pro, bass2x,
-                                          difficulty, rules, noteshuffle);
+PreviewSource resolve_preview_source(const std::string& notespath, const ChartReading& reading,
+                                     const core::Rules& rules) {
+    return resolve_preview_source_reading(read_file_bytes, notespath, reading, rules);
 }
 
 PreviewSource resolve_preview_source_reading(const FileBytesReader& read_bytes,
-                                             const std::string& notespath, bool pro,
-                                             bool bass2x, Difficulty difficulty,
-                                             const core::Rules& rules, bool noteshuffle) {
+                                             const std::string& notespath,
+                                             const ChartReading& reading,
+                                             const core::Rules& rules) {
     // A container is read from disk once; the same bytes give the notes, the
     // audio and (for a .sng) the metadata delay.
     const SharedBytes container = read_preview_container(read_bytes, notespath);
-    PreviewSong ps = resolve_preview_song(
-        notespath, container, ChartReading{difficulty, pro, bass2x, noteshuffle}, rules);
+    PreviewSong ps = resolve_preview_song(notespath, container, reading, rules);
     PreviewSource src{std::move(ps.song), resolve_preview_stems(notespath, container),
                       ps.audio_offset_ms};
     return src;
@@ -350,11 +347,8 @@ SharedBytes read_preview_container(const FileBytesReader& read_bytes,
 
 PreviewSong resolve_preview_song(const std::string& notespath, const SharedBytes& container,
                                  const ChartReading& reading, const core::Rules& rules) {
-    PreviewSong out{container ? load_songpath_from_bytes(notespath, *container, reading.prodrums,
-                                                         reading.bass2x, reading.difficulty, rules,
-                                                         reading.noteshuffle)
-                              : load_songpath(notespath, reading.prodrums, reading.bass2x,
-                                              reading.difficulty, rules, reading.noteshuffle)};
+    PreviewSong out{container ? load_songpath_from_bytes(notespath, *container, reading, rules)
+                              : load_songpath(notespath, reading, rules)};
     out.audio_offset_ms = chart_audio_offset_ms(notespath, container, out.song.chart_offset_s);
     return out;
 }

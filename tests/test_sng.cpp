@@ -98,13 +98,13 @@ TEST_CASE("sng: truncated input stops early instead of reading past the end") {
 TEST_CASE("sng: the note loader reads the chart through the shared reader") {
     const std::string path = sng_fixture_path("loader.sng");
     write_bytes(path, make_sng({{"name", "Song"}}, {{"song.ogg", {1, 2}}, {"NOTES.MID", tiny_mid()}}));
-    CHECK(songs_equal(load_songpath_sng(path, true, true),
+    CHECK(songs_equal(load_songpath_sng(path, ChartReading{}),
                       load_songbytes_mid(tiny_mid(), true, true)));
 
     // A file too short to hold a table throws a clear error.
     const std::string tiny = sng_fixture_path("tiny.sng");
     write_bytes(tiny, {1, 2, 3});
-    CHECK_THROWS_AS(load_songpath_sng(tiny, true, true), std::runtime_error);
+    CHECK_THROWS_AS(load_songpath_sng(tiny, ChartReading{}), std::runtime_error);
 }
 
 TEST_CASE("sng: unmasking into the caller's buffer undoes the pinned stored bytes") {
@@ -155,7 +155,7 @@ namespace {
 Song load_counting(const std::string& path, uint64_t& bytes_read) {
     bytes_read = 0;
     return load_songpath_reading(testbytes::counting(file_byte_source(path), bytes_read), path,
-                                 true, true);
+                                 ChartReading{});
 }
 
 }  // namespace
@@ -199,7 +199,7 @@ TEST_CASE("sng: a source shorter than its stated size ends the header read") {
     ByteSource shrunk = memory_byte_source(cut);
     shrunk.size = 200000;
     CHECK(sng_read_head(shrunk) == cut);
-    CHECK_THROWS_WITH(load_songpath_reading(shrunk, "shrunk.sng", true, true),
+    CHECK_THROWS_WITH(load_songpath_reading(shrunk, "shrunk.sng", ChartReading{}),
                       "No chart files found in SNG file.");
 
     // A short first read ends the header even when later reads would be whole.
@@ -215,7 +215,7 @@ TEST_CASE("sng: ranged reads fail a damaged container the way a whole read does"
     std::vector<uint8_t> cut_notes(whole.begin(), whole.end() - 5);
     const std::string cut_path = sng_fixture_path("cut_notes.sng");
     write_bytes(cut_path, cut_notes);
-    CHECK_THROWS_WITH(load_songpath(cut_path, true, true), "Truncated SNG file.");
+    CHECK_THROWS_WITH(load_songpath(cut_path, ChartReading{}), "Truncated SNG file.");
     CHECK_THROWS_WITH(load_songbytes_sng(cut_notes, true, true), "Truncated SNG file.");
 
     // The file table is cut: no notes entry is found.
@@ -223,14 +223,14 @@ TEST_CASE("sng: ranged reads fail a damaged container the way a whole read does"
                                    whole.begin() + (whole.size() - tiny_mid().size() - 4));
     const std::string table_path = sng_fixture_path("cut_table.sng");
     write_bytes(table_path, cut_table);
-    CHECK_THROWS_WITH(load_songpath(table_path, true, true), "No chart files found in SNG file.");
+    CHECK_THROWS_WITH(load_songpath(table_path, ChartReading{}), "No chart files found in SNG file.");
 
     // A metadata length far past the end of the file.
     std::vector<uint8_t> huge_meta = whole;
     for (int i = 0; i < 8; ++i) huge_meta[kSngMetadataLenOffset + i] = 0x7f;
     const std::string meta_path = sng_fixture_path("huge_meta.sng");
     write_bytes(meta_path, huge_meta);
-    CHECK_THROWS_WITH(load_songpath(meta_path, true, true), "No chart files found in SNG file.");
+    CHECK_THROWS_WITH(load_songpath(meta_path, ChartReading{}), "No chart files found in SNG file.");
 }
 
 TEST_CASE("sng: a container parses the same from bytes as from its path") {
@@ -238,10 +238,10 @@ TEST_CASE("sng: a container parses the same from bytes as from its path") {
         make_sng({{"name", "Song"}}, {{"song.ogg", {1, 2}}, {"notes.mid", tiny_mid()}});
     const std::string path = sng_fixture_path("from_bytes.sng");
     write_bytes(path, buf);
-    CHECK(songs_equal(load_songpath_from_bytes(path, buf, true, true),
-                      load_songpath(path, true, true)));
+    CHECK(songs_equal(load_songpath_from_bytes(path, buf, ChartReading{}),
+                      load_songpath(path, ChartReading{})));
     // The extension still decides the format; an unknown one throws.
-    CHECK_THROWS_AS(load_songpath_from_bytes("x.txt", buf, true, true), std::runtime_error);
+    CHECK_THROWS_AS(load_songpath_from_bytes("x.txt", buf, ChartReading{}), std::runtime_error);
 }
 
 // Clone Hero, its song cache and dmleaderboards key a .sng by the MD5 of the

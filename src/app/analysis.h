@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "core/model.h"
+#include "parse/chart_reading.h"
 #include "parse/song.h"
 #include "search/pather.h"
 #include "store/record_store.h"
@@ -147,29 +148,10 @@ store::ChartLibraryCache load_scan_cache(store::RecordStore& store);
 // read song.ini through here.
 std::map<std::string, std::string> read_song_ini_keys(const std::string& path);
 
-// The four choices that pick which notes a chart is read as: the difficulty,
-// Pro Drums, 2x Bass and Note Shuffle. Settings::reading() (app/config.h) is
-// where they are read off the settings, and Settings::with_reading where they
-// are written back. What carries them takes this one value, so a fifth choice
-// is added here and in those two (concept audit M19).
-// The defaults read a chart as written, at Expert.
-struct ChartReading {
-    Difficulty difficulty = Difficulty::Expert;
-    bool prodrums = true;
-    bool bass2x = true;
-    bool noteshuffle = false;
-
-    bool operator==(const ChartReading& o) const {
-        return difficulty == o.difficulty && prodrums == o.prodrums && bass2x == o.bass2x &&
-               noteshuffle == o.noteshuffle;
-    }
-    bool operator!=(const ChartReading& o) const { return !(*this == o); }
-};
-
 // The settings a batch run applies uniformly. Everything the search itself
-// reads lives on the SearchSettings base; the ChartReading base is the
-// parse-time choices, so a function that takes a ChartReading takes these
-// settings as they are.
+// reads lives on the SearchSettings base; the ChartReading base
+// (parse/chart_reading.h) is the parse-time choices, so a function that takes
+// a ChartReading takes these settings as they are.
 struct AnalysisSettings : SearchSettings, ChartReading {
     const ChartReading& reading() const { return *this; }
     ChartReading& reading() { return *this; }

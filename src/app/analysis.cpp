@@ -733,9 +733,7 @@ AnalysisResult analyze_chart_file(const std::string& filepath,
     // the common case) throws NoNotesError, which names that difficulty.
     // With Note Shuffle on, a chart the game freezes on throws
     // NoteShuffleFreezes here, and gets no path (D104 item 5).
-    Song song = load_songpath_with_notes(filepath, settings.prodrums, settings.bass2x,
-                                         settings.difficulty, settings.rules,
-                                         settings.noteshuffle);
+    Song song = load_songpath_with_notes(filepath, settings.reading(), settings.rules);
     HydraRecord record = analyze_chart(song, settings, on_progress);
     return AnalysisResult{std::move(record), std::move(song)};
 }
@@ -848,7 +846,7 @@ store::SongLength analysis_song_length(const std::optional<store::ChartTimingMet
     try {
         return store::SongLength::found(
             chart_song_length_ms(chart_timing_meta(scanned, notespath), notespath, song,
-                                 settings.difficulty, settings.bass2x, settings.rules));
+                                 settings.reading(), settings.rules));
     } catch (const std::exception&) {
         return {};
     }

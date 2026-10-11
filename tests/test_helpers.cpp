@@ -48,7 +48,7 @@ TEST_CASE("corpus cache: one parse and one analysis per chart and settings") {
     CHECK(&corpus::analyzed(path, cfg) == &r);
 
     // The cached record is the one a direct call produces.
-    const HydraRecord direct = analyze_chart(load_songpath(path, true, true), cfg);
+    const HydraRecord direct = analyze_chart(load_songpath(path, ChartReading{}), cfg);
     REQUIRE(r.paths.size() == direct.paths.size());
     REQUIRE(!r.paths.empty());
     CHECK(r.best_path().pathstring() == direct.best_path().pathstring());

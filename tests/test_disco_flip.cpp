@@ -122,17 +122,18 @@ TEST_CASE("disco: Band Like That keeps its lower difficulties' hi-hat on yellow"
     for (Difficulty d : {Difficulty::Hard, Difficulty::Medium, Difficulty::Easy}) {
         const std::string name = difficulty_name(d);
         CAPTURE(name);
-        const app::DynamicsBreakdown pro = app::count_dynamics(load_songpath(path, true, true, d));
+        const app::DynamicsBreakdown pro =
+            app::count_dynamics(load_songpath(path, ChartReading{d}));
         const app::DynamicsBreakdown plain =
-            app::count_dynamics(load_songpath(path, false, true, d));
+            app::count_dynamics(load_songpath(path, ChartReading{d, false, true, false}));
         CHECK(pro.row(DynamicsRow::RedSnare).all() == plain.row(DynamicsRow::RedSnare).all());
         CHECK(pro.row(DynamicsRow::YellowCymbal).all() + pro.row(DynamicsRow::YellowTom).all() ==
               plain.row(DynamicsRow::YellowTom).all());
     }
     // Expert still flips inside its own sections.
-    const app::DynamicsBreakdown pro =
-        app::count_dynamics(load_songpath(path, true, true, Difficulty::Expert));
-    const app::DynamicsBreakdown plain =
-        app::count_dynamics(load_songpath(path, false, true, Difficulty::Expert));
+    const app::DynamicsBreakdown pro = app::count_dynamics(
+        load_songpath(path, ChartReading{Difficulty::Expert}));
+    const app::DynamicsBreakdown plain = app::count_dynamics(
+        load_songpath(path, ChartReading{Difficulty::Expert, false, true, false}));
     CHECK(pro.row(DynamicsRow::RedSnare).all() != plain.row(DynamicsRow::RedSnare).all());
 }

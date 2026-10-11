@@ -400,12 +400,20 @@ TEST_CASE("with_chartmode rebuilds the settings behind every key, shuffled or no
 TEST_CASE("with_reading: reading() gives back the reading written, the rest kept") {
     Settings base;
     base.sp_cap = 7;
-    const hydra::app::ChartReading hard{hydra::Difficulty::Hard, false, false, true};
+    const hydra::ChartReading hard{hydra::Difficulty::Hard, false, false, true};
     const Settings s = base.with_reading(hard);
     CHECK(s.reading() == hard);
     CHECK(s.view_difficulty == "Hard");
     CHECK(s.sp_cap == 7);
     CHECK(base.with_reading(base.reading()).chartmode_key() == base.chartmode_key());
+}
+
+// The tests that write a bare ChartReading{} lean on this pin: change a default
+// and this case names it, instead of a dozen unrelated expectations moving.
+TEST_CASE("the default ChartReading is Expert, Pro Drums, 2x Bass, no Note Shuffle") {
+    CHECK(hydra::ChartReading{} ==
+          hydra::ChartReading{hydra::Difficulty::Expert, true, true, false});
+    CHECK(Settings{}.reading() == hydra::ChartReading{});
 }
 
 TEST_CASE("view_noteshuffle: off by default, and the INI key loads and saves it") {

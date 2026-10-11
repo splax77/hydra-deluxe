@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-#include "app/analysis.h"  // ChartReading
+#include "parse/chart_reading.h"
 #include "parse/song.h"
 #include "store/record_store.h"
 #include "store/stored_versions.h"
@@ -136,13 +136,13 @@ DynamicsBreakdown count_dynamics(const Song& song);
 // row never holds Expert's.
 constexpr bool kDynamicsParseBass2x = true;
 
-// The Dynamics count's own parse of a chart at `difficulty` and `pro`: 2x
-// kicks kept, the parser's default rules, and no notes check, so a
-// difficulty with no charting counts as all zero. `noteshuffle` is the Note
-// Shuffle switch, the same one the analysis reads (D104 item 1): a shuffled
-// note keeps its ghost or accent but can land on another pad.
-Song load_dynamics_song(const std::string& notespath, bool pro, Difficulty difficulty,
-                        bool noteshuffle = false);
+// The Dynamics count's own parse of a chart as `reading` (ChartReading, in
+// parse/chart_reading.h), with the parser's default rules and no notes check,
+// so a difficulty with no charting counts as all zero. The reading's 2x Bass
+// is overridden: the parse always uses kDynamicsParseBass2x. Its Note Shuffle
+// switch is the same one the analysis reads (D104 item 1): a shuffled note
+// keeps its ghost or accent but can land on another pad.
+Song load_dynamics_song(const std::string& notespath, const ChartReading& reading);
 
 // Whether a song an analysis parsed with `bass2x`, at the count's own
 // difficulty, pro and Note Shuffle switch, counts exactly as
@@ -156,7 +156,7 @@ bool analysis_parse_counts_dynamics(bool bass2x);
 // click's analysis parsed under the same settings, or null when it has none.
 // Pad rows follow the shuffle the analysis saw; kick rows always come from
 // the count's own parse, so the 2x kick row is known with 2x Bass off.
-// `reading` is the click's ChartReading (app/analysis.h).
+// `reading` is the click's ChartReading (parse/chart_reading.h).
 DynamicsBreakdown dynamics_for_settings(const std::string& notespath, const ChartReading& reading,
                                         const Song* analysis_song);
 
