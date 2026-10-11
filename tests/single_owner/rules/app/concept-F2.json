@@ -22,6 +22,32 @@
         "{\"__ST_SAME__\", \"sameScore\", kStatusSame},"
       ],
       "note": "A status typed by hand in C++, in the page's markup or in its script. The script reads the words through the STATUS object page_template writes from these constants."
+    },
+    {
+      "question": "How does the fill page write its \"X of Y charts\" count line?",
+      "owner": "the count line in html_page.cpp's shared script, with PAGE.total from counted",
+      "owner_file": "src/app/html_page.cpp",
+      "owner_symbol": "kReportJs",
+      "date": "2026-10-11",
+      "decision": "D114 item 4 (concept audit M05)",
+      "added_by": "concept-F2",
+      "pattern": "' of '",
+      "anchor": "' of '",
+      "must_match": [
+        "fmt(countOf(rows)) + ' of ' + fmt(countOf(ROWS)) + ' ' + PAGE.noun;",
+        "el.textContent = shown + ' of ' + total + ' charts';"
+      ],
+      "must_not_match": [
+        "return group_thousands(shown) + \" of \" + counted(total, one, many);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/html_page.cpp",
+          "line_text": "document.getElementById('count').textContent = fmt(countOf(rows)) + ' of ' + PAGE.total;",
+          "why": "the one count line; counted words its total in C++"
+        }
+      ],
+      "note": "A second count line in a page script would pick its own noun. The script's one line takes the noun with the total from C++."
     }
   ]
 }

@@ -39,7 +39,8 @@ extern const char* const kReportJs;      // sorting, filtering, drawing, first r
 // Between the data tag and PAGE it writes `const FOLD = {...};`, the
 // search_fold_table the search box folds a typed query with. Every row in
 // PAGE.rows carries `search`, its search_field text; PAGE.filter() takes no
-// query and keeps rows by the page's own controls only.
+// query and keeps rows by the page's own controls only. PAGE.total is the
+// count line's whole-table count with its noun, as counted words it.
 // The result still carries __SUBTITLE__, __FOOTER__ and __DATA__ for
 // render_page to fill.
 std::string page_template(const char* title, const char* body, const char* page_js);

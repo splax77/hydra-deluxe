@@ -356,8 +356,8 @@ TEST_CASE("fill page: the tiles add up the copies tally_fill_rows adds up") {
     CHECK(html.find("const charts = ", defined + 1) == std::string::npos);
     CHECK(html.find("  count: charts,\n") != std::string::npos);
     CHECK(html.find("const countOf = PAGE.count || (rs => rs.length);") != std::string::npos);
-    CHECK(html.find("fmt(countOf(rows)) + ' of ' + fmt(countOf(ROWS)) + ' ' + PAGE.noun;") !=
-          std::string::npos);
+    CHECK(html.find("fmt(countOf(rows)) + ' of ' + PAGE.total;") != std::string::npos);
+    CHECK(html.find("  total: \"21 charts\",\n") != std::string::npos);
     // No status counted on the page that the C++ never assigns.
     size_t counted = 0;
     for (const char* call : {"(n(STATUS.", " n(STATUS."})
@@ -406,6 +406,20 @@ TEST_CASE("build_fill_html substitutes every placeholder") {
     // Counts and deltas go through the page's shared fmt.
     CHECK(html.find(".toLocaleString()]") == std::string::npos);
     CHECK(html.find("'+' + r.delta.toLocaleString()") == std::string::npos);
+}
+
+// D114 item 4: one chart reads "1 of 1 chart", as the windows' count lines do.
+TEST_CASE("build_fill_html: the count line's total is singular at one chart") {
+    FillCompareRow r;
+    r.status = app::fill_report::kStatusSame;
+    r.copies = 1;
+    const std::string one = app::fill_report::build_fill_html({r}, "sub", "foot");
+    CHECK(one.find("  total: \"1 chart\",\n") != std::string::npos);
+    CHECK(one.find("__COUNT_TOTAL__") == std::string::npos);
+    CHECK(one.find("PAGE.noun") == std::string::npos);
+    r.copies = 1000;
+    const std::string many = app::fill_report::build_fill_html({r}, "sub", "foot");
+    CHECK(many.find("  total: \"1,000 charts\",\n") != std::string::npos);
 }
 
 TEST_CASE("build_fill_html colours and sums the delta from the status") {

@@ -387,8 +387,8 @@ function render() {
   const empty = document.getElementById('empty');
   empty.textContent = 'Nothing matches those filters.';
   empty.hidden = rows.length > 0;
-  document.getElementById('count').textContent =
-    fmt(countOf(rows)) + ' of ' + fmt(countOf(ROWS)) + ' ' + PAGE.noun;
+  // PAGE.total is every row's count with its noun, worded in C++.
+  document.getElementById('count').textContent = fmt(countOf(rows)) + ' of ' + PAGE.total;
 
   const el = document.getElementById('stats');
   el.textContent = '';

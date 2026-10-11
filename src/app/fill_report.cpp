@@ -92,7 +92,8 @@ const charts = rs => rs.reduce((a, r) => a + r.k, 0);
 
 const PAGE = {
   rows: DATA,
-  noun: 'charts',
+  // Every row's copies with their noun, from counted: "1 chart", "2 charts".
+  total: __COUNT_TOTAL__,
   count: charts,
   sortKey: 'delta',
   sortDir: -1,
@@ -349,8 +350,12 @@ std::string build_fill_html(const std::vector<FillCompareRow>& rows,
         data.push_back('}');
     }
     data.push_back(']');
-    return html::render_page(page_template().c_str(), std::move(data), subtitle,
-                             footer);
+    // The count line's total, worded by counted so one chart reads "1 of 1
+    // chart" (D114 item 4).
+    std::string total;
+    json_escape_into(total, counted(tally_fill_rows(rows).total, "chart", "charts"));
+    const std::string page = replace_all(page_template(), "__COUNT_TOTAL__", total);
+    return html::render_page(page.c_str(), std::move(data), subtitle, footer);
 }
 
 GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
