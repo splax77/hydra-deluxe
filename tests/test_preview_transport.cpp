@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-#include "app/preview_view.h"  // scrub_end_ms
+#include "app/preview_view.h"  // PlayheadRange, scrub_thumb_ms
 #include "audio/decode.h"
 #include "audio/player.h"
 #include "audio/stem_reader.h"

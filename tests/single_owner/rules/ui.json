@@ -318,11 +318,12 @@
       "date": "2026-10-04",
       "decision": "D50, D56",
       "added_by": "FX2-P",
-      "pattern": "\\btransport_?\\.length_ms\\(\\)",
-      "anchor": ".length_ms()",
+      "pattern": "\\btransport_?\\.(?:length_ms\\(\\)|range\\(\\)\\.playback_end_ms)",
+      "anchor": "transport",
       "must_match": [
         "transport_.length_ms());",
-        "return hydra::app::build_time_box(scene_, transport_.now_ms(), transport_.length_ms());"
+        "return hydra::app::build_time_box(scene_, transport_.now_ms(), transport_.length_ms());",
+        "return hydra::app::build_time_box(scene_, now, transport_.range().playback_end_ms);"
       ],
       "must_not_match": [
         "return hydra::app::build_time_box(scene_, transport_.now_ms(), playback_end_ms());",
@@ -331,7 +332,7 @@
       "owner_lines": [
         {
           "file": "src/ui/preview_controller.cpp",
-          "line_text": "double PreviewController::playback_end_ms() const { return transport_.length_ms(); }",
+          "line_text": "double PreviewController::playback_end_ms() const { return transport_.range().playback_end_ms; }",
           "why": "PreviewController::playback_end_ms, the owner"
         }
       ],

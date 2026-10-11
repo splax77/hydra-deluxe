@@ -399,9 +399,10 @@ double PreviewController::position_ms() const { return transport_.now_ms(); }
 // (app::PlayheadRange, D114 item 17).
 double PreviewController::scrub_end_ms() const { return transport_.range().scrub_end_ms; }
 
-// Where playback stops: the transport's length, the later of the last note
-// and the audio's end. Every reader in this class asks here.
-double PreviewController::playback_end_ms() const { return transport_.length_ms(); }
+// Where playback stops: the later of the last note and the audio's end. It is
+// the same range value the scrubber reads, so the time box's clock and the
+// scrubber cannot drift apart (D114 item 17). Every reader in this class asks here.
+double PreviewController::playback_end_ms() const { return transport_.range().playback_end_ms; }
 
 void PreviewController::seek_ms(double ms) { transport_.seek_ms(ms); }
 

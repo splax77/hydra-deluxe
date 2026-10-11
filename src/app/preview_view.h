@@ -272,7 +272,8 @@ struct PreviewScene {
     std::optional<SongTiming> timing;
     // The song's length, as app::song_length_ms answers it (D75), handed to
     // build_preview_base. 0 when the song has none. The SP curve closes here.
-    // The scrubber's right edge reads the same length (scrub_end_ms).
+    // The gold marks on the scrubber are placed by the same length
+    // (PlayheadRange::marks_length_ms).
     double song_length_ms = 0.0;
     bool has_notes = false;
 
