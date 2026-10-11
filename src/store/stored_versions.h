@@ -77,7 +77,8 @@ inline constexpr StampRule<std::string_view, 1> kResultsStamp{"2.4.0", {"2.4.0"}
 // became Clone Hero's song id (song_id_read, ADR 0028); before, both were the
 // MD5 of the whole container. Their saved results no longer
 // match any chart and are dropped by the next scan; the user accepted that.
-inline constexpr StampRule<int, 1> kChartMetaStamp{3, {3}};
+// 4 = every name field is trimmed once, D114 item 15.
+inline constexpr StampRule<int, 1> kChartMetaStamp{4, {4}};
 
 // A build always reads back what it writes.
 static_assert(kResultsStamp.is_current(kResultsStamp.written));

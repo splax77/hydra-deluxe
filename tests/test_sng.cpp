@@ -275,6 +275,23 @@ TEST_CASE("sng: a chart's id is the MD5 of the notes file inside it") {
     }
 }
 
+// A name field of only spaces is blank whatever the file format (D114 item
+// 15): the scan stores the same placeholder a blank song.ini field gets, and
+// padding around a name is gone from the stored text.
+TEST_CASE("sng: the scan trims each name field before the unknown-name fallback") {
+    const std::string dir = testtemp::temp_dir("sng_scan_trim");
+    write_bytes(dir + "\\padded.sng",
+                make_sng({{"name", "  Song  "}, {"artist", "\tBand "}, {"charter", " "}},
+                         {{"notes.mid", tiny_mid()}}));
+
+    auto [items, errors] = app::discover_charts({dir});
+    CHECK(errors.empty());
+    REQUIRE(items.size() == 1);
+    CHECK(items[0].title == "Song");
+    CHECK(items[0].artist == "Band");
+    CHECK(items[0].charter == "<unknown charter>");
+}
+
 // A .sng that holds no notes file has no id: the scan lists it as an error
 // instead of a chart, and a lookup by path finds nothing.
 TEST_CASE("sng: a container without a notes file is a scan error") {
