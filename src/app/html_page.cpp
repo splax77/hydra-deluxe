@@ -114,7 +114,9 @@ const char* const kEnd = "</body>\n</html>\n";
 
 }  // namespace
 
-const char* const kReportCss = R"css(:root {
+namespace {
+
+const char* const kReportCssTemplate = R"css(:root {
   color-scheme: light dark;
   --paper: #faf9f7;
   --surface: #ffffff;
@@ -134,8 +136,8 @@ const char* const kReportCss = R"css(:root {
     --paper: #101219; --surface: #171a22; --raised: #1e222c;
     --ink: #e9e7e2; --muted: #8f95a1; --rule: #282d39;
     --sp: #f0b429; --sp-soft: #3a2e12;
-    --t0: #4fbf94; --t3: #f2686b;
-    --tn: #949aa6;
+    --t0: __CHIP_T0__; --t3: __CHIP_T3__;
+    --tn: __CHIP_TN__;
     --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
   }
 }
@@ -289,6 +291,22 @@ footer p { margin: 0 0 8px; }
   td.trunc, .song { max-width: none; white-space: normal; }
 }
 )css";
+
+std::string css_hex(uint32_t rgb) {
+    char buf[8];
+    std::snprintf(buf, sizeof(buf), "#%06x", static_cast<unsigned>(rgb & 0xffffffu));
+    return buf;
+}
+
+}  // namespace
+
+const std::string& report_css() {
+    static const std::string css = replace_all(
+        replace_all(replace_all(kReportCssTemplate, "__CHIP_T0__", css_hex(kChipRgbT0)),
+                    "__CHIP_T3__", css_hex(kChipRgbT3)),
+        "__CHIP_TN__", css_hex(kChipRgbTn));
+    return css;
+}
 
 const char* const kReportJsHead = R"js(<script id="data" type="application/json">__DATA__</script>
 <script>
@@ -480,7 +498,7 @@ std::string page_template(const char* title, const char* body, const char* page_
     page += "<title>";
     page += title;
     page += "</title>\n<style>\n";
-    page += kReportCss;
+    page += report_css();
     page += "</style>\n</head>\n<body>\n";
     page += body;
     page += kReportJsHead;

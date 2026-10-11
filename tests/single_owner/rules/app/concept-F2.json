@@ -66,6 +66,26 @@
         "if (typeof x === 'string') return dir * (x < y ? -1 : (x > y ? 1 : 0));"
       ],
       "note": "Browser collation puts accents and the + against - path case in another order than the windows. The fill page sorts each text column on the folded field build_fill_html writes."
+    },
+    {
+      "question": "Which colours are the report chips' t0, t3 and tn?",
+      "owner": "the kChipRgb* constants in src/app/html_page.h",
+      "owner_file": "src/app/html_page.h",
+      "owner_symbol": "kChipRgbT0",
+      "owner_files": ["src/app/html_page.h"],
+      "date": "2026-10-11",
+      "decision": "D114 item 5 (concept audit M07)",
+      "added_by": "concept-F2",
+      "pattern": "(0x|#)(4fbf94|f2686b|949aa6)|0x(4f|f2|94)\\s*/\\s*255\\.0f?\\s*,\\s*0x(bf|68|9a)",
+      "must_match": [
+        "--t0: #4fbf94; --t3: #f2686b;",
+        "case ChipToken::tn: return ImVec4(0x94 / 255.0f, 0x9a / 255.0f, 0xa6 / 255.0f, 1.0f);"
+      ],
+      "must_not_match": [
+        "--t0: #2c7a5e; --t3: #b23c3c;",
+        "case ChipToken::t0: return opaque_rgb(app::html::kChipRgbT0);"
+      ],
+      "note": "The windows' chips and the fill page's dark scheme read one set of colours. The page's light and print schemes are its own."
     }
   ]
 }

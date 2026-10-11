@@ -83,14 +83,19 @@ TEST_CASE("theme: report chip colours read on the window background") {
     }
 }
 
-// The pages' dark-scheme tier colours, as html_page.cpp's kReportCss writes
-// them, and the dim chip as the theme's dimmed text.
+// The tier colours, which the fill page's dark scheme also writes
+// (html_page.h's kChipRgb*), and the dim chip as the theme's dimmed text.
 TEST_CASE("theme: report chip colours are the pages' and the dimmed grey") {
     using hydra::app::report::ChipToken;
     const ImVec4 t0 = chip_color(ChipToken::t0);  // #4fbf94
     CHECK(t0.x == 0x4f / 255.0f);
     CHECK(t0.y == 0xbf / 255.0f);
     CHECK(t0.z == 0x94 / 255.0f);
+    const ImVec4 t3 = chip_color(ChipToken::t3);  // #f2686b
+    CHECK(t3.x == 0xf2 / 255.0f);
+    CHECK(t3.y == 0x68 / 255.0f);
+    CHECK(t3.z == 0x6b / 255.0f);
+    CHECK(t3.w == 1.0f);
     const ImVec4 tn = chip_color(ChipToken::tn);  // #949aa6
     CHECK(tn.x == 0x94 / 255.0f);
     CHECK(tn.y == 0x9a / 255.0f);
