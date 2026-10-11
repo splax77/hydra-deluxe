@@ -254,6 +254,52 @@ TEST_CASE("graph: a squeeze choice before or after the SP end, pinned") {
     }
 }
 
+// The tick test (core::after_sp_end) and the ms test (core::paid_by_sp_walk)
+// give opposite answers for every chord near an SP end, even when the tempo
+// changes on the end tick itself. The engine's squeeze-out bank reads the
+// graph's tick answer (SqueezeChoice::late); stored squeezes keep only the
+// ms offset; this pins that the two agree. Two phrases bank two bars, the
+// fill at 2304 activates, so SP ends 4 measures later at 5376, where the
+// tempo halves from 120 to 60 BPM. Phrase chords sit 250 ms before the end,
+// on it, and 250 ms after it.
+TEST_CASE("graph: the tick and ms tests of 'after the SP end' agree across a tempo change on the end") {
+    const int64_t end_tick = 5376;
+    const Song song = test::build_tempo_song(
+        {{0, true}, {768, true}, {1536}, {2304, false, true}, {3072}, {3840}, {4608},
+         {5280, true}, {5376, true}, {5424, true}, {6144}, {6912}, {7680}},
+        {{0, 120.0}, {end_tick, 60.0}});
+    const double end_ms = tick_ms(song, end_tick);
+
+    // Tick by tick around the end: one tick before and after reads each tempo.
+    for (int64_t t = end_tick - 2; t <= end_tick + 2; ++t) {
+        CAPTURE(t);
+        const double offset = offset_from_sp_end(tick_ms(song, t), end_ms);
+        CHECK(core::after_sp_end(t, end_tick) == !core::paid_by_sp_walk(offset));
+    }
+
+    // Every squeeze choice the graph lists: its tick answer and its offset agree.
+    const ScoreGraph graph(song, 4);
+    const ScoreGraphEdge* at_end = deact_edge_at(graph, end_tick);
+    REQUIRE(at_end != nullptr);
+    std::vector<std::pair<int64_t, bool>> at_end_choices;
+    for (const SqueezeChoice& c : at_end->squeeze_choices)
+        at_end_choices.push_back({c.chord.ticks(), c.late});
+    CHECK(at_end_choices ==
+          std::vector<std::pair<int64_t, bool>>{{5280, false}, {5376, false}, {5424, true}});
+    int choices = 0;
+    for (const ScoreGraphNode* sp = test::sp_track_start(graph); sp;
+         sp = sp->adv_edge ? sp->adv_edge->dest : nullptr) {
+        const ScoreGraphEdge* e = sp->branch_edge;
+        if (!e) continue;
+        for (const SqueezeChoice& c : e->squeeze_choices) {
+            CAPTURE(c.chord.ticks());
+            CHECK(c.late == !core::paid_by_sp_walk(c.timing));
+            ++choices;
+        }
+    }
+    CHECK(choices >= 3);
+}
+
 // ---- SP cap overfill: a phrase collected mid-SP can clamp the end ------
 //
 // The meter holds a fixed number of bars. Once it's full, a phrase you

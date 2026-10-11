@@ -1041,10 +1041,11 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
     c.sp_end_time = NO_TIME;
     c.end_tail = -1;
     // A squeeze-out banks one bar when the player hits the phrase: just after
-    // SP ends for an early phrase, on its own tick for a late one.
+    // SP ends for an early phrase, on its own tick for a late one. The
+    // choice's `late` is this edge's answer to core::after_sp_end, stamped
+    // by the graph (add_deact_edge).
     const int64_t sp_end = node(e.dest).tick;
-    c.bank_tail = sq ? push_tick(banks_, -1, core::after_sp_end(sq->chord, sp_end) ? sq->chord : sp_end)
-                     : -1;
+    c.bank_tail = sq ? push_tick(banks_, -1, sq->late ? sq->chord : sp_end) : -1;
 
     c.act_tail = clone_tail(p.act_tail);
     if (c.act_tail >= 0) {
