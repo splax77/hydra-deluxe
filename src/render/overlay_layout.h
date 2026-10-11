@@ -12,12 +12,16 @@
 // its lowest row (wrap_right_box) rather than shrink every box to fit its
 // longest line.
 //
+// Every text box's size and where its lines go come from one pair,
+// measure_text_box and text_box_line_origins (D114 item 27).
+//
 // Also the "…" cut for a label too long for its space (ellipsize), measured
 // by the caller's font so it stays device-free.
 
 #ifndef HYDRA_RENDER_OVERLAY_LAYOUT_H
 #define HYDRA_RENDER_OVERLAY_LAYOUT_H
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>
@@ -71,6 +75,46 @@ struct OverlayTops {
 // fitted in one place and drawn in another.
 OverlayTops overlay_tops(const OverlayHeights& sizes, bool drain_drawn, bool score_shown);
 
+// One line of a Preview text box. A Text line is `text` at font size `size`
+// in `color`; a Stars line is the score box's star row, `filled` of its stars
+// in `color` and the rest in `off_color`, each star `size` tall. `width` is
+// the line as the caller's font measures it, and `line_h` how far below its
+// top the next line starts. Colours are packed the way the UI's draw list
+// takes them.
+struct BoxLine {
+    enum class Kind { Text, Stars };
+    Kind kind = Kind::Text;
+    std::string text;
+    float size = 0.0f;
+    uint32_t color = 0;
+    uint32_t off_color = 0;  // Stars only
+    int filled = 0;          // Stars only
+    float width = 0.0f;
+    float line_h = 0.0f;
+};
+
+// A Preview text box (the time, score, SP drain and next-activation boxes):
+// its lines, top to bottom.
+struct TextBox {
+    std::vector<BoxLine> lines;
+};
+
+// A text box's outer size, in image pixels.
+struct BoxExtent {
+    float w = 0.0f;
+    float h = 0.0f;
+};
+
+// The one size rule for every text box: its widest line and its lines'
+// heights, with `inset` between the text and the panel's edge on all four
+// sides.
+BoxExtent measure_text_box(const TextBox& box, float inset);
+
+// Where each of the box's lines starts (its top-left), for a box whose
+// top-left is `min`: every line left-aligned at the same inset that
+// measure_text_box keeps.
+std::vector<ImagePoint> text_box_line_origins(const TextBox& box, ImagePoint min, float inset);
+
 // The boxes to fit, at scale 1, in image pixels. A width of 0 means absent.
 // The right column's boxes share one right edge, left of the gauge. The tops
 // and the left column's height come from overlay_tops.
@@ -121,12 +165,13 @@ struct WrappedText {
 };
 
 // `pieces` stacked in a box whose right edge is at `right_edge` and top at
-// row `top`, with `pad` inside on every side, each piece wrapped to the room
-// at the box's lowest row (right_room, less the pads). More lines make the
-// box taller and its room smaller, so it starts unbroken and wraps again
-// until a pass adds no line; text that fits stays one line a piece.
+// row `top`, with the text box's `inset` (measure_text_box's) inside on every
+// side, each piece wrapped to the room at the box's lowest row (right_room,
+// less the insets). More lines make the box taller and its room smaller, so
+// it starts unbroken and wraps again until a pass adds no line; text that
+// fits stays one line a piece.
 WrappedText wrap_right_box(const PreviewConfig& cfg, int width, int height, float right_edge,
-                           float top, float pad, float gap, const std::vector<TextPiece>& pieces);
+                           float top, float inset, float gap, const std::vector<TextPiece>& pieces);
 
 // `text` broken at its spaces into lines no wider than `max_w`, each as wide
 // as fits (the first line takes the most words). A line keeps the text's own

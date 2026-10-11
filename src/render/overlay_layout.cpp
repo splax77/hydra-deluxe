@@ -59,6 +59,28 @@ OverlayTops overlay_tops(const OverlayHeights& s, bool drain_drawn, bool score_s
     return t;
 }
 
+BoxExtent measure_text_box(const TextBox& box, float inset) {
+    BoxExtent e;
+    for (const BoxLine& l : box.lines) {
+        e.w = std::max(e.w, l.width);
+        e.h += l.line_h;
+    }
+    e.w += inset * 2.0f;
+    e.h += inset * 2.0f;
+    return e;
+}
+
+std::vector<ImagePoint> text_box_line_origins(const TextBox& box, ImagePoint min, float inset) {
+    std::vector<ImagePoint> out;
+    out.reserve(box.lines.size());
+    float y = min.y + inset;
+    for (const BoxLine& l : box.lines) {
+        out.push_back({min.x + inset, y});
+        y += l.line_h;
+    }
+    return out;
+}
+
 float overlay_scale(const PreviewConfig& cfg, int width, int height, const OverlayBoxes& boxes,
                     float min_scale) {
     float scale = 1.0f;
@@ -130,7 +152,7 @@ std::vector<std::string> wrap_words(const std::string& text, float max_w,
 }
 
 WrappedText wrap_right_box(const PreviewConfig& cfg, int width, int height, float right_edge,
-                           float top, float pad, float gap, const std::vector<TextPiece>& pieces) {
+                           float top, float inset, float gap, const std::vector<TextPiece>& pieces) {
     auto wrap_all = [&](float max_w) {
         WrappedText out;
         for (const TextPiece& p : pieces) {
@@ -148,8 +170,8 @@ WrappedText wrap_right_box(const PreviewConfig& cfg, int width, int height, floa
     size_t passes = 1;
     for (const TextPiece& p : pieces) passes += p.text.size();
     for (size_t i = 0; i < passes; ++i) {
-        const float bottom = top + pad * 2.0f + wrapped.text_h;
-        const float room = right_room(cfg, width, height, right_edge, bottom, gap) - pad * 2.0f;
+        const float bottom = top + inset * 2.0f + wrapped.text_h;
+        const float room = right_room(cfg, width, height, right_edge, bottom, gap) - inset * 2.0f;
         WrappedText next = wrap_all(room);
         const bool grew = next.text_h > wrapped.text_h;
         wrapped = std::move(next);

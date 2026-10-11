@@ -4,6 +4,7 @@
 #include "doctest.h"
 
 #include <algorithm>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -167,6 +168,59 @@ float ten_per_char(const std::string& s) {
 }
 }  // namespace
 
+namespace {
+// A text box of `texts`, each line measured by ten_per_char and 18.75 px tall
+// (a 15 px line).
+TextBox box_of(std::initializer_list<const char*> texts) {
+    TextBox box;
+    for (const char* t : texts) {
+        BoxLine l;
+        l.text = t;
+        l.size = 15.0f;
+        l.width = ten_per_char(t);
+        l.line_h = 18.75f;
+        box.lines.push_back(l);
+    }
+    return box;
+}
+}  // namespace
+
+TEST_CASE("measure_text_box: the widest line and every line's height, with the inset all round") {
+    // The time box at 10 px inset: 23 characters is its widest line.
+    const TextBox time = box_of({"m12.3.240  of m96.3.240", "BPM 120.000 4/4"});
+    const BoxExtent e = measure_text_box(time, 10.0f);
+    CHECK(e.w == doctest::Approx(250.0f));   // 230 + 2 x 10
+    CHECK(e.h == doctest::Approx(57.5f));    // 2 x 18.75 + 2 x 10
+    // A star row is one more line, as wide as the caller measured it.
+    TextBox score = box_of({"12,345"});
+    BoxLine stars;
+    stars.kind = BoxLine::Kind::Stars;
+    stars.width = 99.0f;
+    stars.line_h = 18.75f;
+    score.lines.push_back(stars);
+    const BoxExtent s = measure_text_box(score, 10.0f);
+    CHECK(s.w == doctest::Approx(119.0f));
+    CHECK(s.h == doctest::Approx(57.5f));
+    // No lines: the inset alone.
+    CHECK(measure_text_box(TextBox{}, 10.0f).w == doctest::Approx(20.0f));
+}
+
+TEST_CASE("text_box_line_origins: the drain box's lines share one left x") {
+    // The drain box's three lines are of three widths; every one starts at
+    // the box's left edge plus the inset (D114 item 27: left-aligned, the
+    // drain box was right-aligned before), one line below the last.
+    const TextBox drain = box_of({"SP drain (if activated)", "1 bar / 4.0 s", "full meter 16.0 s"});
+    const std::vector<ImagePoint> at = text_box_line_origins(drain, {500.0f, 10.0f}, 10.0f);
+    REQUIRE(at.size() == 3);
+    for (const ImagePoint& p : at) CHECK(p.x == 510.0f);
+    CHECK(at[0].y == 20.0f);
+    CHECK(at[1].y == doctest::Approx(38.75f));
+    CHECK(at[2].y == doctest::Approx(57.5f));
+    // The last line ends the inset above the box's bottom edge.
+    const BoxExtent e = measure_text_box(drain, 10.0f);
+    CHECK(at[2].y + drain.lines[2].line_h + 10.0f == doctest::Approx(10.0f + e.h));
+}
+
 TEST_CASE("wrap_words: one line when it fits, otherwise broken at spaces") {
     const std::string detail = "at m58.1.0 \xC2\xB7 [Kick - YellowCym - GreenCym]";  // 42 characters
     const std::vector<std::string> whole = wrap_words(detail, 420.0f, ten_per_char);
@@ -256,7 +310,8 @@ TEST_CASE("wrap_right_box: one line a piece when it fits") {
     for (size_t k = 0; k < kBurnout.size(); ++k) {
         const NextBox& b = kBurnout[k];
         const std::vector<TextPiece> pieces = next_pieces(b.header, b.notation, b.detail, 1.0f);
-        const WrappedText t = wrap_right_box(cfg, w, h, w - 30.0f, 86.0f, 8.0f, 6.0f, pieces);
+        const WrappedText t = wrap_right_box(cfg, w, h, w - 30.0f, 86.0f,
+                                             cfg.text.time_box_margin, 6.0f, pieces);
         REQUIRE(t.lines.size() == 3);
         for (size_t i = 0; i < 3; ++i)
             CHECK(t.lines[i] == std::vector<std::string>{pieces[i].text});
@@ -270,7 +325,9 @@ TEST_CASE("wrap_right_box: off the lane at its lowest row, one scale for the who
     // the drain box 70 px tall at row 10, the next box under it.
     PreviewConfig cfg = shipped_preview_config();
     const int h = 450;
-    const float pad = 8.0f, gap = 6.0f, drain_top = 10.0f, drain_h = 70.0f;
+    // Every box's inset is the time box's margin (D114 item 27).
+    const float inset = cfg.text.time_box_margin;
+    const float gap = 6.0f, drain_top = 10.0f, drain_h = 70.0f;
     for (int w : {800, 620}) {
         CAPTURE(w);
         const float edge = static_cast<float>(w) - 30.0f;
@@ -283,10 +340,10 @@ TEST_CASE("wrap_right_box: off the lane at its lowest row, one scale for the who
         boxes.next_top = drain_top + drain_h + gap;
         boxes.gap = gap;
         for (const NextBox& b : kBurnout) {
-            const WrappedText t = wrap_right_box(cfg, w, h, edge, boxes.next_top, pad, gap,
+            const WrappedText t = wrap_right_box(cfg, w, h, edge, boxes.next_top, inset, gap,
                                                  next_pieces(b.header, b.notation, b.detail, 1.0f));
-            boxes.next_w = std::max(boxes.next_w, t.text_w + pad * 2.0f);
-            boxes.next_h = std::max(boxes.next_h, t.text_h + pad * 2.0f);
+            boxes.next_w = std::max(boxes.next_w, t.text_w + inset * 2.0f);
+            boxes.next_h = std::max(boxes.next_h, t.text_h + inset * 2.0f);
         }
         const float s = overlay_scale(cfg, w, h, boxes);
         REQUIRE(s > kOverlayMinScale);
@@ -294,10 +351,10 @@ TEST_CASE("wrap_right_box: off the lane at its lowest row, one scale for the who
         // keeps every line off the lane, and is no larger than reserved.
         const float top = drain_top + (drain_h + gap) * s;
         for (const NextBox& b : kBurnout) {
-            const WrappedText t = wrap_right_box(cfg, w, h, edge, top, pad * s, gap,
+            const WrappedText t = wrap_right_box(cfg, w, h, edge, top, inset * s, gap,
                                                  next_pieces(b.header, b.notation, b.detail, s));
-            const float box_h = t.text_h + pad * 2.0f * s;
-            CHECK(t.text_w + pad * 2.0f * s <= right_room(cfg, w, h, edge, top + box_h, gap) + 0.01f);
+            const float box_h = t.text_h + inset * 2.0f * s;
+            CHECK(t.text_w + inset * 2.0f * s <= right_room(cfg, w, h, edge, top + box_h, gap) + 0.01f);
             CHECK(box_h <= boxes.next_h * s + 0.01f);
             // The notation stays one line.
             CHECK(t.lines[1] == std::vector<std::string>{b.notation});
