@@ -47,7 +47,6 @@ PreviewNote note_from(const SongTimestamp& ts, const ChordNote& n) {
     pn.ghost = n.is_ghost();
     pn.accent = n.is_accent();
     pn.double_kick = n.is2x;
-    pn.solo = ts.flag_solo;
     return pn;
 }
 

@@ -1,0 +1,24 @@
+{
+  "rules": [
+    {
+      "question": "Is this Preview note inside a solo?",
+      "owner": "the timestamp's flag_solo in src/parse/song.h, grouped by Song::solo_sections",
+      "owner_file": "src/parse/song.h",
+      "owner_symbol": "flag_solo",
+      "date": "2026-10-11",
+      "decision": "D114 item 22 (M56)",
+      "added_by": "concept-audit-F5",
+      "pattern": "\\.solo\\s*=\\s*ts\\.flag_solo",
+      "must_match": [
+        "    pn.solo = ts.flag_solo;"
+      ],
+      "must_not_match": [
+        "        row.is_solo = ts.flag_solo;"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "PreviewNote::solo was a dead copy of the solo flag with no reader; the Preview's solo spans come from Song::solo_sections. A copy of the flag on a Preview note comes back only through this spelling. Decided by: D114 item 22, concept audit M56."
+    }
+  ]
+}

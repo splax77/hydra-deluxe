@@ -53,7 +53,6 @@ struct PreviewNote {
     bool ghost = false;        // dynamics: quiet
     bool accent = false;       // dynamics: loud
     bool double_kick = false;  // the 2x-kick note
-    bool solo = false;         // falls inside a solo section
 };
 
 // A shaded time span on the highway: SP phrase, solo, or activation fill. Both
