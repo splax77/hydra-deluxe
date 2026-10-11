@@ -25,16 +25,6 @@
           "why": "kFactSeparator, the owner"
         },
         {
-          "file": "src/app/analysis.cpp",
-          "line_text": "return counted(analyzed, \"analyzed\", \"analyzed\") + \" \\xC2\\xB7 \" +",
-          "why": "batch_counts_text still types the dot; analysis.cpp belonged to other tasks in wave 3, so its move to kFactSeparator is left for one of them"
-        },
-        {
-          "file": "src/app/analysis.cpp",
-          "line_text": "counted(failed, \"failed\", \"failed\") + \" \\xC2\\xB7 \" +",
-          "why": "batch_counts_text still types the dot; analysis.cpp belonged to other tasks in wave 3, so its move to kFactSeparator is left for one of them"
-        },
-        {
           "file": "src/ui/library_dialogs.cpp",
           "line_text": "line += \"  \\xC2\\xB7  Now: \" + s.current_title;",
           "why": "the running strip's one wide dot, two spaces each side; kept as shown, with a comment beside it"

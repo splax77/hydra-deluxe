@@ -20,6 +20,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "app/display_format.h"  // kFactSeparator
 #include "app/dynamics_breakdown.h"
 #include "app/preview_source.h"  // ini_delay_ms, sng_metadata_delay_ms
 #include "app/report.h"        // ReportSeed, chart_rows
@@ -782,8 +783,8 @@ int batch_worker_count() {
 }
 
 std::string batch_counts_text(int analyzed, int failed, int skipped) {
-    return counted(analyzed, "analyzed", "analyzed") + " \xC2\xB7 " +
-           counted(failed, "failed", "failed") + " \xC2\xB7 " +
+    return counted(analyzed, "analyzed", "analyzed") + kFactSeparator +
+           counted(failed, "failed", "failed") + kFactSeparator +
            counted(skipped, "skipped", "skipped") + " (already had a result)";
 }
 
