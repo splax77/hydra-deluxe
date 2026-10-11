@@ -114,7 +114,7 @@ TEST_CASE("Skipped fills: every corpus root passes over real fills in order") {
     int skipped = 0;
     for (const std::string& chart : corpus::chart_paths()) {
         const Song& song =
-            corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
+            corpus::song(chart, cfg.reading(), cfg.rules);
         if (song.is_empty()) continue;
         for (const Path& root : corpus::analyzed(chart, cfg).paths) {
             const Activation* prev = nullptr;

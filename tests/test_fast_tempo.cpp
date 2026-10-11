@@ -344,7 +344,7 @@ TEST_CASE("fast tempo: fuzzed charts analyze and their variants price as alone")
         CAPTURE(seed);
         const FuzzChart fc = fuzz_chart(seed);
         const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
-        const Song song = load_songbytes_chart(bytes, true, true);
+        const Song song = load_songbytes_chart(bytes, ChartReading{});
         const app::AnalysisSettings cfg = scores_settings(fc.cap);
         HydraRecord rec;
         if (!analyzes(song, cfg, rec)) continue;
@@ -390,7 +390,7 @@ TEST_CASE("fast tempo: two spent phrases ahead, with or without a banked one, pr
         CAPTURE(c.cap);
         const FuzzChart fc = fuzz_chart(c.seed);
         const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
-        const Song song = load_songbytes_chart(bytes, true, true);
+        const Song song = load_songbytes_chart(bytes, ChartReading{});
         const app::AnalysisSettings cfg = scores_settings(c.cap);
         HydraRecord rec;
         if (!analyzes(song, cfg, rec)) continue;

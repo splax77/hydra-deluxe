@@ -47,7 +47,7 @@ Flags chart_flags(int64_t length) {
         lines += testchart::line(t, "N 1 0");
     }
     return flags_of(load_songbytes_chart(
-        testchart::chart_bytes(testchart::section("ExpertDrums", lines), 480), true, true));
+        testchart::chart_bytes(testchart::section("ExpertDrums", lines), 480), ChartReading{}));
 }
 
 Flags mid_flags(int64_t length) {
@@ -75,7 +75,7 @@ Flags mid_flags(int64_t length) {
     }
     const std::vector<uint8_t> eot = testmidi::end_of_track();
     track.insert(track.end(), eot.begin(), eot.end());
-    return flags_of(load_songbytes_mid(testmidi::smf(track), true, true));
+    return flags_of(load_songbytes_mid(testmidi::smf(track), ChartReading{}));
 }
 
 }  // namespace
@@ -106,7 +106,7 @@ TEST_CASE("phrase end: an unsorted .chart drum section is read in tick order") {
         testchart::chart_bytes(testchart::section("ExpertDrums",
                                                   "  0 = N 0 0\n  0 = S 2 500\n  0 = S 64 500\n"
                                                   "  768 = N 1 0\n  384 = N 2 0\n  1536 = N 0 0\n")),
-        true, true);
+        ChartReading{});
     REQUIRE(song.sequence.size() == 4);
     std::vector<int64_t> ticks;
     for (const SongTimestamp& ts : song.sequence) ticks.push_back(ts.timecode.ticks());

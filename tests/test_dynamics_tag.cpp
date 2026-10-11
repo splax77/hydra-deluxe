@@ -23,7 +23,7 @@ namespace {
 Song drums(std::vector<std::vector<uint8_t>> events) {
     events.insert(events.begin(), {track_name("PART DRUMS"), set_tempo()});
     events.push_back(end_of_track());
-    return load_songbytes_mid(smf(concat(events)), true, true);
+    return load_songbytes_mid(smf(concat(events)), ChartReading{});
 }
 
 NoteDynamicType red(const Song& song, size_t i) {
@@ -109,7 +109,7 @@ TEST_CASE("dynamics tag: a tag in the EVENTS track does nothing") {
         concat({track_name("EVENTS"), set_tempo(), text_event(kTag), end_of_track()});
     const std::vector<uint8_t> part =
         concat({track_name("PART DRUMS"), note_on(97, 127), end_of_track()});
-    const Song song = load_songbytes_mid(smf_tracks({events, part}), true, true);
+    const Song song = load_songbytes_mid(smf_tracks({events, part}), ChartReading{});
     CHECK_FALSE(song.dynamics_enabled);
     CHECK(red(song, 0) == NoteDynamicType::Normal);
 }
