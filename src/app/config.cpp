@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <limits>
+#include <stdexcept>
 #include <variant>
 
 #include "core/model.h"
@@ -310,6 +311,13 @@ std::optional<Settings> Settings::with_chartmode(const std::string& chartmode) c
         }
     }
     return std::nullopt;
+}
+
+Settings Settings::with_known_chartmode(const std::string& chartmode) const {
+    std::optional<Settings> mode = with_chartmode(chartmode);
+    if (!mode)
+        throw std::runtime_error("No analysis settings give the chart mode \"" + chartmode + "\".");
+    return std::move(*mode);
 }
 
 AnalysisSettings Settings::to_analysis_settings() const {

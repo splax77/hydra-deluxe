@@ -90,7 +90,7 @@ BatchSettingsSummary batch_settings_summary(const app::Settings& s) {
     if (s.effective_bass2x()) out.difficulty += " \xC2\xB7 2x Bass";
     if (s.view_noteshuffle) out.difficulty += " \xC2\xB7 Note Shuffle";
     out.sp_cap = sp_cap_value(s) +
-                 (s.sp_cap == kCloneHeroSpCap ? " (Clone Hero's rule)" : " (a what-if)");
+                 (is_clone_hero_cap(s.sp_cap) ? " (Clone Hero's rule)" : " (a what-if)");
     out.fills = fill_rule_name(fill_rule_for(s.legacy_fills), FillRuleNameStyle::Long);
     out.score_range = score_range_value(s);
     out.path_limit = s.mslimit_enabled ? path_limit_ms_value(s) : "off";

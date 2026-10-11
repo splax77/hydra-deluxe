@@ -185,6 +185,10 @@ struct Settings {
     // wins. nullopt when no choice spells it.
     std::optional<Settings> with_chartmode(const std::string& chartmode) const;
 
+    // with_chartmode for a caller that cannot go on without the mode: throws
+    // std::runtime_error, naming the text, when no choice spells it.
+    Settings with_known_chartmode(const std::string& chartmode) const;
+
     // These settings with the eight the Analysis settings panel shows put back
     // to a default-constructed Settings': Difficulty, Pro Drums, 2x Bass, Note
     // Shuffle, the SP cap, 1.0 fills, the score range and the path limit. The

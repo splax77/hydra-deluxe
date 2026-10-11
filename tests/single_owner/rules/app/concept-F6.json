@@ -1,0 +1,45 @@
+{
+  "rules": [
+    {
+      "question": "May these settings be compared with the leaderboard? (the difficulty a caller passes)",
+      "owner": "why_not_comparable in src/app/dm_report.cpp",
+      "owner_file": "src/app/dm_report.cpp",
+      "owner_symbol": "why_not_comparable",
+      "date": "2026-10-11",
+      "decision": "D114 item 6 (concept audit M17)",
+      "added_by": "concept-F6",
+      "pattern": "why_not_comparable\\(\\s*Difficulty::Expert",
+      "must_match": [
+        "why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, lens.legacy_fills != 0,"
+      ],
+      "must_not_match": [
+        "const std::string refused = why_not_comparable(mode.difficulty(), kCloneHeroSpCap,",
+        "app::dm_report::why_not_comparable(app.settings.difficulty(), app.settings.sp_cap,"
+      ],
+      "note": "A caller that hands the gate a literal Expert instead of the difficulty it was given. collect_dm_rows did, so the comparison window's Refresh built a Hard page the toolbar refuses."
+    },
+    {
+      "question": "Is this SP cap Clone Hero's rule?",
+      "owner": "is_clone_hero_cap in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "is_clone_hero_cap",
+      "date": "2026-10-11",
+      "decision": "concept audit M17, second half (code-only)",
+      "added_by": "concept-F6",
+      "pattern": "[!=]=\\s*kCloneHeroSpCap\\b|\\bkCloneHeroSpCap\\s*[!=]=",
+      "owner_files": [
+        "src/core/model.h"
+      ],
+      "must_match": [
+        "(s.sp_cap == kCloneHeroSpCap ? \" (Clone Hero's rule)\" : \" (a what-if)\");",
+        "if (sp_cap != kCloneHeroSpCap)"
+      ],
+      "must_not_match": [
+        "inline constexpr int kCloneHeroSpCap = 4;",
+        "report::records_by_hash(store, chartmode, store::CapQuery::at(kCloneHeroSpCap), lens);",
+        "if (!is_clone_hero_cap(sp_cap))"
+      ],
+      "note": "A cap compared with Clone Hero's by hand. The batch confirm's \"(a what-if)\" and the leaderboard gate each did."
+    }
+  ]
+}
