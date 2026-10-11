@@ -537,3 +537,27 @@ The game also reads lanes during play, to make the notes under a lane easier to 
 6. **Kind F.** The derive-once review gains a sixth kind letter, F, for a second home of an idea that already has one, and a step 8 that checks every new type, enum, status word set and helper family against `CONTEXT.md`.
 7. **Status words first.** The user-visible status words of the library, the DM page and the fill page are decided as one batch of questions before the fix wave, so the fix wave is code-only.
 8. **The clue thresholds.** A repeated string counts at 12 or more characters. A struct counts at 3 or more fields, and two structs match at 4 or more shared field names. On 2026-10-11 these gave 48 clues over `src/` (the plan's phase 1 counts). The first real run of check 5 may tune them, as a reviewed change.
+
+**D114 (the concept audit's answers and the fix wave), 2026-10-11.** The user read the 21 questions in `docs/audit/2026-10-11-concept-audit/questions.md` and replied "go with recommended". Every question's recommendation is the decision, and the reply is the yes to the fix wave (D113 item 4: in waves the user can stop between). Each item names its question and finding; the question holds the predicates, examples and the case against.
+1. **Q1 (M01).** The comparison page's "not analyzed" becomes "no current result", its own definition in `dm_report.h`. The bucket and its count stay whole; a Stale chart is counted there as today.
+2. **Q2 (M02).** One spelling, "your library", wherever the comparison page writes "not in library" as a sentence, with the bare table cell kept lower case. The fill page's tile and subtitle for "in both" read "In both, not both scored".
+3. **Q3 (M03).** The fill page sorts text the way the windows do: each row carries a folded sort field from C++ and the script compares bytes. The Library sorts on the text it shows, not the stored text.
+4. **Q4 (M05).** The fill page's count line takes a singular and plural noun, so one chart reads "1 of 1 chart" (D103 item 18 on every page).
+5. **Q5 (M07).** The fill page stays HTML. C++ injects every word, noun and colour the script writes; only the loops stay in the script.
+6. **Q6 (M17).** `collect_dm_rows` reads the difficulty back from the parsed chart mode, so Refresh, Try again and "Compare another player..." refuse a non-Expert comparison with the toolbar's sentence, shown as a failed build.
+7. **Q7 (M29).** After a rescan, the open song panel re-reads its chart's entry by `row_key`, the lookup `select` uses, so the panel follows the library row.
+8. **Q8 (M73).** The rules file reads numbers through `parse_finite_number`; `nan`, `inf` and hex are reported with the rules file's usual error, for decimal and whole-number keys alike.
+9. **Q9 (M15).** `hydra_batch`'s header uses the app's names and number forms for each setting ("Score range", "Path limit", "off"). The count-with-noun mapping and the "bar"/"bars" noun get one owner each.
+10. **Q10 (M24).** One function words the batch's three counts, in the app's order and gloss ("skipped (already had a result)"), and the app and `hydra_batch` both print it.
+11. **Q11 (M72).** The command-line tools print "hydra_rules.ini has an error:" and then the loader's line. The dead `kRulesFile` text is deleted, and the app's analysis-off sentence moves into `user_messages.cpp`.
+12. **Q12 (M81).** "A batch is running." is the one sentence for that refusal, in the status line and the greyed buttons' tooltip.
+13. **Q13 (M82).** The song panel shows the toolbar's analysis-off sentence, without the file's error (the toolbar above already shows it).
+14. **Q14 (M83).** The status line keeps its short one-line form. The comparison window's failure sentence becomes "The comparison could not be built.", matching the path report's shape. The three identical path-report literals become one constant.
+15. **Q15 (M23).** Every chart name field is trimmed once in `discover_charts`, before the unknown-name fallbacks, whatever the file format. The chart-metadata stamp is bumped so every chart's metadata is re-read on the next scan (one rule for stored versions: `src/store/stored_versions.h`, ADR 0018).
+16. **Q16 (M31).** The Paths tab's "Notes:" label stays as it is.
+17. **Q17 (M47).** The Preview's scrubber spans no further than playback can reach (the shorter of the song length and the playback end). The scrubber, the thumb and the shown time read one range value from the transport. The gold marks stay placed by the song length.
+18. **Q18 (M50).** The Preview's end labels stay as they are; the User Guide's explanation of the clock stands (D56 item 3).
+19. **Q19 (M66).** Mapped audio files keep the stricter share mode, and a comment states the reason at the open.
+20. **Q20 (M74).** Writing a file through a temporary file and a rename becomes one helper, and the settings file is saved through it.
+21. **Q21 (M77).** Both landing orders stay: a finished report keeps its result after a late Cancel, and a click's analysis is dropped. One shared outcome function holds the rule, with the click's exception written beside it.
+22. **The code-only findings.** Every finding the questions file lists as code-only is fixed with the owner its verifier proposed; none was vetoed. That includes M52's visible side effect: the Preview's jump buttons grey during a load, where today they are live and do nothing.
