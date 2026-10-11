@@ -174,7 +174,8 @@ inline const hydra::Song& song(const std::string& path, bool pro, bool bass2x,
     detail::Outcome<hydra::Song>& o = it->second;
     if (fresh) {
         try {
-            o.value.emplace(hydra::load_songpath(path, pro, bass2x, difficulty, rules));
+            o.value.emplace(hydra::load_songpath(
+                path, hydra::ChartReading{difficulty, pro, bass2x, false}, rules));
         } catch (...) {
             o.error = std::current_exception();
         }
@@ -253,8 +254,8 @@ inline const hydra::HydraRecord& analyzed(const std::string& path,
     return *o.value;
 }
 
-// The same for a loop that holds plain SearchSettings and parses with
-// load_songpath(path, true, true): pro drums, 2x bass, Expert.
+// The same for a loop that holds plain SearchSettings and parses with a
+// default ChartReading (parse/chart_reading.h).
 inline const hydra::HydraRecord& analyzed(const std::string& path,
                                           const hydra::SearchSettings& settings) {
     hydra::app::AnalysisSettings a;

@@ -157,7 +157,7 @@ TEST_CASE("dynamics_breakdown: played_total includes/excludes 2x kick") {
 TEST_CASE("dynamics_breakdown: Alpha Wolf - Acid Romance (real chart)") {
     const std::string path =
         corpus::root() + "/common/IB24/T3/Alpha Wolf - Acid Romance/notes.mid";
-    const Song song = load_songpath_mid(path, /*pro=*/true, /*bass2x=*/true);
+    const Song song = load_songpath_mid(path, ChartReading{Difficulty::Expert, true, true, false});
     const DynamicsBreakdown bd = count_dynamics(song);
 
     CHECK(bd.dynamics_enabled);
@@ -208,7 +208,7 @@ TEST_CASE("dynamics_breakdown: Alpha Wolf - Acid Romance (real chart)") {
 TEST_CASE("dynamics_breakdown: no ENABLE_CHART_DYNAMICS tag") {
     const std::string path =
         corpus::root() + "/test_flammarker/flammarker_authored.mid";
-    const Song song = load_songpath_mid(path, /*pro=*/true, /*bass2x=*/true);
+    const Song song = load_songpath_mid(path, ChartReading{Difficulty::Expert, true, true, false});
 
     CHECK_FALSE(song.dynamics_enabled);
 
@@ -357,7 +357,7 @@ TEST_CASE("dynamics_breakdown: every row's counts on The Decade Of Statues, pinn
         corpus::root() +
         "/common/Summer Blast _25 Setlist/Tier 6/"
         "Between the Buried and Me - (B) The Decade Of Statues/notes.mid";
-    const Song song = load_songpath_mid(path, /*pro=*/true, /*bass2x=*/true);
+    const Song song = load_songpath_mid(path, ChartReading{Difficulty::Expert, true, true, false});
     const DynamicsBreakdown bd = count_dynamics(song);
 
     struct Expect {
@@ -403,10 +403,9 @@ TEST_CASE("dynamics_breakdown: the rules never change a chart's Dynamics count")
                 CAPTURE(path);
                 CAPTURE(pro);
                 CAPTURE(static_cast<int>(difficulty));
-                const Song base = load_songpath(path, pro, kDynamicsParseBass2x, difficulty,
-                                                core::default_rules());
-                const Song moved =
-                    load_songpath(path, pro, kDynamicsParseBass2x, difficulty, other);
+                const ChartReading reading{difficulty, pro, kDynamicsParseBass2x, false};
+                const Song base = load_songpath(path, reading, core::default_rules());
+                const Song moved = load_songpath(path, reading, other);
                 REQUIRE(base.sequence.size() == moved.sequence.size());
                 for (size_t i = 0; i < base.sequence.size(); ++i)
                     if (base.sequence[i].activation_length != moved.sequence[i].activation_length) {

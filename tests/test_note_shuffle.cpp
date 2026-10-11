@@ -80,7 +80,8 @@ const std::string kSongs =
     (sourcetree::root() / "docs/audit/note-shuffle/game-tests/songs/").u8string();
 
 Song load_game_song(const std::string& folder, const char* file, bool pro) {
-    return load_songpath(kSongs + folder + "/" + file, pro, /*bass2x=*/false, Difficulty::Expert);
+    return load_songpath(kSongs + folder + "/" + file,
+                         ChartReading{Difficulty::Expert, pro, /*bass2x=*/false, false});
 }
 
 struct GameSong {

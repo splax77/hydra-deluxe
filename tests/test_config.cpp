@@ -400,7 +400,7 @@ TEST_CASE("with_chartmode rebuilds the settings behind every key, shuffled or no
 TEST_CASE("with_reading: reading() gives back the reading written, the rest kept") {
     Settings base;
     base.sp_cap = 7;
-    const hydra::app::ChartReading hard{hydra::Difficulty::Hard, false, false, true};
+    const hydra::ChartReading hard{hydra::Difficulty::Hard, false, false, true};
     const Settings s = base.with_reading(hard);
     CHECK(s.reading() == hard);
     CHECK(s.view_difficulty == "Hard");

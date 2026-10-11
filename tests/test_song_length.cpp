@@ -42,7 +42,8 @@ ScanItem scan_one(const std::string& notespath) {
 // the scan's timing and the chart parsed once.
 std::optional<double> length_after_scan(const std::string& notespath) {
     const ScanItem item = scan_one(notespath);
-    const hydra::Song song = hydra::load_songpath(notespath, true, true);
+    const hydra::Song song =
+        hydra::load_songpath(notespath, hydra::ChartReading{Difficulty::Expert, true, true, false});
     return hydra::app::chart_song_length_ms(*item.timing, notespath, song, Difficulty::Expert,
                                             true, hydra::core::default_rules());
 }
@@ -106,14 +107,16 @@ TEST_CASE("song length: the backup reads the Expert chart with 2x kick, whatever
     const hydra::core::Rules& rules = hydra::core::default_rules();
 
     // Analyzed with 2x off: the 2x kick still ends the song.
-    const hydra::Song no_2x = hydra::load_songpath(notes, true, false);
+    const hydra::Song no_2x =
+        hydra::load_songpath(notes, hydra::ChartReading{Difficulty::Expert, true, false, false});
     std::optional<double> length = hydra::app::chart_song_length_ms(
         none, notes, no_2x, Difficulty::Expert, false, rules);
     REQUIRE(length.has_value());
     CHECK(*length == 200.0);
 
     // Analyzed at Hard: the Expert chart still ends the song.
-    const hydra::Song hard = hydra::load_songpath(notes, true, true, Difficulty::Hard);
+    const hydra::Song hard =
+        hydra::load_songpath(notes, hydra::ChartReading{Difficulty::Hard, true, true, false});
     length = hydra::app::chart_song_length_ms(none, notes, hard, Difficulty::Hard, true, rules);
     REQUIRE(length.has_value());
     CHECK(*length == 200.0);

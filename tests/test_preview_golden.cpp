@@ -103,7 +103,7 @@ std::vector<uint8_t> render_chart(const std::string& chart, double time_ms, int 
         const Path* best = r.record.paths.empty() ? nullptr : &r.record.best_path();
         scene = app::build_preview_scene(r.song, best);
     } catch (const std::exception&) {
-        scene = app::build_preview_scene(load_songpath(chart, pro, bass2x), nullptr);
+        scene = app::build_preview_scene(load_songpath(chart, settings.reading()), nullptr);
     }
 
     PreviewRenderer r(dev.Get(), ctx.Get(), HYDRA_ASSET_DIR);

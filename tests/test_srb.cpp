@@ -53,6 +53,9 @@ using testsrb::make_metadata;
 using testsrb::make_srb;
 using testsong::songs_equal;
 
+// What the loaders below read: Expert, Pro Drums, 2x Bass, no Note Shuffle.
+const ChartReading kProBass2x{Difficulty::Expert, true, true, false};
+
 // No Known Suspects.srb's stored checksum, which Clone Hero's songcache.bin
 // and dmleaderboards use as its id. Only these 16 bytes are taken from the
 // real file; the containers around them are synthetic.
@@ -83,8 +86,8 @@ TEST_CASE("srb: a wrapped chart parses identically to the loose file") {
         std::string path = fixture_dir() + "\\wrapped" + c.ext + ".srb";
         write_bytes(path, srb);
 
-        Song direct = load_songpath(src, true, true);
-        Song via_srb = load_songpath(path, true, true);
+        Song direct = load_songpath(src, kProBass2x);
+        Song via_srb = load_songpath(path, kProBass2x);
         CHECK_MESSAGE(songs_equal(direct, via_srb), src);
     }
 }
@@ -97,15 +100,15 @@ TEST_CASE("srb: an unexpected notes filename falls back to payload sniffing") {
     std::string path = fixture_dir() + "\\sniffed.srb";
     write_bytes(path, srb);
 
-    Song direct = load_songpath(src, true, true);
-    Song via_srb = load_songpath_srb(path, true, true);
+    Song direct = load_songpath(src, kProBass2x);
+    Song via_srb = load_songpath_srb(path, kProBass2x);
     CHECK(songs_equal(direct, via_srb));
 }
 
 TEST_CASE("srb: malformed containers throw instead of crashing") {
     std::string tiny = fixture_dir() + "\\tiny.srb";
     write_bytes(tiny, {1, 2, 3});
-    CHECK_THROWS_AS(load_songpath_srb(tiny, true, true),
+    CHECK_THROWS_AS(load_songpath_srb(tiny, kProBass2x),
                     std::runtime_error);
 
     std::string garbage = fixture_dir() + "\\garbage.srb";
@@ -113,7 +116,7 @@ TEST_CASE("srb: malformed containers throw instead of crashing") {
     for (size_t i = 0; i < junk.size(); ++i)
         junk[i] = static_cast<uint8_t>(i * 37 + 11);
     write_bytes(garbage, junk);
-    CHECK_THROWS_AS(load_songpath_srb(garbage, true, true),
+    CHECK_THROWS_AS(load_songpath_srb(garbage, kProBass2x),
                     std::runtime_error);
 
     // Metadata stream present but the notes stream is cut off mid-way.
@@ -123,7 +126,7 @@ TEST_CASE("srb: malformed containers throw instead of crashing") {
     whole.resize(whole.size() / 2);
     std::string truncated = fixture_dir() + "\\truncated.srb";
     write_bytes(truncated, whole);
-    CHECK_THROWS_AS(load_songpath_srb(truncated, true, true),
+    CHECK_THROWS_AS(load_songpath_srb(truncated, kProBass2x),
                     std::runtime_error);
 }
 
@@ -204,7 +207,7 @@ TEST_CASE("srb: the note loader reads the metadata and notes streams, not the re
 
     uint64_t bytes_read = 0;
     const Song via_reads = load_songpath_reading(
-        testbytes::counting(file_byte_source(path), bytes_read), path, true, true);
+        testbytes::counting(file_byte_source(path), bytes_read), path, kProBass2x);
     CHECK(songs_equal(via_reads, load_songbytes_srb(srb, true, true)));
     CHECK(bytes_read < (2u << 20));
 }
@@ -441,7 +444,7 @@ TEST_CASE("srb: one reader gives the metadata and where the notes stream starts"
     const std::vector<uint8_t> notebytes =
         srb_inflate_stream_reading(memory_byte_source(srb), got.notes_offset, kSrbMaxStream,
                                    nullptr);
-    CHECK(songs_equal(load_songbytes_mid(notebytes, true, true), load_songpath(src, true, true)));
+    CHECK(songs_equal(load_songbytes_mid(notebytes, true, true), load_songpath(src, kProBass2x)));
 
     // Only a header, or junk where the metadata should be: it throws.
     const std::vector<uint8_t> header_only(srb.begin(), srb.begin() + kSrbHeaderSize);

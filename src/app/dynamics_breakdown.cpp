@@ -134,8 +134,8 @@ DynamicsBreakdown count_dynamics(const Song& song) {
 
 Song load_dynamics_song(const std::string& notespath, bool pro, Difficulty difficulty,
                         bool noteshuffle) {
-    return load_songpath(notespath, pro, kDynamicsParseBass2x, difficulty,
-                         core::default_rules(), noteshuffle);
+    return load_songpath(notespath,
+                         ChartReading{difficulty, pro, kDynamicsParseBass2x, noteshuffle});
 }
 
 bool analysis_parse_counts_dynamics(bool bass2x) { return bass2x == kDynamicsParseBass2x; }
@@ -153,9 +153,7 @@ DynamicsBreakdown dynamics_for_settings(const std::string& notespath, const Char
     if (!pads_differ) return bd;
     const DynamicsBreakdown pads = count_dynamics(
         analysis_song ? *analysis_song
-                      : load_songpath(notespath, reading.prodrums, reading.bass2x,
-                                      reading.difficulty, core::default_rules(),
-                                      reading.noteshuffle));
+                      : load_songpath(notespath, reading));
     for (size_t i = 0; i < bd.rows.size(); ++i)
         if (is_pad_row(static_cast<DynamicsRow>(i))) bd.rows[i] = pads.rows[i];
     return bd;

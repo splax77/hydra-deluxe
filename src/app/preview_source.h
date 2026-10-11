@@ -29,8 +29,8 @@
 #include <string>
 #include <vector>
 
-#include "app/analysis.h"  // ChartReading
 #include "core/rules.h"
+#include "parse/chart_reading.h"
 #include "parse/song.h"
 
 namespace hydra::app {
@@ -100,7 +100,8 @@ struct PreviewSong {
     double audio_offset_ms = 0.0;  // as PreviewSource::audio_offset_ms
 };
 // `container` is read_preview_container's result for the same notespath.
-// `reading` is which notes to read the chart as (app::ChartReading).
+// `reading` is which notes to read the chart as (ChartReading, in
+// parse/chart_reading.h).
 PreviewSong resolve_preview_song(const std::string& notespath, const SharedBytes& container,
                                  const ChartReading& reading,
                                  const core::Rules& rules = core::default_rules());

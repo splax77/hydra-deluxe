@@ -121,7 +121,8 @@ std::string small_chart() {
             if (hydra::chart_format_of(p) != hydra::ChartFormat::Chart) continue;
             const uintmax_t size = fs::file_size(fs::u8path(p));
             if (size >= best_size) continue;
-            const hydra::Song song = hydra::load_songpath(p, true, true);
+            const hydra::Song song = hydra::load_songpath(
+                p, hydra::ChartReading{hydra::Difficulty::Expert, true, true, false});
             if (song.is_empty() || song.sp_phrase_count() < 2) continue;
             best = p;
             best_size = size;

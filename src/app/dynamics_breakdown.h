@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-#include "app/analysis.h"  // ChartReading
+#include "parse/chart_reading.h"
 #include "parse/song.h"
 #include "store/record_store.h"
 #include "store/stored_versions.h"
@@ -156,7 +156,7 @@ bool analysis_parse_counts_dynamics(bool bass2x);
 // click's analysis parsed under the same settings, or null when it has none.
 // Pad rows follow the shuffle the analysis saw; kick rows always come from
 // the count's own parse, so the 2x kick row is known with 2x Bass off.
-// `reading` is the click's ChartReading (app/analysis.h).
+// `reading` is the click's ChartReading (parse/chart_reading.h).
 DynamicsBreakdown dynamics_for_settings(const std::string& notespath, const ChartReading& reading,
                                         const Song* analysis_song);
 

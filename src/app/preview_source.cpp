@@ -350,11 +350,8 @@ SharedBytes read_preview_container(const FileBytesReader& read_bytes,
 
 PreviewSong resolve_preview_song(const std::string& notespath, const SharedBytes& container,
                                  const ChartReading& reading, const core::Rules& rules) {
-    PreviewSong out{container ? load_songpath_from_bytes(notespath, *container, reading.prodrums,
-                                                         reading.bass2x, reading.difficulty, rules,
-                                                         reading.noteshuffle)
-                              : load_songpath(notespath, reading.prodrums, reading.bass2x,
-                                              reading.difficulty, rules, reading.noteshuffle)};
+    PreviewSong out{container ? load_songpath_from_bytes(notespath, *container, reading, rules)
+                              : load_songpath(notespath, reading, rules)};
     out.audio_offset_ms = chart_audio_offset_ms(notespath, container, out.song.chart_offset_s);
     return out;
 }

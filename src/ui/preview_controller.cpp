@@ -77,7 +77,7 @@ void drop_finished(std::vector<std::unique_ptr<Job>>& retired) {
 PreviewController::~PreviewController() { close(); }
 
 void PreviewController::open(const store::ChartLibraryEntry& entry,
-                             const app::ChartReading& reading, const Path* path,
+                             const ChartReading& reading, const Path* path,
                              const std::string& path_key, int sp_cap,
                              const core::Rules& rules) {
     rules_ = rules;

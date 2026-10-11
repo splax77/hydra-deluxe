@@ -266,10 +266,9 @@ TEST_CASE("containers pass the difficulty through to the chart inside") {
     }
 
     // The same, straight through the loaders (no preview resolution involved).
-    CHECK(load_songpath_sng(sng, true, true, Difficulty::Hard).sequence.size() ==
-          multidiff::kHardChords);
-    CHECK(load_songpath_srb(srb, true, true, Difficulty::Hard).sequence.size() ==
-          multidiff::kHardChords);
+    const ChartReading hard{Difficulty::Hard, true, true, false};
+    CHECK(load_songpath_sng(sng, hard).sequence.size() == multidiff::kHardChords);
+    CHECK(load_songpath_srb(srb, hard).sequence.size() == multidiff::kHardChords);
 }
 
 TEST_CASE("read_ini_delay_ms reads song.ini delay in milliseconds") {
@@ -507,8 +506,9 @@ TEST_CASE("container charts give the same Song, stems and offset as the chart in
             const Song expected = c.is_mid ? load_songbytes_mid(mid, true, true, d)
                                            : load_songbytes_chart(chart, true, true, d);
             const std::string want = song_text(expected);
-            CHECK(song_text(load_songpath(path, true, true, d)) == want);
-            CHECK(song_text(load_songpath_from_bytes(path, c.container, true, true, d)) == want);
+            const ChartReading reading{d, true, true, false};
+            CHECK(song_text(load_songpath(path, reading)) == want);
+            CHECK(song_text(load_songpath_from_bytes(path, c.container, reading)) == want);
 
             const PreviewSource src = resolve_preview_source(path, true, true, d);
             CHECK(song_text(src.song) == want);

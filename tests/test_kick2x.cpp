@@ -95,7 +95,8 @@ TEST_CASE("Dynamics: Car Bomb - The Sentinel at Hard counts Hard's own kicks") {
     const std::string path =
         corpus::root() + "/common/IB24/T7/Car Bomb - The Sentinel/notes.mid";
     const app::DynamicsBreakdown bd = app::count_dynamics(
-        load_songpath(path, /*pro=*/true, app::kDynamicsParseBass2x, Difficulty::Hard));
+        load_songpath(path, ChartReading{Difficulty::Hard, /*prodrums=*/true,
+                                         app::kDynamicsParseBass2x, false}));
     CHECK(bd.row(DynamicsRow::Kick).all() == 1147);
     CHECK(bd.row(DynamicsRow::Kick2x).all() == 0);
     CHECK(bd.played_total(true).all() == 2038);
@@ -138,10 +139,12 @@ TEST_CASE("a 2x kick and a normal kick on one tick read as Clone Hero played son
         CAPTURE(file);
         for (bool pro : {true, false}) {
             CAPTURE(pro);
-            const Song off = load_songpath(dir + file, pro, /*bass2x=*/false);
+            const Song off = load_songpath(
+                dir + file, ChartReading{Difficulty::Expert, pro, /*bass2x=*/false, false});
             CHECK(kick_row(off) == "n.......n");
             CHECK(note_total(off) == 11);
-            const Song on = load_songpath(dir + file, pro, /*bass2x=*/true);
+            const Song on = load_songpath(
+                dir + file, ChartReading{Difficulty::Expert, pro, /*bass2x=*/true, false});
             CHECK(kick_row(on) == "n.x.x.x.n");
             CHECK(note_total(on) == 14);
         }

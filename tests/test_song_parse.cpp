@@ -36,6 +36,12 @@ using namespace hydra;
 
 namespace {
 
+// Pro Drums and 2x Bass at `difficulty`, no Note Shuffle: what most loads
+// below read.
+ChartReading pro_bass2x(Difficulty difficulty = Difficulty::Expert) {
+    return ChartReading{difficulty, true, true, false};
+}
+
 // Whether check_invariants checks that every activation fill is positive. A
 // chart with a fill starting on its own last note has a 0-length activation,
 // so its case skips that one check.
@@ -87,7 +93,7 @@ TEST_CASE("a parsed song keeps no spare room in its chord list") {
     // not through corpus::song's cache.
     int nonempty = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song song = load_songpath(path, true, true);
+        const Song song = load_songpath(path, pro_bass2x());
         if (song.is_empty()) continue;
         ++nonempty;
         CHECK_MESSAGE(song.sequence.capacity() == song.sequence.size(), path);
@@ -168,16 +174,16 @@ TEST_CASE(".mid: each difficulty reads its own pitch base") {
     int compared = 0, differed = 0;
     for (const std::string& path : corpus::chart_paths()) {
         if (chart_format_of(path) != ChartFormat::Mid) continue;
-        Song expert = load_songpath_mid(path, true, true);
-        Song hard = load_songpath_mid(path, true, true, Difficulty::Hard);
+        Song expert = load_songpath_mid(path, pro_bass2x());
+        Song hard = load_songpath_mid(path, pro_bass2x(Difficulty::Hard));
         if (hard.is_empty()) continue;
         ++compared;
         if (hard.sequence.size() != expert.sequence.size()) ++differed;
         check_invariants(hard, path + " [Hard]");
         // Medium and Easy sit at their own bases and must not throw either.
-        check_invariants(load_songpath_mid(path, true, true, Difficulty::Medium),
+        check_invariants(load_songpath_mid(path, pro_bass2x(Difficulty::Medium)),
                          path + " [Medium]");
-        check_invariants(load_songpath_mid(path, true, true, Difficulty::Easy),
+        check_invariants(load_songpath_mid(path, pro_bass2x(Difficulty::Easy)),
                          path + " [Easy]");
         if (compared >= 5) break;  // a handful is enough; the sweep covers the rest
     }
@@ -366,7 +372,7 @@ TEST_CASE("drum lanes: the testdata lanes, with the pads Clone Hero lights") {
     };
     for (const Want& w : wants) {
         CAPTURE(w.file);
-        const Song song = load_songpath(common_chart(w.file), true, true, w.difficulty);
+        const Song song = load_songpath(common_chart(w.file), pro_bass2x(w.difficulty));
         const DrumLane* lane = lane_at(song, w.start);
         REQUIRE(lane != nullptr);
         CHECK(lane->end_tick == w.end);
@@ -377,14 +383,14 @@ TEST_CASE("drum lanes: the testdata lanes, with the pads Clone Hero lights") {
     // Every lane line in each .chart's ExpertDrums section starts on a note,
     // so none is dropped: two in Apex, eight in Victoria - Grow, one in The
     // Agonist.
-    CHECK(load_songpath(common_chart(wants[0].file), true, true).drum_lanes.size() == 2);
-    CHECK(load_songpath(common_chart(wants[1].file), true, true).drum_lanes.size() == 8);
-    CHECK(load_songpath(common_chart(wants[2].file), true, true).drum_lanes.size() == 1);
+    CHECK(load_songpath(common_chart(wants[0].file), pro_bass2x()).drum_lanes.size() == 2);
+    CHECK(load_songpath(common_chart(wants[1].file), pro_bass2x()).drum_lanes.size() == 8);
+    CHECK(load_songpath(common_chart(wants[2].file), pro_bass2x()).drum_lanes.size() == 1);
 
     // Both .mid lanes are velocity 96, Expert only: Hard shows neither.
     for (const Want& w : {wants[3], wants[4]}) {
         CAPTURE(w.file);
-        const Song hard = load_songpath(common_chart(w.file), true, true, Difficulty::Hard);
+        const Song hard = load_songpath(common_chart(w.file), pro_bass2x(Difficulty::Hard));
         CHECK(lane_at(hard, w.start) == nullptr);
     }
 }
@@ -490,9 +496,10 @@ TEST_CASE("drum lanes keep the chart's own pads with Note Shuffle on") {
     // Clone Hero builds them, so they come out the same.
     const std::string path =
         common_chart("Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart");
-    const Song plain = load_songpath(path, true, true);
+    const Song plain = load_songpath(path, pro_bass2x());
     const Song shuffled =
-        load_songpath(path, true, true, Difficulty::Expert, core::default_rules(), true);
+        load_songpath(path, ChartReading{Difficulty::Expert, true, true, /*noteshuffle=*/true},
+                      core::default_rules());
     REQUIRE(plain.drum_lanes.size() == 8);
     REQUIRE(shuffled.drum_lanes.size() == plain.drum_lanes.size());
     for (size_t i = 0; i < plain.drum_lanes.size(); ++i) {
@@ -706,7 +713,7 @@ TEST_CASE("mid: Won't Get Fooled Again (O) has 36 ghost kicks") {
     // on Hydra's own path scored 1,142,235. 36 velocity-1 kicks, no accents.
     const std::string path =
         corpus::testdata_root() + "/midi/wgfa_onyxite/notes.mid";
-    Song song = load_songpath(path, true, true, Difficulty::Expert);
+    Song song = load_songpath(path, pro_bass2x(Difficulty::Expert));
     REQUIRE(!song.is_empty());
 
     int ghost = 0, accent = 0, kicks = 0;
@@ -986,9 +993,9 @@ TEST_CASE("load-and-check throws the no-notes error for a missing difficulty") {
     CAPTURE(no_hard);
     CAPTURE(has_hard);
 
-    CHECK_THROWS_WITH_AS(load_songpath_with_notes(no_hard, true, true, Difficulty::Hard),
+    CHECK_THROWS_WITH_AS(load_songpath_with_notes(no_hard, pro_bass2x(Difficulty::Hard)),
                          "No Hard Pro Drums notes in this chart.", NoNotesError);
-    CHECK_NOTHROW(load_songpath_with_notes(has_hard, true, true, Difficulty::Hard));
+    CHECK_NOTHROW(load_songpath_with_notes(has_hard, pro_bass2x(Difficulty::Hard)));
 }
 
 // ---- the Note Shuffle switch on the loaders (D104) ---------------------------
@@ -1005,8 +1012,8 @@ std::vector<std::string> chord_codes(const Song& song) {
 }
 
 Song load_shuffle_song(const std::string& file, bool pro, bool bass2x, bool noteshuffle) {
-    return load_songpath(kShuffleSongs + file, pro, bass2x, Difficulty::Expert,
-                         core::default_rules(), noteshuffle);
+    return load_songpath(kShuffleSongs + file,
+                         ChartReading{Difficulty::Expert, pro, bass2x, noteshuffle});
 }
 
 }  // namespace
@@ -1021,7 +1028,8 @@ TEST_CASE("Note Shuffle switch: a game-confirmed song loads shuffled on and as w
     CHECK(chord_codes(load_shuffle_song(a1, true, false, true)) == shuffled);
 
     const std::vector<std::string> off = chord_codes(load_shuffle_song(a1, true, false, false));
-    CHECK(off == chord_codes(load_songpath(kShuffleSongs + a1, true, false)));
+    CHECK(off == chord_codes(load_songpath(kShuffleSongs + a1,
+                                           ChartReading{Difficulty::Expert, true, false, false})));
     CHECK(off != shuffled);
 
     // The app's switch reaches the analysis settings.

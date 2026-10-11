@@ -93,6 +93,9 @@ using test::lone_pricing_mismatch;
 // A root's tied variants, depth-first (record_fixtures.h).
 using test::collect_tied;
 
+// What the loaders below read: Expert, Pro Drums, 2x Bass, no Note Shuffle.
+const ChartReading kProBass2x{Difficulty::Expert, true, true, false};
+
 }  // namespace
 
 using test::deact_edge_at;
@@ -192,7 +195,7 @@ TEST_CASE("tied variants: a variant folded mid-SP takes its leader's closing SqI
 TEST_CASE("tied variants: a path that banked its leader's SqIn phrase is not folded into it") {
     const Song song = load_songpath(corpus::root() +
                                         "/test_folded_sqin/folded_sqin.chart",
-                                    true, true);
+                                    kProBass2x);
     const app::AnalysisSettings cfg = test::scores_settings(4);
     HydraRecord rec;
     REQUIRE_NOTHROW(rec = analyze_chart(song, cfg));
@@ -231,7 +234,7 @@ TEST_CASE("tied variants: the banked-phrase charts analyze and every variant pri
     for (const char* name : {"folded_sqin.chart", "relabel_case.chart"}) {
         CAPTURE(name);
         const Song song = load_songpath(
-            corpus::root() + "/test_folded_sqin/" + name, true, true);
+            corpus::root() + "/test_folded_sqin/" + name, kProBass2x);
         HydraRecord rec;
         REQUIRE_NOTHROW(rec = analyze_chart(song, cfg));
         for (const Path* p : rec.all_paths()) {
@@ -278,7 +281,7 @@ TEST_CASE("clamped_sqin charts: every squeeze-out ends SP at the end its record 
     for (const std::string name : {"clamped_sqin_a.chart", "clamped_sqin_b.chart"}) {
         CAPTURE(name);
         const Song song = load_songpath(
-            corpus::root() + "/test_folded_sqin/" + name, true, true);
+            corpus::root() + "/test_folded_sqin/" + name, kProBass2x);
         HydraRecord rec;
         REQUIRE_NOTHROW(rec = analyze_chart(song, cfg));
         int sqouts = 0;
@@ -307,7 +310,7 @@ TEST_CASE("clamped_sqin charts: every squeeze-out ends SP at the end its record 
 // chart has a phrase on an activation chord (13824), the edge case.
 TEST_CASE("banked_phrase_in_reach banks exactly what activation_can_squeeze refuses") {
     const Song song = load_songpath(
-        corpus::root() + "/test_folded_sqin/folded_sqin.chart", true, true);
+        corpus::root() + "/test_folded_sqin/folded_sqin.chart", kProBass2x);
     const std::vector<SongTimestamp>& seq = song.sequence;
     int on_activation_chord = 0;
     for (const SongTimestamp& act : seq) {
@@ -341,7 +344,7 @@ TEST_CASE("banked_phrase_in_reach banks exactly what activation_can_squeeze refu
 // here there is none. The chart is hand-made (120 BPM, resolution 480).
 TEST_CASE("squeeze rule: twin SP ends a tick apart squeeze one phrase in once") {
     const Song song = load_songpath(
-        corpus::root() + "/test_folded_sqin/twin_end_nodes.chart", true, true);
+        corpus::root() + "/test_folded_sqin/twin_end_nodes.chart", kProBass2x);
     const app::AnalysisSettings cfg = test::scores_settings(2);
     HydraRecord rec;
     REQUIRE_NOTHROW(rec = analyze_chart(song, cfg));
@@ -366,7 +369,7 @@ TEST_CASE("squeeze rule: twin SP ends a tick apart squeeze one phrase in once") 
 // search (search_target) of its own activation, so no fold hides it.
 TEST_CASE("squeeze rule: twin SP ends a tick apart each squeeze only their own path") {
     const Song song = load_songpath(
-        corpus::root() + "/test_folded_sqin/twin_end_nodes.chart", true, true);
+        corpus::root() + "/test_folded_sqin/twin_end_nodes.chart", kProBass2x);
     const app::AnalysisSettings cfg = test::scores_settings(2);
     const ScoreGraph graph(song, 2);
     CHECK(deact_edge_at(graph, 30720) != nullptr);

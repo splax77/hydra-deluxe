@@ -5,7 +5,9 @@
 // meter maps. The MidiParser and ChartParser live in the .cpp; callers use the
 // load_songpath_* functions.
 //
-// Every load_* function takes the difficulty to read and defaults to Expert.
+// Every load_songpath* function takes a ChartReading (parse/chart_reading.h):
+// which notes to read. It has no default, so every caller says which reading
+// it means. The load_songbytes_* functions still take the choices one by one.
 
 #ifndef HYDRA_PARSE_SONG_H
 #define HYDRA_PARSE_SONG_H
@@ -22,14 +24,11 @@
 #include "core/rules.h"
 #include "core/timing.h"
 #include "core/winstr.h"  // ByteSource
+#include "parse/chart_reading.h"
 
 namespace hydra {
 
-// Which charted difficulty to read. One chart carries all four: a .mid keeps
-// them in the single "PART DRUMS" track at four pitch bases, a .chart keeps
-// them in four named sections. Expert is the default everywhere, so passing
-// nothing reads exactly what Hydra always read.
-enum class Difficulty { Expert, Hard, Medium, Easy };
+// Difficulty and ChartReading live in parse/chart_reading.h.
 
 // "Expert" / "Hard" / "Medium" / "Easy" — the name used in the chartmode key
 // and the user-facing error strings. It reads the difficulty's row in the one
@@ -299,27 +298,20 @@ void apply_timesig(Song& song, int64_t tick, int numerator, int denominator);
 inline constexpr const char* kNoteShuffleFreezeDetail =
     "Note Shuffle: Clone Hero's redraw never ends on this chart";
 
-// `noteshuffle` is the Note Shuffle switch (D104). Off, the chart is read as
+// `noteshuffle` (ChartReading::noteshuffle for the load_songpath* family) is
+// the Note Shuffle switch (D104). Off, the chart is read as
 // written. On, load_songbytes_mid and load_songbytes_chart finish by
 // shuffling the chords (apply_note_shuffle in parse/note_shuffle.h), and
 // every other loader ends at one of those two. A chart the game freezes on
 // throws KindedError(ErrorKind::NoteShuffleFreezes) instead of returning.
-Song load_songpath_mid(const std::string& path, bool pro, bool bass2x,
-                       Difficulty difficulty = Difficulty::Expert,
-                       const core::Rules& rules = core::default_rules(),
-                       bool noteshuffle = false);
-Song load_songpath_chart(const std::string& path, bool pro, bool bass2x,
-                         Difficulty difficulty = Difficulty::Expert,
-                         const core::Rules& rules = core::default_rules(),
-                         bool noteshuffle = false);
-Song load_songpath_sng(const std::string& path, bool pro, bool bass2x,
-                       Difficulty difficulty = Difficulty::Expert,
-                       const core::Rules& rules = core::default_rules(),
-                       bool noteshuffle = false);
-Song load_songpath_srb(const std::string& path, bool pro, bool bass2x,
-                       Difficulty difficulty = Difficulty::Expert,
-                       const core::Rules& rules = core::default_rules(),
-                       bool noteshuffle = false);
+Song load_songpath_mid(const std::string& path, const ChartReading& reading,
+                       const core::Rules& rules = core::default_rules());
+Song load_songpath_chart(const std::string& path, const ChartReading& reading,
+                         const core::Rules& rules = core::default_rules());
+Song load_songpath_sng(const std::string& path, const ChartReading& reading,
+                       const core::Rules& rules = core::default_rules());
+Song load_songpath_srb(const std::string& path, const ChartReading& reading,
+                       const core::Rules& rules = core::default_rules());
 
 Song load_songbytes_mid(const std::vector<uint8_t>& data, bool pro, bool bass2x,
                         Difficulty difficulty = Difficulty::Expert,
@@ -345,18 +337,14 @@ Song load_songbytes_srb(const std::vector<uint8_t>& container, bool pro, bool ba
 // between the notes and the audio. Its notes are picked out exactly as
 // load_songpath picks them from the file.
 Song load_songpath_from_bytes(const std::string& path, const std::vector<uint8_t>& bytes,
-                              bool pro, bool bass2x,
-                              Difficulty difficulty = Difficulty::Expert,
-                              const core::Rules& rules = core::default_rules(),
-                              bool noteshuffle = false);
+                              const ChartReading& reading,
+                              const core::Rules& rules = core::default_rules());
 
 // Dispatch on the file extension (.mid/.chart/.sng/.srb, case-insensitive).
 // A .sng or .srb is read in pieces: its header, then only the notes, never
 // the audio and art that make up the rest of the file.
-Song load_songpath(const std::string& path, bool pro, bool bass2x,
-                   Difficulty difficulty = Difficulty::Expert,
-                   const core::Rules& rules = core::default_rules(),
-                   bool noteshuffle = false);
+Song load_songpath(const std::string& path, const ChartReading& reading,
+                   const core::Rules& rules = core::default_rules());
 
 // Throws NoNotesError when `song` has no notes. `difficulty` and `prodrums`
 // are the ones the song was loaded with, so the sentence names them. For a
@@ -364,20 +352,17 @@ Song load_songpath(const std::string& path, bool pro, bool bass2x,
 void require_notes(const Song& song, Difficulty difficulty, bool prodrums);
 
 // load_songpath, then require_notes: the chart at `path`, or NoNotesError
-// when it has no notes at `difficulty`.
-Song load_songpath_with_notes(const std::string& path, bool pro, bool bass2x,
-                              Difficulty difficulty = Difficulty::Expert,
-                              const core::Rules& rules = core::default_rules(),
-                              bool noteshuffle = false);
+// when it has no notes under `reading`.
+Song load_songpath_with_notes(const std::string& path, const ChartReading& reading,
+                              const core::Rules& rules = core::default_rules());
 
 // The one dispatch on the extension of `path`, its bytes read from `src`:
 // load_songpath passes the file (file_byte_source), load_songpath_from_bytes
 // the bytes in hand. A .mid or .chart is read whole; a .sng or .srb only in
 // the pieces its notes need. Tests pass a counting source to prove that.
-Song load_songpath_reading(const ByteSource& src, const std::string& path, bool pro,
-                           bool bass2x, Difficulty difficulty = Difficulty::Expert,
-                           const core::Rules& rules = core::default_rules(),
-                           bool noteshuffle = false);
+Song load_songpath_reading(const ByteSource& src, const std::string& path,
+                           const ChartReading& reading,
+                           const core::Rules& rules = core::default_rules());
 
 }  // namespace hydra
 
