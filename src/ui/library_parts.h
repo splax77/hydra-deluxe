@@ -84,6 +84,11 @@ std::string settings_button_label(const app::Settings& s, bool locked);
 // True when the summary above names no setting: nothing for "Reset to
 // defaults" to undo, so the button greys out.
 bool settings_at_defaults(const app::Settings& s);
+// The ids of the two modals opened from outside their owner's function: the
+// opener's OpenPopup and the owner's BeginPopupModal must name the same id,
+// or the modal never opens. The uitests drive them by these labels.
+inline constexpr const char* kScanModalId = "Scanning charts";
+inline constexpr const char* kFoldersModalId = "Song folders";
 // The line the settings panel shows while a batch holds the settings.
 inline constexpr const char* kSettingsLockedText = "Stop the batch to change these.";
 // "Reset to defaults"'s tooltip: "Resets: " and the summary above, or why

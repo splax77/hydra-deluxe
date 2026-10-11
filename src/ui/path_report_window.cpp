@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "app/path_report_view.h"
+#include "app/user_messages.h"
 #include "imgui.h"
 #include "ui/app_state.h"  // path_report_input
 #include "ui/report_window.h"
@@ -157,9 +158,9 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
     if (input.progress_total > 0)
         frame.progress = std::make_pair(input.progress_done, input.progress_total);
     frame.placeholder_rows = true;
-    frame.analysis_off_sentence = AppState::kAnalysisOffSentence;
+    frame.analysis_off_sentence = app::kAnalysisOffSentence;
     frame.analysis_off_error = input.rules_error;
-    frame.failure_sentence = "The path report could not be built.";
+    frame.failure_sentence = app::kPathReportFailed;
     if (result) {
         frame.notice = app::report::left_out_line(result->failures);
         for (const app::report::ReportFailure& f : result->failures)

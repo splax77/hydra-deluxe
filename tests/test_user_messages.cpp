@@ -91,9 +91,14 @@ TEST_CASE("user_messages: the no-notes message is already plain and passes throu
 }
 
 TEST_CASE("user_messages: report, rules, memory") {
-    CHECK(plain_error(hydra::app::RulesFileError("hydra_rules.ini:3: unknown key \"x\"")) ==
-          "hydra_rules.ini has a line Hydra can't read. Fix or delete that line, then "
-          "restart Hydra.");
+    const hydra::app::RulesFileError bad_rules("hydra_rules.ini:3: unknown key \"x\"");
+    CHECK(plain_error(bad_rules) ==
+          "hydra_rules.ini has an error, so analysis is off until the file is fixed and Hydra "
+          "is restarted.");
+    // The command-line tools' text (D114 item 11): their sentence, then the
+    // loader's line.
+    CHECK(hydra::app::rules_file_tool_text(bad_rules) ==
+          "hydra_rules.ini has an error:\nhydra_rules.ini:3: unknown key \"x\"");
     CHECK(plain_error(std::bad_alloc()) ==
           "Hydra ran out of memory on this chart. Close other programs and try again.");
 }
@@ -169,8 +174,8 @@ TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its
          "Hydra couldn't save the report file. Check that the disk isn't full and the "
          "report folder isn't read-only."},
         {ErrorKind::RulesFile,
-         "hydra_rules.ini has a line Hydra can't read. Fix or delete that line, then "
-         "restart Hydra."},
+         "hydra_rules.ini has an error, so analysis is off until the file is fixed and "
+         "Hydra is restarted."},
         {ErrorKind::AudioDecode, kAudioDecode},
         {ErrorKind::PreviewAssets,
          "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them."},
