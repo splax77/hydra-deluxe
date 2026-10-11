@@ -140,7 +140,7 @@ struct Frame {
     // Building: grey rows where the table will be (mock board 2a).
     bool placeholder_rows = false;
     // Never built: why no build can start (empty: the header alone). The
-    // sentence's owner is AppState::kAnalysisOffSentence; the error is
+    // sentence's owner is app::kAnalysisOffSentence (app/user_messages.h); the error is
     // AppState::rules_error.
     const char* analysis_off_sentence = "";
     std::string analysis_off_error;
