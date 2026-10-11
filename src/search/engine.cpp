@@ -37,6 +37,19 @@ const int32_t DEACT_NONE = 0;
 const int32_t DEACT_NORMAL = 1;
 const int32_t DEACT_SQINOUT = 2;
 
+// Names for the search path's score slots (Path::sc below). The core Path's
+// six score fields are the one list of categories; these only name the slot
+// that holds each one.
+enum ScoreSlot : int {
+    kSlotBase,
+    kSlotCombo,
+    kSlotSp,
+    kSlotSolo,
+    kSlotAccents,
+    kSlotGhosts,
+    kSlotCount
+};
+
 const int32_t NODE_BROKEN = -2;
 
 // Clone Hero's early-fill rule lives in core/model.h (fill_e_offset,
@@ -285,7 +298,7 @@ struct Path {
     int32_t act_tail;
     int32_t var_head;
     int32_t tied_count;
-    int32_t sc[6];
+    int32_t sc[kSlotCount];
     int64_t score;
     int64_t sp_end_time;
     // The running activation's SP-end steps so far (an index into ends_),
@@ -817,14 +830,14 @@ void Engine::advance(Path& p) {
     const EdgeView e = edge(n.adv_edge);
     const ScoreGraphEdge* eo = eobj(n.adv_edge);
 
-    p.sc[0] += e.basescore;
-    p.sc[1] += e.comboscore;
-    p.sc[2] += e.spscore;
-    p.sc[3] += e.soloscore;
-    p.sc[4] += e.accentscore;
-    p.sc[5] += e.ghostscore;
-    p.score += (int64_t)e.basescore + e.comboscore + e.spscore + e.soloscore +
-               e.accentscore + e.ghostscore;
+    p.sc[kSlotBase] += e.basescore;
+    p.sc[kSlotCombo] += e.comboscore;
+    p.sc[kSlotSp] += e.spscore;
+    p.sc[kSlotSolo] += e.soloscore;
+    p.sc[kSlotAccents] += e.accentscore;
+    p.sc[kSlotGhosts] += e.ghostscore;
+    p.score += score_total(e.basescore, e.comboscore, e.spscore, e.soloscore,
+                           e.accentscore, e.ghostscore);
 
     const int32_t sp_n = (int32_t)eo->sp_times.size();
 
@@ -959,7 +972,7 @@ bool Engine::branch_activate(Path& p, Path* child) {
     c.bank_tail = -1;
     acts_[(size_t)c.act_tail].skip_tail = p.skip_tail;
     c.skip_tail = -1;
-    c.sc[2] += e.frontend_points;
+    c.sc[kSlotSp] += e.frontend_points;
     c.score += e.frontend_points;
     c.skipped_e_offset = NO_DOUBLE;
     c.sp_ready_ms = NO_DOUBLE;
@@ -1072,7 +1085,7 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
     }
 
     if (sp_delta) {
-        c.sc[2] += sp_delta;
+        c.sc[kSlotSp] += sp_delta;
         c.score += sp_delta;
     }
 
@@ -1712,19 +1725,20 @@ void Engine::emit_path(const Path& p) {
     // The search ranks by its running p.score; the record stores the six
     // categories. Every stored total passes through here (a variant copies its
     // leader's, ADR 0017), so this is where the two must agree (audit 165).
-    const int64_t six = score_total(p.sc[0], p.sc[1], p.sc[2], p.sc[3], p.sc[4], p.sc[5]);
+    const int64_t six = score_total(p.sc[kSlotBase], p.sc[kSlotCombo], p.sc[kSlotSp],
+                                    p.sc[kSlotSolo], p.sc[kSlotAccents], p.sc[kSlotGhosts]);
     if (p.score != six)
         throw std::logic_error("copy-out: the search's running score " +
                                std::to_string(p.score) +
                                " differs from its six categories' total " +
                                std::to_string(six));
     OutPath op;
-    op.score_base = p.sc[0];
-    op.score_combo = p.sc[1];
-    op.score_sp = p.sc[2];
-    op.score_solo = p.sc[3];
-    op.score_accents = p.sc[4];
-    op.score_ghosts = p.sc[5];
+    op.score_base = p.sc[kSlotBase];
+    op.score_combo = p.sc[kSlotCombo];
+    op.score_sp = p.sc[kSlotSp];
+    op.score_solo = p.sc[kSlotSolo];
+    op.score_accents = p.sc[kSlotAccents];
+    op.score_ghosts = p.sc[kSlotGhosts];
     op.var_point = -1;
     op.depth = 0;
     op.tied_count = p.tied_count;
