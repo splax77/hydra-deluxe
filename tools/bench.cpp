@@ -146,8 +146,8 @@ static void scan_mode(const std::string& folder, const std::string& dbpath,
 
     // With --db, a prior scan's rows become the rescan cache — running the
     // same command twice measures cold full scan then warm rescan.
-    store::ChartLibraryCache cache;
-    if (store) cache = store->chart_library_cache();
+    const store::ChartLibraryCache cache =
+        store ? app::load_scan_cache(*store) : store::ChartLibraryCache{};
     if (!cache.empty()) std::printf("  (rescan cache: %zu rows)\n", cache.size());
 
     int folders_seen = 0, cached = 0;
@@ -159,8 +159,7 @@ static void scan_mode(const std::string& folder, const std::string& dbpath,
         if (done == 0) enumerate_s = secs_since(t0);  // walk finished, reads start
         cached = cached_now;
     };
-    auto [items, errors] =
-        app::discover_charts({folder}, callbacks, cache.empty() ? nullptr : &cache);
+    auto [items, errors] = app::discover_charts({folder}, callbacks, cache);
     double scan_s = secs_since(t0);
 
     std::printf("  folders %d | charts %zu | cached %d | errors %zu\n", folders_seen,
@@ -261,10 +260,9 @@ static void engine_mode(const std::string& folder, const std::string& cachedb, i
     std::unique_ptr<store::RecordStore> cstore;
     if (!cachedb.empty()) {
         cstore = std::make_unique<store::RecordStore>(cachedb, core::RulesStamp::of(g_rules));
-        cache = cstore->chart_library_cache();
+        cache = app::load_scan_cache(*cstore);
     }
-    auto [items, errors] = app::discover_charts({folder}, app::ScanCallbacks{},
-                                                cache.empty() ? nullptr : &cache);
+    auto [items, errors] = app::discover_charts({folder}, app::ScanCallbacks{}, cache);
     const app::Settings st = ini_settings();
     const app::AnalysisSettings settings = st.batch_run().settings;
     double t_parse = 0, t_graph = 0, t_an = 0, t_prep = 0, t_gdel = 0;
@@ -337,7 +335,7 @@ static void parse_mode(const std::string& arg, int reps, const std::string& outp
             if (!line.empty()) paths.push_back(line);
         }
     } else {
-        auto [items, errors] = app::discover_charts({arg}, app::ScanCallbacks{}, nullptr);
+        auto [items, errors] = app::discover_charts({arg});
         for (const app::ScanItem& it : app::plan_batch(items, {}).todo)
             paths.push_back(it.notespath);
     }
