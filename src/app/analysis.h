@@ -29,23 +29,9 @@ namespace report {
 struct ReportSeed;  // app/report.h
 }
 
-// One chart file found on disk, with enough metadata to register it in the
-// store. `sig` fingerprints the source files
-// (sizes + mtimes) so a later rescan can skip re-hashing unchanged charts;
-// it never leaves the charts table and is not part of record identity.
-struct ScanItem {
-    std::string md5;
-    std::string title;
-    std::string artist;
-    std::string charter;
-    std::string notespath;
-    std::string rootfolder;
-    std::string sig;
-    // The chart's stated length and delay (D75). A scan always sets it; it is
-    // empty only on an item made from a library row an older scan wrote
-    // (ChartLibraryEntry::timing), and chart_timing_meta fills that in.
-    std::optional<store::ChartTimingMeta> timing;
-};
+// One chart file found on disk: the library entry the scan saves for it, one
+// shape for both (concept audit M21), so nothing copies between them.
+using ScanItem = store::ChartLibraryEntry;
 
 // The chart's stated length and delay, read from its files through the same
 // three readers the scan uses: song.ini beside a folder chart (none when
@@ -103,7 +89,7 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
 std::string hash_chart_file(const std::string& path);
 
 // The fingerprint a chart's files give now, as the scan would store it in
-// `sig` (ScanItem::sig, ChartLibraryEntry::sig); pending_chart_of in
+// `sig` (ChartLibraryEntry::sig); pending_chart_of in
 // analysis.cpp decides which files that covers. Empty when the file is gone or
 // a folder chart has no song.ini. chart_changed_since compares against it; a
 // click that finds an edited chart stores it with the new hash
@@ -140,11 +126,6 @@ std::optional<ChartNow> chart_changed_since(const std::string& notespath,
 // this is for hashes from elsewhere, such as a leaderboard or an older row
 // (audit finding 192).
 std::string normalize_chart_hash(std::string_view hash);
-
-// The library entry a scan row becomes. The two types hold the same seven
-// strings; this copies each by name, so a reordered field cannot slip through
-// a positional copy (audit finding 256).
-store::ChartLibraryEntry to_library_entry(const ScanItem& item);
 
 // Saves a finished scan as the library, replacing the last one. Scan library
 // and hydra_batch with no folder arguments both save through here (D79), so

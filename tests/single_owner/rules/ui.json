@@ -737,16 +737,16 @@
     },
     {
       "question": "How does a library entry become a scan row?",
-      "owner": "scan_item_of in src/ui/library_jobs.cpp",
-      "owner_file": "src/ui/library_jobs.cpp",
-      "owner_symbol": "scan_item_of",
+      "owner": "ScanItem in src/app/analysis.h",
+      "owner_file": "src/app/analysis.h",
+      "owner_symbol": "ScanItem",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "D53; concept audit M21 moved the owner to the alias",
       "added_by": "J2-4",
       "pattern": "items_\\.push_back\\(\\s*\\{\\s*\\w+\\.md5|\\bScanItem(\\s+\\w+)?\\s*\\{\\s*\\w+\\.md5\\b",
       "anchor": ".md5",
       "owner_files": [
-        "src/ui/library_jobs.cpp"
+        "src/app/analysis.h"
       ],
       "must_match": [
         "items_.push_back({e.md5, e.title, e.artist, e.charter, e.notespath, e.rootfolder});",
@@ -754,14 +754,14 @@
       ],
       "must_not_match": [
         "entries.push_back({item.md5, item.title, item.artist, item.charter, item.notespath,",
-        "for (const store::ChartLibraryEntry& e : entries) items_.push_back(scan_item_of(e));"
+        "items = library_matches();"
       ],
       "scope": [
         "src",
         "tools",
         "tests"
       ],
-      "note": "A scan row built from a library entry's fields by position. The forward direction (a scan row into the library) is the row above owned by to_library_entry. Decided by: audit finding 256 (the reverse, from the phase 6 ledger); phase 6 task J2-4 (D53)"
+      "note": "A scan row built from a library entry's fields by position. Since concept audit M21 a scan row is the library entry itself (the ScanItem alias), so the entry is used as it is. The forward direction (a scan row into the library) is the app.json row with the same owner. Decided by: audit finding 256 (the reverse, from the phase 6 ledger); phase 6 task J2-4 (D53); concept audit M21"
     },
     {
       "question": "Which charts does a batch analyze?",

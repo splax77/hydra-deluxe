@@ -121,9 +121,7 @@ TEST_CASE("rescan cache reproduces the scan without reading chart files") {
     REQUIRE(!items.empty());
 
     hydra::store::RecordStore store(":memory:");
-    std::vector<hydra::store::ChartLibraryEntry> entries;
-    for (const ScanItem& it : items) entries.push_back(to_library_entry(it));
-    store.rebuild_chart_library(entries);
+    store.rebuild_chart_library(items);
 
     const hydra::store::ChartLibraryCache cache = load_scan_cache(store);
     CHECK(cache.size() == items.size());
@@ -319,9 +317,11 @@ TEST_CASE("run_work_pool refuses a worker count below 1") {
     CHECK(batch_worker_count() >= 1);
 }
 
-// Audit finding 256: the scan row and the library entry hold the same seven
-// strings; the conversion copies each one by name.
-TEST_CASE("to_library_entry copies every ScanItem field by name") {
+// Concept audit M21 (audit finding 256 before it): a scan row is the library
+// entry itself, so no copy between the two can drop or swap a field. The save
+// stores every field the scan read.
+TEST_CASE("save_scan_as_library stores every ScanItem field") {
+    static_assert(std::is_same_v<ScanItem, hydra::store::ChartLibraryEntry>);
     ScanItem item;
     item.md5 = "the md5";
     item.title = "the title";
@@ -330,8 +330,13 @@ TEST_CASE("to_library_entry copies every ScanItem field by name") {
     item.notespath = "the notespath";
     item.rootfolder = "the rootfolder";
     item.sig = "the sig";
+    item.timing = hydra::store::ChartTimingMeta{123000.0, 45.0};
 
-    const hydra::store::ChartLibraryEntry e = to_library_entry(item);
+    hydra::store::RecordStore store(":memory:");
+    REQUIRE(!save_scan_as_library(store, {item}));
+    const std::vector<hydra::store::ChartLibraryEntry> rows = store.list_chart_library(0, 10);
+    REQUIRE(rows.size() == 1);
+    const hydra::store::ChartLibraryEntry& e = rows[0];
     CHECK(e.md5 == "the md5");
     CHECK(e.title == "the title");
     CHECK(e.artist == "the artist");
@@ -339,6 +344,8 @@ TEST_CASE("to_library_entry copies every ScanItem field by name") {
     CHECK(e.notespath == "the notespath");
     CHECK(e.rootfolder == "the rootfolder");
     CHECK(e.sig == "the sig");
+    REQUIRE(e.timing);
+    CHECK(*e.timing == hydra::store::ChartTimingMeta{123000.0, 45.0});
 }
 
 // Audit finding 192: one spelling of a chart hash for matching.
@@ -735,7 +742,7 @@ TEST_CASE("rescan cache: an old placeholder or blank title reads (unknown)") {
     hydra::store::RecordStore store(":memory:");
     std::vector<hydra::store::ChartLibraryEntry> entries;
     for (size_t i = 0; i < items.size(); ++i) {
-        hydra::store::ChartLibraryEntry e = to_library_entry(items[i]);
+        hydra::store::ChartLibraryEntry e = items[i];
         e.title = i % 2 ? "<unknown title>" : "";
         entries.push_back(std::move(e));
     }
@@ -791,7 +798,7 @@ TEST_CASE("discover_charts: a blank or missing artist or charter reads the place
     hydra::store::RecordStore store(":memory:");
     std::vector<hydra::store::ChartLibraryEntry> entries;
     for (const ScanItem& it : items) {
-        hydra::store::ChartLibraryEntry e = to_library_entry(it);
+        hydra::store::ChartLibraryEntry e = it;
         e.artist.clear();
         e.charter.clear();
         entries.push_back(std::move(e));

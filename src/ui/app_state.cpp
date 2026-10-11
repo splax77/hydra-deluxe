@@ -555,9 +555,7 @@ void AppState::open_batch_confirm() {
     const app::BatchRun run = settings.batch_run();
     std::unordered_set<std::string> with_result;
     if (!read_store([&] {
-            const std::vector<store::ChartLibraryEntry> scope = library_matches();
-            items.reserve(scope.size());
-            for (const store::ChartLibraryEntry& e : scope) items.push_back(scan_item_of(e));
+            items = library_matches();
             with_result = app::charts_with_result(*store, run, false);
         })) {
         // The database failed: the confirm stays closed (D72 item 4).

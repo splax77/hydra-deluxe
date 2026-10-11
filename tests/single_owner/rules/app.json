@@ -591,23 +591,23 @@
     },
     {
       "question": "How does a scan row become a library entry?",
-      "owner": "to_library_entry in src/app/analysis.cpp",
-      "owner_file": "src/app/analysis.cpp",
-      "owner_symbol": "to_library_entry",
+      "owner": "ScanItem in src/app/analysis.h",
+      "owner_file": "src/app/analysis.h",
+      "owner_symbol": "ScanItem",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "D53; concept audit M21 moved the owner to the alias",
       "added_by": "J1-6",
       "pattern": "\\b(ChartLibraryEntry(\\s+\\w+)?\\s*\\{|entries\\.push_back\\(\\s*\\{)\\s*\\w+\\.md5\\b",
       "anchor": ".md5",
       "owner_files": [
-        "src/app/analysis.cpp"
+        "src/app/analysis.h"
       ],
       "must_match": [
         "entries.push_back({it.md5, it.title, it.artist, it.charter, it.notespath,",
         "store::ChartLibraryEntry e{item.md5, item.title, item.artist, item.charter,"
       ],
       "must_not_match": [
-        "for (const ScanItem& it : items) entries.push_back(to_library_entry(it));",
+        "store.rebuild_chart_library(items);",
         "items_.push_back({e.md5, e.title, e.artist, e.charter, e.notespath, e.rootfolder});"
       ],
       "scope": [
@@ -615,7 +615,7 @@
         "tools",
         "tests"
       ],
-      "note": "A brace list of a scan row's fields, md5 first, pushed into the library's entries or built as a ChartLibraryEntry. The ScanJob's list of ScanItems read back from the library (items_) is the other direction, a different question. Decided by: audit finding 256; phase 6 task J1-6 (D53)"
+      "note": "A brace list of a scan row's fields, md5 first, pushed into the library's entries or built as a ChartLibraryEntry. Since concept audit M21 a scan row is the library entry itself (the ScanItem alias), so no conversion is needed and a positional copy is always a stray. The ScanJob's list of ScanItems read back from the library (items_) is the other direction, a different question. Decided by: audit finding 256; phase 6 task J1-6 (D53); concept audit M21"
     },
     {
       "question": "How many workers does a batch get?",
@@ -1645,7 +1645,7 @@
       "owner_lines": [
         {
           "file": "src/app/analysis.cpp",
-          "line_text": "store.rebuild_chart_library(entries);",
+          "line_text": "store.rebuild_chart_library(items);",
           "why": "save_scan_as_library, the owner"
         }
       ],

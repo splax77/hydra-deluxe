@@ -1,0 +1,30 @@
+{
+  "rules": [
+    {
+      "question": "Where does a chart's library entry get its path and root folder?",
+      "owner": "discover_charts in src/app/analysis.cpp (the scan sets them; the store reads them back; the library list moves them into its rows)",
+      "owner_file": "src/app/analysis.cpp",
+      "owner_symbol": "discover_charts",
+      "date": "2026-10-11",
+      "decision": "concept audit M21 (code-only, D114 fix wave, task H4)",
+      "added_by": "concept-H4",
+      "pattern": "\\.(rootfolder|notespath)\\s*=[^=]",
+      "scope": ["src", "tools"],
+      "owner_files": [
+        "src/app/analysis.cpp",
+        "src/store/record_store.cpp",
+        "src/ui/library_model.cpp"
+      ],
+      "must_match": [
+        "item.rootfolder = pc.rootfolder;",
+        "e.notespath = column_text(s, 4);",
+        "entry.notespath = item.notespath;"
+      ],
+      "must_not_match": [
+        "if (a.notespath == b.notespath) continue;",
+        "items = library_matches();"
+      ],
+      "note": "A scan row and a library entry are one type (app::ScanItem is store::ChartLibraryEntry), so nothing copies a path or root folder between them field by field. The scan sets the two fields, the store reads them back from its columns, and the library list moves them into its rows. A field-by-field copy anywhere else is a second conversion coming back. Decided by: concept audit M21."
+    }
+  ]
+}
