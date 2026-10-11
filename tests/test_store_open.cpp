@@ -713,13 +713,15 @@ TEST_CASE("a read on a failing database throws instead of answering empty") {
     {
         RecordStore store(path);
         store.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
-        REQUIRE(store.analyzed_hashes("mode", CapQuery::at(4), Lens{}).count("h") == 1);
+        REQUIRE(store.analyzed_hashes(ResultSettings{"mode", CapQuery::at(4), Lens{}}).count("h") ==
+                1);
         exec_on_file(path, "DROP TABLE results;");
         // The first read fails when it steps; by then the connection has
         // reloaded the schema, so the second fails when it compiles.
         for (const char* when : {"step", "compile"}) {
             INFO(std::string(when));
-            check_read_fails([&] { store.analyzed_hashes("mode", CapQuery::at(4), Lens{}); });
+            check_read_fails(
+                [&] { store.analyzed_hashes(ResultSettings{"mode", CapQuery::at(4), Lens{}}); });
         }
     }
     std::remove(path.c_str());
@@ -733,10 +735,12 @@ TEST_CASE("every store read throws a database read error when its step fails") {
     const std::pair<const char*, std::function<void(RecordStore&)>> reads[] = {
         {"engine_mode", [](RecordStore& s) { s.engine_mode(); }},
         {"stamped_fill_rule", [](RecordStore& s) { s.stamped_fill_rule(); }},
-        {"get_summaries", [&](RecordStore& s) { s.get_summaries({"h"}, "mode", cap, Lens{}); }},
+        {"get_summaries",
+         [&](RecordStore& s) { s.get_summaries({"h"}, ResultSettings{"mode", cap, Lens{}}); }},
         {"get_summary", [&](RecordStore& s) { s.get_summary(key); }},
         {"has_record", [&](RecordStore& s) { s.has_record(key); }},
-        {"analyzed_hashes", [&](RecordStore& s) { s.analyzed_hashes("mode", cap, Lens{}); }},
+        {"analyzed_hashes",
+         [&](RecordStore& s) { s.analyzed_hashes(ResultSettings{"mode", cap, Lens{}}); }},
         {"list_records",
          [&](RecordStore& s) {
              s.list_records(std::nullopt, cap, Lens{}, SortColumn::Score, false, std::nullopt);
