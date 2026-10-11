@@ -8,7 +8,7 @@
       "date": "2026-10-11",
       "decision": "concept audit M75 (code-only)",
       "added_by": "concept-G2",
-      "pattern": "==\\s*'\\\\\\\\'\\s*\\|\\|",
+      "pattern": "==\\s*'\\\\\\\\'\\s*\\|\\||\\|\\|\\s*[\\w.()]+\\s*==\\s*'\\\\\\\\'",
       "scope": ["src"],
       "owner_lines": [
         {
@@ -24,7 +24,8 @@
       ],
       "must_match": [
         "while (!t.empty() && (t.back() == '\\\\' || t.back() == '/')) t.pop_back();",
-        "return (last == '\\\\' || last == '/') ? folder + name : folder + \"\\\\\" + name;"
+        "return (last == '\\\\' || last == '/') ? folder + name : folder + \"\\\\\" + name;",
+        "while (!t.empty() && (t.back() == '/' || t.back() == '\\\\')) t.pop_back();"
       ],
       "must_not_match": [
         "while (!path.empty() && is_path_separator(path.back())) path.pop_back();",
