@@ -46,6 +46,28 @@
         "        std::fprintf(stderr, \"%s\\n\", rules_file_tool_text(e).c_str());"
       ],
       "note": "One state, a bad hydra_rules.ini, once had three wordings: the app's (on AppState), a dead kRulesFile sentence, and the tools' raw line. The app's sentence and the tools' lead-in both live in user_messages now. Decided by: D114 item 11, concept audit M72."
+    },
+    {
+      "question": "How do the report screens word the path report's outcome, the comparison's failure and the leaderboard's wake-up?",
+      "owner": "kPathReportReady, kPathReportFailed, kComparisonFailed and kLeaderboardWaking in src/app/user_messages.h",
+      "owner_file": "src/app/user_messages.h",
+      "owner_symbol": "kPathReportFailed",
+      "date": "2026-10-11",
+      "decision": "D114 item 14 (M83)",
+      "added_by": "concept-audit-G1",
+      "pattern": "The path report (could not be built|is ready)\\.|The comparison could not be built\\.|Could not build the report\\.|can take a moment to wake up",
+      "owner_files": ["src/app/user_messages.h"],
+      "must_match": [
+        "        ImGui::TextColored(kWarningColor, \"The path report could not be built.\");",
+        "        set_status(\"The path report is ready.\");",
+        "    frame.failure_sentence = \"Could not build the report.\";",
+        "        ImGui::TextDisabled(\"The leaderboard server can take a moment to wake up.\");"
+      ],
+      "must_not_match": [
+        "        set_problem(std::string(app::kPathReportFailed) + \" \" + path_report.message);",
+        "    frame.failure_sentence = app::kComparisonFailed;"
+      ],
+      "note": "The path report's two outcome sentences were written out in the finished strip, the status line and the window, and the wake-up sentence in the picker and the comparison window. Each is one constant now, and the comparison's failure takes the path report's shape. Decided by: D114 item 14, concept audit M83."
     }
   ]
 }

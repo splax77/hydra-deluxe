@@ -812,9 +812,9 @@ void AppState::collect_path_report() {
     // landed, the outcome goes to the status line instead.
     if (batch_job) return;
     if (outcome == ReportBuild::Ready)
-        set_status("The path report is ready.");
+        set_status(app::kPathReportReady);
     else if (outcome == ReportBuild::Failed)
-        set_problem("The path report could not be built. " + path_report.message);
+        set_problem(std::string(app::kPathReportFailed) + " " + path_report.message);
 }
 
 void AppState::collect_dm_report() {

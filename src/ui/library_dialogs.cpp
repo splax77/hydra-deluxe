@@ -1,5 +1,6 @@
 #include "ui/library_parts.h"
 
+#include "app/user_messages.h"
 #include "core/model.h"
 #include "core/strutil.h"
 #include "imgui.h"
@@ -530,11 +531,11 @@ void render_batch_done(AppState& app) {
     } else if (building) {
         ImGui::TextWrapped("Building the path report...");
     } else if (report_failed) {
-        ImGui::TextColored(kWarningColor, "The path report could not be built.");
+        ImGui::TextColored(kWarningColor, "%s", app::kPathReportFailed);
         ImGui::TextWrapped("%s", app.path_report.message.c_str());
         ImGui::TextDisabled("%s", app.path_report.error.c_str());
     } else if (report_ok) {
-        ImGui::TextWrapped("The path report is ready.");
+        ImGui::TextWrapped("%s", app::kPathReportReady);
     }
     ImGui::PopStyleColor();
     ImGui::PopTextWrapPos();
@@ -590,7 +591,7 @@ void render_dm_picker_modal(AppState& app) {
     // Stage 0: still loading the user list.
     if (app.dm_fetch_job && !app.dm_fetch_job->finished()) {
         ImGui::TextUnformatted("Loading the dmleaderboards user list...");
-        ImGui::TextDisabled("The leaderboard server can take a moment to wake up.");
+        ImGui::TextDisabled("%s", app::kLeaderboardWaking);
         if (ImGui::Button("Cancel") || escape) {
             app.cancel_dm_fetch();  // parked, never joined here
             app.dm_picker_open = false;
