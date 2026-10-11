@@ -709,9 +709,10 @@ private:
     // keeps the window's filters (ReportSlot::built_on_open). Request: the
     // window's Refresh or Try again.
     enum class PathReportCause { Request, Batch, Open };
-    // Starts report_job, parking one still running.
-    void launch_path_report(store::CapQuery cap, store::Lens lens, app::BatchRun run,
-                            app::report::ReportSeed seed, PathReportCause cause);
+    // Starts report_job, parking one still running. The report lists the
+    // records filed under `run`.
+    void launch_path_report(app::BatchRun run, app::report::ReportSeed seed,
+                            PathReportCause cause);
     // request_path_report's work, for the cause given.
     void request_path_report(PathReportCause cause);
     PathReportCause path_report_cause_ = PathReportCause::Request;

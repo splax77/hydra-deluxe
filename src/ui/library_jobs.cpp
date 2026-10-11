@@ -554,14 +554,11 @@ void set_report_analyzer_for_test(app::ChartAnalyzer analyze) {
     g_report_analyzer = std::move(analyze);
 }
 
-ReportJob::ReportJob(store::RecordStore& store, store::CapQuery cap, store::Lens lens,
-                     double hit_window_ms, std::optional<app::BatchRun> run,
+ReportJob::ReportJob(store::RecordStore& store, app::BatchRun run, double hit_window_ms,
                      app::report::ReportSeed seed)
     : store_(store),
-      cap_(cap),
-      lens_(lens),
-      hit_window_ms_(hit_window_ms),
       run_(std::move(run)),
+      hit_window_ms_(hit_window_ms),
       seed_(std::move(seed)),
       analyze_(g_report_analyzer) {}
 

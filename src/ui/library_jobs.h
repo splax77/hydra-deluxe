@@ -421,22 +421,19 @@ void set_view_analyzer_for_test(app::ChartAnalyzer analyze);
 // off the render thread like every other job. It writes and opens nothing.
 class ReportJob : public ResultJobBase {
 public:
-    // hit_window_ms feeds the report's timing-tier bands (settings.hit_window_ms).
-    // cap/lens: which records the report lists (the user's current SP cap, ms
-    // limit and score range). `run` is the batch's settings the charts are
-    // analyzed under (ReportOptions::run; the report fails without it), and
-    // `seed` the rows the batch already worked out.
-    ReportJob(store::RecordStore& store, store::CapQuery cap, store::Lens lens,
-              double hit_window_ms = kDefaultHitWindowMs,
-              std::optional<app::BatchRun> run = std::nullopt,
-              app::report::ReportSeed seed = {});
+    // `run` is the settings the charts are analyzed under (ReportOptions::run);
+    // the records the report lists are the ones filed under it
+    // (BatchRun::filed_under). hit_window_ms feeds the report's timing-tier
+    // bands (settings.hit_window_ms), and `seed` holds the rows the batch
+    // already worked out.
+    ReportJob(store::RecordStore& store, app::BatchRun run,
+              double hit_window_ms = kDefaultHitWindowMs, app::report::ReportSeed seed = {});
     ~ReportJob() { shutdown(); }
 
     void start();
 
     // What the report is built from, as given to the constructor.
-    const store::CapQuery& cap() const { return cap_; }
-    const store::Lens& lens() const { return lens_; }
+    store::ResultSettings filed_under() const { return run_.filed_under(); }
     double hit_window_ms() const { return hit_window_ms_; }
 
     // Valid once finished() && ok(): the report, shared with AppState's slot
@@ -461,10 +458,8 @@ private:
     std::atomic<int> progress_done_{0};
     std::atomic<int> progress_total_{0};
     store::RecordStore& store_;
-    store::CapQuery cap_;
-    store::Lens lens_;
+    app::BatchRun run_;
     double hit_window_ms_;
-    std::optional<app::BatchRun> run_;
     app::report::ReportSeed seed_;
     app::ChartAnalyzer analyze_;  // the test seam's, copied at construction
     std::shared_ptr<const app::report::GeneratedReport> result_;
