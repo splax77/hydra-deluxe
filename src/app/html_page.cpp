@@ -330,12 +330,16 @@ function visible() {
 function render() {
   const rows = visible();
   const dir = sortDir;
+  // A text column names its sort field (`sort`): the text folded in C++ the
+  // way the windows fold it, so the order here is theirs. Equal keys keep
+  // their order.
+  const field = COLS.find(c => c.k === sortKey).sort || sortKey;
   rows.sort((a, b) => {
-    let x = a[sortKey], y = b[sortKey];
+    let x = a[field], y = b[field];
     // Nulls always sort to the bottom, whichever direction is active.
     if (x === null || x === undefined) return 1;
     if (y === null || y === undefined) return -1;
-    if (typeof x === 'string') return dir * x.localeCompare(y);
+    if (typeof x === 'string') return dir * (x < y ? -1 : (x > y ? 1 : 0));
     return dir * (x - y);
   });
 

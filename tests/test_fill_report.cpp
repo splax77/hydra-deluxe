@@ -408,6 +408,30 @@ TEST_CASE("build_fill_html substitutes every placeholder") {
     CHECK(html.find("'+' + r.delta.toLocaleString()") == std::string::npos);
 }
 
+// D114 item 3: each text column carries the windows' folded sort text, and
+// the script compares those fields as they are, with no browser collation.
+TEST_CASE("build_fill_html: text columns sort on the windows' folded text") {
+    FillCompareRow r;
+    r.song = "\xC3\x89tude";  // Étude
+    r.artist = "ABBA";
+    r.charter = "Me";
+    r.old_path = "0 1 3 0+";
+    r.new_path = "0 1 3 0- 0";
+    r.status = app::fill_report::kStatusSame;
+    const std::string html = app::fill_report::build_fill_html({r}, "sub", "foot");
+    CHECK(html.find(",\"song_s\":\"etude\",\"artist_s\":\"abba\",\"charter_s\":\"me\","
+                    "\"p10_s\":\"0 1 3 0+\",\"p11_s\":\"0 1 3 0- 0\",\"status_s\":\"same\"}") !=
+          std::string::npos);
+    for (const char* sort : {"sort:'song_s'", "sort:'artist_s'", "sort:'charter_s'",
+                             "sort:'p10_s'", "sort:'p11_s'", "sort:'status_s'"}) {
+        CAPTURE(sort);
+        CHECK(html.find(sort) != std::string::npos);
+    }
+    CHECK(html.find("localeCompare") == std::string::npos);
+    CHECK(html.find("const field = COLS.find(c => c.k === sortKey).sort || sortKey;") !=
+          std::string::npos);
+}
+
 // D114 item 4: one chart reads "1 of 1 chart", as the windows' count lines do.
 TEST_CASE("build_fill_html: the count line's total is singular at one chart") {
     FillCompareRow r;

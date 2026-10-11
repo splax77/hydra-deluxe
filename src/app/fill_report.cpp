@@ -8,6 +8,7 @@
 #include "app/html_page.h"
 #include "app/library_query.h"  // search_field
 #include "app/report.h"  // records_by_hash
+#include "app/report_view.h"  // folded_key
 #include "core/model.h"  // group_thousands, counted
 #include "core/strutil.h"  // replace_all
 #include "parse/song.h"  // display_title, display_artist, display_charter
@@ -98,17 +99,17 @@ const PAGE = {
   sortKey: 'delta',
   sortDir: -1,
   cols: [
-    {k:'song',    t:'Song',        num:false},
-    {k:'artist',  t:'Artist',      num:false},
-    {k:'charter', t:'Charter',     num:false},
+    {k:'song',    t:'Song',        num:false, sort:'song_s'},
+    {k:'artist',  t:'Artist',      num:false, sort:'artist_s'},
+    {k:'charter', t:'Charter',     num:false, sort:'charter_s'},
     {k:'s10',     t:'__OLD_RULE__',      num:true},
     {k:'s11',     t:'__NEW_RULE__',      num:true},
     {k:'delta',   t:'Delta',       num:true},
-    {k:'p10',     t:'__OLD_RULE__ path', num:false},
-    {k:'p11',     t:'__NEW_RULE__ path', num:false},
+    {k:'p10',     t:'__OLD_RULE__ path', num:false, sort:'p10_s'},
+    {k:'p11',     t:'__NEW_RULE__ path', num:false, sort:'p11_s'},
     {k:'acts',    t:'Acts',        num:true},
     {k:'notes',   t:'Notes',       num:true},
-    {k:'status',  t:'Status',      num:false},
+    {k:'status',  t:'Status',      num:false, sort:'status_s'},
   ],
   controls: [['q', 'input'], ['status', 'change']],
   // The search box is matched against each row's search text in the shared
@@ -347,6 +348,19 @@ std::string build_fill_html(const std::vector<FillCompareRow>& rows,
         data += ",\"notes\":" + opt_num(r.notes);
         data += ",\"status\":";
         json_escape_into(data, r.status);
+        // Each text column's sort field: its text as the windows compare it
+        // (report_view::folded_key), which the page's script compares as is
+        // (D114 item 3).
+        for (const auto& [name, text] :
+             {std::pair<const char*, const std::string*>{"song_s", &r.song},
+              {"artist_s", &r.artist}, {"charter_s", &r.charter}, {"p10_s", &r.old_path},
+              {"p11_s", &r.new_path}, {"status_s", &r.status}}) {
+            data += ",\"";
+            data += name;
+            data += "\":";
+            json_escape_into(data, std::get<std::string>(
+                                       report_view::folded_key(report_view::SortKey{*text})));
+        }
         data.push_back('}');
     }
     data.push_back(']');

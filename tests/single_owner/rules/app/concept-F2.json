@@ -48,6 +48,24 @@
         }
       ],
       "note": "A second count line in a page script would pick its own noun. The script's one line takes the noun with the total from C++."
+    },
+    {
+      "question": "In what order does a page's text column sort?",
+      "owner": "report_view::folded_key, written into each fill row's sort fields",
+      "owner_file": "src/app/report_view.h",
+      "owner_symbol": "folded_key",
+      "date": "2026-10-11",
+      "decision": "D114 item 3 (concept audit M03, fill half)",
+      "added_by": "concept-F2",
+      "pattern": "localeCompare\\(",
+      "anchor": "localeCompare(",
+      "must_match": [
+        "if (typeof x === 'string') return dir * x.localeCompare(y);"
+      ],
+      "must_not_match": [
+        "if (typeof x === 'string') return dir * (x < y ? -1 : (x > y ? 1 : 0));"
+      ],
+      "note": "Browser collation puts accents and the + against - path case in another order than the windows. The fill page sorts each text column on the folded field build_fill_html writes."
     }
   ]
 }
