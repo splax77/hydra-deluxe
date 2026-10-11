@@ -252,9 +252,10 @@ std::vector<Path> keep_target_paths(std::vector<Path> paths,
 
 namespace {
 
-// The graph a target search runs on: as tall as the main search builds it
-// (decision D45).
-ScoreGraph target_graph(const Song& song, const SearchSettings& settings) {
+// The one graph a set of settings searches: analyze_chart and both target
+// searches build it here, so a target search runs on the graph the main
+// search ran on (decision D45). graph_build_cap says how tall it is.
+ScoreGraph search_graph(const Song& song, const SearchSettings& settings) {
     return ScoreGraph(song,
                       std::optional<int>(graph_build_cap(settings.sp_cap, song.sp_phrase_count())),
                       fill_rule_for(settings.legacy_fill_deadline), settings.rules);
@@ -301,7 +302,7 @@ std::vector<PinnedWindow> prefix_of(const std::vector<PinnedWindow>& windows, si
 std::vector<Path> search_target(const Song& song, const SearchSettings& settings,
                                 const std::vector<int64_t>& act_ticks,
                                 std::vector<bool>* promoted) {
-    return run_target(target_graph(song, settings), activation_pins(act_ticks), promoted);
+    return run_target(search_graph(song, settings), activation_pins(act_ticks), promoted);
 }
 
 std::vector<PinnedWindow> activation_pins(std::vector<int64_t> ticks) {
@@ -329,7 +330,7 @@ TargetResult search_target(const Song& song, const SearchSettings& settings,
             throw std::invalid_argument(at + " ends before it activates");
     }
 
-    const ScoreGraph graph = target_graph(song, settings);
+    const ScoreGraph graph = search_graph(song, settings);
     TargetResult out;
     out.paths = run_target(graph, windows, &out.promoted);
     out.realized_prefix = windows.size();
@@ -446,37 +447,6 @@ int graph_build_cap(int sp_cap, int sp_phrase_count) {
     return std::max(max_sp_bars(sp_cap, sp_phrase_count), 1);
 }
 
-namespace {
-
-// One pathing run with a given SP meter ceiling. build_cap, when set, is the
-// ceiling the graph is actually built at (the record still reports sp_cap).
-// want_allzero also runs search_allzero over the same graph and stores it in
-// the record's allzero_paths.
-HydraRecord analyze_at_cap(const Song& song, int sp_cap, DepthMode depth_mode,
-                           int depth_value, std::optional<double> ms_filter,
-                           std::optional<int> build_cap, bool legacy_fills,
-                           const core::Rules& rules,
-                           bool want_allzero = false,
-                           const std::function<void(float)>& on_progress = {}) {
-    std::optional<int> cap = build_cap.has_value() ? build_cap
-                                                   : std::optional<int>(sp_cap);
-    ScoreGraph graph(song, cap, fill_rule_for(legacy_fills), rules);
-    const bool split = want_allzero && static_cast<bool>(on_progress);
-    HydraRecord record = read(
-        graph, depth_mode, depth_value, ms_filter,
-        split ? scaled_progress(on_progress, 0.0f, kMainProgressShare) : on_progress);
-    record.sp_cap = sp_cap;
-    // The graph is still alive here, so the all-0 pass reuses it instead of
-    // paying for a second build.
-    if (want_allzero)
-        attach_allzero(graph, record,
-                       split ? scaled_progress(on_progress, kMainProgressShare, 1.0f)
-                             : on_progress);
-    return record;
-}
-
-}  // namespace
-
 HydraRecord analyze_chart(const Song& song, const SearchSettings& settings,
                           const std::function<void(float)>& on_progress) {
     // Callers check for notes first (require_notes in song.h), because only
@@ -491,11 +461,16 @@ HydraRecord analyze_chart(const Song& song, const SearchSettings& settings,
     // exceed that -- so a huge cap on a short song stays cheap, and a 4-bar
     // graph built lower stores the same bytes (test "a 4-bar graph built at
     // the song's phrase count stores the same paths").
-    const int build_cap = graph_build_cap(settings.sp_cap, song.sp_phrase_count());
+    const ScoreGraph graph = search_graph(song, settings);
+    const bool split = static_cast<bool>(on_progress);
     HydraRecord record =
-        analyze_at_cap(song, settings.sp_cap, settings.depth_mode, settings.depth_value,
-                       settings.ms_filter, build_cap, settings.legacy_fill_deadline,
-                       settings.rules, /*want_allzero=*/true, on_progress);
+        read(graph, settings.depth_mode, settings.depth_value, settings.ms_filter,
+             split ? scaled_progress(on_progress, 0.0f, kMainProgressShare) : on_progress);
+    // The record reports the cap the user chose, not the height it was built at.
+    record.sp_cap = settings.sp_cap;
+    // The all-0 pass reuses the same graph instead of paying for a second build.
+    attach_allzero(graph, record,
+                   split ? scaled_progress(on_progress, kMainProgressShare, 1.0f) : on_progress);
     record.rules_fingerprint = settings.rules.fingerprint();
     record.legacy_fills = settings.legacy_fill_deadline;
     return record;

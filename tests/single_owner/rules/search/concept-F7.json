@@ -21,6 +21,38 @@
         "c.score += sp_delta;"
       ],
       "note": "A running score built by adding category fields by hand next to the owner. This catches only the hand sum; a seventh category arrives under a new name, so no text search catches a category missing from the sum, and emit_path's runtime check in src/search/engine.cpp is the guard for that. Decided by: concept audit M30 (D114, task F7)"
+    },
+    {
+      "question": "Which search graph does a set of search settings build?",
+      "owner": "search_graph in src/search/pather.cpp",
+      "owner_file": "src/search/pather.cpp",
+      "owner_symbol": "search_graph",
+      "date": "2026-10-11",
+      "decision": "D114 (concept audit M35)",
+      "added_by": "concept-audit-F7",
+      "pattern": "\\bScoreGraph\\b.*\\bfill_rule_for\\(|\\bfill_rule_for\\([^)]*\\)\\s*,\\s*[\\w.>-]*rules\\s*\\)",
+      "anchor": "fill_rule_for(",
+      "calls_owner": "\\bsearch_graph\\(",
+      "must_match": [
+        "ScoreGraph graph(song, cap, fill_rule_for(legacy_fills), rules);",
+        "fill_rule_for(settings.legacy_fill_deadline), settings.rules);"
+      ],
+      "must_not_match": [
+        "const FillDeadlineRule rule = fill_rule_for(options.lens.legacy_fills);",
+        "out.fills = fill_rule_name(fill_rule_for(s.legacy_fills), FillRuleNameStyle::Long);",
+        "const ScoreGraph graph = search_graph(song, settings);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/search/pather.cpp",
+          "line_text": "fill_rule_for(settings.legacy_fill_deadline), settings.rules);",
+          "why": "search_graph, the owner: the graph's fill rule and rules from the settings"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A ScoreGraph built from settings by hand instead of through search_graph, which every analysis and target search shares (D45). Scoped to src: tools/bench.cpp times the build by itself and keeps its copy, and tests build graphs at chosen caps on purpose. Decided by: concept audit M35 (D114, task F7)"
     }
   ]
 }
