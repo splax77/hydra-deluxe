@@ -18,22 +18,23 @@ The orchestrator gives you a **key** (a 40-character hash) and a **range**. For 
 
 It also hands you two things, so you do not redo work already done:
 
-- **The precheck output.** `tools/derive_once_precheck.ps1` (task P0-1) has already run on the range. It prints one line per item: the kind letter, the file and line, what it found and why it counts. It finds kinds B to E mechanically. After the items it prints the range's size in changed lines, and a large-range note when the range is over the precheck's threshold. The precheck owns that threshold and which files count; this page never restates them.
+- **The precheck output.** `tools/derive_once_precheck.ps1` (task P0-1) has already run on the range. It prints one line per item: the kind letter, the file and line, what it found and why it counts. It finds kinds B to F mechanically. After the items it prints the range's size in changed lines, and a large-range note when the range is over the precheck's threshold. The precheck owns that threshold and which files count; this page never restates them.
 - **The implementer's report.** It names the questions the change answers, the tests it ran, and for a failing-first test the exact red line from the run before the fix.
 
 If the precheck output is missing, run the script once yourself on the range and repo path; it needs no build. If the implementer's report is missing, say so in your review and carry on without it.
 
-## The five recurring kinds
+## The six recurring kinds
 
-Earlier rounds found the same five kinds of copy again and again. Name the kind letter on every finding.
+Earlier rounds found the same six kinds of copy again and again. Name the kind letter on every finding.
 
 - **A.** A rule written twice in production code.
 - **B.** A test that recomputes what production computes, instead of calling it or pinning a literal.
 - **C.** A copied test helper or fixture.
 - **D.** A number or rule with no user decision behind it, or a doc or comment stating the rule differently from the code.
 - **E.** A source scan outside `tests/single_owner/`, or a scan row loose enough to let copies through.
+- **F.** A second home for an idea that already has one: a new type, enum, set of status words or helper family that answers a question another module's type, enum, words or helpers already answer, under its own names.
 
-The precheck covers B to E. Quote its lines for those kinds; do not hunt for them again. Check each quoted line is real (open the file at that line) and drop any that are not, saying why. Then spend your pass on kind A. Kind A is the review's real job, and no script can find it. The one exception is a pasted block: the clone scan in `tests/single_owner/clones.cpp` (ADR 0025) already fails on any pasted block at least `kCloneWindowLines` code lines long. So spend review time on the copies it can't see: shorter ones, renamed ones, and the same rule worked out a different way. A change that adds an entry to `known_clones` is a finding. In earlier rounds, kind A also came from the fix rounds themselves and from old code several reviewers had passed, so read the changed functions' callers and neighbours, not only the diff lines.
+The precheck covers B to F. Quote its lines for B to E; do not hunt for them again. For kind F it lists only candidates, found by shared names and shared text; step 8 below is where you judge them and look for second homes under new names. Check each quoted line is real (open the file at that line) and drop any that are not, saying why. Then spend your pass on kind A. Kind A is the review's real job, and no script can find it. The one exception is a pasted block: the clone scan in `tests/single_owner/clones.cpp` (ADR 0025) already fails on any pasted block at least `kCloneWindowLines` code lines long. So spend review time on the copies it can't see: shorter ones, renamed ones, and the same rule worked out a different way. A change that adds an entry to `known_clones` is a finding. In earlier rounds, kind A also came from the fix rounds themselves and from old code several reviewers had passed, so read the changed functions' callers and neighbours, not only the diff lines.
 
 ## How to review
 
@@ -44,6 +45,7 @@ The precheck covers B to E. Quote its lines for those kinds; do not hunt for the
 5. **Check tests.** A test that recomputes what production code computes, instead of calling it or pinning a literal, is a copy. Frozen copies of old code kept for comparison are copies too. Start from the precheck's B and C lines.
 6. **Check docs the change touches.** A doc that states a rule differently from the code is a finding.
 7. **Check what is already known.** Grep `docs/audit/2026-10-03-derivation-audit.md` for the functions involved. A copy listed there that the change only moves goes under "Touched, already on the fix list". A copy the change adds or extends is a finding.
+8. **Check new homes.** For every type, enum, status word set or free helper the change adds, name the existing concept it extends: the CONTEXT.md term, or the owner symbol. The precheck's F lines list the candidates. If the concept has no entry in CONTEXT.md, the change adds one (the term, its owner, and what it deliberately leaves out). A new home for a concept that already has one is a kind F finding, fixed like kind A: the new code calls the owner, or the change says in its commit body why it cannot.
 
 Rules: a grep that finds nothing proves nothing, so say where you looked. Never call code wrong without ground truth (the engine, a test or a run). Every name comes from the repo, not memory.
 
@@ -110,7 +112,7 @@ The gate refuses a file with no `Scope:` line. That way a forgotten line can nev
 Then, in plain English, one short paragraph each:
 
 - **Questions this change answers**: each one, and the function that owns it after this change.
-- **Findings**: one paragraph per finding. For each, the kind letter, the question, every copy (function, file, lines), the truth table when the copies are worded differently, the input where they disagree if they do, and the owner. For a B to E finding, quote the precheck line it came from. Then how you fixed it, with the commit hash.
+- **Findings**: one paragraph per finding. For each, the kind letter, the question, every copy (function, file, lines), the truth table when the copies are worded differently, the input where they disagree if they do, and the owner. For a B to F finding, quote the precheck line it came from. Then how you fixed it, with the commit hash.
 - **Precheck lines dropped**: any precheck line you found not to be a real copy, with one sentence why.
 - **Notes**: things worth fixing that don't block, such as a question for the user (see "A finding you should not fix yourself"), wording under `tools/` (see "Developer tools: wording is a note") or a gap in a single owner's list. If the precheck printed a large-range note, quote it here word for word, and repeat it in your final message. It is a warning for the orchestrator, not a finding, so it never changes the verdict.
 - **Touched, already on the fix list**: audit findings this change moves without fixing.

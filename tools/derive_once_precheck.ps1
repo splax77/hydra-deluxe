@@ -25,7 +25,8 @@ Each line reads:  <kind> <file>:<line>  <what was found>  -- <why it counts>
 The kind letters are the merge-gate audit's (2026-10-04, section 4): A a
 production rule written twice, C a copied test helper or fixture, B a test
 that recomputes what production computes, D a number with no decision, E a
-source scan outside the one scan. A line ending "(known copy: ...)" is
+source scan outside the one scan. F is the concept audit's kind (D113 item
+6): a second home for an idea that already has one. A line ending "(known copy: ...)" is
 already in the known copies of tests/single_owner/baseline.json with the fix
 that removes it.
 
@@ -169,9 +170,32 @@ THE CHECKS
    inside its pattern (an exemption no owner line records, which applies in
    every file).
 
+5. Second homes in src/ (kind F). The concept audit's clue probes (D113
+   item 3; docs/audit/2026-10-11-concept-audit/leads.ps1 is the record of
+   their one run), applied to what the range adds in src/ and compared with
+   the rest of src/ at the range's last commit. The audit covers src/ only
+   (D113 item 1), so tests/ and tools/ are on neither side. It prints a
+   struct, class, enum or union whose name another src/ file also defines;
+   a struct or class whose field names overlap a record in another file
+   (the range added its name or one of the shared fields); a free function
+   (as check 1 finds them) whose name another src/ .cpp file also defines;
+   and a string literal that another src/ file also writes. How long a
+   string and how many fields count are the $min* values in the check 5
+   section, the user's decision D113 item 8. Each line names the other
+   homes. Strings are read with the shared lexer, so a quote inside a
+   comment never counts; raw strings and #include paths are left out. With
+   -WholeTree it lists every such clue in src/, each pair from both sides.
+
 What it cannot see: a production rule written twice (kind A) that no scan
 row spells, a copy whose shape it does not know, a decision that exists only
-as a reviewer's judgement, and code the range does not add.
+as a reviewer's judgement, and code the range does not add. For kind F it
+sees only shared names and shared text: a second home under new names (a
+record whose fields are all renamed, an enum with other words for the same
+states, a helper family with new names) passes, and so does a forward or
+opaque declaration, a member function, a field of function type (any
+declaration with a "(" reads as a method) and a second home in tests/ or
+tools/. Step 8 of the derive-once review is where a reviewer looks for
+those.
 
 RANGE SIZE
 
@@ -200,7 +224,7 @@ $ErrorActionPreference = 'Stop'
 # one place that says how many checks there are. -Disable's validation and
 # the run at the end read it, and the self-test loads it from this text to
 # turn each check off in turn.
-$checks = @('Invoke-Check1', 'Invoke-Check2', 'Invoke-Check3', 'Invoke-Check4')
+$checks = @('Invoke-Check1', 'Invoke-Check2', 'Invoke-Check3', 'Invoke-Check4', 'Invoke-Check5')
 # -Disable takes check numbers, as a list or comma-separated (-Disable 2 or -Disable 1,3).
 $Disable = @($Disable | ForEach-Object { "$_" -split ',' } | Where-Object { $_ } | ForEach-Object {
     if ($_ -notmatch '^\d+$' -or [int]$_ -lt 1 -or [int]$_ -gt $checks.Count) {
@@ -259,7 +283,7 @@ function Get-TipText([string]$Path, [string]$Rev = $tip) {
 # ---------------------------------------------------------------- file kinds
 #
 # What kind of file is this, and where does it sit? Every check asks through
-# these four functions, so each answer is written once.
+# these functions, so each answer is written once.
 
 # Which top folder of the repo is this file in (src, tools, tests...)? Empty
 # for a file at the repo root.
@@ -274,6 +298,9 @@ function Get-TopFolder([string]$File) {
 # uses the same $cppExt to spot a source file's path written in a test.
 $cppExt = '\.(cpp|h)'
 function Test-CppPath([string]$p) { $p -cmatch ($cppExt + '$') }
+# Is this a C++ source file, not a header? Check 5 compares free functions
+# between source files only, as the audit's phase 1 probe did.
+function Test-CppSourcePath([string]$p) { (Test-CppPath $p) -and $p -cmatch '\.cpp$' }
 function Test-PyPath([string]$p) { $p -match '\.py$' }
 # Is this a test file? Everything under tests/, and under tools/ a file in a
 # tests folder or a Python file named test_*.py, at any depth (tools/tests/
@@ -404,6 +431,21 @@ function Get-CloseBrace([object]$V, [int]$Open, [int]$Limit) {
     $c = (Get-Braces $V).Close[$Open]
     if ($null -eq $c -or $c -ge $Limit) { -1 } else { $c }
 }
+# The "{" offsets directly inside the "{" at $Open, in file order. Each
+# brace's children come from Get-Braces's parents, built once per view.
+function Get-BraceChildren([object]$V, [int]$Open) {
+    if (-not $V.PSObject.Properties['Children']) {
+        $kids = @{}
+        $braces = Get-Braces $V
+        foreach ($o in ($braces.Parent.Keys | Sort-Object)) {
+            $p = $braces.Parent[$o]
+            if (-not $kids.ContainsKey($p)) { $kids[$p] = [System.Collections.Generic.List[int]]::new() }
+            $kids[$p].Add($o)
+        }
+        $V | Add-Member -NotePropertyName Children -NotePropertyValue $kids
+    }
+    ,@(if ($V.Children.ContainsKey($Open)) { $V.Children[$Open] })
+}
 
 # ------------------------------------------------------------------- output
 
@@ -440,19 +482,8 @@ function Test-SkippedFile([string]$File) { $File.StartsWith('tests/single_owner/
 # '"key": [' before it, outside its earlier siblings.
 function Get-JsonObjects([object]$V, [string]$File, [int]$Parent, [string]$Key) {
     $out = [System.Collections.Generic.List[object]]::new()
-    if (-not $V.PSObject.Properties['Children']) {
-        # Each brace's direct children, built once per view.
-        $kids = @{}
-        $braces = Get-Braces $V
-        foreach ($o in ($braces.Parent.Keys | Sort-Object)) {
-            $p = $braces.Parent[$o]
-            if (-not $kids.ContainsKey($p)) { $kids[$p] = [System.Collections.Generic.List[int]]::new() }
-            $kids[$p].Add($o)
-        }
-        $V | Add-Member -NotePropertyName Children -NotePropertyValue $kids
-    }
     if ($Parent -lt 0) { $Parent = $V.CodeText.IndexOf('{') }
-    $children = @(if ($V.Children.ContainsKey($Parent)) { $V.Children[$Parent] })
+    $children = Get-BraceChildren $V $Parent
     $keyRx = [regex]::new('"[^"\n]*"\s*:\s*\[', 'RightToLeft')
     $from = $Parent + 1; $cur = $null
     foreach ($open in $children) {
@@ -736,7 +767,10 @@ function Get-Normalised([string]$Text) {
     [pscustomobject]@{ Key = $out.ToString(); Tokens = $n }
 }
 
-function Get-Definitions([string]$Path) {
+# The functions defined at namespace level in one file, and its named
+# lambdas. -NamesOnly skips the body match's normalising, which check 5
+# does not use and which is slow over all of src/.
+function Get-Definitions([string]$Path, [switch]$NamesOnly) {
     $v = Get-Views $Path
     $code = $v.CodeText
     # Brace structure from Get-Braces: each '{' with its closing offset and
@@ -773,7 +807,7 @@ function Get-Definitions([string]$Path) {
         $name = $m.Groups['name'].Value
         if ($cppKeywords.Contains($name) -or $notFunctionNames.Contains($name) -or $name -cmatch "^($doctestAsserts)$") { return }
         if (-not $isLambda -and ($m.Groups['pre'].Value -match "\b($($cppStatementKeywords -join '|'))\b")) { return }
-        $norm = Get-Normalised ($m.Groups['params'].Value + ' ' + $code.Substring($open, $end - $open + 1))
+        $norm = if ($NamesOnly) { [pscustomobject]@{ Key = $null; Tokens = 0 } } else { Get-Normalised ($m.Groups['params'].Value + ' ' + $code.Substring($open, $end - $open + 1)) }
         $first = Get-LineOf $v ($m.Index + ($m.Value.Length - $m.Value.TrimStart().Length))
         $last = Get-LineOf $v $end
         $defs.Add([pscustomobject]@{
@@ -1207,6 +1241,153 @@ function Invoke-Check4 {
     }
 }
 
+# --------------------------------------- check 5: second homes in src/ (F)
+
+# How big a repeat must be to count. These are the user's decision D113
+# item 8 in docs/audit/2026-10-03-fix-decisions.md, starting values the
+# first real runs may tune. This is the one place they live.
+$minRepeatedString = 12  # characters in a string literal, as written between its quotes
+$minRecordFields = 3     # fields a struct or class needs before it is compared
+$minSharedFields = 4     # field names two records share before they count as one idea
+
+# A struct, class, enum or union definition: the keyword, an attribute, the
+# name, then "final" or a base clause and the opening brace. A base clause
+# never starts "::", so "struct Engine::Impl {" (a member type defined out of
+# line) is not read as a struct named Engine.
+$typeDefRx = [regex]::new('\b(?<kind>enum\s+class|enum\s+struct|enum|struct|class|union)\s+(?:\[\[[^\]]*\]\]\s*)?(?<name>[A-Za-z_]\w*)\s*(?:final\s*)?(?::(?!:)[^;{]*)?\{', 'Compiled')
+
+# The data members of the struct or class whose body is the "{" at $Open:
+# name -> line. Every block nested in the body (a method body, a brace
+# initialiser, a nested type) is blanked first, so a nested type's members
+# and its access labels never count as the outer type's. A statement ends
+# at ";", or at a nested block's "}" when no "," ";" "=" or ")" follows it
+# (a method body ends a statement; a brace initialiser does not). A statement
+# with a "(" is a method, and one starting with a declaration keyword
+# (using, static, a nested type...) declares no member. One statement can
+# declare several members ("int64_t base, combo, sp;"), so its declarators
+# are split at commas outside <...>, (...), [...] and {...}.
+function Get-RecordFields([object]$V, [int]$Open, [int]$Close) {
+    $start = $Open + 1
+    $chars = $V.CodeText.Substring($start, $Close - $start).ToCharArray()
+    $closes = (Get-Braces $V).Close
+    foreach ($kid in (Get-BraceChildren $V $Open)) {
+        $kc = $closes[$kid]
+        if ($null -eq $kc) { continue }
+        for ($i = $kid + 1; $i -lt $kc; $i++) { if ($chars[$i - $start] -ne "`n") { $chars[$i - $start] = ' ' } }
+    }
+    $body = [string]::new([char[]]$chars)
+    $fields = [ordered]@{}
+    $from = 0
+    $ends = @(@([regex]::Matches($body, ';|\}(?=\s*[^\s,;=)])') | ForEach-Object { $_.Index }) + $body.Length)
+    foreach ($e in $ends) {
+        $stmt = $body.Substring($from, $e - $from)
+        $stmtAt = $from
+        $from = $e + 1
+        $stmt = [regex]::Replace($stmt, '(?m)^\s*(?:public|private|protected)\s*:', { param($m) Blank $m.Value })
+        $t = $stmt.Trim()
+        if (-not $t -or $t.Contains('(') -or $t -match '^(?:using|friend|static|typedef|template|enum|struct|class|union)\b') { continue }
+        $depth = 0; $partAt = 0; $partNo = 0
+        for ($i = 0; $i -le $stmt.Length; $i++) {
+            if ($i -lt $stmt.Length) {
+                $c = $stmt[$i]
+                if ('<([{'.IndexOf($c) -ge 0) { $depth++; continue }
+                if ('>)]}'.IndexOf($c) -ge 0) { $depth--; continue }
+                if ($c -ne ',' -or $depth -ne 0) { continue }
+            }
+            $part = $stmt.Substring($partAt, $i - $partAt)
+            $eq = $part.IndexOf('=')
+            if ($eq -ge 0) { $part = $part.Substring(0, $eq) }
+            $m = [regex]::Match($part, '([A-Za-z_]\w*)\s*(?:\{\s*\}\s*|\[[^\]]*\]\s*)*$')
+            # The first declarator carries the type, so its name follows one.
+            $typed = $partNo -gt 0 -or ($m.Success -and $part.Substring(0, $m.Index).Trim())
+            if ($m.Success -and $typed -and -not $cppKeywords.Contains($m.Groups[1].Value) -and -not $fields.Contains($m.Groups[1].Value)) {
+                $fields[$m.Groups[1].Value] = Get-LineOf $V ($start + $stmtAt + $partAt + $m.Groups[1].Index)
+            }
+            $partAt = $i + 1; $partNo++
+        }
+    }
+    $fields
+}
+
+# Every other home of one thing: "file:line, file:line", one per file.
+function Format-OtherHomes([object[]]$Homes, [string]$File) {
+    (@($Homes | Where-Object { $_.File -ne $File } | Group-Object File | ForEach-Object { "$($_.Name):$($_.Group[0].Line)" }) -join ', ')
+}
+
+function Invoke-Check5 {
+    # The audit that asked for this check covers src/ only (D113 item 1), so
+    # both sides of every comparison are src/ C++ files at the range's tip.
+    $srcFiles = @($allFiles | Where-Object { (Get-TopFolder $_) -eq 'src' -and (Test-CppPath $_) })
+    if (-not @($srcFiles | Where-Object { $added.ContainsKey($_) }).Count) { return }
+    $types = [System.Collections.Generic.List[object]]::new()
+    $records = [System.Collections.Generic.List[object]]::new()
+    $funcs = [System.Collections.Generic.List[object]]::new()
+    $texts = [System.Collections.Generic.List[object]]::new()
+    foreach ($f in $srcFiles) {
+        $v = Get-Views $f
+        foreach ($m in $typeDefRx.Matches($v.CodeText)) {
+            $kind = $m.Groups['kind'].Value -replace '\s+', ' '
+            $type = [pscustomobject]@{ File = $f; Line = (Get-LineOf $v $m.Groups['name'].Index); Kind = $kind; Name = $m.Groups['name'].Value }
+            $types.Add($type)
+            if ($kind -ne 'struct' -and $kind -ne 'class') { continue }
+            $open = $m.Index + $m.Length - 1
+            $close = Get-CloseBrace $v $open $v.CodeText.Length
+            if ($close -lt 0) { continue }
+            $fields = Get-RecordFields $v $open $close
+            if ($fields.Count -ge $minRecordFields) { $records.Add([pscustomobject]@{ File = $f; Line = $type.Line; Kind = $kind; Name = $type.Name; Fields = $fields }) }
+        }
+        if (Test-CppSourcePath $f) {
+            foreach ($d in (Get-Definitions $f -NamesOnly)) { if (-not $d.Lambda) { $funcs.Add($d) } }
+        }
+        # String literals as the lexer reads them, so a quote inside a
+        # comment is never one; raw strings and #include paths are left out.
+        foreach ($m in $cppLex.Matches((Get-TipText $f))) {
+            $g = $m.Groups['s']
+            if (-not $g.Success -or $g.Value[0] -ne '"') { continue }
+            $s = $g.Value.Substring(1, $g.Value.Length - 2)
+            if ($s.Length -lt $minRepeatedString) { continue }
+            $line = Get-LineOf $v $g.Index
+            if ($v.Code[$line - 1] -match '^\s*#\s*include\b') { continue }
+            $texts.Add([pscustomobject]@{ File = $f; Line = $line; Text = $s })
+        }
+    }
+
+    $why = 'a second home for an idea that already has one; name the concept it extends, or reuse it (derive-once review, step 8)'
+    foreach ($g in ($types | Group-Object Name -CaseSensitive)) {
+        if (@($g.Group | Select-Object -ExpandProperty File -Unique).Count -lt 2) { continue }
+        foreach ($t in ($g.Group | Where-Object { Test-Added $_.File $_.Line })) {
+            $others = Format-OtherHomes $g.Group $t.File
+            if ($others) { Add-Item 'F' $t.File $t.Line "$($t.Kind) $($t.Name) is also defined at $others" $why }
+        }
+    }
+    foreach ($r in $records) {
+        foreach ($o in $records) {
+            if ($o.File -eq $r.File) { continue }
+            $shared = @($r.Fields.Keys | Where-Object { $o.Fields.Contains($_) } | Sort-Object)
+            if ($shared.Count -lt $minSharedFields) { continue }
+            # The record counts when the range added its name or one of the shared fields.
+            $at = @(@($r.Line) + @($shared | ForEach-Object { $r.Fields[$_] }) | Where-Object { Test-Added $r.File $_ })
+            if (-not $at.Count) { continue }
+            Add-Item 'F' $r.File $at[0] "$($r.Kind) $($r.Name) shares $($shared.Count) field names with $($o.Kind) $($o.Name) at $($o.File):$($o.Line): $($shared -join ', ')" $why
+        }
+    }
+    foreach ($g in ($funcs | Group-Object Name -CaseSensitive)) {
+        if (@($g.Group | Select-Object -ExpandProperty File -Unique).Count -lt 2) { continue }
+        foreach ($d in ($g.Group | Where-Object { Test-Added $_.File $_.Line })) {
+            $others = Format-OtherHomes $g.Group $d.File
+            if ($others) { Add-Item 'F' $d.File $d.Line "free function $($d.Name) is also defined at $others" $why }
+        }
+    }
+    foreach ($g in ($texts | Group-Object Text -CaseSensitive)) {
+        if (@($g.Group | Select-Object -ExpandProperty File -Unique).Count -lt 2) { continue }
+        # One line per file: the first place this range wrote the text there.
+        foreach ($fg in ($g.Group | Where-Object { Test-Added $_.File $_.Line } | Group-Object File)) {
+            $first = $fg.Group[0]
+            Add-Item 'F' $first.File $first.Line """$($first.Text)"" is also written at $(Format-OtherHomes $g.Group $first.File)" $why
+        }
+    }
+}
+
 # ---------------------------------------------------------------- range size
 
 # Is this range too big to review in one read? A reviewer reads the whole
@@ -1243,7 +1424,7 @@ for ($checkNo = 1; $checkNo -le $checks.Count; $checkNo++) {
 foreach ($w in $rowWarnings) { Write-Host "$warnPrefix$w (this row could not be read as expected: std::regex and .NET may read its pattern differently; trust the scan)" }
 if (-not $ruleFiles.Count) { Write-Host "$warnPrefix$rulesDir has no rule files at $($rulesRev.Substring(0, 7)), so no scan rows were applied" }
 
-$order = @{ C = 0; B = 1; A = 2; D = 3; E = 4 }
+$order = @{ C = 0; B = 1; A = 2; D = 3; E = 4; F = 5 }
 $sorted = $items | Sort-Object @{ e = { $order[$_.Kind] } }, File, Line, What -Unique
 foreach ($i in $sorted) {
     "{0} {1}:{2}  {3}  -- {4}" -f $i.Kind, $i.File, $i.Line, $i.What, $i.Why
