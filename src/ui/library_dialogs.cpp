@@ -1,5 +1,6 @@
 #include "ui/library_parts.h"
 
+#include "app/display_format.h"  // kFactSeparator
 #include "core/model.h"
 #include "core/strutil.h"
 #include "imgui.h"
@@ -77,9 +78,9 @@ std::string format_duration(double seconds) {
 BatchSettingsSummary batch_settings_summary(const app::Settings& s) {
     BatchSettingsSummary out;
     out.difficulty = difficulty_name(s.difficulty());
-    if (s.view_prodrums) out.difficulty += " \xC2\xB7 Pro Drums";
-    if (s.effective_bass2x()) out.difficulty += " \xC2\xB7 2x Bass";
-    if (s.view_noteshuffle) out.difficulty += " \xC2\xB7 Note Shuffle";
+    if (s.view_prodrums) out.difficulty += app::kFactSeparator + std::string("Pro Drums");
+    if (s.effective_bass2x()) out.difficulty += app::kFactSeparator + std::string("2x Bass");
+    if (s.view_noteshuffle) out.difficulty += app::kFactSeparator + std::string("Note Shuffle");
     const app::SettingsText values = setting_values(s);
     out.sp_cap =
         values.cap + (is_clone_hero_cap(s.sp_cap) ? " (Clone Hero's rule)" : " (a what-if)");
@@ -120,7 +121,7 @@ std::vector<std::string> settings_change_phrases(const app::Settings& s) {
 std::string settings_changes_summary(const app::Settings& s) {
     std::string out;
     for (const std::string& phrase : settings_change_phrases(s)) {
-        if (!out.empty()) out += " \xC2\xB7 ";
+        if (!out.empty()) out += app::kFactSeparator;
         out += phrase;
     }
     return out.empty() ? "defaults" : out;
@@ -435,8 +436,10 @@ void render_batch_strip(AppState& app) {
         std::string line = stopping ? "Stopping..." : s.paused ? "Paused" : "Analyzing...";
         line += "  " + group_thousands(s.completed) + " of " + group_thousands(s.total);
         if (!s.current_title.empty() && !s.paused) {
+            // Not kFactSeparator: this one dot has two spaces each side, like
+            // the wide gap before the count, and stays as the strip shows it.
             line += "  \xC2\xB7  Now: " + s.current_title;
-            if (!s.current_artist.empty()) line += " \xC2\xB7 " + s.current_artist;
+            if (!s.current_artist.empty()) line += app::kFactSeparator + s.current_artist;
         }
         text_ellipsized(line.c_str());
 
@@ -446,7 +449,7 @@ void render_batch_strip(AppState& app) {
         ImGui::PopStyleColor(2);
 
         std::string time = format_duration(s.elapsed_s) + " elapsed";
-        if (s.eta_s) time += " \xC2\xB7 " + time_left_text(*s.eta_s);
+        if (s.eta_s) time += app::kFactSeparator + time_left_text(*s.eta_s);
         ImGui::PushStyleColor(ImGuiCol_Text, kStripText2);
         ImGui::TextUnformatted(batch_counts(s).c_str());
         const float time_w = ImGui::CalcTextSize(time.c_str()).x;
@@ -522,8 +525,9 @@ void render_batch_done(AppState& app) {
 
     ImGui::SetCursorPos(ImVec2(left_x, top_y));
     ImGui::PushTextWrapPos(left_x + text_w);
-    ImGui::TextWrapped("%s: %s \xC2\xB7 took %s", stopped ? "Stopped" : "Finished",
-                       batch_counts(s).c_str(), format_duration(s.elapsed_s).c_str());
+    ImGui::TextWrapped("%s: %s%stook %s", stopped ? "Stopped" : "Finished",
+                       batch_counts(s).c_str(), app::kFactSeparator,
+                       format_duration(s.elapsed_s).c_str());
     ImGui::PushStyleColor(ImGuiCol_Text, text2);
     if (stopped) {
         ImGui::TextWrapped("Every result finished before Stop is kept.");
