@@ -1,6 +1,5 @@
 // Where the highway lands on the Preview image, and the scale that keeps the
-// Preview's text boxes (the time and score boxes top-left, the SP drain box
-// and the next-activation box under it top-right) beside it rather than on
+// Preview's text boxes (stacked by overlay_tops) beside it rather than on
 // it. Device-free: the same camera and track height the renderer draws with,
 // projected on the CPU.
 //
@@ -47,16 +46,42 @@ struct HighwaySpan {
 };
 HighwaySpan highway_span_at(const PreviewConfig& cfg, int width, int height, float y);
 
+// The boxes' heights at one scale, in image pixels: what the stacking order
+// (overlay_tops) reads.
+struct OverlayHeights {
+    float time_h = 0.0f;
+    float score_h = 0.0f;
+    float drain_h = 0.0f;
+    float gap = 0.0f;         // between two boxes in one column
+    float top_margin = 0.0f;  // from the image's top edge to the right column
+};
+
+// Where each text box's top edge sits, in image pixels from the image's top
+// edge, and where the left column ends.
+struct OverlayTops {
+    float time = 0.0f;
+    float score = 0.0f;
+    float left_bottom = 0.0f;
+    float drain = 0.0f;
+    float next = 0.0f;
+};
+
+// The one stacking order of the Preview's text boxes. The fit pass (at scale
+// 1) and the draw pass (at the fitted scale) both read it, so a box is never
+// fitted in one place and drawn in another.
+OverlayTops overlay_tops(const OverlayHeights& sizes, bool drain_drawn, bool score_shown);
+
 // The boxes to fit, at scale 1, in image pixels. A width of 0 means absent.
-// The right column's boxes share one right edge, left of the gauge.
+// The right column's boxes share one right edge, left of the gauge. The tops
+// and the left column's height come from overlay_tops.
 struct OverlayBoxes {
-    float left_w = 0.0f;      // the top-left column (time box, score box under it)
+    float left_w = 0.0f;      // the top-left column
     float left_h = 0.0f;      //   from the image's top edge
     float right_edge = 0.0f;  // x of the right column's right edge
     float right_w = 0.0f;     // the SP drain box
     float right_h = 0.0f;
     float right_top = 0.0f;   //   y of its top edge
-    float next_w = 0.0f;      // the next-activation box, under the drain box
+    float next_w = 0.0f;      // the next-activation box
     float next_h = 0.0f;
     float next_top = 0.0f;    //   y of its top edge
     float gap = 0.0f;         // clearance kept from the highway's edge

@@ -591,15 +591,18 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         const float gauge_left = img_max.x - inset - bar_w;
 
         // Scale-1 sizes, and the extents the fit needs (image pixels).
+        // Every box's top, from render::overlay_tops, at the sizes' scale.
+        // The right column starts at the gauge's margin, which is not scaled.
+        auto tops_at = [&](const OverlayBoxSizes& s) {
+            return render::overlay_tops({s.time_h, s.score_h, s.drain_h, s.gap, v_margin},
+                                        drain_drawn, score.shown);
+        };
         const OverlayBoxSizes sz1 =
             overlay_box_sizes(1.0f, pcfg, lines, line_count, score, d_lines, text_width);
+        const render::OverlayTops tops1 = tops_at(sz1);
         render::OverlayBoxes fit;
-        fit.left_w = sz1.time_w;
-        fit.left_h = sz1.time_h;
-        if (score.shown) {
-            fit.left_w = std::max(fit.left_w, sz1.score_w);
-            fit.left_h += sz1.gap + sz1.score_h;
-        }
+        fit.left_w = score.shown ? std::max(sz1.time_w, sz1.score_w) : sz1.time_w;
+        fit.left_h = tops1.left_bottom;
         // The right column's right edge, in image pixels: the drain box's, and
         // the next-activation box's under it.
         const float right_edge = gauge_left - d_gap - origin.x;
@@ -607,14 +610,9 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         if (drain_drawn) {
             fit.right_w = sz1.drain_w;
             fit.right_h = sz1.drain_h;
-            fit.right_top = v_margin;
+            fit.right_top = tops1.drain;
         }
-        // The next-activation box's top: under the drain box, with the gap
-        // the left column keeps between its boxes, or in the drain box's
-        // place when that is hidden.
-        auto next_top_at = [&](const OverlayBoxSizes& s) {
-            return v_margin + (drain_drawn ? s.drain_h + s.gap : 0.0f);
-        };
+        auto next_top_at = [&](const OverlayBoxSizes& s) { return tops_at(s).next; };
         // Its lines: the header, the notation in larger type, then where it
         // is and its chord. The header's count ("2 of 3") stays on one line,
         // and the notation never breaks.
@@ -647,13 +645,14 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
             fit.next_w = std::max(fit.next_w, t.text_w + sz1.pad * 2.0f);
             fit.next_h = std::max(fit.next_h, t.text_h + sz1.pad * 2.0f);
         }
-        fit.next_top = next_top_at(sz1);
+        fit.next_top = tops1.next;
         fit.gap = sz1.gap;
         const float scale = render::overlay_scale(pcfg, w, h, fit);
         pc->set_overlay_scale(scale);
 
         const OverlayBoxSizes sz =
             overlay_box_sizes(scale, pcfg, lines, line_count, score, d_lines, text_width);
+        const render::OverlayTops tops = tops_at(sz);
         const float size = sz.size;
         const float margin = sz.margin;
         const float pad = sz.pad;
@@ -661,8 +660,8 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         const float corner = px(6.0f) * scale;
 
         // The time box.
-        ImVec2 box_min(origin.x, origin.y);
-        ImVec2 box_max(origin.x + sz.time_w, origin.y + sz.time_h);
+        ImVec2 box_min(origin.x, origin.y + tops.time);
+        ImVec2 box_max(origin.x + sz.time_w, box_min.y + sz.time_h);
         dl->AddRectFilled(box_min, box_max, IM_COL32(0, 0, 0, 128), corner,
                           ImDrawFlags_RoundCornersBottomRight);
         name_box("##time_box", box_min, box_max);
@@ -679,7 +678,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         // stored score. Right corners rounded, since it sits against the left
         // edge.
         if (score.shown) {
-            ImVec2 s_min(origin.x, box_max.y + sz.gap);
+            ImVec2 s_min(origin.x, origin.y + tops.score);
             ImVec2 s_max(origin.x + sz.score_w, s_min.y + sz.score_h);
             dl->AddRectFilled(s_min, s_max, IM_COL32(0, 0, 0, 128), corner,
                               ImDrawFlags_RoundCornersRight);
@@ -769,7 +768,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         // the floor starts from (the preview config's sp_active_color). The
         // floor draws it darkened (sp_active_darken); the text uses it as is.
         if (drain_drawn) {
-            ImVec2 d_min(gauge_left - d_gap - sz.drain_w, origin.y + v_margin);
+            ImVec2 d_min(gauge_left - d_gap - sz.drain_w, origin.y + tops.drain);
             ImVec2 d_max(gauge_left - d_gap, d_min.y + sz.drain_h);
             dl->AddRectFilled(d_min, d_max, IM_COL32(0, 0, 0, 128), corner);
             name_box("##drain_box", d_min, d_max);
@@ -797,8 +796,8 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
             const std::vector<render::TextPiece> pieces = next_pieces(next, sz);
             const render::WrappedText t = wrap_next(pieces, sz);
             const ImVec2 n_max(origin.x + right_edge,
-                               origin.y + next_top_at(sz) + t.text_h + pad * 2.0f);
-            const ImVec2 n_min(n_max.x - t.text_w - pad * 2.0f, origin.y + next_top_at(sz));
+                               origin.y + tops.next + t.text_h + pad * 2.0f);
+            const ImVec2 n_min(n_max.x - t.text_w - pad * 2.0f, origin.y + tops.next);
             dl->AddRectFilled(n_min, n_max, IM_COL32(0, 0, 0, 128), corner);
             name_box("##next_act_box", n_min, n_max);
             const ImU32 white = IM_COL32(255, 255, 255, 255);

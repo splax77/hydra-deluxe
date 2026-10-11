@@ -141,6 +141,21 @@ TEST_CASE("overlay_scale: full size with room, floored when narrow, clear in bet
     CHECK(overlay_scale(cfg, 300, h, OverlayBoxes{}) == 1.0f);
 }
 
+TEST_CASE("overlay_tops: score under time, next under drain or in its place") {
+    // A 70 px time box, a 90 px score box, a 70 px drain box, 6 px apart,
+    // the right column 10 px down.
+    const OverlayHeights s{70.0f, 90.0f, 70.0f, 6.0f, 10.0f};
+    const OverlayTops all = overlay_tops(s, /*drain_drawn=*/true, /*score_shown=*/true);
+    CHECK(all.time == 0.0f);
+    CHECK(all.score == 76.0f);
+    CHECK(all.left_bottom == 166.0f);
+    CHECK(all.drain == 10.0f);
+    CHECK(all.next == 86.0f);
+    const OverlayTops bare = overlay_tops(s, false, false);
+    CHECK(bare.left_bottom == 70.0f);
+    CHECK(bare.next == 10.0f);
+}
+
 namespace {
 // 10 px per character (not per byte), "…" included: a fixed-pitch stand-in
 // for the monospace font the path picker draws with.

@@ -46,6 +46,19 @@ HighwaySpan highway_span_at(const PreviewConfig& cfg, int width, int height, flo
     return s;
 }
 
+OverlayTops overlay_tops(const OverlayHeights& s, bool drain_drawn, bool score_shown) {
+    // Left column: the time box in the corner, the score box under it.
+    // Right column: the drain box at the margin, the next-activation box
+    // under it, or in its place when it is hidden.
+    OverlayTops t;
+    t.time = 0.0f;
+    t.score = s.time_h + s.gap;
+    t.left_bottom = score_shown ? s.time_h + (s.gap + s.score_h) : s.time_h;
+    t.drain = s.top_margin;
+    t.next = s.top_margin + (drain_drawn ? s.drain_h + s.gap : 0.0f);
+    return t;
+}
+
 float overlay_scale(const PreviewConfig& cfg, int width, int height, const OverlayBoxes& boxes,
                     float min_scale) {
     float scale = 1.0f;
