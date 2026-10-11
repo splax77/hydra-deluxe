@@ -1,0 +1,22 @@
+{
+  "rules": [
+    {
+      "question": "How does the song panel word 'analysis is off'?",
+      "owner": "kAnalysisOffSentence in src/app/user_messages.h",
+      "owner_file": "src/app/user_messages.h",
+      "owner_symbol": "kAnalysisOffSentence",
+      "date": "2026-10-11",
+      "decision": "D114 item 13 (M82)",
+      "added_by": "concept-audit-G1",
+      "pattern": "Analysis is off until",
+      "scope": ["src"],
+      "must_match": [
+        "                           \"Analysis is off until hydra_rules.ini is fixed and Hydra is \""
+      ],
+      "must_not_match": [
+        "        ImGui::TextColored(kWarningColor, \"%s\", app::kAnalysisOffSentence);"
+      ],
+      "note": "The song panel once had its own shorter sentence for a bad hydra_rules.ini. It shows the toolbar's sentence now, without the file's error, because the toolbar above already shows that. Decided by: D114 item 13, concept audit M82."
+    }
+  ]
+}

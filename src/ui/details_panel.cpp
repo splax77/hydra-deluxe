@@ -139,10 +139,13 @@ void render_panel_notices(AppState& app) {
             app.show_details = false;  // tick() runs close_details() on the edge
         }
     }
-    if (app.analysis_blocked())
-        ImGui::TextColored(kWarningColor,
-                           "Analysis is off until hydra_rules.ini is fixed and Hydra is "
-                           "restarted.");
+    // Without the file's error: the toolbar above already shows it (D114
+    // item 13).
+    if (app.analysis_blocked()) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(kWarningColor, "%s", app::kAnalysisOffSentence);
+        ImGui::PopTextWrapPos();
+    }
 }
 
 // The click's progress box, its cancel line and its error. Display only;

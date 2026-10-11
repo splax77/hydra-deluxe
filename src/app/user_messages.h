@@ -34,7 +34,7 @@ inline constexpr const char* kDatabaseReadSentence =
 
 // What a bad hydra_rules.ini reads as in the app (ErrorKind::RulesFile, D114
 // items 11 and 13): analysis stays off while it is bad (AppState::rules_error).
-// The library toolbar and the path report window show it.
+// The library toolbar, the path report window and the song panel show it.
 inline constexpr const char* kAnalysisOffSentence =
     "hydra_rules.ini has an error, so analysis is off until the file is fixed and "
     "Hydra is restarted.";
