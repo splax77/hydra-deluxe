@@ -68,11 +68,9 @@ SceneAndHighway build_scene_and_highway(const Song& song, const Path* path, int 
 }  // namespace
 
 PreviewNotes read_preview_notes(const store::ChartLibraryEntry& entry,
-                                const app::SharedBytes& container, bool pro, bool bass2x,
-                                Difficulty difficulty, const core::Rules& rules,
-                                bool noteshuffle) {
-    PreviewNotes notes{app::resolve_preview_song(entry.notespath, container, pro, bass2x,
-                                                 difficulty, rules, noteshuffle),
+                                const app::SharedBytes& container,
+                                const app::ChartReading& reading, const core::Rules& rules) {
+    PreviewNotes notes{app::resolve_preview_song(entry.notespath, container, reading, rules),
                        std::nullopt};
     // The song's length, from the same owner analysis saves through (D75),
     // with the container already in hand. A failed read costs only the
@@ -80,14 +78,14 @@ PreviewNotes read_preview_notes(const store::ChartLibraryEntry& entry,
     try {
         notes.song_length_ms = app::chart_song_length_ms(
             app::chart_timing_meta(entry.timing, entry.notespath), entry.notespath, notes.ps.song,
-            difficulty, bass2x, rules, container);
+            reading.difficulty, reading.bass2x, rules, container);
     } catch (const std::exception&) {
     }
     // A chart with no charting in this mode would otherwise build an empty
     // scene and the tab would show a blank highway with no reason given.
     // Throwing here surfaces it as "Preview failed: ...", the same wording
     // analysis uses.
-    require_notes(notes.ps.song, difficulty, pro);
+    require_notes(notes.ps.song, reading.difficulty, reading.prodrums);
     return notes;
 }
 
@@ -112,17 +110,13 @@ double ByteRateClock::update(double now_s, uint64_t bytes_done, uint64_t bytes_t
     return published_;
 }
 
-PreviewLoadJob::PreviewLoadJob(store::ChartLibraryEntry entry, bool pro, bool bass2x,
-                               Difficulty difficulty, std::optional<Path> path, int sp_cap,
-                               core::Rules rules, bool noteshuffle)
+PreviewLoadJob::PreviewLoadJob(store::ChartLibraryEntry entry, const app::ChartReading& reading,
+                               std::optional<Path> path, int sp_cap, core::Rules rules)
     : entry_(std::move(entry)),
-      pro_(pro),
-      bass2x_(bass2x),
-      difficulty_(difficulty),
+      reading_(reading),
       path_(std::move(path)),
       sp_cap_(sp_cap),
-      rules_(std::move(rules)),
-      noteshuffle_(noteshuffle) {}
+      rules_(std::move(rules)) {}
 
 void PreviewLoadJob::start() {
     started_ = std::chrono::steady_clock::now();
@@ -205,8 +199,7 @@ void PreviewLoadJob::run() {
         } guard{stop, audio_branch};
 
         // Branch (a) here: the notes.
-        PreviewNotes notes = read_preview_notes(entry_, container, pro_, bass2x_, difficulty_,
-                                                rules_, noteshuffle_);
+        PreviewNotes notes = read_preview_notes(entry_, container, reading_, rules_);
         container.reset();
         app::PreviewSong& ps = notes.ps;
         const std::optional<double> song_length_ms = notes.song_length_ms;
@@ -226,7 +219,7 @@ void PreviewLoadJob::run() {
         // path, as an unanalyzed one is (drawn_path).
         SceneAndHighway built = build_scene_and_highway(
             ps.song, drawn_path(path_, chart_changed), sp_cap_, rules_, audio_end_ms,
-            song_length_ms, pro_, [this] {
+            song_length_ms, reading_.prodrums, [this] {
                 scene_done_.store(true);
                 throw_if_cancelled();
             });
@@ -308,18 +301,14 @@ std::string PreviewLoadJob::Progress::time_left_text() const {
     return gated_time_left_text(elapsed_s, time_left_s);
 }
 
-PreviewNotesJob::PreviewNotesJob(store::ChartLibraryEntry entry, bool pro, bool bass2x,
-                                 Difficulty difficulty, std::optional<Path> path, int sp_cap,
-                                 core::Rules rules, bool noteshuffle,
+PreviewNotesJob::PreviewNotesJob(store::ChartLibraryEntry entry, const app::ChartReading& reading,
+                                 std::optional<Path> path, int sp_cap, core::Rules rules,
                                  std::optional<double> audio_end_ms)
     : entry_(std::move(entry)),
-      pro_(pro),
-      bass2x_(bass2x),
-      difficulty_(difficulty),
+      reading_(reading),
       path_(std::move(path)),
       sp_cap_(sp_cap),
       rules_(std::move(rules)),
-      noteshuffle_(noteshuffle),
       audio_end_ms_(audio_end_ms) {}
 
 void PreviewNotesJob::start() { spawn([this] { run(); }); }
@@ -330,13 +319,12 @@ void PreviewNotesJob::run() {
         // A .sng or .srb is read whole: its notes live inside it.
         app::SharedBytes container = app::read_preview_container(read_file_bytes, entry_.notespath);
         throw_if_cancelled();
-        PreviewNotes notes = read_preview_notes(entry_, container, pro_, bass2x_, difficulty_,
-                                                rules_, noteshuffle_);
+        PreviewNotes notes = read_preview_notes(entry_, container, reading_, rules_);
         container.reset();  // a .sng's audio is not needed here
         throw_if_cancelled();
         SceneAndHighway built = build_scene_and_highway(
             notes.ps.song, path_ ? &*path_ : nullptr, sp_cap_, rules_, audio_end_ms_,
-            notes.song_length_ms, pro_, [this] { throw_if_cancelled(); });
+            notes.song_length_ms, reading_.prodrums, [this] { throw_if_cancelled(); });
         result_ = Result{std::move(built.scene), notes.song_length_ms, std::move(notes.ps.song),
                          std::move(built.track_state), built.track_opts};
         return true;

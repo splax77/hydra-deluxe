@@ -143,12 +143,16 @@ _Avoid_: view options
 
 **Chart reading**:
 The four choices that pick which notes a chart is read as: the difficulty, Pro
-Drums, 2x Bass and Note Shuffle. `app::ChartReading` in src/app/config.h holds
+Drums, 2x Bass and Note Shuffle. `app::ChartReading` in src/app/analysis.h holds
 them, and `Settings::reading` reads them off the settings, 2x Bass through
-`effective_bass2x`. Its stored spelling is the chart mode, such as "Expert Pro
-Drums, 2x Bass", written by `chartmode_key` and read back by
-`Settings::with_chartmode`. `to_analysis_settings` and the Preview's song key
-take the four from `reading`, so a fifth choice is added there.
+`effective_bass2x`; `Settings::with_reading` writes one back. Its stored
+spelling is the chart mode, such as "Expert Pro Drums, 2x Bass", written by
+`chartmode_key` and read back by `Settings::with_chartmode`.
+`AnalysisSettings` holds a `ChartReading` as a base, and the Preview's song key
+and load jobs, `resolve_preview_song` and `dynamics_for_settings` take one, so
+a fifth choice is added to `ChartReading`, `reading` and `with_reading`. The
+parsers themselves (`load_songpath`) and the whole-chart preview call
+`resolve_preview_source` still take the choices as separate arguments.
 
 **Score range**:
 How far below the best score a kept path may fall: a number and a unit, scores

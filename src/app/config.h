@@ -60,24 +60,9 @@ struct PathOverrides {
 void set_path_overrides(PathOverrides overrides);
 const PathOverrides& path_overrides();
 
-// The four choices that pick which notes a chart is read as: the difficulty,
-// Pro Drums, 2x Bass and Note Shuffle. Settings::reading() is where they are
-// read off the settings; chartmode_key, to_analysis_settings and the
-// Preview's song key take them from there, so a fifth choice is added here
-// and in reading() (concept audit M19). Settings::with_chartmode still
-// writes the view fields itself.
-struct ChartReading {
-    Difficulty difficulty = Difficulty::Expert;
-    bool prodrums = true;
-    bool bass2x = true;
-    bool noteshuffle = false;
-
-    bool operator==(const ChartReading& o) const {
-        return difficulty == o.difficulty && prodrums == o.prodrums && bass2x == o.bass2x &&
-               noteshuffle == o.noteshuffle;
-    }
-    bool operator!=(const ChartReading& o) const { return !(*this == o); }
-};
+// ChartReading (the four choices that pick a chart's notes) lives in
+// app/analysis.h, beside the AnalysisSettings that holds it. Settings::reading()
+// and Settings::with_reading read it off and write it onto the settings.
 
 // The stored chart mode a reading is filed under: "Expert Pro Drums, 2x
 // Bass", mirroring HyAppUserSettings.chartmode_key. With Note Shuffle on it
@@ -221,6 +206,11 @@ struct Settings {
     // The chart reading these settings ask for: difficulty(), view_prodrums,
     // effective_bass2x() and view_noteshuffle (ChartReading).
     ChartReading reading() const;
+
+    // These settings with the view fields set to ask for `reading`, the rest
+    // kept as they are; reading() of the result gives `reading` back. The one
+    // place a whole reading is written onto the settings.
+    Settings with_reading(const ChartReading& reading) const;
 
     // app::chartmode_key of reading().
     std::string chartmode_key() const;

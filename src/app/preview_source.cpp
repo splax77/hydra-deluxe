@@ -329,8 +329,8 @@ PreviewSource resolve_preview_source_reading(const FileBytesReader& read_bytes,
     // A container is read from disk once; the same bytes give the notes, the
     // audio and (for a .sng) the metadata delay.
     const SharedBytes container = read_preview_container(read_bytes, notespath);
-    PreviewSong ps = resolve_preview_song(notespath, container, pro, bass2x, difficulty, rules,
-                                          noteshuffle);
+    PreviewSong ps = resolve_preview_song(
+        notespath, container, ChartReading{difficulty, pro, bass2x, noteshuffle}, rules);
     PreviewSource src{std::move(ps.song), resolve_preview_stems(notespath, container),
                       ps.audio_offset_ms};
     return src;
@@ -349,12 +349,12 @@ SharedBytes read_preview_container(const FileBytesReader& read_bytes,
 }
 
 PreviewSong resolve_preview_song(const std::string& notespath, const SharedBytes& container,
-                                 bool pro, bool bass2x, Difficulty difficulty,
-                                 const core::Rules& rules, bool noteshuffle) {
-    PreviewSong out{container ? load_songpath_from_bytes(notespath, *container, pro, bass2x,
-                                                         difficulty, rules, noteshuffle)
-                              : load_songpath(notespath, pro, bass2x, difficulty, rules,
-                                              noteshuffle)};
+                                 const ChartReading& reading, const core::Rules& rules) {
+    PreviewSong out{container ? load_songpath_from_bytes(notespath, *container, reading.prodrums,
+                                                         reading.bass2x, reading.difficulty, rules,
+                                                         reading.noteshuffle)
+                              : load_songpath(notespath, reading.prodrums, reading.bass2x,
+                                              reading.difficulty, rules, reading.noteshuffle)};
     out.audio_offset_ms = chart_audio_offset_ms(notespath, container, out.song.chart_offset_s);
     return out;
 }

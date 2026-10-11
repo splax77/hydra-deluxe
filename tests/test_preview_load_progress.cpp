@@ -274,8 +274,8 @@ TEST_CASE("a Preview load cancelled while opening a 300 MB Opus stem stops promp
     REQUIRE(hydra::file_size_bytes(song) >= 300000000ull);
 
     {
-        PreviewLoadJob job(entry_for(notes), true, true, hydra::Difficulty::Expert, std::nullopt,
-                           4);
+        PreviewLoadJob job(entry_for(notes), {hydra::Difficulty::Expert, true, true},
+                           std::nullopt, 4);
         job.start();
         // Cancel only once the stem's open has reported bytes. A cancel that
         // lands before the open starts reads 0 bytes at both ends and would
@@ -329,8 +329,8 @@ TEST_CASE("a Preview load turns a negative chart offset into front silence") {
     write_bytes(ini, std::vector<uint8_t>(ini_text.begin(), ini_text.end()));
 
     {
-        PreviewLoadJob job(entry_for(notes), true, true, hydra::Difficulty::Expert, std::nullopt,
-                           4);
+        PreviewLoadJob job(entry_for(notes), {hydra::Difficulty::Expert, true, true},
+                           std::nullopt, 4);
         job.start();
         wait_finished(job);
         REQUIRE(job.ok());
@@ -366,8 +366,8 @@ TEST_CASE("a Preview load plays the good stem when another stem will not open") 
         const std::string notes = audiochart::short_chart_with_long_audio("loadjunk_drums");
         audiochart::write_text_file(hydra::parent_folder(notes) + "\\drums.ogg", junk);
 
-        PreviewLoadJob job(entry_for(notes), true, true, hydra::Difficulty::Expert, std::nullopt,
-                           4);
+        PreviewLoadJob job(entry_for(notes), {hydra::Difficulty::Expert, true, true},
+                           std::nullopt, 4);
         job.start();
         wait_finished(job);
         REQUIRE(job.ok());
@@ -384,8 +384,8 @@ TEST_CASE("a Preview load plays the good stem when another stem will not open") 
         const std::string notes = audiochart::short_chart_with_long_audio("loadjunk_only");
         audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ogg", junk);
 
-        PreviewLoadJob job(entry_for(notes), true, true, hydra::Difficulty::Expert, std::nullopt,
-                           4);
+        PreviewLoadJob job(entry_for(notes), {hydra::Difficulty::Expert, true, true},
+                           std::nullopt, 4);
         job.start();
         wait_finished(job);
         REQUIRE(job.ok());

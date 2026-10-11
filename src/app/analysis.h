@@ -147,18 +147,37 @@ store::ChartLibraryCache load_scan_cache(store::RecordStore& store);
 // read song.ini through here.
 std::map<std::string, std::string> read_song_ini_keys(const std::string& path);
 
-// The settings a batch run applies uniformly. Everything the search itself reads
-// lives on the SearchSettings base; the flags here are parse-time only.
-struct AnalysisSettings : SearchSettings {
+// The four choices that pick which notes a chart is read as: the difficulty,
+// Pro Drums, 2x Bass and Note Shuffle. Settings::reading() (app/config.h) is
+// where they are read off the settings, and Settings::with_reading where they
+// are written back. What carries them takes this one value, so a fifth choice
+// is added here and in those two (concept audit M19).
+// The defaults read a chart as written, at Expert.
+struct ChartReading {
+    Difficulty difficulty = Difficulty::Expert;
     bool prodrums = true;
     bool bass2x = true;
-    // The Note Shuffle switch (Settings::view_noteshuffle), handed to the
-    // loader. Off by default, so every existing caller reads the chart as
-    // written.
     bool noteshuffle = false;
-    // Which charted difficulty to read. Expert by default, so every existing
-    // caller keeps the behavior it had.
-    Difficulty difficulty = Difficulty::Expert;
+
+    bool operator==(const ChartReading& o) const {
+        return difficulty == o.difficulty && prodrums == o.prodrums && bass2x == o.bass2x &&
+               noteshuffle == o.noteshuffle;
+    }
+    bool operator!=(const ChartReading& o) const { return !(*this == o); }
+};
+
+// The settings a batch run applies uniformly. Everything the search itself
+// reads lives on the SearchSettings base; the ChartReading base is the
+// parse-time choices, so a function that takes a ChartReading takes these
+// settings as they are.
+struct AnalysisSettings : SearchSettings, ChartReading {
+    const ChartReading& reading() const { return *this; }
+    ChartReading& reading() { return *this; }
+
+    // Two settings are never compared whole: ChartReading's == would look at
+    // the reading alone.
+    bool operator==(const AnalysisSettings&) const = delete;
+    bool operator!=(const AnalysisSettings&) const = delete;
 };
 
 // Loads and analyzes one chart file (.mid/.chart/.sng/.srb), producing a record and

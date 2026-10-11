@@ -1063,11 +1063,11 @@ TEST_CASE("Note Shuffle switch: a chart the game freezes on gives the freeze err
 }
 
 TEST_CASE("Note Shuffle switch: the Preview's song key differs when only the switch differs") {
-    const ui::PreviewSongKey off{"md5", Difficulty::Expert, true, true, false};
+    const ui::PreviewSongKey off{"md5", {Difficulty::Expert, true, true, false}};
     ui::PreviewSongKey on = off;
-    on.noteshuffle = true;
+    on.reading.noteshuffle = true;
     CHECK(off != on);
-    CHECK(off == ui::PreviewSongKey{"md5", Difficulty::Expert, true, true});
+    CHECK(off == ui::PreviewSongKey{"md5", {Difficulty::Expert, true, true}});
 }
 
 TEST_CASE("Note Shuffle switch: the Dynamics pads follow the analysis's shuffle") {
@@ -1076,7 +1076,7 @@ TEST_CASE("Note Shuffle switch: the Dynamics pads follow the analysis's shuffle"
     for (const bool bass2x : {true, false}) {
         CAPTURE(bass2x);
         const app::DynamicsBreakdown bd =
-            app::dynamics_for_settings(path, true, bass2x, Difficulty::Expert, true, nullptr);
+            app::dynamics_for_settings(path, {Difficulty::Expert, true, bass2x, true}, nullptr);
         const app::DynamicsBreakdown pads =
             app::count_dynamics(load_shuffle_song(a2, true, bass2x, true));
         const app::DynamicsBreakdown kicks = app::count_dynamics(
