@@ -64,7 +64,8 @@ TEST_CASE("user_messages: a real refused load shows the tick sentence") {
     const std::string chart = testchart::chart_text(
         testchart::section("ExpertDrums", "  0 = N 0 0\n"), 192, "", "  0 = TS 4\n  0 = B 0\n");
     try {
-        hydra::load_songbytes_chart(std::vector<uint8_t>(chart.begin(), chart.end()), hydra::ChartReading{});
+        hydra::load_songbytes_chart(std::vector<uint8_t>(chart.begin(), chart.end()),
+                                    hydra::ChartReading{});
         FAIL("a chart with B 0 loaded");
     } catch (const std::exception& e) {
         CHECK(plain_error(e) ==

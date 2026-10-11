@@ -298,9 +298,9 @@ void apply_timesig(Song& song, int64_t tick, int numerator, int denominator);
 inline constexpr const char* kNoteShuffleFreezeDetail =
     "Note Shuffle: Clone Hero's redraw never ends on this chart";
 
-// ChartReading::noteshuffle is the Note Shuffle switch (D104). Off, the chart is read as
-// written. On, load_songbytes_mid and load_songbytes_chart finish by
-// shuffling the chords (apply_note_shuffle in parse/note_shuffle.h), and
+// ChartReading::noteshuffle is the Note Shuffle switch (D104). Off, the chart
+// is read as written. On, load_songbytes_mid and load_songbytes_chart finish
+// by shuffling the chords (apply_note_shuffle in parse/note_shuffle.h), and
 // every other loader ends at one of those two. A chart the game freezes on
 // throws KindedError(ErrorKind::NoteShuffleFreezes) instead of returning.
 Song load_songpath_mid(const std::string& path, const ChartReading& reading,
