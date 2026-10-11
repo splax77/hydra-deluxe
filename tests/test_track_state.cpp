@@ -125,7 +125,7 @@ void check_pinned(const PreviewScene& scene, const std::vector<std::string>& wan
         for (const TrackGem& g : i.notes) CHECK_FALSE(g.cymbal);
 }
 
-// Every field of an instant: time, gems in order, beat, the seven span states.
+// Every field of an instant: time, gems in order, beat, every span state.
 bool same_gem(const TrackGem& a, const TrackGem& b) {
     return a.kick == b.kick && (a.kick || a.pad == b.pad) && a.cymbal == b.cymbal &&
            a.velocity == b.velocity;
@@ -137,7 +137,9 @@ bool same_instant(const TrackInstant& a, const TrackInstant& b) {
         if (!same_gem(a.notes[i], b.notes[i])) return false;
     return a.overdrive == b.overdrive && a.solo == b.solo && a.fill == b.fill &&
            a.fill_taken == b.fill_taken && a.sp_active == b.sp_active &&
-           a.fill_lane == b.fill_lane && a.fill_lane_pad == b.fill_lane_pad;
+           a.fill_lane == b.fill_lane && a.fill_lane_pad == b.fill_lane_pad &&
+           a.drum_lane_red == b.drum_lane_red && a.drum_lane_yellow == b.drum_lane_yellow &&
+           a.drum_lane_blue == b.drum_lane_blue && a.drum_lane_green == b.drum_lane_green;
 }
 
 }  // namespace
@@ -690,6 +692,79 @@ TEST_CASE("build_track_state: the one-pass sweep on overlapping, touching, empty
                   "7.750500 - - od=. so=. fi=. ft=O sp=. ln=O pad=B"});
 }
 
+// A single Yellow lane [1.0, 2.0], a double Red + Blue lane [3.0, 4.0], a Red
+// lane touching it at 4.0005 (its start is the double lane's end, kSpanEndTicks
+// past tick 4000) and running to 5.0, and a kick lane at [0.5, 0.6]. Hand
+// check: each pad is lit only over its own lanes, the two touching Red lanes
+// read as one lit stretch (a Restart where they meet), Green is never lit, and
+// the kick lane adds no instant at all.
+TEST_CASE("build_track_state: drum lanes light their own pads over their spans") {
+    PreviewScene scene = timed_scene();
+    scene.notes = {note(0.0, PreviewLane::Red), note(6000.0, PreviewLane::Red)};
+    scene.drum_lanes = {drum_lane(span(500.0, 600.0), {PreviewLane::Kick}),
+                        drum_lane(span(1000.0, 2000.0), {PreviewLane::Yellow}),
+                        drum_lane(span(3000.0, 4000.0), {PreviewLane::Red, PreviewLane::Blue}),
+                        drum_lane(span(4000.5, 5000.0), {PreviewLane::Red})};
+    TrackState st = build_track_state(scene, TrackStateOptions{});
+    CHECK(find(st.instants(), 0.5) == nullptr);
+    CHECK(find(st.instants(), 0.6005) == nullptr);
+    const TrackInstant* meet = find(st.instants(), 4.0005);
+    REQUIRE(meet);
+    CHECK(meet->drum_lane_red == Toggle::Restart);
+    CHECK(meet->drum_lane_blue == Toggle::End);
+    CHECK(meet->drum_lane_yellow == Toggle::Empty);
+
+    const double near_s = -1.0, far_s = 7.0;
+    const TrackWindow win = st.window(near_s, far_s);
+    auto lit = [&](Pad p) {
+        std::vector<std::pair<double, double>> out;
+        for (const ToggleSpan& s : st.make_toggle_bounds(win, near_s, far_s, drum_lane_field(p)))
+            if (s.on) out.push_back({s.t1, s.t2});
+        return out;
+    };
+    auto check_lit = [&](Pad p, const std::vector<std::pair<double, double>>& want) {
+        const auto got = lit(p);
+        INFO("pad " << static_cast<int>(p));
+        REQUIRE(got.size() == want.size());
+        for (size_t i = 0; i < want.size(); ++i) {
+            CHECK(got[i].first == doctest::Approx(want[i].first));
+            CHECK(got[i].second == doctest::Approx(want[i].second));
+        }
+    };
+    check_lit(Pad::Red, {{3.0, 5.0005}});
+    check_lit(Pad::Yellow, {{1.0, 2.0005}});
+    check_lit(Pad::Blue, {{3.0, 4.0005}});
+    check_lit(Pad::Green, {});
+    // No lane touches the other span fields.
+    for (const TrackInstant& i : st.instants()) {
+        CHECK(i.overdrive == Toggle::Empty);
+        CHECK(i.fill == Toggle::Empty);
+        CHECK(i.fill_lane == Toggle::Empty);
+    }
+}
+
+// The path overlay never touches the drum lanes: swapping in a path keeps
+// them, and the result equals a fresh build.
+TEST_CASE("rebuild_overlay_fields: keeps the drum lanes") {
+    PreviewScene from = taken_offered_hidden_scene();
+    from.drum_lanes = {drum_lane(span(1000.0, 2000.0), {PreviewLane::Yellow, PreviewLane::Green}),
+                       drum_lane(span(3500.0, 4000.0), {PreviewLane::Blue})};
+    PreviewScene to = from;
+    to.activations.clear();
+    for (PreviewFill& f : to.fills) f.state = PreviewFillState::Hidden;
+    for (const PreviewScene* s : {&from, &to}) {
+        TrackState st = build_track_state(s == &from ? to : from,TrackStateOptions{});
+        rebuild_overlay_fields(st, *s);
+        const TrackState want = build_track_state(*s, TrackStateOptions{});
+        REQUIRE(st.instants().size() == want.instants().size());
+        for (size_t i = 0; i < want.instants().size(); ++i)
+            CHECK(same_instant(st.instants()[i], want.instants()[i]));
+        const TrackInstant* blue = find(st.instants(), 3.5);
+        REQUIRE(blue);
+        CHECK(blue->drum_lane_blue == Toggle::Start);
+    }
+}
+
 // ---- rebuild_overlay_fields -------------------------------------------------
 
 namespace {
@@ -771,8 +846,8 @@ TEST_CASE("rebuild_overlay_fields: equals a full build on random overlays") {
     std::mt19937 rng(20261004u);
     auto pick = [&rng](uint32_t n) { return static_cast<uint32_t>(rng() % n); };
 
-    // The path-free half: notes, beats, SP phrases, solos and fill windows,
-    // many sharing moments.
+    // The path-free half: notes, beats, SP phrases, solos, drum lanes and fill
+    // windows, many sharing moments.
     PreviewScene base = timed_scene();
     const auto& ms_index = base.timing->ms_index();
     std::vector<double> moments;
@@ -787,6 +862,16 @@ TEST_CASE("rebuild_overlay_fields: equals a full build on random overlays") {
     };
     for (int i = 0; i < 30; ++i) base.sp_phrases.push_back(random_span());
     for (int i = 0; i < 30; ++i) base.solos.push_back(random_span());
+    // Single and double lanes on any column, the kick included (it lights
+    // nothing).
+    for (int i = 0; i < 30; ++i) {
+        const PreviewSpan s = random_span();
+        if (pick(2) == 0)
+            base.drum_lanes.push_back(drum_lane(s, {static_cast<PreviewLane>(pick(5))}));
+        else
+            base.drum_lanes.push_back(drum_lane(
+                s, {static_cast<PreviewLane>(pick(5)), static_cast<PreviewLane>(pick(5))}));
+    }
     for (int i = 0; i < 60; ++i) base.fills.push_back(fill(random_span(), PreviewFillState::Hidden));
     for (int i = 0; i < 1500; ++i) {
         const double ms = pick(5) == 0 ? moments[pick(static_cast<uint32_t>(moments.size()))]

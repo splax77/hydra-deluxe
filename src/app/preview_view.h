@@ -79,6 +79,14 @@ struct PreviewFill {
     PreviewFillState state = PreviewFillState::Hidden;
 };
 
+// One Clone Hero drum lane (a roll or trill marker): a strip down one pad
+// column, or two for a double lane, over the lane's span. The pads are the
+// chart's own columns; a kick is never one.
+struct PreviewDrumLane {
+    PreviewSpan span;
+    std::vector<PreviewLane> pads;
+};
+
 // One activation the selected path takes: where the player deploys banked SP.
 struct PreviewActivation {
     int64_t tick = 0;
@@ -238,7 +246,8 @@ struct PreviewScene {
     std::vector<PreviewNote> notes;
     std::vector<PreviewSpan> sp_phrases;    // from the song's SP-phrase flags
     std::vector<PreviewSpan> solos;         // from the song's solo sections
-    std::vector<PreviewFill> fills;         // candidate activation-fill windows
+    std::vector<PreviewDrumLane> drum_lanes;  // from the song's drum lanes
+    std::vector<PreviewFill> fills;        // candidate activation-fill windows
     std::vector<PreviewActivation> activations;  // overlay: the path's activations
     // Overlay: where each bar banked after the path's last window arrived
     // (Path::trailing_bank_ticks). Empty without a path.
@@ -466,7 +475,7 @@ PreviewScene build_preview_scene(const Song& song, const Path* path,
 // apply_preview_overlay(build_preview_base(song), song, path, cap, rules).
 //
 // The base reads the song alone. It owns these fields: notes, sp_phrases,
-// solos, the fill windows (each fills[i].span), beats, tempos, sections,
+// solos, drum_lanes, the fill windows (each fills[i].span), beats, tempos, sections,
 // meters, time_sigs, timing, song_length_ms and has_notes.
 // Every fill in a base reads Hidden, the field's default.
 //

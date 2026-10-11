@@ -540,6 +540,104 @@ TEST_CASE("build_highway_draws: a hidden fill draws no lane strips") {
     CHECK(lanes == 0);
 }
 
+namespace {
+
+bool is_lane_tex(TextureId t) { return t >= TextureId::LaneRed && t <= TextureId::LaneGreen; }
+
+bool same_draw(const DrawCommand& a, const DrawCommand& b) {
+    for (int k = 0; k < 3; ++k)
+        if (a.lo[k] != b.lo[k] || a.hi[k] != b.hi[k]) return false;
+    return a.mesh == b.mesh && a.material.kind == b.material.kind &&
+           a.material.color.r == b.material.color.r && a.material.color.g == b.material.color.g &&
+           a.material.color.b == b.material.color.b && a.material.color.a == b.material.color.a &&
+           a.material.texture == b.material.texture && a.material.overlay == b.material.overlay &&
+           a.alpha == b.alpha && a.light == b.light && a.depth == b.depth;
+}
+
+}  // namespace
+
+// A single Yellow drum lane over [1.2 s, 1.4 s] and a double Red + Blue lane
+// over [1.5 s, 1.7 s], with the playhead at 1.0 s. Each pad's strip is its own
+// lane texture at full strength, depth off, over exactly its lane's span (the
+// end kSpanEndTicks past the end tick, one tick per millisecond).
+TEST_CASE("build_highway_draws: drum lanes light their own pads in the lane texture") {
+    const PreviewConfig cfg = shipped_preview_config();
+    PreviewScene scene = timed_scene();
+    scene.notes = {note(1000.0, PreviewLane::Red), note(1800.0, PreviewLane::Green)};
+    scene.drum_lanes = {drum_lane(span(1200.0, 1400.0), {PreviewLane::Yellow}),
+                        drum_lane(span(1500.0, 1700.0), {PreviewLane::Red, PreviewLane::Blue})};
+    TrackState st = build_track_state(scene, TrackStateOptions{});
+    const double now = 1.0;
+    std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, now, 1.0);
+
+    std::vector<const DrawCommand*> strips;
+    for (const DrawCommand& c : cmds)
+        if (is_lane_tex(c.material.texture)) strips.push_back(&c);
+    // Pads drawn left to right: Red, Yellow, Blue.
+    REQUIRE(strips.size() == 3);
+    struct Want {
+        TextureId tex;
+        Pad pad;
+        double t1, t2;
+    };
+    const Want want[] = {{TextureId::LaneRed, Pad::Red, 1.5, 1.7005},
+                         {TextureId::LaneYellow, Pad::Yellow, 1.2, 1.4005},
+                         {TextureId::LaneBlue, Pad::Blue, 1.5, 1.7005}};
+    for (size_t i = 0; i < 3; ++i) {
+        const DrawCommand& c = *strips[i];
+        INFO("strip " << i);
+        CHECK(c.material.texture == want[i].tex);
+        CHECK(c.alpha == doctest::Approx(1.0f));
+        CHECK(c.depth == DepthMode::Always);
+        float x1, x2;
+        pad_x(cfg, want[i].pad, x1, x2);
+        CHECK(c.lo[0] == doctest::Approx(x1));
+        CHECK(c.hi[0] == doctest::Approx(x2));
+        CHECK(c.lo[2] == doctest::Approx(time_to_z(cfg, now, want[i].t1, 1.0)));
+        CHECK(c.hi[2] == doctest::Approx(time_to_z(cfg, now, want[i].t2, 1.0)));
+    }
+}
+
+// Onyx's drawLanes draws the roll lanes before the BRE strips: a drum lane
+// inside an offered fill comes first in the draw list.
+TEST_CASE("build_highway_draws: drum lane strips come before the fill strips") {
+    const PreviewConfig cfg = shipped_preview_config();
+    PreviewScene scene = timed_scene();
+    scene.notes = {note(1000.0, PreviewLane::Red), note(1500.0, PreviewLane::Green)};
+    scene.fills = {fill(span(1300.0, 1500.0), PreviewFillState::Offered)};
+    scene.drum_lanes = {drum_lane(span(1300.0, 1500.0), {PreviewLane::Green})};
+    TrackState st = build_track_state(scene, TrackStateOptions{});
+    std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0, 1.0);
+    std::vector<const DrawCommand*> strips;
+    for (const DrawCommand& c : cmds)
+        if (is_lane_tex(c.material.texture)) strips.push_back(&c);
+    REQUIRE(strips.size() == 5);  // the drum lane's one, then the fill's four
+    CHECK(strips[0]->material.texture == TextureId::LaneGreen);
+    CHECK(strips[0]->alpha == doctest::Approx(1.0f));
+    for (size_t i = 1; i < 5; ++i)
+        CHECK(strips[i]->alpha == doctest::Approx(cfg.hydra.fill_offered_alpha));
+}
+
+// A lane on the kick column lights nothing: the frame is the one the scene
+// draws with no lanes at all.
+TEST_CASE("build_highway_draws: a kick drum lane draws what no lane draws") {
+    const PreviewConfig cfg = shipped_preview_config();
+    PreviewScene plain = timed_scene();
+    plain.notes = {note(1000.0, PreviewLane::Red), note(1500.0, PreviewLane::Kick)};
+    plain.fills = {fill(span(1300.0, 1500.0), PreviewFillState::Offered)};
+    PreviewScene kick = plain;
+    kick.drum_lanes = {drum_lane(span(1100.0, 1600.0), {PreviewLane::Kick})};
+    const std::vector<DrawCommand> want =
+        build_highway_draws(build_track_state(plain, TrackStateOptions{}), cfg, 1.0, 1.0);
+    const std::vector<DrawCommand> got =
+        build_highway_draws(build_track_state(kick, TrackStateOptions{}), cfg, 1.0, 1.0);
+    REQUIRE(got.size() == want.size());
+    for (size_t i = 0; i < want.size(); ++i) {
+        INFO("draw " << i);
+        CHECK(same_draw(got[i], want[i]));
+    }
+}
+
 TEST_CASE("build_highway_draws: an empty window still draws floor, railings and targets") {
     PreviewConfig cfg = shipped_preview_config();
     PreviewScene scene;

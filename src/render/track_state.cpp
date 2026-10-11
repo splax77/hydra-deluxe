@@ -1,6 +1,7 @@
 #include "render/track_state.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <initializer_list>
@@ -147,7 +148,8 @@ private:
     size_t next_ = 0;
 };
 
-// One path-free moment: a note, a beat, or an SP phrase or solo edge.
+// One path-free moment: a note, a beat, or an SP phrase, solo or drum lane
+// edge.
 struct Event {
     enum class Kind : uint8_t { Note, Beat, Edge };
     double t;
@@ -218,12 +220,16 @@ public:
     explicit FieldSweep(const TrackState& st)
         : lanes_(st.fill_lane_), overdrive_(st.overdrive_), solo_(st.solo_), fill_(st.fill_),
           fill_taken_(st.fill_taken_), sp_active_(st.sp_active_), fill_lane_(st.fill_lane_ivs_),
-          lane_pad_(st.fill_lane_ivs_) {}
+          lane_pad_(st.fill_lane_ivs_),
+          drum_lane_{SpanSweep(st.drum_lane_[0]), SpanSweep(st.drum_lane_[1]),
+                     SpanSweep(st.drum_lane_[2]), SpanSweep(st.drum_lane_[3])} {}
 
     void set(TrackInstant& inst) {
         const double t = inst.t;
         inst.overdrive = overdrive_.at(t);
         inst.solo = solo_.at(t);
+        for (Pad p : {Pad::Red, Pad::Yellow, Pad::Blue, Pad::Green})
+            inst.*drum_lane_field(p) = drum_lane_[static_cast<size_t>(p)].at(t);
         inst.fill = fill_.at(t);
         inst.fill_taken = fill_taken_.at(t);
         inst.sp_active = sp_active_.at(t);
@@ -237,6 +243,7 @@ private:
     const std::vector<LaneInterval>& lanes_;
     SpanSweep overdrive_, solo_, fill_, fill_taken_, sp_active_, fill_lane_;
     LaneSweep lane_pad_;
+    std::array<SpanSweep, 4> drum_lane_;  // indexed by Pad
 };
 
 void TrackState::set_overlay_intervals(const PreviewScene& scene) {
@@ -276,10 +283,17 @@ void TrackState::sweep_span_fields() {
 
 TrackState build_track_state(const PreviewScene& scene, const TrackStateOptions& opts) {
     TrackState st;
-    // SP phrases and solos are path-free; the overlay's spans come from the
-    // fill states and activations (set_overlay_intervals).
+    // SP phrases, solos and drum lanes are path-free; the overlay's spans
+    // come from the fill states and activations (set_overlay_intervals).
     for (const PreviewSpan& s : scene.sp_phrases) st.overdrive_.push_back(span_interval(scene, s));
     for (const PreviewSpan& s : scene.solos) st.solo_.push_back(span_interval(scene, s));
+    // A double lane lights two pads over the same span; a kick is never a lane.
+    for (const app::PreviewDrumLane& l : scene.drum_lanes)
+        for (PreviewLane lane : l.pads)
+            if (const std::optional<Pad> pad = pad_of(lane))
+                st.drum_lane_[static_cast<size_t>(*pad)].push_back(span_interval(scene, l.span));
+    size_t n_drum_lane = 0;
+    for (const auto& ivs : st.drum_lane_) n_drum_lane += ivs.size();
 
     // Every path-free moment becomes an instant. Gather the moments in one
     // list (notes, then beats, then span edges, each in scene order), sort it
@@ -287,7 +301,7 @@ TrackState build_track_state(const PreviewScene& scene, const TrackStateOptions&
     // moment's gems keep scene order and its last beat wins.
     std::vector<Event> events;
     events.reserve(scene.notes.size() + scene.beats.size() +
-                   2 * (st.overdrive_.size() + st.solo_.size()));
+                   2 * (st.overdrive_.size() + st.solo_.size() + n_drum_lane));
     // A NaN time has no place in time order; no real scene produces one.
     auto push = [&events](double t, Event::Kind kind, size_t index) {
         if (!std::isnan(t)) events.push_back({t, kind, index});
@@ -296,7 +310,9 @@ TrackState build_track_state(const PreviewScene& scene, const TrackStateOptions&
         push(s_of(scene.notes[i].ms), Event::Kind::Note, i);
     for (size_t i = 0; i < scene.beats.size(); ++i)
         push(s_of(scene.beats[i].ms), Event::Kind::Beat, i);
-    for (const std::vector<TrackState::Interval>* ivs : {&st.overdrive_, &st.solo_})
+    for (const std::vector<TrackState::Interval>* ivs :
+         {&st.overdrive_, &st.solo_, &st.drum_lane_[0], &st.drum_lane_[1], &st.drum_lane_[2],
+          &st.drum_lane_[3]})
         for (const auto& iv : *ivs) {
             push(iv.first, Event::Kind::Edge, 0);
             push(iv.second, Event::Kind::Edge, 0);

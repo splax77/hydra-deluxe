@@ -298,8 +298,9 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
                            tex_mat(tex), 1.0f, DepthMode::Always));
     }
 
-    // 4. Lane strips (depth off): a fill window lights all four lanes (Onyx's
-    //    BRE look), dimmed to fill_offered_alpha for a fill the path passed
+    // 4. Lane strips (depth off): a drum lane lights its own pads, then a fill
+    //    window lights all four lanes (Onyx's BRE look), dimmed to
+    //    fill_offered_alpha for a fill the path passed
     //    over and at full strength for the one it activates on. That fill's
     //    activation lane then draws once more in the lit target texture, so
     //    the lane to hit stands out from the other three.
@@ -313,6 +314,12 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
         auto strip = [&](Pad pad, double t1, double t2, float alpha) {
             strip_tex(pad, t1, t2, lane_tex(pad), alpha);
         };
+        // Clone Hero's drum lanes come first, as Onyx's drawLanes draws its
+        // roll lanes before its BRE strips: each lit pad in its lane texture.
+        for (Pad p : {Pad::Red, Pad::Yellow, Pad::Blue, Pad::Green})
+            for (const ToggleSpan& s :
+                 state.make_toggle_bounds(win, near_t, far_t, drum_lane_field(p)))
+                if (s.on) strip(p, s.t1, s.t2, 1.0f);
         for (const ToggleSpan& s : state.make_toggle_bounds(win, near_t, far_t, &TrackInstant::fill)) {
             if (!s.on) continue;
             for (Pad p : {Pad::Red, Pad::Yellow, Pad::Blue, Pad::Green})

@@ -40,6 +40,14 @@ inline app::PreviewFill fill(app::PreviewSpan s, app::PreviewFillState state) {
     return f;
 }
 
+inline app::PreviewDrumLane drum_lane(app::PreviewSpan s,
+                                      std::initializer_list<app::PreviewLane> pads) {
+    app::PreviewDrumLane l;
+    l.span = s;
+    l.pads.assign(pads.begin(), pads.end());
+    return l;
+}
+
 // One tick per millisecond (60 BPM at 1000 ticks per beat), matching note()
 // and span() above, so half a tick is 0.5 ms and the edges the tests expect
 // (1.0005, 0.2505, ...) are the same as before spans moved to ticks.

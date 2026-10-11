@@ -1,8 +1,8 @@
 // Track state — the chart as a timeline of instants, the way Onyx's previewer
 // holds it (its `Map Double (CommonState DrumState)`): one entry per moment
 // anything happens, carrying the gems struck then and, for every span-like
-// thing (SP phrase, solo, fill, Hydra's active SP window and activation
-// lane), whether that span starts, ends, restarts, is ongoing, or is absent at
+// thing (SP phrase, solo, drum lane, fill, Hydra's active SP window and
+// activation lane), whether that span starts, ends, restarts, is ongoing, or is absent at
 // that moment. The draw code walks the slice of instants inside the visible
 // time window and never touches the PreviewScene directly.
 //
@@ -11,6 +11,7 @@
 #ifndef HYDRA_RENDER_TRACK_STATE_H
 #define HYDRA_RENDER_TRACK_STATE_H
 
+#include <array>
 #include <optional>
 #include <cstddef>
 #include <iterator>
@@ -55,6 +56,12 @@ struct TrackInstant {
     std::vector<TrackGem> notes;
     Toggle overdrive = Toggle::Empty;  // SP phrase (Onyx: overdrive)
     Toggle solo = Toggle::Empty;
+    // Clone Hero's drum lanes, one span field per pad (a double lane is on in
+    // two of them at once). drum_lane_field names each pad's field.
+    Toggle drum_lane_red = Toggle::Empty;
+    Toggle drum_lane_yellow = Toggle::Empty;
+    Toggle drum_lane_blue = Toggle::Empty;
+    Toggle drum_lane_green = Toggle::Empty;
     Toggle fill = Toggle::Empty;        // an offered fill (drawn like Onyx's BRE)
     Toggle fill_taken = Toggle::Empty;  // Hydra: a fill the path activates on
     Toggle sp_active = Toggle::Empty;   // Hydra: the path's active SP window
@@ -62,6 +69,17 @@ struct TrackInstant {
     std::optional<Pad> fill_lane_pad;  // which lane, while fill_lane != Empty
     std::optional<app::PreviewBeatKind> beat;
 };
+
+// The span field holding `pad`'s drum lane, for make_toggle_bounds.
+inline Toggle TrackInstant::*drum_lane_field(Pad pad) {
+    switch (pad) {
+        case Pad::Red:    return &TrackInstant::drum_lane_red;
+        case Pad::Yellow: return &TrackInstant::drum_lane_yellow;
+        case Pad::Blue:   return &TrackInstant::drum_lane_blue;
+        case Pad::Green:  return &TrackInstant::drum_lane_green;
+    }
+    return &TrackInstant::drum_lane_red;
+}
 
 struct TrackStateOptions {
     bool pro = true;  // false: every pad draws as a tom (Onyx's 4-lane mode)
@@ -182,12 +200,14 @@ private:
 
     std::vector<TrackInstant> instants_;
     // One entry per instant: the time the instant would have from the scene's
-    // path-free moments alone (its notes, its beat, SP phrase and solo
-    // edges), or NaN when only overlay edges put it there. This is what lets
-    // merge_overlay_edges drop an old overlay's instants and restore the
+    // path-free moments alone (its notes, its beat, SP phrase, solo and drum
+    // lane edges), or NaN when only overlay edges put it there. This is what
+    // lets merge_overlay_edges drop an old overlay's instants and restore the
     // time of the ones it keeps.
     std::vector<double> base_t_;
     std::vector<Interval> overdrive_, solo_, fill_, fill_taken_, sp_active_;
+    // The drum lanes' spans, one list per pad (indexed by Pad). Path-free.
+    std::array<std::vector<Interval>, 4> drum_lane_;
     std::vector<LaneInterval> fill_lane_;
     std::vector<Interval> fill_lane_ivs_;  // fill_lane_'s spans alone, built once
 
@@ -209,7 +229,7 @@ private:
     std::vector<TrackInstant>::const_iterator first_after(double near_s) const;
 };
 
-// Build the timeline from a scene. SP phrases, solos and fills end
+// Build the timeline from a scene. SP phrases, solos, drum lanes and fills end
 // kSpanEndTicks past their last note (through scene.timing), so that note reads as inside
 // and a note on the next tick reads as outside (Hydra marks a phrase by its
 // last note; Onyx's phrase extends past it). A scene with spans must carry
@@ -225,8 +245,8 @@ TrackState build_track_state(const app::PreviewScene& scene, const TrackStateOpt
 // overlay is the fill, fill_taken, sp_active and fill_lane spans (they read the
 // fill states and activations, see app::apply_preview_overlay). `state` must
 // have been built by build_track_state from a scene with the same path-free
-// half as `scene` (same notes, beats, SP phrases, solos, fill windows and
-// timing), under the options `state` should keep. The result equals
+// half as `scene` (same notes, beats, SP phrases, solos, drum lanes, fill
+// windows and timing), under the options `state` should keep. The result equals
 // build_track_state(scene, those options): instants only the old overlay put
 // there are dropped, the new overlay's edges become instants, and every
 // instant's span fields are swept again. Notes and beats are moved, never
