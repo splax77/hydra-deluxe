@@ -25,6 +25,33 @@
         "        ctl(\"BEGIN\");"
       ],
       "note": "M28 found the begin, work, commit, roll-back-and-rethrow frame written five times, plus a sixth in copy_upgrade. All six now pass their bodies to in_transaction. The save paths (save_analysis, begin_save_group) open theirs through ctl with savepoints and save groups, another shape, and are not this row's question. Decided by: concept audit M28 (code-only, 2026-10-11)"
+    },
+    {
+      "question": "Which columns does a scanned chart's library row read and write?",
+      "owner": "kLibraryColumnList in src/store/record_store.cpp, read through read_library_entries",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "kLibraryColumnList",
+      "date": "2026-10-11",
+      "decision": "concept audit M21 (code-only)",
+      "added_by": "concept-G2b",
+      "pattern": " FROM charts\\b|INTO charts\\b",
+      "anchor": "charts",
+      "owner_files": [
+        "src/store/record_store.h",
+        "src/store/record_store.cpp"
+      ],
+      "must_match": [
+        "Stmt s = prepare_read(db, \"SELECT path, sig, md5 FROM charts\");",
+        "\"INSERT INTO charts (md5, name, path) VALUES (?,?,?)\""
+      ],
+      "must_not_match": [
+        "Stmt s = prepare_read(db_, library_entry_select().c_str());",
+        "for (ChartLibraryEntry& e : store.list_chart_library(0, -1)) {"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "M21 found the charts table's columns spelled in a cache SELECT, an entry SELECT and the INSERT, each in its own order. The store now builds all three from one list, so SQL that reads or writes the table anywhere outside the store is a second spelling. The Python tools under tools/ open their own databases and are out of scope. Decided by: concept audit M21 (code-only, 2026-10-11)"
     }
   ]
 }

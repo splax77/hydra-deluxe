@@ -1521,6 +1521,45 @@ std::pair<int64_t, int64_t> RecordStore::counts() {
 
 // ---- chart library ------------------------------------------------------
 
+namespace {
+
+// The charts table's columns as one library entry fills them, in the order
+// rebuild_chart_library writes them and read_library_entries reads them.
+constexpr const char* kLibraryColumnList =
+    "md5, name, artist, charter, path, folder, sig, stated_length_ms, delay_ms";
+// Both walk the slots by hand, so the assert stops the build when the list
+// grows and they don't.
+static_assert(count_list_names(kLibraryColumnList) == 9,
+              "rebuild_chart_library and read_library_entries walk nine slots: grow them "
+              "with the list");
+
+// The query read_library_entries reads; callers add a WHERE or an ORDER BY.
+std::string library_entry_select() {
+    return std::string("SELECT ") + kLibraryColumnList + " FROM charts";
+}
+
+// Every row `s` (a library_entry_select query) steps to. Rows an older scan
+// wrote never read their timing: none, not "none stated"; `timing_read`
+// (RecordStore::chart_meta_current) says which rows those are.
+std::vector<ChartLibraryEntry> read_library_entries(sqlite3_stmt* s, bool timing_read) {
+    std::vector<ChartLibraryEntry> out;
+    while (step_row(s)) {
+        ChartLibraryEntry e;
+        e.md5 = column_text(s, 0);
+        e.title = column_text(s, 1);
+        e.artist = column_text(s, 2);
+        e.charter = column_text(s, 3);
+        e.notespath = column_text(s, 4);
+        e.rootfolder = column_text(s, 5);
+        e.sig = column_text(s, 6);
+        if (timing_read) e.timing = ChartTimingMeta{column_opt_f64(s, 7), column_opt_f64(s, 8)};
+        out.push_back(std::move(e));
+    }
+    return out;
+}
+
+}  // namespace
+
 void RecordStore::rebuild_chart_library(const std::vector<ChartLibraryEntry>& items) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
@@ -1531,8 +1570,9 @@ void RecordStore::rebuild_chart_library(const std::vector<ChartLibraryEntry>& it
     in_transaction([&] {
         exec("DELETE FROM charts");
         Stmt s = prepare_write(db_,
-            "INSERT INTO charts (md5, name, artist, charter, path, folder, sig,"
-            " stated_length_ms, delay_ms) VALUES (?,?,?,?,?,?,?,?,?)");
+            (std::string("INSERT INTO charts (") + kLibraryColumnList + ") VALUES (" +
+             placeholders(count_list_names(kLibraryColumnList)) + ")")
+                .c_str());
         for (const ChartLibraryEntry& item : items) {
             sqlite3_reset(s);
             bind_text(s, 1, item.md5);
@@ -1564,15 +1604,11 @@ ChartLibraryCache RecordStore::chart_library_cache() {
     // The next scan reads every chart once and stamps what it writes.
     if (!chart_meta_current()) return cache;
 
-    Stmt s = prepare_read(db_,
-                          "SELECT path, sig, md5, name, artist, charter, stated_length_ms, delay_ms"
-                          " FROM charts");
-    while (step_row(s)) {
-        std::string sig = column_text(s, 1);
-        if (!sig_can_show_unchanged(sig)) continue;
-        cache[column_text(s, 0)] = {std::move(sig),      column_text(s, 2), column_text(s, 3),
-                                    column_text(s, 4),   column_text(s, 5),
-                                    {column_opt_f64(s, 6), column_opt_f64(s, 7)}};
+    Stmt s = prepare_read(db_, library_entry_select().c_str());
+    for (ChartLibraryEntry& e : read_library_entries(s, /*timing_read=*/true)) {
+        if (!sig_can_show_unchanged(e.sig)) continue;
+        std::string key = e.notespath;
+        cache[std::move(key)] = std::move(e);
     }
     return cache;
 }
@@ -1590,40 +1626,12 @@ int64_t RecordStore::chart_library_count() {
     return sqlite3_column_int64(s, 0);
 }
 
-namespace {
-
-// The columns a library entry is read from, in read_library_entries' order.
-constexpr const char* kLibraryEntrySelect =
-    "SELECT md5, name, artist, charter, path, folder, sig, stated_length_ms, delay_ms FROM charts";
-
-// Every row `s` (a kLibraryEntrySelect query) steps to. Rows an older scan
-// wrote never read their timing: none, not "none stated"; `timing_read`
-// (RecordStore::chart_meta_current) says which rows those are.
-std::vector<ChartLibraryEntry> read_library_entries(sqlite3_stmt* s, bool timing_read) {
-    std::vector<ChartLibraryEntry> out;
-    while (step_row(s)) {
-        ChartLibraryEntry e;
-        e.md5 = column_text(s, 0);
-        e.title = column_text(s, 1);
-        e.artist = column_text(s, 2);
-        e.charter = column_text(s, 3);
-        e.notespath = column_text(s, 4);
-        e.rootfolder = column_text(s, 5);
-        e.sig = column_text(s, 6);
-        if (timing_read) e.timing = ChartTimingMeta{column_opt_f64(s, 7), column_opt_f64(s, 8)};
-        out.push_back(std::move(e));
-    }
-    return out;
-}
-
-}  // namespace
-
 std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int limit) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
     const bool timing_read = chart_meta_current();
     Stmt s = prepare_read(
-        db_, (std::string(kLibraryEntrySelect) + " ORDER BY name LIMIT ? OFFSET ?").c_str());
+        db_, (library_entry_select() + " ORDER BY name LIMIT ? OFFSET ?").c_str());
     sqlite3_bind_int(s, 1, limit);
     sqlite3_bind_int(s, 2, offset);
     return read_library_entries(s, timing_read);
@@ -1633,7 +1641,7 @@ std::vector<ChartLibraryEntry> RecordStore::list_chart_library_copies(const std:
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
     const bool timing_read = chart_meta_current();
-    Stmt s = prepare_read(db_, (std::string(kLibraryEntrySelect) + " WHERE md5 = ?").c_str());
+    Stmt s = prepare_read(db_, (library_entry_select() + " WHERE md5 = ?").c_str());
     bind_text(s, 1, md5);
     return read_library_entries(s, timing_read);
 }
