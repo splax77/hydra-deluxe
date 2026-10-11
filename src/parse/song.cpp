@@ -98,21 +98,21 @@ std::vector<SoloSection> find_solo_sections(const std::vector<SongTimestamp>& se
 }
 
 // A chord's pads as a drum lane sees them: how many non-kick notes it has,
-// and the lowest and highest of them in Clone Hero's note-bit order. That
-// order is red, the yellow, blue and green toms, then the yellow, blue and
-// green cymbals, as read from the game's lane builder. Kicks never count.
+// and the lowest and highest of them in Clone Hero's note-bit order (the
+// game's lane builder compares lane_bit values). Kicks never count.
 struct LanePads {
     int count = 0;
     NoteColor lowest = NoteColor::Red;
     NoteColor highest = NoteColor::Red;
 };
 
-// Where a note sits in that bit order: a pad's colour step from red, with
-// every cymbal after every tom.
+// Where a note sits in that bit order: the position of its lane bit
+// (lane_bit, parse/note_shuffle.h), so the order is read off the game's bit
+// table and has no second copy here.
 int lane_bit_rank(const ChordNote& note) {
-    const int step = static_cast<int>(note.colortype) - static_cast<int>(NoteColor::Red);
-    constexpr int kToms = static_cast<int>(NoteColor::Green) - static_cast<int>(NoteColor::Red);
-    return note.is_cymbal() ? kToms + step : step;
+    int rank = 0;
+    for (uint32_t bit = lane_bit(note); (bit & 1u) == 0; bit >>= 1) ++rank;
+    return rank;
 }
 
 LanePads lane_pads(const Chord& chord) {

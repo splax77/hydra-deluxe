@@ -25,6 +25,33 @@
         }
       ],
       "note": "The header tag was spelled twice, once as a quoted string in the .srb notes sniff and once as four characters in the reader's header check. Both spellings are caught; the reader's error message names the tag inside a longer string and is not a test. Decided by: D114, concept audit finding M62"
+    },
+    {
+      "question": "Which bit does the game give each drum pad, and in what order?",
+      "owner": "lane_bit in src/parse/note_shuffle.cpp",
+      "owner_file": "src/parse/note_shuffle.cpp",
+      "owner_symbol": "lane_bit",
+      "date": "2026-10-11",
+      "decision": "D114 (concept audit finding M57)",
+      "added_by": "concept-F8",
+      "pattern": "NoteColor::\\w+.*\\b0x(20|40|80)u?\\b|\\b0x(20|40|80)u?\\b.*NoteColor::",
+      "anchor": "NoteColor::",
+      "owner_files": [
+        "src/parse/note_shuffle.cpp"
+      ],
+      "must_match": [
+        "case NoteColor::Yellow: return note.is_cymbal() ? 0x20u : 0x04u;",
+        "case 0x80: out.colortype = NoteColor::Green; set_lane_flag(out); break;"
+      ],
+      "must_not_match": [
+        "case NoteColor::Red: return kRedBit;",
+        "const int rank = lane_bit_rank(note);",
+        "case 0x02: out.colortype = NoteColor::Red; break;"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Weak by design: it catches a third table of the cymbal lane bits written beside a colour, not a second rank formula, which has no stable spelling. The shuffle's own two tables (lane_bit and moved_to) live in the owner file. Decided by: D114, concept audit finding M57"
     }
   ]
 }

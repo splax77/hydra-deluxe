@@ -203,6 +203,33 @@ TEST_CASE("Note Shuffle: a first chord on tick 0 with a seed that is not zero") 
     check_rows(seq, {{0, "nn..n"}, {480, "...N."}, {960, "....n"}, {1440, "...N."}, {1920, ".n.N."}});
 }
 
+TEST_CASE("Note Shuffle: the seven pads' lane bits, in the game's lane order") {
+    // The bit values are the reference's docstring. A drum lane's lowest and
+    // highest pads (lane_pads in parse/song.cpp) are read off these bits, so
+    // this also pins the order the lanes use: red, the three toms, then the
+    // three cymbals.
+    struct Pad {
+        NoteColor color;
+        bool cymbal;
+        uint32_t bit;
+    };
+    const Pad pads[] = {
+        {NoteColor::Red, false, 0x02},    {NoteColor::Yellow, false, 0x04}, {NoteColor::Blue, false, 0x08},
+        {NoteColor::Green, false, 0x10},  {NoteColor::Yellow, true, 0x20},  {NoteColor::Blue, true, 0x40},
+        {NoteColor::Green, true, 0x80},
+    };
+    uint32_t previous = 0;
+    for (const Pad& p : pads) {
+        Chord c;
+        ChordNote& n = c.add_note(p.color);
+        if (p.cymbal) set_lane_flag(n);
+        INFO(color_str(p.color) << (p.cymbal ? " cymbal" : ""));
+        CHECK(lane_bit(n) == p.bit);
+        CHECK(lane_bit(n) > previous);
+        previous = lane_bit(n);
+    }
+}
+
 TEST_CASE("Note Shuffle: the gameplay video's chart") {
     // The video's chart file is not in the repo. Its notes are listed in
     // docs/audit/note-shuffle/verify/check_video.py, and gen_vectors.py checks

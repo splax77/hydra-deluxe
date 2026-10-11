@@ -21,6 +21,8 @@ namespace {
 constexpr uint32_t kKickBit = 0x1;
 constexpr uint32_t kRedBit = 0x2;
 
+}  // namespace
+
 uint32_t lane_bit(const ChordNote& note) {
     switch (note.colortype) {
         case NoteColor::Kick: return kKickBit;
@@ -31,6 +33,8 @@ uint32_t lane_bit(const ChordNote& note) {
     }
     throw std::logic_error("note shuffle: a note with no lane");
 }
+
+namespace {
 
 // The note `note` becomes on lane `bit`: same ghost or accent, colour and
 // cymbal flag from the lane.
