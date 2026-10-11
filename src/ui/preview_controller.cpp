@@ -486,8 +486,12 @@ std::string PreviewController::sp_meter_readout() const {
     return hydra::app::sp_meter_readout(scene_.sp_meter, transport_.now_ms());
 }
 
+bool PreviewController::has_activations() const {
+    return active_ && !job_ && !scene_.activations.empty();
+}
+
 bool PreviewController::jump_activation(int direction) {
-    if (!active_ || job_) return false;  // nothing loaded yet
+    if (!has_activations()) return false;  // nothing loaded yet, or no path
     const std::optional<double> to =
         hydra::app::activation_jump_ms(scene_, transport_.now_ms(), direction);
     if (!to) return false;

@@ -248,6 +248,12 @@ public:
     // The number under the SP gauge, "2.5/4" (app::sp_meter_readout).
     std::string sp_meter_readout() const;
 
+    // Can the activation jumps move the playhead? True when the drawn path
+    // has activations and no load is running, the same gate jump_activation
+    // and seek_activation apply. The "< Act" and "Act >" buttons grey on it
+    // (D114 item 22).
+    bool has_activations() const;
+
     // Move the playhead to the previous (-1) or next (+1) activation of the
     // drawn path (app::activation_jump_ms). Playing stays playing, as with
     // jump_ms. False when there is none that way or nothing is loaded.

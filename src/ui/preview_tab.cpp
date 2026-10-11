@@ -426,7 +426,8 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     // Read once per frame (the controller caches it per scene); the
     // scrubber's gold ticks below draw from the same list.
     const std::vector<double>& scrub_marks = pc->scrub_marks();
-    const bool no_acts = scrub_marks.empty();
+    // Greyed exactly when a jump would do nothing, a load included.
+    const bool no_acts = !pc->has_activations();
     // Each tooltip follows its button's disabled block, so it is not drawn in
     // the greyed-out colours, and overflow_tooltip shows it even while the
     // button is greyed out.
