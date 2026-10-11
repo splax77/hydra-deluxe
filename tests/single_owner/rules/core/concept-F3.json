@@ -1,0 +1,25 @@
+{
+  "rules": [
+    {
+      "question": "What text is a decimal number in a hand-edited file?",
+      "owner": "parse_finite_number in src/core/strutil.cpp",
+      "owner_file": "src/core/strutil.cpp",
+      "owner_symbol": "parse_finite_number",
+      "date": "2026-10-11",
+      "decision": "D114 item 8",
+      "added_by": "concept-F3",
+      "pattern": "\\bstd::stod\\s*\\(",
+      "scope": ["src"],
+      "must_match": [
+        "try { d = std::stod(v, &used); } catch (...) { bad(path, key, v, \"a number\"); }",
+        "const double x = std::stod(text);"
+      ],
+      "must_not_match": [
+        "const std::optional<double> d = parse_finite_number(v);",
+        "const double v = std::strtod(t.c_str(), &end);",
+        "return std::stoi(std::string(w));"
+      ],
+      "note": "std::stod is the C runtime's strtod, which also reads nan, inf and hex floats; M73 found hydra_rules.ini taking those through it. Number readers with their own documented question (command-line arguments, .obj files, the chart-number rule in parse/song.cpp) use other spellings and are not this row's question. Decided by: D114 item 8 (M73, concept audit 2026-10-11)"
+    }
+  ]
+}

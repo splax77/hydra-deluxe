@@ -127,6 +127,18 @@ TEST_CASE("rules: a bad value or an unknown key is an error that names the key")
           std::string::npos);
     // A typo is an unknown key, never a silent default.
     CHECK(message_for("bad5", "max_tied_path = 4\n").find("max_tied_path") != std::string::npos);
+    // D114 item 8 (M73): numbers read through parse_finite_number, so the C
+    // runtime's extra spellings are errors for decimal and whole keys alike.
+    for (const char* spelling : {"nan", "inf", "NaN", "infinity", "0x10"}) {
+        INFO("value: ", std::string(spelling));
+        CHECK(message_for("bad6", std::string("fill_length_measures = ") + spelling + "\n")
+                  .find("fill_length_measures") != std::string::npos);
+        CHECK(message_for("bad7", std::string("max_tied_paths = ") + spelling + "\n")
+                  .find("max_tied_paths") != std::string::npos);
+    }
+    // A whole-number key takes no fraction.
+    CHECK(message_for("bad8", "max_tied_paths = 2.5\n").find("max_tied_paths") !=
+          std::string::npos);
 }
 
 TEST_CASE("rules: no rules value has the no-rules fingerprint") {
