@@ -339,11 +339,7 @@ Settings Settings::with_known_chartmode(const std::string& chartmode) const {
 
 AnalysisSettings Settings::to_analysis_settings() const {
     AnalysisSettings s;
-    const ChartReading r = reading();
-    s.prodrums = r.prodrums;
-    s.bass2x = r.bass2x;
-    s.noteshuffle = r.noteshuffle;
-    s.difficulty = r.difficulty;
+    s.reading() = reading();
     s.depth_mode = search_depth_mode();
     s.depth_value = depth_value;
     s.ms_filter = mslimit_enabled ? std::optional<double>(mslimit_value) : std::nullopt;

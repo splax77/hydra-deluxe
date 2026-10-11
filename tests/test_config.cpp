@@ -719,10 +719,7 @@ TEST_CASE("settings reset: puts back each panel setting and keeps the rest") {
     CHECK(r.lens() == d.lens());
     const hydra::app::AnalysisSettings ra = r.to_analysis_settings();
     const hydra::app::AnalysisSettings da = d.to_analysis_settings();
-    CHECK(ra.prodrums == da.prodrums);
-    CHECK(ra.bass2x == da.bass2x);
-    CHECK(ra.noteshuffle == da.noteshuffle);
-    CHECK(ra.difficulty == da.difficulty);
+    CHECK(ra.reading() == da.reading());
     CHECK(r.chartfolders == s.chartfolders);
     CHECK(r.preview_volume == 75);
     CHECK(r.hit_window_ms == 60.5);
