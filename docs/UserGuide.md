@@ -54,7 +54,7 @@ Hydra Deluxe reads `notes.mid` or `notes.chart` folders with a `song.ini`, `.sng
 
 `Open path report` opens the path report in its own window. It appears once your library has analyzed songs, and it stays while a report is open or building. While a batch's report builds, it reads `Building path report...`. You can still click it, and the window shows the build's progress. See [Reports](#reports).
 
-While a batch runs, `Scan library` and `Analyze library...` are greyed out, and hovering them says `Busy: a batch is running.` `Scan library` is also greyed out while a scan runs and when you have no folders. `Analyze library...` is also greyed out when there is nothing to analyze, and while `hydra_rules.ini` has an error.
+While a batch runs, `Scan library` and `Analyze library...` are greyed out, and hovering them says `A batch is running.` `Scan library` is also greyed out while a scan runs and when you have no folders. `Analyze library...` is also greyed out when there is nothing to analyze, and while `hydra_rules.ini` has an error.
 
 ## Analysis settings
 
