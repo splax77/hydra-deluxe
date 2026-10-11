@@ -84,7 +84,7 @@ struct Args {
     std::string ticks;
     bool pretty = false;
     bool legacy_fills = false;
-    std::string rules_path;  // --rules; empty = hydra_rules.ini next to the exe
+    std::optional<std::string> rules_path;  // --rules; unset = app::default_rules_path()
     core::Rules rules;       // loaded once in main, before any command runs
 };
 
@@ -771,14 +771,7 @@ int main() {
         }
     }
 
-    try {
-        a.rules = app::load_rules_file(a.rules_path.empty()
-                                           ? app::default_rules_path()
-                                           : std::filesystem::u8path(a.rules_path));
-    } catch (const app::RulesFileError& e) {
-        std::fprintf(stderr, "%s\n", e.what());
-        return 2;
-    }
+    if (const int code = app::load_tool_rules(a.rules_path, a.rules)) return code;
 
     // A bad setting flag (a cap below the floor) is a bad argument: exit 2,
     // like the others, before any command runs.

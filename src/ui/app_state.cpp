@@ -480,6 +480,8 @@ bool AppState::can_scan() const {
     return !settings.chartfolders.empty() && !scan_job && !batch_running();
 }
 
+bool AppState::can_analyze() const { return !analysis_blocked() && !batch_running(); }
+
 bool AppState::any_job_running() const {
     // view_job counts while it runs even when cancelled: tick() still has to
     // collect it (and start a waiting request).
@@ -575,8 +577,7 @@ void AppState::close_batch_confirm() {
 }
 
 void AppState::start_batch(bool redo) {
-    if (analysis_blocked()) return;
-    if (batch_running()) return;
+    if (!can_analyze()) return;
     // A direct call (a test) has no confirm open: plan here. When the store
     // can't answer, the confirm stays closed and nothing starts.
     if (!batch_confirm_pending) open_batch_confirm();
@@ -812,9 +813,9 @@ void AppState::collect_path_report() {
     // landed, the outcome goes to the status line instead.
     if (batch_job) return;
     if (outcome == ReportBuild::Ready)
-        set_status("The path report is ready.");
+        set_status(app::kPathReportReady);
     else if (outcome == ReportBuild::Failed)
-        set_problem("The path report could not be built. " + path_report.message);
+        set_problem(std::string(app::kPathReportFailed) + " " + path_report.message);
 }
 
 void AppState::collect_dm_report() {

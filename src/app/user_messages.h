@@ -1,8 +1,10 @@
 // Plain-English versions of the errors Hydra's jobs can hit. The raw text of
 // an exception ("add_row failed: disk I/O error") is for a small details
 // line. What the user reads first is a short message that says what
-// happened and what to do, picked by the error's kind. Every job and view
-// that shows an error takes the wording from here, so it lives in one place.
+// happened and what to do, picked by the error's kind (kind_sentence in
+// user_messages.cpp). A sentence that more than one screen shows also lives
+// here, so it is written once. A sentence only one screen shows may stay with
+// that screen.
 
 #ifndef HYDRA_APP_USER_MESSAGES_H
 #define HYDRA_APP_USER_MESSAGES_H
@@ -29,6 +31,18 @@ inline constexpr const char* kDatabaseOpenSentence =
 inline constexpr const char* kDatabaseReadSentence =
     "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is "
     "running, then try again.";
+
+// What a bad hydra_rules.ini reads as in the app (ErrorKind::RulesFile, D114
+// items 11 and 13): analysis stays off while it is bad (AppState::rules_error).
+// The library toolbar, the path report window and the song panel show it.
+inline constexpr const char* kAnalysisOffSentence =
+    "hydra_rules.ini has an error, so analysis is off until the file is fixed and "
+    "Hydra is restarted.";
+
+// What a command-line tool prints for a bad hydra_rules.ini (D114 item 11):
+// the tools' sentence, then the loader's line from `e`. The tools stop instead
+// of running on (app::load_tool_rules), so the app's sentence does not fit.
+std::string rules_file_tool_text(const std::exception& e);
 
 // What happened and what to do, in at most two short sentences. The sentence
 // comes from the error's kind (core/error_kind.h), through the one switch,
@@ -72,6 +86,20 @@ inline constexpr const char* kNotAnalyzedText =
 
 // What a result with no paths says in place of them.
 inline constexpr const char* kNoPathsFound = "No paths found.";
+
+// The batch's path report outcome, read by the batch's finished strip, the
+// status line and the path report window (D114 item 14).
+inline constexpr const char* kPathReportReady = "The path report is ready.";
+inline constexpr const char* kPathReportFailed = "The path report could not be built.";
+
+// The comparison window's failure sentence, in the path report's shape (D114
+// item 14).
+inline constexpr const char* kComparisonFailed = "The comparison could not be built.";
+
+// Under anything that waits on dmleaderboards: the user list in the picker
+// and the comparison window while it builds.
+inline constexpr const char* kLeaderboardWaking =
+    "The leaderboard server can take a moment to wake up.";
 
 }  // namespace hydra::app
 

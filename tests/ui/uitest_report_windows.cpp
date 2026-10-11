@@ -351,7 +351,7 @@ void test_states(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(f.cancels, 3);
     f.dm.state = ReportBuild::Failed;
     ctx->Yield(2);
-    IM_CHECK(shows("Could not build the report."));
+    IM_CHECK(shows("The comparison could not be built."));  // D114 item 14
     ctx->ItemClick("Compare another player...");
     IM_CHECK_EQ(f.compares, 1);
     f.dm_open = false;

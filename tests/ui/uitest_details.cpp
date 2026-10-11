@@ -992,8 +992,10 @@ void test_view_rules_broken(ImGuiTestContext* ctx) {
     ctx->ItemClick("##DetailsTabs/Paths");
     ctx->Yield(3);
     std::string text = visible_text(h);
-    IM_CHECK(text.find("Analysis is off until hydra_rules.ini is fixed and Hydra is restarted.") !=
-             std::string::npos);
+    // The panel uses the toolbar's sentence (D114 item 13).
+    IM_CHECK(text.find("hydra_rules.ini has an error, so analysis is off until the file is fixed "
+                       "and Hydra is restarted.") != std::string::npos);
+    IM_CHECK(text.find("Analysis is off until") == std::string::npos);
     IM_CHECK(!h.app->viewed.record.has_value());
     IM_CHECK(!ctx->ItemExists("**/##path0"));
     IM_CHECK(!ctx->ItemExists("**/Copy path"));

@@ -45,9 +45,6 @@ constexpr const char* kNoRecords =
 constexpr const char* kReportWrite =
     "Hydra couldn't save the report file. Check that the disk isn't full and the report "
     "folder isn't read-only.";
-constexpr const char* kRulesFile =
-    "hydra_rules.ini has a line Hydra can't read. Fix or delete that line, then restart "
-    "Hydra.";
 constexpr const char* kOutOfMemory =
     "Hydra ran out of memory on this chart. Close other programs and try again.";
 constexpr const char* kAudioDecode =
@@ -93,7 +90,7 @@ std::optional<std::string> kind_sentence(const KindedError& e) {
         case ErrorKind::NoScores: return kNoScores;
         case ErrorKind::NoRecords: return kNoRecords;
         case ErrorKind::ReportWrite: return kReportWrite;
-        case ErrorKind::RulesFile: return kRulesFile;
+        case ErrorKind::RulesFile: return kAnalysisOffSentence;
         case ErrorKind::AudioDecode: return kAudioDecode;
         case ErrorKind::PreviewAssets: return kPreviewAssets;
     }
@@ -112,6 +109,10 @@ std::string plain_error(const std::exception& e) {
 }
 
 std::string plain_error_detail(const std::exception& e) { return e.what(); }
+
+std::string rules_file_tool_text(const std::exception& e) {
+    return std::string("hydra_rules.ini has an error:\n") + e.what();
+}
 
 std::string plain_error_block(const std::exception& e) {
     return plain_error(e) + "\n\n" + plain_error_detail(e);

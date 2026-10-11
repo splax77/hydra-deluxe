@@ -498,7 +498,7 @@ static int bench_main() {
     // so the positional mode checks below see the same argv they always did.
     const std::vector<std::string> all = utf8_argv();
     std::vector<std::string> argv;
-    std::string rules_path;
+    std::optional<std::string> rules_path;
     for (size_t i = 0; i < all.size(); ++i) {
         if (i > 0 && all[i] == "--rules" && i + 1 < all.size()) {
             rules_path = all[++i];
@@ -511,14 +511,7 @@ static int bench_main() {
         argv.push_back(all[i]);
     }
     const int argc = static_cast<int>(argv.size());
-    try {
-        g_rules = app::load_rules_file(rules_path.empty()
-                                           ? app::default_rules_path()
-                                           : std::filesystem::u8path(rules_path));
-    } catch (const app::RulesFileError& e) {
-        std::fprintf(stderr, "%s\n", e.what());
-        return 2;
-    }
+    if (const int code = app::load_tool_rules(rules_path, g_rules)) return code;
 
     if (argc > 2 && argv[1] == "--replay") {
         replay_mode(argv[2]);

@@ -1,6 +1,7 @@
 #include "ui/library_parts.h"
 
 #include "app/dm_report.h"  // why_not_comparable
+#include "app/user_messages.h"
 #include "core/model.h"
 #include "imgui.h"
 #include "ui/fonts.h"
@@ -50,7 +51,7 @@ void render_actions_row(AppState& app) {
     auto busy_tooltip = [&] {
         if (batch_busy && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal |
                                                ImGuiHoveredFlags_AllowWhenDisabled))
-            ImGui::SetTooltip("Busy: a batch is running.");
+            ImGui::SetTooltip("%s", AppState::kBatchRunningStatus);  // D114 item 12
     };
 
     // Buttons with live counts take the width of their widest label, so the
@@ -61,7 +62,7 @@ void render_actions_row(AppState& app) {
     std::string manage_widest =
         "Manage folders... (" + widest_digits(digit_count(folder_count)) + ")";
     if (button_in_slot(manage_label, button_slot_width(manage_widest.c_str())))
-        ImGui::OpenPopup("Song folders");
+        ImGui::OpenPopup(kFoldersModalId);
     hint("Add or remove the folders Hydra scans for charts");
     ImGui::SameLine();
 
@@ -69,7 +70,7 @@ void render_actions_row(AppState& app) {
     begin_disabled_button(scan_off);
     if (ImGui::Button("Scan library")) {
         app.start_scan();
-        ImGui::OpenPopup("Scanning charts");
+        ImGui::OpenPopup(kScanModalId);
     }
     end_disabled_button(scan_off);
     busy_tooltip();
@@ -91,7 +92,7 @@ void render_actions_row(AppState& app) {
     const float analyze_w =
         std::max(button_slot_width("Analyze library..."), button_slot_width(sample.c_str()));
     // Off with nothing to analyze, under a bad hydra_rules.ini, or mid-batch.
-    const bool analyze_off = analyzable == 0 || app.analysis_blocked() || batch_busy;
+    const bool analyze_off = analyzable == 0 || !app.can_analyze();
     begin_disabled_button(analyze_off);
     if (button_in_slot(label.c_str(), analyze_w)) app.open_batch_confirm();
     end_disabled_button(analyze_off);
@@ -147,7 +148,7 @@ void render_actions_row(AppState& app) {
     // for as long as analysis is off.
     if (app.analysis_blocked()) {
         ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextColored(kWarningColor, "%s", AppState::kAnalysisOffSentence);
+        ImGui::TextColored(kWarningColor, "%s", app::kAnalysisOffSentence);
         ImGui::TextColored(kWarningColor, "%s", app.rules_error.c_str());
         ImGui::PopTextWrapPos();
     }
