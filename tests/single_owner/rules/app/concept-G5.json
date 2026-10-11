@@ -26,6 +26,34 @@
         "src"
       ],
       "note": "A file opened with trunc is written in place, so a stop mid-write leaves half a file. Shipped code writes through write_file_replacing instead; the library file swap (store/upgrade_files.cpp) has its own renames and recovery and opens nothing with trunc. Decided by: D114 item 20, concept audit M74."
+    },
+    {
+      "question": "Is the stored score-range int points or scores?",
+      "owner": "Settings::search_depth_mode in src/app/config.cpp",
+      "owner_file": "src/app/config.cpp",
+      "owner_symbol": "search_depth_mode",
+      "date": "2026-10-11",
+      "decision": "concept audit M14",
+      "added_by": "concept-audit-G5-review",
+      "pattern": "\\bdepth_mode\\s*==\\s*1\\b",
+      "must_match": [
+        "return depth_mode == 1 ? DepthMode::Points : DepthMode::Scores;"
+      ],
+      "must_not_match": [
+        "if (search_depth_mode() == DepthMode::Points) return score + depth_value < best;",
+        "options.depth_mode = DepthMode::Points;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/config.cpp",
+          "line_text": "return depth_mode == 1 ? DepthMode::Points : DepthMode::Scores;",
+          "why": "Settings::search_depth_mode, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "1 is points and any other int is scores; Settings::search_depth_mode says so once and Settings::lens files the result of it, so a reader that re-decides the unit from the raw int would split from the lens. It cannot flag a missing normalisation. Decided by: concept audit M14."
     }
   ]
 }
