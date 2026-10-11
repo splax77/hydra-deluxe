@@ -149,7 +149,7 @@ holds them, and `Settings::reading` reads them off the settings, 2x Bass through
 spelling is the chart mode, such as "Expert Pro Drums, 2x Bass", written by
 `chartmode_key` and read back by `Settings::with_chartmode`.
 `AnalysisSettings` holds a `ChartReading` as a base. The `load_songpath` and
-`load_songbytes` loaders take one, and so do the Preview's song key and load
+`load_songbytes_*` loaders take one, and so do the Preview's song key and load
 jobs, `resolve_preview_source`, `resolve_preview_song`, `chart_song_length_ms`,
 `load_dynamics_song` and `dynamics_for_settings`. So a fifth choice is added
 to `ChartReading`, `reading` and `with_reading`, and the code that only passes
