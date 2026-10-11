@@ -407,6 +407,31 @@ TEST_CASE(".chart: a double lane on a three-pad chord lights its lowest and high
     CHECK(plain.drum_lanes[0].pads == Pads{NoteColor::Red, NoteColor::Blue});
 }
 
+TEST_CASE(".chart: N 66, 67 and 68 mark the yellow, blue and green cymbals; N 65 marks none") {
+    // One chord per marker, each over the four pads, then a chord with all
+    // four markers. N 65 would be a red cymbal, which the game has no pad
+    // for, so it changes nothing.
+    const std::string lines =
+        "  0 = N 1 0\n  0 = N 2 0\n  0 = N 3 0\n  0 = N 4 0\n  0 = N 65 0\n"
+        "  96 = N 1 0\n  96 = N 2 0\n  96 = N 3 0\n  96 = N 4 0\n  96 = N 66 0\n"
+        "  192 = N 1 0\n  192 = N 2 0\n  192 = N 3 0\n  192 = N 4 0\n  192 = N 67 0\n"
+        "  288 = N 1 0\n  288 = N 2 0\n  288 = N 3 0\n  288 = N 4 0\n  288 = N 68 0\n"
+        "  384 = N 1 0\n  384 = N 2 0\n  384 = N 3 0\n  384 = N 4 0\n"
+        "  384 = N 65 0\n  384 = N 66 0\n  384 = N 67 0\n  384 = N 68 0\n";
+    const Song pro = lane_chart(lines);
+    REQUIRE(pro.sequence.size() == 5);
+    CHECK(pro.sequence[0].chord.code() == ".nnnn");
+    CHECK(pro.sequence[1].chord.code() == ".nNnn");
+    CHECK(pro.sequence[2].chord.code() == ".nnNn");
+    CHECK(pro.sequence[3].chord.code() == ".nnnN");
+    CHECK(pro.sequence[4].chord.code() == ".nNNN");
+
+    // With Pro Drums off every marker is ignored.
+    const Song plain = lane_chart(lines, /*pro=*/false);
+    REQUIRE(plain.sequence.size() == 5);
+    for (const SongTimestamp& ts : plain.sequence) CHECK(ts.chord.code() == ".nnnn");
+}
+
 TEST_CASE(".chart: a double lane on a one-pad chord takes the next chord with a pad") {
     // Red, then a kick alone (skipped), then yellow tom and blue tom: the
     // highest of those is blue.
