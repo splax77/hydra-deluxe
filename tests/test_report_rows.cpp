@@ -132,7 +132,8 @@ int fill_store(store::RecordStore& store, int cap, int want) {
 
 // Analyzes two charts at cap 4 into `store` (fill_store), then lists h0 in two
 // library folders and h1 in three, so the library holds 5 copies of 2 charts.
-void fill_store_with_copies(store::RecordStore& store) {
+// Returns the library rows it wrote.
+std::vector<store::ChartLibraryEntry> fill_store_with_copies(store::RecordStore& store) {
     std::vector<store::ChartLibraryEntry> files;
     REQUIRE(fill_store(store, files, 4, 2).size() == 2);
     std::vector<store::ChartLibraryEntry> library;
@@ -144,6 +145,7 @@ void fill_store_with_copies(store::RecordStore& store) {
         }
     }
     store.rebuild_chart_library(library);
+    return library;
 }
 
 void check_cap(int cap) {
@@ -900,4 +902,45 @@ TEST_CASE("generate_report tells its progress chart by chart, from 0 to the whol
     calls.clear();
     report::generate_report(store, options, seed);
     CHECK(calls == std::vector<std::pair<int, int>>{{0, 0}});
+}
+
+// The bar's "n of N records" and the header's record count are one count: a
+// chart the library holds twice counts twice on both (D103 item 25's
+// 2026-10-11 addendum). fill_store_with_copies lists h0 twice and h1 three
+// times, one mode each.
+TEST_CASE("generate_report's progress ends on the header's record count") {
+    store::RecordStore store(":memory:");
+    const std::vector<store::ChartLibraryEntry> library = fill_store_with_copies(store);
+
+    std::vector<std::pair<int, int>> calls;
+    report::ReportOptions options = fixture_options(4);
+    options.progress = [&](int done, int total) { calls.emplace_back(done, total); };
+    const report::GeneratedReport page = report::generate_report(store, options);
+    REQUIRE(page.rows > 0);
+    REQUIRE_FALSE(calls.empty());
+    CHECK(page.records == 5);
+    CHECK(calls.front() == std::make_pair(0, static_cast<int>(page.records)));
+    CHECK(calls.back() ==
+          std::make_pair(static_cast<int>(page.records), static_cast<int>(page.records)));
+    CHECK(calls.back() == std::make_pair(5, 5));
+
+    // A batch handed over h1's rows only: its three copies count as done
+    // from the start, and the bar still ends on the header's count.
+    report::ReportSeed seed = report::ReportSeed::for_run(fixture_settings(4).batch_run());
+    CountingAnalyzer batch;
+    BatchCallbacks callbacks;
+    callbacks.analyze = batch.analyzer();
+    callbacks.report_seed = &seed;
+    run_batch(plan_batch(scan_items(library, library.size()), {}),
+              fixture_settings(4).batch_run(), store, 2, callbacks);
+    REQUIRE(seed.rows.count("h0") == 1);
+    REQUIRE(seed.rows.count("h1") == 1);
+    seed.rows.erase("h0");
+    calls.clear();
+    const report::GeneratedReport seeded = report::generate_report(store, options, seed);
+    REQUIRE_FALSE(calls.empty());
+    CHECK(seeded.records == 5);
+    CHECK(calls.front() == std::make_pair(3, 5));
+    CHECK(calls.back() == std::make_pair(static_cast<int>(seeded.records),
+                                         static_cast<int>(seeded.records)));
 }

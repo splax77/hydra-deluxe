@@ -185,11 +185,11 @@ struct ReportOptions {
     // back an empty result, with no rows. Closing the app while a report
     // builds goes through here; the CLI never sets it.
     const std::atomic<bool>* cancel = nullptr;
-    // Called on the caller's thread with how many charts the pass has
-    // analyzed of how many it will: first with none done, then after each
-    // chart, the way `cancel` is checked between charts. Charts the seed
-    // already holds are not counted, so a pass with nothing to analyze calls
-    // it once, with 0 of 0. Empty: no calls.
+    // Called on the caller's thread with how many of the page's records are
+    // done, counted the way the header counts them (collect_rows says how):
+    // first before any analysis, then after each chart, the way `cancel` is
+    // checked between charts. A pass with nothing to analyze calls it once,
+    // with 0 of 0. Empty: no calls.
     std::function<void(int done, int total)> progress;
     // The settings the page's paths are analyzed under: Settings::batch_run()
     // of the settings that filed the results. Its SP cap and lens also pick

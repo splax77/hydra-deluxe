@@ -242,6 +242,9 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
         const std::vector<ReportRow>* seeded = nullptr;  // the batch's rows, when it has them
         std::vector<ReportRow> rows;                     // this pass's rows otherwise
         std::string failure;
+        // The chart's library copies (D76), read once: its rows carry it and
+        // the progress bar counts the slot by it.
+        int copies = 1;
     };
     std::vector<Slot> slots;
     std::vector<size_t> to_analyze;  // slot indexes this pass analyzes
@@ -253,6 +256,7 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
         Slot slot;
         // Both maps come from kNamingCopiesSql, so a listed chart has a file.
         slot.file = &files.at(hash);
+        slot.copies = store::RecordStore::copies_of(copies, hash);
         if (listing.chartmode == seed.filed_under.chartmode) {
             const auto seeded = seed.rows.find(hash);
             if (seeded != seed.rows.end()) slot.seeded = &seeded->second;
@@ -278,8 +282,20 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
     const ChartAnalyzer analyze =
         options.analyze ? options.analyze : ChartAnalyzer(analyze_chart_file);
     const std::function<void(float)> check_cancel = stop_on_cancel(options.cancel);
-    const int total = static_cast<int>(to_analyze.size());
+    // The bar counts records the way the header does (generate_report's
+    // records): each slot weighs its chart's copies, and slots the batch
+    // already handed over count as done from the start (D103 item 25,
+    // 2026-10-11). A slot that fails, or lists no path, still moves the bar
+    // but puts no rank-1 row on the page, so the header can end lower by its
+    // weight. With nothing to analyze the bar shows no count (item 26).
+    int total = 0;
     int done = 0;
+    if (!to_analyze.empty()) {
+        for (const Slot& slot : slots) {
+            total += slot.copies;
+            if (slot.seeded) done += slot.copies;
+        }
+    }
     if (options.progress) options.progress(done, total);
     run_work_pool<Analyzed>(
         to_analyze.size(), batch_worker_count(), options.cancel,
@@ -300,9 +316,10 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
             return a;
         },
         [&](Analyzed&& a) {
-            if (options.progress) options.progress(++done, total);
-            if (a.cancelled) return;
             Slot& slot = slots[a.slot];
+            done += slot.copies;
+            if (options.progress) options.progress(done, total);
+            if (a.cancelled) return;
             if (a.failed) slot.failure = std::move(a.failure);
             else slot.rows = std::move(a.rows);
         });
@@ -322,9 +339,7 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
         }
         // Every library copy counts (D76).
         place_rows(out.rows, slot.seeded ? *slot.seeded : slot.rows, options.max_paths,
-                   slot.listing,
-                   store::RecordStore::copies_of(copies, normalize_chart_hash(slot.listing.hyhash)),
-                   tiers);
+                   slot.listing, slot.copies, tiers);
     }
     return out;
 }
