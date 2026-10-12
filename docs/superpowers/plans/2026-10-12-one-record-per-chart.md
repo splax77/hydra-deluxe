@@ -155,6 +155,19 @@ These come from the parts' open questions. Each one changes no screen, score or 
 
 Each of these changes a display, a score or a saved record, so the build waits for the answers. Where a part recommends an answer, the recommendation is given.
 
+All ten were answered in chat on 2026-10-12, each as recommended:
+
+1. The upgrade keeps old rows as Stale records, and the fill pass goes.
+2. The Mode column and the row click's mode switch go.
+3. The empty database reads "Nothing is analyzed yet. Click a song or run a batch to analyze it."
+4. A click marks both reports out of date.
+5. Both tooltips take the words above.
+6. A generated fill copies Clone Hero, so its length may be 0 or less.
+7. `plusmeasure` walks in exact whole numbers.
+8. Weak beats are drawn as ordinary beat lines.
+9. The stamp becomes "2.8.0".
+10. The dump prints only the label and the decimal. The main session edits `video-tools\replay.py` once the timing change merges.
+
 1. **The upgrade and the stamp** (section above). Recommended: keep old rows as Stale records, and drop `from_summary` and the report's fill pass.
 2. **The report's Mode column.** The report lists one profile now, so every row's Mode cell reads the same. Recommended: drop the column, and with it the row click's mode switch (`select_chart`'s `with_chartmode` branch). As a result, switching difficulty, Pro Drums, 2x Bass or Note Shuffle marks an open report out of date, which it does not do today.
 3. **The empty-database sentence.** `kNoRecords` reads "None of the songs in this run could be analyzed, so there is no report to show." That is wrong for a file that holds nothing yet. Proposed: "Nothing is analyzed yet. Click a song or run a batch to analyze it."
