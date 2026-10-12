@@ -17,7 +17,8 @@ The user's choices, all made in chat on 2026-10-11:
 - "Average Multiplier" is used everywhere, the Stars tab included.
 - The Path limit tooltip is reworded.
 - Generated fills follow Clone Hero: they start on the measure line, with a distance limit one tick wider and Clone Hero's first candidate. Scores move, so the results stamp is bumped.
-- One measure grid, Clone Hero's, everywhere. Star Power's length in measures moves to it only after a scout confirms Clone Hero counts it the same way.
+- One measure grid, Clone Hero's, for measure lines, fills and the position text.
+- Star Power's length follows Clone Hero's continuous measure count, so a partial measure counts as its share of the old measure.
 - Beat lines follow Clone Hero's grid (an eighth-note line in 6/8), and the position text's beat number counts the same beats.
 - The Analyze button follows the status chip and reads "Analyze shown (N)..." when the table is narrowed.
 - Section names read as Clone Hero shows them, from Clone Hero's own list, which Hydra ships.
@@ -264,7 +265,13 @@ What changes:
 
   1. **Generated fills follow Clone Hero.** A generated fill starts on its measure line. The distance limit gains Clone Hero's +1 tick. The first candidate is Clone Hero's second measure line, not the measure after the first chord. The rules file's `fill_length_measures` no longer applies to generated fills: the plan either removes it or keeps it for authored fills only, whichever the code shows is used.
   2. **One measure grid, Clone Hero's, everywhere.** The grid starts again where a time signature change takes effect, as Clone Hero's beat-line builder does (0x20DACA0, a plain lookup at every beat). `MeasureIndex` becomes that grid. Fill placement, the Preview's measure lines and the position text all read it. `check_activations` stops walking time signature changes itself, so finding 53's two answers become one.
-  3. **Star Power's length in measures** (`plusmeasure`, `kMeasuresPerSpBar`) moves to the new grid only once a scout confirms Clone Hero's Star Power drain counts measures on the same grid (task CH-sp-grid). Until then it stays on its current reading, and the plan says so.
+  3. **Star Power's length follows Clone Hero's own measure count.** A third scout read the drain (task CH-sp-grid). Clone Hero drains Star Power by the measure, and one phrase lasts exactly 2 measures, matching `kMeasuresPerSpBar`. But it does not use the beat-line grid. It measures continuously over a list of tempo and time signature entries placed at each change's own tick (builder 0x20D3FC0, post-pass 0x20D2930). It drains 3.75 × resolution units per measure at the local measure's length, and a phrase is worth round(resolution × 7.5) units. The main session read the post-pass constants 4.0, 8.0 and 30.0 from the file. So a partial measure before a mid-measure change counts as its share of the old measure's length. Hydra's `plusmeasure` re-measures that partial at the new measure's length, so Star Power that runs across a mid-measure change ended early, or late with a longer new measure. In the scout's example, a 4/4 to 7/8 change halfway through a measure at resolution 480 and 120 BPM, Hydra ended 120 ticks (125 ms) early.
+
+     The user chose Clone Hero's rule (2026-10-11). So Hydra has two measure questions, one owner each, both built from one list of time signature spans:
+     - **Where is the measure line?** Clone Hero's grid. It serves measure lines, generated fills and the position text.
+     - **How many measures lie between two ticks?** Clone Hero's continuous count. It serves Star Power's end, the phrase extension, the cap ceiling and `sp_end_ms`, and `plusmeasure`, `measures_at_tick_f` and `tick_at_measures_f` all read it.
+
+     Scores move only where Star Power crosses a mid-measure change. The `hydra_replay` list before merge shows them, and the results stamp bump above covers them.
 
   Hydra's 60 ms allowance on the fill deadline stays. The game compares positions at the moment of the hit, and the allowance is how Hydra covers early and late hits.
 

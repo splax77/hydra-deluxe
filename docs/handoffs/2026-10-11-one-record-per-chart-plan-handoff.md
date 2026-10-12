@@ -21,9 +21,9 @@ agent-aa2b78f51f58d558c: unfinished, last tool call SubagentHandback, touched 22
 
 Both had already handed back their final reports (tasks CH-meter-sections and CH-fill-deadline), and the spec uses both.
 
-The journal does not list a third scout, task CH-sp-grid (agent a19cd3e5420efe386). The main session started it after the user chose Clone Hero's measure grid. Its report had not arrived when this handoff was written. Its last status line read: "found SP update fn 0x20f6800: drains SP(+0x68) by chart-tick delta (cur tick - prev tick), via 0x20f3750 time->tick | next: verify ctor constants, TS-independence, read Hydra side".
+The journal does not list a third scout, task CH-sp-grid (agent a19cd3e5420efe386). It reported after the first version of this handoff was written, and the user decided on its findings the same evening.
 
-Its question is whether Clone Hero's Star Power drain counts measures on the same grid as its beat lines. The answer decides whether Hydra's Star Power length in measures (`plusmeasure`, `kMeasuresPerSpBar`) moves to the new grid. If the drain really runs on ticks and ignores the time signature, Hydra's two-measures-per-bar model may disagree with the game outside 4/4. That would be a new finding needing its own user decision. Don't assume either way. If the report never arrives, run the scout again from the brief in this session's transcript; the spec's section 9 names the question.
+Clone Hero drains Star Power by the measure, 2 measures per phrase, as Hydra does. But it measures continuously at each change's own tick, not on the beat-line grid. The user chose Clone Hero's rule. The spec's section 9 ("The meter walk...", item 3) now has two measure owners: the grid for measure lines, and the continuous count for Star Power's length. Nothing is still in flight.
 
 ## What the plan has to cover
 
@@ -54,6 +54,7 @@ The **scoring, optimal and squeeze owners** are code-only:
 
 - one "in force at tick" lookup each for tempo, time signature and section
 - Clone Hero's measure grid inside `MeasureIndex`
+- Star Power's length on Clone Hero's continuous measure count, read by `plusmeasure`, `measures_at_tick_f` and `tick_at_measures_f`
 - one grid walker shared by the measure lines and the position text
 - the beat number counting the grid's beats
 - the `check_activations` walk removed
