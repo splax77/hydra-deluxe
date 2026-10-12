@@ -242,9 +242,10 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
         const std::vector<ReportRow>* seeded = nullptr;  // the batch's rows, when it has them
         std::vector<ReportRow> rows;                     // this pass's rows otherwise
         std::string failure;
-        // The chart's library copies (D76), read once: its rows carry it and
-        // the progress bar counts the slot by it.
-        int copies = 1;
+        // The chart's library copies (D76), set from RecordStore::copies_of
+        // for every slot: its rows carry it and the progress bar counts the
+        // slot by it.
+        int copies = 0;
     };
     std::vector<Slot> slots;
     std::vector<size_t> to_analyze;  // slot indexes this pass analyzes
