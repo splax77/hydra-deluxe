@@ -439,9 +439,9 @@ public:
     // seed. Read before start() or once finished().
     size_t seed_charts_for_test() const { return seed_.rows.size(); }
 
-    // How many charts the build has analyzed of how many it will
-    // (ReportOptions::progress), as of its latest call: 0 of 0 before the
-    // first. Safe to read from the UI thread while the job runs.
+    // The build's progress as of the latest ReportOptions::progress call,
+    // which says what the two numbers count: 0 of 0 before the first. Safe to
+    // read from the UI thread while the job runs.
     std::pair<int, int> progress() const {
         return {progress_done_.load(std::memory_order_relaxed),
                 progress_total_.load(std::memory_order_relaxed)};

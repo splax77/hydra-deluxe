@@ -209,8 +209,9 @@ Items 1 to 13 came with the design. These came up while it was built:
     toolbar's rules-error sentence.
 25. The building bar reads "Analyzing n of N records", one per chart and mode.
     Since 2026-10-11 it counts records as the header does: each chart once
-    per library copy, with charts a batch already analyzed done from the
-    start. A chart that fails can still leave the header lower.
+    per library copy (each chart and mode), with charts a batch already
+    analyzed done from the start. A chart that fails can still leave the
+    header lower.
 26. With nothing left to analyze, the building bar moves with no count.
 27. The comparison's tiles count the rows on screen (the first reads "Scores
     shown"), and its subtitle no longer counts by status.

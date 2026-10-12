@@ -61,8 +61,8 @@ struct ReportWindowInput {
     // out-of-date line's "(a batch finished at HH:MM)". Unset: the line
     // names no time (D103 item 21).
     std::optional<std::chrono::system_clock::time_point> batch_finished;
-    // The path report's progress while it builds: records analyzed of all,
-    // one per chart and mode still to analyze. A total of 0 shows no count.
+    // The path report's progress while it builds, as ReportOptions::progress
+    // reports it (what it counts is said there). A total of 0 shows no count.
     // The comparison has no count.
     int progress_done = 0;
     int progress_total = 0;

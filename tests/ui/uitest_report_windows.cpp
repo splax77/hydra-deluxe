@@ -265,7 +265,7 @@ void test_states(ImGuiTestContext* ctx) {
     f.path.progress_total = 10;
     f.path_open = true;
     ctx->Yield(3);
-    // One per chart and mode still to analyze (D103 item 25).
+    // What the numbers count is ReportOptions::progress's to say (D103 item 25).
     IM_CHECK(shows("Analyzing 3 of 10 records"));
     // The subtitle while it builds (D103 item 21, board 2a), not the old
     // result's.
@@ -662,7 +662,7 @@ void held_build_then_rows(ImGuiTestContext* ctx, ReportHold& hold,
 
 // The path window opens from the finished strip's "Open report", from the
 // toolbar's "Open path report", and by itself after a batch with "Open
-// automatically" on. While it builds it counts the charts.
+// automatically" on. While it builds it shows the building bar.
 void test_open_path(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -709,7 +709,7 @@ void test_open_path(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(path_window() != nullptr, );
 
     // Refresh with every build held at its first chart: the window counts
-    // the charts from 0.
+    // the records from 0.
     ReportHold hold;
     ctx->SetRef(path_window());
     ctx->ItemClick("Refresh");
