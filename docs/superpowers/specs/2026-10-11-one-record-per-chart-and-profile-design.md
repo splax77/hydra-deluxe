@@ -16,7 +16,8 @@ The user's choices, all made in chat on 2026-10-11:
 - The count columns read "Note count".
 - "Average Multiplier" is used everywhere, the Stars tab included.
 - The Path limit tooltip is reworded.
-- The meter walk and generated fill length wait until Clone Hero's deadline code is found.
+- Generated fills follow Clone Hero: they start on the measure line, with a distance limit one tick wider and Clone Hero's first candidate. Scores move, so the results stamp is bumped.
+- One measure grid, Clone Hero's, everywhere. Star Power's length in measures moves to it only after a scout confirms Clone Hero counts it the same way.
 - Beat lines follow Clone Hero's grid (an eighth-note line in 6/8).
 - Section names read as Clone Hero shows them, from Clone Hero's own list, which Hydra ships.
 - The time signature label and the position share one owner.
@@ -249,7 +250,24 @@ What changes:
   - **The fill's length.** Clone Hero's generator takes no length from the meter. Hydra gives each generated fill half a measure (`pre_tpm * fill_length_measures`). What Clone Hero's length is depends on the code that turns a fill into its "SP ready" deadline, which has not been found yet.
   - **The test charts.** By the scout's Python re-implementation (not a Hydra run), only Haken's "The Good Doctor" changes on `testdata/input`: 10 of 29 generated fills change length, and no fill moves to another chord.
 
-  The user's call: find the deadline code first, before deciding anything (scout CH-fill-deadline). Then the user decides two things: whether Clone Hero's placement rule becomes the one owner, and what a generated fill's length is. Any change is measured with `hydra_replay` on `testdata/input` first. If scores move, the results stamp is bumped (ADR 0018).
+  The user asked for the deadline code to be found first. A second scout found it (task CH-fill-deadline). The main session checked the key instructions in its disassembly: the start-tick compare at 0x20DDC20, the flag clear at 0x20DDC33, `[+0x300] = resolution << 2` at 0x20DF7B7, and the `+1` at 0x20D2C91.
+
+  **How the game decides.** Clone Hero's drums player overrides "add Star Power" (0x20DDB70). When the Star Power meter crosses half, it drops every fill whose start tick is at or before the current tick plus 4 × the chart's resolution, which is 4 quarter notes in every meter. Only the fill's start tick counts.
+
+  - **Fills written into the chart** start where the chart says. Hydra already matches the game here.
+  - **Generated fills** start on the measure line. The chord sits within `trunc(resolution × 0.5) + 1` ticks of it, so the fill's "length" is only the chord's offset from the line.
+
+  Hydra instead starts a generated fill half a measure before its chord (`fill_length_measures = 0.5`). So its deadline was half a measure too early (1000 ms at 120 BPM in 4/4), and it refused fills the game shows.
+
+  **The user's decisions (2026-10-11):**
+
+  1. **Generated fills follow Clone Hero.** A generated fill starts on its measure line. The distance limit gains Clone Hero's +1 tick. The first candidate is Clone Hero's second measure line, not the measure after the first chord. The rules file's `fill_length_measures` no longer applies to generated fills: the plan either removes it or keeps it for authored fills only, whichever the code shows is used.
+  2. **One measure grid, Clone Hero's, everywhere.** The grid starts again where a time signature change takes effect, as Clone Hero's beat-line builder does (0x20DACA0, a plain lookup at every beat). `MeasureIndex` becomes that grid. Fill placement, the Preview's measure lines and the position text all read it. `check_activations` stops walking time signature changes itself, so finding 53's two answers become one.
+  3. **Star Power's length in measures** (`plusmeasure`, `kMeasuresPerSpBar`) moves to the new grid only once a scout confirms Clone Hero's Star Power drain counts measures on the same grid (task CH-sp-grid). Until then it stays on its current reading, and the plan says so.
+
+  Hydra's 60 ms allowance on the fill deadline stays. The game compares positions at the moment of the hit, and the allowance is how Hydra covers early and late hits.
+
+  Before merge, `hydra_replay` on `testdata/input` lists every chart whose fills or score move under these rules, and the user sees that list. The results stamp is bumped (ADR 0018), so saved results read Stale until they are analyzed again. The rule goes into ADR 0010's history, and `CONTEXT.md`'s fill-deadline entry loses its "unverified for 6/8" note. A beat in the deadline is a quarter note in every meter (the scout found `resolution << 2` in Clone Hero's code).
 - **Beat lines follow Clone Hero.** Clone Hero steps its beat lines by the time signature's bottom number (resolution × 4 ÷ bottom number), so 6/8 gets a line every eighth note. The Preview does the same (user decision, 2026-10-11). The fill generator's half-beat tolerance stays in quarter notes; the scout found that in Clone Hero's code too. The guide says which counts which. The position text's beat number follows whatever the user decides for the grid. The plan asks before changing it, because it changes what "m28.32.109" reads in an x/8 meter.
 - **Section names read as Clone Hero shows them.** Clone Hero keeps a list of 2,718 section names (RVA 0x2095040). It looks a name up there for both .mid and .chart charts, after stripping `[section ` or `prc_`. A name missing from the list only has its underscores turned into spaces. So `prc_chorus_1a` shows as "Chorus 1a", `prechorus_1a` as "Pre-chorus 1a", and `[section Chorus 1A]` (not a key, because keys are lower case) stays "Chorus 1A". Hydra ships that list as a data file, noting where it came from (Clone Hero 1.1.0.6142), and applies the same lookup and fallback to both formats (user decision, 2026-10-11). One function turns a section event into its shown name, and the parsers stop stripping prefixes on their own (`section_name_of` and the .chart reader each do it today).
 - **`hydra_replay`'s dump prints positions as the screen does.** It printed raw measure and beat counts from 0, so it said measure 27 where the screen said m28. It now prints through `format_measure` (user decision). `check_activations`, which adds 1 by hand, also goes through the owner. Pinned measure numbers in `tools/check_refs.py` cases and the FC video workflow are updated.
