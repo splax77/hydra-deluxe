@@ -47,11 +47,16 @@ std::vector<Column<DmReportRow>> dm_columns() {
     trunc.truncate = true;
     CellLook dim_trunc = trunc;
     dim_trunc.dim = true;
+    // A text column's share of the room, from the user's answers (2026-10-14).
+    auto share = [](CellLook look, int percent) {
+        look.share = percent;
+        return look;
+    };
 
     std::vector<Column<DmReportRow>> cols;
-    cols.push_back(text_column("song", "Song", "", &DmReportRow::song, trunc));
-    cols.push_back(text_column("artist", "Artist", "", &DmReportRow::artist, dim_trunc));
-    cols.push_back(text_column("charter", "Charter", "", &DmReportRow::charter, dim_trunc));
+    cols.push_back(text_column("song", "Song", "", &DmReportRow::song, share(trunc, 48)));
+    cols.push_back(text_column("artist", "Artist", "", &DmReportRow::artist, share(dim_trunc, 27)));
+    cols.push_back(text_column("charter", "Charter", "", &DmReportRow::charter, share(dim_trunc, 25)));
     {
         Column<DmReportRow> c = column("actual", "Actual", true, "The score the player posted.");
         c.sort_key = [](const DmReportRow& r) { return SortKey{static_cast<double>(r.actual)}; };

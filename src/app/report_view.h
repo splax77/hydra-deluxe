@@ -50,6 +50,9 @@ struct CellLook {
     bool mono = false;      // the mono font
     bool truncate = false;  // cut with an ellipsis, the full text on hover
     bool chip = false;      // an outlined chip in its token's colour
+    // A cut column's whole-percent share of the table's room (the width
+    // rule's ColumnSpec::share). 0 for a column that never cuts.
+    int share = 0;
 };
 
 // A colour one row's cell takes over its column's look, where the page

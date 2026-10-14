@@ -227,39 +227,38 @@ SecondLine second_line(const app::LibraryQuery& q, const LibraryRow& row, bool f
 }
 
 // The table's columns as the width rule (ui/column_widths.h) sees them. Each
-// one is text that ends in "…" when its cell is too short, so each may cut.
-// The Best path cell draws in the mono font, so it is measured in it.
+// one is text that ends in "…" when its cell is too short, so each may cut,
+// and each takes its share of the room (the user's shares, 2026-10-14). The
+// Best path header is measured in the mono font its cells draw in.
 std::vector<ColumnSpec> library_column_specs() {
     const WidthOf text = measure_in_font();
     const WidthOf mono = measure_in_font(g_mono_font);
     std::vector<ColumnSpec> specs(kLibraryColumnCount);
-    specs[kColumnTitle] = {"Title", true, 0.0f, text};
-    specs[kColumnArtist] = {"Artist", true, 0.0f, text};
-    specs[kColumnCharter] = {"Charter", true, 0.0f, text};
-    specs[kColumnFolder] = {"Folder", true, 0.0f, text};
-    specs[kColumnBestPath] = {"Best path", true, 0.0f, mono};
+    specs[kColumnTitle] = {"Title", true, 0.0f, text, 17};
+    specs[kColumnArtist] = {"Artist", true, 0.0f, text, 10};
+    specs[kColumnCharter] = {"Charter", true, 0.0f, text, 9};
+    specs[kColumnFolder] = {"Folder", true, 0.0f, text, 39};
+    specs[kColumnBestPath] = {"Best path", true, 0.0f, mono, 25};
     return specs;
 }
 
-// Brings the table's cached measure up to date: all of it when the rows were
-// replaced or the UI scale changed, else only the cells whose row got a new
-// summary. Of the table's columns only Best path reads the summary
-// (library_cell_text).
+// Brings the table's cached measure up to date when the rows were replaced or
+// the UI scale changed. Every column is text, so the measure reads only the
+// headers, and a new summary in a row changes nothing.
 void update_column_widths(AppState& app) {
     LibraryViewState::ColumnWidths& cache = app.library_ui.column_widths;
     const std::vector<LibraryRow>& rows = app.library.rows();
     const CellText text = [&rows](size_t r, size_t c) {
         return library_cell_text(rows[r], static_cast<int>(c));
     };
-    const std::vector<size_t> changed = app.library.take_summary_changes();
+    // Emptied each frame only so the model's queue does not grow; task T3 of
+    // the column-shares plan removes take_summary_changes and this call.
+    (void)app.library.take_summary_changes();
     if (cache.measured.stale() || cache.rows_version != app.library.rows_version()) {
         cache.specs = library_column_specs();
         cache.measured = measure_widths(cache.specs, rows.size(), text);
         cache.rows_version = app.library.rows_version();
-        return;
     }
-    if (!changed.empty())
-        update_cells(cache.measured, cache.specs, kColumnBestPath, changed, rows.size(), text);
 }
 
 SecondLineUse render_table(AppState& app, ImVec2 size) {
@@ -267,7 +266,9 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
     update_column_widths(app);
     LibraryViewState::ColumnWidths& widths = app.library_ui.column_widths;
     const std::vector<ColumnSpec>& columns = widths.specs;
-    widths.room = table_room("##librarytable", size.x, columns.size());
+    // The reset key is the rows' version for now; task T3 of the
+    // column-shares plan adds the search counter to it.
+    widths.room = table_room("##librarytable", size.x, columns.size(), app.library.rows_version());
     const ColumnLayout layout = place_columns(widths.measured, columns, widths.room);
     if (!ImGui::BeginTable("##librarytable", kLibraryColumnCount, table_flags(), size,
                            layout.inner_width))
