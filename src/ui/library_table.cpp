@@ -382,7 +382,7 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
             const bool clicked = ImGui::Selectable(title.c_str(), selected, row_flags,
                                                    ImVec2(title_cut ? title_w : 0.0f, row_h));
             if (title_cut) ImGui::PopStyleColor();
-            if (clicked) app.select(row.entry);
+            if (clicked) app.select(row.entry, SelectionSource::Click);
             if (ImGui::TableGetHoveredColumn() == kColumnTitle && title_cut)
                 overflow_tooltip(title.c_str());
             if (title_cut) draw_cut_title(title_pos, title_shown);

@@ -73,7 +73,7 @@ void test_library_twin_rows(ImGuiTestContext* ctx) {
 
     // Rows sort by title: Twin A, Twin B, Zed.
     IM_CHECK(h.app->library_row_at(1).entry.notespath == second.notespath);
-    h.app->select(h.app->library_row_at(1).entry);
+    h.app->select(h.app->library_row_at(1).entry, hydra::ui::SelectionSource::Click);
     IM_CHECK(h.app->selected && h.app->selected->notespath == second.notespath);
     IM_CHECK(h.app->selected && h.app->selected->title == "Twin B");
     h.app->close_details();
@@ -434,7 +434,7 @@ void test_library_search(ImGuiTestContext* ctx) {
         IM_CHECK(text.find(title) != std::string::npos);
 
     // With a song open, Folder makes way, so each row says where it matched.
-    h.app->select(h.app->library_row_at(0).entry);
+    h.app->select(h.app->library_row_at(0).entry, hydra::ui::SelectionSource::Click);
     IM_CHECK(wait_until(ctx, [&] { return !ctx->ItemExists("**/Folder"); }, 5));
     IM_CHECK(wait_until(ctx, [&] {
         return visible_text(h).find("Matched on folder.") != std::string::npos;

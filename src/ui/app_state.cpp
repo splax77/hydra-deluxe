@@ -240,19 +240,20 @@ bool AppState::can_select_relative(int delta) const { return relative_row(delta)
 
 void AppState::select_relative(int delta) {
     reload_after_scan();  // the neighbour in the rows the store holds now
-    if (std::optional<size_t> i = relative_row(delta)) select(view_row(*i));
+    if (std::optional<size_t> i = relative_row(delta)) select(view_row(*i), SelectionSource::Step);
 }
 
-void AppState::select(const store::ChartLibraryEntry& entry) {
+void AppState::select(const store::ChartLibraryEntry& entry, SelectionSource source) {
     // The previous chart's panel, torn down the one way: a row click or
     // previous / next swaps the song while the panel stays open.
     close_details();
     selected = entry;
+    last_selection_source = source;
     show_details = true;
     start_view();
 }
 
-void AppState::select(const LibraryChart& row) {
+void AppState::select(const LibraryChart& row, SelectionSource source) {
     // Kept by value: a reload replaces the rows `row` may live in.
     const std::string key = row_key(row);
     std::string md5 = row.md5;
@@ -265,7 +266,7 @@ void AppState::select(const LibraryChart& row) {
     }
     // None: the rows are older than the store only when the reload after a
     // scan failed, and that read said so.
-    if (std::optional<store::ChartLibraryEntry> entry = read_entry(key, md5)) select(*entry);
+    if (std::optional<store::ChartLibraryEntry> entry = read_entry(key, md5)) select(*entry, source);
 }
 
 void AppState::close_details() {
@@ -521,13 +522,13 @@ void AppState::select_chart(const std::string& hyhash, const std::string& chartm
     // still the chart, so the rest of the library comes after.
     for (size_t i : library.order()) {
         if (is_copy(i)) {
-            select(rows[i].entry);
+            select(rows[i].entry, SelectionSource::Elsewhere);
             return;
         }
     }
     for (size_t i = 0; i < rows.size(); ++i) {
         if (is_copy(i)) {
-            select(rows[i].entry);
+            select(rows[i].entry, SelectionSource::Elsewhere);
             return;
         }
     }
