@@ -278,6 +278,16 @@ void setup_column(const ColumnSpec& spec, const ColumnLayout& layout, int column
                             layout.widths[static_cast<std::size_t>(column)], user_id);
 }
 
+void draw_table_headers(const std::vector<ColumnSpec>& specs,
+                        const std::function<void(std::size_t column)>& after_header) {
+    ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
+    for (std::size_t c = 0; c < specs.size(); ++c) {
+        if (!ImGui::TableSetColumnIndex(static_cast<int>(c))) continue;
+        ImGui::TableHeader(specs[c].header.c_str());
+        if (after_header) after_header(c);
+    }
+}
+
 bool begin_small_table(const char* str_id, ImGuiTableFlags look,
                        const std::vector<ColumnSpec>& specs, std::size_t rows,
                        const CellText& text, const CellHeights& wrapped_heights) {

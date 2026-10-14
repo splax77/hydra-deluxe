@@ -36,7 +36,7 @@ void render_stars_panel(AppState& app) {
     // rule (ui/column_widths.h) says; the rows are a handful, so they are
     // measured each frame.
     const WidthOf text = measure_in_font();
-    constexpr int kMultiplierColumn = 1;
+    constexpr size_t kMultiplierColumn = 1;
     std::vector<ColumnSpec> specs = {{"Stars", false, 0.0f, text},
                                      {app::kAverageMultiplierLabel, false, 0.0f, text},
                                      {"Cutoff", false, 0.0f, text}};
@@ -53,15 +53,12 @@ void render_stars_panel(AppState& app) {
                           [&](size_t r, size_t c) { return rows[r][c]; })) {
         // The headers, drawn one by one so the factor column can explain
         // itself on hover.
-        ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
-        for (int c = 0; c < static_cast<int>(specs.size()); ++c) {
-            if (!ImGui::TableSetColumnIndex(c)) continue;
-            ImGui::TableHeader(specs[static_cast<size_t>(c)].header.c_str());
+        draw_table_headers(specs, [&](size_t c) {
             if (c == kMultiplierColumn)
                 overflow_tooltip(
                     "The average multiplier a path needs for this many stars. The cutoff is "
                     "the Base score times this factor.");
-        }
+        });
         for (const std::vector<std::string>& row : rows) {
             ImGui::TableNextRow();
             for (const std::string& cell : row) {
