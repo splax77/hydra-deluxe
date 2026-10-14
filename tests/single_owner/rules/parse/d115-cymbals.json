@@ -1,0 +1,34 @@
+{
+  "rules": [
+    {
+      "question": "Does a cymbal marker count?",
+      "owner": "cymbal_counts in src/parse/song.cpp",
+      "owner_file": "src/parse/song.cpp",
+      "owner_symbol": "cymbal_counts",
+      "date": "2026-10-14",
+      "decision": "D115 (plan part B1, task B1-3)",
+      "added_by": "D115-B1-3",
+      "pattern": "allows_cymbals\\([^)]*\\)\\s*&&\\s*(mode_pro_|pro)\\b|\\b(mode_pro_|pro)\\s*&&\\s*(n\\.cymbal\\s*&&\\s*)?allows_cymbals\\(",
+      "anchor": "allows_cymbals",
+      "must_match": [
+        "if (allows_cymbals(color) && mode_pro_)",
+        "g.cymbal = pro && n.cymbal && allows_cymbals(app::color_of(n.lane));",
+        "if (mode_pro_ && allows_cymbals(*pad)) return cop_color(M, CAct::Cymbal, *pad);"
+      ],
+      "must_not_match": [
+        "if (cymbal_counts(color, mode_pro_))",
+        "g.cymbal = n.cymbal && cymbal_counts(app::color_of(n.lane), pro);",
+        "pad && allows_cymbals(*pad)) {",
+        "return c == NoteColor::Kick || allows_cymbals(c);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/parse/song.cpp",
+          "line_text": "return pro && allows_cymbals(pad);",
+          "why": "cymbal_counts, the owner"
+        }
+      ],
+      "note": "The rule was spelled in the .mid reader, the .chart reader and the Preview's gem_of. The .chart reader's old copy split the two tests across two lines, which a line scan cannot see; the third example is that copy written on one line. Asking allows_cymbals alone is fine: that is which pads can carry a cymbal, a different question. Decided by: D115, plan part B1, task B1-3"
+    }
+  ]
+}

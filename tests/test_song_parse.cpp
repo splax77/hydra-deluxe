@@ -121,6 +121,41 @@ TEST_CASE("song parse holds its invariants at Hard too") {
                        << mids_nonempty << "/" << mids << " .mid)");
 }
 
+namespace {
+
+bool has_cymbal(const Song& song) {
+    for (const SongTimestamp& ts : song.sequence)
+        for (const ChordNote& n : ts.chord.notes())
+            if (n.cymbaltype != NoteCymbalType::Normal) return true;
+    return false;
+}
+
+}  // namespace
+
+TEST_CASE("cymbal_counts: a cymbal marker counts only under Pro Drums") {
+    CHECK(cymbal_counts(NoteColor::Yellow, true));
+    CHECK_FALSE(cymbal_counts(NoteColor::Red, true));
+    CHECK_FALSE(cymbal_counts(NoteColor::Yellow, false));
+    CHECK_FALSE(cymbal_counts(NoteColor::Kick, true));
+
+    // Both readers ask it: the first corpus .mid and .chart that hold a
+    // cymbal under Pro Drums hold none with Pro Drums off.
+    bool mid_seen = false, chart_seen = false;
+    for (const std::string& path : corpus::chart_paths()) {
+        const ChartFormat format = chart_format_of(path);
+        bool& seen = format == ChartFormat::Mid ? mid_seen : chart_seen;
+        if (seen || (format != ChartFormat::Mid && format != ChartFormat::Chart)) continue;
+        if (!has_cymbal(corpus::song(path, ChartReading{}))) continue;
+        seen = true;
+        const Song plain = load_songpath(path, ChartReading{Difficulty::Expert, false});
+        CHECK_FALSE(plain.is_empty());
+        CHECK_MESSAGE(!has_cymbal(plain), path);
+        if (mid_seen && chart_seen) break;
+    }
+    CHECK(mid_seen);
+    CHECK(chart_seen);
+}
+
 TEST_CASE(".chart: each difficulty reads its own section") {
     const std::vector<uint8_t> data = multidiff::chart_bytes();
 
