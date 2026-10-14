@@ -13,10 +13,12 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -72,7 +74,7 @@ struct ReportWindowInput {
     std::string rules_error;
     // The path report only: `result` was built because the window opened
     // with nothing in memory (ReportSlot::built_on_open), so the window keeps
-    // its search, timing, Best path only and sort when the rows arrive.
+    // its search, timing, Optimal paths only and sort when the rows arrive.
     bool keep_filters = false;
     // A failed build's message and error, as the job gives them.
     std::string failure_message;
@@ -186,6 +188,46 @@ bool same_result(const std::weak_ptr<const Result>& w, const std::shared_ptr<con
     return !w.owner_before(p) && !p.owner_before(w);
 }
 
+// Each table cell's text as it was last fitted to its column, so a frame that
+// draws a cell at the width it had before cuts nothing again. Fitting every
+// cell on every frame was a large share of the open window's redraw. A cell
+// is its row's index into the result's rows plus its column's index, so a
+// sort or a filter keeps every entry. The cut itself is the `fit` handed in;
+// the window hands the one cut rule (render::ellipsize), so no rule lives here.
+class FittedTextCache {
+public:
+    using Fit = std::function<std::string(const std::string& text, float width)>;
+
+    // What cell (row, column) shows for `text` at `width`: the stored fit when
+    // the cell was last fitted from the same text at the same width, otherwise
+    // fit(text, width), kept for the next frame.
+    const std::string& fitted(size_t row, size_t column, const std::string& text, float width,
+                              const Fit& fit) {
+        Entry& e = entries_[key(row, column)];
+        if (!e.fitted || e.width != width || e.text != text) {
+            e.shown = fit(text, width);
+            e.text = text;
+            e.width = width;
+            e.fitted = true;
+        }
+        return e.shown;
+    }
+    void clear() { entries_.clear(); }
+    size_t size() const { return entries_.size(); }
+
+private:
+    struct Entry {
+        bool fitted = false;
+        float width = 0.0f;
+        std::string text;
+        std::string shown;
+    };
+    static uint64_t key(size_t row, size_t column) {
+        return (static_cast<uint64_t>(row) << 32) | static_cast<uint64_t>(column);
+    }
+    std::unordered_map<uint64_t, Entry> entries_;
+};
+
 // What a window keeps between frames.
 struct Memory {
     char search[256] = {};
@@ -199,6 +241,8 @@ struct Memory {
     float controls_w = 0.0f;
     float columns_w = 0.0f;
     float table_top = 0.0f;
+    // The table's cells as last fitted; a new result or a new measure drops them.
+    FittedTextCache fitted;
     // Forget everything a built report set up: a new result starts fresh.
     void reset() {
         const bool open = was_open;
@@ -229,8 +273,11 @@ bool nothing_matches();
 float footer_height(const Frame& frame);
 
 // One cell's text in its look, and an outlined chip in its token's colour.
+// The cell is (row, column) in `fits`: its row's index into the result's
+// rows and its column's index.
 void cell(const std::string& text, const app::report_view::CellLook& look,
-          app::report_view::Tone tone, bool numeric);
+          app::report_view::Tone tone, bool numeric, FittedTextCache& fits, size_t row,
+          size_t column);
 void chip(const std::string& text, app::report::ChipToken token);
 
 // ---- The columns, as the width rule (ui/column_widths.h) sees them ---------
@@ -331,7 +378,12 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
     }
 
     const std::vector<ColumnSpec> specs = column_specs(columns);
-    if (widths.stale()) widths = measure(view);
+    // A stale measure can mean the UI scale changed, which leaves every fit
+    // in old pixels, so the fits go with it.
+    if (widths.stale()) {
+        widths = measure(view);
+        memory.fitted.clear();
+    }
     const TableRoom room = table_room(id, 0.0f, specs.size());
     const ColumnLayout layout = place_columns(widths, specs, room);
     // SortMulti for the Shift+click second sort (D103 item 1).
@@ -412,7 +464,8 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
                 if (col.look.chip && look.chip)
                     chip(text, look.chip(row));
                 else
-                    cell(text, col.look, col.tone ? col.tone(row) : Tone::Normal, col.numeric);
+                    cell(text, col.look, col.tone ? col.tone(row) : Tone::Normal, col.numeric,
+                         memory.fitted, index, c);
             }
             ImGui::PopID();
         }

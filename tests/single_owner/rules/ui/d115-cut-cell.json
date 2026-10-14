@@ -1,0 +1,31 @@
+{
+  "rules": [
+    {
+      "question": "How is a label that was cut to fit drawn?",
+      "owner": "draw_cut_text in src/ui/widgets.h",
+      "owner_file": "src/ui/widgets.h",
+      "owner_symbol": "draw_cut_text",
+      "date": "2026-10-14",
+      "decision": "derive-once review of D115-A2-5 (2026-10-14), finding 2",
+      "added_by": "D115-A2-5-review",
+      "pattern": "AddText\\(\\s*window->DC\\.CursorPos",
+      "anchor": "DC.CursorPos",
+      "must_match": [
+        "window->DrawList->AddText(window->DC.CursorPos, ImGui::GetColorU32(ImGuiCol_Text),",
+        "ImGui::GetWindowDrawList()->AddText(window->DC.CursorPos, color, shown.c_str());"
+      ],
+      "must_not_match": [
+        "draw_cut_text(text, render::ellipsize(text, avail, text_width), avail);",
+        "dl->AddText(ImVec2(x, y), color, label.c_str());"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/widgets.h",
+          "line_text": "window->DrawList->AddText(window->DC.CursorPos, ImGui::GetColorU32(ImGuiCol_Text),",
+          "why": "draw_cut_text, the owner: the cut text at the cursor"
+        }
+      ],
+      "note": "Drawing a cut label at the cursor, then an item as wide as the room with the whole text in a tooltip. text_ellipsized and the report window's cached cells both call draw_cut_text, so a cell drawn from a cache cannot be drawn a second way."
+    }
+  ]
+}

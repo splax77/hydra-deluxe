@@ -181,7 +181,7 @@ size_t where(const std::string& s) { return fixture().text.find(s); }
 ImGuiWindow* path_window() { return window_named("###pathreport"); }
 ImGuiWindow* dm_window() { return window_named("###dmreport"); }
 
-// Opens the path report and points the ref at it, with Best path only
+// Opens the path report and points the ref at it, with Optimal paths only
 // unticked: none of the sample rows is an optimal path.
 void open_path_all_rows(ImGuiTestContext* ctx) {
     fixture().path_open = true;
@@ -189,7 +189,7 @@ void open_path_all_rows(ImGuiTestContext* ctx) {
     IM_CHECK(path_window() != nullptr);
     if (ctx->IsError()) return;
     ctx->SetRef(path_window());
-    ctx->ItemClick("Best path only");
+    ctx->ItemClick("Optimal paths only");
     ctx->Yield(2);
 }
 
@@ -207,7 +207,7 @@ void test_sort(ImGuiTestContext* ctx) {
     reset_fixture();
     fixture().path_open = true;
     ctx->Yield(3);
-    // Best path only starts ticked, and no sample row is optimal.
+    // Optimal paths only starts ticked, and no sample row is optimal.
     IM_CHECK(shows("Nothing matches those filters."));
     IM_CHECK(shows("0 of 6 paths"));
     open_path_all_rows(ctx);
@@ -240,7 +240,7 @@ void test_filters(ImGuiTestContext* ctx) {
     IM_CHECK(shows("Nothing matches those filters."));
     ctx->ItemClick("Clear filters");
     ctx->Yield(2);
-    // The search is empty again and Best path only stayed unticked.
+    // The search is empty again and Optimal paths only stayed unticked.
     IM_CHECK(shows("6 of 6 paths"));
 
     open_dm(ctx);
@@ -393,7 +393,7 @@ void test_keys(ImGuiTestContext* ctx) {
     IM_CHECK(path_window() == nullptr);
     IM_CHECK_EQ(f.closes, 1);
     // Reopening, the window takes the rows up again. They come as AppState
-    // hands rows built for an opening (keep_filters), so Best path only
+    // hands rows built for an opening (keep_filters), so Optimal paths only
     // stays unticked.
     f.path.keep_filters = true;
     f.path_open = true;
@@ -789,7 +789,7 @@ void test_row_click(ImGuiTestContext* ctx) {
     IM_CHECK(batch_search(ctx, title));
     dismiss_done(ctx);
 
-    // Best path only leaves one row per mode.
+    // Optimal paths only leaves one row per mode.
     h.app->show_path_report();
     ctx->Yield(3);
     IM_CHECK_RETV(path_window() != nullptr, );
@@ -901,11 +901,11 @@ std::string boxed(const std::string& s) { return "{ " + s + " }"; }
 
 bool best_only_ticked(ImGuiTestContext* ctx) {
     ctx->SetRef(path_window());
-    return (ctx->ItemInfo("Best path only").StatusFlags & ImGuiItemStatusFlags_Checked) != 0;
+    return (ctx->ItemInfo("Optimal paths only").StatusFlags & ImGuiItemStatusFlags_Checked) != 0;
 }
 
 // Closing the window and opening it again keeps its search, timing,
-// Best path only and sort, though the rows are built again (the user's
+// Optimal paths only and sort, though the rows are built again (the user's
 // answer to D103 item 28's follow-up). Refresh still resets all four.
 void test_reopen_keeps_filters(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
@@ -929,7 +929,7 @@ void test_reopen_keeps_filters(ImGuiTestContext* ctx) {
 
     // Every path, then a search that keeps them (the chart's own song).
     ctx->SetRef(path_window());
-    ctx->ItemClick("Best path only");
+    ctx->ItemClick("Optimal paths only");
     ctx->Yield(2);
     IM_CHECK(!best_only_ticked(ctx));
     const std::string all_count = shown_count(h);
