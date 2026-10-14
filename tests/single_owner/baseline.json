@@ -17,6 +17,15 @@
       "date": "2026-10-14",
       "added_by": "D115-A2-5",
       "remove_by": "2026-10-28"
+    },
+    {
+      "question": "Where does a fill start, in ticks?",
+      "file": "src/app/preview_view.cpp",
+      "line_text": "f.span = span_from_ticks(song, end - *ts.activation_length, end);",
+      "removed_by": "D115 B2 join: the main session switches the Preview to fill_start_tick when B2-2 and B2-4 merge",
+      "date": "2026-10-14",
+      "added_by": "D115-B2-4-review",
+      "remove_by": "2026-10-28"
     }
   ],
   "known_clones": []

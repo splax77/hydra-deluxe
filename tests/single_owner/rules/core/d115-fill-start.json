@@ -1,0 +1,37 @@
+{
+  "rules": [
+    {
+      "question": "Where does a fill start, in ticks?",
+      "owner": "fill_start_tick in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "fill_start_tick",
+      "date": "2026-10-14",
+      "decision": "D115 (plan part B2, task B2-4)",
+      "added_by": "D115-B2-4-review",
+      "pattern": "-\\s*\\*?[\\w.>\\-]*\\b(activation_length|fill_length_ticks)\\b",
+      "anchor": "_length",
+      "must_match": [
+        "if (ts.activation_length) chord[\"fill_start\"] = c.tick - *ts.activation_length;",
+        "f.span = span_from_ticks(song, end - *ts.activation_length, end);",
+        "const double fst = timing.ms_index().at(fill_end_tick - fill_length_ticks);"
+      ],
+      "must_not_match": [
+        "if (ts.activation_length) chord[\"fill_start\"] = fill_start_tick(c.tick, *ts.activation_length);",
+        "const double fst = timing.ms_index().at(fill_start_tick(fill_end_tick, fill_length_ticks));",
+        "ts.activation_length = ts.timecode.ticks() - starttick;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.h",
+          "line_text": "return chord_tick - activation_length;",
+          "why": "fill_start_tick, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools"
+      ],
+      "note": "A fill's start is its chord's tick minus the stored length. The Preview, the search's fill deadline and hydra_replay each wrote that subtraction. Setting the length (the parser's apply_fill_end, which subtracts the other way round) is a different question and passes. The legacy deadline's pad line adds the length to a float before subtracting it from the end; it is left in the 1.0 port's own order (ADR 0010)."
+    }
+  ]
+}

@@ -36,17 +36,15 @@ inline Song squeeze_chart() {
 
 // The name of the first field where two rows differ, or "" when every field
 // of ReplayChord (and of each ReplayNote) is identical. With `scores_only`,
-// chord_code and notes are skipped (a scores-only row leaves them empty).
+// the fields ReplayOptions::scores_only leaves empty are skipped.
 inline std::string first_row_difference(const ReplayChord& a, const ReplayChord& b,
                                         bool scores_only = false) {
     if (a.index != b.index) return "index";
     if (a.tick != b.tick) return "tick";
     if (a.ms != b.ms) return "ms";
-    if (a.measure != b.measure) return "measure";
-    if (a.beat != b.beat) return "beat";
-    if (a.measure_tick != b.measure_tick) return "measure_tick";
     if (a.measures_decimal != b.measures_decimal) return "measures_decimal";
     if (!scores_only) {
+        if (a.position != b.position) return "position";
         if (a.chord_code != b.chord_code) return "chord_code";
         if (a.notes.size() != b.notes.size()) return "notes.size";
         for (size_t k = 0; k < a.notes.size(); ++k) {

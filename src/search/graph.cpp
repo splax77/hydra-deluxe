@@ -65,8 +65,8 @@ double activation_fill_deadline_ms(const SongTiming& timing,
                                    FillDeadlineRule rule) {
     if (rule == FillDeadlineRule::Ch11) {
         // The E threshold: a fixed lead in beats before the fill marker.
-        int64_t tick_E =
-            fill_end_tick - fill_length_ticks - kCh11FillLeadBeats * timing.tick_resolution();
+        int64_t tick_E = fill_start_tick(fill_end_tick, fill_length_ticks) -
+                         kCh11FillLeadBeats * timing.tick_resolution();
         return timing.timecode(tick_E).ms();
     }
 
@@ -81,7 +81,7 @@ double activation_fill_deadline_ms(const SongTiming& timing,
     // The res/16 pad matches Python Hydra 1.2 output; kept fixed (see ADR 0010).
     const double res = static_cast<double>(timing.tick_resolution());
     const double fend = timing.ms_index().at(fill_end_tick);
-    const double fst = timing.ms_index().at(fill_end_tick - fill_length_ticks);
+    const double fst = timing.ms_index().at(fill_start_tick(fill_end_tick, fill_length_ticks));
     const double pad = timing.ms_index().ms_at_tick_f(
         static_cast<double>(fill_end_tick) -
         (static_cast<double>(fill_length_ticks) + res / 16.0));
