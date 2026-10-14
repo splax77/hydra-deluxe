@@ -27,10 +27,12 @@ struct CategoryScores {
     // value minus the lost doubling. The one place that subtraction lives.
     int sqout_sp() const { return sp - sqout_reduction; }
     // The combo multiplier applied to the chord's first note (base-sorted),
-    // the same note the SqOut calculation reads. Per note, that note's own.
+    // the same note the SqOut calculation reads: MultiplierStep::first
+    // (core/timing.h). Per note, that note's own.
     int multiplier = 1;
     // The multiplier applied to the chord's last note: what the game's disc
-    // shows once the whole chord is hit. Per note, the same as `multiplier`.
+    // shows once the whole chord is hit, MultiplierStep::last. Per note, the
+    // same as `multiplier`.
     int multiplier_after = 1;
     // The combo once the chord is hit: the combo passed in plus the chord's
     // note count. Per note, the combo once that note is hit, so the last

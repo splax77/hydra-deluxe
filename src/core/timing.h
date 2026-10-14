@@ -22,6 +22,19 @@ namespace hydra {
 // combo -> score multiplier: x1 below 10, x2 below 20, x3 below 30, else x4.
 int to_multiplier(int combo);
 
+// The combo multiplier at each end of a chord of `note_count` notes hit at
+// `combo`: `first` pays its first note, `last` its last. A chord with no notes
+// pays nothing, so both ends stay at the combo's own multiplier.
+struct MultiplierStep {
+    int first;
+    int last;
+};
+MultiplierStep multiplier_step(int combo, int note_count);
+
+// Does a chord of `note_count` notes hit at `combo` straddle a multiplier
+// step, so its first and last notes pay at different multipliers?
+bool crosses_multiplier_step(int combo, int note_count);
+
 // Star Power pays a chord's value once more (CategoryScores::sp), so the game
 // shows the combo multiplier doubled while it runs.
 inline constexpr int kStarPowerMultiplier = 2;

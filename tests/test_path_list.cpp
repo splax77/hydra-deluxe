@@ -118,6 +118,20 @@ TEST_CASE("build_path_list: score groups and the all-0 dedupe rule") {
     REQUIRE_FALSE(wb.buttons.empty());
     CHECK(wb.buttons.back().group == PathButtonView::Group::AllZero);
     CHECK(wb.buttons.back().detail == "100 below optimal");
+
+    // An all-0 path that ties the optimal score but is a different path (its
+    // last deact one tick later) shows, with no detail line at all.
+    HydraRecord tied = dup;
+    Path& tied_path = tied.allzero_paths.front();
+    REQUIRE_FALSE(tied_path.activations.empty());
+    REQUIRE_FALSE(tied_path.activations.back().sp_end_steps.empty());
+    tied_path.activations.back().sp_end_steps.back().end_tick += 1;
+    REQUIRE(build_path_list(tied).show_allzero);
+    const PathButtonsView tb = build_path_buttons(tied, 0, 2);
+    REQUIRE_FALSE(tb.buttons.empty());
+    CHECK(tb.buttons.back().group == PathButtonView::Group::AllZero);
+    CHECK(tb.buttons.back().path->totalscore() == *tied.optimal_score());
+    CHECK(tb.buttons.back().detail.empty());
 }
 
 // D51 Q4b.
