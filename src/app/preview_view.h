@@ -152,8 +152,9 @@ struct PreviewActivation {
 };
 
 // A line on the highway: a measure line, a beat line, or the fainter line
-// drawn half a step before each of those (Onyx line-1/2/3). Where they fall
-// is MeasureIndex::walk's; build_beat_events maps its kinds onto these.
+// (Onyx line-1/2/3). Where the first two fall is MeasureIndex::walk's, and
+// where the third falls is build_beat_events's; it maps the walk's kinds onto
+// these.
 enum class PreviewBeatKind { MeasureLine, Beat, Half };
 
 struct PreviewBeat {
