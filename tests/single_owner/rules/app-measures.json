@@ -8,15 +8,18 @@
       "date": "2026-10-14",
       "decision": "D115",
       "added_by": "D115-B2-2",
-      "pattern": "(upper_bound|lower_bound|last_at_or_before)\\(\\s*(\\w+(\\.|->))*\\w*sections\\b|section\\w*\\s*=\\s*std::(upper|lower)_bound\\(",
+      "pattern": "(upper_bound|lower_bound|last_at_or_before)\\(\\s*(\\w+(\\.|->))*\\w*sections\\b|section\\w*\\s*=\\s*std::(upper|lower)_bound\\(|^\\s*(\\w+(\\.|->))*\\w*sections\\.begin\\(\\),\\s*(\\w+(\\.|->))*\\w*sections\\.end\\(\\),",
       "must_match": [
         "std::upper_bound(sections.begin(), sections.end(), now_tick,",
         "const auto section_past = std::upper_bound(",
+        "scene.sections.begin(), scene.sections.end(), now_tick,",
         "auto it = std::upper_bound(scene.sections.begin(), scene.sections.end(), tick,",
         "const auto s = last_at_or_before(song.practice_sections.begin(), song.practice_sections.end(), t,"
       ],
       "must_not_match": [
         "const std::vector<PreviewSection>& sections = scene.sections;",
+        "std::stable_sort(sections.begin(), sections.end(),",
+        "if (!std::equal(a.sections.begin(), a.sections.end(), b.sections.begin(), b.sections.end(),",
         "for (const SongSection& s : song.practice_sections)",
         "const auto tempo_past = std::upper_bound(scene.tempos.begin(), scene.tempos.end(), now_tick,"
       ],
