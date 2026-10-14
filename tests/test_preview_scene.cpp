@@ -299,6 +299,22 @@ TEST_CASE("build_beat_events: 6/8 steps by the eighth note") {
     for (size_t i = 1; i < beats.size(); ++i) CHECK(beats[i].tick > beats[i - 1].tick);
 }
 
+TEST_CASE("build_beat_events: the fainter line is halfway back to the line before, at a restart too") {
+    // 4/4, then 6/8 from tick 1920, then 4/4 again from tick 2400. The grid
+    // restarts at each change, so the gap before a restart line is the step
+    // of the meter that ends there: 480 before 1920, 240 before 2400.
+    std::map<int64_t, int64_t> tpm{{0, 1920}, {1920, 1440}, {2400, 1920}};
+    std::map<int64_t, double> bpm{{0, 120.0}};
+    SongTiming st(480, tpm, bpm, {{0, {4, 4}}, {1920, {6, 8}}, {2400, {4, 4}}});
+
+    std::vector<PreviewBeat> beats = build_beat_events(st, 2880);
+    std::vector<int64_t> halves;
+    for (const PreviewBeat& b : beats)
+        if (b.kind == PreviewBeatKind::Half) halves.push_back(b.tick);
+    CHECK(halves == std::vector<int64_t>{240, 720, 1200, 1680, 2040, 2280, 2640});
+    for (size_t i = 1; i < beats.size(); ++i) CHECK(beats[i].tick > beats[i - 1].tick);
+}
+
 TEST_CASE("build_preview_scene fills beats, tempos and resolution") {
     Song song = make_hand_song();
     // The Preview passes the audio's end, as the load does: here the audio
