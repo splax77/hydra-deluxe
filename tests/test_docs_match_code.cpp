@@ -197,9 +197,9 @@ const std::vector<Allowed>& allowed() {
         // the record of their removal.
         {"docs/adr/0011", "deact_tick_from_rows", "ADR 0011 records that it is gone"},
         {"docs/adr/0011", "deact_tick_for", "ADR 0011 records that it is gone"},
-        // ADR 0017 records that the whole-record blob format these two spoke
-        // was deleted.
-        {"docs/adr/0017", "write_record", "ADR 0017 records that it is gone"},
+        // ADR 0017 records that the whole-record blob format read_record
+        // spoke was deleted. (Its partner's name, write_record, is in use
+        // again for D115's record writer, so it needs no entry.)
         {"docs/adr/0017", "read_record", "ADR 0017 records that it is gone"},
         // ADR 0015's decision names it, and its dated line records that it
         // was removed later (34137fb).
