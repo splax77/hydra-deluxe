@@ -27,14 +27,14 @@ void check_spaced(const std::vector<std::optional<float>>& out, const std::vecto
 
 }  // namespace
 
-TEST_CASE("label layout: labels with room all show, centred on their marks") {
-    const std::vector<float> centres{50, 150, 250};
+TEST_CASE("label layout: labels with room all show, starting at their marks") {
+    const std::vector<float> marks{50, 150, 250};
     const std::vector<float> widths{10, 10, 10};
-    const auto out = spaced_labels(centres, widths, 0, 300, 4);
+    const auto out = spaced_labels(marks, widths, 0, 300, 4);
     REQUIRE(out.size() == 3);
-    CHECK(*out[0] == doctest::Approx(45));
-    CHECK(*out[1] == doctest::Approx(145));
-    CHECK(*out[2] == doctest::Approx(245));
+    CHECK(*out[0] == doctest::Approx(50));
+    CHECK(*out[1] == doctest::Approx(150));
+    CHECK(*out[2] == doctest::Approx(250));
 }
 
 TEST_CASE("label layout: 39 crowded numbers never overlap, first and last show") {

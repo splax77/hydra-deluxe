@@ -7,6 +7,10 @@
 // same affordance the HTML report gives truncated cells via title= attributes.
 // The rest are the hover-hint / warning-color / progress-overlay patterns that
 // used to be hand-rolled at every call site.
+//
+// Where text sits is apply_theme's rule (ui/theme.cpp): text starts at the
+// left of its space. The helpers here that move the cursor right place
+// controls, never text.
 
 #ifndef HYDRA_UI_WIDGETS_H
 #define HYDRA_UI_WIDGETS_H
@@ -149,12 +153,23 @@ inline bool fits_on_line(float w, float spacing) {
                        ImGui::GetCurrentWindow()->WorkRect.Max.x);
 }
 
-// Moves the cursor right so the next item, `w` wide, ends at the right edge
-// of the space left: the table cell's, or the line's. An item wider than that
-// space stays where it is.
-inline void move_to_right_edge(float w) {
+// Moves the cursor right so the next control, `w` wide, ends at the right
+// edge of the space left: the table cell's, or the line's. A control wider
+// than that space stays where it is. It places buttons, never text (the
+// user's answer 7 in the 2026-10-14 column-shares plan); text follows
+// apply_theme in ui/theme.cpp.
+inline void place_control_at_right_edge(float w) {
     const float room = ImGui::GetContentRegionAvail().x - w;
     if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);
+}
+
+// Puts the next buttons, `buttons_w` wide in all, at the right end of the
+// current line when they fit beside what is already on it (fits_on_line).
+// Otherwise they start a line of their own, at its left.
+inline void place_control_at_line_end(float buttons_w) {
+    if (!fits_on_line(buttons_w, ImGui::GetStyle().ItemSpacing.x)) return;
+    ImGui::SameLine();
+    place_control_at_right_edge(buttons_w);
 }
 
 // Keeps the current table's columns in the order they were set up. Call it
