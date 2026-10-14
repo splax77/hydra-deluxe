@@ -284,7 +284,7 @@ TEST_CASE("path report columns: the page's fifteen, in order, word for word") {
     CHECK(titles(cols) == std::vector<std::string>{
                               "Song", "Artist", "Charter", "Mode", "Path", "Score", "Acts",
                               "Max skip", "Hardest ms", "Timing", "Early fill (ms)",
-                              "Avg multiplier", "SqIn", "SqOut", "Notes"});
+                              app::kAverageMultiplierLabel, "SqIn", "SqOut", "Note count"});
     std::vector<bool> numeric;
     for (const auto& c : cols) numeric.push_back(c.numeric);
     CHECK(numeric == std::vector<bool>{false, false, false, false, false, true, true, true,
@@ -341,7 +341,7 @@ TEST_CASE("path report cells read as the page wrote them") {
     ReportRow none = path_row("Halo", "Beyonce", "Someone", "1", 100, std::nullopt, false);
     CHECK(cols[8].cell(none) == report::kDash);
     CHECK(cols[10].cell(none) == report::kDash);
-    CHECK(cols[9].cell(none) == "No squeezes");
+    CHECK(cols[9].cell(none) == "No timing needed");
     CHECK(std::holds_alternative<std::monostate>(cols[8].sort_key(none)));
     CHECK(std::holds_alternative<std::monostate>(cols[10].sort_key(none)));
 
@@ -370,7 +370,7 @@ TEST_CASE("path report: Timing choices and the keep-rule") {
     }
     CHECK(choices[1].label == "Normal");
     CHECK(choices[choices.size() - 2].label == "Beyond 170 ms");
-    CHECK(choices.back().label == "No squeezes");
+    CHECK(choices.back().label == "No timing needed");
 
     const ReportRow best_beyond = path_row("A", "", "", "1", 1, 500.0, true);
     const ReportRow other_beyond = path_row("B", "", "", "2", 1, 500.0, false);

@@ -227,8 +227,8 @@ std::optional<double> batch_eta_s(double elapsed_s, int completed, int total);
 class BatchJob : public JobBase {
 public:
     // Runs exactly this plan (app::plan_batch), the one the confirm showed
-    // (D79). The library screen's own search (T12) decides which rows the
-    // plan covers, so "Analyze search (N)..." hands over the N rows it shows
+    // (D79). The rows on screen (LibraryModel::order) decide which rows the
+    // plan covers, so the Analyze button hands over the rows the table shows
     // instead of a search string SQL would read differently.
     BatchJob(app::BatchPlan plan, app::BatchRun run, store::RecordStore& store);
     ~BatchJob() {

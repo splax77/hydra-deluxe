@@ -41,8 +41,8 @@ void render_status_line(AppState& app) {
     ImGui::PopStyleColor();
 }
 
-std::string analyze_search_label(int64_t count) {
-    return "Analyze search (" + group_thousands(count) + ")...";
+std::string analyze_shown_label(int64_t count) {
+    return "Analyze shown (" + group_thousands(count) + ")...";
 }
 
 // The toolbar: library-wide actions on the left, the last report on the right.
@@ -76,16 +76,18 @@ void render_actions_row(AppState& app) {
     busy_tooltip();
     ImGui::SameLine();
 
-    // A search that narrows nothing (empty, or a filter that does not parse,
-    // like "stars:9") leaves the button on the whole library (D48, Q15).
-    const bool searching = app.library.searching();
+    // The button counts and runs the rows on screen, the heading's own number
+    // (D115). When neither the search nor a chip narrows the table, that is the
+    // whole library and the button says so. A search that does not parse, like
+    // "stars:9", narrows nothing (D48, Q15).
+    const bool narrowed = app.library.narrowed();
     const int64_t library_size = static_cast<int64_t>(app.library.rows().size());
-    const int64_t analyzable = searching ? static_cast<int64_t>(app.library_match_count()) : library_size;
+    const int64_t analyzable = static_cast<int64_t>(app.library_shown_count());
     const std::string label =
-        searching ? analyze_search_label(analyzable) : std::string("Analyze library...");
+        narrowed ? analyze_shown_label(analyzable) : std::string("Analyze library...");
     // The slot fits the widest count this library can show, commas included:
     // the label's only digits are the count's.
-    std::string sample = analyze_search_label(library_size);
+    std::string sample = analyze_shown_label(library_size);
     const char widest = widest_digits(1)[0];
     for (char& c : sample)
         if (c >= '0' && c <= '9') c = widest;

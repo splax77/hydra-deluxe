@@ -35,7 +35,7 @@
 #include "store/record_store.h"
 #include "temp_util.h"
 #include "ui/app_state.h"
-#include "ui/library_parts.h"  // analyze_search_label
+#include "ui/library_parts.h"  // analyze_shown_label
 
 using hydra::app::Settings;
 using hydra::store::ChartLibraryEntry;
@@ -554,9 +554,9 @@ TEST_CASE("UI timings: Copied!, search re-filter, batch refresh and the progress
     CHECK(AppState::kViewProgressDelaySeconds == 0.15);  // D87 item 6
 }
 
-// Finding 290: the batch button's search label is built once; the button,
-// its width sample and the GUI tests call it.
-TEST_CASE("the toolbar's search label comes from one function") {
-    CHECK(hydra::ui::detail::analyze_search_label(1) == "Analyze search (1)...");
-    CHECK(hydra::ui::detail::analyze_search_label(1234) == "Analyze search (1,234)...");
+// Finding 290: the batch button's narrowed label is built once; the button,
+// its width sample and the GUI tests call it (D115 renamed it).
+TEST_CASE("the toolbar's narrowed label comes from one function") {
+    CHECK(hydra::ui::detail::analyze_shown_label(1) == "Analyze shown (1)...");
+    CHECK(hydra::ui::detail::analyze_shown_label(1234) == "Analyze shown (1,234)...");
 }

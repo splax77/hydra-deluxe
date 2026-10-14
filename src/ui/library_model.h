@@ -140,17 +140,18 @@ public:
 
     const std::vector<LibraryRow>& rows() const { return rows_; }
     // The rows shown, as indices into rows(), in sort order: the query and the
-    // chip both applied.
+    // chip both applied. The one owner of "the rows on screen": the heading
+    // counts them and the Analyze button counts and runs them (D115).
     const std::vector<size_t>& order() const { return order_; }
-    // The rows the query matches, whatever the chip, in sort order: what
-    // "Analyze search (N)..." analyzes.
-    std::vector<size_t> matches() const;
     const app::LibraryQuery& query() const { return query_; }
     // Is the typed search narrowing the library? False for an empty box and
     // for a filter that does not parse (both leave the query empty). The
-    // toolbar's batch button (library_toolbar.cpp) and the table's footer
-    // both ask this.
+    // table's footer asks this.
     bool searching() const { return !query_.empty(); }
+    // Does the user's own choice, the search or a status chip, leave rows of
+    // the library off screen? The toolbar's batch button asks this to pick
+    // between its two labels (library_toolbar.cpp).
+    bool narrowed() const { return searching() || chip_ != StatusChip::All; }
     const ChipCounts& counts() const { return counts_; }
     StatusChip chip() const { return chip_; }
     LibrarySort sort_column() const { return sort_column_; }

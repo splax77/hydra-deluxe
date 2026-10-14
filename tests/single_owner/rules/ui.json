@@ -708,32 +708,32 @@
       "note": "Publishing a job's finished flag by hand. Every job ends through run_guarded or fail in job_base.h. Decided by: audit finding 212; phase 6 task J2-4 (D53)"
     },
     {
-      "question": "What does the batch button say while a search is typed?",
-      "owner": "analyze_search_label in src/ui/library_toolbar.cpp",
+      "question": "What does the batch button say while the search or a chip narrows the table?",
+      "owner": "analyze_shown_label in src/ui/library_toolbar.cpp",
       "owner_file": "src/ui/library_toolbar.cpp",
-      "owner_symbol": "analyze_search_label",
+      "owner_symbol": "analyze_shown_label",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "D53; D115 renamed the owner when the button began to follow the chip",
       "added_by": "J2-4",
-      "pattern": "\"Analyze search \\(",
-      "anchor": "\"Analyze search (",
-      "calls_owner": "\\banalyze_search_label\\(",
+      "pattern": "\"Analyze shown \\(",
+      "anchor": "\"Analyze shown (",
+      "calls_owner": "\\banalyze_shown_label\\(",
       "owner_files": [
         "src/ui/library_toolbar.cpp"
       ],
       "must_match": [
-        "? \"Analyze search (\" + group_thousands(analyzable) + \")...\"",
-        "\"Analyze search (\" +"
+        "? \"Analyze shown (\" + group_thousands(analyzable) + \")...\"",
+        "\"Analyze shown (\" +"
       ],
       "must_not_match": [
-        "CHECK(hydra::ui::detail::analyze_search_label(1) == \"Analyze search (1)...\");",
-        "const std::string label = searching ? analyze_search_label(analyzable) : \"Analyze library...\";"
+        "CHECK(hydra::ui::detail::analyze_shown_label(1) == \"Analyze shown (1)...\");",
+        "const std::string label = narrowed ? analyze_shown_label(analyzable) : \"Analyze library...\";"
       ],
       "scope": [
         "src",
         "tests"
       ],
-      "note": "The batch button's search label typed as text. Decided by: audit finding 290; phase 6 task J2-4 (D53)"
+      "note": "The batch button's narrowed label typed as text. Decided by: audit finding 290; phase 6 task J2-4 (D53); D115 (the label follows the chip too)"
     },
     {
       "question": "How does a library entry become a scan row?",

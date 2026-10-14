@@ -18,12 +18,17 @@
 #include "ui/details_view.h"  // kMinLibraryW
 #include "ui/fonts.h"  // px()
 #include "ui/library_model.h"
+#include "ui/library_parts.h"  // analyze_shown_label
 #include "ui/preview_controller.h"
 #include "store/record_store.h"
 #include "store/upgrade_files.h"  // the upgrade's file names
 #include "ui/widgets.h"  // widest_digits, button_slot_width
 
 namespace uitest {
+
+// Defined in uitest_batch_reports.cpp.
+bool batch_search(ImGuiTestContext* ctx, const std::string& search);
+void dismiss_done(ImGuiTestContext* ctx);
 
 namespace {
 
@@ -485,6 +490,53 @@ void test_library_search(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(ctx->UiContext->ActiveId, ctx->ItemInfo("**/##search").ID);
     ctx->KeyPress(ImGuiKey_Escape);
     ctx->Yield(2);
+}
+
+// D115: the Analyze button follows the status chip. With no search, a chip
+// alone narrows the table, and the button then reads "Analyze shown (N)..."
+// with the heading's N, and the confirm counts those N.
+void test_analyze_follows_chip(ImGuiTestContext* ctx) {
+    using hydra::ui::StatusChip;
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    ctx->SetRef("//Hydra");
+    IM_CHECK(ctx->ItemExists("Analyze library..."));
+
+    // One chart gets a result, so the Not analyzed chip leaves rows out.
+    IM_CHECK(batch_search(ctx, "Burnout"));
+    dismiss_done(ctx);
+    ctx->ItemInputValue("**/##search", "");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->search.empty(); }, 5));
+    const size_t total = h.app->library.rows().size();
+    const size_t not_analyzed = h.app->library.counts().not_analyzed;
+    IM_CHECK_GT(not_analyzed, size_t{0});
+    IM_CHECK_LT(not_analyzed, total);
+    IM_CHECK(ctx->ItemExists("Analyze library..."));
+
+    ctx->ItemClick(("**/" + hydra::ui::chip_label(StatusChip::NotAnalyzed, not_analyzed)).c_str());
+    IM_CHECK(wait_until(ctx, [&] { return h.app->library_shown_count() == not_analyzed; }, 5));
+    const std::string heading =
+        std::to_string(not_analyzed) + " of " + std::to_string(total) + " charts";
+    IM_CHECK(visible_text(h).find(heading) != std::string::npos);
+    const std::string label =
+        hydra::ui::detail::analyze_shown_label(static_cast<int64_t>(not_analyzed));
+    IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists(label.c_str()); }, 5));
+    IM_CHECK(!ctx->ItemExists("Analyze library..."));
+
+    ctx->ItemClick(label.c_str());
+    ctx->Yield(2);
+    IM_CHECK(h.app->batch_confirm_pending);
+    IM_CHECK_EQ(h.app->batch_scope_charts(), static_cast<int64_t>(not_analyzed));
+    ctx->SetRef("//Analyze library");
+    ctx->ItemClick("Cancel");
+    ctx->Yield(2);
+
+    // Back to All: the whole library, and the button says so.
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick(("**/" + hydra::ui::chip_label(StatusChip::All, total)).c_str());
+    IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists("Analyze library..."); }, 5));
 }
 
 // Sorting and scrolling: every chart is one scroll away, and only the rows on
@@ -997,6 +1049,7 @@ const std::vector<TestEntry>& library_tests() {
         {"library-state-per-app", test_library_state_per_app},
         {"view-settings", test_view_settings},
         {"library-search", test_library_search},
+        {"analyze-follows-chip", test_analyze_follows_chip},
         {"library-sort-scroll", test_library_sort_scroll},
         {"library-column-order", test_library_column_order},
         {"library-layout", test_library_layout},

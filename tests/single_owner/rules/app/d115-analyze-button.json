@@ -1,0 +1,30 @@
+{
+  "rules": [
+    {
+      "question": "How many charts does the Analyze button count and run?",
+      "owner": "LibraryModel::order in src/ui/library_model.h, read through AppState::library_shown_count",
+      "owner_file": "src/ui/app_state.h",
+      "owner_symbol": "library_shown_count",
+      "date": "2026-10-14",
+      "decision": "D115 (the button follows the status chip, user's choice 2026-10-11)",
+      "added_by": "D115-A2-1",
+      "pattern": "\\blibrary_match_count\\b|\\bcounts\\(\\)\\.all\\b|\\.matches\\(\\)",
+      "must_match": [
+        "    const int64_t analyzable = searching ? static_cast<int64_t>(app.library_match_count()) : library_size;",
+        "    const std::vector<size_t> matched = library.matches();",
+        "    const size_t n = app.library.counts().all;"
+      ],
+      "must_not_match": [
+        "    const int64_t analyzable = static_cast<int64_t>(app.library_shown_count());",
+        "    const std::vector<size_t>& matched = library.order();",
+        "    if (chip_ != StatusChip::All && counts_.of(chip_) == 0) {"
+      ],
+      "scope": [
+        "src/ui/library_toolbar.cpp",
+        "src/ui/app_state.cpp",
+        "src/ui/library_dialogs.cpp"
+      ],
+      "note": "The heading, the button's count and the batch's charts all read the rows on screen, so they agree whatever the search and the chip. The query's matches whatever the chip (the All chip's count, or a second walk over the query) is the old, second answer. The All chip's own label in library_table.cpp reads that count on purpose and is out of scope. Decided by: D115 (analyze-button-design.md in the D115 plan folder)."
+    }
+  ]
+}

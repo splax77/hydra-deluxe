@@ -322,8 +322,8 @@ TEST_CASE("library model: a status chip narrows the rows, and an emptied chip fa
     CHECK(m.counts().all == 6);  // counts ignore the chip
     m.set_chip(StatusChip::Stale);
     CHECK(titles(m) == std::vector<std::string>{"Chair"});
-    // "What would Analyze search analyze": the query's matches, whatever the chip.
-    CHECK(m.matches().size() == 6);
+    // What the Analyze button runs: the rows on screen, the chip applied (D115).
+    CHECK(m.order().size() == 1);
 
     // Chair is re-analyzed: the Stale group is empty, so the table goes back
     // to All instead of sitting empty.
@@ -331,6 +331,22 @@ TEST_CASE("library model: a status chip narrows the rows, and an emptied chip fa
     CHECK(m.chip() == StatusChip::All);
     CHECK(m.order().size() == 6);
     CHECK(m.counts().analyzed == 2);
+}
+
+TEST_CASE("library model: the search or a chip narrows the table, and nothing else does") {
+    LibraryModel m = sample();
+    CHECK_FALSE(m.narrowed());                    // neither
+    m.set_query("\"tier 4\"");
+    CHECK(m.narrowed());                          // the search alone
+    m.set_chip(StatusChip::NotAnalyzed);
+    CHECK(m.narrowed());                          // both
+    m.set_query("");
+    CHECK(m.narrowed());                          // the chip alone
+    CHECK(m.order().size() == 4);
+    m.set_chip(StatusChip::All);
+    m.set_query("stars:9");                       // a filter that does not parse
+    CHECK_FALSE(m.narrowed());
+    CHECK(m.order().size() == 6);
 }
 
 TEST_CASE("library model: Best path sorts by score, with unscored rows last both ways") {

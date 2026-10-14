@@ -19,7 +19,7 @@
 #include "imgui_internal.h"
 #include "ui/app_state.h"
 #include "ui/library_jobs.h"
-#include "ui/library_parts.h"  // analyze_search_label
+#include "ui/library_parts.h"  // analyze_shown_label
 
 namespace fs = std::filesystem;
 
@@ -62,8 +62,8 @@ bool batch_search(ImGuiTestContext* ctx, const std::string& search) {
     ctx->SetRef("//Hydra");
     ctx->ItemInputValue("**/##search", search.c_str());
     if (!wait_until(ctx, [&] { return h.app->search == search; }, 5)) return false;
-    const std::string label = hydra::ui::detail::analyze_search_label(
-        static_cast<int64_t>(h.app->library_match_count()));
+    const std::string label = hydra::ui::detail::analyze_shown_label(
+        static_cast<int64_t>(h.app->library_shown_count()));
     ctx->ItemClick(label.c_str());
     ctx->SetRef("//Analyze library");
     ctx->ItemClick("Start analyzing");
@@ -308,8 +308,8 @@ void test_report_buttons(ImGuiTestContext* ctx) {
     h.app->close_path_report();  // the window's X, through its close callback
 
     // "Also re-analyze" re-analyzes the stored chart, and the confirm says so.
-    const std::string label = hydra::ui::detail::analyze_search_label(
-        static_cast<int64_t>(h.app->library_match_count()));
+    const std::string label = hydra::ui::detail::analyze_shown_label(
+        static_cast<int64_t>(h.app->library_shown_count()));
     ctx->ItemClick(label.c_str());
     ctx->Yield(2);
     ctx->SetRef("//Analyze library");

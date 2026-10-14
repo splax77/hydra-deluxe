@@ -30,6 +30,19 @@ std::string clock_text(std::chrono::system_clock::time_point at) {
     return hhmm;
 }
 
+// A cell's text, cut to the room left on its line as text_ellipsized
+// (ui/widgets.h) cuts it, through the one cut rule (render::ellipsize), but
+// fitted once per cell and width (FittedTextCache) instead of every frame. It
+// is drawn by draw_cut_text, as text_ellipsized draws.
+void fitted_text(const std::string& text, FittedTextCache& fits, size_t row, size_t column) {
+    if (ImGui::GetCurrentWindow()->SkipItems) return;
+    static const FittedTextCache::Fit fit = [](const std::string& t, float width) {
+        return render::ellipsize(t, width, text_width);
+    };
+    const float avail = ImGui::GetContentRegionAvail().x;
+    draw_cut_text(text.c_str(), fits.fitted(row, column, text, avail, fit), avail);
+}
+
 // Puts the next `width` of items at the right of the current line when they
 // fit beside what is already on it, else on a line of their own.
 void right_align(float width) {
@@ -346,7 +359,7 @@ float footer_height(const Frame& f) {
 }
 
 void cell(const std::string& text, const app::report_view::CellLook& look, Tone tone,
-          bool numeric) {
+          bool numeric, FittedTextCache& fits, size_t row, size_t column) {
     const bool dim = tone == Tone::Dim || (tone == Tone::Normal && look.dim);
     // An alert reads in the third tier's red, as the pages' .neg did.
     const ImVec4 color = tone == Tone::Alert ? chip_color(ChipToken::t3)
@@ -355,7 +368,7 @@ void cell(const std::string& text, const app::report_view::CellLook& look, Tone 
     ImGui::PushStyleColor(ImGuiCol_Text, color);
     if (look.mono) ImGui::PushFont(g_mono_font, 0.0f);
     if (numeric) move_to_right_edge(ImGui::CalcTextSize(text.c_str()).x);
-    text_ellipsized(text.c_str());
+    fitted_text(text, fits, row, column);
     if (look.mono) ImGui::PopFont();
     ImGui::PopStyleColor();
 }
@@ -398,8 +411,7 @@ ColumnSpec column_spec(const std::string& title, const app::report_view::CellLoo
 }
 
 void best_bar() {
-    // The pages' gold bar, 3 px wide (html_page.cpp's tr.best), at the row's
-    // left edge.
+    // A bar in kBestPathColor, 3 px wide, at the row's left edge.
     const ImVec2 min = ImGui::GetItemRectMin();
     const ImVec2 max = ImGui::GetItemRectMax();
     ImGui::GetWindowDrawList()->AddRectFilled(min, ImVec2(min.x + px(3.0f), max.y),
