@@ -1,0 +1,95 @@
+{
+  "rules": [
+    {
+      "question": "How wide is a table column?",
+      "owner": "place_columns in src/ui/column_widths.cpp",
+      "owner_file": "src/ui/column_widths.cpp",
+      "owner_symbol": "place_columns",
+      "date": "2026-10-14",
+      "decision": "docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md, Change 1 (the user's answers, 2026-10-14)",
+      "added_by": "CS-T1",
+      "pattern": "TableSetupColumn\\s*\\(|TableSetColumnWidth\\s*\\(|(\\.|->)WidthRequest\\s*=(?!=)|ImGuiTableColumnFlags_Width(Fixed|Stretch)\\b|(\\.|->)StretchWeight\\b",
+      "must_match": [
+        "ImGui::TableSetupColumn(\"Title\", ImGuiTableColumnFlags_WidthStretch, 0.17f);",
+        "ImGui::TableSetColumnWidth(2, width);",
+        "table->Columns[c].WidthRequest = 120.0f;",
+        "column->StretchWeight = 0.25f;"
+      ],
+      "must_not_match": [
+        "setup_column(columns[kColumnArtist], layout, kColumnArtist, 0,",
+        "if (column.WidthRequest == request) continue;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/column_widths.cpp",
+          "line_text": "flags = (flags & ~ImGuiTableColumnFlags_WidthMask_) | ImGuiTableColumnFlags_WidthFixed;",
+          "why": "setup_column: every column is fixed width, at the width place_columns gave it"
+        },
+        {
+          "file": "src/ui/column_widths.cpp",
+          "line_text": "ImGui::TableSetupColumn(spec.header.c_str(), flags,",
+          "why": "setup_column: the one TableSetupColumn call in src"
+        },
+        {
+          "file": "src/ui/column_widths.cpp",
+          "line_text": "column.WidthRequest = request;",
+          "why": "apply_column_widths: the one writer of a column's width, from place_columns' layout"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Every table goes through setup_column and apply_column_widths, so a table that sets up its own column, sets a width, or hands ImGui stretch weights is working out a width a second way. The two settings forms the rule's header names call none of these: ImGui fits their columns."
+    },
+    {
+      "question": "What share of the room does a text column get?",
+      "owner": "ColumnSpec::share, read in place_columns in src/ui/column_widths.cpp",
+      "owner_file": "src/ui/column_widths.cpp",
+      "owner_symbol": "place_columns",
+      "date": "2026-10-14",
+      "decision": "docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md, Change 1 (the user's answers, 2026-10-14)",
+      "added_by": "CS-T1",
+      "pattern": "\\.share\\b",
+      "anchor": ".share",
+      "must_match": [
+        "const float w = room.available * spec.share / 100.0f;",
+        "s.share = look.share;"
+      ],
+      "must_not_match": [
+        "specs[kColumnTitle] = {\"Title\", true, 0.0f, text, 17};",
+        "const auto n = s.shared_count;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/column_widths.cpp",
+          "line_text": "total += s.share;",
+          "why": "text_shares_sum_to_100: the check that a table's shares sum to 100, which place_columns asserts in a debug build"
+        },
+        {
+          "file": "src/ui/column_widths.cpp",
+          "line_text": "for (std::size_t c : open) total += static_cast<float>(specs[c].share);",
+          "why": "place_columns: the shown open columns' total"
+        },
+        {
+          "file": "src/ui/column_widths.cpp",
+          "line_text": "return pass_leftover * static_cast<float>(specs[c].share) / total;",
+          "why": "place_columns: split_of, the one place a column's split is worked out; the floor check and the whole-pixel width both call it"
+        },
+        {
+          "file": "src/ui/report_window.cpp",
+          "line_text": "s.share = look.share;",
+          "why": "report_frame::column_spec copies the report view's share into the column's spec, as it copies truncate; it works out no width"
+        },
+        {
+          "file": "src/app/report_view.h",
+          "line_text": "look.share = percent;",
+          "why": "with_share, the one helper path_columns and dm_columns write their shares through"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The shares live once, in each table's column list (the ColumnSpec lists in src/ui and the report views' column lists in src/app). Code that reads a share outside place_columns would be working out a width of its own."
+    }
+  ]
+}

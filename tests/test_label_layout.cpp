@@ -27,27 +27,27 @@ void check_spaced(const std::vector<std::optional<float>>& out, const std::vecto
 
 }  // namespace
 
-TEST_CASE("label layout: labels with room all show, centred on their marks") {
-    const std::vector<float> centres{50, 150, 250};
+TEST_CASE("label layout: labels with room all show, starting at their marks") {
+    const std::vector<float> marks{50, 150, 250};
     const std::vector<float> widths{10, 10, 10};
-    const auto out = spaced_labels(centres, widths, 0, 300, 4);
+    const auto out = spaced_labels(marks, widths, 0, 300, 4);
     REQUIRE(out.size() == 3);
-    CHECK(*out[0] == doctest::Approx(45));
-    CHECK(*out[1] == doctest::Approx(145));
-    CHECK(*out[2] == doctest::Approx(245));
+    CHECK(*out[0] == doctest::Approx(50));
+    CHECK(*out[1] == doctest::Approx(150));
+    CHECK(*out[2] == doctest::Approx(250));
 }
 
 TEST_CASE("label layout: 39 crowded numbers never overlap, first and last show") {
     // Activation numbers on a 480 px strip, bunched like a long chart's: runs
     // of marks a few pixels apart.
-    std::vector<float> centres, widths;
+    std::vector<float> marks, widths;
     float x = 2.0f;
     for (int i = 1; i <= 39; ++i) {
         x += (i % 5 == 0) ? 40.0f : 4.0f;
-        centres.push_back(x);
+        marks.push_back(x);
         widths.push_back(i < 10 ? 6.0f : 12.0f);
     }
-    const auto out = spaced_labels(centres, widths, 0, 480, 3);
+    const auto out = spaced_labels(marks, widths, 0, 480, 3);
     check_spaced(out, widths, 0, 480, 3);
     CHECK(out.front().has_value());
     CHECK(out.back().has_value());
@@ -58,17 +58,17 @@ TEST_CASE("label layout: 39 crowded numbers never overlap, first and last show")
 }
 
 TEST_CASE("label layout: labels at the ends stay on the strip") {
-    const std::vector<float> centres{0, 300};
+    const std::vector<float> marks{0, 300};
     const std::vector<float> widths{12, 12};
-    const auto out = spaced_labels(centres, widths, 0, 300, 3);
+    const auto out = spaced_labels(marks, widths, 0, 300, 3);
     CHECK(*out[0] == doctest::Approx(0));
     CHECK(*out[1] == doctest::Approx(288));
 }
 
 TEST_CASE("label layout: the last label drops the ones it would cover, never the first") {
-    const std::vector<float> centres{10, 50, 94, 100};
+    const std::vector<float> marks{10, 50, 94, 100};
     const std::vector<float> widths{10, 10, 10, 10};
-    const auto out = spaced_labels(centres, widths, 0, 200, 2);
+    const auto out = spaced_labels(marks, widths, 0, 200, 2);
     check_spaced(out, widths, 0, 200, 2);
     CHECK(out[0].has_value());
     CHECK(out[1].has_value());

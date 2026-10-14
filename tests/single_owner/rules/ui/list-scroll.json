@@ -1,0 +1,34 @@
+{
+  "rules": [
+    {
+      "question": "Does a selection change scroll the list, and how far?",
+      "owner": "selection_scroll in src/ui/list_scroll.cpp",
+      "owner_file": "src/ui/list_scroll.cpp",
+      "owner_symbol": "selection_scroll",
+      "date": "2026-10-14",
+      "decision": "plan 2026-10-14-column-shares-scroll-left-align.md, Change 2, the user's answers 4 and 5",
+      "added_by": "CS-T2",
+      "pattern": "SetScroll\\w*\\s*\\(|SetNextWindowScroll\\s*\\(|ScrollToItem\\s*\\(|ScrollToRect\\w*\\s*\\(|ScrollToBringRectIntoView\\s*\\(",
+      "anchor": "Scroll",
+      "must_match": [
+        "if (scroll_to && *scroll_to == static_cast<size_t>(k)) ImGui::SetScrollHereY(0.5f);",
+        "ImGui::ScrollToItem(ImGuiScrollFlags_KeepVisibleEdgeY);"
+      ],
+      "must_not_match": [
+        "scroll_last_row(how);",
+        "scroll_last_row(selection_scroll(app.last_selection_source));"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/list_scroll.cpp",
+          "line_text": "ImGui::ScrollToItem(kNearestEdgeScrollFlags);",
+          "why": "scroll_last_row: the one ImGui call that moves a list to its selected row"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Every click once centred the clicked row, so the list crept and the next click at the same spot landed on another song. selection_scroll decides from why the selection changed (SelectionSource) and scroll_last_row applies it. A list that scrolls itself any other way is a second answer. The scope is src because a GUI test sets the scroll position by hand to set up its case."
+    }
+  ]
+}

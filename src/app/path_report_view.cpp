@@ -65,16 +65,16 @@ std::vector<Column<ReportRow>> path_columns(double hit_window_ms) {
     mono_trunc.mono = true;
 
     std::vector<Column<ReportRow>> cols;
-    cols.push_back(text_column("song", "Song", "", &ReportRow::song, trunc));
-    cols.push_back(text_column("artist", "Artist", "", &ReportRow::artist, dim_trunc));
-    cols.push_back(text_column("charter", "Charter", "", &ReportRow::charter, dim_trunc));
+    cols.push_back(text_column("song", "Song", "", &ReportRow::song, with_share(trunc, 27)));
+    cols.push_back(text_column("artist", "Artist", "", &ReportRow::artist, with_share(dim_trunc, 15)));
+    cols.push_back(text_column("charter", "Charter", "", &ReportRow::charter, with_share(dim_trunc, 14)));
     cols.push_back(text_column("mode", "Mode",
                                "The difficulty and drum options the path was found for.",
-                               &ReportRow::mode, dim_trunc));
+                               &ReportRow::mode, with_share(dim_trunc, 12)));
     cols.push_back(text_column("path", "Path",
                                "The path in path notation: one entry per activation, with its "
                                "skip count and squeeze symbols.",
-                               &ReportRow::path, mono_trunc));
+                               &ReportRow::path, with_share(mono_trunc, 32)));
     cols.push_back(count_column("score", "Score", "The total score the path reaches.",
                                 &ReportRow::score, true));
     cols.push_back(count_column("acts", "Acts",

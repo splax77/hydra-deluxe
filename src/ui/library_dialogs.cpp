@@ -461,9 +461,9 @@ void render_batch_strip(AppState& app) {
         if (s.eta_s) time += app::kFactSeparator + time_left_text(*s.eta_s);
         ImGui::PushStyleColor(ImGuiCol_Text, kStripText2);
         ImGui::TextUnformatted(batch_counts(s).c_str());
-        const float time_w = ImGui::CalcTextSize(time.c_str()).x;
+        // The time starts right after the counts: text at the left, as
+        // apply_theme (ui/theme.cpp) has it (the user's answer 8).
         ImGui::SameLine();
-        move_to_right_edge(time_w);
         ImGui::TextUnformatted(time.c_str());
         ImGui::PopStyleColor();
     }

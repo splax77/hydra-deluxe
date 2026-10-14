@@ -49,9 +49,9 @@ std::vector<Column<DmReportRow>> dm_columns() {
     dim_trunc.dim = true;
 
     std::vector<Column<DmReportRow>> cols;
-    cols.push_back(text_column("song", "Song", "", &DmReportRow::song, trunc));
-    cols.push_back(text_column("artist", "Artist", "", &DmReportRow::artist, dim_trunc));
-    cols.push_back(text_column("charter", "Charter", "", &DmReportRow::charter, dim_trunc));
+    cols.push_back(text_column("song", "Song", "", &DmReportRow::song, with_share(trunc, 48)));
+    cols.push_back(text_column("artist", "Artist", "", &DmReportRow::artist, with_share(dim_trunc, 27)));
+    cols.push_back(text_column("charter", "Charter", "", &DmReportRow::charter, with_share(dim_trunc, 25)));
     {
         Column<DmReportRow> c = column("actual", "Actual", true, "The score the player posted.");
         c.sort_key = [](const DmReportRow& r) { return SortKey{static_cast<double>(r.actual)}; };

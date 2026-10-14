@@ -1,0 +1,57 @@
+{
+  "rules": [
+    {
+      "question": "Which way is text aligned?",
+      "owner": "apply_theme in src/ui/theme.cpp",
+      "owner_file": "src/ui/theme.cpp",
+      "owner_symbol": "apply_theme",
+      "date": "2026-10-14",
+      "decision": "user's answers 6 to 10 in docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md",
+      "added_by": "CS-T5a",
+      "pattern": "ButtonTextAlign|SelectableTextAlign|SeparatorTextAlign|(move_to_right_edge|right_align|align_right|place_control_at_right_edge|place_control_at_line_end)\\s*\\(\\s*ImGui::CalcTextSize|\"%-?\\d+s\"|CalcTextSize\\([^;]*\\)\\.x\\s*\\*\\s*0\\.5f|text_width\\([^;)]*\\)\\s*\\*\\s*0\\.5f",
+      "must_match": [
+        "if (numeric) move_to_right_edge(ImGui::CalcTextSize(text.c_str()).x);",
+        "std::snprintf(buf, sizeof(buf), \"%10s\", group_thousands(v).c_str());",
+        "align_right(ImGui::CalcTextSize(view.timeline_end.c_str()).x);",
+        "ImVec2(centre_x - text_width(label_size, \"SP\") * 0.5f, origin.y + v_margin),",
+        "ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(1.0f, 0.5f));"
+      ],
+      "must_not_match": [
+        "place_control_at_right_edge(button_slot_width(\"Cancel\"));",
+        "place_control_at_line_end(button_slot_width(\"Show in Preview >\"));",
+        "ImGui::SetCursorScreenPos(ImVec2(kx + action_gap, top + (cap_h - text_h) * 0.5f));"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/theme.cpp",
+          "line_text": "style.ButtonTextAlign = ImVec2(0.5f, 0.5f);",
+          "why": "apply_theme, the owner: a button's label stays centred (answer 6)"
+        },
+        {
+          "file": "src/ui/theme.cpp",
+          "line_text": "style.SelectableTextAlign = ImVec2(0.0f, 0.0f);",
+          "why": "apply_theme, the owner: a selectable's text starts at the left"
+        },
+        {
+          "file": "src/ui/settings_bar.cpp",
+          "line_text": "ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));",
+          "why": "the Analysis settings button's cut label starts at the left: the one exception answer 6 keeps"
+        },
+        {
+          "file": "src/ui/paths_tab.cpp",
+          "line_text": "text_at(ImVec2(dot.x - ImGui::CalcTextSize(num.c_str()).x * 0.5f, text_y), text_color(),",
+          "why": "the number in an activation's circle stays centred (answer 9)"
+        },
+        {
+          "file": "src/ui/preview_tab.cpp",
+          "line_text": "const float half_text = ImGui::CalcTextSize(key).x * 0.5f;",
+          "why": "the Preview's key-cap letters stay centred (answer 9)"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Text starts at the left edge of its space and a button's label is centred in its button; apply_theme writes both. The pattern catches a written alignment style, a right-edge helper handed a text width, a padded printf field and a text width halved to centre it. It cannot catch every hand-placed draw, so a reviewer of an alignment change checks the inventory in the plan's Change 3 too."
+    }
+  ]
+}

@@ -38,6 +38,15 @@ never its hash, because one chart in two folders is two rows. The selection,
 a click and a batch all compare it, and the open song panel re-reads its
 chart by it after a rescan, so the panel follows its row (D114 item 7).
 
+**Selection scroll**:
+Whether a list moves when its selected row changes, and how far. The owner is
+`selection_scroll` in src/ui/list_scroll.h, which reads why the selection
+changed (`SelectionSource`, recorded by `AppState::select`); `scroll_last_row`
+is the one place that asks ImGui to scroll. A click on a row never scrolls;
+a step or a pick from another window brings the row in at the nearest edge,
+and moves nothing if it is already on screen. It leaves out where a column
+sits and how a table is sized.
+
 **Rescan cache**:
 The last saved scan, handed to the next one so a chart whose fingerprint has
 not changed is reused without reading its files. `load_scan_cache` in

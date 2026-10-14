@@ -33,6 +33,7 @@
 #include "ui/generation.h"
 #include "ui/library_jobs.h"
 #include "ui/library_model.h"
+#include "ui/list_scroll.h"  // SelectionSource
 #include "ui/report_state.h"  // ReportBuild, ReportOutOfDate
 
 struct ID3D11Device;
@@ -326,10 +327,14 @@ public:
     // Selection / details modal.
     std::optional<store::ChartLibraryEntry> selected;
     bool show_details = false;
-    void select(const store::ChartLibraryEntry& entry);
+    // Why the selection last changed, as the last select() was told. A table
+    // hands it to selection_scroll (ui/list_scroll.h) when it moves its view
+    // to the selected row.
+    SelectionSource last_selection_source = SelectionSource::Elsewhere;
+    void select(const store::ChartLibraryEntry& entry, SelectionSource source);
     // A library row's click: reads the row's whole entry from the store and
     // selects it. A failed read says so (set_problem) and selects nothing.
-    void select(const LibraryChart& row);
+    void select(const LibraryChart& row, SelectionSource source);
     // Whether this library row (a LibraryChart or a store entry) is the
     // selected one, by row_key (ui/library_model.h).
     template <class Row>

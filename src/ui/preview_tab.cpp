@@ -105,9 +105,12 @@ float key_hints(float width, bool draw) {
                                   IM_COL32(62, 62, 66, 255), r);
                 dl->AddRect(ImVec2(kx, top), ImVec2(kx + w, top + cap_h),
                             IM_COL32(110, 110, 116, 255), r);
-                const float tw = ImGui::CalcTextSize(key).x;
+                // The letter centred on its key cap by hand: a kept exception
+                // to apply_theme's left-aligned text (ui/theme.cpp), the
+                // user's answer 9.
+                const float half_text = ImGui::CalcTextSize(key).x * 0.5f;
                 ImGui::SetCursorScreenPos(
-                    ImVec2(kx + (w - tw) * 0.5f, top + (cap_h - text_h) * 0.5f));
+                    ImVec2(kx + w * 0.5f - half_text, top + (cap_h - text_h) * 0.5f));
                 ImGui::TextColored(kDefaultTextColor, "%s", key);
                 kx += w;
             }
@@ -749,17 +752,17 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         // it is anchored to the same engine truth the path overlay is.
         if (has_gauge) {
             // "SP" above the gauge in the Star Power gold, the banked bars
-            // under it.
+            // under it. Both start at the gauge's left edge (text at the
+            // left, as apply_theme in ui/theme.cpp has it; the user's answer
+            // 9); a readout too wide for that moves left to end inside the image.
             const float label_size = px(14.0f);
             const float label_h = line_height(label_size);
-            const float centre_x = gauge_left + bar_w * 0.5f;
-            dl->AddText(font, label_size,
-                        ImVec2(centre_x - text_width(label_size, "SP") * 0.5f, origin.y + v_margin),
+            dl->AddText(font, label_size, ImVec2(gauge_left, origin.y + v_margin),
                         ImGui::GetColorU32(kStarPowerColor), "SP");
             const std::string readout = pc->sp_meter_readout();
             const float rw = text_width(label_size, readout.c_str());
             dl->AddText(font, label_size,
-                        ImVec2(std::min(centre_x - rw * 0.5f, img_max.x - px(2.0f) - rw),
+                        ImVec2(std::min(gauge_left, img_max.x - px(2.0f) - rw),
                                img_max.y - v_margin - label_size),
                         IM_COL32(255, 255, 255, 255), readout.c_str());
             ImVec2 gauge_min(gauge_left, origin.y + v_margin + label_h);

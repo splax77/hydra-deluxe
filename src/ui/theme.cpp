@@ -86,6 +86,16 @@ void apply_theme() {
     // disabled control must go through begin_disabled_button()/
     // begin_disabled_input() so the user can see it's disabled.
     style.DisabledAlpha = 1.0f;
+
+    // Text alignment, written here and nowhere else (the single-owner row in
+    // tests/single_owner/rules/ui/text-alignment.json). Text starts at the
+    // left edge of the space it is given. A button's label stays centred in
+    // its button: the user's answer 6 in
+    // docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md.
+    // Both values are ImGui's own defaults, written out so the choice is seen
+    // in one place.
+    style.ButtonTextAlign = ImVec2(0.5f, 0.5f);
+    style.SelectableTextAlign = ImVec2(0.0f, 0.0f);
 }
 
 void begin_disabled_button(bool disabled) {

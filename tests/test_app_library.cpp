@@ -75,7 +75,7 @@ TEST_CASE("a batch result for the open chart refreshes its row, not the panel") 
     ScratchPaths paths("appstate_batchpanel");
     std::unique_ptr<AppState> app = app_on(paths);
     const ChartLibraryEntry open = library_entry(5);
-    app->select(open);
+    app->select(open, hydra::ui::SelectionSource::Click);
     REQUIRE(app->viewed.state == ViewedSong::State::FileMissing);
 
     GenerationWatcher records;
@@ -228,7 +228,7 @@ RowsOlderThanScan rows_older_than_scan(const ScratchPaths& paths, const std::str
 TEST_CASE("a click right after a scan, before any frame, opens the chart the scan kept") {
     ScratchPaths paths("appstate_scanclick");
     RowsOlderThanScan s = rows_older_than_scan(paths, "scan_click");
-    s.app->select(row_of(*s.app, kHashBeforeEdit).entry);
+    s.app->select(row_of(*s.app, kHashBeforeEdit).entry, hydra::ui::SelectionSource::Click);
     REQUIRE(s.app->selected.has_value());
     CHECK(s.app->details_open());
     CHECK(s.app->selected->notespath == s.kept.notespath);
@@ -240,7 +240,7 @@ TEST_CASE("a click right after a scan, before any frame, opens the chart the sca
 TEST_CASE("a click right after a scan on a row the scan removed does nothing") {
     ScratchPaths paths("appstate_scanclickgone");
     RowsOlderThanScan s = rows_older_than_scan(paths, "scan_click_gone");
-    s.app->select(row_of(*s.app, s.removed.md5).entry);
+    s.app->select(row_of(*s.app, s.removed.md5).entry, hydra::ui::SelectionSource::Click);
     CHECK_FALSE(s.app->selected.has_value());
     CHECK_FALSE(s.app->details_open());
     CHECK(s.app->status_message.empty());
@@ -272,7 +272,7 @@ TEST_CASE("any_job_running lists every background job") {
     // collects it.
     const ChartLibraryEntry song = corpus_chart("click_anyjob");
     app->store->rebuild_chart_library({song});
-    app->select(song);
+    app->select(song, hydra::ui::SelectionSource::Click);
     REQUIRE(app->view_job != nullptr);
     app->cancel_view();
     if (!app->view_job->finished()) CHECK(app->any_job_running());

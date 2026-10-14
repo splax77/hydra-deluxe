@@ -1691,9 +1691,9 @@
     },
     {
       "question": "Where does a right-aligned item start?",
-      "owner": "move_to_right_edge in src/ui/widgets.h",
+      "owner": "place_control_at_right_edge in src/ui/widgets.h",
       "owner_file": "src/ui/widgets.h",
-      "owner_symbol": "move_to_right_edge",
+      "owner_symbol": "place_control_at_right_edge",
       "date": "2026-10-08",
       "decision": "derive-once review of RW-T5 (finding 4)",
       "added_by": "RW-T5",
@@ -1708,13 +1708,13 @@
       "must_not_match": [
         "ImGui::SetCursorPosX(buttons_x);",
         "ImGui::SetCursorPosX(left_x + text_w + style.ItemSpacing.x);",
-        "move_to_right_edge(ImGui::CalcTextSize(number.c_str()).x);"
+        "place_control_at_right_edge(ImGui::CalcTextSize(number.c_str()).x);"
       ],
       "owner_lines": [
         {
           "file": "src/ui/widgets.h",
           "line_text": "if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);",
-          "why": "move_to_right_edge, the owner: report_frame's cell, row number and right_align call it"
+          "why": "place_control_at_right_edge, the owner: report_frame's cell, row number and place_control_at_line_end call it"
         }
       ],
       "scope": [

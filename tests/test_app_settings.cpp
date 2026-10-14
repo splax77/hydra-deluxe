@@ -273,7 +273,7 @@ TEST_CASE("a number setting edited outside its range lands on the edge the file 
 TEST_CASE("a settings change whose reads fail shows no other settings' record") {
     ScratchPaths paths("appstate_settingsfail");
     std::unique_ptr<AppState> app = app_on(paths);
-    app->select(library_entry(0));
+    app->select(library_entry(0), hydra::ui::SelectionSource::Click);
     hydra::test::exec_on_file(paths.db, "DROP TABLE records;");
 
     app->settings.sp_cap = 8;
