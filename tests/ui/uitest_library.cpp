@@ -970,7 +970,7 @@ std::string write_old_layout_library(Harness& h) {
     // list is the owner's (kSchema2ResultsColumns) plus the three later
     // columns; each row's values follow that order.
     const std::string sql =
-        std::string("DROP TABLE results;") + hydra::test::kDetailLayoutResultsTableSql + ";" +
+        std::string("DROP TABLE IF EXISTS results;") + hydra::test::kDetailLayoutResultsTableSql + ";" +
         "INSERT INTO results (" + hydra::store::kSchema2ResultsColumns +
         ", legacy_fills, rules_fp, structure) VALUES"
         " (1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'mode', 'v', 8, 0, 0, 0, 2, '1', 1000,"

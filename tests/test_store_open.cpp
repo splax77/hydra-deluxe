@@ -30,7 +30,7 @@
 #include "core/model.h"
 #include "core/rules.h"
 #include "core/winstr.h"
-#include "db_file_util.h"  // exec_on_file, scalar_on_file, results_rows_in, write_junk_db
+#include "db_file_util.h"  // exec_on_file, scalar_on_file, record_rows_in, write_junk_db
 #include "display_fixtures.h"  // add_stale_rows
 #include "library_fixtures.h"  // library_row
 #include "old_layout_fixture.h"  // detail_layout_sql and the old layout's counts
@@ -53,7 +53,7 @@ using hydra::test::write_junk_db;
 // One integer straight out of a database file: how these tests look at a
 // table without the store growing an accessor for it.
 using hydra::test::scalar_on_file;
-using hydra::test::results_rows_in;
+using hydra::test::record_rows_in;
 
 // ---- store correctness (2026-09-26 audit, Task 1) --------------------------
 
@@ -66,7 +66,7 @@ TEST_CASE("a database from Hydra 1.6 or older opens with nothing to show") {
     std::remove(path.c_str());
     { RecordStore seed(path); }
     exec_on_file(path,
-                 "DROP TABLE results;"
+                 "DROP TABLE record_paths; DROP TABLE records; DROP TABLE profiles;"
                  "PRAGMA user_version = 1;"
                  "CREATE TABLE records (hyhash TEXT NOT NULL, chartmode TEXT NOT NULL,"
                  " hyversion TEXT NOT NULL, sp_cap INTEGER NOT NULL, bestpath TEXT NOT NULL,"
@@ -87,8 +87,13 @@ TEST_CASE("a database from Hydra 1.6 or older opens with nothing to show") {
         store.add_record(key, at_cap(8));
         CHECK(store.get_summary(key).status == RecordStatus::Ready);
     }
-    // The old table is left alone: nothing read it and nothing rewrote it.
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM records") == 1);
+    // The old table is left alone under its own name, so this build's
+    // records table can take `records`: nothing read it and nothing rewrote
+    // it.
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM records_before_1_7") == 1);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM records_before_1_7 WHERE hyhash = 'old'"
+                               " AND score = 100") == 1);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM records") == 1);
     std::remove(path.c_str());
 }
 
@@ -148,8 +153,16 @@ const RecordKey kNoStars{"nostars", "mode", kAt8};
 constexpr int64_t kSeedCharts = 6;
 constexpr int64_t kSeedResults = 7;
 constexpr int64_t kSeedMeta = 3;
-// The results the upgrade keeps: all but the no-stars row.
+// The results the upgrade keeps: all but the no-stars row. Each becomes one
+// record.
 constexpr int64_t kKeptResults = 6;
+// The profiles those records are filed under, counted once by hand: one per
+// distinct mode, cap, lens, stamp and rules among the kept rows. "ready" and
+// "empty" share one; "other mode", "build", "rules" and "both" have one each.
+constexpr int64_t kSeedProfiles = 5;
+// The path rows the kept records hold: one rank-1 row for each kept result
+// with a score, so every one but "empty".
+constexpr int64_t kSeedPaths = 5;
 // The fill-rule stamp the seed writes, so the test can see meta come across.
 constexpr const char* kSeedEngineMode = "seeded-engine-mode";
 
@@ -175,8 +188,12 @@ void seed_old_layout(const std::string& path) {
     // needed the stored paths to fill, so the upgrade deletes it. The
     // no-paths row has neither, by design, and stays (R17).
     exec_on_file(path, "UPDATE results SET stars = NULL WHERE hyhash = 'nostars'");
+    // An id an older build stored in capitals, in both tables: the upgrade
+    // lowercases them (ADR 0028), so the chart still reads under "ready".
+    exec_on_file(path, "UPDATE results SET hyhash = 'READY' WHERE hyhash = 'ready';"
+                       "UPDATE charts SET md5 = 'READY' WHERE md5 = 'ready';");
     REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM charts") == kSeedCharts);
-    REQUIRE(results_rows_in(path) == kSeedResults);
+    REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM results") == kSeedResults);
     REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM meta") == kSeedMeta);
     REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM results WHERE hyhash = 'empty'"
                                  " AND stars IS NULL AND score IS NULL") == 1);
@@ -211,6 +228,8 @@ void check_upgraded_rows(RecordStore& store) {
     CHECK(store.get_summary(kNoStars).status == RecordStatus::NotAnalyzed);
     CHECK(store.counts().second == kKeptResults);
     CHECK(store.chart_library_count() == kSeedCharts);
+    // The library row stored in capitals reads lowercase, as its record does.
+    CHECK(store.list_chart_library_copies("ready").size() == 1);
     // The scan cache reads only under a current reader stamp, so a full one
     // shows the stamp came across with meta.
     CHECK(store.chart_library_cache().size() == static_cast<size_t>(kSeedCharts));
@@ -226,13 +245,14 @@ void check_upgraded_files(const std::string& path) {
     CHECK_FALSE(file_exists_utf8(old_path(path)));
 }
 
-// The file is still the old layout with every seeded row: an upgrade that
-// failed or stopped changed nothing that matters, and left no fresh file.
+// The file still holds its path details and every kept row: a copy upgrade
+// that failed or stopped changed nothing that matters, and left no fresh
+// file. The conversion to records runs before the copy, in its own
+// transaction, so it stays done.
 void check_old_file_whole(const std::string& path) {
     CHECK(detail_tables_in(path) == 5);
-    CHECK(structure_columns_in(path) == 1);
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM charts") == kSeedCharts);
-    CHECK(results_rows_in(path) == kSeedResults);
+    CHECK(record_rows_in(path) == kKeptResults);
     CHECK_FALSE(file_exists_utf8(upgrading_path(path)));
     CHECK_FALSE(file_exists_utf8(old_path(path)));
 }
@@ -266,8 +286,6 @@ struct ProgressLog {
 TEST_CASE("the first open of a file with stored path details drops them and keeps every status") {
     const std::string path = testtemp::temp_path("summary_only_upgrade", ".db");
     seed_old_layout(path);
-    const int64_t ids_before = scalar_on_file(path, "SELECT SUM(result_id) FROM results"
-                                                    " WHERE hyhash <> 'nostars'");
     const int64_t chart_rowids_before = scalar_on_file(path, "SELECT SUM(rowid) FROM charts");
 
     ProgressLog log;
@@ -278,39 +296,110 @@ TEST_CASE("the first open of a file with stored path details drops them and keep
     check_upgraded_files(path);
     // A freshly written file has no free pages from the dropped tables.
     CHECK(scalar_on_file(path, "PRAGMA freelist_count") == 0);
-    // Every kept row keeps its id, and every library row its rowid (the
-    // naming copy is the smallest one, kNamingCopiesSql).
-    CHECK(scalar_on_file(path, "SELECT SUM(result_id) FROM results") == ids_before);
+    // Every library row keeps its rowid (the naming copy is the smallest
+    // one, kNamingCopiesSql).
     CHECK(scalar_on_file(path, "SELECT SUM(rowid) FROM charts") == chart_rowids_before);
+    // The results became records: one profile per distinct settings, stamp
+    // and rules, one record per kept row, a rank-1 path row for each with a
+    // score, every id lowercase, and no results table left.
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == kSeedProfiles);
+    CHECK(record_rows_in(path) == kKeptResults);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == kSeedPaths);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths WHERE rank <> 1") == 0);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM records WHERE song_id <> lower(song_id)") ==
+          0);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM charts WHERE md5 <> lower(md5)") == 0);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM sqlite_master WHERE name = 'results'") == 0);
 
-    // The bar's numbers: the steps in order, a total of every row the copy
-    // copies, counted one by one up to that total.
-    CHECK(log.steps() ==
-          std::vector<OpenStep>{OpenStep::Opening, OpenStep::Copying, OpenStep::Finishing});
-    const int64_t total = kSeedCharts + kKeptResults + kSeedMeta;
+    // The bar's numbers: the steps in order; the conversion counts every row
+    // it converts up to its total, then the copy every row it copies up to
+    // its own.
+    CHECK(log.steps() == std::vector<OpenStep>{OpenStep::Opening, OpenStep::ConvertingRecords,
+                                               OpenStep::Copying, OpenStep::Finishing});
+    const int64_t total = kSeedCharts + kSeedProfiles + kKeptResults + kSeedPaths + kSeedMeta;
+    int64_t last_converted = -1;
     int64_t last_done = -1;
     for (const OpenProgress& p : log.reports) {
         if (p.step == OpenStep::Opening) continue;
+        if (p.step == OpenStep::ConvertingRecords) {
+            CHECK(p.rows_total == kKeptResults);
+            CHECK(p.rows_done >= last_converted);
+            last_converted = p.rows_done;
+            continue;
+        }
         CHECK(p.rows_total == total);
         CHECK(p.rows_done >= last_done);
         last_done = p.rows_done;
     }
+    CHECK(last_converted == kKeptResults);
     CHECK(last_done == total);
     CHECK(log.reports.back().step == OpenStep::Finishing);
     CHECK(log.reports.back().rows_done == total);
 
-    // A second open finds no detail tables and does nothing: it doesn't even
-    // apply the delete rule, which a row like this one would fail.
-    exec_on_file(path, "UPDATE results SET stars = NULL WHERE hyhash = 'ready'"
-                       " AND chartmode = 'other mode'");
+    // A second open finds no results and no detail tables and does nothing.
     ProgressLog again;
     {
         RecordStore store(path, core::default_stamp(), again.fn());
         CHECK(store.counts().second == kKeptResults);
     }
     CHECK(again.steps() == std::vector<OpenStep>{OpenStep::Opening});
-    CHECK(scalar_on_file(path, "SELECT SUM(result_id) FROM results") == ids_before);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == kSeedProfiles);
     CHECK(detail_tables_in(path) == 0);
+    remove_db(path);
+}
+
+TEST_CASE("an old result with no score converts to a record that kept no paths") {
+    // The seed's "empty" row: analyzed, no paths kept, so no score.
+    const std::string path = testtemp::temp_path("convert_no_score", ".db");
+    seed_old_layout(path);
+    { RecordStore store(path); }
+    CHECK(scalar_on_file(path, "SELECT pathcount FROM records WHERE song_id = 'empty'") == 0);
+    CHECK(scalar_on_file(path, "SELECT notecount FROM records WHERE song_id = 'empty'") == 0);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM records WHERE song_id = 'empty'"
+                               " AND stars IS NULL") == 1);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths WHERE song_id = 'empty'") == 0);
+    remove_db(path);
+}
+
+TEST_CASE("an old results table with no path details converts without the copy upgrade") {
+    // A file a summary-only build wrote: results, no detail tables. Only the
+    // conversion runs.
+    const std::string path = testtemp::temp_path("convert_no_details", ".db");
+    seed_old_layout(path);
+    exec_on_file(path, "DROP TABLE paths; DROP TABLE path_refs; DROP TABLE songmeta;"
+                       " DROP TABLE dynamics;");
+    ProgressLog log;
+    {
+        RecordStore store(path, core::default_stamp(), log.fn());
+        check_upgraded_rows(store);
+    }
+    CHECK(log.steps() == std::vector<OpenStep>{OpenStep::Opening, OpenStep::ConvertingRecords});
+    CHECK(record_rows_in(path) == kKeptResults);
+    remove_db(path);
+}
+
+TEST_CASE("the copy upgrade copies the record tables, which have no rowid") {
+    // A file already in records whose path details are still there: only
+    // the copy runs. records and record_paths are WITHOUT ROWID tables.
+    const std::string path = testtemp::temp_path("copy_without_rowid", ".db");
+    remove_db(path);
+    {
+        RecordStore seed(path);
+        seed.rebuild_chart_library({library_row("ready", "Ready")});
+        seed.add_record(kReady, at_cap(8));
+    }
+    exec_on_file(path, test::kDetailTablesSql);
+    REQUIRE(detail_tables_in(path) == 5);
+    {
+        RecordStore store(path);
+        const SummaryLookup got = store.get_summary(kReady);
+        CHECK(got.status == RecordStatus::Ready);
+        CHECK(got.summary == summarize_record(at_cap(8)));
+    }
+    check_upgraded_files(path);
+    CHECK(record_rows_in(path) == 1);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == 1);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == 1);
     remove_db(path);
 }
 
@@ -481,13 +570,18 @@ ChartPairs old_database_pairs() {
     return out;
 }
 
-// The (hyhash, chartmode) pairs the results table of the file at `path` holds.
-ChartPairs chart_pairs_on_file(const std::string& path) {
+// What chart_pairs_on_file reads: an old file's results before the open,
+// and the records with their profiles' modes after it.
+constexpr const char* kResultPairsSql = "SELECT hyhash, chartmode FROM results";
+constexpr const char* kRecordPairsSql =
+    "SELECT r.song_id, p.chartmode FROM records r JOIN profiles p ON p.id = r.profile_id";
+
+// The (chart, chartmode) pairs `sql` reads from the file at `path`.
+ChartPairs chart_pairs_on_file(const std::string& path, const char* sql) {
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
     sqlite3_stmt* s = nullptr;
-    REQUIRE(sqlite3_prepare_v2(db, "SELECT hyhash, chartmode FROM results", -1, &s, nullptr) ==
-            SQLITE_OK);
+    REQUIRE(sqlite3_prepare_v2(db, sql, -1, &s, nullptr) == SQLITE_OK);
     ChartPairs out;
     while (sqlite3_step(s) == SQLITE_ROW)
         out.insert({reinterpret_cast<const char*>(sqlite3_column_text(s, 0)),
@@ -511,14 +605,15 @@ TEST_CASE("a database a real old release wrote opens with no path details, its r
         // v1.8.4 had no stars column, so the copy keeps none of its rows
         // (docs/adr/0026-the-store-keeps-summaries-the-engine-gives-details.md).
         {"v1.8.4-schema2.db", 2, false, false, 0, 0,
-         {S::Opening, S::UpdatingResultsKey, S::Copying, S::Finishing}},
+         {S::Opening, S::UpdatingResultsKey, S::ConvertingRecords, S::Copying, S::Finishing}},
         {"v1.8.4-schema2-legacy-fills.db", 2, false, false, 0, 0,
-         {S::Opening, S::UpdatingResultsKey, S::Copying, S::Finishing}},
+         {S::Opening, S::UpdatingResultsKey, S::ConvertingRecords, S::Copying, S::Finishing}},
         {"v2.0.0-schema3.db", 3, true, false, 3, 0,
-         {S::Opening, S::UpdatingResultsKey, S::Copying, S::Finishing}},
+         {S::Opening, S::UpdatingResultsKey, S::ConvertingRecords, S::Copying, S::Finishing}},
         // v2.1.0 stopped setting user_version (README "Schema and stamps"),
         // so its rules_fp column is what tells this layout apart.
-        {"v2.1.0-schema4.db", 0, true, true, 3, 0, {S::Opening, S::Copying, S::Finishing}},
+        {"v2.1.0-schema4.db", 0, true, true, 3, 0,
+         {S::Opening, S::ConvertingRecords, S::Copying, S::Finishing}},
     };
     for (const OldDatabase& f : fixtures) {
         INFO(std::string(f.file));
@@ -534,7 +629,7 @@ TEST_CASE("a database a real old release wrote opens with no path details, its r
         CHECK(scalar_on_file(path, "PRAGMA user_version") == f.user_version);
         CHECK(results_columns_named(path, "legacy_fills") == (f.has_legacy_fills_column ? 1 : 0));
         CHECK(results_columns_named(path, "rules_fp") == (f.has_rules_fp_column ? 1 : 0));
-        REQUIRE(chart_pairs_on_file(path) == old_database_pairs());
+        REQUIRE(chart_pairs_on_file(path, kResultPairsSql) == old_database_pairs());
 
         const bool kept = f.rows_after_open > 0;
         const ChartPairs pairs_after = kept ? old_database_pairs() : ChartPairs{};
@@ -560,12 +655,12 @@ TEST_CASE("a database a real old release wrote opens with no path details, its r
             }
         }
         CHECK(log.steps() == f.steps);
-        CHECK(results_rows_in(path) == f.rows_after_open);
-        CHECK(chart_pairs_on_file(path) == pairs_after);
-        CHECK(scalar_on_file(path, std::string("SELECT COUNT(*) FROM results WHERE lower(hex(rules_fp))"
+        CHECK(record_rows_in(path) == f.rows_after_open);
+        CHECK(chart_pairs_on_file(path, kRecordPairsSql) == pairs_after);
+        CHECK(scalar_on_file(path, std::string("SELECT COUNT(*) FROM profiles WHERE lower(hex(rules_fp))"
                                                " <> '") +
                                        kOldDatabaseRulesFpHex + "'") == 0);
-        CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM results WHERE legacy_fills <> " +
+        CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles WHERE legacy_fills <> " +
                                        std::to_string(f.legacy_fills)) == 0);
         check_upgraded_files(path);
 
@@ -576,8 +671,8 @@ TEST_CASE("a database a real old release wrote opens with no path details, its r
             CHECK(store.counts().second == f.rows_after_open);
         }
         CHECK(again.steps() == std::vector<OpenStep>{S::Opening});
-        CHECK(results_rows_in(path) == f.rows_after_open);
-        CHECK(chart_pairs_on_file(path) == pairs_after);
+        CHECK(record_rows_in(path) == f.rows_after_open);
+        CHECK(chart_pairs_on_file(path, kRecordPairsSql) == pairs_after);
         remove_db(path);
     }
 }
@@ -618,7 +713,7 @@ TEST_CASE("a save_analysis that fails leaves nothing behind and reads as a save 
     std::remove(path.c_str());
     { RecordStore store(path); }
     exec_on_file(path,
-                 "CREATE TRIGGER refuse_boom BEFORE INSERT ON results WHEN NEW.hyhash = 'boom'"
+                 "CREATE TRIGGER refuse_boom BEFORE INSERT ON records WHEN NEW.song_id = 'boom'"
                  " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
     {
         RecordStore store(path);
@@ -689,7 +784,9 @@ namespace {
 // Every table the store makes, dropped by a second connection while a store
 // has the file open. The store's connection still holds the old schema, so
 // its next read compiles and then fails when it steps.
-constexpr const char* kDropEveryTable = "DROP TABLE results; DROP TABLE charts; DROP TABLE meta;";
+constexpr const char* kDropEveryTable =
+    "DROP TABLE profiles; DROP TABLE records; DROP TABLE record_paths; DROP TABLE charts;"
+    " DROP TABLE meta;";
 
 // The read must throw the database read error, never answer.
 void check_read_fails(const std::function<void()>& read) {
@@ -715,7 +812,7 @@ TEST_CASE("a read on a failing database throws instead of answering empty") {
         store.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
         REQUIRE(store.analyzed_hashes(ResultSettings{"mode", CapQuery::at(4), Lens{}}).count("h") ==
                 1);
-        exec_on_file(path, "DROP TABLE results;");
+        exec_on_file(path, "DROP TABLE records;");
         // The first read fails when it steps; by then the connection has
         // reloaded the schema, so the second fails when it compiles.
         for (const char* when : {"step", "compile"}) {

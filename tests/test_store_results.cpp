@@ -486,7 +486,7 @@ TEST_CASE("prepare_row files the row under the record's own rules fingerprint") 
 }
 
 TEST_CASE("the rules_fp column holds a fingerprint's bytes as one run wrote them") {
-    // Every stored row's key includes these bytes, so a change to how they
+    // Every profile's key includes these bytes, so a change to how they
     // are written would orphan every result a user has. The literal is from
     // one run.
     const std::string db = testtemp::temp_path("rules_fp_bytes", ".db");
@@ -496,7 +496,7 @@ TEST_CASE("the rules_fp column holds a fingerprint's bytes as one run wrote them
         RecordStore store(db);
         store.add_row(prepare_row(RecordKey{"h", "mode", CapQuery::at(4)}, rec));
     }
-    CHECK(scalar_on_file(db, "SELECT COUNT(*) FROM results WHERE hex(rules_fp) = '0807060504030201'") ==
+    CHECK(scalar_on_file(db, "SELECT COUNT(*) FROM profiles WHERE hex(rules_fp) = '0807060504030201'") ==
           1);
     std::error_code ec;
     std::filesystem::remove(std::filesystem::u8path(db), ec);

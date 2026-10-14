@@ -176,9 +176,9 @@ TEST_CASE("the scan cache is dropped when its reader stamp is not current") {
 
 namespace {
 
-// How many results one chart holds, read straight out of the file.
+// How many records one chart holds, read straight out of the file.
 int64_t results_of(const std::string& path, const std::string& hash) {
-    return scalar_on_file(path, "SELECT COUNT(*) FROM results WHERE hyhash = '" + hash + "'");
+    return scalar_on_file(path, "SELECT COUNT(*) FROM records WHERE song_id = '" + hash + "'");
 }
 
 // One analyzed chart as the click saves it.
@@ -306,7 +306,7 @@ TEST_CASE("reidentify_chart keeps the old md5's rows while another library row h
 
 TEST_CASE("a scan that fails partway through its deletes keeps the dropped chart's rows") {
     // The deletes run inside the scan's own transaction. A trigger that
-    // refuses the results delete fails it after the library rows changed.
+    // refuses the records delete fails it after the library rows changed.
     const std::string path = testtemp::temp_path("scan_delete_fails", ".db");
     std::remove(path.c_str());
     {
@@ -317,7 +317,7 @@ TEST_CASE("a scan that fails partway through its deletes keeps the dropped chart
     }
     REQUIRE(results_of(path, "b") == 1);
     exec_on_file(path,
-                 "CREATE TRIGGER refuse_result_delete BEFORE DELETE ON results"
+                 "CREATE TRIGGER refuse_result_delete BEFORE DELETE ON records"
                  " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
     {
         RecordStore store(path);

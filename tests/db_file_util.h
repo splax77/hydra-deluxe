@@ -34,10 +34,12 @@ inline int64_t scalar_on_file(const std::string& path, const std::string& sql) {
     return *v;
 }
 
-// How many rows a database file's results table holds.
-inline int64_t results_rows_in(const std::string& path) {
+// How many records a database file holds.
+inline int64_t record_rows_in(const std::string& path) {
     return scalar_on_file(path, kResultsRowCountSql);
 }
+// The old name, kept while tests/test_app_click.cpp still calls it (D115).
+inline int64_t results_rows_in(const std::string& path) { return record_rows_in(path); }
 
 // Writes a file of junk bytes at `path`, where a database should be.
 inline void write_junk_db(const std::string& path) {
