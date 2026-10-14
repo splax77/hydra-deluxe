@@ -1,5 +1,5 @@
-// The display text for numbers that more than one screen shows. Each rule
-// lives here once, so Song Details and the report cannot drift apart.
+// The display text for numbers and labels that more than one screen shows.
+// Each rule lives here once, and every screen reads it from here.
 
 #ifndef HYDRA_APP_DISPLAY_FORMAT_H
 #define HYDRA_APP_DISPLAY_FORMAT_H
@@ -19,6 +19,9 @@ double py_round3(double v);
 
 // The average multiplier as every screen shows it: py_round3, three places.
 std::string format_avg_mult(double v);
+
+// The average multiplier's name, wherever a screen labels it (D115).
+inline constexpr char kAverageMultiplierLabel[] = "Average Multiplier";
 
 // Every one-decimal timing a screen shows: one decimal, a space, the unit
 // ("163.5 ms", D57 item 1). The Paths tab reads it for the squeeze sentences,

@@ -1,6 +1,6 @@
 // The path report's window: the shared report frame (ui/report_window.h)
 // filled with the path report's rows, columns (app/path_report_view.h),
-// tiles (path_tiles) and its Timing and Best path only controls.
+// tiles (path_tiles) and its Timing and Optimal paths only controls.
 
 #include <algorithm>
 #include <iterator>
@@ -56,15 +56,17 @@ void apply_filters(PathWindow& w) {
     w.tiles_dirty = true;
 }
 
-// Lets the window's copy of the rows go, keeping the sort they were in.
+// Lets the window's copy of the rows go, and the cells fitted from them,
+// keeping the sort they were in.
 void drop_rows(PathWindow& w) {
     if (w.view) w.sort = w.view->sort();
     w.view.reset();
     w.widths = {};
+    w.memory.fitted.clear();
     w.tiles.clear();
 }
 
-// Takes up a new result. `keep`: the search, timing, Best path only and sort
+// Takes up a new result. `keep`: the search, timing, Optimal paths only and sort
 // stay as the user left them; otherwise they start over.
 void rebuild(PathWindow& w, const std::shared_ptr<const GeneratedReport>& result, bool keep) {
     drop_rows(w);
@@ -118,11 +120,11 @@ void draw_body(PathWindow& w, const report_frame::Frame& frame, const PathReport
         apply_filters(w);
     if (report_frame::dropdown("##timing", w.labels, w.timing)) apply_filters(w);
     ImGui::SameLine();
-    if (ImGui::Checkbox("Best path only", &w.best_only)) apply_filters(w);
+    if (ImGui::Checkbox("Optimal paths only",&w.best_only)) apply_filters(w);
     report_frame::count_line(w.memory, view.count_line(view_rules::kNoun));
 
     if (view.visible().empty()) {
-        // Clear filters leaves Best path only as it is.
+        // Clear filters leaves Optimal paths only as it is.
         if (report_frame::nothing_matches()) {
             w.memory.search[0] = '\0';
             w.timing = app::report_view::kEveryRowChoice;
@@ -171,7 +173,7 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
     if (report_frame::begin(open, frame, w.memory) && w.view) draw_body(w, frame, input);
     report_frame::end(open, frame, w.memory);
     // Closed this frame: the window's copy of the rows goes with AppState's
-    // (D103 item 28). The search box, dropdown, Best path only and sort stay
+    // (D103 item 28). The search box, dropdown, Optimal paths only and sort stay
     // for the rows the next opening builds.
     if (!*open) {
         drop_rows(w);

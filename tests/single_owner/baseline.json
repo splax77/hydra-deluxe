@@ -1,4 +1,23 @@
 {
-  "known_copies": [],
+  "known_copies": [
+    {
+      "question": "How is the average multiplier labelled?",
+      "file": "src/app/path_view.cpp",
+      "line_text": "lines.push_back(\"Avg. Multiplier:      \" + format_avg_mult(path.avg_mult()) + \"x\");",
+      "removed_by": "D115-B1-4: the Paths tab's label reads kAverageMultiplierLabel",
+      "date": "2026-10-14",
+      "added_by": "D115-A2-5",
+      "remove_by": "2026-10-28"
+    },
+    {
+      "question": "How is the average multiplier labelled?",
+      "file": "src/ui/stars_tab.cpp",
+      "line_text": "{\"Multiplier\", false, 0.0f, text},",
+      "removed_by": "D115-B1-4: the Stars tab's column title reads kAverageMultiplierLabel",
+      "date": "2026-10-14",
+      "added_by": "D115-A2-5",
+      "remove_by": "2026-10-28"
+    }
+  ],
   "known_clones": []
 }
