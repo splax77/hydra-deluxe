@@ -295,8 +295,8 @@ TEST_CASE("clicking A then B in one frame shows B, and A is never shown or saved
     REQUIRE(a.md5 != b.md5);
     std::unique_ptr<AppState> app = app_with(paths, {a, b});
 
-    app->select(a);
-    app->select(b);
+    app->select(a, hydra::ui::SelectionSource::Click);
+    app->select(b, hydra::ui::SelectionSource::Click);
     settle(*app);
 
     REQUIRE(app->selected.has_value());
@@ -315,7 +315,7 @@ TEST_CASE("Cancel shows Cancelled and saves nothing; Try again shows the paths")
     std::unique_ptr<AppState> app = app_with(paths, {song});
     const RecordKey key = app->settings.record_key(song.md5);
 
-    app->select(song);
+    app->select(song, hydra::ui::SelectionSource::Click);
     app->cancel_view();
     settle(*app);
 
@@ -335,7 +335,7 @@ TEST_CASE("closing the panel cancels the click's analysis and saves nothing") {
     const ChartLibraryEntry song = corpus_chart("click_close");
     std::unique_ptr<AppState> app = app_with(paths, {song});
 
-    app->select(song);
+    app->select(song, hydra::ui::SelectionSource::Click);
     app->close_details();  // what the X, Escape and a new selection all run
     settle(*app);
 
@@ -348,7 +348,7 @@ TEST_CASE("closing the panel cancels the click's analysis and saves nothing") {
 TEST_CASE("a song whose file is gone shows FileMissing and starts no job") {
     ScratchPaths paths("appstate_click_missing");
     std::unique_ptr<AppState> app = app_on(paths);
-    app->select(library_entry(3));
+    app->select(library_entry(3), hydra::ui::SelectionSource::Click);
     CHECK(app->viewed.state == ViewedSong::State::FileMissing);
     CHECK(app->view_job == nullptr);
     CHECK_FALSE(app->view_pending);
@@ -360,7 +360,7 @@ TEST_CASE("the settings lock is the batch's alone") {
     ScratchPaths paths("appstate_click_lock");
     const ChartLibraryEntry song = corpus_chart("click_lock");
     std::unique_ptr<AppState> app = app_with(paths, {song});
-    app->select(song);
+    app->select(song, hydra::ui::SelectionSource::Click);
     CHECK(app->settings_lock() == AppState::SettingsLock::None);
     CHECK_FALSE(app->settings_locked());
     settle(*app);

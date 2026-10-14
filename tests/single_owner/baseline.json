@@ -89,6 +89,24 @@
       "date": "2026-10-14",
       "added_by": "D115-A1-4",
       "remove_by": "2026-10-28"
+    },
+    {
+      "question": "Does a selection change scroll the list, and how far?",
+      "file": "src/ui/library_table.cpp",
+      "line_text": "if (scroll_to && *scroll_to == static_cast<size_t>(k)) ImGui::SetScrollHereY(0.5f);",
+      "removed_by": "CS-T3: the Library table calls scroll_last_row(selection_scroll(app.last_selection_source))",
+      "date": "2026-10-14",
+      "added_by": "CS-T2",
+      "remove_by": "2026-10-28"
+    },
+    {
+      "question": "Does a selection change scroll the list, and how far?",
+      "file": "src/ui/report_window.h",
+      "line_text": "if (scroll_to && *scroll_to == static_cast<size_t>(k)) ImGui::SetScrollHereY(0.5f);",
+      "removed_by": "the report-window task: the report table calls scroll_last_row with its click or arrow source",
+      "date": "2026-10-14",
+      "added_by": "CS-T2",
+      "remove_by": "2026-10-28"
     }
   ],
   "known_clones": []

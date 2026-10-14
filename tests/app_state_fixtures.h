@@ -136,7 +136,7 @@ inline void settle(hydra::ui::AppState& app) {
 
 // Clicks `entry` and waits for its analysis.
 inline void click(hydra::ui::AppState& app, const hydra::store::ChartLibraryEntry& entry) {
-    app.select(entry);
+    app.select(entry, hydra::ui::SelectionSource::Click);
     settle(app);
 }
 

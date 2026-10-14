@@ -313,7 +313,7 @@ void test_dynamics_reopen(ImGuiTestContext* ctx) {
             break;
         }
     }
-    h.app->select(h.app->library_row_at(other_idx).entry);
+    h.app->select(h.app->library_row_at(other_idx).entry, hydra::ui::SelectionSource::Click);
     h.app->show_details = false;
     ctx->Yield(3);
 
@@ -1066,7 +1066,7 @@ void test_view_progress_delay(ImGuiTestContext* ctx) {
     // taken before the request, so this can only overstate the wait.
     auto click_and_time_box = [&](size_t row) {
         const clock::time_point t0 = clock::now();
-        h.app->select(h.app->view_row(row));
+        h.app->select(h.app->view_row(row), hydra::ui::SelectionSource::Click);
         double first_box = -1.0;
         wait_until(ctx, [&] {
             if (box_on_screen() && first_box < 0.0)
