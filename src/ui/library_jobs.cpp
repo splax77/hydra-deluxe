@@ -29,7 +29,10 @@ std::string StoreOpenProgress::label() const {
     // library read alike (DBUP answer 7).
     if (!upgrading) return "Opening your library...";
     switch (step) {
-        case Step::UpdatingResultsKey: return "Updating the results table...";
+        // The conversion turns the results table into records, so it reads
+        // as the results-table step does: no new words on this screen.
+        case Step::UpdatingResultsKey:
+        case Step::ConvertingRecords: return "Updating the results table...";
         case Step::Copying: return "Copying your library...";
         case Step::Opening:  // the store reports Opening only before an upgrade step
         case Step::Finishing:
@@ -114,7 +117,8 @@ bool StoreOpenJob::report(StoreOpenProgress::Step step, uint64_t rows_done, uint
     // its counts too.
     rows_total_.store(rows_total);
     rows_done_.store(rows_done);
-    if (step == Step::UpdatingResultsKey || step == Step::Copying || step == Step::Finishing)
+    if (step == Step::UpdatingResultsKey || step == Step::ConvertingRecords ||
+        step == Step::Copying || step == Step::Finishing)
         upgrading_.store(true);
     step_.store(static_cast<int>(step));
     if (gate_) gate_(snapshot(), [this] { return is_cancelled(); });
@@ -129,6 +133,7 @@ StoreOpenProgress::Step screen_step(store::OpenStep step) {
     switch (step) {
         case store::OpenStep::Opening: return Step::Opening;
         case store::OpenStep::UpdatingResultsKey: return Step::UpdatingResultsKey;
+        case store::OpenStep::ConvertingRecords: return Step::ConvertingRecords;
         case store::OpenStep::Copying: return Step::Copying;
         case store::OpenStep::Finishing: return Step::Finishing;
     }
