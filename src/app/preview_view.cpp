@@ -319,7 +319,7 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
             grid_end = std::max(last_tick, timing.display_tick_at_ms(*audio_end_ms));
         } else {
             const MeasureIndex& mi = timing.measure_index();
-            grid_end = last_tick + 2 * mi.tpm_at(mi.section_at(last_tick));
+            grid_end = last_tick + 2 * mi.length_at(mi.span_at(last_tick));
         }
         scene.beats = build_beat_events(timing, grid_end);
     }
@@ -331,10 +331,12 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
         scene.tempos.push_back(t);
     }
     {
+        const MeasureCount& mc = timing.measure_count();
         const MeasureIndex& mi = timing.measure_index();
-        for (int i = 0; i < mi.count(); ++i) {
-            if (mi.tpm_at(i) <= 0) continue;
-            scene.meters.push_back({mi.keys_at(i), mi.tpm_at(i), mi.starts_at(i)});
+        for (int i = 0; i < mc.count(); ++i) {
+            if (mc.tpm_at(i) <= 0) continue;
+            const int64_t tick = mc.start_at(i);
+            scene.meters.push_back({tick, mc.tpm_at(i), mi.restart_at(mi.span_at(tick))});
         }
     }
     for (const auto& [tick, sig] : song.timesig_changes)
@@ -446,20 +448,17 @@ std::vector<PreviewBeat> build_beat_events(const SongTiming& timing, int64_t las
     const MeasureIndex& mi = timing.measure_index();
     const int64_t tick_r = timing.tick_resolution();
     for (int i = 0; i < mi.count(); ++i) {
-        const int64_t section_start = mi.keys_at(i);
-        const int64_t tpm = mi.tpm_at(i);
+        const int64_t tpm = mi.length_at(i);
         if (tpm <= 0) continue;
-        // The section's bars count from its last barline at or before its
-        // first tick (a mid-measure meter change restarts the measure there).
-        // Bars before the section's own start belong to the section before.
+        // The span's bars count from its restart on the grid.
         const bool last_section = i + 1 >= mi.count();
-        const int64_t section_end = last_section ? last_tick : mi.keys_at(i + 1);
-        for (int64_t bar = mi.starts_at(i);; bar += tpm) {
+        const int64_t section_end = last_section ? last_tick : mi.restart_at(i + 1);
+        for (int64_t bar = mi.restart_at(i);; bar += tpm) {
             if (last_section ? bar > section_end : bar >= section_end) break;
-            if (bar >= section_start) lines.push_back({bar, 0.0, PreviewBeatKind::Bar});
+            lines.push_back({bar, 0.0, PreviewBeatKind::Bar});
             for (int64_t beat = bar + tick_r; beat < bar + tpm; beat += tick_r) {
                 if (last_section ? beat > section_end : beat >= section_end) break;
-                if (beat >= section_start) lines.push_back({beat, 0.0, PreviewBeatKind::Beat});
+                lines.push_back({beat, 0.0, PreviewBeatKind::Beat});
             }
         }
     }

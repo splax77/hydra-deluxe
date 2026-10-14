@@ -260,7 +260,7 @@ public:
     // that can't measure time is refused here (check_timing_maps).
     void build_timing() {
         check_timing_maps(tick_resolution_, tpm_changes, bpm_changes);
-        timing_.emplace(tick_resolution_, tpm_changes, bpm_changes);
+        timing_.emplace(tick_resolution_, tpm_changes, bpm_changes, timesig_changes);
     }
     const SongTiming& timing() const { return *timing_; }
     Timecode timecode(int64_t ticks) const { return timing_->timecode(ticks); }

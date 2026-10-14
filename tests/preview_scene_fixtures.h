@@ -53,7 +53,7 @@ inline app::PreviewDrumLane drum_lane(app::PreviewSpan s,
 // (1.0005, 0.2505, ...) are the same as before spans moved to ticks.
 inline app::PreviewScene timed_scene() {
     app::PreviewScene s;
-    s.timing = SongTiming(1000, {{0, 4000}}, {{0, 60.0}});
+    s.timing = SongTiming(1000, {{0, 4000}}, {{0, 60.0}}, {{0, {4, 4}}});
     return s;
 }
 
@@ -73,7 +73,7 @@ inline app::PreviewNote note_at_tick(const SongTiming& timing, int64_t tick,
 // just outside the phrase.
 inline app::PreviewScene phrase_to_tick_480_scene(
     std::initializer_list<std::pair<int64_t, app::PreviewLane>> notes) {
-    SongTiming timing(480, {{0, 1920}}, {{0, 300.0}});
+    SongTiming timing(480, {{0, 1920}}, {{0, 300.0}}, {{0, {4, 4}}});
     app::PreviewScene scene;
     scene.timing = timing;
     for (const auto& [tick, lane] : notes) scene.notes.push_back(note_at_tick(timing, tick, lane));

@@ -25,7 +25,7 @@ namespace {
 SongTiming flat_timing(int64_t res, double bpm) {
     std::map<int64_t, int64_t> tpm{{0, 4 * res}};
     std::map<int64_t, double> bpm_map{{0, bpm}};
-    return SongTiming(res, tpm, bpm_map);
+    return SongTiming(res, tpm, bpm_map, {{0, {4, 4}}});
 }
 
 double ch10(const SongTiming& t, int64_t fill_end, int64_t fill_length) {

@@ -236,7 +236,7 @@ TEST_CASE("build_beat_events: bars, beats, and half-beats from the timing alone"
     // 4/4 at 480 ticks/quarter: bars every 1920, beats every 480.
     std::map<int64_t, int64_t> tpm{{0, 1920}};
     std::map<int64_t, double> bpm{{0, 120.0}};
-    SongTiming st(480, tpm, bpm);
+    SongTiming st(480, tpm, bpm, {{0, {4, 4}}});
 
     std::vector<PreviewBeat> beats = build_beat_events(st, 1920);
     // ticks: 0 Bar, 240 Half, 480 Beat, 720 Half, 960 Beat, 1200 Half,
@@ -260,7 +260,7 @@ TEST_CASE("build_beat_events: a 3/4 section changes the beat count per bar") {
     // One bar of 4/4, then 3/4 (1440 ticks per measure).
     std::map<int64_t, int64_t> tpm{{0, 1920}, {1920, 1440}};
     std::map<int64_t, double> bpm{{0, 120.0}};
-    SongTiming st(480, tpm, bpm);
+    SongTiming st(480, tpm, bpm, {{0, {4, 4}}, {1920, {3, 4}}});
 
     std::vector<PreviewBeat> beats = build_beat_events(st, 1920 + 1440 * 2);
     int bars = 0, quarter_beats = 0;
@@ -489,9 +489,17 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
         const MeasureIndex& my = y.measure_index();
         if (mx.count() != my.count()) return "timing (meter sections)";
         for (int i = 0; i < mx.count(); ++i)
-            if (mx.keys_at(i) != my.keys_at(i) || mx.tpm_at(i) != my.tpm_at(i) ||
-                mx.starts_at(i) != my.starts_at(i) || mx.measures_at(i) != my.measures_at(i))
+            if (mx.restart_at(i) != my.restart_at(i) || mx.step_at(i) != my.step_at(i) ||
+                mx.numerator_at(i) != my.numerator_at(i) ||
+                mx.denominator_at(i) != my.denominator_at(i) ||
+                mx.lines_before_at(i) != my.lines_before_at(i))
                 return "timing (meter section " + std::to_string(i) + ")";
+        const MeasureCount& cx = x.measure_count();
+        const MeasureCount& cy = y.measure_count();
+        if (cx.count() != cy.count()) return "timing (measure count spans)";
+        for (int i = 0; i < cx.count(); ++i)
+            if (cx.start_at(i) != cy.start_at(i) || cx.tpm_at(i) != cy.tpm_at(i))
+                return "timing (measure count span " + std::to_string(i) + ")";
         std::vector<int64_t> ticks{0};
         for (const PreviewTempo& t : a.tempos) ticks.push_back(t.tick);
         for (const PreviewNote& n : a.notes) ticks.push_back(n.tick);
