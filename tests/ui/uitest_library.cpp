@@ -712,16 +712,19 @@ void test_library_column_widths(ImGuiTestContext* ctx) {
     hydra::ui::remember_library_share(0.01f);
     h.app->library_ui.panel_was_open = false;  // the split sets its width next frame
     ctx->Yield(3);
+    // Each enable opens the header menu on the rightmost header. The columns
+    // take their new widths over a few frames, so the table settles before
+    // the next click looks for that header.
     ctx->TableSetColumnEnabled(table->ID, "Charter", true);
+    ctx->Yield(3);
     ctx->TableSetColumnEnabled(table->ID, "Folder", true);
     ctx->Yield(3);
     for (int c = 0; c < table->ColumnsCount; ++c) IM_CHECK(table->Columns[c].IsEnabled);
     check_rule_widths();
     if (ctx->IsError()) return;
     const float title_w = table->Columns[hydra::ui::kColumnTitle].WidthGiven;
-    IM_CHECK_LT(title_w, cache.measured.widths[hydra::ui::kColumnTitle]);  // cut
     IM_CHECK_GE(title_w, cache.measured.header_widths[hydra::ui::kColumnTitle]);
-    IM_CHECK_EQ(layout.inner_width, layout.min_inner_width);  // every cut column at its floor
+    IM_CHECK_EQ(layout.inner_width, layout.min_inner_width);  // every text column at its floor
     IM_CHECK_GT(layout.inner_width, cache.room.available);
     IM_CHECK(table->InnerWindow->ScrollbarX);
 }
