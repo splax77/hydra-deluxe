@@ -1,6 +1,6 @@
 # Claude drives Hydra's GUI through an MCP server (plan, 2026-10-14)
 
-**Status:** plan only. Nothing is built. The open questions at the end wait for the user; the build waits for the user's yes. Planner a50ef6abfe09f7389 (task MCP-PLAN, session 719dc0ea) read every file named below on main at 07594fee.
+**Status:** approved by the user on 2026-10-14, with every open question answered as recommended. The build is under way. Planner a50ef6abfe09f7389 (task MCP-PLAN, session 719dc0ea) read every file named below on main at 07594fee.
 
 ## What this is, in one paragraph
 
@@ -218,6 +218,8 @@ It does not change the app's code outside `main.cpp`'s attached-mode block. It d
 ## Open questions
 
 Each one quotes the code behaviour it depends on and gives a recommended answer. A new number is a question unless the code already owns it.
+
+**Answered 2026-10-14:** the user accepted every recommended answer below, and approved the build in the same message. The numbers are therefore settled: a 15 s margin over each command's timeout, 60 s for the hello line, and a 12,000-character reply cap.
 
 **1. Install the `mcp` package?** The helper imports `mcp` (`FastMCP`), which is not on this machine; PyPI's 2.3.0 supports Python 3.14. The alternative is to hand-write the stdio JSON-RPC handshake (initialize, tools/list, tools/call) in about 150 lines with no dependency, which then has to track protocol versions by hand. Recommended: run `py -m pip install mcp` once; T3's first step does it and stops if it fails.
 
