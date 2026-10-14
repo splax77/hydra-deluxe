@@ -23,6 +23,7 @@
 #include "ui/column_widths.h"
 #include "ui/fonts.h"
 #include "ui/library_model.h"
+#include "ui/list_scroll.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
 
@@ -242,22 +243,14 @@ std::vector<ColumnSpec> library_column_specs() {
     return specs;
 }
 
-// Brings the table's cached measure up to date when the rows were replaced or
-// the UI scale changed. Every column is text, so the measure reads only the
-// headers, and a new summary in a row changes nothing.
+// Brings the table's cached measure up to date when the UI scale changed.
+// Every column is text, and measure_widths never reads a text column's cells,
+// so the measure takes no rows: new rows or new summaries change nothing.
 void update_column_widths(AppState& app) {
     LibraryViewState::ColumnWidths& cache = app.library_ui.column_widths;
-    const std::vector<LibraryRow>& rows = app.library.rows();
-    const CellText text = [&rows](size_t r, size_t c) {
-        return library_cell_text(rows[r], static_cast<int>(c));
-    };
-    // Emptied each frame only so the model's queue does not grow; task T3 of
-    // the column-shares plan removes take_summary_changes and this call.
-    (void)app.library.take_summary_changes();
-    if (cache.measured.stale() || cache.rows_version != app.library.rows_version()) {
+    if (cache.measured.stale()) {
         cache.specs = library_column_specs();
-        cache.measured = measure_widths(cache.specs, rows.size(), text);
-        cache.rows_version = app.library.rows_version();
+        cache.measured = measure_widths(cache.specs, 0, CellText());
     }
 }
 
@@ -266,9 +259,11 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
     update_column_widths(app);
     LibraryViewState::ColumnWidths& widths = app.library_ui.column_widths;
     const std::vector<ColumnSpec>& columns = widths.specs;
-    // The reset key is the rows' version for now; task T3 of the
-    // column-shares plan adds the search counter to it.
-    widths.room = table_room("##librarytable", size.x, columns.size(), app.library.rows_version());
+    // A dragged column holds until the rows reload or the search changes
+    // (decision 5). Both counters only ever go up, so their sum moves
+    // whenever either does.
+    const std::uint64_t reset_key = app.library.rows_version() + app.library.query_version();
+    widths.room = table_room("##librarytable", size.x, columns.size(), reset_key);
     const ColumnLayout layout = place_columns(widths.measured, columns, widths.room);
     if (!ImGui::BeginTable("##librarytable", kLibraryColumnCount, table_flags(), size,
                            layout.inner_width))
@@ -335,8 +330,9 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
     const std::vector<LibraryRow>& rows = app.library.rows();
     const std::string selected_path = app.selected ? app.selected->notespath : std::string();
 
-    // A new selection (a click, or the panel's Previous/Next) is scrolled
-    // into view once.
+    // A new selection asks the scroll owner (ui/list_scroll.h), once, how to
+    // move the list to its row. Only a change of the selected song counts: a
+    // reload that keeps the open song (follow_selected_row) moves nothing.
     std::optional<size_t> scroll_to;
     if (selected_path != app.library_ui.scrolled_to) {
         app.library_ui.scrolled_to = selected_path;
@@ -388,7 +384,8 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
                 overflow_tooltip(title.c_str());
             if (title_cut) draw_cut_title(title_pos, title_shown);
             const float title_text_w = title_cut ? title_kept_w : title_w;
-            if (scroll_to && *scroll_to == static_cast<size_t>(k)) ImGui::SetScrollHereY(0.5f);
+            if (scroll_to && *scroll_to == static_cast<size_t>(k))
+                scroll_last_row(selection_scroll(app.last_selection_source));
             if (searching_words)
                 overlay_matches(title_pos, title,
                                 app::match_spans(q, app::QueryField::Title, title),

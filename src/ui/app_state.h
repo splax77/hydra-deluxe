@@ -142,14 +142,12 @@ struct LibraryViewState {
     // Esc that closed it this frame can be told apart (render_settings_button).
     bool settings_panel_was_open = false;
     // The table's column widths, from the one width rule (ui/column_widths.h):
-    // the columns as the rule sees them, their measure (which keeps the UI
-    // scale it was taken at) and the LibraryModel::rows_version() it read.
-    // The room the table had this frame is kept too, so a GUI test can hand
-    // the rule the same inputs the table did.
+    // the columns as the rule sees them and their measure (which keeps the UI
+    // scale it was taken at). The room the table had this frame is kept too,
+    // so a GUI test can hand the rule the same inputs the table did.
     struct ColumnWidths {
         std::vector<ColumnSpec> specs;
         MeasuredWidths measured;
-        std::uint64_t rows_version = 0;
         TableRoom room;
     } column_widths;
 };
