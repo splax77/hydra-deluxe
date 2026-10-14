@@ -147,11 +147,12 @@ ColumnLayout place_columns(const MeasuredWidths& measured, const std::vector<Col
         for (std::size_t c : open) total += static_cast<float>(specs[c].share);
         // Every split in a pass comes from the same leftover and total.
         const float pass_leftover = leftover;
+        auto split_of = [&](std::size_t c) {
+            return pass_leftover * static_cast<float>(specs[c].share) / total;
+        };
         for (auto it = open.begin(); it != open.end();) {
-            const float split =
-                total > 0.0f ? pass_leftover * static_cast<float>(specs[*it].share) / total : 0.0f;
             // No share left to split by (total 0): the column keeps its floor.
-            if (total <= 0.0f || split < header[*it]) {
+            if (total <= 0.0f || split_of(*it) < header[*it]) {
                 layout.widths[*it] = header[*it];
                 leftover -= header[*it];
                 it = open.erase(it);
@@ -165,7 +166,7 @@ ColumnLayout place_columns(const MeasuredWidths& measured, const std::vector<Col
         // the last open column, so the columns fill the room exactly.
         float given = 0.0f;
         for (std::size_t c : open) {
-            layout.widths[c] = std::floor(leftover * static_cast<float>(specs[c].share) / total);
+            layout.widths[c] = std::floor(split_of(c));
             given += layout.widths[c];
         }
         layout.widths[open.back()] += std::max(0.0f, std::floor(leftover) - given);

@@ -72,13 +72,8 @@
         },
         {
           "file": "src/ui/column_widths.cpp",
-          "line_text": "total > 0.0f ? pass_leftover * static_cast<float>(specs[*it].share) / total : 0.0f;",
-          "why": "place_columns: a column's split, checked against its floor"
-        },
-        {
-          "file": "src/ui/column_widths.cpp",
-          "line_text": "layout.widths[c] = std::floor(leftover * static_cast<float>(specs[c].share) / total);",
-          "why": "place_columns: a column's split in whole pixels"
+          "line_text": "return pass_leftover * static_cast<float>(specs[c].share) / total;",
+          "why": "place_columns: split_of, the one place a column's split is worked out; the floor check and the whole-pixel width both call it"
         },
         {
           "file": "src/ui/report_window.cpp",
