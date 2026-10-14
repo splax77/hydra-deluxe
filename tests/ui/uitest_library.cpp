@@ -686,6 +686,7 @@ void test_library_column_widths(ImGuiTestContext* ctx) {
     const hydra::ui::LibraryViewState::ColumnWidths& cache = h.app->library_ui.column_widths;
     IM_CHECK_EQ(cache.specs.size(), static_cast<size_t>(hydra::ui::kLibraryColumnCount));
     IM_CHECK_EQ(cache.rows_version, h.app->library.rows_version());
+    IM_CHECK(hydra::ui::text_shares_sum_to_100(cache.specs));  // the real list
     hydra::ui::ColumnLayout layout;
     auto check_rule_widths = [&] {
         layout = hydra::ui::place_columns(cache.measured, cache.specs, cache.room);

@@ -63,23 +63,18 @@ std::vector<Column<ReportRow>> path_columns(double hit_window_ms) {
     dim_trunc.dim = true;
     CellLook mono_trunc = trunc;
     mono_trunc.mono = true;
-    // A text column's share of the room, from the user's answers (2026-10-14).
-    auto share = [](CellLook look, int percent) {
-        look.share = percent;
-        return look;
-    };
 
     std::vector<Column<ReportRow>> cols;
-    cols.push_back(text_column("song", "Song", "", &ReportRow::song, share(trunc, 27)));
-    cols.push_back(text_column("artist", "Artist", "", &ReportRow::artist, share(dim_trunc, 15)));
-    cols.push_back(text_column("charter", "Charter", "", &ReportRow::charter, share(dim_trunc, 14)));
+    cols.push_back(text_column("song", "Song", "", &ReportRow::song, with_share(trunc, 27)));
+    cols.push_back(text_column("artist", "Artist", "", &ReportRow::artist, with_share(dim_trunc, 15)));
+    cols.push_back(text_column("charter", "Charter", "", &ReportRow::charter, with_share(dim_trunc, 14)));
     cols.push_back(text_column("mode", "Mode",
                                "The difficulty and drum options the path was found for.",
-                               &ReportRow::mode, share(dim_trunc, 12)));
+                               &ReportRow::mode, with_share(dim_trunc, 12)));
     cols.push_back(text_column("path", "Path",
                                "The path in path notation: one entry per activation, with its "
                                "skip count and squeeze symbols.",
-                               &ReportRow::path, share(mono_trunc, 32)));
+                               &ReportRow::path, with_share(mono_trunc, 32)));
     cols.push_back(count_column("score", "Score", "The total score the path reaches.",
                                 &ReportRow::score, true));
     cols.push_back(count_column("acts", "Acts",

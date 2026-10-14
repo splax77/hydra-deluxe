@@ -62,8 +62,8 @@
       "owner_lines": [
         {
           "file": "src/ui/column_widths.cpp",
-          "line_text": "share_total += s.share;",
-          "why": "place_columns: the debug check that a table's shares sum to 100"
+          "line_text": "total += s.share;",
+          "why": "text_shares_sum_to_100: the check that a table's shares sum to 100, which place_columns asserts in a debug build"
         },
         {
           "file": "src/ui/column_widths.cpp",
@@ -86,14 +86,9 @@
           "why": "report_frame::column_spec copies the report view's share into the column's spec, as it copies truncate; it works out no width"
         },
         {
-          "file": "src/app/path_report_view.cpp",
+          "file": "src/app/report_view.h",
           "line_text": "look.share = percent;",
-          "why": "path_columns, the path report's column list: where its shares are written"
-        },
-        {
-          "file": "src/app/dm_report_view.cpp",
-          "line_text": "look.share = percent;",
-          "why": "dm_columns, the comparison report's column list: where its shares are written"
+          "why": "with_share, the one helper path_columns and dm_columns write their shares through"
         }
       ],
       "scope": [

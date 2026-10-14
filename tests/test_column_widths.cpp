@@ -17,9 +17,12 @@
 #include "imgui_internal.h"  // ImGuiTable, for the apply_column_widths tests
 
 #include "testdata_dirs.h"  // resource_root
+#include "app/dm_report_view.h"
+#include "app/path_report_view.h"
 #include "ui/app_shell.h"
 #include "ui/column_widths.h"
 #include "ui/fonts.h"
+#include "ui/report_window.h"
 
 using hydra::ui::CellText;
 using hydra::ui::ColumnLayout;
@@ -430,6 +433,26 @@ TEST_CASE("column_widths: a width ImGui changed by itself is put back") {
     REQUIRE(table->Columns[0].WidthGiven < 100.0f);
     table = apply_frame(rule);
     CHECK(table->Columns[0].WidthGiven == 100.0f);
+}
+
+TEST_CASE("column_widths: a column list's shares sum to 100, or it has no text column") {
+    // Fake lists in the pretend font: 60 + 40 is well formed, 60 + 30 is not,
+    // and a list of number columns alone has nothing to sum.
+    CHECK(hydra::ui::text_shares_sum_to_100({spec("Num", false), text_spec("Song", 60), text_spec("Artist", 40)}));
+    CHECK_FALSE(hydra::ui::text_shares_sum_to_100({text_spec("Song", 60), text_spec("Artist", 30)}));
+    CHECK(hydra::ui::text_shares_sum_to_100({spec("Num", false), spec("Ms", false)}));
+    CHECK(hydra::ui::text_shares_sum_to_100(kLibrarySpecs));
+}
+
+TEST_CASE("column_widths: the report views' real column lists have shares that sum to 100") {
+    // The test builds are release builds, where place_columns' assert is off,
+    // so the real lists are checked here.
+    HeadlessImGui imgui;
+    namespace report_frame = hydra::ui::report_frame;
+    CHECK(hydra::ui::text_shares_sum_to_100(
+        report_frame::column_specs(hydra::app::path_report_view::path_columns(0.0))));
+    CHECK(hydra::ui::text_shares_sum_to_100(
+        report_frame::column_specs(hydra::app::dm_report_view::dm_columns())));
 }
 
 TEST_CASE("column_widths: a drag pins the column until the table's reset key changes") {

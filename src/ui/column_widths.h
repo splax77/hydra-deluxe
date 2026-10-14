@@ -77,6 +77,11 @@ struct ColumnSpec {
     int share = 0;
 };
 
+// Whether `specs` is a well-formed column list: it has no text column, or its
+// text columns' shares sum to 100. place_columns asserts it in a debug build;
+// a test calls it on a real column list, since the test builds are release.
+bool text_shares_sum_to_100(const std::vector<ColumnSpec>& specs);
+
 // Column `column`'s text for row `row`.
 using CellText = std::function<std::string(std::size_t row, std::size_t column)>;
 

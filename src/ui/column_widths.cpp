@@ -74,6 +74,17 @@ MeasuredWidths measure_widths(const std::vector<ColumnSpec>& specs, std::size_t 
     return m;
 }
 
+bool text_shares_sum_to_100(const std::vector<ColumnSpec>& specs) {
+    int total = 0;
+    bool any_text = false;
+    for (const ColumnSpec& s : specs)
+        if (s.may_cut) {
+            total += s.share;
+            any_text = true;
+        }
+    return !any_text || total == 100;
+}
+
 ColumnLayout place_columns(const MeasuredWidths& measured, const std::vector<ColumnSpec>& specs,
                            const TableRoom& room) {
     const std::size_t n = specs.size();
@@ -82,18 +93,9 @@ ColumnLayout place_columns(const MeasuredWidths& measured, const std::vector<Col
         return c < room.pinned.size() ? room.pinned[c] : std::optional<float>{};
     };
 
-#ifndef NDEBUG
-    // A table's text shares sum to 100 (ColumnSpec::share), so a typo in a
-    // column list fails here instead of quietly skewing the table.
-    int share_total = 0;
-    bool any_text = false;
-    for (const ColumnSpec& s : specs)
-        if (s.may_cut) {
-            share_total += s.share;
-            any_text = true;
-        }
-    assert(!any_text || share_total == 100);
-#endif
+    // A typo in a column list fails here (in a debug build) instead of quietly
+    // skewing the table.
+    assert(text_shares_sum_to_100(specs));
 
     // A header is as wide as its text, or as ImGui drew it last frame when
     // that is wider (the sort arrow and sort-order digit take room too). A
