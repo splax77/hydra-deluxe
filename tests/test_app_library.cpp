@@ -48,7 +48,7 @@ TEST_CASE("set_search narrows the library and the match count") {
     app->set_search("hash017");
     CHECK(app->library.searching());
     CHECK(app->library_shown_count() == 1);
-    CHECK(app->library_match_count() == 1);
+    CHECK(app->library.counts().all == 1);
     CHECK(app->library_row_at(0).entry.md5 == "hash017");
     CHECK(app->library_matches().size() == 1);
     app->set_search("");
@@ -253,7 +253,7 @@ TEST_CASE("the batch confirm right after a scan, before any frame, counts the li
     RowsOlderThanScan s = rows_older_than_scan(paths, "scan_confirm");
     s.app->open_batch_confirm();
     REQUIRE(s.app->batch_confirm_pending);
-    CHECK(s.app->batch_scope_charts() == static_cast<int64_t>(s.app->library_match_count()));
+    CHECK(s.app->batch_scope_charts() == static_cast<int64_t>(s.app->library_shown_count()));
     CHECK(s.app->batch_scope_charts() == 1);
 }
 
@@ -300,6 +300,39 @@ TEST_CASE("the confirm counts every library row, and rows with a result from the
 
     CHECK(app.batch_scope_charts() == app.library_shown_count());
     CHECK(app.batch_scope_with_result() == 2);  // both copies of chart 1
+}
+
+// D115: the Analyze button runs the rows on screen, the search and the chip
+// both applied. Ten charts match "hash00", four of them have a result, and the
+// Not analyzed chip shows the other six: the confirm counts those six, the
+// heading's number, not the ten the All chip counts.
+TEST_CASE("the batch confirm counts the rows on screen when a search and a chip narrow them") {
+    ScratchPaths paths("appstate_confirmchip");
+    auto store = std::make_unique<RecordStore>(paths.db);
+    std::vector<ChartLibraryEntry> charts;
+    for (int i = 0; i < 20; ++i) charts.push_back(library_entry(i));
+    store->rebuild_chart_library(charts);
+    for (int i : {0, 3, 5, 8})
+        hydra::test::store_batch_result(*store, library_entry(i).md5, Settings{}.sp_cap);
+    AppState app(Settings{}, std::move(store));
+
+    app.set_search("hash00");
+    app.library.set_chip(hydra::ui::StatusChip::NotAnalyzed);
+    REQUIRE(app.library.counts().all == 10);
+    REQUIRE(app.library_shown_count() == 6);
+    app.open_batch_confirm();
+    REQUIRE(app.batch_confirm_pending);
+    CHECK(app.batch_scope_charts() == static_cast<int64_t>(app.library_shown_count()));
+    CHECK(app.batch_scope_charts() < static_cast<int64_t>(app.library.counts().all));
+    CHECK(app.batch_scope_with_result() == 0);
+    app.close_batch_confirm();
+
+    // The chip alone narrows the table too.
+    app.set_search("");
+    REQUIRE(app.library_shown_count() == 16);
+    app.open_batch_confirm();
+    REQUIRE(app.batch_confirm_pending);
+    CHECK(app.batch_scope_charts() == 16);
 }
 
 // D79: the plan the confirm showed is the plan the batch runs. A result that

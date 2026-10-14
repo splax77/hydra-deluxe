@@ -165,7 +165,7 @@ void AppState::set_search(std::string text) {
 }
 
 std::vector<store::ChartLibraryEntry> AppState::library_matches() const {
-    const std::vector<size_t> matched = library.matches();
+    const std::vector<size_t>& matched = library.order();
     // Each matched row's place in the answer, by row_key.
     std::unordered_map<std::string_view, size_t> place;
     place.reserve(matched.size());
@@ -546,7 +546,7 @@ void AppState::start_scan() {
 }
 
 void AppState::open_batch_confirm() {
-    // Exactly the rows the library's search matches. The plans made here are
+    // Exactly the rows on screen (library_matches). The plans made here are
     // the ones the batch runs (D79), so the confirm, the strip and the
     // finished counts come from one plan. Rows older than the store would
     // count fewer charts than the button's N.
