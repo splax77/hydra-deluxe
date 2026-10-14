@@ -78,7 +78,7 @@ std::string instant_line(const TrackInstant& i, bool show_cymbals = true) {
     }
     s += " ";
     if (!i.beat) s += "-";
-    else if (*i.beat == PreviewBeatKind::Bar) s += "bar";
+    else if (*i.beat == PreviewBeatKind::MeasureLine) s += "bar";
     else if (*i.beat == PreviewBeatKind::Beat) s += "beat";
     else s += "half";
     s += std::string(" od=") + toggle_code(i.overdrive) + " so=" + toggle_code(i.solo) +
@@ -372,13 +372,13 @@ TEST_CASE("build_track_state: taken, offered and hidden fills toggle different s
 TEST_CASE("build_track_state: beats land on instants; solo toggles") {
     PreviewScene scene = timed_scene();
     scene.notes = {note(250.0, PreviewLane::Red)};
-    scene.beats = {{0, 0.0, PreviewBeatKind::Bar}, {0, 250.0, PreviewBeatKind::Half},
+    scene.beats = {{0, 0.0, PreviewBeatKind::MeasureLine}, {0, 250.0, PreviewBeatKind::Half},
                    {0, 500.0, PreviewBeatKind::Beat}};
     scene.solos = {span(250.0, 250.0)};  // a one-note solo
 
     TrackState st = build_track_state(scene, TrackStateOptions{});
     REQUIRE(find(st.instants(), 0.0));
-    CHECK(*find(st.instants(), 0.0)->beat == PreviewBeatKind::Bar);
+    CHECK(*find(st.instants(), 0.0)->beat == PreviewBeatKind::MeasureLine);
     CHECK(*find(st.instants(), 0.25)->beat == PreviewBeatKind::Half);
     CHECK(find(st.instants(), 0.25)->notes.size() == 1);
     CHECK(find(st.instants(), 0.25)->solo == Toggle::Start);
@@ -675,7 +675,7 @@ TEST_CASE("build_track_state: the one-pass sweep on overlapping, touching, empty
                    note(2000.5, PreviewLane::Blue, true, true),
                    note(7500.0, PreviewLane::Yellow, true)};
     // Two beats on one moment (the last one listed wins), and one on an edge.
-    scene.beats = {{0, 2000.5, PreviewBeatKind::Bar}, {0, 2000.5, PreviewBeatKind::Half},
+    scene.beats = {{0, 2000.5, PreviewBeatKind::MeasureLine}, {0, 2000.5, PreviewBeatKind::Half},
                    {0, 6000.0, PreviewBeatKind::Beat}};
 
     // By hand: at 1.0 the red cymbal draws as a plain red. At 2.0005 the

@@ -25,12 +25,6 @@
           "why": "MeasureIndex::walk, the owner: Clone Hero's grid walk"
         }
       ],
-      "exempt": [
-        {
-          "file": "src/app/preview_view.cpp",
-          "why": "build_beat_events keeps its own loop until D115 B2-2 makes it call MeasureIndex::walk; B2-2 removes this exemption"
-        }
-      ],
       "note": "Stepping a tick through the measure grid by a beat or a measure. MeasureIndex::walk is Clone Hero's beat-line walk, built once from the time signatures. Decided by: D115 (plan part B2, task B2-1)"
     },
     {
@@ -95,12 +89,6 @@
           "why": "MsIndex::bpm_at, which SongTiming::tempo_at calls: the tempo span through last_at_or_before"
         }
       ],
-      "exempt": [
-        {
-          "file": "src/app/preview_view.cpp",
-          "why": "build_time_box keeps its own search until D115 B2-2 makes it call SongTiming::tempo_at; B2-2 removes this exemption"
-        }
-      ],
       "note": "A binary search over tempo marks for the BPM in force. SongTiming::tempo_at answers it with the same span rule as the milliseconds (a tick on a change reads the new tempo). Decided by: D115 (plan part B2, task B2-1)"
     },
     {
@@ -125,12 +113,6 @@
           "file": "src/core/timing.cpp",
           "line_text": "return {grid_.numerator_at(i), grid_.denominator_at(i)};",
           "why": "SongTiming::time_signature_at, the owner: the grid span's meter"
-        }
-      ],
-      "exempt": [
-        {
-          "file": "src/app/preview_view.cpp",
-          "why": "build_time_box keeps its own search until D115 B2-2 makes it call SongTiming::time_signature_at; B2-2 removes this exemption"
         }
       ],
       "note": "A binary search over time signature marks for the meter in force. SongTiming::time_signature_at answers it from the grid, so the time box's signature switches on the tick the measure lines restart. Decided by: D115 (plan part B2, task B2-1)"
