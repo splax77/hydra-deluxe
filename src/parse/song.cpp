@@ -310,12 +310,17 @@ bool is_disco_off_marker(std::string_view s, char mix_digit) {
 // signature itself is kept too, for display. A numerator of 0 names no meter,
 // so the line is ignored and the previous meter stays, in both formats
 // (finding 100). A bottom number the readers couldn't hold (0, from
-// timesig_denominator) refuses the chart here, where the tick is known.
-// Anything else that makes a measure last no time is refused by
-// check_timing_maps.
+// timesig_denominator) refuses the chart here, where the tick is known, and so
+// does one whose beat would be shorter than one tick, which Clone Hero's grid
+// cannot step (MeasureIndex; user decision 2026-10-14). Anything else that
+// makes a measure last no time is refused by check_timing_maps.
 void apply_timesig(Song& song, int64_t tick, int numerator, int denominator) {
     if (numerator == 0) return;
-    if (denominator <= 0)
+    // A resolution of 0 or below is check_timing_maps' to refuse, with its
+    // own sentence.
+    const bool beat_under_a_tick =
+        song.tick_resolution() > 0 && song.tick_resolution() * 4 < denominator;
+    if (denominator <= 0 || beat_under_a_tick)
         throw ChartFileError(ErrorKind::ChartTimingRefused,
                              std::string(kTimeSignatureRefusalPrefix) + std::to_string(tick) +
                                  " has a bottom number that is out of range");

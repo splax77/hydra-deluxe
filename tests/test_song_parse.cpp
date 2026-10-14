@@ -625,8 +625,13 @@ TEST_CASE(".chart: a timing line that can't measure time is refused") {
               "the tempo at tick 384 is not above 0 BPM"},
           Bad{"  0 = TS -3\n  0 = B 120000\n",
               "the time signature at tick 0 makes a measure -576 ticks long"},
+          // A beat shorter than one tick (4096 > 192 x 4) is refused where the
+          // signature is read, before its measure length is checked.
           Bad{"  0 = TS 1 12\n  0 = B 120000\n",
-              "the time signature at tick 0 makes a measure 0 ticks long"},
+              "the time signature at tick 0 has a bottom number that is out of range"},
+          // 4/1024 at 192 makes a 3-tick measure, but its beat is under a tick.
+          Bad{"  0 = TS 4\n  0 = B 120000\n  384 = TS 4 10\n",
+              "the time signature at tick 384 has a bottom number that is out of range"},
           Bad{"  0 = TS 4\n  0 = B 120000\n  384 = TS 4 40\n",
               "the time signature at tick 384 has a bottom number that is out of range"},
           Bad{"  0 = TS 4\n  0 = B 120000\n  384 = TS 4 -1\n",
