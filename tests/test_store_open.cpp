@@ -486,6 +486,32 @@ TEST_CASE("a stop asked for mid-copy leaves the old file whole and throws Cancel
     remove_db(path);
 }
 
+TEST_CASE("a stop asked mid-conversion leaves the results table whole and throws Cancelled") {
+    const std::string path = testtemp::temp_path("convert_cancelled", ".db");
+    seed_old_layout(path);
+    const OpenProgressFn stop_at_two = [](const OpenProgress& p) {
+        return !(p.step == OpenStep::ConvertingRecords && p.rows_done == 2);
+    };
+    try {
+        RecordStore store(path, core::default_stamp(), stop_at_two);
+        FAIL("the open finished although the callback asked it to stop");
+    } catch (const KindedError& e) {
+        CHECK(e.kind() == ErrorKind::Cancelled);
+    }
+    // The conversion is one transaction: the two records it had filed are
+    // gone with it, and the next open converts every row.
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM results") == kSeedResults);
+    CHECK(record_rows_in(path) == 0);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == 0);
+    CHECK(detail_tables_in(path) == 5);
+    {
+        RecordStore store(path);
+        check_upgraded_rows(store);
+    }
+    check_upgraded_files(path);
+    remove_db(path);
+}
+
 TEST_CASE("a fresh file that cannot be made fails as an upgrade error with the old file whole") {
     const std::string path = testtemp::temp_path("upgrade_no_temp", ".db");
     seed_old_layout(path);
