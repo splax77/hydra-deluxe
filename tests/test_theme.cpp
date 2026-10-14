@@ -46,6 +46,23 @@ TEST_CASE("theme: apply_theme uses the readable shades") {
     ImGui::DestroyContext();
 }
 
+// apply_theme writes the text alignment itself (the user's answer 6 in the
+// 2026-10-14 column-shares plan): a button's label centred, a selectable's
+// text at the left. The style starts off elsewhere so the test sees the
+// write, not ImGui's defaults.
+TEST_CASE("theme: apply_theme centres button labels and starts selectable text at the left") {
+    ImGui::CreateContext();
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.ButtonTextAlign = ImVec2(0.0f, 0.0f);
+    style.SelectableTextAlign = ImVec2(1.0f, 1.0f);
+    apply_theme();
+    CHECK(style.ButtonTextAlign.x == 0.5f);
+    CHECK(style.ButtonTextAlign.y == 0.5f);
+    CHECK(style.SelectableTextAlign.x == 0.0f);
+    CHECK(style.SelectableTextAlign.y == 0.0f);
+    ImGui::DestroyContext();
+}
+
 // Disabled input text and dimmed text are one grey, written once: the
 // disabled name refers to the dimmed one rather than spelling it again.
 TEST_CASE("theme: disabled input text is the dimmed grey") {

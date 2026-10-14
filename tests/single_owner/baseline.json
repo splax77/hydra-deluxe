@@ -107,6 +107,42 @@
       "date": "2026-10-14",
       "added_by": "CS-T2",
       "remove_by": "2026-10-28"
+    },
+    {
+      "question": "Which way is text aligned?",
+      "file": "src/ui/report_window.cpp",
+      "line_text": "if (numeric) place_control_at_right_edge(ImGui::CalcTextSize(text.c_str()).x);",
+      "removed_by": "CS-T4: a report's number cells start at their column's left edge",
+      "date": "2026-10-14",
+      "added_by": "CS-T5a",
+      "remove_by": "2026-10-28"
+    },
+    {
+      "question": "Which way is text aligned?",
+      "file": "src/ui/report_window.cpp",
+      "line_text": "place_control_at_line_end(ImGui::CalcTextSize(built.c_str()).x + spacing + buttons_w(buttons));",
+      "removed_by": "CS-T4: \"Built HH:MM\" starts after the item before it; only the header's buttons stay at the right edge",
+      "date": "2026-10-14",
+      "added_by": "CS-T5a",
+      "remove_by": "2026-10-28"
+    },
+    {
+      "question": "Which way is text aligned?",
+      "file": "src/ui/report_window.h",
+      "line_text": "place_control_at_right_edge(ImGui::CalcTextSize(number.c_str()).x);",
+      "removed_by": "CS-T4: a report's \"#\" cell starts at its cell's left edge",
+      "date": "2026-10-14",
+      "added_by": "CS-T5a",
+      "remove_by": "2026-10-28"
+    },
+    {
+      "question": "Which way is text aligned?",
+      "file": "src/app/path_view.cpp",
+      "line_text": "std::snprintf(buf, sizeof(buf), \"%10s\", group_thousands(v).c_str());",
+      "removed_by": "CS-T5b: the score breakdown's numbers start in one column after the longest label (answer 11)",
+      "date": "2026-10-14",
+      "added_by": "CS-T5a",
+      "remove_by": "2026-10-28"
     }
   ],
   "known_clones": []

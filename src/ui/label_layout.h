@@ -12,19 +12,21 @@
 
 namespace hydra::ui {
 
-// Labels centred on `centres` (ascending), each `widths[i]` wide, kept inside
-// [left, right]. Returns each label's left edge when it is drawn, or nothing
-// when it would come within `gap` of the one before. Greedy from the left;
-// the first and the last label always show (the last one drops any earlier
-// ones it would overlap, but never the first).
-inline std::vector<std::optional<float>> spaced_labels(const std::vector<float>& centres,
+// Labels starting at `starts` (ascending), each `widths[i]` wide, kept inside
+// [left, right]: a label that would run past `right` moves left to end there.
+// Text starts at its mark, as apply_theme (ui/theme.cpp) has it. Returns each
+// label's left edge when it is drawn, or nothing when it would come within
+// `gap` of the one before. Greedy from the left; the first and the last label
+// always show (the last one drops any earlier ones it would overlap, but
+// never the first).
+inline std::vector<std::optional<float>> spaced_labels(const std::vector<float>& starts,
                                                        const std::vector<float>& widths,
                                                        float left, float right, float gap) {
-    const size_t n = std::min(centres.size(), widths.size());
+    const size_t n = std::min(starts.size(), widths.size());
     std::vector<std::optional<float>> out(n);
     if (n == 0) return out;
     auto place = [&](size_t i) {
-        return std::max(left, std::min(centres[i] - widths[i] * 0.5f, right - widths[i]));
+        return std::max(left, std::min(starts[i], right - widths[i]));
     };
     float end = 0.0f;
     for (size_t i = 0; i < n; ++i) {

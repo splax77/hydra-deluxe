@@ -80,13 +80,6 @@ void flow_next(float w, float spacing) {
     if (fits_on_line(w, spacing)) ImGui::SameLine(0.0f, spacing);
 }
 
-// Put the next item flush right, `w` wide: on the current line when it fits,
-// else on the next.
-void align_right(float w) {
-    if (fits_on_line(w, ImGui::GetStyle().ItemSpacing.x)) ImGui::SameLine();
-    move_to_right_edge(w);
-}
-
 // ---- the path list ----------------------------------------------------------
 
 // The space between a path's title and its timing.
@@ -196,8 +189,10 @@ void render_path_list(const app::PathButtonsView& list, const Path*& selected_pa
 // ---- the activations --------------------------------------------------------
 
 // The strip above the rows: a thin bar the column's width, a gold mark per
-// activation at its song_fraction with its number above, and the first and
-// last measure under the ends. Not drawn unless every row has a fraction.
+// activation at its song_fraction with its number above, starting at the
+// mark's x (text at the left, as apply_theme in ui/theme.cpp has it; the
+// user's answer 9), and the first and last measure side by side under its
+// left end (answer 8). Not drawn unless every row has a fraction.
 // Every mark is drawn; a number is drawn only where it has room beside the
 // last one (label_layout.h), and hovering the strip names the activations
 // under the mouse, so a crowded chart's hidden numbers can still be read.
@@ -214,7 +209,7 @@ void render_timeline(const app::ActivationsView& view) {
     dl->AddRectFilled(ImVec2(top.x, bar_y), ImVec2(top.x + w, bar_y + px(4.0f)),
                       IM_COL32(58, 58, 62, 255), px(2.0f));
     const float num_size = ImGui::GetFontSize() * 0.7f;
-    std::vector<float> centres, widths;
+    std::vector<float> marks, widths;  // each mark's x, and its number's width
     for (const app::ActivationRowView& a : view.acts) {
         const float x = top.x + static_cast<float>(*a.song_fraction) * w;
         const ImVec2 m_min(x - px(2.0f), top.y + px(20.0f));
@@ -229,11 +224,11 @@ void render_timeline(const app::ActivationsView& view) {
                         ImGui::GetColorU32(warn_or_dim(a.difficult)), px(1.0f),
                         0, px(1.5f));
         const std::string num = std::to_string(a.number);
-        centres.push_back(x);
+        marks.push_back(x);
         widths.push_back(ImGui::GetFont()->CalcTextSizeA(num_size, FLT_MAX, 0.0f, num.c_str()).x);
     }
     const std::vector<std::optional<float>> lefts =
-        spaced_labels(centres, widths, top.x, top.x + w, px(3.0f));
+        spaced_labels(marks, widths, top.x, top.x + w, px(3.0f));
     for (size_t i = 0; i < view.acts.size(); ++i) {
         if (!lefts[i]) continue;
         const app::ActivationRowView& a = view.acts[i];
@@ -247,25 +242,27 @@ void render_timeline(const app::ActivationsView& view) {
         const float mx = ImGui::GetIO().MousePos.x;
         std::string tip;
         size_t nearest = 0;
-        for (size_t i = 0; i < centres.size(); ++i) {
-            if (std::fabs(centres[i] - mx) < std::fabs(centres[nearest] - mx)) nearest = i;
-            if (std::fabs(centres[i] - mx) <= px(6.0f)) {
+        for (size_t i = 0; i < marks.size(); ++i) {
+            if (std::fabs(marks[i] - mx) < std::fabs(marks[nearest] - mx)) nearest = i;
+            if (std::fabs(marks[i] - mx) <= px(6.0f)) {
                 const app::ActivationRowView& a = view.acts[i];
                 if (!tip.empty()) tip += "\n";
                 tip += "Activation " + std::to_string(a.number) + "  " + a.measure;
                 if (!a.badge.empty()) tip += "  " + a.badge;
             }
         }
-        if (tip.empty() && !centres.empty()) {
+        if (tip.empty() && !marks.empty()) {
             const app::ActivationRowView& a = view.acts[nearest];
             tip = "Activation " + std::to_string(a.number) + "  " + a.measure;
             if (!a.badge.empty()) tip += "  " + a.badge;
         }
         if (!tip.empty()) ImGui::SetTooltip("%s", tip.c_str());
     }
+    // The end label starts right after the start label, text at the left as
+    // apply_theme (ui/theme.cpp) has it (the user's answer 8).
     ImGui::PushFont(g_mono_font, 0.0f);
     ImGui::TextDisabled("%s", view.timeline_start.c_str());
-    align_right(ImGui::CalcTextSize(view.timeline_end.c_str()).x);
+    flow_next(ImGui::CalcTextSize(view.timeline_end.c_str()).x, ImGui::GetStyle().ItemSpacing.x);
     ImGui::TextDisabled("%s", view.timeline_end.c_str());
     ImGui::PopFont();
 }
@@ -295,6 +292,8 @@ void render_activation_row(size_t i, const app::ActivationRowView& a, app::Paths
     const ImVec2 dot(top.x + px(32.0f), top.y + h * 0.5f);
     dl->AddCircleFilled(dot, px(10.0f), IM_COL32(58, 58, 62, 255));
     const std::string num = std::to_string(a.number);
+    // Centred in its circle by hand: a kept exception to apply_theme's
+    // left-aligned text (ui/theme.cpp), the user's answer 9.
     text_at(ImVec2(dot.x - ImGui::CalcTextSize(num.c_str()).x * 0.5f, text_y), text_color(),
             num.c_str());
     text_at(ImVec2(top.x + px(52.0f), text_y), kBestPathColor, a.notation.c_str(), g_mono_font);
@@ -427,7 +426,7 @@ void render_activation_body(size_t i, const app::ActivationRowView& a, app::Path
     ImGui::PopFont();
     char show[48];
     std::snprintf(show, sizeof(show), "Show in Preview >##showact%d", a.number);
-    align_right(button_slot_width("Show in Preview >"));
+    place_control_at_line_end(button_slot_width("Show in Preview >"));
     if (ImGui::SmallButton(show)) ui.preview_jump = i;
 
     if (!a.early_fill.empty()) ImGui::TextUnformatted(a.early_fill.c_str());
@@ -485,7 +484,7 @@ void render_activations(const app::ActivationsView& view, app::PathsTabUi& ui) {
     }
     const bool all = ui.all_open();
     const char* toggle = all ? "Collapse all" : "Expand all";
-    align_right(button_slot_width(toggle));
+    place_control_at_line_end(button_slot_width(toggle));
     if (ImGui::SmallButton(toggle)) ui.set_all(!all);
 
     render_timeline(view);

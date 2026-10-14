@@ -443,7 +443,7 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
             // (right-aligned, dim), so the whole row is one click target.
             ImGui::TableSetColumnIndex(0);
             const std::string number = row_number(static_cast<size_t>(k));
-            move_to_right_edge(ImGui::CalcTextSize(number.c_str()).x);
+            place_control_at_right_edge(ImGui::CalcTextSize(number.c_str()).x);
             ImGui::PushStyleColor(ImGuiCol_Text, kDimTextColor);
             const bool clicked = ImGui::Selectable(
                 number.c_str(), memory.selected == index,
