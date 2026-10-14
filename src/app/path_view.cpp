@@ -412,8 +412,10 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
 
 std::vector<std::string> build_score_breakdown(const Path& path) {
     std::vector<std::string> lines;
-    // Rounded, not truncated, so it matches the report's mult column.
-    lines.push_back("Avg. Multiplier:      " + format_avg_mult(path.avg_mult()) + "x");
+    // Rounded, not truncated, so it matches the report's mult column. The
+    // padding makes the number end in the same column as the numbers below.
+    lines.push_back(std::string(kAverageMultiplierLabel) + ":   " +
+                    format_avg_mult(path.avg_mult()) + "x");
 
     // Leading '\n' on Notes and Total Score puts a blank line above
     // each; there is no other separator.

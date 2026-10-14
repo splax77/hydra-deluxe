@@ -1,9 +1,11 @@
 #include "ui/details_parts.h"
 
-#include "core/model.h"  // group_thousands
+#include "app/display_format.h"  // kAverageMultiplierLabel
+#include "core/model.h"          // group_thousands
 #include "core/stars.h"
 #include "imgui.h"
 #include "ui/column_widths.h"
+#include "ui/widgets.h"  // overflow_tooltip
 
 #include <cstdint>
 #include <cstdio>
@@ -34,8 +36,9 @@ void render_stars_panel(AppState& app) {
     // rule (ui/column_widths.h) says; the rows are a handful, so they are
     // measured each frame.
     const WidthOf text = measure_in_font();
+    constexpr int kMultiplierColumn = 1;
     std::vector<ColumnSpec> specs = {{"Stars", false, 0.0f, text},
-                                     {"Multiplier", false, 0.0f, text},
+                                     {app::kAverageMultiplierLabel, false, 0.0f, text},
                                      {"Cutoff", false, 0.0f, text}};
     if (has_solo) specs.push_back({"With full solo bonus", false, 0.0f, text});
     std::vector<std::vector<std::string>> rows;
@@ -48,7 +51,17 @@ void render_stars_panel(AppState& app) {
     }
     if (begin_small_table("##startable", ImGuiTableFlags_RowBg, specs, rows.size(),
                           [&](size_t r, size_t c) { return rows[r][c]; })) {
-        ImGui::TableHeadersRow();
+        // The headers, drawn one by one so the factor column can explain
+        // itself on hover.
+        ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
+        for (int c = 0; c < static_cast<int>(specs.size()); ++c) {
+            if (!ImGui::TableSetColumnIndex(c)) continue;
+            ImGui::TableHeader(specs[static_cast<size_t>(c)].header.c_str());
+            if (c == kMultiplierColumn)
+                overflow_tooltip(
+                    "The average multiplier a path needs for this many stars. The cutoff is "
+                    "the Base score times this factor.");
+        }
         for (const std::vector<std::string>& row : rows) {
             ImGui::TableNextRow();
             for (const std::string& cell : row) {
