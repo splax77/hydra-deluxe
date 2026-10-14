@@ -187,9 +187,10 @@ MeasureCount::MeasureCount(const std::map<int64_t, int64_t>& tpm_map) {
         tpm_.push_back(kv.second);
     }
     elapsed_.assign(starts_.size(), 0.0);
-    for (size_t i = 1; i < starts_.size(); ++i)
-        elapsed_[i] = elapsed_[i - 1] + static_cast<double>(starts_[i] - starts_[i - 1]) /
-                                            static_cast<double>(tpm_[i - 1]);
+    for (size_t i = 1; i < starts_.size(); ++i) {
+        const double tpm = static_cast<double>(tpm_[i - 1]);
+        elapsed_[i] = elapsed_[i - 1] + static_cast<double>(starts_[i] - starts_[i - 1]) / tpm;
+    }
 }
 
 int MeasureCount::span_at(int64_t ticks) const { return index_at(starts_, ticks, kSelf); }
