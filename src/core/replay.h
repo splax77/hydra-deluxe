@@ -163,9 +163,8 @@ struct ReplayChord {
     int index = 0;
     int64_t tick = 0;
     double ms = 0.0;
-    int64_t measure = 0;
-    int64_t beat = 0;
-    int64_t measure_tick = 0;
+    // Where the chord sits, as the screen prints it (app::format_measure).
+    std::string position;
     double measures_decimal = 0.0;
     std::string chord_code;
     std::vector<ReplayNote> notes;
@@ -204,7 +203,7 @@ struct ReplayResult {
 
 // How much of each row replay_path fills in.
 struct ReplayOptions {
-    // Leave each row's chord_code and notes empty, and skip the work that
+    // Leave each row's chord_code, position and notes empty, and skip the work that
     // builds them. Every score field (points, cum, cum_onscreen_total,
     // multipliers, combo, in_sp) and ReplayResult::final are the same as a
     // full replay's. Only the Preview sets it: its score box reads ms,

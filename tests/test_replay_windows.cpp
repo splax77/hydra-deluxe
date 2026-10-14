@@ -67,17 +67,16 @@ std::string rules_label(const core::Rules& r) {
 }
 
 // One row as text, every field the windows can move plus where the chord
-// sits: index, tick, measure.beat.tick, combo before -> after, multiplier
+// sits: index, tick, position, combo before -> after, multiplier
 // before / after, base, combo and SP points, "SP" when Star Power paid the
 // chord, the disc's multiplier and the running total.
 std::string row_line(const ReplayChord& c) {
     char buf[200];
     std::snprintf(buf, sizeof buf,
-                  "%d t%lld m%lld.%lld.%lld c%d->%d x%d/%d base=%lld combo=%lld sp=%lld %s "
+                  "%d t%lld %s c%d->%d x%d/%d base=%lld combo=%lld sp=%lld %s "
                   "shown=x%d cum=%lld",
-                  c.index, static_cast<long long>(c.tick), static_cast<long long>(c.measure + 1),
-                  static_cast<long long>(c.beat + 1), static_cast<long long>(c.measure_tick),
-                  c.combo_before, c.combo_after, c.multiplier, c.multiplier_after,
+                  c.index, static_cast<long long>(c.tick), c.position.c_str(), c.combo_before,
+                  c.combo_after, c.multiplier, c.multiplier_after,
                   static_cast<long long>(c.points.base), static_cast<long long>(c.points.combo),
                   static_cast<long long>(c.points.sp), c.in_sp ? "SP" : "--", c.multiplier_shown,
                   static_cast<long long>(c.cum.total()));

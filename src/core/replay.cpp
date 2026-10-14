@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <stdexcept>
 
+#include "app/path_view.h"  // format_measure, the screen's position text
 #include "core/backend_value.h"
 #include "core/scoring.h"
 #include "core/sqout_chord.h"
@@ -105,12 +106,11 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
         row.index = static_cast<int>(i);
         row.tick = ts.timecode.ticks();
         row.ms = ts.timecode.ms();
-        const int64_t* mbt = ts.timecode.measure_beats_ticks();
-        row.measure = mbt[0];
-        row.beat = mbt[1];
-        row.measure_tick = mbt[2];
         row.measures_decimal = ts.timecode.measures_decimal();
-        if (!options.scores_only) row.chord_code = ts.chord.code();
+        if (!options.scores_only) {
+            row.position = app::format_measure(ts.timecode);
+            row.chord_code = ts.chord.code();
+        }
         row.is_fill = ts.has_activation();
         row.is_solo = ts.flag_solo;
         row.is_sp_phrase_end = ts.flag_sp;
