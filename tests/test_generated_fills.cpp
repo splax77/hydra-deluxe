@@ -204,7 +204,7 @@ const FillPin kFillPins[] = {
 // clang-format on
 
 // The pin's hash: the shared FNV-1a over the text's bytes (tests/song_digest.h).
-uint64_t fold(const std::string& s) {
+uint64_t pin_hash(const std::string& s) {
     return digest::fnv(digest::kSeed, s.data(), s.size());
 }
 
@@ -234,13 +234,13 @@ TEST_CASE("generated fills: every corpus chart's generated fills are pinned") {
         }
         char line[64];
         std::snprintf(line, sizeof line, "%d, 0x%016llxull},\n", count,
-                      static_cast<unsigned long long>(fold(text)));
+                      static_cast<unsigned long long>(pin_hash(text)));
         const std::string pin_line = "    {\"" + rel + "\", " + line;
         fresh += pin_line;
         ++charts;
         const auto it = pins.find(rel);
         const bool match = it != pins.end() && it->second->count == count &&
-                           it->second->hash == fold(text);
+                           it->second->hash == pin_hash(text);
         CHECK_MESSAGE(match, "new pin: " << pin_line);
         all_match = all_match && match;
     }
