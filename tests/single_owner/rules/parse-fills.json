@@ -1,0 +1,84 @@
+{
+  "rules": [
+    {
+      "question": "What is a section marker's shown name?",
+      "owner": "section_display_name in src/parse/section_names.cpp",
+      "owner_file": "src/parse/section_names.cpp",
+      "owner_symbol": "section_display_name",
+      "date": "2026-10-14",
+      "decision": "D115 (plan part B2, task B2-3)",
+      "added_by": "D115-B2-3",
+      "pattern": "rfind\\(\"(section |prc_)\"|\\.substr\\((4|8)\\)",
+      "must_match": [
+        "if (body.rfind(\"section \", 0) == 0) {",
+        "*name = body.substr(8);",
+        "if (body.rfind(\"prc_\", 0) == 0) {",
+        "*name = body.substr(4);"
+      ],
+      "must_not_match": [
+        "if (!is_section_marker(body)) return false;",
+        "*name = section_display_name(body);",
+        "if (section_name_of(std::string_view(s).substr(1, s.size() - 2), &name))",
+        "const std::string top = rel.substr(0, rel.find('/'));"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/parse/section_names.cpp",
+          "line_text": "if (body.rfind(\"section \", 0) == 0) return body.substr(8);",
+          "why": "marker_name, which section_display_name and is_section_marker call: the Clone Hero spelling"
+        },
+        {
+          "file": "src/parse/section_names.cpp",
+          "line_text": "if (body.rfind(\"prc_\", 0) == 0) return body.substr(4);",
+          "why": "marker_name, which section_display_name and is_section_marker call: the Rock Band spelling"
+        }
+      ],
+      "exempt": [
+        {
+          "file": "src/ui/app_shell.cpp",
+          "why": "line.substr(4) skips the 'Pos=' key of a saved window line, not a section prefix"
+        },
+        {
+          "file": "src/app/library_query.cpp",
+          "why": "word.substr(8) skips a search word's own prefix, not a section prefix"
+        }
+      ],
+      "note": "Testing a text event for a section prefix, or cutting the prefix off by its length. The .mid and .chart readers each did both in song.cpp's section_name_of before D115; section_display_name now strips the prefix, looks the name up in Clone Hero's list and spells a miss with spaces, and section_name_of only calls it. Decided by: D115 (plan part B2, task B2-3)"
+    },
+    {
+      "question": "Where does a generated fill start, and which chord takes it?",
+      "owner": "Song::check_activations in src/parse/song.cpp",
+      "owner_file": "src/parse/song.cpp",
+      "owner_symbol": "Song::check_activations",
+      "date": "2026-10-14",
+      "decision": "D115 (plan part B2, task B2-3)",
+      "added_by": "D115-B2-3",
+      "pattern": "(\\.|->)fill_(max_distance_beats|cooldown_measures)\\b",
+      "anchor": "fill_",
+      "must_match": [
+        "const int64_t cooldown_measures = rules.fill_cooldown_measures;",
+        "static_cast<int64_t>(tick_resolution_ * rules.fill_max_distance_beats);",
+        "const double reach = rules->fill_max_distance_beats * res;"
+      ],
+      "must_not_match": [
+        "{\"fill_cooldown_measures\", &Rules::fill_cooldown_measures, 1.0},",
+        "int fill_cooldown_measures = 4;",
+        "double fill_max_distance_beats = 0.5;",
+        "const double slop = rules.fill_land_slop_beats;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/parse/song.cpp",
+          "line_text": "static_cast<int64_t>(tick_resolution_ * rules.fill_max_distance_beats) + 1;",
+          "why": "Song::check_activations, the owner: how far from a measure line a chord may sit"
+        },
+        {
+          "file": "src/parse/song.cpp",
+          "line_text": "line += static_cast<size_t>(std::max(rules.fill_cooldown_measures, 1));",
+          "why": "Song::check_activations, the owner: the next candidate line after a placed fill"
+        }
+      ],
+      "note": "Reading either generated-fill rule from a Rules value. Song::check_activations places every generated fill from the measure lines, as Clone Hero's generator does; rules_fields in src/core/rules.cpp names the fields through member pointers, which is loading them, not placing fills. Decided by: D115 (plan part B2, task B2-3)"
+    }
+  ]
+}

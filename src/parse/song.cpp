@@ -15,6 +15,7 @@
 #include "core/winstr.h"  // read_file_bytes, file_byte_source, memory_byte_source
 #include "parse/midi.h"
 #include "parse/note_shuffle.h"
+#include "parse/section_names.h"
 #include "parse/sng.h"
 #include "parse/chart_files.h"
 #include "parse/srb.h"
@@ -56,19 +57,13 @@ void check_timing_maps(int64_t tick_resolution,
 
 namespace {
 
-// The name inside a practice-section marker body, which both formats spell one
-// of two ways: "section Verse 2B" (Clone Hero) or "prc_verse_2b" (Rock Band).
-// Nothing else is a section.
-bool section_name_of(const std::string& body, std::string* name) {
-    if (body.rfind("section ", 0) == 0) {
-        *name = body.substr(8);
-        return true;
-    }
-    if (body.rfind("prc_", 0) == 0) {
-        *name = body.substr(4);
-        return true;
-    }
-    return false;
+// Whether a text event's body marks a practice section, and if so the name it
+// shows. Both questions are answered in parse/section_names.cpp; this is the
+// one door both readers use.
+bool section_name_of(std::string_view body, std::string* name) {
+    if (!is_section_marker(body)) return false;
+    *name = section_display_name(body);
+    return true;
 }
 
 // Practice sections in tick order, the order Song promises. A .chart's
@@ -1200,7 +1195,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
             const std::string& s = msg.str;
             if (s.size() < 2 || s.front() != '[' || s.back() != ']') continue;
             std::string name;
-            if (section_name_of(s.substr(1, s.size() - 2), &name))
+            if (section_name_of(std::string_view(s).substr(1, s.size() - 2), &name))
                 song.practice_sections.push_back({elapsed, name});
         }
     }
@@ -1611,7 +1606,7 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
                     std::string_view event;
                     const ChartLine l = classify_chart_line(lhs, rhs, mix_digit, &event);
                     std::string name;
-                    if (l.kind == LineKind::Event && section_name_of(std::string(event), &name))
+                    if (l.kind == LineKind::Event && section_name_of(event, &name))
                         events.push_back({l.tick, std::move(name)});
                 } else {
                     const ChartLine l = classify_chart_line(lhs, rhs, mix_digit, nullptr);
