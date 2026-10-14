@@ -122,8 +122,9 @@ struct LibraryViewState {
     // The panel state the table last fitted its Charter and Folder columns
     // to; unset = fit them on the table's next frame past its first.
     std::optional<bool> columns_for_panel;
-    // The selection (notespath) the table last scrolled to, so it scrolls
-    // only when the selection changes (the panel's Previous/Next song).
+    // The selection (notespath) the table last asked to scroll to, so it asks
+    // only when the selected song changes. Whether and how far it then moves
+    // is ui/list_scroll.h's call.
     std::string scrolled_to;
     // The dmleaderboards picker's name filter.
     char dm_filter[128] = "";
