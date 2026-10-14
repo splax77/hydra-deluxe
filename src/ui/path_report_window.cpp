@@ -120,7 +120,7 @@ void draw_body(PathWindow& w, const report_frame::Frame& frame, const PathReport
         apply_filters(w);
     if (report_frame::dropdown("##timing", w.labels, w.timing)) apply_filters(w);
     ImGui::SameLine();
-    if (ImGui::Checkbox("Optimal paths only",&w.best_only)) apply_filters(w);
+    if (ImGui::Checkbox("Optimal paths only", &w.best_only)) apply_filters(w);
     report_frame::count_line(w.memory, view.count_line(view_rules::kNoun));
 
     if (view.visible().empty()) {
