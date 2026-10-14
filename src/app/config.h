@@ -17,6 +17,7 @@
 
 #include "app/analysis.h"
 #include "core/rules.h"
+#include "search/graph.h"  // FillDeadlineRule
 #include "store/record_store.h"
 
 namespace hydra::app {
@@ -250,8 +251,21 @@ struct Settings {
     // score range and the fill rule, in the store's canonical form.
     store::Lens lens() const;
 
+    // The profile a chart is analyzed and filed under with these settings:
+    // the chartmode, the SP cap and the lens. Callers ask here, or through
+    // the named variants below, which start from it.
+    store::Profile profile() const;
+
+    // profile() at Clone Hero's own SP cap (kCloneHeroSpCap), whatever cap
+    // these settings hold: the profile the leaderboard comparison reads.
+    store::Profile profile_at_clone_hero_cap() const;
+
+    // profile() with its lens's fill rule set to `rule`, the rest kept: the
+    // fill comparison reads one profile per rule.
+    store::Profile profile_with_fills(FillDeadlineRule rule) const;
+
     // The identity of one chart's record under the current settings: this
-    // hash, the current chartmode, the current SP cap and the current lens.
+    // hash and the same three parts profile() returns.
     store::RecordKey record_key(const std::string& hyhash) const;
 
     // Everything a batch run under these settings needs: the search settings,

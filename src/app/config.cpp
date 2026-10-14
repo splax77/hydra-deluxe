@@ -372,6 +372,28 @@ store::Lens Settings::lens() const {
         search_depth_mode() == DepthMode::Points ? 1 : 0, depth_value, legacy_fills);
 }
 
+store::Profile Settings::profile() const {
+    // record_key still puts the three parts together while it exists (its
+    // single-owner row is rules/store/concept-H1.json), so the two cannot
+    // drift; the assembly moves here when record_key goes (D115).
+    return record_key({}).settings();
+}
+
+// The two variants change one setting on a copy and ask profile() again, so
+// cap_query() and lens() (and through it Lens::from) stay the only encoders.
+store::Profile Settings::profile_at_clone_hero_cap() const {
+    Settings at_cap = *this;
+    at_cap.sp_cap = kCloneHeroSpCap;
+    return at_cap.profile();
+}
+
+store::Profile Settings::profile_with_fills(FillDeadlineRule rule) const {
+    Settings with_rule = *this;
+    // The setting fill_rule_for reads as `rule`.
+    with_rule.legacy_fills = rule == FillDeadlineRule::Ch10;
+    return with_rule.profile();
+}
+
 store::RecordKey Settings::record_key(const std::string& hyhash) const {
     return store::RecordKey{hyhash, chartmode_key(), cap_query(), lens()};
 }
