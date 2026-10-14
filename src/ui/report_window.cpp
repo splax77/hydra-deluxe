@@ -33,24 +33,14 @@ std::string clock_text(std::chrono::system_clock::time_point at) {
 // A cell's text, cut to the room left on its line as text_ellipsized
 // (ui/widgets.h) cuts it, through the one cut rule (render::ellipsize), but
 // fitted once per cell and width (FittedTextCache) instead of every frame. It
-// draws as text_ellipsized draws: whole, or cut with the whole text in a
-// tooltip.
+// is drawn by draw_cut_text, as text_ellipsized draws.
 void fitted_text(const std::string& text, FittedTextCache& fits, size_t row, size_t column) {
-    ImGuiWindow* window = ImGui::GetCurrentWindow();
-    if (window->SkipItems) return;
+    if (ImGui::GetCurrentWindow()->SkipItems) return;
     static const FittedTextCache::Fit fit = [](const std::string& t, float width) {
         return render::ellipsize(t, width, text_width);
     };
     const float avail = ImGui::GetContentRegionAvail().x;
-    const std::string& shown = fits.fitted(row, column, text, avail, fit);
-    if (shown == text) {
-        ImGui::TextUnformatted(text.c_str());
-        return;
-    }
-    window->DrawList->AddText(window->DC.CursorPos, ImGui::GetColorU32(ImGuiCol_Text),
-                              shown.c_str());
-    ImGui::Dummy(ImVec2(avail, ImGui::CalcTextSize(text.c_str()).y));
-    overflow_tooltip(text.c_str());
+    draw_cut_text(text.c_str(), fits.fitted(row, column, text, avail, fit), avail);
 }
 
 // Puts the next `width` of items at the right of the current line when they

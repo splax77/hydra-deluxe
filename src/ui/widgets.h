@@ -195,6 +195,26 @@ inline void overflow_tooltip(const char* text) {
 // render::ellipsize call in the UI hands over.
 inline float text_width(const std::string& s) { return ImGui::CalcTextSize(s.c_str()).x; }
 
+// Draws `text` where it was cut to `shown` (render::ellipsize's answer for
+// `avail` pixels): whole when nothing was cut, otherwise the cut text with the
+// full text in a tooltip. The one place a cut label is drawn; text_ellipsized
+// and the report window's cached cells (ui/report_window.cpp) both end here.
+// The caller has already checked the window is not skipping items.
+inline void draw_cut_text(const char* text, const std::string& shown, float avail) {
+    if (shown == text) {
+        ImGui::TextUnformatted(text);
+        return;
+    }
+
+    ImGuiWindow* window = ImGui::GetCurrentWindow();
+    window->DrawList->AddText(window->DC.CursorPos, ImGui::GetColorU32(ImGuiCol_Text),
+                              shown.c_str());
+    // An item exactly as wide as the space the text was given, so layout
+    // advances normally and the tooltip has a hover rect.
+    ImGui::Dummy(ImVec2(avail, ImGui::CalcTextSize(text).y));
+    overflow_tooltip(text);
+}
+
 // TextUnformatted that ellipsizes at the available width instead of clipping
 // mid-glyph, with the full text in a tooltip when it didn't fit. The cut is
 // render::ellipsize's, measured in the current font (text_width), so every cut label in
@@ -203,22 +223,10 @@ inline float text_width(const std::string& s) { return ImGui::CalcTextSize(s.c_s
 // take, for text that shares its line with right-aligned buttons (the song
 // panel's title).
 inline void text_ellipsized(const char* text, float max_width = FLT_MAX) {
-    ImGuiWindow* window = ImGui::GetCurrentWindow();
-    if (window->SkipItems) return;
+    if (ImGui::GetCurrentWindow()->SkipItems) return;
 
     const float avail = (std::min)(ImGui::GetContentRegionAvail().x, max_width);
-    const std::string shown = render::ellipsize(text, avail, text_width);
-    if (shown == text) {
-        ImGui::TextUnformatted(text);
-        return;
-    }
-
-    window->DrawList->AddText(window->DC.CursorPos, ImGui::GetColorU32(ImGuiCol_Text),
-                              shown.c_str());
-    // An item exactly as wide as the space the text was given, so layout
-    // advances normally and the tooltip has a hover rect.
-    ImGui::Dummy(ImVec2(avail, ImGui::CalcTextSize(text).y));
-    overflow_tooltip(text);
+    draw_cut_text(text, render::ellipsize(text, avail, text_width), avail);
 }
 
 // A table row's Selectable spanning all columns, with the full text offered
