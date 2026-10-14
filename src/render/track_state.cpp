@@ -8,6 +8,8 @@
 #include <limits>
 #include <stdexcept>
 
+#include "parse/song.h"  // cymbal_counts
+
 namespace hydra::render {
 
 using app::PreviewActivation;
@@ -39,7 +41,7 @@ TrackGem gem_of(const PreviewNote& n, bool pro) {
     // A lane with no pad (pad_of) is the kick.
     if (const std::optional<Pad> pad = pad_of(n.lane)) {
         g.pad = *pad;
-        g.cymbal = pro && n.cymbal && allows_cymbals(app::color_of(n.lane));
+        g.cymbal = n.cymbal && cymbal_counts(app::color_of(n.lane), pro);
     } else {
         g.kick = true;  // 2x kicks are plain kicks (Onyx has no 2x visual)
     }
