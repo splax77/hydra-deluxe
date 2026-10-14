@@ -536,33 +536,6 @@
       "note": "A chart on a page that the library doesn't list still counts. One function says how much; a page that looks a chart up in the copies map itself, or starts its count at a default, is a second answer. Decided by: D77 item 2, D79 item 3 (task COUNT-P)"
     },
     {
-      "question": "Which stored rows belong to a chart no library row lists?",
-      "owner": "not_in_library in src/store/record_store.cpp",
-      "owner_file": "src/store/record_store.cpp",
-      "owner_symbol": "not_in_library",
-      "date": "2026-10-07",
-      "decision": "D87",
-      "added_by": "storage-T1",
-      "pattern": "charts\\.md5 = ",
-      "anchor": "charts.md5 = ",
-      "must_match": [
-        "NOT EXISTS (SELECT 1 FROM charts WHERE charts.md5 = results.hyhash)",
-        "\"SELECT 1 FROM charts WHERE charts.md5 = \" + col"
-      ],
-      "must_not_match": [
-        "bind_text(s, 1, item.md5);",
-        "kNamingCopiesSql + \" AS c WHERE songmeta.hyhash = c.md5\")"
-      ],
-      "owner_lines": [
-        {
-          "file": "src/store/record_store.cpp",
-          "line_text": "return std::string(\"NOT EXISTS (SELECT 1 FROM charts WHERE charts.md5 = \") + hash + \")\";",
-          "why": "not_in_library, the owner"
-        }
-      ],
-      "note": "The scan's purge and reidentify_chart both ask this of results; a second SQL spelling could keep rows the other drops. Decided by: D87 items 3 and 4 (task storage-T1 review finding 1)"
-    },
-    {
       "question": "How many charts does a page or its tool count?",
       "owner": "each row's copies from RecordStore::copies_of, added up by generate_report, tally_fill_rows and the fill page's stats() through the payload's \"k\"",
       "owner_file": "src/store/record_store.cpp",
