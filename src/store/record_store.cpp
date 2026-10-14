@@ -15,6 +15,7 @@
 #include "core/little_endian.h"
 #include "core/stars.h"
 #include "core/winstr.h"
+#include "store/chart_index.h"
 #include "store/stored_versions.h"
 #include "store/upgrade_files.h"
 
@@ -571,6 +572,24 @@ PathSummary summarize_record(const HydraRecord& record) {
     PathSummary s = summarize_path(record.best_path());
     // Every kept path, roots and variants: the count the Paths tab shows.
     s.pathcount = static_cast<int>(record.all_paths().size());
+    return s;
+}
+
+PathSummary RecordRow::summary() const {
+    if (paths.empty()) return PathSummary{};
+
+    const PathRow& best = paths.front();
+    PathSummary s;
+    s.score = best.score;
+    s.actcount = best.actcount;
+    s.maxskip = best.maxskip;
+    s.hardest_ms = best.hardest_ms;
+    s.avgmult = best.avgmult;
+    s.notecount = notecount;
+    s.sqin_count = best.sqin_count;
+    s.sqout_count = best.sqout_count;
+    s.pathcount = pathcount;
+    s.stars = stars;
     return s;
 }
 
@@ -1642,6 +1661,16 @@ std::vector<ChartLibraryEntry> RecordStore::list_chart_library_copies(const std:
     Stmt s = prepare_read(db_, (library_entry_select() + " WHERE md5 = ?").c_str());
     bind_text(s, 1, md5);
     return read_library_entries(s, timing_read);
+}
+
+ChartIndex RecordStore::chart_index() {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+
+    // rebuild_chart_library inserts the rows in the scan's order, so rowid
+    // order is scan order.
+    const bool timing_read = chart_meta_current();
+    Stmt s = prepare_read(db_, (library_entry_select() + " ORDER BY rowid").c_str());
+    return ChartIndex::from_rows(read_library_entries(s, timing_read));
 }
 
 }  // namespace hydra::store
