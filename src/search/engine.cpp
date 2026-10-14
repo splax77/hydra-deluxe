@@ -815,6 +815,16 @@ uint64_t Engine::ready_class(const Path& p, uint64_t* passable) const {
     return (refused << 16) | over;
 }
 
+// --- Star Power points ---------------------------------------------------
+// The one place a path's Star Power bonus points (an activation's, a
+// squeeze's rows) join its running total. The SP category and the score move
+// together here, which emit_path's running-total check relies on. advance's
+// per-edge add of all six categories goes through score_total instead.
+static void add_sp_points(Path& p, int32_t points) {
+    p.sc[kSlotSp] += points;
+    p.score += points;
+}
+
 // --- advance -------------------------------------------------------------
 void Engine::advance(Path& p) {
     if (p.node < 0) return;
@@ -970,8 +980,7 @@ bool Engine::branch_activate(Path& p, Path* child) {
     c.bank_tail = -1;
     acts_[(size_t)c.act_tail].skip_tail = p.skip_tail;
     c.skip_tail = -1;
-    c.sc[kSlotSp] += e.frontend_points;
-    c.score += e.frontend_points;
+    add_sp_points(c, e.frontend_points);
     c.skipped_e_offset = NO_DOUBLE;
     c.sp_ready_ms = NO_DOUBLE;
     c.sp_end_time = aiet_val;
@@ -1083,10 +1092,7 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
                     already_paid;
     }
 
-    if (sp_delta) {
-        c.sc[kSlotSp] += sp_delta;
-        c.score += sp_delta;
-    }
+    add_sp_points(c, sp_delta);
 
     *child = c;
 }

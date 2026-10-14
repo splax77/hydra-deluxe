@@ -1,0 +1,35 @@
+{
+  "rules": [
+    {
+      "question": "Where do Star Power points enter a running path?",
+      "owner": "add_sp_points in src/search/engine.cpp",
+      "owner_file": "src/search/engine.cpp",
+      "owner_symbol": "add_sp_points",
+      "date": "2026-10-14",
+      "decision": "D115 (task B1-2)",
+      "added_by": "d115-b1-2",
+      "pattern": "sc\\[kSlotSp\\]\\s*\\+=(?!\\s*\\w+\\.spscore\\b)",
+      "anchor": "kSlotSp",
+      "must_match": [
+        "c.sc[kSlotSp] += e.frontend_points;",
+        "c.sc[kSlotSp] += sp_delta;"
+      ],
+      "must_not_match": [
+        "p.sc[kSlotSp] += e.spscore;",
+        "add_sp_points(c, e.frontend_points);",
+        "add_sp_points(c, sp_delta);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/search/engine.cpp",
+          "line_text": "p.sc[kSlotSp] += points;",
+          "why": "add_sp_points, the owner: the SP category and the running score move together"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A hand add to a running path's SP category, which must move with its running score or emit_path's running-total check throws. advance's per-edge add of an edge's spscore is left out: it is one of the six categories that score_total sums (rules/search/concept-F7.json). Decided by: D115, task B1-2"
+    }
+  ]
+}
