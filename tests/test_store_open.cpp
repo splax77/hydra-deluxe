@@ -348,6 +348,27 @@ TEST_CASE("the first open of a file with stored path details drops them and keep
     remove_db(path);
 }
 
+// An old row's rules fingerprint can be the empty blob (rules_fp_of cuts it
+// from a structure too short to hold one). The conversion files it under a
+// profile whose rules are that empty blob, not NULL, which the profiles
+// table refuses: before bind_blob bound an empty blob as one, the whole open
+// failed on "NOT NULL constraint failed: profiles.rules_fp".
+TEST_CASE("the conversion keeps a row whose rules fingerprint is the empty blob") {
+    const std::string path = testtemp::temp_path("convert_empty_rules_fp", ".db");
+    seed_old_layout(path);
+    exec_on_file(path, "UPDATE results SET rules_fp = x'' WHERE hyhash = 'rules'");
+    {
+        RecordStore store(path);
+        const SummaryLookup got_rules = store.get_summary(kRules);
+        CHECK(got_rules.status == RecordStatus::Stale);
+        CHECK(got_rules.stale_rules);
+    }
+    CHECK(record_rows_in(path) == kKeptResults);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles WHERE typeof(rules_fp) = 'blob'"
+                               " AND length(rules_fp) = 0") == 1);
+    remove_db(path);
+}
+
 TEST_CASE("an old result with no score converts to a record that kept no paths") {
     // The seed's "empty" row: analyzed, no paths kept, so no score.
     const std::string path = testtemp::temp_path("convert_no_score", ".db");

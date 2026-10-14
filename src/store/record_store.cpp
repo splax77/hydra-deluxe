@@ -119,7 +119,11 @@ void bind_text(sqlite3_stmt* s, int i, const std::string& v) {
     sqlite3_bind_text(s, i, v.data(), static_cast<int>(v.size()), SQLITE_TRANSIENT);
 }
 void bind_blob(sqlite3_stmt* s, int i, const std::vector<uint8_t>& v) {
-    sqlite3_bind_blob(s, i, v.data(), static_cast<int>(v.size()), SQLITE_TRANSIENT);
+    // An empty vector's data() may be null, and SQLite binds a null pointer
+    // as NULL. An old file's rules_fp can be the empty blob (rules_fp_of on a
+    // short structure), which must stay a blob, not become NULL.
+    if (v.empty()) sqlite3_bind_zeroblob(s, i, 0);
+    else sqlite3_bind_blob(s, i, v.data(), static_cast<int>(v.size()), SQLITE_TRANSIENT);
 }
 std::string column_text(sqlite3_stmt* s, int i) {
     const unsigned char* p = sqlite3_column_text(s, i);
