@@ -3584,13 +3584,14 @@ static int is_whole_packet_present(stb_vorbis *f)
 // in the stream cannot hold. Upstream stb has no such check.
 static uint32 bytes_left_in_stream(vorb *f)
 {
-   if (USE_MEMORY(f)) return (uint32) (f->stream_end - f->stream);
    #ifndef STB_VORBIS_NO_STDIO
-   {
+   if (!USE_MEMORY(f)) {
       uint32 at = stb_vorbis_get_file_offset(f);
       return at < f->stream_len ? f->stream_len - at : 0;
    }
    #endif
+   // skip() can leave stream past stream_end, so never subtract blindly.
+   return f->stream < f->stream_end ? (uint32) (f->stream_end - f->stream) : 0;
 }
 
 // Hydra change (see bytes_left_in_stream): can n items of size bytes each
@@ -3601,6 +3602,14 @@ static int fits_in_stream(vorb *f, uint32 n, uint32 size)
    if (n <= bytes_left_in_stream(f) / size) return TRUE;
    f->eof = TRUE;
    return FALSE;
+}
+
+// Hydra change: setup_malloc takes an int and rounds it up to a multiple of 8,
+// so n items of size bytes plus spare more must stay within INT_MAX - 7 or the
+// size overflows. Only a stream over about 1 GB can reach this.
+static int fits_in_setup_malloc(uint32 n, uint32 size, uint32 spare)
+{
+   return n <= ((uint32) INT_MAX - 7 - spare) / size;
 }
 
 static int start_decoder(vorb *f)
@@ -3677,6 +3686,7 @@ static int start_decoder(vorb *f)
    //file vendor
    len = get32_packet(f);
    if (!fits_in_stream(f, len, 1))                  return error(f, VORBIS_unexpected_eof); // Hydra change
+   if (!fits_in_setup_malloc(len, 1, 1))            return error(f, VORBIS_outofmem);       // Hydra change
    f->vendor = (char*)setup_malloc(f, sizeof(char) * (len+1));
    if (f->vendor == NULL)                           return error(f, VORBIS_outofmem);
    for(i=0; i < len; ++i) {
@@ -3692,6 +3702,9 @@ static int start_decoder(vorb *f)
    if (!fits_in_stream(f, f->comment_list_length, sizeof(uint32))) {
       f->comment_list_length = 0;                   return error(f, VORBIS_unexpected_eof);
    }
+   if (!fits_in_setup_malloc(f->comment_list_length, sizeof(char*), 0)) {
+      f->comment_list_length = 0;                   return error(f, VORBIS_outofmem);
+   }
    if (f->comment_list_length > 0)
    {
       f->comment_list = (char**) setup_malloc(f, sizeof(char*) * (f->comment_list_length));
@@ -3704,6 +3717,9 @@ static int start_decoder(vorb *f)
       len = get32_packet(f);
       if (!fits_in_stream(f, len, 1)) {
          f->comment_list_length = i;                return error(f, VORBIS_unexpected_eof);
+      }
+      if (!fits_in_setup_malloc(len, 1, 1)) {
+         f->comment_list_length = i;                return error(f, VORBIS_outofmem);
       }
       f->comment_list[i] = (char*)setup_malloc(f, sizeof(char) * (len+1));
       if (f->comment_list[i] == NULL) {
