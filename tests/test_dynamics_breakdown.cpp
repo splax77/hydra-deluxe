@@ -391,7 +391,6 @@ TEST_CASE("dynamics_breakdown: the rules never change a chart's Dynamics count")
     core::Rules other = core::default_rules();
     other.fill_cooldown_measures = 1;
     other.fill_max_distance_beats = 2.0;
-    other.fill_length_measures = 1.0;
     other.fill_land_slop_beats = 0.5;
 
     const Difficulty difficulties[] = {Difficulty::Expert, Difficulty::Hard};

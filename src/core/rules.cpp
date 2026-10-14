@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <string>
+#include <string_view>
 
 namespace hydra::core {
 
@@ -26,13 +27,21 @@ uint64_t fnv1a64(const std::string& s) {
 
 namespace {
 
+// The line Hydra 1.8.4 to 2.7 wrote for fill_length_measures at its default,
+// after fill_max_distance_beats. The field is retired (D115), so only the
+// retired Auto fingerprint, which must hash 1.8.4's text, still writes it.
+constexpr const char* kRetiredFillLengthLine = "fill_length_measures=0.5\n";
+
 // Every field that can change a run's answer, one line each, in
 // rules_fields() order. The text is frozen: changing it makes every stored
 // result Stale (docs/adr/0014). A whole number is written in the same %.17g
-// form as a fraction, as it always was.
-std::string fixed_cap_text(const Rules& r) {
+// form as a fraction, as it always was. `retired_fill_length` puts back the
+// retired field's line where 1.8.4 wrote it.
+std::string fixed_cap_text(const Rules& r, bool retired_fill_length = false) {
     std::string text;
     for (const RulesField& f : rules_fields()) {
+        if (retired_fill_length && std::string_view(f.name) == "fill_land_slop_beats")
+            text += kRetiredFillLengthLine;
         if (auto real = std::get_if<double Rules::*>(&f.member)) {
             add_line(text, f.name, r.**real);
         } else if (auto whole = std::get_if<int Rules::*>(&f.member)) {
@@ -59,7 +68,7 @@ uint64_t Rules::retired_auto_fingerprint() const {
     // Byte for byte what 1.8.4's auto_fingerprint() hashed under the default
     // ladder. Pinned by the test "rules: the retired Auto fingerprint is what
     // Hydra 1.8.4 stamped".
-    return hash_rules_text(fixed_cap_text(*this) +
+    return hash_rules_text(fixed_cap_text(*this, true) +
                            "auto_cap_ladder=16,32,64,128,256,512,\n");
 }
 
@@ -86,8 +95,6 @@ const std::vector<RulesField>& rules_fields() {
         {"max_tied_paths", &Rules::max_tied_paths, 1.0},
         {"fill_cooldown_measures", &Rules::fill_cooldown_measures, 1.0},
         {"fill_max_distance_beats", &Rules::fill_max_distance_beats, 0.0},
-        // Must be above zero, as hydra_rules.ini always required.
-        {"fill_length_measures", &Rules::fill_length_measures, 0.0, false},
         {"fill_land_slop_beats", &Rules::fill_land_slop_beats, 0.0},
     };
     return fields;

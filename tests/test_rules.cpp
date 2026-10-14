@@ -72,7 +72,6 @@ TEST_CASE("rules: defaults are the values Hydra always used") {
     CHECK(r.max_tied_paths == 4);
     CHECK(r.fill_cooldown_measures == 4);
     CHECK(r.fill_max_distance_beats == 0.5);
-    CHECK(r.fill_length_measures == 0.5);
     CHECK(r.fill_land_slop_beats == 1.0 / 32);
 }
 
@@ -91,14 +90,12 @@ TEST_CASE("rules: every key in the file is read") {
         "max_tied_paths = 2\n"
         "fill_cooldown_measures = 2\n"
         "fill_max_distance_beats = 0.25\n"
-        "fill_length_measures = 0.25\n"
         "fill_land_slop_beats = 0.125\n"));
     CHECK(r.backend_leeway_ms == 5.0);
     CHECK(r.sqout_rule == core::SqOutRule::WholeChord);
     CHECK(r.max_tied_paths == 2);
     CHECK(r.fill_cooldown_measures == 2);
     CHECK(r.fill_max_distance_beats == 0.25);
-    CHECK(r.fill_length_measures == 0.25);
     CHECK(r.fill_land_slop_beats == 0.125);
     CHECK(r.fingerprint() != core::default_rules().fingerprint());
 }
@@ -131,8 +128,8 @@ TEST_CASE("rules: a bad value or an unknown key is an error that names the key")
     // runtime's extra spellings are errors for decimal and whole keys alike.
     for (const char* spelling : {"nan", "inf", "NaN", "infinity", "0x10"}) {
         INFO("value: ", std::string(spelling));
-        CHECK(message_for("bad6", std::string("fill_length_measures = ") + spelling + "\n")
-                  .find("fill_length_measures") != std::string::npos);
+        CHECK(message_for("bad6", std::string("fill_max_distance_beats = ") + spelling + "\n")
+                  .find("fill_max_distance_beats") != std::string::npos);
         CHECK(message_for("bad7", std::string("max_tied_paths = ") + spelling + "\n")
                   .find("max_tied_paths") != std::string::npos);
     }
@@ -404,17 +401,23 @@ TEST_CASE("rules: the generated-fill values come from the rules") {
     by_default.check_activations();
     const int default_fills = fill_count(by_default);
     REQUIRE(default_fills > 0);
-    for (const SongTimestamp& ts : by_default.sequence)
-        if (ts.has_activation()) CHECK(*ts.activation_length == 384);
 
     core::Rules tight = core::default_rules();
     tight.fill_cooldown_measures = 2;
-    tight.fill_length_measures = 0.25;
     Song with_tight = fill_song();
     with_tight.check_activations(tight);
     CHECK(fill_count(with_tight) > default_fills);
-    for (const SongTimestamp& ts : with_tight.sequence)
-        if (ts.has_activation()) CHECK(*ts.activation_length == 192);
+}
+
+TEST_CASE("rules: the retired fill_length_measures key is read and ignored") {
+    // D115: a generated fill starts on its measure line, so the key no longer
+    // does anything, but a hydra_rules.ini that still sets it keeps loading.
+    core::Rules r = app::load_rules_file(write_rules("retired_fill_length",
+        "fill_length_measures = 0.25\n"
+        "max_tied_paths = 2\n"));
+    core::Rules expected = core::default_rules();
+    expected.max_tied_paths = 2;
+    CHECK(r.fingerprint() == expected.fingerprint());
 }
 
 // ---- the fingerprint's scope (docs/adr/0014, amended 2026-09-26) ----------
@@ -435,10 +438,11 @@ TEST_CASE("rules: the retired Auto keys are read and ignored") {
 
 TEST_CASE("rules: the retired Auto fingerprint is what Hydra 1.8.4 stamped") {
     // Pinned. The store finds the results Auto saved by this value, so it must
-    // equal 1.8.4's auto_fingerprint() under its default ladder. The fixed-cap
-    // value beside it is the one on every 4-bar row of a real 1.8.4 database,
-    // which proves the text both hash is unchanged.
-    CHECK(core::default_rules().fingerprint() == 0x70d2e96669604cf2ull);
+    // equal 1.8.4's auto_fingerprint() under its default ladder. The value is
+    // unchanged by D115's retirement of fill_length_measures, because the
+    // retired Auto text puts that field's default line back where 1.8.4 wrote
+    // it. (Before D115 the fixed-cap fingerprint was 0x70d2e96669604cf2, the
+    // one on every 4-bar row of a real 1.8.4 database.)
     CHECK(core::default_rules().retired_auto_fingerprint() == 0x5b610b430a43a4beull);
     // Every rule is in it, as it was in auto_fingerprint().
     core::Rules ties = core::default_rules();
@@ -447,11 +451,12 @@ TEST_CASE("rules: the retired Auto fingerprint is what Hydra 1.8.4 stamped") {
     CHECK(ties.retired_auto_fingerprint() != ties.fingerprint());
 }
 
-TEST_CASE("rules: the fingerprint text is byte for byte what 1.8.4 wrote") {
-    // Pinned from the build before the field table existed (6a1bb49). Every
-    // stored result carries one of these, so a change to the text's names,
-    // number form or line order would read every row Stale.
-    CHECK(core::default_rules().fingerprint() == 0x70d2e96669604cf2ull);
+TEST_CASE("rules: the fingerprint text is pinned") {
+    // Pinned from one run at D115 B2-3, which retired fill_length_measures
+    // (until then the values were 1.8.4's, from 6a1bb49). Every stored result
+    // carries one of these, so a change to the text's names, number form or
+    // line order would read every row Stale.
+    CHECK(core::default_rules().fingerprint() == 0xaac02b481589a70eull);
     CHECK(core::default_rules().retired_auto_fingerprint() == 0x5b610b430a43a4beull);
     // Every field moved off its default, so each line's name and number form
     // (whole numbers, fractions, the whole_chord word) is in the hash.
@@ -461,10 +466,9 @@ TEST_CASE("rules: the fingerprint text is byte for byte what 1.8.4 wrote") {
     all.max_tied_paths = 2;
     all.fill_cooldown_measures = 3;
     all.fill_max_distance_beats = 0.25;
-    all.fill_length_measures = 0.75;
     all.fill_land_slop_beats = 0.1;
-    CHECK(all.fingerprint() == 0x786ef3e8a2dbe1e4ull);
-    CHECK(all.retired_auto_fingerprint() == 0x229fa7e95ca76618ull);
+    CHECK(all.fingerprint() == 0x3ea9ab5620beca19ull);
+    CHECK(all.retired_auto_fingerprint() == 0xba12250c1201ff31ull);
 }
 
 TEST_CASE("rules: the default stamp is built once and matches a fresh record") {

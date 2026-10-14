@@ -425,8 +425,6 @@ TEST_CASE("docs match code: the User Guide's hydra_rules.ini sample is the defau
     CHECK(loaded.fill_cooldown_measures == def.fill_cooldown_measures);
     INFO(where << "fill_max_distance_beats");
     CHECK(loaded.fill_max_distance_beats == def.fill_max_distance_beats);
-    INFO(where << "fill_length_measures");
-    CHECK(loaded.fill_length_measures == def.fill_length_measures);
     INFO(where << "fill_land_slop_beats");
     CHECK(loaded.fill_land_slop_beats == def.fill_land_slop_beats);
     // Every field, the ones named above and any added later.

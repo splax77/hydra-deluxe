@@ -36,7 +36,7 @@ using namespace hydra;
 
 namespace {
 
-// Whether check_invariants checks that every activation fill is positive. A
+// Whether check_invariants checks that every authored activation fill is positive. A
 // chart with a fill starting on its own last note has a 0-length activation,
 // so its case skips that one check.
 enum class FillCheck { Check, Skip };
@@ -46,6 +46,11 @@ enum class FillCheck { Check, Skip };
 void check_invariants(const Song& song, const std::string& what,
                       FillCheck fill_check = FillCheck::Check) {
     bool ticks_ok = true, codes_ok = true, fills_ok = true;
+    // A generated fill starts on its measure line, so its length may be 0 or
+    // negative (Song::check_activations, user answer 6 of 2026-10-12); the
+    // fill check below is for the chart's own fills only.
+    const bool generated = std::find(song.features.begin(), song.features.end(),
+                                     "Auto-Generated Fills") != song.features.end();
     int64_t prev = -1;
     for (const SongTimestamp& ts : song.sequence) {
         // Strictly increasing: two chords never share a tick.
@@ -55,8 +60,8 @@ void check_invariants(const Song& song, const std::string& what,
         // Every chord spells as a code (Chord::code throws on one it can't).
         if (ts.chord.code().empty()) codes_ok = false;
 
-        // An activation fill length is always positive.
-        if (ts.activation_length.has_value() && *ts.activation_length <= 0)
+        // An authored activation fill's length is always positive.
+        if (!generated && ts.activation_length.has_value() && *ts.activation_length <= 0)
             fills_ok = false;
     }
     CHECK_MESSAGE(ticks_ok, what << ": ticks not strictly increasing");
