@@ -28,7 +28,7 @@ TEST_CASE("build_score_breakdown: exact lines, rounded like the report") {
     std::vector<std::string> lines = build_score_breakdown(p);
     REQUIRE(lines.size() == 8);
     // Rounded to three places, the same as the report's mult column.
-    CHECK(lines[0] == "Avg. Multiplier:      1.667x");
+    CHECK(lines[0] == "Average Multiplier:   1.667x");
     CHECK(lines[1] == "\nNotes:                     3");
     CHECK(lines[2] == "Combo Bonus:               2");
     CHECK(lines[7] == "\nTotal Score:               5");

@@ -38,6 +38,15 @@ never its hash, because one chart in two folders is two rows. The selection,
 a click and a batch all compare it, and the open song panel re-reads its
 chart by it after a rescan, so the panel follows its row (D114 item 7).
 
+**Selection scroll**:
+Whether a list moves when its selected row changes, and how far. The owner is
+`selection_scroll` in src/ui/list_scroll.h, which reads why the selection
+changed (`SelectionSource`, recorded by `AppState::select`); `scroll_last_row`
+is the one place that asks ImGui to scroll. A click on a row never scrolls;
+a step or a pick from another window brings the row in at the nearest edge,
+and moves nothing if it is already on screen. It leaves out where a column
+sits and how a table is sized.
+
 **Rescan cache**:
 The last saved scan, handed to the next one so a chart whose fingerprint has
 not changed is reused without reading its files. `load_scan_cache` in
@@ -395,7 +404,7 @@ more valuable notes score on the higher multiplier.
 
 **Star cutoff**:
 The score a chart needs for 1 to 7 stars: its base score (every note at 1x,
-no Star Power) times 0.1, 0.5, 1.0, 2.0, 2.8, 3.6 or 4.4, rounded up. Clone
+no Star Power) times 0.1<!-- default: kStarMultipliers[1] -->, 0.5<!-- default: kStarMultipliers[2] -->, 1.0<!-- default: kStarMultipliers[3] -->, 2.0<!-- default: kStarMultipliers[4] -->, 2.8<!-- default: kStarMultipliers[5] -->, 3.6<!-- default: kStarMultipliers[6] --> or 4.4<!-- default: kStarMultipliers[7] -->, rounded up. Clone
 Hero compares it against your score without the solo bonus. The product is
 kept as a 32-bit float before it is rounded up, as the decompiled game does,
 which can move a large cutoff by one point (`star_cutoff` in

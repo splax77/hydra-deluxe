@@ -209,7 +209,7 @@ Sometimes a phrase collected during Star Power would push the meter past the SP 
 
 Under the activation rows are two folds, `Multiplier squeeze` and `Score breakdown`. Both start open.
 
-`Multiplier squeeze` lists the multiplier squeezes in the song. When the combo multiplier goes up on a multi-note chord, hitting the more valuable notes (cymbals, dynamics) a little later scores them on the higher multiplier. This is why two FCs of the same song can differ by 15 points. `2x` means it happens as the multiplier reaches 2x (10 notes in), and so on.
+`Multiplier squeeze` lists the multiplier squeezes in the song. When the combo multiplier goes up on a multi-note chord, hitting the more valuable notes (cymbals, dynamics) a little later scores them on the higher multiplier. This is why two FCs of the same song can differ by 15<!-- default: kCymbalBonusPoints --> points. `2x` means it happens as the multiplier reaches 2x (10<!-- default: to_multiplier:x2 --> notes in), and so on.
 
 `Score breakdown` shows the score this path should get, in the same categories as Clone Hero's results screen. It includes multiplier, frontend and backend squeezes. A double squeeze only counts when the backend note lands within a small leeway past the SP end, 3 ms<!-- default: Rules::backend_leeway_ms --> by default (`backend_leeway_ms` in `hydra_rules.ini`).
 
@@ -293,7 +293,7 @@ The table has one row for each of stars 1 to 7:
 | Column | What it shows |
 |---|---|
 | `Stars` | the star |
-| `Multiplier` | what the base score is multiplied by: 0.1, 0.5, 1.0, 2.0, 2.8, 3.6 and 4.4 |
+| `Multiplier` | what the base score is multiplied by: 0.1<!-- default: kStarMultipliers[1] -->, 0.5<!-- default: kStarMultipliers[2] -->, 1.0<!-- default: kStarMultipliers[3] -->, 2.0<!-- default: kStarMultipliers[4] -->, 2.8<!-- default: kStarMultipliers[5] -->, 3.6<!-- default: kStarMultipliers[6] --> and 4.4<!-- default: kStarMultipliers[7] --> |
 | `Cutoff` | the score that earns the star, rounded up |
 | `With full solo bonus` | the cutoff plus the whole solo bonus: what the results screen shows at that cutoff if you also collect every solo bonus. This column shows only when the chart has a solo. |
 

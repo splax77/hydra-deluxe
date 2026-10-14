@@ -1,0 +1,44 @@
+{
+  "rules": [
+    {
+      "question": "Under which settings is a chart analyzed (its profile)?",
+      "owner": "Settings::profile in src/app/config.cpp (store::Profile is the type)",
+      "owner_file": "src/app/config.cpp",
+      "owner_symbol": "Settings::profile",
+      "date": "2026-10-14",
+      "decision": "D115 (part A1, task A1-4, code-only); folds in concept audit M12 (task H1)",
+      "added_by": "D115-A1-4",
+      "pattern": "chartmode_key\\(\\)\\s*,\\s*[\\w.>-]*cap_query\\(\\)|cap_query\\(\\)\\s*,\\s*[\\w.>-]*lens\\(\\)|filed_under\\(\\)|(old|new)_lens\\.legacy_fills\\s*=|CapQuery::at\\(kCloneHeroSpCap\\)",
+      "scope": [
+        "src",
+        "tools"
+      ],
+      "must_match": [
+        "store.analyzed_hashes(s.chartmode_key(), s.cap_query(), s.lens());",
+        "store.get_summaries(hashes, settings.chartmode_key(), settings.cap_query(), settings.lens());",
+        "return store::RecordKey{hyhash, chartmode_key(), cap_query(), lens()};",
+        "store::ResultSettings filed_under() const { return {chartmode, cap_query(), lens}; }",
+        "return PageSettings{settings.cap_query(), settings.lens(), settings.hit_window_ms};",
+        "old_lens.legacy_fills = 1;",
+        "new_lens.legacy_fills = 0;",
+        "report::records_by_hash(store, chartmode, store::CapQuery::at(kCloneHeroSpCap), lens);"
+      ],
+      "must_not_match": [
+        "return store::RecordKey{hyhash, profile()};",
+        "store.get_summaries(library.hashes(), settings.profile());",
+        "return BatchRun{chartmode_key(), lens(), to_analysis_settings()};",
+        "const store::Profile at_ch = s.profile_at_clone_hero_cap();",
+        "const store::Profile ch10 = s.profile_with_fills(FillDeadlineRule::Ch10);",
+        "return store::CapQuery::at(sp_cap);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/config.cpp",
+          "line_text": "return {chartmode_key(), cap_query(), lens()};",
+          "why": "Settings::profile, the owner: the one place the three parts are put together"
+        }
+      ],
+      "note": "A profile (chartmode, SP cap and lens) put together by hand instead of through Settings::profile or its two named variants, profile_at_clone_hero_cap and profile_with_fills. A result is filed under (chart, profile), and Settings::record_key is only the chart plus Settings::profile. The row cannot see parts passed as already-named variables, so the type (lookups take a Profile) is the real guard. The scope is src and tools because the scan scopes by top folder or single file. The hand-built ones that stand today are listed in baseline.json until the D115 A2 tasks move them. Decided by: D115, plan docs/superpowers/plans/2026-10-12-one-record-per-chart.md, task A1-4; the earlier chartmode/cap/lens row (concept audit M12, H1) is folded in."
+    }
+  ]
+}

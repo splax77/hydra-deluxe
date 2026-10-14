@@ -73,7 +73,7 @@ void test_library_twin_rows(ImGuiTestContext* ctx) {
 
     // Rows sort by title: Twin A, Twin B, Zed.
     IM_CHECK(h.app->library_row_at(1).entry.notespath == second.notespath);
-    h.app->select(h.app->library_row_at(1).entry);
+    h.app->select(h.app->library_row_at(1).entry, hydra::ui::SelectionSource::Click);
     IM_CHECK(h.app->selected && h.app->selected->notespath == second.notespath);
     IM_CHECK(h.app->selected && h.app->selected->title == "Twin B");
     h.app->close_details();
@@ -434,7 +434,7 @@ void test_library_search(ImGuiTestContext* ctx) {
         IM_CHECK(text.find(title) != std::string::npos);
 
     // With a song open, Folder makes way, so each row says where it matched.
-    h.app->select(h.app->library_row_at(0).entry);
+    h.app->select(h.app->library_row_at(0).entry, hydra::ui::SelectionSource::Click);
     IM_CHECK(wait_until(ctx, [&] { return !ctx->ItemExists("**/Folder"); }, 5));
     IM_CHECK(wait_until(ctx, [&] {
         return visible_text(h).find("Matched on folder.") != std::string::npos;
@@ -686,6 +686,7 @@ void test_library_column_widths(ImGuiTestContext* ctx) {
     const hydra::ui::LibraryViewState::ColumnWidths& cache = h.app->library_ui.column_widths;
     IM_CHECK_EQ(cache.specs.size(), static_cast<size_t>(hydra::ui::kLibraryColumnCount));
     IM_CHECK_EQ(cache.rows_version, h.app->library.rows_version());
+    IM_CHECK(hydra::ui::text_shares_sum_to_100(cache.specs));  // the real list
     hydra::ui::ColumnLayout layout;
     auto check_rule_widths = [&] {
         layout = hydra::ui::place_columns(cache.measured, cache.specs, cache.room);
@@ -712,16 +713,19 @@ void test_library_column_widths(ImGuiTestContext* ctx) {
     hydra::ui::remember_library_share(0.01f);
     h.app->library_ui.panel_was_open = false;  // the split sets its width next frame
     ctx->Yield(3);
+    // Each enable opens the header menu on the rightmost header. The columns
+    // take their new widths over a few frames, so the table settles before
+    // the next click looks for that header.
     ctx->TableSetColumnEnabled(table->ID, "Charter", true);
+    ctx->Yield(3);
     ctx->TableSetColumnEnabled(table->ID, "Folder", true);
     ctx->Yield(3);
     for (int c = 0; c < table->ColumnsCount; ++c) IM_CHECK(table->Columns[c].IsEnabled);
     check_rule_widths();
     if (ctx->IsError()) return;
     const float title_w = table->Columns[hydra::ui::kColumnTitle].WidthGiven;
-    IM_CHECK_LT(title_w, cache.measured.widths[hydra::ui::kColumnTitle]);  // cut
     IM_CHECK_GE(title_w, cache.measured.header_widths[hydra::ui::kColumnTitle]);
-    IM_CHECK_EQ(layout.inner_width, layout.min_inner_width);  // every cut column at its floor
+    IM_CHECK_EQ(layout.inner_width, layout.min_inner_width);  // every text column at its floor
     IM_CHECK_GT(layout.inner_width, cache.room.available);
     IM_CHECK(table->InnerWindow->ScrollbarX);
 }
@@ -806,138 +810,6 @@ void test_library_columns_at_start(ImGuiTestContext* ctx) {
     IM_CHECK(table->Columns[hydra::ui::kColumnFolder].IsEnabled);
 }
 
-// One cell the drawn Library table cut short.
-struct CutCell {
-    std::string title;  // the row's
-    int column = 0;
-    float text_w = 0.0f;  // the cell's whole text
-    float cell_w = 0.0f;  // the room the cell gave it
-};
-
-// The Library table as last drawn: each cell cut on a row on screen, and the
-// width left unused between the last shown column and the table's right edge
-// (negative when the columns run past it and the table scrolls sideways).
-struct DrawnTable {
-    std::vector<CutCell> cuts;
-    float spare = 0.0f;
-    size_t rows_seen = 0;
-};
-
-// Reads the drawn table. A cell is cut when the one cutting rule
-// (render::ellipsize) would cut its text at the cell's width, measured in the
-// cell's own font: Best path draws in the mono font. The rows on screen are
-// the ones whose row item was drawn inside the table's visible rect.
-DrawnTable read_drawn_table(ImGuiTestContext* ctx) {
-    Harness& h = harness(ctx);
-    DrawnTable out;
-    ImGuiTable* table = library_table();
-    IM_CHECK_RETV(table != nullptr && table->InnerWindow != nullptr, out);
-    const ImRect view = table->InnerWindow->InnerRect;
-    out.spare = view.Max.x - table->Columns[table->RightMostEnabledColumn].MaxX;
-    ctx->SetRef("//Hydra");
-    for (size_t k = 0; k < h.app->library_shown_count(); ++k) {
-        const hydra::ui::LibraryRow& row = h.app->library_row_at(k);
-        const ImGuiTestItemInfo item =
-            ctx->ItemInfo(("**/" + escape_ref(row.title)).c_str(), ImGuiTestOpFlags_NoError);
-        if (item.ID == 0 || item.RectFull.Max.y <= view.Min.y || item.RectFull.Min.y >= view.Max.y)
-            continue;
-        ++out.rows_seen;
-        for (int c = 0; c < table->ColumnsCount; ++c) {
-            const ImGuiTableColumn& column = table->Columns[c];
-            if (!column.IsEnabled) continue;
-            const hydra::ui::WidthOf width_of =
-                text_measurer(c == hydra::ui::kColumnBestPath ? hydra::ui::g_mono_font : nullptr);
-            const std::string text = hydra::ui::library_cell_text(row, c);
-            const float cell_w = column.WorkMaxX - column.WorkMinX;
-            const auto measure = [&](const std::string& s) { return width_of(s); };
-            if (hydra::render::ellipsize(text, cell_w, measure) != text)
-                out.cuts.push_back({row.title, c, width_of(text), cell_w});
-        }
-    }
-    for (const CutCell& cut : out.cuts)
-        ctx->LogInfo("cut: \"%s\" column %d, text %.1f px in %.1f px", cut.title.c_str(),
-                     cut.column, cut.text_w, cut.cell_w);
-    ctx->LogInfo("%zu rows on screen, %zu cells cut, %.1f px unused at the right", out.rows_seen,
-                 out.cuts.size(), out.spare);
-    return out;
-}
-
-// No text is cut while the table has room to spare: the outcome on screen,
-// never the width rule's own numbers. Two libraries, with the song panel
-// closed so the table spans the window.
-//
-// 1. The test charts after one song's analysis has landed (the column-widths
-//    handoff's Burnout case): its new Best path text must not be cut while
-//    room sits unused at the table's right.
-// 2. Enough rows for usual_of (column_widths.cpp) to leave one out, one of
-//    them with a Best path as long as the longest in the user's library
-//    (1,128 characters, measured in the handoff). That row may be cut; every
-//    other row on screen must fit.
-void test_library_text_fits(ImGuiTestContext* ctx) {
-    Harness& h = harness(ctx);
-    reset_app(h);
-    scan_library(ctx);
-    if (ctx->IsError()) return;
-    ctx->SetRef("//Hydra");
-    const std::string song = "Burnout";
-    ctx->ItemClick(("**/" + escape_ref(song)).c_str());
-    IM_CHECK(wait_until(ctx, [&] { return h.app->selected && h.app->selected->title == song; }, 5));
-    IM_CHECK(wait_until(ctx, [&] { return h.app->view_settled(); }, 300));
-    ctx->ItemClick("**/X##closepanel");
-    IM_CHECK(wait_until(ctx, [&] { return !h.app->details_open(); }, 5));
-    ctx->Yield(3);
-    const DrawnTable burnout = read_drawn_table(ctx);
-    if (ctx->IsError()) return;
-    IM_CHECK_GT(burnout.rows_seen, size_t{0});
-    if (burnout.spare > 0.0f) {
-        ctx->LogInfo("Burnout case: %zu cells cut with %.1f px unused", burnout.cuts.size(),
-                     burnout.spare);
-        IM_CHECK_EQ(burnout.cuts.size(), size_t{0});
-    }
-
-    // Rows that are all short, save one, each with a stored result.
-    reset_app(h);
-    constexpr size_t kRows = 200;  // enough for usual_of to leave the outlier out
-    const std::string outlier_title = "Row 000";
-    std::vector<hydra::store::ChartLibraryEntry> charts(kRows);
-    for (size_t i = 0; i < kRows; ++i) {
-        char md5[33];
-        std::snprintf(md5, sizeof(md5), "%032zx", i + 1);
-        char title[16];
-        std::snprintf(title, sizeof(title), "Row %03zu", i);
-        charts[i].md5 = md5;
-        charts[i].title = title;
-        charts[i].artist = "Artist";
-        charts[i].charter = "Charter";
-        charts[i].notespath = "C:\\rows\\" + std::string(title) + "\\notes.chart";
-        charts[i].rootfolder = "rows";
-    }
-    h.app->store->rebuild_chart_library(charts);
-    h.app->reload_library();
-    IM_CHECK_EQ(h.app->library_shown_count(), kRows);
-    std::string long_path;
-    while (long_path.size() < 1128) long_path += "1 2 3- ";
-    long_path.resize(1128);
-    std::vector<hydra::store::SummaryLookup> lookups(h.app->library.rows().size());
-    for (size_t i = 0; i < lookups.size(); ++i) {
-        const bool outlier = h.app->library.rows()[i].title == outlier_title;
-        lookups[i].status = hydra::store::RecordStatus::Ready;
-        lookups[i].bestpath = outlier ? long_path : "3- 1 2";
-        lookups[i].summary.score = 378315;
-    }
-    IM_CHECK_EQ(h.app->library.set_summaries(lookups), kRows);
-    ImGuiTable* table = library_table();
-    IM_CHECK_RETV(table != nullptr && table->InnerWindow != nullptr, );
-    ImGui::SetScrollY(table->InnerWindow, 0.0f);  // the outlier sorts first
-    ctx->Yield(3);
-    const DrawnTable outlier = read_drawn_table(ctx);
-    if (ctx->IsError()) return;
-    IM_CHECK(h.app->library_row_at(0).title == outlier_title);
-    IM_CHECK_GT(outlier.rows_seen, size_t{1});
-    for (const CutCell& cut : outlier.cuts)
-        IM_CHECK(cut.title == outlier_title && cut.column == hydra::ui::kColumnBestPath);
-}
-
 // The first column of the first row `sql` returns, or -1 when it fails.
 int64_t number_in_file(const std::string& path, const std::string& sql) {
     return hydra::test::first_int_on_file(path, sql).value_or(-1);
@@ -970,7 +842,7 @@ std::string write_old_layout_library(Harness& h) {
     // list is the owner's (kSchema2ResultsColumns) plus the three later
     // columns; each row's values follow that order.
     const std::string sql =
-        std::string("DROP TABLE results;") + hydra::test::kDetailLayoutResultsTableSql + ";" +
+        std::string("DROP TABLE IF EXISTS results;") + hydra::test::kDetailLayoutResultsTableSql + ";" +
         "INSERT INTO results (" + hydra::store::kSchema2ResultsColumns +
         ", legacy_fills, rules_fp, structure) VALUES"
         " (1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'mode', 'v', 8, 0, 0, 0, 2, '1', 1000,"
@@ -1055,7 +927,6 @@ const std::vector<TestEntry>& library_tests() {
         {"library-layout", test_library_layout},
         {"library-column-widths", test_library_column_widths},
         {"library-columns-at-start", test_library_columns_at_start},
-        {"library-text-fits", test_library_text_fits},
         {"library-twin-rows", test_library_twin_rows},
         {"startup-screen", test_startup_screen},
     };

@@ -15,9 +15,9 @@
 
 namespace hydra::test {
 
-// How many rows a database file's results table holds. The doctest suite reads
-// it through results_rows_in (db_file_util.h); the GUI scripts read it directly.
-inline constexpr const char* kResultsRowCountSql = "SELECT COUNT(*) FROM results";
+// How many records a database file holds. The doctest suite reads it through
+// record_rows_in (db_file_util.h); the GUI scripts read it directly.
+inline constexpr const char* kResultsRowCountSql = "SELECT COUNT(*) FROM records";
 
 // Runs a batch of SQL on the database file at `path`, whether or not a store
 // has it open. False when the file would not open or the SQL failed, with

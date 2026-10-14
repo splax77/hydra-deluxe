@@ -33,7 +33,11 @@ struct StampRule {
     }
 };
 
-// ---- Results (the results table) -------------------------------------------
+// ---- Results (the profiles, records and record_paths tables) ----------------
+
+// The stamp lives on the profile row a record is filed under, not on the
+// record itself: RecordStore::profile_id_for finds or files that row
+// (record_store.cpp).
 
 // The analysis version. BUMP IT, to the version of the release that ships the
 // change, whenever analysis output changes in a way the hydra_rules.ini

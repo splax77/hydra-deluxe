@@ -616,8 +616,8 @@ void test_analyze_db_fails(ImGuiTestContext* ctx) {
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
-    // A second connection drops the scratch library's results table.
-    IM_CHECK_NO_RET(hydra::test::run_sql_on_file(h.db_path, "DROP TABLE results"));
+    // A second connection drops the scratch library's records table.
+    IM_CHECK_NO_RET(hydra::test::run_sql_on_file(h.db_path, "DROP TABLE records"));
 
     ctx->SetRef("//Hydra");
     ctx->ItemClick("Analyze library...");

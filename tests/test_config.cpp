@@ -519,6 +519,74 @@ TEST_CASE("record_key carries the chartmode, the SP cap and the lens") {
     CHECK(s.lens() == store::Lens::from(std::nullopt, 1, 5000));
 }
 
+namespace {
+
+// Settings with every key part moved off its default: the chartmode (Pro
+// Drums off), the SP cap, and each lens field (ms limit, score range, fills).
+Settings every_key_part_changed() {
+    Settings s;
+    s.view_prodrums = false;
+    s.sp_cap = 32;
+    s.mslimit_enabled = true;
+    s.mslimit_value = 10;
+    s.depth_mode = 1;
+    s.depth_value = 5000;
+    s.legacy_fills = true;
+    return s;
+}
+
+}  // namespace
+
+TEST_CASE("profile is the chartmode, the SP cap and the lens, the same key record_key files under") {
+    namespace store = hydra::store;
+
+    const Settings defaults;
+    CHECK(defaults.profile() == defaults.record_key({}).settings());
+
+    const Settings s = every_key_part_changed();
+    CHECK(s.profile() == s.record_key({}).settings());
+    CHECK(s.profile().chartmode == "Expert Drums, 2x Bass");
+    CHECK(s.profile().cap == store::CapQuery::at(32));
+    CHECK(s.profile().lens == store::Lens::from(10, 1, 5000, true));
+    CHECK(s.profile() != defaults.profile());
+}
+
+TEST_CASE("profile_at_clone_hero_cap differs from profile only in the cap") {
+    namespace store = hydra::store;
+
+    Settings s = every_key_part_changed();
+    s.sp_cap = 8;
+    const store::Profile at_ch = s.profile_at_clone_hero_cap();
+    CHECK(at_ch.cap == store::CapQuery::at(hydra::kCloneHeroSpCap));
+    CHECK(at_ch.cap != s.profile().cap);
+    CHECK(at_ch.chartmode == s.profile().chartmode);
+    CHECK(at_ch.lens == s.profile().lens);
+
+    // Already at Clone Hero's cap, the variant is profile() itself.
+    s.sp_cap = hydra::kCloneHeroSpCap;
+    CHECK(s.profile_at_clone_hero_cap() == s.profile());
+}
+
+TEST_CASE("profile_with_fills differs from profile only in the fill rule") {
+    namespace store = hydra::store;
+
+    Settings s = every_key_part_changed();
+    s.legacy_fills = false;
+    const store::Profile ch10 = s.profile_with_fills(hydra::FillDeadlineRule::Ch10);
+    CHECK(ch10.lens.legacy_fills == 1);
+    CHECK(ch10.chartmode == s.profile().chartmode);
+    CHECK(ch10.cap == s.profile().cap);
+    store::Lens rest = ch10.lens;
+    rest.legacy_fills = s.profile().lens.legacy_fills;
+    CHECK(rest == s.profile().lens);
+
+    // The other way round: 1.0 fills on, asked for the 1.1 rule.
+    s.legacy_fills = true;
+    const store::Profile ch11 = s.profile_with_fills(hydra::FillDeadlineRule::Ch11);
+    CHECK(ch11.lens.legacy_fills == 0);
+    CHECK(s.profile_with_fills(hydra::FillDeadlineRule::Ch10) == s.profile());
+}
+
 TEST_CASE("batch_run bundles one Settings' chartmode, lens and search settings") {
     Settings s;
     s.view_difficulty = "Hard";

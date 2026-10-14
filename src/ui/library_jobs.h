@@ -42,15 +42,24 @@ class ByteRateClock;  // ui/preview_load_job.h
 // ---- StoreOpenJob ---------------------------------------------------------
 
 // Where the startup open of the library file is, for the startup screen. The
-// first four steps are the store's own (it reports them while it opens and,
-// for an old file, upgrades); LoadingLibrary is the job's read of the chart
-// list and its summaries once the store is open.
+// steps before LoadingLibrary are the store's own (store::OpenStep; it
+// reports them while it opens and, for an old file, upgrades); LoadingLibrary
+// is the job's read of the chart list and its summaries once the store is
+// open.
 struct StoreOpenProgress {
-    enum class Step { Opening, UpdatingResultsKey, Copying, Finishing, LoadingLibrary };
+    enum class Step {
+        Opening,
+        UpdatingResultsKey,
+        ConvertingRecords,
+        Copying,
+        Finishing,
+        LoadingLibrary
+    };
     Step step = Step::Opening;
-    // Rows copied into the upgraded file, out of the rows to copy, both as
-    // the store counted them. 0 of 0 until the copy begins, and on a file
-    // that needs no upgrade.
+    // Rows converted or copied so far, out of the rows the step converts or
+    // copies, both as the store counted them (store::OpenProgress). 0 of 0
+    // until the conversion or the copy begins, and on a file that needs no
+    // upgrade.
     uint64_t rows_done = 0;
     uint64_t rows_total = 0;
     // Whether this open has upgraded the file at any step so far. It stays

@@ -43,14 +43,6 @@ void fitted_text(const std::string& text, FittedTextCache& fits, size_t row, siz
     draw_cut_text(text.c_str(), fits.fitted(row, column, text, avail, fit), avail);
 }
 
-// Puts the next `width` of items at the right of the current line when they
-// fit beside what is already on it, else on a line of their own.
-void right_align(float width) {
-    if (!fits_on_line(width, ImGui::GetStyle().ItemSpacing.x)) return;
-    ImGui::SameLine();
-    move_to_right_edge(width);
-}
-
 float button_w(const char* label) { return button_slot_width(label); }
 
 // The room a chip keeps on each side of its text, inside its outline.
@@ -80,7 +72,7 @@ void header(const Frame& f) {
         if (f.compare_another) buttons.push_back("Compare another player...");
         buttons.push_back("Refresh");
         const float spacing = ImGui::GetStyle().ItemSpacing.x;
-        right_align(ImGui::CalcTextSize(built.c_str()).x + spacing + buttons_w(buttons));
+        place_control_at_line_end(ImGui::CalcTextSize(built.c_str()).x + spacing + buttons_w(buttons));
         ImGui::AlignTextToFramePadding();
         ImGui::TextColored(kDimTextColor, "%s", built.c_str());
         if (f.compare_another) {
@@ -204,7 +196,7 @@ bool state_body(const Frame& f) {
                 ImGui::ProgressBar(-1.0f * static_cast<float>(ImGui::GetTime()),
                                    ImVec2(-1.0f, 0.0f), "");
             }
-            right_align(button_w("Cancel"));
+            place_control_at_line_end(button_w("Cancel"));
             if (ImGui::Button("Cancel")) call(cb.cancel);
             if (f.placeholder_rows) placeholder_rows();
             return true;
@@ -340,7 +332,7 @@ void count_line(Memory& m, const std::string& text) {
     const float controls_end = ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x;
     const float w = ImGui::CalcTextSize(text.c_str()).x;
     m.controls_w = controls_end - style.WindowPadding.x + style.ItemSpacing.x + w;
-    right_align(w);
+    place_control_at_line_end(w);
     ImGui::AlignTextToFramePadding();
     ImGui::TextColored(kDimTextColor, "%s", text.c_str());
 }
@@ -367,7 +359,7 @@ void cell(const std::string& text, const app::report_view::CellLook& look, Tone 
                                              : ImGui::GetStyleColorVec4(ImGuiCol_Text);
     ImGui::PushStyleColor(ImGuiCol_Text, color);
     if (look.mono) ImGui::PushFont(g_mono_font, 0.0f);
-    if (numeric) move_to_right_edge(ImGui::CalcTextSize(text.c_str()).x);
+    if (numeric) place_control_at_right_edge(ImGui::CalcTextSize(text.c_str()).x);
     fitted_text(text, fits, row, column);
     if (look.mono) ImGui::PopFont();
     ImGui::PopStyleColor();
@@ -405,6 +397,7 @@ ColumnSpec column_spec(const std::string& title, const app::report_view::CellLoo
     ColumnSpec s;
     s.header = title;
     s.may_cut = look.truncate;
+    s.share = look.share;
     if (look.chip) s.padding = chip_pad() * 2.0f;
     s.width_of = measure_in_font(look.mono ? g_mono_font : nullptr);
     return s;

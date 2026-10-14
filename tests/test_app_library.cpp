@@ -75,7 +75,7 @@ TEST_CASE("a batch result for the open chart refreshes its row, not the panel") 
     ScratchPaths paths("appstate_batchpanel");
     std::unique_ptr<AppState> app = app_on(paths);
     const ChartLibraryEntry open = library_entry(5);
-    app->select(open);
+    app->select(open, hydra::ui::SelectionSource::Click);
     REQUIRE(app->viewed.state == ViewedSong::State::FileMissing);
 
     GenerationWatcher records;
@@ -228,7 +228,7 @@ RowsOlderThanScan rows_older_than_scan(const ScratchPaths& paths, const std::str
 TEST_CASE("a click right after a scan, before any frame, opens the chart the scan kept") {
     ScratchPaths paths("appstate_scanclick");
     RowsOlderThanScan s = rows_older_than_scan(paths, "scan_click");
-    s.app->select(row_of(*s.app, kHashBeforeEdit).entry);
+    s.app->select(row_of(*s.app, kHashBeforeEdit).entry, hydra::ui::SelectionSource::Click);
     REQUIRE(s.app->selected.has_value());
     CHECK(s.app->details_open());
     CHECK(s.app->selected->notespath == s.kept.notespath);
@@ -240,7 +240,7 @@ TEST_CASE("a click right after a scan, before any frame, opens the chart the sca
 TEST_CASE("a click right after a scan on a row the scan removed does nothing") {
     ScratchPaths paths("appstate_scanclickgone");
     RowsOlderThanScan s = rows_older_than_scan(paths, "scan_click_gone");
-    s.app->select(row_of(*s.app, s.removed.md5).entry);
+    s.app->select(row_of(*s.app, s.removed.md5).entry, hydra::ui::SelectionSource::Click);
     CHECK_FALSE(s.app->selected.has_value());
     CHECK_FALSE(s.app->details_open());
     CHECK(s.app->status_message.empty());
@@ -272,7 +272,7 @@ TEST_CASE("any_job_running lists every background job") {
     // collects it.
     const ChartLibraryEntry song = corpus_chart("click_anyjob");
     app->store->rebuild_chart_library({song});
-    app->select(song);
+    app->select(song, hydra::ui::SelectionSource::Click);
     REQUIRE(app->view_job != nullptr);
     app->cancel_view();
     if (!app->view_job->finished()) CHECK(app->any_job_running());
@@ -458,7 +458,7 @@ TEST_CASE("a library read that fails after the startup open is the status line's
         hydra::ui::set_store_open_gate_for_test,
         [&](const hydra::ui::StoreOpenProgress& p, const std::function<bool()>&) {
             if (p.step == hydra::ui::StoreOpenProgress::Step::LoadingLibrary)
-                hydra::test::exec_on_file(paths.db, "DROP TABLE charts; DROP TABLE results;");
+                hydra::test::exec_on_file(paths.db, "DROP TABLE charts; DROP TABLE records;");
         });
     AppState app;
     app.wait_store_open();
@@ -477,6 +477,8 @@ TEST_CASE("the startup screen's line names what the open is doing") {
 
     p.upgrading = true;
     p.step = StoreOpenProgress::Step::UpdatingResultsKey;
+    CHECK(p.label() == "Updating the results table...");
+    p.step = StoreOpenProgress::Step::ConvertingRecords;
     CHECK(p.label() == "Updating the results table...");
     p.step = StoreOpenProgress::Step::Copying;
     CHECK(p.label() == "Copying your library...");
@@ -509,7 +511,7 @@ TEST_CASE("the startup screen's time left follows the Preview loader's gate") {
 TEST_CASE("Analyze library on a database that fails shows the sentence and opens no confirm") {
     ScratchPaths paths("appstate_confirmfail");
     std::unique_ptr<AppState> app = app_on(paths);
-    hydra::test::exec_on_file(paths.db, "DROP TABLE results");
+    hydra::test::exec_on_file(paths.db, "DROP TABLE records");
 
     app->open_batch_confirm();
     CHECK(app->status_message == kDatabaseReadSentence);
@@ -526,7 +528,7 @@ TEST_CASE("Analyze library on a database that fails shows the sentence and opens
 TEST_CASE("a library reload whose reads fail keeps the library and says so") {
     ScratchPaths paths("appstate_reloadfail");
     std::unique_ptr<AppState> app = app_on(paths);
-    hydra::test::exec_on_file(paths.db, "DROP TABLE charts; DROP TABLE results;");
+    hydra::test::exec_on_file(paths.db, "DROP TABLE charts; DROP TABLE records;");
 
     app->reload_library();
 

@@ -1,21 +1,22 @@
-// SQLite-backed storage for analysis summaries (D87). hydra.db keeps the
-// chart library, one summary row per chart and settings, and `meta`. Every
-// path detail comes from the engine's own analysis when a song is clicked or
-// a report is built; nothing here stores a path. Old Python-era .db files are
-// not read; a fresh scan populates a new one.
+// SQLite-backed storage for analysis records (D87, D115). hydra.db keeps the
+// chart library, one record per chart and profile, and `meta`. Old
+// Python-era .db files are not read; a fresh scan populates a new one.
 //
-//   * `results` — one row per run, keyed by the FULL settings it ran under:
-//     the chart, the chart mode, the SP cap, the Lens (ms limit, score
-//     range and fill rule) and the hydra_rules.ini fingerprint (schema 4), so
-//     a result made under other rules is kept beside this build's. The row
-//     holds the run's summary columns, so a sortable library listing never
-//     has to analyze anything.
-//   * `charts` — the chart library, one row per scanned file. A result's
+//   * `profiles` — one row per set of settings a record is filed under: the
+//     chart mode, the SP cap, the Lens (ms limit, score range and fill rule),
+//     the results stamp (stored_versions.h) and the hydra_rules.ini
+//     fingerprint. A record made under other rules or by another build sits
+//     under its own profile, beside this build's.
+//   * `records` — one row per chart and profile: the record's own counts.
+//   * `record_paths` — the record's kept paths, ranked from 1 (the best).
+//   * `charts` — the chart library, one row per scanned file. A record's
 //     names come from here (kNamingCopiesSql).
 //
-// An older file also held the path details, song rows and dynamics counts.
-// The first open by this build leaves them behind by copying the kept rows
-// into a fresh file that takes the old one's place (copy_upgrade).
+// An older file held one `results` row per chart and settings instead. The
+// first open by this build converts it into the three tables above, once
+// (convert_results). A still older file also held the path details, song rows
+// and dynamics counts; that open then leaves them behind by copying the kept
+// rows into a fresh file that takes the old one's place (copy_upgrade).
 //
 // Why the full settings and not just the cap: a run under a different ms
 // limit or score range is a different answer, and overwriting one with the
@@ -424,21 +425,24 @@ inline constexpr int kJournalSizeLimitBytes = 4194304;
 enum class OpenStep {
     Opening,             // the journal settings, the tables and the cheap upgrades
     UpdatingResultsKey,  // upgrade_results_key rebuilding a 1.8.x file's results
-    Copying,             // the copy upgrade copying the kept rows into a fresh file
+    ConvertingRecords,   // convert_results turning an older file's results into records
+    Copying,            // the copy upgrade copying the kept rows into a fresh file
     Finishing,           // the copy upgrade swapping the fresh file in
 };
 
 // One progress report from an opening store.
 struct OpenProgress {
     OpenStep step = OpenStep::Opening;
-    // Copying and Finishing only: the rows copied so far, and the rows the
-    // copy will copy, both counted from the file itself. Zero for the other
-    // steps. Finishing reports both at the total.
+    // ConvertingRecords, Copying and Finishing only: the rows converted or
+    // copied so far, and the rows the step will convert or copy, both counted
+    // from the file itself. Zero for the other steps. Finishing reports both
+    // at the copy's total.
     int64_t rows_done = 0;
     int64_t rows_total = 0;
 };
 
-// Called at every step change and, while Copying, once per row copied. A
+// Called at every step change and, while ConvertingRecords or Copying, once
+// per row converted or copied. A
 // false return asks the store to stop: it leaves the old file as it was and
 // the constructor throws KindedError(ErrorKind::Cancelled). Called on the
 // thread that builds the store, never after the constructor returns.
@@ -454,8 +458,9 @@ class ChartIndex;  // store/chart_index.h
 class RecordStore {
 public:
     // dbpath may be ":memory:" for an ephemeral store (used by tests). A db
-    // from Hydra 1.6 or older keeps its old records table, unread: its charts
-    // read Not analyzed (user decision 2026-09-26).
+    // from Hydra 1.6 or older keeps its old records table, unread, under the
+    // name kPre17RecordsTable (record_store.cpp), so the name `records` is
+    // free: its charts read Not analyzed (user decision 2026-09-26).
     // rules_fingerprint: core::RulesStamp::of() the rules this process runs
     // under. A row stamped with any other fingerprint reads Stale. The first
     // open by this build also deletes the results Auto saved (delete_auto_results).
@@ -682,7 +687,16 @@ private:
     void in_transaction(F work);
     bool has_column(const char* table, const char* column);
     bool has_table(const char* table);
+    // Makes the three record tables (profiles, records, record_paths) when
+    // they are missing.
     void create_result_tables();
+    // Turns an older file's `results` table into records, once (D115): every
+    // row becomes a record under its own profile (its own stamp and rules),
+    // so a row this build cannot read reads Stale, as after any stamp bump.
+    // The no-stars rows go (kNoStarsResultSql). Stored ids become lowercase,
+    // in `charts` too. Then `results` is dropped, so a second open does
+    // nothing. One transaction.
+    void convert_results();
     // Brings an older results table's key up to schema 4. Schema 3 added
     // the fill rule (legacy_fills) to the key, and schema 4 the rules
     // fingerprint (rules_fp, read out of each row's structure blob). Both
@@ -701,25 +715,40 @@ private:
     // leaves the old file whole throws KindedError(DatabaseUpgrade); the file
     // states a stop can leave are store/upgrade_files.h's.
     void copy_upgrade(const std::string& dbpath);
-    // Copies every row of `table` that `where` keeps (an SQL condition, or
-    // empty for all) from the open file into the attached fresh one, column
-    // by column as stored, counting each into rows_done for the report.
-    void copy_table(const char* table, const std::string& where, int64_t& rows_done,
-                    int64_t rows_total);
-    // The body of add_row and save_analysis. The caller holds the lock and an
+    // Copies every row of `table` from the open file into the attached fresh
+    // one, column by column as stored, counting each into rows_done for the
+    // report.
+    void copy_table(const char* table, int64_t& rows_done, int64_t rows_total);
+    // The body of add_row and save_analysis: a PreparedRow, which holds only
+    // a summary, filed as a record with its best path as rank 1, the way
+    // convert_results files an old row. The caller holds the lock and an
     // open transaction.
     void write_row(const PreparedRow& row);
-    // Deletes the results `where` names (an SQL fragment over `results`,
-    // bound by `bind`). The caller holds the lock and an open transaction.
-    // `what` names the write in the error message.
-    void delete_results_where(const std::string& where,
+    // The id of the profile row for these settings, stamp and rules
+    // fingerprint (the rules_fp column's bytes), inserted when there is none.
+    // The caller holds the lock and an open transaction.
+    int64_t profile_id_for(const Profile& profile, const std::string& hyversion,
+                           const std::vector<uint8_t>& rules_fp);
+    // Files `record` under profile `profile_id`: the chart's record and path
+    // rows under that profile are replaced. The caller holds the lock and an
+    // open transaction.
+    void write_record(int64_t profile_id, const RecordRow& record);
+    // Deletes every profile no record is filed under. The caller holds the
+    // lock and an open transaction.
+    void drop_empty_profiles();
+    // Deletes the records `where` names, and their path rows (an SQL
+    // fragment over song_id and profile_id, which both tables have, bound by
+    // `bind`). The caller holds the lock and an open transaction. `what`
+    // names the write in the error message.
+    void delete_records_where(const std::string& where,
                               const std::function<void(sqlite3_stmt*)>& bind,
                               const std::string& what);
     // Runs once per database file, when it opens: deletes every result
-    // Hydra 1.8.4's Auto saved (user decision 7, 2026-09-27), and marks it
+    // Hydra 1.8.4's Auto saved (user decision 7, 2026-09-27), from `results`
+    // while an older file still has it and from the records, and marks it
     // done in `meta`.
     void delete_auto_results();
-    // Deletes the results of every chart the library no longer lists (D87
+    // Deletes the records of every chart the library no longer lists (D87
     // item 4). Which charts the library lists: not_in_library in
     // record_store.cpp. A listed chart keeps every row, in every chart mode,
     // Stale ones included. A database with no library rows loses every

@@ -9,7 +9,7 @@
 
 #include <string>
 
-#include "store/record_store.h"  // kSchema2ResultsColumns
+#include "store/record_store.h"  // kSchema2ResultsColumns, which the GUI scripts read
 
 namespace hydra::test {
 
@@ -48,18 +48,27 @@ inline constexpr const char* kDetailTablesSql =
     "INSERT INTO dynamics VALUES ('ready', 'Expert', 1, zeroblob(4096), 1);";
 
 // The SQL that turns a file this build wrote back into the layout before
-// summary-only storage: every result keeps its id and columns and gains the
+// summary-only storage: every record becomes one results row with its best
+// path's columns and its profile's settings, stamp and rules, and gains the
 // structure blob, whose head was the path format (7, the last one) and then
-// the rules fingerprint, and the detail tables come back. Run it on a file a
-// RecordStore wrote and closed.
+// the rules fingerprint. A record that kept no paths leaves every summary
+// column NULL, as that build wrote it. The record tables go, and the detail
+// tables come back. Run it on a file a RecordStore wrote and closed.
 inline std::string detail_layout_sql() {
-    const std::string columns =
-        std::string(hydra::store::kSchema2ResultsColumns) + ", legacy_fills, rules_fp";
-    return std::string("ALTER TABLE results RENAME TO results_now;") +
-           kDetailLayoutResultsTableSql + ";INSERT INTO results (" + columns +
-           ", structure) SELECT " + columns +
-           ", unhex('07000000' || hex(rules_fp)) FROM results_now;"
-           "DROP TABLE results_now;" +
+    return std::string(kDetailLayoutResultsTableSql) +
+           ";INSERT INTO results (hyhash, chartmode, hyversion, sp_cap, ms_enabled, ms_value,"
+           " depth_mode, depth_value, legacy_fills, bestpath, structure, score, actcount,"
+           " maxskip, hardest_ms, avgmult, notecount, sqin_count, sqout_count, pathcount, stars,"
+           " rules_fp)"
+           " SELECT r.song_id, p.chartmode, p.hyversion, p.sp_cap, p.ms_enabled, p.ms_value,"
+           " p.depth_mode, p.depth_value, p.legacy_fills, COALESCE(rp.path, ''),"
+           " unhex('07000000' || hex(p.rules_fp)), rp.score, rp.actcount, rp.maxskip,"
+           " rp.hardest_ms, rp.avgmult, iif(rp.rank IS NULL, NULL, r.notecount), rp.sqin_count,"
+           " rp.sqout_count, iif(rp.rank IS NULL, NULL, r.pathcount), r.stars, p.rules_fp"
+           " FROM records r JOIN profiles p ON p.id = r.profile_id"
+           " LEFT JOIN record_paths rp ON rp.song_id = r.song_id"
+           " AND rp.profile_id = r.profile_id AND rp.rank = 1;"
+           "DROP TABLE record_paths; DROP TABLE records; DROP TABLE profiles;" +
            kDetailTablesSql;
 }
 

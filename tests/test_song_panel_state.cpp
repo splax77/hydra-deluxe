@@ -51,7 +51,7 @@ std::unique_ptr<AppState> app_with_library(const ScratchPaths& paths, int charts
 TEST_CASE("song panel: next and previous walk the view and never wrap") {
     ScratchPaths paths("panel_nav");
     auto app = app_with_library(paths, 20);
-    app->select(app->view_row(0));
+    app->select(app->view_row(0), hydra::ui::SelectionSource::Click);
     CHECK(app->details_open());
     CHECK_FALSE(app->can_select_relative(-1));  // first row: nothing before it
     CHECK(app->can_select_relative(1));
@@ -64,7 +64,7 @@ TEST_CASE("song panel: next and previous walk the view and never wrap") {
     CHECK(app->selected->notespath == app->view_row(0).notespath);
 
     const size_t last = app->view_row_count() - 1;
-    app->select(app->view_row(last));
+    app->select(app->view_row(last), hydra::ui::SelectionSource::Click);
     CHECK_FALSE(app->can_select_relative(1));
     app->select_relative(1);
     CHECK(app->selected->notespath == app->view_row(last).notespath);
@@ -73,7 +73,7 @@ TEST_CASE("song panel: next and previous walk the view and never wrap") {
 TEST_CASE("song panel: a song outside the view has no neighbours") {
     ScratchPaths paths("panel_outside");
     auto app = app_with_library(paths, 20);
-    app->select(library_entry(999));  // not in the library at all
+    app->select(library_entry(999), hydra::ui::SelectionSource::Click);  // not in the library at all
     CHECK_FALSE(app->can_select_relative(1));
     CHECK_FALSE(app->can_select_relative(-1));
 }
@@ -81,7 +81,7 @@ TEST_CASE("song panel: a song outside the view has no neighbours") {
 TEST_CASE("song panel: tick runs the teardown once, on the closing edge") {
     ScratchPaths paths("panel_edge");
     auto app = app_with_library(paths, 5);
-    app->select(app->view_row(0));
+    app->select(app->view_row(0), hydra::ui::SelectionSource::Click);
     app->tick(0.0);
     app->details_ui.file_checked_at = 1.0;  // as if the file was looked at
     app->tick(0.1);                          // still open: no teardown

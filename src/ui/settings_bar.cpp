@@ -174,8 +174,9 @@ void render_paths_group(AppState& app, bool locked) {
     end_disabled_input(locked);
 
     begin_row("Path limit",
-              "Keep extra paths only when their hardest squeeze or required early fill is "
-              "within this many ms. Lower or negative values demand more slack.");
+              "Keep extra paths only when every squeeze and required early fill on them is "
+              "within this many ms. A path that ties the best score is kept whatever its "
+              "timing. Lower or negative values demand more slack.");
     if (setting_checkbox("##mslimit", &app.settings.mslimit_enabled, locked))
         app.commit_settings();
     ImGui::SameLine();
@@ -273,6 +274,9 @@ void render_settings_button(AppState& app, float room_after) {
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgHovered));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+    // The one button whose label starts at the left, so its cut label reads
+    // from the start: the exception the user's answer 6 keeps to
+    // apply_theme's centred button labels (ui/theme.cpp).
     ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
     const bool clicked =
         ImGui::Button((shown + "###analysissettings").c_str(), ImVec2(text_room + chrome, 0.0f));

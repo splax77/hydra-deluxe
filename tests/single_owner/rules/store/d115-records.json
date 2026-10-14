@@ -1,0 +1,62 @@
+{
+  "rules": [
+    {
+      "question": "Which rows does a record's profile match?",
+      "owner": "RecordStore::profile_id_for in src/store/record_store.cpp (finds or files the profile row)",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "profile_id_for",
+      "date": "2026-10-14",
+      "decision": "D115 (spec section 2; plan task A1-1)",
+      "added_by": "D115-A1-1",
+      "pattern": "FROM profiles(?: \\w+)? WHERE (?!.*\\bNOT\\b)(?!rules_fp\\b)",
+      "anchor": "FROM profiles",
+      "must_match": [
+        "\"SELECT id FROM profiles WHERE chartmode=? AND \" + cap_match(\"\") + \" AND \" +",
+        "\"SELECT id FROM profiles WHERE sp_cap = ? AND chartmode = ?\"",
+        "\"SELECT p.id FROM profiles p WHERE p.chartmode = ?\"",
+        "\"SELECT id FROM profiles WHERE \" + cap_match(\"\") + \" AND \" + lens_match(\"\")"
+      ],
+      "must_not_match": [
+        "\"song_id=? AND profile_id IN (SELECT id FROM profiles WHERE chartmode=? AND NOT \" +",
+        "\"profile_id IN (SELECT id FROM profiles WHERE rules_fp = ?)\",",
+        "\"DELETE FROM profiles WHERE NOT EXISTS\"",
+        "\"SELECT r.song_id FROM records r JOIN profiles p ON p.id = r.profile_id\""
+      ],
+      "owner_lines": [
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "\"SELECT id FROM profiles WHERE chartmode=? AND \" + cap_match(\"\") + \" AND \" +",
+          "why": "profile_id_for, the owner"
+        }
+      ],
+      "note": "A record is filed under the profile row whose mode, cap, lens, stamp and rules all match. A second lookup of that row by its key could match a different set of columns and file a record twice. The write purge's unreadable profiles (a WHERE with a NOT), the Auto rules' profiles (a WHERE on rules_fp alone) and the emptied profiles (a NOT EXISTS) are other questions, so those are left alone; any other WHERE on the profiles table is flagged. Decided by: D115 (spec section 2)"
+    },
+    {
+      "question": "Which stored rows belong to a chart no library row lists?",
+      "owner": "not_in_library in src/store/record_store.cpp",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "not_in_library",
+      "date": "2026-10-07",
+      "decision": "D87",
+      "added_by": "storage-T1",
+      "pattern": "charts\\.md5 = ",
+      "anchor": "charts.md5 = ",
+      "must_match": [
+        "NOT EXISTS (SELECT 1 FROM charts WHERE charts.md5 = records.song_id)",
+        "\"SELECT 1 FROM charts WHERE charts.md5 = \" + col"
+      ],
+      "must_not_match": [
+        "bind_text(s, 1, item.md5);",
+        "kNamingCopiesSql + \" AS c WHERE songmeta.hyhash = c.md5\")"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "return std::string(\"NOT EXISTS (SELECT 1 FROM charts WHERE charts.md5 = \") + hash + \")\";",
+          "why": "not_in_library, the owner"
+        }
+      ],
+      "note": "The scan's purge and reidentify_chart both ask this of the stored records (purge_charts_not_in_library); a second SQL spelling could keep rows the other drops. Moved here from store.json when the records replaced the results table (D115 A1-1). Decided by: D87 items 3 and 4 (task storage-T1 review finding 1)"
+    }
+  ]
+}

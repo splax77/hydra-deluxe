@@ -16,6 +16,7 @@
 #include "../testdata_dirs.h"  // corpus::root
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/display_format.h"  // kAverageMultiplierLabel
 #include "app/dynamics_breakdown.h"
 #include "core/model.h"
 #include "core/stars.h"
@@ -312,7 +313,7 @@ void test_dynamics_reopen(ImGuiTestContext* ctx) {
             break;
         }
     }
-    h.app->select(h.app->library_row_at(other_idx).entry);
+    h.app->select(h.app->library_row_at(other_idx).entry, hydra::ui::SelectionSource::Click);
     h.app->show_details = false;
     ctx->Yield(3);
 
@@ -417,6 +418,8 @@ void test_stars(ImGuiTestContext* ctx) {
     IM_CHECK(text.find("Solo bonus: " + hydra::group_thousands(sc.solo_bonus) +
                        " (not counted toward stars)") != std::string::npos);
     IM_CHECK(text.find("With full solo bonus") != std::string::npos);
+    // The factor column's title is the shared label.
+    IM_CHECK(text.find(hydra::app::kAverageMultiplierLabel) != std::string::npos);
     for (int64_t cutoff : sc.cutoffs)
         IM_CHECK(text.find(hydra::group_thousands(cutoff)) != std::string::npos);
     for (int64_t with_solo : sc.with_solo)
@@ -1063,7 +1066,7 @@ void test_view_progress_delay(ImGuiTestContext* ctx) {
     // taken before the request, so this can only overstate the wait.
     auto click_and_time_box = [&](size_t row) {
         const clock::time_point t0 = clock::now();
-        h.app->select(h.app->view_row(row));
+        h.app->select(h.app->view_row(row), hydra::ui::SelectionSource::Click);
         double first_box = -1.0;
         wait_until(ctx, [&] {
             if (box_on_screen() && first_box < 0.0)

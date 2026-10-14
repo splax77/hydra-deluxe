@@ -57,9 +57,18 @@ void refuse_library_row_updates(const ScratchPaths& paths) {
                               " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
 }
 
-int64_t result_id(const ScratchPaths& paths, const std::string& md5) {
-    return hydra::test::scalar_on_file(
-        paths.db, "SELECT result_id FROM results WHERE hyhash = '" + md5 + "'");
+// From here on, every record the store writes adds a row to record_writes,
+// so a test can tell "stored nothing new" from "wrote the same row again".
+// A record has no row id to compare, so the writes are counted instead.
+void count_record_writes(const ScratchPaths& paths) {
+    hydra::test::exec_on_file(paths.db,
+                              "CREATE TABLE record_writes (n INTEGER);"
+                              "CREATE TRIGGER count_record_writes AFTER INSERT ON records"
+                              " BEGIN INSERT INTO record_writes VALUES (1); END;");
+}
+
+int64_t record_writes(const ScratchPaths& paths) {
+    return hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM record_writes");
 }
 
 }  // namespace
@@ -93,7 +102,7 @@ TEST_CASE("clicking a Ready song shows its paths and stores nothing new") {
     click(*app, song);
     REQUIRE(app->viewed.ready());
     const int64_t rows = hydra::test::results_rows_in(paths.db);
-    const int64_t id = result_id(paths, song.md5);
+    count_record_writes(paths);
 
     app->close_details();
     click(*app, song);
@@ -101,7 +110,7 @@ TEST_CASE("clicking a Ready song shows its paths and stores nothing new") {
     REQUIRE(app->viewed.ready());
     CHECK_FALSE(app->viewed.record->paths.empty());
     CHECK(hydra::test::results_rows_in(paths.db) == rows);
-    CHECK(result_id(paths, song.md5) == id);
+    CHECK(record_writes(paths) == 0);
 }
 
 TEST_CASE("clicking a Stale song turns its row Ready") {
@@ -150,7 +159,7 @@ TEST_CASE("clicking a chart edited since the scan re-identifies it and shows the
     CHECK(app->selected->md5 == new_md5);
     CHECK(row_of(*app, new_md5).status == RecordStatus::Ready);
     CHECK(app->store->get_summary(old_key).status == RecordStatus::NotAnalyzed);
-    CHECK(hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results WHERE hyhash = '" +
+    CHECK(hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM records WHERE song_id = '" +
                                                     scanned.md5 + "'") == 0);
     // The paths are the new file's.
     const hydra::app::AnalysisResult fresh = hydra::app::analyze_chart_file(
@@ -295,8 +304,8 @@ TEST_CASE("clicking A then B in one frame shows B, and A is never shown or saved
     REQUIRE(a.md5 != b.md5);
     std::unique_ptr<AppState> app = app_with(paths, {a, b});
 
-    app->select(a);
-    app->select(b);
+    app->select(a, hydra::ui::SelectionSource::Click);
+    app->select(b, hydra::ui::SelectionSource::Click);
     settle(*app);
 
     REQUIRE(app->selected.has_value());
@@ -315,7 +324,7 @@ TEST_CASE("Cancel shows Cancelled and saves nothing; Try again shows the paths")
     std::unique_ptr<AppState> app = app_with(paths, {song});
     const RecordKey key = app->settings.record_key(song.md5);
 
-    app->select(song);
+    app->select(song, hydra::ui::SelectionSource::Click);
     app->cancel_view();
     settle(*app);
 
@@ -335,7 +344,7 @@ TEST_CASE("closing the panel cancels the click's analysis and saves nothing") {
     const ChartLibraryEntry song = corpus_chart("click_close");
     std::unique_ptr<AppState> app = app_with(paths, {song});
 
-    app->select(song);
+    app->select(song, hydra::ui::SelectionSource::Click);
     app->close_details();  // what the X, Escape and a new selection all run
     settle(*app);
 
@@ -348,7 +357,7 @@ TEST_CASE("closing the panel cancels the click's analysis and saves nothing") {
 TEST_CASE("a song whose file is gone shows FileMissing and starts no job") {
     ScratchPaths paths("appstate_click_missing");
     std::unique_ptr<AppState> app = app_on(paths);
-    app->select(library_entry(3));
+    app->select(library_entry(3), hydra::ui::SelectionSource::Click);
     CHECK(app->viewed.state == ViewedSong::State::FileMissing);
     CHECK(app->view_job == nullptr);
     CHECK_FALSE(app->view_pending);
@@ -360,7 +369,7 @@ TEST_CASE("the settings lock is the batch's alone") {
     ScratchPaths paths("appstate_click_lock");
     const ChartLibraryEntry song = corpus_chart("click_lock");
     std::unique_ptr<AppState> app = app_with(paths, {song});
-    app->select(song);
+    app->select(song, hydra::ui::SelectionSource::Click);
     CHECK(app->settings_lock() == AppState::SettingsLock::None);
     CHECK_FALSE(app->settings_locked());
     settle(*app);
@@ -373,7 +382,7 @@ TEST_CASE("a click whose save fails shows the paths and says so") {
     const ChartLibraryEntry song = corpus_chart("click_savefail");
     std::unique_ptr<AppState> app = app_with(paths, {song});
     hydra::test::exec_on_file(paths.db,
-                              "CREATE TRIGGER refuse_results BEFORE INSERT ON results"
+                              "CREATE TRIGGER refuse_records BEFORE INSERT ON records"
                               " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
 
     click(*app, song);

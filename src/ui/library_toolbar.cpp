@@ -139,7 +139,7 @@ void render_actions_row(AppState& app) {
 
     if (show_report) {
         ImGui::SameLine();
-        move_to_right_edge(report_w);
+        place_control_at_right_edge(report_w);
         if (ImGui::Button(building ? "Building path report..." : "Open path report",
                           ImVec2(report_w, 0.0f)))
             app.show_path_report();
