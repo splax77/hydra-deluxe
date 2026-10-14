@@ -1,0 +1,31 @@
+{
+  "rules": [
+    {
+      "question": "Is Star Power running at this moment?",
+      "owner": "PreviewActivation::sp_running_at in src/app/preview_view.h",
+      "owner_file": "src/app/preview_view.h",
+      "owner_symbol": "sp_running_at",
+      "date": "2026-10-14",
+      "decision": "D115 (M48, code-only)",
+      "added_by": "D115-B1-5",
+      "pattern": "struck_at\\(\\s*now\\s*,\\s*\\w+->first\\s*\\)\\s*&&\\s*now\\s*<\\s*\\w+->second",
+      "anchor": "struck_at",
+      "must_match": [
+        "if (w && struck_at(now, w->first) && now < w->second) return &a;"
+      ],
+      "must_not_match": [
+        "if (a.sp_running_at(now)) return &a;",
+        "return struck_at(now, s.ms);",
+        "if (const std::optional<std::pair<double, double>> w = a.sp_window())"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/preview_view.h",
+          "line_text": "return w && struck_at(now, w->first) && now < w->second;",
+          "why": "PreviewActivation::sp_running_at, the owner"
+        }
+      ],
+      "note": "The playhead tested against an activation's sp_window by hand instead of through sp_running_at. The highway's sp_active sweep is a generic interval walk shared by six span kinds, so it keeps its own walk; test_track_state's \"the sp_active sweep agrees with sp_running_at\" pins it to the owner. Decided by: D115, concept audit M48 (plan question 6)."
+    }
+  ]
+}

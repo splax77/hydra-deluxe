@@ -232,15 +232,12 @@ PreviewScore build_score(const Song& song, const Path* path, const core::Rules& 
     return score;
 }
 
-// The activation whose Star Power is running at `now`, or nullptr: `now`
-// inside the activation's sp_window, from the moment its chord is struck
-// (struck_at) up to, not including, the window's end. The drain box and the
-// score box both ask this, so they cannot disagree.
+// The activation whose Star Power is running at `now`, or nullptr. Each
+// activation answers through PreviewActivation::sp_running_at. The drain box
+// and the score box both ask this, so they cannot disagree.
 const PreviewActivation* running_activation(const PreviewScene& scene, double now) {
-    for (const PreviewActivation& a : scene.activations) {
-        const std::optional<std::pair<double, double>> w = a.sp_window();
-        if (w && struck_at(now, w->first) && now < w->second) return &a;
-    }
+    for (const PreviewActivation& a : scene.activations)
+        if (a.sp_running_at(now)) return &a;
     return nullptr;
 }
 

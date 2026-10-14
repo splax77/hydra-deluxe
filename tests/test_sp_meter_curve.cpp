@@ -538,6 +538,34 @@ TEST_CASE("sp_window: the stored window, none without an end, none with no lengt
     CHECK_FALSE(no_length.sp_window().has_value());
 }
 
+TEST_CASE("sp_running_at: on from the strike, off at the window's end, the next window runs at the join") {
+    // Two back-to-back windows, [1000, 2000) and [2000, 3000) ms. The scene of
+    // test_track_state's "the sp_active sweep agrees with sp_running_at".
+    PreviewActivation a;
+    a.ms = 1000.0;
+    a.has_sp_end = true;
+    a.sp_end_ms = 2000.0;
+    PreviewActivation b = a;
+    b.ms = 2000.0;
+    b.sp_end_ms = 3000.0;
+
+    CHECK_FALSE(a.sp_running_at(500.0));   // before the start
+    CHECK(a.sp_running_at(1000.0));        // at the start: the chord is struck
+    CHECK(a.sp_running_at(1500.0));        // inside
+    CHECK_FALSE(a.sp_running_at(2000.0));  // at the end: not running
+    CHECK(b.sp_running_at(2000.0));        // the join: the second runs
+    CHECK_FALSE(b.sp_running_at(3000.0));  // at the second's end
+    CHECK_FALSE(b.sp_running_at(4000.0));  // after
+
+    // No window, no running: without a stored end, or with no length.
+    PreviewActivation no_end = a;
+    no_end.has_sp_end = false;
+    CHECK_FALSE(no_end.sp_running_at(1500.0));
+    PreviewActivation no_length = a;
+    no_length.sp_end_ms = 1000.0;
+    CHECK_FALSE(no_length.sp_running_at(1000.0));
+}
+
 TEST_CASE("sp meter curve: a meter change inside the window changes the drain rate") {
     // 4/4 to tick 7680 (8000 ms, a barline), then 3/4: 1440 ticks, 1500 ms a
     // measure. Two bars from tick 3840 (measure 2) are four measures: two of

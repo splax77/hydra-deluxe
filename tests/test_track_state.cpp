@@ -246,6 +246,42 @@ TEST_CASE("build_track_state: active SP window ends exactly at the deact node") 
                   "3.500000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-"});
 }
 
+TEST_CASE("build_track_state: the sp_active sweep agrees with sp_running_at") {
+    // The highway's sweep keeps its own walk (it serves six span kinds), so
+    // this pins its sp_active answer to the owner, PreviewActivation::
+    // sp_running_at, at every edge of two back-to-back windows: [1000, 2000)
+    // and [2000, 3000) ms, the scene of test_sp_meter_curve's sp_running_at
+    // case.
+    PreviewScene scene;
+    scene.notes = {note(0.0, PreviewLane::Red), note(5000.0, PreviewLane::Red)};
+    PreviewActivation a;
+    a.tick = 1000;
+    a.ms = 1000.0;
+    a.has_sp_end = true;
+    a.sp_end_tick = 2000;
+    a.sp_end_ms = 2000.0;
+    PreviewActivation b = a;
+    b.tick = 2000;
+    b.ms = 2000.0;
+    b.sp_end_tick = 3000;
+    b.sp_end_ms = 3000.0;
+    scene.activations = {a, b};
+
+    const TrackState st = build_track_state(scene, TrackStateOptions{});
+    // Before, at the start, inside, at the join, at the end, after.
+    for (const double t_ms : {500.0, 1000.0, 1500.0, 2000.0, 3000.0, 4000.0}) {
+        INFO("t = " << t_ms << " ms");
+        // The sweep's state at t: the instant at t when an edge puts one
+        // there, else the one window() synthesizes at t.
+        const double t_s = t_ms / 1000.0;
+        const TrackWindow win = st.window(t_s - 0.1, t_s + 0.1);
+        REQUIRE(win.size() == 1);
+        CHECK(win[0].t == doctest::Approx(t_s));
+        const bool owner = a.sp_running_at(t_ms) || b.sp_running_at(t_ms);
+        CHECK(toggle_on_after(win[0].sp_active) == owner);
+    }
+}
+
 namespace {
 
 // A lit-lane activation on `tick`: the activation that lights a taken fill

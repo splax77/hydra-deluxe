@@ -108,12 +108,18 @@ struct PreviewActivation {
     // Empty without a stored end, or when the end is not after the start (a
     // window of no length is no window). The drain box, the score box and
     // the highway's tinted floor and SP end marks (through the track state's
-    // sp_active intervals) all read it; the drain and score boxes test
-    // the start edge with struck_at.
+    // sp_active intervals) all read it; the drain and score boxes ask
+    // sp_running_at.
     std::optional<std::pair<double, double>> sp_window() const {
         if (!has_sp_end || !(sp_end_ms > ms)) return std::nullopt;
         return std::make_pair(ms, sp_end_ms);
     }
+    // Is this activation's Star Power running with the playhead at `now`
+    // (ms)? The one home of that rule (M48), defined after struck_at below.
+    // The drain and score boxes ask it through running_activation; the
+    // highway's sp_active sweep answers it separately, and test_track_state
+    // pins the two together.
+    bool sp_running_at(double now) const;
     // Where this window's SP end changed, read off the record: the tick the
     // change takes effect (Activation::refill_tick) and the end after it. The
     // first entry is the activation itself. The gauge draws the window from
@@ -343,15 +349,23 @@ PreviewScoreBox build_score_box(const PreviewScene& scene, double now_ms, double
 // Is a note at `note_ms` struck with the playhead at `now_ms`? Yes when it is
 // at or before the playhead, so a note exactly on the playhead counts as hit
 // and a jump to an activation lands on a struck chord (D48, Q27). The score
-// box, the highway's gem flash and the drain box's "is SP running" check all
-// ask this.
+// box, the highway's gem flash and PreviewActivation::sp_running_at all ask
+// this.
 inline bool struck_at(double now_ms, double note_ms) { return note_ms <= now_ms; }
+
+// PreviewActivation::sp_running_at, declared in the struct above: the
+// activation's sp_window, entered when its chord is struck (struck_at) and
+// left at the window's end.
+inline bool PreviewActivation::sp_running_at(double now) const {
+    const std::optional<std::pair<double, double>> w = sp_window();
+    return w && struck_at(now, w->first) && now < w->second;
+}
 
 // The Star Power drain box the Preview draws beside the SP gauge, at the
 // moment the time box shows for `now_ms` and `length_ms` (shown_ms). `rate` is how long one bar of SP lasts at the playhead ("1 bar / 4.0 s"):
 // kMeasuresPerSpBar measures at the local measure length the song's timing
 // gives (SongTiming::ms_per_measure_at). The box is `active` when the path has
-// SP running at the playhead: the playhead inside an activation's sp_window.
+// SP running at the playhead (PreviewActivation::sp_running_at).
 // Then `detail` is "empties in X s", that stored end minus the playhead.
 // Otherwise `detail` is "full meter X s": the meter's cap in bars at that same
 // bar time, so it jumps exactly when the rate does.
