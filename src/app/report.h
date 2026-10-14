@@ -148,7 +148,7 @@ std::unordered_map<std::string, int> library_copies_by_hash(store::RecordStore& 
 bool library_lists(const std::unordered_map<std::string, int>& library,
                    const std::string& hash);
 
-// The path report's default: the top 5 paths per chart.
+// The path report's default: every path a record keeps (store::kPathsPerRecord).
 inline constexpr int64_t kDefaultReportPaths = store::kPathsPerRecord;
 // What "--all-paths" asks for, a count no chart reaches. It is the one answer
 // to "does this page list every path" (finding 86): generate_report's subtitle
