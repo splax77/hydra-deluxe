@@ -15,6 +15,7 @@
 #include "core/winstr.h"  // read_file_bytes, file_byte_source, memory_byte_source
 #include "parse/midi.h"
 #include "parse/note_shuffle.h"
+#include "parse/section_names.h"
 #include "parse/sng.h"
 #include "parse/chart_files.h"
 #include "parse/srb.h"
@@ -56,19 +57,13 @@ void check_timing_maps(int64_t tick_resolution,
 
 namespace {
 
-// The name inside a practice-section marker body, which both formats spell one
-// of two ways: "section Verse 2B" (Clone Hero) or "prc_verse_2b" (Rock Band).
-// Nothing else is a section.
-bool section_name_of(const std::string& body, std::string* name) {
-    if (body.rfind("section ", 0) == 0) {
-        *name = body.substr(8);
-        return true;
-    }
-    if (body.rfind("prc_", 0) == 0) {
-        *name = body.substr(4);
-        return true;
-    }
-    return false;
+// Whether a text event's body marks a practice section, and if so the name it
+// shows. Both questions are answered in parse/section_names.cpp; this is the
+// one door both readers use.
+bool section_name_of(std::string_view body, std::string* name) {
+    if (!is_section_marker(body)) return false;
+    *name = section_display_name(body);
+    return true;
 }
 
 // Practice sections in tick order, the order Song promises. A .chart's
@@ -310,12 +305,17 @@ bool is_disco_off_marker(std::string_view s, char mix_digit) {
 // signature itself is kept too, for display. A numerator of 0 names no meter,
 // so the line is ignored and the previous meter stays, in both formats
 // (finding 100). A bottom number the readers couldn't hold (0, from
-// timesig_denominator) refuses the chart here, where the tick is known.
-// Anything else that makes a measure last no time is refused by
-// check_timing_maps.
+// timesig_denominator) refuses the chart here, where the tick is known, and so
+// does one whose beat would be shorter than one tick, which Clone Hero's grid
+// cannot step (MeasureIndex; user decision 2026-10-14). Anything else that
+// makes a measure last no time is refused by check_timing_maps.
 void apply_timesig(Song& song, int64_t tick, int numerator, int denominator) {
     if (numerator == 0) return;
-    if (denominator <= 0)
+    // A resolution of 0 or below is check_timing_maps' to refuse, with its
+    // own sentence.
+    const bool beat_under_a_tick =
+        song.tick_resolution() > 0 && song.tick_resolution() * 4 < denominator;
+    if (denominator <= 0 || beat_under_a_tick)
         throw ChartFileError(ErrorKind::ChartTimingRefused,
                              std::string(kTimeSignatureRefusalPrefix) + std::to_string(tick) +
                                  " has a bottom number that is out of range");
@@ -578,82 +578,65 @@ int Song::note_count() const {
 
 // ---- Song::check_activations -------------------------------------------
 
+// The one owner of generated-fill placement, for a chart with no fills of its
+// own, as Clone Hero 1.1.0.6142's generator places them (0x20D2B30). It reads
+// the measure lines of Clone Hero's grid (MeasureIndex::walk) and starts at
+// the second line (`mov ebx, 1`). Each line takes the chord nearest it, a tie
+// going to the later chord, when that chord is within the distance limit; the
+// fill then starts on the line, so its length is the chord tick minus the
+// line tick and may be 0 or negative for a chord on or before the line (user
+// answer 6, 2026-10-12). The next candidate is rules.fill_cooldown_measures
+// lines on after a fill (`add ebx, 4`), else the next line.
+//
+// The limit is Clone Hero's: the whole ticks of resolution x
+// fill_max_distance_beats, plus one tick (inc at 0x20D2C91), and a chord
+// exactly at that distance still takes the fill. The +1 sits on top of the
+// rules value, as place_authored_fills' does.
 void Song::check_activations(const core::Rules& rules) {
     for (const SongTimestamp& ts : sequence)
         if (ts.has_activation()) return;  // chart already has fills.
 
     features.push_back("Auto-Generated Fills");
+    if (sequence.empty()) return;
 
-    struct Cell {
-        int64_t tick;                 // the downbeat tick
-        std::optional<size_t> best;   // index into sequence of the closest chord
-        int64_t bestdist = 0;
-        int64_t pre_tpm = 0;
-    };
-    // std::map keeps measures sorted, which equals Python's dict insertion
-    // order here: measures are only ever added at or above the current max.
-    std::map<int64_t, Cell> measuremap;
-
-    // SongIter: walk the sequence, advancing at most one tpm mark each step.
-    std::vector<int64_t> tpm_keys;
-    for (const auto& kv : tpm_changes) tpm_keys.push_back(kv.first);
-    size_t tpm_pos = 0;
-    int64_t tpm = tpm_keys.empty() ? 0 : tpm_changes[tpm_keys[tpm_pos++]];
-
-    Timecode downbeat_ref = start_time();
-
-    for (size_t i = 0; i < sequence.size(); ++i) {
-        SongTimestamp& ts = sequence[i];
-        int64_t tick = ts.timecode.ticks();
-
-        int64_t pre_tpm = tpm;
-        if (tpm_pos < tpm_keys.size()) {
-            if (tick == tpm_keys[tpm_pos]) {
-                tpm = tpm_changes[tpm_keys[tpm_pos]];
-                ++tpm_pos;
-            } else if (tick > tpm_keys[tpm_pos]) {
-                tpm = tpm_changes[tpm_keys[tpm_pos]];
-                pre_tpm = tpm;
-                ++tpm_pos;
-            }
-        }
-
-        int64_t m0 = ts.timecode.measure_beats_ticks()[0];
-        for (int64_t measure : {m0 + 1, m0 + 2}) {
-            auto it = measuremap.find(measure);
-            if (it == measuremap.end()) {
-                downbeat_ref = timing().plusmeasure(
-                    downbeat_ref,
-                    measure - (downbeat_ref.measure_beats_ticks()[0] + 1));
-                Cell c;
-                c.tick = downbeat_ref.ticks();
-                it = measuremap.emplace(measure, c).first;
-            }
-            Cell& cell = it->second;
-            int64_t dist = std::llabs(cell.tick - tick);
-            if (!cell.best.has_value() || dist <= cell.bestdist) {
-                cell.best = i;
-                cell.bestdist = dist;
-                cell.pre_tpm = pre_tpm;
-            }
-        }
-    }
-
-    const int64_t cooldown_measures = rules.fill_cooldown_measures;
     const int64_t max_distance =
-        static_cast<int64_t>(tick_resolution_ * rules.fill_max_distance_beats);
-    std::optional<int64_t> last_act_measure;
-    for (auto& kv : measuremap) {
-        int64_t measure = kv.first;
-        Cell& cell = kv.second;
-        if (last_act_measure.has_value() &&
-            measure < *last_act_measure + cooldown_measures)
-            continue;
-        if (cell.best.has_value() && cell.bestdist <= max_distance) {
-            sequence[*cell.best].activation_length =
-                static_cast<int64_t>(cell.pre_tpm * rules.fill_length_measures);
-            last_act_measure = measure;
+        static_cast<int64_t>(tick_resolution_ * rules.fill_max_distance_beats) + 1;
+
+    // Every measure line up to the last one a chord can still reach. The grid
+    // runs to the chart's end in Clone Hero; past the last chord plus the
+    // limit no line can take a chord.
+    std::vector<int64_t> lines;
+    timing().measure_index().walk(
+        sequence.back().timecode.ticks() + max_distance,
+        [&](int64_t tick, MeasureIndex::Line kind) {
+            if (kind == MeasureIndex::Line::Measure) lines.push_back(tick);
+        });
+
+    // `next` is the first chord at or after the line, searched onward from
+    // the last chord looked at; the chord before it is the other candidate.
+    size_t next = 0;
+    size_t line = 1;
+    while (line < lines.size()) {
+        const int64_t line_tick = lines[line];
+        while (next < sequence.size() && sequence[next].timecode.ticks() < line_tick) ++next;
+        std::optional<size_t> best;
+        if (next < sequence.size()) best = next;
+        if (next > 0) {
+            const size_t before = next - 1;
+            if (!best.has_value() ||
+                line_tick - sequence[before].timecode.ticks() <
+                    sequence[*best].timecode.ticks() - line_tick)
+                best = before;
         }
+        const int64_t chord_tick = sequence[*best].timecode.ticks();
+        if (std::llabs(chord_tick - line_tick) > max_distance) {
+            ++line;
+            continue;
+        }
+        sequence[*best].activation_length = chord_tick - line_tick;
+        // hydra_rules.ini refuses a cooldown below 1 (rules_fields); a Rules
+        // value built in code gets the same floor, so the walk always moves.
+        line += static_cast<size_t>(std::max(rules.fill_cooldown_measures, 1));
     }
 }
 
@@ -1212,7 +1195,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
             const std::string& s = msg.str;
             if (s.size() < 2 || s.front() != '[' || s.back() != ']') continue;
             std::string name;
-            if (section_name_of(s.substr(1, s.size() - 2), &name))
+            if (section_name_of(std::string_view(s).substr(1, s.size() - 2), &name))
                 song.practice_sections.push_back({elapsed, name});
         }
     }
@@ -1623,7 +1606,7 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
                     std::string_view event;
                     const ChartLine l = classify_chart_line(lhs, rhs, mix_digit, &event);
                     std::string name;
-                    if (l.kind == LineKind::Event && section_name_of(std::string(event), &name))
+                    if (l.kind == LineKind::Event && section_name_of(event, &name))
                         events.push_back({l.tick, std::move(name)});
                 } else {
                     const ChartLine l = classify_chart_line(lhs, rhs, mix_digit, nullptr);

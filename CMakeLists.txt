@@ -295,6 +295,8 @@ add_library(hydra_core STATIC
     src/core/audio_sniff.cpp
     src/parse/midi.cpp
     src/parse/song.cpp
+    src/parse/section_names.cpp
+    src/parse/section_names_table.cpp
     src/parse/note_shuffle.cpp
     src/parse/srb.cpp
     src/parse/chart_files.cpp

@@ -36,7 +36,7 @@ using namespace hydra;
 
 namespace {
 
-// Whether check_invariants checks that every activation fill is positive. A
+// Whether check_invariants checks that every authored activation fill is positive. A
 // chart with a fill starting on its own last note has a 0-length activation,
 // so its case skips that one check.
 enum class FillCheck { Check, Skip };
@@ -46,6 +46,11 @@ enum class FillCheck { Check, Skip };
 void check_invariants(const Song& song, const std::string& what,
                       FillCheck fill_check = FillCheck::Check) {
     bool ticks_ok = true, codes_ok = true, fills_ok = true;
+    // A generated fill starts on its measure line, so its length may be 0 or
+    // negative (Song::check_activations, user answer 6 of 2026-10-12); the
+    // fill check below is for the chart's own fills only.
+    const bool generated = std::find(song.features.begin(), song.features.end(),
+                                     "Auto-Generated Fills") != song.features.end();
     int64_t prev = -1;
     for (const SongTimestamp& ts : song.sequence) {
         // Strictly increasing: two chords never share a tick.
@@ -55,8 +60,8 @@ void check_invariants(const Song& song, const std::string& what,
         // Every chord spells as a code (Chord::code throws on one it can't).
         if (ts.chord.code().empty()) codes_ok = false;
 
-        // An activation fill length is always positive.
-        if (ts.activation_length.has_value() && *ts.activation_length <= 0)
+        // An authored activation fill's length is always positive.
+        if (!generated && ts.activation_length.has_value() && *ts.activation_length <= 0)
             fills_ok = false;
     }
     CHECK_MESSAGE(ticks_ok, what << ": ticks not strictly increasing");
@@ -234,14 +239,15 @@ TEST_CASE(".chart: [Events] section markers become practice sections") {
     Song song = load_songbytes_chart(data, ChartReading{});
 
     // Both spellings are read, non-section text events are not, and the file's
-    // own order does not have to be sorted.
+    // own order does not have to be sorted. Names show as Clone Hero shows
+    // them: chorus_1a is in its list as "Chorus 1a".
     REQUIRE(song.practice_sections.size() == 3);
     CHECK(song.practice_sections[0].tick == 0);
     CHECK(song.practice_sections[0].name == "Intro");
     CHECK(song.practice_sections[1].tick == 768);
     CHECK(song.practice_sections[1].name == "Verse 1");
     CHECK(song.practice_sections[2].tick == 1536);
-    CHECK(song.practice_sections[2].name == "chorus_1a");
+    CHECK(song.practice_sections[2].name == "Chorus 1a");
 
     // A chart with no [Events] section has no sections and still parses.
     Song plain = load_songbytes_chart(multidiff::chart_bytes(), ChartReading{});
@@ -594,7 +600,8 @@ TEST_CASE(".mid: EVENTS text metas become practice sections") {
     CHECK(song.practice_sections[0].tick == 0);
     CHECK(song.practice_sections[0].name == "Intro");
     CHECK(song.practice_sections[1].tick == 384);
-    CHECK(song.practice_sections[1].name == "verse_1");
+    // verse_1 is in Clone Hero's list as "Verse 1".
+    CHECK(song.practice_sections[1].name == "Verse 1");
 }
 
 namespace {
@@ -620,8 +627,13 @@ TEST_CASE(".chart: a timing line that can't measure time is refused") {
               "the tempo at tick 384 is not above 0 BPM"},
           Bad{"  0 = TS -3\n  0 = B 120000\n",
               "the time signature at tick 0 makes a measure -576 ticks long"},
+          // A beat shorter than one tick (4096 > 192 x 4) is refused where the
+          // signature is read, before its measure length is checked.
           Bad{"  0 = TS 1 12\n  0 = B 120000\n",
-              "the time signature at tick 0 makes a measure 0 ticks long"},
+              "the time signature at tick 0 has a bottom number that is out of range"},
+          // 4/1024 at 192 makes a 3-tick measure, but its beat is under a tick.
+          Bad{"  0 = TS 4\n  0 = B 120000\n  384 = TS 4 10\n",
+              "the time signature at tick 384 has a bottom number that is out of range"},
           Bad{"  0 = TS 4\n  0 = B 120000\n  384 = TS 4 40\n",
               "the time signature at tick 384 has a bottom number that is out of range"},
           Bad{"  0 = TS 4\n  0 = B 120000\n  384 = TS 4 -1\n",

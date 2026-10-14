@@ -83,6 +83,10 @@ core::Rules load_rules_file(const std::filesystem::path& path) {
         // Auto's two keys (Auto was removed 2026-09-27). A file that still
         // sets them keeps loading; whatever they say is ignored.
         if (kv->key == "auto_cap_ladder" || kv->key == "auto_budget_s") continue;
+        // fill_length_measures, retired in D115: a generated fill starts on
+        // its measure line, so its length is no longer a rule. Read and
+        // ignored, like Auto's keys.
+        if (kv->key == "fill_length_measures") continue;
         const core::RulesField* field = nullptr;
         for (const core::RulesField& candidate : core::rules_fields())
             if (kv->key == candidate.name) field = &candidate;
