@@ -226,14 +226,6 @@ void LibraryModel::set_sort(LibrarySort column, bool ascending) {
     refilter();
 }
 
-std::vector<size_t> LibraryModel::matches() const {
-    if (!searching()) return sorted_;
-    std::vector<size_t> out;
-    for (size_t i : sorted_)
-        if (matches_query(query_, rows_[i])) out.push_back(i);
-    return out;
-}
-
 void LibraryModel::resort() {
     sorted_.resize(rows_.size());
     std::iota(sorted_.begin(), sorted_.end(), size_t{0});

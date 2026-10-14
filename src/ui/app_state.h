@@ -317,12 +317,10 @@ public:
     const LibraryRow& library_row_at(size_t view_index) const {
         return library.rows()[library.order()[view_index]];
     }
-    // How many charts the search matches (the "All" chip's count): the N of
-    // "Analyze search (N)...".
-    size_t library_match_count() const { return library.counts().all; }
-    // Those charts, in table order: what "Analyze search (N)..." analyzes.
-    // The rows keep only part of each chart (LibraryChart), so the entries
-    // are read from the store; throws when that read fails.
+    // The rows on screen (library_view_order), in table order: what the
+    // Analyze button runs. The rows keep only part of each chart
+    // (LibraryChart), so the entries are read from the store; throws when
+    // that read fails.
     std::vector<store::ChartLibraryEntry> library_matches() const;
 
     // Selection / details modal.
