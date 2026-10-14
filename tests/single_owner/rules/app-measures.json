@@ -1,0 +1,33 @@
+{
+  "rules": [
+    {
+      "question": "Which practice section is in force at the playhead?",
+      "owner": "build_time_box in src/app/preview_view.cpp, through last_at_or_before",
+      "owner_file": "src/app/preview_view.cpp",
+      "owner_symbol": "build_time_box",
+      "date": "2026-10-14",
+      "decision": "D115",
+      "added_by": "D115-B2-2",
+      "pattern": "(upper_bound|lower_bound|last_at_or_before)\\(\\s*(\\w+(\\.|->))*\\w*sections\\b|section\\w*\\s*=\\s*std::(upper|lower)_bound\\(",
+      "must_match": [
+        "std::upper_bound(sections.begin(), sections.end(), now_tick,",
+        "const auto section_past = std::upper_bound(",
+        "auto it = std::upper_bound(scene.sections.begin(), scene.sections.end(), tick,",
+        "const auto s = last_at_or_before(song.practice_sections.begin(), song.practice_sections.end(), t,"
+      ],
+      "must_not_match": [
+        "const std::vector<PreviewSection>& sections = scene.sections;",
+        "for (const SongSection& s : song.practice_sections)",
+        "const auto tempo_past = std::upper_bound(scene.tempos.begin(), scene.tempos.end(), now_tick,"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/preview_view.cpp",
+          "line_text": "const auto section = last_at_or_before(sections.begin(), sections.end(), now_tick,",
+          "why": "build_time_box, the owner: the time box's section line, through the one in-force search"
+        }
+      ],
+      "note": "A search over the practice sections for the one in force at a tick. build_time_box answers it once, through last_at_or_before (the search SongTiming's tempo and time signature lookups use too); the tempo and the time signature in force are rows in core-measures.json. Sections live outside SongTiming because the .mid reader fills them after build_timing. Listing the sections (hydra_replay's dump) answers another question. Decided by: D115 (plan part B2, task B2-2)"
+    }
+  ]
+}

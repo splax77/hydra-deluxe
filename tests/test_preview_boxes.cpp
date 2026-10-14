@@ -58,6 +58,29 @@ PreviewNextActBox next_act_box_at(const PreviewScene& sc, double now_ms, bool pr
     return build_next_act_box(sc, now_ms, kNoPlaybackEnd, pro_drums);
 }
 
+// A time signature written into a chart: from `tick`, numerator/denominator.
+struct SigAt {
+    int64_t tick;
+    int numerator;
+    int denominator;
+};
+
+// 120 BPM at 480 ticks a quarter, 4/4 from tick 0 then `sigs`, and one red
+// note at `note_tick` so the grid reaches past the changes.
+Song meter_song(std::initializer_list<SigAt> sigs, int64_t note_tick) {
+    Song song(480);
+    song.bpm_changes[0] = 120.0;
+    for (const SigAt& s : sigs) apply_timesig(song, s.tick, s.numerator, s.denominator);
+    song.build_timing();
+    Chord c;
+    c.add_note(NoteColor::Red);
+    SongTimestamp ts;
+    ts.timecode = song.timecode(note_tick);
+    ts.chord = std::move(c);
+    song.sequence.push_back(std::move(ts));
+    return song;
+}
+
 }  // namespace
 
 TEST_CASE("build_time_box: timestamp, measure, tempo") {
@@ -124,70 +147,69 @@ TEST_CASE("build_time_box: the practice section in force") {
     CHECK(build_time_box(scene, 9000.0, len).section_line == "Section Chorus");
 }
 
-TEST_CASE("build_time_box: a mid-measure meter change follows the engine") {
-    // 4/4 from tick 0, 3/4 from tick 2880 — beat 3 of the second bar, not a
-    // barline. A section's bars count from the last barline at or before its
-    // first tick (tick 1920 here), so the bar lines run 0, 1920, 3360, 4800 and
-    // the second bar is cut short. The box must name ticks the way the engine
-    // does rather than by a count of its own.
-    Song song(480);
-    song.bpm_changes[0] = 120.0;
-    apply_timesig(song, 2880, 3, 4);
-    song.build_timing();
-    {
-        Chord c;
-        c.add_note(NoteColor::Red);
-        SongTimestamp ts;
-        ts.timecode = song.timecode(3600);
-        ts.chord = std::move(c);
-        song.sequence.push_back(std::move(ts));
-    }
+TEST_CASE("build_time_box: a mid-measure meter change restarts the grid") {
+    // 4/4 from tick 0, 3/4 from tick 2880: beat 3 of the second measure, not
+    // a measure line. Clone Hero's grid restarts there (MeasureIndex), so the
+    // measure lines run 0, 1920, 2880, 4320 and the second measure is cut
+    // short. The box and the drawn lines both read that grid.
+    const Song song = meter_song({{2880, 3, 4}}, 3600);
     PreviewScene scene = build_preview_scene(song, nullptr);
 
-    // 120 BPM at 480 ticks/quarter: tick 3600 is 3750 ms, past the change.
-    const Timecode tc = song.timing().timecode(3600);
-    const int64_t* mbt = tc.measure_beats_ticks();
-    CHECK(mbt[0] + 1 == 3);  // the engine's measure, 1-based for display
-    CHECK(mbt[1] + 1 == 1);
-    CHECK(mbt[2] == 240);
-
+    // 120 BPM at 480 ticks/quarter: tick 3600 is 3750 ms, past the change:
+    // 720 ticks into the third measure, so its second beat, 240 ticks in.
     PreviewTimeBox box = build_time_box(scene, 3750.0, 3750.0);
-    CHECK(box.position == "m3.1.240");
+    CHECK(box.position == "m3.2.240");
+    CHECK(box.tempo == "BPM 120.000 " + kDot + " 3/4");
 
-    // ...and that measure is the one the drawn bar lines put tick 3600 in: the
-    // third line is at 3360 and the fourth at 4800.
-    std::vector<int64_t> bars;
+    // ...and that measure is the one the drawn measure lines put tick 3600
+    // in: the third line is at 2880 and the fourth at 4320.
+    std::vector<int64_t> lines;
     for (const PreviewBeat& b : scene.beats)
-        if (b.kind == PreviewBeatKind::Bar) bars.push_back(b.tick);
-    REQUIRE(bars.size() >= 4);
-    CHECK(bars[1] == 1920);
-    CHECK(bars[2] == 3360);
-    CHECK(bars[3] == 4800);
+        if (b.kind == PreviewBeatKind::MeasureLine) lines.push_back(b.tick);
+    REQUIRE(lines.size() >= 4);
+    CHECK(lines[0] == 0);
+    CHECK(lines[1] == 1920);
+    CHECK(lines[2] == 2880);
+    CHECK(lines[3] == 4320);
+}
+
+TEST_CASE("build_time_box: a change between two beats shows from the next beat") {
+    // 3/4 written at tick 2900, 20 ticks after the 4/4 beat at 2880. The grid
+    // first sees it at the next beat, 3360, and the time box's signature
+    // switches there with the position, not at the written tick.
+    const Song song = meter_song({{2900, 3, 4}}, 4800);
+    PreviewScene scene = build_preview_scene(song, nullptr);
+    const MsIndex& ms = song.timing().ms_index();
+
+    // Tick 3000: still 4/4, the second measure's third beat, 120 ticks in.
+    PreviewTimeBox before = build_time_box(scene, ms.at(3000), 5000.0);
+    CHECK(before.position == "m2.3.120");
+    CHECK(before.tempo == "BPM 120.000 " + kDot + " 4/4");
+    // Tick 3360: the restart, a new measure in 3/4.
+    PreviewTimeBox at = build_time_box(scene, ms.at(3360), 5000.0);
+    CHECK(at.position == "m3.1.0");
+    CHECK(at.tempo == "BPM 120.000 " + kDot + " 3/4");
 }
 
 TEST_CASE("build_time_box: the time signature in force, as the chart wrote it") {
     // 120 BPM, 480 ticks per quarter. 6/8 from tick 1920 (2000 ms), then 3/4
     // from tick 3360 (3500 ms). Both are 1440 ticks a measure, so only the
     // stored signature tells them apart.
-    Song song(480);
-    song.bpm_changes[0] = 120.0;
-    apply_timesig(song, 1920, 6, 8);
-    apply_timesig(song, 3360, 3, 4);
-    song.build_timing();
-    {
-        Chord c;
-        c.add_note(NoteColor::Red);
-        SongTimestamp ts;
-        ts.timecode = song.timecode(4800);
-        ts.chord = std::move(c);
-        song.sequence.push_back(std::move(ts));
-    }
+    const Song song = meter_song({{1920, 6, 8}, {3360, 3, 4}}, 4800);
     PreviewScene scene = build_preview_scene(song, nullptr);
 
     CHECK(build_time_box(scene, 0.0, 5000.0).tempo == "BPM 120.000 " + kDot + " 4/4");
     CHECK(build_time_box(scene, 1999.0, 5000.0).tempo == "BPM 120.000 " + kDot + " 4/4");
     CHECK(build_time_box(scene, 2000.0, 5000.0).tempo == "BPM 120.000 " + kDot + " 6/8");
     CHECK(build_time_box(scene, 3500.0, 5000.0).tempo == "BPM 120.000 " + kDot + " 3/4");
+    // On the 6/8 change's own tick the position and the label switch
+    // together: a new measure, read in 6/8.
+    CHECK(build_time_box(scene, 1999.0, 5000.0).position == "m1.4.479");
+    CHECK(build_time_box(scene, 2000.0, 5000.0).position == "m2.1.0");
+    // In 6/8 a beat is an eighth note (240 ticks): tick 2420 is 500 ticks
+    // into the measure, its third beat, 20 ticks in.
+    const double ms_2420 = song.timing().ms_index().at(2420);
+    CHECK(build_time_box(scene, ms_2420, 5000.0).position == "m2.3.20");
     // A scene built from nothing reads the chart default.
     CHECK(build_time_box(PreviewScene{}, 0.0, 0.0).tempo == "BPM 0.000 " + kDot + " 4/4");
     CHECK(build_time_box(PreviewScene{}, 0.0, 0.0).position == "m1.1.0");
@@ -862,7 +884,7 @@ TEST_CASE("build_time_box: every lookup at its boundaries on a chart of many cha
     const Song song = make_lookup_song();
     const PreviewScene scene = build_preview_scene(song, nullptr);
     REQUIRE(scene.tempos.size() == 4);
-    REQUIRE(scene.time_sigs.size() == 3);
+    REQUIRE(scene.measure_spans.size() == 3);
     REQUIRE(scene.sections.size() == 4);
     const double len = 12400.0;
 

@@ -243,7 +243,7 @@ TEST_CASE("build_beat_events: bars, beats, and half-beats from the timing alone"
     // 1440 Beat, 1680 Half, 1920 Bar  (no Half before tick 0)
     REQUIRE(beats.size() == 9);
     CHECK(beats[0].tick == 0);
-    CHECK(beats[0].kind == PreviewBeatKind::Bar);
+    CHECK(beats[0].kind == PreviewBeatKind::MeasureLine);
     CHECK(beats[1].tick == 240);
     CHECK(beats[1].kind == PreviewBeatKind::Half);
     CHECK(beats[2].tick == 480);
@@ -251,7 +251,7 @@ TEST_CASE("build_beat_events: bars, beats, and half-beats from the timing alone"
     CHECK(beats[6].tick == 1440);
     CHECK(beats[6].kind == PreviewBeatKind::Beat);
     CHECK(beats[8].tick == 1920);
-    CHECK(beats[8].kind == PreviewBeatKind::Bar);
+    CHECK(beats[8].kind == PreviewBeatKind::MeasureLine);
     CHECK(beats[8].ms == doctest::Approx(2000.0));
     for (size_t i = 1; i < beats.size(); ++i) CHECK(beats[i].tick > beats[i - 1].tick);
 }
@@ -265,7 +265,7 @@ TEST_CASE("build_beat_events: a 3/4 section changes the beat count per bar") {
     std::vector<PreviewBeat> beats = build_beat_events(st, 1920 + 1440 * 2);
     int bars = 0, quarter_beats = 0;
     for (const PreviewBeat& b : beats) {
-        if (b.kind == PreviewBeatKind::Bar) ++bars;
+        if (b.kind == PreviewBeatKind::MeasureLine) ++bars;
         if (b.kind == PreviewBeatKind::Beat) ++quarter_beats;
     }
     CHECK(bars == 4);              // ticks 0, 1920, 3360, 4800
@@ -273,8 +273,30 @@ TEST_CASE("build_beat_events: a 3/4 section changes the beat count per bar") {
     // Every Beat line lies strictly inside its bar.
     bool saw_3360 = false;
     for (const PreviewBeat& b : beats)
-        if (b.tick == 3360) saw_3360 = b.kind == PreviewBeatKind::Bar;
+        if (b.tick == 3360) saw_3360 = b.kind == PreviewBeatKind::MeasureLine;
     CHECK(saw_3360);
+}
+
+TEST_CASE("build_beat_events: 6/8 steps by the eighth note") {
+    // 6/8 at 480 ticks/quarter: Clone Hero's grid steps every 240 ticks and
+    // puts a measure line every six steps. Its weak beats (the 2nd, 4th and
+    // 6th eighth) are drawn as ordinary beat lines, and the fainter line sits
+    // half a step (120 ticks) before each line.
+    std::map<int64_t, int64_t> tpm{{0, 1440}};
+    std::map<int64_t, double> bpm{{0, 120.0}};
+    SongTiming st(480, tpm, bpm, {{0, {6, 8}}});
+
+    std::vector<PreviewBeat> beats = build_beat_events(st, 1440);
+    std::vector<int64_t> lines, beat_lines, halves;
+    for (const PreviewBeat& b : beats) {
+        if (b.kind == PreviewBeatKind::MeasureLine) lines.push_back(b.tick);
+        if (b.kind == PreviewBeatKind::Beat) beat_lines.push_back(b.tick);
+        if (b.kind == PreviewBeatKind::Half) halves.push_back(b.tick);
+    }
+    CHECK(lines == std::vector<int64_t>{0, 1440});
+    CHECK(beat_lines == std::vector<int64_t>{240, 480, 720, 960, 1200});
+    CHECK(halves == std::vector<int64_t>{120, 360, 600, 840, 1080, 1320});
+    for (size_t i = 1; i < beats.size(); ++i) CHECK(beats[i].tick > beats[i - 1].tick);
 }
 
 TEST_CASE("build_preview_scene fills beats, tempos and resolution") {
@@ -305,7 +327,7 @@ TEST_CASE("build_preview_scene: the beat lines run to the end of the audio") {
         build_preview_scene(c.song, nullptr, kCloneHeroSpCap, core::default_rules(), c.audio_end_ms);
     REQUIRE(!scene.beats.empty());
     CHECK(scene.beats.back().tick == 11520);
-    CHECK(scene.beats.back().kind == PreviewBeatKind::Bar);
+    CHECK(scene.beats.back().kind == PreviewBeatKind::MeasureLine);
     CHECK(scene.beats.back().ms == doctest::Approx(6000.0));
     // The base alone gives the same grid: the overlay never touches beats.
     CHECK(build_preview_base(c.song, c.audio_end_ms).beats.back().tick == 11520);
@@ -452,17 +474,12 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
                         return x.tick == y.tick && x.ms == y.ms && x.name == y.name;
                     }))
         return "sections";
-    if (!std::equal(a.meters.begin(), a.meters.end(), b.meters.begin(), b.meters.end(),
-                    [](const PreviewMeter& x, const PreviewMeter& y) {
-                        return x.tick == y.tick && x.tpm == y.tpm && x.first_bar == y.first_bar;
+    if (!std::equal(a.measure_spans.begin(), a.measure_spans.end(), b.measure_spans.begin(),
+                    b.measure_spans.end(),
+                    [](const PreviewMeasureSpan& x, const PreviewMeasureSpan& y) {
+                        return x.tick == y.tick && x.tpm == y.tpm;
                     }))
-        return "meters";
-    if (!std::equal(a.time_sigs.begin(), a.time_sigs.end(), b.time_sigs.begin(),
-                    b.time_sigs.end(), [](const PreviewTimeSig& x, const PreviewTimeSig& y) {
-                        return x.tick == y.tick && x.numerator == y.numerator &&
-                               x.denominator == y.denominator;
-                    }))
-        return "time_sigs";
+        return "measure_spans";
     if (a.sp_meter.cap != b.sp_meter.cap ||
         !std::equal(a.sp_meter.segments.begin(), a.sp_meter.segments.end(),
                     b.sp_meter.segments.begin(), b.sp_meter.segments.end(),

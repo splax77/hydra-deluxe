@@ -146,7 +146,7 @@ TEST_CASE("build_highway_draws: order and geometry for a frame") {
                    note(1500.0, PreviewLane::Kick)};
     scene.solos = {span(900.0, 1200.0)};
     scene.fills = {fill(span(1300.0, 1500.0), PreviewFillState::Offered)};
-    scene.beats = {{0, 1000.0, PreviewBeatKind::Bar}, {0, 1250.0, PreviewBeatKind::Half}};
+    scene.beats = {{0, 1000.0, PreviewBeatKind::MeasureLine}, {0, 1250.0, PreviewBeatKind::Half}};
     TrackState st = build_track_state(scene, TrackStateOptions{});
 
     const double now = 1.0;  // the Red note is exactly at the strike line

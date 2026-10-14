@@ -151,9 +151,10 @@ struct PreviewActivation {
     std::string notation;
 };
 
-// A beat line on the highway: a bar line, a beat line, or the fainter
-// half-beat line drawn half a beat before each of those (Onyx line-1/2/3).
-enum class PreviewBeatKind { Bar, Beat, Half };
+// A line on the highway: a measure line, a beat line, or the fainter line
+// drawn half a step before each of those (Onyx line-1/2/3). Where they fall
+// is MeasureIndex::walk's; build_beat_events maps its kinds onto these.
+enum class PreviewBeatKind { MeasureLine, Beat, Half };
 
 struct PreviewBeat {
     int64_t tick = 0;
@@ -175,18 +176,19 @@ struct PreviewSection {
     std::string name;
 };
 
-// One meter section: where it begins, its ticks per measure, and the barline
-// its bars count from — the beat grid's own rules, flattened for the parts of
-// the Preview that draw or drain by measures.
-struct PreviewMeter {
+// One span of the continuous measure count (MeasureCount), flattened for the
+// parts of the Preview that drain by measures: it starts at a time
+// signature's own tick and runs at `tpm` ticks per measure. The drawn lines
+// read the grid instead (MeasureIndex, through build_beat_events).
+struct PreviewMeasureSpan {
     int64_t tick = 0;
     int64_t tpm = 0;
-    int64_t first_bar = 0;
 };
 
-// A time signature as the chart wrote it, for the time box's line.
+// The time signature the time box shows. A scene with a song reads it from
+// SongTiming::time_signature_at; these defaults are what a scene built from
+// nothing shows.
 struct PreviewTimeSig {
-    int64_t tick = 0;
     int numerator = kDefaultTimeSigNumerator;  // Song's default (parse/song.h)
     int denominator = kDefaultTimeSigDenominator;
 };
@@ -257,11 +259,10 @@ struct PreviewScene {
     // Overlay: where each bar banked after the path's last window arrived
     // (Path::trailing_bank_ticks). Empty without a path.
     std::vector<int64_t> trailing_bank_ticks;
-    std::vector<PreviewBeat> beats;    // bar/beat/half-beat lines, tick order
+    std::vector<PreviewBeat> beats;    // measure/beat/half lines, tick order
     std::vector<PreviewTempo> tempos;  // tempo changes, tick order
     std::vector<PreviewSection> sections;  // practice sections, tick order
-    std::vector<PreviewMeter> meters;      // meter sections, tick order
-    std::vector<PreviewTimeSig> time_sigs; // the chart's own signatures, tick order
+    std::vector<PreviewMeasureSpan> measure_spans;  // one per time signature, tick order
     // Banked SP over time, for the meter gauge. With a path every value is
     // the record's: the bank steps at each stored bar arrival, and each
     // window drains from the stored SP end changes to the deact node. Without
@@ -271,9 +272,10 @@ struct PreviewScene {
     SpMeterCurve sp_meter;
     // The running score the score box reads. None when built without a path.
     PreviewScore score;
-    // The song's own timing. The time box asks it for ms->tick and for
-    // measure:beat:tick rather than re-deriving either from the flattened
-    // tempo/meter lists above. Empty only on a default-built PreviewScene (no
+    // The song's own timing. The time box asks it for ms->tick, for
+    // measure:beat:tick and for the tempo and time signature in force rather
+    // than re-deriving any of them from the flattened lists above. Empty only
+    // on a default-built PreviewScene (no
     // song to read); build_preview_scene always fills it.
     std::optional<SongTiming> timing;
     // The song's length, as app::song_length_ms answers it (D75), handed to
@@ -297,10 +299,11 @@ const PreviewNote* last_drawn_note(const PreviewScene& scene);
 // last_drawn_note's onset in ms, or 0 when the scene has no notes.
 double last_note_ms(const PreviewScene& scene);
 
-// The beat grid from the song's timing alone (no parser change): a Bar at
-// every measure start, a Beat every quarter note inside the measure, and a
-// Half one half-beat before each of those (never before tick 0). Covers ticks
-// [0, last_tick]. ms from the timing's own ms index.
+// The highway's lines from the song's timing alone: every line of the
+// measure grid (MeasureIndex::walk) from tick 0 to last_tick, each with a Half
+// line halfway back to the line before it (none before tick 0). A weak beat
+// is drawn as a Beat (D115, the user's answer 8). ms from the timing's own ms
+// index.
 std::vector<PreviewBeat> build_beat_events(const SongTiming& timing, int64_t last_tick);
 
 // The Preview's time readouts at `now_ms`. `timestamp` is the clock beside the
@@ -507,7 +510,7 @@ PreviewScene build_preview_scene(const Song& song, const Path* path,
 //
 // The base reads the song alone. It owns these fields: notes, sp_phrases,
 // solos, drum_lanes, the fill windows (each fills[i].span), beats, tempos,
-// sections, meters, time_sigs, timing, song_length_ms and has_notes.
+// sections, measure_spans, timing, song_length_ms and has_notes.
 // Every fill in a base reads Hidden, the field's default.
 //
 // The overlay owns the rest: activations, every fill's state, score and
@@ -519,7 +522,7 @@ PreviewScene build_preview_scene(const Song& song, const Path* path,
 // it builds the new one, so a scene built for another path works as a base too.
 // An empty song gives the empty scene build_preview_scene gives.
 //
-// The beat lines end at the barline or beat on the tick a playhead at
+// The beat lines end at the grid line on the tick a playhead at
 // `audio_end_ms` shows (SongTiming::display_tick_at_ms), or at the last note
 // if the audio stops sooner. With no audio end given, they run two measures
 // past the last note, as before the audio length was passed in.
