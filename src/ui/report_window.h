@@ -422,13 +422,10 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
     }
 
     // The headers, each with its column's definition on hover.
-    ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
-    for (int c = 0; c <= static_cast<int>(columns.size()); ++c) {
-        if (!ImGui::TableSetColumnIndex(c)) continue;
-        ImGui::TableHeader(specs[static_cast<size_t>(c)].header.c_str());
-        if (c > 0 && !columns[static_cast<size_t>(c) - 1].definition.empty())
-            overflow_tooltip(columns[static_cast<size_t>(c) - 1].definition.c_str());
-    }
+    draw_table_headers(specs, [&](size_t c) {
+        if (c > 0 && !columns[c - 1].definition.empty())
+            overflow_tooltip(columns[c - 1].definition.c_str());
+    });
     note_min_size(memory, widths, specs, room);
 
     const std::vector<size_t>& order = view.visible();

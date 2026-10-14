@@ -31,7 +31,9 @@
 #include "code_lexer.h"
 #include "core/model.h"
 #include "core/rules.h"
+#include "core/stars.h"
 #include "core/strutil.h"
+#include "core/timing.h"
 #include "source_tree.h"
 #include "temp_util.h"
 
@@ -230,6 +232,9 @@ std::string first_heading_skip_reason(const std::string& line) {
 struct KnownDefault {
     bool flag;     // a flag is written "on" or "off"
     double value;  // a number, or 1/0 for a flag
+    // The code holds a float, so the doc's number is read as a float before
+    // it is compared ("2.8" is not exactly 2.8f as a double).
+    bool single = false;
 };
 
 // Every marker name the docs may use, with the value the code holds.
@@ -247,6 +252,17 @@ const std::map<std::string, KnownDefault>& known_defaults() {
         out["kEarlyFillWindowMs"] = {false, hydra::kEarlyFillWindowMs};
         out["kDefaultDepthValue"] = {false, static_cast<double>(hydra::kDefaultDepthValue)};
         out["kSpActivationBars"] = {false, static_cast<double>(hydra::kSpActivationBars)};
+        // One marker per star: kStarMultipliers[1] is the 1-star factor.
+        for (int stars = 1; stars <= hydra::kMaxStars; ++stars)
+            out["kStarMultipliers[" + std::to_string(stars) + "]"] = {
+                false, static_cast<double>(hydra::kStarMultipliers[stars - 1]), true};
+        out["kCymbalBonusPoints"] = {false, static_cast<double>(hydra::kCymbalBonusPoints)};
+        // The first combo at which the multiplier reaches x2, asked of the
+        // production function rather than typed here. The cap only stops a
+        // broken to_multiplier from hanging the test; the marker then fails.
+        int first_x2 = 0;
+        while (first_x2 < 1000 && hydra::to_multiplier(first_x2) < 2) ++first_x2;
+        out["to_multiplier:x2"] = {false, static_cast<double>(first_x2)};
         return out;
     }();
     return m;
@@ -294,7 +310,8 @@ void check_markers(const std::string& rel, int lineno, const std::string& line,
             problems.push_back(where + "marker " + name + " has no number before it on its line");
             continue;
         }
-        const double doc_value = std::stod(last);
+        const double read = std::stod(last);
+        const double doc_value = k.single ? static_cast<double>(static_cast<float>(read)) : read;
         if (std::fabs(doc_value - k.value) > 1e-9) {
             std::ostringstream msg;
             msg << where << name << ": the doc says " << last << ", the code says " << k.value;
@@ -457,11 +474,15 @@ TEST_CASE("docs match code: the marker check catches a wrong number and a wrong 
                   problems);
     check_markers("x.md", 3, "is 3ms<!-- default: Rules::backend_leeway_ms -->", seen, problems);
     check_markers("x.md", 4, "is 9<!-- default: Settings::no_such_default -->", seen, problems);
-    REQUIRE(problems.size() == 3);
+    // A bracketed name, and a float the doc writes as a decimal: 2.8 passes.
+    check_markers("x.md", 5, "is 2.8<!-- default: kStarMultipliers[5] -->", seen, problems);
+    check_markers("x.md", 6, "is 0.5<!-- default: kStarMultipliers[1] -->", seen, problems);
+    REQUIRE(problems.size() == 4);
     CHECK(problems[0] == "x.md:1: Settings::mslimit_value: the doc says 11, the code says 10");
     CHECK(problems[1] ==
           "x.md:2: Settings::mslimit_enabled: the doc says \"off\", the code starts on");
     CHECK(problems[2] == "x.md:4: unknown default marker \"Settings::no_such_default\"");
+    CHECK(problems[3] == "x.md:6: kStarMultipliers[1]: the doc says 0.5, the code says 0.1");
 }
 
 TEST_CASE("docs match code: what counts as a code name") {
