@@ -423,10 +423,8 @@ int cmd_score(const Args& a, const app::Settings& s) {
             {"cum", cum},
             {"cum_onscreen_total", c.cum_onscreen_total},
         };
-        // The tick the chord's fill starts at, the start the fill deadline
-        // reads (search/graph.cpp activation_fill_deadline_ms).
         const SongTimestamp& ts = song.sequence[static_cast<size_t>(c.index)];
-        if (ts.activation_length) chord["fill_start"] = c.tick - *ts.activation_length;
+        if (ts.activation_length) chord["fill_start"] = fill_start_tick(c.tick, *ts.activation_length);
         chords.push_back(std::move(chord));
     }
 
