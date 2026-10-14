@@ -93,7 +93,7 @@ TEST_CASE("a database from Hydra 1.6 or older opens with nothing to show") {
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM records_before_1_7") == 1);
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM records_before_1_7 WHERE hyhash = 'old'"
                                " AND score = 100") == 1);
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM records") == 1);
+    CHECK(record_rows_in(path) == 1);
     std::remove(path.c_str());
 }
 

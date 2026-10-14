@@ -1122,29 +1122,29 @@
       "note": "The scan's own folder (tests/single_owner/) is outside the walk, so scan.cpp calls the owner without this row checking it. Added by the derive-once review of so-t1, which folded three copies of the mapping (scan.cpp twice, test_docs_match_code.cpp once)."
     },
     {
-      "question": "How many rows does a test database's results table hold?",
-      "owner": "kResultsRowCountSql in tests/db_file_sql.h, read by results_rows_in in tests/db_file_util.h",
+      "question": "How many records does a test database hold?",
+      "owner": "kResultsRowCountSql in tests/db_file_sql.h, read by record_rows_in in tests/db_file_util.h",
       "owner_file": "tests/db_file_sql.h",
       "owner_symbol": "kResultsRowCountSql",
       "date": "2026-10-10",
       "decision": "test fidelity leftovers, item 2 (the user, 2026-10-10)",
       "added_by": "tf-leftovers",
-      "pattern": "\"SELECT COUNT\\(\\*\\) FROM results\"",
-      "anchor": "SELECT COUNT(*) FROM results\"",
+      "pattern": "\"SELECT COUNT\\(\\*\\) FROM records\"",
+      "anchor": "SELECT COUNT(*) FROM records\"",
       "must_match": [
-        "return scalar_on_file(path, \"SELECT COUNT(*) FROM results\");",
-        "CHECK(hydra::test::scalar_on_file(paths.db, \"SELECT COUNT(*) FROM results\") == 0);",
-        "IM_CHECK_EQ(number_in_file(h.db_path, \"SELECT COUNT(*) FROM results\"), int64_t{2});"
+        "return scalar_on_file(path, \"SELECT COUNT(*) FROM records\");",
+        "CHECK(hydra::test::scalar_on_file(paths.db, \"SELECT COUNT(*) FROM records\") == 0);",
+        "IM_CHECK_EQ(number_in_file(h.db_path, \"SELECT COUNT(*) FROM records\"), int64_t{2});"
       ],
       "must_not_match": [
-        "CHECK(results_rows_in(path) == kSeedResults);",
-        "return scalar_on_file(path, \"SELECT COUNT(*) FROM results WHERE hyhash = '\" + hash + \"'\");",
+        "CHECK(record_rows_in(path) == kKeptResults);",
+        "return scalar_on_file(path, \"SELECT COUNT(*) FROM records WHERE song_id = '\" + hash + \"'\");",
         "IM_CHECK_EQ(number_in_file(h.db_path, hydra::test::kResultsRowCountSql), int64_t{2});"
       ],
       "owner_lines": [
         {
           "file": "tests/db_file_sql.h",
-          "line_text": "inline constexpr const char* kResultsRowCountSql = \"SELECT COUNT(*) FROM results\";",
+          "line_text": "inline constexpr const char* kResultsRowCountSql = \"SELECT COUNT(*) FROM records\";",
           "why": "kResultsRowCountSql, the owner"
         }
       ],
