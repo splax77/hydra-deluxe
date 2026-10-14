@@ -174,8 +174,9 @@ void render_paths_group(AppState& app, bool locked) {
     end_disabled_input(locked);
 
     begin_row("Path limit",
-              "Keep extra paths only when their hardest squeeze or required early fill is "
-              "within this many ms. Lower or negative values demand more slack.");
+              "Keep extra paths only when every squeeze and required early fill on them is "
+              "within this many ms. A path that ties the best score is kept whatever its "
+              "timing. Lower or negative values demand more slack.");
     if (setting_checkbox("##mslimit", &app.settings.mslimit_enabled, locked))
         app.commit_settings();
     ImGui::SameLine();

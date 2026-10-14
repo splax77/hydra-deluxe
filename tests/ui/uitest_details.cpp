@@ -16,6 +16,7 @@
 #include "../testdata_dirs.h"  // corpus::root
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/display_format.h"  // kAverageMultiplierLabel
 #include "app/dynamics_breakdown.h"
 #include "core/model.h"
 #include "core/stars.h"
@@ -417,6 +418,8 @@ void test_stars(ImGuiTestContext* ctx) {
     IM_CHECK(text.find("Solo bonus: " + hydra::group_thousands(sc.solo_bonus) +
                        " (not counted toward stars)") != std::string::npos);
     IM_CHECK(text.find("With full solo bonus") != std::string::npos);
+    // The factor column's title is the shared label.
+    IM_CHECK(text.find(hydra::app::kAverageMultiplierLabel) != std::string::npos);
     for (int64_t cutoff : sc.cutoffs)
         IM_CHECK(text.find(hydra::group_thousands(cutoff)) != std::string::npos);
     for (int64_t with_solo : sc.with_solo)

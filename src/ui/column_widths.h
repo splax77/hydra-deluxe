@@ -233,6 +233,14 @@ bool begin_small_table(const char* str_id, ImGuiTableFlags look,
 void setup_column(const ColumnSpec& spec, const ColumnLayout& layout, int column,
                   ImGuiTableColumnFlags flags = 0, ImGuiID user_id = 0);
 
+// The header row, one TableHeader per column in `specs`, for a table that
+// wants a hover tooltip on some headers. `after_header(column)`, if given, runs
+// right after that column's header is drawn, so the last item is the header and
+// the caller can show its tooltip. A table with no tooltips calls
+// ImGui::TableHeadersRow() instead.
+void draw_table_headers(const std::vector<ColumnSpec>& specs,
+                        const std::function<void(std::size_t column)>& after_header = {});
+
 // Whether the current table is past its first frame. A table's first frame
 // loads its saved state from hydra_ui.ini after the caller's setup, so
 // whatever must win over that state waits until this is true. False when
