@@ -458,7 +458,7 @@ TEST_CASE("a library read that fails after the startup open is the status line's
         hydra::ui::set_store_open_gate_for_test,
         [&](const hydra::ui::StoreOpenProgress& p, const std::function<bool()>&) {
             if (p.step == hydra::ui::StoreOpenProgress::Step::LoadingLibrary)
-                hydra::test::exec_on_file(paths.db, "DROP TABLE charts; DROP TABLE results;");
+                hydra::test::exec_on_file(paths.db, "DROP TABLE charts; DROP TABLE records;");
         });
     AppState app;
     app.wait_store_open();
@@ -477,6 +477,8 @@ TEST_CASE("the startup screen's line names what the open is doing") {
 
     p.upgrading = true;
     p.step = StoreOpenProgress::Step::UpdatingResultsKey;
+    CHECK(p.label() == "Updating the results table...");
+    p.step = StoreOpenProgress::Step::ConvertingRecords;
     CHECK(p.label() == "Updating the results table...");
     p.step = StoreOpenProgress::Step::Copying;
     CHECK(p.label() == "Copying your library...");
@@ -509,7 +511,7 @@ TEST_CASE("the startup screen's time left follows the Preview loader's gate") {
 TEST_CASE("Analyze library on a database that fails shows the sentence and opens no confirm") {
     ScratchPaths paths("appstate_confirmfail");
     std::unique_ptr<AppState> app = app_on(paths);
-    hydra::test::exec_on_file(paths.db, "DROP TABLE results");
+    hydra::test::exec_on_file(paths.db, "DROP TABLE records");
 
     app->open_batch_confirm();
     CHECK(app->status_message == kDatabaseReadSentence);
@@ -526,7 +528,7 @@ TEST_CASE("Analyze library on a database that fails shows the sentence and opens
 TEST_CASE("a library reload whose reads fail keeps the library and says so") {
     ScratchPaths paths("appstate_reloadfail");
     std::unique_ptr<AppState> app = app_on(paths);
-    hydra::test::exec_on_file(paths.db, "DROP TABLE charts; DROP TABLE results;");
+    hydra::test::exec_on_file(paths.db, "DROP TABLE charts; DROP TABLE records;");
 
     app->reload_library();
 

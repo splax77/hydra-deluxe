@@ -642,8 +642,8 @@ TEST_CASE("run_batch counts a failed save as a failed chart and goes on") {
     { hydra::store::RecordStore store(path); }
     // A trigger refuses chart fake1's result, so its save throws.
     hydra::test::exec_on_file(path,
-                              "CREATE TRIGGER refuse_fake1 BEFORE INSERT ON results"
-                              " WHEN NEW.hyhash = 'fake1' BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+                              "CREATE TRIGGER refuse_fake1 BEFORE INSERT ON records"
+                              " WHEN NEW.song_id = 'fake1' BEGIN SELECT RAISE(ABORT, 'boom'); END;");
     BatchRun run;
     run.chartmode = "save-fail-test";
     {
@@ -655,7 +655,7 @@ TEST_CASE("run_batch counts a failed save as a failed chart and goes on") {
         REQUIRE(errors.size() == 1);
         CHECK(errors[0].rfind("fake 1|Hydra couldn't save to its database (hydra.db). Check that "
                               "the disk isn't full and that no other copy of Hydra is running, "
-                              "then try again.|add_row",
+                              "then try again.|saving a record",
                               0) == 0);
         const std::unordered_set<std::string> stored = charts_with_result(store, run, false);
         CHECK(stored.count("fake0") == 1);
@@ -929,8 +929,8 @@ TEST_CASE("run_batch: a failed group COMMIT saves each chart alone, and only a c
     std::remove(path.c_str());
     { hydra::store::RecordStore store(path); }
     hydra::test::exec_on_file(path,
-                              "CREATE TRIGGER refuse_boom BEFORE INSERT ON results"
-                              " WHEN NEW.hyhash = 'boom' BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+                              "CREATE TRIGGER refuse_boom BEFORE INSERT ON records"
+                              " WHEN NEW.song_id = 'boom' BEGIN SELECT RAISE(ABORT, 'boom'); END;");
     BatchRun run;
     run.chartmode = "group-fail-test";
     {
@@ -944,7 +944,7 @@ TEST_CASE("run_batch: a failed group COMMIT saves each chart alone, and only a c
         REQUIRE(errors.size() == 1);
         CHECK(errors[0].rfind("boom|Hydra couldn't save to its database (hydra.db). Check that "
                               "the disk isn't full and that no other copy of Hydra is running, "
-                              "then try again.|add_row",
+                              "then try again.|saving a record",
                               0) == 0);
         CHECK(errors[0].find("boom", 5) != std::string::npos);
         CHECK(store.counts().second == 2);

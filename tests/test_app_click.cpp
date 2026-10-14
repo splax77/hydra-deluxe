@@ -57,9 +57,18 @@ void refuse_library_row_updates(const ScratchPaths& paths) {
                               " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
 }
 
-int64_t result_id(const ScratchPaths& paths, const std::string& md5) {
-    return hydra::test::scalar_on_file(
-        paths.db, "SELECT result_id FROM results WHERE hyhash = '" + md5 + "'");
+// From here on, every record the store writes adds a row to record_writes,
+// so a test can tell "stored nothing new" from "wrote the same row again".
+// A record has no row id to compare, so the writes are counted instead.
+void count_record_writes(const ScratchPaths& paths) {
+    hydra::test::exec_on_file(paths.db,
+                              "CREATE TABLE record_writes (n INTEGER);"
+                              "CREATE TRIGGER count_record_writes AFTER INSERT ON records"
+                              " BEGIN INSERT INTO record_writes VALUES (1); END;");
+}
+
+int64_t record_writes(const ScratchPaths& paths) {
+    return hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM record_writes");
 }
 
 }  // namespace
@@ -93,7 +102,7 @@ TEST_CASE("clicking a Ready song shows its paths and stores nothing new") {
     click(*app, song);
     REQUIRE(app->viewed.ready());
     const int64_t rows = hydra::test::results_rows_in(paths.db);
-    const int64_t id = result_id(paths, song.md5);
+    count_record_writes(paths);
 
     app->close_details();
     click(*app, song);
@@ -101,7 +110,7 @@ TEST_CASE("clicking a Ready song shows its paths and stores nothing new") {
     REQUIRE(app->viewed.ready());
     CHECK_FALSE(app->viewed.record->paths.empty());
     CHECK(hydra::test::results_rows_in(paths.db) == rows);
-    CHECK(result_id(paths, song.md5) == id);
+    CHECK(record_writes(paths) == 0);
 }
 
 TEST_CASE("clicking a Stale song turns its row Ready") {
@@ -150,7 +159,7 @@ TEST_CASE("clicking a chart edited since the scan re-identifies it and shows the
     CHECK(app->selected->md5 == new_md5);
     CHECK(row_of(*app, new_md5).status == RecordStatus::Ready);
     CHECK(app->store->get_summary(old_key).status == RecordStatus::NotAnalyzed);
-    CHECK(hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results WHERE hyhash = '" +
+    CHECK(hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM records WHERE song_id = '" +
                                                     scanned.md5 + "'") == 0);
     // The paths are the new file's.
     const hydra::app::AnalysisResult fresh = hydra::app::analyze_chart_file(
@@ -373,7 +382,7 @@ TEST_CASE("a click whose save fails shows the paths and says so") {
     const ChartLibraryEntry song = corpus_chart("click_savefail");
     std::unique_ptr<AppState> app = app_with(paths, {song});
     hydra::test::exec_on_file(paths.db,
-                              "CREATE TRIGGER refuse_results BEFORE INSERT ON results"
+                              "CREATE TRIGGER refuse_records BEFORE INSERT ON records"
                               " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
 
     click(*app, song);
