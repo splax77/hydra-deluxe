@@ -145,19 +145,23 @@ struct Lens {
     bool operator!=(const Lens& other) const { return !(*this == other); }
 };
 
-// The settings a result is filed under, without the chart: the chart mode,
-// the SP cap (ADR-0003) and the lens. A lookup over many charts asks with
-// this; RecordKey adds the chart to it.
-struct ResultSettings {
+// A profile: the settings a record is filed under, without the chart. That
+// is the chart mode, the SP cap (ADR-0003) and the lens. The store adds the
+// results stamp and the rules fingerprint itself when it files or looks up a
+// record. A lookup over many charts asks with this; RecordKey adds the chart
+// to it.
+struct Profile {
     std::string chartmode;
     CapQuery cap;
     Lens lens;
     // Spelled out rather than defaulted: this project builds as C++17.
-    bool operator==(const ResultSettings& other) const {
+    bool operator==(const Profile& other) const {
         return chartmode == other.chartmode && cap == other.cap && lens == other.lens;
     }
-    bool operator!=(const ResultSettings& other) const { return !(*this == other); }
+    bool operator!=(const Profile& other) const { return !(*this == other); }
 };
+// The old name, kept only while callers move to Profile (D115).
+using ResultSettings = Profile;
 
 // One result's identity: the chart and the ResultSettings it was filed under.
 struct RecordKey : ResultSettings {
@@ -237,6 +241,90 @@ struct SummaryLookup {
     // row's numbers came from a build or rules this one doesn't trust, so
     // they're not handed out.
     PathSummary summary;
+};
+
+// ---- records (D115) --------------------------------------------------------
+
+// How many paths a record keeps, best first, and so the most the path report
+// can show for one chart.
+inline constexpr int kPathsPerRecord = 5;
+
+// One kept path of a record: a record_paths row.
+struct PathRow {
+    int rank = 1;  // the path's place in its record, 1 = best
+    std::string path;  // the pathstring
+    int64_t score = 0;
+    int actcount = 0;
+    int maxskip = 0;
+    std::optional<double> hardest_ms;     // Path::difficulty()
+    std::optional<double> hardest_efill;  // the path's hardest early fill
+    double avgmult = 0.0;  // unrounded; format_avg_mult rounds it for display
+    int sqin_count = 0;
+    int sqout_count = 0;
+    bool optimal = false;  // HydraRecord::is_optimal
+
+    // Every column. Spelled out rather than defaulted: this project builds as
+    // C++17.
+    bool operator==(const PathRow& other) const {
+        return rank == other.rank && path == other.path && score == other.score &&
+               actcount == other.actcount && maxskip == other.maxskip &&
+               hardest_ms == other.hardest_ms && hardest_efill == other.hardest_efill &&
+               avgmult == other.avgmult && sqin_count == other.sqin_count &&
+               sqout_count == other.sqout_count && optimal == other.optimal;
+    }
+    bool operator!=(const PathRow& other) const { return !(*this == other); }
+};
+
+// One record: a chart's saved result under one profile.
+struct RecordRow {
+    std::string song_id;  // lowercase hex (ADR 0028)
+    int pathcount = 0;  // every kept path, roots and variants (HydraRecord::all_paths)
+    std::optional<int> stars;  // rank 1's star count; unset when there are no paths
+    int notecount = 0;
+    // Rank order, at most kPathsPerRecord. Empty means the chart was analyzed
+    // and kept no paths.
+    std::vector<PathRow> paths;
+
+    // The library's view of the record, read off rank 1 and the record's own
+    // columns. Every field is unset when there are no paths, so
+    // PathSummary::has_scored_best_path keeps its meaning (D51 call 11).
+    PathSummary summary() const;
+    bool has_scored_best_path() const { return !paths.empty(); }
+
+    // Every column and every path, so a fresh record can be compared with the
+    // stored one. Spelled out rather than defaulted: this project builds as
+    // C++17.
+    bool operator==(const RecordRow& other) const {
+        return song_id == other.song_id && pathcount == other.pathcount &&
+               stars == other.stars && notecount == other.notecount && paths == other.paths;
+    }
+    bool operator!=(const RecordRow& other) const { return !(*this == other); }
+};
+
+// What an analysis becomes before it is saved. It holds no db connection, so
+// a worker thread can build it off the main store.
+struct PreparedRecord {
+    Profile profile;
+    uint64_t rules_fp = 0;  // HydraRecord::rules_fingerprint
+    RecordRow record;
+};
+
+// The one place an analysis becomes a record and its path rows. Throws
+// std::invalid_argument when the profile does not match the analysis, as
+// prepare_row does.
+PreparedRecord prepare_record(std::string song_id, const Profile& profile,
+                              const HydraRecord& analysis);
+
+// What a record lookup found. `record` is filled only when status is Ready:
+// a Stale record's numbers came from a build or rules this one doesn't trust.
+// SummaryLookup stays its own type until get_summaries is rebuilt on the
+// record lookup, because its readers still read `bestpath` and `summary`.
+struct RecordLookup {
+    RecordStatus status = RecordStatus::NotAnalyzed;
+    // Why a Stale record is Stale, as in SummaryLookup.
+    bool stale_build = false;
+    bool stale_rules = false;
+    RecordRow record;
 };
 
 // One row of list_records()/library browsing.
@@ -360,6 +448,8 @@ using OpenProgressFn = std::function<bool(const OpenProgress&)>;
 // steps aside under its old name, as a kill there would, leaving the files
 // for recover_upgrade_files (store/upgrade_files.h). The constructor throws.
 void stop_copy_upgrade_after_step_aside_for_test(bool stop);
+
+class ChartIndex;  // store/chart_index.h
 
 class RecordStore {
 public:
@@ -544,6 +634,10 @@ public:
     // the way list_chart_library reads them. A click on a library row picks
     // its copy from these (ui::AppState::select).
     std::vector<ChartLibraryEntry> list_chart_library_copies(const std::string& md5);
+
+    // The library's charts, their copies and naming copies (ChartIndex),
+    // built from the library rows in the order the scan listed them.
+    ChartIndex chart_index();
 
 private:
     sqlite3* db_ = nullptr;
