@@ -473,7 +473,7 @@ std::vector<uint8_t> ready_rules_fp(const core::RulesStamp& stamp) {
 struct Candidate {
     bool current = false;     // stamped with this build's results version
     bool same_rules = false;  // analyzed under the rules this process runs
-    int64_t result_id = 0;
+    int64_t profile_id = 0;   // the profile row the record is filed under
     // Why a row that is not ready is Stale, for callers that explain it
     // (the song panel, the library row's tooltip). Both can be true; neither
     // is on a ready row.
@@ -484,14 +484,15 @@ struct Candidate {
     bool ready() const { return current && same_rules; }
 };
 
-// `rules_fp` is the row's rules_fp column; `fixed_fp` is rules_fp_bytes of
-// the fingerprint this process runs under.
+// `hyversion` and `rules_fp` are the record's profile row's columns, and
+// `profile_id` its id; `fixed_fp` is rules_fp_bytes of the fingerprint this
+// process runs under.
 Candidate rank_row(const std::string& hyversion, const std::vector<uint8_t>& rules_fp,
-                   int64_t result_id, const std::vector<uint8_t>& fixed_fp) {
+                   int64_t profile_id, const std::vector<uint8_t>& fixed_fp) {
     Candidate c;
     c.current = kResultsStamp.is_current(hyversion);
     c.same_rules = rules_fp == fixed_fp;
-    c.result_id = result_id;
+    c.profile_id = profile_id;
     c.stale_build = !c.current;
     c.stale_rules = !c.same_rules;
     return c;
@@ -533,15 +534,18 @@ int bind_readable_params(sqlite3_stmt* s, int idx) {
 }
 
 // Does `a` beat `b`? This version before another, then these rules before
-// the rest, then the newest write. Write order is result_id: add_row deletes
-// and re-inserts, so a rewritten row is newest. Since Auto went (2026-09-27)
-// every lookup names one exact cap and lens. The results table holds one row
-// per cap, lens and rules, so a chart offers one candidate per set of rules
-// it was analyzed under, and the one made under this process's rules wins.
+// the rest, then the later profile. A profile row is made the first time a
+// record is filed under its settings, stamp and rules, so a bigger id means
+// "made later". Since Auto went (2026-09-27) every lookup names one exact cap
+// and lens. A chart holds one record per profile, so it offers one candidate
+// per stamp and set of rules it was analyzed under, and the one made under
+// this build's stamp and this process's rules wins. Two candidates that tie
+// on both are both Stale for the same reasons, so the id only picks which of
+// two identical answers to give.
 bool outranks(const Candidate& a, const Candidate& b) {
     if (a.current != b.current) return a.current;
     if (a.same_rules != b.same_rules) return a.same_rules;
-    return a.result_id > b.result_id;
+    return a.profile_id > b.profile_id;
 }
 
 // Which chart a winner is picked for: one per chart and mode.
