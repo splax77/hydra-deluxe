@@ -1,0 +1,31 @@
+{
+  "rules": [
+    {
+      "question": "What is a record's optimal score?",
+      "owner": "HydraRecord::optimal_score in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "optimal_score",
+      "date": "2026-10-14",
+      "decision": "D115 (plan part B1, task B1-1)",
+      "added_by": "D115-B1-1",
+      "pattern": "best_path\\(\\)\\.totalscore\\(\\)",
+      "anchor": "best_path",
+      "must_match": [
+        "const int64_t best = record.paths.empty() ? 0 : record.best_path().totalscore();",
+        "return !paths.empty() && path.totalscore() == best_path().totalscore();"
+      ],
+      "must_not_match": [
+        "const std::optional<int64_t> optimal = record.optimal_score();",
+        "const Path& best = app.viewed.record->best_path();"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.cpp",
+          "line_text": "return best_path().totalscore();",
+          "why": "HydraRecord::optimal_score, the owner"
+        }
+      ],
+      "note": "The Paths tab and HydraRecord::is_optimal each read the best path's total for the top score before D115. Reading the best path itself (to draw it) is a different question and passes."
+    }
+  ]
+}

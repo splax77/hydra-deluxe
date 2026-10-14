@@ -13,6 +13,16 @@ int to_multiplier(int combo) {
     return 4;
 }
 
+MultiplierStep multiplier_step(int combo, int note_count) {
+    if (note_count <= 0) return {to_multiplier(combo), to_multiplier(combo)};
+    return {to_multiplier(combo + 1), to_multiplier(combo + note_count)};
+}
+
+bool crosses_multiplier_step(int combo, int note_count) {
+    const MultiplierStep step = multiplier_step(combo, note_count);
+    return step.first < step.last;
+}
+
 int shown_multiplier(int combo_multiplier, bool in_sp) {
     return in_sp ? combo_multiplier * kStarPowerMultiplier : combo_multiplier;
 }

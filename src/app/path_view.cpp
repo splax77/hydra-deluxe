@@ -84,8 +84,9 @@ std::string badge_word(TimingPart part) {
 std::string activation_badge(const Activation& act) {
     // The activation says which part the badge names and how hard (a tie
     // names the squeeze, an E activation's optional early fill counts when
-    // nothing else does, and a free squeeze counts when nothing needs timing,
-    // D80); the badge only words it.
+    // nothing else does, and a squeeze that needs no timing
+    // (SPSqueeze::needs_no_timing) counts when nothing needs timing, D80);
+    // the badge only words it.
     const std::optional<HardestTiming> shown = act.badge_timing();
     if (!shown) return {};
     return badge_word(shown->part) + " " + format_ms_whole(shown->ms);
@@ -97,8 +98,9 @@ std::string longest_activation_badge() {
     // squeeze's figure lies strictly between -kSqueezeWindowMs and
     // +kSqueezeWindowMs. An early fill is named only when
     // early_fill_needs_timing holds, and that figure is at most
-    // kEarlyFillWindowMs, inside the window too. A free squeeze's figure is 0
-    // or less (D80), so the widest figure is the window's, minus sign included.
+    // kEarlyFillWindowMs, inside the window too. A squeeze that needs no
+    // timing (SPSqueeze::needs_no_timing) has a figure of 0 or less (D80), so
+    // the widest figure is the window's, minus sign included.
     size_t longest = 0;
     for (size_t i = 1; i < std::size(kBadgeWords); ++i)
         if (std::strlen(kBadgeWords[i].word) > std::strlen(kBadgeWords[longest].word))
@@ -481,7 +483,7 @@ PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, in
     settings.depth_mode = depth_mode;
     view.within_label = within_label(settings.search_depth_mode(), depth_value);
     const PathListView list = build_path_list(record);
-    const int64_t best = record.paths.empty() ? 0 : record.best_path().totalscore();
+    const std::optional<int64_t> optimal = record.optimal_score();
     // A cap below kSpActivationBars can never activate (D51 call 16).
     const bool cap_never_activates = record.sp_cap && *record.sp_cap < kSpActivationBars;
 
@@ -503,11 +505,11 @@ PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, in
             b.timing = format_ms(*hardest);
             b.timing_warn = p->is_difficult();
         }
-        if (group == PathButtonView::Group::AllZero) {
-            // What the all-0 path costs against the optimal one.
-            const int64_t delta = p->totalscore() - best;
-            if (delta < 0) b.detail = group_thousands(-delta) + " below optimal";
-            if (delta > 0) b.detail = group_thousands(delta) + " above optimal";
+        if (group == PathButtonView::Group::AllZero && optimal) {
+            // What the all-0 path costs against the optimal one. It never
+            // scores above it (test_engine_sweeps pins that on the corpus).
+            const int64_t shortfall = *optimal - p->totalscore();
+            if (shortfall > 0) b.detail = group_thousands(shortfall) + " below optimal";
         }
         if (cap_never_activates) b.detail = "A 1-bar cap can never activate Star Power.";
         view.buttons.push_back(std::move(b));

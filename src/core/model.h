@@ -623,11 +623,13 @@ struct Activation {
     // answers with its optional early fill (D48 Q10): that fill's timing
     // decides whether the first fill shows up at all, which is what the skip
     // count counts. Only timings that need hitting take part (D51 call 4,
-    // D13): a free squeeze or a fill with time to spare never names it.
+    // D13): a squeeze that needs no timing (SPSqueeze::needs_no_timing) or a
+    // fill with time to spare never names it.
     // Empty means nothing to time.
     std::optional<HardestTiming> hardest() const;
     // What the Paths tab's row badge names: hardest() when it has an answer,
-    // else the hardest free squeeze, as 2.0 showed (D80). A free squeeze's
+    // else the hardest squeeze that needs no timing
+    // (SPSqueeze::needs_no_timing), as 2.0 showed (D80). Such a squeeze's
     // figure is 0 or less ("squeeze in -316 ms": the note already lands
     // 316 ms inside SP). Empty means no badge.
     std::optional<HardestTiming> badge_timing() const;
@@ -638,7 +640,8 @@ struct Activation {
     // Does this activation need any timing at all? The per-activation half of
     // Path::needs_timing. The Paths tab's path button and the stored summary
     // read Path::difficulty(), which rests on hardest() (D51 call 4, D13). The
-    // row badge alone also shows a free squeeze (badge_timing, D80).
+    // row badge alone also shows a squeeze that needs no timing
+    // (SPSqueeze::needs_no_timing; badge_timing, D80).
     bool needs_timing() const;
     // Is every timing of this activation inside `limit_ms`? Each squeeze
     // answers through SPSqueeze::within_limit and the early fill through
@@ -793,8 +796,8 @@ struct Path {
     // with no activations.
     bool is_allzero() const;
 
-    // The chart's base score: every note at 1x with no Star Power (50 a gem,
-    // 65 a cymbal, doubled for a ghost or accent). Clone Hero divides by
+    // The chart's base score: every note at 1x with no Star Power (each
+    // note's value is ChordNote::basescore). Clone Hero divides by
     // this for the average multiplier and multiplies it for star cutoffs.
     // Every path hits every note, so it is the same on every path.
     int64_t chart_base_score() const;
@@ -854,9 +857,14 @@ struct HydraRecord {
     const Path& best_path() const { return paths.at(0); }
     Path& best_path() { return paths.at(0); }
 
-    // Is this path optimal? True for every path whose total score equals the
-    // best path's, so a tied variant is optimal too (D48 Q1). False when the
+    // The record's optimal score: the top total any path reaches. Every
+    // screen that asks "what is the top score" reads this. Empty when the
     // record has no paths.
+    std::optional<int64_t> optimal_score() const;
+
+    // Is this path optimal? True for every path whose total score equals
+    // optimal_score(), so a tied variant is optimal too (D48 Q1). False when
+    // the record has no paths.
     bool is_optimal(const Path& path) const;
 
     // Depth-first traversal of the path tree (root paths + their nested
