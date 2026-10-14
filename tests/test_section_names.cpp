@@ -49,7 +49,9 @@ TEST_CASE("section names: a listed marker shows Clone Hero's words") {
 
 TEST_CASE("section names: an unlisted marker shows its name with spaces for underscores") {
     CHECK(section_display_name("prc_my_own_part") == "my own part");
-    // The lookup is exact, case included: "Intro" is not the listed "intro".
+    // The lookup is exact, case included: the listed "aco_gtr_intro" shows
+    // "Acoustic Guitar Intro", but the same letters in capitals are a miss.
+    CHECK(section_display_name("prc_ACO_GTR_INTRO") == "ACO GTR INTRO");
     CHECK(section_display_name("section Intro") == "Intro");
     CHECK(section_display_name("section Verse 2B") == "Verse 2B");
     CHECK(section_display_name("section ") == "");

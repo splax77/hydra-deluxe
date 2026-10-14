@@ -18,6 +18,7 @@
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "search/graph.h"
+#include "song_digest.h"
 
 using namespace hydra;
 
@@ -81,6 +82,20 @@ TEST_CASE("generated fills: a chord just before its line has a negative length")
     const Song song = song_with_chords({1820});
     REQUIRE(song.sequence[0].has_activation());
     CHECK(*song.sequence[0].activation_length == -100);
+}
+
+TEST_CASE("generated fills: the 1.0 deadline of a 0 or negative length is the line minus 250 ms") {
+    // The line at tick 1920 is 2000 ms in (120 BPM, resolution 480). The 1.0 rule
+    // measures back from the fill's start with at least 250 ms of lead, so a fill
+    // starting on that line has its deadline at 1750 ms whether its chord sits on
+    // the line (length 0) or 100 ticks before it (length -100).
+    for (int64_t chord : {1920, 1820}) {
+        INFO("chord tick " << chord);
+        const Song song = song_with_chords({chord});
+        REQUIRE(song.sequence[0].has_activation());
+        CHECK(activation_fill_deadline_ms(song.timing(), chord, *song.sequence[0].activation_length,
+                                          FillDeadlineRule::Ch10) == doctest::Approx(1750.0));
+    }
 }
 
 TEST_CASE("generated fills: the nearer chord wins, and a tie goes to the later one") {
@@ -154,47 +169,43 @@ struct FillPin {
 
 // clang-format off
 const FillPin kFillPins[] = {
-    {"common/IB24/T1/Earth, Wind & Fire - September/notes.mid", 28, 0xbfa4a791697036a9ull},
-    {"common/IB24/T2/Karnivool - Themata/notes.mid", 62, 0x73dba1983c2ce39full},
-    {"common/IB24/T2/Stone Temple Pilots - Trippin on a Hole in a Paper Heart/notes.chart", 20, 0x4eab8d000567161full},
-    {"common/IB24/T3/Good Tiger - Where Are the Birds/notes.chart", 22, 0x68218bb3bbed3c87ull},
-    {"common/IB24/T3/The Ghost Inside - Get What You Give - 02 - Outlive/notes.mid", 28, 0x10a6bcbc6e8ad66bull},
-    {"common/IB24/T4/1.O.M. - Apex/notes.chart", 39, 0x66139f66d1410aafull},
-    {"common/IB24/T4/A Lot Like Birds - Think Dirty out Loud/notes.mid", 39, 0x2cdda0a4b9bce5d9ull},
-    {"common/IB24/T4/Dance Gavin Dance - Chocolate Jackalope/notes.mid", 31, 0xac60a26c910a0cafull},
-    {"common/IB24/T4/Haken - The Good Doctor/notes.mid", 29, 0x983814eab967484dull},
-    {"common/IB24/T5/Satyr - Whelmed/notes.mid", 48, 0xd2aa1f2f98a03524ull},
-    {"common/IB24/T5/Sianvar - Omniphobia/notes.mid", 46, 0xeb0df6cdb8ddd7a7ull},
-    {"common/IB24/T5/TEXTURES - Laments Of An Icarus/notes.mid", 40, 0xadaeb915fc438ce7ull},
-    {"common/IB24/T6/Fallen Monarch - Blight/notes.chart", 106, 0x95b58d0bddb05734ull},
-    {"common/IB24/T6/Levitating (feat. DaBaby) (Dua Lipa) (L)/notes.chart", 22, 0x8b88526a576a4d6bull},
-    {"common/IB24/T6/Lockslip - Lockslip - 02 - Bend/notes.mid", 28, 0xf1957ae4f6c36300ull},
-    {"common/IB24/T6/Pathfinder - When The Sunrise Breaks The Darkness/notes.mid", 69, 0x876f626bb9763039ull},
-    {"common/IB24/T7/Conquering Dystopia - Prelude to Obliteration/notes.chart", 34, 0xbd8e0f5d97cf236dull},
-    {"common/IB24/T7/SoundHaven - Snowball Earth [Indistinct]/notes.mid", 35, 0xb62852ead82f02b7ull},
-    {"common/Summer Blast _25 Setlist/Tier 1/Jason Paige - Pokemon Theme/notes.chart", 29, 0x9581f525a3ad2ca2ull},
-    {"common/Summer Blast _25 Setlist/Tier 2/Dance Gavin Dance - Young Robot/notes.mid", 24, 0xd6b9ad35102b03a8ull},
-    {"common/Summer Blast _25 Setlist/Tier 2/Moonlight Haze - Lunaris/notes.chart", 17, 0xbe12fc4b7ccccb0full},
-    {"common/Summer Blast _25 Setlist/Tier 2/Thornhill - Limbo/notes.mid", 22, 0x163cd646142a41c7ull},
-    {"common/Summer Blast _25 Setlist/Tier 3/Mutemath - Allies/notes.chart", 19, 0x714e273f512bdd11ull},
-    {"common/Summer Blast _25 Setlist/Tier 4/Sufferer - Chair/notes.mid", 29, 0x6d41d135ffdac8c9ull},
-    {"common/Summer Blast _25 Setlist/Tier 5/Interloper - Pathkeeper/notes.mid", 52, 0xe37580f9c8486c23ull},
-    {"common/Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart", 30, 0xe6d5cf5fe89a9699ull},
-    {"common/Summer Blast _25 Setlist/Tier 6/Casiopea - Swallow/notes.mid", 42, 0x9c7e27a4535bd12dull},
-    {"common/Summer Blast _25 Setlist/Tier 7/Kinglet - Blister/notes.mid", 44, 0xb7059562cb0175a3ull},
-    {"common/Summer Blast _25 Setlist/Tier 8/Equipoise - Alchemic Web Of Deceit/notes.mid", 46, 0x364b02f10d2c58bdull},
-    {"common/Summer Blast _25 Setlist/Tier 8/Travis Orbin - Dr. Jackle_Dr. Jekyll [Miles Davis]/notes.mid", 60, 0x9cb3b419b18c9595ull},
-    {"common/Summer Blast _25 Setlist/Tier 8/Xane60 - Godzilla (Eminem)/notes.chart", 36, 0x5e35ca1f3500e1d1ull},
+    {"common/IB24/T1/Earth, Wind & Fire - September/notes.mid", 28, 0x013938619242b6e7ull},
+    {"common/IB24/T2/Karnivool - Themata/notes.mid", 62, 0xe5e7d3a19439f24dull},
+    {"common/IB24/T2/Stone Temple Pilots - Trippin on a Hole in a Paper Heart/notes.chart", 20, 0xbe255891bceb1d8dull},
+    {"common/IB24/T3/Good Tiger - Where Are the Birds/notes.chart", 22, 0x68bd08ab965baa51ull},
+    {"common/IB24/T3/The Ghost Inside - Get What You Give - 02 - Outlive/notes.mid", 28, 0x27447b68c1aa5a45ull},
+    {"common/IB24/T4/1.O.M. - Apex/notes.chart", 39, 0x0cccaf3dadedf579ull},
+    {"common/IB24/T4/A Lot Like Birds - Think Dirty out Loud/notes.mid", 39, 0x9e0f0e6cc122fbe3ull},
+    {"common/IB24/T4/Dance Gavin Dance - Chocolate Jackalope/notes.mid", 31, 0x2285e7e0e04e2229ull},
+    {"common/IB24/T4/Haken - The Good Doctor/notes.mid", 29, 0x3eee6eda54601bf3ull},
+    {"common/IB24/T5/Satyr - Whelmed/notes.mid", 48, 0xa31ba79be5ac1e82ull},
+    {"common/IB24/T5/Sianvar - Omniphobia/notes.mid", 46, 0x546ca00880e1b7adull},
+    {"common/IB24/T5/TEXTURES - Laments Of An Icarus/notes.mid", 40, 0x788a2e86a84aeb45ull},
+    {"common/IB24/T6/Fallen Monarch - Blight/notes.chart", 106, 0x7e0c170fdfbb797aull},
+    {"common/IB24/T6/Levitating (feat. DaBaby) (Dua Lipa) (L)/notes.chart", 22, 0x44dae46b05c95d99ull},
+    {"common/IB24/T6/Lockslip - Lockslip - 02 - Bend/notes.mid", 28, 0xd11f1b26ac54fe8eull},
+    {"common/IB24/T6/Pathfinder - When The Sunrise Breaks The Darkness/notes.mid", 69, 0x045f1334ae5249cfull},
+    {"common/IB24/T7/Conquering Dystopia - Prelude to Obliteration/notes.chart", 34, 0xb571e6db9e8eb9c3ull},
+    {"common/IB24/T7/SoundHaven - Snowball Earth [Indistinct]/notes.mid", 35, 0xacd70ef16d84bc59ull},
+    {"common/Summer Blast _25 Setlist/Tier 1/Jason Paige - Pokemon Theme/notes.chart", 29, 0x496cbc1fe4f1e360ull},
+    {"common/Summer Blast _25 Setlist/Tier 2/Dance Gavin Dance - Young Robot/notes.mid", 24, 0xf466f5103b4427eeull},
+    {"common/Summer Blast _25 Setlist/Tier 2/Moonlight Haze - Lunaris/notes.chart", 17, 0x12d7a6ac68549009ull},
+    {"common/Summer Blast _25 Setlist/Tier 2/Thornhill - Limbo/notes.mid", 22, 0x67ae178856dc8485ull},
+    {"common/Summer Blast _25 Setlist/Tier 3/Mutemath - Allies/notes.chart", 19, 0xecaef36aa42059b3ull},
+    {"common/Summer Blast _25 Setlist/Tier 4/Sufferer - Chair/notes.mid", 29, 0xe8e83a1221f502abull},
+    {"common/Summer Blast _25 Setlist/Tier 5/Interloper - Pathkeeper/notes.mid", 52, 0x3a686ecd3d11dbe9ull},
+    {"common/Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart", 30, 0x87e962a06e45523full},
+    {"common/Summer Blast _25 Setlist/Tier 6/Casiopea - Swallow/notes.mid", 42, 0x7827ac50a6a9599bull},
+    {"common/Summer Blast _25 Setlist/Tier 7/Kinglet - Blister/notes.mid", 44, 0xfa77b8dd1a42c0a1ull},
+    {"common/Summer Blast _25 Setlist/Tier 8/Equipoise - Alchemic Web Of Deceit/notes.mid", 46, 0xff4cbb3ba247844bull},
+    {"common/Summer Blast _25 Setlist/Tier 8/Travis Orbin - Dr. Jackle_Dr. Jekyll [Miles Davis]/notes.mid", 60, 0xf03192f16c202dcfull},
+    {"common/Summer Blast _25 Setlist/Tier 8/Xane60 - Godzilla (Eminem)/notes.chart", 36, 0x83b4d76e8b285807ull},
 };
 // clang-format on
 
+// The pin's hash: the shared FNV-1a over the text's bytes (tests/song_digest.h).
 uint64_t fold(const std::string& s) {
-    uint64_t h = 0xcbf29ce484222325ull;
-    for (unsigned char c : s) {
-        h ^= c;
-        h *= 0x100000001b3ull;
-    }
-    return h;
+    return digest::fnv(digest::kSeed, s.data(), s.size());
 }
 
 }  // namespace
