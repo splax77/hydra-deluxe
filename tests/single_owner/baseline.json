@@ -57,17 +57,8 @@
     {
       "question": "Under which settings is a chart analyzed (its profile)?",
       "file": "src/app/report.cpp",
-      "line_text": "PageSettings PageSettings::of(const Settings& settings) {",
-      "removed_by": "D115-A1-5",
-      "date": "2026-10-14",
-      "added_by": "D115-A1-4",
-      "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Under which settings is a chart analyzed (its profile)?",
-      "file": "src/app/report.cpp",
-      "line_text": "return PageSettings::of(before) != PageSettings::of(after);",
-      "removed_by": "D115-A1-5",
+      "line_text": "return PageSettings{settings.cap_query(), settings.lens(), settings.hit_window_ms};",
+      "removed_by": "D115-A2-2",
       "date": "2026-10-14",
       "added_by": "D115-A1-4",
       "remove_by": "2026-10-28"
@@ -85,6 +76,15 @@
       "question": "Under which settings is a chart analyzed (its profile)?",
       "file": "src/app/fill_report.cpp",
       "line_text": "old_lens.legacy_fills = 1;",
+      "removed_by": "D115-A2-4",
+      "date": "2026-10-14",
+      "added_by": "D115-A1-4",
+      "remove_by": "2026-10-28"
+    },
+    {
+      "question": "Under which settings is a chart analyzed (its profile)?",
+      "file": "src/app/fill_report.cpp",
+      "line_text": "new_lens.legacy_fills = 0;",
       "removed_by": "D115-A2-4",
       "date": "2026-10-14",
       "added_by": "D115-A1-4",

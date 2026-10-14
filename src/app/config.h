@@ -265,7 +265,7 @@ struct Settings {
     store::Profile profile_with_fills(FillDeadlineRule rule) const;
 
     // The identity of one chart's record under the current settings: this
-    // hash and the same three parts profile() returns.
+    // hash and profile().
     store::RecordKey record_key(const std::string& hyhash) const;
 
     // Everything a batch run under these settings needs: the search settings,

@@ -373,10 +373,7 @@ store::Lens Settings::lens() const {
 }
 
 store::Profile Settings::profile() const {
-    // record_key still puts the three parts together while it exists (its
-    // single-owner row is rules/store/concept-H1.json), so the two cannot
-    // drift; the assembly moves here when record_key goes (D115).
-    return record_key({}).settings();
+    return {chartmode_key(), cap_query(), lens()};
 }
 
 // The two variants change one setting on a copy and ask profile() again, so
@@ -395,7 +392,7 @@ store::Profile Settings::profile_with_fills(FillDeadlineRule rule) const {
 }
 
 store::RecordKey Settings::record_key(const std::string& hyhash) const {
-    return store::RecordKey{hyhash, chartmode_key(), cap_query(), lens()};
+    return store::RecordKey{hyhash, profile()};
 }
 
 BatchRun Settings::batch_run() const {
