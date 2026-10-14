@@ -15,6 +15,7 @@
 #include "uitest_harness.h"
 
 #include "app/config.h"
+#include "app/display_format.h"  // kAverageMultiplierLabel
 #include "app/path_view.h"
 #include "core/model.h"
 #include "imgui_internal.h"
@@ -345,7 +346,7 @@ void test_paths_folds_copy(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, "Hit [Red snare] first."));
 
     IM_CHECK(on_screen(h, "Total Score:"));
-    IM_CHECK(on_screen(h, "Avg. Multiplier:"));
+    IM_CHECK(on_screen(h, std::string(hydra::app::kAverageMultiplierLabel) + ":"));
     ctx->ItemClick("**/Score breakdown##breakdown");
     ctx->Yield(2);
     IM_CHECK(!on_screen(h, "Total Score:"));

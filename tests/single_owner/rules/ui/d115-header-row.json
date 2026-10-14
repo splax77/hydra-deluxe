@@ -1,0 +1,33 @@
+{
+  "rules": [
+    {
+      "question": "How is a table's header row drawn one header at a time, so a header can show a tooltip?",
+      "owner": "draw_table_headers in src/ui/column_widths.cpp",
+      "owner_file": "src/ui/column_widths.cpp",
+      "owner_symbol": "draw_table_headers",
+      "date": "2026-10-14",
+      "decision": "D115 B1-4 review (code-only fold of the Stars tab's header loop onto the report window's)",
+      "added_by": "D115-B1-4-review",
+      "pattern": "ImGuiTableRowFlags_Headers",
+      "anchor": "ImGuiTableRowFlags_Headers",
+      "must_match": [
+        "ImGui::TableNextRow(ImGuiTableRowFlags_Headers);"
+      ],
+      "must_not_match": [
+        "draw_table_headers(specs, [&](size_t c) {",
+        "ImGui::TableHeadersRow();"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/column_widths.cpp",
+          "line_text": "ImGui::TableNextRow(ImGuiTableRowFlags_Headers);",
+          "why": "the header row, in the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A table whose headers carry no tooltip calls ImGui::TableHeadersRow() and is not flagged. A table that needs a tooltip on a header calls the owner and passes the tooltip in its after_header callback."
+    }
+  ]
+}

@@ -395,7 +395,7 @@ more valuable notes score on the higher multiplier.
 
 **Star cutoff**:
 The score a chart needs for 1 to 7 stars: its base score (every note at 1x,
-no Star Power) times 0.1, 0.5, 1.0, 2.0, 2.8, 3.6 or 4.4, rounded up. Clone
+no Star Power) times 0.1<!-- default: kStarMultipliers[1] -->, 0.5<!-- default: kStarMultipliers[2] -->, 1.0<!-- default: kStarMultipliers[3] -->, 2.0<!-- default: kStarMultipliers[4] -->, 2.8<!-- default: kStarMultipliers[5] -->, 3.6<!-- default: kStarMultipliers[6] --> or 4.4<!-- default: kStarMultipliers[7] -->, rounded up. Clone
 Hero compares it against your score without the solo bonus. The product is
 kept as a 32-bit float before it is rounded up, as the decompiled game does,
 which can move a large cutoff by one point (`star_cutoff` in
