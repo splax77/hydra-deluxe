@@ -165,10 +165,11 @@ inline void place_control_at_right_edge(float w) {
 
 // Puts the next buttons, `buttons_w` wide in all, at the right end of the
 // current line when they fit beside what is already on it (fits_on_line).
-// Otherwise they start a line of their own, at its left.
+// Otherwise they start a line of their own and sit at its right edge: the
+// buttons stay at the right edge either way (the user's answer 7, and their
+// choice of 2026-10-14 for the wrapped case).
 inline void place_control_at_line_end(float buttons_w) {
-    if (!fits_on_line(buttons_w, ImGui::GetStyle().ItemSpacing.x)) return;
-    ImGui::SameLine();
+    if (fits_on_line(buttons_w, ImGui::GetStyle().ItemSpacing.x)) ImGui::SameLine();
     place_control_at_right_edge(buttons_w);
 }
 
