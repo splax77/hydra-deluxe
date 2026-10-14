@@ -8,7 +8,7 @@
       "date": "2026-10-14",
       "decision": "plan 2026-10-14-column-shares-scroll-left-align.md, Change 2, the user's answers 4 and 5",
       "added_by": "CS-T2",
-      "pattern": "SetScrollHereY\\s*\\(|SetScrollFromPosY\\s*\\(|ScrollToItem\\s*\\(|ScrollToBringRectIntoView\\s*\\(|SetScrollY\\s*\\(",
+      "pattern": "SetScroll\\w*\\s*\\(|SetNextWindowScroll\\s*\\(|ScrollToItem\\s*\\(|ScrollToRect\\w*\\s*\\(|ScrollToBringRectIntoView\\s*\\(",
       "anchor": "Scroll",
       "must_match": [
         "if (scroll_to && *scroll_to == static_cast<size_t>(k)) ImGui::SetScrollHereY(0.5f);",
