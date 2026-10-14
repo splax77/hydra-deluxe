@@ -1,5 +1,5 @@
 // The path report's table: its columns, the text each cell shows, the rows
-// its Timing and Best path only controls keep, and each row's search text.
+// its Timing and Optimal paths only controls keep, and each row's search text.
 // The shared table itself is app/report_view.h.
 
 #ifndef HYDRA_APP_PATH_REPORT_VIEW_H

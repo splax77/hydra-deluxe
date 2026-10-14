@@ -233,6 +233,57 @@ TEST_CASE("HydraRecord::is_optimal: every path tied at the top score") {
     CHECK_FALSE(rec.is_optimal(rec.paths.at(1)));
 }
 
+TEST_CASE("HydraRecord::optimal_score: the best path's total, empty with no paths") {
+    const HydraRecord rec = test::tied_variant_record();
+    REQUIRE(rec.optimal_score().has_value());
+    CHECK(*rec.optimal_score() == rec.paths.at(0).totalscore());
+
+    const HydraRecord empty{};
+    CHECK_FALSE(empty.optimal_score().has_value());
+    CHECK_FALSE(empty.is_optimal(rec.paths.at(0)));
+}
+
+TEST_CASE("multiplier_step: the multipliers at a chord's two ends") {
+    struct Case {
+        int combo;
+        int notes;
+        int first;
+        int last;
+    };
+    // Literal answers; to_multiplier owns where the steps sit.
+    const Case cases[] = {
+        // No notes: the chord pays nothing, so both ends stay at the combo's.
+        {9, 0, 1, 1}, {10, 0, 2, 2}, {29, 0, 3, 3},
+        {7, 1, 1, 1}, {7, 2, 1, 1}, {7, 3, 1, 2}, {7, 4, 1, 2}, {7, 5, 1, 2},
+        {8, 1, 1, 1}, {8, 2, 1, 2}, {8, 3, 1, 2}, {8, 4, 1, 2}, {8, 5, 1, 2},
+        {9, 1, 2, 2}, {9, 2, 2, 2}, {9, 3, 2, 2}, {9, 4, 2, 2}, {9, 5, 2, 2},
+        {10, 1, 2, 2}, {10, 2, 2, 2}, {10, 3, 2, 2}, {10, 4, 2, 2}, {10, 5, 2, 2},
+        {18, 1, 2, 2}, {18, 2, 2, 3}, {18, 3, 2, 3}, {18, 4, 2, 3}, {18, 5, 2, 3},
+        {19, 1, 3, 3}, {19, 2, 3, 3}, {19, 3, 3, 3}, {19, 4, 3, 3}, {19, 5, 3, 3},
+        {28, 1, 3, 3}, {28, 2, 3, 4}, {28, 3, 3, 4}, {28, 4, 3, 4}, {28, 5, 3, 4},
+        {29, 1, 4, 4}, {29, 2, 4, 4}, {29, 3, 4, 4}, {29, 4, 4, 4}, {29, 5, 4, 4},
+    };
+    for (const Case& c : cases) {
+        const MultiplierStep step = multiplier_step(c.combo, c.notes);
+        CHECK_MESSAGE(step.first == c.first, "combo=" << c.combo << " notes=" << c.notes);
+        CHECK_MESSAGE(step.last == c.last, "combo=" << c.combo << " notes=" << c.notes);
+        CHECK_MESSAGE(crosses_multiplier_step(c.combo, c.notes) == (c.first != c.last),
+                      "combo=" << c.combo << " notes=" << c.notes);
+    }
+}
+
+TEST_CASE("category_scores: a chord with no notes keeps the combo's multiplier at both ends") {
+    const Chord empty{};
+    const CategoryScores at9 = category_scores(empty, 9);
+    CHECK(at9.multiplier == 1);
+    CHECK(at9.multiplier_after == 1);
+    CHECK(at9.combo_after == 9);
+    const CategoryScores at10 = category_scores(empty, 10);
+    CHECK(at10.multiplier == 2);
+    CHECK(at10.multiplier_after == 2);
+    CHECK(at10.combo_after == 10);
+}
+
 TEST_CASE("Activation::hardest: the part with its ms, a tie names the squeeze") {
     using P = TimingPart;
     auto plain = [] {

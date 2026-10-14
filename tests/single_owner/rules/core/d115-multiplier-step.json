@@ -1,0 +1,25 @@
+{
+  "rules": [
+    {
+      "question": "Does a chord cross a multiplier step?",
+      "owner": "crosses_multiplier_step in src/core/timing.cpp",
+      "owner_file": "src/core/timing.cpp",
+      "owner_symbol": "crosses_multiplier_step",
+      "date": "2026-10-14",
+      "decision": "D115 (plan part B1, task B1-1)",
+      "added_by": "D115-B1-1",
+      "pattern": "to_multiplier\\([^)]*\\+\\s*1\\s*\\)\\s*<\\s*to_multiplier\\(",
+      "anchor": "to_multiplier",
+      "must_match": [
+        "if (!(to_multiplier(combo + 1) < to_multiplier(combo + chord.count()))) return false;",
+        "if (to_multiplier(combo + 1) < to_multiplier(combo + chord.count())) ok = true;"
+      ],
+      "must_not_match": [
+        "if (!crosses_multiplier_step(combo, chord.count())) return false;",
+        "return {to_multiplier(combo + 1), to_multiplier(combo + note_count)};",
+        "const int combo_multiplier = to_multiplier(combo);"
+      ],
+      "note": "MultSqueeze::applies compared the first and last notes' multipliers itself before D115; category_scores reads the same two ends from multiplier_step. The owner compares the two ends multiplier_step returns, so it has no line of this shape to list. Which notes of a chord sit past the step (squeeze_advice) is a different question and passes."
+    }
+  ]
+}

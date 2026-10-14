@@ -367,11 +367,11 @@ MultSqueeze::MultSqueeze(Chord chord, int combo)
     validate();
 }
 
-// Every chord of any size whose notes straddle a to_multiplier step counts
-// (D51 call 3, with the user's note that 4- and 5-note chords are valid in
-// Clone Hero, so Hydra must get them right).
+// Every chord of any size whose notes straddle a multiplier step
+// (crosses_multiplier_step) counts (D51 call 3, with the user's note that 4-
+// and 5-note chords are valid in Clone Hero, so Hydra must get them right).
 bool MultSqueeze::applies(const Chord& chord, int combo) {
-    if (!(to_multiplier(combo + 1) < to_multiplier(combo + chord.count()))) return false;
+    if (!crosses_multiplier_step(combo, chord.count())) return false;
 
     // A chord whose notes are all worth the same has nothing to squeeze.
     const std::vector<ChordNote> notes = chord.notes();
@@ -522,8 +522,9 @@ std::optional<HardestTiming> Activation::hardest() const {
 
 std::optional<HardestTiming> Activation::badge_timing() const {
     // A timing that needs hitting always names the badge. Only when there is
-    // none does a free squeeze get it (D80); fills still follow hardest()'s
-    // rules, so this fallback only ever finds a free squeeze.
+    // none does a squeeze that needs no timing (SPSqueeze::needs_no_timing)
+    // get it (D80); fills still follow hardest()'s rules, so this fallback
+    // only ever finds such a squeeze.
     if (std::optional<HardestTiming> h = hardest()) return h;
     return hardest_part(*this, /*untimed_squeezes=*/true);
 }
@@ -885,8 +886,14 @@ std::vector<const Path*> HydraRecord::all_allzero_paths() const {
     return flatten_paths(allzero_paths);
 }
 
+std::optional<int64_t> HydraRecord::optimal_score() const {
+    if (paths.empty()) return std::nullopt;
+    return best_path().totalscore();
+}
+
 bool HydraRecord::is_optimal(const Path& path) const {
-    return !paths.empty() && path.totalscore() == best_path().totalscore();
+    const std::optional<int64_t> optimal = optimal_score();
+    return optimal && path.totalscore() == *optimal;
 }
 
 // ---- helpers ------------------------------------------------------------

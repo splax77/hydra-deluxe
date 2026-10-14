@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "core/timing.h"  // to_multiplier, kStarPowerMultiplier
+#include "core/timing.h"  // to_multiplier, multiplier_step, kStarPowerMultiplier
 
 namespace hydra {
 
@@ -26,11 +26,12 @@ NoteValue note_value(const ChordNote& note, int multiplier) {
 CategoryScores category_scores(const Chord& chord, int combo,
                                 std::vector<CategoryScores>* per_note,
                                 core::SqOutRule sqout_rule) {
-    CategoryScores out;
-    out.multiplier = to_multiplier(combo);
-    out.multiplier_after = out.multiplier;
-
     const Chord::NoteList ordering = chord.note_list(true);
+    CategoryScores out;
+    const MultiplierStep step = multiplier_step(combo, static_cast<int>(ordering.size()));
+    out.multiplier = step.first;
+    out.multiplier_after = step.last;
+
     if (per_note) {
         per_note->clear();
         per_note->reserve(ordering.size());
@@ -39,8 +40,6 @@ CategoryScores category_scores(const Chord& chord, int combo,
         const ChordNote& note = ordering[i];
         combo += 1;
         const int combo_multiplier = to_multiplier(combo);
-        if (i == 0) out.multiplier = combo_multiplier;
-        out.multiplier_after = combo_multiplier;
 
         const NoteValue value = note_value(note, combo_multiplier);
         // A ghost or accent's own category holds the pad's 50 at 1x; the

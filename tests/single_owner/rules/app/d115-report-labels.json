@@ -1,0 +1,37 @@
+{
+  "rules": [
+    {
+      "question": "How is the average multiplier labelled?",
+      "owner": "kAverageMultiplierLabel in src/app/display_format.h",
+      "owner_file": "src/app/display_format.h",
+      "owner_symbol": "kAverageMultiplierLabel",
+      "date": "2026-10-14",
+      "decision": "D115: one Average Multiplier label for the Paths tab, the Stars tab and the path report (plan 2026-10-12-one-record-per-chart, wave 1, A2-5)",
+      "added_by": "D115-A2-5",
+      "pattern": "\"(Avg\\.?|Average) [Mm]ultiplier:?\\s*\"|\"Multiplier\"",
+      "anchor": "ultiplier",
+      "must_match": [
+        "c.title = \"Avg multiplier\";",
+        "lines.push_back(\"Avg. Multiplier:      \" + format_avg_mult(path.avg_mult()) + \"x\");",
+        "{\"Multiplier\", false, 0.0f, text},",
+        "c.title = \"Average Multiplier\";"
+      ],
+      "must_not_match": [
+        "c.title = kAverageMultiplierLabel;",
+        "\"Average multiplier: the score without solo bonuses divided by the base score \"",
+        "std::string format_avg_mult(double v);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/display_format.h",
+          "line_text": "inline constexpr char kAverageMultiplierLabel[] = \"Average Multiplier\";",
+          "why": "the constant, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A screen that names the average multiplier reads the constant, so the Paths tab, the Stars tab and the path report cannot spell it three ways again. A column's definition sentence that starts with the words is not a label and is not flagged. The Paths and Stars tabs' old labels are baseline entries until D115-B1-4 switches them."
+    }
+  ]
+}

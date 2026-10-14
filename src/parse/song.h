@@ -293,6 +293,12 @@ private:
 // numerator of 0 is ignored; a bottom number of 0 or less refuses the chart.
 void apply_timesig(Song& song, int64_t tick, int numerator, int denominator);
 
+// Whether a cymbal marker on `pad` counts, with Pro Drums on (`pro`) or off.
+// The one home of that rule: the chart readers and the Preview's gem builder
+// ask it instead of keeping their own copy. Which pads can carry a cymbal at
+// all is allows_cymbals' question (core/model.h), and this reads it.
+bool cymbal_counts(NoteColor pad, bool pro);
+
 // The raw detail a Note Shuffle freeze carries (its sentence is
 // plain_error's, for ErrorKind::NoteShuffleFreezes).
 inline constexpr const char* kNoteShuffleFreezeDetail =

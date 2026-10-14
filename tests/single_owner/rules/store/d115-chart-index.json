@@ -1,0 +1,30 @@
+{
+  "rules": [
+    {
+      "question": "Which charts does the library list, in what order, with what copies and naming copy?",
+      "owner": "ChartIndex::from_rows in src/store/chart_index.cpp, fed by RecordStore::chart_index's one scan-order read",
+      "owner_file": "src/store/chart_index.cpp",
+      "owner_symbol": "from_rows",
+      "date": "2026-10-14",
+      "decision": "D115 (spec section 8; plan task A1-0)",
+      "added_by": "D115-A1-0",
+      "pattern": "ORDER BY rowid",
+      "must_match": [
+        "Stmt s = prepare_read(db_, \"SELECT md5, name FROM charts ORDER BY rowid\");",
+        "\" FROM charts ORDER BY rowid\""
+      ],
+      "must_not_match": [
+        "db_, (library_entry_select() + \" ORDER BY name LIMIT ? OFFSET ?\").c_str());",
+        "const ChartIndex index = store.chart_index();"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "Stmt s = prepare_read(db_, (library_entry_select() + \" ORDER BY rowid\").c_str());",
+          "why": "RecordStore::chart_index, the one scan-order read that feeds the owner"
+        }
+      ],
+      "note": "The library's rows in scan order are what decide which copy names a chart and how many copies it has. A second scan-order read of the charts table would be a second place working those answers out; it reads chart_index() instead. Decided by: D115 (spec section 8)"
+    }
+  ]
+}

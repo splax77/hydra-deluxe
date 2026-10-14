@@ -127,7 +127,8 @@ ActivationsView build_activations(const Path& path, const HydraRecord& record,
 // "squeeze in 13 ms" for 12.6, "early fill 30 ms". A squeeze tied with a
 // fill is named. An optional early fill (an E activation that skips fills)
 // gets one too when nothing else does; is_difficult() ignores it, so it is
-// never warn-coloured. A free squeeze gets one when nothing needs timing,
+// never warn-coloured. A squeeze that needs no timing
+// (SPSqueeze::needs_no_timing) gets one when nothing needs timing,
 // with its figure 0 or less ("squeeze in -316 ms", D80), never
 // warn-coloured either. Empty when badge_timing() has nothing.
 std::string activation_badge(const Activation& act);

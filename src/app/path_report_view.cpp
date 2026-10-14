@@ -1,6 +1,6 @@
 #include "app/path_report_view.h"
 
-#include "app/display_format.h"  // format_ms, format_avg_mult
+#include "app/display_format.h"  // format_ms, format_avg_mult, kAverageMultiplierLabel
 #include "app/library_query.h"   // search_field
 #include "core/model.h"          // group_thousands
 #include "core/squeeze_rating.h" // timing_tiers
@@ -44,7 +44,7 @@ std::string tier_label(const std::string& tier_name, double hit_window_ms) {
     const std::vector<TimingTier> tiers = timing_tiers(hit_window_ms);
     if (tier_name == report::beyond_tier(tiers).name)
         return "Beyond " + report::beyond_edge_text(hit_window_ms) + " ms";
-    if (tier_name == report::none_tier(tiers).name) return "No squeezes";
+    if (tier_name == report::none_tier(tiers).name) return "No timing needed";
     return tier_name;
 }
 
@@ -126,7 +126,7 @@ std::vector<Column<ReportRow>> path_columns(double hit_window_ms) {
     {
         Column<ReportRow> c;
         c.id = "mult";
-        c.title = "Avg multiplier";
+        c.title = kAverageMultiplierLabel;
         c.numeric = true;
         c.definition =
             "Average multiplier: the score without solo bonuses divided by the base score "
@@ -143,7 +143,7 @@ std::vector<Column<ReportRow>> path_columns(double hit_window_ms) {
                                 "SP phrase notes squeezed out of an active SP window (- in the "
                                 "path).",
                                 &ReportRow::sqout, false));
-    cols.push_back(count_column("notes", "Notes", "Notes in the chart.", &ReportRow::notes, true));
+    cols.push_back(count_column("notes", "Note count", "Notes in the chart.", &ReportRow::notes, true));
     return cols;
 }
 

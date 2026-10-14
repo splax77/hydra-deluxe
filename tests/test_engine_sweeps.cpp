@@ -107,6 +107,74 @@ TEST_CASE("search invariants hold across the corpus and config knobs") {
     MESSAGE("checked " << charts << " charts");
 }
 
+// The engine walks an activation's timings on its own flat records
+// (Engine::act_within_limit); the stored record walks them again
+// (Path::within_ms_limit, through Activation::within_ms_limit). Both must give
+// one answer. Two directions, on the invariants case's cached records:
+// every path the engine kept under the limit passes the model's walk (a path
+// that ties the unconstrained optimum is exempt on purpose, D51 call 2), and
+// no path the model's walk passes outscores the engine's filtered best.
+TEST_CASE("the engine's limit walk agrees with Activation::within_ms_limit") {
+    constexpr double kLimitMs = 20.0;  // the invariants case's ms_filter
+    int charts = 0, mismatches = 0, kept_checked = 0, model_rejected = 0;
+
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, ChartReading{});
+        if (song.is_empty()) continue;
+
+        std::string d;
+        try {
+            SearchSettings cfg;
+            cfg.sp_cap = 4;
+            cfg.depth_mode = DepthMode::Scores;
+            cfg.depth_value = 200;
+            cfg.ms_filter = std::nullopt;
+            const HydraRecord& deep = corpus::analyzed(path, cfg);
+            cfg.ms_filter = kLimitMs;
+            const HydraRecord& filtered = corpus::analyzed(path, cfg);
+            if (deep.paths.empty()) continue;
+            ++charts;
+            const int64_t optimum = deep.paths.front().totalscore();
+
+            for (const Path& p : filtered.paths) {
+                if (p.totalscore() == optimum) continue;
+                ++kept_checked;
+                if (!p.within_ms_limit(kLimitMs)) {
+                    d = "engine kept a path the model's walk rejects: " + p.pathstring();
+                    break;
+                }
+            }
+
+            std::optional<int64_t> model_best;
+            for (const Path& p : deep.paths) {
+                if (!p.within_ms_limit(kLimitMs)) {
+                    ++model_rejected;
+                    continue;
+                }
+                if (!model_best) model_best = p.totalscore();
+            }
+            if (d.empty() && model_best &&
+                (filtered.paths.empty() || *model_best > filtered.paths.front().totalscore()))
+                d = "engine dropped a path the model's walk keeps, scoring " +
+                    std::to_string(*model_best);
+        } catch (const ChartFileError&) {
+            continue;  // charts the engine rejects are covered elsewhere
+        }
+
+        if (!d.empty() && ++mismatches <= 8)
+            CHECK_MESSAGE(false, path << " " << d);
+    }
+
+    CHECK(mismatches == 0);
+    REQUIRE(charts > 0);
+    // Both walks must have had something to say no to and yes to, or the
+    // case proves nothing.
+    CHECK(kept_checked > 0);
+    CHECK(model_rejected > 0);
+    MESSAGE("checked " << charts << " charts, " << kept_checked << " kept paths, "
+                       << model_rejected << " deep paths over the limit");
+}
+
 namespace {
 
 // The invariants case's deep settings above (depth 200, cap 4), so the

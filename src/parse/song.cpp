@@ -324,6 +324,10 @@ void apply_timesig(Song& song, int64_t tick, int numerator, int denominator) {
     song.timesig_changes[tick] = {numerator, denominator};
 }
 
+bool cymbal_counts(NoteColor pad, bool pro) {
+    return pro && allows_cymbals(pad);
+}
+
 namespace {
 
 // One authored activation fill, as the chart wrote it.
@@ -903,7 +907,7 @@ private:
         // A ghost or accent velocity before the tag: Clone Hero prices it as
         // plain, and the Dynamics tab reports how many there were.
         if (!dynamics_enabled_ && dyn != NoteDynamicType::Normal) ++marks_before_tag_;
-        if (allows_cymbals(color) && mode_pro_)
+        if (cymbal_counts(color, mode_pro_))
             note.cymbaltype = flag_cymbals_[static_cast<int>(color) - 1];
     }
     // A kick, a 2x kick when `is2x`. Chord::add_kick merges a 2x kick and a
@@ -1709,10 +1713,12 @@ COp ChartParser::note_optype(int value) const {
     constexpr CPhase N = CPhase::Notes, M = CPhase::NoteMods;
     if (const std::optional<NoteColor> pad = chart_pad_color(value))
         return cop_color(N, CAct::Note, *pad);
-    // Which pads can carry a cymbal is allows_cymbals' rule.
+    // Which pads can carry a cymbal is allows_cymbals' rule; whether the
+    // marker counts is cymbal_counts'. A marker that does not count is read
+    // and dropped.
     if (const std::optional<NoteColor> pad = chart_pad_color(value - kChartCymbalMarkerBase);
         pad && allows_cymbals(*pad)) {
-        if (mode_pro_) return cop_color(M, CAct::Cymbal, *pad);
+        if (cymbal_counts(*pad, mode_pro_)) return cop_color(M, CAct::Cymbal, *pad);
         return {};
     }
     switch (value) {

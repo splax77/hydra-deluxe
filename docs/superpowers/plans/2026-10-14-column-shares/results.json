@@ -1,0 +1,117 @@
+{
+ "closed": {
+  "avail": 2490,
+  "cols": [
+   {
+    "header": "Title",
+    "share": 17,
+    "width": 423,
+    "fit": 0.9966174661746617,
+    "of_shown": 17
+   },
+   {
+    "header": "Artist",
+    "share": 10,
+    "width": 249,
+    "fit": 0.9976937269372693,
+    "of_shown": 10
+   },
+   {
+    "header": "Charter",
+    "share": 9,
+    "width": 224,
+    "fit": 0.9971812218122181,
+    "of_shown": 9
+   },
+   {
+    "header": "Folder",
+    "share": 39,
+    "width": 971,
+    "fit": 0.9997949979499795,
+    "of_shown": 39
+   },
+   {
+    "header": "Best path",
+    "share": 25,
+    "width": 622,
+    "fit": 0.9913386633866339,
+    "of_shown": 25
+   }
+  ]
+ },
+ "open": {
+  "avail": 978,
+  "cols": [
+   {
+    "header": "Title",
+    "share": 17,
+    "width": 319,
+    "fit": 0.9833948339483395,
+    "of_shown": 33
+   },
+   {
+    "header": "Artist",
+    "share": 10,
+    "width": 188,
+    "fit": 0.9878536285362853,
+    "of_shown": 19
+   },
+   {
+    "header": "Best path",
+    "share": 25,
+    "width": 470,
+    "fit": 0.9896986469864698,
+    "of_shown": 48
+   }
+  ]
+ },
+ "report": {
+  "avail": 1753,
+  "fixed": 649,
+  "cols": [
+   {
+    "header": "Song",
+    "share": 27,
+    "width": 473,
+    "fit": 0.998250079541839
+   },
+   {
+    "header": "Artist",
+    "share": 15,
+    "width": 262,
+    "fit": 0.9978788842931382
+   },
+   {
+    "header": "Charter",
+    "share": 14,
+    "width": 245,
+    "fit": 0.9978788842931382
+   },
+   {
+    "header": "Mode",
+    "share": 12,
+    "width": 210,
+    "fit": 1.0
+   },
+   {
+    "header": "Path",
+    "share": 32,
+    "width": 560,
+    "fit": 0.9916746208505673
+   }
+  ],
+  "numbers": {
+   "#": 45,
+   "Score": 74,
+   "Acts": 28,
+   "Max skip": 52,
+   "Hardest ms": 70,
+   "Timing": 104,
+   "Early fill (ms)": 76,
+   "Avg multiplier": 82,
+   "SqIn": 27,
+   "SqOut": 40,
+   "Notes": 51
+  }
+ }
+}

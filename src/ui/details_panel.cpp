@@ -103,10 +103,13 @@ void render_headline(AppState& app) {
     detail::draw_held_row(app, app.details_ui.headline, [&] {
         if (!render_state_line(app)) return;
         const Path& best = app.viewed.record->best_path();
+        // render_state_line returned true, so the record has paths and the
+        // optimal score has a value.
+        const int64_t optimal = *app.viewed.record->optimal_score();
         ImGui::PushStyleColor(ImGuiCol_Text, kBestPathColor);
         ImGui::PushFont(nullptr, 40.0f);
         const float score_ascent = ImGui::GetFontBaked()->Ascent;
-        ImGui::TextUnformatted(group_thousands(best.totalscore()).c_str());
+        ImGui::TextUnformatted(group_thousands(optimal).c_str());
         ImGui::PopFont();
         ImGui::SameLine(0.0f, px(18.0f));
         ImGui::PushFont(g_mono_font, 24.0f);
