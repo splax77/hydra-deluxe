@@ -50,7 +50,17 @@ struct CellLook {
     bool mono = false;      // the mono font
     bool truncate = false;  // cut with an ellipsis, the full text on hover
     bool chip = false;      // an outlined chip in its token's colour
+    // A cut column's whole-percent share of the table's room (the width
+    // rule's ColumnSpec::share). 0 for a column that never cuts.
+    int share = 0;
 };
+
+// `look` with its share set: how a report view's column list writes its
+// text columns' shares (the user's answers, 2026-10-14).
+inline CellLook with_share(CellLook look, int percent) {
+    look.share = percent;
+    return look;
+}
 
 // A colour one row's cell takes over its column's look, where the page
 // picked one per row.

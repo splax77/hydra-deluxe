@@ -335,14 +335,15 @@ void squeeze_box(int act_number, size_t k, const app::TextLine& s) {
 }
 
 // The backend table's columns, all in the mono font. Timing, Chord and Points
-// never cut; Rating takes what room is left, and wraps inside it.
+// never cut; Rating, the one text column, takes all the room they leave (a
+// share of 100) and wraps inside it.
 constexpr size_t kRatingColumn = 3;
 std::vector<ColumnSpec> backend_column_specs() {
     const WidthOf mono = measure_in_font(g_mono_font);
     return {{"Timing", false, 0.0f, mono},
             {"Chord", false, 0.0f, mono},
             {"Points", false, 0.0f, mono},
-            {"Rating", true, 0.0f, mono}};
+            {"Rating", true, 0.0f, mono, 100}};
 }
 
 // Column `c`'s text in a backend row, the text its cell draws.

@@ -69,12 +69,11 @@ DynamicsTableRow dynamics_table_row(const std::string& label, const app::Dynamic
 }
 
 // The columns of both tables. Pad is a name and may cut; the counts never do.
-// Every Pad cell is measured with the dot's room beside it (the item and the
-// gap after it), including "All kicks", which has no dot.
+// Pad, the one text column, takes all the room the counts leave (a share of
+// 100), so its dot and name are never measured.
 std::vector<ColumnSpec> dynamics_column_specs() {
     const WidthOf text = measure_in_font();
-    const float dot = pad_dot_item_width() + ImGui::GetStyle().ItemSpacing.x;
-    return {{"Pad", true, dot, text},
+    return {{"Pad", true, 0.0f, text, 100},
             {dynamic_label(NoteDynamicType::Ghost), false, 0.0f, text},
             {dynamic_label(NoteDynamicType::Accent), false, 0.0f, text},
             {"Normal", false, 0.0f, text},

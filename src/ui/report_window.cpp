@@ -397,6 +397,7 @@ ColumnSpec column_spec(const std::string& title, const app::report_view::CellLoo
     ColumnSpec s;
     s.header = title;
     s.may_cut = look.truncate;
+    s.share = look.share;
     if (look.chip) s.padding = chip_pad() * 2.0f;
     s.width_of = measure_in_font(look.mono ? g_mono_font : nullptr);
     return s;

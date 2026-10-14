@@ -384,7 +384,9 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
         widths = measure(view);
         memory.fitted.clear();
     }
-    const TableRoom room = table_room(id, 0.0f, specs.size());
+    // The reset key is a constant 0 for now, so a drag holds while the window
+    // is open; task T4 of the column-shares plan passes the report's counter.
+    const TableRoom room = table_room(id, 0.0f, specs.size(), 0);
     const ColumnLayout layout = place_columns(widths, specs, room);
     // SortMulti for the Shift+click second sort (D103 item 1).
     if (!ImGui::BeginTable(id, static_cast<int>(specs.size()),
