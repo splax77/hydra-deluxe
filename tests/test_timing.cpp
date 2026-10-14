@@ -92,6 +92,14 @@ TEST_CASE("timing: a map without a tick-0 entry throws") {
     CHECK_THROWS_AS(hydra::MeasureIndex(sigs, 480), std::out_of_range);
 }
 
+TEST_CASE("timing: a signature that makes a beat shorter than one tick is refused (D115)") {
+    // 480 ticks a quarter note cannot be cut into 4096ths: the beat would be 0
+    // ticks, and the grid would never advance.
+    std::map<int64_t, std::pair<int, int>> sigs{{0, {4, 4}}, {1920, {4, 4096}}};
+    CHECK_THROWS_AS(hydra::MeasureIndex(sigs, 480), std::out_of_range);
+    CHECK_NOTHROW(hydra::MeasureIndex({{0, {4, 4}}, {1920, {4, 128}}}, 480));
+}
+
 TEST_CASE("timing: the time signature map must name the tpm map's ticks") {
     std::map<int64_t, int64_t> tpm{{0, 1920}, {1920, 1440}};
     std::map<int64_t, double> bpm{{0, 120.0}};
