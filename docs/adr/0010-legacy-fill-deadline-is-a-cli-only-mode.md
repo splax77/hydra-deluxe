@@ -133,3 +133,12 @@ gone. The stamp on the file and the guards are unchanged.
 report is now a Hydra window, built under the app's own settings, its 1.0
 fills setting included (ADR 0027). Nothing reports on a file stamped `ch10`
 any more except `hydra_fillcompare`. The guards and the stamp are unchanged.
+
+## Note, 2026-10-15: one --db for hydra_fillcompare
+
+The fill rule is part of each record's profile, so one database holds a chart's
+1.0 record beside its 1.1 record. `hydra_fillcompare` now takes one `--db`, and
+the app's own database when none is given, as `hydra_batch` does. It reads
+both rules' records from that one file. `--old` and `--new`, named above, are
+refused with a sentence that names `--db`. A chart with a record under one
+rule only still gets a row, labelled by that rule.

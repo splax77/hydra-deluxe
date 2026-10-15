@@ -171,10 +171,10 @@ std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
 }
 
 std::string nothing_under_settings(const std::string& chartmode, int cap,
-                                   const std::string& fills, const std::string& ending) {
+                                   const std::string& fills) {
     return std::string(kNothingUnderSettings) + " (" + chartmode + ", SP cap " +
-           group_thousands(cap) + (fills.empty() ? "" : ", " + fills) + ")" + ending +
-           ". Analyze with these settings, or change them.";
+           group_thousands(cap) + (fills.empty() ? "" : ", " + fills) +
+           "). Analyze with these settings, or change them.";
 }
 
 GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& options) {
