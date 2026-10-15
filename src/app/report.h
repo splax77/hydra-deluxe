@@ -198,8 +198,8 @@ inline constexpr const char* kNothingUnderSettings = "Nothing is analyzed under 
 // settings (<chartmode>, SP cap <cap>, <fills>)<ending>. Analyze with these
 // settings, or change them." `chartmode` is the stored chart mode as every page
 // shows it (Profile::chartmode, spelled by app::chartmode_key). The path report
-// passes its fill rule as `fills` and no ending; the fill comparison passes
-// no fills (it compares both rules) and " in either database".
+// passes its fill rule as `fills`; the fill comparison passes no fills (it
+// compares both rules). No page passes an ending now.
 std::string nothing_under_settings(const std::string& chartmode, int cap,
                                    const std::string& fills = std::string(),
                                    const std::string& ending = std::string());

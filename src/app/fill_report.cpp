@@ -81,8 +81,9 @@ const STATUS_CLASS = {[STATUS.newHigher]:'s-newhigh', [STATUS.oldHigher]:'s-oldh
                       [STATUS.sameScore]:'s-same', [STATUS.onlyOld]:'s-only',
                       [STATUS.onlyNew]:'s-only', [STATUS.inBoth]:'s-only'};
 
-// A chart in both databases whose record on one side kept no path reads "no
-// paths" on that side (D51 call 11); any other missing score reads as a dash.
+// A chart with a record under both rules whose record on one side kept no
+// path reads "no paths" on that side (D51 call 11); any other missing score
+// reads as a dash.
 function scoreText(r, s) {
   return s === null && r.status === STATUS.inBoth ? 'no paths' : fmt(s);
 }
@@ -211,21 +212,20 @@ const std::string& page_template() {
 
 }  // namespace
 
-std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
-                                              store::RecordStore& new_store,
+std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& store,
                                               const Settings& settings) {
-    // One read per store under the same profile but the fill rule: the old
-    // side asks for 1.0 results, the new side for 1.1, whatever `settings`
-    // says. Each side keeps the charts its own library lists.
-    const store::ChartIndex old_library = old_store.chart_index();
-    const store::ChartIndex new_library = new_store.chart_index();
+    // Two reads of the one store under the same profile but the fill rule:
+    // the old side asks for 1.0 results, the new side for 1.1, whatever
+    // `settings` says. Both keep the charts the store's library lists.
+    const store::ChartIndex library = store.chart_index();
     const std::unordered_map<std::string, store::RecordRow> old_by_id = report::listed_records(
-        old_store, settings.profile_with_fills(FillDeadlineRule::Ch10), old_library);
+        store, settings.profile_with_fills(FillDeadlineRule::Ch10), library);
     const std::unordered_map<std::string, store::RecordRow> new_by_id = report::listed_records(
-        new_store, settings.profile_with_fills(FillDeadlineRule::Ch11), new_library);
+        store, settings.profile_with_fills(FillDeadlineRule::Ch11), library);
 
-    // Walk the union of both key sets so a chart in only one database still
-    // gets a row. Ordered so the page's rows come out deterministically.
+    // Walk the union of both key sets so a chart with a record under one
+    // rule only still gets a row. Ordered so the page's rows come out
+    // deterministically.
     std::map<std::string, std::pair<const store::RecordRow*, const store::RecordRow*>> united;
     for (const auto& [id, rec] : old_by_id) united[id].first = &rec;
     for (const auto& [id, rec] : new_by_id) united[id].second = &rec;
@@ -238,13 +238,12 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
 
         FillCompareRow row;
         row.hyhash = id;
-        // Copies come from the 1.1 database's library (D79 item 3).
-        row.copies = new_library.copies(id);
+        // Copies come from the library (D79 item 3).
+        row.copies = library.copies(id);
 
-        // Identity prefers the 1.1 side; either side names the same chart,
-        // and the side that holds a record lists it.
-        const store::ChartLibraryEntry* named =
-            new_rec ? new_library.naming(id) : old_library.naming(id);
+        // listed_records kept only charts the library lists, so it names
+        // every row.
+        const store::ChartLibraryEntry* named = library.naming(id);
         row.song = display_title(named->title);
         row.artist = display_artist(named->artist);
         row.charter = display_charter(named->charter);
@@ -266,9 +265,9 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
         }
         row.notes = (new_rec ? new_rec : old_rec)->summary().notecount;
 
-        // A chart with a score on both sides compares them. A chart only one
-        // database holds a record for is labelled by that database, score or
-        // not. When both hold a record but only one kept a path, the chart is
+        // A chart with a score on both sides compares them. A chart with a
+        // record under one rule only is labelled by that rule, score or not.
+        // When both rules hold a record but only one kept a path, the chart is
         // in both (D50 item 2), and the page writes "no paths" on the empty
         // side (D51 call 11).
         if (old_scored && new_scored) {
@@ -387,30 +386,28 @@ std::string build_fill_html(const std::vector<FillCompareRow>& rows,
     return html::render_page(page.c_str(), std::move(data), subtitle, footer);
 }
 
-GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
-                                         store::RecordStore& new_store,
+GeneratedFillReport generate_fill_report(store::RecordStore& store,
                                          const Settings& settings) {
     GeneratedFillReport out;
     // The page compares library charts only, as the path report does (D92),
-    // so either database with results and no library stops it.
-    if (report::lacks_chart_library(old_store) || report::lacks_chart_library(new_store)) {
+    // so a database with results and no library stops it.
+    if (report::lacks_chart_library(store)) {
         out.reason = report::kNoChartLibrary;
         return out;
     }
-    std::vector<FillCompareRow> rows = collect_fill_rows(old_store, new_store, settings);
-    // Every count is the 1.1 database's library's, as each row's copies are.
-    const store::ChartIndex library = new_store.chart_index();
+    std::vector<FillCompareRow> rows = collect_fill_rows(store, settings);
+    // Every count is the library's, as each row's copies are.
+    const store::ChartIndex library = store.chart_index();
     out.stats = tally_fill_rows(rows, library);
     // Both sides were read under this profile's chart mode and cap; only the
     // fill rule differs.
     const store::Profile profile = settings.profile_with_fills(FillDeadlineRule::Ch11);
     const std::string& chartmode = profile.chartmode;
     if (rows.empty()) {
-        // Same sentence whether the databases are empty or hold results under
-        // other settings (finding 105, D50 item 3).
-        out.reason =
-            report::nothing_under_settings(chartmode, profile.cap.exact, std::string(),
-                                           " in either database");
+        // Same sentence whether the database is empty or holds results under
+        // other settings (finding 105, D50 item 3). No fill rule in it: the
+        // page compares both.
+        out.reason = report::nothing_under_settings(chartmode, profile.cap.exact);
         return out;
     }
 

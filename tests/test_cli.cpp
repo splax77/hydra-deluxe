@@ -219,7 +219,7 @@ TEST_CASE("hydra_batch and hydra_fillcompare say why a database won't open") {
     const std::string page = (box.dir / "page.html").u8string();
     const std::pair<fs::path, std::vector<std::string>> runs[] = {
         {box.batch, {"--db", junk, box.folder()}},
-        {box.fillcompare, {"--old", junk, "--new", junk, "--out", page, "--no-open"}},
+        {box.fillcompare, {"--db", junk, "--out", page, "--no-open"}},
     };
     for (const auto& [exe, args] : runs) {
         const RunResult r = run_exe(exe, args);
@@ -332,9 +332,9 @@ TEST_CASE("hydra_batch writes a 1.0 run and a 1.1 run into one database") {
         // charts only (D92).
         hydra::test::name_chart(store, md5, "CLI Fixture", "Tester", "Nobody");
     }
-    // hydra_fillcompare reads each side of the one file under its own rule.
-    r = run_exe(box.fillcompare, {"--old", db, "--new", db, "--out",
-                                  (box.dir / "both.html").u8string(), "--no-open"});
+    // hydra_fillcompare reads the one file under each rule.
+    r = run_exe(box.fillcompare,
+                {"--db", db, "--out", (box.dir / "both.html").u8string(), "--no-open"});
     INFO(r.output);
     CHECK(r.exit_code == 0);
     CHECK(contains(r.output, "Compared 1 chart:"));
@@ -402,48 +402,56 @@ TEST_CASE("hydra_batch names the cap with the one count rule") {
     CHECK(contains(header_at_cap(1000, "cap1000.db"), "SP cap     : 1,000 bars"));
 }
 
-TEST_CASE("hydra_fillcompare compares a 1.0 and a 1.1 database") {
+TEST_CASE("hydra_fillcompare reads the tool's own hydra.db without --db") {
+    // The sandboxed exe's default database is hydra.db beside it, the file
+    // hydra_batch writes without --db (app::db_path).
     CliSandbox box("fillcompare");
-    const std::string ch10 = box.db("ch10.db"), ch11 = box.db("ch11.db");
-    REQUIRE(run_exe(box.batch, {"--legacy-fills", "--db", ch10, box.folder()})
-                .exit_code == 0);
-    REQUIRE(run_exe(box.batch, {"--db", ch11, box.folder()}).exit_code == 0);
-    // A library row for the chart in each file, as a scan leaves one: the
-    // comparison covers library charts only (D92), and a batch with folder
-    // arguments leaves the library alone.
+    REQUIRE(run_exe(box.batch, {"--legacy-fills", box.folder()}).exit_code == 0);
+    REQUIRE(run_exe(box.batch, {box.folder()}).exit_code == 0);
+    // A library row for the chart, as a scan leaves one: the comparison covers
+    // library charts only (D92), and a batch with folder arguments leaves the
+    // library alone.
     {
         const std::string md5 =
             hydra::app::hash_chart_file((box.songs / "fixture" / "notes.chart").u8string());
-        for (const std::string& db : {ch10, ch11}) {
-            hydra::store::RecordStore store(db);
-            hydra::test::name_chart(store, md5, "CLI Fixture", "Tester", "Nobody");
-        }
+        hydra::store::RecordStore store((box.dir / "hydra.db").u8string());
+        hydra::test::name_chart(store, md5, "CLI Fixture", "Tester", "Nobody");
     }
 
     const fs::path page = box.dir / "compare.html";
-    RunResult r = run_exe(box.fillcompare, {"--old", ch10, "--new", ch11, "--out",
-                                            page.u8string(), "--no-open"});
+    RunResult r = run_exe(box.fillcompare, {"--out", page.u8string(), "--no-open"});
     INFO(r.output);
     CHECK(r.exit_code == 0);
     CHECK(contains(r.output, "Compared 1 chart:"));
+    CHECK(contains(r.output, "0 only in 1.0, 0 only in 1.1"));
     CHECK(!contains(r.output, "Warning"));
     CHECK(fs::exists(page));
 
-    // Swapped files: each result carries its rule, so the 1.1 file has no 1.0
-    // results to offer and the 1.0 file no 1.1 ones: nothing to compare.
-    RunResult swapped = run_exe(box.fillcompare,
-                                {"--old", ch11, "--new", ch10, "--out",
-                                 (box.dir / "swapped.html").u8string(), "--no-open"});
-    INFO(swapped.output);
-    CHECK(swapped.exit_code == 1);
-    CHECK(!contains(swapped.output, "Warning"));
-    CHECK(contains(swapped.output,
+    // A database with nothing under these settings: the settings sentence,
+    // with no fill rule in it, since the page compares both.
+    RunResult empty = run_exe(box.fillcompare,
+                              {"--db", box.db("empty.db"), "--out",
+                               (box.dir / "empty.html").u8string(), "--no-open"});
+    INFO(empty.output);
+    CHECK(empty.exit_code == 1);
+    CHECK(!contains(empty.output, "Warning"));
+    CHECK(contains(empty.output,
                    "Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, "
-                   "SP cap 4) in either database. Analyze with these settings, or change "
-                   "them."));
-    CHECK(!contains(swapped.output, "No records to compare"));
+                   "SP cap 4). Analyze with these settings, or change them."));
+    CHECK(!contains(empty.output, "No records to compare"));
+}
 
-    CHECK(run_exe(box.fillcompare, {"--old", ch10}).exit_code == 2);
+TEST_CASE("hydra_fillcompare refuses --old and --new and names --db") {
+    CliSandbox box("fillcompare_old_flags");
+    const std::string db = box.db("untouched.db");
+    for (const char* flag : {"--old", "--new"}) {
+        RunResult r = run_exe(box.fillcompare, {flag, db, "--no-open"});
+        INFO(r.output);
+        CHECK(r.exit_code == 2);
+        CHECK(contains(r.output, std::string(flag) + " is gone"));
+        CHECK(contains(r.output, "--db <path>"));
+    }
+    CHECK_FALSE(fs::exists(fs::u8path(db)));
 }
 
 TEST_CASE("hydra_fillcompare compares both rules out of one database") {
@@ -465,8 +473,8 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
         REQUIRE(store.record_count() == 2);
     }
 
-    RunResult r = run_exe(box.fillcompare, {"--old", db, "--new", db, "--out",
-                                            (box.dir / "one.html").u8string(), "--no-open"});
+    RunResult r = run_exe(box.fillcompare,
+                          {"--db", db, "--out", (box.dir / "one.html").u8string(), "--no-open"});
     INFO(r.output);
     CHECK(r.exit_code == 0);
     CHECK(contains(r.output, "Compared 1 chart:"));
@@ -488,8 +496,8 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
         // A Ready record under 1.0: no paths, so no score.
         hydra::test::save_batch_record(store, one_sided, settings.profile());
     }
-    RunResult two = run_exe(box.fillcompare, {"--old", db, "--new", db, "--out",
-                                              (box.dir / "two.html").u8string(), "--no-open"});
+    RunResult two = run_exe(box.fillcompare,
+                            {"--db", db, "--out", (box.dir / "two.html").u8string(), "--no-open"});
     INFO(two.output);
     CHECK(two.exit_code == 0);
     // The parts add up to the total: 1 same + 1 in both, not both scored.
