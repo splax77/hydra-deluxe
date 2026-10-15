@@ -117,6 +117,9 @@ void reset_app(Harness& h, const std::string& rules_text = "", bool wait_store =
 // (uitest_script.cpp). Each test's UserData is &h.
 void register_tests(Harness& h);
 void register_script_test(Harness& h);
+// Register the "live" test (uitest_live.cpp), which --live queues: it takes
+// command lines from a named pipe until the client leaves or sends quit.
+void register_live_test(Harness& h);
 
 // ---- helpers shared by the tests and the script interpreter --------------
 
@@ -230,7 +233,9 @@ std::string item_line(const ImGuiTestItemInfo& it, int depth);
 std::string state_text(Harness& h);
 
 // Save the current frame to `file` (PNG). Returns false if the capture failed.
-bool screenshot(ImGuiTestContext* ctx, const std::string& file);
+// The saved file's full path goes to *saved_to when the caller asks for it
+// (the screenshot verb puts it in its result); otherwise it is printed.
+bool screenshot(ImGuiTestContext* ctx, const std::string& file, std::string* saved_to = nullptr);
 
 // Escape '/' and '#' in a label so it can be used as one path segment of an
 // ImGuiTestRef ("**/" + escape(title)).

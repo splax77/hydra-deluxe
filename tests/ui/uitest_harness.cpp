@@ -630,7 +630,7 @@ std::string state_text(Harness& h) {
     return out.c_str();
 }
 
-bool screenshot(ImGuiTestContext* ctx, const std::string& file) {
+bool screenshot(ImGuiTestContext* ctx, const std::string& file, std::string* saved_to) {
     Harness& h = harness(ctx);
     std::string path = file;
     if (fs::u8path(path).is_relative()) path = h.shots_dir + "\\" + path;
@@ -641,7 +641,8 @@ bool screenshot(ImGuiTestContext* ctx, const std::string& file) {
     args->InPadding = 0.0f;
     bool ok = ctx->CaptureScreenshot(ImGuiCaptureFlags_IncludeOtherWindows |
                                      ImGuiCaptureFlags_HideMouseCursor);
-    if (ok) std::printf("screenshot: %s\n", path.c_str());
+    if (ok && saved_to) *saved_to = path;
+    else if (ok) std::printf("screenshot: %s\n", path.c_str());
     return ok;
 }
 

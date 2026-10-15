@@ -472,6 +472,7 @@ add_library(hydra_uitest_harness STATIC
     tests/ui/uitest_harness.cpp
     tests/ui/uitest_commands.cpp
     tests/ui/uitest_script.cpp
+    tests/ui/uitest_live.cpp
     tests/ui/uitest_tests.cpp
     tests/ui/uitest_library.cpp
     tests/ui/uitest_details.cpp
