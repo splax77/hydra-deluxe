@@ -1,6 +1,7 @@
 #include "app/user_messages.h"
 
 #include <cstdio>
+#include <filesystem>
 #include <new>
 #include <optional>
 
@@ -183,9 +184,8 @@ std::string stale_text(bool build, bool rules) {
 }
 
 std::string old_library_set_aside_notice(const std::string& db_path) {
-    const std::string aside = store::set_aside_path(db_path);
-    const size_t slash = aside.find_last_of("/\\");
-    const std::string name = slash == std::string::npos ? aside : aside.substr(slash + 1);
+    const std::string name =
+        std::filesystem::u8path(store::set_aside_path(db_path)).filename().u8string();
     return "This library file is " + older_than_cutoff() + ", so Hydra set it aside as " + name +
            " and started a fresh library.";
 }

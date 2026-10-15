@@ -736,9 +736,9 @@ namespace {
 
 // "A result with a score and no stars", spelled once in SQL. Such a row was
 // written before the stars column existed. 2.2.0's writer never leaves one,
-// but 2.2.0's own open kept them in a pre-stars file that had no path details
-// (its filter ran only inside its copy upgrade), so a 2.2.0 to 2.7.0 file can
-// still hold some. Filling their stars needed the stored paths, so the
+// but 2.2.0's own open kept them in a pre-stars file that had no path details,
+// so a Convertible file can still hold some. Filling their stars needed the
+// stored paths, so the
 // conversion leaves them behind, and a click or a batch writes them again. The
 // conversion's row count and its read both use it.
 constexpr const char* kNoStarsResultSql = "stars IS NULL AND score IS NOT NULL";

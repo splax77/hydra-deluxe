@@ -16,7 +16,6 @@
 #include "core/model.h"
 #include "parse/midi.h"
 #include "parse/song.h"
-#include "store/upgrade_files.h"  // set_aside_path
 
 using hydra::app::plain_error;
 using hydra::app::plain_error_detail;
@@ -130,11 +129,9 @@ TEST_CASE("user_messages: the set-aside notice names the file the store set asid
     CHECK(hydra::app::old_library_set_aside_notice("C:\\Hydra\\hydra.db") ==
           "This library file is from a Hydra version older than 2.2.0, so Hydra set it aside "
           "as hydra.db.pre-2.2.0 and started a fresh library.");
-    const std::string db = "C:/some folder/library.db";
-    const std::string aside = hydra::store::set_aside_path(db);
-    const std::string notice = hydra::app::old_library_set_aside_notice(db);
-    CHECK(notice.find(" as " + aside.substr(aside.find_last_of('/') + 1) + " and ") !=
-          std::string::npos);
+    CHECK(hydra::app::old_library_set_aside_notice("C:/some folder/library.db") ==
+          "This library file is from a Hydra version older than 2.2.0, so Hydra set it aside "
+          "as library.db.pre-2.2.0 and started a fresh library.");
 }
 
 // The Stale chip stands for many rows, so it names both causes.

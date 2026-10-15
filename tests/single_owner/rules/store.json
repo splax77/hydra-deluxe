@@ -376,7 +376,7 @@
       "date": "2026-10-14",
       "decision": "D115 task A1-6a (user, 2026-10-14: what is an old version is derived once)",
       "added_by": "D115-A1-6a",
-      "pattern": "\\bhas_(table|column)\\s*\\(|sqlite_master|table_info|user_version",
+      "pattern": "\\bhas_(table|column)\\s*\\(|sqlite_(temp_)?(master|schema)|table_(x)?info|table_list|sqlite3_table_column_metadata|user_version|schema_version",
       "owner_files": [
         "src/store/library_file.cpp"
       ],
@@ -384,7 +384,9 @@
         "if (!has_column(\"charts\", \"sig\")) exec(\"ALTER TABLE charts ADD COLUMN sig TEXT\");",
         "const bool details = has_table(\"paths\");",
         "Stmt s = prepare_read(db_, \"SELECT name FROM sqlite_master WHERE type='table'\");",
+        "Stmt s = prepare_read(db_, \"SELECT name FROM sqlite_schema WHERE type='table'\");",
         "std::string sql = std::string(\"PRAGMA table_info(\") + table + \")\";",
+        "std::string sql = std::string(\"SELECT name FROM pragma_table_xinfo('\") + table + \"')\";",
         "exec(\"PRAGMA user_version = 3\");"
       ],
       "must_not_match": [
@@ -430,7 +432,7 @@
       "date": "2026-10-14",
       "decision": "D115 task A1-6a (user, 2026-10-14: the app sets an old file aside; hydra_batch and hydra_fillcompare refuse it)",
       "added_by": "D115-A1-6a",
-      "pattern": "\\bRecordStore\\s+\\w+\\s*[({]|RecordStore\\s*>\\s*\\(",
+      "pattern": "\\bRecordStore\\s+\\w+\\s*[({]|RecordStore\\s*>\\s*\\(|\\bnew\\s+[\\w:]*RecordStore\\b",
       "anchor": "RecordStore",
       "calls_owner": "OldFilePolicy::",
       "owner_files": [
@@ -440,7 +442,8 @@
       "must_match": [
         "store::RecordStore db(dbpath, core::RulesStamp::of(g_rules));",
         "return std::make_unique<store::RecordStore>(db, rules);",
-        "store_ = std::make_unique<store::RecordStore>("
+        "store_ = std::make_unique<store::RecordStore>(",
+        "store_.reset(new store::RecordStore(dbpath, rules));"
       ],
       "must_not_match": [
         "store::RecordStore db(dbpath, store::OldFilePolicy::Refuse, core::RulesStamp::of(g_rules));",
