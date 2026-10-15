@@ -406,7 +406,7 @@ void AppState::update_view_job() {
         v.dynamics = std::move(out.dynamics);
         v.dynamics_message = std::move(out.dynamics_message);
         v.dynamics_error = std::move(out.dynamics_error);
-        const store::Profile profile = job->key();
+        const store::Profile profile = job->profile();
         std::string song_id = job->song().md5;
         // Changed chart files: the library row takes the hash and fingerprint
         // they give now, before anything is saved under them. An edited chart

@@ -365,7 +365,7 @@ public:
     const store::ChartLibraryEntry& song() const { return song_; }
     // The profile the click's record is saved under (Settings::profile at
     // the click).
-    const store::Profile& key() const { return profile_; }
+    const store::Profile& profile() const { return profile_; }
     const app::AnalysisSettings& settings() const { return settings_; }
     bool analysis_off() const { return analysis_off_; }
     int generation() const { return generation_; }
