@@ -272,6 +272,12 @@ The first build split the system into a C++ channel and a Python helper without 
 - **The stand-in** shrinks to hang, exit, close, big, the hello line and a plain echo reply.
 - **Tests:** every test the audit listed as movable runs against the real headless `hydra_uitest --live`. Only the four transport-failure tests and the window argv/snapshot tests keep the stand-in.
 - **A new test** runs one command before a `hydra_run`, and checks that the reply carries exactly one line number: the helper's.
+- **Two C++ fixes fold into T8b** (the user's answers to the T8a review, below), so T8b also owns `tests/ui/uitest_commands.cpp`, `tests/ui/uitest_harness.cpp` and `tests/test_live_protocol.cpp` for them.
+
+**Answered 2026-10-14, from the T8a review:**
+
+- **A bare bar clears.** A line ending in ` |` counts as a bar with empty text after it, the same as ` | `. So `type <ref> |` clears the field, and `text |` and `dump |` filter on nothing, which keeps every line. The one place is `split_bar`. The reason: a client that trims trailing blanks would otherwise lose the only way to clear a field.
+- **Every `text` reply uses `\n`.** Plain `text` kept the screen text's `\r\n` while `text | x` stripped the `\r`: one question answered two ways. The `\r` is stripped in one place, where the screen text becomes lines, so filtered and unfiltered replies agree.
 
 ## The real-app check before the last merge
 
