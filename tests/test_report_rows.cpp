@@ -158,7 +158,7 @@ void check_cap(int cap) {
     report::ReportOptions options = fixture_options(cap);
     options.max_paths = 100;
     std::vector<report::ReportRow> rows =
-        report::collect_rows(store,options).rows;
+        report::collect_rows(store, options).rows;
     int rank1 = 0;
     for (const report::ReportRow& row : rows)
         if (row.rank == 1) ++rank1;
@@ -238,7 +238,7 @@ TEST_CASE("report rows: a tied top-score variant is optimal too") {
     report::ReportOptions options = fixture_options(4);
     options.max_paths = 100;
     const std::vector<report::ReportRow> rows =
-        report::collect_rows(store,options).rows;
+        report::collect_rows(store, options).rows;
     REQUIRE(rows.size() == 3);
     // Best score first: the root and its tied variant, then the lower root.
     CHECK(rows[0].score == rows[1].score);
@@ -366,7 +366,7 @@ TEST_CASE("generate_report hands over its rows, subtitle and footer") {
     REQUIRE(out.rows > 0);
     CHECK(static_cast<int64_t>(out.paths.size()) == out.rows);
     const std::vector<report::ReportRow> collected =
-        report::collect_rows(store,options).rows;
+        report::collect_rows(store, options).rows;
     REQUIRE(collected.size() == out.paths.size());
     for (size_t i = 0; i < collected.size(); ++i) {
         CHECK(out.paths[i].hyhash == collected[i].hyhash);
@@ -403,7 +403,7 @@ TEST_CASE("report lists only the wanted cap and names it") {
     int rank1 = 0;
     options.max_paths = 100;
     for (const report::ReportRow& row :
-         report::collect_rows(store,options).rows)
+         report::collect_rows(store, options).rows)
         if (row.rank == 1) ++rank1;
     CHECK(rank1 == 1);
 
@@ -465,7 +465,7 @@ TEST_CASE("collect_rows: the library names go through display_title, display_art
     store.rebuild_chart_library(library);
 
     const std::vector<report::ReportRow> rows =
-        report::collect_rows(store,fixture_options(4)).rows;
+        report::collect_rows(store, fixture_options(4)).rows;
     REQUIRE(!rows.empty());
     for (const report::ReportRow& row : rows) {
         CHECK(row.song == "Bold Title");
