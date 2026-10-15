@@ -27,6 +27,7 @@
 #include "core/squeeze_rating.h"
 #include "core/strutil.h"
 #include "corpus_util.h"
+#include "dm_fixture.h"  // testdm::save
 #include "record_fixtures.h"
 #include "report_samples.h"
 #include "search/graph.h"
@@ -86,13 +87,6 @@ store::ChartLibraryEntry library_entry_for_file(const std::string& md5, const st
     return e;
 }
 
-// Files `record` for chart `song_id` through the one save, under `settings`'
-// profile.
-void save(store::RecordStore& store, const Settings& settings, const std::string& song_id,
-          const HydraRecord& record) {
-    store.save(store::prepare_record(song_id, settings.profile(), record));
-}
-
 // Analyzes the first `want` corpus charts with paths under
 // fixture_settings(cap) into `store` as charts h0, h1, ... titled "Title 0",
 // "Title 1", ..., and lists each in the library by its file (`library` keeps
@@ -112,8 +106,8 @@ std::vector<std::string> fill_store(store::RecordStore& store,
     store.rebuild_chart_library(library);
     for (size_t i = 0; i < files.size(); ++i) {
         const BatchRun run = settings.batch_run();
-        save(store, settings, "h" + std::to_string(i),
-             analyze_chart_file(files[i], run.settings).record);
+        testdm::save(store, "h" + std::to_string(i), settings,
+                     analyze_chart_file(files[i], run.settings).record);
     }
     return files;
 }
@@ -200,7 +194,7 @@ void store_tied(store::RecordStore& store, std::vector<store::ChartLibraryEntry>
     HydraRecord record = test::tied_variant_record();
     record.sp_cap = cap;
     record.legacy_fills = legacy_fills;
-    save(store, fixture_settings(cap, legacy_fills), hyhash, record);
+    testdm::save(store, hyhash, fixture_settings(cap, legacy_fills), record);
 }
 
 }  // namespace
@@ -442,7 +436,8 @@ TEST_CASE("report lists only the wanted cap and names it") {
     REQUIRE(files.size() == 1);
     // The same chart again at 8 bars.
     const BatchRun eight = fixture_settings(8).batch_run();
-    save(store, fixture_settings(8), "h0", analyze_chart_file(files[0], eight.settings).record);
+    testdm::save(store, "h0", fixture_settings(8),
+                 analyze_chart_file(files[0], eight.settings).record);
     REQUIRE(store.ready_records(fixture_settings(8).profile()).size() == 1);
 
     report::ReportOptions options = fixture_options(4);
@@ -486,7 +481,7 @@ TEST_CASE("generate_report reports a 1.0-fills database under the 1.0 rule") {
         corpus::charts_with_paths(legacy.batch_run().settings, 1);
     REQUIRE(charts.size() == 1);
     store.rebuild_chart_library({library_entry_for_file("h0", "Title 0", charts[0].chart)});
-    save(store, legacy, "h0", charts[0].result.record);
+    testdm::save(store, "h0", legacy, charts[0].result.record);
 
     const report::GeneratedReport ch10 =
         report::generate_report(store, fixture_options(4, /*legacy_fills=*/true));
@@ -741,7 +736,7 @@ TEST_CASE("a report on results with no chart library says the library is missing
     store::RecordStore store(":memory:");
     HydraRecord record = test::tied_variant_record();
     record.sp_cap = 4;
-    save(store, fixture_settings(4), "t", record);
+    testdm::save(store, "t", fixture_settings(4), record);
 
     const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
     CHECK(page.rows == 0);
