@@ -160,11 +160,15 @@ bool state_body(const Frame& f) {
             // notes, as in the picker box.
             for (size_t i = 0; i < f.building_lines.size(); ++i) {
                 if (i == 0)
-                    ImGui::TextUnformatted(f.building_lines[i]);
+                    ImGui::TextUnformatted(f.building_lines[i].c_str());
                 else
-                    ImGui::TextColored(kDimTextColor, "%s", f.building_lines[i]);
+                    ImGui::TextColored(kDimTextColor, "%s", f.building_lines[i].c_str());
             }
-            if (f.progress_bar) {
+            if (f.progress) {
+                // The line above says the count, so the bar has no overlay.
+                const auto [done, total] = *f.progress;
+                ImGui::ProgressBar(progress_fraction(done, total), ImVec2(-1.0f, 0.0f), "");
+            } else if (f.progress_bar) {
                 // No count to show: the bar only moves (ImGui's indeterminate bar).
                 ImGui::ProgressBar(-1.0f * static_cast<float>(ImGui::GetTime()),
                                    ImVec2(-1.0f, 0.0f), "");

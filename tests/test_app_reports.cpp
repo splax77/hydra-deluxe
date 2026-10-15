@@ -81,7 +81,7 @@ TEST_CASE("a path report request builds it in memory, one build at a time") {
     ScratchPaths paths("appstate_pathreq");
     std::atomic<bool> release{false};
     std::unique_ptr<AppState> app = app_with_result(paths, "pathreq");
-    CHECK(app->library_has_analyzed());
+    CHECK(app->path_report_offered());
     CHECK(app->path_report_build() == ReportBuild::None);
 
     {
@@ -439,6 +439,188 @@ TEST_CASE("picking a player opens the comparison; Refresh reuses the player") {
     CHECK(app->dm_picker_popup_pending);
     if (app->dm_fetch_job)
         wait_until([&] { return app->dm_fetch_job->finished(); }, "the player list's fetch to finish");
+}
+
+// ---- opening the report analyzes first (plan 2026-10-15, question 8) --------
+
+namespace {
+
+// A batch analyzer that waits for `release`, then fails the chart, so the
+// batch stores nothing and the test reads its snapshot while it is held.
+hydra::app::ChartAnalyzer held_failing_analyzer(std::atomic<bool>& release) {
+    return [&release](const std::string&, const hydra::app::AnalysisSettings&,
+                      const std::function<void(float)>&) -> hydra::app::AnalysisResult {
+        wait_until([&release] { return release.load(); }, "the test to release the batch");
+        throw std::runtime_error("no chart file in this test");
+    };
+}
+
+// The charts beside the analyzed one that have no result: the rows an
+// opening's batch runs.
+constexpr int kUnanalyzed = 5;
+
+// An app whose one corpus chart has a stored result, so its report has rows,
+// and kUnanalyzed seeded charts with no file and no result.
+std::unique_ptr<AppState> app_with_unanalyzed(const ScratchPaths& paths, const char* tag) {
+    const ChartLibraryEntry song = corpus_chart(tag);
+    std::vector<ChartLibraryEntry> charts{song};
+    for (int i = 1; i <= kUnanalyzed; ++i) charts.push_back(library_entry(i));
+    std::unique_ptr<AppState> app = app_with(paths, charts);
+    click(*app, song);
+    REQUIRE(app->viewed.ready());
+    return app;
+}
+
+}  // namespace
+
+TEST_CASE("opening the path report runs a batch over the charts with no result, then builds") {
+    ScratchPaths paths("appstate_pathopenbatch");
+    std::atomic<bool> release{false};
+    std::unique_ptr<AppState> app = app_with_unanalyzed(paths, "pathopenbatch");
+    {
+        const ScopedHook seam(hydra::ui::set_app_batch_analyzer_for_test,
+                              held_failing_analyzer(release), 1);
+        app->show_path_report();
+    }
+    REQUIRE(app->batch_job != nullptr);
+    CHECK(app->report_job == nullptr);
+    CHECK(app->path_report.window_open);
+    CHECK(app->path_report_build() == ReportBuild::Building);
+    CHECK(app->path_report_batch() == app->batch_job.get());
+    CHECK_FALSE(app->report_started);
+
+    // The window's numbers are the batch snapshot's, the strip's numbers.
+    wait_until([&] { return app->batch_job->snapshot().total == kUnanalyzed; },
+               "the batch's count");
+    hydra::ui::PathReportInput held = hydra::ui::path_report_input(*app);
+    const hydra::ui::BatchJob::Snapshot s = app->batch_job->snapshot();
+    REQUIRE(held.batch.has_value());
+    CHECK(held.state == ReportBuild::Building);
+    CHECK(held.batch->completed == s.completed);
+    CHECK(held.batch->total == s.total);
+    CHECK(held.batch->total == kUnanalyzed);
+
+    release = true;
+    wait_batch_finished(*app);
+    const hydra::ui::BatchJob::Snapshot done = app->batch_job->snapshot();
+    const hydra::ui::PathReportInput finished = hydra::ui::path_report_input(*app);
+    REQUIRE(finished.batch.has_value());
+    CHECK(finished.batch->completed == done.completed);
+    CHECK(finished.batch->completed == kUnanalyzed);
+
+    // The batch's finish starts the report, with the window's cause.
+    app->update_background_jobs();
+    CHECK(app->path_report_batch() == nullptr);
+    CHECK(app->report_started);
+    finish_path_report(*app);
+    CHECK(app->path_report_build() == ReportBuild::Ready);
+    CHECK(app->path_report.built_on_open);
+}
+
+TEST_CASE("the window's Cancel stops the report's own batch, and no report follows") {
+    ScratchPaths paths("appstate_pathopencancel");
+    std::atomic<bool> release{false};
+    std::unique_ptr<AppState> app = app_with_unanalyzed(paths, "pathopencancel");
+    {
+        const ScopedHook seam(hydra::ui::set_app_batch_analyzer_for_test,
+                              held_failing_analyzer(release), 1);
+        app->show_path_report();
+    }
+    REQUIRE(app->batch_job != nullptr);
+    app->cancel_path_report();  // the window's Cancel
+    CHECK(app->batch_job->is_cancelled());
+    CHECK(app->path_report_build() == ReportBuild::Cancelled);
+    release = true;
+    wait_batch_finished(*app);
+    app->update_background_jobs();
+    CHECK(app->report_job == nullptr);
+    CHECK(app->path_report_build() == ReportBuild::Cancelled);
+}
+
+// The user's answer 8: more than kReportConfirmAbove rows to run asks first,
+// with the normal batch confirm. The test library has kUnanalyzed to run, so
+// the test lowers the threshold the app reads.
+TEST_CASE("more rows to run than the threshold open the batch confirm first") {
+    CHECK(AppState::kReportConfirmAbove == 500);
+    ScratchPaths paths("appstate_pathopenconfirm");
+    std::atomic<bool> release{false};
+    std::unique_ptr<AppState> app = app_with_unanalyzed(paths, "pathopenconfirm");
+
+    // At the threshold it just runs.
+    app->report_confirm_above = kUnanalyzed;
+    {
+        const ScopedHook seam(hydra::ui::set_app_batch_analyzer_for_test,
+                              held_failing_analyzer(release), 1);
+        app->show_path_report();
+    }
+    REQUIRE(app->batch_job != nullptr);
+    CHECK_FALSE(app->batch_confirm_pending);
+    release = true;
+    wait_batch_finished(*app);
+    app->update_background_jobs();
+    finish_path_report(*app);
+    app->close_path_report();
+    app->batch_job.reset();  // the finished strip's X
+
+    // Over it, the confirm opens on the same plan and nothing runs yet.
+    app->report_confirm_above = kUnanalyzed - 1;
+    app->show_path_report();
+    CHECK(app->batch_confirm_pending);
+    CHECK(app->batch_job == nullptr);
+    CHECK(app->batch_plan.todo_rows() == kUnanalyzed);
+    CHECK(app->path_report_awaits_confirm());
+    CHECK(hydra::ui::path_report_input(*app).awaits_confirm);
+    CHECK(app->path_report_build() == ReportBuild::Building);
+
+    // Its Start runs the batch, which the report then waits on.
+    release = false;
+    {
+        const ScopedHook seam(hydra::ui::set_app_batch_analyzer_for_test,
+                              held_failing_analyzer(release), 1);
+        app->start_batch(app->batch_redo);
+    }
+    REQUIRE(app->batch_job != nullptr);
+    app->update_background_jobs();
+    CHECK(app->path_report_batch() == app->batch_job.get());
+    release = true;
+    wait_batch_finished(*app);
+    app->update_background_jobs();
+    finish_path_report(*app);
+    CHECK(app->path_report_build() == ReportBuild::Ready);
+    app->close_path_report();
+    app->batch_job.reset();
+
+    // Its Cancel leaves the report to list what is stored.
+    app->show_path_report();
+    REQUIRE(app->batch_confirm_pending);
+    app->close_batch_confirm();
+    app->update_background_jobs();
+    CHECK(app->batch_job == nullptr);
+    finish_path_report(*app);
+    CHECK(app->path_report_build() == ReportBuild::Ready);
+}
+
+TEST_CASE("a batch already running is waited on, and its finish builds the report") {
+    ScratchPaths paths("appstate_pathopenwait");
+    std::atomic<bool> release{false};
+    std::unique_ptr<AppState> app = app_with_unanalyzed(paths, "pathopenwait");
+    start_redo_batch(*app, held_failing_analyzer(release));
+    app->show_path_report();
+    CHECK(app->report_job == nullptr);
+    CHECK(app->path_report_batch() == app->batch_job.get());
+    CHECK(app->path_report_build() == ReportBuild::Building);
+    release = true;
+    wait_batch_finished(*app);
+    app->update_background_jobs();
+    finish_path_report(*app);
+    CHECK(app->path_report.built_on_open);
+}
+
+TEST_CASE("the toolbar offers the path report whenever the library has rows") {
+    ScratchPaths paths("appstate_pathoffered");
+    CHECK(app_on(paths)->path_report_offered());
+    ScratchPaths empty("appstate_pathofferednone");
+    CHECK_FALSE(app_with(empty, {})->path_report_offered());
 }
 
 // ---- the report that follows a batch ----------------------------------------
