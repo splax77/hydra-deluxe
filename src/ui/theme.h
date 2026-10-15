@@ -4,7 +4,8 @@
 // baseline "Default Theme" colors -- verified against the real values via
 // DPG's built-in style editor (dpg.show_style_editor()), not guessed --
 // for every slot hydra_app.py leaves at DPG's default rather than
-// overriding (WindowBg, FrameBg, Header, Border/Separator, Scrollbar*).
+// overriding (WindowBg, FrameBg, Border/Separator, Scrollbar*). Header is not
+// one of them any more: kSelectedRowColor below owns it.
 // Dear ImGui's own StyleColorsDark() defaults are meaningfully different
 // (bluer, darker) from DPG's, so relying on them for un-overridden slots
 // was the source of several color mismatches.
@@ -43,6 +44,11 @@ inline const ImVec4 kAccentColor{0 / 255.0f, 180 / 255.0f, 180 / 255.0f, 1.0f};
 inline const ImVec4 kButtonColor{0 / 255.0f, 122 / 255.0f, 122 / 255.0f, 1.0f};
 inline const ImVec4 kButtonHoveredColor{0 / 255.0f, 104 / 255.0f, 104 / 255.0f, 1.0f};
 inline const ImVec4 kButtonActiveColor{0 / 255.0f, 88 / 255.0f, 88 / 255.0f, 1.0f};
+// A selected row in any list or table (ImGuiCol_Header). A dark teal, so it
+// stands out from the grey row stripes while every text colour a row uses
+// still reads at 4.5:1 on it (test_theme.cpp checks them); the user chose it
+// over the button teal on 2026-10-14.
+inline const ImVec4 kSelectedRowColor{0 / 255.0f, 48 / 255.0f, 48 / 255.0f, 1.0f};
 // The hover face of an input frame and of a list or table header. It is the
 // button hover teal (D74), so it names that one rather than spelling a second.
 inline const ImVec4& kFrameHoveredColor = kButtonHoveredColor;

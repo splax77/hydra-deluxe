@@ -122,8 +122,9 @@ struct LibraryViewState {
     // The panel state the table last fitted its Charter and Folder columns
     // to; unset = fit them on the table's next frame past its first.
     std::optional<bool> columns_for_panel;
-    // The selection (notespath) the table last scrolled to, so it scrolls
-    // only when the selection changes (the panel's Previous/Next song).
+    // The selection (notespath) the table last asked to scroll to, so it asks
+    // only when the selected song changes. Whether and how far it then moves
+    // is ui/list_scroll.h's call.
     std::string scrolled_to;
     // The dmleaderboards picker's name filter.
     char dm_filter[128] = "";
@@ -142,14 +143,12 @@ struct LibraryViewState {
     // Esc that closed it this frame can be told apart (render_settings_button).
     bool settings_panel_was_open = false;
     // The table's column widths, from the one width rule (ui/column_widths.h):
-    // the columns as the rule sees them, their measure (which keeps the UI
-    // scale it was taken at) and the LibraryModel::rows_version() it read.
-    // The room the table had this frame is kept too, so a GUI test can hand
-    // the rule the same inputs the table did.
+    // the columns as the rule sees them and their measure (which keeps the UI
+    // scale it was taken at). The room the table had this frame is kept too,
+    // so a GUI test can hand the rule the same inputs the table did.
     struct ColumnWidths {
         std::vector<ColumnSpec> specs;
         MeasuredWidths measured;
-        std::uint64_t rows_version = 0;
         TableRoom room;
     } column_widths;
 };

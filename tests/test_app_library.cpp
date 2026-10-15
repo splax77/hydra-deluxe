@@ -476,33 +476,10 @@ TEST_CASE("the startup screen's line names what the open is doing") {
     CHECK(p.label() == "Opening your library...");
 
     p.upgrading = true;
-    p.step = StoreOpenProgress::Step::UpdatingResultsKey;
-    CHECK(p.label() == "Updating the results table...");
     p.step = StoreOpenProgress::Step::ConvertingRecords;
     CHECK(p.label() == "Updating the results table...");
-    p.step = StoreOpenProgress::Step::Copying;
-    CHECK(p.label() == "Copying your library...");
-    p.step = StoreOpenProgress::Step::Finishing;
-    CHECK(p.label() == "Finishing...");
     p.step = StoreOpenProgress::Step::LoadingLibrary;
     CHECK(p.label() == "Finishing...");
-}
-
-TEST_CASE("the startup screen's time left follows the Preview loader's gate") {
-    using hydra::ui::StoreOpenProgress;
-    StoreOpenProgress p;
-    p.upgrading = true;
-    p.step = StoreOpenProgress::Step::Copying;
-    p.time_left_s = 65.0;
-    p.elapsed_s = 2.9;
-    CHECK(p.time_left_text() == "");  // under the gate
-    p.elapsed_s = 3.0;
-    CHECK(p.time_left_text() == "about 1:05 left");
-    p.time_left_s = -1.0;
-    CHECK(p.time_left_text() == "");  // the rate is not known
-    p.time_left_s = 65.0;
-    p.step = StoreOpenProgress::Step::Finishing;
-    CHECK(p.time_left_text() == "");  // only the copy has a rate
 }
 
 // D72 item 4: the Analyze-library click asks the store which charts already

@@ -1,6 +1,15 @@
 {
   "known_copies": [
     {
+      "question": "How does an analysis become a record and its path rows?",
+      "file": "src/app/report.cpp",
+      "line_text": "const std::vector<const Path*> paths = record.all_paths();",
+      "removed_by": "D115-A2-2",
+      "date": "2026-10-14",
+      "added_by": "D115-A1-2",
+      "remove_by": "2026-10-28"
+    },
+    {
       "question": "Under which settings is a chart analyzed (its profile)?",
       "file": "src/app/analysis.h",
       "line_text": "store::ResultSettings filed_under() const { return {chartmode, cap_query(), lens}; }",
@@ -73,33 +82,6 @@
       "remove_by": "2026-10-28"
     },
     {
-      "question": "Under which settings is a chart analyzed (its profile)?",
-      "file": "src/app/fill_report.cpp",
-      "line_text": "old_lens.legacy_fills = 1;",
-      "removed_by": "D115-A2-4",
-      "date": "2026-10-14",
-      "added_by": "D115-A1-4",
-      "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Under which settings is a chart analyzed (its profile)?",
-      "file": "src/app/fill_report.cpp",
-      "line_text": "new_lens.legacy_fills = 0;",
-      "removed_by": "D115-A2-4",
-      "date": "2026-10-14",
-      "added_by": "D115-A1-4",
-      "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Does a selection change scroll the list, and how far?",
-      "file": "src/ui/library_table.cpp",
-      "line_text": "if (scroll_to && *scroll_to == static_cast<size_t>(k)) ImGui::SetScrollHereY(0.5f);",
-      "removed_by": "CS-T3: the Library table calls scroll_last_row(selection_scroll(app.last_selection_source))",
-      "date": "2026-10-14",
-      "added_by": "CS-T2",
-      "remove_by": "2026-10-28"
-    },
-    {
       "question": "Does a selection change scroll the list, and how far?",
       "file": "src/ui/report_window.h",
       "line_text": "if (scroll_to && *scroll_to == static_cast<size_t>(k)) ImGui::SetScrollHereY(0.5f);",
@@ -131,15 +113,6 @@
       "file": "src/ui/report_window.h",
       "line_text": "place_control_at_right_edge(ImGui::CalcTextSize(number.c_str()).x);",
       "removed_by": "CS-T4: a report's \"#\" cell starts at its cell's left edge",
-      "date": "2026-10-14",
-      "added_by": "CS-T5a",
-      "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Which way is text aligned?",
-      "file": "src/app/path_view.cpp",
-      "line_text": "std::snprintf(buf, sizeof(buf), \"%10s\", group_thousands(v).c_str());",
-      "removed_by": "CS-T5b: the score breakdown's numbers start in one column after the longest label (answer 11)",
       "date": "2026-10-14",
       "added_by": "CS-T5a",
       "remove_by": "2026-10-28"

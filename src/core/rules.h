@@ -54,11 +54,6 @@ struct Rules {
     // answer. Equal rules give equal fingerprints in every build; any changed
     // field gives a different one. Never kNoRulesFingerprint.
     uint64_t fingerprint() const;
-    // The fingerprint Hydra 1.8.4 and earlier stamped on an Auto run under
-    // these rules and Auto's default ladder (16, 32, ..., 512). Auto is gone
-    // (2026-09-27); the store reads this only to delete the results Auto
-    // saved, once. Never kNoRulesFingerprint.
-    uint64_t retired_auto_fingerprint() const;
 };
 
 // The defaults above, as one shared value.
@@ -85,17 +80,11 @@ struct RulesField {
 const std::vector<RulesField>& rules_fields();
 
 // What a store knows about the rules this process runs under. `fixed` is the
-// one fingerprint it accepts as "these rules" (docs/adr/0014). `retired_auto`
-// is what an Auto run under the same rules carried; the store reads it only
-// to delete those results, and no row carrying it reads Ready. none() holds
-// neither, so a store gated on it (a bad hydra_rules.ini) reads no row as
-// Ready and deletes nothing.
+// one fingerprint it accepts as "these rules" (docs/adr/0014). none() holds
+// none, so a store gated on it (a bad hydra_rules.ini) reads no row as Ready.
 struct RulesStamp {
     uint64_t fixed = kNoRulesFingerprint;
-    uint64_t retired_auto = kNoRulesFingerprint;
-    static RulesStamp of(const Rules& rules) {
-        return RulesStamp{rules.fingerprint(), rules.retired_auto_fingerprint()};
-    }
+    static RulesStamp of(const Rules& rules) { return RulesStamp{rules.fingerprint()}; }
     static RulesStamp none() { return RulesStamp{}; }
 };
 

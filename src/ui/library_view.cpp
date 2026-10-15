@@ -132,11 +132,10 @@ void render_startup_screen(AppState& app) {
     begin_hydra_window();
     if (app.store_open_shown()) {
         const StoreOpenProgress p = app.store_open_progress();
-        const std::string time_left = p.time_left_text();
         const bool bar = p.rows_total > 0;
         // The box's height, to centre it: one row per line it draws.
         const ImGuiStyle& style = ImGui::GetStyle();
-        const int text_rows = (p.upgrading ? 3 : 1) + (time_left.empty() ? 0 : 1);
+        const int text_rows = p.upgrading ? 3 : 1;
         const float box_h = text_rows * ImGui::GetTextLineHeightWithSpacing() +
                             (bar ? ImGui::GetFrameHeightWithSpacing() : 0.0f) +
                             2.0f * style.WindowPadding.y;
@@ -158,7 +157,6 @@ void render_startup_screen(AppState& app) {
             // The store's counts: rows of one library file, far below INT_MAX.
             progress_bar_counted(static_cast<int>(p.rows_done), static_cast<int>(p.rows_total));
         }
-        if (!time_left.empty()) ImGui::TextUnformatted(time_left.c_str());
         ImGui::EndChild();
     }
     ImGui::End();

@@ -120,8 +120,9 @@ void bind_text(sqlite3_stmt* s, int i, const std::string& v) {
 }
 void bind_blob(sqlite3_stmt* s, int i, const std::vector<uint8_t>& v) {
     // An empty vector's data() may be null, and SQLite binds a null pointer
-    // as NULL. An old file's rules_fp can be the empty blob (rules_fp_of on a
-    // short structure), which must stay a blob, not become NULL.
+    // as NULL. An old file's rules_fp can be the empty blob (cut from a short
+    // structure blob by a release before 2.2.0), which must stay a blob, not
+    // become NULL.
     if (v.empty()) sqlite3_bind_zeroblob(s, i, 0);
     else sqlite3_bind_blob(s, i, v.data(), static_cast<int>(v.size()), SQLITE_TRANSIENT);
 }
@@ -192,60 +193,11 @@ std::string sort_column_sql(SortColumn c) {
     return "rp.score";
 }
 
-// The schema 4 results table's columns, which an older file held before its
-// rows became records (convert_results). Only upgrade_results_key makes this
-// table, to bring a schema 2 or 3 file's rows up to schema 4 before they are
-// converted. result_id is the rowid alias: a bigger one means "written
-// later". The UNIQUE line is added from key_columns where the table is made.
-constexpr const char* kResultsColumnDefs =
-    "  result_id   INTEGER PRIMARY KEY,"
-    "  hyhash      TEXT NOT NULL,"
-    "  chartmode   TEXT NOT NULL,"
-    "  hyversion   TEXT NOT NULL,"
-    "  sp_cap      INTEGER NOT NULL,"
-    "  ms_enabled  INTEGER NOT NULL,"
-    "  ms_value    INTEGER NOT NULL,"
-    "  depth_mode  INTEGER NOT NULL,"
-    "  depth_value INTEGER NOT NULL,"
-    "  legacy_fills INTEGER NOT NULL DEFAULT 0,"
-    "  bestpath    TEXT NOT NULL,"
-    "  score       INTEGER,"
-    "  actcount    INTEGER,"
-    "  maxskip     INTEGER,"
-    "  hardest_ms  REAL,"
-    "  avgmult     REAL,"
-    "  notecount   INTEGER,"
-    "  sqin_count  INTEGER,"
-    "  sqout_count INTEGER,"
-    "  pathcount   INTEGER,"
-    "  stars       INTEGER,"
-    "  rules_fp    BLOB NOT NULL,";
-
-// A result row's identity, less rules_fp (a blob, bound on its own): the
-// chart, the mode and the cap, then the lens. The lens's names are in Lens's
-// field order, the order bind_lens binds them. The UNIQUE line, write_row's
-// insert list and lens_match are all built from these two lists.
-constexpr const char* kKeyHeadColumnList = "hyhash, chartmode, sp_cap";
+// The lens's columns, in Lens's field order, the order bind_lens binds them.
+// The profile rows, lens_match and convert_results's read of an older file's
+// results are all built from this list.
 constexpr const char* kLensColumnList =
     "ms_enabled, ms_value, depth_mode, depth_value, legacy_fills";
-
-// Where an older file's structure blob held the rules fingerprint: after its
-// 4-byte path format, 8 bytes. Only upgrade_results_key reads it, to fill the
-// rules_fp column of a schema 2 or 3 file before the blob is dropped.
-constexpr size_t kOldRulesFingerprintOffset = 4;
-constexpr size_t kOldRulesFingerprintBytes = 8;
-
-}  // namespace
-
-// The columns schema 2's results table shares with this build's, declared in
-// record_store.h. upgrade_results_key copies them across; the rebuild fills
-// the other two, legacy_fills and rules_fp.
-const char* const kSchema2ResultsColumns =
-    "result_id, hyhash, chartmode, hyversion, sp_cap, ms_enabled, ms_value, depth_mode,"
-    " depth_value, bestpath, score, actcount, maxskip, hardest_ms, avgmult,"
-    " notecount, sqin_count, sqout_count, pathcount, stars";
-
-namespace {
 
 // An older file's results summary columns, in the order read_summary reads
 // them. Only convert_results reads them, to turn each row into a record.
@@ -288,11 +240,6 @@ std::string each_column(const char* list, const char* before, const char* after,
         rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
     }
     return out;
-}
-
-// The identity columns but rules_fp: kKeyHeadColumnList, then kLensColumnList.
-std::string key_columns() {
-    return std::string(kKeyHeadColumnList) + ", " + kLensColumnList;
 }
 
 // ---- the record tables (D115) ----------------------------------------------
@@ -417,7 +364,7 @@ constexpr const char* kRecordJoinSql =
     " AND rp.rank = 1";
 
 // SQLite refuses a statement with more than 32,766 bound values (the vendored
-// 3.46's SQLITE_MAX_VARIABLE_NUMBER). get_summaries sends a whole library's
+// 3.46's SQLITE_MAX_VARIABLE_NUMBER). lookup sends a whole library's
 // hashes, so it sends them this many at a time.
 constexpr size_t kHashesPerQuery = 10000;
 
@@ -468,7 +415,7 @@ std::vector<uint8_t> ready_rules_fp(const core::RulesStamp& stamp) {
 // The facts that decide whether a row is readable and how it places among
 // the candidates for its chart and mode, and why a row that is not ready is
 // Stale. rank_row is the only place they are read off a row. Whether a chart
-// has a current result under some settings is get_summaries' answer, from its
+// has a current result under some settings is lookup's answer, from its
 // winner's ready() (D79).
 struct Candidate {
     bool current = false;     // stamped with this build's results version
@@ -503,14 +450,6 @@ std::string placeholders(size_t n) {
     std::string out;
     for (size_t i = 0; i < n; ++i) out += i ? ", ?" : "?";
     return out;
-}
-
-// The rules fingerprint inside an older file's structure blob, spelled in
-// SQL. `blob` is a column name. SQLite's substr counts bytes from 1, so it
-// starts one past the 0-based offset.
-std::string rules_fp_of(const char* blob) {
-    return std::string("substr(") + blob + "," + std::to_string(kOldRulesFingerprintOffset + 1) +
-           "," + std::to_string(kOldRulesFingerprintBytes) + ")";
 }
 
 // "This build can read the row at all", spelled in SQL for write_row's first
@@ -552,7 +491,7 @@ bool outranks(const Candidate& a, const Candidate& b) {
 using GroupKey = std::pair<std::string, std::string>;
 
 // The one owner of "which row wins". A lookup offers its candidate rows here
-// in any order, then asks which offer won each chart and mode: get_summaries
+// in any order, then asks which offer won each chart and mode: lookup
 // for one chart or many, list_records for a listing. Nothing else compares
 // two rows.
 class WinnerPicker {
@@ -629,46 +568,123 @@ std::string best_path_text(const HydraRecord& record) {
     return record.paths.empty() ? std::string() : record.best_path().pathstring();
 }
 
-// ---- summarize_path / summarize_record / prepare_row -----------------------
+// ---- an analysis as a record: prepare_record and its shims -----------------
 
-PathSummary summarize_path(const Path& path) {
-    PathSummary s;
+namespace {
+
+// One path's own facts as a path row, at `rank`. Whether the path is optimal
+// is the analysis's answer, so record_of sets it. The one place a path's
+// facts are read off it: summarize_path and record_of both come here.
+PathRow path_row_of(const Path& path, int rank) {
+    PathRow row;
+    row.rank = rank;
+    row.path = path.pathstring();
+    row.score = path.totalscore();
     const ActivationWalk acts = path.walk_activations();
-
-    s.score = path.totalscore();
-    s.actcount = static_cast<int>(acts.size());
-
-    int maxskip = 0;
-    int sqin = 0, sqout = 0;
+    row.actcount = static_cast<int>(acts.size());
     for (const Activation& a : acts) {
-        if (a.skips() > maxskip) maxskip = a.skips();
+        if (a.skips() > row.maxskip) row.maxskip = a.skips();
         for (const SPSqueeze& sq : a.sqinouts) {
-            if (sq.kind == SqueezeKind::SqIn) ++sqin;
-            else ++sqout;
+            if (sq.kind == SqueezeKind::SqIn) ++row.sqin_count;
+            else ++row.sqout_count;
         }
+        const std::optional<double> efill = a.e_difficulty();
+        if (efill && (!row.hardest_efill || *efill > *row.hardest_efill))
+            row.hardest_efill = efill;
     }
-    s.maxskip = maxskip;
-    s.hardest_ms = path.difficulty();  // the path's own hardest squeeze or required fill
-    s.avgmult = path.avg_mult();
+    row.hardest_ms = path.difficulty();  // the path's own hardest squeeze or required fill
+    row.avgmult = path.avg_mult();
+    return row;
+}
+
+// The record an analysis becomes: its kept paths in all_paths()'s order,
+// which is best first (rank 1 is best_path()), at most kPathsPerRecord of
+// them. Every path of one analysis carries the same note count, so the
+// record keeps rank 1's once.
+RecordRow record_of(std::string song_id, const HydraRecord& analysis) {
+    RecordRow r;
+    r.song_id = std::move(song_id);
+    const std::vector<const Path*> paths = analysis.all_paths();
+    // Every kept path, roots and variants: the count the Paths tab shows.
+    r.pathcount = static_cast<int>(paths.size());
+    if (paths.empty()) return r;
+    r.stars = path_stars(*paths.front());
+    r.notecount = paths.front()->notecount;
+    const size_t kept = std::min(paths.size(), static_cast<size_t>(kPathsPerRecord));
+    for (size_t i = 0; i < kept; ++i) {
+        PathRow row = path_row_of(*paths[i], static_cast<int>(i + 1));
+        row.optimal = analysis.is_optimal(*paths[i]);
+        r.paths.push_back(std::move(row));
+    }
+    return r;
+}
+
+// Throws std::invalid_argument when `profile` is not what `analysis` ran
+// under: its cap, its ms limit or its fill rule. Each mismatch would file the
+// analysis under settings it doesn't belong to. `who` starts the message.
+void check_profile_fits(const Profile& profile, const HydraRecord& record, const char* who) {
+    const std::string w = std::string(who) + ": ";
+    if (!record.sp_cap) throw std::invalid_argument(w + "record carries no sp_cap");
+    if (profile.cap.exact != *record.sp_cap)
+        throw std::invalid_argument(w + "key asks for sp_cap " +
+                                    std::to_string(profile.cap.exact) +
+                                    " but the record was analyzed at " +
+                                    std::to_string(*record.sp_cap));
+    // Both sides come from the same int (Settings::mslimit_value, widened to
+    // the engine's double), so an exact comparison is the right one.
+    if (profile.lens.ms_enabled == 1 &&
+        (!record.ms_limit || *record.ms_limit != static_cast<double>(profile.lens.ms_value)))
+        throw std::invalid_argument(
+            w + "key asks for an ms limit of " + std::to_string(profile.lens.ms_value) +
+            " but the record was analyzed " +
+            (record.ms_limit ? "at " + std::to_string(*record.ms_limit) : "without one"));
+    // And the other way: a record searched with a limit never files under a
+    // lens that has the limit off (finding 130).
+    if (profile.lens.ms_enabled == 0 && record.ms_limit)
+        throw std::invalid_argument(w + "key asks for no ms limit but the record was analyzed at " +
+                                    std::to_string(*record.ms_limit));
+    // The record's own fill rule as a lens stores it (Lens::from).
+    const Lens record_fills = Lens::from(std::nullopt, 0, 0, record.legacy_fills);
+    if (profile.lens.legacy_fills != record_fills.legacy_fills)
+        throw std::invalid_argument(
+            w + "key asks for Clone Hero " + (profile.lens.legacy_fills ? "1.0" : "1.1") +
+            " fills but the record was analyzed under the " +
+            (record.legacy_fills ? "1.0" : "1.1") + " rule");
+}
+
+}  // namespace
+
+PreparedRecord prepare_record(std::string song_id, const Profile& profile,
+                              const HydraRecord& analysis) {
+    check_profile_fits(profile, analysis, "prepare_record");
+    PreparedRecord out;
+    out.profile = profile;
+    out.rules_fp = analysis.rules_fingerprint;
+    out.record = record_of(std::move(song_id), analysis);
+    return out;
+}
+
+// summarize_path and summarize_record stay until their callers move to
+// prepare_record (D115); both read through path_row_of and record_of.
+PathSummary summarize_path(const Path& path) {
+    const PathRow row = path_row_of(path, 1);
+    PathSummary s;
+    s.score = row.score;
+    s.actcount = row.actcount;
+    s.maxskip = row.maxskip;
+    s.hardest_ms = row.hardest_ms;
+    s.avgmult = row.avgmult;
     s.notecount = path.notecount;
-    s.sqin_count = sqin;
-    s.sqout_count = sqout;
+    s.sqin_count = row.sqin_count;
+    s.sqout_count = row.sqout_count;
     s.stars = path_stars(path);
     return s;
 }
 
 // A Ready record with no paths has no facts (D51 call 11): every field is
-// unset and has_scored_best_path() is false. That flag is the one answer to
-// "is there a scored best path"; in wave 3 LB's facts_of and query_matches
-// and RP's leaderboard and fill pages read it instead of each checking a
-// field of their own.
+// unset and has_scored_best_path() is false (RecordRow::summary).
 PathSummary summarize_record(const HydraRecord& record) {
-    if (record.paths.empty()) return PathSummary{};
-
-    PathSummary s = summarize_path(record.best_path());
-    // Every kept path, roots and variants: the count the Paths tab shows.
-    s.pathcount = static_cast<int>(record.all_paths().size());
-    return s;
+    return record_of(std::string(), record).summary();
 }
 
 PathSummary RecordRow::summary() const {
@@ -692,34 +708,7 @@ PathSummary RecordRow::summary() const {
 std::string current_record_version() { return std::string(kResultsStamp.written); }
 
 PreparedRow prepare_row(const RecordKey& key, const HydraRecord& record) {
-    if (!record.sp_cap)
-        throw std::invalid_argument("prepare_row: record carries no sp_cap");
-    if (key.cap.exact != *record.sp_cap)
-        throw std::invalid_argument("prepare_row: key asks for sp_cap " +
-                                    std::to_string(key.cap.exact) +
-                                    " but the record was analyzed at " +
-                                    std::to_string(*record.sp_cap));
-    // Both sides come from the same int (Settings::mslimit_value, widened to
-    // the engine's double), so an exact comparison is the right one.
-    if (key.lens.ms_enabled == 1 &&
-        (!record.ms_limit || *record.ms_limit != static_cast<double>(key.lens.ms_value)))
-        throw std::invalid_argument(
-            "prepare_row: key asks for an ms limit of " +
-            std::to_string(key.lens.ms_value) + " but the record was analyzed " +
-            (record.ms_limit ? "at " + std::to_string(*record.ms_limit) : "without one"));
-    // And the other way: a record searched with a limit never files under a
-    // lens that has the limit off (finding 130).
-    if (key.lens.ms_enabled == 0 && record.ms_limit)
-        throw std::invalid_argument(
-            "prepare_row: key asks for no ms limit but the record was analyzed at " +
-            std::to_string(*record.ms_limit));
-    // The record's own fill rule as a lens stores it (Lens::from).
-    const Lens record_fills = Lens::from(std::nullopt, 0, 0, record.legacy_fills);
-    if (key.lens.legacy_fills != record_fills.legacy_fills)
-        throw std::invalid_argument(
-            std::string("prepare_row: key asks for Clone Hero ") +
-            (key.lens.legacy_fills ? "1.0" : "1.1") + " fills but the record was analyzed "
-            "under the " + (record.legacy_fills ? "1.0" : "1.1") + " rule");
+    check_profile_fits(key.settings(), record, "prepare_row");
 
     PreparedRow row;
     row.hyhash = key.hyhash;
@@ -744,29 +733,14 @@ int open_sqlite(const std::string& utf8_path, sqlite3** db, int flags) {
 
 namespace {
 
-std::atomic<bool> g_stop_after_step_aside{false};
-
-// What the test seam throws: not a failure the copy upgrade tidies up after,
-// so it passes the upgrade's own handlers untouched.
-struct StoppedForTest : std::runtime_error {
-    StoppedForTest() : std::runtime_error("the test seam stopped the upgrade after step-aside") {}
-};
-
-// Whether `dbpath` names a file on disk rather than one of SQLite's own
-// in-memory names, the only kind the upgrade files sit beside.
-bool names_a_file(const std::string& dbpath) { return !dbpath.empty() && dbpath != ":memory:"; }
-
-// The table only a file that still holds path details has.
-constexpr const char* kDetailTable = "paths";
-
 // "A result with a score and no stars", spelled once in SQL. Such a row was
-// written before the stars column existed; filling its stars needed the
-// stored paths, so the conversion leaves it behind, and a click or a batch
-// writes it again. The conversion's row count and its read both use it.
+// written before the stars column existed. 2.2.0's writer never leaves one,
+// but 2.2.0's own open kept them in a pre-stars file that had no path details,
+// so a Convertible file can still hold some. Filling their stars needed the
+// stored paths, so the
+// conversion leaves them behind, and a click or a batch writes them again. The
+// conversion's row count and its read both use it.
 constexpr const char* kNoStarsResultSql = "stars IS NULL AND score IS NOT NULL";
-
-// The name a Hydra 1.6 file's own `records` table is kept under, unread.
-constexpr const char* kPre17RecordsTable = "records_before_1_7";
 
 // The one integer a counting query returns.
 int64_t count_of(sqlite3* db, const std::string& sql) {
@@ -777,12 +751,14 @@ int64_t count_of(sqlite3* db, const std::string& sql) {
 
 }  // namespace
 
-void stop_copy_upgrade_after_step_aside_for_test(bool stop) { g_stop_after_step_aside = stop; }
-
 // ---- RecordStore ------------------------------------------------------
 
 RecordStore::RecordStore(const std::string& dbpath, core::RulesStamp rules_fingerprint,
                          OpenProgressFn progress)
+    : RecordStore(dbpath, OldFilePolicy::Refuse, rules_fingerprint, std::move(progress)) {}
+
+RecordStore::RecordStore(const std::string& dbpath, OldFilePolicy old_files,
+                         core::RulesStamp rules_fingerprint, OpenProgressFn progress)
     : rules_fingerprint_(rules_fingerprint), progress_(std::move(progress)) {
     // Whatever happens below, the callback is not kept past the constructor.
     struct ForgetProgress {
@@ -791,9 +767,17 @@ RecordStore::RecordStore(const std::string& dbpath, core::RulesStamp rules_finge
     } forget{progress_};
 
     report(OpenStep::Opening);
-    // Before anything opens the file, so the open never makes an empty
-    // database while the rows sit under the upgrade's names.
-    if (names_a_file(dbpath)) recover_upgrade_files(dbpath);
+    // Read before anything opens the file for writing. An Unreadable file
+    // goes on to the open below, whose first statement fails with SQLite's
+    // own words, as any unreadable file's open does.
+    const LibraryFileKind kind = classify_library_file(dbpath);
+    if (kind == LibraryFileKind::TooOld) {
+        if (old_files == OldFilePolicy::Refuse)
+            throw KindedError(ErrorKind::OldLibraryRefused, dbpath);
+        if (std::optional<std::string> why = set_aside_old_library(dbpath))
+            throw KindedError(ErrorKind::OldLibrarySetAsideFailed, *why);
+        set_aside_path_ = store::set_aside_path(dbpath);
+    }
     open_file(dbpath);
 
     // SQLite notices a locked file, or one that isn't a database, only at
@@ -801,11 +785,10 @@ RecordStore::RecordStore(const std::string& dbpath, core::RulesStamp rules_finge
     // open (D72 item 2), with the raw text kept. A constructor that throws
     // never runs the destructor, so the handle is closed here. Running out of
     // memory keeps its own type, which plain_error answers by. A stop the
-    // callback asked for, and a failed upgrade that left the old file whole,
+    // callback asked for, and a failed conversion that left the file whole,
     // keep their own kinds too.
     try {
-        set_up_schema();
-        if (names_a_file(dbpath) && has_table(kDetailTable)) copy_upgrade(dbpath);
+        set_up_schema(kind == LibraryFileKind::Convertible);
     } catch (const std::bad_alloc&) {
         close();
         throw;
@@ -822,7 +805,7 @@ RecordStore::RecordStore(const std::string& dbpath, core::RulesStamp rules_finge
     }
 }
 
-void RecordStore::set_up_schema() {
+void RecordStore::set_up_schema(bool convertible) {
     // WAL journal mode (orchestrator's call, 2026-09-26 audit plan): a commit
     // appends to hydra.db-wal instead of rewriting pages in place, and with
     // synchronous=NORMAL it syncs to disk only at checkpoints, not on every
@@ -854,58 +837,25 @@ void RecordStore::set_up_schema() {
         "  key   TEXT PRIMARY KEY,"
         "  value TEXT"
         ");");
-    // A charts table from before the rescan cache has no sig column.
-    // rebuild_chart_library empties the table rather than recreating it, so
-    // the column is added here, once.
-    if (!has_column("charts", "sig")) exec("ALTER TABLE charts ADD COLUMN sig TEXT");
-    // A charts table from before the scan read each chart's stated length and
-    // delay (D75). Old rows read NULL, and list_chart_library hands them out
-    // with no timing until a scan under the current kChartMetaStamp rewrites
-    // them.
-    if (!has_column("charts", "stated_length_ms"))
-        exec("ALTER TABLE charts ADD COLUMN stated_length_ms REAL");
-    if (!has_column("charts", "delay_ms")) exec("ALTER TABLE charts ADD COLUMN delay_ms REAL");
-    // Each difficulty's own last-note length (D51 call 9), which D69
-    // replaced with one length per song. Nothing reads it.
-    exec("DROP TABLE IF EXISTS songlength");
     // The library page sorts by name (list_chart_library's ORDER BY name).
     exec("CREATE INDEX IF NOT EXISTS charts_by_name ON charts (name)");
     // The scan's purge, list_records and list_chart_library_copies find a
     // chart's library rows by md5 (D76).
     exec("CREATE INDEX IF NOT EXISTS charts_by_md5 ON charts (md5)");
-    // A database from Hydra 1.6 or older still holds its old `records`
-    // table. Nothing reads it (user decision 2026-09-26), so its charts read
-    // Not analyzed until they are analyzed again. It steps aside under its
-    // own name, so this build's records table can take the name.
-    if (has_table("records") && !has_column("records", "profile_id"))
-        exec((std::string("ALTER TABLE records RENAME TO ") + kPre17RecordsTable).c_str());
     create_result_tables();
-    if (has_table("results")) {
-        // A results table from before the stars summary has no column for
-        // it. Its rows read NULL there, and the conversion below leaves them
-        // behind. Added before the schema 3 rebuild, which copies the column
-        // across.
-        if (!has_column("results", "stars")) exec("ALTER TABLE results ADD COLUMN stars INTEGER");
-        // Schema 3 = the fill rule joins a result's key; schema 4 = the rules
-        // fingerprint does.
-        upgrade_results_key();
-    }
-    // Auto was removed (2026-09-27). Its results go the first time this
-    // build opens the file.
-    delete_auto_results();
-    // Last: the steps above read an older file's results in their own
-    // layout. The summary-only upgrade comes after this (the constructor runs
-    // copy_upgrade), so it copies records, not results.
-    convert_results();
+    if (convertible) convert_results();
 }
 
 void RecordStore::convert_results() {
-    if (!has_table("results")) return;
     const std::string kept = std::string("NOT (") + kNoStarsResultSql + ")";
-    const int64_t rows_total = count_of(db_, "SELECT COUNT(*) FROM results WHERE " + kept);
-    int64_t rows_done = 0;
-    report(OpenStep::ConvertingRecords, rows_done, rows_total);
-    in_transaction([&] {
+    // A failure undoes the whole conversion (in_transaction), so the file is
+    // as it was: DatabaseUpgrade says so. A stop asked for and running out of
+    // memory keep their own kinds.
+    try {
+        const int64_t rows_total = count_of(db_, "SELECT COUNT(*) FROM results WHERE " + kept);
+        int64_t rows_done = 0;
+        report(OpenStep::ConvertingRecords, rows_done, rows_total);
+        in_transaction([&] {
         {
             // Oldest first, so of two rows that become one record (a hash
             // that differed only in case) the newer write is kept, as a
@@ -937,34 +887,15 @@ void RecordStore::convert_results() {
         // The library's ids take the records' spelling (ADR 0028).
         exec("UPDATE charts SET md5 = lower(md5)");
         exec("DROP TABLE results");
-    });
-}
-
-void RecordStore::upgrade_results_key() {
-    // What the rebuilt table's legacy_fills column is filled from.
-    std::string legacy_fills;
-    if (!has_column("results", "legacy_fills")) {
-        // Schema 2: every row ran under the rule the file's stamp names
-        // (stamped_fill_rule), or 1.1 when it names none.
-        legacy_fills = stamped_fill_rule() == FillDeadlineRule::Ch10 ? "1" : "0";
-    } else if (!has_column("results", "rules_fp")) {
-        // Schema 3: each row keeps its own fill rule.
-        legacy_fills = "legacy_fills";
-    } else {
-        return;  // schema 4 already
+        });
+    } catch (const KindedError& e) {
+        if (e.kind() == ErrorKind::Cancelled) throw;
+        throw KindedError(ErrorKind::DatabaseUpgrade, e.what());
+    } catch (const std::bad_alloc&) {
+        throw;
+    } catch (const std::exception& e) {
+        throw KindedError(ErrorKind::DatabaseUpgrade, e.what());
     }
-    report(OpenStep::UpdatingResultsKey);
-    in_transaction([&] {
-        exec("ALTER TABLE results RENAME TO results_before_upgrade");
-        exec((std::string("CREATE TABLE results (") + kResultsColumnDefs + "  UNIQUE (" +
-              key_columns() + ", rules_fp));")
-                 .c_str());
-        exec((std::string("INSERT INTO results (") + kSchema2ResultsColumns +
-              ", legacy_fills, rules_fp) SELECT " + kSchema2ResultsColumns + ", " +
-              legacy_fills + ", " + rules_fp_of("structure") + " FROM results_before_upgrade")
-                 .c_str());
-        exec("DROP TABLE results_before_upgrade");
-    });
 }
 
 void RecordStore::open_file(const std::string& dbpath) {
@@ -973,183 +904,6 @@ void RecordStore::open_file(const std::string& dbpath) {
         close();
         throw KindedError(ErrorKind::DatabaseOpen,
                           "failed to open database '" + dbpath + "': " + msg);
-    }
-}
-
-namespace {
-
-// The schema name the fresh file is attached under.
-constexpr const char* kFreshSchema = "fresh";
-
-// The tables the upgrade keeps, in the order it copies them. Everything else
-// in an old file (the path details, a pre-1.7 records table) stays behind.
-// The file's results are records by then (convert_results runs first).
-constexpr const char* kKeptTables[] = {"charts", "profiles", "records", "record_paths", "meta"};
-
-// A failure of the upgrade's own file steps, worded with the file it concerns.
-[[noreturn]] void upgrade_failed(const std::string& what) {
-    throw KindedError(ErrorKind::DatabaseUpgrade, what);
-}
-
-}  // namespace
-
-void RecordStore::copy_upgrade(const std::string& dbpath) {
-    const std::string fresh = upgrading_path(dbpath);
-    const std::string aside = old_path(dbpath);
-    bool attached = false;
-
-    // Undoes whatever the steps below began, leaving the old file as it was.
-    auto tidy_up = [&] {
-        if (db_) {
-            rollback_if_open(db_);
-            if (attached)
-                sqlite3_exec(db_, (std::string("DETACH DATABASE ") + kFreshSchema).c_str(),
-                             nullptr, nullptr, nullptr);
-        }
-        attached = false;
-        remove_with_side_files(fresh);
-    };
-
-    try {
-        // (1) An earlier run's fresh file is never one to keep while the
-        //     database exists (recover_upgrade_files).
-        remove_with_side_files(fresh);
-
-        // (2) The fresh file, made by this build's own schema set-up: its
-        //     tables, columns and indexes are this build's, and it has no
-        //     detail table, so it never upgrades itself. Its meta is emptied
-        //     so the old file's rows, copied below, are the only ones.
-        try {
-            RecordStore made(fresh, rules_fingerprint_);
-        } catch (const KindedError& e) {
-            upgrade_failed("making '" + fresh + "' failed: " + e.what());
-        }
-        {
-            Stmt attach = prepare_read(  // SQLite counts ATTACH as read-only
-                db_, (std::string("ATTACH DATABASE ? AS ") + kFreshSchema).c_str());
-            bind_text(attach, 1, wide_to_utf8(win32_path(fresh)));  // as open_sqlite names it
-            step_done(attach, "attaching '" + fresh + "'");
-        }
-        attached = true;
-
-        // (3) Every row the copy will copy, counted from the file.
-        int64_t rows_total = 0;
-        for (const char* table : kKeptTables)
-            rows_total += count_of(db_, std::string("SELECT COUNT(*) FROM main.") + table);
-        int64_t rows_done = 0;
-        report(OpenStep::Copying, rows_done, rows_total);
-
-        // (4) One transaction on the fresh file. Only it is written; the old
-        //     file is only read.
-        in_transaction([&] {
-            exec((std::string("DELETE FROM ") + kFreshSchema + ".meta").c_str());
-            for (const char* table : kKeptTables) copy_table(table, rows_done, rows_total);
-        });
-        report(OpenStep::Finishing, rows_done, rows_total);
-
-        // (5) Fold the fresh file's log into it, which syncs it to disk, then
-        //     let it go: its log and index go with the last connection.
-        exec((std::string("PRAGMA ") + kFreshSchema + ".wal_checkpoint(TRUNCATE)").c_str());
-        exec((std::string("DETACH DATABASE ") + kFreshSchema).c_str());
-        attached = false;
-
-        // (6) Closing the only connection folds the old file's log in and
-        //     removes it. A log still there means another program has the
-        //     file open, and renaming the file away from its log would leave
-        //     that log for the new file.
-        close();
-        if (side_files_present(dbpath))
-            upgrade_failed("'" + dbpath +
-                           "' is open in another program: its -wal or -shm file stayed "
-                           "after Hydra closed it");
-
-        // (7) The old file steps aside. A file held open elsewhere refuses.
-        if (std::optional<std::string> why = rename_file(dbpath, aside))
-            upgrade_failed("renaming '" + dbpath + "' to '" + aside + "' failed: " + *why);
-        if (g_stop_after_step_aside) throw StoppedForTest();
-
-        // (8) The fresh file takes the name. If it cannot, the old file comes
-        //     back; if even that fails, recover_upgrade_files finishes the
-        //     job at the next open.
-        if (std::optional<std::string> why = rename_file(fresh, dbpath)) {
-            rename_file(aside, dbpath);
-            upgrade_failed("renaming '" + fresh + "' to '" + dbpath + "' failed: " + *why);
-        }
-    } catch (const StoppedForTest&) {
-        throw;
-    } catch (const std::bad_alloc&) {
-        tidy_up();
-        throw;
-    } catch (const KindedError& e) {
-        tidy_up();
-        if (e.kind() == ErrorKind::Cancelled || e.kind() == ErrorKind::DatabaseUpgrade) throw;
-        upgrade_failed(e.what());
-    } catch (const std::exception& e) {
-        tidy_up();
-        upgrade_failed(e.what());
-    }
-
-    // (9) The old file goes. One that stays is removed at the next open.
-    remove_with_side_files(aside);
-
-    // (10) Open the new file. Its set-up finds nothing to upgrade, and a
-    //      failure here is a failed open of a whole file (DatabaseOpen).
-    open_file(dbpath);
-    set_up_schema();
-}
-
-void RecordStore::copy_table(const char* table, int64_t& rows_done, int64_t rows_total) {
-    // The columns are the fresh table's, as this build's set-up made them;
-    // the old table has every one, because set_up_schema brought it up to
-    // date first. A table whose rows have no INTEGER PRIMARY KEY also gets
-    // its rowid copied, so the library's first-listed copy (kNamingCopiesSql)
-    // stays the same row. A WITHOUT ROWID table has no rowid to copy: its
-    // key is its own columns.
-    std::vector<std::string> columns;
-    bool rowid_column = false;
-    bool without_rowid = false;
-    {
-        // table_list's `wr` column: 1 for a WITHOUT ROWID table.
-        Stmt list = prepare_read(
-            db_, (std::string("PRAGMA ") + kFreshSchema + ".table_list(" + table + ")").c_str());
-        if (step_row(list)) without_rowid = sqlite3_column_int(list, 4) != 0;
-    }
-    {
-        Stmt info = prepare_read(
-            db_, (std::string("PRAGMA ") + kFreshSchema + ".table_info(" + table + ")").c_str());
-        int key_columns = 0;
-        bool integer_key = false;
-        while (step_row(info)) {
-            columns.push_back(column_text(info, 1));
-            if (sqlite3_column_int(info, 5) > 0) {
-                ++key_columns;
-                std::string type = column_text(info, 2);
-                for (char& c : type) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-                integer_key = type == "INTEGER";
-            }
-        }
-        // SQLite's rule: a lone INTEGER PRIMARY KEY column is the rowid.
-        rowid_column = key_columns == 1 && integer_key;
-    }
-    if (columns.empty())
-        throw std::runtime_error(std::string("the fresh file has no ") + table + " table");
-    if (!rowid_column && !without_rowid) columns.insert(columns.begin(), "rowid");
-
-    std::string list;
-    for (const std::string& c : columns) list += (list.empty() ? "" : ", ") + c;
-    const std::string select = "SELECT " + list + " FROM main." + table;
-    const std::string insert = std::string("INSERT INTO ") + kFreshSchema + "." + table + " (" +
-                               list + ") VALUES (" + placeholders(columns.size()) + ")";
-
-    Stmt from = prepare_read(db_, select.c_str());
-    Stmt to = prepare_write(db_, insert.c_str());
-    const int n = static_cast<int>(columns.size());
-    while (step_row(from)) {
-        // Each value goes across as stored, so nothing is retyped.
-        for (int i = 0; i < n; ++i) sqlite3_bind_value(to, i + 1, sqlite3_column_value(from, i));
-        step_done(to, std::string("copying ") + table);
-        sqlite3_reset(to);
-        report(OpenStep::Copying, ++rows_done, rows_total);
     }
 }
 
@@ -1252,20 +1006,6 @@ int64_t RecordStore::journal_size_limit_for_test() {
     return step_row(s) ? sqlite3_column_int64(s, 0) : -1;
 }
 
-bool RecordStore::has_column(const char* table, const char* column) {
-    std::string sql = std::string("PRAGMA table_info(") + table + ")";
-    Stmt info = prepare_read(db_, sql.c_str());
-    while (step_row(info))
-        if (column_text(info, 1) == column) return true;
-    return false;
-}
-
-bool RecordStore::has_table(const char* table) {
-    Stmt s = prepare_read(db_, "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?");
-    bind_text(s, 1, table);
-    return step_row(s);
-}
-
 std::optional<std::string> RecordStore::meta_get(const std::string& key) {
     Stmt s = prepare_read(db_, "SELECT value FROM meta WHERE key=?");
     bind_text(s, 1, key);
@@ -1303,16 +1043,15 @@ std::optional<FillDeadlineRule> RecordStore::stamped_fill_rule() {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (const std::optional<std::string> mode = engine_mode())
         return fill_rule_from_stamp(*mode);
-    // No stamp. Results written without one ran under the normal rule. An
-    // older file's results are still in `results` until convert_results
-    // runs (upgrade_results_key asks before it); after it they are records.
-    const char* table = has_table("results") ? "results" : "records";
-    Stmt any = prepare_read(db_, (std::string("SELECT 1 FROM ") + table + " LIMIT 1").c_str());
+    // No stamp. Results written without one ran under the normal rule. The
+    // open converted any older file's results into records already.
+    Stmt any = prepare_read(db_, "SELECT 1 FROM records LIMIT 1");
     if (step_row(any)) return FillDeadlineRule::Ch11;
     return std::nullopt;
 }
 
-void RecordStore::save_analysis(const PreparedRow& row) {
+template <class F>
+void RecordStore::in_save_frame(F work) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     // Inside a save group this chart is one SAVEPOINT of the group's
     // transaction; otherwise it is a transaction of its own.
@@ -1324,7 +1063,7 @@ void RecordStore::save_analysis(const PreparedRow& row) {
         ctl("BEGIN");
     }
     try {
-        write_row(row);
+        work();
         ctl(grouped ? "RELEASE chart" : "COMMIT");
     } catch (...) {
         if (!grouped) {
@@ -1339,6 +1078,17 @@ void RecordStore::save_analysis(const PreparedRow& row) {
         }
         throw;
     }
+}
+
+void RecordStore::save_analysis(const PreparedRow& row) {
+    in_save_frame([&] { write_row(row); });
+}
+
+void RecordStore::save(const PreparedRecord& prepared) {
+    in_save_frame([&] {
+        file_record(prepared.profile, current_record_version(), prepared.rules_fp,
+                    prepared.record, PurgeScope::EveryMode);
+    });
 }
 
 void RecordStore::create_result_tables() { exec(record_tables_sql().c_str()); }
@@ -1438,42 +1188,50 @@ void RecordStore::drop_empty_profiles() {
     step_done(d, "deleting emptied profiles");
 }
 
-void RecordStore::write_row(const PreparedRow& row) {
+void RecordStore::file_record(const Profile& profile, const std::string& hyversion,
+                              uint64_t rules_fp, const RecordRow& record, PurgeScope scope) {
     // The caller holds the lock and an open transaction, so a failure
     // anywhere leaves the store exactly as it was.
 
-    // (1) Anything this chart+mode holds that this build can never read --
-    //     another Hydra version's stamp, which includes every row an old
-    //     migration left -- is superseded by a write here. A result analyzed
+    // (1) Anything this chart holds, in the modes `scope` names (PurgeScope:
+    //     ThisMode is the old write_row's, until A1-5 deletes it), that this
+    //     build can never read -- another Hydra version's stamp, which
+    //     includes every row an old migration left -- is superseded by a
+    //     write here. A record made
     //     under other rules is not: it reads Ready again once the rules match
     //     (D51 call 8). The test is against what is current, not against this
-    //     row: a test writing a deliberately old-stamped row must not take
-    //     the real rows with it, and this runs before the write so the new
-    //     record is untouched.
+    //     record: a test writing a deliberately old-stamped record must not
+    //     take the real ones with it, and this runs before the write so the
+    //     new record is untouched.
+    const bool one_mode = scope == PurgeScope::ThisMode;
+    const std::string mode_term = one_mode ? "chartmode=? AND " : "";
     delete_records_where(
-        "song_id=? AND profile_id IN (SELECT id FROM profiles WHERE chartmode=? AND NOT " +
+        "song_id=? AND profile_id IN (SELECT id FROM profiles WHERE " + mode_term + "NOT " +
             row_readable_sql() + ")",
         [&](sqlite3_stmt* s) {
-            bind_text(s, 1, row.hyhash);
-            bind_text(s, 2, row.chartmode);
-            bind_readable_params(s, 3);
+            int idx = 1;
+            bind_text(s, idx++, record.song_id);
+            if (one_mode) bind_text(s, idx++, profile.chartmode);
+            bind_readable_params(s, idx);
         },
-        "add_row unreadable purge");
+        "unreadable purge");
 
     // (2) The record, replacing the chart's record under the same profile.
+    write_record(profile_id_for(profile, hyversion, rules_fp_bytes(rules_fp)), record);
+    // (3) A profile the purge emptied goes with its last record.
+    drop_empty_profiles();
+}
+
+void RecordStore::write_row(const PreparedRow& row) {
     Profile profile;
     profile.chartmode = row.chartmode;
     profile.cap = CapQuery::at(row.sp_cap);
     profile.lens = row.lens;
-    write_record(profile_id_for(profile, row.hyversion, rules_fp_bytes(row.rules_fp)),
-                 record_from_summary(row.hyhash, row.bestpath, row.summary));
-    drop_empty_profiles();
+    file_record(profile, row.hyversion, row.rules_fp,
+                record_from_summary(row.hyhash, row.bestpath, row.summary), PurgeScope::ThisMode);
 }
 
 namespace {
-// The meta key that marks the Auto results deleted for this file.
-constexpr const char* kAutoResultsDeletedKey = "auto_results_deleted";
-
 // "No library row lists this chart", spelled once in SQL for
 // purge_charts_not_in_library. `hash` is the column holding the chart's hash
 // in the table the statement reads.
@@ -1504,148 +1262,184 @@ void RecordStore::purge_charts_not_in_library(const char* caller) {
     drop_empty_profiles();
 }
 
-void RecordStore::delete_auto_results() {
-    // Under RulesStamp::none() (a bad hydra_rules.ini) there is no
-    // fingerprint to look for. Leave the key unset, so the next start with
-    // good rules does it.
-    if (rules_fingerprint_.retired_auto == core::kNoRulesFingerprint) return;
-    if (meta_get(kAutoResultsDeletedKey)) return;
-
-    // An Auto row is known only by its rules fingerprint. Auto rows made
-    // under other rules are already Stale, and stay so: no rules' own
-    // fingerprint is ever an Auto one. A new result for the same chart, cap
-    // and lens outranks such a row (WinnerPicker).
-    const std::vector<uint8_t> auto_fp = rules_fp_bytes(rules_fingerprint_.retired_auto);
-    in_transaction([&] {
-        if (has_table("results")) {
-            Stmt d = prepare_write(db_, "DELETE FROM results WHERE rules_fp = ?");
-            bind_blob(d, 1, auto_fp);
-            step_done(d, "deleting Auto results");
-        }
-        delete_records_where(
-            "profile_id IN (SELECT id FROM profiles WHERE rules_fp = ?)",
-            [&](sqlite3_stmt* s) { bind_blob(s, 1, auto_fp); }, "deleting Auto results");
-        drop_empty_profiles();
-        meta_set(kAutoResultsDeletedKey, "1");
-    });
-}
-
 SummaryLookup RecordStore::get_summary(const RecordKey& key) {
     return get_summaries({key.hyhash}, key.settings()).front();
 }
 
 std::vector<SummaryLookup> RecordStore::get_summaries(const std::vector<std::string>& hyhashes,
                                                       const ResultSettings& want) {
-    const std::string& chartmode = want.chartmode;
-    std::vector<SummaryLookup> out(hyhashes.size());
-    if (hyhashes.empty()) return out;
+    // The old answer's shape, read off lookup's: the best path's text and the
+    // record's summary, for a Ready record only.
+    const std::vector<RecordLookup> found = lookup(hyhashes, want);
+    std::vector<SummaryLookup> out(found.size());
+    for (size_t i = 0; i < found.size(); ++i) {
+        out[i].status = found[i].status;
+        out[i].stale_build = found[i].stale_build;
+        out[i].stale_rules = found[i].stale_rules;
+        if (found[i].status != RecordStatus::Ready) continue;
+        if (!found[i].record.paths.empty()) out[i].bestpath = found[i].record.paths.front().path;
+        out[i].summary = found[i].record.summary();
+    }
+    return out;
+}
+
+std::vector<RecordLookup> RecordStore::lookup(const std::vector<std::string>& song_ids,
+                                              const Profile& want) {
+    std::vector<RecordLookup> out(song_ids.size());
+    if (song_ids.empty()) return out;
 
     // Each chart is asked about once, however many folders list it. A chart's
     // rows all come back in its own chunk, so one picker sees every
     // candidate a chart has.
-    std::vector<std::string> distinct(hyhashes);
+    std::vector<std::string> distinct(song_ids);
     std::sort(distinct.begin(), distinct.end());
     distinct.erase(std::unique(distinct.begin(), distinct.end()), distinct.end());
 
-    struct Offered {
-        std::string hyhash;
-        std::string bestpath;
-        PathSummary summary;
-    };
     // The lookup's own columns, read below at 0 onwards: the record and its
     // profile (the profile id is the ranking's newest-write tiebreak), then
-    // the record's counts, then its best path. The candidates are every
-    // record under a profile with the wanted mode, cap and lens, whatever
-    // its stamp and rules; rank_row says which is readable.
+    // the record's counts. The candidates are every record under a profile
+    // with the wanted mode, cap and lens, whatever its stamp and rules;
+    // rank_row says which is readable.
     static constexpr const char* kLeadColumns = "r.song_id, p.hyversion, p.id, p.rules_fp";
     static constexpr int kFirstRecord = count_list_names(kLeadColumns);
-    static constexpr int kFirstPath = kFirstRecord + count_list_names(kRecordColumnList);
     const std::vector<uint8_t> fixed_fp = ready_rules_fp(rules_fingerprint_);
     WinnerPicker picker;
-    std::vector<Offered> offered;
-    {
-        std::lock_guard<std::recursive_mutex> lock(mutex_);
-        for (size_t first = 0; first < distinct.size(); first += kHashesPerQuery) {
-            const size_t n = std::min(kHashesPerQuery, distinct.size() - first);
-            std::string sql = std::string("SELECT ") + kLeadColumns + ", " +
-                              each_column(kRecordColumnList, "r.", "", ", ") + ", " +
-                              path_row_columns("rp.") + kRecordJoinSql +
-                              " WHERE p.chartmode=? AND r.song_id IN (" + placeholders(n) + ")";
-            append_candidate_filter(sql, "p.");
-            Stmt s = prepare_read(db_, sql.c_str());
-            int idx = 1;
-            bind_text(s, idx++, chartmode);
-            for (size_t i = 0; i < n; ++i) bind_text(s, idx++, distinct[first + i]);
-            bind_candidate_filter(s, idx, want.cap, want.lens);
-            while (step_row(s)) {
-                RecordRow record;
-                record.song_id = column_text(s, 0);
-                read_record_columns(s, kFirstRecord, record);
-                if (std::optional<PathRow> best = read_path_row(s, kFirstPath, 1))
-                    record.paths.push_back(std::move(*best));
-                picker.offer(record.song_id, chartmode,
-                             rank_row(column_text(s, 1), column_blob(s, 3),
-                                      sqlite3_column_int64(s, 2), fixed_fp));
-                std::string bestpath = record.paths.empty() ? std::string() : record.paths[0].path;
-                offered.push_back({record.song_id, std::move(bestpath), record.summary()});
-            }
+    std::vector<RecordRow> offered;
+    std::unordered_map<std::string, RecordLookup> by_id;
+    // The profile each Ready record is filed under, by song id: whose path
+    // rows the second read keeps.
+    std::unordered_map<std::string, int64_t> ready_profile;
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    for (size_t first = 0; first < distinct.size(); first += kHashesPerQuery) {
+        const size_t n = std::min(kHashesPerQuery, distinct.size() - first);
+        std::string sql = std::string("SELECT ") + kLeadColumns + ", " +
+                          each_column(kRecordColumnList, "r.", "", ", ") +
+                          " FROM records r JOIN profiles p ON p.id = r.profile_id"
+                          " WHERE p.chartmode=? AND r.song_id IN (" +
+                          placeholders(n) + ")";
+        append_candidate_filter(sql, "p.");
+        Stmt s = prepare_read(db_, sql.c_str());
+        int idx = 1;
+        bind_text(s, idx++, want.chartmode);
+        for (size_t i = 0; i < n; ++i) bind_text(s, idx++, distinct[first + i]);
+        bind_candidate_filter(s, idx, want.cap, want.lens);
+        while (step_row(s)) {
+            RecordRow record;
+            record.song_id = column_text(s, 0);
+            read_record_columns(s, kFirstRecord, record);
+            picker.offer(record.song_id, want.chartmode,
+                         rank_row(column_text(s, 1), column_blob(s, 3),
+                                  sqlite3_column_int64(s, 2), fixed_fp));
+            offered.push_back(std::move(record));
         }
     }
 
-    // One answer per chart, then handed to every position that asked for it.
-    // A stale winner is reported as Stale, not hidden: the library has to
-    // tell "analyzed by another build" apart from "never analyzed".
+    // One answer per chart. A stale winner is reported as Stale, not hidden:
+    // the library has to tell "analyzed by another build" apart from "never
+    // analyzed".
     const std::vector<bool> won = picker.winners();
-    std::unordered_map<std::string, SummaryLookup> by_hash;
     for (size_t i = 0; i < offered.size(); ++i) {
         if (!won[i]) continue;
-        SummaryLookup& answer = by_hash[offered[i].hyhash];
+        RecordLookup& answer = by_id[offered[i].song_id];
         const Candidate& rank = picker.rank(i);
         if (rank.ready()) {
             answer.status = RecordStatus::Ready;
-            answer.bestpath = std::move(offered[i].bestpath);
-            answer.summary = offered[i].summary;
+            answer.record = std::move(offered[i]);
+            ready_profile.emplace(answer.record.song_id, rank.profile_id);
         } else {
             answer.status = RecordStatus::Stale;
             answer.stale_build = rank.stale_build;
             answer.stale_rules = rank.stale_rules;
         }
     }
-    for (size_t i = 0; i < hyhashes.size(); ++i) {
-        auto it = by_hash.find(hyhashes[i]);
-        if (it != by_hash.end()) out[i] = it->second;
+
+    // The Ready records' paths, in rank order: one more read over
+    // record_paths for those charts, keeping each chart's winning profile's.
+    std::vector<std::string> ready_ids;
+    ready_ids.reserve(ready_profile.size());
+    for (const auto& kv : ready_profile) ready_ids.push_back(kv.first);
+    for (size_t first = 0; first < ready_ids.size(); first += kHashesPerQuery) {
+        const size_t n = std::min(kHashesPerQuery, ready_ids.size() - first);
+        const std::string sql = std::string("SELECT song_id, profile_id, rank, ") +
+                                path_row_columns("") +
+                                " FROM record_paths WHERE song_id IN (" + placeholders(n) +
+                                ") ORDER BY song_id, profile_id, rank";
+        Stmt s = prepare_read(db_, sql.c_str());
+        for (size_t i = 0; i < n; ++i) bind_text(s, static_cast<int>(i + 1), ready_ids[first + i]);
+        while (step_row(s)) {
+            const std::string id = column_text(s, 0);
+            if (ready_profile.at(id) != sqlite3_column_int64(s, 1)) continue;
+            if (std::optional<PathRow> p = read_path_row(s, 3, sqlite3_column_int(s, 2)))
+                by_id[id].record.paths.push_back(std::move(*p));
+        }
+    }
+
+    for (size_t i = 0; i < song_ids.size(); ++i) {
+        auto it = by_id.find(song_ids[i]);
+        if (it != by_id.end()) out[i] = it->second;
     }
     return out;
 }
 
-bool RecordStore::has_record(const RecordKey& key) {
-    // get_summaries owns "this chart has a current result under these
-    // settings" (D79): the library's Analyzed chip reads the same answer.
-    return get_summary(key).status == RecordStatus::Ready;
+RecordLookup RecordStore::lookup_one(const std::string& song_id, const Profile& want) {
+    return lookup({song_id}, want).front();
 }
 
-std::unordered_set<std::string> RecordStore::analyzed_hashes(const ResultSettings& want) {
-    // Every chart with a candidate row under these settings, then
-    // get_summaries' answer for each (D79), so the batch skips exactly the
-    // charts the library's Analyzed chip counts. One lock over both reads, so
-    // no write lands between them.
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
-    std::vector<std::string> candidates;
-    {
-        std::string sql =
-            "SELECT DISTINCT r.song_id FROM records r JOIN profiles p ON p.id = r.profile_id"
-            " WHERE p.chartmode=?";
-        append_candidate_filter(sql, "p.");
-        Stmt s = prepare_read(db_, sql.c_str());
-        bind_text(s, 1, want.chartmode);
-        bind_candidate_filter(s, 2, want.cap, want.lens);
-        while (step_row(s)) candidates.push_back(column_text(s, 0));
-    }
+bool RecordStore::has_record(const RecordKey& key) {
+    // lookup owns "this chart has a current result under these settings"
+    // (D79): the library's Analyzed chip reads the same answer.
+    return lookup_one(key.hyhash, key.settings()).status == RecordStatus::Ready;
+}
 
-    const std::vector<SummaryLookup> found = get_summaries(candidates, want);
+std::vector<std::string> RecordStore::candidate_song_ids(const Profile& want) {
+    std::vector<std::string> out;
+    std::string sql =
+        "SELECT DISTINCT r.song_id FROM records r JOIN profiles p ON p.id = r.profile_id"
+        " WHERE p.chartmode=?";
+    append_candidate_filter(sql, "p.");
+    Stmt s = prepare_read(db_, sql.c_str());
+    bind_text(s, 1, want.chartmode);
+    bind_candidate_filter(s, 2, want.cap, want.lens);
+    while (step_row(s)) out.push_back(column_text(s, 0));
+    return out;
+}
+
+std::unordered_set<std::string> RecordStore::ready_song_ids(const Profile& want) {
+    // Every chart with a candidate record under these settings, then
+    // lookup's answer for each (D79), so the batch skips exactly the charts
+    // the library's Analyzed chip counts. One lock over both reads, so no
+    // write lands between them.
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    const std::vector<std::string> candidates = candidate_song_ids(want);
+    const std::vector<RecordLookup> found = lookup(candidates, want);
     std::unordered_set<std::string> out;
     for (size_t i = 0; i < candidates.size(); ++i)
         if (found[i].status == RecordStatus::Ready) out.insert(candidates[i]);
+    return out;
+}
+
+std::unordered_set<std::string> RecordStore::analyzed_hashes(const ResultSettings& want) {
+    return ready_song_ids(want);
+}
+
+std::vector<RecordRow> RecordStore::ready_records(const Profile& want) {
+    std::vector<RecordRow> out;
+    {
+        // As ready_song_ids: one lock over both reads.
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        const std::vector<std::string> candidates = candidate_song_ids(want);
+        for (RecordLookup& found : lookup(candidates, want))
+            if (found.status == RecordStatus::Ready) out.push_back(std::move(found.record));
+    }
+    // Best score first; a record that kept no paths has no score and goes
+    // last. Equal scores keep the song id's order, so a listing never
+    // shuffles between two reads.
+    std::sort(out.begin(), out.end(), [](const RecordRow& a, const RecordRow& b) {
+        if (a.paths.empty() != b.paths.empty()) return b.paths.empty();
+        if (!a.paths.empty() && a.paths.front().score != b.paths.front().score)
+            return a.paths.front().score > b.paths.front().score;
+        return a.song_id < b.song_id;
+    });
     return out;
 }
 

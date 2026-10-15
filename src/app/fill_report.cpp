@@ -12,7 +12,7 @@
 #include "core/model.h"  // group_thousands, counted
 #include "core/strutil.h"  // replace_all
 #include "parse/song.h"  // display_title, display_artist, display_charter
-#include "search/graph.h"  // fill_rule_name, fill_rule_description
+#include "search/graph.h"  // fill_rule_name, fill_rule_description, legacy_fills_for
 
 namespace hydra::app::fill_report {
 
@@ -207,6 +207,12 @@ const std::string& page_template() {
     return page;
 }
 
+// `lens` with only its fill rule changed. legacy_fills_for spells the flag.
+store::Lens with_fill_rule(store::Lens lens, FillDeadlineRule rule) {
+    lens.legacy_fills = legacy_fills_for(rule);
+    return lens;
+}
+
 }  // namespace
 
 std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
@@ -218,9 +224,8 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
     // side asks for 1.0 results, the new side for 1.1, whatever `lens` says.
     // RecordListing already carries the best path and its summary, so no blob
     // is ever inflated.
-    store::Lens old_lens = lens, new_lens = lens;
-    old_lens.legacy_fills = 1;
-    new_lens.legacy_fills = 0;
+    const store::Lens old_lens = with_fill_rule(lens, FillDeadlineRule::Ch10);
+    const store::Lens new_lens = with_fill_rule(lens, FillDeadlineRule::Ch11);
     const std::unordered_map<std::string, store::RecordListing> old_by_hash =
         report::records_by_hash(old_store, chartmode, cap, old_lens);
     const std::unordered_map<std::string, store::RecordListing> new_by_hash =

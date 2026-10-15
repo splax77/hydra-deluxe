@@ -152,11 +152,9 @@ TEST_CASE("rules: no rules value has the no-rules fingerprint") {
     // so no stored row can read Ready. That only works if no real rules
     // value ever hashes to it.
     CHECK(core::default_rules().fingerprint() != core::kNoRulesFingerprint);
-    CHECK(core::default_rules().retired_auto_fingerprint() != core::kNoRulesFingerprint);
     core::Rules other = core::default_rules();
     other.max_tied_paths = 2;
     CHECK(other.fingerprint() != core::kNoRulesFingerprint);
-    CHECK(other.retired_auto_fingerprint() != core::kNoRulesFingerprint);
 }
 
 TEST_CASE("rules: whole_chord takes every note's SP doubling on a squeeze-out") {
@@ -292,7 +290,7 @@ TEST_CASE("rules: max_tied_paths is one count per score, inside paths first") {
 
     SearchSettings settings;
     settings.sp_cap = 4;
-    settings.legacy_fill_deadline = true;
+    settings.legacy_fills = true;
     settings.ms_filter = 0.0;
     settings.rules.max_tied_paths = 1;
     const HydraRecord& record = corpus::analyzed(chart, settings);
@@ -358,7 +356,7 @@ TEST_CASE("rules: a path over the Path limit below the best score is dropped eve
 
     SearchSettings settings;
     settings.sp_cap = 4;
-    settings.legacy_fill_deadline = false;
+    settings.legacy_fills = false;
     settings.ms_filter = 10.0;
     settings.rules.max_tied_paths = 4;
     const HydraRecord& record = corpus::analyzed(chart, settings);
@@ -436,28 +434,12 @@ TEST_CASE("rules: the retired Auto keys are read and ignored") {
     CHECK(r.fingerprint() == expected.fingerprint());
 }
 
-TEST_CASE("rules: the retired Auto fingerprint is what Hydra 1.8.4 stamped") {
-    // Pinned. The store finds the results Auto saved by this value, so it must
-    // equal 1.8.4's auto_fingerprint() under its default ladder. The value is
-    // unchanged by D115's retirement of fill_length_measures, because the
-    // retired Auto text puts that field's default line back where 1.8.4 wrote
-    // it. (Before D115 the fixed-cap fingerprint was 0x70d2e96669604cf2, the
-    // one on every 4-bar row of a real 1.8.4 database.)
-    CHECK(core::default_rules().retired_auto_fingerprint() == 0x5b610b430a43a4beull);
-    // Every rule is in it, as it was in auto_fingerprint().
-    core::Rules ties = core::default_rules();
-    ties.max_tied_paths = 2;
-    CHECK(ties.retired_auto_fingerprint() != core::default_rules().retired_auto_fingerprint());
-    CHECK(ties.retired_auto_fingerprint() != ties.fingerprint());
-}
-
 TEST_CASE("rules: the fingerprint text is pinned") {
     // Pinned from one run at D115 B2-3, which retired fill_length_measures
     // (until then the values were 1.8.4's, from 6a1bb49). Every stored result
     // carries one of these, so a change to the text's names, number form or
     // line order would read every row Stale.
     CHECK(core::default_rules().fingerprint() == 0xaac02b481589a70eull);
-    CHECK(core::default_rules().retired_auto_fingerprint() == 0x5b610b430a43a4beull);
     // Every field moved off its default, so each line's name and number form
     // (whole numbers, fractions, the whole_chord word) is in the hash.
     core::Rules all;
@@ -468,7 +450,6 @@ TEST_CASE("rules: the fingerprint text is pinned") {
     all.fill_max_distance_beats = 0.25;
     all.fill_land_slop_beats = 0.1;
     CHECK(all.fingerprint() == 0x3ea9ab5620beca19ull);
-    CHECK(all.retired_auto_fingerprint() == 0xba12250c1201ff31ull);
 }
 
 TEST_CASE("rules: the default stamp is built once and matches a fresh record") {
@@ -476,11 +457,8 @@ TEST_CASE("rules: the default stamp is built once and matches a fresh record") {
     // every record built, which includes every record decoded.
     CHECK(&core::default_stamp() == &core::default_stamp());
     CHECK(core::default_stamp().fixed == core::default_rules().fingerprint());
-    CHECK(core::default_stamp().retired_auto ==
-          core::default_rules().retired_auto_fingerprint());
     CHECK(HydraRecord{}.rules_fingerprint == core::default_stamp().fixed);
     CHECK(core::RulesStamp::none().fixed == core::kNoRulesFingerprint);
-    CHECK(core::RulesStamp::none().retired_auto == core::kNoRulesFingerprint);
 }
 
 TEST_CASE("rules: a run is stamped with the rules fingerprint at cap 4 and at cap 8") {

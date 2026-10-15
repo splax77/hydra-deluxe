@@ -8,17 +8,17 @@
       "date": "2026-10-14",
       "decision": "D115 (spec section 2; plan task A1-1)",
       "added_by": "D115-A1-1",
-      "pattern": "FROM profiles(?: \\w+)? WHERE (?!.*\\bNOT\\b)(?!rules_fp\\b)",
+      "pattern": "FROM profiles(?: \\w+)? WHERE (?!.*\\bNOT\\b)",
       "anchor": "FROM profiles",
       "must_match": [
         "\"SELECT id FROM profiles WHERE chartmode=? AND \" + cap_match(\"\") + \" AND \" +",
         "\"SELECT id FROM profiles WHERE sp_cap = ? AND chartmode = ?\"",
         "\"SELECT p.id FROM profiles p WHERE p.chartmode = ?\"",
-        "\"SELECT id FROM profiles WHERE \" + cap_match(\"\") + \" AND \" + lens_match(\"\")"
+        "\"SELECT id FROM profiles WHERE \" + cap_match(\"\") + \" AND \" + lens_match(\"\")",
+        "\"profile_id IN (SELECT id FROM profiles WHERE rules_fp = ?)\","
       ],
       "must_not_match": [
         "\"song_id=? AND profile_id IN (SELECT id FROM profiles WHERE chartmode=? AND NOT \" +",
-        "\"profile_id IN (SELECT id FROM profiles WHERE rules_fp = ?)\",",
         "\"DELETE FROM profiles WHERE NOT EXISTS\"",
         "\"SELECT r.song_id FROM records r JOIN profiles p ON p.id = r.profile_id\""
       ],
@@ -29,7 +29,7 @@
           "why": "profile_id_for, the owner"
         }
       ],
-      "note": "A record is filed under the profile row whose mode, cap, lens, stamp and rules all match. A second lookup of that row by its key could match a different set of columns and file a record twice. The write purge's unreadable profiles (a WHERE with a NOT), the Auto rules' profiles (a WHERE on rules_fp alone) and the emptied profiles (a NOT EXISTS) are other questions, so those are left alone; any other WHERE on the profiles table is flagged. Decided by: D115 (spec section 2)"
+      "note": "A record is filed under the profile row whose mode, cap, lens, stamp and rules all match. A second lookup of that row by its key could match a different set of columns and file a record twice. The write purge's unreadable profiles (a WHERE with a NOT) and the emptied profiles (a NOT EXISTS) are other questions, so those are left alone; any other WHERE on the profiles table is flagged. Decided by: D115 (spec section 2)"
     },
     {
       "question": "Which stored rows belong to a chart no library row lists?",
@@ -57,6 +57,87 @@
         }
       ],
       "note": "The scan's purge and reidentify_chart both ask this of the stored records (purge_charts_not_in_library); a second SQL spelling could keep rows the other drops. Moved here from store.json when the records replaced the results table (D115 A1-1). Decided by: D87 items 3 and 4 (task storage-T1 review finding 1)"
+    },
+    {
+      "question": "How does an analysis become a record and its path rows?",
+      "owner": "prepare_record in src/store/record_store.cpp, through record_of",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "record_of",
+      "date": "2026-10-14",
+      "decision": "D115 (spec section 5; plan task A1-2)",
+      "added_by": "D115-A1-2",
+      "pattern": "all_paths\\(\\)",
+      "anchor": "all_paths()",
+      "must_match": [
+        "const std::vector<const Path*> paths = analysis.all_paths();",
+        "s.pathcount = static_cast<int>(record.all_paths().size());"
+      ],
+      "must_not_match": [
+        "std::vector<const Path*> HydraRecord::all_allzero_paths() const {",
+        "const Path& best_path() const { return paths.at(0); }"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "const std::vector<const Path*> paths = analysis.all_paths();",
+          "why": "record_of, the owner's walk"
+        }
+      ],
+      "exempt": [
+        {
+          "file": "src/app/path_view.cpp",
+          "why": "The Paths tab lists every path as a button to show it; it makes no record."
+        },
+        {
+          "file": "src/core/model.h",
+          "why": "Declares HydraRecord::all_paths, the walk the owner reads."
+        },
+        {
+          "file": "src/core/model.cpp",
+          "why": "Defines HydraRecord::all_paths, the walk the owner reads."
+        },
+        {
+          "file": "tools/replay.cpp",
+          "why": "hydra_replay dumps every path of the analysis as JSON; it saves no record."
+        },
+        {
+          "file": "tools/bench.cpp",
+          "why": "The benchmark prints how many paths an analysis found; it saves no record through this walk."
+        }
+      ],
+      "note": "Which paths a record keeps, in what rank, and what each path row says: a second walk of the analysis could rank or count them differently from the saved record. report::chart_rows is the one known copy, in the baseline until A2-2 moves the report to stored rows. Decided by: D115 (spec section 5)"
+    },
+    {
+      "question": "Which record does a save replace, and which rows does it purge?",
+      "owner": "RecordStore::save in src/store/record_store.cpp, through file_record and write_record",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "file_record",
+      "date": "2026-10-14",
+      "decision": "D115 (spec section 5; plan task A1-2)",
+      "added_by": "D115-A1-2",
+      "pattern": "DELETE FROM record(?:s|_paths)\\b|song_id=\\? AND profile_id",
+      "must_match": [
+        "\"DELETE FROM records WHERE song_id = ?\"",
+        "\"DELETE FROM record_paths WHERE song_id=?\"",
+        "\"song_id=? AND profile_id=?\","
+      ],
+      "must_not_match": [
+        "\"DELETE FROM profiles WHERE NOT EXISTS\"",
+        "\"profile_id IN (SELECT id FROM profiles WHERE rules_fp = ?)\","
+      ],
+      "owner_lines": [
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "\"song_id=? AND profile_id IN (SELECT id FROM profiles WHERE \" + mode_term + \"NOT \" +",
+          "why": "file_record's purge of the chart's unreadable records"
+        },
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "\"song_id=? AND profile_id=?\",",
+          "why": "write_record, the replace of the chart's record under its profile"
+        }
+      ],
+      "note": "A save replaces the chart's record under the same profile and purges the chart's records whose stamp this build cannot read; a second delete of a chart's records could take a readable record made under other rules (D51 call 8) or leave an unreadable one behind. Every delete of records goes through delete_records_where, so a hand-written DELETE on either table is flagged. Decided by: D115 (spec section 5)"
     }
   ]
 }

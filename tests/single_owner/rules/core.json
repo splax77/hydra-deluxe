@@ -1907,7 +1907,7 @@
       ],
       "must_not_match": [
         "ImGui::TableSetupColumn(dynamic_label(NoteDynamicType::Ghost).c_str());",
-        "lines.push_back(\"Ghost Notes:      \" + right10(path.score_ghosts));"
+        "{\"Ghost Notes:\", group_thousands(path.score_ghosts), false},"
       ],
       "scope": [
         "src"

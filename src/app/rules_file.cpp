@@ -18,6 +18,16 @@ namespace hydra::app {
 
 namespace {
 
+// hydra_rules.ini's retired keys (RetiredKey in app/config.h). Any other
+// unknown key is an error.
+constexpr RetiredKey kRetiredRulesKeys[] = {
+    {"auto_cap_ladder", "1.9.0"},  // Auto was removed
+    {"auto_budget_s", "1.9.0"},    // Auto was removed
+    // This release (D115): a generated fill starts on its measure line, so
+    // its length is no longer a rule.
+    {"fill_length_measures", "2.8.0"},
+};
+
 [[noreturn]] void bad(const std::string& path, const std::string& key,
                       const std::string& value, const char* want) {
     throw RulesFileError(path + ": " + key + " = \"" + value + "\" is not " + want);
@@ -80,16 +90,11 @@ core::Rules load_rules_file(const std::filesystem::path& path) {
             if (text.empty()) continue;
             throw RulesFileError(where + ": \"" + text + "\" is not key = value");
         }
-        // Auto's two keys (Auto was removed 2026-09-27). A file that still
-        // sets them keeps loading; whatever they say is ignored.
-        if (kv->key == "auto_cap_ladder" || kv->key == "auto_budget_s") continue;
-        // fill_length_measures, retired in D115: a generated fill starts on
-        // its measure line, so its length is no longer a rule. Read and
-        // ignored, like Auto's keys.
-        if (kv->key == "fill_length_measures") continue;
         const core::RulesField* field = nullptr;
         for (const core::RulesField& candidate : core::rules_fields())
             if (kv->key == candidate.name) field = &candidate;
+        // A live field wins, so a name brought back is never skipped.
+        if (!field && is_retired_key(kRetiredRulesKeys, kv->key)) continue;
         if (!field) throw RulesFileError(where + ": unknown key \"" + kv->key + "\"");
         set_field(where, *field, kv->value, r);
     }

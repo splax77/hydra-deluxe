@@ -17,7 +17,7 @@
       ],
       "must_not_match": [
         "throw Cancelled(\"opening the database was stopped\");",
-        "if (e.kind() == ErrorKind::Cancelled || e.kind() == ErrorKind::DatabaseUpgrade) throw;",
+        "if (e.kind() == ErrorKind::Cancelled) throw;",
         "case ErrorKind::Cancelled: return kStopped;"
       ],
       "owner_lines": [

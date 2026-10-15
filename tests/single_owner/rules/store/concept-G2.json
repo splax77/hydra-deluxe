@@ -24,7 +24,7 @@
         "    in_transaction([&] { write_row(row); });",
         "        ctl(\"BEGIN\");"
       ],
-      "note": "M28 found the begin, work, commit, roll-back-and-rethrow frame written five times, plus a sixth in copy_upgrade. All six now pass their bodies to in_transaction. The save paths (save_analysis, begin_save_group) open theirs through ctl with savepoints and save groups, another shape, and are not this row's question. Decided by: concept audit M28 (code-only, 2026-10-11)"
+      "note": "M28 found the begin, work, commit, roll-back-and-rethrow frame written six times. All of them now pass their bodies to in_transaction. The save paths (save_analysis, begin_save_group) open theirs through ctl with savepoints and save groups, another shape, and are not this row's question. Decided by: concept audit M28 (code-only, 2026-10-11)"
     },
     {
       "question": "Which columns does a scanned chart's library row read and write?",

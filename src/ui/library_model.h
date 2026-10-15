@@ -125,14 +125,12 @@ public:
     size_t set_summary_for(const std::string& md5, const store::SummaryLookup& lookup);
 
     // Changes when set_charts replaces the rows, and at no other time: a new
-    // summary changes a row's text but not which rows there are. The table
-    // measures its column widths again when this moves.
+    // summary changes a row's text but not which rows there are. With
+    // query_version, the table's reset key for dragged column widths.
     std::uint64_t rows_version() const { return rows_version_; }
-    // The rows (indices into rows()) whose summary changed since the last
-    // call, which this call forgets. set_charts forgets them too, since every
-    // row is new then. The table re-measures just these rows' cells in the
-    // columns whose text reads the summary.
-    std::vector<size_t> take_summary_changes();
+    // Changes each time set_query takes a different search, and at no other
+    // time. The table lets a dragged column go when this or rows_version moves.
+    std::uint64_t query_version() const { return query_version_; }
 
     void set_query(std::string_view text);
     void set_chip(StatusChip chip);
@@ -161,14 +159,9 @@ private:
     void resort();     // rebuilds sorted_ from rows_ and the sort
     void refilter();   // rebuilds order_ and counts_ from sorted_, the query and the chip
     void summaries_changed();
-    // Applies one lookup to row `index` and records the row for
-    // take_summary_changes when it changed. The one place a row's summary is
-    // replaced, so the record can never miss a row.
-    bool apply_summary_at(size_t index, const store::SummaryLookup& lookup);
-
     std::vector<LibraryRow> rows_;
     std::uint64_t rows_version_ = 0;
-    std::vector<size_t> summary_changes_;  // take_summary_changes
+    std::uint64_t query_version_ = 0;
     std::vector<size_t> sorted_;  // every row, in sort order
     std::vector<size_t> order_;
     std::string query_text_;

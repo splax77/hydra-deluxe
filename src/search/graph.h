@@ -52,6 +52,12 @@ inline FillDeadlineRule fill_rule_for(bool legacy_fills) {
     return legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;
 }
 
+// fill_rule_for read backwards: the legacy_fills flag that names `rule`. The
+// two are the only crossings between the flag and the rule.
+inline bool legacy_fills_for(FillDeadlineRule rule) {
+    return fill_rule_for(true) == rule;
+}
+
 // engine_mode_stamp read backwards: the rule a database's stamp names, or
 // nothing for a stamp neither rule writes.
 inline std::optional<FillDeadlineRule> fill_rule_from_stamp(std::string_view stamp) {

@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -21,7 +22,7 @@
 #include "ui/library_parts.h"  // analyze_shown_label
 #include "ui/preview_controller.h"
 #include "store/record_store.h"
-#include "store/upgrade_files.h"  // the upgrade's file names
+#include "store/upgrade_files.h"  // set_aside_path, with_side_files
 #include "ui/widgets.h"  // widest_digits, button_slot_width
 
 namespace uitest {
@@ -29,6 +30,7 @@ namespace uitest {
 // Defined in uitest_batch_reports.cpp.
 bool batch_search(ImGuiTestContext* ctx, const std::string& search);
 void dismiss_done(ImGuiTestContext* ctx);
+void start_library_batch(ImGuiTestContext* ctx);
 
 namespace {
 
@@ -685,7 +687,6 @@ void test_library_column_widths(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(table != nullptr && table->InnerWindow != nullptr, );
     const hydra::ui::LibraryViewState::ColumnWidths& cache = h.app->library_ui.column_widths;
     IM_CHECK_EQ(cache.specs.size(), static_cast<size_t>(hydra::ui::kLibraryColumnCount));
-    IM_CHECK_EQ(cache.rows_version, h.app->library.rows_version());
     IM_CHECK(hydra::ui::text_shares_sum_to_100(cache.specs));  // the real list
     hydra::ui::ColumnLayout layout;
     auto check_rule_widths = [&] {
@@ -728,6 +729,206 @@ void test_library_column_widths(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(layout.inner_width, layout.min_inner_width);  // every text column at its floor
     IM_CHECK_GT(layout.inner_width, cache.room.available);
     IM_CHECK(table->InnerWindow->ScrollbarX);
+}
+
+// Every shown column's width as ImGui gave it this frame.
+std::vector<float> given_widths(const ImGuiTable* table) {
+    std::vector<float> out;
+    for (int c = 0; c < table->ColumnsCount; ++c)
+        out.push_back(table->Columns[c].IsEnabled ? table->Columns[c].WidthGiven : -1.0f);
+    return out;
+}
+
+// What the cells say never moves a column (the user's decision 1, 2026-10-14).
+// A batch turns every Best path cell from "Not analyzed" into "<score>  <path>",
+// and turning 2x Bass off turns them back; the widths stay put both times.
+void test_library_widths_hold(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    ctx->Yield(3);  // the table settles, then takes the rule's widths
+    ImGuiTable* table = library_table();
+    IM_CHECK_RETV(table != nullptr, );
+    const std::vector<float> before = given_widths(table);
+    const auto check_held = [&](const char* when) {
+        const std::vector<float> now = given_widths(table);
+        for (size_t c = 0; c < before.size(); ++c) {
+            ctx->LogInfo("%s, column %zu: %.1f, before %.1f", when, c, now[c], before[c]);
+            IM_CHECK_EQ(now[c], before[c]);
+        }
+    };
+
+    // A batch over the corpus fills the Best path cells.
+    start_library_batch(ctx);
+    IM_CHECK_RETV(wait_until(ctx, [&] {
+        return h.app->batch_job && h.app->batch_job->snapshot().finished;
+    }, 300), );
+    dismiss_done(ctx);
+    const size_t analyzed = h.app->library.counts().analyzed;
+    IM_CHECK_GT(analyzed, size_t{0});
+    ctx->Yield(3);
+    check_held("after the batch");
+
+    // 2x Bass off: no record matches the new settings, so the cells change back.
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(h.app->settings.view_bass2x);  // the default the test relies on
+    ctx->ItemClick("**/##bass2x");
+    IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.view_bass2x; }, 5));
+    close_settings_panel(ctx);
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->view_settled() && h.app->library.counts().analyzed != analyzed;
+    }, 30));
+    ctx->Yield(3);
+    check_held("after 2x Bass off");
+
+    // And back on, which brings the batch's results back.
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    ctx->ItemClick("**/##bass2x");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_bass2x; }, 5));
+    close_settings_panel(ctx);
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->view_settled() && h.app->library.counts().analyzed == analyzed;
+    }, 30));
+    ctx->Yield(3);
+    check_held("after 2x Bass on");
+}
+
+// The Library's scrolling child window.
+ImGuiWindow* library_table_window() {
+    ImGuiTable* table = library_table();
+    return table ? table->InnerWindow : nullptr;
+}
+
+// Whether no other shown row has row k's title (rows are found by title).
+bool title_is_unique(Harness& h, size_t k) {
+    const std::string& title = h.app->library_row_at(k).title;
+    size_t same = 0;
+    for (size_t i = 0; i < h.app->view_row_count(); ++i)
+        if (h.app->library_row_at(i).title == title) ++same;
+    return same == 1;
+}
+
+// Row k of the table (in view order), found by its title as every test finds
+// a row. A title two shown rows share would find the wrong one, so that fails.
+ImRect row_rect(ImGuiTestContext* ctx, size_t k) {
+    Harness& h = harness(ctx);
+    IM_CHECK_RETV(title_is_unique(h, k), ImRect());
+    const std::string& title = h.app->library_row_at(k).title;
+    return ctx->ItemInfo(("//Hydra/**/" + escape_ref(title)).c_str()).RectFull;
+}
+
+// Whether `row` sits wholly inside the list's visible area.
+bool fully_shown(const ImGuiWindow* list, const ImRect& row) {
+    return row.Min.y >= list->InnerRect.Min.y && row.Max.y <= list->InnerRect.Max.y;
+}
+
+// The first shown row, from row `from` on, that sits wholly in the lower half
+// of the list's visible area; none when there is none.
+std::optional<size_t> row_in_lower_half(ImGuiTestContext* ctx, const ImGuiWindow* list,
+                                        size_t from) {
+    Harness& h = harness(ctx);
+    const float middle = list->InnerRect.GetCenter().y;
+    for (size_t k = from; k < h.app->view_row_count(); ++k) {
+        if (!title_is_unique(h, k)) continue;
+        const ImRect r = row_rect(ctx, k);
+        if (r.Min.y > middle && fully_shown(list, r)) return k;
+    }
+    return std::nullopt;
+}
+
+// A click on a row selects it and leaves the list where it is (the user's
+// rule, 2026-10-14: a click never scrolls). The clicked row sits in the lower
+// half, where centring it would move the list.
+void test_library_click_keeps_scroll(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    ctx->Yield(3);
+    ImGuiWindow* list = library_table_window();
+    IM_CHECK_RETV(list != nullptr, );
+    IM_CHECK_GT(list->ScrollMax.y, 0.0f);  // the corpus is taller than the list
+    ImGui::SetScrollY(list, IM_TRUNC(list->ScrollMax.y * 0.5f));
+    ctx->Yield(3);
+    const float scroll = list->Scroll.y;
+    IM_CHECK_GT(scroll, 0.0f);
+
+    const std::optional<size_t> k = row_in_lower_half(ctx, list, 0);
+    IM_CHECK_RETV(k.has_value(), );
+    const std::string title = h.app->library_row_at(*k).title;
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick(("**/" + escape_ref(title)).c_str());
+    IM_CHECK(wait_until(ctx, [&] { return h.app->selected && h.app->selected->title == title; },
+                        5));
+    ctx->Yield(3);
+    ctx->LogInfo("scroll before the click %.1f, after %.1f", scroll, list->Scroll.y);
+    IM_CHECK_EQ(list->Scroll.y, scroll);
+}
+
+// Next in the song panel moves the list only for a row that is not wholly on
+// screen, and only until that row's bottom meets the list's bottom edge (the
+// user's answer 4). Previous to a row already on screen moves nothing.
+void test_library_next_scrolls_just_enough(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    ctx->Yield(3);
+    ImGuiWindow* list = library_table_window();
+    IM_CHECK_RETV(list != nullptr, );
+
+    // The panel opens on a row in the lower half of the view.
+    const std::optional<size_t> start = row_in_lower_half(ctx, list, 0);
+    IM_CHECK_RETV(start.has_value(), );
+    const std::string title = h.app->library_row_at(*start).title;
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick(("**/" + escape_ref(title)).c_str());
+    IM_CHECK(wait_until(ctx, [&] { return h.app->selected && h.app->selected->title == title; },
+                        5));
+    ctx->Yield(3);
+
+    // Next, one row at a time, until the list moves. Every row it passes on
+    // the way was on screen, so the list holds still for those. The cap is
+    // the corpus's row count: the list must move before Next runs out.
+    const size_t rows = h.app->view_row_count();
+    std::optional<size_t> moved_at;
+    for (size_t k = *start + 1; k < rows && !ctx->IsError(); ++k) {
+        const float scroll = list->Scroll.y;
+        const bool was_shown = fully_shown(list, row_rect(ctx, k));
+        ctx->ItemClick("**/>##nextsong");
+        IM_CHECK_RETV(wait_until(ctx, [&] {
+            return h.app->selected && h.app->selected->notespath == h.app->view_row(k).notespath;
+        }, 5), );
+        ctx->Yield(3);
+        if (list->Scroll.y != scroll) {
+            ctx->LogInfo("row %zu moved the list from %.1f to %.1f (it was %s)", k, scroll,
+                         list->Scroll.y, was_shown ? "on screen" : "off screen");
+            IM_CHECK(!was_shown);
+            moved_at = k;
+            break;
+        }
+    }
+    IM_CHECK_RETV(moved_at.has_value(), );
+
+    // The row came in at the bottom edge, not the middle.
+    const ImRect row = row_rect(ctx, *moved_at);
+    const float spacing = ImGui::GetStyle().ItemSpacing.y;
+    ctx->LogInfo("row bottom %.1f, list bottom %.1f, spacing %.1f", row.Max.y,
+                 list->InnerRect.Max.y, spacing);
+    IM_CHECK(fully_shown(list, row));
+    IM_CHECK_GE(row.Max.y, list->InnerRect.Max.y - spacing);
+
+    // Previous goes to the row above, which is on screen: nothing moves.
+    const float scroll = list->Scroll.y;
+    ctx->ItemClick("**/<##prevsong");
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->selected && h.app->selected->notespath == h.app->view_row(*moved_at - 1).notespath;
+    }, 5));
+    ctx->Yield(3);
+    IM_CHECK_EQ(list->Scroll.y, scroll);
 }
 
 // A hydra_ui.ini that only records a sort on Best path (what sorting by it,
@@ -818,12 +1019,12 @@ int64_t number_in_file(const std::string& path, const std::string& sql) {
 // The titles the startup test's library file holds.
 constexpr const char* kStartupTitles[] = {"Startup Song One", "Startup Song Two"};
 
-// Writes a library file in the layout before summary-only storage (D87): two
-// charts, three results with the structure blob, and the detail tables. One
-// result is from before the stars column (a score and no stars), which the
-// upgrade leaves behind. Returns the file's path, or "" if a step failed.
-std::string write_old_layout_library(Harness& h) {
-    const std::string path = h.temp_dir + "\\old_layout_seed.db";
+// Writes a library file in the layout Hydra 2.2.0 to 2.7.0 wrote: two charts
+// and three results. One result is from before the stars column (a score and
+// no stars), which the conversion leaves behind. Returns the file's path, or
+// "" if a step failed.
+std::string write_v220_library(Harness& h) {
+    const std::string path = h.temp_dir + "\\v220_seed.db";
     if (!hydra::store::remove_with_side_files(path)) return "";
     {
         hydra::store::RecordStore seed(path);
@@ -838,32 +1039,31 @@ std::string write_old_layout_library(Harness& h) {
         }
         seed.rebuild_chart_library(charts);
     }
-    // The results table as that layout made it, with literal rows. The column
-    // list is the owner's (kSchema2ResultsColumns) plus the three later
-    // columns; each row's values follow that order.
+    // The record tables go and the results table comes in as 2.2.0 made it,
+    // with literal rows.
     const std::string sql =
-        std::string("DROP TABLE IF EXISTS results;") + hydra::test::kDetailLayoutResultsTableSql + ";" +
-        "INSERT INTO results (" + hydra::store::kSchema2ResultsColumns +
-        ", legacy_fills, rules_fp, structure) VALUES"
-        " (1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'mode', 'v', 8, 0, 0, 0, 2, '1', 1000,"
-        " NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 5, 0, x'', x'07'),"
-        " (2, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mode', 'v', 8, 0, 0, 0, 2, '1', 2000,"
-        " NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 6, 0, x'', x'07'),"
-        " (3, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'other', 'v', 8, 0, 0, 0, 2, '1', 3000,"
-        " NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, x'', x'07');" +
-        hydra::test::kDetailTablesSql;
+        std::string("DROP TABLE record_paths; DROP TABLE records; DROP TABLE profiles;") +
+        hydra::test::kV220ResultsTableSql +
+        ";INSERT INTO results (result_id, hyhash, chartmode, hyversion, sp_cap, ms_enabled,"
+        " ms_value, depth_mode, depth_value, legacy_fills, bestpath, score, stars, rules_fp)"
+        " VALUES"
+        " (1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'mode', 'v', 8, 0, 0, 0, 2, 0, '1', 1000, 5, x''),"
+        " (2, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mode', 'v', 8, 0, 0, 0, 2, 0, '1', 2000, 6, x''),"
+        " (3, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'other', 'v', 8, 0, 0, 0, 2, 0, '1', 3000, NULL,"
+        " x'');";
     if (!hydra::test::run_sql_on_file(path, sql)) return "";
     return path;
 }
 
 // The window keeps drawing while the store opens (the DBUP plan, part 1). A
-// library file in the old layout makes the open run the upgrade; an OpenGate
-// holds that open on its worker thread, and the frames still come with the
-// upgrade's screen on them, in the words the user chose for it. Once the gate
-// opens, the library lists the file's charts and the upgrade left no temp file.
+// 2.2.0 library file makes the open convert its results to records; an
+// OpenGate holds that open on its worker thread, and the frames still come
+// with the upgrade's screen on them, in the words the user chose for it. Once
+// the gate opens, the library lists the file's charts and nothing was set
+// aside.
 void test_startup_screen(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    const std::string seed = write_old_layout_library(h);
+    const std::string seed = write_v220_library(h);
     IM_CHECK(!seed.empty());
     const std::string seed_before = h.seed_db;
     h.seed_db = seed;
@@ -878,16 +1078,17 @@ void test_startup_screen(ImGuiTestContext* ctx) {
                    std::string::npos &&
                text.find("This happens once. Your charts and results are kept.") !=
                    std::string::npos &&
-               text.find("Copying your library...") != std::string::npos;
+               text.find("Updating the results table...") != std::string::npos;
     }, 10);
     IM_CHECK(upgrade_screen_drawn);
     // Frames kept coming while the open was held, and it is still held.
     IM_CHECK(ImGui::GetFrameCount() > frame_before);
     IM_CHECK(!h.app->store_ready());
     IM_CHECK(gate.started() > 0);
-    // The bar under the words is fed by the store's own count of rows to copy.
+    // The bar under the words is fed by the store's own count of rows to
+    // convert.
     const hydra::ui::StoreOpenProgress held = h.app->store_open_progress();
-    IM_CHECK(held.step == hydra::ui::StoreOpenProgress::Step::Copying);
+    IM_CHECK(held.step == hydra::ui::StoreOpenProgress::Step::ConvertingRecords);
     IM_CHECK(held.upgrading);
     IM_CHECK(held.rows_total > 0);
 
@@ -897,15 +1098,16 @@ void test_startup_screen(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(h.app->library.rows().size(), size_t{2});
     for (const char* title : kStartupTitles)
         IM_CHECK(wait_until(ctx, [&] { return visible_text(h).find(title) != std::string::npos; }, 5));
-    // The upgrade swapped its files and tidied up.
-    for (const std::string& leftover :
-         {hydra::store::upgrading_path(h.db_path), hydra::store::old_path(h.db_path)})
-        for (const std::string& file : hydra::store::with_side_files(leftover))
-            IM_CHECK(!fs::exists(fs::u8path(file)));
-    // The two results with stars came across; the one without did not. The
-    // detail tables are gone.
+    // A file that converts is never set aside.
+    for (const std::string& file :
+         hydra::store::with_side_files(hydra::store::set_aside_path(h.db_path)))
+        IM_CHECK(!fs::exists(fs::u8path(file)));
+    // The two results with stars became records; the one without did not.
+    // The results table is gone.
     IM_CHECK_EQ(number_in_file(h.db_path, hydra::test::kResultsRowCountSql), int64_t{2});
-    IM_CHECK_EQ(number_in_file(h.db_path, hydra::test::kDetailTablesCountSql), int64_t{0});
+    IM_CHECK_EQ(number_in_file(h.db_path,
+                               "SELECT COUNT(*) FROM sqlite_master WHERE name = 'results'"),
+                int64_t{0});
 }
 
 }  // namespace
@@ -926,6 +1128,9 @@ const std::vector<TestEntry>& library_tests() {
         {"library-column-order", test_library_column_order},
         {"library-layout", test_library_layout},
         {"library-column-widths", test_library_column_widths},
+        {"library-widths-hold", test_library_widths_hold},
+        {"library-click-keeps-scroll", test_library_click_keeps_scroll},
+        {"library-next-scrolls-just-enough", test_library_next_scrolls_just_enough},
         {"library-columns-at-start", test_library_columns_at_start},
         {"library-twin-rows", test_library_twin_rows},
         {"startup-screen", test_startup_screen},

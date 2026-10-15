@@ -141,12 +141,14 @@ git show --remerge-diff <M>
 
 That diff shows the merge against what git would have made by itself, so everything in it was written by hand. Ask this page's one question of those lines: is any rule now answered twice? A conflict resolved by keeping both sides of a list is normal and needs nothing. New logic written while resolving is reviewed like any change, with "How to review" above.
 
-Fix what you find the same way (D107): fix it yourself, commit, sign off. Your fix commits sit directly above M, and the gate covers them because you wrote them and you sign off on the last one. Nobody else may commit between M and your commits.
+Sometimes commits already sit directly above M when you start, for example a change the main session made after the merge. Read those too, with `git log -p <M>..<topmost commit>`, and review them like any change, with "How to review" above. Your sign-off then covers M and every commit above it, so your key is the topmost commit.
+
+Fix what you find the same way (D107): fix it yourself, commit, sign off. Your fix commits go on top, and your key is your own last commit. The gate accepts a sign-off on the topmost commit from anyone except the agent that made M.
 
 Your review file holds these three lines, each on its own line, then the usual sections from "Output":
 
 ```
-Key: <M if you committed nothing, else your last commit>
+Key: <the topmost commit: M itself when nothing sits above it>
 Verdict: CLEAN
 Scope: resolution
 ```
