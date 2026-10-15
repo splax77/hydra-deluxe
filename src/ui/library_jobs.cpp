@@ -131,6 +131,8 @@ void StoreOpenJob::run() {
             };
             store_ = std::make_unique<store::RecordStore>(db_path_, store::OldFilePolicy::SetAside,
                                                           rules_, on_step);
+            if (store_->set_aside_path())
+                startup_notice_ = app::old_library_set_aside_notice(db_path_);
             // The conversion's counts stay on the bar while the library is read.
             if (!report(Step::LoadingLibrary, rows_done_.load(), rows_total_.load()))
                 throw JobCancelled{};

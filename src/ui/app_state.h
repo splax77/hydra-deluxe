@@ -266,6 +266,16 @@ public:
     // Hydra closes (D72 item 1).
     bool store_open_failed() const { return store_open_error_ != nullptr; }
     std::exception_ptr store_open_error() const { return store_open_error_; }
+    // The sentence the startup open left to show once, in an information box
+    // over the window, or "" when it left none. Today only a set-aside library
+    // file leaves one (StoreOpenJob::startup_notice). main.cpp shows it
+    // between frames and then calls startup_notice_closed; a test reads it
+    // here.
+    const std::string& startup_notice() const { return startup_notice_; }
+    // The box has closed: forgets the sentence and asks for the scan the
+    // fresh library needs (request_scan), so the scan starts after the box.
+    // Does nothing when no sentence is waiting.
+    void startup_notice_closed();
     // Where the startup open is, for the startup screen. A default progress
     // when no open is running.
     StoreOpenProgress store_open_progress() const;
@@ -621,8 +631,8 @@ public:
     void cancel_dm_fetch();
     void cancel_dm_report();
 
-    // Set by the details modal's "Rescan library" remedy and the Song
-    // folders' "Scan now": the main window calls start_scan on its next frame
+    // Set by the details modal's "Rescan library" remedy, the Song folders'
+    // "Scan now" and startup_notice_closed: the main window calls start_scan on its next frame
     // (the scan modal belongs to it), which refuses when can_scan says no.
     bool request_scan = false;
 
@@ -666,6 +676,7 @@ private:
     // the failure. tick() and wait_store_open() both collect through it.
     void collect_store_open();
     std::exception_ptr store_open_error_;
+    std::string startup_notice_;  // what startup_notice returns
 
     // The click's job lifecycle on the UI thread: drop a late result, then
     // re-identify an edited chart, save the summary when needed and show the

@@ -161,6 +161,14 @@ static void show_startup_error(HWND owner, const std::exception& e)
     ::MessageBoxW(owner, text.c_str(), hydra::kWindowTitleW, MB_OK | MB_ICONERROR);
 }
 
+// A sentence the startup open left to say once (AppState::startup_notice), in
+// an information box over the window. Hydra carries on once it closes.
+static void show_startup_notice(HWND owner, const std::string& sentence)
+{
+    const std::wstring text = hydra::utf8_to_wide(sentence);
+    ::MessageBoxW(owner, text.c_str(), hydra::kWindowTitleW, MB_OK | MB_ICONINFORMATION);
+}
+
 // The raw text for a Win32, Direct3D or ImGui backend call that failed at
 // startup. It carries no error kind, so the box reads the fallback sentence.
 static std::runtime_error startup_call_failed(const char* call, const char* code_name,
@@ -360,6 +368,13 @@ int main()
             } catch (const std::exception& e) {
                 return fail_startup(e);
             }
+        }
+        // A library file set aside at startup is said once, outside any
+        // ImGui frame; closing the box starts the scan.
+        if (own_app && !own_app->startup_notice().empty())
+        {
+            show_startup_notice(hwnd, own_app->startup_notice());
+            own_app->startup_notice_closed();
         }
 
         // Skip rendering while nothing Hydra draws can be seen: the main
