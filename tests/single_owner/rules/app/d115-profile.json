@@ -28,7 +28,7 @@
         "return BatchRun{chartmode_key(), lens(), to_analysis_settings()};",
         "return BatchRun{filed_under.chartmode, filed_under.lens, to_analysis_settings()};",
         "view_job = std::make_unique<ViewJob>(*selected, settings.profile(),",
-        "return store.ready_song_ids(run.profile());",
+        "return store.ready_song_ids(run.profile);",
         "const store::Profile at_ch = s.profile_at_clone_hero_cap();",
         "const store::Profile ch10 = s.profile_with_fills(FillDeadlineRule::Ch10);",
         "return store::CapQuery::at(sp_cap);"
