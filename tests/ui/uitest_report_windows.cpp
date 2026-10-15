@@ -816,18 +816,7 @@ void test_open_path(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     const std::string first = quoted_title(h, 0);
     const std::string second = quoted_title(h, 1);
-
-    // Before anything is analyzed, the report reads an empty store and says
-    // how to fill it.
-    h.app->show_path_report();
-    IM_CHECK(wait_until(ctx, [&] {
-        return h.app->report_job == nullptr &&
-               h.app->path_report_build() == hydra::ui::ReportBuild::Failed;
-    }, 60));
-    ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Nothing is analyzed yet. Click a song or run a batch to analyze it."));
-    h.app->close_path_report();  // it covers the toolbar
-    ctx->Yield(2);
+    // Opening with nothing analyzed runs a batch first: test_open_analyzes.
 
     // The finished strip's Open report.
     IM_CHECK(batch_search(ctx, first));
@@ -844,11 +833,21 @@ void test_open_path(ImGuiTestContext* ctx) {
     IM_CHECK(path_window() == nullptr);
     dismiss_done(ctx);
 
-    // The toolbar's Open path report.
+    // The toolbar's Open path report. The corpus's other charts have no
+    // result, so with the threshold at 0 the opening asks first; the
+    // confirm's Cancel leaves the report to list what is stored, so the
+    // second chart below still has none.
+    h.app->report_confirm_above = 0;
     ctx->SetRef("//Hydra");
     ctx->ItemClick("**/Open path report");
     ctx->Yield(2);
     IM_CHECK_RETV(path_window() != nullptr, );
+    IM_CHECK(h.app->path_report_awaits_confirm());
+    ctx->SetRef("//Analyze library");
+    ctx->ItemClick("Cancel");
+    ctx->Yield(2);
+    IM_CHECK(h.app->batch_job == nullptr);
+    h.app->report_confirm_above = hydra::ui::AppState::kReportConfirmAbove;
     // The Esc above let the rows go, so this opening builds them again.
     IM_CHECK(wait_until(ctx, [&] {
         return h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
@@ -872,6 +871,55 @@ void test_open_path(ImGuiTestContext* ctx) {
     ctx->SetRef(path_window());
     ctx->ItemClick("Refresh");
     held_build_then_rows(ctx, hold);
+}
+
+// Opening the report with nothing analyzed runs a batch over the corpus first
+// (plan 2026-10-15, question 8): the window shows the batch's own count over
+// its bar, then the rows once the batch's report lands. The batch's workers
+// wait at a gate before each real analysis, so the count is read at 0.
+void test_open_analyzes(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+
+    static std::atomic<bool> go{false};
+    go = false;
+    struct Release {
+        ~Release() { go = true; }  // a failed check never leaves the workers waiting
+    } release;
+    hydra::ui::set_app_batch_analyzer_for_test(
+        [](const std::string& path, const hydra::app::AnalysisSettings& settings,
+           const std::function<void(float)>& progress) {
+            while (!go.load()) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            return hydra::app::analyze_chart_file(path, settings, progress);
+        },
+        hydra::app::batch_worker_count());
+    ctx->SetRef("//Hydra");
+    IM_CHECK(ctx->ItemExists("**/Open path report"));  // offered with nothing analyzed
+    ctx->ItemClick("**/Open path report");
+    hydra::ui::set_app_batch_analyzer_for_test({}, 1);
+    IM_CHECK_RETV(h.app->batch_job != nullptr, );
+    IM_CHECK(h.app->path_report_batch() == h.app->batch_job.get());
+    IM_CHECK(wait_until(ctx, [&] {
+        const hydra::ui::BatchJob::Snapshot s = h.app->batch_job->snapshot();
+        return !s.preparing && s.total > 0;
+    }, 10));
+    const int total = h.app->batch_job->snapshot().total;
+    ctx->Yield(2);
+    IM_CHECK_RETV(path_window() != nullptr, );
+    IM_CHECK(on_screen(h, "Analyzing 0 of " + hydra::counted(total, "chart", "charts")));
+
+    go = true;
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->report_job == nullptr &&
+               h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
+    }, 300));
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "Charts shown"));
+    IM_CHECK(on_screen(h, path_count_tail(h)));
+    h.app->close_path_report();
+    ctx->Yield(2);
 }
 
 // Picking a player closes the picker and opens the comparison; the window's
@@ -1218,6 +1266,7 @@ void test_out_of_date(ImGuiTestContext* ctx) {
 const std::vector<TestEntry>& report_window_flow_tests() {
     static const std::vector<TestEntry> entries = {
         {"report-window-open-path", test_open_path},
+        {"report-window-open-analyzes", test_open_analyzes},
         {"report-window-dm-handover", test_dm_handover},
         {"report-window-row-click", test_row_click},
         {"report-window-reopen", test_reopen},
