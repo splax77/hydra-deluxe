@@ -9,7 +9,7 @@
 #include "core/error_kind.h"
 #include "core/model.h"  // counted, group_thousands
 #include "parse/song.h"  // display_title, display_artist, display_charter
-#include "search/graph.h"  // fill_rule_name
+#include "search/graph.h"  // fill_rule_for, fill_rule_name
 
 namespace hydra::app::dm_report {
 
@@ -37,9 +37,10 @@ std::string why_not_comparable(Difficulty difficulty, int sp_cap, bool legacy_fi
     if (!is_clone_hero_cap(sp_cap))
         return "Needs SP cap " + std::to_string(kCloneHeroSpCap) +
                ", Clone Hero's rule: the leaderboard's scores were played under it.";
-    if (legacy_fills)
-        return std::string("Needs ") +
-               fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Long) +
+    // The fill rule the board's scores were played under.
+    const FillDeadlineRule board_rule = FillDeadlineRule::Ch11;
+    if (fill_rule_for(legacy_fills) != board_rule)
+        return std::string("Needs ") + fill_rule_name(board_rule, FillRuleNameStyle::Long) +
                " fills: untick \"1.0 fills\". The leaderboard is played on current Clone Hero.";
     // D104 item 6: a board score never records its modifiers.
     if (note_shuffle)

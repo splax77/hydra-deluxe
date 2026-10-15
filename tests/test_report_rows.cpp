@@ -78,7 +78,7 @@ ChartAnalyzer fixture_analyzer() {
         if (path != kTiedFile) return analyze_chart_file(path, settings, on_progress);
         HydraRecord record = test::tied_variant_record();
         record.sp_cap = settings.sp_cap;
-        record.legacy_fills = settings.legacy_fill_deadline;
+        record.legacy_fills = settings.legacy_fills;
         return AnalysisResult{std::move(record), test::beat_song({}, {}, 13440)};
     };
 }
