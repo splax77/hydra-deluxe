@@ -34,11 +34,9 @@ REPLY_MARGIN_S = 15.0  # how much longer than a command's own timeout to wait fo
 HELLO_TIMEOUT_S = 60.0  # how long hydra_start waits for the hello line
 REPLY_CAP_CHARS = 12_000  # the longest reply Claude is handed
 
-# A mirror, not an owner: the interpreter's starting timeout lives in the C++
-# command interpreter (run_script's `timeout` in tests/ui/uitest_script.cpp,
-# moving to tests/ui/uitest_commands.cpp). The helper needs it to know how long
-# a command may legitimately take before it calls Hydra silent.
-ENGINE_DEFAULT_TIMEOUT_S = 30.0
+# The session's own cap on a wait is not kept here: the hello line carries it
+# (its owner is CommandSession in tests/ui/uitest_commands.h), and the helper
+# follows the timeout commands it sends itself.
 
 # Plumbing granularity, not behaviour: how many log lines a crash report
 # quotes, and how often the helper retries opening the pipe while the
@@ -127,7 +125,11 @@ def running_processes():
 
 
 def _same_folder(a, b):
-    return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+    # realpath first, so a junction, a symbolic link or an 8.3 short name
+    # cannot make one folder look like two.
+    def key(p):
+        return os.path.normcase(os.path.realpath(p))
+    return key(a) == key(b)
 
 
 def hydra_running_from(library_dir, processes):
@@ -242,18 +244,30 @@ def describe_exit(code):
 # One live session.
 
 
+def file_stamp(path):
+    """(modification time, size) of `path`, or None when it does not exist."""
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
 class Session:
-    def __init__(self, mode, proc, argv, scratch, log_path, keep):
+    def __init__(self, mode, proc, argv, scratch, log_path, log_stamp, keep):
         self.mode = mode
         self.proc = proc
         self.argv = argv
         self.scratch = scratch  # the helper's own folder: snapshot, shots, log
         self.log_path = log_path
+        # The log's file_stamp before launch. A log with the same stamp after
+        # a crash is an old run's, which the crash report must not quote.
+        self.log_stamp = log_stamp
         self.keep = keep
         self.pipe = None
         self.buf = b""
         self.hello = {}
-        self.timeout = ENGINE_DEFAULT_TIMEOUT_S
+        self.timeout = None  # seconds; read from the hello line
 
     def engine_scratch(self):
         s = self.hello.get("scratch")
@@ -323,6 +337,7 @@ class Helper:
             # writes its log beside itself (main.cpp's --uitest-log default).
             stdout_path = scratch / "stdout.log"
             log_path = (exe.parent / "hydra_uitest.log") if mode == "window" else stdout_path
+            log_stamp = file_stamp(log_path)
             argv = self.launcher(exe, args)
             # The child must never inherit this helper's stdin and stdout:
             # they are the MCP channel to Claude Code.
@@ -333,7 +348,7 @@ class Helper:
                     creationflags=subprocess.CREATE_NO_WINDOW)
             finally:
                 out.close()
-            s = Session(mode, proc, argv, scratch, log_path, keep)
+            s = Session(mode, proc, argv, scratch, log_path, log_stamp, keep)
             self.session = s
             try:
                 self._connect(s)
@@ -344,6 +359,7 @@ class Helper:
             lines = [f"started a {h.get('mode', mode)} session",
                      f"  pid: {h.get('pid', proc.pid)}",
                      f"  engine scratch: {h.get('scratch', '?')}",
+                     f"  wait cap: {s.timeout:g} s, unless a hydra_wait_idle or hydra_wait_text call gives its own",
                      f"  helper scratch: {scratch}" + (" (kept after stop)" if keep else "")]
             return "\n".join(lines + notes)
 
@@ -370,10 +386,14 @@ class Helper:
             hello = msg["hello"]
             if not msg.get("ok") or not isinstance(hello, dict):
                 raise ValueError
+            timeout = hello["timeout"]
+            if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
+                raise ValueError
         except (ValueError, KeyError, TypeError):
             raise HydraGone(self._kill_report(
-                s, silent=f"Hydra's first line was not a hello line: {line[:200]!r}"))
+                s, silent=f"Hydra's first line was not a hello line with a timeout: {line[:200]!r}"))
         s.hello = hello
+        s.timeout = float(timeout)
 
     def stop(self, keep_window=False):
         with self.lock:
@@ -489,7 +509,9 @@ class Helper:
             lines = [f"Hydra exited with code {describe_exit(code)}. The session is stopped;"
                      " call hydra_start."]
         tail = self._log_tail(s)
-        if tail:
+        if tail is None:
+            lines.append(f"no log written: {s.log_path} is unchanged since launch")
+        elif tail:
             lines.append(f"last lines of {s.log_path}:")
             lines += ["  " + t for t in tail]
         es = s.engine_scratch()
@@ -501,6 +523,12 @@ class Helper:
         return "\n".join(lines)
 
     def _log_tail(self, s):
+        """The log's last lines, or None when this run wrote no log: the file
+        is missing, or has the stamp it had before launch. Hydra.exe truncates
+        its log when it opens it, so a changed file holds only this run's text."""
+        stamp = file_stamp(s.log_path)
+        if stamp is None or stamp == s.log_stamp:
+            return None
         try:
             text = s.log_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -545,18 +573,17 @@ class Helper:
         except ValueError:
             return False, f"Hydra sent a line that is not a JSON reply: {reply[:200]!r}", prefix
         if msg.get("ok"):
+            # The helper follows the timeouts it sets. A reset keeps the
+            # session's timeout (run_command's reset starts a fresh app only).
             if verb == "timeout":
                 try:
                     s.timeout = float(rest)
                 except ValueError:
                     pass
-            elif verb == "reset":
-                # Whether the interpreter's timeout survives a reset is its
-                # call. Taking the larger of the two can only make the helper
-                # wait longer than needed, never call a slow reply silent.
-                s.timeout = max(s.timeout, ENGINE_DEFAULT_TIMEOUT_S)
             return True, msg.get("text") or "", prefix
-        text = f"failed: {msg.get('error', '')}"
+        # The label names the reply's field. The error's own wording, which
+        # already says the line failed, is answer()'s in tests/ui/uitest_live.cpp.
+        text = f"error: {msg.get('error', '')}"
         if msg.get("log"):
             text += "\n" + msg["log"].rstrip("\n")
         return False, text, prefix
@@ -594,8 +621,11 @@ class Helper:
 
     def run(self, script):
         with self.lock:
-            lines = [ln.strip() for ln in script.splitlines()]
-            lines = [ln for ln in lines if ln and not ln.startswith("#")]
+            # Every line goes to Hydra, blank and comment lines too: which
+            # lines are no command is the live channel's call (command_line in
+            # tests/ui/uitest_script.cpp), and it answers each of them. So
+            # "stopped at line N" counts the script's own lines.
+            lines = script.splitlines()
             out = []
             for i, line in enumerate(lines, 1):
                 try:
@@ -635,8 +665,9 @@ def build_server():
         """Start a session; stops any session already running. mode is "headless"
         (hydra_uitest on the test corpus, no window) or "window" (the real Hydra
         window on a fresh snapshot copy of the library folder: library_dir, else
-        HYDRA_LIBRARY_DIR, else C:\\Program Files\\Hydra). keep=True keeps the
-        helper's scratch folder after hydra_stop."""
+        HYDRA_LIBRARY_DIR, else DEFAULT_LIBRARY_DIR in tools/hydra_ui_mcp.py).
+        keep=True keeps the helper's scratch folder, screenshots included,
+        after hydra_stop."""
         return HELPER.start(mode, library_dir, keep)
 
     @server.tool()
@@ -708,7 +739,10 @@ def build_server():
 
     @server.tool()
     def hydra_screenshot(name: str) -> str:
-        """Save a PNG of the screen; the reply names its path."""
+        """Save a PNG of the screen under exactly this file name, so give it
+        the .png yourself. The reply is "screenshot: <path>". A file in the
+        helper's scratch folder goes when hydra_stop deletes that folder (see
+        keep on hydra_start)."""
         return HELPER.send(f"screenshot {name}")
 
     @server.tool()
