@@ -419,6 +419,12 @@ bool engine_stopping(ImGuiTestContext* ctx) {
     return ctx->Engine->TestQueueCoroutineShouldExit;
 }
 
+void clear_abort(ImGuiTestContext* ctx) {
+    if (engine_stopping(ctx)) return;
+    ctx->Abort = false;
+    ctx->Engine->Abort = false;
+}
+
 bool wait_until(ImGuiTestContext* ctx, const std::function<bool()>& pred, double seconds) {
     auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(seconds);
     while (!pred()) {

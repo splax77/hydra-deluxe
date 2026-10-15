@@ -142,7 +142,8 @@ void reset_app(Harness& h, const std::string& rules_text = "", bool wait_store =
 void register_tests(Harness& h);
 void register_script_test(Harness& h);
 // Register the "live" test (uitest_live.cpp), which --live queues: it takes
-// command lines from a named pipe until the client leaves or sends quit.
+// command lines from a named pipe. What ends it is run_live's loop
+// (uitest_live.cpp).
 void register_live_test(Harness& h);
 // Register one test under the name --test and --list use. The script and live
 // tests register through it.
@@ -162,6 +163,11 @@ inline Harness& harness(ImGuiTestContext* ctx) {
 // The engine's stop runs the test until it returns, so any loop in a test
 // that waits on something outside it must end when this holds.
 bool engine_stopping(ImGuiTestContext* ctx);
+
+// Forget an abort the engine raised on its own, such as the person at the
+// window holding Esc, so the test goes on. Does nothing while the engine is
+// stopping: that abort is meant.
+void clear_abort(ImGuiTestContext* ctx);
 
 // Yield frames until pred() holds or `seconds` of wall-clock pass. Jobs run
 // on real threads, so the wait is wall-clock, not frame-count. Returns false

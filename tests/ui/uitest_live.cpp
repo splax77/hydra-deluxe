@@ -200,10 +200,23 @@ std::string log_since(ImGuiTestContext* ctx, size_t from) {
     return from < size ? std::string(buf.c_str() + from, size - from) : std::string();
 }
 
-// Run one line and build its reply. A failure is reported, not fatal: the
-// test's status goes back to Running, as the engine does around teardown, so
-// the next line runs normally.
+// Put the live test back in the state a command starts from. A failure is
+// reported, not fatal: the test's status goes back to Running, as the engine
+// does around teardown. An Esc held by the person at the window is not fatal
+// either. The engine reads it as "abort the test", sets Abort on itself and on
+// the context, and clears neither until its whole test queue is done, which
+// for the live test is the end of the session. Both are cleared here, except
+// when the engine is stopping (clear_abort says so).
+void recover_for_next_command(ImGuiTestContext* ctx) {
+    clear_abort(ctx);
+    if (ctx->IsError()) ctx->TestOutput->Status = ImGuiTestStatus_Running;
+}
+
+// Run one line and build its reply; the line after it runs normally
+// (recover_for_next_command).
 std::string answer(ImGuiTestContext* ctx, CommandSession& session, const std::string& line) {
+    // An Esc held while the app sat idle is still set from then.
+    recover_for_next_command(ctx);
     const size_t log_start = static_cast<size_t>(ctx->TestOutput->Log.Buffer.size());
     CommandResult r;
     try {
@@ -211,7 +224,7 @@ std::string answer(ImGuiTestContext* ctx, CommandSession& session, const std::st
     } catch (const std::exception& e) {
         r = {false, std::string("C++ exception: ") + e.what()};
     }
-    if (ctx->IsError()) ctx->TestOutput->Status = ImGuiTestStatus_Running;
+    recover_for_next_command(ctx);
     if (r.ok) return live::ok_line(r.text, session.timeout);
     // On a failure, run_command's text is the one-line reason (CommandResult).
     return live::fail_line(r.text, log_since(ctx, log_start), session.timeout);

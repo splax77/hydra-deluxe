@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from ctypes import wintypes
 from pathlib import Path
@@ -35,6 +36,12 @@ import hydra_ui_mcp as hm  # noqa: E402
 
 FAKE = HERE / "fake_hydra_live.py"
 WM_CLOSE = 0x0010  # winuser.h
+WM_KEYDOWN = 0x0100
+WM_KEYUP = 0x0101
+VK_ESCAPE = 0x1B
+# Long enough that the test engine reads the held Esc as an abort request;
+# the engine's own hold time is in imgui_te_engine.cpp (the "holding ESC" block).
+ESC_HOLD_S = 1.0
 HELPER_SCRIPT = HERE / "hydra_ui_mcp.py"
 
 TOOL_NAMES = {
@@ -582,7 +589,21 @@ class RealExeLayer(unittest.TestCase):
         post_close(proc.pid)
         self.assertEqual(proc.wait(timeout=hm.REPLY_MARGIN_S), 0)
         out = self.helper.send("state")
-        self.assertTrue(out.startswith("The user closed Hydra's window (exit code 0)."), out)
+        self.assertTrue(out.startswith("Hydra's window closed and Hydra exited with code 0:"), out)
+
+    @unittest.skipUnless(os.environ.get("HYDRA_LIVE_WINDOW_TEST") == "1",
+                         "opens a window; set HYDRA_LIVE_WINDOW_TEST=1")
+    def test_holding_esc_in_the_window_leaves_the_session_working(self):
+        lib = self.window_seed()
+        self.helper.start("window", library_dir=str(lib))
+        self.assertIn("store=ready", self.helper.send("state"))
+        # The person watching holds Esc (to close a popup, say). The test
+        # engine reads a held host Esc as "abort the test".
+        post_key(self.helper.session.proc.pid, VK_ESCAPE, held_s=ESC_HOLD_S)
+        out = self.helper.send("state")
+        self.assertIn("store=ready", out)
+        self.assertIn("store=ready", self.helper.send("state"))
+        self.assertEqual(self.helper.stop(), "Hydra exited with code 0")
 
     @unittest.skipUnless(os.environ.get("HYDRA_LIVE_WINDOW_TEST") == "1",
                          "opens a window; set HYDRA_LIVE_WINDOW_TEST=1")
@@ -605,9 +626,8 @@ class RealExeLayer(unittest.TestCase):
         self.assertFalse(window_engine.exists())
 
 
-def post_close(pid):
-    """Ask each visible window of process `pid` to close (WM_CLOSE), as the
-    user's click on the close button does."""
+def visible_windows(pid):
+    """The visible windows of process `pid`; the test fails when it has none."""
     user32 = ctypes.WinDLL("user32", use_last_error=True)
     found = []
 
@@ -621,9 +641,29 @@ def post_close(pid):
 
     user32.EnumWindows(each, 0)
     if not found:
-        raise AssertionError(f"process {pid} shows no window to close")
+        raise AssertionError(f"process {pid} shows no window")
+    return user32, found
+
+
+def post_close(pid):
+    """Ask each visible window of process `pid` to close (WM_CLOSE), as the
+    user's click on the close button does."""
+    user32, found = visible_windows(pid)
     for hwnd in found:
         user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+
+
+def post_key(pid, vk, held_s):
+    """Press key `vk` in the window of process `pid`, hold it `held_s`
+    seconds and let go, as the user's keyboard does (the window gets the
+    messages the keyboard sends it)."""
+    user32, found = visible_windows(pid)
+    scan = user32.MapVirtualKeyW(vk, 0)
+    for hwnd in found:
+        user32.PostMessageW(hwnd, WM_KEYDOWN, vk, 1 | scan << 16)
+    time.sleep(held_s)
+    for hwnd in found:
+        user32.PostMessageW(hwnd, WM_KEYUP, vk, 1 | scan << 16 | 3 << 30)
 
 
 def keep_temp_launcher(exe, args):

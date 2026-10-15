@@ -501,9 +501,11 @@ class Helper:
                      " The session is stopped; call hydra_start."]
         elif code == 0 and s.mode == "window":
             # The helper did not send quit, so a clean exit of the window is
-            # the user closing it: a plain stop, not a crash.
-            lines = ["The user closed Hydra's window (exit code 0). The session is stopped;"
-                     " call hydra_start."]
+            # the user closing it, or a quit line a tool call passed on: a
+            # plain stop, not a crash. The helper does not read the lines it
+            # passes on, so the message does not say which.
+            lines = ["Hydra's window closed and Hydra exited with code 0: the user closed it,"
+                     " or a quit command was sent. The session is stopped; call hydra_start."]
         else:
             lines = [f"Hydra exited with code {describe_exit(code)}. The session is stopped;"
                      " call hydra_start."]
