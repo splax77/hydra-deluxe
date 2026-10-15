@@ -337,7 +337,7 @@ TEST_CASE("a cancelled click job stops before counting") {
     const hydra::store::ChartLibraryEntry entry =
         entry_for(corpus::first_chart_with_suffix(".chart"));
     const hydra::app::Settings settings;
-    ViewJob job(entry, settings.record_key(entry.md5), settings.to_analysis_settings(),
+    ViewJob job(entry, settings.profile(), settings.to_analysis_settings(),
                 /*analysis_off=*/false, /*generation=*/0);
     job.cancel();
     job.start();

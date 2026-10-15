@@ -59,7 +59,7 @@ void set_legacy_fills(ImGuiTestContext* ctx, bool on) {
 hydra::store::RecordStatus row0_status_at_cap(Harness& h, int cap) {
     hydra::app::Settings at = h.app->settings;
     at.sp_cap = cap;
-    return h.app->store->get_summary(at.record_key(h.app->library_row_at(0).entry.md5)).status;
+    return h.app->store->lookup_one(h.app->library_row_at(0).entry.md5, at.profile()).status;
 }
 
 // The tables drawn in the last two frames whose column `column` has header
@@ -191,7 +191,7 @@ void test_legacy_fills(ImGuiTestContext* ctx) {
     IM_CHECK(!h.app->viewed.record->legacy_fills);
     const std::string best11 = h.app->viewed.record->best_path().pathstring();
     IM_CHECK(!compare_disabled());
-    IM_CHECK(h.app->store->counts().second == 1);
+    IM_CHECK(h.app->store->record_count() == 1);
 
     set_legacy_fills(ctx, true);
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.legacy_fills; }, 5));
@@ -201,14 +201,14 @@ void test_legacy_fills(ImGuiTestContext* ctx) {
     IM_CHECK(analyzed_with_paths(ctx));
     IM_CHECK(h.app->viewed.record->legacy_fills);
     IM_CHECK(h.app->library_row_at(0).status == hydra::store::RecordStatus::Ready);
-    IM_CHECK(h.app->store->counts().second == 2);
+    IM_CHECK(h.app->store->record_count() == 2);
 
     set_legacy_fills(ctx, false);
     IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.legacy_fills; }, 5));
     IM_CHECK(analyzed_with_paths(ctx));
     IM_CHECK(h.app->library_row_at(0).status == hydra::store::RecordStatus::Ready);
     IM_CHECK(!h.app->viewed.record->legacy_fills);
-    IM_CHECK(h.app->store->counts().second == 2);  // the 1.1 row was already there
+    IM_CHECK(h.app->store->record_count() == 2);  // the 1.1 row was already there
     IM_CHECK(wait_until(ctx, [&] { return visible_text(h).find(best11) != std::string::npos; },
                         5));
     IM_CHECK(!compare_disabled());
@@ -941,7 +941,7 @@ void test_panel_close_cancels(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return h.app->view_settled(); }, 30));
     IM_CHECK(h.app->viewed.state == hydra::ui::ViewedSong::State::None);
     IM_CHECK(h.app->view_row_status(0) == hydra::store::RecordStatus::NotAnalyzed);
-    IM_CHECK(h.app->store->counts().second == 0);
+    IM_CHECK(h.app->store->record_count() == 0);
 }
 
 // Cancel shows "Analysis cancelled." and "Try again", and saves nothing; Try
@@ -966,7 +966,7 @@ void test_view_cancel_try_again(ImGuiTestContext* ctx) {
     IM_CHECK(visible_text(h).find("Analyzing chart") == std::string::npos);
     IM_CHECK(ctx->ItemExists("**/Try again"));
     IM_CHECK(h.app->view_row_status(0) == hydra::store::RecordStatus::NotAnalyzed);
-    IM_CHECK(h.app->store->counts().second == 0);
+    IM_CHECK(h.app->store->record_count() == 0);
 
     gate.open();
     ctx->ItemClick("**/Try again");
@@ -1009,7 +1009,7 @@ void test_view_rules_broken(ImGuiTestContext* ctx) {
     text = visible_text(h);
     IM_CHECK(text.find("Dynamics enabled: yes") != std::string::npos);
     IM_CHECK(text.find("Ghosts: 5") != std::string::npos);
-    IM_CHECK(h.app->store->counts().second == 0);  // nothing saved
+    IM_CHECK(h.app->store->record_count() == 0);  // nothing saved
 }
 
 // The panel has no Analyze or Re-analyze button in any state: a click
@@ -1128,7 +1128,7 @@ void test_view_setting_burst(ImGuiTestContext* ctx) {
     for (int cap = start_cap + 1; cap < last_cap; ++cap)
         IM_CHECK(row0_status_at_cap(h, cap) == hydra::store::RecordStatus::NotAnalyzed);
     IM_CHECK(row0_status_at_cap(h, last_cap) == hydra::store::RecordStatus::Ready);
-    IM_CHECK(h.app->store->counts().second == 2);  // the first click's and the last cap's
+    IM_CHECK(h.app->store->record_count() == 2);  // the first click's and the last cap's
     const std::string best = h.app->viewed.record->best_path().pathstring();
     IM_CHECK(wait_until(ctx, [&] { return visible_text(h).find(best) != std::string::npos; }, 5));
 }

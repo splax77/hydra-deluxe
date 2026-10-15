@@ -267,7 +267,7 @@ TEST_CASE("collect_fill_rows: copies come from the 1.1 library, an unlisted char
     // D79 item 3. The 1.1 database's library lists kBoth in two folders. The
     // 1.0 database's library lists kOldOnly three times, which the page never
     // reads. kOldOnly is not in the 1.1 library, so it counts once
-    // (store::RecordStore::copies_of); put() lists kNewOnly there once.
+    // (store::ChartIndex::copies); put() lists kNewOnly there once.
     store::RecordStore old_store(":memory:");
     store::RecordStore new_store(":memory:");
 

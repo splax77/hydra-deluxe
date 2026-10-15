@@ -109,8 +109,8 @@ TEST_CASE("a batch result for an open Ready chart changes its row and keeps the 
     GenerationWatcher records;
     records.changed(app->record_generation);
 
-    // An empty result (no paths, so no score) under the same key.
-    hydra::test::store_batch_result(*app->store, app->settings.record_key(song.md5));
+    // An empty result (no paths, so no score) under the same profile.
+    hydra::test::save_batch_record(*app->store, song.md5, app->settings.profile());
     run_redo_batch_over(*app, song.title);
 
     app->tick_library(0.0);  // the batch's last refresh

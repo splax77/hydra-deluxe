@@ -183,7 +183,7 @@ TEST_CASE("settings, reports, and the database work past 260 characters") {
     const std::string db = dir.deep + "\\hydra.db";
     {
         hydra::store::RecordStore store(db);
-        CHECK(store.counts() == std::pair<int64_t, int64_t>{0, 0});
+        CHECK(store.record_count() == 0);
         store.close();
     }
     CHECK(hydra::file_exists_utf8(db));

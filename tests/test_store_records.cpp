@@ -163,7 +163,21 @@ TEST_CASE("store: a save keeps a readable record made under other rules (D51 cal
     // current one wins the lookup, and the file still holds both profiles.
     store.save(prepare_record("h1", at4(), fixture().record));
     CHECK(store.lookup_one("h1", at4()).status == RecordStatus::Ready);
-    CHECK(store.counts().second == 3);
+    CHECK(store.record_count() == 3);
+}
+
+TEST_CASE("store: record_count counts every record, under any profile") {
+    RecordStore store(":memory:");
+    CHECK(store.record_count() == 0);
+    store.save(prepare_record("h1", at4(), fixture().record));
+    CHECK(store.record_count() == 1);
+    // A save under the same profile replaces the record, so the count holds.
+    store.save(prepare_record("h1", at4(), fixture().record));
+    CHECK(store.record_count() == 1);
+    // The same chart in another mode is a second record; another chart a third.
+    store.save(prepare_record("h1", at4("other mode"), fixture().record));
+    store.save(prepare_record("h2", at4(), fixture().record));
+    CHECK(store.record_count() == 3);
 }
 
 TEST_CASE("store: lookup's three answers against sibling profiles") {
