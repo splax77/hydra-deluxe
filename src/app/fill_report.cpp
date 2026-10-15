@@ -8,7 +8,7 @@
 #include "app/config.h"  // Settings::profile_with_fills
 #include "app/html_page.h"
 #include "app/library_query.h"  // search_field
-#include "app/report.h"  // listed_records, lacks_chart_library, nothing_under_settings, kDash
+#include "app/report.h"  // library_lookup, lacks_chart_library, nothing_under_settings, kDash
 #include "app/report_view.h"  // folded_key
 #include "core/model.h"  // group_thousands, counted
 #include "core/strutil.h"  // replace_all
@@ -218,10 +218,12 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& store,
     // the old side asks for 1.0 results, the new side for 1.1, whatever
     // `settings` says. Both keep the charts the store's library lists.
     const store::ChartIndex library = store.chart_index();
-    const std::unordered_map<std::string, store::RecordRow> old_by_id = report::listed_records(
-        store, settings.profile_with_fills(FillDeadlineRule::Ch10), library);
-    const std::unordered_map<std::string, store::RecordRow> new_by_id = report::listed_records(
-        store, settings.profile_with_fills(FillDeadlineRule::Ch11), library);
+    const std::unordered_map<std::string, store::RecordRow> old_by_id =
+        report::library_lookup(store, settings.profile_with_fills(FillDeadlineRule::Ch10), library)
+            .ready;
+    const std::unordered_map<std::string, store::RecordRow> new_by_id =
+        report::library_lookup(store, settings.profile_with_fills(FillDeadlineRule::Ch11), library)
+            .ready;
 
     // Walk the union of both key sets so a chart with a record under one
     // rule only still gets a row. Ordered so the page's rows come out
@@ -241,7 +243,7 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& store,
         // Copies come from the library (D79 item 3).
         row.copies = library.copies(id);
 
-        // listed_records kept only charts the library lists, so it names
+        // library_lookup kept only charts the library lists, so it names
         // every row.
         const store::ChartLibraryEntry* named = library.naming(id);
         row.song = display_title(named->title);

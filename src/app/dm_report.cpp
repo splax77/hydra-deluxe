@@ -5,7 +5,7 @@
 
 #include "app/config.h"          // Settings::with_known_chartmode, profile_at_clone_hero_cap
 #include "app/display_format.h"  // format_percent, percent_steps
-#include "app/report.h"  // listed_records, lacks_chart_library, kNoChartLibrary
+#include "app/report.h"  // library_lookup, lacks_chart_library, kNoChartLibrary
 #include "core/error_kind.h"
 #include "core/model.h"  // counted, group_thousands
 #include "parse/song.h"  // display_title, display_artist, display_charter
@@ -75,7 +75,7 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
 
     // One read of every listed Ready record under the profile, by song id.
     const std::unordered_map<std::string, store::RecordRow> by_id =
-        report::listed_records(store, profile, library);
+        report::library_lookup(store, profile, library).ready;
 
     std::vector<DmReportRow> rows;
     rows.reserve(scores.size());
