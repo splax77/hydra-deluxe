@@ -73,6 +73,24 @@ TEST_CASE("theme: disabled input text is the dimmed grey") {
     CHECK(kDisabledInputTextColor.w == kDimTextColor.w);
 }
 
+TEST_CASE("theme: a selected row is the dark teal and its text stays readable") {
+    ImGui::CreateContext();
+    apply_theme();
+    const ImVec4& header = ImGui::GetStyle().Colors[ImGuiCol_Header];
+    CHECK(header.x == kSelectedRowColor.x);
+    CHECK(header.y == kSelectedRowColor.y);
+    CHECK(header.z == kSelectedRowColor.z);
+    CHECK(header.w == kSelectedRowColor.w);
+    ImGui::DestroyContext();
+    // The user's choice of 2026-10-14: (0, 48, 48).
+    CHECK(kSelectedRowColor.y * 255.0f == doctest::Approx(48.0f));
+    // Every text colour a Library or report row draws in.
+    CHECK(contrast(kDefaultTextColor, kSelectedRowColor) >= 4.5);
+    CHECK(contrast(kBestPathColor, kSelectedRowColor) >= 4.5);
+    CHECK(contrast(kDimTextColor, kSelectedRowColor) >= 4.5);
+    CHECK(contrast(kNewSongColor, kSelectedRowColor) >= 4.5);
+}
+
 TEST_CASE("theme: frames and headers share one hover teal") {
     ImGui::CreateContext();
     apply_theme();
