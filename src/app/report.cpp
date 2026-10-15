@@ -170,16 +170,6 @@ std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
     };
 }
 
-std::string left_out_line(const std::vector<ReportFailure>& failures,
-                          const store::ChartIndex& library) {
-    if (failures.empty()) return std::string();
-    std::vector<std::string> ids;
-    ids.reserve(failures.size());
-    for (const ReportFailure& f : failures) ids.push_back(f.song_id);
-    return "Left out: " + hydra::counted(library.count(ids), "chart", "charts") +
-           " whose file couldn't be read.";
-}
-
 std::string nothing_under_settings(int cap, const std::string& middle,
                                    const std::string& ending) {
     return std::string(kNothingUnderSettings) + " (SP cap " + group_thousands(cap) + ", " +
@@ -197,7 +187,6 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
         out.empty_reason = EmptyReason::Cancelled;
         return out;
     }
-    out.failures = std::move(collected.failures);
     out.library = std::move(collected.library);
     const std::vector<ReportRow>& rows = collected.rows;
     // collect_rows refused a report with no run, so it is set here.

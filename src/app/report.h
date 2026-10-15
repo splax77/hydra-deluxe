@@ -148,19 +148,10 @@ struct ReportOptions {
     std::optional<BatchRun> run;
 };
 
-// A chart left off the page (D89 item 1): its song id, the file the notice
-// names and why.
-struct ReportFailure {
-    std::string song_id;
-    std::string notespath;
-    std::string error;
-};
-
 // What collect_rows found: the page's rows and the library they were read
 // against.
 struct CollectedRows {
     std::vector<ReportRow> rows;
-    std::vector<ReportFailure> failures;
     store::ChartIndex library;
 };
 
@@ -170,12 +161,6 @@ struct CollectedRows {
 // order. Nothing is analyzed and no chart file is opened. hit_window_ms feeds
 // the tier labels only.
 CollectedRows collect_rows(store::RecordStore& store, const ReportOptions& options);
-
-// The line a report shows under its subtitle when charts were left out (D89
-// item 1), counted through `library` (store::ChartIndex::count). Empty when
-// none were.
-std::string left_out_line(const std::vector<ReportFailure>& failures,
-                          const store::ChartIndex& library);
 
 // ---- generate_report -------------------------------------------------------
 // The whole report in one call: counts + rows + the standard framing
@@ -229,9 +214,6 @@ struct GeneratedReport {
     // kNoChartLibrary. Empty otherwise: an empty database and a cancel keep
     // each caller's own words.
     std::string why_empty;
-    // collect_rows' failures: charts left off the page because their file
-    // failed to load or analyze. The page names them (left_out_line).
-    std::vector<ReportFailure> failures;
     // The rows themselves, one per path, in collect_rows' order. Empty when
     // there is no page.
     std::vector<ReportRow> paths;

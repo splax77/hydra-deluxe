@@ -121,27 +121,6 @@ void out_of_date_strip(const Frame& f) {
     end_strip();
 }
 
-// The notice strip: the report's sentence and the files under Show files, on
-// the problem strip's colour (mock board 2d).
-void notice_strip(const Frame& f, Memory& m) {
-    if (f.state != ReportBuild::Ready || f.notice.empty()) return;
-    begin_strip("##leftout", kProblemStripBg);
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(kWarningColor, "%s", f.notice.c_str());
-    if (!f.notice_files.empty()) {
-        ImGui::SameLine();
-        if (ImGui::Button("Show files")) m.show_files = !m.show_files;
-        if (m.show_files) {
-            ImGui::PushFont(g_mono_font, 0.0f);
-            ImGui::PushStyleColor(ImGuiCol_Text, kDimTextColor);
-            for (const std::string& file : f.notice_files) ImGui::BulletText("%s", file.c_str());
-            ImGui::PopStyleColor();
-            ImGui::PopFont();
-        }
-    }
-    end_strip();
-}
-
 // The rows a building report will fill, drawn as grey bars (mock board 2a).
 void placeholder_rows() {
     if (!ImGui::BeginTable("##placeholder", 4, ImGuiTableFlags_SizingStretchSame)) return;
@@ -263,7 +242,6 @@ bool begin(bool* open, const Frame& f, Memory& m) {
 
     out_of_date_strip(f);
     header(f);
-    notice_strip(f, m);
     ImGui::Spacing();
     return !state_body(f);
 }

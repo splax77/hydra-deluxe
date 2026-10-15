@@ -161,12 +161,7 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
     frame.analysis_off_sentence = app::kAnalysisOffSentence;
     frame.analysis_off_error = input.rules_error;
     frame.failure_sentence = app::kPathReportFailed;
-    if (result) {
-        frame.notice = app::report::left_out_line(result->failures, result->library);
-        for (const app::report::ReportFailure& f : result->failures)
-            frame.notice_files.push_back(f.notespath);
-        if (!w.view) frame.empty_text = result->why_empty;
-    }
+    if (result && !w.view) frame.empty_text = result->why_empty;
 
     if (report_frame::begin(open, frame, w.memory) && w.view) draw_body(w, frame, input);
     report_frame::end(open, frame, w.memory);

@@ -1,23 +1,4 @@
 {
-  "known_copies": [
-    {
-      "question": "How does an analysis become a record and its path rows?",
-      "file": "src/app/report.cpp",
-      "line_text": "const std::vector<const Path*> paths = record.all_paths();",
-      "removed_by": "D115-A2-2",
-      "date": "2026-10-14",
-      "added_by": "D115-A1-2",
-      "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Under which settings is a chart analyzed (its profile)?",
-      "file": "src/app/report.cpp",
-      "line_text": "return PageSettings{settings.cap_query(), settings.lens(), settings.hit_window_ms};",
-      "removed_by": "D115-A2-2",
-      "date": "2026-10-14",
-      "added_by": "D115-A1-4",
-      "remove_by": "2026-10-28"
-    }
-  ],
+  "known_copies": [],
   "known_clones": []
 }

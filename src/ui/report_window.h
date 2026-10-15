@@ -1,6 +1,6 @@
 // The report windows (D103): the path report and the dmleaderboards
 // comparison, each in its own OS window beside Hydra. Both are one frame
-// (the header, notice strips, tiles, controls, count line, table, footer
+// (the header, the out-of-date strip, tiles, controls, count line, table, footer
 // note and every state) filled with each report's rows. The frame draws what
 // it is handed: the rows' order, filtering and count line come from the
 // shared TableView (app/report_view.h), the columns and keep-rules from each
@@ -156,10 +156,6 @@ struct Frame {
     std::string failure_error;
     // Ready with no rows: what the report says instead.
     std::string empty_text;
-    // The notice strip's sentence (empty: no strip), and the files it can
-    // fold open.
-    std::string notice;
-    std::vector<std::string> notice_files;
     std::string footer;
     // Whether the window offers "Compare another player...".
     bool compare_another = false;
@@ -235,7 +231,6 @@ private:
 // What a window keeps between frames.
 struct Memory {
     char search[256] = {};
-    bool show_files = false;
     std::optional<size_t> selected;  // index into the rows
     bool sort_pushed = false;        // the view's sort was handed to the table
     bool visible = false;            // Begin drew the window this frame

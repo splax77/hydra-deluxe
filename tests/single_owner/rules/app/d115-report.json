@@ -1,0 +1,47 @@
+{
+  "rules": [
+    {
+      "question": "Which paths does a record keep, and in what order?",
+      "owner": "store::prepare_record in src/store/record_store.cpp (the one walk of HydraRecord::all_paths)",
+      "owner_file": "src/store/record_store.cpp",
+      "owner_symbol": "prepare_record",
+      "date": "2026-10-14",
+      "decision": "D115 (spec section 5; plan task A2-2)",
+      "added_by": "D115-A2-2",
+      "pattern": "all_paths\\(\\)",
+      "must_match": [
+        "const std::vector<const Path*> paths = record.all_paths();",
+        "std::vector<const Path*> flat = record.all_paths();"
+      ],
+      "must_not_match": [
+        "std::vector<const Path*> HydraRecord::all_allzero_paths() const {",
+        "for (const store::PathRow& p : record.paths) {"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "const std::vector<const Path*> paths = analysis.all_paths();",
+          "why": "prepare_record's walk, through record_of"
+        }
+      ],
+      "exempt": [
+        {
+          "file": "src/app/path_view.cpp",
+          "why": "The Paths tab lists every path of the analysis it shows (build_path_list); it keeps no record."
+        },
+        {
+          "file": "src/core/model.h",
+          "why": "Declares HydraRecord::all_paths, the walk the owner reads."
+        },
+        {
+          "file": "src/core/model.cpp",
+          "why": "Defines HydraRecord::all_paths, the walk the owner reads."
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The path report once walked each analysis itself to pick and rank its rows (report::chart_rows). Since D115 A2-2 it reads the rows the one save kept, so a page that walks an analysis's paths again could rank or cut them differently from the stored record. Decided by: D115 (spec section 5)"
+    }
+  ]
+}

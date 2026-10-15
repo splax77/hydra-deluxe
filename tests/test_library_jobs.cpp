@@ -374,6 +374,9 @@ TEST_CASE("jobs: an empty report shows generate_report's reason, or the app's ow
     CHECK_FALSE(nothing.ok());
     CHECK(nothing.message() ==
           hydra::app::plain_error(hydra::KindedError(hydra::ErrorKind::NoRecords, "x")));
+    // The sentence the user approved for an empty database (plan question 3).
+    CHECK(nothing.message() ==
+          "Nothing is analyzed yet. Click a song or run a batch to analyze it.");
 }
 
 TEST_CASE("jobs: a cancelled leaderboard fetch is not an error") {
