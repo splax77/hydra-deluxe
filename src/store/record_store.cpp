@@ -1505,9 +1505,11 @@ void RecordStore::file_record(const Profile& profile, const std::string& hyversi
     // The caller holds the lock and an open transaction, so a failure
     // anywhere leaves the store exactly as it was.
 
-    // (1) Anything this chart holds, in any mode, that this build can never
-    //     read -- another Hydra version's stamp, which includes every row an
-    //     old migration left -- is superseded by a write here. A record made
+    // (1) Anything this chart holds, in the modes `scope` names (PurgeScope:
+    //     ThisMode is the old write_row's, until A1-5 deletes it), that this
+    //     build can never read -- another Hydra version's stamp, which
+    //     includes every row an old migration left -- is superseded by a
+    //     write here. A record made
     //     under other rules is not: it reads Ready again once the rules match
     //     (D51 call 8). The test is against what is current, not against this
     //     record: a test writing a deliberately old-stamped record must not
