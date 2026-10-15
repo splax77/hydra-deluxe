@@ -134,15 +134,6 @@
       "date": "2026-10-14",
       "added_by": "CS-T5a",
       "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Which way is text aligned?",
-      "file": "src/app/path_view.cpp",
-      "line_text": "std::snprintf(buf, sizeof(buf), \"%10s\", group_thousands(v).c_str());",
-      "removed_by": "CS-T5b: the score breakdown's numbers start in one column after the longest label (answer 11)",
-      "date": "2026-10-14",
-      "added_by": "CS-T5a",
-      "remove_by": "2026-10-28"
     }
   ],
   "known_clones": []
