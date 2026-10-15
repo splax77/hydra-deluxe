@@ -41,7 +41,7 @@ namespace hydra::ui {
 
 // Where the startup open of the library file is, for the startup screen. The
 // steps before LoadingLibrary are the store's own (store::OpenStep; it
-// reports them while it opens and, for an old file, upgrades); LoadingLibrary
+// reports them while it opens and, for a convertible file, converts it); LoadingLibrary
 // is the job's read of the chart list and its summaries once the store is
 // open.
 struct StoreOpenProgress {

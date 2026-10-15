@@ -12,11 +12,11 @@
 //   * `charts` — the chart library, one row per scanned file. A record's
 //     names come from here (kNamingCopiesSql).
 //
-// A file from 2.2.0 to 2.7.0 held one `results` row per chart and settings
-// instead. The first open by this build converts it into the three tables
-// above, once (convert_results). A file from an older release is set aside or
+// A Convertible file (store/library_file.h) held one `results` row per chart
+// and settings instead. The first open by this build converts it into the
+// three tables above, once (convert_results). A TooOld file is set aside or
 // refused, as the caller's OldFilePolicy says; which file is which is
-// classify_library_file's (store/library_file.h).
+// classify_library_file's.
 //
 // Why the full settings and not just the cap: a run under a different ms
 // limit or score range is a different answer, and overwriting one with the
@@ -416,13 +416,13 @@ inline constexpr int kBatchWalAutocheckpointPages = 10000;
 // same reason (Mozilla bug 1820478).
 inline constexpr int kJournalSizeLimitBytes = 4194304;
 
-// ---- opening, and the 2.2.0 to 2.7.0 conversion ---------------------------
+// ---- opening, and converting a Convertible file ----------------------------
 
 // What the store is doing while it opens, in the order the steps run. An open
 // of a file this build already wrote reports Opening alone.
 enum class OpenStep {
     Opening,            // the journal settings and the tables
-    ConvertingRecords,  // convert_results turning a 2.2.0 to 2.7.0 file's results into records
+    ConvertingRecords,  // convert_results turning a Convertible file's results into records
 };
 
 // One progress report from an opening store.
@@ -455,7 +455,7 @@ public:
     // Throws KindedError: Cancelled when `progress` asked to stop,
     // OldLibraryRefused for a file too old to convert under Refuse,
     // OldLibrarySetAsideFailed when SetAside could not rename it,
-    // DatabaseUpgrade when converting a 2.2.0 to 2.7.0 file failed with the
+    // DatabaseUpgrade when converting a Convertible file failed with the
     // file whole, and DatabaseOpen for any other failed open.
     RecordStore(const std::string& dbpath, OldFilePolicy old_files,
                 core::RulesStamp rules_fingerprint, OpenProgressFn progress = {});
@@ -705,7 +705,7 @@ private:
     // Makes the three record tables (profiles, records, record_paths) when
     // they are missing.
     void create_result_tables();
-    // Turns a 2.2.0 to 2.7.0 file's `results` table into records, once
+    // Turns a Convertible file's `results` table into records, once
     // (D115): every row becomes a record under its own profile (its own stamp
     // and rules), so a row this build cannot read reads Stale, as after any
     // stamp bump. Stored ids become lowercase, in `charts` too. Then `results`

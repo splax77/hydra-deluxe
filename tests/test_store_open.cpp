@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "app/config.h"  // open_store
 #include "app/user_messages.h"
 #include "core/error_kind.h"
 #include "core/model.h"
@@ -594,6 +595,26 @@ TEST_CASE("a database any release before 2.2.0 wrote is too old: refused, or set
         check_too_old_file(path);
         remove_db(path);
     }
+}
+
+// hydra_batch and hydra_fillcompare open their library through app::open_store.
+TEST_CASE("the command-line tools' open refuses a file too old to convert and never renames it") {
+    const std::string path = copy_of_old_database("v2.1.0-schema4.db", "cli_refuse");
+    const std::string before = file_bytes(path);
+    try {
+        app::open_store(path);
+        FAIL("a command-line tool opened a file too old to convert");
+    } catch (const KindedError& e) {
+        CHECK(e.kind() == ErrorKind::OldLibraryRefused);
+        CHECK(app::plain_error(e) ==
+              "The library file '" + path +
+                  "' is from a Hydra version older than 2.2.0, and opening it in Hydra sets it "
+                  "aside and starts a fresh library.");
+    }
+    CHECK(file_bytes(path) == before);
+    CHECK_FALSE(file_exists_utf8(set_aside_path(path)));
+    CHECK_FALSE(side_files_present(path));
+    remove_db(path);
 }
 
 // SQLite switches a feature on when its SQLITE_ENABLE_* macro is defined at

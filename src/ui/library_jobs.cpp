@@ -24,7 +24,7 @@ StoreOpenGate g_store_open_gate;
 void set_store_open_gate_for_test(StoreOpenGate gate) { g_store_open_gate = std::move(gate); }
 
 std::string StoreOpenProgress::label() const {
-    // A file that needs no upgrade reads one line for the open and the
+    // A file that needs no conversion reads one line for the open and the
     // library read alike (DBUP answer 7).
     if (!upgrading) return "Opening your library...";
     switch (step) {

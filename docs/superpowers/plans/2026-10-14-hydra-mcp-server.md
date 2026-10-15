@@ -228,6 +228,11 @@ Each one quotes the code behaviour it depends on and gives a recommended answer.
 - **Three internal numbers stay:** `LOG_TAIL_LINES = 20` (the log lines a crash report quotes), `CONNECT_RETRY_S = 0.05` (the pipe-open retry interval) and the stand-in's `HANG_CAP_S = 600`.
 - **The helper's copied 30 s default goes.** T2 puts the session timeout in the hello line, and T6 deletes `ENGINE_DEFAULT_TIMEOUT_S`.
 
+**Answered later on 2026-10-14, from the T5 and T6 reports (task T8):**
+
+- **One owner per line number.** The live channel had numbered lines across the whole session ("failed at line 23"), while the helper said "stopped at line 4 of 5". The user rejected two numbers for one line, because they would confuse the model. In live mode a reply now names no line number. The helper numbers lines, from the script Claude sent. Script mode (`--script`) keeps "failed at line N", because there the file is the script.
+- **Hide the engine panel in live mode.** The test engine's own panel is hidden in live mode, so it covers none of the real layout and none of its text reaches Claude's `text` output. `--uitest` mode keeps showing it.
+
 **1. Install the `mcp` package?** The helper imports `mcp` (`FastMCP`), which is not on this machine; PyPI's 2.3.0 supports Python 3.14. The alternative is to hand-write the stdio JSON-RPC handshake (initialize, tools/list, tools/call) in about 150 lines with no dependency, which then has to track protocol versions by hand. Recommended: run `py -m pip install mcp` once; T3's first step does it and stops if it fails.
 
 **2. One session at a time?** The helper keeps one child process and one pipe. `hydra_start` while a session runs stops the old one first. The alternative, headless and window sessions side by side, needs a session name on every tool. Recommended: one at a time.
