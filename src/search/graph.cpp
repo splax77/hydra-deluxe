@@ -137,7 +137,7 @@ void ScoreGraph::build() {
         if (MultSqueeze::applies(timestamp.chord, sg.combo_before))
             store_multsqueeze(MultSqueeze(timestamp.chord, sg.combo_before));
 
-        store_notes_points(sg.base);
+        store_notes_points(sg.notes);
         store_comboscore(sg.combo);
         store_spscore(sg.sp);
         store_accentscore(sg.accent);

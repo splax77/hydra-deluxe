@@ -321,7 +321,7 @@ TEST_CASE("replay without Star Power scores no doubling at all") {
 
     const ReplayResult r = replay_path(song, {});
     CHECK(r.final.sp == 0);
-    CHECK(r.final.base > 0);
+    CHECK(r.final.notes > 0);
     CHECK(r.chords.size() == song.sequence.size());
 
     // The running totals are a prefix sum of the per-chord points, and the
@@ -605,7 +605,7 @@ TEST_CASE("paths_json writes every field the dump readers use") {
         const json& p0 = dumped[0];
         for (const char* k : {"index", "pathstring", "total", "score", "activations"})
             CHECK_MESSAGE(p0.contains(k), k);
-        for (const char* k : {"base", "combo", "sp", "solo", "accent", "ghost"})
+        for (const char* k : {"notes", "combo", "sp", "solo", "accent", "ghost"})
             CHECK_MESSAGE(p0["score"].contains(k), k);
         CHECK(p0["pathstring"].get<std::string>() == all[0]->pathstring());
 
@@ -1302,7 +1302,7 @@ TEST_CASE("chord_score_table: literal rows on a hand-built chart") {
     // The straddle: its first two notes are paid below the step and the
     // accent cymbal (the dearest, so last) above it.
     const ChordScoreRow& straddle = table.rows[7];
-    CHECK(straddle.base == 180);
+    CHECK(straddle.notes == 180);
     CHECK(straddle.combo == 130);
     CHECK(straddle.sp == 360);
     CHECK(straddle.sqout_sp == 310);
@@ -1321,7 +1321,7 @@ TEST_CASE("chord_score_table: literal rows on a hand-built chart") {
     CHECK(table.notes[9].dynamics_bonus == 130);
 
     const ChordScoreRow& ghost = table.rows[8];
-    CHECK(ghost.base == 100);
+    CHECK(ghost.notes == 100);
     CHECK(ghost.combo == 150);
     CHECK(ghost.sp == 300);
     CHECK(ghost.sqout_sp == 200);
@@ -1336,7 +1336,7 @@ TEST_CASE("chord_score_table: literal rows on a hand-built chart") {
     CHECK(ghost.note_end == 12);
 
     const ChordScoreRow& solo = table.rows[9];
-    CHECK(solo.base == 100);
+    CHECK(solo.notes == 100);
     CHECK(solo.combo == 100);
     CHECK(solo.sp == 200);
     CHECK(solo.sqout_sp == 100);
@@ -1393,18 +1393,18 @@ TEST_CASE("replay multipliers agree with the combo on every corpus chord") {
 
 TEST_CASE("replay score fields: one list in schema order") {
     REQUIRE(std::size(kReplayScoreFields) == 6);
-    const char* want[] = {"base", "combo", "sp", "solo", "accent", "ghost"};
+    const char* want[] = {"notes", "combo", "sp", "solo", "accent", "ghost"};
     for (size_t i = 0; i < 6; ++i) CHECK(std::string(kReplayScoreFields[i].name) == want[i]);
 
     ReplayScore s;
-    s.base = 1; s.combo = 2; s.sp = 3; s.solo = 4; s.accent = 5; s.ghost = 6;
+    s.notes = 1; s.combo = 2; s.sp = 3; s.solo = 4; s.accent = 5; s.ghost = 6;
     for (size_t i = 0; i < 6; ++i)
         CHECK(s.*(kReplayScoreFields[i].member) == static_cast<int64_t>(i + 1));
 }
 
 TEST_CASE("assign_score and score_of are each other's reverse") {
     ReplayScore s;
-    s.base = 1; s.combo = 2; s.sp = 3; s.solo = 4; s.accent = 5; s.ghost = 6;
+    s.notes = 1; s.combo = 2; s.sp = 3; s.solo = 4; s.accent = 5; s.ghost = 6;
     Path p;
     assign_score(p, s);
     CHECK(p.notes_points == 1);

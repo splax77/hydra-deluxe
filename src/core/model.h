@@ -150,9 +150,9 @@ inline constexpr int kSoloBonusPerNote = 100;
 // A path's total score: the one sum of the six stored score categories, in
 // the order Path stores them. Path::totalscore calls it; a free function so
 // a caller with no Path can too.
-inline int64_t score_total(int64_t base, int64_t combo, int64_t sp, int64_t solo,
+inline int64_t score_total(int64_t notes, int64_t combo, int64_t sp, int64_t solo,
                            int64_t accents, int64_t ghosts) {
-    return base + combo + sp + solo + accents + ghosts;
+    return notes + combo + sp + solo + accents + ghosts;
 }
 
 // ---- ChordNote ----------------------------------------------------------

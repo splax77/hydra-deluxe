@@ -6,7 +6,7 @@
 // chord worth on this path?". This module answers exactly that, by replaying
 // the chart against a list of Star Power windows. It owns no scoring rule:
 //
-//   - A chord's path-free points (base, combo, accent, ghost, solo, its SP
+//   - A chord's path-free points (notes, combo, accent, ghost, solo, its SP
 //     value and squeezed-out SP value, its multipliers and combo) are rows
 //     of chord_score_table (core/scoring.h), the table ScoreGraph::build
 //     sums its edges from.
@@ -103,16 +103,16 @@ std::optional<SqOutNote> resolve_window_sqout(const Song& song, ReplayWindow& w)
 
 // The six score categories a Path stores, in the same order.
 struct ReplayScore {
-    int64_t base = 0;
+    int64_t notes = 0;
     int64_t combo = 0;
     int64_t sp = 0;
     int64_t solo = 0;
     int64_t accent = 0;
     int64_t ghost = 0;
 
-    int64_t total() const { return score_total(base, combo, sp, solo, accent, ghost); }
+    int64_t total() const { return score_total(notes, combo, sp, solo, accent, ghost); }
     void add(const ReplayScore& o) {
-        base += o.base;
+        notes += o.notes;
         combo += o.combo;
         sp += o.sp;
         solo += o.solo;
@@ -120,7 +120,7 @@ struct ReplayScore {
         ghost += o.ghost;
     }
     bool operator==(const ReplayScore& o) const {
-        return base == o.base && combo == o.combo && sp == o.sp &&
+        return notes == o.notes && combo == o.combo && sp == o.sp &&
                solo == o.solo && accent == o.accent && ghost == o.ghost;
     }
 };
@@ -133,7 +133,7 @@ struct ReplayScoreField {
     int64_t ReplayScore::*member;
 };
 inline constexpr ReplayScoreField kReplayScoreFields[] = {
-    {"base", &ReplayScore::base},     {"combo", &ReplayScore::combo},
+    {"notes", &ReplayScore::notes},   {"combo", &ReplayScore::combo},
     {"sp", &ReplayScore::sp},         {"solo", &ReplayScore::solo},
     {"accent", &ReplayScore::accent}, {"ghost", &ReplayScore::ghost},
 };

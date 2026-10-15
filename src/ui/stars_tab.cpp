@@ -26,7 +26,7 @@ void render_stars_panel(AppState& app) {
     const StarCutoffs sc = star_cutoffs(app.viewed.record->best_path());
     const bool has_solo = sc.solo_bonus > 0;
 
-    ImGui::Text("Base score: %s", group_thousands(sc.base).c_str());
+    ImGui::Text("Base score: %s", group_thousands(sc.chart_base_score).c_str());
     if (has_solo)
         ImGui::Text("Solo bonus: %s (not counted toward stars)",
                     group_thousands(sc.solo_bonus).c_str());

@@ -26,11 +26,11 @@ inline constexpr std::array<float, kMaxStars> kStarMultipliers{
     0.1f, 0.5f, 1.0f, 2.0f, 2.8f, 3.6f, 4.4f};
 
 // The score needed for `stars` (1..kMaxStars) on a chart with this base score.
-int64_t star_cutoff(int64_t base, int stars);
+int64_t star_cutoff(int64_t chart_base_score, int stars);
 
 // Everything the Stars tab shows, for one path of a record.
 struct StarCutoffs {
-    int64_t base = 0;        // Path::chart_base_score()
+    int64_t chart_base_score = 0;  // Path::chart_base_score()
     int64_t solo_bonus = 0;  // Path::score_solo; not counted toward stars
     std::array<int64_t, kMaxStars> cutoffs{};  // [0] is 1 star
     // The score you see at each cutoff if you also collect every solo bonus:

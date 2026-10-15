@@ -43,11 +43,11 @@ CategoryScores category_scores(const Chord& chord, int combo,
 
         const NoteValue value = note_value(note, combo_multiplier);
         // A ghost or accent's own category holds the pad's 50 at 1x; the
-        // base category holds the rest of the 1x value, and the combo
+        // Notes category holds the rest of the 1x value, and the combo
         // category everything the multiplier adds on top.
         const int accent = note.is_accent() ? kNoteBasePoints : 0;
         const int ghost = note.is_ghost() ? kNoteBasePoints : 0;
-        const int base = value.at_1x - accent - ghost;
+        const int notes_share = value.at_1x - accent - ghost;
         const int combo_share = value.paid - value.at_1x;
         // Star Power multiplies the whole paid value by kStarPowerMultiplier,
         // so its own share is that many copies less the one already paid.
@@ -58,7 +58,7 @@ CategoryScores category_scores(const Chord& chord, int combo,
         const bool loses_sp = i == 0 || sqout_rule == core::SqOutRule::WholeChord;
         const int note_sqout = loses_sp ? value.paid : 0;
 
-        out.base += base;
+        out.notes += notes_share;
         out.combo += combo_share;
         out.sp += sp;
         out.accent += accent;
@@ -67,7 +67,7 @@ CategoryScores category_scores(const Chord& chord, int combo,
 
         if (per_note) {
             CategoryScores note_scores;
-            note_scores.base = base;
+            note_scores.notes = notes_share;
             note_scores.combo = combo_share;
             note_scores.sp = sp;
             note_scores.accent = accent;
@@ -107,7 +107,7 @@ ChordScoreTable chord_score_table(const Song& song, core::SqOutRule sqout_rule,
         const CategoryScores sg =
             category_scores(ts.chord, combo, with_notes ? &per_note : nullptr, sqout_rule);
         ChordScoreRow row;
-        row.base = sg.base;
+        row.notes = sg.notes;
         row.combo = sg.combo;
         row.sp = sg.sp;
         row.sqout_sp = sg.sqout_sp();

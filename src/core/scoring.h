@@ -17,7 +17,7 @@
 namespace hydra {
 
 struct CategoryScores {
-    int base = 0;
+    int notes = 0;
     int combo = 0;
     int sp = 0;
     int accent = 0;
@@ -67,7 +67,7 @@ int solo_bonus(const Chord& chord, bool flag_solo);
 // running combo, plus solo_bonus. Only the doubling depends on the path, and
 // core::backend_row_value prices that from `sp` and `sqout_sp`.
 struct ChordScoreRow {
-    int base = 0;
+    int notes = 0;
     int combo = 0;
     int sp = 0;
     int sqout_sp = 0;  // CategoryScores::sqout_sp
