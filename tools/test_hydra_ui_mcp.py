@@ -86,8 +86,8 @@ class FakeLayer(unittest.TestCase):
         self.assertIn(f"pid: {s.proc.pid}", out)
         self.assertEqual(s.hello["pid"], s.proc.pid)
         self.assertIn("engine scratch: ", out)
-        self.assertEqual(s.timeout, fake.HELLO_TIMEOUT_S)
-        self.assertIn(f"wait cap: {fake.HELLO_TIMEOUT_S} s", out)
+        self.assertEqual(s.timeout, fake.SESSION_TIMEOUT_S)
+        self.assertIn(f"wait cap: {fake.SESSION_TIMEOUT_S} s", out)
 
     def test_a_hello_line_without_a_timeout_ends_the_session(self):
         self.helper._read_line = lambda sess, wait_s: '{"ok":true,"hello":{"mode":"headless","pid":1}}'
@@ -168,7 +168,7 @@ class FakeLayer(unittest.TestCase):
         self.helper.start("headless")
         for bad in (-1, float("inf"), float("nan")):
             self.assertTrue(self.helper.with_timeout("wait-idle", bad).startswith("refused: timeout"), bad)
-        self.assertEqual(self.helper.session.timeout, fake.HELLO_TIMEOUT_S)
+        self.assertEqual(self.helper.session.timeout, fake.SESSION_TIMEOUT_S)
 
     def test_a_reply_that_is_not_an_object_is_reported(self):
         self.helper.start("headless")
@@ -229,7 +229,7 @@ class FakeLayer(unittest.TestCase):
     def test_one_off_timeout_is_put_back(self):
         self.helper.start("headless")
         self.assertEqual(self.helper.with_timeout("wait-idle", 5), "ok")
-        self.assertEqual(self.helper.session.timeout, fake.HELLO_TIMEOUT_S)
+        self.assertEqual(self.helper.session.timeout, fake.SESSION_TIMEOUT_S)
 
     def test_stop_exits_zero_and_deletes_the_scratch(self):
         self.helper.start("headless")

@@ -54,9 +54,11 @@ k32.CloseHandle.argtypes = [wintypes.HANDLE]
 
 INVALID_HANDLE = wintypes.HANDLE(-1).value
 
-# The wait cap the hello line names. Deliberately not the real exe's starting
-# value, so a test can tell the helper read it from the hello line.
-HELLO_TIMEOUT_S = 25
+# The session's starting wait cap, which the hello line carries. Deliberately
+# not the real exe's starting value, so a test can tell the helper read it from
+# the hello line. (Not the helper's HELLO_TIMEOUT_S, which is how long the
+# helper waits for that line.)
+SESSION_TIMEOUT_S = 25
 
 # What fake-big answers with: 1,000 lines of 49 characters plus a newline.
 BIG_LINE = "x" * 45 + " row"
@@ -239,7 +241,7 @@ def main(argv):
     log(f"fake: pipe made for pid {os.getpid()}")
     pipe.accept()
     reply(pipe, {"ok": True, "hello": {"mode": mode, "scratch": str(scratch), "pid": os.getpid(),
-                                       "timeout": HELLO_TIMEOUT_S}})
+                                       "timeout": SESSION_TIMEOUT_S}})
     pending = b""
     while True:
         data = pipe.read()
