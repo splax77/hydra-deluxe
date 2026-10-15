@@ -499,6 +499,11 @@ class Helper:
             lines = [f"Hydra closed its live channel but kept running for {self.reply_margin_s:g} s,"
                      f" so the helper killed it (exit code {describe_exit(code)})."
                      " The session is stopped; call hydra_start."]
+        elif code == 0 and s.mode == "window":
+            # The helper did not send quit, so a clean exit of the window is
+            # the user closing it: a plain stop, not a crash.
+            lines = ["The user closed Hydra's window (exit code 0). The session is stopped;"
+                     " call hydra_start."]
         else:
             lines = [f"Hydra exited with code {describe_exit(code)}. The session is stopped;"
                      " call hydra_start."]

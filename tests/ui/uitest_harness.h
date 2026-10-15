@@ -158,13 +158,20 @@ inline Harness& harness(ImGuiTestContext* ctx) {
     return *static_cast<Harness*>(ctx->Test->UserData);
 }
 
+// True once the test engine is stopping, as when the app's window closed.
+// The engine's stop runs the test until it returns, so any loop in a test
+// that waits on something outside it must end when this holds.
+bool engine_stopping(ImGuiTestContext* ctx);
+
 // Yield frames until pred() holds or `seconds` of wall-clock pass. Jobs run
 // on real threads, so the wait is wall-clock, not frame-count. Returns false
-// at once when the test has already failed (ctx->IsError()).
+// at once when the test has already failed (ctx->IsError()) or the engine is
+// stopping (engine_stopping).
 bool wait_until(ImGuiTestContext* ctx, const std::function<bool()>& pred, double seconds);
 
 // One step of that wait: a frame, then a short nap. For a loop that polls
-// something wait_until's predicate cannot express.
+// something wait_until's predicate cannot express; such a loop checks
+// engine_stopping itself.
 void idle_frame(ImGuiTestContext* ctx);
 
 // True while any background job (scan, batch, analyze, report, DM fetch/report)

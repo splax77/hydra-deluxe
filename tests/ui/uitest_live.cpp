@@ -273,14 +273,20 @@ void run_live(ImGuiTestContext* ctx) {
         return;
 
     // Run each line as it comes; between lines, keep the app drawing. Ends
-    // when the client leaves or sends quit.
+    // when the client leaves or sends quit, or when the engine stops (the
+    // user closed the window): the engine's stop waits for this test to
+    // return, and a client left attached never leaves on its own.
     for (;;) {
+        if (engine_stopping(ctx)) return;
         std::string raw;
         if (pipe.pop_line(raw)) {
             // A line that is no command still gets its reply: one per line.
             std::string line;
             const std::string reply = command_line(raw, line) ? answer(ctx, session, line)
                                                               : live::ok_line("", session.timeout);
+            // A command the stop cut short gets no reply: what it says would
+            // be about the cut, not the app. The client sees the pipe close.
+            if (engine_stopping(ctx)) return;
             if (!pipe.write(reply) || session.quit) return;
             continue;
         }

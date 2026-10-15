@@ -411,13 +411,21 @@ void idle_frame(ImGuiTestContext* ctx) {
     std::this_thread::sleep_for(std::chrono::milliseconds(2));
 }
 
+bool engine_stopping(ImGuiTestContext* ctx) {
+    // ImGuiTestEngine_Stop raises this before it runs the test to its end,
+    // and ctx->IsError() does not see it. The engine's Abort flag is not
+    // used: holding Esc in the window for a moment sets it too, and that must
+    // not end a live session the user is looking at.
+    return ctx->Engine->TestQueueCoroutineShouldExit;
+}
+
 bool wait_until(ImGuiTestContext* ctx, const std::function<bool()>& pred, double seconds) {
     auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(seconds);
     while (!pred()) {
         // The test has already failed (a click found no such item, a check
-        // failed): nothing it waits on will happen, so don't sit out the
-        // timeout.
-        if (ctx->IsError()) return false;
+        // failed), or the engine is stopping: nothing it waits on will
+        // happen, so don't sit out the timeout.
+        if (ctx->IsError() || engine_stopping(ctx)) return false;
         if (std::chrono::steady_clock::now() > deadline) return false;
         idle_frame(ctx);
     }

@@ -16,6 +16,7 @@ Run:  py -I tools/test_hydra_ui_mcp.py
 """
 
 import asyncio
+import ctypes
 import os
 import re
 import shutil
@@ -23,6 +24,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from ctypes import wintypes
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -32,6 +34,7 @@ import fake_hydra_live as fake  # noqa: E402
 import hydra_ui_mcp as hm  # noqa: E402
 
 FAKE = HERE / "fake_hydra_live.py"
+WM_CLOSE = 0x0010  # winuser.h
 HELPER_SCRIPT = HERE / "hydra_ui_mcp.py"
 
 TOOL_NAMES = {
@@ -536,13 +539,13 @@ class RealExeLayer(unittest.TestCase):
             self.assertEqual((scratch / name).read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
         self.assertFalse((scratch / "bare.png").exists())
 
-    @unittest.skipUnless(os.environ.get("HYDRA_LIVE_WINDOW_TEST") == "1",
-                         "opens a window; set HYDRA_LIVE_WINDOW_TEST=1")
-    def test_window_session_on_a_seed_from_headless(self):
-        # The seed library is the headless session's scratch folder, copied
-        # once that session has closed its database. hydra_uitest deletes the
-        # folder on exit unless told --keep-temp, so this session gets it.
-        # (tearDown shuts down whichever helper self.helper is by then.)
+    def window_seed(self):
+        """A library folder for a window session, and self.helper a fresh
+        helper to start it with. The seed is the headless session's scratch
+        folder after a scan, copied once that session has closed its
+        database. hydra_uitest deletes the folder on exit unless told
+        --keep-temp, so this session gets it. (tearDown shuts down whichever
+        helper self.helper is by then.)"""
         self.helper = hm.Helper(temp_root=self.tmp.name, process_lister=lambda: [],
                                 launcher=keep_temp_launcher)
         self.helper.start("headless")
@@ -559,6 +562,32 @@ class RealExeLayer(unittest.TestCase):
         finally:
             shutil.rmtree(engine, ignore_errors=True)
         self.assertTrue((lib / "hydra.db").is_file())
+        return lib
+
+    @unittest.skipUnless(os.environ.get("HYDRA_LIVE_WINDOW_TEST") == "1",
+                         "opens a window; set HYDRA_LIVE_WINDOW_TEST=1")
+    def test_closing_the_window_ends_hydra(self):
+        lib = self.window_seed()
+        # Left open by keep_window, the helper still holds the pipe, so only
+        # the close can end the live test.
+        self.helper.start("window", library_dir=str(lib))
+        proc = self.helper.session.proc
+        self.assertIn("left the window open", self.helper.stop(keep_window=True))
+        post_close(proc.pid)
+        self.assertEqual(proc.wait(timeout=hm.REPLY_MARGIN_S), 0)
+        # Attached: the close ends Hydra too, and the next command reports it
+        # as a plain stop.
+        self.helper.start("window", library_dir=str(lib))
+        proc = self.helper.session.proc
+        post_close(proc.pid)
+        self.assertEqual(proc.wait(timeout=hm.REPLY_MARGIN_S), 0)
+        out = self.helper.send("state")
+        self.assertTrue(out.startswith("The user closed Hydra's window (exit code 0)."), out)
+
+    @unittest.skipUnless(os.environ.get("HYDRA_LIVE_WINDOW_TEST") == "1",
+                         "opens a window; set HYDRA_LIVE_WINDOW_TEST=1")
+    def test_window_session_on_a_seed_from_headless(self):
+        lib = self.window_seed()
 
         out = self.helper.start("window", library_dir=str(lib))
         self.assertIn("started a window session", out)
@@ -574,6 +603,27 @@ class RealExeLayer(unittest.TestCase):
         self.assertEqual(self.helper.stop(), "Hydra exited with code 0")
         # Live mode deletes its scratch copy of the library on exit.
         self.assertFalse(window_engine.exists())
+
+
+def post_close(pid):
+    """Ask each visible window of process `pid` to close (WM_CLOSE), as the
+    user's click on the close button does."""
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    found = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def each(hwnd, _):
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value == pid and user32.IsWindowVisible(hwnd):
+            found.append(hwnd)
+        return True
+
+    user32.EnumWindows(each, 0)
+    if not found:
+        raise AssertionError(f"process {pid} shows no window to close")
+    for hwnd in found:
+        user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
 
 
 def keep_temp_launcher(exe, args):
