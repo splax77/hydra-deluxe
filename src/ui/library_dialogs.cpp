@@ -1,5 +1,6 @@
 #include "ui/library_parts.h"
 
+#include "app/analysis.h"        // batch_cant_analyze_text
 #include "app/display_format.h"  // kFactSeparator
 #include "app/user_messages.h"
 #include "core/model.h"
@@ -383,6 +384,10 @@ void render_batch_confirm(AppState& app) {
     end_disabled_checkbox(with == 0);
     ImGui::SameLine();
     ImGui::TextDisabled("(%s)", counted(with, "chart", "charts").c_str());
+    // The rows in scope whose chart is a stored failure: skipped like a
+    // result, and tried again by the box (the user's answer 6, 2026-10-15).
+    if (const int64_t cant = app.batch_plan.cant_analyze; cant > 0)
+        ImGui::TextDisabled("%s", app::batch_cant_analyze_text(cant).c_str());
 
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextUnformatted("It runs in the background, so you can keep browsing. Analysis "

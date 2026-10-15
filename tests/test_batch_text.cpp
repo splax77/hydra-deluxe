@@ -3,6 +3,7 @@
 
 #include "doctest.h"
 
+#include "app/analysis.h"  // batch_cant_analyze_text
 #include "app/config.h"
 #include "core/model.h"  // counted
 #include "ui/library_parts.h"
@@ -16,6 +17,17 @@ TEST_CASE("batch text: counts group thousands and pick the right noun") {
     CHECK(counted(1, "chart", "charts") == "1 chart");
     CHECK(counted(2, "chart", "charts") == "2 charts");
     CHECK(counted(12345, "chart", "charts") == "12,345 charts");
+}
+
+// The user's answer 6 (2026-10-15): the confirm's dim line for the rows in
+// scope that can't be analyzed, counted like the confirm's other counts.
+TEST_CASE("batch text: the confirm's can't-analyze line") {
+    CHECK(hydra::app::batch_cant_analyze_text(59) ==
+          "59 of these can't be analyzed. Check the box to try them again.");
+    CHECK(hydra::app::batch_cant_analyze_text(1) ==
+          "1 of these can't be analyzed. Check the box to try them again.");
+    CHECK(hydra::app::batch_cant_analyze_text(12345) ==
+          "12,345 of these can't be analyzed. Check the box to try them again.");
 }
 
 TEST_CASE("batch text: durations read m:ss under an hour and h:mm:ss over it") {

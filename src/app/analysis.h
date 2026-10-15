@@ -10,11 +10,13 @@
 
 #include <atomic>
 #include <cstdint>
+#include <exception>
 #include <functional>
 #include <map>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -219,6 +221,11 @@ struct BatchProgress {
 // (D114 item 10). Each caller adds its own lead-in and ending.
 std::string batch_counts_text(int analyzed, int failed, int skipped);
 
+// The confirm's dim line for the rows in scope whose chart is a stored
+// failure (BatchPlan::cant_analyze): "59 of these can't be analyzed. Check
+// the box to try them again." The user's answer 6, 2026-10-15.
+std::string batch_cant_analyze_text(int64_t rows);
+
 // The default batch pool size: one core is left for the UI (or shell) and for
 // whatever else the machine is doing; capped so peak memory (a discography
 // chart can reach hundreds of MB) stays bounded.
@@ -235,11 +242,22 @@ struct BatchRun {
     AnalysisSettings settings;
 };
 
-// The charts a batch under `run` skips because they already have a result
-// (store::RecordStore::ready_song_ids decides what counts), as md5s. Empty
-// when `redo`. One query for the whole library.
-std::unordered_set<std::string> charts_with_result(store::RecordStore& store,
-                                                   const BatchRun& run, bool redo);
+// The charts a batch under `run` skips because they already have a result,
+// as md5s, each with its status: Ready, or CantAnalyze for a stored failure
+// (store::RecordStore::settled_song_ids decides what counts). Empty when
+// `redo`, so a redo tries the stored failures again. One query for the whole
+// library.
+using SettledCharts = std::unordered_map<std::string, store::RecordStatus>;
+SettledCharts charts_with_result(store::RecordStore& store, const BatchRun& run, bool redo);
+
+// The record a failed analysis of `song_id` under `profile` is stored as, or
+// nothing when the failure is not one the store remembers
+// (remembered_failure in core/error_kind.h). The one place a failure's kind
+// is read off the exception for storing; store::failure_record builds the
+// record. run_batch and the click both store through it.
+std::optional<store::PreparedRecord> prepare_failed_chart(std::string song_id,
+                                                          const store::Profile& profile,
+                                                          const std::exception& e);
 
 // What a batch over a scan list will do. A chart the scan found in several
 // folders (one md5) is analyzed once (D51 call 10), but every count is in
@@ -253,6 +271,10 @@ struct BatchPlan {
     // Scan rows left out because `already` holds their chart, every copy
     // counted.
     int skipped = 0;
+    // The part of `skipped` whose chart is a stored failure (CantAnalyze),
+    // every copy counted. The confirm's line names it
+    // (batch_cant_analyze_text).
+    int cant_analyze = 0;
 
     // The scan rows todo stands for.
     int todo_rows() const;
@@ -262,8 +284,7 @@ struct BatchPlan {
 // `already` is charts_with_result's answer. A batch makes its plan once,
 // before it starts, and runs that plan (D79): the GUI's confirm shows the
 // plan the run then takes.
-BatchPlan plan_batch(const std::vector<ScanItem>& items,
-                     const std::unordered_set<std::string>& already);
+BatchPlan plan_batch(const std::vector<ScanItem>& items, const SettledCharts& already);
 
 // Progress, result and cancel hooks for run_batch. The three callbacks fire
 // on the calling thread only (never a worker), so they may touch UI state.
@@ -294,7 +315,9 @@ struct BatchCallbacks {
 // `store` from the calling thread only. Which charts run and which are
 // skipped is the plan's answer (plan_batch); the run reads nothing from the
 // store before its first chart. Every BatchProgress count comes from here,
-// all in one callback.
+// all in one callback. A chart whose failure the store remembers
+// (prepare_failed_chart) has that failure saved like a result, in the same
+// save group, and is still counted and reported as failed in this run.
 void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& store,
                int worker_count, const BatchCallbacks& callbacks = {});
 

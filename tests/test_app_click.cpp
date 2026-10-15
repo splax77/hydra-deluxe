@@ -27,6 +27,7 @@
 #include "app/report.h"  // GeneratedReport
 #include "app_state_fixtures.h"
 #include "audio_chart_fixtures.h"
+#include "core/error_kind.h"
 #include "core/model.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
@@ -35,10 +36,12 @@
 #include "library_fixtures.h"  // library_entry
 #include "old_layout_fixture.h"  // v220_layout_sql
 #include "parse/song.h"
+#include "scoped_hook.h"
 #include "scratch_paths.h"
 #include "store/record_store.h"
 #include "temp_util.h"
 #include "ui/app_state.h"
+#include "ui/library_jobs.h"  // set_view_analyzer_for_test
 #include "ui/library_parts.h"  // analyze_shown_label
 
 using hydra::app::Settings;
@@ -466,6 +469,66 @@ TEST_CASE("a click whose save fails shows the paths and says so") {
           "Analyzed, but saving failed. Hydra couldn't save to its database (hydra.db). Check "
           "that the disk isn't full and that no other copy of Hydra is running, then try "
           "again.");
+}
+
+// ---- a failed click (the user's answers 1 and 6, 2026-10-15) ----------------
+
+namespace {
+
+// Every click's analysis throws a copy of `error`, until the guard ends.
+template <class Error>
+ScopedHook failing_view_analyzer(Error error) {
+    return ScopedHook(hydra::ui::set_view_analyzer_for_test,
+                      [error](const std::string&, const hydra::app::AnalysisSettings&,
+                              const std::function<void(float)>&) -> hydra::app::AnalysisResult {
+                          throw error;
+                      });
+}
+
+}  // namespace
+
+// A failure the chart's own content causes is the chart's result, as a batch
+// stores it; a second click that fails the same way saves nothing.
+TEST_CASE("a click on a chart with no notes stores the failure once") {
+    ScratchPaths paths("appstate_click_nonotes");
+    const ChartLibraryEntry song = corpus_chart("click_nonotes");
+    // Before the app, so it outlives the click's job thread (scoped_hook.h).
+    const ScopedHook seam =
+        failing_view_analyzer(hydra::NoNotesError(hydra::Difficulty::Expert, true));
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    const Profile profile = app->settings.profile();
+
+    click(*app, song);
+
+    CHECK(app->viewed.state == ViewedSong::State::Failed);
+    CHECK(app->viewed.message == "No Expert Pro Drums notes in this chart.");
+    const hydra::store::RecordLookup found = app->store->lookup_one(song.md5, profile);
+    CHECK(found.status == RecordStatus::CantAnalyze);
+    CHECK(found.failure_kind == hydra::ErrorKind::NoNotes);
+    CHECK(found.failure_text == "No Expert Pro Drums notes in this chart.");
+    CHECK(row_of(*app, song.md5).status == RecordStatus::CantAnalyze);
+
+    count_record_writes(paths);
+    app->close_details();
+    click(*app, song);
+    CHECK(app->viewed.state == ViewedSong::State::Failed);
+    CHECK(record_writes(paths) == 0);
+}
+
+// A failure that can pass on a retry is never stored.
+TEST_CASE("a click whose song file can't be opened stores nothing") {
+    ScratchPaths paths("appstate_click_transient");
+    const ChartLibraryEntry song = corpus_chart("click_transient");
+    const ScopedHook seam = failing_view_analyzer(
+        hydra::KindedError(hydra::ErrorKind::SongFileMissing, "cannot open file: x"));
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+
+    click(*app, song);
+
+    CHECK(app->viewed.state == ViewedSong::State::Failed);
+    CHECK(app->store->lookup_one(song.md5, app->settings.profile()).status ==
+          RecordStatus::NotAnalyzed);
+    CHECK(records_and_paths_in(paths) == std::pair<int64_t, int64_t>{0, 0});
 }
 
 // ---- the Dynamics count (ruling 10) ----------------------------------------
