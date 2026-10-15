@@ -17,19 +17,23 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/dm_report.h"  // GeneratedDmReport
 #include "app/dynamics_breakdown.h"
+#include "app/report.h"  // GeneratedReport
 #include "app_state_fixtures.h"
 #include "audio_chart_fixtures.h"
 #include "core/model.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
-#include "db_file_util.h"  // exec_on_file, scalar_on_file, results_rows_in
+#include "db_file_util.h"  // exec_on_file, scalar_on_file, record_rows_in
 #include "display_fixtures.h"  // store_batch_result, old_build_row
 #include "library_fixtures.h"  // library_entry
+#include "old_layout_fixture.h"  // v220_layout_sql
 #include "parse/song.h"
 #include "scratch_paths.h"
 #include "store/record_store.h"
@@ -43,6 +47,7 @@ using hydra::store::RecordKey;
 using hydra::store::RecordStatus;
 using hydra::store::RecordStore;
 using hydra::ui::AppState;
+using hydra::ui::ReportOutOfDate;
 using hydra::ui::ViewedSong;
 
 namespace {
@@ -69,6 +74,12 @@ void count_record_writes(const ScratchPaths& paths) {
 
 int64_t record_writes(const ScratchPaths& paths) {
     return hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM record_writes");
+}
+
+// How many records, and how many kept paths across them, the database holds.
+std::pair<int64_t, int64_t> records_and_paths_in(const ScratchPaths& paths) {
+    return {hydra::test::record_rows_in(paths.db),
+            hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM record_paths")};
 }
 
 }  // namespace
@@ -101,7 +112,9 @@ TEST_CASE("clicking a Ready song shows its paths and stores nothing new") {
     std::unique_ptr<AppState> app = app_with(paths, {song});
     click(*app, song);
     REQUIRE(app->viewed.ready());
-    const int64_t rows = hydra::test::results_rows_in(paths.db);
+    const std::pair<int64_t, int64_t> rows = records_and_paths_in(paths);
+    REQUIRE(rows.first == 1);
+    REQUIRE(rows.second > 0);
     count_record_writes(paths);
 
     app->close_details();
@@ -109,8 +122,64 @@ TEST_CASE("clicking a Ready song shows its paths and stores nothing new") {
 
     REQUIRE(app->viewed.ready());
     CHECK_FALSE(app->viewed.record->paths.empty());
-    CHECK(hydra::test::results_rows_in(paths.db) == rows);
+    CHECK(records_and_paths_in(paths) == rows);
     CHECK(record_writes(paths) == 0);
+}
+
+// D115 question 4: a click that writes a record changes what both reports
+// read, so both open reports say the library changed.
+TEST_CASE("the click's save marks both open reports out of date") {
+    ScratchPaths paths("appstate_click_marks");
+    const ChartLibraryEntry song = corpus_chart("click_marks");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    REQUIRE(row_of(*app, song.md5).status == RecordStatus::NotAnalyzed);
+    app->path_report.result = std::make_shared<const hydra::app::report::GeneratedReport>();
+    app->dm_report.result = std::make_shared<const hydra::app::dm_report::GeneratedDmReport>();
+    REQUIRE(app->path_report.out_of_date == ReportOutOfDate::None);
+    REQUIRE(app->dm_report.out_of_date == ReportOutOfDate::None);
+
+    click(*app, song);
+
+    REQUIRE(app->viewed.ready());
+    CHECK(app->path_report.out_of_date == ReportOutOfDate::Library);
+    CHECK(app->dm_report.out_of_date == ReportOutOfDate::Library);
+    // No batch finished, so neither strip names a time.
+    CHECK_FALSE(app->path_report.batch_finished.has_value());
+    CHECK_FALSE(app->dm_report.batch_finished.has_value());
+}
+
+// D115 question 1: a file from 2.2.0 to 2.7.0 keeps its old rows as Stale
+// records, and the next save of the chart replaces its record.
+TEST_CASE("a Stale converted record is replaced on click") {
+    ScratchPaths paths("appstate_click_converted");
+    const ChartLibraryEntry song = corpus_chart("click_converted");
+    const Settings settings;
+    const hydra::app::AnalysisResult fresh =
+        hydra::app::analyze_chart_file(song.notespath, settings.to_analysis_settings());
+    REQUIRE(fresh.record.paths.size() > 1);  // so the converted record lacks some paths
+    {
+        RecordStore old(paths.db);
+        old.rebuild_chart_library({song});
+        old.add_row(hydra::test::old_build_row(settings.record_key(song.md5), fresh.record));
+    }
+    hydra::test::exec_on_file(paths.db, hydra::test::v220_layout_sql().c_str());
+
+    std::unique_ptr<AppState> app = app_with(paths, {song});  // opening converts the file
+    REQUIRE(app->store->lookup_one(song.md5, settings.profile()).status == RecordStatus::Stale);
+    REQUIRE(records_and_paths_in(paths) == std::make_pair(int64_t{1}, int64_t{1}));
+
+    click(*app, song);
+
+    REQUIRE(app->viewed.ready());
+    const hydra::store::RecordLookup found = app->store->lookup_one(song.md5, settings.profile());
+    REQUIRE(found.status == RecordStatus::Ready);
+    CHECK(found.record ==
+          hydra::store::prepare_record(song.md5, settings.profile(), fresh.record).record);
+    CHECK(row_of(*app, song.md5).status == RecordStatus::Ready);
+    // The converted record is gone; the chart has the one new record with
+    // every path it keeps.
+    CHECK(records_and_paths_in(paths) ==
+          std::make_pair(int64_t{1}, static_cast<int64_t>(found.record.paths.size())));
 }
 
 TEST_CASE("clicking a Stale song turns its row Ready") {
@@ -186,7 +255,7 @@ TEST_CASE("a click whose re-identify fails shows the error and saves nothing") {
     CHECK_FALSE(app->viewed.record.has_value());
     // The row keeps its old hash, and nothing was saved under either hash.
     CHECK(app->selected->md5 == scanned.md5);
-    CHECK(hydra::test::results_rows_in(paths.db) == 0);
+    CHECK(hydra::test::record_rows_in(paths.db) == 0);
 }
 
 // D96: a chart saved again with the same content has a new size-and-time
@@ -236,7 +305,7 @@ TEST_CASE("a touched chart whose fingerprint save fails shows the error and save
     CHECK_FALSE(app->viewed.message.empty());
     CHECK_FALSE(app->viewed.record.has_value());
     CHECK(app->selected->sig == scanned.sig);
-    CHECK(hydra::test::results_rows_in(paths.db) == 0);
+    CHECK(hydra::test::record_rows_in(paths.db) == 0);
 }
 
 namespace {
@@ -452,7 +521,7 @@ TEST_CASE("a bad hydra_rules.ini names the key and keeps analysis off") {
     CHECK(app.viewed.state == ViewedSong::State::RulesBroken);
     CHECK_FALSE(app.viewed.record.has_value());
     CHECK(app.viewed.dynamics.has_value());
-    CHECK(hydra::test::results_rows_in(paths.db) == 0);
+    CHECK(hydra::test::record_rows_in(paths.db) == 0);
     app.start_batch(false);
     CHECK(app.batch_job == nullptr);
 }

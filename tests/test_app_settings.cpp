@@ -109,7 +109,7 @@ TEST_CASE("commit_settings analyzes the open song again on an SP cap change") {
     app->settings.sp_cap = 8;
     app->commit_settings();
     REQUIRE(app->view_job != nullptr);
-    CHECK(app->view_job->key().cap == app->settings.cap_query());
+    CHECK(app->view_job->profile().cap == app->settings.cap_query());
     settle(*app);
     CHECK(app->viewed.ready());
     CHECK(row_of(*app, song.md5).status == RecordStatus::Ready);
@@ -127,7 +127,7 @@ TEST_CASE("commit_settings analyzes again when the ms limit or the score range c
     app->settings.mslimit_value = seeded_ms + 5;
     app->commit_settings();
     REQUIRE(app->view_job != nullptr);
-    CHECK(app->view_job->key().lens == app->settings.lens());
+    CHECK(app->view_job->profile().lens == app->settings.lens());
     CHECK(Settings::load_file(paths.ini).mslimit_value == seeded_ms + 5);
     settle(*app);
     CHECK(app->viewed.ready());
@@ -136,7 +136,7 @@ TEST_CASE("commit_settings analyzes again when the ms limit or the score range c
     app->settings.depth_value += 1;
     app->commit_settings();
     REQUIRE(app->view_job != nullptr);
-    CHECK(app->view_job->key().lens == app->settings.lens());
+    CHECK(app->view_job->profile().lens == app->settings.lens());
     settle(*app);
     CHECK(app->viewed.ready());
 }

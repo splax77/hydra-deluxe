@@ -369,8 +369,8 @@ TEST_CASE("jobs: a report job lists the records filed under its run") {
     BatchRun run = test_run();
     run.lens = hydra::store::Lens::from(std::optional<int>(20), 1, 7);
     const hydra::ui::ReportJob job(store, run, 85.5);
-    CHECK(job.filed_under() == run.filed_under());
-    CHECK(job.filed_under().lens == run.lens);
+    CHECK(job.profile() == run.profile());
+    CHECK(job.profile().lens == run.lens);
     CHECK(job.hit_window_ms() == 85.5);  // the decimal is kept (D51 call 15)
 }
 
@@ -395,22 +395,6 @@ TEST_CASE("jobs: an empty report shows generate_report's reason, or the app's ow
     CHECK_FALSE(nothing.ok());
     CHECK(nothing.message() ==
           hydra::app::plain_error(hydra::KindedError(hydra::ErrorKind::NoRecords, "x")));
-}
-
-// Memory audit fix 4: the batch's rows are read by the report's one pass and
-// nothing after it, so the job lets them go then, not when the finished
-// strip is dismissed. An empty store ends the pass with no page, so no file
-// is written.
-TEST_CASE("jobs: a report job lets go of the batch's rows once its pass is done") {
-    RecordStore store(":memory:");
-    const BatchRun run = test_run();
-    hydra::app::report::ReportSeed seed = hydra::app::report::ReportSeed::for_run(run);
-    seed.rows["fake0"] = {};
-    hydra::ui::ReportJob job(store, run, 85.5, std::move(seed));
-    REQUIRE(job.seed_charts_for_test() == 1);
-    job.start();
-    wait_until([&] { return job.finished(); }, "the report job to finish");
-    CHECK(job.seed_charts_for_test() == 0);
 }
 
 TEST_CASE("jobs: a cancelled leaderboard fetch is not an error") {

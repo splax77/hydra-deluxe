@@ -98,13 +98,15 @@ static void folder_breakdown(const std::string& folder, const core::Rules& rules
         double search_s = secs_since(t);
 
         t = clk::now();
-        store.add_record(gui.record_key(it.md5), rec);
+        const store::PreparedRecord prepared = store::prepare_record(it.md5, gui.profile(), rec);
+        store.save(prepared);
         double store_s = secs_since(t);
 
-        // summarize_record's best score: none for a record with no paths,
+        // The record's rank-1 score: none for a record with no paths,
         // printed "-" the way hydra_batch prints it.
-        const std::optional<int64_t> best = store::summarize_record(rec).score;
-        const std::string best_text = best ? std::to_string(*best) : "-";
+        const store::PathSummary summary = prepared.record.summary();
+        const std::string best_text =
+            summary.has_scored_best_path() ? std::to_string(*summary.score) : "-";
         std::printf("  parse %.2fs | search %.2fs | store %.2fs  => TOTAL %.2fs\n",
                     parse_s, search_s, store_s, parse_s + search_s + store_s);
         std::printf("  best score %s | %s | sp_cap %d\n\n", best_text.c_str(),

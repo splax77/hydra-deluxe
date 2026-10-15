@@ -251,10 +251,6 @@ public:
     // The batch's settings: what its results are filed under, for the report
     // that follows it.
     const app::BatchRun& batch_run() const { return run_; }
-    // The report rows of every chart the run saved (D87 item 5), for the
-    // report that follows it. Read once the snapshot says finished; it moves
-    // the rows out and leaves the job an empty seed.
-    app::report::ReportSeed take_report_seed() { return std::exchange(seed_, {}); }
 
     struct Snapshot {
         bool preparing = true;  // BatchJob::run has not reached its first chart yet
@@ -309,8 +305,6 @@ private:
     store::RecordStore& store_;
     int workers_;
     app::ChartAnalyzer analyze_;  // empty = app::analyze_chart_file
-    // Filled by run_batch on the job's thread (BatchCallbacks::report_seed).
-    app::report::ReportSeed seed_;
 
     std::mutex pause_mu_;
     std::condition_variable pause_cv_;
@@ -359,17 +353,19 @@ struct ViewOutcome {
 // a result whose generation is not the current click's.
 class ViewJob : public ResultJobBase {
 public:
-    // The song, its RecordKey and the settings are snapshotted at start, so
+    // The song, its profile and the settings are snapshotted at start, so
     // the result is saved against the song and settings it ran for.
     // `analysis_off` (broken rules) skips the engine and keeps the count.
-    ViewJob(store::ChartLibraryEntry song, store::RecordKey key, app::AnalysisSettings settings,
+    ViewJob(store::ChartLibraryEntry song, store::Profile profile, app::AnalysisSettings settings,
             bool analysis_off, int generation);
     ~ViewJob() { shutdown(); }
 
     void start();
 
     const store::ChartLibraryEntry& song() const { return song_; }
-    const store::RecordKey& key() const { return key_; }
+    // The profile the click's record is saved under (Settings::profile at
+    // the click).
+    const store::Profile& profile() const { return profile_; }
     const app::AnalysisSettings& settings() const { return settings_; }
     bool analysis_off() const { return analysis_off_; }
     int generation() const { return generation_; }
@@ -385,7 +381,7 @@ private:
     void run();
 
     store::ChartLibraryEntry song_;
-    store::RecordKey key_;
+    store::Profile profile_;
     app::AnalysisSettings settings_;
     bool analysis_off_;
     int generation_;
@@ -411,26 +407,21 @@ class ReportJob : public ResultJobBase {
 public:
     // `run` is the settings the charts are analyzed under (ReportOptions::run);
     // the records the report lists are the ones filed under it
-    // (BatchRun::filed_under). hit_window_ms feeds the report's timing-tier
-    // bands (settings.hit_window_ms), and `seed` holds the rows the batch
-    // already worked out.
+    // (BatchRun::profile). hit_window_ms feeds the report's timing-tier
+    // bands (settings.hit_window_ms).
     ReportJob(store::RecordStore& store, app::BatchRun run,
-              double hit_window_ms = kDefaultHitWindowMs, app::report::ReportSeed seed = {});
+              double hit_window_ms = kDefaultHitWindowMs);
     ~ReportJob() { shutdown(); }
 
     void start();
 
     // What the report is built from, as given to the constructor.
-    store::ResultSettings filed_under() const { return run_.filed_under(); }
+    store::Profile profile() const { return run_.profile(); }
     double hit_window_ms() const { return hit_window_ms_; }
 
     // Valid once finished() && ok(): the report, shared with AppState's slot
     // rather than copied.
     const std::shared_ptr<const app::report::GeneratedReport>& result() const { return result_; }
-
-    // Test seam: how many charts' rows the job still holds from the batch's
-    // seed. Read before start() or once finished().
-    size_t seed_charts_for_test() const { return seed_.rows.size(); }
 
     // The build's progress as of the latest ReportOptions::progress call,
     // which says what the two numbers count: 0 of 0 before the first. Safe to
@@ -448,7 +439,6 @@ private:
     store::RecordStore& store_;
     app::BatchRun run_;
     double hit_window_ms_;
-    app::report::ReportSeed seed_;
     app::ChartAnalyzer analyze_;  // the test seam's, copied at construction
     std::shared_ptr<const app::report::GeneratedReport> result_;
 };

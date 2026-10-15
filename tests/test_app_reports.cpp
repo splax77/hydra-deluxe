@@ -341,7 +341,7 @@ TEST_CASE("select_chart switches the mode first, then selects the first copy") {
     const std::string mode = target.chartmode_key();
     REQUIRE(mode != app->settings.chartmode_key());
 
-    app->select_chart("HASH007", mode);  // any hash spelling
+    app->select_chart("hash007", mode);
     CHECK(app->settings.chartmode_key() == mode);
     CHECK(Settings::load_file(paths.ini).chartmode_key() == mode);  // committed
     REQUIRE(app->selected.has_value());
@@ -459,9 +459,9 @@ TEST_CASE("the post-batch report lists the batch's cap and lens, not the live se
     app->update_background_jobs();
 
     REQUIRE(app->report_job != nullptr);
-    CHECK(app->report_job->filed_under().cap == hydra::store::CapQuery::at(4));
-    CHECK(app->report_job->filed_under().lens == batch_lens);
-    CHECK_FALSE(app->report_job->filed_under().lens == app->settings.lens());
+    CHECK(app->report_job->profile().cap == hydra::store::CapQuery::at(4));
+    CHECK(app->report_job->profile().lens == batch_lens);
+    CHECK_FALSE(app->report_job->profile().lens == app->settings.lens());
     wait_until([&] { return app->report_job->finished(); }, "the batch's report job to finish");
 }
 
@@ -504,29 +504,3 @@ TEST_CASE("the strip's report_started holds through a cancel, a refresh and a cl
     CHECK_FALSE(app->report_started);  // the new run's report has not started
 }
 
-// Memory audit fix 4: a stopped batch builds no report, so nothing reads the
-// report rows its saved charts handed over. They go when the run ends, not
-// when the finished strip is dismissed.
-TEST_CASE("a stopped batch lets go of its report rows when it ends") {
-    ScratchPaths paths("appstate_stopseed");
-    std::atomic<int> calls{0};  // before the app, which joins the batch's thread
-    std::unique_ptr<AppState> app = app_on(paths);
-    const hydra::app::AnalysisResult real =
-        corpus::first_analyzed_with_paths(app->settings.batch_run().settings);
-    // The first chart is saved; the second runs until Stop. `real` is copied
-    // in, since it is declared after the app.
-    start_redo_batch(*app, [&calls, real](const std::string&, const hydra::app::AnalysisSettings&,
-                                          const std::function<void(float)>& on_progress)
-                               -> hydra::app::AnalysisResult {
-        if (calls++ == 0) return real;
-        testwait::tick_until_thrown([&] { on_progress(0.0f); }, "the test to press Stop");
-    });
-    wait_until([&] { return app->batch_job->snapshot().analyzed >= 1; },
-               "the first chart to be saved");
-    stop_batch(*app);
-    app->update_background_jobs();
-
-    CHECK(app->report_job == nullptr);
-    REQUIRE(app->batch_job != nullptr);  // the finished strip is still up
-    CHECK(app->batch_job->take_report_seed().rows.empty());
-}

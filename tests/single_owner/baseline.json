@@ -11,60 +11,6 @@
     },
     {
       "question": "Under which settings is a chart analyzed (its profile)?",
-      "file": "src/app/analysis.h",
-      "line_text": "store::ResultSettings filed_under() const { return {chartmode, cap_query(), lens}; }",
-      "removed_by": "D115-A2-3",
-      "date": "2026-10-14",
-      "added_by": "D115-A1-4",
-      "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Under which settings is a chart analyzed (its profile)?",
-      "file": "src/app/analysis.cpp",
-      "line_text": "return store.analyzed_hashes(run.filed_under());",
-      "removed_by": "D115-A2-3",
-      "date": "2026-10-14",
-      "added_by": "D115-A1-4",
-      "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Under which settings is a chart analyzed (its profile)?",
-      "file": "src/app/analysis.cpp",
-      "line_text": "const store::ResultSettings filed_under = run.filed_under();",
-      "removed_by": "D115-A2-3",
-      "date": "2026-10-14",
-      "added_by": "D115-A1-4",
-      "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Under which settings is a chart analyzed (its profile)?",
-      "file": "src/ui/library_jobs.h",
-      "line_text": "store::ResultSettings filed_under() const { return run_.filed_under(); }",
-      "removed_by": "D115-A2-3",
-      "date": "2026-10-14",
-      "added_by": "D115-A1-4",
-      "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Under which settings is a chart analyzed (its profile)?",
-      "file": "src/app/report.cpp",
-      "line_text": "seed.filed_under = run.filed_under();",
-      "removed_by": "D115-A2-3",
-      "date": "2026-10-14",
-      "added_by": "D115-A1-4",
-      "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Under which settings is a chart analyzed (its profile)?",
-      "file": "src/app/report.cpp",
-      "line_text": "(seed.filed_under != run.filed_under() || seed.max_paths < options.max_paths))",
-      "removed_by": "D115-A2-3",
-      "date": "2026-10-14",
-      "added_by": "D115-A1-4",
-      "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Under which settings is a chart analyzed (its profile)?",
       "file": "src/app/report.cpp",
       "line_text": "return PageSettings{settings.cap_query(), settings.lens(), settings.hit_window_ms};",
       "removed_by": "D115-A2-2",

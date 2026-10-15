@@ -212,7 +212,7 @@ struct ReportSlot {
     ReportOutOfDate out_of_date_during_build = ReportOutOfDate::None;
     // `result` was built because its window opened with nothing in memory,
     // as after a close let the rows go (D103 item 28). The window then keeps
-    // the search, timing, Best path only and sort the user left; a result
+    // the search, timing, Optimal paths only and sort the user left; a result
     // from Refresh or a batch starts them over. The path report only;
     // AppState::collect_path_report sets it.
     bool built_on_open = false;
@@ -686,10 +686,11 @@ private:
     // Whether the click's job thread is still working, cancelled or not. The
     // one spelling of that test.
     bool view_thread_alive() const;
-    // Saves the click's summary when the library's row is missing, Stale or
-    // different (D87 item 2), and returns the summary the row now holds.
-    // Throws on a store failure.
-    store::PathSummary save_view_summary(const store::RecordKey& key,
+    // Saves the click's record under `profile` when the chart's stored record
+    // is missing, Stale or different (D87 item 2), marks both open reports
+    // out of date when it saves (D115 question 4), and returns the summary
+    // the record now gives. Throws on a store failure.
+    store::PathSummary save_view_summary(const std::string& song_id, const store::Profile& profile,
                                          const app::AnalysisResult& result);
     // Starts view_job for the latest request. view_job must be empty.
     void launch_view_job();
@@ -725,8 +726,7 @@ private:
     enum class PathReportCause { Request, Batch, Open };
     // Starts report_job, parking one still running. The report lists the
     // records filed under `run`.
-    void launch_path_report(app::BatchRun run, app::report::ReportSeed seed,
-                            PathReportCause cause);
+    void launch_path_report(app::BatchRun run, PathReportCause cause);
     // request_path_report's work, for the cause given.
     void request_path_report(PathReportCause cause);
     PathReportCause path_report_cause_ = PathReportCause::Request;

@@ -164,7 +164,8 @@ void AppState::refresh_library_summaries() {
 bool AppState::refresh_library_row(const std::string& md5) {
     bool changed = false;
     read_store([&] {
-        changed = library.set_summary_for(md5, store->get_summary(settings.record_key(md5))) > 0;
+        changed =
+            library.set_summary_for(md5, store->get_summaries({md5}, settings.profile()).front()) > 0;
     });
     return changed;
 }
@@ -329,7 +330,7 @@ void AppState::start_view() {
 }
 
 void AppState::launch_view_job() {
-    view_job = std::make_unique<ViewJob>(*selected, settings.record_key(selected->md5),
+    view_job = std::make_unique<ViewJob>(*selected, settings.profile(),
                                          settings.to_analysis_settings(), analysis_blocked(),
                                          view_generation.n);
     view_job->start();
@@ -405,7 +406,8 @@ void AppState::update_view_job() {
         v.dynamics = std::move(out.dynamics);
         v.dynamics_message = std::move(out.dynamics_message);
         v.dynamics_error = std::move(out.dynamics_error);
-        store::RecordKey key = job->key();
+        const store::Profile profile = job->profile();
+        std::string song_id = job->song().md5;
         // Changed chart files: the library row takes the hash and fingerprint
         // they give now, before anything is saved under them. An edited chart
         // gets a new hash (D87 item 3); one only saved again keeps its hash
@@ -428,7 +430,7 @@ void AppState::update_view_job() {
                 record_generation.bump();
                 return;
             }
-            key.hyhash = out.new_md5;
+            song_id = out.new_md5;
             reload_library();  // the panel's entry follows its row (follow_selected_row)
         }
         if (job->analysis_off()) {
@@ -439,7 +441,7 @@ void AppState::update_view_job() {
             v.error = std::move(out.analysis_error);
         } else {
             try {
-                v.summary = save_view_summary(key, *out.analysis);
+                v.summary = save_view_summary(song_id, profile, *out.analysis);
             } catch (const std::exception& e) {
                 set_problem("Analyzed, but saving failed. " + app::plain_error(e));
                 v.summary = store::summarize_record(out.analysis->record);
@@ -455,16 +457,19 @@ void AppState::update_view_job() {
     record_generation.bump();
 }
 
-store::PathSummary AppState::save_view_summary(const store::RecordKey& key,
+store::PathSummary AppState::save_view_summary(const std::string& song_id,
+                                               const store::Profile& profile,
                                                const app::AnalysisResult& result) {
-    const store::PreparedRow row = store::prepare_row(key, result.record);
-    const store::SummaryLookup found = store->get_summary(key);
-    if (found.status == store::RecordStatus::Ready && found.summary == row.summary &&
-        found.bestpath == row.bestpath)
-        return row.summary;  // the row already says what the engine says
-    store->save_analysis(row);
-    refresh_library_row(key.hyhash);  // its row's Best path cell and chip
-    return row.summary;
+    const store::PreparedRecord prepared = store::prepare_record(song_id, profile, result.record);
+    const store::RecordLookup found = store->lookup_one(song_id, profile);
+    if (found.status == store::RecordStatus::Ready && found.record == prepared.record)
+        return prepared.record.summary();  // the record already says what the engine says
+    store->save(prepared);
+    refresh_library_row(song_id);  // its row's Best path cell and chip
+    // Both open reports now read an older library (D115 question 4). No
+    // batch finished, so the strip names no time.
+    mark_reports_out_of_date(ReportOutOfDate::Library, /*path=*/true, /*dm=*/true, std::nullopt);
+    return prepared.record.summary();
 }
 
 bool AppState::selected_file_ok(double now) {
@@ -525,9 +530,10 @@ void AppState::select_chart(const std::string& hyhash, const std::string& chartm
         commit_settings();
     }
     reload_after_scan();  // the copies the store holds now
-    const std::string want = app::normalize_chart_hash(hyhash);
+    // Ids are lowercase hex everywhere (the scan writes them, the store
+    // lowercases old ones), so a copy is an exact match.
     const std::vector<LibraryRow>& rows = library.rows();
-    auto is_copy = [&](size_t i) { return app::normalize_chart_hash(rows[i].entry.md5) == want; };
+    auto is_copy = [&](size_t i) { return rows[i].entry.md5 == hyhash; };
     // The first copy the table shows; a copy the search or chip hides is
     // still the chart, so the rest of the library comes after.
     for (size_t i : library.order()) {
@@ -607,10 +613,6 @@ void AppState::start_batch(bool redo) {
 void AppState::update_background_jobs() {
     if (batch_job && !batch_finish_seen_ && batch_job->snapshot().finished) {
         batch_finish_seen_ = true;
-        // The report below is the seed's only reader. A run that builds none
-        // lets the rows go here rather than when its strip is dismissed
-        // (memory audit fix 4).
-        app::report::ReportSeed seed = batch_job->take_report_seed();
         // tick_library re-reads the summaries once the batch ends. Stopped
         // or not, the run stored results, so both reports in memory now
         // read an older library (D103). Their windows name this moment as
@@ -624,9 +626,8 @@ void AppState::update_background_jobs() {
             report_started = true;
             // The report lists the records the batch filed: its cap and lens,
             // not whatever the analysis settings hold now, analyzed under the
-            // batch's settings, reusing the charts the batch just analyzed
-            // (D87 item 5).
-            launch_path_report(batch_job->batch_run(), std::move(seed), PathReportCause::Batch);
+            // batch's settings.
+            launch_path_report(batch_job->batch_run(), PathReportCause::Batch);
         }
     }
 
@@ -726,19 +727,17 @@ void AppState::request_path_report(PathReportCause cause) {
     if (!store || analysis_blocked()) return;
     if (report_job && !report_job->finished()) return;
     collect_path_report();  // one that finished this frame lands first
-    launch_path_report(settings.batch_run(), {}, cause);
+    launch_path_report(settings.batch_run(), cause);
 }
 
-void AppState::launch_path_report(app::BatchRun run, app::report::ReportSeed seed,
-                                  PathReportCause cause) {
+void AppState::launch_path_report(app::BatchRun run, PathReportCause cause) {
     // A build still running read an older library: it stops between charts,
     // and waits parked rather than freezing the window until then.
     if (report_job && !report_job->finished()) {
         report_job->cancel();
         parked_reports.push_back(std::move(report_job));
     }
-    report_job = std::make_unique<ReportJob>(*store, std::move(run), settings.hit_window_ms,
-                                             std::move(seed));
+    report_job = std::make_unique<ReportJob>(*store, std::move(run), settings.hit_window_ms);
     path_report_cause_ = cause;
     path_report.out_of_date_during_build = ReportOutOfDate::None;
     report_job->start();
@@ -886,7 +885,7 @@ void AppState::apply_settings() {
     // any of the last three moves, every cached lookup is answering the old
     // question and has to be re-asked.
     const app::Settings& before = committed_settings_;
-    if (settings.record_key({}).settings() != before.record_key({}).settings()) {
+    if (settings.profile() != before.profile()) {
         // The rows themselves come from the scan and stay; their summaries
         // are read again, and the open song is analyzed again under the new
         // settings, as a click would (D90 item 1).

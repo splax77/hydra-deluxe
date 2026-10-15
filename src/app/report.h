@@ -158,24 +158,8 @@ inline constexpr int64_t kEveryPathSentinel = 1000000000;
 // One chart's rows as its record gives them, best score first, up to
 // max_paths. Every field the record answers is set; the chart's names, mode,
 // hash, copies and tier label are left for collect_rows, which knows them.
-// The batch's seed and the report's own pass both build rows here.
+// The report's own pass builds rows here.
 std::vector<ReportRow> chart_rows(const HydraRecord& record, int64_t max_paths);
-
-// The rows a batch just worked out, so the report that follows it does not
-// analyze those charts again (D87 item 5). run_batch fills it through
-// BatchCallbacks::report_seed, once per chart it saved.
-struct ReportSeed {
-    // What the batch filed its results under. A report under other settings
-    // cannot use these rows, so collect_rows throws rather than list them.
-    store::ResultSettings filed_under;
-    // How many rows each chart keeps. A report asking for more throws.
-    int64_t max_paths = kDefaultReportPaths;
-    // chart_rows for each saved chart, by normalize_chart_hash of its md5.
-    std::unordered_map<std::string, std::vector<ReportRow>> rows;
-
-    // An empty seed for `run`'s results.
-    static ReportSeed for_run(const BatchRun& run, int64_t max_paths = kDefaultReportPaths);
-};
 
 struct ReportOptions {
     int64_t max_paths = kDefaultReportPaths;
@@ -221,12 +205,11 @@ struct CollectedRows {
 // cap and lens, in every chart mode; list_records says which, and names
 // them. Each is analyzed from the file RecordStore::naming_copy_paths gives.
 // A result with no library row is left out (D87 item 4). Each chart
-// and mode gives up to options.max_paths rows, best score first. A chart the
-// seed holds is not analyzed again. The rest run on batch_worker_count()
-// threads; options.cancel stops the pass between charts, and the caller
-// throws the half-built result away. hit_window_ms feeds the tier labels only.
-CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
-                           const ReportOptions& options);
+// and mode gives up to options.max_paths rows, best score first. The charts
+// run on batch_worker_count() threads; options.cancel stops the pass between
+// charts, and the caller throws the half-built result away. hit_window_ms
+// feeds the tier labels only.
+CollectedRows collect_rows(store::RecordStore& store, const ReportOptions& options);
 
 // The line a report shows under its subtitle when charts were left out (D89
 // item 1). Empty when none were.
@@ -298,10 +281,8 @@ struct GeneratedReport {
     std::string footer;
 };
 
-// The library's charts through collect_rows, with `seed`'s rows reused.
-// A report with no batch before it passes an empty seed.
-GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& options,
-                                const ReportSeed& seed = ReportSeed{});
+// The library's charts through collect_rows.
+GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& options);
 
 // The user settings generate_report reads, stated once. A new read of a
 // setting by the page joins this list, and settings_change_touches compares

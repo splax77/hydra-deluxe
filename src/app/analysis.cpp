@@ -23,7 +23,6 @@
 #include "app/display_format.h"  // kFactSeparator
 #include "app/dynamics_breakdown.h"
 #include "app/preview_source.h"  // ini_delay_ms, sng_metadata_delay_ms
-#include "app/report.h"        // ReportSeed, chart_rows
 #include "app/song_length.h"   // stated_length_ms, chart_song_length_ms
 #include "app/user_messages.h"  // plain_error
 #include "app/work_pool.h"
@@ -34,6 +33,7 @@
 #include "parse/chart_files.h"
 #include "parse/sng.h"
 #include "search/pather.h"
+#include "store/chart_index.h"
 
 namespace hydra::app {
 
@@ -771,11 +771,8 @@ struct WorkResult {
     ScanItem item;
     // The scan rows this chart settles: BatchPlan::rows (D76).
     int rows = 1;
-    // The chart's summary row, made on the worker, so the consumer only writes.
-    std::optional<store::PreparedRow> row;
-    // The chart's path-report rows, built on the worker only when the run
-    // has a seed to hand them to (BatchCallbacks::report_seed).
-    std::vector<report::ReportRow> report_rows;
+    // The chart's record, made on the worker, so the consumer only writes.
+    std::optional<store::PreparedRecord> row;
     // A failed chart, from its analysis or its save: record_failure fills
     // these in from the exception while its type is still known (the
     // sentence is plain_error's, the error is the raw text).
@@ -801,7 +798,7 @@ void record_failure(WorkResult& wr, const std::exception& e) {
 // again alone with the rest of its group (D86 item 1).
 void save_result(store::RecordStore& store, WorkResult& wr) {
     try {
-        store.save_analysis(*wr.row);
+        store.save(*wr.row);
     } catch (const std::exception& e) {
         if (!store.save_group_lost()) record_failure(wr, e);
     }
@@ -812,29 +809,25 @@ void save_result(store::RecordStore& store, WorkResult& wr) {
 std::unordered_set<std::string> charts_with_result(store::RecordStore& store,
                                                    const BatchRun& run, bool redo) {
     if (redo) return {};
-    // RecordStore::analyzed_hashes decides what "already has a result" means.
-    return store.analyzed_hashes(run.filed_under());
+    // RecordStore::ready_song_ids decides what "already has a result" means.
+    return store.ready_song_ids(run.profile());
 }
 
 BatchPlan plan_batch(const std::vector<ScanItem>& items,
                      const std::unordered_set<std::string>& already) {
     BatchPlan plan;
-    // Each md5 runs once, as its first copy; a later copy adds a row to it
-    // (D76). Whichever copy runs, the store names the chart from the copy the
-    // scan listed first (D63).
-    std::unordered_map<std::string, size_t> todo_index;
-    for (const ScanItem& item : items) {
-        if (already.count(item.md5)) {
-            ++plan.skipped;
+    // Each chart runs once, as its first copy, and settles every copy's row
+    // (D76). The scan list's charts, copies and first copies are ChartIndex's
+    // answer; whichever copy runs, the store names the chart from the copy
+    // the scan listed first (D63).
+    const store::ChartIndex index = store::ChartIndex::from_rows(items);
+    for (const std::string& id : index.song_ids()) {
+        if (already.count(id)) {
+            plan.skipped += index.copies(id);
             continue;
         }
-        const auto [it, first] = todo_index.emplace(item.md5, plan.todo.size());
-        if (first) {
-            plan.todo.push_back(item);
-            plan.rows.push_back(1);
-        } else {
-            ++plan.rows[it->second];
-        }
+        plan.todo.push_back(*index.naming(id));
+        plan.rows.push_back(index.copies(id));
     }
     return plan;
 }
@@ -857,13 +850,8 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
                int worker_count, const BatchCallbacks& callbacks) {
     const AnalysisSettings& settings = run.settings;
     const std::atomic<bool>* cancel = callbacks.cancel;
-    const store::ResultSettings filed_under = run.filed_under();
+    const store::Profile profile = run.profile();
     const std::vector<ScanItem>& todo = plan.todo;
-    report::ReportSeed* const seed = callbacks.report_seed;
-    // A seed filed under other settings would hand the report rows it must
-    // not show, so the run refuses it before its first chart.
-    if (seed && seed->filed_under != filed_under)
-        throw std::invalid_argument("run_batch: the report seed is for other settings");
 
     BatchProgress progress;
     progress.total = plan.todo_rows();
@@ -888,11 +876,6 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
     // callback, so a caller numbering its lines reads the number from the
     // progress (D79).
     const auto report = [&](WorkResult& wr) {
-        // The chart's report rows go to the seed once, with its first row's
-        // on_result: only a chart that was saved is handed over. They are
-        // moved, not copied: the seed is their last reader.
-        if (seed && !wr.failed)
-            seed->rows[normalize_chart_hash(wr.item.md5)] = std::move(wr.report_rows);
         for (int r = 0; r < wr.rows; ++r) {
             if (wr.failed) ++progress.failed;
             else ++progress.analyzed;
@@ -940,9 +923,7 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
                 wr.rows = plan.rows[i];
                 try {
                     AnalysisResult ar = analyze(item.notespath, settings, check_cancel);
-                    wr.row = store::prepare_row(
-                        store::RecordKey{item.md5, filed_under}, ar.record);
-                    if (seed) wr.report_rows = report::chart_rows(ar.record, seed->max_paths);
+                    wr.row = store::prepare_record(item.md5, profile, ar.record);
                 } catch (const AnalysisCancelled&) {
                     wr.cancelled = true;
                 } catch (const std::exception& e) {
