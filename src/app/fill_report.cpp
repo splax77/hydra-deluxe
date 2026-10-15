@@ -8,7 +8,7 @@
 #include "app/config.h"  // Settings::profile_with_fills
 #include "app/html_page.h"
 #include "app/library_query.h"  // search_field
-#include "app/report.h"  // lacks_chart_library, nothing_under_settings, kDash
+#include "app/report.h"  // listed_records, lacks_chart_library, nothing_under_settings, kDash
 #include "app/report_view.h"  // folded_key
 #include "core/model.h"  // group_thousands, counted
 #include "core/strutil.h"  // replace_all
@@ -209,21 +209,6 @@ const std::string& page_template() {
     return page;
 }
 
-// Every Ready record `store` holds under `profile` whose chart `library`
-// lists, by song id. The store lists results the library doesn't, and no
-// page shows one (D87 item 4, D92).
-std::map<std::string, store::RecordRow> listed_records(store::RecordStore& store,
-                                                       const store::Profile& profile,
-                                                       const store::ChartIndex& library) {
-    std::map<std::string, store::RecordRow> out;
-    for (store::RecordRow& r : store.ready_records(profile))
-        if (library.lists(r.song_id)) {
-            std::string id = r.song_id;
-            out.emplace(std::move(id), std::move(r));
-        }
-    return out;
-}
-
 // A record's best path as text, or empty when it kept none.
 std::string best_path(const store::RecordRow& record) {
     return record.paths.empty() ? std::string() : record.paths.front().path;
@@ -239,9 +224,9 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
     // says. Each side keeps the charts its own library lists.
     const store::ChartIndex old_library = old_store.chart_index();
     const store::ChartIndex new_library = new_store.chart_index();
-    const std::map<std::string, store::RecordRow> old_by_id = listed_records(
+    const std::unordered_map<std::string, store::RecordRow> old_by_id = report::listed_records(
         old_store, settings.profile_with_fills(FillDeadlineRule::Ch10), old_library);
-    const std::map<std::string, store::RecordRow> new_by_id = listed_records(
+    const std::unordered_map<std::string, store::RecordRow> new_by_id = report::listed_records(
         new_store, settings.profile_with_fills(FillDeadlineRule::Ch11), new_library);
 
     // Walk the union of both key sets so a chart in only one database still

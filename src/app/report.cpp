@@ -182,6 +182,17 @@ bool library_lists(const std::unordered_map<std::string, int>& library,
     return library.find(hash) != library.end();
 }
 
+std::unordered_map<std::string, store::RecordRow> listed_records(
+    store::RecordStore& store, const store::Profile& profile, const store::ChartIndex& library) {
+    std::unordered_map<std::string, store::RecordRow> by_id;
+    for (store::RecordRow& r : store.ready_records(profile))
+        if (library.lists(r.song_id)) {
+            std::string id = r.song_id;
+            by_id.emplace(std::move(id), std::move(r));
+        }
+    return by_id;
+}
+
 namespace {
 
 // Whether the store holds a result at any setting. The one place report.cpp

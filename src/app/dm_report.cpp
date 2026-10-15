@@ -5,7 +5,7 @@
 
 #include "app/config.h"          // Settings::with_known_chartmode, profile_at_clone_hero_cap
 #include "app/display_format.h"  // format_percent, percent_steps
-#include "app/report.h"  // lacks_chart_library, kNoChartLibrary
+#include "app/report.h"  // listed_records, lacks_chart_library, kNoChartLibrary
 #include "core/error_kind.h"
 #include "core/model.h"  // counted, group_thousands
 #include "parse/song.h"  // display_title, display_artist, display_charter
@@ -73,15 +73,9 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
     // The page counts scores, not charts, so the copies go unused (D79).
     const store::ChartIndex library = store.chart_index();
 
-    // One read of every Ready record under the profile, indexed by song id.
-    // A result the library doesn't list is left out, as the path report
-    // leaves it out (D87 item 4, D92).
-    std::unordered_map<std::string, store::RecordRow> by_id;
-    for (store::RecordRow& r : store.ready_records(profile))
-        if (library.lists(r.song_id)) {
-            std::string id = r.song_id;
-            by_id.emplace(std::move(id), std::move(r));
-        }
+    // One read of every listed Ready record under the profile, by song id.
+    const std::unordered_map<std::string, store::RecordRow> by_id =
+        report::listed_records(store, profile, library);
 
     std::vector<DmReportRow> rows;
     rows.reserve(scores.size());

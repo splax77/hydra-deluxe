@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "store/chart_index.h"
 #include "store/record_store.h"
 #include "core/squeeze_rating.h"
 
@@ -140,6 +141,13 @@ std::unordered_map<std::string, int> library_copies_by_hash(store::RecordStore& 
 // other page asks store::ChartIndex::lists.
 bool library_lists(const std::unordered_map<std::string, int>& library,
                    const std::string& hash);
+
+// Every Ready record `store` holds under `profile` (RecordStore::ready_records)
+// whose chart `library` lists, by song id. The store lists results the library
+// doesn't, and no page shows one (D87 item 4, D92). Both comparison pages read
+// their records through here.
+std::unordered_map<std::string, store::RecordRow> listed_records(
+    store::RecordStore& store, const store::Profile& profile, const store::ChartIndex& library);
 
 // The path report's default: every path a record keeps (store::kPathsPerRecord).
 inline constexpr int64_t kDefaultReportPaths = store::kPathsPerRecord;
