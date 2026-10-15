@@ -48,7 +48,7 @@ If the old file can't be renamed, a message box says so, with the reason from Wi
 
 ### Toolbar
 
-The toolbar holds, from left to right, `Manage folders... (N)`, `Scan library`, `Analyze library...`, `Compare with dmleaderboards...` and the `Analysis settings` button. `Open path report` sits at the right edge once there is something to report.
+The toolbar holds, from left to right, `Manage folders... (N)`, `Scan library`, `Analyze library...`, `Compare with dmleaderboards...` and the `Analysis settings` button. `Open path report` sits at the right edge whenever your library has songs.
 
 `Manage folders... (N)` opens the `Song folders` window, where you choose which folders Hydra Deluxe reads. N is how many folders you have. Click `Add folder...` and pick your Clone Hero song folder, or any folder of charts. Hydra Deluxe finds every chart in its subfolders too. Each folder in the list has a red `X` that removes it, after you confirm. `Close` closes the window. After you add or remove a folder, and while at least one folder is left, a `Scan now` button appears beside `Close`. It closes the window and starts a scan, because a changed list only takes effect when you scan.
 
@@ -64,7 +64,7 @@ Hydra Deluxe reads `notes.mid` or `notes.chart` folders with a `song.ini`, `.sng
 
 `Analysis settings: ...` shows the settings your analyses run under, and opens the panel where you change them. See [Analysis settings](#analysis-settings).
 
-`Open path report` opens the path report in its own window. It appears once your library has analyzed songs, and it stays while a report is open or building. While a report builds, it reads `Building path report...`. You can still click it, and the window shows that the report is building. See [Reports](#reports).
+`Open path report` opens the path report in its own window, first analyzing every song that has no current result. It appears whenever your library has songs, and it stays while a report is open or building. While a report builds, it reads `Building path report...`. You can still click it, and the window shows that the report is building. See [Reports](#reports).
 
 While a batch runs, `Scan library` and `Analyze library...` are greyed out, and hovering them says `A batch is running.` `Scan library` is also greyed out while a scan runs and when you have no folders. `Analyze library...` is also greyed out when there is nothing to analyze, and while `hydra_rules.ini` has an error.
 
@@ -129,10 +129,13 @@ The `Best path` cell shows the song's state under the current analysis settings:
 | A score and a path, like `378,315  3- 1 2` | The optimal path. |
 | `Stale` | The result is out of date. Either another version of the app made it, or it was made under different rules in `hydra_rules.ini`. Click the song or run a batch to refresh it. If the cause was a rules edit, switching the rules back brings the result back. |
 | Nothing | The song was analyzed, but the analysis kept no path. Its panel says `No paths found.` |
+| `Can't analyze` (dim) | Hydra Deluxe tried, and something in the chart file itself stops the analysis, like `No Expert Pro Drums notes in this chart.` |
 
-Hover a `Not analyzed` or `Stale` cell for the same explanation.
+Hover a `Not analyzed` or `Stale` cell for the same explanation. Hovering a `Can't analyze` cell shows the reason, with a dim line of details under it when there are any.
 
-The chips above the table filter by state: `All`, `Not analyzed`, `Stale` and `Analyzed`, each with its count. A chip with a count of 0 is greyed out.
+Hydra Deluxe remembers four kinds of failure, because each comes from the chart file and happens again on every try: the chart has no notes for your difficulty and drum type, a timing line Hydra Deluxe refuses, a chart Clone Hero freezes on with Note Shuffle on, and a file Hydra Deluxe can't read or that is damaged. A failure is saved with the settings it happened under, like a result. Hydra Deluxe tries the song again on its own once its file changes, for example after you download it again, because a changed file counts as a new chart. Any other failure, such as a song file that was moved, isn't remembered, so the song stays `Not analyzed`. Clicking a `Can't analyze` song still analyzes it, and its panel shows the same reason.
+
+The chips above the table filter by state: `All`, `Not analyzed`, `Stale`, `Analyzed` and `Can't analyze`, each with its count, like `Can't analyze (N)`. A chip with a count of 0 is greyed out.
 
 ### The search box
 
@@ -319,6 +322,8 @@ First a window titled `Analyze library` asks you to confirm. It says how many so
 
 A batch skips songs that already have a current result under these settings. A `Stale` result isn't current, so a batch runs those songs again with the box unchecked. To analyze the songs with a current result again too, check `Also re-analyze charts that already have a result`. When every song already has a current result and the box is off, the window says `Every chart here already has a result.` and `Start analyzing` stays greyed out.
 
+A `Can't analyze` song counts as one with a result, because its saved failure is its result. A batch skips it and counts it as skipped. When some of the songs in the batch can't be analyzed, the `Analyze library` window adds a dim line: `N of these can't be analyzed. Check the box to try them again.` Checking `Also re-analyze charts that already have a result` tries them again along with the rest.
+
 The batch uses all but one of your CPU cores, and 8 at most. You can keep browsing and open songs while it runs. A strip under the toolbar shows its progress: how many songs are done, the song being analyzed, the time so far and, after a few songs, an estimate of the time left, like `about 1:30 left`. An open song's panel already shows the engine's result, so the batch only updates its library row.
 
 `Pause` holds the batch, and `Resume` carries on. `Stop` ends it and keeps every result finished so far. The Analysis settings stay locked until the batch ends.
@@ -366,19 +371,23 @@ The window never changes its rows behind your back. After a batch, a report buil
 
 ### The path report
 
-The path report is one table of paths, squeeze timings and scores for every song analyzed under your current Analysis settings: the difficulty, Pro Drums, 2x Bass, Note Shuffle, SP cap, `1.0 fills`, score range and path limit. A song analyzed only under other settings isn't in it. Each chart shows its top 5 paths.
+The path report is one table of paths, squeeze timings and scores for every song in your library, under your current Analysis settings: the difficulty, Pro Drums, 2x Bass, Note Shuffle, SP cap, `1.0 fills`, score range and path limit. Each chart shows its top 5 paths. A song that can't be analyzed has no rows, and a line above the table counts it.
 
-A finished batch builds it. `Open path report` on the toolbar opens it whenever the button shows, which is once your library has analyzed songs. Building the report only reads the results Hydra Deluxe has saved. It analyzes nothing and opens no chart file. Hydra Deluxe keeps the report in memory, not in a file. So the first time you open it after starting Hydra Deluxe, it builds a fresh one. Closing the window lets the report go, to save memory, and opening it again builds a fresh one too. The window keeps your search, timing choice, `Optimal paths only` and sort for it. `Refresh` and a batch's new report start them over. If a build is still running when you close the window, it stops. A report a batch builds while the window is closed waits for you to open it.
+When you open the report and it needs building, Hydra Deluxe first analyzes every song with no current result under your settings, `Stale` ones included. This is an ordinary batch: the strip under the toolbar shows it, with `Pause` and `Stop`, and the Analysis settings stay locked while it runs. The window's first line reads `Analyzing n of N charts` over a progress bar, with the same counts as the strip. Its `Cancel` button stops the batch the way `Stop` does. A stopped batch builds no report, so the window then shows `Report cancelled.` with `Try again`. When more than 500 songs need analyzing, the `Analyze library` window asks first, with its usual `Analyze N charts that have no result yet?`. At 500 or fewer, the analysis starts at once. When every song already has a result, the report builds straight away.
 
-While it builds, the line under the header reads `Building the report from your library...`, with a `Cancel` button and grey placeholder rows. There is no progress bar. While `hydra_rules.ini` has an error, analysis is off. A window with no report to show then says so instead of building. Cancelling shows `Report cancelled.` with `Try again`. If the build fails, the window says `The path report could not be built.`, with the reason and `Try again`.
+A finished batch builds the report too. `Open path report` on the toolbar opens it, and shows whenever your library has songs. Hydra Deluxe keeps the report in memory, not in a file. So the first time you open it after starting Hydra Deluxe, it builds a fresh one. Closing the window lets the report go, to save memory, and opening it again builds a fresh one too. The window keeps your search, timing choice, `Optimal paths only` and sort for it. `Refresh` and a batch's new report start them over. If a build is still running when you close the window, it stops. A report a batch builds while the window is closed waits for you to open it.
+
+Once the analysis is done, the report builds. While it builds, the line under the header reads `Building the report from your library...`, with a `Cancel` button and grey placeholder rows. While `hydra_rules.ini` has an error, analysis is off. A window with no report to show then says so instead of building. Cancelling shows `Report cancelled.` with `Try again`. If the build fails, the window says `The path report could not be built.`, with the reason and `Try again`.
 
 The window is titled `Path report — Hydra`, and its header reads `Hydra Path Index`. The line under it reads like `N charts — top 5 paths per chart — SP cap 4 bars`, and ends in `— Clone Hero 1.0 fills` when `1.0 fills` is on. A chart you have more than one copy of in your library shows its paths once, but each copy counts in that line and in the `Charts shown` tile.
+
+A line above the table counts the songs that can't be analyzed. When they all share one reason, the line names it, like `59 charts have no Expert Pro Drums notes`. Otherwise it reads `N charts can't be analyzed`. `Show list` opens the list under the line: each song's title, artist and reason, grouped by reason when there are several. A second line, `N charts have no result under these settings`, shows only when some songs have no result. Those songs failed for a reason Hydra Deluxe doesn't remember, such as a song file that was moved, and the batch strip's `N charts failed` list gives each reason.
 
 The five tiles sum up the paths that pass the filters:
 
 | Tile | What it counts |
 | --- | --- |
-| `Charts shown` | The charts those paths belong to. |
+| `Charts shown` | The charts those paths belong to, out of every chart in your library. On a library of 19,512 songs where 59 have no Expert Pro Drums part and the rest have results, it reads `19,453 of 19,512` with no filters on. The first number follows the filters. |
 | `Paths shown` | The paths themselves. |
 | `Hardest ms` | The hardest squeeze or required early fill any of those paths needs. |
 | `Past N ms` | The paths in the `Beyond N ms` timing tier, the hardest one. |
@@ -417,9 +426,11 @@ The table has one row per path and starts sorted by score, highest first. Its co
 
 Click a row to select that song in Hydra Deluxe, the same as clicking it in the library. The report holds only results made under your current settings, so the Paths tab shows the same paths as the row.
 
-If nothing is analyzed under the current settings but other results exist, the window says `The path report could not be built.` and names the settings it looked under, like `Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, SP cap 8, Clone Hero 1.1 fills). Analyze with these settings, or change them.` When nothing is analyzed at all, it says `Nothing is analyzed yet. Click a song or run a batch to analyze it.`
+When every song either can't be analyzed or has no result, the window shows the lines above the table and `Nothing to show`.
 
-The path report depends on every Analysis setting: the difficulty, Pro Drums, 2x Bass, Note Shuffle, SP cap, `1.0 fills`, score range and path limit. Changing one marks the report out of date.
+A report built before any song has a result under the current settings, while other results exist, says `The path report could not be built.` and names the settings it looked under, like `Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, SP cap 8, Clone Hero 1.1 fills). Analyze with these settings, or change them.` When nothing is analyzed at all, it says `Nothing is analyzed yet. Click a song or run a batch to analyze it.`
+
+The path report depends on every Analysis setting: the difficulty, Pro Drums, 2x Bass, Note Shuffle, SP cap, `1.0 fills`, score range and path limit. Changing one marks the report out of date. `Refresh` then analyzes the songs that have no result under the new settings before it lists them. Under settings you have never analyzed, that is every song in your library.
 
 ### Old report files
 

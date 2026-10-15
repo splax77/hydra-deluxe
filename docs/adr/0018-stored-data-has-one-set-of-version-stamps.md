@@ -75,3 +75,10 @@ release from 1.8.4 to 2.0.0 stamped "1.8.2", so no saved result already
 carries "2.1.0". kPathFormatStamp is now 7. Every saved result reads Stale
 once. Step 2's chart-reader changes (D19 to D31) ship in the same release
 and share that bump (D33).
+
+## Note, 2026-10-15: stored failures did not move the stamp
+
+D249 lets a record hold a stored failure (ADR 0031's note of the same date).
+`kResultsStamp` stayed where it was: the engine's output did not change, and
+an existing record only gained two NULL columns, which changes nothing it
+holds.
