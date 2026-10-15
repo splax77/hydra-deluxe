@@ -99,9 +99,8 @@ int fillcompare_main() {
 
     try {
         hydra::app::write_report_file(outpath, report.html);
-    } catch (const std::exception&) {
-        std::fprintf(stderr, "Cannot write %s\n", out.c_str());
-        return 1;
+    } catch (const std::exception& e) {
+        return hydra::app::tool_error(e, 1);
     }
 
     const hydra::app::fill_report::FillCompareStats& stats = report.stats;
