@@ -737,6 +737,11 @@ private:
     // what it showed (D73 item 3). Every read whose answer a screen shows
     // goes through it.
     bool read_store(const std::function<void()>& read);
+    // Makes batch_plan and batch_redo_plan over the rows `list_items` gives,
+    // under the current settings, in one store read. False when the store
+    // failed (read_store). The batch confirm and the path report's opening
+    // both plan through here, so the plan a run takes is made one way (D79).
+    bool plan_batches(const std::function<std::vector<app::ScanItem>()>& list_items);
     // Re-reads `selected` from its library row after reload_library.
     void follow_selected_row();
     // The library row for the chart `key` (row_key), or null.

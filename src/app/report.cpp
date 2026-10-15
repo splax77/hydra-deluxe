@@ -15,6 +15,7 @@
 #include "core/model.h"
 #include "core/squeeze_rating.h"
 #include "core/strutil.h"
+#include "parse/song.h"  // display_title, display_artist, no_notes_part
 
 namespace hydra::app::report {
 
@@ -167,18 +168,13 @@ std::vector<CantAnalyzeGroup> group_by_reason(const std::vector<CantAnalyzeChart
 }
 
 // The words after the count when every can't-analyze chart shares one
-// reason, read off that reason's sentence; empty when its kind has no short
-// form, and the line falls back to the generic words. A NoNotes sentence is
-// NoNotesError's own text (no_notes_message in parse/song.cpp), "No <part>
-// notes in this chart.", so the short form is "no <part> notes".
+// reason; empty when its kind has no short form, and the line falls back to
+// the generic words. A NoNotes sentence is NoNotesError's own text, and
+// no_notes_part reads what it says is missing.
 std::string shared_reason_words(ErrorKind kind, const std::string& sentence) {
-    static const std::string kHead = "No ";
-    static const std::string kTail = " in this chart.";
     if (kind != ErrorKind::NoNotes) return std::string();
-    if (sentence.size() <= kHead.size() + kTail.size() || !hydra::starts_with(sentence, kHead) ||
-        !hydra::ends_with(sentence, kTail))
-        return std::string();
-    return "no " + sentence.substr(kHead.size(), sentence.size() - kHead.size() - kTail.size());
+    const std::optional<std::string> part = no_notes_part(sentence);
+    return part ? "no " + *part : std::string();
 }
 
 // The coverage line for the can't-analyze charts (the user's answer 5,

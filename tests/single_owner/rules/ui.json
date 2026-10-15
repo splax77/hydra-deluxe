@@ -1932,6 +1932,69 @@
         "if (store_->set_aside_path())"
       ],
       "note": "The open reads the store's set_aside_path once and keeps the sentence; AppState::startup_notice carries it to main.cpp's box, whose closing starts the scan. A second caller would say it a second time or from a second reading of the fact. user_messages holds the sentence itself."
+    },
+    {
+      "question": "How does the GUI make a batch's plan and its redo plan?",
+      "owner": "AppState::plan_batches in src/ui/app_state.cpp",
+      "owner_file": "src/ui/app_state.cpp",
+      "owner_symbol": "AppState::plan_batches",
+      "date": "2026-10-15",
+      "decision": "D79 (a batch runs the plan its confirm showed); D249 (the report's opening plans a batch); derive-once review of REPORT-ALL",
+      "added_by": "REPORT-ALL-review",
+      "pattern": "app::plan_batch\\(",
+      "must_match": [
+        "batch_plan = app::plan_batch(items, with_result);",
+        "redo_plan = app::plan_batch(items, app::charts_with_result(*store, run, true));"
+      ],
+      "must_not_match": [
+        "if (!plan_batches([&] { return library_matches(); })) {",
+        "const app::BatchPlan plan = batch_plan;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/ui/app_state.cpp",
+          "line_text": "batch_plan = app::plan_batch(items, app::charts_with_result(*store, run, false));",
+          "why": "AppState::plan_batches, the owner"
+        },
+        {
+          "file": "src/ui/app_state.cpp",
+          "line_text": "batch_redo_plan = app::plan_batch(items, app::charts_with_result(*store, run, true));",
+          "why": "AppState::plan_batches, the owner"
+        }
+      ],
+      "scope": [
+        "src/ui/app_state.cpp"
+      ],
+      "note": "The batch confirm and the path report's opening each made the same pair of plans from their own list of rows. A third place that plans by hand could pick its skip list another way, and the run would then differ from the confirm it showed. Decided by: D79; D249; derive-once review of REPORT-ALL"
+    },
+    {
+      "question": "What does a batch say while it prepares its chart list?",
+      "owner": "kBatchPreparingText in src/app/analysis.h",
+      "owner_file": "src/app/analysis.h",
+      "owner_symbol": "kBatchPreparingText",
+      "date": "2026-10-15",
+      "decision": "D249 (the report window shows the batch it waits on); derive-once review of REPORT-ALL",
+      "added_by": "REPORT-ALL-review",
+      "pattern": "\"Preparing the chart list",
+      "must_match": [
+        "ImGui::TextUnformatted(\"Preparing the chart list...\");",
+        "frame.building_lines = {b.preparing ? std::string(\"Preparing the chart list...\")"
+      ],
+      "must_not_match": [
+        "ImGui::TextUnformatted(app::kBatchPreparingText);",
+        "frame.building_lines = {std::string(app::kBatchPreparingText)};"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/analysis.h",
+          "line_text": "inline constexpr const char* kBatchPreparingText = \"Preparing the chart list...\";",
+          "why": "the text itself"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The batch strip and the path report window each showed the batch's preparing state in words of their own. A second spelling would drift from the strip the user sees under the toolbar. Decided by: D249; derive-once review of REPORT-ALL"
     }
   ]
 }

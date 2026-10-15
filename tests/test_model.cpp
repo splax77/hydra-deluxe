@@ -810,6 +810,16 @@ TEST_CASE("no_notes_message names the difficulty and the drum mode") {
     CHECK(no_notes_message(Difficulty::Expert, false) == "No Expert Drums notes in this chart.");
 }
 
+TEST_CASE("no_notes_part reads the missing part back out of no_notes_message's sentence") {
+    CHECK(no_notes_part(no_notes_message(Difficulty::Expert, true)) ==
+          std::optional<std::string>("Expert Pro Drums notes"));
+    CHECK(no_notes_part("No Hard Drums notes in this chart.") ==
+          std::optional<std::string>("Hard Drums notes"));
+    CHECK_FALSE(no_notes_part("Hydra couldn't read this chart file.").has_value());
+    CHECK_FALSE(no_notes_part("No  in this chart.").has_value());  // nothing between the ends
+    CHECK_FALSE(no_notes_part("").has_value());
+}
+
 TEST_CASE("title_or_unknown: one fallback for a song with no usable name") {
     CHECK(std::string(kUnknownTitle) == "(unknown)");
     CHECK(title_or_unknown("") == "(unknown)");

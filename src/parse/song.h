@@ -87,6 +87,11 @@ std::optional<Difficulty> difficulty_from_name(std::string_view name);
 // lacks the requested difficulty, used by analysis and the Preview loader.
 std::string no_notes_message(Difficulty difficulty, bool prodrums);
 
+// What no_notes_message's sentence says is missing, such as "Hard Pro Drums
+// notes"; nullopt for a text that is not that sentence. The one reader of the
+// sentence's wording, for a screen that names the missing part on its own.
+std::optional<std::string> no_notes_part(const std::string& message);
+
 // A chart with no notes at the asked difficulty. Its message is
 // no_notes_message's sentence, and it is still a ChartFileError, so anything
 // that catches chart problems catches it. Its kind is NoNotes, which the

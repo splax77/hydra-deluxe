@@ -226,6 +226,11 @@ std::string batch_counts_text(int analyzed, int failed, int skipped);
 // the box to try them again." The user's answer 6, 2026-10-15.
 std::string batch_cant_analyze_text(int64_t rows);
 
+// What a batch says while it lists its charts, before the first one runs. The
+// strip under the toolbar and the path report window waiting on a batch both
+// show it.
+inline constexpr const char* kBatchPreparingText = "Preparing the chart list...";
+
 // The default batch pool size: one core is left for the UI (or shell) and for
 // whatever else the machine is doing; capped so peak memory (a discography
 // chart can reach hundreds of MB) stays bounded.

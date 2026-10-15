@@ -838,6 +838,35 @@
         "src/parse/song.cpp"
       ],
       "note": "The .chart sections the reader keeps by name are named once, so the code that keeps them and the code that reads them back cannot spell them apart. Scoped to song.cpp, where the .chart reader lives; \"Song\" means a title elsewhere. Decided by: the speedups plan, task P1 (D86); derive-once review of P1"
+    },
+    {
+      "question": "Who writes or reads the wording of the no-notes sentence?",
+      "owner": "no_notes_message and no_notes_part in src/parse/song.cpp",
+      "owner_file": "src/parse/song.cpp",
+      "owner_symbol": "no_notes_part",
+      "date": "2026-10-15",
+      "decision": "D249 (the report names a shared reason); derive-once review of REPORT-ALL",
+      "added_by": "REPORT-ALL-review",
+      "pattern": "\"[^\"]*in this chart\\.",
+      "must_match": [
+        "constexpr std::string_view kNoNotesTail = \" in this chart.\";",
+        "if (text.ends_with(\" in this chart.\")) cut(text);"
+      ],
+      "must_not_match": [
+        "return std::string(kNoNotesHead) + difficulty_name(difficulty);",
+        "const std::optional<std::string> part = no_notes_part(sentence);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/parse/song.cpp",
+          "line_text": "constexpr std::string_view kNoNotesTail = \" in this chart.\";",
+          "why": "the tail itself"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The sentence for a chart with no notes at the asked difficulty is written by no_notes_message, and the part it names is read back by no_notes_part, both from the same two end pieces. A screen that cuts the sentence apart itself holds a second copy of its wording. Decided by: D249; derive-once review of REPORT-ALL"
     }
   ]
 }

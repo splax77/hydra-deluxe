@@ -10,6 +10,7 @@
 #include <tuple>
 #include <vector>
 
+#include "app/analysis.h"        // kBatchPreparingText
 #include "app/display_format.h"  // kFactSeparator
 #include "app/path_report_view.h"
 #include "app/user_messages.h"
@@ -203,7 +204,7 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
         // then its own count over a bar it fills (plan 2026-10-15, question
         // 8). Both numbers are the snapshot's, as the strip shows them.
         const PathReportInput::WaitedBatch& b = *input.batch;
-        frame.building_lines = {b.preparing ? std::string("Preparing the chart list...")
+        frame.building_lines = {b.preparing ? std::string(app::kBatchPreparingText)
                                             : "Analyzing " + group_thousands(b.completed) +
                                                   " of " + counted(b.total, "chart", "charts")};
         frame.progress = std::make_pair(b.completed, b.total);

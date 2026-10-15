@@ -608,20 +608,21 @@ void AppState::open_batch_confirm() {
     // finished counts come from one plan. Rows older than the store would
     // count fewer charts than the button's N.
     reload_after_scan();
-    std::vector<app::ScanItem> items;
-    const app::BatchRun run = settings.batch_run();
-    app::SettledCharts with_result;
-    if (!read_store([&] {
-            items = library_matches();
-            with_result = app::charts_with_result(*store, run, false);
-        })) {
+    if (!plan_batches([&] { return library_matches(); })) {
         // The database failed: the confirm stays closed (D72 item 4).
         close_batch_confirm();
         return;
     }
-    batch_plan = app::plan_batch(items, with_result);
-    batch_redo_plan = app::plan_batch(items, app::charts_with_result(*store, run, true));
     batch_confirm_pending = true;
+}
+
+bool AppState::plan_batches(const std::function<std::vector<app::ScanItem>()>& list_items) {
+    const app::BatchRun run = settings.batch_run();
+    return read_store([&] {
+        const std::vector<app::ScanItem> items = list_items();
+        batch_plan = app::plan_batch(items, app::charts_with_result(*store, run, false));
+        batch_redo_plan = app::plan_batch(items, app::charts_with_result(*store, run, true));
+    });
 }
 
 void AppState::close_batch_confirm() {
@@ -819,25 +820,19 @@ void AppState::request_path_report(PathReportCause cause) {
     // Every library row, planned as a batch plans it, so the run's counts
     // and the strip's are one plan's (D79).
     reload_after_scan();
-    app::BatchPlan plan;
-    app::BatchPlan redo_plan;
-    if (!read_store([&] {
-            const std::vector<app::ScanItem> items = store->list_chart_library(0, -1);  // -1 = no limit
-            plan = app::plan_batch(items, app::charts_with_result(*store, run, false));
-            redo_plan = app::plan_batch(items, app::charts_with_result(*store, run, true));
-        })) {
+    if (!plan_batches([&] { return store->list_chart_library(0, -1); })) {  // -1 = no limit
         // The database failed and the status line says so; the build reads
         // the store too and shows its own failure in the window.
+        close_batch_confirm();
         launch_path_report(run, cause);
         return;
     }
-    if (plan.todo_rows() == 0) {
+    if (batch_plan.todo_rows() == 0) {
+        close_batch_confirm();
         launch_path_report(run, cause);
         return;
     }
     // The plans the confirm shows and start_batch runs.
-    batch_plan = std::move(plan);
-    batch_redo_plan = std::move(redo_plan);
     batch_confirm_pending = true;
     report_wait_cause_ = cause;
     if (batch_plan.todo_rows() > report_confirm_above) {

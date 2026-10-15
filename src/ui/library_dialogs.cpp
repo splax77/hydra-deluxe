@@ -445,7 +445,7 @@ void render_batch_strip(AppState& app) {
     ImGui::BeginChild("##striptext", ImVec2(text_w, 0.0f), ImGuiChildFlags_AutoResizeY);
     ImGui::PopStyleColor();
     if (s.preparing) {
-        ImGui::TextUnformatted("Preparing the chart list...");
+        ImGui::TextUnformatted(app::kBatchPreparingText);
     } else {
         std::string line = stopping ? "Stopping..." : s.paused ? "Paused" : "Analyzing...";
         line += "  " + group_thousands(s.completed) + " of " + group_thousands(s.total);
