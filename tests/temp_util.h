@@ -4,8 +4,8 @@
 // The temp-folder lookup here is the only one under tests/ (a single-owner
 // row in tests/single_owner/rules/tests.json checks it).
 //
-// Both functions hand back UTF-8, the form every path helper in core/winstr
-// takes; a caller that needs the wide form for a Win32 call converts once
+// These functions take and hand back UTF-8, the form every path helper in
+// core/winstr takes; a caller that needs the wide form for a Win32 call converts once
 // there with hydra::utf8_to_wide. The tag is UTF-8 too and is used as given,
 // non-ASCII included.
 
