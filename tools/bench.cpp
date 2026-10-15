@@ -104,8 +104,9 @@ static void folder_breakdown(const std::string& folder, const core::Rules& rules
 
         // The record's rank-1 score: none for a record with no paths,
         // printed "-" the way hydra_batch prints it.
-        const std::vector<store::PathRow>& paths = prepared.record.paths;
-        const std::string best_text = paths.empty() ? "-" : std::to_string(paths.front().score);
+        const store::PathSummary summary = prepared.record.summary();
+        const std::string best_text =
+            summary.has_scored_best_path() ? std::to_string(*summary.score) : "-";
         std::printf("  parse %.2fs | search %.2fs | store %.2fs  => TOTAL %.2fs\n",
                     parse_s, search_s, store_s, parse_s + search_s + store_s);
         std::printf("  best score %s | %s | sp_cap %d\n\n", best_text.c_str(),

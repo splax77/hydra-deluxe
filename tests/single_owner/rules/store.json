@@ -138,8 +138,7 @@
       "date": "2026-10-05",
       "decision": "D51",
       "added_by": "LB2",
-      "pattern": "\\bsummary\\.(score|stars)\\.has_value\\(\\)|!\\s*(\\w+\\.)*summary\\.score\\b|\\bsummary\\.(score|stars)\\s*\\?",
-      "anchor": "summary.",
+      "pattern": "\\bsummary\\.(score|stars)\\.has_value\\(\\)|!\\s*(\\w+\\.)*summary\\.score\\b|\\bsummary\\.(score|stars)\\s*\\?|\\bpaths\\.empty\\(\\)\\s*\\?\\s*\"-\"",
       "owner_files": [
         "src/store/record_store.h"
       ],
@@ -152,17 +151,20 @@
       "must_match": [
         "const bool xs = x.summary.score.has_value();",
         "if (!summary.score) return bestpath;",
-        "row.summary.score ? hydra::group_thousands(*row.summary.score) : \"-\";"
+        "row.summary.score ? hydra::group_thousands(*row.summary.score) : \"-\";",
+        "std::string score = paths.empty() ? \"-\" : hydra::group_thousands(paths.front().score);"
       ],
       "must_not_match": [
         "const bool xs = x.summary.has_scored_best_path();",
+        "summary.has_scored_best_path() ? hydra::group_thousands(*summary.score) : \"-\";",
         "if (summary.stars) facts += \" \\xC2\\xB7 \" + counted(*summary.stars, \"star\", \"stars\");"
       ],
       "scope": [
         "src",
-        "tests"
+        "tests",
+        "tools"
       ],
-      "note": "A summary's score or stars tested for presence: whether the record has a scored best path. test_store_results checks the stored columns themselves, which is what the owner reads. Decided by: D51 call 11; audit finding 88 (phase 7 task LB2)"
+      "note": "A summary's score or stars tested for presence, or a record's paths tested for empty to print a dash: whether the record has a scored best path. test_store_results checks the stored columns themselves, which is what the owner reads. Decided by: D51 call 11; audit finding 88 (phase 7 task LB2)"
     },
     {
       "question": "Why is a stored row Stale?",
