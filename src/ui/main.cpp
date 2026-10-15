@@ -32,8 +32,12 @@
 #include "ui/icons.h"
 
 // `Hydra.exe --uitest <test|all|script-file>`: run a GUI test inside the real
-// window at watchable speed (docs/agents/ui-testing.md).
+// window at watchable speed (docs/agents/ui-testing.md). `Hydra.exe --live`:
+// take commands from the live channel in the real window, as the MCP helper
+// tools/hydra_ui_mcp.py launches it. Dev builds only.
 #ifdef HYDRA_UITEST_ATTACHED
+#include <filesystem>
+
 #include "imgui_te_ui.h"
 #include "uitest_harness.h"
 #endif
@@ -173,16 +177,29 @@ static std::runtime_error startup_call_failed(const char* call, const char* code
 
 int main()
 {
-    // --uitest <what> [--uitest-log <file>]; everything else is ignored.
+#ifdef HYDRA_UITEST_ATTACHED
+    // The GUI test flags, read only by a dev build; a shipped Hydra takes no
+    // arguments. --uitest <what> runs a test or script; --live runs the live
+    // channel instead (tests/ui/uitest_live.cpp). --db, --ini and --shots
+    // mean what they mean to hydra_uitest (tests/ui/uitest_main.cpp).
+    // --ui-ini names the ImGui layout file. Everything else is ignored.
     const std::vector<std::string> args = hydra::utf8_argv();
     const int argc = static_cast<int>(args.size());
-    std::string uitest_what, uitest_log;
-    for (int i = 1; i + 1 < argc; ++i) {
-        if (args[i] == "--uitest") uitest_what = args[++i];
-        else if (args[i] == "--uitest-log") uitest_log = args[++i];
+    std::string uitest_what, uitest_log, seed_db, seed_ini, ui_ini, shots_dir;
+    bool live = false, keep_temp = false;
+    for (int i = 1; i < argc; ++i) {
+        const std::string& a = args[i];
+        if (a == "--live") { live = true; continue; }
+        if (a == "--keep-temp") { keep_temp = true; continue; }
+        if (i + 1 >= argc) break;
+        if (a == "--uitest") uitest_what = args[++i];
+        else if (a == "--uitest-log") uitest_log = args[++i];
+        else if (a == "--db") seed_db = args[++i];
+        else if (a == "--ini") seed_ini = args[++i];
+        else if (a == "--ui-ini") ui_ini = args[++i];
+        else if (a == "--shots") shots_dir = args[++i];
     }
-#ifndef HYDRA_UITEST_ATTACHED
-    (void)uitest_what; (void)uitest_log;
+    const bool run_harness = live || !uitest_what.empty();
 #endif
 
     // Make the process DPI aware and read the primary monitor's scale.
@@ -216,6 +233,9 @@ int main()
     // with the headless GUI test runner.)
     hydra::ui::ImGuiSetupOptions imgui_options;
     imgui_options.dpi_scale = main_scale;
+#ifdef HYDRA_UITEST_ATTACHED
+    imgui_options.ini_file = ui_ini;  // empty keeps the default
+#endif
     hydra::ui::setup_imgui(imgui_options);
 
     // Reopen where the user left it, unless that spot is on no monitor now
@@ -299,7 +319,8 @@ int main()
     std::unique_ptr<uitest::Harness> uitest;
     bool uitest_results_written = false;
     bool uitest_windows_open = true;
-    if (!uitest_what.empty()) {
+    int uitest_failures = 0;
+    if (run_harness) {
         // All runner output (results, dump/state text) goes to the log file:
         // a GUI-subsystem exe has no console. Opened shareable so it can be
         // read (tail -f) while the window is still up.
@@ -311,10 +332,36 @@ int main()
         if (_wfreopen(hydra::win32_path(uitest_log).c_str(), L"w", stdout))
             setvbuf(stdout, nullptr, _IONBF, 0);
         uitest = std::make_unique<uitest::Harness>();
+        // Before init_attached, which points the shots at the scratch folder
+        // when none is given.
+        uitest->shots_dir = shots_dir;
+        uitest->seed_db = seed_db;
+        uitest->seed_ini = seed_ini;
         uitest->init_attached(g_pd3dDevice, g_pd3dDeviceContext, g_pSwapChain);
         uitest::register_tests(*uitest);
+        if (live) uitest::register_live_test(*uitest);
         ImGuiTestEngine_Start(uitest->engine, ImGui::GetCurrentContext());
-        if (!uitest->queue(uitest_what)) {
+        // reset_app copies a seed only when it exists, so a mistyped one
+        // would quietly start on an empty library; refused here, as
+        // hydra_uitest's main refuses it.
+        std::string refused;
+        for (const std::string* seed : {&seed_db, &seed_ini}) {
+            std::error_code ec;
+            if (!seed->empty() &&
+                !std::filesystem::is_regular_file(std::filesystem::u8path(*seed), ec))
+                refused = "no such seed file \"" + *seed + "\"";
+        }
+        if (live && !uitest_what.empty()) refused = "--live runs alone, without --uitest";
+        if (!refused.empty()) {
+            std::printf("%s\n", refused.c_str());
+            uitest_failures = 1;
+            uitest_results_written = true;
+            if (live) ::PostQuitMessage(1);
+        } else if (live) {
+            ImGuiTestEngine_QueueTest(uitest->engine,
+                                      ImGuiTestEngine_FindTestByName(uitest->engine, "hydra", "live"),
+                                      ImGuiTestRunFlags_RunFromCommandLine);
+        } else if (!uitest->queue(uitest_what)) {
             std::printf("no test or script file \"%s\"\n", uitest_what.c_str());
             uitest_results_written = true;
         }
@@ -437,13 +484,16 @@ int main()
 #ifdef HYDRA_UITEST_ATTACHED
         if (uitest) {
             ImGuiTestEngine_PostSwap(uitest->engine);
-            // Once the queue drains, write the results and keep the window
-            // open so the end state can be inspected.
+            // Once the queue drains, write the results. A --uitest run keeps
+            // the window open so the end state can be inspected; the live
+            // test returns when its client quits or leaves, and nobody is
+            // left to look, so the window closes.
             if (!uitest_results_written && ImGuiTestEngine_IsTestQueueEmpty(uitest->engine)) {
                 uitest_results_written = true;
-                uitest->print_results(stdout);
-                std::printf("scratch files in %s\n", uitest->temp_dir.c_str());
+                uitest_failures = uitest->print_results(stdout);
+                if (!live) std::printf("scratch files in %s\n", uitest->temp_dir.c_str());
                 std::fflush(stdout);
+                if (live) ::PostQuitMessage(0);
             }
         }
 #endif
@@ -459,8 +509,16 @@ int main()
     // The engine outlives the ImGui context. Attached, its shutdown touches
     // neither the device nor the window, so it can follow the teardown.
     if (uitest) {
-        uitest->keep_temp = true;  // leave the scratch files for inspection
+        // A --uitest run leaves its scratch files for inspection. A live run
+        // deletes them unless --keep-temp asks otherwise: in window mode they
+        // hold a copy of the user's library.
+        uitest->keep_temp = !live || keep_temp;
         uitest->shutdown();
+        if (live) {
+            if (uitest->keep_temp) std::printf("scratch files kept in %s\n", uitest->temp_dir.c_str());
+            std::fflush(stdout);
+            return uitest_failures == 0 ? 0 : 1;
+        }
     }
 #endif
     return 0;

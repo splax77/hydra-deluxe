@@ -356,19 +356,42 @@ class RealExeLayer(unittest.TestCase):
     @unittest.skipUnless(os.environ.get("HYDRA_LIVE_WINDOW_TEST") == "1",
                          "opens a window; set HYDRA_LIVE_WINDOW_TEST=1")
     def test_window_session_on_a_seed_from_headless(self):
-        self.helper.start("headless", keep=True)
+        # The seed library is the headless session's scratch folder, copied
+        # once that session has closed its database. hydra_uitest deletes the
+        # folder on exit unless told --keep-temp, so this session gets it.
+        # (tearDown shuts down whichever helper self.helper is by then.)
+        self.helper = hm.Helper(temp_root=self.tmp.name, process_lister=lambda: [],
+                                launcher=keep_temp_launcher)
+        self.helper.start("headless")
         self.scan()
         engine = self.helper.session.engine_scratch()
+        self.assertEqual(self.helper.stop(), "Hydra exited with code 0")
+        self.helper = hm.Helper(temp_root=self.tmp.name, process_lister=lambda: [])
         lib = Path(self.tmp.name) / "seed library"
         lib.mkdir()
-        self.helper.stop()
-        for name in hm.SNAPSHOT_FILES:
-            if (engine / name).is_file():
-                shutil.copy2(engine / name, lib / name)
+        try:
+            for name in hm.SNAPSHOT_FILES:
+                if (engine / name).is_file():
+                    shutil.copy2(engine / name, lib / name)
+        finally:
+            shutil.rmtree(engine, ignore_errors=True)
+        self.assertTrue((lib / "hydra.db").is_file())
+
         out = self.helper.start("window", library_dir=str(lib))
         self.assertIn("started a window session", out)
+        self.assertEqual(self.helper.session.hello.get("mode"), "window")
         self.assertIn("charts=97", self.helper.send("state"))
+        window_engine = self.helper.session.engine_scratch()
+        self.assertTrue(window_engine.is_dir())
         self.assertEqual(self.helper.stop(), "Hydra exited with code 0")
+        # Live mode deletes its scratch copy of the library on exit.
+        self.assertFalse(window_engine.exists())
+
+
+def keep_temp_launcher(exe, args):
+    """The helper's launch, plus --keep-temp, so the engine's scratch folder
+    outlives the process (the window test seeds from it)."""
+    return hm.default_launcher(exe, list(args) + ["--keep-temp"])
 
 
 if __name__ == "__main__":
