@@ -694,9 +694,10 @@ private:
     // (D115): every row becomes a record under its own profile (its own stamp
     // and rules), so a row this build cannot read reads Stale, as after any
     // stamp bump. Stored ids become lowercase, in `charts` too. Then `results`
-    // is dropped, so a second open finds a Current file, and so is the
-    // retired whole-file fill-rule label (kRetiredFillLabelKey). One transaction; a
-    // failure throws KindedError(DatabaseUpgrade) with the file as it was.
+    // is dropped, so a second open finds a Current file, and the retired
+    // whole-file fill-rule label (kRetiredFillLabelKey) is deleted. One
+    // transaction; a failure throws KindedError(DatabaseUpgrade) with the file
+    // as it was.
     void convert_results();
     // Opens db_ on `dbpath`, creating the file if it is missing; throws
     // KindedError(DatabaseOpen) when SQLite refuses.
