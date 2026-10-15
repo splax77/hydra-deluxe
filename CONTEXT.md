@@ -45,9 +45,10 @@ chart by it after a rescan, so the panel follows its row (D114 item 7).
 Every count of charts a player sees counts library rows, so a chart with two
 copies counts twice (D76, D77, D79). `ChartIndex` in src/store/chart_index.h,
 built by `RecordStore::chart_index` from the rows in scan order, is the one
-answer to which charts the library lists, how many copies each has
-(`ChartIndex::count`) and which copy names it (`ChartIndex::naming`, the
-first row) (D115).
+answer to which charts the library lists (`ChartIndex::lists`), how many
+copies each has (`ChartIndex::copies`; `ChartIndex::count` adds them up for a
+set of charts) and which copy names it (`ChartIndex::naming`, the first row)
+(D115).
 
 **Selection scroll**:
 Whether a list moves when its selected row changes, and how far. The owner is
@@ -149,8 +150,8 @@ ids are lowercased. A file from before 2.2.0 (`kOldestConvertibleVersion`) is
 not converted. The app sets it aside as hydra.db.pre-2.2.0, replacing an
 earlier one, starts a fresh library, says so once and scans
 (`set_aside_old_library` in src/store/upgrade_files.cpp). The command-line
-tools refuse it and leave it alone. Each open names which it wants with
-`OldFilePolicy` (docs/adr/0031). The notice and the failure sentences live in
+tools refuse it and leave it alone. Each open in shipped code names which it
+wants with `OldFilePolicy` (docs/adr/0031). The notice and the failure sentences live in
 src/app/user_messages.cpp. The open runs off the window's thread, so the
 window never freezes; a slow one shows the startup screen.
 
@@ -371,7 +372,7 @@ report build stopped by Cancel is marked through `ReportSlot::mark_cancelled`.
 
 **Path**:
 One way to play a chart's Star Power: which activations to take and what each
-is worth. Every path that ties the record's top score is optimal, not only the
+is worth. Every path that ties the analysis's top score is optimal, not only the
 first one listed (D48). A path's average multiplier reads 0.000x when it has no
 scoring notes, instead of dividing by zero (`Path::avg_mult`); real charts
 never hit this (D48, Q33).
@@ -554,7 +555,7 @@ and the collected phrases are read from it (docs/adr/0021).
 **Deact node**:
 The exact chart position where an activation's Star Power ends; backend
 squeeze timings are measured against it. The search stamps it onto the
-record as it runs, and nothing downstream re-derives it: every reader asks
+analysis as it runs, and nothing downstream re-derives it: every reader asks
 `Activation::deact_tick` (src/core/model.h), which reads the last step of the
 SP-end history.
 _Avoid_: SP end tick (when the anchored search position is meant)
@@ -644,7 +645,7 @@ _Avoid_: bar (for a measure)
 
 **Beat**:
 One step of Clone Hero's grid: the resolution × 4 ÷ the time signature's
-bottom number, so a quarter note in 4/4 and an eighth note in 6/8. The beat
+bottom number, cut down to whole ticks, so a quarter note in 4/4 and an eighth note in 6/8. The beat
 lines and the position text's beat number count these, so they always agree.
 Two rules count quarter notes in every meter instead: the fill spawn deadline
 (CH 1.1) and the generated fill's half-beat distance, both as Clone Hero's
@@ -744,16 +745,16 @@ them.
 
 **SP meter gauge**:
 The vertical gauge on the note highway's right edge showing banked Star Power
-at the playhead. With a path, every value is the record's. Between activations
+at the playhead. With a path, every value is the analysis's. Between activations
 it steps up one bar at each tick where the engine stamped a bar's arrival. In
 an active window it shows the measures left until the SP end in force, two
-measures to a bar, and the record lists every place that end moved. It empties
+measures to a bar, and the analysis lists every place that end moved. It empties
 exactly at the deact node. The gauge counts no phrases and applies no cap. A
 late squeeze-in refills at the old SP end, because the player hits that phrase
 early and SP never stops. A squeezed-out phrase's bar arrives when the player
 hits it: as SP ends for an early phrase, on its own note for a late one.
 Without a path it fills one bar per phrase and pins at the cap, since nothing
-spends it and there is no record to read.
+spends it and there is no analysis to read.
 
 **Preview text box**:
 One of the four boxes of text over the Preview image: the time, score, SP

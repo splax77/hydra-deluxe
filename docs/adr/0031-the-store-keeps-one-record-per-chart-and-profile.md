@@ -127,8 +127,9 @@ record never needs its paths filled in, because it can never read Ready: the
 report lists Ready records only, and every Ready record was written whole by a
 click or a batch.
 
-**From before 2.2.0 (TooOld).** The file is not converted. Each open names
-what it wants with `OldFilePolicy`; there is no default. The app sets the
+**From before 2.2.0 (TooOld).** The file is not converted. Each open in
+shipped code names what it wants with `OldFilePolicy`; the policy has no
+default (the tests' short constructor refuses). The app sets the
 file aside: `set_aside_old_library` (src/store/upgrade_files.cpp) renames
 hydra.db and its side files to hydra.db.pre-2.2.0, replacing an earlier
 set-aside file only after the move has worked. The app then starts a fresh
@@ -141,11 +142,14 @@ the cut-off is `kOldestConvertibleVersion` (user decisions, 2026-10-14).
 The library file grows by the stored paths. The spec estimated about 150 to
 200 bytes per record and 3 to 4 MB per profile across the user's 18,848
 analyzed charts (spec section 3: the stored best path averaged 12 characters
-and a record kept 4.08 paths on the user's file). That is an estimate, not a
-measurement of the shipped layout.
+and a record kept 4.08 paths on the user's file). That is an estimate for the
+user's library. The case "store: path rows measured on the corpus" in
+tests/test_store_records.cpp measures the shipped layout on `testdata/input`
+and prints the bytes per path row and per record when it runs; this page
+quotes no measured figure.
 
-Every saved result reads Stale once after the update, and the whole library
-must be analyzed again before the report shows anything.
+Every saved result reads Stale once after the update, and a chart must be
+analyzed again before the report lists it.
 
 A library file from before 2.2.0 loses its results, and its library is
 scanned again. The user chose to cut those files off (2026-10-14).

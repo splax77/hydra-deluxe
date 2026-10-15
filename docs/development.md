@@ -344,9 +344,10 @@ new file no longer has. Add `--summary-only` to compare just what the new
 store keeps; the script's own header says which tables and columns that is.
 
 `hydra_bench --engine <folder>` and `hydra_bench --parse <folder>` print one
-digest over a whole folder: the first over every chart's record as it would
-be saved (`prepare_record`'s output, paths included), the second over every
-parsed chart and its dynamics counts. They read the
+digest over a whole folder: the first over every chart's whole engine result
+plus the best path and summary of the record `prepare_record` makes from it
+(`row_hash` in `tests\song_digest.h`), the second over every parsed chart and
+its dynamics counts. They read the
 same settings file `hydra_batch` reads, the one beside the exe.
 `--out <file>` writes one line per chart, so two runs can be diffed to find
 the chart that moved. The digests are defined in `tests\song_digest.h`, and
