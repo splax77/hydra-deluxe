@@ -14,6 +14,10 @@
 #include <string>
 #include <string_view>
 
+namespace hydra {
+enum class ErrorKind;  // core/error_kind.h
+}
+
 namespace hydra::app {
 
 // What every error Hydra doesn't recognize reads as.
@@ -71,6 +75,13 @@ std::string plain_error_line(const std::string& sentence, const std::string& det
 // a place with no separate details line (Hydra's startup message box and the
 // command-line tools' stderr, D72). With no detail it is the sentence alone.
 std::string plain_error_block(const std::exception& e);
+
+// plain_error_block for a failure the store kept as a chart's result
+// (store::RecordLookup's failure_kind and failure_text): the error is rebuilt
+// from its kind and raw text, so the words come from kind_sentence like any
+// live error's, never from stored wording. The library's Can't analyze cell
+// shows it when hovered.
+std::string stored_failure_text(ErrorKind kind, const std::string& text);
 
 // How a command-line tool ends on an error: its plain_error_block on stderr,
 // then the exit code the caller passes (D72 item 5, D73 item 4).
