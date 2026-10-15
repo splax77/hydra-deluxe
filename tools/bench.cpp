@@ -447,9 +447,10 @@ static void replay_mode(const std::string& chart) {
 
 // Upgrade mode:
 //   hydra_bench --upgrade <db file>
-// Opens the file, which converts a 2.2.0 to 2.7.0 layout for good, and prints
-// how long each step of the open took. A file too old to convert is refused. Point it at a scratch copy
-// of a real library file (db, -wal and -shm together), never at the live one.
+// Opens the file, which converts a Convertible layout (store/library_file.h)
+// for good, and prints how long each step of the open took. A file too old to
+// convert is refused. Point it at a scratch copy of a real library file (db,
+// -wal and -shm together), never at the live one.
 static void upgrade_mode(const std::string& dbpath) {
     if (!file_exists_utf8(dbpath)) {
         std::printf("no such file: %s\n", dbpath.c_str());
