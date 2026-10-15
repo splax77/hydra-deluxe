@@ -195,14 +195,13 @@ inline constexpr const char* kNothingUnderSettings = "Nothing is analyzed under 
 
 // The whole sentence an empty page gives, built once for every page that
 // lists results (finding 105, D50 item 3): "Nothing is analyzed under these
-// settings (<chartmode>, SP cap <cap>, <fills>)<ending>. Analyze with these
-// settings, or change them." `chartmode` is the stored chart mode as every page
+// settings (<chartmode>, SP cap <cap>, <fills>). Analyze with these settings,
+// or change them." `chartmode` is the stored chart mode as every page
 // shows it (Profile::chartmode, spelled by app::chartmode_key). The path report
 // passes its fill rule as `fills`; the fill comparison passes no fills (it
-// compares both rules). No page passes an ending now.
+// compares both rules).
 std::string nothing_under_settings(const std::string& chartmode, int cap,
-                                   const std::string& fills = std::string(),
-                                   const std::string& ending = std::string());
+                                   const std::string& fills = std::string());
 
 struct GeneratedReport {
     // The charts with rows on the page, every library copy counted

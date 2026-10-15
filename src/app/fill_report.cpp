@@ -55,8 +55,8 @@ const char* const kBody = R"page(<div class="wrap fill">
       <option value="__ST_NEW_HIGHER__">1.1 higher</option>
       <option value="__ST_OLD_HIGHER__">1.0 higher</option>
       <option value="__ST_SAME__">Same score</option>
-      <option value="__ST_ONLY_OLD__">Only in 1.0 db</option>
-      <option value="__ST_ONLY_NEW__">Only in 1.1 db</option>
+      <option value="__ST_ONLY_OLD__">Only under 1.0</option>
+      <option value="__ST_ONLY_NEW__">Only under 1.1</option>
       <option value="__ST_IN_BOTH__">In both</option>
     </select>
     <span class="count" id="count"></span>
@@ -67,7 +67,7 @@ const char* const kBody = R"page(<div class="wrap fill">
       <thead><tr id="head"></tr></thead>
       <tbody id="body"></tbody>
     </table>
-    <div class="empty" id="empty">Joining databases&hellip;</div>
+    <div class="empty" id="empty">Loading&hellip;</div>
   </div>
 
   <footer>__FOOTER__</footer>
@@ -417,7 +417,7 @@ GeneratedFillReport generate_fill_report(store::RecordStore& store,
         group_thousands(out.stats.ch10_higher) + " higher under 1.0, " +
         group_thousands(out.stats.same) + " unchanged, " +
         group_thousands(out.stats.only_old + out.stats.only_new) +
-        " in one database only, " + group_thousands(out.stats.in_both) + " " + kInBothPhrase;
+        " under one rule only, " + group_thousands(out.stats.in_both) + " " + kInBothPhrase;
     std::string footer =
         "A drum fill only appears if your Star Power meter filled up in time. " +
         fill_rule_description(FillDeadlineRule::Ch10) + " " +

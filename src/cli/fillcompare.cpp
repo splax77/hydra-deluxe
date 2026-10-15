@@ -108,7 +108,7 @@ int fillcompare_main() {
     // The last count's words are the page's (D114 item 26).
     std::printf(
         "Compared %s: %s same, %s 1.0 higher, %s 1.1 higher, "
-        "%s only in 1.0, %s only in 1.1, %s %s\n",
+        "%s only under 1.0, %s only under 1.1, %s %s\n",
         hydra::counted(stats.total, "chart", "charts").c_str(),
         hydra::group_thousands(stats.same).c_str(),
         hydra::group_thousands(stats.ch10_higher).c_str(),

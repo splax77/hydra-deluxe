@@ -685,17 +685,16 @@ TEST_CASE("generate_report: \"every path\" is the sentinel's, a huge --paths sta
     CHECK(report::ReportOptions{}.hit_window_ms == kDefaultHitWindowMs);
 }
 
-TEST_CASE("nothing_under_settings frames the chart mode, the cap, the fills and the ending") {
+TEST_CASE("nothing_under_settings frames the chart mode, the cap and the fills") {
     // One frame for every empty page (finding 105, D50 item 3): the chart mode
     // comes first. The path report passes its fill rule, the fill comparison
-    // no fills and " in either database".
+    // no fills.
     CHECK(report::nothing_under_settings("Expert Pro Drums, 2x Bass", 8, "Clone Hero 1.1 fills") ==
           "Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, SP cap 8, "
           "Clone Hero 1.1 fills). Analyze with these settings, or change them.");
-    CHECK(report::nothing_under_settings("Expert Pro Drums, 2x Bass", 4, "",
-                                         " in either database") ==
-          "Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, SP cap 4) "
-          "in either database. Analyze with these settings, or change them.");
+    CHECK(report::nothing_under_settings("Expert Pro Drums, 2x Bass", 4) ==
+          "Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, SP cap 4). "
+          "Analyze with these settings, or change them.");
     CHECK(report::nothing_under_settings("Hard Drums, 1x Bass", 1200, "Clone Hero 1.0 fills") ==
           "Nothing is analyzed under these settings (Hard Drums, 1x Bass, SP cap 1,200, "
           "Clone Hero 1.0 fills). Analyze with these settings, or change them.");

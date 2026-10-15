@@ -338,7 +338,7 @@ TEST_CASE("hydra_batch writes a 1.0 run and a 1.1 run into one database") {
     INFO(r.output);
     CHECK(r.exit_code == 0);
     CHECK(contains(r.output, "Compared 1 chart:"));
-    CHECK(contains(r.output, "0 only in 1.0, 0 only in 1.1"));
+    CHECK(contains(r.output, "0 only under 1.0, 0 only under 1.1"));
 }
 
 TEST_CASE("hydra_batch reuses the GUI's scan cache") {
@@ -423,7 +423,7 @@ TEST_CASE("hydra_fillcompare reads the tool's own hydra.db without --db") {
     INFO(r.output);
     CHECK(r.exit_code == 0);
     CHECK(contains(r.output, "Compared 1 chart:"));
-    CHECK(contains(r.output, "0 only in 1.0, 0 only in 1.1"));
+    CHECK(contains(r.output, "0 only under 1.0, 0 only under 1.1"));
     CHECK(!contains(r.output, "Warning"));
     CHECK(fs::exists(page));
 
@@ -478,7 +478,7 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
     INFO(r.output);
     CHECK(r.exit_code == 0);
     CHECK(contains(r.output, "Compared 1 chart:"));
-    CHECK(contains(r.output, "0 only in 1.0, 0 only in 1.1, 0 in both, not both scored"));
+    CHECK(contains(r.output, "0 only under 1.0, 0 only under 1.1, 0 in both, not both scored"));
     CHECK(!contains(r.output, "Warning"));
 
     // D52, worded by D114 item 26: a second chart with a record under both
@@ -502,5 +502,5 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
     CHECK(two.exit_code == 0);
     // The parts add up to the total: 1 same + 1 in both, not both scored.
     CHECK(contains(two.output, "Compared 2 charts: 1 same, 0 1.0 higher, 0 1.1 higher, "
-                               "0 only in 1.0, 0 only in 1.1, 1 in both, not both scored"));
+                               "0 only under 1.0, 0 only under 1.1, 1 in both, not both scored"));
 }

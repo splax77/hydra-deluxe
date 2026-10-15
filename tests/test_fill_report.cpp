@@ -306,7 +306,7 @@ TEST_CASE("collect_fill_rows: copies come from the library") {
           s.total);
     CHECK(result.html.find(
               "4 charts in Expert Pro Drums, 2x Bass: 2 score higher under 1.1, "
-              "0 higher under 1.0, 0 unchanged, 2 in one database only, "
+              "0 higher under 1.0, 0 unchanged, 2 under one rule only, "
               "0 in both, not both scored") != std::string::npos);
     CHECK(result.html.find("{\"k\":2,") != std::string::npos);
 }
@@ -644,10 +644,10 @@ TEST_CASE("generate_fill_report: a score on one side only is counted, and the pa
     CHECK(s.same + s.ch10_higher + s.ch11_higher + s.only_old + s.only_new + s.in_both ==
           s.total);
 
-    // The subtitle names the part after "in one database only".
+    // The subtitle names the part after "under one rule only".
     CHECK(result.html.find(
               "4 charts in Expert Pro Drums, 2x Bass: 1 score higher under 1.1, "
-              "0 higher under 1.0, 0 unchanged, 2 in one database only, "
+              "0 higher under 1.0, 0 unchanged, 2 under one rule only, "
               "1 in both, not both scored") != std::string::npos);
     // The tiles get a matching one after "Only one side", counted from the
     // rows the table shows, like the tiles before it.
