@@ -98,6 +98,13 @@ struct Harness {
 // exactly that name.
 bool selects(const std::string& what, const char* test_name);
 
+// Why a seed the command line gave (`flag` is "--db" or "--ini") cannot be
+// used: it is not an existing file. Empty when it can. A mistyped seed would
+// otherwise start every test on an empty library or the default settings.
+// The one place that decides; hydra_uitest's main and Hydra.exe --uitest/--live
+// both ask it.
+std::string seed_problem(const std::string& flag, const std::string& path);
+
 // Fresh app state for a test: rewrite the scratch INI from
 // scratch_settings() (tests/scratch_settings.h) or copy --ini's seed over it,
 // delete the DB or copy --db's seed over it, rebuild AppState on those

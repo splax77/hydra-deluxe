@@ -173,7 +173,8 @@ private:
                 pending.erase(0, nl + 1);
                 std::lock_guard<std::mutex> lock(mutex_);
                 lines_.push_back(std::move(line));
-            }        }
+            }
+        }
         std::lock_guard<std::mutex> lock(mutex_);
         closed_ = true;
     }

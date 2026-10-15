@@ -36,8 +36,6 @@
 // take commands from the live channel in the real window, as the MCP helper
 // tools/hydra_ui_mcp.py launches it. Dev builds only.
 #ifdef HYDRA_UITEST_ATTACHED
-#include <filesystem>
-
 #include "imgui_te_ui.h"
 #include "uitest_harness.h"
 #endif
@@ -341,16 +339,11 @@ int main()
         uitest::register_tests(*uitest);
         if (live) uitest::register_live_test(*uitest);
         ImGuiTestEngine_Start(uitest->engine, ImGui::GetCurrentContext());
-        // reset_app copies a seed only when it exists, so a mistyped one
-        // would quietly start on an empty library; refused here, as
-        // hydra_uitest's main refuses it.
+        // A mistyped seed is refused here as hydra_uitest's main refuses it
+        // (uitest::seed_problem).
         std::string refused;
-        for (const std::string* seed : {&seed_db, &seed_ini}) {
-            std::error_code ec;
-            if (!seed->empty() &&
-                !std::filesystem::is_regular_file(std::filesystem::u8path(*seed), ec))
-                refused = "no such seed file \"" + *seed + "\"";
-        }
+        if (!seed_db.empty()) refused = uitest::seed_problem("--db", seed_db);
+        if (refused.empty() && !seed_ini.empty()) refused = uitest::seed_problem("--ini", seed_ini);
         if (live && !uitest_what.empty()) refused = "--live runs alone, without --uitest";
         if (!refused.empty()) {
             std::printf("%s\n", refused.c_str());
