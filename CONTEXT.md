@@ -81,13 +81,13 @@ ready (the result status, below). A listing returns only ready rows, so a
 stale row reads the same as no row at all.
 
 **Result identity**:
-What a stored result is filed under. `store::ResultSettings` in
+What a stored result is filed under. `store::Profile` in
 src/store/record_store.h is the settings part: the chart mode, the SP cap
-(`store::CapQuery`) and the lens. `store::RecordKey` adds the chart's hash to
-it. A lookup over many charts asks with a `ResultSettings`, a lookup for one
-chart with a `RecordKey`. `Settings::record_key` builds the key from the app's
-settings, and `KeyPart` in src/app/config.h names the part each analysis
-setting is filed under.
+(`store::CapQuery`) and the lens. The chart's hash is the other part of the
+identity. A lookup asks `RecordStore::lookup` with a `Profile` and the charts'
+hashes; `prepare_record` files an analysis under one. `Settings::profile`
+builds the profile from the app's settings, and `KeyPart` in
+src/app/config.h names the part each analysis setting is filed under.
 
 **Lens**:
 The part of a result's identity beyond the chart mode and the cap: the path

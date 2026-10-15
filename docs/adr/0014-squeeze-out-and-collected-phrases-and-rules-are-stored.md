@@ -44,7 +44,8 @@ the format version, so version and rules made one 12-byte head. Today it is
 the results table's `rules_fp` column. Either way it decides Ready, in C++
 (`rank_row` in `src/store/record_store.cpp`, whose `.ready()` answers it). An
 SQL spelling of the same check stood beside it until D79 removed it; the batch
-now asks `RecordStore::get_summaries` too.
+now asks `RecordStore::lookup` too. (2026-10-15, D115: this note named an
+older batch-lookup function, since replaced by `lookup`.)
 The rules part compares one fingerprint, the store's
 `RulesStamp::fixed`.
 
