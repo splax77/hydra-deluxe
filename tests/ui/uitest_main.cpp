@@ -285,10 +285,9 @@ int main() {
             // A mistyped path must not quietly run every test on an empty
             // database, where a "reads Stale" check could still pass, or on
             // the default settings.
-            std::error_code ec;
-            if (!std::filesystem::is_regular_file(std::filesystem::u8path(seed), ec)) {
-                std::fprintf(stderr, "hydra_uitest: %s \"%s\" is not a %s file\n", a.c_str(),
-                             seed.c_str(), a == "--db" ? "database" : "settings");
+            const std::string problem = uitest::seed_problem(a, seed);
+            if (!problem.empty()) {
+                std::fprintf(stderr, "hydra_uitest: %s\n", problem.c_str());
                 return 1;
             }
             passthrough.push_back(a);
