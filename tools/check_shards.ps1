@@ -77,8 +77,10 @@ $noCaseFiles = @(
 
 # One key per test case: its file, line and name, as doctest's XML listing
 # gives them. When $files is given, each case's file name is counted in it too.
+# --no-skip lists the cases marked to be skipped as well: a file whose only
+# cases are skipped ones still reached the exe, and is not a stale build.
 function Get-CaseKeys([string] $program, [string[]] $arguments, [string] $label, [hashtable] $files = $null) {
-    $out = & $program @arguments -ltc --reporters=xml 2>&1
+    $out = & $program @arguments -ltc --no-skip --reporters=xml 2>&1
     if ($LASTEXITCODE -ne 0) {
         Fail 2 "listing the cases of $label failed (exit $LASTEXITCODE): $($out -join "`n")"
     }
