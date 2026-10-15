@@ -341,7 +341,7 @@ TEST_CASE("select_chart switches the mode first, then selects the first copy") {
     const std::string mode = target.chartmode_key();
     REQUIRE(mode != app->settings.chartmode_key());
 
-    app->select_chart("HASH007", mode);  // any hash spelling
+    app->select_chart("hash007", mode);
     CHECK(app->settings.chartmode_key() == mode);
     CHECK(Settings::load_file(paths.ini).chartmode_key() == mode);  // committed
     REQUIRE(app->selected.has_value());

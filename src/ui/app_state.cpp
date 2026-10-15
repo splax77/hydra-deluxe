@@ -530,9 +530,10 @@ void AppState::select_chart(const std::string& hyhash, const std::string& chartm
         commit_settings();
     }
     reload_after_scan();  // the copies the store holds now
-    const std::string want = app::normalize_chart_hash(hyhash);
+    // Ids are lowercase hex everywhere (the scan writes them, the store
+    // lowercases old ones), so a copy is an exact match.
     const std::vector<LibraryRow>& rows = library.rows();
-    auto is_copy = [&](size_t i) { return app::normalize_chart_hash(rows[i].entry.md5) == want; };
+    auto is_copy = [&](size_t i) { return rows[i].entry.md5 == hyhash; };
     // The first copy the table shows; a copy the search or chip hides is
     // still the chart, so the rest of the library comes after.
     for (size_t i : library.order()) {
