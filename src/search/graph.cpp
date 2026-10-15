@@ -260,12 +260,12 @@ void ScoreGraph::store_multsqueeze(const MultSqueeze& msq) {
 }
 
 void ScoreGraph::store_new_backend(const SongTimestamp& ts, int sp_points,
-                                   int sqout_points) {
+                                   int sqout_sp_points) {
     BackendSqueeze backend;
     backend.timecode = ts.timecode;
     backend.chord = ts.chord;
-    backend.points = sp_points;
-    backend.sqout_points = sqout_points;
+    backend.sp_points = sp_points;
+    backend.sqout_sp_points = sqout_sp_points;
 
     // Every deactivation edge still inside its window takes this row by its
     // range staying open (set_head_time closes it); nothing is copied. Which
@@ -373,11 +373,11 @@ void ScoreGraph::advance_tracks(const Timecode& tc,
     sp_track_head_ = sp_track_head_->adv_edge->dest;
 }
 
-ScoreGraphEdge* ScoreGraph::add_act_edge(int frontend_points, int64_t fill_length_ticks) {
+ScoreGraphEdge* ScoreGraph::add_act_edge(int frontend_sp_points, int64_t fill_length_ticks) {
     ScoreGraphEdge* act_edge = new_edge();
     act_edge->dest = sp_track_head_;
 
-    act_edge->frontend_points = frontend_points;
+    act_edge->frontend_sp_points = frontend_sp_points;
 
     act_edge->activation_fill_deadline_ms = activation_fill_deadline_ms(
         song_.timing(), act_edge->dest->timecode.ticks(), fill_length_ticks,

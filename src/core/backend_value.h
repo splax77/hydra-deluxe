@@ -42,29 +42,29 @@ inline bool counted_without_squeeze(double offset_ms, double leeway_ms) {
     return paid_by_sp_walk(offset_ms) || offset_ms < leeway_ms;
 }
 
-// The SP score this row adds on this path. `points` is the row's full SP
-// value, `sqout_points` what is left when it is the squeezed-out chord.
-inline int backend_row_value(double offset_ms, int points, int sqout_points,
+// The SP score this row adds on this path. `sp_points` is the row's full SP
+// value, `sqout_sp_points` what is left when it is the squeezed-out chord.
+inline int backend_row_value(double offset_ms, int sp_points, int sqout_sp_points,
                              SqOutPosition pos, double leeway_ms) {
     if (pos == SqOutPosition::After) return 0;
     if (!counted_without_squeeze(offset_ms, leeway_ms)) return 0;
-    return pos == SqOutPosition::Exact ? sqout_points : points;
+    return pos == SqOutPosition::Exact ? sqout_sp_points : sp_points;
 }
 
 // What squeezing this row out costs: its full SP value less what
 // backend_row_value pays it as the squeezed-out chord.
-inline int sqout_cost(double offset_ms, int points, int sqout_points, double leeway_ms) {
-    return points - backend_row_value(offset_ms, points, sqout_points, SqOutPosition::Exact,
-                                      leeway_ms);
+inline int sqout_cost(double offset_ms, int sp_points, int sqout_sp_points, double leeway_ms) {
+    return sp_points - backend_row_value(offset_ms, sp_points, sqout_sp_points,
+                                         SqOutPosition::Exact, leeway_ms);
 }
 
 // Did Star Power pay this row anything on this path? The one yes/no for
 // "inside SP", built from the price above. The replay's xN disc doubles
 // exactly when it is true (decision D2): a squeezed-out chord whose
-// sqout_points are 0 reads no, a partly paid one reads yes.
-inline bool paid_by_sp(double offset_ms, int points, int sqout_points,
+// sqout_sp_points are 0 reads no, a partly paid one reads yes.
+inline bool paid_by_sp(double offset_ms, int sp_points, int sqout_sp_points,
                        SqOutPosition pos, double leeway_ms) {
-    return backend_row_value(offset_ms, points, sqout_points, pos, leeway_ms) > 0;
+    return backend_row_value(offset_ms, sp_points, sqout_sp_points, pos, leeway_ms) > 0;
 }
 
 }  // namespace hydra::core

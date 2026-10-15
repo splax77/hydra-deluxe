@@ -590,7 +590,7 @@ TEST_CASE("display_backends drops rows beyond a squeeze out") {
         BackendSqueeze bsq;
         bsq.timecode = Timecode::raw(tick);
         tick += 100;
-        bsq.points = 50;
+        bsq.sp_points = 50;
         bsq.offset_ms = off;
         a.backends.push_back(bsq);
     }
@@ -869,13 +869,13 @@ TEST_CASE("MultSqueeze::points is the best order minus the worst order") {
     kryb.add_note(NoteColor::Blue);
     kryb.apply_cymbal(NoteColor::Yellow);
     kryb.apply_cymbal(NoteColor::Blue);
-    CHECK(MultSqueeze(kryb, 7).points() == 30);
+    CHECK(MultSqueeze(kryb, 7).gain() ==30);
 
     Chord ry;
     ry.add_note(NoteColor::Red);
     ry.add_note(NoteColor::Yellow);
     ry.apply_cymbal(NoteColor::Yellow);
-    CHECK(MultSqueeze(ry, 8).points() == 15);
+    CHECK(MultSqueeze(ry, 8).gain() ==15);
 }
 
 // D51 call 3: the advice names every note that has to cross the step.

@@ -329,8 +329,8 @@ TEST_CASE("build_activations: a squeezed-out row past the leeway is worth 0") {
     far.e_offset = 300.0;  // not e-critical
     BackendSqueeze far_row;
     far_row.timecode = Timecode::raw(3256);
-    far_row.points = 460;
-    far_row.sqout_points = 260;
+    far_row.sp_points = 460;
+    far_row.sqout_sp_points = 260;
     far_row.offset_ms = 479.999;
     far.backends.push_back(far_row);
     far.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, 479.999});
@@ -375,8 +375,8 @@ TEST_CASE("build_activations: plain rows past the leeway show 0") {
     for (const auto& [tick, ms] : rows_at) {
         BackendSqueeze row;
         row.timecode = Timecode::raw(tick);
-        row.points = 460;
-        row.sqout_points = 260;
+        row.sp_points = 460;
+        row.sqout_sp_points = 260;
         row.offset_ms = ms;
         act.backends.push_back(row);
     }
@@ -384,8 +384,8 @@ TEST_CASE("build_activations: plain rows past the leeway show 0") {
     // plain row (finding 29).
     BackendSqueeze phrase;
     phrase.timecode = Timecode::raw(500);
-    phrase.points = 460;
-    phrase.sqout_points = 260;
+    phrase.sp_points = 460;
+    phrase.sqout_sp_points = 260;
     phrase.offset_ms = 150.0;
     act.backends.push_back(phrase);
 
@@ -660,8 +660,8 @@ TEST_CASE("squeeze sentences: SqIn, SqOut, and what a squeeze-out costs") {
     row.timecode = Timecode::raw(3256);
     row.chord.add_note(NoteColor::Red);
     row.chord.add_note(NoteColor::Yellow);
-    row.points = 460;
-    row.sqout_points = 260;
+    row.sp_points = 460;
+    row.sqout_sp_points = 260;
     row.offset_ms = 479.999;
     far.backends.push_back(row);
     far.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, 479.999});
@@ -725,7 +725,7 @@ Path sun_of_nothing_act5() {
     test::set_transfer(act, TransferScale{1.6, 1.0});
     BackendSqueeze row;
     row.chord.add_note(NoteColor::Green);
-    row.points = 260;
+    row.sp_points = 260;
     row.offset_ms = -400.0;
     act.backends.push_back(row);
     Path p;

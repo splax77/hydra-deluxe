@@ -137,7 +137,7 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
                 const BackendSqueeze& row = squeezed_out->row;
                 const double off = row.offset();
                 if (core::counted_without_squeeze(off, leeway_ms)) {
-                    const int lost = core::sqout_cost(off, row.points, row.sqout_points, leeway_ms);
+                    const int lost = core::sqout_cost(off, row.sp_points, row.sqout_sp_points, leeway_ms);
                     text += " It scores " + std::to_string(lost) +
                             " fewer points, and its SP phrase banks for later.";
                 } else {
@@ -179,10 +179,10 @@ std::vector<MultSqueezeView> multsqueeze_views(const HydraRecord& record, bool p
     out.reserve(record.multsqueezes.size());
     for (const MultSqueeze& msq : record.multsqueezes) {
         MultSqueezeView v;
-        v.label = msq.notationstr() + "   (+" + std::to_string(msq.points()) +
+        v.label = msq.notationstr() + "   (+" + std::to_string(msq.gain()) +
                   " pts):   " + msq.chord().rowstr(pro_drums);
         v.howto = msq.howto(pro_drums);
-        v.points = msq.points();
+        v.gain = msq.gain();
         out.push_back(std::move(v));
     }
     return out;
@@ -199,7 +199,7 @@ std::vector<MultSqueezeView> build_multsqueezes(const HydraRecord& record) {
 std::string multsqueeze_summary(const std::vector<MultSqueezeView>& squeezes) {
     if (squeezes.empty()) return "none";
     int total = 0;
-    for (const MultSqueezeView& s : squeezes) total += s.points;
+    for (const MultSqueezeView& s : squeezes) total += s.gain;
     const std::string sum = "+" + group_thousands(total);
     return squeezes.size() == 1 ? sum : std::to_string(squeezes.size()) + kFactSeparator + sum;
 }
@@ -361,7 +361,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             const bool counted =
                 core::counted_without_squeeze(off, rules.backend_leeway_ms);
             const int value = core::backend_row_value(
-                off, bsq.points, bsq.sqout_points,
+                off, bsq.sp_points, bsq.sqout_sp_points,
                 core::sqout_position(bsq.timecode.ticks(), act.sqout_tick),
                 rules.backend_leeway_ms);
             row.points = std::to_string(value);
@@ -377,7 +377,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                 if (counted) {
                     std::snprintf(extra, sizeof(extra),
                                   " <-- squeezed out (-%d)",
-                                  core::sqout_cost(off, bsq.points, bsq.sqout_points,
+                                  core::sqout_cost(off, bsq.sp_points, bsq.sqout_sp_points,
                                                    rules.backend_leeway_ms));
                     row.warn = true;
                 } else {

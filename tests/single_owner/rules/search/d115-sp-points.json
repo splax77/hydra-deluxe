@@ -11,12 +11,12 @@
       "pattern": "sc\\[kSlotSp\\]\\s*\\+=(?!\\s*\\w+\\.spscore\\b)",
       "anchor": "kSlotSp",
       "must_match": [
-        "c.sc[kSlotSp] += e.frontend_points;",
+        "c.sc[kSlotSp] += e.frontend_sp_points;",
         "c.sc[kSlotSp] += sp_delta;"
       ],
       "must_not_match": [
         "p.sc[kSlotSp] += e.spscore;",
-        "add_sp_points(c, e.frontend_points);",
+        "add_sp_points(c, e.frontend_sp_points);",
         "add_sp_points(c, sp_delta);"
       ],
       "owner_lines": [

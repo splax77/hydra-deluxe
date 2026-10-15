@@ -90,7 +90,7 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
     //     falls as ticks grow (positive tempos), and
     //     core::counted_without_squeeze is true up to a threshold and false
     //     above it, so once false it stays false.
-    //   - The chord is the squeezed-out chord and its sqout_points are 0 (a
+    //   - The chord is the squeezed-out chord and its sqout_sp_points are 0 (a
     //     one-note chord under the first-note rule). Every later chord is
     //     past it, so sqout_position(...) == After from then on.
     // So the sum below visits exactly the windows the old every-window loop

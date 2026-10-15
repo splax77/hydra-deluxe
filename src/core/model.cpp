@@ -325,8 +325,8 @@ std::optional<SqueezeKind> squeeze_kind_from_name(std::string_view name) {
 // ---- BackendSqueeze -----------------------------------------------------
 
 bool BackendSqueeze::operator==(const BackendSqueeze& o) const {
-    return timecode == o.timecode && chord == o.chord && points == o.points &&
-           sqout_points == o.sqout_points && offset_ms == o.offset_ms;
+    return timecode == o.timecode && chord == o.chord && sp_points == o.sp_points &&
+           sqout_sp_points == o.sqout_sp_points && offset_ms == o.offset_ms;
 }
 
 double BackendSqueeze::offset() const {
@@ -457,7 +457,7 @@ std::string MultSqueeze::direction() const {
     return squeeze_advice(chord_, combo_).last.empty() ? "low" : "high";
 }
 
-int MultSqueeze::points() const { return multsqueeze_gain(chord_, combo_); }
+int MultSqueeze::gain() const { return multsqueeze_gain(chord_, combo_); }
 
 std::string MultSqueeze::notationstr() const {
     return std::to_string(multiplier()) + "x";

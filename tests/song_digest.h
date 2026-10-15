@@ -92,13 +92,13 @@ inline uint64_t activation_hash(uint64_t h, const Activation& a) {
     auto v = [&](const auto& x) { h = fnv(h, &x, sizeof x); };
     v(a.timecode.ticks());
     h = fnv_str(h, a.chord.code());
-    v(a.frontend_points);
+    v(a.frontend_sp_points);
     h = fnv_list(h, a.display_backends(), [](uint64_t g, const BackendSqueeze& b) {
         const int64_t tick = b.timecode.ticks();
         g = fnv(g, &tick, sizeof tick);
         g = fnv_str(g, b.chord.code());
-        g = fnv(g, &b.points, sizeof b.points);
-        g = fnv(g, &b.sqout_points, sizeof b.sqout_points);
+        g = fnv(g, &b.sp_points, sizeof b.sp_points);
+        g = fnv(g, &b.sqout_sp_points, sizeof b.sqout_sp_points);
         return fnv_opt(g, b.offset_ms);
     });
     h = fnv_list(h, a.sqinouts, [](uint64_t g, const SPSqueeze& q) {

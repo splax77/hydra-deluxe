@@ -1811,18 +1811,18 @@
       "date": "2026-10-05",
       "decision": "D53, D54",
       "added_by": "J3-1",
-      "pattern": "(\\.|->)points\\s*-\\s*value\\b",
+      "pattern": "(\\.|->)sp_points\\s*-\\s*value\\b",
       "anchor": "points",
       "owner_files": [
         "src/core/backend_value.h"
       ],
       "must_match": [
-        "const int lost = row.points - value;",
-        "\" <-- squeezed out (-%d)\", bsq.points - value);"
+        "const int lost = row.sp_points - value;",
+        "\" <-- squeezed out (-%d)\", bsq.sp_points - value);"
       ],
       "must_not_match": [
-        "return points - backend_row_value(offset_ms, points, sqout_points, SqOutPosition::Exact,",
-        "const int lost = core::sqout_cost(off, row.points, row.sqout_points, leeway_ms);"
+        "return sp_points - backend_row_value(offset_ms, sp_points, sqout_sp_points,",
+        "const int lost = core::sqout_cost(off, row.sp_points, row.sqout_sp_points, leeway_ms);"
       ],
       "scope": [
         "src"
@@ -2037,15 +2037,15 @@
       "date": "2026-10-05",
       "decision": "D54",
       "added_by": "J3-2",
-      "pattern": "\\bsp\\s*(<|>=)\\s*2\\b|\\bkept\\s*<\\s*2\\b|for \\(int sp = 2\\b|sp_cap\\s*==\\s*1\\b",
+      "pattern": "\\bsp(_bars)?\\s*(<|>=)\\s*2\\b|\\bkept\\s*<\\s*2\\b|for \\(int sp = 2\\b|sp_cap\\s*==\\s*1\\b",
       "must_match": [
-        "if (p.sp < 2 || !has_value(p.sp_ready_ms)) return 0;",
-        "if (kept < 2 && sp >= 2) {",
+        "if (p.sp_bars < 2 || !has_value(p.sp_ready_ms)) return 0;",
+        "if (kept < 2 && sp_bars >= 2) {",
         "for (int sp = 2; sp <= max_sp_bars(); ++sp) {",
         "const bool one_bar_cap = record.sp_cap && *record.sp_cap == 1;"
       ],
       "must_not_match": [
-        "if (p.sp < kSpActivationBars) return false;",
+        "if (p.sp_bars < kSpActivationBars) return false;",
         "inline constexpr int kSpActivationBars = 2;"
       ],
       "scope": [
@@ -2174,7 +2174,7 @@
       ],
       "must_match": [
         "br.squeezed_out ? core::SqOutPosition::Exact",
-        "off, row.points, row.sqout_points, core::SqOutPosition::Exact, leeway_ms);"
+        "off, row.sp_points, row.sqout_sp_points, core::SqOutPosition::Exact, leeway_ms);"
       ],
       "must_not_match": [
         "core::sqout_position(bsq.timecode.ticks(), act.sqout_tick),",

@@ -155,7 +155,7 @@ struct ScoreGraphEdge {
     std::vector<std::pair<Timecode, std::map<int64_t, SpExtension>>> sp_times;
 
     // The frontend chord's SP points: set only on activation edges, 0 elsewhere.
-    int frontend_points = 0;
+    int frontend_sp_points = 0;
     // Deactivation edges only: this SP end's backend rows are the graph's
     // all_backends()[backend_begin, backend_end), each measured against this
     // edge's dest. ScoreGraph::edge_backends lists them with their offsets.
@@ -237,7 +237,7 @@ private:
     void store_ghostscore(int64_t points);
     void store_multsqueeze(const MultSqueeze& msq);
     void store_new_backend(const SongTimestamp& ts, int sp_points,
-                           int sqout_points);
+                           int sqout_sp_points);
 
     int max_sp_bars() const;
     // One moved end per given deact timecode, in order: where it goes and
@@ -256,7 +256,7 @@ private:
     void handle_deact(const Timecode& deact_tc,
                       const std::optional<Chord>& chord);
     void advance_tracks(const Timecode& tc, const std::optional<Chord>& chord);
-    ScoreGraphEdge* add_act_edge(int frontend_points, int64_t fill_length_ticks);
+    ScoreGraphEdge* add_act_edge(int frontend_sp_points, int64_t fill_length_ticks);
     void add_deact_edge();
 
     Timecode plusmeasure(const Timecode& tc, int64_t add_measures);

@@ -48,7 +48,7 @@ std::string first_measure_label();
 struct MultSqueezeView {
     std::string label;  // "3x   (+50 pts):   [Red - ...]"
     std::string howto;
-    int points = 0;  // MultSqueeze::points()
+    int gain = 0;  // MultSqueeze::gain()
 };
 std::vector<MultSqueezeView> build_multsqueezes(const HydraRecord& record);
 
