@@ -35,7 +35,7 @@
       "calls_owner": "\\bsearch_graph\\(",
       "must_match": [
         "ScoreGraph graph(song, cap, fill_rule_for(legacy_fills), rules);",
-        "fill_rule_for(settings.legacy_fill_deadline), settings.rules);"
+        "fill_rule_for(settings.legacy_fills), settings.rules);"
       ],
       "must_not_match": [
         "const FillDeadlineRule rule = fill_rule_for(options.lens.legacy_fills);",
@@ -45,7 +45,7 @@
       "owner_lines": [
         {
           "file": "src/search/pather.cpp",
-          "line_text": "fill_rule_for(settings.legacy_fill_deadline), settings.rules);",
+          "line_text": "fill_rule_for(settings.legacy_fills), settings.rules);",
           "why": "search_graph, the owner: the graph's fill rule and rules from the settings"
         }
       ],

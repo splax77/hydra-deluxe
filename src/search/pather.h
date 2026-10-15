@@ -34,11 +34,11 @@ struct SearchSettings {
     std::optional<double> ms_filter;
     // The SP meter ceiling in bars (4 = Clone Hero's rule).
     int sp_cap = kCloneHeroSpCap;
-    // Score fills by Clone Hero 1.0's spawn deadline instead of 1.1's flat 4
-    // beats (FillDeadlineRule in search/graph.h). The app's "1.0 fills"
-    // setting or hydra_batch --legacy-fills; the result is filed under it
-    // (store::Lens::legacy_fills, docs/adr/0010).
-    bool legacy_fill_deadline = false;
+    // Which game version's fill deadline the search scores by. The same flag,
+    // under the same name, as Settings::legacy_fills and
+    // store::Lens::legacy_fills (docs/adr/0010); fill_rule_for in
+    // search/graph.h reads it as a FillDeadlineRule.
+    bool legacy_fills = false;
     // The user's rule choices (hydra_rules.ini). Defaults are today's rules.
     core::Rules rules = core::default_rules();
 };

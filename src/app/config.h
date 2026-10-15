@@ -40,6 +40,31 @@ std::string ini_path();
 // Every tool that takes it compares against this one spelling.
 inline constexpr std::string_view kLegacyFillsFlag = "--legacy-fills";
 
+// A key a released Hydra stopped reading. A file that still sets one keeps
+// loading, and its value is ignored. Each file reader keeps its own list:
+// kRetiredSettingsKeys below for hydra_settings.ini, and kRetiredRulesKeys in
+// app/rules_file.cpp for hydra_rules.ini.
+struct RetiredKey {
+    std::string_view name;
+    std::string_view retired_in;  // the first release that no longer read it
+};
+
+// Whether `key` is on a reader's retired list.
+template <size_t N>
+constexpr bool is_retired_key(const RetiredKey (&list)[N], std::string_view key) {
+    for (const RetiredKey& r : list)
+        if (r.name == key) return true;
+    return false;
+}
+
+// hydra_settings.ini's retired keys. Settings::load_file skips any key no
+// setting has, so these need no code of their own; the list says which ones
+// a released Hydra wrote.
+inline constexpr RetiredKey kRetiredSettingsKeys[] = {
+    {"sp_cap_enabled", "1.6.0"},  // replaced by sp_cap
+    {"sp_cap_value", "1.6.0"},    // replaced by sp_cap
+};
+
 // Opens the store at `db`. `rules` gates Ready: a row analyzed
 // under other rules reads Stale.
 std::unique_ptr<store::RecordStore> open_store(
@@ -133,8 +158,8 @@ struct Settings {
 
     // The Star Power meter ceiling in bars, at least 1. 4 is Clone Hero's
     // rule (the default); other values are what-ifs. INI line: sp_cap=4.
-    // Hydra 1.8.4's sp_cap=auto, zero and junk load as 4. The pre-1.6 keys
-    // sp_cap_enabled/sp_cap_value are ignored on load.
+    // Hydra 1.8.4's sp_cap=auto, zero and junk load as 4. The keys it
+    // replaced are in kRetiredSettingsKeys.
     int sp_cap = kCloneHeroSpCap;
 
     // Spawn fills by Clone Hero 1.0's deadline instead of 1.1's (search/graph.h

@@ -221,6 +221,13 @@ Each one quotes the code behaviour it depends on and gives a recommended answer.
 
 **Answered 2026-10-14:** the user accepted every recommended answer below, and approved the build in the same message. The numbers are therefore settled: a 15 s margin over each command's timeout, 60 s for the hello line, and a 12,000-character reply cap.
 
+**Answered later on 2026-10-14, from the T3 review:**
+
+- **One-off timeouts.** A `timeout` given to `hydra_wait_idle` or `hydra_wait_text` lasts for that one call only.
+- **Exit wait.** The 15 s margin is also how long `hydra_stop` waits for Hydra to exit after `quit`.
+- **Three internal numbers stay:** `LOG_TAIL_LINES = 20` (the log lines a crash report quotes), `CONNECT_RETRY_S = 0.05` (the pipe-open retry interval) and the stand-in's `HANG_CAP_S = 600`.
+- **The helper's copied 30 s default goes.** T2 puts the session timeout in the hello line, and T6 deletes `ENGINE_DEFAULT_TIMEOUT_S`.
+
 **1. Install the `mcp` package?** The helper imports `mcp` (`FastMCP`), which is not on this machine; PyPI's 2.3.0 supports Python 3.14. The alternative is to hand-write the stdio JSON-RPC handshake (initialize, tools/list, tools/call) in about 150 lines with no dependency, which then has to track protocol versions by hand. Recommended: run `py -m pip install mcp` once; T3's first step does it and stops if it fails.
 
 **2. One session at a time?** The helper keeps one child process and one pipe. `hydra_start` while a session runs stops the old one first. The alternative, headless and window sessions side by side, needs a session name on every tool. Recommended: one at a time.

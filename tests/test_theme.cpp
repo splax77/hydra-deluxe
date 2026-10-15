@@ -73,6 +73,29 @@ TEST_CASE("theme: disabled input text is the dimmed grey") {
     CHECK(kDisabledInputTextColor.w == kDimTextColor.w);
 }
 
+TEST_CASE("theme: a selected row is the dark teal and its text stays readable") {
+    ImGui::CreateContext();
+    apply_theme();
+    const ImVec4& header = ImGui::GetStyle().Colors[ImGuiCol_Header];
+    CHECK(header.x == kSelectedRowColor.x);
+    CHECK(header.y == kSelectedRowColor.y);
+    CHECK(header.z == kSelectedRowColor.z);
+    CHECK(header.w == kSelectedRowColor.w);
+    ImGui::DestroyContext();
+    // The user's choice of 2026-10-14: (0, 48, 48).
+    CHECK(kSelectedRowColor.y * 255.0f == doctest::Approx(48.0f));
+    // Every text colour a Library, report or Paths-tab row draws in: the
+    // default and dimmed text, the gold of an optimal path or a Ready song,
+    // the grey of a not-analyzed song, and the orange of a stale song or a
+    // warned timing. The report chips' colours are checked below, beside
+    // their check on the window.
+    CHECK(contrast(kDefaultTextColor, kSelectedRowColor) >= 4.5);
+    CHECK(contrast(kBestPathColor, kSelectedRowColor) >= 4.5);
+    CHECK(contrast(kDimTextColor, kSelectedRowColor) >= 4.5);
+    CHECK(contrast(kNewSongColor, kSelectedRowColor) >= 4.5);
+    CHECK(contrast(kWarningColor, kSelectedRowColor) >= 4.5);
+}
+
 TEST_CASE("theme: frames and headers share one hover teal") {
     ImGui::CreateContext();
     apply_theme();
@@ -88,7 +111,8 @@ TEST_CASE("theme: frames and headers share one hover teal") {
 
 // Every report chip colour (chip_color) against the window it sits on. The
 // chip's outline is a non-text mark (3:1) and its words are text (4.5:1),
-// both drawn in the chip's colour.
+// both drawn in the chip's colour. A report row's chips and alert cells also
+// sit on the selected row's face when the row is picked.
 TEST_CASE("theme: report chip colours read on the window background") {
     using hydra::app::report::ChipToken;
     for (const ChipToken token : {ChipToken::t0, ChipToken::t1, ChipToken::t2, ChipToken::t3,
@@ -97,6 +121,7 @@ TEST_CASE("theme: report chip colours read on the window background") {
         CAPTURE(static_cast<int>(token));
         CHECK(contrast(chip_color(token), kWindowBgColor) >= 3.0);
         CHECK(contrast(chip_color(token), kWindowBgColor) >= 4.5);
+        CHECK(contrast(chip_color(token), kSelectedRowColor) >= 4.5);
     }
 }
 
