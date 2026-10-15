@@ -1,8 +1,9 @@
-// Tests for how store/record_store.{h,cpp} opens its file and fails: an
-// older file upgrades by copy-and-swap with real progress (D87, DBUP),
-// whatever point a stop leaves it at; the tables and results older releases
-// left are dropped once; every open sets the same journal settings; and a
-// file, write or read that fails says so instead of answering wrong.
+// Tests for how store/record_store.{h,cpp} opens its file and fails: which
+// generation a file is (store/library_file.h); a file from before 2.2.0 is
+// refused or set aside, as the caller's OldFilePolicy says; a 2.2.0 to 2.7.0
+// file's results become records, whatever point a stop leaves it at; every
+// open sets the same journal settings; and a file, write or read that fails
+// says so instead of answering wrong.
 
 #include "doctest.h"
 
@@ -16,7 +17,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <set>
 #include <string>
@@ -33,11 +36,10 @@
 #include "db_file_util.h"  // exec_on_file, scalar_on_file, record_rows_in, write_junk_db
 #include "display_fixtures.h"  // add_stale_rows
 #include "library_fixtures.h"  // library_row
-#include "old_layout_fixture.h"  // detail_layout_sql and the old layout's counts
+#include "old_layout_fixture.h"  // v220_layout_sql, kV220ResultsTableSql
 #include "record_fixtures.h"
-#include "scoped_hook.h"
+#include "store/library_file.h"
 #include "store/record_store.h"
-#include "store/stored_versions.h"
 #include "store/upgrade_files.h"
 #include "store_fixtures.h"  // at_cap, no_paths_at_cap
 #include "temp_util.h"
@@ -55,15 +57,81 @@ using hydra::test::write_junk_db;
 using hydra::test::scalar_on_file;
 using hydra::test::record_rows_in;
 
+namespace {
+
+// The bytes of the file at `path`, to show an open left it alone.
+std::string file_bytes(const std::string& path) {
+    std::ifstream in(std::filesystem::u8path(path), std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+
+// Removes the database at `path`, its side files and anything set aside
+// beside it.
+void remove_db(const std::string& path) {
+    for (const std::string& f : with_side_files(path)) std::remove(f.c_str());
+    for (const std::string& f : with_side_files(set_aside_path(path))) std::remove(f.c_str());
+}
+
+// What both policies do with the file too old to convert at `path`. Refuse
+// throws OldLibraryRefused naming the file and leaves it byte for byte as it
+// was. SetAside moves it to set_aside_path, replacing a file already there,
+// and opens a fresh library in its place; the next open sets nothing aside.
+void check_too_old_file(const std::string& path) {
+    REQUIRE(classify_library_file(path) == LibraryFileKind::TooOld);
+    const std::string before = file_bytes(path);
+    REQUIRE_FALSE(before.empty());
+    const std::string aside = set_aside_path(path);
+
+    try {
+        RecordStore store(path, OldFilePolicy::Refuse, core::default_stamp());
+        FAIL("a file too old to convert opened under Refuse");
+    } catch (const KindedError& e) {
+        CHECK(e.kind() == ErrorKind::OldLibraryRefused);
+        CHECK(std::string(e.what()) == path);
+    }
+    CHECK(file_bytes(path) == before);
+    CHECK_FALSE(file_exists_utf8(aside));
+    CHECK_FALSE(side_files_present(path));
+
+    // An earlier set-aside file waits at the name, to be replaced.
+    write_junk_db(aside);
+    {
+        RecordStore store(path, OldFilePolicy::SetAside, core::default_stamp());
+        CHECK(store.set_aside_path() == std::optional<std::string>(aside));
+        CHECK(store.counts().second == 0);
+        CHECK(store.chart_library_count() == 0);
+    }
+    CHECK(file_bytes(aside) == before);
+    CHECK(classify_library_file(path) == LibraryFileKind::Current);
+    CHECK(record_rows_in(path) == 0);
+    {
+        RecordStore store(path, OldFilePolicy::SetAside, core::default_stamp());
+        CHECK_FALSE(store.set_aside_path().has_value());
+    }
+    CHECK(file_bytes(aside) == before);
+}
+
+// A copy of one file in testdata/store at a fresh temp path. The store opens
+// in WAL mode and a set-aside renames, so neither may touch the checked-in
+// file.
+std::string copy_of_old_database(const std::string& file, const std::string& tag) {
+    const std::string source = corpus::testdata_root() + "/store/" + file;
+    REQUIRE(std::filesystem::exists(source));
+    const std::string path = testtemp::temp_path(tag, ".db");
+    remove_db(path);
+    std::filesystem::copy_file(source, path, std::filesystem::copy_options::overwrite_existing);
+    return path;
+}
+
+}  // namespace
+
 // ---- store correctness (2026-09-26 audit, Task 1) --------------------------
 
-TEST_CASE("a database from Hydra 1.6 or older opens with nothing to show") {
-    // User decision 2026-09-26: the pre-1.7 migrations are gone. The old
-    // `records` table is left where it is and never read, so its charts read
-    // Not analyzed until they are analyzed again. Those rows could not be
-    // read since 1.8.1 anyway.
+TEST_CASE("a database from Hydra 1.6 or older is too old: refused, or set aside for a fresh "
+          "library") {
+    // Hydra 1.6's own records table, keyed by chart with no profile.
     const std::string path = testtemp::temp_path("old_records", ".db");
-    std::remove(path.c_str());
+    remove_db(path);
     { RecordStore seed(path); }
     exec_on_file(path,
                  "DROP TABLE record_paths; DROP TABLE records; DROP TABLE profiles;"
@@ -76,31 +144,14 @@ TEST_CASE("a database from Hydra 1.6 or older opens with nothing to show") {
                  " PRIMARY KEY (hyhash, chartmode, sp_cap));"
                  "INSERT INTO records (hyhash, chartmode, hyversion, sp_cap, bestpath, blob,"
                  " score) VALUES ('old', 'mode', '1.6.0', 8, '1 2 3', x'00', 100);");
-
-    const RecordKey key{"old", "mode", CapQuery::at(8)};
-    {
-        RecordStore store(path);
-        CHECK(store.counts().second == 0);
-        CHECK(store.get_summary(key).status == RecordStatus::NotAnalyzed);
-        CHECK_FALSE(store.has_record(key));
-        // A fresh analysis lands as usual.
-        store.add_record(key, at_cap(8));
-        CHECK(store.get_summary(key).status == RecordStatus::Ready);
-    }
-    // The old table is left alone under its own name, so this build's
-    // records table can take `records`: nothing read it and nothing rewrote
-    // it.
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM records_before_1_7") == 1);
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM records_before_1_7 WHERE hyhash = 'old'"
-                               " AND score = 100") == 1);
-    CHECK(record_rows_in(path) == 1);
-    std::remove(path.c_str());
+    check_too_old_file(path);
+    remove_db(path);
 }
 
 TEST_CASE("store: a new database carries 0 in user_version and reads its own rows") {
-    // D53 item 1: Hydra never writes the user_version slot. The column checks
-    // in the constructor are the one upgrade gate, so a new file keeps the 0
-    // SQLite gives a file nobody wrote it on.
+    // D53 item 1: Hydra never writes the user_version slot. classify_library_file
+    // reads a file's tables, not that slot, so a new file keeps the 0 SQLite
+    // gives a file nobody wrote it on.
     const std::string path = testtemp::temp_path("user_version", ".db");
     std::remove(path.c_str());
     const RecordKey key{"h", "mode", CapQuery::at(4)};
@@ -116,28 +167,67 @@ TEST_CASE("store: a new database carries 0 in user_version and reads its own row
     std::remove(path.c_str());
 }
 
-// ---- the summary-only upgrade (D87 items 1 and 7, task storage-T5) ---------
+// ---- which generation a file is (store/library_file.h) ---------------------
+
+// Written with classify_library_file already in place (task D115-A1-6a), so
+// none of these could run red first.
+TEST_CASE("classify_library_file names each generation of library file") {
+    const std::string path = testtemp::temp_path("classify", ".db");
+    // A file made fresh by `sql`, run on an empty database.
+    const auto file_of = [&](const char* sql) {
+        remove_db(path);
+        exec_on_file(path, sql);
+    };
+
+    SUBCASE("Fresh: no file, an empty file, or SQLite's in-memory name") {
+        remove_db(path);
+        CHECK(classify_library_file(path) == LibraryFileKind::Fresh);
+        CHECK(classify_library_file("") == LibraryFileKind::Fresh);
+        CHECK(classify_library_file(":memory:") == LibraryFileKind::Fresh);
+        { std::ofstream(std::filesystem::u8path(path), std::ios::binary); }
+        CHECK(classify_library_file(path) == LibraryFileKind::Fresh);
+    }
+    SUBCASE("Current: a file this build wrote, or one with none of the layouts' tables") {
+        remove_db(path);
+        { RecordStore store(path); }
+        CHECK(classify_library_file(path) == LibraryFileKind::Current);
+        file_of("CREATE TABLE t (x)");
+        CHECK(classify_library_file(path) == LibraryFileKind::Current);
+    }
+    SUBCASE("Convertible: the results table 2.2.0 to 2.7.0 wrote") {
+        file_of(test::kV220ResultsTableSql);
+        CHECK(classify_library_file(path) == LibraryFileKind::Convertible);
+    }
+    SUBCASE("TooOld: each older layout's own evidence") {
+        file_of("CREATE TABLE paths (x)");
+        CHECK(classify_library_file(path) == LibraryFileKind::TooOld);
+        file_of("CREATE TABLE records (hyhash TEXT)");
+        CHECK(classify_library_file(path) == LibraryFileKind::TooOld);
+        file_of((std::string(test::kV220ResultsTableSql) +
+                 "; ALTER TABLE results ADD COLUMN structure BLOB")
+                    .c_str());
+        CHECK(classify_library_file(path) == LibraryFileKind::TooOld);
+        // A results table missing any one of the three columns 2.2.0 wrote.
+        file_of("CREATE TABLE results (hyhash TEXT, legacy_fills INTEGER, rules_fp BLOB)");
+        CHECK(classify_library_file(path) == LibraryFileKind::TooOld);
+        file_of("CREATE TABLE results (hyhash TEXT, stars INTEGER, rules_fp BLOB)");
+        CHECK(classify_library_file(path) == LibraryFileKind::TooOld);
+        file_of("CREATE TABLE results (hyhash TEXT, stars INTEGER, legacy_fills INTEGER)");
+        CHECK(classify_library_file(path) == LibraryFileKind::TooOld);
+    }
+    SUBCASE("Unreadable: a file SQLite cannot read") {
+        remove_db(path);
+        write_junk_db(path);
+        CHECK(classify_library_file(path) == LibraryFileKind::Unreadable);
+    }
+    remove_db(path);
+}
+
+// ---- converting a 2.2.0 to 2.7.0 file (D115 task A1-6a) --------------------
 
 namespace {
 
-// The old layout's SQL lives in old_layout_fixture.h; these run it here.
-void to_detail_layout(const std::string& path) {
-    exec_on_file(path, test::detail_layout_sql().c_str());
-}
-
-int64_t detail_tables_in(const std::string& path) {
-    return scalar_on_file(path, test::kDetailTablesCountSql);
-}
-
-int64_t structure_columns_in(const std::string& path) {
-    return scalar_on_file(path, test::kStructureColumnCountSql);
-}
-
-}  // namespace
-
-namespace {
-
-// The keys the old-layout seed writes, all at an 8-bar cap.
+// The keys the 2.2.0 seed writes, all at an 8-bar cap.
 const CapQuery kAt8 = CapQuery::at(8);
 const RecordKey kReady{"ready", "mode", kAt8};
 const RecordKey kOtherMode{"ready", "other mode", kAt8};
@@ -148,13 +238,13 @@ const RecordKey kBoth{"both", "mode", kAt8};
 const RecordKey kNoStars{"nostars", "mode", kAt8};
 
 // What the seed holds, counted once by hand: one library row per chart (six
-// charts), seven results, and three meta rows (the library's reader stamp,
-// the fill-rule stamp and the Auto-results mark).
+// charts), seven results, and two meta rows (the library's reader stamp and
+// the fill-rule stamp).
 constexpr int64_t kSeedCharts = 6;
 constexpr int64_t kSeedResults = 7;
-constexpr int64_t kSeedMeta = 3;
-// The results the upgrade keeps: all but the no-stars row. Each becomes one
-// record.
+constexpr int64_t kSeedMeta = 2;
+// The results the conversion keeps: all but the no-stars row. Each becomes
+// one record.
 constexpr int64_t kKeptResults = 6;
 // The profiles those records are filed under, counted once by hand: one per
 // distinct mode, cap, lens, stamp and rules among the kept rows. "ready" and
@@ -166,10 +256,10 @@ constexpr int64_t kSeedPaths = 5;
 // The fill-rule stamp the seed writes, so the test can see meta come across.
 constexpr const char* kSeedEngineMode = "seeded-engine-mode";
 
-// A database at `path` in the layout before summary-only storage, with one
-// row of every kind the upgrade treats differently, its files closed.
-void seed_old_layout(const std::string& path) {
-    for (const std::string& f : with_side_files(path)) std::remove(f.c_str());
+// A database at `path` in the layout 2.2.0 to 2.7.0 wrote, with one row of
+// every kind the conversion treats differently, its files closed.
+void seed_v220_layout(const std::string& path) {
+    remove_db(path);
     {
         RecordStore seed(path);
         seed.rebuild_chart_library({library_row("ready", "Ready"), library_row("empty", "Empty"),
@@ -183,12 +273,12 @@ void seed_old_layout(const std::string& path) {
         test::add_stale_rows(seed, at_cap(8), kBuild, kRules, kBoth);
         seed.add_record(kNoStars, at_cap(8));
     }
-    to_detail_layout(path);
+    exec_on_file(path, test::v220_layout_sql().c_str());
     // A row from before the stars column: a score and no stars. Its stars
-    // needed the stored paths to fill, so the upgrade deletes it. The
-    // no-paths row has neither, by design, and stays (R17).
+    // needed the stored paths to fill, so the conversion leaves it behind.
+    // The no-paths row has neither, by design, and stays (R17).
     exec_on_file(path, "UPDATE results SET stars = NULL WHERE hyhash = 'nostars'");
-    // An id an older build stored in capitals, in both tables: the upgrade
+    // An id an older build stored in capitals, in both tables: the conversion
     // lowercases them (ADR 0028), so the chart still reads under "ready".
     exec_on_file(path, "UPDATE results SET hyhash = 'READY' WHERE hyhash = 'ready';"
                        "UPDATE charts SET md5 = 'READY' WHERE md5 = 'ready';");
@@ -197,14 +287,13 @@ void seed_old_layout(const std::string& path) {
     REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM meta") == kSeedMeta);
     REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM results WHERE hyhash = 'empty'"
                                  " AND stars IS NULL AND score IS NULL") == 1);
-    REQUIRE(detail_tables_in(path) == 5);
-    REQUIRE(structure_columns_in(path) == 1);
+    REQUIRE(classify_library_file(path) == LibraryFileKind::Convertible);
 }
 
-// What every row reads after the upgrade: Ready stays Ready with its
+// What every row reads after the conversion: Ready stays Ready with its
 // numbers, Stale stays Stale for the same reason, the no-stars row is gone,
-// and the library and meta came across whole.
-void check_upgraded_rows(RecordStore& store) {
+// and the library and meta stayed whole.
+void check_converted_rows(RecordStore& store) {
     const SummaryLookup got_ready = store.get_summary(kReady);
     CHECK(got_ready.status == RecordStatus::Ready);
     CHECK(got_ready.summary == summarize_record(at_cap(8)));
@@ -231,36 +320,17 @@ void check_upgraded_rows(RecordStore& store) {
     // The library row stored in capitals reads lowercase, as its record does.
     CHECK(store.list_chart_library_copies("ready").size() == 1);
     // The scan cache reads only under a current reader stamp, so a full one
-    // shows the stamp came across with meta.
+    // shows the stamp stayed in meta.
     CHECK(store.chart_library_cache().size() == static_cast<size_t>(kSeedCharts));
     CHECK(store.engine_mode() == std::optional<std::string>(kSeedEngineMode));
 }
 
-// The file is in this build's layout and nothing of the upgrade is left
-// beside it.
-void check_upgraded_files(const std::string& path) {
-    CHECK(detail_tables_in(path) == 0);
-    CHECK(structure_columns_in(path) == 0);
-    CHECK_FALSE(file_exists_utf8(upgrading_path(path)));
-    CHECK_FALSE(file_exists_utf8(old_path(path)));
-}
-
-// The file still holds its path details and every kept row: a copy upgrade
-// that failed or stopped changed nothing that matters, and left no fresh
-// file. The conversion to records runs before the copy, in its own
-// transaction, so it stays done.
-void check_old_file_whole(const std::string& path) {
-    CHECK(detail_tables_in(path) == 5);
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM charts") == kSeedCharts);
-    CHECK(record_rows_in(path) == kKeptResults);
-    CHECK_FALSE(file_exists_utf8(upgrading_path(path)));
-    CHECK_FALSE(file_exists_utf8(old_path(path)));
-}
-
-void remove_db(const std::string& path) {
-    for (const std::string& f : with_side_files(path)) std::remove(f.c_str());
-    for (const std::string& f : with_side_files(upgrading_path(path))) std::remove(f.c_str());
-    for (const std::string& f : with_side_files(old_path(path))) std::remove(f.c_str());
+// The file is in this build's layout, with no results table left and
+// nothing set aside beside it.
+void check_converted_file(const std::string& path) {
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM sqlite_master WHERE name = 'results'") == 0);
+    CHECK(classify_library_file(path) == LibraryFileKind::Current);
+    CHECK_FALSE(file_exists_utf8(set_aside_path(path)));
 }
 
 // Every report an open made, in order.
@@ -283,25 +353,21 @@ struct ProgressLog {
 
 }  // namespace
 
-TEST_CASE("the first open of a file with stored path details drops them and keeps every status") {
-    const std::string path = testtemp::temp_path("summary_only_upgrade", ".db");
-    seed_old_layout(path);
-    const int64_t chart_rowids_before = scalar_on_file(path, "SELECT SUM(rowid) FROM charts");
+TEST_CASE("the first open of a 2.2.0 to 2.7.0 file turns its results into records and keeps "
+          "every status") {
+    const std::string path = testtemp::temp_path("convert_v220", ".db");
+    seed_v220_layout(path);
 
     ProgressLog log;
     {
         RecordStore store(path, core::default_stamp(), log.fn());
-        check_upgraded_rows(store);
+        CHECK_FALSE(store.set_aside_path().has_value());
+        check_converted_rows(store);
     }
-    check_upgraded_files(path);
-    // A freshly written file has no free pages from the dropped tables.
-    CHECK(scalar_on_file(path, "PRAGMA freelist_count") == 0);
-    // Every library row keeps its rowid (the naming copy is the smallest
-    // one, kNamingCopiesSql).
-    CHECK(scalar_on_file(path, "SELECT SUM(rowid) FROM charts") == chart_rowids_before);
+    check_converted_file(path);
     // The results became records: one profile per distinct settings, stamp
     // and rules, one record per kept row, a rank-1 path row for each with a
-    // score, every id lowercase, and no results table left.
+    // score, and every id lowercase.
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == kSeedProfiles);
     CHECK(record_rows_in(path) == kKeptResults);
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == kSeedPaths);
@@ -309,34 +375,20 @@ TEST_CASE("the first open of a file with stored path details drops them and keep
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM records WHERE song_id <> lower(song_id)") ==
           0);
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM charts WHERE md5 <> lower(md5)") == 0);
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM sqlite_master WHERE name = 'results'") == 0);
 
-    // The bar's numbers: the steps in order; the conversion counts every row
-    // it converts up to its total, then the copy every row it copies up to
-    // its own.
-    CHECK(log.steps() == std::vector<OpenStep>{OpenStep::Opening, OpenStep::ConvertingRecords,
-                                               OpenStep::Copying, OpenStep::Finishing});
-    const int64_t total = kSeedCharts + kSeedProfiles + kKeptResults + kSeedPaths + kSeedMeta;
+    // The bar's numbers: the conversion counts every row it converts up to
+    // its total.
+    CHECK(log.steps() == std::vector<OpenStep>{OpenStep::Opening, OpenStep::ConvertingRecords});
     int64_t last_converted = -1;
-    int64_t last_done = -1;
     for (const OpenProgress& p : log.reports) {
         if (p.step == OpenStep::Opening) continue;
-        if (p.step == OpenStep::ConvertingRecords) {
-            CHECK(p.rows_total == kKeptResults);
-            CHECK(p.rows_done >= last_converted);
-            last_converted = p.rows_done;
-            continue;
-        }
-        CHECK(p.rows_total == total);
-        CHECK(p.rows_done >= last_done);
-        last_done = p.rows_done;
+        CHECK(p.rows_total == kKeptResults);
+        CHECK(p.rows_done >= last_converted);
+        last_converted = p.rows_done;
     }
     CHECK(last_converted == kKeptResults);
-    CHECK(last_done == total);
-    CHECK(log.reports.back().step == OpenStep::Finishing);
-    CHECK(log.reports.back().rows_done == total);
 
-    // A second open finds no results and no detail tables and does nothing.
+    // A second open finds no results and does nothing.
     ProgressLog again;
     {
         RecordStore store(path, core::default_stamp(), again.fn());
@@ -344,18 +396,16 @@ TEST_CASE("the first open of a file with stored path details drops them and keep
     }
     CHECK(again.steps() == std::vector<OpenStep>{OpenStep::Opening});
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == kSeedProfiles);
-    CHECK(detail_tables_in(path) == 0);
     remove_db(path);
 }
 
-// An old row's rules fingerprint can be the empty blob (rules_fp_of cuts it
-// from a structure too short to hold one). The conversion files it under a
-// profile whose rules are that empty blob, not NULL, which the profiles
-// table refuses: before bind_blob bound an empty blob as one, the whole open
-// failed on "NOT NULL constraint failed: profiles.rules_fp".
+// An old row's rules fingerprint can be the empty blob. The conversion files
+// it under a profile whose rules are that empty blob, not NULL, which the
+// profiles table refuses: before bind_blob bound an empty blob as one, the
+// whole open failed on "NOT NULL constraint failed: profiles.rules_fp".
 TEST_CASE("the conversion keeps a row whose rules fingerprint is the empty blob") {
     const std::string path = testtemp::temp_path("convert_empty_rules_fp", ".db");
-    seed_old_layout(path);
+    seed_v220_layout(path);
     exec_on_file(path, "UPDATE results SET rules_fp = x'' WHERE hyhash = 'rules'");
     {
         RecordStore store(path);
@@ -372,7 +422,7 @@ TEST_CASE("the conversion keeps a row whose rules fingerprint is the empty blob"
 TEST_CASE("an old result with no score converts to a record that kept no paths") {
     // The seed's "empty" row: analyzed, no paths kept, so no score.
     const std::string path = testtemp::temp_path("convert_no_score", ".db");
-    seed_old_layout(path);
+    seed_v220_layout(path);
     { RecordStore store(path); }
     CHECK(scalar_on_file(path, "SELECT pathcount FROM records WHERE song_id = 'empty'") == 0);
     CHECK(scalar_on_file(path, "SELECT notecount FROM records WHERE song_id = 'empty'") == 0);
@@ -382,113 +432,9 @@ TEST_CASE("an old result with no score converts to a record that kept no paths")
     remove_db(path);
 }
 
-TEST_CASE("an old results table with no path details converts without the copy upgrade") {
-    // A file a summary-only build wrote: results, no detail tables. Only the
-    // conversion runs.
-    const std::string path = testtemp::temp_path("convert_no_details", ".db");
-    seed_old_layout(path);
-    exec_on_file(path, "DROP TABLE paths; DROP TABLE path_refs; DROP TABLE songmeta;"
-                       " DROP TABLE dynamics;");
-    ProgressLog log;
-    {
-        RecordStore store(path, core::default_stamp(), log.fn());
-        check_upgraded_rows(store);
-    }
-    CHECK(log.steps() == std::vector<OpenStep>{OpenStep::Opening, OpenStep::ConvertingRecords});
-    CHECK(record_rows_in(path) == kKeptResults);
-    remove_db(path);
-}
-
-TEST_CASE("the copy upgrade copies the record tables, which have no rowid") {
-    // A file already in records whose path details are still there: only
-    // the copy runs. records and record_paths are WITHOUT ROWID tables.
-    const std::string path = testtemp::temp_path("copy_without_rowid", ".db");
-    remove_db(path);
-    {
-        RecordStore seed(path);
-        seed.rebuild_chart_library({library_row("ready", "Ready")});
-        seed.add_record(kReady, at_cap(8));
-    }
-    exec_on_file(path, test::kDetailTablesSql);
-    REQUIRE(detail_tables_in(path) == 5);
-    {
-        RecordStore store(path);
-        const SummaryLookup got = store.get_summary(kReady);
-        CHECK(got.status == RecordStatus::Ready);
-        CHECK(got.summary == summarize_record(at_cap(8)));
-    }
-    check_upgraded_files(path);
-    CHECK(record_rows_in(path) == 1);
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == 1);
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == 1);
-    remove_db(path);
-}
-
-TEST_CASE("a fresh file left by an earlier run is removed and the upgrade runs") {
-    const std::string path = testtemp::temp_path("upgrade_stale_temp", ".db");
-    seed_old_layout(path);
-    write_junk_db(upgrading_path(path));
-    write_junk_db(upgrading_path(path) + "-wal");
-    {
-        RecordStore store(path);
-        check_upgraded_rows(store);
-    }
-    check_upgraded_files(path);
-    CHECK_FALSE(file_exists_utf8(upgrading_path(path) + "-wal"));
-    remove_db(path);
-}
-
-TEST_CASE("a run stopped between the two renames opens as the upgraded file") {
-    const std::string path = testtemp::temp_path("upgrade_between_renames", ".db");
-    seed_old_layout(path);
-    {
-        const ScopedHook stop(stop_copy_upgrade_after_step_aside_for_test, true);
-        CHECK_THROWS(RecordStore(path));
-    }
-    // The state a kill there leaves: the original stepped aside, the fresh
-    // file complete, nothing under the database's name.
-    REQUIRE_FALSE(file_exists_utf8(path));
-    REQUIRE(file_exists_utf8(old_path(path)));
-    REQUIRE(file_exists_utf8(upgrading_path(path)));
-    {
-        RecordStore store(path);
-        check_upgraded_rows(store);
-    }
-    check_upgraded_files(path);
-    remove_db(path);
-}
-
-TEST_CASE("a stepped-aside original with no fresh file comes back and upgrades") {
-    const std::string path = testtemp::temp_path("upgrade_old_alone", ".db");
-    seed_old_layout(path);
-    REQUIRE(MoveFileW(win32_path(path).c_str(), win32_path(old_path(path)).c_str()));
-    {
-        RecordStore store(path);
-        check_upgraded_rows(store);
-    }
-    check_upgraded_files(path);
-    remove_db(path);
-}
-
-TEST_CASE("a stop asked for mid-copy leaves the old file whole and throws Cancelled") {
-    const std::string path = testtemp::temp_path("upgrade_cancelled", ".db");
-    seed_old_layout(path);
-    const OpenProgressFn stop_at_two = [](const OpenProgress& p) {
-        return !(p.step == OpenStep::Copying && p.rows_done == 2);
-    };
-    try {
-        RecordStore store(path, core::default_stamp(), stop_at_two);
-        FAIL("the open finished although the callback asked it to stop");
-    } catch (const KindedError& e) {
-        CHECK(e.kind() == ErrorKind::Cancelled);
-    }
-    check_old_file_whole(path);
-    remove_db(path);
-}
-
 TEST_CASE("a stop asked mid-conversion leaves the results table whole and throws Cancelled") {
     const std::string path = testtemp::temp_path("convert_cancelled", ".db");
-    seed_old_layout(path);
+    seed_v220_layout(path);
     const OpenProgressFn stop_at_two = [](const OpenProgress& p) {
         return !(p.step == OpenStep::ConvertingRecords && p.rows_done == 2);
     };
@@ -503,50 +449,60 @@ TEST_CASE("a stop asked mid-conversion leaves the results table whole and throws
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM results") == kSeedResults);
     CHECK(record_rows_in(path) == 0);
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == 0);
-    CHECK(detail_tables_in(path) == 5);
+    CHECK(classify_library_file(path) == LibraryFileKind::Convertible);
     {
         RecordStore store(path);
-        check_upgraded_rows(store);
+        check_converted_rows(store);
     }
-    check_upgraded_files(path);
+    check_converted_file(path);
     remove_db(path);
 }
 
-TEST_CASE("a fresh file that cannot be made fails as an upgrade error with the old file whole") {
-    const std::string path = testtemp::temp_path("upgrade_no_temp", ".db");
-    seed_old_layout(path);
-    // A folder where the fresh file goes: nothing can create it.
-    std::filesystem::create_directories(os_path(upgrading_path(path)));
+// ---- setting a file too old to convert aside (D115 task A1-6a) -------------
+
+TEST_CASE("a set-aside that cannot be made fails with its sentence and leaves the old file "
+          "whole") {
+    const std::string path = copy_of_old_database("v2.1.0-schema4.db", "set_aside_blocked");
+    const std::string before = file_bytes(path);
+    // A folder at the set-aside name: remove_with_side_files cannot clear it,
+    // so the rename fails.
+    std::filesystem::create_directories(os_path(set_aside_path(path)));
     try {
-        RecordStore store(path);
-        FAIL("the open finished with no fresh file to copy into");
+        RecordStore store(path, OldFilePolicy::SetAside, core::default_stamp());
+        FAIL("the open finished with nowhere to set the old file aside");
     } catch (const KindedError& e) {
-        CHECK(e.kind() == ErrorKind::DatabaseUpgrade);
-        CHECK(app::plain_error(e) ==
-              "Hydra couldn't update its library file (hydra.db) for this version. Your charts "
-              "and results were not changed. Check that no other copy of Hydra or hydra_batch "
-              "is running and that the disk isn't full, then start Hydra again.");
+        CHECK(e.kind() == ErrorKind::OldLibrarySetAsideFailed);
+        // The middle is Windows' own text for the failure, so only the
+        // sentence's two ends are pinned here (test_user_messages pins it whole).
+        const std::string said = app::plain_error(e);
+        const std::string head = "This library file is from a Hydra version older than 2.2.0, "
+                                 "and Hydra could not set it aside: ";
+        const std::string tail = ". Close any program using hydra.db and start Hydra again.";
+        CHECK(said.rfind(head, 0) == 0);
+        REQUIRE(said.size() > head.size() + tail.size());
+        CHECK(said.compare(said.size() - tail.size(), tail.size(), tail) == 0);
     }
-    std::filesystem::remove(os_path(upgrading_path(path)));
-    check_old_file_whole(path);
+    std::filesystem::remove(os_path(set_aside_path(path)));
+    CHECK(file_bytes(path) == before);
     remove_db(path);
 }
 
-TEST_CASE("another connection on the old file stops the swap as an upgrade error") {
-    const std::string path = testtemp::temp_path("upgrade_held_open", ".db");
-    seed_old_layout(path);
+TEST_CASE("another connection on an old file stops the set-aside, and the file stays whole") {
+    const std::string path = copy_of_old_database("v2.1.0-schema4.db", "set_aside_held_open");
+    const std::string before = file_bytes(path);
     sqlite3* holder = nullptr;
     REQUIRE(sqlite3_open(path.c_str(), &holder) == SQLITE_OK);
-    REQUIRE(sqlite3_exec(holder, "SELECT COUNT(*) FROM charts", nullptr, nullptr, nullptr) ==
+    REQUIRE(sqlite3_exec(holder, "SELECT COUNT(*) FROM results", nullptr, nullptr, nullptr) ==
             SQLITE_OK);
     try {
-        RecordStore store(path);
-        FAIL("the upgrade swapped a file another connection holds");
+        RecordStore store(path, OldFilePolicy::SetAside, core::default_stamp());
+        FAIL("the open set aside a file another connection holds");
     } catch (const KindedError& e) {
-        CHECK(e.kind() == ErrorKind::DatabaseUpgrade);
+        CHECK(e.kind() == ErrorKind::OldLibrarySetAsideFailed);
     }
     sqlite3_close(holder);
-    check_old_file_whole(path);
+    CHECK(file_bytes(path) == before);
+    CHECK_FALSE(file_exists_utf8(set_aside_path(path)));
     remove_db(path);
 }
 
@@ -566,21 +522,13 @@ TEST_CASE("every open caps the WAL file the log keeps after a checkpoint") {
 
 namespace {
 
-// One file in testdata/store and what today's open makes of it. The fields
-// before the open are the README's "Facts the tests pin"; the fields after it
-// were pinned from one run on 2026-10-10 at a5935954 (v2.0.0, v2.1.0) and at
-// d6c48705 (the two v1.8.4 files).
+// One file in testdata/store and its layout. The fields are the README's
+// "Facts the tests pin".
 struct OldDatabase {
     const char* file;
     int64_t user_version;
     bool has_legacy_fills_column;
     bool has_rules_fp_column;
-    // The results rows the first open keeps: all 3, or none.
-    int64_t rows_after_open;
-    // The fill rule every kept row is filed under (0 where none is kept).
-    int legacy_fills;
-    // The steps the first open reported, each once.
-    std::vector<OpenStep> steps;
 };
 
 // Every fixture row's chart mode (README "Schema and stamps").
@@ -590,22 +538,6 @@ const char* const kOldDatabaseChartMode = "Expert Pro Drums, 2x Bass";
 const char* const kOldDatabaseHashes[] = {"0b647b1570475f18d463466f2c4d72a7",
                                           "0d4fd734fe5f2bf6ff1fdbc4ff55be8f",
                                           "bef0759746740f9c1045f64e9a5a2938"};
-
-// The rules fingerprint every fixture row holds, its bytes in file order as
-// SQLite's lower(hex()) spells them (README "Rules fingerprint").
-const char* const kOldDatabaseRulesFpHex = "f24c606966e9d270";
-
-// The settings every fixture row was analysed under (README "Results rows by
-// chart"): a 4-bar cap, the ms limit on at 10, depth "scores 4".
-RecordKey old_database_key(const char* hyhash, int legacy_fills) {
-    Lens lens;
-    lens.ms_enabled = 1;
-    lens.ms_value = 10;
-    lens.depth_mode = 0;
-    lens.depth_value = 4;
-    lens.legacy_fills = legacy_fills;
-    return RecordKey{hyhash, kOldDatabaseChartMode, CapQuery::at(4), lens};
-}
 
 using ChartPairs = std::set<std::pair<std::string, std::string>>;
 
@@ -617,18 +549,13 @@ ChartPairs old_database_pairs() {
     return out;
 }
 
-// What chart_pairs_on_file reads: an old file's results before the open,
-// and the records with their profiles' modes after it.
-constexpr const char* kResultPairsSql = "SELECT hyhash, chartmode FROM results";
-constexpr const char* kRecordPairsSql =
-    "SELECT r.song_id, p.chartmode FROM records r JOIN profiles p ON p.id = r.profile_id";
-
-// The (chart, chartmode) pairs `sql` reads from the file at `path`.
-ChartPairs chart_pairs_on_file(const std::string& path, const char* sql) {
+// The (chart, chartmode) pairs an old file's results table holds.
+ChartPairs result_pairs_on_file(const std::string& path) {
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
     sqlite3_stmt* s = nullptr;
-    REQUIRE(sqlite3_prepare_v2(db, sql, -1, &s, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_prepare_v2(db, "SELECT hyhash, chartmode FROM results", -1, &s, nullptr) ==
+            SQLITE_OK);
     ChartPairs out;
     while (sqlite3_step(s) == SQLITE_ROW)
         out.insert({reinterpret_cast<const char*>(sqlite3_column_text(s, 0)),
@@ -645,81 +572,26 @@ int64_t results_columns_named(const std::string& path, const std::string& column
 
 }  // namespace
 
-TEST_CASE("a database a real old release wrote opens with no path details, its results Stale or,"
-          " before the stars column, left for a re-run") {
-    using S = OpenStep;
+TEST_CASE("a database any release before 2.2.0 wrote is too old: refused, or set aside for a "
+          "fresh library") {
     const std::vector<OldDatabase> fixtures = {
-        // v1.8.4 had no stars column, so the copy keeps none of its rows
-        // (docs/adr/0026-the-store-keeps-summaries-the-engine-gives-details.md).
-        {"v1.8.4-schema2.db", 2, false, false, 0, 0,
-         {S::Opening, S::UpdatingResultsKey, S::ConvertingRecords, S::Copying, S::Finishing}},
-        {"v1.8.4-schema2-legacy-fills.db", 2, false, false, 0, 0,
-         {S::Opening, S::UpdatingResultsKey, S::ConvertingRecords, S::Copying, S::Finishing}},
-        {"v2.0.0-schema3.db", 3, true, false, 3, 0,
-         {S::Opening, S::UpdatingResultsKey, S::ConvertingRecords, S::Copying, S::Finishing}},
-        // v2.1.0 stopped setting user_version (README "Schema and stamps"),
-        // so its rules_fp column is what tells this layout apart.
-        {"v2.1.0-schema4.db", 0, true, true, 3, 0,
-         {S::Opening, S::ConvertingRecords, S::Copying, S::Finishing}},
+        {"v1.8.4-schema2.db", 2, false, false},
+        {"v1.8.4-schema2-legacy-fills.db", 2, false, false},
+        {"v2.0.0-schema3.db", 3, true, false},
+        // v2.1.0 stopped setting user_version (README "Schema and stamps").
+        {"v2.1.0-schema4.db", 0, true, true},
     };
     for (const OldDatabase& f : fixtures) {
         INFO(std::string(f.file));
-        const std::string source = corpus::testdata_root() + "/store/" + f.file;
-        REQUIRE(std::filesystem::exists(source));
-        // The store opens in WAL mode, which would write beside the checked-in
-        // file, so it opens a copy.
-        const std::string path = testtemp::temp_path("old_database", ".db");
-        remove_db(path);
-        std::filesystem::copy_file(source, path, std::filesystem::copy_options::overwrite_existing);
+        const std::string path = copy_of_old_database(f.file, "old_database");
 
         // The file is the layout the README says, before anything opens it.
         CHECK(scalar_on_file(path, "PRAGMA user_version") == f.user_version);
         CHECK(results_columns_named(path, "legacy_fills") == (f.has_legacy_fills_column ? 1 : 0));
         CHECK(results_columns_named(path, "rules_fp") == (f.has_rules_fp_column ? 1 : 0));
-        REQUIRE(chart_pairs_on_file(path, kResultPairsSql) == old_database_pairs());
+        REQUIRE(result_pairs_on_file(path) == old_database_pairs());
 
-        const bool kept = f.rows_after_open > 0;
-        const ChartPairs pairs_after = kept ? old_database_pairs() : ChartPairs{};
-        ProgressLog log;
-        {
-            RecordStore store(path, core::default_stamp(), log.fn());
-            CHECK(store.counts().second == f.rows_after_open);
-            for (const char* h : kOldDatabaseHashes) {
-                INFO(std::string(h));
-                if (kept) {
-                    // Each was written by an older build, so the store's own
-                    // status call reads it Stale, never Ready.
-                    const SummaryLookup got =
-                        store.get_summary(old_database_key(h, f.legacy_fills));
-                    CHECK(got.status == RecordStatus::Stale);
-                    CHECK(got.stale_build);
-                } else {
-                    // No row is left under either fill rule.
-                    for (int legacy_fills : {0, 1})
-                        CHECK(store.get_summary(old_database_key(h, legacy_fills)).status ==
-                              RecordStatus::NotAnalyzed);
-                }
-            }
-        }
-        CHECK(log.steps() == f.steps);
-        CHECK(record_rows_in(path) == f.rows_after_open);
-        CHECK(chart_pairs_on_file(path, kRecordPairsSql) == pairs_after);
-        CHECK(scalar_on_file(path, std::string("SELECT COUNT(*) FROM profiles WHERE lower(hex(rules_fp))"
-                                               " <> '") +
-                                       kOldDatabaseRulesFpHex + "'") == 0);
-        CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles WHERE legacy_fills <> " +
-                                       std::to_string(f.legacy_fills)) == 0);
-        check_upgraded_files(path);
-
-        // A second open finds nothing to upgrade and keeps what the first kept.
-        ProgressLog again;
-        {
-            RecordStore store(path, core::default_stamp(), again.fn());
-            CHECK(store.counts().second == f.rows_after_open);
-        }
-        CHECK(again.steps() == std::vector<OpenStep>{S::Opening});
-        CHECK(record_rows_in(path) == f.rows_after_open);
-        CHECK(chart_pairs_on_file(path, kRecordPairsSql) == pairs_after);
+        check_too_old_file(path);
         remove_db(path);
     }
 }
@@ -904,110 +776,6 @@ TEST_CASE("every store read throws a database read error when its step fails") {
         exec_on_file(path, kDropEveryTable);
         check_read_fails([&] { read(store); });
     }
-    std::remove(path.c_str());
-}
-
-// ---- Auto removed (2026-09-27, interface redesign Task 6) ------------------
-
-namespace {
-
-// A result the way Hydra 1.8.4's Auto stamped it: the fixture's paths at
-// `cap`, under the default rules' Auto fingerprint.
-HydraRecord auto_run_at(int cap) {
-    HydraRecord r = at_cap(cap);
-    r.rules_fingerprint = core::default_rules().retired_auto_fingerprint();
-    return r;
-}
-
-}  // namespace
-
-TEST_CASE("the first open deletes the results Auto saved, once") {
-    const std::string path = testtemp::temp_path("auto_delete", ".db");
-    std::remove(path.c_str());
-    const RecordKey kept{"h", "mode", CapQuery::at(4)};
-    const RecordKey whatif{"h", "mode", CapQuery::at(8)};
-    const RecordKey auto_same_chart{"h", "mode", CapQuery::at(16)};
-    const RecordKey auto_only{"a", "mode", CapQuery::at(32)};
-
-    {
-        RecordStore store(path);
-        store.add_record(kept, at_cap(4));
-        store.add_record(whatif, at_cap(8));
-        store.add_record(auto_same_chart, auto_run_at(16));
-        store.add_record(auto_only, auto_run_at(32));
-        // This build accepts only the fixed-cap fingerprint, so an Auto row
-        // reads Stale even before anything deletes it.
-        CHECK(store.get_summary(auto_only).status == RecordStatus::Stale);
-        CHECK(store.counts().second == 4);
-    }
-    // A database Hydra 1.8.4 wrote has no mark yet.
-    exec_on_file(path, "DELETE FROM meta WHERE key='auto_results_deleted'");
-
-    {
-        RecordStore store(path);
-        CHECK(store.counts().second == 2);
-        CHECK(store.get_summary(auto_only).status == RecordStatus::NotAnalyzed);
-        CHECK(store.get_summary(auto_same_chart).status == RecordStatus::NotAnalyzed);
-        // A fixed-cap what-if above 4 bars is not an Auto result and stays.
-        CHECK(store.get_summary(whatif).status == RecordStatus::Ready);
-        const SummaryLookup left = store.get_summary(kept);
-        REQUIRE(left.status == RecordStatus::Ready);
-        CHECK(left.summary == summarize_record(at_cap(4)));
-        CHECK(left.bestpath == best_path_text(at_cap(4)));
-    }
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM meta WHERE key='auto_results_deleted'") == 1);
-
-    // Marked done: a later open never deletes again.
-    {
-        RecordStore store(path);
-        store.add_record(auto_only, auto_run_at(32));
-    }
-    {
-        RecordStore store(path);
-        CHECK(store.counts().second == 3);
-        CHECK(store.get_summary(auto_only).status == RecordStatus::Stale);
-    }
-    std::error_code ec;
-    std::filesystem::remove(std::filesystem::u8path(path), ec);
-}
-
-TEST_CASE("a start with a bad rules file leaves the Auto results for the next good start") {
-    const std::string path = testtemp::temp_path("auto_delete_none", ".db");
-    std::remove(path.c_str());
-    const RecordKey auto_only{"a", "mode", CapQuery::at(32)};
-    {
-        RecordStore store(path);
-        store.add_record(auto_only, auto_run_at(32));
-    }
-    exec_on_file(path, "DELETE FROM meta WHERE key='auto_results_deleted'");
-    {
-        // A bad hydra_rules.ini: there is no fingerprint to look for, so
-        // nothing is deleted and nothing is marked done.
-        RecordStore store(path, core::RulesStamp::none());
-        CHECK(store.counts().second == 1);
-    }
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM meta WHERE key='auto_results_deleted'") == 0);
-    {
-        RecordStore store(path);
-        CHECK(store.counts().second == 0);
-    }
-    std::error_code ec;
-    std::filesystem::remove(std::filesystem::u8path(path), ec);
-}
-
-// Plan task AL (p7-al2), which removed the songlength table.
-TEST_CASE("opening a database that still has the old songlength table drops it") {
-    // D69 replaced D58 item 5: the per-difficulty length table goes.
-    const std::string path = testtemp::temp_path("song_length_old", ".db");
-    std::remove(path.c_str());
-    { RecordStore store(path); }
-    exec_on_file(path,
-                 "CREATE TABLE IF NOT EXISTS songlength (hyhash TEXT NOT NULL,"
-                 " chartmode TEXT NOT NULL, length_ms REAL NOT NULL,"
-                 " PRIMARY KEY (hyhash, chartmode));"
-                 "INSERT OR REPLACE INTO songlength VALUES ('h', 'mode', 1234.0);");
-    { RecordStore store(path); }
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM sqlite_master WHERE name = 'songlength'") == 0);
     std::remove(path.c_str());
 }
 

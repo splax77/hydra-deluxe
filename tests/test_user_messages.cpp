@@ -16,6 +16,7 @@
 #include "core/model.h"
 #include "parse/midi.h"
 #include "parse/song.h"
+#include "store/upgrade_files.h"  // set_aside_path
 
 using hydra::app::plain_error;
 using hydra::app::plain_error_detail;
@@ -123,6 +124,19 @@ TEST_CASE("user_messages: stale_text names the real cause") {
     CHECK(std::string(hydra::app::kNoPathsFound) == "No paths found.");
 }
 
+// The file name the notice shows is the one store::set_aside_path gave the
+// file, so the notice and the file on disk agree.
+TEST_CASE("user_messages: the set-aside notice names the file the store set aside") {
+    CHECK(hydra::app::old_library_set_aside_notice("C:\\Hydra\\hydra.db") ==
+          "This library file is from a Hydra version older than 2.2.0, so Hydra set it aside "
+          "as hydra.db.pre-2.2.0 and started a fresh library.");
+    const std::string db = "C:/some folder/library.db";
+    const std::string aside = hydra::store::set_aside_path(db);
+    const std::string notice = hydra::app::old_library_set_aside_notice(db);
+    CHECK(notice.find(" as " + aside.substr(aside.find_last_of('/') + 1) + " and ") !=
+          std::string::npos);
+}
+
 // The Stale chip stands for many rows, so it names both causes.
 TEST_CASE("user_messages: the Stale chip's tooltip names both causes") {
     CHECK(hydra::app::stale_chip_text() ==
@@ -190,6 +204,14 @@ TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its
     CHECK(plain_error(KindedError(ErrorKind::ChartTimingRefused, "x")) ==
           "Hydra can't analyze this chart because x. Fix that line in the chart file or "
           "download the song again.");
+    // The two old-library kinds carry the file's path and Windows' reason.
+    // The reason's own full stop goes, since the sentence carries on after it.
+    CHECK(plain_error(KindedError(ErrorKind::OldLibraryRefused, "C:\\lib\\hydra.db")) ==
+          "The library file 'C:\\lib\\hydra.db' is from a Hydra version older than 2.2.0, and "
+          "opening it in Hydra sets it aside and starts a fresh library.");
+    CHECK(plain_error(KindedError(ErrorKind::OldLibrarySetAsideFailed, "Access is denied.\r\n")) ==
+          "This library file is from a Hydra version older than 2.2.0, and Hydra could not set "
+          "it aside: Access is denied. Close any program using hydra.db and start Hydra again.");
     CHECK(plain_error(KindedError(ErrorKind::AlreadyPlain, "x")) == "x");
     // The typed errors carry their kinds too.
     CHECK(plain_error(hydra::ChartFileError("x")) == kChartUnreadable);

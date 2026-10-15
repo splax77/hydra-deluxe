@@ -155,11 +155,9 @@ TEST_CASE("rules: no rules value has the no-rules fingerprint") {
     // so no stored row can read Ready. That only works if no real rules
     // value ever hashes to it.
     CHECK(core::default_rules().fingerprint() != core::kNoRulesFingerprint);
-    CHECK(core::default_rules().retired_auto_fingerprint() != core::kNoRulesFingerprint);
     core::Rules other = core::default_rules();
     other.max_tied_paths = 2;
     CHECK(other.fingerprint() != core::kNoRulesFingerprint);
-    CHECK(other.retired_auto_fingerprint() != core::kNoRulesFingerprint);
 }
 
 TEST_CASE("rules: whole_chord takes every note's SP doubling on a squeeze-out") {
@@ -433,26 +431,11 @@ TEST_CASE("rules: the retired Auto keys are read and ignored") {
     CHECK(r.fingerprint() == expected.fingerprint());
 }
 
-TEST_CASE("rules: the retired Auto fingerprint is what Hydra 1.8.4 stamped") {
-    // Pinned. The store finds the results Auto saved by this value, so it must
-    // equal 1.8.4's auto_fingerprint() under its default ladder. The fixed-cap
-    // value beside it is the one on every 4-bar row of a real 1.8.4 database,
-    // which proves the text both hash is unchanged.
-    CHECK(core::default_rules().fingerprint() == 0x70d2e96669604cf2ull);
-    CHECK(core::default_rules().retired_auto_fingerprint() == 0x5b610b430a43a4beull);
-    // Every rule is in it, as it was in auto_fingerprint().
-    core::Rules ties = core::default_rules();
-    ties.max_tied_paths = 2;
-    CHECK(ties.retired_auto_fingerprint() != core::default_rules().retired_auto_fingerprint());
-    CHECK(ties.retired_auto_fingerprint() != ties.fingerprint());
-}
-
 TEST_CASE("rules: the fingerprint text is byte for byte what 1.8.4 wrote") {
     // Pinned from the build before the field table existed (6a1bb49). Every
     // stored result carries one of these, so a change to the text's names,
     // number form or line order would read every row Stale.
     CHECK(core::default_rules().fingerprint() == 0x70d2e96669604cf2ull);
-    CHECK(core::default_rules().retired_auto_fingerprint() == 0x5b610b430a43a4beull);
     // Every field moved off its default, so each line's name and number form
     // (whole numbers, fractions, the whole_chord word) is in the hash.
     core::Rules all;
@@ -464,7 +447,6 @@ TEST_CASE("rules: the fingerprint text is byte for byte what 1.8.4 wrote") {
     all.fill_length_measures = 0.75;
     all.fill_land_slop_beats = 0.1;
     CHECK(all.fingerprint() == 0x786ef3e8a2dbe1e4ull);
-    CHECK(all.retired_auto_fingerprint() == 0x229fa7e95ca76618ull);
 }
 
 TEST_CASE("rules: the default stamp is built once and matches a fresh record") {
@@ -472,11 +454,8 @@ TEST_CASE("rules: the default stamp is built once and matches a fresh record") {
     // every record built, which includes every record decoded.
     CHECK(&core::default_stamp() == &core::default_stamp());
     CHECK(core::default_stamp().fixed == core::default_rules().fingerprint());
-    CHECK(core::default_stamp().retired_auto ==
-          core::default_rules().retired_auto_fingerprint());
     CHECK(HydraRecord{}.rules_fingerprint == core::default_stamp().fixed);
     CHECK(core::RulesStamp::none().fixed == core::kNoRulesFingerprint);
-    CHECK(core::RulesStamp::none().retired_auto == core::kNoRulesFingerprint);
 }
 
 TEST_CASE("rules: a run is stamped with the rules fingerprint at cap 4 and at cap 8") {
