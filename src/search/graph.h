@@ -36,8 +36,9 @@ namespace hydra {
 //
 // Ch10 answers "what could a 1.0 player have reached?": the app's "1.0 fills"
 // setting and hydra_batch --legacy-fills. A stored result carries the rule it
-// ran under in its key (store::Lens::legacy_fills, docs/adr/0010).
-enum class FillDeadlineRule { Ch11, Ch10 };
+// ran under in its key (store::Lens::legacy_fills, docs/adr/0010). The rule
+// also picks the generator of a chart's own fills (Song::check_activations),
+// so the enum itself is declared in parse/song.h, which this header includes.
 
 // The engine_mode string hydra_batch stamps into a database's meta table so
 // hydra_fillcompare can tell which rule produced it later (docs/adr/0010).

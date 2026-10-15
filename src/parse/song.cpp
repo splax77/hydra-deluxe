@@ -579,7 +579,173 @@ int Song::note_count() const {
 // ---- Song::check_activations -------------------------------------------
 
 // The one owner of generated-fill placement, for a chart with no fills of its
-// own, as Clone Hero 1.1.0.6142's generator places them (0x20D2B30). It reads
+// own, and the one place that picks which game version's generator runs: the
+// rule the run is scored under (FillDeadlineRule; search/graph.h's
+// fill_rule_for reads it off a setting). The user decided on 2026-10-14 that
+// Clone Hero 1.0 mode keeps exactly the fills it had before D115.
+void Song::check_activations(const core::Rules& rules, FillDeadlineRule fills) {
+    for (const SongTimestamp& ts : sequence)
+        if (ts.has_activation()) return;  // chart already has fills.
+
+    features.push_back("Auto-Generated Fills");
+    if (sequence.empty()) return;
+    if (fills == FillDeadlineRule::Ch10)
+        place_fills_ch10(rules);
+    else
+        place_fills_ch11(rules);
+}
+
+namespace {
+
+// How long a Clone Hero 1.0 generated fill is: half a measure of the meter in
+// force at its chord, as Hydra always gave it before D115. Only the 1.0
+// deadline (activation_fill_deadline_ms's Ch10 branch) reads the length.
+constexpr double kCh10FillLengthMeasures = 0.5;
+
+// The measures Song::place_fills_ch10 counts in: Hydra's meter sections and
+// plusmeasure as they were before D115 B2-1 replaced them with Clone Hero's
+// grid and continuous count. Frozen here so 1.0 mode places its fills exactly
+// as before; nothing else may read it. The two differ from the new owners
+// only around a time signature change that falls mid-measure.
+class Ch10Measures {
+public:
+    // `tpm_map` is Song::tpm_changes, which always has a tick-0 entry
+    // (check_timing_maps).
+    explicit Ch10Measures(const std::map<int64_t, int64_t>& tpm_map) {
+        for (const auto& kv : tpm_map) {
+            keys_.push_back(kv.first);
+            measure_len_.push_back(kv.second);
+        }
+        starts_.assign(keys_.size(), 0);
+        counts_.assign(keys_.size(), 0);
+        for (size_t i = 1; i < keys_.size(); ++i) {
+            const int64_t whole = (keys_[i] - starts_[i - 1]) / measure_len_[i - 1];
+            starts_[i] = starts_[i - 1] + whole * measure_len_[i - 1];
+            counts_[i] = counts_[i - 1] + whole;
+        }
+    }
+
+    // The 0-based measure a tick sits in.
+    int64_t measure_at(int64_t ticks) const { return position(ticks).first; }
+
+    // The tick `add` measures after `ticks`.
+    int64_t plus(int64_t ticks, int64_t add) const {
+        const double m_decimal = position(ticks).second + static_cast<double>(add);
+        const int64_t target = static_cast<int64_t>(m_decimal);
+        const double part = m_decimal - std::floor(m_decimal);
+        const int n = static_cast<int>(keys_.size());
+        int j = 1;
+        while (j < n && counts_[j] < target) ++j;
+        const int i = j - 1;
+        const int64_t handled = starts_[i] + (target - counts_[i]) * measure_len_[i];
+        const int64_t len = (j < n && handled == keys_[j]) ? measure_len_[j] : measure_len_[i];
+        return handled + static_cast<int64_t>(part * static_cast<double>(len));
+    }
+
+private:
+    // {whole measures, measures as a decimal}. A tick exactly on a meter
+    // change is measured in the section before it.
+    std::pair<int64_t, double> position(int64_t ticks) const {
+        const auto it = std::lower_bound(keys_.begin(), keys_.end(), ticks);
+        const int i = std::max(static_cast<int>(it - keys_.begin()) - 1, 0);
+        int64_t remaining = ticks - starts_[i];
+        const int64_t whole = remaining / measure_len_[i];
+        remaining -= whole * measure_len_[i];
+        const int64_t measures = counts_[i] + whole;
+        return {measures, static_cast<double>(measures) + static_cast<double>(remaining) /
+                                                              static_cast<double>(measure_len_[i])};
+    }
+
+    std::vector<int64_t> keys_;
+    std::vector<int64_t> measure_len_;
+    std::vector<int64_t> starts_;
+    std::vector<int64_t> counts_;
+};
+
+}  // namespace
+
+// Clone Hero 1.0 mode's generator, exactly as Hydra placed generated fills
+// before D115 (main at 5b5dea8e). Each chord is a candidate for the downbeat
+// of its own measure and of the next one; each downbeat keeps its nearest
+// chord, a tie going to the later chord. Downbeats are then taken in order:
+// one whose chord is within resolution x fill_max_distance_beats (no extra
+// tick) gets a fill of kCh10FillLengthMeasures, and the next
+// fill_cooldown_measures downbeats are skipped.
+void Song::place_fills_ch10(const core::Rules& rules) {
+    const Ch10Measures measures(tpm_changes);
+
+    struct Cell {
+        int64_t tick;                 // the downbeat tick
+        std::optional<size_t> best;   // index into sequence of the closest chord
+        int64_t bestdist = 0;
+        int64_t pre_tpm = 0;
+    };
+    // std::map keeps measures sorted; measures are only ever added at or
+    // above the current largest.
+    std::map<int64_t, Cell> measuremap;
+
+    // Walk the sequence, advancing at most one meter mark each chord.
+    std::vector<int64_t> tpm_keys;
+    for (const auto& kv : tpm_changes) tpm_keys.push_back(kv.first);
+    size_t tpm_pos = 0;
+    int64_t tpm = tpm_keys.empty() ? 0 : tpm_changes[tpm_keys[tpm_pos++]];
+
+    int64_t downbeat_ref = 0;
+
+    for (size_t i = 0; i < sequence.size(); ++i) {
+        const int64_t tick = sequence[i].timecode.ticks();
+
+        int64_t pre_tpm = tpm;
+        if (tpm_pos < tpm_keys.size()) {
+            if (tick == tpm_keys[tpm_pos]) {
+                tpm = tpm_changes[tpm_keys[tpm_pos]];
+                ++tpm_pos;
+            } else if (tick > tpm_keys[tpm_pos]) {
+                tpm = tpm_changes[tpm_keys[tpm_pos]];
+                pre_tpm = tpm;
+                ++tpm_pos;
+            }
+        }
+
+        const int64_t m0 = measures.measure_at(tick);
+        for (int64_t measure : {m0 + 1, m0 + 2}) {
+            auto it = measuremap.find(measure);
+            if (it == measuremap.end()) {
+                downbeat_ref = measures.plus(
+                    downbeat_ref, measure - (measures.measure_at(downbeat_ref) + 1));
+                Cell c;
+                c.tick = downbeat_ref;
+                it = measuremap.emplace(measure, c).first;
+            }
+            Cell& cell = it->second;
+            const int64_t dist = std::llabs(cell.tick - tick);
+            if (!cell.best.has_value() || dist <= cell.bestdist) {
+                cell.best = i;
+                cell.bestdist = dist;
+                cell.pre_tpm = pre_tpm;
+            }
+        }
+    }
+
+    const int64_t cooldown_measures = rules.fill_cooldown_measures;
+    const int64_t max_distance =
+        static_cast<int64_t>(tick_resolution_ * rules.fill_max_distance_beats);
+    std::optional<int64_t> last_act_measure;
+    for (auto& kv : measuremap) {
+        const int64_t measure = kv.first;
+        Cell& cell = kv.second;
+        if (last_act_measure.has_value() &&
+            measure < *last_act_measure + cooldown_measures)
+            continue;
+        if (cell.best.has_value() && cell.bestdist <= max_distance) {
+            sequence[*cell.best].activation_length =
+                static_cast<int64_t>(cell.pre_tpm * kCh10FillLengthMeasures);
+            last_act_measure = measure;
+        }
+    }
+}
+
+// Clone Hero 1.1.0.6142's generator (0x20D2B30), for every mode but 1.0. It reads
 // the measure lines of Clone Hero's grid (MeasureIndex::walk) and starts at
 // the second line (`mov ebx, 1`). Each line takes the chord nearest it, a tie
 // going to the later chord, when that chord is within the distance limit; the
@@ -592,13 +758,7 @@ int Song::note_count() const {
 // fill_max_distance_beats, plus one tick (inc at 0x20D2C91), and a chord
 // exactly at that distance still takes the fill. The +1 sits on top of the
 // rules value, as place_authored_fills' does.
-void Song::check_activations(const core::Rules& rules) {
-    for (const SongTimestamp& ts : sequence)
-        if (ts.has_activation()) return;  // chart already has fills.
-
-    features.push_back("Auto-Generated Fills");
-    if (sequence.empty()) return;
-
+void Song::place_fills_ch11(const core::Rules& rules) {
     const int64_t max_distance =
         static_cast<int64_t>(tick_resolution_ * rules.fill_max_distance_beats) + 1;
 
@@ -828,11 +988,12 @@ bool midi_note_is_read(int pitch, bool on, int base, int kick2x) {
 
 class MidiParser {
 public:
-    explicit MidiParser(const core::Rules& rules) : rules_(rules) {}
+    MidiParser(const core::Rules& rules, FillDeadlineRule fills) : rules_(rules), fills_rule_(fills) {}
     Song parse(const MidiFile& mid, bool pro, bool bass2x, Difficulty difficulty);
 
 private:
     const core::Rules& rules_;
+    FillDeadlineRule fills_rule_;
 
     MOp optype(const Message& msg, int64_t tick);
     void push_timestamp(int64_t tick);
@@ -1203,7 +1364,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
     song.solo_sections = find_solo_sections(song.sequence);
     song.drum_lanes = light_drum_lanes(std::move(lanes_), song.sequence);
 
-    song.check_activations(rules_);
+    song.check_activations(rules_, fills_rule_);
     return song;
 }
 
@@ -1438,12 +1599,13 @@ constexpr std::string_view kEventsSection = "Events";
 
 class ChartParser {
 public:
-    explicit ChartParser(const core::Rules& rules) : rules_(rules) {}
+    ChartParser(const core::Rules& rules, FillDeadlineRule fills) : rules_(rules), fills_rule_(fills) {}
     Song parse(const std::vector<uint8_t>& data, bool pro, bool bass2x,
                Difficulty difficulty);
 
 private:
     const core::Rules& rules_;
+    FillDeadlineRule fills_rule_;
 
     void load_sections(const std::vector<uint8_t>& data, char mix_digit,
                        std::string_view drum_section);
@@ -1877,7 +2039,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
     // marker like MIDI's [ENABLE_CHART_DYNAMICS]. Dynamics are always on; the
     // Dynamics tab reads this flag.
     song.dynamics_enabled = true;
-    song.check_activations(rules_);
+    song.check_activations(rules_, fills_rule_);
     return song;
 }
 
@@ -1896,7 +2058,7 @@ void trim_parsed_song(Song& song) {
 }
 
 Song parse_mid_lean(const std::vector<uint8_t>& data, bool pro, bool bass2x,
-                    Difficulty difficulty, const core::Rules& rules) {
+                    Difficulty difficulty, const core::Rules& rules, FillDeadlineRule fills) {
     // Only the notes MidiParser acts on are decoded (midi_note_is_read).
     const int base = difficulty_base_pitch(difficulty);
     const int kick2x = difficulty_chart_codes(difficulty).kick2x_pitch();
@@ -1906,7 +2068,7 @@ Song parse_mid_lean(const std::vector<uint8_t>& data, bool pro, bool bass2x,
         filter.note_off[pitch] = midi_note_is_read(pitch, false, base, kick2x);
     }
     const MidiFile mid = MidiFile::lean(data.data(), data.size(), filter);
-    return MidiParser(rules).parse(mid, pro, bass2x, difficulty);
+    return MidiParser(rules, fills).parse(mid, pro, bass2x, difficulty);
 }
 
 // The Note Shuffle switch, applied once a parser has finished the song: the
@@ -1924,32 +2086,32 @@ void apply_shuffle_switch(Song& song, bool pro, bool noteshuffle) {
 }  // namespace
 
 Song load_songbytes_mid(const std::vector<uint8_t>& data, const ChartReading& reading,
-                        const core::Rules& rules) {
+                        const core::Rules& rules, FillDeadlineRule fills) {
     // The lean file is gone once parse_mid_lean returns.
-    Song song = parse_mid_lean(data, reading.prodrums, reading.bass2x, reading.difficulty, rules);
+    Song song = parse_mid_lean(data, reading.prodrums, reading.bass2x, reading.difficulty, rules, fills);
     apply_shuffle_switch(song, reading.prodrums, reading.noteshuffle);
     trim_parsed_song(song);
     return song;
 }
 
 Song load_songbytes_chart(const std::vector<uint8_t>& data, const ChartReading& reading,
-                          const core::Rules& rules) {
+                          const core::Rules& rules, FillDeadlineRule fills) {
     // The parser and its sections are gone by the end of this statement.
     Song song =
-        ChartParser(rules).parse(data, reading.prodrums, reading.bass2x, reading.difficulty);
+        ChartParser(rules, fills).parse(data, reading.prodrums, reading.bass2x, reading.difficulty);
     apply_shuffle_switch(song, reading.prodrums, reading.noteshuffle);
     trim_parsed_song(song);
     return song;
 }
 
 Song load_songpath_mid(const std::string& path, const ChartReading& reading,
-                       const core::Rules& rules) {
-    return load_songbytes_mid(read_file_bytes(path), reading, rules);
+                       const core::Rules& rules, FillDeadlineRule fills) {
+    return load_songbytes_mid(read_file_bytes(path), reading, rules, fills);
 }
 
 Song load_songpath_chart(const std::string& path, const ChartReading& reading,
-                         const core::Rules& rules) {
-    return load_songbytes_chart(read_file_bytes(path), reading, rules);
+                         const core::Rules& rules, FillDeadlineRule fills) {
+    return load_songbytes_chart(read_file_bytes(path), reading, rules, fills);
 }
 
 namespace {
@@ -1958,14 +2120,14 @@ namespace {
 // disk in pieces or from a buffer in memory (the Preview reads the whole file
 // once and shares it; its notes are picked out the same way).
 Song load_container_sng(const ByteSource& src, const ChartReading& reading,
-                        const core::Rules& rules) {
+                        const core::Rules& rules, FillDeadlineRule fills) {
     const SngNotes notes = sng_read_notes(src, sng_read_head(src));
-    if (notes.format == ChartFormat::Mid) return load_songbytes_mid(notes.bytes, reading, rules);
-    return load_songbytes_chart(notes.bytes, reading, rules);
+    if (notes.format == ChartFormat::Mid) return load_songbytes_mid(notes.bytes, reading, rules, fills);
+    return load_songbytes_chart(notes.bytes, reading, rules, fills);
 }
 
 Song load_container_srb(const ByteSource& src, const ChartReading& reading,
-                        const core::Rules& rules) {
+                        const core::Rules& rules, FillDeadlineRule fills) {
     // Stream 1 (metadata) names the notes file; stream 2 is its bytes.
     // srb_read_metadata reads stream 1 and refuses a source too short for it.
     const SrbMetadataRead read = srb_read_metadata(src);
@@ -1987,55 +2149,55 @@ Song load_container_srb(const ByteSource& src, const ChartReading& reading,
     else  // Unexpected filename: sniff the payload instead.
         is_mid = is_midi_header(notebytes.data(), notebytes.size());
 
-    if (is_mid) return load_songbytes_mid(notebytes, reading, rules);
-    return load_songbytes_chart(notebytes, reading, rules);
+    if (is_mid) return load_songbytes_mid(notebytes, reading, rules, fills);
+    return load_songbytes_chart(notebytes, reading, rules, fills);
 }
 
 }  // namespace
 
 Song load_songbytes_sng(const std::vector<uint8_t>& buf, const ChartReading& reading,
-                        const core::Rules& rules) {
-    return load_container_sng(memory_byte_source(buf), reading, rules);
+                        const core::Rules& rules, FillDeadlineRule fills) {
+    return load_container_sng(memory_byte_source(buf), reading, rules, fills);
 }
 
 Song load_songbytes_srb(const std::vector<uint8_t>& buf, const ChartReading& reading,
-                        const core::Rules& rules) {
-    return load_container_srb(memory_byte_source(buf), reading, rules);
+                        const core::Rules& rules, FillDeadlineRule fills) {
+    return load_container_srb(memory_byte_source(buf), reading, rules, fills);
 }
 
 // A container on disk is read in pieces: its header, then only the notes. The
 // rest is audio and art (about 1 GB for the largest .sng in the library), which
 // the notes never need.
 Song load_songpath_sng(const std::string& path, const ChartReading& reading,
-                       const core::Rules& rules) {
-    return load_container_sng(file_byte_source(path), reading, rules);
+                       const core::Rules& rules, FillDeadlineRule fills) {
+    return load_container_sng(file_byte_source(path), reading, rules, fills);
 }
 
 Song load_songpath_srb(const std::string& path, const ChartReading& reading,
-                       const core::Rules& rules) {
-    return load_container_srb(file_byte_source(path), reading, rules);
+                       const core::Rules& rules, FillDeadlineRule fills) {
+    return load_container_srb(file_byte_source(path), reading, rules, fills);
 }
 
 Song load_songpath_from_bytes(const std::string& path, const std::vector<uint8_t>& bytes,
-                              const ChartReading& reading, const core::Rules& rules) {
-    return load_songpath_reading(memory_byte_source(bytes), path, reading, rules);
+                              const ChartReading& reading, const core::Rules& rules, FillDeadlineRule fills) {
+    return load_songpath_reading(memory_byte_source(bytes), path, reading, rules, fills);
 }
 
 Song load_songpath_reading(const ByteSource& src, const std::string& path,
-                           const ChartReading& reading, const core::Rules& rules) {
+                           const ChartReading& reading, const core::Rules& rules, FillDeadlineRule fills) {
     switch (chart_format_of(path)) {
-        case ChartFormat::Mid: return load_songbytes_mid(read_all(src), reading, rules);
-        case ChartFormat::Chart: return load_songbytes_chart(read_all(src), reading, rules);
-        case ChartFormat::Sng: return load_container_sng(src, reading, rules);
-        case ChartFormat::Srb: return load_container_srb(src, reading, rules);
+        case ChartFormat::Mid: return load_songbytes_mid(read_all(src), reading, rules, fills);
+        case ChartFormat::Chart: return load_songbytes_chart(read_all(src), reading, rules, fills);
+        case ChartFormat::Sng: return load_container_sng(src, reading, rules, fills);
+        case ChartFormat::Srb: return load_container_srb(src, reading, rules, fills);
         case ChartFormat::None: break;
     }
     throw KindedError(ErrorKind::ChartUnreadable, "unexpected chart type: " + path);
 }
 
 Song load_songpath(const std::string& path, const ChartReading& reading,
-                   const core::Rules& rules) {
-    return load_songpath_reading(file_byte_source(path), path, reading, rules);
+                   const core::Rules& rules, FillDeadlineRule fills) {
+    return load_songpath_reading(file_byte_source(path), path, reading, rules, fills);
 }
 
 void require_notes(const Song& song, Difficulty difficulty, bool prodrums) {
@@ -2043,8 +2205,8 @@ void require_notes(const Song& song, Difficulty difficulty, bool prodrums) {
 }
 
 Song load_songpath_with_notes(const std::string& path, const ChartReading& reading,
-                              const core::Rules& rules) {
-    Song song = load_songpath(path, reading, rules);
+                              const core::Rules& rules, FillDeadlineRule fills) {
+    Song song = load_songpath(path, reading, rules, fills);
     require_notes(song, reading.difficulty, reading.prodrums);
     return song;
 }
