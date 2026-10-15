@@ -3,8 +3,9 @@
 //   hydra_uitest --all                 run every checked-in test
 //   hydra_uitest --test <name>         run one (e.g. scan, analyze); repeatable
 //   hydra_uitest --script <file>       run a command file
-//   hydra_uitest --live                take commands from a named pipe
-//                                      (uitest_live.cpp) until the client leaves
+//   hydra_uitest --live --pipe <name>  take commands from the named pipe
+//                                      <name> (uitest_live.cpp) until the
+//                                      client leaves
 //   hydra_uitest --list                list the tests
 //   options: --keep-temp  --shots <dir>  --jobs <n>  --db <file>  --ini <file>
 //
@@ -55,8 +56,8 @@ LONG WINAPI on_crash(EXCEPTION_POINTERS* info) {
     const ImGuiTest* t = h ? h->running_test() : nullptr;
     const unsigned long code = info->ExceptionRecord->ExceptionCode;
     std::string dump;
-    if (h && !h->temp_dir.empty()) {
-        dump = h->temp_dir + "\\crash.dmp";
+    if (h && !h->crash_dump.empty()) {
+        dump = h->crash_dump;
         using WriteDumpFn = BOOL(WINAPI*)(HANDLE, DWORD, HANDLE, MINIDUMP_TYPE,
                                           PMINIDUMP_EXCEPTION_INFORMATION,
                                           PMINIDUMP_USER_STREAM_INFORMATION,
@@ -87,7 +88,8 @@ LONG WINAPI on_crash(EXCEPTION_POINTERS* info) {
 
 int usage() {
     std::fprintf(stderr,
-                 "usage: hydra_uitest (--all | --test <name> | --script <file> | --live | --list)"
+                 "usage: hydra_uitest (--all | --test <name> | --script <file> | --live --pipe <name>"
+                 " | --list)"
                  " [--keep-temp] [--shots <dir>] [--jobs <n>] [--db <file>] [--ini <file>]\n");
     return 2;
 }
@@ -273,6 +275,7 @@ int main() {
         if (a == "--all") wanted.push_back("all");
         else if (a == "--list") list = true;
         else if (a == "--live") live = true;
+        else if (a == "--pipe") { if (!next(h.pipe_name)) return usage(); }
         else if (a == "--keep-temp") { h.keep_temp = true; passthrough.push_back(a); }
         else if (a == "--test" || a == "--script") { if (!next(v)) return usage(); wanted.push_back(v); }
         else if (a == "--shots") {
@@ -300,6 +303,11 @@ int main() {
     }
     if (!list && !live && wanted.empty()) return usage();
     if (live && (list || !wanted.empty())) return usage();  // --live runs alone
+    const std::string pipe_issue = uitest::pipe_problem(live, h.pipe_name);
+    if (!pipe_issue.empty()) {
+        std::fprintf(stderr, "hydra_uitest: %s\n", pipe_issue.c_str());
+        return 2;
+    }
 
     if (!h.init()) return 1;
     uitest::register_tests(h);
@@ -339,6 +347,7 @@ int main() {
     // Drive frames until the queue drains; the engine runs the tests between
     // frames on its coroutine thread. Each result prints as its test ends.
     g_crash_harness = &h;
+    h.crash_dump = h.temp_dir + "\\crash.dmp";  // where on_crash writes; a crash never deletes it
     SetUnhandledExceptionFilter(on_crash);
     while (!ImGuiTestEngine_IsTestQueueEmpty(h.engine)) {
         h.frame();

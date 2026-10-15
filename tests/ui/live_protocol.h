@@ -43,27 +43,46 @@ inline std::string json_string(std::string_view s) {
     return out;
 }
 
-// The reply to a command that worked: what it produced, maybe empty.
-inline std::string ok_line(std::string_view text) {
-    return "{\"ok\":true,\"text\":" + json_string(text) + "}\n";
+// A number of seconds as JSON: the shortest form printf's %g gives.
+inline std::string json_seconds(double seconds) {
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%g", seconds);
+    return buf;
 }
 
-// The reply to a command that failed: a one-line reason, and the engine log
-// written while the command ran.
-inline std::string fail_line(std::string_view error, std::string_view log) {
-    return "{\"ok\":false,\"error\":" + json_string(error) + ",\"log\":" + json_string(log) +
-           "}\n";
+// Every reply has the same three fields: ok, the finished text, and the
+// timeout in force after the command (its owner is uitest::CommandSession).
+inline std::string reply_line(bool ok, std::string_view text, double timeout) {
+    return std::string("{\"ok\":") + (ok ? "true" : "false") + ",\"text\":" + json_string(text) +
+           ",\"timeout\":" + json_seconds(timeout) + "}\n";
+}
+
+// The reply to a command that worked: what it produced, or "ok" when it
+// produced nothing.
+inline std::string ok_line(std::string_view text, double timeout) {
+    return reply_line(true, text.empty() ? std::string_view("ok") : text, timeout);
+}
+
+// The reply to a command that failed: the one-line reason on a line of its
+// own, then the engine log written while the command ran.
+inline std::string fail_line(std::string_view error, std::string_view log, double timeout) {
+    std::string text(error);
+    text += '\n';
+    text += log;
+    return reply_line(false, text, timeout);
 }
 
 // The first line on a new connection. mode is "headless" or "window";
 // scratch is the engine's scratch folder; timeout is the session's starting
-// cap on a wait, in seconds (its owner is uitest::CommandSession).
+// cap on a wait, in seconds; log is the file the process writes its output
+// to, empty for stdout; crash_dump is where a crash's minidump goes, empty
+// when nothing writes one.
 inline std::string hello_line(std::string_view mode, std::string_view scratch, unsigned long pid,
-                              double timeout) {
-    char nums[64];
-    std::snprintf(nums, sizeof(nums), ",\"pid\":%lu,\"timeout\":%g}}\n", pid, timeout);
+                              double timeout, std::string_view log, std::string_view crash_dump) {
     return "{\"ok\":true,\"hello\":{\"mode\":" + json_string(mode) +
-           ",\"scratch\":" + json_string(scratch) + nums;
+           ",\"scratch\":" + json_string(scratch) + ",\"pid\":" + std::to_string(pid) +
+           ",\"timeout\":" + json_seconds(timeout) + ",\"log\":" + json_string(log) +
+           ",\"crash_dump\":" + json_string(crash_dump) + "}}\n";
 }
 
 }  // namespace live

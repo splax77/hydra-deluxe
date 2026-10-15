@@ -186,12 +186,12 @@ int main()
 #ifdef HYDRA_UITEST_ATTACHED
     // The GUI test flags, read only by a dev build; a shipped Hydra takes no
     // arguments. --uitest <what> runs a test or script; --live runs the live
-    // channel instead (tests/ui/uitest_live.cpp). --db, --ini and --shots
-    // mean what they mean to hydra_uitest (tests/ui/uitest_main.cpp).
+    // channel instead (tests/ui/uitest_live.cpp). --db, --ini, --shots and
+    // --pipe mean what they mean to hydra_uitest (tests/ui/uitest_main.cpp).
     // --ui-ini names the ImGui layout file. Everything else is ignored.
     const std::vector<std::string> args = hydra::utf8_argv();
     const int argc = static_cast<int>(args.size());
-    std::string uitest_what, uitest_log, seed_db, seed_ini, ui_ini, shots_dir;
+    std::string uitest_what, uitest_log, seed_db, seed_ini, ui_ini, shots_dir, pipe_name;
     bool live = false, keep_temp = false;
     for (int i = 1; i < argc; ++i) {
         const std::string& a = args[i];
@@ -204,6 +204,7 @@ int main()
         else if (a == "--ini") seed_ini = args[++i];
         else if (a == "--ui-ini") ui_ini = args[++i];
         else if (a == "--shots") shots_dir = args[++i];
+        else if (a == "--pipe") pipe_name = args[++i];
     }
     const bool run_harness = live || !uitest_what.empty();
 #endif
@@ -343,6 +344,8 @@ int main()
         uitest->shots_dir = shots_dir;
         uitest->seed_db = seed_db;
         uitest->seed_ini = seed_ini;
+        uitest->pipe_name = pipe_name;
+        uitest->log_path = uitest_log;
         uitest->init_attached(g_pd3dDevice, g_pd3dDeviceContext, g_pSwapChain);
         uitest::register_tests(*uitest);
         if (live) uitest::register_live_test(*uitest);
@@ -353,6 +356,7 @@ int main()
         if (!seed_db.empty()) refused = uitest::seed_problem("--db", seed_db);
         if (refused.empty() && !seed_ini.empty()) refused = uitest::seed_problem("--ini", seed_ini);
         if (live && !uitest_what.empty()) refused = "--live runs alone, without --uitest";
+        if (refused.empty()) refused = uitest::pipe_problem(live, pipe_name);
         if (!refused.empty()) {
             std::printf("%s\n", refused.c_str());
             uitest_failures = 1;
@@ -457,7 +461,9 @@ int main()
 #ifdef HYDRA_UITEST_ATTACHED
         if (uitest) {
             app = uitest->app.get();
-            ImGuiTestEngine_ShowTestEngineWindows(uitest->engine, &uitest_windows_open);
+            // The engine's panel helps a --uitest run being watched; in live
+            // mode it only covers the app Claude is driving.
+            if (!live) ImGuiTestEngine_ShowTestEngineWindows(uitest->engine, &uitest_windows_open);
         }
 #endif
         if (app) hydra::ui::run_frame(*app, frame_text);

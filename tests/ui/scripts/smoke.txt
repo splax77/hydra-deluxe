@@ -1,14 +1,18 @@
 # The interpreter's smoke script: hydra_uitest --script tests/ui/scripts/smoke.txt
 # It runs most verbs once on the testdata/input corpus and passes when every
 # line does. Verb table: docs/agents/ui-testing.md.
+timeout 30
 click Scan library
 wait-idle
 click //Scanning charts/Continue
 wait-idle
+wait 0.1
 state
 expect-text Burnout
 dump Hydra
+dump Hydra | Scan
 text
+text | Burnout
 rect Scan library
 key Escape
 key Ctrl+F
@@ -17,5 +21,6 @@ reset
 state
 expect-not-text Burnout
 quit
-# quit ends the script with a pass, so this line never runs.
-click No such widget
+# quit ends the script with a pass, so this line never runs. If it did, the
+# timeout verb would refuse it.
+timeout 90s

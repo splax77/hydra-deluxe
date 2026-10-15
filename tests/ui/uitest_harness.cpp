@@ -150,6 +150,11 @@ std::string seed_problem(const std::string& flag, const std::string& path) {
            " file";
 }
 
+std::string pipe_problem(bool live, const std::string& pipe_name) {
+    if (live == !pipe_name.empty()) return "";
+    return "--live needs --pipe <name>, and --pipe needs --live";
+}
+
 bool Harness::queue(const std::string& what) {
     if (fs::exists(fs::u8path(what)) && !fs::is_directory(fs::u8path(what))) {
         script_path = what;
@@ -565,17 +570,44 @@ namespace {
 
 const char* yes_no(bool b) { return b ? "yes" : "no"; }
 
-void dump_window(ImGuiTestContext* ctx, ImGuiWindow* w, ImGuiTextBuffer& out) {
+// One window's line and its item lines; with `contains`, only the item lines
+// holding it, and nothing at all when none does. True when anything was
+// written.
+bool dump_window(ImGuiTestContext* ctx, ImGuiWindow* w, const std::string& contains,
+                 ImGuiTextBuffer& out) {
+    std::string items_text;
+    ImGuiTestItemList items;
+    ctx->GatherItems(&items, ImGuiTestRef(w->ID), 1);
+    for (const ImGuiTestItemInfo& it : items) {
+        const std::string line = item_line(it, it.Depth + 1);
+        if (contains.empty() || line.find(contains) != std::string::npos) items_text += line;
+    }
+    if (!contains.empty() && items_text.empty()) return false;
     out.appendf("window \"%s\" id=0x%08X pos=(%.0f,%.0f) size=(%.0f,%.0f)%s%s\n", w->Name, w->ID,
                 w->Pos.x, w->Pos.y, w->Size.x, w->Size.y,
                 (w->Flags & ImGuiWindowFlags_Popup) ? " popup" : "",
                 (w->Flags & ImGuiWindowFlags_ChildWindow) ? " child" : "");
-    ImGuiTestItemList items;
-    ctx->GatherItems(&items, ImGuiTestRef(w->ID), 1);
-    for (const ImGuiTestItemInfo& it : items) out.append(item_line(it, it.Depth + 1).c_str());
+    out.append(items_text.c_str());
+    return true;
 }
 
 }  // namespace
+
+std::string lines_holding(const std::string& text, const std::string& part) {
+    std::string out;
+    size_t start = 0;
+    while (start < text.size()) {
+        size_t nl = text.find('\n', start);
+        if (nl == std::string::npos) nl = text.size();
+        // ImGui's log, which the screen text comes from, ends lines in "\r\n".
+        const size_t end = nl > start && text[nl - 1] == '\r' ? nl - 1 : nl;
+        const std::string line = text.substr(start, end - start);
+        if (line.find(part) != std::string::npos) out += line + "\n";
+        start = nl + 1;
+    }
+    if (out.empty()) out = "(no line holding \"" + part + "\")\n";
+    return out;
+}
 
 std::string item_line(const ImGuiTestItemInfo& it, int depth) {
     std::string flags;
@@ -592,18 +624,20 @@ std::string item_line(const ImGuiTestItemInfo& it, int depth) {
     return out.c_str();
 }
 
-std::string widget_dump(ImGuiTestContext* ctx, const std::string& window_name) {
+std::string widget_dump(ImGuiTestContext* ctx, const std::string& window_name,
+                        const std::string& contains) {
     ImGuiContext& g = *ImGui::GetCurrentContext();
     ImGuiTextBuffer out;
-    bool any = false;
+    bool any_window = false, any_item = false;
     for (ImGuiWindow* w : g.Windows) {
         if (!w->WasActive || w->Hidden) continue;
         if (std::strcmp(w->Name, "Debug##Default") == 0) continue;
         if (!window_name.empty() && std::strstr(w->Name, window_name.c_str()) == nullptr) continue;
-        dump_window(ctx, w, out);
-        any = true;
+        any_window = true;
+        if (dump_window(ctx, w, contains, out)) any_item = true;
     }
-    if (!any) out.appendf("(no window matching \"%s\")\n", window_name.c_str());
+    if (!any_window) out.appendf("(no window matching \"%s\")\n", window_name.c_str());
+    else if (!any_item) out.appendf("(no item holding \"%s\")\n", contains.c_str());
     return out.c_str();
 }
 
