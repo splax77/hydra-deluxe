@@ -1,7 +1,9 @@
 // The store's one save and one lookup (D115): prepare_record, RecordStore::save,
-// lookup, lookup_one, ready_song_ids and ready_records, plus the path-row size
-// measured on the corpus. The old entry points' tests stay in
-// test_store_results.cpp until A1-5 deletes them.
+// lookup, lookup_one, ready_song_ids and ready_records, the status rules a
+// lookup answers by (which stamps read Ready, why a record is Stale, what reads
+// Not analyzed), plus the path-row size measured on the corpus. How saved
+// records read back across caps, lenses and the corpus is in
+// test_store_results.cpp.
 #include "doctest.h"
 
 #include <cstdint>
@@ -22,6 +24,7 @@
 #include "display_fixtures.h"  // save_old_build_record, kOldBuildStamp, other_rules_record
 #include "parse/song.h"
 #include "store/record_store.h"
+#include "store/stored_versions.h"  // kResultsStamp
 #include "store_fixtures.h"  // fixture, at_cap, no_paths_at_cap
 #include "temp_util.h"
 
@@ -362,8 +365,6 @@ TEST_CASE("store: a record's best path text is rank 1's, and empty when it kept 
 // Each case pins one rule lookup answers by: which stamps read Ready, why a
 // Stale record is Stale, when other rules read Ready again, and what reads as
 // Not analyzed.
-
-#include "store/stored_versions.h"  // kResultsStamp
 
 TEST_CASE("store: every accepted results stamp reads Ready, others Stale") {
     // The stamp is not the app version (ADR 0018). Only "2.8.0" reads

@@ -578,6 +578,7 @@ TEST_CASE("a saved record stores its best path's star count") {
     CHECK(got[0].record == prepare_record("ready", at4, at_cap(4)).record);
     CHECK(got[0].record.stars == stars);
     CHECK(got[0].record.summary().score == best.totalscore());
+    CHECK(got[0].record.summary().hardest_ms == best.difficulty());
     CHECK(got[0].record.summary().stars == stars);
     // Only a Ready answer carries a record.
     CHECK(got[1].status == RecordStatus::Stale);
