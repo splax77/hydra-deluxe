@@ -170,10 +170,11 @@ std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
     };
 }
 
-std::string nothing_under_settings(int cap, const std::string& middle,
-                                   const std::string& ending) {
-    return std::string(kNothingUnderSettings) + " (SP cap " + group_thousands(cap) + ", " +
-           middle + ")" + ending + ". Analyze with these settings, or change them.";
+std::string nothing_under_settings(const std::string& chartmode, int cap,
+                                   const std::string& fills, const std::string& ending) {
+    return std::string(kNothingUnderSettings) + " (" + chartmode + ", SP cap " +
+           group_thousands(cap) + (fills.empty() ? "" : ", " + fills) + ")" + ending +
+           ". Analyze with these settings, or change them.";
 }
 
 GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& options) {
@@ -207,7 +208,7 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
         } else {
             out.empty_reason = EmptyReason::NothingUnderSettings;
             out.why_empty = nothing_under_settings(
-                run.cap_query().exact,
+                run.chartmode, run.cap_query().exact,
                 std::string(fill_rule_name(rule, FillRuleNameStyle::Long)) + " fills");
         }
         return out;

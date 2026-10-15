@@ -195,11 +195,13 @@ inline constexpr const char* kNothingUnderSettings = "Nothing is analyzed under 
 
 // The whole sentence an empty page gives, built once for every page that
 // lists results (finding 105, D50 item 3): "Nothing is analyzed under these
-// settings (SP cap <cap>, <middle>)<ending>. Analyze with these settings, or
-// change them." The path report passes its fill rule as the middle words and
-// no ending; the fill comparison passes its chart mode and " in either
-// database".
-std::string nothing_under_settings(int cap, const std::string& middle,
+// settings (<chartmode>, SP cap <cap>, <fills>)<ending>. Analyze with these
+// settings, or change them." `chartmode` is the stored chart mode as every page
+// shows it (Profile::chartmode, spelled by app::chartmode_key). The path report
+// passes its fill rule as `fills` and no ending; the fill comparison passes
+// no fills (it compares both rules) and " in either database".
+std::string nothing_under_settings(const std::string& chartmode, int cap,
+                                   const std::string& fills = std::string(),
                                    const std::string& ending = std::string());
 
 struct GeneratedReport {
@@ -208,9 +210,8 @@ struct GeneratedReport {
     int64_t songs = 0;
     int64_t rows = 0;
     EmptyReason empty_reason = EmptyReason::None;
-    // For NothingUnderSettings, the sentence that names the settings: "Nothing
-    // is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills).
-    // Analyze with these settings, or change them." For NoLibrary,
+    // For NothingUnderSettings, the sentence that names the settings
+    // (nothing_under_settings builds it). For NoLibrary,
     // kNoChartLibrary. Empty otherwise: an empty database and a cancel keep
     // each caller's own words.
     std::string why_empty;
