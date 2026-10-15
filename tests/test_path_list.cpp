@@ -27,9 +27,8 @@ TEST_CASE("build_score_breakdown: exact lines, rounded like the report") {
 
     std::vector<std::string> lines = build_score_breakdown(p);
     REQUIRE(lines.size() == 8);
-    // Rounded to three places, the same as the report's mult column. Every
-    // number starts in one column, two spaces after the longest label, and is
-    // not padded (answer 11 of the column-shares plan).
+    // Rounded to three places, the same as the report's mult column. The
+    // number column is build_score_breakdown's rule; these literals pin one run.
     CHECK(lines[0] == "Average Multiplier:  1.667x");
     CHECK(lines[1] == "\nNotes:               3");
     CHECK(lines[2] == "Combo Bonus:         2");
