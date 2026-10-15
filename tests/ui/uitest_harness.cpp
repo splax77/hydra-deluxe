@@ -492,8 +492,10 @@ OpenGate::OpenGate()
     : seam_(hydra::ui::set_store_open_gate_for_test,
             [](const hydra::ui::StoreOpenProgress& progress,
                const std::function<bool()>& cancelled) {
-                // Hold at the copy, where the upgrade's screen has all its words.
-                if (progress.step != hydra::ui::StoreOpenProgress::Step::Copying) return;
+                // Hold at the conversion, where the upgrade's screen has all
+                // its words.
+                if (progress.step != hydra::ui::StoreOpenProgress::Step::ConvertingRecords)
+                    return;
                 if (g_open_gate_open.load()) return;
                 ++g_open_gate_started;
                 testwait::wait_until([&] { return g_open_gate_open.load() || cancelled(); },

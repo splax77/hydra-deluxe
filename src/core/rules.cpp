@@ -55,14 +55,6 @@ uint64_t hash_rules_text(const std::string& text) {
 
 uint64_t Rules::fingerprint() const { return hash_rules_text(fixed_cap_text(*this)); }
 
-uint64_t Rules::retired_auto_fingerprint() const {
-    // Byte for byte what 1.8.4's auto_fingerprint() hashed under the default
-    // ladder. Pinned by the test "rules: the retired Auto fingerprint is what
-    // Hydra 1.8.4 stamped".
-    return hash_rules_text(fixed_cap_text(*this) +
-                           "auto_cap_ladder=16,32,64,128,256,512,\n");
-}
-
 const Rules& default_rules() {
     static const Rules rules;
     return rules;

@@ -1468,24 +1468,23 @@
       "pattern": "elapsed_s\\s*<\\s*kTimeLeftAfterSeconds",
       "anchor": "kTimeLeftAfterSeconds",
       "must_match": [
-        "if (step != Step::Opening || elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0))",
-        "if (step != Step::Copying || elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0))"
+        "if (step != Step::Opening || elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0))"
       ],
       "must_not_match": [
         "return gated_time_left_text(elapsed_s, time_left_s);",
-        "if (step != Step::Copying) return \"\";"
+        "if (step != Step::Opening) return \"\";"
       ],
       "owner_lines": [
         {
           "file": "src/ui/preview_load_job.cpp",
           "line_text": "if (elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0)) return \"\";",
-          "why": "gated_time_left_text, the owner: PreviewLoadJob::Progress::time_left_text and StoreOpenProgress::time_left_text call it"
+          "why": "gated_time_left_text, the owner: PreviewLoadJob::Progress::time_left_text calls it"
         }
       ],
       "scope": [
         "src"
       ],
-      "note": "The Preview loader and the startup open both show a time-left line; each checks only its own step and asks the owner for the rest. Decided by: D48 Q20 (the words), DBUP answer 4 (the startup open reuses the Preview's gate); derive-once review of the DBUP join (F1)"
+      "note": "The Preview loader shows a time-left line; it checks only its own step and asks the owner for the rest. The startup open's time-left line went with the copy upgrade (D115 task A1-6a). Decided by: D48 Q20 (the words), DBUP answer 4; derive-once review of the DBUP join (F1)"
     },
     {
       "question": "Has a job run long enough for its progress to show?",
