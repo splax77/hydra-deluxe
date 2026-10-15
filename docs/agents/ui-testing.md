@@ -23,9 +23,11 @@ Agents do not run `--all`. They run only the tests for their own change, with `-
 | `--jobs <n>` | how many test processes run at once (default: `kDefaultJobs` in `uitest_main.cpp`) |
 | `hydra_uitest --list` | list the tests |
 | `hydra_uitest --script file.txt` | run a command file (see below) |
+| `hydra_uitest --live --pipe <name>` | take commands one at a time from the named pipe `<name>` until the client leaves or sends `quit` (see "Live mode and the MCP server"). The two flags go together, and `--live` runs alone |
 | `--keep-temp` | keep the scratch folder (DB, INI) and print its path |
 | `--shots <dir>` | where `screenshot` files go (default: the scratch folder) |
 | `--db <file>` | start each test from a copy of this database instead of an empty one (the file itself is never opened). A missing file is an error. Close Hydra first: a database it has open is not a clean copy |
+| `--ini <file>` | start each test from a copy of this settings file instead of the scratch settings. A missing file is an error. Copied the same way as `--db` |
 
 Output is `[PASS]`/`[FAIL]` per test. A failed test prints the engine's log. The log names the check that failed (like `uitest_library.cpp:120`) and every action before it. A run of more than one test ends with an `N of M passed` line. The exit code is 0 only when everything passed. `ctest` runs `--all` too, so ctest, CI and a run by hand all mean the same thing.
 
@@ -61,19 +63,27 @@ screenshot stars.png
 | `window <ref>` | set the window the following refs are relative to (default `//Hydra`) |
 | `click <ref>` | click a widget |
 | `check <ref>` / `uncheck <ref>` | set a checkbox |
-| `type <ref> \| <text>` | put text into an input |
+| `type <ref> \| <text>` | put text into an input. The text is everything after the first ` \| `, kept exactly, spaces included. A line that ends in a bare ` \|` types nothing, which clears the field |
+| `key <keys>` | press a key or a chord, such as `Escape`, `Enter`, `Down`, `Ctrl+W` or `Ctrl+Shift+Tab`. The names it knows are in `key_named` and `parse_chord` in `uitest_commands.cpp`; an unknown name fails |
 | `wait <seconds>` | let frames run |
 | `wait-idle` | wait until every background job has finished; the list is `AppState::any_job_running` |
 | `wait-text <substring>` | wait until the text appears on screen |
 | `expect-text <substring>` / `expect-not-text <substring>` | assert on screen text now |
-| `text` | print everything on screen as text |
+| `text [\| <substring>]` | print everything on screen as text. After a bar, only the lines holding the substring, or a line saying none did |
 | `state` | print the key app state (library count, rows, selection, jobs, preview, status, and the store line: `store=opening`, `store=ready` or `store=failed`) |
-| `dump [window]` | print the widget tree of a window and its child windows: label, id, rect, checked/disabled/opened/inputable |
-| `screenshot <file.png>` | save the frame |
-| `timeout <seconds>` | change the wait-text / wait-idle limit (default 30) |
+| `dump [<window>] [\| <substring>]` | print the widget tree of every window whose name holds `<window>`, child windows included: label, id, rect, checked/disabled/opened/inputable. No window means every window. After a bar, only the item lines holding the substring, each under its window's line |
+| `rect <ref>` | print one widget's line, in the dump's shape. A ref that finds nothing fails |
+| `screenshot <file.png>` | save the frame, and print `screenshot: <path>` |
+| `timeout <seconds>` | change the wait-text / wait-idle limit (default: `CommandSession::timeout` in `uitest_commands.h`) |
+| `reset` | a fresh app on a fresh scratch library, with the ref back on `//Hydra`. With `--db` or `--ini`, the seeds are copied again |
+| `quit` | end the run here. In a script that is a pass |
 | `#` | comment |
 
-Lines print as they run; a failing line prints `!! failed at line N`.
+`timeout` and `wait` take a plain number of seconds, 0 or more, and nothing else. What counts as a plain number is `hydra::parse_finite_number`'s rule (`src/core/strutil.h`). So `timeout 90s`, `wait abc` and a bare `wait` fail, naming what they were given.
+
+A bar with nothing after it (a line ending in ` |`) is the same as a bar with empty text. So `text |` and `dump Hydra |` filter on nothing and keep every line. `split_bar` in `uitest_commands.cpp` is the one place a line is split at its bar.
+
+Lines print as they run. A failed engine action, like a click that finds nothing, prints `!! failed at line N: <line>`. A line the interpreter itself refuses (an unknown verb or key, a bad number, an `expect-text` that does not hold, a `rect` that finds nothing, a wait that ran out) fails the test, and its log names the line as `line N: <reason>`. The script stops at the first failure.
 
 Clicking a song starts its analysis (D87 item 1), and `wait-idle` waits for it. There is no `Done!` flash, so the tabs show as soon as it finishes. A tab click still needs a frame or two before its text shows.
 
@@ -128,7 +138,87 @@ The second group goes end to end through AppState: the toolbar, the batch strip,
 
 Runs the same test inside the real window at human speed, with the Test Engine's own panel showing. Accepts a test name, `all`, or a command-file path. Here `all` runs every test one after another in the one window, so a test can see the previous test's leftovers; `hydra_uitest --all` is the run that counts. Results and any `text`/`state`/`dump` output go to `hydra_uitest.log` next to the exe (`--uitest-log <file>` to change); the window stays open afterwards so the end state can be inspected. Attached mode also runs on the scratch library, never on the real `hydra.db` — the tests wipe their DB at start.
 
-Attached mode exists only in dev builds (`build-cpp`). The installer builds with the `ship` preset, which leaves the GUI tests out, so an installed Hydra.exe ignores `--uitest`.
+Attached mode exists only in dev builds (`build-cpp`). The installer builds with the `ship` preset, which leaves the GUI tests out, so an installed Hydra.exe ignores `--uitest` and `--live`.
+
+## Live mode and the MCP server
+
+A command file runs top to bottom, and you see nothing until it ends. Live mode keeps the app running and takes one command at a time, so Claude can read the screen and then decide what to click next. The commands are the same verbs as a command file, run by the same interpreter.
+
+Claude reaches live mode through the project's MCP server, `hydra`. MCP (Model Context Protocol) is how Claude Code starts a helper program, asks it which tools it has, and sends it each tool call. The server is registered in `.mcp.json` at the repo root, and its code is `tools/hydra_ui_mcp.py`. Each tool call becomes one command line, and each reply comes back as plain text. So Claude clicks, types and reads Hydra by widget label, with no screenshots.
+
+### Setting it up
+
+The helper needs Python's `mcp` package, installed once with `py -m pip install mcp`. Claude Code asks the user to approve the server the first time it is used. The helper runs the exes in `build-cpp\Release` and never builds them. When one is missing, its reply names the `build_cpp.ps1` command that makes it.
+
+### The two modes
+
+**Headless**, `hydra_start("headless")`, runs `hydra_uitest.exe --live`. It is exactly a GUI test: no window, the `testdata/input` corpus, an empty database, no sound and the canned leaderboards. A command tool called before the first `hydra_start` starts a headless session by itself. After a session stops, every tool answers `no session; call hydra_start` until one is started.
+
+**Window**, `hydra_start("window")`, runs the real `Hydra.exe --live` window on a copy of the user's library, so the charts, results, settings and layout are real. The user can watch it, because it runs at normal speed with the mouse drawn. The test engine's own panel is hidden in this mode, so it covers none of the layout and none of its text reaches `hydra_text`. Sound stays off and the leaderboards stay canned, as in every test.
+
+Before it launches anything, window mode takes a snapshot. The helper copies `hydra.db`, its `-wal` and `-shm` when present, `hydra_settings.ini` and `hydra_ui.ini` into a fresh folder of its own under the Windows temp folder. The library folder is `library_dir` if given, else the `HYDRA_LIBRARY_DIR` variable, else `DEFAULT_LIBRARY_DIR` in the helper. The reply lists each file copied with its size and modification time, so you know how old the copy is. The helper refuses to copy while a `Hydra.exe` runs from that folder, because a database Hydra has open is not a clean copy. `snapshot_library` is the only code that knows the library folder's path.
+
+The real `hydra.db` can never be opened in window mode. Three things keep it out:
+
+1. The helper names only its snapshot on Hydra's command line, as `--db`, `--ini` and `--ui-ini`.
+2. Hydra copies those seeds again into its own scratch folder (`reset_app`) and opens only that copy. The seed itself is only read.
+3. The live test refuses a seed that is not under the temp folder (`testtemp::is_under_temp` in `tests/temp_util.h`). Even a helper bug that passed the real path would get "refused: a live seed must be a copy under the temp folder", and no app would be built.
+
+Changes Claude makes in window mode, a batch included, land in the copy. A batch there is still real work on real charts, so the library-run rule in `docs/agents/brief-preamble.md` applies: narrow the library with a search first. `hydra_reset` goes back to the snapshot taken at start; a new `hydra_start` takes a new one. When the session ends the window closes, unless `hydra_stop(keep_window=True)` leaves it open for the user to look at.
+
+Both modes exist only in dev builds. The live code sits in the test harness and under `HYDRA_UITEST_ATTACHED`, which the `ship` preset leaves out.
+
+### The tools
+
+Each tool sends one command line and returns Hydra's reply text, unchanged except for the length cap below. The tool list in `tools/hydra_ui_mcp.py` is the owner; this table is a copy of it.
+
+| Tool | Sends | Notes |
+|---|---|---|
+| `hydra_start(mode, library_dir=None, keep=False)` | launches the exe | `mode` is `headless` or `window`. Stops any running session first. The reply gives the pid, the engine's scratch folder, the wait cap, the log file and the helper's scratch folder, plus the snapshot list in window mode. `keep=True` keeps the helper's scratch folder after `hydra_stop` |
+| `hydra_stop(keep_window=False)` | `quit` | waits for Hydra to exit, kills it if it does not, and returns the exit code. Then deletes the helper's scratch folder unless `keep` was set |
+| `hydra_reset()` | `reset` | a fresh library in the same process |
+| `hydra_click(ref)` | `click <ref>` | |
+| `hydra_type(ref, text)` | `type <ref> \| <text>` | an empty `text` clears the field |
+| `hydra_check(ref, on)` | `check <ref>` or `uncheck <ref>` | |
+| `hydra_key(keys)` | `key <keys>` | |
+| `hydra_window(ref)` | `window <ref>` | |
+| `hydra_wait_idle(timeout=None)` | `wait-idle` | a `timeout` applies to this call only: the helper sends `timeout`, the wait, then the old timeout back |
+| `hydra_wait_text(text, timeout=None)` | `wait-text <text>` | the same one-call `timeout` |
+| `hydra_text(contains=None)` | `text`, or `text \| <contains>` | |
+| `hydra_state()` | `state` | |
+| `hydra_dump(window=None, contains=None)` | `dump [<window>] [\| <contains>]` | no `window` means every window |
+| `hydra_rect(ref)` | `rect <ref>` | |
+| `hydra_screenshot(name)` | `screenshot <name>` | give the `.png` yourself. The file lands in the helper's scratch folder, which `hydra_stop` deletes unless `keep` was set |
+| `hydra_run(script)` | each line in turn | stops at the first failure with `stopped at line N of M`, counting the script's own lines |
+
+`hydra_run` exists so a known sequence (scan, continue, search, open) costs one tool call instead of five.
+
+### The protocol
+
+The helper and Hydra talk over a Windows named pipe. The helper picks the pipe's name and passes it with `--pipe <name>`, which `--live` requires on both exes. Hydra opens exactly that name and never makes one up.
+
+**The hello line.** On connect, Hydra writes one line first: `{"ok":true,"hello":{...}}`, holding `mode`, `scratch` (the engine's scratch folder), `pid`, `timeout` (the starting wait cap), `log` and `crash_dump`. `log` is the file Hydra writes its output to; it is empty for `hydra_uitest`, which writes to stdout, and the helper captures that itself. For `Hydra.exe` the helper asks for a `window.log` in its own scratch folder with `--uitest-log`. `crash_dump` is where a crash's minidump would go: `crash.dmp` in the engine's scratch folder for `hydra_uitest`, and empty for `Hydra.exe`, where nothing writes one.
+
+**Requests and replies.** A request is one line, exactly as a command-file line. Every line gets exactly one reply, blank and `#` lines too. A reply is one JSON line: `{"ok":<true or false>,"text":"<finished text>","timeout":<seconds>}`.
+
+- On success, `text` is what the verb printed, or `ok` when it printed nothing.
+- On a failure, `text` is the reason on its first line, then the engine's log lines from this command. A live reply names no line number; only `hydra_run` numbers lines.
+- `timeout` is the wait cap in force after the command.
+- A failed command does not end the session. The next command runs normally.
+
+`live_protocol.h` writes these lines, and `tests/test_live_protocol.cpp` pins them.
+
+**Numbers and the wait cap.** The strict number rule above holds in live mode too. On top of it, a live `wait` longer than the timeout in force fails. So no command can run longer than the timeout Hydra last reported, plus the time of one action. The helper waits that long plus `REPLY_MARGIN_S` for each reply, and `HELLO_TIMEOUT_S` for the hello line. All its numbers live at the top of `tools/hydra_ui_mcp.py`.
+
+**A dead or silent Hydra.** The helper reports it and never waits on it. When Hydra has exited, the reply says `Hydra exited with code X`, quotes the last lines of its log, and names the crash dump if one was written. When Hydra is alive but silent past the cap, the reply says `Hydra did not answer within N s`, and the helper kills it. Either way the session is stopped, and the helper's scratch folder is kept so the log can be read.
+
+**Long replies.** A reply longer than `REPLY_CAP_CHARS` is cut at a line boundary, with a last line saying how many lines were dropped. `contains` on `hydra_text` and `hydra_dump` narrows the output instead.
+
+### Who owns what
+
+Hydra's C++ side owns every command rule: what a verb means, how its arguments parse, which numbers it takes, the timeout, line numbers, the reply's wording, the filters, and where the log and crash dump go. The helper only carries messages. It owns launch and stop, the pipe name, the reply caps (worked out only from numbers Hydra reports), the snapshot, the running-Hydra check and the tool list. The stand-in Hydra its tests use, `tools/fake_hydra_live.py`, plays only transport: a hello line, a plain echo, a hang, an exit, a closed pipe and an oversized reply. Every test of what a command does runs on the real headless `hydra_uitest --live` (`RealExeLayer` in `tools/test_hydra_ui_mcp.py`).
+
+So a question about a command is answered in C++, never in Python. The full table is in "T8: one owner for every command rule" in `docs/superpowers/plans/2026-10-14-hydra-mcp-server.md`, and the reasons are in `docs/adr/0030-hydra-owns-every-live-command-rule.md`.
 
 ## Adding a C++ test
 
@@ -170,7 +260,10 @@ Rules of thumb:
 ## Layout
 
 - `tests/ui/uitest_harness.{h,cpp}` — WARP device, offscreen target, engine setup, scratch files, seams, `wait_until`, `dump_*`, `screenshot`, and the shared helpers every area file calls.
-- `tests/ui/uitest_script.cpp` — the command-file interpreter.
+- `tests/ui/uitest_commands.{h,cpp}` — the command interpreter: what one line does (`run_command`), shared by command files and live mode.
+- `tests/ui/uitest_script.cpp` — the command-file test, and `command_line`, which decides which lines are commands.
+- `tests/ui/uitest_live.cpp` and `tests/ui/live_protocol.h` — the live channel: the pipe, the loop that keeps the app drawing between commands, and the JSON lines.
+- `tools/hydra_ui_mcp.py` — the MCP server; `tools/test_hydra_ui_mcp.py` tests it, and `tools/fake_hydra_live.py` is its stand-in Hydra.
 - `tests/ui/uitest_tests.cpp` — `register_tests`.
 - `tests/ui/uitest_library.cpp`, `uitest_details.cpp`, `uitest_preview.cpp`, `uitest_batch_reports.cpp` — the checked-in tests by area, each with its entry table.
 - `tests/ui/uitest_paths.cpp` — the Paths tab tests.

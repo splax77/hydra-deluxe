@@ -60,9 +60,9 @@ The helper in Python answers "what does Claude see". It launches the right exe, 
 
 ### The live channel
 
-A new test named `live` lives in `tests/ui/uitest_live.cpp`, registered the way `script` is, and started by a new flag `--live` on both `hydra_uitest` and `Hydra.exe`. Its body does this. It calls `reset_app` like every test, then opens a named pipe `\\.\pipe\hydra-live-<pid>` (the process id, which the helper knows because it launched the process, so nothing has to be passed on the command line). A reader thread sits in `ReadFile` and pushes each complete line onto a queue behind a mutex. The body loops: if the queue has a line, run it through the interpreter and write the reply; otherwise yield one frame and sleep two milliseconds, as `wait_until` does. The loop ends when the client disconnects (the read fails) or the `quit` verb arrives. Then the test returns, which ends `hydra_uitest` and, in the real window, closes Hydra (see T5).
+A new test named `live` lives in `tests/ui/uitest_live.cpp`, registered the way `script` is, and started by a new flag `--live` on both `hydra_uitest` and `Hydra.exe`. Its body does this. It calls `reset_app` like every test, then opens the named pipe that `--pipe <name>` gives. (The first build named the pipe after Hydra's process id; T8 moved the name to the helper, which picks `\\.\pipe\hydra-live-<helper pid>_<n>` and passes it, so Hydra never makes one up.) A reader thread sits in `ReadFile` and pushes each complete line onto a queue behind a mutex. The body loops: if the queue has a line, run it through the interpreter and write the reply; otherwise yield one frame and sleep two milliseconds, as `wait_until` does. The loop ends when the client disconnects (the read fails) or the `quit` verb arrives. Then the test returns, which ends `hydra_uitest` and, in the real window, closes Hydra (see T5).
 
-One request is one line, the verb and its rest, exactly as a script line. One reply is one JSON line, so the helper never has to guess where an answer ends: `{"ok":true,"text":"..."}` or `{"ok":false,"error":"...","log":"..."}`. The C++ side only writes JSON, never parses it, so it needs a string escaper and nothing else; `third_party/json` stays a test-only dependency. On connect the channel writes one hello line first: `{"ok":true,"hello":{"mode":"headless","scratch":"<folder>","pid":1234}}`.
+One request is one line, the verb and its rest, exactly as a script line. One reply is one JSON line, so the helper never has to guess where an answer ends. The C++ side only writes JSON, never parses it, so it needs a string escaper and nothing else; `third_party/json` stays a test-only dependency. On connect the channel writes one hello line first. The reply and hello fields are the ones in "The protocol after T8" below, which replaced the first build's `error` and `log` fields with one finished `text` and added `timeout`, `log` and `crash_dump` to the hello line.
 
 A failed command does not end the session. Before each command the loop notes the log buffer's length. After a command that left `ctx->IsError()` true, it takes the log text added since, puts it in `log`, and sets `ctx->TestOutput->Status` back to `ImGuiTestStatus_Running`, as the engine does around teardown. The next command runs normally. A command that threw a C++ exception is caught the same way and reported with its text; the test engine's crash handler and `on_crash` in `uitest_main.cpp` cover a real crash, which prints the exception code and writes `crash.dmp` into the scratch folder.
 
@@ -78,7 +78,7 @@ The reader thread and the pipe are Win32 (`CreateNamedPipeW`, `ConnectNamedPipe`
 
 Four verbs are added, each a few lines over an engine call that exists:
 
-- `key <name>` presses a key or chord: `Escape`, `Enter`, `Ctrl+W`, `Down`. It maps a short table of names to `ImGuiKey` values and calls `ctx->KeyPress` / `ctx->KeyChord`. The table is the one place those names live.
+- `key <name>` presses a key or chord: `Escape`, `Enter`, `Ctrl+W`, `Down`. It maps a short table of names to `ImGuiKey` values and calls `ctx->KeyPress` with the key or chord. The table is the one place those names live.
 - `rect <ref>` returns one widget's line in the dump's shape, through `ctx->ItemInfo(ref)`, so Claude can ask for one edge without the whole tree.
 - `reset` runs `reset_app` again: a fresh scratch library, the same process. In real-window mode it copies the seed files again, so the library goes back to the snapshot.
 - `quit` ends the session.
@@ -87,36 +87,36 @@ Four verbs are added, each a few lines over an engine call that exists:
 
 ### The helper (MCP server)
 
-`tools/hydra_ui_mcp.py`, Python 3.14, run as `py -I tools/hydra_ui_mcp.py`. Python because the helper is glue: launching a process, copying five files, polling for exit, trimming text, timing waits. The repo already keeps that kind of tool in `tools/` in Python (`compare_db.py` with `test_compare_db.py` as its test), and a change to the helper then needs no C++ build. The UI driving stays in C++ where the engine is. It uses the official `mcp` package (`FastMCP`, stdio transport) so the protocol handshake, the tool list and the message framing are the reference implementation's and not ours. That is a one-time install on this machine: `py -m pip install mcp` (question 1).
+`tools/hydra_ui_mcp.py`, Python 3.14, run as `py -I tools/hydra_ui_mcp.py`. Python because the helper is glue: launching a process, copying five files, polling for exit, trimming text, timing waits. The repo already keeps that kind of tool in `tools/` in Python (`compare_db.py` with `test_compare_db.py` as its test), and a change to the helper then needs no C++ build. The UI driving stays in C++ where the engine is. It uses the official `mcp` package (`MCPServer` from `mcp.server.mcpserver`, stdio transport) so the protocol handshake, the tool list and the message framing are the reference implementation's and not ours. That is a one-time install on this machine: `py -m pip install mcp` (question 1).
 
 The tools Claude sees, each returning plain text:
 
 | Tool | What it does | Returns |
 |---|---|---|
-| `hydra_start(mode, library_dir=None, keep=False)` | starts a session; `mode` is `headless` or `window`; stops any session already running | the hello line's facts: mode, scratch folder, pid, and in window mode which files were snapshotted and when |
-| `hydra_stop()` | sends `quit`, waits for exit with a cap, kills if needed | exit code |
+| `hydra_start(mode, library_dir=None, keep=False)` | starts a session; `mode` is `headless` or `window`; stops any session already running | the hello line's facts: mode, pid, engine scratch folder, wait cap and log, the helper's scratch folder, and in window mode which files were snapshotted and when |
+| `hydra_stop(keep_window=False)` | sends `quit`, waits for exit with a cap, kills if needed; in window mode `keep_window=True` leaves the window open instead (question 8) | exit code |
 | `hydra_reset()` | `reset`: fresh library in the same session | ok |
 | `hydra_click(ref)` | `click` | ok, or the engine's log lines for the failure |
 | `hydra_type(ref, text)` | `type` | ok or failure |
 | `hydra_check(ref, on)` | `check` / `uncheck` | ok or failure |
 | `hydra_key(keys)` | `key` | ok or failure |
 | `hydra_window(ref)` | `window`: the window later refs are relative to | ok |
-| `hydra_wait_idle(timeout=None)` | `timeout` (when given) then `wait-idle` | ok, or "jobs still running after N s" |
-| `hydra_wait_text(text, timeout=None)` | `wait-text` | ok, or "did not appear within N s" |
-| `hydra_text(contains=None)` | `text`; with `contains`, only the lines holding that substring | the screen as text |
+| `hydra_wait_idle(timeout=None)` | `timeout` (when given), then `wait-idle`, then the old timeout back | ok, or "jobs still running after Ns" |
+| `hydra_wait_text(text, timeout=None)` | the same, with `wait-text` | ok, or "did not appear within Ns" |
+| `hydra_text(contains=None)` | `text`, or `text \| <contains>`: only the lines holding that substring | the screen as text |
 | `hydra_state()` | `state` | the state block |
-| `hydra_dump(window="Hydra", contains=None)` | `dump`; with `contains`, only matching item lines plus their window line | the widget tree with rects |
+| `hydra_dump(window=None, contains=None)` | `dump [<window>] [\| <contains>]`; a plain `dump` when no window is given, which covers every window | the widget tree with rects |
 | `hydra_rect(ref)` | `rect` | one widget line |
-| `hydra_screenshot(name)` | `screenshot` | the PNG's path |
-| `hydra_run(script)` | several lines at once, stopping at the first failure | one line of result per line sent |
+| `hydra_screenshot(name)` | `screenshot` | `screenshot: <path>` |
+| `hydra_run(script)` | several lines at once, stopping at the first failure | each line echoed as `> <line>` with Hydra's reply under it, and `stopped at line N of M` after a failure |
 
 `hydra_run` exists so a known sequence (scan, continue, search, open) costs one tool call instead of five. The per-verb tools exist so a single step reads clearly in Claude's transcript and so a failure names the step.
 
 Output stays small by three rules. Every reply is cut at a character cap, with a last line saying how many lines were dropped and that `contains` narrows it (question 5 names the cap). `text` and `dump` take `contains`. The library table is clipped, so `text` only ever holds the rows on screen; a 19,000-chart library produces no more lines than the 97-chart corpus.
 
-A dead or silent Hydra is reported, never waited on. Each tool call waits for its reply at most the command's own timeout plus a margin (question 4). If the process has exited, the reply says "Hydra exited with code X" and gives the last lines of its log (`hydra_uitest`'s stdout, or `hydra_uitest.log` beside `Hydra.exe`) and the path of `crash.dmp` if the scratch folder holds one. If it is alive and silent past the cap, the reply says "Hydra did not answer within N s", the helper kills the process, and the session is marked stopped. Every later call answers "no session; call hydra_start" until one is started. The helper also kills its child when Claude Code ends it (an `atexit` hook, with the pipe closing as the second line of defence, since the C++ side exits when the read fails).
+A dead or silent Hydra is reported, never waited on. Each tool call waits for its reply at most the command's own timeout plus a margin (question 4). If the process has exited, the reply says "Hydra exited with code X" and gives the last lines of its log and the path of the crash dump if one was written. The log is `hydra_uitest`'s stdout, which the helper captures, or for `Hydra.exe` the `window.log` the helper names with `--uitest-log` in its own scratch folder; the hello line's `log` and `crash_dump` fields say where (T8). If it is alive and silent past the cap, the reply says "Hydra did not answer within N s", the helper kills the process, and the session is marked stopped. Every later call answers "no session; call hydra_start" until one is started. The helper also kills its child when Claude Code ends it (an `atexit` hook, with the pipe closing as the second line of defence, since the C++ side exits when the read fails).
 
-A session is one process per Claude Code session, started by the first `hydra_start` (or the first tool that needs one, which starts headless) and kept until `hydra_stop`. The headless process holds the engine's scratch folder; `reset` is the cheap way back to a clean library (about a second). The exes come from `build-cpp\Release`; when one is missing the reply says which build command makes it, and the helper never builds (a build takes minutes and competes with every other build on the machine).
+A session is one process per Claude Code session, started by the first `hydra_start` (or, before any `hydra_start`, the first tool that needs one, which starts headless) and kept until `hydra_stop`. The headless process holds the engine's scratch folder; `reset` is the cheap way back to a clean library (about a second). The exes come from `build-cpp\Release`; when one is missing the reply says which build command makes it, and the helper never builds (a build takes minutes and competes with every other build on the machine).
 
 The registration is `.mcp.json` at the repo root:
 
@@ -125,26 +125,25 @@ The registration is `.mcp.json` at the repo root:
   "mcpServers": {
     "hydra": {
       "command": "py",
-      "args": ["-I", "tools/hydra_ui_mcp.py"],
-      "env": { "HYDRA_LIBRARY_DIR": "${HYDRA_LIBRARY_DIR:-C:\\Program Files\\Hydra}" }
+      "args": ["-I", "tools/hydra_ui_mcp.py"]
     }
   }
 }
 ```
 
-Claude Code asks the user to approve a project server the first time it is used. The helper resolves `build-cpp` and `tools/` from its own file's location, so the working directory does not matter.
+There is no `env` block: T6 dropped it, and the helper reads `HYDRA_LIBRARY_DIR` from its own environment when set, falling back to `DEFAULT_LIBRARY_DIR` in `hydra_ui_mcp.py`. Claude Code asks the user to approve a project server the first time it is used. The helper resolves `build-cpp` and `tools/` from its own file's location, so the working directory does not matter.
 
 ### Headless mode
 
-`hydra_start("headless")` runs `build-cpp\Release\hydra_uitest.exe --live --shots <helper scratch>`. The harness does what it does for every test: WARP device, offscreen target, `init_scratch`, `reset_app` with `scratch_settings()` and an empty database, canned leaderboards, headless audio. The only difference from `--script` is where the lines come from and where the answers go. The fast run speed stays, so a click lands in a frame or two, and the 2 ms sleep between polls keeps the process quiet while Claude thinks.
+`hydra_start("headless")` runs `build-cpp\Release\hydra_uitest.exe --live --pipe <name> --shots <helper scratch>`. The harness does what it does for every test: WARP device, offscreen target, `init_scratch`, `reset_app` with `scratch_settings()` and an empty database, canned leaderboards, headless audio. The only difference from `--script` is where the lines come from and where the answers go. The fast run speed stays, so a click lands in a frame or two, and the 2 ms sleep between polls keeps the process quiet while Claude thinks.
 
 ### Real-window mode
 
 `hydra_start("window")` does two things before launching anything.
 
-First, the snapshot. The helper takes the library folder (`library_dir`, else `HYDRA_LIBRARY_DIR`, else `C:\Program Files\Hydra`) and copies `hydra.db`, `hydra.db-wal` and `hydra.db-shm` when present, `hydra_settings.ini` and `hydra_ui.ini` into a fresh folder of its own under the Windows temp folder, `hydra_live_<helper pid>`. Only this folder is ever named on the command line. The helper refuses to snapshot while a `Hydra.exe` is running from that folder, because a database being written has a `-wal` that a copy can tear; the reply says to close Hydra first (question 3). The reply to `hydra_start` lists each file copied with its size and modification time, so the user and Claude both know how old the copy is. `hydra_start` again takes a new snapshot; `hydra_reset` goes back to the one taken at start.
+First, the snapshot. The helper takes the library folder (`library_dir`, else `HYDRA_LIBRARY_DIR`, else `C:\Program Files\Hydra`) and copies `hydra.db`, `hydra.db-wal` and `hydra.db-shm` when present, `hydra_settings.ini` and `hydra_ui.ini` into a fresh folder of its own under the Windows temp folder, `hydra_live_<helper pid>_<n>`, where `n` counts the helper's sessions. Only this folder is ever named on the command line. The helper refuses to snapshot while a `Hydra.exe` is running from that folder, because a database being written has a `-wal` that a copy can tear; the reply says to close Hydra first (question 3). The reply to `hydra_start` lists each file copied with its size and modification time, so the user and Claude both know how old the copy is. `hydra_start` again takes a new snapshot; `hydra_reset` goes back to the one taken at start.
 
-Second, the launch: `build-cpp\Release\Hydra.exe --live --db <snapshot>\hydra.db --ini <snapshot>\hydra_settings.ini --ui-ini <snapshot>\hydra_ui.ini --shots <helper scratch>`. Three things in C++ make the real library unreachable from here:
+Second, the launch: `build-cpp\Release\Hydra.exe --live --pipe <name> --db <snapshot>\hydra.db --ini <snapshot>\hydra_settings.ini --ui-ini <snapshot>\hydra_ui.ini --shots <helper scratch> --uitest-log <helper scratch>\window.log`. The `--ini` and `--ui-ini` pairs are left out when the library folder has no such file. Three things in C++ make the real library unreachable from here:
 
 1. The app only ever asks `app::db_path()` and `app::ini_path()`, and in live mode those return the scratch files `init_scratch` set, under `hydra_test_uitest_<pid>`. The `--db` and `--ini` seeds are copied into that folder by `reset_app` (the existing `--db` copy, plus the same for the ini); the seed path itself is only ever read by `copy_file`. This is today's rule for `--db`, extended to the ini.
 2. Live mode refuses a seed that is not inside the Windows temp folder. The check is `testtemp::is_under_temp(path)`, a new function next to `temp_dir` in `tests/temp_util.h`, which is the one owner of the temp folder lookup. `C:\Program Files\Hydra\hydra.db` can never pass it, so even a helper bug that handed the real path over gets "refused: a live seed must be a copy under the temp folder" and no app is built.
@@ -166,13 +165,13 @@ The C++ unit tests go in `hydra_tests` (the doctest runner picks up any `tests/t
 
 The GUI tests go in `hydra_uitest`. A checked-in script, `tests/ui/scripts/smoke.txt` (scan, continue, state, dump, rect, key Escape), proves the interpreter split by running `--script` as before, and the `scan` test proves nothing else moved.
 
-The Python tests go in `tools/test_hydra_ui_mcp.py` (unittest, like `test_compare_db.py`), in two layers. The first runs without any build: `tools/fake_hydra_live.py` is a stand-in that makes the same pipe and answers the same verbs with canned text, and can be told to exit, to hang or to answer with 50,000 characters. Against it the tests pin: the hello line is parsed; a tool call sends one line and returns the reply; a hanging stand-in is reported as "did not answer within N s" and killed; an exiting stand-in is reported with its exit code and log tail; a long reply is cut at the cap with the dropped-lines line; `hydra_run` stops at the first failure; the snapshot copies the five files from a fake library folder and leaves the originals' bytes and modification times unchanged; the command line the helper builds never contains the library folder's path; the snapshot is refused while a process named `Hydra.exe` runs from the fake folder (the check is a function the test can hand a fake process list). The second layer runs only when `build-cpp\Release\hydra_uitest.exe` exists: start headless, `state` reads `store=ready`, `run` of the smoke lines ends with `charts=97` in the state, `reset` gives `charts=0`, `stop` exits 0. The window-mode smoke runs only when `HYDRA_LIVE_WINDOW_TEST=1` is set, because it opens a window; it uses a seed database made from the headless session's scratch folder, not the user's.
+The Python tests go in `tools/test_hydra_ui_mcp.py` (unittest, like `test_compare_db.py`), in two layers. The first runs without any build: `tools/fake_hydra_live.py` is a stand-in that makes the same pipe and answers the same verbs with canned text, and can be told to exit, to hang or to answer with 50,000 characters. (T8b later shrank the stand-in to transport only, and moved every test of what a command does onto the real headless exe; see T8.) Against it the tests pin: the hello line is parsed; a tool call sends one line and returns the reply; a hanging stand-in is reported as "did not answer within N s" and killed; an exiting stand-in is reported with its exit code and log tail; a long reply is cut at the cap with the dropped-lines line; `hydra_run` stops at the first failure; the snapshot copies the five files from a fake library folder and leaves the originals' bytes and modification times unchanged; the command line the helper builds never contains the library folder's path; the snapshot is refused while a process named `Hydra.exe` runs from the fake folder (the check is a function the test can hand a fake process list). The second layer runs only when `build-cpp\Release\hydra_uitest.exe` exists: start headless, `state` reads `store=ready`, `run` of the smoke lines ends with `charts=97` in the state, `reset` gives `charts=0`, `stop` exits 0. The window-mode smoke runs only when `HYDRA_LIVE_WINDOW_TEST=1` is set, because it opens a window; it uses a seed database made from the headless session's scratch folder, not the user's.
 
 ### Docs and an ADR
 
 `docs/agents/ui-testing.md` gains a section "Live mode and the MCP server": the two modes, the tool table, the four new verbs in the verb table, the snapshot rule, the caps, and the one-line rule that `hydra_start("window")` never opens the real library. The GUI testing section of `CLAUDE.md` gains one sentence pointing there and naming the server (`hydra` in `.mcp.json`). The label cheat-sheet is unchanged.
 
-An ADR is warranted: "0030: Claude drives the GUI through the test engine's live channel, and the real library is only ever a snapshot". It records the three choices that will not be obvious later: the pipe-and-JSON-line channel instead of stdio or TCP, Python for the helper, and the two-copies-with-a-guard rule for the user's library. ADRs are internal and not review-gated.
+An ADR is warranted. It was written as `docs/adr/0030-hydra-owns-every-live-command-rule.md`: after T8 its main decision is the ownership boundary, and it also records the three choices that will not be obvious later: the pipe-and-JSON-line channel instead of stdio or TCP, Python for the helper, and the two-copies-with-a-guard rule for the user's library. ADRs are internal and not review-gated.
 
 ## Who owns what after the change
 
@@ -316,7 +315,7 @@ Each one quotes the code behaviour it depends on and gives a recommended answer.
   The helper is transport only. It owns launch and stop, the pipe, its reply caps (computed only from numbers Hydra reports), truncation, the snapshot and the running-Hydra check, and the tool list. The stand-in owns only transport behaviours: hang, exit, close, oversized replies. A boundary audit lists every copy across the line, and T8 removes them all.
 - **Hide the engine panel in live mode.** The test engine's own panel is hidden in live mode, so it covers none of the real layout and none of its text reaches Claude's `text` output. `--uitest` mode keeps showing it.
 
-**1. Install the `mcp` package?** The helper imports `mcp` (`FastMCP`), which is not on this machine; PyPI's 2.3.0 supports Python 3.14. The alternative is to hand-write the stdio JSON-RPC handshake (initialize, tools/list, tools/call) in about 150 lines with no dependency, which then has to track protocol versions by hand. Recommended: run `py -m pip install mcp` once; T3's first step does it and stops if it fails.
+**1. Install the `mcp` package?** The helper imports `mcp` (the built helper uses its `MCPServer`), which is not on this machine; PyPI's 2.3.0 supports Python 3.14. The alternative is to hand-write the stdio JSON-RPC handshake (initialize, tools/list, tools/call) in about 150 lines with no dependency, which then has to track protocol versions by hand. Recommended: run `py -m pip install mcp` once; T3's first step does it and stops if it fails.
 
 **2. One session at a time?** The helper keeps one child process and one pipe. `hydra_start` while a session runs stops the old one first. The alternative, headless and window sessions side by side, needs a session name on every tool. Recommended: one at a time.
 
@@ -334,4 +333,4 @@ Each one quotes the code behaviour it depends on and gives a recommended answer.
 
 **9. Does `hydra_start("window")` ask before it copies?** The copy reads from the user's install folder and takes 18 MB plus the ini files. It writes nothing there. Recommended: no extra confirmation inside the tool; the user's instruction to Claude to use window mode is the yes, and the reply names what was copied.
 
-**10. Keep the helper's scratch folder after `hydra_stop`?** The snapshot and the screenshots live in `hydra_live_<pid>` under the temp folder. Recommended: delete it on `hydra_stop` unless `keep=True` was passed to `hydra_start`, and let the SessionStart cleanup sweep (`cleanup-sweep-hook-2026-10` in memory, which removes 7-day-old scratch) catch what a killed helper leaves.
+**10. Keep the helper's scratch folder after `hydra_stop`?** The snapshot and the screenshots live in `hydra_live_<pid>_<n>` under the temp folder. Recommended: delete it on `hydra_stop` unless `keep=True` was passed to `hydra_start`, and let the SessionStart cleanup sweep (`cleanup-sweep-hook-2026-10` in memory, which removes 7-day-old scratch) catch what a killed helper leaves.
