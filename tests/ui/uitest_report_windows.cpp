@@ -809,28 +809,40 @@ void held_build_then_rows(ImGuiTestContext* ctx, ReportHold& hold) {
     IM_CHECK(on_screen(h, path_count_tail(h)));
 }
 
-// The toolbar's "Open path report" with charts that have no result: with the
-// confirm threshold at 0 the opening asks first, and the confirm's Cancel
-// leaves the report to list only what is stored. Returns once that report is
-// Ready, with the threshold put back.
-void open_path_report_declining_batch(ImGuiTestContext* ctx) {
+// The toolbar's "Open path report" (or, with `refresh`, the open window's
+// Refresh) with charts that have no result: with the confirm threshold at 0
+// the build asks first, and the confirm's Cancel leaves the report to list
+// only what is stored. Returns with the threshold put back and that report's
+// build started; the caller waits for it.
+void open_path_report_declining_batch(ImGuiTestContext* ctx, bool refresh = false) {
     Harness& h = harness(ctx);
     h.app->report_confirm_above = 0;
-    ctx->SetRef("//Hydra");
-    ctx->ItemClick("**/Open path report");
+    if (refresh) {
+        ctx->SetRef(path_window());
+        ctx->ItemClick("Refresh");
+    } else {
+        ctx->SetRef("//Hydra");
+        ctx->ItemClick("**/Open path report");
+    }
     ctx->Yield(2);
     IM_CHECK_RETV(path_window() != nullptr, );
     IM_CHECK(h.app->path_report_awaits_confirm());
     ctx->SetRef("//Analyze library");
     ctx->ItemClick("Cancel");
     ctx->Yield(2);
-    IM_CHECK(h.app->batch_job == nullptr);
+    IM_CHECK(h.app->path_report_batch() == nullptr);
     h.app->report_confirm_above = hydra::ui::AppState::kReportConfirmAbove;
-    IM_CHECK(wait_until(ctx, [&] {
+}
+
+// Waits for the path report's build to finish, up to 60 s.
+bool path_report_ready(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    const bool ready = wait_until(ctx, [&] {
         return h.app->report_job == nullptr &&
                h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
-    }, 60));
+    }, 60);
     ctx->Yield(2);
+    return ready;
 }
 
 // The path window opens from the finished strip's "Open report", from the
@@ -864,7 +876,7 @@ void test_open_path(ImGuiTestContext* ctx) {
     // chart below still has no result. The Esc above let the rows go, so this
     // opening builds them again.
     open_path_report_declining_batch(ctx);
-    if (ctx->IsError()) return;
+    IM_CHECK_RETV(path_report_ready(ctx), );
     IM_CHECK(on_screen(h, path_count_tail(h)));
     h.app->close_path_report();  // it covers the toolbar
     ctx->Yield(2);
@@ -878,10 +890,10 @@ void test_open_path(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(path_window() != nullptr, );
 
     // Refresh with every build held before it reads the store: the window
-    // shows the building state.
+    // shows the building state. Its batch over the charts with no result is
+    // declined, so the build alone is held.
     ReportHold hold;
-    ctx->SetRef(path_window());
-    ctx->ItemClick("Refresh");
+    open_path_report_declining_batch(ctx, /*refresh=*/true);
     held_build_then_rows(ctx, hold);
 }
 
@@ -961,7 +973,7 @@ void test_cant_analyze_list(ImGuiTestContext* ctx) {
     h.app->refresh_library_summaries();
 
     open_path_report_declining_batch(ctx);
-    if (ctx->IsError()) return;
+    IM_CHECK_RETV(path_report_ready(ctx), );
     IM_CHECK_RETV(h.app->path_report.result != nullptr, );
     const hydra::app::report::GeneratedReport& page = *h.app->path_report.result;
     IM_CHECK(page.paths.empty());
@@ -1120,10 +1132,10 @@ void test_reopen(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->path_report.result == nullptr);
 
     // Every build held before it reads the store, so the building state
-    // stays up to be read.
+    // stays up to be read. The corpus's other charts have no result, so the
+    // opening's batch is declined: the rows stay the batch's one chart.
     ReportHold hold;
-    ctx->SetRef("//Hydra");
-    ctx->ItemClick("**/Open path report");
+    open_path_report_declining_batch(ctx);
     held_build_then_rows(ctx, hold);
     IM_CHECK(path_window() != nullptr);
     IM_CHECK(on_screen(h, count));  // the same rows as before the close
@@ -1216,16 +1228,13 @@ void test_reopen_keeps_filters(ImGuiTestContext* ctx) {
     const std::string default_timing = boxed(choices.front().label);
     IM_CHECK(on_screen(h, timing_shown));
 
-    // Esc lets the rows go; opening again builds them, filters kept.
+    // Esc lets the rows go; opening again builds them, filters kept. The
+    // opening's batch is declined, so the rows are the same chart's.
     press_escape_on(ctx, path_window());
     IM_CHECK_RETV(h.app->path_report.result == nullptr, );
-    ctx->SetRef("//Hydra");
-    ctx->ItemClick("**/Open path report");
-    IM_CHECK_RETV(wait_until(ctx, [&] {
-        return h.app->report_job == nullptr &&
-               h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
-    }, 60), );
-    ctx->Yield(3);
+    open_path_report_declining_batch(ctx);
+    IM_CHECK_RETV(path_report_ready(ctx), );
+    ctx->Yield(1);
     IM_CHECK_RETV(path_window() != nullptr, );
     IM_CHECK_STR_EQ(shown_count(h).c_str(), count.c_str());
     IM_CHECK(on_screen(h, search_shown));
@@ -1233,14 +1242,11 @@ void test_reopen_keeps_filters(ImGuiTestContext* ctx) {
     IM_CHECK(!best_only_ticked(ctx));
     IM_CHECK(table_sort(ctx) == sort);
 
-    // Refresh starts all four over (the rule before this change).
-    ctx->SetRef(path_window());
-    ctx->ItemClick("Refresh");
-    IM_CHECK_RETV(wait_until(ctx, [&] {
-        return h.app->report_job == nullptr &&
-               h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
-    }, 60), );
-    ctx->Yield(3);
+    // Refresh starts all four over (the rule before this change). Its batch
+    // is declined too, so the rows stay the same chart's.
+    open_path_report_declining_batch(ctx, /*refresh=*/true);
+    IM_CHECK_RETV(path_report_ready(ctx), );
+    ctx->Yield(1);
     IM_CHECK_STR_EQ(shown_count(h).c_str(), default_count.c_str());
     IM_CHECK(!on_screen(h, search_shown));
     IM_CHECK(on_screen(h, default_timing));
