@@ -54,8 +54,7 @@ std::string read_library(store::RecordStore& store, const app::Settings& setting
 
 void read_library_summaries(store::RecordStore& store, const app::Settings& settings,
                             LibraryModel& library) {
-    library.set_summaries(
-        store.get_summaries(library.hashes(), settings.profile()));
+    library.set_summaries(store.lookup(library.hashes(), settings.profile()));
 }
 
 StoreOpenJob::StoreOpenJob(std::string db_path, core::RulesStamp rules, app::Settings settings)
