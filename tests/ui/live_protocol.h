@@ -7,6 +7,7 @@
 #ifndef HYDRA_TESTS_UI_LIVE_PROTOCOL_H
 #define HYDRA_TESTS_UI_LIVE_PROTOCOL_H
 
+#include <charconv>
 #include <cstdio>
 #include <string>
 #include <string_view>
@@ -43,11 +44,14 @@ inline std::string json_string(std::string_view s) {
     return out;
 }
 
-// A number of seconds as JSON: the shortest form printf's %g gives.
+// A number of seconds as JSON: the shortest plain-digit text that reads back
+// as the same double, so a client that sets the number again sets exactly the
+// one in force (30 prints as 30, 12.345678901 as 12.345678901). The buffer
+// holds the longest plain-digit form a finite double has.
 inline std::string json_seconds(double seconds) {
-    char buf[32];
-    std::snprintf(buf, sizeof(buf), "%g", seconds);
-    return buf;
+    char buf[400];
+    const auto done = std::to_chars(buf, buf + sizeof(buf), seconds, std::chars_format::fixed);
+    return std::string(buf, done.ptr);
 }
 
 // Every reply has the same three fields: ok, the finished text, and the

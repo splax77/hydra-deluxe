@@ -459,6 +459,14 @@ class RealExeLayer(unittest.TestCase):
         self.assertEqual(self.helper.with_timeout("wait-idle", 5), "ok")
         self.assertEqual(self.helper.session.timeout, 12.5)
 
+    def test_a_long_timeout_is_put_back_exactly(self):
+        self.helper.start("headless")
+        # More digits than printf's default keeps: the reply must carry them all.
+        self.assertEqual(self.helper.send("timeout 12.345678901"), "ok")
+        self.assertEqual(self.helper.session.timeout, 12.345678901)
+        self.assertEqual(self.helper.with_timeout("wait-idle", 5), "ok")
+        self.assertEqual(self.helper.session.timeout, 12.345678901)
+
     def test_text_and_dump_filters_are_hydras(self):
         self.helper.start("headless")
         self.scan()
