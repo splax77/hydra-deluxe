@@ -1,112 +1,66 @@
 #include "app/report.h"
 
 #include <algorithm>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
 #include <filesystem>
-#include <functional>
 #include <numeric>
 #include <stdexcept>
-#include <string_view>
 #include <tuple>
 #include <unordered_map>
-#include <unordered_set>
 
-#include "app/analysis.h"  // normalize_chart_hash, batch_worker_count
-#include "app/config.h"    // Settings::chartmode_key, to_analysis_settings
+#include "app/analysis.h"
+#include "app/config.h"    // Settings::profile
 #include "app/display_format.h"
-#include "app/work_pool.h"
 #include "core/model.h"
 #include "core/squeeze_rating.h"
 #include "core/strutil.h"
-#include "parse/song.h"
-#include "search/graph.h"
 
 namespace hydra::app::report {
 
 namespace {
 
-// How many library charts the rows at `shown` belong to, each chart's
-// copies added once however many of its rows there are (D76, D77). The
-// subtitle's chart count and the Charts shown tile both read it.
-int64_t charts_counted(const std::vector<ReportRow>& rows, const std::vector<size_t>& shown) {
-    std::unordered_set<std::string_view> seen;
-    int64_t charts = 0;
-    for (size_t i : shown)
-        if (seen.insert(rows[i].hyhash).second) charts += rows[i].copies;
-    return charts;
+// The song ids of the rows at `shown`, for store::ChartIndex::count.
+std::vector<std::string> ids_of(const std::vector<ReportRow>& rows,
+                                const std::vector<size_t>& shown) {
+    std::vector<std::string> ids;
+    ids.reserve(shown.size());
+    for (size_t i : shown) ids.push_back(rows[i].hyhash);
+    return ids;
 }
 
-// Puts one chart's rows on the page: the first max_paths of `rows`
-// (chart_rows' order), named from `meta`, a list_records listing, and labeled
-// with their tier.
-void place_rows(std::vector<ReportRow>& out, const std::vector<ReportRow>& rows,
-                int64_t max_paths, const store::RecordListing& meta, int copies,
-                const std::vector<TimingTier>& tiers) {
-    const size_t shown =
-        static_cast<size_t>(std::min<int64_t>(max_paths, static_cast<int64_t>(rows.size())));
+// Puts one stored record on the page: its first max_paths paths in their
+// stored rank order, named from the library row that names the chart and
+// labeled with their tier. The page's one turn of a record into rows.
+void place_record(std::vector<ReportRow>& out, const store::RecordRow& record,
+                  int64_t max_paths, const store::ChartLibraryEntry& naming,
+                  const std::vector<TimingTier>& tiers) {
+    const size_t shown = static_cast<size_t>(
+        std::min<int64_t>(max_paths, static_cast<int64_t>(record.paths.size())));
     for (size_t i = 0; i < shown; ++i) {
-        ReportRow row = rows[i];
+        const store::PathRow& p = record.paths[i];
+        ReportRow row;
         // The one cleaned title, artist and charter every screen shows.
-        row.song = display_title(meta.ref_name);
-        row.artist = display_artist(meta.ref_artist);
-        row.charter = display_charter(meta.ref_charter);
-        row.mode = meta.chartmode;
+        row.song = display_title(naming.title);
+        row.artist = display_artist(naming.artist);
+        row.charter = display_charter(naming.charter);
+        row.rank = p.rank;
+        row.optimal = p.optimal;
+        row.path = p.path;
+        row.score = p.score;
+        row.acts = p.actcount;
+        row.skip = p.maxskip;
+        row.ms = p.hardest_ms;
+        row.efill = p.hardest_efill;
+        row.mult = p.avgmult;
+        row.sqin = p.sqin_count;
+        row.sqout = p.sqout_count;
+        row.notes = record.notecount;
         std::tie(row.tier, row.tok) = tier_for(row.ms, tiers);
-        row.hyhash = meta.hyhash;
-        row.copies = copies;
+        row.hyhash = record.song_id;
         out.push_back(std::move(row));
     }
 }
 
-// The settings one chart mode is analyzed under. The run's own mode takes the
-// run's settings as they are. Another mode keeps the run's search settings
-// (the SearchSettings base) and takes the parse choices (AnalysisSettings'
-// own fields) that Settings::with_chartmode picks for it, so the key's one
-// owner decides which choices a mode means. Throws when no choice spells the
-// mode.
-AnalysisSettings settings_for_mode(const BatchRun& run, const std::string& chartmode) {
-    if (chartmode == run.chartmode) return run.settings;
-    AnalysisSettings out = Settings{}.with_known_chartmode(chartmode).to_analysis_settings();
-    static_cast<SearchSettings&>(out) = run.settings;
-    return out;
-}
-
 }  // namespace
-
-std::vector<ReportRow> chart_rows(const HydraRecord& record, int64_t max_paths) {
-    // all_paths() is already best first (pather::read sorts the roots and
-    // each variant sits under its parent), so ranks number it as it comes.
-    const std::vector<const Path*> paths = record.all_paths();
-    const int64_t shown = std::min<int64_t>(max_paths, static_cast<int64_t>(paths.size()));
-    std::vector<ReportRow> rows;
-    rows.reserve(static_cast<size_t>(std::max<int64_t>(shown, 0)));
-    for (int64_t idx = 0; idx < shown; ++idx) {
-        const Path* path = paths[static_cast<size_t>(idx)];
-        store::PathSummary s = store::summarize_path(*path);
-
-        ReportRow row;
-        row.rank = static_cast<int>(idx + 1);
-        row.optimal = record.is_optimal(*path);
-        row.path = path->pathstring();
-        row.score = *s.score;
-        row.acts = *s.actcount;
-        row.skip = *s.maxskip;
-        row.ms = s.hardest_ms;
-        for (const Activation& a : path->walk_activations()) {
-            std::optional<double> ediff = a.e_difficulty();
-            if (ediff.has_value() && (!row.efill || *ediff > *row.efill))
-                row.efill = *ediff;
-        }
-        row.mult = py_round3(*s.avgmult);
-        row.sqin = *s.sqin_count;
-        row.sqout = *s.sqout_count;
-        row.notes = *s.notecount;
-        rows.push_back(std::move(row));
-    }
-    return rows;
-}
 
 std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
                                              double hit_window_ms) {
@@ -140,41 +94,6 @@ std::string beyond_edge_text(double hit_window_ms) {
     return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));
 }
 
-namespace {
-
-// One listing a page shows, with its chart hash keyed like
-// library_copies_by_hash.
-struct LibraryListing {
-    std::string hash;
-    store::RecordListing listing;
-};
-
-// list_records' listings for one chart mode (every mode when none), cap and
-// lens, best score first, keeping those whose chart `library` lists
-// (library_lists). The store lists results the library doesn't, and no page
-// shows one (D87 item 4, D92). collect_rows lists through here.
-std::vector<LibraryListing> listings_the_library_lists(
-    store::RecordStore& store, const std::unordered_map<std::string, int>& library,
-    const std::optional<std::string>& chartmode, const store::CapQuery& cap,
-    const store::Lens& lens) {
-    std::vector<LibraryListing> out;
-    for (store::RecordListing& r : store.list_records(chartmode, cap, lens,
-                                                       store::SortColumn::Score,
-                                                       /*descending=*/true)) {
-        std::string hash = normalize_chart_hash(r.hyhash);
-        if (!library_lists(library, hash)) continue;
-        out.push_back({std::move(hash), std::move(r)});
-    }
-    return out;
-}
-
-}  // namespace
-
-bool library_lists(const std::unordered_map<std::string, int>& library,
-                   const std::string& hash) {
-    return library.find(hash) != library.end();
-}
-
 std::unordered_map<std::string, store::RecordRow> listed_records(
     store::RecordStore& store, const store::Profile& profile, const store::ChartIndex& library) {
     std::unordered_map<std::string, store::RecordRow> by_id;
@@ -204,125 +123,29 @@ bool lacks_chart_library(store::RecordStore& store) {
     return lacks_chart_library(store, holds_results(store));
 }
 
-std::unordered_map<std::string, int> library_copies_by_hash(store::RecordStore& store) {
-    std::unordered_map<std::string, int> by_hash;
-    // Two md5s that differ only in case name one chart, so their rows add up.
-    for (const auto& [md5, n] : store.library_copies()) by_hash[normalize_chart_hash(md5)] += n;
-    return by_hash;
-}
-
 CollectedRows collect_rows(store::RecordStore& store, const ReportOptions& options) {
     // Fail loudly rather than list paths found under other settings.
     if (!options.run)
         throw std::invalid_argument("collect_rows: the report has no analysis settings");
-    const BatchRun& run = *options.run;
-
-    // Which file each library chart is analyzed from (RecordStore::naming_copy_paths),
-    // by the hash spelling a page joins on.
-    std::unordered_map<std::string, std::string> files;
-    for (auto& [md5, path] : store.naming_copy_paths())
-        files.emplace(normalize_chart_hash(md5), std::move(path));
-    const std::unordered_map<std::string, int> copies = library_copies_by_hash(store);
-
-    // One slot per chart and mode the page lists, in list_records' order.
-    struct Slot {
-        store::RecordListing listing;
-        const std::string* file = nullptr;
-        std::vector<ReportRow> rows;
-        std::string failure;
-        // The chart's library copies (D76), set from RecordStore::copies_of
-        // for every slot: its rows carry it and the progress bar counts the
-        // slot by it.
-        int copies = 0;
-    };
-    std::vector<Slot> slots;
-    std::vector<size_t> to_analyze;  // slot indexes this pass analyzes
-    std::unordered_map<std::string, AnalysisSettings> mode_settings;
-    for (LibraryListing& listed :
-         listings_the_library_lists(store, copies, std::nullopt, run.cap_query(), run.lens)) {
-        const std::string& hash = listed.hash;
-        store::RecordListing& listing = listed.listing;
-        Slot slot;
-        // Both maps come from kNamingCopiesSql, so a listed chart has a file.
-        slot.file = &files.at(hash);
-        slot.copies = store::RecordStore::copies_of(copies, hash);
-        if (mode_settings.find(listing.chartmode) == mode_settings.end())
-            mode_settings.emplace(listing.chartmode, settings_for_mode(run, listing.chartmode));
-        to_analyze.push_back(slots.size());
-        slot.listing = std::move(listing);
-        slots.push_back(std::move(slot));
-    }
-
-    // The analysis, on every core the batch would use. Workers only read
-    // `slots` and `mode_settings`; each result is filed on this thread.
-    struct Analyzed {
-        size_t slot = 0;
-        std::vector<ReportRow> rows;
-        std::string failure;
-        bool failed = false;
-        bool cancelled = false;
-    };
-    const ChartAnalyzer analyze =
-        options.analyze ? options.analyze : ChartAnalyzer(analyze_chart_file);
-    const std::function<void(float)> check_cancel = stop_on_cancel(options.cancel);
-    // The bar counts records the way the header does (generate_report's
-    // records): each slot weighs its chart's copies (D103 item 25,
-    // 2026-10-11). A slot that fails, or lists no path, still moves the bar
-    // but puts no rank-1 row on the page, so the header can end lower by its
-    // weight. With nothing to analyze the bar shows no count (item 26).
-    int total = 0;
-    int done = 0;
-    for (const Slot& slot : slots) total += slot.copies;
-    if (options.progress) options.progress(done, total);
-    run_work_pool<Analyzed>(
-        to_analyze.size(), batch_worker_count(), options.cancel,
-        [&](size_t k) {
-            Analyzed a;
-            a.slot = to_analyze[k];
-            const Slot& slot = slots[a.slot];
-            try {
-                const AnalysisResult ar =
-                    analyze(*slot.file, mode_settings.at(slot.listing.chartmode), check_cancel);
-                a.rows = chart_rows(ar.record, options.max_paths);
-            } catch (const AnalysisCancelled&) {
-                a.cancelled = true;
-            } catch (const std::exception& e) {
-                a.failed = true;
-                a.failure = e.what();
-            }
-            return a;
-        },
-        [&](Analyzed&& a) {
-            Slot& slot = slots[a.slot];
-            done += slot.copies;
-            if (options.progress) options.progress(done, total);
-            if (a.cancelled) return;
-            if (a.failed) slot.failure = std::move(a.failure);
-            else slot.rows = std::move(a.rows);
-        });
-
     CollectedRows out;
-    // A stopped pass left charts unanalyzed: nothing is built from it.
-    if (options.cancel && options.cancel->load()) return out;
+    out.library = store.chart_index();
+    const std::unordered_map<std::string, store::RecordRow> records =
+        listed_records(store, options.run->profile(), out.library);
     // Built once for the whole report, not once per row.
     const std::vector<TimingTier> tiers = timing_tiers(options.hit_window_ms);
-    // A file that failed in several chart modes is one chart left out.
-    std::unordered_set<std::string> failed_files;
-    for (const Slot& slot : slots) {
-        if (!slot.failure.empty()) {
-            if (failed_files.insert(*slot.file).second)
-                out.failures.push_back({*slot.file, slot.failure});
-            continue;
-        }
-        // Every library copy counts (D76).
-        place_rows(out.rows, slot.rows, options.max_paths,
-                   slot.listing, slot.copies, tiers);
+    // The library's scan order, so the page's rows come out the same way
+    // every time.
+    for (const std::string& id : out.library.song_ids()) {
+        const auto it = records.find(id);
+        if (it == records.end()) continue;
+        place_record(out.rows, it->second, options.max_paths, *out.library.naming(id), tiers);
     }
     return out;
 }
 
 std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
-                             const std::vector<size_t>& shown, double hit_window_ms) {
+                             const std::vector<size_t>& shown, double hit_window_ms,
+                             const store::ChartIndex& library) {
     const std::string beyond = beyond_tier(timing_tiers(hit_window_ms)).name;
     // The row with the largest Hardest ms, the first of a tie; the tile shows
     // that row's text.
@@ -337,7 +160,7 @@ std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
         highest_skip = std::max(highest_skip, r.skip);
     }
     return {
-        {"Charts shown", group_thousands(charts_counted(rows, shown))},
+        {"Charts shown", group_thousands(library.count(ids_of(rows, shown)))},
         {"Paths shown", group_thousands(static_cast<int64_t>(shown.size()))},
         // The Hardest ms column's own text (format_ms).
         {"Hardest ms", hardest ? format_ms(*hardest->ms) : std::string(kDash)},
@@ -347,10 +170,13 @@ std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
     };
 }
 
-std::string left_out_line(const std::vector<ReportFailure>& failures) {
+std::string left_out_line(const std::vector<ReportFailure>& failures,
+                          const store::ChartIndex& library) {
     if (failures.empty()) return std::string();
-    return "Left out: " +
-           hydra::counted(static_cast<int64_t>(failures.size()), "chart", "charts") +
+    std::vector<std::string> ids;
+    ids.reserve(failures.size());
+    for (const ReportFailure& f : failures) ids.push_back(f.song_id);
+    return "Left out: " + hydra::counted(library.count(ids), "chart", "charts") +
            " whose file couldn't be read.";
 }
 
@@ -365,14 +191,14 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
     const double w = options.hit_window_ms;
     out.hit_window_ms = w;
     CollectedRows collected = collect_rows(store, options);
-    // Cancelled part-way through: whatever the pass collected is a partial
-    // library, so nothing is built from it. An empty result says "no report",
-    // and the caller that set the flag already knows why.
+    // Cancelled: nothing is built, and the caller that set the flag already
+    // knows why.
     if (options.cancel && options.cancel->load()) {
         out.empty_reason = EmptyReason::Cancelled;
         return out;
     }
     out.failures = std::move(collected.failures);
+    out.library = std::move(collected.library);
     const std::vector<ReportRow>& rows = collected.rows;
     // collect_rows refused a report with no run, so it is set here.
     const BatchRun& run = *options.run;
@@ -380,8 +206,8 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
     out.rows = static_cast<int64_t>(rows.size());
     if (rows.empty()) {
         // Nothing listed. Either the database is empty, or it holds results
-        // under another cap or fill rule (or only stale ones), and the user
-        // needs to hear which (finding 105).
+        // under other settings (or only stale ones), and the user needs to
+        // hear which (finding 105).
         const bool any_results = holds_results(store);
         if (!any_results) {
             out.empty_reason = EmptyReason::NothingStored;
@@ -397,29 +223,22 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
         }
         return out;
     }
-    // The subtitle counts what the page lists: every record on it has exactly
-    // one rank-1 row, and its songs are the charts the page numbers. Both
-    // count every library copy of a chart (D76, D77).
-    for (const ReportRow& r : rows)
-        if (r.rank == 1) out.records += r.copies;
     std::vector<size_t> every_row(rows.size());
     std::iota(every_row.begin(), every_row.end(), size_t{0});
-    out.songs = charts_counted(rows, every_row);
+    out.songs = out.library.count(ids_of(rows, every_row));
 
     // Counts read the house rule (hydra::counted, D48 Q12). The cut is per
-    // chart and mode, and the page lists every mode at the current cap.
+    // chart.
     std::string shown = options.max_paths >= kEveryPathSentinel
                             ? "every path"
-                            : "every mode at the current cap, top " +
-                                  hydra::counted(options.max_paths, "path", "paths") +
-                                  " per chart and mode";
+                            : "top " + hydra::counted(options.max_paths, "path", "paths") +
+                                  " per chart";
     std::string cap_label = "SP cap " + bars_text(run.cap_query().exact);
     // The normal rule goes unsaid, so a 1.1 page reads as it always has.
     if (rule != FillDeadlineRule::Ch11)
         cap_label += std::string(" — ") + fill_rule_name(rule, FillRuleNameStyle::Long) + " fills";
-    std::string subtitle = hydra::counted(out.records, "record", "records") + " across " +
-                           hydra::counted(out.songs, "chart", "charts") + " — " + shown +
-                           " — " + cap_label;
+    std::string subtitle =
+        hydra::counted(out.songs, "chart", "charts") + " — " + shown + " — " + cap_label;
     std::string dbname =
         std::filesystem::u8path(options.db_path).filename().u8string();
     // D50 item 1. The window named is the Beyond edge, printed whole the way
@@ -437,12 +256,9 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
 }
 
 PageSettings PageSettings::of(const Settings& settings) {
-    // generate_report is asked for one SP cap and one lens, and labels its
-    // tiers from the hit window. It lists every chart mode, and
-    // settings_for_mode gives each mode the run's search settings with only
-    // that mode's own parse choices, so the mode the analysis settings show
-    // reaches no row.
-    return PageSettings{settings.cap_query(), settings.lens(), settings.hit_window_ms};
+    // generate_report lists one profile (chart mode, SP cap and lens), and
+    // labels its tiers from the hit window.
+    return PageSettings{settings.profile(), settings.hit_window_ms};
 }
 
 bool settings_change_touches(const Settings& before, const Settings& after) {

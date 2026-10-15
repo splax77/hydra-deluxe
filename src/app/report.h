@@ -24,18 +24,17 @@ struct Settings;  // app/config.h
 
 namespace hydra::app::report {
 
-// One table row: one path of one chart and mode.
+// One table row: one stored path of one chart's record under the page's
+// profile.
 struct ReportRow {
     std::string song;
     std::string artist;
     std::string charter;
-    std::string mode;
-    // The path's place in its record's list, best score first. The subtitle
-    // counts one record per rank-1 row.
+    // The path's place in its record, best score first (store::PathRow::rank).
     int rank = 1;
-    // Is the path optimal? Read from HydraRecord::is_optimal, so every path
-    // tied at the top score is, as on the Paths tab (D48 Q1). The page's "Best
-    // path only" box and its bold rows read this, not the rank.
+    // Is the path optimal? The stored flag (store::PathRow::optimal), so every
+    // path tied at the top score is, as on the Paths tab (D48 Q1). The page's
+    // "Optimal paths only" box reads this, not the rank.
     bool optimal = false;
     std::string path;
     int64_t score = 0;
@@ -44,24 +43,16 @@ struct ReportRow {
     std::optional<double> ms;
     std::string tier;
     std::string tok;
-    // Hardest early fill among the path's E0 activations, in the same
-    // difficulty convention as `ms` (e_difficulty = -e_offset: positive means
-    // you must hit that much early, negative is slack). Skipped E activations
-    // don't count — their fill is irrelevant to the path. Unset when the path
-    // has no E0 fill (distinct from a real 0.0ms fill).
+    // The path's hardest early fill, as the record stored it
+    // (store::PathRow::hardest_efill). Unset when the path has none.
     std::optional<double> efill;
-    double mult = 0.0;  // already round(x, 3)'d, like the Python row
+    double mult = 0.0;
     int sqin = 0;
     int sqout = 0;
     int notes = 0;
-    // The chart this row belongs to. charts_counted (report.cpp) groups rows
-    // by it for the subtitle's count and the Charts shown tile.
+    // The chart this row belongs to (its song id). Every chart count on the
+    // page asks store::ChartIndex::count over these ids.
     std::string hyhash;
-    // How many library rows that chart counts as, every copy counted (D76):
-    // what the subtitle and the Charts tile add up. collect_rows sets it from
-    // store::RecordStore::copies_of, which also answers for a chart the
-    // library doesn't list (D77).
-    int copies = 0;
 };
 
 // One tile above a report's table: what it counts and the text it shows.
@@ -98,9 +89,11 @@ inline ChipToken tier_token(const std::string& tok) {
 // The path report's five tiles over the rows a window shows: `shown` holds
 // their indices into `rows`. `hit_window_ms` is the window the rows' tiers
 // were labeled with (GeneratedReport::hit_window_ms), which names the Beyond
-// edge in the "Past N ms" tile. Takes over the page script's `stats`.
+// edge in the "Past N ms" tile. `library` counts the Charts shown tile
+// (GeneratedReport::library). Takes over the page script's `stats`.
 std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
-                             const std::vector<size_t>& shown, double hit_window_ms);
+                             const std::vector<size_t>& shown, double hit_window_ms,
+                             const store::ChartIndex& library);
 
 // The timing_tiers table's two open bands, the one answer to which entries
 // they are: Beyond, past the last cutoff, and None, a path with no squeeze.
@@ -128,24 +121,10 @@ std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
 // the page's payload, its footer, the Past tile and the Timing chip.
 std::string beyond_edge_text(double hit_window_ms);
 
-// Every chart the store's library lists, with its copies
-// (RecordStore::library_copies), keyed by its chart hash in lower case. The
-// path report reads its library copies from here; a chart's count goes
-// through RecordStore::copies_of, and "is this chart in the library" through
-// library_lists. The comparison pages ask store::ChartIndex instead.
-std::unordered_map<std::string, int> library_copies_by_hash(store::RecordStore& store);
-
-// Whether the library lists the chart `hash` names, given
-// library_copies_by_hash's map and a hash keyed the same way. The path
-// report's answer to "is this chart in the library" (D87 item 4, D92); every
-// other page asks store::ChartIndex::lists.
-bool library_lists(const std::unordered_map<std::string, int>& library,
-                   const std::string& hash);
-
 // Every Ready record `store` holds under `profile` (RecordStore::ready_records)
 // whose chart `library` lists, by song id. The store lists results the library
-// doesn't, and no page shows one (D87 item 4, D92). Both comparison pages read
-// their records through here.
+// doesn't, and no page shows one (D87 item 4, D92). The path report and both
+// comparison pages read their records through here.
 std::unordered_map<std::string, store::RecordRow> listed_records(
     store::RecordStore& store, const store::Profile& profile, const store::ChartIndex& library);
 
@@ -156,65 +135,47 @@ inline constexpr int64_t kDefaultReportPaths = store::kPathsPerRecord;
 // reads it, so any smaller --paths is written as a count.
 inline constexpr int64_t kEveryPathSentinel = 1000000000;
 
-// One chart's rows as its record gives them, best score first, up to
-// max_paths. Every field the record answers is set; the chart's names, mode,
-// hash, copies and tier label are left for collect_rows, which knows them.
-// The report's own pass builds rows here.
-std::vector<ReportRow> chart_rows(const HydraRecord& record, int64_t max_paths);
-
 struct ReportOptions {
     int64_t max_paths = kDefaultReportPaths;
     double hit_window_ms = kDefaultHitWindowMs;
     std::string db_path;  // names the footer's source database
-    // Set this and the pass stops between charts and generate_report hands
-    // back an empty result, with no rows. Closing the app while a report
-    // builds goes through here; the CLI never sets it.
+    // Set this and generate_report hands back an empty result, with no rows.
+    // Closing the app while a report builds goes through here; the CLI never
+    // sets it.
     const std::atomic<bool>* cancel = nullptr;
-    // Called on the caller's thread with how many of the page's records are
-    // done, counted the way the header counts them (collect_rows says how):
-    // first before any analysis, then after each chart, the way `cancel` is
-    // checked between charts. A pass with nothing to analyze calls it once,
-    // with 0 of 0. Empty: no calls.
-    std::function<void(int done, int total)> progress;
-    // The settings the page's paths are analyzed under: Settings::batch_run()
-    // of the settings that filed the results. Its SP cap and lens also pick
-    // which records the page lists. A chart mode other than the run's own is
-    // analyzed under the run's search settings with that mode's parse
-    // choices. Required: the report throws without one.
+    // The profile the page lists: BatchRun::profile() of the settings that
+    // filed the results. Required: the report throws without one.
     std::optional<BatchRun> run;
-    // What analyzes one chart. Empty means analyze_chart_file; a test passes
-    // one to count the calls.
-    ChartAnalyzer analyze;
 };
 
-// A chart file the pass could not load or analyze. Its chart is left off the
-// page (D89 item 1).
+// A chart left off the page (D89 item 1): its song id, the file the notice
+// names and why.
 struct ReportFailure {
+    std::string song_id;
     std::string notespath;
     std::string error;
 };
 
-// What collect_rows found.
+// What collect_rows found: the page's rows and the library they were read
+// against.
 struct CollectedRows {
     std::vector<ReportRow> rows;
-    // One entry per file, however many chart modes failed on it.
     std::vector<ReportFailure> failures;
+    store::ChartIndex library;
 };
 
-// The page's rows from a fresh analysis (D87 item 5). The charts are the ones
-// the library lists that the store holds a Ready row for at options.run's SP
-// cap and lens, in every chart mode; list_records says which, and names
-// them. Each is analyzed from the file RecordStore::naming_copy_paths gives.
-// A result with no library row is left out (D87 item 4). Each chart
-// and mode gives up to options.max_paths rows, best score first. The charts
-// run on batch_worker_count() threads; options.cancel stops the pass between
-// charts, and the caller throws the half-built result away. hit_window_ms
-// feeds the tier labels only.
+// The page's rows, read from the store: every Ready record of options.run's
+// profile whose chart the library lists (listed_records), in the library's
+// scan order, each giving up to options.max_paths rows in its stored rank
+// order. Nothing is analyzed and no chart file is opened. hit_window_ms feeds
+// the tier labels only.
 CollectedRows collect_rows(store::RecordStore& store, const ReportOptions& options);
 
 // The line a report shows under its subtitle when charts were left out (D89
-// item 1). Empty when none were.
-std::string left_out_line(const std::vector<ReportFailure>& failures);
+// item 1), counted through `library` (store::ChartIndex::count). Empty when
+// none were.
+std::string left_out_line(const std::vector<ReportFailure>& failures,
+                          const store::ChartIndex& library);
 
 // ---- generate_report -------------------------------------------------------
 // The whole report in one call: counts + rows + the standard framing
@@ -257,9 +218,9 @@ std::string nothing_under_settings(int cap, const std::string& middle,
                                    const std::string& ending = std::string());
 
 struct GeneratedReport {
-    // Both count every library copy of a chart (D76, D77).
-    int64_t songs = 0;    // charts with rows on the page
-    int64_t records = 0;  // records with rows on the page (one rank-1 row each)
+    // The charts with rows on the page, every library copy counted
+    // (store::ChartIndex::count, D76, D77).
+    int64_t songs = 0;
     int64_t rows = 0;
     EmptyReason empty_reason = EmptyReason::None;
     // For NothingUnderSettings, the sentence that names the settings: "Nothing
@@ -274,6 +235,9 @@ struct GeneratedReport {
     // The rows themselves, one per path, in collect_rows' order. Empty when
     // there is no page.
     std::vector<ReportRow> paths;
+    // The library the rows were read against. The window recounts its
+    // Charts shown tile through it (path_tiles).
+    store::ChartIndex library;
     // The window the rows' tiers were labeled with (ReportOptions::hit_window_ms).
     double hit_window_ms = kDefaultHitWindowMs;
     // The line under the page's heading and the note at its foot, as the page
@@ -287,17 +251,17 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
 
 // The user settings generate_report reads, stated once. A new read of a
 // setting by the page joins this list, and settings_change_touches compares
-// through it. The chart mode is not here: the page lists every mode
-// (settings_for_mode). The rules are not here either: hydra_rules.ini is read
-// once at start-up (AppState), so no open page outlives a change to them.
+// through it. The profile holds the chart mode, so a change of difficulty,
+// Pro Drums, 2x Bass or Note Shuffle puts an open page out of date. The rules
+// are not here: hydra_rules.ini is read once at start-up (AppState), so no
+// open page outlives a change to them.
 struct PageSettings {
-    store::CapQuery cap;
-    store::Lens lens;
+    store::Profile profile;
     double hit_window_ms = kDefaultHitWindowMs;
 
     static PageSettings of(const Settings& settings);
     bool operator==(const PageSettings& other) const {
-        return cap == other.cap && lens == other.lens && hit_window_ms == other.hit_window_ms;
+        return profile == other.profile && hit_window_ms == other.hit_window_ms;
     }
     bool operator!=(const PageSettings& other) const { return !(*this == other); }
 };

@@ -139,6 +139,9 @@ struct Frame {
     // Building: the bar's count, or no count for a moving bar, and the lines
     // above it.
     std::optional<std::pair<int, int>> progress;
+    // Building: false draws no bar at all (the path report, which only reads
+    // the store).
+    bool progress_bar = true;
     std::vector<const char*> building_lines;
     // Building: grey rows where the table will be (mock board 2a).
     bool placeholder_rows = false;

@@ -38,7 +38,6 @@ ReportRow path_row(std::string song, std::string artist, std::string charter,
     r.song = std::move(song);
     r.artist = std::move(artist);
     r.charter = std::move(charter);
-    r.mode = "Expert Pro Drums";
     r.path = std::move(path);
     r.score = score;
     r.optimal = optimal;

@@ -515,26 +515,19 @@ void ViewJob::run() {
 // ---- ReportJob --------------------------------------------------------
 
 namespace {
-app::ChartAnalyzer g_report_analyzer;
+std::function<void()> g_report_hold;
 }  // namespace
 
-void set_report_analyzer_for_test(app::ChartAnalyzer analyze) {
-    g_report_analyzer = std::move(analyze);
-}
+void set_report_hold_for_test(std::function<void()> hold) { g_report_hold = std::move(hold); }
 
 ReportJob::ReportJob(store::RecordStore& store, app::BatchRun run, double hit_window_ms)
     : store_(store),
       run_(std::move(run)),
       hit_window_ms_(hit_window_ms),
-      analyze_(g_report_analyzer) {}
+      hold_(g_report_hold) {}
 
 void ReportJob::start() {
-    // However the build ended (done, cancelled or failed), the memory its
-    // charts freed then goes back to Windows (D95 call 1), on this job's thread.
-    spawn([this] {
-        run();
-        app::return_freed_memory();
-    });
+    spawn([this] { run(); });
 }
 
 void ReportJob::run() {
@@ -545,16 +538,10 @@ void ReportJob::run() {
         options.max_paths = app::report::kDefaultReportPaths;
         options.hit_window_ms = hit_window_ms_;
         options.db_path = app::db_path();
-        // Closing Hydra sets this. Without it the window waits for the whole
-        // library to be analyzed before it can shut down.
+        // Closing Hydra or the window's Cancel sets this.
         options.cancel = &cancel_;
-        // The window's "Analyzing n of N records" reads these (progress()).
-        options.progress = [this](int done, int total) {
-            progress_total_.store(total, std::memory_order_relaxed);
-            progress_done_.store(done, std::memory_order_relaxed);
-        };
         options.run = run_;
-        options.analyze = analyze_;  // empty: generate_report's own
+        if (hold_) hold_();
         app::report::GeneratedReport report = app::report::generate_report(store_, options);
         // Checked before the "no records" throw: a cancelled run has no rows
         // because it stopped, not because the store is empty, and the last

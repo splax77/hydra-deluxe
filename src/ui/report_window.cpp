@@ -185,7 +185,9 @@ bool state_body(const Frame& f) {
                 else
                     ImGui::TextColored(kDimTextColor, "%s", f.building_lines[i]);
             }
-            if (f.progress) {
+            if (!f.progress_bar) {
+                // No bar: the window says what is happening and nothing moves.
+            } else if (f.progress) {
                 const auto [done, total] = *f.progress;
                 const std::string overlay = "Analyzing " + group_thousands(done) + " of " +
                                             counted(total, "record", "records");

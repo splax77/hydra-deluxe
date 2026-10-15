@@ -400,15 +400,14 @@ void set_view_analyzer_for_test(app::ChartAnalyzer analyze);
 
 // Builds the library's path report in memory (app::report::generate_report)
 // for the path report window (D103). Kicked off when a library batch analysis
-// finishes, and by the window's Refresh (AppState::request_path_report).
-// Analyzing the library's charts can take seconds on a big library, so it runs
-// off the render thread like every other job. It writes and opens nothing.
+// finishes, and by the window's Refresh (AppState::request_path_report). It
+// reads the stored records of one profile, off the render thread like every
+// other job. It writes, analyzes and opens nothing.
 class ReportJob : public ResultJobBase {
 public:
-    // `run` is the settings the charts are analyzed under (ReportOptions::run);
-    // the records the report lists are the ones filed under it
-    // (BatchRun::profile). hit_window_ms feeds the report's timing-tier
-    // bands (settings.hit_window_ms).
+    // `run` names the profile the report lists (ReportOptions::run,
+    // BatchRun::profile). hit_window_ms feeds the report's timing-tier bands
+    // (settings.hit_window_ms).
     ReportJob(store::RecordStore& store, app::BatchRun run,
               double hit_window_ms = kDefaultHitWindowMs);
     ~ReportJob() { shutdown(); }
@@ -423,31 +422,21 @@ public:
     // rather than copied.
     const std::shared_ptr<const app::report::GeneratedReport>& result() const { return result_; }
 
-    // The build's progress as of the latest ReportOptions::progress call,
-    // which says what the two numbers count: 0 of 0 before the first. Safe to
-    // read from the UI thread while the job runs.
-    std::pair<int, int> progress() const {
-        return {progress_done_.load(std::memory_order_relaxed),
-                progress_total_.load(std::memory_order_relaxed)};
-    }
-
 private:
     void run();
 
-    std::atomic<int> progress_done_{0};
-    std::atomic<int> progress_total_{0};
     store::RecordStore& store_;
     app::BatchRun run_;
     double hit_window_ms_;
-    app::ChartAnalyzer analyze_;  // the test seam's, copied at construction
+    std::function<void()> hold_;  // the test seam's, copied at construction
     std::shared_ptr<const app::report::GeneratedReport> result_;
 };
 
-// Test seam: when set, every report job built from now on analyzes its
-// charts with this in place of generate_report's own, so a test can hold a
-// build open (one build at a time, Cancel, an out-of-date event during a
-// build). An empty analyzer clears it. Only tests set it.
-void set_report_analyzer_for_test(app::ChartAnalyzer analyze);
+// Test seam: when set, every report job built from now on calls this on its
+// own thread before it reads the store, so a test can hold a build open (one
+// build at a time, Cancel, an out-of-date event during a build). An empty
+// hook clears it. Only tests set it.
+void set_report_hold_for_test(std::function<void()> hold);
 
 }  // namespace hydra::ui
 

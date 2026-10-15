@@ -111,7 +111,7 @@ void draw_body(PathWindow& w, const report_frame::Frame& frame, const PathReport
     TableView<ReportRow>& view = *w.view;
     if (w.tiles_dirty) {
         w.tiles = app::report::path_tiles(view.rows(), view.visible(),
-                                          input.result->hit_window_ms);
+                                          input.result->hit_window_ms, input.result->library);
         w.tiles_dirty = false;
     }
     report_frame::tiles(w.tiles);
@@ -154,16 +154,15 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
     frame.window_name = "Path report \xE2\x80\x94 Hydra###pathreport";  // U+2014
     frame.heading = "Path Index";
     frame.building_subtitle = "Building the report from your library...";
-    // Nothing left to analyze (a batch's results cover every chart) leaves
-    // the bar moving with no count, as the comparison's does (D103 item 26).
-    if (input.progress_total > 0)
-        frame.progress = std::make_pair(input.progress_done, input.progress_total);
+    // The build only reads the store, so it has no count to show and draws
+    // no bar.
+    frame.progress_bar = false;
     frame.placeholder_rows = true;
     frame.analysis_off_sentence = app::kAnalysisOffSentence;
     frame.analysis_off_error = input.rules_error;
     frame.failure_sentence = app::kPathReportFailed;
     if (result) {
-        frame.notice = app::report::left_out_line(result->failures);
+        frame.notice = app::report::left_out_line(result->failures, result->library);
         for (const app::report::ReportFailure& f : result->failures)
             frame.notice_files.push_back(f.notespath);
         if (!w.view) frame.empty_text = result->why_empty;
@@ -183,14 +182,13 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
 PathReportInput path_report_input(AppState& app) {
     const PathReportSlot& slot = app.path_report;
     PathReportInput in = input_from_slot(slot, app.path_report_build());
-    if (in.state == ReportBuild::Building && app.report_job)
-        std::tie(in.progress_done, in.progress_total) = app.report_job->progress();
     in.rules_error = app.rules_error;
     in.keep_filters = slot.built_on_open;
     // The row index is into this frame's result, which the click keeps alive.
+    // The page lists one profile, so a click selects the chart and never
+    // switches the chart mode: it asks in the mode the settings already hold.
     in.callbacks.row_click = [&app, result = slot.result](size_t row) {
-        const ReportRow& r = result->paths[row];
-        app.select_chart(r.hyhash, r.mode);
+        app.select_chart(result->paths[row].hyhash, app.settings.chartmode_key());
     };
     in.callbacks.refresh = [&app] { app.request_path_report(); };
     in.callbacks.try_again = [&app] { app.request_path_report(); };
