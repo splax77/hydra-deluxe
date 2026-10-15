@@ -196,6 +196,15 @@ TEST_CASE("classify_library_file names each generation of library file") {
         file_of("CREATE TABLE t (x)");
         CHECK(classify_library_file(path) == LibraryFileKind::Current);
     }
+    SUBCASE("LacksFailureColumns: 2.8.0's records table, without the failure columns") {
+        file_of("CREATE TABLE records (song_id TEXT, profile_id INTEGER, pathcount INTEGER)");
+        CHECK(classify_library_file(path) == LibraryFileKind::LacksFailureColumns);
+        file_of("CREATE TABLE records (song_id TEXT, profile_id INTEGER, failure_kind TEXT)");
+        CHECK(classify_library_file(path) == LibraryFileKind::LacksFailureColumns);
+        file_of("CREATE TABLE records (song_id TEXT, profile_id INTEGER, failure_kind TEXT,"
+                " failure_text TEXT)");
+        CHECK(classify_library_file(path) == LibraryFileKind::Current);
+    }
     SUBCASE("Convertible: the results table 2.2.0 to 2.7.0 wrote") {
         file_of(test::kV220ResultsTableSql);
         CHECK(classify_library_file(path) == LibraryFileKind::Convertible);
@@ -222,6 +231,65 @@ TEST_CASE("classify_library_file names each generation of library file") {
         write_junk_db(path);
         CHECK(classify_library_file(path) == LibraryFileKind::Unreadable);
     }
+    remove_db(path);
+}
+
+// ---- a 2.8.0 file gains the failure columns (REPORT-ALL-T1) ----------------
+
+TEST_CASE("a 2.8.0 file without the failure columns opens and gains them in place") {
+    const std::string path = testtemp::temp_path("lacks_failure_columns", ".db");
+    const Profile profile{"mode", CapQuery::at(4), Lens{}};
+    remove_db(path);
+    PreparedRecord real = prepare_record("real", profile, at_cap(4));
+    {
+        RecordStore seed(path);
+        seed.save(real);
+    }
+    // 2.8.0's records table: the same table without the two columns.
+    exec_on_file(path, "ALTER TABLE records DROP COLUMN failure_text;"
+                       "ALTER TABLE records DROP COLUMN failure_kind;");
+    REQUIRE(classify_library_file(path) == LibraryFileKind::LacksFailureColumns);
+    const int64_t paths_before = scalar_on_file(path, "SELECT COUNT(*) FROM record_paths");
+    {
+        RecordStore store(path);
+        // The old record reads as it did.
+        const RecordLookup got = store.lookup_one("real", profile);
+        REQUIRE(got.status == RecordStatus::Ready);
+        CHECK(got.record == real.record);
+        CHECK(store.record_count() == 1);
+        // And a failure can be stored beside it.
+        store.save(failure_record("failed", profile, ErrorKind::NoNotes, "No notes."));
+        CHECK(store.lookup_one("failed", profile).status == RecordStatus::CantAnalyze);
+    }
+    CHECK(classify_library_file(path) == LibraryFileKind::Current);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM records WHERE failure_kind IS NULL"
+                               " AND failure_text IS NULL") == 1);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == paths_before);
+    // A second open finds a Current file and changes nothing.
+    {
+        RecordStore reopened(path);
+        CHECK(reopened.lookup_one("real", profile).status == RecordStatus::Ready);
+        CHECK(reopened.lookup_one("failed", profile).status == RecordStatus::CantAnalyze);
+    }
+    remove_db(path);
+}
+
+TEST_CASE("an open that cannot add the failure columns fails as DatabaseUpgrade and changes "
+          "nothing") {
+    // A records table that has one failure column already: adding it again
+    // fails inside the transaction, so the other is not added either.
+    const std::string path = testtemp::temp_path("half_failure_columns", ".db");
+    remove_db(path);
+    { RecordStore seed(path); }
+    exec_on_file(path, "ALTER TABLE records DROP COLUMN failure_text;");
+    REQUIRE(classify_library_file(path) == LibraryFileKind::LacksFailureColumns);
+    try {
+        RecordStore store(path);
+        FAIL("the open added a column the table already has");
+    } catch (const KindedError& e) {
+        CHECK(e.kind() == ErrorKind::DatabaseUpgrade);
+    }
+    CHECK(classify_library_file(path) == LibraryFileKind::LacksFailureColumns);
     remove_db(path);
 }
 

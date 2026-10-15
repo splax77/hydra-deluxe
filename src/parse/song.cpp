@@ -446,7 +446,7 @@ std::string no_notes_message(Difficulty difficulty, bool prodrums) {
 }
 
 NoNotesError::NoNotesError(Difficulty difficulty, bool prodrums)
-    : ChartFileError(ErrorKind::AlreadyPlain, no_notes_message(difficulty, prodrums)) {}
+    : ChartFileError(ErrorKind::NoNotes, no_notes_message(difficulty, prodrums)) {}
 
 namespace {
 

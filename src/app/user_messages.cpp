@@ -118,6 +118,7 @@ std::optional<KindSentence> kind_sentence(const KindedError& e) {
         case ErrorKind::ChartUnreadable: return KindSentence{kChartUnreadable};
         case ErrorKind::ChartTimingRefused: return quoting(timing_refusal_sentence(e.what()));
         case ErrorKind::NoteShuffleFreezes: return KindSentence{kNoteShuffleFreezes};
+        case ErrorKind::NoNotes: return quoting(e.what());
         case ErrorKind::AlreadyPlain: return quoting(e.what());
         case ErrorKind::SearchBroken: return KindSentence{kSearchBroken};
         case ErrorKind::NetUnreachable: return KindSentence{kNetUnreachable};

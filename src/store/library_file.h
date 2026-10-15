@@ -18,6 +18,9 @@ inline constexpr const char* kOldestConvertibleVersion = "2.2.0";
 enum class LibraryFileKind {
     Fresh,        // no file, an empty file, or SQLite's in-memory name
     Current,      // this build's layout (profiles, records, record_paths)
+    // 2.8.0's layout before failures were stored: its records table lacks the
+    // failure columns, which the open adds in place
+    LacksFailureColumns,
     Convertible,  // a 2.2.0 to 2.7.0 file: its results table becomes records on open
     TooOld,       // a file from before kOldestConvertibleVersion
     Unreadable,   // the file exists but SQLite cannot read its tables

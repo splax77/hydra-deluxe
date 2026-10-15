@@ -421,7 +421,7 @@
     },
     {
       "question": "Does this chart have a current result under these settings?",
-      "owner": "RecordStore::lookup's winner, through Candidate::ready (rank_row) in src/store/record_store.cpp",
+      "owner": "RecordStore::lookup's winner, through Candidate::ready (rank_row) in src/store/record_store.cpp; RecordStore::settled_song_ids lists lookup's Ready and CantAnalyze charts for a batch's skip list",
       "owner_file": "src/store/record_store.cpp",
       "owner_symbol": "RecordStore::lookup",
       "date": "2026-10-05",
@@ -448,7 +448,7 @@
       "scope": [
         "src"
       ],
-      "note": "D79 B1: the batch's skip list and the library's Analyzed chip once read two spellings of Ready, one in SQL. A second spelling compares a row's rules with this process's in SQL or by hand. Decided by: D79 item B1 (task COUNT-B)"
+      "note": "D79 B1: the batch's skip list and the library's Analyzed chip once read two spellings of Ready, one in SQL. A second spelling compares a row's rules with this process's in SQL or by hand. A stored failure is a current result too (CantAnalyze), so the skip list is settled_song_ids, read off lookup. Decided by: D79 item B1 (task COUNT-B); the report-covers-whole-library plan, 2026-10-15 (task REPORT-ALL-T1)"
     },
     {
       "question": "How many library rows does a chart on a page count as when the library doesn't list it?",

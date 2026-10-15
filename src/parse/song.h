@@ -89,8 +89,8 @@ std::string no_notes_message(Difficulty difficulty, bool prodrums);
 
 // A chart with no notes at the asked difficulty. Its message is
 // no_notes_message's sentence, and it is still a ChartFileError, so anything
-// that catches chart problems catches it. Its kind is AlreadyPlain: the
-// sentence is shown as written.
+// that catches chart problems catches it. Its kind is NoNotes, which the
+// store remembers (remembered_failure); its sentence is shown as written.
 class NoNotesError : public ChartFileError {
 public:
     NoNotesError(Difficulty difficulty, bool prodrums);

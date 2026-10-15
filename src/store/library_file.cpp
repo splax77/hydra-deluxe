@@ -84,7 +84,12 @@ LibraryFileKind kind_of(TableProbe& probe) {
         if (probe.failed()) return LibraryFileKind::Unreadable;
         return convertible ? LibraryFileKind::Convertible : LibraryFileKind::TooOld;
     }
+    // 2.8.0 wrote records without the two columns a stored failure fills.
+    const bool lacks_failure_columns =
+        tables.count("records") && !(probe.has_column("records", "failure_kind") &&
+                                     probe.has_column("records", "failure_text"));
     if (probe.failed()) return LibraryFileKind::Unreadable;
+    if (lacks_failure_columns) return LibraryFileKind::LacksFailureColumns;
     return LibraryFileKind::Current;
 }
 
