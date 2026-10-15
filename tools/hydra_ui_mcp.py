@@ -3,15 +3,20 @@
 Claude Code starts this helper (see .mcp.json at the repo root) and calls its
 tools. The helper launches a dev build of hydra_uitest.exe (headless) or
 Hydra.exe (the real window), connects to its live channel, sends each tool
-call as one script line and returns the reply as plain text. The design and
-the wire protocol are in docs/superpowers/plans/2026-10-14-hydra-mcp-server.md.
+call as one command line and returns the reply's text as Hydra wrote it. The
+design and the wire protocol are in "T8: one owner for every command rule" in
+docs/superpowers/plans/2026-10-14-hydra-mcp-server.md.
 
 Run it as:  py -I tools/hydra_ui_mcp.py
 
-What the helper owns: the tool list Claude sees, the caps on every wait and
-on every reply, the reports for a dead or silent Hydra, and the snapshot of the
-user's library (snapshot_library, the only code that knows that folder's path).
-What it never does: build anything, or name the library folder on a command line.
+The helper only carries messages. Hydra owns every command rule: what a line
+means, which numbers it takes, the wording of a reply, the filters, the
+timeout in force and where it logs. The helper owns the transport (launch,
+the pipe name, stop), the caps on every reply, the reports for a dead or
+silent Hydra, the tool list, the line numbers of a hydra_run script, and the
+snapshot of the user's library (snapshot_library, the only code that knows
+that folder's path). What it never does: build anything, or name the library
+folder on a command line.
 """
 
 import atexit
@@ -30,13 +35,12 @@ from pathlib import Path
 
 # The user's answers to the plan's open questions 4 and 5 (2026-10-14).
 # This is the one home of these three numbers.
-REPLY_MARGIN_S = 15.0  # how much longer than a command's own timeout to wait for its reply
+REPLY_MARGIN_S = 15.0  # how much longer than the timeout in force to wait for a reply
 HELLO_TIMEOUT_S = 60.0  # how long hydra_start waits for the hello line
 REPLY_CAP_CHARS = 12_000  # the longest reply Claude is handed
 
-# The session's own cap on a wait is not kept here: the hello line carries it
-# (its owner is CommandSession in tests/ui/uitest_commands.h), and the helper
-# follows the timeout commands it sends itself.
+# The timeout in force is not kept here: the hello line and every reply carry
+# it (its owner is CommandSession in tests/ui/uitest_commands.h).
 
 # Plumbing granularity, not behaviour: how many log lines a crash report
 # quotes, and how often the helper retries opening the pipe while the
@@ -52,6 +56,9 @@ EXE_DIR = REPO / "build-cpp" / "Release"
 HEADLESS_EXE = "hydra_uitest.exe"
 WINDOW_EXE = "Hydra.exe"
 BUILD_TARGETS = {HEADLESS_EXE: "hydra_uitest", WINDOW_EXE: "Hydra"}
+# The file the helper asks Hydra.exe to log to (--uitest-log), in its own
+# scratch folder. hydra_uitest logs to stdout, which the helper captures.
+WINDOW_LOG = "window.log"
 
 # What a snapshot copies, in order. Only hydra.db must exist.
 SNAPSHOT_FILES = ("hydra.db", "hydra.db-wal", "hydra.db-shm", "hydra_settings.ini", "hydra_ui.ini")
@@ -179,7 +186,7 @@ def snapshot_library(library_dir, dest, processes):
 
 
 # ---------------------------------------------------------------------------
-# Reply shaping.
+# Reply shaping: only the cap. The text inside is Hydra's.
 
 
 def cap_reply(text, cap=REPLY_CAP_CHARS):
@@ -207,67 +214,41 @@ def cap_reply(text, cap=REPLY_CAP_CHARS):
     return "\n".join(kept) + "\n" + note(total - len(kept))
 
 
-def filter_text(text, contains):
-    if not contains:
-        return text
-    hits = [line for line in text.splitlines() if contains in line]
-    return "\n".join(hits) if hits else f'no line holds "{contains}"'
-
-
-def filter_dump(text, contains):
-    """Matching item lines plus the window line each sits under."""
-    if not contains:
-        return text
-    out, window, shown = [], None, False
-    for line in text.splitlines():
-        if line.startswith("window "):
-            window, shown = line, False
-            if contains in line:
-                out.append(line)
-                shown = True
-            continue
-        if contains in line:
-            if window is not None and not shown:
-                out.append(window)
-                shown = True
-            out.append(line)
-    return "\n".join(out) if out else f'no widget line holds "{contains}"'
-
-
 def describe_exit(code):
     if code is not None and code > 0x7FFFFFFF:
         return f"{code} (0x{code:08X})"
     return str(code)
 
 
+def seconds_field(msg, key):
+    """msg[key] as a float when it is a JSON number, else None."""
+    v = msg.get(key)
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    return float(v)
+
+
 # ---------------------------------------------------------------------------
 # One live session.
 
 
-def file_stamp(path):
-    """(modification time, size) of `path`, or None when it does not exist."""
-    try:
-        st = path.stat()
-    except OSError:
-        return None
-    return (st.st_mtime_ns, st.st_size)
-
-
 class Session:
-    def __init__(self, mode, proc, argv, scratch, log_path, log_stamp, keep):
+    def __init__(self, mode, proc, argv, scratch, pipe_name, stdout_path, log_path, keep):
         self.mode = mode
         self.proc = proc
         self.argv = argv
-        self.scratch = scratch  # the helper's own folder: snapshot, shots, log
+        self.scratch = scratch  # the helper's own folder: snapshot, shots, output
+        self.pipe_name = pipe_name
+        self.stdout_path = stdout_path  # the child's stdout and stderr
+        # Where the process's output goes. Until the hello line names it, the
+        # file the helper itself pointed the output at.
         self.log_path = log_path
-        # The log's file_stamp before launch. A log with the same stamp after
-        # a crash is an old run's, which the crash report must not quote.
-        self.log_stamp = log_stamp
+        self.crash_dump = None  # the hello line's crash_dump; None when it names none
         self.keep = keep
         self.pipe = None
         self.buf = b""
         self.hello = {}
-        self.timeout = None  # seconds; read from the hello line
+        self.timeout = None  # seconds; the last value Hydra reported
 
     def engine_scratch(self):
         s = self.hello.get("scratch")
@@ -313,10 +294,13 @@ class Helper:
                     f"{exe.name} is not built (looked in {self.exe_dir}). Build it from the repo"
                     f" root with: .\\build_cpp.ps1 -Target {BUILD_TARGETS[exe.name]}"])
             self.count += 1
-            scratch = self.temp_root / f"hydra_live_{os.getpid()}_{self.count}"
+            tag = f"{os.getpid()}_{self.count}"
+            scratch = self.temp_root / f"hydra_live_{tag}"
             if scratch.exists():
                 shutil.rmtree(scratch)
-            args = ["--live"]
+            # The pipe's full name: Hydra opens exactly this and never builds one.
+            pipe_name = rf"\\.\pipe\hydra-live-{tag}"
+            args = ["--live", "--pipe", pipe_name]
             if mode == "window":
                 try:
                     copied, report = snapshot_library(library_dir, scratch, self.process_lister())
@@ -333,11 +317,15 @@ class Helper:
                     args += ["--ui-ini", str(copied["hydra_ui.ini"])]
             scratch.mkdir(parents=True, exist_ok=True)
             args += ["--shots", str(scratch)]
-            # hydra_uitest's log is its stdout. Hydra.exe has no console and
-            # writes its log beside itself (main.cpp's --uitest-log default).
+            # The child's stdout and stderr go to a file of the helper's own.
+            # Hydra.exe has no console, so it is pointed at a log in the same
+            # fresh folder: a log there can only be this run's, even if the
+            # process dies before its hello line names it.
             stdout_path = scratch / "stdout.log"
-            log_path = (exe.parent / "hydra_uitest.log") if mode == "window" else stdout_path
-            log_stamp = file_stamp(log_path)
+            log_path = stdout_path
+            if mode == "window":
+                log_path = scratch / WINDOW_LOG
+                args += ["--uitest-log", str(log_path)]
             argv = self.launcher(exe, args)
             # The child must never inherit this helper's stdin and stdout:
             # they are the MCP channel to Claude Code.
@@ -348,7 +336,7 @@ class Helper:
                     creationflags=subprocess.CREATE_NO_WINDOW)
             finally:
                 out.close()
-            s = Session(mode, proc, argv, scratch, log_path, log_stamp, keep)
+            s = Session(mode, proc, argv, scratch, pipe_name, stdout_path, log_path, keep)
             self.session = s
             try:
                 self._connect(s)
@@ -360,15 +348,15 @@ class Helper:
                      f"  pid: {h.get('pid', proc.pid)}",
                      f"  engine scratch: {h.get('scratch', '?')}",
                      f"  wait cap: {s.timeout:g} s, unless a hydra_wait_idle or hydra_wait_text call gives its own",
+                     f"  log: {s.log_path}",
                      f"  helper scratch: {scratch}" + (" (kept after stop)" if keep else "")]
             return "\n".join(lines + notes)
 
     def _connect(self, s):
         deadline = time.monotonic() + self.hello_timeout_s
-        name = rf"\\.\pipe\hydra-live-{s.proc.pid}"
         while True:
             try:
-                s.pipe = open(name, "r+b", buffering=0)
+                s.pipe = open(s.pipe_name, "r+b", buffering=0)
                 break
             except OSError:
                 if s.proc.poll() is not None:
@@ -386,14 +374,20 @@ class Helper:
             hello = msg["hello"]
             if not msg.get("ok") or not isinstance(hello, dict):
                 raise ValueError
-            timeout = hello["timeout"]
-            if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
+            timeout = seconds_field(hello, "timeout")
+            log, crash_dump = hello["log"], hello["crash_dump"]
+            if timeout is None or not isinstance(log, str) or not isinstance(crash_dump, str):
                 raise ValueError
         except (ValueError, KeyError, TypeError):
             raise HydraGone(self._kill_report(
-                s, silent=f"Hydra's first line was not a hello line with a timeout: {line[:200]!r}"))
+                s, silent="Hydra's first line was not a hello line with a timeout, a log and a"
+                          f" crash_dump: {line[:200]!r}"))
         s.hello = hello
-        s.timeout = float(timeout)
+        s.timeout = timeout
+        # An empty log means stdout, which the helper captures itself; an
+        # empty crash_dump means nothing writes one.
+        s.log_path = Path(log) if log else s.stdout_path
+        s.crash_dump = Path(crash_dump) if crash_dump else None
 
     def stop(self, keep_window=False):
         with self.lock:
@@ -510,27 +504,23 @@ class Helper:
                      " call hydra_start."]
         tail = self._log_tail(s)
         if tail is None:
-            lines.append(f"no log written: {s.log_path} is unchanged since launch")
+            lines.append(f"no log written: {s.log_path} does not exist")
         elif tail:
             lines.append(f"last lines of {s.log_path}:")
             lines += ["  " + t for t in tail]
-        es = s.engine_scratch()
-        if es is not None and (es / "crash.dmp").is_file():
-            lines.append(f"crash dump: {es / 'crash.dmp'}")
+        if s.crash_dump is not None and s.crash_dump.is_file():
+            lines.append(f"crash dump: {s.crash_dump}")
         # The helper's scratch folder stays after a crash or a kill, so the log
         # can be read; the SessionStart cleanup sweep removes it later.
         lines.append(f"files kept in {s.scratch}")
         return "\n".join(lines)
 
     def _log_tail(self, s):
-        """The log's last lines, or None when this run wrote no log: the file
-        is missing, or has the stamp it had before launch. Hydra.exe truncates
-        its log when it opens it, so a changed file holds only this run's text."""
-        stamp = file_stamp(s.log_path)
-        if stamp is None or stamp == s.log_stamp:
-            return None
+        """The log's last lines, or None when the file does not exist."""
         try:
             text = s.log_path.read_text(encoding="utf-8", errors="replace")
+        except FileNotFoundError:
+            return None
         except OSError:
             return []
         return text.splitlines()[-LOG_TAIL_LINES:]
@@ -547,84 +537,71 @@ class Helper:
         return self.session, f"({started})\n"
 
     def command(self, line):
-        """Send one script line; return (ok, text, prefix)."""
+        """Send one line exactly as given; return (ok, text, prefix). text is
+        the reply's, untouched."""
         if "\n" in line or "\r" in line:
+            # Transport: the pipe frames commands by line break, so a line
+            # holding one would arrive as two commands with two replies.
             return False, "refused: one command is one line; this one holds a line break", ""
         s, prefix = self._session()
-        verb, _, rest = line.strip().partition(" ")
-        wait_s = s.timeout
-        if verb == "wait":
-            try:
-                wait_s = max(wait_s, float(rest))
-            except ValueError:
-                pass
+        # No command outlasts the timeout in force (CommandSession), so that
+        # plus the margin is the longest any reply can take.
+        wait_s = s.timeout + self.reply_margin_s
         try:
-            s.pipe.write((line.strip() + "\n").encode("utf-8"))
+            s.pipe.write((line + "\n").encode("utf-8"))
         except (OSError, ValueError):
             raise HydraGone(self._kill_report(s, exited=True))
-        wait_s += self.reply_margin_s
         reply = self._read_line(s, wait_s)
         if reply is None:
             raise HydraGone(self._kill_report(s, silent=f"Hydra did not answer within {wait_s:g} s"))
         try:
             msg = json.loads(reply)
-            if not isinstance(msg, dict):
+            if not isinstance(msg, dict) or not isinstance(msg.get("text"), str):
+                raise ValueError
+            timeout = seconds_field(msg, "timeout")
+            if timeout is None:
                 raise ValueError
         except ValueError:
             return False, f"Hydra sent a line that is not a JSON reply: {reply[:200]!r}", prefix
-        if msg.get("ok"):
-            # The helper follows the timeouts it sets. A reset keeps the
-            # session's timeout (run_command's reset starts a fresh app only).
-            if verb == "timeout":
-                try:
-                    s.timeout = float(rest)
-                except ValueError:
-                    pass
-            return True, msg.get("text") or "", prefix
-        # The label names the reply's field. The error's own wording, which
-        # already says the line failed, is answer()'s in tests/ui/uitest_live.cpp.
-        text = f"error: {msg.get('error', '')}"
-        if msg.get("log"):
-            text += "\n" + msg["log"].rstrip("\n")
-        return False, text, prefix
+        s.timeout = timeout
+        return bool(msg.get("ok")), msg["text"], prefix
 
-    def send(self, line, shape=None):
-        """One command as a tool reply: 'ok', its text, or the failure."""
+    def send(self, line):
+        """One command as a tool reply: Hydra's text, capped."""
         with self.lock:
             try:
                 ok, text, prefix = self.command(line)
             except HydraGone as e:
                 return cap_reply(str(e))
-            if ok and shape is not None:
-                text = shape(text)
-            return cap_reply(prefix + (text.rstrip("\n") if text else "ok"))
+            return cap_reply(prefix + text)
 
     def with_timeout(self, line, timeout):
-        """Run `line` under a one-off timeout, then put the old one back."""
+        """Run `line` under a one-off timeout, then put back the one Hydra
+        reported before it. Hydra judges the number."""
         with self.lock:
             if timeout is None:
                 return self.send(line)
-            if not (0 <= timeout < float("inf")):
-                return f"refused: timeout must be a number of seconds, 0 or more; got {timeout:g}"
             try:
                 s, prefix = self._session()
                 old = s.timeout
-                ok, text, _ = self.command(f"timeout {timeout:g}")
-                if not ok:
-                    return cap_reply(prefix + text)
-                ok, text, _ = self.command(line)
-                if self.session is s:
-                    self.command(f"timeout {old:g}")
+                ok, text, _ = self.command(f"timeout {timeout!r}")
+                if ok:
+                    ok, text, _ = self.command(line)
+                    if self.session is s:
+                        # repr gives the shortest text that reads back as the
+                        # same number, so the old value comes back exactly.
+                        self.command(f"timeout {old!r}")
             except HydraGone as e:
                 return cap_reply(str(e))
-            return cap_reply(prefix + (text.rstrip("\n") if text else "ok"))
+            return cap_reply(prefix + text)
 
     def run(self, script):
         with self.lock:
             # Every line goes to Hydra, blank and comment lines too: which
             # lines are no command is the live channel's call (command_line in
-            # tests/ui/uitest_script.cpp), and it answers each of them. So
-            # "stopped at line N" counts the script's own lines.
+            # tests/ui/uitest_script.cpp), and it answers each of them. Hydra's
+            # live replies carry no line number, so "stopped at line N" is the
+            # only one, counting the script's own lines.
             lines = script.splitlines()
             out = []
             for i, line in enumerate(lines, 1):
@@ -635,11 +612,17 @@ class Helper:
                     break
                 if prefix:
                     out.append(prefix.rstrip("\n"))
-                out += [f"> {line}", text.rstrip("\n") if text else "ok"]
+                out += [f"> {line}", text.rstrip("\n")]
                 if not ok:
                     out.append(f"stopped at line {i} of {len(lines)}")
                     break
             return cap_reply("\n".join(out) if out else "no lines to run")
+
+
+def filtered(line, contains):
+    """`line`, plus the bar and `contains` when one is given. What the bar
+    means is Hydra's (split_bar in tests/ui/uitest_commands.cpp)."""
+    return line if contains is None else f"{line} | {contains}"
 
 
 # ---------------------------------------------------------------------------
@@ -688,7 +671,8 @@ def build_server():
 
     @server.tool()
     def hydra_type(ref: str, text: str) -> str:
-        """Type text into the input with this label."""
+        """Type text into the input with this label, kept exactly. An empty
+        text clears the field."""
         return HELPER.send(f"type {ref} | {text}")
 
     @server.tool()
@@ -719,7 +703,7 @@ def build_server():
     @server.tool()
     def hydra_text(contains: str | None = None) -> str:
         """The screen as text; with contains, only the lines holding that substring."""
-        return HELPER.send("text", lambda t: filter_text(t, contains))
+        return HELPER.send(filtered("text", contains))
 
     @server.tool()
     def hydra_state() -> str:
@@ -727,10 +711,11 @@ def build_server():
         return HELPER.send("state")
 
     @server.tool()
-    def hydra_dump(window: str = "Hydra", contains: str | None = None) -> str:
-        """The widget tree with rects; with contains, only matching item lines
-        plus their window line."""
-        return HELPER.send(f"dump {window}", lambda t: filter_dump(t, contains))
+    def hydra_dump(window: str | None = None, contains: str | None = None) -> str:
+        """The widget tree with rects, of the windows whose name holds window
+        (every window when it is not given); with contains, only matching item
+        lines plus their window line."""
+        return HELPER.send(filtered("dump" if window is None else f"dump {window}", contains))
 
     @server.tool()
     def hydra_rect(ref: str) -> str:
@@ -747,7 +732,8 @@ def build_server():
 
     @server.tool()
     def hydra_run(script: str) -> str:
-        """Several script lines at once, one per line, stopping at the first failure."""
+        """Several command lines at once, one per line, stopping at the first
+        failure, which names its line in the script."""
         return HELPER.run(script)
 
     return server

@@ -17,6 +17,16 @@ TEST_CASE("live reply: a command that worked") {
           "{\"ok\":true,\"text\":\"charts=97\\n\",\"timeout\":2.5}\n");
 }
 
+TEST_CASE("live reply: the timeout reads back as the exact number") {
+    CHECK(live::ok_line("", 12.345678901) == "{\"ok\":true,\"text\":\"ok\",\"timeout\":12.345678901}\n");
+    CHECK(live::ok_line("", 0.1) == "{\"ok\":true,\"text\":\"ok\",\"timeout\":0.1}\n");
+    CHECK(live::ok_line("", 0.0) == "{\"ok\":true,\"text\":\"ok\",\"timeout\":0}\n");
+    CHECK(live::ok_line("", 100000.0) == "{\"ok\":true,\"text\":\"ok\",\"timeout\":100000}\n");
+    CHECK(live::ok_line("", 1e-05) == "{\"ok\":true,\"text\":\"ok\",\"timeout\":0.00001}\n");
+    CHECK(live::ok_line("", 1e22) ==
+          "{\"ok\":true,\"text\":\"ok\",\"timeout\":10000000000000000000000}\n");
+}
+
 TEST_CASE("live reply: a failure with a quote, a backslash and a newline in it") {
     CHECK(live::fail_line("failed: click \"Scan\"", "[error] C:\\x\nnext\n", 90.0) ==
           "{\"ok\":false,\"text\":\"failed: click \\\"Scan\\\"\\n[error] C:\\\\x\\nnext\\n\","

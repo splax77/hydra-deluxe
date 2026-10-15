@@ -1,21 +1,23 @@
-"""A stand-in for Hydra's live channel, so the MCP helper can be tested with no build.
+"""A stand-in for Hydra's live channel, for the MCP helper's transport tests.
 
-It speaks the wire protocol in the plan's "The live channel" section
-(docs/superpowers/plans/2026-10-14-hydra-mcp-server.md): it makes the named
-pipe for its own process id, writes the hello line on connect, then answers
-one JSON line per script line. The answers are canned; they only have to look
-like the real ones closely enough for the helper's parsing.
+It knows no command. It makes the pipe --pipe names, writes a hello line on
+connect, and answers each line by echoing it back in a reply line (the wire
+shape is in "The protocol after T8" in
+docs/superpowers/plans/2026-10-14-hydra-mcp-server.md). Every test of what a
+command does runs against the real hydra_uitest --live instead.
 
-Extra verbs let the tests drive the bad cases:
+Lines that drive the transport failures the real exe cannot be made to show:
 
     fake-hang           never answer (the helper must give up and kill us)
     fake-exit <code>    write a log line and exit with that code; "dump" after
-                        the code also leaves a crash.dmp in the scratch folder
+                        the code also writes the crash dump the hello line named
     fake-big            answer with 50,000 characters of text
     fake-close          close the pipe but keep running (the helper must kill us)
 
-It reads the same flags the real exes get and ignores what it does not need.
-"--as <exe name>" says which exe it stands in for, which sets the mode.
+"quit" answers and exits 0, so hydra_stop works against it.
+
+"--as <exe name>" says which exe it stands in for, which sets the mode. In
+window mode its log goes where --uitest-log says, as Hydra.exe's does.
 """
 
 import ctypes
@@ -54,19 +56,13 @@ k32.CloseHandle.argtypes = [wintypes.HANDLE]
 
 INVALID_HANDLE = wintypes.HANDLE(-1).value
 
-# The session's starting wait cap, which the hello line carries. Deliberately
-# not the real exe's starting value, so a test can tell the helper read it from
-# the hello line. (Not the helper's HELLO_TIMEOUT_S, which is how long the
-# helper waits for that line.)
+# The timeout the hello line and every reply carry. Deliberately not the real
+# exe's starting value, so a test can tell the helper read it from the line.
 SESSION_TIMEOUT_S = 25
 
 # What fake-big answers with: 1,000 lines of 49 characters plus a newline.
 BIG_LINE = "x" * 45 + " row"
 BIG_TEXT = "\n".join(BIG_LINE for _ in range(1000)) + "\n"
-
-
-def log(msg):
-    print(msg, flush=True)
 
 
 class Pipe:
@@ -105,151 +101,51 @@ def reply(pipe, obj):
     pipe.write((json.dumps(obj) + "\n").encode("utf-8"))
 
 
-def ok(pipe, text=""):
-    reply(pipe, {"ok": True, "text": text})
-
-
-def fail(pipe, error, log_text):
-    reply(pipe, {"ok": False, "error": error, "log": log_text})
-
-
-class Fake:
-    def __init__(self, mode, scratch, shots):
-        self.mode = mode
-        self.scratch = scratch
-        self.shots = shots
-        self.charts = 0
-        self.search = ""
-        self.line = 0  # lines received, as the real session counts them
-        self.timeout = SESSION_TIMEOUT_S  # the timeout verb changes it, as in the real session
-
-    def failed_at(self, pipe, line, log_text):
-        """An engine action that failed, in the real reply's shape."""
-        fail(pipe, f"!! failed at line {self.line}: {line}", log_text)
-
-    def refused(self, pipe, line, why):
-        """The interpreter's own error, in the real reply's shape."""
-        fail(pipe, f"failed: {line}", f"[0020] Error 'line {self.line}: {why}'\n")
-
-    def state(self):
-        return f"state:\n  store=ready\n  charts={self.charts} shown={self.charts} search=\"{self.search}\"\n"
-
-    def run(self, pipe, line):
-        verb, _, rest = line.partition(" ")
-        rest = rest.strip()
-        if verb == "quit":
-            ok(pipe)
-            return False
-        if verb == "fake-hang":
-            time.sleep(HANG_CAP_S)
-            return False
-        if verb == "fake-close":
-            # Drop the pipe but keep running: the helper must kill us.
-            k32.CloseHandle(pipe.h)
-            time.sleep(HANG_CAP_S)
-            return False
-        if verb == "fake-exit":
-            parts = rest.split()
-            code = int(parts[0]) if parts else 1
-            if "dump" in parts[1:]:
-                (self.scratch / "crash.dmp").write_bytes(b"MDMP")
-            log(f"fake: exiting with code {code}")
-            os._exit(code)
-        if verb == "fake-big":
-            ok(pipe, BIG_TEXT)
-            return True
-        if verb in ("click", "check", "uncheck"):
-            if "missing" in rest:
-                self.failed_at(pipe, line, f"[0020] Error 'Unable to locate item: '//Hydra/{rest}' (0x00000000)'\n")
-            else:
-                if verb == "click" and rest.lower().startswith("scan"):
-                    self.charts = 97
-                ok(pipe)
-            return True
-        if verb == "type":
-            ref, bar, text = rest.partition("|")
-            if not bar:
-                self.refused(pipe, line, "type needs \"<ref> | <text>\"")
-            else:
-                if "Search" in ref:
-                    self.search = text.strip()
-                ok(pipe)
-            return True
-        if verb == "timeout":
-            try:
-                self.timeout = float(rest)
-            except ValueError:
-                pass  # the real session reads any text as a number; the stand-in needs only numbers
-            ok(pipe)
-            return True
-        if verb in ("window", "key", "wait", "wait-idle"):
-            ok(pipe)
-            return True
-        if verb == "wait-text":
-            if "never" in rest:
-                self.refused(pipe, line, f"\"{rest}\" did not appear within {self.timeout:.0f}s")
-            else:
-                ok(pipe)
-            return True
-        if verb == "text":
-            ok(pipe, "Library\nScan library\n2x Bass\nSearch\nAnalyze shown (0)...\n")
-            return True
-        if verb == "dump":
-            ok(pipe,
-               'window "Hydra" id=0x1 pos=(0,0) size=(1280,800)\n'
-               '  "Scan library" id=0x2 rect=(10,40 120x22) \n'
-               '  "2x Bass" id=0x3 rect=(140,40 80x22) checkable\n'
-               '  "Search" id=0x4 rect=(230,40 300x22) \n'
-               'window "Settings" id=0x5 pos=(100,100) size=(400,300)\n'
-               '  "2x Bass##s" id=0x6 rect=(110,140 80x22) checkable\n')
-            return True
-        if verb == "rect":
-            ok(pipe, f'  "{rest}" id=0x2 rect=(10,40 120x22) \n')
-            return True
-        if verb == "state":
-            ok(pipe, self.state())
-            return True
-        if verb == "reset":
-            self.charts = 0
-            self.search = ""
-            ok(pipe)
-            return True
-        if verb == "screenshot":
-            # Saved under exactly the name given, as the real exe does.
-            path = Path(rest) if Path(rest).is_absolute() else self.shots / rest
-            path.write_bytes(b"\x89PNG\r\n\x1a\n")
-            ok(pipe, f"screenshot: {path}\n")
-            return True
-        self.refused(pipe, line, f"unknown verb \"{verb}\"")
-        return True
+def answer(pipe, text):
+    reply(pipe, {"ok": True, "text": text, "timeout": SESSION_TIMEOUT_S})
 
 
 def main(argv):
     exe_name = "hydra_uitest.exe"
-    shots = None
+    shots = pipe_name = log_path = None
     i = 0
     while i < len(argv):
         a = argv[i]
-        if a == "--as" and i + 1 < len(argv):
-            exe_name = argv[i + 1]
+        value = argv[i + 1] if i + 1 < len(argv) else None
+        if a == "--as" and value:
+            exe_name = value
+        elif a == "--shots" and value:
+            shots = Path(value)
+        elif a == "--pipe" and value:
+            pipe_name = value
+        elif a == "--uitest-log" and value:
+            log_path = Path(value)
+        elif a in ("--db", "--ini", "--ui-ini") and value:
+            pass
+        else:
             i += 1
-        elif a == "--shots" and i + 1 < len(argv):
-            shots = Path(argv[i + 1])
-            i += 1
-        elif a in ("--db", "--ini", "--ui-ini") and i + 1 < len(argv):
-            i += 1
-        i += 1
+            continue
+        i += 2
+    if not pipe_name:
+        print("fake: --live needs --pipe <name>", flush=True)
+        return 2
     mode = "window" if exe_name.lower() == "hydra.exe" else "headless"
     base = shots.parent if shots else Path(os.environ.get("TEMP", "."))
     scratch = base / f"fake_engine_{os.getpid()}"
     scratch.mkdir(parents=True, exist_ok=True)
-    fake = Fake(mode, scratch, shots or scratch)
+    crash_dump = scratch / "crash.dmp"
+    log_file = open(log_path, "w", encoding="utf-8") if mode == "window" and log_path else sys.stdout
 
-    pipe = Pipe(rf"\\.\pipe\hydra-live-{os.getpid()}")
-    log(f"fake: pipe made for pid {os.getpid()}")
+    def log(msg):
+        print(msg, file=log_file, flush=True)
+
+    pipe = Pipe(pipe_name)
+    log(f"fake: pipe {pipe_name} made")
     pipe.accept()
-    reply(pipe, {"ok": True, "hello": {"mode": mode, "scratch": str(scratch), "pid": os.getpid(),
-                                       "timeout": SESSION_TIMEOUT_S}})
+    reply(pipe, {"ok": True, "hello": {
+        "mode": mode, "scratch": str(scratch), "pid": os.getpid(), "timeout": SESSION_TIMEOUT_S,
+        "log": str(log_path) if log_file is not sys.stdout else "",
+        "crash_dump": str(crash_dump)}})
     pending = b""
     while True:
         data = pipe.read()
@@ -259,15 +155,29 @@ def main(argv):
         pending += data
         while b"\n" in pending:
             raw, pending = pending.split(b"\n", 1)
-            line = raw.decode("utf-8").strip()
-            fake.line += 1
+            line = raw.decode("utf-8")
             log(f"> {line}")
-            # Every line gets one reply. The lines the real exe skips (see
-            # command_line in tests/ui/uitest_script.cpp) get an empty ok.
-            if not line or line.startswith("#"):
-                ok(pipe)
+            verb, _, rest = line.partition(" ")
+            if verb == "fake-hang":
+                time.sleep(HANG_CAP_S)
+                return 0
+            if verb == "fake-close":
+                # Drop the pipe but keep running: the helper must kill us.
+                k32.CloseHandle(pipe.h)
+                time.sleep(HANG_CAP_S)
+                return 0
+            if verb == "fake-exit":
+                parts = rest.split()
+                code = int(parts[0]) if parts else 1
+                if "dump" in parts[1:]:
+                    crash_dump.write_bytes(b"MDMP")
+                log(f"fake: exiting with code {code}")
+                os._exit(code)
+            if verb == "fake-big":
+                answer(pipe, BIG_TEXT)
                 continue
-            if not fake.run(pipe, line):
+            answer(pipe, line)
+            if line == "quit":
                 return 0
 
 

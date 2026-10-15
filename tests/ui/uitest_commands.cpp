@@ -92,13 +92,18 @@ bool parse_chord(const std::string& text, ImGuiKeyChord& chord) {
 }
 
 // Split a line at its first " | " (blank, bar, blank): head is what comes
-// before it, tail everything after, kept exactly. False when there is none.
-// The one split type and the text and dump filters share.
+// before it, tail everything after, kept exactly. A line ending in " |" is a
+// bar with an empty tail, so a client that trims trailing blanks can still
+// clear a field. False when there is no bar. The one split type and the text
+// and dump filters share.
 bool split_bar(const std::string& line, std::string& head, std::string& tail) {
-    const size_t bar = line.find(" | ");
-    if (bar == std::string::npos) return false;
+    size_t bar = line.find(" | ");
+    if (bar == std::string::npos) {
+        if (line.size() < 2 || line.compare(line.size() - 2, 2, " |") != 0) return false;
+        bar = line.size() - 2;
+    }
     head = line.substr(0, bar);
-    tail = line.substr(bar + 3);
+    tail = bar + 3 <= line.size() ? line.substr(bar + 3) : std::string();
     return true;
 }
 
@@ -194,16 +199,15 @@ CommandResult run_command(ImGuiTestContext* ctx, CommandSession& session, const 
             return refuse(message("\"%s\" is on screen", rest.c_str()));
     } else if (verb == "text" || verb == "dump") {
         // text [| <part>] and dump [<window>] [| <part>]: what comes after the
-        // bar filters the output.
+        // bar filters the output. No bar filters on nothing. Both forms of
+        // text go through lines_holding, so they end their lines alike.
         std::string arg = rest, part, head, ignored;
-        const bool filtered = split_bar(line, head, part);
-        if (filtered) split_verb(head, ignored, arg);
+        if (split_bar(line, head, part)) split_verb(head, ignored, arg);
         if (verb == "text" && !arg.empty())
             return refuse("text takes nothing, or \"| <substring>\"");
         ctx->Yield();
         if (verb == "dump") r.text = widget_dump(ctx, arg, part);
-        else if (filtered) r.text = lines_holding(visible_text(h), part);
-        else r.text = visible_text(h) + "\n";
+        else r.text = lines_holding(visible_text(h), part);
     } else if (verb == "rect") {
         ctx->Yield();
         const ImGuiTestItemInfo it = ctx->ItemInfo(rest.c_str(), ImGuiTestOpFlags_NoError);

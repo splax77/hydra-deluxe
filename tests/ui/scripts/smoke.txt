@@ -17,6 +17,15 @@ rect Scan library
 key Escape
 key Ctrl+F
 expect-text Burnout
+# A bare bar at the end of a line is a bar with nothing after it: type clears
+# the field, and text and dump filter on nothing, which keeps every line.
+type **/##search | zzqx
+expect-text No charts match your search.
+type **/##search |
+expect-not-text No charts match your search.
+expect-text Burnout
+text |
+dump Hydra |
 reset
 state
 expect-not-text Burnout

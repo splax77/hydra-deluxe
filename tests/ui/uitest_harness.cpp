@@ -600,6 +600,8 @@ std::string lines_holding(const std::string& text, const std::string& part) {
         size_t nl = text.find('\n', start);
         if (nl == std::string::npos) nl = text.size();
         // ImGui's log, which the screen text comes from, ends lines in "\r\n".
+        // Every text reply passes through here, so this is the one place
+        // the '\r' goes.
         const size_t end = nl > start && text[nl - 1] == '\r' ? nl - 1 : nl;
         const std::string line = text.substr(start, end - start);
         if (line.find(part) != std::string::npos) out += line + "\n";
