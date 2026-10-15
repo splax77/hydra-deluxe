@@ -253,6 +253,24 @@ void test_settings_button(ImGuiTestContext* ctx) {
     close_settings_panel(ctx);
 }
 
+// Two of the vendored test engine's Hydra patches (THIRD_PARTY_NOTICES.txt
+// lists them): a "//$FOCUSED/**/" ref finds an item in the focused popup, and
+// a wildcard check that finds nothing leaves later wildcard refs able to find
+// items that cannot be ticked, such as a button.
+void test_engine_wildcard_patches(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app_at_default_settings(ctx, h);
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    const ImGuiID bass2x = ctx->ItemInfo("**/##bass2x").ID;  // under the panel, open_settings_panel's SetRef
+    IM_CHECK(bass2x != 0);
+    IM_CHECK(ctx->ItemInfo("//$FOCUSED/**/##bass2x", ImGuiTestOpFlags_NoError).ID == bass2x);
+
+    ctx->ItemCheck("**/###nosuchitem", ImGuiTestOpFlags_NoError);
+    IM_CHECK(ctx->ItemInfo("//Hydra/**/###analysissettings", ImGuiTestOpFlags_NoError).ID != 0);
+    close_settings_panel(ctx);
+}
+
 // "Reset to defaults" in the settings panel: greyed out at the defaults; after
 // two changes one click puts both back, saves the INI, keeps the folders, and
 // leaves the panel open with the button greyed again.
@@ -1172,6 +1190,7 @@ const std::vector<TestEntry>& library_tests() {
         {"difficulty", test_difficulty},
         {"note-shuffle-switch", test_note_shuffle_switch},
         {"settings-button", test_settings_button},
+        {"engine-wildcard-patches", test_engine_wildcard_patches},
         {"settings-reset", test_settings_reset},
         {"rules-error", test_rules_error},
         {"library-state-per-app", test_library_state_per_app},

@@ -329,7 +329,9 @@ struct IMGUI_API ImGuiTestEngineIO
 struct ImGuiTestItemInfo
 {
     ImGuiID                     ID = 0;                     // Item ID
-    char                        DebugLabel[32] = {};        // Shortened/truncated label for debugging and convenience purpose
+    char                        DebugLabel[256] = {};       // Shortened/truncated label for debugging and convenience purpose
+                                                            // Hydra patch: was 32, which cut labels at 31 characters, so a
+                                                            // widget dump could not show a full "text###id" label. 256 by user choice.
     ImGuiWindow*                Window = nullptr;           // Item Window
     unsigned int                NavLayer : 1;               // Nav layer of the item (ImGuiNavLayer)
     int                         Depth : 16;                 // Depth from requested parent id. 0 == ID is immediate child of requested parent id.

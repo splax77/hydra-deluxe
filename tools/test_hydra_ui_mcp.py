@@ -536,6 +536,38 @@ class RealExeLayer(unittest.TestCase):
             self.assertEqual((scratch / name).read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
         self.assertFalse((scratch / "bare.png").exists())
 
+    # -- the vendored engine's Hydra patches and the deep dump --------------
+    # THIRD_PARTY_NOTICES.txt lists the patches; the literals are real replies.
+
+    def test_a_focused_wildcard_ref_finds_the_popups_checkbox(self):
+        self.helper.start("headless")
+        self.assertEqual(self.helper.send("click **/###analysissettings"), "ok")
+        self.assertEqual(self.helper.send("rect //$FOCUSED/**/##bass2x"),
+                         '"##bass2x" id=0x357E5949 rect=(723,126 24x24) checked\n')
+
+    def test_a_failed_wildcard_check_leaves_wildcard_clicks_working(self):
+        self.helper.start("headless")
+        out = self.helper.send("check **/###nosuchitem")
+        self.assertTrue(out.startswith("failed: check **/###nosuchitem\n"), out)
+        self.assertIn("Unable to locate item: '//Hydra/**/###nosuchitem'", out)
+        self.assertEqual(self.helper.send("click **/###analysissettings"), "ok")
+
+    def test_dump_shows_the_whole_label(self):
+        self.helper.start("headless")
+        self.assertEqual(
+            self.helper.send(hm.filtered("dump Hydra", "###analysissettings")),
+            'window "Hydra" id=0xBAEC0FDA pos=(0,0) size=(1280,800)\n'
+            '  "Analysis settings: Score range 2 scores###analysissettings"'
+            ' id=0xB7DC11A6 rect=(611,8 257x24)\n')
+
+    def test_a_popup_dump_lists_the_checkboxes_inside_its_tables(self):
+        self.helper.start("headless")
+        self.assertEqual(self.helper.send("click **/###analysissettings"), "ok")
+        self.assertEqual(
+            self.helper.send(hm.filtered("dump ##Popup_", "##bass2x")),
+            'window "##Popup_2cd77690" id=0x0E54559D pos=(611,32) size=(319,365) popup\n'
+            '    "##bass2x" id=0x357E5949 rect=(723,126 24x24) checked\n')
+
     @unittest.skipUnless(os.environ.get("HYDRA_LIVE_WINDOW_TEST") == "1",
                          "opens a window; set HYDRA_LIVE_WINDOW_TEST=1")
     def test_window_session_on_a_seed_from_headless(self):
