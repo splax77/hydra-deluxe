@@ -404,8 +404,8 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     // The meter's ceiling is the Settings cap, Ready record or not. The
     // profile owns a record's cap (finding 130): the viewed record is fetched
     // under the Settings cap's profile, and prepare_record refuses an
-    // analysis whose cap differs from its profile's. A chart with no record yet previews at the cap
-    // the next analysis will run at (D48, Q24).
+    // analysis whose cap differs from its profile's. A chart with no record
+    // yet previews at the cap the next analysis will run at (D48, Q24).
     const int sp_cap = app.settings.sp_cap;
     // The overlay key is the path's verbose string: rebuilt when the
     // selection or the record changes, not every frame.
