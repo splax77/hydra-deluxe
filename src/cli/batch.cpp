@@ -176,8 +176,7 @@ int batch_main() {
         const hydra::store::PathSummary summary = prepared.record.summary();
         std::string score =
             summary.has_scored_best_path() ? hydra::group_thousands(*summary.score) : "-";
-        const std::string best =
-            summary.has_scored_best_path() ? prepared.record.paths.front().path : std::string();
+        const std::string best = prepared.record.best_path_text();
         std::printf("[%d/%d] %10s  %s %s\n", last.completed, last.total, score.c_str(),
                     clip_utf8(label, 52).c_str(), clip_utf8(best, 36).c_str());
         std::fflush(stdout);

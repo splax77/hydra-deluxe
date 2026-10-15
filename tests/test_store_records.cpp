@@ -325,3 +325,18 @@ TEST_CASE("store: path rows measured on the corpus") {
                                   << ", bytes per record "
                                   << static_cast<double>(size_b - size_c) / records);
 }
+
+TEST_CASE("store: a record's best path text is rank 1's, and empty when it kept no paths") {
+    RecordRow record;
+    CHECK(record.best_path_text().empty());
+    PathRow first;
+    first.rank = 1;
+    first.path = "3- 1 2";
+    PathRow second;
+    second.rank = 2;
+    second.path = "0 E3+ E5 E1";
+    record.paths = {first, second};
+    CHECK(record.best_path_text() == "3- 1 2");
+    // An analysis that kept no paths becomes a record with no text.
+    CHECK(record_of("h1", no_paths_at_cap(4)).best_path_text().empty());
+}

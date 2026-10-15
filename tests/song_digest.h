@@ -163,8 +163,8 @@ inline uint64_t record_hash(const HydraRecord& r) {
     return fnv_list(h, r.allzero_paths, path_hash);
 }
 
-// One chart's answer: its prepared record's best path text (rank 1's, empty
-// when it kept no paths), its summary (RecordRow::summary) and the whole
+// One chart's answer: its prepared record's best path text
+// (RecordRow::best_path_text), its summary (RecordRow::summary) and the whole
 // engine result behind it (record_hash). The record's profile, song id and
 // rules fingerprint (see store::PreparedRecord) are left out: they come from
 // the settings and the build, not from the analysis. The facts and their
@@ -172,8 +172,7 @@ inline uint64_t record_hash(const HydraRecord& r) {
 // tests/test_perf_digest.cpp still hold.
 inline uint64_t row_hash(const store::PreparedRecord& r, const HydraRecord& record) {
     uint64_t h = record_hash(record);
-    const std::vector<store::PathRow>& paths = r.record.paths;
-    h = fnv_str(h, paths.empty() ? std::string() : paths.front().path);
+    h = fnv_str(h, r.record.best_path_text());
     const store::PathSummary s = r.record.summary();
     h = fnv_opt(h, s.score);
     h = fnv_opt(h, s.actcount);

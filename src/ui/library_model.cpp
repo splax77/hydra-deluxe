@@ -43,25 +43,16 @@ app::RowFacts facts_of(const LibraryRow& row) {
 
 }  // namespace
 
-namespace {
-
-// The Best path cell's path text for a looked-up record: its rank-1 path, or
-// empty when it kept none. A lookup that is not Ready carries no record
-// (store::RecordLookup), so its text is empty too.
-std::string best_path_of(const store::RecordRow& record) {
-    return record.paths.empty() ? std::string() : record.paths.front().path;
-}
-
-}  // namespace
-
 // Beside facts_of on purpose: a summary field the library starts to read
 // (here, in best_path_label or in the Best path sort) joins this list, or a
-// refresh keeps the row's old value. The lookup's summary is the record's own
-// (RecordRow::summary), empty when the lookup is not Ready.
+// refresh keeps the row's old value. The lookup's summary and path text are
+// the record's own (RecordRow::summary and best_path_text); a lookup that is
+// not Ready carries no record (store::RecordLookup), so both are empty.
 bool LibraryRow::shows_same_as(const store::RecordLookup& lookup) const {
     const store::PathSummary found = lookup.record.summary();
     return status == lookup.status && stale_build == lookup.stale_build &&
-           stale_rules == lookup.stale_rules && bestpath == best_path_of(lookup.record) &&
+           stale_rules == lookup.stale_rules &&
+           bestpath == lookup.record.best_path_text() &&
            summary.score == found.score && summary.stars == found.stars &&
            summary.hardest_ms == found.hardest_ms;
 }
@@ -80,7 +71,7 @@ bool apply_summary(LibraryRow& row, const store::RecordLookup& lookup) {
     row.status = lookup.status;
     row.stale_build = lookup.stale_build;
     row.stale_rules = lookup.stale_rules;
-    row.bestpath = best_path_of(lookup.record);
+    row.bestpath = lookup.record.best_path_text();
     row.summary = lookup.record.summary();
     return true;
 }
