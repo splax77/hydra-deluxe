@@ -411,26 +411,37 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
 }
 
 std::vector<std::string> build_score_breakdown(const Path& path) {
-    std::vector<std::string> lines;
-    // Rounded, not truncated, so it matches the report's mult column. The
-    // padding makes the number end in the same column as the numbers below.
-    lines.push_back(std::string(kAverageMultiplierLabel) + ":   " +
-                    format_avg_mult(path.avg_mult()) + "x");
-
-    // Leading '\n' on Notes and Total Score puts a blank line above
-    // each; there is no other separator.
-    auto right10 = [](int64_t v) {
-        char buf[64];
-        std::snprintf(buf, sizeof(buf), "%10s", group_thousands(v).c_str());
-        return std::string(buf);
+    // The labels are written once, here. Every number starts in one column,
+    // two spaces after the longest label, and is not padded (answer 11 of
+    // docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md),
+    // so a renamed label moves the column with it.
+    struct Row {
+        std::string label;
+        std::string value;
+        bool blank_above;  // a leading '\n'; there is no other separator
     };
-    lines.push_back("\nNotes:            " + right10(path.score_base));
-    lines.push_back("Combo Bonus:      " + right10(path.score_combo));
-    lines.push_back("Star Power:       " + right10(path.score_sp));
-    lines.push_back("Solo Bonus:       " + right10(path.score_solo));
-    lines.push_back("Accent Notes:     " + right10(path.score_accents));
-    lines.push_back("Ghost Notes:      " + right10(path.score_ghosts));
-    lines.push_back("\nTotal Score:      " + right10(path.totalscore()));
+    const Row rows[] = {
+        // Rounded, not truncated, so it matches the report's mult column.
+        {std::string(kAverageMultiplierLabel) + ":", format_avg_mult(path.avg_mult()) + "x", false},
+        {"Notes:", group_thousands(path.score_base), true},
+        {"Combo Bonus:", group_thousands(path.score_combo), false},
+        {"Star Power:", group_thousands(path.score_sp), false},
+        {"Solo Bonus:", group_thousands(path.score_solo), false},
+        {"Accent Notes:", group_thousands(path.score_accents), false},
+        {"Ghost Notes:", group_thousands(path.score_ghosts), false},
+        {"Total Score:", group_thousands(path.totalscore()), true},
+    };
+    size_t longest = 0;
+    for (const Row& r : rows) longest = std::max(longest, r.label.size());
+
+    std::vector<std::string> lines;
+    for (const Row& r : rows) {
+        std::string line = r.blank_above ? "\n" : "";
+        line += r.label;
+        line.append(longest - r.label.size() + 2, ' ');
+        line += r.value;
+        lines.push_back(std::move(line));
+    }
     return lines;
 }
 

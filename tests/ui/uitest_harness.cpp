@@ -13,6 +13,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <thread>
 
 #include "imgui.h"
@@ -327,26 +328,31 @@ void reset_app(Harness& h, const std::string& rules_text, bool wait_store) {
 
     std::error_code ec;
     fs::remove(fs::u8path(h.db_path), ec);
-    // --db: start from a copy of the given database (and its WAL, if any),
-    // so the app never opens the original. main() already refused a missing
-    // database file. A copy that fails (a locked file, say) stops the run:
-    // the tests must not go on against an empty database.
-    if (!h.seed_db.empty()) {
-        for (const char* suffix : {"", "-wal", "-shm"}) {
-            fs::remove(fs::u8path(h.db_path + suffix), ec);
-            const fs::path from = fs::u8path(h.seed_db + suffix);
+    // --db and --ini: start from a copy of the given file (a database with
+    // its WAL and SHM, if any), so the app never opens the original. main()
+    // already refused a missing seed. A copy that fails (a locked file, say)
+    // stops the run: the tests must not go on against an empty database or
+    // the default settings.
+    auto copy_seed = [&ec](const std::string& seed, const std::string& dest,
+                           std::initializer_list<const char*> suffixes, const char* flag) {
+        for (const char* suffix : suffixes) {
+            fs::remove(fs::u8path(dest + suffix), ec);
+            const fs::path from = fs::u8path(seed + suffix);
             if (!fs::exists(from, ec)) continue;
-            if (!fs::copy_file(from, fs::u8path(h.db_path + suffix),
+            if (!fs::copy_file(from, fs::u8path(dest + suffix),
                                fs::copy_options::overwrite_existing, ec)) {
-                std::fprintf(stderr, "hydra_uitest: could not copy --db file \"%s\": %s\n",
-                             (h.seed_db + suffix).c_str(), ec.message().c_str());
+                std::fprintf(stderr, "hydra_uitest: could not copy %s file \"%s\": %s\n", flag,
+                             (seed + suffix).c_str(), ec.message().c_str());
                 std::exit(1);
             }
         }
-    }
-    // The GUI tests' settings (tests/scratch_settings.h), written the way the
-    // app writes its own ini.
-    if (!scratch_settings().save_file(h.ini_path)) {
+    };
+    if (!h.seed_db.empty()) copy_seed(h.seed_db, h.db_path, {"", "-wal", "-shm"}, "--db");
+    // The settings: --ini's copy, else the GUI tests' settings
+    // (tests/scratch_settings.h), written the way the app writes its own ini.
+    if (!h.seed_ini.empty()) {
+        copy_seed(h.seed_ini, h.ini_path, {""}, "--ini");
+    } else if (!scratch_settings().save_file(h.ini_path)) {
         std::fprintf(stderr, "hydra_uitest: could not write \"%s\"\n", h.ini_path.c_str());
         std::exit(1);
     }
@@ -535,86 +541,93 @@ namespace {
 
 const char* yes_no(bool b) { return b ? "yes" : "no"; }
 
-void dump_window(ImGuiTestContext* ctx, ImGuiWindow* w) {
-    std::printf("window \"%s\" id=0x%08X pos=(%.0f,%.0f) size=(%.0f,%.0f)%s%s\n", w->Name, w->ID,
+void dump_window(ImGuiTestContext* ctx, ImGuiWindow* w, ImGuiTextBuffer& out) {
+    out.appendf("window \"%s\" id=0x%08X pos=(%.0f,%.0f) size=(%.0f,%.0f)%s%s\n", w->Name, w->ID,
                 w->Pos.x, w->Pos.y, w->Size.x, w->Size.y,
                 (w->Flags & ImGuiWindowFlags_Popup) ? " popup" : "",
                 (w->Flags & ImGuiWindowFlags_ChildWindow) ? " child" : "");
     ImGuiTestItemList items;
     ctx->GatherItems(&items, ImGuiTestRef(w->ID), 1);
-    for (const ImGuiTestItemInfo& it : items) {
-        std::string flags;
-        if (it.ItemFlags & ImGuiItemFlags_Disabled) flags += " disabled";
-        if (it.StatusFlags & ImGuiItemStatusFlags_Checkable)
-            flags += (it.StatusFlags & ImGuiItemStatusFlags_Checked) ? " checked" : " unchecked";
-        if (it.StatusFlags & ImGuiItemStatusFlags_Openable)
-            flags += (it.StatusFlags & ImGuiItemStatusFlags_Opened) ? " opened" : " closed";
-        if (it.StatusFlags & ImGuiItemStatusFlags_Inputable) flags += " inputable";
-        std::printf("  %*s\"%s\" id=0x%08X rect=(%.0f,%.0f %.0fx%.0f)%s\n", it.Depth * 2, "",
-                    it.DebugLabel, it.ID, it.RectFull.Min.x, it.RectFull.Min.y,
-                    it.RectFull.GetWidth(), it.RectFull.GetHeight(), flags.c_str());
-    }
+    for (const ImGuiTestItemInfo& it : items) out.append(item_line(it, it.Depth + 1).c_str());
 }
 
 }  // namespace
 
-void dump_widgets(ImGuiTestContext* ctx, const std::string& window_name) {
+std::string item_line(const ImGuiTestItemInfo& it, int depth) {
+    std::string flags;
+    if (it.ItemFlags & ImGuiItemFlags_Disabled) flags += " disabled";
+    if (it.StatusFlags & ImGuiItemStatusFlags_Checkable)
+        flags += (it.StatusFlags & ImGuiItemStatusFlags_Checked) ? " checked" : " unchecked";
+    if (it.StatusFlags & ImGuiItemStatusFlags_Openable)
+        flags += (it.StatusFlags & ImGuiItemStatusFlags_Opened) ? " opened" : " closed";
+    if (it.StatusFlags & ImGuiItemStatusFlags_Inputable) flags += " inputable";
+    ImGuiTextBuffer out;
+    out.appendf("%*s\"%s\" id=0x%08X rect=(%.0f,%.0f %.0fx%.0f)%s\n", depth * 2, "",
+                it.DebugLabel, it.ID, it.RectFull.Min.x, it.RectFull.Min.y,
+                it.RectFull.GetWidth(), it.RectFull.GetHeight(), flags.c_str());
+    return out.c_str();
+}
+
+std::string widget_dump(ImGuiTestContext* ctx, const std::string& window_name) {
     ImGuiContext& g = *ImGui::GetCurrentContext();
+    ImGuiTextBuffer out;
     bool any = false;
     for (ImGuiWindow* w : g.Windows) {
         if (!w->WasActive || w->Hidden) continue;
         if (std::strcmp(w->Name, "Debug##Default") == 0) continue;
         if (!window_name.empty() && std::strstr(w->Name, window_name.c_str()) == nullptr) continue;
-        dump_window(ctx, w);
+        dump_window(ctx, w, out);
         any = true;
     }
-    if (!any) std::printf("(no window matching \"%s\")\n", window_name.c_str());
+    if (!any) out.appendf("(no window matching \"%s\")\n", window_name.c_str());
+    return out.c_str();
 }
 
-void dump_state(Harness& h) {
+std::string state_text(Harness& h) {
     auto& a = *h.app;
-    std::printf("state:\n");
-    std::printf("  store=%s\n", a.store_open_failed() ? "failed"
+    ImGuiTextBuffer out;
+    out.appendf("state:\n");
+    out.appendf("  store=%s\n", a.store_open_failed() ? "failed"
                                 : a.store_ready()      ? "ready"
                                                        : "opening");
-    std::printf("  charts=%zu shown=%zu search=\"%s\"\n", a.library.rows().size(),
+    out.appendf("  charts=%zu shown=%zu search=\"%s\"\n", a.library.rows().size(),
                 a.library_shown_count(), a.search.c_str());
     for (size_t i = 0; i < a.library_shown_count() && i < 20; ++i) {
         const auto& r = a.library_row_at(i);
         // The status chip's word: "Analyzed", "Stale" or "Not analyzed".
-        std::printf("    row[%zu] \"%s\" - %s (%s) md5=%s status=%s\n", i, r.title.c_str(),
+        out.appendf("    row[%zu] \"%s\" - %s (%s) md5=%s status=%s\n", i, r.title.c_str(),
                     r.artist.c_str(), r.charter.c_str(), r.entry.md5.c_str(),
                     hydra::ui::status_label(r.status));
     }
-    std::printf("  selected=%s panel_open=%s viewed_record=%s paths=%zu\n",
+    out.appendf("  selected=%s panel_open=%s viewed_record=%s paths=%zu\n",
                 a.selected ? a.selected->title.c_str() : "(none)", yes_no(a.details_open()),
                 yes_no(a.viewed.record.has_value()),
                 a.viewed.record ? a.viewed.record->paths.size() : 0);
     if (a.viewed.record && !a.viewed.record->paths.empty())
-        std::printf("  best_path=%s\n", a.viewed.record->best_path().pathstring().c_str());
-    std::printf("  chartmode=\"%s\" prodrums=%s bass2x=%s depth=%d auto_open_report=%s\n",
+        out.appendf("  best_path=%s\n", a.viewed.record->best_path().pathstring().c_str());
+    out.appendf("  chartmode=\"%s\" prodrums=%s bass2x=%s depth=%d auto_open_report=%s\n",
                 a.settings.chartmode_key().c_str(), yes_no(a.settings.view_prodrums),
                 yes_no(a.settings.view_bass2x), a.settings.depth_value,
                 yes_no(a.settings.auto_open_report));
     static const char* const kViewStates[] = {"none",      "analyzing",    "ready",
                                                "cancelled", "failed",       "file-missing",
                                                "rules-broken"};
-    std::printf("  viewed=%s view_job=%s view_pending=%s\n",
+    out.appendf("  viewed=%s view_job=%s view_pending=%s\n",
                 kViewStates[static_cast<int>(a.viewed.state)],
                 a.view_job ? (a.view_job->finished() ? "finished" : "running") : "-",
                 yes_no(a.view_pending));
-    std::printf("  jobs: scan=%s batch=%s report=%s dm_fetch=%s dm_report=%s\n",
+    out.appendf("  jobs: scan=%s batch=%s report=%s dm_fetch=%s dm_report=%s\n",
                 a.scan_job ? (a.scan_job->snapshot().finished ? "finished" : "running") : "-",
                 a.batch_job ? (a.batch_job->snapshot().finished ? "finished" : "running") : "-",
                 a.report_job ? (a.report_job->finished() ? "finished" : "running") : "-",
                 a.dm_fetch_job ? (a.dm_fetch_job->finished() ? "finished" : "running") : "-",
                 a.dm_report_job ? (a.dm_report_job->finished() ? "finished" : "running") : "-");
     if (a.preview)
-        std::printf("  preview: active=%s loading=%s playing=%s error=\"%s\"\n",
+        out.appendf("  preview: active=%s loading=%s playing=%s error=\"%s\"\n",
                     yes_no(a.preview->active()), yes_no(a.preview->loading()),
                     yes_no(a.preview->playing()), a.preview->error().c_str());
-    std::printf("  status=\"%s\" dm_users=%zu\n", a.status_message.c_str(),
-                a.dm_users.size());
+    out.appendf("  status=\"%s\" dm_users=%zu\n", a.status_message.c_str(), a.dm_users.size());
+    return out.c_str();
 }
 
 bool screenshot(ImGuiTestContext* ctx, const std::string& file) {
