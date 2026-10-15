@@ -404,7 +404,8 @@ void set_view_analyzer_for_test(app::ChartAnalyzer analyze);
 
 // Builds the library's path report in memory (app::report::generate_report)
 // for the path report window (D103). Kicked off when a library batch analysis
-// finishes, and by the window's Refresh (AppState::request_path_report). It
+// finishes (the one opening the report runs included), and by
+// AppState::request_path_report when nothing is left to analyze. It
 // reads the stored records of one profile, off the render thread like every
 // other job. It writes, analyzes and opens nothing.
 class ReportJob : public ResultJobBase {

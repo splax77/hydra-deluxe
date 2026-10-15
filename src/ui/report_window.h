@@ -72,6 +72,17 @@ struct ReportWindowInput {
     // with nothing in memory (ReportSlot::built_on_open), so the window keeps
     // its search, timing, Optimal paths only and sort when the rows arrive.
     bool keep_filters = false;
+    // The path report only: the batch its build waits on (AppState::
+    // path_report_batch), as that batch's snapshot gives it, so the window's
+    // numbers are the strip's. Unset when it waits on no batch.
+    struct WaitedBatch {
+        bool preparing = true;  // BatchJob::Snapshot::preparing
+        int completed = 0;      // BatchJob::Snapshot::completed
+        int total = 0;          // BatchJob::Snapshot::total
+    };
+    std::optional<WaitedBatch> batch;
+    // The path report only: its build waits for the batch confirm's answer.
+    bool awaits_confirm = false;
     // A failed build's message and error, as the job gives them.
     std::string failure_message;
     std::string failure_error;
@@ -131,11 +142,13 @@ struct Frame {
     ReportBuild state = ReportBuild::None;
     ReportOutOfDate out_of_date = ReportOutOfDate::None;
     std::optional<std::chrono::system_clock::time_point> batch_finished;
-    // Building: the moving bar (neither report has a count to show), and the
-    // lines above it. False draws no bar at all (the path report, which only
-    // reads the store).
+    // Building: the lines above the bar, the first one plain and the rest
+    // dim. With `progress` (done, total) the bar fills to that share;
+    // without it, progress_bar draws a moving bar and false draws none (the
+    // path report's build, which only reads the store).
+    std::vector<std::string> building_lines;
+    std::optional<std::pair<int, int>> progress;
     bool progress_bar = true;
-    std::vector<const char*> building_lines;
     // Building: grey rows where the table will be (mock board 2a).
     bool placeholder_rows = false;
     // Never built: why no build can start (empty: the header alone). The

@@ -124,11 +124,12 @@ void render_actions_row(AppState& app) {
             ImGui::SetTooltip("Compare a dmleaderboards player's scores against your library.");
     }
 
-    // The path report, at the right, once there is something to report or
-    // one in memory (D103). While one builds the button says so, and still
-    // opens the window in its building state.
+    // The path report, at the right, whenever opening it can build one
+    // (AppState::path_report_offered) or one is in memory (D103). While one
+    // builds the button says so, and still opens the window in its building
+    // state.
     const bool building = app.path_report_build() == ReportBuild::Building;
-    const bool show_report = building || app.path_report.result || app.library_has_analyzed();
+    const bool show_report = building || app.path_report.result || app.path_report_offered();
     const float report_w = std::max(button_slot_width("Open path report"),
                                     button_slot_width("Building path report..."));
 

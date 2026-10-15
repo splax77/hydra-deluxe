@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "core/error_kind.h"
 #include "store/chart_index.h"
 #include "store/record_store.h"
 #include "core/squeeze_rating.h"
@@ -225,6 +226,29 @@ struct GeneratedReport {
     // shows them. Empty when there is no page.
     std::string subtitle;
     std::string footer;
+
+    // The page's coverage (plan 2026-10-15, question 5). T5 added these
+    // names so the window compiles before T4's report change lands; T4 owns
+    // them and fills them, and the merge keeps T4's version.
+    struct CantAnalyzeChart {
+        std::string song_id;
+        std::string song;
+        std::string artist;
+        ErrorKind kind = ErrorKind::ChartUnreadable;
+        std::string text;
+    };
+    struct CantAnalyzeGroup {
+        std::string heading;
+        std::vector<CantAnalyzeChart> rows;
+    };
+    int64_t library_charts = 0;
+    std::vector<CantAnalyzeChart> cant_analyze;
+    int64_t no_result_charts = 0;
+    // The two lines above the table, empty when there is nothing to say.
+    std::string coverage_line;
+    std::string no_result_line;
+    // The Show list's charts, grouped by reason.
+    std::vector<CantAnalyzeGroup> cant_analyze_groups;
 };
 
 // The library's charts through collect_rows.
