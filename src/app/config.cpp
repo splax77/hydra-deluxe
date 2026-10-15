@@ -206,8 +206,8 @@ Settings Settings::load_file(const std::string& path) {
         // A blank, comment-only or "="-less line is skipped.
         const std::optional<IniPair> kv = split_ini_line(line);
         if (!kv) continue;
-        // An unknown key (the pre-1.6 sp_cap_enabled/sp_cap_value among
-        // them) is ignored.
+        // A key no setting has is skipped: a retired one
+        // (kRetiredSettingsKeys) or any other.
         for (const Key& k : keys())
             if (kv->key == k.name) read_value(k, *kv, s);
     }

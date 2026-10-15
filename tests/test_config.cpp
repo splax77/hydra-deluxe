@@ -587,6 +587,27 @@ TEST_CASE("profile_with_fills differs from profile only in the fill rule") {
     CHECK(s.profile_with_fills(hydra::FillDeadlineRule::Ch10) == s.profile());
 }
 
+TEST_CASE("each retired settings key loads silently and is never written back") {
+    for (const hydra::app::RetiredKey& r : hydra::app::kRetiredSettingsKeys) {
+        CAPTURE(r.name);
+        CHECK_FALSE(r.retired_in.empty());
+        const std::string path = testtemp::temp_path("retired_key", ".ini");
+        {
+            std::ofstream f(path, std::ios::trunc);
+            f << r.name << "=8\n";
+        }
+        const Settings s = Settings::load_file(path);
+        CHECK(s.analysis_changes().empty());
+        // save_file writes every live key, so a retired one must not appear.
+        REQUIRE(s.save_file(path));
+        std::ifstream in(path);
+        const std::string saved{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+        in.close();
+        CHECK(saved.find(std::string(r.name) + "=") == std::string::npos);
+        std::remove(path.c_str());
+    }
+}
+
 TEST_CASE("legacy_fills_for reads fill_rule_for backwards") {
     using hydra::FillDeadlineRule;
     CHECK(hydra::legacy_fills_for(FillDeadlineRule::Ch10));
