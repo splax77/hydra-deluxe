@@ -38,7 +38,7 @@ FAKE = HERE / "fake_hydra_live.py"
 WM_CLOSE = 0x0010  # winuser.h
 WM_KEYDOWN = 0x0100  # winuser.h
 WM_KEYUP = 0x0101  # winuser.h
-VK_ESCAPE = 0x1B  # winuser.h: the Win32 key code of Escape, not a Hydra number
+VK_ESCAPE = 0x001B  # winuser.h: the Win32 key code of Escape, not a Hydra number
 # Long enough that the test engine reads the held Esc as an abort request;
 # the engine's own hold time is in imgui_te_engine.cpp (the "holding ESC" block).
 ESC_HOLD_S = 1.0
