@@ -125,6 +125,40 @@ class FakeLayer(unittest.TestCase):
         finally:
             helper.shutdown()
 
+    def test_a_closed_channel_with_a_live_process_is_reported_as_killed(self):
+        helper = self.new_helper(reply_margin_s=1)
+        try:
+            helper.start("headless")
+            proc = helper.session.proc
+            out = helper.send("fake-close")
+            self.assertTrue(out.startswith("Hydra closed its live channel but kept running for 1 s"), out)
+            self.assertNotIn("Hydra exited with code", out)
+            self.assertIsNotNone(proc.poll())
+            self.assertIsNone(helper.session)
+        finally:
+            helper.shutdown()
+
+    def test_bad_timeouts_are_refused_before_anything_is_sent(self):
+        self.helper.start("headless")
+        for bad in (-1, float("inf"), float("nan")):
+            self.assertTrue(self.helper.with_timeout("wait-idle", bad).startswith("refused: timeout"), bad)
+        self.assertEqual(self.helper.session.timeout, hm.ENGINE_DEFAULT_TIMEOUT_S)
+
+    def test_a_reply_that_is_not_an_object_is_reported(self):
+        self.helper.start("headless")
+        self.helper._read_line = lambda sess, wait_s: "5"
+        ok, text, _ = self.helper.command("state")
+        self.assertFalse(ok)
+        self.assertIn("not a JSON reply", text)
+
+    def test_an_unreadable_process_list_refuses_the_snapshot_and_leaves_no_folder(self):
+        lib = self.root / "lib"
+        make_library(lib)
+        helper = self.new_helper(process_lister=lambda: (_ for _ in ()).throw(OSError("no list")))
+        out = helper.start("window", library_dir=str(lib))
+        self.assertTrue(out.startswith("refused: no list"), out)
+        self.assertEqual(list(self.root.glob("hydra_live_*")), [])
+
     def test_exiting_hydra_is_reported_with_code_log_tail_and_dump(self):
         self.helper.start("headless")
         out = self.helper.send("fake-exit 3 dump")

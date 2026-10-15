@@ -306,7 +306,9 @@ class Helper:
             if mode == "window":
                 try:
                     copied, report = snapshot_library(library_dir, scratch, self.process_lister())
-                except SnapshotRefused as e:
+                except (SnapshotRefused, OSError) as e:
+                    # An unreadable process list or a failed copy refuses too:
+                    # no snapshot is better than a half one.
                     shutil.rmtree(scratch, ignore_errors=True)
                     return "\n".join(notes + [f"refused: {e}"])
                 notes.append(report)
@@ -469,14 +471,20 @@ class Helper:
             self.session = None
         if silent is not None and s.proc.poll() is None:
             s.proc.kill()
+        lingered = False
         try:
             code = s.proc.wait(timeout=self.reply_margin_s)
         except subprocess.TimeoutExpired:
             s.proc.kill()
             code = s.proc.wait()
+            lingered = True
         self._close(s)
         if silent is not None:
             lines = [f"{silent}, so the helper killed it. The session is stopped; call hydra_start."]
+        elif lingered:
+            lines = [f"Hydra closed its live channel but kept running for {self.reply_margin_s:g} s,"
+                     f" so the helper killed it (exit code {describe_exit(code)})."
+                     " The session is stopped; call hydra_start."]
         else:
             lines = [f"Hydra exited with code {describe_exit(code)}. The session is stopped;"
                      " call hydra_start."]
@@ -532,8 +540,10 @@ class Helper:
             raise HydraGone(self._kill_report(s, silent=f"Hydra did not answer within {wait_s:g} s"))
         try:
             msg = json.loads(reply)
+            if not isinstance(msg, dict):
+                raise ValueError
         except ValueError:
-            return False, f"Hydra sent a line that is not JSON: {reply[:200]!r}", prefix
+            return False, f"Hydra sent a line that is not a JSON reply: {reply[:200]!r}", prefix
         if msg.get("ok"):
             if verb == "timeout":
                 try:
@@ -541,6 +551,9 @@ class Helper:
                 except ValueError:
                     pass
             elif verb == "reset":
+                # Whether the interpreter's timeout survives a reset is its
+                # call. Taking the larger of the two can only make the helper
+                # wait longer than needed, never call a slow reply silent.
                 s.timeout = max(s.timeout, ENGINE_DEFAULT_TIMEOUT_S)
             return True, msg.get("text") or "", prefix
         text = f"failed: {msg.get('error', '')}"
@@ -564,6 +577,8 @@ class Helper:
         with self.lock:
             if timeout is None:
                 return self.send(line)
+            if not (0 <= timeout < float("inf")):
+                return f"refused: timeout must be a number of seconds, 0 or more; got {timeout:g}"
             try:
                 s, prefix = self._session()
                 old = s.timeout

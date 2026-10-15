@@ -6,12 +6,13 @@ pipe for its own process id, writes the hello line on connect, then answers
 one JSON line per script line. The answers are canned; they only have to look
 like the real ones closely enough for the helper's parsing.
 
-Three extra verbs let the tests drive the bad cases:
+Extra verbs let the tests drive the bad cases:
 
     fake-hang           never answer (the helper must give up and kill us)
     fake-exit <code>    write a log line and exit with that code; "dump" after
                         the code also leaves a crash.dmp in the scratch folder
     fake-big            answer with 50,000 characters of text
+    fake-close          close the pipe but keep running (the helper must kill us)
 
 It reads the same flags the real exes get and ignores what it does not need.
 "--as <exe name>" says which exe it stands in for, which sets the mode.
@@ -29,6 +30,10 @@ PIPE_ACCESS_DUPLEX = 0x00000003
 PIPE_TYPE_BYTE_READMODE_BYTE_WAIT = 0x00000000
 ERROR_PIPE_CONNECTED = 535
 BUFFER_BYTES = 65536
+
+# How long fake-hang and fake-close sleep. Only a cap so that a stand-in
+# nobody kills still goes away; the helper's tests kill it long before.
+HANG_CAP_S = 600
 
 k32 = ctypes.WinDLL("kernel32", use_last_error=True)
 k32.CreateNamedPipeW.restype = wintypes.HANDLE
@@ -120,8 +125,12 @@ class Fake:
             ok(pipe)
             return False
         if verb == "fake-hang":
-            # Capped so a stand-in that nobody kills still goes away.
-            time.sleep(600)
+            time.sleep(HANG_CAP_S)
+            return False
+        if verb == "fake-close":
+            # Drop the pipe but keep running: the helper must kill us.
+            k32.CloseHandle(pipe.h)
+            time.sleep(HANG_CAP_S)
             return False
         if verb == "fake-exit":
             parts = rest.split()
