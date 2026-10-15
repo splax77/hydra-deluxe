@@ -30,6 +30,7 @@
 #include "ui/report_state.h"  // ReportBuild, ReportOutOfDate
 #include "ui/theme.h"
 #include "ui/column_widths.h"
+#include "ui/list_scroll.h"
 #include "ui/widgets.h"  // hint, overflow_tooltip, keep_table_column_order
 
 namespace hydra::ui {
@@ -243,11 +244,17 @@ struct Memory {
     float table_top = 0.0f;
     // The table's cells as last fitted; a new result or a new measure drops them.
     FittedTextCache fitted;
+    // The table's reset key for the width rule (table_room in
+    // ui/column_widths.h): it moves on with each new result (reset) and each
+    // changed search (search_box), so a dragged column holds until then.
+    std::uint64_t rows_key = 0;
     // Forget everything a built report set up: a new result starts fresh.
     void reset() {
         const bool open = was_open;
+        const std::uint64_t key = rows_key;
         *this = Memory{};
         was_open = open;
+        rows_key = key + 1;
     }
 };
 
@@ -260,12 +267,14 @@ void end(bool* open, const Frame& frame, Memory& memory);
 // The tiles, wrapping onto another line in a narrow window.
 void tiles(const std::vector<app::report::Tile>& tiles);
 
-// The search box. True when its text changed.
+// The search box. True when its text changed, which also moves the table's
+// reset key on (Memory::rows_key).
 bool search_box(Memory& memory, const char* hint);
 // A dropdown of `labels`, at the width of its widest. True when `chosen`
 // changed.
 bool dropdown(const char* id, const std::vector<std::string>& labels, int& chosen);
-// The count line, at the right of the controls row. Call it last on that row.
+// The count line, right after the controls row's last item. Call it last on
+// that row.
 void count_line(Memory& memory, const std::string& text);
 // "Nothing matches those filters." and Clear filters. True on a click.
 bool nothing_matches();
@@ -276,8 +285,7 @@ float footer_height(const Frame& frame);
 // The cell is (row, column) in `fits`: its row's index into the result's
 // rows and its column's index.
 void cell(const std::string& text, const app::report_view::CellLook& look,
-          app::report_view::Tone tone, bool numeric, FittedTextCache& fits, size_t row,
-          size_t column);
+          app::report_view::Tone tone, FittedTextCache& fits, size_t row, size_t column);
 void chip(const std::string& text, app::report::ChipToken token);
 
 // ---- The columns, as the width rule (ui/column_widths.h) sees them ---------
@@ -384,9 +392,9 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
         widths = measure(view);
         memory.fitted.clear();
     }
-    // The reset key is a constant 0 for now, so a drag holds while the window
-    // is open; task T4 of the column-shares plan passes the report's counter.
-    const TableRoom room = table_room(id, 0.0f, specs.size(), 0);
+    // A dragged column holds until a new result or a changed search
+    // (Memory::rows_key).
+    const TableRoom room = table_room(id, 0.0f, specs.size(), memory.rows_key);
     const ColumnLayout layout = place_columns(widths, specs, room);
     // SortMulti for the Shift+click second sort (D103 item 1).
     if (!ImGui::BeginTable(id, static_cast<int>(specs.size()),
@@ -442,19 +450,21 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
             ImGui::PushID(static_cast<int>(index));
 
             // One Selectable spans the row, labeled with its row number
-            // (right-aligned, dim), so the whole row is one click target.
+            // (dim), so the whole row is one click target.
             ImGui::TableSetColumnIndex(0);
             const std::string number = row_number(static_cast<size_t>(k));
-            place_control_at_right_edge(ImGui::CalcTextSize(number.c_str()).x);
             ImGui::PushStyleColor(ImGuiCol_Text, kDimTextColor);
             const bool clicked = ImGui::Selectable(
                 number.c_str(), memory.selected == index,
                 ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap);
             ImGui::PopStyleColor();
-            if (clicked) pick(index);
+            // Whether the list moves to the row is selection_scroll's to say
+            // (ui/list_scroll.h), asked while the Selectable is the last item.
+            if (clicked && pick(index)) scroll_last_row(selection_scroll(SelectionSource::Click));
+            if (scroll_to && *scroll_to == static_cast<size_t>(k))
+                scroll_last_row(selection_scroll(SelectionSource::Step));
             if (!can_click(row)) hint(look.unclickable_hint);
             if (look.best && look.best(row)) best_bar();
-            if (scroll_to && *scroll_to == static_cast<size_t>(k)) ImGui::SetScrollHereY(0.5f);
 
             for (size_t c = 0; c < columns.size(); ++c) {
                 if (!ImGui::TableSetColumnIndex(static_cast<int>(c) + 1)) continue;
@@ -463,8 +473,8 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
                 if (col.look.chip && look.chip)
                     chip(text, look.chip(row));
                 else
-                    cell(text, col.look, col.tone ? col.tone(row) : Tone::Normal, col.numeric,
-                         memory.fitted, index, c);
+                    cell(text, col.look, col.tone ? col.tone(row) : Tone::Normal, memory.fitted,
+                         index, c);
             }
             ImGui::PopID();
         }
