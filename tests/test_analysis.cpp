@@ -37,7 +37,6 @@
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file
 #include "display_fixtures.h"  // save_batch_record, save_old_build_record
-#include "parse/song.h"        // NoNotesError
 #include "midi_util.h"
 #include "parse/song.h"
 #include "sng_util.h"
