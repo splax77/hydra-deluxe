@@ -324,8 +324,9 @@ run of the new one (B) over the same charts.
 
 `tools\compare_db.py A.db B.db` compares two databases table by table. It
 prints one line per table, "N rows compared, M differ", lists the first few
-keys that differ, and exits 1 if any table differs. It leaves out
-`result_id`, which only records the order worker threads finished in.
+keys that differ, and exits 1 if any table differs. It leaves out the ids
+each file numbers for itself, such as `result_id`, which only records the order
+worker threads finished in; the script's own header lists them.
 A baseline made before the store kept summaries only (ADR 0026) has tables a
 new file no longer has. Add `--summary-only` to compare just what the new
 store keeps; the script's own header says which tables and columns that is.

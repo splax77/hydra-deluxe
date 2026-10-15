@@ -839,8 +839,7 @@ TEST_CASE("collect_dm_rows reads the Clone Hero cap profile by name") {
     const int64_t optimal = fill_store(store);
     // A second listed chart whose only record is a what-if one at 8 bars.
     constexpr const char* kWhatIfOnly = "0123456789abcdef0123456789abcdef";
-    app::Settings at8 = testdm::settings();
-    at8.sp_cap = 8;
+    const app::Settings at8 = testdm::settings(kMode, 8);
     HydraRecord whatif = testdm::sample_chart().record;
     whatif.sp_cap = 8;
     test::name_chart(store, kWhatIfOnly, "What-if Title");

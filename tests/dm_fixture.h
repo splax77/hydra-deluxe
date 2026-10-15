@@ -27,10 +27,13 @@ inline constexpr const char* kMode = "Expert Pro Drums, 2x Bass";
 inline constexpr const char* kHash = "aa11bb22cc33dd44ee55ff6677889900";
 
 // The settings the fixture's records are analyzed under, in chart mode
-// `mode`: the defaults with the ms limit off, as the corpus analysis ran.
-inline hydra::app::Settings settings(const std::string& mode = kMode) {
+// `mode`, with the ms limit off as the corpus analysis ran. `cap` moves the
+// SP cap.
+inline hydra::app::Settings settings(const std::string& mode = kMode,
+                                     int cap = hydra::kCloneHeroSpCap) {
     hydra::app::Settings s = hydra::app::Settings{}.with_known_chartmode(mode);
     s.mslimit_enabled = false;
+    s.sp_cap = cap;
     return s;
 }
 
@@ -78,8 +81,7 @@ inline int64_t fill_store(hydra::store::RecordStore& store,
     save(store, kHash, settings(), result.record);
     // A what-if record at 8 bars for the same chart: the comparison must never
     // pick it up (the leaderboard plays at 4 bars).
-    app::Settings at8 = settings();
-    at8.sp_cap = 8;
+    const app::Settings at8 = settings(kMode, 8);
     HydraRecord whatif = result.record;
     whatif.sp_cap = 8;
     save(store, kHash, at8, whatif);
