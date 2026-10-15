@@ -126,14 +126,13 @@ void draw_body(PathWindow& w, const report_frame::Frame& frame, const PathReport
     if (view.visible().empty()) {
         // Clear filters leaves Optimal paths only as it is.
         if (report_frame::nothing_matches()) {
-            w.memory.search[0] = '\0';
+            w.memory.clear_search();
             w.timing = app::report_view::kEveryRowChoice;
             apply_filters(w);
         }
         return;
     }
     report_frame::RowLook<ReportRow> look;
-    look.best = [](const ReportRow& r) { return r.optimal; };
     look.chip = [](const ReportRow& r) { return app::report::tier_token(r.tok); };
     report_frame::table("##pathtable", w.memory, view, w.widths, look, input.callbacks,
                         ImGui::GetContentRegionAvail().y - report_frame::footer_height(frame));

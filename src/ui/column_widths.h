@@ -18,8 +18,9 @@
 //
 // The rule has three steps, and only the last one touches ImGui:
 //
-//   1. Measure, once per change of rows or of UI scale. measure_widths()
-//      reads every row of the number columns and the headers of all. The
+//   1. Measure, when MeasuredWidths::stale() says so or the cells
+//      measure_widths() reads change. measure_widths() reads every row of
+//      the number columns and the headers of all. The
 //      result is a MeasuredWidths the table keeps beside its rows.
 //   2. Place, every frame. place_columns() turns the measure and the room
 //      the table has into one width per column and the table's inner width.

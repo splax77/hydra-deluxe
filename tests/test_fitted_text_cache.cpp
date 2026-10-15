@@ -92,3 +92,24 @@ TEST_CASE("FittedTextCache: Memory::reset drops the fits") {
     memory.reset();
     CHECK(memory.fitted.size() == 0);
 }
+
+// The report table lets a dragged column go when this key moves (table_room
+// in ui/column_widths.h).
+TEST_CASE("report Memory: a new result or any change of the search moves the table's reset key") {
+    hydra::ui::report_frame::Memory memory;
+    const std::uint64_t start = memory.rows_key;
+
+    memory.reset();
+    CHECK(memory.rows_key != start);
+
+    const std::uint64_t after_reset = memory.rows_key;
+    memory.search_changed();
+    CHECK(memory.rows_key != after_reset);
+
+    // "Clear filters" empties the search by this call, so it moves the key too.
+    const std::uint64_t before_clear = memory.rows_key;
+    memory.search[0] = 'x';
+    memory.clear_search();
+    CHECK(memory.rows_key != before_clear);
+    CHECK(memory.search[0] == '\0');
+}

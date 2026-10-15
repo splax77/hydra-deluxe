@@ -3,9 +3,10 @@
 // (tests/report_samples.h) through ReportWindowInput, the struct AppState
 // fills in the app, and drive the window by its labels. Their own GUI
 // function draws the windows; only report-window-states' analysis-off step
-// fills the input from AppState (path_report_input). Three more work the same
-// way: the column widths and the window's fit to the screen (one column-width
-// rule plan, Part 3). The rest (task 6)
+// fills the input from AppState (path_report_input). More work the same way:
+// the column widths and the window's fit to the screen (one column-width rule
+// plan, Part 3), and the cells' and header's alignment (2026-10-14
+// column-shares plan). The rest (task 6)
 // run end to end: the app draws both windows itself from run_frame while a
 // slot's window_open is set, so they have no GUI function. Under hydra_uitest
 // there is no platform backend, so each report window draws inside the main
@@ -14,9 +15,11 @@
 
 #include "uitest_harness.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <ctime>
 #include <functional>
 #include <memory>
@@ -372,6 +375,85 @@ void test_states(ImGuiTestContext* ctx) {
     ctx->Yield(2);
 }
 
+// The path table as ImGui holds it, with the ref on the path window.
+ImGuiTable* path_table(ImGuiTestContext* ctx) {
+    ctx->SetRef(path_window());
+    return ImGui::TableFindByID(ctx->GetID("##pathtable"));
+}
+
+// Display row `n`'s rect (its "#" Selectable, which spans the row), or none
+// when the table did not draw it.
+std::optional<ImRect> drawn_row(ImGuiTestContext* ctx, size_t n) {
+    const ImGuiTestItemInfo info =
+        ctx->ItemInfo(("**/" + std::to_string(n)).c_str(), ImGuiTestOpFlags_NoError);
+    if (info.ID == 0) return std::nullopt;
+    return info.RectFull;
+}
+
+// In a path window too short for the six sample rows: a row click leaves the
+// list where it is (the user's rule, 2026-10-14: a click never scrolls);
+// Down onto the first row below the view brings it in at the bottom edge, not
+// the middle; Up onto a row already on screen moves nothing (answer 4).
+void check_keys_scroll_just_enough(ImGuiTestContext* ctx) {
+    ImGuiWindow* window = path_window();
+    ImGuiTable* table = path_table(ctx);
+    IM_CHECK_RETV(window != nullptr && table != nullptr && table->InnerWindow != nullptr, );
+    const ImVec2 size_before = window->Size;
+    // Room for the header row and about two and a half of the six rows, in
+    // rows as the table drew them. With more on screen, centring the next row
+    // would stop at the end of the list, where it meets the bottom edge too.
+    const std::optional<ImRect> first = drawn_row(ctx, 1);
+    IM_CHECK_RETV(first.has_value(), );
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float above = table->OuterRect.Min.y - window->Pos.y;
+    const float footer = ImGui::GetTextLineHeightWithSpacing();
+    ctx->WindowResize("", ImVec2(size_before.x, above + footer + style.WindowPadding.y +
+                                                    style.ScrollbarSize +
+                                                    first->GetHeight() * 3.5f));
+    ctx->Yield(3);
+    ImGuiWindow* list = table->InnerWindow;
+    IM_CHECK_RETV(list->ScrollMax.y > 0.0f, );
+    ImGui::SetScrollY(list, 0.0f);
+    ctx->Yield(3);
+
+    // The last row wholly on screen, and the row after it, partly or not at
+    // all on screen. Centring that next row must move the list further than
+    // bringing it to the bottom edge, so it sits well above the last row.
+    size_t last_shown = 0;
+    for (size_t n = 1; n <= 6; ++n) {
+        const std::optional<ImRect> r = drawn_row(ctx, n);
+        if (r && fully_shown(list, *r)) last_shown = n;
+    }
+    ctx->LogInfo("last row wholly on screen: %zu", last_shown);
+    IM_CHECK_RETV(last_shown >= 2 && last_shown <= 3, );
+
+    // A click on that row keeps the list still.
+    const float scroll = list->Scroll.y;
+    ctx->ItemClick(("**/" + std::to_string(last_shown)).c_str());
+    ctx->Yield(3);
+    ctx->LogInfo("scroll before the click %.1f, after %.1f", scroll, list->Scroll.y);
+    IM_CHECK_EQ(list->Scroll.y, scroll);
+
+    // Down onto the next row: it comes in at the bottom edge.
+    ctx->KeyPress(ImGuiKey_DownArrow);
+    ctx->Yield(3);
+    const std::optional<ImRect> next = drawn_row(ctx, last_shown + 1);
+    IM_CHECK_RETV(next.has_value(), );
+    ctx->LogInfo("row bottom %.1f, list bottom %.1f, spacing %.1f, scroll %.1f", next->Max.y,
+                 list->InnerRect.Max.y, style.ItemSpacing.y, list->Scroll.y);
+    IM_CHECK(fully_shown(list, *next));
+    IM_CHECK_GE(next->Max.y, list->InnerRect.Max.y - style.ItemSpacing.y);
+
+    // Up onto the row above, which is on screen: nothing moves.
+    const float after_down = list->Scroll.y;
+    ctx->KeyPress(ImGuiKey_UpArrow);
+    ctx->Yield(3);
+    IM_CHECK_EQ(list->Scroll.y, after_down);
+
+    ctx->WindowResize("", size_before);
+    ctx->Yield(2);
+}
+
 // Row clicks, the arrow keys, Esc and Ctrl+W.
 void test_keys(ImGuiTestContext* ctx) {
     reset_app(harness(ctx));
@@ -386,6 +468,8 @@ void test_keys(ImGuiTestContext* ctx) {
     ctx->KeyPress(ImGuiKey_DownArrow);
     ctx->Yield(2);
     IM_CHECK_EQ(f.path_clicks.back(), size_t{4});
+    check_keys_scroll_just_enough(ctx);
+    if (ctx->IsError()) return;
 
     ctx->KeyPress(ImGuiKey_Escape);
     ctx->Yield(2);
@@ -428,12 +512,6 @@ void test_both(ImGuiTestContext* ctx) {
 }
 
 // ---- Column widths and the window's size (one column-width rule) ----------
-
-// The path table as ImGui holds it, with the ref on the path window.
-ImGuiTable* path_table(ImGuiTestContext* ctx) {
-    ctx->SetRef(path_window());
-    return ImGui::TableFindByID(ctx->GetID("##pathtable"));
-}
 
 // In a narrow window the chips and numbers show in full and the table
 // scrolls sideways. A cut cell draws past ImGui's text log, so a label in the
@@ -493,6 +571,105 @@ void test_column_widths(ImGuiTestContext* ctx) {
         IM_CHECK_EQ(table->Columns[c].WidthGiven, f.rule_widths[static_cast<size_t>(c)]);
     }
     f.want_rule_widths = false;
+}
+
+// The leftmost x of the text glyphs drawn last frame in `color` inside
+// column `c` of `table`, between `top` and `bottom`: where that cell's text
+// starts. Glyphs are told from filled rects by their texture coordinates (a
+// rect samples the font atlas's white pixel). None when no such glyph.
+std::optional<float> text_start(const ImGuiTable* table, int c, ImU32 color, float top,
+                                float bottom) {
+    const ImGuiTableColumn& col = table->Columns[c];
+    const ImVec2 white = ImGui::GetDrawListSharedData()->TexUvWhitePixel;
+    std::optional<float> left;
+    for (const ImDrawVert& v : table->InnerWindow->DrawList->VtxBuffer) {
+        if (v.col != color || (v.uv.x == white.x && v.uv.y == white.y)) continue;
+        if (v.pos.y < top || v.pos.y > bottom || v.pos.x < col.MinX || v.pos.x > col.MaxX)
+            continue;
+        left = left ? (std::min)(*left, v.pos.x) : v.pos.x;
+    }
+    return left;
+}
+
+// Every cell's text starts at its column's left edge: a number in Score and
+// the dim row number in "#" alike (the user's answer to Change 3 of the
+// 2026-10-14 column-shares plan). The shorter scores show it: right-aligned,
+// "77,000" would start a digit's width in from where "250,000" starts.
+void test_cells_left(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    reset_fixture();
+    open_path_all_rows(ctx);
+    if (ctx->IsError()) return;
+    // Wide enough that every column is on screen.
+    ctx->WindowResize("", ImVec2(static_cast<float>(h.width), 600.0f));
+    ctx->Yield(3);
+    ImGuiTable* table = path_table(ctx);
+    IM_CHECK_RETV(table != nullptr && table->InnerWindow != nullptr, );
+    const auto columns = hydra::app::path_report_view::path_columns(report_samples::kSampleHitWindowMs);
+    int score = -1;
+    for (size_t c = 0; c < columns.size(); ++c)
+        if (columns[c].title == "Score") score = static_cast<int>(c) + 1;
+    IM_CHECK_RETV(score > 0 && table->Columns[score].IsVisibleX, );
+
+    const float pad = ImGui::GetStyle().CellPadding.x;
+    const ImU32 text = ImGui::GetColorU32(ImGuiCol_Text);
+    const ImU32 dim = ImGui::GetColorU32(hydra::ui::kDimTextColor);
+    const std::pair<int, ImU32> cells[] = {{0, dim}, {score, text}};
+    // From the bottom up, so the shortest score is read first.
+    for (size_t n = 6; n >= 1; --n) {
+        const std::optional<ImRect> row = drawn_row(ctx, n);
+        IM_CHECK_RETV(row.has_value(), );
+        for (const auto& [c, color] : cells) {
+            const std::optional<float> x = text_start(table, c, color, row->Min.y, row->Max.y);
+            IM_CHECK_RETV(x.has_value(), );
+            ctx->LogInfo("row %zu column %d: text at %.1f, column starts at %.1f", n, c, *x,
+                         table->Columns[c].WorkMinX);
+            IM_CHECK_LE(std::fabs(*x - table->Columns[c].WorkMinX), pad);
+        }
+    }
+}
+
+// A report too narrow for the header's buttons beside "Built HH:MM": the
+// buttons start a line of their own and sit at its right edge (the user's
+// answer 7 and their choice of 2026-10-14). A report with no rows has no
+// controls row or table to hold the window wide.
+void test_header_narrow(ImGuiTestContext* ctx) {
+    reset_app(harness(ctx));
+    reset_fixture();
+    Fixture& f = fixture();
+    auto empty = std::make_shared<GeneratedReport>();
+    empty->why_empty = "sample empty reason";
+    f.path.result = empty;
+    f.path.built = local_time(13, 42);
+    f.path_open = true;
+    ctx->Yield(3);
+    ImGuiWindow* window = path_window();
+    IM_CHECK_RETV(window != nullptr, );
+    ctx->SetRef(window);
+    ctx->WindowResize("", ImVec2(900.0f, 400.0f));
+    ctx->Yield(3);
+    const ImRect wide = ctx->ItemInfo("Refresh").RectFull;
+    IM_CHECK(shows("Built 13:42"));
+    // Wide: Refresh shares the heading's line, at its right edge.
+    IM_CHECK_LE(std::fabs(wide.Max.x - window->WorkRect.Max.x), 1.0f);
+
+    // Room for "Hydra Path Index  Built 13:42", but not for Refresh beside it.
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float header_w = ImGui::CalcTextSize("Hydra").x + ImGui::CalcTextSize("Path Index").x +
+                           ImGui::CalcTextSize("Built 13:42").x + style.ItemSpacing.x * 3.0f;
+    ctx->WindowResize("", ImVec2(header_w + style.WindowPadding.x * 2.0f + style.ScrollbarSize +
+                                     wide.GetWidth() * 0.5f,
+                                 400.0f));
+    ctx->Yield(3);
+    const ImRect narrow = ctx->ItemInfo("Refresh").RectFull;
+    ctx->LogInfo("Refresh wide %.1f..%.1f at y %.1f, narrow %.1f..%.1f at y %.1f, right edge %.1f",
+                 wide.Min.x, wide.Max.x, wide.Min.y, narrow.Min.x, narrow.Max.x, narrow.Min.y,
+                 window->WorkRect.Max.x);
+    IM_CHECK_GE(narrow.Min.y, wide.Min.y + ImGui::GetTextLineHeightWithSpacing());
+    IM_CHECK_LE(std::fabs(narrow.Max.x - window->WorkRect.Max.x), 1.0f);
+    f.path_open = false;
+    ctx->Yield(2);
 }
 
 // A saved size bigger than the screen (the user's hydra_ui.ini) opens fitted
@@ -1074,6 +1251,8 @@ void register_report_window_tests(Harness& h) {
         {"report-windows-both", test_both},
         {"report-window-chip-label", test_chip_label},
         {"report-window-column-widths", test_column_widths},
+        {"report-window-cells-left", test_cells_left},
+        {"report-window-header-narrow", test_header_narrow},
         {"report-window-fits-screen", test_fits_screen},
     };
     for (const TestEntry& e : kTests) {

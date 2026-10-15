@@ -80,42 +80,6 @@
       "date": "2026-10-14",
       "added_by": "D115-A1-4",
       "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Does a selection change scroll the list, and how far?",
-      "file": "src/ui/report_window.h",
-      "line_text": "if (scroll_to && *scroll_to == static_cast<size_t>(k)) ImGui::SetScrollHereY(0.5f);",
-      "removed_by": "the report-window task: the report table calls scroll_last_row with its click or arrow source",
-      "date": "2026-10-14",
-      "added_by": "CS-T2",
-      "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Which way is text aligned?",
-      "file": "src/ui/report_window.cpp",
-      "line_text": "if (numeric) place_control_at_right_edge(ImGui::CalcTextSize(text.c_str()).x);",
-      "removed_by": "CS-T4: a report's number cells start at their column's left edge",
-      "date": "2026-10-14",
-      "added_by": "CS-T5a",
-      "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Which way is text aligned?",
-      "file": "src/ui/report_window.cpp",
-      "line_text": "place_control_at_line_end(ImGui::CalcTextSize(built.c_str()).x + spacing + buttons_w(buttons));",
-      "removed_by": "CS-T4: \"Built HH:MM\" starts after the item before it; only the header's buttons stay at the right edge",
-      "date": "2026-10-14",
-      "added_by": "CS-T5a",
-      "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Which way is text aligned?",
-      "file": "src/ui/report_window.h",
-      "line_text": "place_control_at_right_edge(ImGui::CalcTextSize(number.c_str()).x);",
-      "removed_by": "CS-T4: a report's \"#\" cell starts at its cell's left edge",
-      "date": "2026-10-14",
-      "added_by": "CS-T5a",
-      "remove_by": "2026-10-28"
     }
   ],
   "known_clones": []

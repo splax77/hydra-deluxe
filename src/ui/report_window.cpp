@@ -60,6 +60,8 @@ void call(const std::function<void()>& f) {
 }
 
 // "Hydra <heading>", the subtitle, "Built HH:MM" and the header's buttons.
+// "Built HH:MM" is text, so it follows the heading; only the buttons go to
+// the right edge (place_control_at_line_end).
 void header(const Frame& f) {
     const ReportCallbacks& cb = *f.callbacks;
     ImGui::TextUnformatted("Hydra");
@@ -67,19 +69,17 @@ void header(const Frame& f) {
     ImGui::TextColored(kAccentColor, "%s", f.heading);
 
     if (f.state == ReportBuild::Ready && f.built) {
-        const std::string built = "Built " + clock_text(*f.built);
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(kDimTextColor, "Built %s", clock_text(*f.built).c_str());
         std::vector<const char*> buttons;
         if (f.compare_another) buttons.push_back("Compare another player...");
         buttons.push_back("Refresh");
-        const float spacing = ImGui::GetStyle().ItemSpacing.x;
-        place_control_at_line_end(ImGui::CalcTextSize(built.c_str()).x + spacing + buttons_w(buttons));
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextColored(kDimTextColor, "%s", built.c_str());
+        place_control_at_line_end(buttons_w(buttons));
         if (f.compare_another) {
-            ImGui::SameLine();
             if (ImGui::Button("Compare another player...")) call(cb.compare_another);
+            ImGui::SameLine();
         }
-        ImGui::SameLine();
         if (ImGui::Button("Refresh")) call(cb.refresh);
     }
     const char* subtitle = f.state == ReportBuild::Ready      ? f.subtitle.c_str()
@@ -302,8 +302,11 @@ bool search_box(Memory& m, const char* hint_text) {
     // As wide as its hint, framed like a button's label.
     ImGui::SetNextItemWidth(button_slot_width(hint_text));
     // The first Escape empties the box, as in the library's search.
-    return ImGui::InputTextWithHint("##search", hint_text, m.search, sizeof(m.search),
-                                    ImGuiInputTextFlags_EscapeClearsAll);
+    const bool changed = ImGui::InputTextWithHint("##search", hint_text, m.search,
+                                                  sizeof(m.search),
+                                                  ImGuiInputTextFlags_EscapeClearsAll);
+    if (changed) m.search_changed();
+    return changed;
 }
 
 bool dropdown(const char* id, const std::vector<std::string>& labels, int& chosen) {
@@ -332,7 +335,7 @@ void count_line(Memory& m, const std::string& text) {
     const float controls_end = ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x;
     const float w = ImGui::CalcTextSize(text.c_str()).x;
     m.controls_w = controls_end - style.WindowPadding.x + style.ItemSpacing.x + w;
-    place_control_at_line_end(w);
+    ImGui::SameLine();
     ImGui::AlignTextToFramePadding();
     ImGui::TextColored(kDimTextColor, "%s", text.c_str());
 }
@@ -351,7 +354,7 @@ float footer_height(const Frame& f) {
 }
 
 void cell(const std::string& text, const app::report_view::CellLook& look, Tone tone,
-          bool numeric, FittedTextCache& fits, size_t row, size_t column) {
+          FittedTextCache& fits, size_t row, size_t column) {
     const bool dim = tone == Tone::Dim || (tone == Tone::Normal && look.dim);
     // An alert reads in the third tier's red, as the pages' .neg did.
     const ImVec4 color = tone == Tone::Alert ? chip_color(ChipToken::t3)
@@ -359,7 +362,6 @@ void cell(const std::string& text, const app::report_view::CellLook& look, Tone 
                                              : ImGui::GetStyleColorVec4(ImGuiCol_Text);
     ImGui::PushStyleColor(ImGuiCol_Text, color);
     if (look.mono) ImGui::PushFont(g_mono_font, 0.0f);
-    if (numeric) place_control_at_right_edge(ImGui::CalcTextSize(text.c_str()).x);
     fitted_text(text, fits, row, column);
     if (look.mono) ImGui::PopFont();
     ImGui::PopStyleColor();
@@ -401,14 +403,6 @@ ColumnSpec column_spec(const std::string& title, const app::report_view::CellLoo
     if (look.chip) s.padding = chip_pad() * 2.0f;
     s.width_of = measure_in_font(look.mono ? g_mono_font : nullptr);
     return s;
-}
-
-void best_bar() {
-    // A bar in kBestPathColor, 3 px wide, at the row's left edge.
-    const ImVec2 min = ImGui::GetItemRectMin();
-    const ImVec2 max = ImGui::GetItemRectMax();
-    ImGui::GetWindowDrawList()->AddRectFilled(min, ImVec2(min.x + px(3.0f), max.y),
-                                              ImGui::GetColorU32(kBestPathColor));
 }
 
 void push_sort(const HeaderSort& sort) {
