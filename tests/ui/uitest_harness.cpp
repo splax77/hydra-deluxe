@@ -132,6 +132,12 @@ bool Harness::init_attached(ID3D11Device* dev, ID3D11DeviceContext* ctx, IDXGISw
     return true;
 }
 
+void register_test(Harness& h, const char* name, void (*fn)(ImGuiTestContext*)) {
+    ImGuiTest* t = IM_REGISTER_TEST(h.engine, "hydra", name);
+    t->UserData = &h;
+    t->TestFunc = fn;
+}
+
 bool selects(const std::string& what, const char* test_name) {
     return what == "all" || what == test_name;
 }
@@ -385,6 +391,13 @@ void reset_app(Harness& h, const std::string& rules_text, bool wait_store) {
     IM_ERRORF("The scratch library did not open:\n%s", why.c_str());
 }
 
+void idle_frame(ImGuiTestContext* ctx) {
+    ctx->Yield();
+    // Fast mode spins frames flat out; a short nap keeps the worker
+    // threads from being starved while we poll.
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+}
+
 bool wait_until(ImGuiTestContext* ctx, const std::function<bool()>& pred, double seconds) {
     auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(seconds);
     while (!pred()) {
@@ -393,10 +406,7 @@ bool wait_until(ImGuiTestContext* ctx, const std::function<bool()>& pred, double
         // timeout.
         if (ctx->IsError()) return false;
         if (std::chrono::steady_clock::now() > deadline) return false;
-        ctx->Yield();
-        // Fast mode spins frames flat out; a short nap keeps the worker
-        // threads from being starved while we poll.
-        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        idle_frame(ctx);
     }
     // One more frame so the screen reflects the state the caller waited for.
     ctx->Yield();

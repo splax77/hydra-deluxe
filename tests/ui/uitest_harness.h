@@ -120,6 +120,13 @@ void register_script_test(Harness& h);
 // Register the "live" test (uitest_live.cpp), which --live queues: it takes
 // command lines from a named pipe until the client leaves or sends quit.
 void register_live_test(Harness& h);
+// Register one test under the name --test and --list use. The script and live
+// tests register through it.
+void register_test(Harness& h, const char* name, void (*fn)(ImGuiTestContext*));
+// Whether a line a script file or the live pipe handed over is a command to
+// run (defined in uitest_script.cpp, the one place that decides). On true,
+// `command` holds the trimmed line.
+bool command_line(const std::string& raw, std::string& command);
 
 // ---- helpers shared by the tests and the script interpreter --------------
 
@@ -131,6 +138,10 @@ inline Harness& harness(ImGuiTestContext* ctx) {
 // on real threads, so the wait is wall-clock, not frame-count. Returns false
 // at once when the test has already failed (ctx->IsError()).
 bool wait_until(ImGuiTestContext* ctx, const std::function<bool()>& pred, double seconds);
+
+// One step of that wait: a frame, then a short nap. For a loop that polls
+// something wait_until's predicate cannot express.
+void idle_frame(ImGuiTestContext* ctx);
 
 // True while any background job (scan, batch, analyze, report, DM fetch/report)
 // or the Preview's load is still running.

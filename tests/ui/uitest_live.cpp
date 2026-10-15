@@ -178,12 +178,6 @@ private:
     bool closed_ = false;
 };
 
-// One frame, then a short nap, as wait_until polls.
-void idle(ImGuiTestContext* ctx) {
-    ctx->Yield();
-    std::this_thread::sleep_for(std::chrono::milliseconds(2));
-}
-
 // The text the engine logged since `from` bytes into the test's log.
 std::string log_since(ImGuiTestContext* ctx, size_t from) {
     const ImGuiTextBuffer& buf = ctx->TestOutput->Log.Buffer;
@@ -256,14 +250,11 @@ void run_live(ImGuiTestContext* ctx) {
     }
     // Nobody connecting is a stop like any other wait: one hydra_uitest
     // process has kUitestProcessCap to live.
-    const auto deadline = std::chrono::steady_clock::now() + testwait::kUitestProcessCap;
-    while (!pipe.connected()) {
-        if (std::chrono::steady_clock::now() > deadline) {
-            IM_ERRORF("no client connected to %s within %s", pipe.name().c_str(),
-                      testwait::cap_text(testwait::kUitestProcessCap).c_str());
-            return;
-        }
-        idle(ctx);
+    if (!wait_until(ctx, [&] { return pipe.connected(); },
+                    std::chrono::duration<double>(testwait::kUitestProcessCap).count())) {
+        IM_ERRORF("no client connected to %s within %s", pipe.name().c_str(),
+                  testwait::cap_text(testwait::kUitestProcessCap).c_str());
+        return;
     }
     pipe.start_reader();
     if (!pipe.write(live::hello_line(h.attached ? "window" : "headless", h.temp_dir,
@@ -274,28 +265,23 @@ void run_live(ImGuiTestContext* ctx) {
     // when the client leaves or sends quit.
     CommandSession session;
     for (;;) {
-        std::string line;
-        if (pipe.pop_line(line)) {
-            line = hydra::trim(line);
-            if (line.empty() || line[0] == '#') {
-                if (!pipe.write(live::ok_line(""))) return;
-                continue;
-            }
+        std::string raw;
+        if (pipe.pop_line(raw)) {
             ++session.line;
-            if (!pipe.write(answer(ctx, session, line)) || session.quit) return;
+            // A line that is no command still gets its reply: one per line.
+            std::string line;
+            const std::string reply =
+                command_line(raw, line) ? answer(ctx, session, line) : live::ok_line("");
+            if (!pipe.write(reply) || session.quit) return;
             continue;
         }
         if (pipe.finished()) return;
-        idle(ctx);
+        idle_frame(ctx);
     }
 }
 
 }  // namespace
 
-void register_live_test(Harness& h) {
-    ImGuiTest* t = IM_REGISTER_TEST(h.engine, "hydra", "live");
-    t->UserData = &h;
-    t->TestFunc = run_live;
-}
+void register_live_test(Harness& h) { register_test(h, "live", run_live); }
 
 }  // namespace uitest
