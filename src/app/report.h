@@ -128,15 +128,14 @@ std::string beyond_edge_text(double hit_window_ms);
 std::unordered_map<std::string, store::RecordRow> listed_records(
     store::RecordStore& store, const store::Profile& profile, const store::ChartIndex& library);
 
-// The path report's default: every path a record keeps (store::kPathsPerRecord).
-inline constexpr int64_t kDefaultReportPaths = store::kPathsPerRecord;
 // What "--all-paths" asks for, a count no chart reaches. It is the one answer
 // to "does this page list every path" (finding 86): generate_report's subtitle
 // reads it, so any smaller --paths is written as a count.
 inline constexpr int64_t kEveryPathSentinel = 1000000000;
 
 struct ReportOptions {
-    int64_t max_paths = kDefaultReportPaths;
+    // Defaults to every path a record keeps.
+    int64_t max_paths = store::kPathsPerRecord;
     double hit_window_ms = kDefaultHitWindowMs;
     std::string db_path;  // names the footer's source database
     // Set this and generate_report hands back an empty result, with no rows.

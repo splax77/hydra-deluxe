@@ -534,7 +534,7 @@ void ReportJob::run() {
         // One seam for the whole report: rows, counts, and framing come from
         // generate_report.
         app::report::ReportOptions options;
-        options.max_paths = app::report::kDefaultReportPaths;
+        options.max_paths = store::kPathsPerRecord;
         options.hit_window_ms = hit_window_ms_;
         options.db_path = app::db_path();
         // Closing Hydra or the window's Cancel sets this.

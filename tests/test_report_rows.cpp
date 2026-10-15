@@ -613,7 +613,7 @@ TEST_CASE("generate_report: one seam frames the report for every entry point") {
     REQUIRE(added > 0);
 
     report::ReportOptions options = fixture_options(4);
-    options.max_paths = report::kDefaultReportPaths;
+    options.max_paths = store::kPathsPerRecord;
     options.db_path = "C:/somewhere/hydra.db";
     report::GeneratedReport result = report::generate_report(store, options);
     CHECK(result.songs == added);

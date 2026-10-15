@@ -29,7 +29,6 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
-#include "app/report.h"  // kDefaultReportPaths
 #include "app/work_pool.h"
 #include "core/error_kind.h"
 #include "audio_chart_fixtures.h"
@@ -187,7 +186,7 @@ TEST_CASE("run_batch saves a record with its top paths through the one save") {
         REQUIRE(found.status == hydra::store::RecordStatus::Ready);
         const std::vector<hydra::store::PathRow>& paths = found.record.paths;
         REQUIRE_FALSE(paths.empty());
-        CHECK(paths.size() <= static_cast<size_t>(hydra::app::report::kDefaultReportPaths));
+        CHECK(paths.size() <= static_cast<size_t>(hydra::store::kPathsPerRecord));
         // Rank 1 is the engine's best path.
         CHECK(paths.front().rank == 1);
         CHECK(paths.front().path == engine.best_path().pathstring());
