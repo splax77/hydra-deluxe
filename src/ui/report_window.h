@@ -325,8 +325,6 @@ MeasuredWidths measure(const app::report_view::TableView<Row>& view) {
 }
 
 // The parts of the table that need ImGui's internals.
-// The gold bar at a best path's left edge, beside the row just drawn.
-void best_bar();
 // Hands the table a sort (table column index and direction, first key
 // first), and reads back a header click's: nullopt when the headers didn't
 // change it. A key a Shift+click adds past kMaxSortKeys (app/report_view.h)
@@ -343,7 +341,6 @@ void note_min_size(Memory& memory, const MeasuredWidths& widths,
 // How each report marks its rows.
 template <class Row>
 struct RowLook {
-    std::function<bool(const Row&)> best;                       // the gold bar
     std::function<app::report::ChipToken(const Row&)> chip;     // the chip column's token
     std::function<bool(const Row&)> clickable;                  // empty: every row
     const char* unclickable_hint = "";
@@ -472,7 +469,6 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
             if (scroll_to && *scroll_to == static_cast<size_t>(k))
                 scroll_last_row(selection_scroll(SelectionSource::Step));
             if (!can_click(row)) hint(look.unclickable_hint);
-            if (look.best && look.best(row)) best_bar();
 
             for (size_t c = 0; c < columns.size(); ++c) {
                 if (!ImGui::TableSetColumnIndex(static_cast<int>(c) + 1)) continue;

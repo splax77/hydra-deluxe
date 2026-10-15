@@ -405,14 +405,6 @@ ColumnSpec column_spec(const std::string& title, const app::report_view::CellLoo
     return s;
 }
 
-void best_bar() {
-    // A bar in kBestPathColor, 3 px wide, at the row's left edge.
-    const ImVec2 min = ImGui::GetItemRectMin();
-    const ImVec2 max = ImGui::GetItemRectMax();
-    ImGui::GetWindowDrawList()->AddRectFilled(min, ImVec2(min.x + px(3.0f), max.y),
-                                              ImGui::GetColorU32(kBestPathColor));
-}
-
 void push_sort(const HeaderSort& sort) {
     for (size_t i = 0; i < sort.size(); ++i)
         ImGui::TableSetColumnSortDirection(sort[i].first,

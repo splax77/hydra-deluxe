@@ -133,7 +133,6 @@ void draw_body(PathWindow& w, const report_frame::Frame& frame, const PathReport
         return;
     }
     report_frame::RowLook<ReportRow> look;
-    look.best = [](const ReportRow& r) { return r.optimal; };
     look.chip = [](const ReportRow& r) { return app::report::tier_token(r.tok); };
     report_frame::table("##pathtable", w.memory, view, w.widths, look, input.callbacks,
                         ImGui::GetContentRegionAvail().y - report_frame::footer_height(frame));
