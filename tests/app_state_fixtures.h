@@ -21,7 +21,7 @@
 #include "audio_chart_fixtures.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
-#include "display_fixtures.h"  // store_batch_result
+#include "display_fixtures.h"  // save_batch_record
 #include "library_fixtures.h"  // library_entry
 #include "scoped_hook.h"
 #include "scratch_paths.h"
@@ -34,7 +34,7 @@
 // ---- a seeded library with no chart files -----------------------------------
 
 // The cap the seeded record is stored at. It is filed under
-// hydra::test::batch_result_key (a default Settings at this cap), so a change
+// hydra::test::batch_profile (a default Settings at this cap), so a change
 // to the chart mode or the cap makes it unfindable.
 inline constexpr int kSeededCap = 4;
 
@@ -54,7 +54,7 @@ inline std::unique_ptr<hydra::store::RecordStore> seeded_store(const std::string
     for (int i = 0; i < kChartCount; ++i) charts.push_back(library_entry(i));
     store->rebuild_chart_library(charts);
 
-    hydra::test::store_batch_result(*store, library_entry(0).md5, kSeededCap);
+    hydra::test::save_batch_record(*store, library_entry(0).md5, kSeededCap);
     return store;
 }
 

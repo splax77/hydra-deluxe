@@ -25,21 +25,19 @@
 #include "parse/song.h"
 #include "store/record_store.h"
 #include "store/stored_versions.h"  // kResultsStamp
-#include "store_fixtures.h"  // fixture, at_cap, no_paths_at_cap
+#include "store_fixtures.h"  // fixture, at_cap, at4, no_paths_at_cap
 #include "temp_util.h"
 
 using namespace hydra;
 using namespace hydra::store;
 
+using hydra::test::at4;
 using hydra::test::at_cap;
 using hydra::test::fixture;
 using hydra::test::no_paths_at_cap;
 using hydra::test::scalar_on_file;
 
 namespace {
-
-// The fixture's own profile: 4 bars, no ms limit, the 1.1 fill rule.
-Profile at4(const std::string& mode = "mode") { return Profile{mode, CapQuery::at(4), Lens{}}; }
 
 // Every corpus chart the engine analyzes, under the default search settings.
 std::vector<const HydraRecord*> corpus_analyses() {
@@ -79,9 +77,10 @@ TEST_CASE("store: a saved analysis reads back Ready with its paths in rank order
         CHECK(got.record.paths[i].rank == static_cast<int>(i + 1));
     CHECK(got.record.paths.size() <= static_cast<size_t>(kPathsPerRecord));
     CHECK(got.record.pathcount == static_cast<int>(analysis.all_paths().size()));
-    // Rank 1 is what the old summary said.
-    CHECK(got.record.summary() == summarize_record(analysis));
-    CHECK(got.record.paths.front().path == best_path_text(analysis));
+    // Rank 1 is the engine's best path, and the summary reads its score.
+    const Path& best = analysis.best_path();
+    CHECK(got.record.best_path_text() == best.pathstring());
+    CHECK(got.record.summary().score == std::optional<int64_t>(best.totalscore()));
     CHECK(got.record.paths.front().optimal);
 }
 

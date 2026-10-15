@@ -35,10 +35,11 @@
 #include "core/rules.h"
 #include "core/winstr.h"
 #include "db_file_util.h"  // exec_on_file, scalar_on_file, record_rows_in, write_junk_db
-#include "display_fixtures.h"  // add_stale_rows
+#include "display_fixtures.h"  // add_stale_records
 #include "library_fixtures.h"  // library_row
 #include "old_layout_fixture.h"  // v220_layout_sql, kV220ResultsTableSql
 #include "record_fixtures.h"
+#include "store/chart_index.h"
 #include "store/library_file.h"
 #include "store/record_store.h"
 #include "store/upgrade_files.h"
@@ -99,7 +100,7 @@ void check_too_old_file(const std::string& path) {
     {
         RecordStore store(path, OldFilePolicy::SetAside, core::default_stamp());
         CHECK(store.set_aside_path() == std::optional<std::string>(aside));
-        CHECK(store.counts().second == 0);
+        CHECK(store.record_count() == 0);
         CHECK(store.chart_library_count() == 0);
     }
     CHECK(file_bytes(aside) == before);
@@ -155,15 +156,15 @@ TEST_CASE("store: a new database carries 0 in user_version and reads its own row
     // gives a file nobody wrote it on.
     const std::string path = testtemp::temp_path("user_version", ".db");
     std::remove(path.c_str());
-    const RecordKey key{"h", "mode", CapQuery::at(4)};
+    const Profile profile{"mode", CapQuery::at(4), Lens{}};
     {
         RecordStore store(path);
-        store.add_record(key, at_cap(4));
+        store.save(prepare_record("h", profile, at_cap(4)));
     }
     CHECK(scalar_on_file(path,"PRAGMA user_version") == 0);
     {
         RecordStore reopened(path);
-        CHECK(reopened.get_summary(key).status == RecordStatus::Ready);
+        CHECK(reopened.lookup_one("h", profile).status == RecordStatus::Ready);
     }
     std::remove(path.c_str());
 }
@@ -228,15 +229,16 @@ TEST_CASE("classify_library_file names each generation of library file") {
 
 namespace {
 
-// The keys the 2.2.0 seed writes, all at an 8-bar cap.
-const CapQuery kAt8 = CapQuery::at(8);
-const RecordKey kReady{"ready", "mode", kAt8};
-const RecordKey kOtherMode{"ready", "other mode", kAt8};
-const RecordKey kNoPaths{"empty", "mode", kAt8};
-const RecordKey kBuild{"build", "mode", kAt8};
-const RecordKey kRules{"rules", "mode", kAt8};
-const RecordKey kBoth{"both", "mode", kAt8};
-const RecordKey kNoStars{"nostars", "mode", kAt8};
+// The profiles the 2.2.0 seed writes under, both at an 8-bar cap, and its
+// charts. Every chart is under kMode8; "ready" is under kOtherMode8 as well.
+const Profile kMode8{"mode", CapQuery::at(8), Lens{}};
+const Profile kOtherMode8{"other mode", CapQuery::at(8), Lens{}};
+constexpr const char* kReady = "ready";
+constexpr const char* kNoPaths = "empty";
+constexpr const char* kBuild = "build";
+constexpr const char* kRules = "rules";
+constexpr const char* kBoth = "both";
+constexpr const char* kNoStars = "nostars";
 
 // What the seed holds, counted once by hand: one library row per chart (six
 // charts), seven results, and two meta rows (the library's reader stamp and
@@ -269,11 +271,11 @@ void seed_v220_layout(const std::string& path) {
                                     library_row("build", "Build"), library_row("rules", "Rules"),
                                     library_row("both", "Both"),
                                     library_row("nostars", "No stars")});
-        seed.add_record(kReady, at_cap(8));
-        seed.add_record(kOtherMode, at_cap(8));
-        seed.add_record(kNoPaths, no_paths_at_cap(8));
-        test::add_stale_rows(seed, at_cap(8), kBuild, kRules, kBoth);
-        seed.add_record(kNoStars, at_cap(8));
+        seed.save(prepare_record(kReady, kMode8, at_cap(8)));
+        seed.save(prepare_record(kReady, kOtherMode8, at_cap(8)));
+        seed.save(prepare_record(kNoPaths, kMode8, no_paths_at_cap(8)));
+        test::add_stale_records(seed, at_cap(8), kMode8, kBuild, kRules, kBoth);
+        seed.save(prepare_record(kNoStars, kMode8, at_cap(8)));
     }
     exec_on_file(path, test::v220_layout_sql().c_str());
     exec_on_file(path, kSeedLabelSql);
@@ -297,28 +299,31 @@ void seed_v220_layout(const std::string& path) {
 // numbers, Stale stays Stale for the same reason, the no-stars row is gone,
 // and the library and its reader stamp stayed whole.
 void check_converted_rows(RecordStore& store) {
-    const SummaryLookup got_ready = store.get_summary(kReady);
+    // The old results kept rank 1 only, so the converted record reads the
+    // summary and best path the analysis's own record gives.
+    const RecordRow analysis_record = record_of(kReady, at_cap(8));
+    const RecordLookup got_ready = store.lookup_one(kReady, kMode8);
     CHECK(got_ready.status == RecordStatus::Ready);
-    CHECK(got_ready.summary == summarize_record(at_cap(8)));
-    CHECK(got_ready.bestpath == best_path_text(at_cap(8)));
-    CHECK(store.get_summary(kOtherMode).status == RecordStatus::Ready);
-    const SummaryLookup got_empty = store.get_summary(kNoPaths);
+    CHECK(got_ready.record.summary() == analysis_record.summary());
+    CHECK(got_ready.record.best_path_text() == analysis_record.best_path_text());
+    CHECK(store.lookup_one(kReady, kOtherMode8).status == RecordStatus::Ready);
+    const RecordLookup got_empty = store.lookup_one(kNoPaths, kMode8);
     CHECK(got_empty.status == RecordStatus::Ready);
-    CHECK_FALSE(got_empty.summary.has_scored_best_path());
-    const SummaryLookup got_build = store.get_summary(kBuild);
+    CHECK_FALSE(got_empty.record.has_scored_best_path());
+    const RecordLookup got_build = store.lookup_one(kBuild, kMode8);
     CHECK(got_build.status == RecordStatus::Stale);
     CHECK(got_build.stale_build);
     CHECK_FALSE(got_build.stale_rules);
-    const SummaryLookup got_rules = store.get_summary(kRules);
+    const RecordLookup got_rules = store.lookup_one(kRules, kMode8);
     CHECK(got_rules.status == RecordStatus::Stale);
     CHECK_FALSE(got_rules.stale_build);
     CHECK(got_rules.stale_rules);
-    const SummaryLookup got_both = store.get_summary(kBoth);
+    const RecordLookup got_both = store.lookup_one(kBoth, kMode8);
     CHECK(got_both.status == RecordStatus::Stale);
     CHECK(got_both.stale_build);
     CHECK(got_both.stale_rules);
-    CHECK(store.get_summary(kNoStars).status == RecordStatus::NotAnalyzed);
-    CHECK(store.counts().second == kKeptResults);
+    CHECK(store.lookup_one(kNoStars, kMode8).status == RecordStatus::NotAnalyzed);
+    CHECK(store.record_count() == kKeptResults);
     CHECK(store.chart_library_count() == kSeedCharts);
     // The library row stored in capitals reads lowercase, as its record does.
     CHECK(store.list_chart_library_copies("ready").size() == 1);
@@ -397,7 +402,7 @@ TEST_CASE("the first open of a 2.2.0 to 2.7.0 file turns its results into record
     ProgressLog again;
     {
         RecordStore store(path, core::default_stamp(), again.fn());
-        CHECK(store.counts().second == kKeptResults);
+        CHECK(store.record_count() == kKeptResults);
     }
     CHECK(again.steps() == std::vector<OpenStep>{OpenStep::Opening});
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == kSeedProfiles);
@@ -414,7 +419,7 @@ TEST_CASE("the conversion keeps a row whose rules fingerprint is the empty blob"
     exec_on_file(path, "UPDATE results SET rules_fp = x'' WHERE hyhash = 'rules'");
     {
         RecordStore store(path);
-        const SummaryLookup got_rules = store.get_summary(kRules);
+        const RecordLookup got_rules = store.lookup_one(kRules, kMode8);
         CHECK(got_rules.status == RecordStatus::Stale);
         CHECK(got_rules.stale_rules);
     }
@@ -651,7 +656,7 @@ TEST_CASE("a file store runs in WAL mode with an index on chart names") {
     std::remove(path.c_str());
 }
 
-TEST_CASE("a save_analysis that fails leaves nothing behind and reads as a save error") {
+TEST_CASE("a save that fails leaves nothing behind and reads as a save error") {
     // A trigger that refuses one chart's result makes the save fail.
     const std::string path = testtemp::temp_path("save_fail", ".db");
     std::remove(path.c_str());
@@ -661,20 +666,19 @@ TEST_CASE("a save_analysis that fails leaves nothing behind and reads as a save 
                  " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
     {
         RecordStore store(path);
-        const RecordKey boom{"boom", "mode", CapQuery::at(4)};
+        const Profile profile{"mode", CapQuery::at(4), Lens{}};
         try {
-            store.save_analysis(prepare_row(boom, at_cap(4)));
+            store.save(prepare_record("boom", profile, at_cap(4)));
             FAIL("the refused save went through");
         } catch (const std::exception& e) {
             CHECK(hydra::app::plain_error(e) ==
                   "Hydra couldn't save to its database (hydra.db). Check that the disk isn't "
                   "full and that no other copy of Hydra is running, then try again.");
         }
-        CHECK(store.counts().second == 0);
+        CHECK(store.record_count() == 0);
         // The store is still usable: no transaction was left open.
-        const RecordKey ok{"ok", "mode", CapQuery::at(4)};
-        store.save_analysis(prepare_row(ok, at_cap(4)));
-        CHECK(store.get_summary(ok).status == RecordStatus::Ready);
+        store.save(prepare_record("ok", profile, at_cap(4)));
+        CHECK(store.lookup_one("ok", profile).status == RecordStatus::Ready);
     }
     std::remove(path.c_str());
 }
@@ -746,23 +750,23 @@ void check_read_fails(const std::function<void()>& read) {
 
 }  // namespace
 
-// D72's DB1 found this one: analyzed_hashes on a failing database answered
-// with no charts, so a batch treated every chart as not analyzed.
+// D72's DB1 found this one: the batch's list of analyzed charts, read on a
+// failing database, answered with no charts, so a batch treated every chart
+// as not analyzed. ready_song_ids is that list now.
 TEST_CASE("a read on a failing database throws instead of answering empty") {
     const std::string path = testtemp::temp_path("read_fail", ".db");
     std::remove(path.c_str());
+    const Profile profile{"mode", CapQuery::at(4), Lens{}};
     {
         RecordStore store(path);
-        store.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
-        REQUIRE(store.analyzed_hashes(ResultSettings{"mode", CapQuery::at(4), Lens{}}).count("h") ==
-                1);
+        store.save(prepare_record("h", profile, at_cap(4)));
+        REQUIRE(store.ready_song_ids(profile).count("h") == 1);
         exec_on_file(path, "DROP TABLE records;");
         // The first read fails when it steps; by then the connection has
         // reloaded the schema, so the second fails when it compiles.
         for (const char* when : {"step", "compile"}) {
             INFO(std::string(when));
-            check_read_fails(
-                [&] { store.analyzed_hashes(ResultSettings{"mode", CapQuery::at(4), Lens{}}); });
+            check_read_fails([&] { store.ready_song_ids(profile); });
         }
     }
     std::remove(path.c_str());
@@ -771,25 +775,19 @@ TEST_CASE("a read on a failing database throws instead of answering empty") {
 TEST_CASE("every store read throws a database read error when its step fails") {
     const std::string path = testtemp::temp_path("every_read_fail", ".db");
     std::remove(path.c_str());
-    const RecordKey key{"h", "mode", CapQuery::at(4)};
-    const CapQuery cap = CapQuery::at(4);
+    const Profile profile{"mode", CapQuery::at(4), Lens{}};
     const std::pair<const char*, std::function<void(RecordStore&)>> reads[] = {
-        {"get_summaries",
-         [&](RecordStore& s) { s.get_summaries({"h"}, ResultSettings{"mode", cap, Lens{}}); }},
-        {"get_summary", [&](RecordStore& s) { s.get_summary(key); }},
-        {"has_record", [&](RecordStore& s) { s.has_record(key); }},
-        {"analyzed_hashes",
-         [&](RecordStore& s) { s.analyzed_hashes(ResultSettings{"mode", cap, Lens{}}); }},
-        {"list_records",
-         [&](RecordStore& s) {
-             s.list_records(std::nullopt, cap, Lens{}, SortColumn::Score, false, std::nullopt);
-         }},
-        {"counts", [](RecordStore& s) { s.counts(); }},
-        {"library_copies", [](RecordStore& s) { s.library_copies(); }},
-        {"naming_copy_paths", [](RecordStore& s) { s.naming_copy_paths(); }},
+        {"lookup", [&](RecordStore& s) { s.lookup({"h"}, profile); }},
+        {"lookup_one", [&](RecordStore& s) { s.lookup_one("h", profile); }},
+        {"ready_song_ids", [&](RecordStore& s) { s.ready_song_ids(profile); }},
+        {"ready_records", [&](RecordStore& s) { s.ready_records(profile); }},
+        {"record_count", [](RecordStore& s) { s.record_count(); }},
+        {"chart_index", [](RecordStore& s) { s.chart_index(); }},
         {"chart_library_cache", [](RecordStore& s) { s.chart_library_cache(); }},
         {"chart_library_count", [](RecordStore& s) { s.chart_library_count(); }},
         {"list_chart_library", [](RecordStore& s) { s.list_chart_library(0, 10); }},
+        {"list_chart_library_copies",
+         [](RecordStore& s) { s.list_chart_library_copies("h"); }},
     };
     for (const auto& [name, read] : reads) {
         INFO(std::string(name));
@@ -824,13 +822,12 @@ TEST_CASE("the batch guard sets the checkpoint threshold and truncates the log a
         {
             const RecordStore::BatchWrites batch(store);
             CHECK(store.wal_autocheckpoint_for_test() == kBatchWalAutocheckpointPages);
-            const RecordKey key{"h", "mode", CapQuery::at(4)};
-            store.save_analysis(prepare_row(key, at_cap(4)));
+            store.save(prepare_record("h", Profile{"mode", CapQuery::at(4), Lens{}}, at_cap(4)));
             CHECK(std::filesystem::file_size(wal) > 0);
         }
         CHECK(std::filesystem::file_size(wal) == 0);
         CHECK(store.wal_autocheckpoint_for_test() == 1000);
-        CHECK(store.counts().second == 1);
+        CHECK(store.record_count() == 1);
     }
     std::remove(path.c_str());
 }
