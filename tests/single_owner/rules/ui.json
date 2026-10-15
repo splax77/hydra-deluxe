@@ -235,6 +235,11 @@
         },
         {
           "file": "src/ui/library_model.cpp",
+          "line_text": "case store::RecordStatus::CantAnalyze: return \"Can't analyze\";",
+          "why": "status_label, the owner"
+        },
+        {
+          "file": "src/ui/library_model.cpp",
           "line_text": "return \"Not analyzed\";",
           "why": "status_label, the owner"
         }
@@ -278,6 +283,11 @@
         {
           "file": "src/ui/library_model.cpp",
           "line_text": "case StatusChip::Analyzed: id = \"chipdone\"; break;",
+          "why": "chip_label, the owner"
+        },
+        {
+          "file": "src/ui/library_model.cpp",
+          "line_text": "case StatusChip::CantAnalyze: id = \"chipcant\"; break;",
           "why": "chip_label, the owner"
         }
       ],

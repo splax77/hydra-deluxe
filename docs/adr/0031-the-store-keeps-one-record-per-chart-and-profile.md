@@ -94,7 +94,7 @@ Ready at once.
 ## The path report reads stored paths
 
 The path report is one database read of the current profile's Ready records,
-kept to the charts the library lists (then `listed_records`, now
+kept to the charts the library lists (then listed_records, now
 `report::library_lookup`; see the 2026-10-15 note). It analyzes
 nothing and opens no chart file. It lists the current profile only, so its
 Mode column and the row click's mode switch are gone, and a chart mode switch

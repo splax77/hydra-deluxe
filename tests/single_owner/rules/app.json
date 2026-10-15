@@ -1506,6 +1506,11 @@
           "file": "src/app/analysis.cpp",
           "line_text": "return plain_error_block(e);",
           "why": "save_scan_as_library hands the scan's problem list, which has no separate details line, the block for a failed library write (ERR-ONCE, 2026-10-15)"
+        },
+        {
+          "file": "src/app/user_messages.cpp",
+          "line_text": "return plain_error_block(KindedError(kind, text));",
+          "why": "stored_failure_text: the library's Can't analyze tooltip shows a stored failure's block in the GUI, not a tool's exit (plan 2026-10-15)"
         }
       ],
       "note": "A tool that prints an error's block itself is a second way for a tool to end on an error (D73 review finding 2). Decided by: D72 item 5, D73 item 4"

@@ -175,9 +175,8 @@ std::string shared_reason_words(ErrorKind kind, const std::string& sentence) {
     static const std::string kHead = "No ";
     static const std::string kTail = " in this chart.";
     if (kind != ErrorKind::NoNotes) return std::string();
-    if (sentence.size() <= kHead.size() + kTail.size() ||
-        sentence.compare(0, kHead.size(), kHead) != 0 ||
-        sentence.compare(sentence.size() - kTail.size(), kTail.size(), kTail) != 0)
+    if (sentence.size() <= kHead.size() + kTail.size() || !hydra::starts_with(sentence, kHead) ||
+        !hydra::ends_with(sentence, kTail))
         return std::string();
     return "no " + sentence.substr(kHead.size(), sentence.size() - kHead.size() - kTail.size());
 }

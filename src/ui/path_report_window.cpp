@@ -113,14 +113,14 @@ void rebuild(PathWindow& w, const std::shared_ptr<const GeneratedReport>& result
 // with its Show list, then the no-result line. The words are the report's
 // own (GeneratedReport); the window only draws them.
 void draw_coverage(PathWindow& w, const GeneratedReport& r) {
-    if (!r.coverage_line.empty()) {
-        ImGui::TextUnformatted(r.coverage_line.c_str());
-        if (!r.cant_analyze_groups.empty()) {
+    if (!r.cant_analyze_line.empty()) {
+        ImGui::TextUnformatted(r.cant_analyze_line.c_str());
+        if (!r.cant_analyze.empty()) {
             ImGui::SameLine();
             if (ImGui::TextLink(w.list_open ? "Hide list##cantanalyze" : "Show list##cantanalyze"))
                 w.list_open = !w.list_open;
         }
-        if (w.list_open && !r.cant_analyze_groups.empty()) {
+        if (w.list_open && !r.cant_analyze.empty()) {
             // Scrolls on its own past half the room left, so a long list
             // leaves the table room to show.
             ImGui::SetNextWindowSizeConstraints(
@@ -128,12 +128,12 @@ void draw_coverage(PathWindow& w, const GeneratedReport& r) {
             ImGui::BeginChild("##cantanalyzelist", ImVec2(0.0f, 0.0f),
                               ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
             ImGui::PushTextWrapPos(0.0f);
-            for (const GeneratedReport::CantAnalyzeGroup& group : r.cant_analyze_groups) {
-                if (!group.heading.empty())
-                    ImGui::TextColored(kDimTextColor, "%s", group.heading.c_str());
-                for (const GeneratedReport::CantAnalyzeChart& c : group.rows) {
+            for (const app::report::CantAnalyzeGroup& group : r.cant_analyze) {
+                if (!group.sentence.empty())
+                    ImGui::TextColored(kDimTextColor, "%s", group.sentence.c_str());
+                for (const app::report::CantAnalyzeChart& c : group.charts) {
                     const std::string line =
-                        c.artist.empty() ? c.song : c.song + app::kFactSeparator + c.artist;
+                        c.artist.empty() ? c.title : c.title + app::kFactSeparator + c.artist;
                     ImGui::TextWrapped("%s", line.c_str());
                 }
             }

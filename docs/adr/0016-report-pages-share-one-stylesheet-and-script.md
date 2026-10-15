@@ -20,7 +20,7 @@ The stylesheet (`html::report_css()`) and the script (`html::kReportJs`) live in
 /utf-8; a glyph is an HTML entity or a `\uXXXX` escape. The comparison pages
 size a few columns differently, scoped by a class on `.wrap`. The comparison
 pages look records up through one `report::library_lookup` (named
-`listed_records` before 2026-10-15).
+listed_records before 2026-10-15).
 
 Page bytes are not pinned. A page change is checked in a real browser instead:
 render the pages in headless Edge before and after the change, and see

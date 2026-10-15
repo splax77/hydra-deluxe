@@ -36,8 +36,11 @@
 #include "app/dm_report.h"
 #include "app/path_report_view.h"  // timing_choices
 #include "app/report.h"
+#include "core/error_kind.h"
 #include "core/model.h"  // kCloneHeroSpCap
 #include "net/dmbot_client.h"
+#include "parse/song.h"  // NoNotesError
+#include "store/record_store.h"  // failure_record
 #include "ui/library_jobs.h"  // set_report_hold_for_test
 #include "ui/report_window.h"
 
@@ -806,6 +809,30 @@ void held_build_then_rows(ImGuiTestContext* ctx, ReportHold& hold) {
     IM_CHECK(on_screen(h, path_count_tail(h)));
 }
 
+// The toolbar's "Open path report" with charts that have no result: with the
+// confirm threshold at 0 the opening asks first, and the confirm's Cancel
+// leaves the report to list only what is stored. Returns once that report is
+// Ready, with the threshold put back.
+void open_path_report_declining_batch(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    h.app->report_confirm_above = 0;
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick("**/Open path report");
+    ctx->Yield(2);
+    IM_CHECK_RETV(path_window() != nullptr, );
+    IM_CHECK(h.app->path_report_awaits_confirm());
+    ctx->SetRef("//Analyze library");
+    ctx->ItemClick("Cancel");
+    ctx->Yield(2);
+    IM_CHECK(h.app->batch_job == nullptr);
+    h.app->report_confirm_above = hydra::ui::AppState::kReportConfirmAbove;
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->report_job == nullptr &&
+               h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
+    }, 60));
+    ctx->Yield(2);
+}
+
 // The path window opens from the finished strip's "Open report", from the
 // toolbar's "Open path report", and by itself after a batch with "Open
 // automatically" on. While it builds it shows the building state.
@@ -833,26 +860,11 @@ void test_open_path(ImGuiTestContext* ctx) {
     IM_CHECK(path_window() == nullptr);
     dismiss_done(ctx);
 
-    // The toolbar's Open path report. The corpus's other charts have no
-    // result, so with the threshold at 0 the opening asks first; the
-    // confirm's Cancel leaves the report to list what is stored, so the
-    // second chart below still has none.
-    h.app->report_confirm_above = 0;
-    ctx->SetRef("//Hydra");
-    ctx->ItemClick("**/Open path report");
-    ctx->Yield(2);
-    IM_CHECK_RETV(path_window() != nullptr, );
-    IM_CHECK(h.app->path_report_awaits_confirm());
-    ctx->SetRef("//Analyze library");
-    ctx->ItemClick("Cancel");
-    ctx->Yield(2);
-    IM_CHECK(h.app->batch_job == nullptr);
-    h.app->report_confirm_above = hydra::ui::AppState::kReportConfirmAbove;
-    // The Esc above let the rows go, so this opening builds them again.
-    IM_CHECK(wait_until(ctx, [&] {
-        return h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
-    }, 60));
-    ctx->Yield(2);
+    // The toolbar's Open path report, its batch declined, so the second
+    // chart below still has no result. The Esc above let the rows go, so this
+    // opening builds them again.
+    open_path_report_declining_batch(ctx);
+    if (ctx->IsError()) return;
     IM_CHECK(on_screen(h, path_count_tail(h)));
     h.app->close_path_report();  // it covers the toolbar
     ctx->Yield(2);
@@ -918,6 +930,52 @@ void test_open_analyzes(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(on_screen(h, "Charts shown"));
     IM_CHECK(on_screen(h, path_count_tail(h)));
+    // The coverage lines: the batch gave every chart a result, so none is
+    // left without one, and any chart it couldn't analyze is named by the
+    // report's own line on screen.
+    IM_CHECK_RETV(h.app->path_report.result != nullptr, );
+    const hydra::app::report::GeneratedReport& page = *h.app->path_report.result;
+    IM_CHECK_EQ(page.no_result_charts, int64_t{0});
+    IM_CHECK(page.no_result_line.empty());
+    IM_CHECK_EQ(page.songs + page.cant_analyze_charts, page.library_charts);
+    if (!page.cant_analyze_line.empty()) IM_CHECK(on_screen(h, page.cant_analyze_line));
+    h.app->close_path_report();
+    ctx->Yield(2);
+}
+
+// A chart whose failure the store kept (failure_record, saved on the scratch
+// db the way a batch saves one, as library-cant-analyze does) is named under
+// the coverage line's Show list, beneath its reason. The confirm is declined,
+// so the report lists only what is stored: no rows, the coverage lines, and
+// "Nothing to show" (plan 2026-10-15, question 5).
+void test_cant_analyze_list(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    const std::string md5 = h.app->library_row_at(0).entry.md5;
+    const std::string title = h.app->library_row_at(0).title;
+    const hydra::NoNotesError no_notes(hydra::Difficulty::Expert, true);
+    h.app->store->save(hydra::store::failure_record(md5, h.app->settings.profile(),
+                                                    hydra::ErrorKind::NoNotes, no_notes.what()));
+    h.app->refresh_library_summaries();
+
+    open_path_report_declining_batch(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK_RETV(h.app->path_report.result != nullptr, );
+    const hydra::app::report::GeneratedReport& page = *h.app->path_report.result;
+    IM_CHECK(page.paths.empty());
+    IM_CHECK(on_screen(h, hydra::app::report::kNothingToShow));
+    IM_CHECK(!page.cant_analyze_line.empty());
+    IM_CHECK(on_screen(h, page.cant_analyze_line));
+    IM_CHECK(!on_screen(h, "No Expert Pro Drums notes in this chart."));
+
+    ctx->SetRef(path_window());
+    ctx->ItemClick("**/Show list##cantanalyze");
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "No Expert Pro Drums notes in this chart."));
+    IM_CHECK(on_screen(h, title));
+    IM_CHECK(on_screen(h, "Hide list"));
     h.app->close_path_report();
     ctx->Yield(2);
 }
@@ -1267,6 +1325,7 @@ const std::vector<TestEntry>& report_window_flow_tests() {
     static const std::vector<TestEntry> entries = {
         {"report-window-open-path", test_open_path},
         {"report-window-open-analyzes", test_open_analyzes},
+        {"report-window-cant-analyze-list", test_cant_analyze_list},
         {"report-window-dm-handover", test_dm_handover},
         {"report-window-row-click", test_row_click},
         {"report-window-reopen", test_reopen},
