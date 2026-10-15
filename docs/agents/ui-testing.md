@@ -23,7 +23,7 @@ Agents do not run `--all`. They run only the tests for their own change, with `-
 | `--jobs <n>` | how many test processes run at once (default: `kDefaultJobs` in `uitest_main.cpp`) |
 | `hydra_uitest --list` | list the tests |
 | `hydra_uitest --script file.txt` | run a command file (see below) |
-| `hydra_uitest --live --pipe <name>` | take commands one at a time from the named pipe `<name>` until the client leaves or sends `quit` (see "Live mode and the MCP server"). The two flags go together, and `--live` runs alone |
+| `hydra_uitest --live --pipe <name>` | take commands one at a time from the named pipe `<name>` (see "Live mode and the MCP server"; `run_live` in `tests/ui/uitest_live.cpp` decides when it ends). The two flags go together, and `--live` runs alone |
 | `--keep-temp` | keep the scratch folder (DB, INI) and print its path |
 | `--shots <dir>` | where `screenshot` files go (default: the scratch folder) |
 | `--db <file>` | start each test from a copy of this database instead of an empty one (the file itself is never opened). A missing file is an error. Close Hydra first: a database it has open is not a clean copy |
@@ -164,7 +164,7 @@ The real `hydra.db` can never be opened in window mode. Three things keep it out
 2. Hydra copies those seeds again into its own scratch folder (`reset_app`) and opens only that copy. The seed itself is only read.
 3. The live test refuses a seed that is not under the temp folder (`testtemp::is_under_temp` in `tests/temp_util.h`). Even a helper bug that passed the real path would get "refused: a live seed must be a copy under the temp folder", and no app would be built.
 
-Changes Claude makes in window mode, a batch included, land in the copy. A batch there is still real work on real charts, so the library-run rule in `docs/agents/brief-preamble.md` applies: narrow the library with a search first. `hydra_reset` goes back to the snapshot taken at start; a new `hydra_start` takes a new one. When the session ends the window closes, unless `hydra_stop(keep_window=True)` leaves it open for the user to look at.
+Changes Claude makes in window mode, a batch included, land in the copy. A batch there is still real work on real charts, so the library-run rule in `docs/agents/brief-preamble.md` applies: narrow the library with a search first. `hydra_reset` goes back to the snapshot taken at start; a new `hydra_start` takes a new one. When the session ends the window closes, unless `hydra_stop(keep_window=True)` leaves it open for the user to look at. If the user closes the window, Hydra exits and the next tool reply says the session is stopped.
 
 Both modes exist only in dev builds. The live code sits in the test harness and under `HYDRA_UITEST_ATTACHED`, which the `ship` preset leaves out.
 
