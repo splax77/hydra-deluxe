@@ -598,7 +598,8 @@ void Song::check_activations(const core::Rules& rules, FillDeadlineRule fills) {
 namespace {
 
 // How long a Clone Hero 1.0 generated fill is: half a measure of the meter in
-// force at its chord, as Hydra always gave it before D115. Only the 1.0
+// force at its chord, as Hydra always gave it before D115. The user decided to
+// keep 1.0 mode exactly as it was (CONTEXT.md, "Generated fill"). Only the 1.0
 // deadline (activation_fill_deadline_ms's Ch10 branch) reads the length.
 constexpr double kCh10FillLengthMeasures = 0.5;
 
