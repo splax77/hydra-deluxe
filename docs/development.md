@@ -32,6 +32,12 @@ exception, below. Both read the scoring rules from `hydra_rules.ini` next to
 Hydra.exe, or from the file `--rules` names. If that file has an error, they
 print it and stop with exit code 2.
 
+Both refuse a library file from a Hydra version older than 2.2.0, print one
+sentence saying so, and leave the file as it is. Opening such a file in the
+app sets it aside and starts a fresh library. A file from 2.2.0 to 2.7.0 is
+converted on its first open, by the app or by either tool. ADR 0031 has both
+rules.
+
 Clone Hero 1.1 changed when a drum fill appears. The app's **1.0 fills**
 setting scores by the older 1.0 rule instead. Each result remembers which rule
 made it, so a song's 1.0 and 1.1 results sit side by side in `hydra.db`.
@@ -182,7 +188,8 @@ game.
 The program's name on screen is "Hydra Deluxe", but its files keep their older
 names: `Hydra.exe`, `hydra.db`, `hydra_settings.ini`, `hydra_ui.ini` and the
 `C:\Program Files\Hydra` install folder. That way an upgrade from an earlier
-Hydra finds the user's records where they were. Older versions also saved
+Hydra finds the user's library where it was. A library file from before 2.2.0
+is set aside as `hydra.db.pre-2.2.0` rather than converted (ADR 0031). Older versions also saved
 report pages in `Documents\Hydra`. Nothing reads or writes that folder any
 more, and Hydra leaves the old pages there (ADR 0027).
 
@@ -326,16 +333,21 @@ run of the new one (B) over the same charts.
 
 `tools\compare_db.py A.db B.db` compares two databases table by table. It
 prints one line per table, "N rows compared, M differ", lists the first few
-keys that differ, and exits 1 if any table differs. It leaves out the ids
-each file numbers for itself, such as `result_id`, which only records the order
-worker threads finished in; the script's own header lists them.
+keys that differ, and exits 1 if any table differs. It knows the record
+tables (`profiles`, `records` and `record_paths`, ADR 0031) and matches their
+rows across the two files by each profile's own columns. It leaves out the ids
+each file numbers for itself, such as a profile's id or an old file's
+`result_id`, which only records the order worker threads finished in; the
+script's own header lists them.
 A baseline made before the store kept summaries only (ADR 0026) has tables a
 new file no longer has. Add `--summary-only` to compare just what the new
 store keeps; the script's own header says which tables and columns that is.
 
 `hydra_bench --engine <folder>` and `hydra_bench --parse <folder>` print one
-digest over a whole folder: the first over every chart's stored result row,
-the second over every parsed chart and its dynamics counts. They read the
+digest over a whole folder: the first over every chart's whole engine result
+plus the best path and summary of the record `prepare_record` makes from it
+(`row_hash` in `tests\song_digest.h`), the second over every parsed chart and
+its dynamics counts. They read the
 same settings file `hydra_batch` reads, the one beside the exe.
 `--out <file>` writes one line per chart, so two runs can be diffed to find
 the chart that moved. The digests are defined in `tests\song_digest.h`, and

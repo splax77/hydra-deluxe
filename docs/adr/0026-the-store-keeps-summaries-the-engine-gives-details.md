@@ -1,5 +1,14 @@
 # The store keeps summaries; the engine gives the details
 
+> **Superseded in part by [ADR 0031](0031-the-store-keeps-one-record-per-chart-and-profile.md),
+> 2026-10-15 (D115).** hydra.db now keeps one record per chart and profile
+> with its top paths, and the path report reads those stored paths instead of
+> analyzing the library. A library file from 2.2.0 to 2.7.0 is converted in
+> place; one from before 2.2.0 is set aside by the app and refused by the
+> command-line tools. The copy-and-swap upgrade below is deleted. The engine
+> still gives the details: a click analyzes its song, and the analysis lives
+> in memory only. The rest of this page is kept as written.
+
 Think of hydra.db as a library card catalogue. It used to hold a photocopy of
 every book as well: every path, every squeeze row, every tempo map. Now it
 keeps only the cards, one per chart and settings, with the score, stars and
@@ -94,6 +103,13 @@ whose file changed since the scan is re-hashed on click before anything is
 saved under it (D87 item 3, `reidentify_chart`).
 
 ## The upgrade
+
+> **Note, 2026-10-15 (D115): this upgrade is gone.** Files older than 2.2.0,
+> the ones it was written for, are no longer upgraded: the app renames such a
+> file to hydra.db.pre-2.2.0 and starts a fresh library, and the command-line
+> tools refuse it (`set_aside_old_library`, `OldFilePolicy`). The copy, the
+> swap and the next start's tidy-up of a half-done swap are deleted. A 2.2.0
+> to 2.7.0 file is converted in place, in one transaction. ADR 0031 has both.
 
 It landed with storage-T5, and D100 (2026-10-07) changed how it works. The
 first time the new Hydra opens an old file, it writes a fresh, small file with

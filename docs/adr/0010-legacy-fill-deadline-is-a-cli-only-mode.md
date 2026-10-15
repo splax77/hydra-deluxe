@@ -74,6 +74,13 @@ with the side it was passed on. It only warns. A file with no stamp is fine and
 says nothing — that is just a database written before this existed, and the
 normal rule is the right assumption.
 
+Note, 2026-10-15 (D115): the label and both of its checks are gone. Each
+record's profile carries its own fill rule, so on 2026-10-14 (task A1-6c)
+`hydra_batch` stopped writing the label and refusing a file stamped with the
+other rule, and `hydra_fillcompare` stopped warning about it. The warning
+existed until then. Converting a 2.2.0 to 2.7.0 file deletes the old label row,
+and nothing reads it. See the note of 2026-10-15 at the end.
+
 ## What this costs
 
 The two runs cannot share work. Analyzing a library twice takes twice as long,
@@ -144,3 +151,53 @@ the app's own database when none is given, as `hydra_batch` does. It reads
 both rules' records from that one file. `--old` and `--new`, named above, are
 refused with a sentence that names `--db`. A chart with a record under one
 rule only still gets a row, labelled by that rule.
+
+## Note, 2026-10-15: one file holds both rules, and the file label is retired
+
+The guard and the label described above are gone (D115, task A1-6c,
+2026-10-14). The fill rule is part of every record's profile
+(`store::Lens::legacy_fills`), so a 1.0 record and a 1.1 record of one chart
+never share a key and one file safely holds both.
+`hydra_batch --legacy-fills` may write into the app's own hydra.db, beside the 1.1 records
+(user decision, 2026-10-14). The `engine_mode` label is no longer written or
+read, and converting a 2.2.0 to 2.7.0 file deletes its row. A flag becomes a
+rule only through `fill_rule_for`, and `legacy_fills_for` reads it back
+(src/search/graph.h).
+
+## Note, 2026-10-15: generated fills follow Clone Hero's generator
+
+D115 read Clone Hero 1.1.0.6142's own code for generated fills and the fill
+deadline, and the user chose to follow it (2026-10-11 and 2026-10-12):
+
+- The deadline. The game drops a fill whose start tick is at or before the
+  current tick plus resolution × 4 when the SP meter crosses half (0x20DDB70,
+  with `[+0x300] = resolution << 2` at 0x20DF7B7). So the 4 beats are 4
+  quarter notes in every meter, and only the fill's start counts. Hydra's
+  rule already said this; the "not verified" note on it is gone.
+- Generated fills under 1.1. The generator (0x20D2B30) picks the chord nearest
+  each measure line within half a beat plus one tick (the `+1` at 0x20D2C91)
+  and starts the fill on the line, so a fill's length is only the chord's
+  distance past the line, and may be 0 or less. Its first candidate is the
+  second measure line. Hydra used to start a generated fill half a measure
+  before its chord, so its deadline was half a measure too early and it
+  refused fills the game shows.
+- Clone Hero's measure grid starts again at the first beat at or after a time
+  signature change (0x20DACA0). `MeasureIndex` is that grid, and the measure
+  lines, the generated fills and the position text read it.
+- Star Power's length follows Clone Hero's continuous measure count, so a part
+  measure before a mid-measure change counts as its share of the old measure
+  (`MeasureCount`). The user chose an exact whole-number walk, in both modes.
+- Clone Hero 1.0 mode keeps the generator Hydra had before, exactly: the old
+  chord choice and the half-measure length (user decision, 2026-10-14). The
+  rules file's `fill_length_measures` key is retired, read and ignored.
+  `Song::check_activations` is the one place that picks the generator from the
+  run's `FillDeadlineRule`.
+
+Hydra's 60 ms allowance on the deadline stays. Scores moved, so the results
+stamp went to 2.8.0 (ADR 0018) and every saved result read Stale after the
+update. On `testdata/input` (115 charts), the 1.1 score check found two
+charts that changed: one gained 1920 points where two SP phrase ends sat on
+the new deadlines, and one had its 40 fills moved onto the restarted grid. In
+1.0 mode no best score, best path or fill chord changed
+(`docs/handoffs/2026-10-14-d115-build-continue-handoff.md`, "What the score
+check found").

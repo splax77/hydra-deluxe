@@ -85,6 +85,10 @@ carries one fingerprint, `Rules::fingerprint()`, and the Ready check
 old Auto fingerprint survives only as `Rules::retired_auto_fingerprint()`,
 which the store reads to delete the results Auto saved; no row carrying it
 reads Ready. The names below are the code as it was then.
+(Note, 2026-10-15, D115: `Rules::retired_auto_fingerprint()` and the store's
+deletion of Auto's results are gone too. They were deleted with the upgrade
+of files older than 2.2.0, which are no longer upgraded (task A1-6a,
+ADR 0031).)
 
 The first version put every rules field into one fingerprint, so any edit to
 hydra_rules.ini made the whole library Stale. Two fields were over-reach
