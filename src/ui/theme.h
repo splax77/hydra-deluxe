@@ -4,7 +4,8 @@
 // baseline "Default Theme" colors -- verified against the real values via
 // DPG's built-in style editor (dpg.show_style_editor()), not guessed --
 // for every slot hydra_app.py leaves at DPG's default rather than
-// overriding (WindowBg, FrameBg, Header, Border/Separator, Scrollbar*).
+// overriding (WindowBg, FrameBg, Border/Separator, Scrollbar*). Header is not
+// one of them any more: kSelectedRowColor below owns it.
 // Dear ImGui's own StyleColorsDark() defaults are meaningfully different
 // (bluer, darker) from DPG's, so relying on them for un-overridden slots
 // was the source of several color mismatches.
