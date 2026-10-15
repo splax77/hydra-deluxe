@@ -177,6 +177,10 @@ std::string plain_error_block(const std::exception& e) {
     return plain_error(e) + "\n\n" + plain_error_detail(e);
 }
 
+std::string stored_failure_text(ErrorKind kind, const std::string& text) {
+    return plain_error_block(KindedError(kind, text));
+}
+
 int tool_error(const std::exception& e, int exit_code) {
     std::fprintf(stderr, "%s\n", plain_error_block(e).c_str());
     return exit_code;

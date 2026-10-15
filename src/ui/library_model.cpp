@@ -15,17 +15,22 @@ StatusChip chip_of(store::RecordStatus status) {
     switch (status) {
         case store::RecordStatus::Ready: return StatusChip::Analyzed;
         case store::RecordStatus::Stale: return StatusChip::Stale;
+        case store::RecordStatus::CantAnalyze: return StatusChip::CantAnalyze;
         case store::RecordStatus::NotAnalyzed: break;
     }
     return StatusChip::NotAnalyzed;
 }
 
 // Where a row with no score sorts under Best path, the same in both
-// directions: a Ready result with no paths, then Stale, then Not analyzed.
+// directions: a Ready result with no paths, then Stale, then Not analyzed,
+// then Can't analyze. A chart that can't be analyzed goes last because it is
+// the one row that can never gain a score: a Stale or Not analyzed row gains
+// one from its next analysis.
 int unscored_rank(store::RecordStatus status) {
     switch (status) {
         case store::RecordStatus::Ready: return 0;
         case store::RecordStatus::Stale: return 1;
+        case store::RecordStatus::CantAnalyze: return 3;
         case store::RecordStatus::NotAnalyzed: break;
     }
     return 2;
@@ -47,14 +52,16 @@ app::RowFacts facts_of(const LibraryRow& row) {
 // (here, in best_path_label or in the Best path sort) joins this list, or a
 // refresh keeps the row's old value. The lookup's summary and path text are
 // the record's own (RecordRow::summary and best_path_text); a lookup that is
-// not Ready carries no record (store::RecordLookup), so both are empty.
+// not Ready carries no record (store::RecordLookup), so both are empty. The
+// failure's kind and text are set only on a CantAnalyze lookup.
 bool LibraryRow::shows_same_as(const store::RecordLookup& lookup) const {
     const store::PathSummary found = lookup.record.summary();
     return status == lookup.status && stale_build == lookup.stale_build &&
            stale_rules == lookup.stale_rules &&
            bestpath == lookup.record.best_path_text() &&
            summary.score == found.score && summary.stars == found.stars &&
-           summary.hardest_ms == found.hardest_ms;
+           summary.hardest_ms == found.hardest_ms && failure_kind == lookup.failure_kind &&
+           failure_text == lookup.failure_text;
 }
 
 namespace {
@@ -73,6 +80,8 @@ bool apply_summary(LibraryRow& row, const store::RecordLookup& lookup) {
     row.stale_rules = lookup.stale_rules;
     row.bestpath = lookup.record.best_path_text();
     row.summary = lookup.record.summary();
+    row.failure_kind = lookup.failure_kind;
+    row.failure_text = lookup.failure_text;
     return true;
 }
 
@@ -82,6 +91,7 @@ const char* status_label(store::RecordStatus status) {
     switch (status) {
         case store::RecordStatus::Ready: return "Analyzed";
         case store::RecordStatus::Stale: return "Stale";
+        case store::RecordStatus::CantAnalyze: return "Can't analyze";
         case store::RecordStatus::NotAnalyzed: break;
     }
     return "Not analyzed";
@@ -91,7 +101,7 @@ const char* status_label(store::RecordStatus status) {
 // `chip`. All groups every status, so it has none.
 std::optional<store::RecordStatus> status_of(StatusChip chip) {
     for (store::RecordStatus s : {store::RecordStatus::NotAnalyzed, store::RecordStatus::Stale,
-                                  store::RecordStatus::Ready})
+                                  store::RecordStatus::Ready, store::RecordStatus::CantAnalyze})
         if (chip_of(s) == chip) return s;
     return std::nullopt;
 }
@@ -105,6 +115,7 @@ std::string chip_label(StatusChip chip, size_t count) {
         case StatusChip::NotAnalyzed: id = "chipnew"; break;
         case StatusChip::Stale: id = "chipstale"; break;
         case StatusChip::Analyzed: id = "chipdone"; break;
+        case StatusChip::CantAnalyze: id = "chipcant"; break;
     }
     return std::string(name) + " (" + group_thousands(static_cast<int64_t>(count)) + ")##" + id;
 }
@@ -137,6 +148,7 @@ size_t ChipCounts::of(StatusChip chip) const {
         case StatusChip::NotAnalyzed: return not_analyzed;
         case StatusChip::Stale: return stale;
         case StatusChip::Analyzed: return analyzed;
+        case StatusChip::CantAnalyze: return cant_analyze;
         case StatusChip::All: break;
     }
     return all;
@@ -274,9 +286,13 @@ void LibraryModel::refilter() {
         if (!matches_query(query_, row)) continue;
         const StatusChip group = chip_of(row.status);
         ++counts_.all;
-        if (group == StatusChip::NotAnalyzed) ++counts_.not_analyzed;
-        else if (group == StatusChip::Stale) ++counts_.stale;
-        else ++counts_.analyzed;
+        switch (group) {
+            case StatusChip::NotAnalyzed: ++counts_.not_analyzed; break;
+            case StatusChip::Stale: ++counts_.stale; break;
+            case StatusChip::Analyzed: ++counts_.analyzed; break;
+            case StatusChip::CantAnalyze: ++counts_.cant_analyze; break;
+            case StatusChip::All: break;  // chip_of never answers All
+        }
         if (chip_ == StatusChip::All || chip_ == group) order_.push_back(i);
     }
     // A chip whose last chart left it (the last Stale chart was re-analyzed,
