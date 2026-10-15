@@ -50,7 +50,8 @@ std::string ini_path() {
 
 std::unique_ptr<store::RecordStore> open_store(const std::string& db,
                                                core::RulesStamp rules) {
-    return std::make_unique<store::RecordStore>(db, rules);
+    // The command-line tools never rename a library file; the app does.
+    return std::make_unique<store::RecordStore>(db, store::OldFilePolicy::Refuse, rules);
 }
 
 std::string asset_dir() {

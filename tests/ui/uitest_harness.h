@@ -98,6 +98,13 @@ struct Harness {
 // exactly that name.
 bool selects(const std::string& what, const char* test_name);
 
+// Why a seed the command line gave (`flag` is "--db" or "--ini") cannot be
+// used: it is not an existing file. Empty when it can. A mistyped seed would
+// otherwise start every test on an empty library or the default settings.
+// The one place that decides; hydra_uitest's main and Hydra.exe --uitest/--live
+// both ask it.
+std::string seed_problem(const std::string& flag, const std::string& path);
+
 // Fresh app state for a test: rewrite the scratch INI from
 // scratch_settings() (tests/scratch_settings.h) or copy --ini's seed over it,
 // delete the DB or copy --db's seed over it, rebuild AppState on those
@@ -117,6 +124,16 @@ void reset_app(Harness& h, const std::string& rules_text = "", bool wait_store =
 // (uitest_script.cpp). Each test's UserData is &h.
 void register_tests(Harness& h);
 void register_script_test(Harness& h);
+// Register the "live" test (uitest_live.cpp), which --live queues: it takes
+// command lines from a named pipe until the client leaves or sends quit.
+void register_live_test(Harness& h);
+// Register one test under the name --test and --list use. The script and live
+// tests register through it.
+void register_test(Harness& h, const char* name, void (*fn)(ImGuiTestContext*));
+// Whether a line a script file or the live pipe handed over is a command to
+// run (defined in uitest_script.cpp, the one place that decides). On true,
+// `command` holds the trimmed line.
+bool command_line(const std::string& raw, std::string& command);
 
 // ---- helpers shared by the tests and the script interpreter --------------
 
@@ -128,6 +145,10 @@ inline Harness& harness(ImGuiTestContext* ctx) {
 // on real threads, so the wait is wall-clock, not frame-count. Returns false
 // at once when the test has already failed (ctx->IsError()).
 bool wait_until(ImGuiTestContext* ctx, const std::function<bool()>& pred, double seconds);
+
+// One step of that wait: a frame, then a short nap. For a loop that polls
+// something wait_until's predicate cannot express.
+void idle_frame(ImGuiTestContext* ctx);
 
 // True while any background job (scan, batch, analyze, report, DM fetch/report)
 // or the Preview's load is still running.
@@ -183,7 +204,7 @@ private:
 // Holds the app's store open on its worker thread until the test lets it
 // through. A scratch library opens in a blink, so a test that looks at the
 // startup screen would race it. While a gate lives, the open's progress waits
-// at the gate once it reaches the upgrade's copy, until open(). started()
+// at the gate once it reaches the conversion to records, until open(). started()
 // counts the opens that reached it. Make it BEFORE reset_app (the open starts
 // in AppState's constructor) and pass wait_store=false; its destructor opens
 // it and removes the seam. Only one gate can exist at a time.
@@ -233,7 +254,9 @@ std::string item_line(const ImGuiTestItemInfo& it, int depth);
 std::string state_text(Harness& h);
 
 // Save the current frame to `file` (PNG). Returns false if the capture failed.
-bool screenshot(ImGuiTestContext* ctx, const std::string& file);
+// The saved file's full path goes to *saved_to when the caller asks for it
+// (the screenshot verb puts it in its result); otherwise it is printed.
+bool screenshot(ImGuiTestContext* ctx, const std::string& file, std::string* saved_to = nullptr);
 
 // Escape '/' and '#' in a label so it can be used as one path segment of an
 // ImGuiTestRef ("**/" + escape(title)).

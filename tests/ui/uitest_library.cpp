@@ -10,7 +10,9 @@
 
 #include "../db_file_sql.h"          // tests/ is not on the runner's include path
 #include "../old_layout_fixture.h"
+#include "../testdata_dirs.h"  // root
 #include "app/config.h"
+#include "app/user_messages.h"  // old_library_set_aside_notice
 #include "imgui_internal.h"
 #include "render/overlay_layout.h"  // ellipsize, the one cutting rule
 #include "ui/app_shell.h"  // remember_library_share
@@ -22,7 +24,7 @@
 #include "ui/library_parts.h"  // analyze_shown_label
 #include "ui/preview_controller.h"
 #include "store/record_store.h"
-#include "store/upgrade_files.h"  // the upgrade's file names
+#include "store/upgrade_files.h"  // set_aside_path, with_side_files
 #include "ui/widgets.h"  // widest_digits, button_slot_width
 
 namespace uitest {
@@ -1014,12 +1016,12 @@ int64_t number_in_file(const std::string& path, const std::string& sql) {
 // The titles the startup test's library file holds.
 constexpr const char* kStartupTitles[] = {"Startup Song One", "Startup Song Two"};
 
-// Writes a library file in the layout before summary-only storage (D87): two
-// charts, three results with the structure blob, and the detail tables. One
-// result is from before the stars column (a score and no stars), which the
-// upgrade leaves behind. Returns the file's path, or "" if a step failed.
-std::string write_old_layout_library(Harness& h) {
-    const std::string path = h.temp_dir + "\\old_layout_seed.db";
+// Writes a library file in the layout Hydra 2.2.0 to 2.7.0 wrote: two charts
+// and three results. One result is from before the stars column (a score and
+// no stars), which the conversion leaves behind. Returns the file's path, or
+// "" if a step failed.
+std::string write_v220_library(Harness& h) {
+    const std::string path = h.temp_dir + "\\v220_seed.db";
     if (!hydra::store::remove_with_side_files(path)) return "";
     {
         hydra::store::RecordStore seed(path);
@@ -1034,32 +1036,31 @@ std::string write_old_layout_library(Harness& h) {
         }
         seed.rebuild_chart_library(charts);
     }
-    // The results table as that layout made it, with literal rows. The column
-    // list is the owner's (kSchema2ResultsColumns) plus the three later
-    // columns; each row's values follow that order.
+    // The record tables go and the results table comes in as 2.2.0 made it,
+    // with literal rows.
     const std::string sql =
-        std::string("DROP TABLE IF EXISTS results;") + hydra::test::kDetailLayoutResultsTableSql + ";" +
-        "INSERT INTO results (" + hydra::store::kSchema2ResultsColumns +
-        ", legacy_fills, rules_fp, structure) VALUES"
-        " (1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'mode', 'v', 8, 0, 0, 0, 2, '1', 1000,"
-        " NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 5, 0, x'', x'07'),"
-        " (2, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mode', 'v', 8, 0, 0, 0, 2, '1', 2000,"
-        " NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 6, 0, x'', x'07'),"
-        " (3, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'other', 'v', 8, 0, 0, 0, 2, '1', 3000,"
-        " NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, x'', x'07');" +
-        hydra::test::kDetailTablesSql;
+        std::string("DROP TABLE record_paths; DROP TABLE records; DROP TABLE profiles;") +
+        hydra::test::kV220ResultsTableSql +
+        ";INSERT INTO results (result_id, hyhash, chartmode, hyversion, sp_cap, ms_enabled,"
+        " ms_value, depth_mode, depth_value, legacy_fills, bestpath, score, stars, rules_fp)"
+        " VALUES"
+        " (1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'mode', 'v', 8, 0, 0, 0, 2, 0, '1', 1000, 5, x''),"
+        " (2, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mode', 'v', 8, 0, 0, 0, 2, 0, '1', 2000, 6, x''),"
+        " (3, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'other', 'v', 8, 0, 0, 0, 2, 0, '1', 3000, NULL,"
+        " x'');";
     if (!hydra::test::run_sql_on_file(path, sql)) return "";
     return path;
 }
 
 // The window keeps drawing while the store opens (the DBUP plan, part 1). A
-// library file in the old layout makes the open run the upgrade; an OpenGate
-// holds that open on its worker thread, and the frames still come with the
-// upgrade's screen on them, in the words the user chose for it. Once the gate
-// opens, the library lists the file's charts and the upgrade left no temp file.
+// 2.2.0 library file makes the open convert its results to records; an
+// OpenGate holds that open on its worker thread, and the frames still come
+// with the upgrade's screen on them, in the words the user chose for it. Once
+// the gate opens, the library lists the file's charts and nothing was set
+// aside.
 void test_startup_screen(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    const std::string seed = write_old_layout_library(h);
+    const std::string seed = write_v220_library(h);
     IM_CHECK(!seed.empty());
     const std::string seed_before = h.seed_db;
     h.seed_db = seed;
@@ -1074,16 +1075,17 @@ void test_startup_screen(ImGuiTestContext* ctx) {
                    std::string::npos &&
                text.find("This happens once. Your charts and results are kept.") !=
                    std::string::npos &&
-               text.find("Copying your library...") != std::string::npos;
+               text.find("Updating the results table...") != std::string::npos;
     }, 10);
     IM_CHECK(upgrade_screen_drawn);
     // Frames kept coming while the open was held, and it is still held.
     IM_CHECK(ImGui::GetFrameCount() > frame_before);
     IM_CHECK(!h.app->store_ready());
     IM_CHECK(gate.started() > 0);
-    // The bar under the words is fed by the store's own count of rows to copy.
+    // The bar under the words is fed by the store's own count of rows to
+    // convert.
     const hydra::ui::StoreOpenProgress held = h.app->store_open_progress();
-    IM_CHECK(held.step == hydra::ui::StoreOpenProgress::Step::Copying);
+    IM_CHECK(held.step == hydra::ui::StoreOpenProgress::Step::ConvertingRecords);
     IM_CHECK(held.upgrading);
     IM_CHECK(held.rows_total > 0);
 
@@ -1093,15 +1095,73 @@ void test_startup_screen(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(h.app->library.rows().size(), size_t{2});
     for (const char* title : kStartupTitles)
         IM_CHECK(wait_until(ctx, [&] { return visible_text(h).find(title) != std::string::npos; }, 5));
-    // The upgrade swapped its files and tidied up.
-    for (const std::string& leftover :
-         {hydra::store::upgrading_path(h.db_path), hydra::store::old_path(h.db_path)})
-        for (const std::string& file : hydra::store::with_side_files(leftover))
-            IM_CHECK(!fs::exists(fs::u8path(file)));
-    // The two results with stars came across; the one without did not. The
-    // detail tables are gone.
+    // A file that converts is never set aside.
+    for (const std::string& file :
+         hydra::store::with_side_files(hydra::store::set_aside_path(h.db_path)))
+        IM_CHECK(!fs::exists(fs::u8path(file)));
+    // The two results with stars became records; the one without did not.
+    // The results table is gone.
     IM_CHECK_EQ(number_in_file(h.db_path, hydra::test::kResultsRowCountSql), int64_t{2});
-    IM_CHECK_EQ(number_in_file(h.db_path, hydra::test::kDetailTablesCountSql), int64_t{0});
+    IM_CHECK_EQ(number_in_file(h.db_path,
+                               "SELECT COUNT(*) FROM sqlite_master WHERE name = 'results'"),
+                int64_t{0});
+}
+
+// Removes the set-aside copy of the harness's library file when it goes, so
+// a failed check cannot leave one for startup-screen to find.
+struct SetAsideCleanup {
+    std::string db;
+    void remove() const {
+        for (const std::string& file :
+             hydra::store::with_side_files(hydra::store::set_aside_path(db))) {
+            std::error_code ec;
+            fs::remove(fs::u8path(file), ec);
+        }
+    }
+    ~SetAsideCleanup() { remove(); }
+};
+
+// D115 A1-6b (user decision 2026-10-14): a library file older than 2.2.0 is
+// set aside and Hydra starts a fresh library. The sentence for main.cpp's
+// information box waits until the box closes, frames go on drawing without a
+// scan meanwhile, and closing it starts the scan of the ini's chart folders.
+// The box itself is Windows'; this test plays its part with
+// startup_notice_closed, as main.cpp does.
+void test_old_library_set_aside(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    // A real 2.1.0 file, copied: the checked-in one is never opened.
+    const std::string fixture = corpus::testdata_root() + "/store/v2.1.0-schema4.db";
+    const std::string seed = h.temp_dir + "\\v210_seed.db";
+    std::error_code ec;
+    IM_CHECK(fs::copy_file(fs::u8path(fixture), fs::u8path(seed),
+                           fs::copy_options::overwrite_existing, ec));
+    const SetAsideCleanup cleanup{h.db_path};
+    cleanup.remove();
+    const std::string seed_before = h.seed_db;
+    h.seed_db = seed;
+    reset_app(h);
+    h.seed_db = seed_before;
+
+    IM_CHECK(h.app->store_ready());
+    IM_CHECK(fs::exists(fs::u8path(hydra::store::set_aside_path(h.db_path))));
+    IM_CHECK(h.app->library.rows().empty());
+    IM_CHECK_STR_EQ(h.app->startup_notice().c_str(),
+                    hydra::app::old_library_set_aside_notice(h.db_path).c_str());
+    // Frames draw while the box is up, and no scan starts behind it.
+    ctx->Yield(3);
+    IM_CHECK(h.app->scan_job == nullptr);
+    IM_CHECK(!h.app->startup_notice().empty());
+
+    h.app->startup_notice_closed();
+    IM_CHECK(h.app->startup_notice().empty());
+    IM_CHECK(wait_until(ctx, [&] { return h.app->scan_job != nullptr; }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return h.app->scan_job->snapshot().finished; }, 60));
+    IM_CHECK(h.app->scan_job->snapshot().charts_found > 0);
+    ctx->SetRef("//Scanning charts");
+    ctx->ItemClick("Continue");
+    ctx->Yield(2);
+    IM_CHECK(h.app->scan_job == nullptr);
+    IM_CHECK(h.app->library_shown_count() > 0);
 }
 
 }  // namespace
@@ -1128,6 +1188,7 @@ const std::vector<TestEntry>& library_tests() {
         {"library-columns-at-start", test_library_columns_at_start},
         {"library-twin-rows", test_library_twin_rows},
         {"startup-screen", test_startup_screen},
+        {"old-library-set-aside", test_old_library_set_aside},
     };
     return entries;
 }

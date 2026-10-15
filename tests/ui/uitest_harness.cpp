@@ -32,6 +32,7 @@
 #include "app/config.h"
 #include "app/user_messages.h"  // plain_error_block
 #include "audio/device.h"
+#include "core/winstr.h"
 #include "net/dmbot_client.h"
 #include "ui/app_state.h"
 #include "ui/library_jobs.h"
@@ -132,8 +133,21 @@ bool Harness::init_attached(ID3D11Device* dev, ID3D11DeviceContext* ctx, IDXGISw
     return true;
 }
 
+void register_test(Harness& h, const char* name, void (*fn)(ImGuiTestContext*)) {
+    ImGuiTest* t = IM_REGISTER_TEST(h.engine, "hydra", name);
+    t->UserData = &h;
+    t->TestFunc = fn;
+}
+
 bool selects(const std::string& what, const char* test_name) {
     return what == "all" || what == test_name;
+}
+
+std::string seed_problem(const std::string& flag, const std::string& path) {
+    std::error_code ec;
+    if (fs::is_regular_file(hydra::os_path(path), ec)) return "";
+    return flag + " \"" + path + "\" is not a " + (flag == "--db" ? "database" : "settings") +
+           " file";
 }
 
 bool Harness::queue(const std::string& what) {
@@ -385,6 +399,13 @@ void reset_app(Harness& h, const std::string& rules_text, bool wait_store) {
     IM_ERRORF("The scratch library did not open:\n%s", why.c_str());
 }
 
+void idle_frame(ImGuiTestContext* ctx) {
+    ctx->Yield();
+    // Fast mode spins frames flat out; a short nap keeps the worker
+    // threads from being starved while we poll.
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+}
+
 bool wait_until(ImGuiTestContext* ctx, const std::function<bool()>& pred, double seconds) {
     auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(seconds);
     while (!pred()) {
@@ -393,10 +414,7 @@ bool wait_until(ImGuiTestContext* ctx, const std::function<bool()>& pred, double
         // timeout.
         if (ctx->IsError()) return false;
         if (std::chrono::steady_clock::now() > deadline) return false;
-        ctx->Yield();
-        // Fast mode spins frames flat out; a short nap keeps the worker
-        // threads from being starved while we poll.
-        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        idle_frame(ctx);
     }
     // One more frame so the screen reflects the state the caller waited for.
     ctx->Yield();
@@ -482,8 +500,10 @@ OpenGate::OpenGate()
     : seam_(hydra::ui::set_store_open_gate_for_test,
             [](const hydra::ui::StoreOpenProgress& progress,
                const std::function<bool()>& cancelled) {
-                // Hold at the copy, where the upgrade's screen has all its words.
-                if (progress.step != hydra::ui::StoreOpenProgress::Step::Copying) return;
+                // Hold at the conversion, where the upgrade's screen has all
+                // its words.
+                if (progress.step != hydra::ui::StoreOpenProgress::Step::ConvertingRecords)
+                    return;
                 if (g_open_gate_open.load()) return;
                 ++g_open_gate_started;
                 testwait::wait_until([&] { return g_open_gate_open.load() || cancelled(); },
@@ -634,7 +654,7 @@ std::string state_text(Harness& h) {
     return out.c_str();
 }
 
-bool screenshot(ImGuiTestContext* ctx, const std::string& file) {
+bool screenshot(ImGuiTestContext* ctx, const std::string& file, std::string* saved_to) {
     Harness& h = harness(ctx);
     std::string path = file;
     if (fs::u8path(path).is_relative()) path = h.shots_dir + "\\" + path;
@@ -645,7 +665,8 @@ bool screenshot(ImGuiTestContext* ctx, const std::string& file) {
     args->InPadding = 0.0f;
     bool ok = ctx->CaptureScreenshot(ImGuiCaptureFlags_IncludeOtherWindows |
                                      ImGuiCaptureFlags_HideMouseCursor);
-    if (ok) std::printf("screenshot: %s\n", path.c_str());
+    if (ok && saved_to) *saved_to = path;
+    else if (ok) std::printf("screenshot: %s\n", path.c_str());
     return ok;
 }
 

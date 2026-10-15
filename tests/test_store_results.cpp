@@ -907,24 +907,6 @@ TEST_CASE("get_summaries answers a whole library in chunks") {
     CHECK(ready == 3);
 }
 
-TEST_CASE("the store names the fill rule a file holds") {
-    // Finding 54: the store reads its own engine_mode stamp. A file with
-    // results and no stamp was written under the normal 1.1 rule; an empty
-    // unstamped file holds no rule at all.
-    RecordStore ch10(":memory:");
-    ch10.set_engine_mode(engine_mode_stamp(FillDeadlineRule::Ch10));
-    RecordStore ch11(":memory:");
-    ch11.set_engine_mode(engine_mode_stamp(FillDeadlineRule::Ch11));
-    RecordStore unstamped(":memory:");
-    unstamped.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
-    RecordStore empty(":memory:");
-
-    CHECK(ch10.stamped_fill_rule() == FillDeadlineRule::Ch10);
-    CHECK(ch11.stamped_fill_rule() == FillDeadlineRule::Ch11);
-    CHECK(unstamped.stamped_fill_rule() == FillDeadlineRule::Ch11);
-    CHECK_FALSE(empty.stamped_fill_rule().has_value());
-}
-
 TEST_CASE("PathSummary equality covers every field, stars included") {
     // Finding 121: one compare for every field, unset against set counting
     // as a change.

@@ -15,8 +15,6 @@ namespace uitest {
 
 namespace {
 
-using hydra::trim;
-
 // Echo each line, run it, print what it produced, and stop at the first
 // failure or at quit.
 void run_script(ImGuiTestContext* ctx) {
@@ -30,11 +28,11 @@ void run_script(ImGuiTestContext* ctx) {
     }
 
     CommandSession session;
+    std::string raw;
     std::string line;
-    while (std::getline(f, line)) {
+    while (std::getline(f, raw)) {
         ++session.line;
-        line = trim(line);
-        if (line.empty() || line[0] == '#') continue;
+        if (!command_line(raw, line)) continue;
         std::printf("> %s\n", line.c_str());
         std::fflush(stdout);
 
@@ -47,10 +45,11 @@ void run_script(ImGuiTestContext* ctx) {
 
 }  // namespace
 
-void register_script_test(Harness& h) {
-    ImGuiTest* t = IM_REGISTER_TEST(h.engine, "hydra", "script");
-    t->UserData = &h;
-    t->TestFunc = run_script;
+bool command_line(const std::string& raw, std::string& command) {
+    command = hydra::trim(raw);
+    return !command.empty() && command[0] != '#';
 }
+
+void register_script_test(Harness& h) { register_test(h, "script", run_script); }
 
 }  // namespace uitest

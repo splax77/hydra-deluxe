@@ -436,7 +436,6 @@ TEST_CASE("generate_report reports a 1.0-fills database under the 1.0 rule") {
     REQUIRE(charts.size() == 1);
     store.add_record(legacy.record_key("h0"), charts[0].result.record);
     store.rebuild_chart_library({library_entry_for_file("h0", "Title 0", charts[0].chart)});
-    store.set_engine_mode(engine_mode_stamp(FillDeadlineRule::Ch10));
 
     const report::GeneratedReport ch10 =
         report::generate_report(store, fixture_options(4, /*legacy_fills=*/true));
@@ -475,15 +474,10 @@ TEST_CASE("collect_rows: the library names go through display_title, display_art
     }
 }
 
-TEST_CASE("fill_rule_for: the legacy_fills flag and the file stamp each name one fill rule") {
+TEST_CASE("fill_rule_for: the legacy_fills flag names one fill rule") {
     // legacy_fills on is the Clone Hero 1.0 rule; off is the normal 1.1 rule.
     CHECK(fill_rule_for(true) == FillDeadlineRule::Ch10);
     CHECK(fill_rule_for(false) == FillDeadlineRule::Ch11);
-    // A stamp reads back as the rule that wrote it; any other text is no rule.
-    CHECK(fill_rule_from_stamp("ch10") == FillDeadlineRule::Ch10);
-    CHECK(fill_rule_from_stamp("ch11") == FillDeadlineRule::Ch11);
-    CHECK_FALSE(fill_rule_from_stamp("ch12").has_value());
-    CHECK_FALSE(fill_rule_from_stamp("").has_value());
 }
 
 TEST_CASE("tier_for: raw-ms bands derived from the two-hit budget") {

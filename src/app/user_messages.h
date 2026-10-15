@@ -51,12 +51,14 @@ std::string rules_file_tool_text(const std::exception& e);
 // kSomethingWentWrong.
 std::string plain_error(const std::exception& e);
 
-// The raw text, for a small details line under the plain message.
+// The raw text, for a small details line under the plain message. Empty when
+// the sentence already holds the whole raw text (sentence_holds_detail in
+// user_messages.cpp), so no place shows it twice.
 std::string plain_error_detail(const std::exception& e);
 
 // plain_error, a blank line, then plain_error_detail: one block of text, for
 // a place with no separate details line (Hydra's startup message box and the
-// command-line tools' stderr, D72).
+// command-line tools' stderr, D72). With no detail it is the sentence alone.
 std::string plain_error_block(const std::exception& e);
 
 // How a command-line tool ends on an error: its plain_error_block on stderr,
@@ -74,6 +76,11 @@ int run_tool(const std::function<int()>& body);
 // caller asking about a row that is not stale), it is the sentence that names
 // both, so there is never an empty line.
 std::string stale_text(bool build, bool rules);
+
+// What the app says after its open set a library file too old to convert
+// aside (store::OldFilePolicy::SetAside). `db_path` is the library file's own
+// path; the name shown is the one store::set_aside_path gave the file.
+std::string old_library_set_aside_notice(const std::string& db_path);
 
 // What the library's Stale chip says when hovered. The chip stands for many
 // rows, so it names both causes stale_text can name.

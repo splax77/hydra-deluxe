@@ -20,7 +20,9 @@ namespace hydra {
 enum class ErrorKind {
     Cancelled,
     DatabaseOpen,
-    DatabaseUpgrade,  // the library file upgrade failed and left the old file whole
+    DatabaseUpgrade,  // converting a Convertible library file failed and left it whole
+    OldLibraryRefused,         // the text is the path of a library file too old to convert
+    OldLibrarySetAsideFailed,  // the text is the system's reason the rename failed
     DatabaseWrite,
     DatabaseRead,
     SongFileMissing,

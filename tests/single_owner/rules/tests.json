@@ -530,6 +530,36 @@
       ]
     },
     {
+      "question": "Is a line of a GUI test command file, or one sent down the live pipe, a command to run?",
+      "owner": "uitest::command_line in tests/ui/uitest_script.cpp",
+      "owner_file": "tests/ui/uitest_script.cpp",
+      "owner_symbol": "command_line",
+      "date": "2026-10-14",
+      "decision": "plan 2026-10-14-hydra-mcp-server.md, task T2: the script and the live channel read lines the same way",
+      "added_by": "mcp-t2-review",
+      "pattern": "\\[0\\]\\s*[!=]=\\s*'#'",
+      "anchor": "'#'",
+      "must_match": [
+        "if (line.empty() || line[0] == '#') continue;",
+        "if (raw.empty() || raw[0] != '#') run(raw);"
+      ],
+      "must_not_match": [
+        "if (!command_line(raw, line)) continue;",
+        "if (c == '#' || c == '/') out += '\\\\';"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/ui/uitest_script.cpp",
+          "line_text": "return !command.empty() && command[0] != '#';",
+          "why": "uitest::command_line, the owner"
+        }
+      ],
+      "scope": [
+        "tests"
+      ],
+      "note": "A '#' test on some other string (a colour code, a section header) is another question; this row only looks at the first character of a line, as the owner does."
+    },
+    {
       "question": "Which test helper builds a .sng?",
       "owner": "make_sng in tests/sng_util.h",
       "owner_file": "tests/sng_util.h",

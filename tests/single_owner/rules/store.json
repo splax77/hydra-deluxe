@@ -1,33 +1,30 @@
 {
   "rules": [
     {
-      "question": "Which meta key holds the fill-rule stamp?",
-      "owner": "kEngineModeKey in src/store/record_store.cpp",
+      "question": "Which meta key held the retired fill-rule label?",
+      "owner": "kRetiredFillLabelKey in src/store/record_store.cpp",
       "owner_file": "src/store/record_store.cpp",
-      "owner_symbol": "kEngineModeKey",
-      "date": "2026-10-05",
-      "decision": "audit R7.26 (M7-2b review, finding 1",
-      "added_by": "M7-2b",
+      "owner_symbol": "kRetiredFillLabelKey",
+      "date": "2026-10-14",
+      "decision": "D115 task A1-6c (user, 2026-10-14: retire the label)",
+      "added_by": "D115-A1-6c",
       "pattern": "\"engine_mode\"",
       "anchor": "\"engine_mode\"",
       "must_match": [
         "if (const std::optional<std::string> mode = meta_get(\"engine_mode\"))",
-        "return meta_get(\"engine_mode\");",
-        "meta_set(\"engine_mode\", mode);"
+        "return meta_get(\"engine_mode\");"
       ],
       "must_not_match": [
-        "if (const std::optional<std::string> mode = engine_mode())",
-        "return meta_get(kEngineModeKey);",
-        "meta_set(kEngineModeKey, mode);"
+        "exec((std::string(\"DELETE FROM meta WHERE key = '\") + kRetiredFillLabelKey + \"'\").c_str());"
       ],
       "owner_lines": [
         {
           "file": "src/store/record_store.cpp",
-          "line_text": "constexpr const char* kEngineModeKey = \"engine_mode\";",
-          "why": "kEngineModeKey, the owner"
+          "line_text": "constexpr const char* kRetiredFillLabelKey = \"engine_mode\";",
+          "why": "kRetiredFillLabelKey, the owner"
         }
       ],
-      "note": "The meta key the stamp is stored under, typed anywhere but its one constant. RecordStore::engine_mode and set_engine_mode read and write through it. Decided by: audit R7.26 (M7-2b review, finding 1; the key typed once by phase 6 task J4-2)"
+      "note": "Each record's profile carries its own fill rule, so the file-level label is retired: the conversion deletes its meta row and nothing may read it. The key typed anywhere but its one constant is a reader coming back. Decided by: D115 task A1-6c (2026-10-14)"
     },
     {
       "question": "Which copy names a chart the scan found twice?",
@@ -108,28 +105,6 @@
       "note": "The bestpath column and hydra_replay's result block both show this text, so they read it from one function. Decided by: ST1 (audit findings 116 and 132); phase 7 M7-1 derive-once review finding 2 (2026-10-04)"
     },
     {
-      "question": "Which rules was a stored row made under (SQL)?",
-      "owner": "rules_fp_of in src/store/record_store.cpp",
-      "owner_file": "src/store/record_store.cpp",
-      "owner_symbol": "rules_fp_of",
-      "date": "2026-10-04",
-      "decision": "ST1 (audit findings 116 and 132)",
-      "added_by": "M7-1",
-      "pattern": "substr\\(\\s*structure\\s*,\\s*5\\s*,\\s*8\\s*\\)",
-      "anchor": "structure",
-      "must_match": [
-        "\" WHERE substr(structure,5,8) = ?\");",
-        "\"DELETE FROM results WHERE substr(structure,5,8) = ?\"}) {"
-      ],
-      "must_not_match": [
-        "\") AND substr(structure,1,4) IN (\" + placeholders(kPathFormatStamp.accepted.size()) +"
-      ],
-      "scope": [
-        "src"
-      ],
-      "note": "rules_fp_of builds the SQL from the column or parameter it is given, so its own line never spells structure's bytes 5 to 12. Decided by: ST1 (audit findings 116 and 132); phase 7 M7-1 derive-once review finding 4 (2026-10-04)"
-    },
-    {
       "question": "Which fill rule does a record key name?",
       "owner": "Lens::from in src/store/record_store.h",
       "owner_file": "src/store/record_store.h",
@@ -188,27 +163,6 @@
         "tests"
       ],
       "note": "A summary's score or stars tested for presence: whether the record has a scored best path. test_store_results checks the stored columns themselves, which is what the owner reads. Decided by: D51 call 11; audit finding 88 (phase 7 task LB2)"
-    },
-    {
-      "question": "Where do the format and fingerprint sit in a structure blob?",
-      "owner": "kOldRulesFingerprintOffset, kOldRulesFingerprintBytes and rules_fp_of in src/store/record_store.cpp",
-      "owner_file": "src/store/record_store.cpp",
-      "owner_symbol": "kOldRulesFingerprintOffset",
-      "date": "2026-10-05",
-      "decision": "D53",
-      "added_by": "J3-6",
-      "pattern": "substr\\(\\s*(\\w+\\.)?structure\\s*,\\s*\\d|read_le\\(structure_head",
-      "anchor": "structure",
-      "must_match": [
-        "\") AND substr(structure,1,4) IN (\" + placeholders(kPathFormatStamp.accepted.size()) +",
-        "std::string(\"SELECT hyhash, hyversion, bestpath, result_id, substr(structure,1,12), \") +",
-        "\"r.hyversion, r.result_id, substr(r.structure,1,12) \"",
-        "kPathFormatStamp.is_current(static_cast<uint32_t>(read_le(structure_head, 0, 4)));"
-      ],
-      "must_not_match": [
-        "return head_field_sql(blob, kRulesFingerprintOffset, kRulesFingerprintBytes);"
-      ],
-      "note": "---- phase 6 task J3-6: store rows and bytes ---- A structure blob's head offset typed as a digit in SQL, or read by hand in C++. Only an older file still has the blob (D87); the upgrade reads its fingerprint through the named offsets. Decided by: audit finding 194, folded under D53 (phase 6 task J3-6)"
     },
     {
       "question": "Why is a stored row Stale?",
@@ -271,35 +225,6 @@
         "tests"
       ],
       "note": "Decided by: audit finding 121, folded under D53 (phase 6 task J3-6)"
-    },
-    {
-      "question": "Which columns did schema 2 have? (tests)",
-      "owner": "kSchema2ResultsColumns in src/store/record_store.cpp",
-      "owner_file": "src/store/record_store.cpp",
-      "owner_symbol": "kSchema2ResultsColumns",
-      "date": "2026-10-05",
-      "decision": "D53",
-      "added_by": "J3-6",
-      "pattern": "result_id, hyhash, chartmode, hyversion,",
-      "anchor": "result_id, hyhash, chartmode, hyversion,",
-      "must_match": [
-        "\"INSERT INTO results SELECT result_id, hyhash, chartmode, hyversion,\""
-      ],
-      "must_not_match": [
-        "std::string(\"INSERT INTO results (\") + kSchema2ResultsColumns +"
-      ],
-      "owner_lines": [
-        {
-          "file": "src/store/record_store.cpp",
-          "line_text": "\"result_id, hyhash, chartmode, hyversion, sp_cap, ms_enabled, ms_value, depth_mode,\"",
-          "why": "kSchema2ResultsColumns, the owner"
-        }
-      ],
-      "scope": [
-        "src",
-        "tests"
-      ],
-      "note": "Schema 2's column list typed out again. Decided by: audit finding 267, folded under D53 (phase 6 task J3-6)"
     },
     {
       "question": "Which rows were stored at this SP cap?",
@@ -374,24 +299,6 @@
       "note": "list_records' slots after the summary, and where each SELECT's summary starts, are counted from the column lists. Decided by: audit finding 253; phase 6 task J4-2 (D53, D54); get_summaries' start slot, J4 join"
     },
     {
-      "question": "Does the charts table have the sig column?",
-      "owner": "has_column in src/store/record_store.cpp",
-      "owner_file": "src/store/record_store.cpp",
-      "owner_symbol": "has_column",
-      "date": "2026-10-05",
-      "decision": "D53, D54",
-      "added_by": "J4-2",
-      "pattern": "pragma_table_info\\(",
-      "anchor": "pragma_table_info(",
-      "must_match": [
-        "Stmt probe = prepare(db_, \"SELECT COUNT(*) FROM pragma_table_info('charts') \""
-      ],
-      "must_not_match": [
-        "std::string sql = std::string(\"PRAGMA table_info(\") + table + \")\";"
-      ],
-      "note": "The constructor adds the sig column on every open, so nothing asks the table whether it has it. has_column's PRAGMA table_info is a different spelling; the tests' seeding helpers are out of scope. Decided by: audit finding 299; phase 6 task J4-2 (D53, D54)"
-    },
-    {
       "question": "Did a database statement's step succeed, and what kind is its failure?",
       "owner": "step_row (reads) and step_done (writes) in src/store/record_store.cpp",
       "owner_file": "src/store/record_store.cpp",
@@ -401,6 +308,12 @@
       "added_by": "RD1",
       "pattern": "sqlite3_step\\(",
       "anchor": "sqlite3_step(",
+      "exempt": [
+        {
+          "file": "src/store/library_file.cpp",
+          "why": "classify_library_file's probe asks whether the file's tables can be read at all: any failed step reads LibraryFileKind::Unreadable, never an error kind"
+        }
+      ],
       "must_match": [
         "while (sqlite3_step(s) == SQLITE_ROW) out.insert(column_text(s, 0));",
         "if (sqlite3_step(s) != SQLITE_DONE)",
@@ -434,6 +347,12 @@
       "added_by": "RD1",
       "pattern": "sqlite3_prepare",
       "anchor": "sqlite3_prepare",
+      "exempt": [
+        {
+          "file": "src/store/library_file.cpp",
+          "why": "classify_library_file's probe asks whether the file's tables can be read at all: any failed compile reads LibraryFileKind::Unreadable, never an error kind"
+        }
+      ],
       "must_match": [
         "if (sqlite3_prepare_v2(db, sql, -1, &s.p, nullptr) != SQLITE_OK)"
       ],
@@ -450,25 +369,88 @@
       "note": "A read that failed to compile read the save sentence (D73)."
     },
     {
-      "question": "Which schema is this database at?",
-      "owner": "the has_column probes in RecordStore::RecordStore (src/store/record_store.cpp)",
-      "owner_file": "src/store/record_store.cpp",
-      "owner_symbol": "has_column",
-      "date": "2026-10-05",
-      "decision": "D53, D54",
-      "added_by": "J4-2",
-      "pattern": "user_version",
-      "anchor": "user_version",
+      "question": "Which generation is this library file?",
+      "owner": "classify_library_file in src/store/library_file.cpp",
+      "owner_file": "src/store/library_file.cpp",
+      "owner_symbol": "classify_library_file",
+      "date": "2026-10-14",
+      "decision": "D115 task A1-6a (user, 2026-10-14: what is an old version is derived once)",
+      "added_by": "D115-A1-6a",
+      "pattern": "\\bhas_(table|column)\\s*\\(|sqlite_(temp_)?(master|schema)|table_(x)?info|table_list|sqlite3_table_column_metadata|user_version|schema_version",
+      "owner_files": [
+        "src/store/library_file.cpp"
+      ],
       "must_match": [
-        "exec(\"PRAGMA user_version = 3\");",
-        "// Three tables carry an analysis (schema user_version 3):"
+        "if (!has_column(\"charts\", \"sig\")) exec(\"ALTER TABLE charts ADD COLUMN sig TEXT\");",
+        "const bool details = has_table(\"paths\");",
+        "Stmt s = prepare_read(db_, \"SELECT name FROM sqlite_master WHERE type='table'\");",
+        "Stmt s = prepare_read(db_, \"SELECT name FROM sqlite_schema WHERE type='table'\");",
+        "std::string sql = std::string(\"PRAGMA table_info(\") + table + \")\";",
+        "std::string sql = std::string(\"SELECT name FROM pragma_table_xinfo('\") + table + \"')\";",
+        "exec(\"PRAGMA user_version = 3\");"
       ],
       "must_not_match": [
-        "// Three tables carry an analysis:",
-        "if (!has_column(\"charts\", \"sig\")) exec(\"ALTER TABLE charts ADD COLUMN sig TEXT\");"
+        "const LibraryFileKind kind = classify_library_file(dbpath);",
+        "if (w.sort.empty() || !std::all_of(w.sort.begin(), w.sort.end(), has_column))"
       ],
-      "scan_comments": true,
-      "note": "Hydra never writes the slot (D53 item 1); the column checks are the one upgrade gate. Comments are read so the header names no number. Decided by: audit finding 298; phase 6 task J4-2 (D53 item 1, D54)"
+      "note": "Every older layout is told apart by its tables, read in one place, so a probe of a file's tables or schema slot anywhere else in shipped code is a second answer. Hydra never writes the user_version slot (D53 item 1). path_report_window's has_column is a report column, not a table's. Decided by: D115 task A1-6a, replacing the J4-2 schema row (D53, D54)"
+    },
+    {
+      "question": "Where is a library file renamed?",
+      "owner": "set_aside_old_library in src/store/upgrade_files.cpp",
+      "owner_file": "src/store/upgrade_files.cpp",
+      "owner_symbol": "set_aside_old_library",
+      "date": "2026-10-14",
+      "decision": "D115 task A1-6a (user, 2026-10-14: an old file is set aside under one name, replacing an earlier one)",
+      "added_by": "D115-A1-6a",
+      "pattern": "\\brename_file\\s*\\(|MoveFile|filesystem::rename\\s*\\(|\\b_?w?rename\\s*\\(",
+      "owner_files": [
+        "src/store/upgrade_files.cpp",
+        "src/store/upgrade_files.h"
+      ],
+      "exempt": [
+        {
+          "file": "src/app/report_files.cpp",
+          "why": "renames its own report's temp file into place, never a library file"
+        }
+      ],
+      "must_match": [
+        "if (std::optional<std::string> why = rename_file(path, old_path(path))) return why;",
+        "if (!MoveFileExW(win32_path(db).c_str(), win32_path(backup).c_str(), 0))",
+        "std::filesystem::rename(os_path(db), os_path(db + \".old\"), ec);"
+      ],
+      "must_not_match": [
+        "if (std::optional<std::string> why = set_aside_old_library(dbpath))"
+      ],
+      "note": "The app's open is the only thing that moves a library file, and it moves it to set_aside_path's name; the command-line tools refuse an old file and never rename it. Decided by: D115 task A1-6a"
+    },
+    {
+      "question": "What does an open do with a library file too old to convert?",
+      "owner": "OldFilePolicy in src/store/library_file.h, named by each shipped caller",
+      "owner_file": "src/store/library_file.h",
+      "owner_symbol": "OldFilePolicy",
+      "date": "2026-10-14",
+      "decision": "D115 task A1-6a (user, 2026-10-14: the app sets an old file aside; hydra_batch and hydra_fillcompare refuse it)",
+      "added_by": "D115-A1-6a",
+      "pattern": "\\bRecordStore\\s+\\w+\\s*[({]|RecordStore\\s*>\\s*\\(|\\bnew\\s+[\\w:]*RecordStore\\b",
+      "anchor": "RecordStore",
+      "calls_owner": "OldFilePolicy::",
+      "owner_files": [
+        "src/store/record_store.h",
+        "src/store/record_store.cpp"
+      ],
+      "must_match": [
+        "store::RecordStore db(dbpath, core::RulesStamp::of(g_rules));",
+        "return std::make_unique<store::RecordStore>(db, rules);",
+        "store_ = std::make_unique<store::RecordStore>(",
+        "store_.reset(new store::RecordStore(dbpath, rules));"
+      ],
+      "must_not_match": [
+        "store::RecordStore db(dbpath, store::OldFilePolicy::Refuse, core::RulesStamp::of(g_rules));",
+        "return std::make_unique<store::RecordStore>(db, store::OldFilePolicy::Refuse, rules);",
+        "std::unique_ptr<store::RecordStore> store;"
+      ],
+      "note": "The constructor without a policy (it refuses) is for tests only, so shipped code under src/ and tools/ names its policy on the line that opens the store. A store opened over several lines with the policy on a later line is flagged too: put the policy on the opening line. Decided by: D115 task A1-6a"
     },
     {
       "question": "Does this chart have a current result under these settings?",
@@ -485,7 +467,7 @@
         "if (head->rules_fingerprint == rules_fingerprint_.fixed) out.insert(hyhash);"
       ],
       "must_not_match": [
-        "const std::vector<uint8_t> auto_fp = rules_fp_bytes(rules_fingerprint_.retired_auto);",
+        "const std::vector<uint8_t> none_fp = rules_fp_bytes(core::kNoRulesFingerprint);",
         "purge(\"hyhash=? AND chartmode=? AND NOT \" + row_readable_sql(),",
         "if (found[i].status == RecordStatus::Ready) out.insert(candidates[i]);"
       ],

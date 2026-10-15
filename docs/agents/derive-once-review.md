@@ -141,12 +141,14 @@ git show --remerge-diff <M>
 
 That diff shows the merge against what git would have made by itself, so everything in it was written by hand. Ask this page's one question of those lines: is any rule now answered twice? A conflict resolved by keeping both sides of a list is normal and needs nothing. New logic written while resolving is reviewed like any change, with "How to review" above.
 
-Fix what you find the same way (D107): fix it yourself, commit, sign off. Your fix commits sit directly above M, and the gate covers them because you wrote them and you sign off on the last one. Nobody else may commit between M and your commits.
+Sometimes commits already sit directly above M when you start, for example a change the main session made after the merge. Read those too, with `git log -p <M>..<topmost commit>`, and review them like any change, with "How to review" above. Your sign-off then covers M and every commit above it, so your key is the topmost commit.
+
+Fix what you find the same way (D107): fix it yourself, commit, sign off. Your fix commits go on top, and your key is your own last commit. The gate accepts a sign-off on the topmost commit from anyone except the agent that made M.
 
 Your review file holds these three lines, each on its own line, then the usual sections from "Output":
 
 ```
-Key: <M if you committed nothing, else your last commit>
+Key: <the topmost commit: M itself when nothing sits above it>
 Verdict: CLEAN
 Scope: resolution
 ```
@@ -157,7 +159,7 @@ Submit with the usual command and that key. A resolution review never counts as 
 
 These rules are for the session that runs the merge.
 
-When main moves under a reviewed branch, merge main into the branch. A conflict-free merge needs nothing more. A merge resolved by hand gets one resolution review (see "Resolution review"), keyed on that merge commit. It never gets a second full review. The ref gate's refusal names each merge that still needs one. Any other commit after the review, such as your own edit, still needs a full review of the new tip. That includes a second agent's commit above a hand-resolved merge.
+When main moves under a reviewed branch, merge main into the branch. A conflict-free merge needs nothing more. A merge resolved by hand gets one resolution review (see "Resolution review"), keyed on that merge commit, or on the topmost commit when commits sit directly above it. Those commits are covered by that same resolution review, whoever wrote them, as long as each carries exactly one Agent trailer. It never gets a second full review. The ref gate's refusal names each merge that still needs one, with its key and what to read. Any other commit after the review, such as your own edit above a conflict-free merge or with no merge at all, still needs a full review of the new tip.
 
 Before the review, run the precheck on the range and fix what it prints. Keep merges small enough to review in one read. The precheck prints the range's size, and a large-range note when it is over the threshold that `tools/derive_once_precheck.ps1` owns. A range with that note should go in as two or more merges.
 

@@ -58,27 +58,6 @@ TEST_CASE("a failed library rebuild keeps the previous scan") {
     std::remove(path.c_str());
 }
 
-TEST_CASE("a charts table from before the sig column still rebuilds") {
-    // The rebuild empties the table instead of recreating it, so an old
-    // table has to gain the column when the store opens.
-    const std::string path = testtemp::temp_path("charts_nosig", ".db");
-    std::remove(path.c_str());
-    exec_on_file(path,
-                 "CREATE TABLE charts (md5 TEXT, name TEXT, artist TEXT, charter TEXT,"
-                 " path TEXT, folder TEXT);"
-                 "INSERT INTO charts VALUES ('a', 'A', 'Artist', 'Charter',"
-                 " 'C:\\charts\\a\\notes.chart', 'C:\\charts');");
-    {
-        RecordStore store(path);
-        CHECK(store.chart_library_count() == 1);
-        CHECK(store.chart_library_cache().empty());  // no fingerprints yet
-        store.rebuild_chart_library({library_row("b", "B")});
-        CHECK(store.chart_library_count() == 1);
-        CHECK(store.chart_library_cache().at("C:\\charts\\b\\notes.chart").sig == "sig-b");
-    }
-    std::remove(path.c_str());
-}
-
 TEST_CASE("a result's names follow the latest scan") {
     // User decision 2026-09-26: fixing song.ini reaches the reports. A
     // result's names come from the library (kNamingCopiesSql), so a rescan

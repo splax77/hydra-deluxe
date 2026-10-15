@@ -305,6 +305,7 @@ add_library(hydra_core STATIC
     src/store/record_store.cpp
     src/store/chart_index.cpp
     src/store/upgrade_files.cpp
+    src/store/library_file.cpp
     src/app/allocator.cpp
     src/app/analysis.cpp
     src/app/config.cpp
@@ -472,6 +473,7 @@ add_library(hydra_uitest_harness STATIC
     tests/ui/uitest_harness.cpp
     tests/ui/uitest_commands.cpp
     tests/ui/uitest_script.cpp
+    tests/ui/uitest_live.cpp
     tests/ui/uitest_tests.cpp
     tests/ui/uitest_library.cpp
     tests/ui/uitest_details.cpp
@@ -484,6 +486,7 @@ add_library(hydra_uitest_harness STATIC
 target_include_directories(hydra_uitest_harness PUBLIC tests/ui)
 target_link_libraries(hydra_uitest_harness PUBLIC hydra_ui PRIVATE hydra_warnings)
 target_compile_definitions(hydra_uitest_harness PRIVATE
+    HYDRA_TESTDATA_DIR="${CMAKE_SOURCE_DIR}/testdata"
     HYDRA_INPUT_DIR="${CMAKE_SOURCE_DIR}/testdata/input"
     HYDRA_ASSET_DIR="${CMAKE_SOURCE_DIR}/assets/preview"
     HYDRA_RESOURCE_DIR="${CMAKE_SOURCE_DIR}/resource"
@@ -592,7 +595,8 @@ enable_testing()
 # `ctest -j` runs them side by side. tests/shards.txt owns the slices and says
 # how its lines become entries; hydra_tests_rest takes every file the list does
 # not name. tools/check_shards.ps1 checks the registered entries add up to the
-# whole suite.
+# whole suite, and that the exe holds a case from every test file the hydra_test_sources
+# glob matches.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     ${CMAKE_SOURCE_DIR}/tests/shards.txt)
 file(STRINGS ${CMAKE_SOURCE_DIR}/tests/shards.txt hydra_shard_lines REGEX "^[^#]")

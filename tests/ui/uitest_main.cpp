@@ -3,6 +3,8 @@
 //   hydra_uitest --all                 run every checked-in test
 //   hydra_uitest --test <name>         run one (e.g. scan, analyze); repeatable
 //   hydra_uitest --script <file>       run a command file
+//   hydra_uitest --live                take commands from a named pipe
+//                                      (uitest_live.cpp) until the client leaves
 //   hydra_uitest --list                list the tests
 //   options: --keep-temp  --shots <dir>  --jobs <n>  --db <file>  --ini <file>
 //
@@ -14,7 +16,8 @@
 // and prints their results in registration order. Each process has its own
 // scratch folder and a fresh ImGui context, so no test sees another's
 // leftovers. A single --test, or a --script, runs in this process: a script
-// needs the engine here, and one test is the debugging case.
+// needs the engine here, and one test is the debugging case. --live runs in
+// this process too, on its own.
 //
 // Prints [PASS]/[FAIL] per test and exits 0 only if everything passed.
 
@@ -84,7 +87,7 @@ LONG WINAPI on_crash(EXCEPTION_POINTERS* info) {
 
 int usage() {
     std::fprintf(stderr,
-                 "usage: hydra_uitest (--all | --test <name> | --script <file> | --list)"
+                 "usage: hydra_uitest (--all | --test <name> | --script <file> | --live | --list)"
                  " [--keep-temp] [--shots <dir>] [--jobs <n>] [--db <file>] [--ini <file>]\n");
     return 2;
 }
@@ -251,6 +254,7 @@ constexpr int kDefaultJobs = 4;
 
 int main() {
     bool list = false;
+    bool live = false;
     int jobs = kDefaultJobs;
     std::vector<std::string> wanted;       // test names, "all", or a script path
     std::vector<std::string> passthrough;  // options each --jobs child gets too
@@ -268,6 +272,7 @@ int main() {
         std::string v;
         if (a == "--all") wanted.push_back("all");
         else if (a == "--list") list = true;
+        else if (a == "--live") live = true;
         else if (a == "--keep-temp") { h.keep_temp = true; passthrough.push_back(a); }
         else if (a == "--test" || a == "--script") { if (!next(v)) return usage(); wanted.push_back(v); }
         else if (a == "--shots") {
@@ -280,10 +285,9 @@ int main() {
             // A mistyped path must not quietly run every test on an empty
             // database, where a "reads Stale" check could still pass, or on
             // the default settings.
-            std::error_code ec;
-            if (!std::filesystem::is_regular_file(std::filesystem::u8path(seed), ec)) {
-                std::fprintf(stderr, "hydra_uitest: %s \"%s\" is not a %s file\n", a.c_str(),
-                             seed.c_str(), a == "--db" ? "database" : "settings");
+            const std::string problem = uitest::seed_problem(a, seed);
+            if (!problem.empty()) {
+                std::fprintf(stderr, "hydra_uitest: %s\n", problem.c_str());
                 return 1;
             }
             passthrough.push_back(a);
@@ -294,10 +298,12 @@ int main() {
             if (jobs < 1) return usage();
         } else return usage();
     }
-    if (!list && wanted.empty()) return usage();
+    if (!list && !live && wanted.empty()) return usage();
+    if (live && (list || !wanted.empty())) return usage();  // --live runs alone
 
     if (!h.init()) return 1;
     uitest::register_tests(h);
+    if (live) uitest::register_live_test(h);
 
     if (list) {
         ImVector<ImGuiTest*> tests;
@@ -310,7 +316,7 @@ int main() {
     // One entry that is not "all" is a single test or a script: it runs here.
     // Anything more goes to fresh processes, so --all means the same in
     // ctest, CI and by hand.
-    const bool in_process = wanted.size() == 1 && wanted[0] != "all";
+    const bool in_process = live || (wanted.size() == 1 && wanted[0] != "all");
     if (!in_process) {
         const int rc = run_parallel(h, wanted, jobs, passthrough);
         h.shutdown();
@@ -318,6 +324,9 @@ int main() {
     }
 
     ImGuiTestEngine_Start(h.engine, ImGui::GetCurrentContext());
+    if (live)
+        ImGuiTestEngine_QueueTest(h.engine, ImGuiTestEngine_FindTestByName(h.engine, "hydra", "live"),
+                                  ImGuiTestRunFlags_RunFromCommandLine);
     for (const std::string& w : wanted) {
         if (!h.queue(w)) {
             std::fprintf(stderr, "hydra_uitest: no test or script file \"%s\" (try --list)\n",

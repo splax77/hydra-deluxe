@@ -12,11 +12,11 @@
 //   * `charts` — the chart library, one row per scanned file. A record's
 //     names come from here (kNamingCopiesSql).
 //
-// An older file held one `results` row per chart and settings instead. The
-// first open by this build converts it into the three tables above, once
-// (convert_results). A still older file also held the path details, song rows
-// and dynamics counts; that open then leaves them behind by copying the kept
-// rows into a fresh file that takes the old one's place (copy_upgrade).
+// A Convertible file (store/library_file.h) held one `results` row per chart
+// and settings instead. The first open by this build converts it into the
+// three tables above, once (convert_results). A TooOld file is set aside or
+// refused, as the caller's OldFilePolicy says; which file is which is
+// classify_library_file's.
 //
 // Why the full settings and not just the cap: a run under a different ms
 // limit or score range is a different answer, and overwriting one with the
@@ -38,6 +38,7 @@
 #include <vector>
 
 #include "core/model.h"
+#include "store/library_file.h"
 #include "core/rules.h"
 #include "core/timing.h"
 #include "parse/song.h"
@@ -205,9 +206,6 @@ struct PreparedRow {
 // mismatch would file the result under settings it doesn't belong to.
 PreparedRow prepare_row(const RecordKey& key, const HydraRecord& record);
 
-// The columns schema 2's results table shares with this build's table (what
-// upgrade_results_key copies across).
-extern const char* const kSchema2ResultsColumns;
 
 // The results version this build stamps on a row and accepts (ADR 0018; not
 // the app version). For
@@ -418,59 +416,51 @@ inline constexpr int kBatchWalAutocheckpointPages = 10000;
 // same reason (Mozilla bug 1820478).
 inline constexpr int kJournalSizeLimitBytes = 4194304;
 
-// ---- opening, and the library file upgrade --------------------------------
+// ---- opening, and converting a Convertible file ----------------------------
 
 // What the store is doing while it opens, in the order the steps run. An open
 // of a file this build already wrote reports Opening alone.
 enum class OpenStep {
-    Opening,             // the journal settings, the tables and the cheap upgrades
-    UpdatingResultsKey,  // upgrade_results_key rebuilding a 1.8.x file's results
-    ConvertingRecords,   // convert_results turning an older file's results into records
-    Copying,            // the copy upgrade copying the kept rows into a fresh file
-    Finishing,           // the copy upgrade swapping the fresh file in
+    Opening,            // the journal settings and the tables
+    ConvertingRecords,  // convert_results turning a Convertible file's results into records
 };
 
 // One progress report from an opening store.
 struct OpenProgress {
     OpenStep step = OpenStep::Opening;
-    // ConvertingRecords, Copying and Finishing only: the rows converted or
-    // copied so far, and the rows the step will convert or copy, both counted
-    // from the file itself. Zero for the other steps. Finishing reports both
-    // at the copy's total.
+    // ConvertingRecords only: the rows converted so far, and the rows the
+    // step will convert, both counted from the file itself. Zero otherwise.
     int64_t rows_done = 0;
     int64_t rows_total = 0;
 };
 
-// Called at every step change and, while ConvertingRecords or Copying, once
-// per row converted or copied. A
-// false return asks the store to stop: it leaves the old file as it was and
-// the constructor throws KindedError(ErrorKind::Cancelled). Called on the
-// thread that builds the store, never after the constructor returns.
+// Called at every step change and, while ConvertingRecords, once per row
+// converted. A false return asks the store to stop: it leaves the old file as
+// it was and the constructor throws KindedError(ErrorKind::Cancelled). Called
+// on the thread that builds the store, never after the constructor returns.
 using OpenProgressFn = std::function<bool(const OpenProgress&)>;
-
-// Test seam: while set, the copy upgrade stops right after the database
-// steps aside under its old name, as a kill there would, leaving the files
-// for recover_upgrade_files (store/upgrade_files.h). The constructor throws.
-void stop_copy_upgrade_after_step_aside_for_test(bool stop);
 
 class ChartIndex;  // store/chart_index.h
 
 class RecordStore {
 public:
-    // dbpath may be ":memory:" for an ephemeral store (used by tests). A db
-    // from Hydra 1.6 or older keeps its old records table, unread, under the
-    // name kPre17RecordsTable (record_store.cpp), so the name `records` is
-    // free: its charts read Not analyzed (user decision 2026-09-26).
-    // rules_fingerprint: core::RulesStamp::of() the rules this process runs
-    // under. A row stamped with any other fingerprint reads Stale. The first
-    // open by this build also deletes the results Auto saved (delete_auto_results).
-    // core::RulesStamp::none() (a bad hydra_rules.ini) makes every row Stale.
-    // progress: told what the open is doing (OpenProgressFn); empty for a
-    // caller with nothing to show.
+    // dbpath may be ":memory:" for an ephemeral store (used by tests).
+    // old_files: what to do with a file too old to convert (OldFilePolicy,
+    // store/library_file.h). rules_fingerprint: core::RulesStamp::of() the
+    // rules this process runs under. A row stamped with any other fingerprint
+    // reads Stale. core::RulesStamp::none() (a bad hydra_rules.ini) makes every
+    // row Stale. progress: told what the open is doing (OpenProgressFn); empty
+    // for a caller with nothing to show.
     //
     // Throws KindedError: Cancelled when `progress` asked to stop,
-    // DatabaseUpgrade when the copy upgrade failed with the old file whole,
-    // and DatabaseOpen for any other failed open.
+    // OldLibraryRefused for a file too old to convert under Refuse,
+    // OldLibrarySetAsideFailed when SetAside could not rename it,
+    // DatabaseUpgrade when converting a Convertible file failed with the
+    // file whole, and DatabaseOpen for any other failed open.
+    RecordStore(const std::string& dbpath, OldFilePolicy old_files,
+                core::RulesStamp rules_fingerprint, OpenProgressFn progress = {});
+    // The tests' open, which never renames a file: Refuse. Shipped code names
+    // its policy with the constructor above.
     explicit RecordStore(const std::string& dbpath,
                          core::RulesStamp rules_fingerprint = core::default_stamp(),
                          OpenProgressFn progress = {});
@@ -480,6 +470,11 @@ public:
     RecordStore& operator=(const RecordStore&) = delete;
 
     void close();
+
+    // Where this open set a file too old to convert aside
+    // (OldFilePolicy::SetAside), so the app can say so; empty when it set
+    // nothing aside.
+    const std::optional<std::string>& set_aside_path() const { return set_aside_path_; }
 
     // ---- writing ----------------------------------------------------------
 
@@ -610,21 +605,6 @@ public:
     // {charts with a stored result, results} row counts.
     std::pair<int64_t, int64_t> counts();
 
-    // The fill-spawn stamp hydra_batch last wrote this file with, as stored
-    // (search/graph.h engine_mode_stamp writes it). Unset on a db nothing has
-    // stamped yet. Only a label on the file: each result carries its own rule
-    // in its Lens (docs/adr/0010). A caller that needs the stamp itself (whether
-    // there is one, and its text) reads it here; a caller that needs the rule a
-    // file holds asks stamped_fill_rule.
-    std::optional<std::string> engine_mode();
-    void set_engine_mode(const std::string& mode);
-    // Which fill rule this file holds: its engine_mode stamp read back through
-    // search/graph.h fill_rule_from_stamp. A file with results and no stamp
-    // holds the 1.1 rule, the one everything but --legacy-fills runs. An
-    // unstamped file with no results, or a stamp fill_rule_from_stamp does not
-    // know, holds none. upgrade_results_key reads it for a schema 2 file.
-    std::optional<FillDeadlineRule> stamped_fill_rule();
-
     // ---- chart library (scan results) ----------------------------------
 
     // Replaces the whole library with `items`: a scan always fully
@@ -667,11 +647,12 @@ public:
 
 private:
     sqlite3* db_ = nullptr;
-    // The fingerprint of the rules this process runs under, and the one an
-    // Auto run under them carried (read only by delete_auto_results). A row
-    // stamped with anything but `fixed` reads Stale. Computed once, when the
-    // store opens.
+    // The fingerprint of the rules this process runs under. A row stamped
+    // with anything but `fixed` reads Stale. Computed once, when the store
+    // opens.
     core::RulesStamp rules_fingerprint_;
+    // What set_aside_path returns.
+    std::optional<std::string> set_aside_path_;
     // The constructor's progress callback, held only while the constructor
     // runs and emptied before it returns.
     OpenProgressFn progress_;
@@ -696,9 +677,9 @@ private:
     void ctl(const char* sql);
 
     // The constructor's work after the file opens: the journal settings, the
-    // tables, and every upgrade an older file needs. The constructor turns
-    // any throw from it into a failed open.
-    void set_up_schema();
+    // tables, and, for a Convertible file (classify_library_file), the
+    // conversion. The constructor turns any throw from it into a failed open.
+    void set_up_schema(bool convertible);
     void exec(const char* sql);
     // Runs `work` inside one BEGIN ... COMMIT. A throw from it rolls back
     // and is rethrown. Defined in record_store.cpp, its only user. The save
@@ -706,40 +687,21 @@ private:
     // shape.
     template <class F>
     void in_transaction(F work);
-    bool has_column(const char* table, const char* column);
-    bool has_table(const char* table);
     // Makes the three record tables (profiles, records, record_paths) when
     // they are missing.
     void create_result_tables();
-    // Turns an older file's `results` table into records, once (D115): every
-    // row becomes a record under its own profile (its own stamp and rules),
-    // so a row this build cannot read reads Stale, as after any stamp bump.
-    // The no-stars rows go (kNoStarsResultSql). Stored ids become lowercase,
-    // in `charts` too. Then `results` is dropped, so a second open does
-    // nothing. One transaction.
+    // Turns a Convertible file's `results` table into records, once
+    // (D115): every row becomes a record under its own profile (its own stamp
+    // and rules), so a row this build cannot read reads Stale, as after any
+    // stamp bump. Stored ids become lowercase, in `charts` too. Then `results`
+    // is dropped, so a second open finds a Current file, and the retired
+    // whole-file fill-rule label (kRetiredFillLabelKey) is deleted. One
+    // transaction; a failure throws KindedError(DatabaseUpgrade) with the file
+    // as it was.
     void convert_results();
-    // Brings an older results table's key up to schema 4. Schema 3 added
-    // the fill rule (legacy_fills) to the key, and schema 4 the rules
-    // fingerprint (rules_fp, read out of each row's structure blob). Both
-    // sit in the UNIQUE constraint, which SQLite cannot alter, so the table
-    // is rebuilt once with every row and result_id kept; nothing is analyzed
-    // again. A schema 2 file's rows go under the fill rule stamped_fill_rule
-    // names, or 1.1 when it names none.
-    void upgrade_results_key();
     // Opens db_ on `dbpath`, creating the file if it is missing; throws
     // KindedError(DatabaseOpen) when SQLite refuses.
     void open_file(const std::string& dbpath);
-    // The summary-only upgrade (D87 items 1 and 7, copy-and-swap since DBUP):
-    // a file that still holds the path details gets a fresh file with only
-    // the kept rows, which then takes the old file's name. Runs only when the
-    // `paths` table exists, so a second open does nothing. Every failure that
-    // leaves the old file whole throws KindedError(DatabaseUpgrade); the file
-    // states a stop can leave are store/upgrade_files.h's.
-    void copy_upgrade(const std::string& dbpath);
-    // Copies every row of `table` from the open file into the attached fresh
-    // one, column by column as stored, counting each into rows_done for the
-    // report.
-    void copy_table(const char* table, int64_t& rows_done, int64_t rows_total);
     // The frame of save and save_analysis: takes the lock and runs `work`
     // in a SAVEPOINT of the open save group, or in a transaction of its own
     // when no group is open. A failure undoes only this chart's writes.
@@ -784,11 +746,6 @@ private:
     void delete_records_where(const std::string& where,
                               const std::function<void(sqlite3_stmt*)>& bind,
                               const std::string& what);
-    // Runs once per database file, when it opens: deletes every result
-    // Hydra 1.8.4's Auto saved (user decision 7, 2026-09-27), from `results`
-    // while an older file still has it and from the records, and marks it
-    // done in `meta`.
-    void delete_auto_results();
     // Deletes the records of every chart the library no longer lists (D87
     // item 4). Which charts the library lists: not_in_library in
     // record_store.cpp. A listed chart keeps every row, in every chart mode,

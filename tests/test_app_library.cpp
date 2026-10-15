@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <exception>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -16,7 +17,7 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
-#include "app/user_messages.h"  // kDatabaseReadSentence
+#include "app/user_messages.h"  // kDatabaseReadSentence, old_library_set_aside_notice
 #include "app_state_fixtures.h"
 #include "core/error_kind.h"
 #include "db_file_util.h"  // exec_on_file, write_junk_db
@@ -25,6 +26,7 @@
 #include "scoped_hook.h"
 #include "scratch_paths.h"
 #include "store/record_store.h"
+#include "store/upgrade_files.h"  // set_aside_path, with_side_files
 #include "ui/app_state.h"
 #include "ui/generation.h"
 #include "wait_util.h"
@@ -468,6 +470,60 @@ TEST_CASE("a library read that fails after the startup open is the status line's
     CHECK(app.status_message == kDatabaseReadSentence);
 }
 
+// D115 A1-6b (user decision 2026-10-14): a library file older than 2.2.0 is
+// set aside and a fresh library starts. The app says so once, in an
+// information box, and the scan that refills the library waits for the box.
+TEST_CASE("an AppState on a pre-2.2.0 library sets it aside, leaves one notice, then asks for "
+          "a scan") {
+    ScratchPaths paths("appstate_setaside");
+    const std::string aside = hydra::store::set_aside_path(paths.db);
+    auto remove_aside = [&] {
+        for (const std::string& f : hydra::store::with_side_files(aside))
+            std::filesystem::remove(std::filesystem::u8path(f));
+    };
+    remove_aside();
+    // A copy: the checked-in file is never opened.
+    std::filesystem::copy_file(
+        std::filesystem::u8path(corpus::testdata_root() + "/store/v2.1.0-schema4.db"),
+        std::filesystem::u8path(paths.db), std::filesystem::copy_options::overwrite_existing);
+    {
+        AppState app;
+        app.wait_store_open();
+        REQUIRE(app.store_ready());
+        CHECK(std::filesystem::exists(std::filesystem::u8path(aside)));
+        CHECK(app.library.rows().empty());
+        // The sentence waits for main.cpp's box, and the scan waits for the
+        // box to close.
+        CHECK(app.startup_notice() == hydra::app::old_library_set_aside_notice(paths.db));
+        CHECK_FALSE(app.request_scan);
+        app.tick(0.0);
+        CHECK(app.startup_notice() == hydra::app::old_library_set_aside_notice(paths.db));
+
+        app.startup_notice_closed();
+        CHECK(app.startup_notice().empty());
+        CHECK(app.request_scan);
+        // Once: a second close asks for nothing more.
+        app.request_scan = false;
+        app.startup_notice_closed();
+        CHECK_FALSE(app.request_scan);
+    }
+    remove_aside();
+}
+
+TEST_CASE("an AppState on a current library leaves no notice and asks for no scan") {
+    ScratchPaths paths("appstate_nosetaside");
+    seeded_store(paths.db).reset();
+    AppState app;
+    app.wait_store_open();
+    REQUIRE(app.store_ready());
+    CHECK(app.startup_notice().empty());
+    CHECK_FALSE(app.request_scan);
+    app.startup_notice_closed();
+    CHECK_FALSE(app.request_scan);
+    CHECK_FALSE(std::filesystem::exists(
+        std::filesystem::u8path(hydra::store::set_aside_path(paths.db))));
+}
+
 TEST_CASE("the startup screen's line names what the open is doing") {
     using hydra::ui::StoreOpenProgress;
     StoreOpenProgress p;
@@ -476,33 +532,10 @@ TEST_CASE("the startup screen's line names what the open is doing") {
     CHECK(p.label() == "Opening your library...");
 
     p.upgrading = true;
-    p.step = StoreOpenProgress::Step::UpdatingResultsKey;
-    CHECK(p.label() == "Updating the results table...");
     p.step = StoreOpenProgress::Step::ConvertingRecords;
     CHECK(p.label() == "Updating the results table...");
-    p.step = StoreOpenProgress::Step::Copying;
-    CHECK(p.label() == "Copying your library...");
-    p.step = StoreOpenProgress::Step::Finishing;
-    CHECK(p.label() == "Finishing...");
     p.step = StoreOpenProgress::Step::LoadingLibrary;
     CHECK(p.label() == "Finishing...");
-}
-
-TEST_CASE("the startup screen's time left follows the Preview loader's gate") {
-    using hydra::ui::StoreOpenProgress;
-    StoreOpenProgress p;
-    p.upgrading = true;
-    p.step = StoreOpenProgress::Step::Copying;
-    p.time_left_s = 65.0;
-    p.elapsed_s = 2.9;
-    CHECK(p.time_left_text() == "");  // under the gate
-    p.elapsed_s = 3.0;
-    CHECK(p.time_left_text() == "about 1:05 left");
-    p.time_left_s = -1.0;
-    CHECK(p.time_left_text() == "");  // the rate is not known
-    p.time_left_s = 65.0;
-    p.step = StoreOpenProgress::Step::Finishing;
-    CHECK(p.time_left_text() == "");  // only the copy has a rate
 }
 
 // D72 item 4: the Analyze-library click asks the store which charts already

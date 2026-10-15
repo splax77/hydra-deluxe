@@ -6,7 +6,8 @@
 # entry hydra_tests_<name>, and adds hydra_tests_rest for every file no line
 # names, so a new test file runs there without an edit here.
 # hydra_tests_shards_cover_all (tools/check_shards.ps1) fails unless the
-# entries together run every test case exactly once.
+# entries together run every test case exactly once. It also fails when the
+# exe holds no case from a test file in the tree, so a stale build is caught.
 #
 # Balanced on 2026-10-10 from the per-case times in
 # docs/handoffs/2026-10-10-test-audit/suite-durations.txt, assuming the
