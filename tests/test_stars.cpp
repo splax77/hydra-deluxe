@@ -267,7 +267,7 @@ TEST_CASE("stars: avg_mult divides by the same base score") {
 
 TEST_CASE("stars: the base score is the sum of every note's basescore, on every path") {
     // "87" by Polyphia: cymbals and a drum solo. The engine adds the base
-    // score up by category (base + ghosts + accents); ChordNote::basescore
+    // score up by category (notes + ghosts + accents); ChordNote::basescore
     // prices one note. This ties the two together on a real chart, so they
     // can't drift apart, and checks the Stars tab's premise that every path
     // of a record has the same base score and solo bonus.

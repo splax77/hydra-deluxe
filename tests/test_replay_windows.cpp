@@ -207,7 +207,7 @@ TEST_CASE("replay: the open-window walk pins every row on hand-built windows") {
     const std::vector<ReplayWindow> reversed = {tick, near_w, plain, early, late};
 
     // The default rules, every row in full. By hand: each chord is two notes
-    // at 50 points (base 100); the multiplier steps to x2 at the tenth note,
+    // at 50 points (notes 100); the multiplier steps to x2 at the tenth note,
     // the second note of chord 4 (combo 50). SP doubles what a chord scores,
     // so a window pays chords 0-3 100 points and chord 4 150. A chord at or
     // before D always counts; one after it counts only inside the 3 ms
