@@ -436,29 +436,21 @@ TEST_CASE("library model: rows_version moves when the rows are replaced and at n
     CHECK(m.rows_version() != first);
 }
 
-TEST_CASE("library model: take_summary_changes hands back the changed rows once") {
-    LibraryModel m;
-    m.set_charts({chart("same", "Song", "A", "C", "Pack 1"), chart("one", "Other", "A", "C", "Pack 1"),
-                  chart("same", "Song", "A", "C", "Pack 2")});
-    CHECK(m.take_summary_changes().empty());  // no summary has landed yet
-    SummaryLookup none;
-    // Row 1 has nothing new to show, so it is not listed.
-    m.set_summaries({ready(1000, "1", 3, 0.0), none, ready(2000, "2", 3, 0.0)});
-    CHECK(m.take_summary_changes() == std::vector<size_t>{0, 2});
-    CHECK(m.take_summary_changes().empty());  // it forgot them
-
-    // Indices are rows(), not the table's order.
-    m.set_sort(LibrarySort::Title, false);
-    m.set_summary_for("same", stale());
-    CHECK(m.take_summary_changes() == std::vector<size_t>{0, 2});
-    // The same answer again changes nothing.
-    m.set_summary_for("same", stale());
-    CHECK(m.take_summary_changes().empty());
-
-    // New rows: what was listed for the old ones means nothing.
-    m.set_summary_for("one", ready(5, "1", 3, 0.0));
+TEST_CASE("library model: query_version moves when the search changes and at no other time") {
+    LibraryModel m = sample();
+    const std::uint64_t first = m.query_version();
+    m.set_summary_for("chair", ready(1000, "1", 3, 0.0));
+    m.set_chip(StatusChip::Analyzed);
+    m.set_sort(LibrarySort::Artist, false);
     m.set_charts({chart("a", "A", "X", "Y", "common")});
-    CHECK(m.take_summary_changes().empty());
+    CHECK(m.query_version() == first);
+    m.set_query("burnout");
+    const std::uint64_t searched = m.query_version();
+    CHECK(searched != first);
+    m.set_query("burnout");  // the same search again is no change
+    CHECK(m.query_version() == searched);
+    m.set_query("");
+    CHECK(m.query_version() != searched);
 }
 
 TEST_CASE("library model: filtering 20,000 charts keeps the pinned row counts") {
