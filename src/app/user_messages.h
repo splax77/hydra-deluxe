@@ -52,9 +52,20 @@ std::string rules_file_tool_text(const std::exception& e);
 std::string plain_error(const std::exception& e);
 
 // The raw text, for a small details line under the plain message. Empty when
-// the sentence already holds the whole raw text (sentence_holds_detail in
-// user_messages.cpp), so no place shows it twice.
+// the sentence already quotes the raw text (KindSentence::quotes_raw in
+// user_messages.cpp), so no place shows it twice. Every screen and tool that
+// shows a details line takes it from here, never from the exception's what()
+// (the single-owner row error-detail-owner), and draws nothing when it is
+// empty.
 std::string plain_error_detail(const std::exception& e);
+
+// The one line a place with room for a single line per failure shows (the
+// scan's problem list, hydra_batch's per-chart lines): the details line, or
+// the sentence when the sentence quotes the raw text and the details line is
+// empty. The string form takes a sentence and details line already worked out
+// by plain_error and plain_error_detail (BatchCallbacks::on_error).
+std::string plain_error_line(const std::exception& e);
+std::string plain_error_line(const std::string& sentence, const std::string& detail);
 
 // plain_error, a blank line, then plain_error_detail: one block of text, for
 // a place with no separate details line (Hydra's startup message box and the

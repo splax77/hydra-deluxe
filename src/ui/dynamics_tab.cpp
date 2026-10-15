@@ -130,12 +130,11 @@ void render_dynamics_panel(AppState& app) {
         return;
     }
     // Wrapped: the message can carry a long file path.
-    if (!viewed.dynamics_error.empty()) {
+    // A failed count always has its message; its details line may be empty
+    // (app::plain_error_detail).
+    if (!viewed.dynamics_message.empty()) {
         ImGui::TextWrapped("Dynamics failed: %s", viewed.dynamics_message.c_str());
-        // The raw text, dimmed, as the song panel's error shows it.
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        ImGui::TextWrapped("%s", viewed.dynamics_error.c_str());
-        ImGui::PopStyleColor();
+        error_detail_line(viewed.dynamics_error);
         return;
     }
     if (!viewed.dynamics) return;

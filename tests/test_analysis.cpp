@@ -37,6 +37,7 @@
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file
 #include "display_fixtures.h"  // save_batch_record, save_old_build_record
+#include "parse/song.h"        // NoNotesError
 #include "midi_util.h"
 #include "parse/song.h"
 #include "sng_util.h"
@@ -752,6 +753,29 @@ TEST_CASE("run_batch hands on_error the sentence its exception's kind names") {
     CHECK(sentences[0] ==
           "Hydra couldn't read this chart file. It may be damaged or in a format Hydra doesn't "
           "support; try downloading the song again.");
+}
+
+// The user's rule (2026-10-15): every failure line is derived once. A chart
+// with no notes reads its own sentence, so the batch hands on_error no details
+// line to repeat it under (app::plain_error_detail).
+TEST_CASE("run_batch hands on_error no details line for a chart with no notes") {
+    BatchCallbacks callbacks;
+    callbacks.analyze = [](const std::string&, const AnalysisSettings&,
+                           const std::function<void(float)>&) -> AnalysisResult {
+        throw hydra::NoNotesError(hydra::Difficulty::Expert, true);
+    };
+    std::vector<std::string> lines;
+    callbacks.on_error = [&lines](const std::string&, const std::string& sentence,
+                                  const std::string& error) {
+        lines.push_back(sentence + "|" + error);
+    };
+    BatchRun run;
+    run.profile.chartmode = "no-notes-detail-test";
+    hydra::store::RecordStore store(":memory:");
+    run_planned(fake_items(1), run, store, /*redo=*/false, 1, callbacks);
+
+    REQUIRE(lines.size() == 1);
+    CHECK(lines[0] == "No Expert Pro Drums notes in this chart.|");
 }
 
 // A hand-built run can ask for a cap its search did not run at. Each chart's

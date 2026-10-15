@@ -272,11 +272,30 @@ TEST_CASE("user_messages: plain_error_block puts the sentence above the raw text
     CHECK(plain_error_detail(hydra::KindedError(hydra::ErrorKind::OldLibraryRefused,
                                                 "C:\\lib\\hydra.db"))
               .empty());
-    // A sentence that carries only part of the raw text keeps the detail line.
+    // The set-aside failure's sentence quotes Windows' whole reason, so the
+    // reason shows once too.
     CHECK(plain_error_block(hydra::KindedError(hydra::ErrorKind::OldLibrarySetAsideFailed,
                                                "Access is denied.")) ==
           "This library file is from a Hydra version older than 2.2.0, and Hydra could not set "
-          "it aside: Access is denied. Close any program using hydra.db and start Hydra again.\n"
-          "\n"
-          "Access is denied.");
+          "it aside: Access is denied. Close any program using hydra.db and start Hydra again.");
+}
+
+// The user's rule (2026-10-15): every failure line is derived once. A sentence
+// built from the error's own text already shows that text, so no details line
+// goes under it, whichever kind built it.
+TEST_CASE("user_messages: no details line repeats a sentence that quotes the raw text") {
+    using hydra::app::plain_error_block;
+    const hydra::NoNotesError no_notes(hydra::Difficulty::Expert, true);
+    CHECK(plain_error_detail(no_notes).empty());
+    CHECK(plain_error_block(no_notes) == plain_error(no_notes));
+    CHECK(plain_error_detail(hydra::ChartFileError(hydra::ErrorKind::AlreadyPlain, "x")).empty());
+    CHECK(plain_error_detail(
+              hydra::ChartFileError(kRefused, "the tempo at tick 384 is not above 0 BPM"))
+              .empty());
+    CHECK(plain_error_detail(hydra::KindedError(hydra::ErrorKind::OldLibrarySetAsideFailed,
+                                                "Access is denied.\r\n"))
+              .empty());
+    // A sentence that does not quote the raw text keeps it as the details line.
+    CHECK(plain_error_detail(hydra::KindedError(hydra::ErrorKind::ChartUnreadable, "bad header")) ==
+          "bad header");
 }

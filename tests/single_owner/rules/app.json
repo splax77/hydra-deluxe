@@ -1478,6 +1478,10 @@
         {
           "file": "src/ui/main.cpp",
           "why": "the startup message box shows the block in a window (D72 item 1)"
+        },
+        {
+          "file": "src/app/analysis.cpp",
+          "why": "save_scan_as_library hands the scan's problem list, which has no separate details line, the block for a failed library write (ERR-ONCE, 2026-10-15)"
         }
       ],
       "must_match": [

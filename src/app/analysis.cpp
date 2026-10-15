@@ -423,7 +423,7 @@ std::optional<std::string> save_scan_as_library(store::RecordStore& store,
     try {
         store.rebuild_chart_library(items);
     } catch (const std::exception& e) {
-        return std::string("Failed to write chart library: ") + e.what();
+        return plain_error_block(e);
     }
     return std::nullopt;
 }
@@ -545,7 +545,7 @@ void walk_folders(const std::vector<std::string>& rootfolders, const ScanCallbac
             } catch (const std::exception& e) {
                 // The charts found so far stay; the folder's subfolders are
                 // not walked.
-                error = e.what();
+                error = plain_error_line(e);
                 subpaths.clear();
             }
 
@@ -686,7 +686,7 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
                         results[i] = std::move(item);
                     }
                 } catch (const std::exception& e) {
-                    note.error = e.what();
+                    note.error = plain_error_line(e);
                 }
                 return note;
             },
@@ -775,7 +775,7 @@ struct WorkResult {
     std::optional<store::PreparedRecord> row;
     // A failed chart, from its analysis or its save: record_failure fills
     // these in from the exception while its type is still known (the
-    // sentence is plain_error's, the error is the raw text).
+    // sentence is plain_error's, the error is plain_error_detail's).
     bool failed = false;
     std::string sentence;
     std::string error;
@@ -787,7 +787,7 @@ struct WorkResult {
 void record_failure(WorkResult& wr, const std::exception& e) {
     wr.failed = true;
     wr.sentence = plain_error(e);
-    wr.error = e.what();
+    wr.error = plain_error_detail(e);
 }
 
 // Saves one analyzed chart: inside the store's open save group when there is

@@ -314,7 +314,7 @@ void PreviewController::poll() {
                 // from PreviewAudioDevice): still previewable, just muted. A
                 // warning, not error_, which the panel treats as fatal.
                 audio_device_.reset();
-                audio_warning_ = e.what();
+                audio_warning_ = hydra::app::plain_error_line(e);
             }
         }
     } else {

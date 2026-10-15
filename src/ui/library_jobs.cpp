@@ -394,7 +394,8 @@ void BatchJob::run() {
                                 const std::string& error) {
         std::lock_guard<std::mutex> lock(mu_);
         snap_.failures.push_back(title + ": " + sentence);
-        snap_.failure_details.push_back(title + ": " + error);
+        // Empty when the sentence already quotes it: the list draws nothing.
+        snap_.failure_details.push_back(error.empty() ? std::string() : title + ": " + error);
     };
     callbacks.cancel = &cancel_;
     // The pause gate and the "now analyzing" line sit in front of the real
@@ -488,7 +489,7 @@ void ViewJob::run() {
                     throw;
                 } catch (const std::exception& e) {
                     out_.analysis.reset();
-                    out_.analysis_error = e.what();
+                    out_.analysis_error = app::plain_error_detail(e);
                     out_.analysis_message = app::plain_error(e);
                 }
             }
@@ -499,7 +500,7 @@ void ViewJob::run() {
                 out_.dynamics = app::dynamics_for_settings(
                     path, settings_.reading(), out_.analysis ? &out_.analysis->song : nullptr);
             } catch (const std::exception& e) {
-                out_.dynamics_error = e.what();
+                out_.dynamics_error = app::plain_error_detail(e);
                 out_.dynamics_message = app::plain_error(e);
             }
             return true;

@@ -200,10 +200,7 @@ bool render_record_state(AppState& app) {
             ImGui::PushStyleColor(ImGuiCol_Text, kWarningColor);
             ImGui::TextWrapped("%s", app.viewed.message.c_str());
             ImGui::PopStyleColor();
-            // Wrapped: the detail can carry a long file path.
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-            ImGui::TextWrapped("%s", app.viewed.error.c_str());
-            ImGui::PopStyleColor();
+            error_detail_line(app.viewed.error);
             if (ImGui::Button("Continue")) app.dismiss_view_error();
             return false;
         default:

@@ -149,14 +149,16 @@ public:
     LoadProgress load_progress() const;
     // Why the Preview failed: the sentence app::plain_error gives for the
     // failure's kind (the panel prints it after "Preview failed: "), with the
-    // raw text beside it for the dimmed details line.
+    // details line beside it (app::plain_error_detail, empty when the
+    // sentence already quotes it).
     bool has_error() const { return !error_.empty(); }
     const std::string& error() const { return error_; }
     const std::string& error_detail() const { return error_detail_; }
 
     // Set when the audio output device failed (the catch in poll() decides
     // that). Not an error: the chart still loads, draws and plays on the
-    // clock, just muted. The panel shows one warning line and keeps drawing.
+    // clock, just muted. The panel shows one warning line and keeps drawing;
+    // the device's own words (app::plain_error_line) are its hover text.
     bool has_audio_warning() const { return !audio_warning_.empty(); }
     const std::string& audio_warning() const { return audio_warning_; }
 

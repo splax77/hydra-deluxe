@@ -182,7 +182,7 @@ bool state_body(const Frame& f) {
             ImGui::TextColored(kWarningColor, "%s", f.failure_sentence);
             ImGui::PushTextWrapPos(0.0f);
             ImGui::TextWrapped("%s", f.failure_message.c_str());
-            ImGui::TextColored(kDimTextColor, "%s", f.failure_error.c_str());
+            error_detail_line(f.failure_error, kDimTextColor);
             ImGui::PopTextWrapPos();
             ImGui::Spacing();
             if (ImGui::Button("Try again")) call(cb.try_again);
