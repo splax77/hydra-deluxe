@@ -6,7 +6,7 @@
 #include <string>
 
 #include "core/timing.h"  // SongTiming
-#include "store/record_store.h"  // summarize_record
+#include "store/record_store.h"  // best_path_text
 
 namespace hydra {
 
@@ -144,9 +144,9 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
 }
 
 nlohmann::json result_json(const HydraRecord& rec) {
-    // summarize_record owns "what is this record's best score", absent when
-    // the record holds no paths; best_path_text owns its text.
-    const std::optional<int64_t> best = store::summarize_record(rec).score;
+    // HydraRecord::optimal_score owns "what is this record's best score",
+    // absent when the record holds no paths; best_path_text owns its text.
+    const std::optional<int64_t> best = rec.optimal_score();
     return nlohmann::json{{"score", best ? nlohmann::json(*best) : nlohmann::json(nullptr)},
                           {"bestpath", store::best_path_text(rec)}};
 }
