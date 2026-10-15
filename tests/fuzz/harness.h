@@ -35,10 +35,10 @@ inline const app::AnalysisSettings& default_settings() {
 // The four byte loaders in parse/song.h share one signature, so the settings
 // are handed over in one place.
 using SongLoader = Song (*)(const std::vector<uint8_t>&, const ChartReading&,
-                            const core::Rules&);
+                            const core::Rules&, FillDeadlineRule);
 inline void parse_song(SongLoader load, const std::vector<uint8_t>& bytes) {
     const app::AnalysisSettings& s = default_settings();
-    (void)load(bytes, s.reading(), s.rules);
+    (void)load(bytes, s.reading(), s.rules, fill_rule_for(s.legacy_fill_deadline));
 }
 inline void parse_chart(const std::vector<uint8_t>& bytes) { parse_song(load_songbytes_chart, bytes); }
 inline void parse_mid(const std::vector<uint8_t>& bytes) { parse_song(load_songbytes_mid, bytes); }

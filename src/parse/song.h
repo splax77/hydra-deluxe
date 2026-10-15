@@ -30,6 +30,12 @@ namespace hydra {
 
 // Difficulty and ChartReading live in parse/chart_reading.h.
 
+// Which Clone Hero version's fill rule a run follows. search/graph.h owns what
+// it means (the fill deadline) and its mappings (fill_rule_for and the rest);
+// it is declared here because the parser also picks the generator of a
+// chart's own fills from it (Song::check_activations).
+enum class FillDeadlineRule { Ch11, Ch10 };
+
 // "Expert" / "Hard" / "Medium" / "Easy" — the name used in the chartmode key
 // and the user-facing error strings. It reads the difficulty's row in the one
 // table (difficulty_chart_codes), so it shares that table's fallback.
@@ -279,10 +285,16 @@ public:
     // column), and the Dynamics tab's Totals are pinned against it by test.
     int note_count() const;
 
-    // If the chart has no drum fills, synthesize them like Clone Hero would.
-    void check_activations(const core::Rules& rules = core::default_rules());
+    // If the chart has no drum fills, synthesize them as the game version
+    // `fills` names would.
+    void check_activations(const core::Rules& rules = core::default_rules(),
+                           FillDeadlineRule fills = FillDeadlineRule::Ch11);
 
 private:
+    // The two generators check_activations chooses between.
+    void place_fills_ch10(const core::Rules& rules);
+    void place_fills_ch11(const core::Rules& rules);
+
     int64_t tick_resolution_;
     std::optional<SongTiming> timing_;
 };
@@ -309,24 +321,37 @@ inline constexpr const char* kNoteShuffleFreezeDetail =
 // by shuffling the chords (apply_note_shuffle in parse/note_shuffle.h), and
 // every other loader ends at one of those two. A chart the game freezes on
 // throws KindedError(ErrorKind::NoteShuffleFreezes) instead of returning.
+//
+// `fills` is the fill rule the song will be scored under: a chart with no
+// fills of its own gets the fills that game version generates
+// (Song::check_activations). A caller holding a setting converts it with
+// search/graph.h's fill_rule_for.
 Song load_songpath_mid(const std::string& path, const ChartReading& reading,
-                       const core::Rules& rules = core::default_rules());
+                       const core::Rules& rules = core::default_rules(),
+                       FillDeadlineRule fills = FillDeadlineRule::Ch11);
 Song load_songpath_chart(const std::string& path, const ChartReading& reading,
-                         const core::Rules& rules = core::default_rules());
+                         const core::Rules& rules = core::default_rules(),
+                         FillDeadlineRule fills = FillDeadlineRule::Ch11);
 Song load_songpath_sng(const std::string& path, const ChartReading& reading,
-                       const core::Rules& rules = core::default_rules());
+                       const core::Rules& rules = core::default_rules(),
+                       FillDeadlineRule fills = FillDeadlineRule::Ch11);
 Song load_songpath_srb(const std::string& path, const ChartReading& reading,
-                       const core::Rules& rules = core::default_rules());
+                       const core::Rules& rules = core::default_rules(),
+                       FillDeadlineRule fills = FillDeadlineRule::Ch11);
 
 Song load_songbytes_mid(const std::vector<uint8_t>& data, const ChartReading& reading,
-                        const core::Rules& rules = core::default_rules());
+                        const core::Rules& rules = core::default_rules(),
+                        FillDeadlineRule fills = FillDeadlineRule::Ch11);
 Song load_songbytes_chart(const std::vector<uint8_t>& data, const ChartReading& reading,
-                          const core::Rules& rules = core::default_rules());
+                          const core::Rules& rules = core::default_rules(),
+                          FillDeadlineRule fills = FillDeadlineRule::Ch11);
 // A whole .sng / .srb container's bytes, as read from disk.
 Song load_songbytes_sng(const std::vector<uint8_t>& container, const ChartReading& reading,
-                        const core::Rules& rules = core::default_rules());
+                        const core::Rules& rules = core::default_rules(),
+                        FillDeadlineRule fills = FillDeadlineRule::Ch11);
 Song load_songbytes_srb(const std::vector<uint8_t>& container, const ChartReading& reading,
-                        const core::Rules& rules = core::default_rules());
+                        const core::Rules& rules = core::default_rules(),
+                        FillDeadlineRule fills = FillDeadlineRule::Ch11);
 
 // The file at `path` parsed from `bytes`, its contents already read by the
 // caller: dispatch on path's extension like load_songpath, without touching
@@ -335,13 +360,15 @@ Song load_songbytes_srb(const std::vector<uint8_t>& container, const ChartReadin
 // load_songpath picks them from the file.
 Song load_songpath_from_bytes(const std::string& path, const std::vector<uint8_t>& bytes,
                               const ChartReading& reading,
-                              const core::Rules& rules = core::default_rules());
+                              const core::Rules& rules = core::default_rules(),
+                              FillDeadlineRule fills = FillDeadlineRule::Ch11);
 
 // Dispatch on the file extension (.mid/.chart/.sng/.srb, case-insensitive).
 // A .sng or .srb is read in pieces: its header, then only the notes, never
 // the audio and art that make up the rest of the file.
 Song load_songpath(const std::string& path, const ChartReading& reading,
-                   const core::Rules& rules = core::default_rules());
+                   const core::Rules& rules = core::default_rules(),
+                   FillDeadlineRule fills = FillDeadlineRule::Ch11);
 
 // Throws NoNotesError when `song` has no notes. `difficulty` and `prodrums`
 // are the ones the song was loaded with, so the sentence names them. For a
@@ -351,7 +378,8 @@ void require_notes(const Song& song, Difficulty difficulty, bool prodrums);
 // load_songpath, then require_notes: the chart at `path`, or NoNotesError
 // when it has no notes under `reading`.
 Song load_songpath_with_notes(const std::string& path, const ChartReading& reading,
-                              const core::Rules& rules = core::default_rules());
+                              const core::Rules& rules = core::default_rules(),
+                              FillDeadlineRule fills = FillDeadlineRule::Ch11);
 
 // The one dispatch on the extension of `path`, its bytes read from `src`:
 // load_songpath passes the file (file_byte_source), load_songpath_from_bytes
@@ -359,7 +387,8 @@ Song load_songpath_with_notes(const std::string& path, const ChartReading& readi
 // the pieces its notes need. Tests pass a counting source to prove that.
 Song load_songpath_reading(const ByteSource& src, const std::string& path,
                            const ChartReading& reading,
-                           const core::Rules& rules = core::default_rules());
+                           const core::Rules& rules = core::default_rules(),
+                           FillDeadlineRule fills = FillDeadlineRule::Ch11);
 
 }  // namespace hydra
 

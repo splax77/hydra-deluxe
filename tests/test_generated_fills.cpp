@@ -25,8 +25,10 @@ using namespace hydra;
 namespace {
 
 // A song at resolution 480 and 120 BPM with one red note at each tick in
-// `chords`. `seven_eight_at`, when above 0, switches 4/4 to 7/8 there.
-Song song_with_chords(const std::vector<int64_t>& chords, int64_t seven_eight_at = 0) {
+// `chords`. `seven_eight_at`, when above 0, switches 4/4 to 7/8 there. `fills`
+// picks the game version whose generator runs.
+Song song_with_chords(const std::vector<int64_t>& chords, int64_t seven_eight_at = 0,
+                      FillDeadlineRule fills = FillDeadlineRule::Ch11) {
     Song song(480);
     song.bpm_changes[0] = 120.0;
     if (seven_eight_at > 0) apply_timesig(song, seven_eight_at, 7, 8);
@@ -37,7 +39,7 @@ Song song_with_chords(const std::vector<int64_t>& chords, int64_t seven_eight_at
         ts.chord.add_note(NoteColor::Red);
         song.sequence.push_back(ts);
     }
-    song.check_activations();
+    song.check_activations(core::default_rules(), fills);
     return song;
 }
 
@@ -65,6 +67,19 @@ TEST_CASE("generated fills: a chord 241 ticks after the second measure line gets
     // notes before that line: tick 0, which is 0 ms.
     CHECK(activation_fill_deadline_ms(song.timing(), ts.timecode.ticks(), *ts.activation_length,
                                       FillDeadlineRule::Ch11) == 0.0);
+}
+
+TEST_CASE("generated fills: Clone Hero 1.0 mode keeps the old half-measure fills, 1.1 the new") {
+    // User decision 2026-10-14: "Keep 1.0 exactly as before". Two chords 10
+    // ticks after the measure lines at 1920 and 9600 (resolution 480, 4/4).
+    const std::vector<int64_t> chords = {1930, 9610};
+    // 1.1: each fill starts on its line, so its length is 10 ticks.
+    CHECK(fills_of(song_with_chords(chords, 0, FillDeadlineRule::Ch11)) ==
+          Fills{{1920, 1930}, {9600, 9610}});
+    // 1.0: each fill is half a 4/4 measure (960 ticks) long, ending on its chord.
+    const Song old = song_with_chords(chords, 0, FillDeadlineRule::Ch10);
+    CHECK(fills_of(old) == Fills{{970, 1930}, {8650, 9610}});
+    CHECK(*old.sequence[0].activation_length == 960);
 }
 
 TEST_CASE("generated fills: a chord 242 ticks from its line gets none") {

@@ -84,7 +84,8 @@ static void folder_breakdown(const std::string& folder, const core::Rules& rules
         auto t = clk::now();
         std::optional<Song> song_opt;
         try {
-            song_opt.emplace(load_songpath(it.notespath, settings.reading(), settings.rules));
+            song_opt.emplace(load_songpath(it.notespath, settings.reading(), settings.rules,
+                                           fill_rule_for(settings.legacy_fill_deadline)));
         } catch (const std::exception& e) {
             std::printf("  (skipped: %s)\n\n", e.what());
             continue;
@@ -273,7 +274,8 @@ static void engine_mode(const std::string& folder, const std::string& cachedb, i
         std::optional<Song> song;
         try {
             song.emplace(
-                load_songpath_with_notes(it.notespath, settings.reading(), settings.rules));
+                load_songpath_with_notes(it.notespath, settings.reading(), settings.rules,
+                                         fill_rule_for(settings.legacy_fill_deadline)));
         } catch (const std::exception&) {
             ++failed;
             continue;
@@ -349,7 +351,8 @@ static void parse_mode(const std::string& arg, int reps, const std::string& outp
         for (int r = 0; r < reps; ++r) {
             auto t = clk::now();
             try {
-                Song song = load_songpath_with_notes(p, settings.reading(), settings.rules);
+                Song song = load_songpath_with_notes(p, settings.reading(), settings.rules,
+                                                     fill_rule_for(settings.legacy_fill_deadline));
                 best = std::min(best, secs_since(t));
                 if (r == 0) {
                     h = digest::song_digest(song);
