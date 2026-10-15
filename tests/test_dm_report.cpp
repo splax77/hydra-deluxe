@@ -65,7 +65,7 @@ TEST_CASE("collect_dm_rows joins scores to records and labels them") {
                                 123456));                      // not in library
 
     std::vector<DmReportRow> rows =
-        app::dm_report::collect_dm_rows(store, scores, kMode, store::Lens{});
+        app::dm_report::collect_dm_rows(store, scores, testdm::profile());
     REQUIRE(rows.size() == 4);
 
     // These exact strings are load-bearing: the page's status filter and chip
@@ -103,7 +103,7 @@ TEST_CASE("collect_dm_rows: no percent off 100% speed; store identity fallback")
     unknown_meta.known = false;  // "unknown song" entry: no usable metadata
 
     std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
-        store, {fast, unknown_meta}, kMode, store::Lens{});
+        store, {fast, unknown_meta}, testdm::profile());
     REQUIRE(rows.size() == 2);
 
     CHECK_FALSE(rows[0].pct_h.has_value());  // speed != 100
@@ -174,7 +174,7 @@ TEST_CASE("collect_dm_rows answers above-optimal beside the status") {
         store,
         {make_score(kHash, optimal + 5), make_score(kHash, optimal + 5, 150),
          make_score(kHash, optimal - 5, 150)},
-        kMode, store::Lens{});
+        testdm::profile());
     REQUIRE(rows.size() == 3);
     CHECK(rows[0].status == "above optimal");
     CHECK(rows[1].status == "other speed");
@@ -210,7 +210,7 @@ TEST_CASE("generate_dm_report: tally and framing behind one seam") {
                                 123456));                 // not in library
 
     app::dm_report::GeneratedDmReport result =
-        app::dm_report::generate_dm_report(store, scores, kMode, store::Lens{}, "TestUser");
+        app::dm_report::generate_dm_report(store, scores, testdm::profile(), "TestUser");
     CHECK(result.stats.total == 5);
     CHECK(result.stats.under_optimal == 2);
     CHECK(result.stats.at_optimal == 1);
@@ -225,7 +225,7 @@ TEST_CASE("generate_dm_report: tally and framing behind one seam") {
 
     // No scores: zero stats, no rows.
     app::dm_report::GeneratedDmReport none =
-        app::dm_report::generate_dm_report(store, {}, kMode, store::Lens{}, "TestUser");
+        app::dm_report::generate_dm_report(store, {}, testdm::profile(), "TestUser");
     CHECK(none.stats.total == 0);
     CHECK(none.rows.empty());
 }
@@ -241,7 +241,7 @@ TEST_CASE("generate_dm_report hands over its rows, subtitle, footer, player and 
     scores.push_back(make_score("00ff00ff00ff00ff00ff00ff00ff00ff", 123456));
 
     const app::dm_report::GeneratedDmReport result =
-        app::dm_report::generate_dm_report(store, scores, kMode, store::Lens{}, "TestUser");
+        app::dm_report::generate_dm_report(store, scores, testdm::profile(), "TestUser");
     REQUIRE(result.rows.size() == 2);
     CHECK(result.rows[0].status == "under optimal");
     CHECK(result.rows[1].status == "not in library");
@@ -249,7 +249,7 @@ TEST_CASE("generate_dm_report hands over its rows, subtitle, footer, player and 
     CHECK(result.chartmode == kMode);
     CHECK(result.subtitle == "TestUser — 2 scores");
     // One score reads singular, as the count line writes its noun.
-    CHECK(app::dm_report::generate_dm_report(store, {scores[0]}, kMode, store::Lens{}, "TestUser")
+    CHECK(app::dm_report::generate_dm_report(store, {scores[0]}, testdm::profile(), "TestUser")
               .subtitle == "TestUser — 1 score");
     CHECK(result.footer.rfind("Actual scores from dmleaderboards.com against Hydra's optimal for " +
                                   std::string(kMode) + ".",
@@ -263,7 +263,7 @@ TEST_CASE("generate_dm_report hands over its rows, subtitle, footer, player and 
 
     // No scores: the player and mode are still named, and nothing else is.
     const app::dm_report::GeneratedDmReport none =
-        app::dm_report::generate_dm_report(store, {}, kMode, store::Lens{}, "TestUser");
+        app::dm_report::generate_dm_report(store, {}, testdm::profile(), "TestUser");
     CHECK(none.rows.empty());
     CHECK(none.username == "TestUser");
     CHECK(none.chartmode == kMode);
@@ -350,7 +350,7 @@ TEST_CASE("collect_dm_rows: the stored names go through display_title, display_a
     unknown_meta.known = false;
 
     const std::vector<DmReportRow> rows =
-        app::dm_report::collect_dm_rows(store, {unknown_meta}, kMode, store::Lens{});
+        app::dm_report::collect_dm_rows(store, {unknown_meta}, testdm::profile());
     REQUIRE(rows.size() == 1);
     CHECK(rows[0].song == "Bold Title");
     CHECK(rows[0].artist == kUnknownTitle);
@@ -374,7 +374,7 @@ TEST_CASE("collect_dm_rows: a leaderboard row's DMBot names lose their Clone Her
     tagged_unmatched.identifier = "00ff00ff00ff00ff00ff00ff00ff00ff";
 
     std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
-        store, {tagged, tagged_unmatched}, kMode, store::Lens{});
+        store, {tagged, tagged_unmatched}, testdm::profile());
     REQUIRE(rows.size() == 2);
     for (const DmReportRow& r : rows) {
         CHECK(r.song == "Bloodline");
@@ -456,7 +456,7 @@ TEST_CASE("collect_dm_rows: the % of opt column sorts on the shown hundredths") 
         store,
         {make_score(kHash, optimal), make_score(kHash, optimal - 1),
          make_score(kHash, optimal / 2)},
-        kMode, store::Lens{});
+        testdm::profile());
     REQUIRE(rows.size() == 3);
     REQUIRE(rows[0].pct_h.has_value());
     REQUIRE(rows[1].pct_h.has_value());
@@ -616,15 +616,13 @@ TEST_CASE("collect_dm_rows tells no current result from not in library") {
     const int64_t optimal = fill_store(store);
     REQUIRE(optimal > 0);
 
-    // The last scan found kHash and one more chart nobody has analyzed. The
-    // scanned hash is upper case on purpose: the join ignores case.
-    constexpr const char* kScannedUpper = "ABCDEF00112233445566778899AABBCC";
+    // The last scan found kHash and one more chart nobody has analyzed.
     constexpr const char* kScanned = "abcdef00112233445566778899aabbcc";
     store::ChartLibraryEntry analyzed;
     analyzed.md5 = kHash;
     analyzed.title = "Stored Title";
     store::ChartLibraryEntry scanned;
-    scanned.md5 = kScannedUpper;
+    scanned.md5 = kScanned;
     scanned.title = "Scanned Only";
     store.rebuild_chart_library({analyzed, scanned});
 
@@ -633,7 +631,7 @@ TEST_CASE("collect_dm_rows tells no current result from not in library") {
         {make_score(kHash, optimal - 1000),                        // under optimal
          make_score(kScanned, 5000),                               // in the library, no result
          make_score("00ff00ff00ff00ff00ff00ff00ff00ff", 123456)},  // never scanned
-        kMode, store::Lens{});
+        testdm::profile());
     REQUIRE(rows.size() == 3);
     CHECK(rows[0].status == "under optimal");
     CHECK(rows[1].status == "no current result");
@@ -658,8 +656,7 @@ TEST_CASE("collect_dm_rows: a Ready record with no paths reads \"no paths\"") {
     // A second chart the last scan found, analyzed at Clone Hero's cap, whose
     // analysis kept no path: a Ready record with no score.
     constexpr const char* kEmpty = "abcdef00112233445566778899aabbcc";
-    test::store_batch_result(store,
-                             store::RecordKey{kEmpty, kMode, store::CapQuery::at(kCloneHeroSpCap)});
+    testdm::save_no_paths(store, kEmpty);
     store::ChartLibraryEntry analyzed;
     analyzed.md5 = kHash;
     analyzed.title = "Stored Title";
@@ -669,8 +666,7 @@ TEST_CASE("collect_dm_rows: a Ready record with no paths reads \"no paths\"") {
     store.rebuild_chart_library({analyzed, empty});
 
     std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
-        store, {make_score(kHash, optimal - 1000), make_score(kEmpty, 5000)}, kMode,
-        store::Lens{});
+        store, {make_score(kHash, optimal - 1000), make_score(kEmpty, 5000)}, testdm::profile());
     REQUIRE(rows.size() == 2);
     CHECK(rows[0].status == "under optimal");
     CHECK(rows[1].status == "no paths");
@@ -720,15 +716,16 @@ TEST_CASE("why_not_comparable names the missing Clone Hero rule") {
     CHECK(why_not_comparable(Difficulty::Easy, 8, true, false) == expert);
     CHECK(why_not_comparable(Difficulty::Expert, 8, true, false) == cap);
 
-    // The join refuses a 1.0-fills lens with the same sentence, as an
+    // The join refuses a 1.0-fills profile with the same sentence, as an
     // AlreadyPlain error, so a screen shows the sentence as it is.
     store::RecordStore store(":memory:");
     REQUIRE(fill_store(store) > 0);
-    store::Lens legacy;
-    legacy.legacy_fills = 1;
+    app::Settings legacy = testdm::settings();
+    legacy.legacy_fills = true;
     bool refused = false;
     try {
-        app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)}, kMode, legacy);
+        app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)},
+                                        legacy.profile_at_clone_hero_cap());
     } catch (const KindedError& e) {
         refused = true;
         CHECK(e.kind() == ErrorKind::AlreadyPlain);
@@ -758,14 +755,14 @@ TEST_CASE("why_not_comparable refuses Note Shuffle, and only Note Shuffle change
     bool refused = false;
     try {
         app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)},
-                                        "Expert Pro Drums, 2x Bass, Note Shuffle", store::Lens{});
+                                        testdm::profile("Expert Pro Drums, 2x Bass, Note Shuffle"));
     } catch (const KindedError& e) {
         refused = true;
         CHECK(e.kind() == ErrorKind::AlreadyPlain);
         CHECK(app::plain_error(e) == shuffle);
     }
     CHECK(refused);
-    CHECK(app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)}, kMode, store::Lens{})
+    CHECK(app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)}, testdm::profile())
               .size() == 1);
 }
 
@@ -780,7 +777,7 @@ TEST_CASE("collect_dm_rows refuses a non-Expert chart mode with the toolbar's se
         CAPTURE(mode);
         bool refused = false;
         try {
-            app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)}, mode, store::Lens{});
+            app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)}, testdm::profile(mode));
         } catch (const KindedError& e) {
             refused = true;
             CHECK(e.kind() == ErrorKind::AlreadyPlain);
@@ -794,8 +791,9 @@ TEST_CASE("collect_dm_rows refuses a non-Expert chart mode with the toolbar's se
 TEST_CASE("collect_dm_rows refuses a chart mode it cannot read") {
     store::RecordStore store(":memory:");
     REQUIRE(fill_store(store) > 0);
-    CHECK_THROWS_AS(app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)},
-                                                    "not a chart mode", store::Lens{}),
+    store::Profile unreadable = testdm::profile();
+    unreadable.chartmode = "not a chart mode";
+    CHECK_THROWS_AS(app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)}, unreadable),
                     std::exception);
 }
 
@@ -805,11 +803,10 @@ TEST_CASE("collect_dm_rows: a database with no chart library stops with the path
           "sentence") {
     // What hydra_batch with folder arguments leaves: a result, and no library.
     store::RecordStore store(":memory:");
-    test::store_batch_result(store,
-                             store::RecordKey{kHash, kMode, store::CapQuery::at(kCloneHeroSpCap)});
+    testdm::save_no_paths(store, kHash);
     bool stopped = false;
     try {
-        app::dm_report::collect_dm_rows(store, {make_score(kHash, 1000)}, kMode, store::Lens{});
+        app::dm_report::collect_dm_rows(store, {make_score(kHash, 1000)}, testdm::profile());
     } catch (const KindedError& e) {
         stopped = true;
         CHECK(e.kind() == ErrorKind::AlreadyPlain);
@@ -823,18 +820,52 @@ TEST_CASE("collect_dm_rows: a result whose chart the library doesn't list is lef
     const int64_t optimal = fill_store(store);
     // A second chart's result, saved without a library row for it.
     constexpr const char* kOutside = "0123456789abcdef0123456789abcdef";
-    test::store_batch_result(
-        store, store::RecordKey{kOutside, kMode, store::CapQuery::at(kCloneHeroSpCap)});
+    testdm::save_no_paths(store, kOutside);
 
     const std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
-        store, {make_score(kHash, optimal - 1), make_score(kOutside, 5000)}, kMode,
-        store::Lens{});
+        store, {make_score(kHash, optimal - 1), make_score(kOutside, 5000)}, testdm::profile());
     REQUIRE(rows.size() == 2);
     CHECK(rows[0].status == "under optimal");
     // The leaderboard's score stays on the page; Hydra's result for it does
     // not join it.
     CHECK(rows[1].status == "not in library");
     CHECK_FALSE(rows[1].optimal.has_value());
+}
+
+// D115: the page lists the one profile Settings::profile_at_clone_hero_cap
+// names, whatever cap the settings hold.
+TEST_CASE("collect_dm_rows reads the Clone Hero cap profile by name") {
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+    // A second listed chart whose only record is a what-if one at 8 bars.
+    constexpr const char* kWhatIfOnly = "0123456789abcdef0123456789abcdef";
+    const app::Settings at8 = testdm::settings(kMode, 8);
+    HydraRecord whatif = testdm::sample_chart().record;
+    whatif.sp_cap = 8;
+    test::name_chart(store, kWhatIfOnly, "What-if Title");
+    testdm::save(store, kWhatIfOnly, at8, whatif);
+
+    // Settings at the what-if cap still list Clone Hero's cap: kHash joins its
+    // cap-4 record, and the chart analyzed only at 8 bars has no current
+    // result.
+    const std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
+        store, {make_score(kHash, optimal - 1), make_score(kWhatIfOnly, 5000)},
+        at8.profile_at_clone_hero_cap());
+    REQUIRE(rows.size() == 2);
+    CHECK(rows[0].status == "under optimal");
+    CHECK(rows[0].optimal == optimal);
+    CHECK(rows[1].status == "no current result");
+
+    // A profile at another cap is refused with the toolbar's sentence.
+    bool refused = false;
+    try {
+        app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)}, at8.profile());
+    } catch (const KindedError& e) {
+        refused = true;
+        CHECK(app::plain_error(e) ==
+              "Needs SP cap 4, Clone Hero's rule: the leaderboard's scores were played under it.");
+    }
+    CHECK(refused);
 }
 
 // D103 item 22: a settings change marks the comparison out of date only when

@@ -3,13 +3,14 @@
 #include <stdexcept>
 #include <unordered_map>
 
-#include "app/config.h"          // Settings::chartmode_key, Settings::lens
+#include "app/config.h"          // Settings::with_known_chartmode, profile_at_clone_hero_cap
 #include "app/display_format.h"  // format_percent, percent_steps
-#include "app/report.h"  // records_by_hash, library_copies_by_hash
+#include "app/report.h"  // listed_records, lacks_chart_library, kNoChartLibrary
 #include "core/error_kind.h"
 #include "core/model.h"  // counted, group_thousands
 #include "parse/song.h"  // display_title, display_artist, display_charter
 #include "search/graph.h"  // fill_rule_for, fill_rule_name
+#include "store/chart_index.h"
 
 namespace hydra::app::dm_report {
 
@@ -51,32 +52,30 @@ std::string why_not_comparable(Difficulty difficulty, int sp_cap, bool legacy_fi
 
 std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
                                          const std::vector<net::DmScore>& scores,
-                                         const std::string& chartmode,
-                                         const store::Lens& lens) {
+                                         const store::Profile& profile) {
     // The Clone Hero rules come from why_not_comparable. Of its four inputs,
-    // the fill rule arrives in `lens`, and the difficulty and Note Shuffle in
-    // `chartmode`, read back through its owner. The cap is forced to Clone
-    // Hero's below, so it is passed as that. The window's rebuild buttons
-    // reach here without the toolbar's check, so this call is the gate for
-    // them (D114 item 6).
-    const Settings mode = Settings{}.with_known_chartmode(chartmode);
-    const std::string refused = why_not_comparable(mode.difficulty(), kCloneHeroSpCap,
-                                                   lens.legacy_fills != 0, mode.view_noteshuffle);
+    // the cap and the fill rule arrive in `profile`, and the difficulty and
+    // Note Shuffle in its chart mode, read back through its owner. A profile
+    // at another cap is refused: a what-if cap's score would read as "above
+    // optimal" nonsense. The window's rebuild buttons reach here without the
+    // toolbar's check, so this call is the gate for them (D114 item 6).
+    const Settings mode = Settings{}.with_known_chartmode(profile.chartmode);
+    const std::string refused =
+        why_not_comparable(mode.difficulty(), profile.cap.exact, profile.lens.legacy_fills != 0,
+                           mode.view_noteshuffle);
     if (!refused.empty()) throw KindedError(ErrorKind::AlreadyPlain, refused);
     // The page compares library charts only, as the path report does (D92).
     if (report::lacks_chart_library(store))
         throw KindedError(ErrorKind::AlreadyPlain, report::kNoChartLibrary);
 
-    // One query for every stored record in this chartmode, indexed by hash.
-    // Only records at Clone Hero's cap: a what-if cap's score would read as
-    // "above optimal" nonsense.
-    const std::unordered_map<std::string, store::RecordListing> by_hash =
-        report::records_by_hash(store, chartmode, store::CapQuery::at(kCloneHeroSpCap), lens);
-
-    // Every chart the last scan found, keyed like the leaderboard join, so a
-    // score with no current result can say whether analyzing would fix it.
+    // Every chart the last scan found, so a score with no current result can
+    // say whether analyzing would fix it, and so a joined record has names.
     // The page counts scores, not charts, so the copies go unused (D79).
-    const std::unordered_map<std::string, int> library = report::library_copies_by_hash(store);
+    const store::ChartIndex library = store.chart_index();
+
+    // One read of every listed Ready record under the profile, by song id.
+    const std::unordered_map<std::string, store::RecordRow> by_id =
+        report::listed_records(store, profile, library);
 
     std::vector<DmReportRow> rows;
     rows.reserve(scores.size());
@@ -90,24 +89,26 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
         row.rank = s.rank;
         row.posted = s.posted;
 
-        auto it = by_hash.find(s.identifier);
-        const store::RecordListing* rec = it != by_hash.end() ? &it->second : nullptr;
+        auto it = by_id.find(s.identifier);
+        const store::RecordRow* rec = it != by_id.end() ? &it->second : nullptr;
+        // A joined record's chart is listed, so it has a naming copy.
+        const store::ChartLibraryEntry* named = rec ? library.naming(rec->song_id) : nullptr;
 
         // Identity: the leaderboard's own metadata when it has it, else the
-        // joined Hydra record's, else whatever the leaderboard sent. Either
-        // source goes through the same display owners (D74 item 2).
-        const bool board_names = (s.known && !s.song_name.empty()) || !rec;
-        row.song = display_title(board_names ? s.song_name : rec->ref_name);
-        row.artist = display_artist(board_names ? s.artist : rec->ref_artist);
-        row.charter = display_charter(board_names ? s.charter : rec->ref_charter);
-        if (row.charter.empty() && rec) row.charter = display_charter(rec->ref_charter);
+        // joined chart's library names, else whatever the leaderboard sent.
+        // Either source goes through the same display owners (D74 item 2).
+        const bool board_names = (s.known && !s.song_name.empty()) || !named;
+        row.song = display_title(board_names ? s.song_name : named->title);
+        row.artist = display_artist(board_names ? s.artist : named->artist);
+        row.charter = display_charter(board_names ? s.charter : named->charter);
+        if (row.charter.empty() && named) row.charter = display_charter(named->charter);
 
         // Hydra's optimal is for normal speed only. An off-speed score shows
         // Hydra's numbers when it has them, but is never called under, at or
         // above optimal.
         const bool base = net::is_base_speed(s.speed);
-        if (rec && rec->summary.has_scored_best_path()) {
-            int64_t opt = *rec->summary.score;
+        if (rec && rec->has_scored_best_path()) {
+            int64_t opt = *rec->summary().score;
             row.optimal = opt;
             row.delta = opt - s.score;
             if (base && opt > 0) row.pct_h = percent_steps(s.score, opt, kPercentDecimals);
@@ -122,8 +123,7 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
             // A Ready result whose analysis kept no path (D51 call 11).
             row.status = kStatusNoPaths;
         } else {
-            row.status = report::library_lists(library, s.identifier) ? kStatusNoCurrentResult
-                                                                       : kStatusNotInLibrary;
+            row.status = library.lists(s.identifier) ? kStatusNoCurrentResult : kStatusNotInLibrary;
         }
         if (!base) row.status = kStatusOtherSpeed;
         rows.push_back(std::move(row));
@@ -207,13 +207,13 @@ std::string counts_phrase(const DmReportStats& stats) {
 
 GeneratedDmReport generate_dm_report(store::RecordStore& store,
                                      const std::vector<net::DmScore>& scores,
-                                     const std::string& chartmode,
-                                     const store::Lens& lens,
+                                     const store::Profile& profile,
                                      const std::string& username) {
     GeneratedDmReport out;
     out.username = username;
-    out.chartmode = chartmode;
-    std::vector<DmReportRow> rows = collect_dm_rows(store, scores, chartmode, lens);
+    out.chartmode = profile.chartmode;
+    const std::string& chartmode = profile.chartmode;
+    std::vector<DmReportRow> rows = collect_dm_rows(store, scores, profile);
     out.stats = tally_dm_rows(rows);
     if (rows.empty()) return out;
 
@@ -235,9 +235,10 @@ GeneratedDmReport generate_dm_report(store::RecordStore& store,
 }
 
 bool settings_change_touches(const Settings& before, const Settings& after) {
-    // generate_dm_report is asked for one chart mode and one lens. Its results
-    // are always at Clone Hero's SP cap, so the cap setting reaches no row.
-    return before.chartmode_key() != after.chartmode_key() || before.lens() != after.lens();
+    // generate_dm_report lists the one profile the comparison names, which
+    // is at Clone Hero's SP cap whatever the cap setting, so the cap reaches
+    // no row.
+    return before.profile_at_clone_hero_cap() != after.profile_at_clone_hero_cap();
 }
 
 }  // namespace hydra::app::dm_report

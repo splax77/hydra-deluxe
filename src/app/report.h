@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "store/chart_index.h"
 #include "store/record_store.h"
 #include "core/squeeze_rating.h"
 
@@ -127,26 +128,26 @@ std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
 // the page's payload, its footer, the Past tile and the Timing chip.
 std::string beyond_edge_text(double hit_window_ms);
 
-// Every listed record for one chart mode, cap and lens whose chart the
-// library lists (library_copies_by_hash), keyed by its chart hash in lower
-// case. A result the library doesn't list is left out, as the path report
-// leaves it out (D92). Both comparison pages join on this.
-std::unordered_map<std::string, store::RecordListing> records_by_hash(
-    store::RecordStore& store, const std::string& chartmode, const store::CapQuery& cap,
-    const store::Lens& lens);
-
 // Every chart the store's library lists, with its copies
-// (RecordStore::library_copies), keyed like records_by_hash so a page looks
-// up both with one key. Every page reads its library copies from here; a
-// chart's count goes through RecordStore::copies_of, and "is this chart in
-// the library" through library_lists.
+// (RecordStore::library_copies), keyed by its chart hash in lower case. The
+// path report reads its library copies from here; a chart's count goes
+// through RecordStore::copies_of, and "is this chart in the library" through
+// library_lists. The comparison pages ask store::ChartIndex instead.
 std::unordered_map<std::string, int> library_copies_by_hash(store::RecordStore& store);
 
 // Whether the library lists the chart `hash` names, given
-// library_copies_by_hash's map and a hash keyed the same way. The one answer
-// to "is this chart in the library" for every page (D87 item 4, D92).
+// library_copies_by_hash's map and a hash keyed the same way. The path
+// report's answer to "is this chart in the library" (D87 item 4, D92); every
+// other page asks store::ChartIndex::lists.
 bool library_lists(const std::unordered_map<std::string, int>& library,
                    const std::string& hash);
+
+// Every Ready record `store` holds under `profile` (RecordStore::ready_records)
+// whose chart `library` lists, by song id. The store lists results the library
+// doesn't, and no page shows one (D87 item 4, D92). Both comparison pages read
+// their records through here.
+std::unordered_map<std::string, store::RecordRow> listed_records(
+    store::RecordStore& store, const store::Profile& profile, const store::ChartIndex& library);
 
 // The path report's default: every path a record keeps (store::kPathsPerRecord).
 inline constexpr int64_t kDefaultReportPaths = store::kPathsPerRecord;

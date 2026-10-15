@@ -152,8 +152,7 @@ struct LibraryListing {
 // list_records' listings for one chart mode (every mode when none), cap and
 // lens, best score first, keeping those whose chart `library` lists
 // (library_lists). The store lists results the library doesn't, and no page
-// shows one (D87 item 4, D92). records_by_hash and collect_rows both list
-// through here.
+// shows one (D87 item 4, D92). collect_rows lists through here.
 std::vector<LibraryListing> listings_the_library_lists(
     store::RecordStore& store, const std::unordered_map<std::string, int>& library,
     const std::optional<std::string>& chartmode, const store::CapQuery& cap,
@@ -171,19 +170,20 @@ std::vector<LibraryListing> listings_the_library_lists(
 
 }  // namespace
 
-std::unordered_map<std::string, store::RecordListing> records_by_hash(
-    store::RecordStore& store, const std::string& chartmode, const store::CapQuery& cap,
-    const store::Lens& lens) {
-    const std::unordered_map<std::string, int> library = library_copies_by_hash(store);
-    std::unordered_map<std::string, store::RecordListing> by_hash;
-    for (LibraryListing& l : listings_the_library_lists(store, library, chartmode, cap, lens))
-        by_hash.emplace(std::move(l.hash), std::move(l.listing));
-    return by_hash;
-}
-
 bool library_lists(const std::unordered_map<std::string, int>& library,
                    const std::string& hash) {
     return library.find(hash) != library.end();
+}
+
+std::unordered_map<std::string, store::RecordRow> listed_records(
+    store::RecordStore& store, const store::Profile& profile, const store::ChartIndex& library) {
+    std::unordered_map<std::string, store::RecordRow> by_id;
+    for (store::RecordRow& r : store.ready_records(profile))
+        if (library.lists(r.song_id)) {
+            std::string id = r.song_id;
+            by_id.emplace(std::move(id), std::move(r));
+        }
+    return by_id;
 }
 
 namespace {

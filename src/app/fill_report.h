@@ -20,7 +20,12 @@
 #include <string>
 #include <vector>
 
+#include "store/chart_index.h"
 #include "store/record_store.h"
+
+namespace hydra::app {
+struct Settings;  // app/config.h
+}
 
 namespace hydra::app::fill_report {
 
@@ -52,27 +57,28 @@ struct FillCompareRow {
     // One of the kStatus* constants above.
     std::string status;
     // How many library rows the chart counts as, from the 1.1 database's
-    // library (D79 item 3): what tally_fill_rows and the page's tiles add up.
-    // collect_fill_rows sets it from store::RecordStore::copies_of.
+    // library (D79 item 3): the page's "k", which its tiles add up.
+    // collect_fill_rows sets it from store::ChartIndex::copies.
     int copies = 0;
 };
 
-// Joins the two stores' records for identical settings but the fill rule
-// (old_store's 1.0 results, new_store's 1.1 ones; lens.legacy_fills is
-// ignored), each side's as report::records_by_hash lists them (library
-// charts only, D92), indexed by lowercased
-// hyhash, over the union of both key sets — a chart stored on one side only
-// still gets a row, labelled by the side that holds its record. Song, artist
-// and charter prefer the 1.1 (new) side; the song reads display_title, and
-// the artist and charter have their Clone Hero rich-text tags stripped. Each
-// row's copies come from new_store's library.
+// Joins the two stores' Ready records under one profile each, the same but
+// for the fill rule (Settings::profile_with_fills: old_store's 1.0 results,
+// new_store's 1.1 ones; the settings' own fill rule is ignored). Each side
+// keeps the charts its own library lists (ChartIndex::lists, D92). The join
+// is by song id, over the union of both key sets: a chart stored on one side
+// only still gets a row, labelled by the side that holds its record. Song,
+// artist and charter come from the library's naming copy, preferring the 1.1
+// (new) side; the song reads display_title, and the artist and charter have
+// their Clone Hero rich-text tags stripped. Each row's copies come from
+// new_store's library.
 std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
                                               store::RecordStore& new_store,
-                                              const std::string& chartmode,
-                                              const store::CapQuery& cap,
-                                              const store::Lens& lens);
+                                              const Settings& settings);
 
-// Every field counts library rows: each chart adds its copies (D79 item 3).
+// Every field counts library rows: each status's charts counted through
+// `chart_index`'s ChartIndex::count (D79 item 3). `chart_index` is the 1.1
+// database's library, whose copies the rows carry.
 struct FillCompareStats {
     int total = 0;
     int same = 0;
@@ -82,11 +88,14 @@ struct FillCompareStats {
     int only_new = 0;
     int in_both = 0;
 };
-FillCompareStats tally_fill_rows(const std::vector<FillCompareRow>& rows);
+FillCompareStats tally_fill_rows(const std::vector<FillCompareRow>& rows,
+                                 const store::ChartIndex& chart_index);
 
 // The self-contained comparison page, with its own columns. Its template comes
-// from html::page_template and html::render_page fills it (html_page.h).
+// from html::page_template and html::render_page fills it (html_page.h). The
+// count line's total is tally_fill_rows' over `library`.
 std::string build_fill_html(const std::vector<FillCompareRow>& rows,
+                            const store::ChartIndex& library,
                             const std::string& subtitle,
                             const std::string& footer);
 
@@ -103,9 +112,7 @@ struct GeneratedFillReport {
 // (report::lacks_chart_library) stops it with report::kNoChartLibrary.
 GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
                                          store::RecordStore& new_store,
-                                         const std::string& chartmode,
-                                         const store::CapQuery& cap,
-                                         const store::Lens& lens);
+                                         const Settings& settings);
 
 }  // namespace hydra::app::fill_report
 

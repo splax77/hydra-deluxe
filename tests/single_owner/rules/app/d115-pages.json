@@ -1,0 +1,57 @@
+{
+  "rules": [
+    {
+      "question": "Which profile does a comparison page list?",
+      "owner": "Settings::profile_at_clone_hero_cap and Settings::profile_with_fills in src/app/config.cpp",
+      "owner_file": "src/app/config.cpp",
+      "owner_symbol": "Settings::profile_at_clone_hero_cap",
+      "date": "2026-10-14",
+      "decision": "D115 (part A2, task A2-4, code-only)",
+      "added_by": "D115-A2-4",
+      "pattern": "CapQuery::at\\(kCloneHeroSpCap\\)|legacy_fills\\s*=\\s*[01]\\s*;",
+      "scope": [
+        "src/app/dm_report.cpp",
+        "src/app/fill_report.cpp"
+      ],
+      "must_match": [
+        "report::records_by_hash(store, chartmode, store::CapQuery::at(kCloneHeroSpCap), lens);",
+        "old_lens.legacy_fills = 1;",
+        "new_lens.legacy_fills = 0;"
+      ],
+      "must_not_match": [
+        "settings.profile_with_fills(FillDeadlineRule::Ch10)",
+        "settings.profile_at_clone_hero_cap()",
+        "profile.lens.legacy_fills != 0"
+      ],
+      "owner_lines": [],
+      "note": "The leaderboard comparison lists the profile at Clone Hero's SP cap, and the fill comparison lists one profile per fill rule. A page that sets the cap or the fill rule on a lens by hand can list other records than the named variants name. Decided by: D115, plan docs/superpowers/plans/2026-10-12-one-record-per-chart.md, task A2-4"
+    },
+    {
+      "question": "Which stored records does a page list: those under its profile whose chart the library lists?",
+      "owner": "report::listed_records in src/app/report.cpp",
+      "owner_file": "src/app/report.cpp",
+      "owner_symbol": "listed_records",
+      "date": "2026-10-14",
+      "decision": "D87 item 4, D92, D115 (part A2, task A2-4, code-only)",
+      "added_by": "D115-A2-4",
+      "pattern": "\\.ready_records\\(",
+      "scope": [
+        "src"
+      ],
+      "must_match": [
+        "for (store::RecordRow& r : store.ready_records(profile))"
+      ],
+      "must_not_match": [
+        "const std::unordered_map<std::string, store::RecordRow> by_id = report::listed_records(store, profile, library);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/report.cpp",
+          "line_text": "for (store::RecordRow& r : store.ready_records(profile))",
+          "why": "report::listed_records, the owner"
+        }
+      ],
+      "note": "The two comparison pages each filtered ready_records by hand to the charts the library lists. A page that does so itself can disagree with the other about which results it shows. The path report joins this rule in task A2-2. Decided by: D87 item 4, D92, D115 (task A2-4)"
+    }
+  ]
+}

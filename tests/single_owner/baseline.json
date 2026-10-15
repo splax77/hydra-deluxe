@@ -17,15 +17,6 @@
       "date": "2026-10-14",
       "added_by": "D115-A1-4",
       "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Under which settings is a chart analyzed (its profile)?",
-      "file": "src/app/dm_report.cpp",
-      "line_text": "report::records_by_hash(store, chartmode, store::CapQuery::at(kCloneHeroSpCap), lens);",
-      "removed_by": "D115-A2-4",
-      "date": "2026-10-14",
-      "added_by": "D115-A1-4",
-      "remove_by": "2026-10-28"
     }
   ],
   "known_clones": []

@@ -708,8 +708,8 @@ void AppState::request_dm_report() {
 
 void AppState::launch_dm_report() {
     dm_report.out_of_date_during_build = ReportOutOfDate::None;
-    dm_report_job =std::make_unique<DmReportJob>(*store, dm_player_id_, dm_player_name_,
-                                                  settings.chartmode_key(), settings.lens());
+    dm_report_job = std::make_unique<DmReportJob>(*store, dm_player_id_, dm_player_name_,
+                                                  settings.profile_at_clone_hero_cap());
     dm_report_job->start();
 }
 

@@ -45,7 +45,7 @@ TEST_CASE("s2 offspeed: an off-speed score is 'other speed', with or without a r
         score_at(kHash, optimal - 1000, 100),  // base speed: under optimal
     };
     const std::vector<DmReportRow> rows =
-        app::dm_report::collect_dm_rows(store, scores, kMode, store::Lens{});
+        app::dm_report::collect_dm_rows(store, scores, testdm::profile());
     REQUIRE(rows.size() == 4);
 
     // These strings are load-bearing: the window's Status filter and chips key on them.
@@ -92,7 +92,7 @@ TEST_CASE("s2 offspeed: the subtitle counts every score; the Other speed tile co
     const app::dm_report::GeneratedDmReport report = app::dm_report::generate_dm_report(
         store, {score_at(kHash, optimal - 1, 100), score_at(kHash, optimal + 5, 150),
                 score_at(kHash, optimal - 9, 50)},
-        kMode, store::Lens{}, "TestUser");
+        testdm::profile(), "TestUser");
     CHECK(report.stats.other_speed == 2);
     // Off-speed scores count in the subtitle like any other (D103 item 27).
     CHECK(report.subtitle == "TestUser — 3 scores");

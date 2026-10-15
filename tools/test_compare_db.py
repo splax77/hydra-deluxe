@@ -4,13 +4,16 @@ Each test builds two tiny databases by hand and runs the script on them the
 way a task does, reading its printed lines and its exit code. The tables
 below are a cut-down stand-in for the store's, enough to give compare_db the
 shapes it has to handle: a table keyed by result_id, a table that refers to
-result_id, a plain keyed table and the scan-order charts table.
+result_id, a plain keyed table and the scan-order charts table. The record
+tables (RECORD_SCHEMA) add a table that refers to profiles by profile_id.
 """
 
 import sqlite3
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 SCRIPT = Path(__file__).with_name("compare_db.py")
 
@@ -118,6 +121,67 @@ def make_new_db(path, order, score_b=2000):
     con.close()
 
 
+# The record tables (D115). profiles is the store's own layout; records and
+# record_paths keep only a few value columns, enough to give compare_db a
+# table that refers to profiles by a per-file id.
+RECORD_SCHEMA = """
+CREATE TABLE profiles (
+  id INTEGER PRIMARY KEY, chartmode TEXT NOT NULL, sp_cap INTEGER NOT NULL,
+  ms_enabled INTEGER NOT NULL, ms_value INTEGER NOT NULL, depth_mode INTEGER NOT NULL,
+  depth_value INTEGER NOT NULL, legacy_fills INTEGER NOT NULL,
+  hyversion TEXT NOT NULL, rules_fp BLOB NOT NULL,
+  UNIQUE (chartmode, sp_cap, ms_enabled, ms_value, depth_mode, depth_value, legacy_fills,
+          hyversion, rules_fp));
+CREATE TABLE records (
+  song_id TEXT NOT NULL, profile_id INTEGER NOT NULL, pathcount INTEGER NOT NULL,
+  notecount INTEGER NOT NULL, PRIMARY KEY (song_id, profile_id)) WITHOUT ROWID;
+CREATE TABLE record_paths (
+  song_id TEXT NOT NULL, profile_id INTEGER NOT NULL, rank INTEGER NOT NULL,
+  path TEXT NOT NULL, score INTEGER NOT NULL,
+  PRIMARY KEY (song_id, profile_id, rank)) WITHOUT ROWID;
+"""
+
+# Two profiles that differ only in the SP cap.
+PROFILES = [
+    ("drums", 4, 0, 0, 0, 0, 0, "2.8.0", b"\x01"),
+    ("drums", 8, 0, 0, 0, 0, 0, "2.8.0", b"\x01"),
+]
+
+# (song_id, PROFILES index, pathcount, notecount, best path, its score)
+RECORDS = [
+    ("aaaa", 0, 1, 300, "1-2", 1000),
+    ("aaaa", 1, 1, 300, "1-2-3", 1100),
+    ("bbbb", 0, 1, 400, "2", 2000),
+]
+
+
+def add_records(path, profile_order, score_aaaa_cap8=1100):
+    """Add the record tables to a store from make_db. `profile_order` lists
+    PROFILES indexes in the order they are inserted, so the id each profile
+    gets depends on it, the way two files number the same profile differently."""
+    con = sqlite3.connect(path)
+    con.executescript(RECORD_SCHEMA)
+    ids = {}
+    for i in profile_order:
+        cur = con.execute(
+            "INSERT INTO profiles (chartmode, sp_cap, ms_enabled, ms_value, depth_mode,"
+            " depth_value, legacy_fills, hyversion, rules_fp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            PROFILES[i],
+        )
+        ids[i] = cur.lastrowid
+    for song, prof, pathcount, notecount, best, score in RECORDS:
+        if song == "aaaa" and PROFILES[prof][1] == 8:
+            score = score_aaaa_cap8
+        con.execute(
+            "INSERT INTO records VALUES (?, ?, ?, ?)", (song, ids[prof], pathcount, notecount)
+        )
+        con.execute(
+            "INSERT INTO record_paths VALUES (?, ?, 0, ?, ?)", (song, ids[prof], best, score)
+        )
+    con.commit()
+    con.close()
+
+
 def run_compare(a, b, *flags):
     proc = subprocess.run(
         [sys.executable, str(SCRIPT), *flags, str(a), str(b)],
@@ -153,7 +217,10 @@ def test_tables_print_in_the_fixed_order(tmp_path):
     make_db(b, [0, 1])
     _, out = run_compare(a, b)
     names = [line.split(":")[0] for line in out.splitlines() if not line.startswith(" ")]
-    assert names == ["results", "paths", "path_refs", "songmeta", "dynamics", "charts", "meta"]
+    assert names == [
+        "results", "paths", "path_refs", "songmeta", "dynamics", "charts", "meta",
+        "profiles", "records", "record_paths",
+    ]
 
 
 def test_one_changed_payload_byte_is_reported(tmp_path):
@@ -211,7 +278,33 @@ def test_summary_only_reports_one_changed_score(tmp_path):
     assert "hyhash='bbbb'" in out
 
 
-if __name__ == "__main__":
-    import pytest
+@pytest.mark.parametrize("flags", [[], ["--summary-only"]])
+def test_profile_id_order_alone_compares_clean(tmp_path, flags):
+    a, b = tmp_path / "A.db", tmp_path / "B.db"
+    make_db(a, [0, 1])
+    make_db(b, [0, 1])
+    add_records(a, [0, 1])
+    add_records(b, [1, 0])  # same profiles, ids swapped
+    code, out = run_compare(a, b, *flags)
+    assert code == 0, out
+    assert table_line(out, "profiles") == "profiles: 2 rows compared, 0 differ"
+    assert table_line(out, "records") == "records: 3 rows compared, 0 differ"
+    assert table_line(out, "record_paths") == "record_paths: 3 rows compared, 0 differ"
 
+
+def test_one_changed_record_path_is_reported(tmp_path):
+    a, b = tmp_path / "A.db", tmp_path / "B.db"
+    make_db(a, [0, 1])
+    make_db(b, [0, 1])
+    add_records(a, [0, 1])
+    add_records(b, [1, 0], score_aaaa_cap8=1101)
+    code, out = run_compare(a, b)
+    assert code == 1, out
+    assert table_line(out, "record_paths") == "record_paths: 3 rows compared, 1 differ"
+    assert "song_id='aaaa'" in out
+    assert "profile_sp_cap=8" in out
+    assert table_line(out, "records") == "records: 3 rows compared, 0 differ"
+
+
+if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))

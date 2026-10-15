@@ -10,16 +10,20 @@
 
 #include "doctest.h"
 
+#include <functional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "app/analysis.h"
+#include "app/config.h"  // Settings::profile_with_fills
 #include "app/fill_report.h"
 #include "app/report.h"  // kNoChartLibrary
 #include "core/model.h"
 #include "corpus_util.h"
 #include "display_fixtures.h"  // kTagOnlyTitle
+#include "dm_fixture.h"  // testdm::settings, sample_chart
 #include "parse/song.h"
 #include "search/graph.h"  // fill_rule_name
 #include "store/record_store.h"
@@ -29,52 +33,42 @@ using app::fill_report::FillCompareRow;
 
 namespace {
 
-constexpr const char* kMode = "Expert Pro Drums, 2x Bass";
 constexpr const char* kBoth = "aa11bb22cc33dd44ee55ff6677889900";
 constexpr const char* kOldOnly = "bb22cc33dd44ee55ff6677889900aa11";
 constexpr const char* kNewOnly = "cc33dd44ee55ff6677889900aa11bb22";
 
-store::RecordKey key_for(const std::string& hash, bool legacy_fills) {
-    return store::RecordKey{hash, kMode, store::CapQuery::at(kCloneHeroSpCap),
-                            store::Lens::from(std::nullopt, 0, 0, legacy_fills)};
-}
-
-// One analyzed corpus chart, kept alive for the whole file: it supplies a real
-// record to build PreparedRows from. The scores themselves are overridden per
-// row, so which chart it is doesn't matter.
-const app::AnalysisResult& sample_chart() {
-    static const app::AnalysisResult result = [] {
-        app::AnalysisSettings settings;
-        settings.depth_value = 0;
-        return corpus::first_analyzed_with_paths(settings);
-    }();
-    return result;
-}
-
 // Lists `hash` in `store`'s library as "Song <first four>", unless the
 // library already lists it (a test that set up its own copies keeps them).
 void name(store::RecordStore& store, const std::string& hash) {
-    if (store.library_copies().count(hash)) return;
+    if (store.chart_index().lists(hash)) return;
     test::name_chart(store, hash, "Song " + hash.substr(0, 4), "Test Artist", "Test Charter");
 }
 
+// Files `record`, analyzed under the given fill rule, for `hash` through the
+// one save, under the profile the page reads for that rule.
+void save(store::RecordStore& store, bool legacy_fills, const std::string& hash,
+          HydraRecord record, const std::function<void(store::PreparedRecord&)>& edit = {}) {
+    record.legacy_fills = legacy_fills;
+    store::PreparedRecord prepared = store::prepare_record(
+        hash, testdm::settings().profile_with_fills(fill_rule_for(legacy_fills)), record);
+    if (edit) edit(prepared);
+    store.save(prepared);
+}
+
 // Lists `hash` in `store`'s library and files a result for it under the given
-// fill rule with exactly the summary given. The row comes from a real record
-// so it is well-formed; only the numbers the report reads are overridden.
+// fill rule with exactly the best path given. The record comes from a real
+// analysis so it is well-formed; only the numbers the report reads are
+// overridden.
 void put(store::RecordStore& store, bool legacy_fills, const std::string& hash,
          int64_t score, int acts, const std::string& bestpath) {
-    const app::AnalysisResult& sample = sample_chart();
     name(store, hash);
-
-    HydraRecord record = sample.record;
-    record.legacy_fills = legacy_fills;
-    store::PreparedRow row = store::prepare_row(key_for(hash, legacy_fills), record);
-    row.hyhash = hash;
-    row.bestpath = bestpath;
-    row.summary.score = score;
-    row.summary.actcount = acts;
-    row.summary.notecount = 1234;
-    store.add_row(row);
+    save(store, legacy_fills, hash, testdm::sample_chart().record, [&](store::PreparedRecord& p) {
+        store::PathRow& best = p.record.paths.front();
+        best.path = bestpath;
+        best.score = score;
+        best.actcount = acts;
+        p.record.notecount = 1234;
+    });
 }
 // A Clone Hero 1.0 result, and a 1.1 one.
 void put_ch10(store::RecordStore& store, const std::string& hash, int64_t score, int acts,
@@ -86,11 +80,30 @@ void put_ch11(store::RecordStore& store, const std::string& hash, int64_t score,
     put(store, false, hash, score, acts, bestpath);
 }
 
+// A Ready result with no paths for `hash` under the given fill rule: an
+// analysis that kept no path. It does not list the chart.
+void put_no_paths(store::RecordStore& store, bool legacy_fills, const std::string& hash) {
+    HydraRecord empty;
+    empty.sp_cap = kCloneHeroSpCap;
+    save(store, legacy_fills, hash, empty);
+}
+
 std::vector<FillCompareRow> compare(store::RecordStore& old_store,
                                     store::RecordStore& new_store) {
-    return app::fill_report::collect_fill_rows(
-        old_store, new_store, kMode, store::CapQuery::at(kCloneHeroSpCap),
-        store::Lens{});
+    return app::fill_report::collect_fill_rows(old_store, new_store, testdm::settings());
+}
+
+// A library index listing each id with the given number of copies.
+store::ChartIndex index_of(const std::vector<std::pair<std::string, int>>& charts) {
+    std::vector<store::ChartLibraryEntry> rows;
+    for (const auto& [id, copies] : charts)
+        for (int i = 0; i < copies; ++i) {
+            store::ChartLibraryEntry e;
+            e.md5 = id;
+            e.notespath = "C:\\songs" + std::to_string(i) + "\\" + id + "\\notes.chart";
+            rows.push_back(e);
+        }
+    return store::ChartIndex::from_rows(rows);
 }
 
 const FillCompareRow* find(const std::vector<FillCompareRow>& rows,
@@ -188,7 +201,7 @@ TEST_CASE("collect_fill_rows: an old record with no score and no new record") {
     // no score, and the 1.1 database holds nothing for the chart. The record
     // is filed under the 1.0 key: the 1.0 side never reads a 1.1 result.
     name(old_store, kOldOnly);
-    test::store_batch_result(old_store, key_for(kOldOnly, true));
+    put_no_paths(old_store, true, kOldOnly);
 
     std::vector<FillCompareRow> rows = compare(old_store, new_store);
     REQUIRE(rows.size() == 1);
@@ -232,13 +245,15 @@ TEST_CASE("tally_fill_rows counts every status") {
     // know lands in no bucket, not in "only 1.1".
     rows[6].status = "no such status";
     rows[7].status = "in both";
-    // Each row counts its library copies (D79 item 3).
-    for (FillCompareRow& r : rows) r.copies = 1;
-    rows[1].copies = 3;
-    rows[4].copies = 2;
+    // Each row counts its chart's library copies (D79 item 3).
+    std::vector<std::pair<std::string, int>> library;
+    for (size_t i = 0; i < rows.size(); ++i) {
+        rows[i].hyhash = "h" + std::to_string(i);
+        library.push_back({rows[i].hyhash, i == 1 ? 3 : (i == 4 ? 2 : 1)});
+    }
 
     app::fill_report::FillCompareStats stats =
-        app::fill_report::tally_fill_rows(rows);
+        app::fill_report::tally_fill_rows(rows, index_of(library));
     CHECK(stats.total == 11);
     CHECK(stats.same == 1);
     CHECK(stats.ch10_higher == 4);
@@ -286,9 +301,7 @@ TEST_CASE("collect_fill_rows: copies come from the 1.1 library, an unlisted char
 
     // The tally, the subtitle and the payload all count the copies.
     const app::fill_report::GeneratedFillReport result =
-        app::fill_report::generate_fill_report(old_store, new_store, kMode,
-                                               store::CapQuery::at(kCloneHeroSpCap),
-                                               store::Lens{});
+        app::fill_report::generate_fill_report(old_store, new_store, testdm::settings());
     const app::fill_report::FillCompareStats& s = result.stats;
     CHECK(s.total == 4);
     CHECK(s.ch11_higher == 2);
@@ -303,6 +316,33 @@ TEST_CASE("collect_fill_rows: copies come from the 1.1 library, an unlisted char
     CHECK(result.html.find("{\"k\":2,") != std::string::npos);
 }
 
+// D115: every count on the page goes through the 1.1 library's
+// ChartIndex::count, so a chart with two library copies counts 2.
+TEST_CASE("collect_fill_rows counts each status through ChartIndex::count") {
+    store::RecordStore old_store(":memory:");
+    store::RecordStore new_store(":memory:");
+    std::vector<store::ChartLibraryEntry> copies(2);
+    for (size_t i = 0; i < copies.size(); ++i) {
+        copies[i].md5 = kBoth;
+        copies[i].title = "Song";
+        copies[i].notespath = "C:\\songs" + std::to_string(i) + "\\notes.chart";
+    }
+    new_store.rebuild_chart_library(copies);
+    REQUIRE(new_store.chart_index().copies(kBoth) == 2);
+    put_ch10(old_store, kBoth, 777000, 2, "tie-path");
+    put_ch11(new_store, kBoth, 777000, 2, "tie-path");
+
+    const std::vector<FillCompareRow> rows = compare(old_store, new_store);
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].status == "same");
+    const app::fill_report::FillCompareStats s =
+        app::fill_report::tally_fill_rows(rows, new_store.chart_index());
+    CHECK(s.same == 2);
+    CHECK(s.total == 2);
+    CHECK(app::fill_report::generate_fill_report(old_store, new_store, testdm::settings()).stats.same ==
+          2);
+}
+
 // The page's chart tiles and the count beside its filters add up each row's
 // "k" in JavaScript, and tally_fill_rows adds up each row's copies by status
 // in C++. The page has to count per filtered view, so it can't print the C++
@@ -314,13 +354,17 @@ TEST_CASE("fill page: the tiles add up the copies tally_fill_rows adds up") {
     const std::vector<std::string> statuses = {"same",     "1.0 higher", "1.1 higher",
                                                "only 1.0", "only 1.1",   "in both"};
     std::vector<FillCompareRow> rows;
+    std::vector<std::pair<std::string, int>> charts;
     for (size_t i = 0; i < statuses.size(); ++i) {
         FillCompareRow r;
         r.status = statuses[i];
+        r.hyhash = "h" + std::to_string(i);
         r.copies = static_cast<int>(i) + 1;
+        charts.push_back({r.hyhash, r.copies});
         rows.push_back(r);
     }
-    const app::fill_report::FillCompareStats st = app::fill_report::tally_fill_rows(rows);
+    const store::ChartIndex library = index_of(charts);
+    const app::fill_report::FillCompareStats st = app::fill_report::tally_fill_rows(rows, library);
     CHECK(st.total == 21);
     CHECK(st.same == 1);
     CHECK(st.ch10_higher == 2);
@@ -329,7 +373,7 @@ TEST_CASE("fill page: the tiles add up the copies tally_fill_rows adds up") {
     CHECK(st.only_new == 5);
     CHECK(st.in_both == 6);
 
-    const std::string html = app::fill_report::build_fill_html(rows, "sub", "foot");
+    const std::string html = app::fill_report::build_fill_html(rows, library, "sub", "foot");
     // The script's STATUS object carries fill_report.h's six words, and the
     // tiles count by its names.
     CHECK(html.find("const STATUS = {sameScore: \"same\", oldHigher: \"1.0 higher\", "
@@ -377,7 +421,8 @@ TEST_CASE("build_fill_html substitutes every placeholder") {
 
     const std::string subtitle = "Subtitle marker 5151";
     const std::string footer = "Footer marker 1515";
-    std::string html = app::fill_report::build_fill_html(rows, subtitle, footer);
+    std::string html =
+        app::fill_report::build_fill_html(rows, new_store.chart_index(), subtitle, footer);
 
     CHECK(html.find("__SUBTITLE__") == std::string::npos);
     CHECK(html.find("__FOOTER__") == std::string::npos);
@@ -421,7 +466,7 @@ TEST_CASE("build_fill_html: text columns sort on the windows' folded text") {
     r.old_path = "0 1 3 0+";
     r.new_path = "0 1 3 0- 0";
     r.status = app::fill_report::kStatusSame;
-    const std::string html = app::fill_report::build_fill_html({r}, "sub", "foot");
+    const std::string html = app::fill_report::build_fill_html({r}, store::ChartIndex{}, "sub", "foot");
     CHECK(html.find(",\"song_s\":\"etude\",\"artist_s\":\"abba\",\"charter_s\":\"me\","
                     "\"p10_s\":\"0 1 3 0+\",\"p11_s\":\"0 1 3 0- 0\",\"status_s\":\"same\"}") !=
           std::string::npos);
@@ -439,13 +484,16 @@ TEST_CASE("build_fill_html: text columns sort on the windows' folded text") {
 TEST_CASE("build_fill_html: the count line's total is singular at one chart") {
     FillCompareRow r;
     r.status = app::fill_report::kStatusSame;
+    r.hyhash = "h0";
     r.copies = 1;
-    const std::string one = app::fill_report::build_fill_html({r}, "sub", "foot");
+    const std::string one =
+        app::fill_report::build_fill_html({r}, index_of({{"h0", 1}}), "sub", "foot");
     CHECK(one.find("  total: \"1 chart\",\n") != std::string::npos);
     CHECK(one.find("__COUNT_TOTAL__") == std::string::npos);
     CHECK(one.find("PAGE.noun") == std::string::npos);
     r.copies = 1000;
-    const std::string many = app::fill_report::build_fill_html({r}, "sub", "foot");
+    const std::string many =
+        app::fill_report::build_fill_html({r}, index_of({{"h0", 1000}}), "sub", "foot");
     CHECK(many.find("  total: \"1,000 charts\",\n") != std::string::npos);
 }
 
@@ -453,7 +501,8 @@ TEST_CASE("build_fill_html colours and sums the delta from the status") {
     // collect_fill_rows already decided which side is higher when it set the
     // row's status; the cell's colour, its "+" and the gains and losses tiles
     // read that answer instead of testing the delta's sign again.
-    const std::string html = app::fill_report::build_fill_html({}, "sub", "foot");
+    const std::string html =
+        app::fill_report::build_fill_html({}, store::ChartIndex{}, "sub", "foot");
     CHECK(html.find("r.status === STATUS.newHigher") != std::string::npos);
     CHECK(html.find("r.status === STATUS.oldHigher") != std::string::npos);
     CHECK(html.find("(r.status === STATUS.newHigher ? '+' : '') + fmt(r.delta)") !=
@@ -472,7 +521,8 @@ TEST_CASE("report payload: the search field is folded and tag-free") {
     row.artist = "Beyonc\xc3\xa9";  // Beyoncé
     row.charter = "<b>Bob</b>";
     row.status = "only 1.1";
-    const std::string html = app::fill_report::build_fill_html({row}, "sub", "foot");
+    const std::string html =
+        app::fill_report::build_fill_html({row}, store::ChartIndex{}, "sub", "foot");
     CHECK(html.find("\"search\":\"halo beyonce bob\"") != std::string::npos);
 }
 
@@ -485,9 +535,7 @@ TEST_CASE("generate_fill_report: tally and framing behind one seam") {
     put_ch11(new_store,kNewOnly, 800000, 5, "only-new");   // only 1.1
 
     app::fill_report::GeneratedFillReport result =
-        app::fill_report::generate_fill_report(old_store, new_store, kMode,
-                                               store::CapQuery::at(kCloneHeroSpCap),
-                                               store::Lens{});
+        app::fill_report::generate_fill_report(old_store, new_store, testdm::settings());
     CHECK(result.stats.total == 3);
     CHECK(result.stats.ch11_higher == 1);
     CHECK(result.stats.only_old == 1);
@@ -501,9 +549,7 @@ TEST_CASE("generate_fill_report: tally and framing behind one seam") {
     store::RecordStore empty_old(":memory:");
     store::RecordStore empty_new(":memory:");
     app::fill_report::GeneratedFillReport none =
-        app::fill_report::generate_fill_report(empty_old, empty_new, kMode,
-                                               store::CapQuery::at(kCloneHeroSpCap),
-                                               store::Lens{});
+        app::fill_report::generate_fill_report(empty_old, empty_new, testdm::settings());
     CHECK(none.stats.total == 0);
     CHECK(none.html.empty());
     // The empty page's reason comes from here, so hydra_fillcompare prints
@@ -516,8 +562,7 @@ TEST_CASE("generate_fill_report: tally and framing behind one seam") {
 
     // Records stored at cap 4, asked at cap 8: the sentence names cap 8.
     app::fill_report::GeneratedFillReport off =
-        app::fill_report::generate_fill_report(old_store, new_store, kMode,
-                                               store::CapQuery::at(8), store::Lens{});
+        app::fill_report::generate_fill_report(old_store, new_store, testdm::settings(testdm::kMode, 8));
     CHECK(off.html.empty());
     CHECK(off.reason ==
           "Nothing is analyzed under these settings (SP cap 8, Expert Pro Drums, 2x Bass) "
@@ -548,9 +593,7 @@ TEST_CASE("generate_fill_report: one chart reads \"1 chart\" in the subtitle") {
     put_ch10(old_store, kBoth, 1000000, 3, "old-path-one");
     put_ch11(new_store, kBoth, 1000000, 3, "new-path-one");
     const app::fill_report::GeneratedFillReport result =
-        app::fill_report::generate_fill_report(old_store, new_store, kMode,
-                                               store::CapQuery::at(kCloneHeroSpCap),
-                                               store::Lens{});
+        app::fill_report::generate_fill_report(old_store, new_store, testdm::settings());
     CHECK(result.html.find("1 chart in ") != std::string::npos);
     CHECK(result.html.find("1 charts") == std::string::npos);
 }
@@ -562,7 +605,7 @@ TEST_CASE("collect_fill_rows: a record on both sides with a score on one is in b
     store::RecordStore old_store(":memory:");
     store::RecordStore new_store(":memory:");
     name(old_store, kBoth);
-    test::store_batch_result(old_store, key_for(kBoth, true));
+    put_no_paths(old_store, true, kBoth);
     put_ch11(new_store, kBoth, 1050000, 4, "new-path-F");
 
     std::vector<FillCompareRow> rows = compare(old_store, new_store);
@@ -577,15 +620,16 @@ TEST_CASE("collect_fill_rows: a record on both sides with a score on one is in b
     store::RecordStore new2(":memory:");
     put_ch10(old2, kBoth, 1000000, 3, "old-path-F");
     name(new2, kBoth);
-    test::store_batch_result(new2, key_for(kBoth, false));
+    put_no_paths(new2, false, kBoth);
     rows = compare(old2, new2);
     REQUIRE(rows.size() == 1);
     CHECK(rows[0].status == "in both");
 
     // The tally counts it by name, and the page lists it under "In both" and
     // writes "no paths" on the side whose analysis kept none (D51 call 11).
-    CHECK(app::fill_report::tally_fill_rows(rows).in_both == 1);
-    const std::string html = app::fill_report::build_fill_html(rows, "sub", "foot");
+    const store::ChartIndex library = new2.chart_index();
+    CHECK(app::fill_report::tally_fill_rows(rows, library).in_both == 1);
+    const std::string html = app::fill_report::build_fill_html(rows, library, "sub", "foot");
     CHECK(html.find("<option value=\"in both\">In both</option>") != std::string::npos);
     CHECK(html.find("__ST_") == std::string::npos);
     CHECK(html.find("'no paths'") != std::string::npos);
@@ -606,13 +650,11 @@ TEST_CASE("generate_fill_report: a score on one side only is counted, and the pa
     put_ch11(new_store, kNewOnly, 800000, 5, "only-new");   // only 1.1
     // A record on both sides, but the 1.0 one has no paths and so no score.
     name(old_store, kOneSided);
-    test::store_batch_result(old_store, key_for(kOneSided, true));
+    put_no_paths(old_store, true, kOneSided);
     put_ch11(new_store, kOneSided, 700000, 2, "one-sided");
 
     app::fill_report::GeneratedFillReport result =
-        app::fill_report::generate_fill_report(old_store, new_store, kMode,
-                                               store::CapQuery::at(kCloneHeroSpCap),
-                                               store::Lens{});
+        app::fill_report::generate_fill_report(old_store, new_store, testdm::settings());
     const app::fill_report::FillCompareStats& s = result.stats;
     CHECK(s.total == 4);
     CHECK(s.in_both == 1);
@@ -640,20 +682,16 @@ TEST_CASE("generate_fill_report: a database with no chart library stops with the
     // them, and a library on one side only: either side without one stops.
     store::RecordStore old_store(":memory:");
     store::RecordStore new_store(":memory:");
-    test::store_batch_result(old_store, key_for(kBoth, true));
+    put_no_paths(old_store, true, kBoth);
     put_ch11(new_store, kBoth, 1050000, 4, "new-path-L");
     const std::string sentence = app::report::kNoChartLibrary;
     const app::fill_report::GeneratedFillReport result =
-        app::fill_report::generate_fill_report(old_store, new_store, kMode,
-                                               store::CapQuery::at(kCloneHeroSpCap),
-                                               store::Lens{});
+        app::fill_report::generate_fill_report(old_store, new_store, testdm::settings());
     CHECK(result.html.empty());
     CHECK(result.reason == sentence);
     // The other way round too.
     const app::fill_report::GeneratedFillReport flipped =
-        app::fill_report::generate_fill_report(new_store, old_store, kMode,
-                                               store::CapQuery::at(kCloneHeroSpCap),
-                                               store::Lens{});
+        app::fill_report::generate_fill_report(new_store, old_store, testdm::settings());
     CHECK(flipped.html.empty());
     CHECK(flipped.reason == sentence);
 }
@@ -664,8 +702,8 @@ TEST_CASE("collect_fill_rows: a result whose chart the library doesn't list is l
     put_ch10(old_store, kBoth, 1000000, 3, "old-path-M");
     put_ch11(new_store, kBoth, 1050000, 4, "new-path-M");
     // A result on each side for charts neither library lists.
-    test::store_batch_result(old_store, key_for(kOldOnly, true));
-    test::store_batch_result(new_store, key_for(kNewOnly, false));
+    put_no_paths(old_store, true, kOldOnly);
+    put_no_paths(new_store, false, kNewOnly);
 
     const std::vector<FillCompareRow> rows = compare(old_store, new_store);
     REQUIRE(rows.size() == 1);

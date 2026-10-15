@@ -44,11 +44,12 @@ private:
 // Fetches one user's scores (GET /api/user/{id}/scores) and joins them
 // against the store by chart hash, in memory, for the comparison window
 // (D103). Same off-thread + cold-start handling as DmFetchUsersJob. It
-// writes and opens nothing.
+// writes and opens nothing. `profile` is the one the comparison lists
+// (Settings::profile_at_clone_hero_cap).
 class DmReportJob : public ResultJobBase {
 public:
     DmReportJob(store::RecordStore& store, std::string discord_id, std::string username,
-                std::string chartmode, store::Lens lens);
+                store::Profile profile);
     ~DmReportJob() { shutdown(); }
 
     void start();
@@ -64,8 +65,7 @@ private:
     store::RecordStore& store_;
     std::string discord_id_;
     std::string username_;
-    std::string chartmode_;
-    store::Lens lens_;
+    store::Profile profile_;
     std::shared_ptr<const app::dm_report::GeneratedDmReport> result_;
 };
 

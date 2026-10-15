@@ -16,6 +16,10 @@ What it compares, and what it leaves out on purpose:
 - result_id is left out. It is only the order the batch's worker threads
   finished in. A results row is matched by its unique key instead, and a
   path_refs row by its result's unique key in place of the result_id.
+- A profile's id is left out the same way, because each file numbers its
+  profiles in the order it first saw them. A profiles row is matched by its
+  unique key, and a records or record_paths row by its profile's unique key in
+  place of the profile_id. OWN_IDS and REFERENCES list these ids.
 - A table with no primary key (charts) is compared row by row in rowid order,
   because the order a scan saved its rows in is part of its answer.
 
@@ -36,13 +40,23 @@ import sqlite3
 import sys
 from pathlib import Path
 
-TABLES = ["results", "paths", "path_refs", "songmeta", "dynamics", "charts", "meta"]
+TABLES = [
+    "results", "paths", "path_refs", "songmeta", "dynamics", "charts", "meta",
+    "profiles", "records", "record_paths",
+]
 SUMMARY_ONLY = "--summary-only"
-SUMMARY_TABLES = ["results", "charts", "meta"]  # what a summary-only store keeps
+# What a summary-only store keeps.
+SUMMARY_TABLES = ["results", "charts", "meta", "profiles", "records", "record_paths"]
 SUMMARY_LEFT_OUT = ["result_id", "structure"]  # results columns never compared there
 SHOWN = 5  # differing keys listed per table
 RESULT_ID = "result_id"
 ROW_NO = "row_no"  # the positional key of a table with no primary key
+# Each table whose primary key is a per-file id, and that id's column.
+OWN_IDS = {"results": RESULT_ID, "profiles": "id"}
+# Each column that holds another table's per-file id, and that table. A row is
+# matched by the referred row's unique key, its columns named with this
+# column's prefix (result_id -> result_hyhash).
+REFERENCES = {RESULT_ID: "results", "profile_id": "profiles"}
 
 
 def ident(name):
@@ -65,14 +79,15 @@ def table_columns(con, schema, table):
 
 
 def unique_key(con, schema, table):
-    """The columns of the table's first unique index that does not use
-    result_id, or None when it has none."""
+    """The columns of the table's first unique index that does not use its
+    per-file id (OWN_IDS, result_id by default), or None when it has none."""
+    own_id = OWN_IDS.get(table, RESULT_ID)
     for idx in con.execute(f"PRAGMA {schema}.index_list({ident(table)})").fetchall():
         name, unique = idx[1], idx[2]
         if not unique:
             continue
         cols = [r[2] for r in con.execute(f"PRAGMA {schema}.index_info({ident(name)})")]
-        if cols and RESULT_ID not in cols:
+        if cols and own_id not in cols:
             return cols
     return None
 
@@ -91,29 +106,41 @@ class Plan:
 
 
 def plan_for(con, table, names, pk):
-    if pk == [RESULT_ID]:
+    own_id = OWN_IDS.get(table, RESULT_ID)
+    if pk == [own_id]:
         keys = unique_key(con, "main", table)
         if keys is None:
-            raise SystemExit(f"{table}: keyed by result_id alone and has no other unique key")
-        values = [c for c in names if c != RESULT_ID and c not in keys]
+            raise SystemExit(f"{table}: keyed by {own_id} alone and has no other unique key")
+        values = [c for c in names if c != own_id and c not in keys]
         cols = ", ".join(ident(c) for c in keys + values)
         return Plan(keys, values, lambda s: f"SELECT {cols}, 1 AS present_ FROM {s}.{ident(table)}")
 
-    if RESULT_ID in pk:
-        rkeys = unique_key(con, "main", "results")
-        if rkeys is None:
-            raise SystemExit(f"{table}: refers to results, which has no unique key")
-        own_keys = [c for c in pk if c != RESULT_ID]
-        keys = ["result_" + c for c in rkeys] + own_keys
-        values = [c for c in names if c != RESULT_ID and c not in own_keys]
-        rcols = ", ".join(f"r.{ident(c)} AS {ident('result_' + c)}" for c in rkeys)
+    refs = [c for c in pk if c in REFERENCES]
+    if refs:
+        keys, joined, joins = [], [], []
+        for n, ref in enumerate(refs):
+            target = REFERENCES[ref]
+            rkeys = unique_key(con, "main", target)
+            if rkeys is None:
+                raise SystemExit(f"{table}: refers to {target}, which has no unique key")
+            prefix = ref.removesuffix("_id") + "_"
+            alias = f"r{n}"
+            keys += [prefix + c for c in rkeys]
+            joined += [f"{alias}.{ident(c)} AS {ident(prefix + c)}" for c in rkeys]
+            joins.append((alias, target, ref))
+        own_keys = [c for c in pk if c not in refs]
+        keys += own_keys
+        values = [c for c in names if c not in refs and c not in own_keys]
+        rcols = ", ".join(joined)
         tcols = ", ".join(f"t.{ident(c)}" for c in own_keys + values)
 
         def select(s):
-            return (
-                f"SELECT {rcols}, {tcols}, 1 AS present_ FROM {s}.{ident(table)} t"
-                f" LEFT JOIN {s}.results r ON r.{RESULT_ID} = t.{RESULT_ID}"
+            join_text = "".join(
+                f" LEFT JOIN {s}.{ident(target)} {alias}"
+                f" ON {alias}.{ident(OWN_IDS[target])} = t.{ident(ref)}"
+                for alias, target, ref in joins
             )
+            return f"SELECT {rcols}, {tcols}, 1 AS present_ FROM {s}.{ident(table)} t{join_text}"
 
         return Plan(keys, values, select)
 
@@ -232,7 +259,7 @@ def compare_summary_results(con):
 
 
 def compare_summary(con):
-    """--summary-only: results, charts and meta; names every other table."""
+    """--summary-only: the tables in SUMMARY_TABLES; names every other table."""
     others = (table_names(con, "main") | table_names(con, "b")) - set(SUMMARY_TABLES)
     print(f"skipped tables: {', '.join(sorted(others)) or 'none'}")
     all_match = compare_summary_results(con)

@@ -86,20 +86,22 @@ struct DmReportRow {
 std::string why_not_comparable(Difficulty difficulty, int sp_cap, bool legacy_fills,
                                bool note_shuffle);
 
-// Joins every fetched score against the store's records for `chartmode`,
-// preferring the leaderboard's own song/artist metadata and falling back to the
-// joined Hydra record's when the leaderboard entry is an "unknown" one.
+// Joins every fetched score against the store's Ready records under
+// `profile` (RecordStore::ready_records), preferring the leaderboard's own
+// song/artist metadata and falling back to the library's names for the
+// joined chart (ChartIndex::naming) when the leaderboard entry is an
+// "unknown" one. `profile` is the one the page lists:
+// Settings::profile_at_clone_hero_cap names it.
 // Throws an AlreadyPlain KindedError with why_not_comparable's sentence when
-// `chartmode` or `lens` breaks a Clone Hero rule (the window's Refresh, Try
-// again and "Compare another player..." reach here without the toolbar's
-// check, D114 item 6), and with report::kNoChartLibrary when the store has
-// results but no library (report::lacks_chart_library, D92). A `chartmode` no
-// settings spell throws (Settings::with_known_chartmode). Only results whose
-// chart the library lists join (report::records_by_hash).
+// `profile` breaks a Clone Hero rule (the window's Refresh, Try again and
+// "Compare another player..." reach here without the toolbar's check, D114
+// item 6), and with report::kNoChartLibrary when the store has results but no
+// library (report::lacks_chart_library, D92). A chart mode no settings spell
+// throws (Settings::with_known_chartmode). Only results whose chart the
+// library lists join (ChartIndex::lists).
 std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
                                          const std::vector<net::DmScore>& scores,
-                                         const std::string& chartmode,
-                                         const store::Lens& lens);
+                                         const store::Profile& profile);
 
 // ---- generate_dm_report ----------------------------------------------------
 // The whole comparison in one call: join + tally + the standard page framing.
@@ -194,16 +196,16 @@ struct GeneratedDmReport {
     // shows them. Empty when the user had no scores to compare.
     std::string subtitle;
     std::string footer;
-    // Whose scores, compared in which chart mode: generate_dm_report's own
-    // arguments, set even when there were no scores.
+    // Whose scores, compared in which chart mode: generate_dm_report's
+    // username and its profile's chart mode, set even when there were no
+    // scores.
     std::string username;
     std::string chartmode;
 };
 
 GeneratedDmReport generate_dm_report(store::RecordStore& store,
                                      const std::vector<net::DmScore>& scores,
-                                     const std::string& chartmode,
-                                     const store::Lens& lens,
+                                     const store::Profile& profile,
                                      const std::string& username);
 
 // Whether moving from `before` to `after` changes a setting the comparison

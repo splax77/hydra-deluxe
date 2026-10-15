@@ -68,9 +68,6 @@ int fillcompare_main() {
 
     hydra::app::Settings settings = hydra::app::Settings::load();
     if (const int code = hydra::app::load_tool_rules(rulespath, settings.rules)) return code;
-    std::string chartmode = settings.chartmode_key();
-    hydra::store::CapQuery cap = settings.cap_query();
-    hydra::store::Lens lens = settings.lens();
 
     // A database that won't open is a run that can't start (D72 item 5).
     std::unique_ptr<hydra::store::RecordStore> old_store, new_store;
@@ -84,7 +81,7 @@ int fillcompare_main() {
     // generate_fill_report reads each side under its own fill rule, so either
     // file may hold both rules.
     hydra::app::fill_report::GeneratedFillReport report =
-        hydra::app::fill_report::generate_fill_report(*old_store, *new_store, chartmode, cap, lens);
+        hydra::app::fill_report::generate_fill_report(*old_store, *new_store, settings);
 
     old_store->close();
     new_store->close();

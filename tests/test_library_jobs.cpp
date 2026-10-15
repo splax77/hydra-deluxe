@@ -414,7 +414,7 @@ TEST_CASE("jobs: a cancelled leaderboard fetch is not an error") {
                 wait_until([cancel] { return cancel->load(); }, "the fetch to be cancelled");
                 throw std::runtime_error("cancelled");
             });
-        hydra::ui::DmReportJob thrown(store, "1", "someone", "jobs-test", hydra::store::Lens{});
+        hydra::ui::DmReportJob thrown(store, "1", "someone", hydra::store::Profile{"jobs-test"});
         thrown.start();
         thrown.cancel();
         wait_until([&] { return thrown.finished(); }, "the cancelled fetch to finish");
@@ -429,7 +429,7 @@ TEST_CASE("jobs: a cancelled leaderboard fetch is not an error") {
             wait_until([cancel] { return cancel->load(); }, "the fetch to be cancelled");
             return "{}";
         });
-    hydra::ui::DmReportJob late(store, "1", "someone", "jobs-test", hydra::store::Lens{});
+    hydra::ui::DmReportJob late(store, "1", "someone", hydra::store::Profile{"jobs-test"});
     late.start();
     late.cancel();
     wait_until([&] { return late.finished(); }, "the late fetch to finish");
