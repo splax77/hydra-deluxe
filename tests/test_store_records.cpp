@@ -76,9 +76,10 @@ TEST_CASE("store: a saved analysis reads back Ready with its paths in rank order
         CHECK(got.record.paths[i].rank == static_cast<int>(i + 1));
     CHECK(got.record.paths.size() <= static_cast<size_t>(kPathsPerRecord));
     CHECK(got.record.pathcount == static_cast<int>(analysis.all_paths().size()));
-    // Rank 1 is what the old summary said.
-    CHECK(got.record.summary() == summarize_record(analysis));
-    CHECK(got.record.paths.front().path == best_path_text(analysis));
+    // Rank 1 is the engine's best path, and the summary reads its score.
+    const Path& best = analysis.best_path();
+    CHECK(got.record.best_path_text() == best.pathstring());
+    CHECK(got.record.summary().score == std::optional<int64_t>(best.totalscore()));
     CHECK(got.record.paths.front().optimal);
 }
 
