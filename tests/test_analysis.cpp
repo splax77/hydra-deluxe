@@ -228,9 +228,9 @@ TEST_CASE("a BatchRun made from Settings has Settings::profile as its profile") 
     settings.view_bass2x = true;
     settings.sp_cap = 4;
     settings.legacy_fills = true;
-    settings.depth_value = 25;
+    settings.depth_value = Settings{}.depth_value + 1;
     settings.mslimit_enabled = true;
-    settings.mslimit_value = 12;
+    settings.mslimit_value = Settings{}.mslimit_value + 1;
     CHECK(settings.batch_run().profile() == settings.profile());
     CHECK(Settings{}.batch_run().profile() == Settings{}.profile());
     CHECK(settings.batch_run().profile() != Settings{}.batch_run().profile());
