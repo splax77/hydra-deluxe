@@ -64,11 +64,6 @@ struct ReportWindowInput {
     // out-of-date line's "(a batch finished at HH:MM)". Unset: the line
     // names no time (D103 item 21).
     std::optional<std::chrono::system_clock::time_point> batch_finished;
-    // The path report's progress while it builds, as ReportOptions::progress
-    // reports it (what it counts is said there). A total of 0 shows no count.
-    // The comparison has no count.
-    int progress_done = 0;
-    int progress_total = 0;
     // The path report only: hydra_rules.ini's error while analysis is off
     // (AppState::rules_error), shown when no report is in memory. Empty when
     // analysis is on.
@@ -136,11 +131,9 @@ struct Frame {
     ReportBuild state = ReportBuild::None;
     ReportOutOfDate out_of_date = ReportOutOfDate::None;
     std::optional<std::chrono::system_clock::time_point> batch_finished;
-    // Building: the bar's count, or no count for a moving bar, and the lines
-    // above it.
-    std::optional<std::pair<int, int>> progress;
-    // Building: false draws no bar at all (the path report, which only reads
-    // the store).
+    // Building: the moving bar (neither report has a count to show), and the
+    // lines above it. False draws no bar at all (the path report, which only
+    // reads the store).
     bool progress_bar = true;
     std::vector<const char*> building_lines;
     // Building: grey rows where the table will be (mock board 2a).
