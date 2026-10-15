@@ -275,12 +275,12 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
             scene.sp_phrases.push_back(
                 span_from_ticks(song, *ts.sp_phrase_start, ts.timecode.ticks()));
 
-        // Activation fill: the window ends at this note, `activation_length`
-        // ticks wide.
+        // Activation fill: the window ends at this note and starts where
+        // fill_start_tick says.
         if (ts.activation_length.has_value()) {
-            int64_t end = ts.timecode.ticks();
+            const int64_t chord = ts.timecode.ticks();
             PreviewFill f;
-            f.span = span_from_ticks(song, end - *ts.activation_length, end);
+            f.span = span_from_ticks(song, fill_start_tick(chord, *ts.activation_length), chord);
             scene.fills.push_back(f);  // state is filled in from the path below
         }
     }
