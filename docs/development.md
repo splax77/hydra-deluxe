@@ -17,10 +17,10 @@ hydra_batch <folder> [...]     ...or specific folders instead
 hydra_batch --redo             Re-analyze charts already stored
 hydra_batch --db <path>        Target a specific database
 hydra_batch --rules <path>     Take the rule choices from this file, not hydra_rules.ini
-hydra_batch --legacy-fills     Score fills by Clone Hero 1.0's rule (needs its own --db)
+hydra_batch --legacy-fills     Score fills by Clone Hero 1.0's rule
 
-hydra_fillcompare --old <ch10.db> --new <ch11.db>
-                               Compare Clone Hero 1.0 and 1.1 fill results, chart by chart
+hydra_fillcompare              Compare Clone Hero 1.0 and 1.1 fill results, chart by chart
+hydra_fillcompare --db <path>  Compare the results in a specific database
 hydra_fillcompare ... --out fill_compare.html
 hydra_fillcompare ... --rules <path>
 hydra_fillcompare ... --no-open
@@ -37,27 +37,29 @@ setting scores by the older 1.0 rule instead. Each result remembers which rule
 made it, so a song's 1.0 and 1.1 results sit side by side in `hydra.db`.
 
 `hydra_batch --legacy-fills` does the same from the command line. It ignores
-the app's 1.0 fills setting and goes by the flag alone. It still refuses to
-write into the app's own `hydra.db`, so give it its own `--db`. Each database it
-fills is stamped with the rule, and hydra_batch refuses (exit code 2) a run
-whose rule disagrees with the stamp.
+the app's 1.0 fills setting and goes by the flag alone. Its results go into the
+same database as any other run, the app's own `hydra.db` unless `--db` names
+another, beside the 1.1 results.
 
-To see what the rule change did, compare the two. `hydra_fillcompare` reads
-the 1.0 results from `--old` and the 1.1 results from `--new`. Each chart's
-row is labelled by which database holds a result for it. Narrow columns name
-the rules CH 1.0 and CH 1.1. Like the path report, it compares library charts
-only. A database built by `hydra_batch` with folder arguments has no chart
-library, so it stops with the path report's sentence. D92 and
+To see what the rule change did, compare the two. `hydra_fillcompare` reads a
+chart's 1.0 result and its 1.1 result from one database: the app's own
+`hydra.db`, or the file `--db` names. A chart with a result under only one
+rule still gets a row, labelled by that rule. Narrow columns name the rules
+CH 1.0 and CH 1.1. Like the path report, it compares library charts only. A
+database built by `hydra_batch` with folder arguments has no chart library,
+so it stops with the path report's sentence. D92 and
 `report::lacks_chart_library` own that rule, and ADR 0026 explains it. The
-dmleaderboards comparison follows it too. The two databases can be two
-files, or the app's own database twice:
+dmleaderboards comparison follows it too. To fill a database with both rules'
+results, run `hydra_batch` once plain and once with `--legacy-fills`:
 
 ```
-hydra_batch --legacy-fills --db ch10.db
-hydra_batch --db ch11.db
-hydra_fillcompare --old ch10.db --new ch11.db
+hydra_batch
+hydra_batch --legacy-fills
+hydra_fillcompare
 
-hydra_fillcompare --old hydra.db --new hydra.db
+hydra_batch --db both.db
+hydra_batch --legacy-fills --db both.db
+hydra_fillcompare --db both.db
 ```
 
 ## Building from source
