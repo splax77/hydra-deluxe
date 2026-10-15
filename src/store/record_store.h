@@ -318,8 +318,8 @@ PreparedRecord prepare_record(std::string song_id, const Profile& profile,
 
 // What a record lookup found. `record` is filled only when status is Ready:
 // a Stale record's numbers came from a build or rules this one doesn't trust.
-// SummaryLookup stays its own type until get_summaries is rebuilt on the
-// record lookup, because its readers still read `bestpath` and `summary`.
+// SummaryLookup stays its own type while its readers still read `bestpath`
+// and `summary`; get_summaries reads them off this lookup.
 struct RecordLookup {
     RecordStatus status = RecordStatus::NotAnalyzed;
     // Why a Stale record is Stale, as in SummaryLookup.
@@ -483,6 +483,14 @@ public:
 
     // ---- writing ----------------------------------------------------------
 
+    // The one save (D115). In one transaction, or one SAVEPOINT of the open
+    // save group when there is one: deletes the chart's records under every
+    // profile whose results stamp this build cannot read, in any mode; files
+    // the record under its profile, this build's stamp and its rules,
+    // replacing the chart's record there; deletes any profile left with no
+    // records. A record made under other rules stays (D51 call 8).
+    void save(const PreparedRecord& prepared);
+
     void add_record(const RecordKey& key, const HydraRecord& record);
     void add_row(const PreparedRow& row);
 
@@ -532,6 +540,23 @@ public:
 
     // ---- reading ------------------------------------------------------
 
+    // The one status lookup (D115): one answer per entry of `song_ids`, in
+    // the same order (a repeated id gets the same answer twice). The
+    // candidates are the chart's records under `want`'s mode, cap and lens,
+    // whatever their stamp and rules; the winner is Ready, Stale (with why)
+    // or, with no candidate, NotAnalyzed. A Ready answer carries the whole
+    // record, its paths in rank order. Ids are sent in chunks under SQLite's
+    // bound-value limit.
+    std::vector<RecordLookup> lookup(const std::vector<std::string>& song_ids,
+                                     const Profile& want);
+    RecordLookup lookup_one(const std::string& song_id, const Profile& want);
+    // Every chart lookup calls Ready under `want`: the batch's skip list.
+    std::unordered_set<std::string> ready_song_ids(const Profile& want);
+    // Every Ready record under `want`, paths included, best score first (a
+    // record with no paths last, equal scores by song id). Names come from
+    // chart_index(), not from here.
+    std::vector<RecordRow> ready_records(const Profile& want);
+
     // The row's status, best-path string and summary.
     // Always returns a value; bestpath is set only when status is Ready.
     SummaryLookup get_summary(const RecordKey& key);
@@ -543,15 +568,11 @@ public:
     std::vector<SummaryLookup> get_summaries(const std::vector<std::string>& hyhashes,
                                              const ResultSettings& want);
 
-    // True when get_summary reads this exact key as Ready: get_summaries is
-    // the one owner of "this chart has a current result under these
-    // settings" (D79).
+    // True when lookup reads this exact key as Ready: lookup is the one
+    // owner of "this chart has a current result under these settings" (D79).
     bool has_record(const RecordKey& key);
 
-    // Every chart has_record would say yes to, for one chart mode, cap and
-    // lens: the batch's skip list for the whole library. get_summaries
-    // answers for each chart, so the skip list and the library's Analyzed
-    // chip cannot disagree (D79).
+    // The old name of ready_song_ids, kept while callers move (D115).
     std::unordered_set<std::string> analyzed_hashes(const ResultSettings& want);
 
     // How many rows the library table lists for each chart, by md5: the
@@ -719,11 +740,31 @@ private:
     // one, column by column as stored, counting each into rows_done for the
     // report.
     void copy_table(const char* table, int64_t& rows_done, int64_t rows_total);
+    // The frame of save and save_analysis: takes the lock and runs `work`
+    // in a SAVEPOINT of the open save group, or in a transaction of its own
+    // when no group is open. A failure undoes only this chart's writes.
+    template <class F>
+    void in_save_frame(F work);
+    // Which of the chart's unreadable records a save purges: in every mode
+    // (save), or only in the record's own mode (write_row, the old save's
+    // scope, which the old store tests' fixtures rely on; A1-5 deletes it
+    // with write_row).
+    enum class PurgeScope { EveryMode, ThisMode };
+    // The body of every save (save, and save_analysis through write_row):
+    // the purge, the record and the emptied profiles, as save says.
+    // `hyversion` is the stamp the record is filed under. The caller holds
+    // the lock and an open transaction.
+    void file_record(const Profile& profile, const std::string& hyversion, uint64_t rules_fp,
+                     const RecordRow& record, PurgeScope scope);
     // The body of add_row and save_analysis: a PreparedRow, which holds only
-    // a summary, filed as a record with its best path as rank 1, the way
-    // convert_results files an old row. The caller holds the lock and an
-    // open transaction.
+    // a summary, filed through file_record as a record with its best path as
+    // rank 1, the way convert_results files an old row. The caller holds the
+    // lock and an open transaction.
     void write_row(const PreparedRow& row);
+    // Every chart with a record under `want`'s mode, cap and lens, any stamp
+    // or rules: what lookup is asked about to list the Ready ones. The
+    // caller holds the lock.
+    std::vector<std::string> candidate_song_ids(const Profile& want);
     // The id of the profile row for these settings, stamp and rules
     // fingerprint (the rules_fp column's bytes), inserted when there is none.
     // The caller holds the lock and an open transaction.

@@ -4,7 +4,10 @@
 //   hydra_uitest --test <name>         run one (e.g. scan, analyze); repeatable
 //   hydra_uitest --script <file>       run a command file
 //   hydra_uitest --list                list the tests
-//   options: --keep-temp  --shots <dir>  --jobs <n>
+//   options: --keep-temp  --shots <dir>  --jobs <n>  --db <file>  --ini <file>
+//
+// --db and --ini start each test from a copy of that database or settings
+// file (reset_app makes the copy; the app never opens the original).
 //
 // --all, or more than one --test, runs each chosen test in its own
 // hydra_uitest process, at most --jobs at once (kDefaultJobs when not given),
@@ -82,7 +85,7 @@ LONG WINAPI on_crash(EXCEPTION_POINTERS* info) {
 int usage() {
     std::fprintf(stderr,
                  "usage: hydra_uitest (--all | --test <name> | --script <file> | --list)"
-                 " [--keep-temp] [--shots <dir>] [--jobs <n>] [--db <file>]\n");
+                 " [--keep-temp] [--shots <dir>] [--jobs <n>] [--db <file>] [--ini <file>]\n");
     return 2;
 }
 
@@ -271,18 +274,20 @@ int main() {
             if (!next(h.shots_dir)) return usage();
             passthrough.push_back(a);
             passthrough.push_back(h.shots_dir);
-        } else if (a == "--db") {
-            if (!next(h.seed_db)) return usage();
+        } else if (a == "--db" || a == "--ini") {
+            std::string& seed = a == "--db" ? h.seed_db : h.seed_ini;
+            if (!next(seed)) return usage();
             // A mistyped path must not quietly run every test on an empty
-            // database, where a "reads Stale" check could still pass.
+            // database, where a "reads Stale" check could still pass, or on
+            // the default settings.
             std::error_code ec;
-            if (!std::filesystem::is_regular_file(std::filesystem::u8path(h.seed_db), ec)) {
-                std::fprintf(stderr, "hydra_uitest: --db \"%s\" is not a database file\n",
-                             h.seed_db.c_str());
+            if (!std::filesystem::is_regular_file(std::filesystem::u8path(seed), ec)) {
+                std::fprintf(stderr, "hydra_uitest: %s \"%s\" is not a %s file\n", a.c_str(),
+                             seed.c_str(), a == "--db" ? "database" : "settings");
                 return 1;
             }
             passthrough.push_back(a);
-            passthrough.push_back(h.seed_db);
+            passthrough.push_back(seed);
         } else if (a == "--jobs") {
             if (!next(v)) return usage();
             jobs = std::atoi(v.c_str());

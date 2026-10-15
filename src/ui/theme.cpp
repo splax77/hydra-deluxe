@@ -49,7 +49,6 @@ void apply_theme() {
     colors[ImGuiCol_ChildBg] = dpg_window;
     colors[ImGuiCol_PopupBg] = dpg_window;
     colors[ImGuiCol_FrameBg] = dpg_surface;
-    colors[ImGuiCol_Header] = dpg_surface;
     colors[ImGuiCol_Border] = dpg_border;
     colors[ImGuiCol_Separator] = dpg_border;
     colors[ImGuiCol_ScrollbarBg] = dpg_surface;
@@ -68,6 +67,7 @@ void apply_theme() {
     colors[ImGuiCol_CheckMark] = kAccentColor;
     colors[ImGuiCol_FrameBgHovered] = kFrameHoveredColor;
     colors[ImGuiCol_FrameBgActive] = ImVec4(0, 150 / 255.0f, 150 / 255.0f, 1.0f);
+    colors[ImGuiCol_Header] = kSelectedRowColor;
     colors[ImGuiCol_HeaderHovered] = kFrameHoveredColor;
     colors[ImGuiCol_HeaderActive] = kAccentColor;
     colors[ImGuiCol_TitleBgActive] = ImVec4(100 / 255.0f, 0, 0, 1.0f);

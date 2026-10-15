@@ -1,6 +1,15 @@
 {
   "known_copies": [
     {
+      "question": "How does an analysis become a record and its path rows?",
+      "file": "src/app/report.cpp",
+      "line_text": "const std::vector<const Path*> paths = record.all_paths();",
+      "removed_by": "D115-A2-2",
+      "date": "2026-10-14",
+      "added_by": "D115-A1-2",
+      "remove_by": "2026-10-28"
+    },
+    {
       "question": "Under which settings is a chart analyzed (its profile)?",
       "file": "src/app/analysis.h",
       "line_text": "store::ResultSettings filed_under() const { return {chartmode, cap_query(), lens}; }",
@@ -88,15 +97,6 @@
       "removed_by": "D115-A2-4",
       "date": "2026-10-14",
       "added_by": "D115-A1-4",
-      "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Which way is text aligned?",
-      "file": "src/app/path_view.cpp",
-      "line_text": "std::snprintf(buf, sizeof(buf), \"%10s\", group_thousands(v).c_str());",
-      "removed_by": "CS-T5b: the score breakdown's numbers start in one column after the longest label (answer 11)",
-      "date": "2026-10-14",
-      "added_by": "CS-T5a",
       "remove_by": "2026-10-28"
     }
   ],

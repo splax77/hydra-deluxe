@@ -814,9 +814,9 @@
     },
     {
       "question": "How does a test build a per-process scratch path?",
-      "owner": "temp_path and temp_dir in tests/temp_util.h",
+      "owner": "temp_root, temp_path and temp_dir in tests/temp_util.h",
       "owner_file": "tests/temp_util.h",
-      "owner_symbol": "temp_path",
+      "owner_symbol": "temp_root",
       "date": "2026-10-05",
       "decision": "D53, D54",
       "added_by": "J4-6",
@@ -842,7 +842,7 @@
         {
           "file": "tests/temp_util.h",
           "line_text": "GetTempPathW(MAX_PATH, tmp);",
-          "why": "temp_path, the owner"
+          "why": "temp_root, the owner"
         },
         {
           "file": "tests/test_helpers.cpp",

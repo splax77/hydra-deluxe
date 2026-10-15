@@ -50,6 +50,9 @@ struct Harness {
     // --db: each test starts from a copy of this database instead of an
     // empty one. The file itself is only read, never opened by the app.
     std::string seed_db;
+    // --ini: each test starts from a copy of this settings file instead of
+    // scratch_settings(). Copied the same way as seed_db.
+    std::string seed_ini;
 
     std::unique_ptr<hydra::ui::AppState> app;
     // Set by reset_app for the one frame that runs with the old app undrawn,
@@ -96,7 +99,8 @@ struct Harness {
 bool selects(const std::string& what, const char* test_name);
 
 // Fresh app state for a test: rewrite the scratch INI from
-// scratch_settings() (tests/scratch_settings.h), delete the DB, rebuild AppState on those
+// scratch_settings() (tests/scratch_settings.h) or copy --ini's seed over it,
+// delete the DB or copy --db's seed over it, rebuild AppState on those
 // paths, and (re)install the headless seams. Call at the start of TestFunc —
 // the GUI thread is parked between frames while TestFunc runs, so swapping
 // the AppState here is safe.
@@ -216,12 +220,17 @@ ImGuiWindow* window_named(const char* part);
 // Whether `row` sits wholly inside the list's visible area.
 bool fully_shown(const ImGuiWindow* list, const ImRect& row);
 
-// Print the widget tree (label, id, state flags, rect) of one window, or of
-// every window when `window_name` is empty.
-void dump_widgets(ImGuiTestContext* ctx, const std::string& window_name);
+// The widget tree (label, id, state flags, rect) of every window whose name
+// holds `window_name`, or of every window when it is empty. One line per
+// window and per item, each ending in a newline.
+std::string widget_dump(ImGuiTestContext* ctx, const std::string& window_name);
 
-// Print the key AppState fields.
-void dump_state(Harness& h);
+// One item's line in widget_dump's shape, indented two spaces per `depth`.
+// The one place an item line is formatted.
+std::string item_line(const ImGuiTestItemInfo& it, int depth);
+
+// The key AppState fields, one per line, each ending in a newline.
+std::string state_text(Harness& h);
 
 // Save the current frame to `file` (PNG). Returns false if the capture failed.
 bool screenshot(ImGuiTestContext* ctx, const std::string& file);

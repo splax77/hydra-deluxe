@@ -27,11 +27,16 @@ TEST_CASE("build_score_breakdown: exact lines, rounded like the report") {
 
     std::vector<std::string> lines = build_score_breakdown(p);
     REQUIRE(lines.size() == 8);
-    // Rounded to three places, the same as the report's mult column.
-    CHECK(lines[0] == "Average Multiplier:   1.667x");
-    CHECK(lines[1] == "\nNotes:                     3");
-    CHECK(lines[2] == "Combo Bonus:               2");
-    CHECK(lines[7] == "\nTotal Score:               5");
+    // Rounded to three places, the same as the report's mult column. The
+    // number column is build_score_breakdown's rule; these literals pin one run.
+    CHECK(lines[0] == "Average Multiplier:  1.667x");
+    CHECK(lines[1] == "\nNotes:               3");
+    CHECK(lines[2] == "Combo Bonus:         2");
+    CHECK(lines[3] == "Star Power:          0");
+    CHECK(lines[4] == "Solo Bonus:          0");
+    CHECK(lines[5] == "Accent Notes:        0");
+    CHECK(lines[6] == "Ghost Notes:         0");
+    CHECK(lines[7] == "\nTotal Score:         5");
 }
 
 TEST_CASE("path buttons: each path's own hardest timing, warn past the difficult floor") {
