@@ -37,7 +37,7 @@
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file
-#include "display_fixtures.h"  // store_batch_result, old_build_row
+#include "display_fixtures.h"  // save_batch_record, save_old_build_record
 #include "midi_util.h"
 #include "parse/song.h"
 #include "sng_util.h"
@@ -201,14 +201,16 @@ TEST_CASE("charts_with_result counts a Ready record and not a Stale or sibling-p
     const BatchRun run = settings.batch_run();
     hydra::store::RecordStore store(":memory:");
     // Ready under the run's profile.
-    hydra::test::store_batch_result(store, "ready", settings.sp_cap);
+    hydra::test::save_batch_record(store, "ready", settings.sp_cap);
     // Ready, but under a sibling profile: the same chart mode at another cap.
-    hydra::test::store_batch_result(store, "sibling", settings.sp_cap + 1);
+    hydra::test::save_batch_record(store, "sibling", settings.sp_cap + 1);
     // Under the run's profile, but Stale: another build wrote it.
-    store.add_row(hydra::test::old_build_row(
-        settings.record_key("stale"),
-        analyze_chart_file(corpus::first_chart_with_notes(), settings.to_analysis_settings())
-            .record));
+    hydra::test::save_old_build_record(
+        store, hydra::store::prepare_record(
+                   "stale", settings.profile(),
+                   analyze_chart_file(corpus::first_chart_with_notes(),
+                                      settings.to_analysis_settings())
+                       .record));
     REQUIRE(store.lookup_one("stale", run.profile).status == hydra::store::RecordStatus::Stale);
     REQUIRE(store.lookup_one("sibling", run.profile).status ==
             hydra::store::RecordStatus::NotAnalyzed);
@@ -461,7 +463,7 @@ TEST_CASE("run_batch: cancel stops running searches within seconds") {
     CHECK(seconds < 5.0);        // without the cancel check this takes 40 s
     CHECK(errors == 0);          // a stopped search is not a failure...
     CHECK(results == 0);         // ...and not a result
-    CHECK(store.counts().second == 0);
+    CHECK(store.record_count() == 0);
 }
 
 TEST_CASE("run_batch: a cancelled real search is neither a result nor a failure") {
@@ -495,7 +497,7 @@ TEST_CASE("run_batch: a cancelled real search is neither a result nor a failure"
 
     CHECK(errors == 0);
     CHECK(results == 0);
-    CHECK(store.counts().second == 0);
+    CHECK(store.record_count() == 0);
 }
 
 TEST_CASE("run_batch analyzes a chart found in two folders once, and counts both rows") {
@@ -976,7 +978,7 @@ TEST_CASE("run_batch: a group commits before any of its charts is reported") {
     {
         hydra::store::RecordStore store(path);
         run_planned(fake_items(40), run, store, /*redo=*/false, 4, callbacks);
-        CHECK(store.counts().second == 40);
+        CHECK(store.record_count() == 40);
     }
     CHECK(reported == 40);
     CHECK(visible == 40);
@@ -1003,10 +1005,10 @@ TEST_CASE("run_batch: cancel during a group writes nothing more and leaves no tr
     CHECK(results >= 5);
     CHECK(results < 200);
     // Every stored chart was reported, and nothing was stored unreported.
-    CHECK(store.counts().second == results);
+    CHECK(store.record_count() == results);
     // No group was left open: a plain save still runs its own transaction.
     store.save(hydra::store::prepare_record("after", run.profile, real.record));
-    CHECK(store.counts().second == results + 1);
+    CHECK(store.record_count() == results + 1);
 }
 
 TEST_CASE("run_batch: a failed group COMMIT saves each chart alone, and only a chart whose own "
@@ -1040,7 +1042,7 @@ TEST_CASE("run_batch: a failed group COMMIT saves each chart alone, and only a c
                               "then try again.|saving a record",
                               0) == 0);
         CHECK(errors[0].find("boom", 5) != std::string::npos);
-        CHECK(store.counts().second == 2);
+        CHECK(store.record_count() == 2);
         const std::unordered_set<std::string> stored = charts_with_result(store, run, false);
         CHECK(stored.count("fake0") == 1);
         CHECK(stored.count("fake2") == 1);

@@ -19,7 +19,7 @@
 #include "core/winstr.h"  // os_path
 #include "corpus_util.h"
 #include "db_file_util.h"  // scalar_on_file
-#include "display_fixtures.h"  // old_build_row, other_rules_record
+#include "display_fixtures.h"  // save_old_build_record, kOldBuildStamp, other_rules_record
 #include "parse/song.h"
 #include "store/record_store.h"
 #include "store_fixtures.h"  // fixture, at_cap, no_paths_at_cap
@@ -135,8 +135,8 @@ TEST_CASE("store: a save purges the chart's unreadable records in every mode and
     {
         RecordStore store(file.path);
         // An old build's record in another mode, then a save in this one.
-        const RecordKey other{"h1", "other mode", CapQuery::at(4), Lens{}};
-        store.add_row(hydra::test::old_build_row(other, fixture().record));
+        hydra::test::save_old_build_record(
+            store, prepare_record("h1", at4("other mode"), fixture().record));
         REQUIRE(store.lookup_one("h1", at4("other mode")).status == RecordStatus::Stale);
         store.save(prepare_record("h1", at4(), fixture().record));
 
@@ -146,6 +146,22 @@ TEST_CASE("store: a save purges the chart's unreadable records in every mode and
     // The old build's profile went with its last record.
     CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 1);
     CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles WHERE hyversion='0.0.0'") == 0);
+}
+
+TEST_CASE("store: a record saved under another build's stamp reads back Stale for that build") {
+    RecordStore store(":memory:");
+    const PreparedRecord prepared = prepare_record("h1", at4(), fixture().record);
+    store.save_under_build_for_test(prepared, hydra::test::kOldBuildStamp);
+
+    const RecordLookup got = store.lookup_one("h1", at4());
+    CHECK(got.status == RecordStatus::Stale);
+    CHECK(got.stale_build);
+    CHECK_FALSE(got.stale_rules);
+    CHECK(store.record_count() == 1);
+    // A save of the chart under this build's stamp replaces it (save's purge).
+    store.save(prepared);
+    CHECK(store.lookup_one("h1", at4()).status == RecordStatus::Ready);
+    CHECK(store.record_count() == 1);
 }
 
 TEST_CASE("store: a save keeps a readable record made under other rules (D51 call 8)") {
@@ -184,7 +200,7 @@ TEST_CASE("store: lookup's three answers against sibling profiles") {
     RecordStore store(":memory:");
     const HydraRecord& analysis = fixture().record;
     store.save(prepare_record("ready", at4(), analysis));
-    store.add_row(hydra::test::old_build_row(RecordKey{"build", at4()}, analysis));
+    hydra::test::save_old_build_record(store, prepare_record("build", at4(), analysis));
     store.save(prepare_record("rules", at4(), hydra::test::other_rules_record(analysis)));
     store.save(prepare_record("elsewhere", at4("other mode"), analysis));
     store.save(prepare_record("elsewhere", Profile{"mode", CapQuery::at(8), Lens{}}, at_cap(8)));
@@ -216,7 +232,7 @@ TEST_CASE("store: ready_song_ids and ready_records list exactly lookup's Ready c
     store.save(low);
     store.save(prepare_record("high", at4(), analysis));
     store.save(prepare_record("empty", at4(), no_paths_at_cap(4)));
-    store.add_row(hydra::test::old_build_row(RecordKey{"stale", at4()}, analysis));
+    hydra::test::save_old_build_record(store, prepare_record("stale", at4(), analysis));
     store.save(prepare_record("rules", at4(), hydra::test::other_rules_record(analysis)));
 
     const std::vector<std::string> ids = {"low", "high", "empty", "stale", "rules", "never"};

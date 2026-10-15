@@ -485,6 +485,11 @@ public:
     // replacing the chart's record there; deletes any profile left with no
     // records. A record made under other rules stays (D51 call 8).
     void save(const PreparedRecord& prepared);
+    // Test seam: save, but with the record filed under the stamp `build`
+    // instead of this build's, as if another Hydra version had saved it. A
+    // test stores an old-build record this way (it reads Stale for another
+    // build).
+    void save_under_build_for_test(const PreparedRecord& prepared, const std::string& build);
 
     void add_record(const RecordKey& key, const HydraRecord& record);
     void add_row(const PreparedRow& row);
@@ -711,6 +716,9 @@ private:
     // when no group is open. A failure undoes only this chart's writes.
     template <class F>
     void in_save_frame(F work);
+    // The body of save and save_under_build_for_test: `prepared` filed under
+    // the stamp `build`, in the save frame.
+    void save_under(const PreparedRecord& prepared, const std::string& build);
     // Which of the chart's unreadable records a save purges: in every mode
     // (save), or only in the record's own mode (write_row, the old save's
     // scope, which the old store tests' fixtures rely on; A1-5 deletes it
