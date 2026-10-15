@@ -43,14 +43,27 @@ app::RowFacts facts_of(const LibraryRow& row) {
 
 }  // namespace
 
+namespace {
+
+// The Best path cell's path text for a looked-up record: its rank-1 path, or
+// empty when it kept none. A lookup that is not Ready carries no record
+// (store::RecordLookup), so its text is empty too.
+std::string best_path_of(const store::RecordRow& record) {
+    return record.paths.empty() ? std::string() : record.paths.front().path;
+}
+
+}  // namespace
+
 // Beside facts_of on purpose: a summary field the library starts to read
 // (here, in best_path_label or in the Best path sort) joins this list, or a
-// refresh keeps the row's old value.
-bool LibraryRow::shows_same_as(const store::SummaryLookup& lookup) const {
+// refresh keeps the row's old value. The lookup's summary is the record's own
+// (RecordRow::summary), empty when the lookup is not Ready.
+bool LibraryRow::shows_same_as(const store::RecordLookup& lookup) const {
+    const store::PathSummary found = lookup.record.summary();
     return status == lookup.status && stale_build == lookup.stale_build &&
-           stale_rules == lookup.stale_rules && bestpath == lookup.bestpath &&
-           summary.score == lookup.summary.score && summary.stars == lookup.summary.stars &&
-           summary.hardest_ms == lookup.summary.hardest_ms;
+           stale_rules == lookup.stale_rules && bestpath == best_path_of(lookup.record) &&
+           summary.score == found.score && summary.stars == found.stars &&
+           summary.hardest_ms == found.hardest_ms;
 }
 
 namespace {
@@ -62,13 +75,13 @@ bool matches_query(const app::LibraryQuery& q, const LibraryRow& row) {
 // Applies one lookup to one row. False when nothing the library shows or
 // filters on changed (LibraryRow::shows_same_as), so a refresh that finds
 // the same answers costs no re-sort.
-bool apply_summary(LibraryRow& row, const store::SummaryLookup& lookup) {
+bool apply_summary(LibraryRow& row, const store::RecordLookup& lookup) {
     if (row.shows_same_as(lookup)) return false;
     row.status = lookup.status;
     row.stale_build = lookup.stale_build;
     row.stale_rules = lookup.stale_rules;
-    row.bestpath = lookup.bestpath;
-    row.summary = lookup.summary;
+    row.bestpath = best_path_of(lookup.record);
+    row.summary = lookup.record.summary();
     return true;
 }
 
@@ -168,7 +181,7 @@ std::vector<std::string> LibraryModel::hashes() const {
     return out;
 }
 
-size_t LibraryModel::set_summaries(const std::vector<store::SummaryLookup>& lookups) {
+size_t LibraryModel::set_summaries(const std::vector<store::RecordLookup>& lookups) {
     size_t changed = 0;
     const size_t n = std::min(rows_.size(), lookups.size());
     for (size_t i = 0; i < n; ++i)
@@ -177,7 +190,7 @@ size_t LibraryModel::set_summaries(const std::vector<store::SummaryLookup>& look
     return changed;
 }
 
-size_t LibraryModel::set_summary_for(const std::string& md5, const store::SummaryLookup& lookup) {
+size_t LibraryModel::set_summary_for(const std::string& md5, const store::RecordLookup& lookup) {
     size_t changed = 0;
     for (size_t i = 0; i < rows_.size(); ++i)
         if (rows_[i].entry.md5 == md5 && apply_summary(rows_[i], lookup)) ++changed;

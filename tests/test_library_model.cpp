@@ -19,11 +19,11 @@
 
 using hydra::store::CapQuery;
 using hydra::store::ChartLibraryEntry;
-using hydra::store::PreparedRow;
+using hydra::store::PathRow;
+using hydra::store::Profile;
 using hydra::store::RecordKey;
-using hydra::store::ResultSettings;
+using hydra::store::RecordLookup;
 using hydra::store::RecordStatus;
-using hydra::store::SummaryLookup;
 using hydra::ui::LibraryModel;
 using hydra::ui::LibrarySort;
 using hydra::ui::StatusChip;
@@ -42,18 +42,22 @@ ChartLibraryEntry chart(const char* md5, const char* title, const char* artist,
     return e;
 }
 
-SummaryLookup ready(int64_t score, const char* bestpath, int stars, double hardest_ms) {
-    SummaryLookup s;
+// A Ready lookup whose record keeps one path: the best path's text, score and
+// hardest timing, and the record's stars.
+RecordLookup ready(int64_t score, const char* bestpath, int stars, double hardest_ms) {
+    RecordLookup s;
     s.status = RecordStatus::Ready;
-    s.bestpath = bestpath;
-    s.summary.score = score;
-    s.summary.stars = stars;
-    s.summary.hardest_ms = hardest_ms;
+    PathRow best;
+    best.path = bestpath;
+    best.score = score;
+    best.hardest_ms = hardest_ms;
+    s.record.paths.push_back(best);
+    s.record.stars = stars;
     return s;
 }
 
-SummaryLookup stale() {
-    SummaryLookup s;
+RecordLookup stale() {
+    RecordLookup s;
     s.status = RecordStatus::Stale;
     return s;
 }
@@ -70,7 +74,7 @@ LibraryModel sample() {
         chart("halo", "Halo", "Beyoncé", "Someone", "common\\Other"),
         chart("other", "Other", "Thrice", "Someone", "IB24\\T4"),
     });
-    SummaryLookup none;
+    RecordLookup none;
     m.set_summaries({ready(378315, "3- 1 2", 7, 163.0), none, stale(), none, none, none});
     return m;
 }
@@ -82,7 +86,7 @@ std::vector<std::string> titles(const LibraryModel& m) {
 }
 
 // A library of three charts whose stored results are Stale, one per cause,
-// read through the store the way the app reads them (get_summaries). Chart
+// read through the store the way the app reads them (lookup). Chart
 // "build" came from another Hydra version, "rules" from other rules in
 // hydra_rules.ini, "both" from both. Returns the model's rows, in that order.
 std::vector<hydra::ui::LibraryRow> stale_rows() {
@@ -97,8 +101,7 @@ std::vector<hydra::ui::LibraryRow> stale_rows() {
     m.set_charts({chart("build", "Build", "A", "C", "common"),
                   chart("rules", "Rules", "A", "C", "common"),
                   chart("both", "Both", "A", "C", "common")});
-    m.set_summaries(store.get_summaries(
-        m.hashes(), ResultSettings{"mode", CapQuery::at(8), hydra::store::Lens{}}));
+    m.set_summaries(store.lookup(m.hashes(), Profile{"mode", CapQuery::at(8), hydra::store::Lens{}}));
     return m.rows();
 }
 
@@ -149,10 +152,10 @@ TEST_CASE("library model: a row Stale from both causes names both in its tooltip
 TEST_CASE("library model: a Stale row whose cause changes takes the new cause") {
     LibraryModel m;
     m.set_charts({chart("h", "Song", "A", "C", "common")});
-    SummaryLookup by_build = stale();
+    RecordLookup by_build = stale();
     by_build.stale_build = true;
     REQUIRE(m.set_summaries({by_build}) == 1);
-    SummaryLookup by_rules = stale();
+    RecordLookup by_rules = stale();
     by_rules.stale_rules = true;
     CHECK(m.set_summaries({by_rules}) == 1);
     CHECK_FALSE(m.rows()[0].stale_build);
@@ -259,8 +262,8 @@ TEST_CASE("library model: a name sorts on the text its cell shows, not the store
 TEST_CASE("library model: a lookup that differs only in a field the library never reads changes nothing") {
     LibraryModel m = sample();
     const hydra::ui::LibraryRow& burnout = m.rows()[0];  // ready(378315, "3- 1 2", 7, 163.0)
-    SummaryLookup same = ready(378315, "3- 1 2", 7, 163.0);
-    same.summary.actcount = 4;
+    RecordLookup same = ready(378315, "3- 1 2", 7, 163.0);
+    same.record.paths.front().actcount = 4;
     CHECK(burnout.shows_same_as(same));
     CHECK(m.set_summary_for("burnout", same) == 0);
     CHECK_FALSE(burnout.shows_same_as(ready(378315, "3- 1 2", 6, 163.0)));
@@ -370,7 +373,7 @@ TEST_CASE("library model: a Ready row with no paths is Analyzed but has no facts
     LibraryModel m;
     m.set_charts({chart("empty", "Empty", "A", "C", "common"),
                   chart("scored", "Scored", "A", "C", "common")});
-    SummaryLookup no_paths;
+    RecordLookup no_paths;
     no_paths.status = RecordStatus::Ready;  // no score, no stars
     m.set_summaries({no_paths, ready(1000, "1", 7, 100.0)});
     m.set_query("stars:7");
@@ -458,7 +461,7 @@ TEST_CASE("library model: filtering 20,000 charts keeps the pinned row counts") 
     // are printed for a person to read; a timing belongs in hydra_bench, not
     // in a pass/fail check that a busy machine can fail.
     std::vector<ChartLibraryEntry> charts;
-    std::vector<SummaryLookup> summaries;
+    std::vector<RecordLookup> summaries;
     charts.reserve(20000);
     for (int i = 0; i < 20000; ++i) {
         char md5[16], title[32], artist[32], charter[64], folder[48];
@@ -471,7 +474,7 @@ TEST_CASE("library model: filtering 20,000 charts keeps the pinned row counts") 
         // Only every third row has a summary, so its stars step on i / 3 to
         // give 5, 6 and 7 among those rows.
         summaries.push_back(i % 3 == 0 ? ready(300000 + i, "1 2 3", 5 + (i / 3) % 3, i % 90)
-                                       : SummaryLookup{});
+                                       : RecordLookup{});
     }
     LibraryModel m;
     auto t0 = std::chrono::steady_clock::now();

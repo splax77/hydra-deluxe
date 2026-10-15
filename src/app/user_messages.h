@@ -1,7 +1,7 @@
 // Plain-English versions of the errors Hydra's jobs can hit. The raw text of
-// an exception ("add_row failed: disk I/O error") is for a small details
-// line. What the user reads first is a short message that says what
-// happened and what to do, picked by the error's kind (kind_sentence in
+// an exception (RecordStore::save's "saving a record failed: disk I/O error")
+// is for a small details line. What the user reads first is a short message
+// that says what happened and what to do, picked by the error's kind (kind_sentence in
 // user_messages.cpp). A sentence that more than one screen shows also lives
 // here, so it is written once. A sentence only one screen shows may stay with
 // that screen.
@@ -71,7 +71,7 @@ int tool_error(const std::exception& e, int exit_code);
 int run_tool(const std::function<int()>& body);
 
 // Why a stored result is out of date, naming the real cause the store found
-// (store::SummaryLookup's stale_build and stale_rules): another Hydra version,
+// (store::RecordLookup's stale_build and stale_rules): another Hydra version,
 // or different rules in hydra_rules.ini. When both are true, or neither (a
 // caller asking about a row that is not stale), it is the sentence that names
 // both, so there is never an empty line.

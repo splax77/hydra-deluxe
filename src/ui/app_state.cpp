@@ -164,8 +164,7 @@ void AppState::refresh_library_summaries() {
 bool AppState::refresh_library_row(const std::string& md5) {
     bool changed = false;
     read_store([&] {
-        changed =
-            library.set_summary_for(md5, store->get_summaries({md5}, settings.profile()).front()) > 0;
+        changed = library.set_summary_for(md5, store->lookup_one(md5, settings.profile())) > 0;
     });
     return changed;
 }
@@ -444,7 +443,15 @@ void AppState::update_view_job() {
                 v.summary = save_view_summary(song_id, profile, *out.analysis);
             } catch (const std::exception& e) {
                 set_problem("Analyzed, but saving failed. " + app::plain_error(e));
-                v.summary = store::summarize_record(out.analysis->record);
+                // The engine's own summary, as a save would have shown it. When
+                // prepare_record itself refused the analysis (it does not fit
+                // the profile), there is no record to read one from, and the
+                // problem line above already says why.
+                try {
+                    v.summary = store::prepare_record(song_id, profile, out.analysis->record)
+                                    .record.summary();
+                } catch (const std::exception&) {
+                }
             }
             v.state = ViewedSong::State::Ready;
             v.timing = out.analysis->song.timing();

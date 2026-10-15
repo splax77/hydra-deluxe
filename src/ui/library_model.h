@@ -68,14 +68,14 @@ struct LibraryRow {
     std::array<std::string, kColumnBestPath> sort_keys;
     store::RecordStatus status = store::RecordStatus::NotAnalyzed;
     bool stale_build = false;             // why a Stale row is Stale (the store's
-    bool stale_rules = false;             // SummaryLookup); the tooltip names it
+    bool stale_rules = false;             // RecordLookup); the tooltip names it
     std::string bestpath;                 // set when Ready
     store::PathSummary summary;           // set when Ready (T7)
     // The Best path cell, made when it is drawn (best_path_label).
     std::string best_label() const;
     // Whether `lookup` changes nothing the library shows, filters or sorts on:
     // the one list of the lookup's fields the library reads.
-    bool shows_same_as(const store::SummaryLookup& lookup) const;
+    bool shows_same_as(const store::RecordLookup& lookup) const;
 };
 
 // The word for a record's status: "Analyzed", "Stale" or "Not analyzed". The
@@ -115,14 +115,15 @@ public:
     // Replaces every row (startup, after a scan). Rows start Not analyzed
     // until set_summaries.
     void set_charts(std::vector<store::ChartLibraryEntry> charts);
-    // Each row's chart hash, parallel to rows(): what get_summaries asks about.
+    // Each row's chart hash, parallel to rows(): what RecordStore::lookup
+    // asks about.
     std::vector<std::string> hashes() const;
     // `lookups` is parallel to rows(). Returns how many rows changed; the
     // order and counts are rebuilt only when some did.
-    size_t set_summaries(const std::vector<store::SummaryLookup>& lookups);
+    size_t set_summaries(const std::vector<store::RecordLookup>& lookups);
     // One chart's new answer, applied to every row that lists it (a chart can
     // sit in two folders). Returns how many rows changed.
-    size_t set_summary_for(const std::string& md5, const store::SummaryLookup& lookup);
+    size_t set_summary_for(const std::string& md5, const store::RecordLookup& lookup);
 
     // Changes when set_charts replaces the rows, and at no other time: a new
     // summary changes a row's text but not which rows there are. With
