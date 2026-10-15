@@ -245,7 +245,7 @@ namespace {
 ScoreGraph search_graph(const Song& song, const SearchSettings& settings) {
     return ScoreGraph(song,
                       std::optional<int>(graph_build_cap(settings.sp_cap, song.sp_phrase_count())),
-                      fill_rule_for(settings.legacy_fill_deadline), settings.rules);
+                      fill_rule_for(settings.legacy_fills), settings.rules);
 }
 
 // The one target run both search_target entry points make, over a graph
@@ -459,7 +459,7 @@ HydraRecord analyze_chart(const Song& song, const SearchSettings& settings,
     attach_allzero(graph, record,
                    split ? scaled_progress(on_progress, kMainProgressShare, 1.0f) : on_progress);
     record.rules_fingerprint = settings.rules.fingerprint();
-    record.legacy_fills = settings.legacy_fill_deadline;
+    record.legacy_fills = settings.legacy_fills;
     return record;
 }
 

@@ -349,7 +349,7 @@ AnalysisSettings Settings::to_analysis_settings() const {
     s.depth_value = depth_value;
     s.ms_filter = mslimit_enabled ? std::optional<double>(mslimit_value) : std::nullopt;
     s.sp_cap = sp_cap;
-    s.legacy_fill_deadline = legacy_fills;
+    s.legacy_fills = legacy_fills;
     s.rules = rules;
     return s;
 }
@@ -386,8 +386,7 @@ store::Profile Settings::profile_at_clone_hero_cap() const {
 
 store::Profile Settings::profile_with_fills(FillDeadlineRule rule) const {
     Settings with_rule = *this;
-    // The setting fill_rule_for reads as `rule`.
-    with_rule.legacy_fills = rule == FillDeadlineRule::Ch10;
+    with_rule.legacy_fills = legacy_fills_for(rule);
     return with_rule.profile();
 }
 

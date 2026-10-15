@@ -440,7 +440,7 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
                                   " per chart and mode";
     std::string cap_label = "SP cap " + bars_text(run.cap_query().exact);
     // The normal rule goes unsaid, so a 1.1 page reads as it always has.
-    if (run.lens.legacy_fills)
+    if (rule != FillDeadlineRule::Ch11)
         cap_label += std::string(" — ") + fill_rule_name(rule, FillRuleNameStyle::Long) + " fills";
     std::string subtitle = hydra::counted(out.records, "record", "records") + " across " +
                            hydra::counted(out.songs, "chart", "charts") + " — " + shown +

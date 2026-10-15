@@ -295,7 +295,7 @@ TEST_CASE("rules: max_tied_paths is one count per score, inside paths first") {
 
     SearchSettings settings;
     settings.sp_cap = 4;
-    settings.legacy_fill_deadline = true;
+    settings.legacy_fills = true;
     settings.ms_filter = 0.0;
     settings.rules.max_tied_paths = 1;
     const HydraRecord& record = corpus::analyzed(chart, settings);
@@ -361,7 +361,7 @@ TEST_CASE("rules: a path over the Path limit below the best score is dropped eve
 
     SearchSettings settings;
     settings.sp_cap = 4;
-    settings.legacy_fill_deadline = false;
+    settings.legacy_fills = false;
     settings.ms_filter = 10.0;
     settings.rules.max_tied_paths = 4;
     const HydraRecord& record = corpus::analyzed(chart, settings);
