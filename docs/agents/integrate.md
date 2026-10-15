@@ -41,7 +41,7 @@ Run the scan test and the docs test with their filters, and nothing else:
 - the scan test: `build-cpp\Release\hydra_tests.exe -tc="single-owner*"`;
 - the docs test, once it exists: `build-cpp\Release\hydra_tests.exe -sf=*docs_match_code*`.
 
-Also run any test case your brief names. Never run the full suite. The main session runs it once, after the review.
+Also run any test case your brief names. Never run the full suite. The main session runs the merge's tests once, after the review; CLAUDE.md rule 1 says which.
 
 When the scan or docs test fails because one task renamed or moved a name another task's rows or docs still use, fix it in the join, stage the fix by name, and rerun only the failing test. Then commit the last merge, with a body saying which task's change broke which line and how you fixed it. Never loosen a scan row to make it pass.
 

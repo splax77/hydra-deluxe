@@ -34,7 +34,7 @@ Only what outsiders read, and plans, get a review from a fresh agent, and each d
 
 These hold for the main session and every agent it sends out. Hooks enforce most of them; the details live in `docs/agents/brief-preamble.md` (what every agent reads first) and the model-postures file (what the main session gets each prompt).
 
-1. Agents never run the full test suite. They run only the tests for their own change. The main session runs the full suite once, when it merges.
+1. Agents never run the full test suite. They run only the tests for their own change. When the main session merges, it runs the tests that touch the changed files. It runs the whole suite only when the change touches shared code: a header many files include, the build files, or the test harness (for hooks: `hooks\lib`, `settings.json`, `hooks\tests\lib`). Untouched parts stay as they were, so re-running them proves nothing (the user's ruling, 2026-10-14).
 2. Planning agents run on Fable. Code executors run on Opus. Code reviewers run on Sonnet. Read-only scouts run on Sonnet.
 3. No work starts without the user's approval. Every plan and every build waits for the user's yes before it begins. In this rule a build means any piece of work: writing code, editing hooks, or launching agents to do either. A change that only touches code needs no approval of its design: pick the design and recommend it, but the build still waits for the yes. A change to a display in the app or a stored record also takes its design to the user first. When the user asks for one specific edit, the request is the approval. Compiling and running tests inside approved work need no separate yes.
 4. Agents never stall or go quiet for long. When they hit a problem, they fail loudly: stop and say what broke.
