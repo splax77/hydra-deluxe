@@ -38,6 +38,10 @@ namespace {
 class LivePipe {
 public:
     ~LivePipe() {
+        // The stop event, not the cancel, is what ends the reader: a cancel
+        // that lands between two reads finds nothing to cancel, but the
+        // event stays set and the reader's next wait sees it.
+        if (stop_event_) SetEvent(stop_event_);
         if (pipe_ != INVALID_HANDLE_VALUE) {
             CancelIoEx(pipe_, nullptr);
             // A connect still pending must finish cancelling before its
@@ -47,7 +51,7 @@ public:
                 GetOverlappedResult(pipe_, &connect_ov_, &ignored, TRUE);
         }
         if (reader_.joinable()) reader_.join();
-        for (HANDLE e : {connect_event_, read_event_, write_event_})
+        for (HANDLE e : {connect_event_, read_event_, write_event_, stop_event_})
             if (e) CloseHandle(e);
         if (pipe_ != INVALID_HANDLE_VALUE) CloseHandle(pipe_);
     }
@@ -61,7 +65,9 @@ public:
         connect_event_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         read_event_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         write_event_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-        if (!connect_event_ || !read_event_ || !write_event_) return fail("CreateEventW");
+        stop_event_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!connect_event_ || !read_event_ || !write_event_ || !stop_event_)
+            return fail("CreateEventW");
         const std::wstring wname(name_.begin(), name_.end());  // ASCII
         pipe_ = CreateNamedPipeW(wname.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
                                  PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, 1, kBufferBytes,
@@ -141,7 +147,9 @@ private:
     void read_loop() {
         std::string pending;
         char buf[4096];
-        for (;;) {
+        // A client that keeps sending would keep the read below finishing
+        // first, so the stop is checked before each read too.
+        while (WaitForSingleObject(stop_event_, 0) != WAIT_OBJECT_0) {
             OVERLAPPED ov{};
             ov.hEvent = read_event_;
             ResetEvent(read_event_);
@@ -149,9 +157,15 @@ private:
                 GetLastError() != ERROR_IO_PENDING)
                 break;
             DWORD got = 0;
-            // Waits for the client's next bytes; the destructor's CancelIoEx
-            // ends the wait.
-            if (!GetOverlappedResult(pipe_, &ov, &got, TRUE)) break;
+            // Waits for the client's next bytes or the destructor's stop.
+            const HANDLE wake[] = {read_event_, stop_event_};
+            if (WaitForMultipleObjects(2, wake, FALSE, INFINITE) != WAIT_OBJECT_0) {
+                // The read must finish cancelling before its OVERLAPPED goes.
+                CancelIoEx(pipe_, &ov);
+                GetOverlappedResult(pipe_, &ov, &got, TRUE);
+                break;
+            }
+            if (!GetOverlappedResult(pipe_, &ov, &got, FALSE)) break;
             pending.append(buf, got);
             size_t nl;
             while ((nl = pending.find('\n')) != std::string::npos) {
@@ -171,6 +185,7 @@ private:
     HANDLE connect_event_ = nullptr;
     HANDLE read_event_ = nullptr;
     HANDLE write_event_ = nullptr;
+    HANDLE stop_event_ = nullptr;  // set by the destructor; ends read_loop
     OVERLAPPED connect_ov_{};
     std::thread reader_;
     std::mutex mutex_;

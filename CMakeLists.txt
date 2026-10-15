@@ -486,6 +486,7 @@ add_library(hydra_uitest_harness STATIC
 target_include_directories(hydra_uitest_harness PUBLIC tests/ui)
 target_link_libraries(hydra_uitest_harness PUBLIC hydra_ui PRIVATE hydra_warnings)
 target_compile_definitions(hydra_uitest_harness PRIVATE
+    HYDRA_TESTDATA_DIR="${CMAKE_SOURCE_DIR}/testdata"
     HYDRA_INPUT_DIR="${CMAKE_SOURCE_DIR}/testdata/input"
     HYDRA_ASSET_DIR="${CMAKE_SOURCE_DIR}/assets/preview"
     HYDRA_RESOURCE_DIR="${CMAKE_SOURCE_DIR}/resource"

@@ -231,6 +231,17 @@ Each one quotes the code behaviour it depends on and gives a recommended answer.
 **Answered later on 2026-10-14, from the T5 and T6 reports (task T8):**
 
 - **One owner per line number.** The live channel had numbered lines across the whole session ("failed at line 23"), while the helper said "stopped at line 4 of 5". The user rejected two numbers for one line, because they would confuse the model. In live mode a reply now names no line number. The helper numbers lines, from the script Claude sent. Script mode (`--script`) keeps "failed at line N", because there the file is the script.
+- **Hydra owns every number it uses.** Each live reply carries the timeout in force, and the helper reads it from there. The interpreter refuses a malformed number (`timeout 90s`, `wait abc`) in both modes, instead of `atof` reading it as 90 or 0. In live mode, a `wait` longer than the timeout in force is refused, so no command outlasts the cap the helper already knows. The helper never parses a command's arguments.
+- **The ownership boundary (the user's rule).** Hydra's C++ side owns everything about commands and their results:
+  - what a verb means
+  - how its arguments parse
+  - which lines are commands
+  - line numbers
+  - every timeout and how long a command may take
+  - reply wording
+  - what counts as a failure
+
+  The helper is transport only. It owns launch and stop, the pipe, its reply caps (computed only from numbers Hydra reports), truncation, the snapshot and the running-Hydra check, and the tool list. The stand-in owns only transport behaviours: hang, exit, close, oversized replies. A boundary audit lists every copy across the line, and T8 removes them all.
 - **Hide the engine panel in live mode.** The test engine's own panel is hidden in live mode, so it covers none of the real layout and none of its text reaches Claude's `text` output. `--uitest` mode keeps showing it.
 
 **1. Install the `mcp` package?** The helper imports `mcp` (`FastMCP`), which is not on this machine; PyPI's 2.3.0 supports Python 3.14. The alternative is to hand-write the stdio JSON-RPC handshake (initialize, tools/list, tools/call) in about 150 lines with no dependency, which then has to track protocol versions by hand. Recommended: run `py -m pip install mcp` once; T3's first step does it and stops if it fails.

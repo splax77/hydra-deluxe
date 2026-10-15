@@ -88,6 +88,16 @@ void AppState::collect_store_open() {
     // The library read failed after the store opened: the same problem line
     // a failed reload shows, over an empty library.
     if (!job->library_problem().empty()) set_problem(job->library_problem());
+    startup_notice_ = job->startup_notice();
+}
+
+void AppState::startup_notice_closed() {
+    if (startup_notice_.empty()) return;
+    startup_notice_.clear();
+    // The fresh library is empty; the chart folders came from the ini, so
+    // the scan finds the same songs. start_scan refuses when can_scan says
+    // no, as the toolbar's button does.
+    request_scan = true;
 }
 
 void AppState::set_render_device(ID3D11Device* device, ID3D11DeviceContext* context) {

@@ -32,6 +32,7 @@
 #include "app/config.h"
 #include "app/user_messages.h"  // plain_error_block
 #include "audio/device.h"
+#include "core/winstr.h"
 #include "net/dmbot_client.h"
 #include "ui/app_state.h"
 #include "ui/library_jobs.h"
@@ -140,6 +141,13 @@ void register_test(Harness& h, const char* name, void (*fn)(ImGuiTestContext*)) 
 
 bool selects(const std::string& what, const char* test_name) {
     return what == "all" || what == test_name;
+}
+
+std::string seed_problem(const std::string& flag, const std::string& path) {
+    std::error_code ec;
+    if (fs::is_regular_file(hydra::os_path(path), ec)) return "";
+    return flag + " \"" + path + "\" is not a " + (flag == "--db" ? "database" : "settings") +
+           " file";
 }
 
 bool Harness::queue(const std::string& what) {
