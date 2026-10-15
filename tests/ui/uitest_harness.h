@@ -179,7 +179,7 @@ private:
 // Holds the app's store open on its worker thread until the test lets it
 // through. A scratch library opens in a blink, so a test that looks at the
 // startup screen would race it. While a gate lives, the open's progress waits
-// at the gate once it reaches the upgrade's copy, until open(). started()
+// at the gate once it reaches the conversion to records, until open(). started()
 // counts the opens that reached it. Make it BEFORE reset_app (the open starts
 // in AppState's constructor) and pass wait_store=false; its destructor opens
 // it and removes the seam. Only one gate can exist at a time.
