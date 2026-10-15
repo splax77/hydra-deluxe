@@ -647,9 +647,10 @@ void check_profile_fits(const Profile& profile, const HydraRecord& record, const
     const Lens record_fills = Lens::from(std::nullopt, 0, 0, record.legacy_fills);
     if (profile.lens.legacy_fills != record_fills.legacy_fills)
         throw std::invalid_argument(
-            w + "key asks for Clone Hero " + (profile.lens.legacy_fills ? "1.0" : "1.1") +
+            w + "key asks for " +
+            fill_rule_name(fill_rule_for(profile.lens.legacy_fills != 0), FillRuleNameStyle::Long) +
             " fills but the record was analyzed under the " +
-            (record.legacy_fills ? "1.0" : "1.1") + " rule");
+            fill_rule_name(fill_rule_for(record.legacy_fills), FillRuleNameStyle::Long) + " rule");
 }
 
 }  // namespace
@@ -846,6 +847,12 @@ void RecordStore::set_up_schema(bool convertible) {
     if (convertible) convert_results();
 }
 
+// The meta row where 2.2.0 to 2.7.0 kept one fill-rule label for the whole
+// file. Each record's profile carries its own rule (Lens::legacy_fills), so
+// one file holds both rules and the label is retired (D115 A1-6c): the
+// conversion deletes the row, and nothing reads it.
+constexpr const char* kRetiredFillLabelKey = "engine_mode";
+
 void RecordStore::convert_results() {
     const std::string kept = std::string("NOT (") + kNoStarsResultSql + ")";
     // A failure undoes the whole conversion (in_transaction), so the file is
@@ -887,6 +894,7 @@ void RecordStore::convert_results() {
         // The library's ids take the records' spelling (ADR 0028).
         exec("UPDATE charts SET md5 = lower(md5)");
         exec("DROP TABLE results");
+        exec((std::string("DELETE FROM meta WHERE key = '") + kRetiredFillLabelKey + "'").c_str());
         });
     } catch (const KindedError& e) {
         if (e.kind() == ErrorKind::Cancelled) throw;
@@ -1020,35 +1028,9 @@ void RecordStore::meta_set(const std::string& key, const std::string& value) {
     step_done(s, "meta_set");
 }
 
-// The meta table's keys, each typed once.
-//
-// The meta row that holds the fill rule a file's results ran under, read by
-// stamped_fill_rule through engine_mode.
-constexpr const char* kEngineModeKey = "engine_mode";
 // The meta row that holds the charts table's kChartMetaStamp, written once
 // per file by rebuild_chart_library and checked by chart_library_cache.
 constexpr const char* kChartMetaKey = "chart_meta_version";
-
-std::optional<std::string> RecordStore::engine_mode() {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
-    return meta_get(kEngineModeKey);
-}
-
-void RecordStore::set_engine_mode(const std::string& mode) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
-    meta_set(kEngineModeKey, mode);
-}
-
-std::optional<FillDeadlineRule> RecordStore::stamped_fill_rule() {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
-    if (const std::optional<std::string> mode = engine_mode())
-        return fill_rule_from_stamp(*mode);
-    // No stamp. Results written without one ran under the normal rule. The
-    // open converted any older file's results into records already.
-    Stmt any = prepare_read(db_, "SELECT 1 FROM records LIMIT 1");
-    if (step_row(any)) return FillDeadlineRule::Ch11;
-    return std::nullopt;
-}
 
 template <class F>
 void RecordStore::in_save_frame(F work) {

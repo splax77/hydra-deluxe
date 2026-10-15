@@ -8,12 +8,10 @@
 //     hydra_batch --legacy-fills     # score fills by Clone Hero 1.0's rule
 //     hydra_batch --rules <path>     # rule choices from this file, not the exe's hydra_rules.ini
 //
-// --legacy-fills needs its own --db, and each run stamps its database with the
-// rule it used; a run whose rule disagrees with an existing stamp exits 2
-// without writing. Compare two such databases with
-// hydra_fillcompare. Every result now carries its rule in its key, so the app
-// keeps 1.0 and 1.1 results side by side in hydra.db; these two guards are the
-// command line's behavior from before that, kept as it was (docs/adr/0010).
+// --legacy-fills needs a --db other than the app's own (the guard in
+// batch_main says why). Every result carries its fill rule in its key, so one
+// file can hold a 1.0 run and a 1.1 run side by side, each read under its own
+// rule; hydra_fillcompare compares the two.
 //
 // Reads difficulty / pro drums / 2x bass / depth / SP cap from the app's
 // settings INI (app/config.h), so results match what the app would produce
@@ -136,34 +134,8 @@ int batch_main() {
         return hydra::app::tool_error(e, 2);
     }
     hydra::store::RecordStore& store = *store_ptr;
-
-    // One database holds one fill rule (docs/adr/0010). Which rule a file
-    // holds is RecordStore::stamped_fill_rule's answer. The raw stamp is read
-    // as well, for the message and for a stamp no rule reads, which this run
-    // refuses rather than overwrites.
+    // Each result is saved under this run's profile, which carries the rule.
     const hydra::FillDeadlineRule run_rule = hydra::fill_rule_for(legacy_fills);
-    const std::string run_mode = hydra::engine_mode_stamp(run_rule);
-    const std::optional<std::string> stamp = store.engine_mode();
-    const std::optional<hydra::FillDeadlineRule> file_rule = store.stamped_fill_rule();
-    if (file_rule ? *file_rule != run_rule : stamp.has_value()) {
-        const std::string file_mode = stamp ? *stamp : hydra::engine_mode_stamp(*file_rule);
-        std::fprintf(stderr,
-                     "This database holds results scored by the %s fill rule "
-                     "(engine_mode=%s):\n  %s\n"
-                     "This run scores by the %s rule. This file is stamped with the "
-                     "other rule.\n"
-                     "%s --legacy-fills to write into this database, or give this run "
-                     "its own database with --db.\n",
-                     file_rule ? hydra::fill_rule_name(*file_rule, hydra::FillRuleNameStyle::Long)
-                               : "unknown",
-                     file_mode.c_str(), db.c_str(),
-                     hydra::fill_rule_name(run_rule, hydra::FillRuleNameStyle::Long),
-                     legacy_fills ? "Drop" : "Add");
-        return 2;
-    }
-    // Stamp the file with the rule this run used, so hydra_fillcompare can tell
-    // a 1.0 database from a 1.1 one.
-    store.set_engine_mode(run_mode);
 
     std::vector<std::string> folders =
         folder_args.empty() ? settings.chartfolders : folder_args;

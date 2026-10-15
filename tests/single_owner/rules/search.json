@@ -279,32 +279,7 @@
         "src",
         "tools"
       ],
-      "note": "A fill rule turned back into the flag by a comparison of its own, or a flag set to a bare 1 or 0 where a rule was meant. fill_report's two lens lines did the second. The results-key upgrade in src/store writes the flag as SQL text from stamped_fill_rule; it sits in baseline.json until D115 task A1-6c retires it. Left out on purpose: tests, which set the flag to build a case. A bare `if (...legacy_fills)` test cannot be told from the flag's legitimate uses (parsing, storing, showing the checkbox), so a text search leaves it; code that needs the rule calls fill_rule_for. Decided by: D115 task F1 (2026-10-14)"
-    },
-    {
-      "question": "Which fill rule does a database's stamp name?",
-      "owner": "fill_rule_from_stamp in src/search/graph.h",
-      "owner_file": "src/search/graph.h",
-      "owner_symbol": "fill_rule_from_stamp",
-      "date": "2026-10-04",
-      "decision": "M_D review round 2 findings 2 and 5 (phase 3 task FX2-R)",
-      "added_by": "FX2-R",
-      "pattern": "engine_mode\\(\\)\\s*==|\"ch1[01]\"",
-      "calls_owner": "\\bfill_rule_from_stamp\\(",
-      "owner_files": [
-        "src/search/graph.h"
-      ],
-      "must_match": [
-        "if (store->engine_mode() == std::string(",
-        "const std::string legacy = mode && *mode == \"ch10\" ? \"1\" : \"0\";",
-        "legacy_fills = stamp == \"ch10\" ? \"1\" : \"0\";",
-        "if (m == \"ch11\") return;"
-      ],
-      "must_not_match": [
-        "if (mode && hydra::fill_rule_from_stamp(*mode) != expected)",
-        "legacy_fills = stamped_fill_rule() == FillDeadlineRule::Ch10 ? \"1\" : \"0\";"
-      ],
-      "note": "A database's engine_mode stamp compared by hand: through the store's accessor, or any line spelling a rule's stamp text, which only engine_mode_stamp in search/graph.h may write. Decided by: M_D review round 2 findings 2 and 5 (phase 3 task FX2-R); widened by the M7-2b review, finding 4"
+      "note": "A fill rule turned back into the flag by a comparison of its own, or a flag set to a bare 1 or 0 where a rule was meant. fill_report's two lens lines did the second. Left out on purpose: tests, which set the flag to build a case. A bare `if (...legacy_fills)` test cannot be told from the flag's legitimate uses (parsing, storing, showing the checkbox), so a text search leaves it; code that needs the rule calls fill_rule_for. Decided by: D115 task F1 (2026-10-14)"
     },
     {
       "question": "What is the best score allowed to eliminate a path in its group?",

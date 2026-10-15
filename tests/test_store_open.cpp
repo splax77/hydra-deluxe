@@ -253,8 +253,10 @@ constexpr int64_t kSeedProfiles = 5;
 // The path rows the kept records hold: one rank-1 row for each kept result
 // with a score, so every one but "empty".
 constexpr int64_t kSeedPaths = 5;
-// The fill-rule stamp the seed writes, so the test can see meta come across.
-constexpr const char* kSeedEngineMode = "seeded-engine-mode";
+// The fill-rule label 2.2.0 to 2.7.0 kept for a whole file, as the seed
+// writes it. The conversion deletes it (D115 task A1-6c).
+constexpr const char* kSeedLabelSql = "INSERT INTO meta (key, value) VALUES ('engine_mode', 'ch10')";
+constexpr const char* kSeedLabelCountSql = "SELECT COUNT(*) FROM meta WHERE key = 'engine_mode'";
 
 // A database at `path` in the layout 2.2.0 to 2.7.0 wrote, with one row of
 // every kind the conversion treats differently, its files closed.
@@ -266,7 +268,6 @@ void seed_v220_layout(const std::string& path) {
                                     library_row("build", "Build"), library_row("rules", "Rules"),
                                     library_row("both", "Both"),
                                     library_row("nostars", "No stars")});
-        seed.set_engine_mode(kSeedEngineMode);
         seed.add_record(kReady, at_cap(8));
         seed.add_record(kOtherMode, at_cap(8));
         seed.add_record(kNoPaths, no_paths_at_cap(8));
@@ -274,6 +275,7 @@ void seed_v220_layout(const std::string& path) {
         seed.add_record(kNoStars, at_cap(8));
     }
     exec_on_file(path, test::v220_layout_sql().c_str());
+    exec_on_file(path, kSeedLabelSql);
     // A row from before the stars column: a score and no stars. Its stars
     // needed the stored paths to fill, so the conversion leaves it behind.
     // The no-paths row has neither, by design, and stays (R17).
@@ -292,7 +294,7 @@ void seed_v220_layout(const std::string& path) {
 
 // What every row reads after the conversion: Ready stays Ready with its
 // numbers, Stale stays Stale for the same reason, the no-stars row is gone,
-// and the library and meta stayed whole.
+// and the library and its reader stamp stayed whole.
 void check_converted_rows(RecordStore& store) {
     const SummaryLookup got_ready = store.get_summary(kReady);
     CHECK(got_ready.status == RecordStatus::Ready);
@@ -322,7 +324,6 @@ void check_converted_rows(RecordStore& store) {
     // The scan cache reads only under a current reader stamp, so a full one
     // shows the stamp stayed in meta.
     CHECK(store.chart_library_cache().size() == static_cast<size_t>(kSeedCharts));
-    CHECK(store.engine_mode() == std::optional<std::string>(kSeedEngineMode));
 }
 
 // The file is in this build's layout, with no results table left and
@@ -331,6 +332,9 @@ void check_converted_file(const std::string& path) {
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM sqlite_master WHERE name = 'results'") == 0);
     CHECK(classify_library_file(path) == LibraryFileKind::Current);
     CHECK_FALSE(file_exists_utf8(set_aside_path(path)));
+    // The whole-file fill-rule label is gone; each record's profile names
+    // its rule.
+    CHECK(scalar_on_file(path, kSeedLabelCountSql) == 0);
 }
 
 // Every report an open made, in order.
@@ -749,8 +753,6 @@ TEST_CASE("every store read throws a database read error when its step fails") {
     const RecordKey key{"h", "mode", CapQuery::at(4)};
     const CapQuery cap = CapQuery::at(4);
     const std::pair<const char*, std::function<void(RecordStore&)>> reads[] = {
-        {"engine_mode", [](RecordStore& s) { s.engine_mode(); }},
-        {"stamped_fill_rule", [](RecordStore& s) { s.stamped_fill_rule(); }},
         {"get_summaries",
          [&](RecordStore& s) { s.get_summaries({"h"}, ResultSettings{"mode", cap, Lens{}}); }},
         {"get_summary", [&](RecordStore& s) { s.get_summary(key); }},
