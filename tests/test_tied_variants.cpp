@@ -330,18 +330,26 @@ TEST_CASE("banked_phrase_in_reach banks exactly what activation_can_squeeze refu
     CHECK(on_activation_chord > 0);
 }
 
+// The hand-made chart the two twin-end cases below read (resolution 480,
+// 4/4, 120 BPM until tick 24000, then 1200 BPM). It sits outside the corpus
+// (testdata/squeeze_clamp) so adding it moves no corpus digest.
+static std::string twin_end_chart() {
+    return corpus::testdata_root() + "/squeeze_clamp/twin_end_clamped.chart";
+}
+
 // D34 at a normal tempo. Two SP ends sit one tick apart, 30720 and 30721:
 // '0' ends at 30720 (19200 plus two bars, plus one bar for the phrase on
-// 23042), and '1' ends at 30721 (the cap pins it to 23042 plus two bars).
-// plusmeasure rounds both one bar on to the same tick, 34560, so both ends
-// offered the phrase on 30480 to the same path. It was squeezed in at the
-// first and in or out again at the second: '0++' and '0+-', '1++' and '1+-'.
-// Real charts do this (Thrice - Deadbolt, SoundHaven - Triad). A phrase is
-// squeezed in once, so the second end offers the window's next phrase, and
-// here there is none. The chart is hand-made (120 BPM, resolution 480).
+// 23041), and '1' ends at 30721 (the cap pins it to 23041 plus four
+// measures). The phrase on 26000 sits in both ends' windows, and the cap pins
+// each path's end to 26000 plus four measures, 33680, so both ends offer the
+// phrase to the same path. It was squeezed in at the first and in or out again
+// at the second: '0++' and '0+-', '1++' and '1+-'. (The ends one tick apart
+// came from rounding once, when the measure sums were truncated doubles; now
+// the cap's pin is what makes two ends reach one end.) Real charts do this
+// (Thrice - Deadbolt, SoundHaven - Triad). A phrase is squeezed in once, so
+// the second end offers the window's next phrase, and here there is none.
 TEST_CASE("squeeze rule: twin SP ends a tick apart squeeze one phrase in once") {
-    const Song song = load_songpath(
-        corpus::root() + "/test_folded_sqin/twin_end_nodes.chart", ChartReading{});
+    const Song song = load_songpath(twin_end_chart(), ChartReading{});
     const app::AnalysisSettings cfg = test::scores_settings(2);
     HydraRecord rec;
     REQUIRE_NOTHROW(rec = analyze_chart(song, cfg));
@@ -350,35 +358,35 @@ TEST_CASE("squeeze rule: twin SP ends a tick apart squeeze one phrase in once") 
     // The best path keeps its score: the second "+" never moved anything.
     const Path* best = test::path_named(rec.paths, "0+");
     REQUIRE(best != nullptr);
-    CHECK(best->totalscore() == 2950);
-    CHECK(rec.best_path().totalscore() == 2950);
+    CHECK(best->totalscore() == 2650);  // pinned from one run
+    CHECK(rec.best_path().totalscore() == 2650);
     CHECK(test::path_named(rec.paths, "0++") == nullptr);
     CHECK(test::path_named(rec.paths, "0+-") == nullptr);
 }
 
-// D36 gap c, on the same chart. '0' activates at 19200 and its phrase 30480
-// moves its end from 30720; '1' activates at 21120 and 30480 moves its end
-// from 30721. Both land on 34560, so both SP ends hold a choice of 30480 for
-// a path whose end is 34560. Each window may squeeze 30480 only at the end
-// its own step moved: before D36 the first matching node, 30720, took '1's
-// squeeze too, so its SqIn or SqOut sat 1.04 ms off and a SqOut ended SP at
-// a node its record never names. Each window is checked in a targeted
-// search (search_target) of its own activation, so no fold hides it.
+// D36 gap c, on the same chart. '0' activates at 19200 and its phrase 26000
+// moves its end from 30720; '1' activates at 21120 and 26000 moves its end
+// from 30721. Both land on 33680 (the cap's pin, 26000 plus four measures),
+// so both SP ends hold a choice of 26000 for a path whose end is 33680. Each
+// window may squeeze 26000 only at the end its own step moved: before D36 the
+// first matching node, 30720, took '1's squeeze too, so its SqIn or SqOut sat
+// 0.1 ms off and a SqOut ended SP at a node its record never names. Each
+// window is checked in a targeted search (search_target) of its own
+// activation, so no fold hides it.
 TEST_CASE("squeeze rule: twin SP ends a tick apart each squeeze only their own path") {
-    const Song song = load_songpath(
-        corpus::root() + "/test_folded_sqin/twin_end_nodes.chart", ChartReading{});
+    const Song song = load_songpath(twin_end_chart(), ChartReading{});
     const app::AnalysisSettings cfg = test::scores_settings(2);
     const ScoreGraph graph(song, 2);
     CHECK(deact_edge_at(graph, 30720) != nullptr);
     CHECK(deact_edge_at(graph, 30721) != nullptr);
-    // 120 BPM at 480 ticks a beat: 30480 is 31750 ms, 30720 is 32000 ms and
-    // 30721 is 32001.0417 ms, so each window's squeeze sits 250 ms or
-    // 251.0417 ms (250 + 25/24) before its own end.
+    // 1200 BPM at 480 ticks a beat is 5/48 ms a tick: 26000 sits 4720 ticks
+    // (491.667 ms) before 30720 and 4721 ticks (491.771 ms) before 30721, so
+    // each window's squeeze sits that far before its own end.
     struct Window {
         int64_t act, own_end;
         double own_ms;
     };
-    for (const Window& w : {Window{19200, 30720, -250.0}, Window{21120, 30721, -251.0 - 1.0 / 24.0}}) {
+    for (const Window& w : {Window{19200, 30720, -491.0 - 2.0 / 3.0}, Window{21120, 30721, -491.0 - 37.0 / 48.0}}) {
         const int64_t act = w.act, own_end = w.own_end;
         CAPTURE(act);
         const doctest::Approx own_ms = doctest::Approx(w.own_ms).epsilon(1e-9);
