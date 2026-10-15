@@ -121,6 +121,7 @@ class Fake:
         self.charts = 0
         self.search = ""
         self.line = 0  # lines received, as the real session counts them
+        self.timeout = SESSION_TIMEOUT_S  # the timeout verb changes it, as in the real session
 
     def failed_at(self, pipe, line, log_text):
         """An engine action that failed, in the real reply's shape."""
@@ -159,7 +160,7 @@ class Fake:
             return True
         if verb in ("click", "check", "uncheck"):
             if "missing" in rest:
-                self.failed_at(pipe, line, f"[0020] Error 'Unable to locate item: '//Hydra/{rest}''\n")
+                self.failed_at(pipe, line, f"[0020] Error 'Unable to locate item: '//Hydra/{rest}' (0x00000000)'\n")
             else:
                 if verb == "click" and rest.lower().startswith("scan"):
                     self.charts = 97
@@ -174,12 +175,19 @@ class Fake:
                     self.search = text.strip()
                 ok(pipe)
             return True
-        if verb in ("window", "key", "timeout", "wait", "wait-idle"):
+        if verb == "timeout":
+            try:
+                self.timeout = float(rest)
+            except ValueError:
+                pass  # the real session reads any text as a number; the stand-in needs only numbers
+            ok(pipe)
+            return True
+        if verb in ("window", "key", "wait", "wait-idle"):
             ok(pipe)
             return True
         if verb == "wait-text":
             if "never" in rest:
-                self.refused(pipe, line, f"\"{rest}\" did not appear within the timeout")
+                self.refused(pipe, line, f"\"{rest}\" did not appear within {self.timeout:.0f}s")
             else:
                 ok(pipe)
             return True

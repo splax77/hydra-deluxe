@@ -128,6 +128,9 @@ class FakeLayer(unittest.TestCase):
         self.assertIn("Unable to locate item", out)
         out = self.helper.send("wait-text never here")
         self.assertTrue(out.startswith("error: failed: wait-text never here\n"), out)
+        self.assertIn(f"did not appear within {fake.SESSION_TIMEOUT_S}s", out)
+        self.assertEqual(self.helper.send("timeout 7"), "ok")
+        self.assertIn("did not appear within 7s", self.helper.send("wait-text never here"))
         self.assertEqual(self.helper.send("click Scan library"), "ok")
 
     def test_line_break_is_refused_before_sending(self):
