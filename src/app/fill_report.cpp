@@ -209,11 +209,6 @@ const std::string& page_template() {
     return page;
 }
 
-// A record's best path as text, or empty when it kept none.
-std::string best_path(const store::RecordRow& record) {
-    return record.paths.empty() ? std::string() : record.paths.front().path;
-}
-
 }  // namespace
 
 std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
@@ -260,13 +255,13 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
         if (old_rec) {
             const store::PathSummary s = old_rec->summary();
             if (old_scored) row.old_score = s.score;
-            row.old_path = best_path(*old_rec);
+            row.old_path = old_rec->best_path_text();
             row.old_acts = s.actcount;
         }
         if (new_rec) {
             const store::PathSummary s = new_rec->summary();
             if (new_scored) row.new_score = s.score;
-            row.new_path = best_path(*new_rec);
+            row.new_path = new_rec->best_path_text();
             row.new_acts = s.actcount;
         }
         row.notes = (new_rec ? new_rec : old_rec)->summary().notecount;

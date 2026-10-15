@@ -92,8 +92,8 @@ struct PathSummary {
 
 PathSummary summarize_path(const Path& path);
 PathSummary summarize_record(const HydraRecord& record);
-// A record's best path as text: its pathstring, or empty when it has no
-// paths. The bestpath column and hydra_replay's result block both show it.
+// The old bestpath column's text, kept only for prepare_row until that write
+// path goes (D115 A1-5). Readers ask RecordRow::best_path_text.
 std::string best_path_text(const HydraRecord& record);
 
 // Which cap's record a lookup wants: at(N), the record analyzed at exactly N
@@ -289,6 +289,10 @@ struct RecordRow {
     // PathSummary::has_scored_best_path keeps its meaning (D51 call 11).
     PathSummary summary() const;
     bool has_scored_best_path() const { return !paths.empty(); }
+    // The record's best path as text: rank 1's, or empty when the record kept
+    // no paths. Every screen and tool that shows a record's best path reads it
+    // here.
+    std::string best_path_text() const;
 
     // Every column and every path, so a fresh record can be compared with the
     // stored one. Spelled out rather than defaulted: this project builds as
@@ -313,6 +317,12 @@ struct PreparedRecord {
 // prepare_row does.
 PreparedRecord prepare_record(std::string song_id, const Profile& profile,
                               const HydraRecord& analysis);
+
+// The record an analysis becomes, with no profile check: prepare_record's own
+// step, for a reader that has no profile (hydra_replay's result block) or
+// must not throw (the click's fallback when saving failed). A record that is
+// saved goes through prepare_record, so it is checked against its profile.
+RecordRow record_of(std::string song_id, const HydraRecord& analysis);
 
 // What a record lookup found. `record` is filled only when status is Ready:
 // a Stale record's numbers came from a build or rules this one doesn't trust.

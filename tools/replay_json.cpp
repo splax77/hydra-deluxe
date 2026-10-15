@@ -6,7 +6,7 @@
 #include <string>
 
 #include "core/timing.h"  // SongTiming
-#include "store/record_store.h"  // best_path_text
+#include "store/record_store.h"  // record_of, RecordRow::best_path_text
 
 namespace hydra {
 
@@ -145,10 +145,11 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
 
 nlohmann::json result_json(const HydraRecord& rec) {
     // HydraRecord::optimal_score owns "what is this record's best score",
-    // absent when the record holds no paths; best_path_text owns its text.
+    // absent when the record holds no paths; RecordRow::best_path_text owns
+    // its text. The replay has no profile, so it builds the record unchecked.
     const std::optional<int64_t> best = rec.optimal_score();
     return nlohmann::json{{"score", best ? nlohmann::json(*best) : nlohmann::json(nullptr)},
-                          {"bestpath", store::best_path_text(rec)}};
+                          {"bestpath", store::record_of(std::string(), rec).best_path_text()}};
 }
 
 }  // namespace hydra

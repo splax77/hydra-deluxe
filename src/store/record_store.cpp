@@ -562,8 +562,8 @@ void RecordStore::in_transaction(F work) {
     }
 }
 
-// The bestpath column writes this text (prepare_row), and hydra_replay's
-// result block shows it.
+// The old bestpath column writes this text (prepare_row); it goes with that
+// write path (D115 A1-5). Readers ask RecordRow::best_path_text.
 std::string best_path_text(const HydraRecord& record) {
     return record.paths.empty() ? std::string() : record.best_path().pathstring();
 }
@@ -597,6 +597,8 @@ PathRow path_row_of(const Path& path, int rank) {
     return row;
 }
 
+}  // namespace
+
 // The record an analysis becomes: its kept paths in all_paths()'s order,
 // which is best first (rank 1 is best_path()), at most kPathsPerRecord of
 // them. Every path of one analysis carries the same note count, so the
@@ -618,6 +620,8 @@ RecordRow record_of(std::string song_id, const HydraRecord& analysis) {
     }
     return r;
 }
+
+namespace {
 
 // Throws std::invalid_argument when `profile` is not what `analysis` ran
 // under: its cap, its ms limit or its fill rule. Each mismatch would file the
@@ -704,6 +708,10 @@ PathSummary RecordRow::summary() const {
     s.pathcount = pathcount;
     s.stars = stars;
     return s;
+}
+
+std::string RecordRow::best_path_text() const {
+    return paths.empty() ? std::string() : paths.front().path;
 }
 
 std::string current_record_version() { return std::string(kResultsStamp.written); }

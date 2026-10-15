@@ -443,15 +443,10 @@ void AppState::update_view_job() {
                 v.summary = save_view_summary(song_id, profile, *out.analysis);
             } catch (const std::exception& e) {
                 set_problem("Analyzed, but saving failed. " + app::plain_error(e));
-                // The engine's own summary, as a save would have shown it. When
-                // prepare_record itself refused the analysis (it does not fit
-                // the profile), there is no record to read one from, and the
-                // problem line above already says why.
-                try {
-                    v.summary = store::prepare_record(song_id, profile, out.analysis->record)
-                                    .record.summary();
-                } catch (const std::exception&) {
-                }
+                // The engine's own summary, as a save would have shown it.
+                // record_of skips the profile check, so this shows the
+                // analysis even when the save refused it for not fitting.
+                v.summary = store::record_of(song_id, out.analysis->record).summary();
             }
             v.state = ViewedSong::State::Ready;
             v.timing = out.analysis->song.timing();

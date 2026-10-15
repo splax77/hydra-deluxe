@@ -80,29 +80,45 @@
     },
     {
       "question": "What text is a record's best path?",
-      "owner": "best_path_text in src/store/record_store.cpp",
+      "owner": "RecordRow::best_path_text in src/store/record_store.cpp",
       "owner_file": "src/store/record_store.cpp",
-      "owner_symbol": "best_path_text",
+      "owner_symbol": "RecordRow::best_path_text",
       "date": "2026-10-04",
-      "decision": "ST1 (audit findings 116 and 132)",
-      "added_by": "M7-1",
-      "pattern": "best_path\\(\\)\\.pathstring\\(\\)",
-      "anchor": "best_path().pathstring()",
+      "decision": "ST1 (audit findings 116 and 132); D115 A1-5 (the owner moved to the record)",
+      "added_by": "M7-1, moved by D115-A1-5f",
+      "pattern": "paths\\s*(?:\\.front\\(\\)|\\[0\\]|\\.at\\(0\\))\\.path\\b|best_path\\(\\)\\.pathstring\\(\\)",
+      "anchor": ".path",
       "must_match": [
-        "return record.paths.empty() ? std::string() : record.best_path().pathstring();",
+        "return record.paths.empty() ? std::string() : record.paths.front().path;",
+        "summary.has_scored_best_path() ? prepared.record.paths.front().path : std::string();",
+        "out.bestpath = rec.paths[0].path;",
         "{\"bestpath\", best ? rec.best_path().pathstring() : std::string()}};"
       ],
       "must_not_match": [
-        "CHECK(p->pathstring() == \"0 E3+ E5 E1\");"
+        "CHECK(p->pathstring() == \"0 E3+ E5 E1\");",
+        "row.path = path.pathstring();",
+        "const PathRow& best = paths.front();",
+        "b.notation = p->pathstring();",
+        "{\"bestpath\", store::record_of(std::string(), rec).best_path_text()}};"
       ],
       "owner_lines": [
         {
           "file": "src/store/record_store.cpp",
+          "line_text": "return paths.empty() ? std::string() : paths.front().path;",
+          "why": "RecordRow::best_path_text, the owner"
+        },
+        {
+          "file": "src/store/record_store.cpp",
           "line_text": "return record.paths.empty() ? std::string() : record.best_path().pathstring();",
-          "why": "best_path_text, the owner"
+          "why": "best_path_text(const HydraRecord&), the old bestpath column's text for prepare_row; D115 A1-5's deletion wave removes it with that write path"
+        },
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "if (!found[i].record.paths.empty()) out[i].bestpath = found[i].record.paths.front().path;",
+          "why": "RecordStore::get_summaries, the old lookup shim; D115 A1-5's deletion wave removes it"
         }
       ],
-      "note": "The bestpath column and hydra_replay's result block both show this text, so they read it from one function. Decided by: ST1 (audit findings 116 and 132); phase 7 M7-1 derive-once review finding 2 (2026-10-04)"
+      "note": "The library's Best path cell, the fill report, hydra_batch's progress line and hydra_replay's result block all show this text, so they read it from the record. Spelling rank 1 again, by hand on the record or off the analysis, made one copy per screen, each with its own answer for a record that kept no paths. Decided by: ST1 (audit findings 116 and 132); phase 7 M7-1 derive-once review finding 2 (2026-10-04); D115 A1-5 moved the owner to RecordRow"
     },
     {
       "question": "Which fill rule does a record key name?",
