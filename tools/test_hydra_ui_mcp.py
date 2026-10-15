@@ -25,6 +25,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+import fake_hydra_live as fake  # noqa: E402
 import hydra_ui_mcp as hm  # noqa: E402
 
 FAKE = HERE / "fake_hydra_live.py"
@@ -85,6 +86,29 @@ class FakeLayer(unittest.TestCase):
         self.assertIn(f"pid: {s.proc.pid}", out)
         self.assertEqual(s.hello["pid"], s.proc.pid)
         self.assertIn("engine scratch: ", out)
+        self.assertEqual(s.timeout, fake.HELLO_TIMEOUT_S)
+        self.assertIn(f"wait cap: {fake.HELLO_TIMEOUT_S} s", out)
+
+    def test_a_hello_line_without_a_timeout_ends_the_session(self):
+        self.helper._read_line = lambda sess, wait_s: '{"ok":true,"hello":{"mode":"headless","pid":1}}'
+        out = self.helper.start("headless")
+        self.assertIn("was not a hello line with a timeout", out)
+        self.assertIsNone(self.helper.session)
+
+    def test_the_helper_follows_its_own_timeouts_and_a_reset_keeps_them(self):
+        self.helper.start("headless")
+        self.assertEqual(self.helper.send("timeout 5"), "ok")
+        self.assertEqual(self.helper.session.timeout, 5)
+        self.assertEqual(self.helper.send("reset"), "ok")
+        self.assertEqual(self.helper.session.timeout, 5)
+
+    def test_screenshot_is_saved_under_the_name_given(self):
+        self.helper.start("headless")
+        scratch = self.helper.session.scratch
+        for name in ("shot.png", "bare"):
+            self.assertEqual(self.helper.send(f"screenshot {name}"), f"screenshot: {scratch / name}")
+            self.assertTrue((scratch / name).is_file())
+        self.assertFalse((scratch / "bare.png").exists())
 
     def test_one_tool_call_sends_one_line_and_returns_the_reply(self):
         self.helper.start("headless")
@@ -100,8 +124,10 @@ class FakeLayer(unittest.TestCase):
     def test_failure_carries_the_error_and_log_and_the_session_survives(self):
         self.helper.start("headless")
         out = self.helper.send("click missing button")
-        self.assertTrue(out.startswith("failed: click failed"), out)
+        self.assertTrue(out.startswith("error: !! failed at line 1: click missing button"), out)
         self.assertIn("Unable to locate item", out)
+        out = self.helper.send("wait-text never here")
+        self.assertTrue(out.startswith("error: failed: wait-text never here\n"), out)
         self.assertEqual(self.helper.send("click Scan library"), "ok")
 
     def test_line_break_is_refused_before_sending(self):
@@ -142,7 +168,7 @@ class FakeLayer(unittest.TestCase):
         self.helper.start("headless")
         for bad in (-1, float("inf"), float("nan")):
             self.assertTrue(self.helper.with_timeout("wait-idle", bad).startswith("refused: timeout"), bad)
-        self.assertEqual(self.helper.session.timeout, hm.ENGINE_DEFAULT_TIMEOUT_S)
+        self.assertEqual(self.helper.session.timeout, fake.HELLO_TIMEOUT_S)
 
     def test_a_reply_that_is_not_an_object_is_reported(self):
         self.helper.start("headless")
@@ -182,12 +208,12 @@ class FakeLayer(unittest.TestCase):
         self.assertLessEqual(len(out), 1000)
         self.assertTrue(out.endswith("1 of 1 lines dropped; contains= narrows hydra_text and hydra_dump]"))
 
-    def test_run_stops_at_the_first_failure(self):
-        out = self.helper.run("click Scan library\n# a comment\nclick missing one\nstate\n")
-        self.assertIn("> click Scan library\nok", out)
-        self.assertIn("> click missing one\nfailed: click failed", out)
+    def test_run_sends_every_line_and_stops_at_the_first_failure(self):
+        out = self.helper.run("click Scan library\n# a comment\n\nclick missing one\nstate\n")
+        self.assertIn("> click Scan library\nok\n> # a comment\nok\n> \nok\n", out)
+        self.assertIn("> click missing one\nerror: !! failed at line 4: click missing one", out)
         self.assertNotIn("> state", out)
-        self.assertTrue(out.endswith("stopped at line 2 of 3"), out)
+        self.assertTrue(out.endswith("stopped at line 4 of 5"), out)
 
     def test_text_and_dump_narrow_with_contains(self):
         self.helper.start("headless")
@@ -203,7 +229,7 @@ class FakeLayer(unittest.TestCase):
     def test_one_off_timeout_is_put_back(self):
         self.helper.start("headless")
         self.assertEqual(self.helper.with_timeout("wait-idle", 5), "ok")
-        self.assertEqual(self.helper.session.timeout, hm.ENGINE_DEFAULT_TIMEOUT_S)
+        self.assertEqual(self.helper.session.timeout, fake.HELLO_TIMEOUT_S)
 
     def test_stop_exits_zero_and_deletes_the_scratch(self):
         self.helper.start("headless")
@@ -266,6 +292,61 @@ class FakeLayer(unittest.TestCase):
         procs = [("HYDRA.EXE", str(self.root / "other" / "Hydra.exe")), ("Hydra.exe.bak", None)]
         self.assertEqual(hm.hydra_running_from(lib, procs), [])
         self.assertEqual(len(hm.hydra_running_from(lib, [("hydra.exe", None)])), 1)
+
+    def test_a_junction_to_the_folder_counts_as_the_folder(self):
+        lib = self.root / "lib"
+        make_library(lib)
+        link = self.root / "lib junction"
+        r = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(lib)],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            self.skipTest(f"Windows would not make a junction here: {r.stdout}{r.stderr}")
+        try:
+            # Hydra runs from the real folder; the user named the junction.
+            procs = [("Hydra.exe", str(lib / "Hydra.exe"))]
+            self.assertEqual(hm.hydra_running_from(link, procs), [str(lib / "Hydra.exe")])
+            # And the other way round.
+            procs = [("Hydra.exe", str(link / "Hydra.exe"))]
+            self.assertEqual(len(hm.hydra_running_from(lib, procs)), 1)
+        finally:
+            os.rmdir(link)  # removes the junction only, never what it points at
+
+    def test_a_short_name_for_the_folder_counts_as_the_folder(self):
+        lib = self.root / "Library Folder With A Long Name"
+        make_library(lib)
+        import ctypes
+        buf = ctypes.create_unicode_buffer(32768)
+        n = ctypes.windll.kernel32.GetShortPathNameW(str(lib), buf, len(buf))
+        short = buf.value if n else ""
+        if not short or os.path.basename(short) == lib.name:
+            self.skipTest("this volume gives no 8.3 short name for a folder in temp")
+        procs = [("Hydra.exe", str(lib / "Hydra.exe"))]
+        self.assertEqual(len(hm.hydra_running_from(short, procs)), 1)
+        procs = [("Hydra.exe", os.path.join(short, "Hydra.exe"))]
+        self.assertEqual(len(hm.hydra_running_from(lib, procs)), 1)
+
+    def test_a_crash_report_never_quotes_an_old_runs_log(self):
+        lib = self.root / "lib"
+        make_library(lib)
+        stale = self.exe_dir / "hydra_uitest.log"
+        stale.write_text("old run: this line is stale\n")
+        self.helper.start("window", library_dir=str(lib))
+        out = self.helper.send("fake-exit 3")
+        self.assertTrue(out.startswith("Hydra exited with code 3."), out)
+        self.assertIn(f"no log written: {stale} is unchanged since launch", out)
+        self.assertNotIn("this line is stale", out)
+
+    def test_a_crash_report_quotes_a_log_written_after_launch(self):
+        lib = self.root / "lib"
+        make_library(lib)
+        log = self.exe_dir / "hydra_uitest.log"
+        log.write_text("old run: this line is stale\n")
+        self.helper.start("window", library_dir=str(lib))
+        # What Hydra.exe does when it opens its log: start it afresh.
+        log.write_text("this run: fresh line\n")
+        out = self.helper.send("fake-exit 3")
+        self.assertIn(f"last lines of {log}:\n  this run: fresh line", out)
+        self.assertNotIn("this line is stale", out)
 
     def test_window_command_line_never_names_the_library_folder(self):
         lib = self.root / "Library Folder Q7"
@@ -344,6 +425,33 @@ class RealExeLayer(unittest.TestCase):
         out = self.helper.run("\n".join(before_reset))
         self.assertNotIn("stopped at line", out)
         self.assertIn("charts=97", self.helper.send("state"))
+
+    def test_the_real_hello_line(self):
+        self.helper.start("headless")
+        s = self.helper.session
+        # Pinned from the real exe's first line on 2026-10-14.
+        self.assertEqual(sorted(s.hello), ["mode", "pid", "scratch", "timeout"])
+        self.assertEqual(s.hello["mode"], "headless")
+        self.assertEqual(s.hello["pid"], s.proc.pid)
+        self.assertEqual(s.timeout, 30)
+        self.assertTrue(Path(s.hello["scratch"]).is_dir())
+
+    def test_real_replies_for_a_failure_a_skipped_line_and_a_screenshot(self):
+        self.helper.start("headless")
+        out = self.helper.run("state\n\n# a comment\nclick No such button\nstate")
+        self.assertIn("> \nok\n> # a comment\nok\n", out)
+        self.assertIn("> click No such button\nerror: !! failed at line 4: click No such button\n", out)
+        self.assertIn("Unable to locate item", out)
+        self.assertTrue(out.endswith("stopped at line 4 of 5"), out)
+        # The interpreter's own error, from a wait that gives up.
+        out = self.helper.with_timeout("wait-text never on screen", 0)
+        self.assertTrue(out.startswith("error: failed: wait-text never on screen\n"), out)
+        self.assertIn('did not appear within 0s', out)
+        scratch = self.helper.session.scratch
+        for name in ("shot.png", "bare"):
+            self.assertEqual(self.helper.send(f"screenshot {name}"), f"screenshot: {scratch / name}")
+            self.assertEqual((scratch / name).read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertFalse((scratch / "bare.png").exists())
 
     def test_headless_session(self):
         self.helper.start("headless")

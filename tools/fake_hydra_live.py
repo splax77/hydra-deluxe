@@ -54,6 +54,10 @@ k32.CloseHandle.argtypes = [wintypes.HANDLE]
 
 INVALID_HANDLE = wintypes.HANDLE(-1).value
 
+# The wait cap the hello line names. Deliberately not the real exe's starting
+# value, so a test can tell the helper read it from the hello line.
+HELLO_TIMEOUT_S = 25
+
 # What fake-big answers with: 1,000 lines of 49 characters plus a newline.
 BIG_LINE = "x" * 45 + " row"
 BIG_TEXT = "\n".join(BIG_LINE for _ in range(1000)) + "\n"
@@ -114,6 +118,15 @@ class Fake:
         self.shots = shots
         self.charts = 0
         self.search = ""
+        self.line = 0  # lines received, as the real session counts them
+
+    def failed_at(self, pipe, line, log_text):
+        """An engine action that failed, in the real reply's shape."""
+        fail(pipe, f"!! failed at line {self.line}: {line}", log_text)
+
+    def refused(self, pipe, line, why):
+        """The interpreter's own error, in the real reply's shape."""
+        fail(pipe, f"failed: {line}", f"[0020] Error 'line {self.line}: {why}'\n")
 
     def state(self):
         return f"state:\n  store=ready\n  charts={self.charts} shown={self.charts} search=\"{self.search}\"\n"
@@ -144,7 +157,7 @@ class Fake:
             return True
         if verb in ("click", "check", "uncheck"):
             if "missing" in rest:
-                fail(pipe, f"{verb} failed", f"[error] Unable to locate item: '{rest}'\n")
+                self.failed_at(pipe, line, f"[0020] Error 'Unable to locate item: '//Hydra/{rest}''\n")
             else:
                 if verb == "click" and rest.lower().startswith("scan"):
                     self.charts = 97
@@ -153,7 +166,7 @@ class Fake:
         if verb == "type":
             ref, bar, text = rest.partition("|")
             if not bar:
-                fail(pipe, "type needs \"<ref> | <text>\"", "")
+                self.refused(pipe, line, "type needs \"<ref> | <text>\"")
             else:
                 if "Search" in ref:
                     self.search = text.strip()
@@ -164,7 +177,7 @@ class Fake:
             return True
         if verb == "wait-text":
             if "never" in rest:
-                fail(pipe, f"\"{rest}\" did not appear within 30s", "")
+                self.refused(pipe, line, f"\"{rest}\" did not appear within the timeout")
             else:
                 ok(pipe)
             return True
@@ -192,10 +205,12 @@ class Fake:
             ok(pipe)
             return True
         if verb == "screenshot":
-            path = self.shots / f"{rest}.png"
-            ok(pipe, f"{path}\n")
+            # Saved under exactly the name given, as the real exe does.
+            path = Path(rest) if Path(rest).is_absolute() else self.shots / rest
+            path.write_bytes(b"\x89PNG\r\n\x1a\n")
+            ok(pipe, f"screenshot: {path}\n")
             return True
-        fail(pipe, f"unknown verb \"{verb}\"", "")
+        self.refused(pipe, line, f"unknown verb \"{verb}\"")
         return True
 
 
@@ -223,7 +238,8 @@ def main(argv):
     pipe = Pipe(rf"\\.\pipe\hydra-live-{os.getpid()}")
     log(f"fake: pipe made for pid {os.getpid()}")
     pipe.accept()
-    reply(pipe, {"ok": True, "hello": {"mode": mode, "scratch": str(scratch), "pid": os.getpid()}})
+    reply(pipe, {"ok": True, "hello": {"mode": mode, "scratch": str(scratch), "pid": os.getpid(),
+                                       "timeout": HELLO_TIMEOUT_S}})
     pending = b""
     while True:
         data = pipe.read()
@@ -234,9 +250,13 @@ def main(argv):
         while b"\n" in pending:
             raw, pending = pending.split(b"\n", 1)
             line = raw.decode("utf-8").strip()
-            if not line:
-                continue
+            fake.line += 1
             log(f"> {line}")
+            # Every line gets one reply. The lines the real exe skips (see
+            # command_line in tests/ui/uitest_script.cpp) get an empty ok.
+            if not line or line.startswith("#"):
+                ok(pipe)
+                continue
             if not fake.run(pipe, line):
                 return 0
 
