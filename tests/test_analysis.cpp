@@ -28,6 +28,8 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "app/config.h"
+#include "app/report.h"  // kDefaultReportPaths
 #include "app/work_pool.h"
 #include "core/error_kind.h"
 #include "audio_chart_fixtures.h"
@@ -35,15 +37,18 @@
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file
+#include "display_fixtures.h"  // store_batch_result, old_build_row
 #include "midi_util.h"
 #include "parse/song.h"
 #include "sng_util.h"
+#include "store/chart_index.h"
 #include "store/record_store.h"
 #include "temp_util.h"
 
 using namespace hydra::app;
 
 using hydra::file_exists_utf8;
+using hydra::app::Settings;
 
 TEST_CASE("discover_charts walks the corpus without throwing") {
     auto [items, errors] = discover_charts({corpus::root()});
@@ -165,23 +170,52 @@ void run_planned(const std::vector<ScanItem>& items, const BatchRun& run,
 
 }  // namespace
 
-TEST_CASE("run_batch files results under the lens it is given") {
-    const std::string chart = corpus::first_chart_with_notes();
+TEST_CASE("run_batch saves a record with its top paths through the one save") {
+    const BatchRun run = Settings{}.batch_run();
+    const std::vector<corpus::ChartWithPaths> charts = corpus::charts_with_paths(run.settings, 3);
+    REQUIRE(charts.size() == 3);
 
-    BatchRun run;
-    run.chartmode = "lens-test";
-    run.lens = hydra::store::Lens::from(std::optional<int>(10), 0, 10);
-    run.settings.depth_mode = hydra::DepthMode::Scores;
-    run.settings.depth_value = 10;
-    run.settings.ms_filter = 10.0;
-
-    const ScanItem item = chart_item(chart);
+    std::vector<ScanItem> items;
+    for (const corpus::ChartWithPaths& c : charts) items.push_back(chart_item(c.chart));
     hydra::store::RecordStore store(":memory:");
-    run_planned({item}, run, store, /*redo=*/false, 1);
+    run_planned(items, run, store, /*redo=*/false, 1);
 
-    const hydra::store::CapQuery cap =
-        hydra::store::CapQuery::at(run.settings.sp_cap);
-    CHECK(store.has_record(hydra::store::RecordKey{item.md5, "lens-test", cap, run.lens}));
+    for (size_t i = 0; i < charts.size(); ++i) {
+        CAPTURE(charts[i].chart);
+        const hydra::HydraRecord& engine = charts[i].result.record;
+        const hydra::store::RecordLookup found = store.lookup_one(items[i].md5, run.profile());
+        REQUIRE(found.status == hydra::store::RecordStatus::Ready);
+        const std::vector<hydra::store::PathRow>& paths = found.record.paths;
+        REQUIRE_FALSE(paths.empty());
+        CHECK(paths.size() <= static_cast<size_t>(hydra::app::report::kDefaultReportPaths));
+        // Rank 1 is the engine's best path.
+        CHECK(paths.front().rank == 1);
+        CHECK(paths.front().path == hydra::store::best_path_text(engine));
+        CHECK(paths.front().score == engine.best_path().totalscore());
+    }
+}
+
+TEST_CASE("charts_with_result counts a Ready record and not a Stale or sibling-profile one") {
+    Settings settings;
+    settings.sp_cap = 4;
+    const BatchRun run = settings.batch_run();
+    hydra::store::RecordStore store(":memory:");
+    // Ready under the run's profile.
+    hydra::test::store_batch_result(store, "ready", settings.sp_cap);
+    // Ready, but under a sibling profile: the same chart mode at another cap.
+    hydra::test::store_batch_result(store, "sibling", settings.sp_cap + 1);
+    // Under the run's profile, but Stale: another build wrote it.
+    store.add_row(hydra::test::old_build_row(
+        settings.record_key("stale"),
+        analyze_chart_file(corpus::first_chart_with_notes(), settings.to_analysis_settings())
+            .record));
+    REQUIRE(store.lookup_one("stale", run.profile()).status == hydra::store::RecordStatus::Stale);
+    REQUIRE(store.lookup_one("sibling", run.profile()).status ==
+            hydra::store::RecordStatus::NotAnalyzed);
+
+    CHECK(charts_with_result(store, run, /*redo=*/false) ==
+          std::unordered_set<std::string>{"ready"});
+    CHECK(charts_with_result(store, run, /*redo=*/true).empty());
 }
 
 TEST_CASE("run_work_pool hands every item to the consumer once") {
@@ -529,6 +563,37 @@ TEST_CASE("plan_batch: every copy of a stored chart counts as skipped") {
     CHECK(plan.todo[1].md5 == "fake2");
     CHECK(plan.skipped == 2);
     CHECK(plan.todo_rows() + plan.skipped == static_cast<int>(items.size()));
+}
+
+TEST_CASE("plan_batch takes its copies from ChartIndex") {
+    // Chart A three times, chart B twice and chart C once, copies scattered;
+    // C is already stored.
+    std::vector<ScanItem> items = fake_items(3);
+    for (const int i : {0, 1, 0}) {
+        ScanItem copy = items[i];
+        copy.notespath = "copy" + std::to_string(items.size()) + "_" + copy.notespath;
+        items.push_back(copy);
+    }
+    const BatchPlan plan = plan_batch(items, {"fake2"});
+
+    // Each chart to run is ChartIndex's: its order, its naming copy and its
+    // copy count.
+    const hydra::store::ChartIndex index = hydra::store::ChartIndex::from_rows(items);
+    REQUIRE(plan.todo.size() == 2);
+    REQUIRE(plan.rows.size() == 2);
+    for (size_t i = 0; i < plan.todo.size(); ++i) {
+        const std::string& id = index.song_ids()[i];
+        CAPTURE(id);
+        CHECK(plan.todo[i].md5 == id);
+        REQUIRE(index.naming(id) != nullptr);
+        CHECK(plan.todo[i].notespath == index.naming(id)->notespath);
+        CHECK(plan.rows[i] == index.copies(id));
+    }
+    // The numbers, from the six rows above: A has 3 rows, B 2, and C's one
+    // row is skipped.
+    CHECK(plan.rows == std::vector<int>{3, 2});
+    CHECK(plan.skipped == index.copies("fake2"));
+    CHECK(plan.skipped == 1);
 }
 
 TEST_CASE("run_batch reports analyzed, skipped and failed itself") {
