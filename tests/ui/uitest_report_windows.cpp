@@ -33,13 +33,12 @@
 #include "../scoped_hook.h"
 #include "../wait_util.h"
 #include "imgui_internal.h"
-#include "app/analysis.h"
 #include "app/dm_report.h"
 #include "app/path_report_view.h"  // timing_choices
 #include "app/report.h"
 #include "core/model.h"  // kCloneHeroSpCap
 #include "net/dmbot_client.h"
-#include "ui/library_jobs.h"  // set_report_analyzer_for_test
+#include "ui/library_jobs.h"  // set_report_hold_for_test
 #include "ui/report_window.h"
 
 namespace uitest {
@@ -264,29 +263,16 @@ void test_states(ImGuiTestContext* ctx) {
     reset_fixture();
     Fixture& f = fixture();
     f.path.state = ReportBuild::Building;
-    f.path.progress_done = 3;
-    f.path.progress_total = 10;
     f.path_open = true;
     ctx->Yield(3);
-    // What the numbers count is ReportOptions::progress's to say (D103 item 25).
-    IM_CHECK(shows("Analyzing 3 of 10 records"));
     // The subtitle while it builds (D103 item 21, board 2a), not the old
-    // result's.
+    // result's. The build only reads the store, so no bar counts anything.
     IM_CHECK(shows("Building the report from your library..."));
     IM_CHECK(!shows("sample path subtitle"));
+    IM_CHECK(!shows("Analyzing "));
     ctx->SetRef(path_window());
     ctx->ItemClick("Cancel");
     IM_CHECK_EQ(f.cancels, 1);
-    // Nothing left to analyze (D103 item 26): the bar moves with no count,
-    // under the building subtitle, and Cancel stays.
-    f.path.progress_done = 0;
-    f.path.progress_total = 0;
-    ctx->Yield(2);
-    IM_CHECK(shows("Building the report from your library..."));
-    IM_CHECK(!shows("Analyzing "));
-    IM_CHECK(!shows("0 of 0"));
-    ctx->ItemClick("Cancel");
-    IM_CHECK_EQ(f.cancels, 2);
 
     f.path.state = ReportBuild::Cancelled;
     ctx->Yield(2);
@@ -325,17 +311,6 @@ void test_states(ImGuiTestContext* ctx) {
     f.path.out_of_date = ReportOutOfDate::None;
     f.path.batch_finished.reset();
 
-    // Left-out charts: the report's own sentence, the files under Show files.
-    auto left_out = sample_path_result();
-    left_out->failures.push_back({"D:\\Songs\\Song D\\notes.chart", "sample error"});
-    f.path.result = left_out;
-    ctx->Yield(2);
-    IM_CHECK(shows(hydra::app::report::left_out_line(left_out->failures)));
-    IM_CHECK(!shows("Song D\\notes.chart"));
-    ctx->ItemClick("**/Show files");  // inside the strip's child
-    ctx->Yield(2);
-    IM_CHECK(shows("Song D\\notes.chart"));
-
     // Nothing to report: the report's empty reason.
     auto empty = std::make_shared<GeneratedReport>();
     empty->why_empty = "sample empty reason";
@@ -351,7 +326,7 @@ void test_states(ImGuiTestContext* ctx) {
     IM_CHECK(!shows("sample dm subtitle"));
     IM_CHECK(shows("The leaderboard server can take a moment to wake up."));
     ctx->ItemClick("Cancel");
-    IM_CHECK_EQ(f.cancels, 3);
+    IM_CHECK_EQ(f.cancels, 2);
     f.dm.state = ReportBuild::Failed;
     ctx->Yield(2);
     IM_CHECK(shows("The comparison could not be built."));  // D114 item 14
@@ -748,21 +723,18 @@ void press_escape_on(ImGuiTestContext* ctx, ImGuiWindow* window) {
     ctx->Yield(2);
 }
 
-// Holds every path report build at its first chart until release(), so a
-// test can look at the building state. The job copies the analyzer when it
+// Holds every path report build before it reads the store until release(),
+// so a test can look at the building state. The job copies the hold when it
 // is made; the destructor lets any held build go and removes the seam.
 std::atomic<bool> g_report_release{true};
 class ReportHold {
 public:
     ReportHold() {
         g_report_release = false;
-        seam_.emplace(hydra::ui::set_report_analyzer_for_test,
-                      [](const std::string& path, const hydra::app::AnalysisSettings& s,
-                         const std::function<void(float)>& on_progress) {
-                          testwait::wait_until([] { return g_report_release.load(); },
-                                               "the test to release the path report's build");
-                          return hydra::app::analyze_chart_file(path, s, on_progress);
-                      });
+        seam_.emplace(hydra::ui::set_report_hold_for_test, [] {
+            testwait::wait_until([] { return g_report_release.load(); },
+                                 "the test to release the path report's build");
+        });
     }
     ~ReportHold() { release(); }
     ReportHold(const ReportHold&) = delete;
@@ -814,32 +786,29 @@ void compare_with_alice(ImGuiTestContext* ctx) {
     ctx->Yield(2);
 }
 
-// A path report build just started under `hold`: the window counts the
-// records from 0 (and shows `also_while_building` when given), then, once
-// released, shows the rows with no bar.
-void held_build_then_rows(ImGuiTestContext* ctx, ReportHold& hold,
-                          const char* also_while_building = nullptr) {
+// A path report build just started under `hold`: the window shows the
+// building subtitle with no count, then, once released, the rows.
+void held_build_then_rows(ImGuiTestContext* ctx, ReportHold& hold) {
     Harness& h = harness(ctx);
     IM_CHECK_RETV(wait_until(ctx, [&] {
-        return h.app->report_job && h.app->report_job->progress().second > 0;
+        return h.app->report_job != nullptr &&
+               h.app->path_report_build() == hydra::ui::ReportBuild::Building;
     }, 10), );
-    const int total = h.app->report_job->progress().second;
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Analyzing 0 of " + std::to_string(total) + " record"));
-    if (also_while_building) IM_CHECK(on_screen(h, also_while_building));
+    IM_CHECK(on_screen(h, "Building the report from your library..."));
+    IM_CHECK(!on_screen(h, "Analyzing "));
     hold.release();
     IM_CHECK(wait_until(ctx, [&] {
         return h.app->report_job == nullptr &&
                h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
     }, 60));
     ctx->Yield(2);
-    IM_CHECK(!on_screen(h, "Analyzing "));
     IM_CHECK(on_screen(h, path_count_tail(h)));
 }
 
 // The path window opens from the finished strip's "Open report", from the
 // toolbar's "Open path report", and by itself after a batch with "Open
-// automatically" on. While it builds it shows the building bar.
+// automatically" on. While it builds it shows the building state.
 void test_open_path(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -847,6 +816,18 @@ void test_open_path(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     const std::string first = quoted_title(h, 0);
     const std::string second = quoted_title(h, 1);
+
+    // Before anything is analyzed, the report reads an empty store and says
+    // how to fill it.
+    h.app->show_path_report();
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->report_job == nullptr &&
+               h.app->path_report_build() == hydra::ui::ReportBuild::Failed;
+    }, 60));
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "Nothing is analyzed yet. Click a song or run a batch to analyze it."));
+    h.app->close_path_report();  // it covers the toolbar
+    ctx->Yield(2);
 
     // The finished strip's Open report.
     IM_CHECK(batch_search(ctx, first));
@@ -885,8 +866,8 @@ void test_open_path(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->path_report.window_open);
     IM_CHECK_RETV(path_window() != nullptr, );
 
-    // Refresh with every build held at its first chart: the window counts
-    // the records from 0.
+    // Refresh with every build held before it reads the store: the window
+    // shows the building state.
     ReportHold hold;
     ctx->SetRef(path_window());
     ctx->ItemClick("Refresh");
@@ -944,8 +925,9 @@ void test_dm_handover(ImGuiTestContext* ctx) {
     IM_CHECK(!h.app->dm_picker_open);
 }
 
-// A row click selects its chart; a row of the other chart mode switches the
-// analysis settings first; a comparison row not in the library selects nothing.
+// The path report lists the current chart mode's records only, and a row
+// click selects its chart without switching the chart mode; a comparison row
+// not in the library selects nothing.
 void test_row_click(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -955,7 +937,7 @@ void test_row_click(ImGuiTestContext* ctx) {
     const std::string md5 = h.app->library_row_at(0).entry.md5;
     auto selected_md5 = [&] { return h.app->selected ? h.app->selected->md5 : std::string(); };
 
-    // The chart under two chart modes, so the report holds it twice.
+    // The chart stored under two chart modes; the report lists the second.
     const std::string mode_a = h.app->settings.chartmode_key();
     IM_CHECK(batch_search(ctx, title));
     dismiss_done(ctx);
@@ -966,23 +948,16 @@ void test_row_click(ImGuiTestContext* ctx) {
     IM_CHECK(batch_search(ctx, title));
     dismiss_done(ctx);
 
-    // Optimal paths only leaves one row per mode.
+    // Optimal paths only leaves the one row of the current mode.
     h.app->show_path_report();
     ctx->Yield(3);
     IM_CHECK_RETV(path_window() != nullptr, );
-    IM_CHECK(on_screen(h, "2" + path_count_tail(h)));
+    IM_CHECK(on_screen(h, "1" + path_count_tail(h)));
     ctx->SetRef(path_window());
     ctx->ItemClick("**/1");
     ctx->Yield(2);
     IM_CHECK_STR_EQ(selected_md5().c_str(), md5.c_str());
-    const std::string first_mode = h.app->settings.chartmode_key();
-    IM_CHECK(first_mode == mode_a || first_mode == mode_b);
-    ctx->SetRef(path_window());
-    ctx->ItemClick("**/2");
-    ctx->Yield(2);
-    IM_CHECK_STR_EQ(selected_md5().c_str(), md5.c_str());
-    IM_CHECK(h.app->settings.chartmode_key() != first_mode);
-    IM_CHECK(h.app->settings.chartmode_key() == mode_a || h.app->settings.chartmode_key() == mode_b);
+    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), mode_b.c_str());
     h.app->close_path_report();  // it covers the toolbar
     ctx->Yield(2);
 
@@ -1026,7 +1001,7 @@ bool open_batch_report(ImGuiTestContext* ctx) {
 
 // A batch's report, built while the window is shut, shows at once. Esc then
 // closes the window and lets its rows go; opening it again builds the report
-// again behind the building bar (D103 item 28).
+// again behind the building state (D103 item 28).
 void test_reopen(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_batch_report(ctx)) return;
@@ -1038,11 +1013,12 @@ void test_reopen(ImGuiTestContext* ctx) {
     IM_CHECK(path_window() == nullptr);
     IM_CHECK(h.app->path_report.result == nullptr);
 
-    // Every build held at its first chart, so the bar stays up to be read.
+    // Every build held before it reads the store, so the building state
+    // stays up to be read.
     ReportHold hold;
     ctx->SetRef("//Hydra");
     ctx->ItemClick("**/Open path report");
-    held_build_then_rows(ctx, hold, "Building the report from your library...");
+    held_build_then_rows(ctx, hold);
     IM_CHECK(path_window() != nullptr);
     IM_CHECK(on_screen(h, count));  // the same rows as before the close
 }
@@ -1226,6 +1202,13 @@ void test_out_of_date(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(!on_screen(h, settings_line));
     IM_CHECK(!on_screen(h, library_line));
+
+    // The report lists one chart mode, so changing it (here Pro Drums) puts
+    // the rows out of date too.
+    h.app->settings.view_prodrums = !h.app->settings.view_prodrums;
+    h.app->commit_settings();
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, settings_line));
 }
 
 }  // namespace

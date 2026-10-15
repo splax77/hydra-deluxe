@@ -537,8 +537,9 @@ public:
     // again, and showing it with nothing built, all come here. Off under a
     // bad hydra_rules.ini, like a batch.
     void request_path_report();
-    // The path report window's Cancel. The job stops between charts and the
-    // window then shows the cancelled state.
+    // The path report window's Cancel. The job finishes its one read of the
+    // store, drops the rows (generate_report checks the flag after the read) and
+    // the window then shows the cancelled state.
     void cancel_path_report();
     // Opens the path report window: the toolbar's "Open path report", the
     // finished strip's "Open report". With nothing in memory (never built
@@ -624,7 +625,7 @@ public:
     // freeze the window for up to two minutes. They wait here instead, and
     // update_background_jobs() drops each once it has finished. A path
     // report replaced while it builds waits the same way, since it stops
-    // only between charts.
+    // only once its read of the store is done.
     std::vector<std::unique_ptr<DmFetchUsersJob>> parked_dm_fetches;
     std::vector<std::unique_ptr<DmReportJob>> parked_dm_reports;
     std::vector<std::unique_ptr<ReportJob>> parked_reports;

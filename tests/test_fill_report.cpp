@@ -556,7 +556,7 @@ TEST_CASE("generate_fill_report: tally and framing behind one seam") {
     // what the seam says instead of deciding it again. Two truly empty
     // databases get the settings sentence too (finding 105, D50 item 3).
     CHECK(none.reason ==
-          "Nothing is analyzed under these settings (SP cap 4, Expert Pro Drums, 2x Bass) "
+          "Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, SP cap 4) "
           "in either database. Analyze with these settings, or change them.");
     CHECK(result.reason.empty());
 
@@ -565,7 +565,7 @@ TEST_CASE("generate_fill_report: tally and framing behind one seam") {
         app::fill_report::generate_fill_report(old_store, new_store, testdm::settings(testdm::kMode, 8));
     CHECK(off.html.empty());
     CHECK(off.reason ==
-          "Nothing is analyzed under these settings (SP cap 8, Expert Pro Drums, 2x Bass) "
+          "Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, SP cap 8) "
           "in either database. Analyze with these settings, or change them.");
 }
 

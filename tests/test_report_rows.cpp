@@ -1,50 +1,37 @@
-// Structural tests for app/report.{h,cpp}: collect_rows must surface one row
-// per stored record, and generate_report frames those rows with the subtitle
-// and footer the report window shows. The tiles and the fill comparison
-// page are tested in test_report_page.cpp.
+// Structural tests for app/report.{h,cpp}: collect_rows turns each stored
+// record of the page's profile into its rows, and generate_report frames
+// those rows with the subtitle and footer the report window shows. The tiles
+// and the fill comparison page are tested in test_report_page.cpp.
 
 #include "doctest.h"
 
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-
 #include <atomic>
 #include <algorithm>
-#include <cmath>
-#include <cstdlib>
-#include <filesystem>
-#include <fstream>
 #include <functional>
-#include <mutex>
+#include <map>
 #include <optional>
 #include <stdexcept>
-#include <tuple>
-#include <sstream>
 #include <string>
+#include <tuple>
 #include <type_traits>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/display_format.h"
-#include "app/library_query.h"
 #include "app/path_report_view.h"
 #include "app/report.h"
 #include "app/user_messages.h"
 #include "core/model.h"
 #include "core/squeeze_rating.h"
 #include "core/strutil.h"
-#include "core/winstr.h"
 #include "corpus_util.h"
+#include "dm_fixture.h"  // testdm::save
 #include "record_fixtures.h"
 #include "report_samples.h"
 #include "search/graph.h"
 #include "store/record_store.h"
-#include "temp_util.h"
-#include "ui/library_jobs.h"
 
 using namespace hydra;
 using namespace hydra::app;
@@ -69,26 +56,22 @@ Settings fixture_settings(int cap, bool legacy_fills = false) {
 // chart file: fixture_analyzer hands back H1's tied-variant record for it.
 const char* const kTiedFile = "fixture:tied";
 
-// What the report's pass analyzes with in these tests: a real chart file as
-// the app analyzes it, and kTiedFile as H1's tied-variant record, filed under
-// the settings it is asked for.
-ChartAnalyzer fixture_analyzer() {
-    return [](const std::string& path, const AnalysisSettings& settings,
-              const std::function<void(float)>& on_progress) {
-        if (path != kTiedFile) return analyze_chart_file(path, settings, on_progress);
-        HydraRecord record = test::tied_variant_record();
-        record.sp_cap = settings.sp_cap;
-        record.legacy_fills = settings.legacy_fills;
-        return AnalysisResult{std::move(record), test::beat_song({}, {}, 13440)};
-    };
+// What a batch in these tests analyzes with: a real chart file as the app
+// analyzes it, and kTiedFile as H1's tied-variant record, filed under the
+// settings it is asked for.
+AnalysisResult fixture_analyzer(const std::string& path, const AnalysisSettings& settings,
+                                const std::function<void(float)>& on_progress) {
+    if (path != kTiedFile) return analyze_chart_file(path, settings, on_progress);
+    HydraRecord record = test::tied_variant_record();
+    record.sp_cap = settings.sp_cap;
+    record.legacy_fills = settings.legacy_fills;
+    return AnalysisResult{std::move(record), test::beat_song({}, {}, 13440)};
 }
 
-// A report over the fixtures' results at SP cap `cap`: their cap, lens and
-// settings, analyzed by fixture_analyzer.
+// A report over the records filed under fixture_settings(cap, legacy_fills).
 report::ReportOptions fixture_options(int cap, bool legacy_fills = false) {
     report::ReportOptions options;
     options.run = fixture_settings(cap, legacy_fills).batch_run();
-    options.analyze = fixture_analyzer();
     return options;
 }
 
@@ -111,17 +94,21 @@ store::ChartLibraryEntry library_entry_for_file(const std::string& md5, const st
 std::vector<std::string> fill_store(store::RecordStore& store,
                                     std::vector<store::ChartLibraryEntry>& library, int cap,
                                     int want) {
-    const BatchRun run = fixture_settings(cap).batch_run();
+    const Settings settings = fixture_settings(cap);
     std::vector<std::string> files;
     for (corpus::ChartWithPaths& c :
-         corpus::charts_with_paths(run.settings, static_cast<size_t>(want))) {
+         corpus::charts_with_paths(settings.batch_run().settings, static_cast<size_t>(want))) {
         const std::string hyhash = "h" + std::to_string(files.size());
         const std::string title = "Title " + std::to_string(files.size());
-        store.add_record(fixture_settings(cap).record_key(hyhash), c.result.record);
         library.push_back(library_entry_for_file(hyhash, title, c.chart));
         files.push_back(c.chart);
     }
     store.rebuild_chart_library(library);
+    for (size_t i = 0; i < files.size(); ++i) {
+        const BatchRun run = settings.batch_run();
+        testdm::save(store, "h" + std::to_string(i), settings,
+                     analyze_chart_file(files[i], run.settings).record);
+    }
     return files;
 }
 
@@ -132,8 +119,7 @@ int fill_store(store::RecordStore& store, int cap, int want) {
 
 // Analyzes two charts at cap 4 into `store` (fill_store), then lists h0 in two
 // library folders and h1 in three, so the library holds 5 copies of 2 charts.
-// Returns the library rows it wrote.
-std::vector<store::ChartLibraryEntry> fill_store_with_copies(store::RecordStore& store) {
+void fill_store_with_copies(store::RecordStore& store) {
     std::vector<store::ChartLibraryEntry> files;
     REQUIRE(fill_store(store, files, 4, 2).size() == 2);
     std::vector<store::ChartLibraryEntry> library;
@@ -145,7 +131,6 @@ std::vector<store::ChartLibraryEntry> fill_store_with_copies(store::RecordStore&
         }
     }
     store.rebuild_chart_library(library);
-    return library;
 }
 
 void check_cap(int cap) {
@@ -157,8 +142,7 @@ void check_cap(int cap) {
     // One row per shown path, so a record surfaces exactly one rank-1 row.
     report::ReportOptions options = fixture_options(cap);
     options.max_paths = 100;
-    std::vector<report::ReportRow> rows =
-        report::collect_rows(store, options).rows;
+    std::vector<report::ReportRow> rows = report::collect_rows(store, options).rows;
     int rank1 = 0;
     for (const report::ReportRow& row : rows)
         if (row.rank == 1) ++rank1;
@@ -176,56 +160,41 @@ void check_cap(int cap) {
     MESSAGE(std::to_string(cap) << " bars: " << rows.size() << " rows");
 }
 
-// The fields that tell two report rows apart, so two reports compare row by row.
-using RowKey = std::tuple<std::string, std::string, std::string, int64_t, int>;
-std::vector<RowKey> row_keys(const std::vector<report::ReportRow>& rows) {
-    std::vector<RowKey> out;
-    for (const report::ReportRow& r : rows)
-        out.emplace_back(r.hyhash, r.mode, r.path, r.score, r.copies);
+// The fields that tell two report rows apart, so two reports compare row by
+// row with tied-score rows free to swap places (the D87 rule).
+using RowKey = std::tuple<std::string, std::string, int64_t>;
+RowKey row_key(const report::ReportRow& r) { return {r.hyhash, r.path, r.score}; }
+
+// The rows sorted by row_key.
+std::vector<report::ReportRow> by_key(std::vector<report::ReportRow> rows) {
+    std::stable_sort(rows.begin(), rows.end(),
+                     [](const report::ReportRow& a, const report::ReportRow& b) {
+                         return row_key(a) < row_key(b);
+                     });
+    return rows;
+}
+
+// Each chart's (score, rank) pairs, sorted: two rows tied at one score may
+// swap ranks, and nothing else may move.
+std::map<std::string, std::vector<std::pair<int64_t, int>>> ranks_by_chart(
+    const std::vector<report::ReportRow>& rows) {
+    std::map<std::string, std::vector<std::pair<int64_t, int>>> out;
+    for (const report::ReportRow& r : rows) out[r.hyhash].emplace_back(r.score, r.rank);
+    for (auto& [id, pairs] : out) std::sort(pairs.begin(), pairs.end());
     return out;
 }
 
 // Stores H1's tied-variant record for chart `hyhash` under
-// fixture_settings(cap, legacy_fills), with its song and a library row
-// (kTiedFile), so the report has three paths to list: two tied at the top
-// score and a lower one.
+// fixture_settings(cap, legacy_fills), with a library row (kTiedFile), so the
+// report has three paths to list: two tied at the top score and a lower one.
 void store_tied(store::RecordStore& store, std::vector<store::ChartLibraryEntry>& library,
-                const std::string& hyhash, int cap, bool legacy_fills = false,
-                const std::optional<std::string>& chartmode = std::nullopt) {
+                const std::string& hyhash, int cap, bool legacy_fills = false) {
+    library.push_back(library_entry_for_file(hyhash, "Tied " + hyhash, kTiedFile));
+    store.rebuild_chart_library(library);
     HydraRecord record = test::tied_variant_record();
     record.sp_cap = cap;
     record.legacy_fills = legacy_fills;
-    store::RecordKey key = fixture_settings(cap, legacy_fills).record_key(hyhash);
-    if (chartmode) key.chartmode = *chartmode;
-    store.add_record(key, record);
-    library.push_back(library_entry_for_file(hyhash, "Tied " + hyhash, kTiedFile));
-    store.rebuild_chart_library(library);
-}
-
-// The same analyzer, counting the files it is asked for.
-struct CountingAnalyzer {
-    std::mutex mu;
-    std::vector<std::string> paths;
-    ChartAnalyzer inner = fixture_analyzer();
-
-    ChartAnalyzer analyzer() {
-        return [this](const std::string& path, const AnalysisSettings& settings,
-                      const std::function<void(float)>& on_progress) {
-            {
-                std::lock_guard<std::mutex> lock(mu);
-                paths.push_back(path);
-            }
-            return inner(path, settings, on_progress);
-        };
-    }
-};
-
-// The scan rows a batch over the first `count` charts of `library` reads: the
-// library entries themselves (app::ScanItem is the entry's own type).
-std::vector<ScanItem> scan_items(const std::vector<store::ChartLibraryEntry>& library,
-                                 size_t count) {
-    return std::vector<ScanItem>(library.begin(),
-                                 library.begin() + std::min(count, library.size()));
+    testdm::save(store, hyhash, fixture_settings(cap, legacy_fills), record);
 }
 
 }  // namespace
@@ -237,8 +206,7 @@ TEST_CASE("report rows: a tied top-score variant is optimal too") {
 
     report::ReportOptions options = fixture_options(4);
     options.max_paths = 100;
-    const std::vector<report::ReportRow> rows =
-        report::collect_rows(store, options).rows;
+    const std::vector<report::ReportRow> rows = report::collect_rows(store, options).rows;
     REQUIRE(rows.size() == 3);
     // Best score first: the root and its tied variant, then the lower root.
     CHECK(rows[0].score == rows[1].score);
@@ -248,8 +216,8 @@ TEST_CASE("report rows: a tied top-score variant is optimal too") {
     CHECK_FALSE(rows[2].optimal);
 
     const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
-    // The subtitle still counts one record, however many paths tie.
-    CHECK(page.records == 1);
+    // The subtitle still counts one chart, however many paths tie.
+    CHECK(page.songs == 1);
     // The report hands both tied paths over as optimal, and the lower one not.
     REQUIRE(page.paths.size() == 3);
     CHECK(std::count_if(page.paths.begin(), page.paths.end(),
@@ -259,9 +227,96 @@ TEST_CASE("report rows: a tied top-score variant is optimal too") {
 
 TEST_CASE("report rows list every stored record (4 bars)") { check_cap(4); }
 
-// collect_rows lists a record's paths in all_paths() order and numbers them
-// from 1, so that order has to be best first already. This guards it at the
-// report's own settings (fill_store's), where variants appear.
+// The spec's row-by-row test, in its batch-then-read form: a batch saves the
+// charts, the report reads them back, and every row matches the row a fresh
+// analysis of the same chart under the same settings gives.
+TEST_CASE("path report: a batch's records read back as a fresh analysis's rows") {
+    store::RecordStore store(":memory:");
+    const Settings settings = fixture_settings(4);
+    const BatchRun run = settings.batch_run();
+
+    std::vector<store::ChartLibraryEntry> library;
+    for (corpus::ChartWithPaths& c : corpus::charts_with_paths(run.settings, 5)) {
+        const std::string id = "h" + std::to_string(library.size());
+        library.push_back(library_entry_for_file(id, "Title " + id, c.chart));
+    }
+    REQUIRE(library.size() == 5);
+    library.push_back(library_entry_for_file("tied", "Tied", kTiedFile));
+    store.rebuild_chart_library(library);
+
+    BatchCallbacks callbacks;
+    int errors = 0;
+    callbacks.on_error = [&](const std::string&, const std::string&, const std::string&) {
+        ++errors;
+    };
+    callbacks.analyze = fixture_analyzer;
+    run_batch(plan_batch(library, {}), run, store, batch_worker_count(), callbacks);
+    REQUIRE(errors == 0);
+
+    report::ReportOptions options = fixture_options(4);
+    const report::GeneratedReport page = report::generate_report(store, options);
+    REQUIRE(page.empty_reason == report::EmptyReason::None);
+    CHECK(page.songs == 6);
+
+    // What a fresh analysis of each chart keeps, through the one save's own
+    // turn of an analysis into a record: each kept path with its chart.
+    struct Fresh {
+        const store::ChartLibraryEntry* entry;
+        int notes;
+        store::PathRow path;
+    };
+    std::vector<Fresh> fresh;
+    std::map<std::string, std::vector<std::pair<int64_t, int>>> fresh_ranks;
+    for (const store::ChartLibraryEntry& e : library) {
+        const store::RecordRow record =
+            store::prepare_record(e.md5, run.profile(),
+                                  fixture_analyzer(e.notespath, run.settings, {}).record)
+                .record;
+        for (const store::PathRow& p : record.paths) {
+            if (p.rank > options.max_paths) break;
+            fresh.push_back({&e, record.notecount, p});
+            fresh_ranks[e.md5].emplace_back(p.score, p.rank);
+        }
+    }
+    for (auto& [id, pairs] : fresh_ranks) std::sort(pairs.begin(), pairs.end());
+    std::stable_sort(fresh.begin(), fresh.end(), [](const Fresh& a, const Fresh& b) {
+        return RowKey{a.entry->md5, a.path.path, a.path.score} <
+               RowKey{b.entry->md5, b.path.path, b.path.score};
+    });
+
+    // Field by field, each report row against the fresh path with its key.
+    const std::vector<TimingTier> tiers = timing_tiers(options.hit_window_ms);
+    const std::vector<report::ReportRow> got = by_key(page.paths);
+    REQUIRE(got.size() == fresh.size());
+    for (size_t i = 0; i < got.size(); ++i) {
+        const report::ReportRow& g = got[i];
+        const store::PathRow& p = fresh[i].path;
+        const store::ChartLibraryEntry& e = *fresh[i].entry;
+        INFO(e.md5 << " path " << p.path);
+        CHECK(g.hyhash == e.md5);
+        CHECK(g.song == display_title(e.title));
+        CHECK(g.artist == display_artist(e.artist));
+        CHECK(g.charter == display_charter(e.charter));
+        CHECK(g.optimal == p.optimal);
+        CHECK(g.path == p.path);
+        CHECK(g.score == p.score);
+        CHECK(g.acts == p.actcount);
+        CHECK(g.skip == p.maxskip);
+        CHECK(g.ms == p.hardest_ms);
+        CHECK(g.efill == p.hardest_efill);
+        CHECK(g.mult == p.avgmult);
+        CHECK(g.sqin == p.sqin_count);
+        CHECK(g.sqout == p.sqout_count);
+        CHECK(g.notes == fresh[i].notes);
+        CHECK(std::make_pair(g.tier, g.tok) == report::tier_for(p.hardest_ms, tiers));
+    }
+    // Ranks match, except that rows tied at one score may swap them.
+    CHECK(ranks_by_chart(page.paths) == fresh_ranks);
+}
+
+// prepare_record numbers a record's paths in all_paths() order, so that order
+// has to be best first already. This guards it at the report's own settings
+// (fill_store's), where variants appear.
 TEST_CASE("all_paths lists paths best first on every corpus chart") {
     AnalysisSettings settings;
     settings.depth_mode = DepthMode::Scores;
@@ -284,7 +339,7 @@ TEST_CASE("all_paths lists paths best first on every corpus chart") {
 TEST_CASE("report counts every library copy of a chart, and leaves out a chart the library dropped") {
     // D76: chart h0 sits in two library folders, so it counts twice, like
     // the library counts it. D87 item 4: chart h1 has a result but no library
-    // row, so the page has no file to analyze and leaves it out.
+    // row, so the page leaves it out.
     store::RecordStore store(":memory:");
     std::vector<store::ChartLibraryEntry> library;
     REQUIRE(fill_store(store, library, 4, 2).size() == 2);
@@ -292,64 +347,56 @@ TEST_CASE("report counts every library copy of a chart, and leaves out a chart t
     store::ChartLibraryEntry copy = first;
     copy.rootfolder = "C:\\other";
     store.rebuild_chart_library({first, copy});
-    REQUIRE(store.library_copies() == std::unordered_map<std::string, int>{{"h0", 2}});
 
     const report::GeneratedReport out = report::generate_report(store, fixture_options(4));
-    CHECK(out.records == 2);
     CHECK(out.songs == 2);
-    CHECK(out.subtitle.find("2 records across 2 charts") != std::string::npos);
-    // Every row is h0's and carries its two copies; h1 is left out.
+    CHECK(out.subtitle.rfind("2 charts — ", 0) == 0);
+    // Every row is h0's; h1 is left out.
     REQUIRE_FALSE(out.paths.empty());
     for (const report::ReportRow& r : out.paths) {
         CHECK(r.hyhash == "h0");
-        CHECK(r.copies == 2);
         CHECK(r.song != "Title 1");
     }
 }
 
-TEST_CASE("library copies are keyed in lower case, and an unlisted chart counts once") {
-    // The scan writes lower case, but an older row may not: a page joins on
-    // normalize_chart_hash, so the copies do too.
+// Two library copies of one chart count 2 on the header and on the Charts
+// shown tile: both ask store::ChartIndex::count over the page's rows.
+TEST_CASE("path report: two library copies count 2 in songs and in the Charts shown tile") {
     store::RecordStore store(":memory:");
-    store::ChartLibraryEntry upper;
-    upper.md5 = "ABCDEF00112233445566778899AABBCC";
-    upper.title = "Upper";
-    upper.notespath = "C:\\songs\\a\\notes.chart";
-    store::ChartLibraryEntry lower = upper;
-    lower.md5 = "abcdef00112233445566778899aabbcc";
-    lower.notespath = "C:\\other\\a\\notes.chart";
-    store.rebuild_chart_library({upper, lower});
+    std::vector<store::ChartLibraryEntry> library;
+    REQUIRE(fill_store(store, library, 4, 1).size() == 1);
+    store::ChartLibraryEntry copy = library[0];
+    copy.rootfolder = "C:\\other";
+    library.push_back(copy);
+    store.rebuild_chart_library(library);
 
-    const std::unordered_map<std::string, int> library = report::library_copies_by_hash(store);
-    CHECK(library ==
-          std::unordered_map<std::string, int>{{"abcdef00112233445566778899aabbcc", 2}});
-    CHECK(store::RecordStore::copies_of(library, "abcdef00112233445566778899aabbcc") == 2);
-    CHECK(store::RecordStore::copies_of(library, "00ff00ff00ff00ff00ff00ff00ff00ff") == 1);
+    const report::GeneratedReport out = report::generate_report(store, fixture_options(4));
+    REQUIRE_FALSE(out.paths.empty());
+    CHECK(out.songs == 2);
+    CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.hit_window_ms,
+                             out.library)[0]
+              .value == "2");
+    // One shown row of the chart still counts both copies.
+    CHECK(report::path_tiles(out.paths, {0}, out.hit_window_ms, out.library)[0].value == "2");
 }
 
-// The Charts shown tile adds up each chart's copies once over the rows shown
-// (path_tiles), and generate_report's subtitle adds them up once over every
-// row. This pins that both count the same thing: every row carries its
-// chart's copies, and with every row shown the two totals agree.
-TEST_CASE("path report: the Charts shown tile adds up the copies generate_report adds up") {
+// The Charts shown tile and generate_report's subtitle both count through
+// ChartIndex::count, so with every row shown the two totals agree.
+TEST_CASE("path report: the Charts shown tile counts what generate_report counts") {
     store::RecordStore store(":memory:");
     fill_store_with_copies(store);
 
     const report::GeneratedReport out = report::generate_report(store, fixture_options(4));
     CHECK(out.songs == 5);
-    CHECK(out.subtitle.find(" across 5 charts") != std::string::npos);
+    CHECK(out.subtitle.rfind("5 charts — ", 0) == 0);
 
-    // Every row of a chart carries that chart's copies.
     size_t rows_h0 = 0, rows_h1 = 0;
-    for (const report::ReportRow& r : out.paths) {
-        INFO(r.hyhash);
-        CHECK(r.copies == (r.hyhash == "h0" ? 2 : 3));
-        ++(r.hyhash == "h0" ? rows_h0 : rows_h1);
-    }
+    for (const report::ReportRow& r : out.paths) ++(r.hyhash == "h0" ? rows_h0 : rows_h1);
     REQUIRE(rows_h0 > 0);
     REQUIRE(rows_h1 > 0);
     CHECK(static_cast<int64_t>(rows_h0 + rows_h1) == out.rows);
-    CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.hit_window_ms)[0]
+    CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.hit_window_ms,
+                             out.library)[0]
               .value == std::to_string(out.songs));
 }
 
@@ -365,8 +412,7 @@ TEST_CASE("generate_report hands over its rows, subtitle and footer") {
     const report::GeneratedReport out = report::generate_report(store, options);
     REQUIRE(out.rows > 0);
     CHECK(static_cast<int64_t>(out.paths.size()) == out.rows);
-    const std::vector<report::ReportRow> collected =
-        report::collect_rows(store, options).rows;
+    const std::vector<report::ReportRow> collected = report::collect_rows(store, options).rows;
     REQUIRE(collected.size() == out.paths.size());
     for (size_t i = 0; i < collected.size(); ++i) {
         CHECK(out.paths[i].hyhash == collected[i].hyhash);
@@ -374,11 +420,12 @@ TEST_CASE("generate_report hands over its rows, subtitle and footer") {
     }
     CHECK(out.hit_window_ms == 85.0);
 
-    CHECK(out.subtitle.find(" across 5 charts — ") != std::string::npos);
+    CHECK(out.subtitle.rfind("5 charts — ", 0) == 0);
     CHECK(out.footer.rfind("Generated from ", 0) == 0);
     CHECK(out.footer.find("'Beyond' means past the 170 ms window.") != std::string::npos);
 
-    CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.hit_window_ms)[0]
+    CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.hit_window_ms,
+                             out.library)[0]
               .value == "5");
 }
 
@@ -389,21 +436,20 @@ TEST_CASE("report lists only the wanted cap and names it") {
     REQUIRE(files.size() == 1);
     // The same chart again at 8 bars.
     const BatchRun eight = fixture_settings(8).batch_run();
-    store.add_record(fixture_settings(8).record_key("h0"), analyze_chart_file(files[0], eight.settings).record);
-    REQUIRE(store.counts().second == 2);
+    testdm::save(store, "h0", fixture_settings(8),
+                 analyze_chart_file(files[0], eight.settings).record);
+    REQUIRE(store.ready_records(fixture_settings(8).profile()).size() == 1);
 
     report::ReportOptions options = fixture_options(4);
     report::GeneratedReport four = report::generate_report(store, options);
     CHECK(hydra::ends_with(four.subtitle, "SP cap 4 bars"));
-    // The subtitle counts what the report lists: the one record at 4 bars, not
+    // The subtitle counts what the report lists: the one chart at 4 bars, not
     // the 8-bar record the database also holds for the same chart.
-    CHECK(four.records == 1);
     CHECK(four.songs == 1);
-    CHECK(four.subtitle.rfind("1 record across 1 chart — ", 0) == 0);
+    CHECK(four.subtitle.rfind("1 chart — ", 0) == 0);
     int rank1 = 0;
     options.max_paths = 100;
-    for (const report::ReportRow& row :
-         report::collect_rows(store, options).rows)
+    for (const report::ReportRow& row : report::collect_rows(store, options).rows)
         if (row.rank == 1) ++rank1;
     CHECK(rank1 == 1);
 
@@ -434,12 +480,12 @@ TEST_CASE("generate_report reports a 1.0-fills database under the 1.0 rule") {
     std::vector<corpus::ChartWithPaths> charts =
         corpus::charts_with_paths(legacy.batch_run().settings, 1);
     REQUIRE(charts.size() == 1);
-    store.add_record(legacy.record_key("h0"), charts[0].result.record);
     store.rebuild_chart_library({library_entry_for_file("h0", "Title 0", charts[0].chart)});
+    testdm::save(store, "h0", legacy, charts[0].result.record);
 
     const report::GeneratedReport ch10 =
         report::generate_report(store, fixture_options(4, /*legacy_fills=*/true));
-    CHECK(ch10.records == 1);
+    CHECK(ch10.songs == 1);
     REQUIRE_FALSE(ch10.paths.empty());
     for (const report::ReportRow& r : ch10.paths) CHECK(r.song == "Title 0");
     CHECK(hydra::ends_with(ch10.subtitle, "SP cap 4 bars — Clone Hero 1.0 fills"));
@@ -447,15 +493,17 @@ TEST_CASE("generate_report reports a 1.0-fills database under the 1.0 rule") {
     const report::GeneratedReport ch11 = report::generate_report(store, fixture_options(4));
     CHECK(ch11.paths.empty());
     CHECK(ch11.empty_reason == report::EmptyReason::NothingUnderSettings);
-    CHECK(ch11.why_empty == report::nothing_under_settings(4, "Clone Hero 1.1 fills"));
+    CHECK(ch11.why_empty ==
+          "Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, SP cap 4, "
+          "Clone Hero 1.1 fills). Analyze with these settings, or change them.");
 }
 
 TEST_CASE("collect_rows: the library names go through display_title, display_artist and "
           "display_charter") {
     // test_song_input.cpp pins what those three do. This checks only that the
     // page calls them: one tagged name each. The page names a chart by its
-    // library row (the naming copy, kNamingCopiesSql's pick), so a rescan's
-    // names replace store_tied's own.
+    // library row (ChartIndex::naming), so a rescan's names replace
+    // store_tied's own.
     store::RecordStore store(":memory:");
     std::vector<store::ChartLibraryEntry> library;
     store_tied(store, library, "u0", 4);
@@ -472,6 +520,24 @@ TEST_CASE("collect_rows: the library names go through display_title, display_art
         CHECK(row.artist == kUnknownTitle);
         CHECK(row.charter == "Bob");
     }
+}
+
+TEST_CASE("the report names a chart the scan found twice by its first copy") {
+    store::RecordStore store(":memory:");
+    std::vector<store::ChartLibraryEntry> library;
+    REQUIRE(fill_store(store, library, 4, 1).size() == 1);
+    // The scan listed the real file first, as "Zed", then a copy of the same
+    // md5 as "Alpha". Alpha sorts first by name, but the first row names it.
+    library[0].title = "Zed";
+    store::ChartLibraryEntry other = library[0];
+    other.title = "Alpha";
+    other.rootfolder = "C:\\other";
+    store.rebuild_chart_library({library[0], other});
+
+    const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
+    REQUIRE_FALSE(page.paths.empty());
+    for (const report::ReportRow& r : page.paths) CHECK(r.song == "Zed");
+    CHECK(page.songs == 2);  // both copies count (D76)
 }
 
 TEST_CASE("fill_rule_for: the legacy_fills flag names one fill rule") {
@@ -551,18 +617,14 @@ TEST_CASE("generate_report: one seam frames the report for every entry point") {
     options.db_path = "C:/somewhere/hydra.db";
     report::GeneratedReport result = report::generate_report(store, options);
     CHECK(result.songs == added);
-    CHECK(result.records == added);
     CHECK(result.rows >= added);
 
     // The framing strings are part of the interface: the GUI's ReportJob
-    // ships exactly this subtitle and footer. The cut is per chart and mode,
-    // and the report lists every mode at the current cap.
+    // ships exactly this subtitle and footer. The page lists one profile, and
+    // the cut is per chart.
     CHECK(result.empty_reason == report::EmptyReason::None);
-    const std::string subtitle = counted(result.records, "record", "records") + " across " +
-                                 counted(result.songs, "chart", "charts") +
-                                 " — every mode at the current cap, top 5 paths per chart "
-                                 "and mode — SP cap 4 bars";
-    CHECK(result.subtitle == subtitle);
+    CHECK(result.subtitle == counted(result.songs, "chart", "charts") +
+                                 " — top 5 paths per chart — SP cap 4 bars");
     // D50 item 1. The default 85 ms hit window puts Beyond past 170 ms, the
     // same number the Beyond chip and the "Past 170 ms" tile print.
     CHECK(result.footer ==
@@ -592,8 +654,8 @@ TEST_CASE("generate_report: one seam frames the report for every entry point") {
     CHECK(off.paths.empty());
     CHECK(off.empty_reason == report::EmptyReason::NothingUnderSettings);
     const std::string sentence =
-        "Nothing is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills). "
-        "Analyze with these settings, or change them.";
+        "Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, SP cap 8, "
+        "Clone Hero 1.1 fills). Analyze with these settings, or change them.";
     CHECK(off.why_empty == sentence);
     // The app's ReportJob throws that sentence as AlreadyPlain, and the strip
     // shows it as it is.
@@ -615,7 +677,7 @@ TEST_CASE("generate_report: \"every path\" is the sentinel's, a huge --paths sta
     // A large --paths below it lists at most that many, so it says so.
     options.max_paths = 200000000;
     const std::string subtitle = report::generate_report(store, options).subtitle;
-    CHECK(subtitle.find("top 200,000,000 paths per chart and mode") != std::string::npos);
+    CHECK(subtitle.find("top 200,000,000 paths per chart") != std::string::npos);
     CHECK(subtitle.find(" — every path") == std::string::npos);
 
     // 140: the hit window keeps a decimal, starting from the default.
@@ -623,25 +685,24 @@ TEST_CASE("generate_report: \"every path\" is the sentinel's, a huge --paths sta
     CHECK(report::ReportOptions{}.hit_window_ms == kDefaultHitWindowMs);
 }
 
-TEST_CASE("nothing_under_settings frames the cap, the middle words and the ending") {
-    // One frame for every empty page (finding 105, D50 item 3): the path
-    // report passes its fill rule, the fill comparison its chart mode and
-    // " in either database".
-    CHECK(report::nothing_under_settings(8, "Clone Hero 1.1 fills") ==
-          "Nothing is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills). "
-          "Analyze with these settings, or change them.");
-    CHECK(report::nothing_under_settings(4, "Expert Pro Drums, 2x Bass",
+TEST_CASE("nothing_under_settings frames the chart mode, the cap, the fills and the ending") {
+    // One frame for every empty page (finding 105, D50 item 3): the chart mode
+    // comes first. The path report passes its fill rule, the fill comparison
+    // no fills and " in either database".
+    CHECK(report::nothing_under_settings("Expert Pro Drums, 2x Bass", 8, "Clone Hero 1.1 fills") ==
+          "Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, SP cap 8, "
+          "Clone Hero 1.1 fills). Analyze with these settings, or change them.");
+    CHECK(report::nothing_under_settings("Expert Pro Drums, 2x Bass", 4, "",
                                          " in either database") ==
-          "Nothing is analyzed under these settings (SP cap 4, Expert Pro Drums, 2x Bass) "
+          "Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, SP cap 4) "
           "in either database. Analyze with these settings, or change them.");
-    CHECK(report::nothing_under_settings(1200, "Clone Hero 1.0 fills") ==
-          "Nothing is analyzed under these settings (SP cap 1,200, Clone Hero 1.0 fills). "
-          "Analyze with these settings, or change them.");
+    CHECK(report::nothing_under_settings("Hard Drums, 1x Bass", 1200, "Clone Hero 1.0 fills") ==
+          "Nothing is analyzed under these settings (Hard Drums, 1x Bass, SP cap 1,200, "
+          "Clone Hero 1.0 fills). Analyze with these settings, or change them.");
 }
 
 TEST_CASE("generate_report hands back nothing when its cancel flag is set") {
-    // Closing Hydra while the report builds. The walk stops between records,
-    // and no page is framed from the part of the library it managed to read.
+    // Closing Hydra while the report builds: no page is framed.
     store::RecordStore store(":memory:");
     REQUIRE(fill_store(store, 4, 2) > 0);
 
@@ -667,55 +728,6 @@ TEST_CASE("a report with no analysis settings is refused") {
     CHECK_THROWS_AS(report::generate_report(store, options), std::invalid_argument);
 }
 
-TEST_CASE("cancelling the report's pass stops it and builds no page") {
-    store::RecordStore store(":memory:");
-    std::vector<store::ChartLibraryEntry> library;
-    const int charts = 2 * batch_worker_count() + 1;
-    for (int i = 0; i < charts; ++i) store_tied(store, library, "c" + std::to_string(i), 4);
-
-    // The first chart any worker starts sets the flag, so each worker
-    // analyzes at most the one chart it had started.
-    std::atomic<bool> cancel{false};
-    std::atomic<int> calls{0};
-    report::ReportOptions options = fixture_options(4);
-    options.cancel = &cancel;
-    const ChartAnalyzer inner = fixture_analyzer();
-    options.analyze = [&](const std::string& path, const AnalysisSettings& settings,
-                          const std::function<void(float)>& on_progress) {
-        ++calls;
-        cancel = true;
-        return inner(path, settings, on_progress);
-    };
-    const report::GeneratedReport result = report::generate_report(store, options);
-    CHECK(result.empty_reason == report::EmptyReason::Cancelled);
-    CHECK(result.paths.empty());
-    CHECK(result.rows == 0);
-    CHECK(calls.load() <= batch_worker_count());
-    CHECK(calls.load() < charts);
-}
-
-TEST_CASE("the report analyzes the copy that names a chart the scan found twice") {
-    store::RecordStore store(":memory:");
-    std::vector<store::ChartLibraryEntry> library;
-    const std::vector<std::string> files = fill_store(store, library, 4, 1);
-    REQUIRE(files.size() == 1);
-    // The scan listed the real file first, as "Zed", then a copy of the same
-    // md5 whose file is gone, as "Alpha". Alpha sorts first by name.
-    library[0].title = "Zed";
-    store::ChartLibraryEntry moved = library[0];
-    moved.title = "Alpha";
-    moved.notespath = testtemp::temp_path("report_moved_copy", ".chart");
-    store.rebuild_chart_library({library[0], moved});
-
-    CountingAnalyzer pass;
-    report::ReportOptions options = fixture_options(4);
-    options.analyze = pass.analyzer();
-    const report::GeneratedReport page = report::generate_report(store, options);
-    CHECK(pass.paths == std::vector<std::string>{files[0]});
-    CHECK(page.failures.empty());
-    CHECK(page.records == 2);  // both copies count (D76)
-}
-
 // D89.
 TEST_CASE("a report on results with no chart library says the library is missing") {
     // What hydra_batch with folder arguments leaves: results, and no scan
@@ -724,41 +736,13 @@ TEST_CASE("a report on results with no chart library says the library is missing
     store::RecordStore store(":memory:");
     HydraRecord record = test::tied_variant_record();
     record.sp_cap = 4;
-    store.add_record(fixture_settings(4).record_key("t"), record);
+    testdm::save(store, "t", fixture_settings(4), record);
 
     const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
     CHECK(page.rows == 0);
     CHECK(page.paths.empty());
     CHECK(page.empty_reason == report::EmptyReason::NoLibrary);
     CHECK(page.why_empty == std::string(report::kNoChartLibrary));
-}
-
-TEST_CASE("a chart whose file fails to load is left off the report and listed") {
-    store::RecordStore store(":memory:");
-    std::vector<store::ChartLibraryEntry> library;
-    REQUIRE(fill_store(store, library, 4, 2).size() == 2);
-    const std::string missing = testtemp::temp_path("report_missing", ".chart");
-
-    // No failures: the report says nothing about charts left out.
-    const report::GeneratedReport whole = report::generate_report(store, fixture_options(4));
-    CHECK(whole.failures.empty());
-    CHECK(report::left_out_line(whole.failures).empty());
-
-    library[1].notespath = missing;
-    store.rebuild_chart_library(library);
-    const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
-    CHECK(page.records == 1);
-    for (const report::ReportRow& r : page.paths) CHECK(r.song != "Title 1");
-    REQUIRE(page.failures.size() == 1);
-    CHECK(page.failures[0].notespath == missing);
-    CHECK_FALSE(page.failures[0].error.empty());
-    // D89 item 1: the report names the chart it left out; its file is in failures.
-    CHECK(report::left_out_line(page.failures) ==
-          "Left out: 1 chart whose file couldn't be read.");
-
-    // A chart mode no settings spell is an error, not a skipped chart.
-    store_tied(store, library, "odd", 4, false, std::string("Legendary Drums, 3x Bass"));
-    CHECK_THROWS_AS(report::generate_report(store, fixture_options(4)), std::runtime_error);
 }
 
 TEST_CASE("tier_for over a built table matches the window form") {
@@ -769,18 +753,26 @@ TEST_CASE("tier_for over a built table matches the window form") {
         CHECK(report::tier_for(ms, tiers) == report::tier_for(ms, 85.0));
 }
 
-// D103 item 22: a settings change marks the path report out of date only when
-// it moves a setting the report reads.
-TEST_CASE("settings_change_touches: the path report reads the SP cap and the lens, not the mode") {
+// The page lists the current profile only, so a change of the chart mode
+// alone puts an open page out of date (plan question 2).
+TEST_CASE("PageSettings::of differs when only the chart mode changes") {
     const app::Settings before;
-    CHECK_FALSE(app::report::settings_change_touches(before, before));
-
-    // The chart mode alone: the report lists every mode.
     app::Settings mode_only = before;
     mode_only.view_difficulty = "Hard";
     mode_only.view_prodrums = false;
     REQUIRE(mode_only.chartmode_key() != before.chartmode_key());
-    CHECK_FALSE(app::report::settings_change_touches(before, mode_only));
+    REQUIRE(mode_only.sp_cap == before.sp_cap);
+    REQUIRE(mode_only.lens() == before.lens());
+    REQUIRE(mode_only.hit_window_ms == before.hit_window_ms);
+    CHECK(report::PageSettings::of(mode_only) != report::PageSettings::of(before));
+    CHECK(report::settings_change_touches(before, mode_only));
+}
+
+// D103 item 22: a settings change marks the path report out of date only when
+// it moves a setting the report reads.
+TEST_CASE("settings_change_touches: the path report reads the SP cap and the lens") {
+    const app::Settings before;
+    CHECK_FALSE(app::report::settings_change_touches(before, before));
 
     app::Settings cap = before;
     cap.sp_cap = 5;
@@ -809,46 +801,4 @@ TEST_CASE("settings_change_touches: the path report reads the hit window") {
     app::Settings window = before;
     window.hit_window_ms = before.hit_window_ms + 10.0;
     CHECK(app::report::settings_change_touches(before, window));
-}
-
-// The path report window's "Analyzing n of N records" reads these calls.
-TEST_CASE("generate_report tells its progress chart by chart, from 0 to the whole") {
-    store::RecordStore store(":memory:");
-    std::vector<store::ChartLibraryEntry> library;
-    const std::vector<std::string> files = fill_store(store, library, 4, 3);
-    REQUIRE(files.size() == 3);
-
-    std::vector<std::pair<int, int>> calls;
-    report::ReportOptions options = fixture_options(4);
-    options.progress = [&](int done, int total) { calls.emplace_back(done, total); };
-    const report::GeneratedReport page = report::generate_report(store, options);
-    REQUIRE(page.rows > 0);
-    REQUIRE_FALSE(calls.empty());
-    CHECK(calls.front() == std::make_pair(0, 3));
-    CHECK(calls.back() == std::make_pair(3, 3));
-    for (size_t i = 1; i < calls.size(); ++i) {
-        CHECK(calls[i].second == 3);
-        CHECK(calls[i].first >= calls[i - 1].first);  // never goes back
-    }
-}
-
-// The bar's "n of N records" and the header's record count are one count: a
-// chart the library holds twice counts twice on both (D103 item 25's
-// 2026-10-11 addendum). fill_store_with_copies lists h0 twice and h1 three
-// times, one mode each.
-TEST_CASE("generate_report's progress ends on the header's record count") {
-    store::RecordStore store(":memory:");
-    const std::vector<store::ChartLibraryEntry> library = fill_store_with_copies(store);
-
-    std::vector<std::pair<int, int>> calls;
-    report::ReportOptions options = fixture_options(4);
-    options.progress = [&](int done, int total) { calls.emplace_back(done, total); };
-    const report::GeneratedReport page = report::generate_report(store, options);
-    REQUIRE(page.rows > 0);
-    REQUIRE_FALSE(calls.empty());
-    CHECK(page.records == 5);
-    CHECK(calls.front() == std::make_pair(0, static_cast<int>(page.records)));
-    CHECK(calls.back() ==
-          std::make_pair(static_cast<int>(page.records), static_cast<int>(page.records)));
-    CHECK(calls.back() == std::make_pair(5, 5));
 }

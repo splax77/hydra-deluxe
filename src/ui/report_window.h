@@ -1,6 +1,6 @@
 // The report windows (D103): the path report and the dmleaderboards
 // comparison, each in its own OS window beside Hydra. Both are one frame
-// (the header, notice strips, tiles, controls, count line, table, footer
+// (the header, the out-of-date strip, tiles, controls, count line, table, footer
 // note and every state) filled with each report's rows. The frame draws what
 // it is handed: the rows' order, filtering and count line come from the
 // shared TableView (app/report_view.h), the columns and keep-rules from each
@@ -64,11 +64,6 @@ struct ReportWindowInput {
     // out-of-date line's "(a batch finished at HH:MM)". Unset: the line
     // names no time (D103 item 21).
     std::optional<std::chrono::system_clock::time_point> batch_finished;
-    // The path report's progress while it builds, as ReportOptions::progress
-    // reports it (what it counts is said there). A total of 0 shows no count.
-    // The comparison has no count.
-    int progress_done = 0;
-    int progress_total = 0;
     // The path report only: hydra_rules.ini's error while analysis is off
     // (AppState::rules_error), shown when no report is in memory. Empty when
     // analysis is on.
@@ -136,9 +131,10 @@ struct Frame {
     ReportBuild state = ReportBuild::None;
     ReportOutOfDate out_of_date = ReportOutOfDate::None;
     std::optional<std::chrono::system_clock::time_point> batch_finished;
-    // Building: the bar's count, or no count for a moving bar, and the lines
-    // above it.
-    std::optional<std::pair<int, int>> progress;
+    // Building: the moving bar (neither report has a count to show), and the
+    // lines above it. False draws no bar at all (the path report, which only
+    // reads the store).
+    bool progress_bar = true;
     std::vector<const char*> building_lines;
     // Building: grey rows where the table will be (mock board 2a).
     bool placeholder_rows = false;
@@ -153,10 +149,6 @@ struct Frame {
     std::string failure_error;
     // Ready with no rows: what the report says instead.
     std::string empty_text;
-    // The notice strip's sentence (empty: no strip), and the files it can
-    // fold open.
-    std::string notice;
-    std::vector<std::string> notice_files;
     std::string footer;
     // Whether the window offers "Compare another player...".
     bool compare_another = false;
@@ -232,7 +224,6 @@ private:
 // What a window keeps between frames.
 struct Memory {
     char search[256] = {};
-    bool show_files = false;
     std::optional<size_t> selected;  // index into the rows
     bool sort_pushed = false;        // the view's sort was handed to the table
     bool visible = false;            // Begin drew the window this frame

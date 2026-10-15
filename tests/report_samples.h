@@ -22,6 +22,10 @@ inline constexpr double kSampleHitWindowMs = 85.0;
 // The six path rows, labeled at kSampleHitWindowMs.
 std::vector<hydra::app::report::ReportRow> sample_path_rows();
 
+// The library the six path rows are counted against: Song A and Song B with
+// the copies given, and Song C once.
+hydra::store::ChartIndex sample_index(int song_a_copies = 1, int song_b_copies = 1);
+
 // The four scores.
 std::vector<hydra::app::dm_report::DmReportRow> sample_dm_rows();
 

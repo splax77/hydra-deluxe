@@ -69,6 +69,14 @@ SOFTWARE.
 Dear ImGui Test Engine
 Version: imgui_test_engine @ fdc1cb0 (https://github.com/ocornut/imgui_test_engine, branch: main, 2026-08-07); only the imgui_test_engine/ subfolder is vendored
 Used in: Hydra.exe (its hooks are built into every Dear ImGui build)
+Modified: Hydra's copy carries three patches, each marked in the source with a
+comment starting "// Hydra patch:".
+- A "//$FOCUSED/**/" wildcard ref now finds items in the focused window
+  (imgui_te_context.cpp, ItemInfoHandleWildcardSearch).
+- A wildcard check, uncheck, open or close that finds nothing no longer breaks
+  later wildcard refs (imgui_te_context.cpp, ItemAction).
+- Item labels kept for debugging are no longer cut at 31 characters
+  (imgui_te_engine.h, ImGuiTestItemInfo::DebugLabel).
 ==============================================================================
 
 Dear ImGui Test Engine License (v1.04)

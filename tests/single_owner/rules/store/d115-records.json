@@ -105,7 +105,7 @@
           "why": "The benchmark prints how many paths an analysis found; it saves no record through this walk."
         }
       ],
-      "note": "Which paths a record keeps, in what rank, and what each path row says: a second walk of the analysis could rank or count them differently from the saved record. report::chart_rows is the one known copy, in the baseline until A2-2 moves the report to stored rows. Decided by: D115 (spec section 5)"
+      "note": "Which paths a record keeps, in what rank, and what each path row says: a second walk of the analysis could rank or count them differently from the saved record. The path report reads the stored rows since D115 A2-2, so it walks no analysis. Decided by: D115 (spec section 5)"
     },
     {
       "question": "Which record does a save replace, and which rows does it purge?",

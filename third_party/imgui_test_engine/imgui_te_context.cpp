@@ -627,7 +627,7 @@ ImGuiID ImGuiTestContext::GetID(ImGuiTestRef ref)
 // - Meaning of leading "/" .................. "/node" : move to root of window pointed by SetRef() when SetRef() uses a path
 // - Meaning of $$xxxx literal encoding ...... "list/$$1" : hash of "list" + hash if (int)1, equivalent of PushID("hello"); PushID(1);
 //// - Meaning of leading "../" .............. "../node" : move back 1 level from SetRef path() when SetRef() uses a path // Unimplemented
-// FIXME: "//$FOCUSED/.." is currently not usable.
+// FIXME: "//$FOCUSED/.." is currently not usable. (Hydra patch: "//$FOCUSED/**/x" works; see ItemInfoHandleWildcardSearch.)
 ImGuiID ImGuiTestContext::GetID(ImGuiTestRef ref, ImGuiTestRef seed_ref)
 {
     ImGuiContext& g = *UiContext;
@@ -894,7 +894,18 @@ ImGuiID ImGuiTestContext::ItemInfoHandleWildcardSearch(const char* wildcard_pref
     // Wildcard matching
     // Note that task->InPrefixId may be 0 as well (= we don't know the window)
     ImGuiTestFindByLabelTask* task = &Engine->FindByLabelTask;
-    if (wildcard_prefix_start < wildcard_prefix_end)
+    // Hydra patch: the engine hashed the prefix straight onto RefID and never went through GetID(),
+    // which is where "//$FOCUSED" is turned into the focused window. So "//$FOCUSED/**/x" searched
+    // under a window ID that does not exist. The prefix now resolves through GetID(), which gives the
+    // same ID as before for "//window/" and plain relative prefixes. A single leading "/" keeps the
+    // engine's old hash, because GetID() reads it differently and its IDs must not change.
+    if (wildcard_prefix_start < wildcard_prefix_end && !(wildcard_prefix_start[0] == '/' && wildcard_prefix_start[1] != '/'))
+    {
+        Str256 prefix;
+        prefix.set(wildcard_prefix_start, wildcard_prefix_end);
+        task->InPrefixId = GetID(ImGuiTestRef(prefix.c_str()));
+    }
+    else if (wildcard_prefix_start < wildcard_prefix_end)
         task->InPrefixId = ImHashDecoratedPath(wildcard_prefix_start, wildcard_prefix_end, RefID);
     else
         task->InPrefixId = RefID;
@@ -2980,6 +2991,10 @@ void    ImGuiTestContext::ItemAction(ImGuiTestAction action, ImGuiTestRef ref, I
     {
         if (flags & ImGuiTestOpFlags_NoError)
             LogDebug("Action skipped: Item doesn't exist + used ImGuiTestOpFlags_NoError.");
+        // Hydra patch: the engine cleared the wildcard status filter set above only at the end of this
+        // function, so this early return left it set. Every later wildcard search then matched only
+        // checkable (or openable) items. This is the function's only return after the filter is set.
+        Engine->FindByLabelTask.InFilterItemStatusFlags = ImGuiItemStatusFlags_None;
         return;
     }
 
