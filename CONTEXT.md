@@ -95,7 +95,13 @@ analysis becomes a record: it ranks `HydraRecord::all_paths` from 1 and keeps
 at most `kPathsPerRecord`. Rank 1 is the record's best path, which the library
 shows (`RecordRow::best_path_text`); nothing else picks a best path again.
 `RecordStore::save` writes a record, and `RecordStore::lookup` and
-`RecordStore::lookup_one` read one with its status. "Record" is a code and
+`RecordStore::lookup_one` read one with its status. A record may instead be
+a stored failure: a chart whose own content stops the analysis
+(`remembered_failure` in src/core/error_kind.h says which kinds) is saved as
+a record with no paths and its `failure_kind` and `failure_text` set, built
+by `store::failure_record` and written by the same `RecordStore::save`. Its
+song id is its file's hash, so a changed file is a new chart and is tried
+again (D249). "Record" is a code and
 glossary word only: public text says "chart" (user decision, 2026-10-11).
 _Avoid_: summary row, stored record, result row
 
@@ -130,12 +136,19 @@ a record under the current profile, with a results stamp this build accepts
 and the rules in force. Stale: no Ready record, but one under a sibling
 profile, the same chart mode, cap and lens under another results stamp or
 other rules (`RecordLookup::stale_build` and `RecordLookup::stale_rules` say
-which). Not analyzed: neither, so a record under another mode, cap or lens
-never makes a chart Stale. `store::RecordStatus` in src/store/record_store.h;
-only the store decides it, in `RecordStore::lookup` (D115).
-The library writes the three as "Not analyzed", "Stale" and "Analyzed"
-(`status_label` in src/ui/library_model.h), on its chips and in the Best path
-cell. A ready result may have kept no paths.
+which). Can't analyze: the winning record under the current profile is a
+stored failure (see Record), so the chart's own content stops the analysis.
+Not analyzed: none of these, so a record under another mode, cap or lens
+never makes a chart Stale. `store::RecordStatus` in src/store/record_store.h
+(its fourth value is `CantAnalyze`); only the store decides it, in
+`RecordStore::lookup` (D115, D249). A stored failure follows the same stamp
+and rules checks as any record, so after a results stamp bump it reads Stale
+and is tried again. `RecordStore::settled_song_ids` lists the Ready and
+Can't analyze charts under a profile from that same lookup; a batch skips
+both.
+The library writes the four as "Not analyzed", "Stale", "Analyzed" and
+"Can't analyze" (`status_label` in src/ui/library_model.h), on its chips and
+in the Best path cell. A ready result may have kept no paths.
 _Avoid_: not analyzed (for the comparison page's wider state: that page says
 "no current result")
 
@@ -243,7 +256,9 @@ A batch's three counts: analyzed, failed, and skipped (rows that already had a
 result). `run_batch` is the only writer of them (`BatchProgress` in
 src/app/analysis.h). `batch_counts_text` words them for both the app's
 finished strip and `hydra_batch`'s closing line, "21 analyzed · 0 failed · 1
-skipped (already had a result)" (D114 item 10).
+skipped (already had a result)" (D114 item 10). A Can't analyze chart is a
+skipped row too, because its stored failure is its result (D249); the batch
+confirm counts those rows on their own dim line.
 _Avoid_: already stored
 
 **Batch running**:
@@ -281,7 +296,20 @@ checks Cancel every 50 ms; and it accepts only HTTP status 200
 **In the library**:
 Whether the last scan's library lists a chart. `ChartIndex::lists` in
 src/store/chart_index.h is the one answer for every page (D87 item 4, D92).
-`report::listed_records` keeps only the records whose chart it lists.
+`report::library_lookup` reads only the charts it lists.
+
+**Report coverage**:
+Which library charts a report page covers and how it accounts for the rest.
+`report::library_lookup` runs one `RecordStore::lookup` over the library's
+song ids and splits them three ways: Ready (table rows), Can't analyze (the
+line above the path report's table, with its Show list), and no result (a
+failure that is not remembered, or a stopped run). The path report, the
+leaderboard comparison and the fill comparison all read it, so they agree on
+which charts are covered. Every count of the three groups goes through
+`ChartIndex::count`, so with no filters shown, can't analyze and no result
+add up to the library's count. Opening the path report first runs a batch
+over every chart with no current result, so the report covers the whole
+library (D249).
 
 **Comparable chart mode**:
 Whether the analysis settings can be held against dmleaderboards scores, which
