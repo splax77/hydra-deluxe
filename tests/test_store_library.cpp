@@ -19,12 +19,13 @@
 #include "record_fixtures.h"
 #include "store/chart_index.h"
 #include "store/record_store.h"
-#include "store_fixtures.h"  // at_cap
+#include "store_fixtures.h"  // at_cap, at4
 #include "temp_util.h"
 
 using namespace hydra;
 using namespace hydra::store;
 
+using hydra::test::at4;
 using hydra::test::at_cap;
 using hydra::test::exec_on_file;
 // One integer straight out of a database file: how these tests look at a
@@ -32,9 +33,6 @@ using hydra::test::exec_on_file;
 using hydra::test::scalar_on_file;
 
 namespace {
-
-// The at_cap fixture's profile under chart mode `mode`.
-Profile at4(const std::string& mode = "mode") { return Profile{mode, CapQuery::at(4), Lens{}}; }
 
 // How many copies the library lists of each chart it lists, by song id, as
 // the store's chart index reads them.

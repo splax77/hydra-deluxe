@@ -22,21 +22,19 @@
 #include "display_fixtures.h"  // save_old_build_record, kOldBuildStamp, other_rules_record
 #include "parse/song.h"
 #include "store/record_store.h"
-#include "store_fixtures.h"  // fixture, at_cap, no_paths_at_cap
+#include "store_fixtures.h"  // fixture, at_cap, at4, no_paths_at_cap
 #include "temp_util.h"
 
 using namespace hydra;
 using namespace hydra::store;
 
+using hydra::test::at4;
 using hydra::test::at_cap;
 using hydra::test::fixture;
 using hydra::test::no_paths_at_cap;
 using hydra::test::scalar_on_file;
 
 namespace {
-
-// The fixture's own profile: 4 bars, no ms limit, the 1.1 fill rule.
-Profile at4(const std::string& mode = "mode") { return Profile{mode, CapQuery::at(4), Lens{}}; }
 
 // Every corpus chart the engine analyzes, under the default search settings.
 std::vector<const HydraRecord*> corpus_analyses() {

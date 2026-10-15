@@ -7,6 +7,7 @@
 #include "app/analysis.h"
 #include "core/model.h"
 #include "corpus_util.h"
+#include "store/record_store.h"
 
 namespace hydra::test {
 
@@ -31,6 +32,12 @@ inline HydraRecord at_cap(int cap) {
     HydraRecord r = fixture().record;
     r.sp_cap = cap;
     return r;
+}
+
+// The fixture's own profile under chart mode `mode`: 4 bars, no ms limit, the
+// 1.1 fill rule. The profile a record from at_cap(4) is saved under.
+inline store::Profile at4(const std::string& mode = "mode") {
+    return store::Profile{mode, store::CapQuery::at(4), store::Lens{}};
 }
 
 // at_cap with every path taken out: "analyzed, and nothing survived".
