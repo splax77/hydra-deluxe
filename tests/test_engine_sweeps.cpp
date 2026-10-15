@@ -619,7 +619,9 @@ TEST_CASE("allzero_options: no skips, a hard 0 ms limit, everything else default
 TEST_CASE("settings_key: the text for SearchSettings{} is pinned, and every field moves it") {
     const SearchSettings plain{};
     const std::string key = corpus::settings_key(plain);
-    CHECK(key == "4|0|4|none|0|8129816903421021426|");
+    // The number is the default rules' fingerprint, which moved at D115 B2-3
+    // when fill_length_measures was retired (test_rules.cpp pins it in hex).
+    CHECK(key == "4|0|4|none|0|12303881770575177486|");
 
     std::vector<SearchSettings> changed(6, plain);
     changed[0].sp_cap = 1;
