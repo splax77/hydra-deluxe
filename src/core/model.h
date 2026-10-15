@@ -835,15 +835,16 @@ struct HydraRecord {
     // carried it are gone (D87).
     bool sp_cap_converged = true;
     // The fingerprint of the rules the search ran under: Rules::fingerprint().
-    // A result's row stores it in its rules_fp column (store::prepare_row).
+    // A saved record's profile stores it in its rules_fp column
+    // (store::prepare_record).
     // A record built in memory starts with the default rules' fixed-cap
     // fingerprint, computed once (core::default_stamp); analyze_chart stamps
     // the real one.
     uint64_t rules_fingerprint = core::default_stamp().fixed;
     // True when fills spawned by Clone Hero 1.0's deadline, not 1.1's.
-    // analyze_chart sets it. The result's row carries the rule in its key
-    // (store::Lens::legacy_fills), and prepare_row refuses a key that names
-    // the other rule.
+    // analyze_chart sets it. A saved record's profile carries the rule
+    // (store::Lens::legacy_fills), and prepare_record refuses a profile that
+    // names the other rule.
     bool legacy_fills = false;
     std::vector<Path> paths;
 

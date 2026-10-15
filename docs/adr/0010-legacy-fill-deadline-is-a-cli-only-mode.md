@@ -101,7 +101,9 @@ What changed:
 - The schema 3 rebuild files a file's older rows under 1.1, unless hydra_batch
   stamped the file `ch10`; then under 1.0. So a `--legacy-fills` database
   from before still reads as 1.0.
-- `prepare_row` refuses a key that names the other rule. `HydraRecord` carries
+- The store's row-preparing function refuses a key that names the other rule
+  (2026-10-15, D115: that function is now `prepare_record`, and the key is
+  now a profile). `HydraRecord` carries
   the rule in memory (`legacy_fills`), not in its stored bytes; the store's
   record loader set it from the key. Since ADR 0026 no record is stored or
   loaded, and the pather sets it from the run's settings.

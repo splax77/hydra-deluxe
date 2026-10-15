@@ -239,12 +239,12 @@ TEST_CASE("user_messages: an untyped error reads the fallback, whatever its word
 }
 
 TEST_CASE("user_messages: anything else falls back, and the detail keeps the raw text") {
-    const std::runtime_error odd("prepare_row: key asks for sp_cap 5");
+    const std::runtime_error odd("prepare_record: key asks for sp_cap 5");
     CHECK(plain_error(odd) == hydra::app::kSomethingWentWrong);
     CHECK(std::string(hydra::app::kSomethingWentWrong) ==
           "Something went wrong. Try again, and if it keeps happening, report it with the "
           "details below.");
-    CHECK(plain_error_detail(odd) == "prepare_row: key asks for sp_cap 5");
+    CHECK(plain_error_detail(odd) == "prepare_record: key asks for sp_cap 5");
 }
 
 // The startup message box and the command-line tools show both at once

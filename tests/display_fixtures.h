@@ -47,20 +47,11 @@ inline AudioTailChart audio_tail_chart() {
     return c;
 }
 
-// ---- a batch result stored for one chart -------------------------------------
-
-// The key a result for chart `md5` is filed under at SP cap `cap`, with every
-// other setting at its default. Settings::record_key builds it, so a test
-// never spells the key's parts out itself.
-inline store::RecordKey batch_result_key(const std::string& md5, int cap) {
-    app::Settings settings;
-    settings.sp_cap = cap;
-    return settings.record_key(md5);
-}
+// ---- a batch record saved for one chart --------------------------------------
 
 // An analysis that kept no paths, made under `profile`: its SP cap, ms limit
 // and fill rule are read from the profile, so the two never disagree
-// (prepare_record and prepare_row refuse a mismatch).
+// (prepare_record refuses a mismatch).
 inline HydraRecord empty_analysis_under(const store::Profile& profile) {
     HydraRecord record;
     record.sp_cap = profile.cap.exact;
@@ -69,30 +60,9 @@ inline HydraRecord empty_analysis_under(const store::Profile& profile) {
     return record;
 }
 
-// Stores a finished result the way a batch does, behind the app's back: an
-// empty current-version record under `key`. An empty current-version record
-// reads back Ready, with no paths and so no score. This form is for a test
-// that files under its own chartmode, lens or fill rule.
-inline void store_batch_result(store::RecordStore& store, const store::RecordKey& key) {
-    store.add_record(key, empty_analysis_under(key.settings()));
-}
-
-// The same empty record for chart `md5` at SP cap `cap`, under
-// batch_result_key (every other setting at its default). Returns the key it
-// stored under.
-inline store::RecordKey store_batch_result(store::RecordStore& store, const std::string& md5,
-                                           int cap) {
-    const store::RecordKey key = batch_result_key(md5, cap);
-    store_batch_result(store, key);
-    return key;
-}
-
-// The profile forms of the three above (D115), written through
-// prepare_record and RecordStore::save.
-
 // The profile a result is filed under at SP cap `cap`, with every other
-// setting at its default. Settings::profile builds it. Stands for
-// batch_result_key.
+// setting at its default. Settings::profile builds it, so a test never spells
+// the profile's parts out itself.
 inline store::Profile batch_profile(int cap) {
     app::Settings settings;
     settings.sp_cap = cap;
@@ -100,15 +70,16 @@ inline store::Profile batch_profile(int cap) {
 }
 
 // An empty current-version record for chart `md5` under `profile`, saved the
-// way a batch saves one. It reads back Ready, with no paths and so no score.
-// Stands for store_batch_result(store, key).
+// way a batch saves one, behind the app's back. It reads back Ready, with no
+// paths and so no score. This form is for a test that files under its own
+// chartmode, lens or fill rule.
 inline void save_batch_record(store::RecordStore& store, const std::string& md5,
                               const store::Profile& profile) {
     store.save(store::prepare_record(md5, profile, empty_analysis_under(profile)));
 }
 
 // The same for chart `md5` under batch_profile(cap). Returns the profile it
-// saved under. Stands for store_batch_result(store, md5, cap).
+// saved under.
 inline store::Profile save_batch_record(store::RecordStore& store, const std::string& md5,
                                         int cap) {
     const store::Profile profile = batch_profile(cap);
@@ -121,18 +92,9 @@ inline store::Profile save_batch_record(store::RecordStore& store, const std::st
 // The stamp a record carries when another Hydra version wrote it.
 inline constexpr const char* kOldBuildStamp = "0.0.0";
 
-// The row `record` makes under `key`, as if another Hydra version wrote it
-// (kOldBuildStamp). Stored, it reads Stale for "another build".
-inline store::PreparedRow old_build_row(const store::RecordKey& key, const HydraRecord& record) {
-    store::PreparedRow row = store::prepare_row(key, record);
-    row.hyversion = kOldBuildStamp;
-    return row;
-}
-
 // Saves `prepared` through `store` as if another Hydra version had saved it,
 // under kOldBuildStamp, through RecordStore::save_under_build_for_test. Stored
-// this way it reads Stale for "another build". Stands for
-// add_row(old_build_row(...)).
+// this way it reads Stale for "another build".
 inline void save_old_build_record(store::RecordStore& store,
                                   const store::PreparedRecord& prepared) {
     store.save_under_build_for_test(prepared, kOldBuildStamp);
@@ -154,21 +116,9 @@ inline HydraRecord other_rules_record(const HydraRecord& record) {
     return foreign;
 }
 
-// Stores `record` three times, once for each reason a saved result reads
-// Stale: under `build` as an old_build_row, under `rules` as an
-// other_rules_record, and under `both` with both.
-inline void add_stale_rows(store::RecordStore& store, const HydraRecord& record,
-                           const store::RecordKey& build, const store::RecordKey& rules,
-                           const store::RecordKey& both) {
-    const HydraRecord foreign = other_rules_record(record);
-    store.add_row(old_build_row(build, record));
-    store.add_row(store::prepare_row(rules, foreign));
-    store.add_row(old_build_row(both, foreign));
-}
-
 // Saves `record` under `profile` for three charts, one for each reason a saved
 // result reads Stale: chart `build` as another build's, chart `rules` as an
-// other_rules_record, and chart `both` with both. Stands for add_stale_rows.
+// other_rules_record, and chart `both` with both.
 inline void add_stale_records(store::RecordStore& store, const HydraRecord& record,
                               const store::Profile& profile, const std::string& build,
                               const std::string& rules, const std::string& both) {
@@ -180,7 +130,7 @@ inline void add_stale_records(store::RecordStore& store, const HydraRecord& reco
 
 // Lists chart `md5` in `store`'s library under these names, keeping every
 // other chart's library row and replacing this chart's. A result's names come
-// from the library (kNamingCopiesSql), and a report leaves out a result the
+// from the library (ChartIndex::naming), and a report leaves out a result the
 // library doesn't list, so a test that reads names or reports calls this
 // before it saves the chart's results.
 inline void name_chart(store::RecordStore& store, const std::string& md5,
@@ -206,16 +156,6 @@ TEST_CASE("fixtures: audio runs 5 s past the last note") {
     const AudioTailChart c = audio_tail_chart();
     CHECK(c.last_note_ms == app::last_note_ms(app::build_preview_base(c.song)));
     CHECK(c.audio_end_ms - c.last_note_ms == 5000.0);
-}
-
-TEST_CASE("fixtures: a batch result stored for one chart") {
-    store::RecordStore db(":memory:");
-    const int cap = app::Settings{}.sp_cap;
-    const store::RecordKey key = store_batch_result(db, "fixture-chart", cap);
-    CHECK(db.get_summary(key).status == store::RecordStatus::Ready);
-    store::RecordKey other = key;
-    other.hyhash = "another-chart";
-    CHECK(db.get_summary(other).status == store::RecordStatus::NotAnalyzed);
 }
 
 TEST_CASE("fixtures: a batch record saved for one chart") {

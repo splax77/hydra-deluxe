@@ -10,7 +10,7 @@
 //   * `records` — one row per chart and profile: the record's own counts.
 //   * `record_paths` — the record's kept paths, ranked from 1 (the best).
 //   * `charts` — the chart library, one row per scanned file. A record's
-//     names come from here (kNamingCopiesSql).
+//     names come from here (ChartIndex, store/chart_index.h).
 //
 // A Convertible file (store/library_file.h) held one `results` row per chart
 // and settings instead. The first open by this build converts it into the
@@ -74,8 +74,7 @@ struct PathSummary {
 
     // Does this record have a scored best path? The one answer (D51 call 11):
     // a record with no paths has no score and so no facts. Read off `score`,
-    // so a summary read back from the stored columns answers the same as one
-    // summarize_record just made.
+    // so every summary answers it the same way, whatever made it.
     bool has_scored_best_path() const { return score.has_value(); }
 
     // Every field, unset against set counting as a difference. Spelled out
@@ -89,12 +88,6 @@ struct PathSummary {
     }
     bool operator!=(const PathSummary& other) const { return !(*this == other); }
 };
-
-PathSummary summarize_path(const Path& path);
-PathSummary summarize_record(const HydraRecord& record);
-// The old bestpath column's text, kept only for prepare_row until that write
-// path goes (D115 A1-5). Readers ask RecordRow::best_path_text.
-std::string best_path_text(const HydraRecord& record);
 
 // Which cap's record a lookup wants: at(N), the record analyzed at exactly N
 // bars. (Auto, which asked for "the newest row above 4 bars", was removed
@@ -150,8 +143,7 @@ struct Lens {
 // A profile: the settings a record is filed under, without the chart. That
 // is the chart mode, the SP cap (ADR-0003) and the lens. The store adds the
 // results stamp and the rules fingerprint itself when it files or looks up a
-// record. A lookup over many charts asks with this; RecordKey adds the chart
-// to it.
+// record. A lookup asks with this and the charts' ids.
 struct Profile {
     std::string chartmode;
     CapQuery cap;
@@ -162,50 +154,6 @@ struct Profile {
     }
     bool operator!=(const Profile& other) const { return !(*this == other); }
 };
-// The old name, kept only while callers move to Profile (D115).
-using ResultSettings = Profile;
-
-// One result's identity: the chart and the ResultSettings it was filed under.
-struct RecordKey : ResultSettings {
-    std::string hyhash;
-
-    RecordKey() = default;
-    RecordKey(std::string hyhash_, std::string chartmode_, CapQuery cap_, Lens lens_ = {})
-        : ResultSettings{std::move(chartmode_), cap_, lens_}, hyhash(std::move(hyhash_)) {}
-    RecordKey(std::string hyhash_, ResultSettings settings_)
-        : ResultSettings(std::move(settings_)), hyhash(std::move(hyhash_)) {}
-
-    // The key without its chart.
-    const ResultSettings& settings() const { return *this; }
-
-    bool operator==(const RecordKey& other) const {
-        return hyhash == other.hyhash && settings() == other.settings();
-    }
-    bool operator!=(const RecordKey& other) const { return !(*this == other); }
-};
-
-// A result's row, fully computed and ready to insert — the summary, kept free
-// of any db connection so a worker thread can build it off the main store.
-struct PreparedRow {
-    std::string hyhash;
-    std::string chartmode;
-    std::string hyversion;
-    int sp_cap = kCloneHeroSpCap;
-    Lens lens;
-    std::string bestpath;
-    // The fingerprint of the rules the record was analyzed under
-    // (HydraRecord::rules_fingerprint), stored in the rules_fp column.
-    uint64_t rules_fp = 0;
-    PathSummary summary;
-};
-
-// Throws std::invalid_argument if the record carries no sp_cap (every
-// analyzer result does), if the key's cap isn't the cap the record was
-// analyzed at, if the key's lens has the ms limit on at a value the record
-// wasn't analyzed under, or if the lens names the other fill rule -- each
-// mismatch would file the result under settings it doesn't belong to.
-PreparedRow prepare_row(const RecordKey& key, const HydraRecord& record);
-
 
 // The results version this build stamps on a row and accepts (ADR 0018; not
 // the app version). For
@@ -227,19 +175,6 @@ struct SongLength {
     bool read = false;
     std::optional<double> ms;
     static SongLength found(std::optional<double> ms) { return SongLength{true, ms}; }
-};
-// The answer to get_summary.
-struct SummaryLookup {
-    RecordStatus status = RecordStatus::NotAnalyzed;
-    // Why a Stale row is Stale; both can be true, neither is when not Stale.
-    // The library's row tooltip names the cause.
-    bool stale_build = false;  // another Hydra build
-    bool stale_rules = false;  // analyzed under other rules
-    std::string bestpath;  // meaningful only when status == Ready
-    // The row's summary columns; filled only when status == Ready. A Stale
-    // row's numbers came from a build or rules this one doesn't trust, so
-    // they're not handed out.
-    PathSummary summary;
 };
 
 // ---- records (D115) --------------------------------------------------------
@@ -313,8 +248,11 @@ struct PreparedRecord {
 };
 
 // The one place an analysis becomes a record and its path rows. Throws
-// std::invalid_argument when the profile does not match the analysis, as
-// prepare_row does.
+// std::invalid_argument if the analysis carries no sp_cap (every analyzer
+// result does), if the profile's cap isn't the cap it was analyzed at, if the
+// profile's lens has the ms limit on at a value it wasn't analyzed under (or
+// off when it was), or if the lens names the other fill rule: each mismatch
+// would file the analysis under settings it doesn't belong to.
 PreparedRecord prepare_record(std::string song_id, const Profile& profile,
                               const HydraRecord& analysis);
 
@@ -326,31 +264,13 @@ RecordRow record_of(std::string song_id, const HydraRecord& analysis);
 
 // What a record lookup found. `record` is filled only when status is Ready:
 // a Stale record's numbers came from a build or rules this one doesn't trust.
-// SummaryLookup stays its own type while its readers still read `bestpath`
-// and `summary`; get_summaries reads them off this lookup.
 struct RecordLookup {
     RecordStatus status = RecordStatus::NotAnalyzed;
-    // Why a Stale record is Stale, as in SummaryLookup.
-    bool stale_build = false;
-    bool stale_rules = false;
+    // Why a Stale record is Stale; both can be true, neither is when not
+    // Stale. The library's row tooltip names the cause.
+    bool stale_build = false;  // another Hydra build
+    bool stale_rules = false;  // analyzed under other rules
     RecordRow record;
-};
-
-// One row of list_records()/library browsing.
-struct RecordListing {
-    std::string hyhash;
-    std::string ref_name;
-    std::string ref_artist;
-    std::string ref_charter;
-    std::string chartmode;
-    int sp_cap = kCloneHeroSpCap;
-    std::string bestpath;
-    PathSummary summary;
-};
-
-enum class SortColumn {
-    Score, ActCount, MaxSkip, HardestMs, AvgMult, NoteCount,
-    SqInCount, SqOutCount, PathCount, RefName, RefArtist, RefCharter,
 };
 
 // What a chart's own metadata states about its timing, read by the scan with
@@ -402,17 +322,6 @@ using ChartLibraryCache = std::unordered_map<std::string, ChartLibraryEntry>;
 // test (sig_unchanged in app/analysis.cpp) asks it, and so does the click's
 // save (ui::ViewJob::run).
 inline bool sig_can_show_unchanged(const std::string& sig) { return !sig.empty(); }
-
-// Which copy names an md5 (D51 call 10): the first copy the scan listed, the
-// charts row with the smallest rowid for that md5. One row per md5, with its
-// name, artist and charter (SQLite takes a bare column from the MIN(rowid)
-// row), plus `copies`, how many rows the scan listed for it, and
-// `naming_rowid`, the naming copy's own rowid. list_records, library_copies
-// and naming_copy_paths all read through it.
-inline constexpr const char* kNamingCopiesSql =
-    "(SELECT md5, name, artist, charter, MIN(rowid) AS naming_rowid, COUNT(*) AS copies"
-    " FROM charts"
-    " GROUP BY md5)";
 
 // The most charts one save group holds (D86 item 2). When a group closes
 // sooner: see run_batch's flush_group (app/analysis.cpp).
@@ -501,19 +410,12 @@ public:
     // build).
     void save_under_build_for_test(const PreparedRecord& prepared, const std::string& build);
 
-    void add_record(const RecordKey& key, const HydraRecord& record);
-    void add_row(const PreparedRow& row);
-
-    // One analyzed chart's summary row, saved as add_row does, but inside the
-    // open save group when there is one (as a SAVEPOINT of its own).
-    void save_analysis(const PreparedRow& row);
-
     // A save group (D86 items 1 and 2): one transaction around several
-    // save_analysis calls, which the batch's writer opens so it commits once
-    // per group instead of once per chart. begin_save_group takes the store
-    // lock and keeps it until commit_save_group, so other users of the store
-    // wait at most one group. Inside a group each save_analysis is its own
-    // SAVEPOINT, so a save that fails still undoes only its own chart.
+    // save calls, which the batch's writer opens so it commits once per group
+    // instead of once per chart. begin_save_group takes the store lock and
+    // keeps it until commit_save_group, so other users of the store wait at
+    // most one group. Inside a group each save is its own SAVEPOINT, so a
+    // save that fails still undoes only its own chart.
     // commit_save_group drops the lock whether or not it throws; when it
     // throws, the whole group was rolled back and none of it was kept.
     void begin_save_group();
@@ -567,62 +469,8 @@ public:
     // chart_index(), not from here.
     std::vector<RecordRow> ready_records(const Profile& want);
 
-    // The row's status, best-path string and summary.
-    // Always returns a value; bestpath is set only when status is Ready.
-    SummaryLookup get_summary(const RecordKey& key);
-
-    // get_summary for many charts at once: one answer per entry of
-    // `hyhashes`, in the same order (a repeated hash gets the same answer
-    // twice). The library asks it about every chart, so the hashes are sent
-    // in chunks under SQLite's bound-value limit.
-    std::vector<SummaryLookup> get_summaries(const std::vector<std::string>& hyhashes,
-                                             const ResultSettings& want);
-
-    // True when lookup reads this exact key as Ready: lookup is the one
-    // owner of "this chart has a current result under these settings" (D79).
-    bool has_record(const RecordKey& key);
-
-    // The old name of ready_song_ids, kept while callers move (D115).
-    std::unordered_set<std::string> analyzed_hashes(const ResultSettings& want);
-
-    // How many rows the library table lists for each chart, by md5: the
-    // `copies` the naming rule counts (D51 call 10). A chart the library
-    // doesn't list is absent.
-    std::unordered_map<std::string, int> library_copies();
-
-    // The notes file of the copy that stands for each md5 (kNamingCopiesSql's
-    // pick), by md5: the file a pass over the library analyzes. A chart the
-    // library doesn't list is absent.
-    std::unordered_map<std::string, std::string> naming_copy_paths();
-
-    // How many library rows a chart on a page counts as, read from a
-    // library_copies map keyed the way `md5` is. A page lists only charts it
-    // holds a result for, so one the library doesn't list (a result
-    // hydra_batch saved from folder arguments, which leave the library
-    // alone) still counts once (D77). This
-    // is the one place that rule lives; every page's chart count reads it.
-    static int copies_of(const std::unordered_map<std::string, int>& copies,
-                         const std::string& md5);
-
-    // ---- listing ------------------------------------------------------
-
-    // The library listing: one row per chart and mode -- the same row a lookup
-    // for those settings would pick -- and only the Ready ones. A chart whose
-    // best row is stale is left out entirely, so a report reads it the same as
-    // a chart nobody has analyzed. Names come from the chart's naming copy
-    // (kNamingCopiesSql); a chart the library doesn't list has none. `limit`
-    // caps the rows returned after that filtering; a negative limit means no
-    // limit.
-    std::vector<RecordListing> list_records(
-        const std::optional<std::string>& chartmode, const CapQuery& cap, const Lens& lens,
-        SortColumn order_by, bool descending, std::optional<int> limit = std::nullopt);
-
     // How many records the file holds, under any profile.
     int64_t record_count();
-
-    // {charts with a stored result, results} row counts. The second is
-    // record_count's; the old name stays while callers move (D115).
-    std::pair<int64_t, int64_t> counts();
 
     // ---- chart library (scan results) ----------------------------------
 
@@ -721,7 +569,7 @@ private:
     // Opens db_ on `dbpath`, creating the file if it is missing; throws
     // KindedError(DatabaseOpen) when SQLite refuses.
     void open_file(const std::string& dbpath);
-    // The frame of save and save_analysis: takes the lock and runs `work`
+    // The frame of every save: takes the lock and runs `work`
     // in a SAVEPOINT of the open save group, or in a transaction of its own
     // when no group is open. A failure undoes only this chart's writes.
     template <class F>
@@ -729,22 +577,11 @@ private:
     // The body of save and save_under_build_for_test: `prepared` filed under
     // the stamp `build`, in the save frame.
     void save_under(const PreparedRecord& prepared, const std::string& build);
-    // Which of the chart's unreadable records a save purges: in every mode
-    // (save), or only in the record's own mode (write_row, the old save's
-    // scope, which the old store tests' fixtures rely on; A1-5 deletes it
-    // with write_row).
-    enum class PurgeScope { EveryMode, ThisMode };
-    // The body of every save (save, and save_analysis through write_row):
-    // the purge, the record and the emptied profiles, as save says.
-    // `hyversion` is the stamp the record is filed under. The caller holds
-    // the lock and an open transaction.
+    // The body of every save: the purge, the record and the emptied
+    // profiles, as save says. `hyversion` is the stamp the record is filed
+    // under. The caller holds the lock and an open transaction.
     void file_record(const Profile& profile, const std::string& hyversion, uint64_t rules_fp,
-                     const RecordRow& record, PurgeScope scope);
-    // The body of add_row and save_analysis: a PreparedRow, which holds only
-    // a summary, filed through file_record as a record with its best path as
-    // rank 1, the way convert_results files an old row. The caller holds the
-    // lock and an open transaction.
-    void write_row(const PreparedRow& row);
+                     const RecordRow& record);
     // Every chart with a record under `want`'s mode, cap and lens, any stamp
     // or rules: what lookup is asked about to list the Ready ones. The
     // caller holds the lock.

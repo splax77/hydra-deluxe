@@ -359,7 +359,7 @@ TEST_CASE("store: a record's best path text is rank 1's, and empty when it kept 
     CHECK(record_of("h1", no_paths_at_cap(4)).best_path_text().empty());
 }
 
-// ---- the status rules, moved from test_store_results.cpp (D115 A1-5) --------
+// ---- the status rules -------------------------------------------------------
 //
 // Each case pins one rule lookup answers by: which stamps read Ready, why a
 // Stale record is Stale, when other rules read Ready again, and what reads as
