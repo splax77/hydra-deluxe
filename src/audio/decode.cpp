@@ -10,37 +10,29 @@ namespace hydra::audio {
 
 namespace {
 
-// Reads a whole stem through its reader: exactly length_frames() frames are
-// reserved up front, so the buffer never grows or copies. Should a decoder
-// yield more than it promised, the extra is kept (the buffer grows), so the
-// output always equals reading to the end. A decode error part way through
-// throws, as the old whole-file decoders did.
+// Reads a whole stem through its reader, to the end. The buffer grows as
+// frames arrive; nothing is sized from length_frames(), because that count
+// comes from the file's header and a damaged header can promise far more than
+// the decoder delivers (a fuzzed FLAC asked for hundreds of gigabytes). The
+// output is exactly what the reader yields, so frames past the promise are
+// kept and a stem that ends early is shorter. Which readers report a decode
+// error is said at StemReader::failed(); when one does, this throws, as the
+// old whole-file decoders did.
 DecodedAudio read_all(StemReader& r) {
     DecodedAudio out;
     out.channels = r.channels();
     out.sample_rate = r.sample_rate();
     if (out.channels <= 0) throw KindedError(ErrorKind::AudioDecode, "decode_audio: the stream has no channels");
     const std::size_t ch = static_cast<std::size_t>(out.channels);
-    int64_t cap = r.length_frames();
-    out.samples.resize(static_cast<std::size_t>(cap) * ch);
-    int64_t n = 0;
-    while (n < cap) {
-        const int64_t got = r.read(out.samples.data() + static_cast<std::size_t>(n) * ch, cap - n);
+    constexpr int64_t kChunkFrames = 4096;
+    std::vector<float> chunk(static_cast<std::size_t>(kChunkFrames) * ch);
+    while (true) {
+        const int64_t got = r.read(chunk.data(), kChunkFrames);
         if (got <= 0) break;
-        n += got;
-    }
-    if (n == cap) {
-        // Promised length reached; anything past it lands in a side buffer.
-        std::vector<float> extra(4096 * ch);
-        while (const int64_t got = r.read(extra.data(), 4096)) {
-            out.samples.resize(static_cast<std::size_t>(n) * ch);
-            out.samples.insert(out.samples.end(), extra.begin(),
-                               extra.begin() + static_cast<std::ptrdiff_t>(got * out.channels));
-            n += got;
-        }
+        out.samples.insert(out.samples.end(), chunk.begin(),
+                           chunk.begin() + static_cast<std::ptrdiff_t>(static_cast<std::size_t>(got) * ch));
     }
     if (r.failed()) throw KindedError(ErrorKind::AudioDecode, "decode_audio: the stream failed to decode");
-    out.samples.resize(static_cast<std::size_t>(n) * ch);
     return out;
 }
 
