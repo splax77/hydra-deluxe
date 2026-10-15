@@ -46,21 +46,51 @@ std::string set_aside_path(const std::string& db) {
     return db + ".pre-" + kOldestConvertibleVersion;
 }
 
-std::optional<std::string> set_aside_old_library(const std::string& db) {
-    const std::vector<std::string> from = with_side_files(db);
-    const std::vector<std::string> to = with_side_files(set_aside_path(db));
-    // An earlier set-aside file goes first. One that stays makes the rename
-    // below fail, and that failure's text is the reason shown.
-    remove_with_side_files(to[0]);
-    if (std::optional<std::string> why = rename_file(from[0], to[0])) return why;
-    for (size_t i = 1; i < from.size(); ++i) {
-        if (!file_exists_utf8(from[i])) continue;
+namespace {
+
+// Moves each of `from`'s files that exists to the same place in `to`. When
+// one cannot move, the ones already moved go back, and the reason is
+// returned. A folder at one of `from`'s names is never moved: it stays, and
+// the caller's own rename onto that name fails and says why.
+std::optional<std::string> move_files(const std::vector<std::string>& from,
+                                      const std::vector<std::string>& to) {
+    for (size_t i = 0; i < from.size(); ++i) {
+        if (!file_exists_utf8(from[i]) || is_directory_utf8(from[i])) continue;
         if (std::optional<std::string> why = rename_file(from[i], to[i])) {
             for (size_t j = 0; j < i; ++j)
                 if (file_exists_utf8(to[j])) rename_file(to[j], from[j]);
             return why;
         }
     }
+    return std::nullopt;
+}
+
+}  // namespace
+
+std::optional<std::string> set_aside_old_library(const std::string& db) {
+    const std::vector<std::string> from = with_side_files(db);
+    const std::vector<std::string> to = with_side_files(set_aside_path(db));
+    // An earlier set-aside file steps out of the way under a temporary name,
+    // and is deleted only once the old file has moved. A move that fails puts
+    // it back, so a failure costs the user no file.
+    const std::vector<std::string> earlier = with_side_files(to[0] + ".replaced");
+    // A run that stopped part way left the temporary name behind. With no
+    // set-aside file in place, it is the earlier one and goes back; beside
+    // one, it is older still and goes.
+    if (!file_exists_utf8(to[0])) move_files(earlier, to);
+    remove_with_side_files(earlier[0]);
+    if (std::optional<std::string> why = move_files(to, earlier)) return why;
+    // The file first, and its side files after it.
+    std::optional<std::string> why = rename_file(from[0], to[0]);
+    if (!why) {
+        why = move_files({from.begin() + 1, from.end()}, {to.begin() + 1, to.end()});
+        if (why) rename_file(to[0], from[0]);
+    }
+    if (why) {
+        move_files(earlier, to);
+        return why;
+    }
+    remove_with_side_files(earlier[0]);
     return std::nullopt;
 }
 

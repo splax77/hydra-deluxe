@@ -141,7 +141,21 @@ std::string rules_file_tool_text(const std::exception& e) {
     return std::string("hydra_rules.ini has an error:\n") + e.what();
 }
 
+namespace {
+
+// Whether the error's sentence already holds its whole raw text, so a block
+// that added the raw text again would say it twice. The refused old library's
+// sentence names the file, and its raw text is that path alone (D115 task
+// A1-6d: the user approved the one sentence).
+bool sentence_holds_detail(const std::exception& e) {
+    const auto* kinded = dynamic_cast<const KindedError*>(&e);
+    return kinded && kinded->kind() == ErrorKind::OldLibraryRefused;
+}
+
+}  // namespace
+
 std::string plain_error_block(const std::exception& e) {
+    if (sentence_holds_detail(e)) return plain_error(e);
     return plain_error(e) + "\n\n" + plain_error_detail(e);
 }
 

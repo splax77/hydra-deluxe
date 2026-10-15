@@ -33,6 +33,7 @@
 #include "parse/song.h"
 #include "search/graph.h"
 #include "store/record_store.h"
+#include "store/upgrade_files.h"  // set_aside_path
 #include "temp_util.h"
 #include "wait_util.h"
 
@@ -230,17 +231,45 @@ TEST_CASE("hydra_batch and hydra_fillcompare say why a database won't open") {
     }
 }
 
-TEST_CASE("hydra_batch --legacy-fills refuses the tool's own hydra.db") {
-    // The sandboxed exe's default database is hydra.db beside it: the file the
-    // app itself would read.
+TEST_CASE("hydra_batch --legacy-fills writes the tool's own hydra.db under the 1.0 rule") {
+    // The sandboxed exe's default database is hydra.db beside it, in the
+    // sandbox: the file the app itself would read. Each record carries its
+    // fill rule in its profile, so 1.0 results may go there, as the app's
+    // "1.0 fills" setting already puts them (D115 task A1-6d).
     CliSandbox box("owndb");
     RunResult r = run_exe(box.batch, {"--legacy-fills", box.folder()});
     INFO(r.output);
+    REQUIRE(r.exit_code == 0);
+    const std::string own_db = (box.dir / "hydra.db").u8string();
+    CHECK(contains(r.output, "Database   : " + own_db));
+    CHECK(contains(r.output, "Fills      : Clone Hero 1.0"));
+
+    const std::string md5 =
+        hydra::app::hash_chart_file((box.songs / "fixture" / "notes.chart").u8string());
+    const hydra::app::Settings settings{};  // the defaults the sandboxed exe reads
+    hydra::store::RecordStore store(own_db);
+    CHECK(store.counts().second == 1);
+    CHECK(store.lookup_one(md5, settings.profile_with_fills(hydra::FillDeadlineRule::Ch10))
+              .status == hydra::store::RecordStatus::Ready);
+    CHECK(store.lookup_one(md5, settings.profile_with_fills(hydra::FillDeadlineRule::Ch11))
+              .status != hydra::store::RecordStatus::Ready);
+}
+
+// A library file from before 2.2.0 stops the run with the one sentence, which
+// names the file once, and the file is left as it was (D115 task A1-6d).
+TEST_CASE("hydra_batch refuses a library file too old to convert in one sentence") {
+    CliSandbox box("old_library");
+    const std::string old_db = box.db("old.db");
+    fs::copy_file(fs::u8path(corpus::testdata_root() + "/store/v2.1.0-schema4.db"),
+                  fs::u8path(old_db));
+    RunResult r = run_exe(box.batch, {"--db", old_db, box.folder()});
     CHECK(r.exit_code == 2);
-    CHECK(contains(r.output, "--db legacy.db"));
-    CHECK(contains(r.output, "hydra_batch keeps 1.0 results out of hydra.db by design; use "
-                             "the app's 1.0 fills setting for that"));
-    CHECK(!contains(r.output, "not tagged as legacy"));
+    // The whole of what the run printed; the console's text mode turns the
+    // "\n" into "\r\n".
+    CHECK(r.output == "The library file '" + old_db +
+                          "' is from a Hydra version older than 2.2.0, and opening it in "
+                          "Hydra sets it aside and starts a fresh library.\r\n");
+    CHECK_FALSE(fs::exists(fs::u8path(hydra::store::set_aside_path(old_db))));
 }
 
 // An option hydra_batch doesn't know (a removed one included, D87) stops the

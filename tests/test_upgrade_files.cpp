@@ -37,6 +37,27 @@ void put(const std::string& path, const std::string& text) {
 
 bool there(const std::string& path) { return file_exists_utf8(path); }
 
+// How many files and folders sit in the folder that holds `db`.
+size_t entries_beside(const std::string& db) {
+    const std::string dir = std::filesystem::u8path(db).parent_path().u8string();
+    size_t n = 0;
+    for ([[maybe_unused]] const auto& entry : std::filesystem::directory_iterator(os_path(dir)))
+        ++n;
+    return n;
+}
+
+// set_aside_old_library's answer while another program holds `held_path`
+// open, as one that has hydra.db open would.
+std::optional<std::string> set_aside_while_held(const std::string& db,
+                                                const std::string& held_path) {
+    HANDLE held = CreateFileW(win32_path(held_path).c_str(), GENERIC_READ, FILE_SHARE_READ,
+                              nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    REQUIRE(held != INVALID_HANDLE_VALUE);
+    const std::optional<std::string> why = set_aside_old_library(db);
+    CloseHandle(held);
+    return why;
+}
+
 }  // namespace
 
 TEST_CASE("the library file's side files and set-aside name sit beside it") {
@@ -79,18 +100,61 @@ TEST_CASE("set_aside_old_library moves the file and its side files, replacing an
     CHECK(read_file_text(aside) == "old");
     CHECK(read_file_text(aside + "-wal") == "old's log");
     CHECK_FALSE(there(aside + "-shm"));  // the earlier file's index went with it
+    // Only the new set-aside file and its log are left in the folder.
+    CHECK(entries_beside(db) == 2);
 }
 
 TEST_CASE("set_aside_old_library leaves the file in place when it is held open") {
     const std::string db = fresh_db("upg_set_aside_held");
     put(db, "old");
-    HANDLE held = CreateFileW(win32_path(db).c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
-                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    REQUIRE(held != INVALID_HANDLE_VALUE);
-    const std::optional<std::string> why = set_aside_old_library(db);
-    CloseHandle(held);
+    const std::optional<std::string> why = set_aside_while_held(db, db);
     REQUIRE(why.has_value());
     CHECK_FALSE(why->empty());
     CHECK(read_file_text(db) == "old");
     CHECK_FALSE(there(set_aside_path(db)));
+}
+
+// The earlier set-aside file goes only once the new one has moved: a move
+// that fails leaves both files as they were (D115 task A1-6d).
+TEST_CASE("set_aside_old_library keeps an earlier set-aside file when the move fails") {
+    const std::string db = fresh_db("upg_set_aside_keep_earlier");
+    const std::string aside = set_aside_path(db);
+    put(db, "old");
+    put(aside, "earlier");
+    put(aside + "-wal", "earlier's log");
+    REQUIRE(set_aside_while_held(db, db).has_value());
+    CHECK(read_file_text(db) == "old");
+    CHECK(read_file_text(aside) == "earlier");
+    CHECK(read_file_text(aside + "-wal") == "earlier's log");
+    CHECK_FALSE(there(aside + "-shm"));
+    // Nothing else is left in the folder.
+    CHECK(entries_beside(db) == 3);
+}
+
+// A run that stopped part way left the earlier set-aside file under its
+// temporary name. The next run puts it back before it tries the move.
+TEST_CASE("set_aside_old_library puts back an earlier set-aside file a stopped run left") {
+    const std::string db = fresh_db("upg_set_aside_stopped_run");
+    const std::string aside = set_aside_path(db);
+    put(db, "old");
+    put(aside + ".replaced", "earlier");
+    REQUIRE(set_aside_while_held(db, db).has_value());
+    CHECK(read_file_text(db) == "old");
+    CHECK(read_file_text(aside) == "earlier");
+    CHECK(entries_beside(db) == 2);
+}
+
+// The same when the file moves but a side file cannot: the moved file comes
+// back, and so does the earlier set-aside file.
+TEST_CASE("set_aside_old_library keeps an earlier set-aside file when a side file can't move") {
+    const std::string db = fresh_db("upg_set_aside_keep_earlier_side");
+    const std::string aside = set_aside_path(db);
+    put(db, "old");
+    put(db + "-wal", "old's log");
+    put(aside, "earlier");
+    REQUIRE(set_aside_while_held(db, db + "-wal").has_value());
+    CHECK(read_file_text(db) == "old");
+    CHECK(read_file_text(db + "-wal") == "old's log");
+    CHECK(read_file_text(aside) == "earlier");
+    CHECK_FALSE(there(aside + "-wal"));
 }

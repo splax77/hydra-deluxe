@@ -8,10 +8,9 @@
 //     hydra_batch --legacy-fills     # score fills by Clone Hero 1.0's rule
 //     hydra_batch --rules <path>     # rule choices from this file, not the exe's hydra_rules.ini
 //
-// --legacy-fills needs a --db other than the app's own (the guard in
-// batch_main says why). Every result carries its fill rule in its key, so one
-// file can hold a 1.0 run and a 1.1 run side by side, each read under its own
-// rule; hydra_fillcompare compares the two.
+// Every result carries its fill rule in its key, so one file, the app's own
+// hydra.db included, can hold a 1.0 run and a 1.1 run side by side, each read
+// under its own rule; hydra_fillcompare compares the two.
 //
 // Reads difficulty / pro drums / 2x bass / depth / SP cap from the app's
 // settings INI (app/config.h), so results match what the app would produce
@@ -31,10 +30,8 @@
 #include <cctype>
 #include <chrono>
 #include <cstdio>
-#include <filesystem>
 #include <optional>
 #include <string>
-#include <system_error>
 #include <vector>
 
 #include "app/analysis.h"
@@ -42,7 +39,6 @@
 #include "app/rules_file.h"
 #include "app/user_messages.h"
 #include "core/model.h"
-#include "core/strutil.h"
 #include "core/winstr.h"
 #include "parse/song.h"
 #include "search/graph.h"
@@ -62,22 +58,6 @@ std::string clip_utf8(const std::string& s, size_t max_chars) {
         ++chars;
     }
     return s.substr(0, i) + std::string(max_chars > chars ? max_chars - chars : 0, ' ');
-}
-
-// Do these two paths name the same file? Compared after resolving `.`, `..`
-// and relative prefixes (weakly_canonical works on a file that doesn't exist
-// yet), then case-insensitively, because Windows paths are. Used only by the
-// --legacy-fills guard, where a false negative is the dangerous answer, so a
-// filesystem error falls back to comparing the strings rather than allowing
-// the write.
-bool same_file(const std::string& a, const std::string& b) {
-    auto normalize = [](const std::string& p) {
-        std::error_code ec;
-        std::filesystem::path canon =
-            std::filesystem::weakly_canonical(hydra::os_path(p), ec);
-        return hydra::to_lower_ascii(ec ? p : canon.u8string());
-    };
-    return normalize(a) == normalize(b);
 }
 
 int batch_main() {
@@ -110,21 +90,6 @@ int batch_main() {
     const hydra::app::AnalysisSettings& analysis = run.settings;
     const std::string& chartmode = run.chartmode;
     std::string db = dbpath ? *dbpath : hydra::app::db_path();
-
-    // A legacy run gets its own file, and never writes the one the GUI reads:
-    // the command line's rule from before results carried their fill rule
-    // (docs/adr/0010), kept unchanged. The app's "1.0 fills" setting is the
-    // way to put 1.0 results in hydra.db.
-    if (legacy_fills && same_file(db, hydra::app::db_path())) {
-        std::fprintf(stderr,
-                     "--legacy-fills would write Clone Hero 1.0 results into the "
-                     "database Hydra itself reads:\n  %s\n"
-                     "hydra_batch keeps 1.0 results out of hydra.db by design; use the "
-                     "app's 1.0 fills setting for that.\n"
-                     "Give the run its own database, e.g. --db legacy.db\n",
-                     db.c_str());
-        return 2;
-    }
 
     // A database that won't open is a run that can't start (D72 item 5).
     std::unique_ptr<hydra::store::RecordStore> store_ptr;
