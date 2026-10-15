@@ -42,7 +42,7 @@ The sections below explain each difference.
 
 ## What you see
 
-**The library is one table you scroll and sort by any column.** The search box takes quoted phrases and ignores accents and colour tags. It also takes filters: `artist:`, `charter:`, `folder:`, `title:`, `stars:7` and `squeeze<=20`. Chips above the table filter by state, with a count on each: `All`, `Not analyzed`, `Stale` and `Analyzed`.
+**The library is one table you scroll and sort by any column.** The search box takes quoted phrases and ignores accents and colour tags. It also takes filters: `artist:`, `charter:`, `folder:`, `title:`, `stars:7` and `squeeze<=20`. Chips above the table filter by state, with a count on each: `All`, `Not analyzed`, `Stale`, `Analyzed` and `Can't analyze`.
 
 **One button holds the analysis settings.** The toolbar's `Analysis settings` button names the settings you've changed from their defaults, or reads `defaults`. Click it to open a panel with all eight settings. A change applies as you make it. `Reset to defaults` puts all eight back in one click and leaves your song folders alone.
 
@@ -58,7 +58,7 @@ The sections below explain each difference.
 
 **The Stars tab is new.** It shows the exact score each star from 1 to 7 needs on that chart, and what the full solo bonus adds on top.
 
-**You analyze the whole library in the app.** A batch runs in the background on all but one CPU core, up to 8, with Pause and Stop, and you can keep browsing while it runs. When it finishes it builds a sortable path report of every song's paths, shown in its own Hydra window.
+**You analyze the whole library in the app.** A batch runs in the background on all but one CPU core, up to 8, with Pause and Stop, and you can keep browsing while it runs. When it finishes it builds a sortable path report of every song's paths, shown in its own Hydra window. Opening the path report first analyzes any song that has no result yet, and the report counts every song it can't show.
 
 **Compare with dmleaderboards is new.** It fetches a player's posted scores from dmleaderboards.com and lines them up against your optimals.
 
