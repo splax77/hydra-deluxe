@@ -158,7 +158,7 @@ void check_cap(int cap) {
     report::ReportOptions options = fixture_options(cap);
     options.max_paths = 100;
     std::vector<report::ReportRow> rows =
-        report::collect_rows(store, report::ReportSeed{}, options).rows;
+        report::collect_rows(store,options).rows;
     int rank1 = 0;
     for (const report::ReportRow& row : rows)
         if (row.rank == 1) ++rank1;
@@ -238,7 +238,7 @@ TEST_CASE("report rows: a tied top-score variant is optimal too") {
     report::ReportOptions options = fixture_options(4);
     options.max_paths = 100;
     const std::vector<report::ReportRow> rows =
-        report::collect_rows(store, report::ReportSeed{}, options).rows;
+        report::collect_rows(store,options).rows;
     REQUIRE(rows.size() == 3);
     // Best score first: the root and its tied variant, then the lower root.
     CHECK(rows[0].score == rows[1].score);
@@ -366,7 +366,7 @@ TEST_CASE("generate_report hands over its rows, subtitle and footer") {
     REQUIRE(out.rows > 0);
     CHECK(static_cast<int64_t>(out.paths.size()) == out.rows);
     const std::vector<report::ReportRow> collected =
-        report::collect_rows(store, report::ReportSeed{}, options).rows;
+        report::collect_rows(store,options).rows;
     REQUIRE(collected.size() == out.paths.size());
     for (size_t i = 0; i < collected.size(); ++i) {
         CHECK(out.paths[i].hyhash == collected[i].hyhash);
@@ -403,7 +403,7 @@ TEST_CASE("report lists only the wanted cap and names it") {
     int rank1 = 0;
     options.max_paths = 100;
     for (const report::ReportRow& row :
-         report::collect_rows(store, report::ReportSeed{}, options).rows)
+         report::collect_rows(store,options).rows)
         if (row.rank == 1) ++rank1;
     CHECK(rank1 == 1);
 
@@ -465,7 +465,7 @@ TEST_CASE("collect_rows: the library names go through display_title, display_art
     store.rebuild_chart_library(library);
 
     const std::vector<report::ReportRow> rows =
-        report::collect_rows(store, report::ReportSeed{}, fixture_options(4)).rows;
+        report::collect_rows(store,fixture_options(4)).rows;
     REQUIRE(!rows.empty());
     for (const report::ReportRow& row : rows) {
         CHECK(row.song == "Bold Title");
@@ -657,47 +657,12 @@ TEST_CASE("generate_report hands back nothing when its cancel flag is set") {
     CHECK(result.empty_reason == report::EmptyReason::Cancelled);
 }
 
-// D87 item 5.
-TEST_CASE("the report reuses the charts a batch just analyzed") {
+TEST_CASE("a report with no analysis settings is refused") {
     store::RecordStore store(":memory:");
     std::vector<store::ChartLibraryEntry> library;
-    const std::vector<std::string> files = fill_store(store, library, 4, 3);
-    REQUIRE(files.size() == 3);
-    const BatchRun run = fixture_settings(4).batch_run();
-
-    // A batch over the first two charts hands their rows to the seed.
-    report::ReportSeed seed = report::ReportSeed::for_run(run);
-    CountingAnalyzer batch;
-    BatchCallbacks callbacks;
-    callbacks.analyze = batch.analyzer();
-    callbacks.report_seed = &seed;
-    const std::vector<ScanItem> items = scan_items(library, 2);
-    run_batch(plan_batch(items, {}), run, store, 2, callbacks);
-    REQUIRE(batch.paths.size() == 2);
-    CHECK(seed.rows.size() == 2);
-
-    // The report analyzes only the chart the batch did not.
-    CountingAnalyzer pass;
+    REQUIRE(fill_store(store, library, 4, 1).size() == 1);
+    // Its run is what picks the records it lists.
     report::ReportOptions options = fixture_options(4);
-    options.analyze = pass.analyzer();
-    const report::GeneratedReport page = report::generate_report(store, options, seed);
-    CHECK(pass.paths == std::vector<std::string>{files[2]});
-    CHECK(page.records == 3);
-    // The report is the one a fresh analysis of all three gives.
-    const report::GeneratedReport fresh = report::generate_report(store, fixture_options(4));
-    CHECK(row_keys(page.paths) == row_keys(fresh.paths));
-    CHECK(page.subtitle == fresh.subtitle);
-    CHECK(page.footer == fresh.footer);
-
-    // Rows filed under other settings are refused, by the batch and the report.
-    report::ReportSeed other = report::ReportSeed::for_run(fixture_settings(5).batch_run());
-    callbacks.report_seed = &other;
-    CHECK_THROWS_AS(run_batch(plan_batch(items, {}), run, store, 2, callbacks),
-                    std::invalid_argument);
-    other.rows = seed.rows;
-    CHECK_THROWS_AS(report::generate_report(store, options, other), std::invalid_argument);
-    // So is a report with no analysis settings: its run is what picks the
-    // records it lists.
     options.run.reset();
     CHECK_THROWS_AS(report::generate_report(store, options), std::invalid_argument);
 }
@@ -884,18 +849,6 @@ TEST_CASE("generate_report tells its progress chart by chart, from 0 to the whol
         CHECK(calls[i].second == 3);
         CHECK(calls[i].first >= calls[i - 1].first);  // never goes back
     }
-
-    // A batch's seed that holds every chart leaves nothing to analyze.
-    report::ReportSeed seed = report::ReportSeed::for_run(fixture_settings(4).batch_run());
-    CountingAnalyzer batch;
-    BatchCallbacks callbacks;
-    callbacks.analyze = batch.analyzer();
-    callbacks.report_seed = &seed;
-    run_batch(plan_batch(scan_items(library, library.size()), {}), fixture_settings(4).batch_run(), store, 2, callbacks);
-    REQUIRE(seed.rows.size() == 3);
-    calls.clear();
-    report::generate_report(store, options, seed);
-    CHECK(calls == std::vector<std::pair<int, int>>{{0, 0}});
 }
 
 // The bar's "n of N records" and the header's record count are one count: a
@@ -917,24 +870,4 @@ TEST_CASE("generate_report's progress ends on the header's record count") {
     CHECK(calls.back() ==
           std::make_pair(static_cast<int>(page.records), static_cast<int>(page.records)));
     CHECK(calls.back() == std::make_pair(5, 5));
-
-    // A batch handed over h1's rows only: its three copies count as done
-    // from the start, and the bar still ends on the header's count.
-    report::ReportSeed seed = report::ReportSeed::for_run(fixture_settings(4).batch_run());
-    CountingAnalyzer batch;
-    BatchCallbacks callbacks;
-    callbacks.analyze = batch.analyzer();
-    callbacks.report_seed = &seed;
-    run_batch(plan_batch(scan_items(library, library.size()), {}),
-              fixture_settings(4).batch_run(), store, 2, callbacks);
-    REQUIRE(seed.rows.count("h0") == 1);
-    REQUIRE(seed.rows.count("h1") == 1);
-    seed.rows.erase("h0");
-    calls.clear();
-    const report::GeneratedReport seeded = report::generate_report(store, options, seed);
-    REQUIRE_FALSE(calls.empty());
-    CHECK(seeded.records == 5);
-    CHECK(calls.front() == std::make_pair(3, 5));
-    CHECK(calls.back() == std::make_pair(static_cast<int>(seeded.records),
-                                         static_cast<int>(seeded.records)));
 }

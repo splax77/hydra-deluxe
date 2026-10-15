@@ -1572,11 +1572,6 @@
         },
         {
           "file": "src/app/analysis.cpp",
-          "line_text": "++plan.skipped;",
-          "why": "plan_batch, the owner of skipped"
-        },
-        {
-          "file": "src/app/analysis.cpp",
           "line_text": "++done;",
           "why": "discover_charts' scan progress, not a batch count"
         },

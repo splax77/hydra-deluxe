@@ -108,13 +108,6 @@ std::vector<ReportRow> chart_rows(const HydraRecord& record, int64_t max_paths) 
     return rows;
 }
 
-ReportSeed ReportSeed::for_run(const BatchRun& run, int64_t max_paths) {
-    ReportSeed seed;
-    seed.filed_under = run.filed_under();
-    seed.max_paths = max_paths;
-    return seed;
-}
-
 std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
                                              double hit_window_ms) {
     // The ladder itself lives in core/squeeze_rating.h (timing_tiers) so
@@ -218,15 +211,11 @@ std::unordered_map<std::string, int> library_copies_by_hash(store::RecordStore& 
     return by_hash;
 }
 
-CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
-                           const ReportOptions& options) {
+CollectedRows collect_rows(store::RecordStore& store, const ReportOptions& options) {
     // Fail loudly rather than list paths found under other settings.
     if (!options.run)
         throw std::invalid_argument("collect_rows: the report has no analysis settings");
     const BatchRun& run = *options.run;
-    if (!seed.rows.empty() &&
-        (seed.filed_under != run.filed_under() || seed.max_paths < options.max_paths))
-        throw std::invalid_argument("collect_rows: the batch's rows are for other settings");
 
     // Which file each library chart is analyzed from (RecordStore::naming_copy_paths),
     // by the hash spelling a page joins on.
@@ -239,8 +228,7 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
     struct Slot {
         store::RecordListing listing;
         const std::string* file = nullptr;
-        const std::vector<ReportRow>* seeded = nullptr;  // the batch's rows, when it has them
-        std::vector<ReportRow> rows;                     // this pass's rows otherwise
+        std::vector<ReportRow> rows;
         std::string failure;
         // The chart's library copies (D76), set from RecordStore::copies_of
         // for every slot: its rows carry it and the progress bar counts the
@@ -258,15 +246,9 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
         // Both maps come from kNamingCopiesSql, so a listed chart has a file.
         slot.file = &files.at(hash);
         slot.copies = store::RecordStore::copies_of(copies, hash);
-        if (listing.chartmode == seed.filed_under.chartmode) {
-            const auto seeded = seed.rows.find(hash);
-            if (seeded != seed.rows.end()) slot.seeded = &seeded->second;
-        }
-        if (!slot.seeded) {
-            if (mode_settings.find(listing.chartmode) == mode_settings.end())
-                mode_settings.emplace(listing.chartmode, settings_for_mode(run, listing.chartmode));
-            to_analyze.push_back(slots.size());
-        }
+        if (mode_settings.find(listing.chartmode) == mode_settings.end())
+            mode_settings.emplace(listing.chartmode, settings_for_mode(run, listing.chartmode));
+        to_analyze.push_back(slots.size());
         slot.listing = std::move(listing);
         slots.push_back(std::move(slot));
     }
@@ -284,19 +266,13 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
         options.analyze ? options.analyze : ChartAnalyzer(analyze_chart_file);
     const std::function<void(float)> check_cancel = stop_on_cancel(options.cancel);
     // The bar counts records the way the header does (generate_report's
-    // records): each slot weighs its chart's copies, and slots the batch
-    // already handed over count as done from the start (D103 item 25,
+    // records): each slot weighs its chart's copies (D103 item 25,
     // 2026-10-11). A slot that fails, or lists no path, still moves the bar
     // but puts no rank-1 row on the page, so the header can end lower by its
     // weight. With nothing to analyze the bar shows no count (item 26).
     int total = 0;
     int done = 0;
-    if (!to_analyze.empty()) {
-        for (const Slot& slot : slots) {
-            total += slot.copies;
-            if (slot.seeded) done += slot.copies;
-        }
-    }
+    for (const Slot& slot : slots) total += slot.copies;
     if (options.progress) options.progress(done, total);
     run_work_pool<Analyzed>(
         to_analyze.size(), batch_worker_count(), options.cancel,
@@ -339,7 +315,7 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
             continue;
         }
         // Every library copy counts (D76).
-        place_rows(out.rows, slot.seeded ? *slot.seeded : slot.rows, options.max_paths,
+        place_rows(out.rows, slot.rows, options.max_paths,
                    slot.listing, slot.copies, tiers);
     }
     return out;
@@ -384,12 +360,11 @@ std::string nothing_under_settings(int cap, const std::string& middle,
            middle + ")" + ending + ". Analyze with these settings, or change them.";
 }
 
-GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& options,
-                                const ReportSeed& seed) {
+GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& options) {
     GeneratedReport out;
     const double w = options.hit_window_ms;
     out.hit_window_ms = w;
-    CollectedRows collected = collect_rows(store, seed, options);
+    CollectedRows collected = collect_rows(store, options);
     // Cancelled part-way through: whatever the pass collected is a partial
     // library, so nothing is built from it. An empty result says "no report",
     // and the caller that set the flag already knows why.

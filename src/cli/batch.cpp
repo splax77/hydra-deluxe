@@ -167,14 +167,17 @@ int batch_main() {
                     error.c_str());
     };
     callbacks.on_result = [&](const hydra::app::ScanItem& item,
-                              const hydra::store::PreparedRow& row) {
+                              const hydra::store::PreparedRecord& prepared) {
         // The artist and the title read the one cleaned form every screen shows.
         std::string label =
             hydra::display_artist(item.artist) + " - " + hydra::display_title(item.title);
-        std::string score =
-            row.summary.has_scored_best_path() ? hydra::group_thousands(*row.summary.score) : "-";
+        // The score and best path are the record's rank-1 path; a record
+        // with no paths has neither.
+        const std::vector<hydra::store::PathRow>& paths = prepared.record.paths;
+        std::string score = paths.empty() ? "-" : hydra::group_thousands(paths.front().score);
+        const std::string best = paths.empty() ? std::string() : paths.front().path;
         std::printf("[%d/%d] %10s  %s %s\n", last.completed, last.total, score.c_str(),
-                    clip_utf8(label, 52).c_str(), clip_utf8(row.bestpath, 36).c_str());
+                    clip_utf8(label, 52).c_str(), clip_utf8(best, 36).c_str());
         std::fflush(stdout);
     };
     hydra::app::run_batch(plan, run, store, hydra::app::batch_worker_count(), callbacks);

@@ -402,7 +402,7 @@ TEST_CASE("run_batch: cancel stops running searches within seconds") {
     callbacks.on_error = [&errors](const std::string&, const std::string&, const std::string&) {
         ++errors;
     };
-    callbacks.on_result = [&results](const ScanItem&, const hydra::store::PreparedRow&) {
+    callbacks.on_result = [&results](const ScanItem&, const hydra::store::PreparedRecord&) {
         ++results;
     };
 
@@ -450,7 +450,7 @@ TEST_CASE("run_batch: a cancelled real search is neither a result nor a failure"
     callbacks.on_error = [&errors](const std::string&, const std::string&, const std::string&) {
         ++errors;
     };
-    callbacks.on_result = [&results](const ScanItem&, const hydra::store::PreparedRow&) {
+    callbacks.on_result = [&results](const ScanItem&, const hydra::store::PreparedRecord&) {
         ++results;
     };
 
@@ -872,7 +872,7 @@ TEST_CASE("run_batch: a group commits before any of its charts is reported") {
     const std::string path = testtemp::temp_path("batch_group_commit", ".db");
     std::remove(path.c_str());
     int reported = 0, visible = 0;
-    callbacks.on_result = [&](const ScanItem& item, const hydra::store::PreparedRow&) {
+    callbacks.on_result = [&](const ScanItem& item, const hydra::store::PreparedRecord&) {
         ++reported;
         hydra::store::RecordStore reader(path);
         if (reader.get_summary({item.md5, run.chartmode, run.cap_query(), run.lens}).status ==
@@ -897,7 +897,7 @@ TEST_CASE("run_batch: cancel during a group writes nothing more and leaves no tr
     int results = 0;
     // Cancel is pressed once the consumer has reported a few charts, while
     // the workers are still handing it more.
-    callbacks.on_result = [&](const ScanItem&, const hydra::store::PreparedRow&) {
+    callbacks.on_result = [&](const ScanItem&, const hydra::store::PreparedRecord&) {
         if (++results == 5) cancel = true;
     };
 

@@ -396,7 +396,8 @@ store::RecordKey Settings::record_key(const std::string& hyhash) const {
 }
 
 BatchRun Settings::batch_run() const {
-    return BatchRun{chartmode_key(), lens(), to_analysis_settings()};
+    const store::Profile filed_under = profile();
+    return BatchRun{filed_under.chartmode, filed_under.lens, to_analysis_settings()};
 }
 
 std::string bars_text(int bars) { return counted(bars, "bar", "bars"); }

@@ -26,10 +26,6 @@
 
 namespace hydra::app {
 
-namespace report {
-struct ReportSeed;  // app/report.h
-}
-
 // One chart file found on disk: the library entry the scan saves for it, one
 // shape for both (concept audit M21), so nothing copies between them.
 using ScanItem = store::ChartLibraryEntry;
@@ -241,12 +237,12 @@ struct BatchRun {
     // CapQuery::at is the owner.
     store::CapQuery cap_query() const { return store::CapQuery::at(settings.sp_cap); }
 
-    // Everything this run's results are filed under but the chart.
-    store::ResultSettings filed_under() const { return {chartmode, cap_query(), lens}; }
+    // The profile this run's records are saved and looked up under.
+    store::Profile profile() const { return {chartmode, cap_query(), lens}; }
 };
 
 // The charts a batch under `run` skips because they already have a result
-// (store::RecordStore::analyzed_hashes decides what counts), as md5s. Empty
+// (store::RecordStore::ready_song_ids decides what counts), as md5s. Empty
 // when `redo`. One query for the whole library.
 std::unordered_set<std::string> charts_with_result(store::RecordStore& store,
                                                    const BatchRun& run, bool redo);
@@ -287,25 +283,18 @@ struct BatchCallbacks {
     std::function<void(const std::string& title, const std::string& sentence,
                        const std::string& error)>
         on_error;
-    // Fires after the row is written to the store, with the row it wrote (the
-    // batch CLI prints score and best path from it).
-    std::function<void(const ScanItem&, const store::PreparedRow&)> on_result;
+    // Fires after the record is written to the store, with the record it
+    // wrote (the batch CLI prints score and best path off its rank-1 path).
+    std::function<void(const ScanItem&, const store::PreparedRecord&)> on_result;
     // Setting *cancel stops the run. No new chart starts, and a running search
     // stops at its next progress tick. A stopped chart is neither a result nor
     // a failure, and nothing more is written once the cancel is seen.
     const std::atomic<bool>* cancel = nullptr;
     // What analyzes one chart. Empty means analyze_chart_file.
     ChartAnalyzer analyze;
-    // When set, each chart the run saved hands its path-report rows
-    // (report::chart_rows, built on the worker) to this seed, at the moment
-    // its on_result fires, so the report that follows the batch reuses them
-    // (D87 item 5). on_result itself keeps its signature: hydra_batch reads it.
-    // The seed must be for this run's chart mode, cap and lens
-    // (report::ReportSeed::for_run); run_batch throws otherwise.
-    report::ReportSeed* report_seed = nullptr;
 };
 
-// Runs the analysis + store::prepare_row for every chart in `plan` on a
+// Runs the analysis + store::prepare_record for every chart in `plan` on a
 // batch_worker_count()-sized pool (app/work_pool.h), writing results into
 // `store` from the calling thread only. Which charts run and which are
 // skipped is the plan's answer (plan_batch); the run reads nothing from the

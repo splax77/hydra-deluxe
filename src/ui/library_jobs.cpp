@@ -55,7 +55,7 @@ std::string read_library(store::RecordStore& store, const app::Settings& setting
 void read_library_summaries(store::RecordStore& store, const app::Settings& settings,
                             LibraryModel& library) {
     library.set_summaries(
-        store.get_summaries(library.hashes(), settings.record_key({}).settings()));
+        store.get_summaries(library.hashes(), settings.profile()));
 }
 
 StoreOpenJob::StoreOpenJob(std::string db_path, core::RulesStamp rules, app::Settings settings)
@@ -258,8 +258,7 @@ BatchJob::BatchJob(app::BatchPlan plan, app::BatchRun run, store::RecordStore& s
     : plan_(std::move(plan)),
       run_(std::move(run)),
       store_(store),
-      workers_(app::batch_worker_count()),
-      seed_(app::report::ReportSeed::for_run(run_)) {}
+      workers_(app::batch_worker_count()) {}
 
 void BatchJob::set_analyzer_for_test(app::ChartAnalyzer analyze, int workers) {
     analyze_ = std::move(analyze);
@@ -399,7 +398,6 @@ void BatchJob::run() {
         snap_.failure_details.push_back(title + ": " + error);
     };
     callbacks.cancel = &cancel_;
-    callbacks.report_seed = &seed_;
     // The pause gate and the "now analyzing" line sit in front of the real
     // analyzer, so run_batch and its pool stay as they are.
     const app::ChartAnalyzer inner =
@@ -435,10 +433,10 @@ void set_view_analyzer_for_test(app::ChartAnalyzer analyze) {
     g_view_analyzer = std::move(analyze);
 }
 
-ViewJob::ViewJob(store::ChartLibraryEntry song, store::RecordKey key,
+ViewJob::ViewJob(store::ChartLibraryEntry song, store::Profile profile,
                  app::AnalysisSettings settings, bool analysis_off, int generation)
     : song_(std::move(song)),
-      key_(std::move(key)),
+      profile_(std::move(profile)),
       settings_(std::move(settings)),
       analysis_off_(analysis_off),
       generation_(generation),
@@ -524,12 +522,10 @@ void set_report_analyzer_for_test(app::ChartAnalyzer analyze) {
     g_report_analyzer = std::move(analyze);
 }
 
-ReportJob::ReportJob(store::RecordStore& store, app::BatchRun run, double hit_window_ms,
-                     app::report::ReportSeed seed)
+ReportJob::ReportJob(store::RecordStore& store, app::BatchRun run, double hit_window_ms)
     : store_(store),
       run_(std::move(run)),
       hit_window_ms_(hit_window_ms),
-      seed_(std::move(seed)),
       analyze_(g_report_analyzer) {}
 
 void ReportJob::start() {
@@ -559,13 +555,7 @@ void ReportJob::run() {
         };
         options.run = run_;
         options.analyze = analyze_;  // empty: generate_report's own
-        // The seed's rows are read by this pass alone, so they go when it
-        // ends, however it ends, not with the job (memory audit fix 4).
-        app::report::GeneratedReport report;
-        {
-            const app::report::ReportSeed seed = std::exchange(seed_, {});
-            report = app::report::generate_report(store_, options, seed);
-        }
+        app::report::GeneratedReport report = app::report::generate_report(store_, options);
         // Checked before the "no records" throw: a cancelled run has no rows
         // because it stopped, not because the store is empty, and the last
         // report in memory stays as it was.
