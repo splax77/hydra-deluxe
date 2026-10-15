@@ -38,7 +38,6 @@ ReportRow path_row(std::string song, std::string artist, std::string charter,
     r.song = std::move(song);
     r.artist = std::move(artist);
     r.charter = std::move(charter);
-    r.mode = "Expert Pro Drums";
     r.path = std::move(path);
     r.score = score;
     r.optimal = optimal;
@@ -276,26 +275,26 @@ TEST_CASE("report view sort: first directions, empty values sink, two keys, stab
 }
 
 // User-chosen wording: "Hardest ms" (D48 Q7), "hardest squeeze or required early fill" (D51 call 5), definitions as hover text (D103 item 4).
-TEST_CASE("path report columns: the page's fifteen, in order, word for word") {
+// The page lists one profile, so it has no Mode column (D115 A2-2).
+TEST_CASE("path report columns: the page's fourteen, in order, word for word") {
     const auto cols = path_report_view::path_columns(kWindow);
-    CHECK(ids(cols) == std::vector<std::string>{"song", "artist", "charter", "mode", "path",
-                                                "score", "acts", "skip", "ms", "tier", "efill",
-                                                "mult", "sqin", "sqout", "notes"});
+    CHECK(ids(cols) == std::vector<std::string>{"song", "artist", "charter", "path", "score",
+                                                "acts", "skip", "ms", "tier", "efill", "mult",
+                                                "sqin", "sqout", "notes"});
     CHECK(titles(cols) == std::vector<std::string>{
-                              "Song", "Artist", "Charter", "Mode", "Path", "Score", "Acts",
+                              "Song", "Artist", "Charter", "Path", "Score", "Acts",
                               "Max skip", "Hardest ms", "Timing", "Early fill (ms)",
                               app::kAverageMultiplierLabel, "SqIn", "SqOut", "Note count"});
     std::vector<bool> numeric;
     for (const auto& c : cols) numeric.push_back(c.numeric);
-    CHECK(numeric == std::vector<bool>{false, false, false, false, false, true, true, true,
-                                       true, false, true, true, true, true, true});
+    CHECK(numeric == std::vector<bool>{false, false, false, false, true, true, true, true,
+                                       false, true, true, true, true, true});
     std::vector<std::string> defs;
     for (const auto& c : cols) defs.push_back(c.definition);
     CHECK(defs == std::vector<std::string>{
         "",
         "",
         "",
-        "The difficulty and drum options the path was found for.",
         "The path in path notation: one entry per activation, with its skip count and squeeze symbols.",
         "The total score the path reaches.",
         "Activations: how many times the path uses Star Power.",
@@ -312,10 +311,9 @@ TEST_CASE("path report columns: the page's fifteen, in order, word for word") {
     CHECK(cols[0].look.truncate);
     CHECK_FALSE(cols[0].look.dim);
     CHECK(cols[1].look.dim);
-    CHECK(cols[3].look.dim);
-    CHECK(cols[4].look.mono);
-    CHECK(cols[9].look.chip);
-    CHECK_FALSE(cols[5].look.truncate);
+    CHECK(cols[3].look.mono);
+    CHECK(cols[8].look.chip);
+    CHECK_FALSE(cols[4].look.truncate);
 
     const SortSpec first = path_report_view::path_first_sort();
     CHECK(first.column == "score");
@@ -333,28 +331,28 @@ TEST_CASE("path report cells read as the page wrote them") {
     r.sqout = 0;
     r.notes = 1500;
     CHECK(cells(cols, r) == std::vector<std::string>{
-                                "Halo", "Beyonce", "Someone", "Expert Pro Drums", "2(+) E0 1",
-                                "1,234,567", "3", "2", "12.3 ms", "Hard", "4.0 ms", "2.500",
-                                "1", "0", "1,500"});
+                                "Halo", "Beyonce", "Someone", "2(+) E0 1", "1,234,567", "3",
+                                "2", "12.3 ms", "Hard", "4.0 ms", "2.500", "1", "0",
+                                "1,500"});
 
     // No timing and no early fill: dashes, and the None tier's chip.
     ReportRow none = path_row("Halo", "Beyonce", "Someone", "1", 100, std::nullopt, false);
-    CHECK(cols[8].cell(none) == report::kDash);
-    CHECK(cols[10].cell(none) == report::kDash);
-    CHECK(cols[9].cell(none) == "No timing needed");
-    CHECK(std::holds_alternative<std::monostate>(cols[8].sort_key(none)));
-    CHECK(std::holds_alternative<std::monostate>(cols[10].sort_key(none)));
+    CHECK(cols[7].cell(none) == report::kDash);
+    CHECK(cols[9].cell(none) == report::kDash);
+    CHECK(cols[8].cell(none) == "No timing needed");
+    CHECK(std::holds_alternative<std::monostate>(cols[7].sort_key(none)));
+    CHECK(std::holds_alternative<std::monostate>(cols[9].sort_key(none)));
 
     ReportRow far = path_row("Halo", "Beyonce", "Someone", "1", 100, 500.0, false);
-    CHECK(cols[9].cell(far) == "Beyond 170 ms");
+    CHECK(cols[8].cell(far) == "Beyond 170 ms");
 
     // Each column sorts on the number or text the page sorted on.
-    CHECK(std::get<double>(cols[5].sort_key(r)) == 1234567.0);
-    CHECK(std::get<double>(cols[8].sort_key(r)) == 12.34);
-    CHECK(std::get<std::string>(cols[9].sort_key(r)) == "Hard");
-    CHECK(std::get<double>(cols[10].sort_key(r)) == 4.0);
-    CHECK(std::get<double>(cols[11].sort_key(r)) == 2.5);
-    CHECK(std::get<std::string>(cols[4].sort_key(r)) == "2(+) E0 1");
+    CHECK(std::get<double>(cols[4].sort_key(r)) == 1234567.0);
+    CHECK(std::get<double>(cols[7].sort_key(r)) == 12.34);
+    CHECK(std::get<std::string>(cols[8].sort_key(r)) == "Hard");
+    CHECK(std::get<double>(cols[9].sort_key(r)) == 4.0);
+    CHECK(std::get<double>(cols[10].sort_key(r)) == 2.5);
+    CHECK(std::get<std::string>(cols[3].sort_key(r)) == "2(+) E0 1");
 }
 
 TEST_CASE("path report: Timing choices and the keep-rule") {

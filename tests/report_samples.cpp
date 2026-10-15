@@ -10,14 +10,15 @@ using namespace hydra::app;
 
 std::vector<report::ReportRow> sample_path_rows() {
     std::vector<report::ReportRow> paths;
-    auto add_path = [&](const std::string& song, const char* mode, int rank,
+    // The second argument names the chart mode a row was found under before
+    // the page listed one profile; the rows no longer carry it.
+    auto add_path = [&](const std::string& song, const char* /*mode*/, int rank,
                         const std::string& path, int64_t score, std::optional<double> ms,
                         std::optional<double> efill) {
         report::ReportRow r;
         r.song = song;
         r.artist = "Artist of " + song;
         r.charter = "Charter & Co";
-        r.mode = mode;
         r.rank = rank;
         r.path = path;
         r.score = score;
@@ -33,7 +34,6 @@ std::vector<report::ReportRow> sample_path_rows() {
         r.sqout = 2 - rank % 2;
         r.notes = 1200 + rank;
         r.hyhash = song;
-        r.copies = 1;
         paths.push_back(r);
     };
     std::string long_path;
@@ -45,6 +45,23 @@ std::vector<report::ReportRow> sample_path_rows() {
     add_path("Song B", "Expert Pro Drums, 2x Bass", 2, "2 1-E3", 249500, 1.5, 0.0);
     add_path("Song C", "Expert Drums, 1x Bass", 1, "1 1 1", 77000, 90.0, std::nullopt);
     return paths;
+}
+
+hydra::store::ChartIndex sample_index(int song_a_copies, int song_b_copies) {
+    std::vector<hydra::store::ChartLibraryEntry> library;
+    auto add = [&](const std::string& song, int copies) {
+        for (int i = 0; i < copies; ++i) {
+            hydra::store::ChartLibraryEntry e;
+            e.md5 = song;  // the sample rows' song id
+            e.title = song;
+            e.notespath = song + "\\" + std::to_string(i) + "\\notes.chart";
+            library.push_back(std::move(e));
+        }
+    };
+    add("Song A", song_a_copies);
+    add("Song B", song_b_copies);
+    add("Song C", 1);
+    return hydra::store::ChartIndex::from_rows(library);
 }
 
 std::vector<dm_report::DmReportRow> sample_dm_rows() {

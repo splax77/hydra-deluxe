@@ -414,7 +414,8 @@ GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
         // Same sentence whether the databases are empty or hold results under
         // other settings (finding 105, D50 item 3).
         out.reason =
-            report::nothing_under_settings(profile.cap.exact, chartmode, " in either database");
+            report::nothing_under_settings(chartmode, profile.cap.exact, std::string(),
+                                           " in either database");
         return out;
     }
 

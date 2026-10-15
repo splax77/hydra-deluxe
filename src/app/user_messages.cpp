@@ -44,7 +44,7 @@ constexpr const char* kNetBadReply =
 constexpr const char* kNoScores =
     "This player has no drum scores on dmleaderboards to compare.";
 constexpr const char* kNoRecords =
-    "None of the songs in this run could be analyzed, so there is no report to show.";
+    "Nothing is analyzed yet. Click a song or run a batch to analyze it.";
 constexpr const char* kReportWrite =
     "Hydra couldn't save the report file. Check that the disk isn't full and the report "
     "folder isn't read-only.";

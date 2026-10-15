@@ -1,5 +1,5 @@
-// A process-wide test seam (net::set_fetcher, set_report_analyzer_for_test
-// and the like) installed for one scope. The seams hold one callable for the
+// A process-wide test seam (net::set_fetcher, set_report_hold_for_test and
+// the like) installed for one scope. The seams hold one callable for the
 // whole process, so a hook cleared by hand on a test's last line is skipped
 // when a REQUIRE fails partway: the next test inherits a hook whose captured
 // locals are gone. This one is cleared on every exit path.

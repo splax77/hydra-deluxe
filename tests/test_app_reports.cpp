@@ -56,15 +56,13 @@ void finish_dm_report(AppState& app) {
     REQUIRE(app.dm_report_job == nullptr);
 }
 
-// A report analyzer that waits for `release`, then analyzes as the app does.
+// A report hold that waits for `release` before the job reads the store.
 // Declare `release` BEFORE the AppState: the app joins the job's thread in
 // its destructor, so a failed check before the release must not destroy the
 // flag while the job still reads it.
-hydra::app::ChartAnalyzer held_report_analyzer(std::atomic<bool>& release) {
-    return [&release](const std::string& path, const hydra::app::AnalysisSettings& s,
-                      const std::function<void(float)>& on_progress) {
+std::function<void()> held_report(std::atomic<bool>& release) {
+    return [&release] {
         wait_until([&release] { return release.load(); }, "the test to release the report");
-        return hydra::app::analyze_chart_file(path, s, on_progress);
     };
 }
 
@@ -87,8 +85,8 @@ TEST_CASE("a path report request builds it in memory, one build at a time") {
     CHECK(app->path_report_build() == ReportBuild::None);
 
     {
-        const ScopedHook hold(hydra::ui::set_report_analyzer_for_test,
-                              held_report_analyzer(release));
+        const ScopedHook hold(hydra::ui::set_report_hold_for_test,
+                              held_report(release));
         app->request_path_report();
     }
     REQUIRE(app->report_job != nullptr);
@@ -96,14 +94,7 @@ TEST_CASE("a path report request builds it in memory, one build at a time") {
     CHECK(app->path_report_build() == ReportBuild::Building);
     app->request_path_report();  // one is running: nothing new starts
     CHECK(app->report_job.get() == first);
-    // The job's progress, for the window's "Analyzing n of N records": the
-    // pass has listed its one chart and holds it at the analyzer.
-    wait_until([&] { return app->report_job->progress().second != 0; },
-               "the report's pass to list its chart");
-    CHECK(app->report_job->progress() == std::make_pair(0, 1));
     release = true;
-    wait_until([&] { return app->report_job->finished(); }, "the path report's job to finish");
-    CHECK(app->report_job->progress() == std::make_pair(1, 1));
     finish_path_report(*app);
 
     CHECK(app->path_report_build() == ReportBuild::Ready);
@@ -179,8 +170,8 @@ TEST_CASE("closing the path report mid-build cancels the build, and nothing land
     std::atomic<bool> release{false};
     std::unique_ptr<AppState> app = app_with_result(paths, "pathclosebuild");
     {
-        const ScopedHook hold(hydra::ui::set_report_analyzer_for_test,
-                              held_report_analyzer(release));
+        const ScopedHook hold(hydra::ui::set_report_hold_for_test,
+                              held_report(release));
         app->show_path_report();
     }
     REQUIRE(app->path_report_build() == ReportBuild::Building);
@@ -211,8 +202,8 @@ TEST_CASE("reopening the path report after a cancelled build builds it again") {
     std::atomic<bool> release{false};
     std::unique_ptr<AppState> app = app_with_result(paths, "pathclosecancelled");
     {
-        const ScopedHook hold(hydra::ui::set_report_analyzer_for_test,
-                              held_report_analyzer(release));
+        const ScopedHook hold(hydra::ui::set_report_hold_for_test,
+                              held_report(release));
         app->show_path_report();
     }
     app->cancel_path_report();  // the window's Cancel
@@ -236,16 +227,23 @@ TEST_CASE("the path report goes out of date on a batch or a setting it was built
     finish_path_report(*app);
     REQUIRE(app->path_report.out_of_date == ReportOutOfDate::None);
 
-    // A setting the report doesn't read leaves it alone; the chart mode is
-    // one (the report lists every mode).
+    // A setting the report doesn't read leaves it alone.
     app->settings.auto_open_report = !app->settings.auto_open_report;
     app->commit_settings();
-    app->settings.view_prodrums = !app->settings.view_prodrums;
-    app->commit_settings();
     CHECK(app->path_report.out_of_date == ReportOutOfDate::None);
-    app->settings.view_prodrums = !app->settings.view_prodrums;
     app->settings.auto_open_report = false;
     app->commit_settings();
+
+    // The chart mode is one it reads: the page lists one profile (D115,
+    // the user's answer 2).
+    app->settings.view_prodrums = !app->settings.view_prodrums;
+    app->commit_settings();
+    CHECK(app->path_report.out_of_date == ReportOutOfDate::Settings);
+    app->settings.view_prodrums = !app->settings.view_prodrums;
+    app->commit_settings();
+    app->request_path_report();
+    finish_path_report(*app);
+    REQUIRE(app->path_report.out_of_date == ReportOutOfDate::None);
 
     // The SP cap is one it reads.
     app->settings.sp_cap = 5;
@@ -286,8 +284,8 @@ TEST_CASE("a setting changed during a build leaves that build out of date") {
     std::atomic<bool> release{false};
     std::unique_ptr<AppState> app = app_with_result(paths, "pathduring");
     {
-        const ScopedHook hold(hydra::ui::set_report_analyzer_for_test,
-                              held_report_analyzer(release));
+        const ScopedHook hold(hydra::ui::set_report_hold_for_test,
+                              held_report(release));
         app->request_path_report();
     }
     app->settings.mslimit_enabled = !app->settings.mslimit_enabled;
@@ -308,8 +306,8 @@ TEST_CASE("Cancel ends a path report build as cancelled and keeps the last repor
     REQUIRE(kept != nullptr);
 
     {
-        const ScopedHook hold(hydra::ui::set_report_analyzer_for_test,
-                              held_report_analyzer(release));
+        const ScopedHook hold(hydra::ui::set_report_hold_for_test,
+                              held_report(release));
         app->request_path_report();
     }
     app->cancel_path_report();
@@ -480,8 +478,8 @@ TEST_CASE("the strip's report_started holds through a cancel, a refresh and a cl
     // refresh's rows are the strip's to show, though its cause is Request.
     run_redo_batch_over(*app, title);
     {
-        const ScopedHook hold(hydra::ui::set_report_analyzer_for_test,
-                              held_report_analyzer(release));
+        const ScopedHook hold(hydra::ui::set_report_hold_for_test,
+                              held_report(release));
         app->update_background_jobs();  // starts the batch's own report, held
     }
     REQUIRE(app->report_job != nullptr);

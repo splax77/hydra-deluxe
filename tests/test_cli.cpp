@@ -438,8 +438,8 @@ TEST_CASE("hydra_fillcompare compares a 1.0 and a 1.1 database") {
     CHECK(swapped.exit_code == 1);
     CHECK(!contains(swapped.output, "Warning"));
     CHECK(contains(swapped.output,
-                   "Nothing is analyzed under these settings (SP cap 4, Expert Pro Drums, "
-                   "2x Bass) in either database. Analyze with these settings, or change "
+                   "Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, "
+                   "SP cap 4) in either database. Analyze with these settings, or change "
                    "them."));
     CHECK(!contains(swapped.output, "No records to compare"));
 

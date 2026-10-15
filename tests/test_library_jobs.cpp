@@ -341,27 +341,6 @@ TEST_CASE("jobs: a finished batch hands the memory its charts freed back to Wind
         wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
     });
 }
-
-// D95 call 1, for the path report's build: it analyzes every chart too, so
-// once it ends the memory those charts freed goes back to Windows at once.
-// Here the one listed chart's result carries kChartBytes.
-TEST_CASE("jobs: a finished report build hands the memory its charts freed back to Windows") {
-    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
-    // The run the default settings make, so the stored result is under its key.
-    const BatchRun run = hydra::app::Settings{}.batch_run();
-    RecordStore store(":memory:");
-    hydra::test::name_chart(store, "fake0", "fake 0");
-    hydra::test::store_batch_result(store, "fake0", run.cap_query().exact);
-    check_job_hands_memory_back("report build", [&] {
-        const ScopedHook seam(hydra::ui::set_report_analyzer_for_test,
-                              analyzer_carrying_chart_bytes(real));
-        hydra::ui::ReportJob job(store, run);
-        job.start();
-        wait_until([&] { return job.finished(); }, "the report build to finish");
-        INFO(job.message());
-        REQUIRE(job.ok());  // the chart was analyzed: the build has rows
-    });
-}
 #endif  // HYDRA_MIMALLOC
 
 TEST_CASE("jobs: a report job lists the records filed under its run") {
@@ -395,6 +374,9 @@ TEST_CASE("jobs: an empty report shows generate_report's reason, or the app's ow
     CHECK_FALSE(nothing.ok());
     CHECK(nothing.message() ==
           hydra::app::plain_error(hydra::KindedError(hydra::ErrorKind::NoRecords, "x")));
+    // The sentence the user approved for an empty database (plan question 3).
+    CHECK(nothing.message() ==
+          "Nothing is analyzed yet. Click a song or run a batch to analyze it.");
 }
 
 TEST_CASE("jobs: a cancelled leaderboard fetch is not an error") {

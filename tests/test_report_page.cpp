@@ -119,7 +119,9 @@ using report_samples::sample_path_rows;
 
 TEST_CASE("path_tiles: the six sample rows") {
     const std::vector<report::ReportRow> rows = sample_path_rows();
-    CHECK(tile_pairs(report::path_tiles(rows, every_row(rows.size()), kSampleHitWindowMs)) ==
+    const hydra::store::ChartIndex library = report_samples::sample_index();
+    CHECK(tile_pairs(report::path_tiles(rows, every_row(rows.size()), kSampleHitWindowMs,
+                                        library)) ==
           TilePairs{{"Charts shown", "3"},
                     {"Paths shown", "6"},
                     {"Hardest ms", "171.0 ms"},
@@ -129,23 +131,24 @@ TEST_CASE("path_tiles: the six sample rows") {
 
 TEST_CASE("path_tiles: the tiles count only the rows shown") {
     const std::vector<report::ReportRow> rows = sample_path_rows();
+    const hydra::store::ChartIndex library = report_samples::sample_index();
     // Song A's three rows and Song C's one: two charts, no Beyond row, and the
     // hardest timing is Song C's 90 ms.
-    CHECK(tile_pairs(report::path_tiles(rows, {0, 1, 2, 5}, kSampleHitWindowMs)) ==
+    CHECK(tile_pairs(report::path_tiles(rows, {0, 1, 2, 5}, kSampleHitWindowMs, library)) ==
           TilePairs{{"Charts shown", "2"},
                     {"Paths shown", "4"},
                     {"Hardest ms", "90.0 ms"},
                     {"Past 170 ms", "0"},
                     {"Highest skip", "1"}});
     // Song A's mode with no squeeze alone: no timing to show.
-    CHECK(tile_pairs(report::path_tiles(rows, {2}, kSampleHitWindowMs)) ==
+    CHECK(tile_pairs(report::path_tiles(rows, {2}, kSampleHitWindowMs, library)) ==
           TilePairs{{"Charts shown", "1"},
                     {"Paths shown", "1"},
                     {"Hardest ms", "—"},
                     {"Past 170 ms", "0"},
                     {"Highest skip", "0"}});
     // Nothing passes the filters.
-    CHECK(tile_pairs(report::path_tiles(rows, {}, kSampleHitWindowMs)) ==
+    CHECK(tile_pairs(report::path_tiles(rows, {}, kSampleHitWindowMs, library)) ==
           TilePairs{{"Charts shown", "0"},
                     {"Paths shown", "0"},
                     {"Hardest ms", "—"},
@@ -154,14 +157,14 @@ TEST_CASE("path_tiles: the tiles count only the rows shown") {
 }
 
 TEST_CASE("path_tiles: Charts shown adds each chart's copies once") {
-    std::vector<report::ReportRow> rows = sample_path_rows();
+    const std::vector<report::ReportRow> rows = sample_path_rows();
     // Song A is in the library 1,200 times and Song B twice; Song A's three
     // rows still count its copies once.
-    for (report::ReportRow& r : rows) r.copies = r.hyhash == "Song A" ? 1200 : 2;
-    CHECK(report::path_tiles(rows, every_row(rows.size()), kSampleHitWindowMs)[0].value ==
-          "1,204");
-    CHECK(report::path_tiles(rows, {0, 1, 2}, kSampleHitWindowMs)[0].value == "1,200");
-    CHECK(report::path_tiles(rows, {3}, kSampleHitWindowMs)[0].value == "2");
+    const hydra::store::ChartIndex library = report_samples::sample_index(1200, 2);
+    CHECK(report::path_tiles(rows, every_row(rows.size()), kSampleHitWindowMs, library)[0]
+              .value == "1,203");
+    CHECK(report::path_tiles(rows, {0, 1, 2}, kSampleHitWindowMs, library)[0].value == "1,200");
+    CHECK(report::path_tiles(rows, {3}, kSampleHitWindowMs, library)[0].value == "2");
 }
 
 TEST_CASE("dm_tiles: the four sample scores") {
@@ -333,13 +336,15 @@ TEST_CASE("path report counts charts by hash in the Charts shown tile") {
     a.tier = "None";
     a.tok = "tn";
     a.hyhash = "h1";
-    a.copies = 1;
     report::ReportRow a2 = a;
     a2.rank = 2;
     report::ReportRow b = a;  // another chart with the same title and artist
     b.hyhash = "h2";
+    const hydra::store::ChartIndex library = hydra::store::ChartIndex::from_rows(
+        {hydra::store::ChartLibraryEntry{"h1", "Same", "Name"},
+         hydra::store::ChartLibraryEntry{"h2", "Same", "Name"}});
 
     // Two charts, however many rows each has, and even when the names match.
-    CHECK(report::path_tiles({a, a2, b}, every_row(3), 85.0)[0].value == "2");
-    CHECK(report::path_tiles({a, a2, b}, {0, 1}, 85.0)[0].value == "1");
+    CHECK(report::path_tiles({a, a2, b}, every_row(3), 85.0, library)[0].value == "2");
+    CHECK(report::path_tiles({a, a2, b}, {0, 1}, 85.0, library)[0].value == "1");
 }
