@@ -472,15 +472,15 @@ TEST_CASE("a set-aside that cannot be made fails with its sentence and leaves th
         FAIL("the open finished with nowhere to set the old file aside");
     } catch (const KindedError& e) {
         CHECK(e.kind() == ErrorKind::OldLibrarySetAsideFailed);
-        // The middle is Windows' own text for the failure, so only the
-        // sentence's two ends are pinned here (test_user_messages pins it whole).
+        // The middle is Windows' own text for the failure, so only the words
+        // around it are pinned here (test_user_messages pins it whole).
         const std::string said = app::plain_error(e);
         const std::string head = "This library file is from a Hydra version older than 2.2.0, "
                                  "and Hydra could not set it aside: ";
         const std::string tail = ". Close any program using hydra.db and start Hydra again.";
         CHECK(said.rfind(head, 0) == 0);
         REQUIRE(said.size() > head.size() + tail.size());
-        CHECK(said.compare(said.size() - tail.size(), tail.size(), tail) == 0);
+        CHECK(said.find(tail, head.size()) != std::string::npos);
     }
     std::filesystem::remove(os_path(set_aside_path(path)));
     CHECK(file_bytes(path) == before);

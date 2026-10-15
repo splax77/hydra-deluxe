@@ -125,13 +125,13 @@ void StoreOpenJob::run() {
         try {
             // The store reports its own steps, Opening first; a false return
             // (the app is closing) stops it with the old file as it was.
-            store_ = std::make_unique<store::RecordStore>(
-                db_path_, store::OldFilePolicy::SetAside, rules_,
-                [this](const store::OpenProgress& p) {
-                    return report(screen_step(p.step), row_count(p.rows_done),
-                                  row_count(p.rows_total));
-                });
-            // The copy's counts stay on the bar while the library is read.
+            const store::OpenProgressFn on_step = [this](const store::OpenProgress& p) {
+                return report(screen_step(p.step), row_count(p.rows_done),
+                              row_count(p.rows_total));
+            };
+            store_ = std::make_unique<store::RecordStore>(db_path_, store::OldFilePolicy::SetAside,
+                                                          rules_, on_step);
+            // The conversion's counts stay on the bar while the library is read.
             if (!report(Step::LoadingLibrary, rows_done_.load(), rows_total_.load()))
                 throw JobCancelled{};
             library_problem_ = read_library(*store_, settings_, library_);

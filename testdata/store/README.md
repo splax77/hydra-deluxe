@@ -1,6 +1,8 @@
-# Real old databases (upgrade fixtures)
+# Real old databases (too-old fixtures)
 
-These four files are databases written by real Hydra releases. The store tests open them with today's `RecordStore` to prove an old user's file upgrades honestly. Nothing here was written by hand: each file is what an old `hydra_batch` wrote, shrunk with SQLite's `VACUUM INTO`.
+These four files are databases written by real Hydra releases, all from before 2.2.0. Hydra no longer converts a file that old (user, 2026-10-14). The store tests use them to prove that every pre-2.2.0 generation is told apart from a file this build can convert: `classify_library_file` (`src/store/library_file.h`) reads each one as too old, the command-line tools refuse it and leave it untouched, and the app sets it aside and starts a fresh library. `tests/test_store_open.cpp` checks all three on a copy of each file. Nothing here was written by hand: each file is what an old `hydra_batch` wrote, shrunk with SQLite's `VACUUM INTO`.
+
+A file from 2.2.0 to 2.7.0, the generation that still converts, is not here. The tests build one from `tests/old_layout_fixture.h` instead.
 
 The files are read-only fixtures. A test copies one to a temp path before it opens it. Today's store opens a file in WAL mode (write-ahead logging: SQLite keeps new writes in a side file named `-wal`, with an index file named `-shm`), so opening the checked-in file directly would write those two files beside it and change it.
 
@@ -73,13 +75,13 @@ Every number below was read from the checked-in file (a copy of it, so nothing w
 | `meta` rows | `engine_mode = ch11` | `engine_mode = ch10` | `auto_results_deleted = 1`, `engine_mode = ch11` | `auto_results_deleted = 1`, `engine_mode = ch11` |
 | `legacy_fills` per row | (no column) | (no column) | 0, 0, 0 | 0, 0, 0 |
 | `charts` rows | 0 | 0 | 0 | 0 |
-| `kDetailTablesCountSql` | 5 | 5 | 5 | 5 |
+| detail tables and indexes | 5 | 5 | 5 | 5 |
 
 The v2.1.0 file says `user_version` 0, not 4. That is what the real release writes: commit `87a588d5` ("Store SQL says each thing once"), which is in v2.1.0, stopped setting `user_version` at all, and the file was created fresh by that build. A test that tells schema 4 apart should check for the `rules_fp` column, not `user_version`.
 
-The schema 2 files have no `legacy_fills` column; `RecordStore::upgrade_results_key` owns how a row gets one. But today's open keeps none of the v1.8.4 rows: they have a score and no stars, and the copy upgrade leaves such rows out (ADR 0026 owns that rule). So after the open both v1.8.4 files hold 0 results rows, and nothing in them shows which fill rule a row would get.
+The schema 2 files have no `legacy_fills` column. Today's open keeps none of any file's rows: each file is set aside whole or refused.
 
-The `charts` table exists in all four files but holds no rows. `hydra_batch` never fills it; the app's library scan does. So these files cannot pin "the charts rows keep their names". The song names live in `songmeta` instead, which is one of the detail tables the summary-only upgrade drops.
+The `charts` table exists in all four files but holds no rows. `hydra_batch` never fills it; the app's library scan does. The song names live in `songmeta` instead, one of the detail tables.
 
 ### Results rows by chart
 
@@ -105,20 +107,20 @@ Every row stores `ms_enabled` 1, `ms_value` 10, `depth_mode` 0 and `depth_value`
 
 ### Rules fingerprint
 
-An old row's rules fingerprint sits inside its `structure` blob, at the place `rules_fp_of` in `src/store/record_store.cpp` reads. These are the bytes it reads there.
+An old row's rules fingerprint sits inside its `structure` blob, at bytes 5 to 12. These are the bytes there.
 
 Every row of every file holds the same 8 bytes, because every run used the default rules:
 
 - bytes in file order: `f24c606966e9d270`
 - the same bytes read as a little-endian 64-bit number: `0x70d2e96669604cf2`
 
-The v2.1.0 file's `rules_fp` column already holds exactly those 8 bytes on all three rows. After the upgrade, `rules_fp` on every row the open keeps should equal them (the two v1.8.4 files keep no rows).
+The v2.1.0 file's `rules_fp` column already holds exactly those 8 bytes on all three rows.
 
 The first 4 bytes of the blob (the path format) are `06000000` in the three older files and `07000000` in the v2.1.0 file.
 
 ### Detail tables
 
-`kDetailTablesCountSql` (in `tests/old_layout_fixture.h`) counts which of its five named tables or indexes exist. It reads 5 in all four files, not only in v2.1.0. Their row counts are the same in every file:
+Each file holds all five of the detail layout's tables and indexes, not only v2.1.0. Which tables mark a file as too old is decided in `classify_library_file` alone. Their row counts are the same in every file:
 
 | Table | rows |
 |---|---|
