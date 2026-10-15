@@ -786,6 +786,8 @@ TEST_CASE("every store read throws a database read error when its step fails") {
         {"chart_library_cache", [](RecordStore& s) { s.chart_library_cache(); }},
         {"chart_library_count", [](RecordStore& s) { s.chart_library_count(); }},
         {"list_chart_library", [](RecordStore& s) { s.list_chart_library(0, 10); }},
+        {"list_chart_library_copies",
+         [](RecordStore& s) { s.list_chart_library_copies("h"); }},
     };
     for (const auto& [name, read] : reads) {
         INFO(std::string(name));
