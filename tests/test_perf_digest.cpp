@@ -64,7 +64,7 @@ struct EngineDigest {
 };
 
 // What hydra_bench --engine prints as "hash": every chart's whole engine
-// result and prepared row (digest::row_hash), a chart that fails left out.
+// result and prepared record (digest::row_hash), a chart that fails left out.
 EngineDigest engine_digest(const app::Settings& st) {
     const app::AnalysisSettings settings = st.batch_run().settings;
     EngineDigest out;
@@ -72,8 +72,9 @@ EngineDigest engine_digest(const app::Settings& st) {
     for (const app::ScanItem& it : corpus_charts()) {
         try {
             const app::AnalysisResult res = app::analyze_chart_file(it.notespath, settings);
-            const store::PreparedRow row = store::prepare_row(st.record_key(it.md5), res.record);
-            out.hash = digest::fold(out.hash, digest::row_hash(row, res.record));
+            const store::PreparedRecord prepared =
+                store::prepare_record(it.md5, st.profile(), res.record);
+            out.hash = digest::fold(out.hash, digest::row_hash(prepared, res.record));
             ++out.analyzed;
         } catch (const std::exception&) {
         }

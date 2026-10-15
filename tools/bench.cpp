@@ -254,8 +254,8 @@ static app::Settings ini_settings() {
 //   hydra_bench --engine <folder> [--cache <db>] [--reps N] [--out <file>]
 // Each chart once (plan_batch's first copy), in scan order: parse, a
 // throwaway ScoreGraph build (timed on its own), analyze_chart N times, then
-// prepare_row. Prints the phase sums and one digest over every prepared row
-// (digest::row_hash); --out writes each chart's md5 and row hash. --cache
+// prepare_record. Prints the phase sums and one digest over every prepared
+// record (digest::row_hash); --out writes each chart's md5 and its hash. --cache
 // takes a database's rescan cache, so the scan skips rehashing. A chart that
 // fails is counted and left out of the digest.
 static void engine_mode(const std::string& folder, const std::string& cachedb, int reps,
@@ -306,9 +306,9 @@ static void engine_mode(const std::string& folder, const std::string& cachedb, i
         }
         t_an += secs_since(t);
         t = clk::now();
-        store::PreparedRow row = store::prepare_row(st.record_key(it.md5), *rec);
+        const store::PreparedRecord prepared = store::prepare_record(it.md5, st.profile(), *rec);
         t_prep += secs_since(t);
-        const uint64_t h = digest::row_hash(row, *rec);
+        const uint64_t h = digest::row_hash(prepared, *rec);
         all = digest::fold(all, h);
         if (out) *out << it.md5 << ' ' << std::hex << h << std::dec << '\n';
         ++n;

@@ -623,7 +623,7 @@ TEST_CASE("paths_json writes every field the dump readers use") {
 }
 
 // dump and target print one "result" block. A record with no paths has no best
-// score (summarize_record's answer, which hydra_batch prints as "-"), so the
+// score (HydraRecord::optimal_score's answer, which hydra_batch prints as "-"), so the
 // block says null there rather than a real-looking 0 (audit finding 98).
 TEST_CASE("result block: an empty record writes a null score and an empty bestpath") {
     const json empty = result_json(HydraRecord{});
