@@ -165,7 +165,7 @@ TEST_CASE("stars: with_solo is each cutoff plus the solo bonus") {
     // bonus": base 1300, solo 800, cutoffs 130, 650, 1300, 2600, 3640, 4680,
     // 5720.
     Path path;
-    path.score_base = 1000;
+    path.notes_points = 1000;
     path.score_ghosts = 100;
     path.score_accents = 200;
     path.score_solo = 800;
@@ -184,7 +184,7 @@ TEST_CASE("stars: score_without_solo is the total minus the solo bonus") {
     // The path of "stars: path_stars counts cutoffs reached without the solo
     // bonus", at its 6680 total with a 2000 solo bonus.
     Path path;
-    path.score_base = 1000;
+    path.notes_points = 1000;
     path.score_ghosts = 100;
     path.score_accents = 200;
     path.score_combo = 3380;
@@ -237,7 +237,7 @@ TEST_CASE("stars: a zero base gives zero cutoffs") {
 
 TEST_CASE("stars: star_cutoffs reads the path's base score and solo bonus") {
     Path path;
-    path.score_base = 1000;
+    path.notes_points = 1000;
     path.score_ghosts = 100;
     path.score_accents = 200;
     path.score_solo = 800;
@@ -255,7 +255,7 @@ TEST_CASE("stars: star_cutoffs reads the path's base score and solo bonus") {
 
 TEST_CASE("stars: avg_mult divides by the same base score") {
     Path path;
-    path.score_base = 1000;
+    path.notes_points = 1000;
     path.score_ghosts = 100;
     path.score_accents = 200;
     path.score_combo = 1300;
@@ -320,7 +320,7 @@ TEST_CASE("stars: path_stars counts cutoffs reached without the solo bonus") {
     // Base 1300, so the cutoffs are 130, 650, 1300, 2600, 3640, 4680, 5720
     // (the star_cutoffs case above).
     Path path;
-    path.score_base = 1000;
+    path.notes_points = 1000;
     path.score_ghosts = 100;
     path.score_accents = 200;
     const StarCutoffs sc = star_cutoffs(path);

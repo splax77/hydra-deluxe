@@ -440,7 +440,7 @@ TEST_CASE("score box: a path the replay can't reproduce says so") {
 
     // The stored score disagrees with the replay by one point.
     Path wrong = priced_path(song, {});
-    wrong.score_base += 1;
+    wrong.notes_points += 1;
     PreviewScene a = build_preview_scene(song, &wrong);
     CHECK(a.score.state == PreviewScore::State::Unavailable);
     PreviewScoreBox box = score_box_at(a, 600.0);
@@ -549,7 +549,7 @@ TEST_CASE("score box stars: no score, no stars") {
     CHECK(none.next_star.empty());
 
     Path wrong = priced_path(song, {});
-    wrong.score_base += 1;
+    wrong.notes_points += 1;
     PreviewScoreBox unavailable = score_box_at(build_preview_scene(song, &wrong), 600.0);
     REQUIRE(unavailable.shown);
     REQUIRE_FALSE(unavailable.available);

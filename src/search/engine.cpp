@@ -39,7 +39,7 @@ const int32_t DEACT_SQINOUT = 2;
 // six score fields are the one list of categories; these only name the slot
 // that holds each one.
 enum ScoreSlot : int {
-    kSlotBase,
+    kSlotNotes,
     kSlotCombo,
     kSlotSp,
     kSlotSolo,
@@ -67,14 +67,14 @@ inline double recorded_e_offset(double first_passed, double own) {
 // value-view per node and edge that node()/edge() hand out.
 
 // Cheap value-views over one node/edge, so the ported engine body keeps reading
-// `n.tick` / `e.basescore`. enumerate() builds one per node and edge, once.
+// `n.tick` / `e.notes_points`. enumerate() builds one per node and edge, once.
 struct NodeView {
     int64_t tick;
     int32_t adv_edge, branch_edge, is_sp;
 };
 struct EdgeView {
     int32_t dest;
-    int32_t basescore, comboscore, spscore, soloscore, accentscore, ghostscore;
+    int32_t notes_points, comboscore, spscore, soloscore, accentscore, ghostscore;
     int32_t frontend_points;
     int32_t banked_phrase_ordinal;
     double activation_fill_deadline_ms;
@@ -173,7 +173,7 @@ Enum enumerate(const ScoreGraph& graph) {
     for (const ScoreGraphEdge* o : en.edges) {
         EdgeView v;
         v.dest = node_of(o->dest);
-        v.basescore = (int32_t)o->basescore;
+        v.notes_points = (int32_t)o->notes_points;
         v.comboscore = (int32_t)o->comboscore;
         v.spscore = (int32_t)o->spscore;
         v.soloscore = (int32_t)o->soloscore;
@@ -322,7 +322,7 @@ struct Path {
 
 // The decision-log output (was hy_out_*), rebuilt into core Paths (core/model.h) locally.
 struct OutPath {
-    int32_t score_base, score_combo, score_sp, score_solo, score_accents,
+    int32_t notes_points, score_combo, score_sp, score_solo, score_accents,
         score_ghosts;
     int32_t var_point, depth, act_begin, act_end;
     // The bars banked after the last window: out_ticks_[bank_begin, bank_end).
@@ -838,13 +838,13 @@ void Engine::advance(Path& p) {
     const EdgeView e = edge(n.adv_edge);
     const ScoreGraphEdge* eo = eobj(n.adv_edge);
 
-    p.sc[kSlotBase] += e.basescore;
+    p.sc[kSlotNotes] += e.notes_points;
     p.sc[kSlotCombo] += e.comboscore;
     p.sc[kSlotSp] += e.spscore;
     p.sc[kSlotSolo] += e.soloscore;
     p.sc[kSlotAccents] += e.accentscore;
     p.sc[kSlotGhosts] += e.ghostscore;
-    p.score += score_total(e.basescore, e.comboscore, e.spscore, e.soloscore,
+    p.score += score_total(e.notes_points, e.comboscore, e.spscore, e.soloscore,
                            e.accentscore, e.ghostscore);
 
     const int32_t sp_n = (int32_t)eo->sp_times.size();
@@ -1729,7 +1729,7 @@ void Engine::emit_path(const Path& p) {
     // The search ranks by its running p.score; the record stores the six
     // categories. Every stored total passes through here (a variant copies its
     // leader's, ADR 0017), so this is where the two must agree (audit 165).
-    const int64_t six = score_total(p.sc[kSlotBase], p.sc[kSlotCombo], p.sc[kSlotSp],
+    const int64_t six = score_total(p.sc[kSlotNotes], p.sc[kSlotCombo], p.sc[kSlotSp],
                                     p.sc[kSlotSolo], p.sc[kSlotAccents], p.sc[kSlotGhosts]);
     if (p.score != six)
         throw std::logic_error("copy-out: the search's running score " +
@@ -1737,7 +1737,7 @@ void Engine::emit_path(const Path& p) {
                                " differs from its six categories' total " +
                                std::to_string(six));
     OutPath op;
-    op.score_base = p.sc[kSlotBase];
+    op.notes_points = p.sc[kSlotNotes];
     op.score_combo = p.sc[kSlotCombo];
     op.score_sp = p.sc[kSlotSp];
     op.score_solo = p.sc[kSlotSolo];
@@ -1924,7 +1924,7 @@ std::vector<MPath> rebuild(const ScoreGraph& graph, const Enum& en,
 
     for (const OutPath& op : out_paths) {
         MPath path;
-        path.score_base = op.score_base;
+        path.notes_points = op.notes_points;
         path.score_combo = op.score_combo;
         path.score_sp = op.score_sp;
         path.score_solo = op.score_solo;

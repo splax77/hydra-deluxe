@@ -137,7 +137,7 @@ void ScoreGraph::build() {
         if (MultSqueeze::applies(timestamp.chord, sg.combo_before))
             store_multsqueeze(MultSqueeze(timestamp.chord, sg.combo_before));
 
-        store_basescore(sg.base);
+        store_notes_points(sg.base);
         store_comboscore(sg.combo);
         store_spscore(sg.sp);
         store_accentscore(sg.accent);
@@ -236,9 +236,9 @@ void ScoreGraph::store_soloscore(int64_t points) {
     proto_base_edge_->soloscore += points;
     proto_sp_edge_->soloscore += points;
 }
-void ScoreGraph::store_basescore(int64_t points) {
-    proto_base_edge_->basescore += points;
-    proto_sp_edge_->basescore += points;
+void ScoreGraph::store_notes_points(int64_t points) {
+    proto_base_edge_->notes_points += points;
+    proto_sp_edge_->notes_points += points;
 }
 void ScoreGraph::store_comboscore(int64_t points) {
     proto_base_edge_->comboscore += points;

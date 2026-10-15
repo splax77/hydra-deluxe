@@ -519,7 +519,7 @@ TEST_CASE("Path pathstring and pathstring_verbose") {
     test::set_skips(a, 1);
     a.e_offset = 400.0;  // not e-critical, no sqinouts -> verbose == notationstr
     p.activations.push_back(a);
-    p.score_base = 100000;  // totalscore == 100000
+    p.notes_points = 100000;  // totalscore == 100000
 
     CHECK(p.pathstring() == "1");
     CHECK(p.pathstring_verbose({}) ==
@@ -1108,7 +1108,7 @@ TEST_CASE("score_total: the six categories in the stored order") {
     CHECK(score_total(1, 2, 3, 4, 5, 6) == 21);
 
     Path p;
-    p.score_base = 100;
+    p.notes_points = 100;
     p.score_combo = 200;
     p.score_sp = 300;
     p.score_solo = 400;

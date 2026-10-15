@@ -213,7 +213,7 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
 
 ReplayScore score_of(const Path& path) {
     ReplayScore s;
-    s.base = path.score_base;
+    s.base = path.notes_points;
     s.combo = path.score_combo;
     s.sp = path.score_sp;
     s.solo = path.score_solo;
@@ -223,7 +223,7 @@ ReplayScore score_of(const Path& path) {
 }
 
 void assign_score(Path& path, const ReplayScore& s) {
-    path.score_base = s.base;
+    path.notes_points = s.base;
     path.score_combo = s.combo;
     path.score_sp = s.sp;
     path.score_solo = s.solo;

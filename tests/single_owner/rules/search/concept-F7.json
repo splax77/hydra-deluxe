@@ -8,15 +8,15 @@
       "date": "2026-10-11",
       "decision": "D114 (concept audit M30)",
       "added_by": "concept-audit-F7",
-      "pattern": "\\.score\\s*\\+=\\s*(\\(int64_t\\)\\s*)?\\w+\\.\\w*score\\s*\\+",
+      "pattern": "\\.score\\s*\\+=\\s*(\\(int64_t\\)\\s*)?\\w+\\.\\w*(score|points)\\s*\\+",
       "anchor": "score",
       "calls_owner": "\\bscore_total\\(",
       "must_match": [
-        "p.score += (int64_t)e.basescore + e.comboscore + e.spscore + e.soloscore +",
-        "path.score += edge.basescore + edge.comboscore;"
+        "p.score += (int64_t)e.notes_points + e.comboscore + e.spscore + e.soloscore +",
+        "path.score += edge.notes_points + edge.comboscore;"
       ],
       "must_not_match": [
-        "p.score += score_total(e.basescore, e.comboscore, e.spscore, e.soloscore,",
+        "p.score += score_total(e.notes_points, e.comboscore, e.spscore, e.soloscore,",
         "c.score += frontend_points;",
         "c.score += sp_delta;"
       ],

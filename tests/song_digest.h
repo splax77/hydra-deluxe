@@ -129,7 +129,7 @@ inline uint64_t path_hash(uint64_t h, const Path& p) {
     v(p.notecount);
     h = fnv_list(h, p.trailing_bank_ticks,
                  [](uint64_t g, const int64_t& t) { return fnv(g, &t, sizeof t); });
-    v(p.score_base);
+    v(p.notes_points);
     v(p.score_combo);
     v(p.score_sp);
     v(p.score_solo);

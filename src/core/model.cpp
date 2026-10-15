@@ -584,7 +584,7 @@ std::vector<Activation> Path::all_activations() const {
 bool Path::has_activations() const { return !walk_activations().empty(); }
 
 int64_t Path::totalscore() const {
-    return score_total(score_base, score_combo, score_sp, score_solo, score_accents,
+    return score_total(notes_points, score_combo, score_sp, score_solo, score_accents,
                        score_ghosts);
 }
 
@@ -662,7 +662,7 @@ void Path::prepare_variants() {
         const size_t vp = static_cast<size_t>(v.var_point.value_or(0));
         v.variant_tail.clear();
         for (size_t i = vp; i < mine.size(); ++i) v.variant_tail.push_back(mine[i]);
-        v.score_base = score_base;
+        v.notes_points = notes_points;
         v.score_combo = score_combo;
         v.score_sp = score_sp;
         v.score_solo = score_solo;
@@ -847,7 +847,7 @@ bool Path::is_allzero() const {
 }
 
 int64_t Path::chart_base_score() const {
-    return score_base + score_ghosts + score_accents;
+    return notes_points + score_ghosts + score_accents;
 }
 
 double Path::avg_mult() const {

@@ -22,7 +22,7 @@ using song_details::kDot;
 
 TEST_CASE("build_score_breakdown: exact lines, rounded like the report") {
     Path p;
-    p.score_base = 3;
+    p.notes_points = 3;
     p.score_combo = 2;  // 5/3 = 1.6666...
 
     std::vector<std::string> lines = build_score_breakdown(p);
@@ -115,7 +115,7 @@ TEST_CASE("build_path_list: score groups and the all-0 dedupe rule") {
     // A different score shows the section. Its label is the score alone; the
     // button's detail line is the one place that says what it costs.
     HydraRecord worse = dup;
-    worse.allzero_paths.front().score_base -= 100;
+    worse.allzero_paths.front().notes_points -= 100;
     PathListView wl = build_path_list(worse);
     CHECK(wl.show_allzero);
     CHECK(wl.allzero_label == group_thousands(worse.allzero_paths.front().totalscore()));
@@ -179,7 +179,7 @@ TEST_CASE("path_identity: same path, rescored path, trimmed path") {
 
     // Same activations, one more point: a different path.
     Path rescored = first;
-    rescored.score_base += 1;
+    rescored.notes_points += 1;
     CHECK(path_identity(first) != path_identity(rescored));
 
     // One activation fewer: a different path.
