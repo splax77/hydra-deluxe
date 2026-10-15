@@ -13,7 +13,9 @@
 #include "../testdata_dirs.h"  // root
 #include "app/config.h"
 #include "app/user_messages.h"  // old_library_set_aside_notice
+#include "core/error_kind.h"
 #include "imgui_internal.h"
+#include "parse/song.h"  // NoNotesError
 #include "render/overlay_layout.h"  // ellipsize, the one cutting rule
 #include "ui/app_shell.h"  // remember_library_share
 #include "ui/app_state.h"
@@ -559,6 +561,59 @@ void test_analyze_follows_chip(ImGuiTestContext* ctx) {
     ctx->SetRef("//Hydra");
     ctx->ItemClick(("**/" + hydra::ui::chip_label(StatusChip::All, total)).c_str());
     IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists("Analyze library..."); }, 5));
+}
+
+// A chart whose failure the store kept (failure_record, saved on the scratch
+// db the way a batch saves one) reads Can't analyze in the Best path cell,
+// counts under its own chip, and that chip narrows the table and the Analyze
+// button to it (D115). The corpus has no chart without Expert drums, so the
+// failure is saved directly.
+void test_library_cant_analyze(ImGuiTestContext* ctx) {
+    using hydra::ui::StatusChip;
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    ctx->SetRef("//Hydra");
+    const size_t total = h.app->library.rows().size();
+    IM_CHECK((ctx->ItemInfo(("**/" + hydra::ui::chip_label(StatusChip::CantAnalyze, 0)).c_str())
+                  .ItemFlags &
+              ImGuiItemFlags_Disabled) != 0);
+
+    const std::string md5 = h.app->library_row_at(0).entry.md5;
+    const hydra::NoNotesError no_notes(hydra::Difficulty::Expert, true);
+    h.app->store->save(hydra::store::failure_record(md5, h.app->settings.profile(),
+                                                    hydra::ErrorKind::NoNotes, no_notes.what()));
+    h.app->refresh_library_summaries();
+    IM_CHECK_EQ(h.app->library.counts().cant_analyze, size_t{1});
+    IM_CHECK_EQ(h.app->library.counts().all, total);
+    const std::string chip = "**/" + hydra::ui::chip_label(StatusChip::CantAnalyze, 1);
+    IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists(chip.c_str()); }, 5));
+    IM_CHECK((ctx->ItemInfo(chip.c_str()).ItemFlags & ImGuiItemFlags_Disabled) == 0);
+    IM_CHECK(ctx->ItemExists(
+        ("**/" + hydra::ui::chip_label(StatusChip::NotAnalyzed, total - 1)).c_str()));
+
+    ctx->ItemClick(chip.c_str());
+    IM_CHECK(wait_until(ctx, [&] { return h.app->library_shown_count() == 1; }, 5));
+    IM_CHECK(h.app->library_row_at(0).entry.md5 == md5);
+    IM_CHECK(h.app->library_row_at(0).status == hydra::store::RecordStatus::CantAnalyze);
+    // The cell draws the word: the chip's label and the cell both show it.
+    const std::string word = hydra::ui::status_label(hydra::store::RecordStatus::CantAnalyze);
+    const std::string text = visible_text(h);
+    const size_t first = text.find(word);
+    IM_CHECK(first != std::string::npos);
+    IM_CHECK(text.find(word, first + word.size()) != std::string::npos);
+
+    // The Analyze button counts the one chart on screen.
+    const std::string label = hydra::ui::detail::analyze_shown_label(1);
+    IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists(label.c_str()); }, 5));
+    ctx->ItemClick(label.c_str());
+    ctx->Yield(2);
+    IM_CHECK(h.app->batch_confirm_pending);
+    IM_CHECK_EQ(h.app->batch_scope_charts(), int64_t{1});
+    ctx->SetRef("//Analyze library");
+    ctx->ItemClick("Cancel");
+    ctx->Yield(2);
 }
 
 // Sorting and scrolling: every chart is one scroll away, and only the rows on
@@ -1197,6 +1252,7 @@ const std::vector<TestEntry>& library_tests() {
         {"view-settings", test_view_settings},
         {"library-search", test_library_search},
         {"analyze-follows-chip", test_analyze_follows_chip},
+        {"library-cant-analyze", test_library_cant_analyze},
         {"library-sort-scroll", test_library_sort_scroll},
         {"library-column-order", test_library_column_order},
         {"library-layout", test_library_layout},
