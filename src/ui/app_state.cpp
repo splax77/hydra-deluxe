@@ -30,6 +30,31 @@ StartupSettings load_startup_settings() {
     return start;
 }
 
+// Whether a chart's stored answer already says what `fresh` would save, so a
+// click saves nothing (D87 item 2): the same Ready record, or the same stored
+// failure, kind and text.
+bool stored_says_same(const store::RecordLookup& found, const store::RecordRow& fresh) {
+    if (fresh.failure_kind)
+        return found.status == store::RecordStatus::CantAnalyze &&
+               found.failure_kind == fresh.failure_kind && found.failure_text == fresh.failure_text;
+    return found.status == store::RecordStatus::Ready && found.record == fresh;
+}
+
+// The record a click's failed analysis is stored as: app::prepare_failed_chart's
+// answer for what the analysis threw. Nothing when it threw nothing.
+std::optional<store::PreparedRecord> click_failure_record(const std::string& song_id,
+                                                          const store::Profile& profile,
+                                                          const std::exception_ptr& thrown) {
+    if (!thrown) return std::nullopt;
+    try {
+        std::rethrow_exception(thrown);
+    } catch (const std::exception& e) {
+        return app::prepare_failed_chart(song_id, profile, e);
+    } catch (...) {
+    }
+    return std::nullopt;
+}
+
 }  // namespace
 
 AppState::AppState() : AppState(load_startup_settings()) {}
@@ -438,6 +463,15 @@ void AppState::update_view_job() {
             v.state = ViewedSong::State::Failed;
             v.message = std::move(out.analysis_message);
             v.error = std::move(out.analysis_error);
+            // A failure the store remembers is the chart's result, as a
+            // batch stores it. The panel shows the failure either way.
+            try {
+                if (const std::optional<store::PreparedRecord> failure =
+                        click_failure_record(song_id, profile, out.analysis_failure))
+                    save_view_record(*failure);
+            } catch (const std::exception& e) {
+                set_problem(app::plain_error(e));
+            }
         } else {
             try {
                 v.summary = save_view_summary(song_id, profile, *out.analysis);
@@ -463,15 +497,19 @@ store::PathSummary AppState::save_view_summary(const std::string& song_id,
                                                const store::Profile& profile,
                                                const app::AnalysisResult& result) {
     const store::PreparedRecord prepared = store::prepare_record(song_id, profile, result.record);
-    const store::RecordLookup found = store->lookup_one(song_id, profile);
-    if (found.status == store::RecordStatus::Ready && found.record == prepared.record)
-        return prepared.record.summary();  // the record already says what the engine says
+    save_view_record(prepared);
+    return prepared.record.summary();
+}
+
+void AppState::save_view_record(const store::PreparedRecord& prepared) {
+    const std::string& song_id = prepared.record.song_id;
+    const store::RecordLookup found = store->lookup_one(song_id, prepared.profile);
+    if (stored_says_same(found, prepared.record)) return;  // nothing new to save
     store->save(prepared);
     refresh_library_row(song_id);  // its row's Best path cell and chip
     // Both open reports now read an older library (D115 question 4). No
     // batch finished, so the strip names no time.
     mark_reports_out_of_date(ReportOutOfDate::Library, /*path=*/true, /*dm=*/true, std::nullopt);
-    return prepared.record.summary();
 }
 
 bool AppState::selected_file_ok(double now) {
@@ -572,7 +610,7 @@ void AppState::open_batch_confirm() {
     reload_after_scan();
     std::vector<app::ScanItem> items;
     const app::BatchRun run = settings.batch_run();
-    std::unordered_set<std::string> with_result;
+    app::SettledCharts with_result;
     if (!read_store([&] {
             items = library_matches();
             with_result = app::charts_with_result(*store, run, false);

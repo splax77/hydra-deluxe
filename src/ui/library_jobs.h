@@ -343,6 +343,9 @@ struct ViewOutcome {
     store::SongLength length;
     std::string analysis_message;  // app::plain_error
     std::string analysis_error;    // app::plain_error_detail, may be empty
+    // What the failed analysis threw, so the click can store a failure the
+    // store remembers (app::prepare_failed_chart) under the chart's id.
+    std::exception_ptr analysis_failure;
     // The Dynamics count, or why it failed: a failed count always has its
     // message, and its details line may be empty.
     std::optional<app::DynamicsBreakdown> dynamics;

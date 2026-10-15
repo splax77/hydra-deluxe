@@ -489,6 +489,7 @@ void ViewJob::run() {
                     throw;
                 } catch (const std::exception& e) {
                     out_.analysis.reset();
+                    out_.analysis_failure = std::current_exception();
                     out_.analysis_error = app::plain_error_detail(e);
                     out_.analysis_message = app::plain_error(e);
                 }

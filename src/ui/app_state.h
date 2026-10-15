@@ -694,6 +694,11 @@ private:
     // the record now gives. Throws on a store failure.
     store::PathSummary save_view_summary(const std::string& song_id, const store::Profile& profile,
                                          const app::AnalysisResult& result);
+    // The click's one save, for a result or a stored failure: writes
+    // `prepared` unless the chart's stored answer already says the same,
+    // and marks both open reports out of date when it writes. Throws on a
+    // store failure.
+    void save_view_record(const store::PreparedRecord& prepared);
     // Starts view_job for the latest request. view_job must be empty.
     void launch_view_job();
     // When the latest request was made (start_view), for view_progress_shown.
