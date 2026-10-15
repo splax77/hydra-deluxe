@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "hydra": {
+      "command": "py",
+      "args": ["-I", "tools/hydra_ui_mcp.py"],
+      "env": { "HYDRA_LIBRARY_DIR": "${HYDRA_LIBRARY_DIR:-C:\\Program Files\\Hydra}" }
+    }
+  }
+}
