@@ -254,12 +254,15 @@
       "date": "2026-10-14",
       "decision": "D115 task F1 (user, 2026-10-14: an old version is derived once)",
       "added_by": "D115-F1",
-      "pattern": "\\blegacy_fill\\w*\\s*=\\s*[^;\"]*[!=]=\\s*(hydra::)?FillDeadlineRule::Ch1[01]\\s*;|[!=]=\\s*(hydra::)?FillDeadlineRule::Ch1[01]\\s*\\?\\s*(1|0|true|false)\\b|(\\.|->)legacy_fills\\s*=\\s*[01]\\s*;",
+      "pattern": "\\blegacy_fill\\w*\\s*=\\s*[^;\"]*[!=]=\\s*(hydra::)?FillDeadlineRule::Ch1[01]\\b|[!=]=\\s*(hydra::)?FillDeadlineRule::Ch1[01]\\s*\\)?\\s*\\?\\s*(1|0|true|false)\\b|\\breturn\\s+[^;\"?]*[!=]=\\s*(hydra::)?FillDeadlineRule::Ch1[01]\\s*;|(\\.|->)legacy_fills\\s*=\\s*[01]\\s*;",
       "calls_owner": "\\blegacy_fills_for\\(",
       "must_match": [
         "with_rule.legacy_fills = rule == FillDeadlineRule::Ch10;",
         "const bool legacy_fills = rule != hydra::FillDeadlineRule::Ch11;",
+        "x.legacy_fills = (rule == FillDeadlineRule::Ch10);",
         "lens.legacy_fills = rule == FillDeadlineRule::Ch10 ? 1 : 0;",
+        "lens.legacy_fills = (rule == FillDeadlineRule::Ch10) ? 1 : 0;",
+        "return rule == FillDeadlineRule::Ch10;",
         "old_lens.legacy_fills = 1;",
         "new_lens.legacy_fills = 0;"
       ],
@@ -269,13 +272,14 @@
         "if (rule == FillDeadlineRule::Ch10) return is_short ? \"CH 1.0\" : \"Clone Hero 1.0\";",
         "else if (arg == hydra::app::kLegacyFillsFlag) legacy_fills = true;",
         "lens.legacy_fills = legacy_fills ? 1 : 0;",
+        "    return rule == FillDeadlineRule::Ch10 ? \"ch10\" : \"ch11\";",
         "int legacy_fills = 0;"
       ],
       "scope": [
         "src",
         "tools"
       ],
-      "note": "A fill rule turned back into the flag by a comparison of its own, or a flag set to a bare 1 or 0 where a rule was meant. fill_report's two lens lines did the second. Left out on purpose: the results-key upgrade in src/store writes the flag as SQL text from stamped_fill_rule, which D115 task A1-6c retires; tests, which set the flag to build a case. Decided by: D115 task F1 (2026-10-14)"
+      "note": "A fill rule turned back into the flag by a comparison of its own, or a flag set to a bare 1 or 0 where a rule was meant. fill_report's two lens lines did the second. The results-key upgrade in src/store writes the flag as SQL text from stamped_fill_rule; it sits in baseline.json until D115 task A1-6c retires it. Left out on purpose: tests, which set the flag to build a case. A bare `if (...legacy_fills)` test cannot be told from the flag's legitimate uses (parsing, storing, showing the checkbox), so a text search leaves it; code that needs the rule calls fill_rule_for. Decided by: D115 task F1 (2026-10-14)"
     },
     {
       "question": "Which fill rule does a database's stamp name?",
