@@ -18,12 +18,11 @@
         "store.get_summaries(hashes, settings.chartmode_key(), settings.cap_query(), settings.lens());",
         "return store::RecordKey{hyhash, chartmode_key(), cap_query(), lens()};",
         "store::ResultSettings filed_under() const { return {chartmode, cap_query(), lens}; }",
-        "return PageSettings{settings.cap_query(), settings.lens(), settings.hit_window_ms};",
-        "old_lens.legacy_fills = 1;",
-        "new_lens.legacy_fills = 0;",
-        "report::records_by_hash(store, chartmode, store::CapQuery::at(kCloneHeroSpCap), lens);"
+        "return PageSettings{settings.cap_query(), settings.lens(), settings.hit_window_ms};"
       ],
       "must_not_match": [
+        "const store::Profile& profile = settings.profile_with_fills(FillDeadlineRule::Ch10);",
+        "dm_report::collect_dm_rows(store, scores, settings.profile_at_clone_hero_cap());",
         "return store::RecordKey{hyhash, profile()};",
         "store.get_summaries(library.hashes(), settings.profile());",
         "return BatchRun{chartmode_key(), lens(), to_analysis_settings()};",

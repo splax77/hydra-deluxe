@@ -309,7 +309,7 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
 }
 
 FillCompareStats tally_fill_rows(const std::vector<FillCompareRow>& rows,
-                                 const store::ChartIndex& library) {
+                                 const store::ChartIndex& chart_index) {
     // The page's stats() adds up each row's "k", the same index's copies, by
     // the same statuses; the test "fill page: the tiles add up the copies
     // tally_fill_rows adds up" pins the two together.
@@ -324,7 +324,7 @@ FillCompareStats tally_fill_rows(const std::vector<FillCompareRow>& rows,
         else if (r.status == kStatusInBoth) in_both.push_back(r.hyhash);
     }
     auto count = [&](const std::vector<std::string>& ids) {
-        return static_cast<int>(library.count(ids));
+        return static_cast<int>(chart_index.count(ids));
     };
     FillCompareStats stats;
     stats.total = count(all);

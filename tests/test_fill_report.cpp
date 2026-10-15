@@ -46,11 +46,6 @@ app::Settings settings(int cap = kCloneHeroSpCap) {
     return s;
 }
 
-// The fill rule a side's records are filed under.
-FillDeadlineRule rule_for(bool legacy_fills) {
-    return legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;
-}
-
 // One analyzed corpus chart, kept alive for the whole file: it supplies a real
 // record to build records from. The scores themselves are overridden per
 // row, so which chart it is doesn't matter.
@@ -76,7 +71,7 @@ void save(store::RecordStore& store, bool legacy_fills, const std::string& hash,
           HydraRecord record, const std::function<void(store::PreparedRecord&)>& edit = {}) {
     record.legacy_fills = legacy_fills;
     store::PreparedRecord prepared = store::prepare_record(
-        hash, settings().profile_with_fills(rule_for(legacy_fills)), record);
+        hash, settings().profile_with_fills(fill_rule_for(legacy_fills)), record);
     if (edit) edit(prepared);
     store.save(prepared);
 }

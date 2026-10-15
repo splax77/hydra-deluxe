@@ -77,8 +77,8 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
                                               const Settings& settings);
 
 // Every field counts library rows: each status's charts counted through
-// `library`'s ChartIndex::count (D79 item 3). `library` is the 1.1
-// database's, whose copies the rows carry.
+// `chart_index`'s ChartIndex::count (D79 item 3). `chart_index` is the 1.1
+// database's library, whose copies the rows carry.
 struct FillCompareStats {
     int total = 0;
     int same = 0;
@@ -89,7 +89,7 @@ struct FillCompareStats {
     int in_both = 0;
 };
 FillCompareStats tally_fill_rows(const std::vector<FillCompareRow>& rows,
-                                 const store::ChartIndex& library);
+                                 const store::ChartIndex& chart_index);
 
 // The self-contained comparison page, with its own columns. Its template comes
 // from html::page_template and html::render_page fills it (html_page.h). The
