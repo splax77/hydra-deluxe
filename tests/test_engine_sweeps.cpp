@@ -305,7 +305,7 @@ TEST_CASE("legacy fill deadline analyzes a chart end to end") {
             SearchSettings cfg;
             cfg.sp_cap = 4;
             cfg.depth_value = 0;
-            cfg.legacy_fill_deadline = true;
+            cfg.legacy_fills = true;
             legacy = analyze_chart(song, cfg);
         } catch (const ChartFileError&) {
             continue;
@@ -626,7 +626,7 @@ TEST_CASE("settings_key: the text for SearchSettings{} is pinned, and every fiel
     changed[1].depth_mode = DepthMode::Points;
     changed[2].depth_value = 5;
     changed[3].ms_filter = 10.0;
-    changed[4].legacy_fill_deadline = true;
+    changed[4].legacy_fills = true;
     changed[5].rules.max_tied_paths += 1;
     for (size_t i = 0; i < changed.size(); ++i) {
         INFO("changed field " << i);

@@ -82,24 +82,6 @@
       "remove_by": "2026-10-28"
     },
     {
-      "question": "Under which settings is a chart analyzed (its profile)?",
-      "file": "src/app/fill_report.cpp",
-      "line_text": "old_lens.legacy_fills = 1;",
-      "removed_by": "D115-A2-4",
-      "date": "2026-10-14",
-      "added_by": "D115-A1-4",
-      "remove_by": "2026-10-28"
-    },
-    {
-      "question": "Under which settings is a chart analyzed (its profile)?",
-      "file": "src/app/fill_report.cpp",
-      "line_text": "new_lens.legacy_fills = 0;",
-      "removed_by": "D115-A2-4",
-      "date": "2026-10-14",
-      "added_by": "D115-A1-4",
-      "remove_by": "2026-10-28"
-    },
-    {
       "question": "Does a selection change scroll the list, and how far?",
       "file": "src/ui/report_window.h",
       "line_text": "if (scroll_to && *scroll_to == static_cast<size_t>(k)) ImGui::SetScrollHereY(0.5f);",
@@ -136,12 +118,12 @@
       "remove_by": "2026-10-28"
     },
     {
-      "question": "Which way is text aligned?",
-      "file": "src/app/path_view.cpp",
-      "line_text": "std::snprintf(buf, sizeof(buf), \"%10s\", group_thousands(v).c_str());",
-      "removed_by": "CS-T5b: the score breakdown's numbers start in one column after the longest label (answer 11)",
+      "question": "Which legacy_fills flag names a fill rule?",
+      "file": "src/store/record_store.cpp",
+      "line_text": "legacy_fills = stamped_fill_rule() == FillDeadlineRule::Ch10 ? \"1\" : \"0\";",
+      "removed_by": "A1-6c: the results-key upgrade and stamped_fill_rule go with the cut",
       "date": "2026-10-14",
-      "added_by": "CS-T5a",
+      "added_by": "D115-F1",
       "remove_by": "2026-10-28"
     }
   ],

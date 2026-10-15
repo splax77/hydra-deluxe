@@ -131,15 +131,15 @@ TEST_CASE("settings: load and save name the same keys") {
 TEST_CASE("the 1.0 fills setting reaches the search and the result's key together") {
     Settings s;
     CHECK_FALSE(s.legacy_fills);  // Clone Hero 1.1 by default
-    CHECK_FALSE(s.to_analysis_settings().legacy_fill_deadline);
+    CHECK_FALSE(s.to_analysis_settings().legacy_fills);
     CHECK(s.lens().legacy_fills == 0);
 
     s.legacy_fills = true;
-    CHECK(s.to_analysis_settings().legacy_fill_deadline);
+    CHECK(s.to_analysis_settings().legacy_fills);
     CHECK(s.lens().legacy_fills == 1);
     CHECK(s.record_key("h").lens.legacy_fills == 1);
     const hydra::app::BatchRun run = s.batch_run();
-    CHECK(run.settings.legacy_fill_deadline);
+    CHECK(run.settings.legacy_fills);
     CHECK(run.lens.legacy_fills == 1);
 }
 
@@ -156,7 +156,7 @@ TEST_CASE("command-line settings take the fill rule from the flag, the rest from
     write_ini("legacy_fills=1\nsp_cap=2\n");
     const Settings off = Settings::load_for_command_line(false);
     CHECK_FALSE(off.legacy_fills);
-    CHECK_FALSE(off.batch_run().settings.legacy_fill_deadline);
+    CHECK_FALSE(off.batch_run().settings.legacy_fills);
     CHECK(off.sp_cap == 2);  // every other setting still comes from the INI
 
     write_ini("legacy_fills=0\n");
@@ -585,6 +585,35 @@ TEST_CASE("profile_with_fills differs from profile only in the fill rule") {
     const store::Profile ch11 = s.profile_with_fills(hydra::FillDeadlineRule::Ch11);
     CHECK(ch11.lens.legacy_fills == 0);
     CHECK(s.profile_with_fills(hydra::FillDeadlineRule::Ch10) == s.profile());
+}
+
+TEST_CASE("each retired settings key loads silently and is never written back") {
+    for (const hydra::app::RetiredKey& r : hydra::app::kRetiredSettingsKeys) {
+        CAPTURE(r.name);
+        CHECK_FALSE(r.retired_in.empty());
+        const std::string path = testtemp::temp_path("retired_key", ".ini");
+        {
+            std::ofstream f(path, std::ios::trunc);
+            f << r.name << "=8\n";
+        }
+        const Settings s = Settings::load_file(path);
+        CHECK(s.analysis_changes().empty());
+        // save_file writes every live key, so a retired one must not appear.
+        REQUIRE(s.save_file(path));
+        std::ifstream in(path);
+        const std::string saved{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+        in.close();
+        CHECK(saved.find(std::string(r.name) + "=") == std::string::npos);
+        std::remove(path.c_str());
+    }
+}
+
+TEST_CASE("legacy_fills_for reads fill_rule_for backwards") {
+    using hydra::FillDeadlineRule;
+    CHECK(hydra::legacy_fills_for(FillDeadlineRule::Ch10));
+    CHECK_FALSE(hydra::legacy_fills_for(FillDeadlineRule::Ch11));
+    for (bool flag : {false, true})
+        CHECK(hydra::legacy_fills_for(hydra::fill_rule_for(flag)) == flag);
 }
 
 TEST_CASE("batch_run bundles one Settings' chartmode, lens and search settings") {

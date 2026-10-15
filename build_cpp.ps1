@@ -48,6 +48,14 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "configure failed" }
     }
 
+    # The test-file glob in CMakeLists.txt is re-checked only inside the build,
+    # by ZERO_CHECK. By then MSBuild has already loaded the old project files,
+    # so a new test file would be left out of this build and picked up only by
+    # the next one. Running ZERO_CHECK on its own first regenerates the
+    # projects before the real build loads them.
+    & $cmake --build --preset $Preset --config $Config --target ZERO_CHECK
+    if ($LASTEXITCODE -ne 0) { throw "ZERO_CHECK (the regeneration check) failed" }
+
     # --parallel with no count lets MSBuild build independent projects at
     # once, uncapped (decision D86.5).
     $buildArgs = @("--build", "--preset", $Preset, "--config", $Config, "--parallel")
