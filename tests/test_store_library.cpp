@@ -14,21 +14,47 @@
 
 #include "core/model.h"
 #include "db_file_util.h"  // exec_on_file, scalar_on_file
-#include "display_fixtures.h"  // add_stale_rows
+#include "display_fixtures.h"  // save_old_build_record, other_rules_record
 #include "library_fixtures.h"  // library_row
 #include "record_fixtures.h"
+#include "store/chart_index.h"
 #include "store/record_store.h"
-#include "store_fixtures.h"  // at_cap
+#include "store_fixtures.h"  // at_cap, at4
 #include "temp_util.h"
 
 using namespace hydra;
 using namespace hydra::store;
 
+using hydra::test::at4;
 using hydra::test::at_cap;
 using hydra::test::exec_on_file;
 // One integer straight out of a database file: how these tests look at a
 // table without the store growing an accessor for it.
 using hydra::test::scalar_on_file;
+
+namespace {
+
+// How many copies the library lists of each chart it lists, by song id, as
+// the store's chart index reads them.
+std::map<std::string, int> listed_copies(RecordStore& store) {
+    const ChartIndex index = store.chart_index();
+    std::map<std::string, int> out;
+    for (const std::string& id : index.song_ids()) out[id] = index.copies(id);
+    return out;
+}
+
+// The title, artist and charter of the library row that names chart `id`.
+struct ChartNames {
+    std::string title, artist, charter;
+};
+ChartNames names_of(RecordStore& store, const std::string& id) {
+    const ChartIndex index = store.chart_index();
+    const ChartLibraryEntry* naming = index.naming(id);
+    REQUIRE(naming != nullptr);
+    return ChartNames{naming->title, naming->artist, naming->charter};
+}
+
+}  // namespace
 
 TEST_CASE("a failed library rebuild keeps the previous scan") {
     // The rebuild used to drop the table before opening its transaction, so
@@ -60,42 +86,39 @@ TEST_CASE("a failed library rebuild keeps the previous scan") {
 
 TEST_CASE("a result's names follow the latest scan") {
     // User decision 2026-09-26: fixing song.ini reaches the reports. A
-    // result's names come from the library (kNamingCopiesSql), so a rescan
+    // result's names come from the library (ChartIndex), so a rescan
     // after song.ini changed renames it.
     RecordStore store(":memory:");
     const ChartLibraryEntry first = library_row("h", "Scanned Title");
     ChartLibraryEntry second = library_row("h", "Second Copy");
     second.notespath = "C:\\charts\\copy\\notes.chart";
     store.rebuild_chart_library({first, second});
-    store.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
-    auto listed = [&] {
-        std::vector<RecordListing> rows =
-            store.list_records(std::nullopt, CapQuery::at(4), Lens{}, SortColumn::Score, true);
-        REQUIRE(rows.size() == 1);
-        return rows[0];
-    };
+    store.save(prepare_record("h", at4(), at_cap(4)));
     // The scan found two copies of the chart; the first one it listed names
     // it.
-    CHECK(listed().ref_name == "Scanned Title");
+    CHECK(names_of(store, "h").title == "Scanned Title");
 
     ChartLibraryEntry renamed = library_row("h", "New Title");
     renamed.artist = "New Artist";
     renamed.charter = "New Charter";
     store.rebuild_chart_library({renamed, second});
-    CHECK(listed().ref_name == "New Title");
-    CHECK(listed().ref_artist == "New Artist");
-    CHECK(listed().ref_charter == "New Charter");
+    CHECK(names_of(store, "h").title == "New Title");
+    CHECK(names_of(store, "h").artist == "New Artist");
+    CHECK(names_of(store, "h").charter == "New Charter");
+    // The rescans kept the chart's record.
+    CHECK(store.lookup_one("h", at4()).status == RecordStatus::Ready);
 
     // A chart the scan found but nobody analyzed has no result to count.
     store.rebuild_chart_library({renamed, library_row("x", "Never Analyzed")});
-    CHECK(store.counts().first == 1);
+    CHECK(store.record_count() == 1);
 }
 
 // ---- store speed (2026-09-26 audit, Task 9) --------------------------------
 
 TEST_CASE("the library table's md5 index exists") {
-    // D76: the scan's purge and list_records find a chart's library rows by
-    // md5; without the index each lookup read the whole library table.
+    // D76: the scan's purge and list_chart_library_copies find a chart's
+    // library rows by md5; without the index each lookup read the whole
+    // library table.
     const std::string path = testtemp::temp_path("md5_index", ".db");
     std::remove(path.c_str());
     { RecordStore store(path); }
@@ -109,19 +132,18 @@ TEST_CASE("the library table's md5 index exists") {
 TEST_CASE("the scan's first copy names a chart whatever copy was analyzed") {
     // D51 call 10 (finding 63): one rule names a chart the scan found twice,
     // the first copy it listed. Every chart takes its names from the library
-    // (kNamingCopiesSql), a single copy included.
+    // (ChartIndex), a single copy included.
     RecordStore store(":memory:");
     const ChartLibraryEntry first = library_row("h", "Scanned Title");
     ChartLibraryEntry second = library_row("h", "Second Copy");
     second.notespath = "C:\\charts\\copy\\notes.chart";
     store.rebuild_chart_library({first, second, library_row("s", "Single Copy")});
 
-    store.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
-    store.add_record(RecordKey{"s", "mode", CapQuery::at(4)}, at_cap(4));
+    store.save(prepare_record("h", at4(), at_cap(4)));
+    store.save(prepare_record("s", at4(), at_cap(4)));
     std::map<std::string, std::string> names;
-    for (const RecordListing& row :
-         store.list_records(std::nullopt, CapQuery::at(4), Lens{}, SortColumn::Score, true))
-        names[row.hyhash] = row.ref_name;
+    for (const RecordRow& record : store.ready_records(at4()))
+        names[record.song_id] = names_of(store, record.song_id).title;
     CHECK(names ==
           std::map<std::string, std::string>{{"h", "Scanned Title"}, {"s", "Single Copy"}});
 }
@@ -162,7 +184,7 @@ int64_t results_of(const std::string& path, const std::string& hash) {
 
 // One analyzed chart as the click saves it.
 void save_chart(RecordStore& store, const std::string& hash, const std::string& mode = "mode") {
-    store.save_analysis(prepare_row(RecordKey{hash, mode, CapQuery::at(4)}, at_cap(4)));
+    store.save(prepare_record(hash, at4(mode), at_cap(4)));
 }
 
 // library_row's row for another folder holding the same chart.
@@ -207,7 +229,7 @@ TEST_CASE("a chart with two library copies keeps its rows when one copy leaves")
     {
         RecordStore store(path);
         store.rebuild_chart_library({second_copy("a")});
-        CHECK(store.library_copies() == std::unordered_map<std::string, int>{{"a", 1}});
+        CHECK(listed_copies(store) == std::map<std::string, int>{{"a", 1}});
     }
     CHECK(results_of(path, "a") == 1);
     std::remove(path.c_str());
@@ -219,21 +241,26 @@ TEST_CASE("a library chart keeps its rows for other chart modes, including Stale
     {
         RecordStore store(path);
         store.rebuild_chart_library({library_row("a", "A"), library_row("b", "B")});
+        const Profile rules{"rules", CapQuery::at(8), Lens{}};
+        const Profile build{"build", CapQuery::at(8), Lens{}};
         save_chart(store, "a", "mode");
         save_chart(store, "a", "other mode");
-        test::add_stale_rows(store, at_cap(8), RecordKey{"a", "build", CapQuery::at(8)},
-                             RecordKey{"a", "rules", CapQuery::at(8)},
-                             RecordKey{"a", "both", CapQuery::at(8)});
         save_chart(store, "b");
-        REQUIRE(store.get_summary(RecordKey{"a", "build", CapQuery::at(8)}).status ==
-                RecordStatus::Stale);
+        store.save(prepare_record("a", rules, test::other_rules_record(at_cap(8))));
+        // A save purges the chart's records from other builds (RecordStore::save
+        // says which), so the other build's record is the chart's last save.
+        test::save_old_build_record(store, prepare_record("a", build, at_cap(8)));
+        REQUIRE(store.lookup_one("a", rules).status == RecordStatus::Stale);
+        REQUIRE(store.lookup_one("a", rules).stale_rules);
+        REQUIRE(store.lookup_one("a", build).status == RecordStatus::Stale);
+        REQUIRE(store.lookup_one("a", build).stale_build);
     }
-    REQUIRE(results_of(path, "a") == 5);
+    REQUIRE(results_of(path, "a") == 4);
     {
         RecordStore store(path);
         store.rebuild_chart_library({library_row("a", "A")});
     }
-    CHECK(results_of(path, "a") == 5);
+    CHECK(results_of(path, "a") == 4);
     CHECK(results_of(path, "b") == 0);
     std::remove(path.c_str());
 }
@@ -253,7 +280,7 @@ TEST_CASE("reidentify_chart moves the library row to the new md5 and deletes the
     {
         RecordStore store(path);
         store.reidentify_chart(a.notespath, "a2", "sig-a2");
-        CHECK(store.library_copies() == std::unordered_map<std::string, int>{{"a2", 1}, {"b", 1}});
+        CHECK(listed_copies(store) == std::map<std::string, int>{{"a2", 1}, {"b", 1}});
         const ChartLibraryCache cache = store.chart_library_cache();
         REQUIRE(cache.count(a.notespath) == 1);
         CHECK(cache.at(a.notespath).md5 == "a2");
@@ -277,7 +304,7 @@ TEST_CASE("reidentify_chart keeps the old md5's rows while another library row h
     {
         RecordStore store(path);
         store.reidentify_chart(copy.notespath, "a2", "sig-a2");
-        CHECK(store.library_copies() == std::unordered_map<std::string, int>{{"a", 1}, {"a2", 1}});
+        CHECK(listed_copies(store) == std::map<std::string, int>{{"a", 1}, {"a2", 1}});
     }
     CHECK(results_of(path, "a") == 1);
     std::remove(path.c_str());

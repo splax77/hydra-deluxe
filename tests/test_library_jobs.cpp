@@ -24,7 +24,7 @@
 #include "core/error_kind.h"
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file
-#include "display_fixtures.h"  // kTagOnlyTitle
+#include "display_fixtures.h"  // kTagOnlyTitle, save_batch_record
 #include "net/dmbot_client.h"
 #include "scoped_hook.h"
 #include "store/record_store.h"
@@ -358,7 +358,7 @@ TEST_CASE("jobs: an empty report shows generate_report's reason, or the app's ow
     const BatchRun run = test_run();
 
     RecordStore no_library(":memory:");
-    hydra::test::store_batch_result(no_library, "orphan", run.profile.cap.exact);
+    hydra::test::save_batch_record(no_library, "orphan", run.profile);
     hydra::ui::ReportJob orphaned(no_library, run);
     orphaned.start();
     wait_until([&] { return orphaned.finished(); }, "the report with no library to finish");
