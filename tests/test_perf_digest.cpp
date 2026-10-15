@@ -117,35 +117,46 @@ uint64_t parse_digest(const app::Settings& st) {
 
 }  // namespace
 
+// All six digests below were re-pinned from one run on 2026-10-14, on the
+// D115 timing branch with main merged in (task TJ-4). The results stamp moved
+// to 2.8.0 for the same three reasons:
+//  (a) B2-3 retired fill_length_measures, so the rules fingerprint that every
+//      prepared-row digest folds changed.
+//  (b) Star Power ends now come from exact whole-number measure sums instead
+//      of truncated doubles. That moves some activation ends 1 or 2 ticks
+//      later on charts with meters other than 4/4, in 1.0 and 1.1 mode alike
+//      (9 of 97 charts in 1.0 mode); no best score or path changed.
+//  (c) A 1.1 generated fill now starts on its measure line, and the measure
+//      grid restarts at a time-signature change, which moves the 1.1 and
+//      parse digests.
+
 TEST_CASE("the corpus's prepared-row digest is pinned") {
-    check_engine_digest(pinned_settings("Expert", true, true), 0xb95d0ccd1b78b25dULL);
+    check_engine_digest(pinned_settings("Expert", true, true), 0xf226a247e92c871eULL);
 }
 
-// The three below were each pinned from one run on 2026-10-10 at 013f4c66.
-
 TEST_CASE("the corpus's prepared-row digest is pinned at Hard, Pro Drums off, 2x Bass off") {
-    check_engine_digest(pinned_settings("Hard", false, false), 0xe040c57fed344ba9ULL);
+    check_engine_digest(pinned_settings("Hard", false, false), 0x968045ace34f6addULL);
 }
 
 TEST_CASE("the corpus's prepared-row digest is pinned with the CH 1.0 fill rule") {
     app::Settings s = pinned_settings("Expert", true, true);
     s.legacy_fills = true;
-    check_engine_digest(s, 0x768e40e5ea908c08ULL);
+    check_engine_digest(s, 0x49c7a12c0626c05dULL);
 }
 
 TEST_CASE("the corpus's prepared-row digest is pinned with Note Shuffle on and the ms limit off") {
     app::Settings s = pinned_settings("Expert", true, true);
     s.view_noteshuffle = true;
     s.mslimit_enabled = false;
-    check_engine_digest(s, 0x961d9a8ad453baa0ULL);
+    check_engine_digest(s, 0xc2ea4e135256414dULL);
 }
 
 TEST_CASE("the corpus's parse digest is pinned") {
     const uint64_t got = parse_digest(pinned_settings("Expert", true, true));
-    CHECK_MESSAGE(got == 0x30d0bf84617905baULL, "parse digest is now " << hex(got));
+    CHECK_MESSAGE(got == 0xe1efe092cfa504afULL, "parse digest is now " << hex(got));
 }
 
 TEST_CASE("the corpus's parse digest is pinned at Hard, Pro Drums off, 2x Bass off") {
     const uint64_t got = parse_digest(pinned_settings("Hard", false, false));
-    CHECK_MESSAGE(got == 0xb54fab6f44865a9cULL, "parse digest is now " << hex(got));
+    CHECK_MESSAGE(got == 0x80f7de7a2baccb54ULL, "parse digest is now " << hex(got));
 }
