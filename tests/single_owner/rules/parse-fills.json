@@ -98,11 +98,12 @@
       "date": "2026-10-14",
       "decision": "D115 TJ-1 (user, 2026-10-14: keep Clone Hero 1.0 exactly as before)",
       "added_by": "D115-TJ-1",
-      "pattern": "\\b(check_activations|place_fills_ch1[01])\\(",
+      "pattern": "\\b(check_activations|place_fills_ch1[01])\\(|\\bkNotesOnlyFills\\b",
       "must_match": [
         "song.check_activations(rules_, fills_rule_);",
         "song.place_fills_ch10(rules);",
-        "place_fills_ch11(settings.rules);"
+        "place_fills_ch11(settings.rules);",
+        "Song song = load_songpath(path, reading, rules, kNotesOnlyFills);"
       ],
       "must_not_match": [
         "place_authored_fills(song, fills_, rules_.fill_land_slop_beats);",
@@ -147,8 +148,33 @@
         },
         {
           "file": "src/parse/song.h",
-          "line_text": "void check_activations(const core::Rules& rules = core::default_rules(),",
+          "line_text": "void check_activations(const core::Rules& rules, FillDeadlineRule fills);",
           "why": "the owner's declaration"
+        },
+        {
+          "file": "src/parse/song.h",
+          "line_text": "inline constexpr FillDeadlineRule kNotesOnlyFills = FillDeadlineRule::Ch11;",
+          "why": "the rule a caller names when it reads only the chords, never which chord carries a fill; each use below is listed so a new one is a decision"
+        },
+        {
+          "file": "src/app/song_length.cpp",
+          "line_text": "rules, kNotesOnlyFills)",
+          "why": "chart_song_length_ms reads only the last chord's time"
+        },
+        {
+          "file": "src/app/song_length.cpp",
+          "line_text": ": load_songpath(notespath, expert, rules, kNotesOnlyFills));",
+          "why": "chart_song_length_ms reads only the last chord's time"
+        },
+        {
+          "file": "src/app/dynamics_breakdown.cpp",
+          "line_text": "return load_songpath(notespath, counted, core::default_rules(), kNotesOnlyFills);",
+          "why": "load_dynamics_song: the Dynamics count reads only the chords' dynamics"
+        },
+        {
+          "file": "src/app/dynamics_breakdown.cpp",
+          "line_text": ": load_songpath(notespath, reading, core::default_rules(), kNotesOnlyFills));",
+          "why": "dynamics_for_settings: the pad rows read only the chords' dynamics"
         },
         {
           "file": "src/parse/song.h",
@@ -161,7 +187,7 @@
           "why": "the 1.1 generator's private declaration"
         }
       ],
-      "note": "Running a fill generator, or choosing between them, anywhere but the parser. The parser picks the generator from the FillDeadlineRule its caller passes to the parse/song.h loaders; a caller holding a setting converts it with search/graph.h's fill_rule_for. Decided by: D115 TJ-1 (user, 2026-10-14)"
+      "note": "Running a fill generator, or choosing between them, anywhere but the parser. The parser picks the generator from the FillDeadlineRule its caller passes to the parse/song.h loaders; a caller holding a setting converts it with search/graph.h's fill_rule_for. kNotesOnlyFills (parse/song.h) is the one fixed rule allowed, for a caller that reads only the chords; every use is an owner line here, so a caller that reads fills cannot pick it up unnoticed. Decided by: D115 TJ-1 (user, 2026-10-14)"
     }
   ]
 }
