@@ -1,7 +1,7 @@
 # The interpreter's smoke script: hydra_uitest --script tests/ui/scripts/smoke.txt
 # It runs most verbs once on the testdata/input corpus and passes when every
 # line does. Verb table: docs/agents/ui-testing.md.
-timeout 45
+timeout 30
 click Scan library
 wait-idle
 click //Scanning charts/Continue
