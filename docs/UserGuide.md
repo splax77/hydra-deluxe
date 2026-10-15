@@ -129,7 +129,7 @@ The `Best path` cell shows the song's state under the current analysis settings:
 | A score and a path, like `378,315  3- 1 2` | The optimal path. |
 | `Stale` | The result is out of date. Either another version of the app made it, or it was made under different rules in `hydra_rules.ini`. Click the song or run a batch to refresh it. If the cause was a rules edit, switching the rules back brings the result back. |
 | Nothing | The song was analyzed, but the analysis kept no path. Its panel says `No paths found.` |
-| `Can't analyze` (dim) | Hydra Deluxe tried, and something in the chart file itself stops the analysis. Hover the cell for the reason, like `No Expert Pro Drums notes in this chart.` |
+| `Can't analyze` (dim) | Hydra Deluxe tried, and something in the chart file itself stops the analysis, like `No Expert Pro Drums notes in this chart.` |
 
 Hover a `Not analyzed` or `Stale` cell for the same explanation. Hovering a `Can't analyze` cell shows the reason, with a dim line of details under it when there are any.
 
@@ -322,7 +322,7 @@ First a window titled `Analyze library` asks you to confirm. It says how many so
 
 A batch skips songs that already have a current result under these settings. A `Stale` result isn't current, so a batch runs those songs again with the box unchecked. To analyze the songs with a current result again too, check `Also re-analyze charts that already have a result`. When every song already has a current result and the box is off, the window says `Every chart here already has a result.` and `Start analyzing` stays greyed out.
 
-A `Can't analyze` song counts as one with a result, because its saved failure is its result. A batch skips it and counts it as skipped. When the songs in the batch include some, the window adds a dim line, `N of these can't be analyzed. Check the box to try them again.` Checking `Also re-analyze charts that already have a result` tries them again along with the rest.
+A `Can't analyze` song counts as one with a result, because its saved failure is its result. A batch skips it and counts it as skipped. When some of the songs in the batch can't be analyzed, the `Analyze library` window adds a dim line: `N of these can't be analyzed. Check the box to try them again.` Checking `Also re-analyze charts that already have a result` tries them again along with the rest.
 
 The batch uses all but one of your CPU cores, and 8 at most. You can keep browsing and open songs while it runs. A strip under the toolbar shows its progress: how many songs are done, the song being analyzed, the time so far and, after a few songs, an estimate of the time left, like `about 1:30 left`. An open song's panel already shows the engine's result, so the batch only updates its library row.
 
@@ -426,7 +426,7 @@ The table has one row per path and starts sorted by score, highest first. Its co
 
 Click a row to select that song in Hydra Deluxe, the same as clicking it in the library. The report holds only results made under your current settings, so the Paths tab shows the same paths as the row.
 
-When no song has paths to show, because every song can't be analyzed or has no result, the window shows the lines above the table and `Nothing to show`.
+When every song either can't be analyzed or has no result, the window shows the lines above the table and `Nothing to show`.
 
 A report built before any song has a result under the current settings, while other results exist, says `The path report could not be built.` and names the settings it looked under, like `Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, SP cap 8, Clone Hero 1.1 fills). Analyze with these settings, or change them.` When nothing is analyzed at all, it says `Nothing is analyzed yet. Click a song or run a batch to analyze it.`
 
