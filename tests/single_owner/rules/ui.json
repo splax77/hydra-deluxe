@@ -1898,6 +1898,30 @@
         "src/ui/paths_tab.cpp"
       ],
       "note": "The backend table's cells and its column widths both read a row's text for a column, so a cell draws backend_cell and never the row's fields. Only the tab's file is scanned: path_view.cpp builds the rows and sets those fields."
+    },
+    {
+      "question": "Who turns a library file the startup open set aside into the sentence the app shows?",
+      "owner": "StoreOpenJob::run in src/ui/library_jobs.cpp",
+      "owner_file": "src/ui/library_jobs.cpp",
+      "owner_symbol": "StoreOpenJob::run",
+      "date": "2026-10-14",
+      "decision": "D115 task A1-6b (user, 2026-10-14: one sentence, once, in an information box before the scan starts)",
+      "added_by": "D115-A1-6b",
+      "pattern": "\\bold_library_set_aside_notice\\s*\\(",
+      "owner_files": [
+        "src/ui/library_jobs.cpp",
+        "src/app/user_messages.cpp",
+        "src/app/user_messages.h"
+      ],
+      "must_match": [
+        "set_status(app::old_library_set_aside_notice(app::db_path()));",
+        "show_startup_notice(hwnd, hydra::app::old_library_set_aside_notice(db));"
+      ],
+      "must_not_match": [
+        "show_startup_notice(hwnd, own_app->startup_notice());",
+        "if (store_->set_aside_path())"
+      ],
+      "note": "The open reads the store's set_aside_path once and keeps the sentence; AppState::startup_notice carries it to main.cpp's box, whose closing starts the scan. A second caller would say it a second time or from a second reading of the fact. user_messages holds the sentence itself."
     }
   ]
 }

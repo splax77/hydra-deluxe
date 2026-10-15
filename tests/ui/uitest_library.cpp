@@ -10,7 +10,9 @@
 
 #include "../db_file_sql.h"          // tests/ is not on the runner's include path
 #include "../old_layout_fixture.h"
+#include "../testdata_dirs.h"  // root
 #include "app/config.h"
+#include "app/user_messages.h"  // old_library_set_aside_notice
 #include "imgui_internal.h"
 #include "render/overlay_layout.h"  // ellipsize, the one cutting rule
 #include "ui/app_shell.h"  // remember_library_share
@@ -1110,6 +1112,63 @@ void test_startup_screen(ImGuiTestContext* ctx) {
                 int64_t{0});
 }
 
+// Removes the set-aside copy of the harness's library file when it goes, so
+// a failed check cannot leave one for startup-screen to find.
+struct SetAsideCleanup {
+    std::string db;
+    void remove() const {
+        for (const std::string& file :
+             hydra::store::with_side_files(hydra::store::set_aside_path(db))) {
+            std::error_code ec;
+            fs::remove(fs::u8path(file), ec);
+        }
+    }
+    ~SetAsideCleanup() { remove(); }
+};
+
+// D115 A1-6b (user decision 2026-10-14): a library file older than 2.2.0 is
+// set aside and Hydra starts a fresh library. The sentence for main.cpp's
+// information box waits until the box closes, frames go on drawing without a
+// scan meanwhile, and closing it starts the scan of the ini's chart folders.
+// The box itself is Windows'; this test plays its part with
+// startup_notice_closed, as main.cpp does.
+void test_old_library_set_aside(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    // A real 2.1.0 file, copied: the checked-in one is never opened.
+    const std::string fixture = corpus::testdata_root() + "/store/v2.1.0-schema4.db";
+    const std::string seed = h.temp_dir + "\\v210_seed.db";
+    std::error_code ec;
+    IM_CHECK(fs::copy_file(fs::u8path(fixture), fs::u8path(seed),
+                           fs::copy_options::overwrite_existing, ec));
+    const SetAsideCleanup cleanup{h.db_path};
+    cleanup.remove();
+    const std::string seed_before = h.seed_db;
+    h.seed_db = seed;
+    reset_app(h);
+    h.seed_db = seed_before;
+
+    IM_CHECK(h.app->store_ready());
+    IM_CHECK(fs::exists(fs::u8path(hydra::store::set_aside_path(h.db_path))));
+    IM_CHECK(h.app->library.rows().empty());
+    IM_CHECK_STR_EQ(h.app->startup_notice().c_str(),
+                    hydra::app::old_library_set_aside_notice(h.db_path).c_str());
+    // Frames draw while the box is up, and no scan starts behind it.
+    ctx->Yield(3);
+    IM_CHECK(h.app->scan_job == nullptr);
+    IM_CHECK(!h.app->startup_notice().empty());
+
+    h.app->startup_notice_closed();
+    IM_CHECK(h.app->startup_notice().empty());
+    IM_CHECK(wait_until(ctx, [&] { return h.app->scan_job != nullptr; }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return h.app->scan_job->snapshot().finished; }, 60));
+    IM_CHECK(h.app->scan_job->snapshot().charts_found > 0);
+    ctx->SetRef("//Scanning charts");
+    ctx->ItemClick("Continue");
+    ctx->Yield(2);
+    IM_CHECK(h.app->scan_job == nullptr);
+    IM_CHECK(h.app->library_shown_count() > 0);
+}
+
 }  // namespace
 
 const std::vector<TestEntry>& library_tests() {
@@ -1134,6 +1193,7 @@ const std::vector<TestEntry>& library_tests() {
         {"library-columns-at-start", test_library_columns_at_start},
         {"library-twin-rows", test_library_twin_rows},
         {"startup-screen", test_startup_screen},
+        {"old-library-set-aside", test_old_library_set_aside},
     };
     return entries;
 }
