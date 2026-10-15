@@ -590,7 +590,7 @@ TEST_CASE("display_backends drops rows beyond a squeeze out") {
         BackendSqueeze bsq;
         bsq.timecode = Timecode::raw(tick);
         tick += 100;
-        bsq.points = 50;
+        bsq.sp_points = 50;
         bsq.offset_ms = off;
         a.backends.push_back(bsq);
     }
@@ -861,7 +861,7 @@ TEST_CASE("MultSqueeze accepts exactly the 2- to 5-note chords that straddle a m
 // Kick and Red (50 each) with yellow and blue cymbals (65 each), hit at
 // combo 7: two notes are paid at 1x and two at 2x. Two notes cross the step,
 // so the right order gains two cymbal bonuses.
-TEST_CASE("MultSqueeze::points is the best order minus the worst order") {
+TEST_CASE("MultSqueeze::gain is the best order minus the worst order") {
     Chord kryb;
     kryb.add_note(NoteColor::Kick);
     kryb.add_note(NoteColor::Red);
@@ -869,13 +869,13 @@ TEST_CASE("MultSqueeze::points is the best order minus the worst order") {
     kryb.add_note(NoteColor::Blue);
     kryb.apply_cymbal(NoteColor::Yellow);
     kryb.apply_cymbal(NoteColor::Blue);
-    CHECK(MultSqueeze(kryb, 7).points() == 30);
+    CHECK(MultSqueeze(kryb, 7).gain() == 30);
 
     Chord ry;
     ry.add_note(NoteColor::Red);
     ry.add_note(NoteColor::Yellow);
     ry.apply_cymbal(NoteColor::Yellow);
-    CHECK(MultSqueeze(ry, 8).points() == 15);
+    CHECK(MultSqueeze(ry, 8).gain() == 15);
 }
 
 // D51 call 3: the advice names every note that has to cross the step.

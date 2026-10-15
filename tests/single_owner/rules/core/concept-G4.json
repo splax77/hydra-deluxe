@@ -62,17 +62,17 @@
       "date": "2026-10-11",
       "decision": "D114 (concept audit finding M45)",
       "added_by": "concept-G4",
-      "pattern": "\\bpoints\\s*-\\s*(core::)?backend_row_value\\(",
+      "pattern": "\\b(sp_)?points\\s*-\\s*(core::)?backend_row_value\\(",
       "anchor": "backend_row_value(",
       "owner_files": [
         "src/core/backend_value.h"
       ],
       "must_match": [
-        "const int lost = row.points - core::backend_row_value(off, row.points, row.sqout_points,",
-        "return points - backend_row_value(offset_ms, points, sqout_points, SqOutPosition::Exact,"
+        "const int lost = row.sp_points - core::backend_row_value(off, row.sp_points, row.sqout_sp_points,",
+        "return sp_points - backend_row_value(offset_ms, sp_points, sqout_sp_points,"
       ],
       "must_not_match": [
-        "const int lost = core::sqout_cost(off, row.points, row.sqout_points, leeway_ms);",
+        "const int lost = core::sqout_cost(off, row.sp_points, row.sqout_sp_points, leeway_ms);",
         "sp_points += core::backend_row_value(offset, sg.sp, sg.sqout_sp, pos,"
       ],
       "scope": [

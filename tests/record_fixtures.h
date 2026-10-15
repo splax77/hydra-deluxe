@@ -316,7 +316,7 @@ inline std::string windows_text(const Path& p) {
         for (const SPSqueeze& q : a.sqinouts) o << ' ' << q.symbol() << q.offset_ms;
         o << " | out " << a.sqout_tick.value_or(-1) << " | backends";
         for (const BackendSqueeze& b : a.backends)
-            o << ' ' << b.timecode.ticks() << '/' << b.points << '/' << b.sqout_points << '/'
+            o << ' ' << b.timecode.ticks() << '/' << b.sp_points << '/' << b.sqout_sp_points << '/'
               << (b.offset_ms ? *b.offset_ms : -1.0);
         o << " | bank";
         for (const int64_t t : a.bank_rise_ticks) o << ' ' << t;

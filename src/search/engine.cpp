@@ -75,7 +75,7 @@ struct NodeView {
 struct EdgeView {
     int32_t dest;
     int32_t notes_points, comboscore, spscore, soloscore, accentscore, ghostscore;
-    int32_t frontend_points;
+    int32_t frontend_sp_points;
     int32_t banked_phrase_ordinal;
     double activation_fill_deadline_ms;
     // A deactivation edge's squeeze choices: Enum::choices[choice_begin,
@@ -179,7 +179,7 @@ Enum enumerate(const ScoreGraph& graph) {
         v.soloscore = (int32_t)o->soloscore;
         v.accentscore = (int32_t)o->accentscore;
         v.ghostscore = (int32_t)o->ghostscore;
-        v.frontend_points = o->frontend_points;
+        v.frontend_sp_points = o->frontend_sp_points;
         v.banked_phrase_ordinal = o->banked_phrase_ordinal;
         // Unset on advance and deactivation edges. An activation edge without
         // one is refused in index_fills (audit R7.35).
@@ -279,7 +279,7 @@ struct Variant {
 };
 struct Path {
     int32_t node;
-    int32_t sp;
+    int32_t sp_bars;
     int32_t currentskips;
     // Phrases still ahead of the path that a squeeze already accounted for.
     // They are the first phrases on the edges to come, in chart order: the
@@ -288,7 +288,7 @@ struct Path {
     //    in sp_end_time and their SqIn step is written, so reaching one adds
     //    no step and no bar, on SP or off it.
     //  - banked_ahead: 0 or 1, off SP only. A late squeeze-out's phrase,
-    //    whose bar the squeeze-out already banked (it is in sp and
+    //    whose bar the squeeze-out already banked (it is in sp_bars and
     //    bank_tail). Reaching it adds nothing. An edge that passes without it
     //    hands that bar back, and the phrase's own edge adds it again.
     int32_t spent;
@@ -303,7 +303,7 @@ struct Path {
     // or -1. Handed to the Act at deactivation.
     int32_t end_tail;
     // The bars banked since the last window closed, one arrival tick each
-    // (an index into banks_), or -1. Always holds p.sp entries. Handed to
+    // (an index into banks_), or -1. Always holds p.sp_bars entries. Handed to
     // the Act at activation.
     int32_t bank_tail;
     // The fills passed over since the last activation, one tick each (an
@@ -796,7 +796,7 @@ void Engine::index_fills() {
 // all-0 pass asks for it (no_skips_ in the group key).
 uint64_t Engine::ready_class(const Path& p, uint64_t* passable) const {
     if (passable) *passable = 0;
-    if (p.sp < kSpActivationBars || !has_value(p.sp_ready_ms)) return 0;
+    if (p.sp_bars < kSpActivationBars || !has_value(p.sp_ready_ms)) return 0;
     uint64_t refused = 0, over = 0, can_pass = 0;
     for (size_t k = (size_t)next_fill_[(size_t)p.node]; k < fill_deadline_.size(); ++k) {
         // Every deadline from here on is at least this one. When even this
@@ -897,7 +897,7 @@ void Engine::advance(Path& p) {
         // it again as a fresh phrase. Either way the spent or banked phrases
         // this edge passes without stay first in line, so nothing fresh can
         // be on it.
-        const int32_t old_sp = p.sp;
+        const int32_t old_sp = p.sp_bars;
         const int32_t spent_here = std::min(sp_n, p.spent);
         const int32_t banked_here = std::min(sp_n - spent_here, p.banked_ahead);
         const int32_t fresh = sp_n - spent_here - banked_here;
@@ -907,20 +907,20 @@ void Engine::advance(Path& p) {
         // below zero. If it does, the bookkeeping above is wrong: fail loudly
         // instead of quietly skipping a phrase the path should bank.
         if (kept < 0) throw std::logic_error("the SP meter went below zero off SP");
-        int32_t sp = kept + fresh;
-        if (has_sp_cap_ && sp > sp_cap_) sp = sp_cap_;
-        p.sp = sp;
-        // Keep the banked bars in step with p.sp: the handed-back bar is the
+        int32_t sp_bars = kept + fresh;
+        if (has_sp_cap_ && sp_bars > sp_cap_) sp_bars = sp_cap_;
+        p.sp_bars = sp_bars;
+        // Keep the banked bars in step with p.sp_bars: the handed-back bar is the
         // newest (a squeeze-out banks onto an empty list), and each gain is a
         // fresh phrase past the spent and banked ones.
         for (int32_t k = 0; k < handed_back; ++k)
             p.bank_tail = banks_[(size_t)p.bank_tail].prev;
-        for (int32_t k = 0; k < sp - kept; ++k)
+        for (int32_t k = 0; k < sp_bars - kept; ++k)
             p.bank_tail = push_tick(
                 banks_, p.bank_tail,
                 eo->sp_times[(size_t)(spent_here + banked_here + k)].first.ticks());
 
-        if (kept < kSpActivationBars && sp >= kSpActivationBars) {
+        if (kept < kSpActivationBars && sp_bars >= kSpActivationBars) {
             const int32_t k = spent_here + banked_here + (kSpActivationBars - 1) - kept;
             if (k < 0 || k >= sp_n) {
                 p.node = NODE_BROKEN;
@@ -939,7 +939,7 @@ void Engine::advance(Path& p) {
 bool Engine::branch_activate(Path& p, Path* child) {
     const NodeView n = node(p.node);
     if (n.branch_edge < 0) return false;
-    if (p.sp < kSpActivationBars) return false;
+    if (p.sp_bars < kSpActivationBars) return false;
 
     const EdgeView e = edge(n.branch_edge);
     const ScoreGraphEdge* eo = eobj(n.branch_edge);
@@ -954,9 +954,9 @@ bool Engine::branch_activate(Path& p, Path* child) {
     bool in_range = false;
     if (!eo->activation_initial_end_times.empty()) {
         int top = eo->activation_initial_end_times.rbegin()->first;
-        if (p.sp >= 0 && p.sp <= top) {
+        if (p.sp_bars >= 0 && p.sp_bars <= top) {
             in_range = true;
-            auto ait = eo->activation_initial_end_times.find(p.sp);
+            auto ait = eo->activation_initial_end_times.find(p.sp_bars);
             aiet_val = (ait == eo->activation_initial_end_times.end())
                            ? NO_TIME
                            : ait->second.ticks();
@@ -970,7 +970,7 @@ bool Engine::branch_activate(Path& p, Path* child) {
     Path c = p;
     c.node = e.dest;
     c.currentskips = 0;
-    c.sp = 0;
+    c.sp_bars = 0;
 
     close_last_activation(c);
 
@@ -980,7 +980,7 @@ bool Engine::branch_activate(Path& p, Path* child) {
     c.bank_tail = -1;
     acts_[(size_t)c.act_tail].skip_tail = p.skip_tail;
     c.skip_tail = -1;
-    add_sp_points(c, e.frontend_points);
+    add_sp_points(c, e.frontend_sp_points);
     c.skipped_e_offset = NO_DOUBLE;
     c.sp_ready_ms = NO_DOUBLE;
     c.sp_end_time = aiet_val;
@@ -1044,7 +1044,7 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
 
     Path c = p;
     c.node = e.dest;
-    c.sp = sq ? 1 : 0;
+    c.sp_bars = sq ? 1 : 0;
     c.sp_end_time = NO_TIME;
     c.end_tail = -1;
     // A squeeze-out banks one bar when the player hits the phrase: just after
@@ -1085,9 +1085,9 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
         const core::SqOutPosition pos =
             core::sqout_position(beo.timecode.ticks(), sqout_phrase);
         const int32_t already_paid =
-            core::paid_by_sp_walk(be_offset) ? beo.points : 0;
-        sp_delta += core::backend_row_value(be_offset, beo.points,
-                                            beo.sqout_points, pos,
+            core::paid_by_sp_walk(be_offset) ? beo.sp_points : 0;
+        sp_delta += core::backend_row_value(be_offset, beo.sp_points,
+                                            beo.sqout_sp_points, pos,
                                             backend_leeway_ms_) -
                     already_paid;
     }
@@ -1414,7 +1414,7 @@ void Engine::reduce_iteration_paths() {
         uint64_t key2 = is_sp ? (uint64_t)pending_sqout_at(p, node(p.node).tick)
                               : (uint64_t)NO_TIME;
         const int64_t sp_value =
-            is_complete ? 0 : (is_sp ? p.sp_end_time : (int64_t)p.sp);
+            is_complete ? 0 : (is_sp ? p.sp_end_time : (int64_t)p.sp_bars);
         uint64_t key_value = (uint64_t)sp_value;
         if (is_sp) {
             if (sp_value < -(int64_t(1) << 46) || sp_value >= (int64_t(1) << 46) ||
@@ -1423,7 +1423,7 @@ void Engine::reduce_iteration_paths() {
             key_value = (key_value << 16) | (uint64_t)p.banked_phrase_ordinal;
         } else if (!is_complete) {
             // The meter in the high bits, ready_class's 32 below it.
-            if (p.sp < 0 || p.sp >= (1 << 30))
+            if (p.sp_bars < 0 || p.sp_bars >= (1 << 30))
                 throw std::logic_error("search group key out of range");
             uint64_t passable = 0;
             key_value = (key_value << 32) | ready_class(p, no_skips_ ? &passable : nullptr);
@@ -1949,7 +1949,7 @@ std::vector<MPath> rebuild(const ScoreGraph& graph, const Enum& en,
                                        out_ticks.begin() + oa.bank_end);
             act.skipped_fill_ticks.assign(out_ticks.begin() + oa.skip_begin,
                                           out_ticks.begin() + oa.skip_end);
-            act.frontend_points = node->branch_edge->frontend_points;
+            act.frontend_sp_points = node->branch_edge->frontend_sp_points;
             act.e_offset = oa.e_offset;
             if (oa.deact_edge >= 0) {
                 act.backends = graph.edge_backends(*en.edges[(size_t)oa.deact_edge]);

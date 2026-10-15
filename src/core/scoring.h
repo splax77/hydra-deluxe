@@ -105,7 +105,7 @@ ChordScoreTable chord_score_table(const Song& song, core::SqOutRule sqout_rule,
 // points, when the chord straddles a multiplier step (a multiplier squeeze).
 // Each note is paid at the multiplier category_scores pays its position. The
 // best order is Chord::notes(true), cheapest first, so the dearest notes land
-// past the step; the worst order is the reverse. MultSqueeze::points calls it.
+// past the step; the worst order is the reverse. MultSqueeze::gain calls it.
 int multsqueeze_gain(const Chord& chord, int combo);
 
 }  // namespace hydra

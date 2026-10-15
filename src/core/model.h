@@ -395,8 +395,8 @@ std::optional<SqueezeKind> squeeze_kind_from_name(std::string_view name);
 struct BackendSqueeze {
     Timecode timecode;
     Chord chord;
-    int points = 0;
-    int sqout_points = 0;
+    int sp_points = 0;
+    int sqout_sp_points = 0;
     std::optional<double> offset_ms;
 
     // The one reader of offset_ms. The engine always stores one; a row
@@ -431,7 +431,7 @@ public:
 
     int multiplier() const;     // the multiplier past the step, from the payout
     std::string direction() const;
-    int points() const;
+    int gain() const;
     std::string notationstr() const;
     // "Hit X and Y last/first." guidance text: the notes that must be placed.
     // Each note is named by Chord::rowstr(pro), where `pro` is the Pro Drums
@@ -535,7 +535,7 @@ struct Activation {
     // plain values (since path format 6, docs/adr/0017).
     Timecode timecode;
     Chord chord;
-    int frontend_points = 0;
+    int frontend_sp_points = 0;
     std::vector<BackendSqueeze> backends;
     std::vector<SPSqueeze> sqinouts;
     double e_offset = 0.0;

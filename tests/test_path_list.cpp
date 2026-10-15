@@ -331,7 +331,7 @@ TEST_CASE("multiplier squeeze: Burnout's one squeeze and the fold's summary") {
     REQUIRE(v.size() == 1);
     CHECK(v[0].label == "2x   (+15 pts):   [Red snare - Yellow cymbal]");
     CHECK(v[0].howto == "Hit [Red snare] first.");
-    CHECK(v[0].points == 15);
+    CHECK(v[0].gain == 15);
     CHECK(multsqueeze_summary(v) == "+15");
     CHECK(multsqueeze_summary({}) == "none");
     std::vector<MultSqueezeView> three(3, v[0]);
@@ -358,7 +358,7 @@ TEST_CASE("multiplier squeeze: the note names follow the Pro Drums setting") {
     REQUIRE(off.size() == 1);
     CHECK(off[0].label == "2x   (+15 pts):   [Red - Yellow cymbal]");
     CHECK(off[0].howto == "Hit [Red] first.");
-    CHECK(off[0].points == 15);
+    CHECK(off[0].gain == 15);
 }
 
 TEST_CASE("PathsTabUi: one row open at a time, expand and collapse all") {
