@@ -88,7 +88,7 @@ int batch_main() {
     if (const int code = hydra::app::load_tool_rules(rulespath, settings.rules)) return code;
     hydra::app::BatchRun run = settings.batch_run();
     const hydra::app::AnalysisSettings& analysis = run.settings;
-    const std::string& chartmode = run.chartmode;
+    const std::string& chartmode = run.profile.chartmode;
     std::string db = dbpath ? *dbpath : hydra::app::db_path();
 
     // A database that won't open is a run that can't start (D72 item 5).

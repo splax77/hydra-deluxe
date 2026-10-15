@@ -293,9 +293,9 @@ struct Settings {
     // hash and profile().
     store::RecordKey record_key(const std::string& hyhash) const;
 
-    // Everything a batch run under these settings needs: the search settings,
-    // and the chartmode and lens its results are filed under. All three come
-    // from this one Settings, so they cannot disagree.
+    // Everything a batch run under these settings needs: profile(), which its
+    // records are filed under, and the search settings. Both come from this
+    // one Settings, so they cannot disagree.
     BatchRun batch_run() const;
 };
 

@@ -183,14 +183,14 @@ TEST_CASE("run_batch saves a record with its top paths through the one save") {
     for (size_t i = 0; i < charts.size(); ++i) {
         CAPTURE(charts[i].chart);
         const hydra::HydraRecord& engine = charts[i].result.record;
-        const hydra::store::RecordLookup found = store.lookup_one(items[i].md5, run.profile());
+        const hydra::store::RecordLookup found = store.lookup_one(items[i].md5, run.profile);
         REQUIRE(found.status == hydra::store::RecordStatus::Ready);
         const std::vector<hydra::store::PathRow>& paths = found.record.paths;
         REQUIRE_FALSE(paths.empty());
         CHECK(paths.size() <= static_cast<size_t>(hydra::app::report::kDefaultReportPaths));
         // Rank 1 is the engine's best path.
         CHECK(paths.front().rank == 1);
-        CHECK(paths.front().path == hydra::store::best_path_text(engine));
+        CHECK(paths.front().path == engine.best_path().pathstring());
         CHECK(paths.front().score == engine.best_path().totalscore());
     }
 }
@@ -209,31 +209,13 @@ TEST_CASE("charts_with_result counts a Ready record and not a Stale or sibling-p
         settings.record_key("stale"),
         analyze_chart_file(corpus::first_chart_with_notes(), settings.to_analysis_settings())
             .record));
-    REQUIRE(store.lookup_one("stale", run.profile()).status == hydra::store::RecordStatus::Stale);
-    REQUIRE(store.lookup_one("sibling", run.profile()).status ==
+    REQUIRE(store.lookup_one("stale", run.profile).status == hydra::store::RecordStatus::Stale);
+    REQUIRE(store.lookup_one("sibling", run.profile).status ==
             hydra::store::RecordStatus::NotAnalyzed);
 
     CHECK(charts_with_result(store, run, /*redo=*/false) ==
           std::unordered_set<std::string>{"ready"});
     CHECK(charts_with_result(store, run, /*redo=*/true).empty());
-}
-
-// The run's profile and Settings::profile are one answer: a batch files and
-// looks up under the profile the settings give (every setting that is in it
-// changed here, so a field BatchRun forgot would show).
-TEST_CASE("a BatchRun made from Settings has Settings::profile as its profile") {
-    Settings settings;
-    settings.view_difficulty = "Hard";
-    settings.view_prodrums = false;
-    settings.view_bass2x = true;
-    settings.sp_cap = 4;
-    settings.legacy_fills = true;
-    settings.depth_value = Settings{}.depth_value + 1;
-    settings.mslimit_enabled = true;
-    settings.mslimit_value = Settings{}.mslimit_value + 1;
-    CHECK(settings.batch_run().profile() == settings.profile());
-    CHECK(Settings{}.batch_run().profile() == Settings{}.profile());
-    CHECK(settings.batch_run().profile() != Settings{}.batch_run().profile());
 }
 
 TEST_CASE("run_work_pool hands every item to the consumer once") {
@@ -468,7 +450,7 @@ TEST_CASE("run_batch: cancel stops running searches within seconds") {
 
     hydra::store::RecordStore store(":memory:");
     BatchRun run;
-    run.chartmode = "cancel-test";
+    run.profile.chartmode = "cancel-test";
     const auto t0 = std::chrono::steady_clock::now();
     run_planned(fake_items(16), run, store, /*redo=*/false, /*worker_count=*/4, callbacks);
     const double seconds =
@@ -508,7 +490,7 @@ TEST_CASE("run_batch: a cancelled real search is neither a result nor a failure"
 
     hydra::store::RecordStore store(":memory:");
     BatchRun run;
-    run.chartmode = "cancel-test";
+    run.profile.chartmode = "cancel-test";
     run_planned({item}, run, store, /*redo=*/false, 1, callbacks);
 
     CHECK(errors == 0);
@@ -535,7 +517,7 @@ TEST_CASE("run_batch analyzes a chart found in two folders once, and counts both
     callbacks.on_progress = [&total](const BatchProgress& p) { total = p.total; };
 
     BatchRun run;
-    run.chartmode = "dedupe-test";
+    run.profile.chartmode = "dedupe-test";
     hydra::store::RecordStore store(":memory:");
     run_planned(items, run, store, /*redo=*/false, 1, callbacks);
 
@@ -630,7 +612,7 @@ TEST_CASE("run_batch reports analyzed, skipped and failed itself") {
     };
 
     BatchRun run;
-    run.chartmode = "counts-test";
+    run.profile.chartmode = "counts-test";
     hydra::store::RecordStore store(":memory:");
     // Chart C is stored before the batch starts.
     run_planned({items[3]}, run, store, /*redo=*/false, 1, callbacks);
@@ -669,7 +651,7 @@ TEST_CASE("run_batch reports a failed chart once per copy, under its first copy'
     callbacks.on_progress = [&last](const BatchProgress& p) { last = p; };
 
     BatchRun run;
-    run.chartmode = "copy-fail-test";
+    run.profile.chartmode = "copy-fail-test";
     hydra::store::RecordStore store(":memory:");
     run_planned(items, run, store, /*redo=*/false, 1, callbacks);
 
@@ -728,7 +710,7 @@ TEST_CASE("run_batch counts a failed save as a failed chart and goes on") {
                               "CREATE TRIGGER refuse_fake1 BEFORE INSERT ON records"
                               " WHEN NEW.song_id = 'fake1' BEGIN SELECT RAISE(ABORT, 'boom'); END;");
     BatchRun run;
-    run.chartmode = "save-fail-test";
+    run.profile.chartmode = "save-fail-test";
     {
         hydra::store::RecordStore store(path);
         run_planned(items, run, store, /*redo=*/false, 1, batch.callbacks);
@@ -761,7 +743,7 @@ TEST_CASE("run_batch hands on_error the sentence its exception's kind names") {
     callbacks.on_error = [&sentences](const std::string&, const std::string& sentence,
                                       const std::string&) { sentences.push_back(sentence); };
     BatchRun run;
-    run.chartmode = "sentence-test";
+    run.profile.chartmode = "sentence-test";
     hydra::store::RecordStore store(":memory:");
     run_planned(fake_items(1), run, store, /*redo=*/false, 1, callbacks);
 
@@ -769,6 +751,35 @@ TEST_CASE("run_batch hands on_error the sentence its exception's kind names") {
     CHECK(sentences[0] ==
           "Hydra couldn't read this chart file. It may be damaged or in a format Hydra doesn't "
           "support; try downloading the song again.");
+}
+
+// A hand-built run can ask for a cap its search did not run at. Each chart's
+// save then refuses it (store::prepare_record checks the profile against the
+// analysis), so the run files nothing under the wrong profile.
+TEST_CASE("run_batch: a run whose profile asks for another cap than its search fails each chart") {
+    const ScanItem item = chart_item(corpus::first_chart_with_notes());
+    int errors = 0;
+    BatchCallbacks callbacks;
+    callbacks.on_error = [&errors](const std::string&, const std::string&, const std::string&) {
+        ++errors;
+    };
+    BatchProgress last;
+    callbacks.on_progress = [&last](const BatchProgress& p) { last = p; };
+
+    BatchRun run;
+    run.profile.chartmode = "cap-mismatch-test";
+    run.profile.cap = hydra::store::CapQuery::at(run.settings.sp_cap + 1);
+    hydra::store::RecordStore store(":memory:");
+    run_planned({item}, run, store, /*redo=*/false, 1, callbacks);
+
+    CHECK(errors == 1);
+    CHECK(last.failed == 1);
+    CHECK(last.analyzed == 0);
+    hydra::store::Profile searched = run.profile;
+    searched.cap = hydra::store::CapQuery::at(run.settings.sp_cap);
+    CHECK(store.lookup_one(item.md5, run.profile).status ==
+          hydra::store::RecordStatus::NotAnalyzed);
+    CHECK(store.lookup_one(item.md5, searched).status == hydra::store::RecordStatus::NotAnalyzed);
 }
 
 TEST_CASE("discover_charts: a song with no usable name reads (unknown)") {
@@ -951,14 +962,14 @@ TEST_CASE("run_batch: a group commits before any of its charts is reported") {
     const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
     BatchCallbacks callbacks = real_result_callbacks(real);
     BatchRun run;
-    run.chartmode = "group-commit-test";
+    run.profile.chartmode = "group-commit-test";
     const std::string path = testtemp::temp_path("batch_group_commit", ".db");
     std::remove(path.c_str());
     int reported = 0, visible = 0;
     callbacks.on_result = [&](const ScanItem& item, const hydra::store::PreparedRecord&) {
         ++reported;
         hydra::store::RecordStore reader(path);
-        if (reader.get_summary({item.md5, run.chartmode, run.cap_query(), run.lens}).status ==
+        if (reader.lookup_one(item.md5, run.profile).status ==
             hydra::store::RecordStatus::Ready)
             ++visible;
     };
@@ -985,7 +996,7 @@ TEST_CASE("run_batch: cancel during a group writes nothing more and leaves no tr
     };
 
     BatchRun run;
-    run.chartmode = "group-cancel-test";
+    run.profile.chartmode = "group-cancel-test";
     hydra::store::RecordStore store(":memory:");
     run_planned(fake_items(200), run, store, /*redo=*/false, 4, callbacks);
 
@@ -994,8 +1005,7 @@ TEST_CASE("run_batch: cancel during a group writes nothing more and leaves no tr
     // Every stored chart was reported, and nothing was stored unreported.
     CHECK(store.counts().second == results);
     // No group was left open: a plain save still runs its own transaction.
-    const hydra::store::RecordKey key{"after", run.chartmode, run.cap_query(), run.lens};
-    store.save_analysis(hydra::store::prepare_row(key, real.record));
+    store.save(hydra::store::prepare_record("after", run.profile, real.record));
     CHECK(store.counts().second == results + 1);
 }
 
@@ -1015,7 +1025,7 @@ TEST_CASE("run_batch: a failed group COMMIT saves each chart alone, and only a c
                               "CREATE TRIGGER refuse_boom BEFORE INSERT ON records"
                               " WHEN NEW.song_id = 'boom' BEGIN SELECT RAISE(ABORT, 'boom'); END;");
     BatchRun run;
-    run.chartmode = "group-fail-test";
+    run.profile.chartmode = "group-fail-test";
     {
         hydra::store::RecordStore store(path);
         store.fail_next_group_commit_for_test();

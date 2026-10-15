@@ -137,10 +137,10 @@ TEST_CASE("the 1.0 fills setting reaches the search and the result's key togethe
     s.legacy_fills = true;
     CHECK(s.to_analysis_settings().legacy_fills);
     CHECK(s.lens().legacy_fills == 1);
-    CHECK(s.record_key("h").lens.legacy_fills == 1);
+    CHECK(s.profile().lens.legacy_fills == 1);
     const hydra::app::BatchRun run = s.batch_run();
     CHECK(run.settings.legacy_fills);
-    CHECK(run.lens.legacy_fills == 1);
+    CHECK(run.profile.lens.legacy_fills == 1);
 }
 
 TEST_CASE("command-line settings take the fill rule from the flag, the rest from the INI") {
@@ -162,7 +162,7 @@ TEST_CASE("command-line settings take the fill rule from the flag, the rest from
     write_ini("legacy_fills=0\n");
     const Settings on = Settings::load_for_command_line(true);
     CHECK(on.legacy_fills);
-    CHECK(on.batch_run().lens.legacy_fills == 1);
+    CHECK(on.batch_run().profile.lens.legacy_fills == 1);
 }
 
 TEST_CASE("a missing INI yields defaults") {
@@ -483,7 +483,7 @@ TEST_CASE("view_difficulty matches any case and loads as the real name") {
     CHECK(s.difficulty() == hydra::Difficulty::Easy);
 }
 
-TEST_CASE("record_key carries the chartmode, the SP cap and the lens") {
+TEST_CASE("profile carries the chartmode, the SP cap and the lens") {
     namespace store = hydra::store;
 
     Settings s;
@@ -491,29 +491,28 @@ TEST_CASE("record_key carries the chartmode, the SP cap and the lens") {
     s.mslimit_value = 10;
     s.depth_mode = 0;
     s.depth_value = 4;
-    store::RecordKey default_key = s.record_key("abc");
-    CHECK(default_key.hyhash == "abc");
-    CHECK(default_key.chartmode == s.chartmode_key());
-    CHECK(default_key.cap == store::CapQuery::at(4));
-    CHECK(default_key.lens == store::Lens::from(10, 0, 4));
+    const store::Profile default_profile = s.profile();
+    CHECK(default_profile.chartmode == s.chartmode_key());
+    CHECK(default_profile.cap == store::CapQuery::at(4));
+    CHECK(default_profile.lens == store::Lens::from(10, 0, 4));
 
     // A fixed cap asks for exactly that cap, and the chartmode follows the
     // view flags.
     s.sp_cap = 32;
     s.view_prodrums = false;
-    store::RecordKey exact_key = s.record_key("abc");
-    CHECK(exact_key.chartmode == "Expert Drums, 2x Bass");
-    CHECK(exact_key.cap == store::CapQuery::at(32));
+    const store::Profile exact_profile = s.profile();
+    CHECK(exact_profile.chartmode == "Expert Drums, 2x Bass");
+    CHECK(exact_profile.cap == store::CapQuery::at(32));
 
     // Each searched-over setting moves the lens...
     s.depth_mode = 1;
     s.depth_value = 5000;
-    CHECK(s.record_key("abc").lens == store::Lens::from(10, 1, 5000));
+    CHECK(s.profile().lens == store::Lens::from(10, 1, 5000));
 
     // ...and switching the ms limit off drops its number, because the search
     // stops reading it.
     s.mslimit_enabled = false;
-    CHECK(s.record_key("abc").lens == store::Lens::from(std::nullopt, 1, 5000));
+    CHECK(s.profile().lens == store::Lens::from(std::nullopt, 1, 5000));
     CHECK(s.lens().ms_value == 0);
     s.mslimit_value = 42;
     CHECK(s.lens() == store::Lens::from(std::nullopt, 1, 5000));
@@ -537,14 +536,11 @@ Settings every_key_part_changed() {
 
 }  // namespace
 
-TEST_CASE("profile is the chartmode, the SP cap and the lens, the same key record_key files under") {
+TEST_CASE("profile moves with every key part") {
     namespace store = hydra::store;
 
     const Settings defaults;
-    CHECK(defaults.profile() == defaults.record_key({}).settings());
-
     const Settings s = every_key_part_changed();
-    CHECK(s.profile() == s.record_key({}).settings());
     CHECK(s.profile().chartmode == "Expert Drums, 2x Bass");
     CHECK(s.profile().cap == store::CapQuery::at(32));
     CHECK(s.profile().lens == store::Lens::from(10, 1, 5000, true));
@@ -616,7 +612,7 @@ TEST_CASE("legacy_fills_for reads fill_rule_for backwards") {
         CHECK(hydra::legacy_fills_for(hydra::fill_rule_for(flag)) == flag);
 }
 
-TEST_CASE("batch_run bundles one Settings' chartmode, lens and search settings") {
+TEST_CASE("batch_run bundles one Settings' profile and search settings") {
     Settings s;
     s.view_difficulty = "Hard";
     s.view_prodrums = false;
@@ -626,8 +622,11 @@ TEST_CASE("batch_run bundles one Settings' chartmode, lens and search settings")
     s.sp_cap = 16;
 
     const hydra::app::BatchRun run = s.batch_run();
-    CHECK(run.chartmode == s.chartmode_key());
-    CHECK(run.lens == s.lens());
+    // The run files under Settings::profile, so the batch and every other
+    // reader of these settings ask for the same records.
+    CHECK(run.profile == s.profile());
+    // The profile's cap and the search's cap are the one setting.
+    CHECK(run.profile.cap == hydra::store::CapQuery::at(16));
     CHECK(run.settings.difficulty == hydra::Difficulty::Hard);
     CHECK(run.settings.prodrums == false);
     CHECK(!run.settings.ms_filter.has_value());

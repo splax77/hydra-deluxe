@@ -61,7 +61,7 @@ std::vector<ChartLibraryEntry> fake_charts(int n) {
 
 BatchRun test_run() {
     BatchRun run;
-    run.chartmode = "jobs-test";
+    run.profile.chartmode = "jobs-test";
     return run;
 }
 
@@ -270,8 +270,7 @@ TEST_CASE("jobs: the snapshot's counts come from the batch in one piece") {
     CHECK(s.completed == 3);
     CHECK(s.skipped == 0);
     CHECK(s.total == 3);
-    CHECK(job.batch_run().lens == test_run().lens);
-    CHECK(job.batch_run().chartmode == test_run().chartmode);
+    CHECK(job.batch_run().profile == test_run().profile);
 }
 
 // D88: every exe runs on mimalloc, this one too. An exe whose link puts
@@ -346,10 +345,9 @@ TEST_CASE("jobs: a finished batch hands the memory its charts freed back to Wind
 TEST_CASE("jobs: a report job lists the records filed under its run") {
     RecordStore store(":memory:");
     BatchRun run = test_run();
-    run.lens = hydra::store::Lens::from(std::optional<int>(20), 1, 7);
+    run.profile.lens = hydra::store::Lens::from(std::optional<int>(20), 1, 7);
     const hydra::ui::ReportJob job(store, run, 85.5);
-    CHECK(job.profile() == run.profile());
-    CHECK(job.profile().lens == run.lens);
+    CHECK(job.profile() == run.profile);
     CHECK(job.hit_window_ms() == 85.5);  // the decimal is kept (D51 call 15)
 }
 
@@ -360,7 +358,7 @@ TEST_CASE("jobs: an empty report shows generate_report's reason, or the app's ow
     const BatchRun run = test_run();
 
     RecordStore no_library(":memory:");
-    hydra::test::store_batch_result(no_library, "orphan", run.cap_query().exact);
+    hydra::test::store_batch_result(no_library, "orphan", run.profile.cap.exact);
     hydra::ui::ReportJob orphaned(no_library, run);
     orphaned.start();
     wait_until([&] { return orphaned.finished(); }, "the report with no library to finish");

@@ -130,7 +130,7 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportOptions& optio
     CollectedRows out;
     out.library = store.chart_index();
     const std::unordered_map<std::string, store::RecordRow> records =
-        listed_records(store, options.run->profile(), out.library);
+        listed_records(store, options.run->profile, out.library);
     // Built once for the whole report, not once per row.
     const std::vector<TimingTier> tiers = timing_tiers(options.hit_window_ms);
     // The library's scan order, so the page's rows come out the same way
@@ -191,8 +191,8 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
     out.library = std::move(collected.library);
     const std::vector<ReportRow>& rows = collected.rows;
     // collect_rows refused a report with no run, so it is set here.
-    const BatchRun& run = *options.run;
-    const FillDeadlineRule rule = fill_rule_for(run.lens.legacy_fills);
+    const store::Profile& profile = options.run->profile;
+    const FillDeadlineRule rule = fill_rule_for(profile.lens.legacy_fills);
     out.rows = static_cast<int64_t>(rows.size());
     if (rows.empty()) {
         // Nothing listed. Either the database is empty, or it holds results
@@ -208,7 +208,7 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
         } else {
             out.empty_reason = EmptyReason::NothingUnderSettings;
             out.why_empty = nothing_under_settings(
-                run.chartmode, run.cap_query().exact,
+                profile.chartmode, profile.cap.exact,
                 std::string(fill_rule_name(rule, FillRuleNameStyle::Long)) + " fills");
         }
         return out;
@@ -223,7 +223,7 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
                             ? "every path"
                             : "top " + hydra::counted(options.max_paths, "path", "paths") +
                                   " per chart";
-    std::string cap_label = "SP cap " + bars_text(run.cap_query().exact);
+    std::string cap_label = "SP cap " + bars_text(profile.cap.exact);
     // The normal rule goes unsaid, so a 1.1 page reads as it always has.
     if (rule != FillDeadlineRule::Ch11)
         cap_label += std::string(" — ") + fill_rule_name(rule, FillRuleNameStyle::Long) + " fills";
