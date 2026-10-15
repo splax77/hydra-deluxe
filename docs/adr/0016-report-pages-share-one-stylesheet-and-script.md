@@ -19,7 +19,7 @@ The stylesheet (`html::report_css()`) and the script (`html::kReportJs`) live in
 `app/html_page.cpp`. They stay ASCII because hydra_core is not built with
 /utf-8; a glyph is an HTML entity or a `\uXXXX` escape. The comparison pages
 size a few columns differently, scoped by a class on `.wrap`. The comparison
-pages look records up through one `report::records_by_hash`.
+pages look records up through one `report::listed_records`.
 
 Page bytes are not pinned. A page change is checked in a real browser instead:
 render the pages in headless Edge before and after the change, and see

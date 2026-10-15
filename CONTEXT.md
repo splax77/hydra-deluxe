@@ -242,10 +242,9 @@ checks Cancel every 50 ms; and it accepts only HTTP status 200
 ### Reports and messages
 
 **In the library**:
-Whether the last scan's library lists a chart. `report::library_lists` in
-src/app/report.h is the one answer for every page, over
-`library_copies_by_hash`'s map (D87 item 4, D92). `records_by_hash` keeps
-only the results whose chart it lists.
+Whether the last scan's library lists a chart. `ChartIndex::lists` in
+src/store/chart_index.h is the one answer for every page (D87 item 4, D92).
+`report::listed_records` keeps only the records whose chart it lists.
 
 **Comparable chart mode**:
 Whether the analysis settings can be held against dmleaderboards scores, which
