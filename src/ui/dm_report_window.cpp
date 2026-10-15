@@ -85,7 +85,7 @@ void draw_body(DmWindow& w, const report_frame::Frame& frame, const DmReportInpu
 
     if (view.visible().empty()) {
         if (report_frame::nothing_matches()) {
-            w.memory.search[0] = '\0';
+            w.memory.clear_search();
             w.status = app::report_view::kEveryRowChoice;
             apply_filters(w);
         }

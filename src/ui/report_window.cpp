@@ -305,7 +305,7 @@ bool search_box(Memory& m, const char* hint_text) {
     const bool changed = ImGui::InputTextWithHint("##search", hint_text, m.search,
                                                   sizeof(m.search),
                                                   ImGuiInputTextFlags_EscapeClearsAll);
-    if (changed) ++m.rows_key;
+    if (changed) m.search_changed();
     return changed;
 }
 

@@ -126,7 +126,7 @@ void draw_body(PathWindow& w, const report_frame::Frame& frame, const PathReport
     if (view.visible().empty()) {
         // Clear filters leaves Optimal paths only as it is.
         if (report_frame::nothing_matches()) {
-            w.memory.search[0] = '\0';
+            w.memory.clear_search();
             w.timing = app::report_view::kEveryRowChoice;
             apply_filters(w);
         }

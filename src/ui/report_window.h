@@ -246,8 +246,16 @@ struct Memory {
     FittedTextCache fitted;
     // The table's reset key for the width rule (table_room in
     // ui/column_widths.h): it moves on with each new result (reset) and each
-    // changed search (search_box), so a dragged column holds until then.
+    // changed search (search_changed), so a dragged column holds until then.
     std::uint64_t rows_key = 0;
+    // The search text changed: the rows will, so a drag lets go. search_box
+    // calls this for a typed change; a window that empties the search on
+    // "Clear filters" calls clear_search.
+    void search_changed() { ++rows_key; }
+    void clear_search() {
+        search[0] = '\0';
+        search_changed();
+    }
     // Forget everything a built report set up: a new result starts fresh.
     void reset() {
         const bool open = was_open;
@@ -268,7 +276,7 @@ void end(bool* open, const Frame& frame, Memory& memory);
 void tiles(const std::vector<app::report::Tile>& tiles);
 
 // The search box. True when its text changed, which also moves the table's
-// reset key on (Memory::rows_key).
+// reset key on (Memory::search_changed).
 bool search_box(Memory& memory, const char* hint);
 // A dropdown of `labels`, at the width of its widest. True when `chosen`
 // changed.
