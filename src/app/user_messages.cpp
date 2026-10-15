@@ -89,38 +89,58 @@ std::string old_library_refused_sentence(std::string_view path) {
            ", and opening it in Hydra sets it aside and starts a fresh library.";
 }
 
+// A kind's sentence, and whether the sentence quotes the error's own text.
+// A sentence that quotes it already shows it, so plain_error_detail gives no
+// details line under it (the user's rule, 2026-10-15: every failure line is
+// derived once).
+struct KindSentence {
+    std::string sentence;
+    bool quotes_raw = false;
+};
+
+KindSentence quoting(std::string sentence) { return KindSentence{std::move(sentence), true}; }
+
 // The one owner of "which plain sentence does this failure show": the
 // thrower named the kind, and each kind has one sentence. Empty when the
 // error can't be answered from its kind alone.
-std::optional<std::string> kind_sentence(const KindedError& e) {
+std::optional<KindSentence> kind_sentence(const KindedError& e) {
     switch (e.kind()) {
-        case ErrorKind::Cancelled: return kStopped;
-        case ErrorKind::DatabaseOpen: return kDatabaseOpenSentence;
-        case ErrorKind::DatabaseUpgrade: return kDatabaseUpgrade;
-        case ErrorKind::OldLibraryRefused: return old_library_refused_sentence(e.what());
-        case ErrorKind::OldLibrarySetAsideFailed: return set_aside_failed_sentence(e.what());
-        case ErrorKind::DatabaseWrite: return kDatabaseWrite;
-        case ErrorKind::DatabaseRead: return kDatabaseReadSentence;
-        case ErrorKind::SongFileMissing: return kSongFileMissing;
-        case ErrorKind::HashFailed: return kHashFailed;
-        case ErrorKind::ChartUnreadable: return kChartUnreadable;
-        case ErrorKind::ChartTimingRefused: return timing_refusal_sentence(e.what());
-        case ErrorKind::NoteShuffleFreezes: return kNoteShuffleFreezes;
-        case ErrorKind::AlreadyPlain: return std::string(e.what());
-        case ErrorKind::SearchBroken: return kSearchBroken;
-        case ErrorKind::NetUnreachable: return kNetUnreachable;
-        case ErrorKind::NetTimeout: return kNetTimeout;
+        case ErrorKind::Cancelled: return KindSentence{kStopped};
+        case ErrorKind::DatabaseOpen: return KindSentence{kDatabaseOpenSentence};
+        case ErrorKind::DatabaseUpgrade: return KindSentence{kDatabaseUpgrade};
+        case ErrorKind::OldLibraryRefused: return quoting(old_library_refused_sentence(e.what()));
+        case ErrorKind::OldLibrarySetAsideFailed:
+            return quoting(set_aside_failed_sentence(e.what()));
+        case ErrorKind::DatabaseWrite: return KindSentence{kDatabaseWrite};
+        case ErrorKind::DatabaseRead: return KindSentence{kDatabaseReadSentence};
+        case ErrorKind::SongFileMissing: return KindSentence{kSongFileMissing};
+        case ErrorKind::HashFailed: return KindSentence{kHashFailed};
+        case ErrorKind::ChartUnreadable: return KindSentence{kChartUnreadable};
+        case ErrorKind::ChartTimingRefused: return quoting(timing_refusal_sentence(e.what()));
+        case ErrorKind::NoteShuffleFreezes: return KindSentence{kNoteShuffleFreezes};
+        case ErrorKind::AlreadyPlain: return quoting(e.what());
+        case ErrorKind::SearchBroken: return KindSentence{kSearchBroken};
+        case ErrorKind::NetUnreachable: return KindSentence{kNetUnreachable};
+        case ErrorKind::NetTimeout: return KindSentence{kNetTimeout};
         case ErrorKind::NetHttpStatus:
-            if (const std::optional<int> code = e.http_status()) return http_status_sentence(*code);
+            if (const std::optional<int> code = e.http_status())
+                return KindSentence{http_status_sentence(*code)};
             return std::nullopt;  // no code to name
-        case ErrorKind::NetBadReply: return kNetBadReply;
-        case ErrorKind::NoScores: return kNoScores;
-        case ErrorKind::NoRecords: return kNoRecords;
-        case ErrorKind::ReportWrite: return kReportWrite;
-        case ErrorKind::RulesFile: return kAnalysisOffSentence;
-        case ErrorKind::AudioDecode: return kAudioDecode;
-        case ErrorKind::PreviewAssets: return kPreviewAssets;
+        case ErrorKind::NetBadReply: return KindSentence{kNetBadReply};
+        case ErrorKind::NoScores: return KindSentence{kNoScores};
+        case ErrorKind::NoRecords: return KindSentence{kNoRecords};
+        case ErrorKind::ReportWrite: return KindSentence{kReportWrite};
+        case ErrorKind::RulesFile: return KindSentence{kAnalysisOffSentence};
+        case ErrorKind::AudioDecode: return KindSentence{kAudioDecode};
+        case ErrorKind::PreviewAssets: return KindSentence{kPreviewAssets};
     }
+    return std::nullopt;
+}
+
+// kind_sentence's answer for any error: empty for one with no kind, or a kind
+// that can't be answered alone.
+std::optional<KindSentence> kind_sentence_of(const std::exception& e) {
+    if (const auto* kinded = dynamic_cast<const KindedError*>(&e)) return kind_sentence(*kinded);
     return std::nullopt;
 }
 
@@ -130,26 +150,21 @@ std::string plain_error(const std::exception& e) {
     if (dynamic_cast<const std::bad_alloc*>(&e)) return kOutOfMemory;
     // A kinded error is answered by kind_sentence alone; its words never
     // pick the sentence.
-    if (const auto* kinded = dynamic_cast<const KindedError*>(&e))
-        if (std::optional<std::string> sentence = kind_sentence(*kinded)) return *sentence;
+    if (std::optional<KindSentence> kind = kind_sentence_of(e)) return std::move(kind->sentence);
     return kSomethingWentWrong;
 }
 
-namespace {
-
-// Whether the error's sentence already holds its whole raw text, so a details
-// line would say it twice. The refused old library's sentence names the file,
-// and its raw text is that path alone (D115 task A1-6d: the user approved the
-// one sentence).
-bool sentence_holds_detail(const std::exception& e) {
-    const auto* kinded = dynamic_cast<const KindedError*>(&e);
-    return kinded && kinded->kind() == ErrorKind::OldLibraryRefused;
+std::string plain_error_detail(const std::exception& e) {
+    const std::optional<KindSentence> kind = kind_sentence_of(e);
+    return kind && kind->quotes_raw ? std::string() : std::string(e.what());
 }
 
-}  // namespace
+std::string plain_error_line(const std::string& sentence, const std::string& detail) {
+    return detail.empty() ? sentence : detail;
+}
 
-std::string plain_error_detail(const std::exception& e) {
-    return sentence_holds_detail(e) ? std::string() : std::string(e.what());
+std::string plain_error_line(const std::exception& e) {
+    return plain_error_line(plain_error(e), plain_error_detail(e));
 }
 
 std::string rules_file_tool_text(const std::exception& e) {

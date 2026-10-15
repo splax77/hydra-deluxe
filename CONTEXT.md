@@ -345,7 +345,13 @@ What a failure reads as: one short sentence picked by the error's kind
 (`ErrorKind` in src/core/error_kind.h), never by its words, with the raw text
 kept for a small details line. `plain_error` in src/app/user_messages.h gives
 the sentence through the one switch, `kind_sentence`, and `plain_error_detail`
-the raw text. A sentence more than one screen shows is a constant in the same
+the raw text, which is empty when the sentence already quotes it, so no screen
+shows one failure twice (the user's rule of 2026-10-15). `plain_error_line` is
+the one line for a place with room for a single line per failure,
+`plain_error_block` the sentence and raw text as one block, and `error_detail_line`
+(src/ui/widgets.h) draws a details line and nothing when it is empty. No other
+code in src shows an exception's `what()`; a scan row (err-once.json) holds
+that. A sentence more than one screen shows is a constant in the same
 header, such as `kPathReportFailed` and `kComparisonFailed` (D114 item 14).
 
 **Rules file error**:

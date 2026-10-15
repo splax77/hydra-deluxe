@@ -80,8 +80,9 @@ public:
         return JobOutcome::Failed;
     }
     bool ok() const { return ok_; }
-    // The raw exception text, for a small details line. Unchanged from
-    // before: a cancelled job still reads "cancelled" here.
+    // The details line under message(): app::plain_error_detail of the
+    // exception, so empty when the message already quotes it. A cancelled
+    // job still reads "cancelled" here.
     const std::string& error() const { return error_; }
     // What the user reads: app::plain_error of the exception. Empty when the
     // job succeeded or was cancelled, because a cancel is the user's own
@@ -103,11 +104,11 @@ protected:
         finished_.store(true);
     }
 
-    // Records a failed run: the raw text, the plain message unless the job
-    // was cancelled, not ok, and then publishes finished. run_guarded's catch
-    // and a job whose thread cannot start both end here.
+    // Records a failed run: the details line, the plain message unless the
+    // job was cancelled, not ok, and then publishes finished. run_guarded's
+    // catch and a job whose thread cannot start both end here.
     void fail(const std::exception& e) {
-        error_ = e.what();
+        error_ = app::plain_error_detail(e);
         if (!is_cancelled()) message_ = app::plain_error(e);
         ok_ = false;
         finished_.store(true);

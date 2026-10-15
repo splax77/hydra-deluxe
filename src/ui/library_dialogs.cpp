@@ -545,7 +545,7 @@ void render_batch_done(AppState& app) {
     } else if (report_failed) {
         ImGui::TextColored(kWarningColor, "%s", app::kPathReportFailed);
         ImGui::TextWrapped("%s", app.path_report.message.c_str());
-        ImGui::TextDisabled("%s", app.path_report.error.c_str());
+        error_detail_line(app.path_report.error);
     } else if (report_ok) {
         ImGui::TextWrapped("%s", app::kPathReportReady);
     }
@@ -562,7 +562,7 @@ void render_batch_done(AppState& app) {
     // A run that failed as a whole shows its error here, and counts no chart.
     if (!s.run_error.empty()) {
         ImGui::TextColored(kWarningColor, "%s", s.run_error.c_str());
-        ImGui::TextDisabled("%s", s.run_error_detail.c_str());
+        error_detail_line(s.run_error_detail);
     }
     if (s.failed > 0) {
         const std::string head = counted(s.failed, "chart", "charts") + " failed##batchfailures";
@@ -570,12 +570,7 @@ void render_batch_done(AppState& app) {
             // Wrapped: a chart's name and its error can both run long.
             for (size_t i = 0; i < s.failures.size(); ++i) {
                 ImGui::TextWrapped("%s", s.failures[i].c_str());
-                if (i < s.failure_details.size()) {
-                    ImGui::PushStyleColor(ImGuiCol_Text,
-                                          ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-                    ImGui::TextWrapped("%s", s.failure_details[i].c_str());
-                    ImGui::PopStyleColor();
-                }
+                if (i < s.failure_details.size()) error_detail_line(s.failure_details[i]);
             }
             ImGui::TreePop();
         }
@@ -616,7 +611,7 @@ void render_dm_picker_modal(AppState& app) {
         if (!app.dm_fetch_job->ok()) {
             ImGui::TextColored(kWarningColor, "Could not load the user list:");
             ImGui::TextWrapped("%s", app.dm_fetch_job->message().c_str());
-            ImGui::TextDisabled("%s", app.dm_fetch_job->error().c_str());
+            error_detail_line(app.dm_fetch_job->error());
             ImGui::Spacing();
             if (ImGui::Button("Retry")) app.start_dm_fetch();
             ImGui::SameLine();

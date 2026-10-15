@@ -158,13 +158,14 @@ int batch_main() {
 
     hydra::app::BatchCallbacks callbacks;
     callbacks.on_progress = [&](const hydra::app::BatchProgress& p) { last = p; };
-    // hydra_batch prints the raw text; the sentence is the GUI's.
-    callbacks.on_error = [&](const std::string& raw_title, const std::string& /*sentence*/,
+    // hydra_batch prints one line per failure: app::plain_error_line.
+    callbacks.on_error = [&](const std::string& raw_title, const std::string& sentence,
                              const std::string& error) {
         const std::string title = hydra::display_title(raw_title);
-        failures.push_back(title + ": " + error);
+        const std::string line = hydra::app::plain_error_line(sentence, error);
+        failures.push_back(title + ": " + line);
         std::printf("[%d/%d] FAILED %s: %s\n", last.completed, last.total, title.c_str(),
-                    error.c_str());
+                    line.c_str());
     };
     callbacks.on_result = [&](const hydra::app::ScanItem& item,
                               const hydra::store::PreparedRecord& prepared) {

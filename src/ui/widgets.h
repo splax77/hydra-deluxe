@@ -31,6 +31,20 @@ namespace hydra::ui {
 // Delayed tooltip on the last item — the "explain this control on hover"
 // idiom. Sites that need other hover flags, format arguments, or extra
 // conditions still call IsItemHovered/SetTooltip directly.
+// The dimmed details line under an error's sentence, wrapped because it can
+// carry a long file path. `detail` comes from app::plain_error_detail, which
+// is empty when the sentence already quotes it; then nothing is drawn, so no
+// screen shows a blank line or the sentence twice.
+inline void error_detail_line(const std::string& detail, const ImVec4& color) {
+    if (detail.empty()) return;
+    ImGui::PushStyleColor(ImGuiCol_Text, color);
+    ImGui::TextWrapped("%s", detail.c_str());
+    ImGui::PopStyleColor();
+}
+inline void error_detail_line(const std::string& detail) {
+    error_detail_line(detail, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+}
+
 inline void hint(const char* text) {
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
         ImGui::SetTooltip("%s", text);

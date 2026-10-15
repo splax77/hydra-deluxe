@@ -1,0 +1,33 @@
+{
+  "rules": [
+    {
+      "question": "Which sentence, and which details line under it, does an error show the user?",
+      "owner": "plain_error, plain_error_detail, plain_error_line and plain_error_block in src/app/user_messages.cpp",
+      "owner_file": "src/app/user_messages.cpp",
+      "owner_symbol": "plain_error_detail",
+      "date": "2026-10-15",
+      "decision": "the user's rule of 2026-10-15: every failure and error line is derived once (task ERR-ONCE)",
+      "added_by": "ERR-ONCE",
+      "pattern": "\\.what\\(\\)",
+      "owner_files": [
+        "src/app/user_messages.cpp",
+        "src/app/user_messages.h"
+      ],
+      "calls_owner": "\\bthrow\\s+KindedError\\(",
+      "must_match": [
+        "    wr.error = e.what();",
+        "        error_ = e.what();",
+        "        return std::string(\"Failed to write chart library: \") + e.what();"
+      ],
+      "must_not_match": [
+        "        throw KindedError(ErrorKind::DatabaseOpen, e.what());",
+        "    wr.error = plain_error_detail(e);",
+        "        error_ = app::plain_error_detail(e);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The batch's failure list showed a chart with no notes twice: the sentence, then the same words again as the details line, because the batch read e.what() itself instead of asking plain_error_detail. Every screen and command-line tool now takes an error's words from user_messages.cpp, so a details line that repeats its sentence is fixed in one place. A line that throws a KindedError around an inner error's words is a throw site, not a display: it hands the words to the owner, which reads them back. tools/ is out of scope: those developer tools are not shipped (CMakeLists.txt's install rules). Decided by: the user, 2026-10-15."
+    }
+  ]
+}

@@ -273,7 +273,8 @@ struct BatchCallbacks {
     // the number here.
     std::function<void(const BatchProgress&)> on_progress;
     // A chart that failed, in its analysis or its save: the sentence
-    // app::plain_error gives for the exception, and its raw text.
+    // app::plain_error gives for the exception, and its details line
+    // (app::plain_error_detail, empty when the sentence already quotes it).
     std::function<void(const std::string& title, const std::string& sentence,
                        const std::string& error)>
         on_error;

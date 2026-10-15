@@ -426,10 +426,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
             WarnColor warn;
             ImGui::TextWrapped("Preview failed: %s", pc->error().c_str());
         }
-        // The raw text, dimmed, as the song panel's Analyze error shows it.
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        ImGui::TextWrapped("%s", pc->error_detail().c_str());
-        ImGui::PopStyleColor();
+        error_detail_line(pc->error_detail());
         return;
     }
     if (pc->loading()) {

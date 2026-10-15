@@ -273,8 +273,11 @@ public:
         // One line per failed library row, `failed` long (run_batch's
         // on_error).
         std::vector<std::string> failures;         // "Title: plain message"
-        std::vector<std::string> failure_details;  // "Title: raw error", same order
-        // A run that failed as a whole: the plain sentence and the raw text.
+        // "Title: details line", same order; empty when the message already
+        // quotes it (app::plain_error_detail).
+        std::vector<std::string> failure_details;
+        // A run that failed as a whole: the plain sentence and its details
+        // line (app::plain_error_detail).
         // It is not a library row, so no count includes it.
         std::string run_error;
         std::string run_error_detail;
@@ -339,11 +342,12 @@ struct ViewOutcome {
     std::optional<app::AnalysisResult> analysis;
     store::SongLength length;
     std::string analysis_message;  // app::plain_error
-    std::string analysis_error;    // the raw text
-    // The Dynamics count, or why it failed.
+    std::string analysis_error;    // app::plain_error_detail, may be empty
+    // The Dynamics count, or why it failed: a failed count always has its
+    // message, and its details line may be empty.
     std::optional<app::DynamicsBreakdown> dynamics;
-    std::string dynamics_message;
-    std::string dynamics_error;
+    std::string dynamics_message;  // app::plain_error
+    std::string dynamics_error;    // app::plain_error_detail
 };
 
 // The song panel's job: re-identifies an edited chart, runs the engine's

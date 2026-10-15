@@ -174,7 +174,8 @@ struct ViewedSong {
     std::optional<double> song_length_ms;
     // The best path's summary row (stars), as the click saved or found it.
     store::PathSummary summary;
-    // Failed: the plain sentence and the raw text.
+    // Failed: the plain sentence and its details line (app::plain_error_detail,
+    // empty when the sentence already quotes it).
     std::string message;
     std::string error;
     // The Dynamics count, or why it failed. Set in every state the job

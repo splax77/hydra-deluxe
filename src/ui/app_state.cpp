@@ -25,7 +25,7 @@ StartupSettings load_startup_settings() {
     try {
         start.settings.rules = app::load_rules_file(app::default_rules_path());
     } catch (const app::RulesFileError& e) {
-        start.rules_error = e.what();
+        start.rules_error = app::plain_error_detail(e);
     }
     return start;
 }
@@ -423,7 +423,7 @@ void AppState::update_view_job() {
                 v = ViewedSong{};
                 v.state = ViewedSong::State::Failed;
                 v.message = app::plain_error(e);
-                v.error = e.what();
+                v.error = app::plain_error_detail(e);
                 viewed = std::move(v);
                 view_reanalysis_ = false;
                 record_generation.bump();
