@@ -390,11 +390,6 @@ std::optional<ImRect> drawn_row(ImGuiTestContext* ctx, size_t n) {
     return info.RectFull;
 }
 
-// Whether `row` sits wholly inside the list's visible area.
-bool fully_shown(const ImGuiWindow* list, const ImRect& row) {
-    return row.Min.y >= list->InnerRect.Min.y && row.Max.y <= list->InnerRect.Max.y;
-}
-
 // In a path window too short for the six sample rows: a row click leaves the
 // list where it is (the user's rule, 2026-10-14: a click never scrolls);
 // Down onto the first row below the view brings it in at the bottom edge, not

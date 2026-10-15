@@ -213,6 +213,9 @@ std::string canned_dm_scores(const std::vector<std::string>& score_rows);
 // was. A part finds child windows too, whose names ImGui mangles.
 ImGuiWindow* window_named(const char* part);
 
+// Whether `row` sits wholly inside the list's visible area.
+bool fully_shown(const ImGuiWindow* list, const ImRect& row);
+
 // Print the widget tree (label, id, state flags, rect) of one window, or of
 // every window when `window_name` is empty.
 void dump_widgets(ImGuiTestContext* ctx, const std::string& window_name);

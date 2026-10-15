@@ -820,11 +820,6 @@ ImRect row_rect(ImGuiTestContext* ctx, size_t k) {
     return ctx->ItemInfo(("//Hydra/**/" + escape_ref(title)).c_str()).RectFull;
 }
 
-// Whether `row` sits wholly inside the list's visible area.
-bool fully_shown(const ImGuiWindow* list, const ImRect& row) {
-    return row.Min.y >= list->InnerRect.Min.y && row.Max.y <= list->InnerRect.Max.y;
-}
-
 // The first shown row, from row `from` on, that sits wholly in the lower half
 // of the list's visible area; none when there is none.
 std::optional<size_t> row_in_lower_half(ImGuiTestContext* ctx, const ImGuiWindow* list,

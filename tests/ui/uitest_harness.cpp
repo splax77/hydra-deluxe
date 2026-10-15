@@ -500,6 +500,10 @@ ImGuiWindow* window_named(const char* part) {
     return nullptr;
 }
 
+bool fully_shown(const ImGuiWindow* list, const ImRect& row) {
+    return row.Min.y >= list->InnerRect.Min.y && row.Max.y <= list->InnerRect.Max.y;
+}
+
 std::string visible_text(Harness& h) {
     std::string s = h.frame_text.text;
     if (h.app) {
