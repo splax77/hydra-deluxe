@@ -69,7 +69,7 @@ TEST_CASE("write_report_file swaps the page in and leaves no .tmp behind") {
 }
 
 TEST_CASE("the fill page carries the shared stylesheet and script") {
-    const std::string fill = fill_report::build_fill_html({}, "sub", "foot");
+    const std::string fill = fill_report::build_fill_html({}, store::ChartIndex{}, "sub", "foot");
     CHECK(fill.find(html::report_css()) != std::string::npos);
     CHECK(fill.find(html::report_js()) != std::string::npos);
     // Rules no page used, and the theme switch nothing ever sets, are gone.
@@ -262,7 +262,7 @@ std::string rule_body(const std::string& css, const std::string& selector) {
 }  // namespace
 
 TEST_CASE("the fill page is a standards-mode document") {
-    const std::string fill = fill_report::build_fill_html({}, "sub", "foot");
+    const std::string fill = fill_report::build_fill_html({}, store::ChartIndex{}, "sub", "foot");
     CHECK(fill.rfind("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n", 0) == 0);
     CHECK(fill.find("</style>\n</head>\n<body>\n") != std::string::npos);
     REQUIRE(fill.size() > 16);

@@ -307,7 +307,7 @@ TEST_CASE("report counts every library copy of a chart, and leaves out a chart t
     }
 }
 
-TEST_CASE("library copies are keyed like records_by_hash, and an unlisted chart counts once") {
+TEST_CASE("library copies are keyed in lower case, and an unlisted chart counts once") {
     // The scan writes lower case, but an older row may not: a page joins on
     // normalize_chart_hash, so the copies do too.
     store::RecordStore store(":memory:");
@@ -802,25 +802,6 @@ TEST_CASE("tier_for over a built table matches the window form") {
         std::nullopt, 0.0, 1.9, 2.0, 42.5, 127.4, 169.9, 170.0, 500.0};
     for (const std::optional<double>& ms : samples)
         CHECK(report::tier_for(ms, tiers) == report::tier_for(ms, 85.0));
-}
-
-TEST_CASE("records_by_hash keys every listed record by its lower-case hash") {
-    store::RecordStore store(":memory:");
-    AnalysisSettings settings;
-    settings.depth_value = 0;
-    const AnalysisResult result = corpus::first_analyzed_with_paths(settings);
-    store.rebuild_chart_library({library_entry_for_file("ABCDEF0123", "Title", "C:\\songs\\t.chart")});
-    store.add_record(store::RecordKey{"ABCDEF0123", "mode", store::CapQuery::at(4)},
-                     result.record);
-
-    const std::unordered_map<std::string, store::RecordListing> by_hash =
-        report::records_by_hash(store, "mode", store::CapQuery::at(4), store::Lens{});
-    REQUIRE(by_hash.size() == 1);
-    REQUIRE(by_hash.count("abcdef0123") == 1);
-    CHECK(by_hash.at("abcdef0123").hyhash == "ABCDEF0123");
-    CHECK(report::records_by_hash(store, "other mode", store::CapQuery::at(4),
-                                  store::Lens{})
-              .empty());
 }
 
 // D103 item 22: a settings change marks the path report out of date only when

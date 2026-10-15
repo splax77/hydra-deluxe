@@ -5,14 +5,16 @@
 #include <unordered_map>
 #include <utility>
 
+#include "app/config.h"  // Settings::profile_with_fills
 #include "app/html_page.h"
 #include "app/library_query.h"  // search_field
-#include "app/report.h"  // records_by_hash
+#include "app/report.h"  // lacks_chart_library, nothing_under_settings, kDash
 #include "app/report_view.h"  // folded_key
 #include "core/model.h"  // group_thousands, counted
 #include "core/strutil.h"  // replace_all
 #include "parse/song.h"  // display_title, display_artist, display_charter
-#include "search/graph.h"  // fill_rule_name, fill_rule_description, legacy_fills_for
+#include "search/graph.h"  // fill_rule_name, fill_rule_description
+#include "store/chart_index.h"
 
 namespace hydra::app::fill_report {
 
@@ -108,7 +110,7 @@ const PAGE = {
     {k:'p10',     t:'__OLD_RULE__ path', num:false, sort:'p10_s'},
     {k:'p11',     t:'__NEW_RULE__ path', num:false, sort:'p11_s'},
     {k:'acts',    t:'Acts',        num:true},
-    {k:'notes',   t:'Notes',       num:true},
+    {k:'notes',   t:'Note count',  num:true},
     {k:'status',  t:'Status',      num:false, sort:'status_s'},
   ],
   controls: [['q', 'input'], ['status', 'change']],
@@ -207,70 +209,82 @@ const std::string& page_template() {
     return page;
 }
 
-// `lens` with only its fill rule changed. legacy_fills_for spells the flag.
-store::Lens with_fill_rule(store::Lens lens, FillDeadlineRule rule) {
-    lens.legacy_fills = legacy_fills_for(rule);
-    return lens;
+// Every Ready record `store` holds under `profile` whose chart `library`
+// lists, by song id. The store lists results the library doesn't, and no
+// page shows one (D87 item 4, D92).
+std::map<std::string, store::RecordRow> listed_records(store::RecordStore& store,
+                                                       const store::Profile& profile,
+                                                       const store::ChartIndex& library) {
+    std::map<std::string, store::RecordRow> out;
+    for (store::RecordRow& r : store.ready_records(profile))
+        if (library.lists(r.song_id)) {
+            std::string id = r.song_id;
+            out.emplace(std::move(id), std::move(r));
+        }
+    return out;
+}
+
+// A record's best path as text, or empty when it kept none.
+std::string best_path(const store::RecordRow& record) {
+    return record.paths.empty() ? std::string() : record.paths.front().path;
 }
 
 }  // namespace
 
 std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
                                               store::RecordStore& new_store,
-                                              const std::string& chartmode,
-                                              const store::CapQuery& cap,
-                                              const store::Lens& lens) {
-    // One query per store under identical settings but the fill rule: the old
-    // side asks for 1.0 results, the new side for 1.1, whatever `lens` says.
-    // RecordListing already carries the best path and its summary, so no blob
-    // is ever inflated.
-    const store::Lens old_lens = with_fill_rule(lens, FillDeadlineRule::Ch10);
-    const store::Lens new_lens = with_fill_rule(lens, FillDeadlineRule::Ch11);
-    const std::unordered_map<std::string, store::RecordListing> old_by_hash =
-        report::records_by_hash(old_store, chartmode, cap, old_lens);
-    const std::unordered_map<std::string, store::RecordListing> new_by_hash =
-        report::records_by_hash(new_store, chartmode, cap, new_lens);
-    // Copies come from the 1.1 database's library (D79 item 3).
-    const std::unordered_map<std::string, int> library =
-        report::library_copies_by_hash(new_store);
+                                              const Settings& settings) {
+    // One read per store under the same profile but the fill rule: the old
+    // side asks for 1.0 results, the new side for 1.1, whatever `settings`
+    // says. Each side keeps the charts its own library lists.
+    const store::ChartIndex old_library = old_store.chart_index();
+    const store::ChartIndex new_library = new_store.chart_index();
+    const std::map<std::string, store::RecordRow> old_by_id = listed_records(
+        old_store, settings.profile_with_fills(FillDeadlineRule::Ch10), old_library);
+    const std::map<std::string, store::RecordRow> new_by_id = listed_records(
+        new_store, settings.profile_with_fills(FillDeadlineRule::Ch11), new_library);
 
     // Walk the union of both key sets so a chart in only one database still
     // gets a row. Ordered so the page's rows come out deterministically.
-    std::map<std::string, std::pair<const store::RecordListing*,
-                                    const store::RecordListing*>> united;
-    for (const auto& [hash, rec] : old_by_hash) united[hash].first = &rec;
-    for (const auto& [hash, rec] : new_by_hash) united[hash].second = &rec;
+    std::map<std::string, std::pair<const store::RecordRow*, const store::RecordRow*>> united;
+    for (const auto& [id, rec] : old_by_id) united[id].first = &rec;
+    for (const auto& [id, rec] : new_by_id) united[id].second = &rec;
 
     std::vector<FillCompareRow> rows;
     rows.reserve(united.size());
-    for (const auto& [hash, pair] : united) {
-        const store::RecordListing* old_rec = pair.first;
-        const store::RecordListing* new_rec = pair.second;
+    for (const auto& [id, pair] : united) {
+        const store::RecordRow* old_rec = pair.first;
+        const store::RecordRow* new_rec = pair.second;
 
         FillCompareRow row;
-        row.hyhash = hash;
-        row.copies = store::RecordStore::copies_of(library, hash);
+        row.hyhash = id;
+        // Copies come from the 1.1 database's library (D79 item 3).
+        row.copies = new_library.copies(id);
 
-        // Identity prefers the 1.1 side; either side names the same chart.
-        const store::RecordListing* id = new_rec ? new_rec : old_rec;
-        row.song = display_title(id->ref_name);
-        row.artist = display_artist(id->ref_artist);
-        row.charter = display_charter(id->ref_charter);
+        // Identity prefers the 1.1 side; either side names the same chart,
+        // and the side that holds a record lists it.
+        const store::ChartLibraryEntry* named =
+            new_rec ? new_library.naming(id) : old_library.naming(id);
+        row.song = display_title(named->title);
+        row.artist = display_artist(named->artist);
+        row.charter = display_charter(named->charter);
 
         // Which sides kept a scored best path: the store's one answer.
-        const bool old_scored = old_rec && old_rec->summary.has_scored_best_path();
-        const bool new_scored = new_rec && new_rec->summary.has_scored_best_path();
+        const bool old_scored = old_rec && old_rec->has_scored_best_path();
+        const bool new_scored = new_rec && new_rec->has_scored_best_path();
         if (old_rec) {
-            if (old_scored) row.old_score = old_rec->summary.score;
-            row.old_path = old_rec->bestpath;
-            row.old_acts = old_rec->summary.actcount;
+            const store::PathSummary s = old_rec->summary();
+            if (old_scored) row.old_score = s.score;
+            row.old_path = best_path(*old_rec);
+            row.old_acts = s.actcount;
         }
         if (new_rec) {
-            if (new_scored) row.new_score = new_rec->summary.score;
-            row.new_path = new_rec->bestpath;
-            row.new_acts = new_rec->summary.actcount;
+            const store::PathSummary s = new_rec->summary();
+            if (new_scored) row.new_score = s.score;
+            row.new_path = best_path(*new_rec);
+            row.new_acts = s.actcount;
         }
-        row.notes = new_rec ? new_rec->summary.notecount : old_rec->summary.notecount;
+        row.notes = (new_rec ? new_rec : old_rec)->summary().notecount;
 
         // A chart with a score on both sides compares them. A chart only one
         // database holds a record for is labelled by that database, score or
@@ -294,24 +308,37 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
     return rows;
 }
 
-FillCompareStats tally_fill_rows(const std::vector<FillCompareRow>& rows) {
-    // The page's stats() adds up the same "k" by the same statuses; the test
-    // "fill page: the tiles add up the copies tally_fill_rows adds up" pins
-    // the two together.
-    FillCompareStats stats;
+FillCompareStats tally_fill_rows(const std::vector<FillCompareRow>& rows,
+                                 const store::ChartIndex& library) {
+    // The page's stats() adds up each row's "k", the same index's copies, by
+    // the same statuses; the test "fill page: the tiles add up the copies
+    // tally_fill_rows adds up" pins the two together.
+    std::vector<std::string> all, same, ch10_higher, ch11_higher, only_old, only_new, in_both;
     for (const FillCompareRow& r : rows) {
-        stats.total += r.copies;
-        if (r.status == kStatusSame) stats.same += r.copies;
-        else if (r.status == kStatusOldHigher) stats.ch10_higher += r.copies;
-        else if (r.status == kStatusNewHigher) stats.ch11_higher += r.copies;
-        else if (r.status == kStatusOnlyOld) stats.only_old += r.copies;
-        else if (r.status == kStatusOnlyNew) stats.only_new += r.copies;
-        else if (r.status == kStatusInBoth) stats.in_both += r.copies;
+        all.push_back(r.hyhash);
+        if (r.status == kStatusSame) same.push_back(r.hyhash);
+        else if (r.status == kStatusOldHigher) ch10_higher.push_back(r.hyhash);
+        else if (r.status == kStatusNewHigher) ch11_higher.push_back(r.hyhash);
+        else if (r.status == kStatusOnlyOld) only_old.push_back(r.hyhash);
+        else if (r.status == kStatusOnlyNew) only_new.push_back(r.hyhash);
+        else if (r.status == kStatusInBoth) in_both.push_back(r.hyhash);
     }
+    auto count = [&](const std::vector<std::string>& ids) {
+        return static_cast<int>(library.count(ids));
+    };
+    FillCompareStats stats;
+    stats.total = count(all);
+    stats.same = count(same);
+    stats.ch10_higher = count(ch10_higher);
+    stats.ch11_higher = count(ch11_higher);
+    stats.only_old = count(only_old);
+    stats.only_new = count(only_new);
+    stats.in_both = count(in_both);
     return stats;
 }
 
 std::string build_fill_html(const std::vector<FillCompareRow>& rows,
+                            const store::ChartIndex& library,
                             const std::string& subtitle,
                             const std::string& footer) {
     auto opt_num = [](const auto& o) {
@@ -375,16 +402,14 @@ std::string build_fill_html(const std::vector<FillCompareRow>& rows,
     // The count line's total, worded by counted so one chart reads "1 of 1
     // chart" (D114 item 4).
     std::string total;
-    json_escape_into(total, counted(tally_fill_rows(rows).total, "chart", "charts"));
+    json_escape_into(total, counted(tally_fill_rows(rows, library).total, "chart", "charts"));
     const std::string page = replace_all(page_template(), "__COUNT_TOTAL__", total);
     return html::render_page(page.c_str(), std::move(data), subtitle, footer);
 }
 
 GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
                                          store::RecordStore& new_store,
-                                         const std::string& chartmode,
-                                         const store::CapQuery& cap,
-                                         const store::Lens& lens) {
+                                         const Settings& settings) {
     GeneratedFillReport out;
     // The page compares library charts only, as the path report does (D92),
     // so either database with results and no library stops it.
@@ -392,15 +417,19 @@ GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
         out.reason = report::kNoChartLibrary;
         return out;
     }
-    std::vector<FillCompareRow> rows =
-        collect_fill_rows(old_store, new_store, chartmode, cap, lens);
-    out.stats = tally_fill_rows(rows);
+    std::vector<FillCompareRow> rows = collect_fill_rows(old_store, new_store, settings);
+    // Every count is the 1.1 database's library's, as each row's copies are.
+    const store::ChartIndex library = new_store.chart_index();
+    out.stats = tally_fill_rows(rows, library);
+    // Both sides were read under this profile's chart mode and cap; only the
+    // fill rule differs.
+    const store::Profile profile = settings.profile_with_fills(FillDeadlineRule::Ch11);
+    const std::string& chartmode = profile.chartmode;
     if (rows.empty()) {
         // Same sentence whether the databases are empty or hold results under
-        // other settings (finding 105, D50 item 3); the mode is the chart mode
-        // both sides were looked up under.
+        // other settings (finding 105, D50 item 3).
         out.reason =
-            report::nothing_under_settings(cap.exact, chartmode, " in either database");
+            report::nothing_under_settings(profile.cap.exact, chartmode, " in either database");
         return out;
     }
 
@@ -422,7 +451,7 @@ GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
         "charts tie or drop. "
         "Long fills got looser, which is where the rare gains come from. "
         "Delta is the 1.1 score minus the 1.0 score.";
-    out.html = build_fill_html(rows, subtitle, footer);
+    out.html = build_fill_html(rows, library, subtitle, footer);
     return out;
 }
 
