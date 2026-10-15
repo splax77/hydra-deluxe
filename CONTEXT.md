@@ -9,6 +9,10 @@ analyzes each chart, and shows the Star Power paths that give the best score.
 
 **Chart**:
 One playable song file (`.mid`, `.chart`, `.sng`, or `.srb`) plus its metadata.
+A chart is known by its song id, the lowercase hex hash `song_id_read` gives it
+(docs/adr/0028). Two files with the same song id are one chart, and every
+comparison of song ids inside Hydra is exact; `normalize_chart_hash` is kept
+for a hash that comes in from outside, the leaderboard reply's (D115).
 A file's format is `chart_format_of`'s answer. Whether it is a container (a
 `.sng` or `.srb` that packs the chart, its metadata and its audio into one
 file) is `is_container`'s. Both live in src/parse/chart_files.h.
@@ -32,11 +36,18 @@ blank one (D114 item 15). `kChartMetaStamp` in src/store/stored_versions.h
 marks which reading of the names a stored row has.
 
 **Library row**:
-One line of the library table: one copy of a chart in one folder. Rows are
+One copy of a chart in one folder: a row of the `charts` table, and one line
+of the library table. Rows are
 told apart by `row_key` in src/ui/library_model.h, the chart's notes path,
 never its hash, because one chart in two folders is two rows. The selection,
 a click and a batch all compare it, and the open song panel re-reads its
 chart by it after a rescan, so the panel follows its row (D114 item 7).
+Every count of charts a player sees counts library rows, so a chart with two
+copies counts twice (D76, D77, D79). `ChartIndex` in src/store/chart_index.h,
+built by `RecordStore::chart_index` from the rows in scan order, is the one
+answer to which charts the library lists, how many copies each has
+(`ChartIndex::count`) and which copy names it (`ChartIndex::naming`, the
+first row) (D115).
 
 **Selection scroll**:
 Whether a list moves when its selected row changes, and how far. The owner is
@@ -56,41 +67,56 @@ its row was made is `chart_changed_since`'s answer, and `ChartNow::differs_from`
 compares the new hash with the stored one.
 
 **Analyze**:
-The search that computes a chart's paths as a record and saves its summary.
-A click on a song analyzes it, and so does a batch; the record itself is never
-saved (docs/adr/0026). Its progress bar moves in steps of at least half a percent of the chart
+The search that computes a chart's analysis and saves it as a record. A click
+on a song analyzes it, and so does a batch, and both save through
+`prepare_record` and `RecordStore::save`. A click saves only when the stored
+record is missing, Stale or different from the fresh one
+(`AppState::save_view_summary`), and a click that saves marks both open
+reports out of date, as a finished batch does (D115). Its progress bar moves in steps of at least half a percent of the chart
 (src/search/engine.cpp), and the main search owns the first 90% of the bar,
 the all-0 pass the rest (src/search/pather.cpp; D48, Q33).
 
+**Analysis**:
+The engine's full output for one chart under one profile: every kept path
+with its activations, squeeze rows and SP-end history, built each time a
+chart is analyzed and kept in memory only (docs/adr/0026). The type is
+`HydraRecord`; the name is historical, from before records were stored the
+way they are now. A record is what the store keeps of an analysis.
+_Avoid_: record (for the in-memory output)
+
 **Record**:
-The result of one analysis: the kept paths, their scores, and the settings the
-analysis ran with. The engine builds it each time a chart is analyzed, and it
-lives in memory only (docs/adr/0026).
-_Avoid_: stored record
+One chart's saved result under one profile: its path count, its best path's
+star count, its note count and its top paths, best first. A record that kept
+no paths has a path count of 0 and no path rows. `RecordRow` and `PathRow` in
+src/store/record_store.h are its shape, held in the `records` and
+`record_paths` tables (docs/adr/0031). `prepare_record` is the one place an
+analysis becomes a record: it ranks `HydraRecord::all_paths` from 1 and keeps
+at most `kPathsPerRecord`. Rank 1 is the record's best path, which the library
+shows (`RecordRow::best_path_text`); nothing else picks a best path again.
+`RecordStore::save` writes a record, and `RecordStore::lookup` and
+`RecordStore::lookup_one` read one with its status. "Record" is a code and
+glossary word only: public text says "chart" (user decision, 2026-10-11).
+_Avoid_: summary row, stored record, result row
 
-**Summary row**:
-What the database keeps of a record: the score, stars, counts, hardest timing
-and best path, one row per chart and analysis settings. Its key is the chart
-and its analysis settings: the chart mode, the SP cap, the fill rule, the path
-limit and the score range (the result identity, below), plus the rules it ran
-under. A summary row is stale unless both hold: it carries a results stamp this build accepts (a stamp that
-changes only when analysis output changes, not with every release; see
-src/store/stored_versions.h), and it was made under the rules in force. A
-lookup reports a chart as one of three statuses: not analyzed, stale, or
-ready (the result status, below). A listing returns only ready rows, so a
-stale row reads the same as no row at all.
-
-**Result identity**:
-What a stored result is filed under. `store::Profile` in
-src/store/record_store.h is the settings part: the chart mode, the SP cap
-(`store::CapQuery`) and the lens. The chart's hash is the other part of the
-identity. A lookup asks `RecordStore::lookup` with a `Profile` and the charts'
-hashes; `prepare_record` files an analysis under one. `Settings::profile`
-builds the profile from the app's settings, and `KeyPart` in
-src/app/config.h names the part each analysis setting is filed under.
+**Profile**:
+One set of settings a chart can be analyzed under: the chart mode, the SP cap,
+the lens, the results stamp and the rules fingerprint. A record is filed under
+its chart's song id and its profile, so each profile keeps its own records and
+switching back to settings analyzed before shows them Ready at once.
+`store::Profile` in src/store/record_store.h holds the first three; the store
+adds the stamp and the fingerprint itself when it files or looks up a record,
+in the `profiles` table. `Settings::profile` is the one builder of the current
+profile. A page that needs another asks for it by name:
+`Settings::profile_at_clone_hero_cap` for the leaderboard comparison and
+`Settings::profile_with_fills` for the fill comparison. `KeyPart` in
+src/app/config.h names the part each analysis setting is filed under. There is
+no limit on profiles; a save deletes a profile left with no records (D115).
+A player never sees the word: the library and the reports always show the
+current profile.
+_Avoid_: result identity, record key
 
 **Lens**:
-The part of a result's identity beyond the chart mode and the cap: the path
+The part of a profile beyond the chart mode and the cap: the path
 limit, the score range (number and unit) and the fill rule. `store::Lens` in
 src/store/record_store.h keeps it in one canonical form, so equal settings
 compare equal: a path limit that is off is stored as 0, and the unit as the
@@ -98,9 +124,14 @@ search reads it. `Settings::lens` builds it. The word is the code's only;
 nothing a player reads uses it.
 
 **Result status**:
-What the store says about a chart's result under the current settings: not
-analyzed (no row), stale (a row another build or other rules made), or ready.
-`store::RecordStatus` in src/store/record_store.h; only the store decides it.
+What the store says about a chart's result under the current settings. Ready:
+a record under the current profile, with a results stamp this build accepts
+and the rules in force. Stale: no Ready record, but one under a sibling
+profile, the same chart mode, cap and lens under another results stamp or
+other rules (`RecordLookup::stale_build` and `RecordLookup::stale_rules` say
+which). Not analyzed: neither, so a record under another mode, cap or lens
+never makes a chart Stale. `store::RecordStatus` in src/store/record_store.h;
+only the store decides it, in `RecordStore::lookup` (D115).
 The library writes the three as "Not analyzed", "Stale" and "Analyzed"
 (`status_label` in src/ui/library_model.h), on its chips and in the Best path
 cell. A ready result may have kept no paths.
@@ -108,13 +139,18 @@ _Avoid_: not analyzed (for the comparison page's wider state: that page says
 "no current result")
 
 **Library file upgrade**:
-The one-time rewrite of an older hydra.db into this version's smaller layout,
-on the first start after updating. Hydra copies the kept tables into a new
-file beside the old one, then swaps the two. A crash or a closed window at any
-point leaves either the whole old file or the whole new one, and the next
-start tidies up (docs/adr/0026, "The upgrade"; D100). The copy lives in
-src/store/record_store.cpp, the next start's tidy-up in
-src/store/upgrade_files.cpp, and the failure sentence in
+What the first open after an update does with an older hydra.db.
+`classify_library_file` in src/store/library_file.h is the one answer to which
+generation a file is. A file from 2.2.0 to 2.7.0 is converted in place, in one
+transaction (`RecordStore::convert_results`): each old summary row becomes a
+record under its profile, keeping its stamp, so it reads Stale until the chart
+is analyzed again. A row with a score and no stars is left behind, and song
+ids are lowercased. A file from before 2.2.0 (`kOldestConvertibleVersion`) is
+not converted. The app sets it aside as hydra.db.pre-2.2.0, replacing an
+earlier one, starts a fresh library, says so once and scans
+(`set_aside_old_library` in src/store/upgrade_files.cpp). The command-line
+tools refuse it and leave it alone. Each open names which it wants with
+`OldFilePolicy` (docs/adr/0031). The notice and the failure sentences live in
 src/app/user_messages.cpp. The open runs off the window's thread, so the
 window never freezes; a slow one shows the startup screen.
 
@@ -125,13 +161,13 @@ scores are not achievable in game.
 _Avoid_: edition, uncapped, SP meter
 
 **Analysis settings**:
-The eight settings that make up a record's identity, shown together in the
+The eight settings that make up a record's profile, shown together in the
 analysis settings panel and applied to every song: difficulty, Pro Drums, 2x Bass and
 Note Shuffle (together the chart mode, read off the settings as a
 `ChartReading` by `Settings::reading` and spelled by `chartmode_key`),
 the SP cap, 1.0 fills (the fill spawn deadline),
 the score range, and the path limit.
-Changing one shows the library's summary rows under the new combination, and
+Changing one shows the library's records under the new combination, and
 analyzes the open song again under it (D90 item 1). Changing it back brings
 the library's old rows back with no batch. The backend limit is
 not one of them: it only hides backend rows on screen and never re-analyzes.
@@ -144,7 +180,7 @@ The score range starts at 4<!-- default: kDefaultDepthValue --> scores below
 the best. `kDefaultDepthValue` in src/search/pather.h owns that number, and
 the search and `Settings` both start from it (D54).
 `kAnalysisFields` in src/app/config.h lists the ten `Settings` fields behind
-the eight settings, each with the part of the result identity it is filed
+the eight settings, each with the part of the profile it is filed
 under. The panel's Reset (`Settings::with_analysis_defaults`) and the settings
 button's summary (`Settings::analysis_changes`) read that list, so a new
 analysis setting is one new row there (concept audit M13).
@@ -188,8 +224,8 @@ What the user types to narrow the library. Every word must match the title,
 artist, charter or folder, in any order; `"quotes"` match a phrase, and
 `title:`, `artist:`, `charter:` and `folder:` limit a word or phrase to one
 field. `stars:N` (exactly N stars) and `squeeze<=N` (hardest squeeze or
-required early fill at most N ms; `squeeze<N` means the same) test the summary
-row's best path and only ever match ready rows. Matching
+required early fill at most N ms; `squeeze<N` means the same) test the
+record's best path and only ever match ready rows. Matching
 folds case and accents away, so `beyonce` finds "Beyoncé", and ignores Clone
 Hero's rich-text tags.
 
@@ -266,8 +302,11 @@ scan never found is "not in your library" (D114 item 2).
 _Avoid_: not analyzed (the library's word for a narrower state)
 
 **Fill comparison status**:
-What `hydra_fillcompare`'s page says about one chart scored under both fill
-rules: same, 1.0 higher, 1.1 higher, only 1.0, only 1.1, or in both. The six
+What `hydra_fillcompare`'s page says about one chart's records under the two
+fill rules, read from one database: same, 1.0 higher, 1.1 higher, only 1.0,
+only 1.1, or in both. A chart with a record under one rule only still gets a
+row, labelled by that rule; the page's filter and tile call those "Only under
+1.0", "Only under 1.1" and "Under one rule only" (user's choice, 2026-10-15). The six
 are the `kStatus*` words in src/app/fill_report.h. `collect_fill_rows` writes
 them, `tally_fill_rows` counts them, and `build_fill_html` writes them into
 the page's script. "In both" means a result on each side but not a score on
@@ -337,9 +376,21 @@ first one listed (D48). A path's average multiplier reads 0.000x when it has no
 scoring notes, instead of dividing by zero (`Path::avg_mult`); real charts
 never hit this (D48, Q33).
 
+**Optimal path**:
+A path whose score ties the analysis's top score, so a tied variant is optimal
+too. `HydraRecord::is_optimal` is the one answer, and it reads the top score
+from `HydraRecord::optimal_score`, which has no value for an analysis with no
+paths. The report's flag (a record's `PathRow::optimal`), the Paths tab's gold
+group and the Preview's "(optimal)" label all come from it. "Best path" means
+only the single top path, rank 1 of a record. The report's "Optimal paths
+only" box keeps every optimal path among the ones the record kept (D115).
+
 **Score categories**:
 The six parts a path's score is made of: notes (the notes' own points), combo bonus, Star
-Power, solo bonus, accents and ghosts. `score_total` in src/core/model.h is
+Power, solo bonus, accents and ghosts. The Notes line is `Path::notes_points`.
+D115 renamed it, so the chart's 1x total, `Path::chart_base_score`, is the one
+"base score", and a note's own 1x value is `ChordNote::basescore`, the name
+Clone Hero's code uses. `score_total` in src/core/model.h is
 the one sum, in the order `Path` stores them. `ReplayScore` in
 src/core/replay.h holds the same six (`kReplayScoreFields` names each), and
 `score_of` and `assign_score` are the only pairing between it and `Path`.
@@ -385,6 +436,14 @@ notes score under Star Power.
 **Backend squeeze**:
 Hitting a note near the SP end early, so it lands inside Star Power.
 
+**Backend row**:
+A chord within the squeeze window of an SP end, as the Backend timings table
+lists it: one `BackendSqueeze` in src/core/model.h. The window is
+`within_squeeze_window`'s answer. What the row is worth and the backend leeway
+come from src/core/backend_value.h (`backend_row_value`). In public text
+"backend" names a scoring effect, a table row and a squeeze; the rows are
+backend rows (D115).
+
 **SqIn / SqOut**:
 Squeezing an SP phrase's note into (+) or out of (-) an active Star Power
 window, written as the `+`/`-` symbols in path notation. Only a phrase after
@@ -424,7 +483,9 @@ The latest your SP meter can fill up and still have a fill appear. Clone Hero
 `fill_rule_description` writes it into the sentence the "1.0 fills" tooltip
 and the fill comparison page show. A
 beat here is a quarter note (the chart's resolution) in every meter, 6/8
-included; that is not verified against Clone Hero (docs/adr/0023).
+included: Clone Hero 1.1.0.6142's code sets the deadline at resolution × 4
+ticks before the fill's start (0x20DF7B7), and only the fill's start tick
+counts (D115; docs/adr/0010, note of 2026-10-15).
 
 **Fill spawn deadline (CH 1.0)**:
 The older rule: roughly one fill-length of lead time before the fill, clamped
@@ -451,9 +512,22 @@ user's call, 2026-10-14). It puts the fill on the chord nearest the downbeat of
 Hydra's own measures, within half a beat, half a measure long
 (`kCh10FillLengthMeasures`, fixed; the old `fill_length_measures` key is read
 and ignored), and at least 4 measures after the last one. With two or more
-meter changes between two chords, its length reads the earlier meter; that is
-not verified against Clone Hero (docs/adr/0023). The distance and the length
-are cut down to whole ticks.
+meter changes between two chords, its length reads the earlier meter. This
+generator is Hydra's own model of 1.0, kept unchanged (docs/adr/0023). The
+distance and the length are cut down to whole ticks. `Song::place_fills_ch10`
+holds it, and `Song::place_fills_ch11` the 1.1 generator.
+
+**Fill rule**:
+Which Clone Hero version's fill rules a run follows, 1.1 or 1.0:
+`FillDeadlineRule` in src/parse/song.h. It picks both the fill spawn deadline
+(`activation_fill_deadline_ms`) and the generated-fill generator
+(`Song::check_activations`). A flag that says "1.0 fills" (the setting, a
+`store::Lens`, or `hydra_batch --legacy-fills`) becomes a rule only through
+`fill_rule_for` in src/search/graph.h, and `legacy_fills_for` reads a rule back
+into the flag. The two are the only crossings. `fill_rule_name` names a rule
+wherever it is shown. A record carries its rule in its profile's lens, so one
+database holds both rules' records; the old label on the whole file
+(`engine_mode`) is retired (D115, docs/adr/0010).
 
 **Hit window**:
 The per-side ms window Clone Hero registers a hit in. A setting; feeds the
@@ -532,6 +606,72 @@ is Hydra's own setting.
 A path's or activation's hardest squeeze or required early fill, in raw gap
 ms — never scaled by the transfer scale.
 
+### Chart timing
+
+These words have one meaning each in code and in the guide (D115). Clone Hero
+1.1.0.6142's code is the source of each rule (docs/adr/0010, note of
+2026-10-15).
+
+**Tick**:
+One step of the chart's own resolution, its smallest unit of position. Its
+length in time depends on the chart's resolution and tempo. `MsIndex` turns
+ticks into ms and back (`MsIndex::at`, `MsIndex::tick_at_ms`), and
+`SongTiming::display_tick_at_ms` gives the tick a screen shows at a time.
+
+**Tempo**:
+The BPM in force at a tick, `SongTiming::tempo_at`. A tick exactly on a tempo
+change reads the new tempo.
+
+**Time signature**:
+The meter in force at a tick, as the chart wrote it: `apply_timesig` in
+src/parse/song.h stores the numerator as written and the bottom number from
+`timesig_denominator`, and `SongTiming::time_signature_at` reads it back. A
+signature whose beat would be shorter than one tick is refused, naming its
+tick (user decision, 2026-10-14).
+
+**Measure**:
+Two questions with one owner each. Where the measure lines are is Clone
+Hero's grid, `MeasureIndex` in src/core/timing.h: it starts again at the first
+beat at or after a time signature change, and the measure lines, the
+generated fills and the position text all read it. How many measures lie
+between two ticks is Clone Hero's continuous count, `MeasureCount`: a part
+measure before a mid-measure change counts as its share of the old measure.
+Star Power's end, the phrase extension and the cap ceiling read it, through
+`SongTiming::plusmeasure`, which walks it in exact whole numbers. The
+position text (`format_measure`, such as "m32.1.0") counts measures and beats
+from 1 and the tick from 0.
+_Avoid_: bar (for a measure)
+
+**Beat**:
+One step of Clone Hero's grid: the resolution × 4 ÷ the time signature's
+bottom number, so a quarter note in 4/4 and an eighth note in 6/8. The beat
+lines and the position text's beat number count these, so they always agree.
+Two rules count quarter notes in every meter instead: the fill spawn deadline
+(CH 1.1) and the generated fill's half-beat distance, both as Clone Hero's
+code does.
+
+**Section**:
+A named part of the song from the chart's section markers, such as "Chorus
+1a" (`Song::practice_sections`). Its shown name is `section_display_name`'s,
+from Clone Hero 1.1.0.6142's own list of 2,718 names, which Hydra ships in
+data/clone-hero-1.1.0.6142-section-names.tsv; a name missing from the list
+only has its underscores turned into spaces. Solo sections keep their full
+name (`Song::solo_sections`).
+_Avoid_: section (for a stretch of one tempo or time signature: that is a span)
+
+**Span**:
+One stretch of a single tempo or time signature inside `MsIndex`,
+`MeasureIndex` or `MeasureCount`; each answers which span a tick sits in
+(`MeasureIndex::span_at` and the others). `last_at_or_before` in
+src/core/timing.h is the one "in force at this tick" search they share.
+_Avoid_: section
+
+**SP bar**:
+One bar of the Star Power meter: two measures of Star Power
+(`kMeasuresPerSpBar`, through `sp_bars_to_measures`), counted on the
+continuous count. "Bar" means this and nothing else; the line drawn at a
+measure's start is a measure line (`PreviewBeatKind::MeasureLine`).
+
 ### Preview
 
 **Preview**:
@@ -578,8 +718,9 @@ down to it as the song plays; a gem flashes there when it passes.
 _Avoid_: hit line, target line, target (the Onyx name)
 
 **Beat line**:
-A line across the note highway at a bar, a beat, or the half-beat before one,
-drawn from the chart's timing.
+A line across the note highway at a measure line, a beat, or the half-beat
+before one, drawn from Clone Hero's grid (`MeasureIndex`; see Beat and
+Measure).
 
 **Active SP window**:
 The stretch of the note highway from an activation to its deact node, where
