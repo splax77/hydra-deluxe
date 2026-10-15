@@ -14,6 +14,14 @@ The five canonical triage roles, each label string equal to its name. See `docs/
 
 Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
+### Past sessions
+
+Every past session of this project has a short card: its goal, what went wrong and why, the user's rulings in their exact words, and how it ended. The cards live in `C:\Users\Patrick\.claude\projects\C--Users-Patrick-Downloads-Hydra-hydra-test\session-cards\cards\`, one line per card in `index.md` beside them. Most old transcripts are removed, so the cards and the `condensed\` files next to them are the record.
+
+Look there when the user mentions an earlier session or a past decision, asks to continue or redo something, or before you propose an approach that may have been tried and dropped. The index is too big to read whole: grep `index.md` and the cards by keyword, tag, D-number or session id, open the matching card, and read its `condensed\<id>.condensed.md` only when you need detail. Memory files end with a `Sessions:` line that names their cards. A card is a pointer, not proof: check what it says against the code before you act on it (agent rule 9).
+
+A start-of-session hook asks the main session to write cards for finished sessions that have none. Do it alongside the user's request, as the hook's message says.
+
 ### GUI testing
 
 To verify anything in the GUI, run `hydra_uitest` (headless, drives the real UI by widget label, returns text) instead of launching the app and taking screenshots. See `docs/agents/ui-testing.md`. To drive Hydra's GUI one step at a time and read it back as text, use the project's `hydra` MCP server: call `hydra_start` (headless on the test charts, or the real window on a snapshot copy of the user's library), then the other `hydra_*` tools; "Live mode and the MCP server" in `docs/agents/ui-testing.md` explains them.
