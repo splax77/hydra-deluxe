@@ -218,6 +218,24 @@ TEST_CASE("charts_with_result counts a Ready record and not a Stale or sibling-p
     CHECK(charts_with_result(store, run, /*redo=*/true).empty());
 }
 
+// The run's profile and Settings::profile are one answer: a batch files and
+// looks up under the profile the settings give (every setting that is in it
+// changed here, so a field BatchRun forgot would show).
+TEST_CASE("a BatchRun made from Settings has Settings::profile as its profile") {
+    Settings settings;
+    settings.view_difficulty = "Hard";
+    settings.view_prodrums = false;
+    settings.view_bass2x = true;
+    settings.sp_cap = 4;
+    settings.legacy_fills = true;
+    settings.depth_value = 25;
+    settings.mslimit_enabled = true;
+    settings.mslimit_value = 12;
+    CHECK(settings.batch_run().profile() == settings.profile());
+    CHECK(Settings{}.batch_run().profile() == Settings{}.profile());
+    CHECK(settings.batch_run().profile() != Settings{}.batch_run().profile());
+}
+
 TEST_CASE("run_work_pool hands every item to the consumer once") {
     std::vector<int> seen(100, 0);
     run_work_pool<size_t>(
