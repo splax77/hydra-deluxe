@@ -429,9 +429,9 @@ included; that is not verified against Clone Hero (docs/adr/0023).
 **Fill spawn deadline (CH 1.0)**:
 The older rule: roughly one fill-length of lead time before the fill, clamped
 to 250..10000 ms. Short fills got stricter in 1.1 and long fills got looser.
-The "1.0 fills" analysis setting, or `hydra_batch --legacy-fills` into its own
-database. Part of a summary row's key, so 1.0 and 1.1 rows sit side by side;
-`hydra_fillcompare` diffs the two. See docs/adr/0010.
+The "1.0 fills" analysis setting, or `hydra_batch --legacy-fills`. Part of a
+record's profile, so a chart's 1.0 and 1.1 records sit side by side in one
+database; `hydra_fillcompare` diffs the two. See docs/adr/0010.
 
 **Generated fill**:
 A fill Hydra places itself on a chart with no authored fills. The "1.0 fills"
