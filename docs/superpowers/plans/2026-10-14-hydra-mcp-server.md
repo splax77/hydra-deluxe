@@ -207,6 +207,72 @@ Every task is sized for one Opus executor inside 100 tool calls and 20 minutes, 
 
 T4 is deliberately absent: the protocol header's JSON side went to T2 and the `.mcp.json` to T3, so no task was left too small to be worth a worktree.
 
+## T8: one owner for every command rule (added 2026-10-14)
+
+The first build split the system into a C++ channel and a Python helper without saying which side owned what. The helper drifted into copying Hydra's rules: it parsed numbers, skipped lines, numbered lines, filtered dumps and chose defaults. The stand-in copied the reply wording a third time. A boundary audit listed every copy. T8 removes them all, on the user's rule: Hydra owns every command rule, and the helper only carries messages.
+
+### Who owns what
+
+| Question | Owner |
+|---|---|
+| What a verb does, how its arguments parse, which lines are commands | C++: `run_command`, `command_line` |
+| Whether a number argument is valid | C++: the `timeout` and `wait` verbs, strictly |
+| The timeout in force, and the longest a command may run | C++: `CommandSession`, reported in every reply |
+| Reply wording, ok or failed, including "nothing found" | C++: the live channel, which sends finished text |
+| Line numbers | Script mode: the interpreter. Live mode: none from Hydra; the helper numbers the lines of a `hydra_run` script, the only numbering there |
+| Filtering text and dump output | C++: the `text` and `dump` verbs |
+| Where Hydra writes its log and crash dump | C++, reported in the hello line |
+| The pipe name | The helper (transport). It passes the name with `--pipe <name>`; Hydra uses it and never builds one |
+| Launch, stop, the snapshot, the running-Hydra check, reply caps, truncation, the tool list | The helper |
+| Hang, exit, closed pipe, oversized replies (test only) | The stand-in, and nothing else |
+
+### The protocol after T8
+
+**Requests and the pipe.** A request is one line. Hydra opens the pipe named by `--pipe <name>`, which is required with `--live` on both exes.
+
+**Every reply is one JSON line:** `{"ok":<bool>,"text":"<finished text>","timeout":<seconds in force after this command>}`.
+
+- **On success,** `text` is what the verb produced. When the verb produced nothing, it is `ok`.
+- **On failure,** `text` is the finished failure: the error, then the engine log lines from this command. In live mode it names no line number.
+- **The helper prints `text` as given,** with no label of its own.
+- **Its reply cap** is the last reported `timeout` plus `REPLY_MARGIN_S`.
+
+**The hello line** is `{"ok":true,"hello":{"mode":..., "scratch":..., "pid":..., "timeout":..., "log":..., "crash_dump":...}}`.
+
+- `log` is the log file's path. For `hydra_uitest` it is empty, meaning stdout, which the helper captures itself.
+- `crash_dump` is where a crash dump would be written.
+
+**Numbers.** `timeout <s>` and `wait <s>` take a finite, non-negative number and nothing else. `90s`, `abc` and an empty argument fail with a message naming what was given. This holds in both modes. In live mode, a `wait` longer than the timeout in force fails, so no command outlasts the cap the helper already knows.
+
+**Filters.**
+
+- `text | <substring>` keeps the lines holding the substring.
+- `dump [<window>] [| <substring>]` keeps the matching item lines, with their window lines.
+- A plain `dump` means what `widget_dump("")` means: every window.
+
+**Typing.** `type <ref> | <text>` splits at the first ` | `, and the text after it is kept exactly, including leading and trailing spaces.
+
+**Rect.** `rect` on a ref that finds nothing fails.
+
+**The engine panel.** It is hidden in live mode, and `--uitest` mode keeps it.
+
+### Tasks
+
+**T8a, the C++ side (one executor).**
+
+- **Owns:** `tests/ui/uitest_commands.{h,cpp}`, `tests/ui/uitest_live.cpp`, `tests/ui/live_protocol.h`, `tests/ui/uitest_harness.{h,cpp}` (the pipe name and log fields, and the dump filter), `tests/ui/uitest_script.cpp`, `tests/ui/uitest_main.cpp` (`--pipe`), `src/ui/main.cpp` (`--pipe`, the log path, hiding the panel), `tests/test_live_protocol.cpp` and `tests/ui/scripts/smoke.txt`.
+- **Builds:** everything above, with literal-pinned tests.
+- **Note:** script-mode output changes only where this section says so: strict numbers, typed text kept exactly, the filters and `rect` failing.
+
+**T8b, the Python side (one executor, forked from T8a's merge).**
+
+- **Owns:** `tools/hydra_ui_mcp.py`, `tools/fake_hydra_live.py` and `tools/test_hydra_ui_mcp.py`.
+- **The helper** passes `--pipe`, reads `text` and `timeout` from every reply, and reads the log and crash paths from the hello line. It stops parsing verbs and arguments, labelling replies, filtering, and defaulting `dump`.
+- **One-off timeouts** use the reported old value to restore it.
+- **The stand-in** shrinks to hang, exit, close, big, the hello line and a plain echo reply.
+- **Tests:** every test the audit listed as movable runs against the real headless `hydra_uitest --live`. Only the four transport-failure tests and the window argv/snapshot tests keep the stand-in.
+- **A new test** runs one command before a `hydra_run`, and checks that the reply carries exactly one line number: the helper's.
+
 ## The real-app check before the last merge
 
 Before T7 merges, the main session runs `hydra_start("window")` from a Claude Code session on the user's real library folder with Hydra closed, and with the user watching: opens a song, flips 2x Bass and back, narrows the library with a search to a few charts and runs `Analyze shown (N)...` on them, then `hydra_stop`. The batch is narrowed on purpose: a batch over the whole library, even on the copy, is a library run that needs the user's yes in chat (CLAUDE.md rule 8). It then shows the user that `C:\Program Files\Hydra\hydra.db` has the same size and modification time as before the session, and that the snapshot folder holds the changed copy. That is the proof of decision 2 on the real files, which no test can give.
