@@ -24,14 +24,14 @@
 
 #include "../temp_util.h"
 #include "../wait_util.h"
-#include "core/strutil.h"
+#include "core/winstr.h"
 #include "live_protocol.h"
 
 namespace uitest {
 
 namespace {
 
-// The server end of \\.\pipe\hydra-live-<pid>. The handle is overlapped:
+// The server end of the pipe --pipe names. The handle is overlapped:
 // Windows serialises synchronous reads and writes on one pipe handle, so a
 // reader parked in a plain ReadFile would hold up every reply's WriteFile.
 // With an overlapped handle the read and the write are separate requests.
@@ -58,17 +58,17 @@ public:
 
     const std::string& name() const { return name_; }
 
-    // Make the pipe and start waiting for the one client. False when either
-    // failed; error() says why.
-    bool create() {
-        name_ = "\\\\.\\pipe\\hydra-live-" + std::to_string(GetCurrentProcessId());
+    // Make the pipe called `name`, exactly as given, and start waiting for the
+    // one client. False when either failed; error() says why.
+    bool create(const std::string& name) {
+        name_ = name;
         connect_event_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         read_event_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         write_event_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         stop_event_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         if (!connect_event_ || !read_event_ || !write_event_ || !stop_event_)
             return fail("CreateEventW");
-        const std::wstring wname(name_.begin(), name_.end());  // ASCII
+        const std::wstring wname = hydra::utf8_to_wide(name_);
         pipe_ = CreateNamedPipeW(wname.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
                                  PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, 1, kBufferBytes,
                                  kBufferBytes, 0, nullptr);
@@ -206,22 +206,15 @@ std::string log_since(ImGuiTestContext* ctx, size_t from) {
 std::string answer(ImGuiTestContext* ctx, CommandSession& session, const std::string& line) {
     const size_t log_start = static_cast<size_t>(ctx->TestOutput->Log.Buffer.size());
     CommandResult r;
-    std::string error;
     try {
         r = run_command(ctx, session, line);
     } catch (const std::exception& e) {
-        r.ok = false;
-        error = std::string("C++ exception: ") + e.what();
+        r = {false, std::string("C++ exception: ") + e.what()};
     }
-    if (r.ok && !ctx->IsError()) return live::ok_line(r.text);
-
-    // The one-line reason: the exception, else the interpreter's own failure
-    // line, else the command itself (its reason is in the log).
-    if (error.empty()) error = hydra::trim(r.text);
-    if (error.empty()) error = "failed: " + line;
-    const std::string log = log_since(ctx, log_start);
-    ctx->TestOutput->Status = ImGuiTestStatus_Running;
-    return live::fail_line(error, log);
+    if (ctx->IsError()) ctx->TestOutput->Status = ImGuiTestStatus_Running;
+    if (r.ok) return live::ok_line(r.text, session.timeout);
+    // On a failure, run_command's text is the one-line reason (CommandResult).
+    return live::fail_line(r.text, log_since(ctx, log_start), session.timeout);
 }
 
 // A seed (--db, --ini) that is not a copy under the temp folder. Live mode
@@ -259,7 +252,7 @@ void run_live(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
 
     LivePipe pipe;
-    if (!pipe.create()) {
+    if (!pipe.create(h.pipe_name)) {
         IM_ERRORF("%s", pipe.error().c_str());
         return;
     }
@@ -272,21 +265,22 @@ void run_live(ImGuiTestContext* ctx) {
         return;
     }
     pipe.start_reader();
+    CommandSession session;
+    session.live = true;
     if (!pipe.write(live::hello_line(h.attached ? "window" : "headless", h.temp_dir,
-                                     GetCurrentProcessId(), CommandSession{}.timeout)))
+                                     GetCurrentProcessId(), session.timeout, h.log_path,
+                                     h.crash_dump)))
         return;
 
     // Run each line as it comes; between lines, keep the app drawing. Ends
     // when the client leaves or sends quit.
-    CommandSession session;
     for (;;) {
         std::string raw;
         if (pipe.pop_line(raw)) {
-            ++session.line;
             // A line that is no command still gets its reply: one per line.
             std::string line;
-            const std::string reply =
-                command_line(raw, line) ? answer(ctx, session, line) : live::ok_line("");
+            const std::string reply = command_line(raw, line) ? answer(ctx, session, line)
+                                                              : live::ok_line("", session.timeout);
             if (!pipe.write(reply) || session.quit) return;
             continue;
         }

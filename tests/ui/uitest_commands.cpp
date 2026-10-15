@@ -6,10 +6,14 @@
 #include "uitest_harness.h"
 #include "uitest_commands.h"
 
+#include <charconv>
+#include <cmath>
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <system_error>
 
 #include "core/strutil.h"
 
@@ -89,6 +93,39 @@ bool parse_chord(const std::string& text, ImGuiKeyChord& chord) {
     return true;
 }
 
+// Split a line at its first " | " (blank, bar, blank): head is what comes
+// before it, tail everything after, kept exactly. False when there is none.
+// The one split type and the text and dump filters share.
+bool split_bar(const std::string& line, std::string& head, std::string& tail) {
+    const size_t bar = line.find(" | ");
+    if (bar == std::string::npos) return false;
+    head = line.substr(0, bar);
+    tail = line.substr(bar + 3);
+    return true;
+}
+
+// The seconds a timeout or wait argument gives: the whole argument must be a
+// finite number, 0 or more. The one parse both verbs share.
+bool parse_seconds(const std::string& text, double& seconds) {
+    double v = 0;
+    const char* first = text.data();
+    const char* last = first + text.size();
+    const auto [end, ec] = std::from_chars(first, last, v);
+    if (ec != std::errc() || end != last || !std::isfinite(v) || v < 0) return false;
+    seconds = v == 0 ? 0.0 : v;  // "-0" reads as 0
+    return true;
+}
+
+// printf into a string, for the interpreter's messages.
+std::string message(const char* fmt, ...) {
+    char buf[1024];
+    va_list args;
+    va_start(args, fmt);
+    std::vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    return buf;
+}
+
 }  // namespace
 
 void start_session(ImGuiTestContext* ctx) {
@@ -103,9 +140,14 @@ CommandResult run_command(ImGuiTestContext* ctx, CommandSession& session, const 
     std::string verb, rest;
     split_verb(line, verb, rest);
     CommandResult r;
-    // The interpreter's own errors: the log names the line, and the command
-    // stops there.
-    const CommandResult failed{false, ""};
+    // The interpreter's own refusal, which stops the command there. A script
+    // fails the test with the reason in its log, naming the line; live mode
+    // hands the reason back and the session goes on.
+    auto refuse = [&](const std::string& why) -> CommandResult {
+        if (session.live) return {false, why};
+        IM_ERRORF("line %d: %s", lineno, why.c_str());
+        return {false, ""};
+    };
 
     if (verb == "window") {
         ctx->SetRef(rest.c_str());
@@ -115,78 +157,79 @@ CommandResult run_command(ImGuiTestContext* ctx, CommandSession& session, const 
         if (verb == "check") ctx->ItemCheck(rest.c_str());
         else ctx->ItemUncheck(rest.c_str());
     } else if (verb == "type") {
-        // type <ref> | <text>
-        size_t bar = rest.find('|');
-        if (bar == std::string::npos) {
-            IM_ERRORF("line %d: type needs \"<ref> | <text>\"", lineno);
-            return failed;
-        }
-        std::string ref = trim(rest.substr(0, bar));
-        std::string text = trim(rest.substr(bar + 1));
+        // type <ref> | <text>: the text is everything after the bar, as given.
+        std::string head, text, ignored, ref;
+        if (!split_bar(line, head, text)) return refuse("type needs \"<ref> | <text>\"");
+        split_verb(head, ignored, ref);
         ctx->ItemInputValue(ref.c_str(), text.c_str());
     } else if (verb == "key") {
         ImGuiKeyChord chord = 0;
-        if (!parse_chord(rest, chord)) {
-            IM_ERRORF("line %d: unknown key \"%s\"", lineno, rest.c_str());
-            return failed;
-        }
+        if (!parse_chord(rest, chord)) return refuse(message("unknown key \"%s\"", rest.c_str()));
         ctx->KeyPress(chord);
-    } else if (verb == "wait") {
-        ctx->SleepNoSkip((float)std::atof(rest.c_str()), 1.0f / 60.0f);
-    } else if (verb == "timeout") {
-        session.timeout = std::atof(rest.c_str());
-    } else if (verb == "wait-idle") {
-        if (!wait_until(ctx, [&] { return !jobs_busy(h); }, timeout)) {
-            IM_ERRORF("line %d: jobs still running after %.0fs", lineno, timeout);
-            return failed;
+    } else if (verb == "wait" || verb == "timeout") {
+        double seconds = 0;
+        if (!parse_seconds(rest, seconds))
+            return refuse(message("%s needs a number of seconds, 0 or more, and nothing else; "
+                                  "got \"%s\"",
+                                  verb.c_str(), rest.c_str()));
+        if (verb == "timeout") {
+            session.timeout = seconds;
+        } else {
+            // In live mode the timeout is the longest any command may take.
+            if (session.live && seconds > timeout)
+                return refuse(message("wait %s is longer than the %g s timeout in force; raise "
+                                      "the timeout first",
+                                      rest.c_str(), timeout));
+            ctx->SleepNoSkip((float)seconds, 1.0f / 60.0f);
         }
+    } else if (verb == "wait-idle") {
+        if (!wait_until(ctx, [&] { return !jobs_busy(h); }, timeout))
+            return refuse(message("jobs still running after %.0fs", timeout));
     } else if (verb == "wait-text") {
         if (!wait_until(ctx, [&] { return visible_text(h).find(rest) != std::string::npos; },
-                        timeout)) {
-            IM_ERRORF("line %d: \"%s\" did not appear within %.0fs", lineno, rest.c_str(),
-                      timeout);
-            return failed;
-        }
+                        timeout))
+            return refuse(message("\"%s\" did not appear within %.0fs", rest.c_str(), timeout));
     } else if (verb == "expect-text") {
         ctx->Yield();
-        if (visible_text(h).find(rest) == std::string::npos) {
-            IM_ERRORF("line %d: \"%s\" is not on screen", lineno, rest.c_str());
-            return failed;
-        }
+        if (visible_text(h).find(rest) == std::string::npos)
+            return refuse(message("\"%s\" is not on screen", rest.c_str()));
     } else if (verb == "expect-not-text") {
         ctx->Yield();
-        if (visible_text(h).find(rest) != std::string::npos) {
-            IM_ERRORF("line %d: \"%s\" is on screen", lineno, rest.c_str());
-            return failed;
-        }
-    } else if (verb == "text") {
+        if (visible_text(h).find(rest) != std::string::npos)
+            return refuse(message("\"%s\" is on screen", rest.c_str()));
+    } else if (verb == "text" || verb == "dump") {
+        // text [| <part>] and dump [<window>] [| <part>]: what comes after the
+        // bar filters the output.
+        std::string arg = rest, part, head, ignored;
+        const bool filtered = split_bar(line, head, part);
+        if (filtered) split_verb(head, ignored, arg);
+        if (verb == "text" && !arg.empty())
+            return refuse("text takes nothing, or \"| <substring>\"");
         ctx->Yield();
-        r.text = visible_text(h) + "\n";
-    } else if (verb == "dump") {
-        ctx->Yield();
-        r.text = widget_dump(ctx, rest);
+        if (verb == "dump") r.text = widget_dump(ctx, arg, part);
+        else if (filtered) r.text = lines_holding(visible_text(h), part);
+        else r.text = visible_text(h) + "\n";
     } else if (verb == "rect") {
         ctx->Yield();
-        const ImGuiTestItemInfo it = ctx->ItemInfo(rest.c_str());
-        if (it.ID != 0) r.text = item_line(it, 0);
+        const ImGuiTestItemInfo it = ctx->ItemInfo(rest.c_str(), ImGuiTestOpFlags_NoError);
+        if (it.ID == 0) return refuse(message("rect found no item \"%s\"", rest.c_str()));
+        r.text = item_line(it, 0);
     } else if (verb == "state") {
         r.text = state_text(h);
     } else if (verb == "screenshot") {
         std::string saved_to;
-        if (!screenshot(ctx, rest, &saved_to)) {
-            IM_ERRORF("line %d: screenshot failed", lineno);
-            return failed;
-        }
+        if (!screenshot(ctx, rest, &saved_to)) return refuse("screenshot failed");
         r.text = "screenshot: " + saved_to + "\n";
     } else if (verb == "reset") {
         start_session(ctx);
     } else if (verb == "quit") {
         session.quit = true;
     } else {
-        IM_ERRORF("line %d: unknown verb \"%s\"", lineno, verb.c_str());
-        return failed;
+        return refuse(message("unknown verb \"%s\"", verb.c_str()));
     }
     if (ctx->IsError()) {
+        // An engine action failed; its reason is in the log.
+        if (session.live) return {false, "failed: " + line};
         char buf[64];
         std::snprintf(buf, sizeof(buf), "!! failed at line %d: ", lineno);
         return {false, buf + line + "\n"};

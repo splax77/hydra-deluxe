@@ -12,14 +12,21 @@
 #include "ui/live_protocol.h"
 
 TEST_CASE("live reply: a command that worked") {
-    CHECK(live::ok_line("") == "{\"ok\":true,\"text\":\"\"}\n");
-    CHECK(live::ok_line("charts=97\n") == "{\"ok\":true,\"text\":\"charts=97\\n\"}\n");
+    CHECK(live::ok_line("", 30.0) == "{\"ok\":true,\"text\":\"ok\",\"timeout\":30}\n");
+    CHECK(live::ok_line("charts=97\n", 2.5) ==
+          "{\"ok\":true,\"text\":\"charts=97\\n\",\"timeout\":2.5}\n");
 }
 
 TEST_CASE("live reply: a failure with a quote, a backslash and a newline in it") {
-    CHECK(live::fail_line("!! failed at line 2: click \"Scan\"", "[error] C:\\x\nnext\n") ==
-          "{\"ok\":false,\"error\":\"!! failed at line 2: click \\\"Scan\\\"\","
-          "\"log\":\"[error] C:\\\\x\\nnext\\n\"}\n");
+    CHECK(live::fail_line("failed: click \"Scan\"", "[error] C:\\x\nnext\n", 90.0) ==
+          "{\"ok\":false,\"text\":\"failed: click \\\"Scan\\\"\\n[error] C:\\\\x\\nnext\\n\","
+          "\"timeout\":90}\n");
+}
+
+TEST_CASE("live reply: a failure with no log lines") {
+    CHECK(live::fail_line("wait 99 is longer than the 30 s timeout in force", "", 30.0) ==
+          "{\"ok\":false,\"text\":\"wait 99 is longer than the 30 s timeout in force\\n\","
+          "\"timeout\":30}\n");
 }
 
 TEST_CASE("live reply: control characters are escaped, UTF-8 passes through") {
@@ -28,11 +35,14 @@ TEST_CASE("live reply: control characters are escaped, UTF-8 passes through") {
 }
 
 TEST_CASE("live hello line") {
-    CHECK(live::hello_line("headless", "C:\\Temp\\hydra_test_uitest_1234", 1234, 30.0) ==
+    CHECK(live::hello_line("headless", "C:\\Temp\\hydra_test_uitest_1234", 1234, 30.0, "",
+                           "C:\\Temp\\hydra_test_uitest_1234\\crash.dmp") ==
           "{\"ok\":true,\"hello\":{\"mode\":\"headless\","
-          "\"scratch\":\"C:\\\\Temp\\\\hydra_test_uitest_1234\",\"pid\":1234,\"timeout\":30}}\n");
-    CHECK(live::hello_line("window", "s", 7, 2.5) ==
-          "{\"ok\":true,\"hello\":{\"mode\":\"window\",\"scratch\":\"s\",\"pid\":7,\"timeout\":2.5}}\n");
+          "\"scratch\":\"C:\\\\Temp\\\\hydra_test_uitest_1234\",\"pid\":1234,\"timeout\":30,"
+          "\"log\":\"\",\"crash_dump\":\"C:\\\\Temp\\\\hydra_test_uitest_1234\\\\crash.dmp\"}}\n");
+    CHECK(live::hello_line("window", "s", 7, 2.5, "C:\\x\\hydra_uitest.log", "") ==
+          "{\"ok\":true,\"hello\":{\"mode\":\"window\",\"scratch\":\"s\",\"pid\":7,\"timeout\":2.5,"
+          "\"log\":\"C:\\\\x\\\\hydra_uitest.log\",\"crash_dump\":\"\"}}\n");
 }
 
 TEST_CASE("is_under_temp: a file in a folder under the temp folder passes") {

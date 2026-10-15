@@ -7,7 +7,6 @@
 #include <fstream>
 #include <string>
 
-#include "core/strutil.h"
 #include "uitest_harness.h"  // before the engine header: see uitest_commands.cpp
 #include "uitest_commands.h"
 
@@ -46,7 +45,12 @@ void run_script(ImGuiTestContext* ctx) {
 }  // namespace
 
 bool command_line(const std::string& raw, std::string& command) {
-    command = hydra::trim(raw);
+    // Leading blanks go. Trailing ones stay, because type keeps its text
+    // exactly; a carriage return ending the line is the line's end, not text.
+    size_t end = raw.size();
+    if (end > 0 && raw[end - 1] == '\r') --end;
+    const size_t start = raw.find_first_not_of(" \t");
+    command = start < end ? raw.substr(start, end - start) : std::string();
     return !command.empty() && command[0] != '#';
 }
 

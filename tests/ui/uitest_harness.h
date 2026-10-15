@@ -64,6 +64,17 @@ struct Harness {
     // Command file for the "script" test (--script).
     std::string script_path;
 
+    // The live test's pipe, exactly as --pipe gave it. The live channel opens
+    // this name and never makes one up.
+    std::string pipe_name;
+    // The file the process's output goes to: Hydra.exe's attached-mode log.
+    // Empty means stdout, as in hydra_uitest. The live hello line reports it.
+    std::string log_path;
+    // Where a crash's minidump is written, set by whoever installs the crash
+    // handler that writes it (hydra_uitest's main). Empty when nothing
+    // writes one. The live hello line reports it.
+    std::string crash_dump;
+
     // Headless: WARP device, offscreen render target, ImGui context, engine.
     bool init();
     void frame();     // one full ImGui frame + engine PostSwap
@@ -132,7 +143,7 @@ void register_live_test(Harness& h);
 void register_test(Harness& h, const char* name, void (*fn)(ImGuiTestContext*));
 // Whether a line a script file or the live pipe handed over is a command to
 // run (defined in uitest_script.cpp, the one place that decides). On true,
-// `command` holds the trimmed line.
+// `command` holds the line as run_command takes it.
 bool command_line(const std::string& raw, std::string& command);
 
 // ---- helpers shared by the tests and the script interpreter --------------
@@ -240,8 +251,15 @@ ImGuiWindow* window_named(const char* part);
 
 // The widget tree (label, id, state flags, rect) of every window whose name
 // holds `window_name`, or of every window when it is empty. One line per
-// window and per item, each ending in a newline.
-std::string widget_dump(ImGuiTestContext* ctx, const std::string& window_name);
+// window and per item, each ending in a newline. With `contains`, only the
+// item lines holding it are kept, each under its window's line; a window
+// with no such item is left out.
+std::string widget_dump(ImGuiTestContext* ctx, const std::string& window_name,
+                        const std::string& contains = "");
+
+// The lines of `text` that hold `part`, each ending in a newline, or a line
+// saying none did. The text verb's filter.
+std::string lines_holding(const std::string& text, const std::string& part);
 
 // One item's line in widget_dump's shape, indented two spaces per `depth`.
 // The one place an item line is formatted.
