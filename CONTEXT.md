@@ -338,7 +338,7 @@ scoring notes, instead of dividing by zero (`Path::avg_mult`); real charts
 never hit this (D48, Q33).
 
 **Score categories**:
-The six parts a path's score is made of: base (the notes), combo bonus, Star
+The six parts a path's score is made of: notes (the notes' own points), combo bonus, Star
 Power, solo bonus, accents and ghosts. `score_total` in src/core/model.h is
 the one sum, in the order `Path` stores them. `ReplayScore` in
 src/core/replay.h holds the same six (`kReplayScoreFields` names each), and

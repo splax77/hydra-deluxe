@@ -23,9 +23,10 @@ using namespace hydra;
 
 namespace {
 
-std::array<int64_t, kMaxStars> cutoffs_for(int64_t base) {
+std::array<int64_t, kMaxStars> cutoffs_for(int64_t chart_base_score) {
     std::array<int64_t, kMaxStars> out{};
-    for (int stars = 1; stars <= kMaxStars; ++stars) out[stars - 1] = star_cutoff(base, stars);
+    for (int stars = 1; stars <= kMaxStars; ++stars)
+        out[stars - 1] = star_cutoff(chart_base_score, stars);
     return out;
 }
 
@@ -45,7 +46,7 @@ TEST_CASE("scoring: one note's value at combos 0, 9 and 29, by category") {
     struct Row {
         const char* name;
         ChordNote note;
-        int base, accent, ghost;
+        int notes, accent, ghost;
         std::array<int, 3> combo, sp, dynamics_bonus;
     };
     const Row rows[] = {
@@ -70,7 +71,7 @@ TEST_CASE("scoring: one note's value at combos 0, 9 and 29, by category") {
             const CategoryScores total = category_scores(chord, combos[k], &per_note);
             REQUIRE(per_note.size() == 1);
             const CategoryScores& n = per_note[0];
-            CHECK(n.base == row.base);
+            CHECK(n.notes == row.notes);
             CHECK(n.combo == row.combo[k]);
             CHECK(n.sp == row.sp[k]);
             CHECK(n.accent == row.accent);
@@ -79,7 +80,7 @@ TEST_CASE("scoring: one note's value at combos 0, 9 and 29, by category") {
             CHECK(n.multiplier == multipliers[k]);
 
             // The chord total of a one-note chord is that note.
-            CHECK(total.base == n.base);
+            CHECK(total.notes == n.notes);
             CHECK(total.combo == n.combo);
             CHECK(total.sp == n.sp);
             CHECK(total.accent == n.accent);
@@ -87,7 +88,7 @@ TEST_CASE("scoring: one note's value at combos 0, 9 and 29, by category") {
             CHECK(total.sqout_reduction == n.sqout_reduction);
 
             // 160: the 1x shares add up to the note's basescore.
-            CHECK(n.base + n.accent + n.ghost == row.note.basescore());
+            CHECK(n.notes + n.accent + n.ghost == row.note.basescore());
             // The squeeze-out cut is the note's value.
             CHECK(n.sqout_reduction == n.sp);
         }
@@ -196,7 +197,7 @@ TEST_CASE("stars: score_without_solo is the total minus the solo bonus") {
     // A replay's running score is the same six categories, so the ReplayScore
     // form gives the same answer for the same numbers.
     ReplayScore running;
-    running.base = 1000;
+    running.notes = 1000;
     running.ghost = 100;
     running.accent = 200;
     running.combo = 3380;
@@ -247,7 +248,7 @@ TEST_CASE("stars: star_cutoffs reads the path's base score and solo bonus") {
     CHECK(path.chart_base_score() == 1300);
 
     const StarCutoffs sc = star_cutoffs(path);
-    CHECK(sc.base == 1300);
+    CHECK(sc.chart_base_score == 1300);
     CHECK(sc.solo_bonus == 800);
     const std::array<int64_t, 7> expected{130, 650, 1300, 2600, 3640, 4680, 5720};
     CHECK(sc.cutoffs == expected);
@@ -266,7 +267,7 @@ TEST_CASE("stars: avg_mult divides by the same base score") {
 
 TEST_CASE("stars: the base score is the sum of every note's basescore, on every path") {
     // "87" by Polyphia: cymbals and a drum solo. The engine adds the base
-    // score up by category (base + ghosts + accents); ChordNote::basescore
+    // score up by category (notes + ghosts + accents); ChordNote::basescore
     // prices one note. This ties the two together on a real chart, so they
     // can't drift apart, and checks the Stars tab's premise that every path
     // of a record has the same base score and solo bonus.

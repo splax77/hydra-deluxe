@@ -2007,11 +2007,11 @@
       "date": "2026-10-05",
       "decision": "D53, D54",
       "added_by": "J3-1",
-      "pattern": "notes_points\\s*\\+\\s*score_combo\\s*\\+\\s*score_sp|\\bbase\\s*\\+\\s*combo\\s*\\+\\s*sp\\s*\\+\\s*solo\\b",
+      "pattern": "notes_points\\s*\\+\\s*score_combo\\s*\\+\\s*score_sp|\\bnotes\\s*\\+\\s*combo\\s*\\+\\s*sp\\s*\\+\\s*solo\\b",
       "anchor": "combo",
       "must_match": [
         "return notes_points + score_combo + score_sp + score_solo + score_accents +",
-        "int64_t total() const { return base + combo + sp + solo + accent + ghost; }"
+        "int64_t total() const { return notes + combo + sp + solo + accent + ghost; }"
       ],
       "must_not_match": [
         "return notes_points + score_ghosts + score_accents;",
@@ -2020,7 +2020,7 @@
       "owner_lines": [
         {
           "file": "src/core/model.h",
-          "line_text": "return base + combo + sp + solo + accents + ghosts;",
+          "line_text": "return notes + combo + sp + solo + accents + ghosts;",
           "why": "score_total, the owner"
         }
       ],

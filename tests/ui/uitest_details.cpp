@@ -414,7 +414,8 @@ void test_stars(ImGuiTestContext* ctx) {
     hydra::StarCutoffs sc = hydra::star_cutoffs(h.app->viewed.record->best_path());
     IM_CHECK(sc.solo_bonus > 0);
     std::string text = visible_text(h);
-    IM_CHECK(text.find("Base score: " + hydra::group_thousands(sc.base)) != std::string::npos);
+    IM_CHECK(text.find("Base score: " + hydra::group_thousands(sc.chart_base_score)) !=
+             std::string::npos);
     IM_CHECK(text.find("Solo bonus: " + hydra::group_thousands(sc.solo_bonus) +
                        " (not counted toward stars)") != std::string::npos);
     IM_CHECK(text.find("With full solo bonus") != std::string::npos);
@@ -448,7 +449,8 @@ void test_stars(ImGuiTestContext* ctx) {
     sc = hydra::star_cutoffs(h.app->viewed.record->best_path());
     IM_CHECK(sc.solo_bonus == 0);
     text = visible_text(h);
-    IM_CHECK(text.find("Base score: " + hydra::group_thousands(sc.base)) != std::string::npos);
+    IM_CHECK(text.find("Base score: " + hydra::group_thousands(sc.chart_base_score)) !=
+             std::string::npos);
     IM_CHECK(text.find(hydra::group_thousands(sc.cutoffs[hydra::kMaxStars - 1])) !=
              std::string::npos);
     IM_CHECK(text.find("Solo bonus") == std::string::npos);

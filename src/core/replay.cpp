@@ -177,7 +177,7 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
         row.in_sp = sp_paid > 0;
         row.multiplier_shown = shown_multiplier(row.multiplier_after, row.in_sp);
 
-        row.points.base = sg.base;
+        row.points.notes = sg.notes;
         row.points.combo = sg.combo;
         row.points.sp = sp_points;
         row.points.solo = sg.solo;
@@ -213,7 +213,7 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
 
 ReplayScore score_of(const Path& path) {
     ReplayScore s;
-    s.base = path.notes_points;
+    s.notes = path.notes_points;
     s.combo = path.score_combo;
     s.sp = path.score_sp;
     s.solo = path.score_solo;
@@ -223,7 +223,7 @@ ReplayScore score_of(const Path& path) {
 }
 
 void assign_score(Path& path, const ReplayScore& s) {
-    path.notes_points = s.base;
+    path.notes_points = s.notes;
     path.score_combo = s.combo;
     path.score_sp = s.sp;
     path.score_solo = s.solo;

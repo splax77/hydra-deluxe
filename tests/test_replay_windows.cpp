@@ -68,16 +68,16 @@ std::string rules_label(const core::Rules& r) {
 
 // One row as text, every field the windows can move plus where the chord
 // sits: index, tick, position, combo before -> after, multiplier
-// before / after, base, combo and SP points, "SP" when Star Power paid the
+// before / after, notes, combo and SP points, "SP" when Star Power paid the
 // chord, the disc's multiplier and the running total.
 std::string row_line(const ReplayChord& c) {
     char buf[200];
     std::snprintf(buf, sizeof buf,
-                  "%d t%lld %s c%d->%d x%d/%d base=%lld combo=%lld sp=%lld %s "
+                  "%d t%lld %s c%d->%d x%d/%d notes=%lld combo=%lld sp=%lld %s "
                   "shown=x%d cum=%lld",
                   c.index, static_cast<long long>(c.tick), c.position.c_str(), c.combo_before,
                   c.combo_after, c.multiplier, c.multiplier_after,
-                  static_cast<long long>(c.points.base), static_cast<long long>(c.points.combo),
+                  static_cast<long long>(c.points.notes), static_cast<long long>(c.points.combo),
                   static_cast<long long>(c.points.sp), c.in_sp ? "SP" : "--", c.multiplier_shown,
                   static_cast<long long>(c.cum.total()));
     return buf;
@@ -207,7 +207,7 @@ TEST_CASE("replay: the open-window walk pins every row on hand-built windows") {
     const std::vector<ReplayWindow> reversed = {tick, near_w, plain, early, late};
 
     // The default rules, every row in full. By hand: each chord is two notes
-    // at 50 points (base 100); the multiplier steps to x2 at the tenth note,
+    // at 50 points (notes 100); the multiplier steps to x2 at the tenth note,
     // the second note of chord 4 (combo 50). SP doubles what a chord scores,
     // so a window pays chords 0-3 100 points and chord 4 150. A chord at or
     // before D always counts; one after it counts only inside the 3 ms
@@ -219,46 +219,46 @@ TEST_CASE("replay: the open-window walk pins every row on hand-built windows") {
     // 2.6 ms past D, inside the leeway.
     const core::Rules& rules = core::default_rules();
     check_lines(row_lines(replay_path(song, {late}, rules)),
-                {"0 t0 m1.1.0 c0->2 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=200",
-                 "1 t768 m2.1.0 c2->4 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=400",
-                 "2 t1536 m3.1.0 c4->6 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=600",
-                 "3 t2304 m4.1.0 c6->8 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=800",
-                 "4 t3072 m5.1.0 c8->10 x1/2 base=100 combo=50 sp=150 SP shown=x4 cum=1100",
-                 "5 t3256 m5.1.184 c10->12 x2/2 base=100 combo=100 sp=0 -- shown=x2 cum=1300"},
+                {"0 t0 m1.1.0 c0->2 x1/1 notes=100 combo=0 sp=100 SP shown=x2 cum=200",
+                 "1 t768 m2.1.0 c2->4 x1/1 notes=100 combo=0 sp=100 SP shown=x2 cum=400",
+                 "2 t1536 m3.1.0 c4->6 x1/1 notes=100 combo=0 sp=100 SP shown=x2 cum=600",
+                 "3 t2304 m4.1.0 c6->8 x1/1 notes=100 combo=0 sp=100 SP shown=x2 cum=800",
+                 "4 t3072 m5.1.0 c8->10 x1/2 notes=100 combo=50 sp=150 SP shown=x4 cum=1100",
+                 "5 t3256 m5.1.184 c10->12 x2/2 notes=100 combo=100 sp=0 -- shown=x2 cum=1300"},
                 "late");
     check_lines(row_lines(replay_path(song, {early}, rules)),
-                {"0 t0 m1.1.0 c0->2 x1/1 base=100 combo=0 sp=0 -- shown=x1 cum=100",
-                 "1 t768 m2.1.0 c2->4 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=300",
-                 "2 t1536 m3.1.0 c4->6 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=500",
-                 "3 t2304 m4.1.0 c6->8 x1/1 base=100 combo=0 sp=50 SP shown=x2 cum=650",
-                 "4 t3072 m5.1.0 c8->10 x1/2 base=100 combo=50 sp=0 -- shown=x2 cum=800",
-                 "5 t3256 m5.1.184 c10->12 x2/2 base=100 combo=100 sp=0 -- shown=x2 cum=1000"},
+                {"0 t0 m1.1.0 c0->2 x1/1 notes=100 combo=0 sp=0 -- shown=x1 cum=100",
+                 "1 t768 m2.1.0 c2->4 x1/1 notes=100 combo=0 sp=100 SP shown=x2 cum=300",
+                 "2 t1536 m3.1.0 c4->6 x1/1 notes=100 combo=0 sp=100 SP shown=x2 cum=500",
+                 "3 t2304 m4.1.0 c6->8 x1/1 notes=100 combo=0 sp=50 SP shown=x2 cum=650",
+                 "4 t3072 m5.1.0 c8->10 x1/2 notes=100 combo=50 sp=0 -- shown=x2 cum=800",
+                 "5 t3256 m5.1.184 c10->12 x2/2 notes=100 combo=100 sp=0 -- shown=x2 cum=1000"},
                 "early");
     check_lines(row_lines(replay_path(song, {plain}, rules)),
-                {"0 t0 m1.1.0 c0->2 x1/1 base=100 combo=0 sp=0 -- shown=x1 cum=100",
-                 "1 t768 m2.1.0 c2->4 x1/1 base=100 combo=0 sp=0 -- shown=x1 cum=200",
-                 "2 t1536 m3.1.0 c4->6 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=400",
-                 "3 t2304 m4.1.0 c6->8 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=600",
-                 "4 t3072 m5.1.0 c8->10 x1/2 base=100 combo=50 sp=150 SP shown=x4 cum=900",
-                 "5 t3256 m5.1.184 c10->12 x2/2 base=100 combo=100 sp=0 -- shown=x2 cum=1100"},
+                {"0 t0 m1.1.0 c0->2 x1/1 notes=100 combo=0 sp=0 -- shown=x1 cum=100",
+                 "1 t768 m2.1.0 c2->4 x1/1 notes=100 combo=0 sp=0 -- shown=x1 cum=200",
+                 "2 t1536 m3.1.0 c4->6 x1/1 notes=100 combo=0 sp=100 SP shown=x2 cum=400",
+                 "3 t2304 m4.1.0 c6->8 x1/1 notes=100 combo=0 sp=100 SP shown=x2 cum=600",
+                 "4 t3072 m5.1.0 c8->10 x1/2 notes=100 combo=50 sp=150 SP shown=x4 cum=900",
+                 "5 t3256 m5.1.184 c10->12 x2/2 notes=100 combo=100 sp=0 -- shown=x2 cum=1100"},
                 "plain");
     check_lines(row_lines(replay_path(song, {near_w}, rules)),
-                {"0 t0 m1.1.0 c0->2 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=200",
-                 "1 t768 m2.1.0 c2->4 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=400",
-                 "2 t1536 m3.1.0 c4->6 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=600",
-                 "3 t2304 m4.1.0 c6->8 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=800",
-                 "4 t3072 m5.1.0 c8->10 x1/2 base=100 combo=50 sp=0 -- shown=x2 cum=950",
-                 "5 t3256 m5.1.184 c10->12 x2/2 base=100 combo=100 sp=0 -- shown=x2 cum=1150"},
+                {"0 t0 m1.1.0 c0->2 x1/1 notes=100 combo=0 sp=100 SP shown=x2 cum=200",
+                 "1 t768 m2.1.0 c2->4 x1/1 notes=100 combo=0 sp=100 SP shown=x2 cum=400",
+                 "2 t1536 m3.1.0 c4->6 x1/1 notes=100 combo=0 sp=100 SP shown=x2 cum=600",
+                 "3 t2304 m4.1.0 c6->8 x1/1 notes=100 combo=0 sp=100 SP shown=x2 cum=800",
+                 "4 t3072 m5.1.0 c8->10 x1/2 notes=100 combo=50 sp=0 -- shown=x2 cum=950",
+                 "5 t3256 m5.1.184 c10->12 x2/2 notes=100 combo=100 sp=0 -- shown=x2 cum=1150"},
                 "near");
     // Together each chord's SP points are the five windows' sum: chord 2 is
     // 100 from four windows, chord 4 150 from late, plain and tick.
     const std::vector<std::string> all_rows = {
-        "0 t0 m1.1.0 c0->2 x1/1 base=100 combo=0 sp=200 SP shown=x2 cum=300",
-        "1 t768 m2.1.0 c2->4 x1/1 base=100 combo=0 sp=300 SP shown=x2 cum=700",
-        "2 t1536 m3.1.0 c4->6 x1/1 base=100 combo=0 sp=500 SP shown=x2 cum=1300",
-        "3 t2304 m4.1.0 c6->8 x1/1 base=100 combo=0 sp=450 SP shown=x2 cum=1850",
-        "4 t3072 m5.1.0 c8->10 x1/2 base=100 combo=50 sp=450 SP shown=x4 cum=2450",
-        "5 t3256 m5.1.184 c10->12 x2/2 base=100 combo=100 sp=0 -- shown=x2 cum=2650"};
+        "0 t0 m1.1.0 c0->2 x1/1 notes=100 combo=0 sp=200 SP shown=x2 cum=300",
+        "1 t768 m2.1.0 c2->4 x1/1 notes=100 combo=0 sp=300 SP shown=x2 cum=700",
+        "2 t1536 m3.1.0 c4->6 x1/1 notes=100 combo=0 sp=500 SP shown=x2 cum=1300",
+        "3 t2304 m4.1.0 c6->8 x1/1 notes=100 combo=0 sp=450 SP shown=x2 cum=1850",
+        "4 t3072 m5.1.0 c8->10 x1/2 notes=100 combo=50 sp=450 SP shown=x4 cum=2450",
+        "5 t3256 m5.1.184 c10->12 x2/2 notes=100 combo=100 sp=0 -- shown=x2 cum=2650"};
     check_lines(row_lines(replay_path(song, all, rules)), all_rows, "all five");
     check_lines(row_lines(replay_path(song, reversed, rules)), all_rows,
                 "all five, listed in reverse");
