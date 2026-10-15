@@ -663,7 +663,7 @@
       "must_not_match": [
         "const std::string key = to_lower_ascii(raw_key);",
         "std::string key = to_lower_ascii(line.substr(0, eq));",
-        "in_library.insert(normalize_chart_hash(e.md5));"
+        "s.identifier = app::normalize_chart_hash(jstr(entry, \"identifier\"));"
       ],
       "owner_lines": [
         {
@@ -672,7 +672,47 @@
           "why": "normalize_chart_hash, the owner"
         }
       ],
-      "note": "Lowering a hash, a leaderboard identifier or a stored md5 so two spellings match. Lowering an ini key or a search query is a different question. Decided by: audit finding 192; phase 6 task J1-6 (D53)"
+      "note": "Lowering a hash, a leaderboard identifier or a stored md5 so two spellings match. Lowering an ini key or a search query is a different question. Who may call the owner at all is the next row, \"Where is a chart hash from outside Hydra lowercased into a song id?\". Decided by: audit finding 192; phase 6 task J1-6 (D53)"
+    },
+    {
+      "question": "Where is a chart hash from outside Hydra lowercased into a song id?",
+      "owner": "normalize_chart_hash in src/app/analysis.cpp, called only at the leaderboard boundary in src/net/dmbot_client.cpp",
+      "owner_file": "src/app/analysis.cpp",
+      "owner_symbol": "normalize_chart_hash",
+      "date": "2026-10-15",
+      "decision": "D115 (spec section 8; plan part A1, task A1-5)",
+      "added_by": "D115-A1-5j",
+      "pattern": "\\bnormalize_chart_hash\\(",
+      "anchor": "normalize_chart_hash(",
+      "exempt": [
+        {
+          "file": "src/net/dmbot_client.cpp",
+          "why": "the leaderboard boundary: the one place a hash from outside Hydra becomes a song id"
+        }
+      ],
+      "must_match": [
+        "in_library.insert(normalize_chart_hash(e.md5));",
+        "by_hash.emplace(normalize_chart_hash(entry.md5), &entry);",
+        "if (app::normalize_chart_hash(row.song_id) == song_id) {"
+      ],
+      "must_not_match": [
+        "in_library.insert(e.md5);",
+        "if (row.song_id == song_id) {",
+        "const std::string key = to_lower_ascii(raw_key);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/analysis.h",
+          "line_text": "std::string normalize_chart_hash(std::string_view hash);",
+          "why": "normalize_chart_hash's declaration"
+        },
+        {
+          "file": "src/app/analysis.cpp",
+          "line_text": "std::string normalize_chart_hash(std::string_view hash) { return to_lower_ascii(hash); }",
+          "why": "normalize_chart_hash, the owner"
+        }
+      ],
+      "note": "A call to normalize_chart_hash anywhere but the leaderboard boundary. Hydra's own song ids come lowercase from song_id_read (spec section 2, ADR 0028), so nothing inside Hydra lowercases one again: ids are compared as they are. The scan scopes rows by top folder, so this row reads src and tools; the owner's own tests in tests/ are out of scope. Kept as its own row because a row holds one pattern, and the row above must still read dmbot_client.cpp. Decided by: D115, spec docs/superpowers/specs/2026-10-11-one-record-per-chart-and-profile-design.md section 8; plan part A1, task A1-5."
     },
     {
       "question": "Which files make up a chart's fingerprint?",
@@ -1312,28 +1352,31 @@
       "note": "A field written beside PreviewScene::timing that holds its resolution a second time. Decided by: audit finding 135; phase 6 task J4-5 (D53, D54)"
     },
     {
-      "question": "Which RecordKey does a tool or test file a chart's result under?",
-      "owner": "Settings::record_key in src/app/config.cpp",
+      "question": "Which profile does a tool or test file a chart's result under?",
+      "owner": "Settings::profile in src/app/config.cpp (a BatchRun carries it whole, as run.profile)",
       "owner_file": "src/app/config.cpp",
-      "owner_symbol": "Settings::record_key",
-      "date": "2026-10-06",
-      "decision": "audit finding 240",
-      "added_by": "H1",
-      "pattern": "RecordKey\\{[^}]*run\\.chartmode",
-      "anchor": "run.chartmode",
+      "owner_symbol": "Settings::profile",
+      "date": "2026-10-15",
+      "decision": "audit finding 240; D115 (plan part A2, task A2-3; part A1, task A1-5)",
+      "added_by": "D115-A1-5j",
+      "pattern": "Profile(\\s+\\w+)?\\s*\\{[^}]*(\\brun\\.profile\\.|chartmode_key\\(\\)|cap_query\\(\\)|lens\\(\\))",
+      "anchor": "Profile",
       "must_match": [
-        "store::RecordKey{it.md5, run.chartmode, run.cap_query(), run.lens}, *rec);",
-        "store::RecordKey{it.md5, run.chartmode, run.cap_query(), run.lens}, rec);"
+        "store.save(store::prepare_record(it.md5, store::Profile{run.profile.chartmode, run.profile.cap, run.profile.lens}, *rec));",
+        "const hydra::store::Profile p{run.profile.chartmode, hydra::store::CapQuery::at(8), run.profile.lens};",
+        "const store::Profile profile{s.chartmode_key(), s.cap_query(), s.lens()};"
       ],
       "must_not_match": [
-        "store::PreparedRow row = store::prepare_row(st.record_key(it.md5), *rec);",
-        "const store::RecordKey key = settings.record_key(it.md5);"
+        "store.save(store::prepare_record(it.md5, run.profile, *rec));",
+        "const store::PreparedRecord prepared = store::prepare_record(it.md5, st.profile(), *rec);",
+        "hydra::store::Profile searched = run.profile;",
+        "Profile at4(const std::string& mode = \"mode\") { return Profile{mode, CapQuery::at(4), Lens{}}; }"
       ],
       "scope": [
         "tests",
         "tools"
       ],
-      "note": "A key put together from a BatchRun's fields. The owner is in src, so no line in scope is an owner line. run_batch's own key in src/app/analysis.cpp holds only a BatchRun and is out of scope. Decided by: audit finding 240; H1 derive-once review finding 1 (2026-10-06)"
+      "note": "A profile rebuilt from a BatchRun's or a Settings' parts in a tool or a test, instead of taking run.profile or Settings::profile whole. A profile made of literals, as the store's own tests use, is a different question. The owner is in src, so no line in scope is an owner line; src and tools are also read by the d115-profile row. Before D115 this row asked which RecordKey a tool files a result under, with Settings::record_key as owner; RecordKey is gone. Decided by: audit finding 240; H1 derive-once review finding 1 (2026-10-06); D115 plan part A2, task A2-3 (the row's new wording) and part A1, task A1-5."
     },
     {
       "question": "Does this database have a chart library to report on?",
