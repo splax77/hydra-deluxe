@@ -649,9 +649,9 @@ TEST_CASE("generate_fill_report: a score on one side only is counted, and the pa
               "4 charts in Expert Pro Drums, 2x Bass: 1 score higher under 1.1, "
               "0 higher under 1.0, 0 unchanged, 2 under one rule only, "
               "1 in both, not both scored") != std::string::npos);
-    // The tiles get a matching one after "Only one side", counted from the
-    // rows the table shows, like the tiles before it.
-    CHECK(result.html.find("['Only one side', fmt(n(STATUS.onlyOld) + n(STATUS.onlyNew))],\n"
+    // The tiles get a matching one after "Under one rule only", counted from
+    // the rows the table shows, like the tiles before it.
+    CHECK(result.html.find("['Under one rule only', fmt(n(STATUS.onlyOld) + n(STATUS.onlyNew))],\n"
                            "      [\"In both, not both scored\", fmt(n(STATUS.inBoth))],") !=
           std::string::npos);
     CHECK(result.html.find("Score on one side only") == std::string::npos);

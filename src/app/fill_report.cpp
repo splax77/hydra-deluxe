@@ -151,7 +151,7 @@ const PAGE = {
       [STATUS.newHigher, fmt(n(STATUS.newHigher))],
       [STATUS.oldHigher, fmt(n(STATUS.oldHigher))],
       ['Same', fmt(n(STATUS.sameScore))],
-      ['Only one side', fmt(n(STATUS.onlyOld) + n(STATUS.onlyNew))],
+      ['Under one rule only', fmt(n(STATUS.onlyOld) + n(STATUS.onlyNew))],
       [__IN_BOTH_TILE__, fmt(n(STATUS.inBoth))],
       ['Points gained in 1.1', fmt(gains)],
       ['Points lost in 1.1', fmt(losses)],
