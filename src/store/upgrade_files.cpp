@@ -75,9 +75,11 @@ std::optional<std::string> set_aside_old_library(const std::string& db) {
     // it back, so a failure costs the user no file.
     const std::vector<std::string> earlier = with_side_files(to[0] + ".replaced");
     // A run that stopped part way left the temporary name behind. With no
-    // set-aside file in place, it is the earlier one and goes back; beside
-    // one, it is older still and goes.
-    if (!file_exists_utf8(to[0])) move_files(earlier, to);
+    // set-aside file in place, it is the earlier one and goes back. If that
+    // fails the call ends with it still there. Beside a set-aside file, it
+    // is older still and goes.
+    if (!file_exists_utf8(to[0]))
+        if (std::optional<std::string> why = move_files(earlier, to)) return why;
     remove_with_side_files(earlier[0]);
     if (std::optional<std::string> why = move_files(to, earlier)) return why;
     // The file first, and its side files after it.

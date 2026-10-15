@@ -158,3 +158,49 @@ TEST_CASE("set_aside_old_library keeps an earlier set-aside file when a side fil
     CHECK(read_file_text(aside) == "earlier");
     CHECK_FALSE(there(aside + "-wal"));
 }
+
+// A stopped run's temporary file is the only copy of the earlier set-aside
+// file. If it cannot go back, the call stops with the file still there.
+TEST_CASE("set_aside_old_library keeps a stopped run's earlier file when it cannot put it back") {
+    const std::string db = fresh_db("upg_set_aside_stopped_stuck");
+    const std::string aside = set_aside_path(db);
+    put(db, "old");
+    put(aside + ".replaced", "earlier");
+    put(aside + ".replaced-wal", "earlier's log");
+    // A folder at the log's name stops that file coming back.
+    std::filesystem::create_directory(os_path(aside + "-wal"));
+    REQUIRE(set_aside_old_library(db).has_value());
+    CHECK(read_file_text(db) == "old");
+    CHECK(read_file_text(aside + ".replaced") == "earlier");
+    CHECK(read_file_text(aside + ".replaced-wal") == "earlier's log");
+    CHECK_FALSE(there(aside));
+}
+
+// A stopped run's file beside a set-aside file is older than it, and goes.
+TEST_CASE("set_aside_old_library drops a stopped run's file that sits beside a set-aside file") {
+    const std::string db = fresh_db("upg_set_aside_stopped_both");
+    const std::string aside = set_aside_path(db);
+    put(db, "old");
+    put(aside, "earlier");
+    put(aside + ".replaced", "older still");
+    CHECK_FALSE(set_aside_old_library(db).has_value());
+    CHECK(read_file_text(aside) == "old");
+    CHECK(entries_beside(db) == 1);
+}
+
+// A folder at the set-aside name is not a file to move or replace: the move
+// fails with Windows' reason, and the library file stays where it is.
+TEST_CASE("set_aside_old_library leaves the file in place when a folder has the set-aside name") {
+    const std::string db = fresh_db("upg_set_aside_folder");
+    const std::string aside = set_aside_path(db);
+    put(db, "old");
+    put(db + "-wal", "old's log");
+    std::filesystem::create_directory(os_path(aside));
+    const std::optional<std::string> why = set_aside_old_library(db);
+    REQUIRE(why.has_value());
+    CHECK_FALSE(why->empty());
+    CHECK(read_file_text(db) == "old");
+    CHECK(read_file_text(db + "-wal") == "old's log");
+    CHECK(is_directory_utf8(aside));
+    CHECK(entries_beside(db) == 3);
+}
