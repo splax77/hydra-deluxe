@@ -391,10 +391,6 @@ store::Profile Settings::profile_with_fills(FillDeadlineRule rule) const {
     return with_rule.profile();
 }
 
-store::RecordKey Settings::record_key(const std::string& hyhash) const {
-    return store::RecordKey{hyhash, profile()};
-}
-
 BatchRun Settings::batch_run() const { return BatchRun{profile(), to_analysis_settings()}; }
 
 std::string bars_text(int bars) { return counted(bars, "bar", "bars"); }

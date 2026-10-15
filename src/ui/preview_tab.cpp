@@ -401,10 +401,10 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     // Open (or keep open) for the current selection; a no-op once running for
     // this chart. This is where the async decode starts.
     pc->set_volume(app.settings.preview_volume);  // before the audio exists too
-    // The meter's ceiling is the Settings cap, Ready record or not. The key
-    // columns own a record's cap (finding 130): the viewed record is fetched
-    // at the Settings cap's key, and prepare_row refuses a record whose cap
-    // differs from its key's. A chart with no record yet previews at the cap
+    // The meter's ceiling is the Settings cap, Ready record or not. The
+    // profile owns a record's cap (finding 130): the viewed record is fetched
+    // under the Settings cap's profile, and prepare_record refuses an
+    // analysis whose cap differs from its profile's. A chart with no record yet previews at the cap
     // the next analysis will run at (D48, Q24).
     const int sp_cap = app.settings.sp_cap;
     // The overlay key is the path's verbose string: rebuilt when the

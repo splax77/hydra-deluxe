@@ -47,7 +47,7 @@
       ],
       "must_not_match": [
         "bind_text(s, 1, item.md5);",
-        "kNamingCopiesSql + \" AS c WHERE songmeta.hyhash = c.md5\")"
+        "const ChartIndex index = store.chart_index();"
       ],
       "owner_lines": [
         {
@@ -128,7 +128,7 @@
       "owner_lines": [
         {
           "file": "src/store/record_store.cpp",
-          "line_text": "\"song_id=? AND profile_id IN (SELECT id FROM profiles WHERE \" + mode_term + \"NOT \" +",
+          "line_text": "\"song_id=? AND profile_id IN (SELECT id FROM profiles WHERE NOT \" +",
           "why": "file_record's purge of the chart's unreadable records"
         },
         {

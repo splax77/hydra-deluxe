@@ -28,55 +28,20 @@
     },
     {
       "question": "Which copy names a chart the scan found twice?",
-      "owner": "kNamingCopiesSql in src/store/record_store.h",
-      "owner_file": "src/store/record_store.h",
-      "owner_symbol": "kNamingCopiesSql",
+      "owner": "ChartIndex::from_rows in src/store/chart_index.cpp (the naming copy is a chart's first row in scan order)",
+      "owner_file": "src/store/chart_index.cpp",
+      "owner_symbol": "from_rows",
       "date": "2026-10-05",
-      "decision": "D51, D63",
-      "added_by": "M7-2b",
+      "decision": "D51, D63; D115 A1-5 moved the owner from kNamingCopiesSql to ChartIndex",
+      "added_by": "M7-2b, moved by D115-A1-5i",
       "pattern": "MIN\\(rowid\\)|GROUP BY md5",
       "must_match": [
         "\" FROM (SELECT md5, name, artist, charter, MIN(rowid) FROM charts GROUP BY md5)\""
       ],
       "must_not_match": [
-        "kNamingCopiesSql + \" AS c WHERE songmeta.hyhash = c.md5\")"
+        "const ChartIndex index = store.chart_index();"
       ],
-      "owner_lines": [
-        {
-          "file": "src/store/record_store.h",
-          "line_text": "\"(SELECT md5, name, artist, charter, MIN(rowid) AS naming_rowid, COUNT(*) AS copies\"",
-          "why": "kNamingCopiesSql, the owner"
-        },
-        {
-          "file": "src/store/record_store.h",
-          "line_text": "\" GROUP BY md5)\";",
-          "why": "kNamingCopiesSql, the owner"
-        }
-      ],
-      "note": "The charts table grouped by md5 to pick a copy, outside the one query that does it. Decided by: D51 call 10 and D63 (task ST2)"
-    },
-    {
-      "question": "Which library copy of a chart does a pass analyze?",
-      "owner": "kNamingCopiesSql in src/store/record_store.h (the naming copy), read through RecordStore::naming_copy_paths",
-      "owner_file": "src/store/record_store.h",
-      "owner_symbol": "kNamingCopiesSql",
-      "date": "2026-10-07",
-      "decision": "D51, D63, D76",
-      "added_by": "storage-T3",
-      "pattern": "\\.emplace\\(normalize_chart_hash\\(\\w+\\.md5\\),\\s*&\\w+\\)",
-      "anchor": ".emplace(normalize_chart_hash(",
-      "must_match": [
-        "for (const store::ChartLibraryEntry& e : library) files.emplace(normalize_chart_hash(e.md5), &e);",
-        "by_hash.emplace(normalize_chart_hash(entry.md5), &entry);"
-      ],
-      "must_not_match": [
-        "const auto naming = naming_copy_files.find(normalize_chart_hash(listing.hyhash));",
-        "files.emplace(normalize_chart_hash(md5), std::move(path));"
-      ],
-      "scope": [
-        "src"
-      ],
-      "note": "A pass over the library that picks a chart's file from its own listing, instead of the naming copy, can open another copy's file than the batch did (storage-T3 review, finding 1). Decided by: D51 call 10, D63 and D76 (storage-T3 review, finding 1)"
+      "note": "The charts table grouped by md5 in SQL to pick a copy is a second answer beside ChartIndex, which picks it from the rows in scan order. Decided by: D51 call 10 and D63 (task ST2); D115 A1-5 retired the SQL owner"
     },
     {
       "question": "What text is a record's best path?",
@@ -106,16 +71,6 @@
           "file": "src/store/record_store.cpp",
           "line_text": "return paths.empty() ? std::string() : paths.front().path;",
           "why": "RecordRow::best_path_text, the owner"
-        },
-        {
-          "file": "src/store/record_store.cpp",
-          "line_text": "return record.paths.empty() ? std::string() : record.best_path().pathstring();",
-          "why": "best_path_text(const HydraRecord&), the old bestpath column's text for prepare_row; D115 A1-5's deletion wave removes it with that write path"
-        },
-        {
-          "file": "src/store/record_store.cpp",
-          "line_text": "if (!found[i].record.paths.empty()) out[i].bestpath = found[i].record.paths.front().path;",
-          "why": "RecordStore::get_summaries, the old lookup shim; D115 A1-5's deletion wave removes it"
         }
       ],
       "note": "The library's Best path cell, the fill report, hydra_batch's progress line and hydra_replay's result block all show this text, so they read it from the record. Spelling rank 1 again, by hand on the record or off the analysis, made one copy per screen, each with its own answer for a record that kept no paths. Decided by: ST1 (audit findings 116 and 132); phase 7 M7-1 derive-once review finding 2 (2026-10-04); D115 A1-5 moved the owner to RecordRow"
@@ -204,7 +159,7 @@
     },
     {
       "question": "Is this still the row the report walk listed?",
-      "owner": "RecordKey::operator== in src/store/record_store.h",
+      "owner": "Profile::operator== in src/store/record_store.h, with the song id (RecordKey::operator== until D115 A1-5)",
       "owner_file": "src/store/record_store.h",
       "owner_symbol": "operator",
       "date": "2026-10-05",
@@ -221,7 +176,7 @@
       "scope": [
         "src"
       ],
-      "note": "One identity column compared at a time instead of a RecordKey. Decided by: audit finding 197, folded under D53 (phase 6 task J3-6)"
+      "note": "One identity column compared at a time instead of a whole Profile. Decided by: audit finding 197, folded under D53 (phase 6 task J3-6)"
     },
     {
       "question": "Which PathSummary fields must match? (tests)",
@@ -237,7 +192,7 @@
         "std::string diff_summary(const PathSummary& a, const PathSummary& b) {"
       ],
       "must_not_match": [
-        "CHECK(summarize_record(back) == summarize_record(rec));"
+        "CHECK(back.summary() == rec.summary());"
       ],
       "scope": [
         "tests"
@@ -269,7 +224,7 @@
           "why": "cap_match, the owner"
         }
       ],
-      "note": "write_row's replace purge matches the row's own unique key through cap_match too, bound with bind_cap from CapQuery::at(row.sp_cap). Decided by: audit finding 252; phase 6 task J4-2 (D53, D54); concept audit M20"
+      "note": "profile_id_for's find matches the profile's own cap through cap_match too, bound with bind_cap. Decided by: audit finding 252; phase 6 task J4-2 (D53, D54); concept audit M20"
     },
     {
       "question": "Which columns hold a path summary, and how many?",
@@ -289,7 +244,7 @@
       "scope": [
         "src"
       ],
-      "note": "The INSERT and list_records build their summary slots from the list and its count, so a typed run of the ten placeholders is a second spelling of the list. Decided by: audit finding 253; phase 6 task J4-2 (D53, D54)"
+      "note": "convert_results reads an older file's summary slots from the list and its count, so a typed run of the ten placeholders is a second spelling of the list. Decided by: audit finding 253; phase 6 task J4-2 (D53, D54)"
     },
     {
       "question": "Which columns hold a path summary, and how many? (slots)",
@@ -314,7 +269,7 @@
       "scope": [
         "src/store/record_store.cpp"
       ],
-      "note": "list_records' slots after the summary, and where each SELECT's summary starts, are counted from the column lists. Decided by: audit finding 253; phase 6 task J4-2 (D53, D54); get_summaries' start slot, J4 join"
+      "note": "Where a SELECT's summary starts, and the slots after it, are counted from the column lists. Decided by: audit finding 253; phase 6 task J4-2 (D53, D54); the lookup's start slot, J4 join"
     },
     {
       "question": "Did a database statement's step succeed, and what kind is its failure?",
@@ -472,12 +427,12 @@
     },
     {
       "question": "Does this chart have a current result under these settings?",
-      "owner": "RecordStore::get_summaries' winner, through Candidate::ready (rank_row) in src/store/record_store.cpp",
+      "owner": "RecordStore::lookup's winner, through Candidate::ready (rank_row) in src/store/record_store.cpp",
       "owner_file": "src/store/record_store.cpp",
-      "owner_symbol": "RecordStore::get_summaries",
+      "owner_symbol": "RecordStore::lookup",
       "date": "2026-10-05",
-      "decision": "D79",
-      "added_by": "COUNT-B",
+      "decision": "D79; D115 A1-5 moved the owner from get_summaries to lookup",
+      "added_by": "COUNT-B, moved by D115-A1-5i",
       "pattern": "==\\s*[\\w.>-]*\\bfixed\\b|rules_fp_bytes\\([^)]*\\bfixed\\b|row_readable_sql\\(\\)\\s*\\+\\s*\"\\s*AND",
       "must_match": [
         "bind_blob(s, idx++, rules_fp_bytes(rules.fixed));",
@@ -503,12 +458,12 @@
     },
     {
       "question": "How many library rows does a chart on a page count as when the library doesn't list it?",
-      "owner": "RecordStore::copies_of in src/store/record_store.cpp",
-      "owner_file": "src/store/record_store.cpp",
-      "owner_symbol": "RecordStore::copies_of",
+      "owner": "ChartIndex::copies in src/store/chart_index.cpp",
+      "owner_file": "src/store/chart_index.cpp",
+      "owner_symbol": "ChartIndex::copies",
       "date": "2026-10-05",
-      "decision": "D77, D79",
-      "added_by": "COUNT-P",
+      "decision": "D77, D79; D115 A1-5 moved the owner from RecordStore::copies_of to ChartIndex::copies",
+      "added_by": "COUNT-P, moved by D115-A1-5i",
       "pattern": "\\bcopies\\s*=\\s*1\\s*;|\\bcopies\\w*\\.(find|end)\\(",
       "anchor": "copies",
       "must_match": [
@@ -517,21 +472,9 @@
         "if (listed != copies.end()) row.copies = listed->second;"
       ],
       "must_not_match": [
-        "row.copies = store::RecordStore::copies_of(library, hash);",
+        "row.copies = library.copies(id);",
         "int copies = 0;",
-        "for (const auto& [md5, n] : store.library_copies()) by_hash[normalize_chart_hash(md5)] += n;"
-      ],
-      "owner_lines": [
-        {
-          "file": "src/store/record_store.cpp",
-          "line_text": "const auto listed = copies.find(md5);",
-          "why": "copies_of, the owner"
-        },
-        {
-          "file": "src/store/record_store.cpp",
-          "line_text": "return listed == copies.end() ? 1 : listed->second;",
-          "why": "copies_of, the owner"
-        }
+        "return it == charts_.end() ? 1 : it->second.copies;"
       ],
       "note": "A chart on a page that the library doesn't list still counts. One function says how much; a page that looks a chart up in the copies map itself, or starts its count at a default, is a second answer. Decided by: D77 item 2, D79 item 3 (task COUNT-P)"
     },
@@ -610,10 +553,10 @@
         {
           "file": "src/store/record_store.cpp",
           "line_text": "bool transaction_open(sqlite3* db) { return !sqlite3_get_autocommit(db); }",
-          "why": "transaction_open, the owner: rollback_if_open and save_analysis call it"
+          "why": "transaction_open, the owner: rollback_if_open and the save frame call it"
         }
       ],
-      "note": "After a failure, rollback_if_open and a grouped save_analysis both need to know whether sqlite already rolled the transaction back. Only the helper asks sqlite; record_store.cpp is not exempt as a file, so a second ask there fails like one anywhere else."
+      "note": "After a failure, rollback_if_open and a grouped save both need to know whether sqlite already rolled the transaction back. Only the helper asks sqlite; record_store.cpp is not exempt as a file, so a second ask there fails like one anywhere else."
     },
     {
       "question": "Could this stored fingerprint ever show a chart unchanged?",
