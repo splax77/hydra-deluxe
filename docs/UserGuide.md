@@ -38,7 +38,7 @@ A library file from a version older than 2.2.0 is too old to convert. Hydra Delu
 
 > This library file is from a Hydra version older than 2.2.0, so Hydra set it aside as hydra.db.pre-2.2.0 and started a fresh library.
 
-When you close the box, Hydra Deluxe scans your song folders, which it keeps in its settings file. Your songs come back as `Not analyzed`. This version doesn't read the old results in `hydra.db.pre-2.2.0`, so delete that file yourself if you don't want it.
+When you close the box, Hydra Deluxe scans your song folders, which it keeps in `hydra_settings.ini`, next to the program. Your songs come back as `Not analyzed`. This version doesn't read the old results in `hydra.db.pre-2.2.0`, so delete that file yourself if you don't want it.
 
 If the old file can't be renamed, a message box says so, with the reason from Windows in the middle of the sentence, and Hydra Deluxe closes when you dismiss it:
 
@@ -207,7 +207,7 @@ An open row shows these, in order:
 
 A backend squeeze means hitting the note at the SP end early, so it lands inside Star Power. In the `Backend timings` table, the note at `0.0 ms` is exactly where SP ends; the others are the notes just before and after it. If the last activation's SP runs past the end of the chart, the table lists the notes before that end, so every timing is negative.
 
-The rating beside each note is a rough guide to how hard it is to fit into Star Power. A note the path doesn't count is tagged `(uncounted)`, squeeze-out notes included, like `Free SqOut (uncounted)`. For double backend squeezes, look for notes from the backend leeway up to the hit window. The leeway is 3 ms<!-- default: Rules::backend_leeway_ms --> by default (`backend_leeway_ms` in `hydra_rules.ini`). The hit window is 85 ms by default (`hit_window_ms`, below).
+The rating beside each note is a rough guide to how hard it is to fit into Star Power. A note the path doesn't count is tagged `(uncounted)`, squeeze-out notes included, like `Free SqOut (uncounted)`. For backend squeezes, look for notes from the backend leeway up to the hit window. The leeway is 3 ms<!-- default: Rules::backend_leeway_ms --> by default (`backend_leeway_ms` in `hydra_rules.ini`). The hit window is 85 ms by default (`hit_window_ms`, below).
 
 ### Frontend timing scale and overfill
 
@@ -223,7 +223,7 @@ Under the activation rows are two folds, `Multiplier squeeze` and `Score breakdo
 
 `Multiplier squeeze` lists the multiplier squeezes in the song. When the combo multiplier goes up on a multi-note chord, hitting the more valuable notes (cymbals, dynamics) a little later scores them on the higher multiplier. This is why two FCs of the same song can differ by 15<!-- default: kCymbalBonusPoints --> points. `2x` means it happens as the multiplier reaches 2x (10<!-- default: to_multiplier:x2 --> notes in), and so on.
 
-`Score breakdown` shows the score this path should get, in the same categories as Clone Hero's results screen. It includes multiplier, frontend and backend squeezes. `Notes`, `Accent Notes` and `Ghost Notes` together make the `Base score` on the Stars tab. The accent and ghost lines hold only the extra 50 points each of those notes adds, and a cymbal's extra points stay in `Notes`. A backend note that lands after the SP end still counts under Star Power only when it lands less than a small leeway after it, 3 ms<!-- default: Rules::backend_leeway_ms --> by default (`backend_leeway_ms` in `hydra_rules.ini`).
+`Score breakdown` shows the score this path should get, in the same categories as Clone Hero's results screen. It includes multiplier, frontend and backend squeezes. `Notes`, `Accent Notes` and `Ghost Notes` together make the `Base score` on the Stars tab. The accent and ghost lines hold only the extra 50<!-- default: kNoteBasePoints --> points each of those notes adds, and a cymbal's extra points stay in `Notes`. A backend note that lands after the SP end still counts under Star Power only when it lands less than a small leeway after it, 3 ms<!-- default: Rules::backend_leeway_ms --> by default (`backend_leeway_ms` in `hydra_rules.ini`).
 
 `Copy path` copies the selected path's notation. `Ctrl+C` does the same and flashes `Copied!`.
 

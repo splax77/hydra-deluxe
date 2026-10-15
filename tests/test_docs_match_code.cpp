@@ -257,6 +257,7 @@ const std::map<std::string, KnownDefault>& known_defaults() {
             out["kStarMultipliers[" + std::to_string(stars) + "]"] = {
                 false, static_cast<double>(hydra::kStarMultipliers[stars - 1]), true};
         out["kCymbalBonusPoints"] = {false, static_cast<double>(hydra::kCymbalBonusPoints)};
+        out["kNoteBasePoints"] = {false, static_cast<double>(hydra::kNoteBasePoints)};
         // The first combo at which the multiplier reaches x2, asked of the
         // production function rather than typed here. The cap only stops a
         // broken to_multiplier from hanging the test; the marker then fails.
