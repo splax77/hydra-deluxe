@@ -450,7 +450,7 @@ TEST_CASE("the post-batch report lists the batch's cap and lens, not the live se
     std::unique_ptr<AppState> app = app_on(paths);
     REQUIRE(app->settings.sp_cap == 4);
     run_redo_batch_over(*app, library_entry(5).md5);
-    const hydra::store::Lens batch_lens = app->batch_job->batch_run().lens;
+    const hydra::store::Lens batch_lens = app->batch_job->batch_run().profile.lens;
 
     app->settings.sp_cap = 5;  // edited, not committed
     app->settings.mslimit_enabled = !app->settings.mslimit_enabled;

@@ -810,7 +810,7 @@ std::unordered_set<std::string> charts_with_result(store::RecordStore& store,
                                                    const BatchRun& run, bool redo) {
     if (redo) return {};
     // RecordStore::ready_song_ids decides what "already has a result" means.
-    return store.ready_song_ids(run.profile());
+    return store.ready_song_ids(run.profile);
 }
 
 BatchPlan plan_batch(const std::vector<ScanItem>& items,
@@ -850,7 +850,7 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
                int worker_count, const BatchCallbacks& callbacks) {
     const AnalysisSettings& settings = run.settings;
     const std::atomic<bool>* cancel = callbacks.cancel;
-    const store::Profile profile = run.profile();
+    const store::Profile& profile = run.profile;
     const std::vector<ScanItem>& todo = plan.todo;
 
     BatchProgress progress;

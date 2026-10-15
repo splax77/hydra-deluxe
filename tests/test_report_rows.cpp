@@ -269,7 +269,7 @@ TEST_CASE("path report: a batch's records read back as a fresh analysis's rows")
     std::map<std::string, std::vector<std::pair<int64_t, int>>> fresh_ranks;
     for (const store::ChartLibraryEntry& e : library) {
         const store::RecordRow record =
-            store::prepare_record(e.md5, run.profile(),
+            store::prepare_record(e.md5, run.profile,
                                   fixture_analyzer(e.notespath, run.settings, {}).record)
                 .record;
         for (const store::PathRow& p : record.paths) {

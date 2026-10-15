@@ -405,8 +405,8 @@ void set_view_analyzer_for_test(app::ChartAnalyzer analyze);
 // other job. It writes, analyzes and opens nothing.
 class ReportJob : public ResultJobBase {
 public:
-    // `run` names the profile the report lists (ReportOptions::run,
-    // BatchRun::profile). hit_window_ms feeds the report's timing-tier bands
+    // `run` names the profile the report lists (ReportOptions::run, the
+    // run's profile). hit_window_ms feeds the report's timing-tier bands
     // (settings.hit_window_ms).
     ReportJob(store::RecordStore& store, app::BatchRun run,
               double hit_window_ms = kDefaultHitWindowMs);
@@ -415,7 +415,7 @@ public:
     void start();
 
     // What the report is built from, as given to the constructor.
-    store::Profile profile() const { return run_.profile(); }
+    const store::Profile& profile() const { return run_.profile; }
     double hit_window_ms() const { return hit_window_ms_; }
 
     // Valid once finished() && ok(): the report, shared with AppState's slot

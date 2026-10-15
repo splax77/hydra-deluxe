@@ -143,8 +143,8 @@ struct ReportOptions {
     // Closing the app while a report builds goes through here; the CLI never
     // sets it.
     const std::atomic<bool>* cancel = nullptr;
-    // The profile the page lists: BatchRun::profile() of the settings that
-    // filed the results. Required: the report throws without one.
+    // The profile the page lists: the BatchRun's profile, as the settings that
+    // filed the results gave it. Required: the report throws without one.
     std::optional<BatchRun> run;
 };
 

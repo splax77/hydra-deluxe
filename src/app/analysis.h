@@ -224,21 +224,15 @@ std::string batch_counts_text(int analyzed, int failed, int skipped);
 // chart can reach hundreds of MB) stays bounded.
 int batch_worker_count();
 
-// Everything one batch run is: the search settings, and the chart mode and
-// lens its results are filed under. Settings::batch_run() fills all three
-// from one Settings, so they cannot disagree. Building one by hand is for
-// tests.
+// Everything one batch run is: the profile its records are saved and looked
+// up under, and the search settings. Settings::batch_run() fills both from
+// one Settings (the profile is Settings::profile()), so they cannot disagree.
+// Building one by hand is for tests. A hand-built run whose profile asks for
+// a cap, ms limit or fill rule its settings did not search under fails every
+// chart it analyzes: store::prepare_record is that check.
 struct BatchRun {
-    std::string chartmode;
-    store::Lens lens;
+    store::Profile profile;
     AnalysisSettings settings;
-
-    // The SP cap this run's results are filed under and looked up by:
-    // CapQuery::at is the owner.
-    store::CapQuery cap_query() const { return store::CapQuery::at(settings.sp_cap); }
-
-    // The profile this run's records are saved and looked up under.
-    store::Profile profile() const { return {chartmode, cap_query(), lens}; }
 };
 
 // The charts a batch under `run` skips because they already have a result
