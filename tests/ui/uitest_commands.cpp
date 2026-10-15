@@ -6,14 +6,12 @@
 #include "uitest_harness.h"
 #include "uitest_commands.h"
 
-#include <charconv>
-#include <cmath>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
 #include <string>
-#include <system_error>
 
 #include "core/strutil.h"
 
@@ -104,15 +102,12 @@ bool split_bar(const std::string& line, std::string& head, std::string& tail) {
     return true;
 }
 
-// The seconds a timeout or wait argument gives: the whole argument must be a
-// finite number, 0 or more. The one parse both verbs share.
+// The seconds a timeout or wait argument gives: the number
+// hydra::parse_finite_number reads, 0 or more. The one parse both verbs share.
 bool parse_seconds(const std::string& text, double& seconds) {
-    double v = 0;
-    const char* first = text.data();
-    const char* last = first + text.size();
-    const auto [end, ec] = std::from_chars(first, last, v);
-    if (ec != std::errc() || end != last || !std::isfinite(v) || v < 0) return false;
-    seconds = v == 0 ? 0.0 : v;  // "-0" reads as 0
+    const std::optional<double> v = hydra::parse_finite_number(text);
+    if (!v || *v < 0) return false;
+    seconds = *v == 0 ? 0.0 : *v;  // "-0" reads as 0
     return true;
 }
 
