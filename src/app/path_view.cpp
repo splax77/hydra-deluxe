@@ -423,7 +423,7 @@ std::vector<std::string> build_score_breakdown(const Path& path) {
     const Row rows[] = {
         // Rounded, not truncated, so it matches the report's mult column.
         {std::string(kAverageMultiplierLabel) + ":", format_avg_mult(path.avg_mult()) + "x", false},
-        {"Notes:", group_thousands(path.score_base), true},
+        {"Notes:", group_thousands(path.notes_points), true},
         {"Combo Bonus:", group_thousands(path.score_combo), false},
         {"Star Power:", group_thousands(path.score_sp), false},
         {"Solo Bonus:", group_thousands(path.score_solo), false},

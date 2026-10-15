@@ -511,7 +511,7 @@ inline HydraRecord tied_variant_record() {
     Path root;
     root.activations = {one_bar_act(1920, 0), one_bar_act(9600, 0)};
     root.notecount = 29;
-    root.score_base = 1450;
+    root.notes_points = 1450;
     root.score_sp = 600;
 
     Path variant;
@@ -524,7 +524,7 @@ inline HydraRecord tied_variant_record() {
     Path second;
     second.activations = {one_bar_act(1920, 0)};
     second.notecount = 29;
-    second.score_base = 1450;
+    second.notes_points = 1450;
     second.score_sp = 300;
 
     HydraRecord rec;
@@ -536,7 +536,7 @@ inline HydraRecord tied_variant_record() {
 // Clone Hero's average multiplier has nothing to divide by.
 inline Path zero_base_path() {
     Path p;
-    p.score_base = 0;
+    p.notes_points = 0;
     p.score_ghosts = 0;
     p.score_accents = 0;
     return p;

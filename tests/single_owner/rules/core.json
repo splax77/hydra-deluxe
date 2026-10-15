@@ -1579,7 +1579,7 @@
         "steps.push_back({c.ms, c.cum.total() - c.cum.solo});"
       ],
       "must_not_match": [
-        "return score_base + score_combo + score_sp + score_solo + score_accents +",
+        "return notes_points + score_combo + score_sp + score_solo + score_accents +",
         "return stars_for_score(star_cutoffs(path), score_without_solo(path));",
         "score_without_solo(c.cum),",
         "row.cum_onscreen_total = cum.total() - solo_pending;",
@@ -2007,15 +2007,15 @@
       "date": "2026-10-05",
       "decision": "D53, D54",
       "added_by": "J3-1",
-      "pattern": "score_base\\s*\\+\\s*score_combo\\s*\\+\\s*score_sp|\\bbase\\s*\\+\\s*combo\\s*\\+\\s*sp\\s*\\+\\s*solo\\b",
+      "pattern": "notes_points\\s*\\+\\s*score_combo\\s*\\+\\s*score_sp|\\bbase\\s*\\+\\s*combo\\s*\\+\\s*sp\\s*\\+\\s*solo\\b",
       "anchor": "combo",
       "must_match": [
-        "return score_base + score_combo + score_sp + score_solo + score_accents +",
+        "return notes_points + score_combo + score_sp + score_solo + score_accents +",
         "int64_t total() const { return base + combo + sp + solo + accent + ghost; }"
       ],
       "must_not_match": [
-        "return score_base + score_ghosts + score_accents;",
-        "p.score += (int64_t)e.basescore + e.comboscore + e.spscore + e.soloscore +"
+        "return notes_points + score_ghosts + score_accents;",
+        "p.score += (int64_t)e.notes_points + e.comboscore + e.spscore + e.soloscore +"
       ],
       "owner_lines": [
         {

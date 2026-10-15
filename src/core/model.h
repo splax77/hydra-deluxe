@@ -760,7 +760,7 @@ struct Path {
     // Bars left after the last window: one per stored arrival.
     int leftover_sp() const { return static_cast<int>(trailing_bank_ticks.size()); }
 
-    int64_t score_base = 0;
+    int64_t notes_points = 0;
     int64_t score_combo = 0;
     int64_t score_sp = 0;
     int64_t score_solo = 0;

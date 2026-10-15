@@ -670,7 +670,7 @@ TEST_CASE("path_overlay_key: no overlay, the same path, and a changed path") {
 
     // Same activations, a different score: still a different overlay.
     Path rescored = first;
-    rescored.score_base += 1;
+    rescored.notes_points += 1;
     CHECK(path_overlay_key(&first) != path_overlay_key(&rescored));
 
     // Different activations: different key.

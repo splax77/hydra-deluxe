@@ -141,7 +141,7 @@ struct ScoreGraphNode {
 struct ScoreGraphEdge {
     ScoreGraphNode* dest = nullptr;
 
-    int64_t basescore = 0;
+    int64_t notes_points = 0;
     int64_t comboscore = 0;
     int64_t spscore = 0;
     int64_t soloscore = 0;
@@ -230,7 +230,7 @@ private:
     void build();
 
     void store_soloscore(int64_t points);
-    void store_basescore(int64_t points);
+    void store_notes_points(int64_t points);
     void store_comboscore(int64_t points);
     void store_spscore(int64_t points);
     void store_accentscore(int64_t points);
