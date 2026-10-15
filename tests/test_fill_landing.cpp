@@ -12,6 +12,7 @@
 
 #include "chart_text.h"
 #include "core/rules.h"
+#include "load_util.h"
 #include "midi_util.h"
 #include "parse/song.h"
 

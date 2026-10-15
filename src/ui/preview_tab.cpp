@@ -416,8 +416,8 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         ui.overlay_key_path = selected_path;
         ui.overlay_key_generation = app.record_generation.n;
     }
-    pc->open(*app.selected, app.settings.reading(), selected_path, ui.overlay_key, sp_cap,
-             app.settings.rules);
+    pc->open(*app.selected, app.settings.reading(), fill_rule_for(app.settings.legacy_fills),
+             selected_path, ui.overlay_key, sp_cap, app.settings.rules);
     pc->poll();
 
     if (pc->has_error()) {

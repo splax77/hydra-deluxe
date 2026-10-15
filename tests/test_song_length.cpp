@@ -14,6 +14,7 @@
 #include "audio_chart_fixtures.h"
 #include "chart_text.h"
 #include "core/winstr.h"
+#include "load_util.h"
 #include "parse/chart_files.h"
 #include "parse/song.h"
 #include "sng_util.h"

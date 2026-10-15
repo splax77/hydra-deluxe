@@ -77,11 +77,11 @@ void drop_finished(std::vector<std::unique_ptr<Job>>& retired) {
 PreviewController::~PreviewController() { close(); }
 
 void PreviewController::open(const store::ChartLibraryEntry& entry,
-                             const ChartReading& reading, const Path* path,
-                             const std::string& path_key, int sp_cap,
+                             const ChartReading& reading, FillDeadlineRule fills,
+                             const Path* path, const std::string& path_key, int sp_cap,
                              const core::Rules& rules) {
     rules_ = rules;
-    const PreviewSongKey key{entry.md5, reading};
+    const PreviewSongKey key{entry.md5, reading, fills};
     if (active_ && open_key_ == key) {
         // Same chart, same overlay: nothing to do, and nothing built.
         if (sp_cap == sp_cap_ && path_key == requested_path_key_) return;
@@ -109,7 +109,7 @@ void PreviewController::open(const store::ChartLibraryEntry& entry,
     pro_ = reading.prodrums;
     record_request(path, path_key, sp_cap);
     job_path_key_ = path_key_;
-    job_ = std::make_unique<PreviewLoadJob>(entry, reading, path_, sp_cap_, rules);
+    job_ = std::make_unique<PreviewLoadJob>(entry, reading, fills, path_, sp_cap_, rules);
     job_->start();
 }
 
@@ -142,8 +142,8 @@ void PreviewController::start_notes_job(const store::ChartLibraryEntry& entry,
     // no longer answers shows_path for any selection.
     scene_path_key_.clear();
     job_path_key_ = path_key_;
-    notes_job_ = std::make_unique<PreviewNotesJob>(entry, key.reading, path_to_draw(), sp_cap_,
-                                                   rules_, audio_end_ms_);
+    notes_job_ = std::make_unique<PreviewNotesJob>(entry, key.reading, key.fills, path_to_draw(),
+                                                   sp_cap_, rules_, audio_end_ms_);
     notes_job_->start();
 }
 

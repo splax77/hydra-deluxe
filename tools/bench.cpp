@@ -84,7 +84,8 @@ static void folder_breakdown(const std::string& folder, const core::Rules& rules
         auto t = clk::now();
         std::optional<Song> song_opt;
         try {
-            song_opt.emplace(load_songpath(it.notespath, settings.reading(), settings.rules));
+            song_opt.emplace(load_songpath(it.notespath, settings.reading(), settings.rules,
+                                           fill_rule_for(settings.legacy_fills)));
         } catch (const std::exception& e) {
             std::printf("  (skipped: %s)\n\n", e.what());
             continue;
@@ -204,7 +205,8 @@ static void corpus_bench() {
     std::vector<Song> songs;
     for (const std::string& path : corpus::chart_paths()) {
         try {
-            songs.push_back(load_songpath(path, ChartReading{}, g_rules));
+            songs.push_back(
+                load_songpath(path, ChartReading{}, g_rules, fill_rule_for(g_legacy_fills)));
         } catch (const std::exception&) {
         }
     }
@@ -276,7 +278,8 @@ static void engine_mode(const std::string& folder, const std::string& cachedb, i
         std::optional<Song> song;
         try {
             song.emplace(
-                load_songpath_with_notes(it.notespath, settings.reading(), settings.rules));
+                load_songpath_with_notes(it.notespath, settings.reading(), settings.rules,
+                                         fill_rule_for(settings.legacy_fills)));
         } catch (const std::exception&) {
             ++failed;
             continue;
@@ -352,7 +355,8 @@ static void parse_mode(const std::string& arg, int reps, const std::string& outp
         for (int r = 0; r < reps; ++r) {
             auto t = clk::now();
             try {
-                Song song = load_songpath_with_notes(p, settings.reading(), settings.rules);
+                Song song = load_songpath_with_notes(p, settings.reading(), settings.rules,
+                                                     fill_rule_for(settings.legacy_fills));
                 best = std::min(best, secs_since(t));
                 if (r == 0) {
                     h = digest::song_digest(song);
@@ -415,7 +419,7 @@ static void dump_db(const std::string& dbpath, const std::string& outpath,
 // was the stress chart (Task 9 of the 2026-10-03 preview-loading plan). That
 // the scores-only replay matches the full one is test_replay.cpp's job.
 static void replay_mode(const std::string& chart) {
-    const Song song = load_songpath(chart, ChartReading{});
+    const Song song = load_songpath(chart, ChartReading{}, g_rules, fill_rule_for(g_legacy_fills));
     if (song.is_empty()) {
         std::printf("no notes in %s\n", chart.c_str());
         return;

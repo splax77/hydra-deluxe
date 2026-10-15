@@ -36,12 +36,13 @@ struct Rules {
     // inside the limit leads when one exists; the ones over it come after, so
     // they are the ones dropped once the count is reached.
     int max_tied_paths = 4;
-    // Generated fills (Song::check_activations): the fewest measures between
-    // two fills, how far from a downbeat the chosen chord may sit, and the
-    // fill's length.
+    // Generated fills (Song::check_activations): how many measure lines on
+    // the next candidate sits after a fill, and how far from a measure line
+    // the chosen chord may sit (check_activations adds Clone Hero's one tick).
+    // A generated fill starts on its measure line, so its length is not a
+    // rule (fill_length_measures is retired, D115).
     int fill_cooldown_measures = 4;
     double fill_max_distance_beats = 0.5;
-    double fill_length_measures = 0.5;
     // Authored-fill placement (place_authored_fills, both parsers): how close
     // the next chord must be to the fill end to count as the chord the fill
     // lands on, in beats. The parser takes the whole ticks of this and adds

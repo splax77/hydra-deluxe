@@ -1327,27 +1327,27 @@
     },
     {
       "question": "Which meter section is a tick measured in?",
-      "owner": "MeasureIndex::section_at in src/core/timing.cpp",
+      "owner": "MeasureIndex::span_at in src/core/timing.cpp",
       "owner_file": "src/core/timing.cpp",
-      "owner_symbol": "MeasureIndex::section_at",
+      "owner_symbol": "MeasureIndex::span_at",
       "date": "2026-10-04",
-      "decision": "D51, D58",
+      "decision": "D51, D58, D115",
       "added_by": "TM",
-      "pattern": "keys_at\\([^()]*\\)\\)*\\s*[<>]|(^|[^-])[<>]=?\\s*(\\w+(\\.|->))?keys_at\\(",
-      "anchor": "keys_at(",
+      "pattern": "restart_at\\([^()]*\\)\\)*\\s*[<>]|(^|[^-])[<>]=?\\s*(\\w+(\\.|->))?restart_at\\(",
+      "anchor": "restart_at(",
       "must_match": [
-        "while (i > 0 && static_cast<double>(idx.keys_at(i)) > ticks) --i;",
-        "if (mi.keys_at(i) <= tick) s = i;",
-        "while (s + 1 < n && tick >= mi->keys_at(s + 1)) ++s;"
+        "while (i > 0 && static_cast<double>(idx.restart_at(i)) > ticks) --i;",
+        "if (mi.restart_at(i) <= tick) s = i;",
+        "while (s + 1 < n && tick >= mi->restart_at(s + 1)) ++s;"
       ],
       "must_not_match": [
-        "if (j < len && handled_ticks == idx.keys_at(j)) {",
-        "const int64_t section_end = last_section ? last_tick : mi.keys_at(i + 1);",
-        "static_cast<double>(idx.keys_at(s) - idx.starts_at(s)) /",
-        "const int64_t first = mi->keys_at(i);",
-        "const int i = idx.section_at(static_cast<int64_t>(std::ceil(ticks)));"
+        "if (j < len && handled_ticks == idx.restart_at(j)) {",
+        "const int64_t section_end = last_section ? last_tick : mi.restart_at(i + 1);",
+        "scene.meters.push_back({tick, mc.tpm_at(i), mi.restart_at(mi.span_at(tick))});",
+        "const int64_t first = mi->restart_at(i);",
+        "const int i = idx.span_at(static_cast<int64_t>(std::ceil(ticks)));"
       ],
-      "note": "Picking a tick's meter section by ordering it against the sections' first ticks. section_at answers that with keys_ directly, so no keys_at ordering is the owner's. An equality test against a section start (plusmeasure's barline check), reading a section's bounds, and the measure-space entry in tick_at_measures_f answer other questions. Decided by: audit finding 58; D51 call 22; phase 7 task TM (D58)"
+      "note": "Picking a tick's grid span by ordering it against the spans' restart ticks. span_at answers that through last_at_or_before, so no restart_at ordering is the owner's. An equality test against a restart, and reading a span's bounds, answer other questions. D115 renamed the owner from section_at when the grid became Clone Hero's (a tick on a restart is in the new span). Decided by: audit finding 58; D51 call 22; phase 7 task TM (D58); D115"
     },
     {
       "question": "How are a folder and a file name joined? (any name, not only folder)",

@@ -24,7 +24,7 @@ TEST_CASE("frontend_transfer_scales: measure-rate ratio, both directions") {
     // the Dumpweed regression case below).
     std::map<int64_t, int64_t> tpm{{0, 1680}, {16800, 840}};
     std::map<int64_t, double> bpm{{0, 87.35}, {16800, 85.1}};
-    SongTiming st(480, tpm, bpm);
+    SongTiming st(480, tpm, bpm, {{0, {7, 8}}, {16800, {7, 16}}});
 
     Activation act;
     act.timecode = st.timecode(0);
@@ -81,7 +81,7 @@ TEST_CASE("frontend_transfer_scales: each SqIn reads its own stored end") {
     // Flat 4/4 at 480: a measure is 1920 ticks. The tempo changes at 9600.
     std::map<int64_t, int64_t> tpm{{0, 1920}};
     std::map<int64_t, double> bpm{{0, 120.0}, {9600, 150.0}};
-    SongTiming st(480, tpm, bpm);
+    SongTiming st(480, tpm, bpm, {{0, {4, 4}}});
 
     Activation act;
     act.timecode = st.timecode(0);
@@ -116,7 +116,7 @@ TEST_CASE("frontend_transfer_scales: a clamp moves the front anchor") {
     // 120 BPM until 2700, then 60 (finding 28's worked example, at 192 tpq).
     std::map<int64_t, int64_t> tpm{{0, 768}};
     std::map<int64_t, double> bpm{{0, 120.0}, {2700, 60.0}};
-    SongTiming st(192, tpm, bpm);
+    SongTiming st(192, tpm, bpm, {{0, {4, 4}}});
 
     Activation act;
     act.timecode = st.timecode(2304);
@@ -138,11 +138,13 @@ TEST_CASE("transfer_scale_between: a measure that is not a positive finite lengt
     // refusal on both sides. A 0 BPM section makes a measure last forever,
     // a negative one makes it last negative time.
     std::map<int64_t, int64_t> tpm{{0, 1920}};
-    SongTiming forever(480, tpm, std::map<int64_t, double>{{0, 120.0}, {7680, 0.0}});
+    SongTiming forever(480, tpm, std::map<int64_t, double>{{0, 120.0}, {7680, 0.0}},
+                       {{0, {4, 4}}});
     CHECK(transfer_scale_between(0, 3840, forever).has_value());
     CHECK_FALSE(transfer_scale_between(0, 9600, forever).has_value());     // the end side
     CHECK_FALSE(transfer_scale_between(9600, 11520, forever).has_value()); // the front side
-    SongTiming backwards(480, tpm, std::map<int64_t, double>{{0, 120.0}, {7680, -120.0}});
+    SongTiming backwards(480, tpm, std::map<int64_t, double>{{0, 120.0}, {7680, -120.0}},
+                         {{0, {4, 4}}});
     CHECK_FALSE(transfer_scale_between(0, 9600, backwards).has_value());
 }
 
@@ -154,7 +156,7 @@ TEST_CASE("frontend_transfer_scales: direction-dependent at boundaries") {
     // the 7/8 one -- two different ratios.
     std::map<int64_t, int64_t> tpm{{0, 2880}, {2880, 1680}, {12960, 2160}};
     std::map<int64_t, double> bpm{{0, 130.0}, {11280, 133.0}, {12960, 129.0}};
-    SongTiming st(480, tpm, bpm);
+    SongTiming st(480, tpm, bpm, {{0, {6, 4}}, {2880, {7, 8}}, {12960, {9, 8}}});
 
     Activation act;
     act.timecode = st.timecode(2880);
@@ -179,7 +181,7 @@ TEST_CASE("frontend_transfer_scales: direction-dependent at boundaries") {
     std::map<int64_t, int64_t> tpm44{{0, 1920}};
     std::map<int64_t, double> bpm2{{0, 98.0},   {1920, 97.5},
                                    {8640, 110.0}, {9600, 102.0}};
-    SongTiming st2(480, tpm44, bpm2);
+    SongTiming st2(480, tpm44, bpm2, {{0, {4, 4}}});
 
     Activation act2;
     act2.timecode = st2.timecode(1920);
@@ -194,7 +196,7 @@ TEST_CASE("frontend_transfer_scales: direction-dependent at boundaries") {
 
     // Uniform map: exactly 1.0 both ways.
     std::map<int64_t, double> bpm120{{0, 120.0}};
-    SongTiming flat(480, tpm44, bpm120);
+    SongTiming flat(480, tpm44, bpm120, {{0, {4, 4}}});
     Activation act3;
     act3.timecode = flat.timecode(0);
     test::set_sp_meter(act3, 2);
@@ -218,7 +220,7 @@ TEST_CASE("field fixture: What's My Age Again? (Sync Chart) SqOut") {
     std::map<int64_t, int64_t> tpm{{0, 1920}};
     std::map<int64_t, double> bpm{
         {0, 155.0}, {57600, 160.0}, {67200, 157.0}, {69120, 160.0}};
-    SongTiming st(480, tpm, bpm);
+    SongTiming st(480, tpm, bpm, {{0, {4, 4}}});
 
     Activation act;
     act.timecode = st.timecode(57600);
@@ -294,7 +296,7 @@ TEST_CASE("field fixture: Dumpweed SqOut end anchored on the deact node") {
                                   {34560, 97.4999},
                                   {45120, 104.8004},
                                   {46080, 101.0002}};
-    SongTiming st(480, tpm, bpm);
+    SongTiming st(480, tpm, bpm, {{0, {4, 4}}});
 
     Activation act;
     act.timecode = st.timecode(34560);
@@ -697,7 +699,7 @@ TEST_CASE("display_backends: 500 ms window keeps everything the 500 ms search gr
     CHECK(kSqueezeWindowMs == 500.0);
     std::map<int64_t, int64_t> tpm{{0, 1920}};
     std::map<int64_t, double> bpm{{0, 120.0}};
-    SongTiming st(480, tpm, bpm);
+    SongTiming st(480, tpm, bpm, {{0, {4, 4}}});
 
     Activation act;
     act.timecode = st.timecode(0);

@@ -22,6 +22,7 @@
 #include "core/winstr.h"
 #include "midi_util.h"
 #include "parse/chart_files.h"
+#include "load_util.h"
 #include "parse/sng.h"
 #include "parse/song.h"
 #include "sng_util.h"

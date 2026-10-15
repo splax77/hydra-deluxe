@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "app/preview_source.h"
+#include "app/preview_view.h"  // build_preview_scene
 #include "audio/stem_reader.h"
 #include "audio_chart_fixtures.h"  // audiochart::short_chart_with_long_audio, write_text_file
 #include "audio_util.h"  // read_fixture
@@ -275,7 +276,7 @@ TEST_CASE("a Preview load cancelled while opening a 300 MB Opus stem stops promp
 
     {
         PreviewLoadJob job(entry_for(notes), {hydra::Difficulty::Expert, true, true},
-                           std::nullopt, 4);
+                           hydra::kTestFillRule, std::nullopt, 4);
         job.start();
         // Cancel only once the stem's open has reported bytes. A cancel that
         // lands before the open starts reads 0 bytes at both ends and would
@@ -330,7 +331,7 @@ TEST_CASE("a Preview load turns a negative chart offset into front silence") {
 
     {
         PreviewLoadJob job(entry_for(notes), {hydra::Difficulty::Expert, true, true},
-                           std::nullopt, 4);
+                           hydra::kTestFillRule, std::nullopt, 4);
         job.start();
         wait_finished(job);
         REQUIRE(job.ok());
@@ -367,7 +368,7 @@ TEST_CASE("a Preview load plays the good stem when another stem will not open") 
         audiochart::write_text_file(hydra::parent_folder(notes) + "\\drums.ogg", junk);
 
         PreviewLoadJob job(entry_for(notes), {hydra::Difficulty::Expert, true, true},
-                           std::nullopt, 4);
+                           hydra::kTestFillRule, std::nullopt, 4);
         job.start();
         wait_finished(job);
         REQUIRE(job.ok());
@@ -385,7 +386,7 @@ TEST_CASE("a Preview load plays the good stem when another stem will not open") 
         audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ogg", junk);
 
         PreviewLoadJob job(entry_for(notes), {hydra::Difficulty::Expert, true, true},
-                           std::nullopt, 4);
+                           hydra::kTestFillRule, std::nullopt, 4);
         job.start();
         wait_finished(job);
         REQUIRE(job.ok());
@@ -393,4 +394,44 @@ TEST_CASE("a Preview load plays the good stem when another stem will not open") 
         PreviewLoadJob::Result r = job.take_result();
         CHECK_FALSE(r.audio_end_ms.has_value());
     }
+}
+
+namespace {
+
+// A scene's fills as {start, end, chord} ticks, for comparing two scenes.
+std::vector<std::vector<int64_t>> fill_spans(const hydra::app::PreviewScene& scene) {
+    std::vector<std::vector<int64_t>> out;
+    for (const hydra::app::PreviewFill& f : scene.fills)
+        out.push_back({f.span.start_tick, f.span.end_tick, f.chord_tick});
+    return out;
+}
+
+}  // namespace
+
+// The "1.0 fills" setting reaches the Preview: the notes it reads carry the
+// Clone Hero 1.0 generator's fills, the same as the chart loaded under that
+// rule directly, and not 1.1's (D115 TJ-3). The chart has no fills of its
+// own, and the two generators place its fills differently.
+TEST_CASE("a Preview read under the 1.0 fills rule draws the 1.0 generator's fills") {
+    std::string notes;
+    for (const std::string& p : corpus::chart_paths())
+        if (p.find("TEXTURES - Laments Of An Icarus") != std::string::npos) notes = p;
+    REQUIRE_FALSE(notes.empty());
+
+    const hydra::ChartReading reading{};
+    const hydra::core::Rules& rules = hydra::core::default_rules();
+    const auto read_scene = [&](hydra::FillDeadlineRule fills) {
+        const hydra::ui::PreviewNotes read =
+            hydra::ui::read_preview_notes(corpus::scanned_entry(notes), {}, reading, fills, rules);
+        return hydra::app::build_preview_scene(read.ps.song, nullptr);
+    };
+    const auto direct_scene = [&](hydra::FillDeadlineRule fills) {
+        return hydra::app::build_preview_scene(hydra::load_songpath(notes, reading, rules, fills),
+                                               nullptr);
+    };
+
+    const auto ch10 = fill_spans(read_scene(hydra::FillDeadlineRule::Ch10));
+    REQUIRE_FALSE(ch10.empty());
+    CHECK(ch10 == fill_spans(direct_scene(hydra::FillDeadlineRule::Ch10)));
+    CHECK(ch10 != fill_spans(read_scene(hydra::FillDeadlineRule::Ch11)));
 }

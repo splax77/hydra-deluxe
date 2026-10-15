@@ -33,6 +33,7 @@
 #include "audio/mapped_file.h"
 #include "audio/stem_reader.h"
 #include "core/winstr.h"
+#include "load_util.h"  // kTestFillRule
 #include "store/record_store.h"
 #include "temp_util.h"
 #include "testdata_dirs.h"  // root
@@ -154,7 +155,8 @@ TEST_CASE("a chart folder past 260 characters scans, reads, and previews") {
 
     // The Preview finds the audio beside it and streams it.
     hydra::app::PreviewSource src = hydra::app::resolve_preview_source(
-        notes, hydra::ChartReading{hydra::Difficulty::Expert, true, false, false});
+        notes, hydra::ChartReading{hydra::Difficulty::Expert, true, false, false},
+        hydra::core::default_rules(), hydra::kTestFillRule);
     CHECK_FALSE(src.song.sequence.empty());
     REQUIRE(src.stems.size() == 1);
     std::unique_ptr<hydra::audio::StemReader> reader = hydra::audio::open_stem_reader(src.stems[0]);

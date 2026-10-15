@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <exception>
 #include <optional>
+#include <tuple>
 
 #include "app/config.h"          // Settings: the sp_cap setting's floor
 #include "app/display_format.h"  // clock_str, kFactSeparator
@@ -161,12 +162,13 @@ SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& t
         while (next_tempo < tempos.size() && tempos[next_tempo].tick <= act.tick) ++next_tempo;
         for (size_t i = next_tempo; i < tempos.size() && tempos[i].tick < act.sp_end_tick; ++i)
             cuts.push_back({tempos[i].tick, tempos[i].ms});
-        // Meters carry only ticks; their ms comes from the same index every
-        // other time in the scene does.
-        const std::vector<PreviewMeter>& meters = scene.meters;
-        while (next_meter < meters.size() && meters[next_meter].tick <= act.tick) ++next_meter;
-        for (size_t i = next_meter; i < meters.size() && meters[i].tick < act.sp_end_tick; ++i)
-            cuts.push_back({meters[i].tick, timing.ms_index().at(meters[i].tick)});
+        // The meter changes are the continuous count's span starts, because
+        // bars_left reads that count. They carry only ticks; their ms comes
+        // from the same index every other time in the scene does.
+        const std::vector<PreviewMeasureSpan>& spans = scene.measure_spans;
+        while (next_meter < spans.size() && spans[next_meter].tick <= act.tick) ++next_meter;
+        for (size_t i = next_meter; i < spans.size() && spans[i].tick < act.sp_end_tick; ++i)
+            cuts.push_back({spans[i].tick, timing.ms_index().at(spans[i].tick)});
         std::stable_sort(cuts.begin(), cuts.end(),
                          [](const Cut& a, const Cut& b) { return a.tick < b.tick; });
 
@@ -273,12 +275,16 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
             scene.sp_phrases.push_back(
                 span_from_ticks(song, *ts.sp_phrase_start, ts.timecode.ticks()));
 
-        // Activation fill: the window ends at this note, `activation_length`
-        // ticks wide.
+        // Activation fill: the window runs between this note and where
+        // fill_start_tick says the fill starts, whichever comes first. A
+        // fill whose chord lands just before its measure line has a start
+        // after the chord.
         if (ts.activation_length.has_value()) {
-            int64_t end = ts.timecode.ticks();
+            const int64_t chord = ts.timecode.ticks();
+            const int64_t start = fill_start_tick(chord, *ts.activation_length);
             PreviewFill f;
-            f.span = span_from_ticks(song, end - *ts.activation_length, end);
+            f.span = span_from_ticks(song, std::min(start, chord), std::max(start, chord));
+            f.chord_tick = chord;
             scene.fills.push_back(f);  // state is filled in from the path below
         }
     }
@@ -316,7 +322,7 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
             grid_end = std::max(last_tick, timing.display_tick_at_ms(*audio_end_ms));
         } else {
             const MeasureIndex& mi = timing.measure_index();
-            grid_end = last_tick + 2 * mi.tpm_at(mi.section_at(last_tick));
+            grid_end = last_tick + 2 * mi.length_at(mi.span_at(last_tick));
         }
         scene.beats = build_beat_events(timing, grid_end);
     }
@@ -328,14 +334,12 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
         scene.tempos.push_back(t);
     }
     {
-        const MeasureIndex& mi = timing.measure_index();
-        for (int i = 0; i < mi.count(); ++i) {
-            if (mi.tpm_at(i) <= 0) continue;
-            scene.meters.push_back({mi.keys_at(i), mi.tpm_at(i), mi.starts_at(i)});
+        const MeasureCount& mc = timing.measure_count();
+        for (int i = 0; i < mc.count(); ++i) {
+            if (mc.tpm_at(i) <= 0) continue;
+            scene.measure_spans.push_back({mc.start_at(i), mc.tpm_at(i)});
         }
     }
-    for (const auto& [tick, sig] : song.timesig_changes)
-        scene.time_sigs.push_back({tick, sig.first, sig.second});
     // A section marker can sit past the last note. That is fine: the ms index
     // covers every tick (MsIndex::at keeps the last tempo's slope), and
     // timecode(t).ms() reads that same index.
@@ -400,11 +404,11 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
         // that fill or an earlier activation did; the highway reads it.
         std::vector<PreviewFill>& fills = scene.fills;
         size_t next_fill = 0;
-        // Marks the fill ending on `tick` and returns its index, or nothing
-        // when no fill ends there.
+        // Marks the fill whose chord is `tick` and returns its index, or
+        // nothing when no fill rides on that chord.
         auto mark = [&](int64_t tick, PreviewFillState state) -> std::optional<size_t> {
-            while (next_fill < fills.size() && fills[next_fill].span.end_tick < tick) ++next_fill;
-            if (next_fill >= fills.size() || fills[next_fill].span.end_tick != tick)
+            while (next_fill < fills.size() && fills[next_fill].chord_tick < tick) ++next_fill;
+            if (next_fill >= fills.size() || fills[next_fill].chord_tick != tick)
                 return std::nullopt;
             if (fills[next_fill].state != PreviewFillState::Taken) fills[next_fill].state = state;
             return next_fill;
@@ -439,37 +443,18 @@ double sp_meter_bars_at(const SpMeterCurve& curve, double ms) {
 }
 
 std::vector<PreviewBeat> build_beat_events(const SongTiming& timing, int64_t last_tick) {
-    std::vector<PreviewBeat> lines;
-    const MeasureIndex& mi = timing.measure_index();
-    const int64_t tick_r = timing.tick_resolution();
-    for (int i = 0; i < mi.count(); ++i) {
-        const int64_t section_start = mi.keys_at(i);
-        const int64_t tpm = mi.tpm_at(i);
-        if (tpm <= 0) continue;
-        // The section's bars count from its last barline at or before its
-        // first tick (a mid-measure meter change restarts the measure there).
-        // Bars before the section's own start belong to the section before.
-        const bool last_section = i + 1 >= mi.count();
-        const int64_t section_end = last_section ? last_tick : mi.keys_at(i + 1);
-        for (int64_t bar = mi.starts_at(i);; bar += tpm) {
-            if (last_section ? bar > section_end : bar >= section_end) break;
-            if (bar >= section_start) lines.push_back({bar, 0.0, PreviewBeatKind::Bar});
-            for (int64_t beat = bar + tick_r; beat < bar + tpm; beat += tick_r) {
-                if (last_section ? beat > section_end : beat >= section_end) break;
-                if (beat >= section_start) lines.push_back({beat, 0.0, PreviewBeatKind::Beat});
-            }
-        }
-    }
-    // Onyx draws a fainter half-beat line half a beat before every bar/beat
-    // line (all our lines are a full beat apart, so every one qualifies);
-    // nothing is drawn before tick 0.
     std::vector<PreviewBeat> out;
-    out.reserve(lines.size() * 2);
-    const int64_t half = tick_r / 2;
-    for (const PreviewBeat& l : lines) {
-        if (l.tick - half >= 0) out.push_back({l.tick - half, 0.0, PreviewBeatKind::Half});
-        out.push_back(l);
-    }
+    // Onyx draws a fainter line halfway between two lines, so each line after
+    // the first gets one half its gap back (the step it ends, which is the
+    // span before's step at a restart). Nothing is drawn before tick 0.
+    std::optional<int64_t> prev;
+    timing.measure_index().walk(last_tick, [&](int64_t tick, MeasureIndex::Line line) {
+        if (prev) out.push_back({tick - (tick - *prev) / 2, 0.0, PreviewBeatKind::Half});
+        out.push_back({tick, 0.0,
+                       line == MeasureIndex::Line::Measure ? PreviewBeatKind::MeasureLine
+                                                           : PreviewBeatKind::Beat});
+        prev = tick;
+    });
     for (PreviewBeat& b : out) b.ms = timing.ms_index().at(b.tick);
     return out;
 }
@@ -506,41 +491,28 @@ PreviewTimeBox build_time_box(const PreviewScene& scene, double now_ms,
     box.position = scene.timing ? format_measure(*scene.timing, now_tick) : first_measure_label();
     box.length = scene.timing ? format_measure(*scene.timing, end_tick) : first_measure_label();
 
-    // Each lookup below wants the last entry at or before the playhead's
-    // tick, which is the one just before the first entry past it. Every line
-    // asks the same rounded tick, so the tempo, meter, section and measure
-    // all switch together, even in the half tick before a change. Tempos and
-    // time signatures come from the song's tick-keyed maps, so they are
-    // sorted by tick, and a binary search finds that entry.
-
-    // The tempo in force: the last change at or before the playhead's tick
-    // (the opening tempo before any change).
-    double bpm = scene.tempos.empty() ? 0.0 : scene.tempos.front().bpm;
-    const auto tempo_past = std::upper_bound(
-        scene.tempos.begin(), scene.tempos.end(), now_tick,
-        [](int64_t v, const PreviewTempo& t) { return v < t.tick; });
-    if (tempo_past != scene.tempos.begin()) bpm = (tempo_past - 1)->bpm;
-    // The time signature in force at the playhead's tick, as the chart wrote
-    // it. A scene from a song always has one at tick 0; a scene built from
-    // nothing shows PreviewTimeSig's default, which is Song's.
+    // Every line below asks the same rounded tick, so the tempo, time
+    // signature, section and measure all switch together, even in the half
+    // tick before a change. The time signature is the grid's, so it switches
+    // where the measure lines restart. A scene built from nothing shows BPM 0
+    // and PreviewTimeSig's default, which is Song's.
+    double bpm = 0.0;
     PreviewTimeSig sig;
-    const auto sig_past = std::upper_bound(
-        scene.time_sigs.begin(), scene.time_sigs.end(), now_tick,
-        [](int64_t v, const PreviewTimeSig& t) { return v < t.tick; });
-    if (sig_past != scene.time_sigs.begin()) sig = *(sig_past - 1);
+    if (scene.timing) {
+        bpm = scene.timing->tempo_at(now_tick);
+        std::tie(sig.numerator, sig.denominator) = scene.timing->time_signature_at(now_tick);
+    }
     char buf[64];
     std::snprintf(buf, sizeof buf, "BPM %.3f%s%d/%d", bpm, kFactSeparator, sig.numerator,
                   sig.denominator);
     box.tempo = buf;
 
-    // Both parsers hand sections over in tick order (sort_practice_sections),
-    // so a binary search finds the last one at or before the playhead.
+    // Both parsers hand sections over in tick order (sort_practice_sections).
     const std::vector<PreviewSection>& sections = scene.sections;
-    const auto section_past =
-        std::upper_bound(sections.begin(), sections.end(), now_tick,
-                         [](int64_t v, const PreviewSection& s) { return v < s.tick; });
-    if (section_past != sections.begin() && !(section_past - 1)->name.empty())
-        box.section_line = "Section " + (section_past - 1)->name;
+    const auto section = last_at_or_before(sections.begin(), sections.end(), now_tick,
+                                           [](const PreviewSection& s) { return s.tick; });
+    if (section != sections.end() && !section->name.empty())
+        box.section_line = "Section " + section->name;
     return box;
 }
 

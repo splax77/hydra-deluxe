@@ -78,8 +78,6 @@ const std::vector<RulesField>& rules_fields() {
         {"max_tied_paths", &Rules::max_tied_paths, 1.0},
         {"fill_cooldown_measures", &Rules::fill_cooldown_measures, 1.0},
         {"fill_max_distance_beats", &Rules::fill_max_distance_beats, 0.0},
-        // Must be above zero, as hydra_rules.ini always required.
-        {"fill_length_measures", &Rules::fill_length_measures, 0.0, false},
         {"fill_land_slop_beats", &Rules::fill_land_slop_beats, 0.0},
     };
     return fields;

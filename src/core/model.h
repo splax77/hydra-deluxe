@@ -279,6 +279,16 @@ inline double squeeze_difficulty(bool is_sqin, double offset_ms) {
 // and fill_within_limit ask it.
 inline bool timing_within_limit(double ms, double limit_ms) { return ms <= limit_ms; }
 
+// ---- where a fill starts -------------------------------------------------
+// The tick a fill starts at. A fill rides on the chord that ends it, and that
+// chord (SongTimestamp::activation_length) stores how long the fill is, so the
+// start is the chord's tick minus that length. The search's fill deadline and
+// hydra_replay's "fill_start" both ask here; how the length was set (an
+// authored marker or a generated fill) does not matter to this.
+inline int64_t fill_start_tick(int64_t chord_tick, int64_t activation_length) {
+    return chord_tick - activation_length;
+}
+
 // ---- the early-fill window ----------------------------------------------
 // Clone Hero's early-fill rule and the E0, stated once around
 // kEarlyFillWindowMs. A fill spawns only when SP was ready by the fill's

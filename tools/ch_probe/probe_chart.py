@@ -49,7 +49,9 @@ _LEAD_IN_WHOLE_NOTES = 2
 
 def _ticks_per_ms(resolution: int, bpm: float) -> float:
     """The tick rate both conversions below share: `resolution` ticks per
-    quarter note, `bpm` quarter notes per minute, 60000 ms per minute."""
+    quarter note, `bpm` quarter notes per minute, 60000 ms per minute.
+    It mirrors Hydra's own rule, MsIndex in src/core/timing.cpp, and
+    tools/ch_probe/tests/test_tick_rate_vs_hydra.py checks the two agree."""
     return resolution * bpm / 60000.0
 
 

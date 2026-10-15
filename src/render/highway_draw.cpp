@@ -287,12 +287,12 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
         out.push_back(rail);
     }
 
-    // 3. Beat lines (depth test off): bar / beat / half-beat flats.
+    // 3. Beat lines (depth test off): measure / beat / half flats.
     for (const TrackInstant& inst : win) {
         if (!inst.beat) continue;
-        TextureId tex = *inst.beat == app::PreviewBeatKind::Bar    ? TextureId::Line1
-                        : *inst.beat == app::PreviewBeatKind::Beat ? TextureId::Line2
-                                                                   : TextureId::Line3;
+        TextureId tex = *inst.beat == app::PreviewBeatKind::MeasureLine ? TextureId::Line1
+                        : *inst.beat == app::PreviewBeatKind::Beat      ? TextureId::Line2
+                                                                        : TextureId::Line3;
         const float z = z_of(inst.t);
         out.push_back(flat(T.x_left, T.y, z + T.beats_z_past, T.x_right, z + T.beats_z_future,
                            tex_mat(tex), 1.0f, DepthMode::Always));

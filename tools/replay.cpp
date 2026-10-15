@@ -117,6 +117,10 @@ void usage() {
         "warnings are also in the JSON, as \"warnings\".\n"
         "score's JSON also carries \"sections\": the chart's practice sections, "
         "each with tick, ms, and name.\n"
+        "Each chord's \"measure\" holds \"label\", its position written as the\n"
+        "app's screens write it (like m28.3.120), and \"decimal\", the measures\n"
+        "counted from the chart's start. A chord that carries a fill also has\n"
+        "\"fill_start\", the tick its fill starts at.\n"
         "dump analyzes the chart every time and reads no database; its JSON\n"
         "field \"source\" is always \"analyzed\".\n"
         "target asks the engine to price one specific path. With --ticks it\n"
@@ -365,7 +369,7 @@ int cmd_score(const Args& a, const app::Settings& s) {
             "--path and --acts each name a path to score; give one or the "
             "other, not both");
 
-    Song song = load_songpath(a.chart, s.reading(), s.rules);
+    Song song = load_songpath(a.chart, s.reading(), s.rules, fill_rule_for(s.legacy_fills));
     if (song.is_empty()) {
         std::fprintf(stderr, "chart has no notes: %s\n", a.chart.c_str());
         return 1;
@@ -401,14 +405,11 @@ int cmd_score(const Args& a, const app::Settings& s) {
                                  {"dynamic", dynamic_str(n.dynamic)}});
         json cum = score_json(c.cum);
         cum["total"] = c.cum.total();
-        chords.push_back(json{
+        json chord{
             {"index", c.index},
             {"tick", c.tick},
             {"ms", c.ms},
-            {"measure", json{{"measure", c.measure},
-                             {"beat", c.beat},
-                             {"tick", c.measure_tick},
-                             {"decimal", c.measures_decimal}}},
+            {"measure", json{{"label", c.position}, {"decimal", c.measures_decimal}}},
             {"chord_code", c.chord_code},
             {"notes", notes},
             {"is_fill", c.is_fill},
@@ -421,7 +422,10 @@ int cmd_score(const Args& a, const app::Settings& s) {
             {"points", score_json(c.points)},
             {"cum", cum},
             {"cum_onscreen_total", c.cum_onscreen_total},
-        });
+        };
+        const SongTimestamp& ts = song.sequence[static_cast<size_t>(c.index)];
+        if (ts.activation_length) chord["fill_start"] = fill_start_tick(c.tick, *ts.activation_length);
+        chords.push_back(std::move(chord));
     }
 
     json final = score_json(r.final);
@@ -514,7 +518,7 @@ int cmd_target(const Args& a, const app::Settings& s) {
     const std::string hyhash = app::hash_chart_file(a.chart);
     const std::vector<int64_t> ticks = parse_ticks(a.ticks);
 
-    Song song = load_songpath(a.chart, s.reading(), s.rules);
+    Song song = load_songpath(a.chart, s.reading(), s.rules, fill_rule_for(s.legacy_fills));
     if (song.is_empty()) {
         std::fprintf(stderr, "chart has no notes: %s\n", a.chart.c_str());
         return 1;
@@ -596,7 +600,7 @@ void check_chart(const std::string& path, const core::Rules& rules, Tally* tally
     std::optional<Song> song_opt;
     try {
         song_opt.emplace(
-            load_songpath(path, cfg.reading(), cfg.rules));
+            load_songpath(path, cfg.reading(), cfg.rules, fill_rule_for(cfg.legacy_fills)));
     } catch (const std::exception& e) {
         std::printf("SKIP %s (%s)\n", path.c_str(), e.what());
         ++tally->skipped;

@@ -690,7 +690,8 @@ TEST_CASE("sp meter curve: every corpus gauge starts at its spent bars and empti
             const SpMeterCurve& c = scene.sp_meter;
             check_curve_well_formed(c);
             int64_t min_tpm = std::numeric_limits<int64_t>::max();
-            for (const PreviewMeter& m : scene.meters) min_tpm = std::min(min_tpm, m.tpm);
+            for (const PreviewMeasureSpan& m : scene.measure_spans)
+                min_tpm = std::min(min_tpm, m.tpm);
             REQUIRE(min_tpm > 0);
             const double one_tick = 1.0 / (static_cast<double>(kMeasuresPerSpBar) *
                                            static_cast<double>(min_tpm));

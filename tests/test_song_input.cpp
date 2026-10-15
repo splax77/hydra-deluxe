@@ -18,6 +18,7 @@
 #include "core/winstr.h"
 #include "chart_text.h"
 #include "display_fixtures.h"  // kTagOnlyTitle
+#include "load_util.h"
 #include "midi_util.h"
 #include "parse/song.h"
 #include "temp_util.h"
@@ -207,7 +208,9 @@ TEST_CASE(".chart: malformed lines keep their handling") {
         CHECK(s.practice_sections[0].tick == 0);
         CHECK(s.practice_sections[0].name == " Intro  ");
         CHECK(s.practice_sections[1].tick == 10);
-        CHECK(s.practice_sections[1].name == "chorus");
+        // chorus is in Clone Hero's list as "Chorus"
+        // (data/clone-hero-1.1.0.6142-section-names.tsv, line 423).
+        CHECK(s.practice_sections[1].name == "Chorus");
         CHECK(s.practice_sections[2].tick == 48);
         CHECK(s.practice_sections[2].name == "Verse");
     }

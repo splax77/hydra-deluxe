@@ -14,6 +14,7 @@
 #include "chart_text.h"
 #include "core/error_kind.h"
 #include "core/model.h"
+#include "load_util.h"
 #include "parse/midi.h"
 #include "parse/song.h"
 

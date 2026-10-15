@@ -231,7 +231,7 @@ TEST_CASE("build_activations: overfill warning text") {
     // prints as m2.2.0 (the display is 1-based: measure 2, beat 2, tick 0).
     std::map<int64_t, int64_t> tpm{{0, 768}};
     std::map<int64_t, double> bpm{{0, 120.0}};
-    SongTiming timing(192, tpm, bpm);
+    SongTiming timing(192, tpm, bpm, {{0, {4, 4}}});
 
     // clamp_tick says the cap pinned this window's end to the note at tick
     // 960; the SqOut is the frontend-decided squeeze the warning needs to
@@ -412,7 +412,7 @@ TEST_CASE("format_measure: one form for both tabs") {
     // 192 ticks a beat, 768 a measure: tick 960 is measure 2, beat 2.
     std::map<int64_t, int64_t> tpm{{0, 768}};
     std::map<int64_t, double> bpm{{0, 120.0}};
-    SongTiming timing(192, tpm, bpm);
+    SongTiming timing(192, tpm, bpm, {{0, {4, 4}}});
     CHECK(format_measure(timing, 0) == "m1.1.0");
     CHECK(format_measure(timing, 960) == "m2.2.0");
     CHECK(format_measure(timing, 1000) == "m2.2.40");
@@ -470,7 +470,7 @@ TEST_CASE("activation timeline: onset over the song's length, and the end measur
     // 120 BPM, 4/4, 192 ticks a beat: a measure is 2000 ms.
     std::map<int64_t, int64_t> tpm{{0, 768}};
     std::map<int64_t, double> bpm{{0, 120.0}};
-    SongTiming timing(192, tpm, bpm);
+    SongTiming timing(192, tpm, bpm, {{0, {4, 4}}});
     Activation act;
     act.timecode = timing.timecode(768);  // measure 2, 2000 ms
     test::set_sp_meter(act, 2);
@@ -587,7 +587,7 @@ TEST_CASE("measure labels: one numbering rule for the rows, the timeline and the
     // The timeline case's timing: 192 ticks a beat, 4/4, 120 BPM.
     std::map<int64_t, int64_t> tpm{{0, 768}};
     std::map<int64_t, double> bpm{{0, 120.0}};
-    SongTiming timing(192, tpm, bpm);
+    SongTiming timing(192, tpm, bpm, {{0, {4, 4}}});
     CHECK(measure_label(timing.timecode(768)) == "m2");  // 768 is measure 2
     CHECK(format_measure(timing.timecode(768)) == "m2.1.0");
     CHECK(measure_label(timing.timecode(0)) == "m1");

@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "app/dynamics_breakdown.h"
+#include "load_util.h"
 #include "midi_util.h"
 #include "parse/song.h"
 #include "ui/details_parts.h"

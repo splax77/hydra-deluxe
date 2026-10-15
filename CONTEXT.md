@@ -435,17 +435,26 @@ database. Part of a summary row's key, so 1.0 and 1.1 rows sit side by side;
 `hydra_fillcompare` diffs the two. See docs/adr/0010.
 
 **Generated fill**:
-A fill Hydra places itself on a chart with no authored fills: on the chord
-nearest a downbeat, if one sits within half a beat of it, half a measure
-long, and at least 4 measures after the last one (hydra_rules.ini can change
-these). With two or more meter changes
-between two chords, its length reads the earlier meter; that is not
-verified against Clone Hero (docs/adr/0023).
-When two chords sit equally near the downbeat, the later one gets the fill.
-How far from the downbeat that chord may sit, and the fill's length, are cut
-down to whole ticks.
-Neither rule is verified against Clone Hero either; both live in
-`Song::check_activations` (docs/adr/0023, D74).
+A fill Hydra places itself on a chart with no authored fills. The "1.0 fills"
+setting picks which game version's generator runs, in one place:
+`Song::check_activations`.
+
+Clone Hero 1.1 (the default) follows the game's own generator (0x20D2B30 in
+1.1.0.6142). It puts the fill on the chord nearest a measure line, if one sits
+within half a beat plus one tick of the line; the fill starts on the line, so
+its length is the chord's distance past the line (0, or negative, when the
+chord sits on or before it). The next line it tries is 4 lines on
+(hydra_rules.ini can change the 4 and the half beat). When two chords sit
+equally near the line, the later one gets the fill.
+
+Clone Hero 1.0 mode keeps the generator Hydra had before D115, unchanged (the
+user's call, 2026-10-14). It puts the fill on the chord nearest the downbeat of
+Hydra's own measures, within half a beat, half a measure long
+(`kCh10FillLengthMeasures`, fixed; the old `fill_length_measures` key is read
+and ignored), and at least 4 measures after the last one. With two or more
+meter changes between two chords, its length reads the earlier meter; that is
+not verified against Clone Hero (docs/adr/0023). The distance and the length
+are cut down to whole ticks.
 
 **Hit window**:
 The per-side ms window Clone Hero registers a hit in. A setting; feeds the

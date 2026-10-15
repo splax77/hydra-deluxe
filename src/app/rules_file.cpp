@@ -23,6 +23,9 @@ namespace {
 constexpr RetiredKey kRetiredRulesKeys[] = {
     {"auto_cap_ladder", "1.9.0"},  // Auto was removed
     {"auto_budget_s", "1.9.0"},    // Auto was removed
+    // This release (D115): a generated fill starts on its measure line, so
+    // its length is no longer a rule.
+    {"fill_length_measures", "2.8.0"},
 };
 
 [[noreturn]] void bad(const std::string& path, const std::string& key,

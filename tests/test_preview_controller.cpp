@@ -39,6 +39,9 @@
 #include "warp_util.h"
 
 using hydra::Difficulty;
+using hydra::fill_rule_for;
+using hydra::FillDeadlineRule;
+using hydra::kTestFillRule;
 using hydra::store::ChartLibraryEntry;
 using hydra::ui::ViewJob;
 using hydra::ui::PreviewController;
@@ -172,7 +175,8 @@ TEST_CASE("the Preview load builds the highway timeline on its worker") {
     const AnalyzedChart a = first_chart_with_a_path();
     for (bool pro : {true, false}) {
         CAPTURE(pro);
-        PreviewLoadJob job(entry_for(a.chart), {Difficulty::Expert, pro, true}, a.best, 4);
+        PreviewLoadJob job(entry_for(a.chart), {Difficulty::Expert, pro, true}, kTestFillRule, a.best,
+                           4);
         job.start();
         wait_finished(job);
         REQUIRE(job.ok());
@@ -192,7 +196,7 @@ TEST_CASE("the Preview load runs the beat lines to the end of the audio") {
     const std::string notes = short_chart_with_long_audio("prevctl_grid_len");
     audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini",
                                 "[song]\nsong_length = 3000\n");
-    PreviewLoadJob job(entry_for(notes), {Difficulty::Expert, true, true}, std::nullopt, 4);
+    PreviewLoadJob job(entry_for(notes), {Difficulty::Expert, true, true}, kTestFillRule, std::nullopt, 4);
     job.start();
     wait_finished(job);
     REQUIRE(job.ok());
@@ -218,7 +222,7 @@ TEST_CASE("the Preview load runs the beat lines to the end of the audio") {
 // over it, and gets the same scene and timeline.
 TEST_CASE("the Preview overlay job builds the highway timeline on its worker") {
     const AnalyzedChart a = first_chart_with_a_path();
-    PreviewLoadJob load(entry_for(a.chart), {Difficulty::Expert, true, true}, std::nullopt, 4);
+    PreviewLoadJob load(entry_for(a.chart), {Difficulty::Expert, true, true}, kTestFillRule, std::nullopt, 4);
     load.start();
     wait_finished(load);
     REQUIRE(load.ok());
@@ -263,7 +267,7 @@ TEST_CASE("the Preview overlay job builds the highway timeline on its worker") {
 // the beat lines still reach the audio's end after a path change.
 TEST_CASE("the Preview base job builds the path-free scene and timeline") {
     PreviewLoadJob load(entry_for(short_chart_with_long_audio()),
-                        {Difficulty::Expert, true, true}, std::nullopt, 4);
+                        {Difficulty::Expert, true, true}, kTestFillRule, std::nullopt, 4);
     load.start();
     wait_finished(load);
     REQUIRE(load.ok());
@@ -318,7 +322,7 @@ TEST_CASE("track_options: one builder, compared whole") {
 // job that ignored its cancel flag ran its whole parse, decode and mix first.
 TEST_CASE("a cancelled Preview load stops before decoding") {
     PreviewLoadJob job(entry_for(corpus::first_chart_with_suffix(".chart")),
-                       {Difficulty::Expert, true, true}, std::nullopt, 4);
+                       {Difficulty::Expert, true, true}, kTestFillRule, std::nullopt, 4);
     job.cancel();  // the window closed before the worker got going
     job.start();
     wait_finished(job);
@@ -351,7 +355,7 @@ TEST_CASE("with no audio device the Preview still loads, muted, with a warning")
             -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
             throw std::runtime_error("PreviewAudioDevice: ma_device_init failed");
         });
-    pc.open(entry_for(chart_with_audio()), {Difficulty::Expert, true, true}, nullptr, "", 4);
+    pc.open(entry_for(chart_with_audio()), {Difficulty::Expert, true, true}, kTestFillRule, nullptr, "",4);
     wait_loaded(pc);
 
     CHECK(pc.has_audio());        // the stem decoded; only the device failed
@@ -381,7 +385,7 @@ TEST_CASE("with an audio device that won't start the Preview still loads, muted,
     } restore{hydra::audio::set_headless(true), hydra::audio::set_start_fails(true)};
 
     PreviewController pc(nullptr, nullptr);
-    pc.open(entry_for(chart_with_audio()), {Difficulty::Expert, true, true}, nullptr, "", 4);
+    pc.open(entry_for(chart_with_audio()), {Difficulty::Expert, true, true}, kTestFillRule, nullptr, "",4);
     wait_loaded(pc);
 
     CHECK(pc.has_audio());        // the stem decoded; only the device failed
@@ -431,7 +435,7 @@ std::string long_audio_chart_stating_3s(const std::string& tag) {
 // A controller with no audio device, opened on `notes` and loaded.
 void open_and_load(PreviewController& pc, const std::string& notes) {
     pc.set_audio_device_factory(no_device_factory());
-    pc.open(entry_for(notes), {Difficulty::Expert, true, true}, nullptr, "", 4);
+    pc.open(entry_for(notes), {Difficulty::Expert, true, true}, kTestFillRule, nullptr, "",4);
     wait_loaded(pc);
     REQUIRE(pc.has_audio());
 }
@@ -519,12 +523,12 @@ TEST_CASE("switching paths builds the new overlay off the UI thread") {
     const std::string best_key = path_overlay_key(&best);
 
     PreviewController pc(nullptr, nullptr);
-    pc.open(entry_for(chart), {Difficulty::Expert, true, true}, nullptr, "", 4);
+    pc.open(entry_for(chart), {Difficulty::Expert, true, true}, kTestFillRule, nullptr, "",4);
     wait_loaded(pc);
     const std::string before = pc.overlay_path_key();
 
     // open() returns at once: the old overlay is still up, and nothing reloads.
-    pc.open(entry_for(chart), {Difficulty::Expert, true, true}, &best, best_key, 4);
+    pc.open(entry_for(chart), {Difficulty::Expert, true, true}, kTestFillRule, &best, best_key,4);
     CHECK(pc.overlay_path_key() == before);
     CHECK_FALSE(pc.loading());
 
@@ -552,7 +556,7 @@ TEST_CASE("shows_path: the same path at another cap, and a different path") {
     PreviewController pc(nullptr, nullptr);
     pc.set_audio_device_factory(no_device_factory());
     const ChartLibraryEntry entry = entry_for(chart);
-    pc.open(entry, {Difficulty::Expert, true, true}, &best, best_key, 4);
+    pc.open(entry, {Difficulty::Expert, true, true}, kTestFillRule, &best, best_key,4);
     wait_for_path(pc, best_key);
     REQUIRE_FALSE(pc.has_error());
     CHECK(pc.shows_path(best_key));
@@ -562,7 +566,7 @@ TEST_CASE("shows_path: the same path at another cap, and a different path") {
 
     // The same path at cap 1: the cap-4 overlay stays up until the rebuild
     // lands, and both are this path's.
-    pc.open(entry, {Difficulty::Expert, true, true}, &best, best_key, 1);
+    pc.open(entry, {Difficulty::Expert, true, true}, kTestFillRule, &best, best_key,1);
     CHECK(pc.overlay_path_key() == at_cap4);
     CHECK(pc.shows_path(best_key));
     settle(pc);
@@ -610,14 +614,14 @@ TEST_CASE("a mode change on the open chart reloads only the notes and keeps the 
     int device_calls = 0;
     pc.set_audio_device_factory(counting_factory(device_calls));
     const ChartLibraryEntry entry = entry_for(expert_and_hard_chart_with_audio("prevctl_modes"));
-    pc.open(entry, {Difficulty::Expert, true, false}, nullptr, "", 4);
+    pc.open(entry, {Difficulty::Expert, true, false}, kTestFillRule, nullptr, "",4);
     settle(pc);
     REQUIRE_FALSE(pc.has_error());
     REQUIRE(pc.has_audio());
     REQUIRE(device_calls == 1);
 
     // The same chart in the same mode is a no-op: nothing reloads.
-    pc.open(entry, {Difficulty::Expert, true, false}, nullptr, "", 4);
+    pc.open(entry, {Difficulty::Expert, true, false}, kTestFillRule, nullptr, "",4);
     CHECK_FALSE(pc.busy());
 
     struct Mode {
@@ -638,7 +642,7 @@ TEST_CASE("a mode change on the open chart reloads only the notes and keeps the 
         // Paused: the playhead stays exactly where it was.
         pc.pause();
         pc.seek_ms(1500.0);
-        pc.open(entry, {m.difficulty, m.pro, m.bass2x, m.noteshuffle}, nullptr, "", 4);
+        pc.open(entry, {m.difficulty, m.pro, m.bass2x, m.noteshuffle}, kTestFillRule, nullptr, "",4);
         CHECK_FALSE(pc.loading());  // the old highway stays up, no loading bar
         CHECK(pc.busy());           // the notes job runs
         settle(pc);
@@ -653,7 +657,7 @@ TEST_CASE("a mode change on the open chart reloads only the notes and keeps the 
     pc.seek_ms(1500.0);
     pc.play();
     REQUIRE(pc.playing());
-    pc.open(entry, {Difficulty::Expert, true, false}, nullptr, "", 4);
+    pc.open(entry, {Difficulty::Expert, true, false}, kTestFillRule, nullptr, "",4);
     settle(pc);
     CHECK_FALSE(pc.has_error());
     CHECK(pc.playing());
@@ -673,14 +677,14 @@ TEST_CASE("a mode with no notes pauses the Preview in place; switching back clea
     pc.set_audio_device_factory(counting_factory(device_calls));
     // Expert notes only, and 5 s of audio.
     const ChartLibraryEntry entry = entry_for(short_chart_with_long_audio("prevctl_nonotes"));
-    pc.open(entry, {Difficulty::Expert, true, false}, nullptr, "", 4);
+    pc.open(entry, {Difficulty::Expert, true, false}, kTestFillRule, nullptr, "",4);
     settle(pc);
     REQUIRE_FALSE(pc.has_error());
     REQUIRE(pc.has_audio());
 
     pc.seek_ms(400.0);
     pc.play();
-    pc.open(entry, {Difficulty::Hard, true, false}, nullptr, "", 4);
+    pc.open(entry, {Difficulty::Hard, true, false}, kTestFillRule, nullptr, "",4);
     settle(pc);
     CHECK(pc.has_error());
     CHECK_FALSE(pc.playing());
@@ -688,7 +692,7 @@ TEST_CASE("a mode with no notes pauses the Preview in place; switching back clea
     const double stopped_at = pc.position_ms();
     CHECK(stopped_at >= 400.0);
 
-    pc.open(entry, {Difficulty::Expert, true, false}, nullptr, "", 4);
+    pc.open(entry, {Difficulty::Expert, true, false}, kTestFillRule, nullptr, "",4);
     CHECK_FALSE(pc.has_error());  // cleared as the reload starts
     settle(pc);
     CHECK_FALSE(pc.has_error());
@@ -713,13 +717,13 @@ TEST_CASE("a second mode change during a notes reload wins") {
     const ChartLibraryEntry entry = entry_for(dir + "\\notes.chart");
 
     PreviewController pc(nullptr, nullptr);
-    pc.open(entry, {Difficulty::Expert, true, false}, nullptr, "", 4);
+    pc.open(entry, {Difficulty::Expert, true, false}, kTestFillRule, nullptr, "",4);
     settle(pc);
     REQUIRE_FALSE(pc.has_error());
     REQUIRE(pc.playback_end_ms() == doctest::Approx(500.0));
 
-    pc.open(entry, {Difficulty::Hard, true, false}, nullptr, "", 4);
-    pc.open(entry, {Difficulty::Medium, true, false}, nullptr, "", 4);
+    pc.open(entry, {Difficulty::Hard, true, false}, kTestFillRule, nullptr, "",4);
+    pc.open(entry, {Difficulty::Medium, true, false}, kTestFillRule, nullptr, "",4);
     wait_until(
         [&] {
             if (!pc.busy()) return true;
@@ -750,7 +754,7 @@ TEST_CASE("the Preview hides the path when the chart file changed since its reco
         if (changed) entry.md5 = "0123456789abcdef0123456789abcdef";
         PreviewController pc(nullptr, nullptr);
         pc.set_audio_device_factory(no_device_factory());
-        pc.open(entry, {Difficulty::Expert, true, true}, &best, best_key, 4);
+        pc.open(entry, {Difficulty::Expert, true, true}, kTestFillRule, &best, best_key,4);
         wait_loaded(pc);
         REQUIRE_FALSE(pc.has_error());
         CHECK(pc.chart_changed() == changed);
@@ -796,7 +800,7 @@ TEST_CASE("the Preview trusts the scan's fingerprint and does not re-hash an unc
         entry.sig = sig;
         PreviewController pc(nullptr, nullptr);
         pc.set_audio_device_factory(no_device_factory());
-        pc.open(entry, {Difficulty::Expert, true, true}, nullptr, "", 4);
+        pc.open(entry, {Difficulty::Expert, true, true}, kTestFillRule, nullptr, "",4);
         wait_loaded(pc);
         REQUIRE_FALSE(pc.has_error());
         CHECK(pc.chart_changed() == changed);
@@ -809,10 +813,10 @@ TEST_CASE("busy covers the overlay and base jobs, not only the first load") {
     const AnalyzedChart a = first_chart_with_a_path();
     const std::string best_key = hydra::app::path_overlay_key(&a.best);
     PreviewController pc(nullptr, nullptr);
-    pc.open(entry_for(a.chart), {Difficulty::Expert, true, true}, nullptr, "", 4);
+    pc.open(entry_for(a.chart), {Difficulty::Expert, true, true}, kTestFillRule, nullptr, "",4);
     wait_loaded(pc);
 
-    pc.open(entry_for(a.chart), {Difficulty::Expert, true, true}, &a.best, best_key, 4);
+    pc.open(entry_for(a.chart), {Difficulty::Expert, true, true}, kTestFillRule, &a.best, best_key,4);
     CHECK(pc.busy());
     CHECK_FALSE(pc.loading());
     settle(pc);
@@ -833,8 +837,10 @@ TEST_CASE("the Preview volume is the settings owner's: default and clamp") {
 
 TEST_CASE("the Preview's song key: another difficulty, Pro Drums or 2x Bass makes a different song") {
     using hydra::ui::PreviewSongKey;
-    const PreviewSongKey key{"prevctl", {Difficulty::Expert, /*prodrums=*/true, /*bass2x=*/false}};
-    const PreviewSongKey same{"prevctl", {Difficulty::Expert, /*prodrums=*/true, /*bass2x=*/false}};
+    const PreviewSongKey key{"prevctl", {Difficulty::Expert, /*prodrums=*/true, /*bass2x=*/false},
+                             kTestFillRule};
+    const PreviewSongKey same{"prevctl", {Difficulty::Expert, /*prodrums=*/true, /*bass2x=*/false},
+                              kTestFillRule};
     CHECK(key == same);
     CHECK_FALSE(key != same);
 
@@ -852,4 +858,19 @@ TEST_CASE("the Preview's song key: another difficulty, Pro Drums or 2x Bass make
     bass.reading.bass2x = true;
     CHECK(key != bass);
     CHECK_FALSE(key == bass);
+}
+
+// The Preview tab builds its key's fill rule from the "1.0 fills" setting
+// (fill_rule_for), so ticking it reloads the notes under the other game
+// version's fills, as another mode does.
+TEST_CASE("the Preview's song key: the 1.0 fills setting makes a different song") {
+    using hydra::ui::PreviewSongKey;
+    hydra::app::Settings s;
+    s.legacy_fills = false;
+    const PreviewSongKey off{"prevctl", s.reading(), fill_rule_for(s.legacy_fills)};
+    s.legacy_fills = true;
+    const PreviewSongKey on{"prevctl", s.reading(), fill_rule_for(s.legacy_fills)};
+    CHECK(off.reading == on.reading);
+    CHECK(off != on);
+    CHECK(on.fills == FillDeadlineRule::Ch10);
 }

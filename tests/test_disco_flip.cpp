@@ -11,6 +11,7 @@
 #include "app/dynamics_breakdown.h"
 #include "chart_text.h"
 #include "difficulty_literals.h"
+#include "load_util.h"
 #include "midi_util.h"
 #include "parse/song.h"
 #include "testdata_dirs.h"  // root

@@ -121,6 +121,16 @@ TEST_CASE("build_preview_scene: SP phrase, solo, and fill spans") {
     CHECK(scene.fills[0].span.end_tick == 720);
 }
 
+TEST_CASE("build_preview_scene: a fill whose chord sits before its measure line spans chord to line") {
+    Song song = make_hand_song();
+    for (SongTimestamp& ts : song.sequence)
+        if (ts.activation_length) ts.activation_length = -120;
+    const PreviewScene scene = build_preview_scene(song, nullptr);
+    REQUIRE(scene.fills.size() == 1);
+    CHECK(scene.fills[0].span.start_tick == 720);  // the chord
+    CHECK(scene.fills[0].span.end_tick == 840);    // the line
+}
+
 TEST_CASE("build_preview_scene: solo spans come from the song's solo sections") {
     Song song = make_hand_song();
     PreviewScene scene = build_preview_scene(song, nullptr);
@@ -236,14 +246,14 @@ TEST_CASE("build_beat_events: bars, beats, and half-beats from the timing alone"
     // 4/4 at 480 ticks/quarter: bars every 1920, beats every 480.
     std::map<int64_t, int64_t> tpm{{0, 1920}};
     std::map<int64_t, double> bpm{{0, 120.0}};
-    SongTiming st(480, tpm, bpm);
+    SongTiming st(480, tpm, bpm, {{0, {4, 4}}});
 
     std::vector<PreviewBeat> beats = build_beat_events(st, 1920);
     // ticks: 0 Bar, 240 Half, 480 Beat, 720 Half, 960 Beat, 1200 Half,
     // 1440 Beat, 1680 Half, 1920 Bar  (no Half before tick 0)
     REQUIRE(beats.size() == 9);
     CHECK(beats[0].tick == 0);
-    CHECK(beats[0].kind == PreviewBeatKind::Bar);
+    CHECK(beats[0].kind == PreviewBeatKind::MeasureLine);
     CHECK(beats[1].tick == 240);
     CHECK(beats[1].kind == PreviewBeatKind::Half);
     CHECK(beats[2].tick == 480);
@@ -251,7 +261,7 @@ TEST_CASE("build_beat_events: bars, beats, and half-beats from the timing alone"
     CHECK(beats[6].tick == 1440);
     CHECK(beats[6].kind == PreviewBeatKind::Beat);
     CHECK(beats[8].tick == 1920);
-    CHECK(beats[8].kind == PreviewBeatKind::Bar);
+    CHECK(beats[8].kind == PreviewBeatKind::MeasureLine);
     CHECK(beats[8].ms == doctest::Approx(2000.0));
     for (size_t i = 1; i < beats.size(); ++i) CHECK(beats[i].tick > beats[i - 1].tick);
 }
@@ -260,12 +270,12 @@ TEST_CASE("build_beat_events: a 3/4 section changes the beat count per bar") {
     // One bar of 4/4, then 3/4 (1440 ticks per measure).
     std::map<int64_t, int64_t> tpm{{0, 1920}, {1920, 1440}};
     std::map<int64_t, double> bpm{{0, 120.0}};
-    SongTiming st(480, tpm, bpm);
+    SongTiming st(480, tpm, bpm, {{0, {4, 4}}, {1920, {3, 4}}});
 
     std::vector<PreviewBeat> beats = build_beat_events(st, 1920 + 1440 * 2);
     int bars = 0, quarter_beats = 0;
     for (const PreviewBeat& b : beats) {
-        if (b.kind == PreviewBeatKind::Bar) ++bars;
+        if (b.kind == PreviewBeatKind::MeasureLine) ++bars;
         if (b.kind == PreviewBeatKind::Beat) ++quarter_beats;
     }
     CHECK(bars == 4);              // ticks 0, 1920, 3360, 4800
@@ -273,8 +283,46 @@ TEST_CASE("build_beat_events: a 3/4 section changes the beat count per bar") {
     // Every Beat line lies strictly inside its bar.
     bool saw_3360 = false;
     for (const PreviewBeat& b : beats)
-        if (b.tick == 3360) saw_3360 = b.kind == PreviewBeatKind::Bar;
+        if (b.tick == 3360) saw_3360 = b.kind == PreviewBeatKind::MeasureLine;
     CHECK(saw_3360);
+}
+
+TEST_CASE("build_beat_events: 6/8 steps by the eighth note") {
+    // 6/8 at 480 ticks/quarter: Clone Hero's grid steps every 240 ticks and
+    // puts a measure line every six steps. Its weak beats (the 2nd, 4th and
+    // 6th eighth) are drawn as ordinary beat lines, and the fainter line sits
+    // half a step (120 ticks) before each line.
+    std::map<int64_t, int64_t> tpm{{0, 1440}};
+    std::map<int64_t, double> bpm{{0, 120.0}};
+    SongTiming st(480, tpm, bpm, {{0, {6, 8}}});
+
+    std::vector<PreviewBeat> beats = build_beat_events(st, 1440);
+    std::vector<int64_t> lines, beat_lines, halves;
+    for (const PreviewBeat& b : beats) {
+        if (b.kind == PreviewBeatKind::MeasureLine) lines.push_back(b.tick);
+        if (b.kind == PreviewBeatKind::Beat) beat_lines.push_back(b.tick);
+        if (b.kind == PreviewBeatKind::Half) halves.push_back(b.tick);
+    }
+    CHECK(lines == std::vector<int64_t>{0, 1440});
+    CHECK(beat_lines == std::vector<int64_t>{240, 480, 720, 960, 1200});
+    CHECK(halves == std::vector<int64_t>{120, 360, 600, 840, 1080, 1320});
+    for (size_t i = 1; i < beats.size(); ++i) CHECK(beats[i].tick > beats[i - 1].tick);
+}
+
+TEST_CASE("build_beat_events: the fainter line is halfway back to the line before, at a restart too") {
+    // 4/4, then 6/8 from tick 1920, then 4/4 again from tick 2400. The grid
+    // restarts at each change, so the gap before a restart line is the step
+    // of the meter that ends there: 480 before 1920, 240 before 2400.
+    std::map<int64_t, int64_t> tpm{{0, 1920}, {1920, 1440}, {2400, 1920}};
+    std::map<int64_t, double> bpm{{0, 120.0}};
+    SongTiming st(480, tpm, bpm, {{0, {4, 4}}, {1920, {6, 8}}, {2400, {4, 4}}});
+
+    std::vector<PreviewBeat> beats = build_beat_events(st, 2880);
+    std::vector<int64_t> halves;
+    for (const PreviewBeat& b : beats)
+        if (b.kind == PreviewBeatKind::Half) halves.push_back(b.tick);
+    CHECK(halves == std::vector<int64_t>{240, 720, 1200, 1680, 2040, 2280, 2640});
+    for (size_t i = 1; i < beats.size(); ++i) CHECK(beats[i].tick > beats[i - 1].tick);
 }
 
 TEST_CASE("build_preview_scene fills beats, tempos and resolution") {
@@ -305,7 +353,7 @@ TEST_CASE("build_preview_scene: the beat lines run to the end of the audio") {
         build_preview_scene(c.song, nullptr, kCloneHeroSpCap, core::default_rules(), c.audio_end_ms);
     REQUIRE(!scene.beats.empty());
     CHECK(scene.beats.back().tick == 11520);
-    CHECK(scene.beats.back().kind == PreviewBeatKind::Bar);
+    CHECK(scene.beats.back().kind == PreviewBeatKind::MeasureLine);
     CHECK(scene.beats.back().ms == doctest::Approx(6000.0));
     // The base alone gives the same grid: the overlay never touches beats.
     CHECK(build_preview_base(c.song, c.audio_end_ms).beats.back().tick == 11520);
@@ -420,7 +468,8 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
         return "drum_lanes";
     if (!std::equal(a.fills.begin(), a.fills.end(), b.fills.begin(), b.fills.end(),
                     [&](const PreviewFill& x, const PreviewFill& y) {
-                        return span_eq(x.span, y.span) && x.state == y.state;
+                        return span_eq(x.span, y.span) && x.chord_tick == y.chord_tick &&
+                               x.state == y.state;
                     }))
         return "fills";
     if (!std::equal(a.activations.begin(), a.activations.end(), b.activations.begin(),
@@ -452,17 +501,12 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
                         return x.tick == y.tick && x.ms == y.ms && x.name == y.name;
                     }))
         return "sections";
-    if (!std::equal(a.meters.begin(), a.meters.end(), b.meters.begin(), b.meters.end(),
-                    [](const PreviewMeter& x, const PreviewMeter& y) {
-                        return x.tick == y.tick && x.tpm == y.tpm && x.first_bar == y.first_bar;
+    if (!std::equal(a.measure_spans.begin(), a.measure_spans.end(), b.measure_spans.begin(),
+                    b.measure_spans.end(),
+                    [](const PreviewMeasureSpan& x, const PreviewMeasureSpan& y) {
+                        return x.tick == y.tick && x.tpm == y.tpm;
                     }))
-        return "meters";
-    if (!std::equal(a.time_sigs.begin(), a.time_sigs.end(), b.time_sigs.begin(),
-                    b.time_sigs.end(), [](const PreviewTimeSig& x, const PreviewTimeSig& y) {
-                        return x.tick == y.tick && x.numerator == y.numerator &&
-                               x.denominator == y.denominator;
-                    }))
-        return "time_sigs";
+        return "measure_spans";
     if (a.sp_meter.cap != b.sp_meter.cap ||
         !std::equal(a.sp_meter.segments.begin(), a.sp_meter.segments.end(),
                     b.sp_meter.segments.begin(), b.sp_meter.segments.end(),
@@ -489,9 +533,17 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
         const MeasureIndex& my = y.measure_index();
         if (mx.count() != my.count()) return "timing (meter sections)";
         for (int i = 0; i < mx.count(); ++i)
-            if (mx.keys_at(i) != my.keys_at(i) || mx.tpm_at(i) != my.tpm_at(i) ||
-                mx.starts_at(i) != my.starts_at(i) || mx.measures_at(i) != my.measures_at(i))
+            if (mx.restart_at(i) != my.restart_at(i) || mx.step_at(i) != my.step_at(i) ||
+                mx.numerator_at(i) != my.numerator_at(i) ||
+                mx.denominator_at(i) != my.denominator_at(i) ||
+                mx.lines_before_at(i) != my.lines_before_at(i))
                 return "timing (meter section " + std::to_string(i) + ")";
+        const MeasureCount& cx = x.measure_count();
+        const MeasureCount& cy = y.measure_count();
+        if (cx.count() != cy.count()) return "timing (measure count spans)";
+        for (int i = 0; i < cx.count(); ++i)
+            if (cx.start_at(i) != cy.start_at(i) || cx.tpm_at(i) != cy.tpm_at(i))
+                return "timing (measure count span " + std::to_string(i) + ")";
         std::vector<int64_t> ticks{0};
         for (const PreviewTempo& t : a.tempos) ticks.push_back(t.tick);
         for (const PreviewNote& n : a.notes) ticks.push_back(n.tick);
@@ -697,7 +749,7 @@ TEST_CASE("preview fills: every stored passed-over fill is a fill in the scene")
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         if (rec.paths.empty()) continue;
         std::set<int64_t> fill_ends;
-        for (const PreviewFill& f : build_preview_base(song).fills) fill_ends.insert(f.span.end_tick);
+        for (const PreviewFill& f : build_preview_base(song).fills) fill_ends.insert(f.chord_tick);
         for (size_t pi = 0; pi < rec.paths.size(); ++pi) {
             for (const Activation& a : rec.paths[pi].walk_activations()) {
                 for (int64_t t : a.skipped_fill_ticks) {

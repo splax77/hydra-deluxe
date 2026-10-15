@@ -31,6 +31,7 @@
 #include "bytes_util.h"
 #include "image/decode.h"
 #include "json.hpp"
+#include "load_util.h"
 #include "parse/song.h"
 #include "core/winstr.h"
 #include "env_util.h"
