@@ -1067,9 +1067,18 @@ void RecordStore::save_analysis(const PreparedRow& row) {
 }
 
 void RecordStore::save(const PreparedRecord& prepared) {
+    save_under(prepared, current_record_version());
+}
+
+void RecordStore::save_under_build_for_test(const PreparedRecord& prepared,
+                                            const std::string& build) {
+    save_under(prepared, build);
+}
+
+void RecordStore::save_under(const PreparedRecord& prepared, const std::string& build) {
     in_save_frame([&] {
-        file_record(prepared.profile, current_record_version(), prepared.rules_fp,
-                    prepared.record, PurgeScope::EveryMode);
+        file_record(prepared.profile, build, prepared.rules_fp, prepared.record,
+                    PurgeScope::EveryMode);
     });
 }
 

@@ -13,7 +13,7 @@
 
 #include "app/user_messages.h"  // stale_text, what a Stale row's tooltip shows
 #include "core/rules.h"
-#include "display_fixtures.h"  // kTagOnlyTitle
+#include "display_fixtures.h"  // kTagOnlyTitle, add_stale_records, empty_analysis_under
 #include "store/record_store.h"
 #include "ui/library_model.h"
 
@@ -21,7 +21,6 @@ using hydra::store::CapQuery;
 using hydra::store::ChartLibraryEntry;
 using hydra::store::PathRow;
 using hydra::store::Profile;
-using hydra::store::RecordKey;
 using hydra::store::RecordLookup;
 using hydra::store::RecordStatus;
 using hydra::ui::LibraryModel;
@@ -90,18 +89,16 @@ std::vector<std::string> titles(const LibraryModel& m) {
 // "build" came from another Hydra version, "rules" from other rules in
 // hydra_rules.ini, "both" from both. Returns the model's rows, in that order.
 std::vector<hydra::ui::LibraryRow> stale_rows() {
-    hydra::HydraRecord here;
-    here.sp_cap = 8;
-    auto key = [](const char* md5) { return RecordKey{md5, "mode", CapQuery::at(8)}; };
-
+    const Profile profile{"mode", CapQuery::at(8), hydra::store::Lens{}};
     hydra::store::RecordStore store(":memory:");
-    hydra::test::add_stale_rows(store, here, key("build"), key("rules"), key("both"));
+    hydra::test::add_stale_records(store, hydra::test::empty_analysis_under(profile), profile,
+                                   "build", "rules", "both");
 
     LibraryModel m;
     m.set_charts({chart("build", "Build", "A", "C", "common"),
                   chart("rules", "Rules", "A", "C", "common"),
                   chart("both", "Both", "A", "C", "common")});
-    m.set_summaries(store.lookup(m.hashes(), Profile{"mode", CapQuery::at(8), hydra::store::Lens{}}));
+    m.set_summaries(store.lookup(m.hashes(), profile));
     return m.rows();
 }
 

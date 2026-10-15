@@ -31,7 +31,7 @@
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file, scalar_on_file, record_rows_in
-#include "display_fixtures.h"  // batch_profile, save_old_build_record, add_stale_records
+#include "display_fixtures.h"  // batch_profile, save_old_build_record
 #include "library_fixtures.h"  // library_entry
 #include "old_layout_fixture.h"  // v220_layout_sql
 #include "parse/song.h"
@@ -161,8 +161,7 @@ TEST_CASE("a Stale converted record is replaced on click") {
         RecordStore old(paths.db);
         old.rebuild_chart_library({song});
         hydra::test::save_old_build_record(
-            old, paths.db,
-            hydra::store::prepare_record(song.md5, settings.profile(), fresh.record));
+            old, hydra::store::prepare_record(song.md5, settings.profile(), fresh.record));
     }
     hydra::test::exec_on_file(paths.db, hydra::test::v220_layout_sql().c_str());
 
@@ -192,7 +191,7 @@ TEST_CASE("clicking a Stale song turns its row Ready") {
     const Settings settings;
     const Profile profile = settings.profile();
     hydra::test::save_old_build_record(
-        *store, paths.db,
+        *store,
         hydra::store::prepare_record(
             song.md5, profile,
             hydra::app::analyze_chart_file(song.notespath, settings.to_analysis_settings())
@@ -205,32 +204,6 @@ TEST_CASE("clicking a Stale song turns its row Ready") {
     CHECK(app.viewed.ready());
     CHECK(row_of(app, song.md5).status == RecordStatus::Ready);
     CHECK(app.store->lookup_one(song.md5, profile).status == RecordStatus::Ready);
-}
-
-// The fixture the Stale tests above stand on. It lives here, not in
-// display_fixtures.h, because it needs a file store, and the temp-path helper
-// brings windows.h into every file that header reaches.
-TEST_CASE("fixtures: a Stale record for each cause") {
-    ScratchPaths paths("fixtures_stale_records");
-    RecordStore store(paths.db);
-    const Profile profile = hydra::test::batch_profile(Settings{}.sp_cap);
-    const hydra::HydraRecord record = hydra::test::empty_analysis_under(profile);
-    hydra::test::add_stale_records(store, paths.db, record, profile, "build", "rules", "both");
-    hydra::test::save_batch_record(store, "ready", profile);  // after them: a profile of its own
-
-    const hydra::store::RecordLookup build = store.lookup_one("build", profile);
-    CHECK(build.status == RecordStatus::Stale);
-    CHECK(build.stale_build);
-    CHECK_FALSE(build.stale_rules);
-    const hydra::store::RecordLookup rules = store.lookup_one("rules", profile);
-    CHECK(rules.status == RecordStatus::Stale);
-    CHECK_FALSE(rules.stale_build);
-    CHECK(rules.stale_rules);
-    const hydra::store::RecordLookup both = store.lookup_one("both", profile);
-    CHECK(both.status == RecordStatus::Stale);
-    CHECK(both.stale_build);
-    CHECK(both.stale_rules);
-    CHECK(store.lookup_one("ready", profile).status == RecordStatus::Ready);
 }
 
 // D87 item 3: the click runs the rescan's unchanged test, re-hashes an edited

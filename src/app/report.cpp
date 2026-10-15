@@ -107,9 +107,9 @@ std::unordered_map<std::string, store::RecordRow> listed_records(
 
 namespace {
 
-// Whether the store holds a result at any setting. The one place report.cpp
-// reads RecordStore::counts().
-bool holds_results(store::RecordStore& store) { return store.counts().second > 0; }
+// Whether the store holds a record under any profile. The one place report.cpp
+// reads RecordStore::record_count().
+bool holds_results(store::RecordStore& store) { return store.record_count() > 0; }
 
 // lacks_chart_library's rule, for generate_report, which has already asked
 // holds_results and passes its answer on.

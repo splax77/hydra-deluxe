@@ -21,7 +21,7 @@
 #include "app_state_fixtures.h"
 #include "core/error_kind.h"
 #include "db_file_util.h"  // exec_on_file, write_junk_db
-#include "display_fixtures.h"  // store_batch_result
+#include "display_fixtures.h"  // save_batch_record
 #include "library_fixtures.h"  // library_entry
 #include "scoped_hook.h"
 #include "scratch_paths.h"
@@ -84,7 +84,7 @@ TEST_CASE("a batch result for the open chart refreshes its row, not the panel") 
     records.changed(app->record_generation);
 
     // The result arrives the way a batch files one (H1's fixture).
-    hydra::test::store_batch_result(*app->store, open.md5, Settings{}.sp_cap);
+    hydra::test::save_batch_record(*app->store, open.md5, Settings{}.sp_cap);
     run_redo_batch_over(*app, open.md5);
 
     app->tick_library(0.0);  // the batch's last refresh
@@ -135,7 +135,7 @@ TEST_CASE("refresh_library_row picks up one chart's new result") {
     REQUIRE(at < app->library_shown_count());
     CHECK(app->library_row_at(at).status == RecordStatus::NotAnalyzed);
 
-    hydra::test::store_batch_result(*app->store, fifth.md5, kSeededCap);
+    hydra::test::save_batch_record(*app->store, fifth.md5, kSeededCap);
     app->refresh_library_row(fifth.md5);
     CHECK(app->library_row_at(at).status == RecordStatus::Ready);
     CHECK(app->library.counts().analyzed == 2);
@@ -297,7 +297,7 @@ TEST_CASE("the confirm counts every library row, and rows with a result from the
     REQUIRE(app.library_shown_count() == 3);
 
     // Stored behind the library's back: no reload.
-    hydra::test::store_batch_result(*app.store, first.md5, Settings{}.sp_cap);
+    hydra::test::save_batch_record(*app.store, first.md5, Settings{}.sp_cap);
     app.open_batch_confirm();
 
     CHECK(app.batch_scope_charts() == app.library_shown_count());
@@ -315,7 +315,7 @@ TEST_CASE("the batch confirm counts the rows on screen when a search and a chip 
     for (int i = 0; i < 20; ++i) charts.push_back(library_entry(i));
     store->rebuild_chart_library(charts);
     for (int i : {0, 3, 5, 8})
-        hydra::test::store_batch_result(*store, library_entry(i).md5, Settings{}.sp_cap);
+        hydra::test::save_batch_record(*store, library_entry(i).md5, Settings{}.sp_cap);
     AppState app(Settings{}, std::move(store));
 
     app.set_search("hash00");
@@ -350,7 +350,7 @@ TEST_CASE("the batch runs the plan the confirm showed, with no second store read
     REQUIRE(app.batch_scope_charts() == 2);
 
     // Stored after the confirm opened: a second read would now skip this chart.
-    hydra::test::store_batch_result(*app.store, library_entry(2).md5, Settings{}.sp_cap);
+    hydra::test::save_batch_record(*app.store, library_entry(2).md5, Settings{}.sp_cap);
     {
         const ScopedHook seam(
             hydra::ui::set_app_batch_analyzer_for_test,

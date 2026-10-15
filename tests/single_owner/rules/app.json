@@ -1589,17 +1589,17 @@
     },
     {
       "question": "Does a line print the store's raw row count as a count of charts?",
-      "owner": "BatchProgress and the library table count charts (D76, D79); holds_results in src/app/report.cpp is the one reader of RecordStore::counts()",
+      "owner": "BatchProgress and the library table count charts (D76, D79); holds_results in src/app/report.cpp is the one reader of RecordStore::record_count()",
       "owner_file": "src/app/report.cpp",
       "owner_symbol": "library",
       "date": "2026-10-05",
       "decision": "D79",
       "added_by": "COUNT-B",
-      "pattern": "\\b\\w*store\\w*(\\.|->)counts\\(\\)",
-      "anchor": "counts()",
+      "pattern": "\\b\\w*store\\w*(\\.|->)record_count\\(\\)",
+      "anchor": "record_count()",
       "must_match": [
-        "auto [songs, records] = store.counts();",
-        "const auto n = app.store->counts().first;"
+        "const auto records = store.record_count();",
+        "const auto n = app.store->record_count();"
       ],
       "must_not_match": [
         "CHECK(m.counts().all == 6);",
@@ -1608,11 +1608,11 @@
       "owner_lines": [
         {
           "file": "src/app/report.cpp",
-          "line_text": "bool holds_results(store::RecordStore& store) { return store.counts().second > 0; }",
+          "line_text": "bool holds_results(store::RecordStore& store) { return store.record_count() > 0; }",
           "why": "holds_results, the owner: it asks only whether the store is empty"
         }
       ],
-      "note": "D79 B5: RecordStore::counts() adds up every stored row at every setting, so a line that printed it next to the batch's counts read as a second chart count. This row flags every call to a store's counts() in src/ and tools/. The one call kept is holds_results in src/app/report.cpp, which asks only whether the store is empty. Decided by: D79 item 2 (task COUNT-B)"
+      "note": "D79 B5: RecordStore::record_count() (the old counts() before D115 A1-5) adds up every stored record under every profile, so a line that printed it next to the batch's counts read as a second chart count. This row flags every call to a store's record_count() in src/ and tools/. The one call kept is holds_results in src/app/report.cpp, which asks only whether the store is empty. Decided by: D79 item 2 (task COUNT-B)"
     },
     {
       "question": "How does a finished scan become the library?",
