@@ -48,7 +48,8 @@ std::vector<std::pair<int64_t, int64_t>> fills_of(const Song& song) {
     std::vector<std::pair<int64_t, int64_t>> out;
     for (const SongTimestamp& ts : song.sequence)
         if (ts.has_activation())
-            out.emplace_back(ts.timecode.ticks() - *ts.activation_length, ts.timecode.ticks());
+            out.emplace_back(fill_start_tick(ts.timecode.ticks(), *ts.activation_length),
+                             ts.timecode.ticks());
     return out;
 }
 
