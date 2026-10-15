@@ -189,6 +189,29 @@ TEST_CASE("collect_fill_rows: a chart with a record under one rule only still ge
     CHECK(only_new->old_path.empty());
 }
 
+// The page reads report::library_lookup's Ready records, so a stored failure
+// (CantAnalyze) is no record on its side, and a chart that failed under both
+// rules gets no row.
+TEST_CASE("collect_fill_rows: a stored failure is no record on its side") {
+    store::RecordStore store(":memory:");
+    put_ch10(store, kOldOnly, 900000, 2, "only-old-path");
+    store.save(store::failure_record(
+        kOldOnly, testdm::settings().profile_with_fills(FillDeadlineRule::Ch11), ErrorKind::NoNotes,
+        "No Expert Pro Drums notes in this chart."));
+    name(store, kNewOnly);
+    for (FillDeadlineRule rule : {FillDeadlineRule::Ch10, FillDeadlineRule::Ch11})
+        store.save(store::failure_record(kNewOnly, testdm::settings().profile_with_fills(rule),
+                                         ErrorKind::NoNotes,
+                                         "No Expert Pro Drums notes in this chart."));
+
+    std::vector<FillCompareRow> rows = compare(store);
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].hyhash == kOldOnly);
+    CHECK(rows[0].status == "only 1.0");
+    CHECK(rows[0].old_score == 900000);
+    CHECK_FALSE(rows[0].new_score.has_value());
+}
+
 TEST_CASE("collect_fill_rows: a 1.0 record with no score and no 1.1 record") {
     store::RecordStore store(":memory:");
 

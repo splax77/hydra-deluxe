@@ -10,6 +10,8 @@
 #include "app/analysis.h"
 #include "app/config.h"    // Settings::profile
 #include "app/display_format.h"
+#include "app/user_messages.h"  // plain_error
+#include "core/error_kind.h"
 #include "core/model.h"
 #include "core/squeeze_rating.h"
 #include "core/strutil.h"
@@ -94,18 +96,110 @@ std::string beyond_edge_text(double hit_window_ms) {
     return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));
 }
 
-std::unordered_map<std::string, store::RecordRow> listed_records(
-    store::RecordStore& store, const store::Profile& profile, const store::ChartIndex& library) {
-    std::unordered_map<std::string, store::RecordRow> by_id;
-    for (store::RecordRow& r : store.ready_records(profile))
-        if (library.lists(r.song_id)) {
-            std::string id = r.song_id;
-            by_id.emplace(std::move(id), std::move(r));
+LibraryLookup library_lookup(store::RecordStore& store, const store::Profile& profile,
+                             const store::ChartIndex& library) {
+    LibraryLookup out;
+    const std::vector<std::string>& ids = library.song_ids();
+    std::vector<store::RecordLookup> found = store.lookup(ids, profile);
+    for (size_t i = 0; i < ids.size(); ++i) {
+        store::RecordLookup& l = found[i];
+        switch (l.status) {
+            case store::RecordStatus::Ready:
+                out.ready.emplace(ids[i], std::move(l.record));
+                break;
+            case store::RecordStatus::CantAnalyze: {
+                // The library lists the chart, so it has a naming copy.
+                const store::ChartLibraryEntry& naming = *library.naming(ids[i]);
+                out.cant_analyze.push_back(CantAnalyzeChart{
+                    ids[i], display_title(naming.title), display_artist(naming.artist),
+                    *l.failure_kind, std::move(l.failure_text)});
+                break;
+            }
+            case store::RecordStatus::NotAnalyzed:
+            case store::RecordStatus::Stale:
+                out.no_result.push_back(ids[i]);
+                break;
         }
-    return by_id;
+    }
+    return out;
 }
 
 namespace {
+
+// How many library rows the charts `ids` count as. Every chart count on the
+// page asks store::ChartIndex::count (D76, D77), through ids_of or here.
+int64_t charts_counted(const store::ChartIndex& index, const std::vector<std::string>& ids) {
+    return index.count(ids);
+}
+
+std::vector<std::string> ids_of(const std::vector<CantAnalyzeChart>& charts) {
+    std::vector<std::string> ids;
+    ids.reserve(charts.size());
+    for (const CantAnalyzeChart& c : charts) ids.push_back(c.song_id);
+    return ids;
+}
+
+// The reason a stored failure gives, worded by app::plain_error, the one
+// owner of failure sentences, from the stored kind and text.
+std::string failure_sentence(const CantAnalyzeChart& chart) {
+    return plain_error(KindedError(chart.kind, chart.text));
+}
+
+// The can't-analyze charts grouped by their sentence, each group in the
+// order its reason first appears in the library, its charts in library
+// order.
+std::vector<CantAnalyzeGroup> group_by_reason(const std::vector<CantAnalyzeChart>& charts,
+                                              const store::ChartIndex& library) {
+    std::vector<CantAnalyzeGroup> groups;
+    for (const CantAnalyzeChart& c : charts) {
+        std::string sentence = failure_sentence(c);
+        auto it = std::find_if(groups.begin(), groups.end(), [&](const CantAnalyzeGroup& g) {
+            return g.sentence == sentence;
+        });
+        if (it == groups.end()) {
+            groups.push_back(CantAnalyzeGroup{std::move(sentence), 0, {}});
+            it = groups.end() - 1;
+        }
+        it->charts.push_back(c);
+    }
+    for (CantAnalyzeGroup& g : groups) g.count = charts_counted(library, ids_of(g.charts));
+    return groups;
+}
+
+// The words after the count when every can't-analyze chart shares one
+// reason, read off that reason's sentence; empty when its kind has no short
+// form, and the line falls back to the generic words. A NoNotes sentence is
+// NoNotesError's own text (no_notes_message in parse/song.cpp), "No <part>
+// notes in this chart.", so the short form is "no <part> notes".
+std::string shared_reason_words(ErrorKind kind, const std::string& sentence) {
+    static const std::string kHead = "No ";
+    static const std::string kTail = " in this chart.";
+    if (kind != ErrorKind::NoNotes) return std::string();
+    if (sentence.size() <= kHead.size() + kTail.size() ||
+        sentence.compare(0, kHead.size(), kHead) != 0 ||
+        sentence.compare(sentence.size() - kTail.size(), kTail.size(), kTail) != 0)
+        return std::string();
+    return "no " + sentence.substr(kHead.size(), sentence.size() - kHead.size() - kTail.size());
+}
+
+// The coverage line for the can't-analyze charts (the user's answer 5,
+// 2026-10-15): the shared reason when there is one with a short form, else
+// the generic words. Empty when there are none.
+std::string cant_analyze_line(const std::vector<CantAnalyzeGroup>& groups, int64_t count) {
+    if (count == 0) return std::string();
+    if (groups.size() == 1) {
+        const std::string words =
+            shared_reason_words(groups.front().charts.front().kind, groups.front().sentence);
+        if (!words.empty()) return hydra::counted(count, "chart has", "charts have") + " " + words;
+    }
+    return hydra::counted(count, "chart", "charts") + " can't be analyzed";
+}
+
+// The coverage line for the charts with no result. Empty when there are none.
+std::string no_result_line(int64_t count) {
+    if (count == 0) return std::string();
+    return hydra::counted(count, "chart has", "charts have") + " no result under these settings";
+}
 
 // Whether the store holds a record under any profile. The one place report.cpp
 // reads RecordStore::record_count().
@@ -129,17 +223,18 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportOptions& optio
         throw std::invalid_argument("collect_rows: the report has no analysis settings");
     CollectedRows out;
     out.library = store.chart_index();
-    const std::unordered_map<std::string, store::RecordRow> records =
-        listed_records(store, options.run->profile, out.library);
+    LibraryLookup found = library_lookup(store, options.run->profile, out.library);
     // Built once for the whole report, not once per row.
     const std::vector<TimingTier> tiers = timing_tiers(options.hit_window_ms);
     // The library's scan order, so the page's rows come out the same way
     // every time.
     for (const std::string& id : out.library.song_ids()) {
-        const auto it = records.find(id);
-        if (it == records.end()) continue;
+        const auto it = found.ready.find(id);
+        if (it == found.ready.end()) continue;
         place_record(out.rows, it->second, options.max_paths, *out.library.naming(id), tiers);
     }
+    out.cant_analyze = std::move(found.cant_analyze);
+    out.no_result = std::move(found.no_result);
     return out;
 }
 
@@ -160,7 +255,8 @@ std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
         highest_skip = std::max(highest_skip, r.skip);
     }
     return {
-        {"Charts shown", group_thousands(library.count(ids_of(rows, shown)))},
+        {"Charts shown", group_thousands(library.count(ids_of(rows, shown))) + " of " +
+                             group_thousands(charts_counted(library, library.song_ids()))},
         {"Paths shown", group_thousands(static_cast<int64_t>(shown.size()))},
         // The Hardest ms column's own text (format_ms).
         {"Hardest ms", hardest ? format_ms(*hardest->ms) : std::string(kDash)},
@@ -194,12 +290,24 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
     const store::Profile& profile = options.run->profile;
     const FillDeadlineRule rule = fill_rule_for(profile.lens.legacy_fills);
     out.rows = static_cast<int64_t>(rows.size());
+    // The page's coverage: every library chart is shown, can't be analyzed,
+    // or has no result (the user's answer 5, 2026-10-15).
+    out.library_charts = charts_counted(out.library, out.library.song_ids());
+    out.cant_analyze_charts = charts_counted(out.library, ids_of(collected.cant_analyze));
+    out.cant_analyze = group_by_reason(collected.cant_analyze, out.library);
+    out.no_result_charts = charts_counted(out.library, collected.no_result);
+    out.cant_analyze_line = cant_analyze_line(out.cant_analyze, out.cant_analyze_charts);
+    out.no_result_line = no_result_line(out.no_result_charts);
     if (rows.empty()) {
-        // Nothing listed. Either the database is empty, or it holds results
+        // Nothing listed. A stored failure is a result, so the coverage lines
+        // say why; otherwise the database is empty, or it holds results
         // under other settings (or only stale ones), and the user needs to
         // hear which (finding 105).
         const bool any_results = holds_results(store);
-        if (!any_results) {
+        if (!collected.cant_analyze.empty()) {
+            out.empty_reason = EmptyReason::NothingToShow;
+            out.why_empty = kNothingToShow;
+        } else if (!any_results) {
             out.empty_reason = EmptyReason::NothingStored;
         } else if (lacks_chart_library(store, any_results)) {
             // The report covers library charts only (D87 item 4).

@@ -2,11 +2,11 @@
   "rules": [
     {
       "question": "Which stored listings does a report page show?",
-      "owner": "report::listed_records in src/app/report.cpp",
+      "owner": "report::library_lookup in src/app/report.cpp",
       "owner_file": "src/app/report.cpp",
-      "owner_symbol": "listed_records",
+      "owner_symbol": "library_lookup",
       "date": "2026-10-14",
-      "decision": "concept audit M08 (code-only, D114 fix wave, task G6); D115 (task A2-2 moved the owner to report::listed_records)",
+      "decision": "concept audit M08 (code-only, D114 fix wave, task G6); D115 (task A2-2 moved the owner to report::listed_records); REPORT-ALL-T4 renamed it report::library_lookup",
       "added_by": "concept-G6",
       "pattern": "[.>](list_records|ready_records)\\s*\\(",
       "must_match": [
@@ -18,15 +18,9 @@
         "std::vector<RecordListing> RecordStore::list_records(",
         "std::vector<RecordListing> list_records(",
         "std::vector<RecordRow> RecordStore::ready_records(const Profile& want) {",
-        "report::listed_records(store, options.run->profile(), out.library);"
+        "report::library_lookup(store, options.run->profile, out.library);"
       ],
-      "owner_lines": [
-        {
-          "file": "src/app/report.cpp",
-          "line_text": "for (store::RecordRow& r : store.ready_records(profile))",
-          "why": "report::listed_records, the owner"
-        }
-      ],
+      "owner_lines": [],
       "note": "The store lists results the library doesn't list, and every page drops them through ChartIndex::lists. A second loop over the store's records could forget the drop or key the hash another way. The SQL side of the same question (charts.md5 = results.hyhash) is store.json's not_in_library row."
     }
   ]

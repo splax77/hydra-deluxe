@@ -65,7 +65,7 @@ struct FillCompareRow {
 // Joins `store`'s Ready records under two profiles, the same but for the fill
 // rule (Settings::profile_with_fills: the 1.0 results and the 1.1 ones; the
 // settings' own fill rule is ignored). Both reads keep the charts the store's
-// library lists (report::listed_records, D92). The join is by song id, over
+// library lists (report::library_lookup, D92). The join is by song id, over
 // the union of both key sets: a chart with a record under one rule only still
 // gets a row, labelled by the rule that holds its record. Song, artist and
 // charter come from the library's naming copy; the song reads display_title,

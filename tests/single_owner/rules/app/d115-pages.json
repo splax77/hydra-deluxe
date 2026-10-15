@@ -28,9 +28,9 @@
     },
     {
       "question": "Which stored records does a page list: those under its profile whose chart the library lists?",
-      "owner": "report::listed_records in src/app/report.cpp",
+      "owner": "report::library_lookup in src/app/report.cpp",
       "owner_file": "src/app/report.cpp",
-      "owner_symbol": "listed_records",
+      "owner_symbol": "library_lookup",
       "date": "2026-10-14",
       "decision": "D87 item 4, D92, D115 (part A2, task A2-4, code-only)",
       "added_by": "D115-A2-4",
@@ -42,16 +42,10 @@
         "for (store::RecordRow& r : store.ready_records(profile))"
       ],
       "must_not_match": [
-        "const std::unordered_map<std::string, store::RecordRow> by_id = report::listed_records(store, profile, library);"
+        "const std::unordered_map<std::string, store::RecordRow> by_id = report::library_lookup(store, profile, library).ready;"
       ],
-      "owner_lines": [
-        {
-          "file": "src/app/report.cpp",
-          "line_text": "for (store::RecordRow& r : store.ready_records(profile))",
-          "why": "report::listed_records, the owner"
-        }
-      ],
-      "note": "The two comparison pages each filtered ready_records by hand to the charts the library lists. A page that does so itself can disagree with the other about which results it shows. The path report joins this rule in task A2-2. Decided by: D87 item 4, D92, D115 (task A2-4)"
+      "owner_lines": [],
+      "note": "The two comparison pages each filtered ready_records by hand to the charts the library lists. A page that does so itself can disagree with the other about which results it shows. The path report joins this rule in task A2-2. Since REPORT-ALL-T4 the owner reads one RecordStore::lookup over the library's charts, so no source line calls ready_records. Decided by: D87 item 4, D92, D115 (task A2-4); plan 2026-10-15-report-covers-whole-library (T4)"
     }
   ]
 }

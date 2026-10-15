@@ -87,7 +87,7 @@ std::string why_not_comparable(Difficulty difficulty, int sp_cap, bool legacy_fi
                                bool note_shuffle);
 
 // Joins every fetched score against the store's Ready records under
-// `profile` (RecordStore::ready_records), preferring the leaderboard's own
+// `profile` (report::library_lookup), preferring the leaderboard's own
 // song/artist metadata and falling back to the library's names for the
 // joined chart (ChartIndex::naming) when the leaderboard entry is an
 // "unknown" one. `profile` is the one the page lists:
