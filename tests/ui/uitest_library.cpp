@@ -1134,9 +1134,8 @@ struct SetAsideCleanup {
 // startup_notice_closed, as main.cpp does.
 void test_old_library_set_aside(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    // A real 2.1.0 file, copied: the checked-in one is never opened. The
-    // runner gets the corpus folder only; the store fixtures sit beside it.
-    const std::string fixture = corpus::root() + "/../store/v2.1.0-schema4.db";
+    // A real 2.1.0 file, copied: the checked-in one is never opened.
+    const std::string fixture = corpus::testdata_root() + "/store/v2.1.0-schema4.db";
     const std::string seed = h.temp_dir + "\\v210_seed.db";
     std::error_code ec;
     IM_CHECK(fs::copy_file(fs::u8path(fixture), fs::u8path(seed),

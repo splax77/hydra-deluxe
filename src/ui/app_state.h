@@ -632,8 +632,9 @@ public:
     void cancel_dm_report();
 
     // Set by the details modal's "Rescan library" remedy, the Song folders'
-    // "Scan now" and startup_notice_closed: the main window calls start_scan on its next frame
-    // (the scan modal belongs to it), which refuses when can_scan says no.
+    // "Scan now" and startup_notice_closed: the main window calls start_scan
+    // on its next frame (the scan modal belongs to it), which refuses when
+    // can_scan says no.
     bool request_scan = false;
 
     // The status line under the toolbar. set_status is news ("Path report
