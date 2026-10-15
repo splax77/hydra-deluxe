@@ -600,7 +600,7 @@ void check_chart(const std::string& path, const core::Rules& rules, Tally* tally
     std::optional<Song> song_opt;
     try {
         song_opt.emplace(
-            load_songpath(path, cfg.reading(), cfg.rules, fill_rule_for(cfg.legacy_fill_deadline)));
+            load_songpath(path, cfg.reading(), cfg.rules, fill_rule_for(cfg.legacy_fills)));
     } catch (const std::exception& e) {
         std::printf("SKIP %s (%s)\n", path.c_str(), e.what());
         ++tally->skipped;

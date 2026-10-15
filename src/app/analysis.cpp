@@ -734,7 +734,7 @@ AnalysisResult analyze_chart_file(const std::string& filepath,
     // With Note Shuffle on, a chart the game freezes on throws
     // NoteShuffleFreezes here, and gets no path (D104 item 5).
     Song song = load_songpath_with_notes(filepath, settings.reading(), settings.rules,
-                                         fill_rule_for(settings.legacy_fill_deadline));
+                                         fill_rule_for(settings.legacy_fills));
     HydraRecord record = analyze_chart(song, settings, on_progress);
     return AnalysisResult{std::move(record), std::move(song)};
 }
