@@ -267,6 +267,10 @@ TEST_CASE("user_messages: plain_error_block puts the sentence above the raw text
                                                "C:\\lib\\hydra.db")) ==
           "The library file 'C:\\lib\\hydra.db' is from a Hydra version older than 2.2.0, and "
           "opening it in Hydra sets it aside and starts a fresh library.");
+    // The details line a window shows separately is empty for it too.
+    CHECK(plain_error_detail(hydra::KindedError(hydra::ErrorKind::OldLibraryRefused,
+                                                "C:\\lib\\hydra.db"))
+              .empty());
     // A sentence that carries only part of the raw text keeps the detail line.
     CHECK(plain_error_block(hydra::KindedError(hydra::ErrorKind::OldLibrarySetAsideFailed,
                                                "Access is denied.")) ==
