@@ -17,6 +17,7 @@
 #include "app/preview_view.h"  // last_note_ms, for the audio-tail sanity case
 #include "core/model.h"
 #include "core/rules.h"
+#include "db_file_util.h"  // exec_on_file, scalar_on_file
 #include "library_fixtures.h"  // library_row
 #include "parse/song.h"
 #include "record_fixtures.h"
@@ -58,18 +59,23 @@ inline store::RecordKey batch_result_key(const std::string& md5, int cap) {
     return settings.record_key(md5);
 }
 
+// An analysis that kept no paths, made under `profile`: its SP cap, ms limit
+// and fill rule are read from the profile, so the two never disagree
+// (prepare_record and prepare_row refuse a mismatch).
+inline HydraRecord empty_analysis_under(const store::Profile& profile) {
+    HydraRecord record;
+    record.sp_cap = profile.cap.exact;
+    if (profile.lens.ms_enabled) record.ms_limit = profile.lens.ms_value;
+    record.legacy_fills = profile.lens.legacy_fills != 0;
+    return record;
+}
+
 // Stores a finished result the way a batch does, behind the app's back: an
 // empty current-version record under `key`. An empty current-version record
-// reads back Ready, with no paths and so no score. The record's SP cap, ms
-// limit and fill rule are read from the key, so the two never disagree
-// (prepare_row refuses a mismatch); this form is for a test that files under
-// its own chartmode, lens or fill rule.
+// reads back Ready, with no paths and so no score. This form is for a test
+// that files under its own chartmode, lens or fill rule.
 inline void store_batch_result(store::RecordStore& store, const store::RecordKey& key) {
-    HydraRecord record;
-    record.sp_cap = key.cap.exact;
-    if (key.lens.ms_enabled) record.ms_limit = key.lens.ms_value;
-    record.legacy_fills = key.lens.legacy_fills != 0;
-    store.add_record(key, record);
+    store.add_record(key, empty_analysis_under(key.settings()));
 }
 
 // The same empty record for chart `md5` at SP cap `cap`, under
@@ -82,14 +88,72 @@ inline store::RecordKey store_batch_result(store::RecordStore& store, const std:
     return key;
 }
 
+// The profile forms of the three above (D115), written through
+// prepare_record and RecordStore::save.
+
+// The profile a result is filed under at SP cap `cap`, with every other
+// setting at its default. Settings::profile builds it. Stands for
+// batch_result_key.
+inline store::Profile batch_profile(int cap) {
+    app::Settings settings;
+    settings.sp_cap = cap;
+    return settings.profile();
+}
+
+// An empty current-version record for chart `md5` under `profile`, saved the
+// way a batch saves one. It reads back Ready, with no paths and so no score.
+// Stands for store_batch_result(store, key).
+inline void save_batch_record(store::RecordStore& store, const std::string& md5,
+                              const store::Profile& profile) {
+    store.save(store::prepare_record(md5, profile, empty_analysis_under(profile)));
+}
+
+// The same for chart `md5` under batch_profile(cap). Returns the profile it
+// saved under. Stands for store_batch_result(store, md5, cap).
+inline store::Profile save_batch_record(store::RecordStore& store, const std::string& md5,
+                                        int cap) {
+    const store::Profile profile = batch_profile(cap);
+    save_batch_record(store, md5, profile);
+    return profile;
+}
+
 // ---- a Stale result for each cause ----------------------------------------------
 
+// The stamp a record carries when another Hydra version wrote it.
+inline constexpr const char* kOldBuildStamp = "0.0.0";
+
 // The row `record` makes under `key`, as if another Hydra version wrote it
-// (hyversion "0.0.0"). Stored, it reads Stale for "another build".
+// (kOldBuildStamp). Stored, it reads Stale for "another build".
 inline store::PreparedRow old_build_row(const store::RecordKey& key, const HydraRecord& record) {
     store::PreparedRow row = store::prepare_row(key, record);
-    row.hyversion = "0.0.0";
+    row.hyversion = kOldBuildStamp;
     return row;
+}
+
+// Saves `prepared` through `store`, which has the file `db_path` open, and
+// then gives its profile kOldBuildStamp on the file, as if another Hydra
+// version had written it. Stored this way it reads Stale for "another build".
+// Stands for add_row(old_build_row(...)).
+//
+// RecordStore::save files a record only under this build's stamp, and the
+// store has no other way in, so this one reaches the file from outside. That
+// limits it: the store must be a file store, the chart must hold no other
+// record, and no other chart's record may share the profile (the test fails
+// otherwise). Save a chart's Ready records after its old-build ones, so they
+// get a profile of their own.
+inline void save_old_build_record(store::RecordStore& store, const std::string& db_path,
+                                  const store::PreparedRecord& prepared) {
+    const std::string& id = prepared.record.song_id;
+    REQUIRE(id.find('\'') == std::string::npos);
+    store.save(prepared);
+    const std::string profile_of = "(SELECT profile_id FROM records WHERE song_id = '" + id + "')";
+    REQUIRE(scalar_on_file(db_path, "SELECT COUNT(*) FROM records WHERE song_id = '" + id + "'") ==
+            1);
+    REQUIRE(scalar_on_file(db_path, "SELECT COUNT(*) FROM records WHERE profile_id = " +
+                                        profile_of) == 1);
+    exec_on_file(db_path, ("UPDATE profiles SET hyversion = '" + std::string(kOldBuildStamp) +
+                           "' WHERE id = " + profile_of)
+                              .c_str());
 }
 
 // Rules other than the defaults, as a user's hydra_rules.ini might set them:
@@ -118,6 +182,22 @@ inline void add_stale_rows(store::RecordStore& store, const HydraRecord& record,
     store.add_row(old_build_row(build, record));
     store.add_row(store::prepare_row(rules, foreign));
     store.add_row(old_build_row(both, foreign));
+}
+
+// Saves `record` under `profile` for three charts, one for each reason a saved
+// result reads Stale: chart `build` as another build's, chart `rules` as an
+// other_rules_record, and chart `both` with both. The store has the file
+// `db_path` open (save_old_build_record says why). Stands for add_stale_rows.
+inline void add_stale_records(store::RecordStore& store, const std::string& db_path,
+                              const HydraRecord& record, const store::Profile& profile,
+                              const std::string& build, const std::string& rules,
+                              const std::string& both) {
+    const HydraRecord foreign = other_rules_record(record);
+    // The two old-build records first: each must be alone under its profile
+    // when its stamp is rewritten.
+    save_old_build_record(store, db_path, store::prepare_record(build, profile, record));
+    save_old_build_record(store, db_path, store::prepare_record(both, profile, foreign));
+    store.save(store::prepare_record(rules, profile, foreign));
 }
 
 // Lists chart `md5` in `store`'s library under these names, keeping every
@@ -158,6 +238,14 @@ TEST_CASE("fixtures: a batch result stored for one chart") {
     store::RecordKey other = key;
     other.hyhash = "another-chart";
     CHECK(db.get_summary(other).status == store::RecordStatus::NotAnalyzed);
+}
+
+TEST_CASE("fixtures: a batch record saved for one chart") {
+    store::RecordStore db(":memory:");
+    const store::Profile profile = save_batch_record(db, "fixture-chart", app::Settings{}.sp_cap);
+    CHECK(profile == app::Settings{}.profile());
+    CHECK(db.lookup_one("fixture-chart", profile).status == store::RecordStatus::Ready);
+    CHECK(db.lookup_one("another-chart", profile).status == store::RecordStatus::NotAnalyzed);
 }
 
 TEST_CASE("fixtures: a title made only of tags") {

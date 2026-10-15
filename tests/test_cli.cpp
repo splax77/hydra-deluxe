@@ -28,7 +28,7 @@
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "db_file_util.h"  // write_junk_db
-#include "display_fixtures.h"  // kTagOnlyTitle
+#include "display_fixtures.h"  // kTagOnlyTitle, name_chart, save_batch_record
 #include "parse/chart_files.h"
 #include "parse/song.h"
 #include "search/graph.h"
@@ -195,7 +195,7 @@ TEST_CASE("hydra_batch fills a new database under the rule it ran under") {
     CHECK_FALSE(contains(r.output, "Store now holds"));
     {
         hydra::store::RecordStore store(normal);
-        CHECK(store.counts().second == 1);
+        CHECK(store.record_count() == 1);
         // A run over folder arguments leaves the library alone (D79).
         CHECK(store.list_chart_library(0, -1).empty());
     }
@@ -207,7 +207,7 @@ TEST_CASE("hydra_batch fills a new database under the rule it ran under") {
     CHECK(contains(r.output, "Fills      : Clone Hero 1.0"));
     CHECK(!contains(r.output, "(legacy)"));
     hydra::store::RecordStore store(legacy);
-    CHECK(store.counts().second == 1);
+    CHECK(store.record_count() == 1);
 }
 
 // D72 item 5: a database that won't open is a run that can't start, so each
@@ -248,7 +248,7 @@ TEST_CASE("hydra_batch --legacy-fills writes the tool's own hydra.db under the 1
         hydra::app::hash_chart_file((box.songs / "fixture" / "notes.chart").u8string());
     const hydra::app::Settings settings{};  // the defaults the sandboxed exe reads
     hydra::store::RecordStore store(own_db);
-    CHECK(store.counts().second == 1);
+    CHECK(store.record_count() == 1);
     CHECK(store.lookup_one(md5, settings.profile_with_fills(hydra::FillDeadlineRule::Ch10))
               .status == hydra::store::RecordStatus::Ready);
     CHECK(store.lookup_one(md5, settings.profile_with_fills(hydra::FillDeadlineRule::Ch11))
@@ -321,7 +321,7 @@ TEST_CASE("hydra_batch writes a 1.0 run and a 1.1 run into one database") {
     {
         const hydra::app::Settings settings{};  // the defaults the sandboxed exe reads
         hydra::store::RecordStore store(db);
-        CHECK(store.counts().second == 2);
+        CHECK(store.record_count() == 2);
         for (hydra::FillDeadlineRule rule :
              {hydra::FillDeadlineRule::Ch10, hydra::FillDeadlineRule::Ch11}) {
             INFO(hydra::fill_rule_name(rule, hydra::FillRuleNameStyle::Long));
@@ -460,9 +460,9 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
             settings.legacy_fills = legacy;
             hydra::app::AnalysisResult ar =
                 hydra::app::analyze_chart_file(chart, settings.to_analysis_settings());
-            store.add_row(hydra::store::prepare_row(settings.record_key(md5), ar.record));
+            store.save(hydra::store::prepare_record(md5, settings.profile(), ar.record));
         }
-        REQUIRE(store.counts().second == 2);
+        REQUIRE(store.record_count() == 2);
     }
 
     RunResult r = run_exe(box.fillcompare, {"--old", db, "--new", db, "--out",
@@ -483,10 +483,10 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
         hydra::app::AnalysisResult ar =
             hydra::app::analyze_chart_file(chart, settings.to_analysis_settings());
         hydra::test::name_chart(store, one_sided, "One Sided", "Tester", "Nobody");
-        store.add_row(hydra::store::prepare_row(settings.record_key(one_sided), ar.record));
+        store.save(hydra::store::prepare_record(one_sided, settings.profile(), ar.record));
         settings.legacy_fills = true;
         // A Ready record under 1.0: no paths, so no score.
-        hydra::test::store_batch_result(store, settings.record_key(one_sided));
+        hydra::test::save_batch_record(store, one_sided, settings.profile());
     }
     RunResult two = run_exe(box.fillcompare, {"--old", db, "--new", db, "--out",
                                               (box.dir / "two.html").u8string(), "--no-open"});

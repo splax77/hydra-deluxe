@@ -31,7 +31,7 @@
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file, scalar_on_file, record_rows_in
-#include "display_fixtures.h"  // store_batch_result, old_build_row
+#include "display_fixtures.h"  // batch_profile, save_old_build_record, add_stale_records
 #include "library_fixtures.h"  // library_entry
 #include "old_layout_fixture.h"  // v220_layout_sql
 #include "parse/song.h"
@@ -43,7 +43,7 @@
 
 using hydra::app::Settings;
 using hydra::store::ChartLibraryEntry;
-using hydra::store::RecordKey;
+using hydra::store::Profile;
 using hydra::store::RecordStatus;
 using hydra::store::RecordStore;
 using hydra::ui::AppState;
@@ -160,7 +160,9 @@ TEST_CASE("a Stale converted record is replaced on click") {
     {
         RecordStore old(paths.db);
         old.rebuild_chart_library({song});
-        old.add_row(hydra::test::old_build_row(settings.record_key(song.md5), fresh.record));
+        hydra::test::save_old_build_record(
+            old, paths.db,
+            hydra::store::prepare_record(song.md5, settings.profile(), fresh.record));
     }
     hydra::test::exec_on_file(paths.db, hydra::test::v220_layout_sql().c_str());
 
@@ -188,10 +190,13 @@ TEST_CASE("clicking a Stale song turns its row Ready") {
     auto store = std::make_unique<RecordStore>(paths.db);
     store->rebuild_chart_library({song});
     const Settings settings;
-    const RecordKey key = settings.record_key(song.md5);
-    store->add_row(hydra::test::old_build_row(
-        key, hydra::app::analyze_chart_file(song.notespath, settings.to_analysis_settings())
-                 .record));
+    const Profile profile = settings.profile();
+    hydra::test::save_old_build_record(
+        *store, paths.db,
+        hydra::store::prepare_record(
+            song.md5, profile,
+            hydra::app::analyze_chart_file(song.notespath, settings.to_analysis_settings())
+                .record));
     AppState app(settings, std::move(store));
     REQUIRE(row_of(app, song.md5).status == RecordStatus::Stale);
 
@@ -199,7 +204,33 @@ TEST_CASE("clicking a Stale song turns its row Ready") {
 
     CHECK(app.viewed.ready());
     CHECK(row_of(app, song.md5).status == RecordStatus::Ready);
-    CHECK(app.store->get_summary(key).status == RecordStatus::Ready);
+    CHECK(app.store->lookup_one(song.md5, profile).status == RecordStatus::Ready);
+}
+
+// The fixture the Stale tests above stand on. It lives here, not in
+// display_fixtures.h, because it needs a file store, and the temp-path helper
+// brings windows.h into every file that header reaches.
+TEST_CASE("fixtures: a Stale record for each cause") {
+    ScratchPaths paths("fixtures_stale_records");
+    RecordStore store(paths.db);
+    const Profile profile = hydra::test::batch_profile(Settings{}.sp_cap);
+    const hydra::HydraRecord record = hydra::test::empty_analysis_under(profile);
+    hydra::test::add_stale_records(store, paths.db, record, profile, "build", "rules", "both");
+    hydra::test::save_batch_record(store, "ready", profile);  // after them: a profile of its own
+
+    const hydra::store::RecordLookup build = store.lookup_one("build", profile);
+    CHECK(build.status == RecordStatus::Stale);
+    CHECK(build.stale_build);
+    CHECK_FALSE(build.stale_rules);
+    const hydra::store::RecordLookup rules = store.lookup_one("rules", profile);
+    CHECK(rules.status == RecordStatus::Stale);
+    CHECK_FALSE(rules.stale_build);
+    CHECK(rules.stale_rules);
+    const hydra::store::RecordLookup both = store.lookup_one("both", profile);
+    CHECK(both.status == RecordStatus::Stale);
+    CHECK(both.stale_build);
+    CHECK(both.stale_rules);
+    CHECK(store.lookup_one("ready", profile).status == RecordStatus::Ready);
 }
 
 // D87 item 3: the click runs the rescan's unchanged test, re-hashes an edited
@@ -210,8 +241,8 @@ TEST_CASE("clicking a chart edited since the scan re-identifies it and shows the
     std::unique_ptr<AppState> app = app_with(paths, {scanned});
     click(*app, scanned);  // its row is saved under the scanned hash
     REQUIRE(app->viewed.ready());
-    const RecordKey old_key = app->settings.record_key(scanned.md5);
-    REQUIRE(app->store->get_summary(old_key).status == RecordStatus::Ready);
+    const Profile profile = app->settings.profile();
+    REQUIRE(app->store->lookup_one(scanned.md5, profile).status == RecordStatus::Ready);
     app->close_details();
 
     // One more note, written after the scan. The mtime has to move for the
@@ -227,7 +258,7 @@ TEST_CASE("clicking a chart edited since the scan re-identifies it and shows the
     REQUIRE(app->selected.has_value());
     CHECK(app->selected->md5 == new_md5);
     CHECK(row_of(*app, new_md5).status == RecordStatus::Ready);
-    CHECK(app->store->get_summary(old_key).status == RecordStatus::NotAnalyzed);
+    CHECK(app->store->lookup_one(scanned.md5, profile).status == RecordStatus::NotAnalyzed);
     CHECK(hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM records WHERE song_id = '" +
                                                     scanned.md5 + "'") == 0);
     // The paths are the new file's.
@@ -380,30 +411,30 @@ TEST_CASE("clicking A then B in one frame shows B, and A is never shown or saved
     REQUIRE(app->selected.has_value());
     CHECK(app->selected->md5 == b.md5);
     REQUIRE(app->viewed.ready());
-    const RecordKey a_key = app->settings.record_key(a.md5);
-    const RecordKey b_key = app->settings.record_key(b.md5);
-    CHECK(app->store->get_summary(b_key).status == RecordStatus::Ready);
-    CHECK(app->store->get_summary(a_key).status == RecordStatus::NotAnalyzed);
-    CHECK(app->viewed.summary == app->store->get_summary(b_key).summary);
+    const Profile profile = app->settings.profile();
+    const hydra::store::RecordLookup b_found = app->store->lookup_one(b.md5, profile);
+    CHECK(b_found.status == RecordStatus::Ready);
+    CHECK(app->store->lookup_one(a.md5, profile).status == RecordStatus::NotAnalyzed);
+    CHECK(app->viewed.summary == b_found.record.summary());
 }
 
 TEST_CASE("Cancel shows Cancelled and saves nothing; Try again shows the paths") {
     ScratchPaths paths("appstate_click_cancel");
     const ChartLibraryEntry song = corpus_chart("click_cancel");
     std::unique_ptr<AppState> app = app_with(paths, {song});
-    const RecordKey key = app->settings.record_key(song.md5);
+    const Profile profile = app->settings.profile();
 
     app->select(song, hydra::ui::SelectionSource::Click);
     app->cancel_view();
     settle(*app);
 
     CHECK(app->viewed.state == ViewedSong::State::Cancelled);
-    CHECK(app->store->get_summary(key).status == RecordStatus::NotAnalyzed);
+    CHECK(app->store->lookup_one(song.md5, profile).status == RecordStatus::NotAnalyzed);
 
     app->start_view();  // the panel's "Try again"
     settle(*app);
     CHECK(app->viewed.ready());
-    CHECK(app->store->get_summary(key).status == RecordStatus::Ready);
+    CHECK(app->store->lookup_one(song.md5, profile).status == RecordStatus::Ready);
 }
 
 // Ruling 13: closing the panel cancels the click's analysis; nothing is saved
@@ -419,7 +450,7 @@ TEST_CASE("closing the panel cancels the click's analysis and saves nothing") {
 
     CHECK(app->viewed.state == ViewedSong::State::None);
     CHECK_FALSE(app->view_running());
-    CHECK(app->store->get_summary(app->settings.record_key(song.md5)).status ==
+    CHECK(app->store->lookup_one(song.md5, app->settings.profile()).status ==
           RecordStatus::NotAnalyzed);
 }
 
@@ -538,14 +569,15 @@ TEST_CASE("no hydra_rules.ini leaves analysis on") {
 TEST_CASE("under a bad hydra_rules.ini no stored record reads Ready") {
     ScratchPaths paths("appstate_badrules_stale");
     seeded_store(paths.db).reset();
-    const RecordKey seeded = hydra::test::batch_result_key(library_entry(0).md5, kSeededCap);
+    const std::string seeded = library_entry(0).md5;
+    const Profile profile = hydra::test::batch_profile(kSeededCap);
 
     // Good (absent) rules file: the seeded record, written under the
     // default rules, is Ready.
     {
         AppState good;
         good.wait_store_open();
-        CHECK(good.store->get_summary(seeded).status == RecordStatus::Ready);
+        CHECK(good.store->lookup_one(seeded, profile).status == RecordStatus::Ready);
     }
 
     // Bad file: the store is gated on RulesStamp::none(), so the same
@@ -558,7 +590,7 @@ TEST_CASE("under a bad hydra_rules.ini no stored record reads Ready") {
     AppState bad;
     bad.wait_store_open();
     REQUIRE(bad.analysis_blocked());
-    CHECK(bad.store->get_summary(seeded).status == RecordStatus::Stale);
+    CHECK(bad.store->lookup_one(seeded, profile).status == RecordStatus::Stale);
 }
 
 // ---- the song's length comes from the click --------------------------------

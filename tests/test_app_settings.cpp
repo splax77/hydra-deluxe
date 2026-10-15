@@ -93,7 +93,7 @@ TEST_CASE("commit_settings analyzes the open song again when the chart mode chan
     settle(*app);
     CHECK(app->viewed.ready());
     CHECK(row_of(*app, song.md5).status == RecordStatus::Ready);
-    CHECK(app->store->get_summary(app->settings.record_key(song.md5)).status ==
+    CHECK(app->store->lookup_one(song.md5, app->settings.profile()).status ==
           RecordStatus::Ready);
 
     // The INI is written on the scratch path, not the user's.
@@ -211,7 +211,7 @@ TEST_CASE("a burst of setting changes ends with one analysis of the final settin
     for (int cap = first_cap; cap <= last_cap; ++cap) {
         CAPTURE(cap);
         at.sp_cap = cap;
-        CHECK(app->store->get_summary(at.record_key(song.md5)).status ==
+        CHECK(app->store->lookup_one(song.md5, at.profile()).status ==
               (cap == last_cap ? RecordStatus::Ready : RecordStatus::NotAnalyzed));
     }
 }

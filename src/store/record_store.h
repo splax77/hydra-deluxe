@@ -602,7 +602,11 @@ public:
         const std::optional<std::string>& chartmode, const CapQuery& cap, const Lens& lens,
         SortColumn order_by, bool descending, std::optional<int> limit = std::nullopt);
 
-    // {charts with a stored result, results} row counts.
+    // How many records the file holds, under any profile.
+    int64_t record_count();
+
+    // {charts with a stored result, results} row counts. The second is
+    // record_count's; the old name stays while callers move (D115).
     std::pair<int64_t, int64_t> counts();
 
     // ---- chart library (scan results) ----------------------------------

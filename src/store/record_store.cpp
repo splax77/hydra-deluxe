@@ -1523,11 +1523,18 @@ std::vector<RecordListing> RecordStore::list_records(
     return out;
 }
 
+int64_t RecordStore::record_count() {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    Stmt s = prepare_read(db_, "SELECT COUNT(*) FROM records");
+    if (!step_row(s)) return 0;
+    return sqlite3_column_int64(s, 0);
+}
+
 std::pair<int64_t, int64_t> RecordStore::counts() {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
-    Stmt s = prepare_read(db_, "SELECT COUNT(DISTINCT song_id), COUNT(*) FROM records");
-    if (!step_row(s)) return {0, 0};
-    return {sqlite3_column_int64(s, 0), sqlite3_column_int64(s, 1)};
+    Stmt s = prepare_read(db_, "SELECT COUNT(DISTINCT song_id) FROM records");
+    const int64_t charts = step_row(s) ? sqlite3_column_int64(s, 0) : 0;
+    return {charts, record_count()};
 }
 
 // ---- chart library ------------------------------------------------------
