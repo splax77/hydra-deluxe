@@ -150,6 +150,11 @@ std::string seed_problem(const std::string& flag, const std::string& path) {
            " file";
 }
 
+std::string pipe_problem(bool live, const std::string& pipe_name) {
+    if (live == !pipe_name.empty()) return "";
+    return "--live needs --pipe <name>, and --pipe needs --live";
+}
+
 bool Harness::queue(const std::string& what) {
     if (fs::exists(fs::u8path(what)) && !fs::is_directory(fs::u8path(what))) {
         script_path = what;

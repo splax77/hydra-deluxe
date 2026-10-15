@@ -560,6 +560,33 @@
       "note": "A '#' test on some other string (a colour code, a section header) is another question; this row only looks at the first character of a line, as the owner does."
     },
     {
+      "question": "Can the --live and --pipe flags the command line gave be used together?",
+      "owner": "uitest::pipe_problem in tests/ui/uitest_harness.cpp",
+      "owner_file": "tests/ui/uitest_harness.cpp",
+      "owner_symbol": "pipe_problem",
+      "date": "2026-10-14",
+      "decision": "plan 2026-10-14-hydra-mcp-server.md, T8: --pipe is required with --live in both exes",
+      "added_by": "mcp-t8a-review",
+      "pattern": "\\bpipe_name\\s*\\.empty\\s*\\(",
+      "scope": ["src", "tests"],
+      "must_match": [
+        "if (live != !h.pipe_name.empty()) {",
+        "if (refused.empty() && live != !pipe_name.empty()) refused = \"--live needs --pipe\";"
+      ],
+      "must_not_match": [
+        "if (refused.empty()) refused = uitest::pipe_problem(live, pipe_name);",
+        "uitest->pipe_name = pipe_name;"
+      ],
+      "owner_lines": [
+        {
+          "file": "tests/ui/uitest_harness.cpp",
+          "line_text": "if (live == !pipe_name.empty()) return \"\";",
+          "why": "uitest::pipe_problem, the owner"
+        }
+      ],
+      "note": "Both mains ask pipe_problem, as they ask seed_problem for a seed."
+    },
+    {
       "question": "Which test helper builds a .sng?",
       "owner": "make_sng in tests/sng_util.h",
       "owner_file": "tests/sng_util.h",

@@ -356,8 +356,7 @@ int main()
         if (!seed_db.empty()) refused = uitest::seed_problem("--db", seed_db);
         if (refused.empty() && !seed_ini.empty()) refused = uitest::seed_problem("--ini", seed_ini);
         if (live && !uitest_what.empty()) refused = "--live runs alone, without --uitest";
-        // The pipe's name is the client's to choose; Hydra never makes one up.
-        if (refused.empty() && live != !pipe_name.empty()) refused = "--live needs --pipe <name>, and --pipe needs --live";
+        if (refused.empty()) refused = uitest::pipe_problem(live, pipe_name);
         if (!refused.empty()) {
             std::printf("%s\n", refused.c_str());
             uitest_failures = 1;

@@ -303,9 +303,9 @@ int main() {
     }
     if (!list && !live && wanted.empty()) return usage();
     if (live && (list || !wanted.empty())) return usage();  // --live runs alone
-    // The pipe's name is the client's to choose; Hydra never makes one up.
-    if (live != !h.pipe_name.empty()) {
-        std::fprintf(stderr, "hydra_uitest: --live needs --pipe <name>, and --pipe needs --live\n");
+    const std::string pipe_issue = uitest::pipe_problem(live, h.pipe_name);
+    if (!pipe_issue.empty()) {
+        std::fprintf(stderr, "hydra_uitest: %s\n", pipe_issue.c_str());
         return 2;
     }
 

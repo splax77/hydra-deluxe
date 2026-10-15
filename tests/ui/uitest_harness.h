@@ -116,6 +116,12 @@ bool selects(const std::string& what, const char* test_name);
 // both ask it.
 std::string seed_problem(const std::string& flag, const std::string& path);
 
+// Why the --live and --pipe flags the command line gave cannot be used
+// together: --live needs a pipe name and a pipe name needs --live. Empty when
+// they can. The client picks the name; Hydra never makes one up. The one place
+// that decides; hydra_uitest's main and Hydra.exe both ask it.
+std::string pipe_problem(bool live, const std::string& pipe_name);
+
 // Fresh app state for a test: rewrite the scratch INI from
 // scratch_settings() (tests/scratch_settings.h) or copy --ini's seed over it,
 // delete the DB or copy --db's seed over it, rebuild AppState on those
