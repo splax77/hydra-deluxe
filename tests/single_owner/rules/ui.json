@@ -213,7 +213,7 @@
       "date": "2026-10-04",
       "decision": "audit finding 87",
       "added_by": "M_C fix prod",
-      "pattern": "\"(Not analyzed|Analyzed|Stale)\"",
+      "pattern": "\"(Not analyzed|Analyzed|Stale|Can't analyze)\"",
       "must_match": [
         "{StatusChip::Stale, \"Stale\", \"chipstale\"},",
         "case store::RecordStatus::Ready: return \"Analyzed\";"
@@ -249,7 +249,7 @@
       "date": "2026-10-07",
       "decision": "storage-T2 sign-off (library-layout chip refs)",
       "added_by": "storage-T2",
-      "pattern": "\"chip(all|new|stale|done)\"",
+      "pattern": "\"chip(all|new|stale|done|cant)\"",
       "anchor": "\"chip",
       "must_match": [
         "{StatusChip::All, \"chipall\"},",
