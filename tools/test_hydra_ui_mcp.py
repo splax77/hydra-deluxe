@@ -337,7 +337,11 @@ class RealExeLayer(unittest.TestCase):
         self.tmp.cleanup()
 
     def scan(self):
-        out = self.helper.run(SMOKE.read_text(encoding="utf-8"))
+        # The smoke script's lines up to its reset: the script goes on to reset
+        # and quit, which would leave no library and no session to check.
+        lines = SMOKE.read_text(encoding="utf-8").splitlines()
+        before_reset = lines[:[ln.strip() for ln in lines].index("reset")]
+        out = self.helper.run("\n".join(before_reset))
         self.assertNotIn("stopped at line", out)
         self.assertIn("charts=97", self.helper.send("state"))
 

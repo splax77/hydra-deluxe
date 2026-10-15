@@ -172,10 +172,12 @@ CommandResult run_command(ImGuiTestContext* ctx, CommandSession& session, const 
     } else if (verb == "state") {
         r.text = state_text(h);
     } else if (verb == "screenshot") {
-        if (!screenshot(ctx, rest)) {
+        std::string saved_to;
+        if (!screenshot(ctx, rest, &saved_to)) {
             IM_ERRORF("line %d: screenshot failed", lineno);
             return failed;
         }
+        r.text = "screenshot: " + saved_to + "\n";
     } else if (verb == "reset") {
         start_session(ctx);
     } else if (verb == "quit") {
