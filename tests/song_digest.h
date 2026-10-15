@@ -5,7 +5,7 @@
 // differently.
 //
 // row_hash covers one chart's answer: the whole engine result (record_hash)
-// and its results row's best path and summary columns. song_digest covers a
+// and its prepared record's best path and summary. song_digest covers a
 // parsed Song: the timing maps, every timestamp's chord and flags, and the
 // display fields. Both are FNV-1a over the raw bytes, so they are stable
 // within one build of one compiler, which is all an A-against-B comparison
