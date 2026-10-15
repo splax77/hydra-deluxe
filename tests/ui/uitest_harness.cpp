@@ -577,8 +577,12 @@ bool dump_window(ImGuiTestContext* ctx, ImGuiWindow* w, const std::string& conta
                  ImGuiTextBuffer& out) {
     std::string items_text;
     ImGuiTestItemList items;
-    ctx->GatherItems(&items, ImGuiTestRef(w->ID), 1);
+    // Every depth (-1), because items inside tables and pushed IDs sit deeper
+    // than one level. The gather also climbs from child windows to this one,
+    // and each child window gets its own dump, so only this window's items stay.
+    ctx->GatherItems(&items, ImGuiTestRef(w->ID), -1);
     for (const ImGuiTestItemInfo& it : items) {
+        if (it.Window != w) continue;
         const std::string line = item_line(it, it.Depth + 1);
         if (contains.empty() || line.find(contains) != std::string::npos) items_text += line;
     }
