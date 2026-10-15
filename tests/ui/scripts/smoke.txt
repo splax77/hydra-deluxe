@@ -21,6 +21,6 @@ reset
 state
 expect-not-text Burnout
 quit
-# quit ends the script with a pass, so this line never runs. It would fail:
-# a number of seconds is a plain number, with no unit.
+# quit ends the script with a pass, so this line never runs. If it did, the
+# timeout verb would refuse it.
 timeout 90s
