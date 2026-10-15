@@ -1,7 +1,9 @@
 // The store's one save and one lookup (D115): prepare_record, RecordStore::save,
-// lookup, lookup_one, ready_song_ids and ready_records, plus the path-row size
-// measured on the corpus. The old entry points' tests stay in
-// test_store_results.cpp until A1-5 deletes them.
+// lookup, lookup_one, ready_song_ids and ready_records, the status rules a
+// lookup answers by (which stamps read Ready, why a record is Stale, what reads
+// Not analyzed), plus the path-row size measured on the corpus. How saved
+// records read back across caps, lenses and the corpus is in
+// test_store_results.cpp.
 #include "doctest.h"
 
 #include <cstdint>
@@ -22,6 +24,7 @@
 #include "display_fixtures.h"  // save_old_build_record, kOldBuildStamp, other_rules_record
 #include "parse/song.h"
 #include "store/record_store.h"
+#include "store/stored_versions.h"  // kResultsStamp
 #include "store_fixtures.h"  // fixture, at_cap, at4, no_paths_at_cap
 #include "temp_util.h"
 
@@ -354,4 +357,189 @@ TEST_CASE("store: a record's best path text is rank 1's, and empty when it kept 
     CHECK(record.best_path_text() == "3- 1 2");
     // An analysis that kept no paths becomes a record with no text.
     CHECK(record_of("h1", no_paths_at_cap(4)).best_path_text().empty());
+}
+
+// ---- the status rules, moved from test_store_results.cpp (D115 A1-5) --------
+//
+// Each case pins one rule lookup answers by: which stamps read Ready, why a
+// Stale record is Stale, when other rules read Ready again, and what reads as
+// Not analyzed.
+
+TEST_CASE("store: every accepted results stamp reads Ready, others Stale") {
+    // The stamp is not the app version (ADR 0018). Only "2.8.0" reads
+    // Ready. Results stamped "1.8.2" (every release from 1.8.4 to 2.0.0) or
+    // "1.8.3" hold values the SP-end history changed (ADR 0021), earlier
+    // 2.1.0 builds' "2.1.0" can miss the all-0 path (D85),
+    // "2.1.0+allzero" predates the 2x kick merge (D105), and "2.4.0"
+    // predates the measure-line fills and Star Power count (D115), so they
+    // read Stale, through lookup and the skip list it backs (ready_song_ids).
+    CHECK(kResultsStamp.is_current("2.8.0"));
+    CHECK_FALSE(kResultsStamp.is_current("2.4.0"));
+    CHECK_FALSE(kResultsStamp.is_current("2.1.0+allzero"));
+    CHECK_FALSE(kResultsStamp.is_current("2.1.0"));
+    CHECK_FALSE(kResultsStamp.is_current("2.0.0"));
+    CHECK_FALSE(kResultsStamp.is_current("1.8.2"));
+    CHECK_FALSE(kResultsStamp.is_current("1.8.3"));
+    CHECK(current_record_version() == std::string(kResultsStamp.written));
+
+    RecordStore store(":memory:");
+    const struct {
+        const char* id;
+        const char* stamp;
+        RecordStatus want;
+    } cases[] = {{"a", "2.8.0", RecordStatus::Ready},
+                 {"g", "2.4.0", RecordStatus::Stale},
+                 {"f", "2.1.0+allzero", RecordStatus::Stale},
+                 {"e", "2.1.0", RecordStatus::Stale},
+                 {"b", "1.8.3", RecordStatus::Stale},
+                 {"c", "1.8.2", RecordStatus::Stale},
+                 {"d", "0.0.0", RecordStatus::Stale}};
+    for (const auto& c : cases) {
+        CAPTURE(c.stamp);
+        store.save_under_build_for_test(prepare_record(c.id, at4(), fixture().record), c.stamp);
+        CHECK(store.lookup_one(c.id, at4()).status == c.want);
+        CHECK(store.ready_song_ids(at4()).count(c.id) == (c.want == RecordStatus::Ready ? 1u : 0u));
+    }
+}
+
+TEST_CASE("store: a record an old migration filed with unknown settings reads Not analyzed") {
+    // Hydra 1.7 to 1.8.1 migrated older rows in with ms_enabled = -1: "a
+    // result, settings unknown". No lens has -1, so such a record is no
+    // candidate for any lookup. It reads as no record at all, not as Stale
+    // (user decision 2026-09-26), and a real run of the chart replaces it.
+    RecordStore store(":memory:");
+    const Profile at8{"mode", CapQuery::at(8), Lens{}};
+    PreparedRecord migrated = prepare_record("h", at8, at_cap(8));
+    migrated.profile.lens.ms_enabled = -1;
+    store.save_under_build_for_test(migrated, "1.6.0");
+    CHECK(store.record_count() == 1);
+
+    CHECK(store.lookup_one("h", at8).status == RecordStatus::NotAnalyzed);
+    CHECK(store.ready_song_ids(at8).empty());
+    CHECK(store.ready_records(at8).empty());
+
+    store.save(prepare_record("h", at8, at_cap(8)));
+    CHECK(store.record_count() == 1);
+    CHECK(store.lookup_one("h", at8).status == RecordStatus::Ready);
+}
+
+TEST_CASE("store: a record made under other rules reads Stale until the store runs those rules") {
+    const core::Rules other = hydra::test::other_rules();
+
+    // A store running the default rules sees a record made under other rules
+    // as Stale everywhere a lookup can ask.
+    {
+        RecordStore store(":memory:");
+        store.save(prepare_record("h", at4(), hydra::test::other_rules_record(fixture().record)));
+        CHECK(store.lookup_one("h", at4()).status == RecordStatus::Stale);
+        CHECK(store.ready_song_ids(at4()).empty());
+        CHECK(store.ready_records(at4()).empty());
+    }
+
+    // A record made under the default rules reads Stale to a store running
+    // other rules, and Ready again once the rules match.
+    FileStore file;
+    {
+        RecordStore store(file.path);
+        store.save(prepare_record("h", at4(), fixture().record));
+        CHECK(store.lookup_one("h", at4()).status == RecordStatus::Ready);
+    }
+    {
+        RecordStore store(file.path, core::RulesStamp::of(other));
+        const RecordLookup got = store.lookup_one("h", at4());
+        CHECK(got.status == RecordStatus::Stale);
+        CHECK(got.stale_rules);
+        CHECK(store.ready_song_ids(at4()).empty());
+    }
+    {
+        // A store gated on "no usable rules" (a bad hydra_rules.ini) reads
+        // nothing as Ready.
+        RecordStore store(file.path, core::RulesStamp::none());
+        CHECK(store.lookup_one("h", at4()).status == RecordStatus::Stale);
+    }
+    {
+        RecordStore store(file.path);
+        CHECK(store.lookup_one("h", at4()).status == RecordStatus::Ready);
+    }
+}
+
+TEST_CASE("store: the other rules' record a save kept reads Ready under those rules") {
+    // D51 call 8 (finding 65): a result made under other rules is kept, and
+    // reads Ready again, with its own numbers, once the store runs those rules.
+    const core::Rules other = hydra::test::other_rules();
+    const PreparedRecord foreign =
+        prepare_record("h", at4(), hydra::test::other_rules_record(fixture().record));
+    FileStore file;
+    {
+        RecordStore store(file.path);
+        store.save(foreign);
+    }
+    {
+        RecordStore store(file.path);
+        store.save(prepare_record("h", at4(), fixture().record));
+        CHECK(store.record_count() == 2);
+        CHECK(store.lookup_one("h", at4()).status == RecordStatus::Ready);
+    }
+    {
+        RecordStore store(file.path, core::RulesStamp::of(other));
+        const RecordLookup got = store.lookup_one("h", at4());
+        CHECK(got.status == RecordStatus::Ready);
+        CHECK(got.record == foreign.record);
+        CHECK(store.ready_song_ids(at4()).count("h") == 1);
+    }
+}
+
+TEST_CASE("store: a Stale lookup says why (another build, other rules, or both), a Ready one nothing") {
+    RecordStore store(":memory:");
+    hydra::test::add_stale_records(store, fixture().record, at4(), "build", "rules", "both");
+    store.save(prepare_record("ready", at4(), fixture().record));
+
+    // This build, other rules.
+    const RecordLookup by_rules = store.lookup_one("rules", at4());
+    CHECK(by_rules.status == RecordStatus::Stale);
+    CHECK(by_rules.stale_rules);
+    CHECK_FALSE(by_rules.stale_build);
+
+    // Another build, these rules.
+    const RecordLookup by_build = store.lookup_one("build", at4());
+    CHECK(by_build.status == RecordStatus::Stale);
+    CHECK(by_build.stale_build);
+    CHECK_FALSE(by_build.stale_rules);
+
+    // Another build and other rules: both reasons.
+    const RecordLookup by_both = store.lookup_one("both", at4());
+    CHECK(by_both.status == RecordStatus::Stale);
+    CHECK(by_both.stale_build);
+    CHECK(by_both.stale_rules);
+
+    // A Ready record carries no reason.
+    const RecordLookup ready = store.lookup_one("ready", at4());
+    CHECK(ready.status == RecordStatus::Ready);
+    CHECK_FALSE(ready.stale_build);
+    CHECK_FALSE(ready.stale_rules);
+}
+
+TEST_CASE("store: a current record with no paths is Ready, not Stale") {
+    // "Analyzed, and nothing survived" is a real result, so it reads back as
+    // Ready with no summary -- the status, not the path count, is what says
+    // whether a record is usable.
+    RecordStore store(":memory:");
+    store.save(prepare_record("h", at4(), no_paths_at_cap(4)));
+    const RecordLookup got = store.lookup_one("h", at4());
+    CHECK(got.status == RecordStatus::Ready);
+    CHECK(got.record.paths.empty());
+    CHECK(got.record.best_path_text().empty());
+    CHECK(got.record.summary() == PathSummary{});
+    CHECK(store.ready_song_ids(at4()).count("h") == 1);
+
+    // D51 call 11 (finding 88): such a record has no scored best path, and
+    // the summary says so in one place. A record with paths has one. The
+    // listing's records say the same.
+    CHECK_FALSE(record_of("h", no_paths_at_cap(4)).summary().has_scored_best_path());
+    CHECK(record_of("h", at_cap(4)).summary().has_scored_best_path());
+    store.save(prepare_record("g", at4(), at_cap(4)));
+    const std::vector<RecordRow> rows = store.ready_records(at4());
+    REQUIRE(rows.size() == 2);
+    for (const RecordRow& row : rows)
+        CHECK(row.summary().has_scored_best_path() == (row.song_id == "g"));
 }
