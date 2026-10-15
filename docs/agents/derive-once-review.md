@@ -159,7 +159,7 @@ Submit with the usual command and that key. A resolution review never counts as 
 
 These rules are for the session that runs the merge.
 
-When main moves under a reviewed branch, merge main into the branch. A conflict-free merge needs nothing more. A merge resolved by hand gets one resolution review (see "Resolution review"), keyed on that merge commit. It never gets a second full review. The ref gate's refusal names each merge that still needs one. Any other commit after the review, such as your own edit, still needs a full review of the new tip. That includes a second agent's commit above a hand-resolved merge.
+When main moves under a reviewed branch, merge main into the branch. A conflict-free merge needs nothing more. A merge resolved by hand gets one resolution review (see "Resolution review"), keyed on that merge commit, or on the topmost commit when commits sit directly above it. Those commits are covered by that same resolution review, whoever wrote them, as long as each carries exactly one Agent trailer. It never gets a second full review. The ref gate's refusal names each merge that still needs one, with its key and what to read. Any other commit after the review, such as your own edit above a conflict-free merge or with no merge at all, still needs a full review of the new tip.
 
 Before the review, run the precheck on the range and fix what it prints. Keep merges small enough to review in one read. The precheck prints the range's size, and a large-range note when it is over the threshold that `tools/derive_once_precheck.ps1` owns. A range with that note should go in as two or more merges.
 
