@@ -83,9 +83,10 @@ head of the row's stored path blob, together with a path format stamp. Every
 row that carries the current results stamp has path format 7, because format 7
 came before that stamp. The older rows, in older formats, are already Stale by
 their results stamp and stay Stale. So no row changes state when the check
-moves to the columns. `rules_fp_of` is what is left of the blob read. It runs
-only while an older file upgrades, to fill the `rules_fp` column of a file
-that has none yet (ADR 0014).
+moves to the columns. What was left of the blob read
+filled the `rules_fp` column of an older file while it upgraded (ADR 0014).
+D115 removed it on 2026-10-14, when files older than 2.2.0 stopped being
+upgraded.
 
 Two smaller rules come with this. Rows of charts that left the library are
 deleted at each scan (D87 item 4, `rebuild_chart_library`). A chart
