@@ -91,10 +91,11 @@ bool write_file_replacing(const std::filesystem::path& outpath, const std::strin
     // A reader can open the file at any moment, including mid-write. The
     // bytes go to a temp name first and are swapped into place with one
     // rename once complete. On FAT and exFAT a replacing rename is a delete
-    // and then a rename (store/upgrade_files.cpp says why the library swap
-    // cannot accept that); a stop between the two loses the old file, which
-    // is acceptable here because a report page and the settings are written
-    // again on the next save.
+    // and then a rename; a stop between the two loses the old file. A library
+    // file can't risk that, which is why rename_file in
+    // store/upgrade_files.cpp never replaces a file. Here it is acceptable,
+    // because a report page and the settings are written again on the next
+    // save.
     std::filesystem::path tmp = outpath;
     tmp += ".tmp";
     std::error_code ec;

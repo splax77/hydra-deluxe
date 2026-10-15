@@ -36,10 +36,12 @@ std::string set_aside_path(const std::string& db);
 
 // The one rename of a library file. Moves `db` and its side files to
 // set_aside_path(db)'s names, replacing an earlier set-aside file there (the
-// user's choice, 2026-10-14). The file moves first and its side files after;
-// when a side file cannot move, the ones moved come back, so a stray log never
-// sits beside the fresh library that takes the name. Empty on success, else
-// Windows' own text for the failure. The file must be closed.
+// user's choice, 2026-10-14). The earlier file is deleted only after the move
+// has worked; a move that fails leaves both where they were. The file moves
+// first and its side files after; when a side file cannot move, the ones moved
+// come back, so a stray log never sits beside the fresh library that takes the
+// name. Empty on success, else Windows' own text for the failure. The file
+// must be closed.
 std::optional<std::string> set_aside_old_library(const std::string& db);
 
 }  // namespace hydra::store

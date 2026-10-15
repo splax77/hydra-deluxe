@@ -605,21 +605,6 @@ public:
     // {charts with a stored result, results} row counts.
     std::pair<int64_t, int64_t> counts();
 
-    // The fill-spawn stamp hydra_batch last wrote this file with, as stored
-    // (search/graph.h engine_mode_stamp writes it). Unset on a db nothing has
-    // stamped yet. Only a label on the file: each result carries its own rule
-    // in its Lens (docs/adr/0010). A caller that needs the stamp itself (whether
-    // there is one, and its text) reads it here; a caller that needs the rule a
-    // file holds asks stamped_fill_rule.
-    std::optional<std::string> engine_mode();
-    void set_engine_mode(const std::string& mode);
-    // Which fill rule this file holds: its engine_mode stamp read back through
-    // search/graph.h fill_rule_from_stamp. A file with results and no stamp
-    // holds the 1.1 rule, the one everything but --legacy-fills runs. An
-    // unstamped file with no results, or a stamp fill_rule_from_stamp does not
-    // know, holds none.
-    std::optional<FillDeadlineRule> stamped_fill_rule();
-
     // ---- chart library (scan results) ----------------------------------
 
     // Replaces the whole library with `items`: a scan always fully
@@ -709,8 +694,10 @@ private:
     // (D115): every row becomes a record under its own profile (its own stamp
     // and rules), so a row this build cannot read reads Stale, as after any
     // stamp bump. Stored ids become lowercase, in `charts` too. Then `results`
-    // is dropped, so a second open finds a Current file. One transaction; a
-    // failure throws KindedError(DatabaseUpgrade) with the file as it was.
+    // is dropped, so a second open finds a Current file, and the retired
+    // whole-file fill-rule label (kRetiredFillLabelKey) is deleted. One
+    // transaction; a failure throws KindedError(DatabaseUpgrade) with the file
+    // as it was.
     void convert_results();
     // Opens db_ on `dbpath`, creating the file if it is missing; throws
     // KindedError(DatabaseOpen) when SQLite refuses.

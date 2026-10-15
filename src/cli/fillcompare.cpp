@@ -2,8 +2,8 @@
 // scored under Clone Hero 1.0's fill-spawn rule against Clone Hero 1.1's.
 // It reads the 1.0 results from --old and the 1.1 results from --new, joins
 // them by chart hash and reports where they agree or disagree. Each result
-// carries its rule (docs/adr/0010), so --old and --new may name the same file:
-// the app's own hydra.db once it holds both.
+// carries its rule in its key, so --old and --new may name the same file: the
+// app's own hydra.db, or one --db that took a 1.0 and a 1.1 hydra_batch run.
 //
 //     hydra_fillcompare --old ch10.db --new ch11.db
 //     hydra_fillcompare --old ch10.db --new ch11.db --out fill_compare.html
@@ -31,7 +31,6 @@
 #include "app/user_messages.h"
 #include "core/model.h"
 #include "core/winstr.h"
-#include "search/graph.h"
 #include "store/record_store.h"
 
 namespace {
@@ -82,20 +81,8 @@ int fillcompare_main() {
         return hydra::app::tool_error(e, 2);
     }
 
-    // Engine-mode sanity check (D65, ADR 0010): warn only when the file's
-    // stamp names the other side's rule. An unstamped file never warns, so this
-    // reads the stamp itself rather than asking stamped_fill_rule.
-    auto warn_if_not = [](const std::string& path, hydra::store::RecordStore& store,
-                          hydra::FillDeadlineRule expected) {
-        const std::optional<std::string> stamp = store.engine_mode();
-        if (!stamp) return;  // no stamp: nothing to disagree (D65)
-        if (hydra::fill_rule_from_stamp(*stamp) == expected) return;
-        std::fprintf(stderr, "Warning: %s is stamped engine_mode=%s, not %s\n",
-                     path.c_str(), stamp->c_str(), hydra::engine_mode_stamp(expected));
-    };
-    warn_if_not(*old_path, *old_store, hydra::FillDeadlineRule::Ch10);
-    warn_if_not(*new_path, *new_store, hydra::FillDeadlineRule::Ch11);
-
+    // generate_fill_report reads each side under its own fill rule, so either
+    // file may hold both rules.
     hydra::app::fill_report::GeneratedFillReport report =
         hydra::app::fill_report::generate_fill_report(*old_store, *new_store, chartmode, cap, lens);
 

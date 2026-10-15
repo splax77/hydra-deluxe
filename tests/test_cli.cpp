@@ -33,6 +33,7 @@
 #include "parse/song.h"
 #include "search/graph.h"
 #include "store/record_store.h"
+#include "store/upgrade_files.h"  // set_aside_path
 #include "temp_util.h"
 #include "wait_util.h"
 
@@ -43,9 +44,6 @@
 namespace fs = std::filesystem;
 
 namespace {
-
-const std::string kCh10 = hydra::engine_mode_stamp(hydra::FillDeadlineRule::Ch10);
-const std::string kCh11 = hydra::engine_mode_stamp(hydra::FillDeadlineRule::Ch11);
 
 struct RunResult {
     int exit_code = -1;
@@ -175,7 +173,7 @@ struct CliSandbox {
 
 }  // namespace
 
-TEST_CASE("hydra_batch stamps a new database with the rule it ran under") {
+TEST_CASE("hydra_batch fills a new database under the rule it ran under") {
     CliSandbox box("stamp");
     const std::string normal = box.db("ch11.db");
     RunResult r = run_exe(box.batch, {"--db", normal, box.folder()});
@@ -197,7 +195,6 @@ TEST_CASE("hydra_batch stamps a new database with the rule it ran under") {
     CHECK_FALSE(contains(r.output, "Store now holds"));
     {
         hydra::store::RecordStore store(normal);
-        CHECK(store.engine_mode() == std::optional<std::string>(kCh11));
         CHECK(store.counts().second == 1);
         // A run over folder arguments leaves the library alone (D79).
         CHECK(store.list_chart_library(0, -1).empty());
@@ -210,7 +207,7 @@ TEST_CASE("hydra_batch stamps a new database with the rule it ran under") {
     CHECK(contains(r.output, "Fills      : Clone Hero 1.0"));
     CHECK(!contains(r.output, "(legacy)"));
     hydra::store::RecordStore store(legacy);
-    CHECK(store.engine_mode() == std::optional<std::string>(kCh10));
+    CHECK(store.counts().second == 1);
 }
 
 // D72 item 5: a database that won't open is a run that can't start, so each
@@ -234,17 +231,45 @@ TEST_CASE("hydra_batch and hydra_fillcompare say why a database won't open") {
     }
 }
 
-TEST_CASE("hydra_batch --legacy-fills refuses the tool's own hydra.db") {
-    // The sandboxed exe's default database is hydra.db beside it: the file the
-    // app itself would read.
+TEST_CASE("hydra_batch --legacy-fills writes the tool's own hydra.db under the 1.0 rule") {
+    // The sandboxed exe's default database is hydra.db beside it, in the
+    // sandbox: the file the app itself would read. Each record carries its
+    // fill rule in its profile, so 1.0 results may go there, as the app's
+    // "1.0 fills" setting already puts them (D115 task A1-6d).
     CliSandbox box("owndb");
     RunResult r = run_exe(box.batch, {"--legacy-fills", box.folder()});
     INFO(r.output);
+    REQUIRE(r.exit_code == 0);
+    const std::string own_db = (box.dir / "hydra.db").u8string();
+    CHECK(contains(r.output, "Database   : " + own_db));
+    CHECK(contains(r.output, "Fills      : Clone Hero 1.0"));
+
+    const std::string md5 =
+        hydra::app::hash_chart_file((box.songs / "fixture" / "notes.chart").u8string());
+    const hydra::app::Settings settings{};  // the defaults the sandboxed exe reads
+    hydra::store::RecordStore store(own_db);
+    CHECK(store.counts().second == 1);
+    CHECK(store.lookup_one(md5, settings.profile_with_fills(hydra::FillDeadlineRule::Ch10))
+              .status == hydra::store::RecordStatus::Ready);
+    CHECK(store.lookup_one(md5, settings.profile_with_fills(hydra::FillDeadlineRule::Ch11))
+              .status != hydra::store::RecordStatus::Ready);
+}
+
+// A library file from before 2.2.0 stops the run with the one sentence, which
+// names the file once, and the file is left as it was (D115 task A1-6d).
+TEST_CASE("hydra_batch refuses a library file too old to convert in one sentence") {
+    CliSandbox box("old_library");
+    const std::string old_db = box.db("old.db");
+    fs::copy_file(fs::u8path(corpus::testdata_root() + "/store/v2.1.0-schema4.db"),
+                  fs::u8path(old_db));
+    RunResult r = run_exe(box.batch, {"--db", old_db, box.folder()});
     CHECK(r.exit_code == 2);
-    CHECK(contains(r.output, "--db legacy.db"));
-    CHECK(contains(r.output, "hydra_batch keeps 1.0 results out of hydra.db by design; use "
-                             "the app's 1.0 fills setting for that"));
-    CHECK(!contains(r.output, "not tagged as legacy"));
+    // The whole of what the run printed; the console's text mode turns the
+    // "\n" into "\r\n".
+    CHECK(r.output == "The library file '" + old_db +
+                          "' is from a Hydra version older than 2.2.0, and opening it in "
+                          "Hydra sets it aside and starts a fresh library.\r\n");
+    CHECK_FALSE(fs::exists(fs::u8path(hydra::store::set_aside_path(old_db))));
 }
 
 // An option hydra_batch doesn't know (a removed one included, D87) stops the
@@ -277,58 +302,43 @@ TEST_CASE("hydra_batch names a bad hydra_rules.ini and stops") {
     CHECK_FALSE(fs::exists(fs::u8path(db)));
 }
 
-TEST_CASE("hydra_batch refuses a run whose fill rule disagrees with the database") {
-    CliSandbox box("mismatch");
-
-    // A normal run into a 1.0 file.
-    const std::string legacy = box.db("ch10.db");
-    REQUIRE(run_exe(box.batch, {"--legacy-fills", "--db", legacy, box.folder()})
-                .exit_code == 0);
-    RunResult r = run_exe(box.batch, {"--redo", "--db", legacy, box.folder()});
+TEST_CASE("hydra_batch writes a 1.0 run and a 1.1 run into one database") {
+    // Each record carries its fill rule in its profile, so one file takes
+    // both runs and each reads back under its own rule (D115 task A1-6c).
+    CliSandbox box("both_rules");
+    const std::string db = box.db("both.db");
+    RunResult r = run_exe(box.batch, {"--db", db, box.folder()});
     INFO(r.output);
-    CHECK(r.exit_code == 2);
-    CHECK(contains(r.output, "Add --legacy-fills"));
-    CHECK(contains(r.output, "This file is stamped with the other rule"));
-    CHECK(!contains(r.output, "not stored on each result"));
-    {
-        hydra::store::RecordStore store(legacy);
-        CHECK(store.engine_mode() == std::optional<std::string>(kCh10));
-        CHECK(store.counts().second == 1);
-    }
-
-    // A legacy run into a 1.1 file.
-    const std::string normal = box.db("ch11.db");
-    REQUIRE(run_exe(box.batch, {"--db", normal, box.folder()}).exit_code == 0);
-    r = run_exe(box.batch, {"--legacy-fills", "--redo", "--db", normal, box.folder()});
+    REQUIRE(r.exit_code == 0);
+    r = run_exe(box.batch, {"--legacy-fills", "--db", db, box.folder()});
     INFO(r.output);
-    CHECK(r.exit_code == 2);
-    CHECK(contains(r.output, "Drop --legacy-fills"));
-    CHECK(contains(r.output, "This file is stamped with the other rule"));
-    CHECK(!contains(r.output, "not stored on each result"));
-    hydra::store::RecordStore store(normal);
-    CHECK(store.engine_mode() == std::optional<std::string>(kCh11));
-}
+    REQUIRE(r.exit_code == 0);
+    // The 1.1 record is no 1.0 result, so the second run analyzes the chart.
+    CHECK(contains(r.output, "\n1 analyzed \xC2\xB7 0 failed \xC2\xB7 0 skipped"));
 
-TEST_CASE("hydra_batch treats an unstamped database with records as Clone Hero 1.1") {
-    // A file written before hydra_batch stamped: one normal result, no stamp.
-    CliSandbox box("unstamped");
-    const std::string db = box.db("old.db");
+    const std::string md5 =
+        hydra::app::hash_chart_file((box.songs / "fixture" / "notes.chart").u8string());
     {
         const hydra::app::Settings settings{};  // the defaults the sandboxed exe reads
-        const std::string chart = (box.songs / "fixture" / "notes.chart").u8string();
-        const std::string md5 = hydra::app::hash_chart_file(chart);
-        hydra::app::AnalysisResult ar =
-            hydra::app::analyze_chart_file(chart, settings.to_analysis_settings());
         hydra::store::RecordStore store(db);
-        store.add_row(hydra::store::prepare_row(settings.record_key(md5), ar.record));
-        REQUIRE(!store.engine_mode().has_value());
+        CHECK(store.counts().second == 2);
+        for (hydra::FillDeadlineRule rule :
+             {hydra::FillDeadlineRule::Ch10, hydra::FillDeadlineRule::Ch11}) {
+            INFO(hydra::fill_rule_name(rule, hydra::FillRuleNameStyle::Long));
+            CHECK(store.lookup_one(md5, settings.profile_with_fills(rule)).status ==
+                  hydra::store::RecordStatus::Ready);
+        }
+        // A library row, as a scan leaves one: the comparison covers library
+        // charts only (D92).
+        hydra::test::name_chart(store, md5, "CLI Fixture", "Tester", "Nobody");
     }
-
-    RunResult r = run_exe(box.batch, {"--legacy-fills", "--db", db, box.folder()});
+    // hydra_fillcompare reads each side of the one file under its own rule.
+    r = run_exe(box.fillcompare, {"--old", db, "--new", db, "--out",
+                                  (box.dir / "both.html").u8string(), "--no-open"});
     INFO(r.output);
-    CHECK(r.exit_code == 2);
-    hydra::store::RecordStore store(db);
-    CHECK(!store.engine_mode().has_value());
+    CHECK(r.exit_code == 0);
+    CHECK(contains(r.output, "Compared 1 chart:"));
+    CHECK(contains(r.output, "0 only in 1.0, 0 only in 1.1"));
 }
 
 TEST_CASE("hydra_batch reuses the GUI's scan cache") {
@@ -419,15 +429,14 @@ TEST_CASE("hydra_fillcompare compares a 1.0 and a 1.1 database") {
     CHECK(!contains(r.output, "Warning"));
     CHECK(fs::exists(page));
 
-    // Swapped files: each stamp disagrees with the side it was passed as, so
-    // it warns. Each result carries its rule, so the 1.1 file has no 1.0
+    // Swapped files: each result carries its rule, so the 1.1 file has no 1.0
     // results to offer and the 1.0 file no 1.1 ones: nothing to compare.
     RunResult swapped = run_exe(box.fillcompare,
                                 {"--old", ch11, "--new", ch10, "--out",
                                  (box.dir / "swapped.html").u8string(), "--no-open"});
     INFO(swapped.output);
     CHECK(swapped.exit_code == 1);
-    CHECK(contains(swapped.output, "is stamped engine_mode=" + kCh11 + ", not " + kCh10));
+    CHECK(!contains(swapped.output, "Warning"));
     CHECK(contains(swapped.output,
                    "Nothing is analyzed under these settings (SP cap 4, Expert Pro Drums, "
                    "2x Bass) in either database. Analyze with these settings, or change "
@@ -462,7 +471,6 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
     CHECK(r.exit_code == 0);
     CHECK(contains(r.output, "Compared 1 chart:"));
     CHECK(contains(r.output, "0 only in 1.0, 0 only in 1.1, 0 in both, not both scored"));
-    // The file has no engine_mode stamp, so it never warns (D65, ADR 0010).
     CHECK(!contains(r.output, "Warning"));
 
     // D52, worded by D114 item 26: a second chart with a record under both

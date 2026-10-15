@@ -135,13 +135,29 @@ std::string plain_error(const std::exception& e) {
     return kSomethingWentWrong;
 }
 
-std::string plain_error_detail(const std::exception& e) { return e.what(); }
+namespace {
+
+// Whether the error's sentence already holds its whole raw text, so a details
+// line would say it twice. The refused old library's sentence names the file,
+// and its raw text is that path alone (D115 task A1-6d: the user approved the
+// one sentence).
+bool sentence_holds_detail(const std::exception& e) {
+    const auto* kinded = dynamic_cast<const KindedError*>(&e);
+    return kinded && kinded->kind() == ErrorKind::OldLibraryRefused;
+}
+
+}  // namespace
+
+std::string plain_error_detail(const std::exception& e) {
+    return sentence_holds_detail(e) ? std::string() : std::string(e.what());
+}
 
 std::string rules_file_tool_text(const std::exception& e) {
     return std::string("hydra_rules.ini has an error:\n") + e.what();
 }
 
 std::string plain_error_block(const std::exception& e) {
+    if (plain_error_detail(e).empty()) return plain_error(e);
     return plain_error(e) + "\n\n" + plain_error_detail(e);
 }
 
