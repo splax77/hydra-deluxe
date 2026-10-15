@@ -305,6 +305,7 @@ add_library(hydra_core STATIC
     src/store/record_store.cpp
     src/store/chart_index.cpp
     src/store/upgrade_files.cpp
+    src/store/library_file.cpp
     src/app/allocator.cpp
     src/app/analysis.cpp
     src/app/config.cpp

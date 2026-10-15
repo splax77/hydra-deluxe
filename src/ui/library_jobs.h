@@ -37,8 +37,6 @@
 
 namespace hydra::ui {
 
-class ByteRateClock;  // ui/preview_load_job.h
-
 // ---- StoreOpenJob ---------------------------------------------------------
 
 // Where the startup open of the library file is, for the startup screen. The
@@ -47,38 +45,24 @@ class ByteRateClock;  // ui/preview_load_job.h
 // is the job's read of the chart list and its summaries once the store is
 // open.
 struct StoreOpenProgress {
-    enum class Step {
-        Opening,
-        UpdatingResultsKey,
-        ConvertingRecords,
-        Copying,
-        Finishing,
-        LoadingLibrary
-    };
+    enum class Step { Opening, ConvertingRecords, LoadingLibrary };
     Step step = Step::Opening;
-    // Rows converted or copied so far, out of the rows the step converts or
-    // copies, both as the store counted them (store::OpenProgress). 0 of 0
-    // until the conversion or the copy begins, and on a file that needs no
-    // upgrade.
+    // Rows converted so far, out of the rows the conversion converts, both as
+    // the store counted them (store::OpenProgress). 0 of 0 until the
+    // conversion begins, and on a file that needs none.
     uint64_t rows_done = 0;
     uint64_t rows_total = 0;
-    // Whether this open has upgraded the file at any step so far. It stays
-    // set through Finishing and LoadingLibrary, so the screen keeps its
-    // upgrade heading and full bar until the library appears.
+    // Whether this open has converted the file at any step so far. It stays
+    // set through LoadingLibrary, so the screen keeps its upgrade heading and
+    // full bar until the library appears.
     bool upgrading = false;
     // Seconds since the job started.
     double elapsed_s = 0.0;
-    // Seconds left at the measured row rate (ByteRateClock); < 0 while not
-    // known.
-    double time_left_s = -1.0;
 
     // The bar is progress_bar_counted of the two counts (ui/widgets.h),
     // drawn once rows_total is known.
     // The line under the heading: what the open is doing now.
     std::string label() const;
-    // The Preview loader's time-left words and gate, applied to the copy:
-    // "" except while Copying.
-    std::string time_left_text() const;
 };
 
 // Reads every chart in the library, then every row's summary under
@@ -118,10 +102,9 @@ public:
     // harness only (AppState::wait_store_open); the app never calls it.
     void wait();
 
-    // A snapshot for the startup screen. It also feeds the time-left clock,
-    // so the render thread calls it once a frame.
+    // A snapshot for the startup screen, read once a frame.
     StoreOpenProgress progress() const;
-    // Seconds since start(), without touching the clock.
+    // Seconds since start().
     double elapsed_s() const;
 
     // Valid once finished() && ok(); each moves its part out (call once).
@@ -139,7 +122,7 @@ private:
     // Publishes a step and counts, then waits at the test gate when one is
     // set. False once the job is cancelled: the store stops there.
     bool report(StoreOpenProgress::Step step, uint64_t rows_done, uint64_t rows_total);
-    // The published step and counts, with no time-left estimate.
+    // The published step and counts.
     StoreOpenProgress snapshot() const;
 
     std::string db_path_;
@@ -157,10 +140,6 @@ private:
     std::atomic<uint64_t> rows_total_{0};
     std::atomic<bool> upgrading_{false};
     std::chrono::steady_clock::time_point started_{};  // set in start(), then read-only
-
-    // The time-left clock, fed from progress() on the render thread.
-    mutable std::mutex clock_mutex_;
-    std::unique_ptr<ByteRateClock> clock_;
 };
 
 // GUI-test seam: when set, every startup open built from now on calls `gate`

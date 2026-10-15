@@ -75,6 +75,11 @@ int run_tool(const std::function<int()>& body);
 // both, so there is never an empty line.
 std::string stale_text(bool build, bool rules);
 
+// What the app says after its open set a library file too old to convert
+// aside (store::OldFilePolicy::SetAside). `db_path` is the library file's own
+// path; the name shown is the one store::set_aside_path gave the file.
+std::string old_library_set_aside_notice(const std::string& db_path);
+
 // What the library's Stale chip says when hovered. The chip stands for many
 // rows, so it names both causes stale_text can name.
 std::string stale_chip_text();

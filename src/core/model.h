@@ -826,8 +826,6 @@ struct HydraRecord {
     bool sp_cap_converged = true;
     // The fingerprint of the rules the search ran under: Rules::fingerprint().
     // A result's row stores it in its rules_fp column (store::prepare_row).
-    // Results Hydra 1.8.4's Auto saved carry Rules::retired_auto_fingerprint()
-    // and are deleted when the store opens (RecordStore::delete_auto_results).
     // A record built in memory starts with the default rules' fixed-cap
     // fingerprint, computed once (core::default_stamp); analyze_chart stamps
     // the real one.

@@ -12,7 +12,6 @@
 #include "app/user_messages.h"
 #include "core/error_kind.h"
 #include "parse/song.h"  // display_title, display_artist
-#include "ui/preview_load_job.h"  // ByteRateClock, gated_time_left_text
 
 namespace hydra::ui {
 
@@ -29,23 +28,11 @@ std::string StoreOpenProgress::label() const {
     // library read alike (DBUP answer 7).
     if (!upgrading) return "Opening your library...";
     switch (step) {
-        // The conversion turns the results table into records, so it reads
-        // as the results-table step does: no new words on this screen.
-        case Step::UpdatingResultsKey:
         case Step::ConvertingRecords: return "Updating the results table...";
-        case Step::Copying: return "Copying your library...";
-        case Step::Opening:  // the store reports Opening only before an upgrade step
-        case Step::Finishing:
+        case Step::Opening:  // the store reports Opening only before the conversion
         case Step::LoadingLibrary: return "Finishing...";
     }
     return "Finishing...";
-}
-
-// The copy is the one step with a row rate; the gate and the words are
-// gated_time_left_text's, the Preview loader's (DBUP answer 4).
-std::string StoreOpenProgress::time_left_text() const {
-    if (step != Step::Copying) return "";
-    return gated_time_left_text(elapsed_s, time_left_s);
 }
 
 std::string read_library(store::RecordStore& store, const app::Settings& settings,
@@ -75,10 +62,8 @@ StoreOpenJob::StoreOpenJob(std::string db_path, core::RulesStamp rules, app::Set
     : db_path_(std::move(db_path)),
       rules_(std::move(rules)),
       settings_(std::move(settings)),
-      gate_(g_store_open_gate),
-      clock_(std::make_unique<ByteRateClock>()) {}
+      gate_(g_store_open_gate) {}
 
-// Out of line: ByteRateClock is only forward-declared in the header.
 StoreOpenJob::~StoreOpenJob() { shutdown(); }
 
 void StoreOpenJob::start() {
@@ -104,12 +89,7 @@ StoreOpenProgress StoreOpenJob::snapshot() const {
     return p;
 }
 
-StoreOpenProgress StoreOpenJob::progress() const {
-    StoreOpenProgress p = snapshot();
-    std::lock_guard<std::mutex> lock(clock_mutex_);
-    p.time_left_s = clock_->update(p.elapsed_s, p.rows_done, p.rows_total);
-    return p;
-}
+StoreOpenProgress StoreOpenJob::progress() const { return snapshot(); }
 
 bool StoreOpenJob::report(StoreOpenProgress::Step step, uint64_t rows_done, uint64_t rows_total) {
     using Step = StoreOpenProgress::Step;
@@ -117,9 +97,7 @@ bool StoreOpenJob::report(StoreOpenProgress::Step step, uint64_t rows_done, uint
     // its counts too.
     rows_total_.store(rows_total);
     rows_done_.store(rows_done);
-    if (step == Step::UpdatingResultsKey || step == Step::ConvertingRecords ||
-        step == Step::Copying || step == Step::Finishing)
-        upgrading_.store(true);
+    if (step == Step::ConvertingRecords) upgrading_.store(true);
     step_.store(static_cast<int>(step));
     if (gate_) gate_(snapshot(), [this] { return is_cancelled(); });
     return !is_cancelled();
@@ -132,10 +110,7 @@ StoreOpenProgress::Step screen_step(store::OpenStep step) {
     using Step = StoreOpenProgress::Step;
     switch (step) {
         case store::OpenStep::Opening: return Step::Opening;
-        case store::OpenStep::UpdatingResultsKey: return Step::UpdatingResultsKey;
         case store::OpenStep::ConvertingRecords: return Step::ConvertingRecords;
-        case store::OpenStep::Copying: return Step::Copying;
-        case store::OpenStep::Finishing: return Step::Finishing;
     }
     return Step::Opening;
 }
@@ -151,7 +126,8 @@ void StoreOpenJob::run() {
             // The store reports its own steps, Opening first; a false return
             // (the app is closing) stops it with the old file as it was.
             store_ = std::make_unique<store::RecordStore>(
-                db_path_, rules_, [this](const store::OpenProgress& p) {
+                db_path_, store::OldFilePolicy::SetAside, rules_,
+                [this](const store::OpenProgress& p) {
                     return report(screen_step(p.step), row_count(p.rows_done),
                                   row_count(p.rows_total));
                 });

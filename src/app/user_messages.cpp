@@ -5,6 +5,8 @@
 #include <optional>
 
 #include "core/error_kind.h"
+#include "store/library_file.h"
+#include "store/upgrade_files.h"
 
 namespace hydra::app {
 
@@ -64,6 +66,28 @@ std::string timing_refusal_sentence(std::string_view what) {
            ". Fix that line in the chart file or download the song again.";
 }
 
+// The words every old-file sentence opens with, naming the release the store
+// draws the line at.
+std::string older_than_cutoff() {
+    return std::string("from a Hydra version older than ") + store::kOldestConvertibleVersion;
+}
+
+// `reason` is Windows' own text (store::rename_file), which ends with its own
+// full stop; the sentence carries on after it, so that one goes.
+std::string set_aside_failed_sentence(std::string reason) {
+    while (!reason.empty() && (reason.back() == '.' || reason.back() == ' ' ||
+                               reason.back() == '\r' || reason.back() == '\n'))
+        reason.pop_back();
+    return "This library file is " + older_than_cutoff() +
+           ", and Hydra could not set it aside: " + reason +
+           ". Close any program using hydra.db and start Hydra again.";
+}
+
+std::string old_library_refused_sentence(std::string_view path) {
+    return "The library file '" + std::string(path) + "' is " + older_than_cutoff() +
+           ", and opening it in Hydra sets it aside and starts a fresh library.";
+}
+
 // The one owner of "which plain sentence does this failure show": the
 // thrower named the kind, and each kind has one sentence. Empty when the
 // error can't be answered from its kind alone.
@@ -72,6 +96,8 @@ std::optional<std::string> kind_sentence(const KindedError& e) {
         case ErrorKind::Cancelled: return kStopped;
         case ErrorKind::DatabaseOpen: return kDatabaseOpenSentence;
         case ErrorKind::DatabaseUpgrade: return kDatabaseUpgrade;
+        case ErrorKind::OldLibraryRefused: return old_library_refused_sentence(e.what());
+        case ErrorKind::OldLibrarySetAsideFailed: return set_aside_failed_sentence(e.what());
         case ErrorKind::DatabaseWrite: return kDatabaseWrite;
         case ErrorKind::DatabaseRead: return kDatabaseReadSentence;
         case ErrorKind::SongFileMissing: return kSongFileMissing;
@@ -154,6 +180,14 @@ std::string stale_text(bool build, bool rules) {
         cause = kStaleRulesCause;
     return "Out of date: this result came from " + cause +
            ". Click the song or run a batch to refresh it.";
+}
+
+std::string old_library_set_aside_notice(const std::string& db_path) {
+    const std::string aside = store::set_aside_path(db_path);
+    const size_t slash = aside.find_last_of("/\\");
+    const std::string name = slash == std::string::npos ? aside : aside.substr(slash + 1);
+    return "This library file is " + older_than_cutoff() + ", so Hydra set it aside as " + name +
+           " and started a fresh library.";
 }
 
 std::string stale_chip_text() {

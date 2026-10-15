@@ -76,7 +76,7 @@ static void folder_breakdown(const std::string& folder, const core::Rules& rules
     std::printf("Settings: the GUI default (SP cap %s, depth %s, timing cap %s).\n\n",
                 words.cap.c_str(), words.depth.c_str(), words.timing.c_str());
 
-    store::RecordStore store(":memory:", core::RulesStamp::of(rules));
+    store::RecordStore store(":memory:", store::OldFilePolicy::Refuse, core::RulesStamp::of(rules));
 
     for (const app::ScanItem& it : items) {
         std::printf("%s\n", it.notespath.c_str());
@@ -140,7 +140,9 @@ static void scan_mode(const std::string& folder, const std::string& dbpath,
     std::printf("Scanning %s\n", folder.c_str());
 
     std::unique_ptr<store::RecordStore> store;
-    if (!dbpath.empty()) store = std::make_unique<store::RecordStore>(dbpath, core::RulesStamp::of(g_rules));
+    if (!dbpath.empty())
+        store = std::make_unique<store::RecordStore>(dbpath, store::OldFilePolicy::Refuse,
+                                                     core::RulesStamp::of(g_rules));
 
     // With --db, a prior scan's rows become the rescan cache — running the
     // same command twice measures cold full scan then warm rescan.
@@ -257,7 +259,8 @@ static void engine_mode(const std::string& folder, const std::string& cachedb, i
     store::ChartLibraryCache cache;
     std::unique_ptr<store::RecordStore> cstore;
     if (!cachedb.empty()) {
-        cstore = std::make_unique<store::RecordStore>(cachedb, core::RulesStamp::of(g_rules));
+        cstore = std::make_unique<store::RecordStore>(cachedb, store::OldFilePolicy::Refuse,
+                                                      core::RulesStamp::of(g_rules));
         cache = app::load_scan_cache(*cstore);
     }
     auto [items, errors] = app::discover_charts({folder}, app::ScanCallbacks{}, cache);
@@ -388,7 +391,7 @@ static void parse_mode(const std::string& arg, int reps, const std::string& outp
 // came from another build.
 static void dump_db(const std::string& dbpath, const std::string& outpath,
                     const std::string& dumprel) {
-    store::RecordStore db(dbpath, core::RulesStamp::of(g_rules));
+    store::RecordStore db(dbpath, store::OldFilePolicy::Refuse, core::RulesStamp::of(g_rules));
     std::vector<store::ChartLibraryEntry> rows =
         db.list_chart_library(0, INT_MAX);
     std::sort(rows.begin(), rows.end(),
@@ -444,8 +447,8 @@ static void replay_mode(const std::string& chart) {
 
 // Upgrade mode:
 //   hydra_bench --upgrade <db file>
-// Opens the file as the app would, which upgrades an older layout for good,
-// and prints how long each step of the open took. Point it at a scratch copy
+// Opens the file, which converts a 2.2.0 to 2.7.0 layout for good, and prints
+// how long each step of the open took. A file too old to convert is refused. Point it at a scratch copy
 // of a real library file (db, -wal and -shm together), never at the live one.
 static void upgrade_mode(const std::string& dbpath) {
     if (!file_exists_utf8(dbpath)) {
@@ -461,15 +464,16 @@ static void upgrade_mode(const std::string& dbpath) {
         last = p;
         return true;
     };
-    { store::RecordStore db(dbpath, core::RulesStamp::of(g_rules), record); }
+    {
+        store::RecordStore db(dbpath, store::OldFilePolicy::Refuse, core::RulesStamp::of(g_rules),
+                              record);
+    }
     const clk::time_point end = clk::now();
 
     auto name = [](store::OpenStep s) {
         switch (s) {
             case store::OpenStep::Opening: return "Opening";
-            case store::OpenStep::UpdatingResultsKey: return "UpdatingResultsKey";
-            case store::OpenStep::Copying: return "Copying";
-            case store::OpenStep::Finishing: return "Finishing";
+            case store::OpenStep::ConvertingRecords: return "ConvertingRecords";
         }
         return "?";
     };
@@ -479,7 +483,7 @@ static void upgrade_mode(const std::string& dbpath) {
                     std::chrono::duration<double>(to - began[i].second).count());
     }
     std::printf("total: %.3f s\n", std::chrono::duration<double>(end - start).count());
-    std::printf("rows copied: %lld of %lld\n", static_cast<long long>(last.rows_done),
+    std::printf("rows converted: %lld of %lld\n", static_cast<long long>(last.rows_done),
                 static_cast<long long>(last.rows_total));
     std::printf("file: %llu bytes before, %llu bytes after\n",
                 static_cast<unsigned long long>(bytes_before),
