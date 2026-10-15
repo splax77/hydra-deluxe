@@ -286,9 +286,8 @@ public:
     int note_count() const;
 
     // If the chart has no drum fills, synthesize them as the game version
-    // `fills` names would.
-    void check_activations(const core::Rules& rules = core::default_rules(),
-                           FillDeadlineRule fills = FillDeadlineRule::Ch11);
+    // `fills` names would. No default: a caller names the game version.
+    void check_activations(const core::Rules& rules, FillDeadlineRule fills);
 
 private:
     // The two generators check_activations chooses between.
@@ -325,33 +324,34 @@ inline constexpr const char* kNoteShuffleFreezeDetail =
 // `fills` is the fill rule the song will be scored under: a chart with no
 // fills of its own gets the fills that game version generates
 // (Song::check_activations). A caller holding a setting converts it with
-// search/graph.h's fill_rule_for.
+// search/graph.h's fill_rule_for. No loader has a default for either: the
+// Preview once read 1.1 fills under the "1.0 fills" setting because it
+// left the rule out (D115 TJ-3). Tests name theirs once, in tests/load_util.h.
+//
+// kNotesOnlyFills is for a caller that reads only the chords (their pads,
+// times and dynamics), never which chord carries a fill: a fill only marks a
+// chord the chart already has, so either game version gives the same chords.
+// Anything that reads SongTimestamp::activation_length passes the real rule.
+inline constexpr FillDeadlineRule kNotesOnlyFills = FillDeadlineRule::Ch11;
+
 Song load_songpath_mid(const std::string& path, const ChartReading& reading,
-                       const core::Rules& rules = core::default_rules(),
-                       FillDeadlineRule fills = FillDeadlineRule::Ch11);
+                       const core::Rules& rules, FillDeadlineRule fills);
 Song load_songpath_chart(const std::string& path, const ChartReading& reading,
-                         const core::Rules& rules = core::default_rules(),
-                         FillDeadlineRule fills = FillDeadlineRule::Ch11);
+                         const core::Rules& rules, FillDeadlineRule fills);
 Song load_songpath_sng(const std::string& path, const ChartReading& reading,
-                       const core::Rules& rules = core::default_rules(),
-                       FillDeadlineRule fills = FillDeadlineRule::Ch11);
+                       const core::Rules& rules, FillDeadlineRule fills);
 Song load_songpath_srb(const std::string& path, const ChartReading& reading,
-                       const core::Rules& rules = core::default_rules(),
-                       FillDeadlineRule fills = FillDeadlineRule::Ch11);
+                       const core::Rules& rules, FillDeadlineRule fills);
 
 Song load_songbytes_mid(const std::vector<uint8_t>& data, const ChartReading& reading,
-                        const core::Rules& rules = core::default_rules(),
-                        FillDeadlineRule fills = FillDeadlineRule::Ch11);
+                        const core::Rules& rules, FillDeadlineRule fills);
 Song load_songbytes_chart(const std::vector<uint8_t>& data, const ChartReading& reading,
-                          const core::Rules& rules = core::default_rules(),
-                          FillDeadlineRule fills = FillDeadlineRule::Ch11);
+                          const core::Rules& rules, FillDeadlineRule fills);
 // A whole .sng / .srb container's bytes, as read from disk.
 Song load_songbytes_sng(const std::vector<uint8_t>& container, const ChartReading& reading,
-                        const core::Rules& rules = core::default_rules(),
-                        FillDeadlineRule fills = FillDeadlineRule::Ch11);
+                        const core::Rules& rules, FillDeadlineRule fills);
 Song load_songbytes_srb(const std::vector<uint8_t>& container, const ChartReading& reading,
-                        const core::Rules& rules = core::default_rules(),
-                        FillDeadlineRule fills = FillDeadlineRule::Ch11);
+                        const core::Rules& rules, FillDeadlineRule fills);
 
 // The file at `path` parsed from `bytes`, its contents already read by the
 // caller: dispatch on path's extension like load_songpath, without touching
@@ -359,16 +359,14 @@ Song load_songbytes_srb(const std::vector<uint8_t>& container, const ChartReadin
 // between the notes and the audio. Its notes are picked out exactly as
 // load_songpath picks them from the file.
 Song load_songpath_from_bytes(const std::string& path, const std::vector<uint8_t>& bytes,
-                              const ChartReading& reading,
-                              const core::Rules& rules = core::default_rules(),
-                              FillDeadlineRule fills = FillDeadlineRule::Ch11);
+                              const ChartReading& reading, const core::Rules& rules,
+                              FillDeadlineRule fills);
 
 // Dispatch on the file extension (.mid/.chart/.sng/.srb, case-insensitive).
 // A .sng or .srb is read in pieces: its header, then only the notes, never
 // the audio and art that make up the rest of the file.
 Song load_songpath(const std::string& path, const ChartReading& reading,
-                   const core::Rules& rules = core::default_rules(),
-                   FillDeadlineRule fills = FillDeadlineRule::Ch11);
+                   const core::Rules& rules, FillDeadlineRule fills);
 
 // Throws NoNotesError when `song` has no notes. `difficulty` and `prodrums`
 // are the ones the song was loaded with, so the sentence names them. For a
@@ -378,17 +376,15 @@ void require_notes(const Song& song, Difficulty difficulty, bool prodrums);
 // load_songpath, then require_notes: the chart at `path`, or NoNotesError
 // when it has no notes under `reading`.
 Song load_songpath_with_notes(const std::string& path, const ChartReading& reading,
-                              const core::Rules& rules = core::default_rules(),
-                              FillDeadlineRule fills = FillDeadlineRule::Ch11);
+                              const core::Rules& rules, FillDeadlineRule fills);
 
 // The one dispatch on the extension of `path`, its bytes read from `src`:
 // load_songpath passes the file (file_byte_source), load_songpath_from_bytes
 // the bytes in hand. A .mid or .chart is read whole; a .sng or .srb only in
 // the pieces its notes need. Tests pass a counting source to prove that.
 Song load_songpath_reading(const ByteSource& src, const std::string& path,
-                           const ChartReading& reading,
-                           const core::Rules& rules = core::default_rules(),
-                           FillDeadlineRule fills = FillDeadlineRule::Ch11);
+                           const ChartReading& reading, const core::Rules& rules,
+                           FillDeadlineRule fills);
 
 }  // namespace hydra
 

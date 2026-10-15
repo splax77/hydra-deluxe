@@ -21,6 +21,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "app/preview_view.h"
@@ -48,15 +49,23 @@ class PreviewBaseJob;
 struct PreviewSceneBase;
 
 // What the Preview calls the same song: one chart (its md5) under one
-// ChartReading. Another reading is another song and loads its own notes
-// (D48, Q22; D104 item 1). On a chart whose first load finished, only the
-// notes reload: the audio and the playhead stay (see PreviewController::open).
+// ChartReading and one fill rule. Another reading, or another fill rule (the
+// "1.0 fills" setting, which picks the game version's fill generator), is
+// another song and loads its own notes (D48, Q22; D104 item 1). On a chart
+// whose first load finished, only the notes reload: the audio and the
+// playhead stay (see PreviewController::open).
 struct PreviewSongKey {
+    // Every part is named: a key built without its fill rule does not compile.
+    PreviewSongKey() = default;
+    PreviewSongKey(std::string md5_in, const ChartReading& reading_in, FillDeadlineRule fills_in)
+        : md5(std::move(md5_in)), reading(reading_in), fills(fills_in) {}
+
     std::string md5;
     ChartReading reading;
+    FillDeadlineRule fills = FillDeadlineRule::Ch11;  // only an empty key's
 
     bool operator==(const PreviewSongKey& o) const {
-        return md5 == o.md5 && reading == o.reading;
+        return md5 == o.md5 && reading == o.reading && fills == o.fills;
     }
     bool operator!=(const PreviewSongKey& o) const { return !(*this == o); }
 };
@@ -84,9 +93,10 @@ public:
     // up until poll() swaps the new notes in. If the new mode has no notes,
     // the Preview pauses where it is and shows the error. Another chart, or
     // the same chart while its first load runs or after it failed: a fresh
-    // load from the start.
+    // load from the start. `fills` is the fill rule the notes are read under
+    // (search/graph.h's fill_rule_for turns the setting into it).
     void open(const store::ChartLibraryEntry& entry, const ChartReading& reading,
-              const Path* path, const std::string& path_key, int sp_cap,
+              FillDeadlineRule fills, const Path* path, const std::string& path_key, int sp_cap,
               const core::Rules& rules = core::default_rules());
     // Stop audio, drop the scene/transport, and join the load thread. Keeps the
     // renderer for reuse but frees its size-dependent targets (D95 call 4);

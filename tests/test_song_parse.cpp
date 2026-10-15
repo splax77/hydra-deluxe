@@ -1113,11 +1113,11 @@ TEST_CASE("Note Shuffle switch: a chart the game freezes on gives the freeze err
 }
 
 TEST_CASE("Note Shuffle switch: the Preview's song key differs when only the switch differs") {
-    const ui::PreviewSongKey off{"md5", {Difficulty::Expert, true, true, false}};
+    const ui::PreviewSongKey off{"md5", {Difficulty::Expert, true, true, false}, kTestFillRule};
     ui::PreviewSongKey on = off;
     on.reading.noteshuffle = true;
     CHECK(off != on);
-    CHECK(off == ui::PreviewSongKey{"md5", {Difficulty::Expert, true, true}});
+    CHECK(off == ui::PreviewSongKey{"md5", {Difficulty::Expert, true, true}, kTestFillRule});
 }
 
 TEST_CASE("Note Shuffle switch: the Dynamics pads follow the analysis's shuffle") {

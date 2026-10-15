@@ -72,9 +72,13 @@ struct PreviewSpan {
 //   Taken   — the fill the path activates on.
 enum class PreviewFillState { Hidden, Offered, Taken };
 
-// One candidate activation fill and what the path did with it.
+// One candidate activation fill and what the path did with it. `chord_tick`
+// is the chord the fill rides on: the tick an activation and a stored
+// passed-over fill name it by. `span` is the window build_preview_base
+// draws, which need not end on that chord.
 struct PreviewFill {
     PreviewSpan span;
+    int64_t chord_tick = 0;
     PreviewFillState state = PreviewFillState::Hidden;
 };
 

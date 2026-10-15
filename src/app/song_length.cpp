@@ -51,8 +51,10 @@ std::optional<double> chart_song_length_ms(const store::ChartTimingMeta& meta,
         // gives the same last note.
         constexpr bool kPro = true;
         const ChartReading expert{Difficulty::Expert, kPro, true, false};
-        reparsed.emplace(container ? load_songpath_from_bytes(notespath, *container, expert, rules)
-                                   : load_songpath(notespath, expert, rules));
+        // Only the last chord's time is read here (kNotesOnlyFills).
+        reparsed.emplace(container ? load_songpath_from_bytes(notespath, *container, expert,
+                                                              rules, kNotesOnlyFills)
+                                   : load_songpath(notespath, expert, rules, kNotesOnlyFills));
         return *reparsed;
     });
 }

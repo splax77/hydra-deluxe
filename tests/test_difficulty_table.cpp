@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "difficulty_literals.h"
+#include "load_util.h"
 #include "midi_util.h"
 #include "parse/song.h"
 

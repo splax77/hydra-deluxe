@@ -60,11 +60,12 @@ struct PreviewSource {
 // Parse `notespath` (any supported chart kind) and gather its audio.
 // `reading` is which notes to read the chart as (ChartReading, in
 // parse/chart_reading.h); the analysis's own reading makes the previewed notes
-// match the analyzed ones. rules places the fills the same way analysis does.
-// A .sng or .srb is read from disk once and the same bytes feed the notes and
-// the audio.
+// match the analyzed ones. `rules` and `fills` (the fill rule, as the
+// loaders in parse/song.h take it) place the fills the same way analysis
+// does. A .sng or .srb is read from disk once and the same bytes feed the
+// notes and the audio.
 PreviewSource resolve_preview_source(const std::string& notespath, const ChartReading& reading,
-                                     const core::Rules& rules = core::default_rules());
+                                     const core::Rules& rules, FillDeadlineRule fills);
 
 // Reads a whole file's bytes, like read_file_bytes.
 using FileBytesReader = std::function<std::vector<uint8_t>(const std::string&)>;
@@ -75,7 +76,7 @@ using FileBytesReader = std::function<std::vector<uint8_t>(const std::string&)>;
 PreviewSource resolve_preview_source_reading(const FileBytesReader& read_bytes,
                                              const std::string& notespath,
                                              const ChartReading& reading,
-                                             const core::Rules& rules = core::default_rules());
+                                             const core::Rules& rules, FillDeadlineRule fills);
 
 // ---- the two halves, for a load that runs them side by side -------------
 //
@@ -97,10 +98,10 @@ struct PreviewSong {
 };
 // `container` is read_preview_container's result for the same notespath.
 // `reading` is which notes to read the chart as (ChartReading, in
-// parse/chart_reading.h).
+// parse/chart_reading.h); `rules` and `fills` are resolve_preview_source's.
 PreviewSong resolve_preview_song(const std::string& notespath, const SharedBytes& container,
-                                 const ChartReading& reading,
-                                 const core::Rules& rules = core::default_rules());
+                                 const ChartReading& reading, const core::Rules& rules,
+                                 FillDeadlineRule fills);
 
 // Where chart time 0 sits in the audio of a chart already parsed
 // (PreviewSource::audio_offset_ms): the chart's own delay, from its song.ini

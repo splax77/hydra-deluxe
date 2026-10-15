@@ -121,6 +121,16 @@ TEST_CASE("build_preview_scene: SP phrase, solo, and fill spans") {
     CHECK(scene.fills[0].span.end_tick == 720);
 }
 
+TEST_CASE("build_preview_scene: a fill whose chord sits before its measure line spans chord to line") {
+    Song song = make_hand_song();
+    for (SongTimestamp& ts : song.sequence)
+        if (ts.activation_length) ts.activation_length = -120;
+    const PreviewScene scene = build_preview_scene(song, nullptr);
+    REQUIRE(scene.fills.size() == 1);
+    CHECK(scene.fills[0].span.start_tick == 720);  // the chord
+    CHECK(scene.fills[0].span.end_tick == 840);    // the line
+}
+
 TEST_CASE("build_preview_scene: solo spans come from the song's solo sections") {
     Song song = make_hand_song();
     PreviewScene scene = build_preview_scene(song, nullptr);
@@ -458,7 +468,8 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
         return "drum_lanes";
     if (!std::equal(a.fills.begin(), a.fills.end(), b.fills.begin(), b.fills.end(),
                     [&](const PreviewFill& x, const PreviewFill& y) {
-                        return span_eq(x.span, y.span) && x.state == y.state;
+                        return span_eq(x.span, y.span) && x.chord_tick == y.chord_tick &&
+                               x.state == y.state;
                     }))
         return "fills";
     if (!std::equal(a.activations.begin(), a.activations.end(), b.activations.begin(),
@@ -738,7 +749,7 @@ TEST_CASE("preview fills: every stored passed-over fill is a fill in the scene")
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         if (rec.paths.empty()) continue;
         std::set<int64_t> fill_ends;
-        for (const PreviewFill& f : build_preview_base(song).fills) fill_ends.insert(f.span.end_tick);
+        for (const PreviewFill& f : build_preview_base(song).fills) fill_ends.insert(f.chord_tick);
         for (size_t pi = 0; pi < rec.paths.size(); ++pi) {
             for (const Activation& a : rec.paths[pi].walk_activations()) {
                 for (int64_t t : a.skipped_fill_ticks) {

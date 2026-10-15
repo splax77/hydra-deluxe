@@ -203,7 +203,8 @@ static void corpus_bench() {
     std::vector<Song> songs;
     for (const std::string& path : corpus::chart_paths()) {
         try {
-            songs.push_back(load_songpath(path, ChartReading{}, g_rules));
+            songs.push_back(
+                load_songpath(path, ChartReading{}, g_rules, fill_rule_for(g_legacy_fills)));
         } catch (const std::exception&) {
         }
     }
@@ -415,7 +416,7 @@ static void dump_db(const std::string& dbpath, const std::string& outpath,
 // was the stress chart (Task 9 of the 2026-10-03 preview-loading plan). That
 // the scores-only replay matches the full one is test_replay.cpp's job.
 static void replay_mode(const std::string& chart) {
-    const Song song = load_songpath(chart, ChartReading{});
+    const Song song = load_songpath(chart, ChartReading{}, g_rules, fill_rule_for(g_legacy_fills));
     if (song.is_empty()) {
         std::printf("no notes in %s\n", chart.c_str());
         return;

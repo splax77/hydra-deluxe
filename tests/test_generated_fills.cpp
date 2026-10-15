@@ -160,7 +160,7 @@ TEST_CASE("generated fills: a chart with its own fills gets none generated") {
         song.sequence.push_back(ts);
     }
     song.sequence[1].activation_length = 480;
-    song.check_activations();
+    song.check_activations(core::default_rules(), kTestFillRule);
     CHECK(fills_of(song) == Fills{{3360, 3840}});
     CHECK(std::find(song.features.begin(), song.features.end(), "Auto-Generated Fills") ==
           song.features.end());

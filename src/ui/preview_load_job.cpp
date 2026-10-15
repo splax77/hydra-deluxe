@@ -69,9 +69,11 @@ SceneAndHighway build_scene_and_highway(const Song& song, const Path* path, int 
 
 PreviewNotes read_preview_notes(const store::ChartLibraryEntry& entry,
                                 const app::SharedBytes& container,
-                                const ChartReading& reading, const core::Rules& rules) {
-    PreviewNotes notes{app::resolve_preview_song(entry.notespath, container, reading, rules),
-                       std::nullopt};
+                                const ChartReading& reading, FillDeadlineRule fills,
+                                const core::Rules& rules) {
+    PreviewNotes notes{
+        app::resolve_preview_song(entry.notespath, container, reading, rules, fills),
+        std::nullopt};
     // The song's length, from the same owner analysis saves through (D75),
     // with the container already in hand. A failed read costs only the
     // length.
@@ -111,9 +113,11 @@ double ByteRateClock::update(double now_s, uint64_t bytes_done, uint64_t bytes_t
 }
 
 PreviewLoadJob::PreviewLoadJob(store::ChartLibraryEntry entry, const ChartReading& reading,
-                               std::optional<Path> path, int sp_cap, core::Rules rules)
+                               FillDeadlineRule fills, std::optional<Path> path, int sp_cap,
+                               core::Rules rules)
     : entry_(std::move(entry)),
       reading_(reading),
+      fills_(fills),
       path_(std::move(path)),
       sp_cap_(sp_cap),
       rules_(std::move(rules)) {}
@@ -199,7 +203,7 @@ void PreviewLoadJob::run() {
         } guard{stop, audio_branch};
 
         // Branch (a) here: the notes.
-        PreviewNotes notes = read_preview_notes(entry_, container, reading_, rules_);
+        PreviewNotes notes = read_preview_notes(entry_, container, reading_, fills_, rules_);
         container.reset();
         app::PreviewSong& ps = notes.ps;
         const std::optional<double> song_length_ms = notes.song_length_ms;
@@ -302,10 +306,11 @@ std::string PreviewLoadJob::Progress::time_left_text() const {
 }
 
 PreviewNotesJob::PreviewNotesJob(store::ChartLibraryEntry entry, const ChartReading& reading,
-                                 std::optional<Path> path, int sp_cap, core::Rules rules,
-                                 std::optional<double> audio_end_ms)
+                                 FillDeadlineRule fills, std::optional<Path> path, int sp_cap,
+                                 core::Rules rules, std::optional<double> audio_end_ms)
     : entry_(std::move(entry)),
       reading_(reading),
+      fills_(fills),
       path_(std::move(path)),
       sp_cap_(sp_cap),
       rules_(std::move(rules)),
@@ -319,7 +324,7 @@ void PreviewNotesJob::run() {
         // A .sng or .srb is read whole: its notes live inside it.
         app::SharedBytes container = app::read_preview_container(read_file_bytes, entry_.notespath);
         throw_if_cancelled();
-        PreviewNotes notes = read_preview_notes(entry_, container, reading_, rules_);
+        PreviewNotes notes = read_preview_notes(entry_, container, reading_, fills_, rules_);
         container.reset();  // a .sng's audio is not needed here
         throw_if_cancelled();
         SceneAndHighway built = build_scene_and_highway(

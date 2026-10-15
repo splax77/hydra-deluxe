@@ -17,6 +17,7 @@
 
 #include "core/model.h"
 #include "core/timing.h"
+#include "load_util.h"
 #include "parse/note_shuffle.h"
 #include "parse/song.h"
 #include "source_tree.h"

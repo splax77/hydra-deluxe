@@ -275,12 +275,16 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
             scene.sp_phrases.push_back(
                 span_from_ticks(song, *ts.sp_phrase_start, ts.timecode.ticks()));
 
-        // Activation fill: the window ends at this note and starts where
-        // fill_start_tick says.
+        // Activation fill: the window runs between this note and where
+        // fill_start_tick says the fill starts, whichever comes first. A
+        // fill whose chord lands just before its measure line has a start
+        // after the chord.
         if (ts.activation_length.has_value()) {
             const int64_t chord = ts.timecode.ticks();
+            const int64_t start = fill_start_tick(chord, *ts.activation_length);
             PreviewFill f;
-            f.span = span_from_ticks(song, fill_start_tick(chord, *ts.activation_length), chord);
+            f.span = span_from_ticks(song, std::min(start, chord), std::max(start, chord));
+            f.chord_tick = chord;
             scene.fills.push_back(f);  // state is filled in from the path below
         }
     }
@@ -400,11 +404,11 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
         // that fill or an earlier activation did; the highway reads it.
         std::vector<PreviewFill>& fills = scene.fills;
         size_t next_fill = 0;
-        // Marks the fill ending on `tick` and returns its index, or nothing
-        // when no fill ends there.
+        // Marks the fill whose chord is `tick` and returns its index, or
+        // nothing when no fill rides on that chord.
         auto mark = [&](int64_t tick, PreviewFillState state) -> std::optional<size_t> {
-            while (next_fill < fills.size() && fills[next_fill].span.end_tick < tick) ++next_fill;
-            if (next_fill >= fills.size() || fills[next_fill].span.end_tick != tick)
+            while (next_fill < fills.size() && fills[next_fill].chord_tick < tick) ++next_fill;
+            if (next_fill >= fills.size() || fills[next_fill].chord_tick != tick)
                 return std::nullopt;
             if (fills[next_fill].state != PreviewFillState::Taken) fills[next_fill].state = state;
             return next_fill;

@@ -18,6 +18,7 @@
 #include "core/winstr.h"
 #include "chart_text.h"
 #include "display_fixtures.h"  // kTagOnlyTitle
+#include "load_util.h"
 #include "midi_util.h"
 #include "parse/song.h"
 #include "temp_util.h"

@@ -26,6 +26,7 @@
 #include "core/rules.h"
 #include "core/strutil.h"
 #include "json.hpp"
+#include "load_util.h"  // the loaders' test forms, kTestFillRule
 #include "parse/chart_files.h"
 #include "parse/song.h"
 #include "search/pather.h"
@@ -162,7 +163,7 @@ struct Outcome {
 }  // namespace detail
 
 // The Song for one corpus chart, parsed once per run for this reading and
-// these rules (the arguments load_songpath takes).
+// these rules (the arguments load_songpath takes), under kTestFillRule.
 inline const hydra::Song& song(const std::string& path, const hydra::ChartReading& reading,
                                const hydra::core::Rules& rules = hydra::core::default_rules()) {
     static std::map<std::string, detail::Outcome<hydra::Song>> cache;
@@ -173,7 +174,7 @@ inline const hydra::Song& song(const std::string& path, const hydra::ChartReadin
     detail::Outcome<hydra::Song>& o = it->second;
     if (fresh) {
         try {
-            o.value.emplace(hydra::load_songpath(path, reading, rules));
+            o.value.emplace(hydra::load_songpath(path, reading, rules, hydra::kTestFillRule));
         } catch (...) {
             o.error = std::current_exception();
         }

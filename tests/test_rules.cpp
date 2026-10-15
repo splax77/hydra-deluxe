@@ -398,14 +398,14 @@ TEST_CASE("rules: the engine's tied count matches the recount") {
 
 TEST_CASE("rules: the generated-fill values come from the rules") {
     Song by_default = fill_song();
-    by_default.check_activations();
+    by_default.check_activations(core::default_rules(), kTestFillRule);
     const int default_fills = fill_count(by_default);
     REQUIRE(default_fills > 0);
 
     core::Rules tight = core::default_rules();
     tight.fill_cooldown_measures = 2;
     Song with_tight = fill_song();
-    with_tight.check_activations(tight);
+    with_tight.check_activations(tight, kTestFillRule);
     CHECK(fill_count(with_tight) > default_fills);
 }
 
