@@ -281,6 +281,8 @@ The drain box, at the top right beside the meter, shows how long one bar of SP l
 
 The next activation box, at the top right under the drain box, starts with the next activation's number, like `Next: activation 2 of 3`. Under that is the activation in path notation with its timings, like `5+ (100 ms)`, and then where it is and its chord. After the last activation the box goes away. `Copy path` includes the same text for each activation.
 
+The solo box appears right of the highway, a little below the middle, once you hit a solo's first note. It shows how much of the solo you have hit so far, like `85%`, and under that the notes, like `102 / 120 notes`. The percent is worked out the way Clone Hero works it out, so it can read one below the exact share. Hitting the solo's last note ends the solo. The box then shows `Perfect Solo!` for 1.5 seconds, then the solo bonus of 100 points per note, like `+12,000`, for 1.5 seconds, and then goes away. The path hits every note, so a solo always ends in `Perfect Solo!`. If a new solo starts while the box still shows the last one's result, the new solo takes over. The box works before the song is analyzed too.
+
 ### Other things the Preview can show
 
 With no song selected, the tab says `Select a song to preview.` While a chart loads, it shows `Loading preview:` and the current step over a progress bar. If the chart can't be loaded, it shows `Preview failed:` and the reason in orange, with the error itself dimmed under it.
