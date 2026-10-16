@@ -476,6 +476,57 @@ void test_keys(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(f.dm_clicks.size(), size_t{1});
 }
 
+// The header's Close shuts the window as Esc does, in every build state and
+// in both windows.
+void test_close_button(ImGuiTestContext* ctx) {
+    reset_app(harness(ctx));
+    reset_fixture();
+    Fixture& f = fixture();
+    open_path_all_rows(ctx);
+    ctx->ItemClick("Close");
+    ctx->Yield(2);
+    IM_CHECK(!f.path_open);
+    IM_CHECK(path_window() == nullptr);
+    IM_CHECK_EQ(f.closes, 1);
+
+    // Outside Ready the header has no Refresh, but Close is still there.
+    for (ReportBuild state : {ReportBuild::None, ReportBuild::Cancelled, ReportBuild::Failed}) {
+        f.path.state = state;
+        f.path_open = true;
+        ctx->Yield(3);
+        IM_CHECK_RETV(path_window() != nullptr, );
+        ctx->SetRef(path_window());
+        IM_CHECK(ctx->ItemExists("Close"));
+        IM_CHECK(!ctx->ItemExists("Refresh"));
+    }
+    // Shut by the fixture, not by the window, so no close callback runs.
+    f.path_open = false;
+    ctx->Yield(2);
+    IM_CHECK_EQ(f.closes, 1);
+
+    // Closing while the report builds.
+    f.path.state = ReportBuild::Building;
+    f.path_open = true;
+    ctx->Yield(3);
+    IM_CHECK(shows("Building the report from your library..."));
+    IM_CHECK_RETV(path_window() != nullptr, );
+    ctx->SetRef(path_window());
+    ctx->ItemClick("Close");
+    ctx->Yield(2);
+    IM_CHECK(!f.path_open);
+    IM_CHECK(path_window() == nullptr);
+    IM_CHECK_EQ(f.closes, 2);
+    IM_CHECK_EQ(f.cancels, 0);  // Close is not the build's Cancel
+
+    // The comparison has it too.
+    open_dm(ctx);
+    ctx->ItemClick("Close");
+    ctx->Yield(2);
+    IM_CHECK(!f.dm_open);
+    IM_CHECK(dm_window() == nullptr);
+    IM_CHECK_EQ(f.closes, 3);
+}
+
 // Both windows open at once.
 void test_both(ImGuiTestContext* ctx) {
     reset_app(harness(ctx));
@@ -609,7 +660,7 @@ void test_cells_left(ImGuiTestContext* ctx) {
 }
 
 // A report too narrow for the header's buttons beside "Built HH:MM": the
-// buttons start a line of their own and sit at its right edge (the user's
+// buttons start a line of their own, Close last at its right edge (the user's
 // answer 7 and their choice of 2026-10-14). A report with no rows has no
 // controls row or table to hold the window wide.
 void test_header_narrow(ImGuiTestContext* ctx) {
@@ -628,9 +679,13 @@ void test_header_narrow(ImGuiTestContext* ctx) {
     ctx->WindowResize("", ImVec2(900.0f, 400.0f));
     ctx->Yield(3);
     const ImRect wide = ctx->ItemInfo("Refresh").RectFull;
+    const ImRect wide_close = ctx->ItemInfo("Close").RectFull;
     IM_CHECK(shows("Built 13:42"));
-    // Wide: Refresh shares the heading's line, at its right edge.
-    IM_CHECK_LE(std::fabs(wide.Max.x - window->WorkRect.Max.x), 1.0f);
+    // Wide: Refresh and Close share the heading's line, Close at its right
+    // edge with Refresh just before it.
+    IM_CHECK_LE(std::fabs(wide_close.Max.x - window->WorkRect.Max.x), 1.0f);
+    IM_CHECK_EQ(wide_close.Min.y, wide.Min.y);
+    IM_CHECK_LT(wide.Max.x, wide_close.Min.x);
 
     // Room for "Hydra Path Index  Built 13:42", but not for Refresh beside it.
     const ImGuiStyle& style = ImGui::GetStyle();
@@ -641,11 +696,16 @@ void test_header_narrow(ImGuiTestContext* ctx) {
                                  400.0f));
     ctx->Yield(3);
     const ImRect narrow = ctx->ItemInfo("Refresh").RectFull;
+    const ImRect narrow_close = ctx->ItemInfo("Close").RectFull;
     ctx->LogInfo("Refresh wide %.1f..%.1f at y %.1f, narrow %.1f..%.1f at y %.1f, right edge %.1f",
                  wide.Min.x, wide.Max.x, wide.Min.y, narrow.Min.x, narrow.Max.x, narrow.Min.y,
                  window->WorkRect.Max.x);
+    ctx->LogInfo("Close wide %.1f..%.1f, narrow %.1f..%.1f at y %.1f", wide_close.Min.x,
+                 wide_close.Max.x, narrow_close.Min.x, narrow_close.Max.x, narrow_close.Min.y);
     IM_CHECK_GE(narrow.Min.y, wide.Min.y + ImGui::GetTextLineHeightWithSpacing());
-    IM_CHECK_LE(std::fabs(narrow.Max.x - window->WorkRect.Max.x), 1.0f);
+    IM_CHECK_EQ(narrow_close.Min.y, narrow.Min.y);
+    IM_CHECK_LT(narrow.Max.x, narrow_close.Min.x);
+    IM_CHECK_LE(std::fabs(narrow_close.Max.x - window->WorkRect.Max.x), 1.0f);
     f.path_open = false;
     ctx->Yield(2);
 }
@@ -1400,6 +1460,7 @@ void register_report_window_tests(Harness& h) {
     static const TestEntry kTests[] = {
         {"report-window-sort", test_sort},     {"report-window-filters", test_filters},
         {"report-window-states", test_states}, {"report-window-keys", test_keys},
+        {"report-window-close-button", test_close_button},
         {"report-windows-both", test_both},
         {"report-window-chip-label", test_chip_label},
         {"report-window-column-widths", test_column_widths},
