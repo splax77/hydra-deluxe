@@ -858,15 +858,18 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
 
         // The solo box, right of the highway a little below the middle, as
         // the game places its own. Its left edge hugs the highway: the room
-        // render::right_room leaves beside the railing at the box's lowest
-        // row, where the highway is widest, starts there. A box wider than
-        // that room (the scale already at its floor) keeps its right edge on
-        // the column's, as the boxes above do. Every line is build_solo_box's.
+        // render::right_room leaves beside the railing at the lowest row the
+        // scale reserves for the chart's solo boxes, where the highway is
+        // widest, starts there. So the edge holds still when the box drops
+        // from two lines to the one-line result. A box wider than that room
+        // (the scale already at its floor) keeps its right edge on the
+        // column's, as the boxes above do. Every line is build_solo_box's.
         if (solo.shown) {
             const render::TextBox s_box = solo_box(solo, sz);
             const render::BoxExtent s_ext = render::measure_text_box(s_box, sz.inset);
+            const float solo_h = std::max(fit.solo_h * scale, s_ext.h);
             const float room =
-                render::right_room(pcfg, w, h, right_edge, tops.solo + s_ext.h, sz.gap);
+                render::right_room(pcfg, w, h, right_edge, tops.solo + solo_h, sz.gap);
             const float solo_left = right_edge - std::max(room, s_ext.w);
             draw_text_box(dl, font, s_box, ImVec2(origin.x + solo_left, origin.y + tops.solo),
                           sz.inset, corner, ImDrawFlags_None, "##solo_box");

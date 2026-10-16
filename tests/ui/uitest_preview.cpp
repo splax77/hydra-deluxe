@@ -347,8 +347,9 @@ int check_overlay_boxes(ImGuiTestContext* ctx) {
 
 // The solo box hugs the highway: its left edge is the overlay's gap right of
 // the highway's right railing at the box's lowest row (render::highway_span_at),
-// where the highway is widest beside it. The gap is the one between the time
-// box and the score box. Needs the score box on screen.
+// where the highway is widest beside it. Called mid-solo, when the box is as
+// tall as the scale reserves. The gap is the one between the time box and the
+// score box. Needs the score box on screen.
 void check_solo_hugs_highway(ImGuiTestContext* ctx, const hydra::ui::PreviewController& pc) {
     const ImRect img = ctx->ItemInfo("**/##highway_image").RectFull;
     const ImRect solo = ctx->ItemInfo("**/##solo_box").RectFull;
@@ -420,6 +421,7 @@ void test_preview_solo_box(ImGuiTestContext* ctx) {
     check_overlay_boxes(ctx);
     check_solo_hugs_highway(ctx, pc);
     IM_CHECK_EQ(pc.overlay_scale(), scale);
+    const float playing_left = ctx->ItemInfo("**/##solo_box").RectFull.Min.x;
 
     // The chart has no Star Power phrase, yet the gauge and the drain box
     // show: the gauge empty, the drain box in its idle form.
@@ -443,6 +445,8 @@ void test_preview_solo_box(ImGuiTestContext* ctx) {
     IM_CHECK(pc.solo_box().detail.empty());
     ctx->Yield(2);
     check_overlay_boxes(ctx);
+    // The one-line result keeps the left edge the two-line box had.
+    IM_CHECK_EQ(ctx->ItemInfo("**/##solo_box").RectFull.Min.x, playing_left);
     IM_CHECK(screenshot(ctx, "solo-box-perfect.png"));
 
     // kSoloResultMs later the bonus, kSoloTailMs later nothing (the last
