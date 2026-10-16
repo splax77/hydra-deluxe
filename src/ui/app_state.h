@@ -537,9 +537,10 @@ public:
 
     // Builds the path report under the current settings, analyzing first
     // (plan 2026-10-15, question 8). It plans a batch over every library row;
-    // when that plan has rows to run, the batch runs (behind the normal
-    // confirm when there are more than report_confirm_above rows) and the
-    // report builds when it finishes, as after any batch. With nothing to
+    // when that plan has rows to run, the batch runs (once the report window
+    // asks and the user answers Analyze, when there are more than
+    // report_confirm_above rows) and the report builds when it finishes, as
+    // after any batch. With nothing to
     // run the build starts at once. A batch already running is waited on
     // instead. Does nothing while a build or a wait is under way. A window's
     // Refresh and Try again, and showing it with nothing built, all come
@@ -549,8 +550,11 @@ public:
     // of the store, drops the rows (generate_report checks the flag after the
     // read) and the window then shows the cancelled state. A wait: the
     // report's own batch stops as the strip's Stop stops it (a batch the user
-    // started, and a confirm still open, are left to the user), and the
-    // window shows the cancelled state at once.
+    // started is left to the user), and the
+    // window shows the cancelled state at once. While the window asks
+    // whether to analyze (path_report_awaits_confirm), Cancel is its "no":
+    // the confirm closes, nothing runs, and the report builds from the
+    // results already stored.
     void cancel_path_report();
     // Opens the path report window: the toolbar's "Open path report", the
     // finished strip's "Open report". With nothing in memory (never built
@@ -562,14 +566,16 @@ public:
     // build still running stops as its Cancel stops it and never lands, and
     // the slot starts over as never built, so the next show_path_report
     // builds again. A batch the report waited on keeps running, with its
-    // strip; its finish builds the report as any batch's does.
+    // strip; its finish builds the report as any batch's does. A question
+    // the window was asking goes with it: nothing runs, and no confirm opens
+    // in the main window.
     void close_path_report();
     // Whether the toolbar offers "Open path report" with nothing built: the
     // library has rows and analysis is on, since opening is how a library is
     // analyzed for the report.
     bool path_report_offered() const;
-    // More rows to run than this and opening the report asks first, with the
-    // normal batch confirm (the user's answer 8, 2026-10-15).
+    // More rows to run than this and opening the report asks first, in the
+    // report window itself (the user's answer 8, 2026-10-15).
     static constexpr int kReportConfirmAbove = 500;
     // The threshold request_path_report reads: kReportConfirmAbove, lowered
     // only by tests, whose corpus is smaller.
@@ -577,8 +583,15 @@ public:
     // The batch the path report waits on, whose snapshot its window shows;
     // null when it waits on none.
     const BatchJob* path_report_batch() const;
-    // Whether the path report waits for the user to answer the batch confirm.
+    // Whether the path report window asks whether to analyze: the batch
+    // confirm is the report's own, answered by the window's Analyze
+    // (start_path_report_batch) or Cancel (cancel_path_report), never by the main
+    // window's popup.
     bool path_report_awaits_confirm() const { return report_wait_ == ReportWait::Confirm; }
+    // The window's Analyze: runs the batch its question counted, which the
+    // report then waits on. Does nothing unless the window asks, or while
+    // can_analyze says no.
+    void start_path_report_batch();
 
     // "Compare dmleaderboards user" picker + its two network jobs. The fetch
     // job loads the ladder into dm_users; the report job builds the
@@ -625,10 +638,22 @@ public:
     bool batch_confirm_pending = false;
     app::BatchPlan batch_plan;
     app::BatchPlan batch_redo_plan;
+    // Whether the main window's "Analyze library" popup shows: a confirm is
+    // open and it is not the path report's own (path_report_awaits_confirm),
+    // which its window asks instead.
+    bool batch_confirm_in_main_window() const {
+        return batch_confirm_pending && !path_report_awaits_confirm();
+    }
+    // The confirm's question for the plan `redo` picks: the popup's heading,
+    // and the path report window's line while it asks.
+    std::string batch_question(bool redo) const;
     // The rows in scope: the redo plan runs every one of them.
     int64_t batch_scope_charts() const { return batch_redo_plan.todo_rows(); }
     // The rows in scope that already have a result: the skip plan's skipped.
     int64_t batch_scope_with_result() const { return batch_plan.skipped; }
+    // The toolbar's Analyze. While the path report window asks, the user's
+    // own confirm replaces that question, which is answered as its Cancel
+    // answers it: the report lists what is stored.
     void open_batch_confirm();
     // The plan a batch started now would run: the redo plan when `redo`.
     const app::BatchPlan& batch_plan_for(bool redo) const {
@@ -766,7 +791,8 @@ private:
     void request_path_report(PathReportCause cause);
     PathReportCause path_report_cause_ = PathReportCause::Request;
     // What the path report waits on before its build: the batch confirm
-    // request_path_report opened, the batch it started, or a batch already
+    // request_path_report opened, which the report window asks (Confirm),
+    // the batch it started, or a batch already
     // running when it was asked. The build that follows carries
     // report_wait_cause_.
     enum class ReportWait { None, Confirm, OwnBatch, Batch };
@@ -775,6 +801,9 @@ private:
     // update_background_jobs' path report part: settles a wait on the
     // confirm or on a batch.
     void settle_report_wait();
+    // The report window's question answered "no": its plans go, nothing
+    // runs, and the report builds from what is stored (settle_report_wait).
+    void decline_report_batch();
     // Starts dm_report_job for the last player picked. None may be running.
     void launch_dm_report();
     std::string dm_player_id_;

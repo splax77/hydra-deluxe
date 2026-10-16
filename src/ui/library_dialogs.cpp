@@ -333,8 +333,9 @@ void render_scan_modal(AppState& app) {
 // The one question before a batch: how many charts, every setting it will
 // run with, and whether to redo charts that already have a result. Esc and
 // the title-bar X cancel; Enter starts (unless Cancel has keyboard focus).
+// The path report's own confirm is asked in its window instead.
 void render_batch_confirm(AppState& app) {
-    if (!app.batch_confirm_pending) return;
+    if (!app.batch_confirm_in_main_window()) return;
     if (!ImGui::IsPopupOpen("Analyze library")) ImGui::OpenPopup("Analyze library");
     pin_next_modal_width(px(520.0f));
     bool open = true;
@@ -343,19 +344,10 @@ void render_batch_confirm(AppState& app) {
         return;
     }
 
-    // Library rows, each copy of a chart counted, like the library's own
-    // counts (D76). What runs is the plan the box picks (D79).
+    // What runs is the plan the box picks (D79).
     const int64_t with = app.batch_scope_with_result();
     const int64_t to_run = app.batch_plan_for(app.batch_redo).todo_rows();
-    std::string question;
-    if (to_run == 0)
-        question = "Every chart here already has a result.";
-    else if (app.batch_redo && with > 0)
-        question = "Analyze " + counted(to_run, "chart", "charts") + ", re-analyzing " +
-                   group_thousands(with) + " that already " + has_have(with) + " a result?";
-    else
-        question = "Analyze " + counted(to_run, "chart", "charts") + " that " +
-                   has_have(to_run) + " no result yet?";
+    const std::string question = app.batch_question(app.batch_redo);
     ImGui::PushFont(nullptr, 20.0f);
     ImGui::TextWrapped("%s", question.c_str());
     ImGui::PopFont();

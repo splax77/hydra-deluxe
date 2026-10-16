@@ -538,7 +538,7 @@ TEST_CASE("the window's Cancel stops the report's own batch, and no report follo
 }
 
 // The user's answer 8: more than kReportConfirmAbove rows to run asks first,
-// with the normal batch confirm. The test library has kUnanalyzed to run, so
+// in the report window itself. The test library has kUnanalyzed to run, so
 // the test lowers the threshold the app reads.
 TEST_CASE("more rows to run than the threshold open the batch confirm first") {
     CHECK(AppState::kReportConfirmAbove == 500);
@@ -562,26 +562,34 @@ TEST_CASE("more rows to run than the threshold open the batch confirm first") {
     app->close_path_report();
     app->batch_job.reset();  // the finished strip's X
 
-    // Over it, the confirm opens on the same plan and nothing runs yet.
+    // Over it, the report window asks on the same plan and nothing runs yet.
+    // The question is the report's own: the main window's popup stays shut.
     app->report_confirm_above = kUnanalyzed - 1;
     app->show_path_report();
-    CHECK(app->batch_confirm_pending);
     CHECK(app->batch_job == nullptr);
     CHECK(app->batch_plan.todo_rows() == kUnanalyzed);
     CHECK(app->path_report_awaits_confirm());
-    CHECK(hydra::ui::path_report_input(*app).awaits_confirm);
+    CHECK_FALSE(app->batch_confirm_in_main_window());
     CHECK(app->path_report_build() == ReportBuild::Building);
+    {
+        const hydra::ui::PathReportInput asking = hydra::ui::path_report_input(*app);
+        CHECK(asking.confirm_question == "Analyze 5 charts that have no result yet?");
+        CHECK(asking.confirm_question == app->batch_question(false));
+        CHECK(asking.can_analyze);
+    }
 
-    // Its Start runs the batch, which the report then waits on.
+    // Its Analyze runs the batch, which the report then waits on.
     release = false;
     {
         const ScopedHook seam(hydra::ui::set_app_batch_analyzer_for_test,
                               held_failing_analyzer(release), 1);
-        app->start_batch(app->batch_redo);
+        hydra::ui::path_report_input(*app).callbacks.analyze();
     }
     REQUIRE(app->batch_job != nullptr);
-    app->update_background_jobs();
+    CHECK_FALSE(app->path_report_awaits_confirm());
+    CHECK_FALSE(app->batch_confirm_pending);
     CHECK(app->path_report_batch() == app->batch_job.get());
+    CHECK(hydra::ui::path_report_input(*app).confirm_question.empty());
     release = true;
     wait_batch_finished(*app);
     app->update_background_jobs();
@@ -590,14 +598,30 @@ TEST_CASE("more rows to run than the threshold open the batch confirm first") {
     app->close_path_report();
     app->batch_job.reset();
 
-    // Its Cancel leaves the report to list what is stored.
+    // Its Cancel is "don't analyze": nothing runs, and the report builds from
+    // the results already stored rather than ending cancelled.
     app->show_path_report();
-    REQUIRE(app->batch_confirm_pending);
-    app->close_batch_confirm();
+    REQUIRE(app->path_report_awaits_confirm());
+    hydra::ui::path_report_input(*app).callbacks.cancel();
+    CHECK_FALSE(app->batch_confirm_pending);
+    CHECK_FALSE(app->path_report_awaits_confirm());
+    CHECK(app->report_job != nullptr);
     app->update_background_jobs();
     CHECK(app->batch_job == nullptr);
     finish_path_report(*app);
     CHECK(app->path_report_build() == ReportBuild::Ready);
+    app->close_path_report();
+
+    // Closing the window while it asks drops the question: nothing runs and
+    // no popup takes it up in the main window.
+    app->show_path_report();
+    REQUIRE(app->path_report_awaits_confirm());
+    app->close_path_report();
+    app->update_background_jobs();
+    CHECK_FALSE(app->batch_confirm_pending);
+    CHECK_FALSE(app->batch_confirm_in_main_window());
+    CHECK(app->batch_job == nullptr);
+    CHECK(app->path_report_build() == ReportBuild::None);
 }
 
 TEST_CASE("a batch already running is waited on, and its finish builds the report") {

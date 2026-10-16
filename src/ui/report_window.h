@@ -43,6 +43,8 @@ struct ReportCallbacks {
     std::function<void(size_t row)> row_click;
     std::function<void()> refresh;
     std::function<void()> cancel;
+    // The path report's Analyze, while its window asks whether to analyze.
+    std::function<void()> analyze;
     std::function<void()> try_again;
     // The comparison's "Compare another player..." (both its header and its
     // failed state).
@@ -81,8 +83,13 @@ struct ReportWindowInput {
         int total = 0;          // BatchJob::Snapshot::total
     };
     std::optional<WaitedBatch> batch;
-    // The path report only: its build waits for the batch confirm's answer.
-    bool awaits_confirm = false;
+    // The path report only: its build waits for the user to answer whether
+    // to analyze (AppState::path_report_awaits_confirm). The question is
+    // AppState::batch_question's; empty when the window asks nothing.
+    std::string confirm_question;
+    // Whether the question's Analyze can start the batch now
+    // (AppState::can_analyze).
+    bool can_analyze = false;
     // A failed build's message and error, as the job gives them.
     std::string failure_message;
     std::string failure_error;
@@ -151,6 +158,10 @@ struct Frame {
     bool progress_bar = true;
     // Building: grey rows where the table will be (mock board 2a).
     bool placeholder_rows = false;
+    // Building: an Analyze button beside Cancel (the path report's
+    // question), greyed unless analyze_enabled.
+    bool analyze_button = false;
+    bool analyze_enabled = false;
     // Never built: why no build can start (empty: the header alone). The
     // sentence's owner is app::kAnalysisOffSentence (app/user_messages.h); the error is
     // AppState::rules_error.
