@@ -292,7 +292,7 @@ inline int64_t fill_start_tick(int64_t chord_tick, int64_t activation_length) {
     return chord_tick - activation_length;
 }
 
-// ---- the early-fill window ----------------------------------------------
+// ---- the early-fill rule -------------------------------------------------
 // Clone Hero's early-fill rule and the E0, stated once around
 // kEarlyFillReachMs and kEarlyFillSlackMs. A fill spawns only when SP was
 // ready by the fill's deadline, or late by no more than the reach. The
@@ -326,7 +326,7 @@ inline bool fill_within_limit(double e_offset, int skips, double limit_ms) {
 }
 
 // Does an activation fit the all-0 rule (D102)? It passed over no fill, or
-// exactly one that was its early fill (inside the window: an E1). A player
+// exactly one that was its early fill (is_e0 holds for it: an E1). A player
 // whose SP comes ready a little later never sees that early fill and
 // activates on the next fill, so they skipped nothing. `e_offset` is the
 // activation's own (Activation::e_offset): with one fill passed over, it

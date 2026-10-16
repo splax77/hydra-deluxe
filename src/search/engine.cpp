@@ -790,9 +790,9 @@ void Engine::index_fills() {
 // path under kSpActivationBars: its ready time is not set yet.
 // `passable`, when given, gets the count of upcoming fills the path could
 // pass over and still be all-0 (allzero_activation, D102). While it has
-// passed none those are the fills inside the early-fill window, so the same
-// cut-off argument holds (a later ready time is inside the window at every
-// fill an earlier one is); once it has passed one there are none. Only the
+// passed none those are the fills for which is_e0 holds, so the same cut-off
+// argument holds (a later ready time makes is_e0 true at every fill an
+// earlier one does); once it has passed one there are none. Only the
 // all-0 pass asks for it (no_skips_ in the group key).
 uint64_t Engine::ready_class(const Path& p, uint64_t* passable) const {
     if (passable) *passable = 0;
@@ -801,7 +801,7 @@ uint64_t Engine::ready_class(const Path& p, uint64_t* passable) const {
     for (size_t k = (size_t)next_fill_[(size_t)p.node]; k < fill_deadline_.size(); ++k) {
         // Every deadline from here on is at least this one. When even this
         // one leaves too much slack for an E0, none is an E0, and none
-        // refuses (a fill that refuses is always inside the E0 window).
+        // refuses (is_e0 holds for every fill that refuses).
         if (!is_e0(fill_e_offset(fill_min_deadline_[k], p.sp_ready_ms), 0)) break;
         const double e_offset = fill_e_offset(fill_deadline_[k], p.sp_ready_ms);
         if (fill_refuses(e_offset)) ++refused;

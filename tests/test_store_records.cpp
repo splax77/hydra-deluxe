@@ -578,8 +578,8 @@ TEST_CASE("store: every accepted results stamp reads Ready, others Stale") {
     // 2.0.0) or "1.8.3" hold values the SP-end history changed (ADR 0021),
     // earlier 2.1.0 builds' "2.1.0" can miss the all-0 path (D85),
     // "2.1.0+allzero" predates the 2x kick merge (D105), "2.4.0" predates
-    // the measure-line fills and Star Power count (D115), and "2.8.0" can
-    // miss early fills the search used to refuse (D250), so they read Stale,
+    // the measure-line fills and Star Power count (D115), and "2.8.0"
+    // predates kEarlyFillReachMs (D250), so they read Stale,
     // through lookup and the skip list it backs (ready_song_ids).
     CHECK(kResultsStamp.is_current("2.8.0+efill85"));
     CHECK_FALSE(kResultsStamp.is_current("2.8.0"));

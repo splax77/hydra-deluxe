@@ -66,11 +66,9 @@ struct StampRule {
 // "2.8.0": generated fills start on the measure line, as Clone Hero's
 // generator places them; Star Power's length follows Clone Hero's continuous
 // measure count; and the beat grid restarts at a time signature change (D115).
-// "2.8.0+efill85": a fill spawns for Star Power that comes ready up to
-// kEarlyFillReachMs after its deadline (src/core/model.h), so the search can
-// find activations it used to refuse (D250). Like "2.1.0+allzero", it is a
-// second bump inside an unshipped release, and the user chose that every
-// saved result reads Stale.
+// "2.8.0+efill85": the search takes an activation whose Star Power comes
+// ready up to kEarlyFillReachMs after the fill's deadline (src/core/model.h).
+// D250 accepted that every saved result reads Stale.
 inline constexpr StampRule<std::string_view, 1> kResultsStamp{"2.8.0+efill85", {"2.8.0+efill85"}};
 
 // ---- Scanned chart facts (the charts table) --------------------------------

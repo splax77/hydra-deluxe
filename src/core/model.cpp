@@ -473,7 +473,8 @@ std::string MultSqueeze::howto(bool pro) const {
 
 // ---- Activation ---------------------------------------------------------
 
-// Inside the early-fill window, skipped fills or not: is_e0 with none skipped.
+// The early fill is E0-grade (is_e0 reads kEarlyFillSlackMs), skipped fills or
+// not: is_e0 with none skipped.
 bool Activation::is_e_critical() const { return is_e0(e_offset, 0); }
 
 bool Activation::is_E0() const { return is_e0(e_offset, skips()); }
