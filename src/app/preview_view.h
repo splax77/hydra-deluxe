@@ -252,12 +252,31 @@ struct PreviewScore {
     StarCutoffs cutoffs;
 };
 
+// One solo section's notes, as the solo box counts them. Path-free: a Hydra
+// path hits every note, so the notes hit at a moment are those of the chords
+// struck by then (struck_at).
+struct PreviewSoloNotes {
+    // One of the solo's chords: its onset, and the solo's notes hit once it
+    // is struck, this chord's included. A chord's notes are the ones
+    // solo_bonus (core/scoring.h) pays for.
+    struct Step {
+        double ms = 0.0;
+        int notes_hit = 0;
+    };
+    std::vector<Step> steps;  // in time order, never empty
+    int notes = 0;            // the solo's note total: the last step's notes_hit
+    int64_t bonus = 0;        // solo_bonus summed over the solo's chords
+};
+
 // The whole chart as the Preview draws it. Notes are in tick order. Spans are
 // in start order and do not overlap within their own list.
 struct PreviewScene {
     std::vector<PreviewNote> notes;
     std::vector<PreviewSpan> sp_phrases;    // from the song's SP-phrase flags
     std::vector<PreviewSpan> solos;         // from the song's solo sections
+    // The same solo sections' notes, for the solo box: one entry per entry
+    // of `solos`, in the same order.
+    std::vector<PreviewSoloNotes> solo_notes;
     std::vector<PreviewDrumLane> drum_lanes;  // from the song's drum lanes
     std::vector<PreviewFill> fills;         // candidate activation-fill windows
     std::vector<PreviewActivation> activations;  // overlay: the path's activations
@@ -390,6 +409,43 @@ struct PreviewDrainBox {
 
 PreviewDrainBox build_drain_box(const PreviewScene& scene, double now_ms, double length_ms);
 
+// How long Clone Hero's solo box shows each result after a solo's last note:
+// first the end message, then the bonus, then the box hides. Both read the
+// game's own code.
+inline constexpr double kSoloResultMs = 1500.0;
+inline constexpr double kSoloTailMs = 2.0 * kSoloResultMs;
+
+// The percent of a solo's notes the game's box shows with `hit` of `total`
+// notes hit: the game's own sum, done in 32-bit float and truncated, so it
+// can read one below the exact percent (53 of 100 shows 52). 0 when `total`
+// is 0.
+int solo_percent(int hit, int total);
+
+// The solo box the Preview draws right of the highway, at the moment the
+// time box shows for `now_ms` and `length_ms` (shown_ms). It follows the
+// solo whose first chord was struck last (struck_at), so a solo that starts
+// while the one before still shows its result takes over. From its first
+// chord until its last, `headline` is solo_percent of the notes hit so far
+// ("85%") and `detail` is "102 / 120 notes". Once the last chord is struck
+// the solo is over: `headline` is "Perfect Solo!" for kSoloResultMs, since a
+// Hydra path hits every note, then the bonus ("+12,000") for kSoloResultMs,
+// with `detail` empty. Then the box hides until the next solo. Every moment
+// is timed off the chords' onsets, so scrubbing shows what playback shows.
+// Works with or without a path.
+struct PreviewSoloBox {
+    bool shown = false;
+    std::string headline;
+    std::string detail;
+};
+
+PreviewSoloBox build_solo_box(const PreviewScene& scene, double now_ms, double length_ms);
+
+// The boxes the scene's solos show at their widest: for each solo, the box
+// on its first chord, on its last chord before the end (the most digits),
+// its end message and its bonus. The panel reserves the largest of them so
+// the overlay's scale holds still through a solo.
+std::vector<PreviewSoloBox> build_solo_box_samples(const PreviewScene& scene);
+
 // The playhead `delta_ticks` chart ticks from `now_ms`, for the Preview's
 // tick-step buttons. It starts from the tick build_time_box shows for the
 // same `now_ms` and `length_ms` (one shared helper computes that moment), so
@@ -514,7 +570,7 @@ PreviewScene build_preview_scene(const Song& song, const Path* path,
 // apply_preview_overlay(build_preview_base(song), song, path, cap, rules).
 //
 // The base reads the song alone. It owns these fields: notes, sp_phrases,
-// solos, drum_lanes, the fill windows (each fills[i].span), beats, tempos,
+// solos, solo_notes, drum_lanes, the fill windows (each fills[i].span), beats, tempos,
 // sections, measure_spans, timing, song_length_ms and has_notes.
 // Every fill in a base reads Hidden, the field's default.
 //

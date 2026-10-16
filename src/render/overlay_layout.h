@@ -58,6 +58,10 @@ struct OverlayHeights {
     float drain_h = 0.0f;
     float gap = 0.0f;         // between two boxes in one column
     float top_margin = 0.0f;  // from the image's top edge to the right column
+    // The height the next-activation box reserves (0 when the path has no
+    // activation), which the solo box keeps clear of.
+    float next_h = 0.0f;
+    float mid_row = 0.0f;  // the image's middle row
 };
 
 // Where each text box's top edge sits, in image pixels from the image's top
@@ -68,11 +72,14 @@ struct OverlayTops {
     float left_bottom = 0.0f;
     float drain = 0.0f;
     float next = 0.0f;
+    float solo = 0.0f;
 };
 
 // The one stacking order of the Preview's text boxes. The fit pass (at scale
 // 1) and the draw pass (at the fitted scale) both read it, so a box is never
-// fitted in one place and drawn in another.
+// fitted in one place and drawn in another. The solo box is in the right
+// column too, below the image's middle row as the game's sits, and lower
+// still when the next-activation box reaches past that row.
 OverlayTops overlay_tops(const OverlayHeights& sizes, bool drain_drawn, bool score_shown);
 
 // One line of a Preview text box. A Text line is `text` at font size `size`
@@ -128,6 +135,9 @@ struct OverlayBoxes {
     float next_w = 0.0f;      // the next-activation box
     float next_h = 0.0f;
     float next_top = 0.0f;    //   y of its top edge
+    float solo_w = 0.0f;      // the solo box
+    float solo_h = 0.0f;
+    float solo_top = 0.0f;    //   y of its top edge
     float gap = 0.0f;         // clearance kept from the highway's edge
 };
 

@@ -57,6 +57,35 @@ PreviewDrainBox drain_box_at(const PreviewScene& sc, double now_ms) {
 PreviewNextActBox next_act_box_at(const PreviewScene& sc, double now_ms, bool pro_drums) {
     return build_next_act_box(sc, now_ms, kNoPlaybackEnd, pro_drums);
 }
+PreviewSoloBox solo_box_at(const PreviewScene& sc, double now_ms) {
+    return build_solo_box(sc, now_ms, kNoPlaybackEnd);
+}
+
+// Two solos close together on a 120 BPM grid at 480 ticks a beat (tick t is
+// t*500/480 ms): a chord every 240 ticks from tick 0 to 2400, each a Red, with
+// a Kick added on every third chord (ticks 0, 720, 1440, 2160) so a chord's
+// notes and the chords differ. The first solo is the chords at ticks 480, 720
+// and 960 (500, 750 and 1000 ms: 1 + 2 + 1 notes); the second the chords at
+// 1440, 1680 and 1920 (1500, 1750 and 2000 ms: 2 + 1 + 1 notes). The second
+// starts 500 ms after the first ends, inside its results.
+Song two_solo_song() {
+    Song song(480);
+    song.bpm_changes[0] = 120.0;
+    song.build_timing();
+    for (int64_t t = 0; t <= 2400; t += 240) {
+        Chord c;
+        c.add_note(NoteColor::Red);
+        if ((t / 240) % 3 == 0) c.add_note(NoteColor::Kick);
+        SongTimestamp ts;
+        ts.timecode = song.timecode(t);
+        ts.chord = std::move(c);
+        ts.flag_solo = (t >= 480 && t <= 960) || (t >= 1440 && t <= 1920);
+        song.sequence.push_back(std::move(ts));
+    }
+    // Sequence positions 2..4 and 6..8, as find_solo_sections would build them.
+    song.solo_sections = {{2, 4}, {6, 8}};
+    return song;
+}
 
 // A time signature written into a chart: from `tick`, numerator/denominator.
 struct SigAt {
@@ -672,6 +701,138 @@ TEST_CASE("drain box: an activation with no stored end stays idle") {
     CHECK(box.shown);
     CHECK_FALSE(box.active);
     CHECK(box.detail.rfind("full meter ", 0) == 0);
+}
+
+TEST_CASE("solo_percent: the game's float32 truncation") {
+    // 53 / 100 in float is just under 0.53, and times 100 just under 53, so
+    // the game shows 52 where whole-number math gives 53.
+    CHECK(solo_percent(53, 100) == 52);
+    CHECK(solo_percent(0, 120) == 0);
+    CHECK(solo_percent(102, 120) == 85);
+    CHECK(solo_percent(1, 3) == 33);
+    CHECK(solo_percent(120, 120) == 100);
+    CHECK(solo_percent(0, 0) == 0);
+}
+
+TEST_CASE("solo box: from before the solo to its bonus, timed off the last chord") {
+    // Hand song: the solo is the one-note chords at 250 and 500 ms.
+    Song song = make_hand_song();
+    Path path = priced_path(song, {});
+    REQUIRE(path.score_solo == 200);
+    const PreviewScene scene = build_preview_scene(song, &path);
+
+    // Before the first chord: hidden.
+    CHECK_FALSE(solo_box_at(scene, 249.9).shown);
+
+    // On the first chord and between the two: one of two notes hit.
+    for (double t : {250.0, 400.0}) {
+        const PreviewSoloBox b = solo_box_at(scene, t);
+        CHECK(b.shown);
+        CHECK(b.headline == "50%");
+        CHECK(b.detail == "1 / 2 notes");
+    }
+
+    // On the last chord the solo is over: the end message, no count.
+    const PreviewSoloBox end = solo_box_at(scene, 500.0);
+    CHECK(end.shown);
+    CHECK(end.headline == "Perfect Solo!");
+    CHECK(end.detail.empty());
+    CHECK(solo_box_at(scene, 500.0 + kSoloResultMs - 0.1).headline == "Perfect Solo!");
+
+    // kSoloResultMs later: the bonus.
+    const PreviewSoloBox bonus = solo_box_at(scene, 500.0 + kSoloResultMs);
+    CHECK(bonus.shown);
+    CHECK(bonus.headline == "+200");
+    CHECK(bonus.detail.empty());
+    CHECK(solo_box_at(scene, 500.0 + kSoloTailMs - 0.1).headline == "+200");
+
+    // kSoloTailMs after the last chord: hidden.
+    CHECK_FALSE(solo_box_at(scene, 500.0 + kSoloTailMs).shown);
+}
+
+TEST_CASE("solo box: the count is notes, the bonus thousands-grouped") {
+    const Song song = two_solo_song();
+    const PreviewScene scene = build_preview_scene(song, nullptr);
+    REQUIRE(scene.solo_notes.size() == 2);
+    CHECK(scene.solo_notes[0].notes == 4);
+    CHECK(scene.solo_notes[1].notes == 4);
+
+    // The first solo's middle chord has two notes: three of four hit.
+    const PreviewSoloBox mid = solo_box_at(scene, 750.0);
+    CHECK(mid.headline == "75%");
+    CHECK(mid.detail == "3 / 4 notes");
+    CHECK(solo_box_at(scene, 500.0).headline == "25%");
+    CHECK(solo_box_at(scene, 500.0).detail == "1 / 4 notes");
+}
+
+TEST_CASE("solo box: a solo that starts during the last one's results takes over") {
+    const Song song = two_solo_song();
+    const PreviewScene scene = build_preview_scene(song, nullptr);
+
+    // The first solo ends at 1000 ms; just before the second starts, its
+    // end message still shows.
+    CHECK(solo_box_at(scene, 1499.9).headline == "Perfect Solo!");
+    // The second solo's first chord (1500 ms, two notes): the new solo wins.
+    const PreviewSoloBox next = solo_box_at(scene, 1500.0);
+    CHECK(next.headline == "50%");
+    CHECK(next.detail == "2 / 4 notes");
+    // It ends at 2000 ms and runs its own results; the first solo's would
+    // have ended at 4000 ms.
+    CHECK(solo_box_at(scene, 2000.0).headline == "Perfect Solo!");
+    CHECK(solo_box_at(scene, 2000.0 + kSoloResultMs).headline == "+400");
+    CHECK_FALSE(solo_box_at(scene, 2000.0 + kSoloTailMs).shown);
+}
+
+TEST_CASE("solo box: the same with or without a path") {
+    const Song song = two_solo_song();
+    const Path path = priced_path(song, {});
+    // Both solos' bonuses together are the path's solo score.
+    CHECK(path.score_solo == 800);
+    const PreviewScene bare = build_preview_scene(song, nullptr);
+    const PreviewScene with_path = build_preview_scene(song, &path);
+    for (double t : {0.0, 500.0, 750.0, 1000.0, 1500.0, 2000.0, 3500.0, 5000.0}) {
+        const PreviewSoloBox a = solo_box_at(bare, t);
+        const PreviewSoloBox b = solo_box_at(with_path, t);
+        CHECK(a.shown == b.shown);
+        CHECK(a.headline == b.headline);
+        CHECK(a.detail == b.detail);
+    }
+}
+
+TEST_CASE("solo box: a bonus over a thousand has a separator; none without solos") {
+    PreviewScene scene;
+    PreviewSoloNotes s;
+    s.steps = {{100.0, 60}, {200.0, 120}};
+    s.notes = 120;
+    s.bonus = 12000;
+    scene.solo_notes.push_back(s);
+    CHECK(solo_box_at(scene, 100.0).detail == "60 / 120 notes");
+    CHECK(solo_box_at(scene, 200.0 + kSoloResultMs).headline == "+12,000");
+
+    CHECK_FALSE(solo_box_at(build_preview_scene(make_fill_song(), nullptr), 600.0).shown);
+}
+
+TEST_CASE("solo box: past the length it reads the moment the time box shows") {
+    // Playback ends on the hand song's last solo chord: the playhead held
+    // there shows the end message, not the hidden box 4 s past it.
+    const PreviewScene scene = build_preview_scene(make_hand_song(), nullptr);
+    CHECK(build_solo_box(scene, 4500.0, /*length_ms=*/500.0).headline == "Perfect Solo!");
+    CHECK_FALSE(build_solo_box(scene, 4500.0, kNoPlaybackEnd).shown);
+}
+
+TEST_CASE("solo box samples: each solo's widest boxes") {
+    const PreviewScene scene = build_preview_scene(two_solo_song(), nullptr);
+    const std::vector<PreviewSoloBox> samples = build_solo_box_samples(scene);
+    // Per solo: the first chord, the last before the end, the end message
+    // and the bonus.
+    REQUIRE(samples.size() == 8);
+    CHECK(samples[0].headline == "25%");
+    CHECK(samples[1].headline == "75%");
+    CHECK(samples[1].detail == "3 / 4 notes");
+    CHECK(samples[2].headline == "Perfect Solo!");
+    CHECK(samples[3].headline == "+400");
+    CHECK(samples[4].headline == "50%");
+    for (const PreviewSoloBox& b : samples) CHECK(b.shown);
 }
 
 TEST_CASE("scrub marks: each activation's onset over the scrubber's length") {

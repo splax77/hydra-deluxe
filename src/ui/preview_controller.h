@@ -250,6 +250,14 @@ public:
     // Built once per scene, then cached, like scrub_marks().
     const std::vector<hydra::app::PreviewNextActBox>& next_act_boxes() const;
 
+    // The solo box the panel draws right of the highway (app::build_solo_box).
+    hydra::app::PreviewSoloBox solo_box() const;
+
+    // The scene's solo boxes at their widest (app::build_solo_box_samples),
+    // which the panel reserves room for. Built once per scene, then cached,
+    // like next_act_boxes().
+    const std::vector<hydra::app::PreviewSoloBox>& solo_boxes() const;
+
     // The number under the SP gauge, "2.5/4" (app::sp_meter_readout).
     std::string sp_meter_readout() const;
 
@@ -281,8 +289,8 @@ public:
 
 private:
     // What the panel reads every frame but only changes with the scene:
-    // the scrub marks (which also move with the song length) and the
-    // next-activation boxes. Every change to scene_ sets scene_dirty_, and
+    // the scrub marks (which also move with the song length), the
+    // next-activation boxes and the solo boxes. Every change to scene_ sets scene_dirty_, and
     // render() is the one place that clears it, counting a new scene
     // generation as it does. So a cache is good only if it was built while
     // the flag was clear and in the current generation. One built while the
@@ -306,6 +314,8 @@ private:
     mutable std::vector<double> scrub_marks_;
     mutable SceneCache next_act_boxes_cache_;
     mutable std::vector<hydra::app::PreviewNextActBox> next_act_boxes_;
+    mutable SceneCache solo_boxes_cache_;
+    mutable std::vector<hydra::app::PreviewSoloBox> solo_boxes_;
 
     float overlay_scale_ = 1.0f;
     ID3D11Device* device_;

@@ -143,6 +143,27 @@ TEST_CASE("build_preview_scene: solo spans come from the song's solo sections") 
     song.solo_sections.clear();
     PreviewScene none = build_preview_scene(song, nullptr);
     CHECK(none.solos.empty());
+    CHECK(none.solo_notes.empty());
+}
+
+TEST_CASE("build_preview_scene: each solo's notes for the solo box, path-free") {
+    // Hand song: the solo is the one-note chords at 250 and 500 ms.
+    Song song = make_hand_song();
+    PreviewScene scene = build_preview_scene(song, nullptr);
+    REQUIRE(scene.solo_notes.size() == 1);
+    const PreviewSoloNotes& s = scene.solo_notes[0];
+    REQUIRE(s.steps.size() == 2);
+    CHECK(s.steps[0].ms == doctest::Approx(250.0));
+    CHECK(s.steps[0].notes_hit == 1);
+    CHECK(s.steps[1].ms == doctest::Approx(500.0));
+    CHECK(s.steps[1].notes_hit == 2);
+    CHECK(s.notes == 2);
+    // The bonus is the path's own solo score (Path::score_solo, priced by the
+    // replay), with or without a path in the scene.
+    Path path = priced_path(song, {});
+    CHECK(s.bonus == path.score_solo);
+    CHECK(s.bonus == 200);
+    CHECK(build_preview_scene(song, &path).solo_notes[0].bonus == s.bonus);
 }
 
 TEST_CASE("build_preview_scene: drum lanes come from the song's drum lanes") {
@@ -461,6 +482,17 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
         return "notes";
     if (!spans_eq(a.sp_phrases, b.sp_phrases)) return "sp_phrases";
     if (!spans_eq(a.solos, b.solos)) return "solos";
+    if (!std::equal(a.solo_notes.begin(), a.solo_notes.end(), b.solo_notes.begin(),
+                    b.solo_notes.end(), [](const PreviewSoloNotes& x, const PreviewSoloNotes& y) {
+                        return x.notes == y.notes && x.bonus == y.bonus &&
+                               std::equal(x.steps.begin(), x.steps.end(), y.steps.begin(),
+                                          y.steps.end(),
+                                          [](const PreviewSoloNotes::Step& p,
+                                             const PreviewSoloNotes::Step& q) {
+                                              return p.ms == q.ms && p.notes_hit == q.notes_hit;
+                                          });
+                    }))
+        return "solo_notes";
     if (!std::equal(a.drum_lanes.begin(), a.drum_lanes.end(), b.drum_lanes.begin(),
                     b.drum_lanes.end(), [&](const PreviewDrumLane& x, const PreviewDrumLane& y) {
                         return span_eq(x.span, y.span) && x.pads == y.pads;

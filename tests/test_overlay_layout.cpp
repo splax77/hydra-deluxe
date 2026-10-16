@@ -157,6 +157,55 @@ TEST_CASE("overlay_tops: score under time, next under drain or in its place") {
     CHECK(bare.next == 10.0f);
 }
 
+TEST_CASE("overlay_tops: the solo box from the middle row, under the next box's reserve") {
+    // The same boxes in a 390 px image: the middle row is 195.
+    OverlayHeights s{70.0f, 90.0f, 70.0f, 6.0f, 10.0f};
+    s.mid_row = 195.0f;
+    // A 90 px next-activation box ends at 176, above the middle: the solo
+    // box starts on the middle row.
+    s.next_h = 90.0f;
+    CHECK(overlay_tops(s, true, true).solo == 195.0f);
+    // A 150 px one reaches past it: the solo box goes under it, a gap below.
+    s.next_h = 150.0f;
+    CHECK(overlay_tops(s, true, true).solo == 242.0f);
+    // No next-activation box and a middle row above the right column's
+    // start: the solo box starts where the next box would.
+    s.next_h = 0.0f;
+    s.mid_row = 5.0f;
+    CHECK(overlay_tops(s, false, true).solo == 10.0f);
+    CHECK(overlay_tops(s, true, true).solo == 86.0f);
+}
+
+TEST_CASE("overlay_scale: the solo box shrinks the boxes with the rest") {
+    PreviewConfig cfg = shipped_preview_config();
+    const int h = 390;
+    auto boxes = [](int w) {
+        OverlayBoxes b;
+        b.right_edge = static_cast<float>(w) - 30.0f;
+        b.right_w = 200.0f;
+        b.right_h = 70.0f;
+        b.right_top = 10.0f;
+        b.solo_w = 230.0f;
+        b.solo_h = 80.0f;
+        b.solo_top = 195.0f;
+        b.gap = 6.0f;
+        return b;
+    };
+    // Lower down the highway is wider, so the solo box limits the scale at
+    // some width, and wherever the scale is partial it clears the highway.
+    bool saw_solo_limit = false;
+    for (int w = 150; w <= 1600; w += 10) {
+        OverlayBoxes b = boxes(w);
+        const float s = overlay_scale(cfg, w, h, b);
+        if (s > kOverlayMinScale && s < 1.0f)
+            CHECK(b.solo_w * s <=
+                  right_room(cfg, w, h, b.right_edge, b.solo_top + b.solo_h, b.gap) + 0.01f);
+        b.solo_w = 0.0f;
+        if (overlay_scale(cfg, w, h, b) > s) saw_solo_limit = true;
+    }
+    CHECK(saw_solo_limit);
+}
+
 namespace {
 // 10 px per character (not per byte), "…" included: a fixed-pitch stand-in
 // for the monospace font the path picker draws with.

@@ -1072,12 +1072,12 @@
         },
         {
           "file": "src/ui/preview_tab.cpp",
-          "line_text": "s.score_size = score.available ? s.size * 1.8f : s.size;",
+          "line_text": "s.big_size = s.size * 1.8f;",
           "why": "overlay_box_sizes, the owner"
         },
         {
           "file": "src/ui/preview_tab.cpp",
-          "line_text": "s.score_line_h = s.score_size * 1.2f;",
+          "line_text": "auto big_line = [](float sz) { return sz * 1.2f; };",
           "why": "overlay_box_sizes, the owner"
         }
       ],

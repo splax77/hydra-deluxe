@@ -310,6 +310,8 @@ struct OverlayTextBoxes : render::OverlayHeights {
     float line_h = 0.0f;  // line_height(size)
     float score_size = 0.0f;    // the running score's text size
     float score_line_h = 0.0f;  // the running score's line
+    float big_size = 0.0f;      // the large type: the running score, the solo box's first line
+    float big_line_h = 0.0f;    // a line of it
     render::TextBox time, score, drain;
     float time_w = 0.0f;
     float score_w = 0.0f;
@@ -340,8 +342,12 @@ OverlayTextBoxes overlay_box_sizes(float scale, const render::PreviewConfig& cfg
     // "x<mult> · combo <n>" and "star <n> in <points>" in light grey, each one
     // line at the time box's size. "Score unavailable" is at the time box's
     // size too and has no stars.
-    s.score_size = score.available ? s.size * 1.8f : s.size;
-    s.score_line_h = s.score_size * 1.2f;
+    // The large type, which the solo box's first line uses too.
+    auto big_line = [](float sz) { return sz * 1.2f; };
+    s.big_size = s.size * 1.8f;
+    s.big_line_h = big_line(s.big_size);
+    s.score_size = score.available ? s.big_size : s.size;
+    s.score_line_h = big_line(s.score_size);
     s.score.lines.push_back(text_line(text_width, score.score, s.score_size, white, s.score_line_h));
     if (score.available) {
         render::BoxLine stars;
@@ -606,8 +612,9 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
                      ImVec2(static_cast<float>(w), static_cast<float>(h)));
 
         // The text overlays: the time box and score box top-left, the SP drain
-        // box top-right beside the gauge, and the next-activation box under
-        // the drain box (D111 item 3). They share one scale, fitted by
+        // box top-right beside the gauge, the next-activation box under
+        // the drain box (D111 item 3), and the solo box lower in that column
+        // during a solo. They share one scale, fitted by
         // render::overlay_scale so they sit beside the highway: their
         // configured size whenever there is room, smaller in a narrow window,
         // never below kOverlayMinScale (under that they overlap rather than
@@ -651,14 +658,18 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         // Scale-1 sizes, and the extents the fit needs (image pixels).
         // Every box's top, from render::overlay_tops, at the sizes' scale.
         // The right column starts at the gauge's margin, which is not scaled.
-        auto tops_at = [&](const OverlayTextBoxes& s) {
+        // `next_h` is the height the next-activation box reserves at the
+        // sizes' scale; only the solo box's top reads it.
+        auto tops_at = [&](const OverlayTextBoxes& s, float next_h) {
             render::OverlayHeights heights = s;
             heights.top_margin = v_margin;
+            heights.next_h = next_h;
+            heights.mid_row = static_cast<float>(h) * 0.5f;
             return render::overlay_tops(heights, drain_drawn, score.shown);
         };
         const OverlayTextBoxes sz1 =
             overlay_box_sizes(1.0f, pcfg, lines, line_count, score, drain, text_width);
-        const render::OverlayTops tops1 = tops_at(sz1);
+        const render::OverlayTops tops1 = tops_at(sz1, 0.0f);
         render::OverlayBoxes fit;
         fit.left_w = score.shown ? std::max(sz1.time_w, sz1.score_w) : sz1.time_w;
         fit.left_h = tops1.left_bottom;
@@ -671,7 +682,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
             fit.right_h = sz1.drain_h;
             fit.right_top = tops1.drain;
         }
-        auto next_top_at = [&](const OverlayTextBoxes& s) { return tops_at(s).next; };
+        auto next_top_at = [&](const OverlayTextBoxes& s) { return tops_at(s, 0.0f).next; };
         // Its lines: the header, the notation in larger type, then where it
         // is and its chord. The header's count ("2 of 3") stays on one line,
         // and the notation never breaks.
@@ -720,13 +731,35 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
             fit.next_h = std::max(fit.next_h, e.h);
         }
         fit.next_top = tops1.next;
+        // The solo box: its percent or result in the running score's large
+        // type, then the notes hit so far at the time box's size, both white.
+        // Like the next-activation box, the scale reserves the largest box
+        // any of the chart's solos shows, so it holds still through a solo.
+        const hydra::app::PreviewSoloBox solo = pc->solo_box();
+        auto solo_box = [&](const hydra::app::PreviewSoloBox& b, const OverlayTextBoxes& s) {
+            const ImU32 white = IM_COL32(255, 255, 255, 255);
+            render::TextBox box;
+            box.lines.push_back(text_line(text_width, b.headline, s.big_size, white, s.big_line_h));
+            if (!b.detail.empty())
+                box.lines.push_back(text_line(text_width, b.detail, s.size, white, s.line_h));
+            return box;
+        };
+        for (const hydra::app::PreviewSoloBox& b : pc->solo_boxes()) {
+            const render::BoxExtent e = render::measure_text_box(solo_box(b, sz1), sz1.inset);
+            fit.solo_w = std::max(fit.solo_w, e.w);
+            fit.solo_h = std::max(fit.solo_h, e.h);
+        }
+        fit.solo_top = tops_at(sz1, fit.next_h).solo;
         fit.gap = sz1.gap;
         const float scale = render::overlay_scale(pcfg, w, h, fit);
         pc->set_overlay_scale(scale);
 
         const OverlayTextBoxes sz =
             overlay_box_sizes(scale, pcfg, lines, line_count, score, drain, text_width);
-        const render::OverlayTops tops = tops_at(sz);
+        // The next-activation box's reserve shrinks with the text: a box
+        // wrapped at a smaller scale has the same room or more, so it is never
+        // taller than this.
+        const render::OverlayTops tops = tops_at(sz, fit.next_h * scale);
         const float corner = px(6.0f) * scale;
 
         // The time box, in the image's top-left corner: its bottom-right
@@ -817,6 +850,17 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
             draw_text_box(dl, font, n_box,
                           ImVec2(origin.x + right_edge - next_w, origin.y + tops.next), sz.inset,
                           corner, ImDrawFlags_None, "##next_act_box");
+        }
+
+        // The solo box, right of the highway a little below the middle, as
+        // the game places its own, its right edge lined up with the boxes
+        // above. Every line is build_solo_box's.
+        if (solo.shown) {
+            const render::TextBox s_box = solo_box(solo, sz);
+            const float solo_w = render::measure_text_box(s_box, sz.inset).w;
+            draw_text_box(dl, font, s_box,
+                          ImVec2(origin.x + right_edge - solo_w, origin.y + tops.solo), sz.inset,
+                          corner, ImDrawFlags_None, "##solo_box");
         }
     }
 

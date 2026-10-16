@@ -477,6 +477,18 @@ const std::vector<hydra::app::PreviewNextActBox>& PreviewController::next_act_bo
     return next_act_boxes_;
 }
 
+hydra::app::PreviewSoloBox PreviewController::solo_box() const {
+    return hydra::app::build_solo_box(scene_, transport_.now_ms(), playback_end_ms());
+}
+
+const std::vector<hydra::app::PreviewSoloBox>& PreviewController::solo_boxes() const {
+    if (!cache_fresh(solo_boxes_cache_)) {
+        solo_boxes_ = hydra::app::build_solo_box_samples(scene_);
+        stamp(solo_boxes_cache_);
+    }
+    return solo_boxes_;
+}
+
 std::string PreviewController::sp_meter_readout() const {
     return hydra::app::sp_meter_readout(scene_.sp_meter, transport_.now_ms());
 }

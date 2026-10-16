@@ -298,9 +298,9 @@ void test_preview_controls(ImGuiTestContext* ctx) {
 // column's gap between them. A box not on screen is left out. Returns how
 // many boxes it found.
 int check_overlay_boxes(ImGuiTestContext* ctx) {
-    const char* const ids[] = {"**/##time_box", "**/##score_box", "**/##drain_box",
-                               "**/##next_act_box", "**/##sp_gauge"};
-    enum { kTime, kScore, kDrain, kNext, kGauge, kCount };
+    const char* const ids[] = {"**/##time_box",     "**/##score_box", "**/##drain_box",
+                               "**/##next_act_box", "**/##sp_gauge",  "**/##solo_box"};
+    enum { kTime, kScore, kDrain, kNext, kGauge, kSolo, kCount };
     ImRect r[kCount];
     bool on[kCount] = {};
     int found = 0;
@@ -328,7 +328,95 @@ int check_overlay_boxes(ImGuiTestContext* ctx) {
             IM_CHECK_NO_RET(std::fabs(right_gap - left_gap) <= kSamePlace);
         }
     }
+    // The solo box in the right column: its right edge on the drain box's,
+    // below the boxes above it.
+    if (on[kSolo] && on[kDrain]) {
+        constexpr float kSamePlace = 0.01f;
+        IM_CHECK_NO_RET(std::fabs(r[kSolo].Max.x - r[kDrain].Max.x) <= kSamePlace);
+        IM_CHECK_NO_RET(r[kSolo].Min.y >= r[kDrain].Max.y);
+        if (on[kNext]) IM_CHECK_NO_RET(r[kSolo].Min.y >= r[kNext].Max.y);
+    }
     return found;
+}
+
+// The solo box on a chart with solos: the running percent and count, the end
+// message on the last note, the bonus after it, then hidden. Its values are
+// build_solo_box's, pinned by the unit tests; this checks the panel feeds it
+// the playhead, draws it where it belongs and keeps the scale still.
+void test_preview_solo_box(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    // Levitating's Expert Drums has a solo (the [ExpertDrums] "solo" event).
+    open_titled(ctx, "levitating", "Levitating (feat. DaBaby) (Dua Lipa) (L)");
+    if (ctx->IsError()) return;
+    wait_song_analyzed(ctx);
+    if (ctx->IsError()) return;
+    ctx->ItemClick("##DetailsTabs/Preview");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10));
+    auto& pc = *h.app->preview;
+    IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && pc.score_box().shown; }, 120));
+    IM_CHECK(!pc.solo_boxes().empty());
+
+    // Before anything is played: no solo yet.
+    pc.seek_ms(0.0);
+    ctx->Yield(2);
+    IM_CHECK(!pc.solo_box().shown);
+    IM_CHECK(ctx->ItemInfo("**/##solo_box", ImGuiTestOpFlags_NoError).ID == 0);
+    const float scale = pc.overlay_scale();
+
+    // Walk the playhead to the first solo, so the test needs no timing of
+    // its own: the first moment the box shows is on its first chord.
+    constexpr double kStepMs = 10.0;
+    double start_ms = -1.0;
+    for (double t = 0.0; t <= pc.scrub_end_ms() && start_ms < 0.0; t += kStepMs) {
+        pc.seek_ms(t);
+        if (pc.solo_box().shown) start_ms = t;
+    }
+    IM_CHECK(start_ms >= 0.0);
+    pc.seek_ms(start_ms);
+    const hydra::app::PreviewSoloBox first = pc.solo_box();
+    IM_CHECK(first.headline.size() >= 2 && first.headline.back() == '%');
+    IM_CHECK(first.detail.size() > 6 &&
+             first.detail.compare(first.detail.size() - 6, 6, " notes") == 0);
+    std::fprintf(stderr, "first solo at %.0f ms: %s, %s\n", start_ms, first.headline.c_str(),
+                 first.detail.c_str());
+
+    // Mid-solo: drawn in the right column, clear of the other boxes, at the
+    // scale it had before the solo.
+    ctx->Yield(2);
+    IM_CHECK(ctx->ItemInfo("**/##solo_box", ImGuiTestOpFlags_NoError).ID != 0);
+    check_overlay_boxes(ctx);
+    IM_CHECK_EQ(pc.overlay_scale(), scale);
+    IM_CHECK(screenshot(ctx, "solo-box-playing.png"));
+
+    // On to the last note: the end message.
+    double end_ms = -1.0;
+    for (double t = start_ms; t <= pc.scrub_end_ms() && end_ms < 0.0; t += kStepMs) {
+        pc.seek_ms(t);
+        if (pc.solo_box().headline == "Perfect Solo!") end_ms = t;
+    }
+    IM_CHECK(end_ms > start_ms);
+    IM_CHECK(pc.solo_box().detail.empty());
+    ctx->Yield(2);
+    check_overlay_boxes(ctx);
+    IM_CHECK(screenshot(ctx, "solo-box-perfect.png"));
+
+    // kSoloResultMs later the bonus, kSoloTailMs later nothing (the last
+    // chord is at most one step before end_ms).
+    pc.seek_ms(end_ms + hydra::app::kSoloResultMs);
+    const hydra::app::PreviewSoloBox bonus = pc.solo_box();
+    IM_CHECK(bonus.shown);
+    IM_CHECK(bonus.headline.size() >= 2 && bonus.headline[0] == '+');
+    std::fprintf(stderr, "bonus: %s\n", bonus.headline.c_str());
+    ctx->Yield(2);
+    IM_CHECK(screenshot(ctx, "solo-box-bonus.png"));
+    IM_CHECK_EQ(pc.overlay_scale(), scale);
+    pc.seek_ms(end_ms + hydra::app::kSoloTailMs);
+    const hydra::app::PreviewSoloBox after = pc.solo_box();
+    // Hidden, unless the chart's next solo has already begun.
+    IM_CHECK(!after.shown || after.headline.back() == '%');
 }
 
 // The SP drain box beside the gauge. Its values are build_drain_box's, pinned
@@ -964,6 +1052,7 @@ const std::vector<TestEntry>& preview_tests() {
         {"preview-path-overlay", test_preview_path_overlay},
         {"preview-controls", test_preview_controls},
         {"preview-drain-box", test_preview_drain_box},
+        {"preview-solo-box", test_preview_solo_box},
         {"preview-overlay-fit", test_preview_overlay_fit},
         {"preview-buttons-keys", test_preview_buttons_keys},
         {"scrub-hold", test_scrub_hold},

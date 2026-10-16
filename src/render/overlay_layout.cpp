@@ -49,13 +49,15 @@ HighwaySpan highway_span_at(const PreviewConfig& cfg, int width, int height, flo
 OverlayTops overlay_tops(const OverlayHeights& s, bool drain_drawn, bool score_shown) {
     // Left column: the time box in the corner, the score box under it.
     // Right column: the drain box at the margin, the next-activation box
-    // under it, or in its place when it is hidden.
+    // under it, or in its place when it is hidden; the solo box from the
+    // middle row down, under the space the next-activation box reserves.
     OverlayTops t;
     t.time = 0.0f;
     t.score = s.time_h + s.gap;
     t.left_bottom = score_shown ? s.time_h + (s.gap + s.score_h) : s.time_h;
     t.drain = s.top_margin;
     t.next = s.top_margin + (drain_drawn ? s.drain_h + s.gap : 0.0f);
+    t.solo = std::max(s.mid_row, s.next_h > 0.0f ? t.next + s.next_h + s.gap : t.next);
     return t;
 }
 
@@ -96,6 +98,7 @@ float overlay_scale(const PreviewConfig& cfg, int width, int height, const Overl
     };
     fit_right(boxes.right_w, boxes.right_top, boxes.right_h);
     fit_right(boxes.next_w, boxes.next_top, boxes.next_h);
+    fit_right(boxes.solo_w, boxes.solo_top, boxes.solo_h);
     return std::clamp(scale, min_scale, 1.0f);
 }
 

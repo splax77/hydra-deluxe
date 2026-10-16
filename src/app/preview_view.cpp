@@ -13,6 +13,7 @@
 #include "app/config.h"          // Settings: the sp_cap setting's floor
 #include "app/display_format.h"  // clock_str, kFactSeparator
 #include "core/replay.h"
+#include "core/scoring.h"  // solo_bonus
 
 namespace hydra::app {
 
@@ -289,10 +290,22 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
         }
     }
     // Solo spans: one per section the song names (Song::solo_sections), from
-    // its first chord to its last.
-    for (const SoloSection& s : song.solo_sections)
+    // its first chord to its last. Beside each, the notes the solo box
+    // counts and the bonus, both read off solo_bonus: a chord's notes are
+    // the ones it pays kSoloBonusPerNote for.
+    for (const SoloSection& s : song.solo_sections) {
         scene.solos.push_back(span_from_ticks(song, song.sequence[s.first].timecode.ticks(),
                                               song.sequence[s.last].timecode.ticks()));
+        PreviewSoloNotes notes;
+        for (size_t i = s.first; i <= s.last; ++i) {
+            const SongTimestamp& ts = song.sequence[i];
+            const int bonus = solo_bonus(ts.chord, ts.flag_solo);
+            notes.bonus += bonus;
+            notes.notes += bonus / kSoloBonusPerNote;
+            notes.steps.push_back({ts.timecode.ms(), notes.notes});
+        }
+        scene.solo_notes.push_back(std::move(notes));
+    }
     // Drum lanes: each one's span as the chart wrote it, lighting the pads
     // the parser chose (Song::drum_lanes; the rule is light_drum_lanes).
     for (const DrumLane& l : song.drum_lanes) {
@@ -592,6 +605,67 @@ PreviewDrainBox build_drain_box(const PreviewScene& scene, double now_ms, double
     }
     box.detail = buf;
     return box;
+}
+
+int solo_percent(int hit, int total) {
+    if (total <= 0) return 0;
+    // Each step in float, as the game does it: the quotient is rounded to
+    // float before the multiply, and the product before the truncation.
+    const float share = static_cast<float>(hit) / static_cast<float>(total);
+    const float percent = share * 100.0f;
+    return static_cast<int>(percent);
+}
+
+namespace {
+
+// One solo's box with the playhead at `now`, which is at or after the solo's
+// first chord: the running percent and count until the last chord is struck,
+// then the end message, then the bonus, then nothing.
+PreviewSoloBox solo_box_of(const PreviewSoloNotes& solo, double now) {
+    PreviewSoloBox box;
+    const double last_ms = solo.steps.back().ms;
+    if (struck_at(now, last_ms)) {
+        const double since = now - last_ms;
+        if (since >= kSoloTailMs) return box;
+        box.shown = true;
+        box.headline = since < kSoloResultMs ? "Perfect Solo!" : "+" + group_thousands(solo.bonus);
+        return box;
+    }
+    // The last chord struck at the playhead.
+    const auto it = std::partition_point(
+        solo.steps.begin(), solo.steps.end(),
+        [now](const PreviewSoloNotes::Step& s) { return struck_at(now, s.ms); });
+    const int hit = it == solo.steps.begin() ? 0 : (it - 1)->notes_hit;
+    box.shown = true;
+    box.headline = std::to_string(solo_percent(hit, solo.notes)) + "%";
+    box.detail = group_thousands(hit) + " / " + counted(solo.notes, "note", "notes");
+    return box;
+}
+
+}  // namespace
+
+PreviewSoloBox build_solo_box(const PreviewScene& scene, double now_ms, double length_ms) {
+    const double now = shown_ms(now_ms, length_ms);
+    // The solo whose first chord was struck last. Solos come in time order.
+    const std::vector<PreviewSoloNotes>& solos = scene.solo_notes;
+    const auto after = std::partition_point(
+        solos.begin(), solos.end(),
+        [now](const PreviewSoloNotes& s) { return struck_at(now, s.steps.front().ms); });
+    if (after == solos.begin()) return {};
+    return solo_box_of(*(after - 1), now);
+}
+
+std::vector<PreviewSoloBox> build_solo_box_samples(const PreviewScene& scene) {
+    std::vector<PreviewSoloBox> out;
+    for (const PreviewSoloNotes& s : scene.solo_notes) {
+        const double first_ms = s.steps.front().ms;
+        const double last_ms = s.steps.back().ms;
+        out.push_back(solo_box_of(s, first_ms));
+        if (s.steps.size() >= 2) out.push_back(solo_box_of(s, s.steps[s.steps.size() - 2].ms));
+        out.push_back(solo_box_of(s, last_ms));
+        out.push_back(solo_box_of(s, last_ms + kSoloResultMs));
+    }
+    return out;
 }
 
 double step_tick_ms(const PreviewScene& scene, double now_ms, double length_ms,
