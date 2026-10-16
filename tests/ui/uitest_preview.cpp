@@ -333,15 +333,40 @@ int check_overlay_boxes(ImGuiTestContext* ctx) {
             IM_CHECK_NO_RET(std::fabs(right_gap - left_gap) <= kSamePlace);
         }
     }
-    // The solo box in the right column: its right edge on the drain box's,
-    // below the boxes above it.
+    // The solo box on the right, never further right than the drain box's
+    // right edge, below the boxes above it. Where its left edge sits beside
+    // the highway is check_solo_hugs_highway's.
     if (on[kSolo] && on[kDrain]) {
         constexpr float kSamePlace = 0.01f;
-        IM_CHECK_NO_RET(std::fabs(r[kSolo].Max.x - r[kDrain].Max.x) <= kSamePlace);
+        IM_CHECK_NO_RET(r[kSolo].Max.x <= r[kDrain].Max.x + kSamePlace);
         IM_CHECK_NO_RET(r[kSolo].Min.y >= r[kDrain].Max.y);
         if (on[kNext]) IM_CHECK_NO_RET(r[kSolo].Min.y >= r[kNext].Max.y);
     }
     return found;
+}
+
+// The solo box hugs the highway: its left edge is the overlay's gap right of
+// the highway's right railing at the box's lowest row (render::highway_span_at),
+// where the highway is widest beside it. The gap is the one between the time
+// box and the score box. Needs the score box on screen.
+void check_solo_hugs_highway(ImGuiTestContext* ctx, const hydra::ui::PreviewController& pc) {
+    const ImRect img = ctx->ItemInfo("**/##highway_image").RectFull;
+    const ImRect solo = ctx->ItemInfo("**/##solo_box").RectFull;
+    const ImRect time = ctx->ItemInfo("**/##time_box").RectFull;
+    const ImRect score = ctx->ItemInfo("**/##score_box").RectFull;
+    const float gap = score.Min.y - time.Max.y;
+    const float railing =
+        img.Min.x + hydra::render::highway_span_at(pc.preview_config(),
+                                                   static_cast<int>(img.GetWidth()),
+                                                   static_cast<int>(img.GetHeight()),
+                                                   solo.Max.y - img.Min.y)
+                        .right;
+    std::fprintf(stderr, "solo box left %.2f, railing %.2f, gap %.2f\n", solo.Min.x, railing,
+                 gap);
+    // The allowance check_overlay_boxes uses for two sums of the same pixel.
+    constexpr float kSamePlace = 0.01f;
+    IM_CHECK_NO_RET(gap > 0.0f);
+    IM_CHECK_NO_RET(std::fabs(solo.Min.x - (railing + gap)) <= kSamePlace);
 }
 
 // The solo box on a chart with solos: the running percent and count, the end
@@ -388,12 +413,24 @@ void test_preview_solo_box(ImGuiTestContext* ctx) {
     std::fprintf(stderr, "first solo at %.0f ms: %s, %s\n", start_ms, first.headline.c_str(),
                  first.detail.c_str());
 
-    // Mid-solo: drawn in the right column, clear of the other boxes, at the
+    // Mid-solo: drawn against the highway, clear of the other boxes, at the
     // scale it had before the solo.
     ctx->Yield(2);
     IM_CHECK(ctx->ItemInfo("**/##solo_box", ImGuiTestOpFlags_NoError).ID != 0);
     check_overlay_boxes(ctx);
+    check_solo_hugs_highway(ctx, pc);
     IM_CHECK_EQ(pc.overlay_scale(), scale);
+
+    // The chart has no Star Power phrase, yet the gauge and the drain box
+    // show: the gauge empty, the drain box in its idle form.
+    IM_CHECK(pc.has_sp_gauge());
+    IM_CHECK(ctx->ItemInfo("**/##sp_gauge", ImGuiTestOpFlags_NoError).ID != 0);
+    IM_CHECK(ctx->ItemInfo("**/##drain_box", ImGuiTestOpFlags_NoError).ID != 0);
+    IM_CHECK(pc.sp_meter_readout().rfind("0.0/", 0) == 0);
+    const hydra::app::PreviewDrainBox drain = pc.drain_box();
+    IM_CHECK(drain.shown);
+    IM_CHECK(!drain.active);
+    IM_CHECK_STR_EQ(drain.header.c_str(), "SP drain (if activated)");
     IM_CHECK(screenshot(ctx, "solo-box-playing.png"));
 
     // On to the last note: the end message.

@@ -626,6 +626,9 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         ImDrawList* dl = ImGui::GetWindowDrawList();
         const ImVec2 origin = ImGui::GetItemRectMin();
         const ImVec2 img_max = ImGui::GetItemRectMax();
+        // Named so a GUI test can place the highway (render::highway_span_at)
+        // in screen pixels.
+        name_box("##highway_image", origin, img_max);
         auto text_width = [font](float sz, const char* s) {
             return font->CalcTextSizeA(sz, FLT_MAX, 0.0f, s).x;
         };
