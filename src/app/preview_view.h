@@ -446,14 +446,12 @@ PreviewSoloBox build_solo_box(const PreviewScene& scene, double now_ms, double l
 // the overlay's scale holds still through a solo.
 std::vector<PreviewSoloBox> build_solo_box_samples(const PreviewScene& scene);
 
-// The playhead `delta_ticks` chart ticks from `now_ms`, for the Preview's
-// tick-step buttons. It starts from the tick build_time_box shows for the
-// same `now_ms` and `length_ms` (one shared helper computes that moment), so
-// each step changes the displayed tick by exactly `delta_ticks`. Never before
-// tick 0. The ms comes from the song's own tempo map, so a step follows tempo
-// changes. A scene with no timing returns `now_ms` unchanged.
-double step_tick_ms(const PreviewScene& scene, double now_ms, double length_ms,
-                    int delta_ticks);
+// The playhead `delta_ms` from `now_ms`, for the Preview's step buttons and
+// keys. It starts from the moment build_time_box shows for the same `now_ms`
+// and `length_ms` (one shared helper computes that moment), so a playhead past
+// the end steps from the end. The result is held inside [0, length_ms], so a
+// step never lands before 0 or past where playback ends.
+double step_shown_ms(double now_ms, double length_ms, double delta_ms);
 
 // Where each activation of the shown path sits on the scrubber: its onset over
 // `length_ms` (PlayheadRange::marks_length_ms), clamped to 0..1, in

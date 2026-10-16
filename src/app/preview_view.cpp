@@ -478,8 +478,8 @@ namespace {
 double shown_length(double length_ms) { return length_ms < 0.0 ? 0.0 : length_ms; }
 
 // The moment the time box shows: the playhead held inside [0, length].
-// step_tick_ms starts from the same moment, so a step moves the displayed
-// tick by exactly its size, and the score, drain and next-activation boxes
+// step_shown_ms starts from the same moment, so a step moves the displayed
+// time by exactly its size, and the score, drain and next-activation boxes
 // read it too, so every overlay box describes the same moment.
 double shown_ms(double now_ms, double length_ms) {
     const double len = shown_length(length_ms);
@@ -668,12 +668,8 @@ std::vector<PreviewSoloBox> build_solo_box_samples(const PreviewScene& scene) {
     return out;
 }
 
-double step_tick_ms(const PreviewScene& scene, double now_ms, double length_ms,
-                    int delta_ticks) {
-    if (!scene.timing) return now_ms;
-    int64_t target = scene.timing->display_tick_at_ms(shown_ms(now_ms, length_ms)) + delta_ticks;
-    if (target < 0) target = 0;
-    return scene.timing->ms_index().at(target);
+double step_shown_ms(double now_ms, double length_ms, double delta_ms) {
+    return shown_ms(shown_ms(now_ms, length_ms) + delta_ms, length_ms);
 }
 
 bool has_song_length(double length_ms) { return length_ms > 0.0; }
