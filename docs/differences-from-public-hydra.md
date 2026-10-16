@@ -2,13 +2,13 @@
 
 The public Hydra is DragonDelgar's, at [DragonDelgar/hydra](https://github.com/DragonDelgar/hydra). It is a Python app. Its latest release is v1.3.1, from August 7, 2026.
 
-Hydra Deluxe started from that v1.3.1 and has been developed on its own since, from 1.4.1 up to 2.8.0. Up to 1.9.7 it was also called Hydra. Since 2.0.0 it is Hydra Deluxe, so the two are easy to tell apart. Nothing flows between the two automatically. The public version has kept changing too (see [What the public version has](#what-the-public-version-has-that-this-one-doesnt)).
+Hydra Deluxe started from that v1.3.1 and has been developed on its own since, from 1.4.1 up to 2.9.0. Up to 1.9.7 it was also called Hydra. Since 2.0.0 it is Hydra Deluxe, so the two are easy to tell apart. Nothing flows between the two automatically. The public version has kept changing too (see [What the public version has](#what-the-public-version-has-that-this-one-doesnt)).
 
 Both do the same job. They read Clone Hero drum charts and find the Star Power paths that give the best score. The path notation is the same, and the mechanics pages on the [public wiki](https://github.com/DragonDelgar/hydra/wiki) (squeezes, early fills, the optimal checklist) apply to both.
 
 ## At a glance
 
-| | Public Hydra 1.3.1 | Hydra Deluxe 2.8.0 |
+| | Public Hydra 1.3.1 | Hydra Deluxe 2.9.0 |
 |---|---|---|
 | Written in | Python | C++, a native Windows app |
 | Install | Unzip anywhere, run `Hydra.exe` | Installer into `C:\Program Files\Hydra` |
@@ -52,7 +52,7 @@ The sections below explain each difference.
 
 **Best all-0 path** is the best path that activates at the first chance every time, with no skips. An early fill it lets pass (an E1) doesn't count as a skip. Every squeeze and early fill on it is 0 ms or easier.
 
-**The Preview tab is new.** It plays the chart as a 3D note highway in time with the song's audio, including the audio inside `.srb` bundles. It draws the chosen path on the highway: the Star Power windows, the fills you'd see, a running score, an SP meter and an SP drain timer. Under the score, a row of seven stars fills in as you earn them, and a line says how many points the next star needs. A box on the highway shows the next activation in path notation with its timings, like `5+ (100 ms)`. The highway itself is a port of Onyx's drum previewer.
+**The Preview tab is new.** It plays the chart as a 3D note highway in time with the song's audio, including the audio inside `.srb` bundles. It draws the chosen path on the highway: the Star Power windows, the fills you'd see, a running score, an SP meter and an SP drain timer. During a solo, a solo box like Clone Hero's shows how much of it you have hit. Under the score, a row of seven stars fills in as you earn them, and a line says how many points the next star needs. A box on the highway shows the next activation in path notation with its timings, like `5+ (100 ms)`. The highway itself is a port of Onyx's drum previewer.
 
 **The Dynamics tab is new.** It counts ghost and accent notes per pad and for kicks. It also says whether the chart has dynamics turned on, since Clone Hero ignores them in a MIDI chart that doesn't opt in.
 
@@ -132,5 +132,6 @@ This version doesn't read `records.json`, so your old results don't carry over. 
 | 2.6.0 | The Preview draws drum lanes (rolls and trills) on the pads Clone Hero lights; reworded tooltips, and the `(?)` markers wrap their text |
 | 2.7.0 | The Preview's text boxes share one look, and its scrubber ends where playback ends; clearer words in the dmleaderboards comparison; .sng and .srb names trimmed like folder charts' |
 | 2.8.0 | Star Power length, measure lines and generated fills follow Clone Hero's measure grid; early fills reach 85 ms; the path report covers the whole library and builds from saved paths; a `Can't analyze` status and chip |
+| 2.9.0 | The Preview shows a solo box like Clone Hero's; its step buttons move 10 ms; its SP meter shows on every song |
 
 Each release's full notes are on the [releases page](https://github.com/splax77/hydra-deluxe/releases).
