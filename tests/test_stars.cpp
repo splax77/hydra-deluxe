@@ -151,6 +151,12 @@ TEST_CASE("scoring: combo_after is the combo plus the chord's notes") {
     CHECK(per_note[2].combo_after == 10);
 }
 
+TEST_CASE("scoring: solo_note_count is every note in a solo, else 0") {
+    const Chord two = chord_of({ChordNote{NoteColor::Red}, ChordNote{NoteColor::Kick}});
+    CHECK(solo_note_count(two, true) == 2);
+    CHECK(solo_note_count(two, false) == 0);
+}
+
 TEST_CASE("scoring: solo_bonus is 100 per note in a solo, else 0") {
     const Chord three = chord_of(
         {ChordNote{NoteColor::Red},

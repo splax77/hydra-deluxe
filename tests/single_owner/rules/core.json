@@ -1680,7 +1680,7 @@
       "owner_lines": [
         {
           "file": "src/core/scoring.cpp",
-          "line_text": "return flag_solo ? kSoloBonusPerNote * chord.count() : 0;",
+          "line_text": "return kSoloBonusPerNote * solo_note_count(chord, flag_solo);",
           "why": "solo_bonus, the owner"
         }
       ],
@@ -1690,6 +1690,38 @@
         "tests"
       ],
       "note": "The constant multiplied by a note count. Pinning the constant (test_model.cpp) is not an answer. Decided by: audit finding 163; phase 6 task J2-7 (D53, D54)"
+    },
+    {
+      "question": "How many of a chord's notes count toward a solo?",
+      "owner": "solo_note_count in src/core/scoring.cpp",
+      "owner_file": "src/core/scoring.cpp",
+      "owner_symbol": "solo_note_count",
+      "date": "2026-10-16",
+      "decision": "D251",
+      "added_by": "PV-SOLO-REVIEW",
+      "pattern": "/\\s*(\\w+::)*kSoloBonusPerNote\\b|\\bflag_solo\\s*\\?[^:;]*\\bcount\\(\\)",
+      "must_match": [
+        "notes.notes += bonus / kSoloBonusPerNote;",
+        "const int n = ts.flag_solo ? ts.chord.count() : 0;"
+      ],
+      "must_not_match": [
+        "notes.notes += solo_note_count(ts.chord, ts.flag_solo);",
+        "return kSoloBonusPerNote * solo_note_count(chord, flag_solo);",
+        "const bool has_solo = sc.solo_bonus > 0;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/scoring.cpp",
+          "line_text": "return flag_solo ? chord.count() : 0;",
+          "why": "solo_note_count, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "A solo's note count read back out of a bonus (the bonus divided by the per-note constant), or a chord's count gated on the solo flag by hand. The Preview's solo box and solo_bonus both call the owner. Decided by: D251; derive-once review of PV-SOLO"
     },
     {
       "question": "What is the combo after a chord?",

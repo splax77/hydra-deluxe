@@ -13,7 +13,7 @@
 #include "app/config.h"          // Settings: the sp_cap setting's floor
 #include "app/display_format.h"  // clock_str, kFactSeparator
 #include "core/replay.h"
-#include "core/scoring.h"  // solo_bonus
+#include "core/scoring.h"  // solo_bonus, solo_note_count
 
 namespace hydra::app {
 
@@ -291,17 +291,15 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
     }
     // Solo spans: one per section the song names (Song::solo_sections), from
     // its first chord to its last. Beside each, the notes the solo box
-    // counts and the bonus, both read off solo_bonus: a chord's notes are
-    // the ones it pays kSoloBonusPerNote for.
+    // counts (solo_note_count) and the bonus (solo_bonus).
     for (const SoloSection& s : song.solo_sections) {
         scene.solos.push_back(span_from_ticks(song, song.sequence[s.first].timecode.ticks(),
                                               song.sequence[s.last].timecode.ticks()));
         PreviewSoloNotes notes;
         for (size_t i = s.first; i <= s.last; ++i) {
             const SongTimestamp& ts = song.sequence[i];
-            const int bonus = solo_bonus(ts.chord, ts.flag_solo);
-            notes.bonus += bonus;
-            notes.notes += bonus / kSoloBonusPerNote;
+            notes.bonus += solo_bonus(ts.chord, ts.flag_solo);
+            notes.notes += solo_note_count(ts.chord, ts.flag_solo);
             notes.steps.push_back({ts.timecode.ms(), notes.notes});
         }
         scene.solo_notes.push_back(std::move(notes));

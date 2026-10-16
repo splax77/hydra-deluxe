@@ -59,6 +59,10 @@ CategoryScores category_scores(const Chord& chord, int combo,
                                 std::vector<CategoryScores>* per_note = nullptr,
                                 core::SqOutRule sqout_rule = core::SqOutRule::FirstNote);
 
+// How many of a chord's notes count toward a solo: all of them when the chord
+// is in a solo section (flag_solo), else none. solo_bonus pays for these.
+int solo_note_count(const Chord& chord, bool flag_solo);
+
 // The solo bonus a chord earns: kSoloBonusPerNote for each of its notes when
 // the chord is in a solo section (flag_solo), else 0.
 int solo_bonus(const Chord& chord, bool flag_solo);

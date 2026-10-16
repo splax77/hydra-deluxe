@@ -257,8 +257,8 @@ struct PreviewScore {
 // struck by then (struck_at).
 struct PreviewSoloNotes {
     // One of the solo's chords: its onset, and the solo's notes hit once it
-    // is struck, this chord's included. A chord's notes are the ones
-    // solo_bonus (core/scoring.h) pays for.
+    // is struck, this chord's included. A chord's notes are
+    // solo_note_count's (core/scoring.h).
     struct Step {
         double ms = 0.0;
         int notes_hit = 0;

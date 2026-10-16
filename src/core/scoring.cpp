@@ -88,8 +88,12 @@ CategoryScores category_scores(const Chord& chord, int combo,
     return out;
 }
 
+int solo_note_count(const Chord& chord, bool flag_solo) {
+    return flag_solo ? chord.count() : 0;
+}
+
 int solo_bonus(const Chord& chord, bool flag_solo) {
-    return flag_solo ? kSoloBonusPerNote * chord.count() : 0;
+    return kSoloBonusPerNote * solo_note_count(chord, flag_solo);
 }
 
 ChordScoreTable chord_score_table(const Song& song, core::SqOutRule sqout_rule,
