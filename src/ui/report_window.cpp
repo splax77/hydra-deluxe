@@ -61,27 +61,36 @@ void call(const std::function<void()>& f) {
 
 // "Hydra <heading>", the subtitle, "Built HH:MM" and the header's buttons.
 // "Built HH:MM" is text, so it follows the heading; only the buttons go to
-// the right edge (place_control_at_line_end).
-void header(const Frame& f) {
+// the right edge (place_control_at_line_end). Close shows in every state and
+// clears *open, as Esc and Ctrl+W do in begin(); end() then calls close.
+void header(bool* open, const Frame& f) {
     const ReportCallbacks& cb = *f.callbacks;
+    // Close is a button in every state, so the heading's text sits at the
+    // buttons' text height from the first word.
+    ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Hydra");
     ImGui::SameLine();
     ImGui::TextColored(kAccentColor, "%s", f.heading);
 
-    if (f.state == ReportBuild::Ready && f.built) {
+    const bool built = f.state == ReportBuild::Ready && f.built;
+    std::vector<const char*> buttons;
+    if (built) {
         ImGui::SameLine();
-        ImGui::AlignTextToFramePadding();
         ImGui::TextColored(kDimTextColor, "Built %s", clock_text(*f.built).c_str());
-        std::vector<const char*> buttons;
         if (f.compare_another) buttons.push_back("Compare another player...");
         buttons.push_back("Refresh");
-        place_control_at_line_end(buttons_w(buttons));
+    }
+    buttons.push_back("Close");
+    place_control_at_line_end(buttons_w(buttons));
+    if (built) {
         if (f.compare_another) {
             if (ImGui::Button("Compare another player...")) call(cb.compare_another);
             ImGui::SameLine();
         }
         if (ImGui::Button("Refresh")) call(cb.refresh);
+        ImGui::SameLine();
     }
+    if (ImGui::Button("Close")) *open = false;
     const char* subtitle = f.state == ReportBuild::Ready      ? f.subtitle.c_str()
                            : f.state == ReportBuild::Building ? f.building_subtitle
                                                               : "";
@@ -247,7 +256,7 @@ bool begin(bool* open, const Frame& f, Memory& m) {
     if (!m.visible) return false;
 
     out_of_date_strip(f);
-    header(f);
+    header(open, f);
     ImGui::Spacing();
     return !state_body(f);
 }

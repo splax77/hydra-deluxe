@@ -49,7 +49,8 @@ struct ReportCallbacks {
     // The comparison's "Compare another player..." (both its header and its
     // failed state).
     std::function<void()> compare_another;
-    // The window was closed: its title bar's X, Esc or Ctrl+W.
+    // The window was closed: its title bar's X, its Close button, Esc or
+    // Ctrl+W.
     std::function<void()> close;
 };
 
