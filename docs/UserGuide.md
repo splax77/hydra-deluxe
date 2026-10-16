@@ -119,7 +119,7 @@ Click a column heading to sort by it. Right-click the heading row to hide or sho
 
 Song names show without Clone Hero's colour and style tags, here and in the report windows. A name that is nothing but tags reads `(unknown)`.
 
-Each text column is first made wide enough for almost all of its entries. A rare entry much longer than the rest ends in `…`; hover over it to read all of it. Room left over then goes to the text columns that still cut an entry, so long text is cut only when the window has no room to spare. Columns that never cut, such as numbers, are as wide as their widest entry. When the window is too narrow, the text columns give way first, and once they are down to their headings the table scrolls sideways. Every table in Hydra Deluxe sizes its columns this way. You can drag a column's edge to resize it, but the width lasts only until Hydra Deluxe sizes that column again: when a change to its entries or to the window's width gives it a new width, and at every start.
+Columns that never cut their text, such as numbers, are as wide as their widest entry. The text columns split the room that is left in fixed shares, so their widths never follow their text. An entry longer than its column ends in `…`; hover over it to read all of it. No column gets narrower than its heading. When the window is too narrow even for the headings, the table scrolls sideways. Every table in Hydra Deluxe sizes its columns this way. You can drag a column's edge to resize it. In the Library, the width holds until a scan reloads the list or you change the search.
 
 The `Best path` cell shows the song's state under the current analysis settings:
 
@@ -361,7 +361,7 @@ Both report windows have the same layout. From top to bottom:
 | Table | One row per path or score. Hover a column heading to see what the column means. |
 | Footer | A dim note under the table. |
 
-Click a column heading to sort by it, and click it again to flip the order. Shift+click another heading to add a second sort. Empty values always sink to the bottom. Text columns sort the way the Library does. To hide or show a column, right-click a column heading and pick it from the menu. The row number column always stays. Columns are sized the way the Library's are, so a width you drag lasts only until Hydra Deluxe sizes that column again.
+Click a column heading to sort by it, and click it again to flip the order. Shift+click another heading to add a second sort. Empty values always sink to the bottom. Text columns sort the way the Library does. To hide or show a column, right-click a column heading and pick it from the menu. The row number column always stays. Columns are sized the way the Library's are, and number cells start at the left like the text. A width you drag holds until the report is built again or you change the search.
 
 When no row passes the filters, the window says `Nothing matches those filters.` `Clear filters` then empties the search and sets the dropdown back to its first entry.
 

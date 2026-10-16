@@ -2,13 +2,13 @@
 
 The public Hydra is DragonDelgar's, at [DragonDelgar/hydra](https://github.com/DragonDelgar/hydra). It is a Python app. Its latest release is v1.3.1, from August 7, 2026.
 
-Hydra Deluxe started from that v1.3.1 and has been developed on its own since, from 1.4.1 up to 2.7.0. Up to 1.9.7 it was also called Hydra. Since 2.0.0 it is Hydra Deluxe, so the two are easy to tell apart. Nothing flows between the two automatically. The public version has kept changing too (see [What the public version has](#what-the-public-version-has-that-this-one-doesnt)).
+Hydra Deluxe started from that v1.3.1 and has been developed on its own since, from 1.4.1 up to 2.8.0. Up to 1.9.7 it was also called Hydra. Since 2.0.0 it is Hydra Deluxe, so the two are easy to tell apart. Nothing flows between the two automatically. The public version has kept changing too (see [What the public version has](#what-the-public-version-has-that-this-one-doesnt)).
 
 Both do the same job. They read Clone Hero drum charts and find the Star Power paths that give the best score. The path notation is the same, and the mechanics pages on the [public wiki](https://github.com/DragonDelgar/hydra/wiki) (squeezes, early fills, the optimal checklist) apply to both.
 
 ## At a glance
 
-| | Public Hydra 1.3.1 | Hydra Deluxe 2.7.0 |
+| | Public Hydra 1.3.1 | Hydra Deluxe 2.8.0 |
 |---|---|---|
 | Written in | Python | C++, a native Windows app |
 | Install | Unzip anywhere, run `Hydra.exe` | Installer into `C:\Program Files\Hydra` |
@@ -70,7 +70,7 @@ The two versions can give different optimal scores for the same chart. There are
 
 **Squeeze-ins and squeeze-outs can sit further from the SP end.** This version looks for them up to 500 ms from the SP end. The public version stops at 140 ms, so it can miss a squeeze that a strong player can hit.
 
-**Chart rules match Clone Hero's code.** In 2.x this version read Clone Hero 1.1's own code and matched how it reads a chart. Below Expert, disco flip and 2x kicks now follow the difficulty you play, not Expert's markers. A Star Power phrase pays on the notes Clone Hero pays at its two edges. An authored fill lands one tick later, and each fill is placed on its own, so a fill the next one used to hide now counts. A one-bracket dynamics tag no longer turns dynamics on. A 2x kick and a normal kick on the same tick become one 2x kick, as in Clone Hero, so with 2x Bass off that tick has no kick. A note marked both ghost and accent plays as an accent. That changes only which line of the score breakdown its points land in, since ghosts and accents score the same.
+**Chart rules match Clone Hero's code.** In 2.x this version read Clone Hero 1.1's own code and matched how it reads a chart. Below Expert, disco flip and 2x kicks now follow the difficulty you play, not Expert's markers. A Star Power phrase pays on the notes Clone Hero pays at its two edges. An authored fill lands one tick later, and each fill is placed on its own, so a fill the next one used to hide now counts. A one-bracket dynamics tag no longer turns dynamics on. A 2x kick and a normal kick on the same tick become one 2x kick, as in Clone Hero, so with 2x Bass off that tick has no kick. A note marked both ghost and accent plays as an accent. That changes only which line of the score breakdown its points land in, since ghosts and accents score the same. Star Power's length counts measures the way Clone Hero does, so a measure cut short by a time signature change counts as its share of a measure. On a chart with no fills written in it, each fill Hydra Deluxe places starts on the measure line, where Clone Hero's own generator puts it. The `1.0 fills` setting keeps Hydra Deluxe's earlier fill placement.
 
 This version's parser started as a port of public Hydra 1.x, checked chart by chart. Public Hydra's disco and 2x kick rules were checked only in its 1.2.0 source, which still reads charts the old way. Whether a newer public version changed that was not checked. The biggest effect is on Hard, Medium and Easy with Pro Drums, where about 640 charts each score differently, mostly higher. One Clone Hero rule is deliberately not copied: `drums0dnoflip` turns disco flip off here, as the marker says.
 
@@ -131,5 +131,6 @@ This version doesn't read `records.json`, so your old results don't carry over. 
 | 2.5.0 | The Preview counts stars and shows the next activation's path notation; table columns fit their usual text first, then grow; report windows reopen maximized on their own monitor; a sound device that won't start shows the muted-preview warning; damaged .srb and .mid files are refused cleanly |
 | 2.6.0 | The Preview draws drum lanes (rolls and trills) on the pads Clone Hero lights; reworded tooltips, and the `(?)` markers wrap their text |
 | 2.7.0 | The Preview's text boxes share one look, and its scrubber ends where playback ends; clearer words in the dmleaderboards comparison; .sng and .srb names trimmed like folder charts' |
+| 2.8.0 | Star Power length, measure lines and generated fills follow Clone Hero's measure grid; early fills reach 85 ms; the path report covers the whole library and builds from saved paths; a `Can't analyze` status and chip |
 
 Each release's full notes are on the [releases page](https://github.com/splax77/hydra-deluxe/releases).
