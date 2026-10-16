@@ -1211,7 +1211,7 @@
       "scope": [
         "src"
       ],
-      "note": "The owner asks for timing alone, so a chart with no SP phrase still shows its gauge, empty, and the drain box. The owner no longer tests the curve, so it has no owner line; the pattern flags a caller that hides the gauge on an empty curve again. Tests pin the fact that a scene has no curve; those are assertions, not a predicate. Decided by: audit finding 216; phase 6 task J3-4 (D53, D54); gauge on every song, the user's request in task pv1 (2026-10-16)"
+      "note": "The owner asks for timing alone, so a chart with no SP phrase still shows its gauge, empty, and the drain box. The owner never tests the curve, so no line of it matches the pattern and the row has no owner line; the pattern flags any code that hides the gauge on an empty curve. Tests pin the fact that a scene has no curve; those are assertions, not a predicate. Decided by: audit finding 216; phase 6 task J3-4 (D53, D54); gauge on every song, the user's request in task pv1 (2026-10-16)"
     },
     {
       "question": "Over which stretch is an activation's Star Power running?",

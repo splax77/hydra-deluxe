@@ -123,8 +123,11 @@ BoxExtent measure_text_box(const TextBox& box, float inset);
 std::vector<ImagePoint> text_box_line_origins(const TextBox& box, ImagePoint min, float inset);
 
 // The boxes to fit, at scale 1, in image pixels. A width of 0 means absent.
-// The right column's boxes share one right edge, left of the gauge. The tops
-// and the left column's height come from overlay_tops.
+// The right column's boxes are fitted against one right edge, left of the
+// gauge. The drain and next-activation boxes are drawn against it; the solo
+// box is drawn from the highway out (right_room) and falls back to it when
+// it does not fit. The tops and the left column's height come from
+// overlay_tops.
 struct OverlayBoxes {
     float left_w = 0.0f;      // the top-left column
     float left_h = 0.0f;      //   from the image's top edge

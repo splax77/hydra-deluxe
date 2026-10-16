@@ -794,7 +794,9 @@ late squeeze-in refills at the old SP end, because the player hits that phrase
 early and SP never stops. A squeezed-out phrase's bar arrives when the player
 hits it: as SP ends for an early phrase, on its own note for a late one.
 Without a path it fills one bar per phrase and pins at the cap, since nothing
-spends it and there is no analysis to read.
+spends it and there is no analysis to read. Every scene built from a song has
+the gauge (`PreviewScene::has_sp_gauge`), so a chart with no Star Power phrase
+shows it empty, with the drain box beside it.
 
 **Preview text box**:
 One of the four boxes of text over the Preview image: the time, score, SP
