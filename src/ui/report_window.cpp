@@ -65,6 +65,9 @@ void call(const std::function<void()>& f) {
 // clears *open, as Esc and Ctrl+W do in begin(); end() then calls close.
 void header(bool* open, const Frame& f) {
     const ReportCallbacks& cb = *f.callbacks;
+    // Close is a button in every state, so the heading's text sits at the
+    // buttons' text height from the first word.
+    ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Hydra");
     ImGui::SameLine();
     ImGui::TextColored(kAccentColor, "%s", f.heading);
@@ -73,7 +76,6 @@ void header(bool* open, const Frame& f) {
     std::vector<const char*> buttons;
     if (built) {
         ImGui::SameLine();
-        ImGui::AlignTextToFramePadding();
         ImGui::TextColored(kDimTextColor, "Built %s", clock_text(*f.built).c_str());
         if (f.compare_another) buttons.push_back("Compare another player...");
         buttons.push_back("Refresh");

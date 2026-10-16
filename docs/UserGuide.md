@@ -355,7 +355,7 @@ Both report windows have the same layout. From top to bottom:
 | Part | What it shows |
 | --- | --- |
 | Out-of-date strip | Only when the report is out of date (below). |
-| Header | `Hydra` and the report's name, a line saying what the report covers, `Built HH:MM` (when it was built), `Refresh`, which builds it again, and `Close`, which closes the window the same as its own `X`. `Close` is there even while the report builds. |
+| Header | `Hydra` and the report's name, a line saying what the report covers, `Built HH:MM` (when it was built), `Refresh`, which builds it again, and `Close`, which closes the window like its `X`. `Close` is there whatever the report is doing, including while it builds or after it fails. |
 | Tiles | Numbers that sum up the rows that pass the filters. They change as you filter. |
 | Controls | A search box, a dropdown and, on the right, a count line saying how many rows pass. The path report also has `Optimal paths only`. |
 | Table | One row per path or score. Hover a column heading to see what the column means. |
