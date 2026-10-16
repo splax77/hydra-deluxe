@@ -10,6 +10,7 @@
 #include "app/report.h"     // settings_change_touches
 #include "app/rules_file.h"
 #include "app/user_messages.h"
+#include "core/model.h"  // counted, has_have, group_thousands
 #include "core/winstr.h"
 #include "parse/song.h"  // display_title
 #include "ui/preview_controller.h"
@@ -607,6 +608,8 @@ void AppState::open_batch_confirm() {
     // the ones the batch runs (D79), so the confirm, the strip and the
     // finished counts come from one plan. Rows older than the store would
     // count fewer charts than the button's N.
+    // The report window's question gives way to the user's own confirm.
+    if (path_report_awaits_confirm()) decline_report_batch();
     reload_after_scan();
     if (!plan_batches([&] { return library_matches(); })) {
         // The database failed: the confirm stays closed (D72 item 4).
@@ -629,6 +632,19 @@ void AppState::close_batch_confirm() {
     batch_confirm_pending = false;
     batch_plan = {};
     batch_redo_plan = {};
+}
+
+std::string AppState::batch_question(bool redo) const {
+    // Library rows, each copy of a chart counted, like the library's own
+    // counts (D76). What runs is the plan `redo` picks (D79).
+    const int64_t with = batch_scope_with_result();
+    const int64_t to_run = batch_plan_for(redo).todo_rows();
+    if (to_run == 0) return "Every chart here already has a result.";
+    if (redo && with > 0)
+        return "Analyze " + counted(to_run, "chart", "charts") + ", re-analyzing " +
+               group_thousands(with) + " that already " + has_have(with) + " a result?";
+    return "Analyze " + counted(to_run, "chart", "charts") + " that " + has_have(to_run) +
+           " no result yet?";
 }
 
 void AppState::start_batch(bool redo) {
@@ -776,8 +792,9 @@ const BatchJob* AppState::path_report_batch() const {
 
 void AppState::settle_report_wait() {
     if (report_wait_ == ReportWait::Confirm && !batch_confirm_pending) {
-        // The confirm closed. Its Start ran the batch, which the report now
-        // waits on; its Cancel leaves the report to list what is stored.
+        // The window's question was answered. Analyze ran the batch, which
+        // the report now waits on; Cancel (decline_report_batch) leaves the
+        // report to list what is stored.
         if (batch_job && !batch_finish_seen_) {
             report_wait_ = ReportWait::OwnBatch;
         } else {
@@ -832,15 +849,27 @@ void AppState::request_path_report(PathReportCause cause) {
         launch_path_report(run, cause);
         return;
     }
-    // The plans the confirm shows and start_batch runs.
+    // The plans the window's question counts and start_batch runs. The
+    // question is the report's own, so the main window's popup stays shut
+    // (batch_confirm_in_main_window).
     batch_confirm_pending = true;
     report_wait_cause_ = cause;
-    if (batch_plan.todo_rows() > report_confirm_above) {
-        report_wait_ = ReportWait::Confirm;
-        return;
-    }
+    report_wait_ = ReportWait::Confirm;
+    // Few enough just run, as the window's Analyze runs them.
+    if (batch_plan.todo_rows() <= report_confirm_above) start_path_report_batch();
+}
+
+void AppState::start_path_report_batch() {
+    if (!path_report_awaits_confirm()) return;
+    // The plan the question counted, never redone. A batch that can't start
+    // leaves the window asking, its Analyze greyed.
     start_batch(false);
-    report_wait_ = batch_job && !batch_finish_seen_ ? ReportWait::OwnBatch : ReportWait::None;
+    settle_report_wait();
+}
+
+void AppState::decline_report_batch() {
+    close_batch_confirm();
+    settle_report_wait();
 }
 
 void AppState::launch_path_report(app::BatchRun run, PathReportCause cause) {
@@ -857,10 +886,15 @@ void AppState::launch_path_report(app::BatchRun run, PathReportCause cause) {
 }
 
 void AppState::cancel_path_report() {
+    // While the window asks, its Cancel means "don't analyze".
+    if (path_report_awaits_confirm()) {
+        decline_report_batch();
+        return;
+    }
     if (report_job && !report_job->finished()) report_job->cancel();
     if (report_wait_ == ReportWait::None) return;
     // The report's own batch stops as the strip's Stop stops it. A batch the
-    // user started, and a confirm still open, are the user's to answer.
+    // user started is the user's to stop.
     if (report_wait_ == ReportWait::OwnBatch && batch_job) batch_job->stop();
     report_wait_ = ReportWait::None;
     path_report.mark_cancelled();
@@ -874,7 +908,9 @@ void AppState::show_path_report() {
 
 void AppState::close_path_report() {
     // A batch the report waited on keeps running with its strip, and builds
-    // the report when it finishes, as any batch does.
+    // the report when it finishes, as any batch does. A question the window
+    // was asking goes with it, so no popup takes it up in the main window.
+    if (path_report_awaits_confirm()) close_batch_confirm();
     report_wait_ = ReportWait::None;
     // A build still running stops as the window's Cancel stops it. It waits
     // parked, so neither its rows nor its Cancelled land with the window shut;

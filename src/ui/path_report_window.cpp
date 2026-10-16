@@ -212,9 +212,13 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
         // The build itself only reads the store, so it has no count to show
         // and draws no bar.
         frame.progress_bar = false;
-        if (input.awaits_confirm)
-            frame.building_lines = {
-                "Confirm the batch in the main window to analyze the songs with no result."};
+        // The window asks whether to analyze, in the batch confirm's words;
+        // its Cancel is the "no" (AppState::cancel_path_report).
+        if (!input.confirm_question.empty()) {
+            frame.building_lines = {input.confirm_question};
+            frame.analyze_button = true;
+            frame.analyze_enabled = input.can_analyze;
+        }
     }
     frame.placeholder_rows = true;
     frame.analysis_off_sentence = app::kAnalysisOffSentence;
@@ -249,7 +253,12 @@ PathReportInput path_report_input(AppState& app) {
         const BatchJob::Snapshot s = batch->snapshot();
         in.batch = PathReportInput::WaitedBatch{s.preparing, s.completed, s.total};
     }
-    in.awaits_confirm = app.path_report_awaits_confirm();
+    // The report's own plan, never redone: the popup's question with its
+    // redo box clear, and the batch start_batch(false) runs.
+    if (app.path_report_awaits_confirm()) {
+        in.confirm_question = app.batch_question(false);
+        in.can_analyze = app.can_analyze();
+    }
     // The row index is into this frame's result, which the click keeps alive.
     // The page lists one profile, so a click selects the chart and never
     // switches the chart mode: it asks in the mode the settings already hold.
@@ -259,6 +268,7 @@ PathReportInput path_report_input(AppState& app) {
     in.callbacks.refresh = [&app] { app.request_path_report(); };
     in.callbacks.try_again = [&app] { app.request_path_report(); };
     in.callbacks.cancel = [&app] { app.cancel_path_report(); };
+    in.callbacks.analyze = [&app] { app.start_path_report_batch(); };
     // The window clears window_open itself through its `open` flag; the
     // close then goes through its one owner.
     in.callbacks.close = [&app] { app.close_path_report(); };

@@ -811,9 +811,9 @@ void held_build_then_rows(ImGuiTestContext* ctx, ReportHold& hold) {
 
 // The toolbar's "Open path report" (or, with `refresh`, the open window's
 // Refresh) with charts that have no result: with the confirm threshold at 0
-// the build asks first, and the confirm's Cancel leaves the report to list
-// only what is stored. Returns with the threshold put back and that report's
-// build started; the caller waits for it.
+// the path window asks first, and its Cancel leaves the report to list only
+// what is stored. Returns with the threshold put back and that report's build
+// started; the caller waits for it.
 void open_path_report_declining_batch(ImGuiTestContext* ctx, bool refresh = false) {
     Harness& h = harness(ctx);
     h.app->report_confirm_above = 0;
@@ -827,11 +827,65 @@ void open_path_report_declining_batch(ImGuiTestContext* ctx, bool refresh = fals
     ctx->Yield(2);
     IM_CHECK_RETV(path_window() != nullptr, );
     IM_CHECK(h.app->path_report_awaits_confirm());
-    ctx->SetRef("//Analyze library");
+    IM_CHECK(window_named("Analyze library") == nullptr);  // no main-window popup
+    ctx->SetRef(path_window());
     ctx->ItemClick("Cancel");
     ctx->Yield(2);
+    IM_CHECK(!h.app->path_report_awaits_confirm());
     IM_CHECK(h.app->path_report_batch() == nullptr);
+    IM_CHECK(h.app->path_report_build() != hydra::ui::ReportBuild::Cancelled);
     h.app->report_confirm_above = hydra::ui::AppState::kReportConfirmAbove;
+}
+
+// More rows to run than the threshold (lowered to 0 here): the path window
+// itself asks, in the batch confirm's words, and its Analyze runs the batch
+// the report then waits on, its count over the bar. No "Analyze library"
+// popup opens in the main window. The batch's charts wait at a gate, so the
+// running state is read before it ends.
+void test_open_asks(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    struct Threshold {
+        Harness& h;
+        ~Threshold() { h.app->report_confirm_above = hydra::ui::AppState::kReportConfirmAbove; }
+    } threshold{h};
+    BatchGate gate;
+    h.app->report_confirm_above = 0;
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick("**/Open path report");
+    ctx->Yield(2);
+    IM_CHECK_RETV(path_window() != nullptr, );
+    IM_CHECK_RETV(h.app->path_report_awaits_confirm(), );
+    IM_CHECK(h.app->batch_job == nullptr);
+    IM_CHECK(on_screen(h, h.app->batch_question(false)));
+    IM_CHECK(window_named("Analyze library") == nullptr);
+
+    ctx->SetRef(path_window());
+    ctx->ItemClick("Analyze");
+    ctx->Yield(2);
+    IM_CHECK_RETV(h.app->batch_job != nullptr, );
+    IM_CHECK(h.app->path_report_batch() == h.app->batch_job.get());
+    IM_CHECK(wait_until(ctx, [&] {
+        const hydra::ui::BatchJob::Snapshot s = h.app->batch_job->snapshot();
+        return !s.preparing && s.total > 0 && gate.started() >= 1;
+    }, 10));
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "Analyzing "));
+    IM_CHECK(window_named("Analyze library") == nullptr);
+    IM_CHECK(!h.app->batch_confirm_pending);
+
+    // The window's Cancel now stops the report's own batch, as before.
+    ctx->SetRef(path_window());
+    ctx->ItemClick("Cancel");
+    ctx->Yield(2);
+    IM_CHECK(h.app->batch_job->is_cancelled());
+    IM_CHECK(h.app->path_report_build() == hydra::ui::ReportBuild::Cancelled);
+    gate.allow(1000000);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->batch_job->snapshot().finished; }, 60));
+    h.app->close_path_report();
+    ctx->Yield(2);
 }
 
 // Waits for the path report's build to finish, up to 60 s.
@@ -1331,6 +1385,7 @@ const std::vector<TestEntry>& report_window_flow_tests() {
     static const std::vector<TestEntry> entries = {
         {"report-window-open-path", test_open_path},
         {"report-window-open-analyzes", test_open_analyzes},
+        {"report-window-open-asks", test_open_asks},
         {"report-window-cant-analyze-list", test_cant_analyze_list},
         {"report-window-dm-handover", test_dm_handover},
         {"report-window-row-click", test_row_click},

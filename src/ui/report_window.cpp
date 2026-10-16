@@ -173,8 +173,18 @@ bool state_body(const Frame& f) {
                 ImGui::ProgressBar(-1.0f * static_cast<float>(ImGui::GetTime()),
                                    ImVec2(-1.0f, 0.0f), "");
             }
-            place_control_at_line_end(button_w("Cancel"));
-            if (ImGui::Button("Cancel")) call(cb.cancel);
+            if (f.analyze_button) {
+                // Cancel, then the answer that runs, as in the batch confirm.
+                place_control_at_line_end(buttons_w({"Cancel", "Analyze"}));
+                if (ImGui::Button("Cancel")) call(cb.cancel);
+                ImGui::SameLine();
+                begin_disabled_button(!f.analyze_enabled);
+                if (ImGui::Button("Analyze") && f.analyze_enabled) call(cb.analyze);
+                end_disabled_button(!f.analyze_enabled);
+            } else {
+                place_control_at_line_end(button_w("Cancel"));
+                if (ImGui::Button("Cancel")) call(cb.cancel);
+            }
             if (f.placeholder_rows) placeholder_rows();
             return true;
         }
