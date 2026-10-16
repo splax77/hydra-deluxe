@@ -355,7 +355,7 @@ Both report windows have the same layout. From top to bottom:
 | Part | What it shows |
 | --- | --- |
 | Out-of-date strip | Only when the report is out of date (below). |
-| Header | `Hydra` and the report's name, a line saying what the report covers, `Built HH:MM` (when it was built) and `Refresh`, which builds it again. |
+| Header | `Hydra` and the report's name, a line saying what the report covers, `Built HH:MM` (when it was built), `Refresh`, which builds it again, and `Close`, which closes the window like its `X`. `Close` is there whatever the report is doing, including while it builds or after it fails. |
 | Tiles | Numbers that sum up the rows that pass the filters. They change as you filter. |
 | Controls | A search box, a dropdown and, on the right, a count line saying how many rows pass. The path report also has `Optimal paths only`. |
 | Table | One row per path or score. Hover a column heading to see what the column means. |
@@ -367,7 +367,7 @@ When no row passes the filters, the window says `Nothing matches those filters.`
 
 The window never changes its rows behind your back. After a batch, a report built before it shows a strip: `Your library changed since this report was built (a batch finished at HH:MM).` Opening a song that saves a new result shows the same strip with no time: `Your library changed since this report was built.` Changing a setting the report depends on shows `The settings changed since this report was built.` Each report's section below lists the settings that count for it. The old rows stay readable under the strip. `Refresh` builds the report again and clears the strip.
 
-`Tab` moves through the controls and the table. The `Up` and `Down` arrows move the row selection, and each move selects the song, like a click. `Escape` or `Ctrl+W` closes the window, and so does its `X`. While you're typing in the search box, `Escape` doesn't close the window: the first press empties the box, as in the Library's search. Closing a report window doesn't keep the report to show again. The path report is built again when you reopen it, and the comparison fetches the player's scores again when you pick the player again.
+`Tab` moves through the controls and the table. The `Up` and `Down` arrows move the row selection, and each move selects the song, like a click. `Escape` or `Ctrl+W` closes the window, and so do its `X` and `Close`. While you're typing in the search box, `Escape` doesn't close the window: the first press empties the box, as in the Library's search. Closing a report window doesn't keep the report to show again. The path report is built again when you reopen it, and the comparison fetches the player's scores again when you pick the player again.
 
 ### The path report
 
