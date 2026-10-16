@@ -325,7 +325,7 @@
       "anchor": "skips",
       "must_match": [
         "const bool can_be_e0 = has_ms_filter_ && p.currentskips == 0;",
-        "return e_offset < kEarlyFillWindowMs && skips == 0;"
+        "return e_offset < kEarlyFillSlackMs && skips == 0;"
       ],
       "must_not_match": [
         "CHECK(act.skips() == 0);",
@@ -334,7 +334,7 @@
       "owner_lines": [
         {
           "file": "src/core/model.h",
-          "line_text": "return e_offset < kEarlyFillWindowMs && skips == 0;",
+          "line_text": "return e_offset < kEarlyFillSlackMs && skips == 0;",
           "why": "is_e0, the owner"
         },
         {
@@ -396,18 +396,49 @@
       "note": "Decided by: ADR 0021 (the SP-end history); step-1 derive-once review finding 7 (2026-10-04)"
     },
     {
-      "question": "Who reads the early-fill window?",
-      "owner": "fill_refuses and is_e0 in src/core/model.h",
+      "question": "Who reads the early-fill reach (how late SP may be ready and a fill still spawn)?",
+      "owner": "fill_refuses in src/core/model.h",
       "owner_file": "src/core/model.h",
       "owner_symbol": "fill_refuses",
-      "date": "2026-10-04",
-      "decision": "D35",
-      "added_by": "step-1 derive-once fixes",
-      "pattern": "\\bkEarlyFillWindowMs\\b",
-      "anchor": "kEarlyFillWindowMs",
+      "date": "2026-10-15",
+      "decision": "D250",
+      "added_by": "EF85",
+      "pattern": "\\bkEarlyFillReachMs\\b",
+      "anchor": "kEarlyFillReachMs",
       "must_match": [
-        "if (e_offset < kEarlyFillWindowMs) ok = true;",
-        "return d - hydra::kEarlyFillWindowMs;"
+        "if (e_offset < -kEarlyFillReachMs) return false;",
+        "return d - hydra::kEarlyFillReachMs;"
+      ],
+      "must_not_match": [
+        "if (fill_refuses(e_offset)) return false;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.h",
+          "line_text": "constexpr double kEarlyFillReachMs = 85.0;",
+          "why": "the constant itself"
+        },
+        {
+          "file": "src/core/model.h",
+          "line_text": "inline bool fill_refuses(double e_offset) { return e_offset < -kEarlyFillReachMs; }",
+          "why": "fill_refuses, the owner of the refusal"
+        }
+      ],
+      "note": "Split from the one early-fill window row (D35; step-1 derive-once review finding 12, 2026-10-04) when the two sides got their own numbers. Decided by: D250"
+    },
+    {
+      "question": "Who reads the early-fill slack (how little time to spare still marks an activation E-critical)?",
+      "owner": "is_e0 in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "is_e0",
+      "date": "2026-10-15",
+      "decision": "D250",
+      "added_by": "EF85",
+      "pattern": "\\bkEarlyFillSlackMs\\b",
+      "anchor": "kEarlyFillSlackMs",
+      "must_match": [
+        "if (e_offset < kEarlyFillSlackMs) ok = true;",
+        "return d - hydra::kEarlyFillSlackMs;"
       ],
       "must_not_match": [
         "if (is_e0(e_offset, 0)) ok = true;"
@@ -415,21 +446,16 @@
       "owner_lines": [
         {
           "file": "src/core/model.h",
-          "line_text": "constexpr double kEarlyFillWindowMs = 60.0;",
+          "line_text": "constexpr double kEarlyFillSlackMs = 60.0;",
           "why": "the constant itself"
         },
         {
           "file": "src/core/model.h",
-          "line_text": "inline bool fill_refuses(double e_offset) { return e_offset < -kEarlyFillWindowMs; }",
-          "why": "fill_refuses, the owner of the refusal"
-        },
-        {
-          "file": "src/core/model.h",
-          "line_text": "return e_offset < kEarlyFillWindowMs && skips == 0;",
+          "line_text": "return e_offset < kEarlyFillSlackMs && skips == 0;",
           "why": "is_e0, the owner of the E0"
         }
       ],
-      "note": "Was its own walker in test_model.cpp (review finding 12). Decided by: review of D35, finding A; step-1 derive-once review finding 12 (2026-10-04)"
+      "note": "Split from the one early-fill window row (D35; step-1 derive-once review finding 12, 2026-10-04) when the two sides got their own numbers. Decided by: D250 (the slack stays at D51 call 7's value)"
     },
     {
       "question": "Who writes an activation's sqout_tick?",

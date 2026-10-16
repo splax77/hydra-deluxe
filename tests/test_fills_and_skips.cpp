@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -67,14 +68,13 @@ TEST_CASE("Skipped fills: the 1.0 rule's offered fill is the one stored") {
 }
 
 // The 1.1 rule at the exact edge. A fill spawns when SP is ready no later
-// than kEarlyFillWindowMs past its deadline (the engine refuses it only when
-// e_offset < -kEarlyFillWindowMs). 125 BPM at 480 ticks a beat makes a tick
-// one millisecond. Fill A ends at 9600 and is 480 ticks long, so its 1.1
-// deadline is 4 beats before its start: tick 7200, 7200 ms. The first phrase
-// (480) banks a bar; the second, at `ready`, banks the other. Fill C (19200)
-// is the one taken. With SP ready at 7260 (exactly 60 ms late) A is shown and
-// passed over; one tick later it never spawns.
-TEST_CASE("Skipped fills: under the 1.1 rule a fill exactly at the window edge is stored") {
+// than kEarlyFillReachMs past its deadline (fill_refuses). 125 BPM at 480
+// ticks a beat makes a tick one millisecond. Fill A ends at 9600 and is 480
+// ticks long, so its 1.1 deadline is 4 beats before its start: tick 7200,
+// 7200 ms. The first phrase (480) banks a bar; the second, at `ready`, banks
+// the other. Fill C (19200) is the one taken. With SP ready exactly the reach
+// late, A is shown and passed over; one tick later it never spawns.
+TEST_CASE("Skipped fills: under the 1.1 rule a fill exactly at the reach edge is stored") {
     auto passed_over = [](int64_t ready) {
         std::vector<test::FixtureNote> notes;
         for (int64_t t = 0; t <= 28800; t += 480) {
@@ -102,9 +102,41 @@ TEST_CASE("Skipped fills: under the 1.1 rule a fill exactly at the window edge i
         REQUIRE(paths.front().activations.front().timecode.ticks() == 19200);
         return paths.front().activations.front().skipped_fill_ticks;
     };
-    const int64_t edge = 7200 + static_cast<int64_t>(kEarlyFillWindowMs);
+    const int64_t edge = 7200 + static_cast<int64_t>(kEarlyFillReachMs);
     CHECK((passed_over(edge) == std::vector<int64_t>{9600}));
     CHECK(passed_over(edge + 1).empty());
+}
+
+// An orange early fill inside the reach (D250): SP comes ready 70 ms after
+// the fill's deadline, so the activation needs a 70 ms early hit. Same
+// fixture as above, but fill A at 9600 is the chart's only fill, so the best
+// path activates there or not at all. The search takes it, and the record
+// stores it as a required early fill (E0) of 70 ms
+// (Activation::e_difficulty, which the stored hardest_efill reads).
+TEST_CASE("search: a fill that needs a 70 ms early hit is taken as a required early fill") {
+    constexpr int64_t ready = 7270;
+    std::vector<test::FixtureNote> notes;
+    for (int64_t t = 0; t <= 28800; t += 480) {
+        test::FixtureNote n{t};
+        n.phrase = t == 480;
+        if (t == 9600) n.fill_length = 480;
+        notes.push_back(n);
+    }
+    notes.push_back({ready, true, 0});
+    std::sort(notes.begin(), notes.end(),
+              [](const test::FixtureNote& a, const test::FixtureNote& b) { return a.tick < b.tick; });
+    const Song song = test::build_fixture_song(480, 125.0, notes);
+    REQUIRE(activation_fill_deadline_ms(song.timing(), 9600, 480, FillDeadlineRule::Ch11) == 7200.0);
+    REQUIRE(song.timecode(ready).ms() == static_cast<double>(ready));
+    ScoreGraph graph(song, 4, FillDeadlineRule::Ch11);
+    std::vector<Path> paths;
+    REQUIRE_NOTHROW(paths = run_search(graph, EngineOptions{}));
+    REQUIRE(!paths.empty());
+    CAPTURE(paths.front().pathstring());
+    REQUIRE(test::act_ticks(paths.front()) == std::vector<int64_t>{9600});
+    const Activation& act = paths.front().activations.front();
+    CHECK(act.is_E0());
+    CHECK(act.e_difficulty() == std::optional<double>{70.0});
 }
 
 // The lasting order checks, on root paths. A tied variant still carries its

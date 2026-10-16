@@ -504,12 +504,18 @@ which can move a large cutoff by one point (`star_cutoff` in
 src/core/stars.cpp; D48, Q33).
 
 **Early fill (E)**:
-An activation timing (the `E` notation) where the fill must be summoned by
-hitting early. Its window is 60 ms<!-- default: kEarlyFillWindowMs -->
-(`kEarlyFillWindowMs`), fixed, not the hit-window setting. It was tightened
-from 85 ms. The user kept 60 ms because paths were cluttered with early fills
-that never matter (D51 call 7); the hardest real early fill on 18,773 charts
-was 57.7 ms.
+An activation timing (the `E` notation) near a fill's spawn deadline. The
+window has two sides, each a fixed number of its own, never the hit-window
+setting, because the search reads them (src/core/model.h).
+On the orange side, Star Power comes ready after the deadline, so you must
+hit early to summon the fill. It reaches 85 ms<!-- default: kEarlyFillReachMs -->
+(`kEarlyFillReachMs`, read by `fill_refuses`): later than that the fill
+never spawns, and the search drops the activation.
+On the white side, Star Power comes ready before the deadline with less than
+60 ms<!-- default: kEarlyFillSlackMs --> to spare (`kEarlyFillSlackMs`, read
+by `is_e0`). The activation still gets the `E` mark, but has nothing to time.
+The white side stays at 60 ms because paths were cluttered with early fills
+that never matter (D51 call 7); D250 widened only the orange side.
 
 **Fill spawn deadline (CH 1.1)**:
 The latest your SP meter can fill up and still have a fill appear. Clone Hero

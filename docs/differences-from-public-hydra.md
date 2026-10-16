@@ -23,7 +23,7 @@ Both do the same job. They read Clone Hero drum charts and find the Star Power p
 | Ghost and accent kicks | Scored as normal kicks | Scored double, like the pads |
 | Hit window | 70 ms | 85 ms |
 | Squeeze-in/out search window | 140 ms | 500 ms |
-| Early fill window | 70 ms | 60 ms |
+| Early fill window | 70 ms | Up to 85 ms early to summon a fill; under 60 ms to spare still shows `E` |
 | Rules you can change | None | `hydra_rules.ini` |
 | Analyzing many songs | `hydra_runfolder.py` script | In-app batch, plus `hydra_batch` |
 | Reports | JSON from the runfolder script | Path report and leaderboard comparison windows in the app |
@@ -74,7 +74,9 @@ The two versions can give different optimal scores for the same chart. There are
 
 This version's parser started as a port of public Hydra 1.x, checked chart by chart. Public Hydra's disco and 2x kick rules were checked only in its 1.2.0 source, which still reads charts the old way. Whether a newer public version changed that was not checked. The biggest effect is on Hard, Medium and Easy with Pro Drums, where about 640 charts each score differently, mostly higher. One Clone Hero rule is deliberately not copied: `drums0dnoflip` turns disco flip off here, as the marker says.
 
-Two changes affect only the display, never the path search. The hit window is 85 ms per side, which is Clone Hero's Pro Drums window. It sets the squeeze ratings and the report's difficulty tiers. The early fill window is 60 ms. Across 18,773 analyzed charts, no best path needed an early fill between 60 and 85 ms, so this changed no result.
+The hit window affects only the display, never the path search. It is 85 ms per side, which is Clone Hero's Pro Drums window. It sets the squeeze ratings and the report's difficulty tiers.
+
+The early fill window has two sides. Each is a fixed number in Hydra Deluxe, not a setting. The first side steers the path search. When your Star Power comes ready after a fill's deadline, you can still summon the fill by hitting the activation early, by up to 85 ms. The search keeps every activation that needs 85 ms or less and drops the rest. The second side only marks paths. When Star Power comes ready before the deadline with less than 60 ms to spare, the activation still shows `E`. Nothing on it needs timing.
 
 ## Things only this version can do
 

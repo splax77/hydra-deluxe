@@ -149,8 +149,8 @@ TEST_CASE("squeeze_difficulty and is_e0: one owner for the engine and the model"
     CHECK_FALSE(std::signbit(squeeze_difficulty(false, 0.0)));
     CHECK(SPSqueeze{SqueezeKind::SqOut, -3.5}.difficulty() == squeeze_difficulty(false, -3.5));
 
-    CHECK(is_e0(kEarlyFillWindowMs - 0.1, 0));
-    CHECK_FALSE(is_e0(kEarlyFillWindowMs, 0));
+    CHECK(is_e0(kEarlyFillSlackMs - 0.1, 0));
+    CHECK_FALSE(is_e0(kEarlyFillSlackMs, 0));
     CHECK_FALSE(is_e0(10.0, 1));
     CHECK(early_fill_difficulty(-4.0) == 4.0);
     CHECK_FALSE(std::signbit(early_fill_difficulty(0.0)));
@@ -166,10 +166,10 @@ TEST_CASE("squeeze_difficulty and is_e0: one owner for the engine and the model"
 // The all-0 rule (D102): no skips, or one skip that was the early fill.
 TEST_CASE("allzero_activation: no skips, or an E1") {
     CHECK(allzero_activation(500.0, 0));                     // a plain 0
-    CHECK(allzero_activation(kEarlyFillWindowMs - 0.1, 0));  // an E0
-    CHECK(allzero_activation(kEarlyFillWindowMs - 0.1, 1));  // an E1
-    CHECK(allzero_activation(-kEarlyFillWindowMs, 1));       // an E1, 60 ms late
-    CHECK_FALSE(allzero_activation(kEarlyFillWindowMs, 1));  // a plain 1
+    CHECK(allzero_activation(kEarlyFillSlackMs - 0.1, 0));   // an E0
+    CHECK(allzero_activation(kEarlyFillSlackMs - 0.1, 1));   // an E1
+    CHECK(allzero_activation(-kEarlyFillReachMs, 1));        // an E1, as late as a fill spawns
+    CHECK_FALSE(allzero_activation(kEarlyFillSlackMs, 1));   // a plain 1
     CHECK_FALSE(allzero_activation(10.0, 2));                // an E2 skips a real fill
 
     Path p;
@@ -178,23 +178,26 @@ TEST_CASE("allzero_activation: no skips, or an E1") {
     test::set_skips(e1, 1);
     p.activations.push_back(e1);
     CHECK(p.is_allzero());
-    p.activations.front().e_offset = kEarlyFillWindowMs;
+    p.activations.front().e_offset = kEarlyFillSlackMs;
     CHECK_FALSE(p.is_allzero());
 }
 
-// The early-fill window has one owner: model.h states both halves of it, the
-// fill that refuses (fill_refuses) and the E0 (is_e0). That only model.h
-// reads kEarlyFillWindowMs is a row of the single-owner scan
-// (tests/single_owner/rules/core.json); this checks the two halves' edges.
+// The early-fill window has one owner: model.h states both sides of it, the
+// fill that refuses (fill_refuses, read from kEarlyFillReachMs) and the E0
+// (is_e0, read from kEarlyFillSlackMs). That only model.h reads either
+// constant is a row of the single-owner scan
+// (tests/single_owner/rules/core.json); this checks each side's edge.
 TEST_CASE("early-fill window: the refusal and the E0 edges") {
     CHECK(fill_e_offset(10000.0, 10050.0) == -50.0);
-    CHECK_FALSE(fill_refuses(-kEarlyFillWindowMs));  // exactly 60 ms late still spawns
-    CHECK(fill_refuses(-kEarlyFillWindowMs - 0.1));
+    CHECK_FALSE(fill_refuses(-kEarlyFillReachMs));  // exactly at the reach still spawns
+    CHECK(fill_refuses(-kEarlyFillReachMs - 0.1));
     Activation a;
-    a.e_offset = kEarlyFillWindowMs - 0.1;
+    a.e_offset = kEarlyFillSlackMs - 0.1;
     test::set_skips(a, 1);
+    CHECK(a.is_e_critical());
     CHECK(a.is_e_critical() == is_e0(a.e_offset, 0));
-    a.e_offset = kEarlyFillWindowMs;
+    a.e_offset = kEarlyFillSlackMs;
+    CHECK_FALSE(a.is_e_critical());
     CHECK(a.is_e_critical() == is_e0(a.e_offset, 0));
 }
 
@@ -496,16 +499,16 @@ TEST_CASE("Activation: each end's anchor and each squeeze's end, from the steps"
 TEST_CASE("Activation notationstr: E prefix, skips, symbols") {
     Activation a;
     test::set_skips(a, 2);
-    a.e_offset = 300.0;  // not e-critical (>= kEarlyFillWindowMs)
+    a.e_offset = 300.0;  // not e-critical (>= kEarlyFillSlackMs)
     CHECK(a.notationstr() == "2");
 
-    a.e_offset = kEarlyFillWindowMs;  // boundary: not e-critical
+    a.e_offset = kEarlyFillSlackMs;  // boundary: not e-critical
     CHECK(a.notationstr() == "2");
 
     a.e_offset = 50.0;  // e-critical
     CHECK(a.notationstr() == "E2");
 
-    a.e_offset = kEarlyFillWindowMs - 0.1;  // boundary: e-critical
+    a.e_offset = kEarlyFillSlackMs - 0.1;  // boundary: e-critical
     CHECK(a.notationstr() == "E2");
 
     a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -1.0});
