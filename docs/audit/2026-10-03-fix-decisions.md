@@ -853,3 +853,9 @@ The game also reads lanes during play, to make the notes under a lane easier to 
 6. **The batch.** A batch skips these charts as "already had a result", the confirm adds the dim line "N of these can't be analyzed. Check the box to try them again.", and the redo box tries them again (option a).
 7. **The command-line tool.** Nothing more (the recommendation; the main session took it).
 8. **The progress while the report analyzes.** Opening the report runs an ordinary batch, with the strip, and the window shows "Analyzing n of N charts" over a real bar (the recommendation). Added by the user: when more than 500 charts need analyzing, the report shows the normal batch confirm first ("Analyze N charts that have no result yet?"); at 500 or fewer it just runs. The 500 is the number the question offered and the user chose.
+
+**D250 (session c35a4b7d), 2026-10-15. Early fills: orange timing up to 85 ms.** The user asked to "change the early fill search to allow orange timing up to 85ms". Orange is the side of the early-fill window where Star Power comes ready after the fill's deadline, so you must hit early to summon the fill; white is the side where it comes ready before the deadline with time to spare. The plan is `docs/superpowers/plans/2026-10-15-early-fill-orange-85.md`. The user's calls in chat:
+1. **Which side.** Only the orange side goes to 85 ms (`fill_refuses`). The white side, where an activation gets the `E` mark with nothing to time (`is_e0`), stays at 60 ms, so D51 call 7's clutter does not come back.
+2. **Fixed or setting.** A fixed 85 ms constant of its own, not the hit window setting, which stays display-only.
+3. **Saved results.** Every analyzed chart reads Stale: the results stamp becomes "2.8.0+efill85".
+4. **Comments.** Added by the user: "comments exist to explain the current code, not give a history lesson". The new constants' comments say what each means and who reads it, with no old values or versions.
