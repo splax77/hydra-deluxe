@@ -118,6 +118,7 @@ std::optional<KindSentence> kind_sentence(const KindedError& e) {
         case ErrorKind::ChartUnreadable: return KindSentence{kChartUnreadable};
         case ErrorKind::ChartTimingRefused: return quoting(timing_refusal_sentence(e.what()));
         case ErrorKind::NoteShuffleFreezes: return KindSentence{kNoteShuffleFreezes};
+        case ErrorKind::NoNotes: return quoting(e.what());
         case ErrorKind::AlreadyPlain: return quoting(e.what());
         case ErrorKind::SearchBroken: return KindSentence{kSearchBroken};
         case ErrorKind::NetUnreachable: return KindSentence{kNetUnreachable};
@@ -174,6 +175,10 @@ std::string rules_file_tool_text(const std::exception& e) {
 std::string plain_error_block(const std::exception& e) {
     if (plain_error_detail(e).empty()) return plain_error(e);
     return plain_error(e) + "\n\n" + plain_error_detail(e);
+}
+
+std::string stored_failure_text(ErrorKind kind, const std::string& text) {
+    return plain_error_block(KindedError(kind, text));
 }
 
 int tool_error(const std::exception& e, int exit_code) {

@@ -1,5 +1,6 @@
-// The store's one save and one lookup (D115): prepare_record, RecordStore::save,
-// lookup, lookup_one, ready_song_ids and ready_records, the status rules a
+// The store's one save and one lookup (D115): prepare_record, failure_record,
+// RecordStore::save, lookup, lookup_one, settled_song_ids, ready_song_ids and
+// ready_records, the status rules a
 // lookup answers by (which stamps read Ready, why a record is Stale, what reads
 // Not analyzed), plus the path-row size measured on the corpus. How saved
 // records read back across caps, lenses and the corpus is in
@@ -17,11 +18,15 @@
 
 #include <sqlite3.h>
 
+#include "app/user_messages.h"  // plain_error, plain_error_detail
+#include "core/error_kind.h"
 #include "core/model.h"
+#include "core/rules.h"  // RulesStamp
 #include "core/winstr.h"  // os_path
 #include "corpus_util.h"
-#include "db_file_util.h"  // scalar_on_file
+#include "db_file_util.h"  // scalar_on_file, exec_on_file
 #include "display_fixtures.h"  // save_old_build_record, kOldBuildStamp, other_rules_record
+#include "library_fixtures.h"  // library_row
 #include "parse/song.h"
 #include "store/record_store.h"
 #include "store/stored_versions.h"  // kResultsStamp
@@ -184,7 +189,7 @@ TEST_CASE("store: a save keeps a readable record made under other rules (D51 cal
     CHECK(store.record_count() == 3);
 }
 
-TEST_CASE("store: record_count counts every record, under any profile") {
+TEST_CASE("store: record_count counts every real record, under any profile, and no failure") {
     RecordStore store(":memory:");
     CHECK(store.record_count() == 0);
     store.save(prepare_record("h1", at4(), fixture().record));
@@ -196,6 +201,208 @@ TEST_CASE("store: record_count counts every record, under any profile") {
     store.save(prepare_record("h1", at4("other mode"), fixture().record));
     store.save(prepare_record("h2", at4(), fixture().record));
     CHECK(store.record_count() == 3);
+    // A failure is not a real record.
+    store.save(failure_record("h3", at4(), ErrorKind::NoNotes, "No notes."));
+    CHECK(store.record_count() == 3);
+    // A failure that replaces a real record takes it out of the count.
+    store.save(failure_record("h2", at4(), ErrorKind::NoNotes, "No notes."));
+    CHECK(store.record_count() == 2);
+}
+
+// ---- stored failures (REPORT-ALL-T1) ---------------------------------------
+
+TEST_CASE("store: the remembered failures are exactly the four the chart's content causes") {
+    // The user's answer 1 (2026-10-15).
+    const std::set<ErrorKind> remembered = {ErrorKind::NoNotes, ErrorKind::ChartTimingRefused,
+                                            ErrorKind::NoteShuffleFreezes,
+                                            ErrorKind::ChartUnreadable};
+    for (ErrorKind kind :
+         {ErrorKind::Cancelled, ErrorKind::DatabaseOpen, ErrorKind::DatabaseUpgrade,
+          ErrorKind::OldLibraryRefused, ErrorKind::OldLibrarySetAsideFailed,
+          ErrorKind::DatabaseWrite, ErrorKind::DatabaseRead, ErrorKind::SongFileMissing,
+          ErrorKind::HashFailed, ErrorKind::ChartUnreadable, ErrorKind::ChartTimingRefused,
+          ErrorKind::NoteShuffleFreezes, ErrorKind::NoNotes, ErrorKind::AlreadyPlain,
+          ErrorKind::SearchBroken, ErrorKind::NetUnreachable, ErrorKind::NetTimeout,
+          ErrorKind::NetHttpStatus, ErrorKind::NetBadReply, ErrorKind::NoScores,
+          ErrorKind::NoRecords, ErrorKind::ReportWrite, ErrorKind::RulesFile,
+          ErrorKind::AudioDecode, ErrorKind::PreviewAssets}) {
+        CAPTURE(static_cast<int>(kind));
+        const bool want = remembered.count(kind) == 1;
+        CHECK(remembered_failure(kind) == want);
+        // A remembered kind has a stored name that reads back as itself; any
+        // other has none, and failure_record refuses it.
+        const char* name = failure_kind_name(kind);
+        CHECK((name != nullptr) == want);
+        if (name) CHECK(failure_kind_from_name(name) == std::optional<ErrorKind>(kind));
+        if (!want) CHECK_THROWS_AS(failure_record("h", at4(), kind, "x"), std::invalid_argument);
+    }
+    CHECK_FALSE(failure_kind_from_name("NotAKind").has_value());
+}
+
+TEST_CASE("store: a chart with no notes throws NoNotes, worded as its own sentence") {
+    try {
+        throw NoNotesError(Difficulty::Expert, true);
+    } catch (const KindedError& e) {
+        CHECK(e.kind() == ErrorKind::NoNotes);
+        CHECK(app::plain_error(e) == "No Expert Pro Drums notes in this chart.");
+        CHECK(app::plain_error_detail(e).empty());
+    }
+}
+
+TEST_CASE("store: a failure saves and reads back CantAnalyze with its kind and text") {
+    RecordStore store(":memory:");
+    const PreparedRecord failed =
+        failure_record("h1", at4(), ErrorKind::ChartTimingRefused, "line 12: bad tempo");
+    // A failure record is no record of numbers: no paths, no stars, no notes.
+    CHECK(failed.record.paths.empty());
+    CHECK(failed.record.pathcount == 0);
+    CHECK_FALSE(failed.record.stars.has_value());
+    CHECK(failed.record.notecount == 0);
+    store.save(failed);
+
+    const RecordLookup got = store.lookup_one("h1", at4());
+    CHECK(got.status == RecordStatus::CantAnalyze);
+    CHECK(got.failure_kind == std::optional<ErrorKind>(ErrorKind::ChartTimingRefused));
+    CHECK(got.failure_text == "line 12: bad tempo");
+    CHECK_FALSE(got.stale_build);
+    CHECK_FALSE(got.stale_rules);
+    // Only a Ready answer hands out a record.
+    CHECK(got.record == RecordRow{});
+    // Another profile does not see it.
+    CHECK(store.lookup_one("h1", at4("other mode")).status == RecordStatus::NotAnalyzed);
+}
+
+TEST_CASE("store: a failure saved under another build's stamp reads Stale") {
+    RecordStore store(":memory:");
+    store.save_under_build_for_test(failure_record("h1", at4(), ErrorKind::NoNotes, "No notes."),
+                                    hydra::test::kOldBuildStamp);
+    const RecordLookup got = store.lookup_one("h1", at4());
+    CHECK(got.status == RecordStatus::Stale);
+    CHECK(got.stale_build);
+    CHECK_FALSE(got.stale_rules);
+    CHECK_FALSE(got.failure_kind.has_value());
+    CHECK(got.failure_text.empty());
+    CHECK(store.settled_song_ids(at4()).empty());
+}
+
+TEST_CASE("store: a failure under other rules reads Stale, and one a store with no rules refuses") {
+    {
+        RecordStore store(":memory:", core::RulesStamp{core::default_stamp().fixed + 1});
+        store.save(failure_record("h1", at4(), ErrorKind::NoNotes, "No notes."));
+        CHECK(store.lookup_one("h1", at4()).status == RecordStatus::CantAnalyze);
+    }
+    FileStore file;
+    {
+        RecordStore store(file.path, core::RulesStamp{core::default_stamp().fixed + 1});
+        store.save(failure_record("h1", at4(), ErrorKind::NoNotes, "No notes."));
+    }
+    {
+        RecordStore store(file.path);
+        const RecordLookup got = store.lookup_one("h1", at4());
+        CHECK(got.status == RecordStatus::Stale);
+        CHECK(got.stale_rules);
+        CHECK_FALSE(got.stale_build);
+    }
+    RecordStore none(":memory:", core::RulesStamp::none());
+    CHECK_THROWS_AS(none.save(failure_record("h1", at4(), ErrorKind::NoNotes, "No notes.")),
+                    std::invalid_argument);
+}
+
+TEST_CASE("store: a real save replaces a failure, and a failure replaces a real record") {
+    RecordStore store(":memory:");
+    store.save(failure_record("h1", at4(), ErrorKind::ChartUnreadable, "expected a [section]"));
+    REQUIRE(store.lookup_one("h1", at4()).status == RecordStatus::CantAnalyze);
+
+    const PreparedRecord real = prepare_record("h1", at4(), fixture().record);
+    REQUIRE_FALSE(real.record.paths.empty());
+    store.save(real);
+    RecordLookup got = store.lookup_one("h1", at4());
+    REQUIRE(got.status == RecordStatus::Ready);
+    CHECK(got.record == real.record);
+    CHECK_FALSE(got.failure_kind.has_value());
+    CHECK(got.failure_text.empty());
+
+    store.save(failure_record("h1", at4(), ErrorKind::NoNotes, "No notes."));
+    got = store.lookup_one("h1", at4());
+    CHECK(got.status == RecordStatus::CantAnalyze);
+    CHECK(got.failure_kind == std::optional<ErrorKind>(ErrorKind::NoNotes));
+    CHECK(got.record.paths.empty());
+    // The failure took the real record's place: no real record is left.
+    CHECK(store.record_count() == 0);
+}
+
+TEST_CASE("store: a failure replaces the real record's path rows in the file") {
+    FileStore file;
+    {
+        RecordStore store(file.path);
+        store.save(prepare_record("h1", at4(), fixture().record));
+        REQUIRE(scalar_on_file(file.path, "SELECT COUNT(*) FROM record_paths") > 0);
+        store.save(failure_record("h1", at4(), ErrorKind::NoNotes, "No notes."));
+    }
+    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM record_paths") == 0);
+    CHECK(hydra::test::record_rows_in(file.path) == 1);
+}
+
+TEST_CASE("store: settled_song_ids lists exactly lookup's Ready and CantAnalyze charts") {
+    RecordStore store(":memory:");
+    const HydraRecord& analysis = fixture().record;
+    store.save(prepare_record("ready", at4(), analysis));
+    store.save(prepare_record("empty", at4(), no_paths_at_cap(4)));
+    store.save(failure_record("failed", at4(), ErrorKind::NoNotes, "No notes."));
+    hydra::test::save_old_build_record(store, prepare_record("stale", at4(), analysis));
+    store.save_under_build_for_test(
+        failure_record("stale failure", at4(), ErrorKind::NoNotes, "No notes."),
+        hydra::test::kOldBuildStamp);
+    store.save(prepare_record("rules", at4(), hydra::test::other_rules_record(analysis)));
+    store.save(failure_record("elsewhere", at4("other mode"), ErrorKind::NoNotes, "No notes."));
+
+    const std::vector<std::string> ids = {"ready",  "empty", "failed",    "stale",
+                                          "stale failure", "rules", "elsewhere", "never"};
+    std::unordered_map<std::string, RecordStatus> settled_by_lookup;
+    const std::vector<RecordLookup> found = store.lookup(ids, at4());
+    for (size_t i = 0; i < ids.size(); ++i)
+        if (found[i].status == RecordStatus::Ready || found[i].status == RecordStatus::CantAnalyze)
+            settled_by_lookup.emplace(ids[i], found[i].status);
+    CHECK(store.settled_song_ids(at4()) == settled_by_lookup);
+    CHECK(settled_by_lookup == std::unordered_map<std::string, RecordStatus>{
+                                   {"ready", RecordStatus::Ready},
+                                   {"empty", RecordStatus::Ready},
+                                   {"failed", RecordStatus::CantAnalyze}});
+    // ready_song_ids and ready_records leave the failure out.
+    CHECK(store.ready_song_ids(at4()) == std::unordered_set<std::string>{"ready", "empty"});
+    CHECK(store.ready_records(at4()).size() == 2);
+}
+
+TEST_CASE("store: a profile whose only record is a failure is kept") {
+    FileStore file;
+    {
+        RecordStore store(file.path);
+        const std::vector<ChartLibraryEntry> library = {library_row("failed", "Failed"),
+                                                        library_row("real", "Real")};
+        store.rebuild_chart_library(library);
+        store.save(failure_record("failed", at4("failed mode"), ErrorKind::NoNotes, "No notes."));
+        // Each save drops emptied profiles, and so does the scan's purge.
+        store.save(prepare_record("real", at4(), fixture().record));
+        store.rebuild_chart_library(library);
+        CHECK(store.lookup_one("failed", at4("failed mode")).status == RecordStatus::CantAnalyze);
+    }
+    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
+}
+
+TEST_CASE("store: a failure of a kind this build cannot name reads Stale for another build") {
+    FileStore file;
+    {
+        RecordStore store(file.path);
+        store.save(failure_record("h1", at4(), ErrorKind::NoNotes, "No notes."));
+    }
+    // What a later build that remembers one more kind would leave.
+    hydra::test::exec_on_file(file.path, "UPDATE records SET failure_kind = 'LaterKind'");
+    RecordStore store(file.path);
+    const RecordLookup got = store.lookup_one("h1", at4());
+    CHECK(got.status == RecordStatus::Stale);
+    CHECK(got.stale_build);
+    CHECK_FALSE(got.failure_kind.has_value());
+    CHECK(store.settled_song_ids(at4()).empty());
 }
 
 TEST_CASE("store: lookup's three answers against sibling profiles") {

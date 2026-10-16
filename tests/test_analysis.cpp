@@ -19,6 +19,7 @@
 #include <future>
 #include <map>
 #include <memory>
+#include <new>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -215,7 +216,7 @@ TEST_CASE("charts_with_result counts a Ready record and not a Stale or sibling-p
             hydra::store::RecordStatus::NotAnalyzed);
 
     CHECK(charts_with_result(store, run, /*redo=*/false) ==
-          std::unordered_set<std::string>{"ready"});
+          SettledCharts{{"ready", hydra::store::RecordStatus::Ready}});
     CHECK(charts_with_result(store, run, /*redo=*/true).empty());
 }
 
@@ -544,7 +545,7 @@ TEST_CASE("plan_batch: a second copy runs with its first and counts as a row") {
     // D51 call 10: the copy is not run again. D76: it adds a row to its
     // chart, so the plan's rows add up to the scan's.
     const std::vector<ScanItem> items = items_with_a_copy();
-    const BatchPlan plan = plan_batch(items, {"fake2"});
+    const BatchPlan plan = plan_batch(items, {{"fake2", hydra::store::RecordStatus::Ready}});
 
     REQUIRE(plan.todo.size() == 2);
     CHECK(plan.todo[0].md5 == "fake0");
@@ -557,12 +558,27 @@ TEST_CASE("plan_batch: a second copy runs with its first and counts as a row") {
 
 TEST_CASE("plan_batch: every copy of a stored chart counts as skipped") {
     std::vector<ScanItem> items = items_with_a_copy();
-    const BatchPlan plan = plan_batch(items, {"fake0"});
+    const BatchPlan plan = plan_batch(items, {{"fake0", hydra::store::RecordStatus::Ready}});
 
     REQUIRE(plan.todo.size() == 2);
     CHECK(plan.todo[0].md5 == "fake1");
     CHECK(plan.todo[1].md5 == "fake2");
     CHECK(plan.skipped == 2);
+    CHECK(plan.cant_analyze == 0);
+    CHECK(plan.todo_rows() + plan.skipped == static_cast<int>(items.size()));
+}
+
+TEST_CASE("plan_batch: a stored failure is skipped and counted as can't analyze, every copy") {
+    // The user's answer 6, 2026-10-15: a chart that can't be analyzed is
+    // skipped like one with a result, and the confirm counts it in rows.
+    std::vector<ScanItem> items = items_with_a_copy();
+    const BatchPlan plan = plan_batch(items, {{"fake0", hydra::store::RecordStatus::CantAnalyze},
+                                              {"fake2", hydra::store::RecordStatus::Ready}});
+
+    REQUIRE(plan.todo.size() == 1);
+    CHECK(plan.todo[0].md5 == "fake1");
+    CHECK(plan.skipped == 3);
+    CHECK(plan.cant_analyze == 2);  // fake0 and its copy
     CHECK(plan.todo_rows() + plan.skipped == static_cast<int>(items.size()));
 }
 
@@ -575,7 +591,7 @@ TEST_CASE("plan_batch takes its copies from ChartIndex") {
         copy.notespath = "copy" + std::to_string(items.size()) + "_" + copy.notespath;
         items.push_back(copy);
     }
-    const BatchPlan plan = plan_batch(items, {"fake2"});
+    const BatchPlan plan = plan_batch(items, {{"fake2", hydra::store::RecordStatus::Ready}});
 
     // Each chart to run is ChartIndex's: its order, its naming copy and its
     // copy count.
@@ -723,7 +739,7 @@ TEST_CASE("run_batch counts a failed save as a failed chart and goes on") {
                               "the disk isn't full and that no other copy of Hydra is running, "
                               "then try again.|saving a record",
                               0) == 0);
-        const std::unordered_set<std::string> stored = charts_with_result(store, run, false);
+        const SettledCharts stored = charts_with_result(store, run, false);
         CHECK(stored.count("fake0") == 1);
         CHECK(stored.count("fake1") == 0);
         CHECK(last.analyzed == 1);
@@ -775,6 +791,98 @@ TEST_CASE("run_batch hands on_error no details line for a chart with no notes") 
 
     REQUIRE(lines.size() == 1);
     CHECK(lines[0] == "No Expert Pro Drums notes in this chart.|");
+}
+
+// ---- stored failures (the user's answers 1 and 6, 2026-10-15) ---------------
+
+// A chart the real analyzer finds no notes in fails in its first batch, and
+// that failure is stored as its result. The next batch skips it as a chart
+// with a result, and the redo plan runs it again.
+TEST_CASE("run_batch stores a chart with no notes, and the next batch skips it") {
+    Settings settings;
+    settings.view_difficulty = "Hard";  // the corpus has charts with no Hard part
+    const BatchRun run = settings.batch_run();
+    const ScanItem item = chart_item(corpus::first_chart_without_notes(hydra::Difficulty::Hard));
+    hydra::store::RecordStore store(":memory:");
+
+    BatchCallbacks callbacks;
+    std::vector<std::string> lines;
+    callbacks.on_error = [&lines](const std::string&, const std::string& sentence,
+                                  const std::string& error) {
+        lines.push_back(sentence + "|" + error);
+    };
+    BatchProgress last;
+    callbacks.on_progress = [&last](const BatchProgress& p) { last = p; };
+    run_planned({item}, run, store, /*redo=*/false, 1, callbacks);
+
+    // This run still counts and reports it as failed.
+    CHECK(last.failed == 1);
+    CHECK(last.analyzed == 0);
+    REQUIRE(lines.size() == 1);
+    CHECK(lines[0] == "No Hard Pro Drums notes in this chart.|");
+    const hydra::store::RecordLookup found = store.lookup_one(item.md5, run.profile);
+    CHECK(found.status == hydra::store::RecordStatus::CantAnalyze);
+    CHECK(found.failure_kind == hydra::ErrorKind::NoNotes);
+    CHECK(found.failure_text == "No Hard Pro Drums notes in this chart.");
+
+    // The next batch plans nothing and counts the row as skipped.
+    const BatchPlan plan = plan_batch({item}, charts_with_result(store, run, /*redo=*/false));
+    CHECK(plan.todo.empty());
+    CHECK(plan.skipped == 1);
+    CHECK(plan.cant_analyze == 1);
+    lines.clear();
+    run_batch(plan, run, store, 1, callbacks);
+    CHECK(last.skipped == 1);
+    CHECK(last.failed == 0);
+    CHECK(lines.empty());
+
+    // The redo box tries it again.
+    const BatchPlan redo = plan_batch({item}, charts_with_result(store, run, /*redo=*/true));
+    CHECK(redo.todo.size() == 1);
+    CHECK(redo.cant_analyze == 0);
+}
+
+// A failure that can pass on a retry is counted and reported, and never stored.
+TEST_CASE("run_batch stores nothing for a song file it can't open") {
+    BatchCallbacks callbacks;
+    callbacks.analyze = [](const std::string&, const AnalysisSettings&,
+                           const std::function<void(float)>&) -> AnalysisResult {
+        throw hydra::KindedError(hydra::ErrorKind::SongFileMissing, "cannot open file: x");
+    };
+    BatchProgress last;
+    callbacks.on_progress = [&last](const BatchProgress& p) { last = p; };
+    BatchRun run;
+    run.profile.chartmode = "transient-test";
+    hydra::store::RecordStore store(":memory:");
+    run_planned(fake_items(1), run, store, /*redo=*/false, 1, callbacks);
+
+    CHECK(last.failed == 1);
+    CHECK(store.lookup_one("fake0", run.profile).status ==
+          hydra::store::RecordStatus::NotAnalyzed);
+    CHECK(charts_with_result(store, run, /*redo=*/false).empty());
+}
+
+TEST_CASE("prepare_failed_chart: a remembered kind becomes a failure record, anything else nothing") {
+    Settings settings;
+    const hydra::store::Profile profile = settings.profile();
+
+    const std::optional<hydra::store::PreparedRecord> no_notes = prepare_failed_chart(
+        "h", profile, hydra::NoNotesError(hydra::Difficulty::Expert, true));
+    REQUIRE(no_notes.has_value());
+    CHECK(no_notes->record.song_id == "h");
+    CHECK(no_notes->record.failure_kind == hydra::ErrorKind::NoNotes);
+    CHECK(no_notes->record.failure_text == "No Expert Pro Drums notes in this chart.");
+
+    const std::optional<hydra::store::PreparedRecord> unreadable = prepare_failed_chart(
+        "h", profile, hydra::KindedError(hydra::ErrorKind::ChartUnreadable, "expected a header"));
+    REQUIRE(unreadable.has_value());
+    CHECK(unreadable->record.failure_kind == hydra::ErrorKind::ChartUnreadable);
+    CHECK(unreadable->record.failure_text == "expected a header");
+
+    CHECK_FALSE(prepare_failed_chart(
+        "h", profile, hydra::KindedError(hydra::ErrorKind::SongFileMissing, "x")));
+    CHECK_FALSE(prepare_failed_chart("h", profile, std::runtime_error("no kind")));
+    CHECK_FALSE(prepare_failed_chart("h", profile, std::bad_alloc()));
 }
 
 // A hand-built run can ask for a cap its search did not run at. Each chart's
@@ -1065,7 +1173,7 @@ TEST_CASE("run_batch: a failed group COMMIT saves each chart alone, and only a c
                               0) == 0);
         CHECK(errors[0].find("boom", 5) != std::string::npos);
         CHECK(store.record_count() == 2);
-        const std::unordered_set<std::string> stored = charts_with_result(store, run, false);
+        const SettledCharts stored = charts_with_result(store, run, false);
         CHECK(stored.count("fake0") == 1);
         CHECK(stored.count("fake2") == 1);
         // The batch spent the armed failure: a group committed now succeeds.

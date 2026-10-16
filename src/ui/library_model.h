@@ -23,8 +23,9 @@
 
 namespace hydra::ui {
 
-// The four filter chips above the table.
-enum class StatusChip { All, NotAnalyzed, Stale, Analyzed };
+// The filter chips above the table, in the order they are drawn: All, then
+// one per record status.
+enum class StatusChip { All, NotAnalyzed, Stale, Analyzed, CantAnalyze };
 
 // The table's sortable columns. The values are the columns' user IDs in the
 // table, so a sort spec maps straight back to one of these.
@@ -71,6 +72,11 @@ struct LibraryRow {
     bool stale_rules = false;             // RecordLookup); the tooltip names it
     std::string bestpath;                 // set when Ready
     store::PathSummary summary;           // set when Ready (T7)
+    // Set when CantAnalyze: the stored failure's kind and raw text
+    // (store::RecordLookup). The Best path cell's hover words them through
+    // app::stored_failure_text.
+    std::optional<ErrorKind> failure_kind;
+    std::string failure_text;
     // The Best path cell, made when it is drawn (best_path_label).
     std::string best_label() const;
     // Whether `lookup` changes nothing the library shows, filters or sorts on:
@@ -78,8 +84,8 @@ struct LibraryRow {
     bool shows_same_as(const store::RecordLookup& lookup) const;
 };
 
-// The word for a record's status: "Analyzed", "Stale" or "Not analyzed". The
-// status chips, the Best path cell and hydra_uitest's state dump all read it.
+// The word for a record's status, such as "Analyzed". The status chips, the
+// Best path cell and hydra_uitest's state dump all read it.
 const char* status_label(store::RecordStatus status);
 
 // The record status a chip filters to, so the chip can show status_label's
@@ -91,8 +97,9 @@ std::optional<store::RecordStatus> status_of(StatusChip chip);
 // it and the GUI tests look the button up by it.
 std::string chip_label(StatusChip chip, size_t count);
 
-// The Best path cell: "Not analyzed", "Stale", or "<score>  <path>" such as
-// "378,315  3- 1 2". The score is the stored summary's, never recomputed.
+// The Best path cell: status_label's word for a row with no Ready result, or
+// "<score>  <path>" such as "378,315  3- 1 2". The score is the stored
+// summary's, never recomputed.
 std::string best_path_label(store::RecordStatus status, const std::string& bestpath,
                             const store::PathSummary& summary);
 
@@ -101,12 +108,14 @@ std::string best_path_label(store::RecordStatus status, const std::string& bestp
 std::string library_cell_text(const LibraryRow& row, int column);
 
 // Rows the current query matches, by status. The chips show these; the
-// selected chip never changes them.
+// selected chip never changes them. Every row counts under exactly one status
+// chip, so `all` is the sum of the others.
 struct ChipCounts {
     size_t all = 0;
     size_t not_analyzed = 0;
     size_t stale = 0;
     size_t analyzed = 0;
+    size_t cant_analyze = 0;
     size_t of(StatusChip chip) const;
 };
 

@@ -343,6 +343,9 @@ struct ViewOutcome {
     store::SongLength length;
     std::string analysis_message;  // app::plain_error
     std::string analysis_error;    // app::plain_error_detail, may be empty
+    // What the failed analysis threw, so the click can store a failure the
+    // store remembers (app::prepare_failed_chart) under the chart's id.
+    std::exception_ptr analysis_failure;
     // The Dynamics count, or why it failed: a failed count always has its
     // message, and its details line may be empty.
     std::optional<app::DynamicsBreakdown> dynamics;
@@ -404,7 +407,8 @@ void set_view_analyzer_for_test(app::ChartAnalyzer analyze);
 
 // Builds the library's path report in memory (app::report::generate_report)
 // for the path report window (D103). Kicked off when a library batch analysis
-// finishes, and by the window's Refresh (AppState::request_path_report). It
+// finishes (the one opening the report runs included), and by
+// AppState::request_path_report when nothing is left to analyze. It
 // reads the stored records of one profile, off the render thread like every
 // other job. It writes, analyzes and opens nothing.
 class ReportJob : public ResultJobBase {

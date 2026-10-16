@@ -94,7 +94,8 @@ Ready at once.
 ## The path report reads stored paths
 
 The path report is one database read of the current profile's Ready records,
-kept to the charts the library lists (`report::listed_records`). It analyzes
+kept to the charts the library lists (then listed_records, now
+`report::library_lookup`; see the 2026-10-15 note). It analyzes
 nothing and opens no chart file. It lists the current profile only, so its
 Mode column and the row click's mode switch are gone, and a chart mode switch
 marks an open report out of date (user decisions, 2026-10-12). A click that
@@ -178,3 +179,31 @@ kept the old rows Ready and had the report analyze each converted record once
 to fill its paths. The stamp bump made every converted record Stale, so that
 pass could never run on real data. It was dropped, with its "Saving paths"
 bar (user decision, 2026-10-12).
+
+## Note, 2026-10-15: stored failures and a fourth status (D249)
+
+The path report used to list only Ready charts and say nothing about the
+rest. The user asked why it left charts out, and chose that it cover the
+whole library (D249). Two things in this ADR changed with that.
+
+`records` gained two nullable columns, `failure_kind` (an `ErrorKind` name)
+and `failure_text` (what the thrower said). A chart whose own content stops
+the analysis is saved as a record with no paths and those two columns set;
+`remembered_failure` in src/core/error_kind.h names the four kinds kept.
+Both columns are NULL on every ordinary record, and a real save clears them.
+The sentence a screen shows is worded from the kind when it is shown, so no
+stored wording goes out of date. A 2.8.0 file without the columns is a kind
+of its own to `classify_library_file`, and the open adds them in place in
+one transaction. The results stamp did not move (ADR 0018's note of the same
+date).
+
+`RecordStatus` gained a fourth value, `CantAnalyze`, which `lookup` answers
+when the winning record is a failure. Every rule above still applies to a
+failure record: the stamp and rules checks (so a stamp bump makes it Stale
+and it is tried again), the purge of charts that left the library, the
+deletion of empty profiles and the save's replace. The batch's skip list is
+now `RecordStore::settled_song_ids` (Ready or CantAnalyze), and the report
+reads one lookup over the library through `report::library_lookup`. The
+section "The path report reads stored paths" is history where it says the
+report analyzes nothing: opening the report now runs a batch first over the
+charts with no current result.

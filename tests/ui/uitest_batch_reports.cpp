@@ -284,7 +284,8 @@ void test_report_buttons(ImGuiTestContext* ctx) {
     scan_library(ctx);
     if (ctx->IsError()) return;
     ctx->SetRef("//Hydra");
-    IM_CHECK(!ctx->ItemExists("**/Open path report"));  // no report built yet
+    // Offered with nothing built: opening analyzes the library first.
+    IM_CHECK(ctx->ItemExists("**/Open path report"));
 
     // Batch just the first chart (the search narrows the batch).
     const std::string title = "\"" + h.app->library_row_at(0).title + "\"";

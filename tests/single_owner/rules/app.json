@@ -1430,7 +1430,7 @@
         "if (library.lists(r.song_id)) {",
         "{\"Charts shown\", group_thousands(library.count(ids_of(rows, shown)))},"
       ],
-      "note": "The path report and the comparison pages once each tested \"is this chart in the library\" against their own map (the naming-copy files and the copies). A page that looks a chart up in a library map itself can disagree with them about which charts the library lists. Since D115 every page asks store::ChartIndex::lists, the path report through report::listed_records. A ChartIndex::count over the page's ids is the chart count's question, not this one. Decided by: D87 item 4, D92 (task som-a), D115 (tasks A2-4, A2-2)"
+      "note": "The path report and the comparison pages once each tested \"is this chart in the library\" against their own map (the naming-copy files and the copies). A page that looks a chart up in a library map itself can disagree with them about which charts the library lists. Since D115 every page asks store::ChartIndex::lists, the path report through report::library_lookup. A ChartIndex::count over the page's ids is the chart count's question, not this one. Decided by: D87 item 4, D92 (task som-a), D115 (tasks A2-4, A2-2)"
     },
     {
       "question": "How is a picker item's id spelled?",
@@ -1506,6 +1506,11 @@
           "file": "src/app/analysis.cpp",
           "line_text": "return plain_error_block(e);",
           "why": "save_scan_as_library hands the scan's problem list, which has no separate details line, the block for a failed library write (ERR-ONCE, 2026-10-15)"
+        },
+        {
+          "file": "src/app/user_messages.cpp",
+          "line_text": "return plain_error_block(KindedError(kind, text));",
+          "why": "stored_failure_text: the library's Can't analyze tooltip shows a stored failure's block in the GUI, not a tool's exit (plan 2026-10-15)"
         }
       ],
       "note": "A tool that prints an error's block itself is a second way for a tool to end on an error (D73 review finding 2). Decided by: D72 item 5, D73 item 4"

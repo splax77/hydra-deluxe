@@ -440,13 +440,28 @@ std::optional<Difficulty> difficulty_from_name(std::string_view name) {
     return std::nullopt;
 }
 
+namespace {
+// The two ends of the no-notes sentence; no_notes_message writes them and
+// no_notes_part reads them back.
+constexpr std::string_view kNoNotesHead = "No ";
+constexpr std::string_view kNoNotesTail = " in this chart.";
+}  // namespace
+
 std::string no_notes_message(Difficulty difficulty, bool prodrums) {
-    return std::string("No ") + difficulty_name(difficulty) +
-           (prodrums ? " Pro Drums" : " Drums") + " notes in this chart.";
+    return std::string(kNoNotesHead) + difficulty_name(difficulty) +
+           (prodrums ? " Pro Drums" : " Drums") + " notes" + std::string(kNoNotesTail);
+}
+
+std::optional<std::string> no_notes_part(const std::string& message) {
+    const size_t ends = kNoNotesHead.size() + kNoNotesTail.size();
+    if (message.size() <= ends || !starts_with(message, kNoNotesHead) ||
+        !ends_with(message, kNoNotesTail))
+        return std::nullopt;
+    return message.substr(kNoNotesHead.size(), message.size() - ends);
 }
 
 NoNotesError::NoNotesError(Difficulty difficulty, bool prodrums)
-    : ChartFileError(ErrorKind::AlreadyPlain, no_notes_message(difficulty, prodrums)) {}
+    : ChartFileError(ErrorKind::NoNotes, no_notes_message(difficulty, prodrums)) {}
 
 namespace {
 

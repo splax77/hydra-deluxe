@@ -765,6 +765,10 @@ std::string batch_counts_text(int analyzed, int failed, int skipped) {
            counted(skipped, "skipped", "skipped") + " (already had a result)";
 }
 
+std::string batch_cant_analyze_text(int64_t rows) {
+    return group_thousands(rows) + " of these can't be analyzed. Check the box to try them again.";
+}
+
 namespace {
 
 struct WorkResult {
@@ -772,6 +776,9 @@ struct WorkResult {
     // The scan rows this chart settles: BatchPlan::rows (D76).
     int rows = 1;
     // The chart's record, made on the worker, so the consumer only writes.
+    // A failed chart whose failure the store remembers carries its failure
+    // record here (prepare_failed_chart), and is saved like a result. A save
+    // that fails clears it, so the group's retry passes it by.
     std::optional<store::PreparedRecord> row;
     // A failed chart, from its analysis or its save: record_failure fills
     // these in from the exception while its type is still known (the
@@ -795,26 +802,37 @@ void record_failure(WorkResult& wr, const std::exception& e) {
 // batch goes on with the next one (D71, ER2 open question 5). The exception
 // is a failure that lost the whole group (RecordStore::save_group_lost): it
 // says nothing about this chart yet, so the chart stays unfailed and is saved
-// again alone with the rest of its group (D86 item 1).
+// again alone with the rest of its group (D86 item 1). A stored failure whose
+// save fails stays failed with its analysis's sentence, which says more than
+// the save's.
 void save_result(store::RecordStore& store, WorkResult& wr) {
     try {
         store.save(*wr.row);
     } catch (const std::exception& e) {
-        if (!store.save_group_lost()) record_failure(wr, e);
+        if (store.save_group_lost()) return;
+        if (!wr.failed) record_failure(wr, e);
+        wr.row.reset();
     }
 }
 
 }  // namespace
 
-std::unordered_set<std::string> charts_with_result(store::RecordStore& store,
-                                                   const BatchRun& run, bool redo) {
+SettledCharts charts_with_result(store::RecordStore& store, const BatchRun& run, bool redo) {
     if (redo) return {};
-    // RecordStore::ready_song_ids decides what "already has a result" means.
-    return store.ready_song_ids(run.profile);
+    // RecordStore::settled_song_ids decides what "already has a result" means.
+    return store.settled_song_ids(run.profile);
 }
 
-BatchPlan plan_batch(const std::vector<ScanItem>& items,
-                     const std::unordered_set<std::string>& already) {
+std::optional<store::PreparedRecord> prepare_failed_chart(std::string song_id,
+                                                          const store::Profile& profile,
+                                                          const std::exception& e) {
+    // The thrower names the kind (KindedError), as plain_error reads it.
+    const auto* kinded = dynamic_cast<const KindedError*>(&e);
+    if (!kinded || !remembered_failure(kinded->kind())) return std::nullopt;
+    return store::failure_record(std::move(song_id), profile, kinded->kind(), e.what());
+}
+
+BatchPlan plan_batch(const std::vector<ScanItem>& items, const SettledCharts& already) {
     BatchPlan plan;
     // Each chart runs once, as its first copy, and settles every copy's row
     // (D76). The scan list's charts, copies and first copies are ChartIndex's
@@ -822,8 +840,10 @@ BatchPlan plan_batch(const std::vector<ScanItem>& items,
     // the scan listed first (D63).
     const store::ChartIndex index = store::ChartIndex::from_rows(items);
     for (const std::string& id : index.song_ids()) {
-        if (already.count(id)) {
+        if (const auto settled = already.find(id); settled != already.end()) {
             plan.skipped += index.copies(id);
+            if (settled->second == store::RecordStatus::CantAnalyze)
+                plan.cant_analyze += index.copies(id);
             continue;
         }
         plan.todo.push_back(*index.naming(id));
@@ -906,7 +926,7 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
             // saved again in a transaction of its own, so only a chart whose
             // own save fails is failed (D86 item 1).
             for (WorkResult& wr : deferred)
-                if (!wr.failed) save_result(store, wr);
+                if (wr.row) save_result(store, wr);
         }
         std::vector<WorkResult> done = std::move(deferred);
         deferred.clear();
@@ -928,6 +948,11 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
                     wr.cancelled = true;
                 } catch (const std::exception& e) {
                     record_failure(wr, e);
+                    try {
+                        wr.row = prepare_failed_chart(item.md5, profile, e);
+                    } catch (const std::exception&) {
+                        // Nothing to store; the chart stays failed as above.
+                    }
                 }
                 return wr;
             },
@@ -939,7 +964,8 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
                 // pool's last idle call.
                 if (wr.cancelled || (cancel && cancel->load())) return;
 
-                if (!wr.failed) {
+                // A result, or a failure the store remembers.
+                if (wr.row) {
                     if (!store.save_group_open()) {
                         // A group that cannot begin leaves this chart to save
                         // alone, where the same failure is this chart's own.

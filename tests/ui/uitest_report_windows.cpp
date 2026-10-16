@@ -36,8 +36,11 @@
 #include "app/dm_report.h"
 #include "app/path_report_view.h"  // timing_choices
 #include "app/report.h"
+#include "core/error_kind.h"
 #include "core/model.h"  // kCloneHeroSpCap
 #include "net/dmbot_client.h"
+#include "parse/song.h"  // NoNotesError
+#include "store/record_store.h"  // failure_record
 #include "ui/library_jobs.h"  // set_report_hold_for_test
 #include "ui/report_window.h"
 
@@ -806,6 +809,42 @@ void held_build_then_rows(ImGuiTestContext* ctx, ReportHold& hold) {
     IM_CHECK(on_screen(h, path_count_tail(h)));
 }
 
+// The toolbar's "Open path report" (or, with `refresh`, the open window's
+// Refresh) with charts that have no result: with the confirm threshold at 0
+// the build asks first, and the confirm's Cancel leaves the report to list
+// only what is stored. Returns with the threshold put back and that report's
+// build started; the caller waits for it.
+void open_path_report_declining_batch(ImGuiTestContext* ctx, bool refresh = false) {
+    Harness& h = harness(ctx);
+    h.app->report_confirm_above = 0;
+    if (refresh) {
+        ctx->SetRef(path_window());
+        ctx->ItemClick("Refresh");
+    } else {
+        ctx->SetRef("//Hydra");
+        ctx->ItemClick("**/Open path report");
+    }
+    ctx->Yield(2);
+    IM_CHECK_RETV(path_window() != nullptr, );
+    IM_CHECK(h.app->path_report_awaits_confirm());
+    ctx->SetRef("//Analyze library");
+    ctx->ItemClick("Cancel");
+    ctx->Yield(2);
+    IM_CHECK(h.app->path_report_batch() == nullptr);
+    h.app->report_confirm_above = hydra::ui::AppState::kReportConfirmAbove;
+}
+
+// Waits for the path report's build to finish, up to 60 s.
+bool path_report_ready(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    const bool ready = wait_until(ctx, [&] {
+        return h.app->report_job == nullptr &&
+               h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
+    }, 60);
+    ctx->Yield(2);
+    return ready;
+}
+
 // The path window opens from the finished strip's "Open report", from the
 // toolbar's "Open path report", and by itself after a batch with "Open
 // automatically" on. While it builds it shows the building state.
@@ -816,18 +855,7 @@ void test_open_path(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     const std::string first = quoted_title(h, 0);
     const std::string second = quoted_title(h, 1);
-
-    // Before anything is analyzed, the report reads an empty store and says
-    // how to fill it.
-    h.app->show_path_report();
-    IM_CHECK(wait_until(ctx, [&] {
-        return h.app->report_job == nullptr &&
-               h.app->path_report_build() == hydra::ui::ReportBuild::Failed;
-    }, 60));
-    ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Nothing is analyzed yet. Click a song or run a batch to analyze it."));
-    h.app->close_path_report();  // it covers the toolbar
-    ctx->Yield(2);
+    // Opening with nothing analyzed runs a batch first: test_open_analyzes.
 
     // The finished strip's Open report.
     IM_CHECK(batch_search(ctx, first));
@@ -844,16 +872,11 @@ void test_open_path(ImGuiTestContext* ctx) {
     IM_CHECK(path_window() == nullptr);
     dismiss_done(ctx);
 
-    // The toolbar's Open path report.
-    ctx->SetRef("//Hydra");
-    ctx->ItemClick("**/Open path report");
-    ctx->Yield(2);
-    IM_CHECK_RETV(path_window() != nullptr, );
-    // The Esc above let the rows go, so this opening builds them again.
-    IM_CHECK(wait_until(ctx, [&] {
-        return h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
-    }, 60));
-    ctx->Yield(2);
+    // The toolbar's Open path report, its batch declined, so the second
+    // chart below still has no result. The Esc above let the rows go, so this
+    // opening builds them again.
+    open_path_report_declining_batch(ctx);
+    IM_CHECK_RETV(path_report_ready(ctx), );
     IM_CHECK(on_screen(h, path_count_tail(h)));
     h.app->close_path_report();  // it covers the toolbar
     ctx->Yield(2);
@@ -867,11 +890,106 @@ void test_open_path(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(path_window() != nullptr, );
 
     // Refresh with every build held before it reads the store: the window
-    // shows the building state.
+    // shows the building state. Its batch over the charts with no result is
+    // declined, so the build alone is held.
     ReportHold hold;
-    ctx->SetRef(path_window());
-    ctx->ItemClick("Refresh");
+    open_path_report_declining_batch(ctx, /*refresh=*/true);
     held_build_then_rows(ctx, hold);
+}
+
+// Opening the report with nothing analyzed runs a batch over the corpus first
+// (plan 2026-10-15, question 8): the window shows the batch's own count over
+// its bar, then the rows once the batch's report lands. The batch's workers
+// wait at a gate before each real analysis, so the count is read at 0.
+void test_open_analyzes(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+
+    static std::atomic<bool> go{false};
+    go = false;
+    struct Release {
+        ~Release() { go = true; }  // a failed check never leaves the workers waiting
+    } release;
+    hydra::ui::set_app_batch_analyzer_for_test(
+        [](const std::string& path, const hydra::app::AnalysisSettings& settings,
+           const std::function<void(float)>& progress) {
+            while (!go.load()) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            return hydra::app::analyze_chart_file(path, settings, progress);
+        },
+        hydra::app::batch_worker_count());
+    ctx->SetRef("//Hydra");
+    IM_CHECK(ctx->ItemExists("**/Open path report"));  // offered with nothing analyzed
+    ctx->ItemClick("**/Open path report");
+    hydra::ui::set_app_batch_analyzer_for_test({}, 1);
+    IM_CHECK_RETV(h.app->batch_job != nullptr, );
+    IM_CHECK(h.app->path_report_batch() == h.app->batch_job.get());
+    IM_CHECK(wait_until(ctx, [&] {
+        const hydra::ui::BatchJob::Snapshot s = h.app->batch_job->snapshot();
+        return !s.preparing && s.total > 0;
+    }, 10));
+    const int total = h.app->batch_job->snapshot().total;
+    ctx->Yield(2);
+    IM_CHECK_RETV(path_window() != nullptr, );
+    IM_CHECK(on_screen(h, "Analyzing 0 of " + hydra::counted(total, "chart", "charts")));
+
+    go = true;
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->report_job == nullptr &&
+               h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
+    }, 300));
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "Charts shown"));
+    IM_CHECK(on_screen(h, path_count_tail(h)));
+    // The coverage lines: the batch gave every chart a result, so none is
+    // left without one, and any chart it couldn't analyze is named by the
+    // report's own line on screen.
+    IM_CHECK_RETV(h.app->path_report.result != nullptr, );
+    const hydra::app::report::GeneratedReport& page = *h.app->path_report.result;
+    IM_CHECK_EQ(page.no_result_charts, int64_t{0});
+    IM_CHECK(page.no_result_line.empty());
+    IM_CHECK_EQ(page.songs + page.cant_analyze_charts, page.library_charts);
+    if (!page.cant_analyze_line.empty()) IM_CHECK(on_screen(h, page.cant_analyze_line));
+    h.app->close_path_report();
+    ctx->Yield(2);
+}
+
+// A chart whose failure the store kept (failure_record, saved on the scratch
+// db the way a batch saves one, as library-cant-analyze does) is named under
+// the coverage line's Show list, beneath its reason. The confirm is declined,
+// so the report lists only what is stored: no rows, the coverage lines, and
+// "Nothing to show" (plan 2026-10-15, question 5).
+void test_cant_analyze_list(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    const std::string md5 = h.app->library_row_at(0).entry.md5;
+    const std::string title = h.app->library_row_at(0).title;
+    const hydra::NoNotesError no_notes(hydra::Difficulty::Expert, true);
+    h.app->store->save(hydra::store::failure_record(md5, h.app->settings.profile(),
+                                                    hydra::ErrorKind::NoNotes, no_notes.what()));
+    h.app->refresh_library_summaries();
+
+    open_path_report_declining_batch(ctx);
+    IM_CHECK_RETV(path_report_ready(ctx), );
+    IM_CHECK_RETV(h.app->path_report.result != nullptr, );
+    const hydra::app::report::GeneratedReport& page = *h.app->path_report.result;
+    IM_CHECK(page.paths.empty());
+    IM_CHECK(on_screen(h, hydra::app::report::kNothingToShow));
+    IM_CHECK(!page.cant_analyze_line.empty());
+    IM_CHECK(on_screen(h, page.cant_analyze_line));
+    IM_CHECK(!on_screen(h, "No Expert Pro Drums notes in this chart."));
+
+    ctx->SetRef(path_window());
+    ctx->ItemClick("**/Show list##cantanalyze");
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "No Expert Pro Drums notes in this chart."));
+    IM_CHECK(on_screen(h, title));
+    IM_CHECK(on_screen(h, "Hide list"));
+    h.app->close_path_report();
+    ctx->Yield(2);
 }
 
 // Picking a player closes the picker and opens the comparison; the window's
@@ -1014,10 +1132,10 @@ void test_reopen(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->path_report.result == nullptr);
 
     // Every build held before it reads the store, so the building state
-    // stays up to be read.
+    // stays up to be read. The corpus's other charts have no result, so the
+    // opening's batch is declined: the rows stay the batch's one chart.
     ReportHold hold;
-    ctx->SetRef("//Hydra");
-    ctx->ItemClick("**/Open path report");
+    open_path_report_declining_batch(ctx);
     held_build_then_rows(ctx, hold);
     IM_CHECK(path_window() != nullptr);
     IM_CHECK(on_screen(h, count));  // the same rows as before the close
@@ -1110,16 +1228,13 @@ void test_reopen_keeps_filters(ImGuiTestContext* ctx) {
     const std::string default_timing = boxed(choices.front().label);
     IM_CHECK(on_screen(h, timing_shown));
 
-    // Esc lets the rows go; opening again builds them, filters kept.
+    // Esc lets the rows go; opening again builds them, filters kept. The
+    // opening's batch is declined, so the rows are the same chart's.
     press_escape_on(ctx, path_window());
     IM_CHECK_RETV(h.app->path_report.result == nullptr, );
-    ctx->SetRef("//Hydra");
-    ctx->ItemClick("**/Open path report");
-    IM_CHECK_RETV(wait_until(ctx, [&] {
-        return h.app->report_job == nullptr &&
-               h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
-    }, 60), );
-    ctx->Yield(3);
+    open_path_report_declining_batch(ctx);
+    IM_CHECK_RETV(path_report_ready(ctx), );
+    ctx->Yield(1);
     IM_CHECK_RETV(path_window() != nullptr, );
     IM_CHECK_STR_EQ(shown_count(h).c_str(), count.c_str());
     IM_CHECK(on_screen(h, search_shown));
@@ -1127,14 +1242,11 @@ void test_reopen_keeps_filters(ImGuiTestContext* ctx) {
     IM_CHECK(!best_only_ticked(ctx));
     IM_CHECK(table_sort(ctx) == sort);
 
-    // Refresh starts all four over (the rule before this change).
-    ctx->SetRef(path_window());
-    ctx->ItemClick("Refresh");
-    IM_CHECK_RETV(wait_until(ctx, [&] {
-        return h.app->report_job == nullptr &&
-               h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
-    }, 60), );
-    ctx->Yield(3);
+    // Refresh starts all four over (the rule before this change). Its batch
+    // is declined too, so the rows stay the same chart's.
+    open_path_report_declining_batch(ctx, /*refresh=*/true);
+    IM_CHECK_RETV(path_report_ready(ctx), );
+    ctx->Yield(1);
     IM_CHECK_STR_EQ(shown_count(h).c_str(), default_count.c_str());
     IM_CHECK(!on_screen(h, search_shown));
     IM_CHECK(on_screen(h, default_timing));
@@ -1218,6 +1330,8 @@ void test_out_of_date(ImGuiTestContext* ctx) {
 const std::vector<TestEntry>& report_window_flow_tests() {
     static const std::vector<TestEntry> entries = {
         {"report-window-open-path", test_open_path},
+        {"report-window-open-analyzes", test_open_analyzes},
+        {"report-window-cant-analyze-list", test_cant_analyze_list},
         {"report-window-dm-handover", test_dm_handover},
         {"report-window-row-click", test_row_click},
         {"report-window-reopen", test_reopen},

@@ -489,6 +489,7 @@ void ViewJob::run() {
                     throw;
                 } catch (const std::exception& e) {
                     out_.analysis.reset();
+                    out_.analysis_failure = std::current_exception();
                     out_.analysis_error = app::plain_error_detail(e);
                     out_.analysis_message = app::plain_error(e);
                 }
@@ -551,7 +552,10 @@ void ReportJob::run() {
         // why_empty). When it gives a sentence, the strip shows that sentence
         // as it is, the one generate_report wrote. When it gives none, the
         // database holds no results, and the app's own sentence says so (D97).
-        if (report.rows == 0) {
+        // A page whose charts all can't be analyzed or have no result is a
+        // page, not a failure: the window shows its coverage lines with
+        // why_empty as its empty text (plan 2026-10-15, question 5).
+        if (report.rows == 0 && report.empty_reason != app::report::EmptyReason::NothingToShow) {
             if (!report.why_empty.empty())
                 throw KindedError(ErrorKind::AlreadyPlain, report.why_empty);
             throw KindedError(ErrorKind::NoRecords, "no records stored yet");

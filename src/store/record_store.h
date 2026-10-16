@@ -7,7 +7,8 @@
 //     the results stamp (stored_versions.h) and the hydra_rules.ini
 //     fingerprint. A record made under other rules or by another build sits
 //     under its own profile, beside this build's.
-//   * `records` — one row per chart and profile: the record's own counts.
+//   * `records` — one row per chart and profile: the record's own counts, or
+//     a stored failure's kind and text (failure_record).
 //   * `record_paths` — the record's kept paths, ranked from 1 (the best).
 //   * `charts` — the chart library, one row per scanned file. A record's
 //     names come from here (ChartIndex, store/chart_index.h).
@@ -37,6 +38,7 @@
 #include <string>
 #include <vector>
 
+#include "core/error_kind.h"
 #include "core/model.h"
 #include "store/library_file.h"
 #include "core/rules.h"
@@ -164,9 +166,10 @@ std::string current_record_version();
 // What a stored-row lookup found. The store is the only place that decides
 // whether a row is usable: NotAnalyzed (no row at all), Stale (a row another
 // Hydra version wrote, or one made under other rules -- its numbers are not
-// trusted), or Ready (a real result -- which may legitimately have zero
-// paths).
-enum class RecordStatus { NotAnalyzed, Stale, Ready };
+// trusted), Ready (a real result -- which may legitimately have zero paths),
+// or CantAnalyze (a stored failure this build and these rules wrote: the
+// chart's own content stops the analysis, failure_record).
+enum class RecordStatus { NotAnalyzed, Stale, Ready, CantAnalyze };
 
 // A song's length as app::analysis_song_length found it. `read` says whether
 // the length was worked out; a length the owner gave none for has `read` set
@@ -216,8 +219,14 @@ struct RecordRow {
     std::optional<int> stars;  // rank 1's star count; unset when there are no paths
     int notecount = 0;
     // Rank order, at most kPathsPerRecord. Empty means the chart was analyzed
-    // and kept no paths.
+    // and kept no paths, or that the record is a failure.
     std::vector<PathRow> paths;
+    // Set on a failure record (failure_record) and only there: the failure's
+    // kind, one of core/error_kind.h's remembered kinds, and the thrower's raw
+    // text. A screen words the kind through app::plain_error, never from a
+    // stored sentence.
+    std::optional<ErrorKind> failure_kind;
+    std::string failure_text;
 
     // The library's view of the record, read off rank 1 and the record's own
     // columns. Every field is unset when there are no paths, so
@@ -234,7 +243,8 @@ struct RecordRow {
     // C++17.
     bool operator==(const RecordRow& other) const {
         return song_id == other.song_id && pathcount == other.pathcount &&
-               stars == other.stars && notecount == other.notecount && paths == other.paths;
+               stars == other.stars && notecount == other.notecount && paths == other.paths &&
+               failure_kind == other.failure_kind && failure_text == other.failure_text;
     }
     bool operator!=(const RecordRow& other) const { return !(*this == other); }
 };
@@ -243,7 +253,10 @@ struct RecordRow {
 // a worker thread can build it off the main store.
 struct PreparedRecord {
     Profile profile;
-    uint64_t rules_fp = 0;  // HydraRecord::rules_fingerprint
+    // HydraRecord::rules_fingerprint. A failure record has no analysis and so
+    // no fingerprint of its own: the save files it under the rules the store
+    // runs (RecordStore::save).
+    uint64_t rules_fp = 0;
     RecordRow record;
 };
 
@@ -262,6 +275,14 @@ PreparedRecord prepare_record(std::string song_id, const Profile& profile,
 // saved goes through prepare_record, so it is checked against its profile.
 RecordRow record_of(std::string song_id, const HydraRecord& analysis);
 
+// The one place a failed analysis becomes a record: a failure record for
+// `song_id` under `profile`, with no paths, no stars and note count 0, that
+// carries `kind` and `text` (the thrower's raw what()). Throws
+// std::invalid_argument when `kind` is not remembered (remembered_failure in
+// core/error_kind.h): only those are stored.
+PreparedRecord failure_record(std::string song_id, const Profile& profile, ErrorKind kind,
+                              std::string text);
+
 // What a record lookup found. `record` is filled only when status is Ready:
 // a Stale record's numbers came from a build or rules this one doesn't trust.
 struct RecordLookup {
@@ -271,6 +292,10 @@ struct RecordLookup {
     bool stale_build = false;  // another Hydra build
     bool stale_rules = false;  // analyzed under other rules
     RecordRow record;
+    // Set only when status is CantAnalyze: the stored failure's kind and raw
+    // text (RecordRow::failure_kind, failure_text).
+    std::optional<ErrorKind> failure_kind;
+    std::string failure_text;
 };
 
 // What a chart's own metadata states about its timing, read by the scan with
@@ -403,6 +428,12 @@ public:
     // the record under its profile, this build's stamp and its rules,
     // replacing the chart's record there; deletes any profile left with no
     // records. A record made under other rules stays (D51 call 8).
+    //
+    // A failure record (failure_record) is saved the same way, under the rules
+    // this store runs, so it replaces a real record and its paths, and a real
+    // record replaces it. Throws std::invalid_argument for a failure record
+    // when the store runs no rules (core::RulesStamp::none()), which no
+    // record may be filed under.
     void save(const PreparedRecord& prepared);
     // Test seam: save, but with the record filed under the stamp `build`
     // instead of this build's, as if another Hydra version had saved it. A
@@ -455,21 +486,28 @@ public:
     // The one status lookup (D115): one answer per entry of `song_ids`, in
     // the same order (a repeated id gets the same answer twice). The
     // candidates are the chart's records under `want`'s mode, cap and lens,
-    // whatever their stamp and rules; the winner is Ready, Stale (with why)
-    // or, with no candidate, NotAnalyzed. A Ready answer carries the whole
-    // record, its paths in rank order. Ids are sent in chunks under SQLite's
-    // bound-value limit.
+    // whatever their stamp and rules; the winner is Ready, CantAnalyze (a
+    // readable winner that is a failure record), Stale (with why) or, with no
+    // candidate, NotAnalyzed. A Ready answer carries the whole record, its
+    // paths in rank order; a CantAnalyze answer carries the failure's kind and
+    // text. A failure whose kind this build cannot name (a later build wrote
+    // it) reads Stale for another build. Ids are sent in chunks under
+    // SQLite's bound-value limit.
     std::vector<RecordLookup> lookup(const std::vector<std::string>& song_ids,
                                      const Profile& want);
     RecordLookup lookup_one(const std::string& song_id, const Profile& want);
-    // Every chart lookup calls Ready under `want`: the batch's skip list.
+    // Every chart lookup calls Ready or CantAnalyze under `want`, with that
+    // status: the charts that have a current result, which a batch skips.
+    std::unordered_map<std::string, RecordStatus> settled_song_ids(const Profile& want);
+    // Every chart lookup calls Ready under `want`.
     std::unordered_set<std::string> ready_song_ids(const Profile& want);
     // Every Ready record under `want`, paths included, best score first (a
     // record with no paths last, equal scores by song id). Names come from
     // chart_index(), not from here.
     std::vector<RecordRow> ready_records(const Profile& want);
 
-    // How many records the file holds, under any profile.
+    // How many real records the file holds, under any profile. A failure
+    // record is not counted.
     int64_t record_count();
 
     // ---- chart library (scan results) ----------------------------------
@@ -544,9 +582,10 @@ private:
     void ctl(const char* sql);
 
     // The constructor's work after the file opens: the journal settings, the
-    // tables, and, for a Convertible file (classify_library_file), the
-    // conversion. The constructor turns any throw from it into a failed open.
-    void set_up_schema(bool convertible);
+    // tables, and, by the file's kind (classify_library_file), the conversion
+    // of a Convertible file or the failure columns a LacksFailureColumns file
+    // gains. The constructor turns any throw from it into a failed open.
+    void set_up_schema(LibraryFileKind kind);
     void exec(const char* sql);
     // Runs `work` inside one BEGIN ... COMMIT. A throw from it rolls back
     // and is rethrown. Defined in record_store.cpp, its only user. The save
@@ -566,6 +605,12 @@ private:
     // transaction; a failure throws KindedError(DatabaseUpgrade) with the file
     // as it was.
     void convert_results();
+    // Gives a LacksFailureColumns file's records table the two failure
+    // columns, in one transaction; every record it holds keeps NULL in both,
+    // so it reads as it did. A failure throws KindedError(DatabaseUpgrade)
+    // with the file as it was. The results stamp does not move (ADR 0018):
+    // no stored number changes.
+    void add_failure_columns();
     // Opens db_ on `dbpath`, creating the file if it is missing; throws
     // KindedError(DatabaseOpen) when SQLite refuses.
     void open_file(const std::string& dbpath);

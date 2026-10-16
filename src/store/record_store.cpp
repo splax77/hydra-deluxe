@@ -227,6 +227,13 @@ std::string each_column(const char* list, const char* before, const char* after,
 // columns are kLensColumnList, so lens_match and bind_lens read this table.
 // `records` and `record_paths` are WITHOUT ROWID tables: each row lives inside
 // its key's index, so the key is stored once (sqlite.org/withoutrowid.html).
+
+// The two columns only a failure record fills (failure_record), as `records`
+// declares them: NULL on every real record. record_tables_sql declares them
+// on a new table and add_failure_columns adds them to a 2.8.0 file's, both
+// from this list.
+constexpr const char* kFailureColumnsSql[] = {"failure_kind TEXT", "failure_text TEXT"};
+
 std::string record_tables_sql() {
     return std::string(
                "CREATE TABLE IF NOT EXISTS profiles ("
@@ -244,6 +251,8 @@ std::string record_tables_sql() {
            "  pathcount   INTEGER NOT NULL,"
            "  stars       INTEGER,"
            "  notecount   INTEGER NOT NULL,"
+           "  " + kFailureColumnsSql[0] + ","
+           "  " + kFailureColumnsSql[1] + ","
            "  PRIMARY KEY (song_id, profile_id)) WITHOUT ROWID;"
            "CREATE TABLE IF NOT EXISTS record_paths ("
            "  song_id     TEXT NOT NULL,"
@@ -296,13 +305,23 @@ std::optional<PathRow> read_path_row(sqlite3_stmt* s, int idx, int rank) {
 
 // A record's own columns after song_id, in the order write_record binds them
 // and read_record_columns reads them.
-constexpr const char* kRecordColumnList = "pathcount, stars, notecount";
+constexpr const char* kRecordColumnList =
+    "pathcount, stars, notecount, failure_kind, failure_text";
+static_assert(count_list_names(kRecordColumnList) == 5,
+              "write_record and read_record_columns walk five slots: grow them with the list");
 
 // The record's own columns read at `idx` onwards (kRecordColumnList's order).
-void read_record_columns(sqlite3_stmt* s, int idx, RecordRow& r) {
+// False when the row is a failure whose kind this build cannot name
+// (failure_kind_from_name): a later build wrote it, so lookup reads it as
+// another build's record.
+bool read_record_columns(sqlite3_stmt* s, int idx, RecordRow& r) {
     r.pathcount = sqlite3_column_int(s, idx);
     if (auto v = column_opt_i64(s, idx + 1)) r.stars = static_cast<int>(*v);
     r.notecount = sqlite3_column_int(s, idx + 2);
+    if (sqlite3_column_type(s, idx + 3) == SQLITE_NULL) return true;
+    r.failure_kind = failure_kind_from_name(column_text(s, idx + 3));
+    r.failure_text = column_text(s, idx + 4);
+    return r.failure_kind.has_value();
 }
 
 // A summary as a record: what an older file's results row holds, the best
@@ -403,11 +422,13 @@ struct Candidate {
 
 // `hyversion` and `rules_fp` are the record's profile row's columns, and
 // `profile_id` its id; `fixed_fp` is rules_fp_bytes of the fingerprint this
-// process runs under.
+// process runs under. `kind_known` is read_record_columns' answer: a failure
+// whose kind this build cannot name came from another build, whatever its
+// stamp says.
 Candidate rank_row(const std::string& hyversion, const std::vector<uint8_t>& rules_fp,
-                   int64_t profile_id, const std::vector<uint8_t>& fixed_fp) {
+                   int64_t profile_id, const std::vector<uint8_t>& fixed_fp, bool kind_known) {
     Candidate c;
-    c.current = kResultsStamp.is_current(hyversion);
+    c.current = kResultsStamp.is_current(hyversion) && kind_known;
     c.same_rules = rules_fp == fixed_fp;
     c.profile_id = profile_id;
     c.stale_build = !c.current;
@@ -632,6 +653,19 @@ PreparedRecord prepare_record(std::string song_id, const Profile& profile,
     return out;
 }
 
+PreparedRecord failure_record(std::string song_id, const Profile& profile, ErrorKind kind,
+                              std::string text) {
+    if (!remembered_failure(kind))
+        throw std::invalid_argument("failure_record: this kind of failure is not remembered");
+    PreparedRecord out;
+    out.profile = profile;
+    // rules_fp stays unset: the save files a failure under the store's rules.
+    out.record.song_id = std::move(song_id);
+    out.record.failure_kind = kind;
+    out.record.failure_text = std::move(text);
+    return out;
+}
+
 // A Ready record with no paths has no facts (D51 call 11): every field is
 // unset and has_scored_best_path() is false.
 PathSummary RecordRow::summary() const {
@@ -724,7 +758,7 @@ RecordStore::RecordStore(const std::string& dbpath, OldFilePolicy old_files,
     // callback asked for, and a failed conversion that left the file whole,
     // keep their own kinds too.
     try {
-        set_up_schema(kind == LibraryFileKind::Convertible);
+        set_up_schema(kind);
     } catch (const std::bad_alloc&) {
         close();
         throw;
@@ -741,7 +775,7 @@ RecordStore::RecordStore(const std::string& dbpath, OldFilePolicy old_files,
     }
 }
 
-void RecordStore::set_up_schema(bool convertible) {
+void RecordStore::set_up_schema(LibraryFileKind kind) {
     // WAL journal mode (orchestrator's call, 2026-09-26 audit plan): a commit
     // appends to hydra.db-wal instead of rewriting pages in place, and with
     // synchronous=NORMAL it syncs to disk only at checkpoints, not on every
@@ -779,7 +813,23 @@ void RecordStore::set_up_schema(bool convertible) {
     // rows by md5 (D76).
     exec("CREATE INDEX IF NOT EXISTS charts_by_md5 ON charts (md5)");
     create_result_tables();
-    if (convertible) convert_results();
+    if (kind == LibraryFileKind::Convertible) convert_results();
+    if (kind == LibraryFileKind::LacksFailureColumns) add_failure_columns();
+}
+
+void RecordStore::add_failure_columns() {
+    // A failure undoes both columns (in_transaction), so the file is as it
+    // was: DatabaseUpgrade says so. Running out of memory keeps its own type.
+    try {
+        in_transaction([&] {
+            for (const char* column : kFailureColumnsSql)
+                exec((std::string("ALTER TABLE records ADD COLUMN ") + column).c_str());
+        });
+    } catch (const std::bad_alloc&) {
+        throw;
+    } catch (const std::exception& e) {
+        throw KindedError(ErrorKind::DatabaseUpgrade, e.what());
+    }
 }
 
 // The meta row where 2.2.0 to 2.7.0 kept one fill-rule label for the whole
@@ -1007,9 +1057,15 @@ void RecordStore::save_under_build_for_test(const PreparedRecord& prepared,
 }
 
 void RecordStore::save_under(const PreparedRecord& prepared, const std::string& build) {
-    in_save_frame([&] {
-        file_record(prepared.profile, build, prepared.rules_fp, prepared.record);
-    });
+    // A failure has no analysis to carry a fingerprint, so it is filed under
+    // the rules this store runs. none() names no rules: no record is filed
+    // under it.
+    const bool failure = prepared.record.failure_kind.has_value();
+    if (failure && rules_fingerprint_.fixed == core::RulesStamp::none().fixed)
+        throw std::invalid_argument("save: a failure record needs the rules the store runs, "
+                                    "and this store runs none");
+    const uint64_t rules_fp = failure ? rules_fingerprint_.fixed : prepared.rules_fp;
+    in_save_frame([&] { file_record(prepared.profile, build, rules_fp, prepared.record); });
 }
 
 void RecordStore::create_result_tables() { exec(record_tables_sql().c_str()); }
@@ -1069,6 +1125,17 @@ void RecordStore::write_record(int64_t profile_id, const RecordRow& record) {
         if (record.stars) sqlite3_bind_int(s, 4, *record.stars);
         else sqlite3_bind_null(s, 4);
         sqlite3_bind_int(s, 5, record.notecount);
+        if (record.failure_kind) {
+            const char* name = failure_kind_name(*record.failure_kind);
+            if (!name)
+                throw std::invalid_argument("saving a record: a failure of a kind that is "
+                                            "not remembered");
+            bind_text(s, 6, name);
+            bind_text(s, 7, record.failure_text);
+        } else {
+            sqlite3_bind_null(s, 6);
+            sqlite3_bind_null(s, 7);
+        }
         step_done(s, "saving a record");
     }
     for (const PathRow& p : record.paths) {
@@ -1202,23 +1269,28 @@ std::vector<RecordLookup> RecordStore::lookup(const std::vector<std::string>& so
         while (step_row(s)) {
             RecordRow record;
             record.song_id = column_text(s, 0);
-            read_record_columns(s, kFirstRecord, record);
+            const bool kind_known = read_record_columns(s, kFirstRecord, record);
             picker.offer(record.song_id, want.chartmode,
                          rank_row(column_text(s, 1), column_blob(s, 3),
-                                  sqlite3_column_int64(s, 2), fixed_fp));
+                                  sqlite3_column_int64(s, 2), fixed_fp, kind_known));
             offered.push_back(std::move(record));
         }
     }
 
     // One answer per chart. A stale winner is reported as Stale, not hidden:
     // the library has to tell "analyzed by another build" apart from "never
-    // analyzed".
+    // analyzed". A readable winner that is a failure record is CantAnalyze,
+    // with its kind and text and no record.
     const std::vector<bool> won = picker.winners();
     for (size_t i = 0; i < offered.size(); ++i) {
         if (!won[i]) continue;
         RecordLookup& answer = by_id[offered[i].song_id];
         const Candidate& rank = picker.rank(i);
-        if (rank.ready()) {
+        if (rank.ready() && offered[i].failure_kind) {
+            answer.status = RecordStatus::CantAnalyze;
+            answer.failure_kind = offered[i].failure_kind;
+            answer.failure_text = std::move(offered[i].failure_text);
+        } else if (rank.ready()) {
             answer.status = RecordStatus::Ready;
             answer.record = std::move(offered[i]);
             ready_profile.emplace(answer.record.song_id, rank.profile_id);
@@ -1274,17 +1346,26 @@ std::vector<std::string> RecordStore::candidate_song_ids(const Profile& want) {
     return out;
 }
 
-std::unordered_set<std::string> RecordStore::ready_song_ids(const Profile& want) {
+std::unordered_map<std::string, RecordStatus> RecordStore::settled_song_ids(const Profile& want) {
     // Every chart with a candidate record under these settings, then
     // lookup's answer for each (D79), so the batch skips exactly the charts
-    // the library's Analyzed chip counts. One lock over both reads, so no
-    // write lands between them.
+    // the library's chips count as Analyzed or Can't analyze. One lock over
+    // both reads, so no write lands between them.
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     const std::vector<std::string> candidates = candidate_song_ids(want);
     const std::vector<RecordLookup> found = lookup(candidates, want);
-    std::unordered_set<std::string> out;
+    std::unordered_map<std::string, RecordStatus> out;
     for (size_t i = 0; i < candidates.size(); ++i)
-        if (found[i].status == RecordStatus::Ready) out.insert(candidates[i]);
+        if (found[i].status == RecordStatus::Ready || found[i].status == RecordStatus::CantAnalyze)
+            out.emplace(candidates[i], found[i].status);
+    return out;
+}
+
+std::unordered_set<std::string> RecordStore::ready_song_ids(const Profile& want) {
+    // settled_song_ids' Ready charts, so both read one lookup.
+    std::unordered_set<std::string> out;
+    for (const auto& [id, status] : settled_song_ids(want))
+        if (status == RecordStatus::Ready) out.insert(id);
     return out;
 }
 
@@ -1311,7 +1392,8 @@ std::vector<RecordRow> RecordStore::ready_records(const Profile& want) {
 
 int64_t RecordStore::record_count() {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
-    Stmt s = prepare_read(db_, "SELECT COUNT(*) FROM records");
+    // A failure record is the row whose failure_kind is set (failure_record).
+    Stmt s = prepare_read(db_, "SELECT COUNT(*) FROM records WHERE failure_kind IS NULL");
     if (!step_row(s)) return 0;
     return sqlite3_column_int64(s, 0);
 }

@@ -30,6 +30,31 @@ StartupSettings load_startup_settings() {
     return start;
 }
 
+// Whether a chart's stored answer already says what `fresh` would save, so a
+// click saves nothing (D87 item 2): the same Ready record, or the same stored
+// failure, kind and text.
+bool stored_says_same(const store::RecordLookup& found, const store::RecordRow& fresh) {
+    if (fresh.failure_kind)
+        return found.status == store::RecordStatus::CantAnalyze &&
+               found.failure_kind == fresh.failure_kind && found.failure_text == fresh.failure_text;
+    return found.status == store::RecordStatus::Ready && found.record == fresh;
+}
+
+// The record a click's failed analysis is stored as: app::prepare_failed_chart's
+// answer for what the analysis threw. Nothing when it threw nothing.
+std::optional<store::PreparedRecord> click_failure_record(const std::string& song_id,
+                                                          const store::Profile& profile,
+                                                          const std::exception_ptr& thrown) {
+    if (!thrown) return std::nullopt;
+    try {
+        std::rethrow_exception(thrown);
+    } catch (const std::exception& e) {
+        return app::prepare_failed_chart(song_id, profile, e);
+    } catch (...) {
+    }
+    return std::nullopt;
+}
+
 }  // namespace
 
 AppState::AppState() : AppState(load_startup_settings()) {}
@@ -438,6 +463,15 @@ void AppState::update_view_job() {
             v.state = ViewedSong::State::Failed;
             v.message = std::move(out.analysis_message);
             v.error = std::move(out.analysis_error);
+            // A failure the store remembers is the chart's result, as a
+            // batch stores it. The panel shows the failure either way.
+            try {
+                if (const std::optional<store::PreparedRecord> failure =
+                        click_failure_record(song_id, profile, out.analysis_failure))
+                    save_view_record(*failure);
+            } catch (const std::exception& e) {
+                set_problem(app::plain_error(e));
+            }
         } else {
             try {
                 v.summary = save_view_summary(song_id, profile, *out.analysis);
@@ -463,15 +497,19 @@ store::PathSummary AppState::save_view_summary(const std::string& song_id,
                                                const store::Profile& profile,
                                                const app::AnalysisResult& result) {
     const store::PreparedRecord prepared = store::prepare_record(song_id, profile, result.record);
-    const store::RecordLookup found = store->lookup_one(song_id, profile);
-    if (found.status == store::RecordStatus::Ready && found.record == prepared.record)
-        return prepared.record.summary();  // the record already says what the engine says
+    save_view_record(prepared);
+    return prepared.record.summary();
+}
+
+void AppState::save_view_record(const store::PreparedRecord& prepared) {
+    const std::string& song_id = prepared.record.song_id;
+    const store::RecordLookup found = store->lookup_one(song_id, prepared.profile);
+    if (stored_says_same(found, prepared.record)) return;  // nothing new to save
     store->save(prepared);
     refresh_library_row(song_id);  // its row's Best path cell and chip
     // Both open reports now read an older library (D115 question 4). No
     // batch finished, so the strip names no time.
     mark_reports_out_of_date(ReportOutOfDate::Library, /*path=*/true, /*dm=*/true, std::nullopt);
-    return prepared.record.summary();
 }
 
 bool AppState::selected_file_ok(double now) {
@@ -570,20 +608,21 @@ void AppState::open_batch_confirm() {
     // finished counts come from one plan. Rows older than the store would
     // count fewer charts than the button's N.
     reload_after_scan();
-    std::vector<app::ScanItem> items;
-    const app::BatchRun run = settings.batch_run();
-    std::unordered_set<std::string> with_result;
-    if (!read_store([&] {
-            items = library_matches();
-            with_result = app::charts_with_result(*store, run, false);
-        })) {
+    if (!plan_batches([&] { return library_matches(); })) {
         // The database failed: the confirm stays closed (D72 item 4).
         close_batch_confirm();
         return;
     }
-    batch_plan = app::plan_batch(items, with_result);
-    batch_redo_plan = app::plan_batch(items, app::charts_with_result(*store, run, true));
     batch_confirm_pending = true;
+}
+
+bool AppState::plan_batches(const std::function<std::vector<app::ScanItem>()>& list_items) {
+    const app::BatchRun run = settings.batch_run();
+    return read_store([&] {
+        const std::vector<app::ScanItem> items = list_items();
+        batch_plan = app::plan_batch(items, app::charts_with_result(*store, run, false));
+        batch_redo_plan = app::plan_batch(items, app::charts_with_result(*store, run, true));
+    });
 }
 
 void AppState::close_batch_confirm() {
@@ -613,6 +652,7 @@ void AppState::start_batch(bool redo) {
 }
 
 void AppState::update_background_jobs() {
+    settle_report_wait();
     if (batch_job && !batch_finish_seen_ && batch_job->snapshot().finished) {
         batch_finish_seen_ = true;
         // tick_library re-reads the summaries once the batch ends. Stopped
@@ -624,12 +664,21 @@ void AppState::update_background_jobs() {
         // One path report per finished run. A stopped run keeps its results
         // but builds no report: a report of part of the library would read
         // as the whole of it.
-        if (!batch_job->is_cancelled() && !report_started) {
+        const bool stopped = batch_job->is_cancelled();
+        const bool waited = path_report_batch() != nullptr;
+        if (!stopped && !report_started) {
             report_started = true;
             // The report lists the records the batch filed: its cap and lens,
             // not whatever the analysis settings hold now, analyzed under the
-            // batch's settings.
-            launch_path_report(batch_job->batch_run(), PathReportCause::Batch);
+            // batch's settings. A report that waited on this batch is the
+            // window's own build, with the window's cause.
+            launch_path_report(batch_job->batch_run(),
+                               waited ? report_wait_cause_ : PathReportCause::Batch);
+        }
+        if (waited) {
+            // A wait on a stopped batch ends as a cancelled build: Try again.
+            if (stopped) path_report.mark_cancelled();
+            report_wait_ = ReportWait::None;
         }
     }
 
@@ -716,7 +765,32 @@ void AppState::launch_dm_report() {
 }
 
 ReportBuild AppState::path_report_build() const {
-    return report_job && !report_job->finished() ? ReportBuild::Building : path_report.last;
+    if (report_job && !report_job->finished()) return ReportBuild::Building;
+    return report_wait_ != ReportWait::None ? ReportBuild::Building : path_report.last;
+}
+
+const BatchJob* AppState::path_report_batch() const {
+    const bool on_batch = report_wait_ == ReportWait::OwnBatch || report_wait_ == ReportWait::Batch;
+    return on_batch ? batch_job.get() : nullptr;
+}
+
+void AppState::settle_report_wait() {
+    if (report_wait_ == ReportWait::Confirm && !batch_confirm_pending) {
+        // The confirm closed. Its Start ran the batch, which the report now
+        // waits on; its Cancel leaves the report to list what is stored.
+        if (batch_job && !batch_finish_seen_) {
+            report_wait_ = ReportWait::OwnBatch;
+        } else {
+            report_wait_ = ReportWait::None;
+            launch_path_report(settings.batch_run(), report_wait_cause_);
+        }
+    }
+    // The batch was let go before its finish was seen here: nothing says how
+    // it ended, so the build counts as cancelled.
+    if ((report_wait_ == ReportWait::OwnBatch || report_wait_ == ReportWait::Batch) && !batch_job) {
+        report_wait_ = ReportWait::None;
+        path_report.mark_cancelled();
+    }
 }
 
 ReportBuild AppState::dm_report_build() const {
@@ -727,9 +801,46 @@ void AppState::request_path_report() { request_path_report(PathReportCause::Requ
 
 void AppState::request_path_report(PathReportCause cause) {
     if (!store || analysis_blocked()) return;
-    if (report_job && !report_job->finished()) return;
+    if (path_report_build() == ReportBuild::Building) return;
     collect_path_report();  // one that finished this frame lands first
-    launch_path_report(settings.batch_run(), cause);
+    // A batch still running builds the report when it finishes; the window
+    // shows its progress meanwhile.
+    if (batch_job && !batch_finish_seen_) {
+        report_wait_ = ReportWait::Batch;
+        report_wait_cause_ = cause;
+        return;
+    }
+    const app::BatchRun run = settings.batch_run();
+    // The user's own confirm is open: the report lists what is stored, as
+    // the confirm's plans are the user's to run.
+    if (batch_confirm_pending) {
+        launch_path_report(run, cause);
+        return;
+    }
+    // Every library row, planned as a batch plans it, so the run's counts
+    // and the strip's are one plan's (D79).
+    reload_after_scan();
+    if (!plan_batches([&] { return store->list_chart_library(0, -1); })) {  // -1 = no limit
+        // The database failed and the status line says so; the build reads
+        // the store too and shows its own failure in the window.
+        close_batch_confirm();
+        launch_path_report(run, cause);
+        return;
+    }
+    if (batch_plan.todo_rows() == 0) {
+        close_batch_confirm();
+        launch_path_report(run, cause);
+        return;
+    }
+    // The plans the confirm shows and start_batch runs.
+    batch_confirm_pending = true;
+    report_wait_cause_ = cause;
+    if (batch_plan.todo_rows() > report_confirm_above) {
+        report_wait_ = ReportWait::Confirm;
+        return;
+    }
+    start_batch(false);
+    report_wait_ = batch_job && !batch_finish_seen_ ? ReportWait::OwnBatch : ReportWait::None;
 }
 
 void AppState::launch_path_report(app::BatchRun run, PathReportCause cause) {
@@ -747,6 +858,12 @@ void AppState::launch_path_report(app::BatchRun run, PathReportCause cause) {
 
 void AppState::cancel_path_report() {
     if (report_job && !report_job->finished()) report_job->cancel();
+    if (report_wait_ == ReportWait::None) return;
+    // The report's own batch stops as the strip's Stop stops it. A batch the
+    // user started, and a confirm still open, are the user's to answer.
+    if (report_wait_ == ReportWait::OwnBatch && batch_job) batch_job->stop();
+    report_wait_ = ReportWait::None;
+    path_report.mark_cancelled();
 }
 
 void AppState::show_path_report() {
@@ -756,6 +873,9 @@ void AppState::show_path_report() {
 }
 
 void AppState::close_path_report() {
+    // A batch the report waited on keeps running with its strip, and builds
+    // the report when it finishes, as any batch does.
+    report_wait_ = ReportWait::None;
     // A build still running stops as the window's Cancel stops it. It waits
     // parked, so neither its rows nor its Cancelled land with the window shut;
     // one that finished this frame is dropped the same way.
@@ -766,11 +886,8 @@ void AppState::close_path_report() {
     path_report = PathReportSlot{};
 }
 
-bool AppState::library_has_analyzed() const {
-    const std::vector<LibraryRow>& rows = library.rows();
-    return std::any_of(rows.begin(), rows.end(), [](const LibraryRow& r) {
-        return r.status == store::RecordStatus::Ready;
-    });
+bool AppState::path_report_offered() const {
+    return !library.rows().empty() && !analysis_blocked();
 }
 
 namespace {

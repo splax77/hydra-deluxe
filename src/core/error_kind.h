@@ -30,6 +30,7 @@ enum class ErrorKind {
     ChartUnreadable,
     ChartTimingRefused,  // the text names the chart line, and the sentence quotes it
     NoteShuffleFreezes,  // the game hangs shuffling this chart (apply_note_shuffle, D104 item 5)
+    NoNotes,             // no notes at the asked difficulty; the text is NoNotesError's sentence
     AlreadyPlain,        // the text is already written for the user
     SearchBroken,
     NetUnreachable,
@@ -43,6 +44,53 @@ enum class ErrorKind {
     AudioDecode,
     PreviewAssets,
 };
+
+// ---- remembered failures ---------------------------------------------------
+//
+// A failure the chart's own content causes fails the same way every time the
+// same file is read, so the store keeps it as the chart's result under its
+// profile (the user's answer 1, 2026-10-15, in
+// docs/superpowers/plans/2026-10-15-report-covers-whole-library.md). Any
+// other failure can pass on a retry and is never stored.
+
+// One remembered kind and the name the records table stores it under.
+struct RememberedFailure {
+    ErrorKind kind;
+    const char* name;
+};
+
+// The one list of remembered kinds. remembered_failure, failure_kind_name and
+// failure_kind_from_name all read it, so a kind added here is remembered,
+// stored and read back by the one edit. A stored name never changes: a file
+// keeps it.
+inline constexpr RememberedFailure kRememberedFailures[] = {
+    {ErrorKind::NoNotes, "NoNotes"},
+    {ErrorKind::ChartTimingRefused, "ChartTimingRefused"},
+    {ErrorKind::NoteShuffleFreezes, "NoteShuffleFreezes"},
+    {ErrorKind::ChartUnreadable, "ChartUnreadable"},
+};
+
+// Whether a failure of this kind is stored as the chart's result.
+inline bool remembered_failure(ErrorKind kind) {
+    for (const RememberedFailure& r : kRememberedFailures)
+        if (r.kind == kind) return true;
+    return false;
+}
+
+// The name a remembered kind is stored under; nullptr for any other kind.
+inline const char* failure_kind_name(ErrorKind kind) {
+    for (const RememberedFailure& r : kRememberedFailures)
+        if (r.kind == kind) return r.name;
+    return nullptr;
+}
+
+// The remembered kind stored under `name`; empty for a name this build does
+// not know (one a later build wrote).
+inline std::optional<ErrorKind> failure_kind_from_name(const std::string& name) {
+    for (const RememberedFailure& r : kRememberedFailures)
+        if (name == r.name) return r.kind;
+    return std::nullopt;
+}
 
 // An error that carries its kind. what() is the raw text, unchanged.
 class KindedError : public std::runtime_error {

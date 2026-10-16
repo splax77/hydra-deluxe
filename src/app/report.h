@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "core/error_kind.h"
 #include "store/chart_index.h"
 #include "store/record_store.h"
 #include "core/squeeze_rating.h"
@@ -90,7 +91,9 @@ inline ChipToken tier_token(const std::string& tok) {
 // their indices into `rows`. `hit_window_ms` is the window the rows' tiers
 // were labeled with (GeneratedReport::hit_window_ms), which names the Beyond
 // edge in the "Past N ms" tile. `library` counts the Charts shown tile
-// (GeneratedReport::library). Takes over the page script's `stats`.
+// (GeneratedReport::library), which reads "<shown> of <library>": the charts
+// with rows shown, of every chart the library lists, both counted in library
+// rows. Takes over the page script's `stats`.
 std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
                              const std::vector<size_t>& shown, double hit_window_ms,
                              const store::ChartIndex& library);
@@ -121,12 +124,37 @@ std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
 // the page's payload, its footer, the Past tile and the Timing chip.
 std::string beyond_edge_text(double hit_window_ms);
 
-// Every Ready record `store` holds under `profile` (RecordStore::ready_records)
-// whose chart `library` lists, by song id. The store lists results the library
-// doesn't, and no page shows one (D87 item 4, D92). The path report and both
-// comparison pages read their records through here.
-std::unordered_map<std::string, store::RecordRow> listed_records(
-    store::RecordStore& store, const store::Profile& profile, const store::ChartIndex& library);
+// One library chart whose stored result under the page's profile is a
+// failure (RecordStatus::CantAnalyze), named from the library.
+struct CantAnalyzeChart {
+    std::string song_id;
+    // The one cleaned title and artist every screen shows (display_title,
+    // display_artist), from the chart's naming copy.
+    std::string title;
+    std::string artist;
+    // The stored failure (RecordLookup::failure_kind, failure_text).
+    ErrorKind kind = ErrorKind::NoNotes;
+    std::string text;
+};
+
+// Every chart the library lists, sorted by its result under one profile:
+// one RecordStore::lookup over ChartIndex::song_ids.
+struct LibraryLookup {
+    // The Ready records, by song id.
+    std::unordered_map<std::string, store::RecordRow> ready;
+    // The CantAnalyze charts, in the library's scan order.
+    std::vector<CantAnalyzeChart> cant_analyze;
+    // The charts with no result (NotAnalyzed or Stale), in scan order.
+    std::vector<std::string> no_result;
+};
+
+// Which charts a page covers: every chart `library` lists, sorted three ways
+// by its result under `profile`. The store also holds results the library
+// doesn't list, and no page shows one (D87 item 4, D92). The path report and
+// both comparison pages read their records through here, so the three pages
+// agree on which charts are covered.
+LibraryLookup library_lookup(store::RecordStore& store, const store::Profile& profile,
+                             const store::ChartIndex& library);
 
 // What "--all-paths" asks for, a count no chart reaches. It is the one answer
 // to "does this page list every path" (finding 86): generate_report's subtitle
@@ -147,15 +175,18 @@ struct ReportOptions {
     std::optional<BatchRun> run;
 };
 
-// What collect_rows found: the page's rows and the library they were read
-// against.
+// What collect_rows found: the page's rows, the library they were read
+// against, and the library's charts that gave no rows because they have no
+// Ready record (library_lookup's other two groups).
 struct CollectedRows {
     std::vector<ReportRow> rows;
     store::ChartIndex library;
+    std::vector<CantAnalyzeChart> cant_analyze;
+    std::vector<std::string> no_result;
 };
 
 // The page's rows, read from the store: every Ready record of options.run's
-// profile whose chart the library lists (listed_records), in the library's
+// profile whose chart the library lists (library_lookup), in the library's
 // scan order, each giving up to options.max_paths rows in its stored rank
 // order. Nothing is analyzed and no chart file is opened. hit_window_ms feeds
 // the tier labels only.
@@ -171,8 +202,14 @@ enum class EmptyReason {
     NothingStored,         // the database holds no results at all
     NoLibrary,             // it holds results, but no chart library to report on
     NothingUnderSettings,  // it holds results, but none Ready at this cap and fill rule
+    NothingToShow,         // the library's charts all can't be analyzed or have no result
     Cancelled,             // the caller stopped the walk
 };
+
+// What an empty report says when no library chart has a row but some have a
+// stored failure (EmptyReason::NothingToShow). The coverage lines above it
+// say why (GeneratedReport::cant_analyze_line, no_result_line).
+inline constexpr const char* kNothingToShow = "Nothing to show";
 
 // What an empty report says when the database has results but no chart
 // library (D89 item 2): the report covers library charts only. The DM
@@ -202,16 +239,48 @@ inline constexpr const char* kNothingUnderSettings = "Nothing is analyzed under 
 std::string nothing_under_settings(const std::string& chartmode, int cap,
                                    const std::string& fills = std::string());
 
+// One group of the coverage line's Show list: the can't-analyze charts that
+// share one reason.
+struct CantAnalyzeGroup {
+    // The reason as the user reads it: app::plain_error's sentence for the
+    // stored kind and text (the group heading).
+    std::string sentence;
+    // The group's charts in library rows (store::ChartIndex::count).
+    int64_t count = 0;
+    // One per chart, in the library's scan order; the list shows each as
+    // Title · Artist.
+    std::vector<CantAnalyzeChart> charts;
+};
+
 struct GeneratedReport {
     // The charts with rows on the page, every library copy counted
     // (store::ChartIndex::count, D76, D77).
     int64_t songs = 0;
     int64_t rows = 0;
+    // Every chart the library lists, in library rows (ChartIndex::count):
+    // the "of" half of the Charts shown tile. With no filters,
+    // songs + cant_analyze_charts + no_result_charts == library_charts.
+    int64_t library_charts = 0;
+    // The library's charts whose stored result is a failure, in library rows,
+    // and the Show list's groups, in the order each reason first appears in
+    // the library.
+    int64_t cant_analyze_charts = 0;
+    std::vector<CantAnalyzeGroup> cant_analyze;
+    // The library's charts with no result under the page's profile (Not
+    // analyzed or Stale), in library rows.
+    int64_t no_result_charts = 0;
+    // The coverage lines above the table, as the window shows them. Each is
+    // empty when its count is 0. cant_analyze_line names the reason when every
+    // can't-analyze chart shares one that has a short form ("59 charts have
+    // no Expert Pro Drums notes"), else "59 charts can't be analyzed";
+    // no_result_line reads "3 charts have no result under these settings".
+    std::string cant_analyze_line;
+    std::string no_result_line;
     EmptyReason empty_reason = EmptyReason::None;
     // For NothingUnderSettings, the sentence that names the settings
-    // (nothing_under_settings builds it). For NoLibrary,
-    // kNoChartLibrary. Empty otherwise: an empty database and a cancel keep
-    // each caller's own words.
+    // (nothing_under_settings builds it). For NoLibrary, kNoChartLibrary.
+    // For NothingToShow, kNothingToShow. Empty otherwise: an empty database
+    // and a cancel keep each caller's own words.
     std::string why_empty;
     // The rows themselves, one per path, in collect_rows' order. Empty when
     // there is no page.

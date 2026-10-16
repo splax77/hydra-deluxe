@@ -23,10 +23,12 @@
 #include "app/path_report_view.h"
 #include "app/report.h"
 #include "app/user_messages.h"
+#include "core/error_kind.h"
 #include "core/model.h"
 #include "core/squeeze_rating.h"
 #include "core/strutil.h"
 #include "corpus_util.h"
+#include "parse/song.h"  // NoNotesError
 #include "dm_fixture.h"  // testdm::save
 #include "record_fixtures.h"
 #include "report_samples.h"
@@ -375,13 +377,15 @@ TEST_CASE("path report: two library copies count 2 in songs and in the Charts sh
     CHECK(out.songs == 2);
     CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.hit_window_ms,
                              out.library)[0]
-              .value == "2");
+              .value == "2 of 2");
     // One shown row of the chart still counts both copies.
-    CHECK(report::path_tiles(out.paths, {0}, out.hit_window_ms, out.library)[0].value == "2");
+    CHECK(report::path_tiles(out.paths, {0}, out.hit_window_ms, out.library)[0].value ==
+          "2 of 2");
 }
 
 // The Charts shown tile and generate_report's subtitle both count through
-// ChartIndex::count, so with every row shown the two totals agree.
+// ChartIndex::count, so with every row shown the two totals agree, and the
+// tile's "of" reads the library count generate_report hands over.
 TEST_CASE("path report: the Charts shown tile counts what generate_report counts") {
     store::RecordStore store(":memory:");
     fill_store_with_copies(store);
@@ -395,9 +399,10 @@ TEST_CASE("path report: the Charts shown tile counts what generate_report counts
     REQUIRE(rows_h0 > 0);
     REQUIRE(rows_h1 > 0);
     CHECK(static_cast<int64_t>(rows_h0 + rows_h1) == out.rows);
+    CHECK(out.library_charts == 5);
     CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.hit_window_ms,
                              out.library)[0]
-              .value == std::to_string(out.songs));
+              .value == "5 of 5");
 }
 
 // What a window draws from: the rows, the subtitle and footer the page shows,
@@ -426,7 +431,178 @@ TEST_CASE("generate_report hands over its rows, subtitle and footer") {
 
     CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.hit_window_ms,
                              out.library)[0]
-              .value == "5");
+              .value == "5 of 5");
+}
+
+// ---- coverage: every library chart is shown, can't be analyzed, or has no
+// result (plan 2026-10-15-report-covers-whole-library, question 5) ----------
+
+namespace {
+
+// NoNotesError's own text for an Expert Pro Drums chart, as a batch stores it.
+std::string expert_no_notes_text() { return NoNotesError(Difficulty::Expert, true).what(); }
+
+// Lists `id` in the library (after the rows `library` already holds) and
+// stores a failure of `kind` for it under fixture_settings(4).
+void store_failure(store::RecordStore& store, std::vector<store::ChartLibraryEntry>& library,
+                   const std::string& id, const std::string& title, ErrorKind kind,
+                   const std::string& text) {
+    library.push_back(library_entry_for_file(id, title, "C:\\songs\\" + id + "\\notes.mid"));
+    store.rebuild_chart_library(library);
+    store.save(store::failure_record(id, fixture_settings(4).profile(), kind, text));
+}
+
+}  // namespace
+
+TEST_CASE("path report coverage: shown + can't analyze + no result is the library count (corpus)") {
+    // Every corpus chart in the library, one of them twice. Each is analyzed
+    // the way a batch analyzes it; a remembered failure is stored as the
+    // chart's result, and every seventh chart is left unanalyzed. Hard, where
+    // many corpus charts have no charting, so some charts can't be analyzed.
+    store::RecordStore store(":memory:");
+    Settings settings = fixture_settings(4);
+    settings.view_difficulty = "Hard";
+    const BatchRun run = settings.batch_run();
+    std::vector<store::ChartLibraryEntry> library;
+    for (const std::string& path : corpus::chart_paths())
+        library.push_back(corpus::scanned_entry(path, "Title " + std::to_string(library.size())));
+    REQUIRE(library.size() > 1);
+    store::ChartLibraryEntry copy = library[0];
+    copy.rootfolder = "C:\\other";
+    library.push_back(copy);
+    store.rebuild_chart_library(library);
+
+    for (size_t i = 0; i + 1 < library.size(); ++i) {
+        if (i % 7 == 6) continue;
+        const std::string& id = library[i].md5;
+        try {
+            testdm::save(store, id, settings,
+                         analyze_chart_file(library[i].notespath, run.settings).record);
+        } catch (const KindedError& e) {
+            if (remembered_failure(e.kind()))
+                store.save(store::failure_record(id, run.profile, e.kind(), e.what()));
+        } catch (const std::exception&) {
+            // Not remembered: the chart stays without a result.
+        }
+    }
+
+    report::ReportOptions options;
+    options.run = run;
+    const report::GeneratedReport page = report::generate_report(store, options);
+    MESSAGE("library " << page.library_charts << ", shown " << page.songs << ", can't analyze "
+                       << page.cant_analyze_charts << ", no result " << page.no_result_charts);
+    CHECK(page.library_charts == static_cast<int64_t>(library.size()));
+    // The counts this corpus gave on 2026-10-15 (97 charts and one copy).
+    CHECK(page.library_charts == 98);
+    CHECK(page.songs == 58);
+    CHECK(page.cant_analyze_charts == 27);
+    CHECK(page.no_result_charts == 13);
+    CHECK(page.songs + page.cant_analyze_charts + page.no_result_charts == page.library_charts);
+    // Every stored failure is a missing Hard part, so the line names it.
+    CHECK(page.cant_analyze_line == "27 charts have no Hard Pro Drums notes");
+    CHECK(page.no_result_line == "13 charts have no result under these settings");
+    // The Charts shown tile reads the same two counts, with no filters.
+    CHECK(report::path_tiles(page.paths, every_row(page.paths.size()), page.hit_window_ms,
+                             page.library)[0]
+              .value == "58 of 98");
+}
+
+TEST_CASE("path report coverage: a chart with a stored failure gets no row and one list entry") {
+    store::RecordStore store(":memory:");
+    std::vector<store::ChartLibraryEntry> library;
+    store_tied(store, library, "ok", 4);
+    store_failure(store, library, "bad", "<b>Bad</b> Song", ErrorKind::NoNotes,
+                  expert_no_notes_text());
+
+    const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
+    REQUIRE(page.empty_reason == report::EmptyReason::None);
+    for (const report::ReportRow& r : page.paths) CHECK(r.hyhash == "ok");
+    CHECK(page.songs == 1);
+    CHECK(page.library_charts == 2);
+    CHECK(page.cant_analyze_charts == 1);
+    CHECK(page.no_result_charts == 0);
+    REQUIRE(page.cant_analyze.size() == 1);
+    const report::CantAnalyzeGroup& group = page.cant_analyze[0];
+    CHECK(group.sentence == "No Expert Pro Drums notes in this chart.");
+    CHECK(group.count == 1);
+    REQUIRE(group.charts.size() == 1);
+    CHECK(group.charts[0].song_id == "bad");
+    // The library's names, cleaned the way every screen cleans them.
+    CHECK(group.charts[0].title == "Bad Song");
+    CHECK(group.charts[0].artist == "Artist");
+    CHECK(group.charts[0].kind == ErrorKind::NoNotes);
+    CHECK(group.charts[0].text == expert_no_notes_text());
+    CHECK(page.cant_analyze_line == "1 chart has no Expert Pro Drums notes");
+    CHECK(page.no_result_line.empty());
+    CHECK(report::path_tiles(page.paths, every_row(page.paths.size()), page.hit_window_ms,
+                             page.library)[0]
+              .value == "1 of 2");
+}
+
+TEST_CASE("path report coverage: the lines' words") {
+    store::RecordStore store(":memory:");
+    std::vector<store::ChartLibraryEntry> library;
+    store_tied(store, library, "ok", 4);
+
+    // Every failure shares one reason with a short form: the line names it.
+    store_failure(store, library, "n1", "N1", ErrorKind::NoNotes, expert_no_notes_text());
+    store_failure(store, library, "n2", "N2", ErrorKind::NoNotes, expert_no_notes_text());
+    report::GeneratedReport page = report::generate_report(store, fixture_options(4));
+    CHECK(page.cant_analyze_line == "2 charts have no Expert Pro Drums notes");
+
+    // Two reasons: the generic words, and the Show list groups by reason in
+    // the order each first appears in the library, with its charts in order.
+    store_failure(store, library, "u1", "U1", ErrorKind::ChartUnreadable, "expected a [section]");
+    store_failure(store, library, "n3", "N3", ErrorKind::NoNotes, expert_no_notes_text());
+    page = report::generate_report(store, fixture_options(4));
+    CHECK(page.cant_analyze_line == "4 charts can't be analyzed");
+    REQUIRE(page.cant_analyze.size() == 2);
+    CHECK(page.cant_analyze[0].sentence == "No Expert Pro Drums notes in this chart.");
+    CHECK(page.cant_analyze[0].count == 3);
+    REQUIRE(page.cant_analyze[0].charts.size() == 3);
+    CHECK(page.cant_analyze[0].charts[0].song_id == "n1");
+    CHECK(page.cant_analyze[0].charts[1].song_id == "n2");
+    CHECK(page.cant_analyze[0].charts[2].song_id == "n3");
+    CHECK(page.cant_analyze[1].sentence ==
+          plain_error(KindedError(ErrorKind::ChartUnreadable, "expected a [section]")));
+    CHECK(page.cant_analyze[1].count == 1);
+
+    // One reason with no short form: the generic words, singular for 1.
+    store::RecordStore lone(":memory:");
+    std::vector<store::ChartLibraryEntry> lone_library;
+    store_tied(lone, lone_library, "ok", 4);
+    store_failure(lone, lone_library, "u1", "U1", ErrorKind::ChartUnreadable, "bad header");
+    CHECK(report::generate_report(lone, fixture_options(4)).cant_analyze_line ==
+          "1 chart can't be analyzed");
+
+    // The no-result line: a chart listed with no record, then two.
+    library.push_back(library_entry_for_file("none1", "None 1", "C:\\songs\\none1\\notes.mid"));
+    store.rebuild_chart_library(library);
+    page = report::generate_report(store, fixture_options(4));
+    CHECK(page.no_result_line == "1 chart has no result under these settings");
+    library.push_back(library_entry_for_file("none2", "None 2", "C:\\songs\\none2\\notes.mid"));
+    store.rebuild_chart_library(library);
+    page = report::generate_report(store, fixture_options(4));
+    CHECK(page.no_result_charts == 2);
+    CHECK(page.no_result_line == "2 charts have no result under these settings");
+    CHECK(page.songs + page.cant_analyze_charts + page.no_result_charts == page.library_charts);
+}
+
+TEST_CASE("path report coverage: no Ready chart but a stored failure reads Nothing to show") {
+    store::RecordStore store(":memory:");
+    std::vector<store::ChartLibraryEntry> library;
+    store_failure(store, library, "bad", "Bad", ErrorKind::NoNotes, expert_no_notes_text());
+    library.push_back(library_entry_for_file("none", "None", "C:\\songs\\none\\notes.mid"));
+    store.rebuild_chart_library(library);
+
+    const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
+    CHECK(page.paths.empty());
+    CHECK(page.empty_reason == report::EmptyReason::NothingToShow);
+    CHECK(page.why_empty == "Nothing to show");
+    // The lines still say why.
+    CHECK(page.cant_analyze_line == "1 chart has no Expert Pro Drums notes");
+    CHECK(page.no_result_line == "1 chart has no result under these settings");
+    CHECK(page.library_charts == 2);
 }
 
 TEST_CASE("report lists only the wanted cap and names it") {

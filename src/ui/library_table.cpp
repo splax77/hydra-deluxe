@@ -1,5 +1,5 @@
 // The library pane: the heading, the search box with its hint and errors,
-// the four status chips, and the sortable, scrolling table of every chart.
+// the status chips, and the sortable, scrolling table of every chart.
 // What it shows comes from AppState::library (ui/library_model.h); this file
 // draws it and hands clicks back. It replaced the paged table in the 2026-09
 // interface redesign (Task 12).
@@ -15,7 +15,7 @@
 #include <vector>
 
 #include "app/library_query.h"
-#include "app/user_messages.h"  // stale_text, stale_chip_text, kNotAnalyzedText
+#include "app/user_messages.h"  // stale_text, stale_chip_text, kNotAnalyzedText, stored_failure_text
 #include "core/model.h"         // group_thousands, counted
 #include "imgui.h"
 #include "imgui_internal.h"  // ImGuiSelectableFlags_SpanAvailWidth
@@ -44,6 +44,17 @@ const ImVec4 kChipOffBorderColor{74 / 255.0f, 74 / 255.0f, 80 / 255.0f, 1.0f};
 // mockup's highlight).
 const ImU32 kMatchBgColor = IM_COL32(0x4d, 0x42, 0x00, 0xff);
 const ImU32 kMatchTextColor = IM_COL32(0xff, 0xe6, 0x80, 0xff);
+
+// The colour of a row's Best path cell, by the row's status.
+ImVec4 best_path_color(store::RecordStatus status) {
+    switch (status) {
+        case store::RecordStatus::Ready: return kBestPathColor;
+        case store::RecordStatus::Stale: return kWarningColor;
+        case store::RecordStatus::CantAnalyze: return kDimTextColor;
+        case store::RecordStatus::NotAnalyzed: break;
+    }
+    return kNewSongColor;
+}
 
 // "1 chart", "97 charts", "12,345 charts".
 std::string charts_text(size_t n) {
@@ -141,7 +152,8 @@ bool chip_button(const char* label, bool on, bool disabled) {
 // own. A group with nothing in it can't be picked.
 void render_chips(AppState& app) {
     static constexpr StatusChip kChips[] = {StatusChip::All, StatusChip::NotAnalyzed,
-                                            StatusChip::Stale, StatusChip::Analyzed};
+                                            StatusChip::Stale, StatusChip::Analyzed,
+                                            StatusChip::CantAnalyze};
     const ChipCounts& counts = app.library.counts();
     // A chip that doesn't fit after the last one starts a new line. A
     // button's width is known before it is drawn (button_slot_width).
@@ -418,21 +430,31 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
                 ImGui::PopID();
                 continue;
             }
-            const ImVec4 color = row.status == store::RecordStatus::Ready   ? kBestPathColor
-                                 : row.status == store::RecordStatus::Stale ? kWarningColor
-                                                                            : kNewSongColor;
-            ImGui::PushStyleColor(ImGuiCol_Text, color);
+            ImGui::PushStyleColor(ImGuiCol_Text, best_path_color(row.status));
             ImGui::PushFont(g_mono_font, 0.0f);
             text_ellipsized(library_cell_text(row, kColumnBestPath).c_str());
             ImGui::PopFont();
             ImGui::PopStyleColor();
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
-                if (row.status == store::RecordStatus::NotAnalyzed)
-                    ImGui::SetTooltip("%s", app::kNotAnalyzedText);
-                else if (row.status == store::RecordStatus::Stale)
-                    // This one row's real cause, from the store.
-                    ImGui::SetTooltip(
-                        "%s", app::stale_text(row.stale_build, row.stale_rules).c_str());
+                switch (row.status) {
+                    case store::RecordStatus::NotAnalyzed:
+                        ImGui::SetTooltip("%s", app::kNotAnalyzedText);
+                        break;
+                    case store::RecordStatus::Stale:
+                        // This one row's real cause, from the store.
+                        ImGui::SetTooltip(
+                            "%s", app::stale_text(row.stale_build, row.stale_rules).c_str());
+                        break;
+                    case store::RecordStatus::CantAnalyze:
+                        // This one chart's stored reason, worded as a live
+                        // failure of that kind would be.
+                        if (row.failure_kind)
+                            ImGui::SetTooltip("%s", app::stored_failure_text(*row.failure_kind,
+                                                                             row.failure_text)
+                                                        .c_str());
+                        break;
+                    case store::RecordStatus::Ready: break;
+                }
             }
             ImGui::PopID();
         }

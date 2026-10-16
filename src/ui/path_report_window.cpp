@@ -10,6 +10,8 @@
 #include <tuple>
 #include <vector>
 
+#include "app/analysis.h"        // kBatchPreparingText
+#include "app/display_format.h"  // kFactSeparator
 #include "app/path_report_view.h"
 #include "app/user_messages.h"
 #include "imgui.h"
@@ -40,6 +42,8 @@ struct PathWindow {
     std::vector<app::report_view::SortSpec> sort;
     std::vector<app::report::Tile> tiles;
     bool tiles_dirty = true;
+    // The can't-analyze line's Show list is expanded.
+    bool list_open = false;
     report_frame::Memory memory;
 };
 
@@ -106,7 +110,47 @@ void rebuild(PathWindow& w, const std::shared_ptr<const GeneratedReport>& result
     apply_filters(w);
 }
 
-// Tiles, controls, count line and table: a Ready report with rows.
+// The coverage lines (plan 2026-10-15, question 5): the can't-analyze line
+// with its Show list, then the no-result line. The words are the report's
+// own (GeneratedReport); the window only draws them.
+void draw_coverage(PathWindow& w, const GeneratedReport& r) {
+    if (!r.cant_analyze_line.empty()) {
+        ImGui::TextUnformatted(r.cant_analyze_line.c_str());
+        if (!r.cant_analyze.empty()) {
+            ImGui::SameLine();
+            if (ImGui::TextLink(w.list_open ? "Hide list##cantanalyze" : "Show list##cantanalyze"))
+                w.list_open = !w.list_open;
+        }
+        if (w.list_open && !r.cant_analyze.empty()) {
+            // Scrolls on its own past half the room left, so a long list
+            // leaves the table room to show.
+            ImGui::SetNextWindowSizeConstraints(
+                ImVec2(0.0f, 0.0f), ImVec2(FLT_MAX, ImGui::GetContentRegionAvail().y * 0.5f));
+            ImGui::BeginChild("##cantanalyzelist", ImVec2(0.0f, 0.0f),
+                              ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
+            ImGui::PushTextWrapPos(0.0f);
+            for (const app::report::CantAnalyzeGroup& group : r.cant_analyze) {
+                if (!group.sentence.empty())
+                    ImGui::TextColored(kDimTextColor, "%s", group.sentence.c_str());
+                for (const app::report::CantAnalyzeChart& c : group.charts) {
+                    const std::string line =
+                        c.artist.empty() ? c.title : c.title + app::kFactSeparator + c.artist;
+                    ImGui::TextWrapped("%s", line.c_str());
+                }
+            }
+            ImGui::PopTextWrapPos();
+            ImGui::EndChild();
+        }
+    }
+    if (!r.no_result_line.empty()) {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextUnformatted(r.no_result_line.c_str());
+        ImGui::PopTextWrapPos();
+    }
+}
+
+// Tiles, coverage lines, controls, count line and table: a Ready report with
+// rows.
 void draw_body(PathWindow& w, const report_frame::Frame& frame, const PathReportInput& input) {
     TableView<ReportRow>& view = *w.view;
     if (w.tiles_dirty) {
@@ -115,6 +159,7 @@ void draw_body(PathWindow& w, const report_frame::Frame& frame, const PathReport
         w.tiles_dirty = false;
     }
     report_frame::tiles(w.tiles);
+    draw_coverage(w, *input.result);
 
     if (report_frame::search_box(w.memory, "Search song, artist, charter, or path notation"))
         apply_filters(w);
@@ -154,16 +199,36 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
     frame.window_name = "Path report \xE2\x80\x94 Hydra###pathreport";  // U+2014
     frame.heading = "Path Index";
     frame.building_subtitle = "Building the report from your library...";
-    // The build only reads the store, so it has no count to show and draws
-    // no bar.
-    frame.progress_bar = false;
+    if (input.batch) {
+        // The batch the build waits on: the strip's words while it prepares,
+        // then its own count over a bar it fills (plan 2026-10-15, question
+        // 8). Both numbers are the snapshot's, as the strip shows them.
+        const PathReportInput::WaitedBatch& b = *input.batch;
+        frame.building_lines = {b.preparing ? std::string(app::kBatchPreparingText)
+                                            : "Analyzing " + group_thousands(b.completed) +
+                                                  " of " + counted(b.total, "chart", "charts")};
+        frame.progress = std::make_pair(b.completed, b.total);
+    } else {
+        // The build itself only reads the store, so it has no count to show
+        // and draws no bar.
+        frame.progress_bar = false;
+        if (input.awaits_confirm)
+            frame.building_lines = {
+                "Confirm the batch in the main window to analyze the songs with no result."};
+    }
     frame.placeholder_rows = true;
     frame.analysis_off_sentence = app::kAnalysisOffSentence;
     frame.analysis_off_error = input.rules_error;
     frame.failure_sentence = app::kPathReportFailed;
     if (result && !w.view) frame.empty_text = result->why_empty;
 
-    if (report_frame::begin(open, frame, w.memory) && w.view) draw_body(w, frame, input);
+    const bool body = report_frame::begin(open, frame, w.memory);
+    if (body && w.view) {
+        draw_body(w, frame, input);
+    } else if (w.memory.visible && input.state == ReportBuild::Ready && result && !w.view) {
+        // No table rows: the lines still say what became of the library.
+        draw_coverage(w, *result);
+    }
     report_frame::end(open, frame, w.memory);
     // Closed this frame: the window's copy of the rows goes with AppState's
     // (D103 item 28). The search box, dropdown, Optimal paths only and sort stay
@@ -171,6 +236,7 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
     if (!*open) {
         drop_rows(w);
         w.built_from.reset();
+        w.list_open = false;
     }
 }
 
@@ -179,6 +245,11 @@ PathReportInput path_report_input(AppState& app) {
     PathReportInput in = input_from_slot(slot, app.path_report_build());
     in.rules_error = app.rules_error;
     in.keep_filters = slot.built_on_open;
+    if (const BatchJob* batch = app.path_report_batch()) {
+        const BatchJob::Snapshot s = batch->snapshot();
+        in.batch = PathReportInput::WaitedBatch{s.preparing, s.completed, s.total};
+    }
+    in.awaits_confirm = app.path_report_awaits_confirm();
     // The row index is into this frame's result, which the click keeps alive.
     // The page lists one profile, so a click selects the chart and never
     // switches the chart mode: it asks in the mode the settings already hold.

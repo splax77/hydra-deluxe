@@ -11,9 +11,11 @@
 #include <string>
 #include <vector>
 
-#include "app/user_messages.h"  // stale_text, what a Stale row's tooltip shows
+#include "app/user_messages.h"  // stale_text, stored_failure_text: the rows' tooltips
+#include "core/error_kind.h"
 #include "core/rules.h"
 #include "display_fixtures.h"  // kTagOnlyTitle, add_stale_records, empty_analysis_under
+#include "parse/song.h"        // NoNotesError
 #include "store/record_store.h"
 #include "ui/library_model.h"
 
@@ -267,15 +269,17 @@ TEST_CASE("library model: a lookup that differs only in a field the library neve
     CHECK_FALSE(burnout.shows_same_as(stale()));
 }
 
-TEST_CASE("library model: status_label is the one source of the three status words") {
+TEST_CASE("library model: status_label is the one source of the status words") {
     using hydra::ui::status_label;
     CHECK(std::string(status_label(RecordStatus::Ready)) == "Analyzed");
     CHECK(std::string(status_label(RecordStatus::Stale)) == "Stale");
     CHECK(std::string(status_label(RecordStatus::NotAnalyzed)) == "Not analyzed");
+    CHECK(std::string(status_label(RecordStatus::CantAnalyze)) == "Can't analyze");
     // The Best path cell of a row with no current result shows the same word.
     const hydra::store::PathSummary none;
     CHECK(hydra::ui::best_path_label(RecordStatus::Stale, "", none) == "Stale");
     CHECK(hydra::ui::best_path_label(RecordStatus::NotAnalyzed, "", none) == "Not analyzed");
+    CHECK(hydra::ui::best_path_label(RecordStatus::CantAnalyze, "", none) == "Can't analyze");
 }
 
 TEST_CASE("library model: status_of names the one status each chip groups") {
@@ -284,7 +288,93 @@ TEST_CASE("library model: status_of names the one status each chip groups") {
     CHECK(status_of(StatusChip::Analyzed) == RecordStatus::Ready);
     CHECK(status_of(StatusChip::Stale) == RecordStatus::Stale);
     CHECK(status_of(StatusChip::NotAnalyzed) == RecordStatus::NotAnalyzed);
+    CHECK(status_of(StatusChip::CantAnalyze) == RecordStatus::CantAnalyze);
     CHECK_FALSE(status_of(StatusChip::All).has_value());
+}
+
+// One chart under each status, the Can't analyze one a failure the store kept
+// (failure_record) and read back the way the app reads it (lookup).
+TEST_CASE("library model: every status has its own chip, and All counts them all") {
+    const Profile profile{"mode", CapQuery::at(8), hydra::store::Lens{}};
+    const hydra::NoNotesError no_notes(hydra::Difficulty::Expert, true);
+    hydra::store::RecordStore store(":memory:");
+    store.save(hydra::store::failure_record("cant", profile, hydra::ErrorKind::NoNotes,
+                                            no_notes.what()));
+    const RecordLookup cant = store.lookup_one("cant", profile);
+    REQUIRE(cant.status == RecordStatus::CantAnalyze);
+
+    LibraryModel m;
+    m.set_charts({chart("ready", "Ready", "A", "C", "common"),
+                  chart("stale", "Stale", "A", "C", "common"),
+                  chart("new", "New", "A", "C", "common"),
+                  chart("cant", "Cant", "A", "C", "common")});
+    m.set_summaries({ready(300000, "1 1", 6, 40.0), stale(), RecordLookup{}, cant});
+
+    const hydra::ui::ChipCounts& c = m.counts();
+    CHECK(c.analyzed == 1);
+    CHECK(c.stale == 1);
+    CHECK(c.not_analyzed == 1);
+    CHECK(c.cant_analyze == 1);
+    CHECK(c.all == 4);
+    CHECK(c.of(StatusChip::CantAnalyze) == 1);
+    CHECK(hydra::ui::chip_label(StatusChip::CantAnalyze, 1) == "Can't analyze (1)##chipcant");
+
+    // The chip narrows the table to that one chart, which is what the
+    // Analyze button counts and runs (D115).
+    m.set_chip(StatusChip::CantAnalyze);
+    CHECK(titles(m) == std::vector<std::string>{"Cant"});
+    CHECK(m.narrowed());
+
+    // The row keeps the stored kind and text, and its cell reads the word.
+    const hydra::ui::LibraryRow& row = m.rows()[3];
+    CHECK(row.failure_kind == hydra::ErrorKind::NoNotes);
+    CHECK(row.failure_text == no_notes.what());
+    CHECK(hydra::ui::library_cell_text(row, hydra::ui::kColumnBestPath) == "Can't analyze");
+
+    // Re-analyzed after the file was fixed: the chip empties and falls back
+    // to All.
+    CHECK(m.set_summary_for("cant", ready(1000, "0", 1, 1.0)) == 1);
+    CHECK(m.chip() == StatusChip::All);
+    CHECK(m.counts().cant_analyze == 0);
+    CHECK_FALSE(m.rows()[3].failure_kind.has_value());
+}
+
+// The hover of a Can't analyze cell words the stored failure as a live one of
+// the same kind reads: a no-notes chart's sentence quotes its raw text, so
+// there is no details line under it.
+TEST_CASE("library model: a stored failure's hover reads as the live failure does") {
+    const hydra::NoNotesError no_notes(hydra::Difficulty::Expert, true);
+    const std::string hover =
+        hydra::app::stored_failure_text(hydra::ErrorKind::NoNotes, no_notes.what());
+    CHECK(hover == "No Expert Pro Drums notes in this chart.");
+    CHECK(hover == hydra::app::plain_error_block(no_notes));
+
+    // A kind whose sentence does not quote the raw text gets the details line
+    // under it.
+    const hydra::KindedError unreadable(hydra::ErrorKind::ChartUnreadable,
+                                        "expected a [section] header");
+    const std::string block =
+        hydra::app::stored_failure_text(hydra::ErrorKind::ChartUnreadable, unreadable.what());
+    CHECK(block == hydra::app::plain_error_block(unreadable));
+    CHECK(block.find(hydra::app::plain_error(unreadable)) == 0);
+    CHECK(block.find("expected a [section] header") != std::string::npos);
+}
+
+TEST_CASE("library model: a new failure text or kind changes the row") {
+    LibraryModel m;
+    m.set_charts({chart("cant", "Cant", "A", "C", "common")});
+    RecordLookup first;
+    first.status = RecordStatus::CantAnalyze;
+    first.failure_kind = hydra::ErrorKind::ChartUnreadable;
+    first.failure_text = "line 3";
+    REQUIRE(m.set_summary_for("cant", first) == 1);
+    CHECK(m.rows()[0].shows_same_as(first));
+    RecordLookup other_text = first;
+    other_text.failure_text = "line 4";
+    CHECK_FALSE(m.rows()[0].shows_same_as(other_text));
+    RecordLookup other_kind = first;
+    other_kind.failure_kind = hydra::ErrorKind::ChartTimingRefused;
+    CHECK_FALSE(m.rows()[0].shows_same_as(other_kind));
 }
 
 TEST_CASE("library model: the search narrows the rows and the chip counts follow it") {
@@ -362,6 +452,23 @@ TEST_CASE("library model: Best path sorts by score, with unscored rows last both
     CHECK(titles(m).front() == "YYZ");
     m.set_sort(LibrarySort::Artist, true);
     CHECK(titles(m).front() == "Halo");  // "beyonce" folds first
+}
+
+// A chart that can't be analyzed sorts after Not analyzed in both directions:
+// it is the one row that never gains a score (unscored_rank).
+TEST_CASE("library model: Best path sorts a Can't analyze row after Not analyzed both ways") {
+    LibraryModel m = sample();
+    RecordLookup cant;
+    cant.status = RecordStatus::CantAnalyze;
+    cant.failure_kind = hydra::ErrorKind::NoNotes;
+    cant.failure_text = "x";
+    m.set_summary_for("acid", cant);
+    m.set_sort(LibrarySort::BestPath, false);
+    CHECK(titles(m) == std::vector<std::string>{"Burnout", "Chair", "Halo", "Other", "YYZ",
+                                                "Acid Romance"});
+    m.set_sort(LibrarySort::BestPath, true);
+    CHECK(titles(m) == std::vector<std::string>{"Burnout", "Chair", "Halo", "Other", "YYZ",
+                                                "Acid Romance"});
 }
 
 // A result whose analysis kept no path is Analyzed, but it has no best path,
