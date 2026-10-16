@@ -248,13 +248,13 @@ Where the chart marks a drum roll or trill, the highway lights a lane under it, 
 
 `< Act` and `Act >` jump to the previous and next activation. `Show in Preview >` on the Paths tab lands here too. A jump lands on the activation chord with it already hit: the gem shows struck, and the score box counts it.
 
-The transport buttons are `-5s`, `< 5 Ticks`, `Play`/`Pause`, `5 Ticks >` and `+5s`, with a volume slider beside them. Each has a key:
+The transport buttons are `-5s`, `< 10 ms`, `Play`/`Pause`, `10 ms >` and `+5s`, with a volume slider beside them. Each has a key:
 
 | Key | Does |
 |---|---|
 | `Space` | play and pause |
 | `Left` and `Right` arrows | jump 5 seconds |
-| `,` (comma) and `.` (period) | step 5 ticks |
+| `,` (comma) and `.` (period) | step 10 ms and pause |
 | `[` and `]` | jump to the previous and next activation |
 
 The same keys are drawn as keycaps in a bar under the highway, in the buttons' order. Each button's tooltip names its key too.

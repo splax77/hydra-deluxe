@@ -31,21 +31,22 @@ namespace hydra::ui::detail {
 namespace {
 
 // How far one jump moves the playhead (the -Ns/+Ns buttons and the Left and
-// Right keys), in whole seconds so every label prints an integer; and how
-// many chart ticks one step moves (the tick buttons, comma and period). Every
-// label, tooltip and key-bar word below is built from these two.
+// Right keys), in whole seconds so every label prints an integer; and how far
+// one step moves it (the step buttons, comma and period), in whole
+// milliseconds for the same reason. Every label, tooltip and key-bar word
+// below is built from these two.
 constexpr int kJumpSeconds = 5;
-constexpr int kTickStep = 5;
+constexpr int kStepMs = 10;
 constexpr double kJumpMs = kJumpSeconds * 1000.0;
 
 // The key bar's words and the tooltips' tails, built from kJumpSeconds and
-// kTickStep.
+// kStepMs.
 const std::string& jump_words() {
     static const std::string s = std::to_string(kJumpSeconds) + " seconds";
     return s;
 }
-const std::string& tick_words() {
-    static const std::string s = std::to_string(kTickStep) + " ticks";
+const std::string& step_words() {
+    static const std::string s = std::to_string(kStepMs) + " ms";
     return s;
 }
 
@@ -59,7 +60,7 @@ struct KeyHint {
 const KeyHint kKeyHints[] = {
     {{"[", "]"}, "Activation"},
     {{"\xE2\x86\x90", "\xE2\x86\x92"}, jump_words().c_str()},  // left and right arrows
-    {{",", "."}, tick_words().c_str()},
+    {{",", "."}, step_words().c_str()},
     {{"Space", nullptr}, "Play/pause"},
 };
 
@@ -471,16 +472,16 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     // transport buttons and the volume. Row 3: the scrubber, a gold mark per
     // activation, and the clock. The clock sits in a fixed slot (see
     // widgets.h), so nothing walks under a held mouse as its digits change.
-    // The jump and tick buttons' words, built once from kJumpSeconds and
-    // kTickStep.
+    // The jump and step buttons' words, built once from kJumpSeconds and
+    // kStepMs.
     static const std::string back_jump = "-" + std::to_string(kJumpSeconds) + "s";
     static const std::string fwd_jump = "+" + std::to_string(kJumpSeconds) + "s";
-    static const std::string back_ticks = "< " + std::to_string(kTickStep) + " Ticks";
-    static const std::string fwd_ticks = std::to_string(kTickStep) + " Ticks >";
+    static const std::string back_step = "< " + step_words();
+    static const std::string fwd_step = step_words() + " >";
     static const std::string back_jump_tip = "Back " + jump_words() + " (Left arrow)";
     static const std::string fwd_jump_tip = "Forward " + jump_words() + " (Right arrow)";
-    static const std::string back_ticks_tip = "Back " + tick_words() + " (Comma)";
-    static const std::string fwd_ticks_tip = "Forward " + tick_words() + " (Period)";
+    static const std::string back_step_tip = "Back " + step_words() + " (Comma)";
+    static const std::string fwd_step_tip = "Forward " + step_words() + " (Period)";
     render_path_picker(app);
     // Read once per frame (the controller caches it per scene); the
     // scrubber's gold ticks below draw from the same list.
@@ -503,15 +504,15 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     if (ImGui::Button(back_jump.c_str())) pc->jump_ms(-kJumpMs);
     hint(back_jump_tip.c_str());
     ImGui::SameLine();
-    if (ImGui::Button(back_ticks.c_str())) pc->step_ticks(-kTickStep);
-    hint(back_ticks_tip.c_str());
+    if (ImGui::Button(back_step.c_str())) pc->step_ms(-kStepMs);
+    hint(back_step_tip.c_str());
     ImGui::SameLine();
     const float play_w = std::max(button_slot_width("Play"), button_slot_width("Pause"));
     if (button_in_slot(pc->playing() ? "Pause" : "Play", play_w)) pc->toggle();
     hint("Play or pause (Space)");
     ImGui::SameLine();
-    if (ImGui::Button(fwd_ticks.c_str())) pc->step_ticks(kTickStep);
-    hint(fwd_ticks_tip.c_str());
+    if (ImGui::Button(fwd_step.c_str())) pc->step_ms(kStepMs);
+    hint(fwd_step_tip.c_str());
     ImGui::SameLine();
     if (ImGui::Button(fwd_jump.c_str())) pc->jump_ms(kJumpMs);
     hint(fwd_jump_tip.c_str());
@@ -571,7 +572,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     ImGui::NewLine();  // text_in_slot leaves the cursor on its line; the highway goes below
 
     // Keys: Space plays or pauses, Left/Right jump kJumpSeconds, comma/period
-    // step kTickStep ticks, [ and ] jump between activations; a held arrow or
+    // step kStepMs, [ and ] jump between activations; a held arrow or
     // comma/period repeats. Not while a text field
     // has the keyboard. Keyboard navigation (on in app_shell.cpp) reads the
     // arrows and Space only when nobody owns them, so the Preview claims them
@@ -589,8 +590,8 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
             pc->jump_ms(-kJumpMs);
         if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, ImGuiInputFlags_Repeat, keys_owner))
             pc->jump_ms(kJumpMs);
-        if (ImGui::IsKeyPressed(ImGuiKey_Comma, true)) pc->step_ticks(-kTickStep);
-        if (ImGui::IsKeyPressed(ImGuiKey_Period, true)) pc->step_ticks(kTickStep);
+        if (ImGui::IsKeyPressed(ImGuiKey_Comma, true)) pc->step_ms(-kStepMs);
+        if (ImGui::IsKeyPressed(ImGuiKey_Period, true)) pc->step_ms(kStepMs);
         // [ and ] jump between the drawn path's activations; no repeat.
         if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket, false)) pc->jump_activation(-1);
         if (ImGui::IsKeyPressed(ImGuiKey_RightBracket, false)) pc->jump_activation(+1);

@@ -215,50 +215,29 @@ TEST_CASE("build_time_box: the time signature in force, as the chart wrote it") 
     CHECK(build_time_box(PreviewScene{}, 0.0, 0.0).position == "m1.1.0");
 }
 
-TEST_CASE("step_tick_ms: one tick from the tick the time box shows") {
-    // 120 BPM, 480 ticks per quarter: a tick is 500/480 ms.
-    Song song = make_hand_song();
-    PreviewScene scene = build_preview_scene(song, nullptr);
-    const MsIndex& ms = song.timing().ms_index();
-
-    // 1300 ms is the time box's own example: tick 1248, "m1.3.288".
-    const double fwd = step_tick_ms(scene, 1300.0, 5000.0, 1);
-    const double back = step_tick_ms(scene, 1300.0, 5000.0, -1);
-    CHECK(fwd == doctest::Approx(ms.at(1249)));
-    CHECK(back == doctest::Approx(ms.at(1247)));
-    CHECK(build_time_box(scene, fwd, 5000.0).position == "m1.3.289");
-    CHECK(build_time_box(scene, back, 5000.0).position == "m1.3.287");
-
-    // Between ticks it steps from the rounded tick: 1300.6 ms rounds to 1249.
-    CHECK(step_tick_ms(scene, 1300.6, 5000.0, 1) == doctest::Approx(ms.at(1250)));
-
-    // Never before tick 0.
-    CHECK(step_tick_ms(scene, 0.0, 5000.0, -1) == doctest::Approx(0.0));
-    CHECK(step_tick_ms(scene, 0.5, 5000.0, -3) == doctest::Approx(0.0));
-
-    // Past the end the time box shows the end (5000 ms, tick 4800), and the
-    // step starts there too.
-    CHECK(build_time_box(scene, 6000.0, 5000.0).position == "m3.3.0");
-    CHECK(step_tick_ms(scene, 6000.0, 5000.0, -1) == doctest::Approx(ms.at(4799)));
+TEST_CASE("step_shown_ms: a step moves the shown moment by exactly its size") {
+    CHECK(step_shown_ms(1300.0, 5000.0, 10.0) == doctest::Approx(1310.0));
+    CHECK(step_shown_ms(1300.0, 5000.0, -10.0) == doctest::Approx(1290.0));
+    CHECK(step_shown_ms(1300.25, 5000.0, 10.0) == doctest::Approx(1310.25));
+    // A step of 0 lands on the shown moment itself.
+    CHECK(step_shown_ms(1300.0, 5000.0, 0.0) == doctest::Approx(1300.0));
 }
 
-TEST_CASE("step_tick_ms: a tempo change moves the tick length with it") {
-    // 120 BPM until tick 1920 (2000 ms), then 240 BPM: a tick shrinks from
-    // 500/480 ms to 250/480 ms.
-    Song song = make_sp_song({}, 3840, {{1920, 240.0}});
-    PreviewScene scene = build_preview_scene(song, nullptr);
-    const MsIndex& ms = song.timing().ms_index();
-    REQUIRE(ms.at(1920) == doctest::Approx(2000.0));
-
-    CHECK(step_tick_ms(scene, 2000.0, 5000.0, 1) == doctest::Approx(ms.at(1921)));
-    CHECK(step_tick_ms(scene, 2000.0, 5000.0, -1) == doctest::Approx(ms.at(1919)));
-    CHECK(step_tick_ms(scene, 2000.0, 5000.0, 1) - 2000.0 == doctest::Approx(250.0 / 480.0));
-    CHECK(2000.0 - step_tick_ms(scene, 2000.0, 5000.0, -1) == doctest::Approx(500.0 / 480.0));
+TEST_CASE("step_shown_ms: never before 0 or past where playback ends") {
+    CHECK(step_shown_ms(5.0, 5000.0, -10.0) == doctest::Approx(0.0));
+    CHECK(step_shown_ms(0.0, 5000.0, -10.0) == doctest::Approx(0.0));
+    CHECK(step_shown_ms(4995.0, 5000.0, 10.0) == doctest::Approx(5000.0));
+    CHECK(step_shown_ms(5000.0, 5000.0, 10.0) == doctest::Approx(5000.0));
 }
 
-TEST_CASE("step_tick_ms: a scene with no song leaves the time alone") {
-    PreviewScene empty;
-    CHECK(step_tick_ms(empty, 1234.5, 5000.0, 1) == doctest::Approx(1234.5));
+TEST_CASE("step_shown_ms: a playhead outside the song steps from the moment shown") {
+    // Past the end the time box shows the end, 5000 ms, and the step starts
+    // there: back 10 ms is 4990 ms, not 5990 ms.
+    CHECK(build_time_box(PreviewScene{}, 6000.0, 5000.0).timestamp ==
+          build_time_box(PreviewScene{}, 5000.0, 5000.0).timestamp);
+    CHECK(step_shown_ms(6000.0, 5000.0, -10.0) == doctest::Approx(4990.0));
+    // Before 0 the time box shows 0, and the step starts there.
+    CHECK(step_shown_ms(-50.0, 5000.0, 10.0) == doctest::Approx(10.0));
 }
 
 TEST_CASE("score box: no path hides the box") {

@@ -1013,21 +1013,25 @@
       "note": "Decided by: audit finding 276; phase 6 task J3-3 (D53, D54)"
     },
     {
-      "question": "How far does a Preview jump move, and what do its controls call it?",
-      "owner": "kJumpSeconds and kTickStep in src/ui/preview_tab.cpp",
+      "question": "How far does a Preview jump or step move, and what do its controls call it?",
+      "owner": "kJumpSeconds and kStepMs in src/ui/preview_tab.cpp",
       "owner_file": "src/ui/preview_tab.cpp",
       "owner_symbol": "kJumpSeconds",
       "date": "2026-10-05",
       "decision": "D53, D54",
       "added_by": "J3-5",
-      "pattern": "->jump_ms\\(\\s*-?\\d|\"[^\"]*\\b(5 seconds|5 ticks|5 Ticks)\\b[^\"]*\"|\"[-+]5s\"|\\b(kJumpSeconds|kTickStep)\\s*=\\s*\\d",
+      "pattern": "->(jump_ms|step_ms)\\(\\s*-?\\d|\"[^\"]*\\b5 seconds\\b[^\"]*\"|\"[-+]5s\"|\"(< 10 ms|10 ms >)\"|\"(Back|Forward) 10 ms\\b|[}], \"10 ms\"[}]|\\b(kJumpSeconds|kStepMs)\\s*=\\s*\\d",
       "must_match": [
         "if (ImGui::Button(\"-5s\")) pc->jump_ms(-5000.0);",
-        "{{\",\", \".\"}, \"5 ticks\"},"
+        "if (ImGui::Button(\"< 10 ms\")) pc->step_ms(-10.0);",
+        "hint(\"Forward 10 ms (Period)\");",
+        "{{\",\", \".\"}, \"10 ms\"},"
       ],
       "must_not_match": [
         "pc.jump_ms(5000.0);",
-        "inline constexpr double kAudioTailMs = 5000.0;"
+        "pc.step_ms(10.0);",
+        "inline constexpr double kAudioTailMs = 5000.0;",
+        "std::string path_limit;   // \"10 ms\" or \"off\""
       ],
       "owner_lines": [
         {
@@ -1037,14 +1041,14 @@
         },
         {
           "file": "src/ui/preview_tab.cpp",
-          "line_text": "constexpr int kTickStep = 5;",
-          "why": "kTickStep, the owner"
+          "line_text": "constexpr int kStepMs = 10;",
+          "why": "kStepMs, the owner"
         }
       ],
       "scope": [
         "src"
       ],
-      "note": "A jump through the controller pointer with a number typed in, a quoted control word naming the step, or a second definition of either constant. The tests drive the controller with typed distances (pc.jump_ms(5000.0)) and pin the shown text, so src only. Decided by: audit finding 215; phase 6 task J3-5 (D53, D54)"
+      "note": "A jump through the controller pointer with a number typed in, a quoted control word naming the step, or a second definition of either constant. The tests drive the controller with typed distances (pc.jump_ms(5000.0)) and pin the shown text, so src only. The plain \"10 ms\" word is matched only in a key-bar entry, because the library's path limit also prints \"10 ms\". Decided by: audit finding 215; phase 6 task J3-5 (D53, D54); the step's size in ms by the user's call on 2026-10-16 (PV-10MS)"
     },
     {
       "question": "How big is each Preview overlay box at a scale?",

@@ -205,10 +205,10 @@ public:
     // Playing stays playing; the transport stops it at 0 and at
     // playback_end_ms().
     void jump_ms(double delta_ms);
-    // Pause, then move the playhead `delta_ticks` chart ticks from the tick
-    // the time box shows (the kTickStep buttons, comma and period).
-    // A step of 0 snaps onto the displayed tick.
-    void step_ticks(int delta_ticks);
+    // Pause, then move the playhead `delta_ms` from the moment the time box
+    // shows (the kStepMs buttons, comma and period; app::step_shown_ms).
+    // A step of 0 snaps onto the displayed moment.
+    void step_ms(double delta_ms);
     bool has_audio() const;
 
     // The scrubber is being held (mouse down on it). As in Onyx, playback

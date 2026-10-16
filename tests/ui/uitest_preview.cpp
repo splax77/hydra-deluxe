@@ -279,17 +279,22 @@ void test_preview_controls(ImGuiTestContext* ctx) {
     pc.jump_ms(5000.0);
     IM_CHECK(pc.playing());
 
-    // A tick step pauses, and one step each way returns to the same tick.
-    pc.step_ticks(0);  // pause and snap onto the displayed tick
+    // A step pauses, and one step each way returns to the same moment.
+    pc.step_ms(0.0);  // pause and snap onto the displayed moment
     IM_CHECK(!pc.playing());
-    const double t0 = pc.position_ms();
-    const std::string mb0 = pc.time_box().position;
-    pc.step_ticks(1);
-    IM_CHECK(pc.position_ms() > t0);
-    IM_CHECK(pc.position_ms() - t0 < 20.0);  // one tick, at any real tempo
-    IM_CHECK(pc.time_box().position != mb0);
-    pc.step_ticks(-1);
-    IM_CHECK_STR_EQ(pc.time_box().position.c_str(), mb0.c_str());
+    pc.seek_ms(12000.0);
+    pc.step_ms(10.0);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 12010.0, 0.001);
+    pc.step_ms(-10.0);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 12000.0, 0.001);
+
+    // A step stops at 0 and at where playback stops.
+    pc.seek_ms(5.0);
+    pc.step_ms(-10.0);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 0.0, 0.001);
+    pc.seek_ms(pc.playback_end_ms() - 5.0);
+    pc.step_ms(10.0);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), pc.playback_end_ms(), 0.001);
 }
 
 // The overlay's boxes as drawn, found by the names preview_tab gives them: no
@@ -425,8 +430,8 @@ void test_preview_overlay_fit(ImGuiTestContext* ctx) {
 }
 
 // The Preview's new transport buttons and keys: -5s / +5s and Left / Right
-// jump 5 s, < 5 Ticks / 5 Ticks > and comma / period step 5 chart ticks, Space
-// plays and pauses.
+// jump 5 s, < 10 ms / 10 ms > and comma / period step 10 ms, Space plays and
+// pauses.
 void test_preview_buttons_keys(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_preview(ctx)) return;
@@ -447,34 +452,27 @@ void test_preview_buttons_keys(ImGuiTestContext* ctx) {
     ctx->KeyPress(ImGuiKey_LeftArrow);
     IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 10000.0, 0.5);
 
-    // A tick step pauses.
+    // A step pauses.
     ctx->ItemClick("**/Play");
     IM_CHECK(pc.playing());
-    ctx->ItemClick("**/5 Ticks >");
+    ctx->ItemClick("**/10 ms >");
     IM_CHECK(!pc.playing());
 
-    // After a step the playhead sits on a tick; period then comma returns
-    // the time box to it.
-    ctx->ItemClick(("**/" + escape_ref("< 5 Ticks")).c_str());
-    const double t0 = pc.position_ms();
-    const std::string mb0 = pc.time_box().position;
+    // The buttons and the keys each step exactly 10 ms.
+    pc.seek_ms(10000.0);
+    ctx->ItemClick("**/10 ms >");
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 10010.0, 0.001);
+    ctx->ItemClick(("**/" + escape_ref("< 10 ms")).c_str());
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 10000.0, 0.001);
     ctx->KeyPress(ImGuiKey_Period);
-    const double t5 = pc.position_ms();
-    IM_CHECK(t5 > t0);
-    IM_CHECK(pc.time_box().position != mb0);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 10010.0, 0.001);
     ctx->KeyPress(ImGuiKey_Comma);
-    IM_CHECK_STR_EQ(pc.time_box().position.c_str(), mb0.c_str());
-
-    // The key steps 5 ticks: the same place five single steps reach.
-    for (int i = 0; i < 5; ++i) pc.step_ticks(1);
-    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), t5, 0.001);
-    pc.step_ticks(-5);
-    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), t0, 0.001);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 10000.0, 0.001);
 
     // Space plays and pauses. Tab puts the keyboard focus box on the button
-    // after "< 5 Ticks"; had navigation also taken Space it would have
+    // after "< 10 ms"; had navigation also taken Space it would have
     // pressed that button too, which undoes the toggle or steps the playhead.
-    ctx->ItemClick(("**/" + escape_ref("< 5 Ticks")).c_str());
+    ctx->ItemClick(("**/" + escape_ref("< 10 ms")).c_str());
     ctx->KeyPress(ImGuiKey_Tab);
     IM_CHECK(!pc.playing());
     const double t1 = pc.position_ms();
@@ -950,7 +948,7 @@ void test_preview_activation_jumps(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     // The key bar: each group's action is on screen, the old run-on line is gone.
     const std::string text = visible_text(h);
-    for (const char* action : {"Activation", "5 seconds", "5 ticks", "Play/pause", "Space"})
+    for (const char* action : {"Activation", "5 seconds", "10 ms", "Play/pause", "Space"})
         IM_CHECK(text.find(action) != std::string::npos);
     IM_CHECK(text.find("previous/next activation") == std::string::npos);
 }
