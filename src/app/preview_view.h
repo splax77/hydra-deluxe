@@ -309,9 +309,10 @@ struct PreviewScene {
     double song_length_ms = 0.0;
     bool has_notes = false;
 
-    // Does the scene have an SP gauge? Yes when it has timing and a meter
-    // curve to draw. The gauge and the drain box both ask this.
-    bool has_sp_gauge() const { return timing.has_value() && !sp_meter.segments.empty(); }
+    // Does the scene have an SP gauge? Yes whenever it was built from a song
+    // (it has timing), Star Power or not: a chart with no SP phrase shows an
+    // empty gauge. The gauge and the drain box both ask this.
+    bool has_sp_gauge() const { return timing.has_value(); }
 };
 
 // The last note the highway draws, or null when the scene has none. The one
@@ -395,7 +396,8 @@ inline bool PreviewActivation::sp_running_at(double now) const {
 // SP running at the playhead (PreviewActivation::sp_running_at).
 // Then `detail` is "empties in X s", that stored end minus the playhead.
 // Otherwise `detail` is "full meter X s": the meter's cap in bars at that same
-// bar time, so it jumps exactly when the rate does.
+// bar time, so it jumps exactly when the rate does. A chart with no Star Power
+// never has SP running, so its box always reads that idle form.
 // Hidden (`shown` false) when the scene has no SP gauge (has_sp_gauge).
 // Nothing here re-derives Star Power: it reads the record and the song's own
 // timing.
@@ -522,7 +524,7 @@ PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms, d
                                      bool pro_drums);
 
 // The number under the SP gauge: bars banked at `now_ms` over the cap, one
-// decimal ("2.5/4"). Empty when the curve has no segments.
+// decimal ("2.5/4"). A curve with no segments reads 0.0 bars ("0.0/4").
 std::string sp_meter_readout(const SpMeterCurve& curve, double now_ms);
 
 // One entry of the Preview's "Showing" list: the path's notation, with

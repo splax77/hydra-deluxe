@@ -567,13 +567,20 @@ TEST_CASE("score box stars: no score, no stars") {
 
 // ---- SP drain box -------------------------------------------------------
 
-TEST_CASE("drain box: hidden without an SP gauge") {
+TEST_CASE("drain box: idle on a chart with no Star Power") {
+    // A default scene was built from no song: no gauge, so no box.
     CHECK_FALSE(drain_box_at(PreviewScene{}, 1000.0).shown);
-    // Notes but no SP phrase and no path: no gauge, so no box.
+    // Notes but no SP phrase and no path: the gauge is empty, and the box
+    // still shows, in its idle form.
     Song song = make_sp_song({}, /*last_tick=*/3840);
     PreviewScene scene = build_preview_scene(song, nullptr);
     REQUIRE(scene.sp_meter.segments.empty());
-    CHECK_FALSE(drain_box_at(scene, 1000.0).shown);
+    const PreviewDrainBox box = drain_box_at(scene, 1000.0);
+    CHECK(box.shown);
+    CHECK_FALSE(box.active);
+    CHECK(box.header == "SP drain (if activated)");
+    CHECK(box.rate == "1 bar / 4.0 s");
+    CHECK(box.detail == "full meter 16.0 s");
 }
 
 TEST_CASE("drain box: idle at a steady tempo reads the rate and a full meter") {

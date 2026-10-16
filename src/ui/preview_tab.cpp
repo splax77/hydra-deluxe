@@ -614,8 +614,8 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
 
         // The text overlays: the time box and score box top-left, the SP drain
         // box top-right beside the gauge, the next-activation box under
-        // the drain box (D111 item 3), and the solo box lower in that column
-        // during a solo. They share one scale, fitted by
+        // the drain box (D111 item 3), and the solo box lower down, against
+        // the highway, during a solo. They share one scale, fitted by
         // render::overlay_scale so they sit beside the highway: their
         // configured size whenever there is room, smaller in a narrow window,
         // never below kOverlayMinScale (under that they overlap rather than
@@ -854,14 +854,19 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         }
 
         // The solo box, right of the highway a little below the middle, as
-        // the game places its own, its right edge lined up with the boxes
-        // above. Every line is build_solo_box's.
+        // the game places its own. Its left edge hugs the highway: the room
+        // render::right_room leaves beside the railing at the box's lowest
+        // row, where the highway is widest, starts there. A box wider than
+        // that room (the scale already at its floor) keeps its right edge on
+        // the column's, as the boxes above do. Every line is build_solo_box's.
         if (solo.shown) {
             const render::TextBox s_box = solo_box(solo, sz);
-            const float solo_w = render::measure_text_box(s_box, sz.inset).w;
-            draw_text_box(dl, font, s_box,
-                          ImVec2(origin.x + right_edge - solo_w, origin.y + tops.solo), sz.inset,
-                          corner, ImDrawFlags_None, "##solo_box");
+            const render::BoxExtent s_ext = render::measure_text_box(s_box, sz.inset);
+            const float room =
+                render::right_room(pcfg, w, h, right_edge, tops.solo + s_ext.h, sz.gap);
+            const float solo_left = right_edge - std::max(room, s_ext.w);
+            draw_text_box(dl, font, s_box, ImVec2(origin.x + solo_left, origin.y + tops.solo),
+                          sz.inset, corner, ImDrawFlags_None, "##solo_box");
         }
     }
 

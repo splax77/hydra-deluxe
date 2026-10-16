@@ -1208,17 +1208,10 @@
       "must_not_match": [
         "if (!scene.has_sp_gauge()) return box;"
       ],
-      "owner_lines": [
-        {
-          "file": "src/app/preview_view.h",
-          "line_text": "bool has_sp_gauge() const { return timing.has_value() && !sp_meter.segments.empty(); }",
-          "why": "has_sp_gauge, the owner"
-        }
-      ],
       "scope": [
         "src"
       ],
-      "note": "Tests pin the fact that a scene has no curve; those are assertions, not a predicate. Decided by: audit finding 216; phase 6 task J3-4 (D53, D54)"
+      "note": "The owner asks for timing alone, so a chart with no SP phrase still shows its gauge, empty, and the drain box. The owner no longer tests the curve, so it has no owner line; the pattern flags a caller that hides the gauge on an empty curve again. Tests pin the fact that a scene has no curve; those are assertions, not a predicate. Decided by: audit finding 216; phase 6 task J3-4 (D53, D54); gauge on every song, the user's request in task pv1 (2026-10-16)"
     },
     {
       "question": "Over which stretch is an activation's Star Power running?",

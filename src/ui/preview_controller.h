@@ -126,8 +126,8 @@ public:
     // ceiling — what the panel's gauge draws.
     double sp_meter_bars() const;
     int sp_meter_cap() const;
-    // The scene has a gauge to draw (app::PreviewScene::has_sp_gauge, which
-    // the drain box asks too).
+    // The scene has a gauge to draw, empty on a chart with no Star Power
+    // (app::PreviewScene::has_sp_gauge, which the drain box asks too).
     bool has_sp_gauge() const;
 
     // The first load is still running: what the panel's progress bar means.

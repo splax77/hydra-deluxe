@@ -741,7 +741,6 @@ PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms, d
 }
 
 std::string sp_meter_readout(const SpMeterCurve& curve, double now_ms) {
-    if (curve.segments.empty()) return {};
     char buf[32];
     std::snprintf(buf, sizeof buf, "%.1f/%d", sp_meter_bars_at(curve, now_ms), curve.cap);
     return buf;

@@ -497,13 +497,15 @@ TEST_CASE("sp_meter_bars_at: before the curve, after it, and on a shared boundar
     CHECK(sp_meter_bars_at(z, 500.0) == doctest::Approx(3.0));
 }
 
-TEST_CASE("has_sp_gauge: timing and a curve together") {
+TEST_CASE("has_sp_gauge: every scene built from a song, Star Power or not") {
     CHECK_FALSE(PreviewScene{}.has_sp_gauge());
 
-    // Timing but no curve: the scene of "drain box: hidden without an SP gauge".
+    // Timing but no curve: a chart with no SP phrase still has its gauge,
+    // the scene of "drain box: idle on a chart with no Star Power".
     PreviewScene no_curve = build_preview_scene(make_sp_song({}, /*last_tick=*/3840), nullptr);
     REQUIRE(no_curve.timing.has_value());
-    CHECK_FALSE(no_curve.has_sp_gauge());
+    REQUIRE(no_curve.sp_meter.segments.empty());
+    CHECK(no_curve.has_sp_gauge());
 
     // A curve but no timing.
     PreviewScene no_timing;
@@ -725,5 +727,6 @@ TEST_CASE("sp meter readout: bars banked over the cap") {
     // to empty at its deact node, two measures later (6000 ms).
     CHECK(sp_meter_readout(t.scene.sp_meter, 1500.0) == "1.0/4");
     CHECK(sp_meter_readout(t.scene.sp_meter, 4000.0) == "0.5/4");
-    CHECK(sp_meter_readout(SpMeterCurve{}, 0.0).empty());
+    // No curve at all (a chart with no Star Power): an empty gauge.
+    CHECK(sp_meter_readout(SpMeterCurve{}, 0.0) == "0.0/4");
 }
