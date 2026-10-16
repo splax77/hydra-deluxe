@@ -622,6 +622,20 @@ TEST_CASE("more rows to run than the threshold open the batch confirm first") {
     CHECK_FALSE(app->batch_confirm_in_main_window());
     CHECK(app->batch_job == nullptr);
     CHECK(app->path_report_build() == ReportBuild::None);
+
+    // The toolbar's Analyze while the window asks: the user's own popup opens,
+    // and the window's question counts as declined, so the report builds from
+    // what is stored.
+    app->show_path_report();
+    REQUIRE(app->path_report_awaits_confirm());
+    app->open_batch_confirm();
+    CHECK_FALSE(app->path_report_awaits_confirm());
+    CHECK(app->batch_confirm_in_main_window());
+    CHECK(app->report_job != nullptr);
+    CHECK(app->batch_job == nullptr);
+    app->close_batch_confirm();
+    finish_path_report(*app);
+    CHECK(app->path_report_build() == ReportBuild::Ready);
 }
 
 TEST_CASE("a batch already running is waited on, and its finish builds the report") {
