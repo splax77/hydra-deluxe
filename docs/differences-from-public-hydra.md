@@ -2,13 +2,13 @@
 
 The public Hydra is DragonDelgar's, at [DragonDelgar/hydra](https://github.com/DragonDelgar/hydra). It is a Python app. Its latest release is v1.3.1, from August 7, 2026.
 
-Hydra Deluxe started from that v1.3.1 and has been developed on its own since, from 1.4.1 up to 2.9.0. Up to 1.9.7 it was also called Hydra. Since 2.0.0 it is Hydra Deluxe, so the two are easy to tell apart. Nothing flows between the two automatically. The public version has kept changing too (see [What the public version has](#what-the-public-version-has-that-this-one-doesnt)).
+Hydra Deluxe started from that v1.3.1 and has been developed on its own since, from 1.4.1 up to 2.9.1. Up to 1.9.7 it was also called Hydra. Since 2.0.0 it is Hydra Deluxe, so the two are easy to tell apart. Nothing flows between the two automatically. The public version has kept changing too (see [What the public version has](#what-the-public-version-has-that-this-one-doesnt)).
 
 Both do the same job. They read Clone Hero drum charts and find the Star Power paths that give the best score. The path notation is the same, and the mechanics pages on the [public wiki](https://github.com/DragonDelgar/hydra/wiki) (squeezes, early fills, the optimal checklist) apply to both.
 
 ## At a glance
 
-| | Public Hydra 1.3.1 | Hydra Deluxe 2.9.0 |
+| | Public Hydra 1.3.1 | Hydra Deluxe 2.9.1 |
 |---|---|---|
 | Written in | Python | C++, a native Windows app |
 | Install | Unzip anywhere, run `Hydra.exe` | Installer into `C:\Program Files\Hydra` |
@@ -133,5 +133,6 @@ This version doesn't read `records.json`, so your old results don't carry over. 
 | 2.7.0 | The Preview's text boxes share one look, and its scrubber ends where playback ends; clearer words in the dmleaderboards comparison; .sng and .srb names trimmed like folder charts' |
 | 2.8.0 | Star Power length, measure lines and generated fills follow Clone Hero's measure grid; early fills reach 85 ms; the path report covers the whole library and builds from saved paths; a `Can't analyze` status and chip |
 | 2.9.0 | The Preview shows a solo box like Clone Hero's; its step buttons move 10 ms; its SP meter shows on every song |
+| 2.9.1 | The Paths tab says how many backend rows `Hide backend rows beyond` hides; a MIDI drum track loads under either name Clone Hero accepts, `PART DRUMS` or `PART DRUM`, in any mix of upper and lower case |
 
 Each release's full notes are on the [releases page](https://github.com/splax77/hydra-deluxe/releases).
