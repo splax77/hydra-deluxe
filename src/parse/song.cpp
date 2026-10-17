@@ -131,9 +131,12 @@ LanePads lane_pads(const Chord& chord) {
 }
 
 // The one place a drum lane's pads are worked out (Clone Hero's rule, chosen
-// by the user). Both parsers call it with the lanes their chart shows at the
-// loaded difficulty, once the sequence is finished and before Note Shuffle
-// runs, as the game builds its lanes before its shuffle. Each lane starts at
+// by the user). The loader tail (finish_loaded_song) calls it once, with the
+// lanes the parser recorded at the loaded difficulty, after the Note Shuffle
+// switch. So with Note Shuffle on, a lane lights the shuffled notes' pads. The
+// game builds its lanes before its shuffle, but each lane holds references
+// to its notes, not a colour, and the shuffle then recolours those notes in
+// place (D112's 2026-10-17 correction names the listings). Each lane starts at
 // the first chord with a pad from one tick before the lane to its end; a lane
 // with none there is dropped. A single lane lights that chord's lowest pad. A
 // double lane also lights the highest pad of a second chord: the same chord
@@ -1053,7 +1056,7 @@ private:
     void op_flam(bool enabled) { flag_flam_ = enabled; }
     void op_solo(bool on) { flag_solo_ = on; }
     // A drum lane's note-on and note-off. The lane is recorded whole at its
-    // note-off and lit once every chord is read (light_drum_lanes). A note-off
+    // note-off and lit in the loader tail (light_drum_lanes). A note-off
     // with no lane open records nothing, and a lane never closed is dropped,
     // as an open fill is.
     void op_lane_start(int64_t tick, bool double_lane) { lane_start_tick_[double_lane] = tick; }
@@ -1119,7 +1122,7 @@ private:
     bool kick_mark_before_tag_ = false;  // this tick's kick counted in marks_before_tag_
     std::optional<int64_t> sp_start_tick_;
     // The open single [0] and double [1] lane's note-on tick, and every lane
-    // closed so far, lit after pass 2.
+    // closed so far, handed on unlit after pass 2.
     std::array<std::optional<int64_t>, 2> lane_start_tick_{};
     std::vector<DrumLane> lanes_;
 };
@@ -1378,7 +1381,8 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
     }
     sort_practice_sections(song.practice_sections);
     song.solo_sections = find_solo_sections(song.sequence);
-    song.drum_lanes = light_drum_lanes(std::move(lanes_), song.sequence);
+    // Unlit: the loader tail picks their pads (finish_loaded_song).
+    song.drum_lanes = std::move(lanes_);
 
     song.check_activations(rules_, fills_rule_);
     return song;
@@ -1638,8 +1642,8 @@ private:
     // An S 64 line: the fill is recorded whole and placed once every chord
     // is read (place_authored_fills).
     void op_fillstart(int64_t start, int64_t end) { fills_.push_back({start, end}); }
-    // An S 65 or S 66 line: the lane is recorded whole and lit once every
-    // chord is read (light_drum_lanes).
+    // An S 65 or S 66 line: the lane is recorded whole and lit in the loader
+    // tail (light_drum_lanes).
     void op_lane(int64_t start, int64_t end, bool double_lane) {
         lanes_.push_back({start, end, double_lane, {}});
     }
@@ -1677,7 +1681,7 @@ private:
     std::optional<int64_t> sp_start_tick_;
     std::optional<int64_t> sp_end_tick_;
     std::vector<AuthoredFill> fills_;  // every authored fill, placed after the section
-    std::vector<DrumLane> lanes_;      // every drum lane, lit after the section
+    std::vector<DrumLane> lanes_;      // every drum lane, handed on unlit
 };
 
 // The .chart phrase numbers of a single and a double drum lane
@@ -2048,7 +2052,8 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
         sort_practice_sections(song.practice_sections);
     }
     song.solo_sections = find_solo_sections(song.sequence);
-    song.drum_lanes = light_drum_lanes(std::move(lanes_), song.sequence);
+    // Unlit: the loader tail picks their pads (finish_loaded_song).
+    song.drum_lanes = std::move(lanes_);
 
     // .chart ghosts and accents are explicit per-note flags (N 34-37 accent,
     // N 40-43 ghost), applied unconditionally, so a .chart has no opt-in
@@ -2068,7 +2073,8 @@ namespace {
 // The chord list outlives the parse (the engine and the Preview read it), and
 // each parser sizes it from a count that can run high. So its spare room goes
 // back once the parser's own buffers are freed. Every loader ends at
-// load_songbytes_mid or load_songbytes_chart, which call this.
+// load_songbytes_mid or load_songbytes_chart, whose tail (finish_loaded_song)
+// calls this.
 void trim_parsed_song(Song& song) {
     song.sequence.shrink_to_fit();
 }
@@ -2090,13 +2096,21 @@ Song parse_mid_lean(const std::vector<uint8_t>& data, bool pro, bool bass2x,
 // The Note Shuffle switch, applied once a parser has finished the song: the
 // fill, solo and Star Power passes inside the parsers read only ticks and
 // flags, never a pad, so they see the same chords either way. The drum-lane
-// pass does read pads, and it runs before this on purpose: Clone Hero builds
-// its lanes before its shuffle, so a lane keeps the chart's own pads. Both
-// public byte loaders end here.
+// pass does read pads, so it runs after this (finish_loaded_song).
 void apply_shuffle_switch(Song& song, bool pro, bool noteshuffle) {
     if (!noteshuffle) return;
     if (apply_note_shuffle(song.sequence, pro) == NoteShuffleResult::GameFreezes)
         throw KindedError(ErrorKind::NoteShuffleFreezes, kNoteShuffleFreezeDetail);
+}
+
+// The tail both public byte loaders end with, whichever parser read the
+// chart. The drum lanes are lit here, after the Note Shuffle switch, because
+// the game's lanes show the colours of the notes they hold, and its shuffle
+// recolours those notes (see light_drum_lanes).
+void finish_loaded_song(Song& song, const ChartReading& reading) {
+    apply_shuffle_switch(song, reading.prodrums, reading.noteshuffle);
+    song.drum_lanes = light_drum_lanes(std::move(song.drum_lanes), song.sequence);
+    trim_parsed_song(song);
 }
 
 }  // namespace
@@ -2105,8 +2119,7 @@ Song load_songbytes_mid(const std::vector<uint8_t>& data, const ChartReading& re
                         const core::Rules& rules, FillDeadlineRule fills) {
     // The lean file is gone once parse_mid_lean returns.
     Song song = parse_mid_lean(data, reading.prodrums, reading.bass2x, reading.difficulty, rules, fills);
-    apply_shuffle_switch(song, reading.prodrums, reading.noteshuffle);
-    trim_parsed_song(song);
+    finish_loaded_song(song, reading);
     return song;
 }
 
@@ -2115,8 +2128,7 @@ Song load_songbytes_chart(const std::vector<uint8_t>& data, const ChartReading& 
     // The parser and its sections are gone by the end of this statement.
     Song song =
         ChartParser(rules, fills).parse(data, reading.prodrums, reading.bass2x, reading.difficulty);
-    apply_shuffle_switch(song, reading.prodrums, reading.noteshuffle);
-    trim_parsed_song(song);
+    finish_loaded_song(song, reading);
     return song;
 }
 

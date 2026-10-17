@@ -525,35 +525,45 @@ TEST_CASE(".chart: a lane shows on each difficulty whose section holds it") {
     CHECK(hard.drum_lanes.empty());
 }
 
-TEST_CASE("drum lanes keep the chart's own pads with Note Shuffle on") {
-    // Victoria - Grow's eight lanes, read with Note Shuffle off and on. The
-    // shuffle redraws the pads, but the lanes are lit before it runs, as
-    // Clone Hero builds them, so they come out the same.
-    const std::string path =
-        common_chart("Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart");
-    const Song plain = load_songpath(path, ChartReading{});
-    const Song shuffled =
-        load_songpath(path, ChartReading{Difficulty::Expert, true, true, /*noteshuffle=*/true},
-                      core::default_rules());
-    REQUIRE(plain.drum_lanes.size() == 8);
-    REQUIRE(shuffled.drum_lanes.size() == plain.drum_lanes.size());
-    for (size_t i = 0; i < plain.drum_lanes.size(); ++i) {
-        CAPTURE(i);
-        CHECK(shuffled.drum_lanes[i].start_tick == plain.drum_lanes[i].start_tick);
-        CHECK(shuffled.drum_lanes[i].end_tick == plain.drum_lanes[i].end_tick);
-        CHECK(shuffled.drum_lanes[i].pads == plain.drum_lanes[i].pads);
-    }
-    // And the shuffle did move a chord under a lane: the chord on the first
-    // lane's start tick differs between the two reads.
-    const auto chord_at = [](const Song& s, int64_t tick) {
-        for (const SongTimestamp& ts : s.sequence)
-            if (ts.timecode.ticks() == tick) return ts.chord.code();
-        return std::string();
+TEST_CASE("drum lanes take their pads from the shuffled notes with Note Shuffle on") {
+    // Each chart is read with Note Shuffle off and on. The lanes sit on the
+    // same ticks either way. Their pads follow the shuffled notes, because
+    // the game's lane holds the notes the shuffle recolours (D112's
+    // 2026-10-17 correction), so some lanes light other pads. The shuffled
+    // pads are pinned from one run of the code.
+    constexpr NoteColor R = NoteColor::Red, Y = NoteColor::Yellow, B = NoteColor::Blue,
+                        G = NoteColor::Green;
+    struct Want {
+        const char* file;
+        std::vector<Pads> shuffled;  // one per lane, in lane order
     };
-    bool moved = false;
-    for (const DrumLane& lane : plain.drum_lanes)
-        if (chord_at(plain, lane.start_tick) != chord_at(shuffled, lane.start_tick)) moved = true;
-    CHECK(moved);
+    const Want wants[] = {
+        // Eight single lanes, all red unshuffled.
+        {"Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart",
+         {{R}, {B}, {Y}, {G}, {B}, {B}, {R}, {R}}},
+        // One double lane, yellow and green unshuffled.
+        {"Summer Blast _25 Setlist/Tier 4/Rush - YYZ/notes.mid", {{B, G}}},
+    };
+    for (const Want& w : wants) {
+        CAPTURE(w.file);
+        const std::string path = common_chart(w.file);
+        const Song plain = load_songpath(path, ChartReading{});
+        const Song shuffled =
+            load_songpath(path, ChartReading{Difficulty::Expert, true, true, /*noteshuffle=*/true},
+                          core::default_rules());
+        REQUIRE(plain.drum_lanes.size() == w.shuffled.size());
+        REQUIRE(shuffled.drum_lanes.size() == plain.drum_lanes.size());
+        bool differs = false;
+        for (size_t i = 0; i < plain.drum_lanes.size(); ++i) {
+            CAPTURE(i);
+            CHECK(shuffled.drum_lanes[i].start_tick == plain.drum_lanes[i].start_tick);
+            CHECK(shuffled.drum_lanes[i].end_tick == plain.drum_lanes[i].end_tick);
+            CHECK(shuffled.drum_lanes[i].double_lane == plain.drum_lanes[i].double_lane);
+            CHECK(shuffled.drum_lanes[i].pads == w.shuffled[i]);
+            if (shuffled.drum_lanes[i].pads != plain.drum_lanes[i].pads) differs = true;
+        }
+        CHECK(differs);
+    }
 }
 
 TEST_CASE("Song::note_count: the chart's note total under each 2x Bass setting") {

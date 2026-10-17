@@ -259,11 +259,11 @@ public:
     // nothing stores it.
     std::vector<SoloSection> solo_sections;
 
-    // Drum lanes shown at the loaded difficulty, in lane-start order. Both
-    // parsers fill it once the sequence is finished and before Note Shuffle
-    // runs, so the pads are the chart's own; see light_drum_lanes in
-    // song.cpp. Display only; nothing in the search or the stored record
-    // reads it.
+    // Drum lanes shown at the loaded difficulty, in lane-start order. The
+    // loaders light them once, after Note Shuffle, so with Note Shuffle on
+    // the pads are the shuffled notes' pads: the game's lane holds its notes,
+    // which the shuffle recolours. See light_drum_lanes in song.cpp. Display
+    // only; nothing in the search or the stored record reads it.
     std::vector<DrumLane> drum_lanes;
 
     // Snapshot the timing indexes from the current maps. Called once the tempo
