@@ -204,7 +204,7 @@ An open row shows these, in order:
 2. `Show in Preview >`, which jumps the Preview tab to this activation.
 3. The early fill timing, when the activation has one (the `E` notation), like `Early fill: 0.0 ms (required)`. A positive number means you must hit that many ms early to make the fill show up. A negative number is slack, so the fill shows up with room to spare.
 4. A plain sentence for each squeeze: which note to hit early or late, by how much, and what it's worth. Notes are named the way the Dynamics tab names them, like `Green tom` or `Yellow cymbal`.
-5. `Backend timings`, a fold that starts open: the notes near the end of Star Power.
+5. `Backend timings`, a fold that is already open when you open the row: the notes near the end of Star Power. If you close it, it stays closed for that path.
 
 ### Backend timings
 
