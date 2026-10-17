@@ -155,9 +155,6 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
                                         double leeway_ms,
                                         const std::vector<std::optional<double>>& note_effective_ms);
 
-// The line above a backend table, explaining its columns in plain words.
-extern const char* const kBackendTimingsLead;
-
 // The hover hint shown next to a scale warning.
 extern const char* const kTransferScaleHint;
 
@@ -248,13 +245,15 @@ inline std::string path_item_id(const std::string& label, size_t index) {
 struct PathsTabUi {
     std::vector<char> act_open;       // one per activation row; char, not vector<bool>
     std::vector<char> backends_open;  // one per activation row
-    bool mult_open = true;
-    bool breakdown_open = true;
+    // Start closed; reset() leaves them alone, so they keep the user's last
+    // choice from path to path.
+    bool mult_open = false;
+    bool breakdown_open = false;
     // The 0-based activation "Show in Preview" asked for, until the Preview
     // tab has moved its playhead there.
     std::optional<size_t> preview_jump;
 
-    // A fresh path: `rows` rows, the first one open, every backend table open.
+    // A fresh path: `rows` rows, every row and every backend table closed.
     void reset(size_t rows);
     // Every row open; false when there are no rows.
     bool all_open() const;

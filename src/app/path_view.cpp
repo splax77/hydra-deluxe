@@ -164,12 +164,6 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
     return out;
 }
 
-const char* const kBackendTimingsLead =
-    "Timing is how far each note sits from the Star Power end, in ms; negative is "
-    "before it. Points is what this path scores for the note under Star Power. A note "
-    "marked (uncounted) lands outside Star Power unless it is squeezed in, so this "
-    "path's score leaves it out.";
-
 namespace {
 
 // The squeeze rows, naming each note in the words of the Pro Drums setting
@@ -563,8 +557,7 @@ PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, in
 
 void PathsTabUi::reset(size_t rows) {
     act_open.assign(rows, 0);
-    backends_open.assign(rows, 1);
-    if (rows > 0) act_open[0] = 1;
+    backends_open.assign(rows, 0);
 }
 
 bool PathsTabUi::all_open() const {

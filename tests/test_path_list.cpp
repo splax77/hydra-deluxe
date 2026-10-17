@@ -363,9 +363,12 @@ TEST_CASE("multiplier squeeze: the note names follow the Pro Drums setting") {
 
 TEST_CASE("PathsTabUi: one row open at a time, expand and collapse all") {
     PathsTabUi ui;
+    // Nothing starts open: no row, no backend table, neither footer fold.
+    CHECK_FALSE(ui.mult_open);
+    CHECK_FALSE(ui.breakdown_open);
     ui.reset(3);
-    CHECK(ui.act_open == std::vector<char>{1, 0, 0});
-    CHECK(ui.backends_open == std::vector<char>{1, 1, 1});
+    CHECK(ui.act_open == std::vector<char>{0, 0, 0});
+    CHECK(ui.backends_open == std::vector<char>{0, 0, 0});
     CHECK_FALSE(ui.all_open());
 
     ui.click_row(2);  // opens row 3 alone
@@ -396,7 +399,7 @@ TEST_CASE("PathsTabCache: folds reset for a new path, not for a display setting"
 
     cache.details(best, rec, 1, &timing, 70.0, std::nullopt, core::default_rules());
     REQUIRE(cache.ui().act_open.size() == 3);
-    CHECK(cache.ui().act_open[0] == 1);
+    CHECK(cache.ui().act_open == std::vector<char>{0, 0, 0});
     cache.ui().set_all(true);
 
     // A display setting rebuilds the rows but keeps what is unfolded.
@@ -406,11 +409,11 @@ TEST_CASE("PathsTabCache: folds reset for a new path, not for a display setting"
     CHECK(cache.ui().all_open());
     CHECK(cache.details_builds() == 3);
 
-    // Another path starts fresh: first row open, the rest folded.
+    // Another path starts fresh: every row folded again.
     const Path& other = *rec.all_paths()[1];
     cache.details(other, rec, 1, &timing, 70.0, 30.0, core::default_rules(), 126000.0);
     CHECK(cache.ui().act_open.size() == other.walk_activations().size());
-    CHECK(cache.ui().act_open[0] == 1);
+    CHECK(cache.ui().act_open == std::vector<char>(other.walk_activations().size(), 0));
     CHECK_FALSE(cache.ui().all_open());
 
     // The path buttons: once per record generation and score range.

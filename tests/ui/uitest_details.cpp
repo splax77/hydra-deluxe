@@ -32,6 +32,9 @@
 
 namespace uitest {
 
+// Defined in uitest_paths.cpp: opens the Paths tab's folds.
+void open_paths_folds(ImGuiTestContext* ctx);
+
 namespace {
 
 // Sets the SP cap in the settings panel, then closes the panel (with Esc,
@@ -783,6 +786,7 @@ void test_layout_sweep(ImGuiTestContext* ctx) {
             ctx->Yield(2);
             if (ctx->ItemExists("**/Expand all")) ctx->ItemClick("**/Expand all");
             ctx->Yield(2);
+            open_paths_folds(ctx);  // the backend tables and the two folds under the rows
             overflowing_windows(at + "Paths", found);
             ctx->ItemClick("**/##DetailsTabs/Preview");
             wait_until(ctx, [&] { return h.app->preview && h.app->preview->active() &&

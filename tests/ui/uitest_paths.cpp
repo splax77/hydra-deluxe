@@ -29,6 +29,36 @@
 
 namespace uitest {
 
+// Opens what the Paths tab starts with folded: the Backend timings fold of
+// every open activation row, and the Multiplier squeeze and Score breakdown
+// folds. It clicks only the closed ones, so a second call changes nothing.
+// The layout checks call it after Expand all, so the whole tab is on screen;
+// uitest_details.cpp's layout sweep calls it too.
+void open_paths_folds(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    hydra::app::PathsTabUi& ui = h.app->details_ui.paths_tab.ui();
+    if (const hydra::app::PathsTabCache::Details* d = h.app->details_ui.paths_tab.built_details()) {
+        const std::vector<hydra::app::ActivationRowView>& acts = d->activations.acts;
+        for (size_t i = 0; i < acts.size(); ++i) {
+            if (i >= ui.act_open.size() || !ui.act_open[i]) continue;
+            if (i >= ui.backends_open.size() || ui.backends_open[i]) continue;
+            char label[48];
+            std::snprintf(label, sizeof(label), "**/Backend timings##act%d", acts[i].number);
+            ctx->ItemClick(label);
+            ctx->Yield(1);
+        }
+    }
+    if (!ui.mult_open && ctx->ItemExists("**/Multiplier squeeze##mult")) {
+        ctx->ItemClick("**/Multiplier squeeze##mult");
+        ctx->Yield(1);
+    }
+    if (!ui.breakdown_open && ctx->ItemExists("**/Score breakdown##breakdown")) {
+        ctx->ItemClick("**/Score breakdown##breakdown");
+        ctx->Yield(1);
+    }
+    ctx->Yield(1);
+}
+
 namespace {
 
 // Keeps a test off the real Windows clipboard: while alive, ImGui reads and
@@ -98,13 +128,15 @@ void test_paths_list(ImGuiTestContext* ctx) {
     IM_CHECK(!on_screen(h, "More Paths"));
 
     IM_CHECK(h.app->details_ui.selected_path == &h.app->viewed.record->best_path());
+    ctx->ItemClick("**/##act2");  // a row open on this path
+    ctx->Yield(2);
+    IM_CHECK(h.app->details_ui.paths_tab.ui().act_open == std::vector<char>({0, 1, 0}));
     ctx->ItemClick("**/##path1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.selected_path != nullptr);
     IM_CHECK(h.app->details_ui.selected_path->pathstring() == "0 4 1");
-    // A new path opens on its first row.
-    IM_CHECK(h.app->details_ui.paths_tab.ui().act_open.size() == 3);
-    IM_CHECK(h.app->details_ui.paths_tab.ui().act_open[0] == 1);
+    // A new path opens with every row closed, whatever the last one had open.
+    IM_CHECK(h.app->details_ui.paths_tab.ui().act_open == std::vector<char>(3, 0));
     ctx->ItemClick("**/##path3");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.selected_path->pathstring() == "0 0 0 0");
@@ -207,8 +239,9 @@ void check_marks(ImGuiTestContext* ctx, hydra::ui::AppState& app,
 // timeline marks, in ms: an input, since the GUI test library has no audio.
 constexpr double kMarksSongLengthMs = 600000.0;
 
-// The activation rows: one line each, the first open, one open at a time,
-// Expand all and Collapse all, and the plain sentence instead of the old line.
+// The activation rows: one line each, all closed at first, one open at a
+// time, Expand all and Collapse all, and the plain sentence instead of the
+// old line.
 void test_paths_rows(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
@@ -220,7 +253,13 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, "m58.1.0"));
     IM_CHECK(on_screen(h, "m88.1.0"));
     IM_CHECK(on_screen(h, "squeeze out 163 ms"));
-    // Row 1 starts open: its chord and sentence show, rows 2 and 3 are shut.
+    // Every row starts closed: no chord, sentence or backend heading shows.
+    IM_CHECK(!on_screen(h, "[Kick - Green cymbal]"));
+    IM_CHECK(!on_screen(h, "notes near the SP end"));
+    IM_CHECK(!ctx->ItemExists("**/Show in Preview >##showact1"));
+    // A click opens row 1: its chord and sentence show, rows 2 and 3 stay shut.
+    ctx->ItemClick("**/##act1");
+    ctx->Yield(2);
     IM_CHECK(on_screen(h, "[Kick - Green cymbal]"));
     IM_CHECK(on_screen(h, "Hit the [  Y  ] note more than 163.0 ms late so it lands after "
                           "Star Power ends."));
@@ -282,7 +321,15 @@ void test_paths_rows(ImGuiTestContext* ctx) {
 void test_paths_backend_timings(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
-    // Row 1 opens with its backend table open; its fold closes and reopens it.
+    // Row 1 opens with its backend table closed; its fold opens, closes and
+    // reopens it.
+    ctx->ItemClick("**/##act1");
+    ctx->Yield(2);
+    IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
+    IM_CHECK(on_screen(h, "3 notes near the SP end"));  // the fold's heading
+    IM_CHECK(!on_screen(h, "Insane SqOut"));
+    ctx->ItemClick("**/Backend timings##act1");
+    ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 1);
     IM_CHECK(on_screen(h, "Insane SqOut"));
     ctx->ItemClick("**/Backend timings##act1");
@@ -295,7 +342,8 @@ void test_paths_backend_timings(ImGuiTestContext* ctx) {
     // The stored early x0.99... multiplier isn't 1, so the row shows its
     // figure, however small the shift (one-squeeze-rating decision 1).
     IM_CHECK(on_screen(h, "Insane SqOut (eff. 163.5 ms) <-- squeezed out (-260)"));
-    IM_CHECK(on_screen(h, "Timing is how far each note sits from the Star Power end"));
+    // The table has no explanation paragraph above it.
+    IM_CHECK(!on_screen(h, "Timing is how far each note sits"));
 
     // Off by default, and the number box is inert until it is ticked.
     IM_CHECK(!h.app->settings.backendlimit_enabled);
@@ -341,25 +389,27 @@ void test_paths_folds_copy(ImGuiTestContext* ctx) {
     if (!open_burnout(ctx)) return;
     FakeClipboard clipboard;
 
-    // Both folds start open; a click closes each and another reopens it.
+    // Both folds start closed; a click opens each and another closes it.
+    IM_CHECK(!h.app->details_ui.paths_tab.ui().mult_open);
+    IM_CHECK(!h.app->details_ui.paths_tab.ui().breakdown_open);
     IM_CHECK(on_screen(h, "+15"));  // beside the Multiplier squeeze fold
+    IM_CHECK(!on_screen(h, "Hit [Red snare] first."));
+    ctx->ItemClick("**/Multiplier squeeze##mult");
+    ctx->Yield(2);
     IM_CHECK(on_screen(h, "Hit [Red snare] first."));
     IM_CHECK(on_screen(h, "2x   (+15 pts):   [Red snare - Yellow cymbal]"));
     ctx->ItemClick("**/Multiplier squeeze##mult");
     ctx->Yield(2);
     IM_CHECK(!on_screen(h, "Hit [Red snare] first."));
-    ctx->ItemClick("**/Multiplier squeeze##mult");
-    ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Hit [Red snare] first."));
 
+    IM_CHECK(!on_screen(h, "Total Score:"));
+    ctx->ItemClick("**/Score breakdown##breakdown");
+    ctx->Yield(2);
     IM_CHECK(on_screen(h, "Total Score:"));
     IM_CHECK(on_screen(h, std::string(hydra::app::kAverageMultiplierLabel) + ":"));
     ctx->ItemClick("**/Score breakdown##breakdown");
     ctx->Yield(2);
     IM_CHECK(!on_screen(h, "Total Score:"));
-    ctx->ItemClick("**/Score breakdown##breakdown");
-    ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Total Score:"));
 
     IM_CHECK(!on_screen(h, "Copied!"));
     ctx->ItemClick("**/Copy path");
@@ -394,16 +444,18 @@ void test_paths_uncounted(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/Expand all");
     ctx->Yield(2);
     const size_t rows = h.app->details_ui.paths_tab.ui().act_open.size();
-    IM_CHECK(rows > 0);  // every row's backend table opens with it
-    ctx->Yield(2);
+    IM_CHECK(rows > 0);
+    // The backend tables start folded even with every row open.
+    IM_CHECK(!on_screen(h, "(uncounted) <-- squeezed out"));
+    open_paths_folds(ctx);  // every row's backend table
     IM_CHECK(on_screen(h, "(uncounted) <-- squeezed out"));
     IM_CHECK(on_screen(h, "It costs no points, because Hydra's score never counted that "
                           "note under Star Power"));
 }
 
-// At the panel's narrowest the Paths tab still fits: with every row, a
-// backend table and "Copied!" showing, nothing in the right column runs past
-// its edge, and the path list keeps at least its 240 px (Burnout's optimal
+// At the panel's narrowest the Paths tab still fits: with every row, every
+// backend table, both folds under the rows and "Copied!" showing, nothing in
+// the right column runs past its edge, and the path list keeps at least its 240 px (Burnout's optimal
 // row, with its timing beside it, is a little wider than that).
 void test_paths_fit_narrow(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
@@ -415,8 +467,9 @@ void test_paths_fit_narrow(ImGuiTestContext* ctx) {
     ImGuiWindow* panel = ctx->WindowInfo("//Hydra/##songpanel").Window;
     IM_CHECK_FLOAT_NEAR_EQ(panel->Size.x, hydra::ui::px(hydra::ui::kMinSongPanelW), 1.0f);
 
-    ctx->ItemClick("**/Expand all");  // every row and its backend table
+    ctx->ItemClick("**/Expand all");  // every row
     ctx->Yield(1);
+    open_paths_folds(ctx);  // every backend table and both folds
     ctx->ItemClick("**/Copy path");
     ctx->Yield(2);
     IM_CHECK(on_screen(h, "Copied!"));
@@ -441,6 +494,9 @@ void test_paths_long_path(ImGuiTestContext* ctx) {
     wait_song_analyzed(ctx);
     if (ctx->IsError()) return;
     ctx->Yield(2);
+    ctx->ItemClick("**/##act1");  // row 1 with its backend table, and both folds
+    ctx->Yield(2);
+    open_paths_folds(ctx);
     for (float share : {0.01f, 0.99f}) {  // the widest panel, then the narrowest
         hydra::ui::remember_library_share(share);
         h.app->library_ui.panel_was_open = false;
@@ -495,7 +551,10 @@ ImGuiTable* backend_table() {
 void test_paths_backend_fit(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
-    if (!narrowest_panel(ctx)) return;  // row 1 is open, its backend table too
+    if (!narrowest_panel(ctx)) return;
+    ctx->ItemClick("**/##act1");  // row 1 alone, so its table is the only one
+    ctx->Yield(2);
+    ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(3);
     IM_CHECK(on_screen(h, "Insane SqOut (eff. 163.5 ms) <-- squeezed out (-260)"));
     ImGuiTable* t = backend_table();

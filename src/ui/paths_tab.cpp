@@ -372,9 +372,6 @@ std::vector<float> backend_rating_heights(const app::ActivationRowView& a,
 
 // The backend rows of one activation, in the columns the old table had.
 void render_backend_table(const app::ActivationRowView& a) {
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("%s", app::kBackendTimingsLead);
-    ImGui::PopTextWrapPos();
     // What the backend limit hid, as build_activations words it.
     const auto hidden_line = [&a] {
         ImGui::PushTextWrapPos(0.0f);
@@ -427,7 +424,7 @@ void render_backend_table(const app::ActivationRowView& a) {
 
 // What an opened row shows: the chord and "Show in Preview", the early fill
 // line, the squeeze sentences, the scale and overfill notes with their hover
-// hints, and the backend table under its fold (open until the user closes it).
+// hints, and the backend table under its fold (closed until the user opens it).
 void render_activation_body(size_t i, const app::ActivationRowView& a, app::PathsTabUi& ui) {
     ImGui::Indent(px(48.0f));
     ImGui::TextDisabled("Chord");
