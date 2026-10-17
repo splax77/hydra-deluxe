@@ -253,7 +253,8 @@ struct PathsTabUi {
     // tab has moved its playhead there.
     std::optional<size_t> preview_jump;
 
-    // A fresh path: `rows` rows, every row and every backend table closed.
+    // A fresh path: `rows` rows, every row closed and every backend table
+    // open, so a row the user opens shows its table at once.
     void reset(size_t rows);
     // Every row open; false when there are no rows.
     bool all_open() const;

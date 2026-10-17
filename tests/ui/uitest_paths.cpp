@@ -29,9 +29,10 @@
 
 namespace uitest {
 
-// Opens what the Paths tab starts with folded: the Backend timings fold of
-// every open activation row, and the Multiplier squeeze and Score breakdown
-// folds. It clicks only the closed ones, so a second call changes nothing.
+// Opens every fold of the Paths tab that is closed: the Backend timings fold
+// of each open activation row (the user may have closed it), and the
+// Multiplier squeeze and Score breakdown folds. It clicks only the closed
+// ones, so a second call changes nothing.
 // The layout checks call it after Expand all, so the whole tab is on screen.
 // Declared in uitest_harness.h for the layout sweep in uitest_details.cpp.
 void open_paths_folds(ImGuiTestContext* ctx) {
@@ -321,12 +322,16 @@ void test_paths_rows(ImGuiTestContext* ctx) {
 void test_paths_backend_timings(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
-    // Row 1 opens with its backend table closed; its fold opens, closes and
-    // reopens it.
+    // Row 1 opens with its backend table open; its fold closes, reopens and
+    // closes it, and the table stays closed when the row is shut and reopened.
     ctx->ItemClick("**/##act1");
     ctx->Yield(2);
-    IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
+    IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 1);
     IM_CHECK(on_screen(h, "3 notes near the SP end"));  // the fold's heading
+    IM_CHECK(on_screen(h, "Insane SqOut"));
+    ctx->ItemClick("**/Backend timings##act1");
+    ctx->Yield(2);
+    IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
     IM_CHECK(!on_screen(h, "Insane SqOut"));
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
@@ -335,7 +340,13 @@ void test_paths_backend_timings(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
+    ctx->ItemClick("**/##act1");  // shut the row, then open it again
+    ctx->Yield(2);
+    ctx->ItemClick("**/##act1");
+    ctx->Yield(2);
+    IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
     IM_CHECK(!on_screen(h, "Insane SqOut"));
+    // The rest of this test reads the table, so it opens again.
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 1);
@@ -445,9 +456,7 @@ void test_paths_uncounted(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     const size_t rows = h.app->details_ui.paths_tab.ui().act_open.size();
     IM_CHECK(rows > 0);
-    // The backend tables start folded even with every row open.
-    IM_CHECK(!on_screen(h, "(uncounted) <-- squeezed out"));
-    open_paths_folds(ctx);  // every row's backend table
+    // Every opened row shows its backend table with no further click.
     IM_CHECK(on_screen(h, "(uncounted) <-- squeezed out"));
     IM_CHECK(on_screen(h, "It costs no points, because Hydra's score never counted that "
                           "note under Star Power"));
@@ -554,8 +563,6 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     if (!open_burnout(ctx)) return;
     if (!narrowest_panel(ctx)) return;
     ctx->ItemClick("**/##act1");  // row 1 alone, so its table is the only one
-    ctx->Yield(2);
-    ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(3);
     IM_CHECK(on_screen(h, "Insane SqOut (eff. 163.5 ms) <-- squeezed out (-260)"));
     ImGuiTable* t = backend_table();

@@ -557,7 +557,7 @@ PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, in
 
 void PathsTabUi::reset(size_t rows) {
     act_open.assign(rows, 0);
-    backends_open.assign(rows, 0);
+    backends_open.assign(rows, 1);
 }
 
 bool PathsTabUi::all_open() const {
