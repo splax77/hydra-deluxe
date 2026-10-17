@@ -726,7 +726,7 @@
       "date": "2026-10-06",
       "decision": "D86",
       "added_by": "P1",
-      "pattern": "\\bkDrumsTrackNames\\b|\\bkEventsTrackName\\b|\\btracks\\s*\\[\\s*0\\s*\\]|\\bis_(?:drums|events)_track_name\\s*\\([^)]*\\.name\\b",
+      "pattern": "\\bkDrumsTrackNames\\b|\\bkEventsTrackName\\b|\\btracks\\s*\\[\\s*0\\s*\\]|\\bis_(?:drums|events)_track_name\\s*\\([^)]*(?:\\.|->)name\\b",
       "anchor": "rack",
       "must_match": [
         "if (track.name != kDrumsTrackNames[0]) continue;",
@@ -734,7 +734,8 @@
         "const bool texts = drums || track.name == kEventsTrackName;",
         "for (const Message& msg : mid.tracks[0].messages) {",
         "if (!is_events_track_name(track.name)) continue;",
-        "for (const MidiTrack& t : mid.tracks) if (is_drums_track_name(t.name)) return &t;"
+        "for (const MidiTrack& t : mid.tracks) if (is_drums_track_name(t.name)) return &t;",
+        "if (is_events_track_name(picked->name)) return picked;"
       ],
       "must_not_match": [
         "if (const MidiTrack* const events = mid.events_track()) {",
