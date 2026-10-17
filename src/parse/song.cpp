@@ -2105,8 +2105,9 @@ void apply_shuffle_switch(Song& song, bool pro, bool noteshuffle) {
 
 // The tail both public byte loaders end with, whichever parser read the
 // chart. The drum lanes are lit here, after the Note Shuffle switch, because
-// the game's lanes show the colours of the notes they hold, and its shuffle
-// recolours those notes (see light_drum_lanes).
+// the game's lanes hold notes and its shuffle recolours them (see
+// light_drum_lanes; D112's 2026-10-17 correction says what was and was not
+// read in the game).
 void finish_loaded_song(Song& song, const ChartReading& reading) {
     apply_shuffle_switch(song, reading.prodrums, reading.noteshuffle);
     song.drum_lanes = light_drum_lanes(std::move(song.drum_lanes), song.sequence);
