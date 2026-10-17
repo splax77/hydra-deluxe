@@ -396,8 +396,8 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
         }
         // The heading counts every stored row, shown or hidden. When the
         // limit hides some, the heading adds how many on each side, and a
-        // line in the fold says the same with the limit (user's wording,
-        // both sides always named).
+        // line in the fold says the same with the limit. Both sides are
+        // always named, even when one is 0.
         const int64_t shown = static_cast<int64_t>(av.backends.size());
         const int64_t hidden = hidden_before + hidden_after;
         const int64_t total = shown + hidden;
