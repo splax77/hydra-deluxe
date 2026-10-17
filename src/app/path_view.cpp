@@ -325,6 +325,10 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                                                  rate.note_effective_ms);
 
         av.backends.reserve(rate.backends.size());
+        // The rows the backend limit hides, by side of the SP end. A hidden
+        // row is never on the end itself, so it is one side or the other.
+        int64_t hidden_before = 0;
+        int64_t hidden_after = 0;
         for (const BackendRating& br : rate.backends) {
             const BackendSqueeze& bsq = br.row;
 
@@ -333,8 +337,10 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             // line) still read every stored row. A squeezed-out note is the
             // reason the row matters, so it always shows.
             if (backend_limit_ms && !br.squeezed_out &&
-                std::fabs(bsq.offset()) > *backend_limit_ms)
+                std::fabs(bsq.offset()) > *backend_limit_ms) {
+                ++(bsq.offset() < 0 ? hidden_before : hidden_after);
                 continue;
+            }
 
             BackendRowView row;
             char tbuf[32];
@@ -388,9 +394,25 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             }
             av.backends.push_back(std::move(row));
         }
-        const size_t shown = av.backends.size();
-        av.backends_label =
-            counted(static_cast<int64_t>(shown), "note", "notes") + " near the SP end";
+        // The heading counts every stored row, shown or hidden. When the
+        // limit hides some, the heading adds how many on each side, and a
+        // line in the fold says the same with the limit (user's wording,
+        // both sides always named).
+        const int64_t shown = static_cast<int64_t>(av.backends.size());
+        const int64_t hidden = hidden_before + hidden_after;
+        const int64_t total = shown + hidden;
+        av.backends_label = counted(total, "note", "notes") + " near the SP end";
+        if (hidden > 0) {
+            const std::string n_hidden = std::to_string(hidden) + " hidden: ";
+            av.backends_label += kFactSeparator + n_hidden + std::to_string(hidden_before) +
+                                 " before, " + std::to_string(hidden_after) + " after";
+            // "All 1 hidden" reads badly, so a single row never says "All".
+            const std::string all = shown == 0 && total > 1 ? "All " : "";
+            av.backends_hidden_line = all + n_hidden + std::to_string(hidden_before) +
+                                      " before the SP end and " +
+                                      std::to_string(hidden_after) + " after, beyond " +
+                                      format_ms_whole(*backend_limit_ms) + ".";
+        }
 
         view.acts.push_back(std::move(av));
     }

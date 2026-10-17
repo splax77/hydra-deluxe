@@ -375,8 +375,17 @@ void render_backend_table(const app::ActivationRowView& a) {
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextDisabled("%s", app::kBackendTimingsLead);
     ImGui::PopTextWrapPos();
+    // What the backend limit hid, as build_activations words it.
+    const auto hidden_line = [&a] {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("%s", a.backends_hidden_line.c_str());
+        ImGui::PopTextWrapPos();
+    };
     if (a.backends.empty()) {
-        ImGui::TextDisabled("None.");
+        if (a.backends_hidden_line.empty())
+            ImGui::TextDisabled("None.");
+        else
+            hidden_line();
         return;
     }
     ImGui::PushFont(g_mono_font, 0.0f);
@@ -413,6 +422,7 @@ void render_backend_table(const app::ActivationRowView& a) {
         ImGui::EndTable();
     }
     ImGui::PopFont();
+    if (!a.backends_hidden_line.empty()) hidden_line();
 }
 
 // What an opened row shows: the chord and "Show in Preview", the early fill
