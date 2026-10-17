@@ -85,14 +85,27 @@ struct Message {
 // mido's name for a message type ("note_on", "set_tempo", "track_name", ...).
 const char* message_type_name(Message::Type type);
 
-// The track names the song parser finds its tracks by (MidiFile::drums_track
-// and MidiTrack::is_events). They are also the only names the reader
-// recognizes when it picks a track's name (TrackNamePick in midi.cpp, D78), so
-// the lookups and that choice share one list.
-inline constexpr std::string_view kDrumsTrackName = "PART DRUMS";
+// The track names the song parser finds its tracks by. is_drums_track_name
+// and is_events_track_name are the only tests of them: MidiFile::drums_track
+// and MidiTrack::is_events ask them, and so does the reader when it picks a
+// track's name (TrackNamePick in midi.cpp, D78), so the lookups and that
+// choice always agree.
+//
+// The drum track names are spelled as Clone Hero 1.1 spells them.
+inline constexpr std::string_view kDrumsTrackNames[] = {"part drums", "part drum"};
 inline constexpr std::string_view kEventsTrackName = "EVENTS";
-inline constexpr std::string_view kRecognizedTrackNames[] = {kDrumsTrackName,
-                                                             kEventsTrackName};
+
+// Whether `name` is a drum track name (kDrumsTrackNames) in any ASCII case.
+// Case is ignored because Clone Hero 1.1 lowercases each track name
+// (ToLowerInvariant at 0x2155FDF) before it compares it (0x2156134 and
+// 0x21564A8), with no trim, so the game plays "PART DRUM" and "Part Drums"
+// alike (D252). ASCII lowering gives the same answer for these names: track
+// names are decoded as latin-1, and no non-ASCII character lowercases to one
+// of their letters.
+bool is_drums_track_name(std::string_view name);
+
+// Whether `name` is the events track name, compared exactly.
+inline bool is_events_track_name(std::string_view name) { return name == kEventsTrackName; }
 
 class MidiTrack {
 public:
@@ -101,7 +114,7 @@ public:
     std::vector<Message> messages;
 
     // Whether the song parser reads practice sections from this track.
-    bool is_events() const { return name == kEventsTrackName; }
+    bool is_events() const { return is_events_track_name(name); }
 };
 
 // Which drum-track note messages MidiFile::lean keeps, one table by pitch for
@@ -135,7 +148,11 @@ public:
     static constexpr size_t kTimingTrack = 0;
 
     // The track the song parser reads the drum chart from, or nullptr when
-    // the file has none. MidiParser::parse and MidiFile::lean both ask here.
+    // the file has none: the first track, in file order, whose name
+    // is_drums_track_name accepts. Clone Hero 1.1 keeps the first too: its
+    // set of instruments already read (HashSet Add at 0x21564D7) skips any
+    // later drum track, whichever drum name it has. MidiParser::parse and
+    // MidiFile::lean both ask here.
     const MidiTrack* drums_track() const;
 
     // Read and parse a file from disk. A file that cannot be read throws

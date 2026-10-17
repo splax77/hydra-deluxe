@@ -268,7 +268,7 @@ bool disco_head(std::string_view s, char mix_digit) {
            s[4] == mix_digit && regex_dot(s[5]) && s.substr(6, 5) == "drums";
 }
 
-// Clone Hero 1.1 turns dynamics on only when a PART DRUMS text event is
+// Clone Hero 1.1 turns dynamics on only when a drum track text event is
 // exactly one of these two strings (String.op_Equality at 0x21557A5 and
 // 0x21557BB, on the raw text with no trim). One bracket, extra brackets or
 // spaces do nothing (finding 64, D24).
@@ -887,8 +887,8 @@ MOp mop_tom(NoteColor color, NoteCymbalType cymbal) {
 }  // namespace
 
 // The one table of how each difficulty is spelled in a chart file, in
-// Difficulty enum order. All four difficulties share the one "PART DRUMS"
-// track; each owns a block of five pitches starting at its kick (kick, then
+// Difficulty enum order. All four difficulties share the one drum track
+// (MidiFile::drums_track); each owns a block of five pitches starting at its kick (kick, then
 // the four pads). Its 2x kick sits one below the kick
 // (DifficultyChartCodes::kick2x_pitch).
 namespace {

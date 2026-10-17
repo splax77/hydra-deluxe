@@ -8,7 +8,7 @@
 namespace hydra {
 
 // Which charted difficulty to read. One chart carries all four: a .mid keeps
-// them in the single "PART DRUMS" track at four pitch bases, a .chart keeps
+// them in the single drum track at four pitch bases, a .chart keeps
 // them in four named sections. Expert is ChartReading's default, so a default
 // reading reads exactly what Hydra always read.
 enum class Difficulty { Expert, Hard, Medium, Easy };

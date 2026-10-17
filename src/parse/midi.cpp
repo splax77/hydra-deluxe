@@ -4,6 +4,7 @@
 #include <iterator>
 #include <utility>
 
+#include "core/strutil.h"  // equals_ci
 #include "core/winstr.h"  // read_file_bytes
 #include "parse/timesig.h"
 
@@ -18,9 +19,10 @@ constexpr int kTrackNameMeta = 0x03;
 constexpr int kSetTempoMeta = 0x51;
 constexpr int kTimeSignatureMeta = 0x58;
 
+// The names TrackNamePick lets win (D78): a drum or events track name, by the
+// owners in the header.
 bool recognized_track_name(const std::string& name) {
-    return std::find(std::begin(kRecognizedTrackNames), std::end(kRecognizedTrackNames),
-                     name) != std::end(kRecognizedTrackNames);
+    return is_drums_track_name(name) || is_events_track_name(name);
 }
 
 // mido splits the string-valued metas across two attribute names, and the
@@ -275,11 +277,11 @@ void walk_track(const uint8_t* data, size_t pos, size_t end, OnMeta&& on_meta,
     }
 }
 
-// D78: the first recognized name wins, else the first name. Charts carry
-// extra 0x03 metas ("notes" before "PART DRUMS", "Drums" after it).
-// YARG.Core's MidReader does the same with IsRecognizedTrackName, but only at
-// tick 0; Hydra looks at every tick because some drum tracks get their only
-// "PART DRUMS" name after tick 0.
+// D78: the first recognized name (recognized_track_name) wins, else the first
+// name. Charts carry extra 0x03 metas ("notes" before "PART DRUMS", "Drums"
+// after it). YARG.Core's MidReader does the same with IsRecognizedTrackName,
+// but only at tick 0; Hydra looks at every tick because some drum tracks get
+// their only drum track name after tick 0.
 class TrackNamePick {
 public:
     // True once a recognized name is chosen; no later name can displace it.
@@ -442,9 +444,14 @@ MidiFile MidiFile::lean(const uint8_t* data, size_t size, const MidiLeanFilter& 
     return mf;
 }
 
+bool is_drums_track_name(std::string_view name) {
+    return std::any_of(std::begin(kDrumsTrackNames), std::end(kDrumsTrackNames),
+                       [&](std::string_view drums) { return equals_ci(name, drums); });
+}
+
 const MidiTrack* MidiFile::drums_track() const {
     for (const MidiTrack& track : tracks)
-        if (track.name == kDrumsTrackName) return &track;
+        if (is_drums_track_name(track.name)) return &track;
     return nullptr;
 }
 

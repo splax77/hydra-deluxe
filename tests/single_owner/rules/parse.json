@@ -720,30 +720,32 @@
     },
     {
       "question": "Which MIDI track is the timing track, the drum track or an events track?",
-      "owner": "MidiFile::kTimingTrack, MidiFile::drums_track and MidiTrack::is_events in src/parse/midi.h",
+      "owner": "MidiFile::kTimingTrack, is_drums_track_name (asked by MidiFile::drums_track) and is_events_track_name (asked by MidiTrack::is_events) in src/parse/midi.h",
       "owner_file": "src/parse/midi.h",
       "owner_symbol": "kTimingTrack",
       "date": "2026-10-06",
       "decision": "D86",
       "added_by": "P1",
-      "pattern": "\\bkDrumsTrackName\\b|\\bkEventsTrackName\\b|\\btracks\\s*\\[\\s*0\\s*\\]",
+      "pattern": "\\bkDrumsTrackNames\\b|\\bkEventsTrackName\\b|\\btracks\\s*\\[\\s*0\\s*\\]",
       "anchor": "rack",
       "must_match": [
-        "if (track.name != kDrumsTrackName) continue;",
-        "const bool drums = !drums_seen && track.name == kDrumsTrackName;",
+        "if (track.name != kDrumsTrackNames[0]) continue;",
+        "const bool drums = !drums_seen && equals_ci(track.name, kDrumsTrackNames[1]);",
         "const bool texts = drums || track.name == kEventsTrackName;",
         "for (const Message& msg : mid.tracks[0].messages) {"
       ],
       "must_not_match": [
         "if (!track.is_events()) continue;",
         "for (const Message& msg : mid.tracks[MidiFile::kTimingTrack].messages) {",
-        "if (const MidiTrack* const drums = mid.drums_track()) {"
+        "if (const MidiTrack* const drums = mid.drums_track()) {",
+        "if (is_drums_track_name(track.name)) return &track;",
+        "return is_drums_track_name(track_name) || is_events_track_name(track_name);"
       ],
       "owner_lines": [
         {
           "file": "src/parse/midi.h",
-          "line_text": "inline constexpr std::string_view kDrumsTrackName = \"PART DRUMS\";",
-          "why": "the name itself"
+          "line_text": "inline constexpr std::string_view kDrumsTrackNames[] = {\"part drums\", \"part drum\"};",
+          "why": "the names themselves"
         },
         {
           "file": "src/parse/midi.h",
@@ -752,26 +754,16 @@
         },
         {
           "file": "src/parse/midi.h",
-          "line_text": "inline constexpr std::string_view kRecognizedTrackNames[] = {kDrumsTrackName,",
-          "why": "the D78 name list"
-        },
-        {
-          "file": "src/parse/midi.h",
-          "line_text": "kEventsTrackName};",
-          "why": "the D78 name list"
-        },
-        {
-          "file": "src/parse/midi.h",
-          "line_text": "bool is_events() const { return name == kEventsTrackName; }",
-          "why": "MidiTrack::is_events, the owner"
+          "line_text": "inline bool is_events_track_name(std::string_view name) { return name == kEventsTrackName; }",
+          "why": "is_events_track_name, the owner"
         },
         {
           "file": "src/parse/midi.cpp",
-          "line_text": "if (track.name == kDrumsTrackName) return &track;",
-          "why": "MidiFile::drums_track, the owner"
+          "line_text": "return std::any_of(std::begin(kDrumsTrackNames), std::end(kDrumsTrackNames),",
+          "why": "is_drums_track_name, the owner"
         }
       ],
-      "note": "The song parser and the lean read both pick the timing, drum and events tracks. A track name compared, or the first track indexed, anywhere but the owners is a second copy of that choice. The lean read's `i == kTimingTrack` has no text a search can tell apart from any other index check, so it names the constant instead. Decided by: the speedups plan, task P1 (D86); derive-once review of P1"
+      "note": "The song parser and the lean read both pick the timing, drum and events tracks, and the reader's track-name pick (D78) recognizes the same names. A track name compared, or the first track indexed, anywhere but the owners is a second copy of that choice. The lean read's `i == kTimingTrack` has no text a search can tell apart from any other index check, so it names the constant instead. Decided by: the speedups plan, task P1 (D86); derive-once review of P1; D252 (the drum names in any case)"
     },
     {
       "question": "How many values does a MIDI data byte hold?",

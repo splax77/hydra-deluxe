@@ -21,6 +21,7 @@
 #include "load_util.h"
 #include "midi_util.h"
 #include "parse/song.h"
+#include "song_equal.h"
 #include "temp_util.h"
 
 using namespace hydra;
@@ -59,6 +60,21 @@ TEST_CASE(".mid: practice sections from several EVENTS tracks come out in tick o
     const app::PreviewScene scene = app::build_preview_scene(song, nullptr);
     CHECK(app::build_time_box(scene, 1041.7, 3000.0).section_line == "Section Verse");
     CHECK(app::build_time_box(scene, 2083.4, 3000.0).section_line == "Section Chorus");
+}
+
+// D252: Clone Hero plays a drum track named "PART DRUM" (is_drums_track_name
+// in parse/midi.h), so Hydra reads it instead of failing with no notes.
+TEST_CASE(".mid: a drum track named PART DRUM reads the same Expert notes as PART DRUMS") {
+    using namespace testmidi;
+    const auto chart = [](const std::string& name) {
+        return smf(concat({track_name(name), set_tempo(), note_on(96, 100), note_on(97, 100),
+                           after(480, note_on(98, 100)), end_of_track()}));
+    };
+    const Song drum = load_songbytes_mid(chart("PART DRUM"), ChartReading{});
+    CHECK_NOTHROW(require_notes(drum, Difficulty::Expert, true));
+    const Song drums = load_songbytes_mid(chart("PART DRUMS"), ChartReading{});
+    CHECK(drums.sequence.size() == 2);
+    CHECK(testsong::songs_equal(drum, drums));
 }
 
 // Finding 331; D27.

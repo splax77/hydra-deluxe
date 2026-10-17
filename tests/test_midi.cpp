@@ -138,8 +138,8 @@ TEST_CASE("midi: running status survives a meta event") {
 
 TEST_CASE("midi: a recognized track_name is not displaced by a later name") {
     // Some drum charts carry extra 0x03 metas mid-track ("Drums" after
-    // "PART DRUMS"); if the last one won, the song parser's exact name match
-    // would skip the whole track.
+    // "PART DRUMS"); if the last one won, the song parser's drum name test
+    // (is_drums_track_name) would skip the whole track.
     std::vector<uint8_t> track = {
         0x00, 0xFF, 0x03, 0x0A, 'P', 'A', 'R', 'T', ' ', 'D', 'R', 'U', 'M', 'S',
         0x00, 0x90, 0x60, 0x64,                    // note_on note 96 vel 100
@@ -192,6 +192,68 @@ TEST_CASE("midi: a track with no recognized track_name keeps its first name") {
                                     note_on(96, 100), end_of_track()})));
     REQUIRE(mid.tracks.size() == 1);
     CHECK(mid.tracks[0].name == "notes");
+}
+
+// ---- the drum track's name (is_drums_track_name, D252) ----
+
+TEST_CASE("midi: a track named by either drum name, in any case, is the drum track") {
+    using namespace testmidi;
+    for (const std::string name : {"PART DRUMS", "PART DRUM", "part drums", "Part Drum"}) {
+        hydra::MidiFile mid(smf(concat({track_name(name), note_on(96, 100), end_of_track()})));
+        INFO(name);
+        CHECK(mid.drums_track() == &mid.tracks[0]);
+    }
+    // No trim and no other spelling: Clone Hero compares the whole lowered name.
+    for (const std::string name : {"PART DRUMS ", " PART DRUM", "PART DRUMS2", "DRUMS"}) {
+        hydra::MidiFile mid(smf(concat({track_name(name), note_on(96, 100), end_of_track()})));
+        INFO(name);
+        CHECK(mid.drums_track() == nullptr);
+    }
+}
+
+namespace {
+
+// A tempo track, then two drum tracks named `first` and `second`. Each holds
+// one Expert kick, at velocity 11 in the first and 22 in the second, so a
+// test can tell which one was read.
+std::vector<uint8_t> two_drum_tracks(const std::string& first, const std::string& second) {
+    using namespace testmidi;
+    return smf_tracks({concat({set_tempo(), end_of_track()}),
+                       concat({track_name(first), note_on(96, 11), end_of_track()}),
+                       concat({track_name(second), note_on(96, 22), end_of_track()})});
+}
+
+// The velocity of the drum track's first note-on, or -1 with no drum track or
+// no note-on in it.
+int drum_velocity(const hydra::MidiFile& mid) {
+    const hydra::MidiTrack* const drums = mid.drums_track();
+    if (drums == nullptr) return -1;
+    for (const hydra::Message& m : drums->messages)
+        if (m.is_note_on()) return m.velocity;
+    return -1;
+}
+
+}  // namespace
+
+TEST_CASE("midi: of two drum tracks, the first in file order is the drum track") {
+    const hydra::MidiFile drum_first(two_drum_tracks("PART DRUM", "PART DRUMS"));
+    REQUIRE(drum_first.drums_track() == &drum_first.tracks[1]);
+    CHECK(drum_first.drums_track()->name == "PART DRUM");
+    CHECK(drum_velocity(drum_first) == 11);
+
+    const hydra::MidiFile drums_first(two_drum_tracks("PART DRUMS", "PART DRUM"));
+    REQUIRE(drums_first.drums_track() == &drums_first.tracks[1]);
+    CHECK(drums_first.drums_track()->name == "PART DRUMS");
+    CHECK(drum_velocity(drums_first) == 11);
+}
+
+TEST_CASE("midi: a drum track name wins over an earlier unrecognized one in any case") {
+    using namespace testmidi;
+    hydra::MidiFile mid(smf(concat({track_name("notes"), track_name("PART DRUM"),
+                                    note_on(96, 100), end_of_track()})));
+    REQUIRE(mid.tracks.size() == 1);
+    CHECK(mid.tracks[0].name == "PART DRUM");
+    CHECK(mid.drums_track() == &mid.tracks[0]);
 }
 
 TEST_CASE("midi: sysex and skipped metas do not lose time") {
@@ -377,6 +439,15 @@ TEST_CASE("midi: the lean reader keeps only what each track's role reads, at the
         json::array({json::array({7, "text", "text", "[section A]"})}),
     });
     CHECK(event_view(mid) == expected);
+}
+
+TEST_CASE("midi: the lean reader keeps the notes of the first drum track by either name") {
+    const std::vector<uint8_t> file = two_drum_tracks("Part Drum", "PART DRUMS");
+    const hydra::MidiFile mid = hydra::MidiFile::lean(file.data(), file.size(), lean_test_filter());
+    REQUIRE(mid.tracks.size() == 3);
+    CHECK(drum_velocity(mid) == 11);
+    CHECK(mid.tracks[1].messages.size() == 1);
+    CHECK(mid.tracks[2].messages.empty());
 }
 
 TEST_CASE("midi: the lean reader sizes each track's messages once") {
