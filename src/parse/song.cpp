@@ -888,8 +888,8 @@ MOp mop_tom(NoteColor color, NoteCymbalType cymbal) {
 
 // The one table of how each difficulty is spelled in a chart file, in
 // Difficulty enum order. All four difficulties share the one drum track
-// (MidiFile::drums_track); each owns a block of five pitches starting at its kick (kick, then
-// the four pads). Its 2x kick sits one below the kick
+// (MidiFile::drums_track); each owns a block of five pitches starting at its
+// kick (kick, then the four pads). Its 2x kick sits one below the kick
 // (DifficultyChartCodes::kick2x_pitch).
 namespace {
 constexpr DifficultyChartCodes kDifficultyChartCodes[] = {
