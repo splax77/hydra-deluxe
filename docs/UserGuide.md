@@ -208,7 +208,7 @@ An open row shows these, in order:
 
 ### Backend timings
 
-A backend squeeze means hitting the note at the SP end early, so it lands inside Star Power. In the `Backend timings` table, the note at `0.0 ms` is exactly where SP ends; the others are the notes just before and after it. If the last activation's SP runs past the end of the chart, the table lists the notes before that end, so every timing is negative.
+A backend squeeze means hitting the note at the SP end early, so it lands inside Star Power. In the `Backend timings` table, `Timing` is how far each note sits from the SP end, in ms. A negative figure is before the end, and the note at `0.0 ms` is exactly where SP ends. `Points` is the Star Power score the note adds on this path, and 0 for a note the path doesn't count. If the last activation's SP runs past the end of the chart, the table lists the notes before that end, so every timing is negative.
 
 The rating beside each note is a rough guide to how hard it is to fit into Star Power. A note the path doesn't count is tagged `(uncounted)`, squeeze-out notes included, like `Free SqOut (uncounted)`. For backend squeezes, look for notes from the backend leeway up to the hit window. The leeway is 3 ms<!-- default: Rules::backend_leeway_ms --> by default (`backend_leeway_ms` in `hydra_rules.ini`). The hit window is 85 ms by default (`hit_window_ms`, below).
 
