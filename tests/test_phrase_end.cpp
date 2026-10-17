@@ -65,8 +65,7 @@ Flags mid_flags(int64_t length) {
     std::stable_sort(evs.begin(), evs.end(), [](const Ev& a, const Ev& b) {
         return a.tick != b.tick ? a.tick < b.tick : a.order < b.order;
     });
-    std::vector<uint8_t> track =
-        testmidi::concat({testmidi::track_name("PART DRUMS"), testmidi::set_tempo()});
+    std::vector<uint8_t> track = testmidi::track_name("PART DRUMS");
     int64_t at = 0;
     for (const Ev& e : evs) {
         const std::vector<uint8_t> d = testmidi::varlen(static_cast<uint32_t>(e.tick - at));
@@ -76,7 +75,7 @@ Flags mid_flags(int64_t length) {
     }
     const std::vector<uint8_t> eot = testmidi::end_of_track();
     track.insert(track.end(), eot.begin(), eot.end());
-    return flags_of(load_songbytes_mid(testmidi::smf(track), ChartReading{}));
+    return flags_of(load_songbytes_mid(testmidi::smf_drums(track), ChartReading{}));
 }
 
 }  // namespace

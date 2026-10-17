@@ -199,13 +199,13 @@ TEST_CASE("midi: a track with no recognized track_name keeps its first name") {
 TEST_CASE("midi: a track named by either drum name, in any case, is the drum track") {
     using namespace testmidi;
     for (const std::string name : {"PART DRUMS", "PART DRUM", "part drums", "Part Drum"}) {
-        hydra::MidiFile mid(smf(concat({track_name(name), note_on(96, 100), end_of_track()})));
+        hydra::MidiFile mid(smf_drums(concat({track_name(name), note_on(96, 100), end_of_track()})));
         INFO(name);
-        CHECK(mid.drums_track() == &mid.tracks[0]);
+        CHECK(mid.drums_track() == &mid.tracks[1]);
     }
     // No trim and no other spelling: Clone Hero compares the whole lowered name.
     for (const std::string name : {"PART DRUMS ", " PART DRUM", "PART DRUMS2", "DRUMS"}) {
-        hydra::MidiFile mid(smf(concat({track_name(name), note_on(96, 100), end_of_track()})));
+        hydra::MidiFile mid(smf_drums(concat({track_name(name), note_on(96, 100), end_of_track()})));
         INFO(name);
         CHECK(mid.drums_track() == nullptr);
     }
@@ -249,11 +249,11 @@ TEST_CASE("midi: of two drum tracks, the first in file order is the drum track")
 
 TEST_CASE("midi: a drum track name wins over an earlier unrecognized one in any case") {
     using namespace testmidi;
-    hydra::MidiFile mid(smf(concat({track_name("notes"), track_name("PART DRUM"),
-                                    note_on(96, 100), end_of_track()})));
-    REQUIRE(mid.tracks.size() == 1);
-    CHECK(mid.tracks[0].name == "PART DRUM");
-    CHECK(mid.drums_track() == &mid.tracks[0]);
+    hydra::MidiFile mid(smf_drums(concat({track_name("notes"), track_name("PART DRUM"),
+                                          note_on(96, 100), end_of_track()})));
+    REQUIRE(mid.tracks.size() == 2);
+    CHECK(mid.tracks[1].name == "PART DRUM");
+    CHECK(mid.drums_track() == &mid.tracks[1]);
 }
 
 TEST_CASE("midi: sysex and skipped metas do not lose time") {
@@ -537,6 +537,93 @@ TEST_CASE("midi: a file with no track chunk is refused by both readers") {
     }
 }
 
+// ---- which tracks the song parser reads (drums_track, events_track, D253) ----
+
+namespace {
+
+// `file` as the full reader reads it, then as the lean reader does.
+std::vector<hydra::MidiFile> both_reads(const std::vector<uint8_t>& file) {
+    std::vector<hydra::MidiFile> reads;
+    reads.push_back(hydra::MidiFile(file));
+    reads.push_back(hydra::MidiFile::lean(file.data(), file.size(), lean_test_filter()));
+    return reads;
+}
+
+}  // namespace
+
+TEST_CASE("midi: a drum track on track 0 is not the drum track, so the chart has no notes") {
+    using namespace testmidi;
+    const std::vector<uint8_t> file =
+        smf(concat({track_name("PART DRUMS"), set_tempo(), note_on(96, 100), end_of_track()}));
+    for (const hydra::MidiFile& read : both_reads(file)) CHECK(read.drums_track() == nullptr);
+    const hydra::Song song = hydra::load_songbytes_mid(file, hydra::ChartReading{});
+    CHECK(song.sequence.empty());
+    CHECK_THROWS_AS(hydra::require_notes(song, hydra::Difficulty::Expert, true),
+                    hydra::NoNotesError);
+}
+
+TEST_CASE("midi: with drum tracks on track 0 and track 1, track 1 is read") {
+    using namespace testmidi;
+    const std::vector<uint8_t> file = smf_tracks({
+        concat({track_name("PART DRUMS"), set_tempo(), note_on(96, 11), end_of_track()}),
+        concat({track_name("PART DRUMS"), note_on(96, 22), end_of_track()}),
+    });
+    for (const hydra::MidiFile& read : both_reads(file)) {
+        REQUIRE(read.drums_track() == &read.tracks[1]);
+        CHECK(drum_velocity(read) == 22);
+    }
+    const hydra::Song song = hydra::load_songbytes_mid(file, hydra::ChartReading{});
+    REQUIRE(song.sequence.size() == 1);
+}
+
+TEST_CASE("midi: the events track is named events in any case, and track 0 can be it") {
+    using namespace testmidi;
+    const std::vector<uint8_t> drums =
+        concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()});
+    for (const std::string name : {"EVENTS", "Events", "events"}) {
+        INFO(name);
+        // An unrecognized name first: the events name still wins the pick (D78).
+        const std::vector<uint8_t> file = smf_tracks({
+            concat({track_name("notes"), track_name(name), set_tempo(),
+                    text_event("[section Intro]"), end_of_track()}),
+            drums,
+        });
+        for (const hydra::MidiFile& read : both_reads(file)) {
+            CHECK(read.tracks[0].name == name);
+            CHECK(read.events_track() == &read.tracks[0]);
+        }
+        const hydra::Song song = hydra::load_songbytes_mid(file, hydra::ChartReading{});
+        REQUIRE(song.practice_sections.size() == 1);
+        CHECK(song.practice_sections[0].name == "Intro");
+    }
+    for (const std::string name : {"EVENTS ", "EVENT", "PART EVENTS"}) {
+        INFO(name);
+        const std::vector<uint8_t> file = smf_tracks({
+            concat({track_name(name), set_tempo(), text_event("[section Intro]"), end_of_track()}),
+            drums,
+        });
+        for (const hydra::MidiFile& read : both_reads(file)) CHECK(read.events_track() == nullptr);
+        CHECK(hydra::load_songbytes_mid(file, hydra::ChartReading{}).practice_sections.empty());
+    }
+}
+
+TEST_CASE("midi: of two events tracks, only the first one's sections count") {
+    using namespace testmidi;
+    const std::vector<uint8_t> file = smf_tracks({
+        concat({set_tempo(), end_of_track()}),
+        concat({track_name("events"), text_event("[section First]"), end_of_track()}),
+        concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()}),
+        concat({track_name("EVENTS"), after(960, text_event("[section Second]")), end_of_track()}),
+    });
+    const std::vector<hydra::MidiFile> reads = both_reads(file);
+    for (const hydra::MidiFile& read : reads) CHECK(read.events_track() == &read.tracks[1]);
+    // The lean read keeps no text from the second one.
+    CHECK(reads[1].tracks[3].messages.empty());
+    const hydra::Song song = hydra::load_songbytes_mid(file, hydra::ChartReading{});
+    REQUIRE(song.practice_sections.size() == 1);
+    CHECK(song.practice_sections[0].name == "First");
+}
+
 // ---- drum lanes (Song::drum_lanes) ----------------------------------------
 
 namespace {
@@ -546,9 +633,8 @@ namespace {
 // (61), and a yellow at tick 120 on each.
 std::vector<uint8_t> lane_mid(uint8_t pitch, uint8_t velocity) {
     using namespace testmidi;
-    return smf(concat({
+    return smf_drums(concat({
         track_name("PART DRUMS"),
-        set_tempo(),
         note_on(pitch, velocity),
         note_on(97, 100),
         note_on(85, 100),

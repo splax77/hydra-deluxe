@@ -414,11 +414,12 @@ MidiFile MidiFile::lean(const uint8_t* data, size_t size, const MidiLeanFilter& 
 
     // Then each track keeps only what its role reads (see the header).
     const MidiTrack* const drums_track = mf.drums_track();
+    const MidiTrack* const events_track = mf.events_track();
     for (size_t i = 0; i < mf.tracks.size(); ++i) {
         MidiTrack& track = mf.tracks[i];
         const bool timing = i == kTimingTrack;
         const bool drums = &track == drums_track;
-        const bool texts = drums || track.is_events();
+        const bool texts = drums || &track == events_track;
         if (!timing && !texts) continue;
         track.messages.reserve(scans[i].kept(timing, texts, drums));
         walk_track(
@@ -449,9 +450,19 @@ bool is_drums_track_name(std::string_view name) {
                        [&](std::string_view drums) { return equals_ci(name, drums); });
 }
 
+bool is_events_track_name(std::string_view name) {
+    return equals_ci(name, kEventsTrackName);
+}
+
 const MidiTrack* MidiFile::drums_track() const {
+    for (size_t i = kFirstInstrumentTrack; i < tracks.size(); ++i)
+        if (is_drums_track_name(tracks[i].name)) return &tracks[i];
+    return nullptr;
+}
+
+const MidiTrack* MidiFile::events_track() const {
     for (const MidiTrack& track : tracks)
-        if (is_drums_track_name(track.name)) return &track;
+        if (is_events_track_name(track.name)) return &track;
     return nullptr;
 }
 

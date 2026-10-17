@@ -1055,10 +1055,9 @@ using testtemp::write_bytes;
 TEST_CASE("discover_charts finds a folder whose notes and ini names are capitalized") {
     const std::string dir = scan_fixture_dir("caps");
     write_bytes(dir + "\\Notes.mid",
-                  testmidi::smf(testmidi::concat({testmidi::track_name("PART DRUMS"),
-                                                  testmidi::set_tempo(),
-                                                  testmidi::note_on(96, 100),
-                                                  testmidi::end_of_track()})));
+                  testmidi::smf_drums(testmidi::concat({testmidi::track_name("PART DRUMS"),
+                                                        testmidi::note_on(96, 100),
+                                                        testmidi::end_of_track()})));
     const std::string ini = "[song]\r\nname = Capital Case\r\nartist = Someone\r\n"
                             "charter = Someone Else\r\n";
     write_bytes(dir + "\\Song.ini", std::vector<uint8_t>(ini.begin(), ini.end()));

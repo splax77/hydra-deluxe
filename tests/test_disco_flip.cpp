@@ -29,11 +29,11 @@ constexpr const auto& kDiffs = testdiff::kLiterals;
 // every difficulty on that same tick.
 std::vector<uint8_t> mid_with(const std::vector<std::string>& markers) {
     using namespace testmidi;
-    std::vector<std::vector<uint8_t>> ev = {track_name("PART DRUMS"), set_tempo()};
+    std::vector<std::vector<uint8_t>> ev = {track_name("PART DRUMS")};
     for (const std::string& m : markers) ev.push_back(text_event(m));
     for (const Diff& x : kDiffs) ev.push_back(note_on(x.red, 100));
     ev.push_back(end_of_track());
-    return smf(concat(ev));
+    return smf_drums(concat(ev));
 }
 
 // A .chart with one difficulty section: `markers` at tick 0, then a red note.

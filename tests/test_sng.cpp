@@ -37,11 +37,10 @@ namespace {
 using testsng::make_sng;
 
 std::vector<uint8_t> tiny_mid() {
-    return testmidi::smf(testmidi::concat({testmidi::track_name("PART DRUMS"),
-                                           testmidi::set_tempo(),
-                                           testmidi::note_on(96, 100),
-                                           {0x83, 0x60, 0x90, 97, 100},  // tick 480: red
-                                           testmidi::end_of_track()}));
+    return testmidi::smf_drums(testmidi::concat({testmidi::track_name("PART DRUMS"),
+                                                 testmidi::note_on(96, 100),
+                                                 {0x83, 0x60, 0x90, 97, 100},  // tick 480: red
+                                                 testmidi::end_of_track()}));
 }
 
 // A scratch path (testtemp::temp_path) for one fixture. The name's extension

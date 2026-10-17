@@ -2,7 +2,8 @@
 //
 // A unit case that wants to pin one parsing rule needs a real .mid byte
 // stream, not a corpus file. smf() wraps a hand-written track into the
-// smallest legal file the readers accept.
+// smallest legal file the readers accept, and smf_drums() wraps a drum track
+// into the smallest file the song parser finds drums in.
 
 #ifndef HYDRA_TESTS_MIDI_UTIL_H
 #define HYDRA_TESTS_MIDI_UTIL_H
@@ -100,6 +101,16 @@ inline std::vector<uint8_t> concat(
     std::vector<uint8_t> out;
     for (const auto& p : parts) out.insert(out.end(), p.begin(), p.end());
     return out;
+}
+
+// A drum chart file for the song parser: a timing track holding `timing` (a
+// tick-0 tempo unless a test gives its own tempo or meter events), then the
+// drum track's raw bytes. The parser takes tempo and meter only from
+// hydra::MidiFile::kTimingTrack and never takes that track as the drum track
+// (hydra::MidiFile::drums_track), so a drum track needs a track in front of it.
+inline std::vector<uint8_t> smf_drums(const std::vector<uint8_t>& drums,
+                                      const std::vector<uint8_t>& timing = set_tempo()) {
+    return smf_tracks({concat({timing, end_of_track()}), drums});
 }
 
 }  // namespace testmidi

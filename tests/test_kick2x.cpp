@@ -29,14 +29,14 @@ TEST_CASE(".mid: each difficulty reads its own 2x kick pitch, as Clone Hero does
     // 128, Easy's at 192.
     using namespace testmidi;
     constexpr uint32_t kStep = 64;
-    std::vector<std::vector<uint8_t>> ev = {track_name("PART DRUMS"), set_tempo()};
+    std::vector<std::vector<uint8_t>> ev = {track_name("PART DRUMS")};
     for (size_t i = 0; i < std::size(testdiff::kLiterals); ++i) {
         const std::vector<uint8_t> kick =
             note_on(static_cast<uint8_t>(testdiff::kLiterals[i].kick2x), 100);
         ev.push_back(i == 0 ? kick : after(kStep, kick));
     }
     ev.push_back(end_of_track());
-    const std::vector<uint8_t> mid = smf(concat(ev));
+    const std::vector<uint8_t> mid = smf_drums(concat(ev));
     for (size_t i = 0; i < std::size(testdiff::kLiterals); ++i) {
         const testdiff::Literals& w = testdiff::kLiterals[i];
         CAPTURE(w.name);
@@ -53,8 +53,8 @@ TEST_CASE(".mid: Expert's 2x kick never swallows a Hard kick on the same tick") 
     // the same tick is dropped. With the 95 first, Hard used to lose its real
     // kick to it.
     using namespace testmidi;
-    const std::vector<uint8_t> mid = smf(concat(
-        {track_name("PART DRUMS"), set_tempo(), note_on(95, 100), note_on(84, 100),
+    const std::vector<uint8_t> mid = smf_drums(concat(
+        {track_name("PART DRUMS"), note_on(95, 100), note_on(84, 100),
          end_of_track()}));
     const Song hard = load_songbytes_mid(mid, ChartReading{Difficulty::Hard});
     REQUIRE(hard.sequence.size() == 1);
@@ -159,8 +159,8 @@ TEST_CASE(".mid: a 2x kick merged with a normal kick keeps a ghost mark from eit
     // kick lands on the merged 2x kick, in both file orders. Ticks 0 and 64
     // put the ghost on the normal kick, then on the 2x kick.
     using namespace testmidi;
-    const std::vector<uint8_t> mid = smf(concat(
-        {track_name("PART DRUMS"), set_tempo(), text_event("[ENABLE_CHART_DYNAMICS]"),
+    const std::vector<uint8_t> mid = smf_drums(concat(
+        {track_name("PART DRUMS"), text_event("[ENABLE_CHART_DYNAMICS]"),
          note_on(96, 1), note_on(95, 100),             // tick 0: ghost normal, plain 2x
          after(64, note_on(95, 1)), note_on(96, 100),  // tick 64: ghost 2x, plain normal
          end_of_track()}));
@@ -179,8 +179,8 @@ TEST_CASE(".mid: a ghost and an accent kick on one tick merge into an accent") {
     // note-list builder (0x20D4BE0) plays a note with both as an accent. So
     // the merged 2x kick is an accent in both file orders.
     using namespace testmidi;
-    const std::vector<uint8_t> mid = smf(concat(
-        {track_name("PART DRUMS"), set_tempo(), text_event("[ENABLE_CHART_DYNAMICS]"),
+    const std::vector<uint8_t> mid = smf_drums(concat(
+        {track_name("PART DRUMS"), text_event("[ENABLE_CHART_DYNAMICS]"),
          note_on(96, 127), note_on(95, 1),             // tick 0: accent normal, ghost 2x
          after(64, note_on(95, 1)), note_on(96, 127),  // tick 64: ghost 2x, accent normal
          end_of_track()}));
@@ -217,8 +217,8 @@ TEST_CASE(".mid: a kick the 2x Bass setting removes leaves no mark before the dy
     // priced, so its mark doesn't count, wherever the tag sits.
     using namespace testmidi;
     SUBCASE("the tag on a later tick") {
-        const std::vector<uint8_t> mid = smf(concat(
-            {track_name("PART DRUMS"), set_tempo(),
+        const std::vector<uint8_t> mid = smf_drums(concat(
+            {track_name("PART DRUMS"),
              note_on(96, 1), note_on(95, 100), note_on(97, 100),  // tick 0
              after(64, note_on(97, 1)),                           // tick 64: ghost red
              after(64, text_event("[ENABLE_CHART_DYNAMICS]")), note_on(97, 100),
@@ -231,8 +231,8 @@ TEST_CASE(".mid: a kick the 2x Bass setting removes leaves no mark before the dy
         CHECK(load_songbytes_mid(mid, ChartReading{}).dynamics_marks_before_tag == 2);
     }
     SUBCASE("the tag between the two kicks on their own tick") {
-        const std::vector<uint8_t> mid = smf(concat(
-            {track_name("PART DRUMS"), set_tempo(), note_on(96, 1),
+        const std::vector<uint8_t> mid = smf_drums(concat(
+            {track_name("PART DRUMS"), note_on(96, 1),
              text_event("[ENABLE_CHART_DYNAMICS]"), note_on(95, 100), note_on(97, 100),
              end_of_track()}));
         const Song off =

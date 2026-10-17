@@ -720,26 +720,28 @@
     },
     {
       "question": "Which MIDI track is the timing track, the drum track or an events track?",
-      "owner": "MidiFile::kTimingTrack, is_drums_track_name (asked by MidiFile::drums_track) and is_events_track_name (asked by MidiTrack::is_events) in src/parse/midi.h",
+      "owner": "MidiFile::kTimingTrack, MidiFile::drums_track (from MidiFile::kFirstInstrumentTrack, by is_drums_track_name) and MidiFile::events_track (by is_events_track_name) in src/parse/midi.h",
       "owner_file": "src/parse/midi.h",
       "owner_symbol": "kTimingTrack",
       "date": "2026-10-06",
       "decision": "D86",
       "added_by": "P1",
-      "pattern": "\\bkDrumsTrackNames\\b|\\bkEventsTrackName\\b|\\btracks\\s*\\[\\s*0\\s*\\]",
+      "pattern": "\\bkDrumsTrackNames\\b|\\bkEventsTrackName\\b|\\btracks\\s*\\[\\s*0\\s*\\]|\\bis_(?:drums|events)_track_name\\s*\\([^)]*\\.name\\b",
       "anchor": "rack",
       "must_match": [
         "if (track.name != kDrumsTrackNames[0]) continue;",
         "const bool drums = !drums_seen && equals_ci(track.name, kDrumsTrackNames[1]);",
         "const bool texts = drums || track.name == kEventsTrackName;",
-        "for (const Message& msg : mid.tracks[0].messages) {"
+        "for (const Message& msg : mid.tracks[0].messages) {",
+        "if (!is_events_track_name(track.name)) continue;",
+        "for (const MidiTrack& t : mid.tracks) if (is_drums_track_name(t.name)) return &t;"
       ],
       "must_not_match": [
-        "if (!track.is_events()) continue;",
+        "if (const MidiTrack* const events = mid.events_track()) {",
+        "const bool texts = drums || &track == events_track;",
         "for (const Message& msg : mid.tracks[MidiFile::kTimingTrack].messages) {",
         "if (const MidiTrack* const drums = mid.drums_track()) {",
-        "if (is_drums_track_name(track.name)) return &track;",
-        "return is_drums_track_name(track_name) || is_events_track_name(track_name);"
+        "return is_drums_track_name(name) || is_events_track_name(name);"
       ],
       "owner_lines": [
         {
@@ -749,21 +751,31 @@
         },
         {
           "file": "src/parse/midi.h",
-          "line_text": "inline constexpr std::string_view kEventsTrackName = \"EVENTS\";",
+          "line_text": "inline constexpr std::string_view kEventsTrackName = \"events\";",
           "why": "the name itself"
         },
         {
-          "file": "src/parse/midi.h",
-          "line_text": "inline bool is_events_track_name(std::string_view name) { return name == kEventsTrackName; }",
+          "file": "src/parse/midi.cpp",
+          "line_text": "return equals_ci(name, kEventsTrackName);",
           "why": "is_events_track_name, the owner"
         },
         {
           "file": "src/parse/midi.cpp",
           "line_text": "return std::any_of(std::begin(kDrumsTrackNames), std::end(kDrumsTrackNames),",
           "why": "is_drums_track_name, the owner"
+        },
+        {
+          "file": "src/parse/midi.cpp",
+          "line_text": "if (is_drums_track_name(tracks[i].name)) return &tracks[i];",
+          "why": "MidiFile::drums_track, the owner"
+        },
+        {
+          "file": "src/parse/midi.cpp",
+          "line_text": "if (is_events_track_name(track.name)) return &track;",
+          "why": "MidiFile::events_track, the owner"
         }
       ],
-      "note": "The song parser and the lean read both pick the timing, drum and events tracks, and the reader's track-name pick (D78) recognizes the same names. A track name compared, or the first track indexed, anywhere but the owners is a second copy of that choice. The lean read's `i == kTimingTrack` has no text a search can tell apart from any other index check, so it names the constant instead. Decided by: the speedups plan, task P1 (D86); derive-once review of P1; D252 (the drum names in any case)"
+      "note": "The song parser and the lean read both pick the timing, drum and events tracks, and the reader's track-name pick (D78) recognizes the same names. A track name compared, a name test run over the tracks, or the first track indexed, anywhere but the owners is a second copy of that choice. The lean read's `i == kTimingTrack` has no text a search can tell apart from any other index check, so it names the constant instead. Decided by: the speedups plan, task P1 (D86); derive-once review of P1; D252 (the drum names in any case); D253 (track 0 is no instrument, and only the first events track counts)"
     },
     {
       "question": "How many values does a MIDI data byte hold?",
