@@ -363,14 +363,20 @@ TEST_CASE("multiplier squeeze: the note names follow the Pro Drums setting") {
 
 TEST_CASE("PathsTabUi: one row open at a time, expand and collapse all") {
     PathsTabUi ui;
-    // No row and neither footer fold starts open. Every backend table does, so
-    // a row shows its table as soon as the user opens it.
-    CHECK_FALSE(ui.mult_open);
-    CHECK_FALSE(ui.breakdown_open);
+    // Both footer folds start open. No row does, but every backend table does,
+    // so a row shows its table as soon as the user opens it.
+    CHECK(ui.mult_open);
+    CHECK(ui.breakdown_open);
     ui.reset(3);
     CHECK(ui.act_open == std::vector<char>{0, 0, 0});
     CHECK(ui.backends_open == std::vector<char>{1, 1, 1});
     CHECK_FALSE(ui.all_open());
+    // A new path keeps the footer folds as the user left them.
+    ui.mult_open = false;
+    ui.reset(2);
+    CHECK_FALSE(ui.mult_open);
+    CHECK(ui.breakdown_open);
+    ui.reset(3);
 
     ui.click_row(2);  // opens row 3 alone
     CHECK(ui.act_open == std::vector<char>{0, 0, 1});

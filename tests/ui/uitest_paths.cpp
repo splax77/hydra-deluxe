@@ -400,27 +400,27 @@ void test_paths_folds_copy(ImGuiTestContext* ctx) {
     if (!open_burnout(ctx)) return;
     FakeClipboard clipboard;
 
-    // Both folds start closed; a click opens each and another closes it.
-    IM_CHECK(!h.app->details_ui.paths_tab.ui().mult_open);
-    IM_CHECK(!h.app->details_ui.paths_tab.ui().breakdown_open);
+    // Both folds start open; a click closes each and another reopens it.
+    IM_CHECK(h.app->details_ui.paths_tab.ui().mult_open);
+    IM_CHECK(h.app->details_ui.paths_tab.ui().breakdown_open);
     IM_CHECK(on_screen(h, "+15"));  // beside the Multiplier squeeze fold
-    IM_CHECK(!on_screen(h, "Hit [Red snare] first."));
-    ctx->ItemClick("**/Multiplier squeeze##mult");
-    ctx->Yield(2);
     IM_CHECK(on_screen(h, "Hit [Red snare] first."));
     IM_CHECK(on_screen(h, "2x   (+15 pts):   [Red snare - Yellow cymbal]"));
     ctx->ItemClick("**/Multiplier squeeze##mult");
     ctx->Yield(2);
     IM_CHECK(!on_screen(h, "Hit [Red snare] first."));
-
-    IM_CHECK(!on_screen(h, "Total Score:"));
-    ctx->ItemClick("**/Score breakdown##breakdown");
+    ctx->ItemClick("**/Multiplier squeeze##mult");
     ctx->Yield(2);
+    IM_CHECK(on_screen(h, "Hit [Red snare] first."));
+
     IM_CHECK(on_screen(h, "Total Score:"));
     IM_CHECK(on_screen(h, std::string(hydra::app::kAverageMultiplierLabel) + ":"));
     ctx->ItemClick("**/Score breakdown##breakdown");
     ctx->Yield(2);
     IM_CHECK(!on_screen(h, "Total Score:"));
+    ctx->ItemClick("**/Score breakdown##breakdown");
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "Total Score:"));
 
     IM_CHECK(!on_screen(h, "Copied!"));
     ctx->ItemClick("**/Copy path");
@@ -437,6 +437,23 @@ void test_paths_folds_copy(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(FakeClipboard::text().c_str(),
                     rec.best_path().pathstring_verbose(rec.multsqueezes).c_str());
     IM_CHECK(on_screen(h, "Copied!"));
+
+    // The folds keep the user's last choice on the next song: closed here,
+    // still closed there.
+    ctx->ItemClick("**/Multiplier squeeze##mult");
+    ctx->ItemClick("**/Score breakdown##breakdown");
+    ctx->Yield(2);
+    IM_CHECK(!h.app->details_ui.paths_tab.ui().mult_open);
+    IM_CHECK(!h.app->details_ui.paths_tab.ui().breakdown_open);
+    open_titled(ctx, "tapestry", "Tapestry of the Starless Abstract (Shortened)");
+    if (ctx->IsError()) return;
+    wait_song_analyzed(ctx);
+    if (ctx->IsError()) return;
+    ctx->Yield(2);
+    IM_CHECK(h.app->viewed.record->best_path().pathstring() != "3- 1 2");  // not Burnout
+    IM_CHECK(!h.app->details_ui.paths_tab.ui().mult_open);
+    IM_CHECK(!h.app->details_ui.paths_tab.ui().breakdown_open);
+    IM_CHECK(!on_screen(h, "Total Score:"));
 }
 
 // A squeezed-out row the engine never counted: the table says "(uncounted)"

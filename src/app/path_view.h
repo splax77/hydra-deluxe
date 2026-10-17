@@ -245,10 +245,11 @@ inline std::string path_item_id(const std::string& label, size_t index) {
 struct PathsTabUi {
     std::vector<char> act_open;       // one per activation row; char, not vector<bool>
     std::vector<char> backends_open;  // one per activation row
-    // Start closed; reset() leaves them alone, so they keep the user's last
-    // choice from path to path.
-    bool mult_open = false;
-    bool breakdown_open = false;
+    // The Multiplier squeeze and Score breakdown folds. They start open, and
+    // reset() leaves them alone, so they keep the user's last choice from path
+    // to path and from song to song while the app runs.
+    bool mult_open = true;
+    bool breakdown_open = true;
     // The 0-based activation "Show in Preview" asked for, until the Preview
     // tab has moved its playhead there.
     std::optional<size_t> preview_jump;
