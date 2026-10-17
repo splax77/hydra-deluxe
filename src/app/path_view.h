@@ -89,8 +89,14 @@ struct ActivationRowView {
     std::string scale_warning;  // the transfer-scale line; empty when every scale prints x1.00
     bool scale_warn = false;    // orange: a shown scale moves a squeeze or backend figure
     std::string overfill_warning;  // cap-clamped anchor prose; empty when not clamped
-    std::string backends_label;  // "3 notes near the SP end": the rows below, after the backend limit
-    std::vector<BackendRowView> backends;
+    // "3 notes near the SP end": every stored row, with the hidden part after
+    // it when the backend limit hides some. Written by build_activations.
+    std::string backends_label;
+    std::vector<BackendRowView> backends;  // the rows the backend limit leaves shown
+    // What the backend limit hid, worded by build_activations from the loop
+    // that hides the rows; the fold prints it in place of "None." or under
+    // the table. Empty when nothing is hidden.
+    std::string backends_hidden_line;
 };
 
 struct ActivationsView {

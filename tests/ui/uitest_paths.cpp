@@ -306,10 +306,16 @@ void test_paths_backend_timings(ImGuiTestContext* ctx) {
     IM_CHECK(hydra::app::Settings::load_file(h.ini_path).backendlimit_enabled);
 
     // At 30 ms the -489.1 and -326.1 rows go; the squeezed-out -163.0 row stays.
+    // The heading still counts all three and says the two hidden ones are
+    // before the SP end; the line under the table says so with the limit.
     ctx->ItemInputValue("**/##backendlimitvalue", 30);
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.backendlimit_value == 30; }, 5));
     IM_CHECK_EQ(hydra::app::Settings::load_file(h.ini_path).backendlimit_value, 30);
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "1 note near the SP end"); }, 5));
+    IM_CHECK(wait_until(
+        ctx,
+        [&] { return on_screen(h, "3 notes near the SP end \xC2\xB7 2 hidden: 2 before, 0 after"); },
+        5));
+    IM_CHECK(on_screen(h, "2 hidden: 2 before the SP end and 0 after, beyond 30 ms."));
     IM_CHECK(on_screen(h, "squeezed out (-260)"));
 
     // The full engine window (500 ms) is reachable; beyond it clamps back.
@@ -326,6 +332,7 @@ void test_paths_backend_timings(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.backendlimit_enabled; }, 5));
     IM_CHECK(!hydra::app::Settings::load_file(h.ini_path).backendlimit_enabled);
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "3 notes near the SP end"); }, 5));
+    IM_CHECK(!on_screen(h, "hidden: 2 before"));
 }
 
 // The two folds under the list, and Copy path with its "Copied!" flash.

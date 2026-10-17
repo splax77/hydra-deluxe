@@ -296,18 +296,23 @@ TEST_CASE("build_activations: the backend limit hides far rows but never "
     Path p;
     p.activations.push_back(act);
 
-    auto rows = [&](std::optional<double> limit) {
+    auto view_at = [&](std::optional<double> limit) {
         ActivationsView v = limit ? build_activations(p, rec, nullptr, 85.0, limit)
                                   : build_activations(p, rec, nullptr, 85.0);
         REQUIRE(v.acts.size() == 1);
-        return v.acts[0].backends;
+        return v.acts[0];
     };
 
-    // No limit: every stored row shows.
-    CHECK(rows(std::nullopt).size() == 3);
+    // No limit: every stored row shows, and nothing is said about hiding.
+    ActivationRowView all = view_at(std::nullopt);
+    CHECK(all.backends.size() == 3);
+    CHECK(all.backends_label == "3 notes near the SP end");
+    CHECK(all.backends_hidden_line.empty());
 
     // At 50 ms the -100 row goes; the +60 row stays because it is squeezed out.
-    std::vector<BackendRowView> limited = rows(50.0);
+    // The heading still counts all three and says what is hidden.
+    ActivationRowView at50 = view_at(50.0);
+    std::vector<BackendRowView> limited = at50.backends;
     REQUIRE(limited.size() == 2);
     CHECK(limited[0].timing == "-30.0");
     CHECK_FALSE(limited[0].warn);
@@ -316,6 +321,74 @@ TEST_CASE("build_activations: the backend limit hides far rows but never "
     // row is tagged uncounted and not highlighted (user decision 19).
     CHECK(limited[1].rating.find("(uncounted) <-- squeezed out") != std::string::npos);
     CHECK_FALSE(limited[1].warn);
+    CHECK(at50.backends_label == "3 notes near the SP end \xC2\xB7 1 hidden: 1 before, 0 after");
+    CHECK(at50.backends_hidden_line ==
+          "1 hidden: 1 before the SP end and 0 after, beyond 50 ms.");
+
+    // At 20 ms the -30 row goes too.
+    ActivationRowView at20 = view_at(20.0);
+    CHECK(at20.backends.size() == 1);
+    CHECK(at20.backends_label == "3 notes near the SP end \xC2\xB7 2 hidden: 2 before, 0 after");
+    CHECK(at20.backends_hidden_line ==
+          "2 hidden: 2 before the SP end and 0 after, beyond 20 ms.");
+}
+
+TEST_CASE("build_activations: the backend limit says how many rows it hides on each side") {
+    HydraRecord rec;  // only feeds the footer; irrelevant here
+
+    // An activation with backend rows at these offsets and no squeeze-out.
+    auto view_of = [&rec](std::vector<double> offsets, std::optional<double> limit) {
+        Activation act;
+        test::set_skips(act, 0);
+        act.e_offset = 300.0;  // not e-critical
+        int64_t tick = 100;
+        for (double ms : offsets) {
+            BackendSqueeze row;
+            row.timecode = Timecode::raw(tick);
+            row.offset_ms = ms;
+            act.backends.push_back(row);
+            tick += 100;
+        }
+        Path p;
+        p.activations.push_back(act);
+        ActivationsView v = build_activations(p, rec, nullptr, 85.0, limit);
+        REQUIRE(v.acts.size() == 1);
+        return v.acts[0];
+    };
+
+    // Rows on both sides, some hidden: the heading and the line under the
+    // table name each side.
+    ActivationRowView some = view_of({-100.0, -30.0, 20.0, 80.0}, 50.0);
+    CHECK(some.backends.size() == 2);
+    CHECK(some.backends_label == "4 notes near the SP end \xC2\xB7 2 hidden: 1 before, 1 after");
+    CHECK(some.backends_hidden_line ==
+          "2 hidden: 1 before the SP end and 1 after, beyond 50 ms.");
+
+    // Every row hidden: the line, shown in place of "None.", starts "All".
+    ActivationRowView every = view_of({-120.0, -90.0, 84.0}, 50.0);
+    CHECK(every.backends.empty());
+    CHECK(every.backends_label == "3 notes near the SP end \xC2\xB7 3 hidden: 2 before, 1 after");
+    CHECK(every.backends_hidden_line ==
+          "All 3 hidden: 2 before the SP end and 1 after, beyond 50 ms.");
+
+    // A single row, hidden: no "All", and the heading is singular.
+    ActivationRowView one = view_of({-100.0}, 50.0);
+    CHECK(one.backends.empty());
+    CHECK(one.backends_label == "1 note near the SP end \xC2\xB7 1 hidden: 1 before, 0 after");
+    CHECK(one.backends_hidden_line ==
+          "1 hidden: 1 before the SP end and 0 after, beyond 50 ms.");
+
+    // The limit set but every row inside it: nothing hidden, heading unchanged.
+    ActivationRowView inside = view_of({-30.0, 20.0}, 50.0);
+    CHECK(inside.backends.size() == 2);
+    CHECK(inside.backends_label == "2 notes near the SP end");
+    CHECK(inside.backends_hidden_line.empty());
+
+    // No rows stored at all: the fold keeps "None.", so no hidden line.
+    ActivationRowView none = view_of({}, 50.0);
+    CHECK(none.backends.empty());
+    CHECK(none.backends_label == "0 notes near the SP end");
+    CHECK(none.backends_hidden_line.empty());
 }
 
 TEST_CASE("build_activations: a squeezed-out row past the leeway is worth 0") {
