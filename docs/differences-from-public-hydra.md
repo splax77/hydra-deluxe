@@ -134,6 +134,6 @@ This version doesn't read `records.json`, so your old results don't carry over. 
 | 2.8.0 | Star Power length, measure lines and generated fills follow Clone Hero's measure grid; early fills reach 85 ms; the path report covers the whole library and builds from saved paths; a `Can't analyze` status and chip |
 | 2.9.0 | The Preview shows a solo box like Clone Hero's; its step buttons move 10 ms; its SP meter shows on every song |
 | 2.9.1 | The Paths tab says how many backend rows `Hide backend rows beyond` hides; a MIDI drum track loads under either name Clone Hero accepts, `PART DRUMS` or `PART DRUM`, in any mix of upper and lower case |
-| 2.9.2 | A MIDI chart never reads drums from its first track, and takes practice sections only from the first `EVENTS` track, as in Clone Hero; the Paths tab opens with every activation row and fold closed, and the backend table has no lead-in paragraph |
+| 2.9.2 | A MIDI chart never reads drums from its first track, and takes practice sections only from the first `EVENTS` track, as in Clone Hero; the right side of the Paths tab opens with every activation row and fold closed, and the `Backend timings` table has no lead-in paragraph |
 
 Each release's full notes are on the [releases page](https://github.com/splax77/hydra-deluxe/releases).
