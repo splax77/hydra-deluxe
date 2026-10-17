@@ -18,6 +18,18 @@ A file's format is `chart_format_of`'s answer. Whether it is a container (a
 file) is `is_container`'s. Both live in src/parse/chart_files.h.
 _Avoid_: song file, track
 
+**Drum track**:
+The MIDI track the song parser reads a `.mid` chart's drums from: the first
+track, in file order, whose name `is_drums_track_name` (src/parse/midi.h)
+accepts. `MidiFile::drums_track` returns it, and the reader's track-name pick
+asks the same test. Its names are "part drums" and "part drum" in any ASCII
+case, as Clone Hero 1.1 spells them (docs/adr/0023, D252). The events track is
+the other track the parser looks for by name (`is_events_track_name`, an exact
+match). The first track (index 0) is still searched for a drum track although
+the game skips it, and the events name is still compared exactly where the game
+ignores case: both are left for a follow-up (docs/adr/0023).
+_Avoid_: PART DRUMS track
+
 **Library**:
 The set of charts found by the latest scan of the user's folders.
 
