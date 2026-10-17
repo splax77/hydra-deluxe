@@ -305,7 +305,7 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
         scene.solo_notes.push_back(std::move(notes));
     }
     // Drum lanes: each one's span as the chart wrote it, lighting the pads
-    // the parser chose (Song::drum_lanes; the rule is light_drum_lanes).
+    // the loader chose (Song::drum_lanes; the rule is light_drum_lanes).
     for (const DrumLane& l : song.drum_lanes) {
         PreviewDrumLane d;
         d.span = span_from_ticks(song, l.start_tick, l.end_tick);
