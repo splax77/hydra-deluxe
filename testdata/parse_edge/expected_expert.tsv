@@ -31,7 +31,7 @@ m02_two_drum_tracks.mid	3a4888a6f96a9323
 m03_late_names.mid	1a3e462348c8e6a7
 m04_oversize_meta_other.mid	fa7b66f79b7580c6	FAIL class hydra::MidiError: Message length 1000001 exceeds maximum length 1000000
 m05_oversize_meta_drums.mid	fa7b66f79b7580c6	FAIL class hydra::MidiError: Message length 1000001 exceeds maximum length 1000000
-m06_format0.mid	1f5a0b4b162b6244
+m06_format0.mid	ce14cc7b668695a7	FAIL class hydra::NoNotesError: No Expert Pro Drums notes in this chart.
 m07_smpte.mid	755697472955f6b2	FAIL class hydra::MidiError: SMPTE time division is not supported
 m08_truncated.mid	fe0b8fb7b15e2c6a
 m09_running_status_after_meta.mid	ec990af7b82a447e

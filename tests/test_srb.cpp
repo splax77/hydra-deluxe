@@ -167,7 +167,7 @@ TEST_CASE("srb: a stream that makes bytes from no input is corrupt, not inflated
 TEST_CASE("srb: the notes entry is found by its exact name, never by its extension") {
     using namespace testmidi;
     const std::vector<uint8_t> mid =
-        smf(concat({track_name("PART DRUMS"), set_tempo(), note_on(96, 100), end_of_track()}));
+        smf_drums(concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()}));
     // "song.chart" is not a notes name. Before, the .srb trusted the extension
     // and read these MIDI bytes as .chart text, which failed. Now the name
     // decides nothing, so the stream's bytes do, and it loads as MIDI.

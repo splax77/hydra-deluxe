@@ -19,15 +19,13 @@ file) is `is_container`'s. Both live in src/parse/chart_files.h.
 _Avoid_: song file, track
 
 **Drum track**:
-The MIDI track the song parser reads a `.mid` chart's drums from: the first
-track, in file order, whose name `is_drums_track_name` (src/parse/midi.h)
-accepts. `MidiFile::drums_track` returns it, and the reader's track-name pick
-asks the same test. Its names are "part drums" and "part drum" in any ASCII
-case, as Clone Hero 1.1 spells them (docs/adr/0023, D252). The events track is
-the other track the parser looks for by name (`is_events_track_name`, an exact
-match). The first track (index 0) is still searched for a drum track although
-the game skips it, and the events name is still compared exactly where the game
-ignores case: both are left for a follow-up (docs/adr/0023).
+The MIDI track the song parser reads a `.mid` chart's drums from. Its owner is
+`MidiFile::drums_track` (src/parse/midi.h), which never takes the first track,
+as Clone Hero 1.1 never does (D253). The name test is `is_drums_track_name`,
+which the reader's track-name pick asks too. Its names are "part drums" and
+"part drum" in any ASCII case, as the game spells them (docs/adr/0023, D252).
+The events track is the other track the parser looks for by name. Its owner is
+`MidiFile::events_track`, and its name test is `is_events_track_name` (D253).
 _Avoid_: PART DRUMS track
 
 **Library**:

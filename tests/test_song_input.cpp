@@ -28,11 +28,11 @@ using namespace hydra;
 
 // ---- parser cases moved in from the deleted grab bag (wave B, task 2.2) ----
 
-// Finding R7.7; D27. The time box checks stay with the parse: the Preview reads
-// the parser's order, and a copy of this fixture in test_preview_boxes.cpp
-// would be a clone the single-owner scan refuses.
-TEST_CASE(".mid: practice sections from several EVENTS tracks come out in tick order, and the "
-          "time box names the one in force") {
+// Finding R7.7; D27; D253. The time box checks stay with the parse: the
+// Preview reads the parser's order, and a copy of this fixture in
+// test_preview_boxes.cpp would be a clone the single-owner scan refuses.
+TEST_CASE(".mid: practice sections come from the first EVENTS track only, and the time box "
+          "names the one in force") {
     using namespace testmidi;
     const std::vector<uint8_t> tempo = concat({set_tempo(), end_of_track()});
     const std::vector<uint8_t> drums =
@@ -41,24 +41,24 @@ TEST_CASE(".mid: practice sections from several EVENTS tracks come out in tick o
     const std::vector<uint8_t> events1 =
         concat({track_name("EVENTS"), text_event("[section Intro]"),
                 after(1920, text_event("[section Chorus]")), end_of_track()});
-    // Second EVENTS track: Verse at 960.
+    // Second EVENTS track: Verse at 960. Clone Hero reads only the first
+    // events track (MidiFile::events_track), so Verse is not a section.
     const std::vector<uint8_t> events2 =
         concat({track_name("EVENTS"), after(960, text_event("[section Verse]")),
                 end_of_track()});
     const Song song =
         load_songbytes_mid(smf_tracks({tempo, drums, events1, events2}), ChartReading{});
 
-    REQUIRE(song.practice_sections.size() == 3);
+    REQUIRE(song.practice_sections.size() == 2);
     CHECK(song.practice_sections[0].name == "Intro");
-    CHECK(song.practice_sections[1].name == "Verse");
-    CHECK(song.practice_sections[1].tick == 960);
-    CHECK(song.practice_sections[2].name == "Chorus");
+    CHECK(song.practice_sections[1].name == "Chorus");
+    CHECK(song.practice_sections[1].tick == 1920);
 
     // The time box names the section the playhead is in. At 120 BPM and 480
-    // ticks a beat, tick 1000 is 1041.67 ms (Verse) and tick 2000 is 2083.33 ms
-    // (Chorus). Before the sort it said Intro, then Verse.
+    // ticks a beat, tick 1000 is 1041.67 ms (still Intro) and tick 2000 is
+    // 2083.33 ms (Chorus).
     const app::PreviewScene scene = app::build_preview_scene(song, nullptr);
-    CHECK(app::build_time_box(scene, 1041.7, 3000.0).section_line == "Section Verse");
+    CHECK(app::build_time_box(scene, 1041.7, 3000.0).section_line == "Section Intro");
     CHECK(app::build_time_box(scene, 2083.4, 3000.0).section_line == "Section Chorus");
 }
 
@@ -67,8 +67,8 @@ TEST_CASE(".mid: practice sections from several EVENTS tracks come out in tick o
 TEST_CASE(".mid: a drum track named PART DRUM reads the same Expert notes as PART DRUMS") {
     using namespace testmidi;
     const auto chart = [](const std::string& name) {
-        return smf(concat({track_name(name), set_tempo(), note_on(96, 100), note_on(97, 100),
-                           after(480, note_on(98, 100)), end_of_track()}));
+        return smf_drums(concat({track_name(name), note_on(96, 100), note_on(97, 100),
+                                 after(480, note_on(98, 100)), end_of_track()}));
     };
     const Song drum = load_songbytes_mid(chart("PART DRUM"), ChartReading{});
     CHECK_NOTHROW(require_notes(drum, Difficulty::Expert, true));

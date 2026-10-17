@@ -45,7 +45,7 @@ int64_t chart_landing(int64_t res, int64_t after,
 int64_t mid_landing(uint8_t after) {
     REQUIRE(after < 0x80);  // one delta byte
     const std::vector<uint8_t> track = testmidi::concat({
-        testmidi::track_name("PART DRUMS"), testmidi::set_tempo(),
+        testmidi::track_name("PART DRUMS"),
         {0x00, 0x90, 97, 100},          // tick 0: red
         {0x87, 0x40, 0x90, 120, 100},   // tick 960: fill starts
         {0x83, 0x60, 0x90, 97, 100},    // tick 1440: red, inside the fill
@@ -53,7 +53,7 @@ int64_t mid_landing(uint8_t after) {
         {after, 0x90, 97, 100},         // tick 1920 + after: red
         testmidi::end_of_track(),
     });
-    return activation_tick(load_songbytes_mid(testmidi::smf(track), ChartReading{}));
+    return activation_tick(load_songbytes_mid(testmidi::smf_drums(track), ChartReading{}));
 }
 
 }  // namespace
@@ -104,7 +104,7 @@ TEST_CASE("fill landing: a fill is placed even when the next fill starts before 
     // 480 ticks per beat: the window is 15 + 1 = 16 ticks.
     using namespace testmidi;
     const std::vector<uint8_t> track = concat({
-        track_name("PART DRUMS"), set_tempo(),
+        track_name("PART DRUMS"),
         note_on(96, 100),                // tick 0: kick
         {0x81, 0x70, 0x90, 120, 100},    // tick 240: fill A on
         {0x78, 0x90, 97, 100},           // tick 360: red, inside A
@@ -115,7 +115,7 @@ TEST_CASE("fill landing: a fill is placed even when the next fill starts before 
         {0x83, 0x60, 0x90, 99, 100},     // tick 1200: blue
         end_of_track(),
     });
-    const Song song = load_songbytes_mid(smf(track), ChartReading{});
+    const Song song = load_songbytes_mid(smf_drums(track), ChartReading{});
     REQUIRE(song.sequence.size() == 4);
     CHECK_FALSE(song.sequence[0].has_activation());
     REQUIRE(song.sequence[1].has_activation());

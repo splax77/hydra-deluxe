@@ -271,8 +271,8 @@ std::vector<uint8_t> solo_end_chart() {
 // the marker's note-off tick.
 std::vector<uint8_t> solo_marker_mid() {
     using namespace testmidi;
-    return smf(concat({
-        track_name("PART DRUMS"), set_tempo(),
+    return smf_drums(concat({
+        track_name("PART DRUMS"),
         note_on(103, 100), note_on(97, 100),   // tick 0: solo on, Red
         after(480, note_on(98, 100)),          // tick 480: Yellow
         after(480, note_on(103, 0)),           // tick 960: solo marker off
@@ -660,10 +660,10 @@ TEST_CASE(".chart: a TS 0 timing line is still ignored") {
 
 TEST_CASE(".mid: a timing line that can't measure time") {
     auto track = [](std::vector<uint8_t> timing) {
-        return testmidi::smf(testmidi::concat({testmidi::track_name("PART DRUMS"),
-                                               testmidi::set_tempo(), timing,
-                                               testmidi::note_on(96, 100),
-                                               testmidi::end_of_track()}));
+        return testmidi::smf_drums(testmidi::concat({testmidi::track_name("PART DRUMS"),
+                                                     testmidi::note_on(96, 100),
+                                                     testmidi::end_of_track()}),
+                                   testmidi::concat({testmidi::set_tempo(), timing}));
     };
     // TS 0/4: ignored, the 4/4 default stays (finding 100's crash).
     Song song = load_songbytes_mid(track({0x00, 0xFF, 0x58, 0x04, 0x00, 0x02, 0x18, 0x08}),
@@ -685,9 +685,9 @@ TEST_CASE(".mid: a timing line that can't measure time") {
 // any note in time. Both were already refused (through check_timing_maps);
 // this pins it.
 TEST_CASE("a resolution that is 0 or negative is refused in both formats") {
-    std::vector<uint8_t> mid = testmidi::smf(testmidi::concat(
-        {testmidi::track_name("PART DRUMS"), testmidi::set_tempo(),
-         testmidi::note_on(96, 100), testmidi::end_of_track()}));
+    std::vector<uint8_t> mid = testmidi::smf_drums(testmidi::concat(
+        {testmidi::track_name("PART DRUMS"), testmidi::note_on(96, 100),
+         testmidi::end_of_track()}));
     mid[12] = 0x00;  // division = 0
     mid[13] = 0x00;
     CHECK_THROWS_WITH_AS(load_songbytes_mid(mid, ChartReading{}),
@@ -703,14 +703,13 @@ TEST_CASE("mid: kick velocity is read as ghost/accent, like a pad's") {
     auto drums_track = [](bool dynamics) {
         std::vector<std::vector<uint8_t>> ev;
         ev.push_back(testmidi::track_name("PART DRUMS"));
-        ev.push_back(testmidi::set_tempo());
         if (dynamics)
             ev.push_back(testmidi::text_event("[ENABLE_CHART_DYNAMICS]"));
         ev.push_back(testmidi::note_on(96, 1));     // tick 0:   kick, vel 1
         ev.push_back({0x40, 0x90, 95, 127});        // tick 64:  2x kick, vel 127
         ev.push_back({0x40, 0x90, 97, 1});          // tick 128: Red pad, vel 1
         ev.push_back(testmidi::end_of_track());
-        return testmidi::smf(testmidi::concat(ev));
+        return testmidi::smf_drums(testmidi::concat(ev));
     };
 
     SUBCASE("with [ENABLE_CHART_DYNAMICS]") {
@@ -812,14 +811,13 @@ TEST_CASE("chart_files: a path's format comes from its extension in any case") {
 TEST_CASE("mid: a stray SP note-off flags nothing") {
     std::vector<std::vector<uint8_t>> ev;
     ev.push_back(testmidi::track_name("PART DRUMS"));
-    ev.push_back(testmidi::set_tempo());
     ev.push_back(testmidi::note_on(116, 100));       // tick 0:   SP phrase starts
     ev.push_back(testmidi::note_on(96, 100));        // tick 0:   kick, inside the phrase
     ev.push_back({0x81, 0x70, 0x80, 116, 0});        // tick 240: SP phrase ends
     ev.push_back({0x81, 0x70, 0x90, 96, 100});       // tick 480: kick, outside any phrase
     ev.push_back({0x81, 0x70, 0x80, 116, 0});        // tick 720: stray SP note-off
     ev.push_back(testmidi::end_of_track());
-    Song song = load_songbytes_mid(testmidi::smf(testmidi::concat(ev)), ChartReading{});
+    Song song = load_songbytes_mid(testmidi::smf_drums(testmidi::concat(ev)), ChartReading{});
 
     REQUIRE(song.sequence.size() == 2);
     CHECK(song.sequence[0].flag_sp);
@@ -948,13 +946,13 @@ TEST_CASE(".mid: disco markers match the regexes they replaced") {
         for (size_t shape = 0; shape < markers.size(); ++shape) {
             const std::string& marker = markers[shape];
             for (bool prior_on : {false, true}) {
-                std::vector<std::vector<uint8_t>> ev = {track_name("PART DRUMS"), set_tempo()};
+                std::vector<std::vector<uint8_t>> ev = {track_name("PART DRUMS")};
                 if (prior_on) ev.push_back(text_event("mix_3_drums0d"));
                 ev.push_back(note_on(96, 100));                    // tick 0: kick
                 ev.push_back(after(480, text_event(marker)));  // tick 480
                 ev.push_back(note_on(97, 100));                    // tick 480: red
                 ev.push_back(end_of_track());
-                const Song song = load_songbytes_mid(smf(concat(ev)), ChartReading{});
+                const Song song = load_songbytes_mid(smf_drums(concat(ev)), ChartReading{});
                 REQUIRE(song.sequence.size() == 2);
                 const bool flipped = song.sequence[1].chord.at(NoteColor::Yellow).has_value();
                 CHECK_MESSAGE(flipped == want_flip(kMidDiscoAnswers[shape], byte, prior_on),

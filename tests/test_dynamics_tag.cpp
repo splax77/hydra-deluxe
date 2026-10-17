@@ -22,9 +22,9 @@ using namespace testmidi;
 namespace {
 
 Song drums(std::vector<std::vector<uint8_t>> events) {
-    events.insert(events.begin(), {track_name("PART DRUMS"), set_tempo()});
+    events.insert(events.begin(), track_name("PART DRUMS"));
     events.push_back(end_of_track());
-    return load_songbytes_mid(smf(concat(events)), ChartReading{});
+    return load_songbytes_mid(smf_drums(concat(events)), ChartReading{});
 }
 
 NoteDynamicType red(const Song& song, size_t i) {

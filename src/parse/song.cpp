@@ -67,9 +67,10 @@ bool section_name_of(std::string_view body, std::string* name) {
 }
 
 // Practice sections in tick order, the order Song promises. A .chart's
-// [Events] need not be sorted, and a .mid lists each EVENTS track's sections
-// in turn, so both parsers call this once at the end. The sort is stable, so
-// two sections on one tick keep the file's order.
+// [Events] need not be sorted. A .mid's events track (MidiFile::events_track)
+// is read in tick order already, but both parsers call this once at the end,
+// so the promise has one keeper. The sort is stable, so two sections on one
+// tick keep the file's order.
 void sort_practice_sections(std::vector<SongSection>& sections) {
     std::stable_sort(sections.begin(), sections.end(),
                      [](const SongSection& a, const SongSection& b) { return a.tick < b.tick; });
@@ -1361,12 +1362,11 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
         song.dynamics_enabled = dynamics_enabled_;
     }
 
-    // Pass 3: practice sections, which live on their own track(s) as bracketed
+    // Pass 3: practice sections, which live on the events track as bracketed
     // text metas, sorted once at the end.
-    for (const MidiTrack& track : mid.tracks) {
-        if (!track.is_events()) continue;
+    if (const MidiTrack* const events = mid.events_track()) {
         elapsed = 0;
-        for (const Message& msg : track.messages) {
+        for (const Message& msg : events->messages) {
             elapsed += msg.time;
             if (msg.str_attr != Message::StrAttr::Text) continue;
             const std::string& s = msg.str;
