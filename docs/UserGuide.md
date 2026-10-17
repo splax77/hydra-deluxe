@@ -230,7 +230,7 @@ Under the activation rows are two folds, `Multiplier squeeze` and `Score breakdo
 
 `Copy path` copies the selected path's notation. `Ctrl+C` does the same and flashes `Copied!`.
 
-`Hide backend rows beyond` hides backend rows more than this many ms from the SP end. It starts off<!-- default: Settings::backendlimit_enabled -->, with 50 ms<!-- default: Settings::backendlimit_value --> in the box. A note the path squeezes out always shows. This only changes the display. It is not an analysis setting, so changing it never re-analyzes anything.
+`Hide backend rows beyond` hides backend rows more than this many ms from the SP end. It starts off<!-- default: Settings::backendlimit_enabled -->, with 50 ms<!-- default: Settings::backendlimit_value --> in the box. A note the path squeezes out always shows. When it hides rows, the `Backend timings` line still counts every note and adds how many are hidden on each side of the SP end, like `8 notes near the SP end · 8 hidden: 4 before, 4 after`. The fold says the same with the limit, like `All 8 hidden: 4 before the SP end and 4 after, beyond 50 ms.` This only changes the display. It is not an analysis setting, so changing it never re-analyzes anything.
 
 One more setting feeds these displays: `hit_window_ms` in `hydra_settings.ini` (default 85, the Clone Hero Pro Drums hit window per side). It has no control on screen yet.
 
