@@ -32,8 +32,8 @@ namespace uitest {
 // Opens what the Paths tab starts with folded: the Backend timings fold of
 // every open activation row, and the Multiplier squeeze and Score breakdown
 // folds. It clicks only the closed ones, so a second call changes nothing.
-// The layout checks call it after Expand all, so the whole tab is on screen;
-// uitest_details.cpp's layout sweep calls it too.
+// The layout checks call it after Expand all, so the whole tab is on screen.
+// Declared in uitest_harness.h for the layout sweep in uitest_details.cpp.
 void open_paths_folds(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     hydra::app::PathsTabUi& ui = h.app->details_ui.paths_tab.ui();
@@ -455,8 +455,9 @@ void test_paths_uncounted(ImGuiTestContext* ctx) {
 
 // At the panel's narrowest the Paths tab still fits: with every row, every
 // backend table, both folds under the rows and "Copied!" showing, nothing in
-// the right column runs past its edge, and the path list keeps at least its 240 px (Burnout's optimal
-// row, with its timing beside it, is a little wider than that).
+// the right column runs past its edge, and the path list keeps at least its
+// 240 px (Burnout's optimal row, with its timing beside it, is a little wider
+// than that).
 void test_paths_fit_narrow(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;

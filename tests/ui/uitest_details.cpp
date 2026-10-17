@@ -32,9 +32,6 @@
 
 namespace uitest {
 
-// Defined in uitest_paths.cpp: opens the Paths tab's folds.
-void open_paths_folds(ImGuiTestContext* ctx);
-
 namespace {
 
 // Sets the SP cap in the settings panel, then closes the panel (with Esc,

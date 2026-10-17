@@ -328,6 +328,10 @@ const std::vector<TestEntry>& details_tests();       // uitest_details.cpp
 const std::vector<TestEntry>& preview_tests();       // uitest_preview.cpp
 const std::vector<TestEntry>& batch_report_tests();  // uitest_batch_reports.cpp
 
+// Opens what the Paths tab starts with folded (defined in uitest_paths.cpp),
+// for tests outside that file that check the whole tab.
+void open_paths_folds(ImGuiTestContext* ctx);
+
 // Steps most tests start with (defined in uitest_harness.cpp).
 // Scan testdata/input through the UI and land on the populated library.
 void scan_library(ImGuiTestContext* ctx);
