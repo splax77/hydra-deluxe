@@ -194,7 +194,7 @@ The right side starts with a summary, like `Activations 3 · no SP left over`. U
 
 The timeline's length is the song's length as the chart's own files state it: the `song_length` line in song.ini, the same key in a .sng, or the length stored in a .srb. A chart that states none ends at its last Expert drum note. Hydra Deluxe never opens the audio to find it, so a chart with no audio still gets a timeline. A song with a long outro ends its last mark well before the right edge. A chart with no length at all, meaning no stated length and no Expert drum notes, shows no marks.
 
-Each activation is one row. It shows the activation's number, its notation, its measure (like `m32.1.0`), the bars of SP banked when you activate (like `1 bar` or `2 bars`), and a badge for its hardest timing, like `squeeze out 163 ms` or `early fill 20 ms`. Click a row to open it, or use `Expand all` and `Collapse all`. The first row starts open.
+Each activation is one row. It shows the activation's number, its notation, its measure (like `m32.1.0`), the bars of SP banked when you activate (like `1 bar` or `2 bars`), and a badge for its hardest timing, like `squeeze out 163 ms` or `early fill 20 ms`. Click a row to open it, or use `Expand all` and `Collapse all`. Every row starts closed.
 
 An activation that skips fills keeps its early fill badge when its Star Power is ready no earlier than the fill's deadline, because that timing decides whether the first fill shows up. An early fill with time to spare has nothing to time, so it gets no badge. A squeeze that happens on its own still gets one when nothing else on the row needs timing, with a figure of 0 or below: `squeeze in -316 ms` means the phrase's last note already lands 316 ms before Star Power ends.
 
@@ -204,7 +204,7 @@ An open row shows these, in order:
 2. `Show in Preview >`, which jumps the Preview tab to this activation.
 3. The early fill timing, when the activation has one (the `E` notation), like `Early fill: 0.0 ms (required)`. A positive number means you must hit that many ms early to make the fill show up. A negative number is slack, so the fill shows up with room to spare.
 4. A plain sentence for each squeeze: which note to hit early or late, by how much, and what it's worth. Notes are named the way the Dynamics tab names them, like `Green tom` or `Yellow cymbal`.
-5. `Backend timings`, a fold that starts open: the notes near the end of Star Power, with a short lead-in above the table.
+5. `Backend timings`, a fold that starts closed: the notes near the end of Star Power.
 
 ### Backend timings
 
@@ -222,7 +222,7 @@ Sometimes a phrase collected during Star Power would push the meter past the SP 
 
 ### Below the activations
 
-Under the activation rows are two folds, `Multiplier squeeze` and `Score breakdown`. Both start open.
+Under the activation rows are two folds, `Multiplier squeeze` and `Score breakdown`. Both start closed.
 
 `Multiplier squeeze` lists the multiplier squeezes in the song. When the combo multiplier goes up on a multi-note chord, hitting the more valuable notes (cymbals, dynamics) a little later scores them on the higher multiplier. This is why two FCs of the same song can differ by 15<!-- default: kCymbalBonusPoints --> points. `2x` means it happens as the multiplier reaches 2x (10<!-- default: to_multiplier:x2 --> notes in), and so on.
 
