@@ -46,6 +46,15 @@ answer, through one owner in `src/parse/song.cpp`. The rules that changed:
   track in file order is the drum track, because the game's set of
   instruments already read skips any later one (0x21564D7). The one owner
   is `is_drums_track_name` in `src/parse/midi.h` (decision D252).
+- The first MIDI track (index 0) is never the drum track. Clone Hero's
+  loop over instruments starts at index 1 (0x2155F8D), so a single-track
+  file has no drums. The owner is `MidiFile::drums_track`, which starts at
+  `MidiFile::kFirstInstrumentTrack` (decision D253).
+- The events track is the first track, from index 0, named "events" in any
+  case, and no other track counts. Clone Hero compares each name with
+  "events" ignoring case (`String.Equals` at 0x2155F36) and leaves its
+  search on the first match (0x2155F3D). The owner is
+  `MidiFile::events_track` in `src/parse/midi.h` (decision D253).
 
 Rules that were already Clone Hero's and are now written down:
 
@@ -93,19 +102,6 @@ D26). A live Clone Hero session could settle them.
 - How far from its downbeat a generated fill's chord may sit, and the fill's
   length, are cut down to whole ticks (`Song::check_activations`, decision
   D74).
-
-## Known differences left for later
-
-These two MIDI track rules were read in Clone Hero's code and differ from
-Hydra's. They are left as a follow-up (decision D252).
-
-- Clone Hero never looks for an instrument in the first track (index 0):
-  its loop over tracks starts at index 1 (0x2155F8D). Hydra's
-  `MidiFile::drums_track` looks at every track, the first one included.
-- Clone Hero finds the events track by comparing the name with "events"
-  ignoring case (`String.Equals` at 0x2155F36), and reads only the first
-  match. Hydra compares "EVENTS" exactly and reads practice sections from
-  every events track (`MidiTrack::is_events`).
 
 ## Consequences
 
