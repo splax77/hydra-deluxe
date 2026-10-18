@@ -1,5 +1,7 @@
 # Handoff: use the chart's [end] event for a song's length, 2026-10-18
 
+Status, 2026-10-18: the user answered the plan's four questions and approved the plan (`docs/superpowers/plans/2026-10-18-song-length-end-event.md`), and the build is under way; the decision is D255.
+
 This is for a session that plans the change. Nothing is built yet, and the user has not ruled on the design. The plan needs the user's yes before any build starts (agent rule 3).
 
 ## How this came up
