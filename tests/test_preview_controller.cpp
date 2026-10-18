@@ -362,7 +362,7 @@ TEST_CASE("with no audio device the Preview still loads, muted, with a warning")
     CHECK(pc.has_audio());        // the stem decoded; only the device failed
     CHECK_FALSE(pc.has_error());  // so no "Preview failed"
     CHECK(pc.audio_warning() == "PreviewAudioDevice: ma_device_init failed");
-    CHECK(pc.scrub_end_ms() > 0.0);  // the scene is there to draw
+    CHECK(pc.playback_end_ms() > 0.0);  // the scene is there to draw
     pc.play();
     CHECK(pc.playing());          // the clock runs without a device
 
@@ -393,7 +393,7 @@ TEST_CASE("with an audio device that won't start the Preview still loads, muted,
     CHECK_FALSE(pc.has_error());  // so no "Preview failed"
     CHECK_FALSE(pc.has_audio_device());
     CHECK(pc.audio_warning() == "PreviewAudioDevice: ma_device_start failed");
-    CHECK(pc.scrub_end_ms() > 0.0);  // the scene is there to draw
+    CHECK(pc.playback_end_ms() > 0.0);  // the scene is there to draw
     pc.play();
     CHECK(pc.playing());          // the clock runs without a device
 
@@ -470,18 +470,18 @@ TEST_CASE("closing the Preview frees its render targets; reopening draws again (
 
 // The scrubber ends at the song's length (D255), here the 3 s song.ini
 // states plus app::kSongEndPadMs, not the audio's 5 s end. The slider's range
-// is scrub_end_ms(), so a drag to its right end seeks there, and the thumb
+// is playback_end_ms(), so a drag to its right end seeks there, and the thumb
 // follows the playhead.
 TEST_CASE("scrub marks: the Preview's scrubber ends at the song's length") {
     PreviewController pc(nullptr, nullptr);
     open_and_load(pc, long_audio_chart_stating_3s("prevctl_scrub_len"));
 
-    CHECK(pc.scrub_end_ms() == doctest::Approx(4000.0));  // the slider's right end
-    pc.seek_ms(pc.scrub_end_ms());                         // a drag to that end
+    CHECK(pc.playback_end_ms() == doctest::Approx(4000.0));  // the slider's right end
+    pc.seek_ms(pc.playback_end_ms());                         // a drag to that end
     CHECK(pc.position_ms() == doctest::Approx(4000.0));
 
     pc.seek_ms(2100.0);  // in the tail after the last note
-    CHECK(hydra::app::scrub_thumb_ms(pc.position_ms(), pc.scrub_end_ms()) ==
+    CHECK(hydra::app::scrub_thumb_ms(pc.position_ms(), pc.playback_end_ms()) ==
           doctest::Approx(2100.0));
 }
 
@@ -496,10 +496,9 @@ TEST_CASE("scrub marks: a stated length past the audio ends playback and the scr
     open_and_load(pc, notes);
 
     CHECK(pc.playback_end_ms() == doctest::Approx(10000.0));
-    CHECK(pc.scrub_end_ms() == doctest::Approx(10000.0));
-    pc.seek_ms(pc.scrub_end_ms());
-    CHECK(hydra::app::scrub_thumb_ms(pc.position_ms(), pc.scrub_end_ms()) ==
-          doctest::Approx(pc.scrub_end_ms()));
+    pc.seek_ms(pc.playback_end_ms());
+    CHECK(hydra::app::scrub_thumb_ms(pc.position_ms(), pc.playback_end_ms()) ==
+          doctest::Approx(pc.playback_end_ms()));
 }
 
 // One end for the whole Preview (D255, the user's answer 5): the song's
@@ -511,7 +510,6 @@ TEST_CASE("the Preview's playback, time box and scrubber all end at the song's l
     open_and_load(pc, long_audio_chart_stating_3s("prevctl_jump_len"));
 
     CHECK(pc.playback_end_ms() == doctest::Approx(4000.0));
-    CHECK(pc.scrub_end_ms() == doctest::Approx(4000.0));
     const std::string stamp = pc.time_box().timestamp;
     CHECK(stamp.substr(stamp.find(" / ")) == " / 0:04.000");
     pc.jump_ms(60000.0);

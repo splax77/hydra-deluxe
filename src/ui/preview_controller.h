@@ -194,9 +194,7 @@ public:
     void toggle();
     bool playing() const;
     double position_ms() const;
-    // Where the scrubber ends: playback_end_ms(), the one end.
-    double scrub_end_ms() const;
-    // Where playback stops: the song's length (PreviewTransport::length_ms;
+    // Where the Preview ends: the song's length (PreviewTransport::length_ms;
     // D255, the user's answer 5), or 0 when the song has none and the clock
     // runs free. Play, the clock, jumps, the time box, the scrubber and its
     // gold marks all end here.

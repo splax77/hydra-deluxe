@@ -192,8 +192,8 @@ void test_preview_path_overlay(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->preview->shows_path(first_key));
 
     // Park the playhead mid-song: a reload would rewind it to zero.
-    IM_CHECK(h.app->preview->scrub_end_ms() > 0.0);
-    h.app->preview->seek_ms(h.app->preview->scrub_end_ms() * 0.5);
+    IM_CHECK(h.app->preview->playback_end_ms() > 0.0);
+    h.app->preview->seek_ms(h.app->preview->playback_end_ms() * 0.5);
     ctx->Yield(2);
     double held = h.app->preview->position_ms();
     IM_CHECK(held > 0.0);
@@ -246,8 +246,8 @@ void test_preview_controls(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && pc.score_box().shown; }, 60));
 
     // At the song's end the box reads the selected path's total.
-    IM_CHECK(pc.scrub_end_ms() > kChart0MinMs);
-    pc.seek_ms(pc.scrub_end_ms());
+    IM_CHECK(pc.playback_end_ms() > kChart0MinMs);
+    pc.seek_ms(pc.playback_end_ms());
     hydra::app::PreviewScoreBox end = pc.score_box();
     IM_CHECK(end.shown);
     IM_CHECK(end.available);
@@ -401,7 +401,7 @@ void test_preview_solo_box(ImGuiTestContext* ctx) {
     // its own: the first moment the box shows is on its first chord.
     constexpr double kStepMs = 10.0;
     double start_ms = -1.0;
-    for (double t = 0.0; t <= pc.scrub_end_ms() && start_ms < 0.0; t += kStepMs) {
+    for (double t = 0.0; t <= pc.playback_end_ms() && start_ms < 0.0; t += kStepMs) {
         pc.seek_ms(t);
         if (pc.solo_box().shown) start_ms = t;
     }
@@ -437,7 +437,7 @@ void test_preview_solo_box(ImGuiTestContext* ctx) {
 
     // On to the last note: the end message.
     double end_ms = -1.0;
-    for (double t = start_ms; t <= pc.scrub_end_ms() && end_ms < 0.0; t += kStepMs) {
+    for (double t = start_ms; t <= pc.playback_end_ms() && end_ms < 0.0; t += kStepMs) {
         pc.seek_ms(t);
         if (pc.solo_box().headline == "Perfect Solo!") end_ms = t;
     }
@@ -498,7 +498,7 @@ void test_preview_drain_box(ImGuiTestContext* ctx) {
     // Somewhere the path has SP running. Walk the playhead to find it, so the
     // test needs no timing of its own.
     double active_ms = -1.0;
-    for (double t = 0.0; t <= pc.scrub_end_ms() && active_ms < 0.0; t += 50.0) {
+    for (double t = 0.0; t <= pc.playback_end_ms() && active_ms < 0.0; t += 50.0) {
         pc.seek_ms(t);
         if (pc.drain_box().active) active_ms = t;
     }
@@ -566,7 +566,7 @@ void test_preview_buttons_keys(ImGuiTestContext* ctx) {
     if (!open_preview(ctx)) return;
     auto& pc = *h.app->preview;
     IM_CHECK(!pc.playing());
-    IM_CHECK(pc.scrub_end_ms() > kChart0MinMs);
+    IM_CHECK(pc.playback_end_ms() > kChart0MinMs);
 
     pc.seek_ms(10000.0);
     ctx->ItemClick("**/+5s");
@@ -885,7 +885,7 @@ void test_preview_mode_reload(ImGuiTestContext* ctx) {
 
     settings_combo_pick(ctx, "##prodrums", "##difficulty", "Expert");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Expert"; }, 5));
-    IM_CHECK(wait_until(ctx, [&] { return !pc.busy() && !pc.has_error() && pc.scrub_end_ms() > 0.0; },
+    IM_CHECK(wait_until(ctx, [&] { return !pc.busy() && !pc.has_error() && pc.playback_end_ms() > 0.0; },
                         120));
     IM_CHECK_STR_EQ(pc.error().c_str(), "");
     IM_CHECK(!pc.playing());
@@ -1012,7 +1012,7 @@ void test_preview_overlay_steady(ImGuiTestContext* ctx) {
             IM_CHECK_EQ(pc.overlay_scale(), scale);
         }
         // Past the last activation the box is gone; the scale stays.
-        pc.seek_ms(pc.scrub_end_ms());
+        pc.seek_ms(pc.playback_end_ms());
         ctx->Yield(2);
         IM_CHECK(!pc.next_act_box().shown);
         IM_CHECK_EQ(pc.overlay_scale(), scale);

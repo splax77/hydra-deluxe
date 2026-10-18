@@ -391,9 +391,6 @@ bool PreviewController::playing() const { return transport_.playing(); }
 
 double PreviewController::position_ms() const { return transport_.now_ms(); }
 
-// The scrubber ends where playback does: one end for the whole Preview.
-double PreviewController::scrub_end_ms() const { return playback_end_ms(); }
-
 // Where playback stops: the song's length, as PreviewTransport::length_ms
 // reads it (app::song_length_ms; D255, the user's answer 5). Every reader in
 // this class asks here.
