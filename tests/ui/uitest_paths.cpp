@@ -654,9 +654,9 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
 }
 
 // The GUI test library has no audio, but the chart gives Burnout a length
-// (app::song_length_ms, D255), so the timeline places its activation dots.
-// Burnout's end event comes before its stated 130,303 ms, and the song ends
-// one second after that event. The click works the length out with its
+// (app::song_length_ms, D255, which owns the rule), so the timeline places
+// its activation dots. The literal below is one logged run of that function
+// on Burnout. The click works the length out with its
 // analysis (app::analysis_song_length on the same Song), so no other job
 // reads the chart for it (D87 item 1).
 void test_paths_length_from_click(ImGuiTestContext* ctx) {
