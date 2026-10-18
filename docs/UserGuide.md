@@ -259,7 +259,7 @@ The transport buttons are `-5s`, `< 10 ms`, `Play`/`Pause`, `10 ms >` and `+5s`,
 
 The same keys are drawn as keycaps in a bar under the highway, in the buttons' order. Each button's tooltip names its key too.
 
-The scrubber under the highway shows where you are. Its gold marks are the path's activations, in the same gold as the next-activation box. The scrubber measures position against the song's length, like the Paths timeline, so an activation sits at the same spot on both. When the song's length runs past the last note and the audio, the scrubber ends where playback ends. A chart with no length still scrubs, up to where playback ends, but the Paths timeline shows no marks for it, so there is nothing to line up. Audio that runs past the song's length still plays.<!-- owners: scrub_end_ms (the scrubber's end), app::song_length_ms (the song's length) --> The beat lines run on to the end of the audio.
+The scrubber under the highway shows where you are. Its gold marks are the path's activations, in the same gold as the next-activation box. The scrubber measures position against the song's length, like the Paths timeline, so an activation sits at the same spot on both. The scrubber ends at the song's end, and so does playback: audio that runs past the end doesn't play. A chart with no length shows no gold marks, and nothing stops playback.<!-- owners: PreviewController::playback_end_ms (the one end), app::song_length_ms (the song's length) --> The beat lines run on to the end of the audio.
 
 ### When the settings or the chart change
 
@@ -269,7 +269,7 @@ If the chart file changed since it was analyzed, the Preview draws no path and s
 
 ### The boxes on the highway
 
-The time box, at the top left, shows the measure you're at and the measure where playback ends, the tempo and time signature, and the practice section when the chart has them. Playback ends at the end of the audio (or at the last note, when the audio stops first), and the clock beside the scrubber counts to that same point.
+The time box, at the top left, shows the measure you're at and the measure where playback ends, the tempo and time signature, and the practice section when the chart has them. Playback ends at the song's end, the same point the scrubber ends at, and the clock beside the scrubber counts to it.
 
 A position reads like `m27.2.450`: measure 27, beat 2, and 450 ticks into that beat. A tick is the chart's own smallest step of time, and the chart's resolution sets how many ticks make a quarter note. The beat number counts the beat lines on the highway, so a beat is a quarter note in 4/4 and an eighth note in 6/8 or 7/8. The Paths tab writes positions the same way.
 

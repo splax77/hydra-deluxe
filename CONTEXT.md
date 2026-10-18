@@ -835,14 +835,13 @@ note is dropped. The end event caps the stated length; with no stated length
 left, the end event stands in, then the last note. One
 second is then added, as Clone Hero adds it. No audio is opened for it.
 `app::song_length_ms` works it out (D75, amended by D255), and nothing stores
-it: a click works it out again. The
-Paths timeline measures against the length, so a song with none shows no marks
-there. The Preview's gold marks on the scrubber are placed by it too when there
-is one. With none, they use the transport's playback range instead (D48, D70
-item 1), which is not a song length. The scrubber itself ends no further than
-playback can reach: the shorter of the song length and the playback end (D114
-item 17). `playhead_range` owns both choices, and `PreviewTransport::range()`
-hands out the result.
+it: a click works it out again. It is the one end of a song (D255, the user's
+answer 5). The Paths timeline measures against it, so a song with none shows no
+marks there. In the Preview, playback stops at it, and the time box's total,
+the scrubber's edge and the gold marks all end there too
+(`PreviewTransport::length_ms`). The audio's own length is never an input:
+audio past the end does not play. With no length at all, nothing stops the
+Preview's clock.
 
 **Mixer**:
 The step that reads a chart's stems at one shared position, resamples them to
