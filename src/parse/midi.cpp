@@ -464,33 +464,36 @@ bool is_events_track_name(std::string_view name) {
     return equals_ci(name, kEventsTrackName);
 }
 
-bool is_instrument_track_name(std::string_view name) {
-    return is_drums_track_name(name) ||
-           std::any_of(std::begin(kOtherInstrumentTrackNames), std::end(kOtherInstrumentTrackNames),
+bool is_other_instrument_track_name(std::string_view name) {
+    return std::any_of(std::begin(kOtherInstrumentTrackNames), std::end(kOtherInstrumentTrackNames),
                        [&](std::string_view other) { return equals_ci(name, other); });
 }
 
+bool is_instrument_track_name(std::string_view name) {
+    return is_drums_track_name(name) || is_other_instrument_track_name(name);
+}
+
 std::optional<int64_t> MidiFile::last_note_end_tick() const {
-    const MidiTrack* const drums = drums_track();
     std::optional<int64_t> last;
-    for (size_t i = kFirstInstrumentTrack; i < tracks.size(); ++i) {
-        const MidiTrack& track = tracks[i];
-        if (!is_instrument_track_name(track.name)) continue;
+    const auto consider = [&](const MidiTrack& track) {
         // Only a vocals track reads the pitches below the gems as notes.
         std::optional<int64_t> track_last = track.last_note_tick;
         if (equals_ci(track.name, kVocalsTrackName) && track.last_low_note_tick.has_value() &&
             (!track_last.has_value() || *track.last_low_note_tick > *track_last))
             track_last = track.last_low_note_tick;
-        if (!track_last.has_value()) continue;
-        if (is_drums_track_name(track.name)) {
-            if (&track != drums) continue;
-        } else {
-            const auto first = std::find_if(
-                tracks.begin() + kFirstInstrumentTrack, tracks.begin() + i,
-                [&](const MidiTrack& earlier) { return equals_ci(earlier.name, track.name); });
-            if (first != tracks.begin() + i) continue;
-        }
-        if (!last.has_value() || *track_last > *last) last = track_last;
+        if (track_last.has_value() && (!last.has_value() || *track_last > *last))
+            last = track_last;
+    };
+    // The drum track is the one drums_track picks; the other instruments count
+    // once per name, from the first track that carries it.
+    if (const MidiTrack* const drums = drums_track()) consider(*drums);
+    for (size_t i = kFirstInstrumentTrack; i < tracks.size(); ++i) {
+        const MidiTrack& track = tracks[i];
+        if (!is_other_instrument_track_name(track.name)) continue;
+        const auto first = std::find_if(
+            tracks.begin() + kFirstInstrumentTrack, tracks.begin() + i,
+            [&](const MidiTrack& earlier) { return equals_ci(earlier.name, track.name); });
+        if (first == tracks.begin() + i) consider(track);
     }
     return last;
 }
