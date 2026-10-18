@@ -1,0 +1,9 @@
+Hydra Deluxe 2.10.0 works out where a song ends the way Clone Hero does. Every part of the app now uses that one end: the Paths timeline, the Preview's scrubber and its clock, where playback stops, and the Star Power meter.
+
+**Your saved results carry over.** No song length is saved, so nothing reads `Stale` after the update, and nothing is analyzed again. Scores and paths don't change.
+
+**A song ends where the chart says it ends.** Many charts mark their own end with an end event, a text marker in the chart file (`[end]` in a .mid, `end` or `[end]` in a .chart). Hydra Deluxe used to ignore it and trust the length in song.ini. Now the song ends at the end event when it comes before the song.ini length. A song.ini length that was far too short used to cut the timeline short, and every activation past it piled up at the right edge. For example, one 13:41 song's song.ini says 6:17. That song now ends at its end event, 13:35.5, plus one second: 13:36.5.
+
+**The rule is Clone Hero's.** When song.ini states a length, the song ends at that length or at the end event, whichever comes first. A song.ini length that ends before the last note is wrong, so it's ignored. The song then ends at the end event, or with no end event, where the last note ends. The last note is now the last note of any instrument at any difficulty, not just the drums, and a held note counts to its end. An end event less than one beat after the last note doesn't count. Like the game, one second is added after the end. Hydra Deluxe still never opens the audio to find a length.
+
+**Playback stops at the song's end.** The Preview used to play on to the end of the audio, past where the song ends, while the scrubber stopped short. Now playback, the clock beside the scrubber, and the scrubber's right edge all end at the same point. Audio that runs past the song's end doesn't play, the same as in Clone Hero.
