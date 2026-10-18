@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -622,6 +623,56 @@ TEST_CASE("midi: of two events tracks, only the first one's sections count") {
     const hydra::Song song = hydra::load_songbytes_mid(file, hydra::ChartReading{});
     REQUIRE(song.practice_sections.size() == 1);
     CHECK(song.practice_sections[0].name == "First");
+}
+
+// ---- the end event (Song::end_event_tick) ---------------------------------
+
+TEST_CASE("midi: [end] on the events track is the end event, first one wins") {
+    using namespace testmidi;
+    const std::vector<uint8_t> file = smf_tracks({
+        concat({set_tempo(), end_of_track()}),
+        // An [end] on the drum track, earlier than any on the events track.
+        concat({track_name("PART DRUMS"), text_event("[end]"), note_on(96, 100), end_of_track()}),
+        // Ticks 10, 20, 30 and 40: the wrong case, no brackets, then two [end]s.
+        concat({track_name("EVENTS"), after(10, text_event("[END]")), after(10, text_event("end")),
+                after(10, text_event("[end]")), after(10, text_event("[end]")), end_of_track()}),
+    });
+    const hydra::Song song = hydra::load_songbytes_mid(file, hydra::ChartReading{});
+    CHECK(song.end_event_tick == std::optional<int64_t>(30));
+
+    // An events track with no [end] leaves it unset.
+    const std::vector<uint8_t> none = smf_tracks({
+        concat({set_tempo(), end_of_track()}),
+        concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()}),
+        concat({track_name("EVENTS"), after(10, text_event("[section Intro]")), end_of_track()}),
+    });
+    CHECK_FALSE(hydra::load_songbytes_mid(none, hydra::ChartReading{}).end_event_tick.has_value());
+}
+
+TEST_CASE("midi: the lean read keeps the end event") {
+    using namespace testmidi;
+    const std::vector<uint8_t> file = smf_tracks({
+        concat({set_tempo(), end_of_track()}),
+        concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()}),
+        concat({track_name("EVENTS"), after(1920, text_event("[end]")), end_of_track()}),
+    });
+    for (const hydra::MidiFile& read : both_reads(file)) {
+        REQUIRE(read.events_track() == &read.tracks[2]);
+        // The [end] text and its tick, as pass 3 of the song parser walks them.
+        std::optional<int64_t> end_tick;
+        int64_t elapsed = 0;
+        for (const hydra::Message& msg : read.events_track()->messages) {
+            elapsed += msg.time;
+            if (msg.str_attr == hydra::Message::StrAttr::Text && msg.str == "[end]")
+                end_tick = elapsed;
+        }
+        CHECK(end_tick == std::optional<int64_t>(1920));
+    }
+    // The notes-only reading the song length reparse uses stores the same tick.
+    const hydra::Song song = hydra::load_songbytes_mid(file, hydra::ChartReading{},
+                                                       hydra::core::default_rules(),
+                                                       hydra::kNotesOnlyFills);
+    CHECK(song.end_event_tick == std::optional<int64_t>(1920));
 }
 
 // ---- drum lanes (Song::drum_lanes) ----------------------------------------

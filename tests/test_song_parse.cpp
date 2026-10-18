@@ -254,6 +254,52 @@ TEST_CASE(".chart: [Events] section markers become practice sections") {
     CHECK(plain.practice_sections.empty());
 }
 
+TEST_CASE(".chart: E \"end\" and E \"[end]\" in [Events] are the end event") {
+    // [Events] out of tick order: the first end event in file order is the one
+    // kept, not the one with the lowest tick. "End" is the wrong case, and an
+    // "end" in the drum section is not an event of the song.
+    const auto events_then_drums = [](const std::string& events) {
+        return testchart::chart_bytes(
+            testchart::section("Events", events) +
+            testchart::section("ExpertDrums", "  0 = N 0 0\n  100 = E \"end\"\n  192 = N 1 0\n"));
+    };
+    const Song plain = load_songbytes_chart(events_then_drums("  500 = E \"End\"\n"
+                                                              "  3000 = E \"end\"\n"
+                                                              "  2000 = E \"end\"\n"),
+                                            ChartReading{});
+    CHECK(plain.end_event_tick == std::optional<int64_t>(3000));
+
+    const Song bracketed = load_songbytes_chart(events_then_drums("  500 = E \"End\"\n"
+                                                                  "  4000 = E \"[end]\"\n"
+                                                                  "  2000 = E \"end\"\n"),
+                                                ChartReading{});
+    CHECK(bracketed.end_event_tick == std::optional<int64_t>(4000));
+
+    const Song wrong_case = load_songbytes_chart(events_then_drums("  500 = E \"End\"\n"
+                                                                   "  600 = E \"[END]\"\n"),
+                                                 ChartReading{});
+    CHECK_FALSE(wrong_case.end_event_tick.has_value());
+
+    // Two [Events] sections: the first end event in the file stays, even though
+    // a later section replaces the practice sections; a first section with no
+    // end event leaves the second one's to count.
+    const auto two_events = [](const std::string& first, const std::string& second) {
+        return testchart::chart_bytes(
+            testchart::section("Events", first) + testchart::section("Events", second) +
+            testchart::section("ExpertDrums", "  0 = N 0 0\n  192 = N 1 0\n"));
+    };
+    CHECK(load_songbytes_chart(two_events("  3000 = E \"end\"\n", "  2000 = E \"end\"\n"),
+                               ChartReading{})
+              .end_event_tick == std::optional<int64_t>(3000));
+    CHECK(load_songbytes_chart(two_events("  100 = E \"section A\"\n", "  2000 = E \"end\"\n"),
+                               ChartReading{})
+              .end_event_tick == std::optional<int64_t>(2000));
+
+    // A chart with no [Events] section has no end event.
+    CHECK_FALSE(load_songbytes_chart(multidiff::chart_bytes(), ChartReading{})
+                    .end_event_tick.has_value());
+}
+
 namespace {
 
 // The .chart fixture with one solo whose `E soloend` sits on its third note.

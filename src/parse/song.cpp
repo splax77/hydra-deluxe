@@ -66,6 +66,14 @@ bool section_name_of(std::string_view body, std::string* name) {
     return true;
 }
 
+// The body of the text event that marks where the song ends (Song::end_event_tick).
+constexpr std::string_view kEndEventBody = "end";
+
+// Whether a text event's body, its brackets already taken off, is the end
+// event. The match is exact and case-sensitive, as Clone Hero's own string
+// compare is. Both readers ask here; each says which brackets it takes off.
+bool is_end_event(std::string_view body) { return body == kEndEventBody; }
+
 // Practice sections in tick order, the order Song promises. A .chart's
 // [Events] need not be sorted. A .mid's events track (MidiFile::events_track)
 // is read in tick order already, but both parsers call this once at the end,
@@ -1409,8 +1417,9 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
         song.dynamics_enabled = dynamics_enabled_;
     }
 
-    // Pass 3: practice sections, which live on the events track as bracketed
-    // text metas, sorted once at the end.
+    // Pass 3: practice sections and the end event, which live on the events
+    // track as bracketed text metas. Sections are sorted once at the end; the
+    // first end event is kept.
     if (const MidiTrack* const events = mid.events_track()) {
         elapsed = 0;
         for (const Message& msg : events->messages) {
@@ -1418,9 +1427,11 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
             if (msg.str_attr != Message::StrAttr::Text) continue;
             const std::string& s = msg.str;
             if (s.size() < 2 || s.front() != '[' || s.back() != ']') continue;
+            const std::string_view body = std::string_view(s).substr(1, s.size() - 2);
+            if (is_end_event(body) && !song.end_event_tick.has_value())
+                song.end_event_tick = elapsed;
             std::string name;
-            if (section_name_of(std::string_view(s).substr(1, s.size() - 2), &name))
-                song.practice_sections.push_back({elapsed, name});
+            if (section_name_of(body, &name)) song.practice_sections.push_back({elapsed, name});
         }
     }
     sort_practice_sections(song.practice_sections);
@@ -1717,6 +1728,8 @@ private:
     // unset when the file has no closed section of that name.
     std::optional<std::vector<ChartLine>> drum_lines_;
     std::optional<std::vector<SongSection>> event_sections_;
+    // The events section's first end event (Song::end_event_tick).
+    std::optional<int64_t> event_end_tick_;
 
     Chord chord_;
     std::vector<COp> ops_;  // one tick's handlers, reused tick to tick
@@ -1786,15 +1799,17 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
     // Every line of every section is classified, so a number the reader
     // refuses throws wherever it sits. What is kept depends on the section:
     // [Song] and [SyncTrack] whole, the drum section as its tick lines,
-    // [Events] as its practice sections, any other section nothing. A section
-    // counts once its '}' is read, and a later section of the same name
-    // replaces an earlier one.
+    // [Events] as its practice sections and end event, any other section
+    // nothing. A section counts once its '}' is read, and a later section of
+    // the same name replaces an earlier one (the end event is the exception:
+    // the first one in the file stays).
     enum class Keep { Whole, Drums, Events, Nothing };
     bool in_section = false;
     Keep keep = Keep::Nothing;
     std::optional<ChartSection> whole;
     std::vector<ChartLine> drums;
     std::vector<SongSection> events;
+    std::optional<int64_t> events_end;
     size_t pos = 0;
     while (pos < text.size()) {
         const std::string_view line = next_chart_line(text, pos);
@@ -1809,7 +1824,13 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
                         whole.reset();
                         break;
                     case Keep::Drums: drum_lines_ = std::move(drums); break;
-                    case Keep::Events: event_sections_ = std::move(events); break;
+                    case Keep::Events:
+                        event_sections_ = std::move(events);
+                        // First end event over the whole file, as Clone Hero's
+                        // setter keeps it: a later [Events] section adds none
+                        // once one is set.
+                        if (!event_end_tick_.has_value()) event_end_tick_ = events_end;
+                        break;
                     case Keep::Nothing: break;
                 }
                 in_section = false;
@@ -1834,6 +1855,13 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
                     std::string name;
                     if (l.kind == LineKind::Event && section_name_of(event, &name))
                         events.push_back({l.tick, std::move(name)});
+                    // A .chart may write the end event with or without its
+                    // brackets; one pair comes off when both are there.
+                    std::string_view body = event;
+                    if (body.size() >= 2 && body.front() == '[' && body.back() == ']')
+                        body = body.substr(1, body.size() - 2);
+                    if (l.kind == LineKind::Event && is_end_event(body) && !events_end.has_value())
+                        events_end = l.tick;
                 } else {
                     const ChartLine l = classify_chart_line(lhs, rhs, mix_digit, nullptr);
                     if (keep == Keep::Drums && l.kind != LineKind::Prop) drums.push_back(l);
@@ -1856,6 +1884,7 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
             } else if (name == kEventsSection) {
                 keep = Keep::Events;
                 events.clear();
+                events_end.reset();
             } else {
                 keep = Keep::Nothing;
             }
@@ -2095,6 +2124,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
         song.practice_sections = std::move(*event_sections_);
         sort_practice_sections(song.practice_sections);
     }
+    song.end_event_tick = event_end_tick_;
     song.solo_sections = find_solo_sections(song.sequence);
     // Unlit: the loader tail picks their pads (finish_loaded_song).
     song.drum_lanes = std::move(lanes_);
