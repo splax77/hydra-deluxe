@@ -1800,9 +1800,9 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
     // refuses throws wherever it sits. What is kept depends on the section:
     // [Song] and [SyncTrack] whole, the drum section as its tick lines,
     // [Events] as its practice sections and end event, any other section
-    // nothing. A section
-    // counts once its '}' is read, and a later section of the same name
-    // replaces an earlier one.
+    // nothing. A section counts once its '}' is read, and a later section of
+    // the same name replaces an earlier one (the end event is the exception:
+    // the first one in the file stays).
     enum class Keep { Whole, Drums, Events, Nothing };
     bool in_section = false;
     Keep keep = Keep::Nothing;
@@ -1826,7 +1826,10 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
                     case Keep::Drums: drum_lines_ = std::move(drums); break;
                     case Keep::Events:
                         event_sections_ = std::move(events);
-                        event_end_tick_ = events_end;
+                        // First end event over the whole file, as Clone Hero's
+                        // setter keeps it: a later [Events] section adds none
+                        // once one is set.
+                        if (!event_end_tick_.has_value()) event_end_tick_ = events_end;
                         break;
                     case Keep::Nothing: break;
                 }
