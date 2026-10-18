@@ -886,3 +886,9 @@ What it changes, measured on a copy of the installed hydra.db on 2026-10-16: 19,
 2. **EVENTS.** "Match the game (Recommended)". The first track named "events" in any case, and only that one.
 3. **Saved results.** "No bump (Recommended)". `kResultsStamp` in `src/store/stored_versions.h` stays. An affected chart keeps its old saved result until a click analyzes it again, as in D252.
 4. **Library count.** "No, skip the count (Recommended)". How many library charts change was not counted.
+
+**D254 (session 65b16299), 2026-10-17. With Note Shuffle on, a drum lane lights every pad its notes land on.** A drum lane is the coloured strip the Preview draws over a roll or trill. The user's chart "Glide" (Between the Buried and Me) has one single lane over a red snare roll. Note Shuffle turns that roll into yellow cymbals and blue toms in turn, and the game's rule (D112) lights only the pad of the first note, so the lane showed only blue. The user reported that Clone Hero also draws only blue there, and ruled: "clone hero only draws the blue. this will be an intentional deviation from the game. it looks better with both." The user's calls in chat:
+1. **Which pads.** "Every pad its notes use." A lane lights every column that a note inside it lands on. Kicks never light a column. A yellow tom and a yellow cymbal share the yellow column.
+2. **When.** "Only with Note Shuffle on." With Note Shuffle off, lanes still follow D112, Clone Hero's rule, exactly as before.
+
+`light_drum_lanes` in `src/parse/song.cpp` stays the one owner. The loader tail passes it the Note Shuffle switch, and both modes read the same notes (`lane_span`). This changes only what the Preview draws; nothing in the search or the stored record reads a lane.

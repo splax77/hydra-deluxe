@@ -529,8 +529,9 @@ TEST_CASE("drum lanes take their pads from the shuffled notes with Note Shuffle 
     // Each chart is read with Note Shuffle off and on. The lanes sit on the
     // same ticks either way. Their pads follow the shuffled notes, because
     // the game's lane holds the notes the shuffle recolours (D112's
-    // 2026-10-17 correction), so some lanes light other pads. The shuffled
-    // pads are pinned from one run of the code.
+    // 2026-10-17 correction), and with Note Shuffle on a lane lights every
+    // pad its notes land on (D254), so some lanes light other pads. The
+    // shuffled pads are pinned from one run of the code.
     constexpr NoteColor R = NoteColor::Red, Y = NoteColor::Yellow, B = NoteColor::Blue,
                         G = NoteColor::Green;
     struct Want {
@@ -540,7 +541,7 @@ TEST_CASE("drum lanes take their pads from the shuffled notes with Note Shuffle 
     const Want wants[] = {
         // Eight single lanes, all red unshuffled.
         {"Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart",
-         {{R}, {B}, {Y}, {G}, {B}, {B}, {R}, {R}}},
+         {{R, Y, G}, {B, G}, {Y, B}, {B, G}, {B, G}, {B, G}, {R, Y, B, G}, {R, Y, G}}},
         // One double lane, yellow and green unshuffled.
         {"Summer Blast _25 Setlist/Tier 4/Rush - YYZ/notes.mid", {{B, G}}},
     };
@@ -564,6 +565,31 @@ TEST_CASE("drum lanes take their pads from the shuffled notes with Note Shuffle 
         }
         CHECK(differs);
     }
+}
+
+TEST_CASE(".chart: with Note Shuffle off, a lane over several pads keeps the game's pads") {
+    // Red, yellow cymbal, blue tom and green cymbal in turn, under a single
+    // lane and then a double lane. The game's rule picks from the first notes
+    // only, so the later pads stay dark (D112).
+    const std::string notes = "  0 = N 1 0\n  48 = N 2 0\n  48 = N 66 0\n  96 = N 3 0\n"
+                              "  144 = N 4 0\n  144 = N 68 0\n  192 = N 1 0\n";
+    const Song single = lane_chart(notes + "  0 = S 65 240\n");
+    REQUIRE(single.drum_lanes.size() == 1);
+    CHECK(single.drum_lanes[0].pads == Pads{NoteColor::Red});
+    const Song twin = lane_chart(notes + "  0 = S 66 240\n");
+    REQUIRE(twin.drum_lanes.size() == 1);
+    CHECK(twin.drum_lanes[0].pads == Pads{NoteColor::Red, NoteColor::Yellow});
+}
+
+TEST_CASE(".chart: with Note Shuffle on, a single lane over a red roll lights every pad") {
+    // A red snare roll under one single lane, as in the user's chart Glide.
+    // Note Shuffle spreads the roll over several pads, and the lane lights
+    // each of them (D254). The pads are pinned from one run of the code.
+    std::string lines = "  0 = S 65 768\n";
+    for (int64_t tick = 0; tick < 768; tick += 48) lines += testchart::line(tick, "N 1 0");
+    const Song song = lane_chart(lines, /*pro=*/true, /*noteshuffle=*/true);
+    REQUIRE(song.drum_lanes.size() == 1);
+    CHECK(song.drum_lanes[0].pads == Pads{NoteColor::Red, NoteColor::Yellow, NoteColor::Blue});
 }
 
 TEST_CASE("Song::note_count: the chart's note total under each 2x Bass setting") {

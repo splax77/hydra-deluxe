@@ -182,10 +182,10 @@ struct SoloSection {
 
 // One Clone Hero drum lane: the coloured strip the game shows down one pad
 // column (a single lane) or two (a double lane) during a roll or trill. It
-// runs from start_tick to end_tick. `pads` holds the one or two colour
-// columns it lights, in red-to-green order; which ones is light_drum_lanes's
-// rule in song.cpp. Display only: nothing in the search or the stored record
-// reads it.
+// runs from start_tick to end_tick. `pads` holds the colour columns it
+// lights, in red-to-green order; which ones is light_drum_lanes's rule in
+// song.cpp. Display only: nothing in the search or the stored record reads
+// it.
 struct DrumLane {
     int64_t start_tick = 0;
     int64_t end_tick = 0;
@@ -262,8 +262,9 @@ public:
     // Drum lanes shown at the loaded difficulty, in lane-start order. The
     // loaders light them once, after Note Shuffle, so with Note Shuffle on
     // the pads are the shuffled notes' pads: the game's lane holds its notes,
-    // which the shuffle recolours. See light_drum_lanes in song.cpp. Display
-    // only; nothing in the search or the stored record reads it.
+    // which the shuffle recolours. With Note Shuffle on the pad rule also
+    // leaves the game's on purpose (D254). See light_drum_lanes in song.cpp.
+    // Display only; nothing in the search or the stored record reads it.
     std::vector<DrumLane> drum_lanes;
 
     // Snapshot the timing indexes from the current maps. Called once the tempo

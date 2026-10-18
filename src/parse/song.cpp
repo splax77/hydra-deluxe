@@ -93,9 +93,13 @@ std::vector<SoloSection> find_solo_sections(const std::vector<SongTimestamp>& se
     return sections;
 }
 
-// A chord's pads as a drum lane sees them: how many non-kick notes it has,
-// and the lowest and highest of them in Clone Hero's note-bit order (the
-// game's lane builder compares lane_bit values). Kicks never count.
+// Whether a note can light a drum lane's column. Kicks never do: a lane runs
+// down a pad column, and the kick has none.
+bool lights_lane_pad(const ChordNote& note) { return note.colortype != NoteColor::Kick; }
+
+// A chord's pads as a drum lane sees them: how many notes it has that light
+// a pad (lights_lane_pad), and the lowest and highest of them in Clone Hero's
+// note-bit order (the game's lane builder compares lane_bit values).
 struct LanePads {
     int count = 0;
     NoteColor lowest = NoteColor::Red;
@@ -115,7 +119,7 @@ LanePads lane_pads(const Chord& chord) {
     LanePads out;
     int low_rank = 0, high_rank = 0;
     for (const ChordNote& note : chord.note_list()) {
-        if (note.colortype == NoteColor::Kick) continue;
+        if (!lights_lane_pad(note)) continue;
         const int rank = lane_bit_rank(note);
         if (out.count == 0 || rank < low_rank) {
             low_rank = rank;
@@ -130,57 +134,97 @@ LanePads lane_pads(const Chord& chord) {
     return out;
 }
 
-// The one place a drum lane's pads are worked out (Clone Hero's rule, chosen
-// by the user). The loader tail (finish_loaded_song) calls it once, with the
-// lanes the parser recorded at the loaded difficulty, after the Note Shuffle
-// switch. So with Note Shuffle on, a lane lights the shuffled notes' pads. The
-// game builds its lanes before its shuffle, but each lane holds references
-// to its notes, not a colour, and the shuffle then recolours those notes in
-// place (D112's 2026-10-17 correction names the listings). Each lane starts at
-// the first chord with a pad from one tick before the lane to its end; a lane
-// with none there is dropped. A single lane lights that chord's lowest pad. A
-// double lane also lights the highest pad of a second chord: the same chord
-// when it has two pads or more, otherwise the next chord with a pad, wherever
-// it falls. The game's own cut-off for a lane whose notes start late is
+// The chords a drum lane picks its pads from: those from one tick before the
+// lane's start up to its end, as [first, last) in `sequence`.
+using LaneSpan = std::pair<std::vector<SongTimestamp>::const_iterator,
+                           std::vector<SongTimestamp>::const_iterator>;
+LaneSpan lane_span(const DrumLane& lane, const std::vector<SongTimestamp>& sequence) {
+    const auto first = std::lower_bound(sequence.begin(), sequence.end(), lane.start_tick - 1,
+                                        [](const SongTimestamp& ts, int64_t tick) {
+                                            return ts.timecode.ticks() < tick;
+                                        });
+    auto last = first;
+    while (last != sequence.end() && last->timecode.ticks() < lane.end_tick) ++last;
+    return {first, last};
+}
+
+// Clone Hero's pads for one lane (D112): picked from the first chords with a
+// pad. Empty when the span has none.
+std::vector<NoteColor> game_lane_pads(const DrumLane& lane, const LaneSpan& span,
+                                      const std::vector<SongTimestamp>& sequence) {
+    auto it = span.first;
+    LanePads first;
+    for (; it != span.second; ++it) {
+        first = lane_pads(it->chord);
+        if (first.count > 0) break;
+    }
+    if (first.count == 0) return {};
+    std::vector<NoteColor> pads = {first.lowest};
+    if (lane.double_lane) {
+        std::optional<NoteColor> second;
+        if (first.count >= 2) {
+            second = first.highest;
+        } else {
+            for (auto next = it + 1; next != sequence.end(); ++next) {
+                const LanePads p = lane_pads(next->chord);
+                if (p.count > 0) {
+                    second = p.highest;
+                    break;
+                }
+            }
+        }
+        if (second && *second != first.lowest) pads.push_back(*second);
+    }
+    return pads;
+}
+
+// Every pad a note in the span lands on (D254), each colour once. A yellow
+// tom and a yellow cymbal share the yellow column, so they light it once.
+std::vector<NoteColor> every_lane_pad(const LaneSpan& span) {
+    std::vector<NoteColor> pads;
+    for (auto it = span.first; it != span.second; ++it) {
+        for (const ChordNote& note : it->chord.note_list()) {
+            if (!lights_lane_pad(note)) continue;
+            if (std::find(pads.begin(), pads.end(), note.colortype) == pads.end())
+                pads.push_back(note.colortype);
+        }
+    }
+    return pads;
+}
+
+// The one place a drum lane's pads are worked out. The loader tail
+// (finish_loaded_song) calls it once, with the lanes the parser recorded at
+// the loaded difficulty, after the Note Shuffle switch, and passes that
+// switch here.
+//
+// With Note Shuffle off, a lane follows Clone Hero's rule (game_lane_pads,
+// chosen by the user in D112). With it on, a lane lights every pad its
+// shuffled notes land on (every_lane_pad). That is a deliberate deviation
+// from the game, which still picks from the first notes: the user ruled that
+// a shuffled roll looks better with every pad lit (D254). Either way the
+// lane sees the shuffled notes, because the game's lane holds references to
+// its notes and the shuffle recolours them in place (D112's 2026-10-17
+// correction names the listings).
+//
+// Both modes read the same span (lane_span), and a lane with no pad there is
+// dropped. The game's own cut-off for a lane whose notes start late is
 // unknown, so none is applied (the user's decision). Returned in lane-start
 // order, each lane's pads in red-to-green order with a repeated colour once.
 std::vector<DrumLane> light_drum_lanes(std::vector<DrumLane> lanes,
-                                       const std::vector<SongTimestamp>& sequence) {
+                                       const std::vector<SongTimestamp>& sequence,
+                                       bool noteshuffle) {
     std::stable_sort(lanes.begin(), lanes.end(), [](const DrumLane& a, const DrumLane& b) {
         return a.start_tick < b.start_tick;
     });
     std::vector<DrumLane> lit;
     lit.reserve(lanes.size());
     for (DrumLane& lane : lanes) {
-        auto it = std::lower_bound(sequence.begin(), sequence.end(), lane.start_tick - 1,
-                                   [](const SongTimestamp& ts, int64_t tick) {
-                                       return ts.timecode.ticks() < tick;
-                                   });
-        LanePads first;
-        for (; it != sequence.end() && it->timecode.ticks() < lane.end_tick; ++it) {
-            first = lane_pads(it->chord);
-            if (first.count > 0) break;
-        }
-        if (first.count == 0) continue;
-        lane.pads = {first.lowest};
-        if (lane.double_lane) {
-            std::optional<NoteColor> second;
-            if (first.count >= 2) {
-                second = first.highest;
-            } else {
-                for (auto next = it + 1; next != sequence.end(); ++next) {
-                    const LanePads p = lane_pads(next->chord);
-                    if (p.count > 0) {
-                        second = p.highest;
-                        break;
-                    }
-                }
-            }
-            if (second && *second != first.lowest) lane.pads.push_back(*second);
-            std::sort(lane.pads.begin(), lane.pads.end(), [](NoteColor a, NoteColor b) {
-                return static_cast<int>(a) < static_cast<int>(b);
-            });
-        }
+        const LaneSpan span = lane_span(lane, sequence);
+        lane.pads = noteshuffle ? every_lane_pad(span) : game_lane_pads(lane, span, sequence);
+        if (lane.pads.empty()) continue;
+        std::sort(lane.pads.begin(), lane.pads.end(), [](NoteColor a, NoteColor b) {
+            return static_cast<int>(a) < static_cast<int>(b);
+        });
         lit.push_back(std::move(lane));
     }
     return lit;
@@ -2107,10 +2151,12 @@ void apply_shuffle_switch(Song& song, bool pro, bool noteshuffle) {
 // chart. The drum lanes are lit here, after the Note Shuffle switch, because
 // the game's lanes hold notes and its shuffle recolours them (see
 // light_drum_lanes; D112's 2026-10-17 correction says what was and was not
-// read in the game).
+// read in the game). The switch is passed on too, because with Note Shuffle
+// on the lanes deliberately leave the game's rule (D254).
 void finish_loaded_song(Song& song, const ChartReading& reading) {
     apply_shuffle_switch(song, reading.prodrums, reading.noteshuffle);
-    song.drum_lanes = light_drum_lanes(std::move(song.drum_lanes), song.sequence);
+    song.drum_lanes =
+        light_drum_lanes(std::move(song.drum_lanes), song.sequence, reading.noteshuffle);
     trim_parsed_song(song);
 }
 
