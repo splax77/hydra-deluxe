@@ -282,6 +282,21 @@ TEST_CASE(".chart: E \"end\" and E \"[end]\" in [Events] are the end event") {
                                                  ChartReading{});
     CHECK_FALSE(wrong_case.end_event_tick.has_value());
 
+    // Two [Events] sections: the first end event in the file stays, even though
+    // a later section replaces the practice sections; a first section with no
+    // end event leaves the second one's to count.
+    const auto two_events = [](const std::string& first, const std::string& second) {
+        return testchart::chart_bytes(
+            testchart::section("Events", first) + testchart::section("Events", second) +
+            testchart::section("ExpertDrums", "  0 = N 0 0\n  192 = N 1 0\n"));
+    };
+    CHECK(load_songbytes_chart(two_events("  3000 = E \"end\"\n", "  2000 = E \"end\"\n"),
+                               ChartReading{})
+              .end_event_tick == std::optional<int64_t>(3000));
+    CHECK(load_songbytes_chart(two_events("  100 = E \"section A\"\n", "  2000 = E \"end\"\n"),
+                               ChartReading{})
+              .end_event_tick == std::optional<int64_t>(2000));
+
     // A chart with no [Events] section has no end event.
     CHECK_FALSE(load_songbytes_chart(multidiff::chart_bytes(), ChartReading{})
                     .end_event_tick.has_value());
