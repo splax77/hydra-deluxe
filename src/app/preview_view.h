@@ -82,9 +82,10 @@ struct PreviewFill {
     PreviewFillState state = PreviewFillState::Hidden;
 };
 
-// One Clone Hero drum lane (a roll or trill marker): a strip down one pad
-// column, or two for a double lane, over the lane's span. The pads are the
-// chart's own columns; a kick is never one.
+// One Clone Hero drum lane (a roll or trill marker): a strip down each pad
+// column it lights, over the lane's span. Which pads it lights is
+// light_drum_lanes's rule in song.cpp. The pads are the chart's own columns;
+// a kick is never one.
 struct PreviewDrumLane {
     PreviewSpan span;
     std::vector<PreviewLane> pads;

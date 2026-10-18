@@ -60,8 +60,8 @@ struct TrackInstant {
     std::vector<TrackGem> notes;
     Toggle overdrive = Toggle::Empty;  // SP phrase (Onyx: overdrive)
     Toggle solo = Toggle::Empty;
-    // Clone Hero's drum lanes, one span field per pad (a double lane is on in
-    // two of them at once). drum_lane_field names each pad's field.
+    // Clone Hero's drum lanes, one span field per pad (a lane is on in every
+    // pad it lights at once). drum_lane_field names each pad's field.
     Toggle drum_lane_red = Toggle::Empty;
     Toggle drum_lane_yellow = Toggle::Empty;
     Toggle drum_lane_blue = Toggle::Empty;

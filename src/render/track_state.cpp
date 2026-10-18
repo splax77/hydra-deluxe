@@ -289,7 +289,7 @@ TrackState build_track_state(const PreviewScene& scene, const TrackStateOptions&
     // come from the fill states and activations (set_overlay_intervals).
     for (const PreviewSpan& s : scene.sp_phrases) st.overdrive_.push_back(span_interval(scene, s));
     for (const PreviewSpan& s : scene.solos) st.solo_.push_back(span_interval(scene, s));
-    // A double lane lights two pads over the same span; a kick is never a lane.
+    // A lane lights each of its pads over the same span; a kick is never a lane.
     for (const app::PreviewDrumLane& l : scene.drum_lanes)
         for (PreviewLane lane : l.pads)
             if (const std::optional<Pad> pad = pad_of(lane))
