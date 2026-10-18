@@ -353,8 +353,9 @@ TrackScan scan_track(const uint8_t* data, size_t pos, size_t end,
         [&](int high, uint8_t d1, uint8_t d2, int64_t pending) {
             // This walk keeps nothing, so `pending` is the absolute tick, and
             // ticks only grow along a track.
-            scan.last_note_tick = pending;
-            if (filter.keeps(note_message(high, d1, d2, 0))) ++scan.kept_notes;
+            const Message msg = note_message(high, d1, d2, 0);
+            if (is_playable_note_pitch(msg.note)) scan.last_note_tick = pending;
+            if (filter.keeps(msg)) ++scan.kept_notes;
             return false;
         });
     return scan;
@@ -519,7 +520,7 @@ MidiTrack MidiFile::parse_track(const uint8_t* data, size_t pos, size_t end) {
         [&](int high, uint8_t d1, uint8_t d2, int64_t pending) {
             track.messages.push_back(note_message(high, d1, d2, pending));
             tick += pending;
-            track.last_note_tick = tick;
+            if (is_playable_note_pitch(track.messages.back().note)) track.last_note_tick = tick;
             return true;
         });
     return track;

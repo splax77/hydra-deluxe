@@ -128,13 +128,23 @@ inline constexpr std::string_view kOtherInstrumentTrackNames[] = {
 // kOtherInstrumentTrackNames, in any ASCII case (as is_drums_track_name).
 bool is_instrument_track_name(std::string_view name);
 
+// Whether a note-on or note-off pitch on an instrument track is a playable
+// note. The pitches below it (vocal range and lyric shifts) and above it (solo,
+// Star Power, versus phrase, tom, fill, Big Rock Ending, tremolo and trill
+// markers) mark the notes without being notes. The layouts live in
+// GuitarGame_ChartFormats, docs/Chart-File-Formats/mid-format/Tracks:
+// 5-Fret-Guitar.md, 6-Fret-Guitar.md, Drums.md and Vocals.md put the first
+// marker at 103 and the lowest vocal note at 36.
+inline bool is_playable_note_pitch(int pitch) { return pitch >= 36 && pitch < 103; }
+
 class MidiTrack {
 public:
     // Chosen by MidiFile::parse_track (D78).
     std::string name;
     std::vector<Message> messages;
-    // The tick of the track's last note-on or note-off, whether or not the
-    // read kept it, or nullopt when the track has no note message. Both
+    // The tick of the track's last note-on or note-off of a playable pitch
+    // (is_playable_note_pitch), whether or not the read kept it, or nullopt
+    // when the track has none. Both
     // readers fill it, so MidiFile::last_note_end_tick reads the same value
     // from either.
     std::optional<int64_t> last_note_tick;

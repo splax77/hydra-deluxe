@@ -682,13 +682,17 @@ TEST_CASE("midi: a bass sustain past the last drum note is the last note end; BE
     const std::vector<uint8_t> file = smf_tracks({
         concat({set_tempo(), end_of_track()}),
         // The last drum note ends at tick 10, and a pitch the lean filter
-        // drops (12) ends at tick 480.
+        // drops (40) ends at tick 480. A Big Rock Ending marker (120) held to
+        // tick 3000 is not a note.
         concat({track_name("PART DRUMS"), note_on(96, 100), after(10, note_off(96)),
-                after(10, note_on(12, 100)), after(460, note_off(12)), end_of_track()}),
+                after(10, note_on(40, 100)), after(460, note_off(40)),
+                note_on(120, 100), after(2520, note_off(120)), end_of_track()}),
         // The bass note starts before the drums end and is held to tick 2000.
-        concat({track_name("PART BASS"), after(5, note_on(40, 100)), after(1995, note_off(40)),
+        // A solo marker (103) and a Star Power marker (116) run on to 4000.
+        concat({track_name("PART BASS"), after(5, note_on(60, 100)), after(1995, note_off(60)),
+                note_on(103, 100), note_on(116, 100), after(2000, note_off(103)), note_off(116),
                 end_of_track()}),
-        concat({track_name("BEAT"), after(5000, note_on(12, 100)), after(10, note_off(12)), end_of_track()}),
+        concat({track_name("BEAT"), after(5000, note_on(40, 100)), after(10, note_off(40)), end_of_track()}),
         concat({track_name("VENUE"), after(6000, note_on(40, 100)), end_of_track()}),
         concat({track_name("EVENTS"), after(7000, note_on(40, 100)), text_event("[end]"),
                 end_of_track()}),
