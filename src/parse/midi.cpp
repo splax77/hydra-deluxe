@@ -324,6 +324,8 @@ bool timing_meta(int meta_type) {
 // meta_message refuses) but never low, and it only sizes a vector.
 struct TrackScan {
     std::string name;
+    std::optional<int64_t> last_note_tick;      // MidiTrack::last_note_tick
+    std::optional<int64_t> last_low_note_tick;  // MidiTrack::last_low_note_tick
     size_t timing_metas = 0;  // timing_meta
     size_t text_metas = 0;    // text_meta
     size_t kept_notes = 0;    // MidiLeanFilter::keeps
@@ -349,8 +351,13 @@ TrackScan scan_track(const uint8_t* data, size_t pos, size_t end,
             if (text_meta(meta_type, &text_type)) ++scan.text_metas;
             return false;
         },
-        [&](int high, uint8_t d1, uint8_t d2, int64_t) {
-            if (filter.keeps(note_message(high, d1, d2, 0))) ++scan.kept_notes;
+        [&](int high, uint8_t d1, uint8_t d2, int64_t pending) {
+            // This walk keeps nothing, so `pending` is the absolute tick, and
+            // ticks only grow along a track.
+            const Message msg = note_message(high, d1, d2, 0);
+            if (is_gem_pitch(msg.note)) scan.last_note_tick = pending;
+            if (is_low_vocal_pitch(msg.note)) scan.last_low_note_tick = pending;
+            if (filter.keeps(msg)) ++scan.kept_notes;
             return false;
         });
     return scan;
@@ -409,7 +416,10 @@ MidiFile MidiFile::lean(const uint8_t* data, size_t size, const MidiLeanFilter& 
     walk_chunks(data, size, mf.format, mf.ticks_per_beat, [&](size_t start, size_t end) {
         ranges.emplace_back(start, end);
         scans.push_back(scan_track(data, start, end, filter));
-        mf.tracks.emplace_back().name = std::move(scans.back().name);
+        MidiTrack& track = mf.tracks.emplace_back();
+        track.name = std::move(scans.back().name);
+        track.last_note_tick = scans.back().last_note_tick;
+        track.last_low_note_tick = scans.back().last_low_note_tick;
     });
 
     // Then each track keeps only what its role reads (see the header).
@@ -454,6 +464,37 @@ bool is_events_track_name(std::string_view name) {
     return equals_ci(name, kEventsTrackName);
 }
 
+bool is_instrument_track_name(std::string_view name) {
+    return is_drums_track_name(name) ||
+           std::any_of(std::begin(kOtherInstrumentTrackNames), std::end(kOtherInstrumentTrackNames),
+                       [&](std::string_view other) { return equals_ci(name, other); });
+}
+
+std::optional<int64_t> MidiFile::last_note_end_tick() const {
+    const MidiTrack* const drums = drums_track();
+    std::optional<int64_t> last;
+    for (size_t i = kFirstInstrumentTrack; i < tracks.size(); ++i) {
+        const MidiTrack& track = tracks[i];
+        if (!is_instrument_track_name(track.name)) continue;
+        // Only a vocals track reads the pitches below the gems as notes.
+        std::optional<int64_t> track_last = track.last_note_tick;
+        if (equals_ci(track.name, kVocalsTrackName) && track.last_low_note_tick.has_value() &&
+            (!track_last.has_value() || *track.last_low_note_tick > *track_last))
+            track_last = track.last_low_note_tick;
+        if (!track_last.has_value()) continue;
+        if (is_drums_track_name(track.name)) {
+            if (&track != drums) continue;
+        } else {
+            const auto first = std::find_if(
+                tracks.begin() + kFirstInstrumentTrack, tracks.begin() + i,
+                [&](const MidiTrack& earlier) { return equals_ci(earlier.name, track.name); });
+            if (first != tracks.begin() + i) continue;
+        }
+        if (!last.has_value() || *track_last > *last) last = track_last;
+    }
+    return last;
+}
+
 const MidiTrack* MidiFile::drums_track() const {
     for (size_t i = kFirstInstrumentTrack; i < tracks.size(); ++i)
         if (is_drums_track_name(tracks[i].name)) return &tracks[i];
@@ -474,6 +515,7 @@ MidiTrack MidiFile::parse_track(const uint8_t* data, size_t pos, size_t end) {
     track.messages.reserve((end - pos) / 3);
 
     TrackNamePick pick;
+    int64_t tick = 0;  // the absolute tick of the last kept message
     walk_track(
         data, pos, end,
         [&](int meta_type, const uint8_t* payload, size_t plen, int64_t pending) {
@@ -481,10 +523,15 @@ MidiTrack MidiFile::parse_track(const uint8_t* data, size_t pos, size_t end) {
             if (!meta_message(meta_type, payload, plen, pending, &msg)) return false;
             if (meta_type == kTrackNameMeta) pick.offer(msg.str, track.name);
             track.messages.push_back(std::move(msg));
+            tick += pending;
             return true;
         },
         [&](int high, uint8_t d1, uint8_t d2, int64_t pending) {
             track.messages.push_back(note_message(high, d1, d2, pending));
+            tick += pending;
+            const int pitch = track.messages.back().note;
+            if (is_gem_pitch(pitch)) track.last_note_tick = tick;
+            if (is_low_vocal_pitch(pitch)) track.last_low_note_tick = tick;
             return true;
         });
     return track;

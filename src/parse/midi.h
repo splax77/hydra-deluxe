@@ -18,6 +18,7 @@
 #define HYDRA_PARSE_MIDI_H
 
 #include <cstdint>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -113,11 +114,49 @@ bool is_drums_track_name(std::string_view name);
 // one of its letters.
 bool is_events_track_name(std::string_view name);
 
+// The instrument track names Clone Hero 1.1 holds besides the drum names
+// (kDrumsTrackNames): its string literals list them beside "part drum" and
+// "part drums". Only MidiFile::last_note_end_tick reads them, through
+// is_instrument_track_name. BEAT, VENUE and EVENTS are not instruments.
+inline constexpr std::string_view kVocalsTrackName = "part vocals";
+inline constexpr std::string_view kOtherInstrumentTrackNames[] = {
+    "part bass",   "part bass ghl",   "part guitar", "part guitar coop", "part guitar coop ghl",
+    "part guitar ghl", "part keys",   "part keys ghl", "part rhythm", "part rhythm ghl",
+    kVocalsTrackName,
+};
+
+// Whether `name` is an instrument track name, a drum name or one of
+// kOtherInstrumentTrackNames, in any ASCII case (as is_drums_track_name).
+bool is_instrument_track_name(std::string_view name);
+
+// Whether a note-on or note-off pitch on an instrument track is a gem or a
+// vocal note above the guitar and drum range. The layouts live in
+// GuitarGame_ChartFormats, docs/Chart-File-Formats/mid-format/Tracks:
+// 5-Fret-Guitar.md, 6-Fret-Guitar.md and Drums.md put the lowest gem at 58
+// (6-fret Easy Open) and the first marker (solo) at 103; the markers above
+// it (Star Power, versus phrase, tom, fill, Big Rock Ending, tremolo and
+// trill) are not notes. The pitches below 58 on a guitar track are animation,
+// not notes.
+inline bool is_gem_pitch(int pitch) { return pitch >= 58 && pitch < 103; }
+
+// Whether a pitch is below the gems and still a note on a vocals track
+// (Vocals.md puts the lowest vocal note at 36). Only a vocals track reads it
+// (MidiFile::last_note_end_tick); on any other track these pitches are
+// animation or range shifts.
+inline bool is_low_vocal_pitch(int pitch) { return pitch >= 36 && pitch < 58; }
+
 class MidiTrack {
 public:
     // Chosen by MidiFile::parse_track (D78).
     std::string name;
     std::vector<Message> messages;
+    // The tick of the track's last note-on or note-off of a gem pitch
+    // (is_gem_pitch), whether or not the read kept it, or nullopt when the
+    // track has none. last_low_note_tick is the same for is_low_vocal_pitch.
+    // Both readers fill both, so MidiFile::last_note_end_tick reads the same
+    // values from either.
+    std::optional<int64_t> last_note_tick;
+    std::optional<int64_t> last_low_note_tick;
 };
 
 // Which drum-track note messages MidiFile::lean keeps, one table by pitch for
@@ -142,7 +181,7 @@ public:
     // each track's role: the timing track (kTimingTrack) keeps its tempo and
     // meter, the drum track (drums_track) its text metas and the notes
     // `filter` keeps, and the events track (events_track) its text metas.
-    // Every track keeps its name. A dropped message hands its delta
+    // Every track keeps its name, last_note_tick and last_low_note_tick. A dropped message hands its delta
     // on, so every kept message sits at the tick it has in the full read, and
     // the file throws exactly where the full read throws.
     static MidiFile lean(const uint8_t* data, size_t size, const MidiLeanFilter& filter);
@@ -170,6 +209,16 @@ public:
     // 0x2155EE4) and leaves on the first match (0x2155F3D) (D253).
     // MidiParser::parse and MidiFile::lean both ask here.
     const MidiTrack* events_track() const;
+
+    // The latest tick any note ends on over the instrument tracks (the song
+    // parser's Song::last_note_end_tick), or nullopt when they hold no note.
+    // A note ends at its note-off, so the latest note message on a track is
+    // its latest end (a note left open counts at its note-on). A track counts
+    // from kFirstInstrumentTrack when is_instrument_track_name accepts its
+    // name and no earlier track holds the same instrument: Clone Hero 1.1
+    // reads each instrument once (see drums_track), and the drum names are
+    // one instrument, so the drums count through drums_track.
+    std::optional<int64_t> last_note_end_tick() const;
 
     // Read and parse a file from disk. A file that cannot be read throws
     // read_file_bytes' error; one that is not a MIDI file throws MidiError.

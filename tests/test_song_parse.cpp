@@ -9,7 +9,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
+#include <optional>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
@@ -298,6 +300,52 @@ TEST_CASE(".chart: E \"end\" and E \"[end]\" in [Events] are the end event") {
     // A chart with no [Events] section has no end event.
     CHECK_FALSE(load_songbytes_chart(multidiff::chart_bytes(), ChartReading{})
                     .end_event_tick.has_value());
+}
+
+TEST_CASE(".chart: the last note end is the latest N line's tick plus sustain in any section") {
+    // The drum section's last note sits at tick 768; a guitar sustain that
+    // starts at 600 runs to 600 + 900 = 1500, and a Hard bass note ends at
+    // 1000. Events and phrase (S) lines are not notes.
+    const std::vector<uint8_t> data = testchart::chart_bytes(
+        testchart::section("Events", "  5000 = E \"section Outro\"\n") +
+        testchart::section("ExpertDrums", "  0 = N 0 0\n  768 = N 1 0\n  700 = S 2 4000\n") +
+        testchart::section("ExpertSingle", "  0 = N 0 0\n  600 = N 2 900\n") +
+        testchart::section("HardDoubleBass", "  1000 = N 1 0\n"));
+    const Song song = load_songbytes_chart(data, ChartReading{});
+    CHECK(song.last_note_end_tick == std::optional<int64_t>(1500));
+
+    // Drums only: the last drum note's own sustain counts too.
+    const Song drums = load_songbytes_chart(
+        testchart::chart_bytes(testchart::section("ExpertDrums", "  0 = N 0 0\n  192 = N 1 48\n")),
+        ChartReading{});
+    CHECK(drums.last_note_end_tick == std::optional<int64_t>(240));
+
+    // No N line anywhere: unset.
+    const Song none = load_songbytes_chart(
+        testchart::chart_bytes(testchart::section("Events", "  0 = E \"end\"\n")), ChartReading{});
+    CHECK_FALSE(none.last_note_end_tick.has_value());
+}
+
+TEST_CASE("corpus: the last note end spans every instrument, through the tempo map") {
+    // Neck Deep's bass runs past its drums; one of Chaotrope's other sections
+    // runs past its drums and its stated length. The ms are the plan's
+    // section 3 and 4 numbers (docs/superpowers/plans/2026-10-18-song-length-end-event.md).
+    struct Want {
+        const char* file;
+        int64_t tick;
+        int64_t ms;
+    };
+    const Want wants[] = {
+        {"IB24/T3/Neck Deep - Beautiful Madness/notes.mid", 288000, 189473},
+        {"Summer Blast _25 Setlist/Tier 5/Chaotrope - Senescence (shortened)/notes.chart", 151152, 314996},
+    };
+    for (const Want& w : wants) {
+        INFO(w.file);
+        const Song song = load_songpath(corpus::root() + "/common/" + w.file, ChartReading{});
+        REQUIRE(song.last_note_end_tick.has_value());
+        CHECK(*song.last_note_end_tick == w.tick);
+        CHECK(std::llround(song.timecode(*song.last_note_end_tick).ms()) == w.ms);
+    }
 }
 
 namespace {
