@@ -653,16 +653,18 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     check("m1024.1.120", "m1024.1.120", "12 bars", hydra::app::longest_activation_badge());
 }
 
-// The GUI test library has no audio, but Burnout's song.ini states its
-// length, 130,303 ms, so the timeline places its activation dots (D75). The
-// click works the length out with its analysis (app::analysis_song_length on
-// the same Song), so no other job reads the chart for it (D87 item 1).
+// The GUI test library has no audio, but the chart gives Burnout a length
+// (app::song_length_ms, D255), so the timeline places its activation dots.
+// Burnout's end event comes before its stated 130,303 ms, and the song ends
+// one second after that event. The click works the length out with its
+// analysis (app::analysis_song_length on the same Song), so no other job
+// reads the chart for it (D87 item 1).
 void test_paths_length_from_click(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
     hydra::ui::AppState& app = *h.app;
     IM_CHECK(app.viewed.ready());
-    IM_CHECK(app.viewed.song_length_ms == 130303.0);
+    IM_CHECK(app.viewed.song_length_ms == 130087.87999999993);
     IM_CHECK(!app.view_job);
     ctx->Yield(2);
     IM_CHECK(!drawn_marks(ctx).empty());
@@ -672,7 +674,7 @@ void test_paths_length_from_click(ImGuiTestContext* ctx) {
     ctx->Yield(5);
     IM_CHECK(!app.view_job);
     IM_CHECK(&*app.viewed.record == record);
-    IM_CHECK(app.viewed.song_length_ms == 130303.0);
+    IM_CHECK(app.viewed.song_length_ms == 130087.87999999993);
 }
 
 }  // namespace
