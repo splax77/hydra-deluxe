@@ -645,11 +645,11 @@ TEST_CASE("the click reads a chart's stated length") {
     click(*app, song);
 
     REQUIRE(app->viewed.ready());
-    CHECK(app->viewed.song_length_ms == 4321.0);
+    CHECK(app->viewed.song_length_ms == 5321.0);  // with app::kSongEndPadMs
 }
 
-// A chart that states no length reads its last Expert drum note (100 ms
-// here), with no audio file at all (D75 items 2 and 5).
+// A chart that states no length and has no end event reads its last note
+// (100 ms here, plus app::kSongEndPadMs), with no audio file at all (D255).
 TEST_CASE("a chart with no stated length and no audio reads its last note") {
     ScratchPaths paths("appstate_noaudio");
     const std::string notes = audiochart::short_chart_with_long_audio("click_noaudio");
@@ -662,7 +662,7 @@ TEST_CASE("a chart with no stated length and no audio reads its last note") {
     click(*app, song);
 
     REQUIRE(app->viewed.ready());
-    CHECK(app->viewed.song_length_ms == 100.0);
+    CHECK(app->viewed.song_length_ms == 1100.0);
 }
 
 // ---- the panel's other state -----------------------------------------------

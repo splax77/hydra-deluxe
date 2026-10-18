@@ -2,9 +2,12 @@
 
 #include "app/song_length.h"
 
-#include "app/preview_view.h"  // has_song_length
-#include "audio/frames.h"      // chart_ms_of_audio_ms (header-only)
-#include "core/strutil.h"      // parse_finite_number
+#include <algorithm>
+
+#include "app/preview_source.h"  // preview_audio_offset_ms
+#include "app/preview_view.h"    // has_song_length
+#include "audio/frames.h"        // chart_ms_of_audio_ms (header-only)
+#include "core/strutil.h"        // parse_finite_number
 
 namespace hydra::app {
 
@@ -25,40 +28,40 @@ std::optional<double> last_note_start_ms(const Song& song) {
     return std::nullopt;
 }
 
-std::optional<double> song_length_ms(const store::ChartTimingMeta& meta,
-                                     std::optional<double> chart_offset_s,
-                                     const ExpertChart& expert_chart) {
-    const std::optional<double> last_note = last_note_start_ms(expert_chart());
-    std::optional<double> length = last_note;
-    if (const std::optional<double> stated = stated_length_ms(meta.length_ms)) {
-        const double stated_chart_ms = audio::chart_ms_of_audio_ms(
-            *stated, preview_audio_offset_ms(meta.delay_ms, chart_offset_s));
-        // A stated length that ends before the last note is wrong (a song.ini
-        // that says 6:17 for a 13:41 song): the last note stands in.
-        if (!last_note || stated_chart_ms >= *last_note) length = stated_chart_ms;
-    }
-    if (length && !has_song_length(*length)) length.reset();
-    return length;
+bool end_event_counts(const Song& song) {
+    if (!song.end_event_tick) return false;
+    const int64_t last_note_end = song.last_note_end_tick.value_or(0);
+    return *song.end_event_tick >= last_note_end + song.tick_resolution();
 }
 
-std::optional<double> chart_song_length_ms(const store::ChartTimingMeta& meta,
-                                           const std::string& notespath, const Song& song,
-                                           const ChartReading& reading,
-                                           const core::Rules& rules,
-                                           const SharedBytes& container) {
-    std::optional<Song> reparsed;
-    return song_length_ms(meta, song.chart_offset_s, [&]() -> const Song& {
-        if (reading.difficulty == Difficulty::Expert && reading.bass2x) return song;
-        // Pro Drums only names a note's pad, never its time, so either value
-        // gives the same last note.
-        constexpr bool kPro = true;
-        const ChartReading expert{Difficulty::Expert, kPro, true, false};
-        // Only the last chord's time is read here (kNotesOnlyFills).
-        reparsed.emplace(container ? load_songpath_from_bytes(notespath, *container, expert,
-                                                              rules, kNotesOnlyFills)
-                                   : load_songpath(notespath, expert, rules, kNotesOnlyFills));
-        return *reparsed;
-    });
+std::optional<double> song_length_ms(const store::ChartTimingMeta& meta, const Song& song) {
+    const auto chart_ms = [&](int64_t tick) { return song.timecode(tick).ms(); };
+    const std::optional<double> last_note =
+        song.last_note_end_tick ? std::optional<double>(chart_ms(*song.last_note_end_tick))
+                                : std::nullopt;
+    const std::optional<double> end_event =
+        end_event_counts(song) ? std::optional<double>(chart_ms(*song.end_event_tick))
+                               : std::nullopt;
+
+    std::optional<double> stated;
+    if (const std::optional<double> raw = stated_length_ms(meta.length_ms)) {
+        const double stated_chart_ms = audio::chart_ms_of_audio_ms(
+            *raw, preview_audio_offset_ms(meta.delay_ms, song.chart_offset_s));
+        // A stated length that ends before the last note is wrong (a song.ini
+        // that says 6:17 for a 13:41 song), so it is dropped.
+        if (!last_note || stated_chart_ms >= *last_note) stated = stated_chart_ms;
+    }
+
+    // D255, the user's answer 1: the end event caps a stated length; without
+    // one, the end event stands in, then the last note.
+    std::optional<double> length;
+    if (stated)
+        length = end_event ? std::min(*end_event, *stated) : *stated;
+    else
+        length = end_event ? end_event : last_note;
+
+    if (!length || !has_song_length(*length)) return std::nullopt;
+    return *length + kSongEndPadMs;
 }
 
 }  // namespace hydra::app

@@ -193,15 +193,14 @@ using ChartAnalyzer = std::function<AnalysisResult(
     const std::function<void(float)>& on_progress)>;
 
 // The song's length a click shows (store::SongLength): the owner's answer
-// (app::chart_song_length_ms, D75) for `song`, the chart at `notespath`
-// parsed under `settings`, from what the scan read (chart_timing_meta over
-// `scanned`). Read, with or without a length, unless
+// (app::song_length_ms, D255) for `song`, the chart at `notespath`, from what
+// the scan read (chart_timing_meta over `scanned`). The length does not
+// depend on how `song` was parsed. Read, with or without a length, unless
 // that throws: then not read, so a failed read costs only the length, which
 // stays as it was until opening the song reads it. No audio is opened.
 // ViewJob (the click's job) asks here; run_batch works out no length.
 store::SongLength analysis_song_length(const std::optional<store::ChartTimingMeta>& scanned,
-                                       const std::string& notespath, const Song& song,
-                                       const AnalysisSettings& settings);
+                                       const std::string& notespath, const Song& song);
 
 // How far a batch run has got. run_batch is the only writer of every count
 // here; a reader copies them rather than counting its own callbacks. Every

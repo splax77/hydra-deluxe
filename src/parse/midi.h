@@ -125,8 +125,12 @@ inline constexpr std::string_view kOtherInstrumentTrackNames[] = {
     kVocalsTrackName,
 };
 
+// Whether `name` is one of kOtherInstrumentTrackNames, in any ASCII case (as
+// is_drums_track_name).
+bool is_other_instrument_track_name(std::string_view name);
+
 // Whether `name` is an instrument track name, a drum name or one of
-// kOtherInstrumentTrackNames, in any ASCII case (as is_drums_track_name).
+// kOtherInstrumentTrackNames.
 bool is_instrument_track_name(std::string_view name);
 
 // Whether a note-on or note-off pitch on an instrument track is a gem or a

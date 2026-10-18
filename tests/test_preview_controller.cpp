@@ -206,9 +206,10 @@ TEST_CASE("the Preview load runs the beat lines to the end of the audio") {
     REQUIRE(r.audio_end_ms.has_value());
     CHECK(*r.audio_end_ms == doctest::Approx(5000.0));
     // The SP meter curve closes at the song's length, the one analysis saves
-    // for this chart (D75), not at the audio's end.
-    CHECK(r.scene.song_length_ms == 3000.0);
-    CHECK(hydra::app::analysis_song_length(std::nullopt, notes, r.song, {}).ms == 3000.0);
+    // for this chart (D255: the stated 3 s plus app::kSongEndPadMs), not at
+    // the audio's end.
+    CHECK(r.scene.song_length_ms == 4000.0);
+    CHECK(hydra::app::analysis_song_length(std::nullopt, notes, r.song).ms == 4000.0);
     REQUIRE_FALSE(r.scene.beats.empty());
     CHECK(r.scene.beats.back().tick == 9600);
     CHECK(r.scene.beats.back().ms == doctest::Approx(5000.0));
@@ -467,16 +468,17 @@ TEST_CASE("closing the Preview frees its render targets; reopening draws again (
     CHECK(pc.render(64, 64) != nullptr);
 }
 
-// The scrubber ends at the song's length (D75), here the 3 s song.ini
-// states, not the audio's 5 s end. The slider's range is scrub_end_ms(), so a
-// drag to its right end seeks there, and the thumb follows the playhead.
+// The scrubber ends at the song's length (D255), here the 3 s song.ini
+// states plus app::kSongEndPadMs, not the audio's 5 s end. The slider's range
+// is scrub_end_ms(), so a drag to its right end seeks there, and the thumb
+// follows the playhead.
 TEST_CASE("scrub marks: the Preview's scrubber ends at the song's length") {
     PreviewController pc(nullptr, nullptr);
     open_and_load(pc, long_audio_chart_stating_3s("prevctl_scrub_len"));
 
-    CHECK(pc.scrub_end_ms() == doctest::Approx(3000.0));  // the slider's right end
+    CHECK(pc.scrub_end_ms() == doctest::Approx(4000.0));  // the slider's right end
     pc.seek_ms(pc.scrub_end_ms());                         // a drag to that end
-    CHECK(pc.position_ms() == doctest::Approx(3000.0));
+    CHECK(pc.position_ms() == doctest::Approx(4000.0));
 
     pc.seek_ms(2100.0);  // in the tail after the last note
     CHECK(hydra::app::scrub_thumb_ms(pc.position_ms(), pc.scrub_end_ms()) ==
@@ -501,13 +503,14 @@ TEST_CASE("scrub marks: a stated length past playback ends the scrubber at playb
 }
 
 // Playback still runs to the audio's end (D48), past the song's length: a
-// jump past the end stops there. Same chart: length 3 s, the sine runs 5 s.
+// jump past the end stops there. Same chart: length 4 s (3 s stated plus
+// app::kSongEndPadMs), the sine runs 5 s.
 TEST_CASE("a jump past the end of the Preview stops at the audio's end") {
     PreviewController pc(nullptr, nullptr);
     open_and_load(pc, long_audio_chart_stating_3s("prevctl_jump_len"));
 
     CHECK(pc.playback_end_ms() == doctest::Approx(5000.0));
-    CHECK(pc.scrub_end_ms() == doctest::Approx(3000.0));
+    CHECK(pc.scrub_end_ms() == doctest::Approx(4000.0));
     pc.jump_ms(60000.0);
     CHECK(pc.position_ms() == doctest::Approx(5000.0));
 }

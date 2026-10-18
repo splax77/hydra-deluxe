@@ -484,7 +484,7 @@ void ViewJob::run() {
                         progress_.store(f, std::memory_order_relaxed);
                     });
                     out_.length = app::analysis_song_length(song_.timing, path,
-                                                            out_.analysis->song, settings_);
+                                                            out_.analysis->song);
                 } catch (const app::AnalysisCancelled&) {
                     throw;
                 } catch (const std::exception& e) {

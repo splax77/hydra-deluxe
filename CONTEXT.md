@@ -219,7 +219,7 @@ spelling is the chart mode, such as "Expert Pro Drums, 2x Bass", written by
 `chartmode_key` and read back by `Settings::with_chartmode`.
 `AnalysisSettings` holds a `ChartReading` as a base. The `load_songpath` and
 `load_songbytes_*` loaders take one, and so do the Preview's song key and load
-jobs, `resolve_preview_source`, `resolve_preview_song`, `chart_song_length_ms`,
+jobs, `resolve_preview_source`, `resolve_preview_song`,
 `load_dynamics_song` and `dynamics_for_settings`. So a fifth choice is added
 to `ChartReading`, `reading` and `with_reading`, and the code that only passes
 a reading along needs no change. Only `load_songbytes_mid` and
@@ -824,13 +824,18 @@ One of the several audio files a chart may ship instead of a single mix (e.g.
 output, unpacking each from its compressed file as it plays (docs/adr/0019).
 
 **Song length**:
-How long the song runs, in chart time. It is the length the chart's own
-metadata states (a song.ini `song_length`, a .sng `song_length` key or a .srb
-`song_length_ms`), moved from audio time into chart time by the chart's delay
-or Offset. A chart whose metadata states none, or states one that ends before
-the start of its last Expert drum note (2x kick included), gets that note's
-start instead. No audio is opened for it.
-`app::song_length_ms` works it out (D75), and the store keeps one per song. The
+How long the song runs, in chart time: where Clone Hero ends it. Three facts
+feed it. The stated length is what the chart's own metadata says (a song.ini
+`song_length`, a .sng `song_length` key or a .srb `song_length_ms`), moved
+from audio time into chart time by the chart's delay or Offset. The end event
+is the chart's `[end]` (or `end`) text event, which counts only when it sits
+at least one beat past the last note. The last note is the latest note end in
+any instrument at any difficulty. A stated length that ends before the last
+note is dropped. The end event caps the stated length; with no stated length
+left, the end event stands in, then the last note. One
+second is then added, as Clone Hero adds it. No audio is opened for it.
+`app::song_length_ms` works it out (D75, amended by D255), and nothing stores
+it: a click works it out again. The
 Paths timeline measures against the length, so a song with none shows no marks
 there. The Preview's gold marks on the scrubber are placed by it too when there
 is one. With none, they use the transport's playback range instead (D48, D70

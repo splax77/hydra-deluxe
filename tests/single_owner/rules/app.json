@@ -1259,7 +1259,7 @@
     },
     {
       "question": "How long is this song?",
-      "owner": "song_length_ms and chart_song_length_ms in src/app/song_length.cpp; the only mix is mix_song_stems in src/audio/song_audio.cpp, for the Preview's playback",
+      "owner": "song_length_ms in src/app/song_length.cpp; the only mix is mix_song_stems in src/audio/song_audio.cpp, for the Preview's playback",
       "owner_file": "src/app/song_length.cpp",
       "owner_symbol": "song_length_ms",
       "date": "2026-10-05",
@@ -1289,7 +1289,61 @@
       "scope": [
         "src"
       ],
-      "note": "---- a song's length comes from its metadata, never its audio (D75) ---- The owner (app::song_length_ms) opens no audio. A song's stems mixed, or the audio's end asked of a mix, anywhere but the Preview's own mix step is a length worked out from audio again. The transport asks the audio's end of its playhead for the playback range (D48), which is not a song length; that line is allowed. Decided by: D75 (a song's length comes from its chart metadata); phase 7 task AL1, task SL1"
+      "note": "---- a song's length comes from its metadata and its chart, never its audio (D75, D255) ---- The owner (app::song_length_ms) opens no audio: it reads the stated length, the chart's end event and the last note's end (the row below owns those two facts). A song's stems mixed, or the audio's end asked of a mix, anywhere but the Preview's own mix step is a length worked out from audio again. The transport asks the audio's end of its playhead for the playback range (D48), which is not a song length; that line is allowed. Decided by: D75 (a song's length comes from its chart metadata); D255 (the end event, the last note over every instrument, the pad); phase 7 task AL1, task SL1"
+    },
+    {
+      "question": "Where does the chart's end event sit, and does it count?",
+      "owner": "end_event_counts and song_length_ms in src/app/song_length.cpp; the two parsers in src/parse/song.cpp store the end event and the last note's end it is measured from",
+      "owner_file": "src/app/song_length.cpp",
+      "owner_symbol": "end_event_counts",
+      "date": "2026-10-18",
+      "decision": "D255",
+      "added_by": "SONGEND-T2a",
+      "pattern": "\\.(end_event_tick|last_note_end_tick)\\b",
+      "owner_files": [
+        "src/app/song_length.cpp"
+      ],
+      "must_match": [
+        "if (!song.end_event_tick) return false;",
+        "const double end_ms = song.timecode(*song.end_event_tick).ms();",
+        "const int64_t last = song.last_note_end_tick.value_or(0);"
+      ],
+      "must_not_match": [
+        "std::optional<int64_t> end_event_tick;",
+        "std::optional<int64_t> MidiFile::last_note_end_tick() const {",
+        "if (note_end.has_value() && (!last_note_end_tick_.has_value() || *note_end > *last_note_end_tick_))"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/parse/song.cpp",
+          "line_text": "if (is_end_event(body) && !song.end_event_tick.has_value())",
+          "why": "the .mid reader keeps the first end event"
+        },
+        {
+          "file": "src/parse/song.cpp",
+          "line_text": "song.end_event_tick = elapsed;",
+          "why": "the .mid reader stores the end event"
+        },
+        {
+          "file": "src/parse/song.cpp",
+          "line_text": "song.last_note_end_tick = mid.last_note_end_tick();",
+          "why": "the .mid reader stores the last note's end"
+        },
+        {
+          "file": "src/parse/song.cpp",
+          "line_text": "song.end_event_tick = event_end_tick_;",
+          "why": "the .chart reader stores the end event"
+        },
+        {
+          "file": "src/parse/song.cpp",
+          "line_text": "song.last_note_end_tick = last_note_end_tick_;",
+          "why": "the .chart reader stores the last note's end"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The end event and the last note's end are read only by app::song_length_ms, through end_event_counts for the one-beat margin, so no second place decides where a song ends. The parsers store both; nothing else in src reads them. Decided by: D255 (the user's answers 1 to 5, 2026-10-18); task SONGEND-T2a"
     },
     {
       "question": "What does a failed length read leave in the store?",
@@ -1303,13 +1357,13 @@
       "anchor": "SongLength::found",
       "must_match": [
         "return store::SongLength::found(",
-        "length_ = store::SongLength::found(app::chart_song_length_ms(",
+        "length_ = store::SongLength::found(app::song_length_ms(",
         "wr.length = SongLength::found(len);"
       ],
       "must_not_match": [
         "static SongLength found(std::optional<double> ms) { return SongLength{true, ms}; }",
         "store::SongLength analysis_song_length(const std::optional<store::ChartTimingMeta>& scanned,",
-        "wr.length = analysis_song_length(item.timing, item.notespath, ar.song, settings);"
+        "wr.length = analysis_song_length(item.timing, item.notespath, ar.song);"
       ],
       "owner_lines": [
         {

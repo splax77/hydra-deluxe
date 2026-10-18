@@ -157,16 +157,6 @@
           "why": "the rule a caller names when it reads only the chords, never which chord carries a fill; each use below is listed so a new one is a decision"
         },
         {
-          "file": "src/app/song_length.cpp",
-          "line_text": "rules, kNotesOnlyFills)",
-          "why": "chart_song_length_ms reads only the last chord's time"
-        },
-        {
-          "file": "src/app/song_length.cpp",
-          "line_text": ": load_songpath(notespath, expert, rules, kNotesOnlyFills));",
-          "why": "chart_song_length_ms reads only the last chord's time"
-        },
-        {
           "file": "src/app/dynamics_breakdown.cpp",
           "line_text": "return load_songpath(notespath, counted, core::default_rules(), kNotesOnlyFills);",
           "why": "load_dynamics_song: the Dynamics count reads only the chords' dynamics"

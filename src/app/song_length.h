@@ -1,25 +1,22 @@
-// How long a song is (D75): the one owner, song_length_ms, and the rule for
-// which stated lengths count. The Paths timeline, the Preview's scrub bar and
-// its SP meter all show this one length. Nothing stores it: a click works it
-// out through app::analysis_song_length (D87).
+// How long a song is (D75, as amended by D255): the one owner,
+// song_length_ms, and the rules it is built from. The Paths timeline, the
+// Preview's scrub bar and its SP meter all show this one length. Nothing
+// stores it: a click works it out through app::analysis_song_length (D87).
 //
-// No audio is opened here. The length comes from the chart's own metadata,
-// read by the library scan with the names (store::ChartTimingMeta), or from
-// the chart's last Expert drum note when the metadata states none or states
-// one that ends before that note. The Preview's playback range is a different
-// question (PreviewTransport::load, D48): audio past the song's length still
-// plays.
+// No audio is opened here, and nothing measured from audio is an input. The
+// length comes from the chart's own metadata, read by the library scan with
+// the names (store::ChartTimingMeta), and from three facts the parsers store
+// on the Song: the end event (Song::end_event_tick), the last note's end over
+// every instrument (Song::last_note_end_tick) and the tempo map. Clone Hero
+// works out a song's end from the same facts, with the audio's length where
+// Hydra uses the stated length (D255).
 
 #ifndef HYDRA_APP_SONG_LENGTH_H
 #define HYDRA_APP_SONG_LENGTH_H
 
-#include <functional>
 #include <optional>
-#include <string>
 #include <string_view>
 
-#include "app/preview_source.h"  // SharedBytes
-#include "core/rules.h"
 #include "parse/song.h"
 #include "store/record_store.h"  // ChartTimingMeta
 
@@ -35,42 +32,39 @@ std::optional<double> stated_length_ms(std::optional<double> raw_ms);
 // core/strutil.h parse_finite_number.
 std::optional<double> stated_length_ms_of_text(std::string_view text);
 
-// When the last note of `song` starts, in chart time; empty when it has no
-// notes. It agrees with last_note_ms of the Preview's scene
-// (app/preview_view.h), which is built from a Song. For the backup length (D75 item 2) `song` is the Expert drums chart
-// parsed with 2x kick; chart_song_length_ms says how a caller gets one.
+// When the last note of `song`'s parsed drum chart starts, in chart time;
+// empty when it has no notes. It agrees with last_note_ms of the Preview's
+// scene (app/preview_view.h), which is built from a Song. song_length_ms does
+// not read it: a song's end reads Song::last_note_end_tick.
 std::optional<double> last_note_start_ms(const Song& song);
 
-// The song's one length, in chart time (D75). The metadata's length when it
-// states one, moved from audio time into chart time by the chart's delay or
-// Offset (preview_audio_offset_ms with `meta.delay_ms` and `chart_offset_s`,
-// then audio/frames.h chart_ms_of_audio_ms), unless it ends before the start
-// of the last note of `expert_chart`. Then, or when the metadata states no
-// length, that last note's start, which is already in chart time. Empty when
-// neither gives a length has_song_length accepts (app/preview_view.h).
-//
-// `expert_chart` is always asked, to check the stated length. It returns
-// the chart's Expert drums with 2x kick, every note in the file, whatever
-// difficulty and drum options the caller analyzed at. The song it hands back
-// need only live until song_length_ms returns.
-using ExpertChart = std::function<const Song&()>;
-std::optional<double> song_length_ms(const store::ChartTimingMeta& meta,
-                                     std::optional<double> chart_offset_s,
-                                     const ExpertChart& expert_chart);
+// The time Clone Hero adds after a song's end before its results screen
+// (D255, the user's answer 2). song_length_ms adds it last, in chart time.
+inline constexpr double kSongEndPadMs = 1000.0;
 
-// song_length_ms for the chart at `notespath`, already parsed as `song` with
-// `reading` (ChartReading, in parse/chart_reading.h). The Offset is read from
-// `song`. The last note is read from `song` too when it is the Expert chart
-// with 2x kick; otherwise the chart is parsed once more at Expert with 2x, from
-// `container` when given (read_preview_container's bytes, so a .sng or .srb
-// is not read from disk again). The reading's Pro Drums and Note Shuffle play
-// no part, because neither moves a note in time. `rules` places that parse's
-// fills, which no note time depends on.
-std::optional<double> chart_song_length_ms(const store::ChartTimingMeta& meta,
-                                           const std::string& notespath, const Song& song,
-                                           const ChartReading& reading,
-                                           const core::Rules& rules,
-                                           const SharedBytes& container = nullptr);
+// Does `song`'s end event count toward its length? Only when the parser
+// stored one and it sits at least one beat (Song::tick_resolution ticks) past
+// Song::last_note_end_tick, compared in ticks, as Clone Hero compares it
+// (D255, the user's answer 4). A song with no notes measures from tick 0.
+bool end_event_counts(const Song& song);
+
+// The song's one length, in chart time (D255, amending D75 items 1 and 2).
+// Three candidates:
+// - the stated length, `meta.length_ms` through stated_length_ms, moved from
+//   audio time into chart time by the chart's delay or Offset
+//   (preview_audio_offset_ms with `meta.delay_ms` and `song.chart_offset_s`,
+//   then audio/frames.h chart_ms_of_audio_ms). It is dropped when it ends
+//   before the last note's end;
+// - the end event, when end_event_counts says so, through the tempo map;
+// - the last note's end (Song::last_note_end_tick), through the tempo map.
+// Which one wins is the user's answer 1 in D255; the code below is its one
+// statement. kSongEndPadMs is then added. Empty when no candidate gives a
+// length has_song_length accepts (app/preview_view.h): the Preview's clock
+// then runs free.
+//
+// `song` may be parsed at any difficulty and with any drum options: none of
+// the facts read here depends on them.
+std::optional<double> song_length_ms(const store::ChartTimingMeta& meta, const Song& song);
 
 }  // namespace hydra::app
 
