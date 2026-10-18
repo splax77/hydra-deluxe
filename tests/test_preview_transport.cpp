@@ -12,12 +12,11 @@
 #include <utility>
 #include <vector>
 
-#include "app/preview_view.h"  // PlayheadRange, scrub_thumb_ms
+#include "app/preview_view.h"  // scrub_thumb_ms
 #include "audio/decode.h"
 #include "audio/player.h"
 #include "audio/stem_reader.h"
 #include "audio/stream_mix.h"
-#include "display_fixtures.h"  // audio_tail_chart
 #include "ui/preview_transport.h"
 #include "audio_util.h"
 
@@ -78,55 +77,91 @@ TEST_CASE("an unloaded transport plays and scrubs with no audio") {
     CHECK(transport.now_ms() == doctest::Approx(20000.0));
 }
 
-TEST_CASE("load takes the later of last note and audio end as the length") {
+TEST_CASE("the transport's end is the song's length; unload clears it") {
     PreviewTransport transport([] { return 0.0; });
 
-    transport.load(make_playhead(1000.0), 1500.0);
-    CHECK(transport.length_ms() == doctest::Approx(1500.0));  // notes run longer
+    transport.load(make_playhead(1000.0));
+    CHECK(transport.length_ms() == doctest::Approx(0.0));  // no song length yet
     CHECK(transport.has_audio());
     CHECK(transport.channels() == 2);
     CHECK(transport.sample_rate() == 48000);
 
-    transport.load(make_playhead(1000.0), 200.0);
-    CHECK(transport.length_ms() == doctest::Approx(1000.0));  // audio runs longer
+    transport.set_song_length_ms(1500.0);
+    CHECK(transport.length_ms() == doctest::Approx(1500.0));
+    transport.set_song_length_ms(0.0);  // not a length has_song_length accepts
+    CHECK(transport.length_ms() == doctest::Approx(0.0));
 
+    transport.set_song_length_ms(1500.0);
     transport.unload();
     CHECK(transport.length_ms() == doctest::Approx(0.0));
+    CHECK_FALSE(transport.song_length_ms().has_value());
     CHECK_FALSE(transport.has_audio());
     CHECK(transport.now_ms() == doctest::Approx(0.0));
 }
 
-// The Preview swaps in another mode's notes without reloading the audio. The
-// last note moves, so the playback range follows it by load()'s rule, and a
-// clock left past the new end comes back to it. The play state stays.
-TEST_CASE("set_last_note_ms moves the length and pulls the clock back to it") {
+// The Preview swaps in another mode's notes without reloading the audio, and
+// hands the transport that mode's song length. A clock left past a shorter
+// end comes back to it. The play state stays.
+TEST_CASE("set_song_length_ms moves the end and pulls the clock back to it") {
     double t = 0.0;
     PreviewTransport transport([&] { return t; });
     auto* playhead = new Playhead(make_ramp(48000));  // 1000 ms
-    transport.load(std::unique_ptr<Playhead>(playhead), 3000.0);
+    transport.load(std::unique_ptr<Playhead>(playhead));
+    transport.set_song_length_ms(3000.0);
     REQUIRE(transport.length_ms() == doctest::Approx(3000.0));
     transport.seek_ms(1200.0);
     transport.play();
 
-    // Longer notes: the range grows and the clock stays put.
-    transport.set_last_note_ms(4000.0);
+    // A longer song: the end grows and the clock stays put.
+    transport.set_song_length_ms(4000.0);
     CHECK(transport.length_ms() == doctest::Approx(4000.0));
     CHECK(transport.now_ms() == doctest::Approx(1200.0));
     CHECK(transport.playing());
 
-    // Notes shorter than the audio: the audio's end is the range again.
-    transport.set_last_note_ms(200.0);
-    CHECK(transport.length_ms() == doctest::Approx(1000.0));
-    CHECK(transport.now_ms() == doctest::Approx(1000.0));  // pulled back from 1200
-    CHECK(playhead->position_ms() == doctest::Approx(1000.0));
+    // A shorter song: the clock is pulled back to its end.
+    transport.set_song_length_ms(800.0);
+    CHECK(transport.length_ms() == doctest::Approx(800.0));
+    CHECK(transport.now_ms() == doctest::Approx(800.0));  // pulled back from 1200
+    CHECK(playhead->position_ms() == doctest::Approx(800.0));
     CHECK(transport.has_audio());  // the audio was never dropped
 
-    // Inside the range nothing moves.
+    // Inside the end nothing moves.
     transport.seek_ms(500.0);
-    transport.set_last_note_ms(800.0);
-    CHECK(transport.length_ms() == doctest::Approx(1000.0));
+    transport.set_song_length_ms(900.0);
     CHECK(transport.now_ms() == doctest::Approx(500.0));
     CHECK(playhead->position_ms() == doctest::Approx(500.0));
+}
+
+// Playback ends at the song's length (app::song_length_ms; D255, the user's
+// answer 5), even when the audio runs on past it: 5 s of audio, a 4 s song.
+TEST_CASE("playback stops at the song's length even when the audio runs longer") {
+    double t = 0.0;
+    PreviewTransport transport([&] { return t; });
+    transport.load(make_playhead(5000.0));
+    transport.set_song_length_ms(4000.0);
+    CHECK(transport.length_ms() == doctest::Approx(4000.0));
+
+    transport.play();
+    t += 4.5;  // past the song's end, inside the audio
+    CHECK(transport.tick() == doctest::Approx(4000.0));
+    CHECK_FALSE(transport.playing());
+
+    transport.seek_ms(4800.0);  // a drag into the audio past the end
+    CHECK(transport.now_ms() == doctest::Approx(4000.0));
+}
+
+// With no song length at all, nothing stops the clock: the audio's own end is
+// never an input to where playback ends (D255, the user's answer 5).
+TEST_CASE("with no song length the clock runs free past the audio's end") {
+    double t = 0.0;
+    PreviewTransport transport([&] { return t; });
+    transport.load(make_playhead(1000.0));
+    CHECK(transport.length_ms() == doctest::Approx(0.0));
+
+    transport.play();
+    t += 1.5;
+    CHECK(transport.tick() == doctest::Approx(1500.0));
+    CHECK(transport.playing());
 }
 
 TEST_CASE("play seeks the playhead to the clock and both run") {
@@ -160,7 +195,8 @@ TEST_CASE("play seeks the playhead to the clock and both run") {
 TEST_CASE("tick pauses at the end and pins the time") {
     double t = 0.0;
     PreviewTransport transport([&] { return t; });
-    transport.load(make_playhead(1000.0), 0.0);
+    transport.load(make_playhead(1000.0));
+    transport.set_song_length_ms(1000.0);
     CHECK(transport.length_ms() == doctest::Approx(1000.0));
 
     transport.play();
@@ -186,7 +222,8 @@ TEST_CASE("a seek while playing brings the audio back after it ran out") {
     double t = 0.0;
     PreviewTransport transport([&] { return t; });
     auto* playhead = new Playhead(make_ramp(48000));  // 1000 ms
-    transport.load(std::unique_ptr<Playhead>(playhead), 2000.0);
+    transport.load(std::unique_ptr<Playhead>(playhead));
+    transport.set_song_length_ms(2000.0);
     transport.play();
 
     std::vector<float> out(48004 * 2, -1.0f);
@@ -204,7 +241,8 @@ TEST_CASE("a seek while playing brings the audio back after it ran out") {
 
 TEST_CASE("seek clamps to [0, length]") {
     PreviewTransport transport([] { return 0.0; });
-    transport.load(make_playhead(1000.0), 0.0);
+    transport.load(make_playhead(1000.0));
+    transport.set_song_length_ms(1000.0);
 
     transport.seek_ms(-5.0);
     CHECK(transport.now_ms() == doctest::Approx(0.0));
@@ -264,9 +302,7 @@ TEST_CASE("an audio offset seeks the playhead ahead of the clock") {
     PreviewTransport transport([&] { return t; });
 
     auto* playhead = new Playhead(make_ramp(96000));  // 2000 ms
-    transport.load(std::unique_ptr<Playhead>(playhead), 0.0, /*audio_offset_ms=*/500.0);
-    // The audio past the chart's end still plays out: 2000 - 500.
-    CHECK(transport.length_ms() == doctest::Approx(1500.0));
+    transport.load(std::unique_ptr<Playhead>(playhead), /*audio_offset_ms=*/500.0);
 
     transport.seek_ms(250.0);
     CHECK(transport.now_ms() == doctest::Approx(250.0));
@@ -276,68 +312,26 @@ TEST_CASE("an audio offset seeks the playhead ahead of the clock") {
     CHECK(playhead->position_ms() == doctest::Approx(750.0));
 }
 
-// The scrubber's right edge comes from the transport's range (D114 item 17).
-// On the audio-tail chart, which states 6000 ms, a drag to that edge seeks to
-// 6000 ms, past the last note at 1000 ms.
-TEST_CASE("scrubber: a drag to the right end seeks to the song's length") {
-    const hydra::test::AudioTailChart c = hydra::test::audio_tail_chart();
+// A song length past the audio's end: playback runs on to it in silence, so
+// a drag to the scrubber's right end lands there and the thumb stays at the
+// edge.
+TEST_CASE("scrubber: a song length past the audio ends playback there") {
     PreviewTransport transport([] { return 0.0; });
-    transport.load(make_playhead(c.audio_end_ms), c.last_note_ms);
-    transport.set_song_length_ms(c.audio_end_ms);
-    CHECK(transport.length_ms() == doctest::Approx(6000.0));  // the tail still plays
-
-    const double right_end = transport.range().scrub_end_ms;
-    transport.seek_ms(right_end);
-    CHECK(transport.now_ms() == doctest::Approx(6000.0));
-
-    // With no usable song length the edge stays the transport's length.
-    transport.set_song_length_ms(0.0);
-    CHECK(transport.range().scrub_end_ms == doctest::Approx(6000.0));
-}
-
-// A stated length longer than the notes and the audio (E > L): the scrubber
-// ends where playback does, so a drag to its right end lands there and the
-// thumb stays at the edge. The gold marks are still placed by the song length.
-TEST_CASE("scrubber: a stated length past playback ends the scrubber at playback's end") {
-    PreviewTransport transport([] { return 0.0; });
-    transport.load(make_playhead(5000.0), 1000.0);
+    transport.load(make_playhead(5000.0));
     transport.set_song_length_ms(9000.0);
+    CHECK(transport.length_ms() == doctest::Approx(9000.0));
 
-    const hydra::app::PlayheadRange r = transport.range();
-    CHECK(r.playback_end_ms == doctest::Approx(5000.0));
-    CHECK(r.scrub_end_ms == doctest::Approx(5000.0));
-    CHECK(r.marks_length_ms == doctest::Approx(9000.0));
-
-    transport.seek_ms(r.scrub_end_ms);
-    CHECK(transport.now_ms() == doctest::Approx(r.scrub_end_ms));
-    CHECK(hydra::app::scrub_thumb_ms(transport.now_ms(), r.scrub_end_ms) ==
-          doctest::Approx(r.scrub_end_ms));
+    transport.seek_ms(transport.length_ms());
+    CHECK(transport.now_ms() == doctest::Approx(9000.0));
+    CHECK(hydra::app::scrub_thumb_ms(transport.now_ms(), transport.length_ms()) ==
+          doctest::Approx(9000.0));
 }
 
-// No notes and no audio: the clock still runs free, so the scrubber spans
-// the stated length.
-TEST_CASE("scrubber: with no playback end the scrubber spans the song length") {
+// No audio at all: the song's length is still the end.
+TEST_CASE("scrubber: with no audio the end is still the song's length") {
     PreviewTransport transport([] { return 0.0; });
     transport.set_song_length_ms(4000.0);
-    CHECK(transport.range().scrub_end_ms == doctest::Approx(4000.0));
-    transport.unload();
-    CHECK_FALSE(transport.song_length_ms().has_value());
-}
-
-// The transport's audio end comes from audio_end_chart_ms, the owner the load
-// job uses, not from a second copy. The owner is asked about the very kind of
-// audio the transport holds, a Playhead: 2000 ms of audio with chart time 0 at
-// 500 ms ends at 1500 ms both ways.
-TEST_CASE("single-owner: the transport's audio end is audio_end_chart_ms") {
-    const double offset_ms = 500.0;
-    const Playhead same_audio(make_ramp(96000));  // 2000 ms
-    const std::optional<double> owner = hydra::audio::audio_end_chart_ms(same_audio, offset_ms);
-    REQUIRE(owner.has_value());
-    CHECK(*owner == doctest::Approx(1500.0));
-
-    PreviewTransport transport([] { return 0.0; });
-    transport.load(std::make_unique<Playhead>(make_ramp(96000)), 0.0, offset_ms);
-    CHECK(transport.length_ms() == *owner);
+    CHECK(transport.length_ms() == doctest::Approx(4000.0));
 }
 
 TEST_CASE("load with no audio offset behaves exactly as before") {

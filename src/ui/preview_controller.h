@@ -194,11 +194,12 @@ public:
     void toggle();
     bool playing() const;
     double position_ms() const;
-    // Where the scrubber ends: PreviewTransport::range()'s scrub_end_ms
-    // (app::PlayheadRange, D114 item 17).
+    // Where the scrubber ends: playback_end_ms(), the one end.
     double scrub_end_ms() const;
-    // Where playback stops: the later of the last note and the audio's end
-    // (PreviewTransport::length_ms). Play, the clock and jumps run to here.
+    // Where playback stops: the song's length (PreviewTransport::length_ms;
+    // D255, the user's answer 5), or 0 when the song has none and the clock
+    // runs free. Play, the clock, jumps, the time box, the scrubber and its
+    // gold marks all end here.
     double playback_end_ms() const;
     void seek_ms(double ms);
     // Move the playhead by `delta_ms` (the kJumpSeconds buttons, Left/Right).
@@ -234,8 +235,8 @@ public:
     // The SP drain box the panel draws beside the gauge.
     hydra::app::PreviewDrainBox drain_box() const;
 
-    // The drawn path's activations on the scrubber, as fractions of the
-    // range's marks_length_ms (app::build_scrub_marks). Empty until a path's scene is in.
+    // The drawn path's activations on the scrubber, as fractions of
+    // playback_end_ms() (app::build_scrub_marks). Empty until a path's scene is in.
     // Built once per scene and length, then cached (see SceneCache below);
     // the reference holds until the next call.
     const std::vector<double>& scrub_marks() const;

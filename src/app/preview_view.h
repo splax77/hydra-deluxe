@@ -303,10 +303,10 @@ struct PreviewScene {
     // on a default-built PreviewScene (no
     // song to read); build_preview_scene always fills it.
     std::optional<SongTiming> timing;
-    // The song's length, as app::song_length_ms answers it (D75), handed to
+    // The song's length, as app::song_length_ms answers it (D255), handed to
     // build_preview_base. 0 when the song has none. The SP curve closes here.
-    // The gold marks on the scrubber are placed by the same length
-    // (PlayheadRange::marks_length_ms).
+    // The Preview's playback, time box, scrubber and gold marks end at the
+    // same length (PreviewTransport::length_ms).
     double song_length_ms = 0.0;
     bool has_notes = false;
 
@@ -317,9 +317,8 @@ struct PreviewScene {
 };
 
 // The last note the highway draws, or null when the scene has none. The one
-// answer to "when is the song's last note": the beat grid ends past it, and
-// the Preview transport plays to at least it (PreviewTransport::load). It is
-// not the song's length (PreviewScene::song_length_ms, app::song_length_ms).
+// answer to "when is the scene's last note": the beat grid ends past it. It
+// is not the song's length (PreviewScene::song_length_ms, app::song_length_ms).
 const PreviewNote* last_drawn_note(const PreviewScene& scene);
 
 // last_drawn_note's onset in ms, or 0 when the scene has no notes.
@@ -457,35 +456,13 @@ std::vector<PreviewSoloBox> build_solo_box_samples(const PreviewScene& scene);
 double step_shown_ms(double now_ms, double length_ms, double delta_ms);
 
 // Where each activation of the shown path sits on the scrubber: its onset over
-// `length_ms` (PlayheadRange::marks_length_ms), clamped to 0..1, in
-// activation order. Empty with no path or no length.
+// `length_ms` (the song's length, PreviewTransport::length_ms), clamped to
+// 0..1, in activation order. Empty with no path or no length.
 std::vector<double> build_scrub_marks(const PreviewScene& scene, double length_ms);
 
-// Where the Preview's playhead can be, as one value (D114 item 17).
-// PreviewTransport::range() is its one maker; the time box, the scrubber, its
-// thumb and its gold marks all read it.
-struct PlayheadRange {
-    // Where playback stops (PreviewTransport::length_ms). The time box's
-    // moment is held inside [0, playback_end_ms]. 0 means no notes and no
-    // audio: the clock then runs free.
-    double playback_end_ms = 0.0;
-    // The length the gold marks are placed by: the song's length
-    // (app::song_length_ms, D75) when has_song_length says it is usable,
-    // else playback_end_ms (D70 item 1). The Paths timeline uses the same.
-    double marks_length_ms = 0.0;
-    // The scrubber's right edge: no further than playback can reach, so the
-    // shorter of marks_length_ms and playback_end_ms. With a playback end of
-    // 0 nothing stops the clock, so it is marks_length_ms.
-    double scrub_end_ms = 0.0;
-};
-
-// The range for a song length (as app::song_length_ms answers it) and a
-// playback end (as PreviewTransport::length_ms answers it).
-PlayheadRange playhead_range(std::optional<double> song_length_ms, double playback_end_ms);
-
 // Where the scrubber's thumb sits with the playhead at `now_ms`. It follows
-// the playhead and stays parked at `scrub_end_ms` (PlayheadRange::scrub_end_ms)
-// should playback run past it.
+// the playhead and stays parked at `scrub_end_ms` (the scrubber's right edge)
+// should the clock run past it between frames.
 double scrub_thumb_ms(double now_ms, double scrub_end_ms);
 
 // Is `length_ms` a song length the timeline can use? Only a positive length

@@ -337,7 +337,7 @@
       "owner_lines": [
         {
           "file": "src/ui/preview_controller.cpp",
-          "line_text": "double PreviewController::playback_end_ms() const { return transport_.range().playback_end_ms; }",
+          "line_text": "double PreviewController::playback_end_ms() const { return transport_.length_ms(); }",
           "why": "PreviewController::playback_end_ms, the owner"
         }
       ],

@@ -687,16 +687,6 @@ std::vector<double> build_scrub_marks(const PreviewScene& scene, double length_m
     return marks;
 }
 
-PlayheadRange playhead_range(std::optional<double> song_length_ms, double playback_end_ms) {
-    PlayheadRange r;
-    r.playback_end_ms = playback_end_ms;
-    r.marks_length_ms = song_length_ms && has_song_length(*song_length_ms) ? *song_length_ms
-                                                                           : playback_end_ms;
-    r.scrub_end_ms = playback_end_ms > 0.0 ? std::min(r.marks_length_ms, playback_end_ms)
-                                           : r.marks_length_ms;
-    return r;
-}
-
 double scrub_thumb_ms(double now_ms, double scrub_end_ms) {
     // With no usable edge there is nothing to park at: the thumb follows the
     // playhead, as it always did.

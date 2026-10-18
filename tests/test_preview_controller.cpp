@@ -486,33 +486,36 @@ TEST_CASE("scrub marks: the Preview's scrubber ends at the song's length") {
 }
 
 // A song.ini stating 9 s over 5 s of audio and a last note at 100 ms: the
-// scrubber ends where playback does (D114 item 17), so a drag to its right end
-// lands on it and the thumb does not snap back.
-TEST_CASE("scrub marks: a stated length past playback ends the scrubber at playback's end") {
+// song's length (10 s with app::kSongEndPadMs) runs past the audio, and
+// playback and the scrubber both end there (D255, the user's answer 5).
+TEST_CASE("scrub marks: a stated length past the audio ends playback and the scrubber there") {
     PreviewController pc(nullptr, nullptr);
     const std::string notes = short_chart_with_long_audio("prevctl_scrub_past");
     audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini",
                                 "[song]\nsong_length = 9000\n");
     open_and_load(pc, notes);
 
-    CHECK(pc.playback_end_ms() == doctest::Approx(5000.0));
-    CHECK(pc.scrub_end_ms() == doctest::Approx(5000.0));
+    CHECK(pc.playback_end_ms() == doctest::Approx(10000.0));
+    CHECK(pc.scrub_end_ms() == doctest::Approx(10000.0));
     pc.seek_ms(pc.scrub_end_ms());
     CHECK(hydra::app::scrub_thumb_ms(pc.position_ms(), pc.scrub_end_ms()) ==
           doctest::Approx(pc.scrub_end_ms()));
 }
 
-// Playback still runs to the audio's end (D48), past the song's length: a
-// jump past the end stops there. Same chart: length 4 s (3 s stated plus
-// app::kSongEndPadMs), the sine runs 5 s.
-TEST_CASE("a jump past the end of the Preview stops at the audio's end") {
+// One end for the whole Preview (D255, the user's answer 5): the song's
+// length, 4 s (3 s stated plus app::kSongEndPadMs), though the sine runs 5 s.
+// Playback, a jump past the end, the time box's total and the scrubber's edge
+// all stop there.
+TEST_CASE("the Preview's playback, time box and scrubber all end at the song's length") {
     PreviewController pc(nullptr, nullptr);
     open_and_load(pc, long_audio_chart_stating_3s("prevctl_jump_len"));
 
-    CHECK(pc.playback_end_ms() == doctest::Approx(5000.0));
+    CHECK(pc.playback_end_ms() == doctest::Approx(4000.0));
     CHECK(pc.scrub_end_ms() == doctest::Approx(4000.0));
+    const std::string stamp = pc.time_box().timestamp;
+    CHECK(stamp.substr(stamp.find(" / ")) == " / 0:04.000");
     pc.jump_ms(60000.0);
-    CHECK(pc.position_ms() == doctest::Approx(5000.0));
+    CHECK(pc.position_ms() == doctest::Approx(4000.0));
 }
 
 // Picking another path with the Preview open used to rebuild the scene inside
@@ -705,17 +708,20 @@ TEST_CASE("a mode with no notes pauses the Preview in place; switching back clea
 }
 
 // Two mode changes in a row: the second one's notes are the ones drawn, and
-// the first one's never land. The chart has no audio, so where playback ends
-// is each mode's last note: Expert's at tick 960, Hard's at 1920, Medium's at
-// 2880, at 600 BPM and 192 ticks a beat (100 ms a beat).
+// the first one's never land. Each mode marks a different number of Star
+// Power phrases (Expert none, Hard one, Medium two), so the SP gauge's
+// readout at the song's end says whose notes are drawn. The song's length is
+// the same in every mode (app::song_length_ms reads every section).
 TEST_CASE("a second mode change during a notes reload wins") {
     const std::string dir = testtemp::temp_dir("prevctl_twomodes");
     using namespace testchart;
     audiochart::write_text_file(
         dir + "\\notes.chart",
         chart_text(section("ExpertDrums", line(0, "N 1 0") + line(960, "N 1 0")) +
-                       section("HardDrums", line(0, "N 1 0") + line(1920, "N 1 0")) +
-                       section("MediumDrums", line(0, "N 1 0") + line(2880, "N 1 0")),
+                       section("HardDrums",
+                               line(0, "N 1 0") + line(0, "S 2 1") + line(1920, "N 1 0")) +
+                       section("MediumDrums", line(0, "N 1 0") + line(0, "S 2 1") +
+                                                  line(2880, "N 1 0") + line(2880, "S 2 1")),
                    192, "", line(0, "TS 4") + line(0, "B 600000")));
     const ChartLibraryEntry entry = entry_for(dir + "\\notes.chart");
 
@@ -723,20 +729,26 @@ TEST_CASE("a second mode change during a notes reload wins") {
     pc.open(entry, {Difficulty::Expert, true, false}, kTestFillRule, nullptr, "",4);
     settle(pc);
     REQUIRE_FALSE(pc.has_error());
-    REQUIRE(pc.playback_end_ms() == doctest::Approx(500.0));
+    pc.seek_ms(pc.playback_end_ms());
+    const std::string expert = pc.sp_meter_readout();
 
     pc.open(entry, {Difficulty::Hard, true, false}, kTestFillRule, nullptr, "",4);
     pc.open(entry, {Difficulty::Medium, true, false}, kTestFillRule, nullptr, "",4);
+    std::vector<std::string> seen;
     wait_until(
         [&] {
             if (!pc.busy()) return true;
             pc.poll();
-            CHECK(pc.playback_end_ms() != doctest::Approx(1000.0));  // Hard's never lands
+            seen.push_back(pc.sp_meter_readout());
             return false;
         },
         "every Preview thread to finish");
     CHECK_FALSE(pc.has_error());
-    CHECK(pc.playback_end_ms() == doctest::Approx(1500.0));
+    const std::string medium = pc.sp_meter_readout();
+    INFO("Expert " << expert << ", Medium " << medium);
+    CHECK(expert == "0.0/4");
+    CHECK(medium == "2.0/4");
+    for (const std::string& s : seen) CHECK((s == expert || s == medium));  // Hard's never lands
 }
 
 // An edited chart that was not rescanned used to draw its record's path on
