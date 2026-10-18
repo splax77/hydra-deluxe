@@ -219,7 +219,7 @@ spelling is the chart mode, such as "Expert Pro Drums, 2x Bass", written by
 `chartmode_key` and read back by `Settings::with_chartmode`.
 `AnalysisSettings` holds a `ChartReading` as a base. The `load_songpath` and
 `load_songbytes_*` loaders take one, and so do the Preview's song key and load
-jobs, `resolve_preview_source`, `resolve_preview_song`, `chart_song_length_ms`,
+jobs, `resolve_preview_source`, `resolve_preview_song`,
 `load_dynamics_song` and `dynamics_for_settings`. So a fifth choice is added
 to `ChartReading`, `reading` and `with_reading`, and the code that only passes
 a reading along needs no change. Only `load_songbytes_mid` and
