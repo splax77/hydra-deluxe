@@ -1070,7 +1070,9 @@ void test_preview_activation_jumps(ImGuiTestContext* ctx) {
     IM_CHECK(readout.size() >= 5);
     IM_CHECK(readout.substr(readout.size() - 2) == "/4");
     pc.seek_ms(pc.playback_end_ms());  // the time box's end is where playback stops
-    IM_CHECK_STR_EQ(pc.time_box().length.c_str(), "m96.3.240");
+    // Burnout's end event (tick 188280, 129,087.9 ms) comes before its stated
+    // 130,303 ms; the song ends one second after it (D255).
+    IM_CHECK_STR_EQ(pc.time_box().length.c_str(), "m99.4.352");
     IM_CHECK_STR_EQ(pc.time_box().position.c_str(), pc.time_box().length.c_str());
     IM_CHECK(pc.time_box().tempo.rfind("BPM ", 0) == 0);
 
