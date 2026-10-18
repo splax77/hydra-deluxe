@@ -28,12 +28,14 @@ std::optional<double> last_note_start_ms(const Song& song) {
 std::optional<double> song_length_ms(const store::ChartTimingMeta& meta,
                                      std::optional<double> chart_offset_s,
                                      const ExpertChart& expert_chart) {
-    std::optional<double> length;
+    const std::optional<double> last_note = last_note_start_ms(expert_chart());
+    std::optional<double> length = last_note;
     if (const std::optional<double> stated = stated_length_ms(meta.length_ms)) {
-        length = audio::chart_ms_of_audio_ms(
+        const double stated_chart_ms = audio::chart_ms_of_audio_ms(
             *stated, preview_audio_offset_ms(meta.delay_ms, chart_offset_s));
-    } else {
-        length = last_note_start_ms(expert_chart());
+        // A stated length that ends before the last note is wrong (a song.ini
+        // that says 6:17 for a 13:41 song): the last note stands in.
+        if (!last_note || stated_chart_ms >= *last_note) length = stated_chart_ms;
     }
     if (length && !has_song_length(*length)) length.reset();
     return length;
