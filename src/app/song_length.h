@@ -5,9 +5,10 @@
 //
 // No audio is opened here. The length comes from the chart's own metadata,
 // read by the library scan with the names (store::ChartTimingMeta), or from
-// the chart's last Expert drum note when the metadata states none. The
-// Preview's playback range is a different question (PreviewTransport::load,
-// D48): audio past the song's length still plays.
+// the chart's last Expert drum note when the metadata states none or states
+// one that ends before that note. The Preview's playback range is a different
+// question (PreviewTransport::load, D48): audio past the song's length still
+// plays.
 
 #ifndef HYDRA_APP_SONG_LENGTH_H
 #define HYDRA_APP_SONG_LENGTH_H
@@ -43,11 +44,12 @@ std::optional<double> last_note_start_ms(const Song& song);
 // The song's one length, in chart time (D75). The metadata's length when it
 // states one, moved from audio time into chart time by the chart's delay or
 // Offset (preview_audio_offset_ms with `meta.delay_ms` and `chart_offset_s`,
-// then audio/frames.h chart_ms_of_audio_ms). Otherwise the start of the last
-// note of `expert_chart`, which is already in chart time. Empty when neither
-// gives a length has_song_length accepts (app/preview_view.h).
+// then audio/frames.h chart_ms_of_audio_ms), unless it ends before the start
+// of the last note of `expert_chart`. Then, or when the metadata states no
+// length, that last note's start, which is already in chart time. Empty when
+// neither gives a length has_song_length accepts (app/preview_view.h).
 //
-// `expert_chart` is asked only when the metadata states no length. It returns
+// `expert_chart` is always asked, to check the stated length. It returns
 // the chart's Expert drums with 2x kick, every note in the file, whatever
 // difficulty and drum options the caller analyzed at. The song it hands back
 // need only live until song_length_ms returns.
@@ -58,8 +60,8 @@ std::optional<double> song_length_ms(const store::ChartTimingMeta& meta,
 
 // song_length_ms for the chart at `notespath`, already parsed as `song` with
 // `reading` (ChartReading, in parse/chart_reading.h). The Offset is read from
-// `song`. The backup reads `song` too when it is the Expert chart with 2x
-// kick; otherwise the chart is parsed once more at Expert with 2x, from
+// `song`. The last note is read from `song` too when it is the Expert chart
+// with 2x kick; otherwise the chart is parsed once more at Expert with 2x, from
 // `container` when given (read_preview_container's bytes, so a .sng or .srb
 // is not read from disk again). The reading's Pro Drums and Note Shuffle play
 // no part, because neither moves a note in time. `rules` places that parse's

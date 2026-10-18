@@ -827,8 +827,9 @@ output, unpacking each from its compressed file as it plays (docs/adr/0019).
 How long the song runs, in chart time. It is the length the chart's own
 metadata states (a song.ini `song_length`, a .sng `song_length` key or a .srb
 `song_length_ms`), moved from audio time into chart time by the chart's delay
-or Offset. A chart whose metadata states none gets the start of its last
-Expert drum note instead (2x kick included). No audio is opened for it.
+or Offset. A chart whose metadata states none, or states one that ends before
+the start of its last Expert drum note (2x kick included), gets that note's
+start instead. No audio is opened for it.
 `app::song_length_ms` works it out (D75), and the store keeps one per song. The
 Paths timeline measures against the length, so a song with none shows no marks
 there. The Preview's gold marks on the scrubber are placed by it too when there

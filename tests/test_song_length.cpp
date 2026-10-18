@@ -102,6 +102,29 @@ TEST_CASE("song length: a length song.ini does not state falls back to the last 
     }
 }
 
+TEST_CASE("song length: a stated length that ends before the last note gives way to it") {
+    // short_chart_with_long_audio's last note is at 100 ms.
+    std::optional<double> length =
+        length_after_scan(chart_with_ini("sl_too_short", "[song]\nsong_length = 50\n"));
+    REQUIRE(length.has_value());
+    CHECK(*length == 100.0);
+
+    // The check is in chart time: 150 ms of audio less a 60 ms delay ends at
+    // 90 ms of chart time, before the note.
+    length = length_after_scan(
+        chart_with_ini("sl_too_short_delay", "[song]\nsong_length = 150\ndelay = 60\n"));
+    REQUIRE(length.has_value());
+    CHECK(*length == 100.0);
+
+    // Ending on the note itself is not too short.
+    length = length_after_scan(chart_with_ini("sl_on_note", "[song]\nsong_length = 100\n"));
+    REQUIRE(length.has_value());
+    CHECK(*length == 100.0);
+    length = length_after_scan(chart_with_ini("sl_past_note", "[song]\nsong_length = 120\n"));
+    REQUIRE(length.has_value());
+    CHECK(*length == 120.0);
+}
+
 TEST_CASE("song length: the backup reads the Expert chart with 2x kick, whatever was analyzed") {
     const std::string notes = chart_ending_on_2x_kick("sl_2x");
     const ChartTimingMeta none = scan_one(notes).timing.value();
