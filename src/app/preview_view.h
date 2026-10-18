@@ -84,8 +84,8 @@ struct PreviewFill {
 
 // One Clone Hero drum lane (a roll or trill marker): a strip down each pad
 // column it lights, over the lane's span. Which pads it lights is
-// light_drum_lanes's rule in song.cpp. The pads are the chart's own columns;
-// a kick is never one.
+// light_drum_lanes's rule in song.cpp. A kick has no column, so it is never
+// one.
 struct PreviewDrumLane {
     PreviewSpan span;
     std::vector<PreviewLane> pads;
