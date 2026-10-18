@@ -682,20 +682,24 @@ TEST_CASE("midi: a bass sustain past the last drum note is the last note end; BE
     const std::vector<uint8_t> file = smf_tracks({
         concat({set_tempo(), end_of_track()}),
         // The last drum note ends at tick 10, and a pitch the lean filter
-        // drops (12) ends at tick 480.
+        // drops (70) ends at tick 480. A Big Rock Ending marker (120) held to
+        // tick 3000 is not a note.
         concat({track_name("PART DRUMS"), note_on(96, 100), after(10, note_off(96)),
-                after(10, note_on(12, 100)), after(460, note_off(12)), end_of_track()}),
+                after(10, note_on(70, 100)), after(460, note_off(70)),
+                note_on(120, 100), after(2520, note_off(120)), end_of_track()}),
         // The bass note starts before the drums end and is held to tick 2000.
-        concat({track_name("PART BASS"), after(5, note_on(40, 100)), after(1995, note_off(40)),
+        // A solo marker (103) and a Star Power marker (116) run on to 4000.
+        concat({track_name("PART BASS"), after(5, note_on(60, 100)), after(1995, note_off(60)),
+                note_on(103, 100), note_on(116, 100), after(2000, note_off(103)), note_off(116),
                 end_of_track()}),
-        concat({track_name("BEAT"), after(5000, note_on(12, 100)), after(10, note_off(12)), end_of_track()}),
+        concat({track_name("BEAT"), after(5000, note_on(40, 100)), after(10, note_off(40)), end_of_track()}),
         concat({track_name("VENUE"), after(6000, note_on(40, 100)), end_of_track()}),
         concat({track_name("EVENTS"), after(7000, note_on(40, 100)), text_event("[end]"),
                 end_of_track()}),
     });
     for (const hydra::MidiFile& read : both_reads(file)) {
         CHECK(read.tracks[1].last_note_tick == std::optional<int64_t>(480));
-        CHECK(read.tracks[3].last_note_tick == std::optional<int64_t>(5010));
+        CHECK(read.tracks[3].last_low_note_tick == std::optional<int64_t>(5010));
         CHECK(read.last_note_end_tick() == std::optional<int64_t>(2000));
     }
     CHECK(hydra::load_songbytes_mid(file, hydra::ChartReading{}).last_note_end_tick ==
@@ -731,6 +735,32 @@ TEST_CASE("midi: the last note end reads each instrument once, from track 1, by 
     CHECK_FALSE(hydra::is_instrument_track_name("BEAT"));
     CHECK_FALSE(hydra::is_instrument_track_name("VENUE"));
     CHECK_FALSE(hydra::is_instrument_track_name("EVENTS"));
+
+    // Below the gems: guitar animation (50) is not a note, a vocal note (50)
+    // is. The highest gem (101) and force strum (102) count; 103 does not.
+    const std::vector<uint8_t> low = smf_tracks({
+        concat({set_tempo(), end_of_track()}),
+        concat({track_name("PART GUITAR"), after(100, note_on(60, 100)), after(100, note_off(60)),
+                note_on(50, 100), after(900, note_off(50)), end_of_track()}),
+        concat({track_name("PART VOCALS"), after(150, note_on(50, 100)), after(50, note_off(50)),
+                end_of_track()}),
+    });
+    for (const hydra::MidiFile& read : both_reads(low))
+        CHECK(read.last_note_end_tick() == std::optional<int64_t>(200));
+    const std::vector<uint8_t> vocal_last = smf_tracks({
+        concat({set_tempo(), end_of_track()}),
+        concat({track_name("PART VOCALS"), after(100, note_on(60, 100)), after(100, note_off(60)),
+                note_on(40, 100), after(300, note_off(40)), end_of_track()}),
+    });
+    for (const hydra::MidiFile& read : both_reads(vocal_last))
+        CHECK(read.last_note_end_tick() == std::optional<int64_t>(500));
+    CHECK(hydra::is_gem_pitch(58));
+    CHECK(hydra::is_gem_pitch(102));
+    CHECK_FALSE(hydra::is_gem_pitch(57));
+    CHECK_FALSE(hydra::is_gem_pitch(103));
+    CHECK(hydra::is_low_vocal_pitch(36));
+    CHECK_FALSE(hydra::is_low_vocal_pitch(35));
+    CHECK_FALSE(hydra::is_low_vocal_pitch(58));
 
     // No instrument note at all: unset.
     const std::vector<uint8_t> empty = smf_tracks({
