@@ -675,6 +675,72 @@ TEST_CASE("midi: the lean read keeps the end event") {
     CHECK(song.end_event_tick == std::optional<int64_t>(1920));
 }
 
+// ---- the last note end (Song::last_note_end_tick) -------------------------
+
+TEST_CASE("midi: a bass sustain past the last drum note is the last note end; BEAT, VENUE and EVENTS don't count") {
+    using namespace testmidi;
+    const std::vector<uint8_t> file = smf_tracks({
+        concat({set_tempo(), end_of_track()}),
+        // The last drum note ends at tick 10, and a pitch the lean filter
+        // drops (12) ends at tick 480.
+        concat({track_name("PART DRUMS"), note_on(96, 100), after(10, note_off(96)),
+                after(10, note_on(12, 100)), after(460, note_off(12)), end_of_track()}),
+        // The bass note starts before the drums end and is held to tick 2000.
+        concat({track_name("PART BASS"), after(5, note_on(40, 100)), after(1995, note_off(40)),
+                end_of_track()}),
+        concat({track_name("BEAT"), after(5000, note_on(12, 100)), after(10, note_off(12)), end_of_track()}),
+        concat({track_name("VENUE"), after(6000, note_on(40, 100)), end_of_track()}),
+        concat({track_name("EVENTS"), after(7000, note_on(40, 100)), text_event("[end]"),
+                end_of_track()}),
+    });
+    for (const hydra::MidiFile& read : both_reads(file)) {
+        CHECK(read.tracks[1].last_note_tick == std::optional<int64_t>(480));
+        CHECK(read.tracks[3].last_note_tick == std::optional<int64_t>(5010));
+        CHECK(read.last_note_end_tick() == std::optional<int64_t>(2000));
+    }
+    CHECK(hydra::load_songbytes_mid(file, hydra::ChartReading{}).last_note_end_tick ==
+          std::optional<int64_t>(2000));
+    // The notes-only reading the song length reparse uses gives the same tick.
+    CHECK(hydra::load_songbytes_mid(file, hydra::ChartReading{}, hydra::core::default_rules(),
+                                    hydra::kNotesOnlyFills)
+              .last_note_end_tick == std::optional<int64_t>(2000));
+}
+
+TEST_CASE("midi: the last note end reads each instrument once, from track 1, by instrument name") {
+    using namespace testmidi;
+    const std::vector<uint8_t> file = smf_tracks({
+        // Track 0 is never an instrument, whatever its name.
+        concat({track_name("PART GUITAR"), set_tempo(), after(9000, note_on(60, 100)), end_of_track()}),
+        concat({track_name("part drum"), after(100, note_on(96, 100)), end_of_track()}),
+        concat({track_name("Part Guitar"), after(300, note_on(60, 100)), after(10, note_off(60)),
+                end_of_track()}),
+        // A second drum track, by the other drum name, and a second guitar.
+        concat({track_name("PART DRUMS"), after(8000, note_on(96, 100)), end_of_track()}),
+        concat({track_name("PART GUITAR"), after(8500, note_on(60, 100)), end_of_track()}),
+        // Names Clone Hero does not read as an instrument.
+        concat({track_name("PART REAL_GUITAR"), after(7000, note_on(60, 100)), end_of_track()}),
+        concat({track_name("PART DRUMS_2X"), after(7500, note_on(96, 100)), end_of_track()}),
+    });
+    for (const hydra::MidiFile& read : both_reads(file))
+        CHECK(read.last_note_end_tick() == std::optional<int64_t>(310));
+    CHECK(hydra::load_songbytes_mid(file, hydra::ChartReading{}).last_note_end_tick ==
+          std::optional<int64_t>(310));
+
+    CHECK(hydra::is_instrument_track_name("PART KEYS"));
+    CHECK(hydra::is_instrument_track_name("Part Drums"));
+    CHECK_FALSE(hydra::is_instrument_track_name("BEAT"));
+    CHECK_FALSE(hydra::is_instrument_track_name("VENUE"));
+    CHECK_FALSE(hydra::is_instrument_track_name("EVENTS"));
+
+    // No instrument note at all: unset.
+    const std::vector<uint8_t> empty = smf_tracks({
+        concat({set_tempo(), end_of_track()}),
+        concat({track_name("PART DRUMS"), end_of_track()}),
+        concat({track_name("BEAT"), note_on(12, 100), end_of_track()}),
+    });
+    CHECK_FALSE(hydra::load_songbytes_mid(empty, hydra::ChartReading{}).last_note_end_tick.has_value());
+}
+
 // ---- drum lanes (Song::drum_lanes) ----------------------------------------
 
 namespace {

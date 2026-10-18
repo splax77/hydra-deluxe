@@ -259,6 +259,14 @@ public:
     // Its one reader is app::song_length_ms.
     std::optional<int64_t> end_event_tick;
 
+    // The tick where the file's last note ends, over every instrument chart
+    // at every difficulty, not only the drums parsed into `sequence`; nullopt
+    // when the file has no such note. Clone Hero measures a song's last note
+    // this way. In a .mid, MidiFile::last_note_end_tick says which tracks
+    // count; in a .chart, ChartParser::load_sections reads every section's
+    // note lines. Its one reader is app::song_length_ms.
+    std::optional<int64_t> last_note_end_tick;
+
     // Solo sections in song order. Both parsers fill it once the sequence is
     // finished; see find_solo_sections in song.cpp. Display and replay only;
     // nothing stores it.

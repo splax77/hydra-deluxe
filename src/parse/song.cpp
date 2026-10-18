@@ -1435,6 +1435,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
         }
     }
     sort_practice_sections(song.practice_sections);
+    song.last_note_end_tick = mid.last_note_end_tick();
     song.solo_sections = find_solo_sections(song.sequence);
     // Unlit: the loader tail picks their pads (finish_loaded_song).
     song.drum_lanes = std::move(lanes_);
@@ -1730,6 +1731,8 @@ private:
     std::optional<std::vector<SongSection>> event_sections_;
     // The events section's first end event (Song::end_event_tick).
     std::optional<int64_t> event_end_tick_;
+    // The latest note end over every section (Song::last_note_end_tick).
+    std::optional<int64_t> last_note_end_tick_;
 
     Chord chord_;
     std::vector<COp> ops_;  // one tick's handlers, reused tick to tick
@@ -1800,7 +1803,7 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
     // refuses throws wherever it sits. What is kept depends on the section:
     // [Song] and [SyncTrack] whole, the drum section as its tick lines,
     // [Events] as its practice sections and end event, any other section
-    // nothing. A section
+    // nothing; every section also gives its latest note end. A section
     // counts once its '}' is read, and a later section of the same name
     // replaces an earlier one.
     enum class Keep { Whole, Drums, Events, Nothing };
@@ -1810,6 +1813,18 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
     std::vector<ChartLine> drums;
     std::vector<SongSection> events;
     std::optional<int64_t> events_end;
+    // Every section's latest note end (an N line's tick plus its sustain,
+    // Song::last_note_end_tick), by section name, so a later section of the
+    // same name replaces an earlier one here too.
+    std::string_view section_name;
+    std::optional<int64_t> section_note_end;
+    std::unordered_map<std::string_view, std::optional<int64_t>> section_note_ends;
+    const auto take_note_end = [&](const ChartLine& l) {
+        if (l.kind != LineKind::Note) return;
+        const int64_t note_end = l.tick + l.length;
+        if (!section_note_end.has_value() || note_end > *section_note_end)
+            section_note_end = note_end;
+    };
     size_t pos = 0;
     while (pos < text.size()) {
         const std::string_view line = next_chart_line(text, pos);
@@ -1830,6 +1845,7 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
                         break;
                     case Keep::Nothing: break;
                 }
+                section_note_ends[section_name] = section_note_end;
                 in_section = false;
             } else {
                 // The key is what precedes the first '='; the value is what
@@ -1845,10 +1861,13 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
                 lhs = trim_view(lhs);
                 rhs = trim_view(rhs);
                 if (keep == Keep::Whole) {
-                    whole->add(ChartDataEntry(lhs, rhs, mix_digit));
+                    ChartDataEntry entry(lhs, rhs, mix_digit);
+                    take_note_end(entry.line);
+                    whole->add(std::move(entry));
                 } else if (keep == Keep::Events) {
                     std::string_view event;
                     const ChartLine l = classify_chart_line(lhs, rhs, mix_digit, &event);
+                    take_note_end(l);
                     std::string name;
                     if (l.kind == LineKind::Event && section_name_of(event, &name))
                         events.push_back({l.tick, std::move(name)});
@@ -1861,6 +1880,7 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
                         events_end = l.tick;
                 } else {
                     const ChartLine l = classify_chart_line(lhs, rhs, mix_digit, nullptr);
+                    take_note_end(l);
                     if (keep == Keep::Drums && l.kind != LineKind::Prop) drums.push_back(l);
                 }
             }
@@ -1870,6 +1890,8 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
                 throw ChartFileError("expected a [section] header");
             const std::string_view name = bracket.substr(1, bracket.size() - 2);
             in_section = true;
+            section_name = name;
+            section_note_end.reset();
             if (name == kSongSection || name == kSyncTrackSection) {
                 keep = Keep::Whole;
                 whole.emplace();
@@ -1886,6 +1908,10 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
                 keep = Keep::Nothing;
             }
         }
+    }
+    for (const auto& [name, note_end] : section_note_ends) {
+        if (note_end.has_value() && (!last_note_end_tick_.has_value() || *note_end > *last_note_end_tick_))
+            last_note_end_tick_ = note_end;
     }
 }
 
@@ -2122,6 +2148,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
         sort_practice_sections(song.practice_sections);
     }
     song.end_event_tick = event_end_tick_;
+    song.last_note_end_tick = last_note_end_tick_;
     song.solo_sections = find_solo_sections(song.sequence);
     // Unlit: the loader tail picks their pads (finish_loaded_song).
     song.drum_lanes = std::move(lanes_);
