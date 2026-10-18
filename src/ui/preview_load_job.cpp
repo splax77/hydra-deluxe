@@ -7,7 +7,7 @@
 #include "app/analysis.h"  // chart_changed_since
 #include "app/preview_source.h"
 #include "app/preview_view.h"
-#include "app/song_length.h"   // chart_song_length_ms
+#include "app/song_length.h"   // song_length_ms
 #include "audio/song_audio.h"  // map_song_stems, open_song_stems, mix_song_stems
 #include "core/model.h"
 #include "core/winstr.h"
@@ -74,13 +74,11 @@ PreviewNotes read_preview_notes(const store::ChartLibraryEntry& entry,
     PreviewNotes notes{
         app::resolve_preview_song(entry.notespath, container, reading, rules, fills),
         std::nullopt};
-    // The song's length, from the same owner analysis saves through (D75),
-    // with the container already in hand. A failed read costs only the
-    // length.
+    // The song's length, from the same owner analysis saves through (D255).
+    // A failed read costs only the length.
     try {
-        notes.song_length_ms = app::chart_song_length_ms(
-            app::chart_timing_meta(entry.timing, entry.notespath), entry.notespath, notes.ps.song,
-            reading, rules, container);
+        notes.song_length_ms = app::song_length_ms(
+            app::chart_timing_meta(entry.timing, entry.notespath), notes.ps.song);
     } catch (const std::exception&) {
     }
     // A chart with no charting in this mode would otherwise build an empty

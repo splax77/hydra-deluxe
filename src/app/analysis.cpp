@@ -23,7 +23,7 @@
 #include "app/display_format.h"  // kFactSeparator
 #include "app/dynamics_breakdown.h"
 #include "app/preview_source.h"  // ini_delay_ms, sng_metadata_delay_ms
-#include "app/song_length.h"   // stated_length_ms, chart_song_length_ms
+#include "app/song_length.h"   // stated_length_ms, song_length_ms
 #include "app/user_messages.h"  // plain_error
 #include "app/work_pool.h"
 #include "core/error_kind.h"
@@ -856,11 +856,10 @@ int BatchPlan::todo_rows() const { return std::accumulate(rows.begin(), rows.end
 
 store::SongLength analysis_song_length(const std::optional<store::ChartTimingMeta>& scanned,
                                        const std::string& notespath, const Song& song,
-                                       const AnalysisSettings& settings) {
+                                       [[maybe_unused]] const AnalysisSettings& settings) {
     try {
         return store::SongLength::found(
-            chart_song_length_ms(chart_timing_meta(scanned, notespath), notespath, song,
-                                 settings.reading(), settings.rules));
+            song_length_ms(chart_timing_meta(scanned, notespath), song));
     } catch (const std::exception&) {
         return {};
     }

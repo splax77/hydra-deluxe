@@ -50,7 +50,7 @@ inline render::TrackStateOptions track_options(bool pro) {
 // with where chart time 0 sits in the audio, and the song's length.
 struct PreviewNotes {
     app::PreviewSong ps;
-    // app::chart_song_length_ms (D75). Empty when the owner gives none or its
+    // app::song_length_ms (D255). Empty when the owner gives none or its
     // read failed: the scrubber then ends where playback does
     // (app::playhead_range).
     std::optional<double> song_length_ms;
@@ -126,8 +126,8 @@ public:
         // The beat lines run to it, and the controller hands it to every
         // later base build. It is not the song's length.
         std::optional<double> audio_end_ms;
-        // The song's length (app::chart_song_length_ms, D75), worked out from
-        // the chart's metadata with no audio read. The scene's SP meter
+        // The song's length (app::song_length_ms, D255), worked out from
+        // the chart's metadata and its parsed facts with no audio read. The scene's SP meter
         // closes at it, the scrubber ends at it, and the controller hands it
         // to every later base build. Empty when the owner gives none.
         std::optional<double> song_length_ms;
