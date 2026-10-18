@@ -1357,13 +1357,13 @@
       "anchor": "SongLength::found",
       "must_match": [
         "return store::SongLength::found(",
-        "length_ = store::SongLength::found(app::chart_song_length_ms(",
+        "length_ = store::SongLength::found(app::song_length_ms(",
         "wr.length = SongLength::found(len);"
       ],
       "must_not_match": [
         "static SongLength found(std::optional<double> ms) { return SongLength{true, ms}; }",
         "store::SongLength analysis_song_length(const std::optional<store::ChartTimingMeta>& scanned,",
-        "wr.length = analysis_song_length(item.timing, item.notespath, ar.song, settings);"
+        "wr.length = analysis_song_length(item.timing, item.notespath, ar.song);"
       ],
       "owner_lines": [
         {

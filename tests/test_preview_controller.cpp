@@ -209,7 +209,7 @@ TEST_CASE("the Preview load runs the beat lines to the end of the audio") {
     // for this chart (D255: the stated 3 s plus app::kSongEndPadMs), not at
     // the audio's end.
     CHECK(r.scene.song_length_ms == 4000.0);
-    CHECK(hydra::app::analysis_song_length(std::nullopt, notes, r.song, {}).ms == 4000.0);
+    CHECK(hydra::app::analysis_song_length(std::nullopt, notes, r.song).ms == 4000.0);
     REQUIRE_FALSE(r.scene.beats.empty());
     CHECK(r.scene.beats.back().tick == 9600);
     CHECK(r.scene.beats.back().ms == doctest::Approx(5000.0));

@@ -855,8 +855,7 @@ BatchPlan plan_batch(const std::vector<ScanItem>& items, const SettledCharts& al
 int BatchPlan::todo_rows() const { return std::accumulate(rows.begin(), rows.end(), 0); }
 
 store::SongLength analysis_song_length(const std::optional<store::ChartTimingMeta>& scanned,
-                                       const std::string& notespath, const Song& song,
-                                       [[maybe_unused]] const AnalysisSettings& settings) {
+                                       const std::string& notespath, const Song& song) {
     try {
         return store::SongLength::found(
             song_length_ms(chart_timing_meta(scanned, notespath), song));
