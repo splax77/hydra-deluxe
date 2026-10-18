@@ -51,8 +51,8 @@ inline render::TrackStateOptions track_options(bool pro) {
 struct PreviewNotes {
     app::PreviewSong ps;
     // app::song_length_ms (D255). Empty when the owner gives none or its
-    // read failed: the scrubber then ends where playback does
-    // (app::playhead_range).
+    // read failed: the Preview then has no end and the clock runs free
+    // (PreviewTransport::length_ms).
     std::optional<double> song_length_ms;
 };
 

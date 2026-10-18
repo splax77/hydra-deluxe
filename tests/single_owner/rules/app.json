@@ -1279,17 +1279,10 @@
         "audio::SongMix song_mix = audio::mix_song_stems(std::move(readers), ps.audio_offset_ms);",
         "std::optional<double> audio_end_chart_ms(const Audio& audio, double audio_offset_ms) {"
       ],
-      "owner_lines": [
-        {
-          "file": "src/ui/preview_transport.cpp",
-          "line_text": "playhead_ ? audio_end_chart_ms(*playhead_, audio_offset_ms_) : std::nullopt;",
-          "why": "PreviewTransport::load's playback range (D48), not a song length"
-        }
-      ],
       "scope": [
         "src"
       ],
-      "note": "---- a song's length comes from its metadata and its chart, never its audio (D75, D255) ---- The owner (app::song_length_ms) opens no audio: it reads the stated length, the chart's end event and the last note's end (the row below owns those two facts). A song's stems mixed, or the audio's end asked of a mix, anywhere but the Preview's own mix step is a length worked out from audio again. The transport asks the audio's end of its playhead for the playback range (D48), which is not a song length; that line is allowed. Decided by: D75 (a song's length comes from its chart metadata); D255 (the end event, the last note over every instrument, the pad); phase 7 task AL1, task SL1"
+      "note": "---- a song's length comes from its metadata and its chart, never its audio (D75, D255) ---- The owner (app::song_length_ms) opens no audio: it reads the stated length, the chart's end event and the last note's end (the row below owns those two facts). A song's stems mixed, or the audio's end asked of a mix, anywhere but the Preview's own mix step is a length worked out from audio again. The Preview's playback ends at this length too (D255, the user's answer 5), so the transport asks its audio for no end. Decided by: D75 (a song's length comes from its chart metadata); D255 (the end event, the last note over every instrument, the pad); phase 7 task AL1, task SL1"
     },
     {
       "question": "Where does the chart's end event sit, and does it count?",

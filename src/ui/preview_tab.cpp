@@ -543,11 +543,11 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     if (ImGui::IsItemDeactivatedAfterEdit()) app.commit_settings();
 
     // The clock drives the scrubber, so a chart with no audio still scrubs.
-    // The scrubber's end is PreviewController::scrub_end_ms (the transport's
-    // range, app::PlayheadRange); should playback run past it, the thumb
-    // waits at the right end.
+    // The scrubber ends where playback does (PreviewController::playback_end_ms);
+    // should the clock run past it between frames, the thumb waits at the
+    // right end.
     const hydra::app::PreviewTimeBox box = pc->time_box();
-    const double scrub_len_ms = pc->scrub_end_ms();
+    const double scrub_len_ms = pc->playback_end_ms();
     float pos_s =
         static_cast<float>(hydra::app::scrub_thumb_ms(pc->position_ms(), scrub_len_ms) / 1000.0);
     // A slider cannot have an empty range, so with no usable edge it spans 1 s.

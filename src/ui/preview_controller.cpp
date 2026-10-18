@@ -159,8 +159,6 @@ void PreviewController::take_notes_job() {
         // one as it does after a first load.
         scene_base_.reset();
         base_started_ = false;
-        // The audio stays; only where playback ends moves with the last note.
-        transport_.set_last_note_ms(hydra::app::last_note_ms(scene_));
     } else {
         error_ = notes_job_->message();
         error_detail_ = notes_job_->error();
@@ -293,7 +291,7 @@ void PreviewController::poll() {
         first_load_done_ = true;
         transport_.set_gain(app::Settings::volume_gain(volume_pct_));
         transport_.load(std::make_unique<audio::Playhead>(std::move(result.audio)),
-                        hydra::app::last_note_ms(scene_), result.audio_offset_ms);
+                        result.audio_offset_ms);
         transport_.set_song_length_ms(result.song_length_ms);
         // Open the output device only when there is audio to play; a chart with
         // no locatable stems previews silently (the highway still draws).
@@ -393,14 +391,10 @@ bool PreviewController::playing() const { return transport_.playing(); }
 
 double PreviewController::position_ms() const { return transport_.now_ms(); }
 
-// The scrubber's right edge, from the transport's one range value
-// (app::PlayheadRange, D114 item 17).
-double PreviewController::scrub_end_ms() const { return transport_.range().scrub_end_ms; }
-
-// Where playback stops: the later of the last note and the audio's end. It is
-// the same range value the scrubber reads, so the time box's clock and the
-// scrubber cannot drift apart (D114 item 17). Every reader in this class asks here.
-double PreviewController::playback_end_ms() const { return transport_.range().playback_end_ms; }
+// Where playback stops: the song's length, as PreviewTransport::length_ms
+// reads it (app::song_length_ms; D255, the user's answer 5). Every reader in
+// this class asks here.
+double PreviewController::playback_end_ms() const { return transport_.length_ms(); }
 
 void PreviewController::seek_ms(double ms) { transport_.seek_ms(ms); }
 
@@ -451,8 +445,8 @@ hydra::app::PreviewDrainBox PreviewController::drain_box() const {
 }
 
 const std::vector<double>& PreviewController::scrub_marks() const {
-    // Placed by the song's length, not the scrubber's edge (D114 item 17).
-    const double length = transport_.range().marks_length_ms;
+    // Placed by the same end the scrubber spans.
+    const double length = playback_end_ms();
     if (!cache_fresh(scrub_marks_cache_) || scrub_marks_cache_.length_ms != length) {
         scrub_marks_ = hydra::app::build_scrub_marks(scene_, length);
         stamp(scrub_marks_cache_);

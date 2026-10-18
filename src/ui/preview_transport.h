@@ -23,15 +23,13 @@
 #include <optional>
 
 #include "app/preview_clock.h"
-#include "app/preview_view.h"  // PlayheadRange
 #include "audio/frames.h"
 #include "audio/player.h"
 
 namespace hydra::ui {
 
-// The chart sync rule and the audio's end live in audio/frames.h, so the
-// song's length can ask them without reaching into the UI.
-using audio::audio_end_chart_ms;
+// The chart sync rule lives in audio/frames.h, so code outside the UI can ask
+// it without reaching into the UI.
 using audio::audio_ms_of_chart_ms;
 using audio::chart_ms_of_audio_ms;
 
@@ -42,23 +40,13 @@ public:
     PreviewTransport(const PreviewTransport&) = delete;
     PreviewTransport& operator=(const PreviewTransport&) = delete;
 
-    // Load a chart's audio (may be null/empty for a chart with no audio), the
-    // chart's last drawn note time (app::last_note_ms), and where chart time
-    // 0 sits in the audio (audio_ms_of_chart_ms; never negative, see
-    // audio::mix_song_stems). length_ms() becomes the playback range: the
-    // later of `last_note_ms` and the audio's end in chart time, so the audio
-    // plays out and a chart with no audio still plays to its last note (D48,
-    // Q25). It is where playback stops, not a song length; range() puts the
-    // two together. Resets the playhead to the offset, paused.
-    void load(std::unique_ptr<audio::Playhead> playhead, double last_note_ms,
-              double audio_offset_ms = 0.0);
+    // Load a chart's audio (may be null/empty for a chart with no audio) and
+    // where chart time 0 sits in the audio (audio_ms_of_chart_ms; never
+    // negative, see audio::mix_song_stems). Resets the playhead to the
+    // offset, paused. Where playback ends is set apart, by
+    // set_song_length_ms: the audio's own length never decides it.
+    void load(std::unique_ptr<audio::Playhead> playhead, double audio_offset_ms = 0.0);
     void unload();  // drop the playhead, back to an empty paused transport
-
-    // A new last note for the loaded audio, as when the Preview swaps in
-    // another mode's notes. length_ms() follows by the same rule as load().
-    // The audio, the play state and the clock stay as they are, except that
-    // a clock past the new end is pulled back to it, as seek_ms clamps.
-    void set_last_note_ms(double last_note_ms);
 
     void play();    // seeks the playhead to the clock and starts both
     void pause();
@@ -67,16 +55,19 @@ public:
     // while the clock plays, sets the playhead playing again.
     void seek_ms(double ms);
     bool playing() const;
-    double length_ms() const;  // the playback range (see load), not the song's length
+    // Where playback stops: the song's length when has_song_length accepts
+    // it, else 0, and with 0 nothing stops the clock. The time box, the
+    // scrubber and its gold marks read this one end (D255, the user's
+    // answer 5).
+    double length_ms() const;
     bool has_audio() const;  // a loaded playhead with > 0 frames
 
-    // The song's length as the load worked out (app::song_length_ms, D75),
-    // or none. unload() clears it.
+    // The song's length as the load worked out (app::song_length_ms), or
+    // none; length_ms() follows it. The audio, the play state and the clock
+    // stay as they are, except that a clock past a shorter end is pulled back
+    // to it, as seek_ms clamps. unload() clears it.
     void set_song_length_ms(std::optional<double> song_length_ms);
     std::optional<double> song_length_ms() const { return song_length_ms_; }
-    // Where the playhead can be: one value the time box, the scrubber, its
-    // thumb and its marks all read (app::playhead_range, D114 item 17).
-    app::PlayheadRange range() const;
 
     // The song time now. If playing and at/after the end, pauses and pins the
     // time to length_ms() (the stop-at-end rule) — so call this once per frame
@@ -96,12 +87,7 @@ public:
     int sample_rate() const;
 
 private:
-    // The playback range rule load() and set_last_note_ms share. Call with
-    // mu_ held, after playhead_ and audio_offset_ms_ are set.
-    void update_length_locked(double last_note_ms);
-
     app::PreviewClock clock_;  // GUI thread only
-    double length_ms_ = 0.0;
     std::optional<double> song_length_ms_;
     double audio_offset_ms_ = 0.0;  // as audio_ms_of_chart_ms takes it
     float gain_ = 1.0f;
