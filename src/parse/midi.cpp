@@ -184,19 +184,25 @@ void walk_chunks(const uint8_t* data, size_t size, int& format, int& ticks_per_b
     }
     ticks_per_beat = division;
 
-    size_t pos = 8 + header_len;
+    // Widened before the add, so a header length near 2^32 cannot wrap back
+    // to the start of the file.
+    size_t pos = 8 + size_t{header_len};
     bool any_track = false;
     while (pos < size) {
-        if (pos + 4 > size ||
-            data[pos] != 'M' || data[pos + 1] != 'T' ||
+        // A chunk header cut short by the end of the file ends the walk, MTrk
+        // or not, the way a chunk body cut short is clamped rather than
+        // refused.
+        if (pos + 8 > size) break;
+        uint32_t chunk_len = be32(data, pos + 4);
+        if (data[pos] != 'M' || data[pos + 1] != 'T' ||
             data[pos + 2] != 'r' || data[pos + 3] != 'k') {
             // Unknown chunk: the length field still tells us how to skip.
-            if (pos + 8 > size) break;
-            pos += 8 + be32(data, pos + 4);
+            // Widened before the add, so a length near 2^32 cannot wrap the
+            // step to zero and stall the walk.
+            pos += 8 + size_t{chunk_len};
             continue;
         }
 
-        uint32_t chunk_len = be32(data, pos + 4);
         size_t start = pos + 8;
         size_t end = std::min(start + chunk_len, size);
         on_track(start, end);
