@@ -189,6 +189,66 @@ jobs:
           name: coverage-report
           path: coverage-out/html
 
+  # Every input the weekly fuzz run has kept, run once through the parsers with
+  # no mutation, so a change that makes a saved input crash, hang or blow up
+  # memory fails here instead of waiting for the next fuzz run. The inputs are
+  # the combined corpus fuzz.yml's corpus-all job saves, plus testdata/fuzz.
+  # tools/fuzz_run.ps1 finds the targets from those folders' names and holds
+  # the limits. See "Fuzzing the file parsers" in docs/development.md.
+  fuzz-replay:
+    name: Fuzz corpus replay (Windows, Release)
+    if: github.event_name != 'schedule'
+    runs-on: windows-2025
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+
+      # Puts the compiler's folder on PATH. The ASan runtime DLL the fuzz exes
+      # load lives there, as in the asan job above.
+      - name: Set up the Visual Studio developer shell
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build the fuzz exes
+        run: .\build_cpp.ps1 -Preset fuzz -Target hydra_fuzz
+
+      # The newest combined corpus. The key itself never matches (no fuzz run
+      # has this run's id); the prefix picks the newest save. Caches saved on
+      # main are readable from pushes to main and from pull requests into it.
+      - name: Restore the grown corpus
+        id: corpus
+        uses: actions/cache/restore@v4
+        with:
+          path: corpus-all
+          key: fuzz-corpus-all-${{ github.run_id }}
+          restore-keys: fuzz-corpus-all-
+
+      # No combined corpus yet (before the first fuzz run that saves one, or a
+      # pull request that cannot read the cache): replay testdata/fuzz alone.
+      - name: Note a missing grown corpus
+        if: steps.corpus.outputs.cache-matched-key == ''
+        run: |
+          $msg = 'No grown fuzz corpus (cache fuzz-corpus-all-*) was found, so only testdata/fuzz is replayed.'
+          "::notice title=Fuzz corpus missing::$msg"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $msg
+
+      - name: Replay the saved inputs
+        run: .\tools\fuzz_run.ps1 -Mode replay -InputRoot corpus-all, testdata\fuzz -CrashDir crashes
+
+      # The input that broke a parser, as fuzz.yml uploads its findings.
+      - name: Upload the crash files
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-replay-crashes
+          path: crashes
+          if-no-files-found: ignore
+
   tool-tests:
     name: Tool tests (Python and PowerShell)
     if: github.event_name != 'schedule'
