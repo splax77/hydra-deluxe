@@ -184,6 +184,20 @@ void MeasureIndex::walk(int64_t last_tick,
     }
 }
 
+int64_t MeasureIndex::measure_line_tick(int64_t measure) const {
+    // Every span holds at least one measure line (restarts strictly rise), so
+    // lines_before rises too and picks one span per line number.
+    const Span& s =
+        spans_[index_at(spans_, measure, [](const Span& sp) { return sp.lines_before; })];
+    return s.restart + (measure - s.lines_before) * s.length;
+}
+
+int64_t MeasureIndex::first_measure_line_at_or_after(int64_t ticks) const {
+    if (ticks <= 0) return 0;
+    const int64_t measure = at(ticks).measure;
+    return measure_line_tick(measure) < ticks ? measure + 1 : measure;
+}
+
 // ---- MeasureCount (the continuous count) ---------------------------------
 
 MeasureCount::MeasureCount(const std::map<int64_t, int64_t>& tpm_map) {
