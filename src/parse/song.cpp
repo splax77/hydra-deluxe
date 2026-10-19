@@ -818,7 +818,7 @@ void Song::place_fills_ch10(const core::Rules& rules) {
 }
 
 // Clone Hero 1.1.0.6142's generator (0x20D2B30), for every mode but 1.0. It reads
-// the measure lines of Clone Hero's grid (MeasureIndex::walk) and starts at
+// the measure lines of Clone Hero's grid (MeasureIndex) and starts at
 // the second line (`mov ebx, 1`). Each line takes the chord nearest it, a tie
 // going to the later chord, when that chord is within the distance limit; the
 // fill then starts on the line, so its length is the chord tick minus the
@@ -834,22 +834,19 @@ void Song::place_fills_ch11(const core::Rules& rules) {
     const int64_t max_distance =
         static_cast<int64_t>(tick_resolution_ * rules.fill_max_distance_beats) + 1;
 
-    // Every measure line up to the last one a chord can still reach. The grid
-    // runs to the chart's end in Clone Hero; past the last chord plus the
-    // limit no line can take a chord.
-    std::vector<int64_t> lines;
-    timing().measure_index().walk(
-        sequence.back().timecode.ticks() + max_distance,
-        [&](int64_t tick, MeasureIndex::Line kind) {
-            if (kind == MeasureIndex::Line::Measure) lines.push_back(tick);
-        });
+    // Lines are visited by number, so the cost follows the chords, not the
+    // measure lines between them. The grid runs to the chart's end in Clone
+    // Hero; past the last chord plus the limit no line can take a chord.
+    const MeasureIndex& grid = timing().measure_index();
+    const int64_t last_reachable = sequence.back().timecode.ticks() + max_distance;
 
     // `next` is the first chord at or after the line, searched onward from
     // the last chord looked at; the chord before it is the other candidate.
     size_t next = 0;
-    size_t line = 1;
-    while (line < lines.size()) {
-        const int64_t line_tick = lines[line];
+    int64_t line = 1;
+    for (;;) {
+        const int64_t line_tick = grid.measure_line_tick(line);
+        if (line_tick > last_reachable) break;
         while (next < sequence.size() && sequence[next].timecode.ticks() < line_tick) ++next;
         std::optional<size_t> best;
         if (next < sequence.size()) best = next;
@@ -862,13 +859,19 @@ void Song::place_fills_ch11(const core::Rules& rules) {
         }
         const int64_t chord_tick = sequence[*best].timecode.ticks();
         if (std::llabs(chord_tick - line_tick) > max_distance) {
-            ++line;
+            // Out of reach here. The chords before this line only get farther
+            // from later lines, so no line takes a chord until one is within
+            // the limit of `next`: skip straight to the first such line, the
+            // same one stepping a line at a time would stop on.
+            if (next == sequence.size()) break;
+            line = std::max(line + 1, grid.first_measure_line_at_or_after(
+                                          sequence[next].timecode.ticks() - max_distance));
             continue;
         }
         sequence[*best].activation_length = chord_tick - line_tick;
         // hydra_rules.ini refuses a cooldown below 1 (rules_fields); a Rules
         // value built in code gets the same floor, so the walk always moves.
-        line += static_cast<size_t>(std::max(rules.fill_cooldown_measures, 1));
+        line += static_cast<int64_t>(std::max(rules.fill_cooldown_measures, 1));
     }
 }
 

@@ -203,6 +203,35 @@ TEST_CASE("timing: the same meter again makes no new grid span; a change between
     CHECK(hydra::MeasureIndex(back, 480).count() == 1);
 }
 
+TEST_CASE("timing: a measure line's number and tick agree with the grid walk") {
+    // Mid-measure restart, a change between beats, two signatures between the
+    // same beats, the same meter again, and a few changes in a row.
+    const std::vector<std::map<int64_t, std::pair<int, int>>> grids{
+        {{0, {4, 4}}, {2880, {7, 8}}},
+        {{0, {4, 4}}, {1000, {3, 4}}},
+        {{0, {4, 4}}, {1000, {7, 8}}, {1200, {3, 4}}},
+        {{0, {4, 4}}, {1000, {4, 4}}},
+        {{0, {6, 8}}, {2000, {5, 4}}, {2500, {7, 16}}, {9000, {4, 4}}},
+    };
+    const int64_t last_tick = 20000;
+    for (const auto& sigs : grids) {
+        hydra::MeasureIndex mi(sigs, 480);
+        const std::vector<int64_t> lines = measure_lines(mi, last_tick);
+        REQUIRE(lines.size() > 3);
+        for (size_t n = 0; n < lines.size(); ++n) {
+            CAPTURE(n);
+            CHECK(mi.measure_line_tick(static_cast<int64_t>(n)) == lines[n]);
+        }
+        // Every tick up to the last line maps to the first line at or after it.
+        size_t want = 0;
+        for (int64_t t = -10; t <= lines.back(); ++t) {
+            while (lines[want] < t) ++want;
+            CAPTURE(t);
+            CHECK(mi.first_measure_line_at_or_after(t) == static_cast<int64_t>(want));
+        }
+    }
+}
+
 TEST_CASE("timing: ms_per_measure_at reads local measure durations") {
     // The Tom Sawyer (Onyxite) shape: ten 7/8 measures at 87.35 BPM, then
     // 7/16 at 85.1. 7/8 = 1680 ticks at res 480; 7/16 = 840.

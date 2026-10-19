@@ -148,6 +148,15 @@ public:
     // inclusive, in tick order.
     void walk(int64_t last_tick, const std::function<void(int64_t, Line)>& fn) const;
 
+    // The tick of a measure line, by its 0-based number as at() counts
+    // measures: the same lines walk reports as Line::Measure, without
+    // stepping through the ones before. Meaningful for measure >= 0.
+    int64_t measure_line_tick(int64_t measure) const;
+
+    // The number of the first measure line at or after a tick (0 for any
+    // tick at or before 0).
+    int64_t first_measure_line_at_or_after(int64_t ticks) const;
+
 private:
     struct Span {
         int64_t restart = 0;

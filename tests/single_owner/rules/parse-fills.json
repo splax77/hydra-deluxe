@@ -74,7 +74,7 @@
         },
         {
           "file": "src/parse/song.cpp",
-          "line_text": "line += static_cast<size_t>(std::max(rules.fill_cooldown_measures, 1));",
+          "line_text": "line += static_cast<int64_t>(std::max(rules.fill_cooldown_measures, 1));",
           "why": "Song::check_activations, the owner: the next candidate line after a placed fill"
         },
         {
