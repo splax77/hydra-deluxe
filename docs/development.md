@@ -406,8 +406,9 @@ its header says why.
 Run one target from a Visual Studio developer shell, for as long as you like.
 The first folder is the corpus the fuzzer grows; the second holds the seeds.
 The `.chart` target also takes a dictionary of the reader's keywords. Add the
-`-timeout` and `-rss_limit_mb` limits the workflow's fuzz step uses, so a hang
-or a memory blowup stops the run the same way it does there.
+`-timeout` and `-rss_limit_mb` limits `tools\fuzz_run.ps1` holds, so a hang
+or a memory blowup stops the run the same way it does in the workflows. That
+script can also do the run for you; its header shows how.
 
 ```
 mkdir corpus\chart
@@ -424,6 +425,18 @@ A finding becomes a permanent test by copying the file into
 (see `testdata/fuzz/README.md`). Check it in with the parser fix, never
 before, or the suite goes red. `.github/workflows/fuzz.yml` runs every target
 for a fixed time once a week and uploads any finding as an artifact.
+
+The weekly run also saves every input it kept, which the test suite never
+sees. So CI replays them: the `fuzz-replay` job in `.github/workflows/ci.yml`
+runs on every push and pull request. It builds the fuzz exes, restores the
+newest combined corpus that fuzz.yml's `corpus-all` job saved, and runs each
+input once, with no mutation, together with `testdata/fuzz`. A saved input
+that now crashes, hangs or blows up memory fails the job within minutes, and
+the input is uploaded as `fuzz-replay-crashes`. Before the first weekly run
+saves a combined corpus, or where a pull request cannot read the cache, the
+job replays `testdata/fuzz` alone and says so in a notice. To replay on your
+own machine, run `tools\fuzz_run.ps1 -Mode replay` from a developer shell; its
+header says how it finds the targets.
 
 ## Continuous integration
 

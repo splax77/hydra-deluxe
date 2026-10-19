@@ -1,7 +1,9 @@
 # Fuzzing: once a week, each file parser gets a time-boxed run of random input
 # from libFuzzer, built with AddressSanitizer. A crash, a hang or a memory
-# error fails that target's job and uploads the input that caused it. See
-# "Fuzzing the file parsers" in docs/development.md.
+# error fails that target's job and uploads the input that caused it. The
+# corpus each target grows is saved for the next run and, all targets
+# together, for ci.yml's fuzz-replay job. See "Fuzzing the file parsers" in
+# docs/development.md.
 
 name: Fuzz
 
@@ -94,17 +96,10 @@ jobs:
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
           restore-keys: fuzz-corpus-${{ matrix.target }}-
 
-      # libFuzzer adds new inputs to the first folder (corpus) and only reads
-      # the seeds. Its exit code is nonzero on a crash, a hang past -timeout
-      # or a memory blowup past -rss_limit_mb, which fails the job.
+      # tools/fuzz_run.ps1 holds the per-input limits, which ci.yml's replay
+      # job shares. A crash, a hang or a memory blowup fails the job.
       - name: Fuzz ${{ matrix.target }}
-        run: |
-          New-Item -ItemType Directory -Force corpus, crashes | Out-Null
-          $extra = @()
-          if ('${{ matrix.target }}' -eq 'chart') { $extra += '-dict=tests/fuzz/chart.dict' }
-          & .\build-fuzz\Release\fuzz_${{ matrix.target }}.exe corpus seeds\${{ matrix.target }} `
-              -max_total_time=600 -timeout=10 -rss_limit_mb=2048 -artifact_prefix=crashes\ @extra
-          exit $LASTEXITCODE
+        run: .\tools\fuzz_run.ps1 -Mode fuzz -Target ${{ matrix.target }} -Corpus corpus -Seeds seeds\${{ matrix.target }} -Seconds 600 -CrashDir crashes
 
       - name: Save the grown corpus
         if: always()
@@ -112,6 +107,16 @@ jobs:
         with:
           path: corpus
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+
+      # For the corpus-all job below, which bundles every target's corpus.
+      - name: Hand the grown corpus to corpus-all
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-corpus-${{ matrix.target }}
+          path: corpus
+          retention-days: 1
+          if-no-files-found: ignore
 
       # The input that broke the parser. Copy it into testdata/fuzz/<target>/
       # with the fix (testdata/fuzz/README.md).
@@ -122,3 +127,53 @@ jobs:
           name: fuzz-crashes-${{ matrix.target }}
           path: crashes
           if-no-files-found: ignore
+
+  # Every target's grown corpus in one cache, one folder per target, which
+  # ci.yml's fuzz-replay job restores on each push and pull request. One cache
+  # lets that job restore by one fixed key prefix, so it never needs the
+  # target list. The per-target caches above stay, for the next fuzz run.
+  # It runs when a fuzz job failed too, as the per-target saves do.
+  corpus-all:
+    name: Gather the grown corpora
+    needs: [seeds, fuzz]
+    if: always() && needs.seeds.result == 'success'
+    runs-on: windows-2025
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      # A run where no fuzz job uploaded anything has nothing to fetch; the
+      # step after this one then saves nothing.
+      - name: Fetch every target's corpus
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: fuzz-corpus-*
+          path: gathered
+
+      # The download puts each artifact in a folder named after it; the replay
+      # wants each folder named after its target.
+      - name: Name each folder after its target
+        id: gather
+        run: |
+          New-Item -ItemType Directory -Force corpus-all | Out-Null
+          if (Test-Path gathered) {
+            Get-ChildItem gathered -Directory | ForEach-Object {
+              Move-Item $_.FullName (Join-Path corpus-all ($_.Name -replace '^fuzz-corpus-', ''))
+            }
+          }
+          $folders = @(Get-ChildItem corpus-all -Directory)
+          $folders | ForEach-Object {
+            "{0,-6} {1,5} inputs" -f $_.Name, @(Get-ChildItem $_.FullName -File).Count
+          }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "folders=$($folders.Count)"
+
+      # An empty save would become the newest combined cache and hide the
+      # last good one from the replay job.
+      - name: Save the combined corpus
+        if: steps.gather.outputs.folders != '0'
+        uses: actions/cache/save@v4
+        with:
+          path: corpus-all
+          key: fuzz-corpus-all-${{ github.run_id }}
