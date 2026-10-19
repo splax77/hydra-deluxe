@@ -538,6 +538,22 @@ TEST_CASE("midi: a file with no track chunk is refused by both readers") {
     }
 }
 
+TEST_CASE("midi: a track header cut short by the end of the file ends the chunk walk") {
+    // The fuzzer's crash (testdata/fuzz/srb/mtrk-tag-at-end.srb): an MTrk tag
+    // in the last 4 to 7 bytes, with no room for its length field. Both
+    // readers keep the tracks before it and stop there.
+    using namespace testmidi;
+    const std::vector<uint8_t> whole = smf(end_of_track());
+    const std::vector<uint8_t> next_tag = smf_tracks({{}, {}});
+    for (size_t extra = 4; extra < 8; ++extra) {
+        std::vector<uint8_t> file = whole;
+        file.insert(file.end(), next_tag.end() - 8, next_tag.end() - 8 + extra);
+        CAPTURE(extra);
+        CHECK(hydra::MidiFile(file).tracks.size() == 1);
+        CHECK(hydra::MidiFile::lean(file.data(), file.size(), lean_test_filter()).tracks.size() == 1);
+    }
+}
+
 // ---- which tracks the song parser reads (drums_track, events_track, D253) ----
 
 namespace {
