@@ -568,6 +568,13 @@ generator is Hydra's own model of 1.0, kept unchanged (docs/adr/0023). The
 distance and the length are cut down to whole ticks. `Song::place_fills_ch10`
 holds it, and `Song::place_fills_ch11` the 1.1 generator.
 
+`Song::generated_fills` records which generator ran (empty for authored
+fills): the one answer to "was this fill generated". The Preview reads it to
+draw a 1.1 generated fill as the half measure before its chord
+(`drawn_fill_start_tick`, the user's call, 2026-10-19), because the fill's
+engine length is often 0. That is display only: the length the deadline math
+reads is unchanged, and so are authored and 1.0 fills.
+
 **Fill rule**:
 Which Clone Hero version's fill rules a run follows, 1.1 or 1.0:
 `FillDeadlineRule` in src/parse/song.h. It picks both the fill spawn deadline
