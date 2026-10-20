@@ -298,6 +298,22 @@ TEST_CASE("midi: track_name is not exposed as text") {
     CHECK(found);
 }
 
+TEST_CASE("midi: each text event is decoded on its own, UTF-8 first, else Windows-1252") {
+    using namespace testmidi;
+    // A Windows-1252 track name ("Szamár", á = 0xE1), a UTF-8 text event
+    // ("Café"), and a Windows-1252 one with curly quotes (0x93, 0x94).
+    const std::vector<uint8_t> track =
+        concat({track_name("Szam\xE1r"), text_event("Caf\xC3\xA9"), text_event("\x93hi\x94"),
+                end_of_track()});
+    const hydra::MidiFile mid(smf(track));
+    REQUIRE(mid.tracks.size() == 1);
+    CHECK(mid.tracks[0].name == "Szam\xC3\xA1r");
+    std::vector<std::string> texts;
+    for (const hydra::Message& m : mid.tracks[0].messages)
+        if (m.str_attr == hydra::Message::StrAttr::Text) texts.push_back(m.str);
+    CHECK(texts == std::vector<std::string>{"Caf\xC3\xA9", "\xE2\x80\x9Chi\xE2\x80\x9D"});
+}
+
 TEST_CASE("midi: each string meta gets its type, mido name and attribute") {
     // One meta of every string-carrying type, 0x01..0x09. 0x08 (program
     // name) is unknown to mido, so it is dropped.

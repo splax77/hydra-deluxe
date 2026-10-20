@@ -74,7 +74,8 @@ struct Message {
     int denominator = 0;       // time_signature (already 2**b, as in mido;
                                // 0 when b is past 30, see parse/timesig.h)
 
-    // Text/name payload, UTF-8 (latin-1 decoded). Only text and name metas
+    // Text/name payload, UTF-8 as decode_chart_text (parse/text_decode.h)
+    // reads each event's bytes. Only text and name metas
     // fill it; every other message leaves it empty, so it never allocates.
     std::string str;
 
@@ -101,8 +102,8 @@ inline constexpr std::string_view kEventsTrackName = "events";
 // (ToLowerInvariant at 0x2155FDF) before it compares it (0x2156134 and
 // 0x21564A8), with no trim, so the game plays "PART DRUM" and "Part Drums"
 // alike (D252). ASCII lowering gives the same answer for these names: track
-// names are decoded as latin-1, and no non-ASCII character lowercases to one
-// of their letters.
+// names are UTF-8 (decode_chart_text), and no non-ASCII character lowercases
+// to one of their letters.
 bool is_drums_track_name(std::string_view name);
 
 // Whether `name` is the events track name (kEventsTrackName) in any ASCII
@@ -110,7 +111,7 @@ bool is_drums_track_name(std::string_view name);
 // it using OrdinalIgnoreCase (String.Equals with comparison type 5 at
 // 0x2155F30 and 0x2155F36), so the game reads "EVENTS" and "Events" alike
 // (D253). ASCII case folding gives the same answer for this name: track names
-// are decoded as latin-1, and no non-ASCII character there changes case to
+// are UTF-8 (decode_chart_text), and no non-ASCII character changes case to
 // one of its letters.
 bool is_events_track_name(std::string_view name);
 

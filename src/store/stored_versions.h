@@ -88,7 +88,9 @@ inline constexpr StampRule<std::string_view, 1> kResultsStamp{"2.8.0+efill85", {
 // MD5 of the whole container. Their saved results no longer
 // match any chart and are dropped by the next scan; the user accepted that.
 // 4 = every name field is trimmed once, D114 item 15.
-inline constexpr StampRule<int, 1> kChartMetaStamp{4, {4}};
+// 5 = song.ini, .chart and MIDI text is decoded UTF-8 first, else
+// Windows-1252 (decode_chart_text in parse/text_decode.h).
+inline constexpr StampRule<int, 1> kChartMetaStamp{5, {5}};
 
 // A build always reads back what it writes.
 static_assert(kResultsStamp.is_current(kResultsStamp.written));

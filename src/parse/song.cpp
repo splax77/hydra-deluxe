@@ -19,6 +19,7 @@
 #include "parse/sng.h"
 #include "parse/chart_files.h"
 #include "parse/srb.h"
+#include "parse/text_decode.h"
 #include "parse/timesig.h"
 
 namespace hydra {
@@ -1800,8 +1801,11 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
                                 std::string_view drum_section) {
     // Walk the file in place, one line per '\n' (a trailing '\r' is removed by
     // the trim). Every line ended by a '\n' counts, empty or not; the last
-    // unterminated piece counts only when it is non-empty.
-    const std::string_view text(reinterpret_cast<const char*>(data.data()), data.size());
+    // unterminated piece counts only when it is non-empty. The walk reads the
+    // file's text as decode_chart_text_view gives it (parse/text_decode.h).
+    std::string decoded;
+    const std::string_view text = decode_chart_text_view(
+        std::string_view(reinterpret_cast<const char*>(data.data()), data.size()), decoded);
 
     // Every line of every section is classified, so a number the reader
     // refuses throws wherever it sits. What is kept depends on the section:

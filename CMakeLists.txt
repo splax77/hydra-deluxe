@@ -301,6 +301,7 @@ add_library(hydra_core STATIC
     src/parse/srb.cpp
     src/parse/chart_files.cpp
     src/parse/sng.cpp
+    src/parse/text_decode.cpp
     src/search/graph.cpp
     src/search/engine.cpp
     src/search/pather.cpp
