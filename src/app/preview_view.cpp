@@ -60,6 +60,27 @@ PreviewSpan span_from_ticks(const Song& song, int64_t start, int64_t end) {
     return s;
 }
 
+// The Preview's drawn length of a generated fill, in measures of Clone Hero's
+// grid at the fill's chord, as the user chose for how the Preview shows a
+// generated fill. Only the drawing reads it; the engine's fill length
+// (SongTimestamp::activation_length) is left as the generator set it.
+constexpr double kGeneratedFillDrawnMeasures = 0.5;
+
+// Where the Preview starts drawing the fill that ends on `ts`. An authored
+// fill, and a Clone Hero 1.0 generated fill (already that half measure long,
+// by place_fills_ch10), draw from fill_start_tick. A Clone Hero 1.1 generated
+// fill starts on its measure line, often at its own chord, so it draws
+// kGeneratedFillDrawnMeasures of the grid measure in force at the chord
+// (MeasureIndex) before the chord instead.
+int64_t drawn_fill_start_tick(const Song& song, const SongTimestamp& ts) {
+    const int64_t chord = ts.timecode.ticks();
+    if (song.generated_fills != FillDeadlineRule::Ch11)
+        return fill_start_tick(chord, *ts.activation_length);
+    const MeasureIndex& grid = song.timing().measure_index();
+    const int64_t measure = grid.length_at(grid.span_at(chord));
+    return chord - static_cast<int64_t>(static_cast<double>(measure) * kGeneratedFillDrawnMeasures);
+}
+
 void push_segment(SpMeterCurve& curve, double start_ms, double end_ms,
                   double start_bars, double end_bars) {
     if (end_ms <= start_ms) return;  // a zero-width stretch draws nothing
@@ -277,12 +298,12 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
                 span_from_ticks(song, *ts.sp_phrase_start, ts.timecode.ticks()));
 
         // Activation fill: the window runs between this note and where
-        // fill_start_tick says the fill starts, whichever comes first. A
-        // fill whose chord lands just before its measure line has a start
-        // after the chord.
+        // drawn_fill_start_tick says the drawing starts, whichever comes
+        // first. An authored fill whose chord lands just before its measure
+        // line has a start after the chord.
         if (ts.activation_length.has_value()) {
             const int64_t chord = ts.timecode.ticks();
-            const int64_t start = fill_start_tick(chord, *ts.activation_length);
+            const int64_t start = drawn_fill_start_tick(song, ts);
             PreviewFill f;
             f.span = span_from_ticks(song, std::min(start, chord), std::max(start, chord));
             f.chord_tick = chord;
