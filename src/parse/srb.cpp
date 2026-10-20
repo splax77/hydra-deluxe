@@ -10,6 +10,7 @@
 #include "core/error_kind.h"
 #include "core/little_endian.h"
 #include "miniz.h"
+#include "parse/text_decode.h"
 
 namespace hydra {
 
@@ -148,11 +149,11 @@ bool srb_parse_metadata(const std::vector<uint8_t>& meta, SrbMetadata& out) {
         return true;
     };
     // A length-prefixed string at `pos`, moving past it; false when it does
-    // not fit.
+    // not fit. Each string is its own text for decode_chart_text.
     const auto read_string = [&](std::string* into) {
         uint32_t len = 0;
         if (!read_u32(&len) || !core::fits(meta, pos, len)) return false;
-        if (into) into->assign(reinterpret_cast<const char*>(meta.data() + pos), len);
+        if (into) *into = decode_chart_text(meta.data() + pos, len);
         pos += len;
         return true;
     };

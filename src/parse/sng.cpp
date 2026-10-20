@@ -6,6 +6,7 @@
 #include "core/bounds.h"
 #include "core/error_kind.h"
 #include "core/little_endian.h"
+#include "parse/text_decode.h"
 
 namespace hydra {
 
@@ -80,13 +81,14 @@ std::vector<std::pair<std::string, std::string>> sng_read_metadata(const std::ve
         const uint32_t key_len = core::read_le_u32(buf.data() + pos);
         pos += 4;
         if (!fits(buf, pos, key_len)) break;
-        std::string key = string_at(buf, pos, key_len);
+        // Each key and value is its own text for decode_chart_text.
+        std::string key = decode_chart_text(buf.data() + pos, key_len);
         pos += key_len;
         if (!fits(buf, pos, 4)) break;
         const uint32_t value_len = core::read_le_u32(buf.data() + pos);
         pos += 4;
         if (!fits(buf, pos, value_len)) break;
-        std::string value = string_at(buf, pos, value_len);
+        std::string value = decode_chart_text(buf.data() + pos, value_len);
         pos += value_len;
         out.emplace_back(std::move(key), std::move(value));
     }

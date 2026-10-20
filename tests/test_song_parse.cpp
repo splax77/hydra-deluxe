@@ -996,23 +996,12 @@ bool in_ranges(const std::vector<ByteRange>& ranges, int byte) {
     return false;
 }
 
-// One row per shape in disco_candidates, in its order. Pinned from the
-// regexes the parsers replaced, on 2026-10-10 at 013f4c66.
-const DiscoShapeAnswer kChartDiscoAnswers[9] = {
-    {{{0x00, 0x09}, {0x0B, 0x0C}, {0x0E, 0xFF}}, {}},
-    {{{0x00, 0x09}, {0x0B, 0x0C}, {0x0E, 0xFF}}, {}},
-    {{{0x30, 0x39}}, {}},
-    {{{0x64, 0x64}}, {{0x30, 0x39}, {0x5D, 0x5D}}},
-    {{}, {{0x30, 0x39}}},
-    {{{0x5D, 0x5D}}, {}},
-    {{{0x5B, 0x5B}}, {}},
-    {{{0x64, 0x64}}, {{0x5D, 0x5D}}},
-    {{{0x5B, 0x5B}}, {}},
-};
-// The same for the MIDI reader. It differs only from byte 0x80 up, because
-// the MIDI reader stores text as latin-1 decoded to UTF-8, so those bytes
-// reached the regex as two. Pinned the same way.
-const DiscoShapeAnswer kMidDiscoAnswers[9] = {
+// One row per shape in disco_candidates, in its order, for both readers.
+// Pinned from the MIDI reader's regexes on 2026-10-10 at 013f4c66. Both
+// readers take their text through decode_chart_text
+// (parse/text_decode.h), so a lone byte from 0x80 up reaches the matcher as a
+// character of two or three bytes and never fills a one-character spot.
+const DiscoShapeAnswer kDiscoAnswers[9] = {
     {{{0x00, 0x09}, {0x0B, 0x0C}, {0x0E, 0x7F}}, {}},
     {{{0x00, 0x09}, {0x0B, 0x0C}, {0x0E, 0x7F}}, {}},
     {{{0x30, 0x39}}, {}},
@@ -1058,7 +1047,7 @@ TEST_CASE(".chart: disco markers match the regexes they replaced") {
 
                 // A flipped red pad reads as a yellow cymbal.
                 const bool flipped = song.sequence[1].chord.at(NoteColor::Yellow).has_value();
-                CHECK_MESSAGE(flipped == want_flip(kChartDiscoAnswers[shape], byte, prior_on),
+                CHECK_MESSAGE(flipped == want_flip(kDiscoAnswers[shape], byte, prior_on),
                               "byte " << byte << ", shape " << shape << ", prior " << prior_on);
                 ++checked;
             }
@@ -1085,7 +1074,7 @@ TEST_CASE(".mid: disco markers match the regexes they replaced") {
                 const Song song = load_songbytes_mid(smf_drums(concat(ev)), ChartReading{});
                 REQUIRE(song.sequence.size() == 2);
                 const bool flipped = song.sequence[1].chord.at(NoteColor::Yellow).has_value();
-                CHECK_MESSAGE(flipped == want_flip(kMidDiscoAnswers[shape], byte, prior_on),
+                CHECK_MESSAGE(flipped == want_flip(kDiscoAnswers[shape], byte, prior_on),
                               "byte " << byte << ", shape " << shape << ", prior " << prior_on);
                 ++checked;
             }

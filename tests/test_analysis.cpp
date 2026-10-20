@@ -958,6 +958,23 @@ TEST_CASE("discover_charts: a song with no usable name reads (unknown)") {
     }
 }
 
+TEST_CASE("read_song_ini_keys reads a Windows-1252 song.ini as UTF-8") {
+    namespace fs = std::filesystem;
+    const fs::path dir = hydra::os_path(testtemp::temp_dir("ini_cp1252"));
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    const fs::path ini = dir / "song.ini";
+    {
+        // "Szamár Madár" and "Mötley Crüe" as a Windows-1252 file writes them.
+        std::ofstream f(ini, std::ios::binary);
+        f << "[song]\r\nname = Szam\xE1r Mad\xE1r\r\nartist = M\xF6tley Cr\xFC" "e\r\n";
+    }
+    const std::map<std::string, std::string> keys = read_song_ini_keys(ini.u8string());
+    fs::remove_all(dir);
+    CHECK(keys.at("name") == "Szam\xC3\xA1r Mad\xC3\xA1r");
+    CHECK(keys.at("artist") == "M\xC3\xB6tley Cr\xC3\xBC" "e");
+}
+
 TEST_CASE("rescan cache: an old placeholder or blank title reads (unknown)") {
     const std::string input = corpus::root();
     auto [items, errors] = discover_charts({input});

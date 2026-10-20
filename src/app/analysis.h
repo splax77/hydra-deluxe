@@ -140,8 +140,9 @@ store::ChartLibraryCache load_scan_cache(store::RecordStore& store);
 
 // The [song] section of a song.ini as lower-cased key -> value, with the
 // value's leading blanks trimmed. A key seen twice keeps its last value.
-// Section and key names match in any case, `;` and `#` start comments, and a
-// UTF-8 BOM is skipped. Throws std::runtime_error when the file cannot be
+// Section and key names match in any case, and `;` and `#` start comments.
+// The text is decode_chart_text's (parse/text_decode.h), so every key and
+// value is valid UTF-8. Throws std::runtime_error when the file cannot be
 // read. The library scan (name, artist, charter) and the Preview (delay) both
 // read song.ini through here.
 std::map<std::string, std::string> read_song_ini_keys(const std::string& path);

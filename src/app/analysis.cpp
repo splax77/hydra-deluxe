@@ -32,6 +32,7 @@
 #include "parse/srb.h"
 #include "parse/chart_files.h"
 #include "parse/sng.h"
+#include "parse/text_decode.h"
 #include "search/pather.h"
 #include "store/chart_index.h"
 
@@ -339,14 +340,11 @@ std::optional<PendingChart> pending_chart_of(const std::string& dir, const DirEn
 
 }  // namespace
 
-// Chart libraries are UTF-8 in practice; a leading BOM is stripped and
-// anything else is read byte-for-byte rather than replicating Python's
-// utf-8/utf-8-sig/ansi fallback chain.
+// The whole file's bytes become text through decode_chart_text
+// (parse/text_decode.h), the one rule for chart text encodings.
 std::map<std::string, std::string> read_song_ini_keys(const std::string& path) {
-    std::vector<uint8_t> raw = read_file_bytes(path);
-    size_t start = 0;
-    if (raw.size() >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF) start = 3;
-    std::string text(reinterpret_cast<const char*>(raw.data() + start), raw.size() - start);
+    const std::vector<uint8_t> raw = read_file_bytes(path);
+    const std::string text = decode_chart_text(raw.data(), raw.size());
 
     std::map<std::string, std::string> keys;
     bool in_song_section = false;

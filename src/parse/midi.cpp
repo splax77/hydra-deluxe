@@ -6,6 +6,7 @@
 
 #include "core/strutil.h"  // equals_ci
 #include "core/winstr.h"  // read_file_bytes
+#include "parse/text_decode.h"  // decode_chart_text, one text event at a time
 #include "parse/timesig.h"
 
 namespace hydra {
@@ -68,25 +69,6 @@ int16_t be16(const uint8_t* d, size_t at) {
     return int16_t((uint16_t(d[at]) << 8) | uint16_t(d[at + 1]));
 }
 
-// mido decodes every meta string as latin-1 (its _charset): byte -> codepoint,
-// which never raises and round-trips each byte. The result is stored as UTF-8
-// so string comparisons behave the same regardless of codepage.
-std::string decode_latin1(const uint8_t* p, size_t len) {
-    std::string out;
-    out.reserve(len);
-    for (size_t i = 0; i < len; ++i) {
-        uint8_t b = p[i];
-        if (b < 0x80) {
-            out.push_back(static_cast<char>(b));
-        } else {
-            // Two-byte UTF-8 encoding of codepoint b (0x80..0xFF).
-            out.push_back(static_cast<char>(0xC0 | (b >> 6)));
-            out.push_back(static_cast<char>(0x80 | (b & 0x3F)));
-        }
-    }
-    return out;
-}
-
 // A variable-length quantity, 7 bits per byte. Advances pos. Accumulates in
 // 64 bits so a malformed 5+-byte quantity reads as mido reads it (Python
 // integers do not wrap) instead of wrapping at 32 bits.
@@ -145,14 +127,14 @@ bool meta_message(int meta_type, const uint8_t* payload, size_t len,
     if (text_meta(meta_type, &type)) {
         out->type = type;
         out->time = time;
-        out->str = decode_latin1(payload, len);
+        out->str = decode_chart_text(payload, len);
         out->str_attr = Message::StrAttr::Text;
         return true;
     }
     if (name_meta(meta_type, &type)) {
         out->type = type;
         out->time = time;
-        out->str = decode_latin1(payload, len);
+        out->str = decode_chart_text(payload, len);
         out->str_attr = Message::StrAttr::Name;
         return true;
     }
@@ -351,7 +333,7 @@ TrackScan scan_track(const uint8_t* data, size_t pos, size_t end,
         data, pos, end,
         [&](int meta_type, const uint8_t* payload, size_t plen, int64_t) {
             if (meta_type == kTrackNameMeta && !pick.settled())
-                pick.offer(decode_latin1(payload, plen), scan.name);
+                pick.offer(decode_chart_text(payload, plen), scan.name);
             MType text_type;
             if (timing_meta(meta_type)) ++scan.timing_metas;
             if (text_meta(meta_type, &text_type)) ++scan.text_metas;
