@@ -131,6 +131,55 @@ TEST_CASE("build_preview_scene: a fill whose chord sits before its measure line 
     CHECK(scene.fills[0].span.end_tick == 840);    // the line
 }
 
+// A generated fill draws as the half measure before its chord, whatever its
+// engine length (the user's ruling, 2026-10-19). Resolution 480 in 4/4: a
+// measure is 1920 ticks, half is 960. An authored fill keeps its own span.
+TEST_CASE("build_preview_scene: a generated fill draws the half measure before its chord") {
+    auto generated = [](const std::vector<int64_t>& chords, FillDeadlineRule rule) {
+        Song song(480);
+        song.bpm_changes[0] = 120.0;
+        song.build_timing();
+        for (int64_t tick : chords) {
+            SongTimestamp ts;
+            ts.timecode = song.timecode(tick);
+            ts.chord.add_note(NoteColor::Red);
+            song.sequence.push_back(ts);
+        }
+        song.check_activations(core::default_rules(), rule);
+        return song;
+    };
+
+    // Clone Hero 1.1: the chords sit on the measure lines at 1920 and 9600,
+    // so each fill's engine length is 0.
+    const Song ch11 = generated({1920, 9600}, FillDeadlineRule::Ch11);
+    for (const SongTimestamp& ts : ch11.sequence)
+        if (ts.has_activation()) CHECK(*ts.activation_length == 0);
+    const PreviewScene s11 = build_preview_base(ch11);
+    REQUIRE(s11.fills.size() == 2);
+    CHECK(s11.fills[0].span.start_tick == 960);
+    CHECK(s11.fills[0].span.end_tick == 1920);
+    CHECK(s11.fills[1].span.start_tick == 8640);
+    CHECK(s11.fills[1].span.end_tick == 9600);
+
+    // Clone Hero 1.0: the fills are already half a measure long, and draw
+    // the same span as before.
+    const Song ch10 = generated({1930, 9610}, FillDeadlineRule::Ch10);
+    const PreviewScene s10 = build_preview_base(ch10);
+    REQUIRE(s10.fills.size() == 2);
+    CHECK(s10.fills[0].span.start_tick == 970);
+    CHECK(s10.fills[0].span.end_tick == 1930);
+    CHECK(s10.fills[1].span.start_tick == 8650);
+    CHECK(s10.fills[1].span.end_tick == 9610);
+
+    // An authored fill (the hand song's, 480 ticks long) keeps its span.
+    const Song authored = make_hand_song();
+    CHECK_FALSE(authored.generated_fills.has_value());
+    const PreviewScene sa = build_preview_base(authored);
+    REQUIRE(sa.fills.size() == 1);
+    CHECK(sa.fills[0].span.start_tick == 240);
+    CHECK(sa.fills[0].span.end_tick == 720);
+}
+
 TEST_CASE("build_preview_scene: solo spans come from the song's solo sections") {
     Song song = make_hand_song();
     PreviewScene scene = build_preview_scene(song, nullptr);

@@ -280,6 +280,12 @@ public:
     // Display only; nothing in the search or the stored record reads it.
     std::vector<DrumLane> drum_lanes;
 
+    // Which game version's generator placed this song's fills, set by
+    // check_activations; nullopt when the chart wrote its own fills (or none
+    // has run). The one answer to "was this fill generated". Display only:
+    // the Preview draws a generated fill's span from it.
+    std::optional<FillDeadlineRule> generated_fills;
+
     // Snapshot the timing indexes from the current maps. Called once the tempo
     // track has been fully mapped and before any timecode is made. Timing
     // that can't measure time is refused here (check_timing_maps).

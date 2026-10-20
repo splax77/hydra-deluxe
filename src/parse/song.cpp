@@ -659,6 +659,7 @@ void Song::check_activations(const core::Rules& rules, FillDeadlineRule fills) {
         if (ts.has_activation()) return;  // chart already has fills.
 
     features.push_back("Auto-Generated Fills");
+    generated_fills = fills;
     if (sequence.empty()) return;
     if (fills == FillDeadlineRule::Ch10)
         place_fills_ch10(rules);
