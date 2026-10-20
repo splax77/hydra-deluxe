@@ -997,8 +997,7 @@ bool in_ranges(const std::vector<ByteRange>& ranges, int byte) {
 }
 
 // One row per shape in disco_candidates, in its order, for both readers.
-// Pinned from the MIDI reader's regexes on 2026-10-10 at 013f4c66. Both
-// readers take their text through decode_chart_text
+// Both readers take their text through decode_chart_text
 // (parse/text_decode.h), so a lone byte from 0x80 up reaches the matcher as a
 // character of two or three bytes and never fills a one-character spot.
 const DiscoShapeAnswer kDiscoAnswers[9] = {
