@@ -25,6 +25,7 @@
 #include "imgui_internal.h"  // RenderArrow
 #include "ui/activation_row_layout.h"
 #include "ui/app_state.h"
+#include "ui/badge_pill.h"
 #include "ui/column_widths.h"
 #include "ui/details_view.h"
 #include "ui/fonts.h"
@@ -312,31 +313,26 @@ void render_activation_row(size_t i, const app::ActivationRowView& a, app::Paths
     text_at(ImVec2(top.x + px(52.0f), text_y), kBestPathColor, a.notation.c_str());
     text_at(ImVec2(top.x + l.measure_x, text_y), text_color(), a.measure.c_str());
     text_at(ImVec2(top.x + l.bars_x, text_y), dim_color(), a.bars.c_str());
-    // One pill per badge, each in its own colour.
-    const float pad = px(kRowBadgePad);
-    const float reach = px(kRowPillReachY);
+    // One pill per badge, all the row's pill width (badge_pill.h), each text
+    // in its own colour.
     for (size_t k = 0; k < a.badges.size(); ++k) {
         const float bx = top.x + l.badge_x[k];
         const float by = top.y + l.badge_y[k];
-        const ImVec2 b_min(bx - pad, by - reach);
-        const ImVec2 b_max(bx + badge_ws[k] + pad, by + line + reach);
-        dl->AddRectFilled(b_min, b_max, IM_COL32(51, 38, 26, 255), px(9.0f));
-        dl->AddRect(b_min, b_max, IM_COL32(106, 69, 32, 255), px(9.0f));
+        draw_badge_pill(dl, pill_rect(bx, by, l.pill_w, line, px(1.0f)), px(1.0f));
         text_at(ImVec2(bx, by), warn_or_dim(a.badges[k].warn), a.badges[k].text.c_str());
     }
     ImGui::PopFont();
     end_overlay(top, l.row_h);
 }
 
-// One squeeze sentence in its warm box; the border turns warning-coloured
-// when the squeeze is difficult.
+// One squeeze sentence in its warm box, in the badge pill's colours
+// (badge_pill.h); the border turns warning-coloured when the squeeze is
+// difficult.
 void squeeze_box(int act_number, size_t k, const app::TextLine& s) {
     char id[32];
     std::snprintf(id, sizeof(id), "##sq%d_%zu", act_number, k);
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(51 / 255.0f, 38 / 255.0f, 26 / 255.0f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_Border,
-                          s.warn ? kWarningColor
-                                 : ImVec4(106 / 255.0f, 69 / 255.0f, 32 / 255.0f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, pill_vec4(kPillFill));
+    ImGui::PushStyleColor(ImGuiCol_Border, s.warn ? kWarningColor : pill_vec4(kPillBorder));
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(232 / 255.0f, 214 / 255.0f, 196 / 255.0f, 1.0f));
     ImGui::BeginChild(id, ImVec2(0.0f, 0.0f),
                       ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY |

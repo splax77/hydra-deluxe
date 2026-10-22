@@ -21,6 +21,7 @@
 #include "imgui_internal.h"
 #include "ui/activation_row_layout.h"
 #include "ui/app_state.h"
+#include "ui/badge_pill.h"
 #include "ui/column_widths.h"
 #include "ui/details_view.h"
 #include "ui/fonts.h"  // px()
@@ -643,7 +644,7 @@ std::vector<ImRect> drawn_pills(const ImRect& band) {
     std::vector<ImRect> pills;
     ImGuiWindow* details = window_named("##pathdetails");
     if (!details) return pills;
-    const ImU32 fill = IM_COL32(51, 38, 26, 255);  // render_activation_row's pill fill
+    const ImU32 fill = hydra::ui::pill_u32(hydra::ui::kPillFill);
     // A filled rounded rect is one run of vertices, its anti-aliased fringe
     // interleaved in the same colour at zero alpha; a vertex of any other
     // colour ends the run.
@@ -777,16 +778,18 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
         pieces.push_back(view.acts[0].bars);
         IM_CHECK(row_text_all_mono(ctx, row1_rect, pieces));
     }
-    // Three longest badges on row 1 of the cached view the tab draws (C4). The
-    // cache is only rebuilt when its inputs change, so they stay for the frames
-    // below and are put back after.
+    // Three badges of different lengths, the longest among them, on row 1 of
+    // the cached view the tab draws (C4). The cache is only rebuilt when its
+    // inputs change, so they stay for the frames below and are put back after.
     hydra::app::PathsTabCache::Details* built = const_cast<hydra::app::PathsTabCache::Details*>(
         h.app->details_ui.paths_tab.built_details());
     IM_CHECK(built != nullptr);
     if (!built) return;
     hydra::app::ActivationRowView& row1 = built->activations.acts[0];
     const std::vector<hydra::app::ActivationBadge> kept = row1.badges;
-    row1.badges.assign(3, hydra::app::ActivationBadge{longest, false});
+    row1.badges = {hydra::app::ActivationBadge{"early fill 0 ms", false},
+                   hydra::app::ActivationBadge{longest, false},
+                   hydra::app::ActivationBadge{"squeeze in -224 ms", false}};
     check(widest, row1.measure, row1.bars, texts(row1));
     const hydra::ui::ActivationRowLayout three = l;
     ctx->Yield(2);
@@ -814,6 +817,17 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
         IM_CHECK_GE(row_bottom - p.Max.y + 0.5f, top_pad);
         IM_CHECK_LE(p.Max.x, grown_rect.Max.x - hydra::ui::px(hydra::ui::kRowBadgeRight) +
                                  hydra::ui::px(hydra::ui::kRowBadgePad) + 0.5f);
+    }
+    // One width per row (D257 call 6): every drawn pill is as wide as the
+    // others, the row's pill width, and pills on different lines share both edges.
+    ctx->LogInfo("row pill width %.1f", three.pill_w);
+    for (const ImRect& p : pills) {
+        IM_CHECK_LE(std::fabs(p.GetWidth() - pills[0].GetWidth()), 0.01f);
+        IM_CHECK_LE(std::fabs(p.GetWidth() - three.pill_w), 1.0f);
+        if (p.Min.y != pills[0].Min.y) {
+            IM_CHECK_LE(std::fabs(p.Min.x - pills[0].Min.x), 0.01f);
+            IM_CHECK_LE(std::fabs(p.Max.x - pills[0].Max.x), 0.01f);
+        }
     }
     row1.badges = kept;
     ctx->Yield(2);

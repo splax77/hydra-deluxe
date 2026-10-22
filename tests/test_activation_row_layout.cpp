@@ -166,9 +166,9 @@ TEST_CASE("activation row: badges under the measure clear the bars by the row's 
 }
 
 TEST_CASE("activation row: no pill runs past the flush-right edge") {
-    // A pill reaches kRowBadgePad past its text, so a badge flush right on the
-    // row's own line ends kRowBadgeRight - kRowBadgePad in from the row's edge;
-    // no badge, beside the bars or under the measure, ends further right.
+    // A flush-right pill on the row's own line ends kRowBadgeRight - kRowBadgePad
+    // in from the row's edge (badge_pill.h sizes the pill); no pill, beside the
+    // bars or under the measure, ends further right.
     const float w = longest_badge_w();
     std::vector<BelowCase> cases(std::begin(kBelowCases), std::end(kBelowCases));
     cases.push_back({1, 640.0f});
@@ -180,7 +180,7 @@ TEST_CASE("activation row: no pill runs past the flush-right edge") {
             layout(mono(11), kBars12, std::vector<float>(c.count, w), c.row_w);
         for (size_t k = 0; k < c.count; ++k) {
             CAPTURE(k);
-            const float pill_right = l.badge_x[k] + w + kRowBadgePad;
+            const float pill_right = l.badge_x[k] - kRowBadgePad + l.pill_w;
             CHECK(pill_right <= c.row_w - kRowBadgeRight + kRowBadgePad + 0.001f);
         }
     }
@@ -198,7 +198,7 @@ TEST_CASE("activation row: pills never overlap, on one line or between lines") {
                 CAPTURE(b);
                 if (l.badge_line[a] == l.badge_line[b]) {
                     // Left to right in badge order, one pad between the pills.
-                    const float a_right = l.badge_x[a] + widths[a] + kRowBadgePad;
+                    const float a_right = l.badge_x[a] - kRowBadgePad + l.pill_w;
                     const float b_left = l.badge_x[b] - kRowBadgePad;
                     CHECK(b_left >= a_right + kRowBadgePad - 0.001f);
                 } else {
