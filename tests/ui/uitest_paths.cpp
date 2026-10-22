@@ -711,8 +711,11 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     IM_CHECK_GT(row_w, 0.0f);
     const float scale = hydra::ui::px(1.0f);
     const float gap = hydra::ui::px(hydra::ui::kRowBarsGap);
-    const float line = ImGui::GetTextLineHeight();
     ImFont* mono = hydra::ui::g_mono_font;
+    // The line height the row's layout is given: the mono font's.
+    ImGui::PushFont(mono, 0.0f);
+    const float line = ImGui::GetTextLineHeight();
+    ImGui::PopFont();
 
     // Leaves the layout in `l`, so a caller can see where the badges went
     // (IM_CHECK returns early, so the lambda can't return it).
@@ -765,7 +768,7 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     check(widest, view.acts[0].measure, view.acts[0].bars, texts(view.acts[0]));
     IM_CHECK_EQ(l.badge_lines, 0);
     // The Selectable's rect reaches half the item spacing past its size on each side.
-    IM_CHECK_EQ(one_line, hydra::ui::px(34.0f) + style.ItemSpacing.y);
+    IM_CHECK_EQ(one_line, hydra::ui::px(hydra::ui::kRowLineH) + style.ItemSpacing.y);
     {
         std::vector<std::string> pieces = texts(view.acts[0]);
         pieces.push_back(std::to_string(view.acts[0].number));
