@@ -534,6 +534,19 @@ struct HardestTiming {
     bool operator!=(const HardestTiming& o) const { return !(*this == o); }
 };
 
+// One timing an activation has, as Activation::badge_timings lists it.
+struct ActivationTiming {
+    TimingPart part = TimingPart::EarlyFill;
+    double ms = 0.0;  // raw, as HardestTiming
+    // Does hardest() weigh it? A squeeze that needs timing
+    // (SPSqueeze::needs_no_timing false) or a required (E0) fill. An optional
+    // fill is weighed only when nothing else is; a free squeeze never.
+    bool required = false;
+    // Warn-coloured on its own: SPSqueeze::is_difficult for a squeeze; for a
+    // fill, required and past_difficult_floor.
+    bool difficult = false;
+};
+
 struct Activation {
     // The search sets these on every activation it makes, so they are
     // plain values (since path format 6, docs/adr/0017).
@@ -641,12 +654,15 @@ struct Activation {
     // fill with time to spare never names it.
     // Empty means nothing to time.
     std::optional<HardestTiming> hardest() const;
-    // What the Paths tab's row badge names: hardest() when it has an answer,
-    // else the hardest squeeze that needs no timing
-    // (SPSqueeze::needs_no_timing), as 2.0 showed (D80). Such a squeeze's
-    // figure is 0 or less ("squeeze in -316 ms": the note already lands
-    // 316 ms inside SP). Empty means no badge.
-    std::optional<HardestTiming> badge_timing() const;
+    // Every timing this activation has, in the notation's order: the early
+    // fill first when it needs timing (early_fill_needs_timing) and the
+    // activation is E-critical, then each squeeze in sqinouts order. A
+    // squeeze that needs no timing (SPSqueeze::needs_no_timing) is listed
+    // too, as 2.0 showed it (D80); its figure is 0 or less ("squeeze in
+    // -316 ms": the note already lands 316 ms inside SP). hardest() picks
+    // from this list. The Paths tab's row shows one badge per entry; empty
+    // means no badge.
+    std::vector<ActivationTiming> badge_timings() const;
     // hardest()'s ms when it is a squeeze or a required fill; empty for an
     // optional early fill, so the search, filter and warning colors never
     // count one. Empty, too, for an activation with nothing to time.
@@ -654,8 +670,8 @@ struct Activation {
     // Does this activation need any timing at all? The per-activation half of
     // Path::needs_timing. The Paths tab's path button and the stored summary
     // read Path::difficulty(), which rests on hardest() (D51 call 4, D13). The
-    // row badge alone also shows a squeeze that needs no timing
-    // (SPSqueeze::needs_no_timing; badge_timing, D80).
+    // row badges alone also show a squeeze that needs no timing
+    // (SPSqueeze::needs_no_timing; badge_timings, D80).
     bool needs_timing() const;
     // Is every timing of this activation inside `limit_ms`? Each squeeze
     // answers through SPSqueeze::within_limit and the early fill through

@@ -304,6 +304,9 @@ std::string escape_ref(const std::string& label);
 // scales. The one place a GUI test measures text.
 float text_width(const char* s, ImFont* font = nullptr);
 
+// The pixel size ImGui draws text at now. text_width and text_measurer use it.
+float drawn_font_size();
+
 // text_width's measuring, as the width rule's WidthOf (ui/column_widths.h),
 // for a test that checks a column against the rule.
 hydra::ui::WidthOf text_measurer(ImFont* font = nullptr);

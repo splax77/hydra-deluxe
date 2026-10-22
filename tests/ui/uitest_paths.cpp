@@ -21,6 +21,7 @@
 #include "imgui_internal.h"
 #include "ui/activation_row_layout.h"
 #include "ui/app_state.h"
+#include "ui/badge_pill.h"
 #include "ui/column_widths.h"
 #include "ui/details_view.h"
 #include "ui/fonts.h"  // px()
@@ -157,6 +158,7 @@ void test_paths_list(ImGuiTestContext* ctx) {
 // and whether an orange or a grey stroke is drawn around it.
 struct DrawnMark {
     float x = 0.0f;
+    float y = 0.0f;  // the middle of the gold bar, for hovering it
     bool orange = false;
     bool grey = false;
 };
@@ -194,13 +196,15 @@ std::vector<DrawnMark> drawn_marks(ImGuiTestContext* ctx) {
         right = xs[i];
     }
     if (!xs.empty()) marks.push_back({(left + right) * 0.5f});
-    for (DrawnMark& m : marks)
+    for (DrawnMark& m : marks) {
+        m.y = (top + bottom) * 0.5f;
         for (const ImDrawVert& v : vtx) {
             if (v.pos.y < top - reach || v.pos.y > bottom + reach) continue;
             if (std::fabs(v.pos.x - m.x) > reach) continue;
             if (v.col == orange) m.orange = true;
             if (v.col == grey) m.grey = true;
         }
+    }
     return marks;
 }
 
@@ -227,9 +231,13 @@ void check_marks(ImGuiTestContext* ctx, hydra::ui::AppState& app,
     IM_CHECK_EQ(marks.size(), expected.size());
     if (marks.size() != expected.size() || view.acts.size() != expected.size()) return;
     // Every mark is logged before any check, so a failure shows them all.
-    for (size_t i = 0; i < marks.size(); ++i)
-        ctx->LogInfo("mark %d at %.1f: badge \"%s\", orange %d, grey %d", view.acts[i].number,
-                     marks[i].x, view.acts[i].badge.c_str(), marks[i].orange, marks[i].grey);
+    for (size_t i = 0; i < marks.size(); ++i) {
+        std::string badges;
+        for (const hydra::app::ActivationBadge& b : view.acts[i].badges)
+            badges += "[" + b.text + (b.warn ? ", orange] " : "] ");
+        ctx->LogInfo("mark %d at %.1f: badges %s, orange %d, grey %d", view.acts[i].number,
+                     marks[i].x, badges.c_str(), marks[i].orange, marks[i].grey);
+    }
     for (size_t i = 0; i < marks.size(); ++i) {
         IM_CHECK_EQ(marks[i].orange, expected[i] == Outline::Orange);
         IM_CHECK_EQ(marks[i].grey, expected[i] == Outline::Grey);
@@ -274,6 +282,16 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     h.app->viewed.song_length_ms = kMarksSongLengthMs;
     ctx->Yield(2);
     check_marks(ctx, *h.app, {Outline::Orange, Outline::None, Outline::None});
+    // Hovering row 1's mark names the activation and every one of its badges;
+    // the row's pill alone never reads like this.
+    {
+        const std::vector<DrawnMark> marks = drawn_marks(ctx);
+        IM_CHECK(!marks.empty());
+        if (marks.empty()) return;
+        ctx->MouseMoveToPos(ImVec2(marks[0].x, marks[0].y));
+        ctx->Yield(2);
+        IM_CHECK(on_screen(h, "Activation 1  m32.1.0  squeeze out 163 ms"));
+    }
 
     // "Show in Preview" asks the Preview for activation 1 (Task 11 consumes it)
     // and switches to the Preview tab, which starts the Preview.
@@ -316,6 +334,8 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     h.app->viewed.song_length_ms = kMarksSongLengthMs;
     ctx->Yield(2);
     check_marks(ctx, *h.app, {Outline::Grey, Outline::None, Outline::None, Outline::Grey});
+    IM_CHECK(on_screen(h, "squeeze out 0 ms"));
+    IM_CHECK(on_screen(h, "early fill 0 ms"));
 }
 
 // The backend table folds per activation, and the Backend limit moved here.
@@ -617,10 +637,72 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
                  t->Columns[2].WidthGiven);
 }
 
+// The pills the Paths tab drew last frame inside `band` (one row's rect), read
+// from the vertices of their fill colour: each pill's rect, left to right and
+// top to bottom. Pills are the only shapes in that colour on a row.
+std::vector<ImRect> drawn_pills(const ImRect& band) {
+    std::vector<ImRect> pills;
+    ImGuiWindow* details = window_named("##pathdetails");
+    if (!details) return pills;
+    const ImU32 fill = hydra::ui::pill_u32(hydra::ui::kPillFill);
+    // A filled rounded rect is one run of vertices, its anti-aliased fringe
+    // interleaved in the same colour at zero alpha; a vertex of any other
+    // colour ends the run.
+    const ImU32 fringe = fill & ~IM_COL32_A_MASK;
+    ImRect cur;
+    bool open = false;
+    for (const ImDrawVert& v : details->DrawList->VtxBuffer) {
+        if (open && v.col == fringe) continue;
+        const bool in = v.col == fill && band.Contains(v.pos);
+        if (in) {
+            if (!open) cur = ImRect(v.pos, v.pos);
+            cur.Add(v.pos);
+            open = true;
+        } else if (open) {
+            pills.push_back(cur);
+            open = false;
+        }
+    }
+    if (open) pills.push_back(cur);
+    return pills;
+}
+
+// Every glyph drawn inside `band` comes from the mono font: each character of
+// `texts` was drawn with the mono font's glyph and none with the main font's.
+// A glyph is told by its place in the font atlas, the uv of its top-left vertex.
+bool row_text_all_mono(ImGuiTestContext* ctx, const ImRect& band,
+                       const std::vector<std::string>& texts) {
+    ImGuiWindow* details = window_named("##pathdetails");
+    if (!details) return false;
+    const float size = drawn_font_size();
+    ImFontBaked* mono = hydra::ui::g_mono_font->GetFontBaked(size);
+    ImFont* main_font = ImGui::GetIO().FontDefault ? ImGui::GetIO().FontDefault : ImGui::GetFont();
+    ImFontBaked* main_baked = main_font->GetFontBaked(size);
+    auto drawn = [&](const ImFontGlyph* g) {
+        for (const ImDrawVert& v : details->DrawList->VtxBuffer)
+            if (band.Contains(v.pos) && v.uv.x == g->U0 && v.uv.y == g->V0) return true;
+        return false;
+    };
+    bool ok = true;
+    for (const std::string& t : texts) {
+        for (const char c : t) {
+            if (c == ' ') continue;
+            const ImFontGlyph* m = mono->FindGlyph(static_cast<ImWchar>(c));
+            const ImFontGlyph* d = main_baked->FindGlyph(static_cast<ImWchar>(c));
+            if (!m || !drawn(m) || (d && drawn(d))) {
+                ctx->LogInfo("'%c' of \"%s\" is not drawn in the mono font alone", c, t.c_str());
+                ok = false;
+            }
+        }
+    }
+    return ok;
+}
+
 // The activation rows at the narrowest panel: the measure, the bars and the
-// badge never overlap, on Burnout's own rows and on the longest pieces real
+// badges never overlap, on Burnout's own rows and on the longest pieces real
 // charts have (an 11-character measure, a two-digit bar count) and the
-// longest badge a row can show (longest_activation_badge).
+// longest badge a row can show (longest_activation_badge). Every piece of a
+// row is drawn and measured in the mono font (D257).
 void test_paths_row_layout(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
@@ -630,27 +712,125 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     const float scale = hydra::ui::px(1.0f);
     const float gap = hydra::ui::px(hydra::ui::kRowBarsGap);
     ImFont* mono = hydra::ui::g_mono_font;
+    // The line height the row's layout is given: the mono font's.
+    ImGui::PushFont(mono, 0.0f);
+    const float line = ImGui::GetTextLineHeight();
+    ImGui::PopFont();
 
+    // Leaves the layout in `l`, so a caller can see where the badges went
+    // (IM_CHECK returns early, so the lambda can't return it).
+    hydra::ui::ActivationRowLayout l;
     auto check = [&](const std::string& widest_measure, const std::string& measure,
-                     const std::string& bars, const std::string& badge) {
-        const hydra::ui::ActivationRowLayout l = hydra::ui::activation_row_layout(
-            text_width(widest_measure.c_str(), mono), badge.empty() ? 0.0f : text_width(badge.c_str()),
-            row_w, scale);
+                     const std::string& bars, const std::vector<std::string>& badges) {
+        std::vector<float> badge_ws;
+        for (const std::string& b : badges) badge_ws.push_back(text_width(b.c_str(), mono));
+        l = hydra::ui::activation_row_layout(text_width(widest_measure.c_str(), mono),
+                                             text_width(bars.c_str(), mono), badge_ws, row_w, line,
+                                             scale);
         const float measure_end = l.measure_x + text_width(measure.c_str(), mono);
-        const float bars_end = l.bars_x + text_width(bars.c_str());
-        ctx->LogInfo("measure %s ends %.1f, bars at %.1f..%.1f, badge pill from %.1f (row %.1f)",
-                     measure.c_str(), measure_end, l.bars_x, bars_end, l.badge_pill_min, row_w);
+        const float bars_end = l.bars_x + text_width(bars.c_str(), mono);
+        ctx->LogInfo("measure %s ends %.1f, bars at %.1f..%.1f, %d badges, pill from %.1f, "
+                     "%d lines under the measure (row %.1f)",
+                     measure.c_str(), measure_end, l.bars_x, bars_end, static_cast<int>(badges.size()),
+                     l.badge_pill_min, l.badge_lines, row_w);
         IM_CHECK_LE(measure_end + gap, l.bars_x + 0.01f);
         IM_CHECK_GE(l.bars_x, hydra::ui::px(hydra::ui::kRowMinBarsX));
-        if (!badge.empty()) IM_CHECK_LT(bars_end, l.badge_pill_min);
+        // On the row's own line the pills start after the bars end.
+        if (!badges.empty() && l.badge_lines == 0) IM_CHECK_LT(bars_end, l.badge_pill_min);
+    };
+    auto texts = [](const hydra::app::ActivationRowView& a) {
+        std::vector<std::string> out;
+        for (const hydra::app::ActivationBadge& b : a.badges) out.push_back(b.text);
+        return out;
     };
     const hydra::app::ActivationsView& view = shown_activations(*h.app);
     std::string widest;
     for (const hydra::app::ActivationRowView& a : view.acts)
         if (text_width(a.measure.c_str(), mono) > text_width(widest.c_str(), mono)) widest = a.measure;
     IM_CHECK(!view.acts.empty());
-    for (const hydra::app::ActivationRowView& a : view.acts) check(widest, a.measure, a.bars, a.badge);
-    check("m1024.1.120", "m1024.1.120", "12 bars", hydra::app::longest_activation_badge());
+    if (view.acts.empty()) return;
+    for (const hydra::app::ActivationRowView& a : view.acts)
+        check(widest, a.measure, a.bars, texts(a));
+    // One, two and three of the longest badge beside the longest pieces. In
+    // the mono font even one of them reaches the bars at the narrowest panel,
+    // so all three cases go under the measure.
+    const std::string longest = hydra::app::longest_activation_badge();
+    check("m1024.1.120", "m1024.1.120", "12 bars", {longest});
+    check("m1024.1.120", "m1024.1.120", "12 bars", {longest, longest});
+    check("m1024.1.120", "m1024.1.120", "12 bars", {longest, longest, longest});
+    IM_CHECK_GE(l.badge_lines, 2);  // three don't fit on one line under the measure
+
+    // The drawn row: Burnout's row 1 keeps its one-line height while its badge
+    // fits (C3), all in the mono font.
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const ImRect row1_rect = ctx->ItemInfo("**/##act1").RectFull;
+    const float one_line = row1_rect.GetHeight();
+    check(widest, view.acts[0].measure, view.acts[0].bars, texts(view.acts[0]));
+    IM_CHECK_EQ(l.badge_lines, 0);
+    // The Selectable's rect reaches half the item spacing past its size on each side.
+    IM_CHECK_EQ(one_line, hydra::ui::px(hydra::ui::kRowLineH) + style.ItemSpacing.y);
+    {
+        std::vector<std::string> pieces = texts(view.acts[0]);
+        pieces.push_back(std::to_string(view.acts[0].number));
+        pieces.push_back(view.acts[0].notation);
+        pieces.push_back(view.acts[0].measure);
+        pieces.push_back(view.acts[0].bars);
+        IM_CHECK(row_text_all_mono(ctx, row1_rect, pieces));
+    }
+    // Three badges of different lengths, the longest among them, on row 1 of
+    // the cached view the tab draws (C4). The cache is only rebuilt when its
+    // inputs change, so they stay for the frames below and are put back after.
+    hydra::app::PathsTabCache::Details* built = const_cast<hydra::app::PathsTabCache::Details*>(
+        h.app->details_ui.paths_tab.built_details());
+    IM_CHECK(built != nullptr);
+    if (!built) return;
+    hydra::app::ActivationRowView& row1 = built->activations.acts[0];
+    const std::vector<hydra::app::ActivationBadge> kept = row1.badges;
+    row1.badges = {hydra::app::ActivationBadge{"early fill 0 ms", false},
+                   hydra::app::ActivationBadge{longest, false},
+                   hydra::app::ActivationBadge{"squeeze in -224 ms", false}};
+    check(widest, row1.measure, row1.bars, texts(row1));
+    const hydra::ui::ActivationRowLayout three = l;
+    ctx->Yield(2);
+    const ImRect grown_rect = ctx->ItemInfo("**/##act1").RectFull;
+    const std::vector<ImRect> pills = drawn_pills(grown_rect);
+    ctx->LogInfo("row 1 height %.1f with its own badge, %.1f with three (%d lines under the "
+                 "measure, %d pills drawn)",
+                 one_line, grown_rect.GetHeight(), three.badge_lines, static_cast<int>(pills.size()));
+    IM_CHECK_GE(three.badge_lines, 1);
+    IM_CHECK_EQ(grown_rect.GetHeight(), three.row_h + style.ItemSpacing.y);
+    IM_CHECK_EQ(static_cast<int>(pills.size()), 3);
+    // The row's top, less the half spacing, to its first line's text is the
+    // top padding; the bars' text bottom sits one line below that.
+    const float row_top = grown_rect.Min.y + style.ItemSpacing.y * 0.5f;
+    const float row_bottom = grown_rect.Max.y - style.ItemSpacing.y * 0.5f;
+    const float top_pad = three.text_y;
+    const float bars_bottom = row_top + three.text_y + line;
+    for (const ImRect& p : pills) {
+        ctx->LogInfo("pill %.1f,%.1f .. %.1f,%.1f", p.Min.x, p.Min.y, p.Max.x, p.Max.y);
+        // Under the measure, clear of the first line by the top padding, inside
+        // the row with that margin below, and no further right than a
+        // flush-right pill.
+        IM_CHECK_GE(p.Min.x + 0.5f, grown_rect.Min.x + three.measure_x - hydra::ui::px(hydra::ui::kRowBadgePad));
+        IM_CHECK_GE(p.Min.y - bars_bottom + 0.5f, top_pad);
+        IM_CHECK_GE(row_bottom - p.Max.y + 0.5f, top_pad);
+        IM_CHECK_LE(p.Max.x, grown_rect.Max.x - hydra::ui::px(hydra::ui::kRowBadgeRight) +
+                                 hydra::ui::px(hydra::ui::kRowBadgePad) + 0.5f);
+    }
+    // One width per row (D257 call 6): every drawn pill is as wide as the
+    // others, the row's pill width, and pills on different lines share both edges.
+    ctx->LogInfo("row pill width %.1f", three.pill_w);
+    for (const ImRect& p : pills) {
+        IM_CHECK_LE(std::fabs(p.GetWidth() - pills[0].GetWidth()), 0.01f);
+        IM_CHECK_LE(std::fabs(p.GetWidth() - three.pill_w), 1.0f);
+        if (p.Min.y != pills[0].Min.y) {
+            IM_CHECK_LE(std::fabs(p.Min.x - pills[0].Min.x), 0.01f);
+            IM_CHECK_LE(std::fabs(p.Max.x - pills[0].Max.x), 0.01f);
+        }
+    }
+    row1.badges = kept;
+    ctx->Yield(2);
+    IM_CHECK_EQ(ctx->ItemInfo("**/##act1").RectFull.GetHeight(), one_line);
 }
 
 // The GUI test library has no audio, but the chart gives Burnout a length

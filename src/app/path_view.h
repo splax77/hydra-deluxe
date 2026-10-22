@@ -67,6 +67,12 @@ struct BackendRowView {
     bool warn = false;    // a squeezed-out row the engine counts (it costs points)
 };
 
+// One timing badge on an activation row (activation_badges).
+struct ActivationBadge {
+    std::string text;
+    bool warn = false;
+};
+
 // One activation as the Paths tab lists it: a one-line row, and what the row
 // shows when it is opened.
 struct ActivationRowView {
@@ -76,8 +82,8 @@ struct ActivationRowView {
     std::string measure;         // format_measure of the activation, e.g. "m32.1.0"
     int sp_bars = 0;             // bars banked when you activate
     std::string bars;            // "3 bars" / "1 bar"
-    std::string badge;           // activation_badge(); empty = no badge
-    bool difficult = false;      // Activation::is_difficult(): badge and sentences warn-coloured
+    std::vector<ActivationBadge> badges;  // activation_badges(); empty = no badge
+    bool difficult = false;      // Activation::is_difficult(): the timeline mark warn-coloured
     // Where the activation falls in the song, 0..1: its onset over the song's
     // length. Unset when the caller passed no timing or no length.
     std::optional<double> song_fraction;
@@ -128,18 +134,14 @@ ActivationsView build_activations(const Path& path, const HydraRecord& record,
                                   std::optional<double> song_length_ms = std::nullopt,
                                   bool pro_drums = true);
 
-// The badge on an activation row: Activation::badge_timing() worded, with its
-// ms whole and rounded to nearest (format_ms_whole): "squeeze out 163 ms",
-// "squeeze in 13 ms" for 12.6, "early fill 30 ms". A squeeze tied with a
-// fill is named. An optional early fill (an E activation that skips fills)
-// gets one too when nothing else does; is_difficult() ignores it, so it is
-// never warn-coloured. A squeeze that needs no timing
-// (SPSqueeze::needs_no_timing) gets one when nothing needs timing,
-// with its figure 0 or less ("squeeze in -316 ms", D80), never
-// warn-coloured either. Empty when badge_timing() has nothing.
-std::string activation_badge(const Activation& act);
+// The badges on an activation row: one per Activation::badge_timings() entry,
+// in its order, each worded with its ms whole and rounded to nearest
+// (format_ms_whole): "squeeze out 163 ms", "squeeze in 13 ms" for 12.6,
+// "early fill 30 ms". Each is warn-coloured by its own
+// ActivationTiming::difficult. Empty when the activation has no timing.
+std::vector<ActivationBadge> activation_badges(const Activation& act);
 
-// The longest text activation_badge can return, for laying out a row that
+// The longest text one activation badge can hold, for laying out a row that
 // must fit any badge. path_view.cpp says why it is the longest.
 std::string longest_activation_badge();
 

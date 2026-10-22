@@ -25,6 +25,7 @@
 #include "imgui_internal.h"  // RenderArrow
 #include "ui/activation_row_layout.h"
 #include "ui/app_state.h"
+#include "ui/badge_pill.h"
 #include "ui/column_widths.h"
 #include "ui/details_view.h"
 #include "ui/fonts.h"
@@ -188,6 +189,14 @@ void render_path_list(const app::PathButtonsView& list, const Path*& selected_pa
 
 // ---- the activations --------------------------------------------------------
 
+// One timeline tooltip line: the activation's number and measure, then every
+// badge text in badge order.
+std::string mark_tooltip_line(const app::ActivationRowView& a) {
+    std::string out = "Activation " + std::to_string(a.number) + "  " + a.measure;
+    for (const app::ActivationBadge& b : a.badges) out += "  " + b.text;
+    return out;
+}
+
 // The strip above the rows: a thin bar the column's width, a gold mark per
 // activation at its song_fraction with its number above, starting at the
 // mark's x (text at the left, as apply_theme in ui/theme.cpp has it; the
@@ -216,9 +225,9 @@ void render_timeline(const app::ActivationsView& view) {
         const ImVec2 m_max(x + px(2.0f), top.y + px(36.0f));
         dl->AddRectFilled(m_min, m_max, ImGui::GetColorU32(kBestPathColor), px(1.0f));
         // A mark whose activation has a badge (a squeeze or an early fill)
-        // gets an outline in the badge's colour: orange only when the row is
-        // difficult, grey otherwise.
-        if (!a.badge.empty())
+        // gets an outline: orange when the row is difficult (any of its
+        // badges is warn-coloured), grey otherwise.
+        if (!a.badges.empty())
             dl->AddRect(ImVec2(m_min.x - px(2.0f), m_min.y - px(2.0f)),
                         ImVec2(m_max.x + px(2.0f), m_max.y + px(2.0f)),
                         ImGui::GetColorU32(warn_or_dim(a.difficult)), px(1.0f),
@@ -233,7 +242,7 @@ void render_timeline(const app::ActivationsView& view) {
         if (!lefts[i]) continue;
         const app::ActivationRowView& a = view.acts[i];
         dl->AddText(ImGui::GetFont(), num_size, ImVec2(*lefts[i], top.y + px(2.0f)),
-                    ImGui::GetColorU32(a.badge.empty() ? ImGuiCol_TextDisabled : ImGuiCol_Text),
+                    ImGui::GetColorU32(a.badges.empty() ? ImGuiCol_TextDisabled : ImGuiCol_Text),
                     std::to_string(a.number).c_str());
     }
     if (hovered) {
@@ -245,17 +254,11 @@ void render_timeline(const app::ActivationsView& view) {
         for (size_t i = 0; i < marks.size(); ++i) {
             if (std::fabs(marks[i] - mx) < std::fabs(marks[nearest] - mx)) nearest = i;
             if (std::fabs(marks[i] - mx) <= px(6.0f)) {
-                const app::ActivationRowView& a = view.acts[i];
                 if (!tip.empty()) tip += "\n";
-                tip += "Activation " + std::to_string(a.number) + "  " + a.measure;
-                if (!a.badge.empty()) tip += "  " + a.badge;
+                tip += mark_tooltip_line(view.acts[i]);
             }
         }
-        if (tip.empty() && !marks.empty()) {
-            const app::ActivationRowView& a = view.acts[nearest];
-            tip = "Activation " + std::to_string(a.number) + "  " + a.measure;
-            if (!a.badge.empty()) tip += "  " + a.badge;
-        }
+        if (tip.empty() && !marks.empty()) tip = mark_tooltip_line(view.acts[nearest]);
         if (!tip.empty()) ImGui::SetTooltip("%s", tip.c_str());
     }
     // The end label starts right after the start label, text at the left as
@@ -269,60 +272,67 @@ void render_timeline(const app::ActivationsView& view) {
 
 // One activation's line: a full-width Selectable (##act<number>) with the fold
 // arrow, the number in a circle, the notation, the measure, the bars and the
-// badge laid over it. A click opens it alone, or closes it. The bars start
+// badges laid over it. A click opens it alone, or closes it. The bars start
 // after `widest_measure_w`, the widest measure in the path's list, so a long
 // measure never runs into them and every row's bars line up
-// (activation_row_layout.h).
+// (activation_row_layout.h). When the layout puts the badges under the
+// measure, the row grows to hold their lines and the first line stays where it
+// was. Every piece of the row's text is in the mono font (D257), so the
+// pieces share one baseline and the layout measures what is drawn.
 void render_activation_row(size_t i, const app::ActivationRowView& a, app::PathsTabUi& ui,
                            float widest_measure_w) {
     const bool open = i < ui.act_open.size() && ui.act_open[i];
-    const float h = px(34.0f);
+    const float width = ImGui::GetContentRegionAvail().x;
+    ImGui::PushFont(g_mono_font, 0.0f);
+    const float line = ImGui::GetTextLineHeight();
+    // The layout comes first: it says how tall the row is.
+    std::vector<float> badge_ws;
+    badge_ws.reserve(a.badges.size());
+    for (const app::ActivationBadge& b : a.badges)
+        badge_ws.push_back(ImGui::CalcTextSize(b.text.c_str()).x);
+    const ActivationRowLayout l = activation_row_layout(
+        widest_measure_w, ImGui::CalcTextSize(a.bars.c_str()).x, badge_ws, width, line, px(1.0f));
     char id[32];
     std::snprintf(id, sizeof(id), "##act%d", a.number);
     const ImVec2 top = ImGui::GetCursorScreenPos();
-    const float width = ImGui::GetContentRegionAvail().x;
-    if (ImGui::Selectable(id, open, ImGuiSelectableFlags_None, ImVec2(0.0f, h))) ui.click_row(i);
+    if (ImGui::Selectable(id, open, ImGuiSelectableFlags_None, ImVec2(0.0f, l.row_h)))
+        ui.click_row(i);
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    const float line = ImGui::GetTextLineHeight();
-    const float text_y = top.y + (h - line) * 0.5f;
+    const float text_y = top.y + l.text_y;
     ImGui::RenderArrow(dl, ImVec2(top.x + px(4.0f), text_y + line * 0.15f),
                        ImGui::GetColorU32(ImGuiCol_TextDisabled),
                        open ? ImGuiDir_Down : ImGuiDir_Right, 0.7f);
-    const ImVec2 dot(top.x + px(32.0f), top.y + h * 0.5f);
+    const ImVec2 dot(top.x + px(32.0f), top.y + px(kRowLineH) * 0.5f);
     dl->AddCircleFilled(dot, px(10.0f), IM_COL32(58, 58, 62, 255));
     const std::string num = std::to_string(a.number);
     // Centred in its circle by hand: a kept exception to apply_theme's
     // left-aligned text (ui/theme.cpp), the user's answer 9.
     text_at(ImVec2(dot.x - ImGui::CalcTextSize(num.c_str()).x * 0.5f, text_y), text_color(),
             num.c_str());
-    text_at(ImVec2(top.x + px(52.0f), text_y), kBestPathColor, a.notation.c_str(), g_mono_font);
-    const ImVec2 badge_sz =
-        a.badge.empty() ? ImVec2(0.0f, 0.0f) : ImGui::CalcTextSize(a.badge.c_str());
-    const ActivationRowLayout l = activation_row_layout(widest_measure_w, badge_sz.x, width, px(1.0f));
-    text_at(ImVec2(top.x + l.measure_x, text_y), text_color(), a.measure.c_str(), g_mono_font);
+    text_at(ImVec2(top.x + px(52.0f), text_y), kBestPathColor, a.notation.c_str());
+    text_at(ImVec2(top.x + l.measure_x, text_y), text_color(), a.measure.c_str());
     text_at(ImVec2(top.x + l.bars_x, text_y), dim_color(), a.bars.c_str());
-    if (!a.badge.empty()) {
-        const ImVec2 sz = badge_sz;
-        const float bx = top.x + l.badge_x;
-        const ImVec2 b_min(top.x + l.badge_pill_min, text_y - px(2.0f));
-        const ImVec2 b_max(bx + sz.x + px(kRowBadgePad), text_y + sz.y + px(2.0f));
-        dl->AddRectFilled(b_min, b_max, IM_COL32(51, 38, 26, 255), px(9.0f));
-        dl->AddRect(b_min, b_max, IM_COL32(106, 69, 32, 255), px(9.0f));
-        text_at(ImVec2(bx, text_y), warn_or_dim(a.difficult), a.badge.c_str());
+    // One pill per badge, all the row's pill width (badge_pill.h), each text
+    // in its own colour.
+    for (size_t k = 0; k < a.badges.size(); ++k) {
+        const float bx = top.x + l.badge_x[k];
+        const float by = top.y + l.badge_y[k];
+        draw_badge_pill(dl, pill_rect(bx, by, l.pill_w, line, px(1.0f)), px(1.0f));
+        text_at(ImVec2(bx, by), warn_or_dim(a.badges[k].warn), a.badges[k].text.c_str());
     }
-    end_overlay(top, h);
+    ImGui::PopFont();
+    end_overlay(top, l.row_h);
 }
 
-// One squeeze sentence in its warm box; the border turns warning-coloured
-// when the squeeze is difficult.
+// One squeeze sentence in its warm box, in the badge pill's colours
+// (badge_pill.h); the border turns warning-coloured when the squeeze is
+// difficult.
 void squeeze_box(int act_number, size_t k, const app::TextLine& s) {
     char id[32];
     std::snprintf(id, sizeof(id), "##sq%d_%zu", act_number, k);
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(51 / 255.0f, 38 / 255.0f, 26 / 255.0f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_Border,
-                          s.warn ? kWarningColor
-                                 : ImVec4(106 / 255.0f, 69 / 255.0f, 32 / 255.0f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, pill_vec4(kPillFill));
+    ImGui::PushStyleColor(ImGuiCol_Border, s.warn ? kWarningColor : pill_vec4(kPillBorder));
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(232 / 255.0f, 214 / 255.0f, 196 / 255.0f, 1.0f));
     ImGui::BeginChild(id, ImVec2(0.0f, 0.0f),
                       ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY |
