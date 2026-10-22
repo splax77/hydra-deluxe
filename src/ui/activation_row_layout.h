@@ -1,8 +1,7 @@
 // Where the pieces of one Paths-tab activation row go: the measure, the bars
-// after it and the timing badges flush right. The bars used to sit at a fixed
-// +200 px, so a long measure like "m1024.1.120" ran into "3 bars". Now they
-// start after the widest measure in the path's list, never earlier than before.
-// When the badges would reach back into the bars, they all move to a second
+// after it and the timing badges flush right. The bars start after the widest
+// measure in the path's list (so a long measure like "m1024.1.120" never runs
+// into "3 bars"), and never before kRowMinBarsX. When the badges would reach back into the bars, they all move to a second
 // line inside the row, at the same x positions. Pure arithmetic, so the rule
 // is unit-tested (tests/test_activation_row_layout.cpp).
 

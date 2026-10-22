@@ -224,8 +224,8 @@ void render_timeline(const app::ActivationsView& view) {
         const ImVec2 m_max(x + px(2.0f), top.y + px(36.0f));
         dl->AddRectFilled(m_min, m_max, ImGui::GetColorU32(kBestPathColor), px(1.0f));
         // A mark whose activation has a badge (a squeeze or an early fill)
-        // gets an outline in the badge's colour: orange only when the row is
-        // difficult, grey otherwise.
+        // gets an outline: orange when the row is difficult (any of its
+        // badges is warn-coloured), grey otherwise.
         if (!a.badges.empty())
             dl->AddRect(ImVec2(m_min.x - px(2.0f), m_min.y - px(2.0f)),
                         ImVec2(m_max.x + px(2.0f), m_max.y + px(2.0f)),
