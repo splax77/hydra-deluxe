@@ -863,6 +863,13 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
     CHECK(v.acts[0].scale_warning ==
           "Frontend timing scales x1.001 (early) / x0.999 (late) at the SP end.");
 
+    // A scale exactly a thousandth from 1 is scaled (D256).
+    act.transfer_post = TransferScale{1.001, 1.0};
+    p.activations[0] = act;
+    v = build_activations(p, rec, nullptr, 85.0);
+    REQUIRE(v.acts.size() == 1);
+    CHECK(v.acts[0].scale_warning == "Frontend timing scales x1.001 (early) at the SP end.");
+
     // Tapestry of the Starless Abstract's late scale from whole-microsecond
     // MIDI tempos is no scale: no line and no figure (D256).
     act.transfer_post = TransferScale{1.0, 1.00000175};

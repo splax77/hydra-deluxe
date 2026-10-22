@@ -24,6 +24,7 @@
 #define HYDRA_CORE_SQUEEZE_RATING_H
 
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <vector>
 
@@ -85,17 +86,24 @@ double nominal_budget_ms(double hit_window_ms = kDefaultHitWindowMs);
 // tempos in whole microseconds, so two bars meant to be equal can differ by a
 // few parts per million, and that rounding must not show as a scale.
 constexpr double kScaleIdentityTolerance = 1e-3;
-inline bool is_scaled(double r) { return std::abs(r - kIdentityScale) >= kScaleIdentityTolerance; }
+// The stored double of a decimal like 1.001 can sit just under the
+// tolerance's distance from 1. Near 1 that storage error is at most half a
+// unit in the last place of the multiplier, below one machine epsilon, so
+// the comparison gives back that much and no more.
+constexpr double kScaleStorageAllowance = std::numeric_limits<double>::epsilon();
+// The smallest distance from 1 that is_scaled counts as scaled.
+constexpr double kScaledMinDistance = kScaleIdentityTolerance - kScaleStorageAllowance;
+inline bool is_scaled(double r) { return std::abs(r - kIdentityScale) >= kScaledMinDistance; }
 
 // The most decimals the scale line needs so a scaled multiplier never prints
 // as 1: rounding to d decimals moves a value by at most half a unit,
-// 0.5 * 10^-d, and a scaled value sits at least the tolerance from 1, so d
-// must bring half a unit strictly below the tolerance. Derived from the
+// 0.5 * 10^-d, and a scaled value sits at least kScaledMinDistance from 1,
+// so d must bring half a unit strictly below that distance. Derived from the
 // tolerance, so lowering it raises this (1e-3 gives 3).
 constexpr int kScaleIdentityDigits = [] {
     int digits = 0;
     double half_unit = 0.5;
-    while (half_unit >= kScaleIdentityTolerance) {
+    while (half_unit >= kScaledMinDistance) {
         half_unit /= 10.0;
         ++digits;
     }
