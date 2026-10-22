@@ -965,9 +965,9 @@
     },
     {
       "question": "At what pixel size does ImGui draw text? (tests)",
-      "owner": "text_measurer in tests/ui/uitest_harness.cpp",
+      "owner": "drawn_font_size in tests/ui/uitest_harness.cpp",
       "owner_file": "tests/ui/uitest_harness.cpp",
-      "owner_symbol": "text_measurer",
+      "owner_symbol": "drawn_font_size",
       "date": "2026-10-05",
       "decision": "D53, D54",
       "added_by": "J4-4",
@@ -983,8 +983,8 @@
       "owner_lines": [
         {
           "file": "tests/ui/uitest_harness.cpp",
-          "line_text": "const float size = st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi;",
-          "why": "text_measurer, the owner: text_width calls it"
+          "line_text": "return st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi;",
+          "why": "drawn_font_size, the owner: text_measurer and the mono-font check call it"
         }
       ],
       "scope": [

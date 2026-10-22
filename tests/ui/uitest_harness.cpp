@@ -733,9 +733,13 @@ std::string escape_ref(const std::string& label) {
     return out;
 }
 
-hydra::ui::WidthOf text_measurer(ImFont* font) {
+float drawn_font_size() {
     const ImGuiStyle& st = ImGui::GetStyle();
-    const float size = st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi;
+    return st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi;
+}
+
+hydra::ui::WidthOf text_measurer(ImFont* font) {
+    const float size = drawn_font_size();
     if (!font) font = ImGui::GetIO().FontDefault ? ImGui::GetIO().FontDefault : ImGui::GetFont();
     return hydra::ui::measure_in_font(font, size);
 }

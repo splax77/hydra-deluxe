@@ -674,8 +674,7 @@ bool row_text_all_mono(ImGuiTestContext* ctx, const ImRect& band,
                        const std::vector<std::string>& texts) {
     ImGuiWindow* details = window_named("##pathdetails");
     if (!details) return false;
-    const ImGuiStyle& st = ImGui::GetStyle();
-    const float size = st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi;
+    const float size = drawn_font_size();
     ImFontBaked* mono = hydra::ui::g_mono_font->GetFontBaked(size);
     ImFont* main_font = ImGui::GetIO().FontDefault ? ImGui::GetIO().FontDefault : ImGui::GetFont();
     ImFontBaked* main_baked = main_font->GetFontBaked(size);
