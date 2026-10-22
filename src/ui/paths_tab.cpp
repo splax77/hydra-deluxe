@@ -274,54 +274,58 @@ void render_timeline(const app::ActivationsView& view) {
 // badges laid over it. A click opens it alone, or closes it. The bars start
 // after `widest_measure_w`, the widest measure in the path's list, so a long
 // measure never runs into them and every row's bars line up
-// (activation_row_layout.h). When the layout puts the badges on a second line,
-// the row grows by one text line and the first line stays where it was.
+// (activation_row_layout.h). When the layout puts the badges under the
+// measure, the row grows to hold their lines and the first line stays where it
+// was. Every piece of the row's text is in the mono font (D257), so the
+// pieces share one baseline and the layout measures what is drawn.
 void render_activation_row(size_t i, const app::ActivationRowView& a, app::PathsTabUi& ui,
                            float widest_measure_w) {
     const bool open = i < ui.act_open.size() && ui.act_open[i];
     const float width = ImGui::GetContentRegionAvail().x;
+    ImGui::PushFont(g_mono_font, 0.0f);
     const float line = ImGui::GetTextLineHeight();
-    // The layout comes first: it says whether the row needs its second line.
+    // The layout comes first: it says how tall the row is.
     std::vector<float> badge_ws;
     badge_ws.reserve(a.badges.size());
     for (const app::ActivationBadge& b : a.badges)
         badge_ws.push_back(ImGui::CalcTextSize(b.text.c_str()).x);
     const ActivationRowLayout l = activation_row_layout(
-        widest_measure_w, ImGui::CalcTextSize(a.bars.c_str()).x, badge_ws, width, px(1.0f));
-    const float line_h = px(34.0f);  // the row's first line
-    const float h = l.badges_below ? line_h + line : line_h;
+        widest_measure_w, ImGui::CalcTextSize(a.bars.c_str()).x, badge_ws, width, line, px(1.0f));
     char id[32];
     std::snprintf(id, sizeof(id), "##act%d", a.number);
     const ImVec2 top = ImGui::GetCursorScreenPos();
-    if (ImGui::Selectable(id, open, ImGuiSelectableFlags_None, ImVec2(0.0f, h))) ui.click_row(i);
+    if (ImGui::Selectable(id, open, ImGuiSelectableFlags_None, ImVec2(0.0f, l.row_h)))
+        ui.click_row(i);
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    const float text_y = top.y + (line_h - line) * 0.5f;
+    const float text_y = top.y + l.text_y;
     ImGui::RenderArrow(dl, ImVec2(top.x + px(4.0f), text_y + line * 0.15f),
                        ImGui::GetColorU32(ImGuiCol_TextDisabled),
                        open ? ImGuiDir_Down : ImGuiDir_Right, 0.7f);
-    const ImVec2 dot(top.x + px(32.0f), top.y + line_h * 0.5f);
+    const ImVec2 dot(top.x + px(32.0f), top.y + px(kRowLineH) * 0.5f);
     dl->AddCircleFilled(dot, px(10.0f), IM_COL32(58, 58, 62, 255));
     const std::string num = std::to_string(a.number);
     // Centred in its circle by hand: a kept exception to apply_theme's
     // left-aligned text (ui/theme.cpp), the user's answer 9.
     text_at(ImVec2(dot.x - ImGui::CalcTextSize(num.c_str()).x * 0.5f, text_y), text_color(),
             num.c_str());
-    text_at(ImVec2(top.x + px(52.0f), text_y), kBestPathColor, a.notation.c_str(), g_mono_font);
-    text_at(ImVec2(top.x + l.measure_x, text_y), text_color(), a.measure.c_str(), g_mono_font);
+    text_at(ImVec2(top.x + px(52.0f), text_y), kBestPathColor, a.notation.c_str());
+    text_at(ImVec2(top.x + l.measure_x, text_y), text_color(), a.measure.c_str());
     text_at(ImVec2(top.x + l.bars_x, text_y), dim_color(), a.bars.c_str());
     // One pill per badge, each in its own colour.
-    const float badge_y = l.badges_below ? text_y + line : text_y;
     const float pad = px(kRowBadgePad);
+    const float reach = px(kRowPillReachY);
     for (size_t k = 0; k < a.badges.size(); ++k) {
         const float bx = top.x + l.badge_x[k];
-        const ImVec2 b_min(bx - pad, badge_y - px(2.0f));
-        const ImVec2 b_max(bx + badge_ws[k] + pad, badge_y + line + px(2.0f));
+        const float by = top.y + l.badge_y[k];
+        const ImVec2 b_min(bx - pad, by - reach);
+        const ImVec2 b_max(bx + badge_ws[k] + pad, by + line + reach);
         dl->AddRectFilled(b_min, b_max, IM_COL32(51, 38, 26, 255), px(9.0f));
         dl->AddRect(b_min, b_max, IM_COL32(106, 69, 32, 255), px(9.0f));
-        text_at(ImVec2(bx, badge_y), warn_or_dim(a.badges[k].warn), a.badges[k].text.c_str());
+        text_at(ImVec2(bx, by), warn_or_dim(a.badges[k].warn), a.badges[k].text.c_str());
     }
-    end_overlay(top, h);
+    ImGui::PopFont();
+    end_overlay(top, l.row_h);
 }
 
 // One squeeze sentence in its warm box; the border turns warning-coloured
