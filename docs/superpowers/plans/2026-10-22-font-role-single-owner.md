@@ -1,5 +1,7 @@
 # Font roles: one place decides which text gets which font
 
+Approved by the user on 2026-10-22: "Approved. Yes to all five recommendations (Q1-Q5)." So T6 runs, and every question below takes its recommended answer.
+
 Plan only. Nothing here is built until the user says yes. Written 2026-10-22 by the planning agent for task FONT-ROLE-PLAN (session festive-shamir-6b64ea). Every fact below was read from the code in this worktree at commit d278eb3a, plus branch `badge2-join` at 16944a4d; the inventory in Appendix A was produced by a script that walked every file under `src/ui`.
 
 ## The plain version
