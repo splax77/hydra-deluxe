@@ -388,6 +388,10 @@ TEST_CASE("is_scaled: within a thousandth of 1 is no scale (D256)") {
     // though the stored double of 1.001 sits just under it.
     CHECK(is_scaled(1.001));
     CHECK(is_scaled(0.999));
+    // The allowance for storage error does not reach a decimal a hair inside.
+    CHECK_FALSE(is_scaled(1.0009999));
+    CHECK_FALSE(is_scaled(0.9990001));
+    CHECK_FALSE(is_scaled(1.00099999999));
     // The scale line's digit cap follows the tolerance.
     CHECK(kScaleIdentityTolerance == 1e-3);
     CHECK(kScaleIdentityDigits == 3);
