@@ -484,50 +484,41 @@ std::optional<double> Activation::e_difficulty(bool verbose) const {
     return std::nullopt;
 }
 
-namespace {
-
-// hardest() and badge_timing() in one place; they differ only in whether a
-// squeeze that needs no timing takes part.
-std::optional<HardestTiming> hardest_part(const Activation& act, bool untimed_squeezes) {
-    std::optional<HardestTiming> best;
-    // Squeezes first, in list order, and only a strictly larger value takes
-    // over: so a tie keeps the first squeeze, and the fill below must beat
-    // every squeeze to be named.
-    for (const SPSqueeze& sq : act.sqinouts) {
-        if (!untimed_squeezes && sq.needs_no_timing()) continue;
-        const double d = sq.difficulty();
-        if (!best || d > best->ms)
-            best = HardestTiming{sq.kind == SqueezeKind::SqIn ? TimingPart::SqueezeIn
-                                                              : TimingPart::SqueezeOut,
-                                 d};
+std::vector<ActivationTiming> Activation::badge_timings() const {
+    std::vector<ActivationTiming> out;
+    // The early fill counts only when it needs timing, and only on an
+    // E-critical activation; an E0 is always E-critical. Without skips it is
+    // required; with skips it is the optional fill of D48 Q10.
+    if (early_fill_needs_timing(e_offset) && is_e_critical()) {
+        const double ms = *e_difficulty(/*verbose=*/true);
+        const bool required = is_E0();
+        out.push_back({TimingPart::EarlyFill, ms, required, required && past_difficult_floor(ms)});
     }
-    // Either early fill below counts only when it needs timing.
-    const bool fill_needs_timing = early_fill_needs_timing(act.e_offset);
-    if (const std::optional<double> e = act.e_difficulty(); e && fill_needs_timing) {
-        if (!best || *e > best->ms) best = HardestTiming{TimingPart::EarlyFill, *e};
-    }
-    // The optional early fill of an E activation that skipped fills (D48 Q10).
-    if (!best && fill_needs_timing && act.is_e_critical())
-        best = HardestTiming{TimingPart::EarlyFill, *act.e_difficulty(/*verbose=*/true)};
-    return best;
+    for (const SPSqueeze& sq : sqinouts)
+        out.push_back({sq.kind == SqueezeKind::SqIn ? TimingPart::SqueezeIn : TimingPart::SqueezeOut,
+                       sq.difficulty(), !sq.needs_no_timing(), sq.is_difficult()});
+    return out;
 }
-
-}  // namespace
 
 std::optional<HardestTiming> Activation::hardest() const {
     // Only timings that need hitting take part (D51 call 4, D13): a squeeze
     // that needs no timing (SPSqueeze::needs_no_timing) and an early fill with
     // time to spare (early_fill_needs_timing) never name the hardest part.
-    return hardest_part(*this, /*untimed_squeezes=*/false);
-}
-
-std::optional<HardestTiming> Activation::badge_timing() const {
-    // A timing that needs hitting always names the badge. Only when there is
-    // none does a squeeze that needs no timing (SPSqueeze::needs_no_timing)
-    // get it (D80); fills still follow hardest()'s rules, so this fallback
-    // only ever finds such a squeeze.
-    if (std::optional<HardestTiming> h = hardest()) return h;
-    return hardest_part(*this, /*untimed_squeezes=*/true);
+    const std::vector<ActivationTiming> all = badge_timings();
+    std::optional<HardestTiming> best;
+    // Squeezes first, in list order, and only a strictly larger value takes
+    // over: so a tie keeps the first squeeze, and the fill below must beat
+    // every squeeze to be named.
+    for (const ActivationTiming& t : all)
+        if (t.part != TimingPart::EarlyFill && t.required && (!best || t.ms > best->ms))
+            best = HardestTiming{t.part, t.ms};
+    for (const ActivationTiming& t : all) {
+        if (t.part != TimingPart::EarlyFill) continue;
+        // A required fill competes; the optional one answers only when
+        // nothing else does (D48 Q10).
+        if (t.required ? (!best || t.ms > best->ms) : !best) best = HardestTiming{t.part, t.ms};
+    }
+    return best;
 }
 
 std::optional<double> Activation::difficulty() const {

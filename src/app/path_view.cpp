@@ -62,7 +62,7 @@ std::string first_measure_label() { return format_measure(Timecode{}); }
 
 namespace {
 
-// The badge's word for each part Activation::badge_timing() can name.
+// The badge's word for each part Activation::badge_timings() can list.
 struct BadgeWord {
     TimingPart part;
     const char* word;
@@ -76,20 +76,18 @@ constexpr BadgeWord kBadgeWords[] = {
 std::string badge_word(TimingPart part) {
     for (const BadgeWord& w : kBadgeWords)
         if (w.part == part) return w.word;
-    throw std::logic_error("activation_badge: no word for this TimingPart");
+    throw std::logic_error("activation_badges: no word for this TimingPart");
 }
 
 }  // namespace
 
-std::string activation_badge(const Activation& act) {
-    // The activation says which part the badge names and how hard (a tie
-    // names the squeeze, an E activation's optional early fill counts when
-    // nothing else does, and a squeeze that needs no timing
-    // (SPSqueeze::needs_no_timing) counts when nothing needs timing, D80);
-    // the badge only words it.
-    const std::optional<HardestTiming> shown = act.badge_timing();
-    if (!shown) return {};
-    return badge_word(shown->part) + " " + format_ms_whole(shown->ms);
+std::vector<ActivationBadge> activation_badges(const Activation& act) {
+    // The activation says which timings it has, in which order, and which
+    // are difficult; the badges only word them.
+    std::vector<ActivationBadge> out;
+    for (const ActivationTiming& t : act.badge_timings())
+        out.push_back({badge_word(t.part) + " " + format_ms_whole(t.ms), t.difficult});
+    return out;
 }
 
 std::string longest_activation_badge() {
@@ -236,7 +234,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
         av.measure = meas;
         av.sp_bars = act.sp_meter();
         av.bars = bars_text(act.sp_meter());
-        av.badge = activation_badge(act);
+        av.badges = activation_badges(act);
         av.chord = act.chord.rowstr(pro_drums);
         if (timing && song_length_ms)
             av.song_fraction =
