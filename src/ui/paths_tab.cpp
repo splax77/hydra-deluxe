@@ -188,6 +188,23 @@ void render_path_list(const app::PathButtonsView& list, const Path*& selected_pa
 
 // ---- the activations --------------------------------------------------------
 
+// Stand-in until each badge gets its own pill: every badge's text in order,
+// two spaces apart, and whether any of them warns.
+std::string joined_badges(const app::ActivationRowView& a) {
+    std::string out;
+    for (const app::ActivationBadge& b : a.badges) {
+        if (!out.empty()) out += "  ";
+        out += b.text;
+    }
+    return out;
+}
+
+bool any_badge_warns(const app::ActivationRowView& a) {
+    for (const app::ActivationBadge& b : a.badges)
+        if (b.warn) return true;
+    return false;
+}
+
 // The strip above the rows: a thin bar the column's width, a gold mark per
 // activation at its song_fraction with its number above, starting at the
 // mark's x (text at the left, as apply_theme in ui/theme.cpp has it; the
@@ -218,7 +235,7 @@ void render_timeline(const app::ActivationsView& view) {
         // A mark whose activation has a badge (a squeeze or an early fill)
         // gets an outline in the badge's colour: orange only when the row is
         // difficult, grey otherwise.
-        if (!a.badge.empty())
+        if (!a.badges.empty())
             dl->AddRect(ImVec2(m_min.x - px(2.0f), m_min.y - px(2.0f)),
                         ImVec2(m_max.x + px(2.0f), m_max.y + px(2.0f)),
                         ImGui::GetColorU32(warn_or_dim(a.difficult)), px(1.0f),
@@ -233,7 +250,7 @@ void render_timeline(const app::ActivationsView& view) {
         if (!lefts[i]) continue;
         const app::ActivationRowView& a = view.acts[i];
         dl->AddText(ImGui::GetFont(), num_size, ImVec2(*lefts[i], top.y + px(2.0f)),
-                    ImGui::GetColorU32(a.badge.empty() ? ImGuiCol_TextDisabled : ImGuiCol_Text),
+                    ImGui::GetColorU32(a.badges.empty() ? ImGuiCol_TextDisabled : ImGuiCol_Text),
                     std::to_string(a.number).c_str());
     }
     if (hovered) {
@@ -248,13 +265,13 @@ void render_timeline(const app::ActivationsView& view) {
                 const app::ActivationRowView& a = view.acts[i];
                 if (!tip.empty()) tip += "\n";
                 tip += "Activation " + std::to_string(a.number) + "  " + a.measure;
-                if (!a.badge.empty()) tip += "  " + a.badge;
+                if (!a.badges.empty()) tip += "  " + joined_badges(a);
             }
         }
         if (tip.empty() && !marks.empty()) {
             const app::ActivationRowView& a = view.acts[nearest];
             tip = "Activation " + std::to_string(a.number) + "  " + a.measure;
-            if (!a.badge.empty()) tip += "  " + a.badge;
+            if (!a.badges.empty()) tip += "  " + joined_badges(a);
         }
         if (!tip.empty()) ImGui::SetTooltip("%s", tip.c_str());
     }
@@ -297,19 +314,20 @@ void render_activation_row(size_t i, const app::ActivationRowView& a, app::Paths
     text_at(ImVec2(dot.x - ImGui::CalcTextSize(num.c_str()).x * 0.5f, text_y), text_color(),
             num.c_str());
     text_at(ImVec2(top.x + px(52.0f), text_y), kBestPathColor, a.notation.c_str(), g_mono_font);
+    const std::string badge = joined_badges(a);
     const ImVec2 badge_sz =
-        a.badge.empty() ? ImVec2(0.0f, 0.0f) : ImGui::CalcTextSize(a.badge.c_str());
+        badge.empty() ? ImVec2(0.0f, 0.0f) : ImGui::CalcTextSize(badge.c_str());
     const ActivationRowLayout l = activation_row_layout(widest_measure_w, badge_sz.x, width, px(1.0f));
     text_at(ImVec2(top.x + l.measure_x, text_y), text_color(), a.measure.c_str(), g_mono_font);
     text_at(ImVec2(top.x + l.bars_x, text_y), dim_color(), a.bars.c_str());
-    if (!a.badge.empty()) {
+    if (!badge.empty()) {
         const ImVec2 sz = badge_sz;
         const float bx = top.x + l.badge_x;
         const ImVec2 b_min(top.x + l.badge_pill_min, text_y - px(2.0f));
         const ImVec2 b_max(bx + sz.x + px(kRowBadgePad), text_y + sz.y + px(2.0f));
         dl->AddRectFilled(b_min, b_max, IM_COL32(51, 38, 26, 255), px(9.0f));
         dl->AddRect(b_min, b_max, IM_COL32(106, 69, 32, 255), px(9.0f));
-        text_at(ImVec2(bx, text_y), warn_or_dim(a.difficult), a.badge.c_str());
+        text_at(ImVec2(bx, text_y), warn_or_dim(any_badge_warns(a)), badge.c_str());
     }
     end_overlay(top, h);
 }

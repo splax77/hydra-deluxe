@@ -382,6 +382,49 @@ TEST_CASE("Activation::needs_timing: free squeezes and slack fills need none") {
     CHECK(p.needs_timing());
 }
 
+TEST_CASE("Activation::badge_timings: every timing in notation order; hardest() picks from it") {
+    using P = TimingPart;
+    // The user's E3+ row: an optional fill with no time to spare, then a free
+    // squeeze-in. Both listed, neither weighed as required, neither difficult.
+    Activation row;
+    test::set_skips(row, 3);
+    row.e_offset = 0.0;
+    row.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -12.0}};
+    const std::vector<ActivationTiming> t = row.badge_timings();
+    REQUIRE(t.size() == 2);
+    CHECK(t[0].part == P::EarlyFill);
+    CHECK(t[0].ms == 0.0);
+    CHECK_FALSE(t[0].required);
+    CHECK_FALSE(t[0].difficult);
+    CHECK(t[1].part == P::SqueezeIn);
+    CHECK(t[1].ms == -12.0);
+    CHECK_FALSE(t[1].required);
+    CHECK_FALSE(t[1].difficult);
+    // The free squeeze never names the hardest part; the optional fill does,
+    // as nothing else needs timing (D48 Q10), and is still no difficulty.
+    CHECK(row.hardest() == std::optional<HardestTiming>(HardestTiming{P::EarlyFill, 0.0}));
+    CHECK_FALSE(row.difficulty().has_value());
+
+    // A required fill tied with a squeeze: both listed, fill first, both
+    // required and difficult; hardest() still names the squeeze.
+    Activation tie;
+    test::set_skips(tie, 0);
+    tie.e_offset = -12.6;
+    tie.sqinouts = {SPSqueeze{SqueezeKind::SqOut, -12.6}};
+    const std::vector<ActivationTiming> tt = tie.badge_timings();
+    REQUIRE(tt.size() == 2);
+    CHECK(tt[0].part == P::EarlyFill);
+    CHECK(tt[1].part == P::SqueezeOut);
+    CHECK((tt[0].required && tt[1].required && tt[0].difficult && tt[1].difficult));
+    CHECK(tie.hardest() == std::optional<HardestTiming>(HardestTiming{P::SqueezeOut, 12.6}));
+
+    // A fill with time to spare is not listed.
+    Activation slack;
+    test::set_skips(slack, 0);
+    slack.e_offset = 10.0;
+    CHECK(slack.badge_timings().empty());
+}
+
 // D85: the all-0 list's 0 ms limit lets a timing of exactly 0 ms through,
 // though such a timing needs hitting (Activation::needs_timing). A free
 // squeeze counts too, so a negative limit can still refuse one.
