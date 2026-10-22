@@ -79,22 +79,23 @@ double squeeze_budget_ms(double transfer_r, double hit_window_ms = kDefaultHitWi
 // kIdentityScale. The Insane+ cutoff and the "normal scale" tooltip read it.
 double nominal_budget_ms(double hit_window_ms = kDefaultHitWindowMs);
 
-// A multiplier is x1.00 only when it equals 1 up to the round-off of the
-// measure-length division (two equal measures reached through different
-// tempos). This is not a display cutoff: x0.999 is scaled. The user chose
-// 1e-9 (docs/audit/2026-10-03-fix-decisions.md, D14): no test-set multiplier
-// is that close to 1.
-constexpr double kScaleIdentityTolerance = 1e-9;
-inline bool is_scaled(double r) { return std::abs(r - kIdentityScale) > kScaleIdentityTolerance; }
+// A multiplier counts as no scale when it is less than the tolerance away
+// from 1; at the tolerance or beyond it is scaled. The user chose a
+// thousandth (docs/audit/2026-10-03-fix-decisions.md, D256): MIDI files store
+// tempos in whole microseconds, so two bars meant to be equal can differ by a
+// few parts per million, and that rounding must not show as a scale.
+constexpr double kScaleIdentityTolerance = 1e-3;
+inline bool is_scaled(double r) { return std::abs(r - kIdentityScale) >= kScaleIdentityTolerance; }
 
 // The most decimals the scale line needs so a scaled multiplier never prints
 // as 1: rounding to d decimals moves a value by at most half a unit,
-// 0.5 * 10^-d, so d must bring that within the tolerance. Derived from the
-// tolerance, so lowering it raises this (1e-9 gives 9).
+// 0.5 * 10^-d, and a scaled value sits at least the tolerance from 1, so d
+// must bring half a unit strictly below the tolerance. Derived from the
+// tolerance, so lowering it raises this (1e-3 gives 3).
 constexpr int kScaleIdentityDigits = [] {
     int digits = 0;
     double half_unit = 0.5;
-    while (half_unit > kScaleIdentityTolerance) {
+    while (half_unit >= kScaleIdentityTolerance) {
         half_unit /= 10.0;
         ++digits;
     }

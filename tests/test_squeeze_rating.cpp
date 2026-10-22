@@ -374,14 +374,19 @@ TEST_CASE("difficulty is the raw gap, untouched by stored transfer scales") {
     CHECK(*act.difficulty() == doctest::Approx(12.0));
 }
 
-TEST_CASE("is_scaled: exactly 1 up to float noise, nothing coarser") {
+TEST_CASE("is_scaled: within a thousandth of 1 is no scale (D256)") {
     CHECK_FALSE(is_scaled(1.0));
     CHECK_FALSE(is_scaled(1.0 + 1e-12));
-    CHECK(is_scaled(0.999));
-    CHECK(is_scaled(1.0001));
-    // D14: the tolerance is 1e-9, and the scale line's digit cap follows it.
-    CHECK(kScaleIdentityTolerance == 1e-9);
-    CHECK(kScaleIdentityDigits == 9);
+    // Tapestry of the Starless Abstract's late scale at tick 433440: two bars
+    // meant to be equal, apart only by whole-microsecond MIDI tempos.
+    CHECK_FALSE(is_scaled(1.00000175));
+    CHECK_FALSE(is_scaled(1.0009));
+    CHECK_FALSE(is_scaled(0.9991));
+    CHECK(is_scaled(1.0011));
+    CHECK(is_scaled(0.9989));
+    // The scale line's digit cap follows the tolerance.
+    CHECK(kScaleIdentityTolerance == 1e-3);
+    CHECK(kScaleIdentityDigits == 3);
 }
 
 TEST_CASE("rate_note: the side of the end picks the multiplier") {

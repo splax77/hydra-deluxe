@@ -854,14 +854,25 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
     REQUIRE(v.acts[0].squeeze_sentences.size() == 1);
     CHECK(v.acts[0].squeeze_sentences[0].text.find("eff.") == std::string::npos);
 
-    // Just past the 1e-9 tolerance (D14) the line still never reads x1: it
+    // Just past is_scaled's tolerance (D256) the line still never reads x1: it
     // prints as many decimals as kScaleIdentityDigits allows.
-    act.transfer_post = TransferScale{1.0 - 2e-9, 1.0};
+    act.transfer_post = TransferScale{1.0011, 0.9989};
     p.activations[0] = act;
     v = build_activations(p, rec, nullptr, 85.0);
     REQUIRE(v.acts.size() == 1);
     CHECK(v.acts[0].scale_warning ==
-          "Frontend timing scales x0.999999998 (early) at the SP end.");
+          "Frontend timing scales x1.001 (early) / x0.999 (late) at the SP end.");
+
+    // Tapestry of the Starless Abstract's late scale from whole-microsecond
+    // MIDI tempos is no scale: no line and no figure (D256).
+    act.transfer_post = TransferScale{1.0, 1.00000175};
+    p.activations[0] = act;
+    v = build_activations(p, rec, nullptr, 85.0);
+    REQUIRE(v.acts.size() == 1);
+    CHECK(v.acts[0].scale_warning.empty());
+    CHECK_FALSE(v.acts[0].scale_warn);
+    REQUIRE(v.acts[0].backends.size() == 1);
+    CHECK(v.acts[0].backends[0].rating.find("eff.") == std::string::npos);
 }
 
 TEST_CASE("backend table: the tooltip names the normal budget at one decimal in both places") {
