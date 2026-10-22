@@ -299,12 +299,15 @@ void render_activation_row(size_t i, const app::ActivationRowView& a, app::Paths
     text_at(ImVec2(top.x + px(52.0f), text_y), kBestPathColor, a.notation.c_str(), g_mono_font);
     const ImVec2 badge_sz =
         a.badge.empty() ? ImVec2(0.0f, 0.0f) : ImGui::CalcTextSize(a.badge.c_str());
-    const ActivationRowLayout l = activation_row_layout(widest_measure_w, badge_sz.x, width, px(1.0f));
+    // Stand-in until the per-badge drawing lands: one badge, drawn on the row's line.
+    const ActivationRowLayout l =
+        activation_row_layout(widest_measure_w, ImGui::CalcTextSize(a.bars.c_str()).x,
+                              std::vector<float>{badge_sz.x}, width, px(1.0f));
     text_at(ImVec2(top.x + l.measure_x, text_y), text_color(), a.measure.c_str(), g_mono_font);
     text_at(ImVec2(top.x + l.bars_x, text_y), dim_color(), a.bars.c_str());
     if (!a.badge.empty()) {
         const ImVec2 sz = badge_sz;
-        const float bx = top.x + l.badge_x;
+        const float bx = top.x + l.badge_x[0];
         const ImVec2 b_min(top.x + l.badge_pill_min, text_y - px(2.0f));
         const ImVec2 b_max(bx + sz.x + px(kRowBadgePad), text_y + sz.y + px(2.0f));
         dl->AddRectFilled(b_min, b_max, IM_COL32(51, 38, 26, 255), px(9.0f));
