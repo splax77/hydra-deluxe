@@ -188,21 +188,12 @@ void render_path_list(const app::PathButtonsView& list, const Path*& selected_pa
 
 // ---- the activations --------------------------------------------------------
 
-// Stand-in until each badge gets its own pill: every badge's text in order,
-// two spaces apart, and whether any of them warns.
-std::string joined_badges(const app::ActivationRowView& a) {
-    std::string out;
-    for (const app::ActivationBadge& b : a.badges) {
-        if (!out.empty()) out += "  ";
-        out += b.text;
-    }
+// One timeline tooltip line: the activation's number and measure, then every
+// badge text in badge order.
+std::string mark_tooltip_line(const app::ActivationRowView& a) {
+    std::string out = "Activation " + std::to_string(a.number) + "  " + a.measure;
+    for (const app::ActivationBadge& b : a.badges) out += "  " + b.text;
     return out;
-}
-
-bool any_badge_warns(const app::ActivationRowView& a) {
-    for (const app::ActivationBadge& b : a.badges)
-        if (b.warn) return true;
-    return false;
 }
 
 // The strip above the rows: a thin bar the column's width, a gold mark per
@@ -262,17 +253,11 @@ void render_timeline(const app::ActivationsView& view) {
         for (size_t i = 0; i < marks.size(); ++i) {
             if (std::fabs(marks[i] - mx) < std::fabs(marks[nearest] - mx)) nearest = i;
             if (std::fabs(marks[i] - mx) <= px(6.0f)) {
-                const app::ActivationRowView& a = view.acts[i];
                 if (!tip.empty()) tip += "\n";
-                tip += "Activation " + std::to_string(a.number) + "  " + a.measure;
-                if (!a.badges.empty()) tip += "  " + joined_badges(a);
+                tip += mark_tooltip_line(view.acts[i]);
             }
         }
-        if (tip.empty() && !marks.empty()) {
-            const app::ActivationRowView& a = view.acts[nearest];
-            tip = "Activation " + std::to_string(a.number) + "  " + a.measure;
-            if (!a.badges.empty()) tip += "  " + joined_badges(a);
-        }
+        if (tip.empty() && !marks.empty()) tip = mark_tooltip_line(view.acts[nearest]);
         if (!tip.empty()) ImGui::SetTooltip("%s", tip.c_str());
     }
     // The end label starts right after the start label, text at the left as
@@ -286,27 +271,36 @@ void render_timeline(const app::ActivationsView& view) {
 
 // One activation's line: a full-width Selectable (##act<number>) with the fold
 // arrow, the number in a circle, the notation, the measure, the bars and the
-// badge laid over it. A click opens it alone, or closes it. The bars start
+// badges laid over it. A click opens it alone, or closes it. The bars start
 // after `widest_measure_w`, the widest measure in the path's list, so a long
 // measure never runs into them and every row's bars line up
-// (activation_row_layout.h).
+// (activation_row_layout.h). When the layout puts the badges on a second line,
+// the row grows by one text line and the first line stays where it was.
 void render_activation_row(size_t i, const app::ActivationRowView& a, app::PathsTabUi& ui,
                            float widest_measure_w) {
     const bool open = i < ui.act_open.size() && ui.act_open[i];
-    const float h = px(34.0f);
+    const float width = ImGui::GetContentRegionAvail().x;
+    const float line = ImGui::GetTextLineHeight();
+    // The layout comes first: it says whether the row needs its second line.
+    std::vector<float> badge_ws;
+    badge_ws.reserve(a.badges.size());
+    for (const app::ActivationBadge& b : a.badges)
+        badge_ws.push_back(ImGui::CalcTextSize(b.text.c_str()).x);
+    const ActivationRowLayout l = activation_row_layout(
+        widest_measure_w, ImGui::CalcTextSize(a.bars.c_str()).x, badge_ws, width, px(1.0f));
+    const float line_h = px(34.0f);  // the row's first line
+    const float h = l.badges_below ? line_h + line : line_h;
     char id[32];
     std::snprintf(id, sizeof(id), "##act%d", a.number);
     const ImVec2 top = ImGui::GetCursorScreenPos();
-    const float width = ImGui::GetContentRegionAvail().x;
     if (ImGui::Selectable(id, open, ImGuiSelectableFlags_None, ImVec2(0.0f, h))) ui.click_row(i);
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    const float line = ImGui::GetTextLineHeight();
-    const float text_y = top.y + (h - line) * 0.5f;
+    const float text_y = top.y + (line_h - line) * 0.5f;
     ImGui::RenderArrow(dl, ImVec2(top.x + px(4.0f), text_y + line * 0.15f),
                        ImGui::GetColorU32(ImGuiCol_TextDisabled),
                        open ? ImGuiDir_Down : ImGuiDir_Right, 0.7f);
-    const ImVec2 dot(top.x + px(32.0f), top.y + h * 0.5f);
+    const ImVec2 dot(top.x + px(32.0f), top.y + line_h * 0.5f);
     dl->AddCircleFilled(dot, px(10.0f), IM_COL32(58, 58, 62, 255));
     const std::string num = std::to_string(a.number);
     // Centred in its circle by hand: a kept exception to apply_theme's
@@ -314,23 +308,18 @@ void render_activation_row(size_t i, const app::ActivationRowView& a, app::Paths
     text_at(ImVec2(dot.x - ImGui::CalcTextSize(num.c_str()).x * 0.5f, text_y), text_color(),
             num.c_str());
     text_at(ImVec2(top.x + px(52.0f), text_y), kBestPathColor, a.notation.c_str(), g_mono_font);
-    const std::string badge = joined_badges(a);
-    const ImVec2 badge_sz =
-        badge.empty() ? ImVec2(0.0f, 0.0f) : ImGui::CalcTextSize(badge.c_str());
-    // Stand-in until the per-badge drawing lands: one badge, drawn on the row's line.
-    const ActivationRowLayout l =
-        activation_row_layout(widest_measure_w, ImGui::CalcTextSize(a.bars.c_str()).x,
-                              std::vector<float>{badge_sz.x}, width, px(1.0f));
     text_at(ImVec2(top.x + l.measure_x, text_y), text_color(), a.measure.c_str(), g_mono_font);
     text_at(ImVec2(top.x + l.bars_x, text_y), dim_color(), a.bars.c_str());
-    if (!badge.empty()) {
-        const ImVec2 sz = badge_sz;
-        const float bx = top.x + l.badge_x[0];
-        const ImVec2 b_min(top.x + l.badge_pill_min, text_y - px(2.0f));
-        const ImVec2 b_max(bx + sz.x + px(kRowBadgePad), text_y + sz.y + px(2.0f));
+    // One pill per badge, each in its own colour.
+    const float badge_y = l.badges_below ? text_y + line : text_y;
+    const float pad = px(kRowBadgePad);
+    for (size_t k = 0; k < a.badges.size(); ++k) {
+        const float bx = top.x + l.badge_x[k];
+        const ImVec2 b_min(bx - pad, badge_y - px(2.0f));
+        const ImVec2 b_max(bx + badge_ws[k] + pad, badge_y + line + px(2.0f));
         dl->AddRectFilled(b_min, b_max, IM_COL32(51, 38, 26, 255), px(9.0f));
         dl->AddRect(b_min, b_max, IM_COL32(106, 69, 32, 255), px(9.0f));
-        text_at(ImVec2(bx, text_y), warn_or_dim(any_badge_warns(a)), badge.c_str());
+        text_at(ImVec2(bx, badge_y), warn_or_dim(a.badges[k].warn), a.badges[k].text.c_str());
     }
     end_overlay(top, h);
 }
