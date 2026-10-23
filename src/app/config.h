@@ -27,6 +27,17 @@ namespace hydra::app {
 // User files live here, mirroring hymisc.ROOTPATH's app-relative layout.
 std::string exe_dir();
 
+// Whether the running exe is the one Hydra's installer put in place: the one
+// rule for "is this the installed exe" (decision 14 of
+// docs/superpowers/plans/2026-10-22-auto-updater.md). Only the installed exe
+// checks for updates, so a dev build, a worktree build, the test runner or a
+// copy of the exe elsewhere never does.
+bool installed_by_setup();
+
+// Test seam: true or false makes installed_by_setup answer that; empty puts
+// the registry check back. Tests set it through ScopedHook.
+void set_installed_for_test(std::optional<bool> installed);
+
 // The app's fonts and icons: the "resource" folder beside the exe (the build
 // copies resource/ there; see CMakeLists.txt).
 std::string resource_dir();

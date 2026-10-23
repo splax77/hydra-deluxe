@@ -77,9 +77,7 @@ TEST_CASE("download_to_file refuses a body past its cap and leaves no file") {
         hydra::net::download_to_file(std::ref(body), d.path, 99, &received, nullptr);
         FAIL("a 100-byte body under a 99-byte cap was written");
     } catch (const KindedError& e) {
-        // UpdateUnverified does not exist yet (task T2a adds it); the
-        // transport refuses with NetBadReply until then.
-        CHECK(e.kind() == ErrorKind::NetBadReply);
+        CHECK(e.kind() == ErrorKind::UpdateUnverified);
     }
     CHECK_FALSE(d.part_exists());
     CHECK_FALSE(d.final_exists());
