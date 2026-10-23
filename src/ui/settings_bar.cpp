@@ -48,7 +48,7 @@ void draw_divider(float x, float top, float bottom) {
 }
 
 // A group of the panel: its dimmed heading, then a two-column form. The
-// three groups' tables share one ID, so Dear ImGui keeps their label columns
+// groups' tables share one ID, so Dear ImGui keeps their label columns
 // one width (synced tables).
 bool begin_group(const char* title) {
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
@@ -194,6 +194,23 @@ void render_paths_group(AppState& app, bool locked) {
     ImGui::EndTable();
 }
 
+// The app's own setting, apart from the analysis groups: no result is filed
+// under it, so the batch lock never greys it and Reset to defaults leaves it
+// alone (decision 5 of docs/superpowers/plans/2026-10-22-auto-updater.md).
+void render_app_group(AppState& app) {
+    if (!begin_group("App")) return;
+    begin_row("Check for updates",
+              "Once a day, when Hydra starts, look for a newer release on GitHub. Nothing is "
+              "downloaded or installed until you click Update.");
+    if (ImGui::Checkbox("##checkupdates", &app.settings.check_updates)) app.commit_settings();
+    ImGui::SameLine();
+    const bool checking = app.update_check_running();
+    begin_disabled_button(checking);
+    if (ImGui::Button("Check now")) app.check_updates_now();
+    end_disabled_button(checking);
+    ImGui::EndTable();
+}
+
 // "Reset to defaults": puts the panel's eight settings back in one change,
 // so the open song re-analyzes once. Greyed out while locked or when there
 // is nothing to undo; the tooltip says which, or what the click undoes.
@@ -208,13 +225,14 @@ void render_reset_button(AppState& app, bool locked) {
     overflow_tooltip(reset_settings_tooltip(app.settings, locked).c_str());
 }
 
-// The panel's body: the three groups, the reset button under a line, then
+// The panel's body: the analysis groups and the App group, the reset button under a line, then
 // the lock line while a batch holds the settings (only a batch locks them,
 // D90 item 2).
 void render_panel(AppState& app, bool locked) {
     render_chart_group(app, locked);
     render_rules_group(app, locked);
     render_paths_group(app, locked);
+    render_app_group(app);
     ImGui::Separator();
     render_reset_button(app, locked);
     if (locked) {
