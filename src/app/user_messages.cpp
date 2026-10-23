@@ -134,6 +134,7 @@ std::optional<KindSentence> kind_sentence(const KindedError& e) {
         case ErrorKind::RulesFile: return KindSentence{kAnalysisOffSentence};
         case ErrorKind::AudioDecode: return KindSentence{kAudioDecode};
         case ErrorKind::PreviewAssets: return KindSentence{kPreviewAssets};
+        case ErrorKind::UpdateUnverified: return KindSentence{kUpdateUnverifiedSentence};
     }
     return std::nullopt;
 }

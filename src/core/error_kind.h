@@ -43,6 +43,7 @@ enum class ErrorKind {
     RulesFile,
     AudioDecode,
     PreviewAssets,
+    UpdateUnverified,  // an update refused before install; the text names which check failed
 };
 
 // ---- remembered failures ---------------------------------------------------

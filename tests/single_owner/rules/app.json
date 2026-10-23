@@ -1894,6 +1894,37 @@
         }
       ],
       "note": "Was the E3 test case, which pinned the whole line; now a row, so a drift asks for the owner line to be updated. The owner is the one line that compares the int, however the comparison is spelled."
+    },
+    {
+      "question": "Is this the Hydra.exe the installer put in place?",
+      "owner": "installed_by_setup in src/app/config.cpp",
+      "owner_file": "src/app/config.cpp",
+      "owner_symbol": "installed_by_setup",
+      "date": "2026-10-22",
+      "decision": "auto-updater plan decision 14",
+      "added_by": "UPD-T2a",
+      "pattern": "638FCDD7-88E0-438D-9C52-388C6C9CF4E3|\\bInstallLocation\\b",
+      "must_match": [
+        "L\"SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\{638FCDD7-88E0-438D-9C52-388C6C9CF4E3}_is1\";",
+        "RegGetValueW(key, nullptr, L\"InstallLocation\", RRF_RT_REG_SZ, nullptr, buf, &n);"
+      ],
+      "must_not_match": [
+        "if (app::installed_by_setup()) start_update_check();",
+        "const std::string dir = app::exe_dir();"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/config.cpp",
+          "line_text": "L\"{638FCDD7-88E0-438D-9C52-388C6C9CF4E3}_is1\",",
+          "why": "installed_by_setup, the owner: the installer's uninstall key for Hydra's frozen AppId"
+        },
+        {
+          "file": "src/app/config.cpp",
+          "line_text": "const wchar_t* const name = L\"InstallLocation\";",
+          "why": "installed_by_setup, the owner: the value that holds the installed folder"
+        }
+      ],
+      "note": "Only the installed exe checks for updates, so a second reading of the installer's registry key would be a second, disagreeing answer. Code that needs the answer calls installed_by_setup; tests set it with set_installed_for_test. Decided by: the user's yes to the auto-updater plan, decision 14 (2026-10-22)"
     }
   ]
 }

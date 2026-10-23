@@ -192,6 +192,9 @@ TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its
         {ErrorKind::AudioDecode, kAudioDecode},
         {ErrorKind::PreviewAssets,
          "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them."},
+        {ErrorKind::UpdateUnverified,
+         "Hydra couldn't verify the update it downloaded, so it was not installed. Try again "
+         "later, or download the release from GitHub yourself."},
     };
     for (const auto& [kind, sentence] : cases) {
         CAPTURE(static_cast<int>(kind));
