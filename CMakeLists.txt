@@ -327,6 +327,7 @@ add_library(hydra_core STATIC
     src/app/path_report_view.cpp
     src/app/report_files.cpp
     src/app/user_messages.cpp
+    src/app/update_verify.cpp
 )
 target_include_directories(hydra_core PUBLIC src)
 target_compile_definitions(hydra_core PUBLIC HYDRA_VERSION="${PROJECT_VERSION}"
