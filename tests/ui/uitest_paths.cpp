@@ -710,8 +710,9 @@ bool row_text_all_mono(ImGuiTestContext* ctx, const ImRect& band,
     for (const std::string& t : texts) {
         for (const char c : t) {
             if (c == ' ') continue;
-            const ImFontGlyph* m = mono->FindGlyph(static_cast<ImWchar>(c));
-            const ImFontGlyph* d = main_baked->FindGlyph(static_cast<ImWchar>(c));
+            const ImWchar code = static_cast<unsigned char>(c);
+            const ImFontGlyph* m = mono->FindGlyph(code);
+            const ImFontGlyph* d = main_baked->FindGlyph(code);
             if (!m || !drawn(m) || (d && drawn(d))) {
                 ctx->LogInfo("'%c' of \"%s\" is not drawn in the mono font alone", c, t.c_str());
                 ok = false;

@@ -381,7 +381,7 @@
       "anchor": "18.0f",
       "must_match": [
         "(resource_dir + \"ShipporiAntiqueB1-Regular.ttf\").c_str(), 18.0f);",
-        "if (add_font_file(path, 18.0f, &merge)) break;"
+        "add_font_file(path, 18.0f, &merge);"
       ],
       "must_not_match": [
         "g_mono_font = add_font_file(join_folder(fonts_dir, \"CourierPrime-Regular.ttf\"), kFontSize);",
@@ -397,7 +397,7 @@
       "scope": [
         "src/ui/app_shell.cpp"
       ],
-      "note": "The CJK fallback is merged into the main font, and ImGui scales merged glyphs by the ratio of the two sizes, so every load reads the one size."
+      "note": "The backup fonts are merged behind the main and mono fonts, and ImGui scales merged glyphs by the ratio of the two sizes, so every load reads the one size."
     },
     {
       "question": "Does the font loader cut a file name off a path itself?",

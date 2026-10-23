@@ -17,6 +17,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 
 #include "imgui.h"
 #include "imgui_internal.h"  // g.LogBuffer for FrameText; ImGuiSettingsHandler
@@ -26,6 +27,7 @@
 #include "core/winstr.h"
 #include "ui/app_state.h"
 #include "ui/details_view.h"
+#include "ui/fallback_fonts.h"
 #include "ui/fonts.h"
 #include "ui/library_view.h"
 #include "ui/theme.h"
@@ -65,8 +67,8 @@ Layout g_layout;
 // The theme at scale 1, captured by setup_imgui after apply_theme().
 ImGuiStyle g_base_style;
 
-// The size every UI font loads at, in pixels at scale 1. The CJK fallback
-// merged into the main font must load at the same size: ImGui scales merged
+// The size every UI font loads at, in pixels at scale 1. The backup fonts
+// merged behind the main and mono fonts load at it too: ImGui scales merged
 // glyphs by the ratio of the two sizes.
 constexpr float kFontSize = 18.0f;
 
@@ -462,22 +464,22 @@ void setup_imgui(const ImGuiSetupOptions& options) {
     g_mono_font = add_font_file(join_folder(fonts_dir, "CourierPrime-Regular.ttf"), kFontSize);
     if (main_font) io.FontDefault = main_font;
 
-    // CJK fallback: Clone Hero libraries are full of Japanese (and other
-    // non-Latin) titles, which rendered as ?/boxes with the Latin-only fonts.
-    // Merge the first available system font into the main font; ImGui's
-    // dynamic font loader rasterizes glyphs on demand, so this costs nothing
-    // until a non-Latin title is actually drawn.
-    if (main_font) {
-        const char* cjk_candidates[] = {
-            "C:\\Windows\\Fonts\\YuGothM.ttc",   // Yu Gothic Medium (Win 8.1+)
-            "C:\\Windows\\Fonts\\meiryo.ttc",    // Meiryo
-            "C:\\Windows\\Fonts\\msgothic.ttc",  // MS Gothic (bitmap-ish, last resort)
-        };
-        for (const char* path : cjk_candidates) {
+    // Merge the backup fonts (fallback_fonts.h) behind both fonts, so a
+    // character neither file holds draws from Windows' fonts instead of as
+    // "?". DstFont names the target: without it ImGui merges into the font
+    // added last. ImGui rasterizes glyphs on demand, so a backup costs nothing
+    // until a character it supplies is drawn.
+    static_assert(kFallbackFontFiles.size() + 1 <= 16,
+                  "ImFontGlyph::SourceIdx is 4 bits: a font holds at most 16 sources");
+    for (ImFont* target : {main_font, g_mono_font}) {
+        if (!target) continue;
+        for (std::string_view file : kFallbackFontFiles) {
+            const std::string path = fallback_font_path(file);
             if (!hydra::file_exists_utf8(path)) continue;
             ImFontConfig merge;
             merge.MergeMode = true;
-            if (add_font_file(path, kFontSize, &merge)) break;
+            merge.DstFont = target;
+            add_font_file(path, kFontSize, &merge);
         }
     }
 }
