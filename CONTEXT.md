@@ -412,6 +412,19 @@ analysis is the one exception, written beside its reader,
 `hydra::Cancelled` (src/core/error_kind.h) or a type derived from it, and a
 report build stopped by Cancel is marked through `ReportSlot::mark_cancelled`.
 
+**Update check**:
+Whether Hydra offers a newer release under the toolbar, and whether it may
+install one (D259). Four questions, each with one owner. Is this version newer:
+`parse_version` in src/core/app_version.h reads both versions, and only a
+strictly greater one counts. Is this the installed exe: `installed_by_setup`
+in src/app/config.cpp, so a dev, worktree or copied build never checks.
+Should a check run now: `update_check_due`, which also reads the
+`Check for updates` setting and the time of the last check. Is the download safe to run:
+`verify_update` in src/app/update_verify.h checks the digest and the release
+signature, and any failure refuses the install with one sentence through
+`plain_error`. Hydra starts the installer with the plain open verb, never as
+administrator; installer/hydra.iss says why.
+
 ### Paths
 
 **Path**:
