@@ -318,7 +318,7 @@ void download_to_file(const BodyReader& body, const std::string& path, uint64_t 
             const size_t n = body(chunk.data(), chunk.size());
             if (n == 0) break;
             if (n > size_cap - total)
-                throw KindedError(ErrorKind::NetBadReply,
+                throw KindedError(ErrorKind::UpdateUnverified,
                                   "the download is larger than its stated size of " +
                                       std::to_string(size_cap) + " bytes");
             out.write(chunk.data(), static_cast<std::streamsize>(n));
