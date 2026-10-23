@@ -278,6 +278,33 @@ TEST_CASE("Later hides the offer and writes nothing") {
     CHECK(hydra::read_file_text(w.paths.ini) == before);
 }
 
+TEST_CASE("Check now does nothing in a copy the installer didn't put in place") {
+    UpdateWorld w("update_not_installed");
+    {
+        const ScopedHook off(hydra::app::set_installed_for_test, std::optional<bool>(false));
+        std::unique_ptr<AppState> app = w.app();
+        CHECK_FALSE(app->update_check_running());  // no automatic check either
+        app->check_updates_now();
+        CHECK_FALSE(app->update_check_running());
+        for (int i = 0; i < 5; ++i) app->tick(0.0);
+        CHECK(app->update.phase == Phase::None);
+        CHECK(app->update.text.empty());
+        CHECK(Settings::load_file(w.paths.ini).last_update_check.empty());
+    }
+    // The installed copy does check on a click. The block's hook cleared the
+    // seam on its way out, so this sets it again.
+    const ScopedHook on(hydra::app::set_installed_for_test, std::optional<bool>(true));
+    Settings checked_today = w.settings();
+    checked_today.last_update_check =
+        hydra::app::update_check_time_text(system_clock::now());  // no automatic check
+    std::unique_ptr<AppState> app = w.app_with(checked_today);
+    REQUIRE_FALSE(app->update_check_running());
+    app->check_updates_now();
+    CHECK(app->update_check_running());
+    settle_check(*app);
+    CHECK(app->update.phase == Phase::Offered);
+}
+
 // ---- C6: failures ----------------------------------------------------------
 
 TEST_CASE("an automatic check fails silently; Check now shows the failure") {

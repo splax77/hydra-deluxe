@@ -66,13 +66,18 @@ std::wstring registered_install_location() {
 
 bool installed_by_setup() {
     if (g_installed_for_test) return *g_installed_for_test;
-    const std::wstring registered = registered_install_location();
-    if (registered.empty()) return false;
-    const std::wstring here = win32_path(trim_trailing_separators(exe_dir()));
-    const std::wstring there = win32_path(trim_trailing_separators(wide_to_utf8(registered)));
-    if (here.empty() || there.empty()) return false;
-    return CompareStringOrdinal(here.c_str(), static_cast<int>(here.size()), there.c_str(),
-                                static_cast<int>(there.size()), TRUE) == CSTR_EQUAL;
+    // The exe's folder and the registered install folder can't change while
+    // Hydra runs, so one read of the registry is enough.
+    static const bool answer = [] {
+        const std::wstring registered = registered_install_location();
+        if (registered.empty()) return false;
+        const std::wstring here = win32_path(trim_trailing_separators(exe_dir()));
+        const std::wstring there = win32_path(trim_trailing_separators(wide_to_utf8(registered)));
+        if (here.empty() || there.empty()) return false;
+        return CompareStringOrdinal(here.c_str(), static_cast<int>(here.size()), there.c_str(),
+                                    static_cast<int>(there.size()), TRUE) == CSTR_EQUAL;
+    }();
+    return answer;
 }
 
 void set_installed_for_test(std::optional<bool> installed) { g_installed_for_test = installed; }

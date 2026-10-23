@@ -1128,6 +1128,8 @@ void AppState::check_updates_if_due() {
 
 void AppState::check_updates_now() {
     using Phase = UpdateState::Phase;
+    // Only the installed exe checks (plan decision 14; owner installed_by_setup).
+    if (!app::installed_by_setup()) return;
     if (update_check_job || update_download_job || update.phase == Phase::Launching) return;
     start_update_check(/*manual=*/true);
 }
