@@ -16,6 +16,7 @@
 #include "ui/fonts.h"
 #include "ui/generation.h"
 #include "ui/preview_controller.h"
+#include "ui/text_role.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
 
@@ -67,9 +68,10 @@ void render_panel_header(AppState& app) {
 
     ImGui::SetCursorPos(ImVec2(left_x, top_y));
     const store::ChartLibraryEntry& song = *app.selected;
-    ImGui::PushFont(nullptr, 26.0f);
-    text_ellipsized(display_title(song.title).c_str(), text_w);
-    ImGui::PopFont();
+    {
+        ScopedFont font(TextRole::SongTitle);
+        text_ellipsized(display_title(song.title).c_str(), text_w);
+    }
     std::string byline = display_artist(song.artist);
     const std::string charter = display_charter(song.charter);
     if (!charter.empty()) byline += app::kFactSeparator + ("charted by " + charter);
@@ -107,18 +109,21 @@ void render_headline(AppState& app) {
         // optimal score has a value.
         const int64_t optimal = *app.viewed.record->optimal_score();
         ImGui::PushStyleColor(ImGuiCol_Text, kBestPathColor);
-        ImGui::PushFont(nullptr, 40.0f);
-        const float score_ascent = ImGui::GetFontBaked()->Ascent;
-        ImGui::TextUnformatted(group_thousands(optimal).c_str());
-        ImGui::PopFont();
+        float score_ascent = 0.0f;
+        {
+            ScopedFont font(TextRole::HeadlineScore);
+            score_ascent = ImGui::GetFontBaked()->Ascent;
+            ImGui::TextUnformatted(group_thousands(optimal).c_str());
+        }
         ImGui::SameLine(0.0f, px(18.0f));
-        ImGui::PushFont(g_mono_font, 24.0f);
-        // SameLine starts the path at the line's top; drop it so its baseline
-        // sits on the score's.
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + score_ascent -
-                             ImGui::GetFontBaked()->Ascent);
-        text_ellipsized(best.pathstring().c_str(), left_x + text_w - ImGui::GetCursorPosX());
-        ImGui::PopFont();
+        {
+            ScopedFont font(TextRole::HeadlinePath);
+            // SameLine starts the path at the line's top; drop it so its
+            // baseline sits on the score's.
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + score_ascent -
+                                 ImGui::GetFontBaked()->Ascent);
+            text_ellipsized(best.pathstring().c_str(), left_x + text_w - ImGui::GetCursorPosX());
+        }
         ImGui::PopStyleColor();
 
         // Each path's hardest timing sits beside it in the path list, so the

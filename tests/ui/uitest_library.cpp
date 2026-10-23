@@ -25,6 +25,7 @@
 #include "ui/library_model.h"
 #include "ui/library_parts.h"  // analyze_shown_label
 #include "ui/preview_controller.h"
+#include "ui/text_role.h"  // text_size, TextRole
 #include "store/record_store.h"
 #include "store/upgrade_files.h"  // set_aside_path, with_side_files
 #include "ui/widgets.h"  // widest_digits, button_slot_width
@@ -763,6 +764,10 @@ void test_library_column_widths(ImGuiTestContext* ctx) {
     const hydra::ui::LibraryViewState::ColumnWidths& cache = h.app->library_ui.column_widths;
     IM_CHECK_EQ(cache.specs.size(), static_cast<size_t>(hydra::ui::kLibraryColumnCount));
     IM_CHECK(hydra::ui::text_shares_sum_to_100(cache.specs));  // the real list
+    // A header is measured in the font it is drawn in. The Best path cells
+    // draw as Notation, but TableHeadersRow draws the header as Label.
+    IM_CHECK_EQ(cache.measured.header_widths[hydra::ui::kColumnBestPath],
+                hydra::ui::text_size(hydra::ui::TextRole::Label, "Best path").x);
     hydra::ui::ColumnLayout layout;
     auto check_rule_widths = [&] {
         layout = hydra::ui::place_columns(cache.measured, cache.specs, cache.room);
