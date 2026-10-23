@@ -2490,6 +2490,37 @@
         "src/core/app_version.h"
       ],
       "note": "Versions are compared as three numbers, never as text (2.9.1 is older than 2.10.2). Code that compares versions reads both through parse_version (the running one through running_version) and compares AppVersion values. Decided by: the user's yes to the auto-updater plan, The version rule (2026-10-22)"
+    },
+    {
+      "question": "What is the version text the user reads?",
+      "owner": "named_version in src/core/app_version.h",
+      "owner_file": "src/core/app_version.h",
+      "owner_symbol": "named_version",
+      "date": "2026-10-23",
+      "decision": "D260",
+      "added_by": "UPD2-T1a",
+      "pattern": "HYDRA_APP_NAME\\)?\\s*(\\+\\s*)?\" \"|\"Hydra Deluxe \"\\s*(\\+\\s*)?\\w|\"Hydra Deluxe \\d",
+      "must_match": [
+        "return std::string(HYDRA_APP_NAME) + \" \" + HYDRA_VERSION;",
+        "const char* kName = \"Hydra Deluxe \" HYDRA_VERSION;",
+        "std::string text = \"Hydra Deluxe \" + core::version_text(v);",
+        "const char* kName = HYDRA_APP_NAME \" \" HYDRA_VERSION;",
+        "set_text(\"Hydra Deluxe 2.11.1 is available.\");"
+      ],
+      "must_not_match": [
+        "const std::string name = core::named_version(core::running_version());",
+        "\"Only the installed copy of \" HYDRA_APP_NAME \" checks for updates.\";",
+        "inline constexpr const wchar_t* kWindowTitleW = HYDRA_WIDEN(HYDRA_APP_NAME);",
+        "set_update_phase(Phase::Updated, \"Updated to \" + core::named_version(running) + \".\");"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/app_version.h",
+          "line_text": "return std::string(HYDRA_APP_NAME) + \" \" + version_text(v);",
+          "why": "named_version, the owner: the version bar's name and every update sentence that names a version call it"
+        }
+      ],
+      "note": "The app's name and a version are joined in one place, so the bar's name and the update sentences read the same. A name built by hand from HYDRA_APP_NAME and a space, or a literal \"Hydra Deluxe \" before a version, is a second copy. Sentences that name the app without a version (the not-installed line, the window title) are not this question. Decided by: D260, the version bar plan (docs/superpowers/plans/2026-10-23-update-check-on-launch.md, Where the text comes from)"
     }
   ]
 }

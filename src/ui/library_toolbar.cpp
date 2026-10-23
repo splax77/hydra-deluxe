@@ -89,7 +89,7 @@ void render_update_strip(AppState& app) {
         ImGui::SameLine();
         if (ImGui::Button("Cancel##update")) app.cancel_update();
     }
-    if (update.phase == Phase::Updated || update.phase == Phase::UpToDate) {
+    if (update.phase == Phase::Updated) {
         ImGui::SameLine();
         if (ImGui::Button("OK##update")) app.dismiss_update_note();
     }

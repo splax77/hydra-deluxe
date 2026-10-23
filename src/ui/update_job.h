@@ -1,5 +1,5 @@
-// The updater's two background jobs and the state the strip under the toolbar
-// draws from (docs/superpowers/plans/2026-10-22-auto-updater.md, "The job").
+// The updater's two background jobs and the state the version bar draws from
+// (D259 and D260 in docs/audit/2026-10-03-fix-decisions.md).
 // UpdateCheckJob asks GitHub for the latest release; UpdateDownloadJob fetches
 // its installer and signature and checks them. AppState owns both, holds the
 // UpdateState and starts the installer through the launcher below.
@@ -23,30 +23,60 @@ namespace hydra::ui {
 inline constexpr const char* kLatestReleaseUrl =
     "https://api.github.com/repos/splax77/hydra-deluxe/releases/latest";
 
-// What the strip under the toolbar shows about updates. AppState writes it;
-// the strip only reads it and calls AppState's update actions.
+// What the version bar shows about updates. AppState writes it; the bar only
+// reads it (through AppState::version_bar_status in the resting state) and
+// calls AppState's update actions.
 struct UpdateState {
     enum class Phase {
-        None,         // nothing to show
+        None,         // no update step: the bar shows its resting status
         Offered,      // `release` is newer than this Hydra: Update, Skip this version, Later
         Downloading,  // the installer is downloading (AppState::update_received)
         Verifying,    // the digest and signature checks run
         Launching,    // the installer was started; Hydra waits for it to close Hydra
         Declined,     // the installer ended without updating, or didn't start (then
                       // `detail` says why); the three buttons are back
-        Failed,       // a check or update the user asked for failed: `text` and `detail`
+        Failed,       // an update failed: `text` and `detail`
         Updated,      // the first start after a version change: one OK button
-        UpToDate,     // Check now found nothing newer: one OK button
     };
     Phase phase = Phase::None;
+    // What this run's start-up check found.
+    enum class LastCheck {
+        NotRun,    // none finished yet (not the installed exe, or still running)
+        Failed,    // it failed: `check_error` says why
+        UpToDate,  // the latest release is this Hydra's version or older
+        Newer,     // the latest release, in `found`, is newer than this Hydra
+    };
+    LastCheck last_check = LastCheck::NotRun;
+    // The failed check's app::plain_error sentence. Empty otherwise.
+    std::string check_error;
+    // The release a Newer check returned, notes included; kept after Later
+    // and Skip this version so the bar can still name it.
+    std::optional<app::UpdateRelease> found;
     // The release offered or being installed. Set from Offered to Declined,
     // and in Failed when an update of it failed (so Update can try again).
     std::optional<app::UpdateRelease> release;
-    // The strip's sentence for the phase. Empty in None.
+    // The bar's sentence for the phase. Empty in None.
     std::string text;
     // Failed and a Declined that didn't start: app::plain_error_detail of the
     // error, the line under `text`.
     std::string detail;
+};
+
+// What the version bar says after the app's name: AppState::version_bar_status
+// works it out, and the bar only draws it.
+struct VersionBarStatus {
+    // Green for up to date, amber for a newer release known, grey for every
+    // other state.
+    enum class Dot { Neutral, UpToDate, Available };
+    Dot dot = Dot::Neutral;
+    // The sentence, drawn in the normal text colour. Empty when the whole
+    // status is dimmed.
+    std::string text;
+    // A dimmed sentence after `text`. Empty in most states.
+    std::string dimmed;
+    // Whether the resting bar offers its own Update button (AppState::update_now).
+    // Never true while a phase shows: the phase draws its own buttons.
+    bool update_button = false;
 };
 
 // GETs kLatestReleaseUrl and reads it with app::parse_latest_release_json.

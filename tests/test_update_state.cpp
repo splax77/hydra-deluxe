@@ -1,8 +1,9 @@
 // Tests for the updater's state in AppState (ui/update_job.h, ui/app_state.h)
-// and the "is a check due" rule (app::update_check_due). Plan:
-// docs/superpowers/plans/2026-10-22-auto-updater.md, task T3a, criteria C2 to
-// C9 (C1 is in test_config.cpp). Nothing here touches the network: the release
-// reply, the download and the installer start all go through the test seams.
+// and the version bar's status (AppState::version_bar_status). Plan:
+// docs/superpowers/plans/2026-10-23-update-check-on-launch.md, task T1a,
+// criteria A2 to A8 (A1 is in test_config.cpp). Nothing here touches the
+// network: the release reply, the download and the installer start all go
+// through the test seams.
 
 #include "doctest.h"
 
@@ -43,9 +44,9 @@ using update_fixtures::test_public_key;
 using update_fixtures::update_dir;
 using hydra::app::Settings;
 using hydra::ui::AppState;
+using hydra::ui::VersionBarStatus;
 using Phase = hydra::ui::UpdateState::Phase;
-using std::chrono::hours;
-using std::chrono::system_clock;
+using Dot = hydra::ui::VersionBarStatus::Dot;
 
 namespace {
 
@@ -145,7 +146,7 @@ void settle_check(AppState& app) {
     tick_until(app, [&] { return !app.update_check_running(); }, "the update check to finish");
 }
 
-// The offer of the canned v9.9.9, from a manual check.
+// The offer of the canned v9.9.9, from the start-up check.
 std::unique_ptr<AppState> offered_app(UpdateWorld& w) {
     std::unique_ptr<AppState> app = w.app();
     settle_check(*app);  // the construction's automatic check
@@ -157,157 +158,138 @@ bool exists(const std::string& path) { return hydra::file_exists_utf8(path); }
 
 }  // namespace
 
-// ---- C2: update_check_due --------------------------------------------------
+// ---- A2: every installed start checks; other copies never do ---------------
 
-TEST_CASE("update_check_due: on, installed and more than a day since the last check") {
-    const system_clock::time_point now = system_clock::from_time_t(1'800'000'000);
-    Settings s;
-    s.check_updates = true;
+TEST_CASE("every start of the installed exe checks, and a copy never does") {
+    UpdateWorld w("update_on_start");
     {
-        const ScopedHook installed(hydra::app::set_installed_for_test, std::optional<bool>(true));
-        CHECK(hydra::app::update_check_due(s, now));  // no timestamp yet
-
-        s.last_update_check = hydra::app::update_check_time_text(now - hours(23));
-        CHECK_FALSE(hydra::app::update_check_due(s, now));
-        s.last_update_check = hydra::app::update_check_time_text(now - hours(24));
-        CHECK_FALSE(hydra::app::update_check_due(s, now));  // "more than", so the edge waits
-        s.last_update_check =
-            hydra::app::update_check_time_text(now - hours(24) - std::chrono::seconds(1));
-        CHECK(hydra::app::update_check_due(s, now));
-        s.last_update_check = hydra::app::update_check_time_text(now - hours(25));
-        CHECK(hydra::app::update_check_due(s, now));
-        // A time after now, or one that can't be read, doesn't hold the check back.
-        s.last_update_check = hydra::app::update_check_time_text(now + hours(1));
-        CHECK(hydra::app::update_check_due(s, now));
-        s.last_update_check = "yesterday";
-        CHECK(hydra::app::update_check_due(s, now));
-
-        s.last_update_check.clear();
-        s.check_updates = false;
-        CHECK_FALSE(hydra::app::update_check_due(s, now));  // off
-        s.check_updates = true;
+        // Each start checks: no time since the last check holds one back.
+        for (int start = 0; start < 2; ++start) {
+            CAPTURE(start);
+            std::unique_ptr<AppState> app = w.app();
+            CHECK(app->update_check_running());  // before the first tick
+            const VersionBarStatus status = app->version_bar_status();
+            CHECK(status.text == "Checking for updates...");
+            CHECK(status.dimmed.empty());
+            CHECK(status.dot == Dot::Neutral);
+            CHECK_FALSE(status.update_button);
+            settle_check(*app);
+        }
     }
-    const ScopedHook not_installed(hydra::app::set_installed_for_test, std::optional<bool>(false));
-    CHECK_FALSE(hydra::app::update_check_due(s, now));  // not the installed exe
-}
-
-TEST_CASE("the last-check time is ISO-8601 UTC and reads back to the second") {
-    const system_clock::time_point t = system_clock::from_time_t(1'800'000'000);
-    CHECK(hydra::app::update_check_time_text(t) == "2027-01-15T08:00:00Z");
-    CHECK(hydra::app::update_check_time(hydra::app::update_check_time_text(t)) == t);
-    CHECK_FALSE(hydra::app::update_check_time("").has_value());
-    CHECK_FALSE(hydra::app::update_check_time("2027-01-15T08:00:00").has_value());  // no zone
-    CHECK_FALSE(hydra::app::update_check_time("2027-02-31T08:00:00Z").has_value());
-    CHECK_FALSE(hydra::app::update_check_time("2027-01-15T08:00:00Z junk").has_value());
-}
-
-// ---- C3, C4, C5: the check, Skip this version and Later --------------------
-
-TEST_CASE("a check offers a newer release and stays quiet about the same or an older one") {
-    UpdateWorld w("update_offer");
-    {
-        std::unique_ptr<AppState> app = w.app();
-        settle_check(*app);
-        CHECK(app->update.phase == Phase::Offered);
-        CHECK(app->update.text == "Hydra Deluxe 9.9.9 is available.");
-        REQUIRE(app->update.release.has_value());
-        CHECK(hydra::core::version_text(app->update.release->version) == "9.9.9");
-        // The finished check starts the next day's wait.
-        CHECK_FALSE(Settings::load_file(w.paths.ini).last_update_check.empty());
+    const ScopedHook off(hydra::app::set_installed_for_test, std::optional<bool>(false));
+    std::unique_ptr<AppState> app = w.app();
+    CHECK_FALSE(app->update_check_running());
+    app->check_updates_on_start();
+    for (int i = 0; i < 5; ++i) {
+        app->tick(0.0);
+        CHECK_FALSE(app->update_check_running());
     }
-    for (const std::string& tag : {"v" + running_text(), std::string("v0.0.1")}) {
-        CAPTURE(tag);
-        w.canned.reply = release_reply_at(tag);
-        std::unique_ptr<AppState> app = w.app();
-        settle_check(*app);  // the automatic check stays silent
-        CHECK(app->update.phase == Phase::None);
-        CHECK(app->update.text.empty());
-        // Check now says so, with an OK that hides it.
-        app->check_updates_now();
-        settle_check(*app);
-        CHECK(app->update.phase == Phase::UpToDate);
-        CHECK(app->update.text == "Hydra Deluxe " + running_text() + " is the latest version.");
-        CHECK_FALSE(app->update.release.has_value());
-        app->dismiss_update_note();
-        CHECK(app->update.phase == Phase::None);
-        CHECK(app->update.text.empty());
-    }
-}
-
-TEST_CASE("Skip this version hides that version only") {
-    UpdateWorld w("update_skip");
-    std::unique_ptr<AppState> app = offered_app(w);
-    app->skip_version();
     CHECK(app->update.phase == Phase::None);
-    CHECK(Settings::load_file(w.paths.ini).skipped_update_version == "9.9.9");
+    const VersionBarStatus status = app->version_bar_status();
+    CHECK(status.text.empty());
+    CHECK(status.dimmed == "Only the installed copy of Hydra Deluxe checks for updates.");
+    CHECK(status.dot == Dot::Neutral);
+    CHECK_FALSE(status.update_button);
+}
 
-    // The daily check keeps honoring the skip: a start whose check is due
-    // lands in None for the skipped 9.9.9.
+// ---- A3, A4: the offer, Later, Skip this version and Up to date ------------
+
+TEST_CASE("a newer release is offered; Later keeps an Update button and writes nothing") {
+    UpdateWorld w("update_later");
+    std::unique_ptr<AppState> app = offered_app(w);
+    CHECK(app->update.text == "Hydra Deluxe 9.9.9 is available.");
+    REQUIRE(app->update.release.has_value());
+    CHECK(hydra::core::version_text(app->update.release->version) == "9.9.9");
     {
-        Settings later_start = w.settings();
-        later_start.skipped_update_version = "9.9.9";
-        std::unique_ptr<AppState> daily = w.app_with(later_start);
-        settle_check(*daily);
-        CHECK(daily->update.phase == Phase::None);
-        CHECK(daily->update.text.empty());
-        // Check now ignores the skip: a click means the user wants to know.
-        daily->check_updates_now();
-        settle_check(*daily);
-        CHECK(daily->update.phase == Phase::Offered);
-        CHECK(daily->update.text == "Hydra Deluxe 9.9.9 is available.");
+        const VersionBarStatus offered = app->version_bar_status();
+        CHECK(offered.text == "Hydra Deluxe 9.9.9 is available.");
+        CHECK(offered.dot == Dot::Available);
+        CHECK_FALSE(offered.update_button);  // the phase draws its own three
     }
+    // The start at the running version wrote no INI; Later writes none either.
+    const auto ini_text = [&] { return exists(w.paths.ini) ? hydra::read_file_text(w.paths.ini) : ""; };
+    const std::string before = ini_text();
+    CHECK(Settings::load_file(w.paths.ini).skipped_update_version.empty());
 
+    app->later();
+    CHECK(app->update.phase == Phase::None);
+    CHECK(app->update.text.empty());
+    CHECK(ini_text() == before);
+    const VersionBarStatus status = app->version_bar_status();
+    CHECK(status.text == "Hydra Deluxe 9.9.9 is available.");
+    CHECK(status.dot == Dot::Available);
+    CHECK(status.dimmed.empty());
+    CHECK(status.update_button);
+    REQUIRE(app->update.found.has_value());
+    const std::string notes = hydra::app::parse_latest_release_json(w.canned.reply).notes;
+    CHECK_FALSE(notes.empty());
+    CHECK(app->update.found->notes == notes);
+
+    // The resting bar's Update starts the download as the offer's does.
+    app->update_now();
+    CHECK(app->update.phase == Phase::Downloading);
+    CHECK(app->update.text == "Downloading Hydra Deluxe 9.9.9...");
+    tick_until(*app, [&] { return app->update.phase == Phase::Launching; }, "the installer to start");
+    CHECK(w.canned.launched == hydra::join_folder(w.folder, "HydraDeluxe-9.9.9-setup.exe"));
+}
+
+TEST_CASE("Skip this version names the release as skipped; a newer one is offered") {
+    UpdateWorld w("update_skip");
+    {
+        std::unique_ptr<AppState> app = offered_app(w);
+        app->skip_version();
+        CHECK(app->update.phase == Phase::None);
+        CHECK(Settings::load_file(w.paths.ini).skipped_update_version == "9.9.9");
+        const VersionBarStatus status = app->version_bar_status();
+        CHECK(status.text == "Hydra Deluxe 9.9.9 is available.");
+        CHECK(status.dimmed == "Skipped.");
+        CHECK(status.dot == Dot::Available);
+        CHECK_FALSE(status.update_button);
+        app->update_now();  // no button, so nothing starts
+        CHECK(app->update.phase == Phase::None);
+    }
+    // A fresh start honors the skip and still names the release.
+    {
+        std::unique_ptr<AppState> app = w.app_with(Settings::load_file(w.paths.ini));
+        settle_check(*app);
+        CHECK(app->update.phase == Phase::None);
+        CHECK(app->update.text.empty());
+        const VersionBarStatus status = app->version_bar_status();
+        CHECK(status.text == "Hydra Deluxe 9.9.9 is available.");
+        CHECK(status.dimmed == "Skipped.");
+        CHECK(status.dot == Dot::Available);
+        CHECK_FALSE(status.update_button);
+    }
+    // The next start with 9.9.10 out offers it.
     w.canned.reply = release_reply_at("v9.9.10");
-    app->check_updates_now();
+    std::unique_ptr<AppState> app = w.app_with(Settings::load_file(w.paths.ini));
     settle_check(*app);
     CHECK(app->update.phase == Phase::Offered);
     CHECK(app->update.text == "Hydra Deluxe 9.9.10 is available.");
 }
 
-TEST_CASE("Later hides the offer and writes nothing") {
-    UpdateWorld w("update_later");
-    std::unique_ptr<AppState> app = offered_app(w);
-    const std::string before = hydra::read_file_text(w.paths.ini);
-    const Settings saved = Settings::load_file(w.paths.ini);
-    CHECK_FALSE(saved.last_update_check.empty());  // the check's own write
-    CHECK(saved.skipped_update_version.empty());
-
-    app->later();
-    CHECK(app->update.phase == Phase::None);
-    CHECK(app->update.text.empty());
-    CHECK(hydra::read_file_text(w.paths.ini) == before);
-}
-
-TEST_CASE("Check now does nothing in a copy the installer didn't put in place") {
-    UpdateWorld w("update_not_installed");
-    {
-        const ScopedHook off(hydra::app::set_installed_for_test, std::optional<bool>(false));
+TEST_CASE("the same or an older release lands in the resting Up to date") {
+    UpdateWorld w("update_uptodate");
+    for (const std::string& tag : {"v" + running_text(), std::string("v0.0.1")}) {
+        CAPTURE(tag);
+        w.canned.reply = release_reply_at(tag);
         std::unique_ptr<AppState> app = w.app();
-        CHECK_FALSE(app->update_check_running());  // no automatic check either
-        app->check_updates_now();
-        CHECK_FALSE(app->update_check_running());
-        for (int i = 0; i < 5; ++i) app->tick(0.0);
+        settle_check(*app);
         CHECK(app->update.phase == Phase::None);
         CHECK(app->update.text.empty());
-        CHECK(Settings::load_file(w.paths.ini).last_update_check.empty());
+        CHECK_FALSE(app->update.release.has_value());
+        CHECK_FALSE(app->update.found.has_value());
+        const VersionBarStatus status = app->version_bar_status();
+        CHECK(status.text == "Up to date");
+        CHECK(status.dimmed.empty());
+        CHECK(status.dot == Dot::UpToDate);
+        CHECK_FALSE(status.update_button);
     }
-    // The installed copy does check on a click. The block's hook cleared the
-    // seam on its way out, so this sets it again.
-    const ScopedHook on(hydra::app::set_installed_for_test, std::optional<bool>(true));
-    Settings checked_today = w.settings();
-    checked_today.last_update_check =
-        hydra::app::update_check_time_text(system_clock::now());  // no automatic check
-    std::unique_ptr<AppState> app = w.app_with(checked_today);
-    REQUIRE_FALSE(app->update_check_running());
-    app->check_updates_now();
-    CHECK(app->update_check_running());
-    settle_check(*app);
-    CHECK(app->update.phase == Phase::Offered);
 }
 
-// ---- C6: failures ----------------------------------------------------------
+// ---- A5: failures ----------------------------------------------------------
 
-TEST_CASE("an automatic check fails silently; Check now shows the failure") {
+TEST_CASE("a failed start-up check shows in the resting status with its plain_error") {
     UpdateWorld w("update_fail");
     // The errors the transport throws for GitHub, and the sentences they show.
     const std::vector<std::pair<KindedError, std::string>> failures = {
@@ -320,23 +302,82 @@ TEST_CASE("an automatic check fails silently; Check now shows the failure") {
     };
     for (const auto& [failure, sentence] : failures) {
         CAPTURE(failure.what());
-        w.canned.fail = [thrown = failure] { throw thrown; };
+        // The fetch waits for `go` before it throws, so the running state can
+        // be read.
+        auto go = std::make_shared<std::atomic<bool>>(false);
+        w.canned.fail = [thrown = failure, go] {
+            testwait::wait_until([&] { return go->load(); }, "the test to let the fetch fail");
+            throw thrown;
+        };
         std::unique_ptr<AppState> app = w.app();
-        REQUIRE(app->update_check_running());  // no check yet, so one is due
+        REQUIRE(app->update_check_running());
+        for (int i = 0; i < 3; ++i) app->tick(0.0);
+        REQUIRE(app->update_check_running());
+        {
+            const VersionBarStatus held = app->version_bar_status();
+            CHECK(held.text == "Checking for updates...");
+            CHECK(held.dot == Dot::Neutral);
+        }
+        go->store(true);
         settle_check(*app);
         CHECK(app->update.phase == Phase::None);
         CHECK(app->update.text.empty());
         CHECK(app->update.detail.empty());
-
-        app->check_updates_now();
-        settle_check(*app);
-        CHECK(app->update.phase == Phase::Failed);
-        CHECK(app->update.text == sentence);
-        CHECK(app->update.detail == failure.what());
+        const VersionBarStatus status = app->version_bar_status();
+        CHECK(status.text == "Hydra couldn't check for updates when it started.");
+        CHECK(status.dimmed == sentence);
+        CHECK(status.dot == Dot::Neutral);
+        CHECK_FALSE(status.update_button);
     }
 }
 
-// ---- C7, C8: Update, the installer start and Cancel ------------------------
+// ---- A8: the Updated note gives way to the offer or the resting status -----
+
+TEST_CASE("the Updated note's OK offers a found release, or gives way to the resting status") {
+    UpdateWorld w("update_note_then_offer");
+    Settings s;
+    s.last_run_version = "0.0.1";
+    {
+        std::unique_ptr<AppState> app = w.app_with(s);
+        settle_check(*app);
+        CHECK(app->update.phase == Phase::Updated);
+        CHECK(app->version_bar_status().dot == Dot::Neutral);
+        app->dismiss_update_note();
+        CHECK(app->update.phase == Phase::Offered);
+        CHECK(app->update.text == "Hydra Deluxe 9.9.9 is available.");
+    }
+    {
+        s.skipped_update_version = "9.9.9";
+        std::unique_ptr<AppState> app = w.app_with(s);
+        settle_check(*app);
+        CHECK(app->update.phase == Phase::Updated);
+        app->dismiss_update_note();
+        CHECK(app->update.phase == Phase::None);
+        const VersionBarStatus status = app->version_bar_status();
+        CHECK(status.text == "Hydra Deluxe 9.9.9 is available.");
+        CHECK(status.dimmed == "Skipped.");
+        CHECK(status.dot == Dot::Available);
+    }
+    {
+        s.skipped_update_version.clear();
+        w.canned.reply = release_reply_at("v" + running_text());
+        std::unique_ptr<AppState> app = w.app_with(s);
+        settle_check(*app);
+        CHECK(app->update.phase == Phase::Updated);
+        app->dismiss_update_note();
+        CHECK(app->update.phase == Phase::None);
+        CHECK(app->version_bar_status().text == "Up to date");
+        CHECK(app->version_bar_status().dot == Dot::UpToDate);
+    }
+}
+
+// ---- A6: the one text of a version -----------------------------------------
+
+TEST_CASE("named_version is the app's name and the version") {
+    CHECK(hydra::core::named_version(hydra::core::AppVersion{2, 11, 1}) == "Hydra Deluxe 2.11.1");
+}
+
+// ---- A7 (the shipped C7, C8): Update, the installer start and Cancel ------------------------
 
 TEST_CASE("Update downloads, checks and starts the installer; Hydra then waits") {
     UpdateWorld w("update_started");
@@ -353,7 +394,7 @@ TEST_CASE("Update downloads, checks and starts the installer; Hydra then waits")
     // closes it, and the strip's buttons do nothing meanwhile.
     for (int i = 0; i < 5; ++i) app->tick(0.0);
     app->later();
-    app->check_updates_now();
+    app->update_now();
     CHECK(app->update.phase == Phase::Launching);
     CHECK_FALSE(app->update_check_running());
 }

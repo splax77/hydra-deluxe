@@ -124,41 +124,43 @@ TEST_CASE("settings: load and save name the same keys") {
         "depth_value",     "depth_mode",           "mslimit_enabled",    "mslimit_value",
         "backendlimit_enabled", "backendlimit_value", "hit_window_ms",    "preview_volume",
         "sp_cap",           "legacy_fills",         "auto_open_report",   "dm_last_user",
-        "check_updates",    "chartfolder"};
+        "chartfolder"};
     CHECK(names == expected);
 }
 
-// The updater's four keys (auto-updater plan, C1): they round-trip, a file
-// without check_updates reads it on, and Reset to defaults leaves them alone.
-TEST_CASE("the updater's settings round-trip, default on, and survive Reset to defaults") {
+// The updater's two keys (D260): they round-trip and Reset to defaults leaves
+// them alone. A 2.11.x file's check_updates and last_update_check lines load
+// and are not written back.
+TEST_CASE("the updater's settings round-trip and survive Reset to defaults") {
     Settings s;
-    s.check_updates = false;
     s.skipped_update_version = "9.9.9";
-    s.last_update_check = "2026-10-22T13:45:00Z";
     s.last_run_version = "2.10.1";
     s.view_prodrums = false;  // an analysis setting, which the reset does put back
 
     const std::string path = testtemp::temp_path("update_keys", ".ini");
     REQUIRE(s.save_file(path));
     const Settings r = Settings::load_file(path);
-    CHECK(r.check_updates == false);
     CHECK(r.skipped_update_version == "9.9.9");
-    CHECK(r.last_update_check == "2026-10-22T13:45:00Z");
     CHECK(r.last_run_version == "2.10.1");
 
-    // A file from before the setting existed has no check_updates line.
     {
         std::ofstream f(path, std::ios::trunc);
-        f << "view_prodrums=1\n";
+        f << "check_updates=0\nlast_update_check=2026-10-22T13:45:00Z\nskipped_update_version=9.9.9\n";
     }
-    CHECK(Settings::load_file(path).check_updates == true);
+    const Settings old = Settings::load_file(path);
+    CHECK(old.skipped_update_version == "9.9.9");
+    REQUIRE(old.save_file(path));
+    {
+        std::ifstream in(path);
+        const std::string saved{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+        CHECK(saved.find("check_updates=") == std::string::npos);
+        CHECK(saved.find("last_update_check=") == std::string::npos);
+    }
     std::remove(path.c_str());
 
     const Settings reset = s.with_analysis_defaults();
     CHECK(reset.view_prodrums == Settings{}.view_prodrums);
-    CHECK(reset.check_updates == false);
     CHECK(reset.skipped_update_version == "9.9.9");
-    CHECK(reset.last_update_check == "2026-10-22T13:45:00Z");
     CHECK(reset.last_run_version == "2.10.1");
 }
 

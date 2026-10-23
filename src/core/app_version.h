@@ -72,6 +72,13 @@ inline std::string version_text(const AppVersion& v) {
            std::to_string(v.patch);
 }
 
+// The app's name and a version, "Hydra Deluxe 2.11.1": the one text of a
+// version the user reads. The version bar shows it for running_version(), and
+// the update sentences for the release they name.
+inline std::string named_version(const AppVersion& v) {
+    return std::string(HYDRA_APP_NAME) + " " + version_text(v);
+}
+
 // The running app's version, read from HYDRA_VERSION by parse_version. The
 // build sets HYDRA_VERSION from CMakeLists.txt's project version; one that
 // does not parse is a build mistake, so this throws rather than guess.

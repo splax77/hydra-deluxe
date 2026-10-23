@@ -75,6 +75,8 @@ constexpr bool is_retired_key(const RetiredKey (&list)[N], std::string_view key)
 inline constexpr RetiredKey kRetiredSettingsKeys[] = {
     {"sp_cap_enabled", "1.6.0"},  // replaced by sp_cap
     {"sp_cap_value", "1.6.0"},    // replaced by sp_cap
+    {"check_updates", "2.12.0"},      // every installed start checks (D260)
+    {"last_update_check", "2.12.0"},  // every installed start checks (D260)
 };
 
 // Opens the store at `db`. `rules` gates Ready: a row analyzed
@@ -191,18 +193,12 @@ struct Settings {
     // "Compare dmleaderboards user" picker can pre-select it. Empty = none yet.
     std::string dm_last_user;
 
-    // The updater's four keys (decisions 3, 5, 6 and 11 of
-    // docs/superpowers/plans/2026-10-22-auto-updater.md). None is part of a
-    // result's profile, so "Reset to defaults" leaves them alone.
-    // Whether the installed Hydra looks for a newer release when it starts
-    // (update_check_due). INI line: check_updates=1.
-    bool check_updates = true;
+    // The updater's two keys (D259 and D260 in
+    // docs/audit/2026-10-03-fix-decisions.md). Neither is part of a result's
+    // profile, so "Reset to defaults" leaves them alone.
     // The release version "Skip this version" hid, as version_text writes it;
     // empty when none.
     std::string skipped_update_version;
-    // When the last check finished, as update_check_time_text writes it; empty
-    // before the first.
-    std::string last_update_check;
     // The version the last start ran, as version_text writes it; empty before
     // the first start that wrote it.
     std::string last_run_version;
@@ -349,24 +345,6 @@ inline const std::array<AnalysisField, 10> kAnalysisFields{{
     {&Settings::mslimit_enabled, AnalysisSetting::PathLimit, KeyPart::Lens},
     {&Settings::mslimit_value, AnalysisSetting::PathLimit, KeyPart::Lens},
 }};
-
-// The least time between two automatic update checks (decision 6 of
-// docs/superpowers/plans/2026-10-22-auto-updater.md).
-inline constexpr std::chrono::hours kUpdateCheckInterval{24};
-
-// A moment as Settings::last_update_check stores it: ISO-8601 UTC to the
-// second, "2026-10-22T13:45:00Z". update_check_time parses the same form back,
-// and is empty for any other text.
-std::string update_check_time_text(std::chrono::system_clock::time_point when);
-std::optional<std::chrono::system_clock::time_point> update_check_time(const std::string& text);
-
-// Whether the automatic update check runs now: the one rule. The setting is
-// on, this is the installed exe (installed_by_setup), and the last finished
-// check was more than kUpdateCheckInterval ago, or there was none, or its
-// time can't be read, or it lies after `now` (a clock that was set wrong
-// would otherwise stop the check until it caught up). The "Check now" button
-// does not ask.
-bool update_check_due(const Settings& settings, std::chrono::system_clock::time_point now);
 
 // A count of Star Power bars in words, "4 bars" or "1 bar": the SP cap and
 // the meter both read it.

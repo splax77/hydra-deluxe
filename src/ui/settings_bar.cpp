@@ -203,14 +203,12 @@ void render_app_group(AppState& app) {
     begin_row("Check for updates",
               "Once a day, when Hydra starts, look for a newer release on GitHub. Nothing is "
               "downloaded or installed until you click Update.");
-    if (ImGui::Checkbox("##checkupdates", &app.settings.check_updates)) app.commit_settings();
-    ImGui::SameLine();
     // Only the installed exe checks (plan decision 14; owner installed_by_setup),
     // so a dev or copied build greys the button and says why on hover.
     const bool installed = app::installed_by_setup();
     const bool off = !installed || app.update_check_running();
     begin_disabled_button(off);
-    if (ImGui::Button("Check now")) app.check_updates_now();
+    if (ImGui::Button("Check now")) app.check_updates_on_start();
     end_disabled_button(off);
     if (!installed)
         overflow_tooltip("Only the installed copy of " HYDRA_APP_NAME " checks for updates.");

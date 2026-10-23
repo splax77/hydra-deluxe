@@ -204,9 +204,7 @@ const std::vector<Key>& keys() {
         on_off("legacy_fills", &Settings::legacy_fills),
         on_off("auto_open_report", &Settings::auto_open_report),
         free_text("dm_last_user", &Settings::dm_last_user),
-        on_off("check_updates", &Settings::check_updates),
         word("skipped_update_version", &Settings::skipped_update_version),
-        word("last_update_check", &Settings::last_update_check),
         word("last_run_version", &Settings::last_run_version),
         free_text_list("chartfolder", &Settings::chartfolders),
     };
@@ -449,45 +447,6 @@ store::Profile Settings::profile_with_fills(FillDeadlineRule rule) const {
 }
 
 BatchRun Settings::batch_run() const { return BatchRun{profile(), to_analysis_settings()}; }
-
-std::string update_check_time_text(std::chrono::system_clock::time_point when) {
-    const std::time_t t = std::chrono::system_clock::to_time_t(when);
-    std::tm utc{};
-    if (gmtime_s(&utc, &t) != 0) return {};
-    char text[32];
-    std::snprintf(text, sizeof(text), "%04d-%02d-%02dT%02d:%02d:%02dZ", utc.tm_year + 1900,
-                  utc.tm_mon + 1, utc.tm_mday, utc.tm_hour, utc.tm_min, utc.tm_sec);
-    return text;
-}
-
-std::optional<std::chrono::system_clock::time_point> update_check_time(const std::string& text) {
-    std::tm utc{};
-    char zone = 0;
-    int consumed = 0;
-    if (sscanf_s(text.c_str(), "%4d-%2d-%2dT%2d:%2d:%2d%c%n", &utc.tm_year, &utc.tm_mon,
-                 &utc.tm_mday, &utc.tm_hour, &utc.tm_min, &utc.tm_sec, &zone, 1u,
-                 &consumed) != 7 ||
-        zone != 'Z' || static_cast<size_t>(consumed) != text.size())
-        return std::nullopt;
-    utc.tm_year -= 1900;
-    utc.tm_mon -= 1;
-    const std::tm asked = utc;
-    const std::time_t t = _mkgmtime(&utc);
-    if (t == static_cast<std::time_t>(-1)) return std::nullopt;
-    // _mkgmtime rolls a 31st of February into March; such a text is not a moment.
-    if (utc.tm_mday != asked.tm_mday || utc.tm_mon != asked.tm_mon || utc.tm_hour != asked.tm_hour ||
-        utc.tm_min != asked.tm_min || utc.tm_sec != asked.tm_sec)
-        return std::nullopt;
-    return std::chrono::system_clock::from_time_t(t);
-}
-
-bool update_check_due(const Settings& settings, std::chrono::system_clock::time_point now) {
-    if (!settings.check_updates || !installed_by_setup()) return false;
-    const std::optional<std::chrono::system_clock::time_point> last =
-        update_check_time(settings.last_update_check);
-    if (!last || *last > now) return true;
-    return now - *last > kUpdateCheckInterval;
-}
 
 std::string bars_text(int bars) { return counted(bars, "bar", "bars"); }
 

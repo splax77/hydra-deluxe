@@ -1069,16 +1069,23 @@ void AppState::apply_settings() {
 
 namespace {
 
-// The strip's fixed sentences (decisions 4 and 10 of
-// docs/superpowers/plans/2026-10-22-auto-updater.md). The ones that name a
-// version are built by named_release.
+// The version bar's fixed sentences (D259 and D260 in
+// docs/audit/2026-10-03-fix-decisions.md). The ones that name a version are
+// built with core::named_version.
 constexpr const char* kUpdateVerifyingText = "Checking the download...";
 constexpr const char* kUpdateLaunchingText = "Starting the installer...";
 constexpr const char* kUpdateDeclinedText = "The installer didn't start, so Hydra wasn't updated.";
+constexpr const char* kOnlyInstalledChecksText =
+    "Only the installed copy of " HYDRA_APP_NAME " checks for updates.";
+constexpr const char* kCheckingForUpdatesText = "Checking for updates...";
+constexpr const char* kCouldNotCheckText = "Hydra couldn't check for updates when it started.";
+constexpr const char* kUpToDateText = "Up to date";
+constexpr const char* kSkippedText = "Skipped.";
 
-// "Hydra Deluxe 2.11.0": the app's name and a version as the user reads it.
-std::string named_release(const core::AppVersion& version) {
-    return std::string(HYDRA_APP_NAME) + " " + core::version_text(version);
+// "Hydra Deluxe 9.9.9 is available.": the offer's sentence and the resting
+// bar's after Later or Skip this version.
+std::string available_text(const core::AppVersion& version) {
+    return core::named_version(version) + " is available.";
 }
 
 // Inno Setup's log, beside the download.
@@ -1087,25 +1094,26 @@ std::string installer_log_path() { return join_folder(update_folder(), "setup.lo
 }  // namespace
 
 void AppState::start_updates() {
-    // Decision 11: the first start after any version change says so once.
-    // An empty value is a first start, which has nothing to compare.
+    // The first start after any version change says so once. An empty value
+    // is a first start, which has nothing to compare.
     const core::AppVersion running = core::running_version();
     const std::optional<core::AppVersion> last = core::parse_version(settings.last_run_version);
     if (!settings.last_run_version.empty() && last != running)
-        set_update_phase(UpdateState::Phase::Updated, "Updated to " + named_release(running) + ".");
+        set_update_phase(UpdateState::Phase::Updated,
+                         "Updated to " + core::named_version(running) + ".");
     if (last != running) {
         settings.last_run_version = core::version_text(running);
         committed_settings_.last_run_version = settings.last_run_version;
         save_settings();
     }
-    // The installer a declined start kept (decision 10) goes at the next start.
+    // The installer a declined start kept goes at the next start.
     try {
         std::error_code ec;
         std::filesystem::remove_all(os_path(update_folder()), ec);
     } catch (const std::exception&) {
         // No temp folder: there is no leftover to remove either.
     }
-    check_updates_if_due();
+    check_updates_on_start();
 }
 
 void AppState::set_update_phase(UpdateState::Phase phase, std::string text) {
@@ -1116,30 +1124,56 @@ void AppState::set_update_phase(UpdateState::Phase phase, std::string text) {
 
 void AppState::offer_update(const app::UpdateRelease& release) {
     update.release = release;
-    set_update_phase(UpdateState::Phase::Offered,
-                     named_release(release.version) + " is available.");
+    set_update_phase(UpdateState::Phase::Offered, available_text(release.version));
 }
 
-void AppState::check_updates_if_due() {
-    if (update.phase != UpdateState::Phase::None || update_check_job) return;
-    if (!app::update_check_due(settings, std::chrono::system_clock::now())) return;
-    start_update_check(/*manual=*/false);
-}
-
-void AppState::check_updates_now() {
-    using Phase = UpdateState::Phase;
-    // Only the installed exe checks (plan decision 14; owner installed_by_setup).
-    if (!app::installed_by_setup()) return;
-    if (update_check_job || update_download_job || update.phase == Phase::Launching) return;
-    start_update_check(/*manual=*/true);
+void AppState::check_updates_on_start() {
+    if (update_check_job || !app::installed_by_setup()) return;
+    update_check_job = std::make_unique<UpdateCheckJob>();
+    update_check_job->start();
 }
 
 bool AppState::update_check_running() const { return update_check_job != nullptr; }
 
-void AppState::start_update_check(bool manual) {
-    update_check_manual_ = manual;
-    update_check_job = std::make_unique<UpdateCheckJob>();
-    update_check_job->start();
+bool AppState::found_release_skipped() const {
+    return update.found &&
+           core::parse_version(settings.skipped_update_version) == update.found->version;
+}
+
+VersionBarStatus AppState::version_bar_status() const {
+    using Dot = VersionBarStatus::Dot;
+    using LastCheck = UpdateState::LastCheck;
+    VersionBarStatus status;
+    if (update.phase != UpdateState::Phase::None) {
+        // The phase's own sentence; the bar adds its buttons and detail line.
+        status.dot = update.phase == UpdateState::Phase::Offered ? Dot::Available : Dot::Neutral;
+        status.text = update.text;
+        return status;
+    }
+    if (!app::installed_by_setup()) {
+        status.dimmed = kOnlyInstalledChecksText;
+        return status;
+    }
+    if (update_check_running()) {
+        status.text = kCheckingForUpdatesText;
+        return status;
+    }
+    if (update.last_check == LastCheck::Failed) {
+        status.text = kCouldNotCheckText;
+        status.dimmed = update.check_error;
+        return status;
+    }
+    if (update.last_check == LastCheck::Newer && update.found) {
+        status.dot = Dot::Available;
+        status.text = available_text(update.found->version);
+        const bool skipped = found_release_skipped();
+        if (skipped) status.dimmed = kSkippedText;
+        status.update_button = !skipped;
+        return status;
+    }
+    status.dot = Dot::UpToDate;
+    status.text = kUpToDateText;
+    return status;
 }
 
 void AppState::tick_updates() {
@@ -1157,46 +1191,39 @@ void AppState::tick_updates() {
 void AppState::collect_update_check() {
     if (!update_check_job || !update_check_job->finished()) return;
     const std::unique_ptr<UpdateCheckJob> job = std::move(update_check_job);
-    const bool manual = update_check_manual_;
     if (job->outcome() == JobOutcome::Cancelled) return;
-    // A finished check, good or not, starts the next interval
-    // (app::update_check_due); a failed automatic one tries again then.
-    settings.last_update_check = app::update_check_time_text(std::chrono::system_clock::now());
-    committed_settings_.last_update_check = settings.last_update_check;
-    save_settings();
-    // The strip changes only from nothing, or on the user's own Check now.
-    if (!manual && update.phase != UpdateState::Phase::None) return;
+    // What the check found is kept whatever the bar shows, so the Updated
+    // note's OK can still offer it (dismiss_update_note).
     if (!job->ok()) {
-        if (!manual) return;  // decision 8: the daily check fails silently
-        update.release.reset();
-        set_update_phase(UpdateState::Phase::Failed, job->message());
-        update.detail = job->error();
+        // A failed check shows in the resting status, with the plain_error
+        // sentence; the next start tries again.
+        update.last_check = UpdateState::LastCheck::Failed;
+        update.check_error = job->message();
+        update.found.reset();
         return;
     }
     const app::UpdateRelease& release = job->release();
-    const core::AppVersion running = core::running_version();
-    const bool newer = core::is_newer_version(release.version, running);
-    // The user's fifth ruling during T3a: only the daily check honors a skip.
-    const bool skipped =
-        !manual && core::parse_version(settings.skipped_update_version) == release.version;
-    if (newer && !skipped) {
-        offer_update(release);
+    update.check_error.clear();
+    if (!core::is_newer_version(release.version, core::running_version())) {
+        update.last_check = UpdateState::LastCheck::UpToDate;
+        update.found.reset();
         return;
     }
-    update.release.reset();
-    // The user's ruling during T3a: Check now says when nothing is newer; the
-    // daily check stays silent.
-    if (manual && !newer)
-        set_update_phase(UpdateState::Phase::UpToDate, named_release(running) + " is the latest version.");
-    else
-        set_update_phase(UpdateState::Phase::None, {});
+    update.last_check = UpdateState::LastCheck::Newer;
+    update.found = release;
+    // The offer replaces only the resting status; a skipped release is named
+    // there, not offered.
+    if (update.phase == UpdateState::Phase::None && !found_release_skipped()) offer_update(release);
 }
 
 void AppState::update_now() {
     using Phase = UpdateState::Phase;
-    if (!update.release || update_download_job) return;
-    if (update.phase != Phase::Offered && update.phase != Phase::Declined &&
-        update.phase != Phase::Failed)
+    if (update_download_job) return;
+    // The resting bar's Update starts the download as the offer's does.
+    if (update.phase == Phase::None && version_bar_status().update_button) update.release = update.found;
+    if (!update.release) return;
+    if (update.phase != Phase::None && update.phase != Phase::Offered &&
+        update.phase != Phase::Declined && update.phase != Phase::Failed)
         return;
     // After a declined start the kept download is checked again, not fetched.
     const bool reuse = update.phase == Phase::Declined;
@@ -1210,7 +1237,7 @@ void AppState::update_now() {
     }
     update_download_job =
         std::make_unique<UpdateDownloadJob>(*update.release, folder, update_public_key, reuse);
-    set_update_phase(Phase::Downloading, "Downloading " + named_release(update.release->version) + "...");
+    set_update_phase(Phase::Downloading, "Downloading " + core::named_version(update.release->version) + "...");
     update_download_job->start();
 }
 
@@ -1267,8 +1294,11 @@ void AppState::cancel_update() {
 
 void AppState::dismiss_update_note() {
     using Phase = UpdateState::Phase;
-    if (update.phase == Phase::Updated || update.phase == Phase::UpToDate)
-        set_update_phase(Phase::None, {});
+    if (update.phase != Phase::Updated) return;
+    set_update_phase(Phase::None, {});
+    if (update.last_check == UpdateState::LastCheck::Newer && update.found &&
+        !found_release_skipped())
+        offer_update(*update.found);
 }
 
 uint64_t AppState::update_received() const {

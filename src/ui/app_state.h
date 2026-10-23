@@ -722,11 +722,10 @@ public:
     // calls it once no widget is active, which is when an edit has ended.
     void flush_settings();
 
-    // ---- updates (docs/superpowers/plans/2026-10-22-auto-updater.md) ----
-    // What the strip under the toolbar shows (UpdateState). Both constructors
-    // set it up: the first start after a version change lands in Updated
-    // (decision 11), the leftover download folder goes, and the automatic
-    // check starts when app::update_check_due says so.
+    // ---- updates (D259 and D260 in docs/audit/2026-10-03-fix-decisions.md) ----
+    // What the version bar shows (UpdateState). Both constructors set it up:
+    // the first start after a version change lands in Updated, the leftover
+    // download folder goes, and check_updates_on_start runs.
     UpdateState update;
     // The check and the download; at most one of each, collected by tick().
     std::unique_ptr<UpdateCheckJob> update_check_job;
@@ -734,28 +733,29 @@ public:
     // The key a download is checked against: the shipped one, which a test
     // replaces with the test key.
     std::array<uint8_t, 64> update_public_key;
-    // The automatic check: starts one when app::update_check_due says so and
-    // the strip shows nothing. A failure stays silent (decision 8).
-    void check_updates_if_due();
-    // The settings row's "Check now": a check whatever the time since the
-    // last one, whose failure shows in the strip (decisions 6 and 8), and
-    // which lands in UpToDate when nothing is newer. Does nothing while a
-    // check, a download or the installer is under way.
-    void check_updates_now();
+    // The start-up check: starts one when this is the installed exe
+    // (app::installed_by_setup), whatever the bar shows. A failure shows in
+    // the bar's resting status, not as a phase.
+    void check_updates_on_start();
     // Whether a check is running.
     bool update_check_running() const;
-    // The strip's three buttons (decision 3). Update downloads, checks and
-    // starts the installer (offered, declined, or failed with a release);
-    // Skip this version writes skipped_update_version and hides the strip;
-    // Later hides it until the next check and writes nothing.
+    // What the bar says, and with which dot: the one answer the version bar
+    // draws (VersionBarStatus).
+    VersionBarStatus version_bar_status() const;
+    // The bar's update buttons. Update downloads, checks and starts the
+    // installer (offered, declined, failed with a release, or the resting
+    // bar's Update while VersionBarStatus::update_button is true); Skip this
+    // version writes skipped_update_version and puts the buttons away; Later
+    // puts them away until the next start and writes nothing.
     void update_now();
     void skip_version();
     void later();
-    // The strip's Cancel while downloading or checking (decision 4): the
-    // download stops, its file goes, and the strip offers the release again
-    // once the job has stopped.
+    // The bar's Cancel while downloading: the download stops, its file goes,
+    // and the bar offers the release again once the job has stopped.
     void cancel_update();
-    // The OK in Updated (decision 11) and UpToDate: hides the strip.
+    // The OK in Updated: offers the release the start-up check found when it
+    // is newer and not skipped, otherwise gives the bar back to its resting
+    // status.
     void dismiss_update_note();
     // The download's progress for the strip: bytes so far, and the line's
     // "12.3 of 33.2 MB" in decision 4's unit. 0 and empty outside
@@ -888,9 +888,9 @@ private:
 
     // The updater's start-up work, which both constructors run.
     void start_updates();
-    // Starts update_check_job; `manual` says whether its failure shows.
-    void start_update_check(bool manual);
-    bool update_check_manual_ = false;
+    // Whether the release the last check found is the one Skip this version
+    // hid.
+    bool found_release_skipped() const;
     // tick()'s part: collects the check and the download, and watches the
     // started installer.
     void tick_updates();

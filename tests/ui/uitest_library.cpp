@@ -1403,7 +1403,7 @@ void test_update_strip(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(item_disabled(ctx, "**/Check now"));
     seams.hold_check = false;
-    IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::UpToDate); }, 10));
+    IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::None); }, 10));
     ctx->Yield(2);
     IM_CHECK(!item_disabled(ctx, "**/Check now"));
     close_settings_panel(ctx);
@@ -1437,10 +1437,9 @@ void test_update_strip(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/Skip this version");
     IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::None) && !on_screen(h, offer); }, 5));
     IM_CHECK(Settings::load_file(h.ini_path).skipped_update_version == "9.9.9");
-    restart_app(ctx, h, [](Settings& s) { s.last_update_check.clear(); });
+    restart_app(ctx, h, [](Settings&) {});
     if (ctx->IsError()) return;
     IM_CHECK(wait_until(ctx, [&] { return !h.app->update_check_running(); }, 10));
-    IM_CHECK(!Settings::load_file(h.ini_path).last_update_check.empty());  // it ran
     ctx->Yield(2);
     IM_CHECK(phase_is(Phase::None));
     IM_CHECK(!on_screen(h, offer));
@@ -1489,16 +1488,9 @@ void test_update_strip(ImGuiTestContext* ctx) {
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
     IM_CHECK(on_screen(h, "Check for updates"));
-    IM_CHECK((ctx->ItemInfo("**/##checkupdates").StatusFlags & ImGuiItemStatusFlags_Checked) != 0);
-    ctx->ItemUncheck("**/##checkupdates");
-    IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.check_updates; }, 5));
-    IM_CHECK(hydra::read_file_text(h.ini_path).find("check_updates=0") != std::string::npos);
     ctx->ItemCheck("**/##noteshuffle");
     ctx->ItemClick("**/Reset to defaults");
     IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.view_noteshuffle; }, 5));
-    IM_CHECK(!h.app->settings.check_updates);
-    ctx->ItemCheck("**/##checkupdates");
-    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.check_updates; }, 5));
     close_settings_panel(ctx);
 
     // D4: with a batch holding the settings, the row stays enabled.
