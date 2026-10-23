@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <stdexcept>
 #include <thread>
 
 #include "imgui.h"
@@ -343,6 +344,12 @@ void reset_app(Harness& h, const std::string& rules_text, bool wait_store) {
                               ? h.app->library_row_at(0).entry.md5
                               : "00000000000000000000000000000000";
         return canned_dm_scores({canned_dm_score(md5, 100000)});
+    });
+    // No test downloads from the network. The update tests install their own
+    // downloader over this one (uitest_library.cpp, UpdateSeams).
+    hydra::net::set_downloader([](const std::string& url, const std::string&, uint64_t,
+                                  std::atomic<uint64_t>*, const std::atomic<bool>*) {
+        throw std::runtime_error("hydra_uitest has no canned download for " + url);
     });
 
     std::error_code ec;

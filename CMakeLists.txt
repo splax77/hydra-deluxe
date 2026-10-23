@@ -491,6 +491,8 @@ add_library(hydra_uitest_harness STATIC
     tests/report_samples.cpp
 )
 target_include_directories(hydra_uitest_harness PUBLIC tests/ui)
+# update_reply.h edits the release fixture with third_party/json.
+target_include_directories(hydra_uitest_harness PRIVATE third_party/json)
 target_link_libraries(hydra_uitest_harness PUBLIC hydra_ui PRIVATE hydra_warnings)
 target_compile_definitions(hydra_uitest_harness PRIVATE
     HYDRA_TESTDATA_DIR="${CMAKE_SOURCE_DIR}/testdata"

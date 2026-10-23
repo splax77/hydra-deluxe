@@ -1,5 +1,7 @@
 // The updater's checked-in fixtures in testdata/update/, read the same way by
-// every updater test (test_update_verify.cpp, test_update_state.cpp).
+// every updater test (test_update_verify.cpp, test_update_state.cpp). The
+// parts that need no doctest live in update_reply.h, which hydra_uitest also
+// reads.
 
 #ifndef HYDRA_TESTS_UPDATE_FIXTURES_H
 #define HYDRA_TESTS_UPDATE_FIXTURES_H
@@ -8,27 +10,15 @@
 
 #include <array>
 #include <cstdint>
-#include <string>
 
-#include "core/winstr.h"  // read_file_text
-#include "testdata_dirs.h"
+#include "update_reply.h"  // update_dir, sample_path, release_reply_at, read_test_public_key
 
 namespace update_fixtures {
 
-// testdata/update, the folder that holds the fixtures below.
-inline std::string update_dir() { return corpus::testdata_root() + "/update"; }
-
-// sample.bin, the file the committed test signature sample.bin.sig signs.
-inline std::string sample_path() { return update_dir() + "/sample.bin"; }
-
-// test-public-key.txt: the 64 key bytes as hex, as release_keygen.ps1 wrote them.
+// test-public-key.txt as bytes; the test fails when the file is malformed.
 inline std::array<uint8_t, 64> test_public_key() {
-    std::string text = hydra::read_file_text(update_dir() + "/test-public-key.txt");
-    while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) text.pop_back();
-    REQUIRE(text.size() == 128);
     std::array<uint8_t, 64> key{};
-    for (size_t i = 0; i < key.size(); ++i)
-        key[i] = static_cast<uint8_t>(std::stoul(text.substr(2 * i, 2), nullptr, 16));
+    REQUIRE(read_test_public_key(key));
     return key;
 }
 

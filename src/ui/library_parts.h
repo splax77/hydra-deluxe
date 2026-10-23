@@ -25,6 +25,8 @@ namespace hydra::ui::detail {
 
 // library_toolbar.cpp
 void render_status_line(AppState& app);
+// The update strip under the toolbar, drawn from AppState::update.
+void render_update_strip(AppState& app);
 void render_actions_row(AppState& app);
 // The batch button's label while the search or a chip narrows the table
 // (LibraryModel::narrowed), with the count of rows on screen: the button, its
