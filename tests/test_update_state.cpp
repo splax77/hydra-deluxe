@@ -51,11 +51,6 @@ using std::chrono::system_clock;
 
 namespace {
 
-std::string read_bytes(const std::string& path) {
-    const std::vector<uint8_t> b = hydra::read_file_bytes(path);
-    return std::string(b.begin(), b.end());
-}
-
 std::string running_text() { return hydra::core::version_text(hydra::core::running_version()); }
 
 // The real v2.10.2 reply with its tag set to `tag`, and its installer asset
@@ -78,7 +73,7 @@ std::string reply_at(const std::string& tag) {
 // releases/latest fetch instead of the reply.
 struct Canned {
     std::string reply = reply_at("v9.9.9");
-    std::string sig = read_bytes(update_dir() + "/sample.bin.sig");
+    std::string sig = hydra::read_file_text(update_dir() + "/sample.bin.sig");
     std::function<void()> fail;
     std::atomic<int> downloads{0};
     // The download's body: copies sample.bin unless replaced.
