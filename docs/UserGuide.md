@@ -14,6 +14,8 @@ When something happens that you should know about, a message appears under the t
 
 ### The first start after updating
 
+The first start after any update, from the app or by running the installer yourself, shows `Updated to Hydra Deluxe <version>.` under the toolbar once, with an `OK` button.
+
 Your library and results live in a file called `hydra.db`, next to the program. A new version sometimes stores its results in a new layout. When it does, the first start after updating converts the file. This happens once.
 
 A quick update shows nothing: the window opens and the library appears. If it takes a moment, a box in the middle of the window says:
@@ -68,13 +70,31 @@ Hydra Deluxe reads `notes.mid` or `notes.chart` folders with a `song.ini`, `.sng
 
 While a batch runs, `Scan library` and `Analyze library...` are greyed out, and hovering them says `A batch is running.` `Scan library` is also greyed out while a scan runs and when you have no folders. `Analyze library...` is also greyed out when there is nothing to analyze, and while `hydra_rules.ini` has an error.
 
+#### When a new version is out
+
+Hydra Deluxe checks for a newer release once a day when it starts and tells you under the toolbar. Click `Update` to download and install it; nothing is installed until you do. To stop the check, untick `Check for updates` in `Analysis settings`.
+
+The check asks GitHub for the latest release. Only the copy the installer put in its folder checks, so a copy of `Hydra.exe` you moved somewhere else never does. When the release is newer than the version you run, a line under the toolbar reads `Hydra Deluxe <version> is available.`, with three buttons. Hover over the version to read the release's notes.
+
+`Update` downloads the installer. The line shows `Downloading Hydra Deluxe <version>...` with the megabytes received so far, a bar and a `Cancel` button. `Cancel` stops the download and brings the three buttons back. When the download finishes, the line reads `Checking the download...` while Hydra Deluxe checks the file against the release's signature, then `Starting the installer...`.
+
+Windows then asks for permission to run the installer. If you say yes, Hydra Deluxe closes while the installer runs and opens again when it finishes. If you say no, Hydra Deluxe keeps running unchanged, and the line reads `The installer didn't start, so Hydra wasn't updated.` with the three buttons back, so `Update` tries again.
+
+`Skip this version` hides the line for that version. A newer release shows it again. `Later` hides the line until the next check.
+
+If the download doesn't pass the check, Hydra Deluxe deletes it and doesn't install it. The line says:
+
+> Hydra couldn't verify the update it downloaded, so it was not installed. Try again later, or download the release from GitHub yourself.
+
+When the daily check fails, for example with no internet connection, it says nothing and tries again the next day. A problem after you click `Update` or `Check now` shows in the line under the toolbar.
+
 ## Analysis settings
 
 The `Analysis settings` button sits on the toolbar, after `Compare with dmleaderboards...`. Click it to open the settings panel, which holds every setting that shapes an analysis.
 
 The button's label names only the settings you have changed from their defaults, joined with ` · `, for example `Analysis settings: Hard · Note Shuffle`. With every setting at its default it reads `Analysis settings: defaults`. When the window is too narrow for the whole label, the label is cut short; hover over the button to read all of it.
 
-The panel has three groups. A change applies the moment you make it, and there is no Apply button. Checking a box leaves the panel open. Click outside the panel or press `Escape` to close it.
+The panel has four groups. The first three shape the analysis. The fourth, `App`, holds `Check for updates`, which changes no result. A change applies the moment you make it, and there is no Apply button. Checking a box leaves the panel open. Click outside the panel or press `Escape` to close it.
 
 | Group | Setting | Default |
 |---|---|---|
@@ -86,12 +106,13 @@ The panel has three groups. A change applies the moment you make it, and there i
 | `Clone Hero rules` | `1.0 fills` | off |
 | `Paths kept` | `Score range` | 4<!-- default: kDefaultDepthValue --> scores |
 | `Paths kept` | `Path limit` | on<!-- default: Settings::mslimit_enabled -->, 10 ms<!-- default: Settings::mslimit_value --> |
+| `App` | `Check for updates` | on |
 
-At the bottom of the panel, `Reset to defaults` puts every setting in the panel back to its default in one click, so the button reads `Analysis settings: defaults` again. It leaves your song folders and everything outside the panel alone. Hover over it to see what it will undo, for example `Resets: Pro Drums off · SP cap 5 bars`. It is greyed out when the settings are already the defaults.
+At the bottom of the panel, `Reset to defaults` puts every setting in the first three groups back to its default in one click, so the button reads `Analysis settings: defaults` again. It leaves `Check for updates`, your song folders and everything outside the panel alone. Hover over it to see what it will undo, for example `Resets: Pro Drums off · SP cap 5 bars`. It is greyed out when the settings are already the defaults.
 
 Each setting applies to every song, not only the one you have open. A result is saved together with the settings it ran under. Change a setting and the library shows the results for the new settings; a combination you haven't analyzed yet shows its songs as `Not analyzed`. Change it back and the old results come back, with no batch to run. A song open in the panel is analyzed again under the new settings, the same as clicking it.
 
-While a batch runs, the settings are locked. The button's label ends in ` (locked)`. The panel still opens, but its controls and `Reset to defaults` are greyed out and it says `Stop the batch to change these.` Opening a song never locks them. Changing a setting while the song is still analyzing starts it again under the new settings.
+While a batch runs, the settings are locked. The button's label ends in ` (locked)`. The panel still opens, but its controls and `Reset to defaults` are greyed out and it says `Stop the batch to change these.` `Check for updates` stays usable, because it isn't part of a result. Opening a song never locks them. Changing a setting while the song is still analyzing starts it again under the new settings.
 
 ### What each setting does
 
@@ -110,6 +131,8 @@ While a batch runs, the settings are locked. The button's label ends in ` (locke
 `Score range` sets how many extra paths below optimal to keep, and its dropdown picks the unit. `scores` keeps the next few distinct scores under optimal. `points` keeps every path within that many points of optimal. These paths are a little worse, but handy when the optimal path is awkward to play. More paths make the analysis slower.
 
 `Path limit`, when checked, keeps extra paths only when every squeeze and required early fill on them is within this many milliseconds. That keeps alternates you can realistically hit. A path that ties the best score is kept even when its timing is over the limit, and its figure shows in orange; below the best score, a path over the limit is dropped. Lower or negative values demand more slack. The limit compares raw milliseconds: for a squeeze, the gap at the SP end; for an early fill, the gap at the fill deadline. It does not account for frontend timing scaling (see the Paths tab), so a kept path can be a bit harder than its number suggests where an activation's scale line is orange.
+
+`Check for updates`, when checked, looks for a newer release on GitHub once a day, when Hydra Deluxe starts. Nothing is downloaded or installed until you click `Update`. `Check now`, in the same row, checks right away, even if a check ran less than a day ago. See [When a new version is out](#when-a-new-version-is-out).
 
 ## Searching the library
 

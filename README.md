@@ -25,7 +25,7 @@ It reads `.mid`, `.chart`, `.sng` and `.srb` charts, on any difficulty, with or 
 
 Hydra Deluxe runs on 64-bit Windows. The installer asks for admin rights, because it installs into `C:\Program Files`.
 
-1. Download the installer (the `-setup.exe` file) from the [latest release](https://github.com/splax77/hydra-deluxe/releases/latest) and run it. It installs to `C:\Program Files\Hydra`, adds a Start Menu shortcut, and installs the Microsoft VC++ runtime if your PC doesn't have it. The installer isn't code-signed, so Windows SmartScreen may warn you. If it does, choose "More info", then "Run anyway".
+1. Download the installer (the `-setup.exe` file) from the [latest release](https://github.com/splax77/hydra-deluxe/releases/latest) and run it. It installs to `C:\Program Files\Hydra`, adds a Start Menu shortcut, and installs the Microsoft VC++ runtime if your PC doesn't have it. The installer isn't code-signed, so Windows SmartScreen may warn you. If it does, choose "More info", then "Run anyway". Hydra Deluxe checks for a newer release once a day when it starts and tells you under the toolbar. Click `Update` to download and install it; nothing is installed until you do. Windows then asks for permission to run the installer. Hydra Deluxe closes while the installer runs and opens again when it finishes. If you say no, Hydra Deluxe keeps running unchanged. To stop the check, untick `Check for updates` in `Analysis settings`.
 2. Run Hydra Deluxe from the Start Menu.
 3. Click `Manage folders...`, then `Add folder...`, and pick your Clone Hero songs folder (or whichever folder holds the songs you want to add).
 4. Click `Scan library`.
