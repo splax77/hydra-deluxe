@@ -93,21 +93,52 @@ inline std::optional<ErrorKind> failure_kind_from_name(const std::string& name) 
     return std::nullopt;
 }
 
+// The servers Hydra talks to, so a network failure's sentence names the one
+// that failed (app::plain_error). The transport's callers name their server
+// by the host name in kNetServices.
+enum class NetService {
+    Leaderboard,  // dmleaderboards
+    GitHub,       // the updater's release check and download
+};
+
+// Each server and the host name its caller hands net::http_get, which the
+// raw detail text also shows.
+struct NetServiceName {
+    NetService service;
+    const char* host_name;
+};
+inline constexpr NetServiceName kNetServices[] = {
+    {NetService::Leaderboard, "leaderboard"},
+    {NetService::GitHub, "GitHub"},
+};
+
+// The server a host name stands for; empty for a name not in kNetServices.
+inline std::optional<NetService> net_service_from_host_name(const std::string& host_name) {
+    for (const NetServiceName& s : kNetServices)
+        if (host_name == s.host_name) return s.service;
+    return std::nullopt;
+}
+
 // An error that carries its kind. what() is the raw text, unchanged.
 class KindedError : public std::runtime_error {
 public:
     // `http_status` is the status code a server sent, given only with
-    // NetHttpStatus.
+    // NetHttpStatus. `service` is the server a Net* failure came from, set
+    // by the transport (net/http.cpp); net_sentences in app/user_messages.cpp
+    // says which sentences an error without one gets.
     KindedError(ErrorKind kind, const std::string& what,
-                std::optional<int> http_status = std::nullopt)
-        : std::runtime_error(what), kind_(kind), http_status_(http_status) {}
+                std::optional<int> http_status = std::nullopt,
+                std::optional<NetService> service = std::nullopt)
+        : std::runtime_error(what), kind_(kind), http_status_(http_status), service_(service) {}
 
     ErrorKind kind() const noexcept { return kind_; }
     std::optional<int> http_status() const noexcept { return http_status_; }
+    std::optional<NetService> service() const noexcept { return service_; }
 
 private:
     ErrorKind kind_;
     std::optional<int> http_status_;
+    std::optional<NetService> service_;
 };
 
 // The one error a step throws when it was asked to stop. Every layer that

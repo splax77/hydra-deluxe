@@ -738,8 +738,9 @@ public:
     // the strip shows nothing. A failure stays silent (decision 8).
     void check_updates_if_due();
     // The settings row's "Check now": a check whatever the time since the
-    // last one, whose failure shows in the strip (decisions 6 and 8). Does
-    // nothing while a check, a download or the installer is under way.
+    // last one, whose failure shows in the strip (decisions 6 and 8), and
+    // which lands in UpToDate when nothing is newer. Does nothing while a
+    // check, a download or the installer is under way.
     void check_updates_now();
     // Whether a check is running.
     bool update_check_running() const;
@@ -754,8 +755,8 @@ public:
     // download stops, its file goes, and the strip offers the release again
     // once the job has stopped.
     void cancel_update();
-    // The OK under "Updated to ..." (decision 11).
-    void dismiss_updated();
+    // The OK in Updated (decision 11) and UpToDate: hides the strip.
+    void dismiss_update_note();
     // The download's progress for the strip: bytes so far, and the line's
     // "12.3 of 33.2 MB" in decision 4's unit. 0 and empty outside
     // Downloading.

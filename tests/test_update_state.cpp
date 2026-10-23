@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "app/config.h"
@@ -31,13 +32,16 @@
 #include "scoped_hook.h"
 #include "scratch_paths.h"
 #include "temp_util.h"
-#include "testdata_dirs.h"
 #include "ui/app_state.h"
 #include "ui/update_job.h"
+#include "update_fixtures.h"
 #include "wait_util.h"
 
 using hydra::ErrorKind;
 using hydra::KindedError;
+using update_fixtures::sample_path;
+using update_fixtures::test_public_key;
+using update_fixtures::update_dir;
 using hydra::app::Settings;
 using hydra::ui::AppState;
 using Phase = hydra::ui::UpdateState::Phase;
@@ -47,23 +51,9 @@ using std::chrono::system_clock;
 
 namespace {
 
-std::string update_dir() { return corpus::testdata_root() + "/update"; }
-std::string sample_path() { return update_dir() + "/sample.bin"; }
-
 std::string read_bytes(const std::string& path) {
     const std::vector<uint8_t> b = hydra::read_file_bytes(path);
     return std::string(b.begin(), b.end());
-}
-
-// test-public-key.txt: the 64 key bytes as hex, as release_keygen.ps1 wrote them.
-std::array<uint8_t, 64> test_public_key() {
-    std::string text = hydra::read_file_text(update_dir() + "/test-public-key.txt");
-    while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) text.pop_back();
-    REQUIRE(text.size() == 128);
-    std::array<uint8_t, 64> key{};
-    for (size_t i = 0; i < key.size(); ++i)
-        key[i] = static_cast<uint8_t>(std::stoul(text.substr(2 * i, 2), nullptr, 16));
-    return key;
 }
 
 std::string running_text() { return hydra::core::version_text(hydra::core::running_version()); }
@@ -252,11 +242,16 @@ TEST_CASE("a check offers a newer release and stays quiet about the same or an o
         CAPTURE(tag);
         w.canned.reply = reply_at(tag);
         std::unique_ptr<AppState> app = w.app();
-        settle_check(*app);  // the automatic check
+        settle_check(*app);  // the automatic check stays silent
         CHECK(app->update.phase == Phase::None);
         CHECK(app->update.text.empty());
+        // Check now says so, with an OK that hides it.
         app->check_updates_now();
         settle_check(*app);
+        CHECK(app->update.phase == Phase::UpToDate);
+        CHECK(app->update.text == "Hydra Deluxe " + running_text() + " is the latest version.");
+        CHECK_FALSE(app->update.release.has_value());
+        app->dismiss_update_note();
         CHECK(app->update.phase == Phase::None);
         CHECK(app->update.text.empty());
     }
@@ -298,13 +293,18 @@ TEST_CASE("Later hides the offer and writes nothing") {
 
 TEST_CASE("an automatic check fails silently; Check now shows the failure") {
     UpdateWorld w("update_fail");
-    const std::vector<KindedError> failures = {
-        KindedError(ErrorKind::NetHttpStatus, "GitHub returned HTTP 403", 403),
-        KindedError(ErrorKind::NetUnreachable, "could not connect to the GitHub server"),
+    // The errors the transport throws for GitHub, and the sentences they show.
+    const std::vector<std::pair<KindedError, std::string>> failures = {
+        {KindedError(ErrorKind::NetHttpStatus, "GitHub returned HTTP 403", 403,
+                     hydra::NetService::GitHub),
+         "GitHub returned an error (HTTP 403). Try again later."},
+        {KindedError(ErrorKind::NetUnreachable, "could not connect to the GitHub server",
+                     std::nullopt, hydra::NetService::GitHub),
+         "Hydra couldn't reach GitHub. Check your internet connection and try again."},
     };
-    for (const KindedError& failure : failures) {
+    for (const auto& [failure, sentence] : failures) {
         CAPTURE(failure.what());
-        w.canned.fail = [failure] { throw failure; };
+        w.canned.fail = [thrown = failure] { throw thrown; };
         std::unique_ptr<AppState> app = w.app();
         REQUIRE(app->update_check_running());  // no check yet, so one is due
         settle_check(*app);
@@ -315,9 +315,8 @@ TEST_CASE("an automatic check fails silently; Check now shows the failure") {
         app->check_updates_now();
         settle_check(*app);
         CHECK(app->update.phase == Phase::Failed);
-        CHECK(app->update.text == hydra::app::plain_error(failure));
-        CHECK(app->update.detail == hydra::app::plain_error_detail(failure));
-        CHECK_FALSE(app->update.text.empty());
+        CHECK(app->update.text == sentence);
+        CHECK(app->update.detail == failure.what());
     }
 }
 
@@ -364,15 +363,25 @@ TEST_CASE("an installer that ends while Hydra runs leaves decision 10's state an
     CHECK(w.canned.downloads == 1);
 }
 
-TEST_CASE("an installer that can't start fails through plain_error") {
+TEST_CASE("an installer that can't start leaves decision 10's state with Windows' reason") {
     UpdateWorld w("update_nostart");
-    const std::runtime_error why("the installer didn't start: access denied");
+    const std::runtime_error why("Access is denied.");
     w.canned.launch = [why]() -> hydra::ui::InstallerEnded { throw why; };
     std::unique_ptr<AppState> app = offered_app(w);
     app->update_now();
-    tick_until(*app, [&] { return app->update.phase == Phase::Failed; }, "the start to fail");
-    CHECK(app->update.text == hydra::app::plain_error(why));
-    CHECK(app->update.detail == hydra::app::plain_error_detail(why));
+    tick_until(*app, [&] { return app->update.phase == Phase::Declined; }, "the start to fail");
+    CHECK(app->update.text == "The installer didn't start, so Hydra wasn't updated.");
+    CHECK(app->update.detail == "Access is denied.");
+    REQUIRE(app->update.release.has_value());
+    CHECK(exists(w.canned.launched));  // kept for Update to try again
+    CHECK(w.canned.downloads == 1);
+
+    // The three buttons are back: Update starts the kept file again.
+    w.canned.launch = [] { return hydra::ui::InstallerEnded([] { return false; }); };
+    app->update_now();
+    tick_until(*app, [&] { return app->update.phase == Phase::Launching; }, "the second start");
+    CHECK(app->update.detail.empty());
+    CHECK(w.canned.downloads == 1);
 }
 
 TEST_CASE("a download whose signature doesn't verify is refused and deleted") {
@@ -435,7 +444,7 @@ TEST_CASE("the first start after a version change says so once") {
         CHECK(app->update.phase == Phase::Updated);
         CHECK(app->update.text == "Updated to Hydra Deluxe " + running_text() + ".");
         CHECK(Settings::load_file(w.paths.ini).last_run_version == running_text());
-        app->dismiss_updated();
+        app->dismiss_update_note();
         CHECK(app->update.phase == Phase::None);
         CHECK(app->update.text.empty());
     }

@@ -32,9 +32,11 @@ struct UpdateState {
         Downloading,  // the installer is downloading (AppState::update_received)
         Verifying,    // the digest and signature checks run
         Launching,    // the installer was started; Hydra waits for it to close Hydra
-        Declined,     // the installer ended without updating; the three buttons are back
+        Declined,     // the installer ended without updating, or didn't start (then
+                      // `detail` says why); the three buttons are back
         Failed,       // a check or update the user asked for failed: `text` and `detail`
         Updated,      // the first start after a version change: one OK button
+        UpToDate,     // Check now found nothing newer: one OK button
     };
     Phase phase = Phase::None;
     // The release offered or being installed. Set from Offered to Declined,
@@ -42,7 +44,8 @@ struct UpdateState {
     std::optional<app::UpdateRelease> release;
     // The strip's sentence for the phase. Empty in None.
     std::string text;
-    // Failed: app::plain_error_detail of the error, the line under `text`.
+    // Failed and a Declined that didn't start: app::plain_error_detail of the
+    // error, the line under `text`.
     std::string detail;
 };
 
@@ -105,9 +108,9 @@ void set_update_folder_for_test(std::string folder);
 
 // Starts the installer at `installer`, writing Inno Setup's log to `log`, and
 // returns a check that says whether its process has ended. Throws when the
-// installer could not be started. The real one runs ShellExecuteExW with the
-// "open" verb, so the installer raises its own UAC prompt ("Ruling: how Hydra
-// starts the installer" in the plan).
+// installer could not be started, with Windows' reason as the text. The real
+// one starts it through app::start_program, so the installer raises its own
+// UAC prompt ("Ruling: how Hydra starts the installer" in the plan).
 using InstallerEnded = std::function<bool()>;
 using InstallerLauncher =
     std::function<InstallerEnded(const std::string& installer, const std::string& log)>;

@@ -1,13 +1,16 @@
 // The one way to put a finished report page on disk and hand it to the
 // browser. Only the fill comparison writes a page now (hydra_fillcompare,
 // src/cli/fillcompare.cpp). The browser call sits behind a settable seam so a
-// test can record opens instead of performing them.
+// test can record opens instead of performing them. Every launch through the
+// Windows shell lives here, so start_program (the updater's installer start)
+// sits beside open_in_browser.
 
 #ifndef HYDRA_APP_REPORT_FILES_H
 #define HYDRA_APP_REPORT_FILES_H
 
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <string>
 
 namespace hydra::app {
@@ -24,6 +27,29 @@ void set_open_in_browser(OpenInBrowserFn fn);
 // with no short name the browser gets copy_to_short_temp's copy instead
 // (docs/adr/0020).
 bool open_in_browser(const std::wstring& path);
+
+// A program start_program started. Closes its process handle when the last
+// copy goes.
+class StartedProgram {
+public:
+    explicit StartedProgram(void* process) : process_(process) {}
+    ~StartedProgram();
+    StartedProgram(const StartedProgram&) = delete;
+    StartedProgram& operator=(const StartedProgram&) = delete;
+    // Whether its process has ended. False when Windows handed back no
+    // process to watch.
+    bool ended() const;
+
+private:
+    void* process_;  // a Windows HANDLE; void* so this header needs no windows.h
+};
+
+// Starts the program at `exe` with `params` through the shell's "open" verb,
+// so a program that asks for administrator rights raises its own UAC prompt.
+// The path goes through the same shell_path guard open_in_browser uses.
+// Throws std::runtime_error with Windows' reason when the program doesn't
+// start.
+std::shared_ptr<StartedProgram> start_program(const std::wstring& exe, const std::wstring& params);
 
 // Copies a report page to %TEMP%\Hydra\<its name>, overwriting an older copy,
 // and returns the copy's path; empty when the copy fails or its path is one

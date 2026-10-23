@@ -24,10 +24,13 @@
 #include "core/error_kind.h"
 #include "core/winstr.h"
 #include "temp_util.h"
-#include "testdata_dirs.h"
+#include "update_fixtures.h"
 
 using hydra::ErrorKind;
 using hydra::KindedError;
+using update_fixtures::sample_path;
+using update_fixtures::test_public_key;
+using update_fixtures::update_dir;
 
 namespace {
 
@@ -38,21 +41,7 @@ constexpr ErrorKind kRefusalKind = ErrorKind::UpdateUnverified;
 // release_sign.ps1 printed the same digest when it signed the file.
 const std::string kSampleSha256 = "339332f7bafa1294c90bfa5259652039caa1d02b5f32b2f266dc2c22849e0966";
 
-std::string update_dir() { return corpus::testdata_root() + "/update"; }
-std::string sample_path() { return update_dir() + "/sample.bin"; }
-
 std::vector<uint8_t> sample_sig() { return hydra::read_file_bytes(update_dir() + "/sample.bin.sig"); }
-
-// test-public-key.txt: the 64 key bytes as hex, as release_keygen.ps1 wrote them.
-std::array<uint8_t, 64> test_public_key() {
-    std::string text = hydra::read_file_text(update_dir() + "/test-public-key.txt");
-    while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) text.pop_back();
-    REQUIRE(text.size() == 128);
-    std::array<uint8_t, 64> key{};
-    for (size_t i = 0; i < key.size(); ++i)
-        key[i] = static_cast<uint8_t>(std::stoul(text.substr(2 * i, 2), nullptr, 16));
-    return key;
-}
 
 // Runs verify_update and returns the kind it refused with, or nothing when it
 // passed.

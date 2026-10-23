@@ -1172,13 +1172,20 @@ void AppState::collect_update_check() {
         return;
     }
     const app::UpdateRelease& release = job->release();
+    const core::AppVersion running = core::running_version();
+    const bool newer = core::is_newer_version(release.version, running);
     const bool skipped = core::parse_version(settings.skipped_update_version) == release.version;
-    if (core::is_newer_version(release.version, core::running_version()) && !skipped) {
+    if (newer && !skipped) {
         offer_update(release);
         return;
     }
     update.release.reset();
-    set_update_phase(UpdateState::Phase::None, {});
+    // The user's ruling during T3a: Check now says when nothing is newer; the
+    // daily check stays silent.
+    if (manual && !newer)
+        set_update_phase(UpdateState::Phase::UpToDate, named_release(running) + " is the latest version.");
+    else
+        set_update_phase(UpdateState::Phase::None, {});
 }
 
 void AppState::update_now() {
@@ -1227,8 +1234,10 @@ void AppState::collect_update_download() {
     try {
         installer_ended_ = launch_installer(job->installer_path(), installer_log_path());
     } catch (const std::exception& e) {
+        // The user's ruling during T3a: a start that fails is decision 10's
+        // state, with Windows' reason under it; the download stays.
         installer_ended_ = nullptr;
-        set_update_phase(Phase::Failed, app::plain_error(e));
+        set_update_phase(Phase::Declined, kUpdateDeclinedText);
         update.detail = app::plain_error_detail(e);
     }
 }
@@ -1252,8 +1261,10 @@ void AppState::cancel_update() {
     if (update_download_job) update_download_job->cancel();
 }
 
-void AppState::dismiss_updated() {
-    if (update.phase == UpdateState::Phase::Updated) set_update_phase(UpdateState::Phase::None, {});
+void AppState::dismiss_update_note() {
+    using Phase = UpdateState::Phase;
+    if (update.phase == Phase::Updated || update.phase == Phase::UpToDate)
+        set_update_phase(Phase::None, {});
 }
 
 uint64_t AppState::update_received() const {

@@ -1,11 +1,5 @@
 #include "ui/update_job.h"
 
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <shellapi.h>
-
 #include <filesystem>
 #include <memory>
 #include <stdexcept>
@@ -13,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "app/report_files.h"  // start_program
 #include "app/update_verify.h"
 #include "core/winstr.h"  // join_folder, os_path, win32_path
 #include "net/http.h"
@@ -31,17 +26,6 @@ void remove_file(const std::string& path) {
     std::error_code ec;
     std::filesystem::remove(os_path(path), ec);
 }
-
-// Closes the installer's process handle when the last copy of the check goes.
-struct ProcessHandle {
-    HANDLE handle = nullptr;
-    explicit ProcessHandle(HANDLE h) : handle(h) {}
-    ~ProcessHandle() {
-        if (handle) CloseHandle(handle);
-    }
-    ProcessHandle(const ProcessHandle&) = delete;
-    ProcessHandle& operator=(const ProcessHandle&) = delete;
-};
 
 }  // namespace
 
@@ -114,29 +98,14 @@ void set_update_folder_for_test(std::string folder) { g_update_folder_for_test =
 
 InstallerEnded launch_installer(const std::string& installer, const std::string& log) {
     if (g_launcher_for_test) return g_launcher_for_test(installer, log);
-    const std::wstring file = win32_path(installer);
     // Inno Setup's switches: a progress window with no questions, no reboot
     // and no Cancel, and a log beside the download.
     const std::wstring params =
         L"/SILENT /SUPPRESSMSGBOXES /NORESTART /NOCANCEL /LOG=\"" + win32_path(log) + L"\"";
-    SHELLEXECUTEINFOW info{};
-    info.cbSize = sizeof(info);
-    info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI;
-    // Never "runas": the installer raises its own UAC prompt, so it can start
-    // Hydra again as the user once it is done (the plan's ruling).
-    info.lpVerb = L"open";
-    info.lpFile = file.c_str();
-    info.lpParameters = params.c_str();
-    info.nShow = SW_SHOWNORMAL;
-    if (!ShellExecuteExW(&info))
-        throw std::runtime_error("the installer didn't start: " +
-                                 std::system_category().message(static_cast<int>(GetLastError())));
-    // An exe always hands back its process. Without one there is nothing to
-    // watch, and Hydra waits for the installer to close it.
-    auto process = std::make_shared<ProcessHandle>(info.hProcess);
-    return [process] {
-        return process->handle && WaitForSingleObject(process->handle, 0) == WAIT_OBJECT_0;
-    };
+    // Without a process to watch, ended() stays false and Hydra waits for the
+    // installer to close it.
+    std::shared_ptr<app::StartedProgram> program = app::start_program(win32_path(installer), params);
+    return [program] { return program->ended(); };
 }
 
 void set_launcher_for_test(InstallerLauncher launcher) { g_launcher_for_test = std::move(launcher); }
