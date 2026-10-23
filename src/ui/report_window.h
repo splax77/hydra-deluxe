@@ -28,6 +28,7 @@
 #include "core/model.h"  // group_thousands
 #include "imgui.h"
 #include "ui/report_state.h"  // ReportBuild, ReportOutOfDate
+#include "ui/text_role.h"
 #include "ui/theme.h"
 #include "ui/column_widths.h"
 #include "ui/list_scroll.h"
@@ -475,9 +476,13 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
             ImGui::TableSetColumnIndex(0);
             const std::string number = row_number(static_cast<size_t>(k));
             ImGui::PushStyleColor(ImGuiCol_Text, kDimTextColor);
-            const bool clicked = ImGui::Selectable(
-                number.c_str(), memory.selected == index,
-                ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap);
+            bool clicked = false;
+            {
+                ScopedFont figure(TextRole::Figure);
+                clicked = ImGui::Selectable(
+                    number.c_str(), memory.selected == index,
+                    ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap);
+            }
             ImGui::PopStyleColor();
             // Whether the list moves to the row is selection_scroll's to say
             // (ui/list_scroll.h), asked while the Selectable is the last item.

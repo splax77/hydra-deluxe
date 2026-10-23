@@ -404,7 +404,9 @@ std::string row_number(size_t k) { return group_thousands(static_cast<int64_t>(k
 ColumnSpec row_number_spec() {
     ColumnSpec s;
     s.header = "#";
-    s.width_of = measure_in_font();
+    // The numbers are Figure text under a Label header.
+    s.header_width_of = measure_in_role(TextRole::Label);
+    s.width_of = measure_in_role(TextRole::Figure);
     return s;
 }
 
