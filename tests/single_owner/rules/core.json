@@ -128,7 +128,7 @@
       ],
       "exempt": [
         {
-          "file": "src/net/dmbot_client.cpp",
+          "file": "src/net/http.cpp",
           "why": "it converts a URL, not a path"
         },
         {

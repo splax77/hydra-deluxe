@@ -414,6 +414,7 @@ add_library(hydra_dm STATIC
     src/app/dm_report.cpp
     src/app/dm_report_view.cpp
     src/net/dmbot_client.cpp
+    src/net/http.cpp
     src/app/update_release.cpp
 )
 target_link_libraries(hydra_dm PUBLIC hydra_core)

@@ -12,6 +12,8 @@
 #endif
 #include <windows.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -503,4 +505,23 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
     // The parts add up to the total: 1 same + 1 in both, not both scored.
     CHECK(contains(two.output, "Compared 2 charts: 1 same, 0 1.0 higher, 0 1.1 higher, "
                                "0 only under 1.0, 0 only under 1.1, 1 in both, not both scored"));
+}
+
+// The network code lives in hydra_dm, which only the GUI links (CMakeLists.txt),
+// so the console tools import no WinHTTP. The import table stores DLL names in
+// ASCII in any case, so a case-blind search of the exe's bytes finds one;
+// kernel32.dll, which every exe imports, shows the search can see them.
+TEST_CASE("hydra_batch and hydra_fillcompare import no winhttp.dll") {
+    const auto holds = [](const std::vector<uint8_t>& bytes, const std::string& name) {
+        return std::search(bytes.begin(), bytes.end(), name.begin(), name.end(),
+                           [](uint8_t b, char c) {
+                               return std::tolower(b) == std::tolower(static_cast<unsigned char>(c));
+                           }) != bytes.end();
+    };
+    for (const char* exe : {HYDRA_BATCH_EXE, HYDRA_FILLCOMPARE_EXE}) {
+        INFO(exe);
+        const std::vector<uint8_t> bytes = hydra::read_file_bytes(exe);
+        CHECK(holds(bytes, "kernel32.dll"));
+        CHECK_FALSE(holds(bytes, "winhttp.dll"));
+    }
 }
