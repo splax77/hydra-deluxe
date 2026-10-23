@@ -472,6 +472,72 @@ sound output, because hosted runners have no audio device. `tests/shards.txt`
 marks which slice that is. Run it locally. A newer push to the same branch or pull request cancels the
 run it replaces.
 
+## Releasing
+
+Hydra's updater only runs an installer that was signed with the project's
+private key. The check is `app::verify_update` in `src/app/update_verify.cpp`,
+against the public key in `src/app/update_key.h`. So every release is built,
+signed, uploaded as a draft and then published, in that order.
+
+### Once: make the signing key
+
+Run the key generator once, on the PC you release from:
+
+```
+pwsh -NoProfile -File tools\release_keygen.ps1
+```
+
+It writes the private key to `%USERPROFILE%\.hydra-release\update-signing.xml`.
+The file is locked to your Windows account with DPAPI (Windows' per-user
+encryption), so it is useless on another account or PC. It never goes in the
+repo or in CI, and the script refuses to write it inside the repo. Back the
+file up in your password store straight away.
+
+The script also prints the public key as a C++ array. Paste it into
+`kUpdatePublicKey` in `src/app/update_key.h`, over the test key that header
+ships with, and commit that. Until you do, the test "the shipped update key is
+not the test key" in `tests/test_update_verify.cpp` fails on purpose, so a
+release can't go out with the test key.
+
+If the key is ever lost, make a new one the same way. Installed copies only
+trust the old key, so the first release with the new key can't update them:
+players have to download and install that one release by hand.
+
+### Every release: build and sign
+
+```
+.\installer\build_installer.ps1 -Sign
+```
+
+This builds `build-cpp\installer\HydraDeluxe-<version>-setup.exe` and then signs
+it, writing `HydraDeluxe-<version>-setup.exe.sig` (64 bytes) beside it. The
+signing step is `tools\release_sign.ps1`, which you can also run by hand:
+
+```
+pwsh -NoProfile -File tools\release_sign.ps1 -Installer build-cpp\installer\HydraDeluxe-<version>-setup.exe
+```
+
+It checks the new signature before it finishes and prints the public key it
+signed with; that key must match `src/app/update_key.h`.
+
+### Every release: upload as a draft, then publish
+
+Create the release as a draft with both files, then publish it:
+
+```
+gh release create v<version> --draft build-cpp\installer\HydraDeluxe-<version>-setup.exe build-cpp\installer\HydraDeluxe-<version>-setup.exe.sig --notes-file <notes>
+gh release edit v<version> --draft=false
+```
+
+The draft step matters. Hydra asks GitHub for the latest published release,
+and a draft is never that. Publishing only after both files are attached means
+no player's Hydra ever sees a release with the signature missing. A release
+without its `.sig` is refused, not installed.
+
+`tools\test_release_sign.ps1` checks that the signing script and the C++
+verifier agree on the signature format, using the committed test key in
+`testdata/update/`. Run it after any change to either script.
+
 ## Other developer notes in this folder
 
 `adr/` records design decisions. `agents/` holds instructions for coding

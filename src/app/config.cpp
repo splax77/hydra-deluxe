@@ -29,6 +29,52 @@ std::string exe_dir() {
     return dir.empty() ? std::string(".") : dir;
 }
 
+namespace {
+
+std::optional<bool> g_installed_for_test;
+
+// The folder the installer registered under Hydra's frozen AppId
+// (installer/hydra.iss), empty when Hydra was never installed. The installer
+// runs in 64-bit mode, so its uninstall key is in the 64-bit view.
+std::wstring registered_install_location() {
+    HKEY key = nullptr;
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+                      L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"
+                      L"{638FCDD7-88E0-438D-9C52-388C6C9CF4E3}_is1",
+                      0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, &key) != ERROR_SUCCESS)
+        return {};
+    const wchar_t* const name = L"InstallLocation";
+    DWORD bytes = 0;
+    std::wstring value;
+    if (RegGetValueW(key, nullptr, name, RRF_RT_REG_SZ, nullptr, nullptr, &bytes) ==
+            ERROR_SUCCESS &&
+        bytes >= sizeof(wchar_t)) {
+        value.resize(bytes / sizeof(wchar_t));
+        if (RegGetValueW(key, nullptr, name, RRF_RT_REG_SZ, nullptr, value.data(), &bytes) ==
+            ERROR_SUCCESS)
+            value.resize(wcsnlen(value.c_str(), value.size()));
+        else
+            value.clear();
+    }
+    RegCloseKey(key);
+    return value;
+}
+
+}  // namespace
+
+bool installed_by_setup() {
+    if (g_installed_for_test) return *g_installed_for_test;
+    const std::wstring registered = registered_install_location();
+    if (registered.empty()) return false;
+    const std::wstring here = win32_path(trim_trailing_separators(exe_dir()));
+    const std::wstring there = win32_path(trim_trailing_separators(wide_to_utf8(registered)));
+    if (here.empty() || there.empty()) return false;
+    return CompareStringOrdinal(here.c_str(), static_cast<int>(here.size()), there.c_str(),
+                                static_cast<int>(there.size()), TRUE) == CSTR_EQUAL;
+}
+
+void set_installed_for_test(std::optional<bool> installed) { g_installed_for_test = installed; }
+
 std::string resource_dir() { return join_folder(exe_dir(), "resource"); }
 
 namespace {

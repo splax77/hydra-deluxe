@@ -4,6 +4,8 @@
 #ifndef HYDRA_CORE_STRUTIL_H
 #define HYDRA_CORE_STRUTIL_H
 
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -68,6 +70,10 @@ std::string relative_slash_path(std::string_view path, std::string_view root);
 // Anything else ("500ms", "0.25s", "nan", "inf", "", "0x1F4") is absent.
 // Locale-independent.
 std::optional<double> parse_finite_number(std::string_view text);
+
+// Bytes as lowercase hex, two digits each ("\x0a\xff" is "0aff"). The one
+// encoding for hashes and digests: chart ids and the update file's SHA-256.
+std::string hex_lower(const uint8_t* bytes, size_t count);
 
 // One line of an INI file (hydra_settings.ini, hydra_rules.ini), read one way
 // for both. Everything from a # on is a comment, whole-line or trailing.

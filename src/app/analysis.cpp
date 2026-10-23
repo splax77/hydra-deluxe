@@ -83,17 +83,6 @@ private:
     BCRYPT_ALG_HANDLE alg_ = nullptr;
 };
 
-// A 16-byte id as the 32 lowercase hex digits a hyhash is stored as.
-std::string id_hex(const uint8_t* id) {
-    static const char* kHexDigits = "0123456789abcdef";
-    std::string out(32, '0');
-    for (size_t i = 0; i < 16; ++i) {
-        out[2 * i] = kHexDigits[id[i] >> 4];
-        out[2 * i + 1] = kHexDigits[id[i] & 0xF];
-    }
-    return out;
-}
-
 // One MD5 in progress. `feed` hashes bytes; `hex` finishes it.
 class Md5Hash {
 public:
@@ -112,7 +101,7 @@ public:
         uint8_t digest[16];
         if (!BCRYPT_SUCCESS(BCryptFinishHash(hash_, digest, sizeof(digest), 0)))
             throw KindedError(ErrorKind::HashFailed, "MD5 hashing failed");
-        return id_hex(digest);
+        return hex_lower(digest, sizeof(digest));
     }
 
 private:
@@ -309,7 +298,7 @@ SongIdRead song_id_read(BCRYPT_ALG_HANDLE alg, ChartKind kind, const std::string
             if (!read.fields.checksum)
                 throw KindedError(ErrorKind::ChartUnreadable,
                                   "SRB metadata ends before its checksum: " + path);
-            out.md5 = id_hex(read.fields.checksum->data());
+            out.md5 = hex_lower(read.fields.checksum->data(), 16);
             out.meta = srb_chart_meta(read);
             break;
         }
