@@ -74,6 +74,16 @@ Every sentence that is new or moves, in one place:
 
 **Q4. Dots only for facts.** The design names a green dot for `Up to date` and an amber dot for an available release. The plan draws no dot for `Checking for updates...`, the failed check, the not-installed line, the download and installer steps, `Declined`, `Failed` and `Updated`, and reserves the dot's room so the sentence never moves. Example: on a start with no network the bar reads `Hydra couldn't check for updates when it started. Hydra couldn't reach GitHub. Check your internet connection and try again.` with no dot. Alternative: a grey dot in those states, so there is always a dot. Recommended: none; a dot then means one of two facts and nothing else.
 
+**The user's answers (2026-10-23, in chat).** These replace the recommendations above wherever they differ, and the executors build these.
+
+Q1: "Keep an Update button". This is alternative A. After `Later`, the bar keeps the amber dot and `Hydra Deluxe <new> is available.` with its `Update` button, and loses only `Skip this version` and `Later` until the next start. `later()` still writes nothing.
+
+Q2: "Available, marked skipped". As recommended: amber dot, `Hydra Deluxe <new> is available.` with `Skipped.` dimmed after it, no buttons, on every start while the skipped release is the latest.
+
+Q3: "In the top bar". As recommended: the `Updated to Hydra Deluxe <version>.` note takes the bar's sentence slot with its `OK`.
+
+Q4: "Grey dot for the rest". The alternative: green means up to date, amber means a newer release is known, and every other state (checking, failed, not installed, the download and installer steps, `Declined`, `Failed`, `Updated`) shows a grey dot. So the bar always shows a dot. The grey comes from the theme with one owner, like the other two.
+
 Everything else in this plan is a consequence of the rulings quoted at the top, or an exact wording for the user to read in "Words on screen".
 
 ## The build
