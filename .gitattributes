@@ -11,3 +11,5 @@
 *.png binary
 *.PNG binary
 *.ico binary
+*.bin binary
+*.sig binary

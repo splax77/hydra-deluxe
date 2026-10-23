@@ -1,0 +1,13 @@
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">
+  <Obj RefId="0">
+    <TN RefId="0">
+      <T>System.Management.Automation.PSCustomObject</T>
+      <T>System.Object</T>
+    </TN>
+    <MS>
+      <S N="Kind">hydra-update-signing-key</S>
+      <B N="Protected">false</B>
+      <S N="Key">n0pRIrjD0ZCz4hnLknWYlHtz2BzTSfXYhtSCtVZMqbS7PY4Oh8lACoBjT+pKkBJ2YeIgdeQURR4fiZCvQ3wskk43czC+712Cw5mF5zD4tGEW0yY3aTk2WkG38HTl9fFP</S>
+    </MS>
+  </Obj>
+</Objs>
