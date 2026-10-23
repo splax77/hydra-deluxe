@@ -631,7 +631,9 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         // Named so a GUI test can place the highway (render::highway_span_at)
         // in screen pixels.
         name_box("##highway_image", origin, img_max);
-        auto text_width = [font](float sz, const char* s) { return measure_in_font(font, sz)(s); };
+        auto text_width = [](float sz, const char* s) {
+            return measure_in_role(TextRole::Overlay, sz)(s);
+        };
 
         // The time box's lines, the way Onyx draws its own (top-left,
         // monospace, on a translucent dark panel): the playhead's measure and
