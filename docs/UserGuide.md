@@ -74,25 +74,27 @@ While a batch runs, `Scan library` and `Analyze library...` are greyed out, and 
 
 Hydra Deluxe checks for a newer release once a day when it starts and tells you under the toolbar. Click `Update` to download and install it; nothing is installed until you do. To stop the check, untick `Check for updates` in `Analysis settings`.
 
-The check asks GitHub for the latest release. Only the copy the installer put in its folder checks, so a copy of `Hydra.exe` you moved somewhere else never does. When the release is newer than the version you run, a line under the toolbar reads `Hydra Deluxe <version> is available.`, with three buttons. Hover over the version to read the release's notes.
+The check asks GitHub for the latest release. Only the copy the installer put in its folder checks by itself, so a copy of `Hydra.exe` you moved somewhere else never does. The daily check runs when the last check was more than 24 hours ago. It also runs when Hydra Deluxe can't read the time of the last check, or that time is in the future. When the release is newer than the version you run, a line under the toolbar reads `Hydra Deluxe <version> is available.`, with three buttons. Hover over the version to read the release's notes.
 
 `Update` downloads the installer. The line shows `Downloading Hydra Deluxe <version>...` with the megabytes received so far, a bar and a `Cancel` button. `Cancel` stops the download and brings the three buttons back. When the download finishes, the line reads `Checking the download...` while Hydra Deluxe checks the file against the release's signature, then `Starting the installer...`.
 
-Windows then asks for permission to run the installer. If you say yes, Hydra Deluxe closes while the installer runs and opens again when it finishes. If you say no, Hydra Deluxe keeps running unchanged, and the line reads `The installer didn't start, so Hydra wasn't updated.` with the three buttons back, so `Update` tries again.
+Windows then asks for permission to run the installer. If you say yes, Hydra Deluxe closes while the installer runs and opens again when it finishes. If you say no, Hydra Deluxe keeps running unchanged, and the line reads `The installer didn't start, so Hydra wasn't updated.` with the three buttons back, so `Update` tries again. The same line appears when Windows can't start the installer, with Windows' reason dimmed under it.
 
-`Skip this version` hides the line for that version. A newer release shows it again. `Later` hides the line until the next check.
+`Skip this version` hides the line for that version. A newer release shows it again, and so does `Check now`, which offers a skipped release again because you asked. The daily check keeps the skip. `Later` hides the line until the next check.
 
 If the download doesn't pass the check, Hydra Deluxe deletes it and doesn't install it. The line says:
 
 > Hydra couldn't verify the update it downloaded, so it was not installed. Try again later, or download the release from GitHub yourself.
 
-When the daily check fails, for example with no internet connection, it says nothing and tries again the next day. A problem after you click `Update` or `Check now` shows in the line under the toolbar.
+When the daily check fails, for example with no internet connection, it says nothing and tries again the next day. A problem after you click `Update` or `Check now` shows in the line under the toolbar, with the reason dimmed under it. When the trouble is the connection, the line names GitHub, for example `Hydra couldn't reach GitHub. Check your internet connection and try again.`, `GitHub didn't answer in time. Try again later.`, `GitHub sent a reply Hydra couldn't read. Try again later.` or `GitHub returned an error (HTTP <code>). Try again later.` A failed line has a `Later` button that hides it until the next check, and an `Update` button when a release was already found.
+
+`Check now` (see `Check for updates` below) tells you when you are up to date: the line reads `Hydra Deluxe <version> is the latest version.` with an `OK` button. The daily check shows nothing in that case.
 
 ## Analysis settings
 
 The `Analysis settings` button sits on the toolbar, after `Compare with dmleaderboards...`. Click it to open the settings panel, which holds every setting that shapes an analysis.
 
-The button's label names only the settings you have changed from their defaults, joined with ` · `, for example `Analysis settings: Hard · Note Shuffle`. With every setting at its default it reads `Analysis settings: defaults`. When the window is too narrow for the whole label, the label is cut short; hover over the button to read all of it.
+The button's label names only the settings you have changed from their defaults, joined with ` · `, for example `Analysis settings: Hard · Note Shuffle`. With every setting at its default it reads `Analysis settings: defaults`. When the window is too narrow for the whole label, the label is cut short; hover over the button to read all of it. `Check for updates` never appears in the label, because it is not part of an analysis.
 
 The panel has four groups. The first three shape the analysis. The fourth, `App`, holds `Check for updates`, which changes no result. A change applies the moment you make it, and there is no Apply button. Checking a box leaves the panel open. Click outside the panel or press `Escape` to close it.
 
@@ -132,7 +134,7 @@ While a batch runs, the settings are locked. The button's label ends in ` (locke
 
 `Path limit`, when checked, keeps extra paths only when every squeeze and required early fill on them is within this many milliseconds. That keeps alternates you can realistically hit. A path that ties the best score is kept even when its timing is over the limit, and its figure shows in orange; below the best score, a path over the limit is dropped. Lower or negative values demand more slack. The limit compares raw milliseconds: for a squeeze, the gap at the SP end; for an early fill, the gap at the fill deadline. It does not account for frontend timing scaling (see the Paths tab), so a kept path can be a bit harder than its number suggests where an activation's scale line is orange.
 
-`Check for updates`, when checked, looks for a newer release on GitHub once a day, when Hydra Deluxe starts. Nothing is downloaded or installed until you click `Update`. `Check now`, in the same row, checks right away, even if a check ran less than a day ago. See [When a new version is out](#when-a-new-version-is-out).
+`Check for updates`, when checked, looks for a newer release on GitHub once a day, when Hydra Deluxe starts. Nothing is downloaded or installed until you click `Update`. `Check now`, in the same row, checks right away, even if a check ran less than a day ago. It is greyed out while a check runs. See [When a new version is out](#when-a-new-version-is-out).
 
 ## Searching the library
 
