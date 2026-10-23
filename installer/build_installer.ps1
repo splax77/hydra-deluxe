@@ -2,8 +2,12 @@
 #
 #   .\installer\build_installer.ps1              # build Release, stage, compile setup.exe
 #   .\installer\build_installer.ps1 -SkipBuild   # reuse the existing ship build
+#   .\installer\build_installer.ps1 -Sign        # also write setup.exe.sig
 #
 # Output: build-cpp\installer\HydraDeluxe-<version>-setup.exe
+# With -Sign, tools\release_sign.ps1 writes the update signature beside it
+# (<setup.exe>.sig), so the two files leave the build together. The signing
+# steps are in docs/development.md.
 #
 # It builds the "ship" preset in build-ship\, where Hydra.exe has no attached
 # GUI tests and so no repo paths. The staging step uses `cmake --install`,
@@ -14,7 +18,8 @@
 # Prerequisite: Inno Setup 6 (winget install -e --id JRSoftware.InnoSetup).
 
 param(
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$Sign
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,6 +28,12 @@ $repo = Split-Path $root               # <repo>
 
 . (Join-Path $repo "tools\find_cmake.ps1")
 . (Join-Path $repo "tools\cmake_presets.ps1")
+
+# Checked before the build so a missing signer fails in seconds, not after it.
+$signScript = Join-Path $repo "tools\release_sign.ps1"
+if ($Sign -and -not (Test-Path $signScript)) {
+    throw "-Sign needs $signScript, which is missing. Nothing was built."
+}
 
 function Find-ISCC {
     $onPath = Get-Command iscc -ErrorAction SilentlyContinue
@@ -110,4 +121,17 @@ $output = Join-Path (Get-PresetBuildDir $repo default) "installer"
     "/DHYDRA_OUTPUT=$output" (Join-Path $root "hydra.iss")
 if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
 
-Write-Host "Installer written to $output\HydraDeluxe-$version-setup.exe"
+$installer = Join-Path $output "HydraDeluxe-$version-setup.exe"
+Write-Host "Installer written to $installer"
+
+# 6. Sign it for the in-app updater.
+if ($Sign) {
+    # A .sig left from an earlier build would belong to a different file.
+    Remove-Item "$installer.sig" -ErrorAction SilentlyContinue
+    & $signScript -Installer $installer
+    if (-not $?) { throw "tools\release_sign.ps1 failed; $installer is not signed" }
+    if (-not (Test-Path "$installer.sig")) {
+        throw "tools\release_sign.ps1 wrote no $installer.sig"
+    }
+    Write-Host "Signature written to $installer.sig"
+}

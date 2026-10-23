@@ -26,6 +26,17 @@
 ;     the folder, Hydra.exe and the data files keep their old names, so an
 ;     upgrade finds the user's records where they were. [InstallDelete]
 ;     removes the old "Hydra" Start Menu shortcut the rename replaced.
+;   * The "Launch" line in [Run] has no skipifsilent, so it also runs on a
+;     /SILENT install. That is how the in-app updater gets Hydra back: Hydra
+;     starts this installer silently, the installer closes Hydra, and this
+;     line opens it again. A silent install run by hand relaunches Hydra
+;     too, which is harmless.
+;   * The relaunch runs as the user, not as administrator, only because
+;     Setup raises its own UAC prompt. So Hydra must start Setup with the
+;     plain "open" verb, never "runas": an already-elevated Setup would
+;     relaunch Hydra elevated. The ruling is in
+;     docs/superpowers/plans/2026-10-22-auto-updater.md, section "Ruling:
+;     how Hydra starts the installer".
 
 #ifndef HYDRA_VERSION
   #error Pass /DHYDRA_VERSION (use installer\build_installer.ps1)
@@ -79,7 +90,7 @@ Name: "{autoprograms}\{#HYDRA_APP_NAME}"; Filename: "{app}\Hydra.exe"; AppUserMo
 [Run]
 Filename: "{tmp}\VC_redist.x64.exe"; Parameters: "/install /quiet /norestart"; \
     StatusMsg: "Installing Microsoft Visual C++ Runtime..."; Check: VCRedistNeeded
-Filename: "{app}\Hydra.exe"; Description: "Launch {#HYDRA_APP_NAME}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Hydra.exe"; Description: "Launch {#HYDRA_APP_NAME}"; Flags: nowait postinstall
 
 [Code]
 // Skip the redistributable when the x64 VC++ 2015+ runtime is already there.
