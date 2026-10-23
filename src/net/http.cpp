@@ -38,11 +38,13 @@ struct Handle {
 
 // The one place a network failure becomes an error. The kind is picked here,
 // where the WinHTTP code is in hand: a timeout reads differently from every
-// other failure to reach the server.
-[[noreturn]] void fail(const std::string& what, DWORD error = GetLastError()) {
+// other failure to reach the server. `service` is the server the caller named,
+// so the sentence names it too.
+[[noreturn]] void fail(std::optional<NetService> service, const std::string& what,
+                       DWORD error = GetLastError()) {
     const ErrorKind kind =
         error == ERROR_WINHTTP_TIMEOUT ? ErrorKind::NetTimeout : ErrorKind::NetUnreachable;
-    throw KindedError(kind, what + " (error " + std::to_string(error) + ")");
+    throw KindedError(kind, what + " (error " + std::to_string(error) + ")", std::nullopt, service);
 }
 
 [[noreturn]] void throw_cancelled() { throw Cancelled{}; }
@@ -127,12 +129,13 @@ struct AsyncRequest {
 // Wait for the step just started, checking `cancel` every 50 ms. On cancel,
 // throw; unwinding runs ~AsyncRequest, which closes the handle and so cancels
 // the step. A cancel that lands just as the step fails still reads "cancelled".
-void await_step(AsyncState& st, const std::atomic<bool>* cancel, const std::string& what) {
+void await_step(AsyncState& st, const std::atomic<bool>* cancel,
+                std::optional<NetService> service, const std::string& what) {
     while (WaitForSingleObject(st.done, 50) == WAIT_TIMEOUT)
         if (cancelled(cancel)) throw_cancelled();
     if (st.error) {
         if (cancelled(cancel)) throw_cancelled();
-        fail(what, st.error);
+        fail(service, what, st.error);
     }
 }
 
@@ -145,8 +148,9 @@ void await_step(AsyncState& st, const std::atomic<bool>* cancel, const std::stri
 class Response {
 public:
     Response(const std::string& url, const std::atomic<bool>* cancel,
-             const std::string& host_name)
-        : cancel_(cancel) {
+             NetService service)
+        : cancel_(cancel), service_(service) {
+        const std::string host_name = net_service_host_name(service);
         if (cancelled(cancel)) throw_cancelled();
 
         std::wstring wurl = hydra::utf8_to_wide(url);
@@ -206,12 +210,12 @@ public:
         if (!WinHttpSendRequest(request_.h, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
                                 WINHTTP_NO_REQUEST_DATA, 0, 0, context))
             fail("could not send the request");
-        await_step(st_, cancel, "could not send the request");
+        await("could not send the request");
 
         const std::string no_response = "no response from the " + host_name + " server";
         if (cancelled(cancel)) throw_cancelled();
         if (!WinHttpReceiveResponse(request_.h, nullptr)) fail(no_response);
-        await_step(st_, cancel, no_response);
+        await(no_response);
 
         // The one status rule: only 200 counts.
         DWORD status = 0, size = sizeof(status);
@@ -223,7 +227,7 @@ public:
         if (status != 200)
             throw KindedError(ErrorKind::NetHttpStatus,
                               host_name + " returned HTTP " + std::to_string(status),
-                              static_cast<int>(status));
+                              static_cast<int>(status), service_);
     }
 
     // Up to `capacity` body bytes into `out`; 0 once the body has ended. The
@@ -237,12 +241,12 @@ public:
             // the out parameters are null (as the docs require).
             if (cancelled(cancel_)) throw_cancelled();
             if (!WinHttpQueryDataAvailable(request_.h, nullptr)) fail(kReadFailed);
-            await_step(st_, cancel_, kReadFailed);
+            await(kReadFailed);
             DWORD avail = st_.bytes;
             if (avail == 0) return 0;
             buffer_.resize(avail);
             if (!WinHttpReadData(request_.h, buffer_.data(), avail, nullptr)) fail(kReadFailed);
-            await_step(st_, cancel_, kReadFailed);
+            await(kReadFailed);
             buffer_.resize(st_.bytes);
             if (buffer_.empty()) return 0;
         }
@@ -255,7 +259,14 @@ public:
 private:
     static constexpr const char* kReadFailed = "could not read the response";
 
+    // The file's fail and await_step, with this request's server on the error.
+    [[noreturn]] void fail(const std::string& what, DWORD error = GetLastError()) const {
+        net::fail(service_, what, error);
+    }
+    void await(const std::string& what) { await_step(st_, cancel_, service_, what); }
+
     const std::atomic<bool>* cancel_;
+    NetService service_;
     Handle session_;
     Handle connect_;
     AsyncState st_;
@@ -273,9 +284,9 @@ Downloader g_downloader;
 }  // namespace
 
 std::string http_get(const std::string& url, const std::atomic<bool>* cancel,
-                     const std::string& host_name) {
+                     NetService service) {
     if (g_fetcher) return g_fetcher(url, cancel);
-    Response response(url, cancel, host_name);
+    Response response(url, cancel, service);
     std::string body;
     std::vector<char> chunk(kChunkBytes);
     while (size_t n = response.read(chunk.data(), chunk.size())) body.append(chunk.data(), n);
@@ -284,9 +295,9 @@ std::string http_get(const std::string& url, const std::atomic<bool>* cancel,
 
 void http_download(const std::string& url, const std::string& path, uint64_t size_cap,
                    std::atomic<uint64_t>* received, const std::atomic<bool>* cancel,
-                   const std::string& host_name) {
+                   NetService service) {
     if (g_downloader) return g_downloader(url, path, size_cap, received, cancel);
-    Response response(url, cancel, host_name);
+    Response response(url, cancel, service);
     download_to_file([&](char* buffer, size_t capacity) { return response.read(buffer, capacity); },
                      path, size_cap, received, cancel);
 }

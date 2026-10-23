@@ -452,6 +452,7 @@ add_library(hydra_ui STATIC
     src/ui/path_report_window.cpp
     src/ui/dm_report_window.cpp
     src/ui/theme.cpp
+    src/ui/update_job.cpp
     src/ui/win32_dialogs.cpp
 )
 # hydra_render + hydra_audio join the GUI here (Phase 5): the Preview tab's

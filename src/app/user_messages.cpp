@@ -34,13 +34,39 @@ constexpr const char* kHashFailed =
 constexpr const char* kSearchBroken =
     "The analysis failed on this chart because of a bug in Hydra. Please report it with "
     "the song's name.";
-constexpr const char* kNetUnreachable =
-    "Hydra couldn't reach dmleaderboards. Check your internet connection and try again.";
-constexpr const char* kNetTimeout =
+// The network failure sentences for one server (KindedError::service). The
+// GitHub row is the user's ruling during T3a of
+// docs/superpowers/plans/2026-10-22-auto-updater.md.
+struct NetSentences {
+    const char* server;  // the server's name in the HTTP status sentence
+    const char* unreachable;
+    const char* timeout;
+    const char* bad_reply;
+};
+constexpr NetSentences kLeaderboardNet{
+    "dmleaderboards",
+    "Hydra couldn't reach dmleaderboards. Check your internet connection and try again.",
     "dmleaderboards didn't answer in time. Its server may be waking up; try again in a "
-    "minute.";
-constexpr const char* kNetBadReply =
-    "dmleaderboards sent a reply Hydra couldn't read. Try again later.";
+    "minute.",
+    "dmleaderboards sent a reply Hydra couldn't read. Try again later.",
+};
+constexpr NetSentences kGitHubNet{
+    "GitHub",
+    "Hydra couldn't reach GitHub. Check your internet connection and try again.",
+    "GitHub didn't answer in time. Try again later.",
+    "GitHub sent a reply Hydra couldn't read. Try again later.",
+};
+
+// An error with no service is the leaderboard's: its client's own reply
+// checks (net/dmbot_client.cpp) throw without one.
+const NetSentences& net_sentences(const KindedError& e) {
+    switch (e.service().value_or(NetService::Leaderboard)) {
+        case NetService::GitHub: return kGitHubNet;
+        case NetService::Leaderboard: break;
+    }
+    return kLeaderboardNet;
+}
+
 constexpr const char* kNoScores =
     "This player has no drum scores on dmleaderboards to compare.";
 constexpr const char* kNoRecords =
@@ -58,8 +84,9 @@ constexpr const char* kPreviewAssets =
 constexpr const char* kStopped = "Stopped before it finished.";
 
 // The two sentences built around a detail.
-std::string http_status_sentence(int code) {
-    return "dmleaderboards returned an error (HTTP " + std::to_string(code) + "). Try again later.";
+std::string http_status_sentence(const char* server, int code) {
+    return std::string(server) + " returned an error (HTTP " + std::to_string(code) +
+           "). Try again later.";
 }
 
 std::string timing_refusal_sentence(std::string_view what) {
@@ -121,13 +148,13 @@ std::optional<KindSentence> kind_sentence(const KindedError& e) {
         case ErrorKind::NoNotes: return quoting(e.what());
         case ErrorKind::AlreadyPlain: return quoting(e.what());
         case ErrorKind::SearchBroken: return KindSentence{kSearchBroken};
-        case ErrorKind::NetUnreachable: return KindSentence{kNetUnreachable};
-        case ErrorKind::NetTimeout: return KindSentence{kNetTimeout};
+        case ErrorKind::NetUnreachable: return KindSentence{net_sentences(e).unreachable};
+        case ErrorKind::NetTimeout: return KindSentence{net_sentences(e).timeout};
         case ErrorKind::NetHttpStatus:
             if (const std::optional<int> code = e.http_status())
-                return KindSentence{http_status_sentence(*code)};
+                return KindSentence{http_status_sentence(net_sentences(e).server, *code)};
             return std::nullopt;  // no code to name
-        case ErrorKind::NetBadReply: return KindSentence{kNetBadReply};
+        case ErrorKind::NetBadReply: return KindSentence{net_sentences(e).bad_reply};
         case ErrorKind::NoScores: return KindSentence{kNoScores};
         case ErrorKind::NoRecords: return KindSentence{kNoRecords};
         case ErrorKind::ReportWrite: return KindSentence{kReportWrite};

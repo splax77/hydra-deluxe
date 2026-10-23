@@ -113,11 +113,8 @@ std::vector<DmScore> parse_scores_json(const std::string& body) {
 }
 
 namespace {
-// The name the transport gives this server in its raw detail text.
-constexpr const char* kHostName = "leaderboard";
-
 std::string get(const std::string& url, const std::atomic<bool>* cancel) {
-    return http_get(url, cancel, kHostName);
+    return http_get(url, cancel, NetService::Leaderboard);
 }
 }  // namespace
 
