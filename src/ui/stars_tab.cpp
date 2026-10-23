@@ -5,6 +5,7 @@
 #include "core/stars.h"
 #include "imgui.h"
 #include "ui/column_widths.h"
+#include "ui/text_role.h"
 #include "ui/widgets.h"  // overflow_tooltip
 
 #include <cstdint>
@@ -13,6 +14,10 @@
 #include <vector>
 
 namespace hydra::ui::detail {
+
+// A number column, header as a Label and cells as Figures. Defined in
+// dynamics_tab.cpp, the other table it serves.
+ColumnSpec figure_column(std::string header);
 
 // ---- Stars tab -------------------------------------------------------------
 
@@ -32,15 +37,14 @@ void render_stars_panel(AppState& app) {
                     group_thousands(sc.solo_bonus).c_str());
     ImGui::Spacing();
 
-    // Every column is a number and never cuts. Each is as wide as the width
-    // rule (ui/column_widths.h) says; the rows are a handful, so they are
-    // measured each frame.
-    const WidthOf text = measure_in_font();
+    // Every column is a number, a figure column, and never cuts. Each is as
+    // wide as the width rule (ui/column_widths.h) says; the rows are a
+    // handful, so they are measured each frame.
     constexpr size_t kMultiplierColumn = 1;
-    std::vector<ColumnSpec> specs = {{"Stars", false, 0.0f, text},
-                                     {app::kAverageMultiplierLabel, false, 0.0f, text},
-                                     {"Cutoff", false, 0.0f, text}};
-    if (has_solo) specs.push_back({"With full solo bonus", false, 0.0f, text});
+    std::vector<ColumnSpec> specs = {figure_column("Stars"),
+                                     figure_column(app::kAverageMultiplierLabel),
+                                     figure_column("Cutoff")};
+    if (has_solo) specs.push_back(figure_column("With full solo bonus"));
     std::vector<std::vector<std::string>> rows;
     for (int stars = 1; stars <= kMaxStars; ++stars) {
         char multiplier[16];
@@ -63,6 +67,7 @@ void render_stars_panel(AppState& app) {
             ImGui::TableNextRow();
             for (const std::string& cell : row) {
                 ImGui::TableNextColumn();
+                ScopedFont font(TextRole::Figure);
                 ImGui::TextUnformatted(cell.c_str());
             }
         }
