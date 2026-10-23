@@ -11,6 +11,7 @@
 #include <memory>
 
 #include "core/error_kind.h"
+#include "core/strutil.h"
 #include "core/winstr.h"
 
 namespace hydra::app {
@@ -77,15 +78,7 @@ Sha256 sha256_bytes(const std::string& path) {
     return digest;
 }
 
-std::string to_hex(const Sha256& bytes) {
-    static const char* kHexDigits = "0123456789abcdef";
-    std::string out(bytes.size() * 2, '0');
-    for (size_t i = 0; i < bytes.size(); ++i) {
-        out[2 * i] = kHexDigits[bytes[i] >> 4];
-        out[2 * i + 1] = kHexDigits[bytes[i] & 0xF];
-    }
-    return out;
-}
+std::string to_hex(const Sha256& bytes) { return hex_lower(bytes.data(), bytes.size()); }
 
 // Whether `sig` is the release key's signature of `hash`. The key goes to
 // bcrypt as a BCRYPT_ECCKEY_BLOB header followed by X then Y, the 64 bytes
@@ -124,8 +117,8 @@ void verify_update(const std::string& path, const std::string& digest_hex,
     Sha256 hash{};
     try {
         hash = sha256_bytes(path);
-    } catch (const KindedError& e) {
-        refuse(std::string("the download couldn't be hashed: ") + e.what());
+    } catch (const KindedError&) {
+        refuse("the download couldn't be read and hashed: " + path);
     }
     if (digest_hex != to_hex(hash))
         refuse("the download's SHA-256 is " + to_hex(hash) + ", but the release states " +
