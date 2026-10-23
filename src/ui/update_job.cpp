@@ -16,9 +16,6 @@ namespace hydra::ui {
 
 namespace {
 
-// The name the transport gives GitHub in its raw detail lines.
-constexpr const char* kGitHub = "GitHub";
-
 std::string g_update_folder_for_test;
 InstallerLauncher g_launcher_for_test;
 
@@ -35,7 +32,7 @@ void UpdateCheckJob::start() { spawn([this] { run(); }); }
 
 void UpdateCheckJob::run() {
     run_guarded([this] {
-        const std::string body = net::http_get(kLatestReleaseUrl, &cancel_, kGitHub);
+        const std::string body = net::http_get(kLatestReleaseUrl, &cancel_, NetService::GitHub);
         if (is_cancelled()) return false;
         release_ = app::parse_latest_release_json(body);
         return true;
@@ -62,12 +59,12 @@ void UpdateDownloadJob::run() {
             const bool kept = reuse_ && std::filesystem::is_regular_file(os_path(installer_path_), ec);
             if (!kept)
                 net::http_download(release_.installer_url, installer_path_, release_.installer_size,
-                                   &received_, &cancel_, kGitHub);
+                                   &received_, &cancel_, NetService::GitHub);
             else
                 received_.store(release_.installer_size);
             throw_if_cancelled();
             verifying_.store(true);
-            const std::string sig = net::http_get(release_.sig_url, &cancel_, kGitHub);
+            const std::string sig = net::http_get(release_.sig_url, &cancel_, NetService::GitHub);
             throw_if_cancelled();
             app::verify_update(installer_path_, release_.digest,
                                std::vector<uint8_t>(sig.begin(), sig.end()), public_key_);

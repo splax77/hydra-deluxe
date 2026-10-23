@@ -148,8 +148,9 @@ void await_step(AsyncState& st, const std::atomic<bool>* cancel,
 class Response {
 public:
     Response(const std::string& url, const std::atomic<bool>* cancel,
-             const std::string& host_name)
-        : cancel_(cancel), service_(net_service_from_host_name(host_name)) {
+             NetService service)
+        : cancel_(cancel), service_(service) {
+        const std::string host_name = net_service_host_name(service);
         if (cancelled(cancel)) throw_cancelled();
 
         std::wstring wurl = hydra::utf8_to_wide(url);
@@ -265,7 +266,7 @@ private:
     void await(const std::string& what) { await_step(st_, cancel_, service_, what); }
 
     const std::atomic<bool>* cancel_;
-    std::optional<NetService> service_;
+    NetService service_;
     Handle session_;
     Handle connect_;
     AsyncState st_;
@@ -283,9 +284,9 @@ Downloader g_downloader;
 }  // namespace
 
 std::string http_get(const std::string& url, const std::atomic<bool>* cancel,
-                     const std::string& host_name) {
+                     NetService service) {
     if (g_fetcher) return g_fetcher(url, cancel);
-    Response response(url, cancel, host_name);
+    Response response(url, cancel, service);
     std::string body;
     std::vector<char> chunk(kChunkBytes);
     while (size_t n = response.read(chunk.data(), chunk.size())) body.append(chunk.data(), n);
@@ -294,9 +295,9 @@ std::string http_get(const std::string& url, const std::atomic<bool>* cancel,
 
 void http_download(const std::string& url, const std::string& path, uint64_t size_cap,
                    std::atomic<uint64_t>* received, const std::atomic<bool>* cancel,
-                   const std::string& host_name) {
+                   NetService service) {
     if (g_downloader) return g_downloader(url, path, size_cap, received, cancel);
-    Response response(url, cancel, host_name);
+    Response response(url, cancel, service);
     download_to_file([&](char* buffer, size_t capacity) { return response.read(buffer, capacity); },
                      path, size_cap, received, cancel);
 }

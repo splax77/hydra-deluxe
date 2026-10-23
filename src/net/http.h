@@ -15,14 +15,18 @@
 #include <functional>
 #include <string>
 
+#include "core/error_kind.h"  // NetService
+
 namespace hydra::net {
+
+using hydra::NetService;
 
 // GET `url` and return the response body as bytes. Throws KindedError (a Net*
 // kind) on any transport failure or a status other than 200, and Cancelled
-// within about 50 ms of `cancel` being set. `host_name` names the server in
-// the raw detail text ("leaderboard", "GitHub").
+// within about 50 ms of `cancel` being set. `service` is the server asked; the
+// raw detail text names it from kNetServices (core/error_kind.h).
 std::string http_get(const std::string& url, const std::atomic<bool>* cancel,
-                     const std::string& host_name);
+                     NetService service);
 
 // Download `url` into the file `path` (UTF-8). The body goes to `path` plus
 // ".part" and is renamed to `path` only once it is complete, so a failed,
@@ -32,7 +36,7 @@ std::string http_get(const std::string& url, const std::atomic<bool>* cancel,
 // and cancelling work as in http_get.
 void http_download(const std::string& url, const std::string& path, uint64_t size_cap,
                    std::atomic<uint64_t>* received, const std::atomic<bool>* cancel,
-                   const std::string& host_name = "GitHub");
+                   NetService service = NetService::GitHub);
 
 // The file half of http_download, apart from the socket so tests can drive it.
 // `body` fills up to `capacity` bytes of `buffer` and returns how many it

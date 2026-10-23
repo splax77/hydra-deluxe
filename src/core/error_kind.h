@@ -95,14 +95,14 @@ inline std::optional<ErrorKind> failure_kind_from_name(const std::string& name) 
 
 // The servers Hydra talks to, so a network failure's sentence names the one
 // that failed (app::plain_error). The transport's callers name their server
-// by the host name in kNetServices.
+// by this enum.
 enum class NetService {
     Leaderboard,  // dmleaderboards
     GitHub,       // the updater's release check and download
 };
 
-// Each server and the host name its caller hands net::http_get, which the
-// raw detail text also shows.
+// Each server and the name the transport's raw detail text calls it. A caller
+// of net::http_get names its server by NetService and types no host name.
 struct NetServiceName {
     NetService service;
     const char* host_name;
@@ -112,11 +112,11 @@ inline constexpr NetServiceName kNetServices[] = {
     {NetService::GitHub, "GitHub"},
 };
 
-// The server a host name stands for; empty for a name not in kNetServices.
-inline std::optional<NetService> net_service_from_host_name(const std::string& host_name) {
+// The name the raw detail text uses for `service` (its row in kNetServices).
+inline std::string net_service_host_name(NetService service) {
     for (const NetServiceName& s : kNetServices)
-        if (host_name == s.host_name) return s.service;
-    return std::nullopt;
+        if (s.service == service) return s.host_name;
+    return {};
 }
 
 // An error that carries its kind. what() is the raw text, unchanged.

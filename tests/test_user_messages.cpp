@@ -255,10 +255,9 @@ TEST_CASE("a network failure's sentence names the server that failed") {
           "raw");
 }
 
-TEST_CASE("the transport's host names stand for their servers") {
-    CHECK(hydra::net_service_from_host_name("GitHub") == hydra::NetService::GitHub);
-    CHECK(hydra::net_service_from_host_name("leaderboard") == hydra::NetService::Leaderboard);
-    CHECK_FALSE(hydra::net_service_from_host_name("elsewhere").has_value());
+TEST_CASE("the transport's host names come from the service") {
+    CHECK(hydra::net_service_host_name(hydra::NetService::GitHub) == "GitHub");
+    CHECK(hydra::net_service_host_name(hydra::NetService::Leaderboard) == "leaderboard");
 }
 
 // D73 item 4: a tool's body that throws ends with exit code 1 (and its
