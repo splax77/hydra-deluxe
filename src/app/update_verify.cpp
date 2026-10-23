@@ -20,10 +20,8 @@ namespace {
 
 // Every refusal verify_update makes goes through here, so the kind is named
 // once.
-// UpdateUnverified: swap NetBadReply for ErrorKind::UpdateUnverified once
-// that kind exists (task UPD-T2a adds it to core/error_kind.h).
 [[noreturn]] void refuse(const std::string& why) {
-    throw KindedError(ErrorKind::NetBadReply, why);
+    throw KindedError(ErrorKind::UpdateUnverified, why);
 }
 
 // One bcrypt algorithm provider, closed when it goes out of scope.

@@ -32,9 +32,7 @@ using hydra::KindedError;
 namespace {
 
 // The kind every refusal carries.
-// UpdateUnverified: swap NetBadReply for ErrorKind::UpdateUnverified with the
-// one in src/app/update_verify.cpp.
-constexpr ErrorKind kRefusalKind = ErrorKind::NetBadReply;
+constexpr ErrorKind kRefusalKind = ErrorKind::UpdateUnverified;
 
 // sha256_file of testdata/update/sample.bin, from its first run (2026-10-22);
 // release_sign.ps1 printed the same digest when it signed the file.
