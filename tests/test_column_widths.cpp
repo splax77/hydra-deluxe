@@ -16,10 +16,9 @@
 #include "imgui.h"
 #include "imgui_internal.h"  // ImGuiTable, for the apply_column_widths tests
 
-#include "testdata_dirs.h"  // resource_root
+#include "headless_imgui_fixture.h"
 #include "app/dm_report_view.h"
 #include "app/path_report_view.h"
-#include "ui/app_shell.h"
 #include "ui/column_widths.h"
 #include "ui/fonts.h"
 #include "ui/report_window.h"
@@ -29,6 +28,7 @@ using hydra::ui::ColumnLayout;
 using hydra::ui::ColumnSpec;
 using hydra::ui::MeasuredWidths;
 using hydra::ui::TableRoom;
+using hydra::test::HeadlessImGui;
 
 namespace {
 
@@ -49,24 +49,6 @@ using Rows = std::vector<std::vector<std::string>>;
 CellText cells(const Rows& rows) {
     return [&rows](std::size_t r, std::size_t c) { return rows[r][c]; };
 }
-
-// A headless ImGui context with the app's fonts, for driving real tables with
-// no window or renderer. It shuts ImGui down when the test ends.
-struct HeadlessImGui {
-    HeadlessImGui() {
-        hydra::ui::ImGuiSetupOptions opts;
-        opts.dpi_scale = 1.0f;
-        opts.ini_file = "-";
-        opts.resource_dir = corpus::resource_root();
-        hydra::ui::setup_imgui(opts);
-        ImGuiIO& io = ImGui::GetIO();
-        io.DisplaySize = ImVec2(800.0f, 600.0f);
-        io.DeltaTime = 1.0f / 60.0f;
-        // No renderer is attached, so say the fonts need no texture upload.
-        io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
-    }
-    ~HeadlessImGui() { hydra::ui::shutdown_imgui(); }
-};
 
 // The Library's five text columns with the user's shares (2026-10-14), in the
 // pretend font. Headers: "Title" 50, "Artist" 60, "Charter" 70, "Folder" 60,
@@ -123,6 +105,23 @@ TEST_CASE("column_widths: a chip's padding is added to its cells, not its header
     CHECK(m.widths == std::vector<float>{68.0f});
     CHECK(m.header_widths == std::vector<float>{10.0f});
     CHECK(m.widest_row[0] == 0u);
+}
+
+TEST_CASE("column_widths: header_width_of measures the header, width_of the cells") {
+    // Header "Points" in a pretend 5 px font = 30. Cells in the 10 px font:
+    // "Points" = 60 and "1234" = 40. A cell that reads as the header still
+    // measures in the cells' font, so row 0 is the widest at 60.
+    ColumnSpec s = spec("Points", false);
+    s.header_width_of = [](std::string_view t) { return 5.0f * static_cast<float>(t.size()); };
+    const Rows rows = {{"Points"}, {"1234"}};
+    const MeasuredWidths m = hydra::ui::measure_widths({s}, 2, cells(rows));
+    CHECK(m.header_widths == std::vector<float>{30.0f});
+    CHECK(m.widths == std::vector<float>{60.0f});
+    CHECK(m.widest_row[0] == 0u);
+
+    // Without header_width_of, width_of measures the header too: 60.
+    const MeasuredWidths plain = hydra::ui::measure_widths({spec("Points", false)}, 2, cells(rows));
+    CHECK(plain.header_widths == std::vector<float>{60.0f});
 }
 
 TEST_CASE("column_widths: a measure is stale until taken, and again after a scale change") {

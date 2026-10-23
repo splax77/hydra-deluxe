@@ -22,17 +22,12 @@ namespace hydra::ui {
 namespace detail {
 
 // A number column of the Dynamics and Stars tables: its header is a Label and
-// its cells are Figures, each measured in its own role's font. A ColumnSpec
-// measures its header and its cells with one WidthOf, so this one tells them
-// apart by the header's own text; the cells are numbers, never a header word.
-// The Stars tab declares it beside its use.
+// its cells are Figures, each measured in its own role's font. The Stars tab
+// declares it beside its use.
 ColumnSpec figure_column(std::string header) {
-    const WidthOf label = measure_in_role(TextRole::Label);
-    const WidthOf figure = measure_in_role(TextRole::Figure);
-    WidthOf width_of = [label, figure, header](std::string_view text) {
-        return text == header ? label(text) : figure(text);
-    };
-    return {std::move(header), false, 0.0f, std::move(width_of)};
+    ColumnSpec spec{std::move(header), false, 0.0f, measure_in_role(TextRole::Figure)};
+    spec.header_width_of = measure_in_role(TextRole::Label);
+    return spec;
 }
 
 }  // namespace detail

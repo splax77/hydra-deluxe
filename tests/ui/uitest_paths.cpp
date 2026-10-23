@@ -632,12 +632,9 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     const std::vector<hydra::app::BackendRowView>& rows = d->activations.acts[0].backends;
     std::vector<std::string> points;
     for (const hydra::app::BackendRowView& row : rows) points.push_back(row.points);
-    const hydra::ui::WidthOf header_w = hydra::ui::measure_in_role(hydra::ui::TextRole::Label);
-    const hydra::ui::WidthOf cell_w = hydra::ui::measure_in_role(hydra::ui::TextRole::Figure);
-    const std::vector<hydra::ui::ColumnSpec> points_spec = {
-        {"Points", false, 0.0f, [&](std::string_view s) {
-             return s == "Points" ? header_w(s) : cell_w(s);
-         }}};
+    std::vector<hydra::ui::ColumnSpec> points_spec = {
+        {"Points", false, 0.0f, hydra::ui::measure_in_role(hydra::ui::TextRole::Figure)}};
+    points_spec[0].header_width_of = hydra::ui::measure_in_role(hydra::ui::TextRole::Label);
     const float points_w =
         hydra::ui::place_columns(hydra::ui::measure_widths(points_spec, points.size(),
                                                            [&](size_t r, size_t) { return points[r]; }),

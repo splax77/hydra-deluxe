@@ -414,16 +414,9 @@ ColumnSpec column_spec(const std::string& title, const app::report_view::CellLoo
     s.may_cut = look.truncate;
     s.share = look.share;
     if (look.chip) s.padding = chip_pad() * 2.0f;
-    // The rule (ui/column_widths.h) hands the header to width_of as well as
-    // the cells. The header row draws in the default font, so text equal to
-    // the title measures as a Label and every other text in the cells' role.
-    // A cell that reads exactly as its column's title would measure as the
-    // header; no report column holds one.
-    const WidthOf header_w = measure_in_role(TextRole::Label);
-    const WidthOf cell_w = measure_in_role(cell_role(look.kind));
-    s.width_of = [header = title, header_w, cell_w](std::string_view text) {
-        return text == header ? header_w(text) : cell_w(text);
-    };
+    // The header row draws in Label, the cells in their kind's role.
+    s.header_width_of = measure_in_role(TextRole::Label);
+    s.width_of = measure_in_role(cell_role(look.kind));
     return s;
 }
 

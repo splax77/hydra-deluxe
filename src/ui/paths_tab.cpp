@@ -221,6 +221,7 @@ void render_timeline(const app::ActivationsView& view) {
     // The numbers are Figures drawn small, measured and drawn in one font at one size.
     ImFont* const num_font = font_for(TextRole::Figure).font;
     const float num_size = ImGui::GetFontSize() * 0.7f;
+    const WidthOf num_width = measure_in_role(TextRole::Figure, num_size);
     std::vector<float> marks, widths;  // each mark's x, and its number's width
     for (const app::ActivationRowView& a : view.acts) {
         const float x = top.x + static_cast<float>(*a.song_fraction) * w;
@@ -237,7 +238,7 @@ void render_timeline(const app::ActivationsView& view) {
                         0, px(1.5f));
         const std::string num = std::to_string(a.number);
         marks.push_back(x);
-        widths.push_back(num_font->CalcTextSizeA(num_size, FLT_MAX, 0.0f, num.c_str()).x);
+        widths.push_back(num_width(num));
     }
     const std::vector<std::optional<float>> lefts =
         spaced_labels(marks, widths, top.x, top.x + w, px(3.0f));
@@ -353,25 +354,19 @@ void squeeze_box(int act_number, size_t k, const app::TextLine& s) {
 constexpr TextRole kBackendCellRole[] = {TextRole::Figure, TextRole::Notation, TextRole::Figure,
                                          TextRole::Figure};
 
-// A WidthOf for one backend column: its header measured in Label, the font
-// the header row draws in, and every other text in the column's cell role.
-WidthOf backend_measure(const std::string& header, TextRole cell_role) {
-    const WidthOf label = measure_in_role(TextRole::Label);
-    const WidthOf cells = measure_in_role(cell_role);
-    return [header, label, cells](std::string_view text) {
-        return text == header ? label(text) : cells(text);
-    };
-}
-
 // The backend table's columns. Timing, Chord and Points never cut; Rating,
 // the one text column, takes all the room they leave (a share of 100) and
 // wraps inside it.
 constexpr size_t kRatingColumn = 3;
 std::vector<ColumnSpec> backend_column_specs() {
-    return {{"Timing", false, 0.0f, backend_measure("Timing", kBackendCellRole[0])},
-            {"Chord", false, 0.0f, backend_measure("Chord", kBackendCellRole[1])},
-            {"Points", false, 0.0f, backend_measure("Points", kBackendCellRole[2])},
-            {"Rating", true, 0.0f, backend_measure("Rating", kBackendCellRole[kRatingColumn]), 100}};
+    std::vector<ColumnSpec> specs = {
+        {"Timing", false, 0.0f, measure_in_role(kBackendCellRole[0])},
+        {"Chord", false, 0.0f, measure_in_role(kBackendCellRole[1])},
+        {"Points", false, 0.0f, measure_in_role(kBackendCellRole[2])},
+        {"Rating", true, 0.0f, measure_in_role(kBackendCellRole[kRatingColumn]), 100}};
+    const WidthOf label = measure_in_role(TextRole::Label);
+    for (ColumnSpec& spec : specs) spec.header_width_of = label;
+    return specs;
 }
 
 // Column `c`'s text in a backend row, the text its cell draws.

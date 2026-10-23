@@ -250,17 +250,13 @@ std::vector<ColumnSpec> library_column_specs() {
     specs[kColumnCharter] = {"Charter", true, 0.0f, {}, 9};
     specs[kColumnFolder] = {"Folder", true, 0.0f, {}, 39};
     specs[kColumnBestPath] = {"Best path", true, 0.0f, {}, 25};
-    // A column's one WidthOf measures its header and its cells, which draw in
-    // different roles: the header row is Label, each cell its column's role.
-    // So each spec's WidthOf tells its own header apart from a cell.
+    // The header row draws in Label, each cell in its column's role.
     const WidthOf label = measure_in_role(TextRole::Label);
     for (int c = 0; c < kLibraryColumnCount; ++c) {
         ColumnSpec& spec = specs[static_cast<size_t>(c)];
-        const WidthOf cell =
+        spec.header_width_of = label;
+        spec.width_of =
             measure_in_role(c == kColumnBestPath ? TextRole::Notation : TextRole::Title);
-        spec.width_of = [header = spec.header, label, cell](std::string_view s) {
-            return s == header ? label(s) : cell(s);
-        };
     }
     return specs;
 }

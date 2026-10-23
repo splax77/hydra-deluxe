@@ -11,8 +11,7 @@
 
 #include "imgui.h"
 
-#include "testdata_dirs.h"  // resource_root
-#include "ui/app_shell.h"
+#include "headless_imgui_fixture.h"
 #include "ui/fonts.h"
 #include "ui/text_role.h"
 
@@ -22,27 +21,7 @@ using hydra::ui::font_for;
 
 namespace {
 
-// A headless ImGui context with the app's fonts, as tests/test_column_widths.cpp
-// builds one. It puts g_mono_font back when the test ends.
-struct HeadlessImGui {
-    ImFont* saved_mono = hydra::ui::g_mono_font;
-    HeadlessImGui() {
-        hydra::ui::ImGuiSetupOptions opts;
-        opts.dpi_scale = 1.0f;
-        opts.ini_file = "-";
-        opts.resource_dir = corpus::resource_root();
-        hydra::ui::setup_imgui(opts);
-        ImGuiIO& io = ImGui::GetIO();
-        io.DisplaySize = ImVec2(800.0f, 600.0f);
-        io.DeltaTime = 1.0f / 60.0f;
-        // No renderer is attached, so say the fonts need no texture upload.
-        io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
-    }
-    ~HeadlessImGui() {
-        hydra::ui::shutdown_imgui();
-        hydra::ui::g_mono_font = saved_mono;
-    }
-};
+using hydra::test::HeadlessImGui;
 
 enum class Face { Mono, Default };
 
@@ -122,6 +101,25 @@ TEST_CASE("text_role: text_size and measure_in_role measure in the role's font a
     // A size-0 role measures at the size in force.
     const float want_notation = mono->CalcTextSizeA(18.0f, FLT_MAX, 0.0f, text).x;
     CHECK(hydra::ui::measure_in_role(TextRole::Notation)(text) == doctest::Approx(want_notation));
+
+    ImGui::PopFont();
+    ImGui::EndFrame();
+}
+
+TEST_CASE("text_role: measure_in_role with a size measures in the role's font at that size") {
+    HeadlessImGui imgui;
+    ImFont* const mono = hydra::ui::g_mono_font;
+    ImFont* const deflt = ImGui::GetIO().FontDefault;
+    ImGui::NewFrame();
+    ImGui::PushFont(deflt, 18.0f);
+
+    // Figure is mono; 9 px is neither the size in force nor the role's own.
+    const char* const text = "12 Wiii";
+    const float want = mono->CalcTextSizeA(9.0f, FLT_MAX, 0.0f, text).x;
+    CHECK(hydra::ui::measure_in_role(TextRole::Figure, 9.0f)(text) == doctest::Approx(want));
+    CHECK(want != doctest::Approx(deflt->CalcTextSizeA(9.0f, FLT_MAX, 0.0f, text).x));
+    CHECK(ImGui::GetFont() == deflt);
+    CHECK(ImGui::GetFontSize() == 18.0f);
 
     ImGui::PopFont();
     ImGui::EndFrame();

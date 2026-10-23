@@ -105,6 +105,13 @@ inline WidthOf measure_in_role(TextRole role) {
     return measure_in_font(ImGui::GetFont(), ImGui::GetFontSize());
 }
 
+// A WidthOf that measures in the role's font at `size` pixels, for text drawn
+// in that font at a size of its own (ImDrawList::AddText with font_for(role)'s
+// font). Keep it only for one measure, as measure_in_font says.
+inline WidthOf measure_in_role(TextRole role, float size) {
+    return measure_in_font(font_for(role).font, size);
+}
+
 }  // namespace hydra::ui
 
 #endif  // HYDRA_UI_TEXT_ROLE_H

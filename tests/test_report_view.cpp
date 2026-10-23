@@ -17,9 +17,8 @@
 #include "app/report.h"           // tier_for
 #include "app/report_view.h"
 #include "core/squeeze_rating.h"  // timing_tiers
+#include "headless_imgui_fixture.h"
 #include "imgui.h"
-#include "testdata_dirs.h"  // resource_root
-#include "ui/app_shell.h"   // setup_imgui
 #include "ui/column_widths.h"
 #include "ui/fonts.h"
 #include "ui/report_window.h"  // report_frame::column_spec
@@ -532,36 +531,10 @@ TEST_CASE("dm comparison: Status choices, the keep-rule, sort and count line") {
     CHECK(view.count_line(dm_report_view::kNoun) == "4 of 4 scores");
 }
 
-namespace {
-
-// A headless ImGui context with the app's fonts, as tests/test_text_role.cpp
-// builds one. It puts g_mono_font back when the test ends.
-struct HeadlessImGui {
-    ImFont* saved_mono = ui::g_mono_font;
-    HeadlessImGui() {
-        ui::ImGuiSetupOptions opts;
-        opts.dpi_scale = 1.0f;
-        opts.ini_file = "-";
-        opts.resource_dir = corpus::resource_root();
-        ui::setup_imgui(opts);
-        ImGuiIO& io = ImGui::GetIO();
-        io.DisplaySize = ImVec2(800.0f, 600.0f);
-        io.DeltaTime = 1.0f / 60.0f;
-        // No renderer is attached, so say the fonts need no texture upload.
-        io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
-    }
-    ~HeadlessImGui() {
-        ui::shutdown_imgui();
-        ui::g_mono_font = saved_mono;
-    }
-};
-
-}  // namespace
-
 // The header row draws in the default font, so a column's header is measured
 // as a Label whatever its cells draw in.
 TEST_CASE("report column_spec: a Notation column's header measures as Label, its cells in Notation") {
-    HeadlessImGui imgui;
+    test::HeadlessImGui imgui;
     REQUIRE(ui::g_mono_font != nullptr);
     ImGui::NewFrame();
     report_view::CellLook look;
