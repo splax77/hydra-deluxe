@@ -7,6 +7,7 @@
 
 namespace hydra::app::path_report_view {
 
+using report_view::CellKind;
 using report_view::CellLook;
 using report::kDash;
 using report_view::optional_key;
@@ -29,6 +30,7 @@ Column<ReportRow> count_column(std::string id, std::string title, std::string de
     c.id = std::move(id);
     c.title = std::move(title);
     c.numeric = true;
+    c.look.kind = CellKind::Figure;
     c.definition = std::move(definition);
     c.sort_key = [field](const ReportRow& r) { return SortKey{static_cast<double>(r.*field)}; };
     c.cell = [field, grouped](const ReportRow& r) {
@@ -61,8 +63,8 @@ std::vector<Column<ReportRow>> path_columns(double hit_window_ms) {
     trunc.truncate = true;
     CellLook dim_trunc = trunc;
     dim_trunc.dim = true;
-    CellLook mono_trunc = trunc;
-    mono_trunc.mono = true;
+    CellLook notation_trunc = trunc;
+    notation_trunc.kind = CellKind::Notation;
 
     std::vector<Column<ReportRow>> cols;
     cols.push_back(text_column("song", "Song", "", &ReportRow::song, with_share(trunc, 31)));
@@ -71,7 +73,7 @@ std::vector<Column<ReportRow>> path_columns(double hit_window_ms) {
     cols.push_back(text_column("path", "Path",
                                "The path in path notation: one entry per activation, with its "
                                "skip count and squeeze symbols.",
-                               &ReportRow::path, with_share(mono_trunc, 36)));
+                               &ReportRow::path, with_share(notation_trunc, 36)));
     cols.push_back(count_column("score", "Score", "The total score the path reaches.",
                                 &ReportRow::score, true));
     cols.push_back(count_column("acts", "Acts",
@@ -86,6 +88,7 @@ std::vector<Column<ReportRow>> path_columns(double hit_window_ms) {
         c.id = "ms";
         c.title = "Hardest ms";
         c.numeric = true;
+        c.look.kind = CellKind::Figure;
         c.definition =
             "The hardest squeeze or required early fill the path needs, in ms: the gap at the "
             "SP end, or at the fill deadline. It leaves out the frontend timing scale. A dash "
@@ -113,6 +116,7 @@ std::vector<Column<ReportRow>> path_columns(double hit_window_ms) {
         c.id = "efill";
         c.title = "Early fill (ms)";
         c.numeric = true;
+        c.look.kind = CellKind::Figure;
         c.definition =
             "The hardest early fill on the path (written E0 in the path): how many ms early you "
             "must hit to summon the fill. Negative means slack. A dash means the path has none.";
@@ -125,6 +129,7 @@ std::vector<Column<ReportRow>> path_columns(double hit_window_ms) {
         c.id = "mult";
         c.title = kAverageMultiplierLabel;
         c.numeric = true;
+        c.look.kind = CellKind::Figure;
         c.definition =
             "Average multiplier: the score without solo bonuses divided by the base score "
             "(every note at 1x).";

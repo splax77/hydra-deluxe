@@ -5,6 +5,7 @@
 
 #include "doctest.h"
 
+#include <cmath>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -16,6 +17,13 @@
 #include "app/report.h"           // tier_for
 #include "app/report_view.h"
 #include "core/squeeze_rating.h"  // timing_tiers
+#include "imgui.h"
+#include "testdata_dirs.h"  // resource_root
+#include "ui/app_shell.h"   // setup_imgui
+#include "ui/column_widths.h"
+#include "ui/fonts.h"
+#include "ui/report_window.h"  // report_frame::column_spec
+#include "ui/text_role.h"
 
 using namespace hydra;
 using namespace hydra::app;
@@ -311,8 +319,15 @@ TEST_CASE("path report columns: the page's fourteen, in order, word for word") {
     CHECK(cols[0].look.truncate);
     CHECK_FALSE(cols[0].look.dim);
     CHECK(cols[1].look.dim);
-    CHECK(cols[3].look.mono);
     CHECK(cols[8].look.chip);
+    // The kind of text each column holds; number columns are figures (the
+    // user's answer to question 1 of the font-role plan, 2026-10-22).
+    using K = report_view::CellKind;
+    std::vector<K> kinds;
+    for (const auto& c : cols) kinds.push_back(c.look.kind);
+    CHECK(kinds == std::vector<K>{K::Text, K::Text, K::Text, K::Notation, K::Figure, K::Figure,
+                                  K::Figure, K::Figure, K::Text, K::Figure, K::Figure,
+                                  K::Figure, K::Figure, K::Figure});
     CHECK_FALSE(cols[4].look.truncate);
 
     const SortSpec first = path_report_view::path_first_sort();
@@ -426,6 +441,13 @@ TEST_CASE("dm comparison columns: the page's thirteen, in order, word for word")
     CHECK(cols[2].look.dim);
     CHECK(cols[11].look.dim);
     CHECK(cols[12].look.chip);
+    // The counts are figures; FC's check mark, the date and the status are text.
+    using K = report_view::CellKind;
+    std::vector<K> kinds;
+    for (const auto& c : cols) kinds.push_back(c.look.kind);
+    CHECK(kinds == std::vector<K>{K::Text, K::Text, K::Text, K::Figure, K::Figure, K::Figure,
+                                  K::Figure, K::Text, K::Figure, K::Figure, K::Figure, K::Text,
+                                  K::Text});
 
     const SortSpec first = dm_report_view::dm_first_sort();
     CHECK(first.column == "delta");
@@ -508,4 +530,47 @@ TEST_CASE("dm comparison: Status choices, the keep-rule, sort and count line") {
     CHECK(view.count_line(dm_report_view::kNoun) == "1 of 4 scores");
     view.set_keep(dm_report_view::dm_keep(std::nullopt));
     CHECK(view.count_line(dm_report_view::kNoun) == "4 of 4 scores");
+}
+
+namespace {
+
+// A headless ImGui context with the app's fonts, as tests/test_text_role.cpp
+// builds one. It puts g_mono_font back when the test ends.
+struct HeadlessImGui {
+    ImFont* saved_mono = ui::g_mono_font;
+    HeadlessImGui() {
+        ui::ImGuiSetupOptions opts;
+        opts.dpi_scale = 1.0f;
+        opts.ini_file = "-";
+        opts.resource_dir = corpus::resource_root();
+        ui::setup_imgui(opts);
+        ImGuiIO& io = ImGui::GetIO();
+        io.DisplaySize = ImVec2(800.0f, 600.0f);
+        io.DeltaTime = 1.0f / 60.0f;
+        // No renderer is attached, so say the fonts need no texture upload.
+        io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+    }
+    ~HeadlessImGui() {
+        ui::shutdown_imgui();
+        ui::g_mono_font = saved_mono;
+    }
+};
+
+}  // namespace
+
+// The header row draws in the default font, so a column's header is measured
+// as a Label whatever its cells draw in.
+TEST_CASE("report column_spec: a Notation column's header measures as Label, its cells in Notation") {
+    HeadlessImGui imgui;
+    REQUIRE(ui::g_mono_font != nullptr);
+    ImGui::NewFrame();
+    report_view::CellLook look;
+    look.kind = report_view::CellKind::Notation;
+    const std::vector<ui::ColumnSpec> specs{ui::report_frame::column_spec("Path", look)};
+    const std::string cell = "3- 1 2 E3+ 0 0 4+";
+    const ui::MeasuredWidths m =
+        ui::measure_widths(specs, 1, [&](size_t, size_t) { return cell; });
+    CHECK(m.header_widths[0] == ui::text_size(ui::TextRole::Label, "Path").x);
+    CHECK(m.widths[0] == std::ceil(ui::measure_in_role(ui::TextRole::Notation)(cell)));
+    ImGui::EndFrame();
 }
