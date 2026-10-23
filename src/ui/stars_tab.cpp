@@ -17,7 +17,7 @@ namespace hydra::ui::detail {
 
 // A number column, header as a Label and cells as Figures. Defined in
 // dynamics_tab.cpp, the other table it serves.
-ColumnSpec figure_column(std::string header);
+ColumnSpec figure_column_spec(std::string header);
 
 // ---- Stars tab -------------------------------------------------------------
 
@@ -41,10 +41,10 @@ void render_stars_panel(AppState& app) {
     // wide as the width rule (ui/column_widths.h) says; the rows are a
     // handful, so they are measured each frame.
     constexpr size_t kMultiplierColumn = 1;
-    std::vector<ColumnSpec> specs = {figure_column("Stars"),
-                                     figure_column(app::kAverageMultiplierLabel),
-                                     figure_column("Cutoff")};
-    if (has_solo) specs.push_back(figure_column("With full solo bonus"));
+    std::vector<ColumnSpec> specs = {figure_column_spec("Stars"),
+                                     figure_column_spec(app::kAverageMultiplierLabel),
+                                     figure_column_spec("Cutoff")};
+    if (has_solo) specs.push_back(figure_column_spec("With full solo bonus"));
     std::vector<std::vector<std::string>> rows;
     for (int stars = 1; stars <= kMaxStars; ++stars) {
         char multiplier[16];

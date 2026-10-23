@@ -24,7 +24,7 @@ namespace detail {
 // A number column of the Dynamics and Stars tables: its header is a Label and
 // its cells are Figures, each measured in its own role's font. The Stars tab
 // declares it beside its use.
-ColumnSpec figure_column(std::string header) {
+ColumnSpec figure_column_spec(std::string header) {
     ColumnSpec spec{std::move(header), false, 0.0f, measure_in_role(TextRole::Figure)};
     spec.header_width_of = measure_in_role(TextRole::Label);
     return spec;
@@ -89,10 +89,10 @@ DynamicsTableRow dynamics_table_row(const std::string& label, const app::Dynamic
 // 100), so its dot and name are never measured. The counts are figure columns.
 std::vector<ColumnSpec> dynamics_column_specs() {
     return {{"Pad", true, 0.0f, measure_in_role(TextRole::Label), 100},
-            detail::figure_column(dynamic_label(NoteDynamicType::Ghost)),
-            detail::figure_column(dynamic_label(NoteDynamicType::Accent)),
-            detail::figure_column("Normal"),
-            detail::figure_column("All")};
+            detail::figure_column_spec(dynamic_label(NoteDynamicType::Ghost)),
+            detail::figure_column_spec(dynamic_label(NoteDynamicType::Accent)),
+            detail::figure_column_spec("Normal"),
+            detail::figure_column_spec("All")};
 }
 
 // A Ghost/Accent/Normal/All table, its columns as wide as the width rule
