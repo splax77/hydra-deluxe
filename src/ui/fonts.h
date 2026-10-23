@@ -1,8 +1,7 @@
-// Font handles shared across views. hydra_app.py binds "MonoFont"
-// (CourierPrime) to nearly every tabular/numeric detail — path lists,
-// activation headers, backends tables, score breakdowns — so columns line up
-// even without a real table underneath. main.cpp loads the font; views pull
-// it from here rather than threading an ImFont* through every call.
+// The mono font handle and the UI scale. setup_imgui (ui/app_shell.cpp) loads
+// the font into g_mono_font. Which text draws in which font is decided by
+// font_for in ui/text_role.h; draw code names a role there instead of reading
+// this handle.
 
 #ifndef HYDRA_UI_FONTS_H
 #define HYDRA_UI_FONTS_H

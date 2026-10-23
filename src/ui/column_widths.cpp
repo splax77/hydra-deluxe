@@ -28,7 +28,8 @@ float cell_width(const ColumnSpec& spec, const std::string& text) {
 // not read.
 void measure_column(MeasuredWidths& m, const ColumnSpec& spec, std::size_t c,
                     std::size_t row_count, const CellText& text) {
-    const float header = std::ceil(spec.width_of(spec.header));
+    const WidthOf& header_of = spec.header_width_of ? spec.header_width_of : spec.width_of;
+    const float header = std::ceil(header_of(spec.header));
     m.header_widths[c] = header;
     float widest = header;
     std::optional<std::size_t> widest_row;

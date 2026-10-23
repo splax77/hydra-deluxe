@@ -7,6 +7,7 @@
 
 namespace hydra::app::dm_report_view {
 
+using report_view::CellKind;
 using report_view::CellLook;
 using report::kDash;
 using report_view::optional_key;
@@ -36,6 +37,13 @@ Column<DmReportRow> column(std::string id, std::string title, bool numeric,
     return c;
 }
 
+// A column of the counts and scores that line up down the table.
+Column<DmReportRow> figure_column(std::string id, std::string title, std::string definition) {
+    Column<DmReportRow> c = column(std::move(id), std::move(title), true, std::move(definition));
+    c.look.kind = CellKind::Figure;
+    return c;
+}
+
 // The row's percent of optimal, when the page had one: the payload carried
 // pct_h only beside an optimal score.
 bool has_percent(const DmReportRow& r) { return r.pct_h && r.optimal; }
@@ -53,14 +61,14 @@ std::vector<Column<DmReportRow>> dm_columns() {
     cols.push_back(text_column("artist", "Artist", "", &DmReportRow::artist, with_share(dim_trunc, 27)));
     cols.push_back(text_column("charter", "Charter", "", &DmReportRow::charter, with_share(dim_trunc, 25)));
     {
-        Column<DmReportRow> c = column("actual", "Actual", true, "The score the player posted.");
+        Column<DmReportRow> c = figure_column("actual", "Actual","The score the player posted.");
         c.sort_key = [](const DmReportRow& r) { return SortKey{static_cast<double>(r.actual)}; };
         c.cell = [](const DmReportRow& r) { return group_thousands(r.actual); };
         cols.push_back(std::move(c));
     }
     {
-        Column<DmReportRow> c = column(
-            "optimal", "Hydra opt", true,
+        Column<DmReportRow> c = figure_column(
+            "optimal", "Hydra opt",
             "The optimal score Hydra found for the chart at SP cap __SP_CAP__, the Clone Hero "
             "rule.");
         c.sort_key = [](const DmReportRow& r) { return optional_key(r.optimal); };
@@ -70,8 +78,8 @@ std::vector<Column<DmReportRow>> dm_columns() {
         cols.push_back(std::move(c));
     }
     {
-        Column<DmReportRow> c = column(
-            "delta", "Points left", true,
+        Column<DmReportRow> c = figure_column(
+            "delta", "Points left",
             "Hydra opt minus Actual. Marked over when the posted score is higher.");
         c.sort_key = [](const DmReportRow& r) { return optional_key(r.delta); };
         // An over-optimal score reads by how much it is over (D64), kept
@@ -90,8 +98,8 @@ std::vector<Column<DmReportRow>> dm_columns() {
     {
         // Sorts on the whole hundredths (percent_steps) the cell's text,
         // format_percent's, is written from.
-        Column<DmReportRow> c = column(
-            "pct_h", "% of opt", true,
+        Column<DmReportRow> c = figure_column(
+            "pct_h", "% of opt",
             "Actual as a percent of Hydra opt. Only for scores played at __BASE_SPEED__% "
             "speed.");
         c.sort_key = [](const DmReportRow& r) {
@@ -112,15 +120,15 @@ std::vector<Column<DmReportRow>> dm_columns() {
         cols.push_back(std::move(c));
     }
     {
-        Column<DmReportRow> c = column("percent", "Percent", true,
-                                       "The percent of notes the player hit.");
+        Column<DmReportRow> c = figure_column("percent", "Percent",
+                                              "The percent of notes the player hit.");
         c.sort_key = [](const DmReportRow& r) { return SortKey{static_cast<double>(r.percent)}; };
         c.cell = [](const DmReportRow& r) { return std::to_string(r.percent) + "%"; };
         cols.push_back(std::move(c));
     }
     {
-        Column<DmReportRow> c = column(
-            "speed", "Speed", true,
+        Column<DmReportRow> c = figure_column(
+            "speed", "Speed",
             "The playback speed the score was set at. __BASE_SPEED__% is normal speed.");
         c.sort_key = [](const DmReportRow& r) { return SortKey{static_cast<double>(r.speed)}; };
         c.cell = [](const DmReportRow& r) { return std::to_string(r.speed) + "%"; };
@@ -128,7 +136,7 @@ std::vector<Column<DmReportRow>> dm_columns() {
     }
     {
         Column<DmReportRow> c =
-            column("rank", "Rank", true, "The score's rank on this chart's leaderboard.");
+            figure_column("rank", "Rank","The score's rank on this chart's leaderboard.");
         c.sort_key = [](const DmReportRow& r) { return optional_key(r.rank); };
         c.cell = [](const DmReportRow& r) {
             return r.rank ? "#" + std::to_string(*r.rank) : std::string(kDash);

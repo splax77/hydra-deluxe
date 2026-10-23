@@ -41,6 +41,61 @@ void render_status_line(AppState& app) {
     ImGui::PopStyleColor();
 }
 
+// The update strip (docs/superpowers/plans/2026-10-22-auto-updater.md,
+// decisions 1 to 4, 10 and 11): AppState::update's sentence in the normal
+// text colour, the phase's buttons after it on the same line, and its detail
+// line under it. Every word comes from UpdateState; this only draws it.
+void render_update_strip(AppState& app) {
+    using Phase = UpdateState::Phase;
+    const UpdateState& update = app.update;
+    if (update.phase == Phase::None) return;
+
+    ImGui::AlignTextToFramePadding();
+    ImGui::PushStyleColor(ImGuiCol_Text, kDefaultTextColor);
+    ImGui::TextUnformatted(update.text.c_str());
+    ImGui::PopStyleColor();
+    // The release's notes, as plain text: nothing in them is read as markup.
+    if (update.release && !update.release->notes.empty() && ImGui::IsItemHovered())
+        wrapped_tooltip(update.release->notes.c_str());
+
+    const bool three_buttons = update.phase == Phase::Offered || update.phase == Phase::Declined;
+    const bool failed = update.phase == Phase::Failed;
+    if (three_buttons || (failed && update.release)) {
+        ImGui::SameLine();
+        if (ImGui::Button("Update##update")) app.update_now();
+    }
+    if (three_buttons) {
+        ImGui::SameLine();
+        if (ImGui::Button("Skip this version")) app.skip_version();
+    }
+    // A failed strip can be dismissed too: Later hides it until the next check.
+    if (three_buttons || failed) {
+        ImGui::SameLine();
+        if (ImGui::Button("Later")) app.later();
+    }
+    if (update.phase == Phase::Downloading) {
+        const std::string megabytes = app.update_megabytes_text();
+        ImGui::SameLine();
+        ImGui::TextUnformatted(megabytes.c_str());
+        // The bar fills the line up to the Cancel button.
+        const ImGuiStyle& style = ImGui::GetStyle();
+        const float cancel_w = button_slot_width("Cancel");
+        ImGui::SameLine();
+        const float bar_w = std::max(ImGui::GetContentRegionAvail().x - cancel_w - style.ItemSpacing.x,
+                                     ImGui::GetFrameHeight());
+        const double total = update.release ? static_cast<double>(update.release->installer_size) : 0.0;
+        ImGui::ProgressBar(progress_fraction(static_cast<double>(app.update_received()), total),
+                           ImVec2(bar_w, 0.0f), "");
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel##update")) app.cancel_update();
+    }
+    if (update.phase == Phase::Updated || update.phase == Phase::UpToDate) {
+        ImGui::SameLine();
+        if (ImGui::Button("OK##update")) app.dismiss_update_note();
+    }
+    error_detail_line(update.detail);
+}
+
 std::string analyze_shown_label(int64_t count) {
     return "Analyze shown (" + group_thousands(count) + ")...";
 }
@@ -155,6 +210,7 @@ void render_actions_row(AppState& app) {
         ImGui::TextColored(kWarningColor, "%s", app.rules_error.c_str());
         ImGui::PopTextWrapPos();
     }
+    render_update_strip(app);
     render_folder_manager(app);
 }
 

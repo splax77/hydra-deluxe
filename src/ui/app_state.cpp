@@ -1,7 +1,10 @@
 #include "ui/app_state.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <filesystem>
 #include <string_view>
+#include <system_error>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -9,7 +12,9 @@
 #include "app/dm_report.h"  // settings_change_touches
 #include "app/report.h"     // settings_change_touches
 #include "app/rules_file.h"
+#include "app/update_key.h"
 #include "app/user_messages.h"
+#include "core/app_version.h"
 #include "core/model.h"  // counted, has_have, group_thousands
 #include "core/winstr.h"
 #include "parse/song.h"  // display_title
@@ -76,10 +81,12 @@ AppState::AppState(app::Settings initial_settings,
                    std::unique_ptr<store::RecordStore> initial_store)
     : settings(std::move(initial_settings)),
       store(std::move(initial_store)),
+      update_public_key(app::kUpdatePublicKey),
       committed_settings_(settings) {
     // No store: the default constructor's open job brings it, and the
     // library with it (collect_store_open).
     if (store) reload_library();
+    start_updates();
 }
 
 // Out-of-line so the unique_ptr<PreviewController> can be a forward declaration
@@ -545,7 +552,9 @@ bool AppState::any_job_running() const {
            (scan_job && !scan_job->snapshot().finished) || batch_running() || view_pending ||
            view_thread_alive() || (report_job && !report_job->finished()) ||
            (dm_fetch_job && !dm_fetch_job->finished()) ||
-           (dm_report_job && !dm_report_job->finished()) || (preview && preview->busy());
+           (dm_report_job && !dm_report_job->finished()) || (preview && preview->busy()) ||
+           (update_check_job && !update_check_job->finished()) ||
+           (update_download_job && !update_download_job->finished());
 }
 
 void AppState::tick(double /*now*/) {
@@ -553,6 +562,7 @@ void AppState::tick(double /*now*/) {
     if (!show_details && details_ui.prev_open) close_details();
     details_ui.prev_open = show_details;
     update_view_job();
+    tick_updates();
 }
 
 void AppState::select_chart(const std::string& hyhash, const std::string& chartmode) {
@@ -1053,6 +1063,224 @@ void AppState::apply_settings() {
                        /*path=*/app::report::settings_change_touches(before, settings),
                        /*dm=*/app::dm_report::settings_change_touches(before, settings));
     committed_settings_ = settings;
+}
+
+// ---- updates ----------------------------------------------------------------
+
+namespace {
+
+// The strip's fixed sentences (decisions 4 and 10 of
+// docs/superpowers/plans/2026-10-22-auto-updater.md). The ones that name a
+// version are built by named_release.
+constexpr const char* kUpdateVerifyingText = "Checking the download...";
+constexpr const char* kUpdateLaunchingText = "Starting the installer...";
+constexpr const char* kUpdateDeclinedText = "The installer didn't start, so Hydra wasn't updated.";
+
+// "Hydra Deluxe 2.11.0": the app's name and a version as the user reads it.
+std::string named_release(const core::AppVersion& version) {
+    return std::string(HYDRA_APP_NAME) + " " + core::version_text(version);
+}
+
+// Inno Setup's log, beside the download.
+std::string installer_log_path() { return join_folder(update_folder(), "setup.log"); }
+
+}  // namespace
+
+void AppState::start_updates() {
+    // Decision 11: the first start after any version change says so once.
+    // An empty value is a first start, which has nothing to compare.
+    const core::AppVersion running = core::running_version();
+    const std::optional<core::AppVersion> last = core::parse_version(settings.last_run_version);
+    if (!settings.last_run_version.empty() && last != running)
+        set_update_phase(UpdateState::Phase::Updated, "Updated to " + named_release(running) + ".");
+    if (last != running) {
+        settings.last_run_version = core::version_text(running);
+        committed_settings_.last_run_version = settings.last_run_version;
+        save_settings();
+    }
+    // The installer a declined start kept (decision 10) goes at the next start.
+    try {
+        std::error_code ec;
+        std::filesystem::remove_all(os_path(update_folder()), ec);
+    } catch (const std::exception&) {
+        // No temp folder: there is no leftover to remove either.
+    }
+    check_updates_if_due();
+}
+
+void AppState::set_update_phase(UpdateState::Phase phase, std::string text) {
+    update.phase = phase;
+    update.text = std::move(text);
+    update.detail.clear();
+}
+
+void AppState::offer_update(const app::UpdateRelease& release) {
+    update.release = release;
+    set_update_phase(UpdateState::Phase::Offered,
+                     named_release(release.version) + " is available.");
+}
+
+void AppState::check_updates_if_due() {
+    if (update.phase != UpdateState::Phase::None || update_check_job) return;
+    if (!app::update_check_due(settings, std::chrono::system_clock::now())) return;
+    start_update_check(/*manual=*/false);
+}
+
+void AppState::check_updates_now() {
+    using Phase = UpdateState::Phase;
+    if (update_check_job || update_download_job || update.phase == Phase::Launching) return;
+    start_update_check(/*manual=*/true);
+}
+
+bool AppState::update_check_running() const { return update_check_job != nullptr; }
+
+void AppState::start_update_check(bool manual) {
+    update_check_manual_ = manual;
+    update_check_job = std::make_unique<UpdateCheckJob>();
+    update_check_job->start();
+}
+
+void AppState::tick_updates() {
+    collect_update_check();
+    collect_update_download();
+    // The installer closes Hydra through Restart Manager once its UAC prompt
+    // is accepted. Its process ending while Hydra still runs means it did
+    // not update (decision 10); the download stays for Update to try again.
+    if (installer_ended_ && installer_ended_()) {
+        installer_ended_ = nullptr;
+        set_update_phase(UpdateState::Phase::Declined, kUpdateDeclinedText);
+    }
+}
+
+void AppState::collect_update_check() {
+    if (!update_check_job || !update_check_job->finished()) return;
+    const std::unique_ptr<UpdateCheckJob> job = std::move(update_check_job);
+    const bool manual = update_check_manual_;
+    if (job->outcome() == JobOutcome::Cancelled) return;
+    // A finished check, good or not, starts the next interval
+    // (app::update_check_due); a failed automatic one tries again then.
+    settings.last_update_check = app::update_check_time_text(std::chrono::system_clock::now());
+    committed_settings_.last_update_check = settings.last_update_check;
+    save_settings();
+    // The strip changes only from nothing, or on the user's own Check now.
+    if (!manual && update.phase != UpdateState::Phase::None) return;
+    if (!job->ok()) {
+        if (!manual) return;  // decision 8: the daily check fails silently
+        update.release.reset();
+        set_update_phase(UpdateState::Phase::Failed, job->message());
+        update.detail = job->error();
+        return;
+    }
+    const app::UpdateRelease& release = job->release();
+    const core::AppVersion running = core::running_version();
+    const bool newer = core::is_newer_version(release.version, running);
+    // The user's fifth ruling during T3a: only the daily check honors a skip.
+    const bool skipped =
+        !manual && core::parse_version(settings.skipped_update_version) == release.version;
+    if (newer && !skipped) {
+        offer_update(release);
+        return;
+    }
+    update.release.reset();
+    // The user's ruling during T3a: Check now says when nothing is newer; the
+    // daily check stays silent.
+    if (manual && !newer)
+        set_update_phase(UpdateState::Phase::UpToDate, named_release(running) + " is the latest version.");
+    else
+        set_update_phase(UpdateState::Phase::None, {});
+}
+
+void AppState::update_now() {
+    using Phase = UpdateState::Phase;
+    if (!update.release || update_download_job) return;
+    if (update.phase != Phase::Offered && update.phase != Phase::Declined &&
+        update.phase != Phase::Failed)
+        return;
+    // After a declined start the kept download is checked again, not fetched.
+    const bool reuse = update.phase == Phase::Declined;
+    std::string folder;
+    try {
+        folder = update_folder();
+    } catch (const std::exception& e) {
+        set_update_phase(Phase::Failed, app::plain_error(e));
+        update.detail = app::plain_error_detail(e);
+        return;
+    }
+    update_download_job =
+        std::make_unique<UpdateDownloadJob>(*update.release, folder, update_public_key, reuse);
+    set_update_phase(Phase::Downloading, "Downloading " + named_release(update.release->version) + "...");
+    update_download_job->start();
+}
+
+void AppState::collect_update_download() {
+    using Phase = UpdateState::Phase;
+    if (!update_download_job) return;
+    if (!update_download_job->finished()) {
+        if (update_download_job->verifying() && update.phase == Phase::Downloading)
+            set_update_phase(Phase::Verifying, kUpdateVerifyingText);
+        return;
+    }
+    const std::unique_ptr<UpdateDownloadJob> job = std::move(update_download_job);
+    switch (job->outcome()) {
+        case JobOutcome::Cancelled:
+            // Decision 4: Cancel goes back to the offer.
+            offer_update(*update.release);
+            return;
+        case JobOutcome::Failed:
+            set_update_phase(Phase::Failed, job->message());
+            update.detail = job->error();
+            return;
+        case JobOutcome::Done: break;
+    }
+    set_update_phase(Phase::Launching, kUpdateLaunchingText);
+    try {
+        installer_ended_ = launch_installer(job->installer_path(), installer_log_path());
+    } catch (const std::exception& e) {
+        // The user's ruling during T3a: a start that fails is decision 10's
+        // state, with Windows' reason under it; the download stays.
+        installer_ended_ = nullptr;
+        set_update_phase(Phase::Declined, kUpdateDeclinedText);
+        update.detail = app::plain_error_detail(e);
+    }
+}
+
+void AppState::skip_version() {
+    if (!update.release || update_download_job || update.phase == UpdateState::Phase::Launching)
+        return;
+    settings.skipped_update_version = core::version_text(update.release->version);
+    committed_settings_.skipped_update_version = settings.skipped_update_version;
+    save_settings();
+    later();
+}
+
+void AppState::later() {
+    if (update_download_job || update.phase == UpdateState::Phase::Launching) return;
+    update.release.reset();
+    set_update_phase(UpdateState::Phase::None, {});
+}
+
+void AppState::cancel_update() {
+    if (update_download_job) update_download_job->cancel();
+}
+
+void AppState::dismiss_update_note() {
+    using Phase = UpdateState::Phase;
+    if (update.phase == Phase::Updated || update.phase == Phase::UpToDate)
+        set_update_phase(Phase::None, {});
+}
+
+uint64_t AppState::update_received() const {
+    if (!update_download_job || update.phase != UpdateState::Phase::Downloading) return 0;
+    return update_download_job->received();
+}
+
+std::string AppState::update_megabytes_text() const {
+    if (update.phase != UpdateState::Phase::Downloading || !update.release) return {};
+    char text[64];
+    std::snprintf(text, sizeof(text), "%.1f of %.1f MB",
+                  static_cast<double>(update_received()) / 1e6,
+                  static_cast<double>(update.release->installer_size) / 1e6);
+    return text;
 }
 
 }  // namespace hydra::ui

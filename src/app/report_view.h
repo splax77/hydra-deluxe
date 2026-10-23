@@ -44,10 +44,18 @@ inline constexpr int kEveryRowChoice = 0;
 // a second key). TableView::set_sort and the window's header_sort read it.
 inline constexpr size_t kMaxSortKeys = 2;
 
+// The kind of text a column's cells hold. The window picks the font for each
+// kind (report_frame in ui/report_window.cpp); this layer never names a font.
+enum class CellKind {
+    Text,      // words: names, statuses, dates
+    Notation,  // a path in path notation
+    Figure,    // a number, count or timing that lines up down the column
+};
+
 // How a cell is drawn, from the pages' cell classes. Fixed per column.
 struct CellLook {
-    bool dim = false;       // the dim text colour
-    bool mono = false;      // the mono font
+    bool dim = false;  // the dim text colour
+    CellKind kind = CellKind::Text;
     bool truncate = false;  // cut with an ellipsis, the full text on hover
     bool chip = false;      // an outlined chip in its token's colour
     // A cut column's whole-percent share of the table's room (the width

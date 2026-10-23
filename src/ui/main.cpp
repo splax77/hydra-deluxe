@@ -51,6 +51,9 @@ static ID3D11RenderTargetView*  g_mainRenderTargetView = nullptr;
 static float                    g_PendingUiScale = 0.0f;
 // How long the loop waits between checks while nothing it draws can be seen.
 static constexpr DWORD          kHiddenPollMs = 10;
+// The app the frame loop drew last, so WM_ENDSESSION can save its settings
+// before Windows ends the process.
+static hydra::ui::AppState*     g_FrameApp = nullptr;
 
 HRESULT CreateDeviceD3D(HWND hWnd);
 void CleanupDeviceD3D();
@@ -466,6 +469,7 @@ int main()
             if (!live) ImGuiTestEngine_ShowTestEngineWindows(uitest->engine, &uitest_windows_open);
         }
 #endif
+        g_FrameApp = app;
         if (app) hydra::ui::run_frame(*app, frame_text);
 
         // Render.
@@ -516,6 +520,7 @@ int main()
 #ifdef HYDRA_UITEST_ATTACHED
     if (uitest) uitest->stop();  // before ImGui's context goes away
 #endif
+    g_FrameApp = nullptr;
     own_app.reset();
 
     tear_down();
@@ -645,6 +650,21 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
         if ((wParam & 0xfff0) == SC_KEYMENU)  // Disable the ALT app menu.
             return 0;
         break;
+    // Windows is ending the session, or the installer asks Hydra to close
+    // through Restart Manager (ENDSESSION_CLOSEAPP) so it can update it.
+    // Hydra always agrees, then saves and closes the way its X does.
+    case WM_QUERYENDSESSION:
+        return TRUE;
+    case WM_ENDSESSION:
+        if (wParam)
+        {
+            // At a log-off Windows may end the process as soon as this
+            // returns, so the INI is written first; the normal exit then
+            // writes the rest.
+            if (g_FrameApp) g_FrameApp->flush_settings();
+            ::DestroyWindow(hWnd);
+        }
+        return 0;
     case WM_DESTROY:
         ::PostQuitMessage(0);
         return 0;

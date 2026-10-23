@@ -11,6 +11,7 @@
 #ifndef HYDRA_UI_APP_STATE_H
 #define HYDRA_UI_APP_STATE_H
 
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -35,6 +36,7 @@
 #include "ui/library_model.h"
 #include "ui/list_scroll.h"  // SelectionSource
 #include "ui/report_state.h"  // ReportBuild, ReportOutOfDate
+#include "ui/update_job.h"
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
@@ -720,6 +722,47 @@ public:
     // calls it once no widget is active, which is when an edit has ended.
     void flush_settings();
 
+    // ---- updates (docs/superpowers/plans/2026-10-22-auto-updater.md) ----
+    // What the strip under the toolbar shows (UpdateState). Both constructors
+    // set it up: the first start after a version change lands in Updated
+    // (decision 11), the leftover download folder goes, and the automatic
+    // check starts when app::update_check_due says so.
+    UpdateState update;
+    // The check and the download; at most one of each, collected by tick().
+    std::unique_ptr<UpdateCheckJob> update_check_job;
+    std::unique_ptr<UpdateDownloadJob> update_download_job;
+    // The key a download is checked against: the shipped one, which a test
+    // replaces with the test key.
+    std::array<uint8_t, 64> update_public_key;
+    // The automatic check: starts one when app::update_check_due says so and
+    // the strip shows nothing. A failure stays silent (decision 8).
+    void check_updates_if_due();
+    // The settings row's "Check now": a check whatever the time since the
+    // last one, whose failure shows in the strip (decisions 6 and 8), and
+    // which lands in UpToDate when nothing is newer. Does nothing while a
+    // check, a download or the installer is under way.
+    void check_updates_now();
+    // Whether a check is running.
+    bool update_check_running() const;
+    // The strip's three buttons (decision 3). Update downloads, checks and
+    // starts the installer (offered, declined, or failed with a release);
+    // Skip this version writes skipped_update_version and hides the strip;
+    // Later hides it until the next check and writes nothing.
+    void update_now();
+    void skip_version();
+    void later();
+    // The strip's Cancel while downloading or checking (decision 4): the
+    // download stops, its file goes, and the strip offers the release again
+    // once the job has stopped.
+    void cancel_update();
+    // The OK in Updated (decision 11) and UpToDate: hides the strip.
+    void dismiss_update_note();
+    // The download's progress for the strip: bytes so far, and the line's
+    // "12.3 of 33.2 MB" in decision 4's unit. 0 and empty outside
+    // Downloading.
+    uint64_t update_received() const;
+    std::string update_megabytes_text() const;
+
 private:
     explicit AppState(StartupSettings start);
 
@@ -842,6 +885,23 @@ private:
     bool scan_reloaded_ = true;
     int batch_seen_completed_ = 0;
     double batch_refreshed_at_ = -1.0;
+
+    // The updater's start-up work, which both constructors run.
+    void start_updates();
+    // Starts update_check_job; `manual` says whether its failure shows.
+    void start_update_check(bool manual);
+    bool update_check_manual_ = false;
+    // tick()'s part: collects the check and the download, and watches the
+    // started installer.
+    void tick_updates();
+    void collect_update_check();
+    void collect_update_download();
+    // Puts the strip in `phase` with `text`, the detail line cleared.
+    void set_update_phase(UpdateState::Phase phase, std::string text);
+    // The strip offering `release` (decision 2).
+    void offer_update(const app::UpdateRelease& release);
+    // The started installer's "has it ended" check; empty when none runs.
+    InstallerEnded installer_ended_;
 };
 
 }  // namespace hydra::ui

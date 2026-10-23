@@ -26,6 +26,7 @@
 #include "ui/details_view.h"
 #include "ui/fonts.h"  // px()
 #include "ui/preview_controller.h"
+#include "ui/text_role.h"
 #include "ui/theme.h"  // kBestPathColor, kWarningColor
 
 namespace uitest {
@@ -613,8 +614,9 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     IM_CHECK_LE(content_max, rating.WorkMaxX + 0.5f);
     // The squeezed-out line is longer than the cell, so it did wrap: the
     // cell is narrower than the line.
-    const float line_w =
-        text_width("Insane SqOut (eff. 163.5 ms) <-- squeezed out (-260)", hydra::ui::g_mono_font);
+    const float line_w = hydra::ui::text_size(hydra::ui::TextRole::Figure,
+                                              "Insane SqOut (eff. 163.5 ms) <-- squeezed out (-260)")
+                             .x;
     IM_CHECK_LT(rating.WorkMaxX - rating.WorkMinX, line_w);
     // The three fixed columns fit their text: no cell runs past its column.
     for (int c = 0; c < 3; ++c) {
@@ -622,14 +624,23 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
         IM_CHECK_LE((std::max)(col.ContentMaxXUnfrozen, col.ContentMaxXFrozen), col.WorkMaxX + 0.5f);
         IM_CHECK_LT(col.WidthGiven, hydra::ui::px(80.0f));
     }
-    // Points is as wide as the width rule gives it for the rows the tab drew.
+    // Points is as wide as the width rule gives it for the rows the tab drew,
+    // its header measured as a Label and its cells as Figures (text_role.h).
     const hydra::app::PathsTabCache::Details* d = h.app->details_ui.paths_tab.built_details();
     IM_CHECK(d != nullptr && !d->activations.acts.empty());
     if (ctx->IsError()) return;
     const std::vector<hydra::app::BackendRowView>& rows = d->activations.acts[0].backends;
     std::vector<std::string> points;
     for (const hydra::app::BackendRowView& row : rows) points.push_back(row.points);
-    IM_CHECK_EQ(t->Columns[2].WidthGiven, rule_width("Points", points, hydra::ui::g_mono_font));
+    std::vector<hydra::ui::ColumnSpec> points_spec = {
+        {"Points", false, 0.0f, hydra::ui::measure_in_role(hydra::ui::TextRole::Figure)}};
+    points_spec[0].header_width_of = hydra::ui::measure_in_role(hydra::ui::TextRole::Label);
+    const float points_w =
+        hydra::ui::place_columns(hydra::ui::measure_widths(points_spec, points.size(),
+                                                           [&](size_t r, size_t) { return points[r]; }),
+                                 points_spec, hydra::ui::TableRoom{})
+            .widths[0];
+    IM_CHECK_EQ(t->Columns[2].WidthGiven, points_w);
     // And the table stays inside the details column.
     ImGuiWindow* details = window_named("##pathdetails");
     IM_CHECK_LE(details->ContentSize.x, details->ContentRegionRect.GetWidth() + 0.5f);
@@ -667,17 +678,18 @@ std::vector<ImRect> drawn_pills(const ImRect& band) {
     return pills;
 }
 
-// Every glyph drawn inside `band` comes from the mono font: each character of
-// `texts` was drawn with the mono font's glyph and none with the main font's.
-// A glyph is told by its place in the font atlas, the uv of its top-left vertex.
+// Every glyph drawn inside `band` comes from the Figure role's font (the mono
+// font, D257): each character of `texts` was drawn with that font's glyph and
+// none with the Prose font's. A glyph is told by its place in the font atlas,
+// the uv of its top-left vertex.
 bool row_text_all_mono(ImGuiTestContext* ctx, const ImRect& band,
                        const std::vector<std::string>& texts) {
     ImGuiWindow* details = window_named("##pathdetails");
     if (!details) return false;
     const float size = drawn_font_size();
-    ImFontBaked* mono = hydra::ui::g_mono_font->GetFontBaked(size);
-    ImFont* main_font = ImGui::GetIO().FontDefault ? ImGui::GetIO().FontDefault : ImGui::GetFont();
-    ImFontBaked* main_baked = main_font->GetFontBaked(size);
+    ImFontBaked* mono = hydra::ui::font_for(hydra::ui::TextRole::Figure).font->GetFontBaked(size);
+    ImFontBaked* main_baked =
+        hydra::ui::font_for(hydra::ui::TextRole::Prose).font->GetFontBaked(size);
     auto drawn = [&](const ImFontGlyph* g) {
         for (const ImDrawVert& v : details->DrawList->VtxBuffer)
             if (band.Contains(v.pos) && v.uv.x == g->U0 && v.uv.y == g->V0) return true;
@@ -711,11 +723,16 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     IM_CHECK_GT(row_w, 0.0f);
     const float scale = hydra::ui::px(1.0f);
     const float gap = hydra::ui::px(hydra::ui::kRowBarsGap);
-    ImFont* mono = hydra::ui::g_mono_font;
-    // The line height the row's layout is given: the mono font's.
-    ImGui::PushFont(mono, 0.0f);
-    const float line = ImGui::GetTextLineHeight();
-    ImGui::PopFont();
+    // The row is one Figure scope: its layout measures and gets its line
+    // height in that role.
+    auto figure_w = [](const std::string& s) {
+        return hydra::ui::text_size(hydra::ui::TextRole::Figure, s.c_str()).x;
+    };
+    float line = 0.0f;
+    {
+        hydra::ui::ScopedFont font(hydra::ui::TextRole::Figure);
+        line = ImGui::GetTextLineHeight();
+    }
 
     // Leaves the layout in `l`, so a caller can see where the badges went
     // (IM_CHECK returns early, so the lambda can't return it).
@@ -723,12 +740,11 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     auto check = [&](const std::string& widest_measure, const std::string& measure,
                      const std::string& bars, const std::vector<std::string>& badges) {
         std::vector<float> badge_ws;
-        for (const std::string& b : badges) badge_ws.push_back(text_width(b.c_str(), mono));
-        l = hydra::ui::activation_row_layout(text_width(widest_measure.c_str(), mono),
-                                             text_width(bars.c_str(), mono), badge_ws, row_w, line,
-                                             scale);
-        const float measure_end = l.measure_x + text_width(measure.c_str(), mono);
-        const float bars_end = l.bars_x + text_width(bars.c_str(), mono);
+        for (const std::string& b : badges) badge_ws.push_back(figure_w(b));
+        l = hydra::ui::activation_row_layout(figure_w(widest_measure), figure_w(bars), badge_ws,
+                                             row_w, line, scale);
+        const float measure_end = l.measure_x + figure_w(measure);
+        const float bars_end = l.bars_x + figure_w(bars);
         ctx->LogInfo("measure %s ends %.1f, bars at %.1f..%.1f, %d badges, pill from %.1f, "
                      "%d lines under the measure (row %.1f)",
                      measure.c_str(), measure_end, l.bars_x, bars_end, static_cast<int>(badges.size()),
@@ -746,7 +762,7 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     const hydra::app::ActivationsView& view = shown_activations(*h.app);
     std::string widest;
     for (const hydra::app::ActivationRowView& a : view.acts)
-        if (text_width(a.measure.c_str(), mono) > text_width(widest.c_str(), mono)) widest = a.measure;
+        if (figure_w(a.measure) > figure_w(widest)) widest = a.measure;
     IM_CHECK(!view.acts.empty());
     if (view.acts.empty()) return;
     for (const hydra::app::ActivationRowView& a : view.acts)

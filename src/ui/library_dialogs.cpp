@@ -10,6 +10,7 @@
 #include "store/record_store.h"
 #include "ui/fonts.h"
 #include "ui/library_view.h"  // kProgressBoxWidth
+#include "ui/text_role.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
 #include "ui/win32_dialogs.h"
@@ -348,9 +349,10 @@ void render_batch_confirm(AppState& app) {
     const int64_t with = app.batch_scope_with_result();
     const int64_t to_run = app.batch_plan_for(app.batch_redo).todo_rows();
     const std::string question = app.batch_question(app.batch_redo);
-    ImGui::PushFont(nullptr, 20.0f);
-    ImGui::TextWrapped("%s", question.c_str());
-    ImGui::PopFont();
+    {
+        ScopedFont font(TextRole::DialogQuestion);
+        ImGui::TextWrapped("%s", question.c_str());
+    }
 
     const BatchSettingsSummary d = batch_settings_summary(app.settings);
     if (ImGui::BeginTable("##batchsettings", 2,

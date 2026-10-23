@@ -1,0 +1,52 @@
+{
+  "rules": [
+    {
+      "question": "Which font does a kind of text draw in?",
+      "owner": "font_for in src/ui/text_role.h",
+      "owner_file": "src/ui/text_role.h",
+      "owner_symbol": "font_for",
+      "date": "2026-10-22",
+      "decision": "D258, the user's yes to docs/superpowers/plans/2026-10-22-font-role-single-owner.md: \"Approved. Yes to all five recommendations (Q1-Q5).\"",
+      "added_by": "FONT-ROLE-T5",
+      "pattern": "\\bg_mono_font\\b|ImGui::PushFont\\(|ImGui::GetFont\\(\\)|->CalcTextSizeA\\(|io\\.FontDefault",
+      "owner_files": [
+        "src/ui/text_role.h"
+      ],
+      "exempt": [
+        {
+          "file": "src/ui/app_shell.cpp",
+          "why": "loads the two font files and sets the default font; it picks no role"
+        },
+        {
+          "file": "src/ui/fonts.h",
+          "why": "declares the handle the loader fills; the owner is its only reader"
+        },
+        {
+          "file": "src/ui/column_widths.cpp",
+          "why": "measure_in_font is the width primitive; it measures in the font the owner handed it"
+        }
+      ],
+      "must_match": [
+        "ImGui::PushFont(g_mono_font, 0.0f);",
+        "ImFont* font = g_mono_font ? g_mono_font : ImGui::GetFont();",
+        "dl->AddText(ImGui::GetFont(), num_size, ImVec2(*lefts[i], top.y + px(2.0f)),",
+        "ImGui::PushFont(nullptr, 40.0f);",
+        "widths.push_back(ImGui::GetFont()->CalcTextSizeA(num_size, FLT_MAX, 0.0f, num.c_str()).x);",
+        "return font->CalcTextSizeA(size, FLT_MAX, 0.0f, s.data(), s.data() + s.size()).x;",
+        "if (main_font) io.FontDefault = main_font;"
+      ],
+      "must_not_match": [
+        "ScopedFont font(TextRole::Figure);",
+        "text_at(ImVec2(top.x + l.measure_x, text_y), text_color(), a.measure.c_str(), TextRole::Figure);",
+        "const WidthOf mono = measure_in_role(TextRole::Notation);",
+        "const float w = ImGui::CalcTextSize(text.c_str()).x;",
+        "ImFont* const font = font_for(TextRole::Overlay).font;",
+        "return measure_in_role(TextRole::Overlay, sz)(s);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A raw font pick is any of: reading the mono handle, pushing a font, asking ImGui for the current font to draw with, or measuring through a font pointer. ImGui::CalcTextSize with no font argument is allowed: it measures in whatever font a ScopedFont pushed, so it agrees with the draw by construction. No anchor: the alternatives share no plain text. Decided by: D258."
+    }
+  ]
+}

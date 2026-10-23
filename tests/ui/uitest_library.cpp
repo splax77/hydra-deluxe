@@ -25,9 +25,23 @@
 #include "ui/library_model.h"
 #include "ui/library_parts.h"  // analyze_shown_label
 #include "ui/preview_controller.h"
+#include "ui/text_role.h"  // text_size, TextRole
 #include "store/record_store.h"
 #include "store/upgrade_files.h"  // set_aside_path, with_side_files
 #include "ui/widgets.h"  // widest_digits, button_slot_width
+#include "../scoped_hook.h"
+#include "../update_reply.h"
+#include "core/app_version.h"
+#include "core/winstr.h"  // read_file_text, os_path
+#include "net/http.h"     // set_fetcher, set_downloader
+#include "ui/update_job.h"
+
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <stdexcept>
+#include <thread>
 
 namespace uitest {
 
@@ -763,6 +777,10 @@ void test_library_column_widths(ImGuiTestContext* ctx) {
     const hydra::ui::LibraryViewState::ColumnWidths& cache = h.app->library_ui.column_widths;
     IM_CHECK_EQ(cache.specs.size(), static_cast<size_t>(hydra::ui::kLibraryColumnCount));
     IM_CHECK(hydra::ui::text_shares_sum_to_100(cache.specs));  // the real list
+    // A header is measured in the font it is drawn in. The Best path cells
+    // draw as Notation, but TableHeadersRow draws the header as Label.
+    IM_CHECK_EQ(cache.measured.header_widths[hydra::ui::kColumnBestPath],
+                hydra::ui::text_size(hydra::ui::TextRole::Label, "Best path").x);
     hydra::ui::ColumnLayout layout;
     auto check_rule_widths = [&] {
         layout = hydra::ui::place_columns(cache.measured, cache.specs, cache.room);
@@ -1237,6 +1255,270 @@ void test_old_library_set_aside(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->library_shown_count() > 0);
 }
 
+// ---- the update strip and the App settings row ------------------------------
+// docs/superpowers/plans/2026-10-22-auto-updater.md, task T3b. Nothing here
+// touches the network: UpdateSeams serves the release reply, the download and
+// the installer start.
+
+std::string running_version_text() {
+    return hydra::core::version_text(hydra::core::running_version());
+}
+
+// The committed test key (sample.bin.sig was signed with it).
+std::array<uint8_t, 64> update_test_key(ImGuiTestContext* ctx) {
+    std::array<uint8_t, 64> key{};
+    IM_CHECK_NO_RET(update_fixtures::read_test_public_key(key));
+    if (ctx->IsError()) return {};
+    return key;
+}
+
+// Sits while `hold` is set and nothing cancels, for at most 30 s; the test's
+// own waits give up before that.
+void wait_released(const std::atomic<bool>& hold, const std::atomic<bool>* cancel) {
+    const auto give_up = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (hold.load() && !(cancel && cancel->load()) && std::chrono::steady_clock::now() < give_up)
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+}
+
+// The updater's seams for one test: Hydra counts as installed, GitHub's reply
+// is `reply`, the download copies sample.bin and serves sample.bin.sig, and
+// the installer "ends early", which is a declined UAC prompt (decision 10).
+// hold_check and hold_download keep the check or the download running until
+// the test clears them. Make it after reset_app, which installs the harness's
+// own fetcher. Its destructor drops the app first, so no job of it calls a
+// seam that is gone.
+struct UpdateSeams {
+    Harness& h;
+    std::string reply = update_fixtures::release_reply_at("v9.9.9");
+    std::string sig = hydra::read_file_text(update_fixtures::update_dir() + "/sample.bin.sig");
+    std::atomic<bool> hold_check{false};
+    std::atomic<bool> hold_download{false};
+    std::string folder;
+    ScopedHook installed;
+    ScopedHook folder_seam;
+    ScopedHook fetcher;
+    ScopedHook downloader;
+    ScopedHook launcher;
+
+    explicit UpdateSeams(Harness& harness_)
+        : h(harness_),
+          folder(h.temp_dir + "/update-download"),
+          installed(hydra::app::set_installed_for_test, std::optional<bool>(true)),
+          folder_seam(hydra::ui::set_update_folder_for_test, folder),
+          fetcher(hydra::net::set_fetcher,
+                  [this](const std::string& url, const std::atomic<bool>* cancel) -> std::string {
+                      if (url == hydra::ui::kLatestReleaseUrl) {
+                          wait_released(hold_check, cancel);
+                          return reply;
+                      }
+                      if (url.size() > 4 && url.substr(url.size() - 4) == ".sig") return sig;
+                      throw std::runtime_error("no canned reply for " + url);
+                  }),
+          downloader(hydra::net::set_downloader,
+                     [this](const std::string&, const std::string& path, uint64_t,
+                            std::atomic<uint64_t>* received, const std::atomic<bool>* cancel) {
+                         wait_released(hold_download, cancel);
+                         fs::copy_file(hydra::os_path(update_fixtures::sample_path()), hydra::os_path(path),
+                                       fs::copy_options::overwrite_existing);
+                         if (received) received->store(fs::file_size(hydra::os_path(path)));
+                     }),
+          launcher(hydra::ui::set_launcher_for_test, [](const std::string&, const std::string&) {
+              return hydra::ui::InstallerEnded([] { return true; });
+          }) {}
+    ~UpdateSeams() { h.app.reset(); }
+    UpdateSeams(const UpdateSeams&) = delete;
+    UpdateSeams& operator=(const UpdateSeams&) = delete;
+};
+
+// A new start of Hydra on the same INI and database, as closing and opening
+// it again would be. `edit`, when given, changes the INI before the start
+// reads it.
+void restart_app(ImGuiTestContext* ctx, Harness& h,
+                 const std::function<void(hydra::app::Settings&)>& edit) {
+    h.app.reset();
+    if (edit) {
+        hydra::app::Settings s = hydra::app::Settings::load_file(h.ini_path);
+        edit(s);
+        IM_CHECK(s.save_file(h.ini_path));
+    }
+    h.app = std::make_unique<hydra::ui::AppState>();
+    h.app->set_render_device(h.device.Get(), h.context.Get());
+    h.app->update_public_key = update_test_key(ctx);
+    h.app->wait_store_open();
+    IM_CHECK(!h.app->store_open_failed());
+}
+
+// The settings row's Check now, clicked in the Analysis settings panel.
+void click_check_now(ImGuiTestContext* ctx) {
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    ctx->ItemClick("**/Check now");
+    close_settings_panel(ctx);
+}
+
+bool item_disabled(ImGuiTestContext* ctx, const char* ref) {
+    return (ctx->ItemInfo(ref).ItemFlags & ImGuiItemFlags_Disabled) != 0;
+}
+
+// The strip under the toolbar and the App group's row, criteria D1 to D8 of
+// the plan's T3b.
+void test_update_strip(ImGuiTestContext* ctx) {
+    using Phase = hydra::ui::UpdateState::Phase;
+    using hydra::app::Settings;
+    Harness& h = harness(ctx);
+    reset_app(h);
+    UpdateSeams seams(h);
+    h.app->update_public_key = update_test_key(ctx);
+    if (ctx->IsError()) return;
+    auto phase_is = [&](Phase phase) { return h.app && h.app->update.phase == phase; };
+    const std::string running = running_version_text();
+
+    // D7: Check now at the running version says so, with one OK. While the
+    // check runs, Check now is greyed.
+    seams.reply = update_fixtures::release_reply_at("v" + running);
+    seams.hold_check = true;
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(!item_disabled(ctx, "**/Check now"));
+    ctx->ItemClick("**/Check now");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->update_check_running(); }, 5));
+    ctx->Yield(2);
+    IM_CHECK(item_disabled(ctx, "**/Check now"));
+    seams.hold_check = false;
+    IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::UpToDate); }, 10));
+    ctx->Yield(2);
+    IM_CHECK(!item_disabled(ctx, "**/Check now"));
+    close_settings_panel(ctx);
+    const std::string latest = "Hydra Deluxe " + running + " is the latest version.";
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, latest); }, 5));
+    ctx->ItemClick("**/OK##update");
+    IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::None) && !on_screen(h, latest); }, 5));
+
+    // D1: the offer and its three buttons; hovering the version shows the
+    // fixture's notes.
+    seams.reply = update_fixtures::release_reply_at("v9.9.9");
+    click_check_now(ctx);
+    if (ctx->IsError()) return;
+    const std::string offer = "Hydra Deluxe 9.9.9 is available.";
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, offer); }, 10));
+    IM_CHECK(ctx->ItemExists("**/Update##update"));
+    IM_CHECK(ctx->ItemExists("**/Skip this version"));
+    IM_CHECK(ctx->ItemExists("**/Later"));
+    const std::string notes_part = "shows accented letters in song names correctly";
+    IM_CHECK(!on_screen(h, notes_part));
+    // The sentence ends just left of the Update button.
+    const ImRect update_rect = ctx->ItemInfo("**/Update##update").RectFull;
+    ctx->MouseMoveToPos(ImVec2(update_rect.Min.x - ImGui::GetStyle().ItemSpacing.x - hydra::ui::px(10),
+                               update_rect.GetCenter().y));
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, notes_part); }, 5));
+    ctx->MouseMoveToPos(ImVec2(update_rect.Max.x + hydra::ui::px(40), update_rect.GetCenter().y));
+    IM_CHECK(wait_until(ctx, [&] { return !on_screen(h, notes_part); }, 5));
+
+    // D2: Skip this version hides the strip, and the daily check at the next
+    // start keeps it hidden.
+    ctx->ItemClick("**/Skip this version");
+    IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::None) && !on_screen(h, offer); }, 5));
+    IM_CHECK(Settings::load_file(h.ini_path).skipped_update_version == "9.9.9");
+    restart_app(ctx, h, [](Settings& s) { s.last_update_check.clear(); });
+    if (ctx->IsError()) return;
+    IM_CHECK(wait_until(ctx, [&] { return !h.app->update_check_running(); }, 10));
+    IM_CHECK(!Settings::load_file(h.ini_path).last_update_check.empty());  // it ran
+    ctx->Yield(2);
+    IM_CHECK(phase_is(Phase::None));
+    IM_CHECK(!on_screen(h, offer));
+
+    // D8: Check now offers the skipped release again.
+    click_check_now(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, offer); }, 10));
+
+    // D3: Update downloads with a Cancel button; the installer ending early
+    // brings decision 10's sentence and the three buttons back.
+    seams.hold_download = true;
+    ctx->ItemClick("**/Update##update");
+    const std::string downloading = "Downloading Hydra Deluxe 9.9.9...";
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, downloading); }, 5));
+    IM_CHECK(ctx->ItemExists("**/Cancel##update"));
+    IM_CHECK(!ctx->ItemExists("**/Skip this version"));
+    seams.hold_download = false;
+    const std::string declined = "The installer didn't start, so Hydra wasn't updated.";
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, declined); }, 10));
+    IM_CHECK(ctx->ItemExists("**/Update##update"));
+    IM_CHECK(ctx->ItemExists("**/Skip this version"));
+    IM_CHECK(ctx->ItemExists("**/Later"));
+    IM_CHECK(!ctx->ItemExists("**/Cancel##update"));
+    ctx->ItemClick("**/Later");
+    IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::None) && !on_screen(h, declined); }, 5));
+
+    // D9: a Check now that fails shows its sentence with a Later button (and
+    // no Update, since no release is known); Later hides the strip.
+    seams.reply = "this is not JSON";
+    click_check_now(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::Failed); }, 10));
+    ctx->Yield(2);
+    const std::string failed_text = h.app->update.text;
+    IM_CHECK(!failed_text.empty());
+    IM_CHECK(on_screen(h, failed_text));
+    IM_CHECK(ctx->ItemExists("**/Later"));
+    IM_CHECK(!ctx->ItemExists("**/Update##update"));
+    ctx->ItemClick("**/Later");
+    IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::None) && !on_screen(h, failed_text); }, 5));
+    seams.reply = update_fixtures::release_reply_at("v9.9.9");
+
+    // D4: the App group's box starts ticked, unticking it writes the INI, and
+    // Reset to defaults leaves it alone.
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(on_screen(h, "Check for updates"));
+    IM_CHECK((ctx->ItemInfo("**/##checkupdates").StatusFlags & ImGuiItemStatusFlags_Checked) != 0);
+    ctx->ItemUncheck("**/##checkupdates");
+    IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.check_updates; }, 5));
+    IM_CHECK(hydra::read_file_text(h.ini_path).find("check_updates=0") != std::string::npos);
+    ctx->ItemCheck("**/##noteshuffle");
+    ctx->ItemClick("**/Reset to defaults");
+    IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.view_noteshuffle; }, 5));
+    IM_CHECK(!h.app->settings.check_updates);
+    ctx->ItemCheck("**/##checkupdates");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.check_updates; }, 5));
+    close_settings_panel(ctx);
+
+    // D4: with a batch holding the settings, the row stays enabled.
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    {
+        BatchGate gate;
+        h.app->start_batch(false);
+        IM_CHECK(wait_until(ctx, [&] { return gate.started() >= 1; }, 30));
+        open_settings_panel(ctx);
+        if (ctx->IsError()) return;
+        IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Stop the batch to change these."); }, 5));
+        IM_CHECK(item_disabled(ctx, "**/##prodrums"));
+        IM_CHECK(!item_disabled(ctx, "**/##checkupdates"));
+        IM_CHECK(!item_disabled(ctx, "**/Check now"));
+        close_settings_panel(ctx);
+        h.app->batch_job->stop();
+        IM_CHECK(wait_until(ctx, [&] { return !h.app->batch_running(); }, 300));
+    }
+    IM_CHECK(wait_until(ctx, [&] { return !jobs_busy(h); }, 120));
+
+    // D5: a start after a version change says so once, OK hides it, and the
+    // next start shows nothing.
+    seams.reply = update_fixtures::release_reply_at("v" + running);
+    restart_app(ctx, h, [](Settings& s) { s.last_run_version = "0.0.1"; });
+    if (ctx->IsError()) return;
+    const std::string updated = "Updated to Hydra Deluxe " + running + ".";
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, updated); }, 5));
+    IM_CHECK(Settings::load_file(h.ini_path).last_run_version == running);
+    ctx->ItemClick("**/OK##update");
+    IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::None) && !on_screen(h, updated); }, 5));
+    restart_app(ctx, h, {});
+    if (ctx->IsError()) return;
+    ctx->Yield(3);
+    IM_CHECK(phase_is(Phase::None));
+    IM_CHECK(!on_screen(h, updated));
+}
+
 }  // namespace
 
 const std::vector<TestEntry>& library_tests() {
@@ -1264,6 +1546,7 @@ const std::vector<TestEntry>& library_tests() {
         {"library-twin-rows", test_library_twin_rows},
         {"startup-screen", test_startup_screen},
         {"old-library-set-aside", test_old_library_set_aside},
+        {"update-strip", test_update_strip},
     };
     return entries;
 }

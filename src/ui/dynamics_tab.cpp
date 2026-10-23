@@ -2,6 +2,8 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "app/dynamics_breakdown.h"
@@ -11,10 +13,24 @@
 #include "ui/column_widths.h"
 #include "ui/fonts.h"
 #include "ui/library_parts.h"  // format_duration
+#include "ui/text_role.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
 
 namespace hydra::ui {
+
+namespace detail {
+
+// A number column of the Dynamics and Stars tables: its header is a Label and
+// its cells are Figures, each measured in its own role's font. The Stars tab
+// declares it beside its use.
+ColumnSpec figure_column_spec(std::string header) {
+    ColumnSpec spec{std::move(header), false, 0.0f, measure_in_role(TextRole::Figure)};
+    spec.header_width_of = measure_in_role(TextRole::Label);
+    return spec;
+}
+
+}  // namespace detail
 
 namespace {
 
@@ -70,14 +86,13 @@ DynamicsTableRow dynamics_table_row(const std::string& label, const app::Dynamic
 
 // The columns of both tables. Pad is a name and may cut; the counts never do.
 // Pad, the one text column, takes all the room the counts leave (a share of
-// 100), so its dot and name are never measured.
+// 100), so its dot and name are never measured. The counts are figure columns.
 std::vector<ColumnSpec> dynamics_column_specs() {
-    const WidthOf text = measure_in_font();
-    return {{"Pad", true, 0.0f, text, 100},
-            {dynamic_label(NoteDynamicType::Ghost), false, 0.0f, text},
-            {dynamic_label(NoteDynamicType::Accent), false, 0.0f, text},
-            {"Normal", false, 0.0f, text},
-            {"All", false, 0.0f, text}};
+    return {{"Pad", true, 0.0f, measure_in_role(TextRole::Label), 100},
+            detail::figure_column_spec(dynamic_label(NoteDynamicType::Ghost)),
+            detail::figure_column_spec(dynamic_label(NoteDynamicType::Accent)),
+            detail::figure_column_spec("Normal"),
+            detail::figure_column_spec("All")};
 }
 
 // A Ghost/Accent/Normal/All table, its columns as wide as the width rule
@@ -100,6 +115,7 @@ void dynamics_table(const char* id, const std::vector<DynamicsTableRow>& rows) {
         text_ellipsized(row.cells[0].c_str());
         for (size_t c = 1; c < specs.size(); ++c) {
             ImGui::TableNextColumn();
+            ScopedBaselineFont font(TextRole::Figure);
             ImGui::TextUnformatted(row.cells[c].c_str());
         }
         if (row.disabled) ImGui::PopStyleColor();

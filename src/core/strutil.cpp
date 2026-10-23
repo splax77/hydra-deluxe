@@ -105,6 +105,16 @@ std::optional<IniPair> split_ini_line(std::string_view line) {
                    trim(line.substr(eq_in_line + 1))};
 }
 
+std::string hex_lower(const uint8_t* bytes, size_t count) {
+    static const char* kHexDigits = "0123456789abcdef";
+    std::string out(count * 2, '0');
+    for (size_t i = 0; i < count; ++i) {
+        out[2 * i] = kHexDigits[bytes[i] >> 4];
+        out[2 * i + 1] = kHexDigits[bytes[i] & 0xF];
+    }
+    return out;
+}
+
 std::optional<bool> parse_bool(std::string_view text) {
     if (text == "1") return true;
     if (text == "0") return false;

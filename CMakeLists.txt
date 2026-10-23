@@ -327,6 +327,7 @@ add_library(hydra_core STATIC
     src/app/path_report_view.cpp
     src/app/report_files.cpp
     src/app/user_messages.cpp
+    src/app/update_verify.cpp
 )
 target_include_directories(hydra_core PUBLIC src)
 target_compile_definitions(hydra_core PUBLIC HYDRA_VERSION="${PROJECT_VERSION}"
@@ -414,6 +415,8 @@ add_library(hydra_dm STATIC
     src/app/dm_report.cpp
     src/app/dm_report_view.cpp
     src/net/dmbot_client.cpp
+    src/net/http.cpp
+    src/app/update_release.cpp
 )
 target_link_libraries(hydra_dm PUBLIC hydra_core)
 target_link_libraries(hydra_dm PRIVATE winhttp hydra_warnings)
@@ -449,6 +452,7 @@ add_library(hydra_ui STATIC
     src/ui/path_report_window.cpp
     src/ui/dm_report_window.cpp
     src/ui/theme.cpp
+    src/ui/update_job.cpp
     src/ui/win32_dialogs.cpp
 )
 # hydra_render + hydra_audio join the GUI here (Phase 5): the Preview tab's
@@ -487,6 +491,8 @@ add_library(hydra_uitest_harness STATIC
     tests/report_samples.cpp
 )
 target_include_directories(hydra_uitest_harness PUBLIC tests/ui)
+# update_reply.h edits the release fixture with third_party/json.
+target_include_directories(hydra_uitest_harness PRIVATE third_party/json)
 target_link_libraries(hydra_uitest_harness PUBLIC hydra_ui PRIVATE hydra_warnings)
 target_compile_definitions(hydra_uitest_harness PRIVATE
     HYDRA_TESTDATA_DIR="${CMAKE_SOURCE_DIR}/testdata"

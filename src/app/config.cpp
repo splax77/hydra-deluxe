@@ -6,7 +6,9 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -28,6 +30,52 @@ std::string exe_dir() {
     // files beside the exe relative to the working folder, as they always were.
     return dir.empty() ? std::string(".") : dir;
 }
+
+namespace {
+
+std::optional<bool> g_installed_for_test;
+
+// The folder the installer registered under Hydra's frozen AppId
+// (installer/hydra.iss), empty when Hydra was never installed. The installer
+// runs in 64-bit mode, so its uninstall key is in the 64-bit view.
+std::wstring registered_install_location() {
+    HKEY key = nullptr;
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+                      L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"
+                      L"{638FCDD7-88E0-438D-9C52-388C6C9CF4E3}_is1",
+                      0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, &key) != ERROR_SUCCESS)
+        return {};
+    const wchar_t* const name = L"InstallLocation";
+    DWORD bytes = 0;
+    std::wstring value;
+    if (RegGetValueW(key, nullptr, name, RRF_RT_REG_SZ, nullptr, nullptr, &bytes) ==
+            ERROR_SUCCESS &&
+        bytes >= sizeof(wchar_t)) {
+        value.resize(bytes / sizeof(wchar_t));
+        if (RegGetValueW(key, nullptr, name, RRF_RT_REG_SZ, nullptr, value.data(), &bytes) ==
+            ERROR_SUCCESS)
+            value.resize(wcsnlen(value.c_str(), value.size()));
+        else
+            value.clear();
+    }
+    RegCloseKey(key);
+    return value;
+}
+
+}  // namespace
+
+bool installed_by_setup() {
+    if (g_installed_for_test) return *g_installed_for_test;
+    const std::wstring registered = registered_install_location();
+    if (registered.empty()) return false;
+    const std::wstring here = win32_path(trim_trailing_separators(exe_dir()));
+    const std::wstring there = win32_path(trim_trailing_separators(wide_to_utf8(registered)));
+    if (here.empty() || there.empty()) return false;
+    return CompareStringOrdinal(here.c_str(), static_cast<int>(here.size()), there.c_str(),
+                                static_cast<int>(there.size()), TRUE) == CSTR_EQUAL;
+}
+
+void set_installed_for_test(std::optional<bool> installed) { g_installed_for_test = installed; }
 
 std::string resource_dir() { return join_folder(exe_dir(), "resource"); }
 
@@ -151,6 +199,10 @@ const std::vector<Key>& keys() {
         on_off("legacy_fills", &Settings::legacy_fills),
         on_off("auto_open_report", &Settings::auto_open_report),
         free_text("dm_last_user", &Settings::dm_last_user),
+        on_off("check_updates", &Settings::check_updates),
+        word("skipped_update_version", &Settings::skipped_update_version),
+        word("last_update_check", &Settings::last_update_check),
+        word("last_run_version", &Settings::last_run_version),
         free_text_list("chartfolder", &Settings::chartfolders),
     };
     return k;
@@ -392,6 +444,45 @@ store::Profile Settings::profile_with_fills(FillDeadlineRule rule) const {
 }
 
 BatchRun Settings::batch_run() const { return BatchRun{profile(), to_analysis_settings()}; }
+
+std::string update_check_time_text(std::chrono::system_clock::time_point when) {
+    const std::time_t t = std::chrono::system_clock::to_time_t(when);
+    std::tm utc{};
+    if (gmtime_s(&utc, &t) != 0) return {};
+    char text[32];
+    std::snprintf(text, sizeof(text), "%04d-%02d-%02dT%02d:%02d:%02dZ", utc.tm_year + 1900,
+                  utc.tm_mon + 1, utc.tm_mday, utc.tm_hour, utc.tm_min, utc.tm_sec);
+    return text;
+}
+
+std::optional<std::chrono::system_clock::time_point> update_check_time(const std::string& text) {
+    std::tm utc{};
+    char zone = 0;
+    int consumed = 0;
+    if (sscanf_s(text.c_str(), "%4d-%2d-%2dT%2d:%2d:%2d%c%n", &utc.tm_year, &utc.tm_mon,
+                 &utc.tm_mday, &utc.tm_hour, &utc.tm_min, &utc.tm_sec, &zone, 1u,
+                 &consumed) != 7 ||
+        zone != 'Z' || static_cast<size_t>(consumed) != text.size())
+        return std::nullopt;
+    utc.tm_year -= 1900;
+    utc.tm_mon -= 1;
+    const std::tm asked = utc;
+    const std::time_t t = _mkgmtime(&utc);
+    if (t == static_cast<std::time_t>(-1)) return std::nullopt;
+    // _mkgmtime rolls a 31st of February into March; such a text is not a moment.
+    if (utc.tm_mday != asked.tm_mday || utc.tm_mon != asked.tm_mon || utc.tm_hour != asked.tm_hour ||
+        utc.tm_min != asked.tm_min || utc.tm_sec != asked.tm_sec)
+        return std::nullopt;
+    return std::chrono::system_clock::from_time_t(t);
+}
+
+bool update_check_due(const Settings& settings, std::chrono::system_clock::time_point now) {
+    if (!settings.check_updates || !installed_by_setup()) return false;
+    const std::optional<std::chrono::system_clock::time_point> last =
+        update_check_time(settings.last_update_check);
+    if (!last || *last > now) return true;
+    return now - *last > kUpdateCheckInterval;
+}
 
 std::string bars_text(int bars) { return counted(bars, "bar", "bars"); }
 

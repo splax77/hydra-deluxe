@@ -1,0 +1,25 @@
+{
+  "rules": [
+    {
+      "question": "How are hash or digest bytes written as lowercase hex?",
+      "owner": "hex_lower in src/core/strutil.cpp",
+      "owner_file": "src/core/strutil.cpp",
+      "owner_symbol": "hex_lower",
+      "date": "2026-10-22",
+      "decision": "derive-once review rule (docs/agents/derive-once-review.md), UPD-T2b-R",
+      "added_by": "upd-t2b-review",
+      "pattern": "\"0123456789abcdef\"\\s*;",
+      "owner_files": ["src/core/strutil.cpp"],
+      "scope": ["src"],
+      "must_match": [
+        "static const char* kHexDigits = \"0123456789abcdef\";",
+        "const char* digits = \"0123456789abcdef\";"
+      ],
+      "must_not_match": [
+        "return hex_lower(digest, sizeof(digest));",
+        "constexpr const char* kId = \"0123456789abcdef0123456789abcdef\";"
+      ],
+      "note": "The chart id and the update file's SHA-256 each had their own digit table and loop. Any code that turns bytes into hex calls hex_lower."
+    }
+  ]
+}

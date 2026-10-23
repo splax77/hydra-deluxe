@@ -28,6 +28,7 @@
 #include "core/model.h"  // group_thousands
 #include "imgui.h"
 #include "ui/report_state.h"  // ReportBuild, ReportOutOfDate
+#include "ui/text_role.h"
 #include "ui/theme.h"
 #include "ui/column_widths.h"
 #include "ui/list_scroll.h"
@@ -471,14 +472,26 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
             ImGui::PushID(static_cast<int>(index));
 
             // One Selectable spans the row, labeled with its row number
-            // (dim), so the whole row is one click target.
+            // (dim), so the whole row is one click target. The Selectable
+            // keeps its label (its ID and the text log) but draws it
+            // invisibly, so its highlight stays on the row, and the number
+            // is drawn over it on the row's baseline (baseline_shift).
             ImGui::TableSetColumnIndex(0);
             const std::string number = row_number(static_cast<size_t>(k));
-            ImGui::PushStyleColor(ImGuiCol_Text, kDimTextColor);
-            const bool clicked = ImGui::Selectable(
-                number.c_str(), memory.selected == index,
-                ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap);
-            ImGui::PopStyleColor();
+            bool clicked = false;
+            {
+                const float shift = baseline_shift(TextRole::Figure);
+                const ImVec2 label_pos = ImGui::GetCursorScreenPos();
+                ScopedFont figure(TextRole::Figure);
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+                clicked = ImGui::Selectable(
+                    number.c_str(), memory.selected == index,
+                    ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap);
+                ImGui::PopStyleColor();
+                ImGui::GetWindowDrawList()->AddText(ImVec2(label_pos.x, label_pos.y + shift),
+                                                    ImGui::GetColorU32(kDimTextColor),
+                                                    number.c_str());
+            }
             // Whether the list moves to the row is selection_scroll's to say
             // (ui/list_scroll.h), asked while the Selectable is the last item.
             if (clicked && pick(index)) scroll_last_row(selection_scroll(SelectionSource::Click));

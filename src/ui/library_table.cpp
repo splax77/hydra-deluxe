@@ -21,9 +21,9 @@
 #include "imgui_internal.h"  // ImGuiSelectableFlags_SpanAvailWidth
 #include "ui/app_state.h"
 #include "ui/column_widths.h"
-#include "ui/fonts.h"
 #include "ui/library_model.h"
 #include "ui/list_scroll.h"
+#include "ui/text_role.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
 
@@ -100,11 +100,12 @@ void render_search_box(AppState& app) {
         ImGui::SetKeyboardFocusHere();
 
     // EscapeClearsAll: the first Escape empties the box, the next leaves it.
-    ImGui::PushFont(g_mono_font, 0.0f);
-    const bool edited =
-        ImGui::InputTextWithHint("##search", "Search title, artist, charter or folder", buf,
-                                 sizeof(buf), ImGuiInputTextFlags_EscapeClearsAll);
-    ImGui::PopFont();
+    bool edited = false;
+    {
+        ScopedFont font(TextRole::Control);
+        edited = ImGui::InputTextWithHint("##search", "Search title, artist, charter or folder",
+                                          buf, sizeof(buf), ImGuiInputTextFlags_EscapeClearsAll);
+    }
     hint("Ctrl+F jumps here. Esc clears it.");
     if (edited) ui.search_pending = true;
 
@@ -241,17 +242,22 @@ SecondLine second_line(const app::LibraryQuery& q, const LibraryRow& row, bool f
 
 // The table's columns as the width rule (ui/column_widths.h) sees them. Each
 // one is text that ends in "…" when its cell is too short, so each may cut,
-// and each takes its share of the room (the user's shares, 2026-10-14). The
-// Best path header is measured in the mono font its cells draw in.
+// and each takes its share of the room (the user's shares, 2026-10-14).
 std::vector<ColumnSpec> library_column_specs() {
-    const WidthOf text = measure_in_font();
-    const WidthOf mono = measure_in_font(g_mono_font);
     std::vector<ColumnSpec> specs(kLibraryColumnCount);
-    specs[kColumnTitle] = {"Title", true, 0.0f, text, 17};
-    specs[kColumnArtist] = {"Artist", true, 0.0f, text, 10};
-    specs[kColumnCharter] = {"Charter", true, 0.0f, text, 9};
-    specs[kColumnFolder] = {"Folder", true, 0.0f, text, 39};
-    specs[kColumnBestPath] = {"Best path", true, 0.0f, mono, 25};
+    specs[kColumnTitle] = {"Title", true, 0.0f, {}, 17};
+    specs[kColumnArtist] = {"Artist", true, 0.0f, {}, 10};
+    specs[kColumnCharter] = {"Charter", true, 0.0f, {}, 9};
+    specs[kColumnFolder] = {"Folder", true, 0.0f, {}, 39};
+    specs[kColumnBestPath] = {"Best path", true, 0.0f, {}, 25};
+    // The header row draws in Label, each cell in its column's role.
+    const WidthOf label = measure_in_role(TextRole::Label);
+    for (int c = 0; c < kLibraryColumnCount; ++c) {
+        ColumnSpec& spec = specs[static_cast<size_t>(c)];
+        spec.header_width_of = label;
+        spec.width_of =
+            measure_in_role(c == kColumnBestPath ? TextRole::Notation : TextRole::Title);
+    }
     return specs;
 }
 
@@ -431,9 +437,10 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
                 continue;
             }
             ImGui::PushStyleColor(ImGuiCol_Text, best_path_color(row.status));
-            ImGui::PushFont(g_mono_font, 0.0f);
-            text_ellipsized(library_cell_text(row, kColumnBestPath).c_str());
-            ImGui::PopFont();
+            {
+                ScopedBaselineFont font(TextRole::Notation);
+                text_ellipsized(library_cell_text(row, kColumnBestPath).c_str());
+            }
             ImGui::PopStyleColor();
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
                 switch (row.status) {

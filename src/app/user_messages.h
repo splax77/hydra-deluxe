@@ -43,6 +43,13 @@ inline constexpr const char* kAnalysisOffSentence =
     "hydra_rules.ini has an error, so analysis is off until the file is fixed and "
     "Hydra is restarted.";
 
+// What a refused update reads as (ErrorKind::UpdateUnverified, decision 9 of
+// docs/superpowers/plans/2026-10-22-auto-updater.md). The update strip shows
+// it for every refusal; the details line under it names the check.
+inline constexpr const char* kUpdateUnverifiedSentence =
+    "Hydra couldn't verify the update it downloaded, so it was not installed. Try again "
+    "later, or download the release from GitHub yourself.";
+
 // What a command-line tool prints for a bad hydra_rules.ini (D114 item 11):
 // the tools' sentence, then the loader's line from `e`. The tools stop instead
 // of running on (app::load_tool_rules), so the app's sentence does not fit.

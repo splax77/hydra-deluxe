@@ -134,3 +134,9 @@ TEST_CASE("strutil: relative_slash_path strips the root plus one byte and flips 
     // Only a longer path is stripped.
     CHECK(relative_slash_path("C:\\in", "C:\\in") == "C:/in");
 }
+
+TEST_CASE("hex_lower writes two lowercase digits per byte") {
+    const uint8_t bytes[] = {0x00, 0x0a, 0xff, 0x7e};
+    CHECK(hex_lower(bytes, sizeof(bytes)) == "000aff7e");
+    CHECK(hex_lower(bytes, 0).empty());
+}

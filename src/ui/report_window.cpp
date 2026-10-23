@@ -7,7 +7,7 @@
 #include "app/html_page.h"   // kNothingMatches
 #include "imgui_internal.h"  // TableSetColumnSortDirection, the window's item rects
 #include "ui/app_shell.h"    // report_window_class, place_report_window
-#include "ui/fonts.h"        // g_mono_font, px
+#include "ui/text_role.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
 
@@ -348,6 +348,23 @@ float footer_height(const Frame& f) {
            ImGui::GetStyle().ItemSpacing.y;
 }
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(error : 4062)  // an enumerator not handled in a switch
+#endif
+TextRole cell_role(app::report_view::CellKind kind) {
+    switch (kind) {
+        case app::report_view::CellKind::Text: return TextRole::Label;
+        case app::report_view::CellKind::Notation: return TextRole::Notation;
+        case app::report_view::CellKind::Figure: return TextRole::Figure;
+    }
+    IM_ASSERT(false && "cell_role: a value outside CellKind");
+    return TextRole::Label;
+}
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+
 void cell(const std::string& text, const app::report_view::CellLook& look, Tone tone,
           FittedTextCache& fits, size_t row, size_t column) {
     const bool dim = tone == Tone::Dim || (tone == Tone::Normal && look.dim);
@@ -356,9 +373,10 @@ void cell(const std::string& text, const app::report_view::CellLook& look, Tone 
                          : dim               ? kDimTextColor
                                              : ImGui::GetStyleColorVec4(ImGuiCol_Text);
     ImGui::PushStyleColor(ImGuiCol_Text, color);
-    if (look.mono) ImGui::PushFont(g_mono_font, 0.0f);
-    fitted_text(text, fits, row, column);
-    if (look.mono) ImGui::PopFont();
+    {
+        ScopedBaselineFont font(cell_role(look.kind));
+        fitted_text(text, fits, row, column);
+    }
     ImGui::PopStyleColor();
 }
 
@@ -386,7 +404,9 @@ std::string row_number(size_t k) { return group_thousands(static_cast<int64_t>(k
 ColumnSpec row_number_spec() {
     ColumnSpec s;
     s.header = "#";
-    s.width_of = measure_in_font();
+    // The numbers are Figure text under a Label header.
+    s.header_width_of = measure_in_role(TextRole::Label);
+    s.width_of = measure_in_role(TextRole::Figure);
     return s;
 }
 
@@ -396,7 +416,9 @@ ColumnSpec column_spec(const std::string& title, const app::report_view::CellLoo
     s.may_cut = look.truncate;
     s.share = look.share;
     if (look.chip) s.padding = chip_pad() * 2.0f;
-    s.width_of = measure_in_font(look.mono ? g_mono_font : nullptr);
+    // The header row draws in Label, the cells in their kind's role.
+    s.header_width_of = measure_in_role(TextRole::Label);
+    s.width_of = measure_in_role(cell_role(look.kind));
     return s;
 }
 

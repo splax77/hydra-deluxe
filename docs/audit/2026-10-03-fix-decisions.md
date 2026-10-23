@@ -928,7 +928,18 @@ The user's calls, in chat on 2026-10-22:
 
 What stays. D80's example still holds: an activation whose only timing is a free squeeze-in 316 ms inside Star Power reads exactly `squeeze in -316 ms`. D51 call 4 and D60 item 2 stay: an early fill with time to spare has nothing to time and gets no badge. Everything else D80 kept on `hardest()` stays there, with its tie rule: the path button, the Path limit, the library filter, the stored hardest ms, the report and the all-0 list still treat a free squeeze as nothing to time. Nothing stored changes, so no stamp moves.
 
-**D259 (session a8ea987c), 2026-10-22. Hydra checks for its own updates and installs one only when you click Update.** The plan is `docs/superpowers/plans/2026-10-22-auto-updater.md` (task UPD-P1). Once a day, an installed Hydra asks GitHub for the latest release. If it is newer, a line under the toolbar offers it. Clicking `Update` downloads the installer, checks it against a signature made with the project's key, and starts it. (D258 is taken by the font-owner record on another branch, so this one is D259.)
+**D258 (session db4f286d), 2026-10-22. Every font pick goes through one owner, and the kind of text picks the font.** Hydra drew text in two fonts, the default font and the mono font (Courier Prime), and each draw call chose one for itself. Nothing ruled which text gets which font; the mix came from the September mockup. In two table headers the width was measured in one font and the text drawn in the other. The plan is `docs/superpowers/plans/2026-10-22-font-role-single-owner.md`. A draw now names its role, the kind of text it shows (a path, a figure, a label, a sentence, a title, a control, an overlay), and `font_for` in `src/ui/text_role.h` is the one place that turns a role into a font and size. A single-owner rule (`tests/single_owner/rules/ui/text_role.json`) refuses a raw font pick anywhere else under `src`.
+
+The user's answer, in chat on 2026-10-22: "Approved. Yes to all five recommendations (Q1-Q5)."
+1. **Number columns.** Number columns in tables draw in mono: the path report's Score, Acts, Max skip and Hardest ms, the DM report's counts, and the Dynamics and Stars tables' figures, so the window matches its own saved HTML page.
+2. **Library search box.** The search box draws in the default font, so a Japanese title typed into it shows as text instead of boxes.
+3. **Multiplier squeeze sentence.** The Multiplier squeeze fold's "how to" sentence and its "None." line draw in the default font, like every other squeeze sentence on the Paths tab.
+4. **Table headers.** Every table header row draws in the default font and is measured in it, which fixes the two headers measured in mono and drawn in default.
+5. **Timeline numbers.** The small activation numbers above the Paths tab timeline draw in mono, matching the numbers in the rows under them.
+
+The row numbers in a report window's "#" column are numbers in a column, so they follow the Figure rule of answer 1: mono cells, a default-font header. Nothing stored changes, so no stamp moves.
+
+**D259 (session a8ea987c), 2026-10-22. Hydra checks for its own updates and installs one only when you click Update.** The plan is `docs/superpowers/plans/2026-10-22-auto-updater.md` (task UPD-P1). Once a day, an installed Hydra asks GitHub for the latest release. If it is newer, a line under the toolbar offers it. Clicking `Update` downloads the installer, checks it against a signature made with the project's key, and starts it.
 
 The user approved the plan in chat on 2026-10-22: "Approve the plan with every recommended decision. Start the build." So every call below is the plan's recommendation. Two choices outside the numbered list came with it. Hydra builds its own updater on its WinHTTP code and the GitHub release page, not WinSparkle. The signature is ECDSA on the P-256 curve with SHA-256, checked through Windows' bcrypt, because Windows' crypto API has no Ed25519.
 

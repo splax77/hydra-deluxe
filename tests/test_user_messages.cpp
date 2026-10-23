@@ -5,6 +5,7 @@
 #include "doctest.h"
 
 #include <new>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -192,6 +193,9 @@ TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its
         {ErrorKind::AudioDecode, kAudioDecode},
         {ErrorKind::PreviewAssets,
          "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them."},
+        {ErrorKind::UpdateUnverified,
+         "Hydra couldn't verify the update it downloaded, so it was not installed. Try again "
+         "later, or download the release from GitHub yourself."},
     };
     for (const auto& [kind, sentence] : cases) {
         CAPTURE(static_cast<int>(kind));
@@ -214,6 +218,46 @@ TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its
     // The typed errors carry their kinds too.
     CHECK(plain_error(hydra::ChartFileError("x")) == kChartUnreadable);
     CHECK(plain_error(hydra::MidiError("x")) == kChartUnreadable);
+}
+
+TEST_CASE("a network failure's sentence names the server that failed") {
+    using hydra::ErrorKind;
+    using hydra::KindedError;
+    using hydra::NetService;
+    const auto with = [](ErrorKind kind, std::optional<NetService> service,
+                         std::optional<int> status = std::nullopt) {
+        return plain_error(KindedError(kind, "x", status, service));
+    };
+    // GitHub: the user's ruling during T3a of the auto-updater plan.
+    CHECK(with(ErrorKind::NetUnreachable, NetService::GitHub) ==
+          "Hydra couldn't reach GitHub. Check your internet connection and try again.");
+    CHECK(with(ErrorKind::NetTimeout, NetService::GitHub) ==
+          "GitHub didn't answer in time. Try again later.");
+    CHECK(with(ErrorKind::NetBadReply, NetService::GitHub) ==
+          "GitHub sent a reply Hydra couldn't read. Try again later.");
+    CHECK(with(ErrorKind::NetHttpStatus, NetService::GitHub, 403) ==
+          "GitHub returned an error (HTTP 403). Try again later.");
+    // The leaderboard named, or no server named, keeps the dmleaderboards words.
+    for (const std::optional<NetService> service :
+         {std::optional<NetService>(NetService::Leaderboard), std::optional<NetService>()}) {
+        CHECK(with(ErrorKind::NetUnreachable, service) == kNetUnreachable);
+        CHECK(with(ErrorKind::NetTimeout, service) ==
+              "dmleaderboards didn't answer in time. Its server may be waking up; try again in "
+              "a minute.");
+        CHECK(with(ErrorKind::NetBadReply, service) ==
+              "dmleaderboards sent a reply Hydra couldn't read. Try again later.");
+        CHECK(with(ErrorKind::NetHttpStatus, service, 503) ==
+              "dmleaderboards returned an error (HTTP 503). Try again later.");
+    }
+    // The detail line stays the raw text for every server.
+    CHECK(plain_error_detail(
+              KindedError(ErrorKind::NetUnreachable, "raw", std::nullopt, NetService::GitHub)) ==
+          "raw");
+}
+
+TEST_CASE("the transport's host names come from the service") {
+    CHECK(hydra::net_service_host_name(hydra::NetService::GitHub) == "GitHub");
+    CHECK(hydra::net_service_host_name(hydra::NetService::Leaderboard) == "leaderboard");
 }
 
 // D73 item 4: a tool's body that throws ends with exit code 1 (and its

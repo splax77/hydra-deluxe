@@ -16,6 +16,8 @@
 #include <cstdio>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <utility>  // std::in_place
 #include <vector>
 
 #include "app/config.h"  // Settings::clamp, the Backend limit's range
@@ -28,8 +30,9 @@
 #include "ui/badge_pill.h"
 #include "ui/column_widths.h"
 #include "ui/details_view.h"
-#include "ui/fonts.h"
+#include "ui/fonts.h"  // px()
 #include "ui/label_layout.h"
+#include "ui/text_role.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
 
@@ -46,24 +49,21 @@ ImVec4 dim_color() { return ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled); }
 // on the timeline and its scale line all use it.
 ImVec4 warn_or_dim(bool warn) { return warn ? kWarningColor : dim_color(); }
 
-// Draw `text` at `pos` over an item already submitted. `font` null keeps the
-// current font; `wrap_w` > 0 wraps the text at that width.
-void text_at(const ImVec2& pos, const ImVec4& color, const char* text,
-             ImFont* font = nullptr, float wrap_w = 0.0f) {
+// Draw `text` in `role`'s font (text_role.h) at `pos` over an item already
+// submitted; `wrap_w` > 0 wraps the text at that width.
+void text_at(const ImVec2& pos, const ImVec4& color, const char* text, TextRole role,
+             float wrap_w = 0.0f) {
     ImGui::SetCursorScreenPos(pos);
-    if (font) ImGui::PushFont(font, 0.0f);
+    ScopedFont font(role);
     if (wrap_w > 0.0f) ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + wrap_w);
     ImGui::TextColored(color, "%s", text);
     if (wrap_w > 0.0f) ImGui::PopTextWrapPos();
-    if (font) ImGui::PopFont();
 }
 
-// The height of `text` wrapped at `wrap_w`, in `font` (null: the current one).
-float wrapped_height(const char* text, float wrap_w, ImFont* font = nullptr) {
-    if (font) ImGui::PushFont(font, 0.0f);
-    const float h = ImGui::CalcTextSize(text, nullptr, false, wrap_w).y;
-    if (font) ImGui::PopFont();
-    return h;
+// The height of `text` wrapped at `wrap_w`, in `role`'s font.
+float wrapped_height(const char* text, float wrap_w, TextRole role) {
+    ScopedFont font(role);
+    return ImGui::CalcTextSize(text, nullptr, false, wrap_w).y;
 }
 
 // After text laid over a block that starts at `top` and is `h` tall: put the
@@ -86,12 +86,9 @@ void flow_next(float w, float spacing) {
 // The space between a path's title and its timing.
 constexpr float kTimingGap = 12.0f;
 
-// The width of `text` on one line in the path list's mono font.
-float mono_width(const std::string& text) {
-    ImGui::PushFont(g_mono_font, 0.0f);
-    const float w = ImGui::CalcTextSize(text.c_str()).x;
-    ImGui::PopFont();
-    return w;
+// The width of `text` on one line in `role`'s font.
+float width_in(TextRole role, const std::string& text) {
+    return text_size(role, text.c_str()).x;
 }
 
 // One path: a full-width Selectable with the id ##path<i>, the title over it
@@ -103,10 +100,12 @@ bool path_button(size_t i, const app::PathButtonView& b, bool selected) {
     const float pad = px(6.0f);
     const float gap = px(2.0f);
     const float wrap_w = std::max(1.0f, ImGui::GetContentRegionAvail().x - pad * 2.0f);
-    const float timing_w = b.timing.empty() ? 0.0f : px(kTimingGap) + mono_width(b.timing);
+    const float timing_w =
+        b.timing.empty() ? 0.0f : px(kTimingGap) + width_in(TextRole::Figure, b.timing);
     const float title_wrap_w = std::max(1.0f, wrap_w - timing_w);
-    const float title_h = wrapped_height(b.title.c_str(), title_wrap_w, g_mono_font);
-    const float detail_h = b.detail.empty() ? 0.0f : wrapped_height(b.detail.c_str(), wrap_w);
+    const float title_h = wrapped_height(b.title.c_str(), title_wrap_w, TextRole::Notation);
+    const float detail_h =
+        b.detail.empty() ? 0.0f : wrapped_height(b.detail.c_str(), wrap_w, TextRole::Prose);
     const float h = pad * 2.0f + title_h + (b.detail.empty() ? 0.0f : gap + detail_h);
     char id[32];
     std::snprintf(id, sizeof(id), "##path%zu", i);
@@ -114,15 +113,15 @@ bool path_button(size_t i, const app::PathButtonView& b, bool selected) {
     const bool clicked = ImGui::Selectable(id, selected, ImGuiSelectableFlags_None, ImVec2(0.0f, h));
     const bool optimal = b.group == app::PathButtonView::Group::Optimal;
     text_at(ImVec2(top.x + pad, top.y + pad), optimal ? kBestPathColor : text_color(),
-            b.title.c_str(), g_mono_font, title_wrap_w);
+            b.title.c_str(), TextRole::Notation, title_wrap_w);
     if (!b.timing.empty()) {
-        const float title_w = std::min(mono_width(b.title), title_wrap_w);
+        const float title_w = std::min(width_in(TextRole::Notation, b.title), title_wrap_w);
         text_at(ImVec2(top.x + pad + title_w + px(kTimingGap), top.y + pad),
-                warn_or_dim(b.timing_warn), b.timing.c_str(), g_mono_font);
+                warn_or_dim(b.timing_warn), b.timing.c_str(), TextRole::Figure);
     }
     if (!b.detail.empty())
         text_at(ImVec2(top.x + pad, top.y + pad + title_h + gap),
-                dim_color(), b.detail.c_str(), nullptr, wrap_w);
+                dim_color(), b.detail.c_str(), TextRole::Prose, wrap_w);
     end_overlay(top, h);
     return clicked;
 }
@@ -134,14 +133,16 @@ bool path_button(size_t i, const app::PathButtonView& b, bool selected) {
 bool score_fold(const app::PathButtonView& b) {
     const bool optimal = b.group == app::PathButtonView::Group::Optimal;
     const std::string label = b.fold + "##fold";
-    ImGui::PushFont(g_mono_font, 0.0f);
-    if (optimal) ImGui::PushStyleColor(ImGuiCol_Text, kBestPathColor);
-    // NoAutoOpenOnLog: ImGui opens every tree node while it logs text (the
-    // GUI tests read the screen that way), which would show a closed fold's paths.
-    const bool open = ImGui::TreeNodeEx(
-        label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_NoAutoOpenOnLog);
-    if (optimal) ImGui::PopStyleColor();
-    ImGui::PopFont();
+    bool open = false;
+    {
+        ScopedFont font(TextRole::Notation);
+        if (optimal) ImGui::PushStyleColor(ImGuiCol_Text, kBestPathColor);
+        // NoAutoOpenOnLog: ImGui opens every tree node while it logs text (the
+        // GUI tests read the screen that way), which would show a closed fold's paths.
+        open = ImGui::TreeNodeEx(
+            label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_NoAutoOpenOnLog);
+        if (optimal) ImGui::PopStyleColor();
+    }
     ImGui::SameLine();
     ImGui::TextDisabled("%s", b.fold_count.c_str());
     return open;
@@ -217,7 +218,10 @@ void render_timeline(const app::ActivationsView& view) {
     const float bar_y = top.y + px(26.0f);
     dl->AddRectFilled(ImVec2(top.x, bar_y), ImVec2(top.x + w, bar_y + px(4.0f)),
                       IM_COL32(58, 58, 62, 255), px(2.0f));
+    // The numbers are Figures drawn small, measured and drawn in one font at one size.
+    ImFont* const num_font = font_for(TextRole::Figure).font;
     const float num_size = ImGui::GetFontSize() * 0.7f;
+    const WidthOf num_width = measure_in_role(TextRole::Figure, num_size);
     std::vector<float> marks, widths;  // each mark's x, and its number's width
     for (const app::ActivationRowView& a : view.acts) {
         const float x = top.x + static_cast<float>(*a.song_fraction) * w;
@@ -234,14 +238,14 @@ void render_timeline(const app::ActivationsView& view) {
                         0, px(1.5f));
         const std::string num = std::to_string(a.number);
         marks.push_back(x);
-        widths.push_back(ImGui::GetFont()->CalcTextSizeA(num_size, FLT_MAX, 0.0f, num.c_str()).x);
+        widths.push_back(num_width(num));
     }
     const std::vector<std::optional<float>> lefts =
         spaced_labels(marks, widths, top.x, top.x + w, px(3.0f));
     for (size_t i = 0; i < view.acts.size(); ++i) {
         if (!lefts[i]) continue;
         const app::ActivationRowView& a = view.acts[i];
-        dl->AddText(ImGui::GetFont(), num_size, ImVec2(*lefts[i], top.y + px(2.0f)),
+        dl->AddText(num_font, num_size, ImVec2(*lefts[i], top.y + px(2.0f)),
                     ImGui::GetColorU32(a.badges.empty() ? ImGuiCol_TextDisabled : ImGuiCol_Text),
                     std::to_string(a.number).c_str());
     }
@@ -263,11 +267,10 @@ void render_timeline(const app::ActivationsView& view) {
     }
     // The end label starts right after the start label, text at the left as
     // apply_theme (ui/theme.cpp) has it (the user's answer 8).
-    ImGui::PushFont(g_mono_font, 0.0f);
+    ScopedFont font(TextRole::Figure);
     ImGui::TextDisabled("%s", view.timeline_start.c_str());
     flow_next(ImGui::CalcTextSize(view.timeline_end.c_str()).x, ImGui::GetStyle().ItemSpacing.x);
     ImGui::TextDisabled("%s", view.timeline_end.c_str());
-    ImGui::PopFont();
 }
 
 // One activation's line: a full-width Selectable (##act<number>) with the fold
@@ -277,13 +280,14 @@ void render_timeline(const app::ActivationsView& view) {
 // measure never runs into them and every row's bars line up
 // (activation_row_layout.h). When the layout puts the badges under the
 // measure, the row grows to hold their lines and the first line stays where it
-// was. Every piece of the row's text is in the mono font (D257), so the
-// pieces share one baseline and the layout measures what is drawn.
+// was. The whole row is one Figure scope, and the notation inside it is
+// Notation; both roles draw in one font (text_role.h, D257), so the pieces
+// share one baseline and the layout measures what is drawn.
 void render_activation_row(size_t i, const app::ActivationRowView& a, app::PathsTabUi& ui,
                            float widest_measure_w) {
     const bool open = i < ui.act_open.size() && ui.act_open[i];
     const float width = ImGui::GetContentRegionAvail().x;
-    ImGui::PushFont(g_mono_font, 0.0f);
+    std::optional<ScopedFont> font(std::in_place, TextRole::Figure);
     const float line = ImGui::GetTextLineHeight();
     // The layout comes first: it says how tall the row is.
     std::vector<float> badge_ws;
@@ -309,19 +313,21 @@ void render_activation_row(size_t i, const app::ActivationRowView& a, app::Paths
     // Centred in its circle by hand: a kept exception to apply_theme's
     // left-aligned text (ui/theme.cpp), the user's answer 9.
     text_at(ImVec2(dot.x - ImGui::CalcTextSize(num.c_str()).x * 0.5f, text_y), text_color(),
-            num.c_str());
-    text_at(ImVec2(top.x + px(52.0f), text_y), kBestPathColor, a.notation.c_str());
-    text_at(ImVec2(top.x + l.measure_x, text_y), text_color(), a.measure.c_str());
-    text_at(ImVec2(top.x + l.bars_x, text_y), dim_color(), a.bars.c_str());
+            num.c_str(), TextRole::Figure);
+    text_at(ImVec2(top.x + px(52.0f), text_y), kBestPathColor, a.notation.c_str(),
+            TextRole::Notation);
+    text_at(ImVec2(top.x + l.measure_x, text_y), text_color(), a.measure.c_str(), TextRole::Figure);
+    text_at(ImVec2(top.x + l.bars_x, text_y), dim_color(), a.bars.c_str(), TextRole::Figure);
     // One pill per badge, all the row's pill width (badge_pill.h), each text
     // in its own colour.
     for (size_t k = 0; k < a.badges.size(); ++k) {
         const float bx = top.x + l.badge_x[k];
         const float by = top.y + l.badge_y[k];
         draw_badge_pill(dl, pill_rect(bx, by, l.pill_w, line, px(1.0f)), px(1.0f));
-        text_at(ImVec2(bx, by), warn_or_dim(a.badges[k].warn), a.badges[k].text.c_str());
+        text_at(ImVec2(bx, by), warn_or_dim(a.badges[k].warn), a.badges[k].text.c_str(),
+                TextRole::Figure);
     }
-    ImGui::PopFont();
+    font.reset();
     end_overlay(top, l.row_h);
 }
 
@@ -344,16 +350,23 @@ void squeeze_box(int act_number, size_t k, const app::TextLine& s) {
     ImGui::PopStyleColor(3);
 }
 
-// The backend table's columns, all in the mono font. Timing, Chord and Points
-// never cut; Rating, the one text column, takes all the room they leave (a
-// share of 100) and wraps inside it.
+// The role each backend column's cells draw in; the header row is Label.
+constexpr TextRole kBackendCellRole[] = {TextRole::Figure, TextRole::Notation, TextRole::Figure,
+                                         TextRole::Figure};
+
+// The backend table's columns. Timing, Chord and Points never cut; Rating,
+// the one text column, takes all the room they leave (a share of 100) and
+// wraps inside it.
 constexpr size_t kRatingColumn = 3;
 std::vector<ColumnSpec> backend_column_specs() {
-    const WidthOf mono = measure_in_font(g_mono_font);
-    return {{"Timing", false, 0.0f, mono},
-            {"Chord", false, 0.0f, mono},
-            {"Points", false, 0.0f, mono},
-            {"Rating", true, 0.0f, mono, 100}};
+    std::vector<ColumnSpec> specs = {
+        {"Timing", false, 0.0f, measure_in_role(kBackendCellRole[0])},
+        {"Chord", false, 0.0f, measure_in_role(kBackendCellRole[1])},
+        {"Points", false, 0.0f, measure_in_role(kBackendCellRole[2])},
+        {"Rating", true, 0.0f, measure_in_role(kBackendCellRole[kRatingColumn]), 100}};
+    const WidthOf label = measure_in_role(TextRole::Label);
+    for (ColumnSpec& spec : specs) spec.header_width_of = label;
+    return specs;
 }
 
 // Column `c`'s text in a backend row, the text its cell draws.
@@ -367,9 +380,10 @@ std::string backend_cell(const app::BackendRowView& row, size_t c) {
 }
 
 // How tall each backend row's Rating is once it wraps at the width the rule
-// gave that column, for table_outer_height. Call it with the mono font pushed.
+// gave that column, in the column's cell role, for table_outer_height.
 std::vector<float> backend_rating_heights(const app::ActivationRowView& a,
                                           const ColumnLayout& layout) {
+    ScopedFont font(kBackendCellRole[kRatingColumn]);
     std::vector<float> heights;
     heights.reserve(a.backends.size());
     for (const app::BackendRowView& row : a.backends)
@@ -395,7 +409,6 @@ void render_backend_table(const app::ActivationRowView& a) {
             hidden_line();
         return;
     }
-    ImGui::PushFont(g_mono_font, 0.0f);
     // Every column is as wide as the width rule (ui/column_widths.h) says.
     // The rows are a handful, so they are measured each frame.
     const std::vector<ColumnSpec> specs = backend_column_specs();
@@ -405,19 +418,24 @@ void render_backend_table(const app::ActivationRowView& a) {
             id, ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable, specs, a.backends.size(),
             [&](size_t r, size_t c) { return backend_cell(a.backends[r], c); },
             [&](const ColumnLayout& layout) { return backend_rating_heights(a, layout); })) {
-        ImGui::TableHeadersRow();
+        {
+            ScopedFont font(TextRole::Label);
+            ImGui::TableHeadersRow();
+        }
         for (const app::BackendRowView& row : a.backends) {
             ImGui::TableNextRow();
-            // Every cell draws backend_cell, the text its column is measured from.
-            ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted(backend_cell(row, 0).c_str());
-            if (!row.tooltip.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
-                ImGui::SetTooltip("%s", row.tooltip.c_str());
-            ImGui::TableSetColumnIndex(1);
-            ImGui::TextUnformatted(backend_cell(row, 1).c_str());
-            ImGui::TableSetColumnIndex(2);
-            ImGui::TextUnformatted(backend_cell(row, 2).c_str());
+            // Every cell draws backend_cell, the text its column is measured
+            // from, in its column's role.
+            for (size_t c = 0; c < kRatingColumn; ++c) {
+                ImGui::TableSetColumnIndex(static_cast<int>(c));
+                ScopedFont font(kBackendCellRole[c]);
+                ImGui::TextUnformatted(backend_cell(row, c).c_str());
+                if (c == 0 && !row.tooltip.empty() &&
+                    ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
+                    ImGui::SetTooltip("%s", row.tooltip.c_str());
+            }
             ImGui::TableSetColumnIndex(kRatingColumn);
+            ScopedFont font(kBackendCellRole[kRatingColumn]);
             // Rating wraps inside its cell: at the narrowest panel the
             // squeezed-out note is longer than the column is wide.
             if (row.warn) ImGui::PushStyleColor(ImGuiCol_Text, kWarningColor);
@@ -428,7 +446,6 @@ void render_backend_table(const app::ActivationRowView& a) {
         }
         ImGui::EndTable();
     }
-    ImGui::PopFont();
     if (!a.backends_hidden_line.empty()) hidden_line();
 }
 
@@ -440,9 +457,10 @@ void render_activation_body(size_t i, const app::ActivationRowView& a, app::Path
     ImGui::Indent(px(48.0f));
     ImGui::TextDisabled("Chord");
     ImGui::SameLine();
-    ImGui::PushFont(g_mono_font, 0.0f);
-    ImGui::TextUnformatted(a.chord.c_str());
-    ImGui::PopFont();
+    {
+        ScopedFont font(TextRole::Notation);
+        ImGui::TextUnformatted(a.chord.c_str());
+    }
     char show[48];
     std::snprintf(show, sizeof(show), "Show in Preview >##showact%d", a.number);
     place_control_at_line_end(button_slot_width("Show in Preview >"));
@@ -509,10 +527,8 @@ void render_activations(const app::ActivationsView& view, app::PathsTabUi& ui) {
     render_timeline(view);
     ImGui::Spacing();
     float widest_measure = 0.0f;
-    ImGui::PushFont(g_mono_font, 0.0f);
     for (const app::ActivationRowView& a : view.acts)
-        widest_measure = std::max(widest_measure, ImGui::CalcTextSize(a.measure.c_str()).x);
-    ImGui::PopFont();
+        widest_measure = std::max(widest_measure, width_in(TextRole::Figure, a.measure));
     for (size_t i = 0; i < view.acts.size(); ++i) {
         const app::ActivationRowView& a = view.acts[i];
         render_activation_row(i, a, ui, widest_measure);
@@ -552,20 +568,26 @@ void render_path_footer(AppState& app, const app::PathsTabCache::Details& d,
     }
 
     if (ui.mult_open) {
-        ImGui::PushFont(g_mono_font, 0.0f);
-        if (d.squeezes.empty()) ImGui::TextDisabled("None.");
+        if (d.squeezes.empty()) {
+            ScopedFont font(TextRole::Prose);
+            ImGui::TextDisabled("None.");
+        }
         for (const app::MultSqueezeView& msq : d.squeezes) {
-            ImGui::TextUnformatted(msq.label.c_str());
+            {
+                ScopedFont font(TextRole::Notation);
+                ImGui::TextUnformatted(msq.label.c_str());
+            }
             ImGui::Indent(px(24.0f));
-            ImGui::TextUnformatted(msq.howto.c_str());
+            {
+                ScopedFont font(TextRole::Prose);
+                ImGui::TextUnformatted(msq.howto.c_str());
+            }
             ImGui::Unindent(px(24.0f));
         }
-        ImGui::PopFont();
     }
     if (ui.breakdown_open) {
-        ImGui::PushFont(g_mono_font, 0.0f);
+        ScopedFont font(TextRole::Figure);
         for (const std::string& line : d.breakdown) ImGui::TextUnformatted(line.c_str());
-        ImGui::PopFont();
     }
 
     // The backend tables' display window. Purely a filter on what the tables
@@ -614,12 +636,13 @@ void render_path_panel(AppState& app, const Path*& selected_path) {
     const float indent = ImGui::GetStyle().IndentSpacing;
     for (const app::PathButtonView& b : list.buttons) {
         const float in = b.fold.empty() ? 0.0f : indent;
-        widest = std::max(widest, in + mono_width(b.title) +
-                                      (b.timing.empty() ? 0.0f
-                                                        : px(kTimingGap) + mono_width(b.timing)));
+        widest = std::max(widest, in + width_in(TextRole::Notation, b.title) +
+                                      (b.timing.empty()
+                                           ? 0.0f
+                                           : px(kTimingGap) + width_in(TextRole::Figure, b.timing)));
     }
     for (const app::PathButtonView& b : list.buttons)
-        widest = std::max(widest, ImGui::CalcTextSize(b.detail.c_str()).x);
+        widest = std::max(widest, width_in(TextRole::Prose, b.detail));
     const float list_fit = widest + px(6.0f) * 2.0f + ImGui::GetStyle().ScrollbarSize;
     const float tab_w = ImGui::GetContentRegionAvail().x;
     const float list_max =

@@ -86,6 +86,35 @@ bool open_in_browser(const std::wstring& path) {
     return !copy.empty() && shell_open(copy.wstring());
 }
 
+StartedProgram::~StartedProgram() {
+    if (process_) CloseHandle(static_cast<HANDLE>(process_));
+}
+
+bool StartedProgram::ended() const {
+    return process_ && WaitForSingleObject(static_cast<HANDLE>(process_), 0) == WAIT_OBJECT_0;
+}
+
+std::shared_ptr<StartedProgram> start_program(const std::wstring& exe, const std::wstring& params) {
+    const std::wstring file = shell_path(exe);
+    if (file.empty())
+        throw std::runtime_error("the shell can't take this program's path: " + wide_to_utf8(exe));
+    SHELLEXECUTEINFOW info{};
+    info.cbSize = sizeof(info);
+    info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI;
+    // Never "runas": a program that needs administrator rights asks for them
+    // itself, so it can start Hydra again as the user afterwards (the
+    // installer ruling in docs/superpowers/plans/2026-10-22-auto-updater.md).
+    info.lpVerb = L"open";
+    info.lpFile = file.c_str();
+    info.lpParameters = params.c_str();
+    info.nShow = SW_SHOWNORMAL;
+    if (!ShellExecuteExW(&info))
+        throw std::runtime_error(std::system_category().message(static_cast<int>(GetLastError())));
+    // An exe always hands back its process; without one there is nothing to
+    // watch, and ended() stays false.
+    return std::make_shared<StartedProgram>(info.hProcess);
+}
+
 bool write_file_replacing(const std::filesystem::path& outpath, const std::string& bytes,
                           LineEnds ends) {
     // A reader can open the file at any moment, including mid-write. The

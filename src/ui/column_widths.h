@@ -3,8 +3,8 @@
 // Change 1). place_columns is its owner.
 //
 // A column that never cuts is as wide as the widest thing it shows: its
-// header or its widest cell, in the cell's own font, with any per-cell
-// padding. Columns that may cut their text (text columns) split what is left
+// header or its widest cell, each measured in the font it draws in
+// (ColumnSpec::header_width_of and width_of), with any per-cell padding. Columns that may cut their text (text columns) split what is left
 // by the fixed shares their table's column list gives them
 // (ColumnSpec::share), so a text column's width never follows its text. A
 // column the user dragged holds the drag until its table's rows reload
@@ -69,13 +69,18 @@ struct ColumnSpec {
     // (report_frame::column_spec sets it, from the same chip_pad the chip is
     // drawn with). The header does not get it.
     float padding = 0.0f;
-    // Measures this column's header and cells. In the app, measure_in_font() with
-    // the column's font; in a unit test, a fake.
+    // Measures this column's cells, and its header too when header_width_of is
+    // empty. In the app, measure_in_role() with the cells' text role; in a unit
+    // test, a fake.
     WidthOf width_of;
     // A text column's whole-percent share of the room the number columns
     // leave. Every text column in a table has one, and a table's shares sum
     // to 100. A number column's stays 0.
     int share = 0;
+    // Measures this column's header, which draws in a different font from its
+    // cells. In the app, measure_in_role(TextRole::Label). Empty: width_of
+    // measures the header too.
+    WidthOf header_width_of;
 };
 
 // Whether `specs` is a well-formed column list: it has no text column, or its
