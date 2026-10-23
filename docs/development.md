@@ -493,13 +493,13 @@ encryption), so it is useless on another account or PC. It never goes in the
 repo or in CI, and the script refuses to write it inside the repo. Back the
 file up in your password store straight away.
 
-The script also prints the public key as a C++ array. Paste it into
-`kUpdatePublicKey` in `src/app/update_key.h`, over the test key that header
-ships with, and commit that. Until you do, the test "the shipped update key is
-not the test key" in `tests/test_update_verify.cpp` fails on purpose, so a
-release can't go out with the test key.
+The script also prints the public key as a C++ array. That array is already in
+`kUpdatePublicKey` in `src/app/update_key.h`. The test "the shipped update key
+is not the test key" in `tests/test_update_verify.cpp` fails if the test key
+ever lands there, so a release can't go out with it.
 
-If the key is ever lost, make a new one the same way. Installed copies only
+If the key is ever lost, make a new one the same way and paste its array over
+the old one in `update_key.h`. Installed copies only
 trust the old key, so the first release with the new key can't update them:
 players have to download and install that one release by hand.
 

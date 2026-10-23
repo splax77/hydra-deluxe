@@ -167,8 +167,8 @@ TEST_CASE("verify_update refuses a missing file") {
 }
 
 TEST_CASE("the shipped update key is not the test key") {
-    // Fails on purpose until the production key is pasted into
-    // app/update_key.h (docs/development.md, "Releasing").
+    // A build must never ship the test key; app/update_key.h holds the
+    // production key (docs/development.md, "Releasing").
     CHECK_MESSAGE(hydra::app::kUpdatePublicKey != test_public_key(),
                   "replace the test key with the production key before release");
 }
