@@ -678,6 +678,17 @@ std::vector<ImRect> drawn_pills(const ImRect& band) {
     return pills;
 }
 
+// How much narrower a drawn_pills rect is than the pill it fills: the solid
+// vertices of an anti-aliased fill sit half a fringe inside each edge
+// (ImDrawList::AddConvexPolyFilled), so one fringe across the width.
+float drawn_pill_inset() {
+    ImGuiWindow* details = window_named("##pathdetails");
+    if (!details) return 0.0f;
+    const ImDrawList* dl = details->DrawList;
+    if (!(dl->Flags & ImDrawListFlags_AntiAliasedFill)) return 0.0f;
+    return dl->_FringeScale;
+}
+
 // Every glyph drawn inside `band` comes from the Figure role's font (the mono
 // font, D257): each character of `texts` was drawn with that font's glyph and
 // none with the Prose font's. A glyph is told by its place in the font atlas,
@@ -835,10 +846,12 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     }
     // One width per row (D257 call 6): every drawn pill is as wide as the
     // others, the row's pill width, and pills on different lines share both edges.
-    ctx->LogInfo("row pill width %.1f", three.pill_w);
+    const float inset = drawn_pill_inset();
+    ctx->LogInfo("row pill width %.3f, drawn %.3f, fill inset %.3f", three.pill_w,
+                 pills[0].GetWidth(), inset);
     for (const ImRect& p : pills) {
         IM_CHECK_LE(std::fabs(p.GetWidth() - pills[0].GetWidth()), 0.01f);
-        IM_CHECK_LE(std::fabs(p.GetWidth() - three.pill_w), 1.0f);
+        IM_CHECK_LE(std::fabs(p.GetWidth() + inset - three.pill_w), 0.01f);
         if (p.Min.y != pills[0].Min.y) {
             IM_CHECK_LE(std::fabs(p.Min.x - pills[0].Min.x), 0.01f);
             IM_CHECK_LE(std::fabs(p.Max.x - pills[0].Max.x), 0.01f);
