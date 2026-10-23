@@ -134,7 +134,7 @@ While a batch runs, the settings are locked. The button's label ends in ` (locke
 
 `Path limit`, when checked, keeps extra paths only when every squeeze and required early fill on them is within this many milliseconds. That keeps alternates you can realistically hit. A path that ties the best score is kept even when its timing is over the limit, and its figure shows in orange; below the best score, a path over the limit is dropped. Lower or negative values demand more slack. The limit compares raw milliseconds: for a squeeze, the gap at the SP end; for an early fill, the gap at the fill deadline. It does not account for frontend timing scaling (see the Paths tab), so a kept path can be a bit harder than its number suggests where an activation's scale line is orange.
 
-`Check for updates`, when checked, looks for a newer release on GitHub once a day, when Hydra Deluxe starts. Nothing is downloaded or installed until you click `Update`. `Check now`, in the same row, checks right away, even if a check ran less than a day ago. It is greyed out while a check runs. See [When a new version is out](#when-a-new-version-is-out).
+`Check for updates`, when checked, looks for a newer release on GitHub once a day, when Hydra Deluxe starts. Nothing is downloaded or installed until you click `Update`. `Check now`, in the same row, checks right away, even if a check ran less than a day ago. It is greyed out while a check runs. It is also greyed out in a copy of Hydra Deluxe that the installer didn't put in place, such as one you copied to another folder; hovering it there shows `Only the installed copy of Hydra Deluxe checks for updates.` See [When a new version is out](#when-a-new-version-is-out).
 
 ## Searching the library
 

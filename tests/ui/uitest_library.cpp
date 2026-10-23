@@ -1373,6 +1373,24 @@ void test_update_strip(ImGuiTestContext* ctx) {
     auto phase_is = [&](Phase phase) { return h.app && h.app->update.phase == phase; };
     const std::string running = running_version_text();
 
+    // Plan decision 14: in a copy the installer didn't put in place, Check now
+    // is greyed and its hover says why; the box stays usable.
+    hydra::app::set_installed_for_test(false);
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    ctx->Yield(2);
+    IM_CHECK(item_disabled(ctx, "**/Check now"));
+    IM_CHECK(!item_disabled(ctx, "**/##checkupdates"));
+    const std::string not_installed = "Only the installed copy of Hydra Deluxe checks for updates.";
+    IM_CHECK(!on_screen(h, not_installed));
+    ctx->MouseMove("**/Check now", ImGuiTestOpFlags_NoCheckHoveredId);
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, not_installed); }, 5));
+    hydra::app::set_installed_for_test(true);
+    ctx->Yield(2);
+    IM_CHECK(!item_disabled(ctx, "**/Check now"));
+    close_settings_panel(ctx);
+    IM_CHECK(!h.app->update_check_running());
+
     // D7: Check now at the running version says so, with one OK. While the
     // check runs, Check now is greyed.
     seams.reply = update_fixtures::release_reply_at("v" + running);
