@@ -4,6 +4,8 @@
 
 #include "doctest.h"
 
+#include <cfloat>
+#include <cmath>
 #include <cstddef>
 #include <iterator>
 
@@ -95,6 +97,32 @@ TEST_CASE("text_role: every role draws in its font at its size") {
         }
         CHECK(ImGui::GetFont() == mono);  // the scope popped its font
     }
+    ImGui::PopFont();
+    ImGui::EndFrame();
+}
+
+TEST_CASE("text_role: text_size and measure_in_role measure in the role's font at its size") {
+    HeadlessImGui imgui;
+    ImFont* const mono = hydra::ui::g_mono_font;
+    ImFont* const deflt = ImGui::GetIO().FontDefault;
+    ImGui::NewFrame();
+    ImGui::PushFont(deflt, 18.0f);
+
+    // HeadlinePath is mono at 24 px; CalcTextSizeA on that font and size is the
+    // independent measure.
+    const char* const text = "3- 1 2 E3+";
+    const float want = mono->CalcTextSizeA(24.0f, FLT_MAX, 0.0f, text).x;
+    CHECK(hydra::ui::measure_in_role(TextRole::HeadlinePath)(text) == doctest::Approx(want));
+    // ImGui::CalcTextSize rounds the width up to a whole pixel.
+    CHECK(hydra::ui::text_size(TextRole::HeadlinePath, text).x == std::ceil(want));
+    CHECK(hydra::ui::text_size(TextRole::HeadlinePath, text).y > 0.0f);
+    CHECK(ImGui::GetFont() == deflt);  // both popped their scope
+    CHECK(ImGui::GetFontSize() == 18.0f);
+
+    // A size-0 role measures at the size in force.
+    const float want_notation = mono->CalcTextSizeA(18.0f, FLT_MAX, 0.0f, text).x;
+    CHECK(hydra::ui::measure_in_role(TextRole::Notation)(text) == doctest::Approx(want_notation));
+
     ImGui::PopFont();
     ImGui::EndFrame();
 }
