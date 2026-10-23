@@ -379,6 +379,10 @@
         {
           "file": "src/app/report_files.cpp",
           "why": "renames its own report's temp file into place, never a library file"
+        },
+        {
+          "file": "src/net/http.cpp",
+          "why": "renames a finished download's part-file into place, never a library file"
         }
       ],
       "must_match": [

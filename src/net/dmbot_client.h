@@ -2,8 +2,7 @@
 //
 // The public site is a static SPA fronted by Cloudflare (which 403s bot fetches
 // of the HTML); its data comes from a public, unauthenticated JSON API on
-// render.com, reachable with a plain HTTPS GET. This is Hydra's first and only
-// network client — two endpoints, both read-only:
+// render.com, reachable with a plain HTTPS GET. Two endpoints, both read-only:
 //   GET /api/all-users            -> the ladder (for the searchable picker)
 //   GET /api/user/{id}/scores     -> one user's posted scores
 //
@@ -21,6 +20,8 @@
 #include <optional>
 #include <string>
 #include <vector>
+
+#include "net/http.h"  // the transport and its set_fetcher seam
 
 namespace hydra::net {
 
@@ -74,13 +75,9 @@ std::vector<DmScore> fetch_scores(const std::string& discord_id,
                                   const std::string& api_base = kDefaultApiBase,
                                   const std::atomic<bool>* cancel = nullptr);
 
-// The transport seam: GET `url`, return the body, throw std::runtime_error on
-// failure. The default is WinHTTP (set_fetcher with an empty function restores
-// it). A harness with no network (the GUI test runner) installs one that
-// returns canned JSON; the parse_* functions below then run unchanged.
-using Fetcher = std::function<std::string(const std::string& url,
-                                          const std::atomic<bool>* cancel)>;
-void set_fetcher(Fetcher fetcher);
+// Both go through the shared transport (net/http.h). Its set_fetcher seam
+// stands in for the network in tests; the parse_* functions below then run
+// unchanged.
 
 // The JSON halves of the two fetches, separated from the WinHTTP transport so
 // tests can exercise them with canned payloads. Throw std::runtime_error with
