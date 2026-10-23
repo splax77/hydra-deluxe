@@ -59,13 +59,17 @@ void render_update_strip(AppState& app) {
         wrapped_tooltip(update.release->notes.c_str());
 
     const bool three_buttons = update.phase == Phase::Offered || update.phase == Phase::Declined;
-    if (three_buttons || (update.phase == Phase::Failed && update.release)) {
+    const bool failed = update.phase == Phase::Failed;
+    if (three_buttons || (failed && update.release)) {
         ImGui::SameLine();
         if (ImGui::Button("Update##update")) app.update_now();
     }
     if (three_buttons) {
         ImGui::SameLine();
         if (ImGui::Button("Skip this version")) app.skip_version();
+    }
+    // A failed strip can be dismissed too: Later hides it until the next check.
+    if (three_buttons || failed) {
         ImGui::SameLine();
         if (ImGui::Button("Later")) app.later();
     }
@@ -75,7 +79,7 @@ void render_update_strip(AppState& app) {
         ImGui::TextUnformatted(megabytes.c_str());
         // The bar fills the line up to the Cancel button.
         const ImGuiStyle& style = ImGui::GetStyle();
-        const float cancel_w = ImGui::CalcTextSize("Cancel").x + style.FramePadding.x * 2.0f;
+        const float cancel_w = button_slot_width("Cancel");
         ImGui::SameLine();
         const float bar_w = std::max(ImGui::GetContentRegionAvail().x - cancel_w - style.ItemSpacing.x,
                                      ImGui::GetFrameHeight());

@@ -22,12 +22,10 @@
 #include <vector>
 
 #include "app/config.h"
-#include "app/update_verify.h"  // sha256_file
 #include "app/user_messages.h"
 #include "core/app_version.h"
 #include "core/error_kind.h"
 #include "core/winstr.h"
-#include "json.hpp"
 #include "net/http.h"
 #include "scoped_hook.h"
 #include "scratch_paths.h"
@@ -39,13 +37,13 @@
 
 using hydra::ErrorKind;
 using hydra::KindedError;
+using update_fixtures::release_reply_at;
 using update_fixtures::sample_path;
 using update_fixtures::test_public_key;
 using update_fixtures::update_dir;
 using hydra::app::Settings;
 using hydra::ui::AppState;
 using Phase = hydra::ui::UpdateState::Phase;
-using json = nlohmann::json;
 using std::chrono::hours;
 using std::chrono::system_clock;
 
@@ -53,26 +51,10 @@ namespace {
 
 std::string running_text() { return hydra::core::version_text(hydra::core::running_version()); }
 
-// The real v2.10.2 reply with its tag set to `tag`, and its installer asset
-// describing testdata/update/sample.bin (size and digest), so a download of
-// sample.bin passes the digest check.
-std::string reply_at(const std::string& tag) {
-    json reply = json::parse(hydra::read_file_text(update_dir() + "/latest.json"));
-    reply["tag_name"] = tag;
-    for (json& asset : reply["assets"]) {
-        const std::string name = asset["name"];
-        if (name.size() > 4 && name.substr(name.size() - 4) == ".exe") {
-            asset["size"] = std::filesystem::file_size(hydra::os_path(sample_path()));
-            asset["digest"] = "sha256:" + hydra::app::sha256_file(sample_path());
-        }
-    }
-    return reply.dump();
-}
-
 // What the canned network serves. `fail`, when set, is thrown by the
 // releases/latest fetch instead of the reply.
 struct Canned {
-    std::string reply = reply_at("v9.9.9");
+    std::string reply = release_reply_at("v9.9.9");
     std::string sig = hydra::read_file_text(update_dir() + "/sample.bin.sig");
     std::function<void()> fail;
     std::atomic<int> downloads{0};
@@ -235,7 +217,7 @@ TEST_CASE("a check offers a newer release and stays quiet about the same or an o
     }
     for (const std::string& tag : {"v" + running_text(), std::string("v0.0.1")}) {
         CAPTURE(tag);
-        w.canned.reply = reply_at(tag);
+        w.canned.reply = release_reply_at(tag);
         std::unique_ptr<AppState> app = w.app();
         settle_check(*app);  // the automatic check stays silent
         CHECK(app->update.phase == Phase::None);
@@ -275,7 +257,7 @@ TEST_CASE("Skip this version hides that version only") {
         CHECK(daily->update.text == "Hydra Deluxe 9.9.9 is available.");
     }
 
-    w.canned.reply = reply_at("v9.9.10");
+    w.canned.reply = release_reply_at("v9.9.10");
     app->check_updates_now();
     settle_check(*app);
     CHECK(app->update.phase == Phase::Offered);

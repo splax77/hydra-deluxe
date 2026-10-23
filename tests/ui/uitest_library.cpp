@@ -29,9 +29,8 @@
 #include "store/record_store.h"
 #include "store/upgrade_files.h"  // set_aside_path, with_side_files
 #include "ui/widgets.h"  // widest_digits, button_slot_width
-#include "../../third_party/json/json.hpp"  // edits the release fixture
 #include "../scoped_hook.h"
-#include "app/update_verify.h"  // sha256_file
+#include "../update_reply.h"
 #include "core/app_version.h"
 #include "core/winstr.h"  // read_file_text, os_path
 #include "net/http.h"     // set_fetcher, set_downloader
@@ -1261,39 +1260,15 @@ void test_old_library_set_aside(ImGuiTestContext* ctx) {
 // touches the network: UpdateSeams serves the release reply, the download and
 // the installer start.
 
-std::string update_fixture_dir() { return corpus::testdata_root() + "/update"; }
-std::string update_sample_path() { return update_fixture_dir() + "/sample.bin"; }
 std::string running_version_text() {
     return hydra::core::version_text(hydra::core::running_version());
 }
 
-// The real v2.10.2 reply (testdata/update/latest.json) with its tag set to
-// `tag`, and its installer asset describing sample.bin (size and digest), so
-// the canned download passes the digest check.
-std::string release_reply_at(const std::string& tag) {
-    nlohmann::json reply =
-        nlohmann::json::parse(hydra::read_file_text(update_fixture_dir() + "/latest.json"));
-    reply["tag_name"] = tag;
-    for (nlohmann::json& asset : reply["assets"]) {
-        const std::string name = asset["name"];
-        if (name.size() > 4 && name.substr(name.size() - 4) == ".exe") {
-            asset["size"] = fs::file_size(hydra::os_path(update_sample_path()));
-            asset["digest"] = "sha256:" + hydra::app::sha256_file(update_sample_path());
-        }
-    }
-    return reply.dump();
-}
-
-// The committed test key (test-public-key.txt, 64 bytes as hex), which
-// sample.bin.sig was signed with.
+// The committed test key (sample.bin.sig was signed with it).
 std::array<uint8_t, 64> update_test_key(ImGuiTestContext* ctx) {
-    std::string text = hydra::read_file_text(update_fixture_dir() + "/test-public-key.txt");
-    while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) text.pop_back();
     std::array<uint8_t, 64> key{};
-    IM_CHECK_NO_RET(text.size() == 2 * key.size());
-    if (ctx->IsError()) return key;
-    for (size_t i = 0; i < key.size(); ++i)
-        key[i] = static_cast<uint8_t>(std::stoul(text.substr(2 * i, 2), nullptr, 16));
+    IM_CHECK_NO_RET(update_fixtures::read_test_public_key(key));
+    if (ctx->IsError()) return {};
     return key;
 }
 
@@ -1314,8 +1289,8 @@ void wait_released(const std::atomic<bool>& hold, const std::atomic<bool>* cance
 // seam that is gone.
 struct UpdateSeams {
     Harness& h;
-    std::string reply = release_reply_at("v9.9.9");
-    std::string sig = hydra::read_file_text(update_fixture_dir() + "/sample.bin.sig");
+    std::string reply = update_fixtures::release_reply_at("v9.9.9");
+    std::string sig = hydra::read_file_text(update_fixtures::update_dir() + "/sample.bin.sig");
     std::atomic<bool> hold_check{false};
     std::atomic<bool> hold_download{false};
     std::string folder;
@@ -1343,7 +1318,7 @@ struct UpdateSeams {
                      [this](const std::string&, const std::string& path, uint64_t,
                             std::atomic<uint64_t>* received, const std::atomic<bool>* cancel) {
                          wait_released(hold_download, cancel);
-                         fs::copy_file(hydra::os_path(update_sample_path()), hydra::os_path(path),
+                         fs::copy_file(hydra::os_path(update_fixtures::sample_path()), hydra::os_path(path),
                                        fs::copy_options::overwrite_existing);
                          if (received) received->store(fs::file_size(hydra::os_path(path)));
                      }),
@@ -1400,7 +1375,7 @@ void test_update_strip(ImGuiTestContext* ctx) {
 
     // D7: Check now at the running version says so, with one OK. While the
     // check runs, Check now is greyed.
-    seams.reply = release_reply_at("v" + running);
+    seams.reply = update_fixtures::release_reply_at("v" + running);
     seams.hold_check = true;
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
@@ -1421,7 +1396,7 @@ void test_update_strip(ImGuiTestContext* ctx) {
 
     // D1: the offer and its three buttons; hovering the version shows the
     // fixture's notes.
-    seams.reply = release_reply_at("v9.9.9");
+    seams.reply = update_fixtures::release_reply_at("v9.9.9");
     click_check_now(ctx);
     if (ctx->IsError()) return;
     const std::string offer = "Hydra Deluxe 9.9.9 is available.";
@@ -1475,6 +1450,22 @@ void test_update_strip(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/Later");
     IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::None) && !on_screen(h, declined); }, 5));
 
+    // D9: a Check now that fails shows its sentence with a Later button (and
+    // no Update, since no release is known); Later hides the strip.
+    seams.reply = "this is not JSON";
+    click_check_now(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::Failed); }, 10));
+    ctx->Yield(2);
+    const std::string failed_text = h.app->update.text;
+    IM_CHECK(!failed_text.empty());
+    IM_CHECK(on_screen(h, failed_text));
+    IM_CHECK(ctx->ItemExists("**/Later"));
+    IM_CHECK(!ctx->ItemExists("**/Update##update"));
+    ctx->ItemClick("**/Later");
+    IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::None) && !on_screen(h, failed_text); }, 5));
+    seams.reply = update_fixtures::release_reply_at("v9.9.9");
+
     // D4: the App group's box starts ticked, unticking it writes the INI, and
     // Reset to defaults leaves it alone.
     open_settings_panel(ctx);
@@ -1513,7 +1504,7 @@ void test_update_strip(ImGuiTestContext* ctx) {
 
     // D5: a start after a version change says so once, OK hides it, and the
     // next start shows nothing.
-    seams.reply = release_reply_at("v" + running);
+    seams.reply = update_fixtures::release_reply_at("v" + running);
     restart_app(ctx, h, [](Settings& s) { s.last_run_version = "0.0.1"; });
     if (ctx->IsError()) return;
     const std::string updated = "Updated to Hydra Deluxe " + running + ".";
