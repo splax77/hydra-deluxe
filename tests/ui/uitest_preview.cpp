@@ -18,9 +18,9 @@
 #include "parse/song.h"  // no_notes_message
 #include "render/overlay_layout.h"
 #include "ui/app_state.h"
-#include "ui/fonts.h"  // g_mono_font
 #include "ui/preview_controller.h"
 #include "ui/preview_load_job.h"
+#include "ui/text_role.h"  // font_for, measure_in_role
 
 namespace uitest {
 
@@ -710,10 +710,11 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
         const ImGuiStyle& s = ImGui::GetStyle();
         const hydra::app::PathButtonsView list = hydra::app::build_path_buttons(
             *h.app->viewed.record, h.app->settings.depth_mode, h.app->settings.depth_value);
+        const hydra::ui::WidthOf notation_w = hydra::ui::measure_in_role(hydra::ui::TextRole::Notation);
         float widest = 0.0f;
         for (const hydra::app::PathButtonView& b : list.buttons) {
             const std::string label = hydra::app::preview_path_label(b);
-            widest = (std::max)(widest, text_width(label.c_str(), hydra::ui::g_mono_font));
+            widest = (std::max)(widest, notation_w(label));
         }
         const float fit = widest + s.FramePadding.x * 2.0f + combo.GetHeight();
         IM_CHECK_FLOAT_NEAR_EQ(combo.GetWidth(), fit, 1.0f);
@@ -733,9 +734,8 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
         const ImGuiStyle& s = ImGui::GetStyle();
         const float line = win->WorkRect.Max.x - combo.RectFull.Min.x;  // the most the box gets
         const float chrome = s.FramePadding.x * 2.0f + combo.RectFull.GetHeight();
-        auto width_of = [](const std::string& t) {
-            return text_width(t.c_str(), hydra::ui::g_mono_font);
-        };
+        const hydra::ui::WidthOf notation_w = hydra::ui::measure_in_role(hydra::ui::TextRole::Notation);
+        auto width_of = [&notation_w](const std::string& t) { return notation_w(t); };
         std::string long_label;
         for (int i = 0; i < 40; ++i) long_label += (i % 3 == 0 ? "2- " : "1 ");
         long_label += " (optimal)";
@@ -744,7 +744,8 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
         IM_CHECK(shown != long_label);
         IM_CHECK(width_of(shown) <= line - chrome);
         IM_CHECK(shown.size() > 3 && shown.substr(shown.size() - 3) == "\xE2\x80\xA6");
-        IM_CHECK(hydra::ui::g_mono_font->IsGlyphInFont(0x2026));  // drawn, not a "?"
+        ImFont* const notation_font = hydra::ui::font_for(hydra::ui::TextRole::Notation).font;
+        IM_CHECK(notation_font->IsGlyphInFont(0x2026));  // drawn, not a "?"
         hydra::ui::remember_library_share(0.5f);
         h.app->library_ui.panel_was_open = false;
         ctx->Yield(3);

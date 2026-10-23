@@ -10,14 +10,13 @@
 #include "imgui.h"
 #include "imgui_internal.h"  // SetKeyOwner, owner-aware IsKeyPressed
 #include "render/overlay_layout.h"
-#include "ui/fonts.h"
 #include "ui/preview_controller.h"
+#include "ui/text_role.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
 
 #include <algorithm>
 #include <array>
-#include <cfloat>
 #include <climits>
 #include <cmath>
 #include <cstdint>
@@ -151,7 +150,7 @@ void render_path_picker(AppState& app) {
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted("Showing");
         ImGui::SameLine();
-        ImGui::PushFont(g_mono_font, 0.0f);
+        ScopedFont notation(TextRole::Notation);
         // On its own line, as wide as the longest path in the list (or the
         // line). A path longer than the line (40 activations and "  (optimal)"
         // run to about 100 characters) ends in "…" rather than vanish under
@@ -159,8 +158,9 @@ void render_path_picker(AppState& app) {
         // whole.
         float widest = 0.0f;
         for (const hydra::app::PathButtonView& b : list.buttons)
-            widest = std::max(widest,
-                              ImGui::CalcTextSize(hydra::app::preview_path_label(b).c_str()).x);
+            widest = std::max(
+                widest,
+                text_size(TextRole::Notation, hydra::app::preview_path_label(b).c_str()).x);
         const float chrome = ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetFrameHeight();
         const float box_w = std::min(widest + chrome, ImGui::GetContentRegionAvail().x);
         const std::string shown = render::ellipsize(current, box_w - chrome, text_width);
@@ -178,7 +178,6 @@ void render_path_picker(AppState& app) {
             }
             ImGui::EndCombo();
         }
-        ImGui::PopFont();
     });
 }
 
@@ -559,9 +558,11 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     const char widest = widest_digits(1)[0];
     for (char& c : readout_sample)
         if (c >= '0' && c <= '9') c = widest;
-    ImGui::PushFont(g_mono_font, 0.0f);
-    const float readout_w = text_slot_width(readout_sample.c_str());
-    ImGui::PopFont();
+    float readout_w = 0.0f;
+    {
+        ScopedFont figure(TextRole::Figure);
+        readout_w = text_slot_width(readout_sample.c_str());
+    }
     ImGui::SetNextItemWidth(std::max(px(120.0f), ImGui::GetContentRegionAvail().x - readout_w -
                                                      ImGui::GetStyle().ItemSpacing.x));
     if (ImGui::SliderFloat("##scrub", &pos_s, 0.0f, len_s, ""))
@@ -572,9 +573,10 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         ImGui::SetTooltip("Gold marks are this path's activations.");
     draw_scrub_marks(scrub_marks);
     ImGui::SameLine();
-    ImGui::PushFont(g_mono_font, 0.0f);
-    text_in_slot(box.timestamp.c_str(), readout_w);
-    ImGui::PopFont();
+    {
+        ScopedFont figure(TextRole::Figure);
+        text_in_slot(box.timestamp.c_str(), readout_w);
+    }
     ImGui::NewLine();  // text_in_slot leaves the cursor on its line; the highway goes below
 
     // Keys: Space plays or pauses, Left/Right jump kJumpSeconds, comma/period
@@ -621,7 +623,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         // never below kOverlayMinScale (under that they overlap rather than
         // become unreadable). Everything is measured at scale 1 first, then
         // drawn at the fitted scale. The gauge keeps its size.
-        ImFont* font = g_mono_font ? g_mono_font : ImGui::GetFont();
+        ImFont* const font = font_for(TextRole::Overlay).font;
         const render::PreviewConfig& pcfg = pc->preview_config();
         ImDrawList* dl = ImGui::GetWindowDrawList();
         const ImVec2 origin = ImGui::GetItemRectMin();
@@ -629,9 +631,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         // Named so a GUI test can place the highway (render::highway_span_at)
         // in screen pixels.
         name_box("##highway_image", origin, img_max);
-        auto text_width = [font](float sz, const char* s) {
-            return font->CalcTextSizeA(sz, FLT_MAX, 0.0f, s).x;
-        };
+        auto text_width = [font](float sz, const char* s) { return measure_in_font(font, sz)(s); };
 
         // The time box's lines, the way Onyx draws its own (top-left,
         // monospace, on a translucent dark panel): the playhead's measure and
