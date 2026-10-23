@@ -124,8 +124,42 @@ TEST_CASE("settings: load and save name the same keys") {
         "depth_value",     "depth_mode",           "mslimit_enabled",    "mslimit_value",
         "backendlimit_enabled", "backendlimit_value", "hit_window_ms",    "preview_volume",
         "sp_cap",           "legacy_fills",         "auto_open_report",   "dm_last_user",
-        "chartfolder"};
+        "check_updates",    "chartfolder"};
     CHECK(names == expected);
+}
+
+// The updater's four keys (auto-updater plan, C1): they round-trip, a file
+// without check_updates reads it on, and Reset to defaults leaves them alone.
+TEST_CASE("the updater's settings round-trip, default on, and survive Reset to defaults") {
+    Settings s;
+    s.check_updates = false;
+    s.skipped_update_version = "9.9.9";
+    s.last_update_check = "2026-10-22T13:45:00Z";
+    s.last_run_version = "2.10.1";
+    s.view_prodrums = false;  // an analysis setting, which the reset does put back
+
+    const std::string path = testtemp::temp_path("update_keys", ".ini");
+    REQUIRE(s.save_file(path));
+    const Settings r = Settings::load_file(path);
+    CHECK(r.check_updates == false);
+    CHECK(r.skipped_update_version == "9.9.9");
+    CHECK(r.last_update_check == "2026-10-22T13:45:00Z");
+    CHECK(r.last_run_version == "2.10.1");
+
+    // A file from before the setting existed has no check_updates line.
+    {
+        std::ofstream f(path, std::ios::trunc);
+        f << "view_prodrums=1\n";
+    }
+    CHECK(Settings::load_file(path).check_updates == true);
+    std::remove(path.c_str());
+
+    const Settings reset = s.with_analysis_defaults();
+    CHECK(reset.view_prodrums == Settings{}.view_prodrums);
+    CHECK(reset.check_updates == false);
+    CHECK(reset.skipped_update_version == "9.9.9");
+    CHECK(reset.last_update_check == "2026-10-22T13:45:00Z");
+    CHECK(reset.last_run_version == "2.10.1");
 }
 
 TEST_CASE("the 1.0 fills setting reaches the search and the result's key together") {
