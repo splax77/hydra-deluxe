@@ -141,6 +141,6 @@ This version doesn't read `records.json`, so your old results don't carry over. 
 | 2.10.1 | The Preview lights the lanes for the half measure before a generated fill's chord again; a chart with a note far into the song no longer hangs fill placement, and a MIDI file cut off in a track header is read safely |
 | 2.10.2 | Song names saved in an older text format, such as `Szamár Madár` or `Pokémon Theme`, show their accented letters after the next scan |
 | 2.11.0 | Hydra Deluxe checks GitHub once a day for a newer release and installs it when you click `Update`, after checking its signature; an activation row on the Paths tab shows every timing badge it has |
-| 2.11.1 | A character Hydra Deluxe's own fonts lack, such as a Korean or Chinese letter in a song name, draws from a Windows font instead of as `?` |
+| 2.11.1 | A character Hydra Deluxe's own fonts lack, such as a Korean or Cyrillic letter in a song name, draws from a Windows font instead of as `?` |
 
 Each release's full notes are on the [releases page](https://github.com/splax77/hydra-deluxe/releases).
