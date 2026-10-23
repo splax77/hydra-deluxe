@@ -29,10 +29,24 @@
 #include "ui/fonts.h"  // px()
 #include "ui/library_view.h"  // library_split_width
 #include "ui/preview_controller.h"
+#include "ui/text_role.h"
 
 namespace uitest {
 
 namespace {
+
+// The width the production rule gives a Dynamics or Stars number column for
+// `cells`: its header measured as a Label and its cells as Figures, the roles
+// those tables draw them in (ui/text_role.h).
+float figure_rule_width(const char* header, const std::vector<std::string>& cells) {
+    hydra::ui::ColumnSpec spec{header, false, 0.0f,
+                               hydra::ui::measure_in_role(hydra::ui::TextRole::Figure)};
+    spec.header_width_of = hydra::ui::measure_in_role(hydra::ui::TextRole::Label);
+    const std::vector<hydra::ui::ColumnSpec> specs = {spec};
+    const hydra::ui::MeasuredWidths measured = hydra::ui::measure_widths(
+        specs, cells.size(), [&](size_t r, size_t) { return cells[r]; });
+    return hydra::ui::place_columns(measured, specs, hydra::ui::TableRoom{}).widths[0];
+}
 
 // Sets the SP cap in the settings panel, then closes the panel (with Esc,
 // which must leave the song panel open) so the song panel can be clicked.
@@ -255,7 +269,7 @@ void test_dynamics(ImGuiTestContext* ctx) {
             if (t->ID == t->OuterWindow->GetID("##kicktable")) kicks = t;
         IM_CHECK(kicks != nullptr);
         if (ctx->IsError()) return;
-        IM_CHECK_EQ(kicks->Columns[4].WidthGiven, rule_width("All", all));
+        IM_CHECK_EQ(kicks->Columns[4].WidthGiven, figure_rule_width("All", all));
     }
 
     // Toggle 2x Bass off via app state: the song is analyzed again under it
@@ -433,7 +447,7 @@ void test_stars(ImGuiTestContext* ctx) {
         const std::vector<ImGuiTable*> tables = drawn_tables(2, "Cutoff");
         IM_CHECK_EQ(tables.size(), size_t{1});
         if (ctx->IsError()) return;
-        IM_CHECK_EQ(tables[0]->Columns[2].WidthGiven, rule_width("Cutoff", cutoffs));
+        IM_CHECK_EQ(tables[0]->Columns[2].WidthGiven, figure_rule_width("Cutoff", cutoffs));
     }
 
     // ---- A song with no drum solo ----
