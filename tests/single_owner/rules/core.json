@@ -2462,6 +2462,34 @@
         "src"
       ],
       "note": "A chord's per-lane arrays must agree on its size: note_list copies every slot of notemap_ into NoteList, so a NoteList one lane short would be written past its end, and the MIDI parser's cymbal flags hold one slot per lane too. All read the one count."
+    },
+    {
+      "question": "Is this version newer than that one?",
+      "owner": "parse_version and AppVersion's operator< in src/core/app_version.h",
+      "owner_file": "src/core/app_version.h",
+      "owner_symbol": "parse_version",
+      "date": "2026-10-22",
+      "decision": "auto-updater plan, The version rule",
+      "added_by": "UPD-T2a",
+      "pattern": "\\bHYDRA_VERSION\\s*(==|!=|<=?([^<]|$)|>=?([^>]|$))|(==|!=|(^|[^<])<=?|(^|[^>])>=?)\\s*HYDRA_VERSION\\b|%[du]\\.%[du]\\.%[du]|\\[\"tag_name\"\\]\\s*(==|!=|<|>)",
+      "must_match": [
+        "if (settings.last_run_version != HYDRA_VERSION) show_updated();",
+        "if (HYDRA_VERSION == tag) return;",
+        "std::sscanf(tag.c_str(), \"v%d.%d.%d\", &a, &b, &c);",
+        "if (root[\"tag_name\"] > current) offer();"
+      ],
+      "must_not_match": [
+        "Handle session(WinHttpOpen(L\"Hydra/\" HYDRA_VERSION_W,",
+        "const std::optional<AppVersion> v = parse_version(HYDRA_VERSION);",
+        "if (core::is_newer_version(release.version, core::running_version())) offer();",
+        "settings.last_run_version = HYDRA_VERSION;",
+        "std::cout << \"Hydra \" << HYDRA_VERSION << \"\\n\";",
+        "root[\"tag_name\"] = \"v9.9.9\";"
+      ],
+      "owner_files": [
+        "src/core/app_version.h"
+      ],
+      "note": "Versions are compared as three numbers, never as text (2.9.1 is older than 2.10.2). Code that compares versions reads both through parse_version (the running one through running_version) and compares AppVersion values. Decided by: the user's yes to the auto-updater plan, The version rule (2026-10-22)"
     }
   ]
 }
