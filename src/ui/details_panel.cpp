@@ -109,19 +109,17 @@ void render_headline(AppState& app) {
         // optimal score has a value.
         const int64_t optimal = *app.viewed.record->optimal_score();
         ImGui::PushStyleColor(ImGuiCol_Text, kBestPathColor);
-        float score_ascent = 0.0f;
         {
             ScopedFont font(TextRole::HeadlineScore);
-            score_ascent = ImGui::GetFontBaked()->Ascent;
             ImGui::TextUnformatted(group_thousands(optimal).c_str());
         }
         ImGui::SameLine(0.0f, px(18.0f));
         {
-            ScopedFont font(TextRole::HeadlinePath);
             // SameLine starts the path at the line's top; drop it so its
             // baseline sits on the score's.
-            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + score_ascent -
-                                 ImGui::GetFontBaked()->Ascent);
+            const float shift = baseline_shift(TextRole::HeadlinePath, TextRole::HeadlineScore);
+            ScopedFont font(TextRole::HeadlinePath);
+            ImGui::SetCursorPosY(ImGui::GetCursorPosY() + shift);
             text_ellipsized(best.pathstring().c_str(), left_x + text_w - ImGui::GetCursorPosX());
         }
         ImGui::PopStyleColor();

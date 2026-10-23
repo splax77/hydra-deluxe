@@ -438,7 +438,7 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
             }
             ImGui::PushStyleColor(ImGuiCol_Text, best_path_color(row.status));
             {
-                ScopedFont font(TextRole::Notation);
+                ScopedBaselineFont font(TextRole::Notation);
                 text_ellipsized(library_cell_text(row, kColumnBestPath).c_str());
             }
             ImGui::PopStyleColor();

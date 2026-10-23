@@ -1,6 +1,8 @@
 // Which font and size each kind of text draws in. This header is the one place
 // that picks a font: draw and measure calls name the kind of text they show (a
-// role) and ask font_for, ScopedFont, text_size or measure_in_role. Why each
+// role) and ask font_for, ScopedFont, ScopedBaselineFont, text_size or
+// measure_in_role. Where text of mixed roles sits on a shared line is
+// baseline_shift's to say. Why each
 // role takes its font is in
 // docs/superpowers/plans/2026-10-22-font-role-single-owner.md ("The roles").
 
@@ -88,6 +90,53 @@ public:
     ~ScopedFont() { ImGui::PopFont(); }
     ScopedFont(const ScopedFont&) = delete;
     ScopedFont& operator=(const ScopedFont&) = delete;
+};
+
+// The one rule for text of different roles sharing a line: every role's
+// baseline sits on the anchor role's baseline. The anchor defaults to Label,
+// the default font at the size in force, so on a table row the default-font
+// cells stay put and the mono cells move. ImGui starts every item on a line at
+// the same top edge, so this is how far down (or up, if negative) to start the
+// role's text: the anchor font's ascent minus the role font's ascent, each at
+// the size its role draws. Call it inside a frame.
+inline float baseline_shift(TextRole role, TextRole anchor = TextRole::Label) {
+    float anchor_ascent = 0.0f;
+    {
+        ScopedFont font(anchor);
+        anchor_ascent = ImGui::GetFontBaked()->Ascent;
+    }
+    ScopedFont font(role);
+    return anchor_ascent - ImGui::GetFontBaked()->Ascent;
+}
+
+// Pushes the role's font like ScopedFont and starts the next item
+// baseline_shift(role) lower, so a table cell's text sits on the row's
+// default-font baseline. The row keeps the height an unshifted item gives it:
+// on exit the cursor and the cell's reach move back by the shift. Use it for
+// one single-line item, inside a table cell or on its own line.
+class ScopedBaselineFont {
+public:
+    explicit ScopedBaselineFont(TextRole role)
+        : shift_(baseline_shift(role)),
+          window_(ImGui::GetCurrentWindow()),
+          max_y_(window_->DC.CursorMaxPos.y),
+          font_(role) {
+        if (shift_ != 0.0f) ImGui::SetCursorPosY(ImGui::GetCursorPosY() + shift_);
+    }
+    ~ScopedBaselineFont() {
+        if (shift_ == 0.0f) return;
+        window_->DC.CursorPos.y -= shift_;
+        window_->DC.CursorMaxPos.y = ImMax(max_y_, window_->DC.CursorMaxPos.y - shift_);
+    }
+    float shift() const { return shift_; }
+    ScopedBaselineFont(const ScopedBaselineFont&) = delete;
+    ScopedBaselineFont& operator=(const ScopedBaselineFont&) = delete;
+
+private:
+    float shift_;
+    ImGuiWindow* window_;
+    float max_y_;
+    ScopedFont font_;
 };
 
 // The size of `text` drawn in the role's font, wrapped at `wrap_w` if it is

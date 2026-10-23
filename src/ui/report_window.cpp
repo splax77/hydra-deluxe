@@ -374,7 +374,7 @@ void cell(const std::string& text, const app::report_view::CellLook& look, Tone 
                                              : ImGui::GetStyleColorVec4(ImGuiCol_Text);
     ImGui::PushStyleColor(ImGuiCol_Text, color);
     {
-        ScopedFont font(cell_role(look.kind));
+        ScopedBaselineFont font(cell_role(look.kind));
         fitted_text(text, fits, row, column);
     }
     ImGui::PopStyleColor();

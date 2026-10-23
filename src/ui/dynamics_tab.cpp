@@ -115,7 +115,7 @@ void dynamics_table(const char* id, const std::vector<DynamicsTableRow>& rows) {
         text_ellipsized(row.cells[0].c_str());
         for (size_t c = 1; c < specs.size(); ++c) {
             ImGui::TableNextColumn();
-            ScopedFont font(TextRole::Figure);
+            ScopedBaselineFont font(TextRole::Figure);
             ImGui::TextUnformatted(row.cells[c].c_str());
         }
         if (row.disabled) ImGui::PopStyleColor();

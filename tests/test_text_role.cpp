@@ -125,6 +125,91 @@ TEST_CASE("text_role: measure_in_role with a size measures in the role's font at
     ImGui::EndFrame();
 }
 
+TEST_CASE("text_role: baseline_shift sits a role's baseline on the default font's") {
+    HeadlessImGui imgui;
+    ImFont* const mono = hydra::ui::g_mono_font;
+    ImFont* const deflt = ImGui::GetIO().FontDefault;
+    ImGui::NewFrame();
+    ImGui::PushFont(deflt, 18.0f);
+
+    // The baked fonts' own ascents are the independent measure: a line's
+    // baseline is its top plus the ascent of the font drawn on it.
+    const float mono_ascent = mono->GetFontBaked(18.0f)->Ascent;
+    const float deflt_ascent = deflt->GetFontBaked(18.0f)->Ascent;
+    MESSAGE("ascent at 18 px: default " << deflt_ascent << ", mono " << mono_ascent);
+    const float top = 100.0f;
+    const float shift = hydra::ui::baseline_shift(TextRole::Figure);
+    MESSAGE("Figure's shift at 18 px: " << shift);
+    CHECK(std::fabs((top + shift + mono_ascent) - (top + deflt_ascent)) <= 0.5f);
+
+    // A default-font role is the line's anchor and stays put.
+    CHECK(hydra::ui::baseline_shift(TextRole::Label) == 0.0f);
+    CHECK(hydra::ui::baseline_shift(TextRole::Title) == 0.0f);
+    CHECK(ImGui::GetFont() == deflt);  // measuring popped its scopes
+    CHECK(ImGui::GetFontSize() == 18.0f);
+
+    ImGui::PopFont();
+    ImGui::EndFrame();
+}
+
+namespace {
+
+// The height of a 2-column table's first row, a Label cell beside a Figure
+// cell drawn under ScopedBaselineFont or plain ScopedFont.
+float first_row_height(const char* id, bool on_baseline) {
+    if (!ImGui::BeginTable(id, 2)) return -1.0f;
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    const float top = ImGui::GetCursorScreenPos().y;
+    ImGui::TextUnformatted("Kick");
+    ImGui::TableNextColumn();
+    if (on_baseline) {
+        hydra::ui::ScopedBaselineFont font(TextRole::Figure);
+        ImGui::TextUnformatted("1,234");
+    } else {
+        hydra::ui::ScopedFont font(TextRole::Figure);
+        ImGui::TextUnformatted("1,234");
+    }
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    const float height = ImGui::GetCursorScreenPos().y - top;
+    ImGui::EndTable();
+    return height;
+}
+
+}  // namespace
+
+TEST_CASE("text_role: ScopedBaselineFont moves the text, not the row") {
+    HeadlessImGui imgui;
+    ImGui::NewFrame();
+    ImGui::Begin("baseline");
+    ImGui::PushFont(ImGui::GetIO().FontDefault, 18.0f);
+
+    const float shift = hydra::ui::baseline_shift(TextRole::Figure);
+    REQUIRE(shift != 0.0f);  // else this test proves nothing
+    const float y0 = ImGui::GetCursorPosY();
+    {
+        hydra::ui::ScopedBaselineFont font(TextRole::Figure);
+        CHECK(font.shift() == shift);
+        CHECK(ImGui::GetCursorPosY() == y0 + shift);
+        ImGui::TextUnformatted("1,234");
+        CHECK(ImGui::GetItemRectMin().y == ImGui::GetWindowPos().y + y0 + shift);
+    }
+    // The next line starts where an unshifted line would have sent it.
+    const float y1 = ImGui::GetCursorPosY();
+    {
+        hydra::ui::ScopedFont font(TextRole::Figure);
+        ImGui::TextUnformatted("1,234");
+    }
+    CHECK(y1 - y0 == ImGui::GetCursorPosY() - y1);
+
+    // A table row keeps its height.
+    CHECK(first_row_height("##shifted", true) == first_row_height("##plain", false));
+    ImGui::PopFont();
+    ImGui::End();
+    ImGui::EndFrame();
+}
+
 TEST_CASE("text_role: with no mono font, mono roles take the current font") {
     HeadlessImGui imgui;
     ImFont* const loaded_mono = hydra::ui::g_mono_font;
