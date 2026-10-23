@@ -294,22 +294,21 @@ void http_download(const std::string& url, const std::string& path, uint64_t siz
 void download_to_file(const BodyReader& body, const std::string& path, uint64_t size_cap,
                       std::atomic<uint64_t>* received, const std::atomic<bool>* cancel) {
     namespace fs = std::filesystem;
-    const fs::path part = os_path(path + ".part");
-    const fs::path final_path = os_path(path);
+    const std::string part = path + ".part";
     if (received) received->store(0);
 
     // Removes the part-file on every way out but the rename at the end.
     struct PartFile {
-        const fs::path& p;
+        const std::string& p;
         bool keep = false;
         ~PartFile() {
             std::error_code ec;
-            if (!keep) fs::remove(p, ec);
+            if (!keep) fs::remove(os_path(p), ec);
         }
     } guard{part};
 
     {
-        std::ofstream out(part, std::ios::binary | std::ios::trunc);
+        std::ofstream out(os_path(part), std::ios::binary);
         if (!out) throw std::runtime_error("could not create " + path + ".part");
 
         std::vector<char> chunk(kChunkBytes);
@@ -333,7 +332,7 @@ void download_to_file(const BodyReader& body, const std::string& path, uint64_t 
     }
 
     std::error_code ec;
-    fs::rename(part, final_path, ec);
+    fs::rename(os_path(part), os_path(path), ec);
     if (ec) throw std::runtime_error("could not rename " + path + ".part: " + ec.message());
     guard.keep = true;
 }
