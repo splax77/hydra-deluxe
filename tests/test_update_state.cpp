@@ -264,9 +264,21 @@ TEST_CASE("Skip this version hides that version only") {
     CHECK(app->update.phase == Phase::None);
     CHECK(Settings::load_file(w.paths.ini).skipped_update_version == "9.9.9");
 
-    app->check_updates_now();
-    settle_check(*app);
-    CHECK(app->update.phase == Phase::None);  // 9.9.9 again: skipped
+    // The daily check keeps honoring the skip: a start whose check is due
+    // lands in None for the skipped 9.9.9.
+    {
+        Settings later_start = w.settings();
+        later_start.skipped_update_version = "9.9.9";
+        std::unique_ptr<AppState> daily = w.app_with(later_start);
+        settle_check(*daily);
+        CHECK(daily->update.phase == Phase::None);
+        CHECK(daily->update.text.empty());
+        // Check now ignores the skip: a click means the user wants to know.
+        daily->check_updates_now();
+        settle_check(*daily);
+        CHECK(daily->update.phase == Phase::Offered);
+        CHECK(daily->update.text == "Hydra Deluxe 9.9.9 is available.");
+    }
 
     w.canned.reply = reply_at("v9.9.10");
     app->check_updates_now();

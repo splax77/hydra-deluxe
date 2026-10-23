@@ -1174,7 +1174,9 @@ void AppState::collect_update_check() {
     const app::UpdateRelease& release = job->release();
     const core::AppVersion running = core::running_version();
     const bool newer = core::is_newer_version(release.version, running);
-    const bool skipped = core::parse_version(settings.skipped_update_version) == release.version;
+    // The user's fifth ruling during T3a: only the daily check honors a skip.
+    const bool skipped =
+        !manual && core::parse_version(settings.skipped_update_version) == release.version;
     if (newer && !skipped) {
         offer_update(release);
         return;
