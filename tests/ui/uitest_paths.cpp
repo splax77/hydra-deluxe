@@ -894,7 +894,8 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
             IM_CHECK_LE(off, 0.01f);
             IM_CHECK_GE(off, -1.0f);
         }
-    }    row1.badges = kept;
+    }
+    row1.badges = kept;
     ctx->Yield(2);
     IM_CHECK_EQ(ctx->ItemInfo("**/##act1").RectFull.GetHeight(), one_line);
 }

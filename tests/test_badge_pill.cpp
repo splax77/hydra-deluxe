@@ -67,7 +67,8 @@ TEST_CASE("badge pill: a row of the shortest badge and a row of the longest shar
             const ActivationRowLayout mixed = row(mixed_badges(), row_w, scale);
             CHECK(shortest.pill_w == doctest::Approx(longest.pill_w));
             CHECK(mixed.pill_w == doctest::Approx(longest.pill_w));
-            CHECK(longest.pill_w == doctest::Approx(hydra::ui::pill_width(longest_w() * scale, scale)));
+            // Literals from one run: 182.4 px of text and 8 px each side, doubled at scale 2.
+            CHECK(longest.pill_w == doctest::Approx(198.4f * scale));
             for (const PillRect& p : pills(mixed, scale))
                 CHECK(p.x1 - p.x0 == doctest::Approx(longest.pill_w));
         }
@@ -79,7 +80,7 @@ TEST_CASE("badge pill: a row of the shortest badge and a row of the longest shar
 TEST_CASE("badge pill: a badge wider than the pill text width grows the pill") {
     const float wide = longest_w() + mono(3);
     const ActivationRowLayout l = row({mono(15), wide}, 1400.0f);
-    CHECK(l.pill_w == doctest::Approx(hydra::ui::pill_width(wide, 1.0f)));
+    CHECK(l.pill_w == doctest::Approx(227.2f));  // 211.2 px of text and 8 px each side: a literal from one run
 }
 
 TEST_CASE("badge pill: text sits centred in its pill") {
