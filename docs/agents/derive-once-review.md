@@ -14,7 +14,7 @@ Every fact, rule or calculation in Hydra is derived in exactly one place. Everyt
 
 ## What you get
 
-The orchestrator gives you a **key** (a 40-character hash) and a **range**. For a merge the range is `main...<key>`; read it with `git diff main...<key>` and `git log main..<key>`. For a direct commit on `main` the range is the staged change; read it with `git diff --cached`. It also gives you the branch's worktree, the name (or agent id) of the agent that wrote the change, and the task and session ids for your commit trailers. Until your review file is written, you are read-only: do not edit, stage, commit or check out anything. Then you fix your findings in the branch's worktree.
+The orchestrator gives you a **key** (a 40-character hash) and a **range**. The range is always `main...<key>`, where the key is a commit on the change's own branch; read it with `git diff main...<key>` and `git log main..<key>`. If you were handed a staged change on main, a key that is not a commit on a branch, or a brief that tells you not to commit, stop and report it. The dispatch gate (`reviewer_dispatch_gate.ps1`) should have refused that dispatch, so the main session needs to hear it was bypassed. It also gives you the branch's worktree, the name (or agent id) of the agent that wrote the change, and the task and session ids for your commit trailers. Until your review file is written, you are read-only: do not edit, stage, commit or check out anything. Then you fix your findings in the branch's worktree.
 
 It also hands you two things, so you do not redo work already done:
 
@@ -83,7 +83,7 @@ While you fix, never write a new copy while removing an old one: if a fix needs 
 
 **If you run out of time or tool calls.** When the progress hook warns you (at 100 tool calls or 20 minutes), stop fixing. Commit what passes its tests, run the precheck, and sign off on your last commit as step 5 says. Write each finding you did not fix under Notes, with what is left to do. No fresh agent picks it up, and the merge does not wait for it (D107 item 5).
 
-The merge gate accepts your CLEAN review even though you wrote some of the commits, as long as you did not write all of them.
+The merge gate accepts your CLEAN review even though you wrote some of the commits, as long as you did not write all of them. Your dispatch gives you a worktree to commit in; "For the orchestrator" says how that is set up.
 
 ## Builds and test runs
 
@@ -164,5 +164,12 @@ These rules are for the session that runs the merge.
 When main moves under a reviewed branch, merge main into the branch. A conflict-free merge needs nothing more. A merge resolved by hand gets one resolution review (see "Resolution review"), keyed on that merge commit, or on the topmost commit when commits sit directly above it. Those commits are covered by that same resolution review, whoever wrote them, as long as each carries exactly one Agent trailer. It never gets a second full review. The ref gate's refusal names each merge that still needs one, with its key and what to read. Any other commit after the review, such as your own edit above a conflict-free merge or with no merge at all, still needs a full review of the new tip.
 
 Before the review, run the precheck on the range and fix what it prints. Keep merges small enough to review in one read. The precheck prints the range's size, and a large-range note when it is over the threshold that `tools/derive_once_precheck.ps1` owns. A range with that note should go in as two or more merges.
+
+Set up the review in this order. A hook, `reviewer_dispatch_gate.ps1`, refuses a reviewer dispatch that skips a step, and it owns what each check accepts.
+
+1. Commit the change on its own branch, in its own worktree. Never send a change staged on main to review, even a one-line fix.
+2. Run the precheck on the range, as above.
+3. For each document the change holds, compute its key with `& "C:/Users/Patrick/.claude/hooks/doc_review_key.ps1" "<file>"` and declare its sources with `& "C:/Users/Patrick/.claude/hooks/doc_review_sources.ps1" <key> "<sources file>"`. Do it for every document, not just one.
+4. Dispatch with `isolation: worktree` on the `Agent` call. For a `Workflow` script, put `isolation: 'worktree'` in the options of each `agent()` call that launches a reviewer. Give the key, the range and the branch's worktree, and tell the reviewer to commit its fixes there.
 
 Dispatch one fresh Sonnet reviewer per change. Give it the key, the range, the branch's worktree, the precheck output, the author's report, the author's name or agent id (from its spawn result), and the task and session ids for its commit trailers. When the change holds documents, give it `docs/agents/doc-review.md` too, with each document's key and the sources you declared for it. When it reports, check its signed-off tip against the branch, run the full suite once on the joined tree, and merge that tip. To see what main still needs before a merge, run `& "C:/Users/Patrick/.claude/hooks/main_move_check.ps1" <branch> -Repo "<main checkout>"`; it asks the ref gate's own judge and changes nothing. A hook runs the same check before every `git merge` on main and denies one the ref gate would refuse, so a refused merge never leaves the checkout rewritten. Pass any questions from its Notes to the user. Never start another review of the same change.

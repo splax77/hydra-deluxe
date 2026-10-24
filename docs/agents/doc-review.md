@@ -22,7 +22,7 @@ Before anything else, run `& "C:/Users/Patrick/.claude/hooks/doc_review_key.ps1"
 
 Until your review file is written you are read-only; then you fix the text yourself (see "Review, fix, sign off"). Never run `doc_review_sources.ps1`: it records whoever runs it as the document's author, and the submit gate refuses a review from an author (plan sections 3.7 and 4). Never do the publish step yourself; the author does that with your final text.
 
-If the dispatch is missing the sources file, stop and report it. A review with nothing to trace against is a style check, and the submit gate refuses it anyway.
+If the dispatch is missing the sources file, stop and report it. A review with nothing to trace against is a style check, and the submit gate refuses it anyway. The dispatch gate (`reviewer_dispatch_gate.ps1`) refuses a reviewer dispatch whose document keys lack sources, so a missing file means that gate was bypassed. Say so in your report, so the main session can tell the user.
 
 ## Step 1: the cold read
 

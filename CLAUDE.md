@@ -32,7 +32,7 @@ Anything a player reads (the four public pages and the GitHub release notes) fol
 
 ### Derive-once review
 
-Merges and commits on `main` that touch code need a review from a fresh agent first. A hook enforces it. Dispatch the reviewer with `docs/agents/derive-once-review.md`, the key and the range the hook's message gives. When the change also holds documents, the same reviewer reviews them with `docs/agents/doc-review.md` (rule 5). Only the user can skip a review, by typing `waive derive-once <key>` in chat. Never ask the user to waive one to save time.
+Merges and commits on `main` that touch code need a review from a fresh agent first. A hook enforces it. Dispatch the reviewer with `docs/agents/derive-once-review.md`, the key and the range the hook's message gives. When the change also holds documents, the same reviewer reviews them with `docs/agents/doc-review.md` (rule 5). A code change always goes on its own branch, in its own worktree, before it is reviewed; it is never reviewed staged on main, even for a one-line fix. A hook, `reviewer_dispatch_gate.ps1`, refuses a reviewer dispatch, through `Agent` or `Workflow`, whose change sits on main, whose documents have no declared sources, or whose brief forbids the reviewer to commit; the hook owns what each of those means. Only the user can skip a review, by typing `waive derive-once <key>` in chat. Never ask the user to waive one to save time.
 
 ### Doc review
 
