@@ -198,6 +198,12 @@ Each tool sends one command line and returns Hydra's reply text, unchanged excep
 
 `hydra_run` exists so a known sequence (scan, continue, search, open) costs one tool call instead of five. To open one song, `hydra_open_song` does the search and the click in one call.
 
+### An open dialog
+
+A dialog of the kind that blocks the rest of the app (a modal) stops every click and key outside it. `Scan library` leaves one open: the "Scanning charts" dialog stays on its "Done" line until you click `//Scanning charts/Continue`. The checked-in tests never see it, because the harness's `scan_library` clicks Continue itself.
+
+The replies name an open dialog, with its buttons, in one line that `open_modal_note` in the test harness writes. `wait-idle` still answers ok once jobs stop, but its text is that line while a dialog is open. A command that fails while a dialog is open adds the line after its first line, or after the `!! failed at line N` line in a command file. `dump` lists the open dialog's window first, so a long dump that the helper cuts from the end still shows it.
+
 ### The protocol
 
 The helper and Hydra talk over a Windows named pipe. The helper picks the pipe's name and passes it with `--pipe <name>`, which `--live` requires on both exes. Hydra opens exactly that name and never makes one up.

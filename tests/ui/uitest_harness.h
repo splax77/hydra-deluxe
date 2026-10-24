@@ -279,6 +279,11 @@ bool fully_shown(const ImGuiWindow* list, const ImRect& row);
 std::string widget_dump(ImGuiTestContext* ctx, const std::string& window_name,
                         const std::string& contains = "");
 
+// The one line that names the top open modal dialog and its buttons, which
+// block every click and key outside it, or "" when no modal is open. No
+// newline at the end. Every reply that mentions an open dialog uses it.
+std::string open_modal_note(ImGuiTestContext* ctx);
+
 // The lines of `text` that hold `part`, each ending in a newline, or a line
 // saying none did. The text verb's filter.
 std::string lines_holding(const std::string& text, const std::string& part);

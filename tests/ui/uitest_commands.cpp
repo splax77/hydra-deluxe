@@ -320,6 +320,8 @@ CommandResult run_command(ImGuiTestContext* ctx, CommandSession& session, const 
     } else if (verb == "wait-idle") {
         if (!wait_until(ctx, [&] { return !jobs_busy(h); }, timeout))
             return refuse(message("jobs still running after %g s", timeout));
+        // Jobs are done, but an open dialog still blocks the next command.
+        if (const std::string note = open_modal_note(ctx); !note.empty()) r.text = note + "\n";
     } else if (verb == "wait-text") {
         if (!wait_until(ctx, [&] { return visible_text(h).find(rest) != std::string::npos; },
                         timeout))
@@ -362,11 +364,13 @@ CommandResult run_command(ImGuiTestContext* ctx, CommandSession& session, const 
         return refuse(message("unknown verb \"%s\"", verb.c_str()));
     }
     if (ctx->IsError()) {
-        // An engine action failed; its reason is in the log.
-        if (session.live) return {false, "failed: " + line};
+        // An engine action failed; its reason is in the log. An open dialog
+        // is the usual cause the log does not name, so the reply names it.
+        const std::string note = open_modal_note(ctx);
+        if (session.live) return {false, "failed: " + line + (note.empty() ? "" : "\n" + note)};
         char buf[64];
         std::snprintf(buf, sizeof(buf), "!! failed at line %d: ", lineno);
-        return {false, buf + line + "\n"};
+        return {false, buf + line + "\n" + (note.empty() ? "" : note + "\n")};
     }
     return r;
 }

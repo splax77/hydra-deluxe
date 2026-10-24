@@ -36,8 +36,11 @@ struct CommandSession {
 // engine action failed (a click that found nothing), and empty when the
 // interpreter refused the line; the test is marked failed and its log names
 // the line. In live mode, text is the one-line reason with no line number
-// and no newline; the test is marked failed only by a failed engine action,
-// whose log lines the live channel adds to its reply.
+// and no newline at the end; the test is marked failed only by a failed
+// engine action, whose log lines the live channel adds to its reply. When an
+// engine action fails while a dialog is open, open_modal_note's line follows
+// the first line (after a newline in live mode, as a line of its own in a
+// script).
 struct CommandResult {
     bool ok = true;
     std::string text;
