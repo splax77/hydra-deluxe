@@ -18,10 +18,10 @@ c17_header_inside_section.chart	eff21e7147d8c00c
 c18_unsorted_ticks.chart	4c606c6d44205ca2
 c19_crlf.chart	e54b6f4a0094306f
 c20_disco.chart	30045bf59db281c3
-c21_missing_song.chart	b0783a30d6a5d45e	FAIL class std::out_of_range: invalid unordered_map<K, T> key
-c22_missing_resolution.chart	b0783a30d6a5d45e	FAIL class std::out_of_range: invalid unordered_map<K, T> key
+c21_missing_song.chart	086a43473cf8c69c	FAIL class hydra::ChartFileError: the chart's resolution is missing
+c22_missing_resolution.chart	086a43473cf8c69c	FAIL class hydra::ChartFileError: the chart's resolution is missing
 c23_resolution_junk.chart	63e8dbe6a0dfbc23
-c24_bad_resolution.chart	71272fbdaee2120a	FAIL class std::invalid_argument: invalid stoll argument
+c24_bad_resolution.chart	0e155806da089edb	FAIL class hydra::ChartFileError: the chart's resolution is not a whole number
 c25_bad_header.chart	c2f8b89143a28c58	FAIL class hydra::ChartFileError: expected a [section] header
 c26_header_junk.chart	f88268a2a3264696
 c27_empty_values.chart	cc25956283a91f22

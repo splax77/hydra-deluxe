@@ -1088,7 +1088,7 @@ TEST_CASE(".mid: disco markers match the regexes they replaced") {
 TEST_CASE(".chart: section headers are found as the regex found them") {
     // The first line outside a section must hold a `[name]`. No header throws
     // ChartFileError; a header that is not [Song] leaves the chart without its
-    // [Song] section, which throws out_of_range. Each line's outcome was pinned
+    // [Song] section, which is also a ChartFileError (no Resolution). Each line's outcome was pinned
     // from the regex the parser replaced, on 2026-10-10 at 013f4c66.
     enum class Outcome { NoHeader, SongHeader, OtherHeader };
     struct HeaderCase {
@@ -1132,7 +1132,7 @@ TEST_CASE(".chart: section headers are found as the regex found them") {
                 CHECK(load_songbytes_chart(data, ChartReading{}).tick_resolution() == 192);
                 break;
             case Outcome::OtherHeader:
-                CHECK_THROWS_AS(load_songbytes_chart(data, ChartReading{}), std::out_of_range);
+                CHECK_THROWS_AS(load_songbytes_chart(data, ChartReading{}), ChartFileError);
                 break;
         }
     }

@@ -291,7 +291,7 @@ TEST_CASE("a chart with no tempo at tick 0 is a timing refusal in both formats")
 // can't read refuses the chart as a timing refusal with a plain reason, not
 // the standard library's words.
 TEST_CASE(".chart: a Resolution that can't be read is a timing refusal") {
-    const std::string sync = "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n";
+    const std::string sync = testchart::section("SyncTrack", "  0 = TS 4\n  0 = B 120000\n");
     const std::string drums = testchart::section("ExpertDrums", "  0 = N 1 0\n");
     auto with_song = [&](const std::string& song_lines) {
         return chart_refusal(testchart::section("Song", song_lines) + sync + drums);
