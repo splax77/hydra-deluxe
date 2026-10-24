@@ -207,6 +207,7 @@ MeasureCount::MeasureCount(const std::map<int64_t, int64_t>& tpm_map) {
     starts_.reserve(tpm_map.size());
     tpm_.reserve(tpm_map.size());
     for (const auto& kv : tpm_map) {
+        if (kv.first < 0) continue;  // the count starts at tick 0, as the grid does
         starts_.push_back(kv.first);
         tpm_.push_back(kv.second);
     }

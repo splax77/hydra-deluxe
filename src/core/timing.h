@@ -173,7 +173,9 @@ private:
 // measures lie between two ticks. One span per time signature at the
 // signature's own tick, measured with apply_timesig's ticks per measure, so a
 // part measure before a mid-measure change counts as its share of the old
-// measure. Built from a tpm map (tick -> ticks per measure).
+// measure. Built from a tpm map (tick -> ticks per measure). Like
+// MeasureIndex, the count starts at tick 0: a signature before tick 0 is not
+// counted, so the count and the grid agree on where measure 1 begins.
 class MeasureCount {
 public:
     explicit MeasureCount(const std::map<int64_t, int64_t>& tpm_map);
