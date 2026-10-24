@@ -136,7 +136,6 @@ ActivationRating rate_activation(const Activation& act,
     // (Activation::set_sqout), and that row was rated above, at the end it
     // is measured from.
     out.note_effective_ms.reserve(act.sqinouts.size());
-    if (out.scales) out.sqins_read.resize(out.scales->sqins.size());
     for (auto it = act.sqinouts.begin(); it != act.sqinouts.end(); ++it) {
         const SPSqueeze& sq = *it;
         if (sq.kind == SqueezeKind::SqOut) {
@@ -149,11 +148,13 @@ ActivationRating rate_activation(const Activation& act,
         }
         // A SqIn that needs no timing has its note inside SP
         // (SPSqueeze::needs_no_timing, D13). Its stored scale is the one at
-        // its SqIn rank.
-        const size_t rank = sqin_rank(act.sqinouts.begin(), it, is_sqin_squeeze);
-        const NoteRating n =
-            rate_note(sq.offset_ms, sq.needs_no_timing(), out.scales->sqins[rank], hit_window_ms);
-        mark_read(out.sqins_read[rank], n);
+        // its SqIn rank. Its sides go on sqins_read in this same walk, so
+        // that list pairs with scales->sqins the way stored_transfer_scales
+        // built it: one entry per SqIn, in list order.
+        const TransferScale& at_end =
+            out.scales->sqins[sqin_rank(act.sqinouts.begin(), it, is_sqin_squeeze)];
+        const NoteRating n = rate_note(sq.offset_ms, sq.needs_no_timing(), at_end, hit_window_ms);
+        mark_read(out.sqins_read.emplace_back(), n);
         out.scale_governs |= n.effective_ms.has_value();
         out.note_effective_ms.push_back(n.effective_ms);
     }

@@ -164,7 +164,8 @@ struct ActivationRating {
     // one is unknown: then no row or SqIn gets a figure (D4).
     std::optional<ActTransferScales> scales;
     // The sides the backend rows read of scales->post, and one entry per
-    // scales->sqins entry for the sides its SqIn read. A row or SqIn that
+    // scales->sqins entry, in the same order, for the sides its SqIn read.
+    // Empty when scales is unset. A row or SqIn that
     // skips rate_note (no offset, or unknown scales) reads nothing.
     SidesRead post_read;
     std::vector<SidesRead> sqins_read;
