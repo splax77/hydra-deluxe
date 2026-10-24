@@ -278,13 +278,14 @@ void render_timeline(const app::ActivationsView& view) {
 // badges laid over it. A click opens it alone, or closes it. The bars start
 // after `widest_measure_w`, the widest measure in the path's list, so a long
 // measure never runs into them and every row's bars line up
-// (activation_row_layout.h). When the layout puts the badges under the
+// (activation_row_layout.h). Every badge pill is sized for text
+// `pill_text_w` wide. When the layout puts the badges under the
 // measure, the row grows to hold their lines and the first line stays where it
 // was. The whole row is one Figure scope, and the notation inside it is
 // Notation; both roles draw in one font (text_role.h, D257), so the pieces
 // share one baseline and the layout measures what is drawn.
 void render_activation_row(size_t i, const app::ActivationRowView& a, app::PathsTabUi& ui,
-                           float widest_measure_w) {
+                           float widest_measure_w, float pill_text_w) {
     const bool open = i < ui.act_open.size() && ui.act_open[i];
     const float width = ImGui::GetContentRegionAvail().x;
     std::optional<ScopedFont> font(std::in_place, TextRole::Figure);
@@ -294,8 +295,9 @@ void render_activation_row(size_t i, const app::ActivationRowView& a, app::Paths
     badge_ws.reserve(a.badges.size());
     for (const app::ActivationBadge& b : a.badges)
         badge_ws.push_back(ImGui::CalcTextSize(b.text.c_str()).x);
-    const ActivationRowLayout l = activation_row_layout(
-        widest_measure_w, ImGui::CalcTextSize(a.bars.c_str()).x, badge_ws, width, line, px(1.0f));
+    const ActivationRowLayout l =
+        activation_row_layout(widest_measure_w, ImGui::CalcTextSize(a.bars.c_str()).x, badge_ws,
+                              pill_text_w, width, line, px(1.0f));
     char id[32];
     std::snprintf(id, sizeof(id), "##act%d", a.number);
     const ImVec2 top = ImGui::GetCursorScreenPos();
@@ -318,15 +320,10 @@ void render_activation_row(size_t i, const app::ActivationRowView& a, app::Paths
             TextRole::Notation);
     text_at(ImVec2(top.x + l.measure_x, text_y), text_color(), a.measure.c_str(), TextRole::Figure);
     text_at(ImVec2(top.x + l.bars_x, text_y), dim_color(), a.bars.c_str(), TextRole::Figure);
-    // One pill per badge, all the row's pill width (badge_pill.h), each text
-    // in its own colour.
-    for (size_t k = 0; k < a.badges.size(); ++k) {
-        const float bx = top.x + l.badge_x[k];
-        const float by = top.y + l.badge_y[k];
-        draw_badge_pill(dl, pill_rect(bx, by, l.pill_w, line, px(1.0f)), px(1.0f));
-        text_at(ImVec2(bx, by), warn_or_dim(a.badges[k].warn), a.badges[k].text.c_str(),
-                TextRole::Figure);
-    }
+    // Each badge drawn by its owner (badge_pill.h), in its own colour.
+    for (size_t k = 0; k < a.badges.size(); ++k)
+        draw_badge(dl, top.x + l.pill_x[k], top.y + l.badge_y[k], l.pill_w,
+                   a.badges[k].text.c_str(), warn_or_dim(a.badges[k].warn), px(1.0f));
     font.reset();
     end_overlay(top, l.row_h);
 }
@@ -529,9 +526,11 @@ void render_activations(const app::ActivationsView& view, app::PathsTabUi& ui) {
     float widest_measure = 0.0f;
     for (const app::ActivationRowView& a : view.acts)
         widest_measure = std::max(widest_measure, width_in(TextRole::Figure, a.measure));
+    // Every badge pill is sized for the longest badge (D262).
+    const float pill_text_w = width_in(TextRole::Figure, app::longest_activation_badge());
     for (size_t i = 0; i < view.acts.size(); ++i) {
         const app::ActivationRowView& a = view.acts[i];
-        render_activation_row(i, a, ui, widest_measure);
+        render_activation_row(i, a, ui, widest_measure, pill_text_w);
         if (i < ui.act_open.size() && ui.act_open[i]) render_activation_body(i, a, ui);
     }
 }
