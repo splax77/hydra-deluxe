@@ -21,6 +21,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "../temp_util.h"
 #include "../wait_util.h"
@@ -308,7 +309,115 @@ void run_live(ImGuiTestContext* ctx) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// The item verbs' guards (item_ref and the open verb in uitest_commands.cpp),
+// driven the way the live channel drives them: through run_command with a
+// live session, so a refusal comes back as its reason.
+
+// The corpus song the guard tests open and click.
+constexpr const char* kSong = "Burnout";
+
+// A live session on the scanned corpus, ref on //Hydra.
+CommandSession scanned_session(ImGuiTestContext* ctx) {
+    start_session(ctx);
+    scan_library(ctx);
+    ctx->SetRef("//Hydra");
+    CommandSession session;
+    session.live = true;
+    return session;
+}
+
+void test_command_open(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    CommandSession session = scanned_session(ctx);
+    if (ctx->IsError()) return;
+    const CommandResult r = run_command(ctx, session, std::string("open ") + kSong);
+    IM_CHECK_STR_EQ(r.text.c_str(), "");
+    IM_CHECK(r.ok);
+    IM_CHECK(h.app->details_open());
+    IM_CHECK(h.app->selected && h.app->selected->title == kSong);
+    IM_CHECK_STR_EQ(ctx->RefStr, "//Hydra");
+}
+
+void test_command_open_unknown(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    CommandSession session = scanned_session(ctx);
+    if (ctx->IsError()) return;
+    const CommandResult r = run_command(ctx, session, "open Zzq No Such Song");
+    IM_CHECK(!r.ok);
+    IM_CHECK(!ctx->IsError());
+    IM_CHECK_STR_EQ(r.text.c_str(),
+                    "no row titled \"Zzq No Such Song\" after searching \"Zzq No Such Song\": "
+                    "the search shows 0 rows");
+    IM_CHECK(!h.app->details_open());
+}
+
+void test_command_row_click_refused(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    CommandSession session = scanned_session(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(h.app->search.empty());
+    const std::string refusal =
+        "refused: \"Burnout\" is a library row's title and the search box is empty, so finding "
+        "it would scroll the whole library; use \"open Burnout\", or type into **/##search first";
+    // Both the wildcard ref and the bare one, which would be retried as it.
+    for (const char* line : {"click **/Burnout", "click Burnout", "check **/Burnout"}) {
+        const CommandResult r = run_command(ctx, session, line);
+        IM_CHECK(!r.ok);
+        IM_CHECK_STR_EQ(r.text.c_str(), refusal.c_str());
+    }
+    IM_CHECK(!ctx->IsError());
+    IM_CHECK(!h.app->selected);
+}
+
+void test_command_row_click_after_search(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    CommandSession session = scanned_session(ctx);
+    if (ctx->IsError()) return;
+    CommandResult r = run_command(ctx, session, "type **/##search | burnout");
+    IM_CHECK(r.ok);
+    r = run_command(ctx, session, "click **/Burnout");
+    IM_CHECK_STR_EQ(r.text.c_str(), "");
+    IM_CHECK(r.ok);
+    ctx->Yield(3);
+    IM_CHECK(h.app->selected && h.app->selected->title == kSong);
+}
+
+void test_command_bare_ref_retried(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    CommandSession session = scanned_session(ctx);
+    if (ctx->IsError()) return;
+    const CommandResult r = run_command(ctx, session, "type ##search | burnout");
+    IM_CHECK(r.ok);
+    IM_CHECK_STR_EQ(r.text.c_str(), "used ref **/##search\n");
+    IM_CHECK_STR_EQ(h.app->search.c_str(), "burnout");
+}
+
+void test_command_bare_ref_missing(ImGuiTestContext* ctx) {
+    CommandSession session = scanned_session(ctx);
+    if (ctx->IsError()) return;
+    const CommandResult r = run_command(ctx, session, "click Zzq No Such Widget");
+    const bool failed_by_engine = ctx->IsError();
+    // The engine's failure is the expected result here, not the test's.
+    recover_for_next_command(ctx);
+    IM_CHECK(!r.ok);
+    IM_CHECK(failed_by_engine);
+    IM_CHECK_STR_EQ(r.text.c_str(), "failed: click Zzq No Such Widget");
+}
+
 }  // namespace
+
+const std::vector<TestEntry>& command_tests() {
+    static const std::vector<TestEntry> entries = {
+        {"command-open", test_command_open},
+        {"command-open-unknown", test_command_open_unknown},
+        {"command-row-click-refused", test_command_row_click_refused},
+        {"command-row-click-after-search", test_command_row_click_after_search},
+        {"command-bare-ref-retried", test_command_bare_ref_retried},
+        {"command-bare-ref-missing", test_command_bare_ref_missing},
+    };
+    return entries;
+}
 
 void register_live_test(Harness& h) { register_test(h, "live", run_live); }
 

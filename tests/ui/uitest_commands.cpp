@@ -126,6 +126,70 @@ std::string message(const char* fmt, ...) {
     return buf;
 }
 
+// The last label of a ref, as the engine reads it: what follows the last '/'
+// that no '\' escapes, with the escapes undone ("**/AC\/DC" gives "AC/DC").
+std::string last_label(const std::string& ref) {
+    std::string label;
+    bool escaped = false;
+    for (char c : ref) {
+        if (escaped) {
+            label += c;
+            escaped = false;
+        } else if (c == '\\') {
+            escaped = true;
+        } else if (c == '/') {
+            label.clear();
+        } else {
+            label += c;
+        }
+    }
+    return label;
+}
+
+// A wildcard lookup of a library row's title scrolls the whole library when
+// the row is not drawn, which with a full library takes minutes. So such a
+// lookup is refused while the search box is empty. The rows' labels are the
+// Title column's text (the row's Selectable in library_table.cpp). Empty when
+// the lookup may go ahead.
+std::string library_scroll_refusal(Harness& h, const std::string& ref) {
+    const auto& a = *h.app;
+    if (!a.search.empty()) return "";
+    const std::string label = last_label(ref);
+    for (const hydra::ui::LibraryRow& row : a.library.rows())
+        if (hydra::ui::library_cell_text(row, hydra::ui::kColumnTitle) == label)
+            return message("refused: \"%s\" is a library row's title and the search box is "
+                           "empty, so finding it would scroll the whole library; use "
+                           "\"open %s\", or type into **/##search first",
+                           label.c_str(), label.c_str());
+    return "";
+}
+
+// The ref an item verb (click, check, uncheck, type) acts on. A ref that
+// neither starts with '/' nor holds "**/" and finds no item relative to the
+// current window is tried once more as "**/<ref>", and that is used when it
+// finds one; retried says so. A ref that would go through a wildcard lookup
+// passes library_scroll_refusal first; refusal holds its reason.
+struct ItemRef {
+    std::string ref;
+    std::string refusal;
+    bool retried = false;
+};
+
+ItemRef item_ref(ImGuiTestContext* ctx, Harness& h, const std::string& ref) {
+    const bool wildcard = ref.find("**/") != std::string::npos;
+    if (!wildcard && !ref.empty() && ref[0] == '/') return {ref};
+    if (!wildcard) {
+        if (ctx->ItemInfo(ref.c_str(), ImGuiTestOpFlags_NoError).ID != 0) return {ref};
+    }
+    if (std::string why = library_scroll_refusal(h, ref); !why.empty()) return {"", why};
+    if (wildcard) return {ref};
+    // The engine keeps the last item a wildcard lookup matched and counts no
+    // others, so an ambiguous "**/" cannot be told from a unique one here.
+    const std::string wide = "**/" + ref;
+    if (ctx->ItemInfo(wide.c_str(), ImGuiTestOpFlags_NoError).ID != 0) return {wide, "", true};
+    return {ref};  // the engine's own lookup fails it, with its own message
+}
+
 }  // namespace
 
 void start_session(ImGuiTestContext* ctx) {
@@ -149,19 +213,39 @@ CommandResult run_command(ImGuiTestContext* ctx, CommandSession& session, const 
         return {false, ""};
     };
 
+    // The item verbs' ref, through item_ref. A retried ref is named in the
+    // reply, so the caller learns the path that works.
+    auto resolve = [&](const std::string& ref, ItemRef& out) {
+        out = item_ref(ctx, h, ref);
+        if (out.retried) r.text = "used ref " + out.ref + "\n";
+        return out.refusal.empty();
+    };
+    ItemRef target;
+
     if (verb == "window") {
         ctx->SetRef(rest.c_str());
     } else if (verb == "click") {
-        ctx->ItemClick(rest.c_str());
+        if (!resolve(rest, target)) return refuse(target.refusal);
+        ctx->ItemClick(target.ref.c_str());
     } else if (verb == "check" || verb == "uncheck") {
-        if (verb == "check") ctx->ItemCheck(rest.c_str());
-        else ctx->ItemUncheck(rest.c_str());
+        if (!resolve(rest, target)) return refuse(target.refusal);
+        if (verb == "check") ctx->ItemCheck(target.ref.c_str());
+        else ctx->ItemUncheck(target.ref.c_str());
     } else if (verb == "type") {
         // type <ref> | <text>: the text is everything after the bar, as given.
         std::string head, text, ignored, ref;
         if (!split_bar(line, head, text)) return refuse("type needs \"<ref> | <text>\"");
         split_verb(head, ignored, ref);
-        ctx->ItemInputValue(ref.c_str(), text.c_str());
+        if (!resolve(ref, target)) return refuse(target.refusal);
+        ctx->ItemInputValue(target.ref.c_str(), text.c_str());
+    } else if (verb == "open") {
+        // open <title>: open_titled with the title as the search. The ref
+        // goes back to //Hydra, where a session starts, so later refs read
+        // as they did before the open.
+        if (rest.empty()) return refuse("open needs a song title");
+        const std::string why = open_titled_reason(ctx, rest, rest);
+        ctx->SetRef("//Hydra");
+        if (!why.empty()) return refuse(why);
     } else if (verb == "key") {
         ImGuiKeyChord chord = 0;
         if (!parse_chord(rest, chord)) return refuse(message("unknown key \"%s\"", rest.c_str()));

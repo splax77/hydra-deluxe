@@ -12,6 +12,7 @@ namespace uitest {
 void register_paths_tests(Harness& h);  // uitest_paths.cpp
 void register_report_window_tests(Harness& h);  // uitest_report_windows.cpp
 const std::vector<TestEntry>& report_window_flow_tests();  // uitest_report_windows.cpp
+const std::vector<TestEntry>& command_tests();  // uitest_live.cpp
 
 void register_tests(Harness& h) {
     // Order does not matter: every run of more than one test gives each test
@@ -31,6 +32,7 @@ void register_tests(Harness& h) {
     // The report windows end to end: the app draws them from run_frame, so
     // these have no GUI function of their own.
     register_entries(report_window_flow_tests());
+    register_entries(command_tests());
 }
 
 }  // namespace uitest

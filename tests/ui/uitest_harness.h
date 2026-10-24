@@ -352,6 +352,12 @@ void wait_tabs_placed(ImGuiTestContext* ctx);
 void open_details(ImGuiTestContext* ctx, size_t index);
 // Type `search` into the library's search box, then open the row titled `title`.
 void open_titled(ImGuiTestContext* ctx, const std::string& search, const std::string& title);
+// open_titled's one sequence, which fails no test itself when no shown row has
+// that exact title: it returns the plain reason (the search, how many rows it
+// shows, a few of their titles). Empty when the row opened, or when an engine
+// action failed instead (ctx->IsError(), its reason in the log).
+std::string open_titled_reason(ImGuiTestContext* ctx, const std::string& search,
+                               const std::string& title);
 // Wait for the open song's analysis (the click, or a setting changed with the
 // song open, starts it: D87 item 1, D90 item 1) and check it is Ready. Then
 // lands the panel on its Paths tab.

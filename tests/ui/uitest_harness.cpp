@@ -812,18 +812,37 @@ void wait_tabs_placed(ImGuiTestContext* ctx) {
 
 // Narrow the library with `search` typed into the search box, then open the
 // row titled `title`.
-void open_titled(ImGuiTestContext* ctx, const std::string& search, const std::string& title) {
+std::string open_titled_reason(ImGuiTestContext* ctx, const std::string& search,
+                               const std::string& title) {
     Harness& h = harness(ctx);
     ctx->SetRef("//Hydra");
     ctx->ItemInputValue("**/##search", search.c_str());
+    if (ctx->IsError()) return "";  // the engine's own failure is in the log
     size_t idx = 0;
     auto find_row = [&] {
         for (size_t i = 0; i < h.app->library_shown_count(); ++i)
             if (h.app->library_row_at(i).title == title) { idx = i; return true; }
         return false;
     };
-    IM_CHECK(wait_until(ctx, find_row, 5));
+    if (!wait_until(ctx, find_row, 5)) {
+        if (ctx->IsError()) return "";
+        const size_t shown = h.app->library_shown_count();
+        std::string why = "no row titled \"" + title + "\" after searching \"" + search +
+                          "\": the search shows " + std::to_string(shown) +
+                          (shown == 1 ? " row" : " rows");
+        const size_t kNamed = 5;
+        for (size_t i = 0; i < shown && i < kNamed; ++i)
+            why += (i == 0 ? ", titled \"" : "\", \"") + h.app->library_row_at(i).title;
+        if (shown > 0) why += shown > kNamed ? "\" and more" : "\"";
+        return why;
+    }
     open_details(ctx, idx);
+    return "";
+}
+
+void open_titled(ImGuiTestContext* ctx, const std::string& search, const std::string& title) {
+    const std::string why = open_titled_reason(ctx, search, title);
+    if (!why.empty()) IM_ERRORF("%s", why.c_str());
 }
 
 // Wait for the open song's analysis and a Ready record.
