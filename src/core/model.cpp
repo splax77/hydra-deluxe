@@ -486,10 +486,10 @@ std::optional<double> Activation::e_difficulty(bool verbose) const {
 
 std::vector<ActivationTiming> Activation::badge_timings() const {
     std::vector<ActivationTiming> out;
-    // The early fill counts only when it needs timing, and only on an
-    // E-critical activation; an E0 is always E-critical. Without skips it is
-    // required; with skips it is the optional fill of D48 Q10.
-    if (early_fill_needs_timing(e_offset) && is_e_critical()) {
+    // Every E-critical activation lists its early fill, time to spare or not
+    // (D261); an E0 is always E-critical. Without skips it is required; with
+    // skips it is the optional fill of D48 Q10.
+    if (is_e_critical()) {
         const double ms = *e_difficulty(/*verbose=*/true);
         const bool required = is_E0();
         out.push_back({TimingPart::EarlyFill, ms, required, required && past_difficult_floor(ms)});
@@ -513,7 +513,7 @@ std::optional<HardestTiming> Activation::hardest() const {
         if (t.part != TimingPart::EarlyFill && t.required && (!best || t.ms > best->ms))
             best = HardestTiming{t.part, t.ms};
     for (const ActivationTiming& t : all) {
-        if (t.part != TimingPart::EarlyFill) continue;
+        if (t.part != TimingPart::EarlyFill || !early_fill_needs_timing(e_offset)) continue;
         // A required fill competes; the optional one answers only when
         // nothing else does (D48 Q10).
         if (t.required ? (!best || t.ms > best->ms) : !best) best = HardestTiming{t.part, t.ms};
