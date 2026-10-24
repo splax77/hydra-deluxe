@@ -494,7 +494,7 @@ class RealExeLayer(unittest.TestCase):
         self.assertEqual(self.helper.send(hm.filtered("text", "zzqx-none")),
                          '(no line holding "zzqx-none")\n')
         dump = ('window "Hydra" id=0xBAEC0FDA pos=(0,0) size=(1280,800)\n'
-                '  "Scan library" id=0xA6E9877D rect=(150,8 81x24)\n')
+                '  "Scan library" id=0xA6E9877D rect=(150,58 81x24)\n')
         self.assertEqual(self.helper.send(hm.filtered("dump Hydra", "Scan library")), dump)
         # A plain dump is every window: Hydra's default, not the helper's.
         self.assertEqual(self.helper.send(hm.filtered("dump", "Scan library")), dump)
@@ -563,7 +563,7 @@ class RealExeLayer(unittest.TestCase):
         self.helper.start("headless")
         self.assertEqual(self.helper.send("click **/###analysissettings"), "ok")
         self.assertEqual(self.helper.send("rect //$FOCUSED/**/##bass2x"),
-                         '"##bass2x" id=0x357E5949 rect=(723,126 24x24) checked\n')
+                         '"##bass2x" id=0x357E5949 rect=(723,176 24x24) checked\n')
 
     def test_a_failed_wildcard_check_leaves_wildcard_clicks_working(self):
         self.helper.start("headless")
@@ -578,15 +578,15 @@ class RealExeLayer(unittest.TestCase):
             self.helper.send(hm.filtered("dump Hydra", "###analysissettings")),
             'window "Hydra" id=0xBAEC0FDA pos=(0,0) size=(1280,800)\n'
             '  "Analysis settings: Score range 2 scores###analysissettings"'
-            ' id=0xB7DC11A6 rect=(611,8 257x24)\n')
+            ' id=0xB7DC11A6 rect=(611,58 257x24)\n')
 
     def test_a_popup_dump_lists_the_checkboxes_inside_its_tables(self):
         self.helper.start("headless")
         self.assertEqual(self.helper.send("click **/###analysissettings"), "ok")
         self.assertEqual(
             self.helper.send(hm.filtered("dump ##Popup_", "##bass2x")),
-            'window "##Popup_2cd77690" id=0x0E54559D pos=(611,32) size=(319,365) popup\n'
-            '    "##bass2x" id=0x357E5949 rect=(723,126 24x24) checked\n')
+            'window "##Popup_2cd77690" id=0x0E54559D pos=(611,82) size=(319,365) popup\n'
+            '    "##bass2x" id=0x357E5949 rect=(723,176 24x24) checked\n')
 
     def window_seed(self):
         """A library folder for a window session, and self.helper a fresh
