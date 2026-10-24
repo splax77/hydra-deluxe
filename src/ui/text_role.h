@@ -31,6 +31,7 @@ enum class TextRole {
     SongTitle,       // the song panel's title line
     HeadlineScore,   // the song panel's headline score
     HeadlinePath,    // the song panel's headline path
+    AppVersion,      // the version bar's app name and version
     DialogQuestion,  // the batch dialog's question
 };
 
@@ -39,7 +40,7 @@ enum class TextRole {
 // change touch font_for and the test table in tests/test_text_role.cpp.
 inline constexpr std::size_t kTextRoleCount =
     static_cast<std::size_t>(TextRole::DialogQuestion) + 1;
-static_assert(kTextRoleCount == 11,
+static_assert(kTextRoleCount == 12,
               "a new TextRole needs its case in font_for and its row in tests/test_text_role.cpp");
 
 // A font and the base size to push it at. Size 0 keeps the current size.
@@ -71,6 +72,7 @@ inline FontPick font_for(TextRole role) {
         case TextRole::SongTitle: return {deflt, 26.0f};
         case TextRole::HeadlineScore: return {deflt, 40.0f};
         case TextRole::HeadlinePath: return {mono, 24.0f};
+        case TextRole::AppVersion: return {deflt, 20.0f};
         case TextRole::DialogQuestion: return {deflt, 20.0f};
     }
     IM_ASSERT(false && "font_for: a value outside TextRole");

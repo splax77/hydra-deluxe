@@ -183,6 +183,8 @@ void render_main_window(AppState& app) {
         if (app.scan_job) ImGui::OpenPopup(detail::kScanModalId);
     }
 
+    // The version bar is the window's first row, above the toolbar.
+    detail::render_version_bar(app);
     detail::render_actions_row(app);
     // The batch strips sit between the toolbar and the library (the Batch
     // mockup).

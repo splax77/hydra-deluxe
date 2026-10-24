@@ -164,6 +164,23 @@ TEST_CASE("theme: tier_token reads every token tier_for gives") {
     for (const hydra::TimingTier& t : hydra::timing_tiers()) CHECK_NOTHROW(tier_token(t.tok));
 }
 
+// The version bar: each dot is a graphic (3:1) and the bar's sentences are
+// text (4.5:1), all on the bar's background, which sits darker than the
+// window. The dots are not the orange of a problem line.
+TEST_CASE("theme: the version bar's dots and text read on its background") {
+    for (const ImVec4* dot : {&kUpToDateDotColor, &kUpdateAvailableDotColor, &kNeutralDotColor}) {
+        CHECK(contrast(*dot, kVersionBarBg) >= 3.0);
+        const bool is_warning =
+            dot->x == kWarningColor.x && dot->y == kWarningColor.y && dot->z == kWarningColor.z;
+        CHECK_FALSE(is_warning);
+    }
+    CHECK(contrast(kDefaultTextColor, kVersionBarBg) >= 4.5);
+    CHECK(contrast(kDimTextColor, kVersionBarBg) >= 4.5);
+    CHECK(kVersionBarBg.x < kWindowBgColor.x);
+    CHECK(kVersionBarBg.y < kWindowBgColor.y);
+    CHECK(kVersionBarBg.z < kWindowBgColor.z);
+}
+
 // The numbers D48, Q26 names for the Star Power gold.
 TEST_CASE("theme: the Star Power gold is named") {
     CHECK(kStarPowerColor.x == 255 / 255.0f);

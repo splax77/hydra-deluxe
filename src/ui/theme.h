@@ -90,6 +90,15 @@ inline const ImVec4 kDisabledInputBgColor{40 / 255.0f, 40 / 255.0f, 40 / 255.0f,
 inline const ImVec4 kDoneStripBg{31 / 255.0f, 51 / 255.0f, 34 / 255.0f, 1.0f};
 inline const ImVec4 kProblemStripBg{58 / 255.0f, 38 / 255.0f, 18 / 255.0f, 1.0f};
 
+// The version bar across the top of the window (src/ui/version_bar.cpp): its
+// background, a shade darker than the window, and the dot before its status.
+// Green says this Hydra is up to date, amber that a newer release is known,
+// grey every other state. tests/test_theme.cpp holds the contrast floors.
+inline const ImVec4 kVersionBarBg{30 / 255.0f, 30 / 255.0f, 31 / 255.0f, 1.0f};
+inline const ImVec4 kUpToDateDotColor{80 / 255.0f, 190 / 255.0f, 120 / 255.0f, 1.0f};
+inline const ImVec4 kUpdateAvailableDotColor{235 / 255.0f, 180 / 255.0f, 60 / 255.0f, 1.0f};
+inline const ImVec4 kNeutralDotColor{128 / 255.0f, 128 / 255.0f, 128 / 255.0f, 1.0f};
+
 // The colour a report window's chip is drawn in, its outline and its words
 // both: the path report's Timing chips and the comparison's Status chips
 // (report::tier_token and dm_report::status_token pick the token). The one

@@ -443,6 +443,7 @@ add_library(hydra_ui STATIC
     src/ui/library_table.cpp
     src/ui/library_toolbar.cpp
     src/ui/settings_bar.cpp
+    src/ui/version_bar.cpp
     src/ui/library_view.cpp
     src/ui/list_scroll.cpp
     src/ui/preview_controller.cpp

@@ -5,6 +5,7 @@
 // library_view.cpp     render_main_window: lays the window out (the library
 //                      and the song panel side by side), reaps finished
 //                      jobs, and places everything below
+// version_bar.cpp      the version bar above the toolbar
 // library_toolbar.cpp  the status line and the actions row
 // settings_bar.cpp     the "Analysis settings" button on the actions row and
 //                      its panel
@@ -23,10 +24,13 @@
 
 namespace hydra::ui::detail {
 
+// version_bar.cpp
+// The bar across the top of the window: the app's name and version, and the
+// update status from AppState::version_bar_status with the update buttons.
+void render_version_bar(AppState& app);
+
 // library_toolbar.cpp
 void render_status_line(AppState& app);
-// The update strip under the toolbar, drawn from AppState::update.
-void render_update_strip(AppState& app);
 void render_actions_row(AppState& app);
 // The batch button's label while the search or a chip narrows the table
 // (LibraryModel::narrowed), with the count of rows on screen: the button, its

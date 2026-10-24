@@ -43,12 +43,14 @@ const Row kRows[] = {
     {TextRole::SongTitle, Face::Default, 26.0f},
     {TextRole::HeadlineScore, Face::Default, 40.0f},
     {TextRole::HeadlinePath, Face::Mono, 24.0f},
+    {TextRole::AppVersion, Face::Default, 20.0f},
     {TextRole::DialogQuestion, Face::Default, 20.0f},
 };
 
 }  // namespace
 
 TEST_CASE("text_role: every role draws in its font at its size") {
+    CHECK(hydra::ui::kTextRoleCount == 12);
     REQUIRE(std::size(kRows) == hydra::ui::kTextRoleCount);
     for (std::size_t i = 0; i < std::size(kRows); ++i) {
         CHECK(static_cast<std::size_t>(kRows[i].role) == i);  // one row per role, in order
