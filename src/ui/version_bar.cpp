@@ -177,8 +177,18 @@ void render_version_bar(AppState& app) {
     error_detail_line(update.detail);
 
     ImGui::EndChild();
-    // The hairline between the bar and the toolbar.
-    ImGui::Separator();
+    // The hairline between the bar and the toolbar. It is drawn straight on
+    // the draw list, not with ImGui::Separator(), because Separator also
+    // writes a row of dashes into ImGui's text log. It takes Separator's
+    // thickness, colour and vertical space, so the toolbar sits where a
+    // Separator would put it.
+    const float thickness = std::max(style.SeparatorSize, 1.0f);
+    const ImVec2 start = ImGui::GetCursorScreenPos();
+    const float end_x = start.x + ImGui::GetContentRegionAvail().x;
+    const float line_y = start.y + thickness * 0.5f - 0.5f;
+    ImGui::GetWindowDrawList()->AddLine(ImVec2(start.x, line_y), ImVec2(end_x, line_y),
+                                        ImGui::GetColorU32(ImGuiCol_Separator), thickness);
+    ImGui::Dummy(ImVec2(0.0f, thickness));
 }
 
 }  // namespace hydra::ui::detail
