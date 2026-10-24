@@ -65,16 +65,18 @@ TEST_CASE("build_activations: the early fill reads positive = early on both line
     CHECK(av.early_fill == "Early fill: 12.3 ms (required)");
 
     // E-critical but not E0, with SP ready 20 ms before the deadline: the
-    // details line reads it negative. The fill spawns however the
-    // activation is hit, so there is nothing to time and no badge (D51 call 4).
-    // Optional, so never warn-coloured.
+    // details line and the badge read it negative (D261). The fill spawns
+    // however the activation is hit, so there is nothing to time (D51 call
+    // 4). Optional, so never warn-coloured.
     Activation e1;
     test::set_skips(e1, 1);
     test::set_sp_meter(e1, 2);
     e1.e_offset = 20.0;
     av = view_of(e1);
     CHECK(av.notation == "E1");
-    CHECK(av.badges.empty());
+    REQUIRE(av.badges.size() == 1);
+    CHECK(av.badges[0].text == "early fill -20 ms");
+    CHECK_FALSE(av.badges[0].warn);
     CHECK_FALSE(av.difficult);
     CHECK(av.early_fill == "Early fill: -20.0 ms (optional)");
 }
@@ -729,11 +731,15 @@ TEST_CASE("activation badges: one per timing, the fill first, then each squeeze"
     free_in.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 1.0});
     CHECK(badge_texts(free_in) == Texts{"squeeze in -316 ms", "squeeze in 1 ms"});
 
-    // A3: a required fill with 10 ms to spare gets no badge (D51 call 4).
+    // A3: a required fill with 10 ms to spare still gets its badge, grey, and
+    // stays nothing to time (D261, D51 call 4).
     Activation slack = no_timing();
     slack.e_offset = 10.0;
     REQUIRE(slack.is_E0());
-    CHECK(activation_badges(slack).empty());
+    CHECK(badge_texts(slack) == Texts{"early fill -10 ms"});
+    CHECK(badge_warns(slack) == Warns{false});
+    CHECK_FALSE(slack.difficulty().has_value());
+    CHECK(slack.within_ms_limit(0.0));
 
     // A4: a required (E0) fill and a squeeze both show, fill first, each
     // orange on its own.
@@ -763,6 +769,19 @@ TEST_CASE("activation badges: one per timing, the fill first, then each squeeze"
     e1.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -5.0});
     CHECK(badge_texts(e1) == Texts{"early fill 30 ms", "squeeze out 5 ms"});
     CHECK(badge_warns(e1) == Warns{false, true});
+}
+
+TEST_CASE("activation badges: an early fill with time to spare shows, grey (D261)") {
+    // The user's row on Weltseele, activation 13 E2+: the fill lands 56.2 ms
+    // before its deadline, then a free squeeze-in.
+    Activation act;
+    test::set_skips(act, 2);
+    act.e_offset = 56.2;
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -56.0});
+    REQUIRE(act.is_e_critical());
+    CHECK(badge_texts(act) == Texts{"early fill -56 ms", "squeeze in -56 ms"});
+    CHECK(badge_warns(act) == Warns{false, false});
+    CHECK_FALSE(act.difficulty().has_value());
 }
 
 TEST_CASE("activation badges: the row is difficult exactly when a badge is orange") {

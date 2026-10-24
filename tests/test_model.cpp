@@ -418,11 +418,34 @@ TEST_CASE("Activation::badge_timings: every timing in notation order; hardest() 
     CHECK((tt[0].required && tt[1].required && tt[0].difficult && tt[1].difficult));
     CHECK(tie.hardest() == std::optional<HardestTiming>(HardestTiming{P::SqueezeOut, 12.6}));
 
-    // A fill with time to spare is not listed.
+    // A required fill with time to spare is listed, not difficult, and never
+    // named hardest (D261, D51 call 4).
     Activation slack;
     test::set_skips(slack, 0);
     slack.e_offset = 10.0;
-    CHECK(slack.badge_timings().empty());
+    const std::vector<ActivationTiming> st = slack.badge_timings();
+    REQUIRE(st.size() == 1);
+    CHECK(st[0].part == P::EarlyFill);
+    CHECK(st[0].ms == -10.0);
+    CHECK_FALSE(st[0].difficult);
+    CHECK_FALSE(slack.hardest().has_value());
+    CHECK_FALSE(slack.difficulty().has_value());
+    CHECK(slack.within_ms_limit(0.0));
+
+    // An optional fill with time to spare beside a free squeeze: both listed,
+    // and nothing is hardest, as nothing needs timing.
+    Activation spare;
+    test::set_skips(spare, 2);
+    spare.e_offset = 56.2;
+    spare.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -56.0}};
+    const std::vector<ActivationTiming> sp = spare.badge_timings();
+    REQUIRE(sp.size() == 2);
+    CHECK(sp[0].part == P::EarlyFill);
+    CHECK(sp[0].ms == -56.2);
+    CHECK_FALSE(sp[0].difficult);
+    CHECK(sp[1].part == P::SqueezeIn);
+    CHECK_FALSE(spare.hardest().has_value());
+    CHECK_FALSE(spare.difficulty().has_value());
 }
 
 // D85: the all-0 list's 0 ms limit lets a timing of exactly 0 ms through,

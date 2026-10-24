@@ -94,12 +94,12 @@ std::string longest_activation_badge() {
     // Why the squeeze window bounds every figure a badge shows: every squeeze
     // offset is one the engine kept inside within_squeeze_window, so a
     // squeeze's figure lies strictly between -kSqueezeWindowMs and
-    // +kSqueezeWindowMs. An early fill is named only when
-    // early_fill_needs_timing holds, and that figure is at most
-    // kEarlyFillReachMs (fill_refuses), inside the squeeze window too. A
-    // squeeze that needs no timing (SPSqueeze::needs_no_timing) has a figure
-    // of 0 or less (D80), so
-    // the widest figure is the window's, minus sign included.
+    // +kSqueezeWindowMs. An early fill is named only on an E-critical
+    // activation, so its figure is above minus kEarlyFillSlackMs (is_e0),
+    // and at most kEarlyFillReachMs (fill_refuses): inside the squeeze window
+    // too. A squeeze that needs no timing (SPSqueeze::needs_no_timing) has a
+    // figure of 0 or less (D80), so the widest figure is the window's, minus
+    // sign included.
     size_t longest = 0;
     for (size_t i = 1; i < std::size(kBadgeWords); ++i)
         if (std::strlen(kBadgeWords[i].word) > std::strlen(kBadgeWords[longest].word))
