@@ -24,8 +24,9 @@
 
 namespace hydra {
 
-// The timing maps Hydra can measure time with: a positive resolution, every
-// measure at least one tick long, every tempo a positive, finite BPM. Both
+// The timing maps Hydra can measure time with: a positive resolution, a tempo
+// at tick 0, every measure at least one tick long, every tempo a positive,
+// finite BPM. Both
 // parsers reach this through Song::build_timing, so no chart with a zero,
 // negative or infinite measure length reaches the engine (D4, R7.6).
 void check_timing_maps(int64_t tick_resolution,
@@ -36,6 +37,11 @@ void check_timing_maps(int64_t tick_resolution,
         throw ChartFileError(kRefused, std::string(kResolutionRefusalPrefix) +
                                            std::to_string(tick_resolution) +
                                            ", and it must be above 0");
+    // A song's time is measured from its opening tempo, so a chart without one
+    // is refused rather than given a guessed tempo (the user's ruling,
+    // PLAINERR-RES). core/timing.cpp keeps its own throw as a backstop.
+    if (bpm_changes.find(0) == bpm_changes.end())
+        throw ChartFileError(kRefused, "it has no tempo at tick 0");
     for (const auto& [tick, len] : tpm_changes)
         if (len <= 0)
             throw ChartFileError(kRefused, std::string(kTimeSignatureRefusalPrefix) +
@@ -2078,6 +2084,31 @@ const ChartLine* tick_group_end(const ChartLine* p, const ChartLine* end) {
     return q;
 }
 
+namespace {
+
+// The chart's Resolution, read from [Song] (null when the chart has none).
+// One number rule: std::stoll on the raw text, so leading digits are read and
+// trailing junk is ignored. Text it can't read refuses the chart with a plain
+// reason; a value at or below 0 is check_timing_maps's to refuse.
+int64_t chart_resolution(const ChartSection* song_sec) {
+    constexpr ErrorKind kRefused = ErrorKind::ChartTimingRefused;
+    auto refuse = [&](const char* why) {
+        return ChartFileError(kRefused, std::string(kResolutionRefusalPrefix) + why);
+    };
+    if (song_sec == nullptr) throw refuse("missing");
+    const auto it = song_sec->prop_data.find("Resolution");
+    if (it == song_sec->prop_data.end() || it->second.empty()) throw refuse("missing");
+    try {
+        return std::stoll(it->second.front().property_str);
+    } catch (const std::invalid_argument&) {
+        throw refuse("not a whole number");
+    } catch (const std::out_of_range&) {
+        throw refuse("too large");
+    }
+}
+
+}  // namespace
+
 Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
                         bool bass2x, Difficulty difficulty) {
     // A disco marker counts only in the difficulty it names, so the reader
@@ -2087,11 +2118,9 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
     mode_pro_ = pro;
     mode_bass2x_ = bass2x;
 
-    const ChartSection& song_sec = sections_.at(std::string(kSongSection));
-    const ChartDataEntry& res_entry = song_sec.prop_data.at("Resolution").at(0);
-    // One number rule for Resolution: std::stoll on the raw text (leading
-    // digits read, trailing junk ignored, no digits refuses the chart).
-    const int64_t tick_resolution = std::stoll(res_entry.property_str);
+    const auto song_it = sections_.find(std::string(kSongSection));
+    const ChartSection* song_sec = song_it == sections_.end() ? nullptr : &song_it->second;
+    const int64_t tick_resolution = chart_resolution(song_sec);
 
     Song song(tick_resolution);
     song_ = &song;
@@ -2099,8 +2128,8 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
     // Offset is a decimal number of seconds, read from its raw text by the one
     // chart-number rule (parse_finite_number), integer or not, so "500ms" or
     // "nan" counts as absent, like Clone Hero's default 0.
-    if (auto it = song_sec.prop_data.find("Offset");
-        it != song_sec.prop_data.end() && !it->second.empty()) {
+    if (auto it = song_sec->prop_data.find("Offset");
+        it != song_sec->prop_data.end() && !it->second.empty()) {
         song.chart_offset_s = parse_finite_number(it->second.at(0).property_str);
     }
 

@@ -232,6 +232,97 @@ TEST_CASE(".chart: malformed lines keep their handling") {
     }
 }
 
+namespace {
+
+// What a load refuses with: its kind and its text. Empty text means it loaded.
+struct Refusal {
+    ErrorKind kind = ErrorKind::ChartUnreadable;
+    std::string what;
+};
+
+template <typename Load>
+Refusal refusal_of(Load load) {
+    try {
+        load();
+    } catch (const ChartFileError& e) {
+        return Refusal{e.kind(), e.what()};
+    }
+    return Refusal{};
+}
+
+Refusal chart_refusal(const std::string& text) {
+    return refusal_of([&] {
+        load_songbytes_chart(std::vector<uint8_t>(text.begin(), text.end()), ChartReading{});
+    });
+}
+
+}  // namespace
+
+// A chart whose first tempo comes after tick 0 (or that has none) is refused
+// with a timing refusal, the same way as a tempo of 0 BPM. Hydra does not
+// guess a tempo for it (the user's ruling, PLAINERR-RES).
+TEST_CASE("a chart with no tempo at tick 0 is a timing refusal in both formats") {
+    const std::string drums =
+        testchart::section("ExpertDrums", "  0 = N 0 0\n  384 = N 1 0\n  576 = N 2 0\n");
+    for (const std::string& sync : {std::string("  0 = TS 4\n  384 = B 60000\n"),
+                                    std::string("  0 = TS 4\n"), std::string()}) {
+        CAPTURE(sync);
+        const Refusal r = chart_refusal(testchart::chart_text(drums, 192, "", sync));
+        CHECK(r.kind == ErrorKind::ChartTimingRefused);
+        CHECK(r.what == "it has no tempo at tick 0");
+    }
+    // No [SyncTrack] section at all.
+    const Refusal none =
+        chart_refusal(testchart::section("Song", "  Resolution = 192\n") + drums);
+    CHECK(none.kind == ErrorKind::ChartTimingRefused);
+    CHECK(none.what == "it has no tempo at tick 0");
+
+    // A .mid with no set-tempo event.
+    using namespace testmidi;
+    const std::vector<uint8_t> mid = smf_drums(
+        concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()}),
+        std::vector<uint8_t>{});
+    const Refusal m = refusal_of([&] { load_songbytes_mid(mid, ChartReading{}); });
+    CHECK(m.kind == ErrorKind::ChartTimingRefused);
+    CHECK(m.what == "it has no tempo at tick 0");
+}
+
+// Resolution is read once, by one number rule (ChartParser::parse). Text it
+// can't read refuses the chart as a timing refusal with a plain reason, not
+// the standard library's words.
+TEST_CASE(".chart: a Resolution that can't be read is a timing refusal") {
+    const std::string sync = testchart::section("SyncTrack", "  0 = TS 4\n  0 = B 120000\n");
+    const std::string drums = testchart::section("ExpertDrums", "  0 = N 1 0\n");
+    auto with_song = [&](const std::string& song_lines) {
+        return chart_refusal(testchart::section("Song", song_lines) + sync + drums);
+    };
+    struct Bad {
+        std::string text;
+        const char* what;
+    };
+    for (const Bad& bad : {Bad{sync + drums, "the chart's resolution is missing"},
+                           Bad{testchart::section("Song", "  Name = x\n") + sync + drums,
+                               "the chart's resolution is missing"}}) {
+        CAPTURE(bad.text);
+        const Refusal r = chart_refusal(bad.text);
+        CHECK(r.kind == ErrorKind::ChartTimingRefused);
+        CHECK(r.what == bad.what);
+    }
+    for (const Bad& bad : {Bad{"  Resolution = abc\n", "the chart's resolution is not a whole number"},
+                           Bad{"  Resolution = x192\n", "the chart's resolution is not a whole number"},
+                           Bad{"  Resolution = 99999999999999999999\n",
+                               "the chart's resolution is too large"}}) {
+        CAPTURE(bad.text);
+        const Refusal r = with_song(bad.text);
+        CHECK(r.kind == ErrorKind::ChartTimingRefused);
+        CHECK(r.what == bad.what);
+    }
+    // Valid text keeps its number rule: leading digits read, trailing junk ignored.
+    const std::string ok = testchart::section("Song", "  Resolution = 480abc\n") + sync + drums;
+    CHECK(load_songbytes_chart(std::vector<uint8_t>(ok.begin(), ok.end()), ChartReading{})
+              .tick_resolution() == 480);
+}
+
 // ---- display_title: the one cleaned song title (findings 8 and 111) ----------
 
 TEST_CASE("display_title: a title made only of Clone Hero tags reads (unknown)") {

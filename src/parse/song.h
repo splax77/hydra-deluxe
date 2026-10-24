@@ -193,17 +193,17 @@ struct DrumLane {
     std::vector<NoteColor> pads;
 };
 
-// How a refused-timing message starts. check_timing_maps and apply_timesig
-// in song.cpp build their messages from these; the error's kind,
+// How a refused-timing message starts. check_timing_maps, apply_timesig and
+// the .chart Resolution reader in song.cpp build their messages from these; the error's kind,
 // ChartTimingRefused, is what picks its sentence.
 inline constexpr std::string_view kResolutionRefusalPrefix = "the chart's resolution is ";
 inline constexpr std::string_view kTimeSignatureRefusalPrefix = "the time signature at tick ";
 inline constexpr std::string_view kTempoRefusalPrefix = "the tempo at tick ";
 
 // Throws ChartFileError, naming the tick, unless every measure in these maps
-// lasts a positive, finite time: resolution above 0, every measure at least
-// one tick long, every tempo a finite BPM above 0 (a .mid tempo of 0
-// microseconds per beat is named infinite). Song::build_timing calls it
+// lasts a positive, finite time: resolution above 0, a tempo at tick 0, every
+// measure at least one tick long, every tempo a finite BPM above 0 (a .mid
+// tempo of 0 microseconds per beat is named infinite). Song::build_timing calls it
 // first, so both parsers pass through it.
 void check_timing_maps(int64_t tick_resolution,
                        const std::map<int64_t, int64_t>& tpm_changes,
