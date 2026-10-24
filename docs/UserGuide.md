@@ -1,12 +1,12 @@
 # Hydra Deluxe User Guide
 
-This guide walks through Hydra Deluxe's screen in the order you meet it: the toolbar, the analysis settings, the library and its search, the song panel with its four tabs, analyzing the whole library, and last the reports.
+This guide walks through Hydra Deluxe's screen in the order you meet it: the version bar and the toolbar, the analysis settings, the library and its search, the song panel with its four tabs, analyzing the whole library, and last the reports.
 
 It covers Hydra Deluxe only. The public Hydra by DragonDelgar has a different screen; see [how the two differ](differences-from-public-hydra.md). For what the path notation and squeezes mean, see the [public Hydra wiki](https://github.com/DragonDelgar/hydra/wiki).
 
 ## The main screen
 
-Hydra Deluxe has one main screen. The toolbar runs along the top, and the library fills the rest of the window. The toolbar's `Analysis settings` button opens the settings panel.
+Hydra Deluxe has one main screen. The version bar runs along the top of the window, with the toolbar under it, and the library fills the rest. The toolbar's `Analysis settings` button opens the settings panel.
 
 Click a song and the song panel opens beside the library. Drag the library's right edge to give either side more room. Hydra Deluxe remembers the width.
 
@@ -14,7 +14,7 @@ When something happens that you should know about, a message appears under the t
 
 ### The first start after updating
 
-The first start after any update, from the app or by running the installer yourself, shows `Updated to Hydra Deluxe <version>.` under the toolbar once, with an `OK` button.
+The first start after any update, from the app or by running the installer yourself, shows `Updated to Hydra Deluxe <version>.` in the version bar once, with an `OK` button. The check for a newer release still runs behind it. When you click `OK`, the bar shows what that check found.
 
 Your library and results live in a file called `hydra.db`, next to the program. A new version sometimes stores its results in a new layout. When it does, the first start after updating converts the file. This happens once.
 
@@ -48,6 +48,20 @@ If the old file can't be renamed, a message box says so, with the reason from Wi
 
 `hydra_batch` and `hydra_fillcompare` never rename the file. Given one older than 2.2.0, they stop and say that opening it in Hydra sets it aside and starts a fresh library.
 
+### The version bar
+
+The version bar is the strip across the top of the window, above the toolbar. It is always there. On the left, `Hydra Deluxe <version>` names the version you run, in larger text. It is only text: clicking it does nothing.
+
+After the name, a dot and a sentence say whether a newer version is out. The dot is green when you are up to date and amber when a newer release is known. In every other state it is grey. When nothing is in progress, the sentence is one of these:
+
+- `Up to date`, with a green dot, when the latest release on GitHub is no newer than the version you run.
+- `Checking for updates...` while the check that runs at each start is under way.
+- `Hydra Deluxe <version> is available.`, with an amber dot, when a newer release is out. See [When a new version is out](#when-a-new-version-is-out).
+- `Hydra couldn't check for updates when it started.`, with the reason dimmed after it, when the check failed.
+- `Only the installed copy of Hydra Deluxe checks for updates.`, dimmed, in a copy of `Hydra.exe` the installer didn't put in place, such as one you copied to another folder. That copy never checks.
+
+While an update downloads or installs, the bar shows that step instead, with its buttons.
+
 ### Toolbar
 
 The toolbar holds, from left to right, `Manage folders... (N)`, `Scan library`, `Analyze library...`, `Compare with dmleaderboards...` and the `Analysis settings` button. `Open path report` sits at the right edge whenever your library has songs and `hydra_rules.ini` has no error.
@@ -72,31 +86,35 @@ While a batch runs, `Scan library` and `Analyze library...` are greyed out, and 
 
 #### When a new version is out
 
-Hydra Deluxe checks for a newer release once a day when it starts and tells you under the toolbar. Click `Update` to download and install it; nothing is installed until you do. To stop the check, untick `Check for updates` in `Analysis settings`.
+Hydra Deluxe checks for a newer release each time it starts and tells you in the version bar. Click `Update` to download and install it; nothing is installed until you do.
 
-The check asks GitHub for the latest release. Only the copy the installer put in its folder checks, so a copy of `Hydra.exe` you moved somewhere else never does, not even with `Check now`. The daily check runs when the last check was more than 24 hours ago. It also runs when Hydra Deluxe can't read the time of the last check, or that time is in the future. When the release is newer than the version you run, a line under the toolbar reads `Hydra Deluxe <version> is available.`, with three buttons. Hover over the version to read the release's notes.
+The check asks GitHub for the latest release. Only the copy the installer put in its folder checks, so a copy of `Hydra.exe` you moved somewhere else never does. When the release is newer than the version you run, the version bar reads `Hydra Deluxe <version> is available.` with an amber dot and three buttons: `Update`, `Skip this version` and `Later`. Hover over the sentence to read the release's notes.
 
-`Update` downloads the installer. The line shows `Downloading Hydra Deluxe <version>...` with the megabytes received so far, a bar and a `Cancel` button. `Cancel` stops the download and brings the three buttons back. When the download finishes, the line reads `Checking the download...` while Hydra Deluxe checks the file against the release's signature, then `Starting the installer...`.
+`Update` downloads the installer. The bar shows `Downloading Hydra Deluxe <version>...` with the megabytes received so far, a bar and a `Cancel` button. `Cancel` stops the download and brings the three buttons back. When the download finishes, the bar reads `Checking the download...` while Hydra Deluxe checks the file against the release's signature, then `Starting the installer...`.
 
-Windows then asks for permission to run the installer. If you say yes, Hydra Deluxe closes while the installer runs and opens again when it finishes. If you say no, Hydra Deluxe keeps running unchanged, and the line reads `The installer didn't start, so Hydra wasn't updated.` with the three buttons back, so `Update` tries again. The same line appears when Windows can't start the installer, with Windows' reason dimmed under it.
+Windows then asks for permission to run the installer. If you say yes, Hydra Deluxe closes while the installer runs and opens again when it finishes. If you say no, Hydra Deluxe keeps running unchanged, and the bar reads `The installer didn't start, so Hydra wasn't updated.` with the three buttons back, so `Update` tries again. The same sentence appears when Windows can't start the installer, with Windows' reason dimmed under it.
 
-`Skip this version` hides the line for that version. A newer release shows it again, and so does `Check now`, which offers a skipped release again because you asked. The daily check keeps the skip. `Later` hides the line until the next check.
+`Later` puts away `Skip this version` and `Later` until you next start Hydra Deluxe. The bar keeps the amber dot, `Hydra Deluxe <version> is available.` and its `Update` button, so you can still update in this run. The next start offers the release again with all three buttons.
 
-If the download doesn't pass the check, Hydra Deluxe deletes it and doesn't install it. The line says:
+`Skip this version` stops the offer for that version. While it is the latest release, every start shows `Hydra Deluxe <version> is available.` with the amber dot and `Skipped.` dimmed after it, and no buttons. A newer release is offered as usual. To install a skipped release anyway, download its installer from GitHub and run it.
+
+If the download doesn't pass the check, Hydra Deluxe deletes it and doesn't install it. The bar says:
 
 > Hydra couldn't verify the update it downloaded, so it was not installed. Try again later, or download the release from GitHub yourself.
 
-When the daily check fails, for example with no internet connection, it says nothing and tries again the next day. A problem after you click `Update` or `Check now` shows in the line under the toolbar, with the reason dimmed under it. When the trouble is the connection, the line names GitHub, for example `Hydra couldn't reach GitHub. Check your internet connection and try again.`, `GitHub didn't answer in time. Try again later.`, `GitHub sent a reply Hydra couldn't read. Try again later.` or `GitHub returned an error (HTTP <code>). Try again later.` A failed line has a `Later` button that hides it until the next check, and an `Update` button when a release was already found.
+When the check at start-up fails, for example with no internet connection, the bar reads `Hydra couldn't check for updates when it started.` with the reason dimmed after it, and no buttons. The next start tries again. When the trouble is the connection, the reason names GitHub, for example `Hydra couldn't reach GitHub. Check your internet connection and try again.`, `GitHub didn't answer in time. Try again later.`, `GitHub sent a reply Hydra couldn't read. Try again later.` or `GitHub returned an error (HTTP <code>). Try again later.`
 
-`Check now` (see `Check for updates` below) tells you when you are up to date: the line reads `Hydra Deluxe <version> is the latest version.` with an `OK` button. The daily check shows nothing in that case.
+A problem after you click `Update` shows in the bar too, with the reason dimmed under it. A failed update has a `Later` button that puts the line away, and an `Update` button that tries again.
+
+When the latest release is no newer than the version you run, the bar reads `Up to date` with a green dot.
 
 ## Analysis settings
 
 The `Analysis settings` button sits on the toolbar, after `Compare with dmleaderboards...`. Click it to open the settings panel, which holds every setting that shapes an analysis.
 
-The button's label names only the settings you have changed from their defaults, joined with ` · `, for example `Analysis settings: Hard · Note Shuffle`. With every setting at its default it reads `Analysis settings: defaults`. When the window is too narrow for the whole label, the label is cut short; hover over the button to read all of it. `Check for updates` never appears in the label, because it is not part of an analysis.
+The button's label names only the settings you have changed from their defaults, joined with ` · `, for example `Analysis settings: Hard · Note Shuffle`. With every setting at its default it reads `Analysis settings: defaults`. When the window is too narrow for the whole label, the label is cut short; hover over the button to read all of it.
 
-The panel has four groups. The first three shape the analysis. The fourth, `App`, holds `Check for updates`, which changes no result. A change applies the moment you make it, and there is no Apply button. Checking a box leaves the panel open. Click outside the panel or press `Escape` to close it.
+The panel has three groups. A change applies the moment you make it, and there is no Apply button. Checking a box leaves the panel open. Click outside the panel or press `Escape` to close it.
 
 | Group | Setting | Default |
 |---|---|---|
@@ -108,13 +126,12 @@ The panel has four groups. The first three shape the analysis. The fourth, `App`
 | `Clone Hero rules` | `1.0 fills` | off |
 | `Paths kept` | `Score range` | 4<!-- default: kDefaultDepthValue --> scores |
 | `Paths kept` | `Path limit` | on<!-- default: Settings::mslimit_enabled -->, 10 ms<!-- default: Settings::mslimit_value --> |
-| `App` | `Check for updates` | on |
 
-At the bottom of the panel, `Reset to defaults` puts every setting in the first three groups back to its default in one click, so the button reads `Analysis settings: defaults` again. It leaves `Check for updates`, your song folders and everything outside the panel alone. Hover over it to see what it will undo, for example `Resets: Pro Drums off · SP cap 5 bars`. It is greyed out when the settings are already the defaults.
+At the bottom of the panel, `Reset to defaults` puts every setting in the panel back to its default in one click, so the button reads `Analysis settings: defaults` again. It leaves your song folders and everything outside the panel alone. Hover over it to see what it will undo, for example `Resets: Pro Drums off · SP cap 5 bars`. It is greyed out when the settings are already the defaults.
 
 Each setting applies to every song, not only the one you have open. A result is saved together with the settings it ran under. Change a setting and the library shows the results for the new settings; a combination you haven't analyzed yet shows its songs as `Not analyzed`. Change it back and the old results come back, with no batch to run. A song open in the panel is analyzed again under the new settings, the same as clicking it.
 
-While a batch runs, the settings are locked. The button's label ends in ` (locked)`. The panel still opens, but its controls and `Reset to defaults` are greyed out and it says `Stop the batch to change these.` `Check for updates` stays usable, because it isn't part of a result. Opening a song never locks them. Changing a setting while the song is still analyzing starts it again under the new settings.
+While a batch runs, the settings are locked. The button's label ends in ` (locked)`. The panel still opens, but its controls and `Reset to defaults` are greyed out and it says `Stop the batch to change these.` Opening a song never locks them. Changing a setting while the song is still analyzing starts it again under the new settings.
 
 ### What each setting does
 
@@ -133,8 +150,6 @@ While a batch runs, the settings are locked. The button's label ends in ` (locke
 `Score range` sets how many extra paths below optimal to keep, and its dropdown picks the unit. `scores` keeps the next few distinct scores under optimal. `points` keeps every path within that many points of optimal. These paths are a little worse, but handy when the optimal path is awkward to play. More paths make the analysis slower.
 
 `Path limit`, when checked, keeps extra paths only when every squeeze and required early fill on them is within this many milliseconds. That keeps alternates you can realistically hit. A path that ties the best score is kept even when its timing is over the limit, and its figure shows in orange; below the best score, a path over the limit is dropped. Lower or negative values demand more slack. The limit compares raw milliseconds: for a squeeze, the gap at the SP end; for an early fill, the gap at the fill deadline. It does not account for frontend timing scaling (see the Paths tab), so a kept path can be a bit harder than its number suggests where an activation's scale line is orange.
-
-`Check for updates`, when checked, looks for a newer release on GitHub once a day, when Hydra Deluxe starts. Nothing is downloaded or installed until you click `Update`. `Check now`, in the same row, checks right away, even if a check ran less than a day ago. It is greyed out while a check runs. It is also greyed out in a copy of Hydra Deluxe that the installer didn't put in place, such as one you copied to another folder; hovering it there shows `Only the installed copy of Hydra Deluxe checks for updates.` See [When a new version is out](#when-a-new-version-is-out).
 
 ## Searching the library
 
