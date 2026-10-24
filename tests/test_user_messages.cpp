@@ -76,6 +76,37 @@ TEST_CASE("user_messages: a real refused load shows the tick sentence") {
     }
 }
 
+// A missing tick-0 tempo and an unreadable Resolution are refused by real
+// loads, and each shows the refusal sentence, never the standard library's
+// words ("bpm map has no tick-0 entry", "invalid stoll argument").
+TEST_CASE("user_messages: a missing tick-0 tempo or unreadable Resolution shows a sentence") {
+    auto shown = [](const std::string& chart) {
+        try {
+            hydra::load_songbytes_chart(std::vector<uint8_t>(chart.begin(), chart.end()),
+                                        hydra::ChartReading{});
+        } catch (const std::exception& e) {
+            CHECK(plain_error_detail(e).empty());
+            return plain_error(e);
+        }
+        return std::string("(loaded)");
+    };
+    const std::string drums = testchart::section("ExpertDrums", "  0 = N 0 0\n  384 = N 1 0\n");
+    const std::string sync = testchart::section("SyncTrack", "  0 = TS 4\n  0 = B 120000\n");
+    CHECK(shown(testchart::chart_text(drums, 192, "", "  0 = TS 4\n  384 = B 60000\n")) ==
+          "Hydra can't analyze this chart because it has no tempo at tick 0. Fix that line "
+          "in the chart file or download the song again.");
+    CHECK(shown(sync + drums) ==
+          "Hydra can't analyze this chart because the chart's resolution is missing. Fix that "
+          "line in the chart file or download the song again.");
+    CHECK(shown(testchart::section("Song", "  Resolution = abc\n") + sync + drums) ==
+          "Hydra can't analyze this chart because the chart's resolution is not a whole "
+          "number. Fix that line in the chart file or download the song again.");
+    CHECK(shown(testchart::section("Song", "  Resolution = 99999999999999999999\n") + sync +
+                drums) ==
+          "Hydra can't analyze this chart because the chart's resolution is too large. Fix "
+          "that line in the chart file or download the song again.");
+}
+
 TEST_CASE("user_messages: an infinite .mid tempo says so") {
     CHECK(plain_error(hydra::ChartFileError(
               kRefused, "the tempo at tick 96 is infinite (0 microseconds per beat)")) ==
