@@ -686,7 +686,8 @@ def build_server():
         """Click the widget with this label (relative to the current window).
         Widgets below the toolbar, such as the library and the song panel, need
         **/ in front (**/Preview). A bare label that finds nothing is tried
-        once as **/<label>, and the reply names the ref used. To open a song,
+        once as **/<label>, and the reply names the ref used; it is refused
+        when several widgets carry the label. To open a song,
         use hydra_open_song."""
         return HELPER.send(f"click {ref}")
 
@@ -695,7 +696,8 @@ def build_server():
         """Type text into the input with this label, kept exactly. An empty
         text clears the field. Inputs below the toolbar need **/ in front: the
         library search is **/##search. A bare label that finds nothing is
-        tried once as **/<label>, and the reply names the ref used."""
+        tried once as **/<label>, and the reply names the ref used; it is
+        refused when several widgets carry the label."""
         return HELPER.send(f"type {ref} | {text}")
 
     @server.tool()

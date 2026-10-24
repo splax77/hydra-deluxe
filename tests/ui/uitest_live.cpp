@@ -405,10 +405,29 @@ void test_command_bare_ref_missing(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(r.text.c_str(), "failed: click Zzq No Such Widget");
 }
 
+// The Analysis settings panel draws a "-" button for each of its number
+// inputs, so a bare "-" under the panel matches several widgets and the retry
+// as "**/-" must be refused, naming them.
+void test_command_bare_ref_ambiguous(ImGuiTestContext* ctx) {
+    CommandSession session = scanned_session(ctx);
+    if (ctx->IsError()) return;
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    const CommandResult r = run_command(ctx, session, "click -");
+    close_settings_panel(ctx);
+    IM_CHECK(!r.ok);
+    IM_CHECK(!ctx->IsError());
+    const std::string head =
+        "refused: \"-\" matches 3 widgets, and **/- would take only one of them; "
+        "name one with a longer ref: \"-\" id=0x";
+    IM_CHECK_STR_EQ(r.text.substr(0, head.size()).c_str(), head.c_str());
+}
+
 }  // namespace
 
 const std::vector<TestEntry>& command_tests() {
     static const std::vector<TestEntry> entries = {
+        {"command-bare-ref-ambiguous", test_command_bare_ref_ambiguous},
         {"command-open", test_command_open},
         {"command-open-unknown", test_command_open_unknown},
         {"command-row-click-refused", test_command_row_click_refused},

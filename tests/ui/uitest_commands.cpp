@@ -12,6 +12,7 @@
 #include <cstring>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "core/strutil.h"
 
@@ -128,9 +129,11 @@ std::string message(const char* fmt, ...) {
 
 // The last label of a ref, as the engine reads it: what follows the last '/'
 // that no '\' escapes, with the escapes undone ("**/AC\/DC" gives "AC/DC").
-std::string last_label(const std::string& ref) {
+// `segments` gets how many labels the ref holds.
+std::string last_label(const std::string& ref, size_t& segments) {
     std::string label;
     bool escaped = false;
+    segments = 1;
     for (char c : ref) {
         if (escaped) {
             label += c;
@@ -139,6 +142,7 @@ std::string last_label(const std::string& ref) {
             escaped = true;
         } else if (c == '/') {
             label.clear();
+            ++segments;
         } else {
             label += c;
         }
@@ -146,29 +150,52 @@ std::string last_label(const std::string& ref) {
     return label;
 }
 
+// The drawn widgets, named one per line, for a refusal's text.
+std::string named(const std::vector<ImGuiTestItemInfo>& items) {
+    std::string out;
+    for (const ImGuiTestItemInfo& it : items) {
+        std::string line = item_line(it, 0);
+        if (!line.empty() && line.back() == '\n') line.pop_back();
+        out += (out.empty() ? "" : "; ") + line + " in window \"" + it.Window->Name + "\"";
+    }
+    return out;
+}
+
 // A wildcard lookup of a library row's title scrolls the whole library when
 // the row is not drawn, which with a full library takes minutes. So such a
 // lookup is refused while the search box is empty. The rows' labels are the
-// Title column's text (the row's Selectable in library_table.cpp). Empty when
-// the lookup may go ahead.
-std::string library_scroll_refusal(Harness& h, const std::string& ref) {
+// Title column's text (the row's Selectable in library_table.cpp). A widget of
+// that label drawn outside the library (a button that shares a song's title)
+// is found without any scrolling, so it goes ahead; `searches_here` says the
+// ref searches under the current window, where drawn_items_labelled looks.
+// Empty when the lookup may go ahead.
+std::string library_scroll_refusal(ImGuiTestContext* ctx, Harness& h, const std::string& label,
+                                   bool searches_here) {
     const auto& a = *h.app;
     if (!a.search.empty()) return "";
-    const std::string label = last_label(ref);
+    bool is_title = false;
     for (const hydra::ui::LibraryRow& row : a.library.rows())
-        if (hydra::ui::library_cell_text(row, hydra::ui::kColumnTitle) == label)
-            return message("refused: \"%s\" is a library row's title and the search box is "
-                           "empty, so finding it would scroll the whole library; use "
-                           "\"open %s\", or type into **/##search first",
-                           label.c_str(), label.c_str());
-    return "";
+        if (hydra::ui::library_cell_text(row, hydra::ui::kColumnTitle) == label) {
+            is_title = true;
+            break;
+        }
+    if (!is_title) return "";
+    if (searches_here)
+        for (const ImGuiTestItemInfo& it : drawn_items_labelled(ctx, label))
+            if (std::strstr(it.Window->Name, "##library") == nullptr) return "";
+    return message("refused: \"%s\" is a library row's title and the search box is "
+                   "empty, so finding it would scroll the whole library; use "
+                   "\"open %s\", or type into **/##search first",
+                   label.c_str(), label.c_str());
 }
 
 // The ref an item verb (click, check, uncheck, type) acts on. A ref that
 // neither starts with '/' nor holds "**/" and finds no item relative to the
 // current window is tried once more as "**/<ref>", and that is used when it
-// finds one; retried says so. A ref that would go through a wildcard lookup
-// passes library_scroll_refusal first; refusal holds its reason.
+// finds one; retried says so. The retry is refused when two or more drawn
+// widgets under the current window carry the label. A ref that would go
+// through a wildcard lookup passes library_scroll_refusal first. refusal holds
+// the reason of either.
 struct ItemRef {
     std::string ref;
     std::string refusal;
@@ -181,10 +208,24 @@ ItemRef item_ref(ImGuiTestContext* ctx, Harness& h, const std::string& ref) {
     if (!wildcard) {
         if (ctx->ItemInfo(ref.c_str(), ImGuiTestOpFlags_NoError).ID != 0) return {ref};
     }
-    if (std::string why = library_scroll_refusal(h, ref); !why.empty()) return {"", why};
+    // Only a ref with no prefix (bare, or starting "**/") searches under the
+    // current window, which is where drawn_items_labelled looks.
+    size_t segments = 1;
+    const std::string label = last_label(ref, segments);
+    const bool searches_here = !wildcard || ref.compare(0, 3, "**/") == 0;
+    if (std::string why = library_scroll_refusal(ctx, h, label, searches_here); !why.empty())
+        return {"", why};
     if (wildcard) return {ref};
     // The engine keeps the last item a wildcard lookup matched and counts no
-    // others, so an ambiguous "**/" cannot be told from a unique one here.
+    // others, so the drawn widgets are counted here. A ref of several labels
+    // is matched on its whole path by the engine, which this count does not do.
+    if (segments == 1) {
+        const std::vector<ImGuiTestItemInfo> drawn = drawn_items_labelled(ctx, label);
+        if (drawn.size() >= 2)
+            return {"", message("refused: \"%s\" matches %zu widgets, and **/%s would take only "
+                                "one of them; name one with a longer ref: %s",
+                                label.c_str(), drawn.size(), ref.c_str(), named(drawn).c_str())};
+    }
     const std::string wide = "**/" + ref;
     if (ctx->ItemInfo(wide.c_str(), ImGuiTestOpFlags_NoError).ID != 0) return {wide, "", true};
     return {ref};  // the engine's own lookup fails it, with its own message
@@ -241,9 +282,11 @@ CommandResult run_command(ImGuiTestContext* ctx, CommandSession& session, const 
     } else if (verb == "open") {
         // open <title>: open_titled with the title as the search. The ref
         // goes back to //Hydra, where a session starts, so later refs read
-        // as they did before the open.
+        // as they did before the open. The wait for the song's tabs is capped
+        // by the timeout in force, like wait-idle, so a live open never
+        // outlasts the longest a command may take.
         if (rest.empty()) return refuse("open needs a song title");
-        const std::string why = open_titled_reason(ctx, rest, rest);
+        const std::string why = open_titled_reason(ctx, rest, rest, timeout);
         ctx->SetRef("//Hydra");
         if (!why.empty()) return refuse(why);
     } else if (verb == "key") {

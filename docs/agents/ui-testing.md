@@ -64,7 +64,7 @@ screenshot stars.png
 | `click <ref>` | click a widget |
 | `check <ref>` / `uncheck <ref>` | set a checkbox |
 | `type <ref> \| <text>` | put text into an input. The text is everything after the first ` \| `, kept exactly, spaces included. A line that ends in a bare ` \|` types nothing, which clears the field |
-| `open <title>` | open a song: type the title into `**/##search`, then open the row whose title is exactly `<title>` (`open_titled_reason` in `uitest_harness.cpp`). When no shown row has that title, it refuses and says what the search shows. The ref goes back to `//Hydra` afterwards |
+| `open <title>` | open a song: type the title into `**/##search`, then open the row whose title is exactly `<title>` (`open_titled_reason` in `uitest_harness.cpp`). When no shown row has that title, it refuses and says what the search shows. It waits for the song's tabs to settle for at most the timeout in force (the `timeout` verb); past that it refuses with `opened "<title>", but its analysis was still running after N s; use wait-idle`, and the song stays open. The ref goes back to `//Hydra` afterwards |
 | `key <keys>` | press a key or a chord, such as `Escape`, `Enter`, `Down`, `Ctrl+W` or `Ctrl+Shift+Tab`. The names it knows are in `key_named` and `parse_chord` in `uitest_commands.cpp`; an unknown name fails |
 | `wait <seconds>` | let frames run |
 | `wait-idle` | wait until every background job has finished; the list is `AppState::any_job_running` |
@@ -86,7 +86,7 @@ A bar with nothing after it (a line ending in ` |`) is the same as a bar with em
 
 Lines print as they run. A failed engine action, like a click that finds nothing, prints `!! failed at line N: <line>`. A line the interpreter itself refuses (an unknown verb or key, a bad number, an `expect-text` that does not hold, a `rect` that finds nothing, a wait that ran out) fails the test, and its log names the line as `line N: <reason>`. The script stops at the first failure.
 
-Two guards sit in front of `click`, `check`, `uncheck` and `type`; `item_ref` in `uitest_commands.cpp` owns both. First, a lookup of a library row's title is refused while the search box is empty, because finding a row that is not drawn makes the test engine scroll the whole library; use `open <title>` instead, or type into `**/##search` first. Second, a bare label that finds nothing in the current window is tried once more as `**/<label>`, and the reply starts with `used ref **/<label>` so you learn the path that works. The test engine cannot say whether a `**/` ref matched more than one widget, so the retry takes whichever one the engine finds.
+Two guards sit in front of `click`, `check`, `uncheck` and `type`; `item_ref` in `uitest_commands.cpp` owns both. First, a lookup of a library row's title is refused while the search box is empty, because finding a row that is not drawn makes the test engine scroll the whole library; use `open <title>` instead, or type into `**/##search` first. A widget outside the library that is drawn with the same label (a button that shares a song's title) is not refused. Second, a bare label that finds nothing in the current window is tried once more as `**/<label>`, and the reply starts with `used ref **/<label>` so you learn the path that works. The test engine keeps only the last widget a `**/` lookup matches, so the guard counts the drawn widgets under the current window with that label first (`drawn_items_labelled`, the gather `dump` walks) and refuses the retry when two or more carry it, naming them. A ref of several labels is not counted; the engine matches its whole path.
 
 Clicking a song starts its analysis (D87 item 1), and `wait-idle` waits for it. There is no `Done!` flash, so the tabs show as soon as it finishes. A tab click still needs a frame or two before its text shows.
 
@@ -182,7 +182,7 @@ Each tool sends one command line and returns Hydra's reply text, unchanged excep
 | `hydra_stop(keep_window=False)` | `quit` | waits for Hydra to exit, kills it if it does not, and returns the exit code. Then deletes the helper's scratch folder unless `keep` was set |
 | `hydra_reset()` | `reset` | a fresh library in the same process |
 | `hydra_open_song(title)` | `open <title>` | the way to open a song. Clicking a row's title with the search box empty is refused (see the two guards above) |
-| `hydra_click(ref)` | `click <ref>` | widgets below the toolbar need `**/`; a bare label that finds nothing is retried as `**/<label>` |
+| `hydra_click(ref)` | `click <ref>` | widgets below the toolbar need `**/`; a bare label that finds nothing is retried as `**/<label>`, unless several widgets carry it |
 | `hydra_type(ref, text)` | `type <ref> \| <text>` | an empty `text` clears the field. The library search is `**/##search`; the same retry applies |
 | `hydra_check(ref, on)` | `check <ref>` or `uncheck <ref>` | |
 | `hydra_key(keys)` | `key <keys>` | |

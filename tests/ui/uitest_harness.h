@@ -346,18 +346,32 @@ void set_panel_ref(ImGuiTestContext* ctx);
 // on its way hovers empty space. Holds once the click has settled, or while a
 // closed ViewGate keeps it from landing.
 void wait_tabs_placed(ImGuiTestContext* ctx);
+// The longest the open helpers wait for the tabs to settle, in seconds.
+constexpr double kSettleWaitSeconds = 300;
 // Click row `index` of the library view, wait for the song panel, point the
 // ref at it, and land on its Paths tab. Waits for wait_tabs_placed first, so
 // without a ViewGate the click's analysis has settled when it returns.
 void open_details(ImGuiTestContext* ctx, size_t index);
+// open_details with its own wait cap. False when the tabs had not settled
+// within `settle_seconds` (the song is open, the Paths tab is not clicked, and
+// no failure is recorded); true otherwise, also after an engine action failed.
+bool open_details_within(ImGuiTestContext* ctx, size_t index, double settle_seconds);
 // Type `search` into the library's search box, then open the row titled `title`.
 void open_titled(ImGuiTestContext* ctx, const std::string& search, const std::string& title);
 // open_titled's one sequence, which fails no test itself when no shown row has
-// that exact title: it returns the plain reason (the search, how many rows it
-// shows, a few of their titles). Empty when the row opened, or when an engine
-// action failed instead (ctx->IsError(), its reason in the log).
+// that exact title or the tabs do not settle within `settle_seconds`: it
+// returns the plain reason (the search, how many rows it shows, a few of their
+// titles; or that the analysis is still running). Empty when the row opened,
+// or when an engine action failed instead (ctx->IsError(), its reason in the log).
 std::string open_titled_reason(ImGuiTestContext* ctx, const std::string& search,
-                               const std::string& title);
+                               const std::string& title,
+                               double settle_seconds = kSettleWaitSeconds);
+// The drawn items under the current ref, child windows included, whose label
+// is `label` (compared the way the engine's "**/" lookup compares: by the
+// label's hash, so "text###id" matches on what follows "###"). One gather, the
+// one widget_dump walks too.
+std::vector<ImGuiTestItemInfo> drawn_items_labelled(ImGuiTestContext* ctx,
+                                                    const std::string& label);
 // Wait for the open song's analysis (the click, or a setting changed with the
 // song open, starts it: D87 item 1, D90 item 1) and check it is Ready. Then
 // lands the panel on its Paths tab.

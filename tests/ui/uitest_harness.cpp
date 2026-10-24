@@ -591,6 +591,14 @@ namespace {
 
 const char* yes_no(bool b) { return b ? "yes" : "no"; }
 
+// The drawn items under `parent` at every depth (-1), because items inside
+// tables and pushed IDs sit deeper than one level. The gather also climbs from
+// child windows to the parent. The one gather widget_dump and
+// drawn_items_labelled share.
+void gather_all(ImGuiTestContext* ctx, ImGuiTestRef parent, ImGuiTestItemList& items) {
+    ctx->GatherItems(&items, parent, -1);
+}
+
 // One window's line and its item lines; with `contains`, only the item lines
 // holding it, and nothing at all when none does. True when anything was
 // written.
@@ -598,10 +606,8 @@ bool dump_window(ImGuiTestContext* ctx, ImGuiWindow* w, const std::string& conta
                  ImGuiTextBuffer& out) {
     std::string items_text;
     ImGuiTestItemList items;
-    // Every depth (-1), because items inside tables and pushed IDs sit deeper
-    // than one level. The gather also climbs from child windows to this one,
-    // and each child window gets its own dump, so only this window's items stay.
-    ctx->GatherItems(&items, ImGuiTestRef(w->ID), -1);
+    // Each child window gets its own dump, so only this window's items stay.
+    gather_all(ctx, ImGuiTestRef(w->ID), items);
     for (const ImGuiTestItemInfo& it : items) {
         if (it.Window != w) continue;
         const std::string line = item_line(it, it.Depth + 1);
@@ -617,6 +623,17 @@ bool dump_window(ImGuiTestContext* ctx, ImGuiWindow* w, const std::string& conta
 }
 
 }  // namespace
+
+std::vector<ImGuiTestItemInfo> drawn_items_labelled(ImGuiTestContext* ctx,
+                                                    const std::string& label) {
+    ImGuiTestItemList items;
+    gather_all(ctx, ctx->GetRef(), items);
+    const ImGuiID wanted = ImHashStr(label.c_str());
+    std::vector<ImGuiTestItemInfo> found;
+    for (const ImGuiTestItemInfo& it : items)
+        if (ImHashStr(it.DebugLabel) == wanted) found.push_back(it);
+    return found;
+}
 
 std::string lines_holding(const std::string& text, const std::string& part) {
     std::string out;
@@ -788,32 +805,45 @@ void set_panel_ref(ImGuiTestContext* ctx) {
 
 // Click row `index` of the library view and wait for the song panel.
 void open_details(ImGuiTestContext* ctx, size_t index) {
+    IM_CHECK(open_details_within(ctx, index, kSettleWaitSeconds));
+}
+
+namespace {
+// Whether the tab bar can no longer move within `seconds`; the one wait
+// wait_tabs_placed and open_details_within share.
+bool tabs_placed_within(ImGuiTestContext* ctx, double seconds) {
     Harness& h = harness(ctx);
-    IM_CHECK(index < h.app->library_shown_count());
+    return wait_until(ctx, [&] { return h.app->view_settled() || !g_view_gate_open.load(); },
+                      seconds);
+}
+}  // namespace
+
+bool open_details_within(ImGuiTestContext* ctx, size_t index, double settle_seconds) {
+    Harness& h = harness(ctx);
+    IM_CHECK_RETV(index < h.app->library_shown_count(), true);
     const std::string title = h.app->library_row_at(index).title;
     ctx->SetRef("//Hydra");
     ctx->ItemClick(("**/" + escape_ref(title)).c_str());
     ctx->Yield(3);
-    IM_CHECK(h.app->details_open());
-    IM_CHECK(h.app->selected && h.app->selected->title == title);
+    IM_CHECK_RETV(h.app->details_open(), true);
+    IM_CHECK_RETV(h.app->selected && h.app->selected->title == title, true);
     set_panel_ref(ctx);
-    if (ctx->IsError()) return;
+    if (ctx->IsError()) return true;
     // The ImGui context outlives reset_app, so the tab bar remembers the tab a
     // previous test left selected. Land on Paths deterministically.
-    wait_tabs_placed(ctx);
+    if (!tabs_placed_within(ctx, settle_seconds)) return false;
     ctx->ItemClick("##DetailsTabs/Paths");
+    return true;
 }
 
 void wait_tabs_placed(ImGuiTestContext* ctx) {
-    Harness& h = harness(ctx);
-    IM_CHECK(wait_until(ctx, [&] { return h.app->view_settled() || !g_view_gate_open.load(); },
-                        300));
+    IM_CHECK(tabs_placed_within(ctx, kSettleWaitSeconds));
 }
 
 // Narrow the library with `search` typed into the search box, then open the
 // row titled `title`.
 std::string open_titled_reason(ImGuiTestContext* ctx, const std::string& search,
-                               const std::string& title) {
+                               const std::string& title, double settle_seconds) {
     Harness& h = harness(ctx);
     ctx->SetRef("//Hydra");
     ctx->ItemInputValue("**/##search", search.c_str());
@@ -836,7 +866,12 @@ std::string open_titled_reason(ImGuiTestContext* ctx, const std::string& search,
         if (shown > 0) why += shown > kNamed ? "\" and more" : "\"";
         return why;
     }
-    open_details(ctx, idx);
+    if (!open_details_within(ctx, idx, settle_seconds) && !ctx->IsError()) {
+        char secs[32];
+        std::snprintf(secs, sizeof(secs), "%g", settle_seconds);
+        return "opened \"" + title + "\", but its analysis was still running after " + secs +
+               " s; use wait-idle";
+    }
     return "";
 }
 
@@ -850,7 +885,7 @@ void wait_song_analyzed(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     set_panel_ref(ctx);
     if (ctx->IsError()) return;
-    IM_CHECK(wait_until(ctx, [&] { return h.app->view_settled(); }, 300));
+    IM_CHECK(wait_until(ctx, [&] { return h.app->view_settled(); }, kSettleWaitSeconds));
     IM_CHECK(h.app->viewed.ready());
     // Only now: the headline has landed, so the tab bar stays put.
     ctx->ItemClick("##DetailsTabs/Paths");
