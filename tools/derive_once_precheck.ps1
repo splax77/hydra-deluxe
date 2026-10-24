@@ -47,7 +47,7 @@ defines with the others, and check 4 reads the rule rows a range adds.
 THE SCAN ROWS
 
 The single-owner scan owns every "this is a copy" pattern it has a row for.
-Its rows live in tests/single_owner/rules/ (rule_files in scan.cpp says which
+Its rows live in tests/single_owner/rules/ (select_rule_files in engine.cpp says which
 files) and its known copies in
 tests/single_owner/baseline.json. This script does not keep its own copy of
 those patterns: it reads both at the range's last commit, or at -RulesAt,
@@ -535,8 +535,8 @@ function New-StdRegex([string]$Pattern) {
     # and the example check below says when the two readings differ.
     try { [regex]::new($Pattern, 'ECMAScript') } catch { [regex]::new($Pattern) }
 }
-# Which files are rules files is answered by rule_files in
-# tests/single_owner/scan.cpp: .json files in the folder and in the folders
+# Which files are rules files is answered by select_rule_files in
+# tests/single_owner/engine.cpp: .json files in the folder and in the folders
 # one level down, in name order. This follows it (names sort byte by byte, as
 # the scan's do).
 $ruleFiles = @(Invoke-Git @('ls-tree', '-r', '--name-only', $rulesRev, '--', "$rulesDir/") | Where-Object { $_.Substring($rulesDir.Length + 1) -match '^([^/]+/)?[^/]+\.json$' })

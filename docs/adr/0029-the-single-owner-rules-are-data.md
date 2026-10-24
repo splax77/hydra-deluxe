@@ -50,7 +50,7 @@ repository root in rules/root.json. The rows that read Python files go in
 rules/probe.json.
 
 The loader reads every `.json` file in that folder, and in the folders one
-level down (`rule_files` in tests/single_owner/scan.cpp), so a new area file
+level down (`select_rule_files` in tests/single_owner/engine.cpp), so a new area file
 needs no code change.
 
 **2026-10-10: a new row may go in its own file.** Eight commits on main's
@@ -66,7 +66,7 @@ already in an area file stay where they are; nothing is moved.
 ## What a row carries
 
 `OwnerRule` in tests/single_owner/rows.h holds each field's exact meaning.
-`parse_rule` in scan.cpp reads them. A row missing a required field, carrying
+`parse_rule` in engine.cpp reads them. A row missing a required field, carrying
 a field the loader does not know, or holding a value of the wrong type fails
 the load with the rules file and the row's question, so a typo cannot drop a
 field quietly.
@@ -140,8 +140,8 @@ file another task owns still land its change, while the clock runs.
 
 ## The precheck reads the same files
 
-tools/derive_once_precheck.ps1 reads the rules files that `rule_files` in
-tests/single_owner/scan.cpp names, and baseline.json, at the revision it
+tools/derive_once_precheck.ps1 reads the rules files that `select_rule_files` in
+tests/single_owner/engine.cpp names, and baseline.json, at the revision it
 checks, with `ConvertFrom-Json`. The scan and the precheck read one set of
 files, and neither parses the other's language.
 

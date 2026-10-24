@@ -24,6 +24,7 @@
 
 #include "../source_tree.h"
 #include "core/strutil.h"
+#include "check_scan.h"
 #include "listed.h"
 #include "rows.h"
 

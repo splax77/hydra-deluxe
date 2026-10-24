@@ -1,12 +1,14 @@
 // One owner per rule, checked where a grep can check it. The rows are data,
-// in tests/single_owner/rules/ (rule_files below says which files), and the baselines are
-// in tests/single_owner/baseline.json; load_tables below is their one reader.
-// Each row names a question, the one place that answers it, and a pattern for
-// the text that answers it. A matching line anywhere else fails here, unless
-// it calls the owner on that same line, or the baseline lists it with the fix
-// that will remove it. A baseline entry that no longer matches also fails, so the list
-// only shrinks. Each listed line (baseline or owner) covers exactly one line
-// of source, so a word-for-word copy of it fails too.
+// in tests/single_owner/rules/ (select_rule_files in engine.cpp says which
+// files), and the baselines are in tests/single_owner/baseline.json; the
+// engine's loader (engine.h) is their one reader, and tables() below reads
+// them once. Each row names a question, the one place that answers it, and
+// a pattern for the text that answers it. A matching line anywhere else
+// fails here, unless it calls the owner on that same line, or the baseline
+// lists it with the fix that will remove it. A baseline entry that no longer
+// matches also fails, so the list only shrinks. Each listed line (baseline
+// or owner) covers exactly one line of source, so a word-for-word copy of it
+// fails too.
 //
 // This is the one scan of src/, tools/ and tests/. A row covers src/ and
 // tools/ unless it names its own scope; the rows about tests (a test that
@@ -14,20 +16,16 @@
 // The long-path rules (ADR 0020) are rows here too, so a new one-place rule
 // is a new row, not a new walker. The walk itself, and the repo root, come
 // from tests/source_tree.h. The clone scan in clones.cpp (ADR 0025) reads the
-// same walk for blocks of code pasted into two places.
+// same walk for blocks of code pasted into two places. Whether a line
+// answers a row is the engine's (engine.cpp); this file holds the cases.
 #include "doctest.h"
 
-#include <algorithm>
-#include <cctype>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
-#include <initializer_list>
 #include <optional>
-#include <regex>
 #include <set>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -35,8 +33,10 @@
 #include "../code_lexer.h"
 #include "../source_tree.h"
 #include "../temp_util.h"
+#include "check_scan.h"
 #include "core/strutil.h"
 #include "core/winstr.h"
+#include "engine.h"
 #include "json.hpp"
 #include "listed.h"
 #include "rows.h"
@@ -46,256 +46,10 @@ using namespace single_owner;
 
 namespace {
 
-// ---- Reading the rows and the baselines ----
-//
-// Rule files are read in name order (rule_files) and rows in file order. A missing
-// required field, a field the loader does not know, or a value of the wrong
-// type fails with the rules file and the row's question, so a typo cannot
-// drop a field quietly.
-
 using json = nlohmann::json;
 
-const char* const kRulesDir = "tests/single_owner/rules";
-const char* const kBaselineFile = "tests/single_owner/baseline.json";
-
-void check_keys(const json& obj, std::initializer_list<const char*> known, const std::string& where) {
-    if (!obj.is_object()) throw std::runtime_error(where + ": expected a JSON object");
-    for (const auto& item : obj.items()) {
-        bool ok = false;
-        for (const char* k : known) ok = ok || item.key() == k;
-        if (!ok) throw std::runtime_error(where + ": unknown field \"" + item.key() + "\"");
-    }
-}
-
-std::string required_string(const json& obj, const char* key, const std::string& where) {
-    if (!obj.contains(key) || obj.at(key).get<std::string>().empty())
-        throw std::runtime_error(where + ": missing field \"" + key + "\"");
-    return obj.at(key).get<std::string>();
-}
-
-std::string optional_string(const json& obj, const char* key) {
-    return obj.contains(key) ? obj.at(key).get<std::string>() : std::string();
-}
-
-std::vector<std::string> optional_strings(const json& obj, const char* key) {
-    return obj.contains(key) ? obj.at(key).get<std::vector<std::string>>()
-                             : std::vector<std::string>();
-}
-
-// One row of a rules file. `index` is 0-based and names the row only when it
-// has no question to name it by.
-OwnerRule parse_rule(const json& row, const std::string& rules_file, size_t index) {
-    std::string where = rules_file + ": row " + std::to_string(index + 1);
-    try {
-        if (!row.is_object()) throw std::runtime_error(where + ": expected a JSON object");
-        OwnerRule r;
-        r.question = required_string(row, "question", where);
-        where = rules_file + ": \"" + r.question + "\"";
-        check_keys(row,
-                   {"question", "owner", "owner_file", "owner_symbol", "date", "decision",
-                    "added_by", "pattern", "calls_owner", "owner_files", "exempt", "must_match",
-                    "must_not_match", "owner_lines", "scope", "function_file", "function",
-                    "scan_comments", "note", "language", "anchor"},
-                   where);
-        r.owner = required_string(row, "owner", where);
-        r.owner_file = required_string(row, "owner_file", where);
-        r.owner_symbol = required_string(row, "owner_symbol", where);
-        r.date = required_string(row, "date", where);
-        r.decision = required_string(row, "decision", where);
-        r.added_by = required_string(row, "added_by", where);
-        r.pattern = required_string(row, "pattern", where);
-        r.anchor = optional_string(row, "anchor");
-        r.calls_owner = optional_string(row, "calls_owner");
-        r.owner_files = optional_strings(row, "owner_files");
-        if (row.contains("exempt"))
-            for (const json& x : row.at("exempt")) {
-                check_keys(x, {"file", "why"}, where + ": exempt");
-                r.exempt.push_back({required_string(x, "file", where + ": exempt"),
-                                    required_string(x, "why", where + ": exempt")});
-            }
-        r.must_match = optional_strings(row, "must_match");
-        r.must_not_match = optional_strings(row, "must_not_match");
-        if (row.contains("owner_lines"))
-            for (const json& o : row.at("owner_lines")) {
-                const std::string w = where + ": owner_lines";
-                check_keys(o, {"file", "line_text", "why"}, w);
-                r.owner_lines.push_back({required_string(o, "file", w),
-                                         required_string(o, "line_text", w),
-                                         required_string(o, "why", w)});
-            }
-        r.scope = optional_strings(row, "scope");
-        r.function_file = optional_string(row, "function_file");
-        r.function = optional_string(row, "function");
-        r.scan_comments = row.contains("scan_comments") && row.at("scan_comments").get<bool>();
-        r.note = optional_string(row, "note");
-        r.language = optional_string(row, "language");
-        if (!r.language.empty() && r.language != "py")
-            throw std::runtime_error(where + ": unknown language \"" + r.language + "\"");
-        r.rules_file = rules_file;
-        return r;
-    } catch (const json::exception& e) {
-        throw std::runtime_error(where + ": " + e.what());
-    }
-}
-
-json read_json_file(const fs::path& path, const std::string& name) {
-    std::ifstream in(path);
-    if (!in.good()) throw std::runtime_error(name + ": cannot read " + path.u8string());
-    try {
-        return json::parse(in);
-    } catch (const json::exception& e) {
-        throw std::runtime_error(name + ": " + e.what());
-    }
-}
-
-// How many days after its date a baseline entry may stay at most. The user's
-// cap, from "Baselines that shrink" in
-// docs/superpowers/plans/2026-10-10-single-owner-redesign.md.
-constexpr int kBaselineMaxDays = 14;
-
-bool is_iso_shape(const std::string& s) {
-    if (s.size() != 10) return false;
-    for (size_t i = 0; i < s.size(); ++i)
-        if (i == 4 || i == 7 ? s[i] != '-' : !std::isdigit(static_cast<unsigned char>(s[i])))
-            return false;
-    return true;
-}
-
-// `iso` (YYYY-MM-DD) moved `days` later, as YYYY-MM-DD, or empty when `iso`
-// is not in that form. A date that does not exist (2026-02-30) comes back as
-// a different day, so iso_plus_days(s, 0) == s says s is a real date.
-std::string iso_plus_days(const std::string& iso, int days) {
-    if (!is_iso_shape(iso)) return {};
-    std::tm t{};
-    t.tm_year = std::stoi(iso.substr(0, 4)) - 1900;
-    t.tm_mon = std::stoi(iso.substr(5, 2)) - 1;
-    t.tm_mday = std::stoi(iso.substr(8, 2)) + days;
-    t.tm_hour = 12;  // noon, so a daylight-saving change cannot move the day
-    t.tm_isdst = -1;
-    if (std::mktime(&t) == static_cast<std::time_t>(-1)) return {};
-    char buf[16];
-    std::strftime(buf, sizeof buf, "%Y-%m-%d", &t);
-    return buf;
-}
-
-// Today on this machine's calendar, as YYYY-MM-DD.
-std::string today_iso() {
-    const std::time_t now = std::time(nullptr);
-    std::tm local{};
-    localtime_s(&local, &now);
-    char buf[16];
-    std::strftime(buf, sizeof buf, "%Y-%m-%d", &local);
-    return buf;
-}
-
-BaselineDates parse_dates(const json& entry, const std::string& where) {
-    BaselineDates d{required_string(entry, "date", where), required_string(entry, "added_by", where),
-                    required_string(entry, "remove_by", where)};
-    for (const std::string& s : {d.date, d.remove_by})
-        if (iso_plus_days(s, 0) != s)
-            throw std::runtime_error(where + ": \"" + s + "\" is not a YYYY-MM-DD date");
-    const std::string cap = iso_plus_days(d.date, kBaselineMaxDays);
-    if (d.remove_by > cap)
-        throw std::runtime_error(where + ": remove_by " + d.remove_by + " is more than " +
-                                 std::to_string(kBaselineMaxDays) + " days after its date " + d.date +
-                                 " (" + cap + " at most)");
-    return d;
-}
-
-std::string copy_entry_name(const KnownCopy& k) {
-    return "known_copies \"" + k.question + "\" in " + k.file + ": " + k.line_text;
-}
-
-std::string clone_entry_name(const KnownClone& k) {
-    return "known_clones " + k.file_a + " and " + k.file_b + ", " + std::to_string(k.lines) +
-           " lines from: " + k.first;
-}
-
-// Empty while `today` (YYYY-MM-DD) is on or before the entry's remove_by,
-// else the failure. ISO dates compare as plain text.
-std::string baseline_due(const std::string& entry, const BaselineDates& d, const std::string& today) {
-    if (today <= d.remove_by) return {};
-    return "baseline.json: " + entry + ": past its remove_by date " + d.remove_by + " (added by " +
-           d.added_by + " on " + d.date + "): fix the copy and delete the entry";
-}
-
-struct RuleTables {
-    std::vector<OwnerRule> rules;
-    std::vector<KnownCopy> copies;
-    std::vector<KnownClone> clones;
-};
-
-// The rules files under `dir`, each with the name the scan reports it by, in
-// name order: the area files in `dir` itself, and the files one folder down,
-// in a folder named after an area (ADR 0029).
-std::vector<std::pair<std::string, fs::path>> rule_files(const fs::path& dir) {
-    std::vector<std::pair<std::string, fs::path>> files;
-    for (const fs::directory_entry& e : fs::directory_iterator(dir)) {
-        const std::string name = "rules/" + e.path().filename().generic_u8string();
-        if (e.is_regular_file() && e.path().extension() == ".json") files.push_back({name, e.path()});
-        if (!e.is_directory()) continue;
-        for (const fs::directory_entry& f : fs::directory_iterator(e.path()))
-            if (f.is_regular_file() && f.path().extension() == ".json")
-                files.push_back({name + "/" + f.path().filename().generic_u8string(), f.path()});
-    }
-    std::sort(files.begin(), files.end());
-    return files;
-}
-
-std::vector<OwnerRule> load_rules(const fs::path& dir) {
-    std::vector<OwnerRule> rules;
-    for (const auto& [name, p] : rule_files(dir)) {
-        const json doc = read_json_file(p, name);
-        check_keys(doc, {"rules"}, name);
-        if (!doc.contains("rules") || !doc.at("rules").is_array())
-            throw std::runtime_error(name + ": missing field \"rules\"");
-        const json& rows = doc.at("rules");
-        for (size_t i = 0; i < rows.size(); ++i) rules.push_back(parse_rule(rows[i], name, i));
-    }
-    return rules;
-}
-
-RuleTables load_tables() {
-    const fs::path root = sourcetree::root();
-    RuleTables t;
-    t.rules = load_rules(root / fs::u8path(kRulesDir));
-
-    const std::string name = "baseline.json";
-    const json doc = read_json_file(root / fs::u8path(kBaselineFile), name);
-    check_keys(doc, {"known_copies", "known_clones"}, name);
-    try {
-        if (doc.contains("known_copies"))
-            for (const json& k : doc.at("known_copies")) {
-                const std::string w = name + ": known_copies";
-                check_keys(k,
-                           {"question", "file", "line_text", "removed_by", "date", "added_by",
-                            "remove_by"},
-                           w);
-                KnownCopy c{required_string(k, "question", w), required_string(k, "file", w),
-                            required_string(k, "line_text", w), required_string(k, "removed_by", w),
-                            {}};
-                c.dates = parse_dates(k, name + ": " + copy_entry_name(c));
-                t.copies.push_back(c);
-            }
-        if (doc.contains("known_clones"))
-            for (const json& k : doc.at("known_clones")) {
-                const std::string w = name + ": known_clones";
-                check_keys(k, {"file_a", "file_b", "lines", "first", "date", "added_by", "remove_by"},
-                           w);
-                if (!k.contains("lines")) throw std::runtime_error(w + ": missing field \"lines\"");
-                KnownClone c{required_string(k, "file_a", w), required_string(k, "file_b", w),
-                             k.at("lines").get<int>(), required_string(k, "first", w), {}};
-                c.dates = parse_dates(k, name + ": " + clone_entry_name(c));
-                t.clones.push_back(c);
-            }
-    } catch (const json::exception& e) {
-        throw std::runtime_error(name + ": " + e.what());
-    }
-    return t;
-}
-
 const RuleTables& tables() {
-    static const RuleTables t = load_tables();
+    static const RuleTables t = load_tables(sourcetree::root());
     return t;
 }
 
@@ -311,23 +65,22 @@ const std::vector<KnownClone>& known_clones() { return tables().clones; }
 
 namespace {
 
-// The language codelex reads a file in (codelex::language_of_extension), or
-// C++ for a file it does not know.
-codelex::Lang lexer_language(const fs::path& path) {
-    return codelex::language_of_extension(path.extension().string()).value_or(codelex::Lang::Cpp);
+// Today on this machine's calendar, as YYYY-MM-DD.
+std::string today_iso() {
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+    localtime_s(&local, &now);
+    char buf[16];
+    std::strftime(buf, sizeof buf, "%Y-%m-%d", &local);
+    return buf;
 }
 
-// Whether a trimmed line is all comment in `lang`, as codelex splits it.
-bool whole_line_comment(const std::string& trimmed, codelex::Lang lang) {
-    const std::vector<codelex::Piece> pieces = codelex::split(trimmed, lang);
-    return pieces.size() == 1 && pieces[0].kind == codelex::Kind::Comment;
-}
-
-// Whether a trimmed line is a comment line the row scans skip, in the language
-// the file is read in. Both row scans ask this: C++ keeps is_line_comment's
-// test, every other language is split by codelex.
-bool skipped_comment_line(const std::string& trimmed, codelex::Lang lang) {
-    return lang == codelex::Lang::Cpp ? is_line_comment(trimmed) : whole_line_comment(trimmed, lang);
+// Empty while `today` (YYYY-MM-DD) is on or before the entry's remove_by,
+// else the failure. ISO dates compare as plain text.
+std::string baseline_due(const std::string& entry, const BaselineDates& d, const std::string& today) {
+    if (today <= d.remove_by) return {};
+    return "baseline.json: " + entry + ": past its remove_by date " + d.remove_by + " (added by " +
+           d.added_by + " on " + d.date + "): fix the copy and delete the entry";
 }
 
 // Whether `text` names `symbol` as a whole word outside its comments, as
@@ -361,30 +114,10 @@ std::string owner_gone(const OwnerRule& r, const fs::path& root) {
                : gone;
 }
 
-struct CompiledRule {
-    const OwnerRule* rule;
-    std::regex pattern;
-    std::regex calls_owner;
-};
-
-CompiledRule compile_rule(const OwnerRule& r) {
-    const auto flags = std::regex::ECMAScript | std::regex::optimize;
-    return {&r, std::regex(r.pattern, flags),
-            std::regex(r.calls_owner.empty() ? "$^" : r.calls_owner, flags)};
-}
-
 std::vector<CompiledRule> compile_rules() {
     std::vector<CompiledRule> out;
     for (const OwnerRule& r : rules()) out.push_back(compile_rule(r));
     return out;
-}
-
-// The one verdict: does this line answer the rule's question without calling
-// its owner? The self-test and the scan both ask it.
-bool flags_line(const CompiledRule& c, const std::string& line) {
-    if (!c.rule->anchor.empty() && line.find(c.rule->anchor) == std::string::npos) return false;
-    if (!std::regex_search(line, c.pattern)) return false;
-    return c.rule->calls_owner.empty() || !std::regex_search(line, c.calls_owner);
 }
 
 // The anchor guard: one message per must_match line or owner line that lacks
@@ -402,18 +135,36 @@ std::vector<std::string> anchor_misses(const OwnerRule& r) {
     return out;
 }
 
-// Owner lines first, so an owner line is used before a baseline entry with
-// the same text.
-std::vector<ListedLine> listed_lines() {
-    std::vector<ListedLine> out;
-    for (const OwnerRule& r : rules())
-        for (const OwnerLine& o : r.owner_lines)
-            out.push_back({r.question, o.file, o.line_text,
-                           "owner line no longer matches (update it)", r.rules_file});
-    for (const KnownCopy& k : known_copies())
-        out.push_back({k.question, k.file, k.line_text,
-                       "baseline entry no longer matches (remove it)"});
-    return out;
+// The message for line `t` at `where` (file:line) that answers the row's
+// question without its owner. Both scans give it.
+std::string answers_message(const OwnerRule& rule, const std::string& where, const std::string& t) {
+    return where + ": answers \"" + rule.question + "\", which belongs to " + rule.owner + ": " + t +
+           rule_suffix(rule.rules_file);
+}
+
+// The engine's scan state plus the failures the cases report.
+struct RowScan : ScanState {
+    std::vector<std::string> problems;
+};
+
+RowScan start_row_scan(const std::vector<CompiledRule>& compiled, const std::vector<ListedLine>& listed) {
+    return {start_scan(compiled, listed), {}};
+}
+
+// The row scan of one file, with each flagged line no listed line took
+// turned into a failure.
+void scan_rows(RowScan& s, const std::string& rel, bool py, std::istream& in) {
+    scan_file(s, rel, py, in, [&](const RowHit& h) {
+        if (h.take == Take::taken) return;
+        const OwnerRule& rule = *s.compiled[h.rule_index].rule;
+        const std::string where = rel + ":" + std::to_string(h.line);
+        if (h.take == Take::used_up)
+            s.problems.push_back(where + ": a second copy of a listed line (each "
+                                 "entry covers one line) answers \"" +
+                                 rule.question + "\": " + h.text + rule_suffix(rule.rules_file));
+        else
+            s.problems.push_back(answers_message(rule, where, h.text));
+    });
 }
 
 }  // namespace
@@ -465,114 +216,18 @@ TEST_CASE("single-owner rules match their own examples") {
     }
 }
 
-// Does this rule scan the file `rel`, which sits under the top folder `sub`?
-bool in_scope(const OwnerRule& r, const std::string& sub, const std::string& rel) {
-    if (r.scope.empty()) return sub == "src" || sub == "tools";
-    for (const std::string& s : r.scope)
-        if (s == sub || s == rel) return true;
-    return false;
-}
-
-// The language the walk reads the file `rel` in, or nothing when the walk does
-// not read it. The walk and the case for the single files outside it both ask
-// this, so a file is read by exactly one of them.
-std::optional<codelex::Lang> walk_language(const std::string& rel) {
-    if (!sourcetree::walk_visits(rel)) return std::nullopt;
-    // These files hold made-up rows and their examples as text.
-    if (rel.compare(0, 19, "tests/single_owner/") == 0) return std::nullopt;
-    // A Python row ("language": "py") reads .py files only, so a __pycache__
-    // .pyc is never read; every other row reads C++.
-    const fs::path path = fs::u8path(rel);
-    if (is_cpp_source(path)) return codelex::Lang::Cpp;
-    if (lexer_language(path) == codelex::Lang::Python) return codelex::Lang::Python;
-    return std::nullopt;
-}
-
-// Whether the walk reads the file `rel` for this row: it reads the file at
-// all, and in the row's language.
-bool walk_reads_for(const OwnerRule& r, const std::string& rel) {
-    const std::optional<codelex::Lang> lang = walk_language(rel);
-    return lang && (*lang == codelex::Lang::Python) == (r.language == "py");
-}
-
-// The message for line `t` at `where` (file:line) that answers the row's
-// question without its owner. Both scans give it.
-std::string answers_message(const OwnerRule& rule, const std::string& where, const std::string& t) {
-    return where + ": answers \"" + rule.question + "\", which belongs to " + rule.owner + ": " + t +
-           rule_suffix(rule.rules_file);
-}
-
-// What the row scan carries from one file to the next.
-struct ScanState {
-    const std::vector<CompiledRule>& compiled;
-    const std::vector<ListedLine>& listed;
-    std::vector<bool> used;              // which listed entries a line took
-    std::vector<std::string> problems;
-    std::vector<int> functions_found;    // per compiled row
-};
-
-ScanState start_scan(const std::vector<CompiledRule>& compiled, const std::vector<ListedLine>& listed) {
-    return {compiled, listed, std::vector<bool>(listed.size(), false), {},
-            std::vector<int>(compiled.size(), 0)};
-}
-
-// The row scan of one file: `rel` is its repo-relative path, `py` says it is
-// Python, `in` reads its text. A flagged line that no listed line covers
-// becomes a problem.
-void scan_file(ScanState& s, const std::string& rel, bool py, std::istream& in) {
-    const std::string sub = rel.substr(0, rel.find('/'));  // the top folder
-    std::string line;
-    int lineno = 0;
-    std::vector<bool> in_function(s.compiled.size(), false);
-    while (std::getline(in, line)) {
-        ++lineno;
-        const std::string t = hydra::trim(line);
-        if (t.empty()) continue;
-        const bool comment = skipped_comment_line(t, py ? codelex::Lang::Python : codelex::Lang::Cpp);
-        for (size_t ci = 0; ci < s.compiled.size(); ++ci) {
-            const CompiledRule& c = s.compiled[ci];
-            const OwnerRule& rule = *c.rule;
-            if ((rule.language == "py") != py) continue;
-            if (!in_scope(rule, sub, rel)) continue;
-            if (comment && !rule.scan_comments) continue;
-            if (!rule.function.empty()) {
-                if (rel != rule.function_file) continue;
-                if (!in_function[ci] && line.find(rule.function) != std::string::npos) {
-                    in_function[ci] = true;
-                    ++s.functions_found[ci];
-                }
-                if (!in_function[ci]) continue;
-                if (line == "}") in_function[ci] = false;
-            }
-            bool skip = false;
-            for (const std::string& o : rule.owner_files) skip = skip || rel == o;
-            for (const Exempt& x : rule.exempt) skip = skip || rel == x.file;
-            if (skip || !flags_line(c, line)) continue;
-            const Take take = take_listed_line(s.listed, s.used, rule.question, rel, t);
-            if (take == Take::taken) continue;
-            const std::string where = rel + ":" + std::to_string(lineno);
-            if (take == Take::used_up)
-                s.problems.push_back(where + ": a second copy of a listed line (each "
-                                     "entry covers one line) answers \"" +
-                                     rule.question + "\": " + t + rule_suffix(rule.rules_file));
-            else
-                s.problems.push_back(answers_message(rule, where, t));
-        }
-    }
-}
-
 TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
     const fs::path root = sourcetree::root();
     const std::vector<CompiledRule> compiled = compile_rules();
-    const std::vector<ListedLine> listed = listed_lines();
-    ScanState scan = start_scan(compiled, listed);
+    const std::vector<ListedLine> listed = listed_lines(rules(), known_copies());
+    RowScan scan = start_row_scan(compiled, listed);
     int files = 0;
     sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
             const std::optional<codelex::Lang> lang = walk_language(rel);
             if (!lang) return;
             ++files;
             std::ifstream in(path);
-            scan_file(scan, rel, *lang == codelex::Lang::Python, in);
+            scan_rows(scan, rel, *lang == codelex::Lang::Python, in);
     });
     // A function-scoped rule found its function exactly once; a renamed or
     // moved function would otherwise leave the rule checking nothing.
@@ -596,7 +251,11 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
     check_scan(scan.problems, listed, scan.used);
 }
 
-TEST_CASE("single-owner: the row scan's messages, pinned on a made-up file") {
+namespace {
+
+// The made-up row both made-up file cases scan with: two owner lines, the
+// second of which no line of kMadeUpFile uses.
+OwnerRule made_up_owner_row() {
     OwnerRule r;
     r.question = "Is this a made-up question?";
     r.owner = "made_up in src/a.cpp";
@@ -605,15 +264,26 @@ TEST_CASE("single-owner: the row scan's messages, pinned on a made-up file") {
     r.anchor = "made_up(";
     r.owner_lines = {{"src/a.cpp", "return made_up(1);", "the owner"},
                      {"src/a.cpp", "return made_up(9);", "the owner, gone"}};
+    return r;
+}
+
+// The made-up src/a.cpp: an owner line, a comment, an unlisted answer and a
+// second copy of the owner line.
+const char* const kMadeUpFile = "int f() {\n  return made_up(1);\n}\n// made_up(2) in a comment\n"
+                                "x = made_up(3);\n  return made_up(1);\n";
+
+}  // namespace
+
+TEST_CASE("single-owner: the row scan's messages, pinned on a made-up file") {
+    const OwnerRule r = made_up_owner_row();
     const std::vector<CompiledRule> compiled = {compile_rule(r)};
     std::vector<ListedLine> listed;
     for (const OwnerLine& o : r.owner_lines)
         listed.push_back({r.question, o.file, o.line_text, "owner line no longer matches (update it)",
                           r.rules_file});
-    ScanState scan = start_scan(compiled, listed);
-    std::istringstream in("int f() {\n  return made_up(1);\n}\n// made_up(2) in a comment\n"
-                          "x = made_up(3);\n  return made_up(1);\n");
-    scan_file(scan, "src/a.cpp", false, in);
+    RowScan scan = start_row_scan(compiled, listed);
+    std::istringstream in(kMadeUpFile);
+    scan_rows(scan, "src/a.cpp", false, in);
     REQUIRE(scan.problems.size() == 2);
     CHECK(scan.problems[0] ==
           "src/a.cpp:5: answers \"Is this a made-up question?\", which belongs to made_up in "
@@ -625,6 +295,42 @@ TEST_CASE("single-owner: the row scan's messages, pinned on a made-up file") {
     CHECK(stale_message(listed[1]) ==
           "owner line no longer matches (update it): src/a.cpp: return made_up(9); (rule: "
           "rules/made_up.json)");
+}
+
+TEST_CASE("single-owner: the hit sink reports taken, used-up and unlisted lines") {
+    const OwnerRule r = made_up_owner_row();
+    const std::vector<CompiledRule> compiled = {compile_rule(r)};
+    const std::vector<ListedLine> listed = listed_lines({r}, {});
+    ScanState scan = start_scan(compiled, listed);
+    std::istringstream in(kMadeUpFile);
+    std::vector<RowHit> hits;
+    scan_file(scan, "src/a.cpp", false, in, [&](const RowHit& h) { hits.push_back(h); });
+    REQUIRE(hits.size() == 3);
+    CHECK(hits[0].rule_index == 0);
+    CHECK(hits[0].line == 2);
+    CHECK(hits[0].text == "return made_up(1);");
+    CHECK(hits[0].take == Take::taken);
+    CHECK(hits[0].listed_index == std::optional<size_t>(0));
+    CHECK(hits[1].line == 5);
+    CHECK(hits[1].text == "x = made_up(3);");
+    CHECK(hits[1].take == Take::unlisted);
+    CHECK_FALSE(hits[1].listed_index.has_value());
+    CHECK(hits[2].line == 6);
+    CHECK(hits[2].text == "return made_up(1);");
+    CHECK(hits[2].take == Take::used_up);
+    CHECK_FALSE(hits[2].listed_index.has_value());
+}
+
+TEST_CASE("single-owner: select_rule_files picks the rules files from a path list") {
+    // An area file, a file one folder down, a .txt and a file two folders
+    // down, given out of order; the names come back in byte order, so an
+    // upper-case name sorts first.
+    const std::vector<std::string> paths = {"ui.json",          "app/topic.json", "app/notes.txt",
+                                            "app/deep/row.json", "app.json",       "Area.json"};
+    CHECK(select_rule_files(paths) == std::vector<std::string>{"rules/Area.json", "rules/app.json",
+                                                               "rules/app/topic.json",
+                                                               "rules/ui.json"});
+    CHECK(select_rule_files({}).empty());
 }
 
 namespace {

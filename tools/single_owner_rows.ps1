@@ -3,9 +3,9 @@
 # and its question. It is for a review of old rows: a row whose owner is now
 # the only way to spell the answer can be retired by hand.
 #
-# The rows live in tests/single_owner/rules/; which files hold them (rule_files)
-# and how their fields are read (load_rules) is decided in
-# tests/single_owner/scan.cpp, which this script follows.
+# The rows live in tests/single_owner/rules/; which files hold them (select_rule_files)
+# and how their fields are read (parse_rule) is decided in
+# tests/single_owner/engine.cpp, which this script follows.
 #
 # From the repo root:
 #   pwsh -NoProfile -File tools\single_owner_rows.ps1 [-Before 2026-10-05] [-Area ui]
@@ -28,7 +28,7 @@ if ($Before -ne '' -and $Before -notmatch '^\d{4}-\d{2}-\d{2}$') {
     exit 2
 }
 
-# The files are the ones rule_files in scan.cpp lists: .json files in the
+# The files are the ones select_rule_files in engine.cpp names: .json files in the
 # folder and in the folders one level down, each named by its path under
 # rules/, in name order (byte by byte, as the scan sorts them).
 $files = @(Get-ChildItem -Path $rulesDir -Filter '*.json' -Recurse -Depth 1 -File | ForEach-Object {
