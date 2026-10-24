@@ -574,15 +574,16 @@ chord sits on or before it). The next line it tries is 4 lines on
 (hydra_rules.ini can change the 4 and the half beat). When two chords sit
 equally near the line, the later one gets the fill.
 
-Clone Hero 1.0 mode keeps the generator Hydra had before D115, unchanged (the
-user's call, 2026-10-14). It puts the fill on the chord nearest the downbeat of
-Hydra's own measures, within half a beat, half a measure long
-(`kCh10FillLengthMeasures`, fixed; the old `fill_length_measures` key is read
-and ignored), and at least 4 measures after the last one. With two or more
-meter changes between two chords, its length reads the earlier meter. This
-generator is Hydra's own model of 1.0, kept unchanged (docs/adr/0023). The
-distance and the length are cut down to whole ticks. `Song::place_fills_ch10`
-holds it, and `Song::place_fills_ch11` the 1.1 generator.
+Clone Hero 1.0 mode keeps Hydra's own model of 1.0's fill rule (the user's
+call, 2026-10-14; docs/adr/0023), and counts measures on the same grid as 1.1
+(`MeasureIndex`; the user's call, 2026-10-24). It puts the fill on the chord
+nearest a measure line, within half a beat (no extra tick), half a grid
+measure long at the chord (`kCh10FillLengthMeasures`, fixed; the old
+`fill_length_measures` key is read and ignored), and at least 4 lines after
+the last one. When two chords sit equally near the line, the later one gets
+the fill. The distance and the length are cut down to whole ticks.
+`Song::place_fills_ch10` holds it, and `Song::place_fills_ch11` the 1.1
+generator.
 
 `Song::generated_fills` records which generator ran (empty for authored
 fills): the one answer to "was this fill generated". The Preview reads it to
