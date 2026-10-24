@@ -463,6 +463,10 @@ TEST_CASE("rate_activation: every row reads post, by its side of the end") {
         CHECK(*r.backends[i].note.effective_ms == doctest::Approx(want[i]).epsilon(1e-12));
     }
     CHECK(r.scale_governs);
+    // Rows on both sides of the end: post reads both; no SqIn, so none recorded.
+    CHECK(r.post_read.early);
+    CHECK(r.post_read.late);
+    CHECK(r.sqins_read.empty());
 }
 
 TEST_CASE("rate_activation: the squeeze-out is rated once, as its row, at post") {
@@ -547,6 +551,14 @@ TEST_CASE("rate_activation: a SqIn reads its SqIn scale, by its side of the end"
     CHECK(*r.note_effective_ms[0] == doctest::Approx(307.6923076923077).epsilon(1e-12));
     CHECK(*r.note_effective_ms[1] == doctest::Approx(66.666666666666667).epsilon(1e-12));
     CHECK(r.scale_governs);
+    // Each SqIn marks its own side of its own end; no row reads the SP end.
+    CHECK_FALSE(r.post_read.early);
+    CHECK_FALSE(r.post_read.late);
+    REQUIRE(r.sqins_read.size() == 2);
+    CHECK(r.sqins_read[0].early);
+    CHECK_FALSE(r.sqins_read[0].late);
+    CHECK_FALSE(r.sqins_read[1].early);
+    CHECK(r.sqins_read[1].late);
 }
 
 // D13.
