@@ -423,6 +423,25 @@ void test_command_bare_ref_ambiguous(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(r.text.substr(0, head.size()).c_str(), head.c_str());
 }
 
+// A wait-text that times out names the timeout as it was given, and keeps a
+// long text whole, ending included.
+void test_command_wait_text_reply(ImGuiTestContext* ctx) {
+    start_session(ctx);
+    CommandSession session;
+    session.live = true;
+    CommandResult r = run_command(ctx, session, "timeout 0.4");
+    IM_CHECK(r.ok);
+    r = run_command(ctx, session, "wait-text Zzq never on screen");
+    IM_CHECK(!r.ok);
+    IM_CHECK_STR_EQ(r.text.c_str(), "\"Zzq never on screen\" did not appear within 0.4 s");
+    const std::string long_text(1500, 'x');
+    r = run_command(ctx, session, "wait-text " + long_text);
+    IM_CHECK(!r.ok);
+    IM_CHECK_STR_EQ(r.text.c_str(),
+                    ("\"" + long_text + "\" did not appear within 0.4 s").c_str());
+    IM_CHECK(!ctx->IsError());
+}
+
 }  // namespace
 
 const std::vector<TestEntry>& command_tests() {
@@ -434,6 +453,7 @@ const std::vector<TestEntry>& command_tests() {
         {"command-row-click-after-search", test_command_row_click_after_search},
         {"command-bare-ref-retried", test_command_bare_ref_retried},
         {"command-bare-ref-missing", test_command_bare_ref_missing},
+        {"command-wait-text-reply", test_command_wait_text_reply},
     };
     return entries;
 }
