@@ -156,9 +156,9 @@ void set_ui_scale(float scale);
 
 // The window class every report window carries. It always gets its own OS
 // window (never merged into the main window), with a real title bar and its
-// own taskbar button, and Hydra's main window as its OS owner, so it
-// minimizes and restores with Hydra and sits in front of it. Every other
-// ImGui window keeps setup_imgui's settings. Pass it to SetNextWindowClass.
+// own taskbar button, and no OS owner, so it stacks, minimizes and restores
+// on its own, like any other app window. Every other ImGui window keeps
+// setup_imgui's settings. Pass it to SetNextWindowClass.
 ImGuiWindowClass report_window_class();
 
 // The OS frame around a report window's client area, in pixels on each side:

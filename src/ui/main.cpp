@@ -142,7 +142,7 @@ static void note_window_placement(HWND hWnd)
 
 // True when an OS window ImGui made beside the main one (a report window, or
 // a popup that spilled past the main window's edge) is on screen. Report
-// windows are owned by the main window, so Windows hides them while Hydra is
+// windows have no OS owner, so one can stay on screen while Hydra is
 // minimized.
 static bool other_platform_window_showing()
 {

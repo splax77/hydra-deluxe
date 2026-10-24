@@ -550,7 +550,9 @@ void follow_report_os_window(const std::string& key, const ImGuiWindow& w) {
 
 ImGuiWindowClass report_window_class() {
     ImGuiWindowClass c;
-    c.ParentViewportId = ImGui::GetMainViewport()->ID;
+    // No OS owner: Windows keeps an owned window in front of its owner, so a
+    // maximized report would cover Hydra for good.
+    c.ParentViewportId = 0;
     c.ViewportFlagsOverrideSet = ImGuiViewportFlags_NoAutoMerge;
     c.ViewportFlagsOverrideClear = ImGuiViewportFlags_NoDecoration | ImGuiViewportFlags_NoTaskBarIcon;
     return c;

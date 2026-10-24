@@ -386,7 +386,7 @@ If the database holds no results at all once a batch ends, as when every song in
 
 ### Report windows
 
-Hydra Deluxe has two reports: the path report and the dmleaderboards comparison. Each one opens in its own window. It's a real Windows window with its own taskbar button, so you can drag it to another monitor and keep it open while you use the rest of Hydra Deluxe. It minimizes and restores with Hydra Deluxe and sits in front of the main window. Both windows can be open at once.
+Hydra Deluxe has two reports: the path report and the dmleaderboards comparison. Each one opens in its own window. It's a real Windows window with its own taskbar button, so you can drag it to another monitor and keep it open while you use the rest of Hydra Deluxe. You minimize, restore and bring it to the front on its own, like any other window. Both windows can be open at once.
 
 The first time a report window opens, it covers the main window, at the same size and place. After that it opens where you last left it, and maximized if you left it maximized, on the monitor it was on. While the main window is maximized, a report window opens maximized too. If the monitor a report was on is no longer connected, the window opens over the main window again, or maximized on the main window's monitor if it was maximized. A report window always fits on its monitor, its frame included. The placement is saved in `hydra_ui.ini`, next to the program.
 

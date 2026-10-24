@@ -14,8 +14,10 @@ is docs/superpowers/plans/2026-10-08-path-report-window.md.
 ## The decision
 
 The path report and the dmleaderboards comparison are Hydra windows. Each is
-its own OS window, owned by the main window. Owned means Windows keeps it in
-front of Hydra and minimizes and restores it with Hydra. Each has its own
+its own OS window with no OS owner. Windows stacks, minimizes and restores it
+on its own, like any other app window. (It was first owned by the main window,
+but Windows keeps an owned window in front of its owner, so a maximized report
+covered Hydra for good. The owner was dropped in 2026-10.) Each has its own
 title bar and taskbar button.
 
 Both windows share one frame (header, strips, tiles, controls, table, footer
@@ -70,9 +72,9 @@ viewports, so the same references work in both setups.
 Hydra's main loop used to skip drawing while its window was minimized or
 covered. A report window on another monitor would then have frozen. Now the
 loop skips a frame only when the main window is hidden and no other Hydra OS
-window shows (`other_platform_window_showing` in src/ui/main.cpp). The report
-windows are owned, so minimizing Hydra minimizes them too, and idle costs what
-it did before. The hands-on check measured 5.7% CPU while a report window kept
+window shows (`other_platform_window_showing` in src/ui/main.cpp). A report
+window has no owner, so it can stay on screen while Hydra is minimized and keeps
+the loop drawing; with no report on screen, idle costs what it did before. The hands-on check measured 5.7% CPU while a report window kept
 drawing with Hydra covered.
 
 ## Popups stay inside their window (D103 item 15)
