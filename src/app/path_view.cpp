@@ -250,13 +250,15 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
 
         ActivationRating rate = rate_activation(act, W, rules.backend_leeway_ms);
 
-        // The line names every multiplier that isn't 1, early first: at the
-        // SP end, then at the SqIn's end when that prints differently. It is
-        // orange when one of them governs a row or SqIn on this activation.
-        auto sides = [](const TransferScale& s) {
+        // The line names the sides the activation's rows and squeezes read
+        // (rate_activation records them), when they aren't 1, early first:
+        // at the SP end, then at the SqIn's end when that prints differently.
+        // It is orange when one of them governs a row or SqIn on this
+        // activation.
+        auto sides = [](const TransferScale& s, const SidesRead& read) {
             std::string out;
-            if (is_scaled(s.early)) out = format_scale(s.early) + " (early)";
-            if (is_scaled(s.late)) {
+            if (read.early && is_scaled(s.early)) out = format_scale(s.early) + " (early)";
+            if (read.late && is_scaled(s.late)) {
                 if (!out.empty()) out += " / ";
                 out += format_scale(s.late) + " (late)";
             }
@@ -268,7 +270,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             av.scale_warning = "Transfer scale unknown.";
             av.scale_warn = true;
         } else {
-            const std::string post_part = sides(rate.scales->post);
+            const std::string post_part = sides(rate.scales->post, rate.post_read);
             // Each SqIn's scale, when it prints differently from the SP
             // end's. When every SqIn prints alike, one clause covers them:
             // "the SqIn's SP end" for a single SqIn, "each SqIn's SP end" for
@@ -276,8 +278,8 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             // numbered by its place among the SqIns (Q5).
             std::vector<std::string> sqin_parts;
             bool sqins_alike = true;
-            for (const TransferScale& s : rate.scales->sqins) {
-                sqin_parts.push_back(sides(s));
+            for (size_t i = 0; i < rate.scales->sqins.size(); ++i) {
+                sqin_parts.push_back(sides(rate.scales->sqins[i], rate.sqins_read[i]));
                 sqins_alike = sqins_alike && sqin_parts.back() == sqin_parts.front();
             }
             std::string clauses;

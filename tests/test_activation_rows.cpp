@@ -104,7 +104,7 @@ TEST_CASE("build_activations: rows and backend rows line up") {
     CHECK(!view.summary.empty());
 }
 
-TEST_CASE("build_activations: the scale line shows every multiplier, early first") {
+TEST_CASE("build_activations: the scale line shows the multipliers its rows read, early first") {
     HydraRecord rec;  // only feeds the footer; irrelevant here
     auto row_of = [&rec](const Activation& act) {
         Path p;
@@ -128,30 +128,35 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
 
     // Gore act 4: the only row sits exactly on the SP end. It is inside SP,
     // so the early x8.59 governs it: its 0 ms margin is still 0 ms, and the
-    // line is orange because a shown multiplier governs a row.
+    // line is orange because a shown multiplier governs a row. Nothing reads
+    // the late x8.76, so the line leaves it out.
     Activation gore = base;
     test::set_transfer(gore, TransferScale{8.59, 8.76});
     BackendSqueeze on_end;
     on_end.offset_ms = 0.0;
     gore.backends.push_back(on_end);
     ActivationRowView av = row_of(gore);
-    CHECK(av.scale_warning ==
-          "Frontend timing scales x8.59 (early) / x8.76 (late) at the SP end.");
+    CHECK(av.scale_warning == "Frontend timing scales x8.59 (early) at the SP end.");
     CHECK(av.scale_warn);
     REQUIRE(av.backends.size() == 1);
     CHECK(av.backends[0].rating.find(" (eff. 0.0 ms)") != std::string::npos);
 
-    // A side at exactly x1.00 is left out.
+    // A row inside SP and a row past it read both sides; a side at exactly
+    // x1.00 is still left out.
+    BackendSqueeze row;
+    row.offset_ms = 50.0;
+    BackendSqueeze inside_row;
+    inside_row.offset_ms = -50.0;
     Activation late_only = base;
     test::set_transfer(late_only, TransferScale{1.0, 6.33});
+    late_only.backends.push_back(inside_row);
+    late_only.backends.push_back(row);
     CHECK(row_of(late_only).scale_warning ==
           "Frontend timing scales x6.33 (late) at the SP end.");
 
     // A backend row the late scale moves turns the line orange.
     Activation backend = base;
     test::set_transfer(backend, TransferScale{1.0, 0.5});
-    BackendSqueeze row;
-    row.offset_ms = 50.0;
     backend.backends.push_back(row);
     av = row_of(backend);
     CHECK(av.scale_warning == "Frontend timing scales x0.50 (late) at the SP end.");
@@ -167,9 +172,11 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
     CHECK(av.scale_warn);
 
     // Both ends with different scales: the SP end first, then the SqIn's.
+    // One row on each side of the SP end reads both of its sides.
     Activation both = base;
     both.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
     test::set_transfer(both, TransferScale{1.0, 0.5}, TransferScale{1.25, 0.8});
+    both.backends.push_back(inside_row);
     both.backends.push_back(row);
     CHECK(row_of(both).scale_warning ==
           "Frontend timing scales x1.25 (early) / x0.80 (late) at the SP end; "
@@ -184,11 +191,13 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
     CHECK(row_of(shared).scale_warning ==
           "Frontend timing scales x0.50 (late) at each SqIn's SP end.");
 
-    // The same with the SP end scaled too: the shared clause still says "each".
+    // The same with the SP end scaled too, read by a row inside SP: the
+    // shared clause still says "each".
     Activation shared_both = base;
     shared_both.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
     shared_both.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 30.0});
     test::set_transfer(shared_both, TransferScale{1.0, 0.5}, TransferScale{1.25, 1.0});
+    shared_both.backends.push_back(inside_row);
     CHECK(row_of(shared_both).scale_warning ==
           "Frontend timing scales x1.25 (early) at the SP end; "
           "x0.50 (late) at each SqIn's SP end.");
@@ -204,16 +213,53 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
           "x0.95 (early) at SqIn 2's SP end.");
 
     // A SqIn whose scale prints like the SP end's gets no clause of its own;
-    // the other keeps its own number in the SqIn order.
+    // the other keeps its own number in the SqIn order. A row inside SP reads
+    // the SP end's early side.
     Activation one_differs = base;
     one_differs.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -50.0});
     one_differs.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -30.0});
     test::set_sqin_transfers(one_differs,
                              {TransferScale{1.25, 1.0}, TransferScale{0.95, 1.0}},
                              TransferScale{1.25, 1.0});
+    one_differs.backends.push_back(inside_row);
     CHECK(row_of(one_differs).scale_warning ==
           "Frontend timing scales x1.25 (early) at the SP end; "
           "x0.95 (early) at SqIn 2's SP end.");
+
+    // The shape of Extremophile Elite act 1: both sides scaled, but both
+    // rows sit inside SP, so they read only the early side. The late side is
+    // left out.
+    Activation extremophile = base;
+    test::set_transfer(extremophile, TransferScale{0.83, 1.20});
+    BackendSqueeze inside_far;
+    inside_far.offset_ms = -400.0;
+    BackendSqueeze inside_near;
+    inside_near.offset_ms = -300.0;
+    extremophile.backends.push_back(inside_far);
+    extremophile.backends.push_back(inside_near);
+    av = row_of(extremophile);
+    CHECK(av.scale_warning == "Frontend timing scales x0.83 (early) at the SP end.");
+    CHECK(av.scale_warn);
+
+    // One row inside SP and one past it: both sides print, early first.
+    Activation both_sides = base;
+    test::set_transfer(both_sides, TransferScale{0.83, 1.20});
+    both_sides.backends.push_back(row);
+    both_sides.backends.push_back(inside_row);
+    av = row_of(both_sides);
+    CHECK(av.scale_warning ==
+          "Frontend timing scales x0.83 (early) / x1.20 (late) at the SP end.");
+    CHECK(av.scale_warn);
+
+    // Scales stored, but nothing reads a scaled side: there are no backend
+    // rows, and the only SqIn sits past its end, where its late side is
+    // x1.00. No line, and nothing orange.
+    Activation unread = base;
+    unread.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
+    test::set_transfer(unread, TransferScale{0.7, 1.0}, TransferScale{0.83, 1.20});
+    av = row_of(unread);
+    CHECK(av.scale_warning.empty());
+    CHECK_FALSE(av.scale_warn);
 }
 
 // D17 (wording since rewritten to the tooltip style the user approved on 2026-10-10).
@@ -985,13 +1031,26 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
     CHECK(v.acts[0].squeeze_sentences[0].text.find("eff.") == std::string::npos);
 
     // Just past is_scaled's tolerance (D256) the line still never reads x1: it
-    // prints as many decimals as kScaleIdentityDigits allows.
-    act.transfer_post = TransferScale{1.0011, 0.9989};
-    p.activations[0] = act;
+    // prints as many decimals as kScaleIdentityDigits allows. A second row
+    // past the SP end reads the late side, so both print.
+    Activation both_near = act;
+    both_near.transfer_post = TransferScale{1.0011, 0.9989};
+    BackendSqueeze late_row;
+    late_row.offset_ms = 50.0;
+    both_near.backends.push_back(late_row);
+    p.activations[0] = both_near;
     v = build_activations(p, rec, nullptr, 85.0);
     REQUIRE(v.acts.size() == 1);
     CHECK(v.acts[0].scale_warning ==
           "Frontend timing scales x1.001 (early) / x0.999 (late) at the SP end.");
+
+    // Without that row, only the squeezed-out row reads the SP end, from
+    // inside SP: the late side is left out.
+    act.transfer_post = TransferScale{1.0011, 0.9989};
+    p.activations[0] = act;
+    v = build_activations(p, rec, nullptr, 85.0);
+    REQUIRE(v.acts.size() == 1);
+    CHECK(v.acts[0].scale_warning == "Frontend timing scales x1.001 (early) at the SP end.");
 
     // A scale exactly a thousandth from 1 is scaled (D256).
     act.transfer_post = TransferScale{1.001, 1.0};

@@ -149,6 +149,13 @@ struct BackendRating {
 // warning fires only for an activation that has such a row or a SqIn/SqOut.
 bool is_frontend_decided(const BackendRating& row, double backend_leeway_ms);
 
+// Which sides of one end's TransferScale a rated note read: rate_note's
+// choice (NoteRating::early), gathered over the notes measured from that end.
+struct SidesRead {
+    bool early = false;
+    bool late = false;
+};
+
 // The full transfer-scale story for one activation, as the details display
 // tells it.
 struct ActivationRating {
@@ -156,6 +163,11 @@ struct ActivationRating {
     // each SqIn's transfer), through stored_transfer_scales. Unset when any
     // one is unknown: then no row or SqIn gets a figure (D4).
     std::optional<ActTransferScales> scales;
+    // The sides the backend rows read of scales->post, and one entry per
+    // scales->sqins entry for the sides its SqIn read. A row or SqIn that
+    // skips rate_note (no offset, or unknown scales) reads nothing.
+    SidesRead post_read;
+    std::vector<SidesRead> sqins_read;
     // True when a multiplier that isn't 1 governs at least one row or SqIn
     // on this activation: the scale line turns orange.
     bool scale_governs = false;
