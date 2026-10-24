@@ -29,6 +29,35 @@
         "tests"
       ],
       "note": "The badge pill's fill and border were typed twice in paths_tab.cpp, once as IM_COL32 for the pills and once as ImVec4 fractions for the squeeze box. badge_pill.h now owns both colours; anything else, the GUI test that finds pills by their fill included, reads them from there. Decided by: D257 call 6."
+    },
+    {
+      "question": "How is a timing badge drawn: its pill, and where its text sits in it?",
+      "owner": "draw_badge in src/ui/badge_pill.h, the one function that draws a badge",
+      "owner_file": "src/ui/badge_pill.h",
+      "owner_symbol": "draw_badge",
+      "date": "2026-10-24",
+      "decision": "D262, the user's ruling \"there should be one shared helper function that all badges draw from\"",
+      "added_by": "PILL-W1",
+      "pattern": "\\bAddRect(?:Filled)?\\s*\\([^;]*\\bpill_u32\\s*\\(|\\bkPillRadius\\b|\\bpill_rect\\s*\\(|\\bcentred_text_x\\s*\\(",
+      "must_match": [
+        "dl->AddRectFilled(lo, hi, pill_u32(kPillFill), kPillRadius * scale);",
+        "dl->AddRect(b_min, b_max, pill_u32(kPillBorder), px(9.0f));",
+        "const PillRect r = pill_rect(bx, by, l.pill_w, line, px(1.0f));",
+        "text_at(ImVec2(centred_text_x(r, w), by), warn_or_dim(b.warn), b.text.c_str(), TextRole::Figure);"
+      ],
+      "must_not_match": [
+        "draw_badge(dl, top.x + l.pill_x[k], top.y + l.badge_y[k], l.pill_w,",
+        "ImGui::PushStyleColor(ImGuiCol_ChildBg, pill_vec4(kPillFill));",
+        "ImGui::PushStyleColor(ImGuiCol_Border, s.warn ? kWarningColor : pill_vec4(kPillBorder));",
+        "const ActivationRowLayout l ="
+      ],
+      "owner_files": [
+        "src/ui/badge_pill.h"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "Before D262 paths_tab.cpp painted each pill and then placed the badge's text itself. Now draw_badge does both, so a pill painted in the pill's colours, its corner radius, a pill rectangle or a centred badge text anywhere else under src is a second badge drawer. The squeeze box reads the pill's colours through pill_vec4 for its own box shape, which this row lets through. Tests are out of scope: they call pill_rect and centred_text_x to check the owner, and the GUI test reads pill_u32 to find drawn pills. Decided by: D262."
     }
   ]
 }
