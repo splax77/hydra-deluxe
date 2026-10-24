@@ -45,7 +45,7 @@ ESC_HOLD_S = 1.0
 HELPER_SCRIPT = HERE / "hydra_ui_mcp.py"
 
 TOOL_NAMES = {
-    "hydra_start", "hydra_stop", "hydra_reset", "hydra_click", "hydra_type",
+    "hydra_start", "hydra_stop", "hydra_reset", "hydra_open_song", "hydra_click", "hydra_type",
     "hydra_check", "hydra_key", "hydra_window", "hydra_wait_idle", "hydra_wait_text",
     "hydra_text", "hydra_state", "hydra_dump", "hydra_rect", "hydra_screenshot", "hydra_run",
 }
@@ -338,6 +338,16 @@ class SdkClient(unittest.TestCase):
                 return {t.name for t in result.tools}
 
         self.assertEqual(asyncio.run(names()), TOOL_NAMES)
+
+    def test_open_song_sends_open_and_the_title(self):
+        sent = []
+        real_send = hm.HELPER.send
+        hm.HELPER.send = lambda line: sent.append(line) or "ok"
+        try:
+            asyncio.run(hm.build_server().call_tool("hydra_open_song", {"title": "AC/DC #1"}))
+        finally:
+            hm.HELPER.send = real_send
+        self.assertEqual(sent, ["open AC/DC #1"])
 
 
 def why_no_live():

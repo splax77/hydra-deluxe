@@ -64,6 +64,7 @@ screenshot stars.png
 | `click <ref>` | click a widget |
 | `check <ref>` / `uncheck <ref>` | set a checkbox |
 | `type <ref> \| <text>` | put text into an input. The text is everything after the first ` \| `, kept exactly, spaces included. A line that ends in a bare ` \|` types nothing, which clears the field |
+| `open <title>` | open a song: type the title into `**/##search`, then open the row whose title is exactly `<title>` (`open_titled_reason` in `uitest_harness.cpp`). When no shown row has that title, it refuses and says what the search shows. The ref goes back to `//Hydra` afterwards |
 | `key <keys>` | press a key or a chord, such as `Escape`, `Enter`, `Down`, `Ctrl+W` or `Ctrl+Shift+Tab`. The names it knows are in `key_named` and `parse_chord` in `uitest_commands.cpp`; an unknown name fails |
 | `wait <seconds>` | let frames run |
 | `wait-idle` | wait until every background job has finished; the list is `AppState::any_job_running` |
@@ -84,6 +85,8 @@ screenshot stars.png
 A bar with nothing after it (a line ending in ` |`) is the same as a bar with empty text. So `text |` and `dump Hydra |` filter on nothing and keep every line. `split_bar` in `uitest_commands.cpp` is the one place a line is split at its bar.
 
 Lines print as they run. A failed engine action, like a click that finds nothing, prints `!! failed at line N: <line>`. A line the interpreter itself refuses (an unknown verb or key, a bad number, an `expect-text` that does not hold, a `rect` that finds nothing, a wait that ran out) fails the test, and its log names the line as `line N: <reason>`. The script stops at the first failure.
+
+Two guards sit in front of `click`, `check`, `uncheck` and `type`; `item_ref` in `uitest_commands.cpp` owns both. First, a lookup of a library row's title is refused while the search box is empty, because finding a row that is not drawn makes the test engine scroll the whole library; use `open <title>` instead, or type into `**/##search` first. Second, a bare label that finds nothing in the current window is tried once more as `**/<label>`, and the reply starts with `used ref **/<label>` so you learn the path that works. The test engine cannot say whether a `**/` ref matched more than one widget, so the retry takes whichever one the engine finds.
 
 Clicking a song starts its analysis (D87 item 1), and `wait-idle` waits for it. There is no `Done!` flash, so the tabs show as soon as it finishes. A tab click still needs a frame or two before its text shows.
 
@@ -107,7 +110,7 @@ These are the labels the merged app draws. Every GUI test finds widgets by them.
 | Toolbar (window `Hydra`) | `Manage folders... (N)`, `Scan library`, `Analyze library...`, or `Analyze shown (N)...` while the search or a status chip narrows the table (N is the heading's count, `analyze_shown_label`), `Compare with dmleaderboards...`, `Open path report` / `Building path report...` |
 | Status line | a problem stays until `X##dismissstatus` |
 | Analysis settings button (window `Hydra`) and its panel | The button is `###analysissettings`; its text is `Analysis settings: <changes>`, made by `settings_button_label` (`src/ui/library_dialogs.cpp`). Clicking it opens the panel, a popup: a top-level window of its own, outside `//Hydra`, that takes focus. One ref reaches a control in it: `//$FOCUSED/**/<label>`. The `**/` is there because the controls sit in tables. (That ref works only through a Hydra patch to the vendored test engine; `THIRD_PARTY_NOTICES.txt` lists the patches.) Each row has the setting's name and its `(?)` on the left and only the control on the right, so the checkboxes have no visible label. Combo `##difficulty`, checkboxes `##prodrums`, `##bass2x` and `##noteshuffle`, input `##spcap`, checkbox `##legacyfills`, input `##depthvalue`, combo `##depthmode`, checkbox `##mslimit`, input `##mslimitvalue`. A `**/` ref can't find a combo, because the test engine files combos with an empty label; find one through a checkbox in its group with `settings_control`. The helpers in `uitest_harness.h` do all this: `open_settings_panel`, `settings_control`, `settings_combo_pick` and `close_settings_panel`. Close the panel before a test clicks anything else or ends: an open popup keeps other windows from being hovered, and it outlives the test. Only a batch locks the settings; the label then ends in ` (locked)` and the panel shows `Stop the batch to change these.` (D90 item 2) |
-| Library, child `##library` | search input `##search`, clear button `X##clearsearch`, chips `All (N)##chipall`, `Not analyzed (N)##chipnew`, `Stale (N)##chipstale`, `Analyzed (N)##chipdone`, table `##librarytable` with columns `Title`, `Artist`, `Charter`, `Folder`, `Best path`. A Best path cell reads `Not analyzed`, `Stale`, or `<score>  <path>`. Under a search: `Clear search` |
+| Library, child `##library` | search input `**/##search`, clear button `X##clearsearch`, chips `All (N)##chipall`, `Not analyzed (N)##chipnew`, `Stale (N)##chipstale`, `Analyzed (N)##chipdone`, table `##librarytable` with columns `Title`, `Artist`, `Charter`, `Folder`, `Best path`. A Best path cell reads `Not analyzed`, `Stale`, or `<score>  <path>`. Under a search: `Clear search` |
 | Song panel, child `##songpanel` | `Hide library` / `Show library`, `<##prevsong`, `>##nextsong`, `X##closepanel` (Escape does the same). A click's analysis shows `Analyzing chart...` with `Cancel` once it has run 0.15 s; a cancelled one shows `Analysis cancelled.` with `Try again`; a failed one shows its error with `Continue`. Tab bar `##DetailsTabs` with tabs `Paths`, `Preview`, `Dynamics`, `Stars` |
 | Paths tab | path buttons `##path<i>` (0-based), `Expand all` / `Collapse all`, activation rows `##act<i>` (1-based), links `Show in Preview >##showact<i>`, folds `Backend timings##act<i>`, `Multiplier squeeze##mult`, `Score breakdown##breakdown`, button `Copy path` (flashes `Copied!`), checkbox `Hide backend rows beyond##backendlimit`, input `##backendlimitvalue` |
 | Preview tab | text `Showing` beside the combo `##previewpath`, `< Act##prevact`, `Act >##nextact`, transport `-5s`, `< 10 ms`, `Play` / `Pause`, `10 ms >`, `+5s`, sliders `##volume` and `##scrub`. Over the highway, while each is drawn: `##time_box`, `##score_box`, `##drain_box`, `##next_act_box`, `##solo_box` (during a solo and its result) and the gauge `##sp_gauge` |
@@ -178,8 +181,9 @@ Each tool sends one command line and returns Hydra's reply text, unchanged excep
 | `hydra_start(mode, library_dir=None, keep=False)` | launches the exe | `mode` is `headless` or `window`. Stops any running session first. The reply gives the pid, the engine's scratch folder, the wait cap, the log file and the helper's scratch folder, plus the snapshot list in window mode. `keep=True` keeps the helper's scratch folder after `hydra_stop` |
 | `hydra_stop(keep_window=False)` | `quit` | waits for Hydra to exit, kills it if it does not, and returns the exit code. Then deletes the helper's scratch folder unless `keep` was set |
 | `hydra_reset()` | `reset` | a fresh library in the same process |
-| `hydra_click(ref)` | `click <ref>` | |
-| `hydra_type(ref, text)` | `type <ref> \| <text>` | an empty `text` clears the field |
+| `hydra_open_song(title)` | `open <title>` | the way to open a song. Clicking a row's title with the search box empty is refused (see the two guards above) |
+| `hydra_click(ref)` | `click <ref>` | widgets below the toolbar need `**/`; a bare label that finds nothing is retried as `**/<label>` |
+| `hydra_type(ref, text)` | `type <ref> \| <text>` | an empty `text` clears the field. The library search is `**/##search`; the same retry applies |
 | `hydra_check(ref, on)` | `check <ref>` or `uncheck <ref>` | |
 | `hydra_key(keys)` | `key <keys>` | |
 | `hydra_window(ref)` | `window <ref>` | |
@@ -192,7 +196,7 @@ Each tool sends one command line and returns Hydra's reply text, unchanged excep
 | `hydra_screenshot(name)` | `screenshot <name>` | give the `.png` yourself. The file lands in the helper's scratch folder, which `hydra_stop` deletes unless `keep` was set |
 | `hydra_run(script)` | each line in turn | stops at the first failure with `stopped at line N of M`, counting the script's own lines |
 
-`hydra_run` exists so a known sequence (scan, continue, search, open) costs one tool call instead of five.
+`hydra_run` exists so a known sequence (scan, continue, search, open) costs one tool call instead of five. To open one song, `hydra_open_song` does the search and the click in one call.
 
 ### The protocol
 

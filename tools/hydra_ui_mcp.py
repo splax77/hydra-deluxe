@@ -647,7 +647,10 @@ def build_server():
             "Drive Hydra's GUI by widget label. Start with hydra_start('headless') for the"
             " test corpus, or hydra_start('window') for the real window on a snapshot copy"
             " of the user's library. Read the screen with hydra_text, hydra_dump and"
-            " hydra_state. See docs/agents/ui-testing.md."),
+            " hydra_state. To open a song, use hydra_open_song with its exact title,"
+            " not a click on its row. Refs below the toolbar need **/ (the search box"
+            " is **/##search)."
+            " See docs/agents/ui-testing.md."),
     )
 
     @server.tool()
@@ -672,14 +675,27 @@ def build_server():
         return HELPER.send("reset")
 
     @server.tool()
+    def hydra_open_song(title: str) -> str:
+        """Open the song with exactly this title: the way to open a song. Hydra
+        types the title into the library search, then opens the row whose
+        title equals it; when none does, the reply says what the search shows."""
+        return HELPER.send(f"open {title}")
+
+    @server.tool()
     def hydra_click(ref: str) -> str:
-        """Click the widget with this label (relative to the current window)."""
+        """Click the widget with this label (relative to the current window).
+        Widgets below the toolbar, such as the library and the song panel, need
+        **/ in front (**/Preview). A bare label that finds nothing is tried
+        once as **/<label>, and the reply names the ref used. To open a song,
+        use hydra_open_song."""
         return HELPER.send(f"click {ref}")
 
     @server.tool()
     def hydra_type(ref: str, text: str) -> str:
         """Type text into the input with this label, kept exactly. An empty
-        text clears the field."""
+        text clears the field. Inputs below the toolbar need **/ in front: the
+        library search is **/##search. A bare label that finds nothing is
+        tried once as **/<label>, and the reply names the ref used."""
         return HELPER.send(f"type {ref} | {text}")
 
     @server.tool()
