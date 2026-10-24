@@ -44,7 +44,7 @@ inline constexpr const char* kAnalysisOffSentence =
     "Hydra is restarted.";
 
 // What a refused update reads as (ErrorKind::UpdateUnverified, decision 9 of
-// docs/superpowers/plans/2026-10-22-auto-updater.md). The update strip shows
+// docs/superpowers/plans/2026-10-22-auto-updater.md). The version bar shows
 // it for every refusal; the details line under it names the check.
 inline constexpr const char* kUpdateUnverifiedSentence =
     "Hydra couldn't verify the update it downloaded, so it was not installed. Try again "

@@ -153,13 +153,7 @@ void render_version_bar(AppState& app) {
                                                     ImGui::ColorConvertFloat4ToU32(dot_color(status.dot)));
         ImGui::Dummy(ImVec2(dot_slot_width(), ImGui::GetFrameHeight()));
     }
-    // The release the sentence names, whose notes show on hover: the one
-    // offered or being installed, or the one the start-up check found.
-    const app::UpdateRelease* named = nullptr;
-    if (phase_shows && update.release)
-        named = &*update.release;
-    else if (!phase_shows && status.dot == VersionBarStatus::Dot::Available && update.found)
-        named = &*update.found;
+    const app::UpdateRelease* const named = app.bar_release();
     if (!status.text.empty()) {
         row.glued();
         status_text(status.text, kDefaultTextColor);

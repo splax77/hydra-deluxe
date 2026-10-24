@@ -742,6 +742,10 @@ public:
     // What the bar says, and with which dot: the one answer the version bar
     // draws (VersionBarStatus).
     VersionBarStatus version_bar_status() const;
+    // The release the bar's sentence names, whose notes show on hover: the one
+    // offered or being installed during a phase, else the one the start-up
+    // check found while the bar says it is available. Null otherwise.
+    const app::UpdateRelease* bar_release() const;
     // The bar's update buttons. Update downloads, checks and starts the
     // installer (offered, declined, failed with a release, or the resting
     // bar's Update while VersionBarStatus::update_button is true); Skip this

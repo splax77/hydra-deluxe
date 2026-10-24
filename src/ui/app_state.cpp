@@ -1176,6 +1176,13 @@ VersionBarStatus AppState::version_bar_status() const {
     return status;
 }
 
+const app::UpdateRelease* AppState::bar_release() const {
+    if (update.phase != UpdateState::Phase::None) return update.release ? &*update.release : nullptr;
+    if (version_bar_status().dot == VersionBarStatus::Dot::Available && update.found)
+        return &*update.found;
+    return nullptr;
+}
+
 void AppState::tick_updates() {
     collect_update_check();
     collect_update_download();
