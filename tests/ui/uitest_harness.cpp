@@ -635,6 +635,37 @@ std::vector<ImGuiTestItemInfo> drawn_items_labelled(ImGuiTestContext* ctx,
     return found;
 }
 
+std::string open_modal_note(ImGuiTestContext* ctx) {
+    ImGuiWindow* modal = ImGui::GetTopMostPopupModal();
+    if (modal == nullptr) return "";
+    // The name as drawn: what comes before any "##".
+    auto shown = [](const char* label) {
+        const char* hash = std::strstr(label, "##");
+        return hash ? std::string(label, hash) : std::string(label);
+    };
+    std::string buttons;
+    ImGuiTestItemList items;
+    // The engine gathers nothing while the test is in error, and a failed
+    // command is the main reason to call this, so the status is lifted for
+    // the gather and put back after it.
+    const ImGuiTestStatus status = ctx->TestOutput->Status;
+    if (ctx->IsError()) ctx->TestOutput->Status = ImGuiTestStatus_Running;
+    gather_all(ctx, ImGuiTestRef(modal->ID), items);
+    ctx->TestOutput->Status = status;
+    for (const ImGuiTestItemInfo& it : items) {
+        // Fields, checkboxes and tree nodes are not buttons.
+        if (it.StatusFlags & (ImGuiItemStatusFlags_Inputable | ImGuiItemStatusFlags_Checkable |
+                              ImGuiItemStatusFlags_Openable))
+            continue;
+        const std::string label = shown(it.DebugLabel);
+        if (label.empty()) continue;
+        buttons += (buttons.empty() ? "" : ", ") + label;
+    }
+    std::string note = "A dialog is open: \"" + shown(modal->Name) + "\"";
+    if (!buttons.empty()) note += " (buttons: " + buttons + ")";
+    return note + ". Close it first.";
+}
+
 std::string lines_holding(const std::string& text, const std::string& part) {
     std::string out;
     size_t start = 0;
@@ -673,7 +704,15 @@ std::string widget_dump(ImGuiTestContext* ctx, const std::string& window_name,
     ImGuiContext& g = *ImGui::GetCurrentContext();
     ImGuiTextBuffer out;
     bool any_window = false, any_item = false;
-    for (ImGuiWindow* w : g.Windows) {
+    // The top open modal goes first: it is the window that takes input, and
+    // ImGui keeps it last in g.Windows, where a reply cut short from the end
+    // (the MCP helper's cap) drops it.
+    ImGuiWindow* modal = ImGui::GetTopMostPopupModal();
+    std::vector<ImGuiWindow*> order;
+    if (modal) order.push_back(modal);
+    for (ImGuiWindow* w : g.Windows)
+        if (w != modal) order.push_back(w);
+    for (ImGuiWindow* w : order) {
         if (!w->WasActive || w->Hidden) continue;
         if (std::strcmp(w->Name, "Debug##Default") == 0) continue;
         if (!window_name.empty() && std::strstr(w->Name, window_name.c_str()) == nullptr) continue;

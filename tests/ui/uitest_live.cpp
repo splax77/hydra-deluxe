@@ -423,6 +423,55 @@ void test_command_bare_ref_ambiguous(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(r.text.substr(0, head.size()).c_str(), head.c_str());
 }
 
+// A scan leaves its "Scanning charts" dialog open until Continue, and the
+// dialog blocks every click and key outside it. The replies name it.
+void test_command_modal_named(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    start_session(ctx);
+    ctx->SetRef("//Hydra");
+    CommandSession session;
+    session.live = true;
+    CommandResult r = run_command(ctx, session, "click Scan library");
+    IM_CHECK(r.ok);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->scan_job && h.app->scan_job->snapshot().finished; },
+                        60));
+    const std::string note = open_modal_note(ctx);
+    IM_CHECK(note.find("\"Scanning charts\"") != std::string::npos);
+    IM_CHECK(note.find("Continue") != std::string::npos);
+
+    r = run_command(ctx, session, "wait-idle");
+    IM_CHECK(r.ok);
+    IM_CHECK_STR_EQ(r.text.c_str(), (note + "\n").c_str());
+
+    r = run_command(ctx, session, "dump");
+    // First, not just somewhere: a full dump runs to hundreds of lines, and
+    // the MCP helper cuts a long reply from the end (cap_reply).
+    const std::string first = r.text.substr(0, r.text.find('\n'));
+    IM_CHECK_STR_EQ(first.substr(0, 25).c_str(), "window \"Scanning charts\" ");
+    IM_CHECK(first.find(" popup") != std::string::npos);
+    IM_CHECK(r.text.find("\"Continue\"") != std::string::npos);
+
+    r = run_command(ctx, session, "type **/##search | x");
+    const bool failed_by_engine = ctx->IsError();
+    recover_for_next_command(ctx);
+    IM_CHECK(!r.ok);
+    IM_CHECK(failed_by_engine);
+    IM_CHECK_STR_EQ(r.text.c_str(), ("failed: type **/##search | x\n" + note).c_str());
+
+    // The dump again, after the failed command: the failure must not hide it.
+    r = run_command(ctx, session, "dump");
+    IM_CHECK(r.text.find("window \"Scanning charts\"") != std::string::npos);
+    IM_CHECK(r.text.find("\"Continue\"") != std::string::npos);
+
+    r = run_command(ctx, session, "click //Scanning charts/Continue");
+    IM_CHECK(r.ok);
+    ctx->Yield(2);
+    IM_CHECK_STR_EQ(open_modal_note(ctx).c_str(), "");
+    r = run_command(ctx, session, "type **/##search | x");
+    IM_CHECK(r.ok);
+    IM_CHECK_STR_EQ(r.text.c_str(), "");
+}
+
 }  // namespace
 
 const std::vector<TestEntry>& command_tests() {
@@ -434,6 +483,7 @@ const std::vector<TestEntry>& command_tests() {
         {"command-row-click-after-search", test_command_row_click_after_search},
         {"command-bare-ref-retried", test_command_bare_ref_retried},
         {"command-bare-ref-missing", test_command_bare_ref_missing},
+        {"command-modal-named", test_command_modal_named},
     };
     return entries;
 }
