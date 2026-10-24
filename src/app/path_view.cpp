@@ -278,8 +278,11 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             // numbered by its place among the SqIns (Q5).
             std::vector<std::string> sqin_parts;
             bool sqins_alike = true;
-            for (size_t i = 0; i < rate.scales->sqins.size(); ++i) {
-                sqin_parts.push_back(sides(rate.scales->sqins[i], rate.sqins_read[i]));
+            // rate_activation pairs sqins_read with scales->sqins, entry for
+            // entry; the two lists are walked together.
+            auto read = rate.sqins_read.begin();
+            for (const TransferScale& s : rate.scales->sqins) {
+                sqin_parts.push_back(sides(s, *read++));
                 sqins_alike = sqins_alike && sqin_parts.back() == sqin_parts.front();
             }
             std::string clauses;
