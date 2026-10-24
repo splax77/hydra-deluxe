@@ -1,16 +1,16 @@
-// What the row scan (scan.cpp) and the clone scan (clones.cpp) share: the
+// What the row scan (engine.cpp) and the clone scan (clones.cpp) share: the
 // list of lines a scan accepts by their exact text, the one rule for using
-// them up, how a scan ends, and how both read a line of source.
+// them up, and how both read a line of source. How a scan's test case ends
+// is check_scan.h's.
 #pragma once
 
+#include <cstddef>
 #include <filesystem>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "core/strutil.h"
-#include "doctest.h"
 
 namespace single_owner {
 
@@ -21,7 +21,7 @@ struct ListedLine {
     std::string file;       // repo-relative, forward slashes
     std::string line_text;  // trimmed
     std::string stale;      // the message when no source line uses it
-    std::string rules_file; // the row's rules file (named by rule_files in scan.cpp), or empty for a baseline entry
+    std::string rules_file; // the row's rules file (named by select_rule_files in engine.cpp), or empty for a baseline entry
 };
 
 // The end of every failure the row scan gives about one row, so the fixer
@@ -39,10 +39,11 @@ enum class Take { taken, used_up, unlisted };
 
 // Each listed entry covers exactly one line of source: the first entry with
 // this question, file and text that no earlier line used takes it. A
-// word-for-word copy finds every such entry used (used_up).
+// word-for-word copy finds every such entry used (used_up). When the line is
+// taken and `taken_index` is set, it receives the entry's index in `listed`.
 inline Take take_listed_line(const std::vector<ListedLine>& listed, std::vector<bool>& used,
                              const std::string& question, const std::string& file,
-                             const std::string& text) {
+                             const std::string& text, size_t* taken_index = nullptr) {
     bool any = false;
     for (size_t i = 0; i < listed.size(); ++i) {
         const ListedLine& l = listed[i];
@@ -50,6 +51,7 @@ inline Take take_listed_line(const std::vector<ListedLine>& listed, std::vector<
         any = true;
         if (!used[i]) {
             used[i] = true;
+            if (taken_index) *taken_index = i;
             return Take::taken;
         }
     }
@@ -65,20 +67,6 @@ inline bool is_cpp_source(const std::filesystem::path& path) {
 // Whether a trimmed source line is a comment line, which the scans skip.
 inline bool is_line_comment(std::string_view trimmed) {
     return hydra::starts_with(trimmed, "//");
-}
-
-// How a scan that lists lines ends: each entry no source line took is stale,
-// and the case fails with one line per problem.
-inline void check_scan(std::vector<std::string> problems, const std::vector<ListedLine>& listed,
-                       const std::vector<bool>& used) {
-    for (size_t i = 0; i < listed.size(); ++i) {
-        if (used[i]) continue;
-        problems.push_back(stale_message(listed[i]));
-    }
-    std::ostringstream report;
-    for (const std::string& p : problems) report << p << "\n";
-    INFO(report.str());
-    CHECK(problems.empty());
 }
 
 // Defined with the clone scan in clones.cpp. The owner-gone guard in scan.cpp
