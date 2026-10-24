@@ -338,6 +338,27 @@ TEST_CASE("timing: the measure count runs on through a mid-measure meter change 
     CHECK(st.measures_at_tick_f(2401.0) == st.timecode(2401).measures_decimal());
 }
 
+TEST_CASE("timing: the measure count starts at tick 0, as the grid does, past a signature "
+          "before tick 0") {
+    // Resolution 192: 3/4 written at tick -192 (576 ticks/measure), then 4/4
+    // at tick 0 (768 ticks/measure). The grid ignores the 3/4, so tick 0 is
+    // measure 1, beat 1; the count must read 0 there too, and tick 192 is a
+    // quarter of a 4/4 measure in.
+    std::map<int64_t, int64_t> tpm{{-192, 576}, {0, 768}};
+    std::map<int64_t, double> bpm{{0, 120.0}};
+    hydra::SongTiming st(192, tpm, bpm, {{-192, {3, 4}}, {0, {4, 4}}});
+
+    CHECK(st.timecode(0).measure_beats_ticks()[0] == 0);
+    CHECK(st.timecode(0).measures_decimal() == 0.0);
+    CHECK(st.timecode(192).measures_decimal() == 0.25);
+    CHECK(st.measure_count().count() == 1);
+    CHECK(st.plusmeasure(st.timecode(0), 1).ticks() == 768);
+
+    // A map with only a negative entry still has no tick-0 entry.
+    CHECK_THROWS_AS(hydra::MeasureCount(std::map<int64_t, int64_t>{{-192, 576}}),
+                    std::out_of_range);
+}
+
 TEST_CASE("timing: tick_at_measures_f stays the inverse across a mid-measure change") {
     std::map<int64_t, int64_t> tpm{{0, 1920}, {2400, 1440}};
     std::map<int64_t, double> bpm{{0, 120.0}};

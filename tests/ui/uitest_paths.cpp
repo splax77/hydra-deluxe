@@ -746,6 +746,10 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
         line = ImGui::GetTextLineHeight();
     }
 
+    // Every pill is sized for the longest badge, as the Paths tab sizes it.
+    const std::string longest = hydra::app::longest_activation_badge();
+    const float pill_text_w = figure_w(longest);
+
     // Leaves the layout in `l`, so a caller can see where the badges went
     // (IM_CHECK returns early, so the lambda can't return it).
     hydra::ui::ActivationRowLayout l;
@@ -754,7 +758,7 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
         std::vector<float> badge_ws;
         for (const std::string& b : badges) badge_ws.push_back(figure_w(b));
         l = hydra::ui::activation_row_layout(figure_w(widest_measure), figure_w(bars), badge_ws,
-                                             row_w, line, scale);
+                                             pill_text_w, row_w, line, scale);
         const float measure_end = l.measure_x + figure_w(measure);
         const float bars_end = l.bars_x + figure_w(bars);
         ctx->LogInfo("measure %s ends %.1f, bars at %.1f..%.1f, %d badges, pill from %.1f, "
@@ -782,7 +786,6 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     // One, two and three of the longest badge beside the longest pieces. In
     // the mono font even one of them reaches the bars at the narrowest panel,
     // so all three cases go under the measure.
-    const std::string longest = hydra::app::longest_activation_badge();
     check("m1024.1.120", "m1024.1.120", "12 bars", {longest});
     check("m1024.1.120", "m1024.1.120", "12 bars", {longest, longest});
     check("m1024.1.120", "m1024.1.120", "12 bars", {longest, longest, longest});
@@ -845,17 +848,51 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
         IM_CHECK_LE(p.Max.x, grown_rect.Max.x - hydra::ui::px(hydra::ui::kRowBadgeRight) +
                                  hydra::ui::px(hydra::ui::kRowBadgePad) + 0.5f);
     }
-    // One width per row (D257 call 6): every drawn pill is as wide as the
-    // others, the row's pill width, and pills on different lines share both edges.
+    // One width (D262, badge_pill.h): every drawn pill is the longest badge's
+    // pill, and pills on different lines share both edges.
     const float inset = drawn_pill_inset();
-    ctx->LogInfo("row pill width %.3f, drawn %.3f, fill inset %.3f", three.pill_w,
-                 pills[0].GetWidth(), inset);
+    ctx->LogInfo("row pill width %.3f (longest badge text %.3f), drawn %.3f, fill inset %.3f",
+                 three.pill_w, pill_text_w, pills[0].GetWidth(), inset);
+    IM_CHECK_LE(std::fabs(three.pill_w - hydra::ui::pill_width(pill_text_w, scale)), 0.01f);
     for (const ImRect& p : pills) {
         IM_CHECK_LE(std::fabs(p.GetWidth() - pills[0].GetWidth()), 0.01f);
         IM_CHECK_LE(std::fabs(p.GetWidth() + inset - three.pill_w), 0.01f);
         if (p.Min.y != pills[0].Min.y) {
             IM_CHECK_LE(std::fabs(p.Min.x - pills[0].Min.x), 0.01f);
             IM_CHECK_LE(std::fabs(p.Max.x - pills[0].Max.x), 0.01f);
+        }
+    }
+    // Each badge's text is centred in its pill: the text's middle is the
+    // pill's middle. The text's left edge is its first glyph's leftmost vertex
+    // less that glyph's offset in the font; its right edge is that plus the
+    // text's measured width. ImFont::RenderText floors the text position, so
+    // the text may sit up to a pixel left of the exact middle.
+    {
+        ImGuiWindow* details = window_named("##pathdetails");
+        IM_CHECK(details != nullptr);
+        if (!details) return;
+        ImFontBaked* mono = hydra::ui::font_for(hydra::ui::TextRole::Figure)
+                                .font->GetFontBaked(drawn_font_size());
+        const ImU32 dim = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+        for (size_t k = 0; k < pills.size(); ++k) {
+            const std::string& t = row1.badges[k].text;
+            ImRect band = pills[k];
+            band.Expand(inset + 1.0f);
+            float xmin = FLT_MAX;
+            for (const ImDrawVert& v : details->DrawList->VtxBuffer)
+                if (v.col == dim && band.Contains(v.pos)) xmin = (std::min)(xmin, v.pos.x);
+            const ImFontGlyph* first = mono->FindGlyph(static_cast<unsigned char>(t[0]));
+            IM_CHECK(first != nullptr && xmin != FLT_MAX);
+            if (!first || xmin == FLT_MAX) return;
+            const float text_x = xmin - first->X0;
+            const float text_end = text_x + figure_w(t);
+            const float left = text_x - pills[k].Min.x;
+            const float right = pills[k].Max.x - text_end;
+            ctx->LogInfo("badge \"%s\" text %.2f..%.2f in pill %.2f..%.2f: %.2f left, %.2f right",
+                         t.c_str(), text_x, text_end, pills[k].Min.x, pills[k].Max.x, left, right);
+            const float off = (text_x + text_end) * 0.5f - pills[k].GetCenter().x;
+            IM_CHECK_LE(off, 0.01f);
+            IM_CHECK_GE(off, -1.0f);
         }
     }
     row1.badges = kept;

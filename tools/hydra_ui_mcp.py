@@ -189,12 +189,23 @@ def snapshot_library(library_dir, dest, processes):
 # Reply shaping: only the cap. The text inside is Hydra's.
 
 
+def split_lines(text):
+    """`text` cut into lines at its line breaks and nothing else, a last empty
+    piece dropped as str.splitlines drops it. The pipe frames commands and
+    replies by line break, and str.splitlines also cuts at form feeds, the
+    separator characters and Unicode line separators, which a line may hold."""
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    if lines[-1] == "":
+        lines.pop()
+    return lines
+
+
 def cap_reply(text, cap=REPLY_CAP_CHARS):
     """Cut `text` to at most `cap` characters at a line boundary, with a last
     line saying how many lines were dropped."""
     if len(text) <= cap:
         return text
-    lines = text.splitlines()
+    lines = split_lines(text)
     total = len(lines)
 
     def note(dropped):
@@ -609,7 +620,7 @@ class Helper:
             # tests/ui/uitest_script.cpp), and it answers each of them. Hydra's
             # live replies carry no line number, so "stopped at line N" is the
             # only one, counting the script's own lines.
-            lines = script.splitlines()
+            lines = split_lines(script)
             out = []
             for i, line in enumerate(lines, 1):
                 try:

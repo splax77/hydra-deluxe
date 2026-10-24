@@ -117,14 +117,22 @@ bool parse_seconds(const std::string& text, double& seconds) {
     return true;
 }
 
-// printf into a string, for the interpreter's messages.
+// printf into a string, for the interpreter's messages, at whatever length
+// the message has: a first pass measures it, a second writes it.
 std::string message(const char* fmt, ...) {
-    char buf[1024];
     va_list args;
     va_start(args, fmt);
-    std::vsnprintf(buf, sizeof(buf), fmt, args);
+    va_list measure;
+    va_copy(measure, args);
+    const int size = std::vsnprintf(nullptr, 0, fmt, measure);
+    va_end(measure);
+    std::string out;
+    if (size > 0) {
+        out.resize(static_cast<size_t>(size));
+        std::vsnprintf(out.data(), out.size() + 1, fmt, args);
+    }
     va_end(args);
-    return buf;
+    return out;
 }
 
 // The last label of a ref, as the engine reads it: what follows the last '/'
@@ -311,13 +319,13 @@ CommandResult run_command(ImGuiTestContext* ctx, CommandSession& session, const 
         }
     } else if (verb == "wait-idle") {
         if (!wait_until(ctx, [&] { return !jobs_busy(h); }, timeout))
-            return refuse(message("jobs still running after %.0fs", timeout));
+            return refuse(message("jobs still running after %g s", timeout));
         // Jobs are done, but an open dialog still blocks the next command.
         if (const std::string note = open_modal_note(ctx); !note.empty()) r.text = note + "\n";
     } else if (verb == "wait-text") {
         if (!wait_until(ctx, [&] { return visible_text(h).find(rest) != std::string::npos; },
                         timeout))
-            return refuse(message("\"%s\" did not appear within %.0fs", rest.c_str(), timeout));
+            return refuse(message("\"%s\" did not appear within %g s", rest.c_str(), timeout));
     } else if (verb == "expect-text") {
         ctx->Yield();
         if (visible_text(h).find(rest) == std::string::npos)

@@ -45,10 +45,13 @@ const float kBars3 = mono(6);   // "3 bars"
 // The narrowest details column, less a scrollbar.
 const float kNarrowRow = hydra::ui::kMinPathDetailsW - 16.0f;
 
+// Every pill sized for the longest badge, as the Paths tab sizes it, unless a
+// case gives another pill text width (unscaled).
 ActivationRowLayout layout(float measure_w, float bars_w, const std::vector<float>& badges,
-                           float row_w, float scale = 1.0f) {
-    return activation_row_layout(measure_w * scale, bars_w * scale, badges, row_w * scale,
-                                 kLine * scale, scale);
+                           float row_w, float scale = 1.0f, float pill_text_w = -1.0f) {
+    if (pill_text_w < 0.0f) pill_text_w = longest_badge_w();
+    return activation_row_layout(measure_w * scale, bars_w * scale, badges, pill_text_w * scale,
+                                 row_w * scale, kLine * scale, scale);
 }
 
 std::vector<float> scaled(std::vector<float> ws, float scale) {
@@ -94,7 +97,7 @@ TEST_CASE("activation row: the layout scales with the DPI") {
 
 TEST_CASE("activation row: no badge leaves nothing to place and one line") {
     const ActivationRowLayout l = layout(mono(11), kBars12, {}, kNarrowRow);
-    CHECK(l.badge_x.empty());
+    CHECK(l.pill_x.empty());
     CHECK(l.badge_lines == 0);
     CHECK(l.row_h == doctest::Approx(34.0f));  // a literal from one run
 }
@@ -102,12 +105,12 @@ TEST_CASE("activation row: no badge leaves nothing to place and one line") {
 TEST_CASE("activation row: one badge that fits sits where it always has (B1)") {
     // Burnout-sized pieces at the narrowest column: "m32.1.0" and "3 bars".
     const ActivationRowLayout l = layout(mono(7), kBars3, {longest_badge_w()}, kNarrowRow);
-    REQUIRE(l.badge_x.size() == 1);
+    REQUIRE(l.pill_x.size() == 1);
     CHECK(l.badge_lines == 0);
     CHECK(l.badge_line[0] == 0);
     // Literals from one run, scale 1: flush right, on the row's own line, in a
     // row as tall as it was before any badge could drop.
-    CHECK(l.badge_x[0] == doctest::Approx(287.6f));
+    CHECK(l.pill_x[0] == doctest::Approx(279.6f));
     CHECK(l.badge_pill_min == doctest::Approx(279.6f));
     CHECK(l.badge_y[0] == doctest::Approx(9.0f));
     CHECK(l.text_y == doctest::Approx(9.0f));
@@ -127,13 +130,27 @@ TEST_CASE("activation row: badges beside the bars never overlap them (B3)") {
 }
 
 TEST_CASE("activation row: a pill that just touches the bars drops under the measure") {
-    // Bars at kRowMinBarsX (200), 50 wide, so they end at 250. A 100 px badge's
-    // pill starts at row_w - 122 at scale 1: 250 on a 372 px row.
-    const ActivationRowLayout touch = layout(mono(7), 50.0f, {100.0f}, 372.0f);
+    // Bars at kRowMinBarsX (200) on a 640 px row: bars that end exactly where
+    // the flush-right pill starts touch it, and one pixel shorter clears it.
+    const float pill_left = layout(mono(7), 0.0f, {100.0f}, 640.0f).badge_pill_min;
+    const float bars_x = layout(mono(7), 0.0f, {100.0f}, 640.0f).bars_x;
+    const ActivationRowLayout touch = layout(mono(7), pill_left - bars_x, {100.0f}, 640.0f);
     CHECK(touch.badge_lines == 1);
-    const ActivationRowLayout clear = layout(mono(7), 50.0f, {100.0f}, 373.0f);
+    const ActivationRowLayout clear = layout(mono(7), pill_left - bars_x - 1.0f, {100.0f}, 640.0f);
     CHECK(clear.badge_lines == 0);
-    CHECK(clear.badge_pill_min == doctest::Approx(251.0f));
+    CHECK(clear.badge_pill_min == doctest::Approx(435.6f));  // a literal from one run
+}
+
+TEST_CASE("activation row: a short badge drops when the longest badge's pill would not fit") {
+    // "early fill 0 ms" (15 characters) beside "m1024.1.120" and "12 bars" on a
+    // 480 px row: its own-width pill would clear the bars, but every pill is
+    // sized for the longest badge, and that one reaches them.
+    const float short_w = mono(15);
+    const ActivationRowLayout own = layout(mono(11), kBars12, {short_w}, 480.0f, 1.0f, short_w);
+    CHECK(own.badge_lines == 0);
+    const ActivationRowLayout l = layout(mono(11), kBars12, {short_w}, 480.0f);
+    CHECK(l.badge_lines == 1);
+    CHECK(l.pill_w == doctest::Approx(198.4f));  // a literal from one run
 }
 
 TEST_CASE("activation row: badges under the measure clear the bars by the row's top padding") {
@@ -180,7 +197,7 @@ TEST_CASE("activation row: no pill runs past the flush-right edge") {
             layout(mono(11), kBars12, std::vector<float>(c.count, w), c.row_w);
         for (size_t k = 0; k < c.count; ++k) {
             CAPTURE(k);
-            const float pill_right = l.badge_x[k] - kRowBadgePad + l.pill_w;
+            const float pill_right = l.pill_x[k] + l.pill_w;
             CHECK(pill_right <= c.row_w - kRowBadgeRight + kRowBadgePad + 0.001f);
         }
     }
@@ -191,15 +208,15 @@ TEST_CASE("activation row: pills never overlap, on one line or between lines") {
     for (float row_w : {380.0f, 470.0f, kNarrowRow, 900.0f}) {
         CAPTURE(row_w);
         const ActivationRowLayout l = layout(mono(11), kBars12, widths, row_w);
-        REQUIRE(l.badge_x.size() == widths.size());
+        REQUIRE(l.pill_x.size() == widths.size());
         for (size_t a = 0; a < widths.size(); ++a) {
             for (size_t b = a + 1; b < widths.size(); ++b) {
                 CAPTURE(a);
                 CAPTURE(b);
                 if (l.badge_line[a] == l.badge_line[b]) {
                     // Left to right in badge order, one pad between the pills.
-                    const float a_right = l.badge_x[a] - kRowBadgePad + l.pill_w;
-                    const float b_left = l.badge_x[b] - kRowBadgePad;
+                    const float a_right = l.pill_x[a] + l.pill_w;
+                    const float b_left = l.pill_x[b];
                     CHECK(b_left >= a_right + kRowBadgePad - 0.001f);
                 } else {
                     // A later line's pill starts below an earlier line's.
@@ -219,7 +236,7 @@ TEST_CASE("activation row: badges under the measure start at the measure (D257)"
     CHECK(l.badge_lines == 3);
     for (size_t k = 0; k < 3; ++k) {
         CAPTURE(k);
-        CHECK(l.badge_x[k] == doctest::Approx(kRowMeasureX));
+        CHECK(l.pill_x[k] == doctest::Approx(96.0f));  // a literal from one run
     }
     CHECK(l.badge_y[0] == doctest::Approx(36.0f));
     CHECK(l.badge_y[1] == doctest::Approx(65.0f));

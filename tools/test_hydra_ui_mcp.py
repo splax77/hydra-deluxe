@@ -145,6 +145,22 @@ class TransportLayer(unittest.TestCase):
         self.assertIsNotNone(self.helper.session)
         self.assertEqual(self.helper.send("state"), "state")
 
+    def test_run_splits_a_script_on_line_breaks_only(self):
+        self.helper.start("headless")
+        sent = []
+        real = self.helper.command
+        self.helper.command = lambda line: (sent.append(line), real(line))[1]
+        # ASCII separators only: the stand-in logs each line to a console
+        # that may not encode the Unicode ones; test_a_cut_reply_keeps_a_line_whole
+        # covers those.
+        self.helper.run("type **/##search | a\x0cb\x0bc\x1cd\x1de\x1ef\r\nstate\rtext\n")
+        self.assertEqual(sent, ["type **/##search | a\x0cb\x0bc\x1cd\x1de\x1ef", "state", "text"])
+
+    def test_a_cut_reply_keeps_a_line_whole(self):
+        out = hm.cap_reply("a\x0cb\x85c d e\n" + "c" * 2000 + "\n", cap=200)
+        self.assertEqual(out, "a\x0cb\x85c d e\n[cut at 200 characters: 1 of 2 lines dropped;"
+                              " contains= narrows hydra_text and hydra_dump]")
+
     # -- the four transport failures ----------------------------------------
 
     def test_hanging_hydra_is_reported_and_killed(self):
@@ -467,7 +483,7 @@ class RealExeLayer(unittest.TestCase):
         self.assertEqual(self.helper.with_timeout("wait-idle", 5), "ok")
         self.assertEqual(self.helper.session.timeout, 30)
         self.assertEqual(self.helper.with_timeout("wait-text never on screen", 0),
-                         '"never on screen" did not appear within 0s\n')
+                         '"never on screen" did not appear within 0 s\n')
         self.assertEqual(self.helper.session.timeout, 30)
         for bad, shown in ((-1, "-1"), (float("inf"), "inf"), (float("nan"), "nan")):
             self.assertEqual(
