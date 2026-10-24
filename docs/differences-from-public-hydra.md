@@ -2,13 +2,13 @@
 
 The public Hydra is DragonDelgar's, at [DragonDelgar/hydra](https://github.com/DragonDelgar/hydra). It is a Python app. Its latest release is v1.3.1, from August 7, 2026.
 
-Hydra Deluxe started from that v1.3.1 and has been developed on its own since, from 1.4.1 up to 2.12.0. Up to 1.9.7 it was also called Hydra. Since 2.0.0 it is Hydra Deluxe, so the two are easy to tell apart. Nothing flows between the two automatically. The public version has kept changing too (see [What the public version has](#what-the-public-version-has-that-this-one-doesnt)).
+Hydra Deluxe started from that v1.3.1 and has been developed on its own since, from 1.4.1 up to 2.12.1. Up to 1.9.7 it was also called Hydra. Since 2.0.0 it is Hydra Deluxe, so the two are easy to tell apart. Nothing flows between the two automatically. The public version has kept changing too (see [What the public version has](#what-the-public-version-has-that-this-one-doesnt)).
 
 Both do the same job. They read Clone Hero drum charts and find the Star Power paths that give the best score. The path notation is the same, and the mechanics pages on the [public wiki](https://github.com/DragonDelgar/hydra/wiki) (squeezes, early fills, the optimal checklist) apply to both.
 
 ## At a glance
 
-| | Public Hydra 1.3.1 | Hydra Deluxe 2.12.0 |
+| | Public Hydra 1.3.1 | Hydra Deluxe 2.12.1 |
 |---|---|---|
 | Written in | Python | C++, a native Windows app |
 | Install | Unzip anywhere, run `Hydra.exe` | Installer into `C:\Program Files\Hydra` |
@@ -143,5 +143,6 @@ This version doesn't read `records.json`, so your old results don't carry over. 
 | 2.11.0 | Hydra Deluxe checks GitHub once a day for a newer release and installs it when you click `Update`, after checking its signature; an activation row on the Paths tab shows every timing badge it has |
 | 2.11.1 | A character Hydra Deluxe's own fonts lack, such as a Korean or Cyrillic letter in a song name, draws from a Windows font instead of as `?` |
 | 2.12.0 | Hydra Deluxe checks for a newer release each time it starts and shows the version, and whether a newer one is out, in a bar at the top of the window |
+| 2.12.1 | An activation row on the Paths tab names only the frontend timing scales its backend rows and squeezes use |
 
 Each release's full notes are on the [releases page](https://github.com/splax77/hydra-deluxe/releases).
