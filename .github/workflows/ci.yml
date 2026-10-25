@@ -1,7 +1,9 @@
 # Continuous integration: build Hydra and run its tests on every push to main
-# and every pull request into main, and the slow AddressSanitizer job once a
-# night. The local hooks are the first gate; this is the backstop for a commit
-# made outside them. See "Continuous integration" in docs/development.md.
+# and every pull request into main. Once a night the unit tests and the GUI
+# tests run again from a cold build, beside the slow AddressSanitizer job and
+# the coverage report. The local hooks are the first gate; this is the
+# backstop for a commit made outside them. See "Continuous integration" in
+# docs/development.md.
 
 name: CI
 
@@ -14,11 +16,15 @@ on:
     - cron: '17 5 * * *'
   workflow_dispatch:
 
-# A newer push to the same branch or pull request cancels the run it replaces.
-# The event is in the group, so a push never cancels the nightly run.
+# On main, every run finishes: a newer push never cancels or replaces one, so
+# a red run names the push that broke it. Each run on main gets its own group
+# through the commit id, because GitHub replaces a queued run with a newer one
+# in the same group even with cancelling off. On a pull request or any other
+# branch, a newer push cancels the run it replaces. The event is in the group,
+# so a push never cancels the nightly run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -62,6 +68,39 @@ jobs:
 
       - name: Run the mutation probe self-test
         run: pwsh -NoProfile -File tools/test_mutation_probe.ps1
+
+      - name: Build hydra_uitest
+        run: .\build_cpp.ps1 -Target hydra_uitest
+
+  # The GUI tests on their own machine, so they run beside the unit tests
+  # instead of after them. Like "Build and test", it runs on every trigger,
+  # the nightly one included. It reads the saved build folder but never saves
+  # it; "Build and test" does that.
+  gui-tests:
+    name: GUI tests (Windows, Release)
+    runs-on: windows-2025
+    # The GUI tests took 2 min 13 s on run 40142020665; a cold build adds
+    # about 3 minutes. The cap leaves room for a slow runner.
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      # The full history, so preparing the saved build folder can reach back
+      # to the commit it was built from.
+      - name: Check out the code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # The same restore rule as "Build and test". The nightly run builds cold
+      # on purpose, so a stale saved folder can't hide a broken build for
+      # more than a day.
+      - name: Restore the saved build folder
+        uses: ./.github/actions/warm-build-folder
+        with:
+          build-dir: build-cpp
+          restore: ${{ github.event_name == 'push' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.warm) }}
 
       - name: Build hydra_uitest
         run: .\build_cpp.ps1 -Target hydra_uitest
@@ -111,11 +150,12 @@ jobs:
         run: .\build-asan\Release\hydra_uitest.exe --all
 
   # A map of which lines of src\ the tests reach. It informs and never blocks
-  # (no threshold), so it runs on pushes to main only, not on pull requests.
-  # See "The coverage report" in docs/development.md.
+  # (no threshold), and it costs a second full build and test pass, so it runs
+  # nightly and on a manual run, not on every push (the user's call,
+  # 2026-10-24). See "The coverage report" in docs/development.md.
   coverage:
     name: Coverage report (Windows, Release)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: windows-2025
     # The caps here, the job's and each step's, are set from the proving run's
     # times with room to spare. "Continuous integration" in docs/development.md
