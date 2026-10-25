@@ -1287,7 +1287,7 @@ std::vector<RecordLookup> RecordStore::lookup(const std::vector<std::string>& so
                           " WHERE p.chartmode=? AND r.song_id IN (" +
                           placeholders(n) + ")";
         append_candidate_filter(sql, "p.");
-        Stmt s = prepare_read(db_, sql.c_str());
+        CachedStmt s = use_read(db_, stmt_cache_, sql);
         int idx = 1;
         bind_text(s, idx++, want.chartmode);
         for (size_t i = 0; i < n; ++i) bind_text(s, idx++, distinct[first + i]);
@@ -1338,7 +1338,7 @@ std::vector<RecordLookup> RecordStore::lookup(const std::vector<std::string>& so
                                 path_row_columns("") +
                                 " FROM record_paths WHERE song_id IN (" + placeholders(n) +
                                 ") ORDER BY song_id, profile_id, rank";
-        Stmt s = prepare_read(db_, sql.c_str());
+        CachedStmt s = use_read(db_, stmt_cache_, sql);
         for (size_t i = 0; i < n; ++i) bind_text(s, static_cast<int>(i + 1), ready_ids[first + i]);
         while (step_row(s)) {
             const std::string id = column_text(s, 0);
