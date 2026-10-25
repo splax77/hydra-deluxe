@@ -445,4 +445,65 @@ TestPick pick_tests(Repo& repo, const Range& range, const PickLimits& limits) {
     return Picker(repo, range, limits).run();
 }
 
+std::vector<std::string> pick_lines(const TestPick& pick) {
+    // A `*name.cpp` pattern names one file: a pattern ending in a bare `*`
+    // would also match every file that starts with the same name.
+    std::vector<PickedTest> tests = pick.tests;
+    auto file_name = [](const std::string& f) { return f.substr(f.rfind('/') + 1); };
+    std::sort(tests.begin(), tests.end(), [&](const PickedTest& x, const PickedTest& y) {
+        return file_name(x.file) != file_name(y.file) ? file_name(x.file) < file_name(y.file) : x.file < y.file;
+    });
+
+    std::vector<std::string> lines;
+    std::string first = "tests: ";
+    if (pick.whole_suite) first += "whole suite";
+    else {
+        first += "-sf=";
+        std::string last;
+        for (const PickedTest& t : tests) {
+            const std::string pattern = "*" + file_name(t.file);
+            if (pattern == last) continue;
+            if (!last.empty()) first += ",";
+            first += pattern;
+            last = pattern;
+        }
+    }
+    lines.push_back(first);
+    // The three repo-wide checks of CLAUDE.md rule 1, run at every merge.
+    lines.push_back("always: \"-tc=docs match code*\" \"-sf=*single_owner*\" \"-sf=*test_precheck*\"");
+
+    std::string names = "names:";
+    for (const PickName& n : pick.names)
+        names += " " + n.name + " (" + (n.base_only ? "deleted" : kind_word(n.kind)) + ")";
+    lines.push_back(pick.names.empty() ? "names: (none)" : names);
+
+    std::string callers = "callers: ";
+    for (size_t i = 0; i < pick.callers.size(); ++i) {
+        const CallerKey& k = pick.callers[i];
+        if (i) callers += "; ";
+        callers += k.selector ? k.key + " selects " + k.callee + " in " + k.caller : k.key + " <- " + k.callee;
+    }
+    lines.push_back(pick.callers.empty() ? "callers: (none)" : callers);
+
+    std::string common = "common:";
+    for (const CommonName& c : pick.common) common += " " + c.name + " (" + std::to_string(c.files) + " files)";
+    lines.push_back(pick.common.empty() ? "common: (none)" : common);
+
+    if (pick.whole_suite) {
+        const WholeSuite& w = *pick.whole_suite;
+        std::string why = "why: ";
+        if (!w.file.empty()) why += w.file + "  ";
+        why += w.rule;
+        if (w.count) why += " (" + std::to_string(w.count) + ")";
+        lines.push_back(why);
+    } else {
+        for (const PickedTest& t : tests) {
+            std::string why = "why: " + t.file + " ";
+            for (size_t i = 0; i < t.reasons.size(); ++i) why += (i ? "; " : " ") + t.reasons[i];
+            lines.push_back(why);
+        }
+    }
+    return lines;
+}
+
 }  // namespace precheck
