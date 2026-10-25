@@ -39,7 +39,7 @@ permissions:
 # Which ctest entries a hosted runner runs. The excluded entry opens the
 # default sound output, and hosted runners have no audio device (tests/shards.txt
 # owns the entry). -R keeps hydra_uitest out of the ctest steps: the "GUI tests"
-# job runs it on its own.
+# and "asan-gui" jobs run it on their own.
 env:
   HOSTED_CTEST_FILTER: -R hydra_tests -E audio_device
 
@@ -170,7 +170,8 @@ jobs:
   # never ships. See "The AddressSanitizer build" in docs/development.md.
   # It is slow, so it runs nightly and on a manual run, not on every push (the
   # user's call, 2026-10-10; "Continuous integration" in docs/development.md
-  # gives the timing).
+  # gives the timing). The GUI tests built this way run in "asan-gui" below,
+  # beside this job.
   asan:
     name: AddressSanitizer (Windows, Release)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -196,6 +197,30 @@ jobs:
 
       - name: Run hydra_tests
         run: ctest --test-dir build-asan -C Release -j 4 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
+
+  # The GUI tests built with AddressSanitizer, on their own machine, so they
+  # run beside the asan job's unit tests instead of after them, as "GUI tests"
+  # does for the normal build. It builds cold: no build folder is saved for
+  # the asan preset. "Continuous integration" in docs/development.md gives the
+  # timing.
+  asan-gui:
+    name: AddressSanitizer GUI tests (Windows, Release)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+
+      # Puts the compiler's folder on PATH for every later step, as in the
+      # asan job: hydra_uitest loads the ASan runtime DLL from there.
+      - name: Set up the Visual Studio developer shell
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
       - name: Build hydra_uitest
         run: .\build_cpp.ps1 -Preset asan -Target hydra_uitest
