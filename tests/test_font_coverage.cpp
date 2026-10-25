@@ -99,6 +99,7 @@ TEST_CASE("font coverage: a character some backup font holds draws in the main a
     const float size = main_font->Sources[0]->SizePixels;
     const BackupFiles backups(size);
 
+    int checked = 0;
     for (const ImWchar c : kSample) {
         const std::string file = backups.holder(c);
         if (file.empty()) {
@@ -106,22 +107,26 @@ TEST_CASE("font coverage: a character some backup font holds draws in the main a
                            << backups.absent_list() << ")");
             continue;
         }
+        ++checked;
         CAPTURE(file);
         INFO(hex(c) << " is in " << file);
         CHECK_MESSAGE(own_glyph(main_font, size, c) != nullptr, hex(c) << " is '?' in the main font");
         CHECK_MESSAGE(own_glyph(mono_font, size, c) != nullptr, hex(c) << " is '?' in the mono font");
     }
+    // A machine with none of the backup fonts would otherwise pass having
+    // checked nothing.
+    CHECK_MESSAGE(checked > 0, "no sample character was checked: no backup font present here "
+                               "holds any of them (absent here: "
+                                   << backups.absent_list() << ")");
 }
 
-TEST_CASE("font coverage: U+2010 HYPHEN draws in the main font when Segoe UI is present") {
+TEST_CASE("font coverage: U+2010 HYPHEN draws in the main font") {
     HeadlessImGui imgui;
     ImFont* main_font = ImGui::GetIO().FontDefault;
     REQUIRE(main_font != nullptr);
     const std::string segoe = hydra::ui::fallback_font_path("segoeui.ttf");
-    if (!hydra::file_exists_utf8(segoe)) {
-        MESSAGE("skipped: " << segoe << " is absent here");
-        return;
-    }
+    REQUIRE_MESSAGE(hydra::file_exists_utf8(segoe),
+                    segoe << " is absent here; this case needs Segoe UI");
     const float size = main_font->Sources[0]->SizePixels;
     CHECK(own_glyph(main_font, size, 0x2010) != nullptr);
 }
