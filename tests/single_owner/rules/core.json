@@ -2412,6 +2412,35 @@
       "note": "Any comparison against a ms limit by its name, on either side. The walks (Engine::act_within_limit, Activation::within_ms_limit) call SPSqueeze::within_limit and fill_within_limit, which ask the owner. Decided by: derive-once review of D85, finding 1; audit finding 152"
     },
     {
+      "question": "Does a timing reach a ms floor?",
+      "owner": "timing_reaches_floor in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "timing_reaches_floor",
+      "date": "2026-10-24",
+      "decision": "SQZ-GT-REVIEW",
+      "added_by": "SQZ-GT-REVIEW",
+      "pattern": "(>=|<|[^-]>)\\s*(\\*\\s*(\\w+(\\.|->))*|(\\w+(\\.|->))+)squeeze_min_ms\\b|\\b(floor_ms|squeeze_min_ms)\\s*(<=|>|<)|(>=|<)\\s*\\*?(\\w+(\\.|->))*floor_ms\\b",
+      "must_match": [
+        "if (*facts.hardest_ms >= *q.squeeze_min_ms) return true;",
+        "if (*facts.hardest_ms < *q.squeeze_min_ms) return false;",
+        "return ms >= floor_ms;",
+        "if (q.squeeze_min_ms > hardest) return false;"
+      ],
+      "must_not_match": [
+        "timing_reaches_floor(*facts.hardest_ms, *q.squeeze_min_ms);",
+        "std::optional<double> squeeze_min_ms; // squeeze>=N or squeeze>N",
+        "q.squeeze_min_ms = ms;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/model.h",
+          "line_text": "inline bool timing_reaches_floor(double ms, double floor_ms) { return ms >= floor_ms; }",
+          "why": "timing_reaches_floor, the owner"
+        }
+      ],
+      "note": "Any comparison against a ms floor by its name, on either side. squeeze>N is the negation of timing_within_limit, which its own row covers. Decided by: derive-once review of SQZ-GT"
+    },
+    {
       "question": "In what order does a chord list its notes?",
       "owner": "Chord::note_list in src/core/model.cpp",
       "owner_file": "src/core/model.cpp",
