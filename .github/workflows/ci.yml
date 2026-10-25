@@ -13,6 +13,13 @@ on:
   schedule:
     - cron: '17 5 * * *'
   workflow_dispatch:
+    inputs:
+      # A manual run builds cold unless this is on; see the build folder
+      # steps in "Build and test" below.
+      warm:
+        description: Build on the saved build folder instead of from nothing
+        type: boolean
+        default: false
 
 # A newer push to the same branch or pull request cancels the run it replaces.
 # The event is in the group, so a push never cancels the nightly run.
@@ -33,28 +40,76 @@ env:
 jobs:
   build-and-test:
     name: Build and test (Windows, Release)
-    if: github.event_name != 'schedule'
-    # The default CMake preset uses the Visual Studio 2026 generator. The
-    # windows-2025 image ships VS 2026 since GitHub's June 2026 migration.
+    # It runs on the nightly schedule too: that run builds cold, as a check
+    # that the saved build folder never hid a broken build.
     runs-on: windows-2025
     timeout-minutes: 60
+    # actions: write lets the prune step below delete old build folder caches.
+    permissions:
+      contents: read
+      actions: write
     defaults:
       run:
         shell: pwsh
     steps:
       # The full history, so the precheck self-test's two real commit ranges
       # (c6debcd^2...c6debcd and 11b9d44^2...11b9d44, in tests/test_precheck.cpp)
-      # are in the clone; without them it skips that part.
+      # are in the clone; without them it skips that part. The build folder
+      # step also needs the history back to the saved folder's commit.
       - name: Check out the code
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
+      # Pushes and pull requests build on the folder an earlier run saved.
+      # The nightly run and a manual run build cold, unless the manual run
+      # turns on its warm input.
+      - name: Restore the saved build folder
+        id: warm
+        uses: ./.github/actions/warm-build-folder
+        with:
+          build-dir: build-cpp
+          restore: ${{ github.event_name == 'push' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.warm) }}
+
       # The same script and preset developers use; warnings fail the build.
       # Building hydra_tests also builds hydra_precheck.exe, which its tests
-      # and the mutation probe self-test run.
-      - name: Build hydra_tests
-        run: .\build_cpp.ps1 -Target hydra_tests
+      # and the mutation probe self-test run. hydra_uitest is built here too,
+      # so the saved folder holds everything the GUI tests need next time.
+      - name: Build hydra_tests and hydra_uitest
+        run: .\build_cpp.ps1 -Target hydra_tests,hydra_uitest
+
+      # The folder is saved right after the build, before the tests, so a
+      # failing test still leaves a warm folder for the fix. Only pushes to
+      # main and manual runs save; pull requests only restore.
+      - name: Record the built commit
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+        run: pwsh -NoProfile -File tools/ci_build_folder.ps1 -Record -BuildDir build-cpp
+
+      - name: Save the build folder
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+        uses: actions/cache/save@v4
+        with:
+          path: build-cpp
+          key: ${{ steps.warm.outputs.key }}
+
+      # Each saved folder is about 200 MB, and main gets many pushes a day.
+      # GitHub evicts only above the repository's 10 GB, least recently used
+      # first, so old build folders would push out the fuzz corpus caches,
+      # which fuzz.yml reads only once a week. Keeping just the two newest
+      # build folders leaves room for them.
+      - name: Delete all but the two newest build folders
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $caches = gh cache list --key build-folder-build-cpp- --sort created_at --order desc --limit 100 --json id,key | ConvertFrom-Json
+          if ($LASTEXITCODE) { throw 'gh cache list failed' }
+          foreach ($c in @($caches | Select-Object -Skip 2)) {
+            gh cache delete $c.id
+            if ($LASTEXITCODE) { throw "gh cache delete $($c.key) failed" }
+            Write-Host "Deleted the old build folder cache $($c.key)"
+          }
 
       # The slices of tests/shards.txt, side by side.
       - name: Run hydra_tests
@@ -62,9 +117,6 @@ jobs:
 
       - name: Run the mutation probe self-test
         run: pwsh -NoProfile -File tools/test_mutation_probe.ps1
-
-      - name: Build hydra_uitest
-        run: .\build_cpp.ps1 -Target hydra_uitest
 
       # The GUI tests draw offscreen on the software GPU and never touch sound
       # or the network (docs/agents/ui-testing.md).

@@ -1,0 +1,62 @@
+# Restores the build folder an earlier CI run saved, then lets
+# tools/ci_build_folder.ps1 decide whether this run can build on it or must
+# start cold. The script owns that decision and prints which way it went.
+# The job must check out with fetch-depth: 0, because the script needs the
+# history back to the saved folder's commit.
+#
+# The cache key names the build folder, the runner image version and the run
+# id. A run restores the newest key with its folder and image version; a new
+# runner image ships a new compiler, so it starts cold. The "key" output is
+# this run's full key, for the job that saves the folder after its build.
+# See "Continuous integration" in docs/development.md.
+
+name: Warm build folder
+description: Restore a saved build folder and prepare it for an incremental build.
+
+inputs:
+  build-dir:
+    description: The build folder, relative to the repository root.
+    default: build-cpp
+  restore:
+    description: "'true' to restore the saved folder; anything else builds cold."
+    default: 'true'
+
+outputs:
+  key:
+    description: This run's cache key for the build folder.
+    value: ${{ steps.key.outputs.key }}
+
+runs:
+  using: composite
+  steps:
+    # ImageVersion is an environment variable of the hosted runner machine,
+    # not part of the workflow's env context, so it is read here in the shell
+    # rather than as an expression.
+    - name: Work out the cache key
+      id: key
+      shell: pwsh
+      env:
+        BUILD_DIR: ${{ inputs.build-dir }}
+      run: |
+        if (-not $env:ImageVersion) { throw 'The ImageVersion variable is not set, so the build folder cache key cannot name the runner image.' }
+        $prefix = "build-folder-$($env:BUILD_DIR)-$($env:ImageVersion)-"
+        "prefix=$prefix" >> $env:GITHUB_OUTPUT
+        "key=$prefix$($env:GITHUB_RUN_ID)" >> $env:GITHUB_OUTPUT
+
+    - name: Note a cold build by choice
+      if: inputs.restore != 'true'
+      shell: pwsh
+      run: Write-Host "ci_build_folder: cold build: this run does not restore a saved folder."
+
+    - name: Restore the saved build folder
+      if: inputs.restore == 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ inputs.build-dir }}
+        key: ${{ steps.key.outputs.key }}
+        restore-keys: ${{ steps.key.outputs.prefix }}
+
+    - name: Prepare the build folder
+      if: inputs.restore == 'true'
+      shell: pwsh
+      run: pwsh -NoProfile -File tools/ci_build_folder.ps1 -Prepare -BuildDir "${{ inputs.build-dir }}"
