@@ -205,6 +205,16 @@ TEST_CASE("classify_library_file names each generation of library file") {
                 " failure_text TEXT)");
         CHECK(classify_library_file(path) == LibraryFileKind::Current);
     }
+    SUBCASE("LacksAlbumColumn: a charts table without the album column") {
+        file_of("CREATE TABLE charts (md5 TEXT, name TEXT, artist TEXT, charter TEXT)");
+        CHECK(classify_library_file(path) == LibraryFileKind::LacksAlbumColumn);
+        file_of("CREATE TABLE charts (md5 TEXT, name TEXT, album TEXT)");
+        CHECK(classify_library_file(path) == LibraryFileKind::Current);
+        // The older generations are named first: they gain the album too.
+        file_of("CREATE TABLE charts (md5 TEXT);"
+                "CREATE TABLE records (song_id TEXT, profile_id INTEGER, pathcount INTEGER)");
+        CHECK(classify_library_file(path) == LibraryFileKind::LacksFailureColumns);
+    }
     SUBCASE("Convertible: the results table 2.2.0 to 2.7.0 wrote") {
         file_of(test::kV220ResultsTableSql);
         CHECK(classify_library_file(path) == LibraryFileKind::Convertible);
@@ -293,6 +303,105 @@ TEST_CASE("an open that cannot add the failure columns fails as DatabaseUpgrade 
     remove_db(path);
 }
 
+// ---- a file from before the album gains the column (ALB-1) ------------------
+
+namespace {
+
+// Whether the charts table in the file at `path` has an album column.
+bool charts_have_album(const std::string& path) {
+    return scalar_on_file(path, "SELECT COUNT(*) FROM pragma_table_info('charts')"
+                                " WHERE name = 'album'") == 1;
+}
+
+// A file at `path` with one library row and one record, written by this
+// build and closed, then given back the charts table and the scan stamp a
+// build from before the album wrote.
+void seed_without_album(const std::string& path, const Profile& profile) {
+    remove_db(path);
+    {
+        RecordStore seed(path);
+        seed.rebuild_chart_library({library_row("a", "A")});
+        seed.save(prepare_record("a", profile, at_cap(4)));
+    }
+    exec_on_file(path, "ALTER TABLE charts DROP COLUMN album;"
+                       "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version';");
+}
+
+}  // namespace
+
+TEST_CASE("a file whose charts table has no album column opens and gains it in place") {
+    const std::string path = testtemp::temp_path("lacks_album_column", ".db");
+    const Profile profile{"mode", CapQuery::at(4), Lens{}};
+    seed_without_album(path, profile);
+    REQUIRE(classify_library_file(path) == LibraryFileKind::LacksAlbumColumn);
+    {
+        RecordStore store(path);
+        // The old rows read as they did, with an empty album, and the old
+        // stamp hands back no cache, so the next scan reads every chart.
+        CHECK(store.chart_library_count() == 1);
+        CHECK(store.chart_index().naming("a")->album.empty());
+        CHECK(store.chart_library_cache().empty());
+        CHECK(store.lookup_one("a", profile).status == RecordStatus::Ready);
+        ChartLibraryEntry rescanned = library_row("a", "A");
+        rescanned.album = "Album A";
+        store.rebuild_chart_library({rescanned});
+        CHECK(store.chart_index().naming("a")->album == "Album A");
+    }
+    CHECK(charts_have_album(path));
+    CHECK(classify_library_file(path) == LibraryFileKind::Current);
+    // A second open finds a Current file and reads the album the scan wrote.
+    {
+        RecordStore reopened(path);
+        CHECK(reopened.chart_index().naming("a")->album == "Album A");
+        CHECK(reopened.chart_library_cache().count(library_row("a", "A").notespath) == 1);
+    }
+    remove_db(path);
+}
+
+TEST_CASE("a 2.8.0 file gains the failure columns and the album column in one open") {
+    const std::string path = testtemp::temp_path("lacks_failure_and_album", ".db");
+    const Profile profile{"mode", CapQuery::at(4), Lens{}};
+    seed_without_album(path, profile);
+    exec_on_file(path, "ALTER TABLE records DROP COLUMN failure_text;"
+                       "ALTER TABLE records DROP COLUMN failure_kind;");
+    REQUIRE(classify_library_file(path) == LibraryFileKind::LacksFailureColumns);
+    {
+        RecordStore store(path);
+        CHECK(store.lookup_one("a", profile).status == RecordStatus::Ready);
+        CHECK(store.chart_library_count() == 1);
+    }
+    CHECK(charts_have_album(path));
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM pragma_table_info('records')"
+                               " WHERE name IN ('failure_kind', 'failure_text')") == 2);
+    CHECK(classify_library_file(path) == LibraryFileKind::Current);
+    remove_db(path);
+}
+
+TEST_CASE("an open that cannot add the album column fails as DatabaseUpgrade and changes "
+          "nothing") {
+    const std::string path = testtemp::temp_path("album_column_locked", ".db");
+    const Profile profile{"mode", CapQuery::at(4), Lens{}};
+    seed_without_album(path, profile);
+    REQUIRE(classify_library_file(path) == LibraryFileKind::LacksAlbumColumn);
+    // Another connection holds the file's write lock, so the add cannot
+    // write; reading the file still works, as WAL allows.
+    sqlite3* holder = nullptr;
+    REQUIRE(sqlite3_open(path.c_str(), &holder) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(holder, "BEGIN IMMEDIATE; DELETE FROM meta WHERE key = 'none';", nullptr,
+                         nullptr, nullptr) == SQLITE_OK);
+    try {
+        RecordStore store(path);
+        FAIL("the open added a column while another connection held the write lock");
+    } catch (const KindedError& e) {
+        CHECK(e.kind() == ErrorKind::DatabaseUpgrade);
+    }
+    sqlite3_exec(holder, "ROLLBACK", nullptr, nullptr, nullptr);
+    sqlite3_close(holder);
+    CHECK_FALSE(charts_have_album(path));
+    CHECK(classify_library_file(path) == LibraryFileKind::LacksAlbumColumn);
+    remove_db(path);
+}
+
 // ---- converting a 2.2.0 to 2.7.0 file (D115 task A1-6a) --------------------
 
 namespace {
@@ -346,6 +455,8 @@ void seed_v220_layout(const std::string& path) {
         seed.save(prepare_record(kNoStars, kMode8, at_cap(8)));
     }
     exec_on_file(path, test::v220_layout_sql().c_str());
+    // 2.2.0 to 2.7.0 wrote the charts table without the album.
+    exec_on_file(path, "ALTER TABLE charts DROP COLUMN album");
     exec_on_file(path, kSeedLabelSql);
     // A row from before the stars column: a score and no stars. Its stars
     // needed the stored paths to fill, so the conversion leaves it behind.
@@ -405,6 +516,7 @@ void check_converted_rows(RecordStore& store) {
 void check_converted_file(const std::string& path) {
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM sqlite_master WHERE name = 'results'") == 0);
     CHECK(classify_library_file(path) == LibraryFileKind::Current);
+    CHECK(charts_have_album(path));
     CHECK_FALSE(file_exists_utf8(set_aside_path(path)));
     // The whole-file fill-rule label is gone; each record's profile names
     // its rule.

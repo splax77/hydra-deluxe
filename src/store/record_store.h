@@ -325,6 +325,9 @@ struct ChartLibraryEntry {
     std::string title;
     std::string artist;
     std::string charter;
+    // Empty for a chart that names no album, and for a row an older scan
+    // wrote; a stale stamp drops those from the rescan cache (kChartMetaStamp).
+    std::string album;
     std::string notespath;
     std::string rootfolder;
     std::string sig;
@@ -583,8 +586,9 @@ private:
 
     // The constructor's work after the file opens: the journal settings, the
     // tables, and, by the file's kind (classify_library_file), the conversion
-    // of a Convertible file or the failure columns a LacksFailureColumns file
-    // gains. The constructor turns any throw from it into a failed open.
+    // of a Convertible file, the failure columns a LacksFailureColumns file
+    // gains, and the album column every kind older than Current gains. The
+    // constructor turns any throw from it into a failed open.
     void set_up_schema(LibraryFileKind kind);
     void exec(const char* sql);
     // Runs `work` inside one BEGIN ... COMMIT. A throw from it rolls back
@@ -611,6 +615,12 @@ private:
     // with the file as it was. The results stamp does not move (ADR 0018):
     // no stored number changes.
     void add_failure_columns();
+    // Gives the charts table its album column when it lacks one
+    // (charts_table_lacks_album), in one transaction; every row it holds
+    // reads an empty album until the next scan rewrites it. A failure throws
+    // KindedError(DatabaseUpgrade) with the file as it was. Only the scan's
+    // stamp moves for the album (kChartMetaStamp); the results stamp does not.
+    void add_album_column();
     // Opens db_ on `dbpath`, creating the file if it is missing; throws
     // KindedError(DatabaseOpen) when SQLite refuses.
     void open_file(const std::string& dbpath);

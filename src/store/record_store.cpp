@@ -234,6 +234,10 @@ std::string each_column(const char* list, const char* before, const char* after,
 // from this list.
 constexpr const char* kFailureColumnsSql[] = {"failure_kind TEXT", "failure_text TEXT"};
 
+// The charts table's album column, as set_up_schema declares it on a new
+// table and add_album_column adds it to an older file's.
+constexpr const char* kAlbumColumnSql = "album TEXT";
+
 std::string record_tables_sql() {
     return std::string(
                "CREATE TABLE IF NOT EXISTS profiles ("
@@ -791,22 +795,24 @@ void RecordStore::set_up_schema(LibraryFileKind kind) {
     // resets the log (D93).
     exec(("PRAGMA journal_size_limit=" + std::to_string(kJournalSizeLimitBytes)).c_str());
 
-    exec(
-        "CREATE TABLE IF NOT EXISTS charts ("
-        "  md5    TEXT,"
-        "  name   TEXT,"
-        "  artist TEXT,"
-        "  charter TEXT,"
-        "  path   TEXT,"
-        "  folder TEXT,"
-        "  sig    TEXT,"
-        "  stated_length_ms REAL,"
-        "  delay_ms REAL"
-        ");"
-        "CREATE TABLE IF NOT EXISTS meta ("
-        "  key   TEXT PRIMARY KEY,"
-        "  value TEXT"
-        ");");
+    exec((std::string("CREATE TABLE IF NOT EXISTS charts ("
+                      "  md5    TEXT,"
+                      "  name   TEXT,"
+                      "  artist TEXT,"
+                      "  charter TEXT,  ") +
+          kAlbumColumnSql +
+          ","
+          "  path   TEXT,"
+          "  folder TEXT,"
+          "  sig    TEXT,"
+          "  stated_length_ms REAL,"
+          "  delay_ms REAL"
+          ");"
+          "CREATE TABLE IF NOT EXISTS meta ("
+          "  key   TEXT PRIMARY KEY,"
+          "  value TEXT"
+          ");")
+             .c_str());
     // The library page sorts by name (list_chart_library's ORDER BY name).
     exec("CREATE INDEX IF NOT EXISTS charts_by_name ON charts (name)");
     // The scan's purge and list_chart_library_copies find a chart's library
@@ -815,6 +821,26 @@ void RecordStore::set_up_schema(LibraryFileKind kind) {
     create_result_tables();
     if (kind == LibraryFileKind::Convertible) convert_results();
     if (kind == LibraryFileKind::LacksFailureColumns) add_failure_columns();
+    // Every kind older than Current may hold a charts table from before the
+    // album; the table made just above already has it.
+    if (kind == LibraryFileKind::Convertible || kind == LibraryFileKind::LacksFailureColumns ||
+        kind == LibraryFileKind::LacksAlbumColumn)
+        add_album_column();
+}
+
+void RecordStore::add_album_column() {
+    // A failure undoes the add (in_transaction), so the file is as it was:
+    // DatabaseUpgrade says so. Running out of memory keeps its own type.
+    try {
+        in_transaction([&] {
+            if (charts_table_lacks_album(db_))
+                exec((std::string("ALTER TABLE charts ADD COLUMN ") + kAlbumColumnSql).c_str());
+        });
+    } catch (const std::bad_alloc&) {
+        throw;
+    } catch (const std::exception& e) {
+        throw KindedError(ErrorKind::DatabaseUpgrade, e.what());
+    }
 }
 
 void RecordStore::add_failure_columns() {
@@ -1405,11 +1431,11 @@ namespace {
 // The charts table's columns as one library entry fills them, in the order
 // rebuild_chart_library writes them and read_library_entries reads them.
 constexpr const char* kLibraryColumnList =
-    "md5, name, artist, charter, path, folder, sig, stated_length_ms, delay_ms";
+    "md5, name, artist, charter, album, path, folder, sig, stated_length_ms, delay_ms";
 // Both walk the slots by hand, so the assert stops the build when the list
 // grows and they don't.
-static_assert(count_list_names(kLibraryColumnList) == 9,
-              "rebuild_chart_library and read_library_entries walk nine slots: grow them "
+static_assert(count_list_names(kLibraryColumnList) == 10,
+              "rebuild_chart_library and read_library_entries walk ten slots: grow them "
               "with the list");
 
 // The query read_library_entries reads; callers add a WHERE or an ORDER BY.
@@ -1428,10 +1454,11 @@ std::vector<ChartLibraryEntry> read_library_entries(sqlite3_stmt* s, bool timing
         e.title = column_text(s, 1);
         e.artist = column_text(s, 2);
         e.charter = column_text(s, 3);
-        e.notespath = column_text(s, 4);
-        e.rootfolder = column_text(s, 5);
-        e.sig = column_text(s, 6);
-        if (timing_read) e.timing = ChartTimingMeta{column_opt_f64(s, 7), column_opt_f64(s, 8)};
+        e.album = column_text(s, 4);
+        e.notespath = column_text(s, 5);
+        e.rootfolder = column_text(s, 6);
+        e.sig = column_text(s, 7);
+        if (timing_read) e.timing = ChartTimingMeta{column_opt_f64(s, 8), column_opt_f64(s, 9)};
         out.push_back(std::move(e));
     }
     return out;
@@ -1458,12 +1485,13 @@ void RecordStore::rebuild_chart_library(const std::vector<ChartLibraryEntry>& it
             bind_text(s, 2, item.title);
             bind_text(s, 3, item.artist);
             bind_text(s, 4, item.charter);
-            bind_text(s, 5, item.notespath);
-            bind_text(s, 6, item.rootfolder);
-            bind_text(s, 7, item.sig);
+            bind_text(s, 5, item.album);
+            bind_text(s, 6, item.notespath);
+            bind_text(s, 7, item.rootfolder);
+            bind_text(s, 8, item.sig);
             const ChartTimingMeta timing = item.timing.value_or(ChartTimingMeta{});
-            bind_opt_f64(s, 8, timing.length_ms);
-            bind_opt_f64(s, 9, timing.delay_ms);
+            bind_opt_f64(s, 9, timing.length_ms);
+            bind_opt_f64(s, 10, timing.delay_ms);
             step_done(s, "rebuild_chart_library");
         }
         // What this scan no longer lists goes, in this transaction, so a
