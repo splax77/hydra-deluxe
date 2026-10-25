@@ -278,7 +278,7 @@
       "exempt": [
         {
           "file": "src/store/library_file.cpp",
-          "why": "classify_library_file's probe asks whether the file's tables can be read at all: any failed step reads LibraryFileKind::Unreadable, never an error kind"
+          "why": "library_file.cpp's TableProbe asks whether the file's tables can be read at all, for classify_library_file and charts_table_lacks_album: any failed step is an answer in those two (Unreadable; the add runs), never an error kind"
         }
       ],
       "must_match": [
@@ -317,7 +317,7 @@
       "exempt": [
         {
           "file": "src/store/library_file.cpp",
-          "why": "classify_library_file's probe asks whether the file's tables can be read at all: any failed compile reads LibraryFileKind::Unreadable, never an error kind"
+          "why": "library_file.cpp's TableProbe asks whether the file's tables can be read at all, for classify_library_file and charts_table_lacks_album: any failed compile is an answer in those two (Unreadable; the add runs), never an error kind"
         }
       ],
       "must_match": [

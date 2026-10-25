@@ -41,6 +41,7 @@
 #include "midi_util.h"
 #include "parse/song.h"
 #include "sng_util.h"
+#include "srb_util.h"
 #include "store/chart_index.h"
 #include "store/record_store.h"
 #include "temp_util.h"
@@ -363,6 +364,7 @@ TEST_CASE("save_scan_as_library stores every ScanItem field") {
     item.title = "the title";
     item.artist = "the artist";
     item.charter = "the charter";
+    item.album = "the album";
     item.notespath = "the notespath";
     item.rootfolder = "the rootfolder";
     item.sig = "the sig";
@@ -377,6 +379,7 @@ TEST_CASE("save_scan_as_library stores every ScanItem field") {
     CHECK(e.title == "the title");
     CHECK(e.artist == "the artist");
     CHECK(e.charter == "the charter");
+    CHECK(e.album == "the album");
     CHECK(e.notespath == "the notespath");
     CHECK(e.rootfolder == "the rootfolder");
     CHECK(e.sig == "the sig");
@@ -1056,6 +1059,51 @@ TEST_CASE("discover_charts: a blank or missing artist or charter reads the place
         CHECK(it.charter == hydra::kUnknownCharter);
     }
     fs::remove_all(root);
+}
+
+TEST_CASE("discover_charts reads the album from song.ini, a .sng and an .srb, trimmed, and a "
+          "blank album stays blank") {
+    namespace fs = std::filesystem;
+    const std::string chart = corpus::first_chart_with_suffix(".chart");
+    REQUIRE(!chart.empty());
+    const std::vector<uint8_t> notes = hydra::read_file_bytes(chart);
+    const fs::path root = hydra::os_path(testtemp::temp_dir("scan_album"));
+    fs::remove_all(root);
+
+    const auto folder_with_ini = [&](const char* name, const char* ini_text) {
+        fs::create_directories(root / name);
+        fs::copy_file(fs::u8path(chart), root / name / "notes.chart");
+        std::ofstream ini(root / name / "song.ini", std::ios::binary);
+        ini << ini_text;
+    };
+    const auto write_file = [&](const char* name, const std::vector<uint8_t>& bytes) {
+        std::ofstream f(root / name, std::ios::binary);
+        f.write(reinterpret_cast<const char*>(bytes.data()),
+                static_cast<std::streamsize>(bytes.size()));
+    };
+    folder_with_ini("ini", "[song]\nname = Ini\nalbum = Ini Album  \n");
+    folder_with_ini("ini_blank", "[song]\nname = Ini Blank\nalbum =\n");
+    folder_with_ini("ini_missing", "[song]\nname = Ini Missing\n");
+    write_file("named.sng", testsng::make_sng({{"name", "Sng"}, {"album", " X "}},
+                                              {{"notes.chart", notes}}));
+    write_file("blank.sng", testsng::make_sng({{"name", "Sng Blank"}, {"album", "  "}},
+                                              {{"notes.chart", notes}}));
+    write_file("bundle.srb",
+               testsrb::make_srb(testsrb::make_metadata_with_length("notes.chart", 196905),
+                                 notes));
+
+    auto [items, errors] = discover_charts({root.u8string()});
+    fs::remove_all(root);
+    CHECK(errors.empty());
+    std::map<std::string, std::string> album_by_title;
+    for (const ScanItem& it : items) album_by_title[it.title] = it.album;
+    // srb_util.h's metadata block names its album "Test Album".
+    CHECK(album_by_title == std::map<std::string, std::string>{{"Ini", "Ini Album"},
+                                                               {"Ini Blank", ""},
+                                                               {"Ini Missing", ""},
+                                                               {"Sng", "X"},
+                                                               {"Sng Blank", ""},
+                                                               {"Name", "Test Album"}});
 }
 
 namespace {

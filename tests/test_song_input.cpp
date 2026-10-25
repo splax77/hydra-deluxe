@@ -364,3 +364,13 @@ TEST_CASE("display_charter: tags go and the ends are trimmed, with no fallback")
     // The scan's charter placeholder keeps today's text.
     CHECK(display_charter("<unknown charter>") == "<unknown charter>");
 }
+
+TEST_CASE("display_album: tags go and the ends are trimmed, and a blank stays blank") {
+    CHECK(display_album(" <b>Dookie</b> ") == "Dookie");
+    CHECK(display_album("<color=red> Chair </color>") == "Chair");
+    CHECK(display_album(test::kTagOnlyTitle) == "");
+    CHECK(display_album("") == "");
+    CHECK(display_album("   ") == "");
+    // The artist's placeholder means nothing to an album.
+    CHECK(display_album("<unknown artist>") == "<unknown artist>");
+}

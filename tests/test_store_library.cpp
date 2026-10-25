@@ -43,15 +43,16 @@ std::map<std::string, int> listed_copies(RecordStore& store) {
     return out;
 }
 
-// The title, artist and charter of the library row that names chart `id`.
+// The title, artist, charter and album of the library row that names chart
+// `id`.
 struct ChartNames {
-    std::string title, artist, charter;
+    std::string title, artist, charter, album;
 };
 ChartNames names_of(RecordStore& store, const std::string& id) {
     const ChartIndex index = store.chart_index();
     const ChartLibraryEntry* naming = index.naming(id);
     REQUIRE(naming != nullptr);
-    return ChartNames{naming->title, naming->artist, naming->charter};
+    return ChartNames{naming->title, naming->artist, naming->charter, naming->album};
 }
 
 }  // namespace
@@ -89,7 +90,8 @@ TEST_CASE("a result's names follow the latest scan") {
     // result's names come from the library (ChartIndex), so a rescan
     // after song.ini changed renames it.
     RecordStore store(":memory:");
-    const ChartLibraryEntry first = library_row("h", "Scanned Title");
+    ChartLibraryEntry first = library_row("h", "Scanned Title");
+    first.album = "Scanned Album";
     ChartLibraryEntry second = library_row("h", "Second Copy");
     second.notespath = "C:\\charts\\copy\\notes.chart";
     store.rebuild_chart_library({first, second});
@@ -97,14 +99,17 @@ TEST_CASE("a result's names follow the latest scan") {
     // The scan found two copies of the chart; the first one it listed names
     // it.
     CHECK(names_of(store, "h").title == "Scanned Title");
+    CHECK(names_of(store, "h").album == "Scanned Album");
 
     ChartLibraryEntry renamed = library_row("h", "New Title");
     renamed.artist = "New Artist";
     renamed.charter = "New Charter";
+    renamed.album = "New Album";
     store.rebuild_chart_library({renamed, second});
     CHECK(names_of(store, "h").title == "New Title");
     CHECK(names_of(store, "h").artist == "New Artist");
     CHECK(names_of(store, "h").charter == "New Charter");
+    CHECK(names_of(store, "h").album == "New Album");
     // The rescans kept the chart's record.
     CHECK(store.lookup_one("h", at4()).status == RecordStatus::Ready);
 
@@ -169,6 +174,13 @@ TEST_CASE("the scan cache is dropped when its reader stamp is not current") {
         CHECK(store.chart_library_cache().empty());
         store.rebuild_chart_library({entry});
         CHECK(store.chart_library_cache().count(entry.notespath) == 1);
+    }
+    // A file the scan stamped before it read albums: its rows hold no album,
+    // so its cache is dropped too.
+    exec_on_file(path, "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version'");
+    {
+        RecordStore store(path);
+        CHECK(store.chart_library_cache().empty());
     }
     std::remove(path.c_str());
 }

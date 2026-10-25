@@ -14,12 +14,14 @@
 inline hydra::store::ChartLibraryEntry library_row(const std::string& md5,
                                                    const std::string& title,
                                                    const std::string& artist = "Artist",
-                                                   const std::string& charter = "Charter") {
+                                                   const std::string& charter = "Charter",
+                                                   const std::string& album = "Album") {
     hydra::store::ChartLibraryEntry e;
     e.md5 = md5;
     e.title = title;
     e.artist = artist;
     e.charter = charter;
+    e.album = album;
     e.notespath = "C:\\charts\\" + md5 + "\\notes.chart";
     e.rootfolder = "C:\\charts";
     e.sig = "sig-" + md5;

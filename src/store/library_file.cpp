@@ -60,6 +60,12 @@ private:
     bool failed_ = false;
 };
 
+// Whether the charts table is there without its album column. Reads false
+// when SQLite fails; the caller asks probe.failed().
+bool lacks_album(TableProbe& probe, const std::set<std::string>& tables) {
+    return tables.count("charts") && !probe.has_column("charts", "album");
+}
+
 // The layouts, newest first. Each test reads only what a release wrote; the
 // releases themselves are in testdata/store/README.md.
 LibraryFileKind kind_of(TableProbe& probe) {
@@ -90,10 +96,22 @@ LibraryFileKind kind_of(TableProbe& probe) {
                                      probe.has_column("records", "failure_text"));
     if (probe.failed()) return LibraryFileKind::Unreadable;
     if (lacks_failure_columns) return LibraryFileKind::LacksFailureColumns;
+    // The scan's album came after; a file a release before it wrote holds a
+    // charts table without that column.
+    const bool lacks_album_column = lacks_album(probe, tables);
+    if (probe.failed()) return LibraryFileKind::Unreadable;
+    if (lacks_album_column) return LibraryFileKind::LacksAlbumColumn;
     return LibraryFileKind::Current;
 }
 
 }  // namespace
+
+bool charts_table_lacks_album(sqlite3* db) {
+    TableProbe probe(db);
+    const std::set<std::string> tables = probe.tables();
+    if (probe.failed()) return true;
+    return lacks_album(probe, tables) || probe.failed();
+}
 
 LibraryFileKind classify_library_file(const std::string& dbpath) {
     if (dbpath.empty() || dbpath == ":memory:") return LibraryFileKind::Fresh;

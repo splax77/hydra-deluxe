@@ -94,7 +94,8 @@ inline constexpr StampRule<std::string_view, 1> kResultsStamp{"2.12.1+ch10grid",
 // 4 = every name field is trimmed once, D114 item 15.
 // 5 = song.ini, .chart and MIDI text is decoded UTF-8 first, else
 // Windows-1252 (decode_chart_text in parse/text_decode.h).
-inline constexpr StampRule<int, 1> kChartMetaStamp{5, {5}};
+// 6 = the scan also reads each chart's album.
+inline constexpr StampRule<int, 1> kChartMetaStamp{6, {6}};
 
 // A build always reads back what it writes.
 static_assert(kResultsStamp.is_current(kResultsStamp.written));
