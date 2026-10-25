@@ -4,6 +4,8 @@
 
 #include "doctest.h"
 
+#include <string>
+
 #include "app/report.h"  // ChipToken, tier_token
 #include "core/squeeze_rating.h"
 #include "imgui.h"
@@ -21,7 +23,7 @@ double contrast(const ImVec4& a, const ImVec4& b) {
 }
 
 // Every channel of `got` equals `want`'s, alpha included.
-void check_same_color(const char* what, const ImVec4& got, const ImVec4& want) {
+void check_same_color(const std::string& what, const ImVec4& got, const ImVec4& want) {
     CAPTURE(what);
     CHECK(got.x == want.x);
     CHECK(got.y == want.y);
