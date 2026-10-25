@@ -140,7 +140,8 @@ AddedLines AddedLines::parse_diff(const std::vector<std::string>& diff_lines) {
             continue;
         }
         if (starts_with(l, "+++ ")) {
-            cur = l == "+++ /dev/null" ? "" : l.substr(std::min<size_t>(6, l.size()));
+            static const std::string kNewFile = "+++ b/";  // git's default prefix for the new side
+            cur = starts_with(l, kNewFile) ? l.substr(kNewFile.size()) : "";
             if (!cur.empty() && !a.sets_.count(cur)) a.sets_[cur] = std::set<int>{};
             continue;
         }

@@ -136,6 +136,10 @@
           "why": "it converts the startup message box's text, not a path"
         },
         {
+          "file": "tools/precheck/code_mask.cpp",
+          "why": "it counts the UTF-16 units of source text, not a path"
+        },
+        {
           "file": "tools/precheck/git_text.cpp",
           "why": "it builds git's command line (revisions, options, the folder given to git -C), not a path the program opens"
         }

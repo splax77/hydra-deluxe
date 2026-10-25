@@ -3,20 +3,22 @@
 #include <filesystem>
 
 #include "code_lexer.h"
+#include "core/winstr.h"
 
 namespace precheck {
 
 namespace {
 
 // Appends the spaces that stand for text[b, e): a line break stays, every
-// other character becomes one space per UTF-16 unit.
+// other character becomes one space per UTF-16 unit, so
+// a character's column in the masked text matches a .NET string index.
 void blank(const std::string& text, size_t b, size_t e, std::string& out) {
-    for (size_t i = b; i < e; ++i) {
-        const unsigned char c = static_cast<unsigned char>(text[i]);
-        if (c == '\n') out += '\n';
-        else if (c >= 0xF0) out += "  ";  // starts a four-byte character: two UTF-16 units
-        else if (c < 0x80 || c >= 0xC0) out += ' ';
-        // a UTF-8 continuation byte: its character already has its space
+    while (b < e) {
+        size_t nl = text.find('\n', b);
+        if (nl == std::string::npos || nl > e) nl = e;
+        out.append(hydra::utf8_to_wide(text.substr(b, nl - b)).size(), ' ');
+        if (nl < e) out += '\n';
+        b = nl + 1;
     }
 }
 

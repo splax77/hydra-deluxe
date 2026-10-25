@@ -28,7 +28,7 @@ using namespace precheck;
 
 namespace {
 
-void put(const std::string& dir, const std::string& rel, const std::string& text) {
+void write_fixture_file(const std::string& dir, const std::string& rel, const std::string& text) {
     const std::string path = dir + "\\" + rel;
     fs::create_directories(hydra::os_path(fs::path(hydra::os_path(path)).parent_path()));
     testtemp::write_bytes(path, std::vector<uint8_t>(text.begin(), text.end()));
@@ -56,22 +56,22 @@ struct Fixture {
         testtemp::remove_dir(dir);
         fs::create_directories(hydra::os_path(dir));
         fixture_git(dir, {"init", "-q", "-b", "main"});
-        put(dir, "src/a.cpp", "int one;\nint two;\nint three;\n");
-        put(dir, "tests/b.cpp", "int b1;\nint b2;\n");
-        put(dir, "third_party/x.txt", "x\n");
+        write_fixture_file(dir,"src/a.cpp", "int one;\nint two;\nint three;\n");
+        write_fixture_file(dir,"tests/b.cpp", "int b1;\nint b2;\n");
+        write_fixture_file(dir,"third_party/x.txt", "x\n");
         commit_all(dir, "main1");
         fixture_git(dir, {"checkout", "-q", "-b", "feature"});
         // Line 4 is "++ x": its diff line starts "+++ ", like a file header.
-        put(dir, "src/a.cpp", "int one;\nint TWO;\nint three;\n++ x\nint four;\n");
+        write_fixture_file(dir,"src/a.cpp", "int one;\nint TWO;\nint three;\n++ x\nint four;\n");
         fs::remove(hydra::os_path(dir + "\\tests\\b.cpp"));
-        put(dir, "third_party/x.txt", "x\ny\nz\nw\n");
-        put(dir, "testdata/y.txt", "y1\ny2\n");
+        write_fixture_file(dir,"third_party/x.txt", "x\ny\nz\nw\n");
+        write_fixture_file(dir,"testdata/y.txt", "y1\ny2\n");
         commit_all(dir, "f1");
-        put(dir, "tools/new.py", "print(1)\nprint(2)\n");
-        put(dir, "src/bin.dat", std::string("\0\1\2\0", 4));
+        write_fixture_file(dir,"tools/new.py", "print(1)\nprint(2)\n");
+        write_fixture_file(dir,"src/bin.dat", std::string("\0\1\2\0", 4));
         commit_all(dir, "f2");
         fixture_git(dir, {"checkout", "-q", "main"});
-        put(dir, "src/a.cpp", "int uno;\nint two;\nint three;\n");
+        write_fixture_file(dir,"src/a.cpp", "int uno;\nint two;\nint three;\n");
         commit_all(dir, "main2");
     }
     ~Fixture() { testtemp::remove_dir(dir); }
@@ -321,7 +321,7 @@ TEST_CASE("precheck: --code-mask blanks comments and string text and keeps every
     CHECK_FALSE(code_mask(src, "notes.txt").has_value());
 
     const std::string dir = testtemp::temp_dir("precheck_code_mask");
-    put(dir, "x.cpp", src);
+    write_fixture_file(dir,"x.cpp", src);
     const ExeRun r = run_precheck({"--code-mask", dir + "\\x.cpp"});
     CHECK(r.exit_code == 0);
     CHECK(r.out == want);
