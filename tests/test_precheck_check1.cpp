@@ -101,25 +101,6 @@ struct Fixture {
     ~Fixture() { testtemp::remove_dir(dir); }
 };
 
-std::string run_check1(const std::string& repo) {
-    ChildProcess p({HYDRA_PRECHECK_EXE, "--repo", repo, "--range", "main...feature", "--disable", "2,3,4,5"});
-    const std::string out = p.read_all();
-    std::string err;
-    const int code = p.wait(err);
-    INFO(err);
-    CHECK(code == 0);
-    return out;
-}
-
-std::vector<std::string> item_lines(const std::string& out) {
-    std::vector<std::string> lines;
-    std::istringstream in(out);
-    for (std::string l; std::getline(in, l);) {
-        if (!l.empty() && l.back() == '\r') l.pop_back();
-        if (l.size() > 2 && l[1] == ' ' && std::isupper(static_cast<unsigned char>(l[0]))) lines.push_back(l);
-    }
-    return lines;
-}
 
 int count_matching(const std::vector<std::string>& lines, const std::string& pattern) {
     const std::regex rx(pattern);
@@ -214,7 +195,7 @@ TEST_CASE("precheck definitions: a namespace head is found only within the look-
 
 TEST_CASE("precheck check 1: a helper copied under new names prints C, the near misses do not") {
     Fixture fx;
-    const std::vector<std::string> lines = item_lines(run_check1(fx.dir));
+    const std::vector<std::string> lines = exe_item_lines(fx.dir, "2,3,4,5");
     INFO([&] {
         std::string all;
         for (const std::string& l : lines) all += l + "\n";
