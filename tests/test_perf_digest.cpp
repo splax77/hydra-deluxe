@@ -82,18 +82,13 @@ EngineDigest engine_digest(const app::Settings& st) {
     return out;
 }
 
-// How many corpus charts load at these settings, by the parse digest's own
-// load (digest::chart_parse_hash), so a pin whose difficulty some charts lack
+// How many of the digest's charts load at these settings
+// (digest::loading_chart_count), so a pin whose difficulty some charts lack
 // still checks its count without a typed number.
 size_t loading_chart_count(const app::Settings& st) {
-    const app::AnalysisSettings settings = st.batch_run().settings;
-    size_t n = 0;
-    for (const app::ScanItem& it : corpus_charts()) {
-        std::string fail;
-        digest::chart_parse_hash(it.notespath, settings, &fail);
-        if (fail.empty()) ++n;
-    }
-    return n;
+    std::vector<std::string> notespaths;
+    for (const app::ScanItem& it : corpus_charts()) notespaths.push_back(it.notespath);
+    return digest::loading_chart_count(notespaths, st.batch_run().settings);
 }
 
 // Checks one engine digest against its pinned literal, and that every chart
