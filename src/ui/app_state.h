@@ -121,8 +121,9 @@ struct LibraryViewState {
     // context outlives an AppState (the GUI tests build one per test), so a
     // fresh model reads the header's current sort on its first frame.
     bool sort_synced = false;
-    // The panel state the table last fitted its Charter and Folder columns
-    // to; unset = fit them on the table's next frame past its first.
+    // The panel state the table last fitted the columns that make way for the
+    // song panel to (render_table); unset = fit them on the table's next frame
+    // past its first.
     std::optional<bool> columns_for_panel;
     // The selection (notespath) the table last asked to scroll to, so it asks
     // only when the selected song changes. Whether and how far it then moves
