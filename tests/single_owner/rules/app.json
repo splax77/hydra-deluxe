@@ -12,6 +12,12 @@
       "owner_files": [
         "src/app/report_files.cpp"
       ],
+      "exempt": [
+        {
+          "file": "tools/precheck/git_text.cpp",
+          "why": "starts git as a child process with pipes; it opens no file or page in the shell"
+        }
+      ],
       "must_match": [
         "ShellExecuteW(nullptr, L\"open\", p.c_str(), nullptr, nullptr, SW_SHOWNORMAL);",
         "CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi);"

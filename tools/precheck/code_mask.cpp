@@ -1,5 +1,7 @@
 #include "code_mask.h"
 
+#include <filesystem>
+
 #include "code_lexer.h"
 
 namespace precheck {
@@ -18,17 +20,10 @@ void blank(const std::string& text, size_t b, size_t e, std::string& out) {
     }
 }
 
-std::string extension_of(const std::string& file) {
-    const size_t slash = file.find_last_of("/\\");
-    const size_t dot = file.rfind('.');
-    if (dot == std::string::npos || (slash != std::string::npos && dot < slash)) return "";
-    return file.substr(dot);
-}
-
 }  // namespace
 
 std::optional<std::string> code_mask(const std::string& text, const std::string& file) {
-    const std::optional<codelex::Lang> lang = codelex::language_of_extension(extension_of(file));
+    const std::optional<codelex::Lang> lang = codelex::language_of_extension(std::filesystem::u8path(file).extension().string());
     if (!lang || (*lang != codelex::Lang::Cpp && *lang != codelex::Lang::Python)) return std::nullopt;
     std::string out;
     out.reserve(text.size());

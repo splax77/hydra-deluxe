@@ -1,27 +1,21 @@
 #include "range.h"
 
 #include <algorithm>
-#include <cctype>
+#include <filesystem>
 #include <iterator>
 
-#include "source_tree.h"  // kWalkedFolders
+#include "code_lexer.h"
+#include "core/strutil.h"
+#include "single_owner/listed.h"  // is_cpp_source
+#include "source_tree.h"          // kWalkedFolders
 
 namespace precheck {
 
 namespace {
 
-std::string lower(std::string s) {
-    for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return s;
-}
-
-bool ends_with(const std::string& s, const std::string& end) {
-    return s.size() >= end.size() && s.compare(s.size() - end.size(), end.size(), end) == 0;
-}
-
-bool starts_with(const std::string& s, const std::string& start) {
-    return s.compare(0, start.size(), start) == 0;
-}
+using hydra::ends_with;
+using hydra::starts_with;
+using hydra::to_lower_ascii;
 
 bool all_digits(const std::string& s) {
     return !s.empty() && std::all_of(s.begin(), s.end(), [](char c) { return c >= '0' && c <= '9'; });
@@ -51,18 +45,22 @@ std::string top_folder(const std::string& file) {
     return i == std::string::npos ? "" : file.substr(0, i);
 }
 
-bool is_cpp(const std::string& file) { return ends_with(file, ".cpp") || ends_with(file, ".h"); }
+bool is_cpp(const std::string& file) {
+    return single_owner::is_cpp_source(std::filesystem::u8path(file));
+}
 
-bool is_cpp_source(const std::string& file) { return ends_with(file, ".cpp"); }
+bool is_cpp_implementation(const std::string& file) { return is_cpp(file) && !ends_with(file, ".h"); }
 
-// is_py, test_file and skipped_file's file name ignore case; is_cpp keeps
-// it, as the scan does.
-bool is_py(const std::string& file) { return ends_with(lower(file), ".py"); }
+bool is_py(const std::string& file) {
+    const std::optional<codelex::Lang> lang =
+        codelex::language_of_extension(std::filesystem::u8path(file).extension().string());
+    return lang && *lang == codelex::Lang::Python;
+}
 
 bool test_file(const std::string& file) {
     // Everything under tests/; under tools/, a file in a tests folder at any
     // depth, or a Python file whose name starts test_.
-    const std::string p = lower(file);
+    const std::string p = to_lower_ascii(file);
     if (top_folder(p) == "tests") return true;
     if (!starts_with(p, "tools/")) return false;
     if (p.find("/tests/", 5) != std::string::npos) return true;
@@ -71,7 +69,7 @@ bool test_file(const std::string& file) {
 }
 
 bool skipped_file(const std::string& file) {
-    return starts_with(file, "tests/single_owner/") || lower(file) == "tests/test_single_owner.cpp";
+    return starts_with(file, "tests/single_owner/") || to_lower_ascii(file) == "tests/test_single_owner.cpp";
 }
 
 const std::vector<std::string>& code_folders() {
@@ -212,7 +210,7 @@ RangeSize parse_numstat(const std::vector<std::string>& numstat_lines) {
         std::string path = l.substr(t2 + 1);
         path.erase(0, path.find_first_not_of('"'));  // git quotes an unusual path
         const std::vector<std::string>& skip = size_excluded_folders();
-        if (std::find(skip.begin(), skip.end(), lower(top_folder(path))) != skip.end()) continue;
+        if (std::find(skip.begin(), skip.end(), to_lower_ascii(top_folder(path))) != skip.end()) continue;
         s.added += std::stoll(a);
         s.deleted += d == "-" ? 0 : std::stoll(d);
     }

@@ -18,13 +18,15 @@ namespace precheck {
 // Which top folder of the repo is this file in (src, tools, tests...)? Empty
 // for a file at the repo root.
 std::string top_folder(const std::string& file);
-// Is this a C++ file? The extensions are the single-owner scan's own
-// (is_cpp_source in tests/single_owner/listed.h), so the precheck reads the
-// same files and no others.
+// Is this a C++ file? Asked of single_owner::is_cpp_source, so the precheck
+// reads the same files the single-owner scan does and no others.
 bool is_cpp(const std::string& file);
-// Is this a C++ source file, not a header? Check 5 compares free functions
-// between source files only.
-bool is_cpp_source(const std::string& file);
+// Is this a C++ file that is not a header? Check 5 compares free functions
+// between these only.
+bool is_cpp_implementation(const std::string& file);
+// Is this a Python file? Asked of codelex::language_of_extension, which keeps
+// the extension's case as the scan does; only test_file and skipped_file
+// ignore case.
 bool is_py(const std::string& file);
 // Is this a test file? Any file that is not a test is production code.
 bool test_file(const std::string& file);

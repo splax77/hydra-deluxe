@@ -184,10 +184,10 @@ TEST_CASE("precheck: what kind of file each path is") {
     CHECK(is_cpp("src/x.h"));
     CHECK_FALSE(is_cpp("src/x.CPP"));
     CHECK_FALSE(is_cpp("src/x.hpp"));
-    CHECK(is_cpp_source("src/x.cpp"));
-    CHECK_FALSE(is_cpp_source("src/x.h"));
+    CHECK(is_cpp_implementation("src/x.cpp"));
+    CHECK_FALSE(is_cpp_implementation("src/x.h"));
     CHECK(is_py("tools/x.py"));
-    CHECK(is_py("tools/x.PY"));
+    CHECK_FALSE(is_py("tools/x.PY"));
     CHECK(test_file("tests/x.cpp"));
     CHECK(test_file("Tests/x.cpp"));
     CHECK(test_file("tools/test_x.py"));
