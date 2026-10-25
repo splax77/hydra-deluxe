@@ -356,15 +356,19 @@ TEST_CASE("midi: each string meta gets its type, mido name and attribute") {
 
 TEST_CASE("midi: non-MIDI input is rejected") {
     std::vector<uint8_t> junk(40, 'x');
-    CHECK_THROWS_AS((hydra::MidiFile(junk)), hydra::MidiError);
+    CHECK_THROWS_WITH_AS((hydra::MidiFile(junk)), "not a MIDI file: missing MThd header",
+                         hydra::MidiError);
 }
 
 TEST_CASE("midi: SMPTE division is rejected") {
-    // A negative division byte pair signals SMPTE timing.
+    // A negative division byte pair signals SMPTE timing. The file holds a
+    // valid track, so only the SMPTE rule can refuse it.
     std::vector<uint8_t> d = {
         'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, 0xE8, 0x00,  // div < 0
+        'M', 'T', 'r', 'k', 0, 0, 0, 4, 0x00, 0xFF, 0x2F, 0x00,  // end of track
     };
-    CHECK_THROWS_AS((hydra::MidiFile(d)), hydra::MidiError);
+    CHECK_THROWS_WITH_AS((hydra::MidiFile(d)), "SMPTE time division is not supported",
+                         hydra::MidiError);
 }
 
 TEST_CASE("midi: a five-byte delta accumulates past 32 bits, as mido does") {
