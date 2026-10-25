@@ -36,6 +36,19 @@
       }
     },
     {
+      "name": "asan-ninja",
+      "displayName": "AddressSanitizer test build through Ninja and sccache (CI trial, never ships)",
+      "inherits": "asan",
+      "generator": "Ninja Multi-Config",
+      "architecture": { "value": "x64", "strategy": "external" },
+      "binaryDir": "${sourceDir}/build-asan-ninja",
+      "cacheVariables": {
+        "HYDRA_EMBEDDED_DEBUG": { "type": "BOOL", "value": "ON" },
+        "CMAKE_C_COMPILER_LAUNCHER": "sccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "sccache"
+      }
+    },
+    {
       "name": "coverage",
       "displayName": "Code coverage test build (never ships)",
       "inherits": "default",
@@ -74,6 +87,11 @@
     {
       "name": "asan",
       "configurePreset": "asan",
+      "configuration": "Release"
+    },
+    {
+      "name": "asan-ninja",
+      "configurePreset": "asan-ninja",
       "configuration": "Release"
     },
     {
