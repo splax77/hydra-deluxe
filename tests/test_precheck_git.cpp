@@ -233,7 +233,7 @@ TEST_CASE("precheck: items print in kind order, then file, line and text") {
     Range r;
     r.spelling = "main...HEAD";
     r.tip = "0123456789abcdef";
-    CHECK(summary_line(sorted, r) == "derive_once_precheck: 5 items (C 1, B 3, F 1) for main...HEAD at 0123456");
+    CHECK(summary_line(sorted, r) == "derive_once_precheck: 5 items (B 3, C 1, F 1) for main...HEAD at 0123456");
     r.whole_tree = true;
     CHECK(summary_line({}, r) == "derive_once_precheck: 0 items (none) for the whole tree at 0123456");
 }
