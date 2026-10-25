@@ -236,7 +236,7 @@ instrument a native exe. Instrumenting rewrites the exe in place so it records
 each line it runs. The build never ships.
 
 The `coverage` job in `.github/workflows/ci.yml` holds the whole recipe and
-runs on pushes to main only. It instruments the exes, then runs each test
+runs nightly and on a manual run. It instruments the exes, then runs each test
 step inside the tool's `collect` command (the unit-test slices one at a time).
 `collect` records every instrumented process the command starts and ends when
 the command ends, so no collector outlives its step. It merges the two results,
@@ -451,11 +451,13 @@ pull request into `main`. The workflow is `.github/workflows/ci.yml`. It is a
 backstop: the local hooks still gate commits first, and CI catches a commit
 that went around them.
 
-The job runs on GitHub's Windows Server 2025 image with Visual Studio 2026,
-the same generator the default CMake preset names. It builds `hydra_tests`
-and `hydra_uitest` with `build_cpp.ps1`, exactly as above, so a compiler
-warning fails the run. Then it runs `hydra_tests` and the headless GUI tests
-in `hydra_uitest`.
+The jobs run on GitHub's Windows Server 2025 image with Visual Studio 2026,
+the same generator the default CMake preset names. They build with
+`build_cpp.ps1`, exactly as above, so a compiler warning fails the run. The
+main job builds and runs `hydra_tests`. A second job, "GUI tests", builds
+`hydra_uitest` and runs the headless GUI tests on its own machine at the same
+time, so the run takes as long as the slower of the two, not both added up.
+Both jobs also run once a night, from a cold build.
 
 The `asan` job builds the same tests with the `asan` preset and runs them (see
 "The AddressSanitizer build" above). Any memory error it finds fails the run.
@@ -464,10 +466,11 @@ every push: its first run, on 2026-10-10, took 20m41s against 6m16s for the
 main job.
 Start it by hand from the Actions tab after a change to memory-heavy code.
 
-On pushes to `main` only, a `coverage` job builds the tests with the `coverage`
-preset and writes the coverage report (see "The coverage report" above). It
-never fails a run over a low number. Its proving run (run 38083092803, on
-2026-10-10) took 11.5 minutes.
+Once a night, and when someone starts the workflow by hand, a `coverage` job
+builds the tests with the `coverage` preset and writes the coverage report
+(see "The coverage report" above). It never fails a run over a low number. It
+skips pushes because it repeats the whole build and both test sets. Its proving
+run (run 38083092803, on 2026-10-10) took 11.5 minutes.
 
 Another job runs the Python tool tests above with no C++ build. The main
 job runs the mutation probe's self-test after it builds `hydra_tests`, because
@@ -475,8 +478,9 @@ that self-test needs `hydra_precheck.exe`. The main job checks out the whole
 history, because the precheck self-test in `hydra_tests` checks two real
 commit ranges and skips them in a shallow clone.
 
-The main job builds on a saved build folder, so a push recompiles only what
-it changed. After its build, a push to `main` or a manual run saves
+The main job and the GUI tests job build on a saved build folder, so a push
+recompiles only what it changed. Only the main job saves it: after its build,
+a push to `main` or a manual run saves
 `build-cpp` in GitHub's cache, and each branch keeps only its two newest
 saved folders. Pushes and pull requests restore the newest one, then
 `tools/ci_build_folder.ps1` decides whether the build can use it. That script
@@ -492,8 +496,11 @@ check of any branch.
 
 One slice of the tests is left out on GitHub: the one that opens the real
 sound output, because hosted runners have no audio device. `tests/shards.txt`
-marks which slice that is. Run it locally. A newer push to the same branch or pull request cancels the
-run it replaces.
+marks which slice that is. Run it locally.
+
+Every run on `main` finishes. A newer push to `main` never cancels the run
+before it, so a red run names the push that broke it. On a pull request or any
+other branch, a newer push cancels the run it replaces.
 
 ## Releasing
 
