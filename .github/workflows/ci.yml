@@ -31,8 +31,8 @@ permissions:
 
 # Which ctest entries a hosted runner runs. The excluded entry opens the
 # default sound output, and hosted runners have no audio device (tests/shards.txt
-# owns the entry). -R keeps hydra_uitest out of the ctest steps: the steps after
-# them run it on its own.
+# owns the entry). -R keeps hydra_uitest out of the ctest steps: the "GUI tests"
+# job runs it on its own.
 env:
   HOSTED_CTEST_FILTER: -R hydra_tests -E audio_device
 
