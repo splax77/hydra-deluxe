@@ -1,5 +1,7 @@
 #include "definitions.h"
 
+#include "core/strutil.h"
+
 #include <algorithm>
 #include <cctype>
 #include <regex>
@@ -43,9 +45,14 @@ bool not_function_name(const std::string& name) {
     return std::regex_match(name, asserts);
 }
 
+}  // namespace
+
 bool word_char(char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; }
 bool ident_start(char c) { return std::isalpha(static_cast<unsigned char>(c)) || c == '_'; }
-bool space_char(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v'; }
+
+namespace {
+
+bool space_char(char c) { return hydra::is_ascii_space(c); }
 
 // "name::" qualifiers (with any spaces around the "::") dropped, every one,
 // left to right.

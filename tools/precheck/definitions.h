@@ -29,6 +29,12 @@ constexpr size_t kNamespaceLookBack = 200;
 // definition is never named by one. Case matters.
 bool is_cpp_keyword(const std::string& word);
 
+// Is this byte a letter, digit or underscore (word_char), or a letter or
+// underscore (ident_start)? ASCII only, never the locale. The one spelling
+// of "part of a C++ word" in tools/precheck/.
+bool word_char(char c);
+bool ident_start(char c);
+
 // The doctest assertion macros (CHECK, REQUIRE or WARN, with or without
 // FAST_, with any of doctest.h's suffixes), as an ECMAScript pattern with no
 // anchors and no capture groups. Case matters. The one spelling of that

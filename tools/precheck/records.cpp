@@ -4,15 +4,15 @@
 #include <optional>
 #include <set>
 
+#include "core/strutil.h"
 #include "definitions.h"  // is_cpp_keyword
 
 namespace precheck {
 
 namespace {
 
-bool word_char(char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; }
-bool word_start(char c) { return std::isalpha(static_cast<unsigned char>(c)) || c == '_'; }
-bool space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v'; }
+bool word_start(char c) { return ident_start(c); }
+bool space(char c) { return hydra::is_ascii_space(c); }
 
 size_t skip_space(const std::string& s, size_t i) {
     while (i < s.size() && space(s[i])) ++i;
@@ -22,24 +22,12 @@ size_t skip_space(const std::string& s, size_t i) {
 bool at(const std::string& s, size_t i, const std::string& lit) { return s.compare(i, lit.size(), lit) == 0; }
 
 bool at_icase(const std::string& s, size_t i, const std::string& lit) {
-    if (i + lit.size() > s.size()) return false;
-    for (size_t k = 0; k < lit.size(); ++k)
-        if (std::tolower(static_cast<unsigned char>(s[i + k])) != lit[k]) return false;
-    return true;
+    return i <= s.size() && hydra::starts_with_ci(std::string_view(s).substr(i), lit);
 }
 
-std::string fold(const std::string& s) {
-    std::string out = s;
-    for (char& c : out) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return out;
-}
+std::string fold(const std::string& s) { return hydra::to_lower_ascii(s); }
 
-std::string trim(const std::string& s) {
-    const size_t b = s.find_first_not_of(" \t\r\n\f\v");
-    if (b == std::string::npos) return {};
-    const size_t e = s.find_last_not_of(" \t\r\n\f\v");
-    return s.substr(b, e - b + 1);
-}
+std::string trim(const std::string& s) { return hydra::trim(s); }
 
 struct Tail {
     size_t name_at, name_end, open;
