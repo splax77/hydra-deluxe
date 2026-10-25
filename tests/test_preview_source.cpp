@@ -97,7 +97,8 @@ TEST_CASE("is_audio_filename / looks_like_audio recognize the formats") {
     // The decoder's rule (audio::sniff_format): an Ogg stream counts only when
     // its first page names a codec the decoder has, and a RIFF only when it
     // holds a WAVE.
-    CHECK_FALSE(looks_like_audio(bytes_of("OggS\x00\x02")));
+    // The length is given, so the zero byte stays in the header.
+    CHECK_FALSE(looks_like_audio(bytes_of(std::string("OggS\x00\x02", 6))));
     CHECK(looks_like_audio(bytes_of("OggS OpusHead")));
     CHECK(looks_like_audio(bytes_of("OggS vorbis")));
     CHECK(looks_like_audio(bytes_of("RIFF....WAVE")));

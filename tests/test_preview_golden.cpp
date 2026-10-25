@@ -252,6 +252,55 @@ void write_delta_csvs(const std::vector<float>& delta, int ow, int oh, float d) 
 
 }  // namespace
 
+// The budget arithmetic on a made-up delta map, with golden.json's own limits:
+// a 2 x 2 tile map whose first tile is all masked, and whose last tile holds
+// the only pixels over the per-pixel line.
+TEST_CASE("preview golden: over_share counts one bad tile against golden.json's limits") {
+    const nlohmann::json spec =
+        nlohmann::json::parse(read_file_text(kFixtureDir + "/golden.json"));
+    const float pixel_delta = spec["pixel_delta"].get<float>();
+    const double tile_percent = spec["tile_percent"].get<double>();
+    const double frame_percent = spec["frame_percent"].get<double>();
+
+    const int ow = 2 * kTile, oh = 2 * kTile;
+    std::vector<float> delta(static_cast<size_t>(ow) * oh, 0.0f);
+    auto at = [&](int x, int y) -> float& { return delta[static_cast<size_t>(y) * ow + x]; };
+    for (int y = 0; y < kTile; ++y)
+        for (int x = 0; x < kTile; ++x) at(x, y) = -1.0f;  // tile (0, 0): masked
+
+    SUBCASE("a clean map has no share over the line") {
+        const OverShare s = over_share(delta, ow, oh, pixel_delta);
+        CHECK(s.worst_tile_percent == 0.0);
+        CHECK(s.frame_percent == 0.0);
+    }
+
+    SUBCASE("one bad tile") {
+        // 48 pixels over the line in tile (1, 1), and one exactly on it,
+        // which is not over.
+        for (int i = 0; i < 48; ++i) at(kTile + i % kTile, kTile + i / kTile) = pixel_delta + 1.0f;
+        at(kTile, oh - 1) = pixel_delta;
+
+        const OverShare s = over_share(delta, ow, oh, pixel_delta);
+        CHECK(s.worst_tx == 1);
+        CHECK(s.worst_ty == 1);
+        CHECK(s.worst_tile_percent == doctest::Approx(18.75));  // 48 of 256
+        CHECK(s.frame_percent == doctest::Approx(6.25));        // 48 of 768 unmasked
+        CHECK(s.worst_tile_percent > tile_percent);
+        CHECK(s.frame_percent > frame_percent);
+    }
+
+    SUBCASE("one stray pixel passes the tile budget but not the frame budget") {
+        at(ow - 1, 0) = pixel_delta + 1.0f;
+        const OverShare s = over_share(delta, ow, oh, pixel_delta);
+        CHECK(s.worst_tx == 1);
+        CHECK(s.worst_ty == 0);
+        CHECK(s.worst_tile_percent == doctest::Approx(0.390625));  // 1 of 256
+        CHECK(s.frame_percent == doctest::Approx(0.1302083));      // 1 of 768
+        CHECK(s.worst_tile_percent <= tile_percent);
+        CHECK(s.frame_percent > frame_percent);
+    }
+}
+
 TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
     const std::string spec_path = kFixtureDir + "/golden.json";
     const std::string png_path = kFixtureDir + "/golden_onyx.png";

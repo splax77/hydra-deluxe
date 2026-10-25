@@ -16,7 +16,8 @@
 #include "app/preview_view.h"
 #include "app/user_messages.h"
 #include "core/winstr.h"  // os_path
-#include "render/highway_draw.h"  // track_height
+#include "render/highway_draw.h"  // track_height, build_highway_draws
+#include "render/overlay_layout.h"  // project_to_image
 #include "render/preview_renderer.h"
 #include "preview_scene_fixtures.h"
 #include "temp_util.h"
@@ -54,6 +55,32 @@ int count_non_background(const PreviewConfig& cfg, const std::vector<uint8_t>& i
     for (size_t i = 0; i < img.size(); i += 4)
         if (!is_background(cfg, &img[i])) ++n;
     return n;
+}
+
+// The pixel at the centre of the one gem drawn with texture `tex` in `scene`
+// at `now_ms`: its draw box from build_highway_draws, projected through the
+// renderer's camera (project_to_image). The renderer draws at 1x speed
+// (kPlaybackSpeed in render/preview_renderer.cpp).
+const uint8_t* gem_centre(const PreviewConfig& cfg, const PreviewScene& scene, double now_ms,
+                          TextureId tex, const std::vector<uint8_t>& img, int w, int h) {
+    const TrackState state = build_track_state(scene, TrackStateOptions{});
+    const std::vector<DrawCommand> draws = build_highway_draws(state, cfg, now_ms / 1000.0, 1.0);
+    const DrawCommand* gem = nullptr;
+    for (const DrawCommand& c : draws)
+        if (c.light == LightKind::GemOffset && c.material.texture == tex) {
+            REQUIRE(gem == nullptr);
+            gem = &c;
+        }
+    REQUIRE(gem != nullptr);
+    const Vec3 mid{(gem->lo[0] + gem->hi[0]) * 0.5f, (gem->lo[1] + gem->hi[1]) * 0.5f,
+                   (gem->lo[2] + gem->hi[2]) * 0.5f};
+    const ImagePoint p = project_to_image(cfg, w, h, mid);
+    const int x = static_cast<int>(p.x), y = static_cast<int>(p.y);
+    REQUIRE(x >= 0);
+    REQUIRE(x < w);
+    REQUIRE(y >= 0);
+    REQUIRE(y < h);
+    return warp::pixel(img, w, x, y);
 }
 
 }  // namespace
@@ -126,6 +153,16 @@ TEST_CASE("PreviewRenderer: a gem at the strike line adds drawn pixels (WARP)") 
         if (gems[i] != bare[i] || gems[i + 1] != bare[i + 1] || gems[i + 2] != bare[i + 2])
             ++differing;
     CHECK(differing > 40);
+
+    // Each gem is drawn in its own lane and colour: red leads at the red
+    // gem's centre, and at the yellow cymbal's red and green both beat blue.
+    const uint8_t* red = gem_centre(r.config(), with_notes, 1000.0, TextureId::BoxRed, gems, W, H);
+    CHECK(red[0] > red[1]);
+    CHECK(red[0] > red[2]);
+    const uint8_t* yellow =
+        gem_centre(r.config(), with_notes, 1000.0, TextureId::CymbalYellow, gems, W, H);
+    CHECK(yellow[0] > yellow[2]);
+    CHECK(yellow[1] > yellow[2]);
 }
 
 TEST_CASE("PreviewRenderer: SP phrase energy gems and active SP floor change pixels (WARP)") {
@@ -166,6 +203,15 @@ TEST_CASE("PreviewRenderer: SP phrase energy gems and active SP floor change pix
     // The floor at the strike line is now greener than red (energy tint).
     const uint8_t* floor = warp::pixel(b, W, W / 2, H - 8);
     CHECK(floor[1] > floor[0]);
+
+    // The plain green gem is green at its lane centre. Inside the phrase the
+    // same gem is drawn in the paler energy texture, so its red and blue rise.
+    const uint8_t* green = gem_centre(r.config(), plain, 1000.0, TextureId::BoxGreen, a, W, H);
+    CHECK(green[1] > green[0]);
+    CHECK(green[1] > green[2]);
+    const uint8_t* energy = gem_centre(r.config(), lit, 1000.0, TextureId::BoxEnergy, b, W, H);
+    CHECK(energy[0] > green[0]);
+    CHECK(energy[2] > green[2]);
 }
 
 // The Preview builds the timeline on a worker and hands it over ready-made.
