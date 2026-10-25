@@ -63,10 +63,10 @@ Under `tools/` (developer tools, not shipped in Hydra) a comment, header or doc 
 
 ## Review, fix, sign off
 
-The user decided in D107 (`docs/audit/2026-10-03-fix-decisions.md`) that a change gets one review, by one fresh agent, which fixes its own findings and signs off. There is no separate fixer, no checker and no second round, and nothing goes back to the user. When the change also holds documents, you are their reviewer too: your dispatch hands you `docs/agents/doc-review.md` and the documents' keys, and you follow that page for them. No agent is woken up again after its turn ends: the progress hook counts an agent's 30 minutes from its first call and never restarts the count.
+The user decided in D107 (`docs/audit/2026-10-03-fix-decisions.md`) that a change gets one review, by one fresh agent, which fixes its own findings and signs off. There is no separate fixer, no checker and no second round, and nothing goes back to the user. When the range also changes documents, you are their reviewer too: your dispatch hands you `docs/agents/doc-review.md` and the documents' sources, and you follow that page for every document in the range. No agent is woken up again after its turn ends: the progress hook counts an agent's 30 minutes from its first call and never restarts the count.
 
 1. **Review** the range as this page describes and write your review to a file in your scratchpad.
-2. **If there are no findings,** sign off on the key you were given (see "Output") and report. You are done.
+2. **If there are no findings,** sign off (see "Output") and report. You are done.
 3. **Fix every finding,** in the branch's worktree, one finding per commit. For each one:
    - **Sweep the whole range for its question.** Do not stop at the copies you listed. Grep every file the range touches, and their callers, for the inputs the question reads: the fields, constants and units, not just the names. For a kind C finding, grep `tests/` for every other definition of the helper, by name and by its body.
    - **Fold every copy into the owner.** Each copy calls the owner. A test calls production code or pins a literal from one run; it never computes an expected value.
@@ -75,15 +75,15 @@ The user decided in D107 (`docs/audit/2026-10-03-fix-decisions.md`) that a chang
    - **Run the tests for that finding** with `-tc=` or `-sf=` filters, and the scan test `build-cpp\Release\hydra_tests.exe -tc="single-owner*"` if you added a row. Pick them from what your brief names and from the `tests:` line that `build-cpp\Release\hydra_precheck.exe --repo <path> --tests main...<your last commit>` prints. Never the full suite, even when that line says `whole suite`; the main session runs it at the merge.
    - **Commit that finding alone.** The commit body carries the grep you ran and its one-line result, and for kind A the scan row's question or the reason no row fits. Then the trailers from the preamble, with your own agent id in `Agent:`.
 4. **Run the precheck** on the range, now ending at your last commit. It must print nothing new; fix anything it prints the same way.
-5. **Sign off.** Your key is now your last commit. Under each finding in your review, say how you fixed it and in which commit. Then report, ending with the closing block (see "Output").
+5. **Sign off.** Under each finding in your review, say how you fixed it and in which commit. Then report, ending with the sign-off line (see "Output").
 
 While you fix, never write a new copy while removing an old one: if a fix needs a helper, look in the owner or `tests/` for one first. A comment that describes what a rule matches is a new copy too; name the owner instead. If a finding turns out to be wrong when you look closer, leave the code and say why under Notes, with the truth table that shows the difference.
 
 **A finding you should not fix yourself.** Some fixes need the user: a new number (a threshold, floor, tolerance or band), a change to a displayed text, a score or a stored record, or a choice between two behaviours. Do not make those changes. Write the finding under Notes as a question for the user, in game terms, and sign off CLEAN on the rest. The orchestrator passes your Notes to the user. It does not hold the merge for them.
 
-**If you run out of time or tool calls.** When the progress hook warns you (at 100 tool calls or 20 minutes), stop fixing. Commit what passes its tests, run the precheck, and sign off on your last commit as step 5 says. Write each finding you did not fix under Notes, with what is left to do. No fresh agent picks it up, and the merge does not wait for it (D107 item 5).
+**If you run out of time or tool calls.** When the progress hook warns you (at 100 tool calls or 20 minutes), stop fixing. Commit what passes its tests, run the precheck, and sign off as step 5 says. Write each finding you did not fix under Notes, with what is left to do. No fresh agent picks it up, and the merge does not wait for it (D107 item 5).
 
-Your fix commits sit on top of the key you were given, so your own last commit is a key the gate accepts: the hook that records your verdict checks that the key you sign descends from the key you were handed. Your dispatch gives you a worktree to commit in; "For the orchestrator" says how that is set up.
+Your fix commits go on the same branch, on top of the key you were given. Never move the branch anywhere else. When you stop, the hook that records your verdict reads the branch's tip from git, checks that it descends from the key you were handed, and records your verdict for that tip. Your dispatch gives you a worktree to commit in; "For the orchestrator" says how that is set up.
 
 ## Builds and test runs
 
@@ -107,25 +107,17 @@ The report holds, in plain English, one short paragraph each:
 - **Scan rows added**: for each kind A finding, the row you added under `tests/single_owner/rules/` (its question and rules file), or the one sentence saying why a text search can't catch it.
 - **Where I looked**: files and functions read.
 
-Open the report with the key you signed off and one plain sentence per finding, saying how you fixed it and in which commit. For a kind A finding, that sentence also names the scan row's question, or the reason no row can catch it. Then the sections above, any questions for the user from your Notes, and the precheck's large-range note if it printed one.
+Open the report with the branch tip you leave behind (the key you were given if you committed nothing, else your last commit) and one plain sentence per finding, saying how you fixed it and in which commit. For a kind A finding, that sentence also names the scan row's question, or the reason no row can catch it. Then the sections above, any questions for the user from your Notes, and the precheck's large-range note if it printed one.
 
-End the report with a closing block, with nothing after it. It is the line `SIGN-OFF: CLEAN`, then one `Key:` line, each on its own line:
-
-```
-SIGN-OFF: CLEAN
-Key: <the 40-character hash of the tip you are signing off>
-```
-
-When your dispatch also hands you documents, add one more `Key:` line for each, after the commit key, with the document's own `Path: <repo path>` line directly before it. One reviewer signs a change's commit and its public pages together. A document key is 64 characters:
+End the report with one line, on its own:
 
 ```
 SIGN-OFF: CLEAN
-Key: <the 40-character hash of the tip>
-Path: README.md
-Key: <the 64-character doc key of the text you signed off>
 ```
 
-The block holds one commit key at most, no key twice, and a `Path:` line only before a document key. Use a path the brief names with a `Path:` line. A document key with no `Path:` line takes the brief's path only when the brief names exactly one and you sign one document key. Any other document key is recorded for its key alone, and later edits to that document then need a new review. A single `Key:` line just before the `SIGN-OFF:` line still works for a commit with no documents. The commit key is the key you were given if you committed nothing, else your last commit. Write `SIGN-OFF: BLOCKED` instead of `SIGN-OFF: CLEAN` only when a finding stays that you could not fix and that must hold the merge; say why above. A report whose last lines are not this closing block records no verdict, and `main` stays refused until another reviewer signs off.
+Write `SIGN-OFF: BLOCKED` instead only when a finding stays that you could not fix and that must hold the merge; say why above. Write no hash, key or path with it. The hook reads nothing else in your report.
+
+When you stop, the hook works out what you signed from git. It records your verdict for the branch's new tip, and it fingerprints every markdown file the range changes at that tip, so one line signs the commit and every document in the range together. A report with no sign-off line is recorded CLEAN, because a reviewer that finished has signed off what it fixed, and the main session is told the line was missing. Only `SIGN-OFF: BLOCKED` holds the merge.
 
 ## Resolution review
 
@@ -139,11 +131,11 @@ git show --remerge-diff <M>
 
 That diff shows the merge against what git would have made by itself, so everything in it was written by hand. Ask this page's one question of those lines: is any rule now answered twice? A conflict resolved by keeping both sides of a list is normal and needs nothing. New logic written while resolving is reviewed like any change, with "How to review" above.
 
-Sometimes commits already sit directly above M when you start, for example a change the main session made after the merge. Read those too, with `git log -p <M>..<topmost commit>`, and review them like any change, with "How to review" above. Your sign-off then covers M and every commit above it, so your key is the topmost commit.
+Sometimes commits already sit directly above M when you start, for example a change the main session made after the merge. Read those too, with `git log -p <M>..<topmost commit>`, and review them like any change, with "How to review" above. Your sign-off then covers M and every commit above it.
 
-Fix what you find the same way (D107): fix it yourself, commit, sign off. Your fix commits go on top, and your key is your own last commit.
+Fix what you find the same way (D107): fix it yourself, commit, sign off. Your fix commits go on top, on the same branch.
 
-Your report has the usual sections from "Output", and it ends with the same closing block. The key is the topmost commit: M itself when nothing sits above it, else the topmost commit, or your own last fix. Say in the report that it was a resolution review.
+Your report has the usual sections from "Output", and it ends with the same sign-off line. The hook records it for the branch's tip when you stop: M itself when nothing sits above it, else the topmost commit, or your own last fix. Say in the report that it was a resolution review.
 
 The ref gate does not tell a resolution review from a full one. A CLEAN sign-off on M lets `main` move to M like any other. So a resolution review is only for a branch whose tip before the merge already had its own full review.
 
@@ -159,7 +151,7 @@ Set up the review in this order.
 
 1. Commit the change on its own branch, in its own worktree, cut under a `worktrees\` folder (`C:\Users\Patrick\Downloads\Hydra\hydra-test\.claude\worktrees\` or `C:\Users\Patrick\.claude\worktrees\`): the delete rule trusts an agent's working folder only there. Never send a change staged on main to review, even a one-line fix.
 2. Run the precheck on the range, as above.
-3. For each document the change holds, compute its doc key with `& "C:/Users/Patrick/.claude/gates/doc_key.ps1" "<file>"`, and write down the sources it was written from. Do it for every document, not just one.
-4. Dispatch through the `Agent` tool with `subagent_type: reviewer` and `isolation: worktree`. Put the key, the full 40-character hash of the branch tip, in the brief. A hook refuses a reviewer dispatch with no key, a key already on `main` or a key git does not know, and records which keys it handed over. A reviewer launched from a Workflow script, or as any other agent type, gets no such record, so its sign-off counts for nothing. When the change is in the other repo (a hook change in `C:\Users\Patrick\.claude`, dispatched from a Hydra worktree), write that repo's root folder, the top folder of its working tree, once in the brief; every commit key the brief names must then exist in that repo. A brief naming a commit the dispatching repo already knows is checked there, whatever other folders it names. When the change holds documents, name each with a `Path:` line: the repo path for a page in the repo, the full file path for a plan or an Artifact page. The marker file `.doc-review-gate` takes none, because every change to it is reviewed anyway.
+3. For each document the change holds, write down the sources it was written from. Do it for every document, not just one. Release notes, plans and Artifact pages count: commit them on the branch, so they are reviewed with it.
+4. Dispatch through the `Agent` tool with `subagent_type: reviewer` and `isolation: worktree`. Put the key, the full 40-character hash of the branch tip, in the brief, and no other hash or key. A hook refuses a reviewer dispatch with no key, a key already on `main`, a key git does not know or more than one commit, and records the tip it handed over and the branches pointing at it. A reviewer launched from a Workflow script, or as any other agent type, gets no such record, so its sign-off counts for nothing. When the change is in the other repo (a hook change in `C:\Users\Patrick\.claude`, dispatched from a Hydra worktree), write that repo's root folder, the top folder of its working tree, once in the brief; the commit the brief names must then exist in that repo. A brief naming a commit the dispatching repo already knows is checked there, whatever other folders it names.
 
-Dispatch one fresh Sonnet reviewer per change. Give it the key, the range, the branch's worktree, the precheck output, the author's report, the author's name or agent id (from its spawn result), and the task and session ids for its commit trailers, and tell it to commit its fixes there. When the change holds documents, give it `docs/agents/doc-review.md` too, with each document's file, its doc key and its sources. When it reports, check that its report ends with the closing block and that its signed-off tip is on the branch. Then run the merge's tests (CLAUDE.md rule 1) and merge that tip. No helper tells you ahead of time what `main` still needs; the ref gate's refusal does, and it names the key to review. A refused merge may already have changed the files and the index: run `git status`, and undo a merge still in progress with `git merge --abort`. Pass any questions from its Notes to the user. Never start another review of the same change.
+Dispatch one fresh Sonnet reviewer per change. Give it the key, the range, the branch's worktree, the precheck output, the author's report, the author's name or agent id (from its spawn result), and the task and session ids for its commit trailers, and tell it to commit its fixes there on the same branch. When the range holds documents, give it `docs/agents/doc-review.md` too, with each document's sources. When it stops, the hook records the verdict for the branch's new tip and fingerprints every markdown file in the range at that tip. If the sign-off line was missing, or the hook could not find the new tip or read a file, your next tool call tells you which. Check that the signed tip is on the branch. Then run the merge's tests (CLAUDE.md rule 1) and merge that tip. No helper tells you ahead of time what `main` still needs; the ref gate's refusal does, and it names the key to review. A refused merge may already have changed the files and the index: run `git status`, and undo a merge still in progress with `git merge --abort`. Pass any questions from its Notes to the user. Never start another review of the same change.
