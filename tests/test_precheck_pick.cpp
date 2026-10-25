@@ -541,3 +541,33 @@ TEST_CASE("precheck pick (j): a selector value picks only tests that reach its e
     CHECK(picked_files(p) == std::vector<std::string>{"tests/test_rule_in.cpp"});
     CHECK(reasons_of(p, "tests/test_rule_in.cpp") == std::vector<std::string>{"Rule::New"});
 }
+
+TEST_CASE("precheck pick (j): a function with no declaring header is found by its plain name") {
+    const std::string lone = "void lone() {\n    int x = 1;\n}\n";
+    PickRepo fx("precheck_pick_j6", {{"src/n/lone.cpp", lone},
+                                     {"tests/test_lone.cpp", "void tl() { lone(); }\n"}});
+    std::string tip = lone;
+    tip.replace(tip.find("int x = 1;"), 10, "int x = 2;");
+    const TestPick p = fx.pick({{"src/n/lone.cpp", tip}});
+    REQUIRE_FALSE(p.whole_suite);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_lone.cpp"});
+    CHECK(reasons_of(p, "tests/test_lone.cpp") == std::vector<std::string>{"lone"});
+}
+
+TEST_CASE("precheck pick (j): a selector value whose left part is a namespace is found by its plain name") {
+    const std::string place_cpp =
+        "#include \"rule.h\"\nvoid place() {\n    int k = 1;\n}\nvoid check(int r) {\n"
+        "    if (r == util::kFast) {\n        place();\n    }\n}\n";
+    PickRepo fx("precheck_pick_j7",
+                {{"src/r/rule.h", "#pragma once\nnamespace util { constexpr int kFast = 1; }\nvoid place();\n"},
+                 {"src/r/place.cpp", place_cpp},
+                 {"tests/test_util.cpp", "int u() { return util::kFast; }\n"}});
+    std::string tip = place_cpp;
+    tip.replace(tip.find("int k = 1;"), 10, "int k = 2;");
+    const TestPick p = fx.pick({{"src/r/place.cpp", tip}});
+    REQUIRE_FALSE(p.whole_suite);
+    bool selector = false;
+    for (const CallerKey& k : p.callers) selector = selector || (k.key == "util::kFast" && k.selector);
+    CHECK(selector);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_util.cpp"});
+}
