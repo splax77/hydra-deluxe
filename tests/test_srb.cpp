@@ -123,8 +123,8 @@ TEST_CASE("srb: malformed containers throw instead of crashing") {
     whole.resize(whole.size() / 2);
     std::string truncated = fixture_dir() + "\\truncated.srb";
     write_bytes(truncated, whole);
-    CHECK_THROWS_AS(load_songpath_srb(truncated, ChartReading{}),
-                    std::runtime_error);
+    CHECK_THROWS_WITH_AS(load_songpath_srb(truncated, ChartReading{}), "SRB stream is truncated.",
+                         std::runtime_error);
 }
 
 TEST_CASE("srb: a truncated file reads as an unreadable chart") {

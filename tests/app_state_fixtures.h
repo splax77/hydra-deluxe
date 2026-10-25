@@ -1,8 +1,9 @@
 // Shared fixtures for the AppState tests, test_app_click.cpp and the files
 // split from it: a seeded library with no chart files, real corpus charts to
 // click, the frame loop that waits for a click, a latch that holds a click's
-// job, and a Redo batch run with a test analyzer. They were one file's helpers; they live here once so the
-// split files share them instead of copying them.
+// job, and a Redo batch run with a test analyzer. They were one file's
+// helpers; they live here once so the split files share them instead of
+// copying them.
 #ifndef HYDRA_TESTS_APP_STATE_FIXTURES_H
 #define HYDRA_TESTS_APP_STATE_FIXTURES_H
 
