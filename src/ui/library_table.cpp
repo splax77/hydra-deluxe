@@ -80,6 +80,64 @@ void render_heading(AppState& app) {
     ImGui::TextColored(kNewSongColor, "%s", count.c_str());
 }
 
+// The "Search tips" link after the line under the search box, and the popup
+// it opens: each of app::search_tips() on its own row, then
+// search_tips_note(). The popup starts at `line_left` under the link and is
+// `pane_w` wide, the library pane's width, so its meanings wrap inside the
+// pane. Escape or a click outside closes it; neither touches the search text.
+void render_search_tips(float line_left, float pane_w) {
+    static constexpr const char* kLink = "Search tips##searchtips";
+    static constexpr const char* kPopup = "##searchtipspopup";
+    const ImGuiID popup_id = ImGui::GetID(kPopup);
+
+    // Dear ImGui closes an open popup on Esc in NewFrame, but the key still
+    // reads as pressed for the rest of the frame. Claim it, so the song
+    // panel's own Esc (details_panel.cpp) doesn't close that too. The same
+    // claim as the settings panel's (settings_bar.cpp); whether the popup was
+    // open last frame is kept in this window's ImGui storage.
+    ImGuiStorage* storage = ImGui::GetStateStorage();
+    if (storage->GetBool(popup_id) && !ImGui::IsPopupOpen(popup_id, ImGuiPopupFlags_None) &&
+        ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+        ImGui::SetKeyOwner(ImGuiKey_Escape, popup_id, ImGuiInputFlags_LockThisFrame);
+
+    if (fits_on_line(ImGui::CalcTextSize(kLink, nullptr, true).x, ImGui::GetStyle().ItemSpacing.x))
+        ImGui::SameLine();
+    if (ImGui::TextLink(kLink)) ImGui::OpenPopup(kPopup);
+
+    ImGui::SetNextWindowPos(ImVec2(line_left, ImGui::GetItemRectMax().y), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(pane_w, 0.0f), ImGuiCond_Always);
+    if (ImGui::BeginPopup(kPopup)) {
+        if (ImGui::BeginTable("##searchtipstable", 2, ImGuiTableFlags_SizingFixedFit)) {
+            ImGui::TableSetupColumn("key", ImGuiTableColumnFlags_WidthFixed);
+            ImGui::TableSetupColumn("meaning", ImGuiTableColumnFlags_WidthStretch);
+            for (const app::SearchTip& tip : app::search_tips()) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                {
+                    ScopedBaselineFont font(TextRole::Notation);
+                    ImGui::TextUnformatted(tip.example.data(),
+                                           tip.example.data() + tip.example.size());
+                }
+                ImGui::TableNextColumn();
+                ScopedFont font(TextRole::Label);
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextUnformatted(tip.meaning.data(), tip.meaning.data() + tip.meaning.size());
+                ImGui::PopTextWrapPos();
+            }
+            ImGui::EndTable();
+        }
+        {
+            const std::string_view note = app::search_tips_note();
+            ScopedFont font(TextRole::Prose);
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextUnformatted(note.data(), note.data() + note.size());
+            ImGui::PopTextWrapPos();
+        }
+        ImGui::EndPopup();
+    }
+    storage->SetBool(popup_id, ImGui::IsPopupOpen(popup_id, ImGuiPopupFlags_None));
+}
+
 void render_search_box(AppState& app) {
     LibraryViewState& ui = app.library_ui;
     char (&buf)[256] = ui.search_buf;
@@ -103,8 +161,8 @@ void render_search_box(AppState& app) {
     bool edited = false;
     {
         ScopedFont font(TextRole::Control);
-        edited = ImGui::InputTextWithHint("##search", "Search title, artist, charter or folder",
-                                          buf, sizeof(buf), ImGuiInputTextFlags_EscapeClearsAll);
+        edited = ImGui::InputTextWithHint("##search", "Search songs", buf, sizeof(buf),
+                                          ImGuiInputTextFlags_EscapeClearsAll);
     }
     hint("Ctrl+F jumps here. Esc clears it.");
     if (edited) ui.search_pending = true;
@@ -123,11 +181,16 @@ void render_search_box(AppState& app) {
     if (ImGui::Button("X##clearsearch")) clear_search(app);
     hint("Clear search (Esc)");
 
-    // What the box understands, and what it couldn't.
+    // One short line and the Search tips link, then what the box couldn't
+    // read. The keys themselves live in the popup (decision 10 of the
+    // 2026-10-24 album-search plan), so this line never grows.
+    const float line_left = ImGui::GetCursorScreenPos().x;
+    const float pane_w = ImGui::GetContentRegionAvail().x;
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextColored(kNewSongColor,
-                       "Quotes match an exact phrase. Narrow with artist: charter: folder: "
-                       "stars:7 squeeze<=20 squeeze>20");
+    ImGui::TextColored(kNewSongColor, "Type any words, or narrow it down.");
+    ImGui::PopTextWrapPos();
+    render_search_tips(line_left, pane_w);
+    ImGui::PushTextWrapPos(0.0f);
     for (const std::string& error : app.library.query().errors)
         ImGui::TextColored(kWarningColor, "%s", error.c_str());
     ImGui::PopTextWrapPos();
