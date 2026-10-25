@@ -14,6 +14,8 @@ Later ruling, after the tool picked 58 files for its own merge because every fun
 
 Later ruling on Step 5's search of test files, the user answering "go with recommend" to this option: "A test file counts for a changed name only if it includes the header that declares it, directly or through a chain. Exception: a name in a file that builds an exe's main (like tools/precheck/main.cpp) keeps today's plain-name search, since tests reach those by running the exe."
 
+Later ruling, the user answering "go with recommended": a changed name in a file that builds an exe's main picks only test files that name that exe's `HYDRA_<TARGET>_EXE` constant, directly or through a test helper header. An exe that no test names that way keeps the plain-name search. In the same answer, the main session changes the posture line in `C:\Users\Patrick\.claude\model-postures.md` in a worktree of that repo with a fresh reviewer, after checking with the hooks session that it is not editing that file.
+
 ## What the user asked for
 
 "Plan a small tool that takes a merge range, finds every test file that names a function, type or constant the diff changed, and prints the -sf= filters. Briefs and merges use its output instead of a hand list."
