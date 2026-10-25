@@ -7,6 +7,7 @@
 
 #include "code_lexer.h"
 #include "core/strutil.h"
+#include "text.h"
 
 namespace precheck {
 
@@ -18,15 +19,22 @@ using hydra::starts_with_ci;
 
 namespace {
 
+// The bound below which number_canon writes a whole number as an integer.
+constexpr double kWholeNumberLimit = 1e15;
+
+// The most significant hex digits a 64-bit value holds (four bits each). A
+// longer 0x number spells no value.
+constexpr size_t kMaxHexDigits = 16;
+
+// The level plan_decision_paras gives a "User decisions" bold block: deeper
+// than any heading, so only a bold line or a heading ends it.
+constexpr size_t kBoldLevel = 99;
+
 bool digit(char c) { return c >= '0' && c <= '9'; }
 bool hex_digit(char c) { return digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
 char at(const std::string& s, size_t i) { return i < s.size() ? s[i] : '\0'; }
 size_t skip_digits(const std::string& s, size_t i) {
     while (i < s.size() && digit(s[i])) ++i;
-    return i;
-}
-size_t skip_space(const std::string& s, size_t i) {
-    while (i < s.size() && is_ascii_space(s[i])) ++i;
     return i;
 }
 
@@ -79,7 +87,7 @@ bool word_byte_before(const std::string& s, size_t pos) { return pos > 0 && word
 
 std::string number_canon(double v) {
     v = std::fabs(v);
-    if (v == std::floor(v) && v < 1e15) return std::to_string(static_cast<long long>(v));
+    if (v == std::floor(v) && v < kWholeNumberLimit) return std::to_string(static_cast<long long>(v));
     char buf[64];
     std::snprintf(buf, sizeof buf, "%.10G", v);
     return buf;
@@ -94,7 +102,7 @@ std::optional<double> number_of(const std::string& text) {
         while (i < t.size() && t[i] == '0') ++i;
         size_t j = i;
         while (j < t.size() && hex_digit(t[j])) ++j;
-        if (j - i > 16) return std::nullopt;
+        if (j - i > kMaxHexDigits) return std::nullopt;
         uint64_t u = 0;
         for (size_t k = i; k < j; ++k) {
             const char c = t[k];
@@ -258,7 +266,6 @@ std::vector<std::string> plan_decision_paras(const std::string& text) {
     std::vector<std::string> buf;
     bool in = false;
     size_t level = 0;
-    const size_t kBold = 99;  // the level a bold block stands at
     auto flush = [&] {
         std::string joined;
         for (size_t k = 0; k < buf.size(); ++k) joined += (k ? "\n" : "") + buf[k];
@@ -272,7 +279,7 @@ std::vector<std::string> plan_decision_paras(const std::string& text) {
         size_t heading = 0;
         if (user_decisions_line(l)) {
             in = true;
-            level = kBold;
+            level = kBoldLevel;
             buf.push_back(l);
         } else if (test_limits_line(l, heading)) {
             in = true;
@@ -281,8 +288,8 @@ std::vector<std::string> plan_decision_paras(const std::string& text) {
         } else if (in) {
             bool space = false;
             const size_t n = heading_level(l, space);
-            const bool end_bold = level == kBold && (bold_line(l, true) || n > 0);
-            const bool end_head = level != kBold && space && n <= level;
+            const bool end_bold = level == kBoldLevel && (bold_line(l, true) || n > 0);
+            const bool end_head = level != kBoldLevel && space && n <= level;
             if (end_bold || end_head) {
                 in = false;
                 flush();

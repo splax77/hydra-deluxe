@@ -260,7 +260,7 @@ jobs:
           if-no-files-found: ignore
 
   tool-tests:
-    name: Tool tests (Python and PowerShell)
+    name: Tool tests (Python)
     if: github.event_name != 'schedule'
     runs-on: windows-2025
     timeout-minutes: 30

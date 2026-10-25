@@ -14,6 +14,7 @@
 #include "core/strutil.h"
 #include "decisions.h"
 #include "definitions.h"
+#include "text.h"         // skip_space
 #include "views.h"
 
 namespace precheck {
@@ -34,11 +35,7 @@ std::string trim_end(const std::string& s) {
     while (e > 0 && is_ascii_space(s[e - 1])) --e;
     return s.substr(0, e);
 }
-std::string trim_start(const std::string& s) {
-    size_t b = 0;
-    while (b < s.size() && is_ascii_space(s[b])) ++b;
-    return s.substr(b);
-}
+std::string trim_start(const std::string& s) { return s.substr(precheck::skip_space(s, 0)); }
 using hydra::ends_with;
 
 // Words that say nothing about what a number is.
@@ -389,8 +386,7 @@ bool named_value(const std::string& before) {
     for (size_t p = 0; p < before.size(); ++p) {
         if (before[p] != '=') continue;
         if (p > 0 && has("=!<>+-*/%&|^", before[p - 1])) continue;
-        size_t q = p + 1;
-        while (q < before.size() && is_ascii_space(before[q])) ++q;
+        size_t q = precheck::skip_space(before, p + 1);
         while (q < before.size() && has("-+(", before[q])) ++q;
         if (q == before.size()) return true;
     }
