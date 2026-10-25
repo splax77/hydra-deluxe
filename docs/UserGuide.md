@@ -181,7 +181,7 @@ The chips above the table filter by state: `All`, `Not analyzed`, `Stale`, `Anal
 
 Type in the search box, which reads `Search songs` while it's empty, to narrow the list. `Ctrl+F` jumps to it. `Escape` or its `X` clears it. The heading above shows how many songs match, like `Library 5 of 97 charts`. The text that matched is highlighted in gold.
 
-The line under the box reads `Type any words, or narrow it down.` Click `Search tips` at its end to see every filter, one per line: an example to type, then what it does. `Escape` or a click outside closes the list and leaves your search as it was.
+The line under the box reads `Type any words, or narrow it down.` Click `Search tips`, the link after it, to see every filter, one per line: an example to type, then what it does. `Escape` or a click outside closes the list and leaves your search as it was.
 
 Searching ignores case and accents, so `ALLISTER` finds Allister and `beyonce` finds Beyoncé. Colour and style tags in song names are ignored too. The examples below come from Hydra Deluxe's test library.
 
