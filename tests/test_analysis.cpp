@@ -16,7 +16,6 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
-#include <future>
 #include <map>
 #include <memory>
 #include <new>
@@ -45,6 +44,7 @@
 #include "store/chart_index.h"
 #include "store/record_store.h"
 #include "temp_util.h"
+#include "wait_util.h"
 
 using namespace hydra::app;
 
@@ -292,53 +292,54 @@ TEST_CASE("run_work_pool: a consumer that throws while workers wait for room") {
 }
 
 TEST_CASE("run_work_pool: a cancel mid-run never strands the consumer") {
-    // Hundreds of short runs, each cancelled from inside the work. The old
-    // batch pool could leave its consumer waiting forever when every worker
-    // saw the cancel between items, so a hang is the failure this guards. The
-    // watchdog turns a hang into a failed check instead of a stuck suite.
+    // A consumer that only waits for the next result hangs when every worker
+    // sees the cancel between items: it waits for a result no worker will
+    // make. This forces that timing once, with no retries. Every worker is
+    // held inside its first item, so nothing has reached the consumer and it
+    // is waiting. Then the cancel is set and the workers are let go. Each one
+    // hands over its item, sees the cancel before it takes another, and
+    // leaves, while the consumer waits for more.
     //
-    // The watchdog judges progress, not total time. A hang stops the rounds
-    // for good; a busy machine only slows them (on a loaded CPU, 500 rounds
-    // of 8 fresh threads can take well over 30 s). So it fails only when no
-    // round has finished for 30 s. The counter is shared, because a failed
-    // check leaves the test while the detached thread may still run.
-    auto rounds_done = std::make_shared<std::atomic<int>>(0);
-    std::promise<bool> finished;
-    std::future<bool> outcome = finished.get_future();
-    std::thread([p = std::move(finished), rounds_done]() mutable {
-        bool every_item_consumed = true;
-        for (int round = 0; round < 500; ++round) {
-            std::atomic<bool> cancel{false};
-            std::atomic<int> worked{0};
-            int consumed = 0;
-            run_work_pool<int>(
-                64, 8, &cancel,
-                [&](size_t i) {
-                    ++worked;
-                    if (i == 3) cancel = true;
-                    return static_cast<int>(i);
-                },
-                [&](int&&) { ++consumed; });
-            // Every item a worker started reached the consumer.
-            if (consumed != worked.load()) every_item_consumed = false;
-            ++*rounds_done;
-        }
-        p.set_value(every_item_consumed);
+    // The pool runs on its own thread, so a hang fails the capped wait below
+    // instead of freezing the suite. The state is shared because a failed
+    // wait leaves the test while that thread is still stuck.
+    static constexpr size_t kItems = 64;
+    static constexpr int kWorkers = 4;
+    struct Shared {
+        std::atomic<bool> cancel{false};
+        std::atomic<bool> release{false};
+        std::atomic<int> held{0};
+        std::atomic<int> consumed{0};
+        std::atomic<bool> returned{false};
+    };
+    auto s = std::make_shared<Shared>();
+    // Lets the workers go however the test leaves, so none is held forever.
+    struct Release {
+        Shared& s;
+        ~Release() { s.release = true; }
+    } release_on_exit{*s};
+    std::thread([s] {
+        run_work_pool<int>(
+            kItems, kWorkers, &s->cancel,
+            [s](size_t i) {
+                ++s->held;
+                while (!s->release.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                return static_cast<int>(i);
+            },
+            [s](int&&) { ++s->consumed; });
+        s->returned = true;
     }).detach();
 
-    const auto t0 = std::chrono::steady_clock::now();
-    int last = 0;
-    while (outcome.wait_for(std::chrono::seconds(30)) != std::future_status::ready) {
-        const int now = rounds_done->load();
-        REQUIRE_MESSAGE(now != last, "run_work_pool never returned: its consumer was left waiting"
-                                     " (no round finished in 30 s; stuck in round "
-                                         << now << ")");
-        last = now;
-    }
-    MESSAGE("500 rounds took "
-            << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count()
-            << " s");
-    CHECK(outcome.get());
+    testwait::wait_until([&] { return s->held.load() == kWorkers; },
+                         "every worker to start its first item");
+    s->cancel = true;
+    s->release = true;
+    testwait::wait_until([&] { return s->returned.load(); },
+                         "run_work_pool to return after the cancel (a stranded consumer"
+                         " never lets it)");
+    // Each worker made one item, then saw the cancel; every one reached the
+    // consumer.
+    CHECK(s->consumed.load() == kWorkers);
 }
 
 // R7.22: batch_worker_count owns the floor of 1. The pool checks the count it

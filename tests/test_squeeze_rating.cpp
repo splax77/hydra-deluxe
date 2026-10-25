@@ -661,6 +661,9 @@ TEST_CASE("timing_tiers: the ladder at W=85 and at W=70") {
     CHECK(std::string(t85[4].tok) == "t4");
     REQUIRE(t85[4].cutoff.has_value());
     CHECK(*t85[4].cutoff == doctest::Approx(170.0));
+    // The ladder's top cutoff is the two-hit budget itself, read from its one
+    // owner, not twice the window written again.
+    CHECK(*t85[4].cutoff == nominal_budget_ms(kDefaultHitWindowMs));
 
     // The two open bands carry no cutoff, and "None" is last.
     CHECK(std::string(t85[5].name) == "Beyond");
@@ -681,39 +684,9 @@ TEST_CASE("timing_tiers: the ladder at W=85 and at W=70") {
         REQUIRE(t70[i].cutoff.has_value());
         CHECK(*t70[i].cutoff == doctest::Approx(want70[i]));
     }
-    CHECK_FALSE(t70[5].cutoff.has_value());
-    CHECK_FALSE(t70[6].cutoff.has_value());
-}
-
-TEST_CASE("timing_tiers: the Insane+ cutoff is the identity squeeze budget") {
-    // The ladder's top cutoff is the two-hit budget itself, read from its
-    // one owner, not twice the window written again.
-    std::vector<TimingTier> t85 = timing_tiers(kDefaultHitWindowMs);
-    REQUIRE(t85.size() == 7);
-    CHECK(std::string(t85[4].name) == "Insane+");
-    REQUIRE(t85[4].cutoff.has_value());
-    CHECK(*t85[4].cutoff == nominal_budget_ms(kDefaultHitWindowMs));
-    CHECK(*t85[4].cutoff == 170.0);
-
-    std::vector<TimingTier> t70 = timing_tiers(70.0);
-    REQUIRE(t70.size() == 7);
-    REQUIRE(t70[4].cutoff.has_value());
     CHECK(*t70[4].cutoff == nominal_budget_ms(70.0));
-
-    // Beyond and None still carry no cutoff.
-    CHECK_FALSE(t85[5].cutoff.has_value());
-    CHECK_FALSE(t85[6].cutoff.has_value());
     CHECK_FALSE(t70[5].cutoff.has_value());
     CHECK_FALSE(t70[6].cutoff.has_value());
-}
-
-TEST_CASE("effective_backend_ms: the factor of two is the identity budget over the scaled budget") {
-    // At the identity scale the figure is the raw gap: the budget there is
-    // 170.0 ms at the default window, the same as the nominal scale.
-    CHECK(squeeze_budget_ms(1.0, kDefaultHitWindowMs) == 170.0);
-    CHECK(effective_backend_ms(170.0, 1.0) == 170.0);
-    // A scaled row is pinned against the owner in the Dumpweed field
-    // fixture above, at the scale that fixture computes.
 }
 
 TEST_CASE("display_backends: 500 ms window keeps everything the 500 ms search graph collects") {

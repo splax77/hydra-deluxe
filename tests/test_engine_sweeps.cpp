@@ -39,7 +39,7 @@
 using namespace hydra;
 
 TEST_CASE("search invariants hold across the corpus and config knobs") {
-    int charts = 0, mismatches = 0;
+    int charts = 0, mismatches = 0, rejected = 0;
 
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, ChartReading{});
@@ -95,7 +95,8 @@ TEST_CASE("search invariants hold across the corpus and config knobs") {
                 }
             }
         } catch (const ChartFileError&) {
-            continue;  // charts the engine rejects are covered elsewhere
+            ++rejected;  // counted, so the sweep cannot quietly shrink
+            continue;
         }
 
         if (!d.empty() && ++mismatches <= 8)
@@ -103,6 +104,7 @@ TEST_CASE("search invariants hold across the corpus and config knobs") {
     }
 
     CHECK(mismatches == 0);
+    CHECK(rejected == 0);
     REQUIRE(charts > 0);
     MESSAGE("checked " << charts << " charts");
 }
@@ -116,7 +118,7 @@ TEST_CASE("search invariants hold across the corpus and config knobs") {
 // no path the model's walk passes outscores the engine's filtered best.
 TEST_CASE("the engine's limit walk agrees with Activation::within_ms_limit") {
     constexpr double kLimitMs = 20.0;  // the invariants case's ms_filter
-    int charts = 0, mismatches = 0, kept_checked = 0, model_rejected = 0;
+    int charts = 0, mismatches = 0, kept_checked = 0, model_rejected = 0, rejected = 0;
 
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, ChartReading{});
@@ -158,7 +160,8 @@ TEST_CASE("the engine's limit walk agrees with Activation::within_ms_limit") {
                 d = "engine dropped a path the model's walk keeps, scoring " +
                     std::to_string(*model_best);
         } catch (const ChartFileError&) {
-            continue;  // charts the engine rejects are covered elsewhere
+            ++rejected;  // counted, so the sweep cannot quietly shrink
+            continue;
         }
 
         if (!d.empty() && ++mismatches <= 8)
@@ -166,6 +169,7 @@ TEST_CASE("the engine's limit walk agrees with Activation::within_ms_limit") {
     }
 
     CHECK(mismatches == 0);
+    CHECK(rejected == 0);
     REQUIRE(charts > 0);
     // Both walks must have had something to say no to and yes to, or the
     // case proves nothing.
@@ -219,7 +223,7 @@ TEST_CASE("note total: the engine, the Song and the Dynamics tab agree on every 
     // Finding 255. Under each 2x Bass setting: the Song's note count, every
     // stored path's notecount, and the Dynamics tab's Totals (counted from its
     // own 2x-kept parse, then played_total for the setting) are one number.
-    int checked = 0;
+    int checked = 0, rejected = 0;
     for (const std::string& path : corpus::chart_paths()) {
         for (const bool bass2x : {false, true}) {
             CAPTURE(path);
@@ -240,13 +244,15 @@ TEST_CASE("note total: the engine, the Song and the Dynamics tab agree on every 
             try {
                 rec = &corpus::analyzed(path, a);
             } catch (const ChartFileError&) {
-                continue;  // charts the engine rejects are covered elsewhere
+                ++rejected;  // counted, so the sweep cannot quietly shrink
+                continue;
             }
             each_stored_path(rec->paths,
                              [&](const Path& p) { CHECK(p.notecount == total); });
             ++checked;
         }
     }
+    CHECK(rejected == 0);
     REQUIRE(checked > 0);
     MESSAGE("checked " << checked << " chart and 2x Bass pairs");
 }
@@ -329,6 +335,7 @@ namespace {
 // What a walk over every activation of every corpus chart found.
 struct CorpusActivationRun {
     int charts = 0, mismatches = 0;
+    int rejected = 0;  // charts the engine threw ChartFileError on
 };
 
 // Walks every activation of every corpus chart, analyzed with the settings
@@ -351,6 +358,7 @@ CorpusActivationRun check_every_corpus_activation(Check check) {
             cfg.ms_filter = std::nullopt;
             record = &corpus::analyzed(path, cfg);
         } catch (const ChartFileError&) {
+            ++run.rejected;
             continue;
         }
         ++run.charts;
@@ -435,6 +443,7 @@ TEST_CASE("stored transfer scales match the display-layer recomputation") {
         });
 
     CHECK(run.mismatches == 0);
+    CHECK(run.rejected == 0);
     REQUIRE(run.charts > 0);
     REQUIRE(acts > 0);
     MESSAGE("checked " << acts << " activations on " << run.charts << " charts ("
@@ -472,6 +481,7 @@ TEST_CASE("no activation keeps backends past its squeezed-out note") {
         });
 
     CHECK(run.mismatches == 0);
+    CHECK(run.rejected == 0);
     REQUIRE(run.charts > 0);
     MESSAGE("checked " << sqout_acts << " squeeze-out activations on " << run.charts
                        << " charts");
