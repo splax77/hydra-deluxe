@@ -20,18 +20,14 @@ using hydra::starts_with_ci;
 namespace {
 
 // The bound below which number_canon writes a whole number as an integer.
-// It is the bound the PowerShell precheck's number key used, kept so a key
-// spelled then and now is the same text.
 constexpr double kWholeNumberLimit = 1e15;
 
 // The most significant hex digits a 64-bit value holds (four bits each). A
-// longer 0x number spells no value, as the PowerShell precheck's
-// [Convert]::ToInt64 refused it.
+// longer 0x number spells no value.
 constexpr size_t kMaxHexDigits = 16;
 
 // The level plan_decision_paras gives a "User decisions" bold block: deeper
-// than any heading, so only a bold line or a heading ends it. The PowerShell
-// precheck used the same marker level.
+// than any heading, so only a bold line or a heading ends it.
 constexpr size_t kBoldLevel = 99;
 
 bool digit(char c) { return c >= '0' && c <= '9'; }
