@@ -137,6 +137,29 @@ TEST_CASE("store: a save under the same profile replaces the record and every pa
     CHECK(got.record == second.record);
 }
 
+TEST_CASE("store: a lookup after a second save reads the second record, not the first") {
+    // lookup keeps its reads compiled between calls, so this pins that a
+    // reused read carries no row or binding over from the last one.
+    RecordStore store(":memory:");
+    const PreparedRecord first = prepare_record("h1", at4(), fixture().record);
+    store.save(first);
+    const RecordLookup got_first = store.lookup_one("h1", at4());
+    REQUIRE(got_first.status == RecordStatus::Ready);
+    CHECK(got_first.record == first.record);
+
+    PreparedRecord second = first;
+    second.record.pathcount = first.record.pathcount + 1;
+    second.record.notecount = first.record.notecount + 1;
+    second.record.paths.resize(1);
+    second.record.paths.front().path = "second";
+    store.save(second);
+    const RecordLookup got_second = store.lookup_one("h1", at4());
+    REQUIRE(got_second.status == RecordStatus::Ready);
+    CHECK(got_second.record == second.record);
+    // Another chart through the same reads: nothing of h1's comes back.
+    CHECK(store.lookup_one("h2", at4()).status == RecordStatus::NotAnalyzed);
+}
+
 TEST_CASE("store: a save purges the chart's unreadable records in every mode and their profiles") {
     FileStore file;
     {

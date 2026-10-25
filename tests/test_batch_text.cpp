@@ -1,10 +1,12 @@
 // The batch strip's and confirm's text helpers: counts with real plurals and
 // thousands grouping, durations, and the settings lines the confirm lists.
+// Also hydra_batch's choice of which charts a run reads.
 
 #include "doctest.h"
 
 #include "app/analysis.h"  // batch_cant_analyze_text
 #include "app/config.h"
+#include "cli/batch_scope.h"
 #include "core/model.h"  // counted
 #include "ui/library_parts.h"
 
@@ -192,4 +194,26 @@ TEST_CASE("batch text: the empty library says what to do next") {
     s.chartfolders.push_back("C:\\songs");
     CHECK(std::string(empty_library_message(s)).find("Scan library") != std::string::npos);
     CHECK(std::string(empty_library_message(s)).find("Manage folders") == std::string::npos);
+}
+
+// The hooks-from-scratch plan, section 2 (the user's approval, 2026-10-25): a
+// whole-library run is asked for by name.
+using hydra::cli::batch_scope;
+using hydra::cli::batch_scope_error;
+using hydra::cli::BatchScope;
+
+TEST_CASE("hydra_batch: the whole library needs --whole-library, and folders run alone") {
+    CHECK(batch_scope(true, false) == BatchScope::Library);
+    CHECK(batch_scope(false, true) == BatchScope::Folders);
+    CHECK(batch_scope(false, false) == BatchScope::Refused);
+    CHECK(batch_scope(true, true) == BatchScope::Ambiguous);
+
+    CHECK(batch_scope_error(BatchScope::Refused) ==
+          "A run over the whole library needs --whole-library. Name chart folders to analyze "
+          "just those.");
+    CHECK(batch_scope_error(BatchScope::Ambiguous) ==
+          "--whole-library analyzes every folder in the app's settings, so it takes no folder "
+          "names.");
+    CHECK(batch_scope_error(BatchScope::Library).empty());
+    CHECK(batch_scope_error(BatchScope::Folders).empty());
 }

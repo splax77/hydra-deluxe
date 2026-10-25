@@ -27,6 +27,7 @@
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/user_messages.h"  // kDatabaseOpenSentence
+#include "cli/batch_scope.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "db_file_util.h"  // write_junk_db
@@ -288,6 +289,26 @@ TEST_CASE("hydra_batch refuses an unknown option") {
 
 // D114 item 11: a bad hydra_rules.ini prints the tools' sentence and then the
 // loader's line, and the run stops before it opens the database.
+// A whole-library run is asked for by name (hydra::cli::batch_scope). The
+// sandbox's settings list no folders, so a run that wrongly went ahead would
+// find nothing to read and would not exit 2.
+TEST_CASE("hydra_batch refuses a run with no folder and no --whole-library, and a mix of both") {
+    CliSandbox box("scope_refused");
+    const std::string db = box.db("untouched.db");
+
+    RunResult bare = run_exe(box.batch, {"--db", db});
+    INFO(bare.output);
+    CHECK(bare.exit_code == 2);
+    CHECK(contains(bare.output, hydra::cli::batch_scope_error(hydra::cli::BatchScope::Refused)));
+    CHECK_FALSE(fs::exists(fs::u8path(db)));
+
+    RunResult mixed = run_exe(box.batch, {hydra::cli::kWholeLibraryFlag.data(), "--db", db, box.folder()});
+    INFO(mixed.output);
+    CHECK(mixed.exit_code == 2);
+    CHECK(contains(mixed.output, hydra::cli::batch_scope_error(hydra::cli::BatchScope::Ambiguous)));
+    CHECK_FALSE(fs::exists(fs::u8path(db)));
+}
+
 TEST_CASE("hydra_batch names a bad hydra_rules.ini and stops") {
     CliSandbox box("bad_rules");
     {

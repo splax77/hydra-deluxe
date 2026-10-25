@@ -130,12 +130,12 @@
         {
           "file": "src/render/track_state.cpp",
           "line_text": "inst.fill_lane_pad.reset();",
-          "why": "TrackState::FieldSweep, which asks LaneSweep"
+          "why": "TrackState::set_span_fields, which asks LaneSweep"
         },
         {
           "file": "src/render/track_state.cpp",
-          "line_text": "if (std::optional<size_t> w = lane_pad_.at(t)) inst.fill_lane_pad = lanes_[*w].pad;",
-          "why": "TrackState::FieldSweep, which asks LaneSweep"
+          "line_text": "if (std::optional<size_t> w = sweep_.lane_pad.at(t)) inst.fill_lane_pad = fill_lane_[*w].pad;",
+          "why": "TrackState::set_span_fields, which asks LaneSweep"
         }
       ],
       "scope": [
