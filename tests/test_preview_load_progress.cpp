@@ -25,6 +25,7 @@
 #include "audio_chart_fixtures.h"  // audiochart::short_chart_with_long_audio, write_text_file
 #include "audio_util.h"  // read_fixture
 #include "audio/stream_mix.h"
+#include "chart_text.h"  // testchart::chart_text, section, line
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "store/record_store.h"
@@ -411,12 +412,17 @@ std::vector<std::vector<int64_t>> fill_spans(const hydra::app::PreviewScene& sce
 // The "1.0 fills" setting reaches the Preview: the notes it reads carry the
 // Clone Hero 1.0 generator's fills, the same as the chart loaded under that
 // rule directly, and not 1.1's (D115 TJ-3). The chart has no fills of its
-// own, and the two generators place its fills differently.
+// own. Both generators count on the same grid and both draw a fill half a
+// measure back from its chord, so the chart sits on the one rule they still
+// differ on: 1.1's distance limit is one tick wider than 1.0's. At resolution
+// 480 in 4/4 a measure is 1920 ticks and half a beat 240. The chord 10 ticks
+// past the line at 1920 gets a fill under both rules. The chord 241 ticks past
+// the line at 11520, five lines on, gets one under 1.1 only.
 TEST_CASE("a Preview read under the 1.0 fills rule draws the 1.0 generator's fills") {
-    std::string notes;
-    for (const std::string& p : corpus::chart_paths())
-        if (p.find("TEXTURES - Laments Of An Icarus") != std::string::npos) notes = p;
-    REQUIRE_FALSE(notes.empty());
+    using namespace testchart;
+    const std::string notes = testtemp::temp_dir("prev_fills10") + "\\notes.chart";
+    audiochart::write_text_file(
+        notes, chart_text(section("ExpertDrums", line(1930, "N 1 0") + line(11761, "N 1 0")), 480));
 
     const hydra::ChartReading reading{};
     const hydra::core::Rules& rules = hydra::core::default_rules();
@@ -431,7 +437,9 @@ TEST_CASE("a Preview read under the 1.0 fills rule draws the 1.0 generator's fil
     };
 
     const auto ch10 = fill_spans(read_scene(hydra::FillDeadlineRule::Ch10));
-    REQUIRE_FALSE(ch10.empty());
+    const auto ch11 = fill_spans(read_scene(hydra::FillDeadlineRule::Ch11));
+    CHECK(ch10.size() == 1);
+    CHECK(ch11.size() == 2);
     CHECK(ch10 == fill_spans(direct_scene(hydra::FillDeadlineRule::Ch10)));
-    CHECK(ch10 != fill_spans(read_scene(hydra::FillDeadlineRule::Ch11)));
+    CHECK(ch10 != ch11);
 }
