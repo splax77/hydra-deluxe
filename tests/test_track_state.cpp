@@ -146,7 +146,7 @@ bool same_instant(const TrackInstant& a, const TrackInstant& b) {
 
 TEST_CASE("SpanSweep: Onyx makeToggle truth table") {
     std::vector<std::pair<double, double>> ivs{{1.0, 2.0}, {2.0, 3.0}};
-    SpanSweep sweep(ivs);  // asked in increasing time, as it must be
+    SpanSweep sweep(ivs);
     CHECK(sweep.at(0.5) == Toggle::Empty);
     CHECK(sweep.at(1.0) == Toggle::Start);
     CHECK(sweep.at(1.5) == Toggle::On);
@@ -876,9 +876,8 @@ void randomize_overlay(PreviewScene& scene, std::mt19937& rng, const std::vector
     }
 }
 
-}  // namespace
-
-TEST_CASE("rebuild_overlay_fields: equals a full build on random overlays") {
+// A path-free scene and four random overlays over it, the base itself first.
+std::vector<PreviewScene> random_overlay_scenes() {
     std::mt19937 rng(20261004u);
     auto pick = [&rng](uint32_t n) { return static_cast<uint32_t>(rng() % n); };
 
@@ -929,6 +928,51 @@ TEST_CASE("rebuild_overlay_fields: equals a full build on random overlays") {
         randomize_overlay(s, rng, moments);
         scenes.push_back(std::move(s));
     }
+    return scenes;
+}
+
+// synthesize(t) at each instant's own time, held to the instant's span fields
+// (the instant's notes and beat are not span fields, so they are left out).
+void check_synthesize_agrees(const PreviewScene& scene, const std::string& what) {
+    const TrackState st = build_track_state(scene, TrackStateOptions{true});
+    size_t mismatches = 0, first = 0;
+    for (size_t i = 0; i < st.instants().size(); ++i) {
+        TrackInstant want = st.instants()[i];
+        want.notes.clear();
+        want.beat.reset();
+        if (!same_instant(st.synthesize(want.t), want) && mismatches++ == 0) first = i;
+    }
+    INFO(what << ", first mismatch at instant " << first << ": "
+              << (st.instants().empty() ? std::string() : instant_line(st.instants()[first])));
+    CHECK(mismatches == 0);
+}
+
+}  // namespace
+
+TEST_CASE("synthesize at an instant's own time agrees with the sweep that filled it") {
+    const std::vector<PreviewScene> scenes = random_overlay_scenes();
+    for (size_t i = 0; i < scenes.size(); ++i)
+        check_synthesize_agrees(scenes[i], "overlay " + std::to_string(i));
+
+    // One corpus chart: the first with notes, its base and every stored
+    // path's scene.
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.reading());
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        check_synthesize_agrees(build_preview_base(song), chart + " base");
+        for (const Path* p : rec.all_paths())
+            check_synthesize_agrees(build_preview_scene(song, p, cfg.sp_cap, cfg.rules),
+                                    chart + " path");
+        check_synthesize_agrees(build_preview_scene(song, nullptr, cfg.sp_cap, cfg.rules),
+                                chart + " no path");
+        break;
+    }
+}
+
+TEST_CASE("rebuild_overlay_fields: equals a full build on random overlays") {
+    const std::vector<PreviewScene> scenes = random_overlay_scenes();
     // Every scene to every other, the empty overlay included both ways.
     for (size_t i = 0; i < scenes.size(); ++i)
         for (size_t j = 0; j < scenes.size(); ++j)

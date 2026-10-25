@@ -51,9 +51,9 @@ TrackGem gem_of(const PreviewNote& n, bool pro) {
 
 }  // namespace
 
-// The sweep keeps sorted starts and ends and walks them forward. At time t,
-// "does some interval start (end) at t" is a lookup in the sorted starts
-// (ends). For "is t strictly inside some interval", count over the
+// The sweep keeps sorted starts and ends and answers by binary search. At
+// time t, "does some interval start (end) at t" is a lookup in the sorted
+// starts (ends). For "is t strictly inside some interval", count over the
 // well-formed intervals (start <= end): the number inside is
 //   (starts < t) - (ends <= t) + (zero-length intervals sitting at t),
 // because an interval that ends at or before t also started at or before t,
@@ -77,19 +77,19 @@ SpanSweep::SpanSweep(const std::vector<Iv>& ivs) {
     std::sort(zeros_.begin(), zeros_.end());
 }
 
-Toggle SpanSweep::at(double t) {
-    while (i_s_ < starts_.size() && starts_[i_s_] < t) ++i_s_;
-    while (i_e_ < ends_.size() && ends_[i_e_] <= t) ++i_e_;
-    while (i_z_ < zeros_.size() && zeros_[i_z_] < t) ++i_z_;
-    size_t zeros_at = 0;
-    while (i_z_ + zeros_at < zeros_.size() && zeros_[i_z_ + zeros_at] == t) ++zeros_at;
-    while (i_as_ < all_starts_.size() && all_starts_[i_as_] < t) ++i_as_;
-    while (i_ae_ < all_ends_.size() && all_ends_[i_ae_] < t) ++i_ae_;
+Toggle SpanSweep::at(double t) const {
+    // A NaN time sits in no interval and on no edge; binary search cannot
+    // say so, because NaN compares false both ways.
+    if (std::isnan(t)) return Toggle::Empty;
+    const auto starts_before = std::lower_bound(starts_.begin(), starts_.end(), t) - starts_.begin();
+    const auto ends_by = std::upper_bound(ends_.begin(), ends_.end(), t) - ends_.begin();
+    const auto zeros = std::equal_range(zeros_.begin(), zeros_.end(), t);
+    const auto zeros_at = zeros.second - zeros.first;
 
-    const bool inside = static_cast<int64_t>(i_s_) - static_cast<int64_t>(i_e_) +
+    const bool inside = static_cast<int64_t>(starts_before) - static_cast<int64_t>(ends_by) +
                             static_cast<int64_t>(zeros_at) > 0;
-    const bool starts = i_as_ < all_starts_.size() && all_starts_[i_as_] == t;
-    const bool ends = i_ae_ < all_ends_.size() && all_ends_[i_ae_] == t;
+    const bool starts = std::binary_search(all_starts_.begin(), all_starts_.end(), t);
+    const bool ends = std::binary_search(all_ends_.begin(), all_ends_.end(), t);
     if (inside) return Toggle::On;
     if (starts && ends) return Toggle::Restart;
     if (starts) return Toggle::Start;
@@ -97,57 +97,20 @@ Toggle SpanSweep::at(double t) {
     return Toggle::Empty;
 }
 
+// The activated fill's lane at t: the first interval (in list order) that
+// starts at or contains t wins; failing that, the first one that ends at t.
+// A chart has few such intervals, so a scan in list order answers it.
+std::optional<size_t> TrackState::LaneSweep::at(double t) const {
+    std::optional<size_t> ends;
+    for (size_t i = 0; i < ivs_.size(); ++i) {
+        const Iv& iv = ivs_[i];
+        if (iv.first == t || (iv.first < t && t < iv.second)) return i;
+        if (!ends && iv.second == t) ends = i;
+    }
+    return ends;
+}
+
 namespace {
-
-// The activated fill's lane at each instant: the first interval (in list
-// order) that starts at or contains t wins; failing that, the first one that
-// ends at t. Ask it for times in increasing order. Well-formed intervals join
-// a small active set when they start and leave it once they have ended (fills
-// rarely overlap, so it stays tiny); malformed ones (end < start, or NaN) are
-// checked every time, because their edges sit out of order.
-class LaneSweep {
-public:
-    explicit LaneSweep(const std::vector<Iv>& ivs) : ivs_(ivs) {
-        for (size_t i = 0; i < ivs.size(); ++i) {
-            if (ivs[i].first <= ivs[i].second)
-                order_.push_back(i);
-            else
-                malformed_.push_back(i);
-        }
-        std::stable_sort(order_.begin(), order_.end(),
-                         [&ivs](size_t a, size_t b) { return ivs[a].first < ivs[b].first; });
-    }
-
-    // The index of the winning interval, or none.
-    std::optional<size_t> at(double t) {
-        while (next_ < order_.size() && ivs_[order_[next_]].first <= t)
-            active_.push_back(order_[next_++]);
-        active_.erase(std::remove_if(active_.begin(), active_.end(),
-                                     [&](size_t i) { return ivs_[i].second < t; }),
-                      active_.end());
-        constexpr size_t kNone = std::numeric_limits<size_t>::max();
-        size_t starts_or_holds = kNone, ends = kNone;
-        auto consider = [&](size_t i) {
-            const Iv& iv = ivs_[i];
-            if (iv.first == t || (iv.first < t && t < iv.second))
-                starts_or_holds = std::min(starts_or_holds, i);
-            else if (iv.second == t)
-                ends = std::min(ends, i);
-        };
-        for (size_t i : active_) consider(i);
-        for (size_t i : malformed_) consider(i);
-        if (starts_or_holds != kNone) return starts_or_holds;
-        if (ends != kNone) return ends;
-        return std::nullopt;
-    }
-
-private:
-    const std::vector<Iv>& ivs_;
-    std::vector<size_t> order_;      // well-formed, by start
-    std::vector<size_t> malformed_;
-    std::vector<size_t> active_;
-    size_t next_ = 0;
-};
 
 // One path-free moment: a note, a beat, or an SP phrase, solo or drum lane
 // edge.
@@ -212,41 +175,20 @@ void walk_window(const TrackWindow& win, double near_s, double far_s,
 
 }  // namespace
 
-// Every span field of an instant from the state's intervals: one SpanSweep
-// per span field and one LaneSweep for the lit lane's pad. Ask it for
-// instants in increasing time. sweep_span_fields runs it over every instant;
-// synthesize asks it once.
-class TrackState::FieldSweep {
-public:
-    explicit FieldSweep(const TrackState& st)
-        : lanes_(st.fill_lane_), overdrive_(st.overdrive_), solo_(st.solo_), fill_(st.fill_),
-          fill_taken_(st.fill_taken_), sp_active_(st.sp_active_), fill_lane_(st.fill_lane_ivs_),
-          lane_pad_(st.fill_lane_ivs_) {
-        drum_lane_.reserve(kPads.size());
-        for (const std::vector<Iv>& ivs : st.drum_lane_) drum_lane_.emplace_back(ivs);
-    }
-
-    void set(TrackInstant& inst) {
-        const double t = inst.t;
-        inst.overdrive = overdrive_.at(t);
-        inst.solo = solo_.at(t);
-        for (Pad p : kPads)
-            inst.*drum_lane_field(p) = drum_lane_[static_cast<size_t>(p)].at(t);
-        inst.fill = fill_.at(t);
-        inst.fill_taken = fill_taken_.at(t);
-        inst.sp_active = sp_active_.at(t);
-        inst.fill_lane = fill_lane_.at(t);
-        inst.fill_lane_pad.reset();
-        if (inst.fill_lane != Toggle::Empty)
-            if (std::optional<size_t> w = lane_pad_.at(t)) inst.fill_lane_pad = lanes_[*w].pad;
-    }
-
-private:
-    const std::vector<LaneInterval>& lanes_;
-    SpanSweep overdrive_, solo_, fill_, fill_taken_, sp_active_, fill_lane_;
-    LaneSweep lane_pad_;
-    std::vector<SpanSweep> drum_lane_;  // indexed by Pad
-};
+void TrackState::set_span_fields(TrackInstant& inst) const {
+    const double t = inst.t;
+    inst.overdrive = sweep_.overdrive.at(t);
+    inst.solo = sweep_.solo.at(t);
+    for (Pad p : kPads)
+        inst.*drum_lane_field(p) = sweep_.drum_lane[static_cast<size_t>(p)].at(t);
+    inst.fill = sweep_.fill.at(t);
+    inst.fill_taken = sweep_.fill_taken.at(t);
+    inst.sp_active = sweep_.sp_active.at(t);
+    inst.fill_lane = sweep_.fill_lane.at(t);
+    inst.fill_lane_pad.reset();
+    if (inst.fill_lane != Toggle::Empty)
+        if (std::optional<size_t> w = sweep_.lane_pad.at(t)) inst.fill_lane_pad = fill_lane_[*w].pad;
+}
 
 void TrackState::set_overlay_intervals(const PreviewScene& scene) {
     fill_.clear();
@@ -279,8 +221,18 @@ void TrackState::set_overlay_intervals(const PreviewScene& scene) {
 }
 
 void TrackState::sweep_span_fields() {
-    FieldSweep sweep(*this);
-    for (TrackInstant& inst : instants_) sweep.set(inst);
+    sweep_.overdrive = SpanSweep(overdrive_);
+    sweep_.solo = SpanSweep(solo_);
+    for (Pad p : kPads) {
+        const size_t i = static_cast<size_t>(p);
+        sweep_.drum_lane[i] = SpanSweep(drum_lane_[i]);
+    }
+    sweep_.fill = SpanSweep(fill_);
+    sweep_.fill_taken = SpanSweep(fill_taken_);
+    sweep_.sp_active = SpanSweep(sp_active_);
+    sweep_.fill_lane = SpanSweep(fill_lane_ivs_);
+    sweep_.lane_pad = LaneSweep(fill_lane_ivs_);
+    for (TrackInstant& inst : instants_) set_span_fields(inst);
 }
 
 TrackState build_track_state(const PreviewScene& scene, const TrackStateOptions& opts) {
@@ -410,7 +362,7 @@ bool note_in_span(const PreviewScene& scene, const PreviewSpan& span, const Prev
 TrackInstant TrackState::synthesize(double t) const {
     TrackInstant inst;
     inst.t = t;
-    FieldSweep(*this).set(inst);
+    set_span_fields(inst);
     return inst;
 }
 

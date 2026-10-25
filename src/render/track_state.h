@@ -111,21 +111,21 @@ struct LaneSpan {
 };
 
 // Onyx's makeToggle for one span field: the state of the span at time t,
-// given its [start, end] intervals. One sweep answers it for many times in one
-// pass; ask it for times in increasing order. At t it needs three facts: does
+// given its [start, end] intervals. Built once, it answers any time in any
+// order. At t it needs three facts: does
 // some interval start at t, does some end at t, and is t strictly inside some
 // interval. Inside wins (an edge inside another interval of the same span is
 // not an edge of the merged span: the span simply goes on), then start and
 // end together are a Restart, then Start, then End, else Empty.
 class SpanSweep {
 public:
+    SpanSweep() = default;  // no intervals: Empty everywhere
     explicit SpanSweep(const std::vector<std::pair<double, double>>& intervals);
-    Toggle at(double t);
+    Toggle at(double t) const;
 
 private:
     std::vector<double> starts_, ends_, zeros_;  // well-formed intervals only
     std::vector<double> all_starts_, all_ends_;  // every interval's edges
-    size_t i_s_ = 0, i_e_ = 0, i_z_ = 0, i_as_ = 0, i_ae_ = 0;
 };
 
 // The instants one frame draws, near < t < far, as a view into the track
@@ -168,6 +168,11 @@ public:
     // ongoing/absent state of every span so the floor and lanes still draw.
     TrackWindow window(double near_s, double far_s) const;
 
+    // The state of every span at t (no notes, no beat), from the same lookup
+    // the instants were filled from. window() uses it for the empty-window
+    // fallback.
+    TrackInstant synthesize(double t) const;
+
     // Onyx's makeToggleBounds over one span field: consecutive spans covering
     // [near, far] with that field on or off, adjacent equal states merged.
     std::vector<ToggleSpan> make_toggle_bounds(const TrackWindow& win,
@@ -194,12 +199,33 @@ public:
 private:
     friend TrackState build_track_state(const app::PreviewScene&, const TrackStateOptions&);
     friend void rebuild_overlay_fields(TrackState&, const app::PreviewScene&);
-    class FieldSweep;
 
     using Interval = std::pair<double, double>;  // [start, end] seconds
     struct LaneInterval {
         Interval span;
         Pad pad;
+    };
+
+    // Which fill_lane_ interval lights the lane at a time; the rule is in
+    // LaneSweep::at. Holds its own copy of the spans, so a copied TrackState
+    // reads its own.
+    class LaneSweep {
+    public:
+        LaneSweep() = default;
+        explicit LaneSweep(std::vector<Interval> ivs) : ivs_(std::move(ivs)) {}
+        std::optional<size_t> at(double t) const;  // index into fill_lane_
+
+    private:
+        std::vector<Interval> ivs_;
+    };
+
+    // Every span field's lookup, built from the final intervals by
+    // sweep_span_fields. The one answer to "the state of a span at t":
+    // set_span_fields reads it for the instants and for synthesize.
+    struct FieldSweep {
+        SpanSweep overdrive, solo, fill, fill_taken, sp_active, fill_lane;
+        std::array<SpanSweep, kPads.size()> drum_lane;  // indexed by Pad
+        LaneSweep lane_pad;
     };
 
     std::vector<TrackInstant> instants_;
@@ -214,6 +240,7 @@ private:
     std::array<std::vector<Interval>, kPads.size()> drum_lane_;
     std::vector<LaneInterval> fill_lane_;
     std::vector<Interval> fill_lane_ivs_;  // fill_lane_'s spans alone, built once
+    FieldSweep sweep_;
 
     // The overlay's intervals (fill, fill_taken, sp_active, fill_lane), cleared
     // and rebuilt from the scene's fill states and activations.
@@ -222,12 +249,11 @@ private:
     // instant only an old overlay made), then sweep every span field.
     // Only rebuild_overlay_fields calls it; build_track_state goes through that.
     void merge_overlay_edges();
-    // Every instant's span fields from the intervals, in one sweep.
+    // Build sweep_ from the intervals, then set every instant's span fields
+    // from it.
     void sweep_span_fields();
-
-    // The state of every span at t, by the same sweep sweep_span_fields runs,
-    // asked once. window() uses it for the empty-window fallback.
-    TrackInstant synthesize(double t) const;
+    // An instant's span fields at its own time, from sweep_.
+    void set_span_fields(TrackInstant& inst) const;
 
     // The first instant with t > near_s (Onyx's zoomMap's lower bound).
     std::vector<TrackInstant>::const_iterator first_after(double near_s) const;
