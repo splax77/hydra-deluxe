@@ -203,7 +203,9 @@ You can mix them: `charter:hoph2o stars:7`. `squeeze<N` means the same as `squee
 
 `stars:` and the squeeze filters only look at current results. A song that is `Not analyzed`, `Stale` or `Can't analyze` never matches them. A filter Hydra Deluxe can't read, like `stars:9` or `squeeze=20`, shows a short note under the search box and is left out of the search.
 
-While you search for words and the `Album`, `Charter` or `Folder` column is hidden, each row gets a second line. When the `Folder` or `Charter` column is hidden, the line under the title shows the song's folder. When the search matched the charter instead, and the `Charter` column is hidden, it reads `charted by` and the charter's name. When the `Album` column is hidden, the line under the artist shows the song's album, so with the song panel open you can still see an album your search matched. The matched text is highlighted in gold there too. Without a search, every row stays one line tall.
+While the `Album` column is hidden, every row is two lines tall and shows the song's album under the artist, whether you search or not. So with the song panel open you still see each song's album. A song with no album leaves that line empty. If you also hide `Artist`, the album has nowhere to go and is not shown.
+
+The line under the title appears only while you search for words and the `Folder` or `Charter` column is hidden. It shows the song's folder. When the search matched the charter instead, and the `Charter` column is hidden, it reads `charted by` and the charter's name. Text your search matched is highlighted in gold on both lines.
 
 Under the table, a search shows a `Clear search` button. When a match came from a column that is hidden, a note there says so, like `Matched on folder.` or `Matched on album.`
 
