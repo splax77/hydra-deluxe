@@ -1015,7 +1015,7 @@ What stays. D257 calls 1 to 5 stand, and so does the colour half of call 6: `bad
 
 The plan asked three questions, and the user answered all three in chat on 2026-10-24: "approve with recommended."
 
-1. **Saved column state.** A saved `hydra_ui.ini` matches each column by its ID, and the IDs are the `LibrarySort` values. Every existing ID keeps its value and Album takes the next free one, `LibrarySort::Album` = 5, at position 2. So a player's hidden columns and sort survive the update, and Album starts visible.
+1. **Saved column state.** Every existing `LibrarySort` value keeps its number and Album takes the next free one, `LibrarySort::Album` = 5, at position 2. The plan's reason was wrong: a saved `hydra_ui.ini` matches each column by a hash of its header label (`TableSetupColumn`, `third_party/imgui/imgui_tables.cpp` line 1752), not by the user ID, so inserting Album could never move a player's hidden columns or sort. The IDs were kept anyway because they keep the sort round trip clean. The real-app check on the user's library copy (2026-10-24) confirmed the saved Title sort came through and Album started visible.
 2. **The song panel.** Album hides and comes back with the panel, beside Charter and Folder. The narrow view keeps Title, Artist and Best path, and the album moves to the second line.
 3. **Sorting.** The Album header sorts like every other name column. This replaces the "sorting by album" half of call 8.
 
