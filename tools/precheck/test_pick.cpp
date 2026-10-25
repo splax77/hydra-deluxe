@@ -356,12 +356,33 @@ private:
         out_.callers.push_back({key, callee, caller, selector});
     }
 
+    // The headers with `callee(` in them that a changed .cpp includes
+    // directly or, when none of those has it, the nearest ones further down
+    // its include chain: a .cpp need not include the header that declares
+    // what it defines. The seen set stops include cycles.
+    std::vector<std::string> declaring_headers(const std::string& cpp, const std::string& callee) {
+        std::vector<std::string> found;
+        std::set<std::string> seen;
+        std::vector<std::string> level = tip_includes_.included_by(cpp);
+        while (found.empty() && !level.empty()) {
+            std::vector<std::string> next;
+            for (const std::string& h : level) {
+                if (!seen.insert(h).second) continue;
+                if (!is_cpp(h) || is_cpp_implementation(h)) continue;
+                if (!paren_hits(views_.get(range_.tip, h).code, callee).empty()) found.push_back(h);
+                for (const std::string& inc : tip_includes_.included_by(h)) next.push_back(inc);
+            }
+            level = next;
+        }
+        return found;
+    }
+
     // The files whose calls to `callee` can reach the changed function (the
     // user's ruling in the plan's "User decisions"): the files it changed in,
     // and every file that includes a header declaring it, through any chain
     // of includes. A name changed only in a .cpp has no declaring header, so
     // only its own file counts. A declaring header is a changed header
-    // itself, or a header a changed .cpp includes directly that has `callee(`.
+    // itself, or one declaring_headers finds for a changed .cpp.
     std::set<std::string> caller_scope(const std::string& callee) {
         const std::set<std::string>& own = name_files_[callee];
         std::set<std::string> scope = own;
@@ -369,10 +390,7 @@ private:
         for (const std::string& f : own) {
             if (!is_cpp_implementation(f)) todo.push_back(f);
             else
-                for (const std::string& h : tip_includes_.included_by(f))
-                    if (is_cpp(h) && !is_cpp_implementation(h) &&
-                        !paren_hits(views_.get(range_.tip, h).code, callee).empty())
-                        todo.push_back(h);
+                for (const std::string& h : declaring_headers(f, callee)) todo.push_back(h);
         }
         std::set<std::string> seen(todo.begin(), todo.end());
         while (!todo.empty()) {

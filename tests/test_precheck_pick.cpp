@@ -235,6 +235,22 @@ TEST_CASE("precheck pick (a): a caller that includes the declaring header throug
     CHECK(reasons_of(p, "tests/test_mode_b.cpp") == std::vector<std::string>{"Mode::B"});
 }
 
+TEST_CASE("precheck pick (a): a .cpp that reaches its declaring header only through another header still has its callers") {
+    const std::string one_cpp = "#include \"mid.h\"\nvoid run() {\n    int x = 1;\n}\n";
+    PickRepo fx("precheck_pick_a_indirect",
+                {{"src/a/one.h", "#pragma once\nenum class Mode { A, B };\nvoid run();\n"},
+                 {"src/a/mid.h", "#pragma once\n#include \"one.h\"\n"},
+                 {"src/a/one.cpp", one_cpp},
+                 {"src/a/user.cpp",
+                  "#include \"one.h\"\nvoid use(Mode m) {\n    if (m == Mode::B) {\n        run();\n    }\n}\n"},
+                 {"tests/test_mode_b.cpp", "int mb() { return static_cast<int>(Mode::B); }\n"}});
+    std::string tip = one_cpp;
+    tip.replace(tip.find("int x = 1;"), 10, "int x = 3;");
+    const TestPick p = fx.pick({{"src/a/one.cpp", tip}});
+    REQUIRE_FALSE(p.whole_suite);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_mode_b.cpp"});
+}
+
 TEST_CASE("precheck pick (a): a function only in a .cpp has callers only in that file") {
     const std::string here =
         "enum class Mode { A, B };\nstatic void helper() {\n    int x = 1;\n}\n"
