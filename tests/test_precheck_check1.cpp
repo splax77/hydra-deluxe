@@ -32,7 +32,7 @@ using namespace precheck_fixture;
 
 namespace {
 
-// The body tools/test_derive_once_precheck.ps1's fixture gives sum_values,
+// The body the precheck self-test's fixture (tests/test_precheck.cpp) gives sum_values,
 // written with the names `total`, `values` and `v` swapped for others.
 std::string summing(const std::string& fn, const std::string& list, const std::string& acc,
                     const std::string& item) {
