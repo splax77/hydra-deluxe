@@ -28,18 +28,41 @@ namespace hydra::ui {
 enum class StatusChip { All, NotAnalyzed, Stale, Analyzed, CantAnalyze };
 
 // The table's sortable columns. The values are the columns' user IDs in the
-// table, so a sort spec maps straight back to one of these.
-enum class LibrarySort { Title = 0, Artist = 1, Charter = 2, Folder = 3, BestPath = 4 };
+// table, so a sort spec maps straight back to one of these. hydra_ui.ini saves
+// each column's hidden state and the sort under this ID, so a value never
+// changes once shipped and a new column takes the next free one.
+enum class LibrarySort { Title = 0, Artist = 1, Charter = 2, Folder = 3, BestPath = 4, Album = 5 };
 
-// The table's columns, by index: each column sits at its LibrarySort value.
-// The GUI tests read them too.
-inline constexpr int kColumnTitle = static_cast<int>(LibrarySort::Title);
-inline constexpr int kColumnArtist = static_cast<int>(LibrarySort::Artist);
-inline constexpr int kColumnCharter = static_cast<int>(LibrarySort::Charter);
-inline constexpr int kColumnFolder = static_cast<int>(LibrarySort::Folder);
-inline constexpr int kColumnBestPath = static_cast<int>(LibrarySort::BestPath);
-// How many columns the table has: one per LibrarySort value.
+// The table's columns, by position, left to right. A column's position is not
+// its LibrarySort value; sort_of and column_of below are the one place the two
+// lists meet. The GUI tests read these too.
+inline constexpr int kColumnTitle = 0;
+inline constexpr int kColumnArtist = 1;
+inline constexpr int kColumnAlbum = 2;
+inline constexpr int kColumnCharter = 3;
+inline constexpr int kColumnFolder = 4;
+inline constexpr int kColumnBestPath = 5;
+// How many columns the table has. Best path is the last one.
 inline constexpr int kLibraryColumnCount = kColumnBestPath + 1;
+
+// The LibrarySort value (the column's user ID) of the column at `column`.
+constexpr LibrarySort sort_of(int column) {
+    switch (column) {
+        case kColumnArtist: return LibrarySort::Artist;
+        case kColumnAlbum: return LibrarySort::Album;
+        case kColumnCharter: return LibrarySort::Charter;
+        case kColumnFolder: return LibrarySort::Folder;
+        case kColumnBestPath: return LibrarySort::BestPath;
+        default: return LibrarySort::Title;
+    }
+}
+
+// The position of the column whose user ID is `sort`: the inverse of sort_of.
+constexpr int column_of(LibrarySort sort) {
+    for (int c = 0; c < kLibraryColumnCount; ++c)
+        if (sort_of(c) == sort) return c;
+    return kColumnTitle;
+}
 
 // The part of a scanned chart's row (store::ChartLibraryEntry) the library
 // keeps for every chart: its hash, its file and its folder. The rest of the
@@ -61,7 +84,7 @@ inline const std::string& row_key(const store::ChartLibraryEntry& row) { return 
 // One scanned chart as the table shows it.
 struct LibraryRow {
     LibraryChart entry;
-    std::string title, artist, charter;   // colour tags removed: what the table draws
+    std::string title, artist, album, charter;  // colour tags removed: what the table draws
     app::SearchableRow searchable;        // folded stored text, for matching
     // What each column before Best path sorts on, by column index: the
     // column's shown text (library_cell_text), folded. The Library sorts on

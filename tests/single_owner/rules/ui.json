@@ -1444,31 +1444,33 @@
       "note": "The library's floor beside the panel, or the panel's floor taken off the room. The Paths tests' check that the panel sits at its own minimum is a different question. Decided by: audit finding 120; phase 6 task J4-3 (D53, D54)"
     },
     {
-      "question": "Which column is Best path, and how many columns are there?",
-      "owner": "kColumnTitle to kColumnBestPath and kLibraryColumnCount in src/ui/library_model.h",
+      "question": "Which position does each of the library's six columns sit at, which saved ID does it carry, and how many columns are there?",
+      "owner": "kColumnTitle to kColumnBestPath, kLibraryColumnCount, sort_of and column_of in src/ui/library_model.h",
       "owner_file": "src/ui/library_model.h",
       "owner_symbol": "kColumnTitle",
       "date": "2026-10-05",
       "decision": "D53, D54",
       "added_by": "J4-3",
-      "pattern": "best = 4;|BeginTable\\(\"##librarytable\", 5|constexpr int kColumn\\w+ = \\d",
+      "pattern": "best = [45];|BeginTable\\(\"##librarytable\", \\d|constexpr int kColumn\\w+ = \\d",
       "owner_files": [
         "src/ui/library_model.h"
       ],
       "must_match": [
-        "const int best = 4;  // Best path's column index",
-        "if (!ImGui::BeginTable(\"##librarytable\", 5, flags, size)) return used;",
-        "constexpr int kColumnBestPath = 4;"
+        "const int best = 5;  // Best path's column index",
+        "if (!ImGui::BeginTable(\"##librarytable\", 6, flags, size)) return used;",
+        "constexpr int kColumnAlbum = 2;"
       ],
       "must_not_match": [
         "const int best = hydra::ui::kColumnBestPath;",
-        "if (!ImGui::BeginTable(\"##librarytable\", kLibraryColumnCount, flags, size)) return used;"
+        "if (!ImGui::BeginTable(\"##librarytable\", kLibraryColumnCount, flags, size)) return used;",
+        "setup_column(columns[kColumnAlbum], layout, kColumnAlbum, 0, user_id(kColumnAlbum));",
+        "const int column = column_of(sort_column_);"
       ],
       "scope": [
         "src",
         "tests"
       ],
-      "note": "Decided by: audit finding 297; phase 6 task J4-3 (D53, D54)"
+      "note": "A column's position and its saved ID (its LibrarySort value, which hydra_ui.ini keys the column's state by) are two lists; sort_of and column_of are the one place they meet, so no other file casts one to the other. Decided by: audit finding 297; phase 6 task J4-3 (D53, D54); album task ALB-3 (the user kept the saved IDs, 2026-10-24)"
     },
     {
       "question": "Is a job old enough, with a known rate, to show its time left, and in what words?",
