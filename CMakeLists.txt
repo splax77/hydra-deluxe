@@ -706,6 +706,7 @@ add_library(hydra_precheck_lib STATIC
     tools/precheck/check_1.cpp
     tools/precheck/check_2.cpp
     tools/precheck/check_3.cpp
+    tools/precheck/decisions.cpp
     tools/precheck/check_4.cpp
     tools/precheck/check_5.cpp
     tools/precheck/code_mask.cpp
