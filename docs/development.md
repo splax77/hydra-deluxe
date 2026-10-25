@@ -469,8 +469,10 @@ preset and writes the coverage report (see "The coverage report" above). It
 never fails a run over a low number. Its proving run (run 38083092803, on
 2026-10-10) took 11.5 minutes.
 
-Another job runs the tool tests above with no C++ build. It
-checks out the whole history, because the precheck self-test checks two real
+Another job runs the Python tool tests above with no C++ build. The main
+job runs the mutation probe's self-test after it builds `hydra_tests`, because
+that self-test needs `hydra_precheck.exe`. The main job checks out the whole
+history, because the precheck self-test in `hydra_tests` checks two real
 commit ranges and skips them in a shallow clone.
 
 One slice of the tests is left out on GitHub: the one that opens the real
