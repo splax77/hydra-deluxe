@@ -530,6 +530,20 @@ void test_library_search(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(count_of("Vector"), (size_t)1);
     IM_CHECK_EQ(count_of(h.app->library_row_at(0).entry.rootfolder), (size_t)1);
     IM_CHECK(on_screen(h, "Matched on album."));
+    // The album sits in the Artist cell: the frame's text runs title, artist,
+    // album line, then the Folder column.
+    {
+        const std::string all = visible_text(h);
+        const hydra::ui::LibraryRow& doctor = h.app->library_row_at(0);
+        const size_t title_at = all.find(doctor.title);
+        const size_t artist_at = all.find(doctor.artist, title_at);
+        const size_t album_at = all.find("Vector", artist_at);
+        const size_t folder_at = all.find(doctor.entry.rootfolder, artist_at);
+        IM_CHECK(title_at != std::string::npos && artist_at != std::string::npos);
+        IM_CHECK(album_at != std::string::npos && folder_at != std::string::npos);
+        IM_CHECK_LT(artist_at, album_at);
+        IM_CHECK_LT(album_at, folder_at);
+    }
     // No search: one line again.
     ctx->ItemInputValue("**/##search", "");
     IM_CHECK(wait_until(ctx, [&] { return h.app->search.empty(); }, 5));
