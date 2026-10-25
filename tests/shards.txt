@@ -9,12 +9,10 @@
 # entries together run every test case exactly once. It also fails when the
 # exe holds no case from a test file in the tree, so a stale build is caught.
 #
-# Balanced on 2026-10-25 for docs/superpowers/plans/2026-10-24-asan-ci-speed.md
-# (Task 2), from local AddressSanitizer per-case times (main b6703774, and
-# 8ac67b38 for test_track_state.cpp), CI shard times of run 40161406164 and
-# local normal-build times of the moved files. Predicted local ASan seconds:
-# single_owner 52.6, track_state 60.1, app_store 46.6, rest 61.9. The names
-# are history; a slice holds whatever files balance it.
+# The slices are balanced for the AddressSanitizer CI job, where four entries
+# run on four cores. The per-file times they rest on are in
+# docs/superpowers/plans/2026-10-24-asan-ci-speed.md (Task 2). A slice name is
+# only a label; a slice holds whatever files balance it.
 
 single_owner *single_owner*,*test_library_jobs.cpp,*test_replay_windows.cpp,*test_precheck_git.cpp
 track_state *test_track_state.cpp,*test_preview_controller.cpp,*test_replay.cpp,*test_precheck.cpp
