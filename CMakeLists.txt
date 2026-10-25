@@ -692,6 +692,37 @@ target_compile_definitions(hydra_tests PRIVATE
     HYDRA_FILLCOMPARE_EXE="$<TARGET_FILE:hydra_fillcompare>"
 )
 
+# ---- hydra_precheck: the derive-once precheck (a developer tool) ---------
+# It reads a git range and lists what a derive-once reviewer should look at
+# (docs/agents/derive-once-review.md). Everything but main.cpp is a library,
+# so tests/test_precheck_git.cpp calls the same code the exe runs, and the
+# tests also run the exe itself, so building the tests builds it first.
+add_library(hydra_precheck_lib STATIC
+    tools/precheck/git_text.cpp
+    tools/precheck/range.cpp
+    tools/precheck/items.cpp
+    tools/precheck/checks.cpp
+    tools/precheck/check_1.cpp
+    tools/precheck/check_2.cpp
+    tools/precheck/check_3.cpp
+    tools/precheck/check_4.cpp
+    tools/precheck/check_5.cpp
+    tools/precheck/code_mask.cpp
+)
+# Callers include its headers as "precheck/<name>.h".
+target_include_directories(hydra_precheck_lib PUBLIC tools tests third_party/json)
+target_link_libraries(hydra_precheck_lib PUBLIC hydra_core PRIVATE hydra_warnings)
+# tests/source_tree.h names the folders the scan walks and needs this defined;
+# the precheck reads the repo it is given through git, never this folder.
+target_compile_definitions(hydra_precheck_lib PRIVATE HYDRA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+add_executable(hydra_precheck tools/precheck/main.cpp)
+target_link_libraries(hydra_precheck PRIVATE hydra_precheck_lib hydra_warnings)
+target_link_libraries(hydra_tests PRIVATE hydra_precheck_lib)
+add_dependencies(hydra_tests hydra_precheck)
+target_compile_definitions(hydra_tests PRIVATE
+    HYDRA_PRECHECK_EXE="$<TARGET_FILE:hydra_precheck>"
+)
+
 # ---- hydra_replay_json: the dump/target JSON shapes (tools only) ----------
 # hydra_replay writes and reads these, and tests/test_replay pins them. The
 # app never reads a path as JSON, so this stays out of hydra_core, and core/
