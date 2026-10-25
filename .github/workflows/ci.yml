@@ -247,8 +247,12 @@ jobs:
       COVERAGE_SESSION: hydra_ci
       COVERAGE_OUT: ${{ github.workspace }}\coverage-out
     steps:
+      # The full history, for the precheck self-test's two real commit ranges;
+      # the comment on build-and-test's checkout says why.
       - name: Check out the code
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Build hydra_tests and hydra_uitest
         timeout-minutes: 10
@@ -390,10 +394,24 @@ jobs:
       - name: Check out the code
         uses: actions/checkout@v7
 
-      - name: Install pytest
-        run: py -m pip install pytest
+      # tools/hydra_ui_mcp.py, which its test imports, needs the mcp package;
+      # "Live mode and the MCP server" in docs/agents/ui-testing.md says so.
+      - name: Install pytest and mcp
+        run: py -m pip install pytest mcp
 
-      # Only these two paths: tools\ch_probe\experiments holds scripts that
-      # pytest would collect and that drive the real game.
+      # Only these named paths: tools\ch_probe\experiments holds scripts that
+      # pytest would collect and that drive the real game. This job builds no
+      # exe, so the real-exe tests in tools/test_hydra_ui_mcp.py skip here;
+      # why_no_live() in that file decides when they run.
       - name: Run the Python tool tests
-        run: py -m pytest tools/ch_probe/tests tools/test_compare_db.py -q
+        run: py -m pytest tools/ch_probe/tests tools/test_compare_db.py tools/test_hydra_ui_mcp.py -q
+
+      # Self-test of tools/ci_build_folder.ps1, the script behind the saved
+      # build folder. Its header says what it checks.
+      - name: Run the build folder self-test
+        run: pwsh -NoProfile -File tools/test_ci_build_folder.ps1
+
+      # Self-test of tools/release_sign.ps1 and tools/release_keygen.ps1. It
+      # signs with the committed test key only. Its header says what it checks.
+      - name: Run the release signing self-test
+        run: pwsh -NoProfile -File tools/test_release_sign.ps1
