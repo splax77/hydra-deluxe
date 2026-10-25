@@ -42,7 +42,7 @@ The sections below explain each difference.
 
 ## What you see
 
-**The library is one table you scroll and sort by any column.** The search box takes quoted phrases and ignores accents and colour tags. It also takes filters: `artist:`, `album:`, `charter:`, `folder:`, `title:`, `stars:7` and `squeeze<=20`. The `Search tips` link under the box lists every filter with an example. Chips above the table filter by state, with a count on each: `All`, `Not analyzed`, `Stale`, `Analyzed` and `Can't analyze`.
+**The library is one table you scroll and sort by any column.** The search box takes quoted phrases and ignores accents and colour tags. It also takes filters: `artist:`, `album:`, `charter:`, `folder:`, `title:`, `stars:7`, `squeeze<=20` and `squeeze>20`. The `Search tips` link under the box lists every filter with an example. Chips above the table filter by state, with a count on each: `All`, `Not analyzed`, `Stale`, `Analyzed` and `Can't analyze`.
 
 **One button holds the analysis settings.** The toolbar's `Analysis settings` button names the settings you've changed from their defaults, or reads `defaults`. Click it to open a panel with all eight settings. A change applies as you make it. `Reset to defaults` puts all eight back in one click and leaves your song folders alone.
 
@@ -76,7 +76,7 @@ This version's parser started as a port of public Hydra 1.x, checked chart by ch
 
 The hit window affects only the display, never the path search. It is 85 ms per side, which is Clone Hero's Pro Drums window. It sets the squeeze ratings and the report's difficulty tiers.
 
-The early fill window has two sides. Each is a fixed number in Hydra Deluxe, not a setting. The first side steers the path search. When your Star Power comes ready after a fill's deadline, you can still summon the fill by hitting the activation early, by up to 85 ms. The search keeps every activation that needs 85 ms or less and drops the rest. The second side only marks paths. When Star Power comes ready before the deadline with less than 60 ms to spare, the activation still shows `E`. Nothing on it needs timing.
+The early fill window has two sides. Each is a fixed number in Hydra Deluxe, not a setting. The first side steers the path search. When your Star Power comes ready after a fill's deadline, you can still summon the fill by hitting the activation early, by up to 85 ms. The search keeps every activation that needs 85 ms or less and drops the rest. The second side only marks paths. When Star Power comes ready before the deadline with less than 60 ms to spare, the activation still shows `E` and an `early fill` badge with a figure below 0. Nothing on it needs timing.
 
 ## Things only this version can do
 
