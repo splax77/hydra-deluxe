@@ -729,6 +729,7 @@ add_library(hydra_precheck_lib STATIC
     tools/precheck/records.cpp
     tools/precheck/check_rows.cpp
     tools/precheck/changed_names.cpp
+    tools/precheck/test_pick.cpp
     # The single-owner scan's engine, the one reader of the scan rows. It is
     # compiled here only; hydra_tests' scan gets it by linking this library.
     tests/single_owner/engine.cpp

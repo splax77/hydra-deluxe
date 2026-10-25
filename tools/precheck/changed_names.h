@@ -30,6 +30,9 @@ const char* kind_word(NameKind kind);
 struct ChangedName {
     std::string name;  // a plain name, or Enum::Value for an enumerator
     NameKind kind = NameKind::Body;
+    // A function whose body sits directly inside a type's block (an inline
+    // member). Only set for a body-reached name; the type is the key then.
+    bool member = false;
 };
 
 // The names lines `lines` (1-based, in view's numbering) of a C++ file

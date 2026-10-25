@@ -254,15 +254,16 @@ private:
     std::unordered_map<std::string, size_t> index_;
     std::unordered_map<size_t, Head> heads_;
 
-    void add(const std::string& name, NameKind kind) {
+    void add(const std::string& name, NameKind kind, bool member = false) {
         if (name.empty()) return;
         const auto it = index_.find(name);
         if (it != index_.end()) {
             out_[it->second].kind = std::min(out_[it->second].kind, kind);
+            out_[it->second].member = out_[it->second].member && member;
             return;
         }
         index_[name] = out_.size();
-        out_.push_back({name, kind});
+        out_.push_back({name, kind, member});
     }
 
     // The offset of line n's first non-blank code character, or npos when
@@ -302,22 +303,7 @@ private:
         return it->second;
     }
 
-    // The innermost "{" whose block holds offset p (its own "}" included),
-    // or kTop.
-    size_t innermost(size_t p) const {
-        size_t o = Braces::kTop;
-        for (;;) {
-            size_t inner = Braces::kTop;
-            for (size_t c : braces_.children(o)) {
-                if (c >= p) break;
-                inner = c;
-            }
-            if (inner == Braces::kTop) return o;
-            const std::optional<size_t> close = braces_.close(inner, std::string::npos);
-            if (close && *close < p) return o;
-            o = inner;
-        }
-    }
+    size_t innermost(size_t p) const { return braces_.innermost(p); }
 
     // Rule 1: the name of every enclosing block's head, up to the first
     // namespace.
@@ -325,7 +311,10 @@ private:
         for (size_t o = innermost(p); o != Braces::kTop; o = braces_.parent(o)) {
             const Head& h = head_of(o);
             if (h.kind == HeadKind::Namespace) return;
-            add(h.name, h.kind == HeadKind::Constant ? NameKind::Value : NameKind::Body);
+            const size_t outer = braces_.parent(o);
+            const bool member =
+                h.kind == HeadKind::Function && outer != Braces::kTop && head_of(outer).kind == HeadKind::Type;
+            add(h.name, h.kind == HeadKind::Constant ? NameKind::Value : NameKind::Body, member);
         }
     }
 

@@ -28,6 +28,21 @@ size_t Braces::parent(size_t open) const {
     return it == parent_.end() ? kTop : it->second;
 }
 
+size_t Braces::innermost(size_t p) const {
+    size_t o = kTop;
+    for (;;) {
+        size_t inner = kTop;
+        for (size_t c : children(o)) {
+            if (c >= p) break;
+            inner = c;
+        }
+        if (inner == kTop) return o;
+        const std::optional<size_t> end = close(inner, std::string::npos);
+        if (end && *end < p) return o;
+        o = inner;
+    }
+}
+
 const std::vector<size_t>& Braces::children(size_t open) const {
     static const std::vector<size_t> none;
     const auto it = children_.find(open);
