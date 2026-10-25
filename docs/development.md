@@ -463,7 +463,8 @@ main job builds and runs `hydra_tests`. A second job, "GUI tests", builds
 time, so the run takes as long as the slower of the two, not both added up.
 Both jobs also run once a night, from a cold build.
 
-The `asan` job builds the same tests with the `asan` preset and runs them (see
+The `asan` job builds the same tests with the `asan-ninja` preset (the `asan`
+build again, through Ninja and the sccache compiler cache) and runs them (see
 "The AddressSanitizer build" above). Any memory error it finds fails the run.
 It runs once a night and when someone starts the workflow by hand, not on
 every push: its first run, on 2026-10-10, took 20m41s against 6m16s for the
