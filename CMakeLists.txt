@@ -145,8 +145,10 @@ endif()
 # Opus's safety checks (OPUS_HARDENING) store __FILE__ for their error message,
 # which put the builder's folder path into the shipped Hydra.exe 28 times.
 # /d1trimfile strips the prefix (MSVC 16.4+); the checks themselves stay on.
+# Spelled with "-": sccache reads an unknown "/" option as a second input file
+# and refuses to cache the compile (mozilla/sccache#1899). cl.exe reads both.
 file(TO_NATIVE_PATH "${CMAKE_SOURCE_DIR}/" HYDRA_SOURCE_PREFIX)
-add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/d1trimfile:${HYDRA_SOURCE_PREFIX}>)
+add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-d1trimfile:${HYDRA_SOURCE_PREFIX}>)
 
 # Strict flags for our own code, applied via this interface target; third-party
 # gets relaxed warnings so a vendor update never turns into a wall of warnings.
