@@ -713,6 +713,7 @@ add_library(hydra_precheck_lib STATIC
     tools/precheck/views.cpp
     tools/precheck/braces.cpp
     tools/precheck/definitions.cpp
+    tools/precheck/records.cpp
     tools/precheck/check_rows.cpp
     # The single-owner scan's engine, the one reader of the scan rows. It is
     # compiled here only; hydra_tests' scan gets it by linking this library.
