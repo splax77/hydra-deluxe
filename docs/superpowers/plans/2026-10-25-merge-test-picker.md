@@ -8,6 +8,8 @@ The user's words: "Approved with the recommended answers: Q1 30, Q2 40, Q3 20, Q
 
 Q1: a name mentioned by more than 30 test files picks nothing by itself. Q2: more than 40 picked test files runs the whole suite. Q3: a changed header with more than 20 direct includers runs the whole suite. Q4: one level of callers, plus the `A::B` selector values on the call line or its nearest `if`, `else if` or `case` line. Q5: C++ tests only in this build; the Python follow-up is not approved. Task 5 starts only after the hooks-from-scratch build's doc edits (its task T11) are on main.
 
+Later ruling, after TESTPICK-3's review found the plan's Step 3 and worked example disagree, in the user's words: "Keep it: a comment-only change picks the tests that name that function, but doesn't follow its callers." This overrides Step 4 for comment-only changes.
+
 ## What the user asked for
 
 "Plan a small tool that takes a merge range, finds every test file that names a function, type or constant the diff changed, and prints the -sf= filters. Briefs and merges use its output instead of a hand list."
