@@ -11,6 +11,7 @@
 #include "braces.h"
 #include "checks.h"
 #include "code_lexer.h"
+#include "core/strutil.h"
 #include "definitions.h"
 #include "records.h"
 #include "views.h"
@@ -30,11 +31,7 @@ const char* const kWhy =
     "a second home for an idea that already has one; name the concept it extends, or reuse it (derive-once "
     "review, step 8)";
 
-std::string fold(const std::string& s) {
-    std::string out = s;
-    for (char& c : out) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return out;
-}
+std::string fold(const std::string& s) { return hydra::to_lower_ascii(s); }
 
 struct Home {
     std::string file;
@@ -52,16 +49,16 @@ struct Record {
 // Every other home of one thing: "file:line, file:line", the first line in
 // each file, files in the order the script's Group-Object gave them.
 std::string other_homes(const std::vector<Home>& homes, const std::string& file) {
-    std::vector<std::string> files;
+    std::vector<std::string> names;
     std::map<std::string, int> first;
     for (const Home& h : homes) {
         if (h.file == file || first.count(h.file)) continue;
         first[h.file] = h.line;
-        files.push_back(h.file);
+        names.push_back(h.file);
     }
-    std::stable_sort(files.begin(), files.end(), text_before);
+    std::stable_sort(names.begin(), names.end(), text_before);
     std::string out;
-    for (const std::string& f : files) {
+    for (const std::string& f : names) {
         if (!out.empty()) out += ", ";
         out += f + ":" + std::to_string(first[f]);
     }
@@ -85,9 +82,7 @@ bool include_line(const std::string& code_line) {
     ++i;
     skip();
     static const std::string kWord = "include";
-    if (code_line.size() - i < kWord.size()) return false;
-    for (size_t k = 0; k < kWord.size(); ++k)
-        if (std::tolower(static_cast<unsigned char>(code_line[i + k])) != kWord[k]) return false;
+    if (!hydra::starts_with_ci(std::string_view(code_line).substr(i), kWord)) return false;
     const size_t after = i + kWord.size();
     return after == code_line.size() ||
            !(std::isalnum(static_cast<unsigned char>(code_line[after])) || code_line[after] == '_');

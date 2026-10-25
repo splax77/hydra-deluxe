@@ -17,12 +17,7 @@ namespace precheck {
 
 namespace {
 
-std::string trim(const std::string& s) {
-    const size_t b = s.find_first_not_of(" \t\r\n\f\v");
-    if (b == std::string::npos) return {};
-    const size_t e = s.find_last_not_of(" \t\r\n\f\v");
-    return s.substr(b, e - b + 1);
-}
+std::string trim(const std::string& s) { return hydra::trim(s); }
 
 // Group keys compare with case ignored, as PowerShell's Group-Object did.
 std::string fold(const std::string& s) { return hydra::to_lower_ascii(s); }

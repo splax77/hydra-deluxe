@@ -10,6 +10,7 @@
 #include <tuple>
 
 #include "core/strutil.h"
+#include "definitions.h"
 #include "json.hpp"
 #include "single_owner/engine.h"
 
@@ -236,21 +237,15 @@ RowRun& row_run(Context& ctx) {
     return *cached;
 }
 
-bool is_word_char(char c) {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
-}
-
 }  // namespace
 
 std::string row_kind(const std::string& file, const std::string& owner) {
     if (!test_file(file)) return "A";
     // The script matched the owner without regard to case; so does this.
-    std::string o = owner;
-    for (char& c : o)
-        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    const std::string o = hydra::to_lower_ascii(owner);
     if (o.find("tests/source_tree.h") != std::string::npos) return "E";
     for (size_t at = o.find("tests/"); at != std::string::npos; at = o.find("tests/", at + 1))
-        if (at == 0 || !is_word_char(o[at - 1])) return "C";
+        if (at == 0 || !word_char(o[at - 1])) return "C";
     return "B";
 }
 

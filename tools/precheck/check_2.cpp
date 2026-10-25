@@ -19,11 +19,6 @@ namespace precheck {
 
 namespace {
 
-bool word_char(char c) {
-    const unsigned char u = static_cast<unsigned char>(c);
-    return std::isalnum(u) || c == '_';
-}
-
 // One spelling: a line matches when `rx` finds a match whose character
 // before is not one of `not_after` (std::regex has no lookbehind), and, with
 // a context pattern, when that pattern is found within two lines either side.

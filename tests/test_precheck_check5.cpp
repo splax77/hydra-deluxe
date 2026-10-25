@@ -15,6 +15,7 @@
 #include "precheck/braces.h"
 #include "precheck/git_text.h"
 #include "precheck/records.h"
+#include "precheck_fixture.h"
 #include "temp_util.h"
 
 #ifndef HYDRA_PRECHECK_EXE
@@ -26,23 +27,10 @@ using namespace precheck;
 
 namespace {
 
-void write_file(const std::string& dir, const std::string& rel, const std::string& text) {
-    const std::string path = dir + "\\" + rel;
-    fs::create_directories(hydra::os_path(fs::path(hydra::os_path(path)).parent_path()));
-    testtemp::write_bytes(path, std::vector<uint8_t>(text.begin(), text.end()));
-}
-
-void fixture_git(const std::string& dir, std::vector<std::string> args) {
-    std::vector<std::string> full = {"-c", "user.name=precheck", "-c", "user.email=precheck@example.invalid",
-                                     "-c", "core.autocrlf=false"};
-    full.insert(full.end(), args.begin(), args.end());
-    run_git(dir, full);
-}
-
-void commit_all(const std::string& dir, const std::string& message) {
-    fixture_git(dir, {"add", "-A"});
-    fixture_git(dir, {"commit", "-q", "-m", message});
-}
+using precheck_fixture::commit_all;
+using precheck_fixture::exe_item_lines;
+using precheck_fixture::fixture_git;
+using precheck_fixture::write_fixture_file;
 
 // main holds the first homes; feature adds one second home per probe and the
 // near misses.
@@ -54,7 +42,7 @@ struct Fixture {
         fixture_git(dir, {"init", "-q", "-b", "main"});
         // Some of SongEntry's fields are declared in one comma list, which
         // must count as separate names.
-        write_file(dir, "src/core/old_types.h",
+        write_fixture_file(dir, "src/core/old_types.h",
                    "#pragma once\n#include <string>\n#include <utility>\n\nnamespace fx {\n\n"
                    "struct SongEntry {\n"
                    "    std::string title, artist;\n"
@@ -65,7 +53,7 @@ struct Fixture {
                    "struct Letters {\n    int alpha;\n    int beta;\n    int gamma;\n    int delta;\n};\n\n"
                    "enum class Verdict { Pass, Fail };\n\n"
                    "}  // namespace fx\n");
-        write_file(dir, "src/core/old_helpers.cpp",
+        write_fixture_file(dir, "src/core/old_helpers.cpp",
                    "#include \"core/old_types.h\"\n\nnamespace fx {\nnamespace {\n\n"
                    "std::string trim_label(const std::string& s) { return s; }\n\n"
                    "}  // namespace\n\n"
@@ -74,12 +62,12 @@ struct Fixture {
                    "const char* short_text() { return \"too short\"; }\n\n"
                    "}  // namespace fx\n");
         // A pair outside src/: not compared.
-        write_file(dir, "tests/strings_a.cpp", "const char* a() { return \"a sentence in two test files\"; }\n");
+        write_fixture_file(dir, "tests/strings_a.cpp", "const char* a() { return \"a sentence in two test files\"; }\n");
         commit_all(dir, "main");
         fixture_git(dir, {"checkout", "-q", "-b", "feature"});
         // LibraryRow shares four names with SongEntry: printed. Greek shares
         // three with Letters: not printed.
-        write_file(dir, "src/app/new_types.h",
+        write_fixture_file(dir, "src/app/new_types.h",
                    "#pragma once\n#include <string>\n#include <utility>\n\nnamespace fx {\n\n"
                    "struct LibraryRow {\n"
                    "    std::string title;\n"
@@ -92,7 +80,7 @@ struct Fixture {
                    "}  // namespace fx\n");
         // A short string, a string the other file has only in a comment and
         // the #include path both files write: not printed.
-        write_file(dir, "src/app/new_helpers.cpp",
+        write_fixture_file(dir, "src/app/new_helpers.cpp",
                    "#include \"core/old_types.h\"\n\nnamespace fx {\nnamespace {\n\n"
                    "std::string trim_label(const std::string& s) { return s + \" \"; }\n\n"
                    "}  // namespace\n\n"
@@ -100,27 +88,11 @@ struct Fixture {
                    "const char* brief_text() { return \"too short\"; }\n"
                    "const char* quoted_text() { return \"a comment quoting text\"; }\n\n"
                    "}  // namespace fx\n");
-        write_file(dir, "tests/strings_b.cpp", "const char* b() { return \"a sentence in two test files\"; }\n");
+        write_fixture_file(dir, "tests/strings_b.cpp", "const char* b() { return \"a sentence in two test files\"; }\n");
         commit_all(dir, "feature");
     }
     ~Fixture() { testtemp::remove_dir(dir); }
 };
-
-std::vector<std::string> item_lines(const std::string& repo) {
-    ChildProcess p({HYDRA_PRECHECK_EXE, "--repo", repo, "--range", "main...feature", "--disable", "1,2,3,4"});
-    const std::string out = p.read_all();
-    std::string err;
-    const int code = p.wait(err);
-    INFO(err);
-    CHECK(code == 0);
-    std::vector<std::string> lines;
-    std::istringstream in(out);
-    for (std::string l; std::getline(in, l);) {
-        if (!l.empty() && l.back() == '\r') l.pop_back();
-        if (l.size() > 2 && l[1] == ' ' && std::isupper(static_cast<unsigned char>(l[0]))) lines.push_back(l);
-    }
-    return lines;
-}
 
 std::vector<std::string> field_names(const std::string& code) {
     const Braces braces(code);
@@ -172,7 +144,7 @@ TEST_CASE("precheck record fields: comma lists, initialisers and arrays; not met
 
 TEST_CASE("precheck check 5: the four second homes print F with their wording, the near misses do not") {
     Fixture fx;
-    const std::vector<std::string> lines = item_lines(fx.dir);
+    const std::vector<std::string> lines = exe_item_lines(fx.dir, "1,2,3,4");
     INFO([&] {
         std::string all;
         for (const std::string& l : lines) all += l + "\n";
