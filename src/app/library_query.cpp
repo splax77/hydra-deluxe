@@ -11,7 +11,7 @@
 #include <string>
 #include <system_error>
 
-#include "core/model.h"    // timing_within_limit
+#include "core/model.h"    // timing_within_limit, timing_reaches_floor
 #include "core/stars.h"    // kMaxStars
 #include "core/strutil.h"  // lower_ascii, is_ascii_space, equals_ci, starts_with_ci
 #include "core/winstr.h"   // wide_to_utf8
@@ -27,8 +27,13 @@ constexpr size_t npos = std::string_view::npos;
 std::string stars_error() {
     return "stars: needs a number from 0 to " + std::to_string(kMaxStars);
 }
-constexpr const char* kSqueezeError =
-    "squeeze<= needs a number of milliseconds, like squeeze<=20";
+// The squeeze filter's bad-number sentence, naming the operator typed.
+std::string squeeze_number_error(std::string_view op) {
+    const std::string o(op);
+    return "squeeze" + o + " needs a number of milliseconds, like squeeze" + o + "20";
+}
+constexpr const char* kSqueezeOperatorError =
+    "squeeze takes <=, <, >= or >, like squeeze<=20";
 
 // ---- the characters the fold changes ------------------------------------------
 
@@ -246,16 +251,35 @@ void parse_stars(LibraryQuery& q, std::string_view value) {
     q.stars = n;
 }
 
-void parse_squeeze(LibraryQuery& q, std::string_view value) {
+// The characters that can make up a squeeze operator. A word that is
+// "squeeze" followed by a run of these is a squeeze filter, good or bad.
+constexpr std::string_view kSqueezeWord = "squeeze";
+constexpr std::string_view kSqueezeOperatorChars = "<>=:";
+
+// Reads squeeze<op><value>, where `op` is the whole run of operator
+// characters after "squeeze". <= and < set the limit, >= and > the floor;
+// any other run is an unknown operator.
+void parse_squeeze(LibraryQuery& q, std::string_view op, std::string_view value) {
+    const bool is_max = op == "<=" || op == "<";
+    const bool is_min = op == ">=" || op == ">";
+    if (!is_max && !is_min) {
+        add_error(q, kSqueezeOperatorError);
+        return;
+    }
     double ms = 0.0;
     const char* first = value.data();
     const char* last = value.data() + value.size();
     const auto [end, ec] = std::from_chars(first, last, ms);
     if (value.empty() || ec != std::errc{} || end != last || !std::isfinite(ms)) {
-        add_error(q, kSqueezeError);
+        add_error(q, squeeze_number_error(op));
         return;
     }
-    q.squeeze_max_ms = ms;
+    if (is_max) {
+        q.squeeze_max_ms = ms;
+    } else {
+        q.squeeze_min_ms = ms;
+        q.squeeze_min_strict = op == ">";
+    }
 }
 
 // ---- matching --------------------------------------------------------------
@@ -306,7 +330,7 @@ std::vector<FoldEntry> search_fold_table() {
 }
 
 bool LibraryQuery::empty() const {
-    return terms.empty() && !stars && !squeeze_max_ms;
+    return terms.empty() && !stars && !squeeze_max_ms && !squeeze_min_ms;
 }
 
 LibraryQuery parse_library_query(std::string_view text) {
@@ -330,12 +354,13 @@ LibraryQuery parse_library_query(std::string_view text) {
         const std::string_view word = text.substr(i, end - i);
         i = end;
 
-        if (starts_with_ci(word, "squeeze<=")) {
-            parse_squeeze(q, word.substr(9));
-            continue;
-        }
-        if (starts_with_ci(word, "squeeze<")) {
-            parse_squeeze(q, word.substr(8));
+        // squeeze directly followed by an operator character is a squeeze
+        // filter; plain "squeeze" and "squeezed" stay words.
+        if (starts_with_ci(word, kSqueezeWord) && word.size() > kSqueezeWord.size() &&
+            kSqueezeOperatorChars.find(word[kSqueezeWord.size()]) != npos) {
+            const std::string_view rest = word.substr(kSqueezeWord.size());
+            const size_t op_end = std::min(rest.find_first_not_of(kSqueezeOperatorChars), rest.size());
+            parse_squeeze(q, rest.substr(0, op_end), rest.substr(op_end));
             continue;
         }
 
@@ -382,13 +407,22 @@ std::string search_field(std::string_view song, std::string_view artist,
 }
 
 bool query_matches(const LibraryQuery& q, const SearchableRow& row, const RowFacts& facts) {
-    if (q.stars || q.squeeze_max_ms) {
+    if (q.stars || q.squeeze_max_ms || q.squeeze_min_ms) {
         if (!facts.stars) return false;  // a row with no facts matches no filter (facts_of)
         if (q.stars && *facts.stars != *q.stars) return false;
-        // A path that needs no timing (Path::needs_timing) passes any limit.
+        // A path that needs no timing (Path::needs_timing) passes any limit
+        // and reaches no floor: it has nothing to squeeze.
         if (q.squeeze_max_ms && facts.hardest_ms &&
             !timing_within_limit(*facts.hardest_ms, *q.squeeze_max_ms))
             return false;
+        if (q.squeeze_min_ms) {
+            if (!facts.hardest_ms) return false;
+            const bool above =
+                q.squeeze_min_strict
+                    ? !timing_within_limit(*facts.hardest_ms, *q.squeeze_min_ms)
+                    : timing_reaches_floor(*facts.hardest_ms, *q.squeeze_min_ms);
+            if (!above) return false;
+        }
     }
     for (const QueryTerm& term : q.terms)
         if (!term_matches(term, row)) return false;

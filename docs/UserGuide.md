@@ -193,10 +193,12 @@ Searching ignores case and accents, so `ALLISTER` finds Allister and `beyonce` f
 | `title:` | the title only | `title:everlong` finds Everlong |
 | `stars:N` | songs whose optimal path earns exactly N stars (0 to 7) | `stars:7` finds Burnout once it is analyzed |
 | `squeeze<=N` | songs whose optimal path's hardest squeeze or required early fill is N ms or less | `squeeze<=200` keeps Burnout (163 ms); `squeeze<=20` drops it |
+| `squeeze>N` | songs whose optimal path's hardest squeeze or required early fill is more than N ms | `squeeze>20` keeps Burnout (163 ms); `squeeze>163` drops it |
+| `squeeze>=N` | songs whose optimal path's hardest squeeze or required early fill is N ms or more | `squeeze>=163` keeps Burnout (163 ms); `squeeze>=200` drops it |
 
-You can mix them: `charter:hoph2o stars:7`. `squeeze<N` means the same as `squeeze<=N`: at most N. A path that needs no timing passes any squeeze limit.
+You can mix them: `charter:hoph2o stars:7`. `squeeze<N` means the same as `squeeze<=N`: at most N. A low and a high squeeze filter together give a range: `squeeze>=10 squeeze<=200` keeps Burnout. A path that needs no timing passes any `squeeze<=` limit and never matches `squeeze>` or `squeeze>=`, since it has nothing to squeeze.
 
-`stars:` and `squeeze<=` only look at current results. A song that is not analyzed, or whose result is `Stale`, never matches them. A filter Hydra Deluxe can't read, like `stars:9`, shows a short note under the search box and is left out of the search.
+`stars:` and the squeeze filters only look at current results. A song that is not analyzed, or whose result is `Stale`, never matches them. A filter Hydra Deluxe can't read, like `stars:9` or `squeeze=20`, shows a short note under the search box and is left out of the search.
 
 While you search for words and the `Folder` or `Charter` column is hidden, each row gets a second line under its title. That line shows the song's folder. When the search matched the charter instead, and the `Charter` column is hidden, the line reads `charted by` and the charter's name. The matched text is highlighted in gold there too.
 

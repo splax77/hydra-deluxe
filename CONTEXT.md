@@ -249,7 +249,10 @@ artist, charter or folder, in any order; `"quotes"` match a phrase, and
 `title:`, `artist:`, `charter:` and `folder:` limit a word or phrase to one
 field. `stars:N` (exactly N stars) and `squeeze<=N` (hardest squeeze or
 required early fill at most N ms; `squeeze<N` means the same) test the
-record's best path and only ever match ready rows. Matching
+record's best path and only ever match ready rows. `squeeze>N` and
+`squeeze>=N` are the floor side, above N or at least N; a floor and a limit
+together give a range, and a path that needs no timing reaches no floor. Any
+other operator after `squeeze` is an error, not a word. Matching
 folds case and accents away, so `beyonce` finds "Beyoncé", and ignores Clone
 Hero's rich-text tags.
 

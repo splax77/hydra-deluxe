@@ -127,7 +127,7 @@ void render_search_box(AppState& app) {
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextColored(kNewSongColor,
                        "Quotes match an exact phrase. Narrow with artist: charter: folder: "
-                       "stars:7 squeeze<=20");
+                       "stars:7 squeeze<=20 squeeze>20");
     for (const std::string& error : app.library.query().errors)
         ImGui::TextColored(kWarningColor, "%s", error.c_str());
     ImGui::PopTextWrapPos();
