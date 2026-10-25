@@ -80,6 +80,40 @@ void render_heading(AppState& app) {
     ImGui::TextColored(kNewSongColor, "%s", count.c_str());
 }
 
+// The popup's two columns, laid out by the width rule (ui/column_widths.h).
+// The key never cuts; the meaning, the one text column, takes all the room the
+// key leaves and wraps inside it.
+constexpr size_t kTipKeyColumn = 0;
+constexpr size_t kTipMeaningColumn = 1;
+
+std::vector<ColumnSpec> search_tips_column_specs() {
+    std::vector<ColumnSpec> specs = {
+        {"Key", false, 0.0f, measure_in_role(TextRole::Notation)},
+        {"What it does", true, 0.0f, measure_in_role(TextRole::Label), 100}};
+    const WidthOf label = measure_in_role(TextRole::Label);
+    for (ColumnSpec& spec : specs) spec.header_width_of = label;
+    return specs;
+}
+
+// Column `c`'s text in a tip's row, the text its cell draws.
+std::string search_tip_cell(const app::SearchTip& tip, size_t c) {
+    return std::string(c == kTipKeyColumn ? tip.example : tip.meaning);
+}
+
+// How tall each tip's meaning is once it wraps at the width the rule gave
+// that column, for table_outer_height.
+std::vector<float> search_tip_meaning_heights(const std::vector<app::SearchTip>& tips,
+                                              const ColumnLayout& layout) {
+    ScopedFont font(TextRole::Label);
+    std::vector<float> heights;
+    heights.reserve(tips.size());
+    for (const app::SearchTip& tip : tips)
+        heights.push_back(ImGui::CalcTextSize(search_tip_cell(tip, kTipMeaningColumn).c_str(),
+                                              nullptr, false, layout.widths[kTipMeaningColumn])
+                              .y);
+    return heights;
+}
+
 // The "Search tips" link after the line under the search box, and the popup
 // it opens: each of app::search_tips() on its own row, then
 // search_tips_note(). The popup starts at `line_left` under the link and is
@@ -107,21 +141,28 @@ void render_search_tips(float line_left, float pane_w) {
     ImGui::SetNextWindowPos(ImVec2(line_left, ImGui::GetItemRectMax().y), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(pane_w, 0.0f), ImGuiCond_Always);
     if (ImGui::BeginPopup(kPopup)) {
-        if (ImGui::BeginTable("##searchtipstable", 2, ImGuiTableFlags_SizingFixedFit)) {
-            ImGui::TableSetupColumn("key", ImGuiTableColumnFlags_WidthFixed);
-            ImGui::TableSetupColumn("meaning", ImGuiTableColumnFlags_WidthStretch);
-            for (const app::SearchTip& tip : app::search_tips()) {
+        const std::vector<app::SearchTip>& tips = app::search_tips();
+        if (begin_small_table(
+                "##searchtipstable", ImGuiTableFlags_None, search_tips_column_specs(), tips.size(),
+                [&](size_t r, size_t c) { return search_tip_cell(tips[r], c); },
+                [&](const ColumnLayout& layout) {
+                    return search_tip_meaning_heights(tips, layout);
+                })) {
+            {
+                ScopedFont font(TextRole::Label);
+                ImGui::TableHeadersRow();
+            }
+            for (const app::SearchTip& tip : tips) {
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
                 {
                     ScopedBaselineFont font(TextRole::Notation);
-                    ImGui::TextUnformatted(tip.example.data(),
-                                           tip.example.data() + tip.example.size());
+                    ImGui::TextUnformatted(search_tip_cell(tip, kTipKeyColumn).c_str());
                 }
                 ImGui::TableNextColumn();
                 ScopedFont font(TextRole::Label);
                 ImGui::PushTextWrapPos(0.0f);
-                ImGui::TextUnformatted(tip.meaning.data(), tip.meaning.data() + tip.meaning.size());
+                ImGui::TextUnformatted(search_tip_cell(tip, kTipMeaningColumn).c_str());
                 ImGui::PopTextWrapPos();
             }
             ImGui::EndTable();
