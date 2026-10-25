@@ -111,8 +111,10 @@ Range resolve_range(const Repo& repo, const std::string& spelling, bool whole_tr
             for (std::string h; in >> h;) parents.push_back(h);
             if (!parents.empty()) parents.erase(parents.begin());
         }
-        if (parents.size() >= 2) {
+        if (parents.size() >= 2 && !whole_tree) {
             // A merge commit: the same as "<first parent>...<second parent>".
+            // Under whole_tree the commit's own tree is what is scanned, so
+            // it stays the tip.
             r.left = parents[0];
             r.tip = parents[1];
             r.base = fork_point(repo, r.left, r.tip);

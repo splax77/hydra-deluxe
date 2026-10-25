@@ -47,7 +47,7 @@ struct Range {
     bool whole_tree = false;
     std::string tip;        // the range's last commit (a merge commit's second parent)
     std::string left;       // A of "A...B" or "A..B", or a merge commit's first parent (its decisions count too); empty otherwise
-    std::string base;       // what the range is diffed against; empty for a single non-merge commit with whole_tree
+    std::string base;       // what the range is diffed against; empty for a single commit with whole_tree
     std::string rules_rev;  // where the scan rows are read: rules_at, or the tip
 };
 
@@ -55,7 +55,7 @@ struct Range {
 // itself), or a single commit (over its first parent). A merge commit given
 // alone resolves as its first parent...its second parent: the branch it
 // merged, which is the range that was reviewed. An empty side means HEAD, as
-// in git. With whole_tree a single non-merge commit has no base. `rules_at`
+// in git. With whole_tree a single commit, merge or not, has no base and is its own tip. `rules_at`
 // empty means the tip.
 Range resolve_range(const Repo& repo, const std::string& spelling, bool whole_tree,
                     const std::string& rules_at);

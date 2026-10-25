@@ -126,6 +126,12 @@ TEST_CASE("precheck pick: a merge commit alone resolves to first parent...second
     CHECK(c.added.files() == std::vector<std::string>{"src/f.cpp"});
     CHECK(c.deleted.empty());
 
+    // With whole_tree the merge commit is its own tip, with no base.
+    const Range whole = resolve_range(repo, merge, true, "");
+    CHECK(whole.tip == merge);
+    CHECK(whole.base.empty());
+    CHECK(whole.rules_rev == merge);
+
     // A commit with one parent still resolves over that parent.
     const Range one = resolve_range(repo, "main^1", false, "");
     CHECK(one.tip == main2);
