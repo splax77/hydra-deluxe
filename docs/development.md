@@ -174,12 +174,18 @@ nothing else is needed. `hydra_tests` asserts structural invariants and
 lossless round-trips over that corpus. GUI changes are checked headlessly with
 `hydra_uitest`; see [agents/ui-testing.md](agents/ui-testing.md).
 
-The Python and PowerShell tools have their own tests, and none needs a C++
-build. Run them from the repository root:
+The Python and PowerShell tools have their own tests. Run them from the
+repository root:
 
     py -m pytest tools/ch_probe/tests tools/test_compare_db.py -q
     pwsh -NoProfile -File tools/test_mutation_probe.ps1
-    pwsh -NoProfile -File tools/test_derive_once_precheck.ps1
+
+The pytest runs need no C++ build. The mutation probe's self-test needs a
+built `hydra_precheck.exe` (`.\build_cpp.ps1 -Target hydra_precheck`),
+because the probe masks comments and strings with it. The derive-once
+precheck's own self-test runs inside `hydra_tests`:
+
+    build-cpp\Release\hydra_tests.exe "-sf=*test_precheck*"
 
 Name the two pytest paths rather than `tools/` as a whole: the scripts in
 `tools/ch_probe/experiments/` look like tests to pytest and drive the real
