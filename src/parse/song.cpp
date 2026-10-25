@@ -659,8 +659,8 @@ int Song::note_count() const {
 // The one owner of generated-fill placement, for a chart with no fills of its
 // own, and the one place that picks which game version's generator runs: the
 // rule the run is scored under (FillDeadlineRule; search/graph.h's
-// fill_rule_for reads it off a setting). The user decided on 2026-10-14 that
-// Clone Hero 1.0 mode keeps exactly the fills it had before D115.
+// fill_rule_for reads it off a setting). Both generators count measures on
+// the song's grid (MeasureIndex); each keeps its own game version's fill rule.
 void Song::check_activations(const core::Rules& rules, FillDeadlineRule fills) {
     for (const SongTimestamp& ts : sequence)
         if (ts.has_activation()) return;  // chart already has fills.
@@ -676,152 +676,52 @@ void Song::check_activations(const core::Rules& rules, FillDeadlineRule fills) {
 
 namespace {
 
-// How long a Clone Hero 1.0 generated fill is: half a measure of the meter in
-// force at its chord, as Hydra always gave it before D115. The user decided to
-// keep 1.0 mode exactly as it was (CONTEXT.md, "Generated fill"). Only the 1.0
+// How long a Clone Hero 1.0 generated fill is, in measures of the grid
+// measure in force at its chord (CONTEXT.md, "Generated fill"). Only the 1.0
 // deadline (activation_fill_deadline_ms's Ch10 branch) reads the length.
 constexpr double kCh10FillLengthMeasures = 0.5;
 
-// The measures Song::place_fills_ch10 counts in: Hydra's meter sections and
-// plusmeasure as they were before D115 B2-1 replaced them with Clone Hero's
-// grid and continuous count. Frozen here so 1.0 mode places its fills exactly
-// as before; nothing else may read it. The two differ from the new owners
-// only around a time signature change that falls mid-measure.
-class Ch10Measures {
-public:
-    // `tpm_map` is Song::tpm_changes, which always has a tick-0 entry
-    // (check_timing_maps).
-    explicit Ch10Measures(const std::map<int64_t, int64_t>& tpm_map) {
-        for (const auto& kv : tpm_map) {
-            keys_.push_back(kv.first);
-            measure_len_.push_back(kv.second);
-        }
-        starts_.assign(keys_.size(), 0);
-        counts_.assign(keys_.size(), 0);
-        for (size_t i = 1; i < keys_.size(); ++i) {
-            const int64_t whole = (keys_[i] - starts_[i - 1]) / measure_len_[i - 1];
-            starts_[i] = starts_[i - 1] + whole * measure_len_[i - 1];
-            counts_[i] = counts_[i - 1] + whole;
-        }
-    }
-
-    // The 0-based measure a tick sits in.
-    int64_t measure_at(int64_t ticks) const { return position(ticks).first; }
-
-    // The tick `add` measures after `ticks`.
-    int64_t plus(int64_t ticks, int64_t add) const {
-        const double m_decimal = position(ticks).second + static_cast<double>(add);
-        const int64_t target = static_cast<int64_t>(m_decimal);
-        const double part = m_decimal - std::floor(m_decimal);
-        const int n = static_cast<int>(keys_.size());
-        int j = 1;
-        while (j < n && counts_[j] < target) ++j;
-        const int i = j - 1;
-        const int64_t handled = starts_[i] + (target - counts_[i]) * measure_len_[i];
-        const int64_t len = (j < n && handled == keys_[j]) ? measure_len_[j] : measure_len_[i];
-        return handled + static_cast<int64_t>(part * static_cast<double>(len));
-    }
-
-private:
-    // {whole measures, measures as a decimal}. A tick exactly on a meter
-    // change is measured in the section before it.
-    std::pair<int64_t, double> position(int64_t ticks) const {
-        const auto it = std::lower_bound(keys_.begin(), keys_.end(), ticks);
-        const int i = std::max(static_cast<int>(it - keys_.begin()) - 1, 0);
-        int64_t remaining = ticks - starts_[i];
-        const int64_t whole = remaining / measure_len_[i];
-        remaining -= whole * measure_len_[i];
-        const int64_t measures = counts_[i] + whole;
-        return {measures, static_cast<double>(measures) + static_cast<double>(remaining) /
-                                                              static_cast<double>(measure_len_[i])};
-    }
-
-    std::vector<int64_t> keys_;
-    std::vector<int64_t> measure_len_;
-    std::vector<int64_t> starts_;
-    std::vector<int64_t> counts_;
-};
-
 }  // namespace
 
-// Clone Hero 1.0 mode's generator, exactly as Hydra placed generated fills
-// before D115 (main at 5b5dea8e). Each chord is a candidate for the downbeat
-// of its own measure and of the next one; each downbeat keeps its nearest
-// chord, a tie going to the later chord. Downbeats are then taken in order:
-// one whose chord is within resolution x fill_max_distance_beats (no extra
-// tick) gets a fill of kCh10FillLengthMeasures, and the next
-// fill_cooldown_measures downbeats are skipped.
+// Clone Hero 1.0 mode's generator. It reads the measure lines of Clone Hero's
+// grid (MeasureIndex), as place_fills_ch11 does; only the fill rule is 1.0's.
+// Each chord is a candidate for the measure line that starts its own measure
+// and for the next one; each line keeps its nearest chord, a tie going to the
+// later chord. Lines are then taken in order: one whose chord is within
+// resolution x fill_max_distance_beats (no extra tick) gets a fill of
+// kCh10FillLengthMeasures of the grid measure in force at the chord, and the
+// next fill_cooldown_measures lines are skipped.
 void Song::place_fills_ch10(const core::Rules& rules) {
-    const Ch10Measures measures(tpm_changes);
+    const MeasureIndex& grid = timing().measure_index();
 
     struct Cell {
-        int64_t tick;                 // the downbeat tick
-        std::optional<size_t> best;   // index into sequence of the closest chord
+        size_t best = 0;        // index into sequence of the closest chord
         int64_t bestdist = 0;
-        int64_t pre_tpm = 0;
     };
-    // std::map keeps measures sorted; measures are only ever added at or
-    // above the current largest.
-    std::map<int64_t, Cell> measuremap;
-
-    // Walk the sequence, advancing at most one meter mark each chord.
-    std::vector<int64_t> tpm_keys;
-    for (const auto& kv : tpm_changes) tpm_keys.push_back(kv.first);
-    size_t tpm_pos = 0;
-    int64_t tpm = tpm_keys.empty() ? 0 : tpm_changes[tpm_keys[tpm_pos++]];
-
-    int64_t downbeat_ref = 0;
-
+    // Keyed by measure line number, so the lines are visited in order.
+    std::map<int64_t, Cell> lines;
     for (size_t i = 0; i < sequence.size(); ++i) {
         const int64_t tick = sequence[i].timecode.ticks();
-
-        int64_t pre_tpm = tpm;
-        if (tpm_pos < tpm_keys.size()) {
-            if (tick == tpm_keys[tpm_pos]) {
-                tpm = tpm_changes[tpm_keys[tpm_pos]];
-                ++tpm_pos;
-            } else if (tick > tpm_keys[tpm_pos]) {
-                tpm = tpm_changes[tpm_keys[tpm_pos]];
-                pre_tpm = tpm;
-                ++tpm_pos;
-            }
-        }
-
-        const int64_t m0 = measures.measure_at(tick);
-        for (int64_t measure : {m0 + 1, m0 + 2}) {
-            auto it = measuremap.find(measure);
-            if (it == measuremap.end()) {
-                downbeat_ref = measures.plus(
-                    downbeat_ref, measure - (measures.measure_at(downbeat_ref) + 1));
-                Cell c;
-                c.tick = downbeat_ref;
-                it = measuremap.emplace(measure, c).first;
-            }
-            Cell& cell = it->second;
-            const int64_t dist = std::llabs(cell.tick - tick);
-            if (!cell.best.has_value() || dist <= cell.bestdist) {
-                cell.best = i;
-                cell.bestdist = dist;
-                cell.pre_tpm = pre_tpm;
-            }
+        const int64_t own = grid.at(tick).measure;
+        for (int64_t line : {own, own + 1}) {
+            const int64_t dist = std::llabs(grid.measure_line_tick(line) - tick);
+            const auto [it, added] = lines.try_emplace(line, Cell{i, dist});
+            if (!added && dist <= it->second.bestdist) it->second = Cell{i, dist};
         }
     }
 
     const int64_t cooldown_measures = rules.fill_cooldown_measures;
     const int64_t max_distance =
         static_cast<int64_t>(tick_resolution_ * rules.fill_max_distance_beats);
-    std::optional<int64_t> last_act_measure;
-    for (auto& kv : measuremap) {
-        const int64_t measure = kv.first;
-        Cell& cell = kv.second;
-        if (last_act_measure.has_value() &&
-            measure < *last_act_measure + cooldown_measures)
+    std::optional<int64_t> last_fill_line;
+    for (const auto& [line, cell] : lines) {
+        if (last_fill_line.has_value() && line < *last_fill_line + cooldown_measures)
             continue;
-        if (cell.best.has_value() && cell.bestdist <= max_distance) {
-            sequence[*cell.best].activation_length =
-                static_cast<int64_t>(cell.pre_tpm * kCh10FillLengthMeasures);
-            last_act_measure = measure;
-        }
+        if (cell.bestdist > max_distance) continue;
+        SongTimestamp& chord = sequence[cell.best];
+        const int64_t measure = grid.length_at(grid.span_at(chord.timecode.ticks()));
+        chord.activation_length = static_cast<int64_t>(measure * kCh10FillLengthMeasures);
+        last_fill_line = line;
     }
 }
 

@@ -63,24 +63,9 @@
           "file": "src/core/timing.cpp",
           "line_text": "return elapsed_[i] + whole + (rel - whole * tpm) / tpm;",
           "why": "MeasureCount::measures_at, the owner: the part measure"
-        },
-        {
-          "file": "src/parse/song.cpp",
-          "line_text": "const int64_t whole = (keys_[i] - starts_[i - 1]) / measure_len_[i - 1];",
-          "why": "exempt by user decision 2026-10-14 (D115 TJ-1): Ch10Measures, local to song.cpp, freezes main's old measure walk for the Clone Hero 1.0 generator (Song::place_fills_ch10) only, so 1.0 mode keeps exactly its old fills"
-        },
-        {
-          "file": "src/parse/song.cpp",
-          "line_text": "const int64_t whole = remaining / measure_len_[i];",
-          "why": "exempt by user decision 2026-10-14 (D115 TJ-1): Ch10Measures::position, the frozen 1.0 walk; nothing but place_fills_ch10 reads it"
-        },
-        {
-          "file": "src/parse/song.cpp",
-          "line_text": "static_cast<double>(measure_len_[i])};",
-          "why": "exempt by user decision 2026-10-14 (D115 TJ-1): Ch10Measures::position's part measure, the frozen 1.0 walk"
         }
       ],
-      "note": "Dividing ticks by a ticks-per-measure, or adding measures to a decimal measure position. A line that starts with the divisor is the second half of a wrapped division. The Ch10Measures lines in song.cpp are the one exemption: they keep Clone Hero 1.0 mode's fills exactly as before D115 (user decision 2026-10-14), and the class is local to song.cpp. MeasureCount is Clone Hero's continuous count (its Star Power drain): measures_at, tick_at and tick_after answer it, and plusmeasure, measures_at_tick_f and sp_end_ms read them. Dividing a measure length by a tempo is a duration, another question. Decided by: D115 (plan part B2, task B2-1; plusmeasure in exact whole numbers)"
+      "note": "Dividing ticks by a ticks-per-measure, or adding measures to a decimal measure position. A line that starts with the divisor is the second half of a wrapped division. MeasureCount is Clone Hero's continuous count (its Star Power drain): measures_at, tick_at and tick_after answer it, and plusmeasure, measures_at_tick_f and sp_end_ms read them. Dividing a measure length by a tempo is a duration, another question. Decided by: D115 (plan part B2, task B2-1; plusmeasure in exact whole numbers)"
     },
     {
       "question": "Which tempo is in force at a tick?",
