@@ -124,17 +124,19 @@ std::string stream_md5(BCRYPT_ALG_HANDLE alg, const std::string& path) {
 
 // What the scan reads from one chart's metadata. The names are empty when
 // missing or blank; discover_charts applies the one fallback for each
-// (title_or_unknown, artist_or_unknown, charter_or_unknown).
+// (title_or_unknown, artist_or_unknown, charter_or_unknown). The album has
+// no fallback: blank stays blank.
 struct ChartMeta {
     std::string title;
     std::string artist;
     std::string charter;
+    std::string album;
     store::ChartTimingMeta timing;
 };
 
 // ---- song.ini metadata, mirroring ScanItem.get_metadata_ini --------------
 //
-// The name, artist, charter, song_length and delay keys, read through
+// The name, artist, charter, album, song_length and delay keys, read through
 // read_song_ini_keys (the one song.ini reader, shared with the Preview's
 // delay). Its declaration in analysis.h says which lines count.
 
@@ -147,6 +149,7 @@ ChartMeta read_metadata_ini(const std::string& path) {
     // Only `charter` — Python's get_metadata_ini never reads the `frets`
     // alias, and some inis carry both with different values.
     if (auto it = ini.find("charter"); it != ini.end()) out.charter = it->second;
+    if (auto it = ini.find("album"); it != ini.end()) out.album = it->second;
     if (auto it = ini.find("song_length"); it != ini.end())
         out.timing.length_ms = stated_length_ms_of_text(it->second);
     out.timing.delay_ms = ini_delay_ms(ini);
@@ -168,6 +171,7 @@ ChartMeta parse_sng_metadata(const std::vector<uint8_t>& buf) {
         if (key == "name") out.title = value;
         else if (key == "artist") out.artist = value;
         else if (key == "charter") out.charter = value;
+        else if (key == "album") out.album = value;
         else if (key == "song_length") out.timing.length_ms = stated_length_ms_of_text(value);
     }
     out.timing.delay_ms = sng_metadata_delay_ms(pairs);
@@ -188,6 +192,7 @@ ChartMeta srb_chart_meta(const SrbMetadataRead& read) {
         if (!md.name.empty()) out.title = md.name;
         out.artist = md.artist;
         out.charter = md.charter;
+        out.album = md.album;
         if (md.song_length_ms) out.timing.length_ms = stated_length_ms(*md.song_length_ms);
     }
     return out;
@@ -666,6 +671,7 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
                         item.title = std::move(meta.title);
                         item.artist = std::move(meta.artist);
                         item.charter = std::move(meta.charter);
+                        item.album = std::move(meta.album);
                         item.timing = meta.timing;
                         item.notespath = pc.notes_path;
                         item.rootfolder = pc.rootfolder;
@@ -697,10 +703,11 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
         // decided later by display_title, display_artist and display_charter;
         // a stored "<unknown artist>" shows as "(unknown)" (D56 item 2). Each
         // field is trimmed here once, before its fallback, whatever the file
-        // format (D114 item 15).
+        // format (D114 item 15). The album has no fallback (display_album).
         r->title = title_or_unknown(trim(r->title));
         r->artist = artist_or_unknown(trim(r->artist));
         r->charter = charter_or_unknown(trim(r->charter));
+        r->album = trim(r->album);
         scanitems.push_back(std::move(*r));
     }
     return {scanitems, errors};

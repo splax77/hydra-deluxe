@@ -625,6 +625,8 @@ std::string display_artist(std::string_view artist) {
 
 std::string display_charter(std::string_view charter) { return clean_name(charter); }
 
+std::string display_album(std::string_view album) { return clean_name(album); }
+
 Song::Song(int64_t resolution) : tick_resolution_(resolution) {
     apply_timesig(*this, 0, kDefaultTimeSigNumerator, kDefaultTimeSigDenominator);
 }

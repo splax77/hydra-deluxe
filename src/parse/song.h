@@ -134,6 +134,11 @@ std::string display_artist(std::string_view artist);
 // and the scan's kUnknownCharter placeholder shows as it is.
 std::string display_charter(std::string_view charter);
 
+// The one cleaned album every screen shows: tags stripped and the ends
+// trimmed, as for a charter. It has no placeholder, because the scan stores
+// none for an album, so a blank album reads empty.
+std::string display_album(std::string_view album);
+
 // The placeholders the scan stores for a blank artist or charter. The stored
 // artist placeholder never reaches the screen: display_artist shows
 // kUnknownTitle for it. The charter placeholder shows as it is.
