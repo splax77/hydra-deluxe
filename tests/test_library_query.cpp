@@ -34,16 +34,17 @@ RowFacts analyzed(int stars, std::optional<double> hardest_ms) {
 
 SearchableRow burnout() {
     return make_searchable("Burnout", "Green Day", "Hoph2o",
-                           "common\\Summer Blast _25 Setlist\\Tier 4");
+                           "common\\Summer Blast _25 Setlist\\Tier 4", "Dookie");
 }
 
 SearchableRow deadbolt() {
-    return make_searchable("Deadbolt", "Thrice", "Hoph2o", "common\\IB24\\T3");
+    return make_searchable("Deadbolt", "Thrice", "Hoph2o", "common\\IB24\\T3",
+                           "The Illusion of Safety");
 }
 
 SearchableRow acid_romance() {
     return make_searchable("Acid Romance", "Alpha Wolf", "<color=#e02222>Blood</color>line",
-                           "common\\IB24\\T3");
+                           "common\\IB24\\T3", "A Quiet Place To Die");
 }
 
 bool spans_equal(const std::vector<MatchSpan>& got, const std::vector<MatchSpan>& want) {
@@ -123,7 +124,7 @@ TEST_CASE("library query: a tagged charter is found by its plain name") {
 }
 
 TEST_CASE("library query: an accented name is found without its accents") {
-    const SearchableRow row = make_searchable("Halo", "Beyoncé", "Someone", "pack");  // made up
+    const SearchableRow row = make_searchable("Halo", "Beyoncé", "Someone", "pack", "I Am");  // made up
     CHECK(matches("beyonce", row));
     CHECK(matches("BEYONCE", row));
     CHECK(matches("beyoncé", row));
@@ -177,6 +178,9 @@ TEST_CASE("library query: words match in any order and across fields") {
     CHECK(matches("burnout green", row));
     CHECK(matches("  Green   BURNOUT  ", row));
     CHECK(matches("hoph2o tier", row));  // charter and folder
+    CHECK(matches("dookie", row));       // only the album holds it
+    CHECK(matches("DOOKIE burnout", row));
+    CHECK_FALSE(matches("dookie", deadbolt()));
     CHECK_FALSE(matches("green deadbolt", row));
     CHECK_FALSE(matches("thrice burnout", row));
 }
@@ -207,6 +211,12 @@ TEST_CASE("library query: artist: charter: folder: and title: limit a term to on
     CHECK(matches("artist:thrice", deadbolt()));
     CHECK_FALSE(matches("artist:thrice", burnout()));
     CHECK_FALSE(matches("title:thrice", deadbolt()));
+    CHECK(matches("album:dookie", burnout()));
+    CHECK(matches("album:\"illusion of safety\"", deadbolt()));
+    CHECK_FALSE(matches("album:dookie", deadbolt()));
+    CHECK_FALSE(matches("title:dookie", burnout()));
+    // album: looks in the album only, not at the same word in the title.
+    CHECK_FALSE(matches("album:burnout", burnout()));
     CHECK(matches("charter:hoph2o", burnout()));
     CHECK(matches("charter:hoph2o", deadbolt()));
     CHECK_FALSE(matches("charter:hoph2o", acid_romance()));
@@ -215,6 +225,11 @@ TEST_CASE("library query: artist: charter: folder: and title: limit a term to on
     CHECK(matches("title:burnout", burnout()));
     CHECK(matches("Artist:\"green day\"", burnout()));
     CHECK_FALSE(matches("title:\"green day\"", burnout()));
+
+    const LibraryQuery album = parse_library_query("ALBUM:Dookie");
+    REQUIRE(album.terms.size() == 1);
+    CHECK(album.terms[0].field == QueryField::Album);
+    CHECK(album.terms[0].folded == "dookie");
 
     const LibraryQuery q = parse_library_query("ARTIST:\"Green Day\" folder:tier");
     REQUIRE(q.terms.size() == 2);
@@ -230,6 +245,10 @@ TEST_CASE("library query: a term applies to its own column, and Any applies ever
     CHECK(term_applies_to(QueryField::Any, QueryField::Title));
     CHECK(term_applies_to(QueryField::Title, QueryField::Title));
     CHECK_FALSE(term_applies_to(QueryField::Title, QueryField::Artist));
+    CHECK(term_applies_to(QueryField::Album, QueryField::Album));
+    CHECK(term_applies_to(QueryField::Any, QueryField::Album));
+    CHECK_FALSE(term_applies_to(QueryField::Album, QueryField::Artist));
+    CHECK_FALSE(term_applies_to(QueryField::Artist, QueryField::Album));
     // A column of Any counts every term (match_spans' rule).
     CHECK(term_applies_to(QueryField::Title, QueryField::Any));
     CHECK(term_applies_to(QueryField::Any, QueryField::Any));
@@ -421,6 +440,100 @@ TEST_CASE("library query: highlight spans cover the displayed bytes") {
     CHECK(spans_equal(match_spans(words, QueryField::Artist, "Green Day"),
                       std::vector<MatchSpan>{MatchSpan{0, 5}}));
     CHECK(match_spans(parse_library_query("artist:green"), QueryField::Title, "Green Light").empty());
+
+    // An album lights up for a plain word and for album:, and not for artist:.
+    const std::string album = "The Illusion of Safety";
+    CHECK(spans_equal(match_spans(parse_library_query("illusion"), QueryField::Album, album),
+                      std::vector<MatchSpan>{MatchSpan{4, 12}}));
+    CHECK(spans_equal(match_spans(parse_library_query("album:safety"), QueryField::Album, album),
+                      std::vector<MatchSpan>{MatchSpan{16, 22}}));
+    CHECK(match_spans(parse_library_query("artist:safety"), QueryField::Album, album).empty());
+}
+
+TEST_CASE("library query: a chart with no album matches nothing through its album") {
+    const SearchableRow row = make_searchable("Song", "Band", "Charter", "Pack");  // made up
+    CHECK(row.album.empty());
+    CHECK_FALSE(matches("album:song", row));
+    CHECK_FALSE(matches("album:a", row));
+    CHECK(matches("song", row));  // the title still matches
+    CHECK(make_searchable("Song", "Band", "Charter", "Pack", "").album.empty());
+    CHECK(match_spans(parse_library_query("song"), QueryField::Album, "").empty());
+    CHECK(match_spans(parse_library_query("album:song"), QueryField::Album, "").empty());
+}
+
+TEST_CASE("library query: the report pages' search text holds no album") {
+    // The report pages call search_field, which the album leaves unchanged.
+    CHECK(search_field("Burnout", "Green Day", "<b>Hoph2o</b>", "1 2 3") ==
+          "burnout green day hoph2o 1 2 3");
+    CHECK(search_field("Deadbolt", "Thrice", "") == "deadbolt thrice");
+}
+
+TEST_CASE("library query: every Search tips example parses into the key its entry names") {
+    const std::vector<SearchTip>& tips = search_tips();
+    std::vector<std::string_view> examples;
+    for (const SearchTip& tip : tips) {
+        examples.push_back(tip.example);
+        CAPTURE(tip.example);
+        CHECK_FALSE(tip.meaning.empty());
+        CHECK(parse_library_query(tip.example).errors.empty());
+    }
+    // The order the popup lists them in (the album search plan, decision 10).
+    CHECK(examples == std::vector<std::string_view>{"title:actors", "artist:green", "album:dookie",
+                                                    "charter:boo", "folder:ib24", "\"tier 4\"",
+                                                    "stars:7", "squeeze<=20", "squeeze>20"});
+
+    // Each example yields one term in the field it names, or the filter it names.
+    struct FieldTip {
+        size_t index;
+        QueryField field;
+        const char* folded;
+        bool phrase;
+    };
+    for (const FieldTip& want : {FieldTip{0, QueryField::Title, "actors", false},
+                                 FieldTip{1, QueryField::Artist, "green", false},
+                                 FieldTip{2, QueryField::Album, "dookie", false},
+                                 FieldTip{3, QueryField::Charter, "boo", false},
+                                 FieldTip{4, QueryField::Folder, "ib24", false},
+                                 FieldTip{5, QueryField::Any, "tier 4", true}}) {
+        REQUIRE(want.index < tips.size());
+        CAPTURE(tips[want.index].example);
+        const LibraryQuery q = parse_library_query(tips[want.index].example);
+        REQUIRE(q.terms.size() == 1);
+        CHECK(q.terms[0].field == want.field);
+        CHECK(q.terms[0].folded == want.folded);
+        CHECK(q.terms[0].phrase == want.phrase);
+        CHECK_FALSE(q.stars.has_value());
+        CHECK_FALSE(q.squeeze_max_ms.has_value());
+        CHECK_FALSE(q.squeeze_min_ms.has_value());
+    }
+
+    REQUIRE(tips.size() == 9);
+    const LibraryQuery stars = parse_library_query(tips[6].example);
+    CHECK(stars.terms.empty());
+    CHECK(stars.stars == std::optional<int>(7));
+    CHECK_FALSE(stars.squeeze_max_ms.has_value());
+    CHECK_FALSE(stars.squeeze_min_ms.has_value());
+
+    const LibraryQuery at_most = parse_library_query(tips[7].example);
+    CHECK(at_most.terms.empty());
+    CHECK(at_most.squeeze_max_ms == std::optional<double>(20.0));
+    CHECK_FALSE(at_most.squeeze_min_ms.has_value());
+    CHECK_FALSE(at_most.stars.has_value());
+
+    const LibraryQuery above = parse_library_query(tips[8].example);
+    CHECK(above.terms.empty());
+    CHECK(above.squeeze_min_ms == std::optional<double>(20.0));
+    CHECK(above.squeeze_min_strict);
+    CHECK_FALSE(above.squeeze_max_ms.has_value());
+    CHECK_FALSE(above.stars.has_value());
+
+    // The fixture rows are the tips' own charts, so the examples find them.
+    CHECK(matches(tips[1].example, burnout()));
+    CHECK(matches(tips[2].example, burnout()));
+    CHECK(matches(tips[4].example, deadbolt()));
+    CHECK(matches(tips[5].example, burnout()));
+
+    CHECK_FALSE(search_tips_note().empty());
 }
 
 TEST_CASE("library query: matching 20000 rows finds the pinned hit count") {
