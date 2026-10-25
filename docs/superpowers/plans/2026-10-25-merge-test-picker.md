@@ -12,6 +12,8 @@ Later ruling, after TESTPICK-3's review found the plan's Step 3 and worked examp
 
 Later ruling, after the tool picked 58 files for its own merge because every function named `run` in src/ matched, in the user's words: "a call site counts only if it's in the same file as the changed function or in a file that includes the header declaring it." This narrows Step 4's caller search.
 
+Later ruling on Step 5's search of test files, the user answering "go with recommend" to this option: "A test file counts for a changed name only if it includes the header that declares it, directly or through a chain. Exception: a name in a file that builds an exe's main (like tools/precheck/main.cpp) keeps today's plain-name search, since tests reach those by running the exe."
+
 ## What the user asked for
 
 "Plan a small tool that takes a merge range, finds every test file that names a function, type or constant the diff changed, and prints the -sf= filters. Briefs and merges use its output instead of a hand list."
