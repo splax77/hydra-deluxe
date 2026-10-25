@@ -463,10 +463,15 @@ TEST_CASE("prepare_record refuses a profile that names the other fill rule") {
     CHECK(prepare_record("h", ch10, legacy_at_cap(4)).profile.lens.legacy_fills == 1);
 }
 
-TEST_CASE("a lookup reads a whole record while another thread rewrites it") {
-    // A save deletes the record and inserts the new one in one transaction,
-    // so a lookup landing in between sees the old record or the new one,
-    // never no record and never a mix.
+TEST_CASE("lookups on one thread and saves on another share one store without error") {
+    // The store has one connection, and a read on it would see a save's
+    // half-done work, transaction or not. What keeps a lookup out of a save
+    // is the store lock (RecordStore::mutex_ in store/record_store.h), held
+    // for the whole save frame and for the lookup. This case runs the two
+    // side by side and checks every lookup came back whole and nothing
+    // threw. It does not force a lookup to land inside a save, so it cannot
+    // prove the lock covers the whole save; it would likely, not surely,
+    // catch a store that lost its lock.
     RecordStore store(":memory:");
     const Profile at4 = profile_at(4);
     const RecordRow full = prepare_record("h", at4, at_cap(4)).record;
