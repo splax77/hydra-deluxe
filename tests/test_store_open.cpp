@@ -806,6 +806,105 @@ TEST_CASE("the command-line tools' open refuses a file too old to convert and ne
     remove_db(path);
 }
 
+// ---- a real v2.12.1 library (testdata/store/v2.12.1_library.db) -----------
+
+namespace {
+
+// One stored record and its best path, as the file holds them. The values
+// are the README's "v2.12.1_library.db", read off the one run that made it.
+struct StoredRecordPin {
+    const char* song_id;
+    int64_t pathcount;
+    int64_t stars;
+    int64_t notecount;
+    const char* best_path;
+    int64_t best_score;
+    int64_t best_actcount;
+};
+
+const StoredRecordPin kV2121Records[] = {
+    {"0b647b1570475f18d463466f2c4d72a7", 5, 7, 1257, "0 0 E2 E0", 379655, 4},
+    {"0d4fd734fe5f2bf6ff1fdbc4ff55be8f", 1, 6, 1088, "(No activations.)", 245800, 0},
+    {"bef0759746740f9c1045f64e9a5a2938", 1, 6, 1375, "(No activations.)", 315350, 0},
+};
+
+// The one text value `sql` reads from the file at `path`.
+std::string text_on_file(const std::string& path, const std::string& sql) {
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
+    sqlite3_stmt* s = nullptr;
+    REQUIRE(sqlite3_prepare_v2(db, sql.c_str(), -1, &s, nullptr) == SQLITE_OK);
+    std::string out;
+    if (sqlite3_step(s) == SQLITE_ROW && sqlite3_column_text(s, 0))
+        out = reinterpret_cast<const char*>(sqlite3_column_text(s, 0));
+    sqlite3_finalize(s);
+    sqlite3_close(db);
+    return out;
+}
+
+// Every pinned record and its best path, read straight from the file.
+void check_v2121_rows(const std::string& path) {
+    CHECK(record_rows_in(path) == 3);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == 7);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == 1);
+    CHECK(text_on_file(path, "SELECT chartmode FROM profiles") == "Expert Pro Drums, 2x Bass");
+    CHECK(scalar_on_file(path, "SELECT sp_cap FROM profiles") == 4);
+    CHECK(text_on_file(path, "SELECT hyversion FROM profiles") == "2.8.0+efill85");
+    for (const StoredRecordPin& r : kV2121Records) {
+        INFO(std::string(r.song_id));
+        const std::string rec =
+            std::string(" FROM records WHERE song_id = '") + r.song_id + "'";
+        const std::string best =
+            std::string(" FROM record_paths WHERE rank = 1 AND song_id = '") + r.song_id + "'";
+        CHECK(scalar_on_file(path, "SELECT COUNT(*)" + rec) == 1);
+        CHECK(scalar_on_file(path, "SELECT pathcount" + rec) == r.pathcount);
+        CHECK(scalar_on_file(path, "SELECT stars" + rec) == r.stars);
+        CHECK(scalar_on_file(path, "SELECT notecount" + rec) == r.notecount);
+        CHECK(text_on_file(path, "SELECT path" + best) == r.best_path);
+        CHECK(scalar_on_file(path, "SELECT score" + best) == r.best_score);
+        CHECK(scalar_on_file(path, "SELECT actcount" + best) == r.best_actcount);
+    }
+}
+
+}  // namespace
+
+// The file a v2.12.1 batch wrote, the release users have now. Its charts
+// table predates the album column and its results stamp predates
+// kResultsStamp, so this is the upgrade a user's first open of this build
+// makes.
+TEST_CASE("a library file v2.12.1 wrote opens, gains the album column, and keeps its records") {
+    const std::string path = copy_of_old_database("v2.12.1_library.db", "v2121_library");
+    REQUIRE(classify_library_file(path) == LibraryFileKind::LacksAlbumColumn);
+    REQUIRE_FALSE(charts_have_album(path));
+    check_v2121_rows(path);
+
+    // The batch's run settings (README "v2.12.1_library.db").
+    const Profile batch_profile{"Expert Pro Drums, 2x Bass", CapQuery::at(4), Lens::from(10, 0, 4)};
+    {
+        // The app's own open (ui::StoreOpenJob::run).
+        RecordStore store(path, OldFilePolicy::SetAside, core::default_stamp());
+        CHECK_FALSE(store.set_aside_path().has_value());
+        CHECK(store.record_count() == 3);
+        // hydra_batch with folder arguments never writes the library.
+        CHECK(store.chart_library_count() == 0);
+        const std::vector<std::string> ids = {kV2121Records[0].song_id, kV2121Records[1].song_id,
+                                              kV2121Records[2].song_id};
+        const std::vector<RecordLookup> got = store.lookup(ids, batch_profile);
+        REQUIRE(got.size() == 3);
+        for (size_t i = 0; i < got.size(); ++i) {
+            INFO(ids[i]);
+            CHECK(got[i].status == RecordStatus::Stale);
+            CHECK(got[i].stale_build);
+        }
+        CHECK(store.ready_records(batch_profile).empty());
+    }
+    CHECK(charts_have_album(path));
+    CHECK(classify_library_file(path) == LibraryFileKind::Current);
+    // The open rewrote no record: every pinned row is still there.
+    check_v2121_rows(path);
+    remove_db(path);
+}
+
 // SQLite switches a feature on when its SQLITE_ENABLE_* macro is defined at
 // all, whatever its value (sqlite.org/compile.html), so the old
 // "SQLITE_ENABLE_FTS5=0" compiled full-text search in. Hydra never uses it.
