@@ -504,6 +504,17 @@ void test_library_search(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return !ctx->ItemExists("**/Album"); }, 5));
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Matched on album."); }, 5));
     IM_CHECK(on_screen(h, "Vector"));
+    // The user's case: the song stays open and the search box is emptied.
+    // Every row still shows its album under the artist, with no footer note.
+    ctx->ItemInputValue("**/##search", "");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->search.empty() && shown() == 97; }, 5));
+    ctx->Yield(2);
+    IM_CHECK(!ctx->ItemExists("**/Album"));
+    IM_CHECK(on_screen(h, "Vector"));
+    IM_CHECK(!on_screen(h, "Matched on album."));
+    const float open_no_search_h =
+        ctx->ItemInfo(("**/" + escape_ref(h.app->library_row_at(0).title)).c_str())
+            .RectFull.GetHeight();
     h.app->close_details();
     IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists("**/Album"); }, 5));
 
@@ -519,6 +530,8 @@ void test_library_search(ImGuiTestContext* ctx) {
         return ctx->ItemInfo(("**/" + escape_ref(h.app->library_row_at(0).title)).c_str())
             .RectFull.GetHeight();
     }();
+    // Album shown, no search: one line. Album hidden by the open song: two.
+    IM_CHECK_GT(open_no_search_h, one_line_h * 1.5f);
     ctx->TableSetColumnEnabled(table->ID, "Album", false);
     ctx->Yield(3);
     IM_CHECK(!table->Columns[hydra::ui::kColumnAlbum].IsEnabled);
@@ -544,15 +557,20 @@ void test_library_search(ImGuiTestContext* ctx) {
         IM_CHECK_LT(artist_at, album_at);
         IM_CHECK_LT(album_at, folder_at);
     }
-    // No search: one line again.
+    // No search, Album still hidden: the rows stay two lines tall and the
+    // album is still under the artist, with no footer note.
     ctx->ItemInputValue("**/##search", "");
     IM_CHECK(wait_until(ctx, [&] { return h.app->search.empty(); }, 5));
     ctx->Yield(2);
-    IM_CHECK_EQ(ctx->ItemInfo(("**/" + escape_ref(h.app->library_row_at(0).title)).c_str())
-                    .RectFull.GetHeight(),
-                one_line_h);
+    const std::string first_ref = "**/" + escape_ref(h.app->library_row_at(0).title);
+    IM_CHECK_EQ(ctx->ItemInfo(first_ref.c_str()).RectFull.GetHeight(), two_line_h);
+    IM_CHECK(on_screen(h, "Vector"));
+    IM_CHECK(!on_screen(h, "Matched on album."));
+    // Album back as a column: one line, and the album is drawn once.
     ctx->TableSetColumnEnabled(table->ID, "Album", true);
     ctx->Yield(3);
+    IM_CHECK_EQ(ctx->ItemInfo(first_ref.c_str()).RectFull.GetHeight(), one_line_h);
+    IM_CHECK_EQ(count_of("Vector"), (size_t)1);
 
     // Words in any order, across title and artist.
     ctx->ItemInputValue("**/##search", "green burnout");

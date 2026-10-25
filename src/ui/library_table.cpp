@@ -315,16 +315,17 @@ struct SecondLineUse {
     bool album = false;
 };
 
-// The second line under a title while a search is on: where the row matched
-// when that place isn't a visible column. The folder by default. Drawn only
-// while Folder or Charter is hidden; the album's own second line sits under
-// Artist (album_line).
+// A second line in a row, drawn dim under a cell's text, with the search's
+// matches on it. render_table's title_line and artist_line say when each one
+// is drawn.
 struct SecondLine {
     std::string text;
     std::vector<app::MatchSpan> spans;
     bool is_charter = false;
 };
 
+// The line under a title: where the row matched when that place isn't a
+// visible column. The folder by default.
 SecondLine second_line(const app::LibraryQuery& q, const LibraryRow& row, bool folder_shown,
                        bool charter_shown) {
     SecondLine line;
@@ -347,12 +348,12 @@ SecondLine second_line(const app::LibraryQuery& q, const LibraryRow& row, bool f
     return line;
 }
 
-// The line under a row's artist while a search is on and Album is hidden: the
-// row's album, with the query's album matches. Blank for a blank album.
-SecondLine album_line(const app::LibraryQuery& q, const LibraryRow& row) {
+// The line under a row's artist: the row's album, blank for a blank album,
+// with the query's album matches while a word search is on.
+SecondLine album_line(const app::LibraryQuery& q, const LibraryRow& row, bool searching_words) {
     SecondLine line;
     line.text = library_cell_text(row, kColumnAlbum);
-    line.spans = app::match_spans(q, app::QueryField::Album, line.text);
+    if (searching_words) line.spans = app::match_spans(q, app::QueryField::Album, line.text);
     return line;
 }
 
@@ -466,11 +467,17 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
         (ImGui::TableGetColumnFlags(kColumnCharter) & ImGuiTableColumnFlags_IsEnabled) != 0;
     const bool album_shown =
         (ImGui::TableGetColumnFlags(kColumnAlbum) & ImGuiTableColumnFlags_IsEnabled) != 0;
+    const bool artist_shown =
+        (ImGui::TableGetColumnFlags(kColumnArtist) & ImGuiTableColumnFlags_IsEnabled) != 0;
     const bool searching_words = !q.terms.empty();
+    // Which second lines this frame draws. The title's (second_line) is for a
+    // word search only; the artist's (album_line) is for any frame where the
+    // album has no column of its own but Artist is there to carry it.
+    const bool title_line = searching_words && (!folder_shown || !charter_shown);
+    const bool artist_line = !album_shown && artist_shown;
     // Every row gets the same height (the clipper needs that): two lines
-    // while a word search is on and a column is hidden, one otherwise.
-    const bool title_line = !folder_shown || !charter_shown;
-    const bool two_lines = searching_words && (title_line || !album_shown);
+    // while either second line is drawn.
+    const bool two_lines = title_line || artist_line;
     const float line_h = ImGui::GetTextLineHeight();
     const float line_gap = ImGui::GetStyle().ItemSpacing.y;
     const float row_h = two_lines ? line_h * 2.0f + line_gap : line_h;
@@ -539,7 +546,7 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
                 overlay_matches(title_pos, title,
                                 app::match_spans(q, app::QueryField::Title, title),
                                 title_pos.x + title_text_w);
-            if (two_lines && title_line) {
+            if (title_line) {
                 const SecondLine line = second_line(q, row, folder_shown, charter_shown);
                 draw_second_line(ImVec2(title_pos.x, title_pos.y + line_h + line_gap), line,
                                  title_pos.x + title_w);
@@ -559,10 +566,9 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
                 const ImVec2 artist_pos = ImGui::GetCursorScreenPos();
                 const float artist_w = ImGui::GetContentRegionAvail().x;
                 searched_cell(kColumnArtist, app::QueryField::Artist);
-                // A hidden Album's text goes under the artist. With Artist
-                // hidden too it has no column to sit under and is not drawn.
-                if (two_lines && !album_shown) {
-                    const SecondLine line = album_line(q, row);
+                // The album goes under the artist when artist_line says so.
+                if (artist_line) {
+                    const SecondLine line = album_line(q, row, searching_words);
                     draw_second_line(ImVec2(artist_pos.x, artist_pos.y + line_h + line_gap),
                                      line, artist_pos.x + artist_w);
                     if (!line.spans.empty()) used.album = true;
