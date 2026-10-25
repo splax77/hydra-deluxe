@@ -6,19 +6,13 @@
 
 #include "core/strutil.h"
 #include "definitions.h"  // is_cpp_keyword
+#include "text.h"         // skip_space
 
 namespace precheck {
 
 namespace {
 
 bool word_start(char c) { return ident_start(c); }
-bool space(char c) { return hydra::is_ascii_space(c); }
-
-size_t skip_space(const std::string& s, size_t i) {
-    while (i < s.size() && space(s[i])) ++i;
-    return i;
-}
-
 bool at(const std::string& s, size_t i, const std::string& lit) { return s.compare(i, lit.size(), lit) == 0; }
 
 bool at_icase(const std::string& s, size_t i, const std::string& lit) {

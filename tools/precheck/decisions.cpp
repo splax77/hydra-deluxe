@@ -7,6 +7,7 @@
 
 #include "code_lexer.h"
 #include "core/strutil.h"
+#include "text.h"
 
 namespace precheck {
 
@@ -38,10 +39,6 @@ bool hex_digit(char c) { return digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' 
 char at(const std::string& s, size_t i) { return i < s.size() ? s[i] : '\0'; }
 size_t skip_digits(const std::string& s, size_t i) {
     while (i < s.size() && digit(s[i])) ++i;
-    return i;
-}
-size_t skip_space(const std::string& s, size_t i) {
-    while (i < s.size() && is_ascii_space(s[i])) ++i;
     return i;
 }
 
