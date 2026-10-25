@@ -57,18 +57,22 @@ struct LibraryQuery {
     std::vector<QueryTerm> terms;         // every term must match
     std::optional<int> stars;             // stars:N, N in 0..kMaxStars
     std::optional<double> squeeze_max_ms; // squeeze<=N (also squeeze<N treated as <=)
+    std::optional<double> squeeze_min_ms; // squeeze>=N or squeeze>N
+    bool squeeze_min_strict = false;      // true for squeeze>N, false for squeeze>=N
     std::vector<std::string> errors;      // one plain sentence per bad filter value
     bool empty() const;                   // no terms and no filters
 };
 
 // Parses what the user typed. Words match in any order. "quoted text" is one
 // phrase. artist:x, charter:x, folder:x, title:x limit a word or "phrase" to
-// one field. stars:N and squeeze<=N filter on the stored best path. Unknown
-// field names are treated as plain words.
+// one field. stars:N and squeeze<=N, squeeze<N, squeeze>=N, squeeze>N filter
+// on the stored best path; a low and a high squeeze filter combine into a
+// range. Unknown field names are treated as plain words.
 // A word or phrase matches when its folded text appears anywhere in a folded
 // field. An unclosed quote runs to the end. A field name with nothing after it
-// is dropped. A bad filter value adds one sentence to `errors` and filters
-// nothing. When a filter appears twice, the last one counts.
+// is dropped. A bad filter value, or squeeze followed by an operator it does
+// not take, adds one sentence to `errors` and filters nothing. When a filter
+// appears twice, the last one counts; for squeeze, each side counts apart.
 LibraryQuery parse_library_query(std::string_view text);
 
 // The fields one library row offers to a query, already folded.
@@ -101,7 +105,9 @@ struct RowFacts {
 
 // True when every term counts (see term_applies_to) and every filter holds.
 // A row with no facts matches no filter. A path that needs no timing
-// (Path::needs_timing) passes any squeeze limit. Allocates nothing.
+// (Path::needs_timing) passes any squeeze<= or squeeze< limit and matches no
+// squeeze>= or squeeze> filter, since it has nothing to squeeze. Allocates
+// nothing.
 bool query_matches(const LibraryQuery& q, const SearchableRow& row, const RowFacts& facts);
 
 // Where the query's terms appear in one displayed (unfolded, tag-stripped)

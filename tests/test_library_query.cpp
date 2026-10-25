@@ -279,6 +279,70 @@ TEST_CASE("library query: squeeze<=N keeps analyzed rows whose hardest squeeze i
     CHECK(matches("squeeze<=2.5", burnout(), analyzed(7, 2.5)));
 }
 
+TEST_CASE("library query: squeeze>N and squeeze>=N keep rows whose hardest timing is above N ms") {
+    // A row at exactly N ms matches >=N and not >N.
+    CHECK(matches("squeeze>=163", burnout(), analyzed(7, 163.0)));  // Burnout's real 163.0 ms
+    CHECK_FALSE(matches("squeeze>163", burnout(), analyzed(7, 163.0)));
+    CHECK(matches("squeeze>20", burnout(), analyzed(7, 163.0)));
+    CHECK_FALSE(matches("squeeze>=164", burnout(), analyzed(7, 163.0)));
+    CHECK(matches("SQUEEZE>20", burnout(), analyzed(7, 163.0)));
+    CHECK(matches("squeeze>-5", burnout(), analyzed(7, -2.5)));
+
+    // squeeze>N is the exact opposite of squeeze<=N: a timed row matches one.
+    for (double ms : {12.5, 20.0, 163.0}) {
+        CHECK(matches("squeeze>20", burnout(), analyzed(7, ms)) !=
+              matches("squeeze<=20", burnout(), analyzed(7, ms)));
+    }
+
+    // A path that needs no timing has nothing to squeeze, so it matches no
+    // > or >= filter. An unrated row matches no filter.
+    CHECK_FALSE(matches("squeeze>20", burnout(), analyzed(7, std::nullopt)));
+    CHECK_FALSE(matches("squeeze>=0", burnout(), analyzed(7, std::nullopt)));
+    CHECK_FALSE(matches("squeeze>20", burnout(), RowFacts{}));
+    CHECK_FALSE(matches("squeeze>=20", burnout(), RowFacts{}));
+
+    const LibraryQuery q = parse_library_query("squeeze>20");
+    CHECK(q.terms.empty());
+    CHECK(q.errors.empty());
+    CHECK_FALSE(q.empty());
+    CHECK(parse_library_query("squeeze>=20").terms.empty());
+}
+
+TEST_CASE("library query: a squeeze floor and limit combine into a range, last of each side counts") {
+    CHECK(matches("squeeze>=10 squeeze<=200", burnout(), analyzed(7, 163.0)));
+    CHECK_FALSE(matches("squeeze>=10 squeeze<=50", burnout(), analyzed(7, 163.0)));
+    CHECK_FALSE(matches("squeeze>=170 squeeze<=200", burnout(), analyzed(7, 163.0)));
+    CHECK(matches("squeeze<=200 squeeze>163 green", burnout(), analyzed(7, 163.5)));
+
+    // The same side twice: the last one counts.
+    CHECK(matches("squeeze>200 squeeze>20", burnout(), analyzed(7, 163.0)));
+    CHECK_FALSE(matches("squeeze>20 squeeze>200", burnout(), analyzed(7, 163.0)));
+    CHECK(matches("squeeze>163 squeeze>=163", burnout(), analyzed(7, 163.0)));
+    CHECK_FALSE(matches("squeeze>=163 squeeze>163", burnout(), analyzed(7, 163.0)));
+}
+
+TEST_CASE("library query: an unknown squeeze operator gives a plain error and filters nothing") {
+    for (const char* text :
+         {"squeeze=20", "squeeze==20", "squeeze:20", "squeeze=>20", "squeeze<>20", "SQUEEZE=20"}) {
+        CAPTURE(text);
+        const LibraryQuery q = parse_library_query(text);
+        CHECK(q.terms.empty());
+        CHECK(q.errors ==
+              std::vector<std::string>{"squeeze takes <=, <, >= or >, like squeeze<=20"});
+        CHECK(query_matches(q, burnout(), RowFacts{}));
+    }
+
+    // Words that only start with "squeeze" still search as text.
+    for (const char* text : {"squeeze", "squeezed", "squeeze!"}) {
+        CAPTURE(text);
+        const LibraryQuery q = parse_library_query(text);
+        CHECK(q.errors.empty());
+        REQUIRE(q.terms.size() == 1);
+        CHECK(q.terms[0].folded == fold_for_search(text));
+    }
+    CHECK(matches("squeeze", make_searchable("Squeeze Me", "", "", ""), RowFacts{}));
+}
+
 TEST_CASE("library query: bad filter values give a plain error and filter nothing") {
     const LibraryQuery stars = parse_library_query("burnout stars:9");
     CHECK_FALSE(stars.stars.has_value());
@@ -299,6 +363,14 @@ TEST_CASE("library query: bad filter values give a plain error and filter nothin
     CHECK(squeeze.errors[0] == "squeeze<= needs a number of milliseconds, like squeeze<=20");
     CHECK(parse_library_query("squeeze<=").errors.size() == 1);
     CHECK(parse_library_query("squeeze<=20ms").errors.size() == 1);
+
+    // The message names the operator the user typed.
+    CHECK(parse_library_query("squeeze>abc").errors ==
+          std::vector<std::string>{"squeeze> needs a number of milliseconds, like squeeze>20"});
+    CHECK(parse_library_query("squeeze>=").errors ==
+          std::vector<std::string>{"squeeze>= needs a number of milliseconds, like squeeze>=20"});
+    CHECK(parse_library_query("squeeze<x").errors ==
+          std::vector<std::string>{"squeeze< needs a number of milliseconds, like squeeze<20"});
 
     // The same mistake twice is reported once.
     CHECK(parse_library_query("stars:9 stars:10").errors.size() == 1);
