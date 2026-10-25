@@ -589,8 +589,9 @@ generator.
 fills): the one answer to "was this fill generated". The Preview reads it to
 draw a 1.1 generated fill as the half measure before its chord
 (`drawn_fill_start_tick`, the user's call, 2026-10-19), because the fill's
-engine length is often 0. That is display only: the length the deadline math
-reads is unchanged, and so are authored and 1.0 fills.
+engine length is often 0. That is display only: it changes no length the
+deadline math reads, and authored and 1.0 fills are drawn from their own
+length.
 
 **Fill rule**:
 Which Clone Hero version's fill rules a run follows, 1.1 or 1.0:
