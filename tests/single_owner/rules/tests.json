@@ -239,13 +239,6 @@
       "must_not_match": [
         "smf(concat({track_name(\"PART DRUMS\"), end_of_track()}))"
       ],
-      "owner_lines": [
-        {
-          "file": "tests/test_midi.cpp",
-          "line_text": "'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, 0xE8, 0x00,  // div < 0",
-          "why": "a deliberately broken header (a negative division), which smf_tracks cannot write"
-        }
-      ],
       "scope": [
         "tests"
       ],

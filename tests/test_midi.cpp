@@ -363,10 +363,9 @@ TEST_CASE("midi: non-MIDI input is rejected") {
 TEST_CASE("midi: SMPTE division is rejected") {
     // A negative division byte pair signals SMPTE timing. The file holds a
     // valid track, so only the SMPTE rule can refuse it.
-    std::vector<uint8_t> d = {
-        'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, 0xE8, 0x00,  // div < 0
-        'M', 'T', 'r', 'k', 0, 0, 0, 4, 0x00, 0xFF, 0x2F, 0x00,  // end of track
-    };
+    std::vector<uint8_t> d = testmidi::smf(testmidi::end_of_track());
+    d[12] = 0xE8;  // the header's division bytes: div < 0
+    d[13] = 0x00;
     CHECK_THROWS_WITH_AS((hydra::MidiFile(d)), "SMPTE time division is not supported",
                          hydra::MidiError);
 }
