@@ -4,6 +4,7 @@
 #                                # hydra_bench and hydra_replay
 #   .\build_cpp.ps1 -Configure   # force a reconfigure first
 #   .\build_cpp.ps1 -Target hydra_tests
+#   .\build_cpp.ps1 -Target hydra_tests,hydra_uitest  # several targets, one build
 #   .\build_cpp.ps1 -Preset ship # the installer's build, in build-ship\
 #   .\build_cpp.ps1 -Preset asan -Target hydra_tests  # AddressSanitizer, in build-asan\
 #   .\build_cpp.ps1 -Package     # build, then zip a release (CPack)
@@ -14,7 +15,9 @@
 param(
     [switch]$Configure,
     [switch]$Package,
-    [string]$Target = "",
+    # One or more targets. "pwsh -File" hands "a,b" over as one string, so
+    # commas inside a name split it too.
+    [string[]]$Target = @(),
     # default: the build preset's configuration in CMakePresets.json (Release).
     [string]$Config = "",
     # default: dev build in build-cpp. vs2022: the VS 2022 generator, in its
@@ -59,8 +62,9 @@ try {
     # --parallel with no count lets MSBuild build independent projects at
     # once, uncapped (decision D86.5).
     $buildArgs = @("--build", "--preset", $Preset, "--config", $Config, "--parallel")
-    if ($Target -ne "") {
-        $buildArgs += @("--target", $Target)
+    $targets = @($Target | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
+    if ($targets.Count -gt 0) {
+        foreach ($t in $targets) { $buildArgs += @("--target", $t) }
     } else {
         # hydra_bench and hydra_replay are EXCLUDE_FROM_ALL (not shipped), so a
         # plain build names them too; otherwise they could break unnoticed.

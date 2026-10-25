@@ -475,6 +475,21 @@ that self-test needs `hydra_precheck.exe`. The main job checks out the whole
 history, because the precheck self-test in `hydra_tests` checks two real
 commit ranges and skips them in a shallow clone.
 
+The main job builds on a saved build folder, so a push recompiles only what
+it changed. After its build, a push to `main` or a manual run saves
+`build-cpp` in GitHub's cache, and each branch keeps only its two newest
+saved folders. Pushes and pull requests restore the newest one, then
+`tools/ci_build_folder.ps1` decides whether the build can use it. That script
+owns the rules and prints which way it went. In short, the build starts cold
+(from nothing) when there is no saved folder, when the saved folder's commit
+is not an ancestor of the one being built, or when a build file changed since
+then; the script lists the build files. A new runner image also starts cold.
+The nightly run always builds cold, so a broken build that a saved folder hid
+shows up within a day. A run started by hand is cold too, unless you turn on its
+`warm` input: tick it under "Run workflow" on the Actions tab, or run
+`gh workflow run ci.yml --ref <branch> -f warm=true`. Leave it off for a cold
+check of any branch.
+
 One slice of the tests is left out on GitHub: the one that opens the real
 sound output, because hosted runners have no audio device. `tests/shards.txt`
 marks which slice that is. Run it locally. A newer push to the same branch or pull request cancels the
