@@ -12,8 +12,8 @@ database: they read the same `hydra_settings.ini`, `hydra_rules.ini` and
 it lives only in the app (D103 item 5, ADR 0027).
 
 ```
-hydra_batch                    Analyze every chart folder from the app's settings
-hydra_batch <folder> [...]     ...or specific folders instead
+hydra_batch --whole-library    Analyze every chart folder from the app's settings
+hydra_batch <folder> [...]     ...or specific folders instead (the two don't mix)
 hydra_batch --redo             Re-analyze charts already stored
 hydra_batch --db <path>        Target a specific database
 hydra_batch --rules <path>     Take the rule choices from this file, not hydra_rules.ini
@@ -25,6 +25,10 @@ hydra_fillcompare ... --out fill_compare.html
 hydra_fillcompare ... --rules <path>
 hydra_fillcompare ... --no-open
 ```
+
+`hydra_batch` with no folder and no `--whole-library` prints a sentence and
+stops with exit code 2, so a bare run can't start a library-wide analysis by
+accident. The other `hydra_batch` flags in the list go with either form.
 
 Both read the app's settings file, so they work at the same SP cap, timing
 limit, score range and chart mode the app is set to. The fill rule is the
@@ -59,12 +63,12 @@ dmleaderboards comparison follows it too. To fill a database with both rules'
 results, run `hydra_batch` once plain and once with `--legacy-fills`:
 
 ```
-hydra_batch
-hydra_batch --legacy-fills
+hydra_batch --whole-library
+hydra_batch --whole-library --legacy-fills
 hydra_fillcompare
 
-hydra_batch --db both.db
-hydra_batch --legacy-fills --db both.db
+hydra_batch --whole-library --db both.db
+hydra_batch --whole-library --legacy-fills --db both.db
 hydra_fillcompare --db both.db
 ```
 
