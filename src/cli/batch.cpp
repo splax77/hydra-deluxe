@@ -1,7 +1,7 @@
 // hydra_batch — batch-analyze many charts straight into the record store.
 // The C++ port of hydra_batch.py.
 //
-//     hydra_batch                    # every folder in the app's settings; saves the scan as the library
+//     hydra_batch --whole-library    # every folder in the app's settings; saves the scan as the library
 //     hydra_batch <folder> [...]     # specific folders instead; the library is left alone
 //     hydra_batch --redo             # re-analyze charts already stored
 //     hydra_batch --db <path>        # target a specific database
@@ -20,6 +20,12 @@
 // Unlike the Python version this analyzes charts across a thread pool (the
 // same pool the GUI's "Analyze library" uses), so lines can complete out of
 // chart-discovery order.
+//
+// Which charts a run reads is batch_scope's answer. A run over the whole
+// library takes the explicit flag, so a bare `hydra_batch` never starts one.
+//
+// tests/test_batch_text.cpp includes this file with HYDRA_BATCH_NO_MAIN
+// defined, to test batch_scope and batch_main without the exe.
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -32,6 +38,7 @@
 #include <cstdio>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "app/analysis.h"
@@ -60,12 +67,46 @@ std::string clip_utf8(const std::string& s, size_t max_chars) {
     return s.substr(0, i) + std::string(max_chars > chars ? max_chars - chars : 0, ' ');
 }
 
-int batch_main() {
-    SetConsoleOutputCP(CP_UTF8);  // chart titles/artists are UTF-8
-    const std::vector<std::string> args = hydra::utf8_argv();
+}  // namespace
+
+namespace hydra::cli {
+
+inline constexpr std::string_view kWholeLibraryFlag = "--whole-library";
+
+// What a run's folder arguments and kWholeLibraryFlag ask for.
+enum class BatchScope {
+    Library,    // every folder in the app's settings
+    Folders,    // just the folders given
+    Refused,    // neither: a whole-library run must be asked for by name
+    Ambiguous,  // both: the flag and folders contradict each other
+};
+
+BatchScope batch_scope(bool whole_library, bool has_folders) {
+    if (whole_library) return has_folders ? BatchScope::Ambiguous : BatchScope::Library;
+    return has_folders ? BatchScope::Folders : BatchScope::Refused;
+}
+
+// The one line a refused or ambiguous run prints; empty for a run that goes ahead.
+std::string batch_scope_error(BatchScope scope) {
+    const std::string flag(kWholeLibraryFlag);
+    switch (scope) {
+        case BatchScope::Refused:
+            return "A run over the whole library needs " + flag +
+                   ". Name chart folders to analyze just those.";
+        case BatchScope::Ambiguous:
+            return flag + " analyzes every folder in the app's settings, so it takes no folder names.";
+        case BatchScope::Library:
+        case BatchScope::Folders:
+            break;
+    }
+    return {};
+}
+
+// args[0] is the program name, as utf8_argv gives it.
+int batch_main(const std::vector<std::string>& args) {
     const int argc = static_cast<int>(args.size());
 
-    bool redo = false, legacy_fills = false;
+    bool redo = false, legacy_fills = false, whole_library = false;
     std::optional<std::string> dbpath;
     std::optional<std::string> rulespath;
     std::vector<std::string> folder_args;
@@ -74,6 +115,7 @@ int batch_main() {
         const std::string& arg = args[i];
         if (arg == "--redo") redo = true;
         else if (arg == hydra::app::kLegacyFillsFlag) legacy_fills = true;
+        else if (arg == kWholeLibraryFlag) whole_library = true;
         else if (arg == "--db" && i + 1 < argc) dbpath = args[++i];
         else if (arg == "--rules" && i + 1 < argc) rulespath = args[++i];
         else if (arg.rfind("--", 0) == 0) {
@@ -82,6 +124,14 @@ int batch_main() {
         } else {
             folder_args.push_back(arg);
         }
+    }
+
+    // Settled before the settings or the store are touched, so a refused run
+    // opens nothing.
+    const BatchScope scope = batch_scope(whole_library, !folder_args.empty());
+    if (scope == BatchScope::Refused || scope == BatchScope::Ambiguous) {
+        std::fprintf(stderr, "%s\n", batch_scope_error(scope).c_str());
+        return 2;
     }
 
     hydra::app::Settings settings = hydra::app::Settings::load_for_command_line(legacy_fills);
@@ -103,7 +153,7 @@ int batch_main() {
     const hydra::FillDeadlineRule run_rule = hydra::fill_rule_for(legacy_fills);
 
     std::vector<std::string> folders =
-        folder_args.empty() ? settings.chartfolders : folder_args;
+        scope == BatchScope::Library ? settings.chartfolders : folder_args;
     if (folders.empty()) {
         std::printf("No chart folders. Add them in Hydra, or pass folders as arguments.\n");
         return 1;
@@ -134,7 +184,7 @@ int batch_main() {
         // folder arguments leaves the library alone.
         auto [scanitems, folder_errors] = hydra::app::discover_charts(
             folders, hydra::app::ScanCallbacks{}, hydra::app::load_scan_cache(store));
-        if (folder_args.empty()) {
+        if (scope == BatchScope::Library) {
             if (const std::optional<std::string> problem =
                     hydra::app::save_scan_as_library(store, scanitems))
                 std::printf("  ! %s\n", problem->c_str());
@@ -205,6 +255,11 @@ int batch_main() {
     return 0;
 }
 
-}  // namespace
+}  // namespace hydra::cli
 
-int main() { return hydra::app::run_tool(batch_main); }
+#ifndef HYDRA_BATCH_NO_MAIN
+int main() {
+    SetConsoleOutputCP(CP_UTF8);  // chart titles/artists are UTF-8
+    return hydra::app::run_tool([] { return hydra::cli::batch_main(hydra::utf8_argv()); });
+}
+#endif
