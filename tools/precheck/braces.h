@@ -26,6 +26,9 @@ public:
     // The "{" that encloses the "{" at `open`, or kTop. A "{" that never
     // closes stays the enclosing block of everything after it.
     size_t parent(size_t open) const;
+    // The innermost "{" whose block holds offset `p` (its own "}" included),
+    // or kTop. The one answer to "which block is this offset in".
+    size_t innermost(size_t p) const;
     // Whether `open` is the offset of a "{" at all.
     bool is_open(size_t open) const { return parent_.count(open) != 0; }
     // The "{" offsets directly inside the "{" at `open` (kTop for the top

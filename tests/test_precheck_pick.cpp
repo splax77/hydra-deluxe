@@ -154,6 +154,48 @@ TEST_CASE("precheck pick (b): a deleted class is a name and its members are not 
     CHECK(picked_files(p) == std::vector<std::string>{"tests/test_square.cpp"});
 }
 
+TEST_CASE("precheck pick (b): a deleted class's multi-line member body gives the class, not the member") {
+    const std::string base =
+        "#pragma once\n"
+        "class Square {\n"
+        "public:\n"
+        "    int side() const {\n"
+        "        const int twice = s_ * 2;\n"
+        "        return twice / 2;\n"
+        "    }\n"
+        "    int s_ = 0;\n"
+        "};\n"
+        "int keep_me();\n";
+    PickRepo fx("precheck_pick_b2", {{"src/shapes.h", base},
+                                     {"tests/test_square.cpp", "int sq() { Square q; return 0; }\n"},
+                                     {"tests/test_side.cpp", "int sd() { return side() + s_; }\n"}});
+    const TestPick p = fx.pick({{"src/shapes.h", "#pragma once\nint keep_me();\n"}});
+    REQUIRE_FALSE(p.whole_suite);
+    CHECK(name_in(p, "Square") != nullptr);
+    CHECK(name_in(p, "side") == nullptr);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_square.cpp"});
+}
+
+TEST_CASE("precheck pick (a): a function changed only by the comment above it does not walk its callers") {
+    const std::string base =
+        "void deep() { int x = 1; }\n"
+        "// old words\n"
+        "void shallow() { deep(); }\n"
+        "void top() { shallow(); }\n";
+    PickRepo fx("precheck_pick_a3", {{"src/chain.cpp", base},
+                                     {"tests/test_shallow.cpp", "void t1() { shallow(); }\n"},
+                                     {"tests/test_top.cpp", "void t2() { top(); }\n"}});
+    std::string tip = base;
+    tip.replace(tip.find("old words"), 9, "new words");
+    const TestPick p = fx.pick({{"src/chain.cpp", tip}});
+    REQUIRE_FALSE(p.whole_suite);
+    REQUIRE(p.names.size() == 1);
+    CHECK(p.names[0].name == "shallow");
+    CHECK(p.names[0].kind == NameKind::Comment);
+    CHECK(p.callers.empty());
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_shallow.cpp"});
+}
+
 TEST_CASE("precheck pick (c): a key in a helper header picks every test file that includes it") {
     PickRepo fx("precheck_pick_c",
                 {{"src/calc.cpp", "int scale(int v) { return v * 2; }\n"},

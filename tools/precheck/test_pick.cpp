@@ -164,22 +164,6 @@ std::optional<WholeSuite> shared_code_in(const std::string& file, IncludeMap& in
 
 // --------------------------------------------------------------- names
 
-// The innermost "{" whose block holds offset p, or kTop.
-size_t block_of(const Braces& braces, size_t p) {
-    size_t o = Braces::kTop;
-    for (;;) {
-        size_t inner = Braces::kTop;
-        for (size_t c : braces.children(o)) {
-            if (c >= p) break;
-            inner = c;
-        }
-        if (inner == Braces::kTop) return o;
-        const std::optional<size_t> close = braces.close(inner, std::string::npos);
-        if (close && *close < p) return o;
-        o = inner;
-    }
-}
-
 // Whether the declaration starting on line n (the next one, for a comment
 // line) calls `name` as a function: `name(` before its first ";" or "{".
 bool declares_function(const View& view, int n, const std::string& name) {
@@ -323,6 +307,7 @@ private:
             const bool enclosed =
                 std::any_of(got.begin(), got.end(), [](const ChangedName& c) { return c.kind == NameKind::Body; });
             for (const ChangedName& c : got) {
+                if (c.member) continue;  // an inline member's body: its type is the key
                 if (enclosed && c.kind != NameKind::Body && c.kind != NameKind::Value &&
                     declares_function(view, n, c.name))
                     continue;
@@ -360,6 +345,8 @@ private:
         for (size_t i = 0; i < changed; ++i) {
             const std::string callee = out_.names[i].name;
             if (callee.find("::") != std::string::npos) continue;
+            // A function changed only by the comment above it behaves as before.
+            if (out_.names[i].kind == NameKind::Comment) continue;
             for (const std::string& f : src) {
                 const View& view = views_.get(range_.tip, f);
                 const std::vector<size_t> hits = word_hits(view.code, callee);
@@ -384,12 +371,12 @@ private:
         for (const std::string& c : callers) add_caller(c, callee, c, false);
         const int line = view.line_of(at);
         std::vector<std::string> values = selector_values(view.line(view.code, line));
-        const size_t open = block_of(braces, at);
+        const size_t open = braces.innermost(at);
         if (open != Braces::kTop) {
             const int top = view.line_of(open);
             for (int m = line - 1; m >= top; --m) {
                 const size_t first = skip_space(view.code, view.line_starts[m - 1]);
-                if (m != top && block_of(braces, first) != open) continue;
+                if (m != top && braces.innermost(first) != open) continue;
                 const std::string text = view.line(view.code, m);
                 if (!guard_line(text)) continue;
                 for (const std::string& v : selector_values(text))
