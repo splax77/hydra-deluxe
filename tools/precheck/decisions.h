@@ -20,7 +20,8 @@ bool word_byte(char c);
 bool word_byte_before(const std::string& s, size_t pos);
 
 // The key a number is compared by: its absolute value, written as a whole
-// number when it is one (below 1e15), otherwise with 10 significant digits.
+// number when it is one (below kWholeNumberLimit in decisions.cpp), otherwise
+// with 10 significant digits.
 std::string number_canon(double v);
 
 // The value a doc number or a code literal spells: digit separators (, ' _
