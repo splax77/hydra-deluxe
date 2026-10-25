@@ -2,7 +2,7 @@
 // src/, and the type-definition finder and record-field reader it is built
 // from (tools/precheck/records.h). The check runs as the exe on a tiny git
 // repo in a temp folder, with the other checks turned off; the repo holds the
-// check-5 files of tools/test_derive_once_precheck.ps1's fixture.
+// check-5 files of the precheck self-test's fixture (tests/test_precheck.cpp).
 #include "doctest.h"
 
 #include <cstdint>

@@ -18,10 +18,10 @@ The orchestrator gives you a **key** (a 40-character hash) and a **range**. The 
 
 It also hands you two things, so you do not redo work already done:
 
-- **The precheck output.** `tools/derive_once_precheck.ps1` (task P0-1) has already run on the range. It prints one line per item: the kind letter, the file and line, what it found and why it counts. It finds kinds B to F mechanically. After the items it prints the range's size in changed lines, and a large-range note when the range is over the precheck's threshold. The precheck owns that threshold and which files count; this page never restates them.
+- **The precheck output.** `hydra_precheck.exe` (its code is in `tools/precheck/`) has already run on the range. It prints one line per item: the kind letter, the file and line, what it found and why it counts. It finds kinds B to F mechanically. After the items it prints the range's size in changed lines, and a large-range note when the range is over the precheck's threshold. The precheck owns that threshold and which files count; this page never restates them.
 - **The implementer's report.** It names the questions the change answers, the tests it ran, and for a failing-first test the exact red line from the run before the fix.
 
-If the precheck output is missing, run the script once yourself on the range and repo path; it needs no build. If the implementer's report is missing, say so in your review and carry on without it.
+If the precheck output is missing, run it once yourself on the range and repo path. It is a C++ program, so build it first with `.\build_cpp.ps1 -Target hydra_precheck`, then run `build-cpp\Release\hydra_precheck.exe --repo <path> --range main...<key>`. The main checkout's exe works on any worktree, because `--repo` names the worktree to read. If the implementer's report is missing, say so in your review and carry on without it.
 
 ## The six recurring kinds
 
@@ -163,7 +163,7 @@ These rules are for the session that runs the merge.
 
 When main moves under a reviewed branch, merge main into the branch. A conflict-free merge needs nothing more. A merge resolved by hand gets one resolution review (see "Resolution review"), keyed on that merge commit, or on the topmost commit when commits sit directly above it. Those commits are covered by that same resolution review, whoever wrote them, as long as each carries exactly one Agent trailer. It never gets a second full review. The ref gate's refusal names each merge that still needs one, with its key and what to read. Any other commit after the review, such as your own edit above a conflict-free merge or with no merge at all, still needs a full review of the new tip.
 
-Before the review, run the precheck on the range and fix what it prints. Keep merges small enough to review in one read. The precheck prints the range's size, and a large-range note when it is over the threshold that `tools/derive_once_precheck.ps1` owns. A range with that note should go in as two or more merges.
+Before the review, run the precheck on the range and fix what it prints. Keep merges small enough to review in one read. The precheck prints the range's size, and a large-range note when it is over the threshold that `hydra_precheck.exe` owns (`tools/precheck/items.h`). A range with that note should go in as two or more merges.
 
 Set up the review in this order. A hook, `reviewer_dispatch_gate.ps1`, refuses a reviewer dispatch that skips a step, and it owns what each check accepts.
 

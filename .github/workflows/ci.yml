@@ -42,16 +42,26 @@ jobs:
       run:
         shell: pwsh
     steps:
+      # The full history, so the precheck self-test's two real commit ranges
+      # (c6debcd^2...c6debcd and 11b9d44^2...11b9d44, in tests/test_precheck.cpp)
+      # are in the clone; without them it skips that part.
       - name: Check out the code
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       # The same script and preset developers use; warnings fail the build.
+      # Building hydra_tests also builds hydra_precheck.exe, which its tests
+      # and the mutation probe self-test run.
       - name: Build hydra_tests
         run: .\build_cpp.ps1 -Target hydra_tests
 
       # The slices of tests/shards.txt, side by side.
       - name: Run hydra_tests
         run: ctest --test-dir build-cpp -C Release -j 4 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
+
+      - name: Run the mutation probe self-test
+        run: pwsh -NoProfile -File tools/test_mutation_probe.ps1
 
       - name: Build hydra_uitest
         run: .\build_cpp.ps1 -Target hydra_uitest
@@ -258,12 +268,8 @@ jobs:
       run:
         shell: pwsh
     steps:
-      # The full history, so the precheck self-test's two real commit ranges
-      # are in the clone; without them it skips that part.
       - name: Check out the code
         uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
       - name: Install pytest
         run: py -m pip install pytest
@@ -272,9 +278,3 @@ jobs:
       # pytest would collect and that drive the real game.
       - name: Run the Python tool tests
         run: py -m pytest tools/ch_probe/tests tools/test_compare_db.py -q
-
-      - name: Run the mutation probe self-test
-        run: pwsh -NoProfile -File tools/test_mutation_probe.ps1
-
-      - name: Run the derive-once precheck self-test
-        run: pwsh -NoProfile -File tools/test_derive_once_precheck.ps1

@@ -140,10 +140,11 @@ file another task owns still land its change, while the clock runs.
 
 ## The precheck reads the same files
 
-tools/derive_once_precheck.ps1 reads the rules files that `select_rule_files` in
-tests/single_owner/engine.cpp names, and baseline.json, at the revision it
-checks, with `ConvertFrom-Json`. The scan and the precheck read one set of
-files, and neither parses the other's language.
+The precheck, `hydra_precheck.exe` (tools/precheck/), calls the scan's own
+engine in tests/single_owner/engine.cpp. It reads the rules files that
+`select_rule_files` names, and baseline.json, at the revision it checks, and
+matches them with the scan's code. The scan and the precheck read one set of
+files with one reader.
 
 ## Rejected
 
