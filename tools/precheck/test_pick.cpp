@@ -248,6 +248,37 @@ std::vector<std::string> selector_values(const std::string& line) {
     return out;
 }
 
+// Whether masked `code` defines the type `type`: an enum, class, struct or
+// union head naming it that a "{" follows before any ";". A forward
+// declaration does not count, so the walk below keeps looking for the body.
+bool declares_type(const std::string& code, const std::string& type) {
+    static const std::set<std::string> kHeads = {"enum", "class", "struct", "union"};
+    for (size_t h : word_hits(code, type)) {
+        size_t b = h;
+        while (b > 0 && (code[b - 1] == ' ' || code[b - 1] == '\t' || code[b - 1] == '\n' || code[b - 1] == '\r')) --b;
+        size_t w = b;
+        while (w > 0 && word_char(code[w - 1])) --w;
+        if (!kHeads.count(code.substr(w, b - w))) continue;
+        const size_t stop = code.find_first_of(";{", h + type.size());
+        if (stop != std::string::npos && code[stop] == '{') return true;
+    }
+    return false;
+}
+
+// Whether masked `code` defines a program's entry point: `int main(` or
+// `int wmain(` at file level.
+bool defines_main(const std::string& code) {
+    const Braces braces(code);
+    for (const char* entry : {"main", "wmain"})
+        for (size_t h : paren_hits(code, entry)) {
+            if (braces.innermost(h) != Braces::kTop) continue;
+            size_t b = h;
+            while (b > 0 && (code[b - 1] == ' ' || code[b - 1] == '\t' || code[b - 1] == '\n')) --b;
+            if (b >= 3 && code.compare(b - 3, 3, "int") == 0 && (b == 3 || !word_char(code[b - 4]))) return true;
+        }
+    return false;
+}
+
 // Whether a masked line opens with an if, else if or case.
 bool guard_line(const std::string& line) {
     std::string t = trim(line);
@@ -304,6 +335,9 @@ private:
     std::map<std::string, std::vector<std::string>> picks_;
     // Every production file each changed name came from, either side.
     std::map<std::string, std::set<std::string>> name_files_;
+    // Every file a caller key's call site sat in, and whether the key was a
+    // selector value there.
+    std::map<std::string, std::set<std::pair<std::string, bool>>> key_sites_;
 
     void add_name(const ChangedName& c, const std::string& file, bool from_base) {
         name_files_[c.name].insert(file);
@@ -356,20 +390,21 @@ private:
         out_.callers.push_back({key, callee, caller, selector});
     }
 
-    // The headers with `callee(` in them that a changed .cpp includes
-    // directly or, when none of those has it, the nearest ones further down
-    // its include chain: a .cpp need not include the header that declares
-    // what it defines. The seen set stops include cycles.
-    std::vector<std::string> declaring_headers(const std::string& cpp, const std::string& callee) {
+    // The headers whose masked code `declares` that `file` includes directly
+    // or, when none of those does, the nearest ones further down its include
+    // chain: a .cpp need not include the header that declares what it
+    // defines. The seen set stops include cycles.
+    template <typename Declares>
+    std::vector<std::string> declaring_headers(const std::string& file, const Declares& declares) {
         std::vector<std::string> found;
         std::set<std::string> seen;
-        std::vector<std::string> level = tip_includes_.included_by(cpp);
+        std::vector<std::string> level = tip_includes_.included_by(file);
         while (found.empty() && !level.empty()) {
             std::vector<std::string> next;
             for (const std::string& h : level) {
                 if (!seen.insert(h).second) continue;
                 if (!is_cpp(h) || is_cpp_implementation(h)) continue;
-                if (!paren_hits(views_.get(range_.tip, h).code, callee).empty()) found.push_back(h);
+                if (declares(views_.get(range_.tip, h).code)) found.push_back(h);
                 for (const std::string& inc : tip_includes_.included_by(h)) next.push_back(inc);
             }
             level = next;
@@ -377,30 +412,96 @@ private:
         return found;
     }
 
+    // declaring_headers for a function: a header with `name(` in it.
+    std::vector<std::string> function_headers(const std::string& file, const std::string& name) {
+        return declaring_headers(file, [&](const std::string& code) { return !paren_hits(code, name).empty(); });
+    }
+
+    // The headers that declare `name` as defined in `file`: the file itself
+    // when it is a header, else function_headers. Nothing when the file is
+    // gone at the tip, defines main (the user's exception: tests reach such
+    // a file by running its exe), or reaches no header declaring the name.
+    std::optional<std::vector<std::string>> definer_headers(const std::string& file, const std::string& name) {
+        if (!tip_includes_.has(file)) return std::nullopt;
+        if (!is_cpp_implementation(file)) return std::vector<std::string>{file};
+        if (defines_main(views_.get(range_.tip, file).code)) return std::nullopt;
+        std::vector<std::string> found = function_headers(file, name);
+        if (found.empty()) return std::nullopt;
+        return found;
+    }
+
+    // `headers` and every file that includes one of them, through any chain
+    // of includes.
+    std::set<std::string> reaching(std::vector<std::string> todo) {
+        std::set<std::string> out;
+        std::set<std::string> seen(todo.begin(), todo.end());
+        while (!todo.empty()) {
+            const std::string h = todo.back();
+            todo.pop_back();
+            out.insert(h);
+            for (const std::string& inc : tip_includes_.includers(h))
+                if (seen.insert(inc).second) todo.push_back(inc);
+        }
+        return out;
+    }
+
     // The files whose calls to `callee` can reach the changed function (the
     // user's ruling in the plan's "User decisions"): the files it changed in,
     // and every file that includes a header declaring it, through any chain
     // of includes. A name changed only in a .cpp has no declaring header, so
     // only its own file counts. A declaring header is a changed header
-    // itself, or one declaring_headers finds for a changed .cpp.
+    // itself, or one function_headers finds for a changed .cpp.
     std::set<std::string> caller_scope(const std::string& callee) {
         const std::set<std::string>& own = name_files_[callee];
-        std::set<std::string> scope = own;
         std::vector<std::string> todo;
         for (const std::string& f : own) {
             if (!is_cpp_implementation(f)) todo.push_back(f);
             else
-                for (const std::string& h : declaring_headers(f, callee)) todo.push_back(h);
+                for (const std::string& h : function_headers(f, callee)) todo.push_back(h);
         }
-        std::set<std::string> seen(todo.begin(), todo.end());
-        while (!todo.empty()) {
-            const std::string h = todo.back();
-            todo.pop_back();
-            scope.insert(h);
-            for (const std::string& inc : tip_includes_.includers(h))
-                if (seen.insert(inc).second) todo.push_back(inc);
-        }
+        std::set<std::string> scope = reaching(todo);
+        scope.insert(own.begin(), own.end());
         return scope;
+    }
+
+    // The files a test must reach for its mention of `key` to count (the
+    // user's Step 5 ruling in the plan's "User decisions"): every file that
+    // reaches a header declaring the key, wherever the key came from. Nothing
+    // means the plain-name search: a deleted name, or any source of the key
+    // with no declaring header found (see definer_headers).
+    std::optional<std::set<std::string>> test_scope(const std::string& key) {
+        std::vector<std::string> headers;
+        auto add = [&](const std::optional<std::vector<std::string>>& hs) {
+            if (!hs) return false;
+            headers.insert(headers.end(), hs->begin(), hs->end());
+            return true;
+        };
+        const auto named = name_index_.find(key);
+        if (named != name_index_.end()) {
+            if (out_.names[named->second].base_only) return std::nullopt;
+            for (const std::string& f : name_files_[key])
+                if (!add(definer_headers(f, key))) return std::nullopt;
+        }
+        for (const auto& [file, selector] : key_sites_[key]) {
+            if (!selector) {
+                if (!add(definer_headers(file, key))) return std::nullopt;
+                continue;
+            }
+            // A selector value is declared where its type is.
+            const std::string type = key.substr(0, key.find("::"));
+            auto declares = [&](const std::string& code) { return declares_type(code, type); };
+            const std::string& code = views_.get(range_.tip, file).code;
+            if (declares(code)) {
+                if (is_cpp_implementation(file)) return std::nullopt;  // a type local to the .cpp
+                headers.push_back(file);
+                continue;
+            }
+            const std::vector<std::string> found = declaring_headers(file, declares);
+            if (found.empty()) return std::nullopt;
+            headers.insert(headers.end(), found.begin(), found.end());
+        }
+        if (headers.empty()) return std::nullopt;
+        return reaching(headers);
     }
 
     // Step 4: one level of callers in production code under the include
@@ -426,19 +527,23 @@ private:
                 const std::vector<size_t> hits = paren_hits(view.code, callee);
                 if (hits.empty()) continue;
                 const Braces braces(view.code);
-                for (size_t h : hits) call_site(view, braces, h, callee);
+                for (size_t h : hits) call_site(f, view, braces, h, callee);
             }
         }
     }
 
-    void call_site(const View& view, const Braces& braces, size_t at, const std::string& callee) {
+    void call_site(const std::string& file, const View& view, const Braces& braces, size_t at,
+                   const std::string& callee) {
         std::vector<std::string> callers;
         for (const ChangedName& c : names_at(view, at)) {
             if (c.name == callee && c.kind != NameKind::Body) return;  // its own definition or declaration
             if (c.kind == NameKind::Body && c.name != callee) callers.push_back(c.name);
         }
         if (callers.empty()) return;
-        for (const std::string& c : callers) add_caller(c, callee, c, false);
+        for (const std::string& c : callers) {
+            add_caller(c, callee, c, false);
+            key_sites_[c].insert({file, false});
+        }
         const int line = view.line_of(at);
         std::vector<std::string> values = selector_values(view.line(view.code, line));
         const size_t open = braces.innermost(at);
@@ -454,7 +559,10 @@ private:
                 break;
             }
         }
-        for (const std::string& v : values) add_caller(v, callee, callers[0], true);
+        for (const std::string& v : values) {
+            add_caller(v, callee, callers[0], true);
+            key_sites_[v].insert({file, true});
+        }
     }
 
     void add_reason(const std::string& file, const std::string& reason) {
@@ -492,10 +600,15 @@ private:
                     out_.whole_suite = WholeSuite{out_.names[name_index_.at(key)].file, "common name " + key, count};
                 continue;
             }
-            for (const std::string& f : in_cpp) add_reason(f, key);
+            // The count above stays over every mention; only the picks need
+            // the test to reach the key's declaring header.
+            const std::optional<std::set<std::string>> scope = test_scope(key);
+            auto reaches = [&](const std::string& f) { return !scope || scope->count(f) != 0; };
+            for (const std::string& f : in_cpp)
+                if (reaches(f)) add_reason(f, key);
             for (const std::string& h : mentions(headers, key))
                 for (const std::string& inc : tip_includes_.includers(h))
-                    if (runnable_test(inc)) add_reason(inc, key);
+                    if (runnable_test(inc) && reaches(inc)) add_reason(inc, key);
         }
     }
 };
