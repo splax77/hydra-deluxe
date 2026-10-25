@@ -39,6 +39,7 @@
 #include "search/graph.h"
 #include "core/model.h"  // within_squeeze_window, the horizon the warning uses
 #include "search/pather.h"
+#include "song_digest.h"  // chart_parse_hash, the load the digest counts with
 #include "store/record_store.h"
 
 using namespace hydra;
@@ -54,21 +55,36 @@ namespace {
 // What a walk over every stored corpus path found.
 struct CorpusPathRun {
     int charts = 0, paths = 0, mismatches = 0;
+    int no_part = 0;         // charts with no notes at these settings, skipped
     std::string first_diff;  // the first mismatch, named by chart and path
 };
 
 // Walks every stored path of every corpus chart `cfg` analyzes. `check` is
 // called with the chart's song and one stored path; it returns "" when the
-// path passes, or what differs.
+// path passes, or what differs. A chart with no notes at these settings
+// (require_notes) is counted in no_part; any other load failure throws.
 template <class Check>
 CorpusPathRun check_every_corpus_path(const app::AnalysisSettings& cfg, Check check) {
     CorpusPathRun run;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.reading());
-        if (song.is_empty()) continue;
+        // corpus::song parses under kTestFillRule only, so under another fill
+        // rule the chart is loaded and analysed the app's way instead.
+        std::optional<app::AnalysisResult> own;
+        if (fill_rule_for(cfg.legacy_fills) != kTestFillRule) {
+            try {
+                own.emplace(app::analyze_chart_file(path, cfg));
+            } catch (const NoNotesError&) {
+                ++run.no_part;
+                continue;
+            }
+        } else if (corpus::song(path, cfg.reading()).is_empty()) {
+            ++run.no_part;
+            continue;
+        }
         ++run.charts;
 
-        const HydraRecord& rec = corpus::analyzed(path, cfg);
+        const Song& song = own ? own->song : corpus::song(path, cfg.reading());
+        const HydraRecord& rec = own ? own->record : corpus::analyzed(path, cfg);
 
         for (const Path* p : rec.all_paths()) {
             ++run.paths;
@@ -84,23 +100,53 @@ CorpusPathRun check_every_corpus_path(const app::AnalysisSettings& cfg, Check ch
 }  // namespace
 
 TEST_CASE("replay reproduces the engine's score for every corpus path") {
-    // The GUI's defaults, straight from app::Settings rather than five
-    // hand-written literals: cap 4, score range 4, 10 ms.
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    // Each setting starts from the GUI's defaults, straight from app::Settings
+    // rather than hand-written literals, and changes one thing. `min_paths` is
+    // a floor pinned from one run on the corpus, so a change that drops paths
+    // is caught.
+    struct Case {
+        std::string name;
+        app::Settings settings;
+        int min_paths;
+    };
+    app::Settings legacy;
+    legacy.legacy_fills = true;
+    app::Settings hard;
+    hard.view_difficulty = "Hard";
+    const Case cases[] = {
+        {"defaults", app::Settings(), 382},
+        {"CH 1.0 fill rule", legacy, 382},
+        {"Hard", hard, 294},
+    };
 
-    const CorpusPathRun run = check_every_corpus_path(
-        cfg, [](const Song& song, const Path& p) -> std::string {
-            const PathReplay pr = replay_stored_path(song, p);
-            REQUIRE(pr.all_windows());
-            if (pr.totals_match()) return "";
-            return ": replay " + std::to_string(pr.result.final.total()) + " vs stored " +
-                   std::to_string(p.totalscore());
-        });
+    for (const Case& c : cases) {
+        CAPTURE(c.name);
+        const app::AnalysisSettings cfg = c.settings.to_analysis_settings();
+        const CorpusPathRun run = check_every_corpus_path(
+            cfg, [](const Song& song, const Path& p) -> std::string {
+                const PathReplay pr = replay_stored_path(song, p);
+                REQUIRE(pr.all_windows());
+                if (pr.totals_match()) return "";
+                return ": replay " + std::to_string(pr.result.final.total()) + " vs stored " +
+                       std::to_string(p.totalscore());
+            });
 
-    CHECK(run.charts > 0);
-    CHECK(run.paths > 0);
-    INFO("first mismatch: " << run.first_diff);
-    CHECK(run.mismatches == 0);
+        MESSAGE(c.name << ": " << run.charts << " charts, " << run.no_part << " with no part, "
+                       << run.paths << " paths");
+        // Every chart that loads at these settings, by the parse digest's own
+        // load (as test_perf_digest.cpp counts them), was walked.
+        int loading = 0;
+        for (const std::string& path : corpus::chart_paths()) {
+            std::string fail;
+            digest::chart_parse_hash(path, cfg, &fail);
+            if (fail.empty()) ++loading;
+        }
+        CHECK(run.charts > 0);
+        CHECK(run.charts == loading);
+        CHECK(run.paths >= c.min_paths);
+        INFO("first mismatch: " << run.first_diff);
+        CHECK(run.mismatches == 0);
+    }
 }
 
 // The combo the game's counter shows once a chord is hit. The Preview's score
