@@ -2,8 +2,10 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <iterator>  // std::size
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "uitest_harness.h"
@@ -446,6 +448,8 @@ void test_view_settings(ImGuiTestContext* ctx) {
     IM_CHECK((ctx->ItemInfo("Scan library").ItemFlags & ImGuiItemFlags_Disabled) != 0);
 }
 
+ImGuiTable* library_table();  // below, beside the column tests
+
 // The search box, the chips, the second line and the empty state, on the
 // scratch library (97 charts in testdata\input).
 void test_library_search(ImGuiTestContext* ctx) {
@@ -479,6 +483,76 @@ void test_library_search(ImGuiTestContext* ctx) {
     }, 5));
     h.app->close_details();
     IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists("**/Folder"); }, 5));
+
+    // album: limits a word to the album. Haken - The Good Doctor's song.ini
+    // says album = Vector.
+    ctx->ItemInputValue("**/##search", "album:vector");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->search == "album:vector"; }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return shown() == 1; }, 5));
+    IM_CHECK_EQ(shown(), (size_t)1);
+    IM_CHECK(h.app->library_row_at(0).title == "The Good Doctor");
+    IM_CHECK(ctx->ItemExists("**/Album"));
+    const auto count_of = [&](const std::string& part) {
+        const std::string all = visible_text(h);
+        size_t n = 0;
+        for (size_t at = all.find(part); at != std::string::npos; at = all.find(part, at + 1)) ++n;
+        return n;
+    };
+    // With a song open, Album makes way with Charter and Folder, and the
+    // album shows on the row's second line instead.
+    h.app->select(h.app->library_row_at(0).entry, hydra::ui::SelectionSource::Click);
+    IM_CHECK(wait_until(ctx, [&] { return !ctx->ItemExists("**/Album"); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Matched on album."); }, 5));
+    IM_CHECK(on_screen(h, "Vector"));
+    h.app->close_details();
+    IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists("**/Album"); }, 5));
+
+    // Only Album hidden, from the header menu: the rows grow a second line
+    // that carries the album under Artist. Folder is still a column, so the
+    // title's second line stays empty and the folder is drawn once.
+    ImGuiTable* table = library_table();
+    IM_CHECK_RETV(table != nullptr, );
+    const std::string doctor_ref = "**/The Good Doctor";
+    const float one_line_h = [&] {
+        ctx->ItemInputValue("**/##search", "");
+        wait_until(ctx, [&] { return h.app->search.empty(); }, 5);
+        return ctx->ItemInfo(("**/" + escape_ref(h.app->library_row_at(0).title)).c_str())
+            .RectFull.GetHeight();
+    }();
+    ctx->TableSetColumnEnabled(table->ID, "Album", false);
+    ctx->Yield(3);
+    IM_CHECK(!table->Columns[hydra::ui::kColumnAlbum].IsEnabled);
+    ctx->ItemInputValue("**/##search", "album:vector");
+    IM_CHECK(wait_until(ctx, [&] { return shown() == 1; }, 5));
+    ctx->Yield(2);
+    const float two_line_h = ctx->ItemInfo(doctor_ref.c_str()).RectFull.GetHeight();
+    IM_CHECK_GT(two_line_h, one_line_h * 1.5f);
+    IM_CHECK_EQ(count_of("Vector"), (size_t)1);
+    IM_CHECK_EQ(count_of(h.app->library_row_at(0).entry.rootfolder), (size_t)1);
+    IM_CHECK(on_screen(h, "Matched on album."));
+    // The album sits in the Artist cell: the frame's text runs title, artist,
+    // album line, then the Folder column.
+    {
+        const std::string all = visible_text(h);
+        const hydra::ui::LibraryRow& doctor = h.app->library_row_at(0);
+        const size_t title_at = all.find(doctor.title);
+        const size_t artist_at = all.find(doctor.artist, title_at);
+        const size_t album_at = all.find("Vector", artist_at);
+        const size_t folder_at = all.find(doctor.entry.rootfolder, artist_at);
+        IM_CHECK(title_at != std::string::npos && artist_at != std::string::npos);
+        IM_CHECK(album_at != std::string::npos && folder_at != std::string::npos);
+        IM_CHECK_LT(artist_at, album_at);
+        IM_CHECK_LT(album_at, folder_at);
+    }
+    // No search: one line again.
+    ctx->ItemInputValue("**/##search", "");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->search.empty(); }, 5));
+    ctx->Yield(2);
+    IM_CHECK_EQ(ctx->ItemInfo(("**/" + escape_ref(h.app->library_row_at(0).title)).c_str())
+                    .RectFull.GetHeight(),
+                one_line_h);
+    ctx->TableSetColumnEnabled(table->ID, "Album", true);
+    ctx->Yield(3);
 
     // Words in any order, across title and artist.
     ctx->ItemInputValue("**/##search", "green burnout");
@@ -764,7 +838,7 @@ void test_library_layout(ImGuiTestContext* ctx) {
 // Every column is as wide as the one width rule (ui/column_widths.h) says for
 // the scanned rows. The expected widths come from the production
 // place_columns on the table's own measure and room, never worked out here.
-// At the narrowest library, with all five columns on, Title stops at its
+// At the narrowest library, with all six columns on, Title stops at its
 // header's width and the table scrolls sideways instead.
 void test_library_column_widths(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
@@ -777,6 +851,11 @@ void test_library_column_widths(ImGuiTestContext* ctx) {
     const hydra::ui::LibraryViewState::ColumnWidths& cache = h.app->library_ui.column_widths;
     IM_CHECK_EQ(cache.specs.size(), static_cast<size_t>(hydra::ui::kLibraryColumnCount));
     IM_CHECK(hydra::ui::text_shares_sum_to_100(cache.specs));  // the real list
+    // The headers left to right: Album sits between Artist and Charter.
+    const char* const headers[] = {"Title", "Artist", "Album", "Charter", "Folder", "Best path"};
+    IM_CHECK_EQ(table->ColumnsCount, static_cast<int>(std::size(headers)));
+    for (int c = 0; c < table->ColumnsCount && c < static_cast<int>(std::size(headers)); ++c)
+        IM_CHECK_STR_EQ(ImGui::TableGetColumnName(table, c), headers[c]);
     // A header is measured in the font it is drawn in. The Best path cells
     // draw as Notation, but TableHeadersRow draws the header as Label.
     IM_CHECK_EQ(cache.measured.header_widths[hydra::ui::kColumnBestPath],
@@ -797,8 +876,8 @@ void test_library_column_widths(ImGuiTestContext* ctx) {
     IM_CHECK(!table->InnerWindow->ScrollbarX);  // the wide library fits every column
 
     // The song panel opens and the library goes as narrow as it gets. The
-    // panel hides Charter and Folder; they come back from the header menu, so
-    // the five headers alone are wider than the library.
+    // panel hides Album, Charter and Folder; they come back from the header
+    // menu, so the six headers alone are wider than the library.
     ctx->SetRef("//Hydra");
     const std::string title = h.app->library_row_at(0).title;
     ctx->ItemClick(("**/" + escape_ref(title)).c_str());
@@ -810,6 +889,8 @@ void test_library_column_widths(ImGuiTestContext* ctx) {
     // Each enable opens the header menu on the rightmost header. The columns
     // take their new widths over a few frames, so the table settles before
     // the next click looks for that header.
+    ctx->TableSetColumnEnabled(table->ID, "Album", true);
+    ctx->Yield(3);
     ctx->TableSetColumnEnabled(table->ID, "Charter", true);
     ctx->Yield(3);
     ctx->TableSetColumnEnabled(table->ID, "Folder", true);
@@ -1059,7 +1140,8 @@ void test_library_column_order(ImGuiTestContext* ctx) {
 // table's saved state during its first frame, after the table has said which
 // columns the panel wants, so the saved "hidden" used to win at every start.
 // This rebuilds that start: the table is dropped so its next frame is a first
-// one, and the only saved entry hides both columns.
+// one, and the only saved entry hides both columns. Then a saved entry from
+// before the Album column still lands on the columns it named.
 void test_library_columns_at_start(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     // A first scan draws the table once, for its ID and its columns' IDs.
@@ -1084,19 +1166,50 @@ void test_library_columns_at_start(ImGuiTestContext* ctx) {
     // A fresh app with no rows draws no table. The table goes, and the saved
     // entry is the only one, as at startup; the scan then brings the table
     // back for its first frame.
-    reset_app(h);
-    IM_CHECK(!h.app->details_open());
-    ImGui::TableRemove(table);
-    ImGui::ClearIniSettings();
-    ImGui::LoadIniSettingsFromMemory(ini.c_str());
-    scan_library(ctx);
-    if (ctx->IsError()) return;
-    ctx->Yield(3);
-    table = library_table();
-    IM_CHECK_RETV(table != nullptr, );
+    const auto start_with = [&](const std::string& saved) {
+        reset_app(h);
+        if (h.app->details_open()) return false;
+        ImGui::TableRemove(table);
+        ImGui::ClearIniSettings();
+        ImGui::LoadIniSettingsFromMemory(saved.c_str());
+        scan_library(ctx);
+        if (ctx->IsError()) return false;
+        ctx->Yield(3);
+        table = library_table();
+        return table != nullptr;
+    };
+    IM_CHECK_RETV(start_with(ini), );
     IM_CHECK(!h.app->details_open());
     IM_CHECK(table->Columns[hydra::ui::kColumnCharter].IsEnabled);
     IM_CHECK(table->Columns[hydra::ui::kColumnFolder].IsEnabled);
+
+    // A hydra_ui.ini saved before Album existed: five columns, Artist hidden
+    // and the sort on Best path, highest first. ImGui keys each saved column
+    // by its header label's hash, so the inserted Album takes no saved line:
+    // it starts shown, and the old lines land on the columns they named.
+    const char* const old_headers[] = {"Title", "Artist", "Charter", "Folder", "Best path"};
+    ini.clear();
+    std::snprintf(line, sizeof(line), "[Table][0x%08X,%d]\n", table->ID,
+                  static_cast<int>(std::size(old_headers)));
+    ini += line;
+    for (int c = 0; c < static_cast<int>(std::size(old_headers)); ++c) {
+        const std::string_view header = old_headers[c];
+        std::snprintf(line, sizeof(line), "Column %d  Visible=%d%s ID=0x%08X\n", c,
+                      header == "Artist" ? 0 : 1, header == "Best path" ? " Sort=0^" : "",
+                      ImHashStr(old_headers[c]));
+        ini += line;
+    }
+    IM_CHECK_RETV(start_with(ini), );
+    IM_CHECK(!table->Columns[hydra::ui::kColumnArtist].IsEnabled);
+    IM_CHECK(table->Columns[hydra::ui::kColumnAlbum].IsEnabled);
+    IM_CHECK(table->Columns[hydra::ui::kColumnCharter].IsEnabled);
+    IM_CHECK(table->Columns[hydra::ui::kColumnFolder].IsEnabled);
+    IM_CHECK(table->Columns[hydra::ui::kColumnBestPath].IsEnabled);
+    IM_CHECK(h.app->library.sort_column() == hydra::ui::LibrarySort::BestPath);
+    IM_CHECK(!h.app->library.ascending());
+    // The next test starts from the table's own defaults.
+    ImGui::TableRemove(table);
+    ImGui::ClearIniSettings();
 }
 
 // The first column of the first row `sql` returns, or -1 when it fails.
@@ -1576,6 +1689,71 @@ void test_version_bar(ImGuiTestContext* ctx) {
     IM_CHECK(!on_screen(h, updated));
 }
 
+// Decision 10 of the 2026-10-24 album-search plan: one short line and a
+// "Search tips" link under the search box, and a popup listing every
+// app::search_tips() entry, at the full width and with a song open.
+void test_library_search_tips(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    ctx->SetRef("//Hydra");
+    const std::string note(hydra::app::search_tips_note());
+    const auto popup_shows_every_tip = [&] {
+        for (const hydra::app::SearchTip& tip : hydra::app::search_tips()) {
+            IM_CHECK(on_screen(h, std::string(tip.example)));
+            IM_CHECK(on_screen(h, std::string(tip.meaning)));
+        }
+        IM_CHECK(on_screen(h, note));
+    };
+
+    // The empty box shows its placeholder; the old hint line is gone.
+    IM_CHECK(on_screen(h, "Search songs"));
+    IM_CHECK(!on_screen(h, "Narrow with"));
+    IM_CHECK(on_screen(h, "Type any words, or narrow it down."));
+    IM_CHECK(ctx->ItemExists("**/Search tips##searchtips"));
+    IM_CHECK(!on_screen(h, note));
+
+    // The link opens the popup over a typed search; Escape closes it and
+    // leaves the search as it was.
+    ctx->ItemInputValue("**/##search", "chair");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->search == "chair"; }, 5));
+    ctx->ItemClick("**/Search tips##searchtips");
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, note); }, 5));
+    popup_shows_every_tip();
+    ctx->KeyPress(ImGuiKey_Escape);
+    IM_CHECK(wait_until(ctx, [&] { return !on_screen(h, note); }, 5));
+    ctx->Yield(2);
+    IM_CHECK(h.app->search == "chair");
+    IM_CHECK(std::strcmp(h.app->library_ui.search_buf, "chair") == 0);
+
+    // A filter it can't read still says so under the box.
+    ctx->ItemInputValue("**/##search", "stars:9");
+    IM_CHECK(wait_until(ctx, [&] { return !h.app->library.query().errors.empty(); }, 5));
+    IM_CHECK(on_screen(h, h.app->library.query().errors[0]));
+    IM_CHECK(on_screen(h, "Type any words, or narrow it down."));
+
+    // With a song open the library is narrow; the line, the link and the
+    // popup still show, and the Escape that closes the popup leaves the song
+    // panel open.
+    ctx->ItemInputValue("**/##search", "chair");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->search == "chair" && h.app->library_shown_count() > 0; }, 5));
+    h.app->select(h.app->library_row_at(0).entry, hydra::ui::SelectionSource::Click);
+    IM_CHECK(wait_until(ctx, [&] { return !ctx->ItemExists("**/Folder"); }, 5));
+    IM_CHECK(on_screen(h, "Type any words, or narrow it down."));
+    IM_CHECK(ctx->ItemExists("**/Search tips##searchtips"));
+    ctx->ItemClick("**/Search tips##searchtips");
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, note); }, 5));
+    popup_shows_every_tip();
+    ctx->KeyPress(ImGuiKey_Escape);
+    IM_CHECK(wait_until(ctx, [&] { return !on_screen(h, note); }, 5));
+    ctx->Yield(2);
+    IM_CHECK(h.app->details_open());
+    IM_CHECK(h.app->search == "chair");
+    h.app->close_details();
+    IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists("**/Folder"); }, 5));
+}
+
 }  // namespace
 
 const std::vector<TestEntry>& library_tests() {
@@ -1604,6 +1782,7 @@ const std::vector<TestEntry>& library_tests() {
         {"startup-screen", test_startup_screen},
         {"old-library-set-aside", test_old_library_set_aside},
         {"version-bar", test_version_bar},
+        {"library-search-tips", test_library_search_tips},
     };
     return entries;
 }

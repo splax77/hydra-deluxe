@@ -5,7 +5,7 @@
 #include <utility>
 
 #include "core/model.h"  // group_thousands
-#include "parse/song.h"  // display_title, display_artist, display_charter
+#include "parse/song.h"  // display_title, display_artist, display_album, display_charter
 
 namespace hydra::ui {
 
@@ -133,9 +133,11 @@ std::string best_path_label(store::RecordStatus status, const std::string& bestp
 std::string LibraryRow::best_label() const { return best_path_label(status, bestpath, summary); }
 
 std::string library_cell_text(const LibraryRow& row, int column) {
-    switch (static_cast<LibrarySort>(column)) {
+    if (column < 0 || column >= kLibraryColumnCount) return {};
+    switch (sort_of(column)) {
         case LibrarySort::Title: return row.title;
         case LibrarySort::Artist: return row.artist;
+        case LibrarySort::Album: return row.album;
         case LibrarySort::Charter: return row.charter;
         case LibrarySort::Folder: return row.entry.rootfolder;
         case LibrarySort::BestPath: return row.best_label();
@@ -161,9 +163,10 @@ void LibraryModel::set_charts(std::vector<store::ChartLibraryEntry> charts) {
         LibraryRow row;
         row.title = display_title(entry.title);  // "(unknown)" when only tags
         row.artist = display_artist(entry.artist);  // the same rule as the title
+        row.album = display_album(entry.album);  // blank stays blank
         row.charter = display_charter(entry.charter);
-        row.searchable =
-            app::make_searchable(entry.title, entry.artist, entry.charter, entry.rootfolder);
+        row.searchable = app::make_searchable(entry.title, entry.artist, entry.charter,
+                                              entry.rootfolder, entry.album);
         row.entry.md5 = std::move(entry.md5);
         row.entry.notespath = std::move(entry.notespath);
         row.entry.rootfolder = std::move(entry.rootfolder);
@@ -270,7 +273,7 @@ void LibraryModel::resort() {
         return;
     }
 
-    const int column = static_cast<int>(sort_column_);
+    const int column = column_of(sort_column_);
     std::sort(sorted_.begin(), sorted_.end(), [&](size_t a, size_t b) {
         if (int c = name_key(rows_[a], column).compare(name_key(rows_[b], column)))
             return ascending_ ? c < 0 : c > 0;

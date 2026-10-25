@@ -325,12 +325,12 @@ struct ChartLibraryEntry {
     std::string title;
     std::string artist;
     std::string charter;
-    // Empty for a chart that names no album, and for a row an older scan
-    // wrote; a stale stamp drops those from the rescan cache (kChartMetaStamp).
-    std::string album;
     std::string notespath;
     std::string rootfolder;
     std::string sig;
+    // Empty for a chart that names no album, and for a row an older scan
+    // wrote; a stale stamp drops those from the rescan cache (kChartMetaStamp).
+    std::string album;
     // Empty for a row an older scan wrote, before the scan read timing
     // (list_chart_library says which rows those are). Whoever needs it then
     // reads it from the chart's files (app::chart_timing_meta).

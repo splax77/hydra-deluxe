@@ -80,6 +80,105 @@ void render_heading(AppState& app) {
     ImGui::TextColored(kNewSongColor, "%s", count.c_str());
 }
 
+// The popup's two columns, laid out by the width rule (ui/column_widths.h).
+// The key never cuts; the meaning, the one text column, takes all the room the
+// key leaves and wraps inside it.
+constexpr size_t kTipKeyColumn = 0;
+constexpr size_t kTipMeaningColumn = 1;
+
+std::vector<ColumnSpec> search_tips_column_specs() {
+    std::vector<ColumnSpec> specs = {
+        {"Key", false, 0.0f, measure_in_role(TextRole::Notation)},
+        {"What it does", true, 0.0f, measure_in_role(TextRole::Label), 100}};
+    const WidthOf label = measure_in_role(TextRole::Label);
+    for (ColumnSpec& spec : specs) spec.header_width_of = label;
+    return specs;
+}
+
+// Column `c`'s text in a tip's row, the text its cell draws.
+std::string search_tip_cell(const app::SearchTip& tip, size_t c) {
+    return std::string(c == kTipKeyColumn ? tip.example : tip.meaning);
+}
+
+// How tall each tip's meaning is once it wraps at the width the rule gave
+// that column, for table_outer_height.
+std::vector<float> search_tip_meaning_heights(const std::vector<app::SearchTip>& tips,
+                                              const ColumnLayout& layout) {
+    ScopedFont font(TextRole::Label);
+    std::vector<float> heights;
+    heights.reserve(tips.size());
+    for (const app::SearchTip& tip : tips)
+        heights.push_back(ImGui::CalcTextSize(search_tip_cell(tip, kTipMeaningColumn).c_str(),
+                                              nullptr, false, layout.widths[kTipMeaningColumn])
+                              .y);
+    return heights;
+}
+
+// The "Search tips" link after the line under the search box, and the popup
+// it opens: each of app::search_tips() on its own row, then
+// search_tips_note(). The popup starts at `line_left` under the link and is
+// `pane_w` wide, the library pane's width, so its meanings wrap inside the
+// pane. Escape or a click outside closes it; neither touches the search text.
+void render_search_tips(float line_left, float pane_w) {
+    static constexpr const char* kLink = "Search tips##searchtips";
+    static constexpr const char* kPopup = "##searchtipspopup";
+    const ImGuiID popup_id = ImGui::GetID(kPopup);
+
+    // Dear ImGui closes an open popup on Esc in NewFrame, but the key still
+    // reads as pressed for the rest of the frame. Claim it, so the song
+    // panel's own Esc (details_panel.cpp) doesn't close that too. The same
+    // claim as the settings panel's (settings_bar.cpp); whether the popup was
+    // open last frame is kept in this window's ImGui storage.
+    ImGuiStorage* storage = ImGui::GetStateStorage();
+    if (storage->GetBool(popup_id) && !ImGui::IsPopupOpen(popup_id, ImGuiPopupFlags_None) &&
+        ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+        ImGui::SetKeyOwner(ImGuiKey_Escape, popup_id, ImGuiInputFlags_LockThisFrame);
+
+    if (fits_on_line(ImGui::CalcTextSize(kLink, nullptr, true).x, ImGui::GetStyle().ItemSpacing.x))
+        ImGui::SameLine();
+    if (ImGui::TextLink(kLink)) ImGui::OpenPopup(kPopup);
+
+    ImGui::SetNextWindowPos(ImVec2(line_left, ImGui::GetItemRectMax().y), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(pane_w, 0.0f), ImGuiCond_Always);
+    if (ImGui::BeginPopup(kPopup)) {
+        const std::vector<app::SearchTip>& tips = app::search_tips();
+        if (begin_small_table(
+                "##searchtipstable", ImGuiTableFlags_None, search_tips_column_specs(), tips.size(),
+                [&](size_t r, size_t c) { return search_tip_cell(tips[r], c); },
+                [&](const ColumnLayout& layout) {
+                    return search_tip_meaning_heights(tips, layout);
+                })) {
+            {
+                ScopedFont font(TextRole::Label);
+                ImGui::TableHeadersRow();
+            }
+            for (const app::SearchTip& tip : tips) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                {
+                    ScopedBaselineFont font(TextRole::Notation);
+                    ImGui::TextUnformatted(search_tip_cell(tip, kTipKeyColumn).c_str());
+                }
+                ImGui::TableNextColumn();
+                ScopedFont font(TextRole::Label);
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextUnformatted(search_tip_cell(tip, kTipMeaningColumn).c_str());
+                ImGui::PopTextWrapPos();
+            }
+            ImGui::EndTable();
+        }
+        {
+            const std::string_view note = app::search_tips_note();
+            ScopedFont font(TextRole::Prose);
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextUnformatted(note.data(), note.data() + note.size());
+            ImGui::PopTextWrapPos();
+        }
+        ImGui::EndPopup();
+    }
+    storage->SetBool(popup_id, ImGui::IsPopupOpen(popup_id, ImGuiPopupFlags_None));
+}
+
 void render_search_box(AppState& app) {
     LibraryViewState& ui = app.library_ui;
     char (&buf)[256] = ui.search_buf;
@@ -103,8 +202,8 @@ void render_search_box(AppState& app) {
     bool edited = false;
     {
         ScopedFont font(TextRole::Control);
-        edited = ImGui::InputTextWithHint("##search", "Search title, artist, charter or folder",
-                                          buf, sizeof(buf), ImGuiInputTextFlags_EscapeClearsAll);
+        edited = ImGui::InputTextWithHint("##search", "Search songs", buf, sizeof(buf),
+                                          ImGuiInputTextFlags_EscapeClearsAll);
     }
     hint("Ctrl+F jumps here. Esc clears it.");
     if (edited) ui.search_pending = true;
@@ -123,11 +222,16 @@ void render_search_box(AppState& app) {
     if (ImGui::Button("X##clearsearch")) clear_search(app);
     hint("Clear search (Esc)");
 
-    // What the box understands, and what it couldn't.
+    // One short line and the Search tips link, then what the box couldn't
+    // read. The keys themselves live in the popup (decision 10 of the
+    // 2026-10-24 album-search plan), so this line never grows.
+    const float line_left = ImGui::GetCursorScreenPos().x;
+    const float pane_w = ImGui::GetContentRegionAvail().x;
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextColored(kNewSongColor,
-                       "Quotes match an exact phrase. Narrow with artist: charter: folder: "
-                       "stars:7 squeeze<=20 squeeze>20");
+    ImGui::TextColored(kNewSongColor, "Type any words, or narrow it down.");
+    ImGui::PopTextWrapPos();
+    render_search_tips(line_left, pane_w);
+    ImGui::PushTextWrapPos(0.0f);
     for (const std::string& error : app.library.query().errors)
         ImGui::TextColored(kWarningColor, "%s", error.c_str());
     ImGui::PopTextWrapPos();
@@ -208,10 +312,13 @@ void draw_cut_title(ImVec2 pos, const std::string& shown) {
 struct SecondLineUse {
     bool folder = false;
     bool charter = false;
+    bool album = false;
 };
 
 // The second line under a title while a search is on: where the row matched
-// when that place isn't a visible column. The folder by default.
+// when that place isn't a visible column. The folder by default. Drawn only
+// while Folder or Charter is hidden; the album's own second line sits under
+// Artist (album_line).
 struct SecondLine {
     std::string text;
     std::vector<app::MatchSpan> spans;
@@ -240,6 +347,25 @@ SecondLine second_line(const app::LibraryQuery& q, const LibraryRow& row, bool f
     return line;
 }
 
+// The line under a row's artist while a search is on and Album is hidden: the
+// row's album, with the query's album matches. Blank for a blank album.
+SecondLine album_line(const app::LibraryQuery& q, const LibraryRow& row) {
+    SecondLine line;
+    line.text = library_cell_text(row, kColumnAlbum);
+    line.spans = app::match_spans(q, app::QueryField::Album, line.text);
+    return line;
+}
+
+// Draws a second line at `pos` in the dim colour, its matches highlighted up
+// to max_x.
+void draw_second_line(ImVec2 pos, const SecondLine& line, float max_x) {
+    ImGui::SetCursorScreenPos(pos);
+    ImGui::PushStyleColor(ImGuiCol_Text, kNewSongColor);
+    text_ellipsized(line.text.c_str());
+    ImGui::PopStyleColor();
+    overlay_matches(pos, line.text, line.spans, max_x);
+}
+
 // The table's columns as the width rule (ui/column_widths.h) sees them. Each
 // one is text that ends in "…" when its cell is too short, so each may cut,
 // and each takes its share of the room (the user's shares, 2026-10-14).
@@ -247,8 +373,9 @@ std::vector<ColumnSpec> library_column_specs() {
     std::vector<ColumnSpec> specs(kLibraryColumnCount);
     specs[kColumnTitle] = {"Title", true, 0.0f, {}, 17};
     specs[kColumnArtist] = {"Artist", true, 0.0f, {}, 10};
+    specs[kColumnAlbum] = {"Album", true, 0.0f, {}, 14};
     specs[kColumnCharter] = {"Charter", true, 0.0f, {}, 9};
-    specs[kColumnFolder] = {"Folder", true, 0.0f, {}, 39};
+    specs[kColumnFolder] = {"Folder", true, 0.0f, {}, 25};
     specs[kColumnBestPath] = {"Best path", true, 0.0f, {}, 25};
     // The header row draws in Label, each cell in its column's role.
     const WidthOf label = measure_in_role(TextRole::Label);
@@ -288,32 +415,33 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
         return used;
 
     ImGui::TableSetupScrollFreeze(0, 1);  // the header row stays on screen
+    // Each column's user ID is its LibrarySort value (sort_of), which the
+    // sort spec hands back below.
+    const auto user_id = [](int column) { return static_cast<ImGuiID>(sort_of(column)); };
     setup_column(columns[kColumnTitle], layout, kColumnTitle,
                  ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_NoHide,
-                 static_cast<ImGuiID>(LibrarySort::Title));
-    setup_column(columns[kColumnArtist], layout, kColumnArtist, 0,
-                 static_cast<ImGuiID>(LibrarySort::Artist));
-    setup_column(columns[kColumnCharter], layout, kColumnCharter, 0,
-                 static_cast<ImGuiID>(LibrarySort::Charter));
-    setup_column(columns[kColumnFolder], layout, kColumnFolder, 0,
-                 static_cast<ImGuiID>(LibrarySort::Folder));
+                 user_id(kColumnTitle));
+    setup_column(columns[kColumnArtist], layout, kColumnArtist, 0, user_id(kColumnArtist));
+    setup_column(columns[kColumnAlbum], layout, kColumnAlbum, 0, user_id(kColumnAlbum));
+    setup_column(columns[kColumnCharter], layout, kColumnCharter, 0, user_id(kColumnCharter));
+    setup_column(columns[kColumnFolder], layout, kColumnFolder, 0, user_id(kColumnFolder));
     // Highest score first on the first click.
     setup_column(columns[kColumnBestPath], layout, kColumnBestPath,
-                 ImGuiTableColumnFlags_PreferSortDescending,
-                 static_cast<ImGuiID>(LibrarySort::BestPath));
+                 ImGuiTableColumnFlags_PreferSortDescending, user_id(kColumnBestPath));
 
     // The columns always stay in the order set up above (imgui#9519).
     keep_table_column_order();
 
-    // Charter and Folder make way for the song panel: hidden when it opens,
-    // shown when it closes. In between, the header's right-click menu shows
-    // or hides any column but Title.
+    // Album, Charter and Folder make way for the song panel: hidden when it
+    // opens, shown when it closes. In between, the header's right-click menu
+    // shows or hides any column but Title.
     // On the table's first frame ImGui loads hydra_ui.ini's saved column state
     // after this point, so a column saved hidden would win over the panel.
     // The panel's choice goes in once that frame is over, as the report
     // tables wait to push their sort (report_frame::table).
     const bool panel_open = app.details_open();
     if (table_settled() && app.library_ui.columns_for_panel != panel_open) {
+        ImGui::TableSetColumnEnabled(kColumnAlbum, !panel_open);
         ImGui::TableSetColumnEnabled(kColumnCharter, !panel_open);
         ImGui::TableSetColumnEnabled(kColumnFolder, !panel_open);
         app.library_ui.columns_for_panel = panel_open;
@@ -324,7 +452,7 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
     if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs()) {
         if ((specs->SpecsDirty || !app.library_ui.sort_synced) && specs->SpecsCount > 0) {
             const ImGuiTableColumnSortSpecs& s = specs->Specs[0];
-            app.library.set_sort(static_cast<LibrarySort>(s.ColumnUserID),
+            app.library.set_sort(static_cast<LibrarySort>(s.ColumnUserID),  // user_id above
                                  s.SortDirection != ImGuiSortDirection_Descending);
         }
         specs->SpecsDirty = false;
@@ -336,10 +464,13 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
         (ImGui::TableGetColumnFlags(kColumnFolder) & ImGuiTableColumnFlags_IsEnabled) != 0;
     const bool charter_shown =
         (ImGui::TableGetColumnFlags(kColumnCharter) & ImGuiTableColumnFlags_IsEnabled) != 0;
+    const bool album_shown =
+        (ImGui::TableGetColumnFlags(kColumnAlbum) & ImGuiTableColumnFlags_IsEnabled) != 0;
     const bool searching_words = !q.terms.empty();
     // Every row gets the same height (the clipper needs that): two lines
     // while a word search is on and a column is hidden, one otherwise.
-    const bool two_lines = searching_words && (!folder_shown || !charter_shown);
+    const bool title_line = !folder_shown || !charter_shown;
+    const bool two_lines = searching_words && (title_line || !album_shown);
     const float line_h = ImGui::GetTextLineHeight();
     const float line_gap = ImGui::GetStyle().ItemSpacing.y;
     const float row_h = two_lines ? line_h * 2.0f + line_gap : line_h;
@@ -408,14 +539,10 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
                 overlay_matches(title_pos, title,
                                 app::match_spans(q, app::QueryField::Title, title),
                                 title_pos.x + title_text_w);
-            if (two_lines) {
+            if (two_lines && title_line) {
                 const SecondLine line = second_line(q, row, folder_shown, charter_shown);
-                ImGui::SetCursorScreenPos(ImVec2(title_pos.x, title_pos.y + line_h + line_gap));
-                ImGui::PushStyleColor(ImGuiCol_Text, kNewSongColor);
-                const ImVec2 line_pos = ImGui::GetCursorScreenPos();
-                text_ellipsized(line.text.c_str());
-                ImGui::PopStyleColor();
-                overlay_matches(line_pos, line.text, line.spans, title_pos.x + title_w);
+                draw_second_line(ImVec2(title_pos.x, title_pos.y + line_h + line_gap), line,
+                                 title_pos.x + title_w);
                 if (!line.spans.empty()) (line.is_charter ? used.charter : used.folder) = true;
             }
 
@@ -428,7 +555,20 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
                 cell_text(text, searching_words ? app::match_spans(q, field, text)
                                                 : std::vector<app::MatchSpan>{});
             };
-            searched_cell(kColumnArtist, app::QueryField::Artist);
+            if (ImGui::TableSetColumnIndex(kColumnArtist)) {
+                const ImVec2 artist_pos = ImGui::GetCursorScreenPos();
+                const float artist_w = ImGui::GetContentRegionAvail().x;
+                searched_cell(kColumnArtist, app::QueryField::Artist);
+                // A hidden Album's text goes under the artist. With Artist
+                // hidden too it has no column to sit under and is not drawn.
+                if (two_lines && !album_shown) {
+                    const SecondLine line = album_line(q, row);
+                    draw_second_line(ImVec2(artist_pos.x, artist_pos.y + line_h + line_gap),
+                                     line, artist_pos.x + artist_w);
+                    if (!line.spans.empty()) used.album = true;
+                }
+            }
+            searched_cell(kColumnAlbum, app::QueryField::Album);
             searched_cell(kColumnCharter, app::QueryField::Charter);
             searched_cell(kColumnFolder, app::QueryField::Folder);
 
@@ -472,14 +612,27 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
 
 // Under the table while a search is on: why the rows on screen matched when
 // the reason is in a hidden column, and a way out.
+// The sentence names each place in a fixed order, such as "Matched on folder,
+// charter and album."
+std::string matched_on_text(const SecondLineUse& used) {
+    std::vector<const char*> names;
+    if (used.folder) names.push_back("folder");
+    if (used.charter) names.push_back("charter");
+    if (used.album) names.push_back("album");
+    if (names.empty()) return {};
+    std::string text = "Matched on ";
+    for (size_t i = 0; i < names.size(); ++i) {
+        if (i > 0) text += i + 1 == names.size() ? " and " : ", ";
+        text += names[i];
+    }
+    return text + ".";
+}
+
 void render_footer(AppState& app, const SecondLineUse& used) {
-    const char* why = used.folder && used.charter ? "Matched on folder and charter."
-                      : used.folder               ? "Matched on folder."
-                      : used.charter              ? "Matched on charter."
-                                                  : nullptr;
-    if (why) {
+    const std::string why = matched_on_text(used);
+    if (!why.empty()) {
         ImGui::AlignTextToFramePadding();
-        ImGui::TextColored(kNewSongColor, "%s", why);
+        ImGui::TextColored(kNewSongColor, "%s", why.c_str());
         ImGui::SameLine();
     }
     if (ImGui::SmallButton("Clear search")) clear_search(app);
