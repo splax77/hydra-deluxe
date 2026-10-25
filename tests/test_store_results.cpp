@@ -104,12 +104,16 @@ TEST_CASE("a saved record reads back whole across the corpus and config matrix")
     RecordStore store(":memory:");
 
     int checks = 0, mismatches = 0;
+    // Every record saved, by setting: all are saved first, then each setting's
+    // are read back in one lookup, so every record is read after every save.
+    std::vector<std::vector<PreparedRecord>> saved(kMatrix.size());
 
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, ChartReading{});
         if (song.is_empty()) continue;
 
-        for (const Config& cfg : kMatrix) {
+        for (size_t c = 0; c < kMatrix.size(); ++c) {
+            const Config& cfg = kMatrix[c];
             const HydraRecord* record = nullptr;
             try {
                 SearchSettings settings;
@@ -128,16 +132,30 @@ TEST_CASE("a saved record reads back whole across the corpus and config matrix")
             const Lens lens = Lens::from(
                 cfg.ms ? std::optional<int>(static_cast<int>(*cfg.ms)) : std::nullopt, 0, 0);
             const Profile profile = profile_at(*record->sp_cap, lens);
-            const PreparedRecord prepared = prepare_record(id, profile, *record);
+            PreparedRecord prepared = prepare_record(id, profile, *record);
             store.save(prepared);
+            // One lookup per setting asks under one profile.
+            if (!saved[c].empty()) REQUIRE(prepared.profile == saved[c].front().profile);
+            saved[c].push_back(std::move(prepared));
+        }
+    }
 
-            const RecordLookup got = store.lookup_one(id, profile);
+    for (size_t c = 0; c < kMatrix.size(); ++c) {
+        if (saved[c].empty()) continue;
+        std::vector<std::string> ids;
+        ids.reserve(saved[c].size());
+        for (const PreparedRecord& p : saved[c]) ids.push_back(p.record.song_id);
+        const std::vector<RecordLookup> found = store.lookup(ids, saved[c].front().profile);
+        REQUIRE(found.size() == saved[c].size());
+        for (size_t i = 0; i < found.size(); ++i) {
+            const PreparedRecord& prepared = saved[c][i];
+            const RecordLookup& got = found[i];
             ++checks;
             std::string d;
             if (got.status != RecordStatus::Ready) d = "no record after save";
             else if (got.record != prepared.record) d = "record";
             if (!d.empty() && ++mismatches <= 8)
-                CHECK_MESSAGE(false, path << " [" << cfg.key << "] " << d);
+                CHECK_MESSAGE(false, prepared.record.song_id << " [" << kMatrix[c].key << "] " << d);
         }
     }
 
