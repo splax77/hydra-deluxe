@@ -216,13 +216,17 @@ jobs:
   # The GUI tests built with AddressSanitizer, on their own machine, so they
   # run beside the asan job's unit tests instead of after them, as "GUI tests"
   # does for the normal build. It builds cold: no build folder is saved for
-  # the asan preset. "Continuous integration" in docs/development.md gives the
+  # the asan-ninja preset. "Continuous integration" in docs/development.md gives the
   # timing.
   asan-gui:
     name: AddressSanitizer GUI tests (Windows, Release)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: windows-2025
     timeout-minutes: 30
+    # As in the asan job: the asan-ninja preset runs every compile through sccache.
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_VERSION: asan-1
     defaults:
       run:
         shell: pwsh
@@ -236,6 +240,9 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
+
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Build hydra_uitest
         run: .\build_cpp.ps1 -Preset asan-ninja -Target hydra_uitest
