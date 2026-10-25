@@ -5,7 +5,9 @@ Self-test for tools/mutation_probe.ps1.
     pwsh -NoProfile -File tools/test_mutation_probe.ps1
 
 Part 1 loads the probe's finder from its own text (as a literal, without
-running the script) and runs it on a sample snippet. The snippet has one of
+running the script) and runs it on a sample snippet. It needs a built
+hydra_precheck.exe (.\build_cpp.ps1 -Target hydra_precheck), because the
+finder masks comments and strings with it. The snippet has one of
 each edit the probe makes and a trap for each thing it must skip: comments,
 strings, a raw string, a character literal, a preprocessor line, template
 brackets, a shift, an exponent, a digit separator and a "+ 10". The expected
@@ -38,15 +40,19 @@ function Check([bool]$Ok, [string]$What) {
 # ------------------------------------------------------ part 1: the finder
 
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($probe, [ref]$null, [ref]$null)
-$names = 'Get-PrecheckLexer', 'Get-CodeMask', 'Find-MutationCandidates', 'Get-MutatedText', 'Get-MutatedLine', 'Select-Spread'
+$names = 'Get-CodeMask', 'Find-MutationCandidates', 'Get-MutatedText', 'Get-MutatedLine', 'Select-Spread'
 $defs = foreach ($name in $names) {
     $f = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true)
     if (-not $f) { throw "the self-test cannot find $name in $probe" }
     $f.Extent.Text
 }
 . ([scriptblock]::Create($defs -join "`n"))
-# The precheck's lexer, which Get-CodeMask calls, loaded as the probe loads it.
-. ([scriptblock]::Create((Get-PrecheckLexer (Join-Path $PSScriptRoot 'derive_once_precheck.ps1'))))
+# Get-CodeMask runs hydra_precheck --code-mask, from the same place the probe uses.
+$precheckExe = Join-Path $PSScriptRoot '..\build-cpp\Release\hydra_precheck.exe'
+if (-not (Test-Path -LiteralPath $precheckExe -PathType Leaf)) {
+    Write-Host "test_mutation_probe: FAILED, hydra_precheck.exe is missing at $([IO.Path]::GetFullPath($precheckExe)). Build it first: .\build_cpp.ps1 -Target hydra_precheck"
+    exit 1
+}
 
 $snippet = @'
 #include <vector>
@@ -88,7 +94,7 @@ $expected = @(
 foreach ($eol in "`n", "`r`n") {
     $text = $snippet.Replace("`n", $eol)
     $label = if ($eol -eq "`n") { 'LF' } else { 'CRLF' }
-    $found = @(Find-MutationCandidates $text)
+    $found = @(Find-MutationCandidates $text $precheckExe)
     $said = @($found | ForEach-Object { "$($_.Line): $($_.Was) to $($_.Now)" })
     Check (($said -join "`n") -eq ($expected -join "`n")) "finder ($label): expected`n  $($expected -join "`n  ")`ngot`n  $($said -join "`n  ")"
     Check ((@($found | ForEach-Object Number) -join ',') -eq '1,2,3,4,5,6,7,8,9,10') "finder ($label): candidates are not numbered 1 to 10 in order"

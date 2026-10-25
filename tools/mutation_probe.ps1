@@ -22,8 +22,9 @@ file is tried (Select-Spread).
 
 The kinds of edit it makes are Find-MutationCandidates' list below. Edits go
 only into code: Get-CodeMask masks the rest first. Comments and string text
-are the precheck's answer (tools\derive_once_precheck.ps1's Remove-Comments,
-loaded from its text, not copied); the probe adds preprocessor lines.
+are hydra_precheck --code-mask's answer (build it with
+.\build_cpp.ps1 -Target hydra_precheck; the probe uses the exe in the
+checkout holding this script); the probe adds preprocessor lines.
 
 Each run:
   - refuses the main checkout, because it edits source; run it in a task
@@ -71,37 +72,48 @@ $ErrorActionPreference = 'Stop'
 
 # ------------------------------------------------------------------ the finder
 
-# The C++ lexer and its blanking, as definition text from the precheck
-# (path given), so this probe never reads comments and strings its own way.
-# The caller dot-sources the text; the self-test loads it the same way.
-function Get-PrecheckLexer([string]$Precheck) {
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile($Precheck, [ref]$null, [ref]$null)
-    $want = '$cppLex', 'Blank', 'Blank-Inner', 'Remove-Comments'
-    $text = foreach ($name in $want) {
-        $f = $ast.Find({ param($n)
-                ($n -is [System.Management.Automation.Language.AssignmentStatementAst] -and "$($n.Left)" -eq $name) -or
-                ($n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name) }, $true)
-        if (-not $f) { throw "cannot find $name in $Precheck" }
-        $f.Extent.Text
-    }
-    $text -join "`n"
-}
-. ([scriptblock]::Create((Get-PrecheckLexer (Join-Path $PSScriptRoot 'derive_once_precheck.ps1'))))
-
 # The source text with everything that is not code turned into spaces. Line
 # breaks stay, so offsets and line numbers match the source. Comments and
-# string text are the precheck's Remove-Comments; preprocessor lines are this
-# probe's own addition.
-function Get-CodeMask([string]$Text) {
-    $masked = Remove-Comments $cppLex $Text -AndStrings
-    [regex]::Replace($masked, '(?m)^[ \t]*#(?:[^\n]*\\\r?\n)*[^\n]*', { param($m) Blank $m.Value })
+# string text are hydra_precheck --code-mask's answer (codelex, the repo's one
+# lexer), run as the exe at $Exe; preprocessor lines are this probe's own
+# addition. The exe's output is read as raw UTF-8 bytes, so carriage returns
+# survive and offsets still line up on Windows line endings.
+function Get-CodeMask([string]$Text, [string]$Exe) {
+    if (-not $Exe -or -not (Test-Path -LiteralPath $Exe -PathType Leaf)) {
+        throw "mutation_probe: hydra_precheck.exe is missing at '$Exe'. Build it first: .\build_cpp.ps1 -Target hydra_precheck"
+    }
+    $tmp = Join-Path ([IO.Path]::GetTempPath()) ("mutation_probe_mask_" + [guid]::NewGuid().ToString('N') + '.cpp')
+    try {
+        [IO.File]::WriteAllText($tmp, $Text, [Text.UTF8Encoding]::new($false))
+        $psi = [System.Diagnostics.ProcessStartInfo]::new($Exe)
+        $psi.ArgumentList.Add('--code-mask')
+        $psi.ArgumentList.Add($tmp)
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+        $psi.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
+        $p = [System.Diagnostics.Process]::Start($psi)
+        $errTask = $p.StandardError.ReadToEndAsync()
+        $masked = $p.StandardOutput.ReadToEnd()
+        $p.WaitForExit()
+        $err = $errTask.Result
+        if ($p.ExitCode -ne 0) { throw "mutation_probe: hydra_precheck --code-mask failed (exit $($p.ExitCode)): $($err.Trim())" }
+    } finally {
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+    }
+    if ($masked.Length -ne $Text.Length) {
+        throw "mutation_probe: hydra_precheck --code-mask gave $($masked.Length) characters for a $($Text.Length)-character source, so offsets would not line up"
+    }
+    [regex]::Replace($masked, '(?m)^[ \t]*#(?:[^\n]*\\\r?\n)*[^\n]*', { param($m) [regex]::Replace($m.Value, '[^\n]', ' ') })
 }
 
 # Every spot in the code this probe can break, in file order, numbered from
 # 1. Each candidate is one edit: replace Length characters at Offset with
-# Replacement. Was and Now say the edit in words for the report.
-function Find-MutationCandidates([string]$Text) {
-    $mask = Get-CodeMask $Text
+# Replacement. Was and Now say the edit in words for the report. $Exe is
+# hydra_precheck.exe, which Get-CodeMask runs.
+function Find-MutationCandidates([string]$Text, [string]$Exe) {
+    $mask = Get-CodeMask $Text $Exe
     $found = [System.Collections.Generic.List[object]]::new()
     $add = { param($Offset, $Length, $Replacement, $Was, $Now)
         $found.Add([pscustomobject]@{ Offset = $Offset; Length = $Length; Replacement = $Replacement; Was = $Was; Now = $Now }) }
@@ -195,7 +207,11 @@ $text = $utf8.GetString($originalBytes)
 if (-not (Test-SameBytes $utf8.GetBytes($text) $originalBytes)) {
     Fail "$rel is not plain UTF-8, so an edit could not be undone byte for byte"
 }
-$candidates = @(Find-MutationCandidates $text)
+$precheckExe = Join-Path $PSScriptRoot '..\build-cpp\Release\hydra_precheck.exe'
+if (-not (Test-Path -LiteralPath $precheckExe -PathType Leaf)) {
+    Fail "hydra_precheck.exe is missing at $([IO.Path]::GetFullPath($precheckExe)); it masks comments and strings. Build it first: .\build_cpp.ps1 -Target hydra_precheck"
+}
+$candidates = @(Find-MutationCandidates $text $precheckExe)
 
 if ($List) {
     Write-Host "$($candidates.Count) candidates in ${rel}:"
