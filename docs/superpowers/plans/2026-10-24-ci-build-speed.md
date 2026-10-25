@@ -230,4 +230,20 @@ Five headers (`timing.h`, `model.h`, `song.h`, `squeeze_rating.h`, `config.h`) e
 
 ## Results
 
-(Filled in after the proving runs.)
+Measured 2026-10-25 on branch `ci-speed`, from GitHub's step timestamps.
+
+The first proving run, 40156633733, never built. GitHub refused to load the composite action because one unquoted `run:` line held `: ` ("Mapping values are not allowed in this context"). No YAML parser is installed on this machine, so the executors and reviewers had only read the file by eye. The fix, c80b88d2, made that line a block, and the run was cancelled.
+
+The cold run, 40157496862, passed. "Build and test" took about 11 minutes, of which the cold build was 9 min 13 s. That is runner speed: the same build took 9 min 4 s on main's own run 40152118997 the same day, against 5 min 27 s on run 40142020665. Saving the folder took 5 s and pruning 9 s. "GUI tests" took 7 min 4 s, of which the build was 3 min 43 s and the tests 3 min 3 s.
+
+The warm run, 40158194515, rebuilt the same commit with `warm` on. Both jobs logged "Cache restored from key: build-folder-build-cpp-20261021.278.1-40157496862" (213 MB) and "warm build: reusing build-cpp built at c80b88d21e9a".
+
+| | Run 40142020665 (before) | Run 40158194515 (warm) |
+|---|---|---|
+| Build and test | 9 min 9 s | 2 min 31 s: restore 8 s, build 25 s, save 6 s, prune 10 s, unit tests 1 min 10 s, probe 13 s |
+| GUI tests | inside the job above | 3 min 9 s: restore 7 s, build 8 s, GUI tests 2 min 40 s |
+| What a push waits for | 9 min 9 s | 3 min 9 s |
+
+The restore took 7 to 8 s, against the 45 s budgeted. The warm run changed no files. A one-file change adds one compile and the links: 7.8 s locally, per "A saved build folder, tested locally". A cold run (the nightly run, a new runner image or a build-file change) is no faster than before, and it runs on the same slow runners.
+
+Merged to main as 556cd6df after the whole suite and the three repo-wide tests passed on the joined tree.
