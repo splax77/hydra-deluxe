@@ -14,7 +14,7 @@ Append one line to `C:\Users\Patrick\.claude\gates\state\status\<your agent id>.
 
 Write it with this one call, from PowerShell, alone in its own call: `& "C:/Users/Patrick/.claude/gates/status_append.ps1" <your agent id> "<line>"`. It needs no permission prompt, and the progress hook neither counts it nor refuses it. Do not write the file with Edit, a heredoc or `>>`: the hook knows the helper only by that exact shape, so a line written any other way still leaves you overdue.
 
-Type the line out in full. Write the time yourself (`10:46`), never `$(Get-Date ...)`, and put nothing after the closing quote. A `$`, a backtick or a double quote inside the line, or anything chained after it, makes the call an ordinary command: it counts toward your budget, every rule checks it, and once you are over budget it is refused. `is_status_call` in `gates\progress.py` owns the exact shape.
+Type the line out in full. Write the time yourself (`10:46`), never `$(Get-Date ...)`, and put nothing after the closing quote. A `$`, a backtick or a double quote inside the line, or anything chained after it, makes the call an ordinary command: it counts toward your budget, every rule checks it, and once you are over budget it is refused. The status-call check in `C:\Users\Patrick\.claude\gates\progress.py` owns the exact shape.
 
 When your last line is 5 minutes old, the hook reminds you. When it is 10 minutes old, the hook refuses your calls until you write one. Two kinds of call still pass then: a command that starts with `git`, and your final report. So an agent that forgot its status line can still commit and hand back.
 
