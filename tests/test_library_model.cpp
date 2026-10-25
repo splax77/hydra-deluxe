@@ -32,11 +32,12 @@ using hydra::ui::StatusChip;
 namespace {
 
 ChartLibraryEntry chart(const char* md5, const char* title, const char* artist,
-                        const char* charter, const char* folder) {
+                        const char* charter, const char* folder, const char* album = "") {
     ChartLibraryEntry e;
     e.md5 = md5;
     e.title = title;
     e.artist = artist;
+    e.album = album;
     e.charter = charter;
     e.rootfolder = folder;
     e.notespath = std::string("C:\\songs\\") + folder + "\\" + title + "\\notes.mid";
@@ -65,15 +66,19 @@ RecordLookup stale() {
 
 // Six charts from the scratch library's shapes: Burnout analyzed, Chair
 // stale, the rest not analyzed. Row order here is scan order, not title order.
+// Halo and YYZ have no album.
 LibraryModel sample() {
     LibraryModel m;
     m.set_charts({
-        chart("burnout", "Burnout", "Green Day", "Hoph2o", "common\\Summer Blast _25 Setlist\\Tier 4"),
+        chart("burnout", "Burnout", "Green Day", "Hoph2o", "common\\Summer Blast _25 Setlist\\Tier 4",
+              "Dookie"),
         chart("yyz", "YYZ", "Rush", "Harmonix, Onyxite", "common\\Summer Blast _25 Setlist\\Tier 4"),
-        chart("chair", "Chair", "Sufferer", "Satan", "common\\Summer Blast _25 Setlist\\Tier 4"),
-        chart("acid", "Acid Romance", "Some Band", "<color=#e02222>Blood</color>line", "common\\Other"),
+        chart("chair", "Chair", "Sufferer", "Satan", "common\\Summer Blast _25 Setlist\\Tier 4",
+              "Sufferer"),
+        chart("acid", "Acid Romance", "Some Band", "<color=#e02222>Blood</color>line", "common\\Other",
+              "A Quiet Place To Die"),
         chart("halo", "Halo", "Beyoncé", "Someone", "common\\Other"),
-        chart("other", "Other", "Thrice", "Someone", "IB24\\T4"),
+        chart("other", "Other", "Thrice", "Someone", "IB24\\T4", "The Illusion of Safety"),
     });
     RecordLookup none;
     m.set_summaries({ready(378315, "3- 1 2", 7, 163.0), none, stale(), none, none, none});
@@ -231,6 +236,63 @@ TEST_CASE("library model: an artist made only of tags reads (unknown), and searc
     CHECK(m.rows()[0].searchable.artist.find("unknown") == std::string::npos);
     m.set_query("unknown");
     CHECK(m.order().empty());
+}
+
+TEST_CASE("library model: an album draws without its tags, a blank one draws empty, and search folds it") {
+    // display_album's text, with no placeholder for a blank album.
+    LibraryModel m;
+    m.set_charts({chart("a", "Song A", "Band", "C", "common", " <b>Dookie</b> "),
+                  chart("b", "Song B", "Band", "C", "common", ""),
+                  chart("c", "Song C", "Band", "C", "common", hydra::test::kTagOnlyTitle)});
+    REQUIRE(m.rows().size() == 3);
+    CHECK(m.rows()[0].album == "Dookie");
+    CHECK(hydra::ui::library_cell_text(m.rows()[0], hydra::ui::kColumnAlbum) == "Dookie");
+    CHECK(m.rows()[0].searchable.album == " dookie ");  // the stored text, folded
+    CHECK(m.rows()[1].album.empty());
+    CHECK(m.rows()[1].searchable.album.empty());
+    CHECK(m.rows()[2].album.empty());
+    m.set_query("album:dookie");
+    CHECK(titles(m) == std::vector<std::string>{"Song A"});
+    m.set_query("unknown");
+    CHECK(m.order().empty());
+}
+
+TEST_CASE("library model: each column's position and its user ID are one mapping") {
+    // The five shipped IDs keep their values and Album takes 5 while it is
+    // drawn third (the user's call, 2026-10-24).
+    using hydra::ui::column_of;
+    using hydra::ui::sort_of;
+    CHECK(hydra::ui::kLibraryColumnCount == 6);
+    CHECK(hydra::ui::kColumnAlbum == 2);
+    CHECK(hydra::ui::kColumnArtist < hydra::ui::kColumnAlbum);
+    CHECK(hydra::ui::kColumnAlbum < hydra::ui::kColumnCharter);
+    CHECK(static_cast<int>(LibrarySort::Title) == 0);
+    CHECK(static_cast<int>(LibrarySort::Artist) == 1);
+    CHECK(static_cast<int>(LibrarySort::Charter) == 2);
+    CHECK(static_cast<int>(LibrarySort::Folder) == 3);
+    CHECK(static_cast<int>(LibrarySort::BestPath) == 4);
+    CHECK(static_cast<int>(LibrarySort::Album) == 5);
+    CHECK(sort_of(0) == LibrarySort::Title);
+    CHECK(sort_of(1) == LibrarySort::Artist);
+    CHECK(sort_of(2) == LibrarySort::Album);
+    CHECK(sort_of(3) == LibrarySort::Charter);
+    CHECK(sort_of(4) == LibrarySort::Folder);
+    CHECK(sort_of(5) == LibrarySort::BestPath);
+    for (int c = 0; c < hydra::ui::kLibraryColumnCount; ++c) {
+        INFO("column " << c);
+        CHECK(column_of(sort_of(c)) == c);
+    }
+}
+
+TEST_CASE("library model: Album sorts on the album its cell shows, blanks first") {
+    LibraryModel m = sample();
+    m.set_sort(LibrarySort::Album, true);
+    // Halo and YYZ have no album; they tie and fall back to title.
+    CHECK(titles(m) == std::vector<std::string>{"Halo", "YYZ", "Acid Romance", "Burnout", "Chair",
+                                                "Other"});
+    m.set_sort(LibrarySort::Album, false);
+    CHECK(titles(m) == std::vector<std::string>{"Other", "Chair", "Burnout", "Acid Romance", "Halo",
+                                                "YYZ"});
 }
 
 TEST_CASE("library model: an empty or placeholder artist reads (unknown), and the charter is trimmed") {
@@ -392,6 +454,13 @@ TEST_CASE("library model: the search narrows the rows and the chip counts follow
     CHECK(titles(m) == std::vector<std::string>{"Acid Romance"});
     m.set_query("beyonce");
     CHECK(titles(m) == std::vector<std::string>{"Halo"});
+    m.set_query("album:quiet");
+    CHECK(titles(m) == std::vector<std::string>{"Acid Romance"});
+    CHECK(m.counts().all == 1);
+    m.set_query("album:thrice");  // Thrice is an artist here, not an album
+    CHECK(titles(m).empty());
+    m.set_query("dookie");  // a plain word matches an album too
+    CHECK(titles(m) == std::vector<std::string>{"Burnout"});
     m.set_query("stars:7");
     CHECK(titles(m) == std::vector<std::string>{"Burnout"});
     m.set_query("squeeze<=200");
@@ -505,6 +574,7 @@ TEST_CASE("library model: library_cell_text is what each column shows") {
     // scan order, as sample() lists them.
     CHECK(library_cell_text(m.rows()[0], hydra::ui::kColumnTitle) == "Burnout");
     CHECK(library_cell_text(m.rows()[0], hydra::ui::kColumnArtist) == "Green Day");
+    CHECK(library_cell_text(m.rows()[0], hydra::ui::kColumnAlbum) == "Dookie");
     CHECK(library_cell_text(m.rows()[0], hydra::ui::kColumnCharter) == "Hoph2o");
     CHECK(library_cell_text(m.rows()[0], hydra::ui::kColumnFolder) ==
           "common\\Summer Blast _25 Setlist\\Tier 4");

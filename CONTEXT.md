@@ -36,14 +36,18 @@ The pass that discovers charts in the configured folders and registers them in
 the library. Distinct from analysis.
 
 **Scanned chart**:
-One chart file as the last scan found it: its hash, names, file, folder,
-fingerprint (`sig`) and stated timing. `store::ChartLibraryEntry` in
-src/store/record_store.h is the shape, and `app::ScanItem` in
-src/app/analysis.h is another name for it, so the scan saves its rows as they
-are. The scan trims each name once in `discover_charts`, before
-`title_or_unknown`, `artist_or_unknown` and `charter_or_unknown` fill in a
-blank one (D114 item 15). `kChartMetaStamp` in src/store/stored_versions.h
-marks which reading of the names a stored row has.
+One chart file as the last scan found it: its hash, names (title, artist,
+charter and album), file, folder, fingerprint (`sig`) and stated timing.
+`store::ChartLibraryEntry` in src/store/record_store.h is the shape, and
+`app::ScanItem` in src/app/analysis.h is another name for it, so the scan
+saves its rows as they are. The names come from the chart's song.ini, a
+`.sng`'s metadata or a `.srb`'s header; a `.chart` file's own `[Song]` names
+are not read (D263). The scan trims each name once in `discover_charts`,
+before `title_or_unknown`, `artist_or_unknown` and `charter_or_unknown` fill in
+a blank one (D114 item 15). The album has no such fallback: a blank album stays
+blank, and `display_album` in src/parse/song.h cleans it for the screen.
+`kChartMetaStamp` in src/store/stored_versions.h marks which reading of the
+names a stored row has.
 
 **Library row**:
 One copy of a chart in one folder: a row of the `charts` table, and one line

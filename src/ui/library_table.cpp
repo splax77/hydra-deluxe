@@ -312,10 +312,13 @@ void draw_cut_title(ImVec2 pos, const std::string& shown) {
 struct SecondLineUse {
     bool folder = false;
     bool charter = false;
+    bool album = false;
 };
 
 // The second line under a title while a search is on: where the row matched
-// when that place isn't a visible column. The folder by default.
+// when that place isn't a visible column. The folder by default. Drawn only
+// while Folder or Charter is hidden; the album's own second line sits under
+// Artist (album_line).
 struct SecondLine {
     std::string text;
     std::vector<app::MatchSpan> spans;
@@ -344,6 +347,25 @@ SecondLine second_line(const app::LibraryQuery& q, const LibraryRow& row, bool f
     return line;
 }
 
+// The line under a row's artist while a search is on and Album is hidden: the
+// row's album, with the query's album matches. Blank for a blank album.
+SecondLine album_line(const app::LibraryQuery& q, const LibraryRow& row) {
+    SecondLine line;
+    line.text = library_cell_text(row, kColumnAlbum);
+    line.spans = app::match_spans(q, app::QueryField::Album, line.text);
+    return line;
+}
+
+// Draws a second line at `pos` in the dim colour, its matches highlighted up
+// to max_x.
+void draw_second_line(ImVec2 pos, const SecondLine& line, float max_x) {
+    ImGui::SetCursorScreenPos(pos);
+    ImGui::PushStyleColor(ImGuiCol_Text, kNewSongColor);
+    text_ellipsized(line.text.c_str());
+    ImGui::PopStyleColor();
+    overlay_matches(pos, line.text, line.spans, max_x);
+}
+
 // The table's columns as the width rule (ui/column_widths.h) sees them. Each
 // one is text that ends in "…" when its cell is too short, so each may cut,
 // and each takes its share of the room (the user's shares, 2026-10-14).
@@ -351,8 +373,9 @@ std::vector<ColumnSpec> library_column_specs() {
     std::vector<ColumnSpec> specs(kLibraryColumnCount);
     specs[kColumnTitle] = {"Title", true, 0.0f, {}, 17};
     specs[kColumnArtist] = {"Artist", true, 0.0f, {}, 10};
+    specs[kColumnAlbum] = {"Album", true, 0.0f, {}, 14};
     specs[kColumnCharter] = {"Charter", true, 0.0f, {}, 9};
-    specs[kColumnFolder] = {"Folder", true, 0.0f, {}, 39};
+    specs[kColumnFolder] = {"Folder", true, 0.0f, {}, 25};
     specs[kColumnBestPath] = {"Best path", true, 0.0f, {}, 25};
     // The header row draws in Label, each cell in its column's role.
     const WidthOf label = measure_in_role(TextRole::Label);
@@ -392,32 +415,33 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
         return used;
 
     ImGui::TableSetupScrollFreeze(0, 1);  // the header row stays on screen
+    // Each column's user ID is its LibrarySort value (sort_of), which the
+    // sort spec hands back below.
+    const auto user_id = [](int column) { return static_cast<ImGuiID>(sort_of(column)); };
     setup_column(columns[kColumnTitle], layout, kColumnTitle,
                  ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_NoHide,
-                 static_cast<ImGuiID>(LibrarySort::Title));
-    setup_column(columns[kColumnArtist], layout, kColumnArtist, 0,
-                 static_cast<ImGuiID>(LibrarySort::Artist));
-    setup_column(columns[kColumnCharter], layout, kColumnCharter, 0,
-                 static_cast<ImGuiID>(LibrarySort::Charter));
-    setup_column(columns[kColumnFolder], layout, kColumnFolder, 0,
-                 static_cast<ImGuiID>(LibrarySort::Folder));
+                 user_id(kColumnTitle));
+    setup_column(columns[kColumnArtist], layout, kColumnArtist, 0, user_id(kColumnArtist));
+    setup_column(columns[kColumnAlbum], layout, kColumnAlbum, 0, user_id(kColumnAlbum));
+    setup_column(columns[kColumnCharter], layout, kColumnCharter, 0, user_id(kColumnCharter));
+    setup_column(columns[kColumnFolder], layout, kColumnFolder, 0, user_id(kColumnFolder));
     // Highest score first on the first click.
     setup_column(columns[kColumnBestPath], layout, kColumnBestPath,
-                 ImGuiTableColumnFlags_PreferSortDescending,
-                 static_cast<ImGuiID>(LibrarySort::BestPath));
+                 ImGuiTableColumnFlags_PreferSortDescending, user_id(kColumnBestPath));
 
     // The columns always stay in the order set up above (imgui#9519).
     keep_table_column_order();
 
-    // Charter and Folder make way for the song panel: hidden when it opens,
-    // shown when it closes. In between, the header's right-click menu shows
-    // or hides any column but Title.
+    // Album, Charter and Folder make way for the song panel: hidden when it
+    // opens, shown when it closes. In between, the header's right-click menu
+    // shows or hides any column but Title.
     // On the table's first frame ImGui loads hydra_ui.ini's saved column state
     // after this point, so a column saved hidden would win over the panel.
     // The panel's choice goes in once that frame is over, as the report
     // tables wait to push their sort (report_frame::table).
     const bool panel_open = app.details_open();
     if (table_settled() && app.library_ui.columns_for_panel != panel_open) {
+        ImGui::TableSetColumnEnabled(kColumnAlbum, !panel_open);
         ImGui::TableSetColumnEnabled(kColumnCharter, !panel_open);
         ImGui::TableSetColumnEnabled(kColumnFolder, !panel_open);
         app.library_ui.columns_for_panel = panel_open;
@@ -428,7 +452,7 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
     if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs()) {
         if ((specs->SpecsDirty || !app.library_ui.sort_synced) && specs->SpecsCount > 0) {
             const ImGuiTableColumnSortSpecs& s = specs->Specs[0];
-            app.library.set_sort(static_cast<LibrarySort>(s.ColumnUserID),
+            app.library.set_sort(static_cast<LibrarySort>(s.ColumnUserID),  // user_id above
                                  s.SortDirection != ImGuiSortDirection_Descending);
         }
         specs->SpecsDirty = false;
@@ -440,10 +464,13 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
         (ImGui::TableGetColumnFlags(kColumnFolder) & ImGuiTableColumnFlags_IsEnabled) != 0;
     const bool charter_shown =
         (ImGui::TableGetColumnFlags(kColumnCharter) & ImGuiTableColumnFlags_IsEnabled) != 0;
+    const bool album_shown =
+        (ImGui::TableGetColumnFlags(kColumnAlbum) & ImGuiTableColumnFlags_IsEnabled) != 0;
     const bool searching_words = !q.terms.empty();
     // Every row gets the same height (the clipper needs that): two lines
     // while a word search is on and a column is hidden, one otherwise.
-    const bool two_lines = searching_words && (!folder_shown || !charter_shown);
+    const bool title_line = !folder_shown || !charter_shown;
+    const bool two_lines = searching_words && (title_line || !album_shown);
     const float line_h = ImGui::GetTextLineHeight();
     const float line_gap = ImGui::GetStyle().ItemSpacing.y;
     const float row_h = two_lines ? line_h * 2.0f + line_gap : line_h;
@@ -512,14 +539,10 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
                 overlay_matches(title_pos, title,
                                 app::match_spans(q, app::QueryField::Title, title),
                                 title_pos.x + title_text_w);
-            if (two_lines) {
+            if (two_lines && title_line) {
                 const SecondLine line = second_line(q, row, folder_shown, charter_shown);
-                ImGui::SetCursorScreenPos(ImVec2(title_pos.x, title_pos.y + line_h + line_gap));
-                ImGui::PushStyleColor(ImGuiCol_Text, kNewSongColor);
-                const ImVec2 line_pos = ImGui::GetCursorScreenPos();
-                text_ellipsized(line.text.c_str());
-                ImGui::PopStyleColor();
-                overlay_matches(line_pos, line.text, line.spans, title_pos.x + title_w);
+                draw_second_line(ImVec2(title_pos.x, title_pos.y + line_h + line_gap), line,
+                                 title_pos.x + title_w);
                 if (!line.spans.empty()) (line.is_charter ? used.charter : used.folder) = true;
             }
 
@@ -532,7 +555,20 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
                 cell_text(text, searching_words ? app::match_spans(q, field, text)
                                                 : std::vector<app::MatchSpan>{});
             };
-            searched_cell(kColumnArtist, app::QueryField::Artist);
+            if (ImGui::TableSetColumnIndex(kColumnArtist)) {
+                const ImVec2 artist_pos = ImGui::GetCursorScreenPos();
+                const float artist_w = ImGui::GetContentRegionAvail().x;
+                searched_cell(kColumnArtist, app::QueryField::Artist);
+                // A hidden Album's text goes under the artist. With Artist
+                // hidden too it has no column to sit under and is not drawn.
+                if (two_lines && !album_shown) {
+                    const SecondLine line = album_line(q, row);
+                    draw_second_line(ImVec2(artist_pos.x, artist_pos.y + line_h + line_gap),
+                                     line, artist_pos.x + artist_w);
+                    if (!line.spans.empty()) used.album = true;
+                }
+            }
+            searched_cell(kColumnAlbum, app::QueryField::Album);
             searched_cell(kColumnCharter, app::QueryField::Charter);
             searched_cell(kColumnFolder, app::QueryField::Folder);
 
@@ -576,14 +612,27 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
 
 // Under the table while a search is on: why the rows on screen matched when
 // the reason is in a hidden column, and a way out.
+// The sentence names each place in a fixed order, such as "Matched on folder,
+// charter and album."
+std::string matched_on_text(const SecondLineUse& used) {
+    std::vector<const char*> names;
+    if (used.folder) names.push_back("folder");
+    if (used.charter) names.push_back("charter");
+    if (used.album) names.push_back("album");
+    if (names.empty()) return {};
+    std::string text = "Matched on ";
+    for (size_t i = 0; i < names.size(); ++i) {
+        if (i > 0) text += i + 1 == names.size() ? " and " : ", ";
+        text += names[i];
+    }
+    return text + ".";
+}
+
 void render_footer(AppState& app, const SecondLineUse& used) {
-    const char* why = used.folder && used.charter ? "Matched on folder and charter."
-                      : used.folder               ? "Matched on folder."
-                      : used.charter              ? "Matched on charter."
-                                                  : nullptr;
-    if (why) {
+    const std::string why = matched_on_text(used);
+    if (!why.empty()) {
         ImGui::AlignTextToFramePadding();
-        ImGui::TextColored(kNewSongColor, "%s", why);
+        ImGui::TextColored(kNewSongColor, "%s", why.c_str());
         ImGui::SameLine();
     }
     if (ImGui::SmallButton("Clear search")) clear_search(app);

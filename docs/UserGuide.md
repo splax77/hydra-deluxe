@@ -153,9 +153,9 @@ While a batch runs, the settings are locked. The button's label ends in ` (locke
 
 ## Searching the library
 
-The library lists every song from the latest scan, one row per song. Click a song to open it. Its columns are `Title`, `Artist`, `Charter`, `Folder` and `Best path`.
+The library lists every song from the latest scan, one row per song. Click a song to open it. Its columns are `Title`, `Artist`, `Album`, `Charter`, `Folder` and `Best path`. The album comes from the chart's song.ini, or from the file itself for a `.sng` or `.srb` chart. A song whose chart names no album shows an empty `Album` cell.
 
-Click a column heading to sort by it. Right-click the heading row to hide or show a column; every column but `Title` can be hidden. Hydra Deluxe remembers which columns are hidden and the sort. While the song panel is open, the `Charter` and `Folder` columns hide to save room, and they come back when you close it. The columns always stay in this order.
+Click a column heading to sort by it. Right-click the heading row to hide or show a column; every column but `Title` can be hidden. Hydra Deluxe remembers which columns are hidden and the sort. While the song panel is open, the `Album`, `Charter` and `Folder` columns hide to save room, and they come back when you close it. The columns always stay in this order.
 
 Song names show without Clone Hero's colour and style tags, here and in the report windows. A name that is nothing but tags reads `(unknown)`.
 
@@ -179,30 +179,33 @@ The chips above the table filter by state: `All`, `Not analyzed`, `Stale`, `Anal
 
 ### The search box
 
-Type in the search box to narrow the list. `Ctrl+F` jumps to it. `Escape` or its `X` clears it. The heading above shows how many songs match, like `Library 5 of 97 charts`. The text that matched is highlighted in gold.
+Type in the search box, which reads `Search songs` while it's empty, to narrow the list. `Ctrl+F` jumps to it. `Escape` or its `X` clears it. The heading above shows how many songs match, like `Library 5 of 97 charts`. The text that matched is highlighted in gold.
+
+The line under the box reads `Type any words, or narrow it down.` Click `Search tips`, the link after it, to see every filter, one per line: an example to type, then what it does. `Escape` or a click outside closes the list and leaves your search as it was.
 
 Searching ignores case and accents, so `ALLISTER` finds Allister and `beyonce` finds Beyoncé. Colour and style tags in song names are ignored too. The examples below come from Hydra Deluxe's test library.
 
 | You type | What it matches | Example |
 |---|---|---|
-| words | songs whose title, artist, charter or folder contain every word, in any order | `day green` finds Burnout by Green Day |
+| words | songs whose title, artist, album, charter or folder contain every word, in any order | `day green` finds Burnout by Green Day |
 | `"quoted text"` | that exact phrase | `"dance gavin dance"` finds the band's 2 songs |
 | `artist:` | the word or phrase in the artist only | `artist:rush` finds YYZ |
+| `album:` | the album only | `album:mothership` finds Dance Gavin Dance's 2 songs from Mothership |
 | `charter:` | the charter only | `charter:onyxite` finds 8 songs |
 | `folder:` | the folder only | `folder:"tier 4"` finds the 5 songs in Tier 4 |
 | `title:` | the title only | `title:everlong` finds Everlong |
-| `stars:N` | songs whose optimal path earns exactly N stars (0 to 7) | `stars:7` finds Burnout once it is analyzed |
-| `squeeze<=N` | songs whose optimal path's hardest squeeze or required early fill is N ms or less | `squeeze<=200` keeps Burnout (163 ms); `squeeze<=20` drops it |
-| `squeeze>N` | songs whose optimal path's hardest squeeze or required early fill is more than N ms | `squeeze>20` keeps Burnout (163 ms); `squeeze>163` drops it |
-| `squeeze>=N` | songs whose optimal path's hardest squeeze or required early fill is N ms or more | `squeeze>=163` keeps Burnout (163 ms); `squeeze>=200` drops it |
+| `stars:N` | songs whose best path earns exactly N stars (0 to 7) | `stars:7` finds Burnout once it is analyzed |
+| `squeeze<=N` | songs whose best path's hardest squeeze or required early fill is N ms or less | `squeeze<=200` keeps Burnout (163 ms); `squeeze<=20` drops it |
+| `squeeze>N` | songs whose best path's hardest squeeze or required early fill is more than N ms | `squeeze>20` keeps Burnout (163 ms); `squeeze>163` drops it |
+| `squeeze>=N` | songs whose best path's hardest squeeze or required early fill is N ms or more | `squeeze>=163` keeps Burnout (163 ms); `squeeze>=200` drops it |
 
 You can mix them: `charter:hoph2o stars:7`. `squeeze<N` means the same as `squeeze<=N`: at most N. A low and a high squeeze filter together give a range: `squeeze>=10 squeeze<=200` keeps Burnout. A path that needs no timing passes any `squeeze<=` limit and never matches `squeeze>` or `squeeze>=`, since it has nothing to squeeze.
 
-`stars:` and the squeeze filters only look at current results. A song that is not analyzed, or whose result is `Stale`, never matches them. A filter Hydra Deluxe can't read, like `stars:9` or `squeeze=20`, shows a short note under the search box and is left out of the search.
+`stars:` and the squeeze filters only look at current results. A song that is `Not analyzed`, `Stale` or `Can't analyze` never matches them. A filter Hydra Deluxe can't read, like `stars:9` or `squeeze=20`, shows a short note under the search box and is left out of the search.
 
-While you search for words and the `Folder` or `Charter` column is hidden, each row gets a second line under its title. That line shows the song's folder. When the search matched the charter instead, and the `Charter` column is hidden, the line reads `charted by` and the charter's name. The matched text is highlighted in gold there too.
+While you search for words and the `Album`, `Charter` or `Folder` column is hidden, each row gets a second line. When the `Folder` or `Charter` column is hidden, the line under the title shows the song's folder. When the search matched the charter instead, and the `Charter` column is hidden, it reads `charted by` and the charter's name. When the `Album` column is hidden, the line under the artist shows the song's album, so with the song panel open you can still see an album your search matched. The matched text is highlighted in gold there too. Without a search, every row stays one line tall.
 
-Under the table, a search shows a `Clear search` button. When a match came from a column that is hidden, a note there says so, like `Matched on folder.`
+Under the table, a search shows a `Clear search` button. When a match came from a column that is hidden, a note there says so, like `Matched on folder.` or `Matched on album.`
 
 ## The song panel
 
