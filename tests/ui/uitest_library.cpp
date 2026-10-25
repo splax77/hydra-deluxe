@@ -1689,6 +1689,71 @@ void test_version_bar(ImGuiTestContext* ctx) {
     IM_CHECK(!on_screen(h, updated));
 }
 
+// Decision 10 of the 2026-10-24 album-search plan: one short line and a
+// "Search tips" link under the search box, and a popup listing every
+// app::search_tips() entry, at the full width and with a song open.
+void test_library_search_tips(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    ctx->SetRef("//Hydra");
+    const std::string note(hydra::app::search_tips_note());
+    const auto popup_shows_every_tip = [&] {
+        for (const hydra::app::SearchTip& tip : hydra::app::search_tips()) {
+            IM_CHECK(on_screen(h, std::string(tip.example)));
+            IM_CHECK(on_screen(h, std::string(tip.meaning)));
+        }
+        IM_CHECK(on_screen(h, note));
+    };
+
+    // The empty box shows its placeholder; the old hint line is gone.
+    IM_CHECK(on_screen(h, "Search songs"));
+    IM_CHECK(!on_screen(h, "Narrow with"));
+    IM_CHECK(on_screen(h, "Type any words, or narrow it down."));
+    IM_CHECK(ctx->ItemExists("**/Search tips##searchtips"));
+    IM_CHECK(!on_screen(h, note));
+
+    // The link opens the popup over a typed search; Escape closes it and
+    // leaves the search as it was.
+    ctx->ItemInputValue("**/##search", "chair");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->search == "chair"; }, 5));
+    ctx->ItemClick("**/Search tips##searchtips");
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, note); }, 5));
+    popup_shows_every_tip();
+    ctx->KeyPress(ImGuiKey_Escape);
+    IM_CHECK(wait_until(ctx, [&] { return !on_screen(h, note); }, 5));
+    ctx->Yield(2);
+    IM_CHECK(h.app->search == "chair");
+    IM_CHECK(std::strcmp(h.app->library_ui.search_buf, "chair") == 0);
+
+    // A filter it can't read still says so under the box.
+    ctx->ItemInputValue("**/##search", "stars:9");
+    IM_CHECK(wait_until(ctx, [&] { return !h.app->library.query().errors.empty(); }, 5));
+    IM_CHECK(on_screen(h, h.app->library.query().errors[0]));
+    IM_CHECK(on_screen(h, "Type any words, or narrow it down."));
+
+    // With a song open the library is narrow; the line, the link and the
+    // popup still show, and the Escape that closes the popup leaves the song
+    // panel open.
+    ctx->ItemInputValue("**/##search", "chair");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->search == "chair" && h.app->library_shown_count() > 0; }, 5));
+    h.app->select(h.app->library_row_at(0).entry, hydra::ui::SelectionSource::Click);
+    IM_CHECK(wait_until(ctx, [&] { return !ctx->ItemExists("**/Folder"); }, 5));
+    IM_CHECK(on_screen(h, "Type any words, or narrow it down."));
+    IM_CHECK(ctx->ItemExists("**/Search tips##searchtips"));
+    ctx->ItemClick("**/Search tips##searchtips");
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, note); }, 5));
+    popup_shows_every_tip();
+    ctx->KeyPress(ImGuiKey_Escape);
+    IM_CHECK(wait_until(ctx, [&] { return !on_screen(h, note); }, 5));
+    ctx->Yield(2);
+    IM_CHECK(h.app->details_open());
+    IM_CHECK(h.app->search == "chair");
+    h.app->close_details();
+    IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists("**/Folder"); }, 5));
+}
+
 }  // namespace
 
 const std::vector<TestEntry>& library_tests() {
@@ -1717,6 +1782,7 @@ const std::vector<TestEntry>& library_tests() {
         {"startup-screen", test_startup_screen},
         {"old-library-set-aside", test_old_library_set_aside},
         {"version-bar", test_version_bar},
+        {"library-search-tips", test_library_search_tips},
     };
     return entries;
 }
