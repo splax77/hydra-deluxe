@@ -65,8 +65,8 @@ struct LibraryQuery {
 
 // Parses what the user typed. Words match in any order. "quoted text" is one
 // phrase. artist:x, album:x, charter:x, folder:x, title:x limit a word or
-// "phrase" to one field (field_named in library_query.cpp). stars:N and squeeze<=N, squeeze<N, squeeze>=N, squeeze>N filter
-// on the stored best path; a low and a high squeeze filter combine into a
+// "phrase" to one field (field_named in library_query.cpp). stars:N and
+// squeeze<=N, squeeze<N, squeeze>=N, squeeze>N filter on the stored best path; a low and a high squeeze filter combine into a
 // range. Unknown field names are treated as plain words.
 // A word or phrase matches when its folded text appears anywhere in a folded
 // field. An unclosed quote runs to the end. A field name with nothing after it

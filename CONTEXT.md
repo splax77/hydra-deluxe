@@ -247,8 +247,9 @@ _Avoid_: Depth, Timing cap, none (for a path limit that is off)
 What the user types to narrow the library. Every word must match the title,
 artist, album, charter or folder, in any order; `"quotes"` match a phrase, and
 `title:`, `artist:`, `album:`, `charter:` and `folder:` limit a word or phrase
-to one field. A chart with no album matches nothing through it. `stars:N` (exactly N stars) and `squeeze<=N` (hardest squeeze or
-required early fill at most N ms; `squeeze<N` means the same) test the
+to one field. A chart with no album matches nothing through it. `stars:N`
+(exactly N stars) and `squeeze<=N` (hardest squeeze or required early fill at
+most N ms; `squeeze<N` means the same) test the
 record's best path and only ever match ready rows. `squeeze>N` and
 `squeeze>=N` are the floor side, above N or at least N; a floor and a limit
 together give a range, and a path that needs no timing reaches no floor. Any

@@ -473,22 +473,23 @@ const std::vector<SearchTip>& search_tips() {
         {"charter:boo", "Songs with this word in the charter."},
         {"folder:ib24", "Songs with this word in the folder."},
         {"\"tier 4\"",
-         "Songs with these words side by side, in this order, in the title, artist, album, "
-         "charter or folder. A key takes quotes too: artist:\"green day\" finds Burnout."},
-        {"stars:7", "Songs whose optimal path earns exactly 7 stars."},
+         "Songs with these words side by side, in this order. With no key it looks wherever a "
+         "plain word does. A key takes quotes too: artist:\"green day\" finds Burnout."},
+        {"stars:7", "Songs whose best path earns exactly 7 stars."},
         {"squeeze<=20",
-         "Songs whose optimal path's hardest squeeze or required early fill is 20 ms or less. "
+         "Songs whose best path's hardest squeeze or required early fill is 20 ms or less. "
          "A path that needs no timing counts too. squeeze<20 means the same."},
         {"squeeze>20",
-         "Songs whose optimal path's hardest squeeze or required early fill is more than 20 ms. "
+         "Songs whose best path's hardest squeeze or required early fill is more than 20 ms. "
          "squeeze>=20 also keeps exactly 20 ms. A path that needs no timing never counts."},
     };
     return tips;
 }
 
 std::string_view search_tips_note() {
-    return "stars: and squeeze only match songs with a current result. A song that isn't "
-           "analyzed yet, or whose result is out of date, never matches them.";
+    return "stars: and squeeze filters only match songs with a current result. A song that isn't "
+           "analyzed yet, whose result is out of date, or that Hydra can't analyze never "
+           "matches them.";
 }
 
 }  // namespace hydra::app
