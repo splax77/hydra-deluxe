@@ -46,7 +46,8 @@ runs:
     - name: Note a cold build by choice
       if: inputs.restore != 'true'
       shell: pwsh
-      run: Write-Host "ci_build_folder: cold build: this run does not restore a saved folder."
+      run: |
+        Write-Host "ci_build_folder: cold build: this run does not restore a saved folder."
 
     - name: Restore the saved build folder
       if: inputs.restore == 'true'
