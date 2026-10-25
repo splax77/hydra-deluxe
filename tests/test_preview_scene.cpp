@@ -641,18 +641,27 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
 // build_preview_scene against base + overlay for one song and path, and the
 // overlay laid over a scene built for `other` (another path, or none): both
 // must equal the whole scene, member by member.
-void check_split(const Song& song, const Path* path, int sp_cap, const core::Rules& rules,
-                 const Path* other, const std::string& what) {
-    const PreviewScene whole = build_preview_scene(song, path, sp_cap, rules);
-    const std::string split = scene_difference(
-        whole, apply_preview_overlay(build_preview_base(song), song, path, sp_cap, rules));
+// The same two checks with the scenes already built: `whole` is
+// build_preview_scene for `path`, `base` is the song's base and `other_scene`
+// is the whole scene for the other path. The overlays go over copies.
+void check_split_over(const Song& song, const Path* path, int sp_cap, const core::Rules& rules,
+                      const PreviewScene& whole, const PreviewScene& base,
+                      const PreviewScene& other_scene, const std::string& what) {
+    const std::string split =
+        scene_difference(whole, apply_preview_overlay(base, song, path, sp_cap, rules));
     INFO(what << ": base + overlay differs in " << split);
     CHECK(split.empty());
-    const std::string relaid = scene_difference(
-        whole, apply_preview_overlay(build_preview_scene(song, other, sp_cap, rules), song, path,
-                                     sp_cap, rules));
+    const std::string relaid =
+        scene_difference(whole, apply_preview_overlay(other_scene, song, path, sp_cap, rules));
     INFO(what << ": overlay over another path's scene differs in " << relaid);
     CHECK(relaid.empty());
+}
+
+void check_split(const Song& song, const Path* path, int sp_cap, const core::Rules& rules,
+                 const Path* other, const std::string& what) {
+    check_split_over(song, path, sp_cap, rules, build_preview_scene(song, path, sp_cap, rules),
+                     build_preview_base(song), build_preview_scene(song, other, sp_cap, rules),
+                     what);
 }
 
 }  // namespace
@@ -720,17 +729,27 @@ TEST_CASE("base + overlay: equals build_preview_scene on every corpus chart and 
         ++charts;
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         const std::vector<const Path*> all = rec.all_paths();
-        check_split(song, nullptr, cfg.sp_cap, cfg.rules, all.empty() ? nullptr : all.front(),
-                    chart + " (no path)");
-        for (size_t i = 0; i < all.size(); ++i) {
+        // One base per chart and one whole scene per path. Walking the paths
+        // from last to first makes the next path's whole the one built on the
+        // previous step; the last path's other is the no-path scene.
+        const PreviewScene base = build_preview_base(song);
+        const PreviewScene none = build_preview_scene(song, nullptr, cfg.sp_cap, cfg.rules);
+        PreviewScene next = none;
+        for (size_t i = all.size(); i-- > 0;) {
             ++paths;
             // Laid over the next path's scene, so every overlay replaces a
             // different one.
-            const Path* other = i + 1 < all.size() ? all[i + 1] : nullptr;
-            check_split(song, all[i], cfg.sp_cap, cfg.rules, other,
-                        chart + " path " + std::to_string(i));
+            PreviewScene whole = build_preview_scene(song, all[i], cfg.sp_cap, cfg.rules);
+            check_split_over(song, all[i], cfg.sp_cap, cfg.rules, whole, base, next,
+                             chart + " path " + std::to_string(i));
+            next = std::move(whole);
         }
+        // `next` now holds path 0's whole, or the no-path scene if there is
+        // no path.
+        check_split_over(song, nullptr, cfg.sp_cap, cfg.rules, none, base, next,
+                         chart + " (no path)");
     }
+    MESSAGE("charts " << charts << ", paths " << paths);
     CHECK(charts > 0);
     CHECK(paths > charts);
 }
