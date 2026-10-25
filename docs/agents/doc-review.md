@@ -16,7 +16,7 @@ AI-written documents keep shipping four kinds of failure that a reader cannot se
 
 ## What you get
 
-The agent that dispatched you gives you four things. The **key** is the document's doc key: a 64-character SHA-256 hash of its exact text, which `C:\Users\Patrick\.claude\gates\doc_key.ps1` prints. The **document** is the exact file that was about to go out: the plan file, the Artifact page file, the body file for a GitHub post, or for a commit the file at the branch's tip in its worktree. The **sources** list what the author worked from, one source per line with a few words on what each supports. Last, the dispatch names the author: an agent id, or the main session.
+The agent that dispatched you gives you four things. The **key** is the document's doc key: a 64-character SHA-256 hash of its text with any byte-order mark dropped and CRLF made LF, which `C:\Users\Patrick\.claude\gates\doc_key.ps1` prints. The **document** is the exact file that was about to go out: the plan file, the Artifact page file, the body file for a GitHub post, or for a commit the file at the branch's tip in its worktree. The brief names it with a `Path:` line: the repo path for a page in the repo, the full file path for a plan or an Artifact page. The **sources** list what the author worked from, one source per line with a few words on what each supports. Last, the dispatch names the author: an agent id, or the main session.
 
 Before anything else, run `& "C:/Users/Patrick/.claude/gates/doc_key.ps1" "<document path>"`. If it does not print the key you were given, stop and report both keys. You would be reviewing a different text from the one the gate will check.
 
@@ -81,14 +81,14 @@ The user decided in D107 (`docs/audit/2026-10-03-fix-decisions.md`) that a docum
 1. **Review** the document as this page describes, and write your review to a file in your scratchpad.
 2. **If there are no findings,** sign off on the key you were given (see "Output") and report. You are done.
 3. **Fix every finding** against the sources, and add no new unsourced claim while you do. Edit the text where the author will publish it from: the file in the branch's worktree for a commit, the page file for an Artifact, the file at `planFilePath` for a plan, or the file the author will post for `gh` text. For a commit, commit your fix in the branch's worktree, with the preamble's trailers and your own agent id in `Agent:`. If a finding turns out to be wrong when you look closer, leave the text and say why under Notes.
-4. **Compute the final key** with `& "C:/Users/Patrick/.claude/gates/doc_key.ps1" "<fixed file>"`. Nobody computes a key any other way; `publish_gate.py` in the gates folder owns how it is made.
-5. **Sign off.** Under each finding in your review, say how you fixed it. Then report, ending with the two closing lines (see "Output"), with the final key.
+4. **Compute the final key** with `& "C:/Users/Patrick/.claude/gates/doc_key.ps1" "<fixed file>"`. Nobody computes a key any other way; `review_rules.doc_key` in the gates folder owns how it is made, and `doc_key.ps1` reaches it through `publish_gate.py --key`.
+5. **Sign off.** Under each finding in your review, say how you fixed it. Then report, ending with the closing block (see "Output"), with the final key.
 
 **A finding you should not fix yourself.** Some fixes need the user: a new number, a change to what the user sees or what is stored, or a choice between two behaviours. Do not make those changes. Write the finding under Notes as a question for the user and sign off CLEAN on the rest. The main session passes your Notes to the user. It does not hold the publish for them.
 
 **If you run out of time or tool calls.** When the progress hook warns you (at 100 tool calls or 20 minutes), stop fixing. Commit or save what you have fixed, compute the final key and sign off as step 5 says. Write each finding you did not fix under Notes, with what is left to do. No fresh agent picks it up, and the publish does not wait for it (D107 item 5).
 
-Your sign-off is recorded for the final key and for the document's file. From then on that document passes the gate, and later edits to it pass with no new review; the marker file `.doc-review-gate` is the one exception, and every change to it needs its own review.
+Your sign-off is recorded for the final key. When your closing block puts the document's `Path:` line before the key, it is recorded for the document's file too. From then on that document passes the gate, and later edits to it pass with no new review. Two exceptions: the marker file `.doc-review-gate`, where every change needs its own review, and text posted to GitHub with `publish.ps1`, which passes only as the exact text you signed off.
 
 ## Output
 
@@ -103,11 +103,12 @@ Open the report with the key you signed off, the key you were given if it differ
 - **Notes**: things worth fixing that do not block, including any question for the user.
 - **Where I looked**: the files, folders, commits and pages you read, and what you could not check and why.
 
-End the report with exactly these two lines, each on its own line, with nothing after them:
+End the report with a closing block, with nothing after it: the line `SIGN-OFF: CLEAN`, then a `Path:` line and a `Key:` line, each on its own line:
 
 ```
 SIGN-OFF: CLEAN
+Path: <the path the brief names for the document>
 Key: <the 64-character doc key of the text you are signing off>
 ```
 
-The key is the key you were given if you changed nothing, else the final key of your fixed text from step 4. Write `SIGN-OFF: BLOCKED` instead of `SIGN-OFF: CLEAN` only when a finding stays that you could not fix and that must hold the publish; say why above. A report without these two lines records no verdict, and the gate keeps refusing the text until another reviewer signs it off.
+The key is the key you were given if you changed nothing, else the final key of your fixed text from step 4. Leave the `Path:` line out for the marker file `.doc-review-gate` and for text posted to GitHub, which a path does not help. When you also review a change's code, the block holds its 40-character commit key too, first, as `docs/agents/derive-once-review.md` shows; one block signs the commit and every document. The block holds one commit key at most, no key twice, and a `Path:` line only directly before a document key. A single `Key:` line just before the `SIGN-OFF:` line still works. Write `SIGN-OFF: BLOCKED` instead of `SIGN-OFF: CLEAN` only when a finding stays that you could not fix and that must hold the publish; say why above. A report whose last lines are not this closing block records no verdict, and the gate keeps refusing the text until another reviewer signs it off.
