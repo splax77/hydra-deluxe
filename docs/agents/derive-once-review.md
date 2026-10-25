@@ -72,7 +72,7 @@ The user decided in D107 (`docs/audit/2026-10-03-fix-decisions.md`) that a chang
    - **Fold every copy into the owner.** Each copy calls the owner. A test calls production code or pins a literal from one run; it never computes an expected value.
    - **Prove nothing is left.** Run the grep again. It must find only the owner, or only lines the scan already lists as known.
    - **For kind A, add the scan row** to the owner's area file under `tests/single_owner/rules/`, or give the one-sentence reason no text search can catch the copy (see "A kind A fix ends in a scan row").
-   - **Run the tests for that finding** with `-tc=` or `-sf=` filters, and the scan test `build-cpp\Release\hydra_tests.exe -tc="single-owner*"` if you added a row. Never the full suite.
+   - **Run the tests for that finding** with `-tc=` or `-sf=` filters, and the scan test `build-cpp\Release\hydra_tests.exe -tc="single-owner*"` if you added a row. Pick them from what your brief names and from the `tests:` line that `build-cpp\Release\hydra_precheck.exe --repo <path> --tests main...<your last commit>` prints. Never the full suite, even when that line says `whole suite`; the main session runs it at the merge.
    - **Commit that finding alone.** The commit body carries the grep you ran and its one-line result, and for kind A the scan row's question or the reason no row fits. Then the trailers from the preamble, with your own agent id in `Agent:`.
 4. **Run the precheck** on the range, now ending at your last commit. It must print nothing new; fix anything it prints the same way.
 5. **Sign off.** Your key is now your last commit. Under each finding in your review, say how you fixed it and in which commit. Then report, ending with the closing block (see "Output").
