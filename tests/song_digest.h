@@ -303,6 +303,21 @@ inline uint64_t chart_parse_hash(const std::string& notespath, const app::Analys
     }
 }
 
+// How many of these chart files load at these settings, by the parse digest's
+// own load (chart_parse_hash). A test that walks charts checks its walk against
+// this count, so a chart that stops loading, or a walk that skips one, fails
+// without a typed number.
+inline size_t loading_chart_count(const std::vector<std::string>& notespaths,
+                                  const app::AnalysisSettings& st) {
+    size_t n = 0;
+    for (const std::string& path : notespaths) {
+        std::string fail;
+        chart_parse_hash(path, st, &fail);
+        if (fail.empty()) ++n;
+    }
+    return n;
+}
+
 // The settings a digest is pinned under, built the way the app builds them
 // from an ini that sets only these three things. A test that pins more
 // fields sets them on the result before it calls batch_run.

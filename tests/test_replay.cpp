@@ -39,7 +39,7 @@
 #include "search/graph.h"
 #include "core/model.h"  // within_squeeze_window, the horizon the warning uses
 #include "search/pather.h"
-#include "song_digest.h"  // chart_parse_hash, the load the digest counts with
+#include "song_digest.h"  // loading_chart_count, the load the digest counts with
 #include "store/record_store.h"
 
 using namespace hydra;
@@ -133,16 +133,10 @@ TEST_CASE("replay reproduces the engine's score for every corpus path") {
 
         MESSAGE(c.name << ": " << run.charts << " charts, " << run.no_part << " with no part, "
                        << run.paths << " paths");
-        // Every chart that loads at these settings, by the parse digest's own
-        // load (as test_perf_digest.cpp counts them), was walked.
-        int loading = 0;
-        for (const std::string& path : corpus::chart_paths()) {
-            std::string fail;
-            digest::chart_parse_hash(path, cfg, &fail);
-            if (fail.empty()) ++loading;
-        }
+        // Every chart that loads at these settings was walked.
+        const size_t loading = digest::loading_chart_count(corpus::chart_paths(), cfg);
         CHECK(run.charts > 0);
-        CHECK(run.charts == loading);
+        CHECK(static_cast<size_t>(run.charts) == loading);
         CHECK(run.paths >= c.min_paths);
         INFO("first mismatch: " << run.first_diff);
         CHECK(run.mismatches == 0);
@@ -554,7 +548,10 @@ TEST_CASE("a path JSON names the squeezed-out chord by its tick, the offset only
 TEST_CASE("windows read from a path JSON match the ones read from the record") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
 
-    int checked = 0;
+    // Every corpus chart with windows is compared. The loop only counts and
+    // keeps the first difference; the assertions sit after it.
+    int charts = 0, checked = 0, mismatches = 0;
+    std::string first_diff;
     for (const std::string& chart : corpus::chart_paths()) {
         const Song& song = corpus::song(chart, cfg.reading());
         if (song.is_empty()) continue;
@@ -564,28 +561,42 @@ TEST_CASE("windows read from a path JSON match the ones read from the record") {
         const std::vector<const Path*> all = rec.all_paths();
         const json dumped = paths_json(all, song.timing());
         REQUIRE(dumped.size() == all.size());
+        bool had_windows = false;
         for (size_t k = 0; k < all.size(); ++k) {
             const Path* p = all[k];
             const std::vector<ReplayWindow> want = windows_for_path(*p);
             if (want.empty()) continue;
+            had_windows = true;
 
             // The real dump producer, so a format change on either side fails.
             const std::vector<ReplayWindow> got = windows_from_json(dumped[k]);
-            REQUIRE(got.size() == want.size());
-            for (size_t i = 0; i < got.size(); ++i) {
-                CHECK(got[i].act_tick == want[i].act_tick);
-                CHECK(got[i].deact_tick == want[i].deact_tick);
-                CHECK(got[i].sqout_tick == want[i].sqout_tick);
-                // read_sqout (tools/replay_json.cpp) decides when the offset
-                // is read; today's records always stamp a tick.
-                if (!want[i].sqout_tick)
-                    CHECK(got[i].sqout_offset_ms == want[i].sqout_offset_ms);
-            }
             ++checked;
+            std::string diff;
+            if (got.size() != want.size()) {
+                diff = "window count " + std::to_string(got.size()) + " vs " +
+                       std::to_string(want.size());
+            } else {
+                for (size_t i = 0; i < got.size() && diff.empty(); ++i) {
+                    // read_sqout (tools/replay_json.cpp) decides when the
+                    // offset is read; today's records always stamp a tick.
+                    if (got[i].act_tick != want[i].act_tick ||
+                        got[i].deact_tick != want[i].deact_tick ||
+                        got[i].sqout_tick != want[i].sqout_tick ||
+                        (!want[i].sqout_tick &&
+                         got[i].sqout_offset_ms != want[i].sqout_offset_ms))
+                        diff = "window " + std::to_string(i) + " differs";
+                }
+            }
+            if (diff.empty()) continue;
+            ++mismatches;
+            if (first_diff.empty()) first_diff = chart + " [" + p->pathstring() + "] " + diff;
         }
-        if (checked > 0) break;  // one chart's paths are the whole contract
+        if (had_windows) ++charts;
     }
+    MESSAGE(charts << " charts, " << checked << " paths with windows compared");
     CHECK(checked > 0);
+    INFO("first mismatch: " << first_diff);
+    CHECK(mismatches == 0);
 }
 
 // D34: a window never squeezes out a phrase it already squeezed in, and the
@@ -676,24 +687,13 @@ TEST_CASE("result block: an empty record writes a null score and an empty bestpa
     CHECK(empty["score"].is_null());
     CHECK(empty["bestpath"].get<std::string>() == "");
 
+    // One corpus chart, named by its path, with its best score and path as one
+    // run printed them.
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    bool checked = false;
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        if (rec.paths.empty()) continue;
-
-        // The first corpus chart with paths, and its best score and path as
-        // one run printed them.
-        const json full = result_json(rec);
-        CHECK(chart.find("Allister - Overrated") != std::string::npos);
-        CHECK(full["score"].get<int64_t>() == 228710);
-        CHECK(full["bestpath"].get<std::string>() == "1 2");
-        checked = true;
-        break;  // one chart's record is the whole contract
-    }
-    CHECK(checked);
+    const std::string chart = corpus::root() + "/common/IB24/T1/Allister - Overrated/notes.mid";
+    const json full = result_json(corpus::analyzed(chart, cfg));
+    CHECK(full["score"].get<int64_t>() == 228710);
+    CHECK(full["bestpath"].get<std::string>() == "1 2");
 }
 
 // dump prints each activation's passed-over fills as the record stores them.
