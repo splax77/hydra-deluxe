@@ -57,6 +57,24 @@ ChartNames names_of(RecordStore& store, const std::string& id) {
 
 }  // namespace
 
+TEST_CASE("a library entry filled by position keeps its first seven fields in place") {
+    // Tests and fixtures (test_cli.cpp, dm_fixture.h) fill the entry by
+    // position with seven strings. A field added among them would shift the
+    // path, root folder and fingerprint into the wrong slots with no compile
+    // error, so a new field goes after these seven.
+    const ChartLibraryEntry e{"md5", "Title", "Artist", "Charter",
+                              "C:\\charts\\a\\notes.chart", "C:\\charts", "sig"};
+    CHECK(e.md5 == "md5");
+    CHECK(e.title == "Title");
+    CHECK(e.artist == "Artist");
+    CHECK(e.charter == "Charter");
+    CHECK(e.notespath == "C:\\charts\\a\\notes.chart");
+    CHECK(e.rootfolder == "C:\\charts");
+    CHECK(e.sig == "sig");
+    CHECK(e.album.empty());
+    CHECK(!e.timing.has_value());
+}
+
 TEST_CASE("a failed library rebuild keeps the previous scan") {
     // The rebuild used to drop the table before opening its transaction, so
     // an insert that failed left the library empty, and took the rescan cache
