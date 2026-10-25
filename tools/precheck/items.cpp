@@ -4,6 +4,7 @@
 #include <array>
 #include <cctype>
 #include <cstring>
+#include <map>
 
 namespace precheck {
 
@@ -106,14 +107,13 @@ std::optional<std::string> large_range_line(const RangeSize& size) {
 }
 
 std::string summary_line(const std::vector<Item>& sorted, const Range& range) {
-    // Kind counts in the order the kinds first appear in the sorted list.
+    // Kind counts in letter order, as the script's Group-Object gave them.
+    std::map<std::string, size_t> per_kind;
+    for (const Item& i : sorted) ++per_kind[i.kind];
     std::string counts;
-    for (size_t i = 0; i < sorted.size();) {
-        size_t j = i;
-        while (j < sorted.size() && sorted[j].kind == sorted[i].kind) ++j;
+    for (const auto& [kind, n] : per_kind) {
         if (!counts.empty()) counts += ", ";
-        counts += sorted[i].kind + " " + std::to_string(j - i);
-        i = j;
+        counts += kind + " " + std::to_string(n);
     }
     return "derive_once_precheck: " + std::to_string(sorted.size()) + " items (" +
            (counts.empty() ? "none" : counts) + ") for " +
