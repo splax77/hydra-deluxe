@@ -181,17 +181,22 @@ lossless round-trips over that corpus. GUI changes are checked headlessly with
 The Python and PowerShell tools have their own tests. Run them from the
 repository root:
 
-    py -m pytest tools/ch_probe/tests tools/test_compare_db.py -q
+    py -m pytest tools/ch_probe/tests tools/test_compare_db.py tools/test_hydra_ui_mcp.py -q
     pwsh -NoProfile -File tools/test_mutation_probe.ps1
 
-The pytest runs need no C++ build. The mutation probe's self-test needs a
+The pytest runs need no C++ build. The MCP test also needs
+`py -m pip install mcp`, and its real-exe cases skip until
+`hydra_uitest.exe` is built. The `tool-tests` job in
+`.github/workflows/ci.yml` runs the pytest paths and the two other PowerShell
+self-tests (`tools/test_ci_build_folder.ps1`, `tools/test_release_sign.ps1`);
+it is the owner of that list. The mutation probe's self-test needs a
 built `hydra_precheck.exe` (`.\build_cpp.ps1 -Target hydra_precheck`),
 because the probe masks comments and strings with it. The derive-once
 precheck's own self-test runs inside `hydra_tests`:
 
     build-cpp\Release\hydra_tests.exe "-sf=*test_precheck*"
 
-Name the two pytest paths rather than `tools/` as a whole: the scripts in
+Name the pytest paths rather than `tools/` as a whole: the scripts in
 `tools/ch_probe/experiments/` look like tests to pytest and drive the real
 game.
 
@@ -214,6 +219,10 @@ never ships.
 .\build_cpp.ps1 -Preset asan -Target hydra_tests
 ctest --test-dir build-asan -C Release -j 4 -R hydra_tests --output-on-failure
 ```
+
+The `asan-ninja` preset is the same build through Ninja and the sccache
+compiler cache, in `build-asan-ninja\`. CI uses it, so a night with few
+changes rebuilds from the cache.
 
 Run these from a Visual Studio developer shell ("Developer PowerShell for VS").
 The ASan runtime DLL sits beside the compiler, not beside the exes, and that
@@ -463,12 +472,17 @@ main job builds and runs `hydra_tests`. A second job, "GUI tests", builds
 time, so the run takes as long as the slower of the two, not both added up.
 Both jobs also run once a night, from a cold build.
 
-The `asan` job builds the same tests with the `asan` preset and runs them (see
+The `asan` job builds the same tests with the `asan-ninja` preset (the `asan`
+build again, through Ninja and the sccache compiler cache) and runs them (see
 "The AddressSanitizer build" above). Any memory error it finds fails the run.
-It runs once a night and when someone starts the workflow by hand, not on
-every push: its first run, on 2026-10-10, took 20m41s against 6m16s for the
-main job.
-Start it by hand from the Actions tab after a change to memory-heavy code.
+A second job, `asan-gui`, builds `hydra_uitest` the same way and runs the GUI
+tests on its own machine at the same time. Both run once a night and when
+someone starts the workflow by hand, not on every push. On run 40201169431,
+with the cache warm, the `asan` job took 226 s and `asan-gui` 381 s. A cold
+build takes longer: 548 s for the `asan` build alone on run 40195923058.
+Start them by hand from the Actions tab after a change to memory-heavy code.
+Both keep the default shallow checkout, so the precheck self-test skips its
+two real commit ranges there; the main job runs them.
 
 Once a night, and when someone starts the workflow by hand, a `coverage` job
 builds the tests with the `coverage` preset and writes the coverage report
@@ -476,10 +490,10 @@ builds the tests with the `coverage` preset and writes the coverage report
 skips pushes because it repeats the whole build and both test sets. Its proving
 run (run 38083092803, on 2026-10-10) took 11.5 minutes.
 
-Another job runs the Python tool tests above with no C++ build. The main
+Another job, `tool-tests`, runs the tool tests above with no C++ build. The main
 job runs the mutation probe's self-test after it builds `hydra_tests`, because
-that self-test needs `hydra_precheck.exe`. The main job checks out the whole
-history, because the precheck self-test in `hydra_tests` checks two real
+that self-test needs `hydra_precheck.exe`. The main job and the coverage job
+check out the whole history, because the precheck self-test in `hydra_tests` checks two real
 commit ranges and skips them in a shallow clone.
 
 The main job and the GUI tests job build on a saved build folder, so a push

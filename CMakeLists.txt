@@ -62,7 +62,18 @@ elseif(HYDRA_LTCG)
 else()
     message(STATUS "Link-time optimization (IPO): off (HYDRA_LTCG is OFF; the ship preset turns it on)")
 endif()
-add_compile_options($<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:C,CXX>>:/Zi>)
+# HYDRA_EMBEDDED_DEBUG keeps each object's debug info inside the .obj (/Z7)
+# instead of one shared compile-time .pdb (/Zi). A compiler cache such as
+# sccache can only store an object that carries its own debug info; the
+# asan-ninja preset turns it on. The linker still writes the exe's .pdb either
+# way, so /PDBALTPATH below is unchanged.
+option(HYDRA_EMBEDDED_DEBUG "Debug info inside each object (/Z7) for a compiler cache (the asan-ninja preset turns it on)" OFF)
+if(HYDRA_EMBEDDED_DEBUG)
+    set(HYDRA_DEBUG_INFO_FLAG /Z7)
+else()
+    set(HYDRA_DEBUG_INFO_FLAG /Zi)
+endif()
+add_compile_options($<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:C,CXX>>:${HYDRA_DEBUG_INFO_FLAG}>)
 # /DEBUG turns off /OPT:REF and /OPT:ICF unless they are named, so they are
 # named to keep the exes as lean as before. /PDBALTPATH stores only the .pdb's
 # file name in the exe, not the build folder's path, which the installer's
@@ -134,8 +145,10 @@ endif()
 # Opus's safety checks (OPUS_HARDENING) store __FILE__ for their error message,
 # which put the builder's folder path into the shipped Hydra.exe 28 times.
 # /d1trimfile strips the prefix (MSVC 16.4+); the checks themselves stay on.
+# Spelled with "-": sccache reads an unknown "/" option as a second input file
+# and refuses to cache the compile (mozilla/sccache#1899). cl.exe reads both.
 file(TO_NATIVE_PATH "${CMAKE_SOURCE_DIR}/" HYDRA_SOURCE_PREFIX)
-add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/d1trimfile:${HYDRA_SOURCE_PREFIX}>)
+add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-d1trimfile:${HYDRA_SOURCE_PREFIX}>)
 
 # Strict flags for our own code, applied via this interface target; third-party
 # gets relaxed warnings so a vendor update never turns into a wall of warnings.

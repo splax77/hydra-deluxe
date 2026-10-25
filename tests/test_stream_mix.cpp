@@ -254,6 +254,20 @@ TEST_CASE("StreamMix: length is the front pad plus the longest converted stem") 
     std::vector<float> got = read_frames(mix, mix.length_frames());
     const std::size_t from = static_cast<std::size_t>(4800 + 24000) * 2;
     CHECK(max_diff(got, only_a.samples.data(), from, got.size()) <= 1e-6);
+
+    // The stem's first frame lands exactly on frame `pad`, not one either side.
+    // A passthrough stem of values a float holds exactly, behind a 1 ms pad.
+    const auto ramp = testaudio::pcm16_wav(2, 48000, {8192, 16384, 24576, -16384, 4096, 0, 0, 0});
+    StreamMix padded = make_mix({ramp}, 48);
+    REQUIRE(padded.length_frames() == 48 + 4);
+    const std::vector<float> p = read_frames(padded, padded.length_frames());
+    REQUIRE(p.size() == 52 * 2);
+    CHECK(std::all_of(p.begin(), p.begin() + 48 * 2, [](float v) { return v == 0.0f; }));
+    CHECK(p[48 * 2] == 0.25f);  // the stem's frame 0
+    CHECK(p[48 * 2 + 1] == 0.5f);
+    CHECK(p[49 * 2] == 0.75f);  // the stem's frame 1
+    CHECK(p[49 * 2 + 1] == -0.5f);
+    CHECK(p[50 * 2] == 0.125f);
 }
 
 TEST_CASE("StreamMix: reading in big blocks matches reading in small ones") {

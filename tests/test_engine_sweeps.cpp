@@ -38,16 +38,49 @@
 
 using namespace hydra;
 
+namespace {
+
+// What a sweep over the corpus found, one chart at a time.
+struct SweepTally {
+    int mismatches = 0;
+    int rejected = 0;  // charts the engine threw ChartFileError on
+};
+
+// Runs one chart's `check`, which returns "" when the chart passes, or what is
+// wrong. A ChartFileError is counted as a reject, so the sweep cannot quietly
+// shrink; the first eight bad charts fail by name.
+template <class Check>
+void sweep_chart(SweepTally& tally, const std::string& path, Check check) {
+    std::string d;
+    try {
+        d = check();
+    } catch (const ChartFileError&) {
+        ++tally.rejected;
+        return;
+    }
+    if (!d.empty() && ++tally.mismatches <= 8)
+        CHECK_MESSAGE(false, path << " " << d);
+}
+
+// Every sweep that uses sweep_chart ends with no mismatches and no rejects.
+void check_sweep_tally(const SweepTally& tally) {
+    CHECK(tally.mismatches == 0);
+    CHECK(tally.rejected == 0);
+}
+
+}  // namespace
+
 TEST_CASE("search invariants hold across the corpus and config knobs") {
-    int charts = 0, mismatches = 0, rejected = 0;
+    int charts = 0;
+    SweepTally tally;
 
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, ChartReading{});
         if (song.is_empty()) continue;
         ++charts;
 
-        std::string d;
-        try {
+        sweep_chart(tally, path, [&]() -> std::string {
+            std::string d;
             // Depth asks for more alternate paths and must not move the
             // optimum; the ms filter is a constraint, so its best can only
             // be at or below the unconstrained best.
@@ -94,17 +127,11 @@ TEST_CASE("search invariants hold across the corpus and config knobs") {
                     }
                 }
             }
-        } catch (const ChartFileError&) {
-            ++rejected;  // counted, so the sweep cannot quietly shrink
-            continue;
-        }
-
-        if (!d.empty() && ++mismatches <= 8)
-            CHECK_MESSAGE(false, path << " " << d);
+            return d;
+        });
     }
 
-    CHECK(mismatches == 0);
-    CHECK(rejected == 0);
+    check_sweep_tally(tally);
     REQUIRE(charts > 0);
     MESSAGE("checked " << charts << " charts");
 }
@@ -118,14 +145,15 @@ TEST_CASE("search invariants hold across the corpus and config knobs") {
 // no path the model's walk passes outscores the engine's filtered best.
 TEST_CASE("the engine's limit walk agrees with Activation::within_ms_limit") {
     constexpr double kLimitMs = 20.0;  // the invariants case's ms_filter
-    int charts = 0, mismatches = 0, kept_checked = 0, model_rejected = 0, rejected = 0;
+    int charts = 0, kept_checked = 0, model_rejected = 0;
+    SweepTally tally;
 
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, ChartReading{});
         if (song.is_empty()) continue;
 
-        std::string d;
-        try {
+        sweep_chart(tally, path, [&]() -> std::string {
+            std::string d;
             SearchSettings cfg;
             cfg.sp_cap = 4;
             cfg.depth_mode = DepthMode::Scores;
@@ -134,7 +162,7 @@ TEST_CASE("the engine's limit walk agrees with Activation::within_ms_limit") {
             const HydraRecord& deep = corpus::analyzed(path, cfg);
             cfg.ms_filter = kLimitMs;
             const HydraRecord& filtered = corpus::analyzed(path, cfg);
-            if (deep.paths.empty()) continue;
+            if (deep.paths.empty()) return d;
             ++charts;
             const int64_t optimum = deep.paths.front().totalscore();
 
@@ -159,17 +187,11 @@ TEST_CASE("the engine's limit walk agrees with Activation::within_ms_limit") {
                 (filtered.paths.empty() || *model_best > filtered.paths.front().totalscore()))
                 d = "engine dropped a path the model's walk keeps, scoring " +
                     std::to_string(*model_best);
-        } catch (const ChartFileError&) {
-            ++rejected;  // counted, so the sweep cannot quietly shrink
-            continue;
-        }
-
-        if (!d.empty() && ++mismatches <= 8)
-            CHECK_MESSAGE(false, path << " " << d);
+            return d;
+        });
     }
 
-    CHECK(mismatches == 0);
-    CHECK(rejected == 0);
+    check_sweep_tally(tally);
     REQUIRE(charts > 0);
     // Both walks must have had something to say no to and yes to, or the
     // case proves nothing.
