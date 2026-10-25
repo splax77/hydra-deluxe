@@ -215,9 +215,10 @@ jobs:
 
   # The GUI tests built with AddressSanitizer, on their own machine, so they
   # run beside the asan job's unit tests instead of after them, as "GUI tests"
-  # does for the normal build. It builds cold: no build folder is saved for
-  # the asan-ninja preset. "Continuous integration" in docs/development.md gives the
-  # timing.
+  # does for the normal build. No build folder is saved for the asan-ninja
+  # preset; the sccache compiler cache, shared with the asan job, makes the
+  # build fast when it is warm. "Continuous integration" in docs/development.md
+  # gives the timing.
   asan-gui:
     name: AddressSanitizer GUI tests (Windows, Release)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

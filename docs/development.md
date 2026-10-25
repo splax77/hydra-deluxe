@@ -220,6 +220,10 @@ never ships.
 ctest --test-dir build-asan -C Release -j 4 -R hydra_tests --output-on-failure
 ```
 
+The `asan-ninja` preset is the same build through Ninja and the sccache
+compiler cache, in `build-asan-ninja\`. CI uses it, so a night with few
+changes rebuilds from the cache.
+
 Run these from a Visual Studio developer shell ("Developer PowerShell for VS").
 The ASan runtime DLL sits beside the compiler, not beside the exes, and that
 shell puts it on `PATH`. The CLI tests start the command line tools as child
@@ -471,10 +475,14 @@ Both jobs also run once a night, from a cold build.
 The `asan` job builds the same tests with the `asan-ninja` preset (the `asan`
 build again, through Ninja and the sccache compiler cache) and runs them (see
 "The AddressSanitizer build" above). Any memory error it finds fails the run.
-It runs once a night and when someone starts the workflow by hand, not on
-every push: its first run, on 2026-10-10, took 20m41s against 6m16s for the
-main job.
-Start it by hand from the Actions tab after a change to memory-heavy code.
+A second job, `asan-gui`, builds `hydra_uitest` the same way and runs the GUI
+tests on its own machine at the same time. Both run once a night and when
+someone starts the workflow by hand, not on every push. On run 40201169431,
+with the cache warm, the `asan` job took 226 s and `asan-gui` 381 s. A cold
+build takes longer: 548 s for the `asan` build alone on run 40195923058.
+Start them by hand from the Actions tab after a change to memory-heavy code.
+Both keep the default shallow checkout, so the precheck self-test skips its
+two real commit ranges there; the main job runs them.
 
 Once a night, and when someone starts the workflow by hand, a `coverage` job
 builds the tests with the `coverage` preset and writes the coverage report
