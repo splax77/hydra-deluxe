@@ -1,0 +1,247 @@
+# Hooks from scratch (2026-10-25)
+
+Task HOOKS-FROM-SCRATCH-PLAN, session dee9c61e. This plan replaces `2026-10-25-hook-redesign.md`, which the user rejected because it grew the system. Nothing here is built yet. Every task waits for the user's yes.
+
+## 1. What the new system is, in plain words
+
+Today about 30 hooks guard the machine. They are 13,622 lines of PowerShell plus 562 lines of C, with 17,259 lines of tests, and they need a resident server because nine of them read every shell command. On 24 October they refused 52 calls. Seven of those stopped real harm. Thirty were style corrections. One was a hook bug that cost two waivers.
+
+The new system does five jobs and nothing else.
+
+1. It stops an agent destroying the user's things: deletes outside its own scratch or worktree, history rewrites on shared branches, whole-library runs.
+2. It stops anything reaching `main` in either repo without one fresh review, unless the user typed a waiver.
+3. It keeps agents bounded and visible: status lines, 100/150 calls, 20/30 minutes.
+4. It keeps the main session on the rules: the posture text, stalled-agent notices, the context-size warning.
+5. It does the housekeeping: worktree and scratch cleanup, session cards.
+
+It does them with eight small Python scripts, one `sh` shim for git, three PowerShell helpers that agents call by hand, and the two housekeeping scripts carried over as they are. No server, no pipe client, no dispatcher, no free-text command parsing except one strict delete rule. Style rules move into the preamble as instructions.
+
+Size: about 2,100 lines of hook code (1,340 without the two housekeeping scripts carried over) against 14,184 today, and about 2,500 lines of tests against 17,259. The hard budget is 3,000 lines of hook code; the per-file estimates in section 2 add up to 2,110.
+
+Per-call cost: one Python start per tool call, measured at 38 ms here (`python -I -S`, 5 runs, 189 ms total), against 180 ms for one Windows PowerShell start (896 ms for 5) and the 876 ms per Bash call that justified the server.
+
+## 2. The new hook set
+
+Every hook lives in `C:\Users\Patrick\.claude\gates\` (a new folder beside the old `hooks\`, with its final name from day one, so nothing is renamed later). Runtime state lives in `gates\state\`, gitignored like today's `hooks\state\`. Python is `C:\Users\Patrick\AppData\Local\Python\pythoncore-3.14-64\python.exe`, called by full path with `-I -S` so no user site or startup file can change what a hook does. Each registration is the exec form (`command` = python.exe, `args` = `-I -S <script>`), as today's README demands, so no shell sits in between.
+
+Every Python hook has the same shape: read stdin as UTF-8 bytes, parse JSON, decide, print one JSON line, exit 0. The whole body is inside one `try`. On any exception a hook that can refuse prints a deny with the error text ("fail closed"); a hook that only informs prints a `systemMessage` saying it did nothing ("fail loudly, never freeze"). This matters because Claude Code reads a non-zero exit from a crashed script as a non-blocking error and lets the call through, and the `onFailure: block` field in today's settings.json needs Claude Code 2.1.295 or later while this machine runs 2.1.275 (`claude --version`), so that field is doing nothing today.
+
+### What Claude Code already does for us
+
+Checked against the docs at code.claude.com on 2026-10-25.
+
+- Permission `deny` and `ask` rules in settings.json (verified: evaluated "deny, then ask, then allow", apply to every subcommand of a compound command, past leading variable assignments; PowerShell rules canonicalise aliases so `PowerShell(Remove-Item *)` also matches `ri`, `rm`, `del`). Not a security boundary: a program called by path or inside `sh -c` escapes them. Good enough for habit guards, and the git-side gate is the real wall for objective 2.
+- `scratchpad_dir`, `session_id`, `transcript_path`, `cwd`, `permission_mode` are common hook-input fields (verified in the docs' field list). `agent_id` and `agent_type` are common fields present when the hook fires inside a subagent (docs: "Tool events fired from subagents do carry them"; today's `agent_progress_gate.ps1` line 364 already reads `agent_id` live, so this one is verified on this machine).
+- `SubagentStart` input: `agent_id`, `agent_type`; context-only, cannot block. `SubagentStop` input: `agent_id`, `agent_type`, `agent_transcript_path`, `last_assistant_message`; it can block. Both match on agent type (verified in the docs; not yet fired on this machine with a command hook, so task T0 proves it live).
+- Agent files `agents\*.md` take `tools`, `disallowedTools`, `model`, `isolation: worktree`, `maxTurns`, and their own `hooks` (verified). `maxTurns` is the built-in call cap. It stops the agent instead of warning it, so the plan keeps the progress hook for the soft warning and uses `maxTurns` as nothing more than a backstop; whether a `maxTurns` stop still lets the agent hand back is unverified and T0 checks it.
+- Settings reload: the docs say Claude Code watches settings files and applies `hooks` changes to the running session. The old README says registrations are read only at session start. T0 tests which is true on 2.1.275; section 6 has a plan for either answer.
+- Not used: `Agent(name)` permission rules, sandboxing (Windows sandbox support is not verified and the brief did not ask for it), `if` conditions on handlers (documented; unverified; a nice-to-have that would skip the delete rule for non-delete commands, tried in T2 only if the per-call cost is over 60 ms).
+
+### The hooks
+
+**`percall.py`**, PreToolUse, matcher `*` (the only per-call hook). About 40 lines; it imports the three modules below and picks by one structured fact: `agent_id` present means a subagent, absent means the main session. One Python start per call instead of three.
+
+- In a subagent it runs `progress.py` (objective 3), then, when `tool_name` is `Bash` or `PowerShell`, `delete_rule.py` (objective 1).
+- In the main session it runs `stall.py` (objective 4).
+- Fail closed for the subagent path (a crash denies, report tools excepted as today); fail loudly for the main-session path.
+
+**`progress.py`**, about 160 lines. Inputs: `agent_id`, `session_id`, `tool_name`, the clock, and for exemptions the first characters of `tool_input.command`. State: `gates\state\agents\<session_id>\<agent_id>.json` with first-call time, last-call time, call count, warned flags; written with an atomic rename. Rules, all from CLAUDE.md rule 7 and the user's 2026-10-10 decision: first counted call returns the id notice (agent id and status file path); at 100 calls or 20 minutes it warns once ("start wrapping up"); at 150 calls or 30 minutes it denies everything except `SubagentHandback`, `StructuredOutput`, a command starting with `git ` and the status helper; a status file older than 5 minutes gets a nag, older than 10 minutes gets a deny (status counted in minutes only). The status helper is recognised by one fixed prefix, `& "C:/Users/Patrick/.claude/gates/status_append.ps1"`, the same string the settings.json allow rule names; this is the one text read and it is a `startswith`, not a parse. The reviewer regex on the first message goes away: a reviewer is `agent_type == "reviewer"`, nothing else.
+
+**`delete_rule.py`**, about 150 lines. Subagents only. Input: `tool_input.command`, `scratchpad_dir`, `cwd`, `tool_name`. This is the one hook that reads a command, and it is deliberately dumb and strict. It splits the command on whitespace and the operators `&&`, `||`, `;`, `|`, newline. If any token is a delete word (`rm`, `rmdir`, `rd`, `del`, `erase`, `Remove-Item`, `ri`, `git clean`, `git reset --hard`, `git checkout -- .`, `git restore .`, `git stash drop`, `git worktree remove`, `git branch -D`) with a recursive or force flag where the word has one, then every non-flag token after it must be a literal absolute path (no `$`, no backtick, no `*`, no `?`, no `..`, no quotes left after stripping one pair) that starts with this agent's `scratchpad_dir` or with `cwd` when `cwd` is under a `worktrees\` folder of either repo. Anything else is refused with the reason and an "Instead:" line that names the two allowed roots. The git words in the list are refused outright in a subagent, because no agent task needs them (the preamble already forbids them). Fail closed. Main-session deletes are not this hook's job; they get settings.json `ask` rules (`Bash(rm *)`, `Bash(git clean *)`, `Bash(git reset --hard*)`, `PowerShell(Remove-Item *)`), which in auto mode go to the classifier and in manual mode to the user. Question Q4 asks the user to confirm that split.
+
+**`stall.py`**, about 140 lines. Main session only, also registered on UserPromptSubmit. Inputs: `session_id`, `transcript_path`, the files under `gates\state\agents\<session_id>\` and `gates\state\status\`. At most once a minute (a stamp file): an agent whose last call is over 10 minutes old and has no finished flag is reported once; new status lines since the last relay are handed over as `additionalContext` (at most 12 lines); the context warning reads the `usage` block of the last assistant record in the transcript's final 256 KB and warns once per 50K bucket above 500K tokens (today's numbers, kept). It never blocks. The agents folder replaces today's walk of the transcript tree: which agents belong to a session is written by `progress.py` when they first call, not inferred from folder layout.
+
+**`agent_stop.py`**, SubagentStop, matcher `*`. About 130 lines, two jobs. Job one, for every agent: write the finished flag into its agents-folder record (so `stall.py` stops watching it). Job two, when `agent_type` is `reviewer`: this is the review submit. Section 3 explains it. Fail loudly: a crash here cannot block the hand-back; it writes a `systemMessage` so the main session sees that no verdict was recorded.
+
+**`review_dispatch.py`**, PreToolUse, matcher `Agent`. About 90 lines. When `tool_input.subagent_type` is `reviewer`: find every 40-hex and 64-hex key in `tool_input.prompt` (one regex, the one text read), check each 40-hex key is a commit that exists in the repo at `cwd` and is not reachable from `main` (two git calls per key), and write the handover record (section 3). A reviewer dispatch with no key, a key on `main`, or a key git does not know is refused with the reason: those are the three real cases behind today's dispatch gate, and they are structural, not phrasing. The brief phrase lists ("don't commit", "staged") go away. Workflow dispatches are not read (Q2). Fail closed for reviewer dispatches only; any other Agent call passes untouched.
+
+**`waiver.py`**, UserPromptSubmit. About 50 lines. When the whole prompt is `waive derive-once <7-40 hex>` or `waive doc-review <7-64 hex>`, write `gates\state\waivers.jsonl` with the prefix, kind, `prompt_id`, `transcript_path`, `session_id`. It cannot know who typed it (the transcript record is written after this hook runs, as today's hook comment records), so the ref judge confirms later. Fail loudly.
+
+**`publish_gate.py`**, PreToolUse, matcher `Artifact|ExitPlanMode`. About 70 lines. Hashes the text that would go out (`tool_input.plan` for ExitPlanMode, the content field for Artifact publish actions; T7 pins the exact field names from a live probe), applies the small-text rule (20 non-blank lines and 2,000 characters, the user's decisions of 2026-10-10), and refuses unless a CLEAN doc-review record or a typed waiver exists for that sha256. Only in repos whose `main` holds `.doc-review-gate` (found from `cwd`). Fail closed.
+
+**`ref_gate.sh`** (the shim, about 20 lines, installed into `.git\hooks\reference-transaction` and `pre-push` by `install_ref_gate.ps1`, about 60 lines) and **`ref_judge.py`** (about 200 lines) with **`review_rules.py`** (about 120 lines). Git runs the shim on every ref update however the command was spelled, only when `CLAUDECODE=1`, so the user's own terminal is never gated. The shim pipes git's lines to the judge and lets the update through only on an exact `allow` verdict line, so a missing or crashing judge refuses (fail closed, as today). The judge owns three rules:
+
+1. Trailers: every new commit on a `refs/heads/*` update or push carries `Task:`, `Agent:` and `Session:` trailers, read with `git log --format=%(trailers:...)` as today. Commits origin already has are exempt, asked with one `ls-remote` only when a trailer is missing.
+2. No rewrite on shared branches (objective 1): a move of `refs/heads/main`, or of any branch that has a `refs/remotes/origin/<name>`, where the new tip is not a descendant of the old (`git merge-base --is-ancestor`), is refused; so is deleting `main`; so is a non-fast-forward push. Git says exactly what moves to what, so `reset --hard`, `rebase`, `checkout -B`, `commit --amend`, `push --force` all land here, under any spelling, including the ones that live in variables. The old text gates for these go away.
+3. Review before `main` (objective 2): see section 3 for the record check. For a merge commit the carry rule is one git call: `git merge-tree --write-tree <old main> <key>` must succeed with no conflicts and give exactly the new tip's tree. A merge with conflicts or extra edits is refused and needs its own review, keyed on the merge commit. Documents: each gated public path changed in `old..new` needs a CLEAN record for its blob's sha256 or an earlier CLEAN record for the same path (reviewed once, the user's rule), or a typed waiver. Which repo is gated: `.derive-once-gate` / `.doc-review-gate` in `main`'s tree, with the `gate:` path lines read from the committed marker as today.
+
+The waiver check lives in `review_rules.py`: a waiver counts only when the transcript it names holds a `user` record with that `prompt_id`, `turnOrigin == "human"`, not meta, not sidechain, whose whole text is the phrase. That is today's `user_typed.ps1` rule, ported line for line (about 40 of the 120).
+
+**`posture.py`**, UserPromptSubmit. About 25 lines. Prints `model-postures.md` as `additionalContext`. Fail loudly.
+
+**Helpers agents call by hand** (PowerShell, because agents call them from the PowerShell tool and the settings.json allow rules name them): `status_append.ps1` (30 lines, today's file with the new state path), `doc_key.ps1` (15 lines, prints the sha256 of a file's text the way `publish_gate.py` and `review_rules.py` compute it; T7 makes the two agree by a shared test vector), and `publish.ps1` (60 lines): the one way text is posted with `gh`. It takes the kind (`pr`, `release`, `issue-comment`, `pr-comment`) and a body file, computes the key, applies the small-text rule and the record check by calling `publish_gate.py --check <key>`, then runs `gh` itself. Settings.json gets `deny` rules for the posting forms (`Bash(gh pr create *)`, `Bash(gh release create *)`, `Bash(gh release edit *)`, `Bash(gh issue create *)`, `Bash(gh issue comment *)`, `Bash(gh pr comment *)`, `Bash(gh api *)`, and the same under `PowerShell(...)`) and an allow rule for `publish.ps1`. That replaces `doc_review_gh_gate.ps1` (434 lines of command reading) with zero parsing.
+
+**Housekeeping, carried over as they are**: `cleanup_sweep.ps1` (460 lines) and `session_cards_start.ps1` (312 lines), SessionStart `startup|resume`, with their state moved to `gates\state\` and their tests brought along. They are not per-call, they have tests, and they were not in the bug stream.
+
+### Registrations (the whole `hooks` block of settings.json)
+
+SessionStart: cleanup_sweep.ps1, session_cards_start.ps1. UserPromptSubmit: posture.py, percall.py, waiver.py. PreToolUse `*`: percall.py. PreToolUse `Agent`: review_dispatch.py. PreToolUse `Artifact|ExitPlanMode`: publish_gate.py. SubagentStop `*`: agent_stop.py. Nine registrations, seven scripts. The `agent`-type SubagentStop hook that checks claims of "does not exist" is not one of the five objectives; Q6 asks whether to keep it.
+
+### What goes, and why
+
+Gone with nothing in its place: `bash_risky_gate` (its real rules move to the ref judge and the delete rule), `bash_windows_path_gate`, `suite_run_gate`, `merge_precheck_gate`, `git_attribution_gate`, `deletion_shrink_gate` (Q7), `derive_once_review_gate`, `doc_review_submit_gate`, `doc_review_gh_gate`, `doc_review_tool_gate` (replaced by `publish_gate.py`), `reviewer_dispatch_gate` (replaced by `review_dispatch.py`), `review_handback_gate` (replaced by `agent_stop.py`), `main_move_check`, `spec_preflight_gate`, `handoff_gate`, `workflow_script_gate`, `workflow_monitor_reminder`, `monitor_batch_gate`, `no_background_in_subagent_gate`, `no_recursive_delegation_gate`, `stop_bullet_check`, `status_batch_monitor`, `state_prune`, `hook_server`, `hook_server_warm`, `pipeclient`, both dispatchers, `lib\shell_scan.ps1` (1,476 lines), `lib\git_words.ps1`, `lib\scratch_path.ps1`, `lib\verdict_merge.ps1`, `lib\session_agents.ps1`. The style rules they enforced (sed -i, patch scripts, python3, shell reads of files, Windows paths in Bash, bullets at the end of a turn, run_in_background, two test files at most) stay in the preamble as instructions. The user said yes to that on 2026-10-25.
+
+`hydra_batch` itself gets the whole-library guard (objective 1): with no chart folder and no `--whole-library` flag it prints one line saying so and exits 2, in `src/cli/batch.cpp` where `folder_args.empty()` already picks the library (line 106). Settings.json then carries a `deny` rule for `Bash(*--whole-library*)` and `PowerShell(*--whole-library*)`, so no Claude session can run one; the user runs them from their own terminal. Q1 asks the user to confirm, because today a typed "allow library run" lets one through.
+
+## 3. The handover record (objective 2)
+
+The fact to record is "session S handed key K to a reviewer". It is known exactly once, at dispatch. The new design writes it then and never rebuilds authorship from git.
+
+**At dispatch.** `review_dispatch.py` writes one line to `gates\state\reviews.jsonl`: `{kind: "handover", keys: [...], session, prompt_sha256, time, cwd}`. `prompt_sha256` is the hash of the brief text. No agent id exists yet: I checked the PreToolUse input for Agent calls and the child id is not in it. Async launches return it in the tool result (`agentId: ...`, seen in three recent main transcripts), sync launches do not, and that result comes after the hook anyway.
+
+**Binding the reviewer.** The reviewer's own transcript is `<parent>\subagents\agent-<id>.jsonl`, and its first record carries `agentId` and the brief as its message content (verified on `agent-abc8f9a0b0174c1af.jsonl`, a 24 October reviewer). So the binding is exact and race-free: at SubagentStop, `agent_stop.py` opens `agent_transcript_path`, hashes the first user message, and finds the handover record with that `prompt_sha256`. Two reviewers dispatched in one session for two keys never collide, and two for the same key get distinct briefs anyway (different task ids). No SubagentStart hook is needed; it would fire before the transcript may exist and adds nothing the stop hook cannot do.
+
+**The verdict.** The reviewer ends its final message with two lines the brief tells it to write: `SIGN-OFF: CLEAN` (or `BLOCKED`) and `Key: <sha>`. For a code review the key it names is the commit it signs: the handed key, or its own last fix commit. `agent_stop.py` checks that commit is a descendant of a handed key (`git merge-base --is-ancestor`, one call), then writes `{kind: "verdict", key, verdict, reviewer: agent_id, session, time}`. For a doc review the key is the sha256 of the final text, from `doc_key.ps1`, and the record also carries the repo path when the brief named one. No submit helper, no "run it alone in its own call", no submit gate: the hand-back is the submit, and it is never blocked. A reviewer that runs out of time without the two lines leaves no verdict, and the merge is refused until another reviewer is dispatched. That is the right outcome; a waiver is not.
+
+**Who may be a reviewer.** `agent_type == "reviewer"`, the type `agents\reviewer.md` defines, decided once by Claude Code. Author exclusion needs no code: a reviewer is a new agent, so its id is never the executor's, and the main session's own text is never a reviewer's hand-back. Today's three "is this a reviewer" checks and the two author reconstructions go away.
+
+**At the ref hook.** `review_rules.py` reads `reviews.jsonl` and `waivers.jsonl`: `main` may move to `new` when a CLEAN verdict names `new`, or `new` is a clean merge of old main and a CLEAN key (section 2, rule 3), or a typed waiver matches `new`'s prefix. Reading the record is a file read and a JSON parse. There is nothing to reconstruct.
+
+**The waiver.** The user types `waive derive-once <key>` or `waive doc-review <key>`; `waiver.py` records it with `prompt_id`; `review_rules.py` confirms it against the transcript's `turnOrigin == "human"` record before counting it. The phrase, the record and the check have one home each.
+
+## 4. Where the rules live, and the docs that change
+
+Each rule has one home. The numbers (100, 150, 20, 30, 5, 10) sit at the top of `progress.py` and nowhere else in code; the docs quote them, and a test in T11 greps the preamble and CLAUDE.md for `110` and `every 10 tool calls` and fails if either comes back. The user approved matching the code: 100 calls, minutes only.
+
+Documents that change when the old hooks go, each in its own commit by T11:
+
+- Hydra `CLAUDE.md`: "Derive-once review" (no dispatch-gate names, no submit helper; the reviewer ends with the two lines; `reviewer_dispatch_gate.ps1` and the "key the hook's message gives" wording go), "Doc review" (same; publishing goes through `publish.ps1`; the Artifact and ExitPlanMode gate stays), "Agent rules" (rule 7: 100 and minutes only; the hook names in rule 1 and the test-harness folders now `gates\`).
+- `docs/agents/brief-preamble.md`: status path and helper under `gates\`; "every 5 minutes" for status with no call count; "commit before your 100th tool call"; the sed/patch/python3/head/tail rules stay as instructions and drop "the hook blocks them"; the trailer form stays (the ref judge still checks it); a new paragraph on the delete rule's two allowed roots.
+- `docs/agents/derive-once-review.md` and `docs/agents/doc-review.md`: remove the submit helper steps, the dispatch-gate paragraphs and the sources-gate paragraph (Q3); add the two closing lines; `doc_key.ps1` replaces `doc_review_key.ps1`.
+- `docs/agents/ui-testing.md`: no hook mentions found (grep on 2026-10-25), nothing to change.
+- `C:\Users\Patrick\.claude\hooks\README.md` becomes `gates\README.md`: the folder layout, the one-shape Python hook, the ref shim, rollback, the no-dispatcher rule, and what the live-reload probe found.
+- `C:\Users\Patrick\.claude\agents\*.md`: `reviewer.md` gets the two closing lines in its body and `maxTurns: 150` as the backstop; `executor.md`, `scout.md`, `card-writer.md`, `planner.md` get `maxTurns: 150` too; `disallowedTools: Agent` stays.
+- `C:\Users\Patrick\.claude\model-postures.md`: "the hook relays them" stays true; the hook-change paragraph points at `gates\README.md`.
+
+## 5. Proof before cutover
+
+The corpus is every transcript under `C:\Users\Patrick\.claude\projects\*\*.jsonl` plus `subagents\` and `subagents\workflows\` from the last 14 days: 1,089 files, 1.1 GB on 2026-10-25. It holds secrets and paths, so the extract and every report stay in the session scratchpad or under `gates\state\replay\` (gitignored). The plan's table quotes counts only.
+
+T10 extends `hookmine.py` into `gates\tests\replay_extract.py`: every `tool_use` for Bash, PowerShell, Agent, Artifact and ExitPlanMode, paired with its `tool_result`, with the refusing hook's first line when it was refused, plus `agent_id`-shaped facts (subagent or main, from the transcript's `isSidechain` and `agentId`), `cwd` and the scratchpad path reconstructed from the session id. `gates\tests\replay.py` feeds each call to `percall.py` (shell calls), `review_dispatch.py` (Agent calls) and `publish_gate.py --dry-run` (the two tools) and writes three lists:
+
+1. Refused before for objectives 1 or 2, and refused now: every recursive delete outside scratch, every history rewrite the old text gates caught, every `hydra_batch` with no folder (now caught by the app flag, shown by running the new `hydra_batch` with the historical arguments against an empty settings file), every reviewer dispatch the old gate refused for a structural reason. Target: all of them. Any miss is a bug fixed before cutover.
+2. Refused before for a style rule, allowed now: expected to be the 30 of 24 October and their 14-day equivalents. Listed by rule name with counts.
+3. Allowed before, refused now: expected empty; each entry is read and either accepted as a deliberate tightening (the delete rule's literal-path demand will catch scratch deletes held in variables, which the audit already counted as safe refusals) or fixed.
+
+Ref-hook decisions cannot be replayed from transcripts, so T6b replays them from git: every `main` move in `git reflog show main` of both repos over 14 days, judged by `ref_judge.py --dry-run <old> <new>` against today's `reviews.jsonl` and `waivers.jsonl` converted to the new record form. Every historical move must come out allow (they all went through), except the two waived ones, which must come out allow by waiver. A fixture repo in the tests covers the refusals (no record, non-fast-forward, deleted main, missing trailer, conflicted merge).
+
+Passing all three lists plus the reflog replay is the gate for T12.
+
+## 6. Cutover and rollback
+
+Build in `C:\Users\Patrick\.claude\gates\` on branch `gates` in worktree `C:\Users\Patrick\.claude\worktrees\gates`. The old `hooks\` folder is not touched. When sections 5's proof passes:
+
+1. One commit on `main` of `~\.claude` changes `settings.json` (the whole `hooks` block, the new `permissions.allow` entries for the three helpers, the new `deny` and `ask` rules, and removal of the old allow rules) and `.gitignore` (`/gates/state/`). Nothing else moves in that commit.
+2. Running sessions. T0 settles whether hooks reload live on 2.1.275. If they do, every running session is on the new set on its next call and the old folder is idle at once. If they do not, running sessions keep calling the old scripts by their old paths until they restart, which works because the old folder stays in place; no stub commits are needed, and the README's two-commit stub procedure is retired either way. The switch happens at a moment when no agent is mid-task (check `gates\state\agents\` is empty and no status file changed in 10 minutes), so no agent changes gates mid-flight.
+3. Git shims. `install_ref_gate.ps1` first runs `ref_judge.py --selftest` (a fixture allow and a fixture deny) and refuses to install if either answer is wrong. Then it overwrites each shim with one `WriteAllText`, so between any two ref updates exactly one working shim is on disk and `main` is never unguarded. It runs on both repos right after the settings commit. The old shim's marker line is accepted as "ours" so the overwrite is allowed, as the old installer does.
+4. The marker file `.derive-once-gate` is added to `~\.claude` `main` with `gate:` lines for `gates/`, `agents/`, `settings.json` (Q5). From then on hook changes get a reviewer, like Hydra code.
+5. The old folder stays 14 days. Rollback inside that window is `git revert` of the settings commit plus one run of the old `install_git_ref_gate.ps1` on both repos; both are one-line commands with trailers, and the old folder has not changed. After 14 clean days, T13 deletes `hooks\` and `hooks\client\` in a reviewed commit.
+
+The status folder moves from `hooks\state\status` to `gates\state\status`. Agents alive at the switch would be nagged for a status file in the new place; that is why step 2 waits for an empty agents folder.
+
+## 7. Tasks
+
+Every task is one Opus executor, under 100 tool calls and 20 minutes, in the `gates` worktree unless it says otherwise, with its own files and no file shared with a parallel task. Each task's tests are failing-first where the task is behaviour, and each runs only its own test file(s) with `python -I -m unittest gates.tests.<file>`. Done means its tests pass, its red line is in the report, and its files are committed with the trailers.
+
+**T0 — probes and the shared base** (first, alone). Owns `gates\common.py`, `gates\tests\test_common.py`, `gates\README.md`, `gates\settings.fragment.json`, `gates\tests\probe_results.md`. Writes the one-shape input/output/state helpers (UTF-8 stdin, deny/context/systemMessage emitters, atomic JSON state write, agents-folder record read/write, the two record formats). Runs the live probes with a throwaway settings file and `claude -p`: does SubagentStop fire for a command hook, and does its input carry `agent_id`, `agent_type`, `agent_transcript_path`; does a subagent's PreToolUse input carry `agent_id` and `scratchpad_dir`; does a settings.json hooks edit reach a running session; does a `maxTurns` stop still deliver the hand-back; is `git merge-tree --write-tree` available in this Git for Windows; what fields do Artifact and ExitPlanMode put in `tool_input`. Each answer goes in `probe_results.md` with the command that produced it. Acceptance: `test_common.py` covers the emitters, the atomic write under two writers, and the record round-trip; every probe has a yes/no with evidence; T0 reports "stop" if SubagentStop does not fire, because section 3 depends on it (the fallback is then a `review_submit.ps1` helper plus a `SubagentStart` binding, a decision for the user).
+
+Wave 1, in parallel after T0:
+
+**T1 — `percall.py` and `progress.py`.** Owns those two and `gates\tests\test_progress.py`. Tests: first call gives the id notice; call 100 warns once; call 150 denies a Read and lets `SubagentHandback`, `git status` and the status helper through; minute 20 warns, minute 30 denies (clock injected); status file 5 minutes old nags, 10 minutes old denies, a fresh status file resets; main-session input (no `agent_id`) is routed to `stall.py` and never counted; a crash denies (report tool excepted); the numbers appear once in code (a test greps the gates folder for `150` and `30` outside `progress.py`).
+
+**T2 — `delete_rule.py`.** Owns it and `gates\tests\test_delete_rule.py`. Tests, each a real command shape from the 24 October corpus where one exists: `rm -rf <literal scratch path>` passes; the same with `$dir` is refused; `Remove-Item -Recurse -Force <literal worktree path>` passes when `cwd` is that worktree; the same path from a `cwd` in the main checkout is refused; a path with `..` or `*` is refused; `git clean -fd`, `git reset --hard`, `git checkout -- .` are refused in every subagent; a plain `rm file.txt` (no recursive flag) passes; a delete inside `bash -c "..."` is refused (the quoted body is one token, which is not a literal path); the hook never runs in the main session; a crash denies. Also measures the per-call cost of `percall.py` with the delete rule loaded, 20 runs, and reports the median; over 60 ms triggers the `if`-condition experiment noted in section 2.
+
+**T3 — `stall.py` and `posture.py`.** Owns both and `gates\tests\test_stall.py`. Tests: an agent record 10 minutes stale with no finished flag is reported once and not again; a finished agent is never reported; new status lines are relayed once, 12 at most; the context warning fires once per bucket above 500K from a fabricated transcript tail; the scan runs at most once per minute; `posture.py` prints the file and warns when it is missing; neither ever emits a decision.
+
+**T4 — `review_dispatch.py` and `waiver.py`.** Owns both and `gates\tests\test_review_dispatch.py`. Uses a fixture repo. Tests: a reviewer dispatch with a branch commit key writes a handover record with the prompt hash; a key on `main` is refused; a key git does not know is refused; no key is refused; a non-reviewer Agent call writes nothing and passes; a Workflow call is not matched; `waiver.py` records exactly the two phrases and ignores a phrase inside a sentence or a notification; a crash in a reviewer dispatch denies.
+
+**T5 — `agent_stop.py`.** Owns it and `gates\tests\test_agent_stop.py`. Tests: a stop for any agent writes the finished flag; a reviewer stop whose transcript's first message hashes to a handover record and whose final message has `SIGN-OFF: CLEAN` and a `Key:` descended from the handed key writes a CLEAN verdict with `reviewer == agent_id`; a key not descended from the handed key writes nothing and a `systemMessage`; BLOCKED is recorded as BLOCKED; a doc key (64 hex) is recorded with the path; a missing transcript or malformed message writes a `systemMessage` and never a block; a non-reviewer stop never touches `reviews.jsonl`.
+
+**T6a — `ref_gate.sh`, `install_ref_gate.ps1`, `ref_judge.py` (trailers and no-rewrite).** Owns those three and `gates\tests\test_ref_judge.py`. Fixture repo tests: a commit without a trailer is refused with the commit form in the message; a commit origin already has passes; a non-fast-forward move of `main` is refused; a non-fast-forward move of a branch that exists under `refs/remotes/origin/` is refused; the same on a local-only branch passes; deleting `main` is refused; a non-fast-forward push is refused; pack-refs traffic (old hash to zero while packed-refs holds it) passes; a crashing or missing judge makes the shim refuse; `--selftest` returns allow and deny on the fixtures; the installer refuses when `--selftest` fails or `core.hooksPath` is set, and overwrites its own shim in one write. `ref_judge.py` calls `review_rules.main_move_refusal` when the file exists and refuses when it is missing.
+
+**T6b — `review_rules.py`.** Owns it and `gates\tests\test_review_rules.py`. Fixture repo with the marker. Tests: `main` to a CLEAN key passes; to an unreviewed tip is refused naming the key and the waiver phrase; to a clean merge of old main and a CLEAN key passes; to a merge with a conflict resolution is refused; a gated public doc changed without a record is refused; the same path with an earlier CLEAN record passes (reviewed once); a marker change always needs a record; a repo without the marker passes everything; a waiver with a `human` transcript record counts and one with `turnOrigin: sdk` does not; the reflog replay of section 5 is a test that reads a list file and asserts every row allows (run once against the real reflogs by the executor, output counts only in the report).
+
+**T7 — `publish_gate.py`, `publish.ps1`, `doc_key.ps1`.** Owns those and `gates\tests\test_publish.py`. Tests: a 21-line text with no record is refused; a 20-line, 2,000-character text passes (the exact boundary, both limits); a text with a CLEAN record passes; a text with a typed waiver passes; `doc_key.ps1` and the Python hash agree on a vector with CRLF, a BOM and a non-ASCII character; `publish.ps1` refuses to call `gh` when the check refuses and calls it (mocked by a `gh.cmd` on PATH) when it passes; a repo without `.doc-review-gate` is never gated.
+
+**T8 — housekeeping move.** Owns `gates\cleanup_sweep.ps1`, `gates\session_cards_start.ps1`, `gates\status_append.ps1`, and their three test files copied under `gates\tests\`. Only path edits (`hooks\state` to `gates\state`) and the harness path; the tests must pass unchanged in behaviour. Acceptance: a diff against the old files shows only path lines.
+
+**T9 — `hydra_batch --whole-library`** (Hydra repo, its own worktree). Owns `src/cli/batch.cpp`, `tests/test_batch_text.cpp`, and the hydra_batch section of `docs/UserGuide.md` only if it documents the no-argument form (check first). Tests: no folder and no flag prints the refusal line and exits 2 without opening the store; `--whole-library` with no folder runs the library; a folder with no flag runs that folder; `--whole-library` with a folder is an error (ambiguous). Red line kept from the first run.
+
+**T11 — docs.** Owns every file in section 4. Adds `gates\tests\test_docs_numbers.py`: greps `brief-preamble.md`, `CLAUDE.md`, `derive-once-review.md`, `doc-review.md` for `110`, `every 10 tool calls`, `hooks/status_append`, `derive_once_submit`, `doc_review_submit`, `reviewer_dispatch_gate` and fails on any hit; also asserts the numbers quoted for calls and minutes equal the constants in `progress.py`. Runs in wave 1 because T0 fixes every name and path first. The public pages among them (none; all listed docs are internal) need no doc review.
+
+Wave 2:
+
+**T10 — replay proof** (after T1, T2, T4, T7). Owns `gates\tests\replay_extract.py`, `gates\tests\replay.py`, and the report in the scratchpad. Produces section 5's three lists and the counts for this plan's follow-up. Acceptance: list 1 complete, list 3 empty or every row explained, corpus and report never committed (a test asserts `.gitignore` covers `gates/state/replay/`).
+
+**T12 — cutover** (main session, after everything above passes and the user says go). The settings commit, the installer on both repos, the `~\.claude` marker, the empty-agents check, and a smoke session that runs one Read, one status line, one refused delete and one reviewer round-trip on a scratch branch.
+
+**T13 — delete the old folder** (after 14 clean days). One reviewed commit removing `hooks\` and `hooks\client\`.
+
+Parallelism: T0 alone; then T1, T2, T3, T4, T5, T6a, T6b, T7, T8, T9, T11 together (eleven executors; if the machine is tight, run them in two waves of six and five, T9 first since it builds C++); then T10; then T12.
+
+## 8. Questions for the user
+
+Each one quotes the rule as it stands and gives both ends.
+
+**Q1. Whole-library runs: deny outright, or keep a chat permission?** Today `library_run_gate.ps1` lets a run through when the user has typed exactly `allow library run` in that session's transcript (its header, lines 28 to 40). The plan makes `hydra_batch` refuse without `--whole-library` and puts a settings.json `deny` on that flag, so no Claude session can run one and the user runs them from a terminal. For: zero parsing, zero hook, and the audit shows every real whole-library attempt was a mistake. Against: the 2026-10-14 timing work asked Claude to run whole-library passes with the user's permission; with a deny rule that becomes "the user runs it", or the user edits settings.json for the day. Recommendation: deny.
+
+**Q2. Reviews only through the Agent tool with `subagent_type: reviewer`.** Today `reviewer_dispatch_gate.ps1` also reads Workflow scripts to find reviewer launches (its `Get-WorkflowDispatchShape`, lines 51 to 120), and `agent_progress_gate.ps1` decides reviewer-ness by a 10-option regex on the first message (line 77). The plan recognises one thing: the agent type. A reviewer launched by a Workflow script, or as `general-purpose` with a review brief, leaves no verdict, and the merge is refused. For: one owner for "is this a reviewer", no text. Against: today's parallel review waves sometimes run through Workflow; they would need `agentType: "reviewer"` in the script and T0 must confirm SubagentStop fires for workflow agents with that type (it is in T0's probes). Recommendation: yes.
+
+**Q3. Drop the sources gate and the author exclusion for doc reviews.** Today a doc reviewer dispatch is refused unless `doc_review_sources.ps1` recorded a sources file for the key (CLAUDE.md "Doc review"; `Get-SourcesFailures` in the dispatch gate), and a submit is refused when the reviewer's id appears as an author of the text (`Get-DocReviewSubmitAuthorRefusalIn`, `doc_review_rules.ps1` line 388, the two-commit bug's home). The plan keeps sources as a brief instruction the reviewer checks ("stop and report if missing", already in `doc-review.md`) and drops author exclusion because a reviewer is a fresh agent by type. For: these two rules produced 5 of the 47 catalogued bugs and both of 24 October's waivers. Against: a main session that forgets the sources file gets a weaker review instead of a refusal. Recommendation: drop both.
+
+**Q4. Main-session recursive deletes go to settings.json `ask` rules, not a hook.** Today `bash_risky_gate.ps1` asks in the main session and denies in subagents for `rm -r`, `Remove-Item -Recurse -Force`, `git clean -f`, `git reset --hard` and so on (its pattern table, lines 50 to 63), reading the command through the 1,476-line scanner. The plan: subagents get the strict literal-path hook; the main session gets `ask` rules for `Bash(rm *)`, `Bash(git clean *)`, `Bash(git reset --hard*)`, `PowerShell(Remove-Item *)`, which in auto mode go to the classifier. For: built in, alias-aware, no code. Against: an `ask` rule matches `rm file.txt` too, so the main session gets more prompts than today, and in auto mode the classifier, not the user, answers them. Recommendation: the ask rules; if the prompts annoy, narrow to `Bash(rm -r*)` and accept the spelling gap.
+
+**Q5. Put the review gate on `~\.claude` `main` now.** Today's README says the derive-once check "does not apply in this repo yet" and the one-reviewer rule is kept by hand. Objective 2 as agreed names both repos. For: hook changes are where the bugs came from; a fresh reviewer on each is the plan's own medicine. Against: every hook fix, even a one-liner, now waits for a reviewer. Recommendation: yes, from the cutover commit on.
+
+**Q6. Keep the `agent`-type SubagentStop hook that checks "does not exist" claims?** It is the prompt in settings.json lines 122 to 131. It is not one of the five objectives and costs one model call per agent end. For keeping: it catches a real failure mode (flat negative claims after a narrow search). Against: outside the agreed scope, and `agent_stop.py` runs on the same event, so two hooks share it. Recommendation: drop it and put the rule in the preamble's "The code is the source of truth" paragraph; bring it back later as a separate decision if the problem returns.
+
+**Q7. Drop the shrink guard.** `deletion_shrink_gate.ps1` (389 lines) refuses an Edit or Write that removes text no commit holds and this agent did not write, with an ask in the main session. It is not in the five objectives. For dropping: agents work in worktrees on committed files, so git holds the text; the guard's main effect was the preamble's "Write `<file>.new` and move it" workaround. Against: it is the only guard on an agent rewriting another agent's uncommitted scratch or an untracked file. Recommendation: drop it; objective 1's "no deletes outside own worktree" is about files, not lines, and the delete rule covers that.
+
+## Out of scope (for the user to approve as dropped)
+
+Hooks with no replacement and no objective behind them: Windows-path check in Bash, suite-run limit, merge precheck, two-test-files limit, `python3` and patch-script refusals, `sed -i` refusal, shell-read refusal, bullet check at Stop, run_in_background refusal in subagents, Monitor batch limit, spec preflight, handoff gate, Workflow script gate and reminder, state prune (the agents folder is per session and `cleanup_sweep.ps1` can remove old session folders in a later task), the `agent`-type claim check (Q6), the shrink guard (Q7), the sources gate and author exclusion (Q3), chat-typed library permission (Q1), Workflow-launched reviewers (Q2). The sleeping-laptop wall-clock issue from the audit (an agent's 30 minutes includes machine sleep) is not addressed; it is rare and the fix (counting only awake time) has no cheap source of truth.
+
+## Promise map
+
+| Promise | Plan line | Task | Check that proves it |
+|---|---|---|---|
+| Subagent recursive delete passes only with a literal path inside own scratch or worktree; anything unclear refused | §2 delete_rule.py | T2 | test_delete_rule.py: literal scratch/worktree pass; `$dir`, `..`, `*`, quoted body, wrong cwd refused |
+| `git clean`, `reset --hard`, `checkout -- .` refused in every subagent | §2 delete_rule.py | T2 | test_delete_rule.py three refusal cases |
+| Delete rule never runs in the main session | §2 percall.py | T2 | test_delete_rule.py main-session input passes untouched |
+| Main-session deletes prompt | §2 / Q4 | T12 | settings.fragment.json ask rules present; smoke session shows the prompt |
+| No history rewrite on main or any origin-tracked branch, under any spelling | §2 ref_judge rule 2 | T6a | test_ref_judge.py non-ff main, non-ff tracked branch, local-only passes, main delete, non-ff push |
+| Every new commit carries Task/Agent/Session trailers; origin's commits exempt | §2 ref_judge rule 1 | T6a | test_ref_judge.py missing-trailer refusal, origin-known pass |
+| Missing or crashing judge refuses (fail closed) | §2 shim | T6a | test_ref_judge.py shim with judge removed refuses |
+| No whole-library run from any Claude session | §2 hydra_batch + deny rule | T9, T12 | test_batch_text.cpp no-folder exit 2; settings deny rule present; T10 replays historical no-folder commands against the new exe |
+| `--whole-library` with no folder runs the library; folder without flag runs the folder | §2 | T9 | test_batch_text.cpp two cases |
+| Nothing lands on main without a CLEAN verdict for its tip, a clean merge of one, or a typed waiver | §3 ref hook | T6b | test_review_rules.py pass/refuse/merge/conflict/waiver cases |
+| Conflicted or edited merge needs its own review | §2 rule 3 | T6b | test_review_rules.py conflict case refused |
+| Public docs reviewed once; marker always reviewed | §2 rule 3 | T6b | test_review_rules.py doc cases |
+| Waiver counts only when typed by the user (`turnOrigin: human`) | §3 | T6b, T4 | test_review_rules.py human vs sdk; test_review_dispatch.py waiver phrases only |
+| Handover record written at dispatch with keys and prompt hash | §3 | T4 | test_review_dispatch.py record written |
+| Reviewer dispatch with no key, a key on main, or an unknown key is refused | §2 review_dispatch.py | T4 | test_review_dispatch.py three refusals |
+| Reviewer bound by the prompt hash of its own transcript's first message | §3 | T5 | test_agent_stop.py binding case |
+| Signed key must descend from a handed key | §3 | T5 | test_agent_stop.py non-descendant writes nothing |
+| Hand-back is never blocked | §3 | T5 | test_agent_stop.py malformed message gives systemMessage, never block |
+| Only `agent_type == reviewer` writes verdicts | §3 | T5, T1 | test_agent_stop.py non-reviewer; test_progress.py no regex path exists |
+| Artifact/ExitPlanMode text over 20 lines or 2,000 chars needs a record; boundary passes | §2 publish_gate.py | T7 | test_publish.py 21-line refusal, 20/2000 pass |
+| gh posts go only through publish.ps1 | §2 | T7, T12 | test_publish.py gh mock; settings deny rules for the posting forms |
+| doc_key.ps1 and Python hash agree | §2 | T7 | test_publish.py vector with CRLF, BOM, non-ASCII |
+| Id notice on first call; warn at 100 calls/20 min; deny at 150/30 except report, git, status | §2 progress.py | T1 | test_progress.py each threshold |
+| Status 5 min nag, 10 min deny, minutes only | §2 progress.py | T1 | test_progress.py |
+| Numbers live once, in progress.py; docs quote the same | §4 | T1, T11 | grep tests in test_progress.py and test_docs_numbers.py |
+| Stalled agent reported once; finished agent never; status relayed once | §2 stall.py | T3 | test_stall.py |
+| Context warning once per 50K bucket over 500K | §2 stall.py | T3 | test_stall.py |
+| Posture injected each prompt; missing file warns | §2 posture.py | T3 | test_stall.py posture cases |
+| Every refusing hook fails closed; every informing hook fails loudly | §2 shape | T1, T2, T4, T5, T6a | each test file's crash case |
+| One Python start per tool call, no server, no dispatcher | §2 percall.py | T2 | measured median reported; settings.fragment.json has one `*` registration |
+| Housekeeping behaviour unchanged | §2 | T8 | the three carried tests pass; diff shows only path lines |
+| New set refuses everything the old set refused for objectives 1-2 | §5 | T10 | replay list 1 complete |
+| Style refusals become allows; nothing new refused unexplained | §5 | T10 | replay lists 2 and 3 |
+| Historical main moves all allow (waived ones by waiver) | §5 | T6b | reflog replay test |
+| Corpus and reports never in the repo | §5 | T10 | gitignore test |
+| Main never unguarded during shim switch | §6 step 3 | T6a | installer selftest-then-one-write test |
+| No agent mid-task at the switch | §6 step 2 | T12 | empty agents folder checked and logged in the cutover report |
+| Rollback is one revert plus old installer | §6 step 5 | T12 | rehearsed once in the smoke session and logged |
+| SubagentStop fires with the fields §3 needs | §2 built-ins | T0 | probe_results.md with the command; T0 stops if no |
+| Hard budget 3,000 lines of hook code | §1 | T10 | replay.py report prints `wc -l` of gates\*.py, *.ps1, *.sh and fails over 3,000 |
