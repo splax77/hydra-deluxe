@@ -211,6 +211,7 @@ void fold_into(std::string_view text, std::string& out, std::vector<SourceRange>
 std::optional<QueryField> field_named(std::string_view key) {
     if (equals_ci(key, "title")) return QueryField::Title;
     if (equals_ci(key, "artist")) return QueryField::Artist;
+    if (equals_ci(key, "album")) return QueryField::Album;
     if (equals_ci(key, "charter")) return QueryField::Charter;
     if (equals_ci(key, "folder")) return QueryField::Folder;
     return std::nullopt;
@@ -295,6 +296,7 @@ bool term_matches(const QueryTerm& term, const SearchableRow& row) {
         const std::string& text;
     } columns[] = {{QueryField::Title, row.title},
                    {QueryField::Artist, row.artist},
+                   {QueryField::Album, row.album},
                    {QueryField::Charter, row.charter},
                    {QueryField::Folder, row.folder}};
     for (const auto& c : columns)
@@ -385,10 +387,12 @@ LibraryQuery parse_library_query(std::string_view text) {
 }
 
 SearchableRow make_searchable(std::string_view title, std::string_view artist,
-                              std::string_view charter, std::string_view folder) {
+                              std::string_view charter, std::string_view folder,
+                              std::string_view album) {
     SearchableRow row;
     row.title = fold_for_search(strip_rich_tags(title));
     row.artist = fold_for_search(strip_rich_tags(artist));
+    row.album = fold_for_search(strip_rich_tags(album));
     row.charter = fold_for_search(strip_rich_tags(charter));
     row.folder = fold_for_search(strip_rich_tags(folder));
     return row;
@@ -396,7 +400,7 @@ SearchableRow make_searchable(std::string_view title, std::string_view artist,
 
 std::string search_field(std::string_view song, std::string_view artist,
                          std::string_view charter, std::string_view path) {
-    const SearchableRow row = make_searchable(song, artist, charter, path);
+    const SearchableRow row = make_searchable(song, artist, charter, path, {});
     std::string out;
     for (const std::string* field : {&row.title, &row.artist, &row.charter, &row.folder}) {
         if (field->empty()) continue;
@@ -457,6 +461,34 @@ std::vector<MatchSpan> match_spans(const LibraryQuery& q, QueryField field,
             merged.push_back(span);
     }
     return merged;
+}
+
+// Each example is a chart in testdata/input, and the tests parse every one.
+// The meanings say what query_matches does with each key.
+const std::vector<SearchTip>& search_tips() {
+    static const std::vector<SearchTip> tips = {
+        {"title:actors", "Songs with this word in the title."},
+        {"artist:green", "Songs with this word in the artist."},
+        {"album:dookie", "Songs with this word in the album."},
+        {"charter:boo", "Songs with this word in the charter."},
+        {"folder:ib24", "Songs with this word in the folder."},
+        {"\"tier 4\"",
+         "Songs with these words side by side, in this order, in the title, artist, album, "
+         "charter or folder. A key takes quotes too: artist:\"green day\" finds Burnout."},
+        {"stars:7", "Songs whose optimal path earns exactly 7 stars."},
+        {"squeeze<=20",
+         "Songs whose optimal path's hardest squeeze or required early fill is 20 ms or less. "
+         "A path that needs no timing counts too. squeeze<20 means the same."},
+        {"squeeze>20",
+         "Songs whose optimal path's hardest squeeze or required early fill is more than 20 ms. "
+         "squeeze>=20 also keeps exactly 20 ms. A path that needs no timing never counts."},
+    };
+    return tips;
+}
+
+std::string_view search_tips_note() {
+    return "stars: and squeeze only match songs with a current result. A song that isn't "
+           "analyzed yet, or whose result is out of date, never matches them.";
 }
 
 }  // namespace hydra::app

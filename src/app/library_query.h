@@ -45,7 +45,7 @@ std::vector<FoldEntry> search_fold_table();
 // display_title; the library reads the same function under this name.
 using hydra::strip_rich_tags;
 
-enum class QueryField { Any, Title, Artist, Charter, Folder };
+enum class QueryField { Any, Title, Artist, Album, Charter, Folder };
 
 struct QueryTerm {
     QueryField field = QueryField::Any;
@@ -64,8 +64,8 @@ struct LibraryQuery {
 };
 
 // Parses what the user typed. Words match in any order. "quoted text" is one
-// phrase. artist:x, charter:x, folder:x, title:x limit a word or "phrase" to
-// one field. stars:N and squeeze<=N, squeeze<N, squeeze>=N, squeeze>N filter
+// phrase. artist:x, album:x, charter:x, folder:x, title:x limit a word or
+// "phrase" to one field (field_named in library_query.cpp). stars:N and squeeze<=N, squeeze<N, squeeze>=N, squeeze>N filter
 // on the stored best path; a low and a high squeeze filter combine into a
 // range. Unknown field names are treated as plain words.
 // A word or phrase matches when its folded text appears anywhere in a folded
@@ -77,15 +77,18 @@ LibraryQuery parse_library_query(std::string_view text);
 
 // The fields one library row offers to a query, already folded.
 struct SearchableRow {
-    std::string title, artist, charter, folder;  // fold_for_search(strip_rich_tags(x))
+    std::string title, artist, album, charter, folder;  // fold_for_search(strip_rich_tags(x))
 };
+// A chart with no album passes none; an empty field matches no term.
 SearchableRow make_searchable(std::string_view title, std::string_view artist,
-                              std::string_view charter, std::string_view folder);
+                              std::string_view charter, std::string_view folder,
+                              std::string_view album = {});
 
 // A report row's search text: the fields make_searchable folds and strips,
 // joined by single spaces, with empty fields left out. A report keeps a row
 // when every word of the folded query appears in it. The path report passes
-// its path in the folder slot; the comparisons pass none.
+// its path in the folder slot; the comparisons pass none. Reports show no
+// album, so none goes in.
 std::string search_field(std::string_view song, std::string_view artist,
                          std::string_view charter, std::string_view path = {});
 
@@ -118,6 +121,21 @@ bool query_matches(const LibraryQuery& q, const SearchableRow& row, const RowFac
 struct MatchSpan { size_t begin = 0, end = 0; };
 std::vector<MatchSpan> match_spans(const LibraryQuery& q, QueryField field,
                                    std::string_view display_text);
+
+// One line of the library's Search tips popup: what to type, with an example
+// a player can try on the test library, and what it does in plain words.
+struct SearchTip {
+    std::string_view example;  // e.g. album:dookie
+    std::string_view meaning;
+};
+
+// Every key of the query language parse_library_query reads, in the order the
+// popup lists them. The popup draws these and writes no key of its own.
+const std::vector<SearchTip>& search_tips();
+
+// The one line the popup shows under the tips: which rows the number filters
+// can never match (facts_of in ui/library_model.cpp decides).
+std::string_view search_tips_note();
 
 }  // namespace hydra::app
 
