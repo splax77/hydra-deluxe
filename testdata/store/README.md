@@ -1,4 +1,8 @@
-# Real old databases (too-old fixtures)
+# Real old databases
+
+This folder holds databases written by real Hydra releases. Four are too old to convert; the fifth, `v2.12.1_library.db`, is the release users have now and has its own section at the end.
+
+## Too-old fixtures
 
 These four files are databases written by real Hydra releases, all from before 2.2.0. Hydra no longer converts a file that old (user, 2026-10-14). The store tests use them to prove that every pre-2.2.0 generation is told apart from a file this build can convert: `classify_library_file` (`src/store/library_file.h`) reads each one as too old, the command-line tools refuse it and leave it untouched, and the app sets it aside and starts a fresh library. `tests/test_store_open.cpp` checks all three on a copy of each file. Nothing here was written by hand: each file is what an old `hydra_batch` wrote, shrunk with SQLite's `VACUUM INTO`.
 
@@ -140,3 +144,41 @@ Each file holds all five of the detail layout's tables and indexes, not only v2.
 | `bef0759746740f9c1045f64e9a5a2938` | Limbo | Thornhill | Benimaru |
 
 All four files hold these same three rows.
+
+## v2.12.1_library.db
+
+This file is what the v2.12.1 release's `hydra_batch` wrote. v2.12.1 is the release users have now. Its `charts` table has no `album` column and its records carry an older results stamp, so opening it in this build is the upgrade a user's first launch makes. `tests/test_store_open.cpp` ("a library file v2.12.1 wrote opens, gains the album column, and keeps its records") opens a copy of it the way the app does and checks that the file gains the column, keeps every record, and reads those records as Stale.
+
+| File | Release | Commit | Bytes |
+|---|---|---|---|
+| `v2.12.1_library.db` | `v2.12.1` | `f7f64cb18cd4f70cd2ff7458cc2f25971e70a5ed` | 40,960 |
+
+It was made on 2026-10-25, from the same three corpus charts as the files above (see "The three charts"). Each song folder was copied whole into one charts folder.
+
+### How it was made
+
+`hydra_batch` was built from tag `v2.12.1` in its own detached checkout. Its `Release` folder held no `hydra_settings.ini`, no `hydra_rules.ini` and no `hydra.db`, so the run used the release's default settings and rules. The tag takes `--db` (checked with `git show v2.12.1:src/cli/batch.cpp`). The command ran from that `build-cpp\Release` folder:
+
+```
+.\hydra_batch.exe --db <scratch>\db\v2.12.1.db <scratch>\charts
+```
+
+It printed chart mode "Expert Pro Drums, 2x Bass", score range "4 scores", SP cap 4 bars, path limit 10 ms, squeeze window 500 ms and fills "Clone Hero 1.1", then "3 analyzed · 0 failed · 0 skipped". The database was shrunk into this folder with the same `VACUUM INTO` line as above. The written file is in rollback-journal mode and `user_version` reads 0.
+
+To regenerate, compare by the facts below, not by file hash.
+
+### Facts the test pins
+
+Read from a copy of the checked-in file on 2026-10-25.
+
+The file holds one profile: chart mode "Expert Pro Drums, 2x Bass", `sp_cap` 4, `ms_enabled` 1, `ms_value` 10, `depth_mode` 0, `depth_value` 4, `legacy_fills` 0, and results stamp (`hyversion`) `2.8.0+efill85`. Today's stamp is `kResultsStamp` in `src/store/stored_versions.h`, which is why the records read Stale.
+
+It holds 3 records and 7 `record_paths` rows:
+
+| Chart | song_id | pathcount | stars | notecount | best path | best score | best actcount |
+|---|---|---|---|---|---|---|---|
+| Trippin | `0b647b1570475f18d463466f2c4d72a7` | 5 | 7 | 1,257 | `0 0 E2 E0` | 379,655 | 4 |
+| Young Robot | `0d4fd734fe5f2bf6ff1fdbc4ff55be8f` | 1 | 6 | 1,088 | `(No activations.)` | 245,800 | 0 |
+| Limbo | `bef0759746740f9c1045f64e9a5a2938` | 1 | 6 | 1,375 | `(No activations.)` | 315,350 | 0 |
+
+The `charts` table and the `meta` table are empty. `hydra_batch` given folder arguments leaves the library alone, so it never writes a `charts` row. The file still has the `charts` table, without an `album` column, which is what makes `classify_library_file` read it as `LacksAlbumColumn`.

@@ -63,10 +63,30 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
     ReplayResult out;
     out.chords.reserve(song.sequence.size());
 
-    // Every chord's path-free points, the same table ScoreGraph::build sums.
-    const ChordScoreTable table = chord_score_table(
-        song, rules.sqout_rule,
-        options.scores_only ? ChordScoreDetail::ChordsOnly : ChordScoreDetail::WithNotes);
+    // Every chord's path-free points, the same table ScoreGraph::build sums:
+    // the caller's, when it handed one in, or one built here.
+    const ChordScoreDetail detail =
+        options.scores_only ? ChordScoreDetail::ChordsOnly : ChordScoreDetail::WithNotes;
+    ChordScoreTable built;
+    if (options.table) {
+        if (options.table->rows.size() != song.sequence.size())
+            throw std::logic_error("replay: the chord-score table handed in has " +
+                                   std::to_string(options.table->rows.size()) +
+                                   " rows for a chart of " +
+                                   std::to_string(song.sequence.size()) + " chords");
+        // A ChordsOnly table keeps no notes; a WithNotes one keeps every note,
+        // so on a chart with notes it has some.
+        const bool has_notes = !options.table->notes.empty();
+        const bool wants_notes = !options.scores_only && song.note_count() > 0;
+        if (has_notes != wants_notes)
+            throw std::logic_error(std::string("replay: a ") +
+                                   (options.scores_only ? "scores-only" : "full") +
+                                   " replay was handed a chord-score table " +
+                                   (has_notes ? "with" : "without") + " its notes");
+    } else {
+        built = chord_score_table(song, rules.sqout_rule, detail);
+    }
+    const ChordScoreTable& table = options.table ? *options.table : built;
 
     ReplayScore cum;
     int64_t solo_pending = 0;
@@ -121,7 +141,7 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
         if (!options.scores_only) {
             // The table priced these same notes in this same order, so the
             // counts always agree; a mismatch is a bug, said out loud.
-            const std::vector<ChordNote> ordering = ts.chord.notes(true);
+            const Chord::NoteList ordering = ts.chord.note_list(true);
             if (sg.note_end - sg.note_begin != ordering.size())
                 throw std::logic_error("replay: the chord at tick " + std::to_string(row.tick) +
                                        " has a different note count in the chord-score table");

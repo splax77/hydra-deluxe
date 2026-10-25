@@ -24,6 +24,11 @@ constexpr int kBodyTokenFloor = 30;
 // enough for any namespace head.
 constexpr size_t kNamespaceLookBack = 200;
 
+// Is this the text before a "{" (what follows the last ";", "{" or "}") a
+// namespace head: "namespace", "inline namespace x" or extern "C"? The one
+// reader of that question in tools/precheck/.
+bool is_namespace_head(const std::string& head);
+
 // Is this word a C++ keyword (or a fixed-width integer name, which reads as
 // one)? The normaliser keeps these instead of renaming them, and a
 // definition is never named by one. Case matters.

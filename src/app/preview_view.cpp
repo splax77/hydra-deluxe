@@ -289,7 +289,7 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
     if (song.is_empty()) return scene;
 
     for (const SongTimestamp& ts : song.sequence) {
-        for (const ChordNote& n : ts.chord.notes())
+        for (const ChordNote& n : ts.chord.note_list())
             scene.notes.push_back(note_from(ts, n));
 
         // SP phrase: the end note carries the start tick the parser kept.

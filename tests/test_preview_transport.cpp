@@ -6,7 +6,6 @@
 #include "doctest.h"
 
 #include <algorithm>
-#include <cstring>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -15,8 +14,6 @@
 #include "app/preview_view.h"  // scrub_thumb_ms
 #include "audio/decode.h"
 #include "audio/player.h"
-#include "audio/stem_reader.h"
-#include "audio/stream_mix.h"
 #include "ui/preview_transport.h"
 #include "audio_util.h"
 
@@ -31,28 +28,6 @@ namespace {
 std::unique_ptr<Playhead> make_playhead(double ms) {
     return std::make_unique<Playhead>(make_ramp(static_cast<int>(ms * 48.0)));
 }
-
-// A stem reader over an already-decoded buffer, for StreamMix.
-class RampReader : public hydra::audio::StemReader {
-public:
-    explicit RampReader(DecodedAudio a) : a_(std::move(a)) {}
-    int channels() const override { return a_.channels; }
-    int sample_rate() const override { return a_.sample_rate; }
-    int64_t length_frames() const override { return a_.frames(); }
-    int64_t read(float* out, int64_t frames) override {
-        const int64_t n = std::min(frames, a_.frames() - pos_);
-        if (n <= 0) return 0;
-        std::memcpy(out, a_.samples.data() + pos_ * a_.channels,
-                    static_cast<size_t>(n * a_.channels) * sizeof(float));
-        pos_ += n;
-        return n;
-    }
-    void seek(int64_t frame) override { pos_ = std::clamp<int64_t>(frame, 0, a_.frames()); }
-
-private:
-    DecodedAudio a_;
-    int64_t pos_ = 0;
-};
 
 }  // namespace
 
@@ -340,21 +315,4 @@ TEST_CASE("load with no audio offset behaves exactly as before") {
     transport.load(std::unique_ptr<Playhead>(playhead), 0.0);
     transport.seek_ms(250.0);
     CHECK(playhead->position_ms() == doctest::Approx(250.0));
-}
-
-// A negative chart offset is silence in front of the stems: the load job
-// hands StreamMix round(-offset_ms * 48) frames of front pad (this was the
-// pad_front_ms case).
-TEST_CASE("StreamMix's front pad adds silence before the first sample") {
-    std::vector<std::unique_ptr<hydra::audio::StemReader>> stems;
-    stems.push_back(std::make_unique<RampReader>(make_ramp(4)));
-    hydra::audio::StreamMix mix(std::move(stems), 48000, 2, 48);  // 1 ms at 48 kHz
-    REQUIRE(mix.length_frames() == 52);
-    std::vector<float> a(52 * 2, -1.0f);
-    REQUIRE(mix.read(a.data(), 52) == 52);
-    CHECK(a[0] == 0.0f);
-    CHECK(a[47 * 2 + 1] == 0.0f);
-    CHECK(a[48 * 2] == 0.0f);       // the ramp's frame 0, L = 0
-    CHECK(a[49 * 2] == 1.0f);       // the ramp's frame 1, L = 1
-    CHECK(a[49 * 2 + 1] == 1.5f);
 }

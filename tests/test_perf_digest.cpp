@@ -116,6 +116,16 @@ uint64_t parse_digest(const app::Settings& st) {
     return all;
 }
 
+// Checks one parse digest against its pinned literal, and how many charts
+// load at these settings against the count pinned beside it, so a repin can
+// never hide that charts stopped loading.
+void check_parse_digest(const app::Settings& st, uint64_t pinned, size_t pinned_loading) {
+    const uint64_t got = parse_digest(st);
+    const size_t loading = loading_chart_count(st);
+    CHECK_MESSAGE(loading == pinned_loading, loading << " charts load");
+    CHECK_MESSAGE(got == pinned, "parse digest is now " << hex(got));
+}
+
 }  // namespace
 
 // All six digests below were re-pinned from one run on 2026-10-14, on the
@@ -160,4 +170,13 @@ TEST_CASE("the corpus's parse digest is pinned") {
 TEST_CASE("the corpus's parse digest is pinned at Hard, Pro Drums off, 2x Bass off") {
     const uint64_t got = parse_digest(pinned_settings("Hard", false, false));
     CHECK_MESSAGE(got == 0x80f7de7a2baccb54ULL, "parse digest is now " << hex(got));
+}
+
+// Pinned from one run on 2026-10-25 (task TQA-D2), with the parsers unchanged.
+TEST_CASE("the corpus's parse digest is pinned at Medium, Pro Drums off, 2x Bass off") {
+    check_parse_digest(pinned_settings("Medium", false, false), 0x4b403ec696f88efeULL, 67);
+}
+
+TEST_CASE("the corpus's parse digest is pinned at Easy, Pro Drums off, 2x Bass off") {
+    check_parse_digest(pinned_settings("Easy", false, false), 0x4360ee98c2d449b9ULL, 67);
 }

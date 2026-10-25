@@ -37,6 +37,8 @@
 
 namespace hydra {
 
+struct ChordScoreTable;  // core/scoring.h
+
 // One activation's Star Power window, in ticks. `deact_tick` is the
 // deactivation node D — for a stored activation, the tick the search
 // stamped onto it; it need not be a chord tick.
@@ -213,6 +215,12 @@ struct ReplayOptions {
     // Set it field by field (`ReplayOptions o; o.scores_only = true;`): the
     // project is C++17, which has no designated initializers.
     bool scores_only = false;
+    // A chord-score table already built for this song, or null to build one.
+    // It must come from chord_score_table (core/scoring.h) for the same song,
+    // under rules.sqout_rule, at the detail scores_only calls for; replay_path
+    // throws std::logic_error when its size or detail does not fit. Lets a
+    // caller that replays one song many times build the table once.
+    const ChordScoreTable* table = nullptr;
 };
 
 // Score `song` under `windows` (any order; they are sorted here). An empty

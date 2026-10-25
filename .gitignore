@@ -41,6 +41,7 @@ build-rel/
 # Test-only build trees: the asan, coverage and fuzz presets. build-fuzz\seeds
 # is where tools/fuzz_seeds.ps1 writes by default.
 build-asan/
+build-asan-ninja/
 build-coverage/
 build-fuzz/
 

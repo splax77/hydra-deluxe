@@ -59,6 +59,8 @@ TEST_CASE("fuzz regressions: every file under testdata/fuzz/<target> is rejected
         }
     }
     MESSAGE("replayed " << files << " saved fuzz inputs");
+    // A moved or emptied testdata/fuzz would otherwise pass with nothing replayed.
+    CHECK(files > 0);
 
     // A folder that names no target would be skipped silently above.
     if (fs::is_directory(kFuzzRoot)) {

@@ -9,13 +9,14 @@
 # entries together run every test case exactly once. It also fails when the
 # exe holds no case from a test file in the tree, so a stale build is caught.
 #
-# Balanced on 2026-10-10 from the per-case times in
-# docs/handoffs/2026-10-10-test-audit/suite-durations.txt, assuming the
-# 18-second corpus case in test_track_state.cpp is cut to about 1.5 s.
+# The slices are balanced for the AddressSanitizer CI job, where four entries
+# run on four cores. The per-file times they rest on are in
+# docs/superpowers/plans/2026-10-24-asan-ci-speed.md (Task 2). A slice name is
+# only a label; a slice holds whatever files balance it.
 
-single_owner *single_owner*,*test_library_jobs.cpp,*test_replay.cpp,*test_replay_windows.cpp
-track_state *test_track_state.cpp,*test_preview_controller.cpp
-app_store *test_app_click.cpp,*test_app_settings.cpp,*test_app_reports.cpp,*test_app_library.cpp,*test_store_results.cpp,*test_store_open.cpp,*test_store_library.cpp,*test_sp_end.cpp,*test_engine_sweeps.cpp,*test_fills_and_skips.cpp,*test_tied_variants.cpp,*test_cli.cpp
+single_owner *single_owner*,*test_library_jobs.cpp,*test_replay_windows.cpp,*test_precheck_git.cpp
+track_state *test_track_state.cpp,*test_preview_controller.cpp,*test_replay.cpp,*test_precheck.cpp
+app_store *test_app_click.cpp,*test_app_settings.cpp,*test_app_reports.cpp,*test_app_library.cpp,*test_store_results.cpp,*test_store_open.cpp,*test_store_library.cpp,*test_sp_end.cpp,*test_engine_sweeps.cpp,*test_fills_and_skips.cpp,*test_tied_variants.cpp,*test_cli.cpp,*test_perf_digest.cpp
 
 # Opens the real sound output. CI has no audio device and skips this entry by
 # name; a local ctest still runs it.

@@ -45,15 +45,17 @@ const std::vector<std::string>& code_folders();
 struct Range {
     std::string spelling;  // as given: "main...HEAD", "A..B", a commit name
     bool whole_tree = false;
-    std::string tip;        // the range's last commit
-    std::string left;       // A of "A...B" or "A..B" (its decisions count too); empty otherwise
+    std::string tip;        // the range's last commit (a merge commit's second parent)
+    std::string left;       // A of "A...B" or "A..B", or a merge commit's first parent (its decisions count too); empty otherwise
     std::string base;       // what the range is diffed against; empty for a single commit with whole_tree
     std::string rules_rev;  // where the scan rows are read: rules_at, or the tip
 };
 
 // Resolves "A...B" (what B adds since it forked from A), "A..B" (over A
-// itself), or a single commit (over its first parent). An empty side means
-// HEAD, as in git. With whole_tree a single commit has no base. `rules_at`
+// itself), or a single commit (over its first parent). A merge commit given
+// alone resolves as its first parent...its second parent: the branch it
+// merged, which is the range that was reviewed. An empty side means HEAD, as
+// in git. With whole_tree a single commit, merge or not, has no base and is its own tip. `rules_at`
 // empty means the tip.
 Range resolve_range(const Repo& repo, const std::string& spelling, bool whole_tree,
                     const std::string& rules_at);
@@ -71,8 +73,9 @@ public:
     // Every line of every file in `files` counts as added.
     static AddedLines whole(const std::vector<std::string>& files);
     // The lines `diff -U0 base tip` adds under code_folders().
+    // The added side of ChangedLines::from_diff.
     static AddedLines from_diff(const Repo& repo, const std::string& base, const std::string& tip);
-    // The same, read from the diff's text lines (the parser from_diff uses).
+    // The added side of ChangedLines::parse_diff.
     static AddedLines parse_diff(const std::vector<std::string>& diff_lines);
 
     bool has_file(const std::string& file) const { return sets_.count(file) != 0; }
@@ -83,7 +86,24 @@ public:
     std::vector<std::string> files() const;
 
 private:
+    friend struct ChangedLines;
     std::map<std::string, std::optional<std::set<int>>> sets_;
+};
+
+// Both sides of one -U0 diff, per file. A deleted line is in no tip line, so
+// a name the range removes (a deleted class) is found only on this side.
+struct ChangedLines {
+    // The lines the tip adds, in the tip's numbering, keyed by tip path.
+    AddedLines added;
+    // The lines the tip drops, as 1-based line numbers in the base's
+    // numbering, keyed by base path. A file the base has and the diff touches
+    // has an entry, even when it drops nothing; a deleted file has one too.
+    std::map<std::string, std::set<int>> deleted;
+
+    // The lines `diff -U0 base tip` changes under code_folders().
+    static ChangedLines from_diff(const Repo& repo, const std::string& base, const std::string& tip);
+    // The same, read from the diff's text lines. The one diff parser.
+    static ChangedLines parse_diff(const std::vector<std::string>& diff_lines);
 };
 
 // --------------------------------------------------------------- the size

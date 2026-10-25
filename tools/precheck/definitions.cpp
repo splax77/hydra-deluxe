@@ -159,6 +159,8 @@ const std::string& assert_call_pattern() {
     return p;
 }
 
+bool is_namespace_head(const std::string& head) { return std::regex_search(head, namespace_head()); }
+
 bool is_cpp_keyword(const std::string& word) { return keywords().count(word) != 0; }
 
 Normalised normalise(const std::string& text) {
@@ -195,7 +197,7 @@ std::vector<Definition> definitions(const View& view, const Braces& braces, cons
         const std::string before = code.substr(from, o - from);
         const size_t cut = before.find_last_of(";{}");
         const std::string head = cut == std::string::npos ? before : before.substr(cut + 1);
-        const bool ns = std::regex_search(head, namespace_head());
+        const bool ns = is_namespace_head(head);
         ns_memo[o] = ns;
         return ns;
     };

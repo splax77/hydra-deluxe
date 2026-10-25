@@ -12,8 +12,8 @@ database: they read the same `hydra_settings.ini`, `hydra_rules.ini` and
 it lives only in the app (D103 item 5, ADR 0027).
 
 ```
-hydra_batch                    Analyze every chart folder from the app's settings
-hydra_batch <folder> [...]     ...or specific folders instead
+hydra_batch --whole-library    Analyze every chart folder from the app's settings
+hydra_batch <folder> [...]     ...or specific folders instead (the two don't mix)
 hydra_batch --redo             Re-analyze charts already stored
 hydra_batch --db <path>        Target a specific database
 hydra_batch --rules <path>     Take the rule choices from this file, not hydra_rules.ini
@@ -25,6 +25,10 @@ hydra_fillcompare ... --out fill_compare.html
 hydra_fillcompare ... --rules <path>
 hydra_fillcompare ... --no-open
 ```
+
+`hydra_batch` with no folder and no `--whole-library` prints a sentence and
+stops with exit code 2, so a bare run can't start a library-wide analysis by
+accident. The other `hydra_batch` flags in the list go with either form.
 
 Both read the app's settings file, so they work at the same SP cap, timing
 limit, score range and chart mode the app is set to. The fill rule is the
@@ -59,12 +63,12 @@ dmleaderboards comparison follows it too. To fill a database with both rules'
 results, run `hydra_batch` once plain and once with `--legacy-fills`:
 
 ```
-hydra_batch
-hydra_batch --legacy-fills
+hydra_batch --whole-library
+hydra_batch --whole-library --legacy-fills
 hydra_fillcompare
 
-hydra_batch --db both.db
-hydra_batch --legacy-fills --db both.db
+hydra_batch --whole-library --db both.db
+hydra_batch --whole-library --legacy-fills --db both.db
 hydra_fillcompare --db both.db
 ```
 
@@ -177,17 +181,22 @@ lossless round-trips over that corpus. GUI changes are checked headlessly with
 The Python and PowerShell tools have their own tests. Run them from the
 repository root:
 
-    py -m pytest tools/ch_probe/tests tools/test_compare_db.py -q
+    py -m pytest tools/ch_probe/tests tools/test_compare_db.py tools/test_hydra_ui_mcp.py -q
     pwsh -NoProfile -File tools/test_mutation_probe.ps1
 
-The pytest runs need no C++ build. The mutation probe's self-test needs a
+The pytest runs need no C++ build. The MCP test also needs
+`py -m pip install mcp`, and its real-exe cases skip until
+`hydra_uitest.exe` is built. The `tool-tests` job in
+`.github/workflows/ci.yml` runs the pytest paths and the two other PowerShell
+self-tests (`tools/test_ci_build_folder.ps1`, `tools/test_release_sign.ps1`);
+it is the owner of that list. The mutation probe's self-test needs a
 built `hydra_precheck.exe` (`.\build_cpp.ps1 -Target hydra_precheck`),
 because the probe masks comments and strings with it. The derive-once
 precheck's own self-test runs inside `hydra_tests`:
 
     build-cpp\Release\hydra_tests.exe "-sf=*test_precheck*"
 
-Name the two pytest paths rather than `tools/` as a whole: the scripts in
+Name the pytest paths rather than `tools/` as a whole: the scripts in
 `tools/ch_probe/experiments/` look like tests to pytest and drive the real
 game.
 
@@ -459,7 +468,8 @@ main job builds and runs `hydra_tests`. A second job, "GUI tests", builds
 time, so the run takes as long as the slower of the two, not both added up.
 Both jobs also run once a night, from a cold build.
 
-The `asan` job builds the same tests with the `asan` preset and runs them (see
+The `asan` job builds the same tests with the `asan-ninja` preset (the `asan`
+build again, through Ninja and the sccache compiler cache) and runs them (see
 "The AddressSanitizer build" above). Any memory error it finds fails the run.
 It runs once a night and when someone starts the workflow by hand, not on
 every push: its first run, on 2026-10-10, took 20m41s against 6m16s for the
@@ -472,10 +482,10 @@ builds the tests with the `coverage` preset and writes the coverage report
 skips pushes because it repeats the whole build and both test sets. Its proving
 run (run 38083092803, on 2026-10-10) took 11.5 minutes.
 
-Another job runs the Python tool tests above with no C++ build. The main
+Another job, `tool-tests`, runs the tool tests above with no C++ build. The main
 job runs the mutation probe's self-test after it builds `hydra_tests`, because
-that self-test needs `hydra_precheck.exe`. The main job checks out the whole
-history, because the precheck self-test in `hydra_tests` checks two real
+that self-test needs `hydra_precheck.exe`. The main job and the coverage job
+check out the whole history, because the precheck self-test in `hydra_tests` checks two real
 commit ranges and skips them in a shallow clone.
 
 The main job and the GUI tests job build on a saved build folder, so a push

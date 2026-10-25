@@ -104,7 +104,8 @@ TEST_CASE("sng: the note loader reads the chart through the shared reader") {
     // A file too short to hold a table throws a clear error.
     const std::string tiny = sng_fixture_path("tiny.sng");
     write_bytes(tiny, {1, 2, 3});
-    CHECK_THROWS_AS(load_songpath_sng(tiny, ChartReading{}), std::runtime_error);
+    CHECK_THROWS_WITH_AS(load_songpath_sng(tiny, ChartReading{}), "No chart files found in SNG file.",
+                         std::runtime_error);
 }
 
 TEST_CASE("sng: unmasking into the caller's buffer undoes the pinned stored bytes") {
@@ -241,7 +242,8 @@ TEST_CASE("sng: a container parses the same from bytes as from its path") {
     CHECK(songs_equal(load_songpath_from_bytes(path, buf, ChartReading{}),
                       load_songpath(path, ChartReading{})));
     // The extension still decides the format; an unknown one throws.
-    CHECK_THROWS_AS(load_songpath_from_bytes("x.txt", buf, ChartReading{}), std::runtime_error);
+    CHECK_THROWS_WITH_AS(load_songpath_from_bytes("x.txt", buf, ChartReading{}),
+                         "unexpected chart type: x.txt", std::runtime_error);
 }
 
 // Clone Hero, its song cache and dmleaderboards key a .sng by the MD5 of the

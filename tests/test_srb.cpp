@@ -105,16 +105,16 @@ TEST_CASE("srb: an unexpected notes filename falls back to payload sniffing") {
 TEST_CASE("srb: malformed containers throw instead of crashing") {
     std::string tiny = fixture_dir() + "\\tiny.srb";
     write_bytes(tiny, {1, 2, 3});
-    CHECK_THROWS_AS(load_songpath_srb(tiny, ChartReading{}),
-                    std::runtime_error);
+    CHECK_THROWS_WITH_AS(load_songpath_srb(tiny, ChartReading{}), "Truncated SRB file.",
+                         std::runtime_error);
 
     std::string garbage = fixture_dir() + "\\garbage.srb";
     std::vector<uint8_t> junk(64);
     for (size_t i = 0; i < junk.size(); ++i)
         junk[i] = static_cast<uint8_t>(i * 37 + 11);
     write_bytes(garbage, junk);
-    CHECK_THROWS_AS(load_songpath_srb(garbage, ChartReading{}),
-                    std::runtime_error);
+    CHECK_THROWS_WITH_AS(load_songpath_srb(garbage, ChartReading{}), "SRB stream starts past end of file.",
+                         std::runtime_error);
 
     // Metadata stream present but the notes stream is cut off mid-way.
     std::vector<uint8_t> notes = read_bytes(corpus_chart_path(".mid"));

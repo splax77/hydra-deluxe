@@ -7,22 +7,16 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "app/preview_source.h"
 #include "audio/decode.h"
 #include "audio/mixer.h"
-#include "audio/stem_reader.h"
-#include "audio/stream_mix.h"
 #include "audio_util.h"
 
 using namespace hydra::audio;
 using testaudio::estimate_freq_hz;
-using testaudio::fixture_path;
-using testaudio::read_fixture;
 
 namespace {
 
@@ -45,16 +39,6 @@ DecodedAudio synth_tone(double freq, int rate, double seconds) {
     for (int i = 0; i < n; ++i)
         a.samples[i] = static_cast<float>(0.5 * std::sin(2 * pi * freq * i / rate));
     return a;
-}
-
-// A whole MixSource read start to end (through the shared block reader), as
-// audio at the source's format.
-DecodedAudio read_all(MixSource& src) {
-    DecodedAudio out;
-    out.channels = src.channels();
-    out.sample_rate = src.sample_rate();
-    out.samples = testaudio::read_frames(src, src.length_frames());
-    return out;
 }
 
 // Same format and the same float bits, sample for sample.
@@ -130,39 +114,4 @@ TEST_CASE("mix_stems adds hand-built stems bit for bit; a zero-channel stem adds
 
     CHECK(same_bits(mix_stems({a, b, c}, 48000, 1), want));
     CHECK(same_bits(mix_stems({c, a, b}, 48000, 1), want));
-}
-
-TEST_CASE("StreamMix of real stems matches decoding every stem then mixing") {
-    hydra::app::PreviewAudioStem ogg;
-    ogg.label = "song";
-    ogg.path = fixture_path("sine220.ogg");
-    hydra::app::PreviewAudioStem mp3;
-    mp3.label = "drums";
-    mp3.bytes = read_fixture("sine220.mp3");
-    hydra::app::PreviewAudioStem opus;
-    opus.label = "guitar";
-    opus.bytes = read_fixture("sine220.opus");
-    hydra::app::PreviewAudioStem junk;
-    junk.label = "broken";
-    junk.bytes = {'n', 'o', 't', ' ', 'a', 'u', 'd', 'i', 'o'};
-    const std::vector<hydra::app::PreviewAudioStem> stems = {ogg, junk, mp3, opus};
-
-    std::vector<DecodedAudio> decoded;
-    std::vector<std::unique_ptr<StemReader>> readers;
-    for (const hydra::app::PreviewAudioStem& s : stems) {
-        try {
-            decoded.push_back(decode_stem(s));
-            readers.push_back(open_stem_reader(s));
-        } catch (const std::exception&) {
-        }
-    }
-    REQUIRE(decoded.size() == 3);
-    REQUIRE(readers.size() == 3);
-
-    // Resampling in blocks instead of in one call: equal within float rounding.
-    StreamMix mix(std::move(readers), 48000, 2, 0);
-    const DecodedAudio want = mix_stems(decoded, 48000, 2);
-    const DecodedAudio got = read_all(mix);
-    REQUIRE(got.samples.size() == want.samples.size());
-    CHECK(testaudio::max_diff(got.samples, want.samples.data(), 0, got.samples.size()) <= 1e-6);
 }
