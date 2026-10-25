@@ -75,7 +75,7 @@ The user decided in D107 (`docs/audit/2026-10-03-fix-decisions.md`) that a chang
    - **Run the tests for that finding** with `-tc=` or `-sf=` filters, and the scan test `build-cpp\Release\hydra_tests.exe -tc="single-owner*"` if you added a row. Never the full suite.
    - **Commit that finding alone.** The commit body carries the grep you ran and its one-line result, and for kind A the scan row's question or the reason no row fits. Then the trailers from the preamble, with your own agent id in `Agent:`.
 4. **Run the precheck** on the range, now ending at your last commit. It must print nothing new; fix anything it prints the same way.
-5. **Sign off.** Your key is now your last commit. Under each finding in your review, say how you fixed it and in which commit. Then report, ending with the two closing lines (see "Output").
+5. **Sign off.** Your key is now your last commit. Under each finding in your review, say how you fixed it and in which commit. Then report, ending with the closing block (see "Output").
 
 While you fix, never write a new copy while removing an old one: if a fix needs a helper, look in the owner or `tests/` for one first. A comment that describes what a rule matches is a new copy too; name the owner instead. If a finding turns out to be wrong when you look closer, leave the code and say why under Notes, with the truth table that shows the difference.
 
@@ -91,7 +91,7 @@ Do not rebuild the old code to see a test fail first. Quote the implementer's re
 
 You may make one build to prove a disagreement between two copies, and one more if your own fixes in step 3 touch C++. Then run `build-cpp\Release\hydra_tests.exe` with a `-tc=` filter, or `hydra_replay`, one at a time. Never run the full suite.
 
-**Hook changes: run the gates' own tests.** A change under `~\.claude\gates` is tested with that folder's unit tests, one file at a time, from the worktree root. `C:\Users\Patrick\.claude\gates\README.md` gives the command. Run only the test files for the scripts the change touches. Each hook is a function that takes the hook's input as a dictionary, so a case you want to check goes into a test, not into a probe that starts a new process per case.
+**Hook changes: run the gates' own tests.** A change under `~\.claude\gates` is tested with that folder's unit tests, one file at a time, from the worktree root, with `C:\Users\Patrick\AppData\Local\Python\pythoncore-3.14-64\python.exe -I -m unittest discover -t . -s gates/tests -p <file>`, where `<file>` is the test file's name. `C:\Users\Patrick\.claude\gates\README.md` explains why that form. Run only the test files for the scripts the change touches. Each hook is a function that takes the hook's input as a dictionary, so a case you want to check goes into a test, not into a probe that starts a new process per case.
 
 ## Output
 
@@ -109,14 +109,23 @@ The report holds, in plain English, one short paragraph each:
 
 Open the report with the key you signed off and one plain sentence per finding, saying how you fixed it and in which commit. For a kind A finding, that sentence also names the scan row's question, or the reason no row can catch it. Then the sections above, any questions for the user from your Notes, and the precheck's large-range note if it printed one.
 
-End the report with exactly these two lines, each on its own line, with nothing after them:
+End the report with a closing block, with nothing after it. It is the line `SIGN-OFF: CLEAN`, then one `Key:` line, each on its own line:
 
 ```
 SIGN-OFF: CLEAN
 Key: <the 40-character hash of the tip you are signing off>
 ```
 
-The key is the key you were given if you committed nothing, else your last commit. Write `SIGN-OFF: BLOCKED` instead of `SIGN-OFF: CLEAN` only when a finding stays that you could not fix and that must hold the merge; say why above. A report without these two lines records no verdict, and `main` stays refused until another reviewer signs off.
+When your dispatch also hands you documents, add one more `Key:` line for each, after the commit key, with the document's own `Path: <repo path>` line directly before it. One reviewer signs a change's commit and its public pages together. A document key is 64 characters:
+
+```
+SIGN-OFF: CLEAN
+Key: <the 40-character hash of the tip>
+Path: README.md
+Key: <the 64-character doc key of the text you signed off>
+```
+
+The block holds one commit key at most, no key twice, and a `Path:` line only before a document key. Use a path the brief names with a `Path:` line. A document key with no `Path:` line takes the brief's path only when the brief names exactly one and you sign one document key. Any other document key is recorded for its key alone, and later edits to that document then need a new review. A single `Key:` line just before the `SIGN-OFF:` line still works for a commit with no documents. The commit key is the key you were given if you committed nothing, else your last commit. Write `SIGN-OFF: BLOCKED` instead of `SIGN-OFF: CLEAN` only when a finding stays that you could not fix and that must hold the merge; say why above. A report whose last lines are not this closing block records no verdict, and `main` stays refused until another reviewer signs off.
 
 ## Resolution review
 
@@ -134,7 +143,7 @@ Sometimes commits already sit directly above M when you start, for example a cha
 
 Fix what you find the same way (D107): fix it yourself, commit, sign off. Your fix commits go on top, and your key is your own last commit.
 
-Your report has the usual sections from "Output", and it ends with the same two closing lines. The key is the topmost commit: M itself when nothing sits above it, else the topmost commit, or your own last fix. Say in the report that it was a resolution review.
+Your report has the usual sections from "Output", and it ends with the same closing block. The key is the topmost commit: M itself when nothing sits above it, else the topmost commit, or your own last fix. Say in the report that it was a resolution review.
 
 The ref gate does not tell a resolution review from a full one. A CLEAN sign-off on M lets `main` move to M like any other. So a resolution review is only for a branch whose tip before the merge already had its own full review.
 
@@ -142,15 +151,15 @@ The ref gate does not tell a resolution review from a full one. A CLEAN sign-off
 
 These rules are for the session that runs the merge.
 
-When main moves under a reviewed branch, merge main into the branch. A conflict-free merge needs nothing more. The ref gate lets that merge onto `main` when git, merging old `main` with the reviewed tip, makes exactly the same tree with no conflicts. A merge resolved by hand fails that test and gets one resolution review (see "Resolution review"), keyed on that merge commit. Commits that sit directly above it go into the same review, and its key is then the topmost commit. It never gets a second full review. Any other commit after the review, such as your own edit above a conflict-free merge or with no merge at all, still needs a full review of the new tip. The ref gate's refusal names the tip it wants reviewed.
+When main moves under a reviewed branch, merge main into the branch. A conflict-free merge needs nothing more. The ref gate lets that merge onto `main` when git, merging old `main` with a commit a reviewer signed off, makes exactly the same tree with no conflicts. A merge resolved by hand fails that test and gets one resolution review (see "Resolution review"), keyed on that merge commit. Commits that sit directly above it go into the same review, and its key is then the topmost commit. It never gets a second full review. Any other commit after the review, such as your own edit above a conflict-free merge or with no merge at all, still needs a full review of the new tip. The ref gate's refusal names the tip it wants reviewed.
 
 Before the review, run the precheck on the range and fix what it prints. Keep merges small enough to review in one read. The precheck prints the range's size, and a large-range note when it is over the threshold that `hydra_precheck.exe` owns (`tools/precheck/items.h`). A range with that note should go in as two or more merges.
 
 Set up the review in this order.
 
-1. Commit the change on its own branch, in its own worktree. Never send a change staged on main to review, even a one-line fix.
+1. Commit the change on its own branch, in its own worktree, cut under a `worktrees\` folder (`C:\Users\Patrick\Downloads\Hydra\hydra-test\.claude\worktrees\` or `C:\Users\Patrick\.claude\worktrees\`): the delete rule trusts an agent's working folder only there. Never send a change staged on main to review, even a one-line fix.
 2. Run the precheck on the range, as above.
 3. For each document the change holds, compute its doc key with `& "C:/Users/Patrick/.claude/gates/doc_key.ps1" "<file>"`, and write down the sources it was written from. Do it for every document, not just one.
-4. Dispatch through the `Agent` tool with `subagent_type: reviewer` and `isolation: worktree`. Put the key, the full 40-character hash of the branch tip, in the brief. A hook refuses a reviewer dispatch with no key, a key already on `main` or a key git does not know, and records which keys it handed over. A reviewer launched from a Workflow script, or as any other agent type, gets no such record, so its sign-off counts for nothing.
+4. Dispatch through the `Agent` tool with `subagent_type: reviewer` and `isolation: worktree`. Put the key, the full 40-character hash of the branch tip, in the brief. A hook refuses a reviewer dispatch with no key, a key already on `main` or a key git does not know, and records which keys it handed over. A reviewer launched from a Workflow script, or as any other agent type, gets no such record, so its sign-off counts for nothing. When the change is in the other repo (a hook change in `C:\Users\Patrick\.claude`, dispatched from a Hydra worktree), write that repo's root folder, the top folder of its working tree, once in the brief; every commit key the brief names must then exist in that repo. A brief naming a commit the dispatching repo already knows is checked there, whatever other folders it names. When the change holds documents, name each with a `Path:` line: the repo path for a page in the repo, the full file path for a plan or an Artifact page. The marker file `.doc-review-gate` takes none, because every change to it is reviewed anyway.
 
-Dispatch one fresh Sonnet reviewer per change. Give it the key, the range, the branch's worktree, the precheck output, the author's report, the author's name or agent id (from its spawn result), and the task and session ids for its commit trailers, and tell it to commit its fixes there. When the change holds documents, give it `docs/agents/doc-review.md` too, with each document's file, its doc key and its sources. When it reports, check that its report ends with the two closing lines and that its signed-off tip is on the branch. Then run the merge's tests (CLAUDE.md rule 1) and merge that tip. If the ref gate refuses the merge, git may already have changed the files and the index; run `git merge --abort` and read the refusal, which says what is missing. Pass any questions from its Notes to the user. Never start another review of the same change.
+Dispatch one fresh Sonnet reviewer per change. Give it the key, the range, the branch's worktree, the precheck output, the author's report, the author's name or agent id (from its spawn result), and the task and session ids for its commit trailers, and tell it to commit its fixes there. When the change holds documents, give it `docs/agents/doc-review.md` too, with each document's file, its doc key and its sources. When it reports, check that its report ends with the closing block and that its signed-off tip is on the branch. Then run the merge's tests (CLAUDE.md rule 1) and merge that tip. No helper tells you ahead of time what `main` still needs; the ref gate's refusal does, and it names the key to review. A refused merge may already have changed the files and the index: run `git status`, and undo a merge still in progress with `git merge --abort`. Pass any questions from its Notes to the user. Never start another review of the same change.
