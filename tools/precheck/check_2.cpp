@@ -9,22 +9,15 @@
 #include <string>
 #include <vector>
 
+#include "check_rows.h"
 #include "checks.h"
 #include "core/strutil.h"
+#include "definitions.h"
 #include "views.h"
 
 namespace precheck {
 
 namespace {
-
-// Which calls are test assertions? The doctest assertion macros, and any
-// assert*( or self.assert*( for C asserts and Python's unittest. Case
-// matters: CHECK( is an assertion, a local helper named check( is not. The
-// doctest macros are the whole assertion family third_party/doctest/doctest.h
-// defines.
-const char* const kAssertCall =
-    "\\b((?:FAST_)?(?:CHECK|REQUIRE|WARN)(?:_(?:EQ|NE|GT|GE|LT|LE|UNARY(?:_FALSE)?|FALSE(?:_MESSAGE)?|"
-    "MESSAGE|NOTHROW(?:_MESSAGE)?|THROWS\\w*))?|assert\\w*|self\\.assert\\w*)\\s*\\(";
 
 bool word_char(char c) {
     const unsigned char u = static_cast<unsigned char>(c);
@@ -77,7 +70,7 @@ const std::vector<Spelling>& cpp_spellings() {
                      "Path::recount_tied_paths owns the count; pin it"});
         // No row: this is a shape of test, not one rule's question, so no
         // single owner fits a scan row.
-        v.push_back({std::regex(std::string(kAssertCall) +
+        v.push_back({std::regex(assert_call_pattern() +
                                 "[^;]*==\\s*[^;]*([\\w)\\]]\\s*\\([^()]*\\)\\s*(?:\\+|-(?!>)|\\*|/)\\s*[A-Za-z_(]|"
                                 "[\\w)\\]]\\s*(?:\\+|-(?!>)|\\*|/)\\s*[\\w:<>]+\\s*\\()"),
                      "", nullptr, "an expected value computed from other calls",
@@ -98,7 +91,7 @@ const std::vector<Spelling>& py_spellings() {
         v.push_back({std::regex("[<>]=?\\s*[A-Za-z_]\\w*\\.[A-Z][A-Z0-9_]{2,}\\b"), "", nullptr,
                      "a fixture decides with the module's own constant",
                      "the fixture makes the comparison production makes; pin the inputs as literals"});
-        v.push_back({std::regex(std::string(kAssertCall) +
+        v.push_back({std::regex(assert_call_pattern() +
                                 "\\s*[A-Za-z_]\\w*\\.[A-Z][A-Z0-9_]{2,}\\s*,[^)]*[A-Za-z_]\\w*\\.[A-Z][A-Z0-9_]{2,}"),
                      "", nullptr, "a module constant checked against a formula of other constants",
                      "the test restates the module's formula; pin the value"});
@@ -116,8 +109,8 @@ bool ends_statement(const std::string& line) {
 }  // namespace
 
 void run_check_2(Context& ctx) {
-    // JOIN (check_rows.cpp): the scan rows' B and A items are added here,
-    // before the spellings below, as the script's Add-RowItems @('B', 'A').
+    // The scan rows' own items first, then the spellings below.
+    add_row_items_for_check(2, ctx);
 
     for (const std::string& f : ctx.added.files()) {
         if (skipped_file(f)) continue;

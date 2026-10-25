@@ -9,32 +9,12 @@
 #include <utility>
 #include <vector>
 
-#include "checks.h"
+#include "check_4.h"
 #include "core/strutil.h"
 #include "single_owner/engine.h"
 #include "views.h"
 
 namespace precheck {
-
-// What check 4 needs from the scan rows, which check_rows.cpp reads. The
-// join fills it in run_check_4 below; tests fill it by hand. Declared here,
-// not in a header, until the join gives it a home.
-struct Check4Rows {
-    // The file and line of every kind-E row hit on an added line. Check 4's
-    // own spellings skip these, so a line prints once.
-    std::set<std::pair<std::string, int>> e_hit_lines;
-    // A rule row the range added (check_rows.cpp's "row added" answer), with
-    // the rules file it is in and the line its object opens on.
-    struct AddedRow {
-        const single_owner::OwnerRule* rule;
-        std::string file;
-        int line;
-    };
-    std::vector<AddedRow> added_rows;
-};
-
-// Check 4 without the row items: the spellings and the new-row checks.
-void run_check_4_spellings(Context& ctx, const Check4Rows& rows);
 
 namespace {
 
@@ -59,8 +39,7 @@ const std::regex& cpp_opens_source() {
 // A negative lookahead or lookbehind naming variables inside a row's
 // pattern, such as "(?!(base|combo)\s*\.".
 const std::regex& variable_exemption() {
-    static const std::regex rx("\\(\\?<?!\\(?[A-Za-z_]\\w*(\\|[A-Za-z_]\\w*)*\\)?\\\\s\\*\\(?\\\\?\\.",
-                               std::regex::icase);
+    static const std::regex rx(R"(\(\?<?!\(?[A-Za-z_]\w*(\|[A-Za-z_]\w*)*\)?\\s\*\(?\\?\.)", std::regex::icase);
     return rx;
 }
 
@@ -92,20 +71,20 @@ void run_check_4_spellings(Context& ctx, const Check4Rows& rows) {
     }
     // New rule rows: every example list must hold something, and no pattern
     // may exempt variable names.
-    for (const Check4Rows::AddedRow& r : rows.added_rows) {
+    for (const AddedRow& r : rows.added_rows) {
         const std::pair<const char*, const std::vector<std::string>*> lists[] = {
-            {"must-match", &r.rule->must_match}, {"must-not-match", &r.rule->must_not_match}};
+            {"must-match", &r.rule.must_match}, {"must-not-match", &r.rule.must_not_match}};
         for (const auto& [name, list] : lists) {
             if (list->empty())
                 ctx.items.add("E", r.file, r.line,
-                              "scan row \"" + r.rule->question + "\" has no " + name + " examples",
+                              "scan row \"" + r.rule.question + "\" has no " + name + " examples",
                               "every scan row ships with lines it must match and must not match, so the self-test "
                               "proves its pattern");
         }
         std::smatch m;
-        if (std::regex_search(r.rule->pattern, m, variable_exemption()))
+        if (std::regex_search(r.rule.pattern, m, variable_exemption()))
             ctx.items.add("E", r.file, r.line,
-                          "scan row \"" + r.rule->question + "\" exempts variable names inside its pattern (" +
+                          "scan row \"" + r.rule.question + "\" exempts variable names inside its pattern (" +
                               m.str(0) + "...)",
                           "an exemption in the pattern applies in every file; list the allowed lines as owner lines "
                           "with their reason");
@@ -113,10 +92,10 @@ void run_check_4_spellings(Context& ctx, const Check4Rows& rows) {
 }
 
 void run_check_4(Context& ctx) {
+    add_row_items_for_check(4, ctx);
     Check4Rows rows;
-    // JOIN (check_rows.cpp): add the scan rows' E items here, as the script's
-    // Add-RowItems @('E'), and fill `rows`: e_hit_lines from the same E hits,
-    // added_rows from the rows the range added.
+    for (const RowItem& i : row_items(ctx, "E")) rows.e_hit_lines.insert({i.file, i.line});
+    rows.added_rows = added_rows(ctx);
     run_check_4_spellings(ctx, rows);
 }
 

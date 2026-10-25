@@ -17,6 +17,7 @@
 #include "precheck/git_text.h"
 #include "precheck/items.h"
 #include "precheck/range.h"
+#include "precheck_fixture.h"
 #include "temp_util.h"
 
 #ifndef HYDRA_PRECHECK_EXE
@@ -26,25 +27,9 @@
 namespace fs = std::filesystem;
 using namespace precheck;
 
+using namespace precheck_fixture;
+
 namespace {
-
-void write_fixture_file(const std::string& dir, const std::string& rel, const std::string& text) {
-    const std::string path = dir + "\\" + rel;
-    fs::create_directories(hydra::os_path(fs::path(hydra::os_path(path)).parent_path()));
-    testtemp::write_bytes(path, std::vector<uint8_t>(text.begin(), text.end()));
-}
-
-void fixture_git(const std::string& dir, std::vector<std::string> args) {
-    std::vector<std::string> full = {"-c", "user.name=precheck", "-c", "user.email=precheck@example.invalid",
-                                     "-c", "core.autocrlf=false"};
-    full.insert(full.end(), args.begin(), args.end());
-    run_git(dir, full);
-}
-
-void commit_all(const std::string& dir, const std::string& message) {
-    fixture_git(dir, {"add", "-A"});
-    fixture_git(dir, {"commit", "-q", "-m", message});
-}
 
 // The fixture: main1 on main; feature forks there with two commits (f1 edits
 // src/a.cpp, deletes tests/b.cpp and touches the two excluded folders; f2
@@ -274,13 +259,17 @@ TEST_CASE("precheck: the exe prints the size and the summary for a range") {
     const ExeRun r = run_precheck({"--repo", fx.dir, "--range", "main...feature", "--disable", "2"});
     CHECK(r.exit_code == 0);
     CHECK(r.err.empty());
-    CHECK(r.out ==
-          "range size: 8 changed lines (5 added, 3 deleted), not counting third_party/ or testdata/\n"
-          "derive_once_precheck: 0 items (none) for main...feature at " + tip7 + "\n");
+    // The fixture has no rules files, so the warning prints after the checks.
+    const std::string no_rules =
+        "precheck: tests/single_owner/rules has no rule files at " + tip7 + ", so no scan rows were applied\n";
+    CHECK(r.out == no_rules +
+                       "range size: 8 changed lines (5 added, 3 deleted), not counting third_party/ or testdata/\n"
+                       "derive_once_precheck: 0 items (none) for main...feature at " + tip7 + "\n");
 
     const ExeRun whole = run_precheck({"--repo", fx.dir, "--whole-tree", "feature"});
     CHECK(whole.exit_code == 0);
-    CHECK(whole.out == "derive_once_precheck: 0 items (none) for the whole tree at " + tip7 + "\n");
+    CHECK(whole.out == "check 3 skipped: -WholeTree has no \"new\" numbers\n" + no_rules +
+                           "derive_once_precheck: 0 items (none) for the whole tree at " + tip7 + "\n");
 
     const ExeRun list = run_precheck({"--list-checks"});
     CHECK(list.exit_code == 0);

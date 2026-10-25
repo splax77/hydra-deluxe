@@ -52,4 +52,16 @@ struct AddedRow {
 // than the tip), in rules-file order.
 std::vector<AddedRow> added_rows(Context& ctx);
 
+// The baseline's known copies at the rules revision, read with the rows.
+const std::vector<single_owner::KnownCopy>& known_copies(Context& ctx);
+
+// How an item's reason names the known copy a line is (the script's
+// Format-KnownCopy), without the brackets around it.
+std::string known_copy_note(const std::string& fix);
+
+// Prints the warning that no scan rows were applied, when the rules
+// revision has no rules files. The run prints it after every check, whether
+// or not a check read the rows.
+void print_rule_warnings(Context& ctx);
+
 }  // namespace precheck

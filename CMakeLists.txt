@@ -545,7 +545,7 @@ file(GLOB hydra_test_sources CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/tests/test_*.
 add_executable(hydra_tests
     ${hydra_test_sources}
     tests/report_samples.cpp
-    tests/single_owner/engine.cpp
+    # tests/single_owner/engine.cpp comes from hydra_precheck_lib (below).
     tests/single_owner/scan.cpp
     tests/single_owner/clones.cpp
     tests/single_owner/special.cpp
@@ -714,7 +714,8 @@ add_library(hydra_precheck_lib STATIC
     tools/precheck/braces.cpp
     tools/precheck/definitions.cpp
     tools/precheck/check_rows.cpp
-    # The single-owner scan's engine, the one reader of the scan rows.
+    # The single-owner scan's engine, the one reader of the scan rows. It is
+    # compiled here only; hydra_tests' scan gets it by linking this library.
     tests/single_owner/engine.cpp
 )
 # Callers include its headers as "precheck/<name>.h".

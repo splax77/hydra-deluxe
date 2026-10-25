@@ -34,13 +34,18 @@ struct Tables {
     std::vector<so::KnownCopy> copies;
 };
 
-Tables read_tables(Repo& repo, const std::string& rev) {
-    Tables t;
+// The rules files at `rev`, each named from the rules folder down.
+std::vector<std::string> rule_file_names(Repo& repo, const std::string& rev) {
     const std::string dir = so::kRulesDir;
     std::vector<std::string> rel;
     for (const std::string& p : repo.git({"ls-tree", "-r", "--name-only", rev, "--", dir + "/"}))
         if (p.size() > dir.size() + 1) rel.push_back(hydra::relative_slash_path(p, dir));
-    for (const std::string& name : so::select_rule_files(rel)) {
+    return so::select_rule_files(rel);
+}
+
+Tables read_tables(Repo& repo, const std::string& rev) {
+    Tables t;
+    for (const std::string& name : rule_file_names(repo, rev)) {
         const std::string path = rules_parent() + name;
         std::string text = repo.files().text(rev, path);
         for (so::OwnerRule& r : so::parse_rules_file(name, text)) t.rules.push_back(std::move(r));
@@ -127,7 +132,6 @@ int row_line(const std::string& text, const std::string& question, int nth) {
 std::string row_why(const std::string& rules_file, const std::string& owner) {
     return "the scan row in " + rules_file + " gives this question to " + owner;
 }
-std::string known_copy_note(const std::string& fix) { return "known copy: " + fix; }
 std::string owner_line_note(const std::string& why) {
     return "this range lists it as an owner line: \"" + why + "\"; check that reason";
 }
@@ -139,6 +143,7 @@ struct RowRun {
     std::string key;
     std::vector<RowItem> items;
     std::vector<AddedRow> added_rows;
+    std::vector<so::KnownCopy> copies;
 };
 
 std::string run_key(Context& ctx) {
@@ -152,9 +157,7 @@ std::unique_ptr<RowRun> compute(Context& ctx) {
     run->key = run_key(ctx);
     const Range& range = ctx.range;
     const Tables tip = read_tables(ctx.repo, range.rules_rev);
-    if (tip.rule_files.empty())
-        ctx.out << "precheck: " << so::kRulesDir << " has no rule files at " << range.rules_rev.substr(0, 7)
-                << ", so no scan rows were applied\n";
+    run->copies = tip.copies;
 
     // Added means written by this range, so only rows read at the tip can be.
     AddedKeys added;
@@ -269,5 +272,15 @@ void add_row_items_for_check(int check, Context& ctx) {
 }
 
 std::vector<AddedRow> added_rows(Context& ctx) { return row_run(ctx).added_rows; }
+
+const std::vector<so::KnownCopy>& known_copies(Context& ctx) { return row_run(ctx).copies; }
+
+std::string known_copy_note(const std::string& fix) { return "known copy: " + fix; }
+
+void print_rule_warnings(Context& ctx) {
+    if (!rule_file_names(ctx.repo, ctx.range.rules_rev).empty()) return;
+    ctx.out << "precheck: " << so::kRulesDir << " has no rule files at " << ctx.range.rules_rev.substr(0, 7)
+            << ", so no scan rows were applied\n";
+}
 
 }  // namespace precheck

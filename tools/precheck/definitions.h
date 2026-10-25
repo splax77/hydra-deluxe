@@ -36,6 +36,12 @@ bool is_cpp_keyword(const std::string& word);
 // their pattern from it.
 extern const char* const kDoctestAssertPattern;
 
+// An assertion call: one of the doctest macros above, or assert*( or
+// self.assert*( for C asserts and Python's unittest, up to and including its
+// "(". Case matters: CHECK( is one, a helper named check( is not. The one
+// pattern checks 2 and 3 read.
+const std::string& assert_call_pattern();
+
 // A body with its identifiers renamed in order of first use (v0, v1, ...),
 // keywords, members (after "." or "->") and numbers kept, strings read as S
 // and char literals as C, and any "name::" qualifier dropped.

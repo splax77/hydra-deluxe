@@ -14,50 +14,22 @@
 #include <vector>
 
 #include "core/winstr.h"
+#include "json.hpp"
+#include "precheck/check_4.h"
 #include "precheck/checks.h"
 #include "precheck/git_text.h"
 #include "precheck/items.h"
 #include "precheck/range.h"
+#include "precheck_fixture.h"
 #include "single_owner/engine.h"
 #include "temp_util.h"
 
 namespace fs = std::filesystem;
 
-namespace precheck {
-// Declared in tools/precheck/check_4.cpp, which has no header until the join
-// with check_rows.cpp; this must stay the same as that declaration.
-struct Check4Rows {
-    std::set<std::pair<std::string, int>> e_hit_lines;
-    struct AddedRow {
-        const single_owner::OwnerRule* rule;
-        std::string file;
-        int line;
-    };
-    std::vector<AddedRow> added_rows;
-};
-void run_check_4_spellings(Context& ctx, const Check4Rows& rows);
-}  // namespace precheck
-
 using namespace precheck;
+using precheck_fixture::commit_texts;
 
 namespace {
-
-// Writes `files` into the fixture folder and commits them all.
-void commit_files(const std::string& dir, const std::map<std::string, std::string>& files,
-                  const std::string& message) {
-    for (const auto& [rel, text] : files) {
-        const std::string path = dir + "\\" + rel;
-        fs::create_directories(hydra::os_path(fs::path(hydra::os_path(path)).parent_path()));
-        testtemp::write_bytes(path, std::vector<uint8_t>(text.begin(), text.end()));
-    }
-    const std::vector<std::string> who = {"-c", "user.name=precheck", "-c", "user.email=precheck@example.invalid",
-                                          "-c", "core.autocrlf=false"};
-    for (std::vector<std::string> args : {std::vector<std::string>{"add", "-A"},
-                                          std::vector<std::string>{"commit", "-q", "-m", message}}) {
-        args.insert(args.begin(), who.begin(), who.end());
-        run_git(dir, args);
-    }
-}
 
 // main holds one line in each file the feature edits; the feature adds the
 // lines under test.
@@ -67,9 +39,9 @@ struct Fixture {
         testtemp::remove_dir(dir);
         fs::create_directories(hydra::os_path(dir));
         run_git(dir, {"init", "-q", "-b", "main"});
-        commit_files(dir, {{"tests/test_spell.cpp", "#include \"doctest.h\"\n"}}, "main1");
+        commit_texts(dir, {{"tests/test_spell.cpp", "#include \"doctest.h\"\n"}}, "main1");
         run_git(dir, {"checkout", "-q", "-b", "feature"});
-        commit_files(dir,
+        commit_texts(dir,
                      {{"tests/test_spell.cpp",
                        "#include \"doctest.h\"\n"
                        "// the hit window is two hits wide\n"   // 2
@@ -173,6 +145,46 @@ TEST_CASE("precheck check 4: source-tree reads outside src/, and a row's line pr
                         why));
 }
 
+TEST_CASE("precheck check 4: a source-dir macro line prints once, as the scan row's E item") {
+    // The macro's name is built in two pieces so this file's own lines do not
+    // answer the real row.
+    const std::string macro = std::string("HYDRA_") + "SOURCE_DIR";
+    const std::string dir = testtemp::temp_dir("precheck_check4_row");
+    testtemp::remove_dir(dir);
+    fs::create_directories(hydra::os_path(dir));
+    run_git(dir, {"init", "-q", "-b", "main"});
+    const nlohmann::json row = {{"question", "Which test reads the source tree?"},
+                                {"owner", "sourcetree::root in tests/source_tree.h"},
+                                {"owner_file", "tests/source_tree.h"},
+                                {"owner_symbol", "sourcetree::root"},
+                                {"date", "2026-10-24"},
+                                {"decision", "PCX-J2"},
+                                {"added_by", "PCX-J2"},
+                                {"pattern", "\\b" + macro + "\\b"},
+                                {"scope", nlohmann::json::array({"tests"})},
+                                {"must_match", nlohmann::json::array({macro})},
+                                {"must_not_match", nlohmann::json::array({"HYDRA_SOURCE"})}};
+    commit_texts(dir,
+                 {{"tests/single_owner/rules/tests.json", nlohmann::json{{"rules", {row}}}.dump(2) + "\n"},
+                  {"tests/test_tree.cpp", "int keep = 0;\n"}},
+                 "main1");
+    run_git(dir, {"checkout", "-q", "-b", "feature"});
+    // Both the row and check 4's "opens a source file" spelling match it.
+    const std::string line = "std::ifstream in(std::string(" + macro + ") + \"/src/app/x.cpp\");";
+    commit_texts(dir, {{"tests/test_tree.cpp", "int keep = 0;\n" + line + "\n"}}, "f1");
+    {
+        Run run(dir);
+        Context ctx = run.context();
+        run_check_4(ctx);
+        CHECK(run.lines() == std::vector<std::string>{"E tests/test_tree.cpp:2  answers \"Which test reads the "
+                                                      "source tree?\": " +
+                                                      line +
+                                                      "  -- the scan row in tests/single_owner/rules/tests.json "
+                                                      "gives this question to sourcetree::root in tests/source_tree.h"});
+    }
+    testtemp::remove_dir(dir);
+}
+
 TEST_CASE("precheck check 4: a new rule row with no examples or a variable exemption") {
     Fixture fx;
     Run run(fx.dir);
@@ -185,8 +197,8 @@ TEST_CASE("precheck check 4: a new rule row with no examples or a variable exemp
     exempting.must_match = {"score"};
     exempting.must_not_match = {"base.score"};
     Check4Rows rows;
-    rows.added_rows = {{&bare, "tests/single_owner/rules/sub/planted.json", 4},
-                       {&exempting, "tests/single_owner/rules/sub/planted.json", 20}};
+    rows.added_rows = {{bare, "tests/single_owner/rules/sub/planted.json", 4},
+                       {exempting, "tests/single_owner/rules/sub/planted.json", 20}};
     // The spellings are not under test here: no file is read.
     run.added = AddedLines::whole({});
     Context ctx = run.context();

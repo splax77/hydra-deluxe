@@ -6,7 +6,9 @@
 #include <map>
 #include <regex>
 
+#include "check_rows.h"
 #include "checks.h"
+#include "core/strutil.h"
 #include "definitions.h"
 #include "single_owner/rows.h"  // KnownCopy
 #include "views.h"
@@ -23,33 +25,23 @@ std::string trim(const std::string& s) {
 }
 
 // Group keys compare with case ignored, as PowerShell's Group-Object did.
-std::string fold(const std::string& s) {
-    std::string out = s;
-    for (char& c : out) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return out;
-}
-
-// The baseline's known copies at the rules revision.
-// PCX-2 MERGE: check_rows reads tests/single_owner/baseline.json at
-// range.rules_rev for the row hits' notes. Return its known copies here so
-// the baseline has one reader; until then check 1 sees none.
-std::vector<single_owner::KnownCopy> baseline_copies(Context&) { return {}; }
+std::string fold(const std::string& s) { return hydra::to_lower_ascii(s); }
 
 // The fix of the first known copy that one of `lines` is, trimmed, in
-// `file`; empty when none is.
+// `file`; empty when none is. The line texts compare with case ignored, as
+// the script's -eq did.
 std::string known_copy_fix(const std::vector<single_owner::KnownCopy>& copies, const std::string& file,
                            const std::vector<std::string>& lines) {
     for (const std::string& l : lines) {
-        const std::string t = trim(l);
+        const std::string t = fold(trim(l));
         for (const single_owner::KnownCopy& k : copies)
-            if (k.file == file && t == k.line_text) return k.removed_by;
+            if (fold(k.file) == fold(file) && t == fold(trim(k.line_text))) return k.removed_by;
     }
     return {};
 }
 
-// PCX-2 MERGE: the row hits' notes spell "known copy: <fix>" too (the
-// script's Format-KnownCopy); use check_rows' one spelling here.
-std::string known_copy_note(const std::string& fix) { return " (known copy: " + fix + ")"; }
+// A known copy's note in an item's reason.
+std::string bracketed_known_copy(const std::string& fix) { return " (" + known_copy_note(fix) + ")"; }
 
 const char* const kHelperWhy = "a test helper written in two files; keep one in a shared header";
 
@@ -89,7 +81,7 @@ size_t unique_count(const std::vector<const Definition*>& defs, std::string Defi
 void run_check_1(Context& ctx) {
     ViewCache views(ctx.repo);
     const std::string& tip = ctx.range.tip;
-    const std::vector<single_owner::KnownCopy> copies = baseline_copies(ctx);
+    const std::vector<single_owner::KnownCopy>& copies = known_copies(ctx);
 
     std::vector<Definition> defs;
     for (const std::string& f : ctx.all_files) {
@@ -163,15 +155,14 @@ void run_check_1(Context& ctx) {
                    " has the same body, names changed, as " + others;
         }
         std::string why = kHelperWhy;
-        if (!fix.empty()) why += known_copy_note(fix);
+        if (!fix.empty()) why += bracketed_known_copy(fix);
         ctx.items.add("C", anchor->file, anchor->line, what, why);
     }
 
     // Copied fixtures a scan row names (the MIDI chunk tags, the .srb
     // deflate, the .chart header, the per-difficulty table, the tied-variant
     // walks and the SqIn step check are rows in tests/single_owner/rules/).
-    // PCX-2 MERGE: add the row hits of kind C here, the script's
-    // Add-RowItems @('C'), through check_rows' row_items("C").
+    add_row_items_for_check(1, ctx);
 
     for (const std::string& f : ctx.added.files()) {
         if (!test_file(f) || !is_cpp(f) || skipped_file(f)) continue;
@@ -183,7 +174,7 @@ void run_check_1(Context& ctx) {
                 if (!std::regex_search(text, s.rx)) continue;
                 std::string why = s.why;
                 const std::string fix = known_copy_fix(copies, f, {v.line(v.raw, ln)});
-                if (!fix.empty()) why += known_copy_note(fix);
+                if (!fix.empty()) why += bracketed_known_copy(fix);
                 ctx.items.add("C", f, ln, std::string(s.what) + ": " + trim(text), why);
             }
         }

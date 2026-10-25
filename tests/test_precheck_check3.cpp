@@ -17,29 +17,15 @@
 #include "precheck/git_text.h"
 #include "precheck/items.h"
 #include "precheck/range.h"
+#include "precheck_fixture.h"
 #include "temp_util.h"
 
 namespace fs = std::filesystem;
 using namespace precheck;
 
-namespace {
+using precheck_fixture::commit_texts;
 
-// Writes each file under `dir` and commits them all on the current branch.
-void commit_texts(const std::string& dir, const std::map<std::string, std::string>& texts, const std::string& message) {
-    for (const auto& [rel, text] : texts) {
-        const std::string path = dir + "\\" + rel;
-        fs::create_directories(hydra::os_path(fs::path(hydra::os_path(path)).parent_path()));
-        testtemp::write_bytes(path, std::vector<uint8_t>(text.begin(), text.end()));
-    }
-    const std::vector<std::string> who = {"-c", "user.name=precheck", "-c", "user.email=precheck@example.invalid",
-                                          "-c", "core.autocrlf=false"};
-    std::vector<std::string> add = who;
-    add.insert(add.end(), {"add", "-A"});
-    run_git(dir, add);
-    std::vector<std::string> commit = who;
-    commit.insert(commit.end(), {"commit", "-q", "-m", message});
-    run_git(dir, commit);
-}
+namespace {
 
 // Check 3's item lines and printed text for `spelling` in `dir`.
 struct Check3Run {

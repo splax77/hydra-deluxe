@@ -13,6 +13,7 @@
 #include "checks.h"
 #include "core/strutil.h"
 #include "decisions.h"
+#include "definitions.h"
 #include "views.h"
 
 namespace precheck {
@@ -65,14 +66,9 @@ const std::regex& loop_words() {
     static const std::regex rx("seed|trial|repeat|iteration|attempt|sample|probe|frame|retry|round|run\\b", kIcase);
     return rx;
 }
-// An assertion: a doctest macro (CHECK, REQUIRE or WARN, with or without
-// FAST_, alone or with a suffix, as third_party/doctest/doctest.h defines
-// them), assert*( or self.assert*(. Case matters: CHECK( is one, a helper
-// named check( is not.
+// An assertion call (assert_call_pattern).
 const std::regex& assertion() {
-    static const std::regex rx(
-        "\\b((?:FAST_)?(?:CHECK|REQUIRE|WARN)(?:_(?:EQ|NE|GT|GE|LT|LE|UNARY(?:_FALSE)?|FALSE(?:_MESSAGE)?|MESSAGE|"
-        "NOTHROW(?:_MESSAGE)?|THROWS\\w*))?|assert\\w*|self\\.assert\\w*)\\s*\\(");
+    static const std::regex rx(assert_call_pattern());
     return rx;
 }
 // Lines with no number to check: preprocessor lines, static_assert, Python

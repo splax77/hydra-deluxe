@@ -147,6 +147,11 @@ size_t first_of_braces(const std::string& code, size_t from) { return code.find_
 const char* const kDoctestAssertPattern =
     R"((?:FAST_)?(?:CHECK|REQUIRE|WARN)(?:_(?:EQ|NE|GT|GE|LT|LE|UNARY(?:_FALSE)?|FALSE(?:_MESSAGE)?|MESSAGE|NOTHROW(?:_MESSAGE)?|THROWS\w*))?)";
 
+const std::string& assert_call_pattern() {
+    static const std::string p = "\\b(" + std::string(kDoctestAssertPattern) + "|assert\\w*|self\\.assert\\w*)\\s*\\(";
+    return p;
+}
+
 bool is_cpp_keyword(const std::string& word) { return keywords().count(word) != 0; }
 
 Normalised normalise(const std::string& text) {

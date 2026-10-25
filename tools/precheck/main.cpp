@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "core/winstr.h"
+#include "precheck/check_rows.h"
 #include "precheck/checks.h"
 #include "precheck/code_mask.h"
 #include "precheck/git_text.h"
@@ -109,6 +110,7 @@ int run(const Options& o) {
     Context ctx{repo, range, added, files, items, std::cout};
     for (size_t n = 1; n <= kChecks.size(); ++n)
         if (!disabled.count(static_cast<int>(n))) kChecks[n - 1].run(ctx);
+    print_rule_warnings(ctx);
 
     const std::vector<Item> sorted = items.sorted();
     for (const Item& i : sorted) std::cout << item_line(i) << "\n";

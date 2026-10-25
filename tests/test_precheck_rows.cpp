@@ -18,6 +18,7 @@
 #include "precheck/git_text.h"
 #include "precheck/items.h"
 #include "precheck/range.h"
+#include "precheck_fixture.h"
 #include "temp_util.h"
 
 namespace fs = std::filesystem;
@@ -42,20 +43,10 @@ struct RowFixture {
     std::string dir = testtemp::temp_dir("precheck_rows");
 
     void put(const std::string& rel, const std::string& text) const {
-        const fs::path p = fs::path(hydra::os_path(dir)) / fs::u8path(rel);
-        fs::create_directories(p.parent_path());
-        testtemp::write_bytes(p.u8string(), std::vector<uint8_t>(text.begin(), text.end()));
+        precheck_fixture::write_fixture_file(dir, rel, text);
     }
-    void git(const std::vector<std::string>& args) const {
-        std::vector<std::string> a = {"-c", "user.name=rows", "-c", "user.email=rows@example.invalid",
-                                      "-c", "core.autocrlf=false"};
-        a.insert(a.end(), args.begin(), args.end());
-        run_git(dir, a);
-    }
-    void commit(const std::string& message) const {
-        git({"add", "-A"});
-        git({"commit", "-q", "-m", message});
-    }
+    void git(const std::vector<std::string>& args) const { precheck_fixture::fixture_git(dir, args); }
+    void commit(const std::string& message) const { precheck_fixture::commit_all(dir, message); }
 
     // main: three rows, one owner line for a line nobody has written yet.
     // feature: a new owner line, a new row, a baseline entry, and the
@@ -130,6 +121,9 @@ RowRun rows_of(const RowFixture& fx, const std::string& spelling, bool whole, co
     RowRun r;
     r.items = row_items(ctx, "ABCE");
     r.added = added_rows(ctx);
+    // Reading the rows prints nothing; the warnings print after every check.
+    CHECK(out.str().empty());
+    print_rule_warnings(ctx);
     r.printed = out.str();
     return r;
 }

@@ -18,6 +18,7 @@
 #include "precheck/definitions.h"
 #include "precheck/git_text.h"
 #include "precheck/views.h"
+#include "precheck_fixture.h"
 #include "temp_util.h"
 
 #ifndef HYDRA_PRECHECK_EXE
@@ -27,25 +28,9 @@
 namespace fs = std::filesystem;
 using namespace precheck;
 
+using namespace precheck_fixture;
+
 namespace {
-
-void write_file(const std::string& dir, const std::string& rel, const std::string& text) {
-    const std::string path = dir + "\\" + rel;
-    fs::create_directories(hydra::os_path(fs::path(hydra::os_path(path)).parent_path()));
-    testtemp::write_bytes(path, std::vector<uint8_t>(text.begin(), text.end()));
-}
-
-void fixture_git(const std::string& dir, std::vector<std::string> args) {
-    std::vector<std::string> full = {"-c", "user.name=precheck", "-c", "user.email=precheck@example.invalid",
-                                     "-c", "core.autocrlf=false"};
-    full.insert(full.end(), args.begin(), args.end());
-    run_git(dir, full);
-}
-
-void commit_all(const std::string& dir, const std::string& message) {
-    fixture_git(dir, {"add", "-A"});
-    fixture_git(dir, {"commit", "-q", "-m", message});
-}
 
 // The body tools/test_derive_once_precheck.ps1's fixture gives sum_values,
 // written with the names `total`, `values` and `v` swapped for others.
@@ -81,36 +66,36 @@ struct Fixture {
         testtemp::remove_dir(dir);
         fs::create_directories(hydra::os_path(dir));
         fixture_git(dir, {"init", "-q", "-b", "main"});
-        write_file(dir, "tests/helpers_a.cpp",
+        write_fixture_file(dir, "tests/helpers_a.cpp",
                    "#include <vector>\n\nnamespace {\n\n// Adds the positive values and subtracts the negative ones.\n" +
                        summing("sum_values", "values", "total", "v") + "\n}  // namespace\n");
-        write_file(dir, "tests/short_a.cpp", "int tiny_a(int q) { return q + 1; }\n");
+        write_fixture_file(dir, "tests/short_a.cpp", "int tiny_a(int q) { return q + 1; }\n");
         commit_all(dir, "main");
         fixture_git(dir, {"checkout", "-q", "-b", "feature"});
         // The same helper with its names changed: printed.
-        write_file(dir, "tests/helpers_b.cpp",
+        write_fixture_file(dir, "tests/helpers_b.cpp",
                    "#include <vector>\n\nnamespace {\n\n" + summing("add_up", "xs", "acc", "x") +
                        "\n}  // namespace\n");
         // A member function with that body: not a helper.
-        write_file(dir, "tests/members.cpp",
+        write_fixture_file(dir, "tests/members.cpp",
                    "#include <vector>\n\nstruct Totals {\n" + summing("total_of", "ys", "t", "y") + "};\n");
         // A namespace whose head is longer than the look-back: read as a
         // class, so its function is not a helper.
-        write_file(dir, "tests/far_ns.cpp",
+        write_fixture_file(dir, "tests/far_ns.cpp",
                    "#include <vector>\n\nnamespace far\n" + long_comment() + "{\n" +
                        summing("far_sum", "zs", "s", "z") + "}\n");
         // Two copies inside one file: not two files.
-        write_file(dir, "tests/one_file.cpp", factorial("first_copy", "n", "p") + factorial("second_copy", "m", "q"));
+        write_fixture_file(dir, "tests/one_file.cpp", factorial("first_copy", "n", "p") + factorial("second_copy", "m", "q"));
         // A short body under another name matches by name only: not printed.
-        write_file(dir, "tests/short_b.cpp", "int tiny_b(int r) { return r + 1; }\n");
+        write_fixture_file(dir, "tests/short_b.cpp", "int tiny_b(int r) { return r + 1; }\n");
         // A short helper under the same name: printed, bodies differ.
-        write_file(dir, "tests/short_c.cpp", "int tiny_a(int z) { return z * 2; }\n");
+        write_fixture_file(dir, "tests/short_c.cpp", "int tiny_a(int z) { return z * 2; }\n");
         // Test cases with one body in two files: not helpers.
-        write_file(dir, "tests/test_one.cpp", "TEST_CASE(\"one\") {\n    int k = 0;\n    CHECK(k == 0);\n}\n");
-        write_file(dir, "tests/test_two.cpp", "TEST_CASE(\"two\") {\n    int k = 0;\n    CHECK(k == 0);\n}\n");
+        write_fixture_file(dir, "tests/test_one.cpp", "TEST_CASE(\"one\") {\n    int k = 0;\n    CHECK(k == 0);\n}\n");
+        write_fixture_file(dir, "tests/test_two.cpp", "TEST_CASE(\"two\") {\n    int k = 0;\n    CHECK(k == 0);\n}\n");
         // A MIDI varlen delta typed by hand: printed outside its owner.
-        write_file(dir, "tests/varlen.cpp", "void put(int d) {\n    out.push_back(0x80 | (d >> 7));\n}\n");
-        write_file(dir, "tests/midi_util.h", "inline void put_varlen(int d) {\n    out.push_back(0x80 | (d >> 7));\n}\n");
+        write_fixture_file(dir, "tests/varlen.cpp", "void put(int d) {\n    out.push_back(0x80 | (d >> 7));\n}\n");
+        write_fixture_file(dir, "tests/midi_util.h", "inline void put_varlen(int d) {\n    out.push_back(0x80 | (d >> 7));\n}\n");
         commit_all(dir, "feature");
     }
     ~Fixture() { testtemp::remove_dir(dir); }
