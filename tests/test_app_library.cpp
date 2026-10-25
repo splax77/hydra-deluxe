@@ -271,13 +271,18 @@ TEST_CASE("any_job_running lists every background job") {
     CHECK_FALSE(app->any_job_running());  // a finished batch is not running
 
     // The click's job counts while it runs, cancelled or not, until tick()
-    // collects it.
+    // collects it. The latch holds it inside its analysis, so it is still
+    // running when the check reads it.
     const ChartLibraryEntry song = corpus_chart("click_anyjob");
     app->store->rebuild_chart_library({song});
+    ViewLatch latch;  // after the app: see ViewLatch
     app->select(song, hydra::ui::SelectionSource::Click);
     REQUIRE(app->view_job != nullptr);
+    latch.wait_entered(1);
     app->cancel_view();
-    if (!app->view_job->finished()) CHECK(app->any_job_running());
+    REQUIRE_FALSE(app->view_job->finished());
+    CHECK(app->any_job_running());
+    latch.release();
     settle(*app);
     CHECK_FALSE(app->any_job_running());
 }

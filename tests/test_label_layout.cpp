@@ -53,8 +53,7 @@ TEST_CASE("label layout: 39 crowded numbers never overlap, first and last show")
     CHECK(out.back().has_value());
     int shown = 0;
     for (const auto& o : out) shown += o ? 1 : 0;
-    CHECK(shown > 2);
-    CHECK(shown < 39);
+    CHECK(shown == 16);  // pinned from one run
 }
 
 TEST_CASE("label layout: labels at the ends stay on the strip") {

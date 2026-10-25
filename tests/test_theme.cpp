@@ -4,6 +4,8 @@
 
 #include "doctest.h"
 
+#include <string>
+
 #include "app/report.h"  // ChipToken, tier_token
 #include "core/squeeze_rating.h"
 #include "imgui.h"
@@ -18,6 +20,15 @@ double luminance(const ImVec4& c) { return testwcag::relative_luminance(c.x, c.y
 
 double contrast(const ImVec4& a, const ImVec4& b) {
     return testwcag::contrast_ratio(luminance(a), luminance(b));
+}
+
+// Every channel of `got` equals `want`'s, alpha included.
+void check_same_color(const std::string& what, const ImVec4& got, const ImVec4& want) {
+    CAPTURE(what);
+    CHECK(got.x == want.x);
+    CHECK(got.y == want.y);
+    CHECK(got.z == want.z);
+    CHECK(got.w == want.w);
 }
 
 }  // namespace
@@ -39,10 +50,10 @@ TEST_CASE("theme: apply_theme uses the readable shades") {
     ImGui::CreateContext();
     apply_theme();
     const ImVec4* c = ImGui::GetStyle().Colors;
-    CHECK(c[ImGuiCol_Button].y == kButtonColor.y);
-    CHECK(c[ImGuiCol_ButtonHovered].y == kButtonHoveredColor.y);
-    CHECK(c[ImGuiCol_ButtonActive].y == kButtonActiveColor.y);
-    CHECK(c[ImGuiCol_TextDisabled].x == kDimTextColor.x);
+    check_same_color("Button", c[ImGuiCol_Button], kButtonColor);
+    check_same_color("ButtonHovered", c[ImGuiCol_ButtonHovered], kButtonHoveredColor);
+    check_same_color("ButtonActive", c[ImGuiCol_ButtonActive], kButtonActiveColor);
+    check_same_color("TextDisabled", c[ImGuiCol_TextDisabled], kDimTextColor);
     ImGui::DestroyContext();
 }
 
@@ -67,20 +78,14 @@ TEST_CASE("theme: apply_theme centres button labels and starts selectable text a
 // disabled name refers to the dimmed one rather than spelling it again.
 TEST_CASE("theme: disabled input text is the dimmed grey") {
     CHECK(&kDisabledInputTextColor == &kDimTextColor);
-    CHECK(kDisabledInputTextColor.x == kDimTextColor.x);
-    CHECK(kDisabledInputTextColor.y == kDimTextColor.y);
-    CHECK(kDisabledInputTextColor.z == kDimTextColor.z);
-    CHECK(kDisabledInputTextColor.w == kDimTextColor.w);
+    check_same_color("disabled input text", kDisabledInputTextColor, kDimTextColor);
 }
 
 TEST_CASE("theme: a selected row is the dark teal and its text stays readable") {
     ImGui::CreateContext();
     apply_theme();
     const ImVec4& header = ImGui::GetStyle().Colors[ImGuiCol_Header];
-    CHECK(header.x == kSelectedRowColor.x);
-    CHECK(header.y == kSelectedRowColor.y);
-    CHECK(header.z == kSelectedRowColor.z);
-    CHECK(header.w == kSelectedRowColor.w);
+    check_same_color("Header", header, kSelectedRowColor);
     ImGui::DestroyContext();
     // The user's choice of 2026-10-14: (0, 48, 48).
     CHECK(kSelectedRowColor.y * 255.0f == doctest::Approx(48.0f));
@@ -101,10 +106,7 @@ TEST_CASE("theme: frames and headers share one hover teal") {
     apply_theme();
     const ImVec4* c = ImGui::GetStyle().Colors;
     for (const ImGuiCol slot : {ImGuiCol_FrameBgHovered, ImGuiCol_HeaderHovered}) {
-        CHECK(c[slot].x == kFrameHoveredColor.x);
-        CHECK(c[slot].y == kFrameHoveredColor.y);
-        CHECK(c[slot].z == kFrameHoveredColor.z);
-        CHECK(c[slot].w == kFrameHoveredColor.w);
+        check_same_color(ImGui::GetStyleColorName(slot), c[slot], kFrameHoveredColor);
     }
     ImGui::DestroyContext();
 }
@@ -119,7 +121,6 @@ TEST_CASE("theme: report chip colours read on the window background") {
                                   ChipToken::t4, ChipToken::t5, ChipToken::tn,
                                   ChipToken::muted}) {
         CAPTURE(static_cast<int>(token));
-        CHECK(contrast(chip_color(token), kWindowBgColor) >= 3.0);
         CHECK(contrast(chip_color(token), kWindowBgColor) >= 4.5);
         CHECK(contrast(chip_color(token), kSelectedRowColor) >= 4.5);
     }
@@ -143,9 +144,7 @@ TEST_CASE("theme: report chip colours are the pages' and the dimmed grey") {
     CHECK(tn.y == 0x9a / 255.0f);
     CHECK(tn.z == 0xa6 / 255.0f);
     const ImVec4 muted = chip_color(ChipToken::muted);
-    CHECK(muted.x == kDimTextColor.x);
-    CHECK(muted.y == kDimTextColor.y);
-    CHECK(muted.z == kDimTextColor.z);
+    check_same_color("muted chip", muted, kDimTextColor);
 }
 
 // A path row's tier carries tier_for's token name (ReportRow::tok);
