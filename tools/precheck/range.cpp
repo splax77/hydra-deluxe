@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <iterator>
+#include <sstream>
 
 #include "code_lexer.h"
 #include "core/strutil.h"
@@ -23,6 +24,13 @@ bool all_digits(const std::string& s) {
 
 // One side of "A...B" or "A..B" as a name; as in git, an empty side means HEAD.
 std::string range_side(const std::string& side) { return side.empty() ? "HEAD" : side; }
+
+// Where `tip` forked from `left`: the base of "left...tip".
+std::string fork_point(const Repo& repo, const std::string& left, const std::string& tip) {
+    const std::vector<std::string> mb = repo.git({"merge-base", left, tip});
+    if (mb.empty()) throw GitError("git merge-base " + left + " " + tip + " printed nothing");
+    return mb[0];
+}
 
 // The start line and line count of one side of a hunk header ("+12,3" or "+12").
 bool hunk_side(const std::string& field, char sign, long long& start, long long& count) {
@@ -92,16 +100,25 @@ Range resolve_range(const Repo& repo, const std::string& spelling, bool whole_tr
         const std::string b = spelling.substr(dots + (three ? 3 : 2));
         r.tip = repo.resolve_commit(range_side(b));
         r.left = repo.resolve_commit(range_side(a));
-        if (three) {
-            const std::vector<std::string> mb = repo.git({"merge-base", r.left, r.tip});
-            if (mb.empty()) throw GitError("git merge-base " + r.left + " " + r.tip + " printed nothing");
-            r.base = mb[0];
-        } else {
-            r.base = r.left;
-        }
+        r.base = three ? fork_point(repo, r.left, r.tip) : r.left;
     } else {
         r.tip = repo.resolve_commit(spelling);
-        if (!whole_tree) r.base = repo.resolve_commit(spelling + "^1");
+        // "<commit> <parent> <parent>...", one line.
+        const std::vector<std::string> line = repo.git({"rev-list", "--parents", "-n", "1", r.tip});
+        std::vector<std::string> parents;
+        if (!line.empty()) {
+            std::istringstream in(line[0]);
+            for (std::string h; in >> h;) parents.push_back(h);
+            if (!parents.empty()) parents.erase(parents.begin());
+        }
+        if (parents.size() >= 2) {
+            // A merge commit: the same as "<first parent>...<second parent>".
+            r.left = parents[0];
+            r.tip = parents[1];
+            r.base = fork_point(repo, r.left, r.tip);
+        } else if (!whole_tree) {
+            r.base = repo.resolve_commit(r.tip + "^1");
+        }
     }
     r.rules_rev = rules_at.empty() ? r.tip : repo.resolve_commit(rules_at);
     return r;
@@ -122,27 +139,43 @@ AddedLines AddedLines::whole(const std::vector<std::string>& files) {
 }
 
 AddedLines AddedLines::from_diff(const Repo& repo, const std::string& base, const std::string& tip) {
+    return ChangedLines::from_diff(repo, base, tip).added;
+}
+
+AddedLines AddedLines::parse_diff(const std::vector<std::string>& diff_lines) {
+    return ChangedLines::parse_diff(diff_lines).added;
+}
+
+ChangedLines ChangedLines::from_diff(const Repo& repo, const std::string& base, const std::string& tip) {
     std::vector<std::string> args = {"diff", "--no-color", "--no-ext-diff", "--no-renames", "-U0", base, tip, "--"};
     args.insert(args.end(), code_folders().begin(), code_folders().end());
     return parse_diff(repo.git(args));
 }
 
-AddedLines AddedLines::parse_diff(const std::vector<std::string>& diff_lines) {
-    AddedLines a;
-    std::string cur;  // the file the hunks belong to; empty for a deleted file
+ChangedLines ChangedLines::parse_diff(const std::vector<std::string>& diff_lines) {
+    ChangedLines c;
+    std::map<std::string, std::optional<std::set<int>>>& added = c.added.sets_;
+    std::string cur;  // the tip path the hunks belong to; empty for a deleted file
+    std::string old_cur;  // the base path the hunks belong to; empty for a new file
     long long old_left = 0, new_left = 0;  // hunk body lines still to come
     for (const std::string& l : diff_lines) {
-        // A hunk's own lines are skipped by count, so an added line that
-        // starts "++ " is never read as a file header.
+        // A hunk's own lines are skipped by count, so a body line that
+        // starts "++ " or "-- " is never read as a file header.
         if (old_left > 0 || new_left > 0) {
             if (!l.empty() && l[0] == '-') --old_left;
             else if (!l.empty() && l[0] == '+') --new_left;
             continue;
         }
+        if (starts_with(l, "--- ")) {
+            static const std::string kOldFile = "--- a/";  // git's default prefix for the old side
+            old_cur = starts_with(l, kOldFile) ? l.substr(kOldFile.size()) : "";
+            if (!old_cur.empty()) c.deleted[old_cur];
+            continue;
+        }
         if (starts_with(l, "+++ ")) {
             static const std::string kNewFile = "+++ b/";  // git's default prefix for the new side
             cur = starts_with(l, kNewFile) ? l.substr(kNewFile.size()) : "";
-            if (!cur.empty() && !a.sets_.count(cur)) a.sets_[cur] = std::set<int>{};
+            if (!cur.empty() && !added.count(cur)) added[cur] = std::set<int>{};
             continue;
         }
         if (!starts_with(l, "@@ ")) continue;
@@ -156,10 +189,12 @@ AddedLines AddedLines::parse_diff(const std::vector<std::string>& diff_lines) {
             continue;
         old_left = ocount;
         new_left = ncount;
-        if (cur.empty()) continue;
-        for (long long i = 0; i < ncount; ++i) a.sets_[cur]->insert(static_cast<int>(nstart + i));
+        if (!old_cur.empty())
+            for (long long i = 0; i < ocount; ++i) c.deleted[old_cur].insert(static_cast<int>(ostart + i));
+        if (!cur.empty())
+            for (long long i = 0; i < ncount; ++i) added[cur]->insert(static_cast<int>(nstart + i));
     }
-    return a;
+    return c;
 }
 
 bool AddedLines::added(const std::string& file, int line) const {
