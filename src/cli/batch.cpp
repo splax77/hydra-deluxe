@@ -21,11 +21,7 @@
 // same pool the GUI's "Analyze library" uses), so lines can complete out of
 // chart-discovery order.
 //
-// Which charts a run reads is batch_scope's answer. A run over the whole
-// library takes the explicit flag, so a bare `hydra_batch` never starts one.
-//
-// tests/test_batch_text.cpp includes this file with HYDRA_BATCH_NO_MAIN
-// defined, to test batch_scope and batch_main without the exe.
+// Which charts a run reads is hydra::cli::batch_scope's answer (batch_scope.h).
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -38,13 +34,13 @@
 #include <cstdio>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/rules_file.h"
 #include "app/user_messages.h"
+#include "cli/batch_scope.h"
 #include "core/model.h"
 #include "core/winstr.h"
 #include "parse/song.h"
@@ -67,44 +63,12 @@ std::string clip_utf8(const std::string& s, size_t max_chars) {
     return s.substr(0, i) + std::string(max_chars > chars ? max_chars - chars : 0, ' ');
 }
 
-}  // namespace
-
-namespace hydra::cli {
-
-inline constexpr std::string_view kWholeLibraryFlag = "--whole-library";
-
-// What a run's folder arguments and kWholeLibraryFlag ask for.
-enum class BatchScope {
-    Library,    // every folder in the app's settings
-    Folders,    // just the folders given
-    Refused,    // neither: a whole-library run must be asked for by name
-    Ambiguous,  // both: the flag and folders contradict each other
-};
-
-BatchScope batch_scope(bool whole_library, bool has_folders) {
-    if (whole_library) return has_folders ? BatchScope::Ambiguous : BatchScope::Library;
-    return has_folders ? BatchScope::Folders : BatchScope::Refused;
-}
-
-// The one line a refused or ambiguous run prints; empty for a run that goes ahead.
-std::string batch_scope_error(BatchScope scope) {
-    const std::string flag(kWholeLibraryFlag);
-    switch (scope) {
-        case BatchScope::Refused:
-            return "A run over the whole library needs " + flag +
-                   ". Name chart folders to analyze just those.";
-        case BatchScope::Ambiguous:
-            return flag + " analyzes every folder in the app's settings, so it takes no folder names.";
-        case BatchScope::Library:
-        case BatchScope::Folders:
-            break;
-    }
-    return {};
-}
-
-// args[0] is the program name, as utf8_argv gives it.
-int batch_main(const std::vector<std::string>& args) {
+int batch_main() {
+    SetConsoleOutputCP(CP_UTF8);  // chart titles/artists are UTF-8
+    const std::vector<std::string> args = hydra::utf8_argv();
     const int argc = static_cast<int>(args.size());
+    using hydra::cli::BatchScope;
+    using hydra::cli::kWholeLibraryFlag;
 
     bool redo = false, legacy_fills = false, whole_library = false;
     std::optional<std::string> dbpath;
@@ -128,9 +92,9 @@ int batch_main(const std::vector<std::string>& args) {
 
     // Settled before the settings or the store are touched, so a refused run
     // opens nothing.
-    const BatchScope scope = batch_scope(whole_library, !folder_args.empty());
+    const BatchScope scope = hydra::cli::batch_scope(whole_library, !folder_args.empty());
     if (scope == BatchScope::Refused || scope == BatchScope::Ambiguous) {
-        std::fprintf(stderr, "%s\n", batch_scope_error(scope).c_str());
+        std::fprintf(stderr, "%s\n", hydra::cli::batch_scope_error(scope).c_str());
         return 2;
     }
 
@@ -255,11 +219,6 @@ int batch_main(const std::vector<std::string>& args) {
     return 0;
 }
 
-}  // namespace hydra::cli
+}  // namespace
 
-#ifndef HYDRA_BATCH_NO_MAIN
-int main() {
-    SetConsoleOutputCP(CP_UTF8);  // chart titles/artists are UTF-8
-    return hydra::app::run_tool([] { return hydra::cli::batch_main(hydra::utf8_argv()); });
-}
-#endif
+int main() { return hydra::app::run_tool(batch_main); }

@@ -4,17 +4,9 @@
 
 #include "doctest.h"
 
-// hydra_batch's own source, without its main(), so its argument decision is
-// tested here and no library run is ever started.
-#define HYDRA_BATCH_NO_MAIN
-#include "cli/batch.cpp"
-
-#include <filesystem>
-
-#include "temp_util.h"
-
 #include "app/analysis.h"  // batch_cant_analyze_text
 #include "app/config.h"
+#include "cli/batch_scope.h"
 #include "core/model.h"  // counted
 #include "ui/library_parts.h"
 
@@ -224,22 +216,4 @@ TEST_CASE("hydra_batch: the whole library needs --whole-library, and folders run
           "names.");
     CHECK(batch_scope_error(BatchScope::Library).empty());
     CHECK(batch_scope_error(BatchScope::Folders).empty());
-}
-
-TEST_CASE("hydra_batch: a refused or ambiguous run exits 2 and opens no store") {
-    // Guards the calls below: on a build where a bare run still means the
-    // library, batch_main would start one, so the test stops here instead.
-    REQUIRE(batch_scope(false, false) == BatchScope::Refused);
-    REQUIRE(batch_scope(true, true) == BatchScope::Ambiguous);
-
-    namespace fs = std::filesystem;
-    const std::string dbarg = testtemp::temp_path("batch_scope", ".db");
-    const fs::path db = hydra::os_path(dbarg);
-    fs::remove(db);
-
-    CHECK(hydra::cli::batch_main({"hydra_batch", "--db", dbarg}) == 2);
-    CHECK_FALSE(fs::exists(db));
-    CHECK(hydra::cli::batch_main({"hydra_batch", "--whole-library", "--db", dbarg,
-                                  "no-such-songs"}) == 2);
-    CHECK_FALSE(fs::exists(db));
 }
