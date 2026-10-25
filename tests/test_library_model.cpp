@@ -257,9 +257,9 @@ TEST_CASE("library model: an album draws without its tags, a blank one draws emp
     CHECK(m.order().empty());
 }
 
-TEST_CASE("library model: each column's position and its saved ID are one mapping") {
-    // The IDs are what hydra_ui.ini saves, so the five shipped ones keep their
-    // values and Album takes 5 while it is drawn third.
+TEST_CASE("library model: each column's position and its user ID are one mapping") {
+    // The five shipped IDs keep their values and Album takes 5 while it is
+    // drawn third (the user's call, 2026-10-24).
     using hydra::ui::column_of;
     using hydra::ui::sort_of;
     CHECK(hydra::ui::kLibraryColumnCount == 6);

@@ -1444,7 +1444,7 @@
       "note": "The library's floor beside the panel, or the panel's floor taken off the room. The Paths tests' check that the panel sits at its own minimum is a different question. Decided by: audit finding 120; phase 6 task J4-3 (D53, D54)"
     },
     {
-      "question": "Which position does each of the library's six columns sit at, which saved ID does it carry, and how many columns are there?",
+      "question": "Which position does each of the library's six columns sit at, which user ID does it carry, and how many columns are there?",
       "owner": "kColumnTitle to kColumnBestPath, kLibraryColumnCount, sort_of and column_of in src/ui/library_model.h",
       "owner_file": "src/ui/library_model.h",
       "owner_symbol": "kColumnTitle",
@@ -1470,7 +1470,7 @@
         "src",
         "tests"
       ],
-      "note": "A column's position and its saved ID (its LibrarySort value, which hydra_ui.ini keys the column's state by) are two lists; sort_of and column_of are the one place they meet, so no other file casts one to the other. Decided by: audit finding 297; phase 6 task J4-3 (D53, D54); album task ALB-3 (the user kept the saved IDs, 2026-10-24)"
+      "note": "A column's position and its user ID (its LibrarySort value, which the sort spec hands back) are two lists; sort_of and column_of are the one place they meet, so no other file casts one to the other. Decided by: audit finding 297; phase 6 task J4-3 (D53, D54); album task ALB-3 (the user kept the saved IDs, 2026-10-24)"
     },
     {
       "question": "Is a job old enough, with a known rate, to show its time left, and in what words?",

@@ -28,9 +28,10 @@ namespace hydra::ui {
 enum class StatusChip { All, NotAnalyzed, Stale, Analyzed, CantAnalyze };
 
 // The table's sortable columns. The values are the columns' user IDs in the
-// table, so a sort spec maps straight back to one of these. hydra_ui.ini saves
-// each column's hidden state and the sort under this ID, so a value never
-// changes once shipped and a new column takes the next free one.
+// table, so a sort spec maps straight back to one of these. A shipped value
+// stays as it is and a new column takes the next free one (the user's call,
+// 2026-10-24). hydra_ui.ini does not read these: ImGui saves a column's state
+// under its header label's hash (TableSetupColumn).
 enum class LibrarySort { Title = 0, Artist = 1, Charter = 2, Folder = 3, BestPath = 4, Album = 5 };
 
 // The table's columns, by position, left to right. A column's position is not

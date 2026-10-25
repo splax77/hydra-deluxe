@@ -311,8 +311,8 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
         return used;
 
     ImGui::TableSetupScrollFreeze(0, 1);  // the header row stays on screen
-    // Each column's user ID is its LibrarySort value (sort_of), which is also
-    // what hydra_ui.ini saves its state under.
+    // Each column's user ID is its LibrarySort value (sort_of), which the
+    // sort spec hands back below.
     const auto user_id = [](int column) { return static_cast<ImGuiID>(sort_of(column)); };
     setup_column(columns[kColumnTitle], layout, kColumnTitle,
                  ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_NoHide,
