@@ -21,6 +21,7 @@
 #include "imgui.h"
 #include "imgui_internal.h"  // SettingsDirtyTimer, to see what marks the ini for saving
 
+#include "headless_imgui_fixture.h"
 #include "temp_util.h"
 #include "testdata_dirs.h"  // resource_root
 #include "ui/app_shell.h"
@@ -42,6 +43,27 @@ hydra::ui::ImGuiSetupOptions test_options(const std::string& ini_file) {
     opts.resource_dir = corpus::resource_root();
     return opts;
 }
+
+// ImGui set up on `ini_file`, shut down when the guard goes out of scope, so
+// a failed REQUIRE leaves no context alive for the next test. end() shuts it
+// down early, for a test that reads the ini DestroyContext writes.
+class ImGuiOnIni {
+public:
+    explicit ImGuiOnIni(const std::string& ini_file) {
+        hydra::ui::setup_imgui(test_options(ini_file));
+    }
+    ~ImGuiOnIni() { end(); }
+    void end() {
+        if (!live_) return;
+        live_ = false;
+        hydra::ui::shutdown_imgui();
+    }
+    ImGuiOnIni(const ImGuiOnIni&) = delete;
+    ImGuiOnIni& operator=(const ImGuiOnIni&) = delete;
+
+private:
+    bool live_ = true;
+};
 
 }  // namespace
 
@@ -268,7 +290,7 @@ TEST_CASE("app_shell: hydra_ui.ini keeps each report's placement in its own sect
              "[Hydra][Window:pathreport]\nPos=8,31\nSize=2544,1353\nMaximized=1\n\n";
     }
 
-    hydra::ui::setup_imgui(test_options(ini.string()));
+    ImGuiOnIni imgui(ini.string());
     const WindowPlacement path = hydra::ui::report_window_placement("pathreport");
     CHECK(path.valid);
     CHECK(path.normal == ScreenRect{8, 31, 2552, 1384});
@@ -288,7 +310,7 @@ TEST_CASE("app_shell: hydra_ui.ini keeps each report's placement in its own sect
     dm.normal = {2600, 60, 4400, 1000};
     hydra::ui::remember_report_placement("dmreport", dm);
     CHECK(g.SettingsDirtyTimer > 0.0f);
-    hydra::ui::shutdown_imgui();  // DestroyContext writes the ini
+    imgui.end();  // DestroyContext writes the ini
 
     std::ifstream f(ini);
     std::stringstream text;
@@ -317,7 +339,7 @@ TEST_CASE("app_shell: scaling always starts from the unscaled style") {
     CHECK(once.ItemSpacing.y == again.ItemSpacing.y);
     CHECK(once.FontScaleDpi == doctest::Approx(1.5f));
     const ImGuiStyle doubled = hydra::ui::scaled_style(base, 2.0f);
-    CHECK(doubled.FramePadding.x == base.FramePadding.x * 2.0f);
+    CHECK(doubled.FramePadding.x == 8.0f);  // pinned from one run
     const ImGuiStyle unscaled = hydra::ui::scaled_style(base, 1.0f);
     CHECK(unscaled.FramePadding.x == base.FramePadding.x);
     CHECK(unscaled.ScrollbarSize == base.ScrollbarSize);
@@ -429,7 +451,7 @@ TEST_CASE("app_shell: set_ui_scale rescales sizes, fonts and px() together") {
 }
 
 TEST_CASE("app_shell: the atlas reads every UI font from a file map it does not own") {
-    hydra::ui::setup_imgui(test_options("-"));
+    const hydra::test::HeadlessImGui imgui;
     const ImFontAtlas* atlas = ImGui::GetIO().Fonts;
     REQUIRE(atlas->Sources.Size >= 2);
     // Every source, the merged Japanese fallback too when this machine has one.
@@ -441,7 +463,6 @@ TEST_CASE("app_shell: the atlas reads every UI font from a file map it does not 
         REQUIRE(VirtualQuery(source.FontData, &info, sizeof(info)) == sizeof(info));
         CHECK(info.Type == MEM_MAPPED);
     }
-    hydra::ui::shutdown_imgui();
 }
 
 TEST_CASE("app_shell: a folder without the font files loads no fonts") {

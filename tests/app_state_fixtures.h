@@ -1,11 +1,12 @@
 // Shared fixtures for the AppState tests, test_app_click.cpp and the files
 // split from it: a seeded library with no chart files, real corpus charts to
-// click, the frame loop that waits for a click, and a Redo batch run with a
-// test analyzer. They were one file's helpers; they live here once so the
+// click, the frame loop that waits for a click, a latch that holds a click's
+// job, and a Redo batch run with a test analyzer. They were one file's helpers; they live here once so the
 // split files share them instead of copying them.
 #ifndef HYDRA_TESTS_APP_STATE_FIXTURES_H
 #define HYDRA_TESTS_APP_STATE_FIXTURES_H
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -148,6 +149,37 @@ inline const hydra::ui::LibraryRow& row_of(const hydra::ui::AppState& app,
     FAIL("no library row for " << md5);
     throw std::logic_error("unreachable");
 }
+
+// ---- a click's job held at a latch -------------------------------------------
+
+// Holds every click's job started from now on inside its analysis until
+// release(), the way a slow parse would: the job ignores Cancel while held,
+// then stops at its first progress tick if it was cancelled. `entered` counts
+// the jobs that reached it. Declare it AFTER the AppState: its destructor lets
+// every held job through, and the app's destructor joins them.
+struct ViewLatch {
+    std::shared_ptr<std::atomic<bool>> open = std::make_shared<std::atomic<bool>>(false);
+    std::shared_ptr<std::atomic<int>> entered = std::make_shared<std::atomic<int>>(0);
+    // After open and entered, which it copies; cleared after the release below.
+    const ScopedHook seam{
+        hydra::ui::set_view_analyzer_for_test,
+        [open = open, entered = entered](const std::string& path,
+                                         const hydra::app::AnalysisSettings& settings,
+                                         const std::function<void(float)>& on_progress) {
+            ++*entered;
+            testwait::wait_until([&open] { return open->load(); },
+                                 "the test to open the latch");
+            on_progress(0.0f);  // throws when the job was cancelled
+            return hydra::app::analyze_chart_file(path, settings, on_progress);
+        }};
+    ~ViewLatch() { release(); }
+    void release() { open->store(true); }
+    // Waits until `n` jobs have reached the latch.
+    void wait_entered(int n) {
+        testwait::wait_until([&] { return entered->load() >= n; },
+                             std::to_string(n) + " jobs to reach the latch");
+    }
+};
 
 // ---- a Redo batch with a test analyzer -------------------------------------
 

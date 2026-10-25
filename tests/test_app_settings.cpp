@@ -42,34 +42,6 @@ namespace {
 
 using testtemp::temp_path;
 
-// Holds every click's job started from now on inside its analysis until
-// release(), the way a slow parse would: the job ignores Cancel while held,
-// then stops at its first progress tick if it was cancelled. `entered` counts
-// the jobs that reached it. Declare it AFTER the AppState: its destructor lets
-// every held job through, and the app's destructor joins them.
-struct ViewLatch {
-    std::shared_ptr<std::atomic<bool>> open = std::make_shared<std::atomic<bool>>(false);
-    std::shared_ptr<std::atomic<int>> entered = std::make_shared<std::atomic<int>>(0);
-    // After open and entered, which it copies; cleared after the release below.
-    const ScopedHook seam{
-        hydra::ui::set_view_analyzer_for_test,
-        [open = open, entered = entered](const std::string& path,
-                                         const hydra::app::AnalysisSettings& settings,
-                                         const std::function<void(float)>& on_progress) {
-            ++*entered;
-            wait_until([&open] { return open->load(); }, "the test to open the latch");
-            on_progress(0.0f);  // throws when the job was cancelled
-            return hydra::app::analyze_chart_file(path, settings, on_progress);
-        }};
-    ~ViewLatch() { release(); }
-    void release() { open->store(true); }
-    // Waits until `n` jobs have reached the latch.
-    void wait_entered(int n) {
-        wait_until([&] { return entered->load() >= n; },
-                   std::to_string(n) + " jobs to reach the latch");
-    }
-};
-
 }  // namespace
 
 // ---- settings (D90) --------------------------------------------------------
@@ -193,16 +165,18 @@ TEST_CASE("a burst of setting changes ends with one analysis of the final settin
     latch.release();
 
     std::set<int> started{first_generation};
+    bool pending_with_no_job = false;
     wait_until(
         [&] {
             if (!app->view_job && !app->view_pending) return true;
             // While a request waits, the job still running is an older one.
-            if (app->view_pending) CHECK(app->view_job != nullptr);
+            if (app->view_pending && !app->view_job) pending_with_no_job = true;
             app->tick(0.0);
             if (app->view_job) started.insert(app->view_job->generation());
             return false;
         },
         "the held click jobs and the waiting request to end");
+    CHECK_FALSE(pending_with_no_job);
     CHECK(started == std::set<int>{first_generation, final_generation});
     CHECK(latch.entered->load() == 2);
 
