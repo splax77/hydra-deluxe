@@ -7,7 +7,7 @@
 // running on through the file.
 //
 // The docs check in tests/test_docs_match_code.cpp and the single-owner scan
-// in tests/single_owner/scan.cpp use it. Its own case is "code lexer: ..." in
+// in tests/single_owner/ (scan.cpp and engine.cpp) use it. Its own case is "code lexer: ..." in
 // tests/test_docs_match_code.cpp.
 #pragma once
 

@@ -1,6 +1,6 @@
 // The rows and the baselines the single-owner cases read. The data lives in
-// tests/single_owner/rules/ (rule_files in scan.cpp says which files) and
-// tests/single_owner/baseline.json; load_tables in scan.cpp is their one
+// tests/single_owner/rules/ (select_rule_files in engine.cpp says which files) and
+// tests/single_owner/baseline.json; load_tables in engine.cpp is their one
 // reader, and these accessors return what it read.
 #pragma once
 
@@ -43,7 +43,7 @@ struct OwnerRule {
     // symbol, so a moved or deleted owner cannot leave the row checking nothing.
     std::string owner_file;                // repo-relative
     std::string owner_symbol;
-    std::string rules_file;                // the file the row came from, named by rule_files in scan.cpp
+    std::string rules_file;                // the file the row came from, named by select_rule_files in engine.cpp
     std::vector<std::string> must_match;   // lines the rule flags
     std::vector<std::string> must_not_match;
     std::vector<OwnerLine> owner_lines;    // the owner's own lines; each must still match
@@ -59,7 +59,7 @@ struct OwnerRule {
     // name that comments must not use).
     bool scan_comments = false;
     // The language of the files the row reads: empty for C++, "py" for
-    // Python. The row scan in scan.cpp says which files each one is.
+    // Python. walk_language in engine.cpp says which files each one is.
     std::string language;
 };
 

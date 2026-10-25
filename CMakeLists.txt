@@ -545,6 +545,7 @@ file(GLOB hydra_test_sources CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/tests/test_*.
 add_executable(hydra_tests
     ${hydra_test_sources}
     tests/report_samples.cpp
+    tests/single_owner/engine.cpp
     tests/single_owner/scan.cpp
     tests/single_owner/clones.cpp
     tests/single_owner/special.cpp
