@@ -211,8 +211,7 @@ bool read_function(const std::vector<std::string>& toks, Head& h) {
 Head classify(const std::string& raw, bool head) {
     const std::string t = strip_head(raw);
     Head h;
-    static const std::regex ns(R"(\bnamespace\b|^extern\s*"[^"]*"$)");
-    if (std::regex_search(t, ns)) {
+    if (is_namespace_head(t)) {
         h.kind = HeadKind::Namespace;
         return h;
     }
@@ -330,26 +329,31 @@ private:
         }
     }
 
+    // Rule 2 for an enum: the word that starts each comma-separated entry of
+    // `text` gives Enum::Value.
+    void add_enumerators(const std::string& text, const std::string& enum_name, bool comment) {
+        int depth = 0;
+        bool at_start = true;
+        for (const std::string& t : tokens_of(text)) {
+            if (t == "(" || t == "{" || t == "<") ++depth;
+            if (t == ")" || t == "}" || t == ">") --depth;
+            if (depth == 0 && t == ",") {
+                at_start = true;
+                continue;
+            }
+            if (at_start && depth == 0 && is_ident(t))
+                add(enum_name.empty() ? t : enum_name + "::" + t, comment ? NameKind::Comment : NameKind::Value);
+            at_start = false;
+        }
+    }
+
     // Rule 2: what line n (first code at p) itself declares. `comment` marks
     // the names as reached through a comment line above it (rule 3).
     void declared(size_t p, int n, bool comment) {
         const size_t o = innermost(p);
         const HeadKind ctx = o == Braces::kTop ? HeadKind::Namespace : head_of(o).kind;
         if (ctx == HeadKind::Enum) {
-            const std::string& enum_name = head_of(o).name;
-            int depth = 0;
-            bool at_start = true;
-            for (const std::string& t : tokens_of(view_.line(code_, n))) {
-                if (t == "(" || t == "{" || t == "<") ++depth;
-                if (t == ")" || t == "}" || t == ">") --depth;
-                if (depth == 0 && t == ",") {
-                    at_start = true;
-                    continue;
-                }
-                if (at_start && depth == 0 && is_ident(t))
-                    add(enum_name.empty() ? t : enum_name + "::" + t, comment ? NameKind::Comment : NameKind::Value);
-                at_start = false;
-            }
+            add_enumerators(view_.line(code_, n), head_of(o).name, comment);
             return;
         }
         const size_t q = code_.find_first_of(";{}", p);
@@ -360,6 +364,13 @@ private:
         if (body && h.kind != HeadKind::Type && h.kind != HeadKind::Enum) return;
         if (h.kind == HeadKind::Namespace || h.kind == HeadKind::Other) return;
         add(h.name, comment ? NameKind::Comment : h.kind == HeadKind::Constant ? NameKind::Value : NameKind::Declared);
+        if (h.kind == HeadKind::Enum && head) {
+            // Enumerators after the "{" on this same line (a one-line enum).
+            const size_t line_end = n < view_.line_count() ? view_.line_starts[n] : code_.size();
+            const std::optional<size_t> close = braces_.close(q, code_.size());
+            const size_t stop = std::min(close.value_or(line_end), line_end);
+            if (stop > q + 1) add_enumerators(code_.substr(q + 1, stop - q - 1), h.name, comment);
+        }
     }
 };
 

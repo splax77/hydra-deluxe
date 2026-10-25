@@ -65,6 +65,35 @@
         "tools"
       ],
       "note": "---- tool text and the stem readers (phase 6 task J2-6) ---- The dump writer's line reads act.sqout_tick off the engine's activation, not the JSON, so it does not match. Decided by: audit finding 128 (tool half); phase 6 task J2-6 (D53)"
+    },
+    {
+      "question": "Is the text before a \"{\" a namespace head?",
+      "owner": "is_namespace_head in tools/precheck/definitions.cpp",
+      "owner_file": "tools/precheck/definitions.cpp",
+      "owner_symbol": "namespace_head",
+      "date": "2026-10-25",
+      "decision": "TESTPICK-2 derive-once review",
+      "added_by": "TESTPICK-2",
+      "pattern": "\\\\bnamespace\\\\b",
+      "anchor": "\\bnamespace\\b",
+      "must_match": [
+        "static const std::regex rx(R\"(\\bnamespace\\b[^;{}]*$|\\bextern\\s*\"[^\"]*\"\\s*$)\", std::regex::icase);",
+        "static const std::regex ns(R\"(\\bnamespace\\b|^extern\\s*\"[^\"]*\"$)\");"
+      ],
+      "must_not_match": [
+        "bool is_namespace_head(const std::string& head) { return std::regex_search(head, namespace_head()); }"
+      ],
+      "owner_lines": [
+        {
+          "file": "tools/precheck/definitions.cpp",
+          "line_text": "static const std::regex rx(R\"(\\bnamespace\\b[^;{}]*$|\\bextern\\s*\"[^\"]*\"\\s*$)\", std::regex::icase);",
+          "why": "namespace_head, the owner's pattern"
+        }
+      ],
+      "scope": [
+        "tools"
+      ],
+      "note": "The precheck's definition finder and changed-name finder both ask this through is_namespace_head."
     }
   ]
 }

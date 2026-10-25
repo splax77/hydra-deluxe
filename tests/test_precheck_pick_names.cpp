@@ -163,3 +163,44 @@ TEST_CASE("pick names: a name reached two ways is listed once, with the stronger
         "}\n";               // 4
     CHECK(names_of(text, {1, 3}) == "run:body");
 }
+
+TEST_CASE("pick names: a one-line enum gives its values, and a changed value line gives Enum::Value") {
+    const std::string text =
+        "namespace hydra {\n"                   // 1
+        "enum class M { A, B = 2 };\n"          // 2
+        "enum Plain { X, Y };\n"                // 3
+        "}\n";                                  // 4
+    CHECK(names_of(text, {2}) == "M:declared M::A:value M::B:value");
+    CHECK(names_of(text, {3}) == "Plain:declared Plain::X:value Plain::Y:value");
+}
+
+TEST_CASE("pick names: a data member with parentheses is not a function") {
+    const std::string text =
+        "class Panel {\n"                              // 1
+        "    std::function<void(int)> on_click_;\n"    // 2
+        "    std::function<Song(Chart)> make_;\n"      // 3
+        "    int (*fp_)(int) = nullptr;\n"             // 4
+        "    int table_[kSize(3)];\n"                  // 5
+        "    Widget w_{make(1)};\n"                    // 6
+        "    int area_ = compute(2);\n"                // 7
+        "};\n";                                        // 8
+    for (int n = 2; n <= 7; ++n) CHECK(names_of(text, {n}) == "Panel:body");
+}
+
+TEST_CASE("pick names: the plan's worked example shapes in one file") {
+    const std::string text =
+        "namespace hydra {\n"                                        // 1
+        "namespace {\n"                                              // 2
+        "// Ten measures of fill length.\n"                          // 3
+        "constexpr int kCh10FillLengthMeasures = 2;\n"               // 4
+        "}  // namespace\n"                                          // 5
+        "constexpr int kResultsStamp = 9;\n"                         // 6
+        "// Checks the activations.\n"                               // 7
+        "bool Song::check_activations() const {\n"                   // 8
+        "    return true;\n"                                         // 9
+        "}\n"                                                        // 10
+        "}  // namespace hydra\n";                                   // 11
+    CHECK(names_of(text, {3}) == "kCh10FillLengthMeasures:comment");
+    CHECK(names_of(text, {6}) == "kResultsStamp:value");
+    CHECK(names_of(text, {7}) == "check_activations:comment");
+}
