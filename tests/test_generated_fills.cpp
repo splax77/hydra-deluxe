@@ -3,6 +3,7 @@
 // A chart with no fills of its own gets fills placed the way Clone Hero
 // 1.1.0.6142's generator places them (0x20D2B30): on the chord nearest a
 // measure line of Clone Hero's grid (MeasureIndex), starting on the line.
+// Clone Hero 1.0 mode reads the same grid with its own fill rule.
 // Each case pins a literal from the rule as the plan reads it, never a
 // second copy of the rule.
 
@@ -70,9 +71,9 @@ TEST_CASE("generated fills: a chord 241 ticks after the second measure line gets
                                       FillDeadlineRule::Ch11) == 0.0);
 }
 
-TEST_CASE("generated fills: Clone Hero 1.0 mode keeps the old half-measure fills, 1.1 the new") {
-    // User decision 2026-10-14: "Keep 1.0 exactly as before". Two chords 10
-    // ticks after the measure lines at 1920 and 9600 (resolution 480, 4/4).
+TEST_CASE("generated fills: Clone Hero 1.0 mode gives half-measure fills, 1.1 line-start fills") {
+    // Two chords 10 ticks after the measure lines at 1920 and 9600
+    // (resolution 480, 4/4).
     const std::vector<int64_t> chords = {1930, 9610};
     // 1.1: each fill starts on its line, so its length is 10 ticks.
     CHECK(fills_of(song_with_chords(chords, 0, FillDeadlineRule::Ch11)) ==
@@ -148,6 +149,21 @@ TEST_CASE("generated fills: a 4/4 to 7/8 change places fills on the restarted gr
     // 6240, ... (1680 ticks per 7/8 measure).
     const Song song = song_with_chords({3000, 4660, 9650}, 2880);
     CHECK(fills_of(song) == Fills{{2880, 3000}, {9600, 9650}});
+}
+
+TEST_CASE("generated fills: Clone Hero 1.0 mode reads the same restarted grid") {
+    // The same map and chords as above. 1.0 asks the grid too, so its fills
+    // sit on the lines at 2880 and 9600, each half a 7/8 measure (840 ticks)
+    // long, ending on its chord.
+    const Song song = song_with_chords({3000, 4660, 9650}, 2880, FillDeadlineRule::Ch10);
+    CHECK(fills_of(song) == Fills{{2160, 3000}, {8810, 9650}});
+}
+
+TEST_CASE("generated fills: a 1.0 fill whose chord sits on a meter change takes the new meter") {
+    // 7/8 from tick 3840, a 4/4 measure line. The chord on that tick is in
+    // the 7/8 span, so its fill is half a 7/8 measure: 840 ticks.
+    const Song song = song_with_chords({3840}, 3840, FillDeadlineRule::Ch10);
+    CHECK(fills_of(song) == Fills{{3000, 3840}});
 }
 
 TEST_CASE("generated fills: a chart with its own fills gets none generated") {
