@@ -96,14 +96,16 @@ jobs:
       # GitHub evicts only above the repository's 10 GB, least recently used
       # first, so old build folders would push out the fuzz corpus caches,
       # which fuzz.yml reads only once a week. Keeping just the two newest
-      # build folders leaves room for them.
+      # build folders leaves room for them. The list is limited to this run's
+      # own branch, so a manual run on another branch cannot push main's saved
+      # folders out of the two.
       - name: Delete all but the two newest build folders
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          $caches = gh cache list --key build-folder-build-cpp- --sort created_at --order desc --limit 100 --json id,key | ConvertFrom-Json
+          $caches = gh cache list --ref $env:GITHUB_REF --key build-folder-build-cpp- --sort created_at --order desc --limit 100 --json id,key | ConvertFrom-Json
           if ($LASTEXITCODE) { throw 'gh cache list failed' }
           foreach ($c in @($caches | Select-Object -Skip 2)) {
             gh cache delete $c.id

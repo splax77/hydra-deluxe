@@ -477,8 +477,8 @@ commit ranges and skips them in a shallow clone.
 
 The main job builds on a saved build folder, so a push recompiles only what
 it changed. After its build, a push to `main` or a manual run saves
-`build-cpp` in GitHub's cache, and only the two newest saved folders are
-kept. Pushes and pull requests restore the newest one, then
+`build-cpp` in GitHub's cache, and each branch keeps only its two newest
+saved folders. Pushes and pull requests restore the newest one, then
 `tools/ci_build_folder.ps1` decides whether the build can use it. That script
 owns the rules and prints which way it went. In short, the build starts cold
 (from nothing) when there is no saved folder, when the saved folder's commit
