@@ -1,6 +1,7 @@
 #include "test_pick.h"
 
 #include <algorithm>
+#include <cctype>
 #include <map>
 #include <set>
 #include <sstream>
@@ -279,6 +280,56 @@ bool defines_main(const std::string& code) {
     return false;
 }
 
+// ----------------------------------------------------------------- exes
+
+// CMakeLists.txt text with its # comments blanked.
+std::string cmake_code(const std::string& text) {
+    std::string out = text;
+    for (size_t i = out.find('#'); i != std::string::npos; i = out.find('#', i)) {
+        const size_t end = out.find('\n', i);
+        const size_t stop = end == std::string::npos ? out.size() : end;
+        std::fill(out.begin() + static_cast<std::ptrdiff_t>(i), out.begin() + static_cast<std::ptrdiff_t>(stop), ' ');
+        i = stop;
+    }
+    return out;
+}
+
+// The targets whose add_executable(...) in `cmake` lists `file`.
+std::vector<std::string> exe_targets_listing(const std::string& cmake, const std::string& file) {
+    std::vector<std::string> out;
+    for (size_t h : word_hits(cmake, "add_executable")) {
+        const size_t open = skip_space(cmake, h + std::string("add_executable").size());
+        if (open >= cmake.size() || cmake[open] != '(') continue;
+        const size_t close = cmake.find(')', open);
+        if (close == std::string::npos) continue;
+        std::istringstream words(cmake.substr(open + 1, close - open - 1));
+        std::string target;
+        if (!(words >> target)) continue;
+        for (std::string w; words >> w;)
+            if (w == file) {
+                out.push_back(target);
+                break;
+            }
+    }
+    return out;
+}
+
+// The compile definition naming an exe target's path in the tests: the
+// user's HYDRA_<TARGET>_EXE (plan, "User decisions", last paragraph).
+std::string exe_constant(const std::string& target) {
+    static const std::string kPrefix = "hydra_";
+    std::string name = starts_with(target, kPrefix) ? target.substr(kPrefix.size()) : target;
+    for (char& c : name) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    return "HYDRA_" + name + "_EXE";
+}
+
+// Whether `cmake` defines `constant` as a value: `constant=`.
+bool defines_constant(const std::string& cmake, const std::string& constant) {
+    for (size_t h : word_hits(cmake, constant))
+        if (h + constant.size() < cmake.size() && cmake[h + constant.size()] == '=') return true;
+    return false;
+}
+
 // Whether a masked line opens with an if, else if or case.
 bool guard_line(const std::string& line) {
     std::string t = trim(line);
@@ -338,6 +389,83 @@ private:
     // Every file a caller key's call site sat in, and whether the key was a
     // selector value there.
     std::map<std::string, std::set<std::pair<std::string, bool>>> key_sites_;
+
+    // An exe target and the test files that run it.
+    struct ExeTests {
+        std::string target;
+        std::vector<std::string> tests;
+    };
+    std::optional<std::string> cmake_;  // CMakeLists.txt at the tip, comments blanked
+    std::map<std::string, std::optional<ExeTests>> exe_of_;
+
+    // The runnable test files that name a word as a whole word in masked
+    // code: directly, or by including a test helper header that names it.
+    struct Naming {
+        std::vector<std::string> direct;
+        std::vector<std::string> via_helper;  // in helper-header order; may repeat
+    };
+    Naming naming(const std::string& word) {
+        Naming out;
+        for (const std::string& f : tip_includes_.files()) {
+            const bool cpp = runnable_test(f);
+            if (!cpp && !helper_header(f)) continue;
+            if (word_hits(views_.get(range_.tip, f).code, word).empty()) continue;
+            if (cpp) out.direct.push_back(f);
+            else
+                for (const std::string& inc : tip_includes_.includers(f))
+                    if (runnable_test(inc)) out.via_helper.push_back(inc);
+        }
+        return out;
+    }
+
+    // naming(), both ways, as one sorted list.
+    std::vector<std::string> tests_naming(const std::string& word) {
+        const Naming n = naming(word);
+        std::set<std::string> all(n.direct.begin(), n.direct.end());
+        all.insert(n.via_helper.begin(), n.via_helper.end());
+        return {all.begin(), all.end()};
+    }
+
+    // The exe a main file builds and the tests that run it (the user's ruling
+    // in the plan's "User decisions", last paragraph): the first target in
+    // CMakeLists.txt listing the file, when its constant is defined there and
+    // some test names it. Nothing for any other file.
+    const ExeTests* exe_for(const std::string& file) {
+        const auto memo = exe_of_.find(file);
+        if (memo != exe_of_.end()) return memo->second ? &*memo->second : nullptr;
+        std::optional<ExeTests>& slot = exe_of_[file];
+        if (!tip_includes_.has(file) || !is_cpp_implementation(file) ||
+            !defines_main(views_.get(range_.tip, file).code))
+            return nullptr;
+        if (!cmake_) {
+            const std::optional<std::string> raw = repo_.files().raw(range_.tip, "CMakeLists.txt");
+            cmake_ = raw ? cmake_code(tip_text_form(*raw)) : std::string();
+        }
+        const std::vector<std::string> targets = exe_targets_listing(*cmake_, file);
+        if (targets.empty()) return nullptr;
+        const std::string constant = exe_constant(targets.front());
+        if (!defines_constant(*cmake_, constant)) return nullptr;
+        std::vector<std::string> tests = tests_naming(constant);
+        if (tests.empty()) return nullptr;
+        slot = ExeTests{targets.front(), tests};
+        return &*slot;
+    }
+
+    // The exes behind `key`: one for each file the key is defined in that
+    // exe_for finds an exe for.
+    std::vector<const ExeTests*> key_exes(const std::string& key) {
+        std::vector<const ExeTests*> out;
+        auto add = [&](const std::string& f) {
+            const ExeTests* e = exe_for(f);
+            if (e && std::find(out.begin(), out.end(), e) == out.end()) out.push_back(e);
+        };
+        const auto named = name_index_.find(key);
+        if (named != name_index_.end() && !out_.names[named->second].base_only)
+            for (const std::string& f : name_files_[key]) add(f);
+        for (const auto& [file, selector] : key_sites_[key])
+            if (!selector) add(file);
+        return out;
+    }
 
     void add_name(const ChangedName& c, const std::string& file, bool from_base) {
         name_files_[c.name].insert(file);
@@ -420,7 +548,8 @@ private:
     // The headers that declare `name` as defined in `file`: the file itself
     // when it is a header, else function_headers. Nothing when the file is
     // gone at the tip, defines main (the user's exception: tests reach such
-    // a file by running its exe), or reaches no header declaring the name.
+    // a file by running its exe; exe_for picks those tests when it can), or
+    // reaches no header declaring the name.
     std::optional<std::vector<std::string>> definer_headers(const std::string& file, const std::string& name) {
         if (!tip_includes_.has(file)) return std::nullopt;
         if (!is_cpp_implementation(file)) return std::vector<std::string>{file};
@@ -468,10 +597,17 @@ private:
     // user's Step 5 ruling in the plan's "User decisions"): every file that
     // reaches a header declaring the key, wherever the key came from. Nothing
     // means the plain-name search: a deleted name, or any source of the key
-    // with no declaring header found (see definer_headers).
+    // with no declaring header found (see definer_headers). A source that
+    // exe_for finds an exe for adds no header: key_exes picks its tests.
     std::optional<std::set<std::string>> test_scope(const std::string& key) {
         std::vector<std::string> headers;
-        auto add = [&](const std::optional<std::vector<std::string>>& hs) {
+        bool exe = false;
+        auto add = [&](const std::string& f) {
+            if (exe_for(f)) {
+                exe = true;
+                return true;
+            }
+            const std::optional<std::vector<std::string>> hs = definer_headers(f, key);
             if (!hs) return false;
             headers.insert(headers.end(), hs->begin(), hs->end());
             return true;
@@ -480,11 +616,11 @@ private:
         if (named != name_index_.end()) {
             if (out_.names[named->second].base_only) return std::nullopt;
             for (const std::string& f : name_files_[key])
-                if (!add(definer_headers(f, key))) return std::nullopt;
+                if (!add(f)) return std::nullopt;
         }
         for (const auto& [file, selector] : key_sites_[key]) {
             if (!selector) {
-                if (!add(definer_headers(file, key))) return std::nullopt;
+                if (!add(file)) return std::nullopt;
                 continue;
             }
             // A selector value is declared where its type is.
@@ -500,7 +636,7 @@ private:
             if (found.empty()) return std::nullopt;
             headers.insert(headers.end(), found.begin(), found.end());
         }
-        if (headers.empty()) return std::nullopt;
+        if (headers.empty()) return exe ? std::optional<std::set<std::string>>(std::set<std::string>{}) : std::nullopt;
         return reaching(headers);
     }
 
@@ -580,19 +716,9 @@ private:
         }
         for (const CallerKey& k : out_.callers)
             if (std::find(keys.begin(), keys.end(), k.key) == keys.end()) keys.push_back(k.key);
-        std::vector<std::string> cpps, headers;
-        for (const std::string& f : tip_includes_.files()) {
-            if (runnable_test(f)) cpps.push_back(f);
-            else if (helper_header(f)) headers.push_back(f);
-        }
-        auto mentions = [&](const std::vector<std::string>& files, const std::string& key) {
-            std::vector<std::string> out;
-            for (const std::string& f : files)
-                if (!word_hits(views_.get(range_.tip, f).code, key).empty()) out.push_back(f);
-            return out;
-        };
         for (const std::string& key : keys) {
-            const std::vector<std::string> in_cpp = mentions(cpps, key);
+            const Naming named = naming(key);
+            const std::vector<std::string>& in_cpp = named.direct;
             const int count = static_cast<int>(in_cpp.size());
             if (count > limits_.common_name) {
                 out_.common.push_back({key, count});
@@ -606,9 +732,10 @@ private:
             auto reaches = [&](const std::string& f) { return !scope || scope->count(f) != 0; };
             for (const std::string& f : in_cpp)
                 if (reaches(f)) add_reason(f, key);
-            for (const std::string& h : mentions(headers, key))
-                for (const std::string& inc : tip_includes_.includers(h))
-                    if (runnable_test(inc) && reaches(inc)) add_reason(inc, key);
+            for (const std::string& inc : named.via_helper)
+                if (reaches(inc)) add_reason(inc, key);
+            for (const ExeTests* e : key_exes(key))
+                for (const std::string& f : e->tests) add_reason(f, key + " (runs " + e->target + ")");
         }
     }
 };
@@ -640,6 +767,7 @@ std::vector<std::string> pick_lines(const TestPick& pick) {
     std::vector<std::string> lines;
     std::string first = "tests: ";
     if (pick.whole_suite) first += "whole suite";
+    else if (tests.empty()) first += "(none)";  // an empty -sf= filter would run every test case
     else {
         first += "-sf=";
         std::string last;
@@ -679,6 +807,8 @@ std::vector<std::string> pick_lines(const TestPick& pick) {
         why += w.rule;
         if (w.count) why += " (" + std::to_string(w.count) + ")";
         lines.push_back(why);
+    } else if (tests.empty()) {
+        lines.push_back("why: no changed code names a test");
     } else {
         for (const PickedTest& t : tests) {
             std::string why = "why: " + t.file + " ";

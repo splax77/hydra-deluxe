@@ -122,6 +122,19 @@ TEST_CASE("precheck --tests: a changed build file prints the whole suite and why
                      });
 }
 
+TEST_CASE("precheck --tests: a range changing no code prints no tests, not an empty -sf= filter") {
+    // An empty -sf= filter runs every test case.
+    ExeRepo fx("precheck_pick_exe_none", {{"docs/plan.md", "old\n"}, {"tests/test_mode.cpp", "int m() { return 1; }\n"}});
+    fx.commit_tip({{"docs/plan.md", "new\n"}});
+    const ExeRun r = run_tests_mode(fx.dir, "HEAD");
+    INFO(r.err);
+    CHECK(r.code == 0);
+    REQUIRE(r.lines.size() >= 2);
+    CHECK(r.lines[0] == "tests: (none)");
+    CHECK(r.lines[1] == kAlways);
+    CHECK(r.lines.back() == "why: no changed code names a test");
+}
+
 TEST_CASE("precheck --tests: a bad range exits 1 with git's error on stderr") {
     ExeRepo fx("precheck_pick_exe_bad", {{"src/run.cpp", kRunBase}});
     const ExeRun r = run_tests_mode(fx.dir, "no-such-ref...HEAD");

@@ -495,7 +495,10 @@ TEST_CASE("precheck pick (j): a test reaching the declaring header through a tes
     CHECK(reasons_of(p, "tests/test_t_c.cpp") == std::vector<std::string>{"run"});
 }
 
-TEST_CASE("precheck pick (j): a name in a file that defines main is found by its plain name") {
+// A name in a main file picks the tests that run its exe (the (k) cases
+// below). This fixture has no CMakeLists.txt, so no exe target lists the
+// file and the name keeps the plain-name search.
+TEST_CASE("precheck pick (j): a name in a main file no exe target lists is found by its plain name") {
     const std::string main_cpp = "#include \"lib.h\"\nint step() {\n    return 1;\n}\nint main() { return step(); }\n";
     PickRepo fx("precheck_pick_j3", {{"tools/x/lib.h", "#pragma once\nint step();\n"},
                                      {"tools/x/main.cpp", main_cpp},
@@ -570,4 +573,64 @@ TEST_CASE("precheck pick (j): a selector value whose left part is a namespace is
     for (const CallerKey& k : p.callers) selector = selector || (k.key == "util::kFast" && k.selector);
     CHECK(selector);
     CHECK(picked_files(p) == std::vector<std::string>{"tests/test_util.cpp"});
+}
+
+// A name in a file that builds an exe's main picks the tests that name the
+// exe's constant (plan, "User decisions", last paragraph).
+namespace {
+
+const std::string kToolMain = "int run() {\n    return 1;\n}\nint main() { return run(); }\n";
+const std::string kToolTarget = "add_executable(hydra_tool src/tool/main.cpp)\n";
+const std::string kToolConstant = "target_compile_definitions(hydra_tests PRIVATE HYDRA_TOOL_EXE=\"tool.exe\")\n";
+
+// Commits `base` (with src/tool/main.cpp) and picks for a change to run.
+TestPick pick_tool(const std::string& name, std::map<std::string, std::string> base) {
+    base["src/tool/main.cpp"] = kToolMain;
+    base["tests/test_b.cpp"] = "int tb() { return run(); }\n";
+    PickRepo fx(name, base);
+    std::string tip = kToolMain;
+    tip.replace(tip.find("return 1;"), 9, "return 2;");
+    return fx.pick({{"src/tool/main.cpp", tip}});
+}
+
+bool has_reason(const TestPick& p, const std::string& file, const std::string& reason) {
+    const std::vector<std::string> r = reasons_of(p, file);
+    return std::find(r.begin(), r.end(), reason) != r.end();
+}
+
+}  // namespace
+
+TEST_CASE("precheck pick (k): a name in an exe's main picks only the tests naming the exe's constant") {
+    const TestPick p = pick_tool("precheck_pick_k1",
+                                 {{"CMakeLists.txt", kToolTarget + kToolConstant},
+                                  {"tests/test_a.cpp", "const char* ta = HYDRA_TOOL_EXE;\n"}});
+    REQUIRE_FALSE(p.whole_suite);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_a.cpp"});
+    CHECK(has_reason(p, "tests/test_a.cpp", "run (runs hydra_tool)"));
+}
+
+TEST_CASE("precheck pick (k): a test including a helper header naming the exe's constant is picked") {
+    const TestPick p = pick_tool("precheck_pick_k2",
+                                 {{"CMakeLists.txt", kToolTarget + kToolConstant},
+                                  {"tests/tool_fixture.h", "#pragma once\nconst char* tf = HYDRA_TOOL_EXE;\n"},
+                                  {"tests/test_c.cpp", "#include \"tool_fixture.h\"\nint tc() { return 0; }\n"}});
+    REQUIRE_FALSE(p.whole_suite);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_c.cpp"});
+    CHECK(has_reason(p, "tests/test_c.cpp", "run (runs hydra_tool)"));
+}
+
+TEST_CASE("precheck pick (k): an exe with no constant in CMakeLists.txt keeps the plain-name search") {
+    const TestPick p = pick_tool("precheck_pick_k3", {{"CMakeLists.txt", kToolTarget},
+                                                      {"tests/test_a.cpp", "const char* ta = HYDRA_TOOL_EXE;\n"}});
+    REQUIRE_FALSE(p.whole_suite);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_b.cpp"});
+    CHECK(reasons_of(p, "tests/test_b.cpp") == std::vector<std::string>{"run"});
+}
+
+TEST_CASE("precheck pick (k): an exe constant no test names keeps the plain-name search") {
+    const TestPick p = pick_tool("precheck_pick_k4", {{"CMakeLists.txt", kToolTarget + kToolConstant},
+                                                      {"tests/test_a.cpp", "int ta() { return 0; }\n"}});
+    REQUIRE_FALSE(p.whole_suite);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_b.cpp"});
+    CHECK(reasons_of(p, "tests/test_b.cpp") == std::vector<std::string>{"run"});
 }
