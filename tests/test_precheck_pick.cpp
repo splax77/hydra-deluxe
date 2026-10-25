@@ -196,6 +196,79 @@ TEST_CASE("precheck pick (a): a function changed only by the comment above it do
     CHECK(picked_files(p) == std::vector<std::string>{"tests/test_shallow.cpp"});
 }
 
+TEST_CASE("precheck pick (a): a call to an unrelated function of the same name is not a caller") {
+    const std::string one_cpp = "#include \"one.h\"\nvoid run() {\n    int x = 1;\n}\n";
+    PickRepo fx("precheck_pick_a_scope",
+                {{"src/a/one.h", "#pragma once\nenum class Mode { A, B };\nvoid run();\n"},
+                 {"src/a/one.cpp", one_cpp},
+                 {"src/a/user.cpp",
+                  "#include \"one.h\"\nvoid use(Mode m) {\n    if (m == Mode::A) {\n        run();\n    }\n}\n"},
+                 {"src/b/two.cpp",
+                  "enum class Kind { A, B };\nstatic void run() { int y = 2; }\nvoid go(Kind k) {\n"
+                  "    if (k == Kind::B) {\n        run();\n    }\n}\n"},
+                 {"tests/test_mode_a.cpp", "int ma() { return static_cast<int>(Mode::A); }\n"},
+                 {"tests/test_kind_b.cpp", "int kb() { return static_cast<int>(Kind::B); }\n"}});
+    std::string tip = one_cpp;
+    tip.replace(tip.find("int x = 1;"), 10, "int x = 3;");
+    const TestPick p = fx.pick({{"src/a/one.cpp", tip}});
+    REQUIRE_FALSE(p.whole_suite);
+    REQUIRE(name_in(p, "run") != nullptr);
+    for (const CallerKey& k : p.callers) CHECK(k.caller != "go");
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_mode_a.cpp"});
+    CHECK(reasons_of(p, "tests/test_mode_a.cpp") == std::vector<std::string>{"Mode::A"});
+}
+
+TEST_CASE("precheck pick (a): a caller that includes the declaring header through another header counts") {
+    const std::string one_cpp = "#include \"one.h\"\nvoid run() {\n    int x = 1;\n}\n";
+    PickRepo fx("precheck_pick_a_chain",
+                {{"src/a/one.h", "#pragma once\nenum class Mode { A, B };\nvoid run();\n"},
+                 {"src/a/one.cpp", one_cpp},
+                 {"src/a/mid.h", "#pragma once\n#include \"one.h\"\n"},
+                 {"src/c/far.cpp",
+                  "#include \"a/mid.h\"\nvoid far(Mode m) {\n    if (m == Mode::B) {\n        run();\n    }\n}\n"},
+                 {"tests/test_mode_b.cpp", "int mb() { return static_cast<int>(Mode::B); }\n"}});
+    std::string tip = one_cpp;
+    tip.replace(tip.find("int x = 1;"), 10, "int x = 3;");
+    const TestPick p = fx.pick({{"src/a/one.cpp", tip}});
+    REQUIRE_FALSE(p.whole_suite);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_mode_b.cpp"});
+    CHECK(reasons_of(p, "tests/test_mode_b.cpp") == std::vector<std::string>{"Mode::B"});
+}
+
+TEST_CASE("precheck pick (a): a function only in a .cpp has callers only in that file") {
+    const std::string here =
+        "enum class Mode { A, B };\nstatic void helper() {\n    int x = 1;\n}\n"
+        "void inside(Mode m) {\n    if (m == Mode::A) {\n        helper();\n    }\n}\n";
+    PickRepo fx("precheck_pick_a_static",
+                {{"src/s/here.cpp", here},
+                 {"src/s/near.h", "#pragma once\nenum class Kind { A, B };\n"},
+                 {"src/s/there.cpp",
+                  "#include \"near.h\"\nvoid helper();\nvoid outside(Kind k) {\n    if (k == Kind::B) {\n"
+                  "        helper();\n    }\n}\n"},
+                 {"tests/test_mode_a.cpp", "int ma() { return static_cast<int>(Mode::A); }\n"},
+                 {"tests/test_kind_b.cpp", "int kb() { return static_cast<int>(Kind::B); }\n"}});
+    std::string tip = here;
+    tip.replace(tip.find("int x = 1;"), 10, "int x = 3;");
+    const TestPick p = fx.pick({{"src/s/here.cpp", tip}});
+    REQUIRE_FALSE(p.whole_suite);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_mode_a.cpp"});
+}
+
+TEST_CASE("precheck pick (a): a tools/ function's callers in tools/ are followed") {
+    const std::string lib_cpp = "#include \"lib.h\"\nvoid step() {\n    int x = 1;\n}\n";
+    PickRepo fx("precheck_pick_a_tools",
+                {{"tools/x/lib.h", "#pragma once\nenum class Opt { Fast, Slow };\nvoid step();\n"},
+                 {"tools/x/lib.cpp", lib_cpp},
+                 {"tools/x/main.cpp",
+                  "#include \"lib.h\"\nvoid drive(Opt o) {\n    if (o == Opt::Fast) {\n        step();\n    }\n}\n"},
+                 {"tests/test_fast.cpp", "int f() { return static_cast<int>(Opt::Fast); }\n"}});
+    std::string tip = lib_cpp;
+    tip.replace(tip.find("int x = 1;"), 10, "int x = 3;");
+    const TestPick p = fx.pick({{"tools/x/lib.cpp", tip}});
+    REQUIRE_FALSE(p.whole_suite);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_fast.cpp"});
+}
+
 TEST_CASE("precheck pick (c): a key in a helper header picks every test file that includes it") {
     PickRepo fx("precheck_pick_c",
                 {{"src/calc.cpp", "int scale(int v) { return v * 2; }\n"},

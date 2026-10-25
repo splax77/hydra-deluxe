@@ -45,6 +45,17 @@ std::vector<size_t> word_hits(const std::string& text, const std::string& key) {
     return out;
 }
 
+// The word_hits of `name` that a "(" follows: calls, declarations and
+// definitions of a function of that name.
+std::vector<size_t> paren_hits(const std::string& text, const std::string& name) {
+    std::vector<size_t> out;
+    for (size_t h : word_hits(text, name)) {
+        const size_t after = skip_space(text, h + name.size());
+        if (after < text.size() && text[after] == '(') out.push_back(h);
+    }
+    return out;
+}
+
 // ------------------------------------------------------------ includes
 
 // The folders an #include path is looked up under after the including
@@ -110,6 +121,14 @@ public:
         return it == by_header_.end() ? kNone : it->second;
     }
 
+    // The files `file` includes directly, as resolve() finds them.
+    const std::vector<std::string>& included_by(const std::string& file) {
+        if (!built_) build();
+        static const std::vector<std::string> kNone;
+        const auto it = by_file_.find(file);
+        return it == by_file_.end() ? kNone : it->second;
+    }
+
 private:
     Repo& repo_;
     ViewCache& views_;
@@ -117,7 +136,7 @@ private:
     bool listed_ = false, built_ = false;
     std::vector<std::string> files_;
     std::set<std::string> set_;
-    std::map<std::string, std::vector<std::string>> by_header_;
+    std::map<std::string, std::vector<std::string>> by_header_, by_file_;
 
     // The file an include of `spelled` in `from` reads, as the compiler
     // finds it: the including file's folder first, then each root.
@@ -140,7 +159,10 @@ private:
                 const std::string target = include_target(v.line(v.no_comments, n));
                 if (target.empty()) continue;
                 const std::string header = resolve(f, target);
-                if (!header.empty() && header != f && seen.insert(header).second) by_header_[header].push_back(f);
+                if (!header.empty() && header != f && seen.insert(header).second) {
+                    by_header_[header].push_back(f);
+                    by_file_[f].push_back(header);
+                }
             }
         }
         built_ = true;
@@ -170,11 +192,7 @@ bool declares_function(const View& view, int n, const std::string& name) {
     const size_t b = view.line_starts[n - 1];
     const size_t stop = view.code.find_first_of(";{", skip_space(view.code, b));
     const std::string span = view.code.substr(b, stop == std::string::npos ? std::string::npos : stop - b);
-    for (size_t h : word_hits(span, name)) {
-        const size_t after = skip_space(span, h + name.size());
-        if (after < span.size() && span[after] == '(') return true;
-    }
-    return false;
+    return !paren_hits(span, name).empty();
 }
 
 // The names changed_names gives for code starting at offset `at`, as if a
@@ -284,8 +302,11 @@ private:
     TestPick out_;
     std::map<std::string, size_t> name_index_;
     std::map<std::string, std::vector<std::string>> picks_;
+    // Every production file each changed name came from, either side.
+    std::map<std::string, std::set<std::string>> name_files_;
 
     void add_name(const ChangedName& c, const std::string& file, bool from_base) {
+        name_files_[c.name].insert(file);
         const auto it = name_index_.find(c.name);
         if (it != name_index_.end()) {
             PickName& n = out_.names[it->second];
@@ -335,28 +356,59 @@ private:
         out_.callers.push_back({key, callee, caller, selector});
     }
 
-    // Step 4: one level of callers in src/, with the A::B values on the call
-    // line or on its nearest guard line in the same block.
+    // The files whose calls to `callee` can reach the changed function (the
+    // user's ruling in the plan's "User decisions"): the files it changed in,
+    // and every file that includes a header declaring it, through any chain
+    // of includes. A name changed only in a .cpp has no declaring header, so
+    // only its own file counts. A declaring header is a changed header
+    // itself, or a header a changed .cpp includes directly that has `callee(`.
+    std::set<std::string> caller_scope(const std::string& callee) {
+        const std::set<std::string>& own = name_files_[callee];
+        std::set<std::string> scope = own;
+        std::vector<std::string> todo;
+        for (const std::string& f : own) {
+            if (!is_cpp_implementation(f)) todo.push_back(f);
+            else
+                for (const std::string& h : tip_includes_.included_by(f))
+                    if (is_cpp(h) && !is_cpp_implementation(h) &&
+                        !paren_hits(views_.get(range_.tip, h).code, callee).empty())
+                        todo.push_back(h);
+        }
+        std::set<std::string> seen(todo.begin(), todo.end());
+        while (!todo.empty()) {
+            const std::string h = todo.back();
+            todo.pop_back();
+            scope.insert(h);
+            for (const std::string& inc : tip_includes_.includers(h))
+                if (seen.insert(inc).second) todo.push_back(inc);
+        }
+        return scope;
+    }
+
+    // Step 4: one level of callers in production code under the include
+    // roots, with the A::B values on the call line or on its nearest guard
+    // line in the same block.
     void collect_callers() {
-        std::vector<std::string> src;
-        for (const std::string& f : tip_includes_.files())
-            if (top_folder(f) == "src" && is_cpp(f)) src.push_back(f);
+        std::set<std::string> production;
+        for (const std::string& f : tip_includes_.files()) {
+            const std::string top = top_folder(f);
+            const bool rooted = std::any_of(std::begin(kIncludeRoots), std::end(kIncludeRoots),
+                                            [&](const char* r) { return top == r; });
+            if (rooted && !test_file(f) && is_cpp(f)) production.insert(f);
+        }
         const size_t changed = out_.names.size();
         for (size_t i = 0; i < changed; ++i) {
             const std::string callee = out_.names[i].name;
             if (callee.find("::") != std::string::npos) continue;
             // A function changed only by the comment above it behaves as before.
             if (out_.names[i].kind == NameKind::Comment) continue;
-            for (const std::string& f : src) {
+            for (const std::string& f : caller_scope(callee)) {
+                if (!production.count(f)) continue;
                 const View& view = views_.get(range_.tip, f);
-                const std::vector<size_t> hits = word_hits(view.code, callee);
+                const std::vector<size_t> hits = paren_hits(view.code, callee);
                 if (hits.empty()) continue;
                 const Braces braces(view.code);
-                for (size_t h : hits) {
-                    const size_t after = skip_space(view.code, h + callee.size());
-                    if (after >= view.code.size() || view.code[after] != '(') continue;
-                    call_site(view, braces, h, callee);
-                }
+                for (size_t h : hits) call_site(view, braces, h, callee);
             }
         }
     }
