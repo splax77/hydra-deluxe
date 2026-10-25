@@ -5,9 +5,11 @@
 //                  [--whole-tree] [--rules-at <commit>] [--disable <N[,N...]>]
 //   hydra_precheck --list-checks
 //   hydra_precheck --code-mask <file>
+//   hydra_precheck [--repo <folder>] --tests [range]
 //
 // --range defaults to main...HEAD and --repo to the current folder. A single
 // bare argument is read as the range. It never writes to the repository.
+// --tests runs the merge-test picker (test_pick.h) instead of the checks.
 
 #include <fcntl.h>
 #include <io.h>
@@ -29,6 +31,7 @@
 #include "precheck/git_text.h"
 #include "precheck/items.h"
 #include "precheck/range.h"
+#include "precheck/test_pick.h"
 
 namespace {
 
@@ -41,6 +44,7 @@ struct Options {
     std::vector<std::string> disable;
     std::string code_mask_file;
     bool list_checks = false;
+    bool tests = false;
     bool help = false;
 };
 
@@ -48,7 +52,8 @@ const char* const kUsage =
     "usage: hydra_precheck [--repo <folder>] [--range <A...B | A..B | commit>] [--whole-tree]\n"
     "                      [--rules-at <commit>] [--disable <N[,N...]>]\n"
     "       hydra_precheck --list-checks\n"
-    "       hydra_precheck --code-mask <file>\n";
+    "       hydra_precheck --code-mask <file>\n"
+    "       hydra_precheck [--repo <folder>] --tests [range]\n";
 
 Options parse_options(const std::vector<std::string>& args) {
     Options o;
@@ -67,6 +72,7 @@ Options parse_options(const std::vector<std::string>& args) {
         else if (a == "--disable") o.disable.push_back(value());
         else if (a == "--code-mask") o.code_mask_file = value();
         else if (a == "--list-checks") o.list_checks = true;
+        else if (a == "--tests") o.tests = true;
         else if (a == "--help" || a == "-h") o.help = true;
         else if (!a.empty() && a[0] == '-') throw std::invalid_argument("unknown option " + a);
         else if (!o.range_given) {
@@ -102,6 +108,10 @@ int run(const Options& o) {
     const std::set<int> disabled = parse_disable(o.disable);
     Repo repo(o.repo);
     const Range range = resolve_range(repo, o.range, o.whole_tree, o.rules_at);
+    if (o.tests) {
+        for (const std::string& line : pick_lines(pick_tests(repo, range))) std::cout << line << "\n";
+        return 0;
+    }
     const std::vector<std::string> files = all_files(repo, range.tip);
     const AddedLines added =
         range.whole_tree ? AddedLines::whole(files) : AddedLines::from_diff(repo, range.base, range.tip);
