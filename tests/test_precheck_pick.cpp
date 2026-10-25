@@ -206,7 +206,8 @@ TEST_CASE("precheck pick (a): a call to an unrelated function of the same name i
                  {"src/b/two.cpp",
                   "enum class Kind { A, B };\nstatic void run() { int y = 2; }\nvoid go(Kind k) {\n"
                   "    if (k == Kind::B) {\n        run();\n    }\n}\n"},
-                 {"tests/test_mode_a.cpp", "int ma() { return static_cast<int>(Mode::A); }\n"},
+                 {"tests/test_mode_a.cpp",
+                  "#include \"a/one.h\"\nint ma() { return static_cast<int>(Mode::A); }\n"},
                  {"tests/test_kind_b.cpp", "int kb() { return static_cast<int>(Kind::B); }\n"}});
     std::string tip = one_cpp;
     tip.replace(tip.find("int x = 1;"), 10, "int x = 3;");
@@ -226,7 +227,8 @@ TEST_CASE("precheck pick (a): a caller that includes the declaring header throug
                  {"src/a/mid.h", "#pragma once\n#include \"one.h\"\n"},
                  {"src/c/far.cpp",
                   "#include \"a/mid.h\"\nvoid far(Mode m) {\n    if (m == Mode::B) {\n        run();\n    }\n}\n"},
-                 {"tests/test_mode_b.cpp", "int mb() { return static_cast<int>(Mode::B); }\n"}});
+                 {"tests/test_mode_b.cpp",
+                  "#include \"a/one.h\"\nint mb() { return static_cast<int>(Mode::B); }\n"}});
     std::string tip = one_cpp;
     tip.replace(tip.find("int x = 1;"), 10, "int x = 3;");
     const TestPick p = fx.pick({{"src/a/one.cpp", tip}});
@@ -243,7 +245,8 @@ TEST_CASE("precheck pick (a): a .cpp that reaches its declaring header only thro
                  {"src/a/one.cpp", one_cpp},
                  {"src/a/user.cpp",
                   "#include \"one.h\"\nvoid use(Mode m) {\n    if (m == Mode::B) {\n        run();\n    }\n}\n"},
-                 {"tests/test_mode_b.cpp", "int mb() { return static_cast<int>(Mode::B); }\n"}});
+                 {"tests/test_mode_b.cpp",
+                  "#include \"a/one.h\"\nint mb() { return static_cast<int>(Mode::B); }\n"}});
     std::string tip = one_cpp;
     tip.replace(tip.find("int x = 1;"), 10, "int x = 3;");
     const TestPick p = fx.pick({{"src/a/one.cpp", tip}});
@@ -277,7 +280,7 @@ TEST_CASE("precheck pick (a): a tools/ function's callers in tools/ are followed
                  {"tools/x/lib.cpp", lib_cpp},
                  {"tools/x/main.cpp",
                   "#include \"lib.h\"\nvoid drive(Opt o) {\n    if (o == Opt::Fast) {\n        step();\n    }\n}\n"},
-                 {"tests/test_fast.cpp", "int f() { return static_cast<int>(Opt::Fast); }\n"}});
+                 {"tests/test_fast.cpp", "#include \"x/lib.h\"\nint f() { return static_cast<int>(Opt::Fast); }\n"}});
     std::string tip = lib_cpp;
     tip.replace(tip.find("int x = 1;"), 10, "int x = 3;");
     const TestPick p = fx.pick({{"tools/x/lib.cpp", tip}});
@@ -453,4 +456,118 @@ TEST_CASE("precheck pick (i): files under tests/single_owner/ are never picked")
         fx.pick({{"src/k.cpp", "constexpr int kStamp = 2;\n"}, {"tests/single_owner/other.cpp", "int o2;\n"}});
     REQUIRE_FALSE(p.whole_suite);
     CHECK(picked_files(p) == std::vector<std::string>{"tests/test_k.cpp"});
+}
+
+// Step 5 under the user's ruling (plan, "User decisions", last paragraph): a
+// test file counts for a name only if it reaches the header declaring it.
+namespace {
+
+const std::string kOneCpp = "#include \"one.h\"\nvoid run() {\n    int x = 1;\n}\n";
+
+TestPick pick_two_runs(const std::string& name) {
+    PickRepo fx(name, {{"src/a/one.h", "#pragma once\nvoid run();\n"},
+                       {"src/a/one.cpp", kOneCpp},
+                       {"src/b/two.h", "#pragma once\nvoid run();\n"},
+                       {"tests/fix.h", "#pragma once\n#include \"a/one.h\"\n"},
+                       {"tests/test_t_a.cpp", "#include \"a/one.h\"\nvoid ta() { run(); }\n"},
+                       {"tests/test_t_b.cpp", "#include \"b/two.h\"\nvoid tb() { run(); }\n"},
+                       {"tests/test_t_c.cpp", "#include \"fix.h\"\nvoid tc() { run(); }\n"}});
+    std::string tip = kOneCpp;
+    tip.replace(tip.find("int x = 1;"), 10, "int x = 3;");
+    return fx.pick({{"src/a/one.cpp", tip}});
+}
+
+}  // namespace
+
+TEST_CASE("precheck pick (j): a test naming an unrelated function of the same name is not picked") {
+    const TestPick p = pick_two_runs("precheck_pick_j1");
+    REQUIRE_FALSE(p.whole_suite);
+    const std::vector<std::string> files = picked_files(p);
+    CHECK(std::find(files.begin(), files.end(), "tests/test_t_a.cpp") != files.end());
+    CHECK(std::find(files.begin(), files.end(), "tests/test_t_b.cpp") == files.end());
+    CHECK(reasons_of(p, "tests/test_t_a.cpp") == std::vector<std::string>{"run"});
+}
+
+TEST_CASE("precheck pick (j): a test reaching the declaring header through a test helper header is picked") {
+    const TestPick p = pick_two_runs("precheck_pick_j2");
+    REQUIRE_FALSE(p.whole_suite);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_t_a.cpp", "tests/test_t_c.cpp"});
+    CHECK(reasons_of(p, "tests/test_t_c.cpp") == std::vector<std::string>{"run"});
+}
+
+TEST_CASE("precheck pick (j): a name in a file that defines main is found by its plain name") {
+    const std::string main_cpp = "#include \"lib.h\"\nint step() {\n    return 1;\n}\nint main() { return step(); }\n";
+    PickRepo fx("precheck_pick_j3", {{"tools/x/lib.h", "#pragma once\nint step();\n"},
+                                     {"tools/x/main.cpp", main_cpp},
+                                     {"tests/test_step.cpp", "int ts() { return step(); }\n"}});
+    std::string tip = main_cpp;
+    tip.replace(tip.find("return 1;"), 9, "return 2;");
+    const TestPick p = fx.pick({{"tools/x/main.cpp", tip}});
+    REQUIRE_FALSE(p.whole_suite);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_step.cpp"});
+    CHECK(reasons_of(p, "tests/test_step.cpp") == std::vector<std::string>{"step"});
+}
+
+TEST_CASE("precheck pick (j): a deleted class still picks a test that names it, with no include") {
+    const std::string base = "#pragma once\nclass Ghost {\npublic:\n    int g = 0;\n};\nint stay();\n";
+    PickRepo fx("precheck_pick_j4", {{"src/g/ghost.h", base},
+                                     {"tests/test_ghost.cpp", "int tg() { Ghost x; return x.g; }\n"},
+                                     {"tests/test_none.cpp", "#include \"g/ghost.h\"\nint tn() { return 0; }\n"}});
+    const TestPick p = fx.pick({{"src/g/ghost.h", "#pragma once\nint stay();\n"}});
+    REQUIRE_FALSE(p.whole_suite);
+    const PickName* g = name_in(p, "Ghost");
+    REQUIRE(g != nullptr);
+    CHECK(g->base_only);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_ghost.cpp"});
+    CHECK(reasons_of(p, "tests/test_ghost.cpp") == std::vector<std::string>{"Ghost"});
+}
+
+TEST_CASE("precheck pick (j): a selector value picks only tests that reach its enum's header") {
+    const std::string place_cpp =
+        "#include \"rule.h\"\nvoid place() {\n    int k = 1;\n}\nvoid check(Rule r) {\n"
+        "    if (r == Rule::New) {\n        place();\n    }\n}\n";
+    PickRepo fx("precheck_pick_j5",
+                {{"src/r/rule.h", "#pragma once\nenum class Rule { Old, New };\nvoid place();\nvoid check(Rule r);\n"},
+                 {"src/r/place.cpp", place_cpp},
+                 {"tests/test_rule_in.cpp", "#include \"r/rule.h\"\nRule ri() { return Rule::New; }\n"},
+                 {"tests/test_rule_out.cpp", "enum class Rule { Old, New };\nRule ro() { return Rule::New; }\n"}});
+    std::string tip = place_cpp;
+    tip.replace(tip.find("int k = 1;"), 10, "int k = 2;");
+    const TestPick p = fx.pick({{"src/r/place.cpp", tip}});
+    REQUIRE_FALSE(p.whole_suite);
+    bool selector = false;
+    for (const CallerKey& k : p.callers) selector = selector || (k.key == "Rule::New" && k.selector);
+    CHECK(selector);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_rule_in.cpp"});
+    CHECK(reasons_of(p, "tests/test_rule_in.cpp") == std::vector<std::string>{"Rule::New"});
+}
+
+TEST_CASE("precheck pick (j): a function with no declaring header is found by its plain name") {
+    const std::string lone = "void lone() {\n    int x = 1;\n}\n";
+    PickRepo fx("precheck_pick_j6", {{"src/n/lone.cpp", lone},
+                                     {"tests/test_lone.cpp", "void tl() { lone(); }\n"}});
+    std::string tip = lone;
+    tip.replace(tip.find("int x = 1;"), 10, "int x = 2;");
+    const TestPick p = fx.pick({{"src/n/lone.cpp", tip}});
+    REQUIRE_FALSE(p.whole_suite);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_lone.cpp"});
+    CHECK(reasons_of(p, "tests/test_lone.cpp") == std::vector<std::string>{"lone"});
+}
+
+TEST_CASE("precheck pick (j): a selector value whose left part is a namespace is found by its plain name") {
+    const std::string place_cpp =
+        "#include \"rule.h\"\nvoid place() {\n    int k = 1;\n}\nvoid check(int r) {\n"
+        "    if (r == util::kFast) {\n        place();\n    }\n}\n";
+    PickRepo fx("precheck_pick_j7",
+                {{"src/r/rule.h", "#pragma once\nnamespace util { constexpr int kFast = 1; }\nvoid place();\n"},
+                 {"src/r/place.cpp", place_cpp},
+                 {"tests/test_util.cpp", "int u() { return util::kFast; }\n"}});
+    std::string tip = place_cpp;
+    tip.replace(tip.find("int k = 1;"), 10, "int k = 2;");
+    const TestPick p = fx.pick({{"src/r/place.cpp", tip}});
+    REQUIRE_FALSE(p.whole_suite);
+    bool selector = false;
+    for (const CallerKey& k : p.callers) selector = selector || (k.key == "util::kFast" && k.selector);
+    CHECK(selector);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_util.cpp"});
 }
