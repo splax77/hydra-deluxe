@@ -428,8 +428,8 @@ private:
 
     // The exe a main file builds and the tests that run it (the user's ruling
     // in the plan's "User decisions", last paragraph): the first target in
-    // CMakeLists.txt listing the file, when its constant is defined there and
-    // some test names it. Nothing for any other file.
+    // CMakeLists.txt listing the file (and no other target), when its constant
+    // is defined there and some test names it. Nothing for any other file.
     const ExeTests* exe_for(const std::string& file) {
         const auto memo = exe_of_.find(file);
         if (memo != exe_of_.end()) return memo->second ? &*memo->second : nullptr;
@@ -442,7 +442,7 @@ private:
             cmake_ = raw ? cmake_code(tip_text_form(*raw)) : std::string();
         }
         const std::vector<std::string> targets = exe_targets_listing(*cmake_, file);
-        if (targets.empty()) return nullptr;
+        if (targets.size() != 1) return nullptr;  // two exes share the file: their tests are not told apart
         const std::string constant = exe_constant(targets.front());
         if (!defines_constant(*cmake_, constant)) return nullptr;
         std::vector<std::string> tests = tests_naming(constant);

@@ -627,6 +627,15 @@ TEST_CASE("precheck pick (k): an exe with no constant in CMakeLists.txt keeps th
     CHECK(reasons_of(p, "tests/test_b.cpp") == std::vector<std::string>{"run"});
 }
 
+TEST_CASE("precheck pick (k): a main file two exe targets list keeps the plain-name search") {
+    const TestPick p = pick_tool("precheck_pick_k5",
+                                 {{"CMakeLists.txt", kToolTarget + "add_executable(hydra_other src/tool/main.cpp)\n" + kToolConstant},
+                                  {"tests/test_a.cpp", "const char* ta = HYDRA_TOOL_EXE;\n"}});
+    REQUIRE_FALSE(p.whole_suite);
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_b.cpp"});
+    CHECK(reasons_of(p, "tests/test_b.cpp") == std::vector<std::string>{"run"});
+}
+
 TEST_CASE("precheck pick (k): an exe constant no test names keeps the plain-name search") {
     const TestPick p = pick_tool("precheck_pick_k4", {{"CMakeLists.txt", kToolTarget + kToolConstant},
                                                       {"tests/test_a.cpp", "int ta() { return 0; }\n"}});
