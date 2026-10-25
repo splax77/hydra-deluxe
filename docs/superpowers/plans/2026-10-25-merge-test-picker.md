@@ -10,6 +10,8 @@ Q1: a name mentioned by more than 30 test files picks nothing by itself. Q2: mor
 
 Later ruling, after TESTPICK-3's review found the plan's Step 3 and worked example disagree, in the user's words: "Keep it: a comment-only change picks the tests that name that function, but doesn't follow its callers." This overrides Step 4 for comment-only changes.
 
+Later ruling, after the tool picked 58 files for its own merge because every function named `run` in src/ matched, in the user's words: "a call site counts only if it's in the same file as the changed function or in a file that includes the header declaring it." This narrows Step 4's caller search.
+
 ## What the user asked for
 
 "Plan a small tool that takes a merge range, finds every test file that names a function, type or constant the diff changed, and prints the -sf= filters. Briefs and merges use its output instead of a hand list."
