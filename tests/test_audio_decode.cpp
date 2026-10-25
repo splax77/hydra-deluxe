@@ -107,21 +107,21 @@ TEST_CASE("decode_audio: PCM16 WAV decodes to matching float samples") {
 TEST_CASE("decode_audio: MP3 fixture decodes to the 220 Hz sine") {
     DecodedAudio out = decode_audio(read_fixture("sine220.mp3"));
 
-    CHECK(out.channels >= 1);
-    CHECK(out.sample_rate >= 8000);
+    CHECK(out.channels == 2);
+    CHECK(out.sample_rate == 44100);
     REQUIRE(out.frames() > out.sample_rate / 10);  // at least ~0.1 s
     CHECK(peak_abs(out) <= 1.0001f);
-    CHECK(estimate_freq_hz(out, 0) == doctest::Approx(220.0).epsilon(0.07));
+    CHECK(estimate_freq_hz(out, 0) == doctest::Approx(220.0).epsilon(0.01));
 }
 
 TEST_CASE("decode_audio: OGG Vorbis fixture decodes to the 220 Hz sine") {
     DecodedAudio out = decode_audio(read_fixture("sine220.ogg"));
 
-    CHECK(out.channels >= 1);
-    CHECK(out.sample_rate >= 8000);
+    CHECK(out.channels == 1);
+    CHECK(out.sample_rate == 44100);
     REQUIRE(out.frames() > out.sample_rate / 10);
     CHECK(peak_abs(out) <= 1.0001f);
-    CHECK(estimate_freq_hz(out, 0) == doctest::Approx(220.0).epsilon(0.07));
+    CHECK(estimate_freq_hz(out, 0) == doctest::Approx(220.0).epsilon(0.01));
 }
 
 TEST_CASE("decode_stem: a file-path stem and a bytes stem decode identically") {
@@ -139,21 +139,23 @@ TEST_CASE("decode_stem: a file-path stem and a bytes stem decode identically") {
     DecodedAudio a = decode_stem(file_stem);
     DecodedAudio b = decode_stem(mem_stem);
 
-    CHECK(a.channels == b.channels);
-    CHECK(a.sample_rate == b.sample_rate);
+    CHECK(a.channels == 1);
+    CHECK(b.channels == 1);
+    CHECK(a.sample_rate == 44100);
+    CHECK(b.sample_rate == 44100);
     REQUIRE(a.samples.size() == b.samples.size());
     CHECK(a.samples == b.samples);  // byte-for-byte the same PCM
-    CHECK(estimate_freq_hz(a, 0) == doctest::Approx(220.0).epsilon(0.07));
+    CHECK(estimate_freq_hz(a, 0) == doctest::Approx(220.0).epsilon(0.01));
 }
 
 TEST_CASE("decode_audio: Ogg-Opus fixture decodes to the 220 Hz sine at 48 kHz") {
     DecodedAudio out = decode_audio(read_fixture("sine220.opus"));
 
-    CHECK(out.channels >= 1);
+    CHECK(out.channels == 1);
     CHECK(out.sample_rate == 48000);  // Opus always decodes at 48 kHz
     REQUIRE(out.frames() > out.sample_rate / 10);
     CHECK(peak_abs(out) <= 1.0001f);
-    CHECK(estimate_freq_hz(out, 0) == doctest::Approx(220.0).epsilon(0.07));
+    CHECK(estimate_freq_hz(out, 0) == doctest::Approx(220.0).epsilon(0.01));
 }
 
 // FNV-1a over the decoded float bytes. It pins the Opus decoder's exact output,
