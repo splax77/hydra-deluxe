@@ -712,6 +712,9 @@ add_library(hydra_precheck_lib STATIC
     tools/precheck/views.cpp
     tools/precheck/braces.cpp
     tools/precheck/definitions.cpp
+    tools/precheck/check_rows.cpp
+    # The single-owner scan's engine, the one reader of the scan rows.
+    tests/single_owner/engine.cpp
 )
 # Callers include its headers as "precheck/<name>.h".
 target_include_directories(hydra_precheck_lib PUBLIC tools tests third_party/json)
