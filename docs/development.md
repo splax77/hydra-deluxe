@@ -181,17 +181,22 @@ lossless round-trips over that corpus. GUI changes are checked headlessly with
 The Python and PowerShell tools have their own tests. Run them from the
 repository root:
 
-    py -m pytest tools/ch_probe/tests tools/test_compare_db.py -q
+    py -m pytest tools/ch_probe/tests tools/test_compare_db.py tools/test_hydra_ui_mcp.py -q
     pwsh -NoProfile -File tools/test_mutation_probe.ps1
 
-The pytest runs need no C++ build. The mutation probe's self-test needs a
+The pytest runs need no C++ build. The MCP test also needs
+`py -m pip install mcp`, and its real-exe cases skip until
+`hydra_uitest.exe` is built. The `tool-tests` job in
+`.github/workflows/ci.yml` runs the pytest paths and the two other PowerShell
+self-tests (`tools/test_ci_build_folder.ps1`, `tools/test_release_sign.ps1`);
+it is the owner of that list. The mutation probe's self-test needs a
 built `hydra_precheck.exe` (`.\build_cpp.ps1 -Target hydra_precheck`),
 because the probe masks comments and strings with it. The derive-once
 precheck's own self-test runs inside `hydra_tests`:
 
     build-cpp\Release\hydra_tests.exe "-sf=*test_precheck*"
 
-Name the two pytest paths rather than `tools/` as a whole: the scripts in
+Name the pytest paths rather than `tools/` as a whole: the scripts in
 `tools/ch_probe/experiments/` look like tests to pytest and drive the real
 game.
 
@@ -477,10 +482,10 @@ builds the tests with the `coverage` preset and writes the coverage report
 skips pushes because it repeats the whole build and both test sets. Its proving
 run (run 38083092803, on 2026-10-10) took 11.5 minutes.
 
-Another job runs the Python tool tests above with no C++ build. The main
+Another job, `tool-tests`, runs the tool tests above with no C++ build. The main
 job runs the mutation probe's self-test after it builds `hydra_tests`, because
-that self-test needs `hydra_precheck.exe`. The main job checks out the whole
-history, because the precheck self-test in `hydra_tests` checks two real
+that self-test needs `hydra_precheck.exe`. The main job and the coverage job
+check out the whole history, because the precheck self-test in `hydra_tests` checks two real
 commit ranges and skips them in a shallow clone.
 
 The main job and the GUI tests job build on a saved build folder, so a push
