@@ -8,7 +8,7 @@ Both do the same job. They read Clone Hero drum charts and find the Star Power p
 
 ![The Hydra Deluxe toolbar, the library and Burnout open in the song panel on its Paths tab](images/main-screen.png)
 
-*Hydra Deluxe on its 97 test charts, with Burnout open on its Paths tab beside the library.*
+*Hydra Deluxe with the 97 charts of its test library loaded, and Burnout open on its Paths tab beside the library.*
 
 ## At a glance
 
@@ -56,7 +56,7 @@ The sections below explain each difference.
 
 ![The Paths tab for Burnout with activation 1 open](images/paths-tab.png)
 
-*Burnout's optimal path with activation 1 open. Its squeeze sentence says to hit the yellow note more than 163.0 ms late, so it lands after Star Power ends.*
+*Burnout's optimal path with activation 1 open. Its squeeze sentence says to hit the `[ Y ]` (yellow) note more than 163.0 ms late, so it lands after Star Power ends.*
 
 **Best all-0 path** is the best path that activates at the first chance every time, with no skips. An early fill it lets pass (an E1) doesn't count as a skip. Every squeeze and early fill on it is 0 ms or easier.
 

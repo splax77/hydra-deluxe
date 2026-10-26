@@ -10,7 +10,7 @@ Hydra Deluxe has one main screen. The version bar runs along the top of the wind
 
 ![The toolbar, the library and Burnout open in the song panel on its Paths tab](images/main-screen.png)
 
-*The main screen on the 97 test charts, with Burnout open on its Paths tab. The chips above the table count the charts in each state.*
+*The main screen with the 97 charts of Hydra Deluxe's test library loaded, and Burnout open on its Paths tab. The chips above the table count the charts in each state.*
 
 Click a song and the song panel opens beside the library. Drag the library's right edge to give either side more room. Hydra Deluxe remembers the width.
 
@@ -243,7 +243,7 @@ The Paths tab lists the paths the analysis kept on the left. Click a path to sho
 
 ![The Paths tab for Burnout with activation 1 open](images/paths-tab.png)
 
-*Burnout's optimal path with activation 1 open. Its squeeze sentence says to hit the yellow note more than 163.0 ms late, so it lands after Star Power ends.*
+*Burnout's optimal path with activation 1 open. Its squeeze sentence says to hit the `[ Y ]` (yellow) note more than 163.0 ms late, so it lands after Star Power ends.*
 
 The list is grouped by score. Each score is a fold that shows the score and how many paths share it, like `378,315  1 path` on Burnout; click it to hide or show those paths. `Optimal` comes first. When several paths tie for the top score, all of them are optimal, because playing any of them earns the same score. Then come the extra paths under a heading like `Within 2 scores`.
 
@@ -378,7 +378,7 @@ This tab shows the score you need for each star. A star counts once your score, 
 
 ![The Stars tab for Burnout, with its solo bonus column](images/stars-tab.png)
 
-*Burnout's star cutoffs. Its solo bonus of 11,800 adds the `With full solo bonus` column.*
+*The Stars tab for Burnout. The chart has a solo bonus of 11,800, so the table has a `With full solo bonus` column.*
 
 Above the table, `Base score` is every note hit once at 1x, with no Star Power. When the chart has a solo, `Solo bonus` is its full solo bonus. The solo bonus does not count toward stars, because Clone Hero compares your score without it.
 
