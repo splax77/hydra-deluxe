@@ -353,8 +353,28 @@ CommandResult run_command(ImGuiTestContext* ctx, CommandSession& session, const 
     } else if (verb == "state") {
         r.text = state_text(h);
     } else if (verb == "screenshot") {
+        // screenshot <file> [| <ref>]: after a bar, only that window's or
+        // item's rectangle is saved. A window name is tried first, then an item.
+        std::string file = rest, ref, head, ignored;
+        if (split_bar(line, head, ref)) split_verb(head, ignored, file);
+        ref = trim(ref);
+        ImRect crop;
+        bool cropped = false;
+        if (!ref.empty()) {
+            ctx->Yield();
+            if (ImGuiWindow* w = ctx->WindowInfo(ref.c_str(), ImGuiTestOpFlags_NoError).Window) {
+                crop = w->Rect();
+            } else {
+                const ImGuiTestItemInfo it = ctx->ItemInfo(ref.c_str(), ImGuiTestOpFlags_NoError);
+                if (it.ID == 0)
+                    return refuse(message("screenshot found no window or item \"%s\"", ref.c_str()));
+                crop = it.RectFull;
+            }
+            cropped = true;
+        }
         std::string saved_to;
-        if (!screenshot(ctx, rest, &saved_to)) return refuse("screenshot failed");
+        if (!screenshot(ctx, file, &saved_to, cropped ? &crop : nullptr))
+            return refuse("screenshot failed");
         r.text = "screenshot: " + saved_to + "\n";
     } else if (verb == "reset") {
         start_session(ctx);

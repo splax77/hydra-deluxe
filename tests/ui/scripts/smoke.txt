@@ -14,6 +14,9 @@ dump Hydra | Scan
 text
 text | Burnout
 rect Scan library
+# One shot cropped to the library window, one of the whole frame.
+screenshot smoke-library.png | //Hydra/##library
+screenshot smoke-full.png
 key Escape
 key Ctrl+F
 expect-text Burnout

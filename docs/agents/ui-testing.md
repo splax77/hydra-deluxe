@@ -74,7 +74,7 @@ screenshot stars.png
 | `state` | print the key app state (library count, rows, selection, jobs, preview, status, and the store line: `store=opening`, `store=ready` or `store=failed`) |
 | `dump [<window>] [\| <substring>]` | print the widget tree of every window whose name holds `<window>`, child windows included, at every depth; each item is listed under its own window: label, id, rect, checked/disabled/opened/inputable. No window means every window. After a bar, only the item lines holding the substring, each under its window's line |
 | `rect <ref>` | print one widget's line, in the dump's shape. A ref that finds nothing fails |
-| `screenshot <file.png>` | save the frame, and print `screenshot: <path>` |
+| `screenshot <file.png> [\| <ref>]` | save the frame, and print `screenshot: <path>`. After a bar, save only that window's or widget's rectangle, clamped to the frame: the ref is tried as a window first, then as a widget, such as `screenshot report.png \| //###pathreport`. A ref that finds neither fails with `screenshot found no window or item "<ref>"` |
 | `timeout <seconds>` | change the wait-text / wait-idle limit (default: `CommandSession::timeout` in `uitest_commands.h`) |
 | `reset` | a fresh app on a fresh scratch library, with the ref back on `//Hydra`. With `--db` or `--ini`, the seeds are copied again |
 | `quit` | end the run here. In a script that is a pass |

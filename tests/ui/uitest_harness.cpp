@@ -771,14 +771,20 @@ std::string state_text(Harness& h) {
     return out.c_str();
 }
 
-bool screenshot(ImGuiTestContext* ctx, const std::string& file, std::string* saved_to) {
+bool screenshot(ImGuiTestContext* ctx, const std::string& file, std::string* saved_to,
+                const ImRect* crop) {
     Harness& h = harness(ctx);
     std::string path = file;
     if (fs::u8path(path).is_relative()) path = h.shots_dir + "\\" + path;
     ImGuiCaptureArgs* args = ctx->CaptureArgs;
     ImStrncpy(args->InOutputFile, path.c_str(), IM_ARRAYSIZE(args->InOutputFile));
     args->InCaptureWindows.clear();
-    args->InCaptureRect = ImRect(0, 0, (float)h.width, (float)h.height);
+    ImRect rect(0, 0, (float)h.width, (float)h.height);
+    if (crop) {
+        rect.ClipWithFull(*crop);
+        if (rect.GetWidth() < 1.0f || rect.GetHeight() < 1.0f) return false;  // off the frame
+    }
+    args->InCaptureRect = rect;
     args->InPadding = 0.0f;
     bool ok = ctx->CaptureScreenshot(ImGuiCaptureFlags_IncludeOtherWindows |
                                      ImGuiCaptureFlags_HideMouseCursor);

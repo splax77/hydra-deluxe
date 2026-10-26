@@ -298,7 +298,10 @@ std::string state_text(Harness& h);
 // Save the current frame to `file` (PNG). Returns false if the capture failed.
 // The saved file's full path goes to *saved_to when the caller asks for it
 // (the screenshot verb puts it in its result); otherwise it is printed.
-bool screenshot(ImGuiTestContext* ctx, const std::string& file, std::string* saved_to = nullptr);
+// With `crop`, only that rectangle is saved, clamped to the frame; without
+// it, the whole frame.
+bool screenshot(ImGuiTestContext* ctx, const std::string& file, std::string* saved_to = nullptr,
+                const ImRect* crop = nullptr);
 
 // Escape '/' and '#' in a label so it can be used as one path segment of an
 // ImGuiTestRef ("**/" + escape(title)).
