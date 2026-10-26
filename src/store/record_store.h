@@ -544,6 +544,11 @@ public:
     // wrote; rows an older scan wrote carry none.
     int64_t chart_library_count();
     std::vector<ChartLibraryEntry> list_chart_library(int offset, int limit);
+    // Whether the library's rows came from a scan whose readers are no longer
+    // current, so a new scan would read something the last one did not.
+    // kChartMetaStamp owns which stamps count as current. An empty library is
+    // never out of date.
+    bool chart_library_out_of_date();
     // The library's rows for one chart, one per copy the scan listed, read
     // the way list_chart_library reads them. A click on a library row picks
     // its copy from these (ui::AppState::select).

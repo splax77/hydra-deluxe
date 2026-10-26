@@ -203,6 +203,50 @@ TEST_CASE("the scan cache is dropped when its reader stamp is not current") {
     std::remove(path.c_str());
 }
 
+TEST_CASE("the library is out of date only when it has rows and its reader stamp is not current") {
+    const std::string path = testtemp::temp_path("library_out_of_date", ".db");
+    std::remove(path.c_str());
+    const ChartLibraryEntry entry = library_row("a", "A");
+    {
+        RecordStore store(path);
+        CHECK_FALSE(store.chart_library_out_of_date());
+        store.rebuild_chart_library({entry});
+        CHECK_FALSE(store.chart_library_out_of_date());
+    }
+    exec_on_file(path, "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version'");
+    {
+        RecordStore store(path);
+        CHECK(store.chart_library_out_of_date());
+    }
+    exec_on_file(path, "DELETE FROM meta WHERE key = 'chart_meta_version'");
+    {
+        RecordStore store(path);
+        CHECK(store.chart_library_out_of_date());
+        store.rebuild_chart_library({entry});
+        CHECK_FALSE(store.chart_library_out_of_date());
+    }
+    std::remove(path.c_str());
+}
+
+TEST_CASE("a library from before the album column is out of date after the open adds it") {
+    // The charts table and scan stamp a build from before the album wrote, as
+    // seed_without_album in test_store_open.cpp makes them.
+    const std::string path = testtemp::temp_path("library_out_of_date_album", ".db");
+    std::remove(path.c_str());
+    {
+        RecordStore seed(path);
+        seed.rebuild_chart_library({library_row("a", "A")});
+    }
+    exec_on_file(path, "ALTER TABLE charts DROP COLUMN album;"
+                       "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version';");
+    {
+        RecordStore store(path);
+        CHECK(store.chart_library_count() == 1);
+        CHECK(store.chart_library_out_of_date());
+    }
+    std::remove(path.c_str());
+}
+
 // ---- charts the library no longer lists (D87 items 3 and 4, task storage-T1) --
 
 namespace {

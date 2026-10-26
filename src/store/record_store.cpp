@@ -1533,6 +1533,12 @@ int64_t RecordStore::chart_library_count() {
     return sqlite3_column_int64(s, 0);
 }
 
+bool RecordStore::chart_library_out_of_date() {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+
+    return chart_library_count() > 0 && !chart_meta_current();
+}
+
 std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int limit) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
