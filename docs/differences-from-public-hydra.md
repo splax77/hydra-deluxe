@@ -146,5 +146,6 @@ This version doesn't read `records.json`, so your old results don't carry over. 
 | 2.12.1 | An activation row on the Paths tab names only the frontend timing scales its backend rows and squeezes use |
 | 2.13.0 | The library has an `Album` column, an `album:` search and the `squeeze>` and `squeeze>=` filters; Clone Hero 1.0 mode counts measures the way the rest of the app does when it places generated fills, so every saved result reads `Stale` |
 | 2.13.1 | With a song open, every library row shows its album under the artist, with or without a search |
+| 2.13.2 | Hydra Deluxe starts a scan by itself when it opens a library an older version scanned, so what the new version reads from your charts shows without a click on `Scan library` |
 
 Each release's full notes are on the [releases page](https://github.com/splax77/hydra-deluxe/releases).
