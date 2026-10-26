@@ -285,8 +285,8 @@ void render_scan_modal(AppState& app) {
     }
 
     ScanProgress p = app.scan_job->snapshot();
-    if (app.scan_started_by_open)
-        ImGui::TextUnformatted(app::library_rescan_notice().c_str());
+    // Longer than the pinned box is wide, so it wraps inside it.
+    if (app.scan_started_by_open) ImGui::TextWrapped("%s", app::library_rescan_notice().c_str());
     ImGui::TextUnformatted(scan_folders_found_text(p.folders_seen).c_str());
     if (p.phase != ScanProgress::Phase::Enumerating) {
         ImGui::TextUnformatted("Reading charts...");
