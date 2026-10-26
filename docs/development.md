@@ -551,6 +551,14 @@ the old one in `update_key.h`. Installed copies only
 trust the old key, so the first release with the new key can't update them:
 players have to download and install that one release by hand.
 
+### Every release: refresh the screenshots
+
+The pictures in `docs/images/` are taken from the test charts by one command,
+`pwsh -NoProfile -File tools\doc_shots.ps1`. Run it before each release, read
+the pictures it saves, and commit the changed ones on a branch for review like
+any other change. `docs/agents/doc-screenshots.md` explains the command, the
+shot list and the size limits.
+
 ### Every release: build and sign
 
 ```

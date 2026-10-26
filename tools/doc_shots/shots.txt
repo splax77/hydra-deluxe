@@ -1,0 +1,92 @@
+# The pictures in docs/images, taken by tools/doc_shots.ps1 on the
+# testdata/input corpus. This file is the one list of those pictures; the
+# page that explains it is docs/agents/doc-screenshots.md. Verb table:
+# docs/agents/ui-testing.md.
+#
+# Every expect-text and rect line before a screenshot checks that the picture
+# holds what its caption says, so a missing element fails the run instead of
+# saving a wrong picture. A rect line directly before a full-frame screenshot
+# also tells doc_shots.ps1 to keep only the frame below that rectangle.
+timeout 120
+
+# Scan and analyze the corpus once, then put the done strip away.
+click Scan library
+wait-idle
+click //Scanning charts/Continue
+wait-idle
+click Analyze library...
+click //Analyze library/Start analyzing
+wait-idle
+click **/X##dismissdone
+wait 0.2
+
+# The main screen: the whole library and Burnout on its Paths tab, below the
+# version bar. open leaves the title in the search box, so the box is cleared.
+# The tab click moves the mouse off the library rows, whose hover tooltips
+# would show in the picture.
+open Burnout
+type **/##search |
+click **/##DetailsTabs/Paths
+wait 0.5
+expect-text squeeze out 163 ms
+rect //Hydra/##versionbar
+screenshot main-screen.png
+
+# The Paths tab with activation 1 open.
+click **/##act1
+wait 0.2
+expect-text more than 163.0 ms late
+click **/##DetailsTabs/Paths
+wait 0.5
+screenshot paths-tab.png | //Hydra/##songpanel
+
+# The Preview at the first activation.
+click **/##DetailsTabs/Preview
+wait-text Showing
+click **/Act >##nextact
+wait 0.3
+click **/##DetailsTabs/Preview
+wait 0.5
+rect **/##score_box
+rect **/##sp_gauge
+rect **/##next_act_box
+screenshot preview-tab.png | //Hydra/##songpanel
+
+# The Stars tab. Burnout has a solo, so the tab shows its solo bonus.
+click **/##DetailsTabs/Stars
+wait 0.5
+expect-text Solo bonus
+screenshot stars-tab.png | //Hydra/##songpanel
+
+# The Dynamics tab of a chart with ghost notes.
+open Acid Romance
+click **/##DetailsTabs/Dynamics
+wait-idle
+wait 0.5
+expect-text Dynamics enabled: yes
+screenshot dynamics-tab.png | //Hydra/##songpanel
+
+# The settings popup.
+key Escape
+click ###analysissettings
+wait 0.5
+expect-text Reset to defaults
+screenshot analysis-settings.png | //$FOCUSED
+key Escape
+
+# The search box with a squeeze search and its tips.
+type **/##search | squeeze<=20
+wait 0.2
+click **/Search tips##searchtips
+wait 0.5
+screenshot search-tips.png | //Hydra/##library
+key Escape
+type **/##search |
+
+# The path report over the whole corpus, highest score first.
+click Open path report
+wait-idle
+wait 0.5
+expect-text Score
+screenshot path-report.png | //###pathreport
+quit
