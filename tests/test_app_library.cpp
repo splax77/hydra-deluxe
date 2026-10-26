@@ -587,9 +587,11 @@ TEST_CASE("a cancelled scan on open leaves the library out of date; a finished o
     REQUIRE(app.request_scan);
     app.request_scan = false;  // what the main window's next frame does
 
-    app.start_scan();
-    REQUIRE(app.scan_job != nullptr);
+    // Cancelled before it starts, so the cancel cannot lose a race with a scan
+    // that finishes first; the job checks the flag after reading the charts.
+    app.scan_job = std::make_unique<hydra::ui::ScanJob>(app.settings.chartfolders, *app.store);
     app.scan_job->cancel();
+    app.scan_job->start();
     wait_until([&] { return app.scan_job->snapshot().finished; }, "the cancelled scan to end");
     CHECK(app.scan_job->snapshot().cancelled);
     CHECK(app.store->chart_library_out_of_date());
@@ -606,6 +608,18 @@ TEST_CASE("a cancelled scan on open leaves the library out of date; a finished o
     app.tick_library(0.0);
     CHECK(done.charts_found > 0);
     CHECK(app.library_shown_count() == static_cast<size_t>(done.charts_found));
+}
+
+TEST_CASE("a refused start_scan drops the open's mark so a later scan the user starts has no notice") {
+    ScratchPaths paths("appstate_rescanrefused");
+    seed_out_of_date_library(paths);
+    AppState app;
+    app.wait_store_open();
+    REQUIRE(app.scan_started_by_open);
+    app.settings.chartfolders.clear();  // can_scan says no
+    app.start_scan();
+    CHECK(app.scan_job == nullptr);
+    CHECK_FALSE(app.scan_started_by_open);
 }
 
 // A scan over a folder it cannot list would drop that folder's charts and

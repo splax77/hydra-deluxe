@@ -626,6 +626,10 @@ void AppState::start_scan() {
         // The toolbar's button is off during a batch, but "Scan now" and the
         // panel's "Rescan library" ask from here: say why nothing happened.
         if (batch_running()) set_status(kBatchRunningStatus);
+        // The scan the app asked for on open never started, so its dialog
+        // line must not wait for a later scan the user starts. A scan already
+        // running keeps its line.
+        if (!scan_job) scan_started_by_open = false;
         return;
     }
     scan_job = std::make_unique<ScanJob>(settings.chartfolders, *store);
