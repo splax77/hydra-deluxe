@@ -8,6 +8,10 @@ It covers Hydra Deluxe only. The public Hydra by DragonDelgar has a different sc
 
 Hydra Deluxe has one main screen. The version bar runs along the top of the window, with the toolbar under it, and the library fills the rest. The toolbar's `Analysis settings` button opens the settings panel.
 
+![The toolbar, the library and Burnout open in the song panel on its Paths tab](images/main-screen.png)
+
+*The main screen on the 97 test charts, with Burnout open on its Paths tab. The chips above the table count the charts in each state.*
+
 Click a song and the song panel opens beside the library. Drag the library's right edge to give either side more room. Hydra Deluxe remembers the width.
 
 When something happens that you should know about, a message appears under the toolbar. A plain notice fades by itself. A problem stays, in orange, until you dismiss it with its `X`.
@@ -112,6 +116,10 @@ When the latest release is no newer than the version you run, the bar reads `Up 
 
 The `Analysis settings` button sits on the toolbar, after `Compare with dmleaderboards...`. Click it to open the settings panel, which holds every setting that shapes an analysis.
 
+![The settings panel with every setting at its default](images/analysis-settings.png)
+
+*The settings panel with every setting at its default. `Reset to defaults` sits at the bottom.*
+
 The button's label names only the settings you have changed from their defaults, joined with ` · `, for example `Analysis settings: Hard · Note Shuffle`. With every setting at its default it reads `Analysis settings: defaults`. When the window is too narrow for the whole label, the label is cut short; hover over the button to read all of it.
 
 The panel has three groups. A change applies the moment you make it, and there is no Apply button. Checking a box leaves the panel open. Click outside the panel or press `Escape` to close it.
@@ -181,6 +189,10 @@ The chips above the table filter by state: `All`, `Not analyzed`, `Stale`, `Anal
 
 Type in the search box, which reads `Search songs` while it's empty, to narrow the list. `Ctrl+F` jumps to it. `Escape` or its `X` clears it. The heading above shows how many songs match, like `Library 5 of 97 charts`. The text that matched is highlighted in gold.
 
+![The search box holding squeeze<=20, with the Search tips list open under it](images/search-tips.png)
+
+*A search for `squeeze<=20` keeps 87 of the 97 test charts. The `Search tips` list under the box shows every filter.*
+
 The line under the box reads `Type any words, or narrow it down.` Click `Search tips`, the link after it, to see every filter, one per line: an example to type, then what it does. `Escape` or a click outside closes the list and leaves your search as it was.
 
 Searching ignores case and accents, so `ALLISTER` finds Allister and `beyonce` finds Beyoncé. Colour and style tags in song names are ignored too. The examples below come from Hydra Deluxe's test library.
@@ -228,6 +240,10 @@ If the song's file has moved or been deleted since the last scan, the panel says
 ## Paths tab
 
 The Paths tab lists the paths the analysis kept on the left. Click a path to show its activations on the right.
+
+![The Paths tab for Burnout with activation 1 open](images/paths-tab.png)
+
+*Burnout's optimal path with activation 1 open. Its squeeze sentence says to hit the yellow note more than 163.0 ms late, so it lands after Star Power ends.*
 
 The list is grouped by score. Each score is a fold that shows the score and how many paths share it, like `378,315  1 path` on Burnout; click it to hide or show those paths. `Optimal` comes first. When several paths tie for the top score, all of them are optimal, because playing any of them earns the same score. Then come the extra paths under a heading like `Within 2 scores`.
 
@@ -284,6 +300,10 @@ One more setting feeds these displays: `hit_window_ms` in `hydra_settings.ini` (
 ## Preview tab
 
 The Preview plays the chart as a 3D note highway, in time with the song's audio. It draws the chosen path on the highway: the Star Power windows as a teal floor, and the fills a player following the path would see.
+
+![The Preview tab for Burnout, stopped at its first activation](images/preview-tab.png)
+
+*The Preview stopped at Burnout's first activation. The next activation box shows `3- (163 ms)`, and the SP meter runs up the right edge.*
 
 Where Star Power runs out, a bright teal line crosses the floor and a small teal triangle sits just outside each railing, level with the line. A note just before the end can cover the line, but the triangles stay in view, so you can always see exactly where SP stops.
 
@@ -342,6 +362,10 @@ On a computer where Hydra Deluxe can't get a graphics device to draw with, the t
 
 This tab counts the chart's ghost and accent notes. Ghosts and accents are the soft and hard hits that score double in Clone Hero.
 
+![The Dynamics tab for Acid Romance](images/dynamics-tab.png)
+
+*The Dynamics tab for Acid Romance, which has 5 ghosts and 12 accents. The `Chart` box reads `Dynamics enabled: yes`.*
+
 The `Pads` table shows, for each pad (and each cymbal separately under Pro Drums), how many notes are ghosts, accents and normal hits. `Kicks` does the same for kicks, with 2x kicks on their own row and a line saying how many kick notes are 2x. Percentages round to the nearest whole number. When 2x Bass is off, the 2x kick row stays visible but greyed out, and both All kicks and the totals leave it out. `Totals` adds them up.
 
 The `Chart` box says whether the chart has dynamics turned on. A MIDI chart has to opt in with a tag. Without that tag Clone Hero ignores the velocity markings and plays every note as a normal hit. Hydra Deluxe reads the chart the same way, so the tab shows no ghost or accent counts. It says `This chart has no ghost or accent notes.`, and the Chart box says `Dynamics enabled: no (markings ignored by Clone Hero)`. When the tag only comes partway through the chart, the markings before it are ignored too, and the Chart box says how many there were.
@@ -351,6 +375,10 @@ Counts are worked out when you open the song, together with its paths. Nothing i
 ## Stars tab
 
 This tab shows the score you need for each star. A star counts once your score, without the solo bonus, reaches its cutoff.
+
+![The Stars tab for Burnout, with its solo bonus column](images/stars-tab.png)
+
+*Burnout's star cutoffs. Its solo bonus of 11,800 adds the `With full solo bonus` column.*
 
 Above the table, `Base score` is every note hit once at 1x, with no Star Power. When the chart has a solo, `Solo bonus` is its full solo bonus. The solo bonus does not count toward stars, because Clone Hero compares your score without it.
 
@@ -421,6 +449,10 @@ The window never changes its rows behind your back. After a batch, a report buil
 ### The path report
 
 The path report is one table of paths, squeeze timings and scores for the songs in your library, under your current Analysis settings: the difficulty, Pro Drums, 2x Bass, Note Shuffle, SP cap, `1.0 fills`, score range and path limit. Each chart shows its top 5 paths. A song that can't be analyzed has no rows, and neither has a song with no result. Lines above the table count both.
+
+![The path report over the 97 test charts, sorted by Score](images/path-report.png)
+
+*The path report on the 97 test charts, sorted by `Score` with the highest first. `Optimal paths only` is checked, so it lists each chart's optimal paths.*
 
 When you open the report and it needs building, Hydra Deluxe first analyzes every song with no current result under your settings, `Stale` ones included. This is an ordinary batch: the strip under the toolbar shows it, with `Pause` and `Stop`, and the Analysis settings stay locked while it runs. The window's first line reads `Analyzing n of N charts` over a progress bar, with the same counts as the strip. Its `Cancel` button stops the batch the way `Stop` does. A stopped batch builds no report, so the window then shows `Report cancelled.` with `Try again`. If a batch you started yourself was already running, the window shows that batch instead, and `Cancel` leaves it running. When more than 500 songs need analyzing, the report window asks first. Its first line reads `Analyze N charts that have no result yet?`, with `Cancel` and `Analyze` buttons. `Analyze` starts the batch. `Cancel` skips the analysis, and the report builds from the results already saved. At 500 or fewer, the analysis starts at once. When every song already has a result, the report builds straight away.
 

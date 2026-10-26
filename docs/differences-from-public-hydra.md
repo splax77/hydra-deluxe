@@ -6,6 +6,10 @@ Hydra Deluxe started from that v1.3.1 and has been developed on its own since, f
 
 Both do the same job. They read Clone Hero drum charts and find the Star Power paths that give the best score. The path notation is the same, and the mechanics pages on the [public wiki](https://github.com/DragonDelgar/hydra/wiki) (squeezes, early fills, the optimal checklist) apply to both.
 
+![The Hydra Deluxe toolbar, the library and Burnout open in the song panel on its Paths tab](images/main-screen.png)
+
+*Hydra Deluxe on its 97 test charts, with Burnout open on its Paths tab beside the library.*
+
 ## At a glance
 
 | | Public Hydra 1.3.1 | Hydra Deluxe 2.13.1 |
@@ -50,9 +54,17 @@ The sections below explain each difference.
 
 **The Paths tab shows each path's hardest timing right beside it.** Each activation is one line on a timeline across the song. Each squeeze is a plain sentence saying which note to hit early or late, by how much, and what it's worth. The tab also flags two things the public version doesn't. The first is when a tempo or time-signature change makes an early or late activation move the SP end by more than the hit itself. The second is when a phrase fills the meter to the cap, so a different note controls where SP ends.
 
+![The Paths tab for Burnout with activation 1 open](images/paths-tab.png)
+
+*Burnout's optimal path with activation 1 open. Its squeeze sentence says to hit the yellow note more than 163.0 ms late, so it lands after Star Power ends.*
+
 **Best all-0 path** is the best path that activates at the first chance every time, with no skips. An early fill it lets pass (an E1) doesn't count as a skip. Every squeeze and early fill on it is 0 ms or easier.
 
 **The Preview tab is new.** It plays the chart as a 3D note highway in time with the song's audio, including the audio inside `.srb` bundles. It draws the chosen path on the highway: the Star Power windows, the fills you'd see, a running score, an SP meter and an SP drain timer. During a solo, a solo box like Clone Hero's shows how much of it you have hit. Under the score, a row of seven stars fills in as you earn them, and a line says how many points the next star needs. A box on the highway shows the next activation in path notation with its timings, like `5+ (100 ms)`. The highway itself is a port of Onyx's drum previewer.
+
+![The Preview tab for Burnout, stopped at its first activation](images/preview-tab.png)
+
+*The Preview stopped at Burnout's first activation. The box on the highway shows `3- (163 ms)`, and the SP meter runs up the right edge.*
 
 **The Dynamics tab is new.** It counts ghost and accent notes per pad and for kicks. It also says whether the chart has dynamics turned on, since Clone Hero ignores them in a MIDI chart that doesn't opt in.
 

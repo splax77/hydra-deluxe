@@ -1,4 +1,4 @@
-// The docs say what the code does. Three checks over the decision records
+// The docs say what the code does. Four checks over the decision records
 // and the guides:
 //
 // 1. Every backticked code name in them is still a name the code uses (see
@@ -10,13 +10,19 @@
 //    `10 ms<!-- default: Settings::mslimit_value -->`, and the number before
 //    the marker equals the value in code. For a flag the marker follows "on"
 //    or "off".
+// 4. The pictures the public pages link, the pictures the capture script's
+//    shot list takes and the files in docs/images are the same set, and each
+//    file is a PNG within the size limits (kDocImageMaxBytes and
+//    kDocImagesMaxTotalBytes).
 //
 // It finds the repo and walks the code through tests/source_tree.h, as the
 // scans in tests/single_owner/ do.
 #include "doctest.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -501,6 +507,129 @@ TEST_CASE("docs match code: what counts as a code name") {
     CHECK(code_name_parts("hydra_rules.ini").empty());
     CHECK(code_name_parts("hydra_batch --legacy-fills").empty());
     CHECK(code_name_parts("[ENABLE_CHART_DYNAMICS]").empty());
+}
+
+namespace {
+
+// ---- check 4: the pictures ------------------------------------------------
+
+// The size limits for one picture and for the whole docs/images folder. The
+// user set them on 2026-10-25 (docs/superpowers/plans/2026-10-25-doc-screenshots.md,
+// "User decisions"). tools/doc_shots/shrink.py fails a capture run on the same
+// limits, so a bloated picture is caught both when it is taken and at merge.
+constexpr std::uintmax_t kDocImageMaxBytes = 500 * 1024;
+constexpr std::uintmax_t kDocImagesMaxTotalBytes = 4 * 1024 * 1024;
+
+// The public pages that show pictures.
+constexpr const char* kPicturePages[] = {"docs/UserGuide.md",
+                                         "docs/differences-from-public-hydra.md"};
+
+// The shot list the capture script runs.
+constexpr const char* kShotList = "tools/doc_shots/shots.txt";
+
+}  // namespace
+
+TEST_CASE("docs match code: every picture the public pages link is a shot the capture script takes, "
+          "and the file exists") {
+    const fs::path root = sourcetree::root();
+    std::vector<std::string> problems;
+
+    // The pictures the pages link, each with where it is linked.
+    std::map<std::string, std::string> linked;  // file name -> first "page:line"
+    const std::regex image_link(R"(!\[([^\]]*)\]\(([^)\s]*)\))");
+    for (const char* page : kPicturePages) {
+        const std::vector<std::string> lines = read_lines(root / page);
+        REQUIRE_MESSAGE(!lines.empty(), page << " is missing or empty");
+        bool fenced = false;
+        for (size_t i = 0; i < lines.size(); ++i) {
+            if (is_fence(lines[i])) {
+                fenced = !fenced;
+                continue;
+            }
+            if (fenced) continue;
+            const std::string where = std::string(page) + ":" + std::to_string(i + 1);
+            for (auto m = std::sregex_iterator(lines[i].begin(), lines[i].end(), image_link);
+                 m != std::sregex_iterator(); ++m) {
+                const std::string alt = (*m)[1].str();
+                const std::string target = (*m)[2].str();
+                if (hydra::trim(alt).empty())
+                    problems.push_back(where + ": the picture " + target + " has no alt text");
+                if (alt.find('`') != std::string::npos)
+                    problems.push_back(where + ": the alt text of " + target +
+                                       " holds a backtick");
+                const std::string prefix = "images/";
+                if (target.rfind(prefix, 0) != 0 ||
+                    target.find('/', prefix.size()) != std::string::npos) {
+                    problems.push_back(where + ": the picture " + target +
+                                       " is not a file directly in docs/images");
+                    continue;
+                }
+                linked.emplace(target.substr(prefix.size()), where);
+            }
+        }
+    }
+    CHECK(!linked.empty());  // the pages had pictures to check
+
+    // The pictures the shot list takes: the file name after "screenshot".
+    std::set<std::string> shots;
+    {
+        const std::vector<std::string> lines = read_lines(root / kShotList);
+        REQUIRE_MESSAGE(!lines.empty(), kShotList << " is missing or empty");
+        const std::regex shot_line(R"(^\s*screenshot\s+([^\s|]+))");
+        for (const std::string& line : lines) {
+            std::smatch m;
+            if (std::regex_search(line, m, shot_line)) shots.insert(m[1].str());
+        }
+    }
+
+    // The files in docs/images, each checked as a PNG within the size limit.
+    std::set<std::string> files;
+    std::uintmax_t total = 0;
+    for (const auto& e : fs::directory_iterator(root / "docs" / "images")) {
+        if (!e.is_regular_file()) continue;
+        const std::string name = e.path().filename().generic_u8string();
+        files.insert(name);
+        const std::uintmax_t size = e.file_size();
+        total += size;
+        if (size > kDocImageMaxBytes)
+            problems.push_back("docs/images/" + name + " is " + std::to_string(size) +
+                               " bytes, over kDocImageMaxBytes (" +
+                               std::to_string(kDocImageMaxBytes) + ")");
+        std::ifstream in(e.path(), std::ios::binary);
+        char sig[8] = {};
+        in.read(sig, sizeof sig);
+        static constexpr char kPngSignature[8] = {'\x89', 'P', 'N', 'G', '\r', '\n', '\x1a', '\n'};
+        if (in.gcount() != 8 || !std::equal(sig, sig + 8, kPngSignature))
+            problems.push_back("docs/images/" + name + " does not start with the PNG signature");
+    }
+    if (total > kDocImagesMaxTotalBytes)
+        problems.push_back("docs/images holds " + std::to_string(total) +
+                           " bytes, over kDocImagesMaxTotalBytes (" +
+                           std::to_string(kDocImagesMaxTotalBytes) + ")");
+
+    // The three sets are equal.
+    for (const auto& [name, where] : linked) {
+        if (!files.count(name))
+            problems.push_back(where + ": links images/" + name +
+                               ", which docs/images does not hold");
+        if (!shots.count(name))
+            problems.push_back(where + ": links images/" + name + ", which " +
+                               std::string(kShotList) + " does not take");
+    }
+    for (const std::string& name : files) {
+        if (!linked.count(name))
+            problems.push_back("docs/images/" + name + ": no public page links it");
+        if (!shots.count(name))
+            problems.push_back("docs/images/" + name + ": " + std::string(kShotList) +
+                               " does not take it");
+    }
+    for (const std::string& name : shots)
+        if (!files.count(name) && !linked.count(name))
+            problems.push_back(std::string(kShotList) + " takes " + name +
+                               ", which no public page links and docs/images does not hold");
+
+    INFO(report(problems));
+    CHECK(problems.empty());
 }
 
 namespace {
