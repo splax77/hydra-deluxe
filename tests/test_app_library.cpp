@@ -17,7 +17,7 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
-#include "app/user_messages.h"  // kDatabaseReadSentence, old_library_set_aside_notice
+#include "app/user_messages.h"  // kDatabaseReadSentence, old_library_set_aside_notice, library_rescan_blocked_notice
 #include "app_state_fixtures.h"
 #include "core/error_kind.h"
 #include "db_file_util.h"  // exec_on_file, write_junk_db
@@ -25,6 +25,7 @@
 #include "library_fixtures.h"  // library_entry
 #include "scoped_hook.h"
 #include "scratch_paths.h"
+#include "scratch_settings.h"
 #include "store/record_store.h"
 #include "store/upgrade_files.h"  // set_aside_path, with_side_files
 #include "ui/app_state.h"
@@ -487,6 +488,7 @@ TEST_CASE("an AppState on a pre-2.2.0 library sets it aside, leaves one notice, 
             std::filesystem::remove(std::filesystem::u8path(f));
     };
     remove_aside();
+    REQUIRE(scratch_settings().save());  // chart folders that a scan could read
     // A copy: the checked-in file is never opened.
     std::filesystem::copy_file(
         std::filesystem::u8path(corpus::testdata_root() + "/store/v2.1.0-schema4.db"),
@@ -501,7 +503,9 @@ TEST_CASE("an AppState on a pre-2.2.0 library sets it aside, leaves one notice, 
         // box to close.
         CHECK(app.startup_notice() == hydra::app::old_library_set_aside_notice(paths.db));
         CHECK_FALSE(app.request_scan);
+        CHECK_FALSE(app.scan_started_by_open);
         app.tick(0.0);
+        CHECK_FALSE(app.request_scan);
         CHECK(app.startup_notice() == hydra::app::old_library_set_aside_notice(paths.db));
 
         app.startup_notice_closed();
@@ -517,16 +521,118 @@ TEST_CASE("an AppState on a pre-2.2.0 library sets it aside, leaves one notice, 
 
 TEST_CASE("an AppState on a current library leaves no notice and asks for no scan") {
     ScratchPaths paths("appstate_nosetaside");
+    REQUIRE(scratch_settings().save());  // chart folders that a scan could read
     seeded_store(paths.db).reset();
     AppState app;
     app.wait_store_open();
     REQUIRE(app.store_ready());
     CHECK(app.startup_notice().empty());
     CHECK_FALSE(app.request_scan);
+    CHECK_FALSE(app.scan_started_by_open);
     app.startup_notice_closed();
     CHECK_FALSE(app.request_scan);
     CHECK_FALSE(std::filesystem::exists(
         std::filesystem::u8path(hydra::store::set_aside_path(paths.db))));
+}
+
+// ---- the scan on open of an out-of-date library -----------------------------
+
+namespace {
+
+// The seeded library on `paths`, its scan stamp set to one this build does
+// not accept, with the corpus as the ini's chart folders plus `extra_folders`.
+void seed_out_of_date_library(const ScratchPaths& paths,
+                              const std::vector<std::string>& extra_folders = {}) {
+    Settings s = scratch_settings();
+    for (const std::string& f : extra_folders) s.chartfolders.push_back(f);
+    REQUIRE(s.save());
+    seeded_store(paths.db).reset();
+    hydra::test::exec_on_file(paths.db,
+                              "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version'");
+}
+
+}  // namespace
+
+TEST_CASE("an AppState on a library scanned by an older Hydra asks for a scan, marked as its own") {
+    ScratchPaths paths("appstate_rescanopen");
+    seed_out_of_date_library(paths);
+    AppState app;
+    app.wait_store_open();
+    REQUIRE(app.store_ready());
+    CHECK(app.startup_notice().empty());
+    CHECK(app.request_scan);
+    CHECK(app.scan_started_by_open);
+    CHECK(app.status_message.empty());
+}
+
+TEST_CASE("an AppState on an empty library asks for no scan") {
+    ScratchPaths paths("appstate_rescanempty");
+    REQUIRE(scratch_settings().save());
+    std::make_unique<RecordStore>(paths.db).reset();
+    AppState app;
+    app.wait_store_open();
+    REQUIRE(app.store_ready());
+    CHECK(app.library.rows().empty());
+    CHECK_FALSE(app.request_scan);
+    CHECK_FALSE(app.scan_started_by_open);
+}
+
+// A cancelled scan writes nothing, so the library stays out of date and the
+// next open asks again; a finished one makes it current.
+TEST_CASE("a cancelled scan on open leaves the library out of date; a finished one clears it") {
+    ScratchPaths paths("appstate_rescancancel");
+    seed_out_of_date_library(paths);
+    AppState app;
+    app.wait_store_open();
+    REQUIRE(app.request_scan);
+    app.request_scan = false;  // what the main window's next frame does
+
+    app.start_scan();
+    REQUIRE(app.scan_job != nullptr);
+    app.scan_job->cancel();
+    wait_until([&] { return app.scan_job->snapshot().finished; }, "the cancelled scan to end");
+    CHECK(app.scan_job->snapshot().cancelled);
+    CHECK(app.store->chart_library_out_of_date());
+    app.tick_library(0.0);
+    CHECK(app.library_shown_count() == static_cast<size_t>(kChartCount));
+    app.scan_job.reset();
+
+    app.start_scan();
+    REQUIRE(app.scan_job != nullptr);
+    wait_until([&] { return app.scan_job->snapshot().finished; }, "the scan to finish");
+    const hydra::ui::ScanProgress done = app.scan_job->snapshot();
+    CHECK_FALSE(done.cancelled);
+    CHECK_FALSE(app.store->chart_library_out_of_date());
+    app.tick_library(0.0);
+    CHECK(done.charts_found > 0);
+    CHECK(app.library_shown_count() == static_cast<size_t>(done.charts_found));
+}
+
+// A scan over a folder it cannot list would drop that folder's charts and
+// their results, so the open asks for no scan and says which folder.
+TEST_CASE("an out-of-date library with a chart folder that cannot be read starts no scan") {
+    ScratchPaths paths("appstate_rescanmissing");
+    const std::string missing = testtemp::temp_path("appstate_rescanmissing", "_nofolder");
+    REQUIRE_FALSE(std::filesystem::exists(std::filesystem::u8path(missing)));
+    seed_out_of_date_library(paths, {missing});
+    int64_t records_before = 0;
+    {
+        RecordStore before(paths.db);
+        records_before = before.record_count();
+    }
+    REQUIRE(records_before > 0);
+
+    AppState app;
+    app.wait_store_open();
+    app.tick(0.0);
+    REQUIRE(app.store_ready());
+    CHECK_FALSE(app.request_scan);
+    CHECK_FALSE(app.scan_started_by_open);
+    CHECK(app.scan_job == nullptr);
+    CHECK(app.status_is_problem);
+    CHECK(app.status_message == hydra::app::library_rescan_blocked_notice(missing));
+    CHECK(app.library_shown_count() == static_cast<size_t>(kChartCount));
+    CHECK(app.store->record_count() == records_before);
 }
 
 TEST_CASE("the startup screen's line names what the open is doing") {

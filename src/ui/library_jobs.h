@@ -117,6 +117,10 @@ public:
     // (store::RecordStore::set_aside_path), or "" when it set nothing aside.
     // Valid once finished() && ok().
     const std::string& startup_notice() const { return startup_notice_; }
+    // Whether the opened library needs a scan, as
+    // store::RecordStore::chart_library_out_of_date answered right after the
+    // library read. Valid once finished() && ok().
+    bool rescan_needed() const { return rescan_needed_; }
     // The exception that failed the job, for the startup message box. Null
     // unless finished() && !ok().
     std::exception_ptr failure() const { return failure_; }
@@ -136,6 +140,7 @@ private:
     LibraryModel library_;
     std::string library_problem_;
     std::string startup_notice_;
+    bool rescan_needed_ = false;
     std::exception_ptr failure_;
     StoreOpenGate gate_;  // the test seam's, copied at construction
 

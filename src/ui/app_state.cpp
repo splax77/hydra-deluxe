@@ -122,6 +122,26 @@ void AppState::collect_store_open() {
     // a failed reload shows, over an empty library.
     if (!job->library_problem().empty()) set_problem(job->library_problem());
     startup_notice_ = job->startup_notice();
+    // A set-aside file asks for its scan when its box closes
+    // (startup_notice_closed), so it never asks here too.
+    if (job->rescan_needed() && startup_notice_.empty()) request_rescan_on_open();
+}
+
+void AppState::request_rescan_on_open() {
+    // When start_scan would refuse, ask for nothing: the dialog's notice
+    // would otherwise wait for a later scan the app did not start.
+    if (!can_scan()) return;
+    // A scan over a folder it cannot list writes a library without that
+    // folder's charts and drops their results, so a missing folder stops the
+    // scan the user did not ask for.
+    for (const std::string& folder : settings.chartfolders) {
+        if (!is_directory_utf8(folder)) {
+            set_problem(app::library_rescan_blocked_notice(folder));
+            return;
+        }
+    }
+    request_scan = true;
+    scan_started_by_open = true;
 }
 
 void AppState::startup_notice_closed() {

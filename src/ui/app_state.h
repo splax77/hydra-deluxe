@@ -685,10 +685,15 @@ public:
     void cancel_dm_report();
 
     // Set by the details modal's "Rescan library" remedy, the Song folders'
-    // "Scan now" and startup_notice_closed: the main window calls start_scan
-    // on its next frame (the scan modal belongs to it), which refuses when
-    // can_scan says no.
+    // "Scan now", startup_notice_closed and the startup open of a library
+    // whose scan is out of date: the main window calls start_scan on its next
+    // frame (the scan modal belongs to it), which refuses when can_scan says
+    // no.
     bool request_scan = false;
+    // True while the scan the app asked for on open (request_rescan_on_open)
+    // is pending or its dialog is up: the Scanning charts dialog then opens
+    // with app::library_rescan_notice. The dialog clears it when it closes.
+    bool scan_started_by_open = false;
 
     // The status line under the toolbar. set_status is news ("Path report
     // saved"): neutral text that fades (kStatusFadeSeconds). set_problem is
@@ -774,6 +779,11 @@ private:
     // Moves a finished startup open into place: the store and library, or
     // the failure. tick() and wait_store_open() both collect through it.
     void collect_store_open();
+    // The opened library's scan is out of date (StoreOpenJob::rescan_needed):
+    // asks for a scan (request_scan, scan_started_by_open), or sets the
+    // status line's problem when a chart folder cannot be read
+    // (app::library_rescan_blocked_notice) and asks for nothing.
+    void request_rescan_on_open();
     std::exception_ptr store_open_error_;
     std::string startup_notice_;  // what startup_notice returns
 

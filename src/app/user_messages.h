@@ -111,6 +111,15 @@ std::string stale_text(bool build, bool rules);
 // path; the name shown is the one store::set_aside_path gave the file.
 std::string old_library_set_aside_notice(const std::string& db_path);
 
+// The first line of the Scanning charts dialog when the app started the scan
+// itself, because the library's scan is out of date
+// (store::RecordStore::chart_library_out_of_date).
+std::string library_rescan_notice();
+
+// The status line's problem when the library is out of date but `folder`,
+// one of the chart folders, cannot be read, so the app starts no scan.
+std::string library_rescan_blocked_notice(const std::string& folder);
+
 // What the library's Stale chip says when hovered. The chip stands for many
 // rows, so it names both causes stale_text can name.
 std::string stale_chip_text();

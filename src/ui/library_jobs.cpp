@@ -136,6 +136,15 @@ void StoreOpenJob::run() {
             if (!report(Step::LoadingLibrary, rows_done_.load(), rows_total_.load()))
                 throw JobCancelled{};
             library_problem_ = read_library(*store_, settings_, library_);
+            // A read that fails here is the status line's problem, as a failed
+            // library read is; the app still opens.
+            if (library_problem_.empty()) {
+                try {
+                    rescan_needed_ = store_->chart_library_out_of_date();
+                } catch (const std::exception& e) {
+                    library_problem_ = app::plain_error(e);
+                }
+            }
             return true;
         } catch (...) {
             // Kept for main's startup box; a cancel is the app closing, so

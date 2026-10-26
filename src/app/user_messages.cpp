@@ -254,6 +254,16 @@ std::string old_library_set_aside_notice(const std::string& db_path) {
            " and started a fresh library.";
 }
 
+std::string library_rescan_notice() {
+    return "An older version of Hydra scanned this library. Scanning again to read what this "
+           "version adds.";
+}
+
+std::string library_rescan_blocked_notice(const std::string& folder) {
+    return "Your library needs a scan, but " + folder +
+           " cannot be read. Click Scan library when it is back.";
+}
+
 std::string stale_chip_text() {
     return "Out of date: these results came from " + both_stale_causes() +
            ". Click a song or run a batch to refresh them.";

@@ -285,6 +285,8 @@ void render_scan_modal(AppState& app) {
     }
 
     ScanProgress p = app.scan_job->snapshot();
+    if (app.scan_started_by_open)
+        ImGui::TextUnformatted(app::library_rescan_notice().c_str());
     ImGui::TextUnformatted(scan_folders_found_text(p.folders_seen).c_str());
     if (p.phase != ScanProgress::Phase::Enumerating) {
         ImGui::TextUnformatted("Reading charts...");
@@ -301,6 +303,7 @@ void render_scan_modal(AppState& app) {
             if (ImGui::Button("Continue") || enter_pressed() ||
                 ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
                 app.scan_job.reset();
+                app.scan_started_by_open = false;
                 ImGui::CloseCurrentPopup();
             }
         } else {
@@ -320,6 +323,7 @@ void render_scan_modal(AppState& app) {
                 app.settings.is_rescan = true;
                 app.commit_settings();
                 app.scan_job.reset();
+                app.scan_started_by_open = false;
                 ImGui::CloseCurrentPopup();
             }
         }

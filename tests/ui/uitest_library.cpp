@@ -14,7 +14,7 @@
 #include "../old_layout_fixture.h"
 #include "../testdata_dirs.h"  // root
 #include "app/config.h"
-#include "app/user_messages.h"  // old_library_set_aside_notice
+#include "app/user_messages.h"  // old_library_set_aside_notice, library_rescan_notice
 #include "core/error_kind.h"
 #include "imgui_internal.h"
 #include "parse/song.h"  // NoNotesError
@@ -1386,6 +1386,88 @@ void test_old_library_set_aside(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->library_shown_count() > 0);
 }
 
+// Scans the corpus, then restarts the app on a copy of that library as an
+// older Hydra left it: the scan stamp is one this build does not accept and
+// no row has an album. Returns how many rows the library showed, or 0 when a
+// step failed. The open has finished when it returns.
+size_t restart_on_out_of_date_library(ImGuiTestContext* ctx, Harness& h) {
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return 0;
+    const size_t rows = h.app->library_shown_count();
+    // VACUUM INTO copies what the open store holds, its write-ahead log included.
+    const std::string seed = h.temp_dir + "\\out_of_date_seed.db";
+    std::error_code ec;
+    fs::remove(fs::u8path(seed), ec);
+    IM_CHECK_RETV(hydra::test::run_sql_on_file(h.db_path, "VACUUM INTO '" + seed + "'"), 0);
+    IM_CHECK_RETV(hydra::test::run_sql_on_file(
+                      seed, "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version';"
+                            "UPDATE charts SET album = '';"),
+                  0);
+    const std::string seed_before = h.seed_db;
+    h.seed_db = seed;
+    reset_app(h);
+    h.seed_db = seed_before;
+    IM_CHECK_RETV(h.app->store_ready(), 0);
+    IM_CHECK_RETV(h.app->library_shown_count() == rows, 0);
+    for (const auto& r : h.app->library.rows()) IM_CHECK_RETV(r.album.empty(), 0);
+    return rows;
+}
+
+// A library an older Hydra scanned scans itself on open, with no click, and
+// the scan window's first line says why. The scan reads the albums the old
+// rows lacked.
+void test_rescan_on_open(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    const size_t rows = restart_on_out_of_date_library(ctx, h);
+    if (rows == 0) return;
+
+    IM_CHECK(wait_until(ctx, [&] { return h.app->scan_job != nullptr; }, 5));
+    IM_CHECK(on_screen(h, hydra::app::library_rescan_notice()));
+    IM_CHECK(wait_until(ctx, [&] { return h.app->scan_job->snapshot().finished; }, 60));
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "Done: "));
+    IM_CHECK(on_screen(h, hydra::app::library_rescan_notice()));
+    ctx->SetRef("//Scanning charts");
+    ctx->ItemClick("Continue");
+    ctx->Yield(2);
+    ctx->SetRef("//Hydra");
+    IM_CHECK(h.app->scan_job == nullptr);
+    IM_CHECK(!h.app->scan_started_by_open);
+    IM_CHECK(!h.app->store->chart_library_out_of_date());
+    IM_CHECK(h.app->library_shown_count() == rows);
+    bool any_album = false;
+    for (const auto& r : h.app->library.rows()) any_album = any_album || !r.album.empty();
+    IM_CHECK(any_album);
+
+    // A scan the user starts says nothing about an older version.
+    scan_library(ctx);
+    IM_CHECK(!h.app->scan_started_by_open);
+}
+
+// Cancel on the scan the app started leaves the library as it was, and the
+// library is still out of date, so the next open asks again.
+void test_rescan_on_open_cancel(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    const size_t rows = restart_on_out_of_date_library(ctx, h);
+    if (rows == 0) return;
+
+    IM_CHECK(wait_until(ctx, [&] { return h.app->scan_job != nullptr; }, 5));
+    ctx->SetRef("//Scanning charts");
+    ctx->ItemClick("Cancel");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->scan_job->snapshot().finished; }, 60));
+    IM_CHECK(h.app->scan_job->snapshot().cancelled);
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "Scan cancelled. The library was left unchanged."));
+    ctx->ItemClick("Continue");
+    ctx->Yield(2);
+    ctx->SetRef("//Hydra");
+    IM_CHECK(h.app->scan_job == nullptr);
+    IM_CHECK(!h.app->scan_started_by_open);
+    IM_CHECK(h.app->library_shown_count() == rows);
+    IM_CHECK(h.app->store->chart_library_out_of_date());
+}
+
 // ---- the version bar ----------------------------------------------------------
 // docs/superpowers/plans/2026-10-23-update-check-on-launch.md, task T1b.
 // Nothing here touches the network: UpdateSeams serves the release reply, the
@@ -1799,6 +1881,8 @@ const std::vector<TestEntry>& library_tests() {
         {"library-twin-rows", test_library_twin_rows},
         {"startup-screen", test_startup_screen},
         {"old-library-set-aside", test_old_library_set_aside},
+        {"rescan-on-open", test_rescan_on_open},
+        {"rescan-on-open-cancel", test_rescan_on_open_cancel},
         {"version-bar", test_version_bar},
         {"library-search-tips", test_library_search_tips},
     };
