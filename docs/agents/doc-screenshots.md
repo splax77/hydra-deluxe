@@ -22,7 +22,7 @@ The script stops with a message naming `.\build_cpp.ps1 -Target hydra_uitest` wh
 
 Run it before each release, so the pictures match the app that ships. Also run it after any change to a label or a layout that one of the pictures shows. Then open every changed picture and check it still shows what its caption says, and that no hover tooltip or version text crept in. Commit the changed pictures on a branch and get them reviewed like any other change.
 
-The runner's scratch settings are not all defaults: they keep a score range of 2, so its settings button reads `Analysis settings: Score range 2 scores`, and the settings picture and the Paths tab show that range. Say so in a caption that names the settings, rather than changing the runner.
+The runner's scratch settings are not all defaults (they keep a smaller score range, for one). The first lines of `shots.txt` open the settings popup and click `Reset to defaults`, then check that the settings button reads `Analysis settings: defaults`, so every picture shows default settings. The runner itself stays as it is.
 
 ## The one list of pictures
 

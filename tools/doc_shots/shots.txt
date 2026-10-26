@@ -9,6 +9,16 @@
 # also tells doc_shots.ps1 to keep only the frame below that rectangle.
 timeout 120
 
+# The runner's scratch settings are not all defaults, so put every panel
+# setting back first. The button then reads its defaults wording, and the
+# pictures show default settings.
+click ###analysissettings
+wait 0.5
+click Reset to defaults
+wait 0.2
+key Escape
+expect-text Analysis settings: defaults
+
 # Scan and analyze the corpus once, then put the done strip away.
 click Scan library
 wait-idle
