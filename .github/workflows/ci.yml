@@ -265,15 +265,21 @@ jobs:
     # The caps here, the job's and each step's, are set from the proving run's
     # times with room to spare. "Continuous integration" in docs/development.md
     # gives that run and its time. The build step starts from an empty folder
-    # every night; it usually takes about 7 minutes, but a slow runner has
+    # every night. Built cold it took about 7 minutes, and a slow runner has
     # pushed the same build past 10, so it and the job get extra room.
     timeout-minutes: 30
     defaults:
       run:
         shell: pwsh
+    # Job-wide, as in the asan job: the coverage-ninja preset runs every
+    # compile through sccache, and every sccache call talks to the same
+    # GitHub-cache-backed server. Its own SCCACHE_GHA_VERSION keeps this cache
+    # apart from the asan one; changing it starts a clean cache.
     env:
       COVERAGE_SESSION: hydra_ci
       COVERAGE_OUT: ${{ github.workspace }}\coverage-out
+      SCCACHE_GHA_ENABLED: "true"
+      SCCACHE_GHA_VERSION: coverage-1
     steps:
       # The full history, for the precheck self-test's two real commit ranges;
       # the comment on build-and-test's checkout says why.
@@ -282,11 +288,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      # sccache runs each compile and keeps the object in GitHub's cache.
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      # One step under one time cap; the sccache stats print after each build
+      # (they add up, so the second block counts both builds).
       - name: Build hydra_tests and hydra_uitest
         timeout-minutes: 15
         run: |
-          .\build_cpp.ps1 -Preset coverage -Target hydra_tests
-          .\build_cpp.ps1 -Preset coverage -Target hydra_uitest
+          .\build_cpp.ps1 -Preset coverage-ninja -Target hydra_tests
+          sccache --show-stats
+          .\build_cpp.ps1 -Preset coverage-ninja -Target hydra_uitest
+          sccache --show-stats
 
       # Puts the tool's path in CC for the later steps. The CLI tests start
       # hydra_batch and hydra_fillcompare as child processes, so those two are
@@ -300,7 +314,7 @@ jobs:
           "CC=$($cc.FullName)" >> $env:GITHUB_ENV
           New-Item -ItemType Directory -Force $env:COVERAGE_OUT | Out-Null
           foreach ($exe in 'hydra_tests', 'hydra_batch', 'hydra_fillcompare', 'hydra_uitest') {
-            & $cc.FullName instrument "build-coverage\Release\$exe.exe" --session-id $env:COVERAGE_SESSION --settings tools\coverage.settings.xml --nologo
+            & $cc.FullName instrument "build-coverage-ninja\Release\$exe.exe" --session-id $env:COVERAGE_SESSION --settings tools\coverage.settings.xml --nologo
             if ($LASTEXITCODE) { throw "instrument $exe failed" }
           }
 
@@ -317,14 +331,14 @@ jobs:
         run: >
           & $env:CC collect --session-id $env:COVERAGE_SESSION --settings tools\coverage.settings.xml
           --output "$env:COVERAGE_OUT\hydra_tests.coverage" --nologo --
-          ctest --test-dir build-coverage -C Release -j 1 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
+          ctest --test-dir build-coverage-ninja -C Release -j 1 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
 
       - name: Run hydra_uitest
         timeout-minutes: 8
         run: >
           & $env:CC collect --session-id $env:COVERAGE_SESSION --settings tools\coverage.settings.xml
           --output "$env:COVERAGE_OUT\hydra_uitest.coverage" --nologo --
-          .\build-coverage\Release\hydra_uitest.exe --all
+          .\build-coverage-ninja\Release\hydra_uitest.exe --all
 
       - name: Merge and convert to Cobertura
         timeout-minutes: 3

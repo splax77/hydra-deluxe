@@ -248,6 +248,12 @@ not a score: there is no threshold, and nothing fails when the number drops.
 instrument a native exe. Instrumenting rewrites the exe in place so it records
 each line it runs. The build never ships.
 
+The `coverage-ninja` preset is the same build through Ninja and the sccache
+compiler cache, in `build-coverage-ninja\`, the way `asan-ninja` is for the
+ASan build. CI uses it, so a night with few changes rebuilds from the cache.
+The tool still instruments an exe built this way: each object keeps its own
+debug info, and the linker still writes the exe's `.pdb`.
+
 The `coverage` job in `.github/workflows/ci.yml` holds the whole recipe and
 runs nightly and on a manual run. It instruments the exes, then runs each test
 step inside the tool's `collect` command (the unit-test slices one at a time).
@@ -485,10 +491,12 @@ Both keep the default shallow checkout, so the precheck self-test skips its
 two real commit ranges there; the main job runs them.
 
 Once a night, and when someone starts the workflow by hand, a `coverage` job
-builds the tests with the `coverage` preset and writes the coverage report
+builds the tests with the `coverage-ninja` preset (the `coverage` build again,
+through Ninja and the sccache compiler cache) and writes the coverage report
 (see "The coverage report" above). It never fails a run over a low number. It
 skips pushes because it repeats the whole build and both test sets. Its proving
-run (run 38083092803, on 2026-10-10) took 11.5 minutes.
+run (run 38083092803, on 2026-10-10) took 11.5 minutes. Before the cache, the
+build step alone took 7 min 17 s on run 40313402500.
 
 Another job, `tool-tests`, runs the tool tests above with no C++ build. The main
 job runs the mutation probe's self-test after it builds `hydra_tests`, because

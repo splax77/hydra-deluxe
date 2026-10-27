@@ -43,6 +43,7 @@ build-rel/
 build-asan/
 build-asan-ninja/
 build-coverage/
+build-coverage-ninja/
 build-fuzz/
 
 # Python bytecode (tools/ch_probe and friends)

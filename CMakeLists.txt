@@ -65,9 +65,9 @@ endif()
 # HYDRA_EMBEDDED_DEBUG keeps each object's debug info inside the .obj (/Z7)
 # instead of one shared compile-time .pdb (/Zi). A compiler cache such as
 # sccache can only store an object that carries its own debug info; the
-# asan-ninja preset turns it on. The linker still writes the exe's .pdb either
-# way, so /PDBALTPATH below is unchanged.
-option(HYDRA_EMBEDDED_DEBUG "Debug info inside each object (/Z7) for a compiler cache (the asan-ninja preset turns it on)" OFF)
+# asan-ninja and coverage-ninja presets turn it on. The linker still writes the
+# exe's .pdb either way, so /PDBALTPATH below is unchanged.
+option(HYDRA_EMBEDDED_DEBUG "Debug info inside each object (/Z7) for a compiler cache (the asan-ninja and coverage-ninja presets turn it on)" OFF)
 if(HYDRA_EMBEDDED_DEBUG)
     set(HYDRA_DEBUG_INFO_FLAG /Z7)
 else()

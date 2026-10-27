@@ -58,6 +58,19 @@
       }
     },
     {
+      "name": "coverage-ninja",
+      "displayName": "Code coverage test build through Ninja and sccache (CI, never ships)",
+      "inherits": "coverage",
+      "generator": "Ninja Multi-Config",
+      "architecture": { "value": "x64", "strategy": "external" },
+      "binaryDir": "${sourceDir}/build-coverage-ninja",
+      "cacheVariables": {
+        "HYDRA_EMBEDDED_DEBUG": { "type": "BOOL", "value": "ON" },
+        "CMAKE_C_COMPILER_LAUNCHER": "sccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "sccache"
+      }
+    },
+    {
       "name": "fuzz",
       "displayName": "libFuzzer targets on the AddressSanitizer build (never ships)",
       "inherits": "default",
@@ -97,6 +110,11 @@
     {
       "name": "coverage",
       "configurePreset": "coverage",
+      "configuration": "Release"
+    },
+    {
+      "name": "coverage-ninja",
+      "configurePreset": "coverage-ninja",
       "configuration": "Release"
     },
     {
