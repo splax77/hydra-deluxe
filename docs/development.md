@@ -495,8 +495,13 @@ builds the tests with the `coverage-ninja` preset (the `coverage` build again,
 through Ninja and the sccache compiler cache) and writes the coverage report
 (see "The coverage report" above). It never fails a run over a low number. It
 skips pushes because it repeats the whole build and both test sets. Its proving
-run (run 38083092803, on 2026-10-10) took 11.5 minutes. Before the cache, the
-build step alone took 7 min 17 s on run 40313402500.
+run (run 38083092803, on 2026-10-10) took 11.5 minutes, before the cache. The
+cache changes the build step's time. With an empty cache the step took
+11 min 17 s (run 40503369133: 487 compiles, all misses). With a full cache it
+took 70 s (run 40505915081: 485 hits, 2 misses), and the whole job 5 min 55 s.
+The build step before the cache took 7 min 17 s (run 40313402500). The cold
+run's coverage report matches the old build's: 158 files, 44,746 coverable lines,
+84%.
 
 Another job, `tool-tests`, runs the tool tests above with no C++ build. The main
 job runs the mutation probe's self-test after it builds `hydra_tests`, because
