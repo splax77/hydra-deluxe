@@ -98,12 +98,48 @@ std::string dynamics_row_label(DynamicsRow r, bool pro) {
     return note_label(dynamics_row_note(r), pro);
 }
 
+namespace {
+
+struct Kick2xShare {
+    int twice;  // the 2x kicks
+    int total;  // every kick note, 2x ones included
+};
+
+// The kicks every 2x kick sentence reads. Every kick, 2x Bass on or off: the
+// share is a fact about the chart.
+Kick2xShare kick2x_share(const DynamicsBreakdown& bd) {
+    return {bd.row(DynamicsRow::Kick2x).all(), bd.kicks_total(/*bass2x=*/true).all()};
+}
+
+}  // namespace
+
 std::string dynamics_kick2x_line(const DynamicsBreakdown& bd) {
-    // Every kick, 2x Bass on or off: the line is a fact about the chart.
-    const int twice = bd.row(DynamicsRow::Kick2x).all();
-    const int total = bd.kicks_total(/*bass2x=*/true).all();
-    return "2x kicks: " + group_thousands(twice) + " of " +
-           counted(total, "kick note", "kick notes") + " (" + dynamics_share(twice, total) + ")";
+    const Kick2xShare s = kick2x_share(bd);
+    return "2x kicks: " + group_thousands(s.twice) + " of " +
+           counted(s.total, "kick note", "kick notes") + " (" + dynamics_share(s.twice, s.total) +
+           ")";
+}
+
+std::string dynamics_kick2x_status(bool bass2x) {
+    return bass2x ? "counted (2x Bass on)" : "not counted (2x Bass off)";
+}
+
+std::string dynamics_kick2x_fact(const DynamicsBreakdown& bd) {
+    const Kick2xShare s = kick2x_share(bd);
+    if (s.twice == 0) return std::string();
+    return counted(s.twice, "2x kick", "2x kicks") + " (" + dynamics_share(s.twice, s.total) + ")";
+}
+
+std::string dynamics_kicks_heading(const DynamicsBreakdown& bd, bool bass2x) {
+    std::string line = dynamics_kick2x_line(bd);
+    if (!bass2x) line += kFactSeparator + dynamics_kick2x_status(false);
+    return line;
+}
+
+std::string dynamics_kick2x_row_label(bool pro, bool bass2x) {
+    std::string label = dynamics_row_label(DynamicsRow::Kick2x, pro);
+    if (!bass2x) label += " (not counted)";
+    return label;
 }
 
 std::string dynamics_share(int part, int total) {

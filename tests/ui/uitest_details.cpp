@@ -251,9 +251,22 @@ void test_dynamics(ImGuiTestContext* ctx) {
         return !h.app->view_job && h.app->viewed.dynamics.has_value();
     }, 60));
 
+    const auto count_of = [&](const std::string& part) {
+        const std::string all = visible_text(h);
+        size_t n = 0;
+        for (size_t at = all.find(part); at != std::string::npos; at = all.find(part, at + 1)) ++n;
+        return n;
+    };
+
     std::string text = visible_text(h);
     IM_CHECK(text.find("Dynamics enabled: yes") != std::string::npos);
-    IM_CHECK(text.find("2x kicks:") != std::string::npos);
+    // The doctest pins 418 kicks and 37 2x kicks. The Kicks line and the
+    // Chart box show the same sentence; the status sits under the second.
+    IM_CHECK_EQ(count_of("2x kicks: 37 of 455 kick notes (8%)"), (size_t)2);
+    IM_CHECK(text.find("counted (2x Bass on)") != std::string::npos);
+    IM_CHECK(text.find("not counted") == std::string::npos);
+    // The header's fact, shown while the Dynamics tab is the active tab.
+    IM_CHECK(text.find("\xC2\xB7 37 2x kicks (8%)") != std::string::npos);
     // The doctest pins 5 ghosts for this chart (all from the red snare).
     IM_CHECK(text.find("Ghosts: 5") != std::string::npos);
     // The kicks table's All is as wide as the width rule gives it for its
@@ -278,8 +291,27 @@ void test_dynamics(ImGuiTestContext* ctx) {
     h.app->commit_settings();
     ctx->Yield(2);
     IM_CHECK(wait_until(ctx, [&] {
-        return visible_text(h).find("not counted (2x Bass off)") != std::string::npos;
+        return visible_text(h).find("2x kick (not counted)") != std::string::npos;
     }, 5));
+    text = visible_text(h);
+    IM_CHECK(text.find("2x kicks: 37 of 455 kick notes (8%) \xC2\xB7 not counted (2x Bass off)") !=
+             std::string::npos);
+    // The header shows the same count with 2x Bass off.
+    IM_CHECK(text.find("\xC2\xB7 37 2x kicks (8%)") != std::string::npos);
+    IM_CHECK(text.find("Ghosts: 5") != std::string::npos);
+    {
+        const hydra::app::DynamicsBreakdown& bd = *h.app->viewed.dynamics;
+        const std::vector<std::string> all = {
+            hydra::group_thousands(bd.row(hydra::app::DynamicsRow::Kick).all()),
+            hydra::group_thousands(bd.row(hydra::app::DynamicsRow::Kick2x).all()),
+            hydra::group_thousands(bd.kicks_total(false).all())};
+        ImGuiTable* kicks = nullptr;
+        for (ImGuiTable* t : drawn_tables(0, "Pad"))
+            if (t->ID == t->OuterWindow->GetID("##kicktable")) kicks = t;
+        IM_CHECK(kicks != nullptr);
+        if (ctx->IsError()) return;
+        IM_CHECK_EQ(kicks->Columns[4].WidthGiven, figure_rule_width("All", all));
+    }
 
     // Restore.
     h.app->settings.view_bass2x = true;
@@ -383,6 +415,9 @@ void test_dynamics_hard(ImGuiTestContext* ctx) {
     std::string text = visible_text(h);
     IM_CHECK(text.find("2x kicks: 0 of 972 kick notes (0%)") != std::string::npos);
     IM_CHECK(text.find(" of 3,426 (") != std::string::npos);  // Dynamic notes: X of 3,426
+    // No 2x kicks: the header shows no 2x kick fact.
+    IM_CHECK(text.find("2x kicks (") == std::string::npos);
+    IM_CHECK(text.find("0 2x kicks") == std::string::npos);
 
     // 2x Bass off: Totals is unchanged, because Hard has no 2x kicks to drop.
     h.app->settings.view_bass2x = false;
@@ -390,7 +425,13 @@ void test_dynamics_hard(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] {
         return visible_text(h).find("not counted (2x Bass off)") != std::string::npos;
     }, 5));
-    IM_CHECK(visible_text(h).find(" of 3,426 (") != std::string::npos);
+    text = visible_text(h);
+    IM_CHECK(text.find(" of 3,426 (") != std::string::npos);
+    IM_CHECK(text.find("2x kicks: 0 of 972 kick notes (0%)") != std::string::npos);
+    // The row's tag does not depend on the count.
+    IM_CHECK(text.find("2x kick (not counted)") != std::string::npos);
+    IM_CHECK(text.find("2x kicks (") == std::string::npos);
+    IM_CHECK(text.find("0 2x kicks") == std::string::npos);
 
     // Restore the defaults the next test relies on.
     h.app->settings.view_bass2x = true;
@@ -915,6 +956,7 @@ void test_panel_headline(ImGuiTestContext* ctx) {
         text = visible_text(h);
         IM_CHECK(text.find("Green Day \xC2\xB7 charted by Hoph2o") != std::string::npos);
         IM_CHECK(text.find("378,315") == std::string::npos);  // no headline yet
+        IM_CHECK(text.find("2x kicks (") == std::string::npos);  // nor its 2x kick fact
         // An artist made only of Clone Hero tags reads "(unknown)", as a
         // title does (D50 item 5).
         h.app->selected->artist = "<color=#FF8000></color><b></b>";
@@ -932,7 +974,14 @@ void test_panel_headline(ImGuiTestContext* ctx) {
     }, 5));
     text = visible_text(h);
     IM_CHECK(text.find("3- 1 2") != std::string::npos);
+    // The whole facts line, read off one run of this test on the 2x kick
+    // count change: Burnout has no 2x kicks, so nothing follows the stars.
+    // The count itself is there, so the empty fact is the chart's, not a
+    // missing count's.
+    IM_CHECK(h.app->viewed.dynamics.has_value());
     IM_CHECK(text.find("Optimal path \xC2\xB7 7 stars") != std::string::npos);
+    IM_CHECK(text.find("Optimal path \xC2\xB7 7 stars \xC2\xB7") == std::string::npos);
+    IM_CHECK(text.find("2x kicks (") == std::string::npos);
     // The hardest timing sits beside each path in the list, not in the headline.
     IM_CHECK(text.find("hardest squeeze") == std::string::npos);
     IM_CHECK(text.find("163.0 ms") != std::string::npos);

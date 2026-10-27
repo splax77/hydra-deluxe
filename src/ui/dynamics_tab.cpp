@@ -194,8 +194,8 @@ void render_dynamics_panel(AppState& app) {
     // Kicks section.
     ImGui::SeparatorText("Kicks");
 
-    // How many of the chart's kick notes are 2x, counted or not.
-    ImGui::TextWrapped("%s", app::dynamics_kick2x_line(bd).c_str());
+    // How many of the chart's kick notes are 2x, and whether they count.
+    ImGui::TextWrapped("%s", app::dynamics_kicks_heading(bd, bass2x).c_str());
 
     {
         std::vector<DynamicsTableRow> rows;
@@ -205,7 +205,7 @@ void render_dynamics_panel(AppState& app) {
         const app::DynamicsCounts& k2 = bd.row(app::DynamicsRow::Kick2x);
         // With 2x Bass off, always draw the 2x kick row disabled
         // but keep its numbers.
-        rows.push_back(dynamics_table_row(app::dynamics_row_label(app::DynamicsRow::Kick2x, pro),
+        rows.push_back(dynamics_table_row(app::dynamics_kick2x_row_label(pro, bass2x),
                                           k2, !bass2x || !k2.has_dynamics(),
                                           pad_color(app::DynamicsRow::Kick2x)));
         // The same kicks Totals counts (finding 12).
@@ -239,10 +239,11 @@ void render_dynamics_panel(AppState& app) {
     ImGui::SeparatorText("Chart");
     ImGui::TextWrapped("%s", dynamics_enabled_text(bd).c_str());
 
-    if (bass2x)
-        ImGui::TextWrapped("2x kicks: counted (2x Bass on)");
-    else
-        ImGui::TextWrapped("2x kicks: not counted (2x Bass off)");
+    // The Kicks line's 2x kick share, then whether those kicks count.
+    ImGui::TextWrapped("%s", app::dynamics_kick2x_line(bd).c_str());
+    ImGui::PushStyleColor(ImGuiCol_Text, kSubtleTextColor);
+    ImGui::TextWrapped("%s", app::dynamics_kick2x_status(bass2x).c_str());
+    ImGui::PopStyleColor();
 
     ImGui::EndChild();
 }

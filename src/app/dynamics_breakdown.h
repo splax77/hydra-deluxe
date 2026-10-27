@@ -122,6 +122,23 @@ std::string dynamics_row_label(DynamicsRow r, bool pro);
 // kicks the percent reads 0%.
 std::string dynamics_kick2x_line(const DynamicsBreakdown& bd);
 
+// Whether 2x kicks count under this 2x Bass setting, as "counted (2x Bass on)"
+// or "not counted (2x Bass off)". The one home of those words.
+std::string dynamics_kick2x_status(bool bass2x);
+
+// The song header's 2x kick fact, as "37 2x kicks (8%)", from the same kicks
+// dynamics_kick2x_line reads. Empty when the chart has no 2x kicks, so the
+// header then shows nothing extra.
+std::string dynamics_kick2x_fact(const DynamicsBreakdown& bd);
+
+// The Dynamics tab's Kicks line: dynamics_kick2x_line, with the
+// dynamics_kick2x_status of 2x Bass off after it when 2x Bass is off.
+std::string dynamics_kicks_heading(const DynamicsBreakdown& bd, bool bass2x);
+
+// The 2x kick row's name in the Kicks table: dynamics_row_label's, tagged
+// " (not counted)" when 2x Bass is off.
+std::string dynamics_kick2x_row_label(bool pro, bool bass2x);
+
 // The Dynamics tab's whole-number share of a count, as "15%". A total of 0
 // reads "0%": the tab shows every line even for a chart with nothing to count.
 std::string dynamics_share(int part, int total);

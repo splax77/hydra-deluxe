@@ -7,6 +7,7 @@
 #include <windows.h>
 
 #include "app/display_format.h"  // kFactSeparator
+#include "app/dynamics_breakdown.h"  // dynamics_kick2x_fact
 #include "app/path_view.h"
 #include "app/user_messages.h"  // stale_text, kNoPathsFound
 #include "core/model.h"
@@ -129,8 +130,12 @@ void render_headline(AppState& app) {
         const store::PathSummary& summary = app.viewed.summary;
         std::string facts = "Optimal path";
         if (summary.stars) facts += app::kFactSeparator + counted(*summary.stars, "star", "stars");
+        if (app.viewed.dynamics) {
+            const std::string kick2x = app::dynamics_kick2x_fact(*app.viewed.dynamics);
+            if (!kick2x.empty()) facts += app::kFactSeparator + kick2x;
+        }
         ImGui::PushStyleColor(ImGuiCol_Text, kSubtleTextColor);
-        ImGui::TextUnformatted(facts.c_str());
+        text_ellipsized(facts.c_str(), text_w);
         ImGui::PopStyleColor();
     });
 }

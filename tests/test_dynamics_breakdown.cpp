@@ -286,6 +286,53 @@ TEST_CASE("dynamics_breakdown: the 2x kick line counts its noun from the total")
     CHECK(dynamics_kick2x_line(DynamicsBreakdown{}) == "2x kicks: 0 of 0 kick notes (0%)");
 }
 
+TEST_CASE("dynamics_breakdown: the 2x kick status names the 2x Bass setting") {
+    CHECK(dynamics_kick2x_status(true) == "counted (2x Bass on)");
+    CHECK(dynamics_kick2x_status(false) == "not counted (2x Bass off)");
+}
+
+TEST_CASE("dynamics_breakdown: the header's 2x kick fact, empty with no 2x kicks") {
+    // No kicks at all, and kicks with none of them 2x: nothing extra.
+    CHECK(dynamics_kick2x_fact(DynamicsBreakdown{}) == "");
+    DynamicsBreakdown plain;
+    plain.rows[static_cast<size_t>(DynamicsRow::Kick)].normal = 418;
+    CHECK(dynamics_kick2x_fact(plain) == "");
+
+    DynamicsBreakdown one;
+    one.rows[static_cast<size_t>(DynamicsRow::Kick2x)].normal = 1;
+    CHECK(dynamics_kick2x_fact(one) == "1 2x kick (100%)");
+
+    // Acid Romance's kick counts (pinned in its real-chart case above).
+    DynamicsBreakdown acid;
+    acid.rows[static_cast<size_t>(DynamicsRow::Kick)].normal = 418;
+    acid.rows[static_cast<size_t>(DynamicsRow::Kick2x)].normal = 37;
+    CHECK(dynamics_kick2x_fact(acid) == "37 2x kicks (8%)");
+
+    DynamicsBreakdown many;
+    many.rows[static_cast<size_t>(DynamicsRow::Kick)].normal = 1700;
+    many.rows[static_cast<size_t>(DynamicsRow::Kick2x)].accent = 300;
+    CHECK(dynamics_kick2x_fact(many) == "300 2x kicks (15%)");
+}
+
+TEST_CASE("dynamics_breakdown: the Kicks line says not counted only with 2x Bass off") {
+    DynamicsBreakdown many;
+    many.rows[static_cast<size_t>(DynamicsRow::Kick)].normal = 1700;
+    many.rows[static_cast<size_t>(DynamicsRow::Kick2x)].accent = 300;
+    CHECK(dynamics_kicks_heading(many, true) == "2x kicks: 300 of 2,000 kick notes (15%)");
+    CHECK(dynamics_kicks_heading(many, false) ==
+          "2x kicks: 300 of 2,000 kick notes (15%) \xC2\xB7 not counted (2x Bass off)");
+    CHECK(dynamics_kicks_heading(DynamicsBreakdown{}, false) ==
+          "2x kicks: 0 of 0 kick notes (0%) \xC2\xB7 not counted (2x Bass off)");
+}
+
+TEST_CASE("dynamics_breakdown: the 2x kick row is tagged not counted with 2x Bass off") {
+    // Pro Drums changes nothing for a kick.
+    CHECK(dynamics_kick2x_row_label(true, true) == "2x kick");
+    CHECK(dynamics_kick2x_row_label(false, true) == "2x kick");
+    CHECK(dynamics_kick2x_row_label(true, false) == "2x kick (not counted)");
+    CHECK(dynamics_kick2x_row_label(false, false) == "2x kick (not counted)");
+}
+
 TEST_CASE("dynamics_breakdown: one share rule for every Dynamics percent") {
     // M_D review round 3: the 2x kick line and the tab's "Dynamic notes" line
     // both read their percent here, so an empty total reads 0% in both.
