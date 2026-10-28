@@ -569,6 +569,13 @@ bool on_screen(Harness& h, const std::string& s) {
     return visible_text(h).find(s) != std::string::npos;
 }
 
+size_t count_on_screen(Harness& h, const std::string& s) {
+    const std::string all = visible_text(h);
+    size_t n = 0;
+    for (size_t at = all.find(s); at != std::string::npos; at = all.find(s, at + 1)) ++n;
+    return n;
+}
+
 std::string canned_dm_users() {
     return R"([{"id":"111","username":"alice","elo":1500,
                 "stats":{"total_scores":1,"total_score":100000}}])";

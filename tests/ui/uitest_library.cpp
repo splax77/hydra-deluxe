@@ -492,12 +492,6 @@ void test_library_search(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(shown(), (size_t)1);
     IM_CHECK(h.app->library_row_at(0).title == "The Good Doctor");
     IM_CHECK(ctx->ItemExists("**/Album"));
-    const auto count_of = [&](const std::string& part) {
-        const std::string all = visible_text(h);
-        size_t n = 0;
-        for (size_t at = all.find(part); at != std::string::npos; at = all.find(part, at + 1)) ++n;
-        return n;
-    };
     // With a song open, Album makes way with Charter and Folder, and the
     // album shows on the row's second line instead.
     h.app->select(h.app->library_row_at(0).entry, hydra::ui::SelectionSource::Click);
@@ -540,8 +534,8 @@ void test_library_search(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     const float two_line_h = ctx->ItemInfo(doctor_ref.c_str()).RectFull.GetHeight();
     IM_CHECK_GT(two_line_h, one_line_h * 1.5f);
-    IM_CHECK_EQ(count_of("Vector"), (size_t)1);
-    IM_CHECK_EQ(count_of(h.app->library_row_at(0).entry.rootfolder), (size_t)1);
+    IM_CHECK_EQ(count_on_screen(h, "Vector"), (size_t)1);
+    IM_CHECK_EQ(count_on_screen(h, h.app->library_row_at(0).entry.rootfolder), (size_t)1);
     IM_CHECK(on_screen(h, "Matched on album."));
     // The album sits in the Artist cell: the frame's text runs title, artist,
     // album line, then the Folder column.
@@ -570,7 +564,7 @@ void test_library_search(ImGuiTestContext* ctx) {
     ctx->TableSetColumnEnabled(table->ID, "Album", true);
     ctx->Yield(3);
     IM_CHECK_EQ(ctx->ItemInfo(first_ref.c_str()).RectFull.GetHeight(), one_line_h);
-    IM_CHECK_EQ(count_of("Vector"), (size_t)1);
+    IM_CHECK_EQ(count_on_screen(h, "Vector"), (size_t)1);
 
     // Words in any order, across title and artist.
     ctx->ItemInputValue("**/##search", "green burnout");

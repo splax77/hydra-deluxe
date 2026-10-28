@@ -257,6 +257,9 @@ std::string visible_text(Harness& h);
 // True when `s` is somewhere in visible_text(h).
 bool on_screen(Harness& h, const std::string& s);
 
+// How many times `s` appears in visible_text(h).
+size_t count_on_screen(Harness& h, const std::string& s);
+
 // The dmleaderboards API's canned answers, which reset_app serves and the
 // tests that serve their own variant build from: the one user (alice), one
 // score row, and the scores reply that wraps a list of rows.

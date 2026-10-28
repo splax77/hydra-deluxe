@@ -251,18 +251,12 @@ void test_dynamics(ImGuiTestContext* ctx) {
         return !h.app->view_job && h.app->viewed.dynamics.has_value();
     }, 60));
 
-    const auto count_of = [&](const std::string& part) {
-        const std::string all = visible_text(h);
-        size_t n = 0;
-        for (size_t at = all.find(part); at != std::string::npos; at = all.find(part, at + 1)) ++n;
-        return n;
-    };
 
     std::string text = visible_text(h);
     IM_CHECK(text.find("Dynamics enabled: yes") != std::string::npos);
     // The doctest pins 418 kicks and 37 2x kicks. The Kicks line and the
     // Chart box show the same sentence; the status sits under the second.
-    IM_CHECK_EQ(count_of("2x kicks: 37 of 455 kick notes (8%)"), (size_t)2);
+    IM_CHECK_EQ(count_on_screen(h, "2x kicks: 37 of 455 kick notes (8%)"), (size_t)2);
     IM_CHECK(text.find("counted (2x Bass on)") != std::string::npos);
     IM_CHECK(text.find("not counted") == std::string::npos);
     // The header's fact, shown while the Dynamics tab is the active tab.
