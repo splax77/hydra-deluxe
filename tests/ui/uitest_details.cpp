@@ -30,6 +30,7 @@
 #include "ui/library_view.h"  // library_split_width
 #include "ui/preview_controller.h"
 #include "ui/text_role.h"
+#include "ui/theme.h"  // kBestPathColor, kWarningColor
 
 namespace uitest {
 
@@ -228,6 +229,19 @@ void test_legacy_fills(ImGuiTestContext* ctx) {
     IM_CHECK(!compare_disabled());
 }
 
+// How many vertices last frame drew in `color` in the window whose name holds
+// `part` (window_named), or 0 when no such window was drawn. Text is drawn as
+// vertices in its colour, so this tells whether any text there wore it.
+size_t vertices_in(const char* part, const ImVec4& color) {
+    const ImGuiWindow* w = window_named(part);
+    if (!w) return 0;
+    const ImU32 c = ImGui::GetColorU32(color);
+    size_t n = 0;
+    for (const ImDrawVert& v : w->DrawList->VtxBuffer)
+        if (v.col == c) ++n;
+    return n;
+}
+
 void test_dynamics(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -263,6 +277,11 @@ void test_dynamics(ImGuiTestContext* ctx) {
     IM_CHECK(text.find("\xC2\xB7 37 2x kicks (8%)") != std::string::npos);
     // The doctest pins 5 ghosts for this chart (all from the red snare).
     IM_CHECK(text.find("Ghosts: 5") != std::string::npos);
+    // Colours, read off last frame's vertices: the Chart box's count line is
+    // gold, and with 2x Bass on nothing in either box is orange.
+    IM_CHECK(vertices_in("dynright", hydra::ui::kBestPathColor) > 0);
+    IM_CHECK_EQ(vertices_in("dynright", hydra::ui::kWarningColor), (size_t)0);
+    IM_CHECK_EQ(vertices_in("dynleft", hydra::ui::kWarningColor), (size_t)0);
     // The kicks table's All is as wide as the width rule gives it for its
     // three rows: the kicks, the 2x kicks and all kicks (2x Bass on).
     {
@@ -293,6 +312,10 @@ void test_dynamics(ImGuiTestContext* ctx) {
     // The header shows the same count with 2x Bass off.
     IM_CHECK(text.find("\xC2\xB7 37 2x kicks (8%)") != std::string::npos);
     IM_CHECK(text.find("Ghosts: 5") != std::string::npos);
+    // With 2x Bass off the not counted words are orange in both boxes: the
+    // Chart box's status, and the Kicks line's ending and 2x kick row.
+    IM_CHECK(vertices_in("dynright", hydra::ui::kWarningColor) > 0);
+    IM_CHECK(vertices_in("dynleft", hydra::ui::kWarningColor) > 0);
     {
         const hydra::app::DynamicsBreakdown& bd = *h.app->viewed.dynamics;
         const std::vector<std::string> all = {
