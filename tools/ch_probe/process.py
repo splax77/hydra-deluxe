@@ -396,15 +396,39 @@ def make_writer(handle: int) -> Writer:
     return write
 
 
-def open_process(process_name: str = constants.PROCESS_NAME) -> Process:
+def access_mask(read_only: bool) -> int:
+    """The rights open_process asks OpenProcess for. A read-only open asks
+    only for what reading and the memory scan's VirtualQueryEx need; the full
+    open adds the write rights the debugger path patches memory with."""
+    if read_only:
+        return _PROCESS_VM_READ | _PROCESS_QUERY_INFORMATION
+    return (
+        _PROCESS_VM_READ
+        | _PROCESS_VM_WRITE
+        | _PROCESS_VM_OPERATION
+        | _PROCESS_QUERY_INFORMATION
+    )
+
+
+def read_only_writer(addr: int, data: bytes) -> None:
+    """The writer a read-only Process gets: every write is refused before it
+    reaches the game, so a watcher can never change the game's memory."""
+    raise PermissionError("process opened read-only")
+
+
+def open_process(
+    process_name: str = constants.PROCESS_NAME, *, read_only: bool = False
+) -> Process:
     """Open the named Clone Hero process, find where GameAssembly.dll loaded,
     and return a ready-to-use Process.
 
     LIVE-ONLY: this is the one function that needs a running game. It finds the
-    process by name, opens it with read/write memory rights, locates the module
-    base, and wires the ReadProcessMemory/WriteProcessMemory backend into a
-    Process. It does NOT call verify_targets for you -- the caller should, as
-    the first thing it does, to prove the address pipeline (milestone 1).
+    process by name, opens it with the rights access_mask(read_only) names,
+    locates the module base, and wires the ReadProcessMemory backend into a
+    Process. The writer is WriteProcessMemory for a full open, and
+    read_only_writer for a read-only one. It does NOT call verify_targets for
+    you -- the caller should, as the first thing it does, to prove the address
+    pipeline (milestone 1).
 
     Raises ProcessNotFoundError if the game or its module is not running, and
     OSError if opening the process fails (usually a rights problem -- run as
@@ -415,13 +439,7 @@ def open_process(process_name: str = constants.PROCESS_NAME) -> Process:
     module_base = _find_module_base(pid, constants.MODULE_NAME)
 
     k32 = _kernel32()
-    access = (
-        _PROCESS_VM_READ
-        | _PROCESS_VM_WRITE
-        | _PROCESS_VM_OPERATION
-        | _PROCESS_QUERY_INFORMATION
-    )
-    handle = k32.OpenProcess(access, False, pid)
+    handle = k32.OpenProcess(access_mask(read_only), False, pid)
     if not handle:
         raise OSError(
             ctypes.get_last_error(),
@@ -431,7 +449,7 @@ def open_process(process_name: str = constants.PROCESS_NAME) -> Process:
     return Process(
         module_base,
         make_reader(handle),
-        make_writer(handle),
+        read_only_writer if read_only else make_writer(handle),
         pid=pid,
         handle=handle,
     )
