@@ -308,20 +308,12 @@ void draw_cut_title(ImVec2 pos, const std::string& shown) {
     ImGui::GetWindowDrawList()->AddText(pos, ImGui::GetColorU32(ImGuiCol_Text), shown.c_str());
 }
 
-// Which hidden columns this frame's second lines named, for the footer.
-struct SecondLineUse {
-    bool folder = false;
-    bool charter = false;
-    bool album = false;
-};
-
 // A second line in a row, drawn dim under a cell's text, with the search's
 // matches on it. render_table's title_line and artist_line say when each one
 // is drawn.
 struct SecondLine {
     std::string text;
     std::vector<app::MatchSpan> spans;
-    bool is_charter = false;
 };
 
 // The line under a title: where the row matched when that place isn't a
@@ -342,7 +334,6 @@ SecondLine second_line(const app::LibraryQuery& q, const LibraryRow& row, bool f
                 s.end += prefix.size();
             }
             line.spans = std::move(spans);
-            line.is_charter = true;
         }
     }
     return line;
@@ -400,8 +391,7 @@ void update_column_widths(AppState& app) {
     }
 }
 
-SecondLineUse render_table(AppState& app, ImVec2 size) {
-    SecondLineUse used;
+void render_table(AppState& app, ImVec2 size) {
     update_column_widths(app);
     LibraryViewState::ColumnWidths& widths = app.library_ui.column_widths;
     const std::vector<ColumnSpec>& columns = widths.specs;
@@ -413,7 +403,7 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
     const ColumnLayout layout = place_columns(widths.measured, columns, widths.room);
     if (!ImGui::BeginTable("##librarytable", kLibraryColumnCount, table_flags(), size,
                            layout.inner_width))
-        return used;
+        return;
 
     ImGui::TableSetupScrollFreeze(0, 1);  // the header row stays on screen
     // Each column's user ID is its LibrarySort value (sort_of), which the
@@ -550,7 +540,6 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
                 const SecondLine line = second_line(q, row, folder_shown, charter_shown);
                 draw_second_line(ImVec2(title_pos.x, title_pos.y + line_h + line_gap), line,
                                  title_pos.x + title_w);
-                if (!line.spans.empty()) (line.is_charter ? used.charter : used.folder) = true;
             }
 
             // Every column but Title can be hidden from the header menu, and a
@@ -571,7 +560,6 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
                     const SecondLine line = album_line(q, row, searching_words);
                     draw_second_line(ImVec2(artist_pos.x, artist_pos.y + line_h + line_gap),
                                      line, artist_pos.x + artist_w);
-                    if (!line.spans.empty()) used.album = true;
                 }
             }
             searched_cell(kColumnAlbum, app::QueryField::Album);
@@ -613,35 +601,6 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
         }
     }
     ImGui::EndTable();
-    return used;
-}
-
-// Under the table while a search is on: why the rows on screen matched when
-// the reason is in a hidden column, and a way out.
-// The sentence names each place in a fixed order, such as "Matched on folder,
-// charter and album."
-std::string matched_on_text(const SecondLineUse& used) {
-    std::vector<const char*> names;
-    if (used.folder) names.push_back("folder");
-    if (used.charter) names.push_back("charter");
-    if (used.album) names.push_back("album");
-    if (names.empty()) return {};
-    std::string text = "Matched on ";
-    for (size_t i = 0; i < names.size(); ++i) {
-        if (i > 0) text += i + 1 == names.size() ? " and " : ", ";
-        text += names[i];
-    }
-    return text + ".";
-}
-
-void render_footer(AppState& app, const SecondLineUse& used) {
-    const std::string why = matched_on_text(used);
-    if (!why.empty()) {
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextColored(kNewSongColor, "%s", why.c_str());
-        ImGui::SameLine();
-    }
-    if (ImGui::SmallButton("Clear search")) clear_search(app);
 }
 
 }  // namespace
@@ -661,16 +620,12 @@ void render_library(AppState& app) {
         // The chips fall back to All when their group empties, so nothing
         // shown means the search matched nothing.
         ImGui::TextUnformatted("No charts match your search.");
-        if (ImGui::Button("Clear search")) clear_search(app);
         return;
     }
 
-    const bool searching = app.library.searching();
-    const float footer_h = searching ? ImGui::GetFrameHeightWithSpacing() : 0.0f;
-    const float table_h = std::max(ImGui::GetContentRegionAvail().y - footer_h,
+    const float table_h = std::max(ImGui::GetContentRegionAvail().y,
                                    ImGui::GetTextLineHeightWithSpacing() * 4.0f);
-    const SecondLineUse used = render_table(app, ImVec2(0.0f, table_h));
-    if (searching) render_footer(app, used);
+    render_table(app, ImVec2(0.0f, table_h));
 }
 
 }  // namespace hydra::ui::detail

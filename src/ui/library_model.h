@@ -177,8 +177,7 @@ public:
     const std::vector<size_t>& order() const { return order_; }
     const app::LibraryQuery& query() const { return query_; }
     // Is the typed search narrowing the library? False for an empty box and
-    // for a filter that does not parse (both leave the query empty). The
-    // table's footer asks this.
+    // for a filter that does not parse (both leave the query empty).
     bool searching() const { return !query_.empty(); }
     // Does the user's own choice, the search or a status chip, leave rows of
     // the library off screen? The toolbar's batch button asks this to pick

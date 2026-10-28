@@ -219,8 +219,6 @@ While the `Album` column is hidden, every row is two lines tall and shows the so
 
 The line under the title appears only while you search for words and the `Folder` or `Charter` column is hidden. It shows the song's folder. When the search matched the charter instead, and the `Charter` column is hidden, it reads `charted by` and the charter's name. Text your search matched is highlighted in gold on both lines.
 
-Under the table, a search shows a `Clear search` button. When a match came from a column that is hidden, a note there says so, like `Matched on folder.` or `Matched on album.`
-
 ## The song panel
 
 Click a song to open its panel beside the library. Opening a song analyzes it under the current settings and shows its paths. The top shows the title, the artist and the charter. The `<` and `>` buttons step to the previous and next song in the list. The `X` button, or `Escape`, closes the panel.

@@ -475,12 +475,12 @@ void test_library_search(ImGuiTestContext* ctx) {
     for (const char* title : {"Burnout", "Chair", "Limb From Limb", "Unbound (The Wild Ride)", "YYZ"})
         IM_CHECK(text.find(title) != std::string::npos);
 
-    // With a song open, Folder makes way, so each row says where it matched.
+    // With a song open, Folder makes way, so each row shows its folder on
+    // the title's second line. No note under the table says where it matched.
     h.app->select(h.app->library_row_at(0).entry, hydra::ui::SelectionSource::Click);
     IM_CHECK(wait_until(ctx, [&] { return !ctx->ItemExists("**/Folder"); }, 5));
-    IM_CHECK(wait_until(ctx, [&] {
-        return visible_text(h).find("Matched on folder.") != std::string::npos;
-    }, 5));
+    ctx->Yield(2);
+    IM_CHECK(!on_screen(h, "Matched on"));
     h.app->close_details();
     IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists("**/Folder"); }, 5));
 
@@ -496,16 +496,14 @@ void test_library_search(ImGuiTestContext* ctx) {
     // album shows on the row's second line instead.
     h.app->select(h.app->library_row_at(0).entry, hydra::ui::SelectionSource::Click);
     IM_CHECK(wait_until(ctx, [&] { return !ctx->ItemExists("**/Album"); }, 5));
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Matched on album."); }, 5));
-    IM_CHECK(on_screen(h, "Vector"));
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Vector"); }, 5));
     // The user's case: the song stays open and the search box is emptied.
-    // Every row still shows its album under the artist, with no footer note.
+    // Every row still shows its album under the artist.
     ctx->ItemInputValue("**/##search", "");
     IM_CHECK(wait_until(ctx, [&] { return h.app->search.empty() && shown() == 97; }, 5));
     ctx->Yield(2);
     IM_CHECK(!ctx->ItemExists("**/Album"));
     IM_CHECK(on_screen(h, "Vector"));
-    IM_CHECK(!on_screen(h, "Matched on album."));
     const float open_no_search_h =
         ctx->ItemInfo(("**/" + escape_ref(h.app->library_row_at(0).title)).c_str())
             .RectFull.GetHeight();
@@ -536,7 +534,6 @@ void test_library_search(ImGuiTestContext* ctx) {
     IM_CHECK_GT(two_line_h, one_line_h * 1.5f);
     IM_CHECK_EQ(count_on_screen(h, "Vector"), (size_t)1);
     IM_CHECK_EQ(count_on_screen(h, h.app->library_row_at(0).entry.rootfolder), (size_t)1);
-    IM_CHECK(on_screen(h, "Matched on album."));
     // The album sits in the Artist cell: the frame's text runs title, artist,
     // album line, then the Folder column.
     {
@@ -552,14 +549,13 @@ void test_library_search(ImGuiTestContext* ctx) {
         IM_CHECK_LT(album_at, folder_at);
     }
     // No search, Album still hidden: the rows stay two lines tall and the
-    // album is still under the artist, with no footer note.
+    // album is still under the artist.
     ctx->ItemInputValue("**/##search", "");
     IM_CHECK(wait_until(ctx, [&] { return h.app->search.empty(); }, 5));
     ctx->Yield(2);
     const std::string first_ref = "**/" + escape_ref(h.app->library_row_at(0).title);
     IM_CHECK_EQ(ctx->ItemInfo(first_ref.c_str()).RectFull.GetHeight(), two_line_h);
     IM_CHECK(on_screen(h, "Vector"));
-    IM_CHECK(!on_screen(h, "Matched on album."));
     // Album back as a column: one line, and the album is drawn once.
     ctx->TableSetColumnEnabled(table->ID, "Album", true);
     ctx->Yield(3);
@@ -592,11 +588,13 @@ void test_library_search(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return !h.app->library.query().errors.empty(); }, 5));
     IM_CHECK(visible_text(h).find(h.app->library.query().errors[0]) != std::string::npos);
 
-    // Nothing matches: the empty state, and Clear search brings it all back.
+    // Nothing matches: the empty state, with no button of its own. The X by
+    // the box is the one way to clear it by mouse, and it brings it all back.
     ctx->ItemInputValue("**/##search", "zzqx");
     IM_CHECK(wait_until(ctx, [&] { return shown() == 0; }, 5));
     IM_CHECK(visible_text(h).find("No charts match your search.") != std::string::npos);
-    ctx->ItemClick("**/Clear search");
+    IM_CHECK(!ctx->ItemExists("**/Clear search"));
+    ctx->ItemClick("**/X##clearsearch");
     IM_CHECK(wait_until(ctx, [&] { return shown() == 97 && h.app->search.empty(); }, 5));
 
     // Escape in the box clears it; a second Escape leaves the box.
