@@ -22,12 +22,13 @@ from typing import TYPE_CHECKING, Optional
 try:
     # Normal case: imported as part of the ch_probe package.
     from . import constants as C
-    from .process import decode_double, decode_u32
+    from .process import decode_double, decode_u32, decode_u64
 except ImportError:  # pragma: no cover - exercised only by direct-script runs
     # Fallback: the module's own directory is on sys.path and it is imported as
     # a top-level module (how the unit tests load it without a package root).
     import constants as C  # type: ignore[no-redef]
-    from process import decode_double, decode_u32  # type: ignore[no-redef]
+    from process import (  # type: ignore[no-redef]
+        decode_double, decode_u32, decode_u64)
 
 if TYPE_CHECKING:
     # Type hints only. These are Protocols (duck-typed shapes), not concrete
@@ -54,13 +55,28 @@ SNAPSHOT_SIZE = C.OFF_HIT_TIME + 8
 
 @dataclass(frozen=True)
 class Snapshot:
-    """The watched engine fields, all from one read."""
+    """The watched engine fields, all from one read.
+
+    The Star Power fields come after the first five. Their offsets are not yet
+    confirmed live (see constants.py), and some are read at two widths because
+    the evidence does not settle the width; the overlay spike's write-up picks
+    one. Their names match the columns in experiments/overlay_logs.py."""
 
     window_ms: float
     clock_s: float
     score: int
     hit_time_s: float
     flags: int
+    sp_amount_u32: int
+    sp_amount_u64: int
+    sp_max_u32: int
+    sp_max_u64: int
+    sp_active_byte: int
+    sp_active_u32: int
+    sp_mult_byte: int
+    sp_mult_u32: int
+    sp_end_s: float
+    sp_overflow_u32: int
 
     @property
     def precision(self) -> bool:
@@ -76,12 +92,28 @@ def decode_snapshot(raw: bytes) -> Snapshot:
     def u32(off: int) -> int:
         return decode_u32(raw[off:off + 4])
 
+    def u64(off: int) -> int:
+        return decode_u64(raw[off:off + 8])
+
+    def byte(off: int) -> int:
+        return raw[off]
+
     return Snapshot(
         window_ms=C.s_to_ms(dbl(C.OFF_TOTAL_WINDOW)),
         clock_s=dbl(C.OFF_SONG_CLOCK),
         score=u32(C.OFF_SCORE),
         hit_time_s=dbl(C.OFF_HIT_TIME),
         flags=u32(C.OFF_FLAGS),
+        sp_amount_u32=u32(C.OFF_SP_AMOUNT),
+        sp_amount_u64=u64(C.OFF_SP_AMOUNT),
+        sp_max_u32=u32(C.OFF_SP_MAX),
+        sp_max_u64=u64(C.OFF_SP_MAX),
+        sp_active_byte=byte(C.OFF_SP_ACTIVE),
+        sp_active_u32=u32(C.OFF_SP_ACTIVE),
+        sp_mult_byte=byte(C.OFF_SP_MULTIPLIER),
+        sp_mult_u32=u32(C.OFF_SP_MULTIPLIER),
+        sp_end_s=dbl(C.OFF_SP_END_TIME),
+        sp_overflow_u32=u32(C.OFF_SP_OVERFLOW),
     )
 
 

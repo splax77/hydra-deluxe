@@ -83,6 +83,36 @@ OFF_SCORE = 0x94
 # docs/superpowers/plans/2026-09-25-hit-window-testing.md checks it.
 OFF_HIT_TIME = 0x2E0
 
+# Star Power fields. From the disassembly, docs/audit/ch-evidence.md answer
+# 37; not yet confirmed live. The answer does not settle every field's width,
+# so engine.decode_snapshot reads some of them at more than one width and the
+# overlay spike's write-up picks one.
+
+# SP amount, a whole number of chart ticks. From the disassembly,
+# docs/audit/ch-evidence.md answer 37; not yet confirmed live.
+OFF_SP_AMOUNT = 0x68
+
+# SP maximum (a full meter), in the same unit as the amount. From the
+# disassembly, docs/audit/ch-evidence.md answer 37; not yet confirmed live.
+OFF_SP_MAX = 0x1B0
+
+# SP-active flag, set by activation. From the disassembly,
+# docs/audit/ch-evidence.md answer 37; not yet confirmed live.
+OFF_SP_ACTIVE = 0x42
+
+# Score multiplier, doubled by activation. From the disassembly,
+# docs/audit/ch-evidence.md answer 37; not yet confirmed live.
+OFF_SP_MULTIPLIER = 0x48
+
+# SP end time (double, song seconds), set by activation. From the
+# disassembly, docs/audit/ch-evidence.md answer 37; not yet confirmed live.
+OFF_SP_END_TIME = 0x120
+
+# Overflow flag, set when a phrase overfills the meter and the amount is
+# clamped. From the disassembly, docs/audit/ch-evidence.md answer 37; not yet
+# confirmed live.
+OFF_SP_OVERFLOW = 0x130
+
 # Flags dword. Bit 0x1000 is PrecisionMode (clear = normal).
 OFF_FLAGS = 0x198
 PRECISION_MODE_BIT = 0x1000
