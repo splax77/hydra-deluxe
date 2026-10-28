@@ -69,10 +69,6 @@ void pad_dot(const ImVec4& color) {
     ImGui::SameLine();
 }
 
-// Moves to the next part of an app::TwoPartLine on this line, leaving the one
-// space its parts leave out.
-void same_line_one_space() { ImGui::SameLine(0.0f, ImGui::CalcTextSize(" ").x); }
-
 // The style's own disabled text grey: it reads on the dark panel.
 ImVec4 faded_color() { return ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled); }
 

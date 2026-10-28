@@ -144,12 +144,12 @@ void render_headline(AppState& app) {
         ImGui::PushStyleColor(ImGuiCol_Text, kSubtleTextColor);
         bool whole = part(facts);
         if (!kick2x.empty() && whole) {
-            ImGui::SameLine(0.0f, ImGui::CalcTextSize(" ").x);
+            same_line_one_space();
             whole = part(app::fact_separator_dot());
         }
         ImGui::PopStyleColor();
         if (!kick2x.empty() && whole) {
-            ImGui::SameLine(0.0f, ImGui::CalcTextSize(" ").x);
+            same_line_one_space();
             ImGui::PushStyleColor(ImGuiCol_Text, kBestPathColor);
             part(kick2x);
             ImGui::PopStyleColor();

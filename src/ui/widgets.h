@@ -225,6 +225,10 @@ inline void overflow_tooltip(const char* text) {
 // render::ellipsize call in the UI hands over.
 inline float text_width(const std::string& s) { return ImGui::CalcTextSize(s.c_str()).x; }
 
+// Moves to the next part of an app::TwoPartLine on this line, leaving the one
+// space its parts leave out.
+inline void same_line_one_space() { ImGui::SameLine(0.0f, ImGui::CalcTextSize(" ").x); }
+
 // Draws `text` where it was cut to `shown` (render::ellipsize's answer for
 // `avail` pixels): whole when nothing was cut, otherwise the cut text with the
 // full text in a tooltip. The one place a cut label is drawn; text_ellipsized
