@@ -2,7 +2,7 @@
 
 The public Hydra is DragonDelgar's, at [DragonDelgar/hydra](https://github.com/DragonDelgar/hydra). It is a Python app. Its latest release is v1.3.1, from August 7, 2026.
 
-Hydra Deluxe started from that v1.3.1 and has been developed on its own since, from 1.4.1 up to 2.13.2. Up to 1.9.7 it was also called Hydra. Since 2.0.0 it is Hydra Deluxe, so the two are easy to tell apart. Nothing flows between the two automatically. The public version has kept changing too (see [What the public version has](#what-the-public-version-has-that-this-one-doesnt)).
+Hydra Deluxe started from that v1.3.1 and has been developed on its own since, from 1.4.1 up to 2.14.0. Up to 1.9.7 it was also called Hydra. Since 2.0.0 it is Hydra Deluxe, so the two are easy to tell apart. Nothing flows between the two automatically. The public version has kept changing too (see [What the public version has](#what-the-public-version-has-that-this-one-doesnt)).
 
 Both do the same job. They read Clone Hero drum charts and find the Star Power paths that give the best score. The path notation is the same, and the mechanics pages on the [public wiki](https://github.com/DragonDelgar/hydra/wiki) (squeezes, early fills, the optimal checklist) apply to both.
 
@@ -12,7 +12,7 @@ Both do the same job. They read Clone Hero drum charts and find the Star Power p
 
 ## At a glance
 
-| | Public Hydra 1.3.1 | Hydra Deluxe 2.13.2 |
+| | Public Hydra 1.3.1 | Hydra Deluxe 2.14.0 |
 |---|---|---|
 | Written in | Python | C++, a native Windows app |
 | Install | Unzip anywhere, run `Hydra.exe` | Installer into `C:\Program Files\Hydra` |
@@ -159,5 +159,6 @@ This version doesn't read `records.json`, so your old results don't carry over. 
 | 2.13.0 | The library has an `Album` column, an `album:` search and the `squeeze>` and `squeeze>=` filters; Clone Hero 1.0 mode counts measures the way the rest of the app does when it places generated fills, so every saved result reads `Stale` |
 | 2.13.1 | With a song open, every library row shows its album under the artist, with or without a search |
 | 2.13.2 | Hydra Deluxe starts a scan by itself when it opens a library an older version scanned, so what the new version reads from your charts shows without a click on `Scan library` |
+| 2.14.0 | The song header and the Dynamics tab show how many 2x kicks a chart has, in gold; with `2x Bass` off, the Dynamics tab says in orange that they are not counted |
 
 Each release's full notes are on the [releases page](https://github.com/splax77/hydra-deluxe/releases).
