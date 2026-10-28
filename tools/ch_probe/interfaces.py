@@ -70,10 +70,12 @@ class ProcessHandle(Protocol):
         ...
 
 
-def open_process(process_name: str = ...) -> ProcessHandle:
+def open_process(process_name: str = ..., *, read_only: bool = False) -> ProcessHandle:
     """Factory in process.py. Opens the named process (default from
     constants.PROCESS_NAME), locates GameAssembly.dll, returns a ProcessHandle.
-    Raises if the process or module is not found."""
+    With read_only=True the handle is opened without write rights and its
+    write() raises PermissionError. Raises if the process or module is not
+    found."""
     ...
 
 
