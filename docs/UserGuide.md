@@ -227,7 +227,7 @@ Click a song to open its panel beside the library. Opening a song analyzes it un
 
 `Hide library`, left of `<`, gives the song panel the whole window. It then reads `Show library`, which puts the library back at the width you left it. `<` and `>` still step through the list while it's hidden. Closing the panel always brings the library back. Hydra Deluxe remembers the choice, so the next song opens the same way, even after a restart.
 
-Below the header is the headline: the best score, its path, and one line like `Optimal path · 7 stars`. Under it are four tabs: `Paths`, `Preview`, `Dynamics` and `Stars`.
+Below the header is the headline: the best score, its path, and one line like `Optimal path · 7 stars`. When the chart has 2x kicks, that line also says how many there are and what share of the chart's kick notes they make up, like `Optimal path · 7 stars · 37 2x kicks (8%)` for Acid Romance. The count is the same with 2x Bass on or off. A chart with no 2x kicks shows no such part. Under it are four tabs: `Paths`, `Preview`, `Dynamics` and `Stars`.
 
 Most songs take a few milliseconds to analyze, so the paths appear at once. A song that takes longer than 0.15 seconds shows `Analyzing chart...` with a progress bar and a `Cancel` button. Cancelling shows `Analysis cancelled.` with a `Try again` button, and nothing is saved for that song. Closing the panel or clicking another song cancels it the same way.
 
@@ -366,7 +366,7 @@ This tab counts the chart's ghost and accent notes. Ghosts and accents are the s
 
 *The Dynamics tab for Acid Romance, which has 5 ghosts and 12 accents. The `Chart` box reads `Dynamics enabled: yes`.*
 
-The `Pads` table shows, for each pad (and each cymbal separately under Pro Drums), how many notes are ghosts, accents and normal hits. `Kicks` does the same for kicks, with 2x kicks on their own row and a line saying how many kick notes are 2x. Percentages round to the nearest whole number. When 2x Bass is off, the 2x kick row stays visible but greyed out, and both All kicks and the totals leave it out. `Totals` adds them up.
+The `Pads` table shows, for each pad (and each cymbal separately under Pro Drums), how many notes are ghosts, accents and normal hits. `Kicks` does the same for kicks, with 2x kicks on their own row and a line saying how many kick notes are 2x, like `2x kicks: 37 of 455 kick notes (8%)`. Percentages round to the nearest whole number. `Totals` adds them up. The `Chart` box repeats the 2x kicks line and says under it whether they are counted: `counted (2x Bass on)` or `not counted (2x Bass off)`. When 2x Bass is off, the 2x kick row reads `2x kick (not counted)` and stays greyed out, the Kicks line ends with `not counted (2x Bass off)`, and both All kicks and the totals leave the 2x kicks out.
 
 The `Chart` box says whether the chart has dynamics turned on. A MIDI chart has to opt in with a tag. Without that tag Clone Hero ignores the velocity markings and plays every note as a normal hit. Hydra Deluxe reads the chart the same way, so the tab shows no ghost or accent counts. It says `This chart has no ghost or accent notes.`, and the Chart box says `Dynamics enabled: no (markings ignored by Clone Hero)`. When the tag only comes partway through the chart, the markings before it are ignored too, and the Chart box says how many there were.
 
