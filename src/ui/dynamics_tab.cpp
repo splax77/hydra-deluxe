@@ -69,11 +69,39 @@ void pad_dot(const ImVec4& color) {
     ImGui::SameLine();
 }
 
+// Moves to the next part of an app::TwoPartLine on this line, leaving the one
+// space its parts leave out.
+void same_line_one_space() { ImGui::SameLine(0.0f, ImGui::CalcTextSize(" ").x); }
+
+// The style's own disabled text grey: it reads on the dark panel.
+ImVec4 faded_color() { return ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled); }
+
+// A wrapped app::TwoPartLine, its tail in `tail_color`. The tail follows the
+// lead on its line when both fit; otherwise it starts a line of its own.
+void two_part_wrapped(const app::TwoPartLine& line, const ImVec4& tail_color) {
+    const float avail = ImGui::GetContentRegionAvail().x;
+    const bool one_line = !line.tail.empty() &&
+                          text_width(line.whole()) <= avail;
+    if (one_line) {
+        ImGui::TextUnformatted(line.lead.c_str());
+        same_line_one_space();
+    } else {
+        ImGui::TextWrapped("%s", line.lead.c_str());
+    }
+    if (line.tail.empty()) return;
+    ImGui::PushStyleColor(ImGuiCol_Text, tail_color);
+    ImGui::TextWrapped("%s", line.tail.c_str());
+    ImGui::PopStyleColor();
+}
+
 // One row of a Ghost/Accent/Normal/All table, as its cells read.
 struct DynamicsTableRow {
     std::string cells[5];  // Pad, Ghost, Accent, Normal, All
     bool disabled = false;
     std::optional<ImVec4> dot;
+    // The Pad name's tail (app::TwoPartLine), drawn in kWarningColor after
+    // cells[0]; empty for none.
+    std::string label_tail;
 };
 
 DynamicsTableRow dynamics_table_row(const std::string& label, const app::DynamicsCounts& c,
@@ -107,12 +135,18 @@ void dynamics_table(const char* id, const std::vector<DynamicsTableRow>& rows) {
 
     for (const DynamicsTableRow& row : rows) {
         ImGui::TableNextRow();
-        // The style's own disabled text grey: it reads on the dark panel.
-        if (row.disabled)
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        if (row.disabled) ImGui::PushStyleColor(ImGuiCol_Text, faded_color());
         ImGui::TableNextColumn();
         if (row.dot) pad_dot(*row.dot);
+        // The tail follows only a name drawn whole.
+        const bool name_whole = text_width(row.cells[0]) <= ImGui::GetContentRegionAvail().x;
         text_ellipsized(row.cells[0].c_str());
+        if (!row.label_tail.empty() && name_whole) {
+            same_line_one_space();
+            ImGui::PushStyleColor(ImGuiCol_Text, kWarningColor);
+            text_ellipsized(row.label_tail.c_str());
+            ImGui::PopStyleColor();
+        }
         for (size_t c = 1; c < specs.size(); ++c) {
             ImGui::TableNextColumn();
             ScopedBaselineFont font(TextRole::Figure);
@@ -194,23 +228,28 @@ void render_dynamics_panel(AppState& app) {
     // Kicks section.
     ImGui::SeparatorText("Kicks");
 
-    // How many of the chart's kick notes are 2x, and whether they count.
-    ImGui::TextWrapped("%s", app::dynamics_kicks_heading(bd, bass2x).c_str());
+    // How many of the chart's kick notes are 2x, and whether they count: the
+    // not counted tail in orange.
+    two_part_wrapped(app::dynamics_kicks_heading(bd, bass2x), kWarningColor);
 
     {
+        // A kick row is faded, its dot grey too, only when its notes do not
+        // count (app::kick_row_counts); it keeps its numbers.
+        auto kick_row = [&](app::DynamicsRow r, const app::TwoPartLine& label) {
+            const bool counts = app::kick_row_counts(r, bass2x);
+            DynamicsTableRow row = dynamics_table_row(label.lead, bd.row(r), !counts,
+                                                      counts ? pad_color(r) : faded_color());
+            row.label_tail = label.tail;
+            return row;
+        };
         std::vector<DynamicsTableRow> rows;
-        const app::DynamicsCounts& k = bd.row(app::DynamicsRow::Kick);
-        rows.push_back(dynamics_table_row(app::dynamics_row_label(app::DynamicsRow::Kick, pro), k,
-                                          !k.has_dynamics(), pad_color(app::DynamicsRow::Kick)));
-        const app::DynamicsCounts& k2 = bd.row(app::DynamicsRow::Kick2x);
-        // With 2x Bass off, always draw the 2x kick row disabled
-        // but keep its numbers.
-        rows.push_back(dynamics_table_row(app::dynamics_kick2x_row_label(pro, bass2x),
-                                          k2, !bass2x || !k2.has_dynamics(),
-                                          pad_color(app::DynamicsRow::Kick2x)));
-        // The same kicks Totals counts (finding 12).
-        const app::DynamicsCounts ktot = bd.kicks_total(bass2x);
-        rows.push_back(dynamics_table_row("All kicks", ktot, !ktot.has_dynamics()));
+        rows.push_back(kick_row(app::DynamicsRow::Kick,
+                                {app::dynamics_row_label(app::DynamicsRow::Kick, pro), ""}));
+        rows.push_back(kick_row(app::DynamicsRow::Kick2x,
+                                app::dynamics_kick2x_row_label(pro, bass2x)));
+        // The same kicks Totals counts (finding 12): only counting kicks, so
+        // never faded.
+        rows.push_back(dynamics_table_row("All kicks", bd.kicks_total(bass2x), false));
         dynamics_table("##kicktable", rows);
     }
 
@@ -239,9 +278,12 @@ void render_dynamics_panel(AppState& app) {
     ImGui::SeparatorText("Chart");
     ImGui::TextWrapped("%s", dynamics_enabled_text(bd).c_str());
 
-    // The Kicks line's 2x kick share, then whether those kicks count.
+    // The Kicks line's 2x kick share in the score's gold, then whether those
+    // kicks count: orange when they do not.
+    ImGui::PushStyleColor(ImGuiCol_Text, kBestPathColor);
     ImGui::TextWrapped("%s", app::dynamics_kick2x_line(bd).c_str());
-    ImGui::PushStyleColor(ImGuiCol_Text, kSubtleTextColor);
+    ImGui::PopStyleColor();
+    ImGui::PushStyleColor(ImGuiCol_Text, bass2x ? kSubtleTextColor : kWarningColor);
     ImGui::TextWrapped("%s", app::dynamics_kick2x_status(bass2x).c_str());
     ImGui::PopStyleColor();
 

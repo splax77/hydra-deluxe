@@ -106,10 +106,30 @@ struct DynamicsBreakdown {
     // The kick notes that count under this 2x Bass setting: the Kick row,
     // plus the 2x kick row when 2x Bass is on. The one answer to "which kicks
     // count" (finding 12): "All kicks" and Totals both read it.
+    // Built from kick_row_counts, row by row.
     DynamicsCounts kicks_total(bool bass2x) const;
     // Every note that counts: pads_total() plus kicks_total(bass2x).
     DynamicsCounts played_total(bool bass2x) const;
 };
+
+// Whether kick row `r` (Kick or Kick2x) counts under this 2x Bass setting:
+// the one answer kicks_total sums and the Kicks table fades by. `r` must be
+// a kick row (not is_pad_row, not Count).
+bool kick_row_counts(DynamicsRow r, bool bass2x);
+
+// A line drawn in two parts, so the UI can colour each: `lead`, then `tail`
+// one space after it. whole() is the line as it reads, the one place the two
+// parts are joined. `tail` is empty when the line has no second part. The
+// parts never start or end with a space: the UI leaves the gap, so the text
+// a test reads off the screen carries one space, not two.
+struct TwoPartLine {
+    std::string lead, tail;
+    std::string whole() const { return tail.empty() ? lead : lead + " " + tail; }
+};
+
+// The dot of kFactSeparator (app/display_format.h) without the space each
+// side, for a line drawn in parts (TwoPartLine).
+std::string fact_separator_dot();
 
 // A row's name in the Dynamics tab, from note_label (core/model.h), the one
 // name of a drum note: "Red snare", "Yellow cymbal", "2x kick", and "Red" or
@@ -131,13 +151,14 @@ std::string dynamics_kick2x_status(bool bass2x);
 // header then shows nothing extra.
 std::string dynamics_kick2x_fact(const DynamicsBreakdown& bd);
 
-// The Dynamics tab's Kicks line: dynamics_kick2x_line, with the
-// dynamics_kick2x_status of 2x Bass off after it when 2x Bass is off.
-std::string dynamics_kicks_heading(const DynamicsBreakdown& bd, bool bass2x);
+// The Dynamics tab's Kicks line. Its lead is dynamics_kick2x_line. With 2x
+// Bass off its tail is the fact dot and the dynamics_kick2x_status of 2x Bass
+// off; with it on there is no tail.
+TwoPartLine dynamics_kicks_heading(const DynamicsBreakdown& bd, bool bass2x);
 
-// The 2x kick row's name in the Kicks table: dynamics_row_label's, tagged
-// " (not counted)" when 2x Bass is off.
-std::string dynamics_kick2x_row_label(bool pro, bool bass2x);
+// The 2x kick row's name in the Kicks table. Its lead is dynamics_row_label's;
+// with 2x Bass off its tail is "(not counted)", and with it on there is none.
+TwoPartLine dynamics_kick2x_row_label(bool pro, bool bass2x);
 
 // The Dynamics tab's whole-number share of a count, as "15%". A total of 0
 // reads "0%": the tab shows every line even for a chart with nothing to count.

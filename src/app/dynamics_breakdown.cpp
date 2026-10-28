@@ -22,9 +22,16 @@ DynamicsCounts DynamicsBreakdown::pads_total() const {
     return t;
 }
 
+bool kick_row_counts(DynamicsRow r, bool bass2x) {
+    return !dynamics_row_info(r).is2x || bass2x;
+}
+
 DynamicsCounts DynamicsBreakdown::kicks_total(bool bass2x) const {
-    DynamicsCounts t = row(DynamicsRow::Kick);
-    if (bass2x) t += row(DynamicsRow::Kick2x);
+    DynamicsCounts t;
+    for (size_t i = 0; i < rows.size(); ++i) {
+        const auto r = static_cast<DynamicsRow>(i);
+        if (!is_pad_row(r) && kick_row_counts(r, bass2x)) t += rows[i];
+    }
     return t;
 }
 
@@ -130,15 +137,22 @@ std::string dynamics_kick2x_fact(const DynamicsBreakdown& bd) {
     return counted(s.twice, "2x kick", "2x kicks") + " (" + dynamics_share(s.twice, s.total) + ")";
 }
 
-std::string dynamics_kicks_heading(const DynamicsBreakdown& bd, bool bass2x) {
-    std::string line = dynamics_kick2x_line(bd);
-    if (!bass2x) line += kFactSeparator + dynamics_kick2x_status(false);
+std::string fact_separator_dot() {
+    static_assert(sizeof(kFactSeparator) > 3 && kFactSeparator[0] == ' ' &&
+                      kFactSeparator[sizeof(kFactSeparator) - 2] == ' ',
+                  "kFactSeparator is its dot with one space each side");
+    return std::string(kFactSeparator + 1, sizeof(kFactSeparator) - 3);
+}
+
+TwoPartLine dynamics_kicks_heading(const DynamicsBreakdown& bd, bool bass2x) {
+    TwoPartLine line{dynamics_kick2x_line(bd), ""};
+    if (!bass2x) line.tail = fact_separator_dot() + " " + dynamics_kick2x_status(false);
     return line;
 }
 
-std::string dynamics_kick2x_row_label(bool pro, bool bass2x) {
-    std::string label = dynamics_row_label(DynamicsRow::Kick2x, pro);
-    if (!bass2x) label += " (not counted)";
+TwoPartLine dynamics_kick2x_row_label(bool pro, bool bass2x) {
+    TwoPartLine label{dynamics_row_label(DynamicsRow::Kick2x, pro), ""};
+    if (!bass2x) label.tail = "(not counted)";
     return label;
 }
 

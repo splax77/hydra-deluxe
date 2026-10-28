@@ -318,19 +318,58 @@ TEST_CASE("dynamics_breakdown: the Kicks line says not counted only with 2x Bass
     DynamicsBreakdown many;
     many.rows[static_cast<size_t>(DynamicsRow::Kick)].normal = 1700;
     many.rows[static_cast<size_t>(DynamicsRow::Kick2x)].accent = 300;
-    CHECK(dynamics_kicks_heading(many, true) == "2x kicks: 300 of 2,000 kick notes (15%)");
-    CHECK(dynamics_kicks_heading(many, false) ==
+    const TwoPartLine on = dynamics_kicks_heading(many, true);
+    CHECK(on.lead == "2x kicks: 300 of 2,000 kick notes (15%)");
+    CHECK(on.tail == "");
+    CHECK(on.whole() == "2x kicks: 300 of 2,000 kick notes (15%)");
+
+    // The tail is the part drawn orange: the dot and the not counted words.
+    const TwoPartLine off = dynamics_kicks_heading(many, false);
+    CHECK(off.lead == "2x kicks: 300 of 2,000 kick notes (15%)");
+    CHECK(off.tail == "\xC2\xB7 not counted (2x Bass off)");
+    CHECK(off.whole() ==
           "2x kicks: 300 of 2,000 kick notes (15%) \xC2\xB7 not counted (2x Bass off)");
-    CHECK(dynamics_kicks_heading(DynamicsBreakdown{}, false) ==
-          "2x kicks: 0 of 0 kick notes (0%) \xC2\xB7 not counted (2x Bass off)");
+
+    // No 2x kicks at all: the line and its tail still show.
+    const TwoPartLine none = dynamics_kicks_heading(DynamicsBreakdown{}, false);
+    CHECK(none.lead == "2x kicks: 0 of 0 kick notes (0%)");
+    CHECK(none.tail == "\xC2\xB7 not counted (2x Bass off)");
+    CHECK(none.whole() == "2x kicks: 0 of 0 kick notes (0%) \xC2\xB7 not counted (2x Bass off)");
+    const TwoPartLine none_on = dynamics_kicks_heading(DynamicsBreakdown{}, true);
+    CHECK(none_on.lead == "2x kicks: 0 of 0 kick notes (0%)");
+    CHECK(none_on.tail == "");
 }
 
 TEST_CASE("dynamics_breakdown: the 2x kick row is tagged not counted with 2x Bass off") {
     // Pro Drums changes nothing for a kick.
-    CHECK(dynamics_kick2x_row_label(true, true) == "2x kick");
-    CHECK(dynamics_kick2x_row_label(false, true) == "2x kick");
-    CHECK(dynamics_kick2x_row_label(true, false) == "2x kick (not counted)");
-    CHECK(dynamics_kick2x_row_label(false, false) == "2x kick (not counted)");
+    for (bool pro : {true, false}) {
+        INFO("pro " << pro);
+        const TwoPartLine on = dynamics_kick2x_row_label(pro, true);
+        CHECK(on.lead == "2x kick");
+        CHECK(on.tail == "");
+        CHECK(on.whole() == "2x kick");
+        const TwoPartLine off = dynamics_kick2x_row_label(pro, false);
+        CHECK(off.lead == "2x kick");
+        CHECK(off.tail == "(not counted)");
+        CHECK(off.whole() == "2x kick (not counted)");
+    }
+}
+
+TEST_CASE("dynamics_breakdown: a two-part line with no tail reads as its lead") {
+    CHECK(TwoPartLine{"a b", ""}.whole() == "a b");
+    CHECK(TwoPartLine{"a", "b"}.whole() == "a b");
+}
+
+TEST_CASE("dynamics_breakdown: the fact dot is the separator's dot alone") {
+    CHECK(fact_separator_dot() == "\xC2\xB7");
+}
+
+TEST_CASE("dynamics_breakdown: which kick rows count") {
+    // The Kick row always counts; the 2x kick row only with 2x Bass on.
+    CHECK(kick_row_counts(DynamicsRow::Kick, true));
+    CHECK(kick_row_counts(DynamicsRow::Kick, false));
+    CHECK(kick_row_counts(DynamicsRow::Kick2x, true));
+    CHECK_FALSE(kick_row_counts(DynamicsRow::Kick2x, false));
 }
 
 TEST_CASE("dynamics_breakdown: one share rule for every Dynamics percent") {

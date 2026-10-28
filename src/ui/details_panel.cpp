@@ -7,7 +7,7 @@
 #include <windows.h>
 
 #include "app/display_format.h"  // kFactSeparator
-#include "app/dynamics_breakdown.h"  // dynamics_kick2x_fact
+#include "app/dynamics_breakdown.h"  // dynamics_kick2x_fact, fact_separator_dot
 #include "app/path_view.h"
 #include "app/user_messages.h"  // stale_text, kNoPathsFound
 #include "core/model.h"
@@ -130,13 +130,30 @@ void render_headline(AppState& app) {
         const store::PathSummary& summary = app.viewed.summary;
         std::string facts = "Optimal path";
         if (summary.stars) facts += app::kFactSeparator + counted(*summary.stars, "star", "stars");
-        if (app.viewed.dynamics) {
-            const std::string kick2x = app::dynamics_kick2x_fact(*app.viewed.dynamics);
-            if (!kick2x.empty()) facts += app::kFactSeparator + kick2x;
-        }
+        const std::string kick2x =
+            app.viewed.dynamics ? app::dynamics_kick2x_fact(*app.viewed.dynamics) : std::string();
+        // The facts in the subtle grey, then the 2x kick fact in the score's
+        // gold, drawn as parts one space apart (app::TwoPartLine). Each part
+        // is cut to the room left; a part that had to be cut ends the line.
+        const float right_x = left_x + text_w;
+        auto part = [&](const std::string& text) {
+            const float room = right_x - ImGui::GetCursorPosX();
+            text_ellipsized(text.c_str(), room);
+            return text_width(text) <= room;
+        };
         ImGui::PushStyleColor(ImGuiCol_Text, kSubtleTextColor);
-        text_ellipsized(facts.c_str(), text_w);
+        bool whole = part(facts);
+        if (!kick2x.empty() && whole) {
+            ImGui::SameLine(0.0f, ImGui::CalcTextSize(" ").x);
+            whole = part(app::fact_separator_dot());
+        }
         ImGui::PopStyleColor();
+        if (!kick2x.empty() && whole) {
+            ImGui::SameLine(0.0f, ImGui::CalcTextSize(" ").x);
+            ImGui::PushStyleColor(ImGuiCol_Text, kBestPathColor);
+            part(kick2x);
+            ImGui::PopStyleColor();
+        }
     });
 }
 
