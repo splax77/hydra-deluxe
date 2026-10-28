@@ -93,6 +93,66 @@ class FindLiveEngineTest(unittest.TestCase):
         self.assertEqual(got, a)
 
 
+class FakeClock:
+    """A wall clock that moves only when the code under test sleeps."""
+
+    def __init__(self):
+        self.t = 1000.0
+        self.sleeps = []
+
+    def now(self):
+        return self.t
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.t += seconds
+
+
+class FindLiveEngineCappedTest(unittest.TestCase):
+    def test_gives_up_after_the_cap_with_the_exact_message(self):
+        frozen = 0x20000
+        proc = FakeProc(doubles={frozen + W: 0.17}, clocks={frozen + K: [3.0]})
+        clock = FakeClock()
+        with self.assertRaises(F.EngineSearchTimeout) as caught:
+            F.find_live_engine_capped(
+                proc, [(b"b", b"f")], 2.0,
+                scan=lambda p, b, f: ([frozen], 0, 0),
+                sleep=clock.sleep, now=clock.now, out=io.StringIO())
+        self.assertEqual(
+            str(caught.exception),
+            "no playing song found in 2 s; start the song and run again")
+        # Each try sleeps 0.12 s then 0.4 s; the sleep that would start at or
+        # past 2 s after the start raises instead.
+        self.assertEqual(clock.sleeps, [F.REREAD_GAP_S, F.RETRY_PAUSE_S] * 4)
+
+    def test_default_cap_message_names_120_seconds(self):
+        frozen = 0x20000
+        proc = FakeProc(doubles={frozen + W: 0.17}, clocks={frozen + K: [3.0]})
+        clock = FakeClock()
+        with self.assertRaises(F.EngineSearchTimeout) as caught:
+            F.find_live_engine_capped(
+                proc, [(b"b", b"f")],
+                scan=lambda p, b, f: ([frozen], 0, 0),
+                sleep=clock.sleep, now=clock.now, out=io.StringIO())
+        self.assertEqual(
+            str(caught.exception),
+            "no playing song found in 120 s; start the song and run again")
+        self.assertGreaterEqual(clock.t - 1000.0, 120.0)
+
+    def test_returns_the_engine_found_inside_the_cap(self):
+        live = 0x20000
+        proc = FakeProc(doubles={live + W: 0.17},
+                        clocks={live + K: [1.0, 1.0, 1.0, 1.2]})
+        clock = FakeClock()
+        got = F.find_live_engine_capped(
+            proc, [(b"b", b"f")], 2.0,
+            scan=lambda p, b, f: ([live], 0, 0),
+            sleep=clock.sleep, now=clock.now, out=io.StringIO())
+        self.assertEqual(got, live)
+        self.assertEqual(clock.sleeps,
+                         [F.REREAD_GAP_S, F.RETRY_PAUSE_S, F.REREAD_GAP_S])
+
+
 class PatternsTest(unittest.TestCase):
     def test_all_patterns_tries_the_precision_pair_both_ways(self):
         consts = {

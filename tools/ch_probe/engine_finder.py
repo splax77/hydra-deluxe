@@ -36,6 +36,14 @@ FRONT_AFTER_BACK = C.OFF_FRONT_WINDOW - C.OFF_BACK_WINDOW
 REREAD_GAP_S = 0.12
 # The pause before scanning again when no clock moved (no song playing yet).
 RETRY_PAUSE_S = 0.4
+# How long find_live_engine_capped waits for a playing song before giving up.
+ENGINE_SEARCH_CAP_S = 120.0
+
+
+class EngineSearchTimeout(RuntimeError):
+    """Raised by find_live_engine_capped when no song started inside the cap.
+    A RuntimeError, not a TimeoutError, because TimeoutError is an OSError and
+    the finder treats an OSError as one unreadable candidate and moves on."""
 
 
 # --- the memory scan ---------------------------------------------------------
@@ -206,3 +214,32 @@ def find_live_engine(
         out.write(".")
         out.flush()
         sleep(RETRY_PAUSE_S)
+
+
+def find_live_engine_capped(
+    proc,
+    patterns: Sequence[Pattern],
+    cap_s: float = ENGINE_SEARCH_CAP_S,
+    *,
+    scan: Callable = scan_for_engine,
+    sleep: Callable[[float], None] = time.sleep,
+    now: Callable[[], float] = time.monotonic,
+    out: Optional[TextIO] = None,
+) -> int:
+    """find_live_engine with a time limit: the one capped search every live
+    runner uses. Returns the live engine's address, or raises
+    EngineSearchTimeout once `cap_s` seconds have passed with no song playing.
+
+    The cap is checked each time the finder is about to sleep, so a run can
+    overshoot the cap by one scan of memory and one round of clock reads."""
+    start = now()
+
+    def capped_sleep(seconds: float) -> None:
+        if now() - start >= cap_s:
+            raise EngineSearchTimeout(
+                f"no playing song found in {cap_s:g} s; "
+                "start the song and run again")
+        sleep(seconds)
+
+    return find_live_engine(proc, patterns, scan=scan, sleep=capped_sleep,
+                            out=out)
