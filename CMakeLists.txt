@@ -382,6 +382,7 @@ add_library(hydra_app STATIC
     src/app/dynamics_breakdown.cpp
     src/app/display_format.cpp
     src/app/library_query.cpp
+    src/app/launch.cpp
     src/app/path_view.cpp
     src/app/preview_view.cpp
     src/app/preview_source.cpp

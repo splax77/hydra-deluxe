@@ -1,4 +1,5 @@
 #include "app/report_files.h"
+#include "app/launch.h"
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -46,16 +47,14 @@ bool launch_html_viewer(const std::wstring& page) {
                                  &exe[0], &n)))
         return false;
     exe.resize(wcslen(exe.c_str()));
-    std::wstring cmd = L"\"" + exe + L"\" \"" + page + L"\"";
-    STARTUPINFOW si{};
-    si.cb = sizeof si;
-    PROCESS_INFORMATION pi{};
-    if (!CreateProcessW(exe.c_str(), &cmd[0], nullptr, nullptr, FALSE, 0, nullptr, nullptr,
-                        &si, &pi))
+    // A viewer that won't start is not an error here: open_in_browser falls
+    // back to a copy at a short path.
+    try {
+        launch_program(exe, {page});
+        return true;
+    } catch (const std::exception&) {
         return false;
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
-    return true;
+    }
 }
 
 }  // namespace
