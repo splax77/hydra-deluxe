@@ -5,6 +5,7 @@
 #include <string>
 
 #include "app/analysis.h"  // chart_changed_since
+#include "app/display_format.h"  // time_left_text, progress_fraction
 #include "app/preview_source.h"
 #include "app/preview_view.h"
 #include "app/song_length.h"   // song_length_ms
@@ -12,8 +13,6 @@
 #include "core/model.h"
 #include "core/winstr.h"
 #include "render/track_state.h"
-#include "ui/library_parts.h"  // time_left_text
-#include "ui/widgets.h"        // progress_fraction
 
 namespace hydra::ui {
 
@@ -266,8 +265,8 @@ float PreviewLoadJob::Progress::fraction() const {
             // The audio slice's fill is the shared progress bar rule: a zero
             // total (no stems, empty files) reads empty, "nothing reported
             // yet", so the bar stays at the slice's start.
-            return kReadShare + kOpenShare * progress_fraction(static_cast<double>(bytes_done),
-                                                               static_cast<double>(bytes_total));
+            return kReadShare + kOpenShare * app::progress_fraction(static_cast<double>(bytes_done),
+                                                                    static_cast<double>(bytes_total));
         case Step::Building: return kReadShare + kOpenShare;
         case Step::Highway: return kReadShare + kOpenShare + kSceneShare;
     }
@@ -293,7 +292,7 @@ std::string PreviewLoadJob::Progress::label() const {
 
 std::string gated_time_left_text(double elapsed_s, double time_left_s) {
     if (elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0)) return "";
-    return detail::time_left_text(time_left_s);
+    return app::time_left_text(time_left_s);
 }
 
 // Only the Preview's own step check lives here: opening audio is the one step

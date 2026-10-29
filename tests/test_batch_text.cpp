@@ -6,6 +6,7 @@
 
 #include "app/analysis.h"  // batch_cant_analyze_text
 #include "app/config.h"
+#include "app/display_format.h"  // format_duration, time_left_text
 #include "cli/batch_scope.h"
 #include "core/model.h"  // counted
 #include "ui/library_parts.h"
@@ -33,16 +34,16 @@ TEST_CASE("batch text: the confirm's can't-analyze line") {
 }
 
 TEST_CASE("batch text: durations read m:ss under an hour and h:mm:ss over it") {
-    CHECK(format_duration(0.0) == "0:00");
-    CHECK(format_duration(42.4) == "0:42");
-    CHECK(format_duration(723.0) == "12:03");
-    CHECK(format_duration(3725.0) == "1:02:05");
-    CHECK(format_duration(-3.0) == "0:00");
+    CHECK(hydra::app::format_duration(0.0) == "0:00");
+    CHECK(hydra::app::format_duration(42.4) == "0:42");
+    CHECK(hydra::app::format_duration(723.0) == "12:03");
+    CHECK(hydra::app::format_duration(3725.0) == "1:02:05");
+    CHECK(hydra::app::format_duration(-3.0) == "0:00");
 }
 
 TEST_CASE("batch text: time left reads about m:ss left") {
-    CHECK(time_left_text(90.0) == "about 1:30 left");
-    CHECK(time_left_text(42.4) == "about 0:42 left");
+    CHECK(hydra::app::time_left_text(90.0) == "about 1:30 left");
+    CHECK(hydra::app::time_left_text(42.4) == "about 0:42 left");
 }
 
 TEST_CASE("batch text: the confirm lists the settings a batch runs with") {

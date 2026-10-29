@@ -176,7 +176,7 @@ bool state_body(const Frame& f) {
             if (f.progress) {
                 // The line above says the count, so the bar has no overlay.
                 const auto [done, total] = *f.progress;
-                ImGui::ProgressBar(progress_fraction(done, total), ImVec2(-1.0f, 0.0f), "");
+                ImGui::ProgressBar(app::progress_fraction(done, total), ImVec2(-1.0f, 0.0f), "");
             } else if (f.progress_bar) {
                 // No count to show: the bar only moves (ImGui's indeterminate bar).
                 ImGui::ProgressBar(-1.0f * static_cast<float>(ImGui::GetTime()),

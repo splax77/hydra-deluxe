@@ -4,6 +4,7 @@
 #ifndef HYDRA_APP_DISPLAY_FORMAT_H
 #define HYDRA_APP_DISPLAY_FORMAT_H
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 
@@ -48,6 +49,23 @@ int64_t percent_steps(int64_t part, int64_t total, int decimals);
 // time rounds to the nearest whole ms first (a half rounds away from zero),
 // then splits into minutes and seconds, so 59,999.6 ms reads "1:00.000".
 std::string clock_str(double ms);
+
+// A duration as "0:42", "12:03" or "1:02:05". Negative reads as 0:00.
+std::string format_duration(double seconds);
+
+// How long a job has left, as the batch strip and the Preview loader say it:
+// "about 1:30 left". The time itself is format_duration's.
+inline std::string time_left_text(double seconds) {
+    return "about " + format_duration(seconds) + " left";
+}
+
+// How full a progress bar is with `done` of `total` finished: held between 0
+// and 1, and empty at a total of 0, which means nothing has been reported yet
+// (D48, Q19). Every progress bar reads its fill from here.
+inline float progress_fraction(double done, double total) {
+    if (!(total > 0.0)) return 0.0f;
+    return static_cast<float>(std::clamp(done / total, 0.0, 1.0));
+}
 
 }  // namespace hydra::app
 

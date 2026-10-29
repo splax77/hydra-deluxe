@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <string>
 
+#include "app/display_format.h"  // progress_fraction
 #include "core/model.h"  // group_thousands
 #include "imgui.h"
 #include "imgui_internal.h"  // GetCurrentWindow, for the window's draw list
@@ -80,18 +81,10 @@ struct WarnColor {
     WarnColor& operator=(const WarnColor&) = delete;
 };
 
-// How full a progress bar is with `done` of `total` finished: held between 0
-// and 1, and empty at a total of 0, which means nothing has been reported yet
-// (D48, Q19). Every progress bar reads its fill from here.
-inline float progress_fraction(double done, double total) {
-    if (!(total > 0.0)) return 0.0f;
-    return static_cast<float>(std::clamp(done / total, 0.0, 1.0));
-}
-
 // Full-width progress bar with a "done / total" overlay, digits grouped the
 // way every count reads (group_thousands, D79).
 inline void progress_bar_counted(int done, int total) {
-    const float frac = progress_fraction(done, total);
+    const float frac = app::progress_fraction(done, total);
     const std::string overlay = group_thousands(done) + " / " + group_thousands(total);
     ImGui::ProgressBar(frac, ImVec2(-1, 0), overlay.c_str());
 }

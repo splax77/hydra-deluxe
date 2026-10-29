@@ -72,4 +72,15 @@ std::string clock_str(double ms) {
     return buf;
 }
 
+std::string format_duration(double seconds) {
+    const long long total = seconds <= 0.0 ? 0 : static_cast<long long>(seconds + 0.5);
+    const long long h = total / 3600, m = (total / 60) % 60, s = total % 60;
+    char buf[32];
+    if (h > 0)
+        std::snprintf(buf, sizeof(buf), "%lld:%02lld:%02lld", h, m, s);
+    else
+        std::snprintf(buf, sizeof(buf), "%lld:%02lld", m, s);
+    return buf;
+}
+
 }  // namespace hydra::app

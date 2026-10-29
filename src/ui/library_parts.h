@@ -1,6 +1,5 @@
 // The main window's pieces, shared between the files that draw it. Only the
 // library files include this; everything else uses library_view.h.
-// The Dynamics tab includes it too, for format_duration.
 //
 // library_view.cpp     render_main_window: lays the window out (the library
 //                      and the song panel side by side), reaps finished
@@ -61,15 +60,6 @@ void render_dm_picker_modal(AppState& app);
 // rescan cache reused.
 std::string scan_folders_found_text(int64_t folders_seen);
 std::string scan_reused_text(int64_t charts_cached);
-
-// A duration as "0:42", "12:03" or "1:02:05". Negative reads as 0:00.
-std::string format_duration(double seconds);
-
-// How long a job has left, as the batch strip and the Preview loader say it:
-// "about 1:30 left". The time itself is format_duration's.
-inline std::string time_left_text(double seconds) {
-    return "about " + format_duration(seconds) + " left";
-}
 
 // The settings lines the batch confirm lists, in the confirm's order.
 struct BatchSettingsSummary {
