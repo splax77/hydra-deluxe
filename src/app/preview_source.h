@@ -52,8 +52,8 @@ struct PreviewAudioStem {
 struct PreviewSource {
     Song song;
     std::vector<PreviewAudioStem> stems;
-    // Where chart time 0 sits in the audio (audio_ms_of_chart_ms in
-    // audio/frames.h turns it into a position), from chart_audio_offset_ms.
+    // Where chart time 0 sits in the audio (audio_ms_of_chart_ms, below,
+    // turns it into a position), from chart_audio_offset_ms.
     double audio_offset_ms = 0.0;
 };
 
@@ -111,6 +111,17 @@ PreviewSong resolve_preview_song(const std::string& notespath, const SharedBytes
 // asks here.
 double chart_audio_offset_ms(const std::string& notespath, const SharedBytes& container,
                              std::optional<double> chart_offset_s);
+
+// The chart sync rule, chart time to audio time. `audio_offset_ms` is where
+// chart time 0 sits in the audio (app::chart_audio_offset_ms works it out).
+// chart_ms_of_audio_ms is the same rule run backwards.
+inline double audio_ms_of_chart_ms(double chart_ms, double audio_offset_ms) {
+    return chart_ms + audio_offset_ms;
+}
+
+inline double chart_ms_of_audio_ms(double audio_ms, double audio_offset_ms) {
+    return audio_ms - audio_offset_ms;
+}
 
 // Asked between a container's audio entries; return false to stop early.
 using KeepGoing = std::function<bool()>;

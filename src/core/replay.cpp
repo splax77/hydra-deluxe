@@ -5,12 +5,11 @@
 #include <cstdio>
 #include <stdexcept>
 
-#include "app/path_view.h"  // format_measure, the screen's position text
 #include "core/backend_value.h"
 #include "core/scoring.h"
 #include "core/sqout_chord.h"
 #include "core/squeeze_rating.h"
-#include "core/timing.h"
+#include "core/timing.h"  // format_measure, the screen's position text
 #include "core/model.h"  // kSqueezeWindowMs, the engine's squeeze horizon
 
 namespace hydra {
@@ -128,7 +127,7 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
         row.ms = ts.timecode.ms();
         row.measures_decimal = ts.timecode.measures_decimal();
         if (!options.scores_only) {
-            row.position = app::format_measure(ts.timecode);
+            row.position = format_measure(ts.timecode);
             row.chord_code = ts.chord.code();
         }
         row.is_fill = ts.has_activation();

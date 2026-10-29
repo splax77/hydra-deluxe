@@ -41,21 +41,6 @@ std::string eff_suffix(double effective_ms) {
 
 }  // namespace
 
-std::string measure_label(const Timecode& tc) {
-    return "m" + std::to_string((long long)tc.measure_beats_ticks()[0] + 1);
-}
-
-std::string format_measure(const Timecode& tc) {
-    const int64_t* mbt = tc.measure_beats_ticks();
-    char buf[48];
-    std::snprintf(buf, sizeof(buf), ".%lld.%lld", (long long)mbt[1] + 1, (long long)mbt[2]);
-    return measure_label(tc) + buf;
-}
-
-std::string format_measure(const SongTiming& timing, int64_t tick) {
-    return format_measure(timing.timecode(tick));
-}
-
 // A default Timecode is the chart's first tick (core/timing.h), so this
 // needs no timing.
 std::string first_measure_label() { return format_measure(Timecode{}); }

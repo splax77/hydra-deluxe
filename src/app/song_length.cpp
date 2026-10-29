@@ -4,9 +4,8 @@
 
 #include <algorithm>
 
-#include "app/preview_source.h"  // preview_audio_offset_ms
+#include "app/preview_source.h"  // preview_audio_offset_ms, chart_ms_of_audio_ms
 #include "app/preview_view.h"    // has_song_length
-#include "audio/frames.h"        // chart_ms_of_audio_ms (header-only)
 #include "core/strutil.h"        // parse_finite_number
 
 namespace hydra::app {
@@ -45,7 +44,7 @@ std::optional<double> song_length_ms(const store::ChartTimingMeta& meta, const S
 
     std::optional<double> stated;
     if (const std::optional<double> raw = stated_length_ms(meta.length_ms)) {
-        const double stated_chart_ms = audio::chart_ms_of_audio_ms(
+        const double stated_chart_ms = chart_ms_of_audio_ms(
             *raw, preview_audio_offset_ms(meta.delay_ms, song.chart_offset_s));
         // A stated length that ends before the last note is wrong (a song.ini
         // that says 6:17 for a 13:41 song), so it is dropped.

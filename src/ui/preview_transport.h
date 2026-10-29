@@ -28,10 +28,10 @@
 
 namespace hydra::ui {
 
-// The chart sync rule lives in audio/frames.h, so code outside the UI can ask
-// it without reaching into the UI.
-using audio::audio_ms_of_chart_ms;
-using audio::chart_ms_of_audio_ms;
+// The chart sync rule lives in app/preview_source.h, so code outside the UI
+// can ask it without reaching into the UI.
+using app::audio_ms_of_chart_ms;
+using app::chart_ms_of_audio_ms;
 
 class PreviewTransport {
 public:
