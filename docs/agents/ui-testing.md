@@ -202,7 +202,7 @@ Each tool sends one command line and returns Hydra's reply text, unchanged excep
 
 A dialog of the kind that blocks the rest of the app (a modal) stops every click and key outside it. `Scan library` leaves one open: the "Scanning charts" dialog stays on its "Done" line until you click `//Scanning charts/Continue`. The checked-in tests never see it, because the harness's `scan_library` clicks Continue itself.
 
-The replies name an open dialog, with its buttons, in one line that `open_modal_note` in the test harness writes. `wait-idle` still answers ok once jobs stop, but its text is that line while a dialog is open. A command that fails while a dialog is open adds the line after its first line, or after the `!! failed at line N` line in a command file. `dump` lists the open dialog's window first, so a long dump that the helper cuts from the end still shows it.
+The replies name an open dialog, with its buttons, in one line that `open_modal_note` in `tests/ui/uitest_engine.cpp` writes. `wait-idle` still answers ok once jobs stop, but its text is that line while a dialog is open. A command that fails while a dialog is open adds the line after its first line, or after the `!! failed at line N` line in a command file. `dump` lists the open dialog's window first, so a long dump that the helper cuts from the end still shows it.
 
 ### The protocol
 
@@ -254,7 +254,7 @@ void test_thing(ImGuiTestContext* ctx) {
 }
 ```
 
-The shared helpers live in `uitest_harness.{h,cpp}`. `open_titled(ctx, search, title)` searches and opens a song by title. `set_panel_ref(ctx)` points refs at the song panel. `wait_song_analyzed(ctx)` waits for the open song's analysis, which a click or a setting change starts, and checks it is Ready. `open_preview(ctx)` opens row 0 on the Preview tab and waits for it to load.
+The shared helpers live in `uitest_harness.{h,cpp}`, except the ones that need no Hydra (`wait_until`, `visible_text`, `widget_dump`, `screenshot`), which live in `uitest_engine.{h,cpp}`; both headers are in scope in a test file. `open_titled(ctx, search, title)` searches and opens a song by title. `set_panel_ref(ctx)` points refs at the song panel. `wait_song_analyzed(ctx)` waits for the open song's analysis, which a click or a setting change starts, and checks it is Ready. `open_preview(ctx)` opens row 0 on the Preview tab and waits for it to load.
 
 Rules of thumb:
 
