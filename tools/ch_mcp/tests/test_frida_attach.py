@@ -13,6 +13,7 @@ import os
 import re
 import sys
 import tempfile
+import threading
 import unittest
 import unittest.mock
 
@@ -32,12 +33,17 @@ AGENT_DIR = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "agent")
 NO_WRITE_PATTERNS = (
     (r"Memory\.write", "writes game memory"),
     (r"\.write[A-Z]\w*\(", "writes game memory through a pointer"),
-    (r"Memory\.(patchCode|protect)\b", "changes game code or page rights"),
-    (r"\.value\s*=(?!=)", "sets a field"),
+    (r"Memory\.(patchCode|protect|copy)\b",
+     "changes game memory, code or page rights"),
+    (r"\.value\s*(?:\+\+|--|(?:[-+*/%&|^]|<<|>>>?|\*\*|&&|\|\||\?\?)?=(?![=>]))",
+     "sets a field"),
     (r"\.invoke\(", "calls a game method"),
     (r"new\s+NativeFunction\b", "calls a game function"),
     (r"\.implementation\s*=(?!=)", "replaces a game method"),
     (r"Interceptor\.replace", "replaces a game function"),
+    (r"\bretval\.replace\(", "changes a return value"),
+    (r"\bargs\[\d+\]\s*=(?!=)", "changes a call argument"),
+    (r"\.context\.\w+\s*=(?!=)", "changes a register"),
     (r"add\(0x", "reads by offset, not by field name"),
 )
 
@@ -234,6 +240,40 @@ class EndTest(Workspace):
         self.assertEqual(session.detach_calls, 1)
 
 
+class DroppedSessionDetachTest(Workspace):
+    def test_a_detach_that_raises_is_reported_and_the_log_still_closes(self):
+        session = FakeSession([sent(sample(1.0))])
+
+        def refuse():
+            session.detach_calls += 1
+            raise RuntimeError("session is gone")
+
+        session.detach = refuse
+        result = self.run_agent(FakeFrida(session))
+        self.assertEqual(session.detach_calls, 1)
+        self.assertIn("detach reported: session is gone", self.lines)
+        self.assertEqual(result.reason, FA.END_CAP)
+        # The log was closed: it reads back whole and accepts no late write.
+        self.assertEqual(self.written(), [sent(sample(1.0))])
+        session.script.handlers["message"](sent(sample(2.0)), None)
+        self.assertEqual(self.written(), [sent(sample(1.0))])
+
+
+class DefaultWaitTest(unittest.TestCase):
+    def test_returns_true_at_once_when_the_event_is_set(self):
+        event = threading.Event()
+        event.set()
+        self.assertTrue(FA._default_wait(event, 30.0))
+
+    def test_returns_false_when_the_cap_passes(self):
+        self.assertFalse(FA._default_wait(threading.Event(), 0.05))
+
+    def test_wakes_when_the_event_is_set_during_the_wait(self):
+        event = threading.Event()
+        threading.Timer(0.05, event.set).start()
+        self.assertTrue(FA._default_wait(event, 30.0))
+
+
 class NotRunningTest(Workspace):
     def test_not_running_says_so_and_stops(self):
         result = self.run_agent(FakeFrida(None))
@@ -264,8 +304,16 @@ class SummaryTest(unittest.TestCase):
             "ended: done",
             "samples: 3",
             "songTime: first 0.5, last 62.1",
+            "songTime went backwards: 0 times",
             "isSongOver went true: yes",
         ])
+
+    def test_summary_counts_a_clock_that_went_backwards(self):
+        result = FA.RunResult(reason=FA.END_CAP, cap_s=93.0, payloads=[
+            sample(10.0), sample(10.25), sample(-3.0), sample(-2.75),
+            sample(5.0), sample(4.5)])
+        lines = FA.summarize_clock(result)
+        self.assertIn("songTime went backwards: 2 times", lines)
 
     def test_summary_with_an_error_and_no_samples(self):
         result = FA.RunResult(reason=FA.END_AGENT_ERROR, cap_s=93.0,
@@ -275,6 +323,7 @@ class SummaryTest(unittest.TestCase):
             "ended: error",
             "samples: 0",
             "songTime: no samples",
+            "songTime went backwards: 0 times",
             "isSongOver went true: no",
             "error: no live GameManager",
         ])
@@ -297,6 +346,7 @@ class SummaryTest(unittest.TestCase):
             "ended: done",
             "samples: 2",
             "songTime: first 1.0, last 2.0",
+            "songTime went backwards: 0 times",
             "isSongOver went true: no",
             f"messages written to {out_path}",
         ])
@@ -325,6 +375,13 @@ class NoWritesTest(unittest.TestCase):
             "klass.method('Hit').implementation = function () {};",
             "Interceptor.replace(p, cb);",
             "gm.handle.add(0x70).readDouble();",
+            "Memory.copy(dst, src, 8);",
+            "gm.field('count').value += 1;",
+            "gm.field('count').value++;",
+            "gm.field('flag').value ??= true;",
+            "retval.replace(ptr(0));",
+            "args[0] = ptr(0);",
+            "this.context.rax = ptr(0);",
         ]
         for line in bad:
             with self.subTest(line=line):
@@ -337,6 +394,10 @@ class NoWritesTest(unittest.TestCase):
             "if (f.value == 1) {}",
             "Interceptor.attach(p, { onEnter() {} });",
             "log.write('x');",
+            "if (f.value >= 1 || f.value <= 0 || f.value != 2) {}",
+            "const a = args[0]; if (args[1] == null) {}",
+            "const r = retval.toInt32() + this.context.rax.toInt32();",
+            "const b = Memory.alloc(8); const s = Memory.scan(p, 8, pat, cb);",
         ]
         for line in ok:
             with self.subTest(line=line):

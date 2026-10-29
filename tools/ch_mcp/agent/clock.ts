@@ -43,6 +43,11 @@ function run(capS: number) {
         send({ error: `no live ${CLASS_NAME}` });
         return;
     }
+    // Chosen once, not per tick: the choose call walks the whole heap. If the
+    // game builds a new GameManager for a restarted song, this one keeps
+    // reporting its last values and `instances` stays at the count seen here.
+    // frida_attach.summarize_clock counts a restart that reuses this
+    // GameManager as songTime going backwards.
     const gm = live[0];
     const startMs = Date.now();
     const capMs = capS * 1000;
