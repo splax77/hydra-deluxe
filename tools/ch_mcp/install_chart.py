@@ -59,8 +59,15 @@ def install(src: str, *, dest_root: str = probe_songs.DEFAULT_OUT, name: Optiona
     dest = os.path.join(dest_root, name or os.path.basename(src))
     if os.path.exists(dest):
         raise InstallRefused(f"{dest} already exists; not overwritten")
-    shutil.copytree(src, dest)
-    write_ogg(os.path.join(dest, probe_songs.SONG_OGG), length_ms)
+    try:
+        shutil.copytree(src, dest)
+        write_ogg(os.path.join(dest, probe_songs.SONG_OGG), length_ms)
+    except BaseException:
+        # `dest` did not exist a moment ago, so it is ours: a half-made folder
+        # would show in the game's list and could not be played, and the next
+        # try would refuse it as already existing.
+        shutil.rmtree(dest, ignore_errors=True)
+        raise
     return chart_file(dest)
 
 

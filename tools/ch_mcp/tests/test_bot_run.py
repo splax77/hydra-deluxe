@@ -24,6 +24,7 @@ from tools.ch_mcp import bot_run as B  # noqa: E402
 from tools.ch_mcp import game_files as G  # noqa: E402
 from tools.ch_mcp import install_chart as I  # noqa: E402
 from tools.ch_probe import probe_songs  # noqa: E402
+from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
 
 ORIGINAL = {name: f"original {name}".encode() for name in G.DOCUMENTS_FILES + G.LOCALLOW_FILES}
 NEW_STATS = json.dumps({"players": [{"is_bot": True}]}).encode()
@@ -139,6 +140,23 @@ class BotRunTest(unittest.TestCase):
         self.assertEqual(B.run_bot(r.song, r.out_dir, env=r.env), 0)
         self.assertEqual(r.launch.commands,
                          [[r"C:\fake\Clone Hero.exe", "--song", r.song, "--player", "Drums,Expert"]])
+
+    def test_a_relative_song_path_reaches_the_game_absolute(self):
+        # The game starts in its own folder, so it must get the full path.
+        r = Rig(self.tmp, exits_at=10)
+        r.game_writes_stats_at(5)
+        old = os.getcwd()
+        os.chdir(os.path.dirname(r.song))
+        try:
+            B.run_bot("Window Map", r.out_dir, env=r.env)
+        finally:
+            os.chdir(old)
+        song_arg = r.launch.commands[0][2]
+        self.assertTrue(os.path.isabs(song_arg))
+        self.assertEqual(os.path.basename(song_arg), "Window Map")
+
+    def test_the_game_exe_name_is_the_probe_process_name(self):
+        self.assertEqual(os.path.basename(G.GAME_EXE), PROCESS_NAME)
 
     def test_profile_appears_only_when_passed(self):
         cmd = B.launch_command("exe", "song", "ProDrums,Expert", "Tester")
@@ -295,6 +313,16 @@ class InstallChartTest(unittest.TestCase):
         self.assertIn("already exists; not overwritten", str(cm.exception))
         self.assertEqual(os.listdir(dest), ["keep.txt"])
         self.assertEqual(self.oggs, [])
+
+    def test_a_failed_ogg_leaves_no_half_made_folder(self):
+        def broken_ogg(path, length_ms):
+            raise RuntimeError("ffmpeg not on PATH")
+
+        with self.assertRaises(RuntimeError):
+            I.install(self.src, dest_root=self.dest_root, write_ogg=broken_ogg)
+        self.assertFalse(os.path.exists(os.path.join(self.dest_root, "Some Song")))
+        # The next try is not refused as "already exists".
+        I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
 
     def test_refuses_a_folder_without_song_length_or_chart(self):
         _write(os.path.join(self.src, G.SONG_INI), b"[song]\nname = x\n")

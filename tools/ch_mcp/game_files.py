@@ -18,9 +18,12 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-# The game this machine has (the plan's "What exists today"). Its process
-# name lives in ch_probe.constants.PROCESS_NAME.
-GAME_EXE = r"C:\Clone Hero\1.1 june\Clone Hero\Clone Hero.exe"
+from tools.ch_probe.constants import PROCESS_NAME
+
+# The game this machine has (the plan's "What exists today"): its folder here,
+# its file name from ch_probe.constants.PROCESS_NAME.
+GAME_DIR = r"C:\Clone Hero\1.1 june\Clone Hero"
+GAME_EXE = os.path.join(GAME_DIR, PROCESS_NAME)
 
 _HOME = os.path.expanduser("~")
 # Where the game keeps its settings and the stats of the last run.

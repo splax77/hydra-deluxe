@@ -206,6 +206,9 @@ def run_bot(song_dir: str, out_dir: str, *, player: str = DEFAULT_PLAYER,
     no_wait, when the game started), 1 when the cap passed with no stats,
     2 when a restore failed."""
     env = env or Env()
+    # The game starts in its own folder, so a relative song path would be read
+    # from there.
+    song_dir = os.path.abspath(song_dir)
     length_ms, source = song_length_ms(song_dir)
     cap_s = C.ms_to_s(length_ms) + POLL_CAP_EXTRA_S
     if (game_files.song_ini_pro_drums(song_dir)
