@@ -49,7 +49,8 @@ from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe.experiments.play_chart import load_dump_chords  # noqa: E402
 from tools.ch_probe.probe_songs import song_length_ms  # noqa: E402
 
-DEFAULT_AGENT = os.path.join(_HERE, "agent", "trace.js")
+DEFAULT_AGENT_NAME = "trace"
+DEFAULT_AGENT = os.path.join(_HERE, "agent", f"{DEFAULT_AGENT_NAME}.js")
 
 MODE_COUNT = "count"
 MODE_ARGS = "args"
@@ -258,9 +259,11 @@ def trace_settings(notes: list[dict], mode: str, engine_class: str,
     }
 
 
-def agent_missing_line(agent_path: str) -> str:
-    """What to say when the compiled trace agent is not there."""
-    return (f"{agent_path} not found; run npm run build:trace in "
+def agent_missing_line(agent_path: str, agent_name: str = DEFAULT_AGENT_NAME) -> str:
+    """What to say when a compiled agent is not there. `agent_name` is the
+    agent's name in tools/ch_mcp/agent/package.json (build:<name>); the
+    trace agent's by default. frida_tools says it for the state agent too."""
+    return (f"{agent_path} not found; run npm run build:{agent_name} in "
             f"tools/ch_mcp/agent first")
 
 

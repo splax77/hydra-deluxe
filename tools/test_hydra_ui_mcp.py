@@ -209,6 +209,10 @@ class TransportLayer(unittest.TestCase):
             last, f"[cut at 12,000 characters: {1000 - kept} of 1000 lines dropped;"
                   " contains= narrows hydra_text and hydra_dump]")
 
+    def test_a_cut_reply_ends_with_the_given_hint(self):
+        out = hm.cap_reply("a\n" + "b" * 2000 + "\n", cap=200, hint="ask for less")
+        self.assertEqual(out, "a\n[cut at 200 characters: 1 of 2 lines dropped; ask for less]")
+
     def test_one_long_line_is_cut_too(self):
         out = hm.cap_reply("y" * 50_000, cap=1000)
         self.assertLessEqual(len(out), 1000)

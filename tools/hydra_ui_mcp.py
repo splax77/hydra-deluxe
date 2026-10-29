@@ -200,17 +200,20 @@ def split_lines(text):
     return lines
 
 
-def cap_reply(text, cap=REPLY_CAP_CHARS):
+CAP_HINT = "contains= narrows hydra_text and hydra_dump"
+
+
+def cap_reply(text, cap=REPLY_CAP_CHARS, hint=CAP_HINT):
     """Cut `text` to at most `cap` characters at a line boundary, with a last
-    line saying how many lines were dropped."""
+    line saying how many lines were dropped and ending with `hint`, which
+    says how to ask for the rest. Another server passes its own hint."""
     if len(text) <= cap:
         return text
     lines = split_lines(text)
     total = len(lines)
 
     def note(dropped):
-        return (f"[cut at {cap:,} characters: {dropped} of {total} lines dropped;"
-                " contains= narrows hydra_text and hydra_dump]")
+        return f"[cut at {cap:,} characters: {dropped} of {total} lines dropped; {hint}]"
 
     room = cap - len(note(total)) - 1
     kept, size = [], 0

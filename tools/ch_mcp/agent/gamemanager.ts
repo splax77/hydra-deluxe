@@ -19,8 +19,10 @@ export interface LiveGameManager {
 }
 
 // The first live GameManager and how many there are, or the error text an
-// agent sends when there is none. Call it inside Il2Cpp.perform. The choose
-// call walks the whole heap, so call it once per run, not per tick.
+// agent sends when there is none. Call it inside Il2Cpp.perform. Each call
+// walks the whole heap (the choose call), so it is not cheap. clock.ts and
+// trace.ts call it once per run; state.ts calls it on every read, and live
+// step L1 of the plan 2026-10-28-ch-mcp-server.md times that walk.
 export function findGameManager(): LiveGameManager | string {
     const assembly = Il2Cpp.domain.tryAssembly(ASSEMBLY_NAME);
     if (assembly === null) {

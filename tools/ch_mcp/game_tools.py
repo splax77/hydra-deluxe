@@ -11,8 +11,8 @@ Every tool returns plain text and never prints: an MCP server's stdout is its
 protocol channel. The server (server.py) builds the one RLock and hands it in;
 every tool holds it, so the tools never run at the same time.
 
-The Frida tools (frida_tools.py) build on four methods here: ensure_backup,
-launched_at, add_stop_hook and play_snapshot.
+The Frida tools (frida_tools.py) build on five methods here: ensure_backup,
+launched_at, session_dir, add_stop_hook and play_snapshot.
 """
 
 from __future__ import annotations
@@ -136,6 +136,12 @@ class GameTools:
         the server did not start the game."""
         with self._lock:
             return self._run.launched_at if self._run is not None else None
+
+    def session_dir(self) -> str:
+        """The session's scratch folder, made on the first call. It holds the
+        backups, the stats copies, the play logs and the Frida logs."""
+        with self._lock:
+            return self._scratch if self._scratch is not None else self._new_scratch()
 
     def add_stop_hook(self, hook: Callable[[], object]) -> None:
         """Run `hook` at the start of ch_stop and shutdown, before the game is
@@ -354,7 +360,7 @@ class GameTools:
             lines = [line for line in (self.ensure_backup(),) if line]
             log_path = None
             if log:
-                log_path = log if os.path.isabs(log) else os.path.join(self._session_dir(), log)
+                log_path = log if os.path.isabs(log) else os.path.join(self.session_dir(), log)
             play = _PlaySession(score_json=score_json, chord_count=len(chords), log_path=log_path)
             play.thread = threading.Thread(target=self._play_body, args=(play, chords),
                                            name="ch_play_chart", daemon=True)
@@ -396,9 +402,6 @@ class GameTools:
                                      f"{SCRATCH_PREFIX}{os.getpid()}_{self._count}")
         os.makedirs(self._scratch, exist_ok=True)
         return self._scratch
-
-    def _session_dir(self) -> str:
-        return self._scratch if self._scratch is not None else self._new_scratch()
 
     def _env_into(self, lines: List[str]) -> bot_run.Env:
         """The server's Env with its printed lines going into `lines`."""

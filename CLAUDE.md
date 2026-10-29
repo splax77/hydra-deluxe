@@ -2,6 +2,8 @@ Ask questions if something is unclear. How to explain things lives in the user's
 
 ## Agent skills
 
+Clone Hero MCP: to drive Clone Hero as text, use the project's `ch` MCP server; see `docs/agents/clone-hero-mcp.md`.
+
 ### Issue tracker
 
 Issues live as GitHub issues in `splax77/hydra-deluxe`, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
