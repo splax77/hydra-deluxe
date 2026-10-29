@@ -8,13 +8,10 @@
 // message this agent sends, and ends the run on the signal ends_run reads.
 
 import "frida-il2cpp-bridge";
+import { findGameManager, GAME_MANAGER } from "./gamemanager.js";
 
 // The sampling interval the user approved (plan 2026-10-28, question 5).
 const SAMPLE_MS = 250;
-
-// The image and class this agent reads, as the Il2CppDumper dump names them.
-const ASSEMBLY_NAME = "CloneHero";
-const CLASS_NAME = "GameManager";
 
 function readSample(gm: Il2Cpp.Object, instances: number) {
     return {
@@ -28,22 +25,17 @@ function readSample(gm: Il2Cpp.Object, instances: number) {
 }
 
 function run(capS: number) {
-    const assembly = Il2Cpp.domain.tryAssembly(ASSEMBLY_NAME);
-    if (assembly === null) {
-        send({ error: `${ASSEMBLY_NAME} assembly not found` });
+    // Found once, not per tick: the lookup walks the whole heap. If the game
+    // builds a new GameManager for a restarted song, this one keeps reporting
+    // its last values and `instances` stays at the count seen here.
+    // frida_attach.summarize_clock counts a restart that reuses this
+    // GameManager as songTime going backwards.
+    const found = findGameManager();
+    if (typeof found === "string") {
+        send({ error: found });
         return;
     }
-    const klass = assembly.image.tryClass(CLASS_NAME);
-    if (klass === null) {
-        send({ error: `${CLASS_NAME} not found` });
-        return;
-    }
-    const live = Il2Cpp.gc.choose(klass);
-    if (live.length === 0) {
-        send({ error: `no live ${CLASS_NAME}` });
-        return;
-    }
-    const gm = live[0];
+    const { gm, instances } = found;
     const startMs = Date.now();
     const capMs = capS * 1000;
     let samples = 0;
@@ -54,11 +46,11 @@ function run(capS: number) {
                 send({ done: "cap", samples });
                 return;
             }
-            send(readSample(gm, live.length));
+            send(readSample(gm, instances));
             samples += 1;
         } catch (e) {
             clearInterval(timer);
-            send({ error: `reading ${CLASS_NAME} failed: ${e}` });
+            send({ error: `reading ${GAME_MANAGER} failed: ${e}` });
         }
     }, SAMPLE_MS);
 }

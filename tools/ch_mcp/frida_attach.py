@@ -12,9 +12,10 @@ docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md, "Safety rules
 for every live step". The agents' no-writes check lives in
 tests/test_frida_attach.py.
 
-Run from the repo root, with the game already playing a song:
+Run from the repo root, with the game already playing a song. Do not add `-I`:
+the frida module lives in the user's site-packages, which `-I` skips.
 
-    py -I tools/ch_mcp/frida_attach.py --agent tools/ch_mcp/agent/clock.js \\
+    py tools/ch_mcp/frida_attach.py --agent tools/ch_mcp/agent/clock.js \\
         --cap 93 --out <scratch>\\clock.jsonl
 """
 
@@ -25,6 +26,7 @@ import json
 import os
 import sys
 import threading
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -63,23 +65,46 @@ def ends_run(payload: Any) -> str | None:
     return None
 
 
+# A single long Event.wait cannot be interrupted by Ctrl-C on Windows, so the
+# default wait comes back this often. It only lets Ctrl-C through; it changes
+# no cap.
+_INTERRUPT_SLICE_S = 0.5
+
+
 def _default_wait(event: threading.Event, timeout_s: float) -> bool:
-    return event.wait(timeout_s)
+    """Wait for `event` for at most `timeout_s`, in short slices so Ctrl-C
+    reaches the `finally` block in run_agent. True when the event was set."""
+    deadline = time.monotonic() + timeout_s
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return event.is_set()
+        if event.wait(min(remaining, _INTERRUPT_SLICE_S)):
+            return True
 
 
 def run_agent(agent_path: str, cap_s: float,
               on_message: Callable[[Any], str | None], out_path: str, *,
+              start: dict | None = None,
               frida_mod: Any = None,
-              wait: Callable[[threading.Event, float], bool] = _default_wait,
+              wait: Callable[[threading.Event, float], bool] | None = None,
               out: Callable[[str], None] = print) -> RunResult:
     """Run the compiled agent at `agent_path` inside the game for at most
     `cap_s` seconds and write every message to `out_path`, one JSON line each.
 
     `on_message` sees each payload the agent sends; when it returns an end
-    reason, the run ends. `frida_mod` and `wait` are injectable so the tests
-    run without Frida and without sleeping."""
+    reason, the run ends. `start` holds an agent's own settings: they ride in
+    the start message beside its `type` and `cap_s`, which they cannot
+    replace. `frida_mod` and `wait` are injectable so the tests run without
+    Frida and without sleeping; `wait` defaults to `_default_wait`."""
+    if wait is None:
+        wait = _default_wait
     if frida_mod is None:
-        import frida as frida_mod  # noqa: PLC0415
+        try:
+            import frida as frida_mod  # noqa: PLC0415
+        except ModuleNotFoundError as e:
+            raise SystemExit(f"{e}. The frida module lives in the user's "
+                             "site-packages: run this without py -I.") from e
     with open(agent_path, encoding="utf-8") as fh:
         source = fh.read()
 
@@ -130,22 +155,31 @@ def run_agent(agent_path: str, cap_s: float,
         script = session.create_script(source)
         script.on("message", handle)
         script.load()
-        script.post({"type": "start", "cap_s": cap_s})
+        script.post({**(start or {}), "type": "start", "cap_s": cap_s})
         if not wait(ended, cap_s):
             out(f"cap of {cap_s:g} s reached before the agent finished; "
                 f"{len(result.payloads)} messages seen")
     finally:
-        session.detach()
-        with lock:
-            if log is not None:
-                log.close()
+        # A session the game already dropped may refuse a second detach. Say
+        # so and still close the log; an error already in flight stays the
+        # one that surfaces.
+        try:
+            session.detach()
+        except Exception as e:  # noqa: BLE001
+            out(f"detach reported: {e}")
+        finally:
+            with lock:
+                if log is not None:
+                    log.close()
     return result
 
 
 def summarize_clock(result: RunResult) -> list[str]:
     """The clock run's summary lines: how many samples, the first and last
-    `songTime`, whether `isSongOver` went true, and the error if one came.
-    A sample is a payload carrying `songTime`; clock.ts owns its shape."""
+    `songTime`, how many times `songTime` went backwards (a song restart that
+    keeps the same GameManager shows up as one), whether `isSongOver` went
+    true, and the error if one came. A sample is a payload carrying
+    `songTime`; clock.ts owns its shape."""
     samples = [p for p in result.payloads
                if isinstance(p, dict) and "songTime" in p]
     lines = [f"ended: {result.reason}", f"samples: {len(samples)}"]
@@ -154,6 +188,9 @@ def summarize_clock(result: RunResult) -> list[str]:
                      f"last {samples[-1]['songTime']}")
     else:
         lines.append("songTime: no samples")
+    backwards = sum(1 for a, b in zip(samples, samples[1:])
+                    if b["songTime"] < a["songTime"])
+    lines.append(f"songTime went backwards: {backwards} times")
     went_over = any(s.get("isSongOver") is True for s in samples)
     lines.append(f"isSongOver went true: {'yes' if went_over else 'no'}")
     if result.error is not None:
@@ -162,7 +199,7 @@ def summarize_clock(result: RunResult) -> list[str]:
 
 
 def main(argv: list[str] | None = None, *, frida_mod: Any = None,
-         wait: Callable[[threading.Event, float], bool] = _default_wait,
+         wait: Callable[[threading.Event, float], bool] | None = None,
          out: Callable[[str], None] = print) -> int:
     ap = argparse.ArgumentParser(
         description="Attach to the running game, run the clock agent, and "
