@@ -81,6 +81,13 @@ inline std::string first_chart_with_suffix(const std::string& suffix) {
     throw std::runtime_error("no corpus chart ends in " + suffix);
 }
 
+// The corpus chart whose notespath holds `name` (empty when none does).
+inline std::string chart_named(const std::string& name) {
+    for (const std::string& p : chart_paths())
+        if (p.find(name) != std::string::npos) return p;
+    return "";
+}
+
 // One corpus chart's file (its full notespath) and its analysis, for a caller
 // that opens the chart again by its path.
 struct ChartWithPaths {

@@ -34,6 +34,7 @@ namespace {
 using test::scores_settings;
 using test::collect_tied;
 using test::act_ticks;
+using test::roots_and_tied;
 
 // The fuzzed charts and the analysis wrapper (fast_tempo_charts.h).
 using test::FuzzChart;
@@ -65,9 +66,7 @@ struct AlliesBest {
     const Path* best;
 };
 AlliesBest allies_best(const app::AnalysisSettings& cfg) {
-    std::string chart;
-    for (const std::string& p : corpus::chart_paths())
-        if (p.find("Mutemath - Allies") != std::string::npos) chart = p;
+    const std::string chart = corpus::chart_named("Mutemath - Allies");
     REQUIRE_FALSE(chart.empty());
     const HydraRecord& rec = corpus::analyzed(chart, cfg);
     REQUIRE_FALSE(rec.all_paths().empty());
@@ -85,32 +84,6 @@ Path made(int label, std::vector<int64_t> ticks) {
         p.activations.push_back(a);
     }
     return p;
-}
-
-// Every root and tied variant in `paths`, roots first.
-std::vector<const Path*> roots_and_tied(const std::vector<Path>& paths) {
-    std::vector<const Path*> out;
-    for (const Path& p : paths) out.push_back(&p);
-    for (const Path* v : test::all_tied(paths)) out.push_back(v);
-    return out;
-}
-
-// A search at the settings' depth and Path limit that follows `windows` (their
-// act ticks, and the ends of those pinned in full) and runs free after them.
-EngineOptions free_after_options(const SearchSettings& settings,
-                                 const std::vector<PinnedWindow>& windows) {
-    EngineOptions options;
-    options.depth_mode = settings.depth_mode;
-    options.depth_value = settings.depth_value;
-    options.ms_filter = settings.ms_filter;
-    options.free_after = true;
-    std::vector<int64_t> ticks;
-    for (const PinnedWindow& w : windows) {
-        ticks.push_back(w.act_tick);
-        if (w.deact_tick) options.target_deact_ticks.push_back(*w.deact_tick);
-    }
-    options.target_act_ticks = ticks;
-    return options;
 }
 
 }  // namespace
@@ -439,11 +412,11 @@ TEST_CASE("free after: with nothing pinned the search is the plain search") {
         ++charts;
         CAPTURE(chart);
         const ScoreGraph graph(song, kCloneHeroSpCap);
-        EngineOptions plain = free_after_options(cfg, {});
+        EngineOptions plain = best_finish_options(cfg, {});
         plain.free_after = false;
         plain.target_act_ticks.reset();
         const std::vector<Path> want = run_search(graph, plain);
-        const std::vector<Path> got = run_search(graph, free_after_options(cfg, {}));
+        const std::vector<Path> got = run_search(graph, best_finish_options(cfg, {}));
         CHECK(target_text(got) == target_text(want));
     }
     CHECK(charts > 0);
@@ -462,7 +435,7 @@ TEST_CASE("free after: fills past the last pin branch, fills before it follow th
 
     const ScoreGraph graph(song, kCloneHeroSpCap);
     const std::vector<Path> got =
-        run_search(graph, free_after_options(cfg, {PinnedWindow{best.front()}}));
+        run_search(graph, best_finish_options(cfg, {PinnedWindow{best.front()}}));
     REQUIRE_FALSE(got.empty());
     std::set<std::vector<int64_t>> afters;
     for (const Path* p : roots_and_tied(got)) {
@@ -504,7 +477,7 @@ TEST_CASE("free after: a pinned window over the Path limit survives a soft and a
 
         for (const bool hard : {false, true}) {
             CAPTURE(hard);
-            EngineOptions pinned = free_after_options(cfg, pins);
+            EngineOptions pinned = best_finish_options(cfg, pins);
             pinned.ms_filter = 0.0;
             pinned.hard_ms_filter = hard;
             const std::vector<Path> kept = keep_prefix_paths(run_search(graph, pinned), pins);

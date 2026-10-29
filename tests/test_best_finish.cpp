@@ -24,27 +24,10 @@ using namespace hydra;
 
 namespace {
 
-// Every root and tied variant in `paths`, roots first.
-std::vector<const Path*> roots_and_tied(const std::vector<Path>& paths) {
-    std::vector<const Path*> out;
-    for (const Path& p : paths) out.push_back(&p);
-    for (const Path* v : test::all_tied(paths)) out.push_back(v);
-    return out;
-}
-
-// The corpus chart whose notespath holds `name`.
-std::string corpus_chart(const std::string& name) {
-    for (const std::string& p : corpus::chart_paths())
-        if (p.find(name) != std::string::npos) return p;
-    return "";
-}
-
-}  // namespace
-
-// Identity 1: with nothing pinned, the best finish is the main search's best
-// path, string and total, on every corpus chart.
-TEST_CASE("best finish: with nothing pinned it is Hydra's best path on every corpus chart") {
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+// Runs `visit(song, record)` on every corpus chart that has notes, at `cfg`,
+// and checks at least one chart ran.
+template <typename Visit>
+void on_every_corpus_chart(const app::AnalysisSettings& cfg, Visit&& visit) {
     int charts = 0;
     for (const std::string& chart : corpus::chart_paths()) {
         const Song& song = corpus::song(chart, cfg.reading());
@@ -53,13 +36,24 @@ TEST_CASE("best finish: with nothing pinned it is Hydra's best path on every cor
         CAPTURE(chart);
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         REQUIRE_FALSE(rec.paths.empty());
+        visit(song, rec);
+    }
+    CHECK(charts > 0);
+}
+
+}  // namespace
+
+// Identity 1: with nothing pinned, the best finish is the main search's best
+// path, string and total, on every corpus chart.
+TEST_CASE("best finish: with nothing pinned it is Hydra's best path on every corpus chart") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    on_every_corpus_chart(cfg, [&](const Song& song, const HydraRecord& rec) {
         const TargetResult got = best_finish(song, cfg, {});
         REQUIRE_FALSE(got.paths.empty());
         CHECK(got.paths.front().pathstring() == rec.best_path().pathstring());
         CHECK(got.paths.front().totalscore() == rec.best_path().totalscore());
         CHECK(got.realized_prefix == 0);
-    }
-    CHECK(charts > 0);
+    });
 }
 
 // Identity 2: every window of a corpus chart's best path pinned in full.
@@ -71,14 +65,7 @@ TEST_CASE("best finish: with nothing pinned it is Hydra's best path on every cor
 TEST_CASE("best finish: every window of a corpus best path pinned in full, with no free fill "
           "left, equals search_target and the replay") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    int charts = 0;
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
-        ++charts;
-        CAPTURE(chart);
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        REQUIRE_FALSE(rec.paths.empty());
+    on_every_corpus_chart(cfg, [&](const Song& song, const HydraRecord& rec) {
         CAPTURE(rec.best_path().pathstring());
         const std::vector<PinnedWindow> pins = pinned_windows(rec.best_path());
 
@@ -88,7 +75,7 @@ TEST_CASE("best finish: every window of a corpus best path pinned in full, with 
         REQUIRE_FALSE(got.paths.empty());
         CHECK(got.realized_prefix == pins.size());
         const Path* own = nullptr;
-        for (const Path* p : roots_and_tied(got.paths))
+        for (const Path* p : test::roots_and_tied(got.paths))
             if (p->walk_activations().size() == pins.size()) {
                 own = p;
                 break;
@@ -97,8 +84,7 @@ TEST_CASE("best finish: every window of a corpus best path pinned in full, with 
         CHECK(own->totalscore() == target.paths.front().totalscore());
         CHECK(replay_path(song, windows_for_path(*own), cfg.rules).final.total() ==
               own->totalscore());
-    }
-    CHECK(charts > 0);
+    });
 }
 
 // Mutemath "Allies": its best path's first window fits the default 10 ms
@@ -106,7 +92,7 @@ TEST_CASE("best finish: every window of a corpus best path pinned in full, with 
 // BF(1) == BF(0). The total is pinned from one run.
 TEST_CASE("best finish: pinning the best path's first window keeps the best total") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    const std::string chart = corpus_chart("Mutemath - Allies");
+    const std::string chart = corpus::chart_named("Mutemath - Allies");
     REQUIRE_FALSE(chart.empty());
     const Song& song = corpus::song(chart, cfg.reading());
     const HydraRecord& rec = corpus::analyzed(chart, cfg);
@@ -130,7 +116,7 @@ TEST_CASE("best finish: pinning the best path's first window keeps the best tota
 // that window, as the first one no path realizes, broken at its activation.
 TEST_CASE("best finish: an impossible window reports search_target's reason") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    const std::string chart = corpus_chart("Mutemath - Allies");
+    const std::string chart = corpus::chart_named("Mutemath - Allies");
     REQUIRE_FALSE(chart.empty());
     const Song& song = corpus::song(chart, cfg.reading());
     const HydraRecord& rec = corpus::analyzed(chart, cfg);
@@ -139,7 +125,7 @@ TEST_CASE("best finish: an impossible window reports search_target's reason") {
     REQUIRE_FALSE(ticks.empty());
     const int64_t nowhere = ticks.front() + 1;
 
-    const std::vector<PinnedWindow> pins = {PinnedWindow{nowhere}};
+    const std::vector<PinnedWindow> pins = activation_pins({nowhere});
     const TargetResult target = search_target(song, cfg, pins);
     const TargetResult got = best_finish(song, cfg, pins);
     CHECK(got.paths.empty());

@@ -185,9 +185,17 @@ std::vector<Path> keep_prefix_paths(std::vector<Path> paths,
 // it is. A caller that runs many searches on one chart builds it once.
 ScoreGraph search_graph(const Song& song, const SearchSettings& settings);
 
+// The options a best-finish run uses: the main search's depth and soft Path
+// limit (the ones analyze_chart reads), following `windows` (their act ticks,
+// and the ends of those pinned in full) and running free after the last one
+// (EngineOptions::free_after). The one place that says so; best_finish runs
+// them, and a test of the engine's free_after reads them here too.
+EngineOptions best_finish_options(const SearchSettings& settings,
+                                  const std::vector<PinnedWindow>& windows);
+
 // The best path that starts with `windows` (keep_prefix_paths) and runs free
-// after the last one (EngineOptions::free_after), searched with the main
-// search's options (best_finish_options in pather.cpp says which). The Path
+// after the last one (EngineOptions::free_after), searched with
+// best_finish_options. The Path
 // limit does not judge a pinned window (EngineOptions::target_act_ticks), so
 // the result can outscore the main search's best. The windows are checked
 // and sorted as search_target checks them, with the same exceptions. With no

@@ -372,9 +372,8 @@ TargetResult target_on_graph(const ScoreGraph& graph, const std::vector<PinnedWi
     return out;
 }
 
-// The options a best-finish run uses, and nothing else reads: the main
-// search's (main_search_options), following `windows` and running free after
-// the last one.
+}  // namespace
+
 EngineOptions best_finish_options(const SearchSettings& settings,
                                   const std::vector<PinnedWindow>& windows) {
     EngineOptions options = main_search_options(settings);
@@ -382,8 +381,6 @@ EngineOptions best_finish_options(const SearchSettings& settings,
     options.free_after = true;
     return options;
 }
-
-}  // namespace
 
 std::vector<Path> search_target(const Song& song, const SearchSettings& settings,
                                 const std::vector<int64_t>& act_ticks,
