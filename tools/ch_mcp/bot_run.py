@@ -6,10 +6,10 @@ scorestats.json to change, copies the new file out, watches whether the game
 exits, and then puts the user files back. It is the one owner of the plan's
 "Safety rules for every live step" for the launch.
 
-    py -I tools/ch_mcp/bot_run.py --song <song folder> --out <folder>
+    py tools/ch_mcp/bot_run.py --song <song folder> --out <folder>
         [--player Drums,Expert] [--profile <name>] [--stop] [--backup-root <folder>]
-    py -I tools/ch_mcp/bot_run.py --song <song folder> --out <folder> --no-wait
-    py -I tools/ch_mcp/bot_run.py --restore <backup folder>
+    py tools/ch_mcp/bot_run.py --song <song folder> --out <folder> --no-wait
+    py tools/ch_mcp/bot_run.py --restore <backup folder>
 
 --no-wait backs up and starts the game, then returns at once and restores
 nothing; run --restore on the printed folder after the step. The game is
@@ -196,7 +196,7 @@ def _restore(backup_dir: str, env: Env) -> bool:
 
 
 def _restore_hint(backup_dir: str) -> str:
-    return f'py -I tools/ch_mcp/bot_run.py --restore "{backup_dir}"'
+    return f'py tools/ch_mcp/bot_run.py --restore "{backup_dir}"'
 
 
 def run_bot(song_dir: str, out_dir: str, *, player: str = DEFAULT_PLAYER,

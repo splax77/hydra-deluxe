@@ -89,9 +89,14 @@ class LineUpTest(unittest.TestCase):
 
 
 class CapTest(unittest.TestCase):
-    def test_the_cap_is_the_song_length_plus_the_margin(self):
-        # Window Map's last note is at 59,080 ms (plan 2026-10-28, question 5).
-        self.assertAlmostEqual(TH.trace_cap_s(notes_at(3000, 59080)), 92.08)
+    # Window Map's last note is at 59,080 ms (plan 2026-10-28, question 5).
+    WINDOW_MAP = notes_at(3000, 59080)
+
+    def test_the_song_cap_is_the_song_length_plus_the_margin(self):
+        self.assertAlmostEqual(TH.trace_cap_s(self.WINDOW_MAP), 92.08)
+
+    def test_the_wall_cap_is_the_song_cap_plus_the_pause_room(self):
+        self.assertAlmostEqual(TH.wall_cap_s(self.WINDOW_MAP), 212.08)
 
 
 class CommandLineTest(unittest.TestCase):
@@ -124,8 +129,10 @@ class CommandLineTest(unittest.TestCase):
                                      "no_code": ["base Abs"]}), sent(table)])
         code = self.run_main(["--mode", "count"], session)
         self.assertEqual(code, 0)
+        # Last note 3,000 ms + SILENCE_MS 3,000 ms + 30 s margin = 36 s song
+        # cap; plus 120 s of pause room = 156 s wall-clock cap.
         self.assertEqual(session.script.posted, [{
-            "type": "start", "cap_s": TH.trace_cap_s(notes_at(1000, 2000, 3000)),
+            "type": "start", "cap_s": 156.0, "song_cap_s": 36.0,
             "mode": "count", "engine_class": "Eng",
             "engine_ctor_rva": C.RVA_DRUMS_ENGINE_CTOR,
             "hit_time_offset": C.OFF_HIT_TIME, "methods": []}])
@@ -168,6 +175,26 @@ class CommandLineTest(unittest.TestCase):
             "1 of 2",
             f"messages written to {self.out_path}",
         ])
+
+    def test_a_trace_ended_by_the_runner_cap_exits_0_with_no_error(self):
+        # Window Map's last note: 59,080 ms + SILENCE_MS 3,000 ms + 30 s
+        # margin = 92.08 s song cap; plus 120 s of pause room = 212.08 s.
+        with open(self.manifest, "w", encoding="utf-8") as fh:
+            json.dump({"song": "Window Map", "notes": notes_at(3000, 59080)},
+                      fh)
+        session = FakeSession([sent({"engine": ENGINE, "hooked": 2,
+                                     "no_code": []})])
+        code = self.run_main(["--mode", "count"], session)
+        self.assertEqual(code, 0)
+        posted = session.script.posted[0]
+        self.assertAlmostEqual(posted["cap_s"], 212.08)
+        self.assertAlmostEqual(posted["song_cap_s"], 92.08)
+        self.assertEqual(session.detach_calls, 1)
+        self.assertEqual(self.lines[:2], [
+            "cap of 212.08 s reached before the agent finished; 1 messages seen",
+            "ended: cap"])
+        self.assertIn("table: none received", self.lines)
+        self.assertFalse(any(line.startswith("error") for line in self.lines))
 
     def test_an_agent_error_is_printed_and_exits_1(self):
         session = FakeSession([sent({"error": "engine shape check failed: "
@@ -214,6 +241,11 @@ class TraceAgentTest(unittest.TestCase):
                 self.assertIn("findGameManager()", text)
                 self.assertNotIn("gc.choose", text)
                 self.assertNotIn("tryAssembly", text)
+
+    def test_ended_line_names_the_song_cap(self):
+        result = FA.RunResult(reason=FA.END_DONE, cap_s=212.08,
+                              payloads=[{"done": "song cap", "methods": []}])
+        self.assertEqual(TH.ended_line(result), "ended: done (agent: song cap)")
 
     def test_the_end_reasons_are_the_runners(self):
         # trace.ts ends with a `done` payload, which ends_run reads.

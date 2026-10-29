@@ -236,6 +236,9 @@ class BotRunTest(unittest.TestCase):
         self.assertEqual(r.clock.t, 0.0)  # never slept, so never polled
         self.assertIn(f"backup folder: {r.backup_dir()}", r.lines)
         self.assertIn("game process id: 4242", r.lines)
+        self.assertEqual(r.lines[-1],
+                         "--no-wait: not waiting and not restoring; afterwards run "
+                         f'py tools/ch_mcp/bot_run.py --restore "{r.backup_dir()}"')
         self.assertFalse(any(line.startswith("restoring") for line in r.lines))
 
         # The step: the game rewrites all five files.

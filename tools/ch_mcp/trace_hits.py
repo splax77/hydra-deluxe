@@ -47,9 +47,13 @@ DEFAULT_AGENT = os.path.join(_HERE, "agent", "trace.js")
 MODE_COUNT = "count"
 MODE_ARGS = "args"
 
-# The trace's cap is the song's length plus this margin (plan 2026-10-28,
+# The trace's song cap is the song's length plus this margin (plan 2026-10-28,
 # question 5: the same cap as the clock run).
 TRACE_CAP_MARGIN_S = 30.0
+
+# The wall-clock cap is the song cap plus this room, for a song paused or not
+# yet started (approved by the user on 2026-10-28).
+WALL_CAP_PAUSE_S = 120.0
 
 
 # ---- the song -----------------------------------------------------------------
@@ -63,8 +67,16 @@ def load_manifest(song_folder: str) -> tuple[str, list[dict]]:
 
 
 def trace_cap_s(notes: list[dict]) -> float:
-    """The song's length (probe_songs.song_length_ms) plus the margin."""
+    """The song cap: the song's length (probe_songs.song_length_ms) plus the
+    margin. The agent counts it in song time played, so pauses do not use it
+    up."""
     return C.ms_to_s(song_length_ms(notes[-1]["time_ms"])) + TRACE_CAP_MARGIN_S
+
+
+def wall_cap_s(notes: list[dict]) -> float:
+    """The wall-clock cap: the song cap plus WALL_CAP_PAUSE_S. The runner
+    detaches on it, so a song that never starts or stays paused still ends."""
+    return trace_cap_s(notes) + WALL_CAP_PAUSE_S
 
 
 # ---- reading the results ---------------------------------------------------------
@@ -113,8 +125,9 @@ def _payloads_with(result: FA.RunResult, key: str) -> list[dict]:
 
 
 def ended_line(result: FA.RunResult) -> str:
-    """How the run ended, plus the agent's own reason when it sent one
-    ("song over", or "cap" when it stopped just before the runner's cap)."""
+    """How the run ended, plus the agent's own reason when it sent one:
+    "song over", "song cap" when the song time played reached the song cap,
+    or "cap" when it stopped just before the runner's wall-clock cap."""
     done = _payloads_with(result, "done")
     said = f" (agent: {done[-1]['done']})" if done else ""
     return f"ended: {result.reason}{said}"
@@ -215,8 +228,9 @@ def main(argv: list[str] | None = None, *, frida_mod: Any = None,
         return 1
 
     manifest_path, notes = load_manifest(args.song)
-    cap_s = trace_cap_s(notes)
+    cap_s = wall_cap_s(notes)
     settings = {
+        "song_cap_s": trace_cap_s(notes),
         "mode": args.mode,
         "engine_class": args.engine_class,
         "engine_ctor_rva": args.engine_ctor_rva,

@@ -17,7 +17,15 @@
 //          table once at the end.
 //   args   hooks only the methods the settings name and sends every call with
 //          its arguments and GameManager.songTime at that moment.
-// Both end when GameManager.isSongOver turns true, or just before the cap.
+// Both end at the first of three stops:
+//   song over  GameManager.isSongOver turns true.
+//   song cap   the song time played reaches the settings' song_cap_s. It is
+//              counted in songTime from the poll where songTime first moves,
+//              so a pause before or during the song does not use it up.
+//   cap        the wall-clock cap is about to pass: the agent stops
+//              END_POLL_MS before the runner's cap_s, counted from the start
+//              message, so a song that never starts or stays paused still
+//              ends. trace_hits.py owns both caps' numbers.
 
 import "frida-il2cpp-bridge";
 import { findGameManager, GAME_MANAGER } from "./gamemanager.js";
@@ -28,15 +36,16 @@ const ARG_SAMPLE_LIMIT = 200;
 
 // How often the end condition is checked: the clock sampling interval the
 // user approved (plan 2026-10-28, question 5). The agent also stops one such
-// interval before the cap, so its table reaches the runner before the runner
-// detaches at the cap.
+// interval before the wall-clock cap, so its table reaches the runner before
+// the runner detaches at that cap.
 const END_POLL_MS = 250;
 
 // The class flag for "sealed" (ECMA-335 partition II, TypeAttributes).
 const TYPE_ATTRIBUTE_SEALED = 0x100;
 
 interface Settings {
-    cap_s: number;
+    cap_s: number;       // the runner's wall-clock cap
+    song_cap_s: number;  // the song cap, in song time played
     mode: "count" | "args";
     engine_class: string;
     engine_ctor_rva: number;
@@ -322,6 +331,10 @@ function run(s: Settings, startMs: number) {
 
     const stopMs = s.cap_s * 1000 - END_POLL_MS;
     let wasOver = songOver.value;
+    // The song cap counts from the first poll whose songTime differs from
+    // this first reading; until then the song has not moved.
+    const firstSongTime = songTime.value;
+    let movedFrom: number | null = null;
     const finish = (reason: string) => {
         clearInterval(timer);
         for (const l of listeners) {
@@ -342,6 +355,14 @@ function run(s: Settings, startMs: number) {
                 return;
             }
             wasOver = over;
+            const songNow = songTime.value;
+            if (movedFrom === null && songNow !== firstSongTime) {
+                movedFrom = songNow;
+            }
+            if (movedFrom !== null && songNow - movedFrom >= s.song_cap_s) {
+                finish("song cap");
+                return;
+            }
             if (Date.now() - startMs >= stopMs) {
                 finish("cap");
             }
@@ -356,8 +377,9 @@ function run(s: Settings, startMs: number) {
 }
 
 recv("start", (message: Settings) => {
-    // The cap counts from the start message, not from when the hooks are in:
-    // the runner's cap starts there, and the table has to reach it first.
+    // The wall-clock cap counts from the start message, not from when the
+    // hooks are in: the runner's cap starts there, and the table has to reach
+    // it first.
     const startMs = Date.now();
     Il2Cpp.perform(() => run(message, startMs)).catch((e) => {
         send({ error: `Il2Cpp.perform failed: ${e}` });
