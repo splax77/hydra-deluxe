@@ -421,11 +421,11 @@ endif()
 # ---- hydra_audio: the Preview audio engine (decode + mix + player) -------
 # Decodes chart stems to float PCM, mixes them, and (GUI-side) drives the
 # output device. It also owns a song's length, the end of its mixed audio
-# (song_audio.cpp, D69). Kept separate from hydra_core so hydra_fillcompare
-# never pulls in the codec libraries; linked by hydra_ui,
-# hydra_tests and hydra_batch (so a batch can save song lengths). The decode and mix
-# code is pure and unit-tested; only the player owns a miniaudio device.
-# Depends on hydra_core for the PreviewAudioStem type and file I/O helpers.
+# (song_audio.cpp, D69). Kept separate from hydra_app so hydra_batch and
+# hydra_fillcompare never pull in the codec libraries; linked by hydra_ui and
+# hydra_tests. The decode and mix code is pure and unit-tested; only the
+# player owns a miniaudio device.
+# Depends on hydra_app for the PreviewAudioStem type and file I/O helpers.
 add_library(hydra_audio STATIC
     src/audio/decode.cpp
     src/audio/mapped_file.cpp
@@ -452,7 +452,7 @@ target_link_libraries(hydra_audio PRIVATE
 # offscreen D3D11 target (docs/adr/0005). The pure half — the .obj reader, the
 # config, the instant timeline (track_state) and the draw-list builder
 # (highway_draw, where every Onyx number lives) — is device-free and
-# unit-tested; only preview_renderer touches D3D. Kept out of hydra_core like
+# unit-tested; only preview_renderer touches D3D. Kept out of hydra_app like
 # hydra_audio; linked by hydra_ui and hydra_tests.
 add_library(hydra_render STATIC
     src/render/obj_loader.cpp
@@ -471,7 +471,7 @@ target_link_libraries(hydra_render PRIVATE
     d3d11 dxgi d3dcompiler hydra_image hydra_warnings)
 
 # ---- hydra_dm: the DMBot leaderboards feature (GUI-only) -----------------
-# Kept out of hydra_core so the CLI tools don't link WinHTTP or carry the
+# Kept out of hydra_app so the CLI tools do not link WinHTTP or carry the
 # comparison page. third_party/json parses the leaderboard API responses.
 add_library(hydra_dm STATIC
     src/app/dm_report.cpp
@@ -511,7 +511,7 @@ add_library(hydra_uibase STATIC
 # a file map. d3d11 is PUBLIC because icons.h hands out ID3D11 types.
 target_link_libraries(hydra_uibase PUBLIC imgui imgui_test_engine hydra_render hydra_audio d3d11)
 # ole32: the folder-picker dialog (COM's IFileOpenDialog). shell32 is not
-# needed here: hydra_core links it for report_files.cpp's ShellExecuteW.
+# needed here: hydra_app links it for report_files.cpp's ShellExecuteW.
 # hydra_image: icons.cpp decodes its PNGs through the shared stb TU.
 target_link_libraries(hydra_uibase PRIVATE ole32 hydra_image hydra_warnings)
 
@@ -828,7 +828,7 @@ target_compile_definitions(hydra_tests PRIVATE
 
 # ---- hydra_replay_json: the dump/target JSON shapes (tools only) ----------
 # hydra_replay writes and reads these, and tests/test_replay pins them. The
-# app never reads a path as JSON, so this stays out of hydra_core, and core/
+# app never reads a path as JSON, so this stays out of hydra_app, and core/
 # stays free of the JSON library.
 add_library(hydra_replay_json STATIC tools/replay_json.cpp)
 target_include_directories(hydra_replay_json PUBLIC tools third_party/json)

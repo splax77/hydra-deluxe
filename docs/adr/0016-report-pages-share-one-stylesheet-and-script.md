@@ -16,7 +16,7 @@ Everything else is shared: sorting, the header arrows, drawing rows, the count
 line, the stats tiles and the deferred first render.
 
 The stylesheet (`html::report_css()`) and the script (`html::kReportJs`) live in
-`app/html_page.cpp`. They stay ASCII because hydra_core is not built with
+`app/html_page.cpp`. They stay ASCII because hydra_app is not built with
 /utf-8; a glyph is an HTML entity or a `\uXXXX` escape. The comparison pages
 size a few columns differently, scoped by a class on `.wrap`. The comparison
 pages look records up through one `report::library_lookup` (named

@@ -27,7 +27,7 @@ namespace {
 // (html::page_template, docs/adr/0016). __SUBTITLE__/__FOOTER__/__DATA__ are
 // filled by build_fill_html.
 //
-// Every literal here is ASCII: this file compiles into hydra_core, which is
+// Every literal here is ASCII: this file compiles into hydra_app, which is
 // not built with /utf-8. Glyphs the page needs go in as HTML entities (markup)
 // or \uXXXX escapes (JavaScript).
 //

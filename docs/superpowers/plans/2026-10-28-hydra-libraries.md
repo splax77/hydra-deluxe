@@ -40,7 +40,7 @@ Each quotes what the code really does and gives my recommendation. Say "go with 
 
 ## The target layout
 
-Twelve libraries, lowest first. A library links only what is listed after "links", and the layering test (T3) enforces that its files include only headers from those libraries, their PUBLIC dependencies, and the externals they declare. System libraries (`bcrypt`, `shell32`, `shlwapi`, `ole32`, `uuid`) go with the library whose files call them; `hydra_core` links `shell32` for `winstr.cpp`, and the `app/` files that call the rest (`analysis.cpp`, `report_files.cpp`) carry the others, as the comment at `CMakeLists.txt` lines 349 to 357 says.
+Twelve libraries, lowest first. A library links only what is listed after "links", and the layering test (T3) enforces that its files include only headers from those libraries, their PUBLIC dependencies, and the externals they declare. System libraries (`bcrypt`, `shell32`, `shlwapi`, and `ole32` for the folder dialog) go with the library whose files call them; `hydra_core` links `shell32` for `winstr.cpp`, and the `app/` files that call the rest (`analysis.cpp`, `report_files.cpp`) carry `bcrypt`, `shell32` and `shlwapi`, as the comment above `hydra_app`'s private link line in `CMakeLists.txt` says. `ole32` and `uuid` were dropped from the app libraries in T1c: no file under `src/` calls `SHGetKnownFolderPath`, `CoTaskMemFree` or any other COM call except `hydra_uibase`'s folder dialog, which links `ole32` itself.
 
 `hydra_core` (`src/core/*`, plus `core/song.{h,cpp}` from Q2): the chart model, `Song`, paths, records, scoring, replay, stars, timing, rules, strings and Win32 paths. Links nothing of ours.
 
@@ -48,7 +48,7 @@ Twelve libraries, lowest first. A library links only what is listed after "links
 
 `hydra_search` (`src/search/*`): the graph, the engine, the pather. Links `hydra_core`.
 
-`hydra_store` (`src/store/*`): the database, the chart index, the library file, upgrades, the version stamps. Links `hydra_core`, `sqlite3`. (T1c drops the two unused includes in `record_store.h`; if the compiler then names a `search` or `parse` type the header really uses, `hydra_store` links that library too, and the plan's line here changes.)
+`hydra_store` (`src/store/*`): the database, the chart index, the library file, upgrades, the version stamps. Links `hydra_core`, `sqlite3` publicly, and `hydra_search` privately. `record_store.h` includes neither `parse/` nor `search/`; `record_store.cpp` includes `search/graph.h` for `fill_rule_for`, `fill_rule_name` and `FillRuleNameStyle`, which name a lens's fill rule in a key-mismatch error. The link is PRIVATE because no store header needs `search`.
 
 `hydra_app` (`src/app/*` except `dm_report.*`, `dm_report_view.*`, `update_release.*`; plus `app/job_base.h`, moved from `src/ui/` by T2): analysis, settings, rules file, reports and their pages, the view-model text, the Preview's source and scene, the chart sync rule, song length, user messages, update verification, the allocator and the work pool. Links `hydra_parse`, `hydra_search`, `hydra_store`.
 

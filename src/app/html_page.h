@@ -28,7 +28,7 @@ std::string render_page(const char* page_template, std::string data_json,
 // ---- the report chips' colours --------------------------------------------
 // The tier colours as 0xRRGGBB: the report windows' chips (ui::chip_color)
 // and the fill page's dark scheme (report_css) both read them. They live here
-// because hydra_core, which builds the page, cannot reach the GUI's theme.
+// because hydra_app, which builds the page, cannot reach the GUI's theme.
 inline constexpr uint32_t kChipRgbT0 = 0x4fbf94;
 inline constexpr uint32_t kChipRgbT1 = 0xe0b13f;
 inline constexpr uint32_t kChipRgbT2 = 0xf0894e;
@@ -46,7 +46,7 @@ inline constexpr const char* kSearchChartsHint = "Search song, artist, or charte
 // ---- the shared report page -----------------------------------------------
 // The fill page is one stylesheet and one script wrapped around its own
 // title, body markup and PAGE settings (docs/adr/0016). Both stay ASCII: this
-// file compiles into hydra_core, so a glyph goes in as an HTML entity or a
+// file compiles into hydra_app, so a glyph goes in as an HTML entity or a
 // \uXXXX JavaScript escape.
 // Every rule the fill page uses, with the dark scheme's --t0, --t3 and --tn
 // written from the kChipRgb* colours above.

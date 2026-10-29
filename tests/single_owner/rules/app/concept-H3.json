@@ -51,7 +51,7 @@
       "scope": [
         "src"
       ],
-      "note": "The report windows and the fill page share these two phrases; the page is built from hydra_core, so the home is html_page.h, not GUI code. A third copy typed elsewhere would drift. Decided by: D114 item 22, concept audit M07."
+      "note": "The report windows and the fill page share these two phrases; the page is built from hydra_app, so the home is html_page.h, not GUI code. A third copy typed elsewhere would drift. Decided by: D114 item 22, concept audit M07."
     }
   ]
 }
