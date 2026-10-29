@@ -55,7 +55,8 @@ inline std::vector<std::string> source_files(const std::filesystem::path& root) 
     for (const char* sub : kWalkedFolders) {
         std::vector<std::string> lines;
         try {
-            // -z: names end in a NUL and come unquoted, whatever bytes they hold.
+            // -z: names end in a NUL and come unquoted, so a space, a quote or a
+            // non-ASCII byte in a name arrives as written.
             lines = precheck::run_git(
                 where, {"ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", sub});
         } catch (const precheck::GitError& e) {
@@ -63,6 +64,8 @@ inline std::vector<std::string> source_files(const std::filesystem::path& root) 
                                      ": " + e.what());
         }
         // run_git splits on line breaks; a name may hold one, so join them back.
+        // (It also drops a "\r" before each break, so a name holding "\r\n"
+        // comes back altered, names no file, and is skipped as not a file.)
         std::string joined;
         for (size_t i = 0; i < lines.size(); ++i) joined += (i ? "\n" : "") + lines[i];
         std::vector<std::string> folder;
