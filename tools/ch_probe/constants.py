@@ -83,6 +83,40 @@ OFF_SCORE = 0x94
 # docs/superpowers/plans/2026-09-25-hit-window-testing.md checks it.
 OFF_HIT_TIME = 0x2E0
 
+# Star Power fields. From the disassembly, docs/audit/ch-evidence.md answer
+# 37; not yet confirmed live. Answer 37 gives no widths. The SP amount and
+# maximum are 64-bit (docs/audit/ch-evidence.md, "Things that surprised me"
+# item 5). The Il2Cpp dump note
+# (experiments/results/overlay-spike/il2cpp-fields.md) says the active flag
+# and the overflow flag are 1-byte bools and the multiplier a 4-byte int.
+# engine.decode_snapshot still reads several widths of each, so the live log
+# can confirm that evidence.
+
+# SP amount, a whole number of chart ticks. From the disassembly,
+# docs/audit/ch-evidence.md answer 37; not yet confirmed live.
+OFF_SP_AMOUNT = 0x68
+
+# SP maximum (a full meter), in the same unit as the amount. From the
+# disassembly, docs/audit/ch-evidence.md answer 37; not yet confirmed live.
+OFF_SP_MAX = 0x1B0
+
+# SP-active flag, set by activation. From the disassembly,
+# docs/audit/ch-evidence.md answer 37; not yet confirmed live.
+OFF_SP_ACTIVE = 0x42
+
+# Score multiplier, doubled by activation. From the disassembly,
+# docs/audit/ch-evidence.md answer 37; not yet confirmed live.
+OFF_SP_MULTIPLIER = 0x48
+
+# SP end time (double, song seconds), set by activation. From the
+# disassembly, docs/audit/ch-evidence.md answer 37; not yet confirmed live.
+OFF_SP_END_TIME = 0x120
+
+# Overflow flag, set when a phrase overfills the meter and the amount is
+# clamped. From the disassembly, docs/audit/ch-evidence.md answer 37; not yet
+# confirmed live.
+OFF_SP_OVERFLOW = 0x130
+
 # Flags dword. Bit 0x1000 is PrecisionMode (clear = normal).
 OFF_FLAGS = 0x198
 PRECISION_MODE_BIT = 0x1000
