@@ -1,6 +1,30 @@
 {
   "rules": [
     {
+      "question": "What is today's date, for a baseline's remove_by?",
+      "owner": "today_iso in tests/single_owner/engine.cpp",
+      "owner_file": "tests/single_owner/engine.cpp",
+      "owner_symbol": "today_iso",
+      "date": "2026-10-29",
+      "decision": "libraries plan T3 derive-once review (2026-10-29)",
+      "added_by": "lib-t3 review",
+      "pattern": "strftime\\([^)]*\"%Y-%m-%d\"",
+      "anchor": "\"%Y-%m-%d\"",
+      "owner_files": [
+        "tests/single_owner/engine.cpp"
+      ],
+      "must_match": [
+        "std::strftime(text, sizeof text, \"%Y-%m-%d\", &t);",
+        "std::strftime(buf, sizeof buf, \"%Y-%m-%d\", &local);"
+      ],
+      "must_not_match": [
+        "const std::string today = single_owner::today_iso();"
+      ],
+      "scope": [
+        "tests"
+      ]
+    },
+    {
       "question": "Which deactivation edge has this SP end, in a test?",
       "owner": "deact_edge_at in tests/record_fixtures.h",
       "owner_file": "tests/record_fixtures.h",
