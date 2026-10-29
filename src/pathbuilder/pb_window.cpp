@@ -117,7 +117,7 @@ void PbApp::draw_body(const OpenChart& chart) {
     const float side = ImGui::GetContentRegionAvail().x * kSideColumnShare;
 
     ImGui::BeginChild("##paths", ImVec2(side, 0), ImGuiChildFlags_Borders);
-    ImGui::TextWrapped("%s", chart.notespath.c_str());
+    ImGui::TextWrapped("%s", chart.chart_path.c_str());
     ImGui::Separator();
     if (!chart.has_star_power()) {
         ImGui::TextWrapped("%s", kNothingToBuildText);

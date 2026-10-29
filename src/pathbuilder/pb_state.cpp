@@ -11,15 +11,14 @@ namespace hydra::pathbuilder {
 
 OpenChart load_open_chart(const std::string& notespath, const app::Settings& settings,
                           const std::atomic<bool>* cancel) {
-    OpenChart c;
-    c.notespath = notespath;
-    c.settings = settings.batch_run().settings;
-    const FillDeadlineRule fills = fill_rule_for(c.settings.legacy_fills);
+    const app::AnalysisSettings run = settings.batch_run().settings;
     const app::SharedBytes container = app::read_preview_container(
         [](const std::string& p) { return read_file_bytes(p); }, notespath);
-    c.song = app::resolve_preview_song(notespath, container, c.settings.reading(),
-                                       c.settings.rules, fills)
-                 .song;
+    OpenChart c(app::resolve_preview_song(notespath, container, run.reading(), run.rules,
+                                          fill_rule_for(run.legacy_fills))
+                    .song);
+    c.chart_path = notespath;
+    c.settings = run;
     require_notes(c.song, c.settings.difficulty, c.settings.prodrums);
     c.graph = std::make_shared<const ScoreGraph>(search_graph(c.song, c.settings));
     c.record = analyze_chart(c.song, c.settings, app::stop_on_cancel(cancel));

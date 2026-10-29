@@ -664,6 +664,7 @@ add_library(hydra_pathbuilder STATIC
     src/pathbuilder/pb_open.cpp
     src/pathbuilder/pb_menu.cpp
     src/pathbuilder/pb_window.cpp
+    src/pathbuilder/pb_resource.h
 )
 target_link_libraries(hydra_pathbuilder PUBLIC hydra_uibase hydra_preview hydra_app)
 # shell32: the dropped-file calls (DragQueryFileW, DragFinish) in pb_open.cpp.
@@ -672,6 +673,10 @@ add_executable(HydraPathBuilder WIN32 src/pathbuilder/main.cpp src/pathbuilder/p
 target_link_libraries(HydraPathBuilder PRIVATE
     hydra_pathbuilder hydra_replay_json imgui d3d11 dxgi d3dcompiler hydra_warnings)
 target_link_options(HydraPathBuilder PRIVATE /ENTRY:mainCRTStartup)
+# The builder's window title and class name. It sets no AppUserModelID, so
+# Windows gives it a taskbar button of its own (the user's answer, 2026-10-29).
+target_compile_definitions(HydraPathBuilder PRIVATE
+    HYDRA_PATHBUILDER_NAME="${HYDRA_APP_NAME} Path Builder")
 # The fonts, icons and highway art beside the exe, as Hydra's are.
 add_custom_command(TARGET HydraPathBuilder POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory

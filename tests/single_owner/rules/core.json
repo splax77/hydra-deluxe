@@ -136,6 +136,10 @@
           "why": "it converts the startup message box's text, not a path"
         },
         {
+          "file": "src/pathbuilder/main.cpp",
+          "why": "it converts the Path Builder's startup message box text, not a path"
+        },
+        {
           "file": "tools/precheck/code_mask.cpp",
           "why": "it counts the UTF-16 units of source text, not a path"
         },

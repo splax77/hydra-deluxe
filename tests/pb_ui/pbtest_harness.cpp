@@ -29,7 +29,7 @@ Harness::Harness() {
         std::string t;
         if (!app) return t;
         const hydra::pathbuilder::PbState& s = app->state;
-        t += "chart: " + (s.chart() ? s.chart()->notespath : std::string("(none)")) + "\n";
+        t += "chart: " + (s.chart() ? s.chart()->chart_path : std::string("(none)")) + "\n";
         t += "rows: " + std::to_string(app->rows().size()) + "\n";
         if (!s.error().empty()) t += "error: " + s.error() + "\n";
         return t;

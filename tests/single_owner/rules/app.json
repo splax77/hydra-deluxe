@@ -73,6 +73,10 @@
         {
           "file": "src/cli/fillcompare.cpp",
           "why": "hydra_fillcompare sets each side's fill rule itself (collect_fill_rows in src/app/fill_report.cpp)"
+        },
+        {
+          "file": "src/pathbuilder/pb_state.cpp",
+          "why": "the Path Builder is a GUI beside Hydra and runs under Hydra's own settings, the 1.0 fills box included (path builder spec, How it is built and shipped)"
         }
       ],
       "must_match": [
@@ -151,6 +155,12 @@
       ],
       "scope": [
         "src"
+      ],
+      "exempt": [
+        {
+          "file": "src/pathbuilder/pb_state.cpp",
+          "why": "the Path Builder has no library row to compare with; it hashes the file it opens to name the chart for the Preview (path builder plan, task PB-1)"
+        }
       ],
       "note": "Whether a chart file changed since its library row was made. The Preview's load and the click's job both ask chart_changed_since, so the two never disagree; the fingerprint and the hash have no other caller in src or tools. src only: tools/replay.cpp hashes a chart to look it up by path, which is a different question. Decided by: storage-T2 review finding 2 (D87 item 3)"
     },
@@ -1524,6 +1534,10 @@
         {
           "file": "src/ui/main.cpp",
           "why": "the startup message box shows the block in a window (D72 item 1)"
+        },
+        {
+          "file": "src/pathbuilder/main.cpp",
+          "why": "the Path Builder's startup message box, as Hydra's (D72 item 1)"
         }
       ],
       "must_match": [

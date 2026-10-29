@@ -87,8 +87,10 @@ TEST_CASE("pb state: a chart that fails to open says why in the plain sentence")
     const std::string missing = testtemp::temp_dir("pb_missing") + "\\notes.mid";
     open_and_wait(s, missing);
     CHECK(s.chart() == nullptr);
-    CHECK(s.error() == "PLACEHOLDER");
-    CHECK(s.error_detail() == "PLACEHOLDER");
+    CHECK(s.error() ==
+          "Hydra couldn't open the song file. It may have been moved or deleted; run Scan "
+          "library to update the library.");
+    CHECK(s.error_detail() == "cannot open file: " + missing);
 }
 
 TEST_CASE("pb state: undo and redo walk three edits back and forth") {

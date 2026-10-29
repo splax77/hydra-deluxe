@@ -1,6 +1,10 @@
 // The Path Builder's main window, driven headless: a chart opened from the
 // command line, a chart with no Star Power, and a chart that fails to open.
 
+// First: its Windows headers come before the test engine's, which undefine
+// their Yield() macro (uitest_engine.h says why).
+#include "pbtest_harness.h"
+
 #include <cstdio>
 #include <string>
 
@@ -11,7 +15,6 @@
 
 #include "core/winstr.h"
 #include "pathbuilder/pb_paths.h"
-#include "pbtest_harness.h"
 
 namespace pbtest {
 
@@ -52,8 +55,8 @@ void test_open_and_list(ImGuiTestContext* ctx) {
         IM_CHECK(on_screen(h, hydra::pathbuilder::total_text(r) + "  (" +
                                   hydra::pathbuilder::gap_text(r) + ")"));
     }
-    std::fprintf(stderr, "best path total %s\n",
-                 hydra::pathbuilder::total_text(rows.front()).c_str());
+    // Burnout's best total under the GUI tests' settings, from one run.
+    IM_CHECK(on_screen(h, "378,315  (0)"));
     // Picking a row and pressing "Edit a copy" makes it the player's path.
     ctx->SetRef(h.home_ref.c_str());
     ctx->ItemClick("**/Best path");

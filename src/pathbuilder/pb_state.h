@@ -24,7 +24,9 @@ namespace hydra::pathbuilder {
 
 // One chart, opened: everything the builder reads while it shows the chart.
 struct OpenChart {
-    std::string notespath;
+    explicit OpenChart(Song song_in) : song(std::move(song_in)) {}
+
+    std::string chart_path;  // the file opened
     // The settings the chart was read and searched under: Settings::batch_run()
     // of the hydra_settings.ini read at the open.
     app::AnalysisSettings settings;

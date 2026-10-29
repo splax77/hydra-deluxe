@@ -75,15 +75,9 @@ std::optional<std::string> browse_for_folder(HWND owner, bool* failed) {
 
 std::optional<std::string> browse_for_file(HWND owner, const std::vector<FileTypeFilter>& types,
                                            bool* failed) {
-    // The dialog keeps pointers into these until Show returns.
-    std::vector<std::wstring> names, patterns;
-    for (const FileTypeFilter& t : types) {
-        names.push_back(utf8_to_wide(t.name));
-        patterns.push_back(utf8_to_wide(t.patterns));
-    }
+    // The dialog reads these until Show returns; `types` outlives the call.
     std::vector<COMDLG_FILTERSPEC> specs;
-    for (size_t i = 0; i < types.size(); ++i)
-        specs.push_back({names[i].c_str(), patterns[i].c_str()});
+    for (const FileTypeFilter& t : types) specs.push_back({t.name.c_str(), t.patterns.c_str()});
     return show_open_dialog(
         owner,
         [&](IFileOpenDialog& dialog) {

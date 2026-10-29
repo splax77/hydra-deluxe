@@ -20,10 +20,11 @@ namespace hydra::ui {
 std::optional<std::string> browse_for_folder(HWND owner, bool* failed = nullptr);
 
 // One line of a file dialog's type list: the name the user reads and the
-// patterns it shows, separated by ';' ("Charts", "*.mid;*.chart"). UTF-8.
+// patterns it shows, separated by ';' (L"Charts", L"*.mid;*.chart"), wide as
+// the dialog takes them.
 struct FileTypeFilter {
-    std::string name;
-    std::string patterns;
+    std::wstring name;
+    std::wstring patterns;
 };
 
 // The same dialog picking one existing file, its type list `types` (the first

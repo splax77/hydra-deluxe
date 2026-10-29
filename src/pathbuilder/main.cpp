@@ -25,14 +25,16 @@
 
 #include "app/config.h"
 #include "app/user_messages.h"
+#include "core/version.h"  // HYDRA_WIDEN
 #include "core/winstr.h"
 #include "pathbuilder/pb_open.h"
+#include "pathbuilder/pb_resource.h"
 #include "pathbuilder/pb_window.h"
 #include "ui/imgui_setup.h"
-#include "ui/resource.h"
 
-// The window's class name and title (the spec's decision 5).
-static constexpr const wchar_t* kPathBuilderTitleW = L"Hydra Deluxe Path Builder";
+// The window's class name and title (the spec's decision 5), which
+// CMakeLists.txt builds from HYDRA_APP_NAME.
+static constexpr const wchar_t* kPathBuilderTitleW = HYDRA_WIDEN(HYDRA_PATHBUILDER_NAME);
 // The ImGui layout file, beside the exe and apart from Hydra's hydra_ui.ini.
 static constexpr const char* kPathBuilderUiIni = "hydra_pathbuilder_ui.ini";
 
@@ -103,9 +105,9 @@ int main()
         monitor_dpi(::MonitorFromPoint(POINT{ 0, 0 }, MONITOR_DEFAULTTOPRIMARY)));
 
     HINSTANCE hInstance = ::GetModuleHandleW(nullptr);
-    HICON hIconLarge = (HICON)::LoadImageW(hInstance, MAKEINTRESOURCEW(IDI_APPICON),
+    HICON hIconLarge = (HICON)::LoadImageW(hInstance, MAKEINTRESOURCEW(IDI_PATHBUILDER_ICON),
                                            IMAGE_ICON, 32, 32, 0);
-    HICON hIconSmall = (HICON)::LoadImageW(hInstance, MAKEINTRESOURCEW(IDI_APPICON),
+    HICON hIconSmall = (HICON)::LoadImageW(hInstance, MAKEINTRESOURCEW(IDI_PATHBUILDER_ICON),
                                            IMAGE_ICON, 16, 16, 0);
 
     WNDCLASSEXW wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L,
