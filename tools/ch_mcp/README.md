@@ -24,9 +24,11 @@ py tools/ch_mcp/dump_facts.py "C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-du
 
 The tests run with `py -m pytest tools/ch_mcp/tests/test_dump_facts.py -q`. They use a small hand-written `dump.cs` and a fake dumper, so they never touch the game.
 
+Clone Hero 1.0 is a Mono build: its game code is plain .NET assemblies in `Clone Hero_Data\Managed\`, so there is no dump to make. `py tools/ch_mcp/mono_facts.py --game "C:\Clone Hero\1.0 old\Clone Hero" --version v1.0.0.4045-master --out "C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\4045"` reads the assemblies listed in `GAME_ASSEMBLIES` through `mono_reader.ps1` (PowerShell 7's own metadata reader, nothing installed) and writes the same `facts.json` shape. Mono metadata holds no addresses, so every field `offset` and method `rva` is null, and `signatures` has no `drums_engine`, because that entry is found by an address. `typedef_index` is the type's row number in its own assembly's TypeDef table; rows restart in each assembly, so two classes can share one. `dump_file` lists the assemblies read. The version string `v1.0.0.4045-master` came from a byte search of `Clone Hero_Data\globalgamemanagers`, where it is the only string of its shape (the exe's version info gives only the Unity version). The script cannot read it, so you pass it by hand with `--version`; `4045` is the build number in it, and the output folder is named after that, as the 1.1 folder is named `6142`.
+
 ## What facts.json holds
 
-`facts.json` is one JSON object with four keys, written as UTF-8 with the scrambled names kept as they are (not escaped), so read it with `encoding="utf-8"`. Any later reader of a game build, such as one for a Mono build, writes the same shape.
+`facts.json` is one JSON object with four keys, written as UTF-8 with the scrambled names kept as they are (not escaped), so read it with `encoding="utf-8"`. Every reader of a game build writes the same shape, `dump_facts.py` for an Il2CppDumper dump and `mono_facts.py` for a Mono build.
 
 `game_version` is the version string the caller passed. `dump_file` is the name of the file the facts came from.
 
@@ -35,7 +37,7 @@ The tests run with `py -m pytest tools/ch_mcp/tests/test_dump_facts.py -q`. They
 - `name`: the name as the dump prints it. A nested class carries its outer class's name in front, joined by a dot.
 - `namespace`: the namespace, or an empty string when it has none.
 - `kind`: `class`, `struct`, `interface` or `enum`.
-- `typedef_index`: the type's index in the game's metadata.
+- `typedef_index`: the type's index in the game's metadata. In a Mono build it is a row number inside one assembly, so it repeats across assemblies and is not a key; use `name` and `namespace` to find a class.
 - `readable`: true when the name is plain ASCII, false when the obfuscator scrambled it.
 - `base`: the base class as the dump writes it, generic arguments included, or null when there is none. The dump lists the base and the interfaces together with no marker. So the first listed type counts as the base unless every type of that name in the dump is an interface.
 - `interfaces`: the other listed types.
@@ -44,6 +46,6 @@ The tests run with `py -m pytest tools/ch_mcp/tests/test_dump_facts.py -q`. They
 
 A field has a `name`, a `type`, an `offset` and a `static` flag. The offset is a number counted in bytes. For an instance field it is the distance from the start of the object; for a static field it is the distance into the class's static storage. A reader whose source gives no offsets writes null. The reader of an Il2CppDumper dump always writes a number.
 
-A method has a `name`, a `return` type, a `params` list with each parameter's type (names and default values left out), a `static` flag and an `rva`. The RVA is the method's address counted from the start of `GameAssembly.dll`, as a number. It is -1 when the dump says the method has no compiled code of its own, as with abstract methods and open generic methods. A reader whose source gives no addresses writes null. The reader of an Il2CppDumper dump always writes a number. The per-instantiation addresses the dump lists under a generic method are not recorded.
+A method has a `name`, a `return` type, a `params` list with each parameter's type (names and default values left out; a parameter keeps the `out`, `in`, `ref`, `[In]` or `[Out]` marker the dump prints before its type), a `static` flag and an `rva`. The RVA is the method's address counted from the start of `GameAssembly.dll`, as a number. It is -1 when the dump says the method has no compiled code of its own, as with abstract methods and open generic methods. A reader whose source gives no addresses writes null. The reader of an Il2CppDumper dump always writes a number. The per-instantiation addresses the dump lists under a generic method are not recorded.
 
 `signatures` holds the short records the feasibility tests look up: `GameManager`, `ScoreManager` and `DrumsPlayer` by name, and `drums_engine` found by its constructor's address. Each has the class's `name`, `typedef_index` and `base`, its `field_count` and `method_count`, and `readable_fields`, which lists the fields whose names are readable in the same shape as above. `drums_engine` also has `ctor_rva`, the address it was found by. A name that matches no class or more than one stops the script with `class <name> matched N classes`.
