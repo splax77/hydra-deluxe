@@ -1,0 +1,5 @@
+// Embeds the app icon into HydraPathBuilder.exe's PE resources, under the
+// same id Hydra's own hydra.rc uses, so main.cpp loads it the same way.
+#include "../ui/resource.h"
+
+IDI_APPICON ICON "../../resource/icon_app.ico"

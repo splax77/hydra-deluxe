@@ -7,13 +7,22 @@
 #include <shobjidl.h>
 #include <wrl/client.h>
 
+#include <functional>
+
 #include "core/winstr.h"
 
 using Microsoft::WRL::ComPtr;
 
 namespace hydra::ui {
 
-std::optional<std::string> browse_for_folder(HWND owner, bool* failed) {
+namespace {
+
+// Shows the system's open dialog over `owner`, set up by `configure`, and
+// returns the picked item's file-system path. Both pickers below go through
+// it, so they cancel and fail alike.
+std::optional<std::string> show_open_dialog(HWND owner,
+                                            const std::function<void(IFileOpenDialog&)>& configure,
+                                            bool* failed) {
     if (failed) *failed = false;
 
     HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
@@ -30,9 +39,7 @@ std::optional<std::string> browse_for_folder(HWND owner, bool* failed) {
     ComPtr<IFileOpenDialog> dialog;
     if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
                                    IID_PPV_ARGS(&dialog)))) {
-        DWORD flags = 0;
-        dialog->GetOptions(&flags);
-        dialog->SetOptions(flags | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+        configure(*dialog.Get());
 
         if (SUCCEEDED(dialog->Show(owner))) {
             ComPtr<IShellItem> item;
@@ -51,6 +58,42 @@ std::optional<std::string> browse_for_folder(HWND owner, bool* failed) {
 
     if (we_initialized_com) CoUninitialize();
     return result;
+}
+
+}  // namespace
+
+std::optional<std::string> browse_for_folder(HWND owner, bool* failed) {
+    return show_open_dialog(
+        owner,
+        [](IFileOpenDialog& dialog) {
+            DWORD flags = 0;
+            dialog.GetOptions(&flags);
+            dialog.SetOptions(flags | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+        },
+        failed);
+}
+
+std::optional<std::string> browse_for_file(HWND owner, const std::vector<FileTypeFilter>& types,
+                                           bool* failed) {
+    // The dialog keeps pointers into these until Show returns.
+    std::vector<std::wstring> names, patterns;
+    for (const FileTypeFilter& t : types) {
+        names.push_back(utf8_to_wide(t.name));
+        patterns.push_back(utf8_to_wide(t.patterns));
+    }
+    std::vector<COMDLG_FILTERSPEC> specs;
+    for (size_t i = 0; i < types.size(); ++i)
+        specs.push_back({names[i].c_str(), patterns[i].c_str()});
+    return show_open_dialog(
+        owner,
+        [&](IFileOpenDialog& dialog) {
+            DWORD flags = 0;
+            dialog.GetOptions(&flags);
+            dialog.SetOptions(flags | FOS_FILEMUSTEXIST | FOS_FORCEFILESYSTEM);
+            if (!specs.empty())
+                dialog.SetFileTypes(static_cast<UINT>(specs.size()), specs.data());
+        },
+        failed);
 }
 
 }  // namespace hydra::ui
