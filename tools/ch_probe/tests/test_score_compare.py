@@ -19,6 +19,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from tools.ch_probe.engine import pressed_input_hit  # noqa: E402
 from tools.ch_probe.experiments import play_chart, score_compare  # noqa: E402
 
 
@@ -126,7 +127,8 @@ def _late_presses(first_index, game_after, game_before=0):
     rows, before = [], game_before
     for i, after in enumerate(game_after, start=first_index):
         ms = 1000.0 + 500.0 * i
-        rows.append(score_compare.Press(i, ms, ms - 1.5, before, after, after > before))
+        rows.append(score_compare.Press(i, ms, ms - 1.5, before, after,
+                                        pressed_input_hit(before, after)))
         before = after
     return rows
 
@@ -199,7 +201,7 @@ def _simulated_log(n, misses=(), lags=()):
             true_score += own
         ms = 1000.0 + 10.0 * i
         presses.append(score_compare.Press(i, ms, ms - 1.5, before, true_score,
-                                           true_score > before))
+                                           pressed_input_hit(before, true_score)))
         before = true_score
     return presses, score
 
