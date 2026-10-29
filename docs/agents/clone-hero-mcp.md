@@ -32,10 +32,10 @@ Each live run names its pass and fail lines before it starts, has a cap on how m
 4. For key presses, `ch_press` or `ch_play_chart` on a song the user started from the menu. A song launched with a bot is played by the bot.
 5. `ch_stop`, and check that every file was restored.
 
-Two things the live steps of 2026-10-29 found. In the one bot run tried, the results screen took no keys, so the user could not leave it; end a bot run with `ch_stop`. And after a song, back at the main menu, `ch_state` still found the finished `GameManager` and said "song over".
+Two things the live steps of 2026-10-29 found. In the one bot run tried, the results screen took no keys, so the user could not leave it; end a bot run with `ch_stop`. And after a song the finished `GameManager` stays in memory; the state agent skips it as destroyed, so back at the main menu `ch_state` says "menu (no live GameManager)" and its `destroyed` line counts the skipped one.
 
 The agents now skip any `GameManager` the game has destroyed. Every Unity object holds a pointer to its native half in `m_CachedPtr`, a field of `UnityEngine.Object`, and Unity clears that pointer when it destroys the object. The object itself can stay in memory until the garbage collector runs, which is how a destroyed one can still be found. The lookup in `tools/ch_mcp/agent/gamemanager.ts` reads that field by name, and the state, clock and trace agents all go through it. Each `ch_state` reply carries `destroyed`, the number of destroyed `GameManager`s the read skipped. When none is alive, the reply says `found: false` and the state word is "menu (no live GameManager)".
 
-Whether the game destroys its `GameManager` on the way back to the menu has not been checked live yet. If a read at the menu after a song still says "song over" with `destroyed: 0`, the game kept that `GameManager` alive, and this skip does not tell the menu from the results screen.
+One live run checked this (2026-10-29). After a song the user went back to the main menu, and `ch_attach` and `ch_state` both said `state: menu (no live GameManager)` with `found: false` and `destroyed: 1`. So the game destroyed that `GameManager` on the way back, and the skip is what tells the menu from the results screen. If a later read at the menu still says "song over" with `destroyed: 0`, the game kept a `GameManager` alive, and the skip would not tell them apart.
 
 If the game is updated, every Frida tool refuses until a dump of the new build exists; the refusal names the scripts to run.
