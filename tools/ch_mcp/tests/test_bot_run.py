@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -282,6 +283,116 @@ class BotRunTest(unittest.TestCase):
         r.game_writes_stats_at(5)
         B.run_bot(r.song, r.out_dir, env=r.env)
         self.assertTrue(r.lines[0].startswith("note: song.ini says pro_drums = True"))
+
+
+class StuckGame(FakeGame):
+    """A game that does not exit within the stop's wait."""
+
+    def stop(self) -> None:
+        raise subprocess.TimeoutExpired(PROCESS_NAME, B.EXIT_CHECK_S)
+
+
+class RunStepsTest(unittest.TestCase):
+    """The four steps the server calls one at a time."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def start(self, r: Rig, song_dir) -> B.Run:
+        return B.start_run(song_dir, backup_root=os.path.join(r.out_dir, "backups"), env=r.env)
+
+    def test_start_run_backs_up_launches_and_returns_before_any_sleep(self):
+        r = Rig(self.tmp, exits_at=None)
+        before = B._file_state(r.path(G.SCORESTATS))
+        run = self.start(r, r.song)
+        self.assertEqual(r.clock.t, 0.0)
+        self.assertEqual(run.backup_dir, r.backup_dir())
+        self.assertTrue(os.path.isfile(os.path.join(run.backup_dir, G.SCORESTATS)))
+        self.assertIsNotNone(run.before)
+        self.assertEqual(run.before, before)
+        self.assertEqual(r.launch.commands, [run.command])
+        self.assertEqual(run.command, B.launch_command(r.env.exe, r.song, B.DEFAULT_PLAYER))
+        self.assertIs(run.game, r.game)
+        self.assertEqual(run.launched_at, 0.0)
+        self.assertEqual(run.length_ms, SONG_LENGTH_MS)
+        self.assertEqual(run.cap_s, 64)
+        self.assertIn("song.ini", run.length_source)
+        self.assertEqual(len(r.lines), 3)
+        self.assertEqual(r.lines[0], f"backup folder: {r.backup_dir()}")
+        self.assertTrue(r.lines[1].startswith("starting: "))
+        self.assertEqual(r.lines[2], "game process id: 4242")
+        self.assertFalse(any(line.startswith("restoring") for line in r.lines))
+
+    def test_start_run_with_no_song_launches_the_bare_exe_after_a_backup(self):
+        r = Rig(self.tmp, exits_at=None)
+        run = self.start(r, None)
+        self.assertEqual(r.launch.commands, [[r"C:\fake\Clone Hero.exe"]])
+        self.assertTrue(os.path.isdir(run.backup_dir))
+        self.assertIsNone(run.song_dir)
+        self.assertIsNone(run.cap_s)
+        self.assertEqual(B.launch_command("exe", None, "Drums,Expert"), ["exe"])
+        self.assertEqual(B.launch_command("exe", None, "ProDrums,Expert", "Tester"), ["exe"])
+
+    def test_wait_stats_on_a_no_song_run_says_so_without_sleeping(self):
+        r = Rig(self.tmp, exits_at=None)
+        run = self.start(r, None)
+        self.assertIsNone(B.wait_stats(run, r.out_dir, r.env))
+        self.assertEqual(r.lines[-1], "no song was launched from the command line; nothing to wait for")
+        self.assertEqual(r.clock.t, 0.0)
+
+    def test_wait_stats_copies_a_changed_file_and_names_the_seconds(self):
+        r = Rig(self.tmp, exits_at=None)
+        run = self.start(r, r.song)
+        r.game_writes_stats_at(5)
+        copy = B.wait_stats(run, r.out_dir, r.env)
+        self.assertEqual(copy, os.path.join(r.out_dir, "scorestats-Window_Map-20261028-101500.json"))
+        self.assertEqual(_read(copy), NEW_STATS)
+        self.assertIn(f"scorestats.json changed after 5 s; copied to {copy}", r.lines)
+
+    def test_finish_run_with_stop_stops_the_game_and_restores_all_five_files(self):
+        r = Rig(self.tmp, exits_at=None)
+        run = self.start(r, r.song)
+        for name in ORIGINAL:
+            _write(r.path(name), b"changed by the game")
+        self.assertTrue(B.finish_run(run, stop=True, env=r.env))
+        self.assertTrue(r.game.stopped)
+        self.assertIn("stopped the game (--stop)", r.lines)
+        for name in G.DOCUMENTS_FILES + G.LOCALLOW_FILES:
+            self.assertIn(f"{name}: restored", r.lines)
+        r.assert_all_restored(self)
+        self.assertFalse(any("--restore" in line for line in r.lines))
+
+    def test_finish_run_reports_a_game_that_outlives_the_stop_and_still_restores(self):
+        r = Rig(self.tmp, exits_at=None)
+        r.game = r.launch.game = StuckGame(r.clock)
+        run = self.start(r, r.song)
+        for name in ORIGINAL:
+            _write(r.path(name), b"changed by the game")
+        self.assertTrue(B.finish_run(run, stop=True, env=r.env))
+        self.assertIn(f"{PROCESS_NAME} (pid 4242) was told to stop but was still running "
+                      "after 30 s", r.lines)
+        self.assertNotIn("stopped the game (--stop)", r.lines)
+        r.assert_all_restored(self)
+        self.assertEqual(r.lines[-1],
+                         "the game is still running and may write these files again when it "
+                         f'closes; after closing it, run py tools/ch_mcp/bot_run.py --restore '
+                         f'"{r.backup_dir()}"')
+
+    def test_finish_run_with_a_failed_restore_names_the_file_and_returns_false(self):
+        r = Rig(self.tmp, exits_at=None)
+        run = self.start(r, r.song)
+
+        def fail(backup_dir, out):
+            raise G.RestoreError("scoredata.bin", "locked")
+
+        with mock.patch.object(B.game_files, "restore", fail):
+            self.assertFalse(B.finish_run(run, stop=False, env=r.env))
+        self.assertIn("restore failed on scoredata.bin: locked", r.lines)
+        self.assertEqual(r.lines[-1], f"stopped; the backup is still in {r.backup_dir()}")
 
 
 class InstallChartTest(unittest.TestCase):

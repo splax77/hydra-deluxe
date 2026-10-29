@@ -16,6 +16,11 @@ nothing; run --restore on the printed folder after the step. The game is
 never closed unless --stop is given. No --profile means the game plays as
 its default player.
 
+A caller that needs to act between the steps (the MCP server) calls them one
+at a time: start_run, wait_stats, exit_check and finish_run. run_bot is those
+four in order. start_run with no song folder starts the game at its menu;
+launch_command owns what the game is given either way.
+
 The file paths and the backup list live in game_files.py; the caps are the
 constants below.
 """
@@ -115,8 +120,12 @@ def song_length_ms(song_dir: str) -> tuple[int, str]:
         "the stats wait has no cap, so nothing was started")
 
 
-def launch_command(exe: str, song_dir: str, player: str,
+def launch_command(exe: str, song_dir: Optional[str], player: str,
                    profile: Optional[str] = None) -> list[str]:
+    """The game's whole command line. With no song folder the game starts at
+    its menu, the way the user starts it by hand, so it gets no flags."""
+    if song_dir is None:
+        return [exe]
     cmd = [exe, "--song", song_dir, "--player", player]
     if profile:
         cmd += ["--profile", profile]
@@ -172,7 +181,79 @@ def _poll_stats(song_dir: str, out_dir: str, cap_s: float,
             return None
 
 
-def _exit_check(game: Game, env: Env) -> None:
+def _stats_state(env: Env) -> Optional[tuple[int, int]]:
+    return _file_state(os.path.join(env.documents_dir, game_files.SCORESTATS))
+
+
+@dataclass
+class Run:
+    """One launched game, between start_run and finish_run. song_dir, cap_s,
+    length_ms and length_source are None when no song was launched from the
+    command line."""
+    song_dir: Optional[str]
+    backup_dir: str
+    command: list[str]
+    game: Game
+    launched_at: float  # on env.now
+    cap_s: Optional[float]
+    length_ms: Optional[int]
+    length_source: Optional[str]
+    before: Optional[tuple[int, int]]  # scorestats.json's state before the launch
+
+
+def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
+              profile: Optional[str] = None, backup_root: str,
+              env: Optional[Env] = None) -> Run:
+    """Back up the user files, then start the game, and return at once. With
+    a song folder the game plays it with a bot; a song with no known length
+    raises SongLengthMissing before anything is backed up or started. With
+    song_dir None the game starts at its menu and the run has no stats cap."""
+    env = env or Env()
+    length_ms = source = cap_s = None
+    if song_dir is not None:
+        # The game starts in its own folder, so a relative song path would be
+        # read from there.
+        song_dir = os.path.abspath(song_dir)
+        length_ms, source = song_length_ms(song_dir)
+        cap_s = C.ms_to_s(length_ms) + POLL_CAP_EXTRA_S
+        if (game_files.song_ini_pro_drums(song_dir)
+                and player.split(",")[0].strip() != PRO_DRUMS_INSTRUMENT):
+            env.out(f"note: song.ini says pro_drums = True but the player is {player}; "
+                    f"pass --player {PRO_DRUMS_INSTRUMENT},<difficulty> to play pro drums")
+
+    backup_dir = game_files.backup(env.documents_dir, env.locallow_dir, backup_root,
+                                   stamp=env.stamp)
+    env.out(f"backup folder: {backup_dir}")
+    before = _stats_state(env)
+
+    cmd = launch_command(env.exe, song_dir, player, profile)
+    env.out("starting: " + subprocess.list2cmdline(cmd))
+    game = env.launch(cmd)
+    launched_at = env.now()
+    env.out(f"game process id: {game.pid}")
+    return Run(song_dir=song_dir, backup_dir=backup_dir, command=cmd, game=game,
+               launched_at=launched_at, cap_s=cap_s, length_ms=length_ms,
+               length_source=source, before=before)
+
+
+def wait_stats(run: Run, out_dir: str, env: Optional[Env] = None) -> Optional[str]:
+    """Wait, up to the run's cap, for the game to write new stats, and copy
+    them into `out_dir`. Returns the copy, or None when the cap passes first
+    or the run launched no song."""
+    env = env or Env()
+    if run.cap_s is None:
+        env.out("no song was launched from the command line; nothing to wait for")
+        return None
+    os.makedirs(out_dir, exist_ok=True)
+    env.out(f"waiting up to {run.cap_s:.1f} s for scorestats.json to change "
+            f"({run.length_ms} ms from {run.length_source}, plus {POLL_CAP_EXTRA_S:.0f} s)")
+    return _poll_stats(run.song_dir, out_dir, run.cap_s, run.before, env)
+
+
+def exit_check(run: Run, env: Optional[Env] = None) -> None:
+    """Watch, up to EXIT_CHECK_S, whether the game exits on its own."""
+    env = env or Env()
+    game = run.game
     start = env.now()
     while game.is_running():
         if env.now() - start >= EXIT_CHECK_S:
@@ -199,55 +280,57 @@ def _restore_hint(backup_dir: str) -> str:
     return f'py tools/ch_mcp/bot_run.py --restore "{backup_dir}"'
 
 
+def finish_run(run: Run, *, stop: bool, env: Optional[Env] = None) -> bool:
+    """Stop the game when asked, then put the user files back. A game that
+    is still running after the stop's wait is reported and the restore still
+    runs. Returns False when the restore failed."""
+    env = env or Env()
+    game = run.game
+    try:
+        if stop and game.is_running():
+            try:
+                game.stop()
+            except subprocess.TimeoutExpired:
+                env.out(f"{C.PROCESS_NAME} (pid {game.pid}) was told to stop but was "
+                        f"still running after {EXIT_CHECK_S:.0f} s")
+            else:
+                env.out("stopped the game (--stop)")
+    except BaseException:
+        _restore(run.backup_dir, env)
+        raise
+    if not _restore(run.backup_dir, env):
+        return False
+    if game.is_running():
+        env.out("the game is still running and may write these files again when it closes; "
+                "after closing it, run " + _restore_hint(run.backup_dir))
+    return True
+
+
 def run_bot(song_dir: str, out_dir: str, *, player: str = DEFAULT_PLAYER,
             profile: Optional[str] = None, stop: bool = False, no_wait: bool = False,
             backup_root: Optional[str] = None, env: Optional[Env] = None) -> int:
-    """One bot launch. Returns 0 when the stats file was copied (or, with
-    no_wait, when the game started), 1 when the cap passed with no stats,
-    2 when a restore failed."""
+    """One bot launch: start_run, wait_stats, exit_check and finish_run in
+    order. Returns 0 when the stats file was copied (or, with no_wait, when
+    the game started), 1 when the cap passed with no stats, 2 when a restore
+    failed."""
     env = env or Env()
-    # The game starts in its own folder, so a relative song path would be read
-    # from there.
-    song_dir = os.path.abspath(song_dir)
-    length_ms, source = song_length_ms(song_dir)
-    cap_s = C.ms_to_s(length_ms) + POLL_CAP_EXTRA_S
-    if (game_files.song_ini_pro_drums(song_dir)
-            and player.split(",")[0].strip() != PRO_DRUMS_INSTRUMENT):
-        env.out(f"note: song.ini says pro_drums = True but the player is {player}; "
-                f"pass --player {PRO_DRUMS_INSTRUMENT},<difficulty> to play pro drums")
-
+    run = start_run(song_dir, player=player, profile=profile,
+                    backup_root=backup_root or os.path.join(out_dir, "backups"), env=env)
     os.makedirs(out_dir, exist_ok=True)
-    backup_dir = game_files.backup(env.documents_dir, env.locallow_dir,
-                                   backup_root or os.path.join(out_dir, "backups"),
-                                   stamp=env.stamp)
-    env.out(f"backup folder: {backup_dir}")
-    before = _file_state(os.path.join(env.documents_dir, game_files.SCORESTATS))
-
-    cmd = launch_command(env.exe, song_dir, player, profile)
-    env.out("starting: " + subprocess.list2cmdline(cmd))
-    game = env.launch(cmd)
-    env.out(f"game process id: {game.pid}")
     if no_wait:
-        env.out("--no-wait: not waiting and not restoring; afterwards run " + _restore_hint(backup_dir))
+        env.out("--no-wait: not waiting and not restoring; afterwards run "
+                + _restore_hint(run.backup_dir))
         return 0
 
     try:
-        env.out(f"waiting up to {cap_s:.1f} s for scorestats.json to change "
-                f"({length_ms} ms from {source}, plus {POLL_CAP_EXTRA_S:.0f} s)")
-        copied = _poll_stats(song_dir, out_dir, cap_s, before, env)
+        copied = wait_stats(run, out_dir, env)
         if copied is not None:
-            _exit_check(game, env)
-        if stop and game.is_running():
-            game.stop()
-            env.out("stopped the game (--stop)")
+            exit_check(run, env)
     except BaseException:
-        _restore(backup_dir, env)
+        _restore(run.backup_dir, env)
         raise
-    if not _restore(backup_dir, env):
+    if not finish_run(run, stop=stop, env=env):
         return 2
-    if game.is_running():
-        env.out("the game is still running and may write these files again when it closes; "
-                "after closing it, run " + _restore_hint(backup_dir))
     return 0 if copied is not None else 1
 
 
