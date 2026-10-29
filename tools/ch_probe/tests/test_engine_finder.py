@@ -70,6 +70,23 @@ class FindLiveEngineTest(unittest.TestCase):
         self.assertEqual(got, live)
         self.assertEqual(sleeps, [F.REREAD_GAP_S])
 
+    def test_gives_up_at_the_default_cap_with_the_exact_message(self):
+        # The bare finder is capped too: the wall clock jumps past the
+        # default cap before the first sleep, while no song clock moves.
+        frozen = 0x20000
+        proc = FakeProc(doubles={frozen + W: 0.17}, clocks={frozen + K: [3.0]})
+        wall = iter([1000.0, 1120.0])
+        sleeps = []
+        with self.assertRaises(F.EngineSearchTimeout) as caught:
+            F.find_live_engine(proc, [(b"b", b"f")],
+                               scan=lambda p, b, f: ([frozen], 0, 0),
+                               sleep=sleeps.append, now=lambda: next(wall),
+                               out=io.StringIO())
+        self.assertEqual(
+            str(caught.exception),
+            "no playing song found in 120 s; start the song and run again")
+        self.assertEqual(sleeps, [])
+
     def test_keeps_waiting_until_a_clock_moves(self):
         live = 0x20000
         proc = FakeProc(doubles={live + W: 0.17},
