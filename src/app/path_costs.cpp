@@ -1,6 +1,5 @@
 #include "app/path_costs.h"
 
-#include <algorithm>
 #include <stdexcept>
 #include <utility>
 
@@ -25,14 +24,11 @@ CostTier cost_tier(int64_t cost, int64_t bf0) {
     return CostTier::Yellow;
 }
 
-LadderRun build_ladder(const Song& song, const ScoreGraph& graph, const SearchSettings& settings,
+LadderRun build_ladder(const ScoreGraph& graph, const SearchSettings& settings,
                        std::vector<PinnedWindow> windows, const LadderProgress& progress) {
     // A prefix is the first k windows in the order the target searches take
-    // them (search_target in pather.h); best_finish checks the rest.
-    std::stable_sort(windows.begin(), windows.end(),
-                     [](const PinnedWindow& a, const PinnedWindow& b) {
-                         return a.act_tick < b.act_tick;
-                     });
+    // them, so a list they refuse is refused here, before any search.
+    sort_and_check_windows(windows);
     auto report = [&](const LadderRun& run) {
         if (progress) progress(run);
     };
@@ -53,7 +49,7 @@ LadderRun build_ladder(const Song& song, const ScoreGraph& graph, const SearchSe
         report(run);
     }
 
-    TargetResult own = search_target(song, settings, windows);
+    TargetResult own = search_target(graph, windows);
     run.realized_prefix = own.realized_prefix;
     if (own.paths.empty()) {
         run.failed_tick = own.failed_tick;

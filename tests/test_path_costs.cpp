@@ -108,7 +108,7 @@ std::vector<Case> allies_cases() {
 
 LadderRun ladder_for(const Song& song, const std::vector<PinnedWindow>& windows) {
     const ScoreGraph graph = search_graph(song, default_cfg());
-    return build_ladder(song, graph, default_cfg(), windows);
+    return build_ladder(graph, default_cfg(), windows);
 }
 
 }  // namespace
@@ -183,6 +183,29 @@ TEST_CASE("cost tier: a negative cost is a bug") {
     CHECK_THROWS_AS(cost_tier(-1, 1000), std::logic_error);
 }
 
+TEST_CASE("build ladder: a list the target searches refuse is refused before any search") {
+    const Song& song = song_named("Mutemath - Allies");
+    const ScoreGraph graph = search_graph(song, default_cfg());
+    std::vector<size_t> heard;
+    const std::vector<PinnedWindow> twice = {PinnedWindow{9984}, PinnedWindow{9984}};
+    CHECK_THROWS_AS(build_ladder(graph, default_cfg(), twice,
+                                 [&](const LadderRun& r) { heard.push_back(r.ladder.bf.size()); }),
+                    std::invalid_argument);
+    CHECK(heard.empty());
+}
+
+TEST_CASE("search target: a built graph answers as the song does") {
+    const Song& song = song_named("Mutemath - Allies");
+    const ScoreGraph graph = search_graph(song, default_cfg());
+    const std::vector<PinnedWindow> windows = activation_pins({9984, 22272});
+    const TargetResult on_graph = search_target(graph, windows);
+    const TargetResult on_song = search_target(song, default_cfg(), windows);
+    REQUIRE_FALSE(on_graph.paths.empty());
+    REQUIRE(on_song.paths.size() == on_graph.paths.size());
+    CHECK(on_graph.paths.front().totalscore() == on_song.paths.front().totalscore());
+    CHECK(on_graph.paths.front().totalscore() == 407610);
+}
+
 // Allies' best path by activation only, its second window moved one tick
 // later, where no fill node is. BF(0) and BF(1) land; BF(2) cannot, so the
 // run stops there and names that window as search_target would.
@@ -192,7 +215,7 @@ TEST_CASE("build ladder: stops at the first impossible prefix and names it") {
 
     std::vector<size_t> heard;
     const ScoreGraph graph = search_graph(song, default_cfg());
-    const LadderRun run = build_ladder(song, graph, default_cfg(), windows,
+    const LadderRun run = build_ladder(graph, default_cfg(), windows,
                                        [&](const LadderRun& r) { heard.push_back(r.ladder.bf.size()); });
     CHECK_FALSE(run.complete);
     CHECK(run.ladder.bf == std::vector<int64_t>{451830, 451830});

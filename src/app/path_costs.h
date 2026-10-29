@@ -15,7 +15,6 @@
 #include <vector>
 
 #include "core/model.h"
-#include "core/song.h"
 #include "search/graph.h"
 #include "search/pather.h"
 
@@ -79,11 +78,11 @@ using LadderProgress = std::function<void(const LadderRun&)>;
 // answers arrive. The run stops at the first prefix no path realizes and
 // carries that failure, with the values before it. The windows are taken in
 // act_tick order, as the target searches take them; their checks (and
-// exceptions) are best_finish's. `graph` is search_graph(song, settings),
-// the one graph a chart's searches share; search_target builds its own from
-// `song`, because it takes no graph. Device-free: the builder's worker
-// thread calls it.
-LadderRun build_ladder(const Song& song, const ScoreGraph& graph, const SearchSettings& settings,
+// exceptions) are sort_and_check_windows's (search/pather.h), made before the
+// first search. `graph` is search_graph(song, settings),
+// the one graph a chart's searches share; every search here runs on it.
+// Device-free: the builder's worker thread calls it.
+LadderRun build_ladder(const ScoreGraph& graph, const SearchSettings& settings,
                        std::vector<PinnedWindow> windows, const LadderProgress& progress = {});
 
 }  // namespace hydra::app
