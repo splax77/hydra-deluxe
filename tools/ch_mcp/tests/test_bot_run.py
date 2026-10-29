@@ -402,6 +402,28 @@ class RunStepsTest(unittest.TestCase):
         self.assertEqual(r.lines[-1], f"stopped; the backup is still in {r.backup_dir()}")
 
 
+class FakePopen:
+    """Records how subprocess.Popen was called."""
+    calls: list = []
+
+    def __init__(self, cmd, **kw):
+        self.pid = 4321
+        FakePopen.calls.append((cmd, kw))
+
+
+class RealLaunchTest(unittest.TestCase):
+    def test_the_game_gets_no_stdin_and_no_stdout_and_keeps_its_folder(self):
+        FakePopen.calls = []
+        cmd = [os.path.join("games", "ch", "Clone Hero.exe"), "--song", "x"]
+        with mock.patch.object(B.subprocess, "Popen", FakePopen):
+            game = B._real_launch(cmd)
+        self.assertEqual(game.pid, 4321)
+        self.assertEqual(FakePopen.calls, [(cmd, {
+            "cwd": os.path.dirname(cmd[0]),
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.DEVNULL})])
+
+
 class InstallChartTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

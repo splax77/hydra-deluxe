@@ -90,7 +90,12 @@ class _Process:
 
 
 def _real_launch(cmd: list[str]) -> Game:
-    return _Process(subprocess.Popen(cmd, cwd=os.path.dirname(cmd[0])))
+    """Start the game in its own folder. Its stdin and stdout go nowhere: the
+    MCP server's stdout is its protocol channel and its stdin is where the
+    protocol comes in, and a child that inherited them could write into one
+    or read from the other. Its stderr stays the caller's."""
+    return _Process(subprocess.Popen(cmd, cwd=os.path.dirname(cmd[0]),
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL))
 
 
 @dataclass
