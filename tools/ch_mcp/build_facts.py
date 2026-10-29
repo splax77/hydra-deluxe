@@ -35,7 +35,12 @@ _BUILD_NUMBER = re.compile(r"^v?\d+\.\d+\.\d+\.(\d+)")
 
 
 class BuildFactsError(Exception):
-    """Base of the two refusals below, so a caller can catch either."""
+    """Base of the refusals below. Every one carries a plain one-line
+    message, so a server tool catches this class and replies with str(err)."""
+
+
+class VersionFileError(BuildFactsError):
+    """The game's version file is missing, unreadable or has no version."""
 
 
 class UnknownBuild(BuildFactsError):
@@ -60,9 +65,18 @@ def version_file(game_dir: str) -> str:
 
 
 def current_build(game_dir: str = game_files.GAME_DIR) -> str:
-    """The `version` the game in `game_dir` says it is, as written."""
-    with open(version_file(game_dir), encoding="utf-8") as f:
-        return json.load(f)["version"]
+    """The `version` the game in `game_dir` says it is, as written. Raises
+    VersionFileError when the file cannot give one."""
+    path = version_file(game_dir)
+    try:
+        with open(path, encoding="utf-8") as f:
+            version = json.load(f)["version"]
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise VersionFileError(
+            f"cannot read the game's version from {path}: {type(e).__name__}: {e}") from e
+    if not isinstance(version, str):
+        raise VersionFileError(f"{path} holds a version that is not text: {version!r}")
+    return version
 
 
 def build_number(version: str) -> str:
@@ -92,13 +106,19 @@ def facts_path(version: str, dumps_root: str = DUMPS_ROOT) -> str:
 def load_facts(game_dir: str = game_files.GAME_DIR,
                dumps_root: str = DUMPS_ROOT) -> dict:
     """The facts of the installed build. Raises UnknownBuild when its facts
-    file is missing or describes another version."""
+    file is missing, unreadable or describes another version, and
+    VersionFileError when the game gives no version."""
     version = current_build(game_dir)
     path = facts_path(version, dumps_root)
     if not os.path.isfile(path):
         raise UnknownBuild(version, f"{path} does not exist")
-    with open(path, encoding="utf-8") as f:
-        facts = json.load(f)
+    try:
+        with open(path, encoding="utf-8") as f:
+            facts = json.load(f)
+    except (OSError, ValueError) as e:
+        raise UnknownBuild(version, f"{path} cannot be read: {type(e).__name__}: {e}") from e
+    if not isinstance(facts, dict):
+        raise UnknownBuild(version, f"{path} is not a facts object")
     described = facts.get("game_version")
     if not isinstance(described, str) or not same_build(described, version):
         raise UnknownBuild(version, f"{path} describes {described}")
@@ -106,13 +126,17 @@ def load_facts(game_dir: str = game_files.GAME_DIR,
 
 
 def engine_class(facts: dict) -> tuple[str, int]:
-    """The drum engine's scrambled class name and its constructor's RVA."""
-    engine = facts["signatures"]["drums_engine"]
+    """The drum engine's scrambled class name and its constructor's RVA.
+    Raises FactsLookupError when the facts hold no such entry (the 1.0 Mono
+    facts have none, because Mono metadata gives no addresses)."""
+    engine = facts.get("signatures", {}).get("drums_engine")
+    if not engine or "name" not in engine or "ctor_rva" not in engine:
+        raise FactsLookupError("the facts hold no drums_engine name and ctor_rva")
     return engine["name"], engine["ctor_rva"]
 
 
 def _one_class(facts: dict, class_name: str) -> dict:
-    found = [c for c in facts["classes"] if c.get("name") == class_name]
+    found = [c for c in facts.get("classes", []) if c.get("name") == class_name]
     if len(found) != 1:
         raise FactsLookupError(f"class {class_name} matched {len(found)} classes")
     return found[0]

@@ -169,9 +169,67 @@ def test_method_name_by_rva_refuses_a_base_class_method_as_zero_matches():
     assert str(err.value) == f"rva 0x100E6E0 matched 0 methods of {BASE}"
 
 
-def test_both_refusals_share_one_base():
+def test_load_facts_refuses_facts_that_are_not_json(tmp_path):
+    game = _game(tmp_path, V6142)
+    dumps = _dumps(tmp_path, "6142", _facts())
+    found = os.path.join(dumps, "6142", B.FACTS_FILE)
+    with open(found, "w", encoding="utf-8") as f:
+        f.write("{not json")
+    with pytest.raises(B.UnknownBuild) as err:
+        B.load_facts(game, dumps)
+    assert f"{found} cannot be read: JSONDecodeError" in str(err.value)
+
+
+def test_load_facts_refuses_facts_that_are_not_an_object(tmp_path):
+    game = _game(tmp_path, V6142)
+    dumps = _dumps(tmp_path, "6142", [1, 2])
+    with pytest.raises(B.UnknownBuild) as err:
+        B.load_facts(game, dumps)
+    assert str(err.value).endswith("facts.json is not a facts object)")
+
+
+def test_a_missing_version_file_is_a_plain_refusal(tmp_path):
+    game = str(tmp_path / "game")
+    with pytest.raises(B.VersionFileError) as err:
+        B.current_build(game)
+    assert str(err.value).startswith(
+        f"cannot read the game's version from {B.version_file(game)}: FileNotFoundError")
+    with pytest.raises(B.VersionFileError):
+        B.load_facts(game, str(tmp_path / "dumps"))
+
+
+@pytest.mark.parametrize("content", ["{broken", "{}", "[]", '{"version": 6142}'])
+def test_a_version_file_with_no_text_version_is_a_plain_refusal(tmp_path, content):
+    game = str(tmp_path / "game")
+    path = B.version_file(game)
+    os.makedirs(os.path.dirname(path))
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    with pytest.raises(B.VersionFileError) as err:
+        B.current_build(game)
+    assert path in str(err.value)
+
+
+def test_engine_class_refuses_facts_with_no_drums_engine():
+    facts = _facts()
+    del facts["signatures"]["drums_engine"]
+    with pytest.raises(B.FactsLookupError) as err:
+        B.engine_class(facts)
+    assert str(err.value) == "the facts hold no drums_engine name and ctor_rva"
+    with pytest.raises(B.FactsLookupError):
+        B.engine_class({"game_version": F6142})
+
+
+def test_method_name_by_rva_refuses_facts_with_no_classes():
+    with pytest.raises(B.FactsLookupError) as err:
+        B.method_name_by_rva({"game_version": F6142}, ENGINE, 0x20DEEC0)
+    assert str(err.value) == f"class {ENGINE} matched 0 classes"
+
+
+def test_all_refusals_share_one_base():
     assert issubclass(B.UnknownBuild, B.BuildFactsError)
     assert issubclass(B.FactsLookupError, B.BuildFactsError)
+    assert issubclass(B.VersionFileError, B.BuildFactsError)
 
 
 REAL_FACTS = os.path.join(B.DUMPS_ROOT, "6142", B.FACTS_FILE)
