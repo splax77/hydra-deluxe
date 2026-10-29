@@ -66,24 +66,6 @@ const std::vector<KnownClone>& known_clones() { return tables().clones; }
 
 namespace {
 
-// Today on this machine's calendar, as YYYY-MM-DD.
-std::string today_iso() {
-    const std::time_t now = std::time(nullptr);
-    std::tm local{};
-    localtime_s(&local, &now);
-    char buf[16];
-    std::strftime(buf, sizeof buf, "%Y-%m-%d", &local);
-    return buf;
-}
-
-// Empty while `today` (YYYY-MM-DD) is on or before the entry's remove_by,
-// else the failure. ISO dates compare as plain text.
-std::string baseline_due(const std::string& entry, const BaselineDates& d, const std::string& today) {
-    if (today <= d.remove_by) return {};
-    return "baseline.json: " + entry + ": past its remove_by date " + d.remove_by + " (added by " +
-           d.added_by + " on " + d.date + "): fix the copy and delete the entry";
-}
-
 // Whether `text` names `symbol` as a whole word outside its comments, as
 // codelex splits them. A string literal counts as naming it.
 bool names_outside_comments(const std::string& text, const std::string& symbol, codelex::Lang lang) {
@@ -583,11 +565,11 @@ TEST_CASE("single-owner: no baseline entry is past its remove_by date") {
     const std::string today = today_iso();
     std::ostringstream due;
     for (const KnownCopy& k : known_copies()) {
-        const std::string m = baseline_due(copy_entry_name(k), k.dates, today);
+        const std::string m = baseline_due("baseline.json: " + copy_entry_name(k), k.dates, today);
         if (!m.empty()) due << m << "\n";
     }
     for (const KnownClone& k : known_clones()) {
-        const std::string m = baseline_due(clone_entry_name(k), k.dates, today);
+        const std::string m = baseline_due("baseline.json: " + clone_entry_name(k), k.dates, today);
         if (!m.empty()) due << m << "\n";
     }
     INFO(due.str());
@@ -601,11 +583,11 @@ TEST_CASE("single-owner: the baseline dates fail on a made-up entry") {
     CHECK(iso_plus_days("2026-1-05", 0).empty());
 
     const KnownClone clone{"src/a.cpp", "src/b.cpp", 9, "x = 1;", {"2026-10-05", "MR1", "2026-10-19"}};
-    const std::string name = clone_entry_name(clone);
+    const std::string name = "baseline.json: " + clone_entry_name(clone);
     CHECK(baseline_due(name, clone.dates, "2026-10-19").empty());  // the last allowed day
     CHECK(baseline_due(name, clone.dates, "2026-10-20") ==
           "baseline.json: known_clones src/a.cpp and src/b.cpp, 9 lines from: x = 1;: past its "
-          "remove_by date 2026-10-19 (added by MR1 on 2026-10-05): fix the copy and delete the entry");
+          "remove_by date 2026-10-19 (added by MR1 on 2026-10-05): fix it and delete the entry");
 
     json entry = json::parse(R"({"date": "2026-10-05", "added_by": "MR1", "remove_by": "2026-10-19"})");
     CHECK(parse_dates(entry, "made-up entry").remove_by == "2026-10-19");
