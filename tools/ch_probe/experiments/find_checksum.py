@@ -47,7 +47,7 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_probe import constants as C, engine_finder  # noqa: E402
 from tools.ch_probe import il2cpp_strings as S  # noqa: E402
-from tools.ch_probe.process import open_process  # noqa: E402
+from tools.ch_probe.process import decode_u64, open_process  # noqa: E402
 
 # How many bytes before each hit the report prints, to show what holds it.
 CONTEXT_BYTES = 32
@@ -185,7 +185,7 @@ def pointer_slots(raw: bytes) -> Iterable[Tuple[int, int]]:
     could be a pointer into user-mode memory."""
     usable = len(raw) - len(raw) % POINTER_SIZE
     for offset in range(0, usable, POINTER_SIZE):
-        (value,) = struct.unpack_from("<Q", raw, offset)
+        value = decode_u64(raw[offset:offset + POINTER_SIZE])
         if value and value % POINTER_SIZE == 0 and value <= USER_SPACE_END:
             yield offset, value
 

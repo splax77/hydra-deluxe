@@ -12,9 +12,10 @@ Nothing here touches the game; experiments/find_checksum.py does the reading.
 from __future__ import annotations
 
 import re
-import struct
 from dataclasses import dataclass
 from typing import List, Optional
+
+from tools.ch_probe.process import decode_u32
 
 # An Il2Cpp System.String object: an object header, the character count as a
 # signed 32-bit number at +0x10, then the characters as UTF-16LE from +0x14.
@@ -76,8 +77,10 @@ def string_length(raw: bytes) -> Optional[int]:
     below zero or over MAX_STRING_LENGTH."""
     if len(raw) < STRING_CHARS_OFFSET:
         return None
-    (length,) = struct.unpack_from("<i", raw, STRING_LENGTH_OFFSET)
-    if length < 0 or length > MAX_STRING_LENGTH:
+    # Read unsigned: a count below zero reads as 2**31 or more, so the one
+    # upper bound turns it away too.
+    length = decode_u32(raw[STRING_LENGTH_OFFSET:STRING_CHARS_OFFSET])
+    if length > MAX_STRING_LENGTH:
         return None
     return length
 
