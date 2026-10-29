@@ -321,7 +321,8 @@ struct PreviewScene {
 };
 
 // The last note the highway draws, or null when the scene has none. The one
-// answer to "when is the scene's last note": the beat grid ends past it. It
+// answer to "when is the scene's last note": a song with no length ends its
+// beat grid past it (build_preview_base). It
 // is not the song's length (PreviewScene::song_length_ms, app::song_length_ms).
 const PreviewNote* last_drawn_note(const PreviewScene& scene);
 
@@ -536,11 +537,10 @@ double sp_meter_bars_at(const SpMeterCurve& curve, double ms);
 // `rules` prices the running score (the replay reads the backend leeway and
 // the squeeze-out rule from it); nothing else in the scene depends on it.
 //
-// `audio_end_ms` is where the song's audio stops in chart time: the beat
-// lines run to it, so they keep scrolling through music that outlasts the
-// notes (D48, Q25). See build_preview_base for what happens without it.
-// `song_length_ms` is the song's length (app::song_length_ms, D75): it
-// becomes song_length_ms, where the SP meter curve closes.
+// `song_length_ms` is the song's length (app::song_length_ms, D255): it
+// becomes song_length_ms, where the SP meter curve closes and the beat lines
+// stop (D266). The audio's end is never an input. See build_preview_base for
+// the beat lines without a length.
 //
 // `ghost_path` (may be null) is a second path drawn faintly beside the first:
 // it fills ghost_fills and nothing else. Without one the scene is exactly
@@ -548,7 +548,6 @@ double sp_meter_bars_at(const SpMeterCurve& curve, double ms);
 PreviewScene build_preview_scene(const Song& song, const Path* path,
                                  int sp_cap = kCloneHeroSpCap,
                                  const core::Rules& rules = core::default_rules(),
-                                 std::optional<double> audio_end_ms = std::nullopt,
                                  std::optional<double> song_length_ms = std::nullopt,
                                  const Path* ghost_path = nullptr);
 
@@ -571,12 +570,10 @@ PreviewScene build_preview_scene(const Song& song, const Path* path,
 // it builds the new one, so a scene built for another path works as a base too.
 // An empty song gives the empty scene build_preview_scene gives.
 //
-// The beat lines end at the grid line on the tick a playhead at
-// `audio_end_ms` shows (SongTiming::display_tick_at_ms), or at the last note
-// if the audio stops sooner. With no audio end given, they run two measures
-// past the last note, as before the audio length was passed in.
+// The beat lines stop at the song's length, where playback stops (D266): the
+// last one sits at or before `song_length_ms`. With no length has_song_length
+// accepts, they run two measures past the last note.
 PreviewScene build_preview_base(const Song& song,
-                                std::optional<double> audio_end_ms = std::nullopt,
                                 std::optional<double> song_length_ms = std::nullopt);
 PreviewScene apply_preview_overlay(PreviewScene base, const Song& song, const Path* path,
                                    int sp_cap = kCloneHeroSpCap,

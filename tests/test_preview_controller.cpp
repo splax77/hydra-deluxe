@@ -189,33 +189,55 @@ TEST_CASE("the Preview load builds the highway timeline on its worker") {
     }
 }
 
-// The beat lines keep scrolling while the music plays past the last note
-// (D48, Q25): the load builds its scene once the audio's length is known, and
-// the grid ends on the beat a playhead at the audio's end shows, 5 s in, tick
-// 9600, not two measures past the last note.
-TEST_CASE("the Preview load runs the beat lines to the end of the audio") {
-    const std::string notes = short_chart_with_long_audio("prevctl_grid_len");
-    audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini",
-                                "[song]\nsong_length = 3000\n");
-    PreviewLoadJob job(entry_for(notes), {Difficulty::Expert, true, true}, kTestFillRule, std::nullopt, 4);
-    job.start();
-    wait_finished(job);
-    REQUIRE(job.ok());
-    PreviewLoadJob::Result r = job.take_result();
-    // Where the audio stops in chart time, which the controller keeps for
-    // every later base build: the sine's five seconds.
-    REQUIRE(r.audio_end_ms.has_value());
-    CHECK(*r.audio_end_ms == doctest::Approx(5000.0));
-    // The SP meter curve closes at the song's length, the one analysis saves
-    // for this chart (D255: the stated 3 s plus app::kSongEndPadMs), not at
-    // the audio's end.
-    CHECK(r.scene.song_length_ms == 4000.0);
-    CHECK(hydra::app::analysis_song_length(std::nullopt, notes, r.song).ms == 4000.0);
-    REQUIRE_FALSE(r.scene.beats.empty());
-    CHECK(r.scene.beats.back().tick == 9600);
-    CHECK(r.scene.beats.back().ms == doctest::Approx(5000.0));
-    // The timeline the renderer draws is built from that same scene.
-    check_same_track(r.track_state, hydra::render::build_track_state(r.scene, r.track_opts));
+// The beat lines stop where playback stops, at the song's length, even when
+// the music plays on (D266). The chart's audio is the 5 s sine; a beat is 192
+// ticks (100 ms) and a measure 768 ticks (400 ms).
+TEST_CASE("the Preview load stops the beat lines at the song's length, not the audio's end") {
+    SUBCASE("the audio outlasts the song") {
+        const std::string notes = short_chart_with_long_audio("prevctl_grid_len");
+        audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini",
+                                    "[song]\nsong_length = 3000\n");
+        PreviewLoadJob job(entry_for(notes), {Difficulty::Expert, true, true}, kTestFillRule,
+                           std::nullopt, 4);
+        job.start();
+        wait_finished(job);
+        REQUIRE(job.ok());
+        PreviewLoadJob::Result r = job.take_result();
+        // The song's length is the one analysis saves for this chart (D255:
+        // the stated 3 s plus app::kSongEndPadMs), a second before the audio
+        // stops.
+        CHECK(r.scene.song_length_ms == 4000.0);
+        REQUIRE(r.song_length_ms.has_value());
+        CHECK(*r.song_length_ms == 4000.0);
+        CHECK(hydra::app::analysis_song_length(std::nullopt, notes, r.song).ms == 4000.0);
+        // The last line is the barline at tick 7680, exactly on the length;
+        // none runs into the last second of music.
+        REQUIRE_FALSE(r.scene.beats.empty());
+        CHECK(r.scene.beats.back().tick == 7680);
+        CHECK(r.scene.beats.back().ms == doctest::Approx(4000.0));
+        for (const hydra::app::PreviewBeat& b : r.scene.beats)
+            CHECK(b.ms <= r.scene.song_length_ms);
+        // The timeline the renderer draws is built from that same scene.
+        check_same_track(r.track_state, hydra::render::build_track_state(r.scene, r.track_opts));
+    }
+
+    SUBCASE("the song's length and the audio's end agree") {
+        // A stated 4 s plus the pad is 5000 ms, where the sine stops: the grid
+        // ends on tick 9600, as it did when it ran to the audio's end.
+        const std::string notes = short_chart_with_long_audio("prevctl_grid_agree");
+        audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini",
+                                    "[song]\nsong_length = 4000\n");
+        PreviewLoadJob job(entry_for(notes), {Difficulty::Expert, true, true}, kTestFillRule,
+                           std::nullopt, 4);
+        job.start();
+        wait_finished(job);
+        REQUIRE(job.ok());
+        PreviewLoadJob::Result r = job.take_result();
+        CHECK(r.scene.song_length_ms == 5000.0);
+        REQUIRE_FALSE(r.scene.beats.empty());
+        CHECK(r.scene.beats.back().tick == 9600);
+        CHECK(r.scene.beats.back().ms == doctest::Approx(5000.0));
+    }
 }
 
 // The same for a path change: the overlay job hands back the timeline built
@@ -233,8 +255,8 @@ TEST_CASE("the Preview overlay job builds the highway timeline on its worker") {
     for (bool pro : {true, false}) {
         CAPTURE(pro);
         const hydra::render::TrackStateOptions opts = hydra::ui::track_options(pro);
-        // A base built for the other pro setting is not reused. This chart
-        // has no audio, so there is no audio end.
+        // A base built for the other pro setting is not reused. No song
+        // length is passed.
         hydra::ui::PreviewSceneJob job(song, pro ? nullptr : pro_base, a.best, 4,
                                        hydra::core::default_rules(), "key", opts, std::nullopt);
         job.start();
@@ -264,9 +286,12 @@ TEST_CASE("the Preview overlay job builds the highway timeline on its worker") {
 }
 
 // The controller warms the base after a load with this job: the path-free
-// scene and the timeline built from it, for the options and the audio end it
-// was given. A scene job that has no base yet builds one the same way, so
-// the beat lines still reach the audio's end after a path change.
+// scene and the timeline built from it, for the options and the song length
+// it was given. A scene job that has no base yet builds one the same way, so
+// the beat lines still stop at the song's length after a path change. With
+// no song.ini the length is the last note's end (100 ms) plus
+// app::kSongEndPadMs, 1100 ms: the beat at tick 2112, though the sine plays
+// to 5 s.
 TEST_CASE("the Preview base job builds the path-free scene and timeline") {
     PreviewLoadJob load(entry_for(short_chart_with_long_audio()),
                         {Difficulty::Expert, true, true}, kTestFillRule, std::nullopt, 4);
@@ -274,39 +299,41 @@ TEST_CASE("the Preview base job builds the path-free scene and timeline") {
     wait_finished(load);
     REQUIRE(load.ok());
     PreviewLoadJob::Result r = load.take_result();
-    REQUIRE(r.audio_end_ms.has_value());
+    REQUIRE(r.song_length_ms.has_value());
+    CHECK(*r.song_length_ms == doctest::Approx(1100.0));
     auto song = std::make_shared<const hydra::Song>(std::move(r.song));
     for (bool pro : {true, false}) {
         CAPTURE(pro);
         const hydra::render::TrackStateOptions opts = hydra::ui::track_options(pro);
-        hydra::ui::PreviewBaseJob job(song, opts, r.audio_end_ms);
+        hydra::ui::PreviewBaseJob job(song, opts, r.song_length_ms);
         job.start();
         wait_finished(job);
         REQUIRE(job.ok());
         std::shared_ptr<const hydra::ui::PreviewSceneBase> base = job.take_base();
         REQUIRE(base != nullptr);
         CHECK(base->track_opts == opts);
-        const hydra::app::PreviewScene want = hydra::app::build_preview_base(*song, r.audio_end_ms);
+        const hydra::app::PreviewScene want =
+            hydra::app::build_preview_base(*song, r.song_length_ms);
         CHECK(base->scene.notes.size() == want.notes.size());
         CHECK(base->scene.fills.size() == want.fills.size());
         CHECK(base->scene.activations.empty());
         CHECK(base->scene.sp_meter.segments.empty());
         REQUIRE_FALSE(base->scene.beats.empty());
-        CHECK(base->scene.beats.back().tick == 9600);
+        CHECK(base->scene.beats.back().tick == 2112);
         check_same_track(base->track_state, hydra::render::build_track_state(want, opts));
 
         hydra::ui::PreviewSceneJob scene_job(song, nullptr, std::nullopt, 4,
                                              hydra::core::default_rules(), "key", opts,
-                                             r.audio_end_ms);
+                                             r.song_length_ms);
         scene_job.start();
         wait_finished(scene_job);
         REQUIRE(scene_job.ok());
         const hydra::ui::PreviewSceneJob::Output out = scene_job.take_output();
         REQUIRE(out.base != nullptr);
         REQUIRE_FALSE(out.base->scene.beats.empty());
-        CHECK(out.base->scene.beats.back().tick == 9600);
+        CHECK(out.base->scene.beats.back().tick == 2112);
         REQUIRE_FALSE(out.scene.beats.empty());
-        CHECK(out.scene.beats.back().tick == 9600);
+        CHECK(out.scene.beats.back().tick == 2112);
     }
 }
 

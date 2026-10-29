@@ -47,18 +47,15 @@ struct SceneAndHighway {
 };
 
 // The first load and the notes reload both build their scene and highway
-// here. `audio_end_ms` and `song_length_ms` are the load's Result fields of
-// those names. `after_scene` runs between the two steps and may throw to stop
-// the build.
+// here. `song_length_ms` is the load's Result field of that name.
+// `after_scene` runs between the two steps and may throw to stop the build.
 SceneAndHighway build_scene_and_highway(const Song& song, const Path* path, int sp_cap,
                                         const core::Rules& rules,
-                                        std::optional<double> audio_end_ms,
                                         std::optional<double> song_length_ms, bool pro,
                                         const Path* ghost,
                                         const std::function<void()>& after_scene) {
     SceneAndHighway built;
-    built.scene = app::build_preview_scene(song, path, sp_cap, rules, audio_end_ms,
-                                           song_length_ms, ghost);
+    built.scene = app::build_preview_scene(song, path, sp_cap, rules, song_length_ms, ghost);
     after_scene();
     built.track_opts = track_options(pro);
     built.track_state = render::build_track_state(built.scene, built.track_opts);
@@ -113,13 +110,8 @@ double ByteRateClock::update(double now_s, uint64_t bytes_done, uint64_t bytes_t
 PreviewLoadJob::PreviewLoadJob(store::ChartLibraryEntry entry, const ChartReading& reading,
                                FillDeadlineRule fills, std::optional<Path> path, int sp_cap,
                                core::Rules rules, std::optional<Path> ghost)
-    : entry_(std::move(entry)),
-      reading_(reading),
-      fills_(fills),
-      path_(std::move(path)),
-      sp_cap_(sp_cap),
-      rules_(std::move(rules)),
-      ghost_(std::move(ghost)) {}
+    : in_{std::move(entry), reading,          fills,           std::move(path),
+          sp_cap,           std::move(rules), std::move(ghost)} {}
 
 void PreviewLoadJob::start() {
     started_ = std::chrono::steady_clock::now();
@@ -132,7 +124,7 @@ std::vector<std::unique_ptr<audio::StemReader>> PreviewLoadJob::open_audio(
     // Find the stems. A container's audio entries are copied out of the
     // container bytes here, checking for a cancel between entries.
     std::vector<app::PreviewAudioStem> stems =
-        app::resolve_preview_stems(entry_.notespath, container, keep_going);
+        app::resolve_preview_stems(in_.entry.notespath, container, keep_going);
     container.reset();  // this branch's hold on the container
     if (!keep_going()) throw JobCancelled{};
 
@@ -167,7 +159,8 @@ void PreviewLoadJob::run() {
         // the largest chart).
         throw_if_cancelled();
         // A .sng or .srb is read from disk once; both branches share the bytes.
-        app::SharedBytes container = app::read_preview_container(read_file_bytes, entry_.notespath);
+        app::SharedBytes container =
+            app::read_preview_container(read_file_bytes, in_.entry.notespath);
         throw_if_cancelled();
 
         // Has the chart changed since it was analyzed (finding 126)? First the
@@ -182,8 +175,8 @@ void PreviewLoadJob::run() {
         // this job throws.
         std::future<bool> changed_check = std::async(std::launch::async, [this] {
             const std::optional<app::ChartNow> now =
-                app::chart_changed_since(entry_.notespath, entry_.sig);
-            return now && now->differs_from(entry_.md5);
+                app::chart_changed_since(in_.entry.notespath, in_.entry.sig);
+            return now && now->differs_from(in_.entry.md5);
         });
 
         // Branch (b) on its own thread. If this branch throws, `stop` tells it
@@ -202,7 +195,8 @@ void PreviewLoadJob::run() {
         } guard{stop, audio_branch};
 
         // Branch (a) here: the notes.
-        PreviewNotes notes = read_preview_notes(entry_, container, reading_, fills_, rules_);
+        PreviewNotes notes =
+            read_preview_notes(in_.entry, container, in_.reading, in_.fills, in_.rules);
         container.reset();
         app::PreviewSong& ps = notes.ps;
         const std::optional<double> song_length_ms = notes.song_length_ms;
@@ -213,26 +207,23 @@ void PreviewLoadJob::run() {
         std::vector<std::unique_ptr<audio::StemReader>> readers = audio_branch.get();
         const bool chart_changed = changed_check.get();
         throw_if_cancelled();
-        // The song's own mix step: what plays, and where its audio ends.
+        // The song's own mix step: what plays.
         audio::SongMix song_mix = audio::mix_song_stems(std::move(readers), ps.audio_offset_ms);
-        const std::optional<double> audio_end_ms = song_mix.end_chart_ms;
 
-        // The scene and the highway wait for the audio, because the beat
-        // lines run to its end (D48, Q25). A changed chart is drawn with no
-        // path and no ghost path, as an unanalyzed one is (drawn_path).
+        // A changed chart is drawn with no path and no ghost path, as an
+        // unanalyzed one is (drawn_path).
         SceneAndHighway built = build_scene_and_highway(
-            ps.song, drawn_path(path_, chart_changed), sp_cap_, rules_, audio_end_ms,
-            song_length_ms, reading_.prodrums, drawn_path(ghost_, chart_changed), [this] {
+            ps.song, drawn_path(in_.path, chart_changed), in_.sp_cap, in_.rules, song_length_ms,
+            in_.reading.prodrums, drawn_path(in_.ghost, chart_changed), [this] {
                 scene_done_.store(true);
                 throw_if_cancelled();
             });
         highway_done_.store(true);
 
         result_ = Result{std::move(built.scene),       std::move(song_mix.mix),
-                         song_mix.audio_offset_ms,     audio_end_ms,
-                         song_length_ms,               std::move(ps.song),
-                         std::move(built.track_state), built.track_opts,
-                         chart_changed};
+                         song_mix.audio_offset_ms,     song_length_ms,
+                         std::move(ps.song),           std::move(built.track_state),
+                         built.track_opts,             chart_changed};
         return true;
     });
 }
@@ -306,16 +297,9 @@ std::string PreviewLoadJob::Progress::time_left_text() const {
 
 PreviewNotesJob::PreviewNotesJob(store::ChartLibraryEntry entry, const ChartReading& reading,
                                  FillDeadlineRule fills, std::optional<Path> path, int sp_cap,
-                                 core::Rules rules, std::optional<double> audio_end_ms,
-                                 std::optional<Path> ghost)
-    : entry_(std::move(entry)),
-      reading_(reading),
-      fills_(fills),
-      path_(std::move(path)),
-      sp_cap_(sp_cap),
-      rules_(std::move(rules)),
-      audio_end_ms_(audio_end_ms),
-      ghost_(std::move(ghost)) {}
+                                 core::Rules rules, std::optional<Path> ghost)
+    : in_{std::move(entry), reading,          fills,           std::move(path),
+          sp_cap,           std::move(rules), std::move(ghost)} {}
 
 void PreviewNotesJob::start() { spawn([this] { run(); }); }
 
@@ -323,14 +307,16 @@ void PreviewNotesJob::run() {
     run_guarded([this] {
         throw_if_cancelled();  // a newer mode change already replaced this one
         // A .sng or .srb is read whole: its notes live inside it.
-        app::SharedBytes container = app::read_preview_container(read_file_bytes, entry_.notespath);
+        app::SharedBytes container =
+            app::read_preview_container(read_file_bytes, in_.entry.notespath);
         throw_if_cancelled();
-        PreviewNotes notes = read_preview_notes(entry_, container, reading_, fills_, rules_);
+        PreviewNotes notes =
+            read_preview_notes(in_.entry, container, in_.reading, in_.fills, in_.rules);
         container.reset();  // a .sng's audio is not needed here
         throw_if_cancelled();
         SceneAndHighway built = build_scene_and_highway(
-            notes.ps.song, path_ ? &*path_ : nullptr, sp_cap_, rules_, audio_end_ms_,
-            notes.song_length_ms, reading_.prodrums, ghost_ ? &*ghost_ : nullptr,
+            notes.ps.song, in_.path ? &*in_.path : nullptr, in_.sp_cap, in_.rules,
+            notes.song_length_ms, in_.reading.prodrums, in_.ghost ? &*in_.ghost : nullptr,
             [this] { throw_if_cancelled(); });
         result_ = Result{std::move(built.scene), notes.song_length_ms, std::move(notes.ps.song),
                          std::move(built.track_state), built.track_opts};
@@ -341,10 +327,10 @@ void PreviewNotesJob::run() {
 PreviewNotesJob::Result PreviewNotesJob::take_result() { return std::move(*result_); }
 
 std::shared_ptr<const PreviewSceneBase> build_scene_base(
-    const Song& song, render::TrackStateOptions track_opts, std::optional<double> audio_end_ms,
+    const Song& song, render::TrackStateOptions track_opts,
     std::optional<double> song_length_ms, const std::function<void()>& check_cancel) {
     auto built = std::make_shared<PreviewSceneBase>();
-    built->scene = app::build_preview_base(song, audio_end_ms, song_length_ms);
+    built->scene = app::build_preview_base(song, song_length_ms);
     check_cancel();
     built->track_state = render::build_track_state(built->scene, track_opts);
     built->track_opts = track_opts;
@@ -354,19 +340,15 @@ std::shared_ptr<const PreviewSceneBase> build_scene_base(
 
 PreviewBaseJob::PreviewBaseJob(std::shared_ptr<const Song> song,
                                render::TrackStateOptions track_opts,
-                               std::optional<double> audio_end_ms,
                                std::optional<double> song_length_ms)
-    : song_(std::move(song)),
-      track_opts_(track_opts),
-      audio_end_ms_(audio_end_ms),
-      song_length_ms_(song_length_ms) {}
+    : song_(std::move(song)), track_opts_(track_opts), song_length_ms_(song_length_ms) {}
 
 void PreviewBaseJob::start() { spawn([this] { run(); }); }
 
 void PreviewBaseJob::run() {
     run_guarded([this] {
         throw_if_cancelled();
-        base_ = build_scene_base(*song_, track_opts_, audio_end_ms_, song_length_ms_,
+        base_ = build_scene_base(*song_, track_opts_, song_length_ms_,
                                  [this] { throw_if_cancelled(); });
         return true;
     });
@@ -376,7 +358,6 @@ PreviewSceneJob::PreviewSceneJob(std::shared_ptr<const Song> song,
                                  std::shared_ptr<const PreviewSceneBase> base,
                                  std::optional<Path> path, int sp_cap, core::Rules rules,
                                  std::string key, render::TrackStateOptions track_opts,
-                                 std::optional<double> audio_end_ms,
                                  std::optional<double> song_length_ms,
                                  std::optional<Path> ghost)
     : song_(std::move(song)),
@@ -386,7 +367,6 @@ PreviewSceneJob::PreviewSceneJob(std::shared_ptr<const Song> song,
       rules_(std::move(rules)),
       key_(std::move(key)),
       track_opts_(track_opts),
-      audio_end_ms_(audio_end_ms),
       song_length_ms_(song_length_ms),
       ghost_(std::move(ghost)) {}
 
@@ -400,7 +380,7 @@ void PreviewSceneJob::run() {
         // timeline options).
         std::shared_ptr<const PreviewSceneBase> base = base_;
         if (!base || base->track_opts != track_opts_)
-            base = build_scene_base(*song_, track_opts_, audio_end_ms_, song_length_ms_,
+            base = build_scene_base(*song_, track_opts_, song_length_ms_,
                                     [this] { throw_if_cancelled(); });
         // Only the overlay is built per path: the scene's, then the
         // timeline's on a copy of the base timeline, so the swap on the UI
