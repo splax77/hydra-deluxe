@@ -415,6 +415,30 @@ class TraceSessionTest(unittest.TestCase):
         self.assertEqual(fake.detach_calls, 1)
         self.assertEqual(len(s.calls()), 1)
 
+    def test_an_agent_end_that_lands_as_stop_is_seen_keeps_its_reason(self):
+        # The agent's end arrives between the wait's check of `ended` and its
+        # check of the stop event: the run is already over as "done".
+        fake = FakeSession([])
+        s = TH.TraceSession(self.NOTES, "Eng", ["Hit"], self.out_path,
+                            agent_path=self.agent,
+                            frida_mod=FakeFrida(fake), wait=self.blocking_wait)
+        real_is_set = s._stop.is_set
+        delivered = []
+
+        def is_set_after_agent_ends():
+            flag = real_is_set()
+            if flag and not delivered:
+                delivered.append(True)
+                self.deliver(fake, {"done": "song over", "calls": 0})
+            return flag
+
+        s._stop.is_set = is_set_after_agent_ends
+        s.start()
+        self.assertTrue(self.in_wait.wait(THREAD_CAP_S))
+        self.assertTrue(s.stop(THREAD_CAP_S))
+        self.assertEqual(s.ended_line(), "ended: done (agent: song over)")
+        self.assertEqual(fake.detach_calls, 1)
+
     def test_the_wall_cap_still_ends_a_run_nobody_stops(self):
         # The clock reads 0 when the wait starts, then past the 156 s cap.
         clock = iter([0.0, 157.0])

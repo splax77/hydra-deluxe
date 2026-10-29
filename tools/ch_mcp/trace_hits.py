@@ -353,7 +353,10 @@ class TraceSession:
                                   start=self.settings,
                                   frida_mod=self._frida_mod,
                                   wait=self._run_wait, out=self._out)
-            if self._stopped:
+            # Only a run that nothing else ended is "stopped": an agent end or
+            # a detach that landed first keeps its own reason. run_agent
+            # leaves END_CAP in place when its wait returns without a finish.
+            if self._stopped and result.reason == FA.END_CAP:
                 result.reason = END_STOPPED
         except BaseException as e:  # noqa: BLE001 - a thread has no caller
             result = FA.RunResult(reason=END_FAILED, cap_s=self.cap_s,
