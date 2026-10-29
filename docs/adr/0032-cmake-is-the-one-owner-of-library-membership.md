@@ -25,7 +25,9 @@ core/ reached up into app/ for a text formatter, app/ reached up into audio/
 for the chart sync rule, and the GUI's window set-up sat in the same file as
 the code that draws Hydra's whole window. The split fixed those includes and
 gave each part a library of its own, so a new program links only the parts it
-needs. The Path Builder is the first program that does.
+needs. The Path Builder, planned in
+docs/superpowers/plans/2026-10-28-path-builder.md and not built yet, will be
+the first program that does.
 
 ## The libraries
 
@@ -51,7 +53,9 @@ controller, loader and transport, with no ImGui in it; it links `hydra_app`,
 `hydra_audio` and `hydra_render`. `hydra_uibase` is the GUI base: ImGui's
 set-up, the theme, the fonts, the shared widgets, the icons and the folder
 dialog. It links ImGui, `hydra_render` and `hydra_audio`, and nothing in it
-reads the app's state. `hydra_ui` is Hydra's own window, and it links
+reads the app's state. ImGui's own config turns the ImGui test engine's hooks
+on in every ImGui build, so wherever `imgui` links, `imgui_test_engine` links
+too: `hydra_uibase` carries it, and so does every library above it. `hydra_ui` is Hydra's own window, and it links
 `hydra_uibase`, `hydra_preview` and `hydra_dm`.
 
 Two more libraries serve the GUI test runner. `hydra_uitest_engine` is the
@@ -86,7 +90,7 @@ the file counts as taken. A third-party or system header stands for a link
 line through a row in tests/layering/externals.json, and each row carries
 examples the test checks it against. So a new library needs no edit to the
 test, and a new third-party header needs one row. A file under src/ that no
-library lists fails the test too.
+library or program lists fails the test too.
 
 **Wrong-way includes were parked with a date, and none are left.** While the
 split was being built, tests/layering/known_gaps.json listed the includes that
