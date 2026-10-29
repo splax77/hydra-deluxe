@@ -97,7 +97,7 @@ void set_sibling_dir_for_test(std::optional<std::string> dir) {
 
 void launch_sibling(const std::string& name, const std::vector<std::string>& paths) {
     const std::optional<std::string> exe = sibling_exe_path(name);
-    if (!exe) throw std::runtime_error(name + " is not in Hydra's folder");
+    if (!exe) throw std::runtime_error(name + " is not in Hydra's folder.");
     std::vector<std::wstring> wide;
     wide.reserve(paths.size());
     for (const std::string& path : paths) wide.push_back(win32_path(path));
