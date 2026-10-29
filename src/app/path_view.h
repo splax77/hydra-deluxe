@@ -31,15 +31,6 @@ struct TextLine {
 
 // ---- one measure format ------------------------------------------------------
 
-// A chart position as both tabs print it: "m<measure>.<beat>.<tick-in-beat>",
-// measure and beat 1-based, the tick counted from the beat line ("m32.1.0").
-// The only measure formatter the Paths and Preview tabs use.
-std::string format_measure(const SongTiming& timing, int64_t tick);
-// The same for a Timecode that is already resolved, such as an activation's.
-std::string format_measure(const Timecode& tc);
-// Just the measure, as the timeline's two ends print it: "m96".
-// format_measure builds on it.
-std::string measure_label(const Timecode& tc);
 // The first measure in format_measure's form, for a screen with no timing.
 std::string first_measure_label();
 

@@ -37,8 +37,8 @@
     },
     {
       "question": "How does chart time become audio time, and back?",
-      "owner": "audio_ms_of_chart_ms and chart_ms_of_audio_ms in src/audio/frames.h",
-      "owner_file": "src/audio/frames.h",
+      "owner": "audio_ms_of_chart_ms and chart_ms_of_audio_ms in src/app/preview_source.h",
+      "owner_file": "src/app/preview_source.h",
       "owner_symbol": "audio_ms_of_chart_ms",
       "date": "2026-10-05",
       "decision": "D69",
@@ -56,17 +56,17 @@
       ],
       "owner_lines": [
         {
-          "file": "src/audio/frames.h",
+          "file": "src/app/preview_source.h",
           "line_text": "return chart_ms + audio_offset_ms;",
           "why": "audio_ms_of_chart_ms, the owner"
         },
         {
-          "file": "src/audio/frames.h",
+          "file": "src/app/preview_source.h",
           "line_text": "return audio_ms - audio_offset_ms;",
           "why": "chart_ms_of_audio_ms, the owner"
         }
       ],
-      "note": "Moving between chart time and audio time with the offset written out, either way, instead of calling the sync rule's two owners. Decided by: derive-once review of M7-2c, finding 2 (phase 7 task PV join); moved into hydra_audio by D69 (phase 7 task AL1)"
+      "note": "Moving between chart time and audio time with the offset written out, either way, instead of calling the sync rule's two owners. Decided by: derive-once review of M7-2c, finding 2 (phase 7 task PV join); moved into hydra_audio by D69 (phase 7 task AL1); moved beside chart_audio_offset_ms in app/preview_source.h by the Hydra libraries plan (task T1b)"
     },
     {
       "question": "What is the lowest legal output gain?",

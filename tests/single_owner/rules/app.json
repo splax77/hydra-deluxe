@@ -1092,8 +1092,8 @@
     },
     {
       "question": "How is a measure number written as a label?",
-      "owner": "measure_label in src/app/path_view.cpp",
-      "owner_file": "src/app/path_view.cpp",
+      "owner": "measure_label in src/core/timing.cpp",
+      "owner_file": "src/core/timing.cpp",
       "owner_symbol": "measure_label",
       "date": "2026-10-05",
       "decision": "D53, D54",
@@ -1115,7 +1115,7 @@
       ],
       "owner_lines": [
         {
-          "file": "src/app/path_view.cpp",
+          "file": "src/core/timing.cpp",
           "line_text": "return \"m\" + std::to_string((long long)tc.measure_beats_ticks()[0] + 1);",
           "why": "measure_label, the owner"
         }
@@ -1123,7 +1123,7 @@
       "scope": [
         "src"
       ],
-      "note": "Decided by: audit findings 183 and 184; phase 6 task J3-3 (D53, D54)"
+      "note": "Decided by: audit findings 183 and 184; phase 6 task J3-3 (D53, D54); moved beside Timecode in core/timing.cpp by the Hydra libraries plan (task T1b)"
     },
     {
       "question": "How is the first measure spelled?",
