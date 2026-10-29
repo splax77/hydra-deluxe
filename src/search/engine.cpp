@@ -432,7 +432,8 @@ public:
           target_act_ticks_(options.target_act_ticks ? &*options.target_act_ticks
                                                      : nullptr),
           target_deact_ticks_(options.target_act_ticks ? &options.target_deact_ticks
-                                                       : nullptr) {
+                                                       : nullptr),
+          free_after_(options.free_after) {
         index_fills();
     }
 
@@ -562,13 +563,29 @@ private:
     std::optional<int64_t> pinned_end(const Path& p) const {
         if (!target_deact_ticks_ || target_deact_ticks_->empty() || p.act_tail < 0)
             return std::nullopt;
-        const int64_t act_tick = node(acts_[(size_t)p.act_tail].act_node).tick;
+        const std::optional<size_t> i = pin_index(act_fill_tick(p.act_tail));
+        if (!i || *i >= target_deact_ticks_->size()) return std::nullopt;
+        return (*target_deact_ticks_)[*i];
+    }
+    // The one lookup of a fill tick in EngineOptions::target_act_ticks: its
+    // place in the list, or nullopt when the run pins no activation there.
+    std::optional<size_t> pin_index(int64_t fill_tick) const {
+        if (!target_act_ticks_) return std::nullopt;
         const auto it =
-            std::lower_bound(target_act_ticks_->begin(), target_act_ticks_->end(), act_tick);
-        const size_t i = (size_t)(it - target_act_ticks_->begin());
-        if (it == target_act_ticks_->end() || *it != act_tick || i >= target_deact_ticks_->size())
-            return std::nullopt;
-        return (*target_deact_ticks_)[i];
+            std::lower_bound(target_act_ticks_->begin(), target_act_ticks_->end(), fill_tick);
+        if (it == target_act_ticks_->end() || *it != fill_tick) return std::nullopt;
+        return (size_t)(it - target_act_ticks_->begin());
+    }
+    bool is_pinned_fill(int64_t fill_tick) const { return pin_index(fill_tick).has_value(); }
+    // The tick of the fill activation `act` started on.
+    int64_t act_fill_tick(int32_t act) const { return node(acts_[(size_t)act].act_node).tick; }
+    // Whether the fill on `fill_tick` follows the caller's pins rather than
+    // branching freely: every fill of a targeted search, or with
+    // EngineOptions::free_after only those at or before the last pin.
+    bool follows_pins(int64_t fill_tick) const {
+        if (!target_act_ticks_) return false;
+        if (!free_after_) return true;
+        return !target_act_ticks_->empty() && fill_tick <= target_act_ticks_->back();
     }
     int32_t sq_count(int32_t sq_tail) const {
         int32_t n = 0;
@@ -692,6 +709,8 @@ private:
     // EngineOptions::target_deact_ticks, read only with target_act_ticks_.
     // Owned by the caller for the run's duration.
     const std::vector<int64_t>* target_deact_ticks_ = nullptr;
+    // EngineOptions::free_after, read only with target_act_ticks_ (follows_pins).
+    bool free_after_ = false;
 
     std::vector<Act> acts_;
     std::vector<SqNode> sqs_;
@@ -808,7 +827,11 @@ uint64_t Engine::ready_class(const Path& p, uint64_t* passable) const {
         if (allzero_activation(recorded_e_offset(p.skipped_e_offset, e_offset),
                                p.currentskips + 1))
             ++can_pass;
-        if (has_ms_filter_ && !fill_within_limit(e_offset, p.currentskips, ms_filter_)) ++over;
+        // A pinned fill is never over the limit (act_within_limit), so the
+        // count skips it and the key agrees with the filter.
+        if (has_ms_filter_ && !is_pinned_fill(fill_tick_[k]) &&
+            !fill_within_limit(e_offset, p.currentskips, ms_filter_))
+            ++over;
     }
     if (refused > 0xFFFF || over > 0xFFFF) throw std::logic_error("search group key out of range");
     if (passable) *passable = can_pass;
@@ -1154,6 +1177,9 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
 // fill_within_limit, the pieces Activation::within_ms_limit asks too.
 bool Engine::act_within_limit(int32_t act) const {
     if (act < 0 || !has_ms_filter_) return true;
+    // The caller chose a pinned activation, so the limit does not judge it
+    // (EngineOptions::target_act_ticks).
+    if (is_pinned_fill(act_fill_tick(act))) return true;
     const Act& a = acts_[(size_t)act];
     for (int32_t s = a.sq_tail; s >= 0; s = sqs_[(size_t)s].prev) {
         const SPSqueeze sq{sqs_[(size_t)s].kind, sqs_[(size_t)s].offset};
@@ -1845,19 +1871,17 @@ bool Engine::run() {
                 const int64_t fill_tick = node(p.node).tick;
                 has_child = branch_activate(p, &child);
                 if (p.node == NODE_BROKEN) return false;
-                if (target_act_ticks_) {
+                if (follows_pins(fill_tick)) {
                     // A targeted search follows the caller's activation set and
-                    // nothing else. On a listed fill only the activating child
+                    // nothing else, up to its last pin under free_after. On a
+                    // listed fill only the activating child
                     // survives; if the engine refused that activation there is
                     // no child and this path simply dies. On any other fill only
                     // the declining parent survives -- branch_activate has
                     // already charged it the skip, which is the right
                     // bookkeeping, since skips count fills passed while
                     // activation was possible.
-                    const bool wanted =
-                        std::binary_search(target_act_ticks_->begin(),
-                                           target_act_ticks_->end(), fill_tick);
-                    if (!wanted) {
+                    if (!is_pinned_fill(fill_tick)) {
                         next_.push_back(p);
                         has_child = false;
                     }

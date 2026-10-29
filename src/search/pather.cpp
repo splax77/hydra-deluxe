@@ -192,11 +192,12 @@ std::vector<Path> keep_paths_where(std::vector<Path> paths, const Keep& keep,
     return kept;
 }
 
-// Whether `p` activated at exactly `ticks`, in order, and nowhere else.
-bool took_exactly(const Path& p, const std::vector<int64_t>& ticks) {
+// Whether `p`'s activations start with exactly `ticks`, in order: its first
+// ticks.size() activations are those, and with `exact` it has no others.
+bool took_pinned(const Path& p, const std::vector<int64_t>& ticks, bool exact) {
     const ActivationWalk acts = p.walk_activations();
-    if (acts.size() != ticks.size()) return false;
-    for (size_t i = 0; i < acts.size(); ++i)
+    if (exact ? acts.size() != ticks.size() : acts.size() < ticks.size()) return false;
+    for (size_t i = 0; i < ticks.size(); ++i)
         if (acts[i].timecode.ticks() != ticks[i]) return false;
     return true;
 }
@@ -220,10 +221,11 @@ bool ended_as_pinned(const Path& p, const std::vector<PinnedWindow>& windows) {
     return true;
 }
 
-}  // namespace
-
-std::vector<Path> keep_target_paths(std::vector<Path> paths,
-                                    const std::vector<PinnedWindow>& windows,
+// The one matcher keep_target_paths and keep_prefix_paths share: `p` took
+// the windows' activations (all of its activations with `exact`, its first
+// ones without) and ended the pinned windows as pinned.
+std::vector<Path> keep_pinned_paths(std::vector<Path> paths,
+                                    const std::vector<PinnedWindow>& windows, bool exact,
                                     std::vector<bool>* promoted) {
     // A tick the search never met as an activation opportunity -- not a fill
     // node at all, or one the path was already under Star Power for -- does
@@ -233,8 +235,22 @@ std::vector<Path> keep_target_paths(std::vector<Path> paths,
     for (const PinnedWindow& w : windows) ticks.push_back(w.act_tick);
     return keep_paths_where(
         std::move(paths),
-        [&](const Path& p) { return took_exactly(p, ticks) && ended_as_pinned(p, windows); },
+        [&](const Path& p) { return took_pinned(p, ticks, exact) && ended_as_pinned(p, windows); },
         promoted);
+}
+
+}  // namespace
+
+std::vector<Path> keep_target_paths(std::vector<Path> paths,
+                                    const std::vector<PinnedWindow>& windows,
+                                    std::vector<bool>* promoted) {
+    return keep_pinned_paths(std::move(paths), windows, true, promoted);
+}
+
+std::vector<Path> keep_prefix_paths(std::vector<Path> paths,
+                                    const std::vector<PinnedWindow>& windows,
+                                    std::vector<bool>* promoted) {
+    return keep_pinned_paths(std::move(paths), windows, false, promoted);
 }
 
 namespace {
