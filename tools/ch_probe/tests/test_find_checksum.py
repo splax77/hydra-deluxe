@@ -329,5 +329,24 @@ class ClockStateTest(unittest.TestCase):
                          "stopped (the engine object could not be read)")
 
 
+class ClockNoteTest(unittest.TestCase):
+    def test_the_note_carries_both_clock_readings(self):
+        self.assertEqual(F.clock_note(10.0, 10.0),
+                         "frozen (song clock 10.00 -> 10.00 s)")
+        self.assertEqual(F.clock_note(1.0, 1.5),
+                         "moving (song clock 1.00 -> 1.50 s)")
+
+    def test_an_unreadable_clock_has_no_readings(self):
+        self.assertEqual(F.clock_note(1.0, None),
+                         "stopped (the engine object could not be read)")
+
+    def test_the_report_prints_the_readings_of_a_frozen_pass(self):
+        proc, _ = fakes.fake_process(
+            {ENGINE: object_with({})}, BASE, consts=VERIFY_CONSTS,
+            clocks={CLOCK: [3.0]})
+        _code, text = run_finder(proc, lambda p: [])
+        self.assertIn("clock frozen (song clock 3.00 -> 3.00 s)", text)
+
+
 if __name__ == "__main__":
     unittest.main()

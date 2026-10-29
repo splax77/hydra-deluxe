@@ -11,13 +11,15 @@ cheap reader for a future overlay. A raw-bytes hit is traced back another
 way, because the Il2Cpp dump says the game keeps the checksum as raw bytes in
 a SongEntry that a static GlobalVariables instance points to: one more search
 of memory looks for pointers to each candidate SongEntry. Without a path, a
-hash that stays at the same
-address is the fallback. So the search runs a second time, RESCAN_GAP_S
-later, and says which hits held still and which moved.
+hash that stays at the same address is the fallback. So the search runs a
+second time, RESCAN_GAP_S later, and says which hits held still and which
+moved.
 
 Every step prints how long it took and the song clock's state across it
-(clock_state names the states). A frozen clock can mean a pause or the song's
-end; the clock alone does not tell them apart. Candidate offsets go into this
+(clock_state names the states, clock_note adds the two readings). A frozen
+clock can mean a pause or the song's end; the state alone does not tell them
+apart, so read the clock values: a pause freezes it part-way through the
+song, the end freezes it at the song's length. Candidate offsets go into this
 report and the spike's write-up, not into constants.py.
 
     py tools\\ch_probe\\experiments\\find_checksum.py --hash 234C917654CC7257E2BAFCF7D761304B
@@ -309,6 +311,16 @@ def clock_state(before: Optional[float], after: Optional[float]) -> str:
     return CLOCK_FROZEN
 
 
+def clock_note(before: Optional[float], after: Optional[float]) -> str:
+    """clock_state plus the two clock readings, so a frozen clock can be told
+    apart afterwards: a pause stops it part-way through the song, the song's
+    end stops it at the song's length."""
+    state = clock_state(before, after)
+    if before is None or after is None:
+        return state
+    return f"{state} (song clock {before:.2f} -> {after:.2f} s)"
+
+
 def _read_clock(proc, engine: int) -> Optional[float]:
     try:
         return proc.read_double(engine + C.OFF_SONG_CLOCK)
@@ -393,7 +405,7 @@ def _timed_scan(proc, engine: int, forms, regions, now, out,
     start = now()
     result = scan_for_hash(proc, forms, regions=regions)
     took = now() - start
-    state = clock_state(clock_before, _read_clock(proc, engine))
+    state = clock_note(clock_before, _read_clock(proc, engine))
     out.write(f"  {result.regions} regions, {result.bytes_scanned} bytes, "
               f"{len(result.hits)} hits, took {took * 1000:.0f} ms, "
               f"clock {state}\n")
@@ -415,7 +427,7 @@ def _pointer_report(proc, engine: int, hits: Sequence[Hit], now,
     start = now()
     result = walk_pointers(proc, engine, targets)
     took = now() - start
-    state = clock_state(clock_before, _read_clock(proc, engine))
+    state = clock_note(clock_before, _read_clock(proc, engine))
     for offsets, target in result.paths:
         text = read_string_object(proc, target)
         shown = text if text is not None else f"<no string at {target:#x}>"
@@ -446,7 +458,7 @@ def _song_entry_report(proc, engine: int, hits: Sequence[Hit], regions, now,
     start = now()
     holders = scan_for_holders(proc, entries.values(), regions=regions)
     took = now() - start
-    state = clock_state(clock_before, _read_clock(proc, engine))
+    state = clock_note(clock_before, _read_clock(proc, engine))
     for raw_hit, entry in entries.items():
         mine = [h for h, target in holders if target == entry]
         for holder in mine:
