@@ -253,7 +253,7 @@ artist, album, charter or folder, in any order; `"quotes"` match a phrase, and
 `title:`, `artist:`, `album:`, `charter:` and `folder:` limit a word or phrase
 to one field. A chart with no album matches nothing through it. `stars:N`
 (exactly N stars) and `squeeze<=N` (hardest squeeze or required early fill at
-most N ms; `squeeze<N` means the same) test the
+most N ms; `squeeze<N` is strict, under N ms, D266) test the
 record's best path and only ever match ready rows. `squeeze>N` and
 `squeeze>=N` are the floor side, above N or at least N; a floor and a limit
 together give a range, and a path that needs no timing reaches no floor. Any

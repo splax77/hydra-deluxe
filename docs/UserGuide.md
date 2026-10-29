@@ -208,10 +208,11 @@ Searching ignores case and accents, so `ALLISTER` finds Allister and `beyonce` f
 | `title:` | the title only | `title:everlong` finds Everlong |
 | `stars:N` | songs whose best path earns exactly N stars (0 to 7) | `stars:7` finds Burnout once it is analyzed |
 | `squeeze<=N` | songs whose best path's hardest squeeze or required early fill is N ms or less | `squeeze<=200` keeps Burnout (163 ms); `squeeze<=20` drops it |
+| `squeeze<N` | songs whose best path's hardest squeeze or required early fill is less than N ms | `squeeze<200` keeps Burnout (163 ms); `squeeze<163` drops it |
 | `squeeze>N` | songs whose best path's hardest squeeze or required early fill is more than N ms | `squeeze>20` keeps Burnout (163 ms); `squeeze>163` drops it |
 | `squeeze>=N` | songs whose best path's hardest squeeze or required early fill is N ms or more | `squeeze>=163` keeps Burnout (163 ms); `squeeze>=200` drops it |
 
-You can mix them: `charter:hoph2o stars:7`. `squeeze<N` means the same as `squeeze<=N`: at most N. A low and a high squeeze filter together give a range: `squeeze>=10 squeeze<=200` keeps Burnout. A path that needs no timing passes any `squeeze<=` limit and never matches `squeeze>` or `squeeze>=`, since it has nothing to squeeze.
+You can mix them: `charter:hoph2o stars:7`. A song at exactly N ms matches `squeeze<=N` and `squeeze>=N`, and drops out of `squeeze<N` and `squeeze>N`. A low and a high squeeze filter together give a range: `squeeze>=10 squeeze<=200` keeps Burnout. A path that needs no timing passes any `squeeze<=` or `squeeze<` limit and never matches `squeeze>` or `squeeze>=`, since it has nothing to squeeze.
 
 `stars:` and the squeeze filters only look at current results. A song that is `Not analyzed`, `Stale` or `Can't analyze` never matches them. A filter Hydra Deluxe can't read, like `stars:9` or `squeeze=20`, shows a short note under the search box and is left out of the search.
 

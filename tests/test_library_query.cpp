@@ -292,10 +292,34 @@ TEST_CASE("library query: squeeze<=N keeps analyzed rows whose hardest squeeze i
     CHECK_FALSE(query_matches(q, burnout(), RowFacts{}));           // not analyzed
 
     CHECK(matches("squeeze<=163", burnout(), analyzed(7, 163.0)));
-    CHECK(matches("squeeze<20", burnout(), analyzed(7, 20.0)));  // < reads as <=
+    CHECK_FALSE(matches("squeeze<20", burnout(), analyzed(7, 20.0)));  // < is strict (D266)
     CHECK(matches("SQUEEZE<=20", burnout(), analyzed(7, 20.0)));
     CHECK(matches("squeeze<=-5", burnout(), analyzed(7, -12.0)));
     CHECK(matches("squeeze<=2.5", burnout(), analyzed(7, 2.5)));
+}
+
+TEST_CASE("library query: a row at exactly N ms matches <=N and >=N, not <N or >N (D266)") {
+    // The user's ruling: < is strict like >, so squeeze<20 drops a chart whose
+    // hardest timing is exactly 20 ms and keeps 19.9 ms.
+    CHECK(matches("squeeze<=20", burnout(), analyzed(7, 20.0)));
+    CHECK_FALSE(matches("squeeze<20", burnout(), analyzed(7, 20.0)));
+    CHECK(matches("squeeze>=20", burnout(), analyzed(7, 20.0)));
+    CHECK_FALSE(matches("squeeze>20", burnout(), analyzed(7, 20.0)));
+    CHECK(matches("squeeze<20", burnout(), analyzed(7, 19.9)));
+    CHECK_FALSE(matches("squeeze<20", burnout(), analyzed(7, 20.1)));
+
+    CHECK(parse_library_query("squeeze<20").squeeze_max_strict);
+    CHECK_FALSE(parse_library_query("squeeze<=20").squeeze_max_strict);
+
+    // squeeze<N is the exact opposite of squeeze>=N: a timed row matches one.
+    for (double ms : {12.5, 20.0, 163.0}) {
+        CHECK(matches("squeeze<20", burnout(), analyzed(7, ms)) !=
+              matches("squeeze>=20", burnout(), analyzed(7, ms)));
+    }
+
+    // A path that needs no timing passes any limit, strict or not.
+    CHECK(matches("squeeze<20", burnout(), analyzed(7, std::nullopt)));
+    CHECK(matches("squeeze<0", burnout(), analyzed(7, std::nullopt)));
 }
 
 TEST_CASE("library query: squeeze>N and squeeze>=N keep rows whose hardest timing is above N ms") {
@@ -517,6 +541,7 @@ TEST_CASE("library query: every Search tips example parses into the key its entr
     const LibraryQuery at_most = parse_library_query(tips[7].example);
     CHECK(at_most.terms.empty());
     CHECK(at_most.squeeze_max_ms == std::optional<double>(20.0));
+    CHECK_FALSE(at_most.squeeze_max_strict);
     CHECK_FALSE(at_most.squeeze_min_ms.has_value());
     CHECK_FALSE(at_most.stars.has_value());
 

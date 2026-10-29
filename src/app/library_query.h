@@ -56,7 +56,8 @@ struct QueryTerm {
 struct LibraryQuery {
     std::vector<QueryTerm> terms;         // every term must match
     std::optional<int> stars;             // stars:N, N in 0..kMaxStars
-    std::optional<double> squeeze_max_ms; // squeeze<=N (also squeeze<N treated as <=)
+    std::optional<double> squeeze_max_ms; // squeeze<=N or squeeze<N
+    bool squeeze_max_strict = false;      // true for squeeze<N, false for squeeze<=N
     std::optional<double> squeeze_min_ms; // squeeze>=N or squeeze>N
     bool squeeze_min_strict = false;      // true for squeeze>N, false for squeeze>=N
     std::vector<std::string> errors;      // one plain sentence per bad filter value

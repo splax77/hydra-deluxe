@@ -283,7 +283,8 @@ inline double squeeze_difficulty(bool is_sqin, double offset_ms) {
 inline bool timing_within_limit(double ms, double limit_ms) { return ms <= limit_ms; }
 
 // Does one timing reach a ms floor, the floor itself included? The library
-// search's squeeze>=N filter asks it; squeeze>N asks !timing_within_limit.
+// search's squeeze>=N filter asks it, and squeeze<N asks its negation;
+// squeeze>N asks !timing_within_limit.
 inline bool timing_reaches_floor(double ms, double floor_ms) { return ms >= floor_ms; }
 
 // ---- where a fill starts -------------------------------------------------
