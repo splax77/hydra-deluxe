@@ -11,7 +11,7 @@
 // reply: the state, or an error.
 
 import "frida-il2cpp-bridge";
-import { findGameManager, GAME_MANAGER } from "./gamemanager.js";
+import { lookUpGameManager, GAME_MANAGER } from "./gamemanager.js";
 
 interface ReadRequest {
     type: "read";
@@ -19,19 +19,22 @@ interface ReadRequest {
 }
 
 // No live GameManager is the menu, not a fault, so it comes back as
-// `found: false` with findGameManager's reason, never as an error.
+// `found: false` with lookUpGameManager's reason, never as an error. Both
+// replies carry `destroyed`, the destroyed GameManagers the lookup skipped,
+// so a read shows when the skip decided the answer.
 function readState() {
     // Found on every read, not once: a new song can build a new GameManager,
     // and one kept from an earlier read would go on reporting the old song.
     // This walks the whole heap each time; the caller's read cap is the stop.
-    const found = findGameManager();
-    if (typeof found === "string") {
-        return { found: false, reason: found };
+    const found = lookUpGameManager();
+    if (!("gm" in found)) {
+        return { found: false, reason: found.reason, destroyed: found.destroyed };
     }
-    const { gm, instances } = found;
+    const { gm, instances, destroyed } = found;
     return {
         found: true,
         instances,
+        destroyed,
         songTime: gm.field<number>("songTime").value,
         isPaused: gm.field<boolean>("isPaused").value,
         isSongOver: gm.field<boolean>("isSongOver").value,

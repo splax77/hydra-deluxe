@@ -27,7 +27,7 @@ from tools.ch_mcp import frida_tools as FT  # noqa: E402
 from tools.ch_mcp import trace_hits as TH  # noqa: E402
 from tools.ch_mcp.tests.test_build_facts import REAL_FACTS  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
-    MENU, STATE, FakeFrida, ReplySession, instant_wait)
+    MENU, MENU_ONE_DESTROYED, STATE, FakeFrida, ReplySession, instant_wait)
 from tools.ch_probe import constants as C  # noqa: E402
 
 VERSION = "v1.1.0.6142-final"
@@ -267,6 +267,13 @@ class ReadTest(Rig):
         out = tools.ch_state()
         self.assertIn(f"within the cap of {FT.READ_CAP_S:g} s (READ_CAP_S)", out)
 
+    def test_state_shows_the_destroyed_count_it_was_read_with(self):
+        tools = self.tools([STATE, MENU_ONE_DESTROYED], attached=True)
+        lines = tools.ch_state().splitlines()
+        self.assertEqual(lines[0], "state: menu (no live GameManager)")
+        self.assertIn("found: false", lines)
+        self.assertIn("destroyed: 1", lines)
+
     def test_state_before_attach_says_not_attached(self):
         self.assertEqual(self.tools().ch_state(), f"state: not attached; {FT.NOT_ATTACHED}")
 
@@ -297,6 +304,12 @@ class StateWordsTest(unittest.TestCase):
 
     def test_menu_for_found_false(self):
         self.assertEqual(FT.state_words(MENU), "menu (no live GameManager)")
+
+    def test_menu_when_the_only_game_manager_was_destroyed(self):
+        self.assertEqual(FT.state_words(MENU_ONE_DESTROYED), "menu (no live GameManager)")
+
+    def test_a_live_game_manager_beside_a_destroyed_one_keeps_its_state(self):
+        self.assertEqual(FT.state_words(self.state(destroyed=1)), "playing")
 
     def test_loading(self):
         self.assertEqual(FT.state_words(self.state(songLoaded=False)), "loading")
