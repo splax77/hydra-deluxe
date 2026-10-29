@@ -531,7 +531,7 @@ class RealExeLayer(unittest.TestCase):
         self.scan()
         text = self.helper.send("text")
         self.assertNotIn("\r", text)
-        self.assertIn(self.burnout_row(text), text)
+        self.burnout_row(text)  # the scanned library still lists Burnout, once
         self.assertEqual(self.helper.send("text |"), text)
 
     def test_rect_on_a_missing_ref_fails(self):
