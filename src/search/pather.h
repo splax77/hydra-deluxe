@@ -15,7 +15,7 @@
 #include "core/model.h"
 #include "core/replay.h"
 #include "core/rules.h"
-#include "parse/song.h"
+#include "core/song.h"
 #include "search/engine.h"
 #include "search/graph.h"
 

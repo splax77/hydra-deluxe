@@ -18,8 +18,8 @@
 
 #include "core/model.h"
 #include "core/rules.h"
+#include "core/song.h"
 #include "core/timing.h"
-#include "parse/song.h"
 
 namespace hydra {
 
@@ -38,7 +38,7 @@ namespace hydra {
 // setting and hydra_batch --legacy-fills. A stored result carries the rule it
 // ran under in its key (store::Lens::legacy_fills, docs/adr/0010). The rule
 // also picks the generator of a chart's own fills (Song::check_activations),
-// so the enum itself is declared in parse/song.h, which this header includes.
+// so the enum itself is declared in core/song.h, which this header includes.
 
 // The one reading of a legacy_fills flag (a setting, a Lens or a command-line
 // switch): on is the Clone Hero 1.0 rule, off the normal 1.1 rule.

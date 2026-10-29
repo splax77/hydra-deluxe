@@ -2,8 +2,8 @@
   "rules": [
     {
       "question": "Who writes a meter or a signature into Song's maps?",
-      "owner": "apply_timesig in src/parse/song.cpp",
-      "owner_file": "src/parse/song.cpp",
+      "owner": "apply_timesig in src/core/song.cpp",
+      "owner_file": "src/core/song.cpp",
       "owner_symbol": "apply_timesig",
       "date": "2026-10-04",
       "decision": "D27",
@@ -24,12 +24,12 @@
       ],
       "owner_lines": [
         {
-          "file": "src/parse/song.cpp",
+          "file": "src/core/song.cpp",
           "line_text": "song.tpm_changes[tick] = song.tick_resolution() * static_cast<int64_t>(numerator) * 4 /",
           "why": "apply_timesig, the owner"
         },
         {
-          "file": "src/parse/song.cpp",
+          "file": "src/core/song.cpp",
           "line_text": "song.timesig_changes[tick] = {numerator, denominator};",
           "why": "apply_timesig, the owner"
         }
@@ -43,8 +43,8 @@
     },
     {
       "question": "Does the Preview type its own 4/4 meter?",
-      "owner": "kDefaultTimeSigNumerator and kDefaultTimeSigDenominator in src/parse/song.h",
-      "owner_file": "src/parse/song.h",
+      "owner": "kDefaultTimeSigNumerator and kDefaultTimeSigDenominator in src/core/song.h",
+      "owner_file": "src/core/song.h",
       "owner_symbol": "kDefaultTimeSigNumerator",
       "date": "2026-10-04",
       "decision": "D27",
@@ -368,8 +368,8 @@
     },
     {
       "question": "How many notes does the chart have?",
-      "owner": "Song::note_count in src/parse/song.cpp",
-      "owner_file": "src/parse/song.cpp",
+      "owner": "Song::note_count in src/core/song.cpp",
+      "owner_file": "src/core/song.cpp",
       "owner_symbol": "Song::note_count",
       "date": "2026-10-05",
       "decision": "D74",
@@ -389,7 +389,7 @@
       ],
       "owner_lines": [
         {
-          "file": "src/parse/song.cpp",
+          "file": "src/core/song.cpp",
           "line_text": "for (const SongTimestamp& ts : sequence) n += ts.chord.count();",
           "why": "Song::note_count"
         }
@@ -398,8 +398,8 @@
     },
     {
       "question": "Where does a solo section start and end? (the scene's join)",
-      "owner": "Song::solo_sections in src/parse/song.h",
-      "owner_file": "src/parse/song.h",
+      "owner": "Song::solo_sections in src/core/song.h",
+      "owner_file": "src/core/song.h",
       "owner_symbol": "solo_sections",
       "date": "2026-10-05",
       "decision": "D53, D54",
