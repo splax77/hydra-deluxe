@@ -97,9 +97,10 @@ Toggle SpanSweep::at(double t) const {
     return Toggle::Empty;
 }
 
-// The activated fill's lane at t: the first interval (in list order) that
-// starts at or contains t wins; failing that, the first one that ends at t.
-// A chart has few such intervals, so a scan in list order answers it.
+// The interval at t (the activated fill's lane, or the fill fill_at names):
+// the first interval (in list order) that starts at or contains t wins;
+// failing that, the first one that ends at t. A chart has few such
+// intervals, so a scan in list order answers it.
 std::optional<size_t> TrackState::LaneSweep::at(double t) const {
     std::optional<size_t> ends;
     for (size_t i = 0; i < ivs_.size(); ++i) {
@@ -193,15 +194,21 @@ void TrackState::set_span_fields(TrackInstant& inst) const {
 void TrackState::set_overlay_intervals(const PreviewScene& scene) {
     fill_.clear();
     fill_taken_.clear();
+    fill_scene_.clear();
+    fill_taken_scene_.clear();
     sp_active_.clear();
     fill_lane_.clear();
     fill_lane_ivs_.clear();
     // A hidden fill is one the game never showed, so it draws nothing.
-    for (const app::PreviewFill& f : scene.fills) {
-        if (f.state == app::PreviewFillState::Offered)
+    for (size_t i = 0; i < scene.fills.size(); ++i) {
+        const app::PreviewFill& f = scene.fills[i];
+        if (f.state == app::PreviewFillState::Offered) {
             fill_.push_back(span_interval(scene, f.span));
-        else if (f.state == app::PreviewFillState::Taken)
+            fill_scene_.push_back(i);
+        } else if (f.state == app::PreviewFillState::Taken) {
             fill_taken_.push_back(span_interval(scene, f.span));
+            fill_taken_scene_.push_back(i);
+        }
     }
     for (const PreviewActivation& a : scene.activations) {
         // The tinted floor and its end marks: the activation's sp_window, its
@@ -232,6 +239,8 @@ void TrackState::sweep_span_fields() {
     sweep_.sp_active = SpanSweep(sp_active_);
     sweep_.fill_lane = SpanSweep(fill_lane_ivs_);
     sweep_.lane_pad = LaneSweep(fill_lane_ivs_);
+    sweep_.fill_pick = LaneSweep(fill_);
+    sweep_.fill_taken_pick = LaneSweep(fill_taken_);
     for (TrackInstant& inst : instants_) set_span_fields(inst);
 }
 
@@ -404,6 +413,20 @@ std::vector<double> TrackState::sp_active_ends(const TrackWindow& win) const {
         if (inst.sp_active == Toggle::End || inst.sp_active == Toggle::Restart)
             ends.push_back(inst.t);
     return ends;
+}
+
+std::optional<size_t> TrackState::fill_at(double t) const {
+    auto lit = [t](const SpanSweep& sweep, const LaneSweep& pick,
+                   const std::vector<size_t>& scene_index) -> std::optional<size_t> {
+        if (!toggle_on_after(sweep.at(t))) return std::nullopt;
+        const std::optional<size_t> i = pick.at(t);
+        if (!i) return std::nullopt;
+        return scene_index[*i];
+    };
+    if (const std::optional<size_t> taken = lit(sweep_.fill_taken, sweep_.fill_taken_pick,
+                                                fill_taken_scene_))
+        return taken;
+    return lit(sweep_.fill, sweep_.fill_pick, fill_scene_);
 }
 
 std::vector<LaneSpan> TrackState::make_lane_bounds(const TrackWindow& win, double near_s,

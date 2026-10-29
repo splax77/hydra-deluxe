@@ -196,6 +196,15 @@ public:
     // activations' sp_window, through the sp_active intervals.
     std::vector<double> sp_active_ends(const TrackWindow& win) const;
 
+    // The fill lit at time t, offered or taken, as its index into the
+    // scene's fills; none when no fill is lit there. "Lit" is the highway's
+    // own reading of the fill and fill_taken sweeps (toggle_on_after of their
+    // state at t, as make_toggle_bounds walks them), so the answer matches
+    // the strip drawn on screen. Which of the lit intervals is named follows
+    // LaneSweep::at; a taken fill answers before an offered one, as it draws
+    // over it. A hidden fill is never lit.
+    std::optional<size_t> fill_at(double t) const;
+
 private:
     friend TrackState build_track_state(const app::PreviewScene&, const TrackStateOptions&);
     friend void rebuild_overlay_fields(TrackState&, const app::PreviewScene&);
@@ -206,9 +215,10 @@ private:
         Pad pad;
     };
 
-    // Which fill_lane_ interval lights the lane at a time; the rule is in
-    // LaneSweep::at. Holds its own copy of the spans, so a copied TrackState
-    // reads its own.
+    // Which interval of a list holds a time; the rule is in LaneSweep::at.
+    // The activated fill's lane pad (lane_pad) and the fill a time falls in
+    // (fill_at) both ask it. Holds its own copy of the spans, so a copied
+    // TrackState reads its own.
     class LaneSweep {
     public:
         LaneSweep() = default;
@@ -226,6 +236,7 @@ private:
         SpanSweep overdrive, solo, fill, fill_taken, sp_active, fill_lane;
         std::array<SpanSweep, kPads.size()> drum_lane;  // indexed by Pad
         LaneSweep lane_pad;
+        LaneSweep fill_pick, fill_taken_pick;  // over fill_ and fill_taken_
     };
 
     std::vector<TrackInstant> instants_;
@@ -236,6 +247,9 @@ private:
     // time of the ones it keeps.
     std::vector<double> base_t_;
     std::vector<Interval> overdrive_, solo_, fill_, fill_taken_, sp_active_;
+    // Each fill_ and fill_taken_ interval's index into the scene's fills,
+    // entry for entry.
+    std::vector<size_t> fill_scene_, fill_taken_scene_;
     // The drum lanes' spans, one list per pad (indexed by Pad). Path-free.
     std::array<std::vector<Interval>, kPads.size()> drum_lane_;
     std::vector<LaneInterval> fill_lane_;

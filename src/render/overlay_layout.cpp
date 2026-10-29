@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <vector>
 
 #include <DirectXMath.h>
@@ -15,16 +16,70 @@ using namespace DirectX;
 
 namespace hydra::render {
 
-ImagePoint project_to_image(const PreviewConfig& cfg, int width, int height, const Vec3& p) {
-    const TrackRect r = track_rect(cfg, width, height);
-    const HighwayCamera cam = make_camera(cfg, r.aspect);
-    const XMMATRIX view_proj = XMLoadFloat4x4(&cam.view) * XMLoadFloat4x4(&cam.proj);
-    const XMVECTOR ndc = XMVector3TransformCoord(XMVectorSet(p.x, p.y, p.z, 1.0f), view_proj);
+namespace {
+
+// The renderer's camera over a width x height image's track rectangle: the
+// one projection project_to_image runs forward and image_to_floor_time runs
+// backward.
+struct ImageProjection {
+    TrackRect rect;
+    HighwayCamera cam;
+    XMMATRIX view_proj;
+};
+
+ImageProjection image_projection(const PreviewConfig& cfg, int width, int height) {
+    ImageProjection p;
+    p.rect = track_rect(cfg, width, height);
+    p.cam = make_camera(cfg, p.rect.aspect);
+    p.view_proj = XMLoadFloat4x4(&p.cam.view) * XMLoadFloat4x4(&p.cam.proj);
+    return p;
+}
+
+// Normalized device coordinates (x right, y up, each -1 to 1 across the track
+// rectangle) to image pixels, and back. Each is the other's inverse.
+ImagePoint ndc_to_image(const TrackRect& r, float ndc_x, float ndc_y) {
     ImagePoint out;
-    out.x = (XMVectorGetX(ndc) + 1.0f) * 0.5f * static_cast<float>(r.width);
+    out.x = (ndc_x + 1.0f) * 0.5f * static_cast<float>(r.width);
     out.y = static_cast<float>(r.top) +
-            (1.0f - XMVectorGetY(ndc)) * 0.5f * static_cast<float>(r.track_height);
+            (1.0f - ndc_y) * 0.5f * static_cast<float>(r.track_height);
     return out;
+}
+
+void image_to_ndc(const TrackRect& r, ImagePoint p, float& ndc_x, float& ndc_y) {
+    ndc_x = p.x / (0.5f * static_cast<float>(r.width)) - 1.0f;
+    ndc_y = 1.0f - (p.y - static_cast<float>(r.top)) / (0.5f * static_cast<float>(r.track_height));
+}
+
+}  // namespace
+
+ImagePoint project_to_image(const PreviewConfig& cfg, int width, int height, const Vec3& p) {
+    const ImageProjection proj = image_projection(cfg, width, height);
+    const XMVECTOR ndc = XMVector3TransformCoord(XMVectorSet(p.x, p.y, p.z, 1.0f), proj.view_proj);
+    return ndc_to_image(proj.rect, XMVectorGetX(ndc), XMVectorGetY(ndc));
+}
+
+std::optional<double> image_to_floor_time(const PreviewConfig& cfg, int width, int height,
+                                          ImagePoint point, double now_s, double speed) {
+    const PreviewConfig::Track& T = cfg.track;
+    const ImageProjection proj = image_projection(cfg, width, height);
+    float ndc_x = 0.0f, ndc_y = 0.0f;
+    image_to_ndc(proj.rect, point, ndc_x, ndc_y);
+    // The pixel's ray runs from the camera through the pixel's point on the
+    // near plane (depth 0).
+    const XMVECTOR on_near = XMVector3TransformCoord(
+        XMVectorSet(ndc_x, ndc_y, 0.0f, 1.0f), XMMatrixInverse(nullptr, proj.view_proj));
+    const Vec3 eye = proj.cam.view_pos;
+    const double dy = static_cast<double>(XMVectorGetY(on_near)) - eye.y;
+    const double dz = static_cast<double>(XMVectorGetZ(on_near)) - eye.z;
+    if (dy == 0.0) return std::nullopt;
+    const double s = (static_cast<double>(T.y) - eye.y) / dy;
+    if (!(s > 0.0)) return std::nullopt;  // the floor lies behind the camera
+    const double z = eye.z + s * dz;
+    // The highway runs from the strike line (z_now) to the far end (z_future).
+    const double z_lo = std::min(T.z_now, T.z_future);
+    const double z_hi = std::max(T.z_now, T.z_future);
+    if (!(z >= z_lo && z <= z_hi)) return std::nullopt;
+    return z_to_time(cfg, now_s, z, speed);
 }
 
 HighwaySpan highway_span_at(const PreviewConfig& cfg, int width, int height, float y) {

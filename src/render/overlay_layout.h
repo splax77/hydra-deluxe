@@ -1,7 +1,8 @@
 // Where the highway lands on the Preview image, and the scale that keeps the
 // Preview's text boxes (stacked by overlay_tops) beside it rather than on
 // it. Device-free: the same camera and track height the renderer draws with,
-// projected on the CPU.
+// projected on the CPU. It also runs that projection backward, from a pixel
+// on the highway's floor to the chart time drawn there (image_to_floor_time).
 //
 // The highway's size follows the track height, not the image width, so a
 // narrower window leaves less room at its sides. The boxes shrink into that
@@ -23,6 +24,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -39,6 +41,14 @@ struct ImagePoint {
 // Where world point `p` lands in a width x height Preview image, through the
 // renderer's own camera, with the track rectangle anchored at the bottom.
 ImagePoint project_to_image(const PreviewConfig& cfg, int width, int height, const Vec3& p);
+
+// The chart time, in seconds, on the highway's floor under image point
+// `point`: the one inverse of project_to_image, through the same camera and
+// track rectangle, with the floor depth read as a time by z_to_time at
+// `now_s` and `speed`. No value when the pixel's ray misses the floor, or
+// meets it past the far end (z_future) or behind the strike line (z_now).
+std::optional<double> image_to_floor_time(const PreviewConfig& cfg, int width, int height,
+                                          ImagePoint point, double now_s, double speed);
 
 // The highway's outer edges (the railings' outsides) at image row `y`. Each
 // railing edge is a straight line on screen, read off its two projected ends;
