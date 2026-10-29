@@ -2,8 +2,8 @@
   "rules": [
     {
       "question": "Is this Preview note inside a solo?",
-      "owner": "the timestamp's flag_solo in src/parse/song.h, grouped by Song::solo_sections",
-      "owner_file": "src/parse/song.h",
+      "owner": "the timestamp's flag_solo in src/core/song.h, grouped by Song::solo_sections",
+      "owner_file": "src/core/song.h",
       "owner_symbol": "flag_solo",
       "date": "2026-10-11",
       "decision": "D114 item 22 (M56)",

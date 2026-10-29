@@ -297,6 +297,7 @@ target_compile_options(hydra_image PRIVATE /W1 /EHsc /utf-8)
 # ---- hydra_core: everything below the GUI/CLI shells ---------------------
 add_library(hydra_core STATIC
     src/core/timing.cpp
+    src/core/song.cpp
     src/core/model.cpp
     src/core/scoring.cpp
     src/core/rules.cpp

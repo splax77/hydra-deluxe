@@ -16,7 +16,7 @@
 
 #include "core/backend_value.h"
 #include "core/model.h"
-#include "parse/song.h"
+#include "core/song.h"
 
 namespace hydra::core {
 

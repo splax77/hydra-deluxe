@@ -1,10 +1,5 @@
 {
   "known_gaps": {
-    "T1a": [
-      {"file": "src/core/scoring.h", "include": "parse/song.h", "date": "2026-10-29", "added_by": "lib-t3", "remove_by": "2026-11-12"},
-      {"file": "src/core/replay.h", "include": "parse/song.h", "date": "2026-10-29", "added_by": "lib-t3", "remove_by": "2026-11-12"},
-      {"file": "src/core/sqout_chord.h", "include": "parse/song.h", "date": "2026-10-29", "added_by": "lib-t3", "remove_by": "2026-11-12"}
-    ],
     "T1b": [
       {"file": "src/core/replay.cpp", "include": "app/path_view.h", "date": "2026-10-29", "added_by": "lib-t3", "remove_by": "2026-11-12"},
       {"file": "src/app/song_length.cpp", "include": "audio/frames.h", "date": "2026-10-29", "added_by": "lib-t3", "remove_by": "2026-11-12"}

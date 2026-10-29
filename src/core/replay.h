@@ -33,7 +33,7 @@
 #include <vector>
 
 #include "core/model.h"
-#include "parse/song.h"
+#include "core/song.h"
 
 namespace hydra {
 

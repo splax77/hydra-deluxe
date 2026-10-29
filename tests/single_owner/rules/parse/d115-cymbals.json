@@ -2,8 +2,8 @@
   "rules": [
     {
       "question": "Does a cymbal marker count?",
-      "owner": "cymbal_counts in src/parse/song.cpp",
-      "owner_file": "src/parse/song.cpp",
+      "owner": "cymbal_counts in src/core/song.cpp",
+      "owner_file": "src/core/song.cpp",
       "owner_symbol": "cymbal_counts",
       "date": "2026-10-14",
       "decision": "D115 (plan part B1, task B1-3)",
@@ -24,7 +24,7 @@
       ],
       "owner_lines": [
         {
-          "file": "src/parse/song.cpp",
+          "file": "src/core/song.cpp",
           "line_text": "return pro && allows_cymbals(pad);",
           "why": "cymbal_counts, the owner"
         }
