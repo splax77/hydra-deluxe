@@ -135,6 +135,12 @@ struct TargetResult {
     std::string failed_reason;
 };
 
+// Sorts `windows` by act tick and refuses a list a target cannot pin
+// (std::invalid_argument, the texts search_target below names). The one place
+// that says what a window list must look like: search_target, best_finish and
+// the Path Builder's ladder (app/path_costs.h) all call it.
+void sort_and_check_windows(std::vector<PinnedWindow>& windows);
+
 // search_target for windows, any of them pinned in full. The windows are
 // taken in act_tick order, and the pinned ones must come first: a window with
 // a deact_tick never follows one without. No two may share an act tick, a
@@ -145,6 +151,11 @@ struct TargetResult {
 // k), then named by at most two more runs.
 TargetResult search_target(const Song& song, const SearchSettings& settings,
                            std::vector<PinnedWindow> windows);
+
+// The same on a graph already built (search_graph below), for a caller that
+// runs many searches on one chart. The settings only shape the graph, so none
+// are taken.
+TargetResult search_target(const ScoreGraph& graph, std::vector<PinnedWindow> windows);
 
 // Whether `path`, handed back to search_target as a full pin, comes back
 // alone and the same. The search already keeps only paths with the pinned
@@ -195,9 +206,12 @@ EngineOptions best_finish_options(const SearchSettings& settings,
 
 // The best path that starts with `windows` (keep_prefix_paths) and runs free
 // after the last one (EngineOptions::free_after), searched with
-// best_finish_options. The Path
-// limit does not judge a pinned window (EngineOptions::target_act_ticks), so
-// the result can outscore the main search's best. The windows are checked
+// best_finish_options. The Path limit does not judge a pinned window
+// (EngineOptions::target_act_ticks), so a pinned window that needs tighter
+// timing than the limit is still priced. The result never outscores the main
+// search's best: that is the optimal path whatever the limit says, and a
+// pinned search only chooses among paths the free one could. So pinning more
+// windows never raises the total. The windows are checked
 // and sorted as search_target checks them, with the same exceptions. With no
 // window it returns the main search's paths (analyze_chart's). When nothing
 // comes back, realized_prefix, failed_tick and failed_reason are

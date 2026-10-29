@@ -3,12 +3,13 @@
 // this file in" (the add_library and add_executable source lists) and of
 // "which library may it include from" (the target_link_libraries lines); this
 // file reads both and owns neither. tests/layering/externals.json says which
-// link line a third-party or system header stands for, and
-// tests/layering/known_gaps.json lists the wrong-way includes a later task
-// removes, in the shape of tests/single_owner/baseline.json, with its dates
-// read by that baseline's reader (parse_dates in tests/single_owner/engine.h).
-// The plan: docs/superpowers/plans/2026-10-28-hydra-libraries.md, "How the
-// layering stays true".
+// link line a third-party or system header stands for.
+// tests/layering/known_gaps.json held the wrong-way includes the library
+// split removed one task at a time, in the shape of
+// tests/single_owner/baseline.json, with its dates read by that baseline's
+// reader (parse_dates in tests/single_owner/engine.h). The split is done, so
+// the list is empty, and "layering: no known gap is left" keeps it empty: a
+// new wrong-way include is fixed, never parked. docs/adr/0032 records why.
 #include "doctest.h"
 
 #include <algorithm>
@@ -480,14 +481,18 @@ struct KnownGap {
     single_owner::BaselineDates dates;
 };
 
+// How an entry is named in failures.
+std::string gap_name(const KnownGap& g) {
+    return "known_gaps.json: " + g.task + ": " + g.file + " includes \"" + g.include + "\"";
+}
+
 std::vector<KnownGap> parse_gaps(const std::string& text) {
     const json doc = json::parse(text);
     std::vector<KnownGap> out;
     for (const auto& [task, entries] : doc.at("known_gaps").items())
         for (const json& e : entries) {
             KnownGap g{task, e.at("file").get<std::string>(), e.at("include").get<std::string>(), {}};
-            g.dates = single_owner::parse_dates(e, "known_gaps.json: " + task + ": " + g.file + " includes \"" +
-                                                       g.include + "\"");
+            g.dates = single_owner::parse_dates(e, gap_name(g));
             out.push_back(std::move(g));
         }
     return out;
@@ -606,7 +611,7 @@ TEST_CASE("layering: every known gap names a real include and is not past its da
     const std::string today = single_owner::today_iso();
     std::vector<std::string> bad;
     for (const KnownGap& g : known_gaps()) {
-        const std::string name = "known_gaps.json: " + g.task + ": " + g.file + " includes \"" + g.include + "\"";
+        const std::string name = gap_name(g);
         auto it = repo().texts.find(g.file);
         const bool real = it != repo().texts.end() && [&] {
             const std::vector<std::string> incs = includes_of(it->second);
@@ -618,6 +623,16 @@ TEST_CASE("layering: every known gap names a real include and is not past its da
     }
     INFO(joined(bad));
     CHECK(bad.empty());
+}
+
+// Without this case a new wrong-way include could hide behind a new entry,
+// since an entry that names a real include passes the case above.
+TEST_CASE("layering: no known gap is left") {
+    std::vector<std::string> left;
+    for (const KnownGap& g : known_gaps())
+        left.push_back(gap_name(g) + ": fix the include and delete the entry");
+    INFO(joined(left));
+    CHECK(left.empty());
 }
 
 TEST_CASE("layering: every src file is in one library") {
