@@ -641,6 +641,33 @@ TEST_CASE("set_ghost_path: the ghost's fills land on the scene, and clearing it 
     CHECK(pc.overlay_path_key() == no_ghost);
 }
 
+// A ghost path is a record's path like the drawn one, so a chart file that
+// changed since its record hides it the same way (drawn_path, finding 126).
+TEST_CASE("set_ghost_path: a changed chart draws no ghost, as it draws no path") {
+    using namespace hydra;
+    using namespace hydra::app;
+    const Path& ghost = corpus::analyzed_by_ten_scores().record.best_path();
+    const AnalyzedChart found = first_chart_with_a_path();
+    const std::string best_key = path_overlay_key(&found.best);
+
+    for (const bool changed : {true, false}) {
+        CAPTURE(changed);
+        ChartLibraryEntry entry = entry_for(found.chart);
+        if (changed) entry.md5 = "0123456789abcdef0123456789abcdef";
+        PreviewController pc(nullptr, nullptr);
+        pc.set_audio_device_factory(no_device_factory());
+        pc.open(entry, {Difficulty::Expert, true, true}, kTestFillRule, &found.best, best_key, 4);
+        wait_loaded(pc);
+        REQUIRE_FALSE(pc.has_error());
+        REQUIRE(pc.chart_changed() == changed);
+        pc.set_ghost_path(&ghost);
+        settle(pc);
+        REQUIRE_FALSE(pc.has_error());
+        CHECK(pc.scene().ghost_fills.empty() == changed);
+        CHECK(pc.scene().activations.empty() == changed);
+    }
+}
+
 namespace {
 
 // no_device_factory, counting its calls: how many times the Preview opened

@@ -144,9 +144,10 @@ void PreviewController::record_request(const Path* path, const std::string& path
     path_key_ = overlay_key(path_key, sp_cap, ghost_key_);
 }
 
-std::optional<Path> PreviewController::path_to_draw() const {
-    // A changed chart keeps drawing no path (drawn_path, finding 126).
-    const Path* drawn = drawn_path(path_, chart_changed_);
+std::optional<Path> PreviewController::path_to_draw(const std::optional<Path>& stored) const {
+    // A changed chart keeps drawing no path, the ghost path included
+    // (drawn_path, finding 126).
+    const Path* drawn = drawn_path(stored, chart_changed_);
     return drawn ? std::optional<Path>(*drawn) : std::nullopt;
 }
 
@@ -165,8 +166,9 @@ void PreviewController::start_notes_job(const store::ChartLibraryEntry& entry,
     // no longer answers shows_path for any selection.
     scene_path_key_.clear();
     job_path_key_ = path_key_;
-    notes_job_ = std::make_unique<PreviewNotesJob>(entry, key.reading, key.fills, path_to_draw(),
-                                                   sp_cap_, rules_, audio_end_ms_, ghost_);
+    notes_job_ = std::make_unique<PreviewNotesJob>(entry, key.reading, key.fills,
+                                                   path_to_draw(path_), sp_cap_, rules_,
+                                                   audio_end_ms_, path_to_draw(ghost_));
     notes_job_->start();
 }
 
@@ -212,9 +214,9 @@ void PreviewController::show_scene(hydra::app::PreviewScene scene,
 
 void PreviewController::start_scene_job() {
     retire(scene_job_, retired_scene_jobs_);
-    scene_job_ = std::make_unique<PreviewSceneJob>(song_, scene_base_, path_to_draw(), sp_cap_,
-                                                   rules_, path_key_, track_opts(), audio_end_ms_,
-                                                   transport_.song_length_ms(), ghost_);
+    scene_job_ = std::make_unique<PreviewSceneJob>(
+        song_, scene_base_, path_to_draw(path_), sp_cap_, rules_, path_key_, track_opts(),
+        audio_end_ms_, transport_.song_length_ms(), path_to_draw(ghost_));
     scene_job_->start();
 }
 

@@ -219,10 +219,10 @@ void PreviewLoadJob::run() {
 
         // The scene and the highway wait for the audio, because the beat
         // lines run to its end (D48, Q25). A changed chart is drawn with no
-        // path, as an unanalyzed one is (drawn_path).
+        // path and no ghost path, as an unanalyzed one is (drawn_path).
         SceneAndHighway built = build_scene_and_highway(
             ps.song, drawn_path(path_, chart_changed), sp_cap_, rules_, audio_end_ms,
-            song_length_ms, reading_.prodrums, ghost_ ? &*ghost_ : nullptr, [this] {
+            song_length_ms, reading_.prodrums, drawn_path(ghost_, chart_changed), [this] {
                 scene_done_.store(true);
                 throw_if_cancelled();
             });

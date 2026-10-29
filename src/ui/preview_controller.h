@@ -394,8 +394,9 @@ private:
     std::optional<Path> path_;
     std::string requested_path_key_;  // the path half of path_key_, as open() got it
     std::string path_key_;        // key of path_ + ghost_ + sp_cap_
-    // The ghost path set_ghost_path got, drawn as given, and its
-    // app::path_overlay_key. Cleared by close().
+    // The ghost path set_ghost_path got and its app::path_overlay_key. A
+    // changed chart draws no ghost, as it draws no path (path_to_draw).
+    // Cleared by close().
     std::optional<Path> ghost_;
     std::string ghost_key_;
     // Every branch of open() remembers the caller's path, cap and path key
@@ -407,8 +408,8 @@ private:
     // to poll() while a load or notes job is building its own scene.
     void rebuild_overlay();
     // The path a new scene or notes build draws (drawn_path's answer for
-    // path_), copied for the job to own.
-    std::optional<Path> path_to_draw() const;
+    // `stored`, path_ or ghost_), copied for the job to own.
+    std::optional<Path> path_to_draw(const std::optional<Path>& stored) const;
     // The overlay being built for a new selection, and replaced ones still
     // finishing (dropped by poll() once done, so replacing one never joins
     // its thread on the UI thread).
