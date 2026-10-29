@@ -17,7 +17,7 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
-#include "app/user_messages.h"  // kDatabaseReadSentence, old_library_set_aside_notice, library_rescan_blocked_notice
+#include "app/user_messages.h"  // kDatabaseReadSentence, old_library_set_aside_notice, library_scan_blocked_notice
 #include "app_state_fixtures.h"
 #include "core/error_kind.h"
 #include "db_file_util.h"  // exec_on_file, write_junk_db
@@ -644,13 +644,15 @@ TEST_CASE("an out-of-date library with a chart folder that cannot be read starts
     CHECK_FALSE(app.scan_started_by_open);
     CHECK(app.scan_job == nullptr);
     CHECK(app.status_is_problem);
-    CHECK(app.status_message == hydra::app::library_rescan_blocked_notice(missing));
+    CHECK(app.status_message ==
+          hydra::app::library_scan_blocked_notice(missing, hydra::app::ScanAsker::Open));
     CHECK(app.library_shown_count() == static_cast<size_t>(kChartCount));
     CHECK(app.store->record_count() == records_before);
 }
 
 // D266 (user ruling "Refuse, like on open"): the scan the user starts stops at
-// a missing chart folder too, with the same notice, and writes nothing.
+// a missing chart folder too, and writes nothing. D268 ("Its own sentence"):
+// it says nothing was scanned, not that the library needs a scan.
 TEST_CASE("start_scan with a chart folder that cannot be read starts no scan and keeps every "
           "result") {
     ScratchPaths paths("appstate_scanmissing");
@@ -676,7 +678,8 @@ TEST_CASE("start_scan with a chart folder that cannot be read starts no scan and
     CHECK(app.scan_job == nullptr);
     CHECK_FALSE(app.scan_started_by_open);
     CHECK(app.status_is_problem);
-    CHECK(app.status_message == hydra::app::library_rescan_blocked_notice(missing));
+    CHECK(app.status_message ==
+          hydra::app::library_scan_blocked_notice(missing, hydra::app::ScanAsker::User));
     app.tick_library(0.0);
     CHECK(app.library_shown_count() == static_cast<size_t>(kChartCount));
     CHECK(app.store->record_count() == records_before);

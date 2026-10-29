@@ -27,6 +27,7 @@
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
 #include "app/path_view.h"
+#include "app/user_messages.h"  // ScanAsker
 #include "core/rules.h"
 #include "store/record_store.h"
 #include "ui/column_widths.h"
@@ -785,13 +786,11 @@ private:
     // asks for a scan (request_scan, scan_started_by_open), or asks for
     // nothing when scan_blocked_by_missing_folder says no.
     void request_rescan_on_open();
-    // The one check that a chart folder cannot be read, which every scan
-    // makes before it starts (request_rescan_on_open, start_scan). A scan
-    // over a folder it cannot list would write a library without that
-    // folder's charts and drop their results (D266). When one is missing it
-    // sets the status line's problem (app::library_rescan_blocked_notice)
-    // and returns true.
-    bool scan_blocked_by_missing_folder();
+    // Asks app::first_missing_chart_folder before every scan starts
+    // (request_rescan_on_open, start_scan). When it names a folder, this sets
+    // the status line's problem to app::library_scan_blocked_notice for the
+    // scan `asker` asked for, and returns true.
+    bool scan_blocked_by_missing_folder(app::ScanAsker asker);
     std::exception_ptr store_open_error_;
     std::string startup_notice_;  // what startup_notice returns
 
