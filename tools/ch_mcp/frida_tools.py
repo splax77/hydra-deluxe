@@ -1,5 +1,5 @@
 """The Clone Hero MCP server's Frida tools: attach to the game, read its
-state, and trace the notes it processes.
+state, and trace the notes the player hits.
 
 Each tool is a thin call into the module that owns the work (the plan
 docs/superpowers/plans/2026-10-28-ch-mcp-server.md, "The tools" and "Who owns
@@ -219,9 +219,9 @@ class FridaTools:
 
     def ch_trace_start(self, song_folder: str, score_json: Optional[str] = None,
                        with_dynamics: bool = False) -> str:
-        """Hook the per-note engine method (and the dynamics one with
-        with_dynamics=True) in a background trace, after one state read shows
-        a live GameManager."""
+        """Hook the engine method that runs once per hit note (and the
+        dynamics one with with_dynamics=True) in a background trace, after
+        one state read shows a live GameManager."""
         with self._lock:
             if self._trace is not None and not self._trace.ended():
                 return "a trace is already running; call ch_trace_stop first"
