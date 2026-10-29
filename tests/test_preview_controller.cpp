@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "analyzed_chart.h"  // analyzed_by_ten_scores, the ghost list's pinned chart
 #include "app/analysis.h"
 #include "app/config.h"  // Settings: the Preview volume's owner
 #include "chart_text.h"
@@ -578,6 +579,66 @@ TEST_CASE("shows_path: the same path at another cap, and a different path") {
     CHECK(pc.overlay_path_key() != at_cap4);  // the cap-1 overlay is in
     CHECK(pc.shows_path(best_key));
     CHECK_FALSE(pc.shows_path(other_key));
+}
+
+// A ghost path set on an open chart lands on a later poll as the scene's
+// ghost_fills, beside the drawn path, which stays drawn; clearing it brings
+// back the overlay built with no ghost. The chart and its best path are the
+// ones test_preview_scene.cpp pinned the ghost list on.
+TEST_CASE("set_ghost_path: the ghost's fills land on the scene, and clearing it empties them") {
+    using namespace hydra;
+    using namespace hydra::app;
+    const Path& ghost = corpus::analyzed_by_ten_scores().record.best_path();
+    const AnalyzedChart found = first_chart_with_a_path();
+    // The same best path, so this is the pinned chart.
+    REQUIRE(path_identity(found.best) == path_identity(ghost));
+    const std::string best_key = path_overlay_key(&found.best);
+
+    PreviewController pc(nullptr, nullptr);
+    pc.set_audio_device_factory(no_device_factory());
+    const ChartLibraryEntry entry = entry_for(found.chart);
+    const ChartReading reading{Difficulty::Expert, true, true};
+    pc.set_ghost_path(&ghost);  // nothing is open: no ghost is kept
+    pc.open(entry, reading, kTestFillRule, &found.best, best_key, 4);
+    settle(pc);
+    REQUIRE_FALSE(pc.has_error());
+    CHECK(pc.scene().ghost_fills.empty());
+    const std::string no_ghost = pc.overlay_path_key();
+
+    // No ghost to clear: nothing builds.
+    pc.set_ghost_path(nullptr);
+    CHECK_FALSE(pc.busy());
+
+    // The old overlay stays up until the ghost's lands.
+    pc.set_ghost_path(&ghost);
+    CHECK(pc.overlay_path_key() == no_ghost);
+    settle(pc);
+    REQUIRE_FALSE(pc.has_error());
+    CHECK(pc.scene().ghost_fills == std::vector<size_t>{2, 7});
+    CHECK(pc.overlay_path_key() != no_ghost);
+    CHECK(pc.shows_path(best_key));
+    CHECK_FALSE(pc.scene().activations.empty());
+
+    // The same ghost again is a no-op.
+    pc.set_ghost_path(&ghost);
+    CHECK_FALSE(pc.busy());
+
+    pc.set_ghost_path(nullptr);
+    settle(pc);
+    REQUIRE_FALSE(pc.has_error());
+    CHECK(pc.scene().ghost_fills.empty());
+    CHECK(pc.overlay_path_key() == no_ghost);
+    CHECK(pc.shows_path(best_key));
+
+    // close() drops the ghost: the next open draws none.
+    pc.set_ghost_path(&ghost);
+    settle(pc);
+    pc.close();
+    pc.open(entry, reading, kTestFillRule, &found.best, best_key, 4);
+    settle(pc);
+    REQUIRE_FALSE(pc.has_error());
+    CHECK(pc.scene().ghost_fills.empty());
+    CHECK(pc.overlay_path_key() == no_ghost);
 }
 
 namespace {

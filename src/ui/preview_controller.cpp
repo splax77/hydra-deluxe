@@ -19,23 +19,32 @@ namespace hydra::ui {
 
 namespace {
 
-// Between the path part and the cap in an overlay key, typed once for the
-// writer and the reader below.
+// The separators in an overlay key, typed once for the writer and the reader
+// below: after the ghost key's length, and between the path part and the cap.
+constexpr const char* kGhostSeparator = "|ghost";
 constexpr const char* kCapSeparator = "|cap";
 
-// The overlay's identity: the path it was built from plus the SP cap the
-// meter was scaled to. A cap change must rebuild the scene just like a
-// path change, so both live in the one key the three key_ members compare.
-std::string overlay_key(const std::string& path_key, int sp_cap) {
-    return path_key + kCapSeparator + std::to_string(sp_cap);
+// The overlay's identity: the ghost path and the path it was built from, plus
+// the SP cap the meter was scaled to. A ghost or cap change must rebuild the
+// scene just like a path change, so all three live in the one key the three
+// key_ members compare. The ghost key goes first behind its length, so the
+// reader can step over it whatever it holds.
+std::string overlay_key(const std::string& path_key, int sp_cap, const std::string& ghost_key) {
+    return std::to_string(ghost_key.size()) + kGhostSeparator + ghost_key + path_key +
+           kCapSeparator + std::to_string(sp_cap);
 }
 
-// The path part of an overlay_key: the one place a key is read back. The cap
-// is written last, so the last separator ends the path part. Empty for an
-// empty key (nothing has loaded).
+// The path part of an overlay_key: the one place a key is read back. The
+// length is written first and the cap last, both in digits, so the first
+// ghost separator ends the length and the last cap separator ends the path
+// part. Empty for an empty key (nothing has loaded).
 std::string overlay_key_path_part(const std::string& key) {
-    const std::size_t at = key.rfind(kCapSeparator);
-    return at == std::string::npos ? std::string() : key.substr(0, at);
+    const std::size_t cap_at = key.rfind(kCapSeparator);
+    const std::size_t length_end = key.find(kGhostSeparator);
+    if (cap_at == std::string::npos || length_end == std::string::npos) return {};
+    const std::size_t from = length_end + std::char_traits<char>::length(kGhostSeparator) +
+                             std::stoul(key.substr(0, length_end));
+    return from > cap_at ? std::string() : key.substr(from, cap_at - from);
 }
 
 }  // namespace
@@ -86,11 +95,7 @@ void PreviewController::open(const store::ChartLibraryEntry& entry,
         // Same chart, same overlay: nothing to do, and nothing built.
         if (sp_cap == sp_cap_ && path_key == requested_path_key_) return;
         record_request(path, path_key, sp_cap);
-        // Mid-load the load or notes job is building its own scene; poll()
-        // reconciles. Once the song is here, the new overlay builds on a job
-        // and poll() swaps it in, which leaves the audio and the playhead
-        // alone.
-        if (!job_ && !notes_job_ && song_ && !song_->is_empty()) start_scene_job();
+        rebuild_overlay();
         return;
     }
     // The same chart in another mode, with its audio already loaded: keep the
@@ -109,8 +114,26 @@ void PreviewController::open(const store::ChartLibraryEntry& entry,
     pro_ = reading.prodrums;
     record_request(path, path_key, sp_cap);
     job_path_key_ = path_key_;
-    job_ = std::make_unique<PreviewLoadJob>(entry, reading, fills, path_, sp_cap_, rules);
+    job_ = std::make_unique<PreviewLoadJob>(entry, reading, fills, path_, sp_cap_, rules, ghost_);
     job_->start();
+}
+
+void PreviewController::set_ghost_path(const Path* ghost) {
+    if (!active_) return;
+    std::string ghost_key = app::path_overlay_key(ghost);
+    if (ghost_key == ghost_key_) return;
+    ghost_ = ghost ? std::optional<Path>(*ghost) : std::nullopt;
+    ghost_key_ = std::move(ghost_key);
+    // The request stays as open() last made it; only its key takes the ghost.
+    record_request(path_ ? &*path_ : nullptr, requested_path_key_, sp_cap_);
+    rebuild_overlay();
+}
+
+void PreviewController::rebuild_overlay() {
+    // Mid-load the load or notes job is building its own scene; poll()
+    // reconciles. Once the song is here, the new overlay builds on a job and
+    // poll() swaps it in, which leaves the audio and the playhead alone.
+    if (!job_ && !notes_job_ && song_ && !song_->is_empty()) start_scene_job();
 }
 
 void PreviewController::record_request(const Path* path, const std::string& path_key,
@@ -118,7 +141,7 @@ void PreviewController::record_request(const Path* path, const std::string& path
     path_ = path ? std::optional<Path>(*path) : std::nullopt;
     sp_cap_ = sp_cap;
     requested_path_key_ = path_key;
-    path_key_ = overlay_key(path_key, sp_cap);
+    path_key_ = overlay_key(path_key, sp_cap, ghost_key_);
 }
 
 std::optional<Path> PreviewController::path_to_draw() const {
@@ -143,7 +166,7 @@ void PreviewController::start_notes_job(const store::ChartLibraryEntry& entry,
     scene_path_key_.clear();
     job_path_key_ = path_key_;
     notes_job_ = std::make_unique<PreviewNotesJob>(entry, key.reading, key.fills, path_to_draw(),
-                                                   sp_cap_, rules_, audio_end_ms_);
+                                                   sp_cap_, rules_, audio_end_ms_, ghost_);
     notes_job_->start();
 }
 
@@ -191,7 +214,7 @@ void PreviewController::start_scene_job() {
     retire(scene_job_, retired_scene_jobs_);
     scene_job_ = std::make_unique<PreviewSceneJob>(song_, scene_base_, path_to_draw(), sp_cap_,
                                                    rules_, path_key_, track_opts(), audio_end_ms_,
-                                                   transport_.song_length_ms());
+                                                   transport_.song_length_ms(), ghost_);
     scene_job_->start();
 }
 
@@ -222,6 +245,8 @@ void PreviewController::close() {
     audio_end_ms_.reset();
     scene_base_.reset();
     path_.reset();
+    ghost_.reset();
+    ghost_key_.clear();
     sp_cap_ = kCloneHeroSpCap;
     path_key_.clear();
     job_path_key_.clear();
