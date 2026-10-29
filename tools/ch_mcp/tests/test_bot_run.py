@@ -366,6 +366,13 @@ class RunStepsTest(unittest.TestCase):
         r.assert_all_restored(self)
         self.assertFalse(any("--restore" in line for line in r.lines))
 
+    def test_finish_run_says_a_caller_given_stop_line_instead_of_the_flag_one(self):
+        r = Rig(self.tmp, exits_at=None)
+        run = self.start(r, r.song)
+        self.assertTrue(B.finish_run(run, stop=True, env=r.env, stop_line=B.STOPPED_LINE))
+        self.assertIn("stopped the game", r.lines)
+        self.assertNotIn("stopped the game (--stop)", r.lines)
+
     def test_finish_run_reports_a_game_that_outlives_the_stop_and_still_restores(self):
         r = Rig(self.tmp, exits_at=None)
         r.game = r.launch.game = StuckGame(r.clock)
