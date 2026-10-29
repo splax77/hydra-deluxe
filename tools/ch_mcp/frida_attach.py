@@ -157,6 +157,9 @@ def run_agent(agent_path: str, cap_s: float,
         script.load()
         script.post({**(start or {}), "type": "start", "cap_s": cap_s})
         if not wait(ended, cap_s):
+            # End the run here, before the detach below: Frida answers that
+            # detach through `detached`, which must not replace the cap end.
+            finish(END_CAP)
             out(f"cap of {cap_s:g} s reached before the agent finished; "
                 f"{len(result.payloads)} messages seen")
     finally:

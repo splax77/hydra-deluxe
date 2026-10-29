@@ -108,7 +108,12 @@ class FakeSession:
         return self.script
 
     def detach(self):
+        # Real Frida answers the runner's own detach by calling the session's
+        # "detached" handler with this reason.
         self.detach_calls += 1
+        handler = self.handlers.get("detached")
+        if handler is not None:
+            handler("application-requested", None)
 
 
 class FakeFrida:
@@ -190,6 +195,7 @@ class DetachTest(Workspace):
         session = FakeSession([sent(sample(1.0))])
         result = self.run_agent(FakeFrida(session))
         self.assertEqual(result.reason, FA.END_CAP)
+        self.assertIsNone(result.error)
         self.assertEqual(session.detach_calls, 1)
         self.assertEqual(self.lines, [
             "cap of 93 s reached before the agent finished; 1 messages seen"])
@@ -354,6 +360,32 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(lines, [
             "ended: done",
+            "samples: 2",
+            "songTime: first 1.0, last 2.0",
+            "songTime went backwards: 0 times",
+            "isSongOver went true: no",
+            f"messages written to {out_path}",
+        ])
+        self.assertEqual(session.detach_calls, 1)
+
+    def test_the_command_line_ends_at_the_cap_with_no_error(self):
+        # The runner's own detach after the cap must not turn the cap end
+        # into a "session detached" error.
+        with tempfile.TemporaryDirectory() as tmp:
+            agent = os.path.join(tmp, "clock.js")
+            with open(agent, "w", encoding="utf-8") as fh:
+                fh.write("// fake\n")
+            out_path = os.path.join(tmp, "clock.jsonl")
+            session = FakeSession([sent(sample(1.0)), sent(sample(2.0))])
+            lines = []
+            code = FA.main(["--agent", agent, "--cap", "93",
+                            "--out", out_path],
+                           frida_mod=FakeFrida(session), wait=instant_wait,
+                           out=lines.append)
+        self.assertEqual(code, 0)
+        self.assertEqual(lines, [
+            "cap of 93 s reached before the agent finished; 2 messages seen",
+            "ended: cap",
             "samples: 2",
             "songTime: first 1.0, last 2.0",
             "songTime went backwards: 0 times",
