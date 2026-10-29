@@ -26,7 +26,25 @@ using namespace precheck_fixture;
 
 namespace {
 
-const std::string kAlways = "always: \"-tc=docs match code*\" \"-sf=*single_owner*\" \"-sf=*test_precheck*\"";
+const std::vector<std::string> kAlways = {
+    "always: \"-tc=docs match code*\"",
+    "always: \"-sf=*single_owner*\"",
+    "always: \"-sf=*test_precheck*\"",
+};
+
+// The printed lines: the tests line, the three always lines, then `rest`.
+std::vector<std::string> expected_lines(const std::string& tests_line, const std::vector<std::string>& rest) {
+    std::vector<std::string> out{tests_line};
+    out.insert(out.end(), kAlways.begin(), kAlways.end());
+    out.insert(out.end(), rest.begin(), rest.end());
+    return out;
+}
+
+// Lines 1 to 3 of a printed run, the always lines.
+std::vector<std::string> always_of(const std::vector<std::string>& lines) {
+    REQUIRE(lines.size() >= 4);
+    return {lines.begin() + 1, lines.begin() + 4};
+}
 
 const std::string kRunBase =
     "enum class Mode { A, B };\n"
@@ -73,12 +91,14 @@ std::string tip_changing_a() {
     return tip;
 }
 
-// The comma-separated patterns of a "tests: -sf=..." line.
+// The comma-separated patterns of a `tests: "-sf=..."` line.
 std::vector<std::string> patterns_of(const std::string& line) {
-    const std::string head = "tests: -sf=";
+    const std::string head = "tests: \"-sf=";
     REQUIRE(line.rfind(head, 0) == 0);
+    REQUIRE(line.size() > head.size());
+    REQUIRE(line.back() == '"');
     std::vector<std::string> out;
-    std::istringstream in(line.substr(head.size()));
+    std::istringstream in(line.substr(head.size(), line.size() - head.size() - 1));
     for (std::string p; std::getline(in, p, ',');) out.push_back(p);
     return out;
 }
@@ -94,15 +114,14 @@ TEST_CASE("precheck --tests: a test naming only the selector value is the tests 
     const ExeRun r = run_tests_mode(fx.dir, "HEAD");
     INFO(r.err);
     CHECK(r.code == 0);
-    CHECK(r.lines == std::vector<std::string>{
-                         "tests: -sf=*test_mode.cpp",
-                         kAlways,
-                         // One-line function: the changed line is its head line.
-                         "names: a (declared)",
-                         "callers: run <- a; Mode::A selects a in run",
-                         "common: (none)",
-                         "why: tests/test_mode.cpp  Mode::A",
-                     });
+    CHECK(r.lines == expected_lines("tests: \"-sf=*test_mode.cpp\"",
+                                    {
+                                        // One-line function: the changed line is its head line.
+                                        "names: a (declared)",
+                                        "callers: run <- a; Mode::A selects a in run",
+                                        "common: (none)",
+                                        "why: tests/test_mode.cpp  Mode::A",
+                                    }));
 }
 
 TEST_CASE("precheck --tests: a changed build file prints the whole suite and why") {
@@ -112,14 +131,12 @@ TEST_CASE("precheck --tests: a changed build file prints the whole suite and why
     const ExeRun r = run_tests_mode(fx.dir, "HEAD");
     INFO(r.err);
     CHECK(r.code == 0);
-    CHECK(r.lines == std::vector<std::string>{
-                         "tests: whole suite",
-                         kAlways,
-                         "names: (none)",
-                         "callers: (none)",
-                         "common: (none)",
-                         "why: CMakeLists.txt  build file",
-                     });
+    CHECK(r.lines == expected_lines("tests: whole suite", {
+                                                              "names: (none)",
+                                                              "callers: (none)",
+                                                              "common: (none)",
+                                                              "why: CMakeLists.txt  build file",
+                                                          }));
 }
 
 TEST_CASE("precheck --tests: a range changing no code prints no tests, not an empty -sf= filter") {
@@ -129,9 +146,9 @@ TEST_CASE("precheck --tests: a range changing no code prints no tests, not an em
     const ExeRun r = run_tests_mode(fx.dir, "HEAD");
     INFO(r.err);
     CHECK(r.code == 0);
-    REQUIRE(r.lines.size() >= 2);
+    REQUIRE(r.lines.size() >= 4);
     CHECK(r.lines[0] == "tests: (none)");
-    CHECK(r.lines[1] == kAlways);
+    CHECK(always_of(r.lines) == kAlways);
     CHECK(r.lines.back() == "why: no changed code names a test");
 }
 
@@ -152,12 +169,12 @@ TEST_CASE("precheck --tests: two picked files come in byte order, none ending in
     const ExeRun r = run_tests_mode(fx.dir, "HEAD");
     INFO(r.err);
     CHECK(r.code == 0);
-    REQUIRE(r.lines.size() >= 2);
+    REQUIRE(r.lines.size() >= 4);
     const std::vector<std::string> pats = patterns_of(r.lines[0]);
     // 'Z' (0x5A) sorts before 'a' (0x61) in byte order.
     CHECK(pats == std::vector<std::string>{"*test_Zeta.cpp", "*test_alpha.cpp"});
     for (const std::string& p : pats) CHECK(p.back() != '*');
-    CHECK(r.lines[1] == kAlways);
+    CHECK(always_of(r.lines) == kAlways);
 }
 
 TEST_CASE("precheck pick lines: patterns sort by name, kinds and counts print, whole-suite counts show") {
@@ -165,22 +182,21 @@ TEST_CASE("precheck pick lines: patterns sort by name, kinds and counts print, w
     p.tests = {{"tests/test_b.cpp", {"changed in range", "Song"}}, {"tests/test_a.cpp", {"Gone"}}};
     p.names = {{"Gone", NameKind::Declared, "src/x.h", true}, {"place", NameKind::Comment, "src/x.cpp", false}};
     p.common = {{"ticks", 46}, {"Song", 77}};
-    CHECK(pick_lines(p) == std::vector<std::string>{
-                               "tests: -sf=*test_a.cpp,*test_b.cpp",
-                               kAlways,
-                               "names: Gone (deleted) place (comment)",
-                               "callers: (none)",
-                               "common: ticks (46 files) Song (77 files)",
-                               "why: tests/test_a.cpp  Gone",
-                               "why: tests/test_b.cpp  changed in range; Song",
-                           });
+    CHECK(pick_lines(p) == expected_lines("tests: \"-sf=*test_a.cpp,*test_b.cpp\"",
+                                          {
+                                              "names: Gone (deleted) place (comment)",
+                                              "callers: (none)",
+                                              "common: ticks (46 files) Song (77 files)",
+                                              "why: tests/test_a.cpp  Gone",
+                                              "why: tests/test_b.cpp  changed in range; Song",
+                                          }));
 
     TestPick whole;
     whole.whole_suite = WholeSuite{"src/core/model.h", "header with more direct includers than 20", 94};
     const std::vector<std::string> lines = pick_lines(whole);
-    REQUIRE(lines.size() == 6);
+    REQUIRE(lines.size() == 8);
     CHECK(lines[0] == "tests: whole suite");
-    CHECK(lines[5] == "why: src/core/model.h  header with more direct includers than 20 (94)");
+    CHECK(lines[7] == "why: src/core/model.h  header with more direct includers than 20 (94)");
 
     TestPick size;
     size.whole_suite = WholeSuite{"", "more picked test files than 40", 45};
