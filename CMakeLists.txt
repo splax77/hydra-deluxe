@@ -516,6 +516,7 @@ add_library(hydra_uibase STATIC
     src/ui/list_scroll.cpp
     src/ui/theme.cpp
     src/ui/win32_dialogs.cpp
+    src/ui/win32_window.cpp
     src/ui/activation_row_layout.h
     src/ui/badge_pill.h
     src/ui/fallback_fonts.h

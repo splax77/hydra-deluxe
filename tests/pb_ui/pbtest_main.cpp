@@ -34,20 +34,14 @@ int main() {
     std::vector<std::string> wanted;
     pbtest::Harness h;
 
-    const std::vector<std::string> args = hydra::utf8_argv();
-    const int argc = static_cast<int>(args.size());
-    for (int i = 1; i < argc; ++i) {
-        const std::string& a = args[i];
-        auto next = [&](std::string& out) {
-            if (i + 1 >= argc) return false;
-            out = args[++i];
-            return true;
-        };
+    uitest::ArgReader args(hydra::utf8_argv());
+    while (args.next()) {
+        const std::string& a = args.flag();
         std::string v;
         if (a == "--list") list = true;
         else if (a == "--keep-temp") h.keep_temp = true;
-        else if (a == "--test" || a == "--script") { if (!next(v)) return usage(); wanted.push_back(v); }
-        else if (a == "--shots") { if (!next(h.shots_dir)) return usage(); }
+        else if (a == "--test" || a == "--script") { if (!args.value(v)) return usage(); wanted.push_back(v); }
+        else if (a == "--shots") { if (!args.value(h.shots_dir)) return usage(); }
         else return usage();
     }
     if (!list && wanted.empty()) return usage();
