@@ -7,6 +7,10 @@ start with the cap, writes each message as one JSON line, and detaches in a
 detach. Any agent can use it; the command line below runs the clock agent and
 prints the clock summary.
 
+`LiveAgent` is the long-lived form for a caller that asks questions between
+other work: it stays attached with one request/response agent loaded
+(agent/state.ts) and answers each `read` until it is detached.
+
 It reads and traces only. The safety rules it follows are in
 docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md, "Safety rules
 for every live step". The agents' no-writes check lives in
@@ -83,6 +87,17 @@ def _default_wait(event: threading.Event, timeout_s: float) -> bool:
             return True
 
 
+def _import_frida() -> Any:
+    """The frida module, or SystemExit with the advice that fixes a failed
+    import."""
+    try:
+        import frida  # noqa: PLC0415
+    except ModuleNotFoundError as e:
+        raise SystemExit(f"{e}. The frida module lives in the user's "
+                         "site-packages: run this without py -I.") from e
+    return frida
+
+
 def run_agent(agent_path: str, cap_s: float,
               on_message: Callable[[Any], str | None], out_path: str, *,
               start: dict | None = None,
@@ -100,11 +115,7 @@ def run_agent(agent_path: str, cap_s: float,
     if wait is None:
         wait = _default_wait
     if frida_mod is None:
-        try:
-            import frida as frida_mod  # noqa: PLC0415
-        except ModuleNotFoundError as e:
-            raise SystemExit(f"{e}. The frida module lives in the user's "
-                             "site-packages: run this without py -I.") from e
+        frida_mod = _import_frida()
     with open(agent_path, encoding="utf-8") as fh:
         source = fh.read()
 
@@ -175,6 +186,216 @@ def run_agent(agent_path: str, cap_s: float,
                 if log is not None:
                     log.close()
     return result
+
+
+class LiveAgentError(Exception):
+    """A LiveAgent attach or read that failed. `reason` is one of the END_*
+    reasons; the message is the line to show."""
+
+    def __init__(self, reason: str, message: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
+class AttachFailed(LiveAgentError):
+    """LiveAgent.start found no game, or got no first reply. Nothing stays
+    attached."""
+
+
+class ReadFailed(LiveAgentError):
+    """LiveAgent.read got no reply: the cap passed, the session dropped, or
+    the agent reported an error."""
+
+
+@dataclass
+class _Pending:
+    """The one read waiting for its reply."""
+    id: int
+    event: threading.Event
+    reply: Any = None
+    failure: LiveAgentError | None = None
+
+
+# The reason `gone_reason` holds after the caller's own detach.
+_DETACHED_BY_CALLER = "detached by the caller"
+
+
+class LiveAgent:
+    """One attach that stays open, with a request/response agent loaded.
+
+    `start(cap_s)` attaches to the game, loads the agent and returns the
+    first read; `read(cap_s)` asks again; `detach()` ends the session. Each
+    read posts `{"type": "read", "id": n}` and takes only the reply carrying
+    the same id, so a reply that comes after its read gave up is logged and
+    dropped, never handed to a later read. Every message the agent sends is
+    written to `log_path`, one JSON line each, as run_agent does.
+
+    `alive` is False once the session has dropped or been detached, and
+    `gone_reason` then says why. One LiveAgent attaches once; attach again
+    with a new one. `frida_mod` and `wait` are injectable so the tests run
+    without Frida and without sleeping."""
+
+    def __init__(self, agent_path: str, *, log_path: str,
+                 frida_mod: Any = None,
+                 wait: Callable[[threading.Event, float], bool] | None = None,
+                 out: Callable[[str], None] = print) -> None:
+        self.agent_path = agent_path
+        self.log_path = log_path
+        self._frida_mod = frida_mod
+        self._wait = wait if wait is not None else _default_wait
+        self._out = out
+        # Frida calls the handlers on its own thread; this lock guards the
+        # log and every field below.
+        self._lock = threading.Lock()
+        self._session: Any = None
+        self._script: Any = None
+        self._log: Any = None
+        self._next_id = 0
+        self._pending: _Pending | None = None
+        self._detach_called = False
+        self.alive = False
+        self.gone_reason: str | None = None
+
+    def start(self, cap_s: float) -> dict:
+        """Attach, load the agent and return its answer to the first read,
+        waiting at most `cap_s` seconds for it. Raises AttachFailed with the
+        reason, and leaves nothing attached, on any failure."""
+        if self._session is not None:
+            raise RuntimeError("this LiveAgent has already attached once")
+        frida_mod = self._frida_mod
+        if frida_mod is None:
+            frida_mod = _import_frida()
+        with open(self.agent_path, encoding="utf-8") as fh:
+            source = fh.read()
+        try:
+            session = frida_mod.attach(PROCESS_NAME)
+        except frida_mod.ProcessNotFoundError:
+            raise AttachFailed(
+                END_NOT_RUNNING,
+                f"{PROCESS_NAME} is not running; nothing attached") from None
+        self._session = session
+        started = False
+        try:
+            self._log = open(self.log_path, "w", encoding="utf-8")
+            session.on("detached", self._on_detached)
+            try:
+                script = session.create_script(source)
+                script.on("message", self._on_message)
+                script.load()
+            except Exception as e:  # noqa: BLE001
+                raise AttachFailed(
+                    END_SCRIPT_ERROR,
+                    f"{END_SCRIPT_ERROR}: loading the agent failed: {e}") from e
+            with self._lock:
+                self._script = script
+                if self.gone_reason is None:
+                    self.alive = True
+            try:
+                first = self._request(cap_s, "the first read")
+            except ReadFailed as e:
+                raise AttachFailed(e.reason, f"{e}; detached") from e
+            started = True
+            return first
+        finally:
+            if not started:
+                self.detach()
+
+    def read(self, cap_s: float) -> dict:
+        """Ask the agent for a fresh read and return its reply, waiting at
+        most `cap_s` seconds. A `found: false` reply is data, not a failure.
+        Raises ReadFailed naming the cap, the detach reason or the agent's
+        error."""
+        return self._request(cap_s, "the read")
+
+    def detach(self) -> str:
+        """Detach once and return what happened. A second call detaches
+        nothing and says the session was already detached."""
+        with self._lock:
+            if self._detach_called:
+                return f"already detached ({self.gone_reason})"
+            self._detach_called = True
+            dropped = self.gone_reason
+            if dropped is None:
+                self.gone_reason = _DETACHED_BY_CALLER
+            self.alive = False
+            session = self._session
+        if session is None:
+            return "nothing attached"
+        line = "detached" if dropped is None else f"already gone: {dropped}"
+        try:
+            # Outside the lock: Frida answers a detach through _on_detached,
+            # which takes the lock itself.
+            if session is not None:
+                session.detach()
+        except Exception as e:  # noqa: BLE001
+            # A session the game already dropped may refuse a second detach.
+            self._out(f"detach reported: {e}")
+        finally:
+            with self._lock:
+                if self._log is not None:
+                    self._log.close()
+        return line
+
+    def _request(self, cap_s: float, what: str) -> dict:
+        with self._lock:
+            if not self.alive:
+                reason = END_DETACHED
+                why = self.gone_reason or "not attached"
+                raise ReadFailed(reason, f"no session for {what}: {why}")
+            self._next_id += 1
+            pending = _Pending(id=self._next_id, event=threading.Event())
+            self._pending = pending
+            script = self._script
+        try:
+            # Outside the lock: the reply may arrive on Frida's thread
+            # before post returns.
+            script.post({"type": "read", "id": pending.id})
+            self._wait(pending.event, cap_s)
+        finally:
+            with self._lock:
+                if self._pending is pending:
+                    self._pending = None
+        if pending.failure is not None:
+            raise pending.failure
+        if pending.reply is None:
+            raise ReadFailed(END_CAP, f"no reply to {what} within the cap "
+                                      f"of {cap_s:g} s")
+        reply = {k: v for k, v in pending.reply.items() if k != "id"}
+        if "error" in reply:
+            raise ReadFailed(END_AGENT_ERROR,
+                             f"the agent sent an error: {reply['error']}")
+        return reply
+
+    def _on_message(self, message: dict, data: Any) -> None:
+        with self._lock:
+            if self._log is None or self._log.closed:
+                return
+            self._log.write(json.dumps(message) + "\n")
+            self._log.flush()
+            pending = self._pending
+            if pending is None or pending.event.is_set():
+                return
+            kind = message.get("type")
+            if kind == "send":
+                payload = message.get("payload")
+                if isinstance(payload, dict) and payload.get("id") == pending.id:
+                    pending.reply = payload
+                    pending.event.set()
+            elif kind == "error":
+                pending.failure = ReadFailed(
+                    END_SCRIPT_ERROR,
+                    f"{END_SCRIPT_ERROR}: {message.get('description')}")
+                pending.event.set()
+
+    def _on_detached(self, reason: Any, *_rest: Any) -> None:
+        with self._lock:
+            if self.gone_reason is None:
+                self.gone_reason = f"session detached: {reason}"
+            self.alive = False
+            pending = self._pending
+            if pending is not None and not pending.event.is_set():
+                pending.failure = ReadFailed(END_DETACHED, self.gone_reason)
+                pending.event.set()
 
 
 def summarize_clock(result: RunResult) -> list[str]:

@@ -308,6 +308,237 @@ class NotRunningTest(Workspace):
                          ["Clone Hero.exe is not running; nothing attached"])
 
 
+# ---- the long-lived agent -----------------------------------------------------
+
+class ReplyScript(FakeScript):
+    """Answers each read with the session's next reply. A dict goes back as
+    the agent would send it, carrying the read's id; a list is delivered
+    message by message as written; None sends nothing, as an agent that
+    never answers."""
+
+    def post(self, message):
+        self.posted.append(message)
+        if not self.session.replies:
+            return
+        reply = self.session.replies.pop(0)
+        if reply is None:
+            return
+        if isinstance(reply, list):
+            for m in reply:
+                self.handlers["message"](m, None)
+            return
+        self.handlers["message"](sent({**reply, "id": message["id"]}), None)
+
+
+class ReplySession(FakeSession):
+    def __init__(self, replies, load_raises=None):
+        super().__init__([], load_raises)
+        self.replies = list(replies)
+
+    def create_script(self, source):
+        self.source = source
+        self.script = ReplyScript(self)
+        return self.script
+
+
+# What state.ts sends, by the field names it reads.
+STATE = {"found": True, "instances": 1, "songTime": 3.5, "isPaused": False,
+         "isSongOver": False, "isSongPlaying": True, "songLoaded": True}
+MENU = {"found": False, "reason": "no live GameManager"}
+
+
+class LiveAgentTest(Workspace):
+    def live(self, frida, wait=instant_wait):
+        agent = FA.LiveAgent(self.agent, log_path=self.out_path,
+                             frida_mod=frida, wait=wait, out=self.lines.append)
+        # Runs before the temp folder's cleanup, so Windows can delete the
+        # log; detach is safe to call again.
+        self.addCleanup(agent.detach)
+        return agent
+
+    def started(self, replies):
+        session = ReplySession(replies)
+        agent = self.live(FakeFrida(session))
+        agent.start(30.0)
+        return agent, session
+
+    def test_start_posts_a_read_and_returns_its_reply(self):
+        session = ReplySession([STATE])
+        frida = FakeFrida(session)
+        agent = self.live(frida)
+        self.assertEqual(agent.start(30.0), STATE)
+        self.assertEqual(frida.attached_to, [PROCESS_NAME])
+        self.assertEqual(session.script.posted, [{"type": "read", "id": 1}])
+        self.assertEqual(session.source, "// fake agent\n")
+        self.assertTrue(agent.alive)
+        self.assertEqual(session.detach_calls, 0)
+        self.assertEqual(self.written(), [sent({**STATE, "id": 1})])
+
+    def test_start_on_a_game_that_is_not_running_attaches_nothing(self):
+        agent = self.live(FakeFrida(None))
+        with self.assertRaises(FA.AttachFailed) as caught:
+            agent.start(30.0)
+        self.assertEqual(str(caught.exception),
+                         "Clone Hero.exe is not running; nothing attached")
+        self.assertEqual(caught.exception.reason, FA.END_NOT_RUNNING)
+        self.assertFalse(agent.alive)
+        self.assertFalse(os.path.exists(self.out_path))
+        self.assertEqual(agent.detach(), "nothing attached")
+
+    def test_start_with_no_first_reply_raises_on_the_cap_and_detaches_once(self):
+        session = ReplySession([None])
+        agent = self.live(FakeFrida(session))
+        with self.assertRaises(FA.AttachFailed) as caught:
+            agent.start(30.0)
+        self.assertEqual(str(caught.exception),
+                         "no reply to the first read within the cap of 30 s; "
+                         "detached")
+        self.assertEqual(caught.exception.reason, FA.END_CAP)
+        self.assertEqual(session.detach_calls, 1)
+        self.assertFalse(agent.alive)
+        self.assertEqual(agent.detach(),
+                         "already detached (detached by the caller)")
+        self.assertEqual(session.detach_calls, 1)
+
+    def test_start_whose_agent_fails_to_load_detaches_once(self):
+        session = ReplySession([], load_raises=RuntimeError("bad script"))
+        agent = self.live(FakeFrida(session))
+        with self.assertRaises(FA.AttachFailed) as caught:
+            agent.start(30.0)
+        self.assertEqual(str(caught.exception),
+                         "script error: loading the agent failed: bad script")
+        self.assertEqual(caught.exception.reason, FA.END_SCRIPT_ERROR)
+        self.assertEqual(session.detach_calls, 1)
+
+    def test_start_detaches_on_ctrl_c(self):
+        session = ReplySession([], load_raises=KeyboardInterrupt())
+        agent = self.live(FakeFrida(session))
+        with self.assertRaises(KeyboardInterrupt):
+            agent.start(30.0)
+        self.assertEqual(session.detach_calls, 1)
+
+    def test_read_returns_the_next_payload_and_the_log_holds_it(self):
+        later = {**STATE, "songTime": 4.0}
+        agent, session = self.started([STATE, later])
+        self.assertEqual(agent.read(5.0), later)
+        self.assertEqual(session.script.posted, [{"type": "read", "id": 1},
+                                                 {"type": "read", "id": 2}])
+        self.assertEqual(self.written(), [sent({**STATE, "id": 1}),
+                                          sent({**later, "id": 2})])
+
+    def test_no_live_game_manager_is_returned_as_data(self):
+        agent, _ = self.started([STATE, MENU])
+        self.assertEqual(agent.read(5.0), MENU)
+        self.assertTrue(agent.alive)
+
+    def test_read_with_no_reply_names_the_cap(self):
+        agent, _ = self.started([STATE, None])
+        with self.assertRaises(FA.ReadFailed) as caught:
+            agent.read(5.0)
+        self.assertEqual(str(caught.exception),
+                         "no reply to the read within the cap of 5 s")
+        self.assertEqual(caught.exception.reason, FA.END_CAP)
+
+    def test_a_late_reply_is_not_taken_by_the_next_read(self):
+        stale = {**STATE, "songTime": 4.0, "id": 2}
+        fresh = {**STATE, "songTime": 9.0, "id": 3}
+        agent, _ = self.started([STATE, None, [sent(stale), sent(fresh)]])
+        with self.assertRaises(FA.ReadFailed):
+            agent.read(5.0)
+        self.assertEqual(agent.read(5.0)["songTime"], 9.0)
+        # Both still reach the log.
+        self.assertEqual(self.written()[-2:], [sent(stale), sent(fresh)])
+
+    def test_read_after_the_game_closes_names_the_reason(self):
+        agent, session = self.started([STATE, STATE])
+        session.handlers["detached"]("process-terminated", None)
+        self.assertFalse(agent.alive)
+        self.assertEqual(agent.gone_reason,
+                         "session detached: process-terminated")
+        with self.assertRaises(FA.ReadFailed) as caught:
+            agent.read(5.0)
+        self.assertEqual(str(caught.exception),
+                         "no session for the read: "
+                         "session detached: process-terminated")
+        self.assertEqual(caught.exception.reason, FA.END_DETACHED)
+        self.assertEqual(len(session.script.posted), 1)
+
+    def test_a_detach_during_a_read_ends_that_read(self):
+        session = ReplySession([STATE, None])
+        calls = []
+
+        def wait(event, timeout_s):
+            calls.append(timeout_s)
+            if len(calls) == 2:
+                session.handlers["detached"]("process-terminated", None)
+            return event.is_set()
+
+        agent = self.live(FakeFrida(session), wait=wait)
+        agent.start(30.0)
+        with self.assertRaises(FA.ReadFailed) as caught:
+            agent.read(5.0)
+        self.assertEqual(str(caught.exception),
+                         "session detached: process-terminated")
+        self.assertEqual(caught.exception.reason, FA.END_DETACHED)
+
+    def test_an_agent_error_fails_the_read(self):
+        agent, _ = self.started(
+            [STATE, {"error": "reading GameManager failed: boom"}])
+        with self.assertRaises(FA.ReadFailed) as caught:
+            agent.read(5.0)
+        self.assertEqual(str(caught.exception),
+                         "the agent sent an error: "
+                         "reading GameManager failed: boom")
+        self.assertEqual(caught.exception.reason, FA.END_AGENT_ERROR)
+
+    def test_a_script_exception_fails_the_read(self):
+        agent, _ = self.started(
+            [STATE, [{"type": "error", "description": "TypeError: boom"}]])
+        with self.assertRaises(FA.ReadFailed) as caught:
+            agent.read(5.0)
+        self.assertEqual(str(caught.exception), "script error: TypeError: boom")
+        self.assertEqual(caught.exception.reason, FA.END_SCRIPT_ERROR)
+
+    def test_detach_twice_detaches_once_and_reports_the_second(self):
+        agent, session = self.started([STATE])
+        self.assertEqual(agent.detach(), "detached")
+        self.assertEqual(agent.detach(),
+                         "already detached (detached by the caller)")
+        self.assertEqual(session.detach_calls, 1)
+        self.assertFalse(agent.alive)
+        with self.assertRaises(FA.ReadFailed) as caught:
+            agent.read(5.0)
+        self.assertEqual(str(caught.exception),
+                         "no session for the read: detached by the caller")
+
+    def test_detach_after_the_game_closed_says_it_was_gone(self):
+        agent, session = self.started([STATE])
+        session.handlers["detached"]("process-terminated", None)
+        self.assertEqual(agent.detach(),
+                         "already gone: session detached: process-terminated")
+        self.assertEqual(session.detach_calls, 1)
+
+    def test_a_detach_that_raises_is_reported_and_the_log_closes(self):
+        agent, session = self.started([STATE])
+
+        def refuse():
+            session.detach_calls += 1
+            raise RuntimeError("session is gone")
+
+        session.detach = refuse
+        self.assertEqual(agent.detach(), "detached")
+        self.assertEqual(self.lines, ["detach reported: session is gone"])
+        session.script.handlers["message"](sent(MENU), None)
+        self.assertEqual(self.written(), [sent({**STATE, "id": 1})])
+
+    def test_read_before_start_says_nothing_is_attached(self):
+        agent = self.live(FakeFrida(ReplySession([STATE])))
+        with self.assertRaises(FA.ReadFailed) as caught:
+            agent.read(5.0)
+        self.assertEqual(str(caught.exception),
+                         "no session for the read: not attached")
+
+
 # ---- the clock summary ------------------------------------------------------
 
 class SummaryTest(unittest.TestCase):
@@ -453,6 +684,7 @@ class NoWritesTest(unittest.TestCase):
     def test_no_agent_writes_to_the_game(self):
         sources = agent_sources()
         self.assertIn(os.path.join(AGENT_DIR, "clock.ts"), sources)
+        self.assertIn(os.path.join(AGENT_DIR, "state.ts"), sources)
         for path in sources:
             with self.subTest(agent=os.path.basename(path)):
                 with open(path, encoding="utf-8") as fh:
@@ -465,7 +697,8 @@ class BuildScriptsTest(unittest.TestCase):
         with open(os.path.join(AGENT_DIR, "package.json"),
                   encoding="utf-8") as fh:
             scripts = json.load(fh)["scripts"]
-        self.assertEqual(sorted(scripts), ["build:clock", "build:trace"])
+        self.assertEqual(sorted(scripts),
+                         ["build:clock", "build:state", "build:trace"])
         for name, command in scripts.items():
             with self.subTest(script=name):
                 words = command.split()
