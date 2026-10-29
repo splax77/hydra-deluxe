@@ -24,14 +24,8 @@ std::string format_avg_mult(double v);
 // The average multiplier's name, wherever a screen labels it (D115).
 inline constexpr char kAverageMultiplierLabel[] = "Average Multiplier";
 
-// Every one-decimal timing a screen shows: one decimal, a space, the unit
-// ("163.5 ms", D57 item 1). The Paths tab reads it for the squeeze sentences,
-// the "(eff. ...)" figures, the backend tooltip, the early-fill line and the
-// path buttons; the path report reads it for its Hardest and Early fill
-// columns. The caller decides the sign; the early fill passes
-// Activation::e_difficulty(true), which is positive when the fill is hit
-// early. A whole-ms timing ("163 ms") is format_ms_whole in core/model.h.
-std::string format_ms(double ms);
+// A timing in ms is written by format_ms in core/model.h, which the copied
+// path shares; a whole-ms limit by format_ms_whole beside it.
 
 // Part over total as a percentage with the sign, rounded to the nearest at
 // `decimals` places: 12 of 453 at 0 reads "3%", 198,010 of 198,020 at 2 reads

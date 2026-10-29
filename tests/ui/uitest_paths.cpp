@@ -262,7 +262,7 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, "m32.1.0"));
     IM_CHECK(on_screen(h, "m58.1.0"));
     IM_CHECK(on_screen(h, "m88.1.0"));
-    IM_CHECK(on_screen(h, "squeeze out 163 ms"));
+    IM_CHECK(on_screen(h, "squeeze out 163.0 ms"));
     // Every row starts closed: no chord, sentence or backend heading shows.
     IM_CHECK(!on_screen(h, "[Kick - Green cymbal]"));
     IM_CHECK(!on_screen(h, "notes near the SP end"));
@@ -291,7 +291,7 @@ void test_paths_rows(ImGuiTestContext* ctx) {
         if (marks.empty()) return;
         ctx->MouseMoveToPos(ImVec2(marks[0].x, marks[0].y));
         ctx->Yield(2);
-        IM_CHECK(on_screen(h, "Activation 1  m32.1.0  squeeze out 163 ms"));
+        IM_CHECK(on_screen(h, "Activation 1  m32.1.0  squeeze out 163.0 ms"));
     }
 
     // "Show in Preview" asks the Preview for activation 1 (Task 11 consumes it)
@@ -335,8 +335,8 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     h.app->viewed.song_length_ms = kMarksSongLengthMs;
     ctx->Yield(2);
     check_marks(ctx, *h.app, {Outline::Grey, Outline::None, Outline::None, Outline::Grey});
-    IM_CHECK(on_screen(h, "squeeze out 0 ms"));
-    IM_CHECK(on_screen(h, "early fill 0 ms"));
+    IM_CHECK(on_screen(h, "squeeze out 0.0 ms"));
+    IM_CHECK(on_screen(h, "early fill 0.0 ms"));
 }
 
 // The backend table folds per activation, and the Backend limit moved here.
@@ -817,9 +817,9 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     if (!built) return;
     hydra::app::ActivationRowView& row1 = built->activations.acts[0];
     const std::vector<hydra::app::ActivationBadge> kept = row1.badges;
-    row1.badges = {hydra::app::ActivationBadge{"early fill 0 ms", false},
+    row1.badges = {hydra::app::ActivationBadge{"early fill 0.0 ms", false},
                    hydra::app::ActivationBadge{longest, false},
-                   hydra::app::ActivationBadge{"squeeze in -224 ms", false}};
+                   hydra::app::ActivationBadge{"squeeze in -224.0 ms", false}};
     check(widest, row1.measure, row1.bars, texts(row1));
     const hydra::ui::ActivationRowLayout three = l;
     ctx->Yield(2);

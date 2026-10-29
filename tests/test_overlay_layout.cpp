@@ -404,9 +404,9 @@ struct NextBox {
 // Burnout's three boxes (the second's chord is the long one); the third's
 // notation is the User Guide's example, a long one.
 const std::vector<NextBox> kBurnout = {
-    {"Next: activation 1 of 3", "3- (163 ms)", "at m32.1.0 \xC2\xB7 [Kick - GreenCym]"},
+    {"Next: activation 1 of 3", "3- (163.0 ms)", "at m32.1.0 \xC2\xB7 [Kick - GreenCym]"},
     {"Next: activation 2 of 3", "1", "at m58.1.0 \xC2\xB7 [Kick - YellowCym - GreenCym]"},
-    {"Next: activation 3 of 3", "5+ (100 ms)", "at m75.1.0 \xC2\xB7 [Kick - GreenCym]"},
+    {"Next: activation 3 of 3", "5+ (100.0 ms)", "at m75.1.0 \xC2\xB7 [Kick - GreenCym]"},
 };
 }  // namespace
 

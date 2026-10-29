@@ -553,8 +553,8 @@ std::string Activation::notationstr() const {
 
 std::string Activation::notationstr_verbose() const {
     std::vector<std::string> timings;
-    if (is_e_critical()) timings.push_back(format_ms_whole(*e_difficulty(true)));
-    for (const SPSqueeze& sq : sqinouts) timings.push_back(format_ms_whole(sq.difficulty()));
+    if (is_e_critical()) timings.push_back(format_ms(*e_difficulty(true)));
+    for (const SPSqueeze& sq : sqinouts) timings.push_back(format_ms(sq.difficulty()));
 
     if (timings.empty()) return notationstr();
 
@@ -914,6 +914,12 @@ std::string counted(int64_t n, const std::string& one, const std::string& many) 
 
 const char* has_have(int64_t n) {
     return n == 1 ? "has" : "have";
+}
+
+std::string format_ms(double ms) {
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "%.1f ms", ms);
+    return buf;
 }
 
 std::string format_ms_whole(double ms) {
