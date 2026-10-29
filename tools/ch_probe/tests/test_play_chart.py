@@ -323,6 +323,30 @@ class CallerHooksTest(unittest.TestCase):
         self.assertEqual([r["index"] for r in result.rows], [38, 41])
         self.assertEqual(len(game.presses), 2)
 
+    def test_a_stop_leaves_no_key_held_down(self):
+        # The real InputDriver press, with its key events recorded: the stop
+        # is asked only between presses, so every key that went down is up.
+        from tools.ch_probe.input_driver import InputDriver
+        events = []
+        driver = InputDriver()
+        driver.send_key = lambda vk, key_up: events.append((vk, key_up))
+        wall = _FakeTime()
+        game = _FakeGame()
+        seen = []
+        result = play_chart.play_chords(
+            _load(play_chart.load_dump_chords),
+            _FakeSongClock(wall, start_s=12.0), game.read_score,
+            play_chart.live_press(driver, 0), now=wall.now, sleep=wall.sleep,
+            on_press=seen.append, should_stop=lambda: len(seen) >= 3,
+            out=io.StringIO())
+        self.assertEqual(result.stop, "stopped")
+        self.assertEqual(len(seen), 3)
+        down = [vk for vk, key_up in events if not key_up]
+        up = [vk for vk, key_up in events if key_up]
+        self.assertEqual(len(down), 1 + 1 + 3)  # yellow cymbal, kick, chord of 3
+        self.assertEqual(sorted(down), sorted(up))
+        self.assertTrue(events[-1][1])
+
     def test_should_stop_false_changes_nothing(self):
         result, game = self._run_with(should_stop=lambda: False)
         self.assertEqual(result.stop, "done")
