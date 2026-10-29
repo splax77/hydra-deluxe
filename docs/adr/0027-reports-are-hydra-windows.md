@@ -59,7 +59,7 @@ maintainer suggests exactly that in
 [ocornut/imgui#3152](https://github.com/ocornut/imgui/issues/3152). So only
 the report windows tear off, and the rest of Hydra stays in the main window as
 before. `report_window_class` in src/ui/app_shell.h owns the opt-in, and
-`setup_imgui` beside it says why viewports are on.
+`setup_imgui` in src/ui/imgui_setup.cpp says why viewports are on.
 
 It also keeps the GUI tests simple. When the backend has no viewport support,
 ImGui turns viewports off by itself and keeps every window inside the main

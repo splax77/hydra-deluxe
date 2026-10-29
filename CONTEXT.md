@@ -414,7 +414,7 @@ errors (D114 item 8).
 
 **Job outcome**:
 How a finished background job ended: done, cancelled or failed
-(`JobOutcome`). `ResultJobBase::outcome` in src/ui/job_base.h weighs the run's
+(`JobOutcome`). `ResultJobBase::outcome` in src/app/job_base.h weighs the run's
 return and the Cancel flag in one place: a run that returned whole is done
 even when a Cancel came after its last step, so a report keeps it. The click's
 analysis is the one exception, written beside its reader,

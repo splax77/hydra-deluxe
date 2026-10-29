@@ -280,4 +280,4 @@ Rules of thumb:
 - `tests/ui/uitest_paths.cpp` — the Paths tab tests.
 - `tests/ui/uitest_report_windows.cpp` — the report windows' tests; their sample rows are in `tests/report_samples.{h,cpp}`.
 - `tests/ui/uitest_main.cpp` — the CLI and the one-process-per-test runner.
-- `src/ui/app_shell.{h,cpp}` — `setup_imgui` / `run_frame`, shared by `Hydra.exe` and the runner. `run_frame` can capture every string ImGui drew (`FrameText`), which is what `text`/`wait-text` read.
+- `src/ui/app_shell.{h,cpp}` — `run_frame` and Hydra's window placements, shared by `Hydra.exe` and the runner. `src/ui/imgui_setup.{h,cpp}` — `setup_imgui` and the `FrameText` capture that `run_frame` calls around its draw (`begin_frame_text_capture` / `end_frame_text_capture`); `FrameText` holds every string ImGui drew, which is what `text`/`wait-text` read. Callers of `setup_imgui` set `ImGuiSetupOptions::before_ini_load` to `install_placement_handler` (app_shell.h).

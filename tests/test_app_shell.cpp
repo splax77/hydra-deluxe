@@ -1,6 +1,6 @@
-// Unit tests for the window-placement and DPI half of ui/app_shell: which
-// saved rectangles are safe to reopen at, the hydra_ui.ini text, the UI
-// scale, and how the fonts are loaded. A test can't move a real window
+// Unit tests for the window-placement half of ui/app_shell and the DPI and
+// font half of ui/imgui_setup: which saved rectangles are safe to reopen at,
+// the hydra_ui.ini text, the UI scale, and how the fonts are loaded. A test can't move a real window
 // between monitors, so the Win32 side in main.cpp stays thin and everything
 // it decides is tested here.
 
