@@ -663,10 +663,10 @@ struct Activation {
     // Every timing this activation has, in the notation's order: the early
     // fill first when the activation is E-critical, then each squeeze in
     // sqinouts order. A fill with time to spare is listed too (D261), its
-    // figure below 0 ("early fill -56 ms": SP was ready 56 ms before the
+    // figure below 0 ("early fill -56.2 ms": SP was ready 56.2 ms before the
     // deadline). So is a squeeze that needs no timing
     // (SPSqueeze::needs_no_timing), as 2.0 showed it (D80); its figure is 0
-    // or less ("squeeze in -316 ms": the note already lands 316 ms inside
+    // or less ("squeeze in -315.8 ms": the note already lands 315.8 ms inside
     // SP). hardest() picks from this list, leaving those two out. The Paths
     // tab's row shows one badge per entry; empty means no badge.
     std::vector<ActivationTiming> badge_timings() const;
