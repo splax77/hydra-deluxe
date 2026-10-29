@@ -87,6 +87,12 @@ def _default_wait(event: threading.Event, timeout_s: float) -> bool:
             return True
 
 
+def _detached_text(reason: Any) -> str:
+    """The line for a session Frida dropped; run_agent and LiveAgent both
+    report it."""
+    return f"session detached: {reason}"
+
+
 def _import_frida() -> Any:
     """The frida module, or SystemExit with the advice that fixes a failed
     import."""
@@ -158,7 +164,7 @@ def run_agent(agent_path: str, cap_s: float,
             finish(END_SCRIPT_ERROR, message.get("description"))
 
     def detached(reason: Any, *_rest: Any) -> None:
-        finish(END_DETACHED, f"session detached: {reason}")
+        finish(END_DETACHED, _detached_text(reason))
 
     try:
         log = open(out_path, "w", encoding="utf-8")
@@ -325,8 +331,7 @@ class LiveAgent:
         try:
             # Outside the lock: Frida answers a detach through _on_detached,
             # which takes the lock itself.
-            if session is not None:
-                session.detach()
+            session.detach()
         except Exception as e:  # noqa: BLE001
             # A session the game already dropped may refuse a second detach.
             self._out(f"detach reported: {e}")
@@ -349,7 +354,13 @@ class LiveAgent:
         try:
             # Outside the lock: the reply may arrive on Frida's thread
             # before post returns.
-            script.post({"type": "read", "id": pending.id})
+            try:
+                script.post({"type": "read", "id": pending.id})
+            except Exception as e:  # noqa: BLE001
+                # The game can drop the session between the alive check and
+                # the post; Frida then refuses the post.
+                raise ReadFailed(END_DETACHED,
+                                 f"posting {what} failed: {e}") from e
             self._wait(pending.event, cap_s)
         finally:
             with self._lock:
@@ -390,7 +401,7 @@ class LiveAgent:
     def _on_detached(self, reason: Any, *_rest: Any) -> None:
         with self._lock:
             if self.gone_reason is None:
-                self.gone_reason = f"session detached: {reason}"
+                self.gone_reason = _detached_text(reason)
             self.alive = False
             pending = self._pending
             if pending is not None and not pending.event.is_set():

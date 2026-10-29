@@ -481,6 +481,19 @@ class LiveAgentTest(Workspace):
                          "session detached: process-terminated")
         self.assertEqual(caught.exception.reason, FA.END_DETACHED)
 
+    def test_a_post_refused_by_a_dropped_session_fails_the_read(self):
+        agent, session = self.started([STATE])
+
+        def refuse(message):
+            raise RuntimeError("the connection is closed")
+
+        session.script.post = refuse
+        with self.assertRaises(FA.ReadFailed) as caught:
+            agent.read(5.0)
+        self.assertEqual(str(caught.exception),
+                         "posting the read failed: the connection is closed")
+        self.assertEqual(caught.exception.reason, FA.END_DETACHED)
+
     def test_an_agent_error_fails_the_read(self):
         agent, _ = self.started(
             [STATE, {"error": "reading GameManager failed: boom"}])
