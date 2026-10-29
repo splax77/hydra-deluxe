@@ -694,8 +694,8 @@
     },
     {
       "question": "What does a failed job record?",
-      "owner": "ResultJobBase::fail in src/ui/job_base.h",
-      "owner_file": "src/ui/job_base.h",
+      "owner": "ResultJobBase::fail in src/app/job_base.h",
+      "owner_file": "src/app/job_base.h",
       "owner_symbol": "fail",
       "date": "2026-10-04",
       "decision": "D53",
@@ -703,7 +703,7 @@
       "pattern": "finished_\\.store\\(true\\)",
       "anchor": "finished_.store(true)",
       "owner_files": [
-        "src/ui/job_base.h"
+        "src/app/job_base.h"
       ],
       "must_match": [
         "finished_.store(true);"

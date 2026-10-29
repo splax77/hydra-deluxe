@@ -29,10 +29,10 @@
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
+#include "app/job_base.h"
 #include "app/report.h"
 #include "core/model.h"
 #include "store/record_store.h"
-#include "ui/job_base.h"
 #include "ui/library_model.h"
 
 namespace hydra::ui {

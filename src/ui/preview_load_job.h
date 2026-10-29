@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "app/job_base.h"
 #include "app/preview_source.h"
 #include "app/preview_view.h"
 #include "audio/stem_reader.h"
@@ -25,7 +26,6 @@
 #include "parse/song.h"
 #include "render/track_state.h"
 #include "store/record_store.h"
-#include "ui/job_base.h"
 
 namespace hydra::ui {
 

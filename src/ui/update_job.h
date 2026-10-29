@@ -14,8 +14,8 @@
 #include <optional>
 #include <string>
 
+#include "app/job_base.h"
 #include "app/update_release.h"
-#include "ui/job_base.h"
 
 namespace hydra::ui {
 

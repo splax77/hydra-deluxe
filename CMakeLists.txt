@@ -351,6 +351,7 @@ add_library(hydra_core STATIC
     src/app/report_files.cpp
     src/app/user_messages.cpp
     src/app/update_verify.cpp
+    src/app/job_base.h
     src/app/preview_clock.h
     src/app/update_key.h
     src/app/work_pool.h
@@ -489,7 +490,6 @@ add_library(hydra_ui STATIC
     src/ui/fallback_fonts.h
     src/ui/fonts.h
     src/ui/generation.h
-    src/ui/job_base.h
     src/ui/label_layout.h
     src/ui/library_parts.h
     src/ui/report_state.h
