@@ -560,7 +560,10 @@ std::string display_artist(std::string_view artist) {
     return name_or_unknown(display_title(artist), kUnknownArtist);
 }
 
-std::string display_charter(std::string_view charter) { return clean_name(charter); }
+std::string display_charter(std::string_view charter) {
+    // The cleaned charter, then the same missing-name test as the artist.
+    return name_or_unknown(clean_name(charter), kUnknownCharter);
+}
 
 std::string display_album(std::string_view album) { return clean_name(album); }
 

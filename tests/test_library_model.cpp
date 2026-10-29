@@ -238,6 +238,28 @@ TEST_CASE("library model: an artist made only of tags reads (unknown), and searc
     CHECK(m.order().empty());
 }
 
+TEST_CASE("library model: a missing charter sorts and searches as a missing artist does (D266 item 2)") {
+    // Sort reads the shown text, so a placeholder or tags-only charter sorts
+    // under "(unknown)". Search reads the stored text: the scan's placeholder
+    // is a hit for charter:unknown, as <unknown artist> is for artist:unknown,
+    // and a tags-only charter is not, as a tags-only artist is not.
+    LibraryModel m;
+    m.set_charts({chart("placeholder", "Song P", "<unknown artist>", "<unknown charter>", "common"),
+                  chart("tags", "Song T", hydra::test::kTagOnlyTitle, hydra::test::kTagOnlyTitle,
+                        "common"),
+                  chart("named", "Song N", "Cats", "Bob", "common"),
+                  chart("late", "Song L", "Dogs", "Zed", "common")});
+    m.set_sort(LibrarySort::Charter, true);
+    CHECK(titles(m) == std::vector<std::string>{"Song P", "Song T", "Song N", "Song L"});
+    m.set_sort(LibrarySort::Artist, true);
+    CHECK(titles(m) == std::vector<std::string>{"Song P", "Song T", "Song N", "Song L"});
+
+    m.set_query("charter:unknown");
+    CHECK(titles(m) == std::vector<std::string>{"Song P"});
+    m.set_query("artist:unknown");
+    CHECK(titles(m) == std::vector<std::string>{"Song P"});
+}
+
 TEST_CASE("library model: an album draws without its tags, a blank one draws empty, and search folds it") {
     // display_album's text, with no placeholder for a blank album.
     LibraryModel m;
@@ -295,16 +317,19 @@ TEST_CASE("library model: Album sorts on the album its cell shows, blanks first"
                                                 "YYZ"});
 }
 
-TEST_CASE("library model: an empty or placeholder artist reads (unknown), and the charter is trimmed") {
-    // D56 item 2: every missing artist reads "(unknown)". The charter reads
-    // display_charter's text: tags gone, the spaces at its ends trimmed.
+TEST_CASE("library model: an empty or placeholder artist or charter reads (unknown), and the "
+          "charter is trimmed") {
+    // D56 item 2 and D266 item 2: every missing artist or charter reads
+    // "(unknown)". A present charter reads display_charter's text: tags gone,
+    // the spaces at its ends trimmed.
     LibraryModel m;
     m.set_charts({chart("a", "Song A", "", " <b>Bob</b> ", "common"),
-                  chart("b", "Song B", "<unknown artist>", "Charter", "common")});
+                  chart("b", "Song B", "<unknown artist>", "<unknown charter>", "common")});
     REQUIRE(m.rows().size() == 2);
     CHECK(m.rows()[0].artist == "(unknown)");
     CHECK(m.rows()[0].charter == "Bob");
     CHECK(m.rows()[1].artist == "(unknown)");
+    CHECK(m.rows()[1].charter == "(unknown)");
 }
 
 TEST_CASE("library model: a name sorts on the text its cell shows, not the stored text") {

@@ -8,7 +8,7 @@
 #include "app/report.h"  // library_lookup, lacks_chart_library, kNoChartLibrary
 #include "core/error_kind.h"
 #include "core/model.h"  // counted, group_thousands
-#include "parse/song.h"  // display_title, display_artist, display_charter
+#include "parse/song.h"  // display_title, display_artist, display_charter, kUnknownTitle
 #include "search/graph.h"  // fill_rule_for, fill_rule_name
 #include "store/chart_index.h"
 
@@ -101,7 +101,8 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
         row.song = display_title(board_names ? s.song_name : named->title);
         row.artist = display_artist(board_names ? s.artist : named->artist);
         row.charter = display_charter(board_names ? s.charter : named->charter);
-        if (row.charter.empty() && named) row.charter = display_charter(named->charter);
+        // A leaderboard with no charter for the song lends the joined chart's.
+        if (row.charter == kUnknownTitle && named) row.charter = display_charter(named->charter);
 
         // Hydra's optimal is for normal speed only. An off-speed score shows
         // Hydra's numbers when it has them, but is never called under, at or

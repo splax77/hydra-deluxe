@@ -356,13 +356,20 @@ TEST_CASE("display_artist: a missing artist reads (unknown) however it is stored
     CHECK(artist_or_unknown("") == "<unknown artist>");
 }
 
-TEST_CASE("display_charter: tags go and the ends are trimmed, with no fallback") {
+TEST_CASE("display_charter: tags go and the ends are trimmed") {
     CHECK(display_charter(" <b>Bob</b> ") == "Bob");
     CHECK(display_charter("<color=red> Hoph2o </color>") == "Hoph2o");
-    CHECK(display_charter(test::kTagOnlyTitle) == "");
-    CHECK(display_charter("") == "");
-    // The scan's charter placeholder keeps today's text.
-    CHECK(display_charter("<unknown charter>") == "<unknown charter>");
+}
+
+TEST_CASE("display_charter: a missing charter reads (unknown) however it is stored (D266 item 2)") {
+    // Empty, the scan's placeholder, or only tags: all three read "(unknown)",
+    // the same text a missing artist shows.
+    CHECK(display_charter("") == "(unknown)");
+    CHECK(display_charter("<unknown charter>") == "(unknown)");
+    CHECK(display_charter(test::kTagOnlyTitle) == "(unknown)");
+    CHECK(display_charter(" <b></b> ") == "(unknown)");
+    // The stored text is not touched: the scan still writes its placeholder.
+    CHECK(charter_or_unknown("") == "<unknown charter>");
 }
 
 TEST_CASE("display_album: tags go and the ends are trimmed, and a blank stays blank") {

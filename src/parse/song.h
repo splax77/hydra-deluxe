@@ -125,9 +125,10 @@ std::string display_title(std::string_view title);
 // kUnknownArtist placeholder. Stored text is unchanged.
 std::string display_artist(std::string_view artist);
 
-// The one cleaned charter every screen shows: tags stripped and the ends
-// trimmed. It has no fallback, so a charter made only of tags reads empty
-// and the scan's kUnknownCharter placeholder shows as it is.
+// The one cleaned charter every screen shows (D266 item 2): tags stripped and
+// the ends trimmed. A missing charter reads kUnknownTitle, like a missing
+// artist, whether it is empty, only tags or spaces, or the scan's
+// kUnknownCharter placeholder. Stored text is unchanged.
 std::string display_charter(std::string_view charter);
 
 // The one cleaned album every screen shows: tags stripped and the ends
@@ -135,9 +136,9 @@ std::string display_charter(std::string_view charter);
 // none for an album, so a blank album reads empty.
 std::string display_album(std::string_view album);
 
-// The placeholders the scan stores for a blank artist or charter. The stored
-// artist placeholder never reaches the screen: display_artist shows
-// kUnknownTitle for it. The charter placeholder shows as it is.
+// The placeholders the scan stores for a blank artist or charter. Neither
+// reaches the screen: display_artist and display_charter show kUnknownTitle
+// for them.
 inline constexpr const char* kUnknownArtist = "<unknown artist>";
 inline constexpr const char* kUnknownCharter = "<unknown charter>";
 

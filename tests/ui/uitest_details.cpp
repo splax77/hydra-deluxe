@@ -981,6 +981,16 @@ void test_panel_headline(ImGuiTestContext* ctx) {
         IM_CHECK(visible_text(h).find("(unknown) \xC2\xB7 charted by Hoph2o") !=
                  std::string::npos);
         h.app->selected->artist = "Green Day";
+        // A missing charter reads "(unknown)" and the line keeps its
+        // "charted by" (D266 item 2), for the scan's placeholder and for
+        // empty text alike.
+        for (const char* missing : {"<unknown charter>", ""}) {
+            h.app->selected->charter = missing;
+            ctx->Yield(2);
+            IM_CHECK(visible_text(h).find("Green Day \xC2\xB7 charted by (unknown)") !=
+                     std::string::npos);
+        }
+        h.app->selected->charter = "Hoph2o";
         ctx->Yield(2);
     }
 
