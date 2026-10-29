@@ -118,30 +118,45 @@ class RunCapReached(Exception):
     """The run has used RUN_CAP_S of wall time."""
 
 
+class StopAsked(Exception):
+    """The caller's `should_stop` said to end the run."""
+
+
+# The `stop` of a live run that never found a playing song's engine.
+STOP_NO_ENGINE = "no engine"
+
+
 @dataclass
 class RunResult:
     """What one run did. `rows` are the press-log rows, keyed by the names in
     PRESS_LOG_COLUMNS. `stop` says why the run ended: "done" (every chord
     pressed), "past_end" (the clock was past the last chord), "frozen",
-    "cap", "interrupted" or "lost" (the process went away)."""
+    "cap", "interrupted", "lost" (the process went away), "stopped" (the
+    caller's `should_stop` said so) or STOP_NO_ENGINE (live_play found no
+    playing song; `message` holds the finder's words)."""
     sent: int = 0
     hit: int = 0
     max_streak: int = 0
     rows: list = field(default_factory=list)
     stop: str = ""
+    message: str = ""
 
 
 def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                 press: Callable[[List[int]], object], *,
                 now: Callable[[], float] = time.perf_counter,
                 sleep: Callable[[float], None] = time.sleep,
+                on_press: Optional[Callable[[dict], object]] = None,
+                should_stop: Optional[Callable[[], bool]] = None,
                 out: Optional[TextIO] = None) -> RunResult:
     """Press every chord from where the song clock is now, and log each press.
 
     `clock` reads the song clock (live.ReadsSongClock), `read_score` reads the
     engine's score and `press` sends one chord's keys. The live script passes
     the game's; the tests pass fakes. `now` and `sleep` are the wall clock the
-    stop checks and the waits use."""
+    stop checks and the waits use. `on_press`, when given, gets each press-log
+    row as it is added; `should_stop`, when given, is asked with the run cap
+    and ends the run as "stopped" when it returns True."""
     out = sys.stdout if out is None else out
     notes_ms = [c.ms for c in chords]
     result = RunResult()
@@ -151,6 +166,8 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
         # live.wait_until asks this before every clock read.
         if now() - start_s >= RUN_CAP_S:
             raise RunCapReached(f"run cap of {RUN_CAP_S:g} s reached")
+        if should_stop is not None and should_stop():
+            raise StopAsked("asked to stop")
         return False
 
     raw_s, _est = clock.read()
@@ -207,14 +224,17 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                 result.max_streak = max(result.max_streak, streak)
             else:
                 streak = 0
-            result.rows.append({
+            row = {
                 "index": chord.index,
                 "chart_ms": chord.ms,
                 "clock_ms_at_press": raw_ms,
                 "score_before": score_before,
                 "score_after": score_after,
                 "hit": int(hit),
-            })
+            }
+            result.rows.append(row)
+            if on_press is not None:
+                on_press(row)
 
             diff_ms = raw_ms - chord.ms
             lane_str = "+".join(LANE_NAMES.get(l, "?") for l in chord.lanes)
@@ -235,6 +255,9 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     except RunCapReached as e:
         print(f"\n  Stopped: {e}.", file=out)
         result.stop = "cap"
+    except StopAsked as e:
+        print(f"\n  Stopped: {e}.", file=out)
+        result.stop = "stopped"
     except KeyboardInterrupt:
         print("\n  Stopped.", file=out)
         result.stop = "interrupted"
@@ -262,7 +285,7 @@ def _find_engine(proc) -> int:
         proc, [engine_finder.normal_pattern(proc)])
 
 
-def _live_press(driver: InputDriver, hwnd: int) -> Callable[[List[int]], object]:
+def live_press(driver: InputDriver, hwnd: int) -> Callable[[List[int]], object]:
     """A press that focuses the game window, then sends the chord's keys.
     LIVE-ONLY: sends input to the game."""
     def press(lanes: List[int]) -> object:
@@ -272,15 +295,62 @@ def _live_press(driver: InputDriver, hwnd: int) -> Callable[[List[int]], object]
     return press
 
 
+def live_play(chords: Sequence[Chord], *,
+              open_proc: Callable = open_process,
+              find_engine: Callable[[object], int] = _find_engine,
+              driver: Optional[InputDriver] = None,
+              on_press: Optional[Callable[[dict], object]] = None,
+              should_stop: Optional[Callable[[], bool]] = None,
+              out: Optional[TextIO] = None) -> RunResult:
+    """Play `chords` against the running game and return what the run did.
+
+    LIVE-ONLY: opens the game read-only, finds its engine and sends keys
+    through `driver` (a new InputDriver when None). When no song starts
+    inside the finder's cap, the result's `stop` is STOP_NO_ENGINE and its
+    `message` is the finder's. `on_press` and `should_stop` go to
+    play_chords. `open_proc` and `find_engine` stand in for open_process and
+    the capped finder in tests."""
+    out = sys.stdout if out is None else out
+    print("\nConnecting to Clone Hero...", file=out)
+    proc = open_proc(read_only=True)
+    try:
+        proc.verify_targets()
+
+        print("  Waiting for active engine (start/unpause the song)...", file=out)
+        try:
+            engine_ptr = find_engine(proc)
+        except engine_finder.EngineSearchTimeout as e:
+            return RunResult(stop=STOP_NO_ENGINE, message=str(e))
+        engine = EngineModel(proc)
+        engine.use_object(engine_ptr)
+        print(f"  Engine at {engine_ptr:#x}, song clock = {engine.song_clock():.2f}s",
+              file=out)
+
+        ch_hwnd = find_game_window()
+        if ch_hwnd:
+            print(f"  Clone Hero window handle: {ch_hwnd:#x}", file=out)
+        else:
+            print("  WARNING: could not find Clone Hero window", file=out)
+
+        # No fill-in between frames: the estimate is the raw clock, which is
+        # what play_chart has always fired on.
+        clock = SongClock(engine.song_clock, max_fill_s=0.0)
+        driver = InputDriver() if driver is None else driver
+        return play_chords(chords, clock, engine.score,
+                           live_press(driver, ch_hwnd),
+                           on_press=on_press, should_stop=should_stop, out=out)
+    finally:
+        proc.close()
+
+
 def main(argv: Optional[Sequence[str]] = None, *,
          open_proc: Callable = open_process,
          find_engine: Callable[[object], int] = _find_engine,
          out: Optional[TextIO] = None) -> int:
     """Play a score JSON against the running game. Returns the exit code.
 
-    LIVE-ONLY: opens the game, finds its engine and sends keys. `open_proc`
-    and `find_engine` stand in for open_process and the capped finder in
-    tests."""
+    LIVE-ONLY: the run itself is live_play's. `open_proc` and `find_engine`
+    stand in for open_process and the capped finder in tests."""
     out = sys.stdout if out is None else out
     parser = argparse.ArgumentParser(
         description="Play a hydra_replay score JSON in Clone Hero.")
@@ -296,35 +366,11 @@ def main(argv: Optional[Sequence[str]] = None, *,
     print(f"  First note at {C.ms_to_s(chords[0].ms):.2f}s, "
           f"last at {C.ms_to_s(chords[-1].ms):.2f}s", file=out)
 
-    print("\nConnecting to Clone Hero...", file=out)
-    proc = open_proc(read_only=True)
-    try:
-        proc.verify_targets()
-
-        print("  Waiting for active engine (start/unpause the song)...", file=out)
-        try:
-            engine_ptr = find_engine(proc)
-        except engine_finder.EngineSearchTimeout as e:
-            print(f"\n  {e}", file=out)
-            return 2
-        engine = EngineModel(proc)
-        engine.use_object(engine_ptr)
-        print(f"  Engine at {engine_ptr:#x}, song clock = {engine.song_clock():.2f}s",
-              file=out)
-
-        ch_hwnd = find_game_window()
-        if ch_hwnd:
-            print(f"  Clone Hero window handle: {ch_hwnd:#x}", file=out)
-        else:
-            print("  WARNING: could not find Clone Hero window", file=out)
-
-        # No fill-in between frames: the estimate is the raw clock, which is
-        # what play_chart has always fired on.
-        clock = SongClock(engine.song_clock, max_fill_s=0.0)
-        result = play_chords(chords, clock, engine.score,
-                             _live_press(InputDriver(), ch_hwnd), out=out)
-    finally:
-        proc.close()
+    result = live_play(chords, open_proc=open_proc, find_engine=find_engine,
+                       out=out)
+    if result.stop == STOP_NO_ENGINE:
+        print(f"\n  {result.message}", file=out)
+        return 2
 
     if args.log:
         write_press_log(args.log, result.rows)

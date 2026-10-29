@@ -292,5 +292,137 @@ class LiveStartTest(unittest.TestCase):
         self.assertTrue(proc.verified)
 
 
+# --- the pieces a server calls ----------------------------------------------------
+
+class CallerHooksTest(unittest.TestCase):
+    """play_chords hands each row to `on_press` and asks `should_stop`."""
+
+    def _run_with(self, on_press=None, should_stop=None):
+        wall = _FakeTime()
+        game = _FakeGame()
+        result = play_chart.play_chords(
+            _load(play_chart.load_dump_chords),
+            _FakeSongClock(wall, start_s=12.0), game.read_score, game.press,
+            now=wall.now, sleep=wall.sleep, on_press=on_press,
+            should_stop=should_stop, out=io.StringIO())
+        return result, game
+
+    def test_on_press_sees_every_row_in_order(self):
+        seen = []
+        result, _game = self._run_with(on_press=seen.append)
+        self.assertEqual(result.stop, "done")
+        self.assertEqual([r["index"] for r in seen],
+                         [38, 41, 45, 91, 95, 97, 400, 573])
+        self.assertEqual(seen, result.rows)
+
+    def test_should_stop_after_the_second_chord_ends_the_run(self):
+        seen = []
+        result, game = self._run_with(on_press=seen.append,
+                                      should_stop=lambda: len(seen) >= 2)
+        self.assertEqual(result.stop, "stopped")
+        self.assertEqual([r["index"] for r in result.rows], [38, 41])
+        self.assertEqual(len(game.presses), 2)
+
+    def test_a_stop_leaves_no_key_held_down(self):
+        # The real InputDriver press, with its key events recorded: the stop
+        # is asked only between presses, so every key that went down is up.
+        from tools.ch_probe.input_driver import InputDriver
+        events = []
+        driver = InputDriver()
+        driver.send_key = lambda vk, key_up: events.append((vk, key_up))
+        wall = _FakeTime()
+        game = _FakeGame()
+        seen = []
+        result = play_chart.play_chords(
+            _load(play_chart.load_dump_chords),
+            _FakeSongClock(wall, start_s=12.0), game.read_score,
+            play_chart.live_press(driver, 0), now=wall.now, sleep=wall.sleep,
+            on_press=seen.append, should_stop=lambda: len(seen) >= 3,
+            out=io.StringIO())
+        self.assertEqual(result.stop, "stopped")
+        self.assertEqual(len(seen), 3)
+        down = [vk for vk, key_up in events if not key_up]
+        up = [vk for vk, key_up in events if key_up]
+        self.assertEqual(len(down), 1 + 1 + 3)  # yellow cymbal, kick, chord of 3
+        self.assertEqual(sorted(down), sorted(up))
+        self.assertTrue(events[-1][1])
+
+    def test_should_stop_false_changes_nothing(self):
+        result, game = self._run_with(should_stop=lambda: False)
+        self.assertEqual(result.stop, "done")
+        self.assertEqual(len(game.presses), 8)
+
+
+class _FakeDriver:
+    """Records each chord press into a shared event list."""
+
+    def __init__(self, events) -> None:
+        self.events = events
+
+    def press_chord(self, lanes):
+        self.events.append(("press", list(lanes)))
+        return ["keys"]
+
+
+class LivePlayTest(unittest.TestCase):
+    def test_no_engine_returns_the_finder_message_and_closes_the_game(self):
+        proc = _FakeProc()
+        opens = []
+
+        def opener(**kwargs):
+            opens.append(kwargs)
+            return proc
+
+        def times_out(_proc):
+            raise engine_finder.EngineSearchTimeout("the fake finder gave up")
+
+        events = []
+        result = play_chart.live_play(
+            _load(play_chart.load_dump_chords), open_proc=opener,
+            find_engine=times_out, driver=_FakeDriver(events),
+            out=io.StringIO())
+        self.assertEqual(result.stop, play_chart.STOP_NO_ENGINE)
+        self.assertEqual(play_chart.STOP_NO_ENGINE, "no engine")
+        self.assertEqual(result.message, "the fake finder gave up")
+        self.assertEqual(result.rows, [])
+        self.assertEqual(opens, [{"read_only": True}])
+        self.assertTrue(proc.verified)
+        self.assertTrue(proc.closed)
+        self.assertEqual(events, [])
+
+
+class LivePressTest(unittest.TestCase):
+    """live_press focuses through input_driver.focus_window, then presses."""
+
+    def _press(self, hwnd):
+        from unittest import mock
+        from tools.ch_probe import input_driver
+        events = []
+
+        def focus(h):
+            # The real rule, with a recorder in place of SetForegroundWindow.
+            input_driver.focus_window(
+                h, focus=lambda w: events.append(("focus", w)))
+
+        with mock.patch.object(play_chart, "focus_window", focus):
+            sent = play_chart.live_press(_FakeDriver(events), hwnd)(
+                [Lane.RED, Lane.KICK])
+        return events, sent
+
+    def test_focuses_the_window_then_presses(self):
+        events, sent = self._press(0x1234)
+        self.assertEqual(events, [("focus", 0x1234),
+                                  ("press", [Lane.RED, Lane.KICK])])
+        self.assertEqual(sent, ["keys"])
+
+    def test_no_window_presses_without_focusing(self):
+        events, _sent = self._press(0)
+        self.assertEqual(events, [("press", [Lane.RED, Lane.KICK])])
+
+    def test_the_focus_comes_from_input_driver(self):
+        from tools.ch_probe import input_driver
+        self.assertIs(play_chart.focus_window, input_driver.focus_window)
+
+
 if __name__ == "__main__":
     unittest.main()
