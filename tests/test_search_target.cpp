@@ -59,6 +59,34 @@ std::string target_text(const std::vector<Path>& kept) {
     return o.str();
 }
 
+// The corpus chart Mutemath "Allies" and its first stored path (four windows).
+struct AlliesBest {
+    const Song* song;
+    const Path* best;
+};
+AlliesBest allies_best(const app::AnalysisSettings& cfg) {
+    std::string chart;
+    for (const std::string& p : corpus::chart_paths())
+        if (p.find("Mutemath - Allies") != std::string::npos) chart = p;
+    REQUIRE_FALSE(chart.empty());
+    const HydraRecord& rec = corpus::analyzed(chart, cfg);
+    REQUIRE_FALSE(rec.all_paths().empty());
+    return {&corpus::song(chart, cfg.reading()), rec.all_paths().front()};
+}
+
+// A hand-built path for the keep_*_paths cases: it carries only activation
+// ticks, and `label` rides in notecount, which those filters never touch.
+Path made(int label, std::vector<int64_t> ticks) {
+    Path p;
+    p.notecount = label;
+    for (const int64_t t : ticks) {
+        Activation a;
+        a.timecode = Timecode::raw(t);
+        p.activations.push_back(a);
+    }
+    return p;
+}
+
 // Every root and tied variant in `paths`, roots first.
 std::vector<const Path*> roots_and_tied(const std::vector<Path>& paths) {
     std::vector<const Path*> out;
@@ -231,16 +259,6 @@ TEST_CASE("search_target: a kept root's tied variant that missed a named activat
 // keep_target_paths on a hand-built list: it reads only each path's
 // activation ticks. Labels ride in notecount, which it never touches.
 TEST_CASE("keep_target_paths: every kept path and tied variant took exactly the named ticks") {
-    auto made = [](int label, std::vector<int64_t> ticks) {
-        Path p;
-        p.notecount = label;
-        for (const int64_t t : ticks) {
-            Activation a;
-            a.timecode = Timecode::raw(t);
-            p.activations.push_back(a);
-        }
-        return p;
-    };
     // Root 1 takes both. Its variant 2 misses 200, but 2's own variant 3
     // takes both; its variant 4 takes both and 4's variant 5 misses 100.
     Path r1 = made(1, {100, 200});
@@ -387,14 +405,9 @@ TEST_CASE("search_target: activation pins return the tick search's paths and its
 // then a middle one. The answers are pinned as read from one run.
 TEST_CASE("search_target: the binary search names the last or a middle window that breaks") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    std::string chart;
-    for (const std::string& p : corpus::chart_paths())
-        if (p.find("Mutemath - Allies") != std::string::npos) chart = p;
-    REQUIRE_FALSE(chart.empty());
-    const Song& song = corpus::song(chart, cfg.reading());
-    const HydraRecord& rec = corpus::analyzed(chart, cfg);
-    REQUIRE_FALSE(rec.all_paths().empty());
-    const std::vector<PinnedWindow> pins = pinned_windows(*rec.all_paths().front());
+    const AlliesBest allies = allies_best(cfg);
+    const Song& song = *allies.song;
+    const std::vector<PinnedWindow> pins = pinned_windows(*allies.best);
     REQUIRE(pins.size() == 4);
 
     std::vector<PinnedWindow> last = pins;
@@ -442,14 +455,9 @@ TEST_CASE("free after: with nothing pinned the search is the plain search") {
 // paths that come back activate again after it.
 TEST_CASE("free after: fills past the last pin branch, fills before it follow the pins") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    std::string chart;
-    for (const std::string& p : corpus::chart_paths())
-        if (p.find("Mutemath - Allies") != std::string::npos) chart = p;
-    REQUIRE_FALSE(chart.empty());
-    const Song& song = corpus::song(chart, cfg.reading());
-    const HydraRecord& rec = corpus::analyzed(chart, cfg);
-    REQUIRE_FALSE(rec.all_paths().empty());
-    const std::vector<int64_t> best = act_ticks(*rec.all_paths().front());
+    const AlliesBest allies = allies_best(cfg);
+    const Song& song = *allies.song;
+    const std::vector<int64_t> best = act_ticks(*allies.best);
     REQUIRE(best.size() >= 3);
 
     const ScoreGraph graph(song, kCloneHeroSpCap);
@@ -507,12 +515,14 @@ TEST_CASE("free after: a pinned window over the Path limit survives a soft and a
                 for (size_t i = pins.size(); i < own.size(); ++i)
                     CHECK(own[i].within_ms_limit(0.0));
             }
-        }
 
-        EngineOptions unpinned = free_after_options(cfg, {});
-        unpinned.ms_filter = 0.0;
-        unpinned.hard_ms_filter = true;
-        CHECK(keep_prefix_paths(run_search(graph, unpinned), pins).empty());
+            // The same limit with the pins taken off drops that window.
+            if (hard) {
+                pinned.target_act_ticks.reset();
+                pinned.target_deact_ticks.clear();
+                CHECK(keep_prefix_paths(run_search(graph, pinned), pins).empty());
+            }
+        }
         return;
     }
     FAIL("no corpus chart has a best path over a 0 ms limit");
@@ -524,16 +534,6 @@ TEST_CASE("free after: a pinned window over the Path limit survives a soft and a
 // a dropped root's qualifying variant is rescued. keep_target_paths, on the
 // same list, keeps only the exact match.
 TEST_CASE("keep_prefix_paths keeps a prefix match and drops a path that activates earlier") {
-    auto made = [](int label, std::vector<int64_t> ticks) {
-        Path p;
-        p.notecount = label;
-        for (const int64_t t : ticks) {
-            Activation a;
-            a.timecode = Timecode::raw(t);
-            p.activations.push_back(a);
-        }
-        return p;
-    };
     Path r3 = made(3, {50, 100, 200});
     r3.variants.push_back(made(4, {100, 200, 400}));
     const std::vector<Path> in = {made(1, {100, 200, 300}), made(2, {100, 200}), r3,
