@@ -25,6 +25,7 @@ from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
     AGENT_DIR, FakeFrida, FakeSession, instant_wait, no_write_findings, sent)
 from tools.ch_probe import constants as C  # noqa: E402
+from tools.ch_probe.probe_songs import WINDOW_MAP  # noqa: E402
 
 ENGINE = {"name": "Eng", "image": "StrikeCore", "parent": "Base<Inputs>",
           "shape": {"sealed": True, "generic_base": True,
@@ -180,7 +181,7 @@ class CommandLineTest(unittest.TestCase):
         # Window Map's last note: 59,080 ms + SILENCE_MS 3,000 ms + 30 s
         # margin = 92.08 s song cap; plus 120 s of pause room = 212.08 s.
         with open(self.manifest, "w", encoding="utf-8") as fh:
-            json.dump({"song": "Window Map", "notes": notes_at(3000, 59080)},
+            json.dump({"song": WINDOW_MAP, "notes": notes_at(3000, 59080)},
                       fh)
         session = FakeSession([sent({"engine": ENGINE, "hooked": 2,
                                      "no_code": []})])
