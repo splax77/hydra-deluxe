@@ -36,12 +36,12 @@ FRONT_AFTER_BACK = C.OFF_FRONT_WINDOW - C.OFF_BACK_WINDOW
 REREAD_GAP_S = 0.12
 # The pause before scanning again when no clock moved (no song playing yet).
 RETRY_PAUSE_S = 0.4
-# How long find_live_engine_capped waits for a playing song before giving up.
+# How long find_live_engine waits for a playing song before giving up.
 ENGINE_SEARCH_CAP_S = 120.0
 
 
 class EngineSearchTimeout(RuntimeError):
-    """Raised by find_live_engine_capped when no song started inside the cap.
+    """Raised by find_live_engine when no song started inside the cap.
     A RuntimeError, not a TimeoutError, because TimeoutError is an OSError and
     the finder treats an OSError as one unreadable candidate and moves on."""
 
@@ -170,20 +170,35 @@ def find_live_engine(
     proc,
     patterns: Sequence[Pattern],
     *,
+    cap_s: float = ENGINE_SEARCH_CAP_S,
     scan: Callable = scan_for_engine,
     sleep: Callable[[float], None] = time.sleep,
+    now: Callable[[], float] = time.monotonic,
     out: Optional[TextIO] = None,
 ) -> int:
-    """Return the engine object whose song clock is advancing. Blocks, printing
-    a dot per try, until a song is playing.
+    """Return the engine object whose song clock is advancing. Waits, printing
+    a dot per try, until a song is playing, and raises EngineSearchTimeout
+    once `cap_s` seconds have passed with none.
 
     Clone Hero keeps several engine-shaped objects on the heap, and restarting
     a song allocates a NEW one while the old one stays frozen at its final
     time. So read every candidate's clock twice, a moment apart, and return
     the first one that changed.
+
+    The cap is checked each time the finder is about to sleep, so a run can
+    overshoot the cap by one scan of memory and one round of clock reads.
     """
     out = sys.stdout if out is None else out
     module_end = proc.module_base + MODULE_SPAN
+    start = now()
+
+    def pause(seconds: float) -> None:
+        if now() - start >= cap_s:
+            raise EngineSearchTimeout(
+                f"no playing song found in {cap_s:g} s; "
+                "start the song and run again")
+        sleep(seconds)
+
     while True:
         candidates: dict = {}   # ordered, so scan order decides ties
         for back, front in patterns:
@@ -201,7 +216,7 @@ def find_live_engine(
             except OSError:
                 pass
 
-        sleep(REREAD_GAP_S)
+        pause(REREAD_GAP_S)
 
         for e, c0 in first.items():
             try:
@@ -213,7 +228,7 @@ def find_live_engine(
 
         out.write(".")
         out.flush()
-        sleep(RETRY_PAUSE_S)
+        pause(RETRY_PAUSE_S)
 
 
 def find_live_engine_capped(
@@ -226,20 +241,7 @@ def find_live_engine_capped(
     now: Callable[[], float] = time.monotonic,
     out: Optional[TextIO] = None,
 ) -> int:
-    """find_live_engine with a time limit: the one capped search every live
-    runner uses. Returns the live engine's address, or raises
-    EngineSearchTimeout once `cap_s` seconds have passed with no song playing.
-
-    The cap is checked each time the finder is about to sleep, so a run can
-    overshoot the cap by one scan of memory and one round of clock reads."""
-    start = now()
-
-    def capped_sleep(seconds: float) -> None:
-        if now() - start >= cap_s:
-            raise EngineSearchTimeout(
-                f"no playing song found in {cap_s:g} s; "
-                "start the song and run again")
-        sleep(seconds)
-
-    return find_live_engine(proc, patterns, scan=scan, sleep=capped_sleep,
-                            out=out)
+    """find_live_engine under the name the live runners call, with the cap as
+    a positional argument. The cap itself lives in find_live_engine."""
+    return find_live_engine(proc, patterns, cap_s=cap_s, scan=scan,
+                            sleep=sleep, now=now, out=out)
