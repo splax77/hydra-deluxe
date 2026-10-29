@@ -207,3 +207,21 @@ def test_the_real_reader_decodes_a_runtime_assembly():
 
     enumerator = types["SortedDictionary.Enumerator<TKey, TValue>"]
     assert mono_facts.class_kind(enumerator) == "struct"
+
+
+def _runtime_methods(dll_name, type_name):
+    pwsh = shutil.which("pwsh")
+    assert pwsh, "pwsh (PowerShell 7) must be on PATH"
+    output = mono_facts.run_reader([os.path.join(os.path.dirname(pwsh), dll_name)])
+    types = [t for t in output["assemblies"][0]["types"] if t["name"] == type_name]
+    return [m for t in types for m in t["methods"]]
+
+
+def test_the_real_reader_writes_parameter_markers_the_way_dump_cs_does():
+    # dump.cs prefixes a plain parameter with [Out] or [In], and a by-reference
+    # one with out, in or ref; the two never mix.
+    get_locales = [m for m in _runtime_methods("System.Private.CoreLib.dll", "Interop.Globalization") if m["name"] == "GetLocales"]
+    assert {"name": "GetLocales", "return": "int", "params": ["[Out] char[]", "int"], "static": True} in get_locales
+
+    get_bytes = [m for m in _runtime_methods("System.Memory.dll", "EncodingExtensions") if m["name"] == "GetBytes"]
+    assert ["Encoding", "in ReadOnlySequence<char>", "Span<byte>"] in [m["params"] for m in get_bytes]

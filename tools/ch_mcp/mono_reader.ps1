@@ -34,18 +34,18 @@ using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Text.Json;
 
-public sealed class ChMcpMonoContextV1
+public sealed class ChMcpMonoContextV2
 {
     public readonly string[] TypeParams;
     public readonly string[] MethodParams;
-    public ChMcpMonoContextV1(string[] typeParams, string[] methodParams)
+    public ChMcpMonoContextV2(string[] typeParams, string[] methodParams)
     {
         TypeParams = typeParams;
         MethodParams = methodParams;
     }
 }
 
-public sealed class ChMcpMonoReaderV1 : ISignatureTypeProvider<string, ChMcpMonoContextV1>
+public sealed class ChMcpMonoReaderV2 : ISignatureTypeProvider<string, ChMcpMonoContextV2>
 {
     static readonly string[] None = new string[0];
 
@@ -96,7 +96,7 @@ public sealed class ChMcpMonoReaderV1 : ISignatureTypeProvider<string, ChMcpMono
         return name;
     }
 
-    public string GetTypeFromSpecification(MetadataReader reader, ChMcpMonoContextV1 context, TypeSpecificationHandle handle, byte rawTypeKind)
+    public string GetTypeFromSpecification(MetadataReader reader, ChMcpMonoContextV2 context, TypeSpecificationHandle handle, byte rawTypeKind)
     {
         return reader.GetTypeSpecification(handle).DecodeSignature(this, context);
     }
@@ -112,8 +112,8 @@ public sealed class ChMcpMonoReaderV1 : ISignatureTypeProvider<string, ChMcpMono
     {
         return genericType + "<" + string.Join(", ", typeArguments) + ">";
     }
-    public string GetGenericTypeParameter(ChMcpMonoContextV1 context, int index) { return context.TypeParams[index]; }
-    public string GetGenericMethodParameter(ChMcpMonoContextV1 context, int index) { return context.MethodParams[index]; }
+    public string GetGenericTypeParameter(ChMcpMonoContextV2 context, int index) { return context.TypeParams[index]; }
+    public string GetGenericMethodParameter(ChMcpMonoContextV2 context, int index) { return context.MethodParams[index]; }
 
     static string[] ParamNames(MetadataReader reader, GenericParameterHandleCollection handles)
     {
@@ -133,7 +133,7 @@ public sealed class ChMcpMonoReaderV1 : ISignatureTypeProvider<string, ChMcpMono
         return typeParams.Length == 0 ? name : name + "<" + string.Join(", ", typeParams) + ">";
     }
 
-    string TypeName(MetadataReader reader, EntityHandle handle, ChMcpMonoContextV1 context)
+    string TypeName(MetadataReader reader, EntityHandle handle, ChMcpMonoContextV2 context)
     {
         switch (handle.Kind)
         {
@@ -163,10 +163,17 @@ public sealed class ChMcpMonoReaderV1 : ISignatureTypeProvider<string, ChMcpMono
         return null;
     }
 
-    // dump.cs writes a by-reference parameter as out, in or ref from its flags.
+    // dump.cs writes a by-reference parameter as out, in or ref from its flags,
+    // and any other parameter with an [In] or [Out] marker in front of its type.
     static string ParamType(string decoded, ParameterAttributes flags)
     {
-        if (!decoded.StartsWith("ref ")) return decoded;
+        if (!decoded.StartsWith("ref "))
+        {
+            string marked = decoded;
+            if ((flags & ParameterAttributes.Out) != 0) marked = "[Out] " + marked;
+            if ((flags & ParameterAttributes.In) != 0) marked = "[In] " + marked;
+            return marked;
+        }
         bool isOut = (flags & ParameterAttributes.Out) != 0;
         bool isIn = (flags & ParameterAttributes.In) != 0;
         if (isOut && !isIn) return "out " + decoded.Substring(4);
@@ -178,7 +185,7 @@ public sealed class ChMcpMonoReaderV1 : ISignatureTypeProvider<string, ChMcpMono
     {
         TypeDefinition td = reader.GetTypeDefinition(handle);
         string[] typeParams = ParamNames(reader, td.GetGenericParameters());
-        var typeContext = new ChMcpMonoContextV1(typeParams, None);
+        var typeContext = new ChMcpMonoContextV2(typeParams, None);
 
         var fields = new List<object>();
         foreach (FieldDefinitionHandle fh in td.GetFields())
@@ -197,7 +204,7 @@ public sealed class ChMcpMonoReaderV1 : ISignatureTypeProvider<string, ChMcpMono
         {
             MethodDefinition md = reader.GetMethodDefinition(mh);
             string[] methodParams = ParamNames(reader, md.GetGenericParameters());
-            MethodSignature<string> sig = md.DecodeSignature(this, new ChMcpMonoContextV1(typeParams, methodParams));
+            MethodSignature<string> sig = md.DecodeSignature(this, new ChMcpMonoContextV2(typeParams, methodParams));
             var flags = new ParameterAttributes[sig.ParameterTypes.Length];
             foreach (ParameterHandle ph in md.GetParameters())
             {
@@ -246,7 +253,7 @@ public sealed class ChMcpMonoReaderV1 : ISignatureTypeProvider<string, ChMcpMono
             using (var pe = new PEReader(stream))
             {
                 MetadataReader reader = pe.GetMetadataReader();
-                var provider = new ChMcpMonoReaderV1();
+                var provider = new ChMcpMonoReaderV2();
                 string file = Path.GetFileName(path);
                 var types = new List<object>();
                 foreach (TypeDefinitionHandle h in reader.TypeDefinitions)
@@ -259,9 +266,9 @@ public sealed class ChMcpMonoReaderV1 : ISignatureTypeProvider<string, ChMcpMono
 }
 '@
 
-if (-not ('ChMcpMonoReaderV1' -as [type])) {
+if (-not ('ChMcpMonoReaderV2' -as [type])) {
     Add-Type -TypeDefinition $source -Language CSharp
 }
 
-$json = [ChMcpMonoReaderV1]::Read([string[]] $Assemblies)
+$json = [ChMcpMonoReaderV2]::Read([string[]] $Assemblies)
 [System.IO.File]::WriteAllText($Out, $json, [System.Text.UTF8Encoding]::new($false))
