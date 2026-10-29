@@ -771,6 +771,15 @@ The 3D fretboard the Preview draws, with the drum notes scrolling toward the
 strike line as the song plays.
 _Avoid_: fretboard, track
 
+**Ghost path**:
+A second Path the Preview draws faintly beside the one it shows: only the fills
+it activates on, as edge-only outlines on the note highway
+(`PreviewController::set_ghost_path`; the scene's `ghost_fills` come from
+`app::apply_preview_overlay`). It sets no fill state, and a changed chart
+draws none, as it draws no path (`drawn_path`). It has nothing to do with a
+ghost note (a dynamics velocity, see Gem).
+_Avoid_: shadow path, second path
+
 **Gem**:
 One drawn note on the note highway. Its model shows the drum type (tom, cymbal,
 or kick), its texture shows the lane, the note's dynamics, and whether it sits

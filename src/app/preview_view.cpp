@@ -256,6 +256,17 @@ PreviewScore build_score(const Song& song, const Path* path, const core::Rules& 
     return score;
 }
 
+// The fill an activation at `tick` stands on: the one riding on the chord at
+// `tick`, or none. Fills are in chord order and `from` only moves forward, so
+// a caller asking in chart order walks the fills once. The drawn path's Taken
+// fill and the ghost path's fills are both named here.
+std::optional<size_t> fill_on_chord(const std::vector<PreviewFill>& fills, int64_t tick,
+                                    size_t& from) {
+    while (from < fills.size() && fills[from].chord_tick < tick) ++from;
+    if (from >= fills.size() || fills[from].chord_tick != tick) return std::nullopt;
+    return from;
+}
+
 // The activation whose Star Power is running at `now`, or nullptr. Each
 // activation answers through PreviewActivation::sp_running_at. The drain box
 // and the score box both ask this, so they cannot disagree.
@@ -278,9 +289,9 @@ double last_note_ms(const PreviewScene& scene) {
 
 PreviewScene build_preview_scene(const Song& song, const Path* path, int sp_cap,
                                  const core::Rules& rules, std::optional<double> audio_end_ms,
-                                 std::optional<double> song_length_ms) {
+                                 std::optional<double> song_length_ms, const Path* ghost_path) {
     return apply_preview_overlay(build_preview_base(song, audio_end_ms, song_length_ms), song,
-                                 path, sp_cap, rules);
+                                 path, sp_cap, rules, ghost_path);
 }
 
 PreviewScene build_preview_base(const Song& song, std::optional<double> audio_end_ms,
@@ -381,10 +392,12 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
 }
 
 PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const Path* path,
-                                   int sp_cap, const core::Rules& rules) {
+                                   int sp_cap, const core::Rules& rules,
+                                   const Path* ghost_path) {
     // Drop any overlay the base already carries; the fields go back to what a
     // fresh base holds.
     scene.activations.clear();
+    scene.ghost_fills.clear();
     scene.trailing_bank_ticks.clear();
     for (PreviewFill& f : scene.fills) f.state = PreviewFillState::Hidden;
     scene.score = PreviewScore{};
@@ -436,19 +449,28 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
         // that fill or an earlier activation did; the highway reads it.
         std::vector<PreviewFill>& fills = scene.fills;
         size_t next_fill = 0;
-        // Marks the fill whose chord is `tick` and returns its index, or
-        // nothing when no fill rides on that chord.
+        // Marks the fill fill_on_chord names for `tick` and returns its
+        // index, or nothing when no fill rides on that chord.
         auto mark = [&](int64_t tick, PreviewFillState state) -> std::optional<size_t> {
-            while (next_fill < fills.size() && fills[next_fill].chord_tick < tick) ++next_fill;
-            if (next_fill >= fills.size() || fills[next_fill].chord_tick != tick)
-                return std::nullopt;
-            if (fills[next_fill].state != PreviewFillState::Taken) fills[next_fill].state = state;
-            return next_fill;
+            const std::optional<size_t> i = fill_on_chord(fills, tick, next_fill);
+            if (i && fills[*i].state != PreviewFillState::Taken) fills[*i].state = state;
+            return i;
         };
         for (PreviewActivation& a : scene.activations) {
             for (int64_t t : a.skipped_fill_ticks) mark(t, PreviewFillState::Offered);
             a.taken_fill = mark(a.tick, PreviewFillState::Taken);
         }
+    }
+
+    // The ghost path's fills: for each of its activations, the fill it stands
+    // on, named by fill_on_chord as the drawn path's Taken fill is. It sets
+    // no fill state, so the drawn path's strips are untouched.
+    if (ghost_path != nullptr) {
+        size_t next_fill = 0;
+        for (const Activation& a : ghost_path->walk_activations())
+            if (const std::optional<size_t> i =
+                    fill_on_chord(scene.fills, a.timecode.ticks(), next_fill))
+                scene.ghost_fills.push_back(*i);
     }
 
     // The SP meter, built last. With a path it reads the record's facts

@@ -68,6 +68,7 @@ struct TrackInstant {
     Toggle drum_lane_green = Toggle::Empty;
     Toggle fill = Toggle::Empty;        // an offered fill (drawn like Onyx's BRE)
     Toggle fill_taken = Toggle::Empty;  // Hydra: a fill the path activates on
+    Toggle fill_ghost = Toggle::Empty;  // Hydra: a fill the ghost path activates on
     Toggle sp_active = Toggle::Empty;   // Hydra: the path's active SP window
     Toggle fill_lane = Toggle::Empty;   // Hydra: the activated fill's lit lane
     std::optional<Pad> fill_lane_pad;  // which lane, while fill_lane != Empty
@@ -233,7 +234,7 @@ private:
     // sweep_span_fields. The one answer to "the state of a span at t":
     // set_span_fields reads it for the instants and for synthesize.
     struct FieldSweep {
-        SpanSweep overdrive, solo, fill, fill_taken, sp_active, fill_lane;
+        SpanSweep overdrive, solo, fill, fill_taken, fill_ghost, sp_active, fill_lane;
         std::array<SpanSweep, kPads.size()> drum_lane;  // indexed by Pad
         LaneSweep lane_pad;
         LaneSweep fill_pick, fill_taken_pick;  // over fill_ and fill_taken_
@@ -246,7 +247,7 @@ private:
     // lets merge_overlay_edges drop an old overlay's instants and restore the
     // time of the ones it keeps.
     std::vector<double> base_t_;
-    std::vector<Interval> overdrive_, solo_, fill_, fill_taken_, sp_active_;
+    std::vector<Interval> overdrive_, solo_, fill_, fill_taken_, fill_ghost_, sp_active_;
     // Each fill_ and fill_taken_ interval's index into the scene's fills,
     // entry for entry.
     std::vector<size_t> fill_scene_, fill_taken_scene_;
@@ -256,8 +257,9 @@ private:
     std::vector<Interval> fill_lane_ivs_;  // fill_lane_'s spans alone, built once
     FieldSweep sweep_;
 
-    // The overlay's intervals (fill, fill_taken, sp_active, fill_lane), cleared
-    // and rebuilt from the scene's fill states and activations.
+    // The overlay's intervals (fill, fill_taken, fill_ghost, sp_active,
+    // fill_lane), cleared and rebuilt from the scene's fill states, ghost
+    // fills and activations.
     void set_overlay_intervals(const app::PreviewScene& scene);
     // Merge the overlay's edges into the path-free instants (dropping any
     // instant only an old overlay made), then sweep every span field.
@@ -281,13 +283,15 @@ private:
 // no timing throws std::invalid_argument. Active SP
 // windows end exactly at the deact node. Offered fills drive `fill` and taken
 // ones `fill_taken`; hidden fills produce no intervals at all, since the game
-// would never have shown them. The activated fill's lane comes from the
-// activation at the fill's end note.
+// would never have shown them. The scene's ghost_fills drive `fill_ghost`,
+// whatever their state. The activated fill's lane comes from the activation
+// at the fill's end note.
 TrackState build_track_state(const app::PreviewScene& scene, const TrackStateOptions& opts);
 
 // Swap a timeline's path overlay for `scene`'s, keeping everything else. The
-// overlay is the fill, fill_taken, sp_active and fill_lane spans (they read the
-// fill states and activations, see app::apply_preview_overlay). `state` must
+// overlay is the fill, fill_taken, fill_ghost, sp_active and fill_lane spans
+// (they read the fill states, ghost fills and activations, see
+// app::apply_preview_overlay). `state` must
 // have been built by build_track_state from a scene with the same path-free
 // half as `scene` (same notes, beats, SP phrases, solos, drum lanes, fill
 // windows and timing), under the options `state` should keep. The result equals

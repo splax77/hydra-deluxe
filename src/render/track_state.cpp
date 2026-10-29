@@ -184,6 +184,7 @@ void TrackState::set_span_fields(TrackInstant& inst) const {
         inst.*drum_lane_field(p) = sweep_.drum_lane[static_cast<size_t>(p)].at(t);
     inst.fill = sweep_.fill.at(t);
     inst.fill_taken = sweep_.fill_taken.at(t);
+    inst.fill_ghost = sweep_.fill_ghost.at(t);
     inst.sp_active = sweep_.sp_active.at(t);
     inst.fill_lane = sweep_.fill_lane.at(t);
     inst.fill_lane_pad.reset();
@@ -196,6 +197,7 @@ void TrackState::set_overlay_intervals(const PreviewScene& scene) {
     fill_taken_.clear();
     fill_scene_.clear();
     fill_taken_scene_.clear();
+    fill_ghost_.clear();
     sp_active_.clear();
     fill_lane_.clear();
     fill_lane_ivs_.clear();
@@ -210,6 +212,10 @@ void TrackState::set_overlay_intervals(const PreviewScene& scene) {
             fill_taken_scene_.push_back(i);
         }
     }
+    // The ghost path's fills are its own: the drawn path's states do not
+    // hide them.
+    for (size_t i : scene.ghost_fills)
+        fill_ghost_.push_back(span_interval(scene, scene.fills[i].span));
     for (const PreviewActivation& a : scene.activations) {
         // The tinted floor and its end marks: the activation's sp_window, its
         // owner.
@@ -236,6 +242,7 @@ void TrackState::sweep_span_fields() {
     }
     sweep_.fill = SpanSweep(fill_);
     sweep_.fill_taken = SpanSweep(fill_taken_);
+    sweep_.fill_ghost = SpanSweep(fill_ghost_);
     sweep_.sp_active = SpanSweep(sp_active_);
     sweep_.fill_lane = SpanSweep(fill_lane_ivs_);
     sweep_.lane_pad = LaneSweep(fill_lane_ivs_);
@@ -324,7 +331,7 @@ void TrackState::merge_overlay_edges() {
     // The overlay's edges, sorted by time with list order kept among equal
     // times.
     const std::vector<double> edges =
-        sorted_edges({&fill_, &fill_taken_, &sp_active_, &fill_lane_ivs_});
+        sorted_edges({&fill_, &fill_taken_, &fill_ghost_, &sp_active_, &fill_lane_ivs_});
 
     // Merge the kept (path-free) instants with the edges, grouping equal
     // times. A group's time is its last moment's: the last overlay edge when

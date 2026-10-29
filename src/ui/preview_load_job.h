@@ -107,11 +107,16 @@ std::string gated_time_left_text(double elapsed_s, double time_left_s);
 // the compressed bytes. The controller pulls the finished
 // scene, timeline and mix, hands the timeline to the renderer and the mix to
 // an audio::Playhead. None of this runs on-frame.
+//
+// `ghost` (may be empty) is the second path drawn faintly beside `path`
+// (app::apply_preview_overlay's ghost_path). Every job below takes one the
+// same way, and with none the scene is the one built before ghosts existed.
 class PreviewLoadJob : public ResultJobBase {
 public:
     PreviewLoadJob(store::ChartLibraryEntry entry, const ChartReading& reading,
                    FillDeadlineRule fills, std::optional<Path> path, int sp_cap,
-                   core::Rules rules = core::default_rules());
+                   core::Rules rules = core::default_rules(),
+                   std::optional<Path> ghost = std::nullopt);
     ~PreviewLoadJob() { shutdown(); }
 
     void start();
@@ -190,6 +195,7 @@ private:
     std::optional<Path> path_;
     int sp_cap_;  // the record's SP cap, used only to scale the preview's SP meter
     core::Rules rules_;  // copied: the job outlives the caller's settings
+    std::optional<Path> ghost_;
     std::optional<Result> result_;
 
     // Written by the workers, read by the render thread; each field is its own
@@ -215,12 +221,14 @@ private:
 // not hash the chart file: the audio and the "chart changed" answer belong to
 // the file, not the mode, so the controller keeps the first load's. `path` is
 // the path to draw (already drawn_path's answer), and `audio_end_ms` is the
-// first load's Result::audio_end_ms, which the beat lines run to.
+// first load's Result::audio_end_ms, which the beat lines run to. `ghost` is
+// PreviewLoadJob's.
 class PreviewNotesJob : public ResultJobBase {
 public:
     PreviewNotesJob(store::ChartLibraryEntry entry, const ChartReading& reading,
                     FillDeadlineRule fills, std::optional<Path> path, int sp_cap,
-                    core::Rules rules, std::optional<double> audio_end_ms);
+                    core::Rules rules, std::optional<double> audio_end_ms,
+                    std::optional<Path> ghost = std::nullopt);
     ~PreviewNotesJob() { shutdown(); }
 
     void start();
@@ -252,6 +260,7 @@ private:
     int sp_cap_;
     core::Rules rules_;  // copied: the job outlives the caller's settings
     std::optional<double> audio_end_ms_;
+    std::optional<Path> ghost_;
     std::optional<Result> result_;
 };
 
@@ -306,14 +315,16 @@ private:
 // is the overlay key the scene is built for; `track_opts` are the timeline
 // options the controller draws with (its pro-drums setting); `audio_end_ms`
 // and `song_length_ms` are the load's Result fields, for a base the job has
-// to build.
+// to build. `ghost` is PreviewLoadJob's; the timeline's overlay rebuild reads
+// it from the scene.
 class PreviewSceneJob : public ResultJobBase {
 public:
     PreviewSceneJob(std::shared_ptr<const Song> song,
                     std::shared_ptr<const PreviewSceneBase> base, std::optional<Path> path,
                     int sp_cap, core::Rules rules, std::string key,
                     render::TrackStateOptions track_opts, std::optional<double> audio_end_ms,
-                    std::optional<double> song_length_ms = std::nullopt);
+                    std::optional<double> song_length_ms = std::nullopt,
+                    std::optional<Path> ghost = std::nullopt);
     ~PreviewSceneJob() { shutdown(); }
 
     void start();
@@ -343,6 +354,7 @@ private:
     render::TrackStateOptions track_opts_;
     std::optional<double> audio_end_ms_;
     std::optional<double> song_length_ms_;
+    std::optional<Path> ghost_;
     std::optional<Output> output_;
 };
 

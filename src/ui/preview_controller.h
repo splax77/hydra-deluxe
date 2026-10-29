@@ -106,17 +106,29 @@ public:
     // ImGui::Image and the end of that frame.
     void close();
 
+    // Draw `ghost` (may be null for none) faintly beside the path open() got:
+    // its fills become the scene's ghost_fills (app::apply_preview_overlay).
+    // It is copied. A changed ghost rebuilds only the overlay, on the same
+    // background job a path change uses, and the old overlay stays up until
+    // poll() swaps the new one in. Does nothing while no chart is open;
+    // close() drops it, and with none set the Preview is what it was before
+    // ghosts existed.
+    void set_ghost_path(const Path* ghost);
+
     bool active() const { return active_; }
-    // The drawn overlay's identity: the path it was built from
-    // (app::path_overlay_key) plus the SP cap its meter was scaled to, in the
-    // one string open() compares. Empty until something has loaded. Treat the
-    // exact spelling as opaque: a test may compare two of these whole, but
-    // "is this my path" is shows_path's to answer.
+    // The drawn overlay's identity: the path and the ghost path it was built
+    // from (app::path_overlay_key) plus the SP cap its meter was scaled to, in
+    // the one string open() compares. Empty until something has loaded. Treat
+    // the exact spelling as opaque: a test may compare two of these whole,
+    // but "is this my path" is shows_path's to answer.
     const std::string& overlay_path_key() const { return scene_path_key_; }
     // The drawn overlay was built from `path_key` (app::path_overlay_key),
-    // whatever SP cap its meter was scaled to. False until something has
-    // loaded.
+    // whatever ghost path it carries and whatever SP cap its meter was scaled
+    // to. False until something has loaded.
     bool shows_path(const std::string& path_key) const;
+    // The scene drawn now: the last one a load or overlay build landed, or
+    // the empty scene after close(). Tests read it.
+    const hydra::app::PreviewScene& scene() const { return scene_; }
 
     // Advance the async load; once finished, build the transport + audio device.
     // Call once per frame while the Preview tab is shown.
@@ -351,11 +363,12 @@ private:
 
     // The path overlay, kept swappable without touching the audio: the parsed
     // song the load produced, the overlay the panel last asked for, and the one
-    // scene_ was actually built with. Each key is the path's overlay key plus
-    // the SP cap (see overlay_key() in the .cpp), so a cap change rebuilds the
-    // scene the same way a path change does. The two keys differ only while a
-    // load is in flight and the Paths tab (or the cap) changed the selection
-    // under it; poll() closes the gap.
+    // scene_ was actually built with. Each key is the path's and the ghost
+    // path's overlay keys plus the SP cap (see overlay_key() in the .cpp), so
+    // a ghost or cap change rebuilds the scene the same way a path change
+    // does. The two keys differ only while a load is in flight and the Paths
+    // tab (or the ghost, or the cap) changed the selection under it; poll()
+    // closes the gap.
     std::shared_ptr<const Song> song_;  // shared read-only with scene jobs
     // Where the song's audio stops in chart time (the load's
     // Result::audio_end_ms), kept with the song so every base built for it
@@ -380,13 +393,23 @@ private:
     bool base_due() const;
     std::optional<Path> path_;
     std::string requested_path_key_;  // the path half of path_key_, as open() got it
-    std::string path_key_;        // key of path_ + sp_cap_
+    std::string path_key_;        // key of path_ + ghost_ + sp_cap_
+    // The ghost path set_ghost_path got and its app::path_overlay_key. A
+    // changed chart draws no ghost, as it draws no path (path_to_draw).
+    // Cleared by close().
+    std::optional<Path> ghost_;
+    std::string ghost_key_;
     // Every branch of open() remembers the caller's path, cap and path key
-    // here, and builds path_key_ from them.
+    // here, and builds path_key_ from them and ghost_key_. set_ghost_path
+    // hands back the request it already holds, so path_key_ is built only
+    // here.
     void record_request(const Path* path, const std::string& path_key, int sp_cap);
+    // A path, ghost or cap change: start the overlay build now, or leave it
+    // to poll() while a load or notes job is building its own scene.
+    void rebuild_overlay();
     // The path a new scene or notes build draws (drawn_path's answer for
-    // path_), copied for the job to own.
-    std::optional<Path> path_to_draw() const;
+    // `stored`, path_ or ghost_), copied for the job to own.
+    std::optional<Path> path_to_draw(const std::optional<Path>& stored) const;
     // The overlay being built for a new selection, and replaced ones still
     // finishing (dropped by poll() once done, so replacing one never joins
     // its thread on the UI thread).

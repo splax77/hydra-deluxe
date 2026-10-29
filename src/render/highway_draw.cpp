@@ -333,6 +333,41 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
         // each light their own lane (D53 item 3).
         for (const LaneSpan& s : state.make_lane_bounds(win, near_t, far_t))
             strip_tex(s.pad, s.t1, s.t2, target_tex(s.pad, true), 1.0f);
+
+        // A ghost path's fill (the Path Builder's best path) is the offered
+        // strip's rectangle, edge only, at the offered strip's alpha. Each
+        // edge is cut from the lane texture it lies on. The lines are as wide
+        // as a beat line is deep, so every line on the floor has one weight
+        // (path-builder plan Q4: a layout size, judged at the real-app
+        // check). A stretch the window cuts has no edge at the cut.
+        const float line_w = T.beats_z_past - T.beats_z_future;
+        const float ghost_alpha = cfg.hydra.fill_offered_alpha;
+        auto edge = [&](Pad pad, float x1, float x2, float z1, float z2) {
+            out.push_back(flat(x1, T.y, z1, x2, z2, tex_mat(lane_tex(pad)), ghost_alpha,
+                               DepthMode::Always));
+        };
+        for (const ToggleSpan& s :
+             state.make_toggle_bounds(win, near_t, far_t, &TrackInstant::fill_ghost)) {
+            if (!s.on) continue;
+            const bool has_near = s.t1 > near_t, has_far = s.t2 < far_t;
+            const float z_near = z_of(s.t1), z_far = z_of(s.t2);  // the future is toward -Z
+            for (Pad p : kPads) {
+                float x1, x2;
+                pad_x(cfg, p, x1, x2);
+                if (has_near) edge(p, x1, x2, z_near, z_near - line_w);
+                if (has_far) edge(p, x1, x2, z_far + line_w, z_far);
+            }
+            // The sides run between the near and far edges, so no corner is
+            // drawn twice.
+            const float side_near = has_near ? z_near - line_w : z_near;
+            const float side_far = has_far ? z_far + line_w : z_far;
+            if (side_near <= side_far) continue;
+            float x1, x2;
+            pad_x(cfg, kPads.front(), x1, x2);
+            edge(kPads.front(), x1, x1 + line_w, side_near, side_far);
+            pad_x(cfg, kPads.back(), x1, x2);
+            edge(kPads.back(), x2 - line_w, x2, side_near, side_far);
+        }
     }
 
     // 5. Strike line (Onyx targets) and the glow after a hit, depth off.
