@@ -310,8 +310,6 @@ TEST_CASE("single-owner: the walk reads committed and new files, never ignored o
     commit_all(dir, "kept");
     write_fixture_file(dir, "tools/vendor/ignored.py", answer);
     write_fixture_file(dir, "tools/new.py", answer);
-    fs::create_directories(hydra::os_path(dir + "\\src"));
-    fs::create_directories(hydra::os_path(dir + "\\tests"));
 
     OwnerRule r;
     r.question = "Is this a made-up question?";
@@ -345,17 +343,26 @@ TEST_CASE("single-owner: the walk reads committed and new files, never ignored o
               "src/a.cpp: x = made_up(3) (rule: rules/made_up.json)"});
     testtemp::remove_dir(dir);
 
-    // A folder outside any git repo fails loudly, naming the folder.
+    // A folder outside any git repo, and a repo with no files to read, fail
+    // loudly, naming the folder.
     const std::string plain = testtemp::temp_dir("single_owner_walk_plain");
     const fs::path plain_root = fs::path(hydra::os_path(plain));
-    std::string error;
-    try {
-        sourcetree::for_each_source_file(plain_root, [](const fs::path&, const std::string&) {});
-    } catch (const std::exception& e) {
-        error = e.what();
-    }
-    INFO(error);
-    CHECK(error.find(plain_root.u8string()) != std::string::npos);
+    const auto walk_error = [&] {
+        std::string error;
+        try {
+            sourcetree::for_each_source_file(plain_root, [](const fs::path&, const std::string&) {});
+        } catch (const std::exception& e) {
+            error = e.what();
+        }
+        return error;
+    };
+    const std::string outside = walk_error();
+    INFO(outside);
+    CHECK(outside.rfind("the source walk could not ask git for the files in " + plain_root.u8string() + ": ",
+                        0) == 0);
+    fixture_git(plain, {"init", "-q", "-b", "main"});
+    CHECK(walk_error() ==
+          "the source walk found no files git knows under the walked folders in " + plain_root.u8string());
     testtemp::remove_dir(plain);
 }
 

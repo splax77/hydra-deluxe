@@ -139,7 +139,7 @@
       "scope": [
         "tests"
       ],
-      "note": "Decided by: this file's own rule (one scan, new rules are rows); step-1 derive-once review finding 12 (2026-10-04); one walker for the docs test too (phase 4 join, 2026-10-04)"
+      "note": "A test that walks a walked folder on disk by hand is a second walker, and it also reads what git ignores (a node_modules under tools/), which the owner's git listing leaves out. Decided by: this file's own rule (one scan, new rules are rows); step-1 derive-once review finding 12 (2026-10-04); one walker for the docs test too (phase 4 join, 2026-10-04); the walk reads git's file list (scan-tracked-files, 2026-10-28)"
     },
     {
       "question": "Which test reads the source tree?",

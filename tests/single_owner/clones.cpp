@@ -6,8 +6,9 @@
 // lines that appears in two places, in two files or twice in one. Overlapping
 // runs merge into one copied block, named once with both places. The
 // baseline (known_clones) lists the copies that were already there; like
-// known_copies, it only shrinks. Vendored code in third_party/ is outside the
-// walk (tests/source_tree.h), so it is never read.
+// known_copies, it only shrinks. Vendored code, in third_party/ or in a
+// folder git ignores, is outside the walk (tests/source_tree.h), so it is
+// never read.
 #include "doctest.h"
 
 #include <algorithm>
