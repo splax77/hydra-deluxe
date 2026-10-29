@@ -13,7 +13,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -500,16 +499,6 @@ const std::vector<KnownGap>& known_gaps() {
     return g;
 }
 
-// Today on this machine's calendar, as YYYY-MM-DD, to hold against remove_by.
-std::string local_date() {
-    const std::time_t now = std::time(nullptr);
-    std::tm t{};
-    localtime_s(&t, &now);
-    char text[11];
-    std::strftime(text, sizeof text, "%Y-%m-%d", &t);
-    return text;
-}
-
 // Whether `name` is a key of `table` or sits in any of its lists.
 bool names_anywhere(const std::map<std::string, Links>& table, const std::string& name) {
     for (const auto& [key, l] : table)
@@ -614,7 +603,7 @@ TEST_CASE("layering: externals rows match their own examples") {
 }
 
 TEST_CASE("layering: every known gap names a real include and is not past its date") {
-    const std::string today = local_date();
+    const std::string today = single_owner::today_iso();
     std::vector<std::string> bad;
     for (const KnownGap& g : known_gaps()) {
         const std::string name = "known_gaps.json: " + g.task + ": " + g.file + " includes \"" + g.include + "\"";
@@ -624,9 +613,8 @@ TEST_CASE("layering: every known gap names a real include and is not past its da
             return std::find(incs.begin(), incs.end(), g.include) != incs.end();
         }();
         if (!real) bad.push_back(name + ": no such include line; delete the entry");
-        if (today > g.dates.remove_by)
-            bad.push_back(name + ": past its remove_by date " + g.dates.remove_by + " (added by " +
-                          g.dates.added_by + " on " + g.dates.date + "): fix the include and delete the entry");
+        if (const std::string due = single_owner::baseline_due(name, g.dates, today); !due.empty())
+            bad.push_back(due);
     }
     INFO(joined(bad));
     CHECK(bad.empty());
