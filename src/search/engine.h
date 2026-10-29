@@ -45,8 +45,16 @@ struct EngineOptions {
     // variants, priced the engine's own way. An unrealizable set (an
     // activation with SP under kSpActivationBars, a fill the engine cannot
     // spawn in time, a tick that is not a fill node) empties the frontier,
-    // which surfaces as the usual std::runtime_error.
+    // which surfaces as the usual std::runtime_error. A pinned activation is
+    // never judged by ms_filter: the caller chose it, so the limit judges
+    // only the activations the search chooses itself.
     std::optional<std::vector<int64_t>> target_act_ticks;
+    // With target_act_ticks: follow the pins only up to the last pinned
+    // activation, and let every later fill branch as a plain search does, so
+    // the search finds the best path that starts with the pinned windows.
+    // With no tick pinned the search is the plain one. The engine's fill rule
+    // (Engine::run) is where this is read.
+    bool free_after = false;
     // With target_act_ticks: the deactivation node (Activation::deact_tick)
     // each of the first target_deact_ticks.size() windows must end on, in the
     // same order; later windows are pinned by activation only. It answers

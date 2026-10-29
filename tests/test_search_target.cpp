@@ -2,11 +2,14 @@
 // paths that took every named activation (D45), and a full pin of a stored
 // path (Track R2) comes back alone, or names the window that broke and why.
 // Most cases pin answers on the fuzzed fast-tempo charts (fast_tempo_charts.h).
+// The free-after cases (EngineOptions::free_after, keep_prefix_paths) follow
+// the pins and then search freely, on the corpus.
 
 #include "doctest.h"
 
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -54,6 +57,32 @@ std::string target_text(const std::vector<Path>& kept) {
         o << " | ";
     }
     return o.str();
+}
+
+// Every root and tied variant in `paths`, roots first.
+std::vector<const Path*> roots_and_tied(const std::vector<Path>& paths) {
+    std::vector<const Path*> out;
+    for (const Path& p : paths) out.push_back(&p);
+    for (const Path* v : test::all_tied(paths)) out.push_back(v);
+    return out;
+}
+
+// A search at the settings' depth and Path limit that follows `windows` (their
+// act ticks, and the ends of those pinned in full) and runs free after them.
+EngineOptions free_after_options(const SearchSettings& settings,
+                                 const std::vector<PinnedWindow>& windows) {
+    EngineOptions options;
+    options.depth_mode = settings.depth_mode;
+    options.depth_value = settings.depth_value;
+    options.ms_filter = settings.ms_filter;
+    options.free_after = true;
+    std::vector<int64_t> ticks;
+    for (const PinnedWindow& w : windows) {
+        ticks.push_back(w.act_tick);
+        if (w.deact_tick) options.target_deact_ticks.push_back(*w.deact_tick);
+    }
+    options.target_act_ticks = ticks;
+    return options;
 }
 
 }  // namespace
@@ -383,4 +412,142 @@ TEST_CASE("search_target: the binary search names the last or a middle window th
     CHECK(at_middle.realized_prefix == 1);
     CHECK(at_middle.failed_tick == std::optional<int64_t>(22272));
     CHECK(at_middle.failed_reason == "window_end");
+}
+
+// EngineOptions::free_after with no tick pinned has no last pin, so every
+// fill branches: on every corpus chart the search returns what the plain
+// search at the same depth and Path limit returns.
+TEST_CASE("free after: with nothing pinned the search is the plain search") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int charts = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.reading());
+        if (song.is_empty()) continue;
+        ++charts;
+        CAPTURE(chart);
+        const ScoreGraph graph(song, kCloneHeroSpCap);
+        EngineOptions plain = free_after_options(cfg, {});
+        plain.free_after = false;
+        plain.target_act_ticks.reset();
+        const std::vector<Path> want = run_search(graph, plain);
+        const std::vector<Path> got = run_search(graph, free_after_options(cfg, {}));
+        CHECK(target_text(got) == target_text(want));
+    }
+    CHECK(charts > 0);
+}
+
+// Pinning the first window of a best path with four windows (Mutemath
+// "Allies", as in the binary-search case above): fills before the pin are
+// declined, the pin is taken, and the fills after it branch freely, so the
+// paths that come back activate again after it.
+TEST_CASE("free after: fills past the last pin branch, fills before it follow the pins") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    std::string chart;
+    for (const std::string& p : corpus::chart_paths())
+        if (p.find("Mutemath - Allies") != std::string::npos) chart = p;
+    REQUIRE_FALSE(chart.empty());
+    const Song& song = corpus::song(chart, cfg.reading());
+    const HydraRecord& rec = corpus::analyzed(chart, cfg);
+    REQUIRE_FALSE(rec.all_paths().empty());
+    const std::vector<int64_t> best = act_ticks(*rec.all_paths().front());
+    REQUIRE(best.size() >= 3);
+
+    const ScoreGraph graph(song, kCloneHeroSpCap);
+    const std::vector<Path> got =
+        run_search(graph, free_after_options(cfg, {PinnedWindow{best.front()}}));
+    REQUIRE_FALSE(got.empty());
+    std::set<std::vector<int64_t>> afters;
+    for (const Path* p : roots_and_tied(got)) {
+        const std::vector<int64_t> ticks = act_ticks(*p);
+        CAPTURE(p->pathstring());
+        REQUIRE_FALSE(ticks.empty());
+        CHECK(ticks.front() == best.front());
+        afters.insert(std::vector<int64_t>(ticks.begin() + 1, ticks.end()));
+    }
+    // The fills after the pin branched: the paths activate after it, and not
+    // all at the same fills.
+    CHECK(afters.count({}) == 0);
+    CHECK(afters.size() > 1);
+}
+
+// The Path limit never drops a window the caller pinned. The chart is the
+// first corpus chart whose unlimited best path has a window that fails a
+// 0 ms limit. With that path's windows up to and including that one pinned
+// in full, a free-after search under a 0 ms limit, soft or hard, still
+// returns a path that starts with them, and every window it chose itself
+// after them fits the limit. Without the pins the hard limit drops it.
+TEST_CASE("free after: a pinned window over the Path limit survives a soft and a hard limit") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.reading());
+        if (song.is_empty()) continue;
+        const ScoreGraph graph(song, kCloneHeroSpCap);
+        const std::vector<Path> unlimited = run_search(graph, EngineOptions{});
+        if (unlimited.empty()) continue;
+        const Path& best = unlimited.front();
+        const std::vector<Activation> acts = best.all_activations();
+        size_t over = 0;
+        while (over < acts.size() && acts[over].within_ms_limit(0.0)) ++over;
+        if (over == acts.size()) continue;
+        CAPTURE(chart);
+        CAPTURE(best.pathstring());
+        std::vector<PinnedWindow> pins = pinned_windows(best);
+        pins.resize(over + 1);
+
+        for (const bool hard : {false, true}) {
+            CAPTURE(hard);
+            EngineOptions pinned = free_after_options(cfg, pins);
+            pinned.ms_filter = 0.0;
+            pinned.hard_ms_filter = hard;
+            const std::vector<Path> kept = keep_prefix_paths(run_search(graph, pinned), pins);
+            REQUIRE_FALSE(kept.empty());
+            for (const Path* p : roots_and_tied(kept)) {
+                CAPTURE(p->pathstring());
+                const std::vector<Activation> own = p->all_activations();
+                for (size_t i = pins.size(); i < own.size(); ++i)
+                    CHECK(own[i].within_ms_limit(0.0));
+            }
+        }
+
+        EngineOptions unpinned = free_after_options(cfg, {});
+        unpinned.ms_filter = 0.0;
+        unpinned.hard_ms_filter = true;
+        CHECK(keep_prefix_paths(run_search(graph, unpinned), pins).empty());
+        return;
+    }
+    FAIL("no corpus chart has a best path over a 0 ms limit");
+}
+
+// keep_prefix_paths on a hand-built list, as the keep_target_paths case
+// above: labels ride in notecount. A path must start with the pinned ticks;
+// one that activates before or between them, or stops short, is dropped, and
+// a dropped root's qualifying variant is rescued. keep_target_paths, on the
+// same list, keeps only the exact match.
+TEST_CASE("keep_prefix_paths keeps a prefix match and drops a path that activates earlier") {
+    auto made = [](int label, std::vector<int64_t> ticks) {
+        Path p;
+        p.notecount = label;
+        for (const int64_t t : ticks) {
+            Activation a;
+            a.timecode = Timecode::raw(t);
+            p.activations.push_back(a);
+        }
+        return p;
+    };
+    Path r3 = made(3, {50, 100, 200});
+    r3.variants.push_back(made(4, {100, 200, 400}));
+    const std::vector<Path> in = {made(1, {100, 200, 300}), made(2, {100, 200}), r3,
+                                  made(5, {100, 150, 200}), made(6, {100})};
+    const std::vector<PinnedWindow> pins = activation_pins({100, 200});
+
+    std::vector<bool> promoted;
+    const std::vector<Path> prefix = keep_prefix_paths(in, pins, &promoted);
+    std::vector<int> labels;
+    for (const Path& p : prefix) labels.push_back(p.notecount);
+    CHECK(labels == std::vector<int>{1, 2, 4});
+    CHECK(promoted == std::vector<bool>{false, false, true});
+
+    const std::vector<Path> exact = keep_target_paths(in, pins);
+    REQUIRE(exact.size() == 1);
+    CHECK(exact[0].notecount == 2);
 }
