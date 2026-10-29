@@ -93,7 +93,7 @@ class Rig:
         self.docs = os.path.join(tmp, "docs")
         self.low = os.path.join(tmp, "low")
         self.out_dir = os.path.join(tmp, "out")
-        self.song = os.path.join(tmp, "songs", "Window Map")
+        self.song = os.path.join(tmp, "songs", probe_songs.WINDOW_MAP)
         for d in (self.docs, self.low, self.song):
             os.makedirs(d)
         for name, data in ORIGINAL.items():
@@ -148,12 +148,12 @@ class BotRunTest(unittest.TestCase):
         old = os.getcwd()
         os.chdir(os.path.dirname(r.song))
         try:
-            B.run_bot("Window Map", r.out_dir, env=r.env)
+            B.run_bot(probe_songs.WINDOW_MAP, r.out_dir, env=r.env)
         finally:
             os.chdir(old)
         song_arg = r.launch.commands[0][2]
         self.assertTrue(os.path.isabs(song_arg))
-        self.assertEqual(os.path.basename(song_arg), "Window Map")
+        self.assertEqual(os.path.basename(song_arg), probe_songs.WINDOW_MAP)
 
     def test_the_game_exe_name_is_the_probe_process_name(self):
         self.assertEqual(os.path.basename(G.GAME_EXE), PROCESS_NAME)
