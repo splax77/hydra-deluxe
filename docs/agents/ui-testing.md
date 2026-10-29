@@ -270,9 +270,10 @@ Rules of thumb:
 
 ## Layout
 
-- `tests/ui/uitest_harness.{h,cpp}` — WARP device, offscreen target, engine setup, scratch files, seams, `wait_until`, `dump_*`, `screenshot`, and the shared helpers every area file calls.
-- `tests/ui/uitest_commands.{h,cpp}` — the command interpreter: what one line does (`run_command`), shared by command files and live mode.
-- `tests/ui/uitest_script.cpp` — the command-file test, and `command_line`, which decides which lines are commands.
+- `tests/ui/uitest_engine.{h,cpp}` — the app-free half of the runner, in the library `hydra_uitest_engine`: the WARP device, the offscreen target, the test engine's setup, `frame()`, `visible_text`, `wait_until`, `widget_dump`, `open_modal_note`, `screenshot`. It reaches the program it drives only through the hooks in `EngineHooks`, so it includes nothing from Hydra's window and another GUI program can link it.
+- `tests/ui/uitest_harness.{h,cpp}` — Hydra's half: `Harness` builds on the engine, owns the `AppState`, and fills in the hooks from it. It also holds the scratch files, the seams, the gates, and the shared helpers every area file calls.
+- `tests/ui/uitest_commands.{h,cpp}` — the command interpreter: what one line does (`run_command`), shared by command files and live mode. Part of `hydra_uitest_engine`.
+- `tests/ui/uitest_script.cpp` — the command-file test, and `command_line`, which decides which lines are commands. Part of `hydra_uitest_engine`.
 - `tests/ui/uitest_live.cpp` and `tests/ui/live_protocol.h` — the live channel: the pipe, the loop that keeps the app drawing between commands, and the JSON lines.
 - `tools/hydra_ui_mcp.py` — the MCP server; `tools/test_hydra_ui_mcp.py` tests it, and `tools/fake_hydra_live.py` is its stand-in Hydra.
 - `tests/ui/uitest_tests.cpp` — `register_tests`.
