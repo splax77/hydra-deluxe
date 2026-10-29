@@ -42,8 +42,8 @@ NO_WRITE_PATTERNS = (
     (r"\.implementation\s*=(?!=)", "replaces a game method"),
     (r"Interceptor\.replace", "replaces a game function"),
     (r"\bretval\.replace\(", "changes a return value"),
-    (r"\bargs\[\d+\]\s*=(?!=)", "changes a call argument"),
-    (r"\.context\.\w+\s*=(?!=)", "changes a register"),
+    (r"\bargs\[[^\]]+\]\s*=(?![=>])", "changes a call argument"),
+    (r"\b(?:\w+\.)?(?:context|ctx)\.\w+\s*=(?![=>])", "changes a register"),
     (r"add\(0x", "reads by offset, not by field name"),
 )
 
@@ -175,6 +175,16 @@ class DetachTest(Workspace):
                          [{"type": "start", "cap_s": 93.0}])
         self.assertEqual(session.source, "// fake agent\n")
         self.assertEqual(self.lines, [])
+
+    def test_start_settings_ride_in_the_start_message(self):
+        session = FakeSession([sent({"done": "cap"})])
+        FA.run_agent(self.agent, 93.0, FA.ends_run, self.out_path,
+                     start={"mode": "count", "type": "other", "cap_s": 1},
+                     frida_mod=FakeFrida(session), wait=instant_wait,
+                     out=self.lines.append)
+        # The runner's own `type` and `cap_s` win over the agent's settings.
+        self.assertEqual(session.script.posted,
+                         [{"type": "start", "cap_s": 93.0, "mode": "count"}])
 
     def test_detaches_after_the_cap(self):
         session = FakeSession([sent(sample(1.0))])
@@ -381,7 +391,9 @@ class NoWritesTest(unittest.TestCase):
             "gm.field('flag').value ??= true;",
             "retval.replace(ptr(0));",
             "args[0] = ptr(0);",
+            "args[slot] = ptr(0);",
             "this.context.rax = ptr(0);",
+            "ctx.xmm0 = buf;",
         ]
         for line in bad:
             with self.subTest(line=line):
@@ -396,6 +408,9 @@ class NoWritesTest(unittest.TestCase):
             "log.write('x');",
             "if (f.value >= 1 || f.value <= 0 || f.value != 2) {}",
             "const a = args[0]; if (args[1] == null) {}",
+            "const p = args[slot]; return args[slot] === null;",
+            "const buf = xmmOf(ctx, slot); if (ctx.xmm0 == undefined) {}",
+            "return (_c, a) => a[slot].toInt32();",
             "const r = retval.toInt32() + this.context.rax.toInt32();",
             "const b = Memory.alloc(8); const s = Memory.scan(p, 8, pat, cb);",
         ]

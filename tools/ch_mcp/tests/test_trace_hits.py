@@ -205,6 +205,16 @@ class TraceAgentTest(unittest.TestCase):
         with open(os.path.join(AGENT_DIR, "trace.ts"), encoding="utf-8") as fh:
             self.assertEqual(no_write_findings(fh.read()), [])
 
+    def test_only_gamemanager_ts_looks_up_the_game_manager(self):
+        # One owner: the agents call findGameManager; none repeats the lookup.
+        for name in ("clock.ts", "trace.ts"):
+            with self.subTest(agent=name):
+                with open(os.path.join(AGENT_DIR, name), encoding="utf-8") as fh:
+                    text = fh.read()
+                self.assertIn("findGameManager()", text)
+                self.assertNotIn("gc.choose", text)
+                self.assertNotIn("tryAssembly", text)
+
     def test_the_end_reasons_are_the_runners(self):
         # trace.ts ends with a `done` payload, which ends_run reads.
         self.assertEqual(FA.ends_run({"done": "song over", "methods": []}),

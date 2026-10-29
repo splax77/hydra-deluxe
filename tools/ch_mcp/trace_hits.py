@@ -12,12 +12,13 @@ class is named on the command line: its obfuscated name, from the dump, and
 its constructor RVA (default ch_probe.constants.RVA_DRUMS_ENGINE_CTOR), which
 the agent checks along with the rest of the class's shape.
 
-Run from the repo root, with the game already playing the song:
+Run from the repo root, with the game already playing the song. Do not add
+`-I`: the frida module lives in the user's site-packages, which `-I` skips.
 
-    py -I tools/ch_mcp/trace_hits.py --mode count \\
+    py tools/ch_mcp/trace_hits.py --mode count \\
         --song "C:\\Clone Hero\\songs\\Hydra Probe\\Window Map" \\
         --engine-class <name> --out <scratch>\\trace-count.jsonl
-    py -I tools/ch_mcp/trace_hits.py --mode args --method <name> \\
+    py tools/ch_mcp/trace_hits.py --mode args --method <name> \\
         --song "C:\\Clone Hero\\songs\\Hydra Probe\\Window Map" \\
         --engine-class <name> --out <scratch>\\trace-args.jsonl
 """
@@ -64,55 +65,6 @@ def load_manifest(song_folder: str) -> tuple[str, list[dict]]:
 def trace_cap_s(notes: list[dict]) -> float:
     """The song's length (probe_songs.song_length_ms) plus the margin."""
     return C.ms_to_s(song_length_ms(notes[-1]["time_ms"])) + TRACE_CAP_MARGIN_S
-
-
-# ---- passing the settings to the agent --------------------------------------
-# run_agent posts {"type": "start", "cap_s": ...} itself. These wrappers add
-# the trace settings to that one message and pass everything else through.
-
-class _Script:
-    def __init__(self, script: Any, settings: dict):
-        self._script = script
-        self._settings = settings
-
-    def on(self, *a: Any) -> Any:
-        return self._script.on(*a)
-
-    def load(self) -> Any:
-        return self._script.load()
-
-    def post(self, message: Any, *a: Any) -> Any:
-        if isinstance(message, dict) and message.get("type") == "start":
-            message = {**message, **self._settings}
-        return self._script.post(message, *a)
-
-
-class _Session:
-    def __init__(self, session: Any, settings: dict):
-        self._session = session
-        self._settings = settings
-
-    def on(self, *a: Any) -> Any:
-        return self._session.on(*a)
-
-    def create_script(self, source: str) -> _Script:
-        return _Script(self._session.create_script(source), self._settings)
-
-    def detach(self) -> Any:
-        return self._session.detach()
-
-
-class StartWith:
-    """A frida module stand-in whose scripts get `settings` in their start
-    message."""
-
-    def __init__(self, frida_mod: Any, settings: dict):
-        self._frida = frida_mod
-        self._settings = settings
-        self.ProcessNotFoundError = frida_mod.ProcessNotFoundError
-
-    def attach(self, name: str) -> _Session:
-        return _Session(self._frida.attach(name), self._settings)
 
 
 # ---- reading the results ---------------------------------------------------------
@@ -271,13 +223,9 @@ def main(argv: list[str] | None = None, *, frida_mod: Any = None,
         "hit_time_offset": C.OFF_HIT_TIME,
         "methods": args.method,
     }
-    if frida_mod is None:
-        import frida as frida_mod  # noqa: PLC0415
-    # run_agent's own wait unless a test passes one.
-    waits = {} if wait is None else {"wait": wait}
     result = FA.run_agent(args.agent, cap_s, FA.ends_run, args.out,
-                          frida_mod=StartWith(frida_mod, settings),
-                          out=out, **waits)
+                          start=settings, frida_mod=frida_mod, wait=wait,
+                          out=out)
     if result.reason == FA.END_NOT_RUNNING:
         return 1
     report = count_report if args.mode == MODE_COUNT else args_report

@@ -85,15 +85,20 @@ def _default_wait(event: threading.Event, timeout_s: float) -> bool:
 
 def run_agent(agent_path: str, cap_s: float,
               on_message: Callable[[Any], str | None], out_path: str, *,
+              start: dict | None = None,
               frida_mod: Any = None,
-              wait: Callable[[threading.Event, float], bool] = _default_wait,
+              wait: Callable[[threading.Event, float], bool] | None = None,
               out: Callable[[str], None] = print) -> RunResult:
     """Run the compiled agent at `agent_path` inside the game for at most
     `cap_s` seconds and write every message to `out_path`, one JSON line each.
 
     `on_message` sees each payload the agent sends; when it returns an end
-    reason, the run ends. `frida_mod` and `wait` are injectable so the tests
-    run without Frida and without sleeping."""
+    reason, the run ends. `start` holds an agent's own settings: they ride in
+    the start message beside its `type` and `cap_s`, which they cannot
+    replace. `frida_mod` and `wait` are injectable so the tests run without
+    Frida and without sleeping; `wait` defaults to `_default_wait`."""
+    if wait is None:
+        wait = _default_wait
     if frida_mod is None:
         try:
             import frida as frida_mod  # noqa: PLC0415
@@ -150,7 +155,7 @@ def run_agent(agent_path: str, cap_s: float,
         script = session.create_script(source)
         script.on("message", handle)
         script.load()
-        script.post({"type": "start", "cap_s": cap_s})
+        script.post({**(start or {}), "type": "start", "cap_s": cap_s})
         if not wait(ended, cap_s):
             out(f"cap of {cap_s:g} s reached before the agent finished; "
                 f"{len(result.payloads)} messages seen")
@@ -194,7 +199,7 @@ def summarize_clock(result: RunResult) -> list[str]:
 
 
 def main(argv: list[str] | None = None, *, frida_mod: Any = None,
-         wait: Callable[[threading.Event, float], bool] = _default_wait,
+         wait: Callable[[threading.Event, float], bool] | None = None,
          out: Callable[[str], None] = print) -> int:
     ap = argparse.ArgumentParser(
         description="Attach to the running game, run the clock agent, and "

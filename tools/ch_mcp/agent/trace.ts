@@ -20,6 +20,7 @@
 // Both end when GameManager.isSongOver turns true, or just before the cap.
 
 import "frida-il2cpp-bridge";
+import { findGameManager, GAME_MANAGER } from "./gamemanager.js";
 
 // How many calls per method keep their arguments in count mode (plan
 // 2026-10-28, Task D).
@@ -30,11 +31,6 @@ const ARG_SAMPLE_LIMIT = 200;
 // interval before the cap, so its table reaches the runner before the runner
 // detaches at the cap.
 const END_POLL_MS = 250;
-
-// The image and class that hold the song clock, as the Il2CppDumper dump
-// names them. clock.ts reads the same class.
-const GM_ASSEMBLY = "CloneHero";
-const GM_CLASS = "GameManager";
 
 // The class flag for "sealed" (ECMA-335 partition II, TypeAttributes).
 const TYPE_ATTRIBUTE_SEALED = 0x100;
@@ -254,7 +250,7 @@ function decode(t: Target, ctx: CpuContext, args: InvocationArguments): Arg[] {
     });
 }
 
-function run(s: Settings) {
+function run(s: Settings, startMs: number) {
     const engine = findEngine(s);
     if (typeof engine === "string") {
         send({ error: engine });
@@ -275,19 +271,13 @@ function run(s: Settings) {
         return;
     }
 
-    const gmAssembly = Il2Cpp.domain.tryAssembly(GM_ASSEMBLY);
-    const gmClass = gmAssembly === null ? null : gmAssembly.image.tryClass(GM_CLASS);
-    if (gmClass === null) {
-        send({ error: `${GM_CLASS} not found` });
+    const found = findGameManager();
+    if (typeof found === "string") {
+        send({ error: found });
         return;
     }
-    const live = Il2Cpp.gc.choose(gmClass);
-    if (live.length === 0) {
-        send({ error: `no live ${GM_CLASS}` });
-        return;
-    }
-    const songTime = live[0].field<number>("songTime");
-    const songOver = live[0].field<boolean>("isSongOver");
+    const songTime = found.gm.field<number>("songTime");
+    const songOver = found.gm.field<boolean>("isSongOver");
 
     const wanted = s.mode === "args" ? s.methods : null;
     const byAddress = new Map<string, Target>();
@@ -330,7 +320,6 @@ function run(s: Settings) {
         }
     }
 
-    const startMs = Date.now();
     const stopMs = s.cap_s * 1000 - END_POLL_MS;
     let wasOver = songOver.value;
     const finish = (reason: string) => {
@@ -361,13 +350,16 @@ function run(s: Settings) {
             for (const l of listeners) {
                 l.detach();
             }
-            send({ error: `reading ${GM_CLASS} failed: ${e}` });
+            send({ error: `reading ${GAME_MANAGER} failed: ${e}` });
         }
     }, END_POLL_MS);
 }
 
 recv("start", (message: Settings) => {
-    Il2Cpp.perform(() => run(message)).catch((e) => {
+    // The cap counts from the start message, not from when the hooks are in:
+    // the runner's cap starts there, and the table has to reach it first.
+    const startMs = Date.now();
+    Il2Cpp.perform(() => run(message, startMs)).catch((e) => {
         send({ error: `Il2Cpp.perform failed: ${e}` });
     });
 });
