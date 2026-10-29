@@ -6,7 +6,7 @@ Written 2026-10-28 for Clone Hero v1.1.0.6142-final (`C:\Clone Hero\1.1 june\Clo
 
 It is feasible. Most of it can be built with tools already on this machine, and no game file has to change.
 
-The plan has three layers. The first is free: the game already launches songs from the command line with bot players, and it writes a detailed end-of-song file. The second reads the game's live state from inside the process with Frida. Frida is a tool that attaches to a running program and runs our script inside it, and an earlier session already used it on this exact build. The third is per-note results and exact-time inputs, which means finding and hooking the game's hit-detection code. That third layer is the real unknown. The hit code is the most heavily scrambled part of the game, so it needs some reverse-engineering work before anyone can promise it.
+The plan has three layers. The first is free: the game already launches songs from the command line with bot players, and it writes a detailed end-of-song file. The second reads the game's live state from inside the process with Frida. Frida is a tool that attaches to a running program and runs our script inside it, and an earlier session already used it on this game install. The third is per-note results and exact-time inputs, which means finding and hooking the game's hit-detection code. That third layer is the real unknown. The hit code is the most heavily scrambled part of the game, so it needs some reverse-engineering work before anyone can promise it.
 
 The scrambling (obfuscation) turned out to be much less of a blocker than it looked. The game's on-screen components keep their real names, and those are exactly the objects an MCP wants to read first. The details are in "The obfuscation, measured" below.
 
@@ -38,13 +38,14 @@ Put together with bot launches, those files make a cheap first win for Hydra. Ha
 
 The game was scrambled with Beebyte Obfuscator 3.13.0; the dump contains a marker class named `__BB_OBFUSCATOR_VERSION_3_13_0`. Beebyte replaces names with strings of odd Unicode letters such as `ʺʻʻˁˀʹʿʲʻʴʿ`. On 2026-10-28 a scout ran Il2CppDumper v6.7.46, a tool that rebuilds a Unity game's class list from its files, and counted the result. Il2CppDumper was already in `C:\Users\Patrick\Downloads\Il2CppDumper-net7-v6.7.46\`. It needs `DOTNET_ROLL_FORWARD=Major` to run on the installed .NET 8 and 10. The output is in this session's scratch folder, which is temporary, so plan to regenerate it.
 
-Only 3 of the 90 assemblies (the DLLs that hold the game's code) are scrambled:
+Only 4 of the 95 assemblies the scout counted (the DLLs that hold the game's code) are scrambled:
 
 | Assembly | What it holds | Types scrambled | Methods scrambled |
 |---|---|---|---|
 | CloneHero.dll | the game's scripts | 985 of 1,451 (68%) | 7,941 of 11,926 (67%) |
 | StrikeCore.dll | the chart and play engine | 427 of 449 (95%) | 3,095 of 3,577 (87%) |
 | CHNet.Core.dll | online play | 167 of 176 | 1,426 of 1,614 |
+| CHNet.Server.dll | online server code | 15 of 22 | 288 of 303 |
 
 Everything else keeps its real names. That includes Unity, TextMeshPro and Rewired (the input library the game uses). The scout counted these with a regex, so treat them as close, not exact. CloneHero.dll's 68% is flattered by about 400 types of Rewired menu code compiled into it, so the real game logic is more scrambled than that.
 
@@ -62,7 +63,7 @@ The open question is whether the scrambled names change with each game update. B
 
 **B. Read memory from outside the process (extend ch_probe).** Il2CppDumper's `script.json` gives the address where each class's description lives in `GameAssembly.dll`. From there a reader can follow pointers to the one `GameManager` object and read its fields at the offsets the dump gives. This needs nothing new installed, and it already works for the clock and score. But it can only poll, so a poll that runs a few milliseconds apart can miss a single note's result. It also cannot call the game's code, so menus have to be driven by keypresses. And every address has to be re-derived after each update.
 
-**C. Frida inside the process.** The MCP server attaches Frida to the running game and loads a small script. That script uses `frida-il2cpp-bridge`, a library that finds Unity classes, objects and methods at run time. It can find readable classes by name, which survives updates. It can hook a method, so each note's hit or miss is pushed to the MCP as an event instead of polled. And it can call game methods, which opens a path to driving menus directly. Frida 17.18.0, its Python bindings and Node 26.8.1 (needed to compile the bridge script) are all installed. Frida already ran against this exact build on 2026-09-15 to capture decrypted song audio. The costs are the reverse-engineering work to find the hit code, and the bridge library not saying anything about scrambled names. That is only a problem for the scrambled classes, which have to be found by their shape (field count and types, the strings they use, the readable calls they make).
+**C. Frida inside the process.** The MCP server attaches Frida to the running game and loads a small script. That script uses `frida-il2cpp-bridge`, a library that finds Unity classes, objects and methods at run time. It can find readable classes by name, which survives updates. It can hook a method, so each note's hit or miss is pushed to the MCP as an event instead of polled. And it can call game methods, which opens a path to driving menus directly. Frida 17.18.0, its Python bindings and Node 26.8.1 (needed to compile the bridge script) are all installed. Frida already ran against this game install on 2026-09-15 to capture decrypted song audio. That session also installed `frida-il2cpp-bridge` and wrote a scan script for it, but its card records no result from running the bridge, so whether the bridge itself works on this build is still untested. The costs are the reverse-engineering work to find the hit code, and the bridge library not saying anything about scrambled names. That is only a problem for the scrambled classes, which have to be found by their shape (field count and types, the strings they use, the readable calls they make).
 
 **D. A mod loader (MelonLoader or BepInEx 6).** A mod loader puts a C# plugin inside the game. That gives the richest access: plain C# calls into the game, and a named pipe for the MCP. The current loaders claim support for this metadata version (31), but only through maintainer comments and pre-release builds. Nobody has published a working mod for Clone Hero v1. The only Clone Hero mod found, "My Clone Hero Tweaks", targets the old v0.23 build. This option also writes files into the game folder, which is the most direct clash with the EULA's "modify" clause. And one open BepInEx issue shows its interop generator crashing on another game with this same metadata version.
 
@@ -70,7 +71,7 @@ The open question is whether the scrambled names change with each game update. B
 
 Build A first, then C. Keep B as the fallback for the fields it already reads, and skip D unless C runs into a wall.
 
-C beats B because per-note results need hooks, not polling, and menus are far easier to drive through the game's own methods than through keypresses. C beats D because it changes no game file, it has already worked on this build, and its tools are installed. D's support for this game is untested.
+C beats B because per-note results need hooks, not polling, and menus are far easier to drive through the game's own methods than through keypresses. C beats D because it changes no game file, Frida has already run in this game, and its tools are installed (the bridge itself is untested here). D's support for this game is untested.
 
 The server would follow the shape of `tools/hydra_ui_mcp.py`: a Python stdio server, one tool per action, answers as text. The tools would fall into four groups.
 
@@ -103,7 +104,7 @@ Each test is short and needs the game running with the user present.
 3. **Find the hit method.** Start from the drum engine object `ch_probe` already finds. Hook its methods during a short song, and keep the one that fires once per note. Use the "combo: {0}" string and the readable calls to confirm. This settles the per-note layer.
 4. **A second build.** If the user has, or can get, any other Clone Hero build, dump it and compare the scrambled names. This settles the update question. It would also open the Beebyte-Deobfuscator route if that build were unscrambled.
 
-Two leads are worth a look along the way. A class named `RemoteControl` exists in the metadata, and nobody has opened it. And the empty `HitDetection-*.log` files may have a setting that fills them.
+One lead is worth a look along the way: the empty `HitDetection-*.log` files may have a setting that fills them. (An earlier draft also named a `RemoteControl` class. The dump holds no such class. The word is only the value `RemoteControl = 100` of Rewired's `JoystickType` enum, so it is not a lead.)
 
 ## Sources
 
