@@ -649,6 +649,39 @@ TEST_CASE("an out-of-date library with a chart folder that cannot be read starts
     CHECK(app.store->record_count() == records_before);
 }
 
+// D266 (user ruling "Refuse, like on open"): the scan the user starts stops at
+// a missing chart folder too, with the same notice, and writes nothing.
+TEST_CASE("start_scan with a chart folder that cannot be read starts no scan and keeps every "
+          "result") {
+    ScratchPaths paths("appstate_scanmissing");
+    const std::string missing = testtemp::temp_path("appstate_scanmissing", "_nofolder");
+    REQUIRE_FALSE(std::filesystem::exists(std::filesystem::u8path(missing)));
+    Settings s = scratch_settings();
+    s.chartfolders.push_back(missing);
+    REQUIRE(s.save());
+    seeded_store(paths.db).reset();
+    int64_t records_before = 0;
+    {
+        RecordStore before(paths.db);
+        records_before = before.record_count();
+    }
+    REQUIRE(records_before > 0);
+
+    AppState app;
+    app.wait_store_open();
+    REQUIRE(app.store_ready());
+    REQUIRE_FALSE(app.request_scan);  // a current library asks for no scan
+    REQUIRE(app.can_scan());          // so the toolbar's button stays on
+    app.start_scan();
+    CHECK(app.scan_job == nullptr);
+    CHECK_FALSE(app.scan_started_by_open);
+    CHECK(app.status_is_problem);
+    CHECK(app.status_message == hydra::app::library_rescan_blocked_notice(missing));
+    app.tick_library(0.0);
+    CHECK(app.library_shown_count() == static_cast<size_t>(kChartCount));
+    CHECK(app.store->record_count() == records_before);
+}
+
 TEST_CASE("the startup screen's line names what the open is doing") {
     using hydra::ui::StoreOpenProgress;
     StoreOpenProgress p;

@@ -14,7 +14,8 @@
 #include "../old_layout_fixture.h"
 #include "../testdata_dirs.h"  // root
 #include "app/config.h"
-#include "app/user_messages.h"  // old_library_set_aside_notice, library_rescan_notice
+#include "app/user_messages.h"  // old_library_set_aside_notice, library_rescan_notice,
+                                // library_rescan_blocked_notice
 #include "core/error_kind.h"
 #include "imgui_internal.h"
 #include "parse/song.h"  // NoNotesError
@@ -1467,6 +1468,39 @@ void test_rescan_on_open_cancel(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->store->chart_library_out_of_date() == cancelled);
 }
 
+// D266 (user ruling "Refuse, like on open"): a click on Scan library with a
+// chart folder that cannot be read starts no scan, opens no scan window, keeps
+// the library and its saved results, and the status line names the folder.
+void test_scan_missing_folder(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    open_details(ctx, 0);  // its analysis saves one result
+    if (ctx->IsError()) return;
+    IM_CHECK(wait_until(ctx, [&] { return h.app->store->record_count() > 0; }, 60));
+    const int64_t records = h.app->store->record_count();
+    const size_t rows = h.app->library_shown_count();
+
+    const std::string missing = h.temp_dir + "\\scan_missing_folder";
+    std::error_code ec;
+    fs::remove_all(fs::u8path(missing), ec);
+    IM_CHECK(!fs::exists(fs::u8path(missing)));
+    h.app->settings.chartfolders.push_back(missing);
+
+    ctx->SetRef("//Hydra");
+    IM_CHECK((ctx->ItemInfo("Scan library").ItemFlags & ImGuiItemFlags_Disabled) == 0);
+    ctx->ItemClick("Scan library");
+    ctx->Yield(2);
+    IM_CHECK(h.app->scan_job == nullptr);
+    IM_CHECK(!ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId));  // no scan window
+    IM_CHECK(h.app->status_is_problem);
+    IM_CHECK(h.app->status_message == hydra::app::library_rescan_blocked_notice(missing));
+    IM_CHECK(on_screen(h, hydra::app::library_rescan_blocked_notice(missing)));
+    IM_CHECK(h.app->library_shown_count() == rows);
+    IM_CHECK(h.app->store->record_count() == records);
+}
+
 // ---- the version bar ----------------------------------------------------------
 // docs/superpowers/plans/2026-10-23-update-check-on-launch.md, task T1b.
 // Nothing here touches the network: UpdateSeams serves the release reply, the
@@ -1882,6 +1916,7 @@ const std::vector<TestEntry>& library_tests() {
         {"old-library-set-aside", test_old_library_set_aside},
         {"rescan-on-open", test_rescan_on_open},
         {"rescan-on-open-cancel", test_rescan_on_open_cancel},
+        {"scan-missing-folder", test_scan_missing_folder},
         {"version-bar", test_version_bar},
         {"library-search-tips", test_library_search_tips},
     };
