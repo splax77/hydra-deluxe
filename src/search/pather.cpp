@@ -10,17 +10,22 @@ namespace hydra {
 
 namespace {
 
-HydraRecord read(const ScoreGraph& graph, DepthMode depth_mode, int depth_value,
-                 std::optional<double> ms_filter,
+// The options the main search runs with: the user's depth and Path limit,
+// the limit soft. read and best_finish_options both start from here.
+EngineOptions main_search_options(const SearchSettings& settings) {
+    EngineOptions options;
+    options.depth_mode = settings.depth_mode;
+    options.depth_value = settings.depth_value;
+    options.ms_filter = settings.ms_filter;
+    return options;
+}
+
+HydraRecord read(const ScoreGraph& graph, const SearchSettings& settings,
                  const std::function<void(float)>& on_progress) {
     HydraRecord record;
-    record.ms_limit = ms_filter;
+    record.ms_limit = settings.ms_filter;
     record.multsqueezes = graph.multsqueezes();
-    EngineOptions options;
-    options.depth_mode = depth_mode;
-    options.depth_value = depth_value;
-    options.ms_filter = ms_filter;
-    record.paths = run_search(graph, options, on_progress);
+    record.paths = run_search(graph, main_search_options(settings), on_progress);
     return record;
 }
 
@@ -253,15 +258,25 @@ std::vector<Path> keep_prefix_paths(std::vector<Path> paths,
     return keep_pinned_paths(std::move(paths), windows, false, promoted);
 }
 
-namespace {
-
-// The one graph a set of settings searches: analyze_chart and both target
-// searches build it here, so a target search runs on the graph the main
-// search ran on (decision D45). graph_build_cap says how tall it is.
 ScoreGraph search_graph(const Song& song, const SearchSettings& settings) {
     return ScoreGraph(song,
                       std::optional<int>(graph_build_cap(settings.sp_cap, song.sp_phrase_count())),
                       fill_rule_for(settings.legacy_fills), settings.rules);
+}
+
+namespace {
+
+// Pins `windows` on `options`: their act ticks as the activations the search
+// must take, and the ends of the windows pinned in full. Both target runs and
+// best_finish_options pin windows here.
+void pin_windows(EngineOptions& options, const std::vector<PinnedWindow>& windows) {
+    std::vector<int64_t> ticks;
+    options.target_deact_ticks.clear();
+    for (const PinnedWindow& w : windows) {
+        ticks.push_back(w.act_tick);
+        if (w.deact_tick) options.target_deact_ticks.push_back(*w.deact_tick);
+    }
+    options.target_act_ticks = ticks;
 }
 
 // The one target run both search_target entry points make, over a graph
@@ -271,12 +286,8 @@ ScoreGraph search_graph(const Song& song, const SearchSettings& settings) {
 // keeps; none left means the windows are not realizable.
 std::vector<Path> run_target(const ScoreGraph& graph, const std::vector<PinnedWindow>& windows,
                              std::vector<bool>* promoted) {
-    std::vector<int64_t> ticks;
     EngineOptions options;
-    for (const PinnedWindow& w : windows) {
-        ticks.push_back(w.act_tick);
-        if (w.deact_tick) options.target_deact_ticks.push_back(*w.deact_tick);
-    }
+    pin_windows(options, windows);
 
     // The caller named the path, so nothing may prune it: the widest possible
     // points band keeps every survivor, and no timing filter is applied.
@@ -284,7 +295,6 @@ std::vector<Path> run_target(const ScoreGraph& graph, const std::vector<PinnedWi
     try {
         options.depth_mode = DepthMode::Points;
         options.depth_value = kKeepEveryPathBand;
-        options.target_act_ticks = ticks;
         paths = run_search(graph, options);
     } catch (const std::runtime_error&) {
         // The frontier emptied: these windows are not realizable on this
@@ -300,24 +310,10 @@ std::vector<PinnedWindow> prefix_of(const std::vector<PinnedWindow>& windows, si
     return std::vector<PinnedWindow>(windows.begin(), windows.begin() + (std::ptrdiff_t)k);
 }
 
-}  // namespace
-
-std::vector<Path> search_target(const Song& song, const SearchSettings& settings,
-                                const std::vector<int64_t>& act_ticks,
-                                std::vector<bool>* promoted) {
-    return run_target(search_graph(song, settings), activation_pins(act_ticks), promoted);
-}
-
-std::vector<PinnedWindow> activation_pins(std::vector<int64_t> ticks) {
-    std::sort(ticks.begin(), ticks.end());
-    ticks.erase(std::unique(ticks.begin(), ticks.end()), ticks.end());
-    std::vector<PinnedWindow> out;
-    for (const int64_t t : ticks) out.push_back(PinnedWindow{t});
-    return out;
-}
-
-TargetResult search_target(const Song& song, const SearchSettings& settings,
-                           std::vector<PinnedWindow> windows) {
+// Sorts `windows` by act tick and refuses a list a target cannot pin
+// (std::invalid_argument, the texts pather.h's search_target names).
+// search_target and best_finish both check their windows here.
+void sort_and_check_windows(std::vector<PinnedWindow>& windows) {
     std::sort(windows.begin(), windows.end(),
               [](const PinnedWindow& a, const PinnedWindow& b) { return a.act_tick < b.act_tick; });
     for (size_t i = 0; i < windows.size(); ++i) {
@@ -332,8 +328,12 @@ TargetResult search_target(const Song& song, const SearchSettings& settings,
         if (w.deact_tick && *w.deact_tick < w.act_tick)
             throw std::invalid_argument(at + " ends before it activates");
     }
+}
 
-    const ScoreGraph graph = search_graph(song, settings);
+// search_target over windows already checked, on a graph already built.
+// best_finish reads its failure from here, so a window that cannot happen
+// is named one way.
+TargetResult target_on_graph(const ScoreGraph& graph, const std::vector<PinnedWindow>& windows) {
     TargetResult out;
     out.paths = run_target(graph, windows, &out.promoted);
     out.realized_prefix = windows.size();
@@ -370,6 +370,71 @@ TargetResult search_target(const Song& song, const SearchSettings& settings,
     probe.back().deact_tick = broke.deact_tick;
     out.failed_reason = run_target(graph, probe, nullptr).empty() ? "window_end" : "sqout";
     return out;
+}
+
+// The options a best-finish run uses, and nothing else reads: the main
+// search's (main_search_options), following `windows` and running free after
+// the last one.
+EngineOptions best_finish_options(const SearchSettings& settings,
+                                  const std::vector<PinnedWindow>& windows) {
+    EngineOptions options = main_search_options(settings);
+    pin_windows(options, windows);
+    options.free_after = true;
+    return options;
+}
+
+}  // namespace
+
+std::vector<Path> search_target(const Song& song, const SearchSettings& settings,
+                                const std::vector<int64_t>& act_ticks,
+                                std::vector<bool>* promoted) {
+    return run_target(search_graph(song, settings), activation_pins(act_ticks), promoted);
+}
+
+std::vector<PinnedWindow> activation_pins(std::vector<int64_t> ticks) {
+    std::sort(ticks.begin(), ticks.end());
+    ticks.erase(std::unique(ticks.begin(), ticks.end()), ticks.end());
+    std::vector<PinnedWindow> out;
+    for (const int64_t t : ticks) out.push_back(PinnedWindow{t});
+    return out;
+}
+
+TargetResult search_target(const Song& song, const SearchSettings& settings,
+                           std::vector<PinnedWindow> windows) {
+    sort_and_check_windows(windows);
+    return target_on_graph(search_graph(song, settings), windows);
+}
+
+TargetResult best_finish(const ScoreGraph& graph, const SearchSettings& settings,
+                         std::vector<PinnedWindow> windows) {
+    sort_and_check_windows(windows);
+    TargetResult out;
+    try {
+        out.paths = keep_prefix_paths(run_search(graph, best_finish_options(settings, windows)),
+                                      windows, &out.promoted);
+    } catch (const std::runtime_error&) {
+        // With nothing pinned this is the main search, where an empty
+        // frontier is a broken state, so it propagates as it does from
+        // analyze_chart. With pins it means the windows cannot happen, which
+        // is the normal failure, named below.
+        if (windows.empty()) throw;
+        out.paths.clear();
+        out.promoted.clear();
+    }
+    out.realized_prefix = windows.size();
+    if (!out.paths.empty()) return out;
+
+    // Why the windows cannot happen is search_target's answer, on this graph.
+    const TargetResult target = target_on_graph(graph, windows);
+    out.realized_prefix = target.realized_prefix;
+    out.failed_tick = target.failed_tick;
+    out.failed_reason = target.failed_reason;
+    return out;
+}
+
+TargetResult best_finish(const Song& song, const SearchSettings& settings,
+                         std::vector<PinnedWindow> windows) {
+    return best_finish(search_graph(song, settings), settings, std::move(windows));
 }
 
 namespace {
@@ -467,7 +532,7 @@ HydraRecord analyze_chart(const Song& song, const SearchSettings& settings,
     const ScoreGraph graph = search_graph(song, settings);
     const bool split = static_cast<bool>(on_progress);
     HydraRecord record =
-        read(graph, settings.depth_mode, settings.depth_value, settings.ms_filter,
+        read(graph, settings,
              split ? scaled_progress(on_progress, 0.0f, kMainProgressShare) : on_progress);
     // The record reports the cap the user chose, not the height it was built at.
     record.sp_cap = settings.sp_cap;
