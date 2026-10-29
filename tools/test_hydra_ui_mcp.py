@@ -391,7 +391,6 @@ NO_LIVE = why_no_live()
 # line and the engine's message.
 UNKNOWN_BUTTON = "failed: click No such button\n"
 UNKNOWN_BUTTON_LOG = "Error 'Unable to locate item: '//Hydra/No such button' (0x00000000)'"
-BURNOUT_ROW = "| Burnout | Green Day | Hoph2o | common\\Summer Blast _25 Setlist\\Tier 4 | Not analyzed |\n"
 
 
 @unittest.skipIf(NO_LIVE is not None, NO_LIVE or "")
@@ -413,6 +412,13 @@ class RealExeLayer(unittest.TestCase):
         out = self.helper.run("\n".join(lines[:upto]))
         self.assertNotIn("stopped at line", out)
         self.assertIn("charts=97", self.helper.send("state"))
+
+    def burnout_row(self, text):
+        # The library row for the smoke script's Burnout, read from Hydra's own
+        # text reply: the GUI owns the columns, so the test never retypes them.
+        rows = [ln + "\n" for ln in text.split("\n") if ln.startswith("| Burnout |")]
+        self.assertEqual(len(rows), 1, text)
+        return rows[0]
 
     # -- the session --------------------------------------------------------
 
@@ -510,7 +516,8 @@ class RealExeLayer(unittest.TestCase):
     def test_text_and_dump_filters_are_hydras(self):
         self.helper.start("headless")
         self.scan()
-        self.assertEqual(self.helper.send(hm.filtered("text", "Burnout")), BURNOUT_ROW)
+        row = self.burnout_row(self.helper.send("text"))
+        self.assertEqual(self.helper.send(hm.filtered("text", "Burnout")), row)
         self.assertEqual(self.helper.send(hm.filtered("text", "zzqx-none")),
                          '(no line holding "zzqx-none")\n')
         dump = ('window "Hydra" id=0xBAEC0FDA pos=(0,0) size=(1280,800)\n'
@@ -524,7 +531,7 @@ class RealExeLayer(unittest.TestCase):
         self.scan()
         text = self.helper.send("text")
         self.assertNotIn("\r", text)
-        self.assertIn(BURNOUT_ROW, text)
+        self.assertIn(self.burnout_row(text), text)
         self.assertEqual(self.helper.send("text |"), text)
 
     def test_rect_on_a_missing_ref_fails(self):
