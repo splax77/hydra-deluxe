@@ -4,6 +4,7 @@
 #include "doctest.h"
 
 #include <cmath>
+#include <cstddef>
 #include <vector>
 
 #include "app/preview_view.h"
@@ -635,6 +636,135 @@ TEST_CASE("build_highway_draws: a kick drum lane draws what no lane draws") {
     for (size_t i = 0; i < want.size(); ++i) {
         INFO("draw " << i);
         CHECK(same_draw(got[i], want[i]));
+    }
+}
+
+namespace {
+
+// The draws `got` adds to `want`, where `got` is `want` with one run of extra
+// draws inserted somewhere: everything outside that run must match.
+std::vector<DrawCommand> inserted_run(const std::vector<DrawCommand>& got,
+                                      const std::vector<DrawCommand>& want) {
+    REQUIRE(got.size() >= want.size());
+    size_t at = 0;
+    while (at < want.size() && same_draw(got[at], want[at])) ++at;
+    const size_t n = got.size() - want.size();
+    for (size_t i = at; i < want.size(); ++i) {
+        INFO("draw " << i << " after the run");
+        CHECK(same_draw(got[i + n], want[i]));
+    }
+    return {got.begin() + static_cast<std::ptrdiff_t>(at),
+            got.begin() + static_cast<std::ptrdiff_t>(at + n)};
+}
+
+// One outline line: a flat on the floor in `pad`'s lane texture at the offered
+// strip's alpha, depth off, over [x1, x2] and [z1, z2].
+void check_outline_line(const DrawCommand& c, const PreviewConfig& cfg, Pad pad, float x1,
+                        float x2, double z1, double z2) {
+    CHECK(c.mesh == MeshId::Flat);
+    CHECK(c.material.kind == MaterialKind::Texture);
+    CHECK(c.material.texture == (pad == Pad::Red      ? TextureId::LaneRed
+                                 : pad == Pad::Yellow ? TextureId::LaneYellow
+                                 : pad == Pad::Blue   ? TextureId::LaneBlue
+                                                      : TextureId::LaneGreen));
+    CHECK(c.alpha == doctest::Approx(cfg.hydra.fill_offered_alpha));
+    CHECK(c.depth == DepthMode::Always);
+    CHECK(c.lo[1] == doctest::Approx(cfg.track.y));
+    CHECK(c.lo[0] == doctest::Approx(x1));
+    CHECK(c.hi[0] == doctest::Approx(x2));
+    CHECK(c.lo[2] == doctest::Approx(z1));
+    CHECK(c.hi[2] == doctest::Approx(z2));
+}
+
+// The outline's line width in the shipped config: a beat line's depth.
+constexpr double kShippedOutlineWidth = 0.1;
+
+}  // namespace
+
+// A ghost path's fill over [1.3 s, 1.5 s] (hidden for the drawn path) and an
+// offered fill over [1.8 s, 2.0 s] that is no ghost's, the playhead at 1.0 s.
+// The ghost adds exactly its outline: the near and far edge across each lane,
+// then the two sides between them, and leaves every other draw as it was.
+TEST_CASE("build_highway_draws: a ghost fill draws the offered strip's outline, nothing else does") {
+    const PreviewConfig cfg = shipped_preview_config();
+    PreviewScene plain = timed_scene();
+    plain.notes = {note(1000.0, PreviewLane::Red), note(1500.0, PreviewLane::Green),
+                   note(2000.0, PreviewLane::Green)};
+    plain.fills = {fill(span(1300.0, 1500.0), PreviewFillState::Hidden),
+                   fill(span(1800.0, 2000.0), PreviewFillState::Offered)};
+    PreviewScene ghosted = plain;
+    ghosted.ghost_fills = {0};
+    const double now = 1.0;
+    const std::vector<DrawCommand> want =
+        build_highway_draws(build_track_state(plain, TrackStateOptions{}), cfg, now, 1.0);
+    const std::vector<DrawCommand> got =
+        build_highway_draws(build_track_state(ghosted, TrackStateOptions{}), cfg, now, 1.0);
+
+    const std::vector<DrawCommand> outline = inserted_run(got, want);
+    REQUIRE(outline.size() == 10);
+    const double w = kShippedOutlineWidth;
+    const double end = kSpanEndTicks / 1000.0;  // one tick per millisecond
+    const double z_near = time_to_z(cfg, now, 1.3, 1.0);
+    const double z_far = time_to_z(cfg, now, 1.5 + end, 1.0);
+    for (size_t k = 0; k < kPads.size(); ++k) {
+        const Pad p = kPads[k];
+        float x1, x2;
+        pad_x(cfg, p, x1, x2);
+        INFO("pad " << k);
+        check_outline_line(outline[2 * k], cfg, p, x1, x2, z_near, z_near - w);
+        check_outline_line(outline[2 * k + 1], cfg, p, x1, x2, z_far + w, z_far);
+    }
+    const float xl = cfg.track.x_left, xr = cfg.track.x_right;
+    check_outline_line(outline[8], cfg, Pad::Red, xl, xl + static_cast<float>(w), z_near - w,
+                       z_far + w);
+    check_outline_line(outline[9], cfg, Pad::Green, xr - static_cast<float>(w), xr, z_near - w,
+                       z_far + w);
+}
+
+// A ghost fill the window cuts has no edge at the cut: past the far end it
+// has its near edge and sides only, and once its start is behind the near end
+// its far edge and sides only.
+TEST_CASE("build_highway_draws: a ghost fill cut by the window has no edge at the cut") {
+    const PreviewConfig cfg = shipped_preview_config();
+    PreviewScene plain = timed_scene();
+    plain.notes = {note(1000.0, PreviewLane::Red), note(3000.0, PreviewLane::Green)};
+    plain.fills = {fill(span(2000.0, 3000.0), PreviewFillState::Hidden)};
+    PreviewScene ghosted = plain;
+    ghosted.ghost_fills = {0};
+    const double w = kShippedOutlineWidth;
+    const double end = kSpanEndTicks / 1000.0;
+
+    {
+        const double now = 1.0;  // the far end is at 2.35 s
+        const std::vector<DrawCommand> outline = inserted_run(
+            build_highway_draws(build_track_state(ghosted, TrackStateOptions{}), cfg, now, 1.0),
+            build_highway_draws(build_track_state(plain, TrackStateOptions{}), cfg, now, 1.0));
+        REQUIRE(outline.size() == 6);
+        const double z_near = time_to_z(cfg, now, 2.0, 1.0);
+        for (size_t k = 0; k < kPads.size(); ++k) {
+            float x1, x2;
+            pad_x(cfg, kPads[k], x1, x2);
+            check_outline_line(outline[k], cfg, kPads[k], x1, x2, z_near, z_near - w);
+        }
+        const float xl = cfg.track.x_left;
+        check_outline_line(outline[4], cfg, Pad::Red, xl, xl + static_cast<float>(w), z_near - w,
+                           cfg.track.z_future);
+    }
+    {
+        const double now = 2.8;  // the near end is at 2.575 s
+        const std::vector<DrawCommand> outline = inserted_run(
+            build_highway_draws(build_track_state(ghosted, TrackStateOptions{}), cfg, now, 1.0),
+            build_highway_draws(build_track_state(plain, TrackStateOptions{}), cfg, now, 1.0));
+        REQUIRE(outline.size() == 6);
+        const double z_far = time_to_z(cfg, now, 3.0 + end, 1.0);
+        for (size_t k = 0; k < kPads.size(); ++k) {
+            float x1, x2;
+            pad_x(cfg, kPads[k], x1, x2);
+            check_outline_line(outline[k], cfg, kPads[k], x1, x2, z_far + w, z_far);
+        }
+        const float xr = cfg.track.x_right;
+        check_outline_line(outline[5], cfg, Pad::Green, xr - static_cast<float>(w), xr,
+                           cfg.track.z_past, z_far + w);
     }
 }
 
