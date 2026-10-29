@@ -605,7 +605,7 @@ length.
 
 **Fill rule**:
 Which Clone Hero version's fill rules a run follows, 1.1 or 1.0:
-`FillDeadlineRule` in src/parse/song.h. It picks both the fill spawn deadline
+`FillDeadlineRule` in src/core/song.h. It picks both the fill spawn deadline
 (`activation_fill_deadline_ms`) and the generated-fill generator
 (`Song::check_activations`). A flag that says "1.0 fills" (the setting, a
 `store::Lens`, or `hydra_batch --legacy-fills`) becomes a rule only through
@@ -710,7 +710,7 @@ change reads the new tempo.
 
 **Time signature**:
 The meter in force at a tick, as the chart wrote it: `apply_timesig` in
-src/parse/song.h stores the numerator as written and the bottom number from
+src/core/song.h stores the numerator as written and the bottom number from
 `timesig_denominator`, and `SongTiming::time_signature_at` reads it back. A
 signature whose beat would be shorter than one tick is refused, naming its
 tick (user decision, 2026-10-14).

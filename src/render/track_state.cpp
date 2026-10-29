@@ -8,7 +8,7 @@
 #include <limits>
 #include <stdexcept>
 
-#include "parse/song.h"  // cymbal_counts
+#include "core/song.h"  // cymbal_counts
 
 namespace hydra::render {
 
