@@ -371,8 +371,8 @@
     },
     {
       "question": "What size do the UI fonts load at?",
-      "owner": "kFontSize in src/ui/app_shell.cpp",
-      "owner_file": "src/ui/app_shell.cpp",
+      "owner": "kFontSize in src/ui/imgui_setup.cpp",
+      "owner_file": "src/ui/imgui_setup.cpp",
       "owner_symbol": "kFontSize",
       "date": "2026-10-04",
       "decision": "audit finding 208 (phase 6 task J1-2)",
@@ -389,20 +389,20 @@
       ],
       "owner_lines": [
         {
-          "file": "src/ui/app_shell.cpp",
+          "file": "src/ui/imgui_setup.cpp",
           "line_text": "constexpr float kFontSize = 18.0f;",
           "why": "kFontSize, the owner"
         }
       ],
       "scope": [
-        "src/ui/app_shell.cpp"
+        "src/ui/imgui_setup.cpp"
       ],
       "note": "The backup fonts are merged behind the main and mono fonts, and ImGui scales merged glyphs by the ratio of the two sizes, so every load reads the one size."
     },
     {
       "question": "Does the font loader cut a file name off a path itself?",
       "owner": "ImGui's AddFontFromFileTTF; Hydra does not name font sources",
-      "owner_file": "src/ui/app_shell.cpp",
+      "owner_file": "src/ui/imgui_setup.cpp",
       "owner_symbol": "AddFontFromFileTTF",
       "date": "2026-10-07",
       "decision": "MEM-F derive-once review round 1, finding 1 (2026-10-07)",
@@ -417,14 +417,14 @@
         "const std::string fonts_dir = join_folder(base, \"resource\");"
       ],
       "scope": [
-        "src/ui/app_shell.cpp"
+        "src/ui/imgui_setup.cpp"
       ],
       "note": "A font source's name only labels ImGui's own debug windows, which Hydra never opens; naming the mapped fonts copied a path rule."
     },
     {
       "question": "Where does the startup UI scale come from?",
-      "owner": "ui_scale_for_dpi in src/ui/app_shell.cpp",
-      "owner_file": "src/ui/app_shell.cpp",
+      "owner": "ui_scale_for_dpi in src/ui/imgui_setup.cpp",
+      "owner_file": "src/ui/imgui_setup.cpp",
       "owner_symbol": "ui_scale_for_dpi",
       "date": "2026-10-04",
       "decision": "D54",
@@ -471,8 +471,8 @@
     },
     {
       "question": "What colour clears the frame?",
-      "owner": "kClearColor in src/ui/app_shell.h",
-      "owner_file": "src/ui/app_shell.h",
+      "owner": "kClearColor in src/ui/imgui_setup.h",
+      "owner_file": "src/ui/imgui_setup.h",
       "owner_symbol": "kClearColor",
       "date": "2026-10-04",
       "decision": "audit finding 270 (phase 6 task J1-2)",
@@ -488,7 +488,7 @@
       ],
       "owner_lines": [
         {
-          "file": "src/ui/app_shell.h",
+          "file": "src/ui/imgui_setup.h",
           "line_text": "inline constexpr float kClearColor[4] = {0.10f, 0.11f, 0.13f, 1.00f};",
           "why": "kClearColor, the owner"
         }

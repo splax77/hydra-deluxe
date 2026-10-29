@@ -243,6 +243,7 @@ int main()
     // with the headless GUI test runner.)
     hydra::ui::ImGuiSetupOptions imgui_options;
     imgui_options.dpi_scale = main_scale;
+    imgui_options.before_ini_load = hydra::ui::install_placement_handler;
 #ifdef HYDRA_UITEST_ATTACHED
     imgui_options.ini_file = ui_ini;  // empty keeps the default
 #endif

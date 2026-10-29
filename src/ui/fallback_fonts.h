@@ -2,7 +2,7 @@
 //
 // Hydra's main and mono fonts cover Latin and, for the main font, Japanese.
 // Clone Hero libraries hold titles in every script, plus odd punctuation and
-// symbols. setup_imgui (src/ui/app_shell.cpp) merges every file below that
+// symbols. setup_imgui (src/ui/imgui_setup.cpp) merges every file below that
 // exists on this machine behind each of the two fonts, in this order, so a
 // character comes from the first file that has it. A missing file is skipped.
 // tests/test_font_coverage.cpp reads this same list to know which characters

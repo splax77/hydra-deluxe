@@ -41,6 +41,7 @@ hydra::ui::ImGuiSetupOptions test_options(const std::string& ini_file) {
     opts.dpi_scale = 1.0f;
     opts.ini_file = ini_file;
     opts.resource_dir = corpus::resource_root();
+    opts.before_ini_load = hydra::ui::install_placement_handler;
     return opts;
 }
 

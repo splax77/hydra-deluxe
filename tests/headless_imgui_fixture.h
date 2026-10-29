@@ -23,6 +23,7 @@ struct HeadlessImGui {
         opts.dpi_scale = 1.0f;
         opts.ini_file = "-";
         opts.resource_dir = ::corpus::resource_root();
+        opts.before_ini_load = hydra::ui::install_placement_handler;
         hydra::ui::setup_imgui(opts);
         ImGuiIO& io = ImGui::GetIO();
         io.DisplaySize = ImVec2(800.0f, 600.0f);

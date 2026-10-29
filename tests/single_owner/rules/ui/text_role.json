@@ -14,7 +14,7 @@
       ],
       "exempt": [
         {
-          "file": "src/ui/app_shell.cpp",
+          "file": "src/ui/imgui_setup.cpp",
           "why": "loads the two font files and sets the default font; it picks no role"
         },
         {
