@@ -51,7 +51,7 @@ TEST_CASE("pb state: a corpus chart opens with its record, and the list holds ev
     CHECK(c->entry.notespath == corpus::burnout_notes());
 
     const auto rows = hydra::pathbuilder::path_rows(c->record, {});
-    CHECK(rows.size() == c->record.paths.size() + c->record.allzero_paths.size());
+    CHECK(rows.size() == 4);  // from one run: the record's paths, then its all-0 paths
     REQUIRE_FALSE(rows.empty());
     CHECK(rows.front().label == "Best path");
     CHECK(rows.front().gap == 0);
