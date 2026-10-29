@@ -84,7 +84,7 @@ struct PreviewFill {
 
 // One Clone Hero drum lane (a roll or trill marker): a strip down each pad
 // column it lights, over the lane's span. Which pads it lights is
-// light_drum_lanes's rule in song.cpp. A kick has no column, so it is never
+// light_drum_lanes's rule in parse/song.cpp. A kick has no column, so it is never
 // one.
 struct PreviewDrumLane {
     PreviewSpan span;
@@ -195,7 +195,7 @@ struct PreviewMeasureSpan {
 // SongTiming::time_signature_at; these defaults are what a scene built from
 // nothing shows.
 struct PreviewTimeSig {
-    int numerator = kDefaultTimeSigNumerator;  // Song's default (parse/song.h)
+    int numerator = kDefaultTimeSigNumerator;  // Song's default (core/song.h)
     int denominator = kDefaultTimeSigDenominator;
 };
 

@@ -15,7 +15,7 @@
 #include "core/model.h"
 #include "core/replay.h"
 #include "core/rules.h"
-#include "parse/song.h"
+#include "core/song.h"
 #include "search/engine.h"
 #include "search/graph.h"
 
@@ -165,7 +165,17 @@ std::string full_pin_mismatch(const Song& song, const SearchSettings& settings,
 // and the rest are its tied variants, in the engine's order. `promoted`,
 // when given, gets one entry per returned path: true when that path is such
 // a rebuilt variant. The search folded it, so it is not an unfolded root.
+// keep_prefix_paths below shares its matcher.
 std::vector<Path> keep_target_paths(std::vector<Path> paths,
+                                    const std::vector<PinnedWindow>& windows,
+                                    std::vector<bool>* promoted = nullptr);
+
+// keep_target_paths for a search that runs free after its pins
+// (EngineOptions::free_after): the same filter, rescue and `promoted`, but a
+// path's activations need only start with the windows' act ticks, so it may
+// activate again after the last window. A path that activates before or
+// between the windows is still dropped.
+std::vector<Path> keep_prefix_paths(std::vector<Path> paths,
                                     const std::vector<PinnedWindow>& windows,
                                     std::vector<bool>* promoted = nullptr);
 

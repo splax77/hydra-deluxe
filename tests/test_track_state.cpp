@@ -1007,3 +1007,69 @@ TEST_CASE("rebuild_overlay_fields: equals a full build on every 8th corpus chart
     CHECK(charts > 0);
     CHECK(swaps > charts);
 }
+
+// One tick per millisecond (timed_scene), so a fill's drawn end edge sits half
+// a millisecond past its last note and the next tick a millisecond past it.
+// Scene fill 0 is hidden, 1 offered over [1.0, 2.0] s, 2 taken over [3.0, 4.0]
+// s; the answer is the scene's index, not the place among the lit fills.
+TEST_CASE("fill_at names the fill lit at t and none between fills") {
+    PreviewScene scene = timed_scene();
+    scene.notes = {note(0.0, PreviewLane::Red),    note(600.0, PreviewLane::Red),
+                   note(1000.0, PreviewLane::Red), note(2000.0, PreviewLane::Green),
+                   note(3000.0, PreviewLane::Red), note(4000.0, PreviewLane::Green),
+                   note(5000.0, PreviewLane::Red)};
+    scene.fills = {fill(span(500.0, 800.0), PreviewFillState::Hidden),
+                   fill(span(1000.0, 2000.0), PreviewFillState::Offered),
+                   fill(span(3000.0, 4000.0), PreviewFillState::Taken)};
+    scene.activations = {lane_activation(4000, PreviewLane::Green, 2)};
+    const TrackState st = build_track_state(scene, TrackStateOptions{});
+
+    // The drawn end edges, read off the timeline: the instant where each
+    // fill's span ends.
+    const TrackInstant* offered_end = nullptr;
+    const TrackInstant* taken_end = nullptr;
+    for (const TrackInstant& i : st.instants()) {
+        if (i.fill == Toggle::End) offered_end = &i;
+        if (i.fill_taken == Toggle::End) taken_end = &i;
+    }
+    REQUIRE(offered_end);
+    REQUIRE(taken_end);
+    CHECK(offered_end->t == doctest::Approx(2.0005));
+    CHECK(taken_end->t == doctest::Approx(4.0005));
+
+    // The hidden fill is never lit.
+    CHECK_FALSE(st.fill_at(0.6).has_value());
+    // The offered fill: lit from its first note through its last, up to the
+    // drawn end edge, which the strip stops at.
+    CHECK(st.fill_at(1.0) == std::optional<size_t>(1));
+    CHECK(st.fill_at(2.0) == std::optional<size_t>(1));
+    CHECK(st.fill_at(2.00025) == std::optional<size_t>(1));
+    CHECK_FALSE(st.fill_at(offered_end->t).has_value());
+    CHECK_FALSE(st.fill_at(2.001).has_value());  // one tick past the last note
+    // Between the fills.
+    CHECK_FALSE(st.fill_at(2.5).has_value());
+    // The taken fill, the same way.
+    CHECK(st.fill_at(3.0) == std::optional<size_t>(2));
+    CHECK(st.fill_at(4.0) == std::optional<size_t>(2));
+    CHECK(st.fill_at(4.00025) == std::optional<size_t>(2));
+    CHECK_FALSE(st.fill_at(taken_end->t).has_value());
+    CHECK_FALSE(st.fill_at(4.001).has_value());
+
+    // Every stretch the highway lights answers its own fill at the stretch's
+    // start and middle.
+    const double near_s = 0.0, far_s = 5.5;
+    const TrackWindow win = st.window(near_s, far_s);
+    auto lit_answers = [&](Toggle TrackInstant::*field, size_t want) {
+        int lit = 0;
+        for (const ToggleSpan& s : st.make_toggle_bounds(win, near_s, far_s, field)) {
+            if (!s.on) continue;
+            ++lit;
+            CAPTURE(s.t1);
+            CHECK(st.fill_at(s.t1) == std::optional<size_t>(want));
+            CHECK(st.fill_at((s.t1 + s.t2) / 2.0) == std::optional<size_t>(want));
+        }
+        CHECK(lit == 1);
+    };
+    lit_answers(&TrackInstant::fill, 1);
+    lit_answers(&TrackInstant::fill_taken, 2);
+}

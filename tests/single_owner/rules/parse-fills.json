@@ -47,8 +47,8 @@
     },
     {
       "question": "Where does a generated fill start, and which chord takes it?",
-      "owner": "Song::check_activations in src/parse/song.cpp",
-      "owner_file": "src/parse/song.cpp",
+      "owner": "Song::check_activations in src/core/song.cpp",
+      "owner_file": "src/core/song.cpp",
       "owner_symbol": "Song::check_activations",
       "date": "2026-10-14",
       "decision": "D115 (plan part B2, task B2-3)",
@@ -68,32 +68,32 @@
       ],
       "owner_lines": [
         {
-          "file": "src/parse/song.cpp",
+          "file": "src/core/song.cpp",
           "line_text": "static_cast<int64_t>(tick_resolution_ * rules.fill_max_distance_beats) + 1;",
           "why": "Song::check_activations, the owner: how far from a measure line a chord may sit"
         },
         {
-          "file": "src/parse/song.cpp",
+          "file": "src/core/song.cpp",
           "line_text": "line += static_cast<int64_t>(std::max(rules.fill_cooldown_measures, 1));",
           "why": "Song::check_activations, the owner: the next candidate line after a placed fill"
         },
         {
-          "file": "src/parse/song.cpp",
+          "file": "src/core/song.cpp",
           "line_text": "const int64_t cooldown_measures = rules.fill_cooldown_measures;",
           "why": "Song::place_fills_ch10, the Clone Hero 1.0 generator check_activations chooses: the downbeats skipped after a placed fill"
         },
         {
-          "file": "src/parse/song.cpp",
+          "file": "src/core/song.cpp",
           "line_text": "static_cast<int64_t>(tick_resolution_ * rules.fill_max_distance_beats);",
           "why": "Song::place_fills_ch10, the Clone Hero 1.0 generator check_activations chooses: how far from a downbeat a chord may sit, with no extra tick"
         }
       ],
-      "note": "Reading either generated-fill rule from a Rules value. Song::check_activations places every generated fill from the measure lines, as Clone Hero's generator does; rules_fields in src/core/rules.cpp names the fields through member pointers, which is loading them, not placing fills. Since D115 TJ-1 check_activations chooses between two generators in song.cpp, Clone Hero 1.1's (place_fills_ch11) and 1.0's (place_fills_ch10), and each reads the two fields. Decided by: D115 (plan part B2, task B2-3)"
+      "note": "Reading either generated-fill rule from a Rules value. Song::check_activations places every generated fill from the measure lines, as Clone Hero's generator does; rules_fields in src/core/rules.cpp names the fields through member pointers, which is loading them, not placing fills. Since D115 TJ-1 check_activations chooses between two generators in core/song.cpp, Clone Hero 1.1's (place_fills_ch11) and 1.0's (place_fills_ch10), and each reads the two fields. Decided by: D115 (plan part B2, task B2-3)"
     },
     {
       "question": "Which game version's generator places a chart's own fills?",
-      "owner": "Song::check_activations in src/parse/song.cpp",
-      "owner_file": "src/parse/song.cpp",
+      "owner": "Song::check_activations in src/core/song.cpp",
+      "owner_file": "src/core/song.cpp",
       "owner_symbol": "Song::check_activations",
       "date": "2026-10-14",
       "decision": "D115 TJ-1 (user, 2026-10-14: keep Clone Hero 1.0 exactly as before)",
@@ -112,27 +112,27 @@
       ],
       "owner_lines": [
         {
-          "file": "src/parse/song.cpp",
+          "file": "src/core/song.cpp",
           "line_text": "place_fills_ch10(rules);",
           "why": "Song::check_activations, the owner: Clone Hero 1.0 mode's generator"
         },
         {
-          "file": "src/parse/song.cpp",
+          "file": "src/core/song.cpp",
           "line_text": "place_fills_ch11(rules);",
           "why": "Song::check_activations, the owner: Clone Hero 1.1's generator, every other mode"
         },
         {
-          "file": "src/parse/song.cpp",
+          "file": "src/core/song.cpp",
           "line_text": "void Song::check_activations(const core::Rules& rules, FillDeadlineRule fills) {",
           "why": "the owner's own definition"
         },
         {
-          "file": "src/parse/song.cpp",
+          "file": "src/core/song.cpp",
           "line_text": "void Song::place_fills_ch10(const core::Rules& rules) {",
           "why": "the 1.0 generator's definition, called only by the owner"
         },
         {
-          "file": "src/parse/song.cpp",
+          "file": "src/core/song.cpp",
           "line_text": "void Song::place_fills_ch11(const core::Rules& rules) {",
           "why": "the 1.1 generator's definition, called only by the owner"
         },
@@ -147,7 +147,7 @@
           "why": "ChartParser::parse hands the owner the rule its caller passed"
         },
         {
-          "file": "src/parse/song.h",
+          "file": "src/core/song.h",
           "line_text": "void check_activations(const core::Rules& rules, FillDeadlineRule fills);",
           "why": "the owner's declaration"
         },
@@ -167,12 +167,12 @@
           "why": "dynamics_for_settings: the pad rows read only the chords' dynamics"
         },
         {
-          "file": "src/parse/song.h",
+          "file": "src/core/song.h",
           "line_text": "void place_fills_ch10(const core::Rules& rules);",
           "why": "the 1.0 generator's private declaration"
         },
         {
-          "file": "src/parse/song.h",
+          "file": "src/core/song.h",
           "line_text": "void place_fills_ch11(const core::Rules& rules);",
           "why": "the 1.1 generator's private declaration"
         }

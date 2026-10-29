@@ -68,7 +68,7 @@ inline Song make_hand_song() {
     }
     // The one solo section: the chords at ticks 240 and 480 (sequence
     // positions 1 and 2). The parsers build this list from the flags
-    // (find_solo_sections in song.cpp, private there); a hand-built song
+    // (find_solo_sections in parse/song.cpp, private there); a hand-built song
     // states it.
     song.solo_sections = {{1, 2}};
     return song;

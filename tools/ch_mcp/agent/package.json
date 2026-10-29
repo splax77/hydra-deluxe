@@ -6,7 +6,8 @@
     "type": "module",
     "scripts": {
         "build:clock": "frida-compile -o clock.js clock.ts",
-        "build:trace": "frida-compile -o trace.js trace.ts"
+        "build:trace": "frida-compile -o trace.js trace.ts",
+        "build:state": "frida-compile -o state.js state.ts"
     },
     "devDependencies": {
         "@types/frida-gum": "^19.10.0",

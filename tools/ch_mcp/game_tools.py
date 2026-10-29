@@ -1,0 +1,494 @@
+"""The Clone Hero MCP server's game-side tools: start and stop the game, read
+its stats files, press drum lanes and run the auto-player.
+
+Each tool is a thin call into the module that owns the work (the plan
+docs/superpowers/plans/2026-10-28-ch-mcp-server.md, "The tools" and "Who owns
+which question"). This module adds only the session state the server keeps
+between tool calls: the open bot_run.Run, the backup folder, the play thread
+and its press rows, and one scratch folder per session.
+
+Every tool returns plain text and never prints: an MCP server's stdout is its
+protocol channel. The server (server.py) builds the one RLock and hands it in;
+every tool holds it, so the tools never run at the same time.
+
+The Frida tools (frida_tools.py) build on four methods here: ensure_backup,
+launched_at, add_stop_hook and play_snapshot.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import io
+import json
+import os
+import tempfile
+import threading
+from typing import Callable, List, Optional, Sequence, Union
+
+from tools.ch_mcp import bot_run, compare_scorestats, game_files, install_chart
+from tools.ch_probe import constants as C
+from tools.ch_probe import engine_finder
+from tools.ch_probe.experiments import play_chart
+from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS
+from tools.ch_probe.input_driver import InputDriver, Lane, find_game_window
+
+# How long ch_install_chart waits for install_chart.install, whose silent
+# audio comes from an ffmpeg call with no timeout of its own (the plan's
+# question 5d).
+INSTALL_CAP_S = 60.0
+
+SCRATCH_PREFIX = "ch_live_"
+
+_NOT_RUNNING = f"{C.PROCESS_NAME} is not running"
+
+
+def _join(thread: threading.Thread, cap_s: float) -> None:
+    thread.join(cap_s)
+
+
+def _key_name(vk: int) -> str:
+    """A virtual-key code as the letter on the key when it is one."""
+    return chr(vk) if ord("A") <= vk <= ord("Z") else f"0x{vk:02X}"
+
+
+def _lane_list() -> str:
+    return ", ".join(lane.name.lower() for lane in Lane)
+
+
+def _value_text(value) -> str:
+    return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+
+
+@dataclasses.dataclass
+class _PlaySession:
+    """One ch_play_chart run. The thread appends to `rows` through on_press;
+    `result` is set when live_play returns."""
+    score_json: str
+    chord_count: int
+    log_path: Optional[str]
+    thread: Optional[threading.Thread] = None
+    stop: threading.Event = dataclasses.field(default_factory=threading.Event)
+    rows: list = dataclasses.field(default_factory=list)
+    result: Optional[play_chart.RunResult] = None
+    error: Optional[str] = None
+    log_note: Optional[str] = None
+
+    def running(self) -> bool:
+        return self.thread is not None and self.thread.is_alive()
+
+
+class GameTools:
+    """The eleven game-side tools and the session state between them.
+
+    Every outside seam is an argument, so the tests swap each for a fake:
+    `env` (bot_run.Env: the exe, the user folders, the launch, the clock and
+    the stamp), `driver` (the input driver), `live_play` and `live_press`
+    (play_chart's), `install` (install_chart's), `find_window` (input_driver's),
+    `compare` (compare_scorestats'), `wait_thread` (how ch_install_chart waits
+    on its worker) and `scratch_root` (the temp root the session folders go
+    under). `lock` is the server's one RLock; this class never makes its own."""
+
+    def __init__(self, env: bot_run.Env, lock, scratch_root: Optional[str] = None, *,
+                 driver: Optional[InputDriver] = None,
+                 live_play: Callable = play_chart.live_play,
+                 live_press: Callable = play_chart.live_press,
+                 install: Callable = install_chart.install,
+                 find_window: Callable[[], int] = find_game_window,
+                 compare: Callable = compare_scorestats.compare,
+                 wait_thread: Callable[[threading.Thread, float], None] = _join):
+        self._env = env
+        self._lock = lock
+        self._scratch_root = scratch_root or tempfile.gettempdir()
+        self._driver = driver if driver is not None else InputDriver()
+        self._live_play = live_play
+        self._live_press = live_press
+        self._install = install
+        self._find_window = find_window
+        self._compare = compare
+        self._wait_thread = wait_thread
+
+        self._run: Optional[bot_run.Run] = None
+        # The backup taken for a game the server did not start (question 2).
+        self._adopted_backup: Optional[str] = None
+        self._scratch: Optional[str] = None
+        self._count = 0
+        self._last_stats: Optional[str] = None
+        self._play: Optional[_PlaySession] = None
+        self._stop_hooks: List[Callable[[], object]] = []
+
+    # -- the interface frida_tools builds on ------------------------------------
+
+    def ensure_backup(self) -> str:
+        """Take the backup for a game the server did not start, once. Returns
+        nothing when a run or an earlier call already holds one; otherwise
+        the line naming the new backup folder."""
+        with self._lock:
+            if self._run is not None or self._adopted_backup is not None:
+                return ""
+            scratch = self._new_scratch()
+            self._adopted_backup = game_files.backup(
+                self._env.documents_dir, self._env.locallow_dir, scratch, stamp=self._env.stamp)
+            return (f"backup folder: {self._adopted_backup} (taken now, because the server "
+                    "did not start this game; ch_stop restores it)")
+
+    def launched_at(self) -> Optional[float]:
+        """When the server launched the open run's game, on env.now; None when
+        the server did not start the game."""
+        with self._lock:
+            return self._run.launched_at if self._run is not None else None
+
+    def add_stop_hook(self, hook: Callable[[], object]) -> None:
+        """Run `hook` at the start of ch_stop and shutdown, before the game is
+        stopped, in the order the hooks were added. A hook may return a line
+        for the reply."""
+        with self._lock:
+            self._stop_hooks.append(hook)
+
+    def play_snapshot(self) -> Optional[dict]:
+        """While a play session exists: {"last_row": the last press row or
+        None, "press_count": the rows delivered so far, "stop": the run's stop
+        reason, or None while it runs}. None when no play session ever ran."""
+        with self._lock:
+            play = self._play
+            if play is None:
+                return None
+            rows = list(play.rows)
+            return {"last_row": rows[-1] if rows else None,
+                    "press_count": len(rows),
+                    "stop": None if play.running() else self._stop_reason(play)}
+
+    # -- starting, stopping and status --------------------------------------------
+
+    def ch_start(self, song_folder: Optional[str] = None, player: str = bot_run.DEFAULT_PLAYER,
+                 profile: Optional[str] = None) -> str:
+        """Back up the user files, then start the game: with a song folder the
+        bot plays it from the command line; with none the game opens at its
+        menu. An open run is stopped and restored first."""
+        with self._lock:
+            lines: List[str] = []
+            if self._run is not None or self._adopted_backup is not None:
+                lines.append("a run was open; stopping it first:")
+                if not self._stop_all(lines):
+                    lines.append("the new run was not started")
+                    return "\n".join(lines)
+            scratch = self._new_scratch()
+            env = self._env_into(lines)
+            try:
+                run = bot_run.start_run(song_folder, player=player, profile=profile,
+                                        backup_root=scratch, env=env)
+            except bot_run.SongLengthMissing as e:
+                lines.append(str(e))
+                return "\n".join(lines)
+            except OSError as e:
+                lines.append(f"could not start the game: {e}")
+                return "\n".join(lines)
+            self._run = run
+            if run.length_ms is None:
+                lines.append("song length: none (no song on the command line; pick one in "
+                             "the game's menu)")
+            else:
+                lines.append(f"song length: {run.length_ms} ms, from {run.length_source}")
+            return "\n".join(lines)
+
+    def ch_stop(self) -> str:
+        """Run the stop hooks, stop the play session, then stop the game the
+        server started (bot_run.finish_run) and put the user files back, one
+        line per file. A game the server did not start is left running and
+        only the files are restored."""
+        with self._lock:
+            lines: List[str] = []
+            self._stop_all(lines)
+            return "\n".join(lines)
+
+    def shutdown(self) -> str:
+        """The server's exit (question 3): the same steps as ch_stop. A game
+        the server started is terminated, then the files are restored; for a
+        game it did not start, the files are restored and the game stays."""
+        return self.ch_stop()
+
+    def ch_status(self) -> str:
+        """The game side of the session: the run, the backup folder, the
+        scratch folder, the play session and the last stats copy. The Frida
+        and trace lines are frida_tools'."""
+        with self._lock:
+            lines: List[str] = []
+            run = self._run
+            if run is not None:
+                game = run.game
+                lines.append(f"game: started by the server, pid {game.pid}, "
+                             f"{'running' if game.is_running() else 'not running'}")
+                lines.append("song: " + (run.song_dir if run.song_dir is not None
+                                         else "none (started at the menu)"))
+                lines.append(f"backup folder: {run.backup_dir}")
+            elif self._adopted_backup is not None:
+                lines.append("game: not started by the server")
+                lines.append(f"backup folder: {self._adopted_backup}")
+            else:
+                lines.append("game: no run open, and no backup taken")
+            if self._scratch is not None:
+                lines.append(f"scratch folder: {self._scratch}")
+            play = self._play
+            if play is None:
+                lines.append("play session: none")
+            elif play.running():
+                lines.append(f"play session: running, {len(play.rows)} presses so far")
+            else:
+                lines.append(f"play session: ended ({self._stop_reason(play)})")
+            lines.append(f"last stats copy: {self._last_stats or 'none'}")
+            return "\n".join(lines)
+
+    # -- the stats files ----------------------------------------------------------
+
+    def ch_install_chart(self, chart_folder: str, name: Optional[str] = None) -> str:
+        """Copy one chart folder into the probe song folder with a silent
+        song.ogg (install_chart.install), waiting at most INSTALL_CAP_S."""
+        with self._lock:
+            box: dict = {}
+
+            def work() -> None:
+                try:
+                    box["chart"] = self._install(chart_folder, name=name)
+                except BaseException as e:  # reported below
+                    box["error"] = e
+
+            worker = threading.Thread(target=work, name="ch_install_chart", daemon=True)
+            worker.start()
+            self._wait_thread(worker, INSTALL_CAP_S)
+            if worker.is_alive():
+                return (f"not finished after {INSTALL_CAP_S:.0f} s (INSTALL_CAP_S); the copy "
+                        "goes on in the background and may still finish")
+            error = box.get("error")
+            if isinstance(error, install_chart.InstallRefused):
+                return f"refused: {error}"
+            if error is not None:
+                return f"install failed: {type(error).__name__}: {error}"
+            return f"installed; its chart file is {box['chart']}"
+
+    def ch_wait_stats(self) -> str:
+        """Wait, up to the run's cap, for the game to write new stats, and copy
+        them into the session folder (bot_run.wait_stats)."""
+        with self._lock:
+            if self._run is None:
+                return "no run is open; start one with ch_start(song_folder)"
+            lines: List[str] = []
+            copy = bot_run.wait_stats(self._run, self._scratch, self._env_into(lines))
+            if copy is not None:
+                self._last_stats = copy
+            return "\n".join(lines)
+
+    def ch_stats(self, path: Optional[str] = None) -> str:
+        """Every field of a stats copy as `name: value` lines, in the file's
+        order, each player's record under its own heading. No path means the
+        last copy ch_wait_stats made."""
+        with self._lock:
+            path = path or self._last_stats
+            if path is None:
+                return "no stats copy yet; call ch_wait_stats, or pass a path"
+            try:
+                with open(path, encoding="utf-8-sig") as f:
+                    stats = json.load(f)
+            except (OSError, ValueError) as e:
+                return f"could not read {path}: {e}"
+            lines = [f"stats: {path}"]
+            for key, value in stats.items():
+                if key != "players":
+                    lines.append(f"{key}: {_value_text(value)}")
+            for i, player in enumerate(stats.get("players") or []):
+                lines.append(f"players[{i}]:")
+                lines.extend(f"  {key}: {_value_text(value)}" for key, value in player.items())
+            return "\n".join(lines)
+
+    def ch_compare(self, stats_path: str, score_json: str) -> str:
+        """compare_scorestats.compare's three lines for a stats copy against a
+        hydra_replay score JSON, then pass or fail."""
+        with self._lock:
+            lines: List[str] = []
+            try:
+                ok = self._compare(stats_path, score_json, out=lines.append)
+            except (OSError, ValueError, KeyError, TypeError) as e:
+                lines.append(f"compare failed: {type(e).__name__}: {e}")
+                return "\n".join(lines)
+            lines.append("pass" if ok else "fail")
+            return "\n".join(lines)
+
+    # -- keys and the auto-player ---------------------------------------------------
+
+    def ch_press(self, lanes: Union[str, Sequence[str]]) -> str:
+        """Press one chord: lane names such as "red,kick", parsed through
+        input_driver.Lane and pressed through play_chart.live_press, which
+        focuses the game window first."""
+        with self._lock:
+            names = lanes.split(",") if isinstance(lanes, str) else list(lanes)
+            names = [n.strip() for n in names if n.strip()]
+            if not names:
+                return f"no lanes given; valid lanes: {_lane_list()}"
+            chord: List[Lane] = []
+            for name in names:
+                try:
+                    chord.append(Lane[name.upper()])
+                except KeyError:
+                    return f'unknown lane "{name}"; valid lanes: {_lane_list()}'
+            hwnd = self._find_window()
+            if not hwnd:
+                return f"no game window found ({_NOT_RUNNING}, or its window is closed)"
+            lines = [line for line in (self.ensure_backup(),) if line]
+            keys = self._live_press(self._driver, hwnd)(chord)
+            lines.append("pressed " + ", ".join(lane.name.lower() for lane in chord)
+                         + "; keys sent: " + (", ".join(_key_name(vk) for vk in keys) or "none"))
+            return "\n".join(lines)
+
+    def ch_play_chart(self, score_json: str, log: Optional[str] = None) -> str:
+        """Start the auto-player (play_chart.live_play) on a hydra_replay score
+        JSON in a background thread. `log`, when given, is where the press log
+        is written when the run ends; a relative path goes in the session
+        folder."""
+        with self._lock:
+            if self._play is not None and self._play.running():
+                return "a play session is already running; call ch_play_stop first"
+            try:
+                chords = play_chart.load_dump_chords(score_json)
+            except (OSError, ValueError, KeyError, TypeError) as e:
+                return f"could not read {score_json}: {type(e).__name__}: {e}"
+            if not chords:
+                return f"{score_json} has no chords to play"
+            lines = [line for line in (self.ensure_backup(),) if line]
+            log_path = None
+            if log:
+                log_path = log if os.path.isabs(log) else os.path.join(self._session_dir(), log)
+            play = _PlaySession(score_json=score_json, chord_count=len(chords), log_path=log_path)
+            play.thread = threading.Thread(target=self._play_body, args=(play, chords),
+                                           name="ch_play_chart", daemon=True)
+            self._play = play
+            play.thread.start()
+            lines.append(f"play session started: {len(chords)} chords from {score_json}")
+            lines.append(f"waiting for a moving clock (cap {engine_finder.ENGINE_SEARCH_CAP_S:.0f} s): "
+                         "start the song from the game's menu; a song launched with a bot "
+                         "is played by the bot, not by keys")
+            return "\n".join(lines)
+
+    def ch_play_status(self) -> str:
+        """The play session's counts, its stop reason when it ended, and every
+        press row, newest first."""
+        with self._lock:
+            play = self._play
+            if play is None:
+                return "no play session has run"
+            return "\n".join(self._play_lines(play))
+
+    def ch_play_stop(self) -> str:
+        """Tell the play session to stop at its next clock read, then show the
+        result so far."""
+        with self._lock:
+            play = self._play
+            if play is None or not play.running():
+                return "no play session is running" + (
+                    "\n" + "\n".join(self._play_lines(play)) if play is not None else "")
+            play.stop.set()
+            return "\n".join(self._play_lines(play) + ["stopped"])
+
+    # -- inside ---------------------------------------------------------------------
+
+    def _new_scratch(self) -> str:
+        """A new session folder under the temp root. It is never deleted: it
+        holds the backups."""
+        self._count += 1
+        self._scratch = os.path.join(self._scratch_root,
+                                     f"{SCRATCH_PREFIX}{os.getpid()}_{self._count}")
+        os.makedirs(self._scratch, exist_ok=True)
+        return self._scratch
+
+    def _session_dir(self) -> str:
+        return self._scratch if self._scratch is not None else self._new_scratch()
+
+    def _env_into(self, lines: List[str]) -> bot_run.Env:
+        """The server's Env with its printed lines going into `lines`."""
+        return dataclasses.replace(self._env, out=lines.append)
+
+    def _stop_all(self, lines: List[str]) -> bool:
+        """The stop hooks, the play stop, then the game and the restore.
+        Returns False when the restore failed or the stop raised; the run
+        stays open then, so a later ch_stop tries the restore again."""
+        for hook in list(self._stop_hooks):
+            try:
+                said = hook()
+            except Exception as e:  # the restore below matters more
+                lines.append(f"a stop hook failed: {type(e).__name__}: {e}")
+            else:
+                if said:
+                    lines.append(str(said))
+        play = self._play
+        if play is not None and play.running():
+            play.stop.set()
+            lines.append("play session told to stop")
+        env = self._env_into(lines)
+        if self._run is not None:
+            try:
+                ok = bot_run.finish_run(self._run, stop=True, env=env,
+                                        stop_line=bot_run.STOPPED_LINE)
+            except Exception as e:
+                lines.append(f"stopping the game failed: {type(e).__name__}: {e}; "
+                             f"the backup is still in {self._run.backup_dir}")
+                return False
+            if not ok:
+                return False
+            self._run = None
+            return True
+        if self._adopted_backup is not None:
+            lines.append("the server did not start the game, so it does not close it")
+            if bot_run.restore_only(self._adopted_backup, env) != 0:
+                return False
+            lines.append("if the game is still running it "
+                         + bot_run.late_write_hint(self._adopted_backup))
+            self._adopted_backup = None
+            return True
+        lines.append("no run is open and no backup was taken; nothing to restore")
+        return True
+
+    def _play_body(self, play: _PlaySession, chords) -> None:
+        """The play thread: live_play, then the press log. It never takes the
+        lock, so a tool holding it never waits on the thread."""
+        try:
+            play.result = self._live_play(chords, driver=self._driver,
+                                          on_press=play.rows.append,
+                                          should_stop=play.stop.is_set,
+                                          out=io.StringIO())
+        except Exception as e:  # reported by ch_play_status
+            play.error = f"{type(e).__name__}: {e}"
+        if play.log_path:
+            try:
+                play_chart.write_press_log(play.log_path, list(play.rows))
+                play.log_note = f"press log: {play.log_path} ({len(play.rows)} rows)"
+            except OSError as e:
+                play.log_note = f"press log not written to {play.log_path}: {e}"
+
+    @staticmethod
+    def _stop_reason(play: _PlaySession) -> str:
+        if play.error is not None:
+            return f"failed: {play.error}"
+        return play.result.stop if play.result is not None else "no result"
+
+    def _play_lines(self, play: _PlaySession) -> List[str]:
+        rows = list(play.rows)
+        lines = [f"play session: {play.chord_count} chords from {play.score_json}"]
+        if play.running():
+            lines.append(f"running: {len(rows)} presses so far, "
+                         f"{sum(1 for r in rows if r['hit'])} hit")
+        else:
+            lines.append(f"ended: {self._stop_reason(play)}")
+            result = play.result
+            if result is not None:
+                if result.message:
+                    lines.append(result.message)
+                lines.append(f"sent {result.sent}, hit {result.hit}, "
+                             f"misses {result.sent - result.hit}, best streak {result.max_streak}")
+                if result.sent != len(rows):
+                    lines.append(f"the song clock jumped back during the run: the counts above "
+                                 f"cover the part after the jump; the rows below keep all "
+                                 f"{len(rows)} presses")
+            if play.log_note:
+                lines.append(play.log_note)
+        if rows:
+            lines.append(f"rows, newest first ({', '.join(PRESS_LOG_COLUMNS)}):")
+            lines.extend("  " + ", ".join(str(r.get(c, "")) for c in PRESS_LOG_COLUMNS)
+                         for r in reversed(rows))
+        return lines

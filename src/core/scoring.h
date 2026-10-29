@@ -12,7 +12,7 @@
 
 #include "core/model.h"
 #include "core/rules.h"
-#include "parse/song.h"
+#include "core/song.h"
 
 namespace hydra {
 

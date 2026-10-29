@@ -4,8 +4,11 @@
 #include "doctest.h"
 
 #include <algorithm>
+#include <cmath>
 #include <initializer_list>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "render/highway_draw.h"
@@ -88,6 +91,63 @@ TEST_CASE("highway_span_at: a narrower image leaves the highway's size alone") {
     const HighwaySpan narrow = highway_span_at(cfg, 600, 400, 390.0f);
     CHECK(narrow.right - narrow.left ==
           doctest::Approx(static_cast<double>(wide.right - wide.left)).epsilon(0.01));
+}
+
+namespace {
+
+// A point on the highway's floor in lane-space x, at chart time t, through
+// the highway's own time_to_z.
+Vec3 floor_point(const PreviewConfig& cfg, float x, double now_s, double t, double speed) {
+    return {x, cfg.track.y, static_cast<float>(time_to_z(cfg, now_s, t, speed))};
+}
+
+}  // namespace
+
+// The round trip's 1 ms tolerance is the Path Builder plan's (RD-1).
+TEST_CASE("image_to_floor_time inverts project_to_image on the floor") {
+    const PreviewConfig cfg = shipped_preview_config();
+    const double now_s = 12.0;
+    for (const double speed : {1.0, 1.5}) {
+        const double far_t = far_time(cfg, now_s, speed);
+        // A wide image (the track fills its height) and a tall one (the track
+        // hugs the bottom, below an empty band).
+        for (const std::pair<int, int>& size : {std::pair{1200, 400}, std::pair{600, 1080}}) {
+            const int w = size.first, h = size.second;
+            for (const double f : {0.01, 0.25, 0.5, 0.75, 0.99}) {
+                const double t = now_s + f * (far_t - now_s);
+                for (const float x : {-0.9f, 0.0f, 0.6f}) {
+                    CAPTURE(speed);
+                    CAPTURE(w);
+                    CAPTURE(f);
+                    CAPTURE(x);
+                    const ImagePoint p =
+                        project_to_image(cfg, w, h, floor_point(cfg, x, now_s, t, speed));
+                    const std::optional<double> back =
+                        image_to_floor_time(cfg, w, h, p, now_s, speed);
+                    REQUIRE(back.has_value());
+                    CHECK(std::fabs(*back - t) <= 0.001);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("image_to_floor_time refuses a point above the far end") {
+    const PreviewConfig cfg = shipped_preview_config();
+    const double now_s = 12.0, speed = 1.0;
+    const int w = 1200, h = 400;
+    const double past_far = far_time(cfg, now_s, speed) + 0.25;
+    const ImagePoint p = project_to_image(cfg, w, h, floor_point(cfg, 0.0f, now_s, past_far, speed));
+    CHECK_FALSE(image_to_floor_time(cfg, w, h, p, now_s, speed).has_value());
+}
+
+TEST_CASE("image_to_floor_time refuses a point below the strike line") {
+    const PreviewConfig cfg = shipped_preview_config();
+    const double now_s = 12.0, speed = 1.0;
+    const int w = 1200, h = 400;
+    const ImagePoint p =
+        project_to_image(cfg, w, h, floor_point(cfg, 0.0f, now_s, now_s - 0.1, speed));
+    CHECK_FALSE(image_to_floor_time(cfg, w, h, p, now_s, speed).has_value());
 }
 
 TEST_CASE("overlay_scale: full size with room, floored when narrow, clear in between") {
