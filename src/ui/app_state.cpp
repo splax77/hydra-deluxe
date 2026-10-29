@@ -131,25 +131,29 @@ void AppState::request_rescan_on_open() {
     // When start_scan would refuse, ask for nothing: the dialog's notice
     // would otherwise wait for a later scan the app did not start.
     if (!can_scan()) return;
-    // A scan over a folder it cannot list writes a library without that
-    // folder's charts and drops their results, so a missing folder stops the
-    // scan the user did not ask for.
+    // Checked here as well as in start_scan, so the open asks for no scan and
+    // its dialog line never waits for one.
+    if (scan_blocked_by_missing_folder()) return;
+    request_scan = true;
+    scan_started_by_open = true;
+}
+
+bool AppState::scan_blocked_by_missing_folder() {
     for (const std::string& folder : settings.chartfolders) {
         if (!is_directory_utf8(folder)) {
             set_problem(app::library_rescan_blocked_notice(folder));
-            return;
+            return true;
         }
     }
-    request_scan = true;
-    scan_started_by_open = true;
+    return false;
 }
 
 void AppState::startup_notice_closed() {
     if (startup_notice_.empty()) return;
     startup_notice_.clear();
     // The fresh library is empty; the chart folders came from the ini, so
-    // the scan finds the same songs. start_scan refuses when can_scan says
-    // no, as the toolbar's button does.
+    // the scan finds the same songs. start_scan refuses a scan it cannot
+    // run, as it does for the toolbar's button.
     request_scan = true;
 }
 
@@ -630,6 +634,12 @@ void AppState::start_scan() {
         // line must not wait for a later scan the user starts. A scan already
         // running keeps its line.
         if (!scan_job) scan_started_by_open = false;
+        return;
+    }
+    // Every scan, the button's included, stops here, so the toolbar's button
+    // stays on and the click shows the notice instead (D266).
+    if (scan_blocked_by_missing_folder()) {
+        scan_started_by_open = false;
         return;
     }
     scan_job = std::make_unique<ScanJob>(settings.chartfolders, *store);
