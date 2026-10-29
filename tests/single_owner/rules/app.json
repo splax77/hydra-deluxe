@@ -187,6 +187,31 @@
       "note": "The not-analyzed row's tooltip. The old copy was split over two source lines, so a rule on the whole sentence missed it; this one matches the sentence's first words, which sit on one line however the rest is split. kNotAnalyzedText is the one place it is typed. Decided by: D91 (2026-10-07)"
     },
     {
+      "question": "What does a program say when it can't open a song file?",
+      "owner": "song_file_missing_sentence in src/app/user_messages.cpp",
+      "owner_file": "src/app/user_messages.cpp",
+      "owner_symbol": "song_file_missing_sentence",
+      "date": "2026-10-29",
+      "decision": "D267",
+      "added_by": "PB-1-review",
+      "pattern": "open the song file",
+      "anchor": "open the song file",
+      "owner_files": [
+        "src/app/user_messages.cpp"
+      ],
+      "must_match": [
+        "ImGui::TextWrapped(\"Hydra couldn't open the song file. It may have been moved or deleted.\");",
+        "\"Hydra couldn't open the song file. It may have been moved or deleted\";"
+      ],
+      "must_not_match": [
+        "throw KindedError(ErrorKind::SongFileMissing, \"cannot open file: \" + path);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The song file's sentence is written once, with Hydra's Scan advice added only for Hydra, so the Path Builder (no library) and Hydra never keep two copies of its first half. Every error line reads it through plain_error. Decided by: D267 (2026-10-29)"
+    },
+    {
       "question": "What text shows where a value is missing?",
       "owner": "kDash in src/app/report.h",
       "owner_file": "src/app/report.h",

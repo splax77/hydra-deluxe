@@ -20,6 +20,15 @@ enum class ErrorKind;  // core/error_kind.h
 
 namespace hydra::app {
 
+// Which of Hydra's programs is showing an error. A few sentences point at
+// something only one program has (Hydra's Scan library button; the Path Builder
+// has no library), so kind_sentence in user_messages.cpp asks. Each program
+// sets its own once, when it starts and before it starts any worker thread
+// (D267). Hydra, and every command-line tool, is the default.
+enum class Program { Hydra, PathBuilder };
+void set_program(Program program);
+Program current_program();
+
 // What every error Hydra doesn't recognize reads as.
 inline constexpr const char* kSomethingWentWrong =
     "Something went wrong. Try again, and if it keeps happening, report it with the "

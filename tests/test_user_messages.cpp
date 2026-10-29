@@ -17,6 +17,7 @@
 #include "core/model.h"
 #include "load_util.h"
 #include "parse/midi.h"
+#include "program_scope.h"
 #include "parse/song.h"
 
 using hydra::app::plain_error;
@@ -179,6 +180,20 @@ TEST_CASE("user_messages: the Stale chip's tooltip names both causes") {
 TEST_CASE("user_messages: the not-analyzed tooltip names the click and the batch") {
     CHECK(std::string(hydra::app::kNotAnalyzedText) ==
           "Not analyzed yet. Click the song or run a batch to analyze it.");
+}
+
+// D267: the Scan library advice is Hydra's; the Path Builder has no library
+// and drops it. The details line is the same for both.
+TEST_CASE("user_messages: the song file sentence names Scan library only in Hydra") {
+    const hydra::KindedError missing(hydra::ErrorKind::SongFileMissing, "cannot open file: x");
+    CHECK(plain_error(missing) == kSongFileMissing);
+    {
+        ProgramScope builder(hydra::app::Program::PathBuilder);
+        CHECK(plain_error(missing) ==
+              "Hydra couldn't open the song file. It may have been moved or deleted.");
+        CHECK(plain_error_detail(missing) == "cannot open file: x");
+    }
+    CHECK(plain_error(missing) == kSongFileMissing);
 }
 
 // The thrower names the kind, so the words of the error don't matter: every

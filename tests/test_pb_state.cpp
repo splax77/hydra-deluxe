@@ -9,6 +9,7 @@
 
 #include "audio_chart_fixtures.h"  // write_text_file
 #include "chart_text.h"
+#include "program_scope.h"
 #include "scratch_settings.h"
 #include "temp_util.h"
 #include "wait_util.h"
@@ -82,14 +83,15 @@ TEST_CASE("pb state: a chart with no Star Power phrase opens and says there is n
           "This chart has no Star Power phrases, so there is no path to build.");
 }
 
+// D267: the builder has no library and no Scan button, so its sentence leaves
+// the Scan advice out.
 TEST_CASE("pb state: a chart that fails to open says why in the plain sentence") {
+    ProgramScope builder(hydra::app::Program::PathBuilder);
     PbState s;
     const std::string missing = testtemp::temp_dir("pb_missing") + "\\notes.mid";
     open_and_wait(s, missing);
     CHECK(s.chart() == nullptr);
-    CHECK(s.error() ==
-          "Hydra couldn't open the song file. It may have been moved or deleted; run Scan "
-          "library to update the library.");
+    CHECK(s.error() == "Hydra couldn't open the song file. It may have been moved or deleted.");
     CHECK(s.error_detail() == "cannot open file: " + missing);
 }
 

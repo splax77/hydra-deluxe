@@ -83,8 +83,9 @@ void test_no_star_power(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, hydra::pathbuilder::kNothingToBuildText));
 }
 
-// A chart that cannot be read shows the plain sentence for it and opens
-// nothing.
+// A chart that cannot be read shows the plain sentence for it and its details
+// line, and opens nothing. The sentence is the builder's (D267): Hydra's
+// without the Scan library advice, since the builder has no library.
 void test_file_open_error(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     h.chart_arg = h.temp_dir + "\\missing\\notes.mid";
@@ -92,10 +93,11 @@ void test_file_open_error(ImGuiTestContext* ctx) {
     IM_CHECK(wait_idle(ctx));
     ctx->Yield(2);
     IM_CHECK(h.app->state.chart() == nullptr);
-    IM_CHECK(!h.app->state.error().empty());
+    IM_CHECK(h.app->state.error() ==
+             "Hydra couldn't open the song file. It may have been moved or deleted.");
+    IM_CHECK(h.app->state.error_detail() == "cannot open file: " + h.chart_arg);
     IM_CHECK(on_screen(h, h.app->state.error()));
-    std::fprintf(stderr, "open error: %s | %s\n", h.app->state.error().c_str(),
-                 h.app->state.error_detail().c_str());
+    IM_CHECK(on_screen(h, h.app->state.error_detail()));
 }
 
 }  // namespace

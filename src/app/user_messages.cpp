@@ -1,5 +1,6 @@
 #include "app/user_messages.h"
 
+#include <atomic>
 #include <cstdio>
 #include <filesystem>
 #include <new>
@@ -25,9 +26,17 @@ constexpr const char* kChartUnreadable =
     "support; try downloading the song again.";
 constexpr const char* kNoteShuffleFreezes =
     "Clone Hero freezes loading this chart with Note Shuffle on.";
-constexpr const char* kSongFileMissing =
-    "Hydra couldn't open the song file. It may have been moved or deleted; run Scan "
-    "library to update the library.";
+std::atomic<Program> g_program{Program::Hydra};
+
+// The song file's sentence. The Scan advice is Hydra's alone: the Path Builder
+// has no library to update (D267).
+constexpr const char* kSongFileMissingStart =
+    "Hydra couldn't open the song file. It may have been moved or deleted";
+constexpr const char* kSongFileMissingScanAdvice = "; run Scan library to update the library";
+std::string song_file_missing_sentence() {
+    return std::string(kSongFileMissingStart) +
+           (g_program.load() == Program::Hydra ? kSongFileMissingScanAdvice : "") + ".";
+}
 constexpr const char* kHashFailed =
     "Windows couldn't read a song file to identify it. Restart Hydra and run Scan "
     "library again.";
@@ -140,7 +149,7 @@ std::optional<KindSentence> kind_sentence(const KindedError& e) {
             return quoting(set_aside_failed_sentence(e.what()));
         case ErrorKind::DatabaseWrite: return KindSentence{kDatabaseWrite};
         case ErrorKind::DatabaseRead: return KindSentence{kDatabaseReadSentence};
-        case ErrorKind::SongFileMissing: return KindSentence{kSongFileMissing};
+        case ErrorKind::SongFileMissing: return KindSentence{song_file_missing_sentence()};
         case ErrorKind::HashFailed: return KindSentence{kHashFailed};
         case ErrorKind::ChartUnreadable: return KindSentence{kChartUnreadable};
         case ErrorKind::ChartTimingRefused: return quoting(timing_refusal_sentence(e.what()));
@@ -174,6 +183,10 @@ std::optional<KindSentence> kind_sentence_of(const std::exception& e) {
 }
 
 }  // namespace
+
+void set_program(Program program) { g_program.store(program); }
+
+Program current_program() { return g_program.load(); }
 
 std::string plain_error(const std::exception& e) {
     if (dynamic_cast<const std::bad_alloc*>(&e)) return kOutOfMemory;

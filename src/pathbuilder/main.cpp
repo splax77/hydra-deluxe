@@ -56,6 +56,9 @@ static void show_startup_error(HWND owner, const std::exception& e)
 int main()
 {
     const std::vector<std::string> args = hydra::utf8_argv();
+    // Before any worker thread: its error sentences leave out Hydra's library
+    // advice (app::Program).
+    hydra::app::set_program(hydra::app::Program::PathBuilder);
 
     ImGui_ImplWin32_EnableDpiAwareness();
     const float main_scale = hydra::ui::ui_scale_for_dpi(

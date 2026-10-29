@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "app/user_messages.h"
 #include "core/winstr.h"
 #include "pbtest_harness.h"
 
@@ -30,6 +31,7 @@ int usage() {
 }  // namespace
 
 int main() {
+    hydra::app::set_program(hydra::app::Program::PathBuilder);
     bool list = false;
     std::vector<std::string> wanted;
     pbtest::Harness h;
