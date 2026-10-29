@@ -821,13 +821,20 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
                    hydra::app::ActivationBadge{longest, false},
                    hydra::app::ActivationBadge{"squeeze in -224.0 ms", false}};
     check(widest, row1.measure, row1.bars, texts(row1));
-    const hydra::ui::ActivationRowLayout three = l;
     ctx->Yield(2);
     const ImRect grown_rect = ctx->ItemInfo("**/##act1").RectFull;
+    // The taller row can bring in the list's scroll bar, which narrows every
+    // row, so the expected layout is the one at the width the row now has.
+    std::vector<float> three_ws;
+    for (const std::string& b : texts(row1)) three_ws.push_back(figure_w(b));
+    const hydra::ui::ActivationRowLayout three = hydra::ui::activation_row_layout(
+        figure_w(widest), figure_w(row1.bars), three_ws, pill_text_w, grown_rect.GetWidth(), line,
+        scale);
     const std::vector<ImRect> pills = drawn_pills(grown_rect);
     ctx->LogInfo("row 1 height %.1f with its own badge, %.1f with three (%d lines under the "
-                 "measure, %d pills drawn)",
-                 one_line, grown_rect.GetHeight(), three.badge_lines, static_cast<int>(pills.size()));
+                 "measure, %d pills drawn, row %.1f wide, %.1f before)",
+                 one_line, grown_rect.GetHeight(), three.badge_lines, static_cast<int>(pills.size()),
+                 grown_rect.GetWidth(), row_w);
     IM_CHECK_GE(three.badge_lines, 1);
     IM_CHECK_EQ(grown_rect.GetHeight(), three.row_h + style.ItemSpacing.y);
     IM_CHECK_EQ(static_cast<int>(pills.size()), 3);
