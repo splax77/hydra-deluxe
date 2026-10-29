@@ -1,8 +1,6 @@
 {
   "known_gaps": {
     "T5": [
-      {"file": "tests/ui/uitest_harness.h", "include": "d3d11.h", "date": "2026-10-29", "added_by": "lib-t3", "remove_by": "2026-11-12"},
-      {"file": "tests/ui/uitest_harness.h", "include": "dxgi.h", "date": "2026-10-29", "added_by": "lib-t3", "remove_by": "2026-11-12"}
     ]
   }
 }

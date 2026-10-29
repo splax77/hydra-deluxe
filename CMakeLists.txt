@@ -562,14 +562,29 @@ target_link_libraries(hydra_ui PRIVATE hydra_warnings)
 option(HYDRA_UITEST_ATTACHED
        "Build Hydra.exe with the attached GUI test harness (off for the installer)" ON)
 
-# ---- hydra_uitest_harness: the GUI tests, compiled once --------------------
-# The harness, the script runner and the tests. hydra_uitest always links
-# them; Hydra.exe links them when HYDRA_UITEST_ATTACHED is on. The repo paths
-# the tests need are compiled in here and nowhere else.
-add_library(hydra_uitest_harness STATIC
-    tests/ui/uitest_harness.cpp
+# ---- hydra_uitest_engine: the app-free half of the headless GUI runner -----
+# The WARP device, the test engine, the frame and its text, the widget dump,
+# screenshots, the command verbs and the script runner. It reaches the program
+# it drives only through EngineHooks (uitest_engine.h), so it includes nothing
+# from hydra_ui and any GUI program can link it.
+add_library(hydra_uitest_engine STATIC
+    tests/ui/uitest_engine.cpp
     tests/ui/uitest_commands.cpp
     tests/ui/uitest_script.cpp
+)
+target_include_directories(hydra_uitest_engine PUBLIC tests/ui)
+# PUBLIC: the engine's header hands out D3D11 and test engine types, so every
+# program that links the engine gets their headers and libraries through it.
+target_link_libraries(hydra_uitest_engine PUBLIC
+    hydra_uibase imgui_test_engine d3d11 dxgi PRIVATE hydra_warnings)
+
+# ---- hydra_uitest_harness: Hydra's GUI tests, compiled once ----------------
+# Hydra's half of the runner (the AppState the engine draws, the seams, the
+# gates), the live mode and the tests. hydra_uitest always links them;
+# Hydra.exe links them when HYDRA_UITEST_ATTACHED is on. The repo paths the
+# tests need are compiled in here and nowhere else.
+add_library(hydra_uitest_harness STATIC
+    tests/ui/uitest_harness.cpp
     tests/ui/uitest_live.cpp
     tests/ui/uitest_tests.cpp
     tests/ui/uitest_library.cpp
@@ -581,10 +596,10 @@ add_library(hydra_uitest_harness STATIC
     tests/ui/live_protocol.h
     tests/report_samples.cpp
 )
-target_include_directories(hydra_uitest_harness PUBLIC tests/ui)
 # update_reply.h edits the release fixture with third_party/json.
 target_include_directories(hydra_uitest_harness PRIVATE third_party/json)
-target_link_libraries(hydra_uitest_harness PUBLIC hydra_ui PRIVATE hydra_warnings)
+target_link_libraries(hydra_uitest_harness PUBLIC hydra_uitest_engine hydra_ui
+    PRIVATE hydra_warnings)
 target_compile_definitions(hydra_uitest_harness PRIVATE
     HYDRA_TESTDATA_DIR="${CMAKE_SOURCE_DIR}/testdata"
     HYDRA_INPUT_DIR="${CMAKE_SOURCE_DIR}/testdata/input"
