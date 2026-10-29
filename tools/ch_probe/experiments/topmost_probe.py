@@ -38,8 +38,11 @@ LIFETIME_S = 60
 
 # "Half-transparent": the layered window's alpha, out of 255.
 ALPHA = 128
-# The label's font height in pixels: large enough to read across the room.
-FONT_PX = 48
+# The label's font height in pixels. The whole label has to fit inside
+# WINDOW_W, because the text is clipped at the window's edge: Segoe UI bold at
+# 48 px measures 765 px wide, at 32 px 509 px (GetTextExtentPoint32W on the
+# longest label, "HYDRA OVERLAY PROBE 00:00:00").
+FONT_PX = 32
 # The label repaints this often, so its clock ticks each second.
 REPAINT_MS = 1000
 
