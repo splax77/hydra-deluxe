@@ -53,7 +53,7 @@ bool end_event_counts(const Song& song);
 // - the stated length, `meta.length_ms` through stated_length_ms, moved from
 //   audio time into chart time by the chart's delay or Offset
 //   (preview_audio_offset_ms with `meta.delay_ms` and `song.chart_offset_s`,
-//   then audio/frames.h chart_ms_of_audio_ms). It is dropped when it ends
+//   then app/preview_source.h chart_ms_of_audio_ms). It is dropped when it ends
 //   before the last note's end;
 // - the end event, when end_event_counts says so, through the tempo map;
 // - the last note's end (Song::last_note_end_tick), through the tempo map.

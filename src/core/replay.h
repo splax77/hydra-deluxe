@@ -165,7 +165,7 @@ struct ReplayChord {
     int index = 0;
     int64_t tick = 0;
     double ms = 0.0;
-    // Where the chord sits, as the screen prints it (app::format_measure).
+    // Where the chord sits, as the screen prints it (format_measure in core/timing.h).
     std::string position;
     double measures_decimal = 0.0;
     std::string chord_code;
