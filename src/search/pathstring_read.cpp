@@ -14,10 +14,6 @@ namespace hydra {
 
 namespace {
 
-// The separator Path::pathstring_verbose writes between its sections. The
-// long-text round-trip test in test_pathstring_read.cpp keeps the two in step.
-constexpr std::string_view kSectionSeparator = " | ";
-
 // The text split at whitespace: one token per window.
 std::vector<std::string> tokens_of(const std::string& text) {
     std::istringstream in(text);
@@ -38,9 +34,9 @@ std::string_view trimmed(std::string_view s) {
 // The text cut at every section separator; one piece when it has none.
 std::vector<std::string_view> sections_of(std::string_view text) {
     std::vector<std::string_view> out;
-    for (size_t at; (at = text.find(kSectionSeparator)) != std::string_view::npos;) {
+    for (size_t at; (at = text.find(kPathSectionSeparator)) != std::string_view::npos;) {
         out.push_back(text.substr(0, at));
-        text.remove_prefix(at + kSectionSeparator.size());
+        text.remove_prefix(at + kPathSectionSeparator.size());
     }
     out.push_back(text);
     return out;

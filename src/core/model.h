@@ -776,6 +776,10 @@ private:
 
 // ---- Path ---------------------------------------------------------------
 
+// What Path::pathstring_verbose writes between its sections. Whatever reads
+// that text back (search/pathstring_read.cpp) cuts it here.
+inline constexpr std::string_view kPathSectionSeparator = " | ";
+
 struct Path {
     std::vector<Activation> activations;
     int notecount = 0;

@@ -130,7 +130,7 @@ TEST_CASE("pathstring read: a long-text window no fill can place is refused with
         CAPTURE(chart);
         std::string text = best.pathstring_verbose(rec.multsqueezes);
         const std::string second = best.walk_activations()[1].notationstr_verbose();
-        const size_t at = text.rfind(second + " | ");
+        const size_t at = text.rfind(second + std::string(kPathSectionSeparator));
         REQUIRE(at != std::string::npos);
         text.replace(at, second.size(), "99");
         CAPTURE(text);
@@ -147,7 +147,7 @@ TEST_CASE("pathstring read: a long-text window no fill can place is refused with
 TEST_CASE("pathstring read: long text with the wrong number of sections is refused") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     const Song& song = corpus::song(corpus::first_chart_with_notes(), cfg.reading());
-    CHECK_THROWS_WITH_AS(paths_from_pathstring(song, cfg, "2x | 1"),
+    CHECK_THROWS_WITH_AS(paths_from_pathstring(song, cfg, "2x" + std::string(kPathSectionSeparator) + "1"),
                          "the path text has 2 sections where Hydra's long Copy path text has 3",
                          std::invalid_argument);
 }
