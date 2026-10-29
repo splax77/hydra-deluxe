@@ -352,6 +352,7 @@ add_library(hydra_core STATIC
     src/app/report_files.cpp
     src/app/user_messages.cpp
     src/app/update_verify.cpp
+    src/app/job_base.h
     src/app/preview_clock.h
     src/app/update_key.h
     src/app/work_pool.h
@@ -450,18 +451,46 @@ target_link_libraries(hydra_dm PUBLIC hydra_core)
 target_link_libraries(hydra_dm PRIVATE winhttp hydra_warnings)
 target_include_directories(hydra_dm PRIVATE third_party/json)
 
-# ---- hydra_ui: the window-independent GUI ---------------------------------
-# Everything but the Win32 window (main.cpp), shared by Hydra.exe and the
-# headless GUI test runner.
+# ---- hydra_uibase: the GUI base -------------------------------------------
+# What any of Hydra's GUI programs needs without Hydra's own window: ImGui's
+# set-up and shutdown, the UI scale, the theme, the fonts, the shared widgets,
+# the icons and the folder dialog. Nothing here reads AppState.
+add_library(hydra_uibase STATIC
+    src/ui/imgui_setup.cpp
+    src/ui/column_widths.cpp
+    src/ui/icons.cpp
+    src/ui/imgui_files.cpp  # ImGui's file functions (imconfig.h)
+    src/ui/list_scroll.cpp
+    src/ui/theme.cpp
+    src/ui/win32_dialogs.cpp
+    src/ui/activation_row_layout.h
+    src/ui/badge_pill.h
+    src/ui/fallback_fonts.h
+    src/ui/fonts.h
+    src/ui/generation.h
+    src/ui/label_layout.h
+    src/ui/text_role.h
+    src/ui/widgets.h
+)
+# imgui_test_engine goes wherever imgui does: imconfig.h turns the engine's
+# hooks on for every ImGui build (see the imgui_test_engine block above).
+# hydra_render: widgets.h's ellipsize. hydra_audio: the fonts are read through
+# a file map. d3d11 is PUBLIC because icons.h hands out ID3D11 types.
+target_link_libraries(hydra_uibase PUBLIC imgui imgui_test_engine hydra_render hydra_audio d3d11)
+# ole32: the folder-picker dialog (COM's IFileOpenDialog). shell32 is not
+# needed here: hydra_core links it for report_files.cpp's ShellExecuteW.
+# hydra_image: icons.cpp decodes its PNGs through the shared stb TU.
+target_link_libraries(hydra_uibase PRIVATE ole32 hydra_image hydra_warnings)
+
+# ---- hydra_ui: Hydra's window ---------------------------------------------
+# Everything but the Win32 window (main.cpp) that draws Hydra's own window,
+# shared by Hydra.exe and the headless GUI test runner.
 add_library(hydra_ui STATIC
     src/ui/app_shell.cpp
     src/ui/app_state.cpp
-    src/ui/column_widths.cpp
     src/ui/details_panel.cpp
     src/ui/dm_jobs.cpp
     src/ui/dynamics_tab.cpp
-    src/ui/icons.cpp
-    src/ui/imgui_files.cpp  # ImGui's file functions (imconfig.h)
     src/ui/paths_tab.cpp
     src/ui/preview_tab.cpp
     src/ui/stars_tab.cpp
@@ -473,40 +502,25 @@ add_library(hydra_ui STATIC
     src/ui/settings_bar.cpp
     src/ui/version_bar.cpp
     src/ui/library_view.cpp
-    src/ui/list_scroll.cpp
     src/ui/preview_controller.cpp
     src/ui/preview_load_job.cpp
     src/ui/preview_transport.cpp
     src/ui/report_window.cpp
     src/ui/path_report_window.cpp
     src/ui/dm_report_window.cpp
-    src/ui/theme.cpp
     src/ui/update_job.cpp
-    src/ui/win32_dialogs.cpp
-    src/ui/activation_row_layout.h
-    src/ui/badge_pill.h
     src/ui/details_parts.h
     src/ui/details_view.h
-    src/ui/fallback_fonts.h
-    src/ui/fonts.h
-    src/ui/generation.h
-    src/ui/job_base.h
-    src/ui/label_layout.h
     src/ui/library_parts.h
     src/ui/report_state.h
     src/ui/resource.h
-    src/ui/text_role.h
-    src/ui/widgets.h
 )
 # hydra_render + hydra_audio join the GUI here (Phase 5): the Preview tab's
 # controller (preview_controller.cpp) drives the offscreen renderer and the
 # audio engine, and preview_load_job.cpp's PreviewLoadJob decodes + mixes
 # stems. PUBLIC so the exes link them transitively.
-target_link_libraries(hydra_ui PUBLIC hydra_dm imgui imgui_test_engine hydra_render hydra_audio)
-# ole32: the folder-picker dialog (COM's IFileOpenDialog). shell32 is not
-# needed here: hydra_core links it for report_files.cpp's ShellExecuteW.
-# hydra_image: icons.cpp decodes its PNGs through the shared stb TU.
-target_link_libraries(hydra_ui PRIVATE ole32 hydra_image hydra_warnings)
+target_link_libraries(hydra_ui PUBLIC hydra_uibase hydra_dm hydra_render hydra_audio)
+target_link_libraries(hydra_ui PRIVATE hydra_warnings)
 
 # Attached GUI testing (`Hydra.exe --uitest ...`, docs/agents/ui-testing.md)
 # builds the GUI tests into the exe. On for dev builds; the "ship" preset (the

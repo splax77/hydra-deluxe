@@ -13,9 +13,9 @@
 #include <vector>
 
 #include "app/dm_report.h"
+#include "app/job_base.h"
 #include "net/dmbot_client.h"
 #include "store/record_store.h"
-#include "ui/job_base.h"
 
 namespace hydra::ui {
 

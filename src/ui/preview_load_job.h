@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "app/job_base.h"
 #include "app/preview_source.h"
 #include "app/preview_view.h"
 #include "audio/stem_reader.h"
@@ -25,7 +26,6 @@
 #include "parse/song.h"
 #include "render/track_state.h"
 #include "store/record_store.h"
-#include "ui/job_base.h"
 
 namespace hydra::ui {
 
@@ -86,7 +86,7 @@ private:
 
 // A ByteRateClock's estimate shows only once its job is this old: the
 // Preview loader's gate, which the startup open's copy reuses (D48 Q20 owns
-// the words, detail::time_left_text).
+// the words, app::time_left_text).
 inline constexpr double kTimeLeftAfterSeconds = 3.0;
 
 // The time-left line for a job `elapsed_s` old whose ByteRateClock gave

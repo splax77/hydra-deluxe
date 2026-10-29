@@ -1,9 +1,10 @@
-// The window-independent half of the GUI shell: ImGui context setup, the UI
-// scale, the remembered window placement, and the per-frame draw, shared by
-// Hydra.exe (src/ui/main.cpp) and the headless GUI test runner (tests/ui,
-// docs/agents/ui-testing.md). main.cpp keeps only the Win32 window,
-// swapchain, and message pump; the runner swaps those for an offscreen render
-// target and the Test Engine's injected input.
+// The window-independent half of Hydra's GUI shell: the remembered window
+// placement and the per-frame draw, shared by Hydra.exe (src/ui/main.cpp) and
+// the headless GUI test runner (tests/ui, docs/agents/ui-testing.md). ImGui's
+// own set-up is ui/imgui_setup.h, included here so callers see both.
+// main.cpp keeps only the Win32 window, swapchain, and message pump; the
+// runner swaps those for an offscreen render target and the Test Engine's
+// injected input.
 
 #ifndef HYDRA_UI_APP_SHELL_H
 #define HYDRA_UI_APP_SHELL_H
@@ -14,31 +15,16 @@
 #include <vector>
 
 #include "imgui.h"
+#include "ui/imgui_setup.h"
 
 namespace hydra::ui {
 
 class AppState;
 
-struct ImGuiSetupOptions {
-    // Monitor DPI scale; sizes, fonts, and px() all follow it.
-    float dpi_scale = 1.0f;
-    // Where ImGui persists table column widths. Empty = the exe-relative
-    // default (hydra_ui.ini); "-" = don't persist at all (tests).
-    std::string ini_file;
-    // Directory holding the fonts. Empty = app::resource_dir().
-    std::string resource_dir;
-};
-
-// CreateContext + flags + theme + DPI scaling + fonts. The platform/renderer
-// backends (ImGui_ImplWin32_Init / ImGui_ImplDX11_Init) are the caller's:
-// the app has a window, the runner has none.
-void setup_imgui(const ImGuiSetupOptions& options);
-void shutdown_imgui();  // DestroyContext, then unmaps the font files
-
-// The colour each frame is cleared to before ImGui draws, as red, green, blue
-// and alpha. Hydra.exe clears its window with it and the GUI test runner its
-// offscreen target.
-inline constexpr float kClearColor[4] = {0.10f, 0.11f, 0.13f, 1.00f};
+// Clears the remembered placements and layout and adds the [Hydra] settings
+// handler that reads and writes them in hydra_ui.ini. Every Hydra caller of
+// setup_imgui passes it as ImGuiSetupOptions::before_ini_load.
+void install_placement_handler();
 
 // ---- The main window's placement, kept in hydra_ui.ini ----------------
 
@@ -137,21 +123,6 @@ void remember_library_share(float share);
 bool library_hidden();
 void remember_library_hidden(bool hidden);
 
-// ---- UI scale ----------------------------------------------------------
-
-// The UI scale for a monitor's DPI: 96 DPI is 1.0. A DPI of 0 reads as 1.0.
-float ui_scale_for_dpi(unsigned dpi);
-
-// The theme at `scale`: base with ScaleAllSizes(scale) and FontScaleDpi =
-// scale. Always from the unscaled base, because ImGui rounds every size on
-// each ScaleAllSizes call, so scaling an already-scaled style drifts.
-ImGuiStyle scaled_style(const ImGuiStyle& base, float scale);
-
-// Rescales the running UI to `scale`: ImGui's paddings and sizes, the font
-// size, and px(). setup_imgui calls it once; main.cpp calls it again when the
-// window lands on a monitor with another scale. Call between frames only.
-void set_ui_scale(float scale);
-
 // ---- Report windows: their own OS windows (D103) -----------------------
 
 // The window class every report window carries. It always gets its own OS
@@ -239,15 +210,9 @@ void place_report_window(const char* name);
 // no OS windows.
 void maximize_due_report_windows();
 
-// Everything ImGui drew this frame, as text, in draw order. Filled by
-// run_frame when `enabled`; the runner's wait-text/expect-text search it.
-struct FrameText {
-    bool enabled = false;
-    std::string text;
-};
-
 // One frame of Hydra's UI between ImGui::NewFrame() and ImGui::Render():
-// the library window and the details modal.
+// the library window and the details modal. Fills `capture` when it is
+// enabled (FrameText, ui/imgui_setup.h).
 void run_frame(AppState& app, FrameText* capture = nullptr);
 
 }  // namespace hydra::ui

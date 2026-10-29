@@ -104,7 +104,7 @@ void phase_buttons(AppState& app, StatusRow& row) {
         const float bar_w = std::max(ImGui::GetContentRegionAvail().x - cancel_w - style.ItemSpacing.x,
                                      ImGui::GetFrameHeight());
         const double total = update.release ? static_cast<double>(update.release->installer_size) : 0.0;
-        ImGui::ProgressBar(progress_fraction(static_cast<double>(app.update_received()), total),
+        ImGui::ProgressBar(app::progress_fraction(static_cast<double>(app.update_received()), total),
                            ImVec2(bar_w, 0.0f), "");
         row.glued();
         if (ImGui::Button("Cancel##update")) app.cancel_update();

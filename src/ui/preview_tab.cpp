@@ -582,7 +582,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     // Keys: Space plays or pauses, Left/Right jump kJumpSeconds, comma/period
     // step kStepMs, [ and ] jump between activations; a held arrow or
     // comma/period repeats. Not while a text field
-    // has the keyboard. Keyboard navigation (on in app_shell.cpp) reads the
+    // has the keyboard. Keyboard navigation (on in imgui_setup.cpp) reads the
     // arrows and Space only when nobody owns them, so the Preview claims them
     // every frame it shows; a claim made this frame still holds during next
     // frame's navigation update, so even the first press lands here rather

@@ -239,10 +239,11 @@ int main()
 
     // Set up Dear ImGui before the window exists: setup_imgui reads
     // hydra_ui.ini, which remembers where the window was when Hydra last
-    // closed. (Context, theme, DPI and fonts live in app_shell.cpp, shared
+    // closed. (Context, theme, DPI and fonts live in imgui_setup.cpp, shared
     // with the headless GUI test runner.)
     hydra::ui::ImGuiSetupOptions imgui_options;
     imgui_options.dpi_scale = main_scale;
+    imgui_options.before_ini_load = hydra::ui::install_placement_handler;
 #ifdef HYDRA_UITEST_ATTACHED
     imgui_options.ini_file = ui_ini;  // empty keeps the default
 #endif

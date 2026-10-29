@@ -4,11 +4,6 @@
       {"file": "src/store/record_store.h", "include": "parse/song.h", "date": "2026-10-29", "added_by": "lib-t3", "remove_by": "2026-11-12"},
       {"file": "src/store/record_store.h", "include": "search/graph.h", "date": "2026-10-29", "added_by": "lib-t3", "remove_by": "2026-11-12"}
     ],
-    "T2": [
-      {"file": "src/ui/preview_load_job.cpp", "include": "ui/library_parts.h", "date": "2026-10-29", "added_by": "lib-t3", "remove_by": "2026-11-12"},
-      {"file": "src/ui/preview_load_job.cpp", "include": "ui/widgets.h", "date": "2026-10-29", "added_by": "lib-t3", "remove_by": "2026-11-12"},
-      {"file": "src/ui/icons.h", "include": "d3d11.h", "date": "2026-10-29", "added_by": "lib-t3", "remove_by": "2026-11-12"}
-    ],
     "T5": [
       {"file": "tests/ui/uitest_harness.h", "include": "d3d11.h", "date": "2026-10-29", "added_by": "lib-t3", "remove_by": "2026-11-12"},
       {"file": "tests/ui/uitest_harness.h", "include": "dxgi.h", "date": "2026-10-29", "added_by": "lib-t3", "remove_by": "2026-11-12"}

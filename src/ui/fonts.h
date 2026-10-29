@@ -1,4 +1,4 @@
-// The mono font handle and the UI scale. setup_imgui (ui/app_shell.cpp) loads
+// The mono font handle and the UI scale. setup_imgui (ui/imgui_setup.cpp) loads
 // the font into g_mono_font. Which text draws in which font is decided by
 // font_for in ui/text_role.h; draw code names a role there instead of reading
 // this handle.
@@ -13,7 +13,7 @@ namespace hydra::ui {
 inline ImFont* g_mono_font = nullptr;
 
 // The UI scale: the DPI scale of the monitor the window is on. set_ui_scale
-// (ui/app_shell.h) sets it at start-up and again when the window moves to a
+// (ui/imgui_setup.h) sets it at start-up and again when the window moves to a
 // monitor with another scale. style.ScaleAllSizes() covers ImGui's own
 // paddings and style.FontScaleDpi covers text, but neither touches explicit
 // pixel values (SetNextItemWidth, ImVec2 sizes, SameLine offsets) — wrap

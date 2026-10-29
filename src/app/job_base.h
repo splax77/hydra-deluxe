@@ -1,11 +1,12 @@
 // The two base classes every background job derives from: the thread and
 // cancel lifecycle (JobBase) and the finished flag, ok/error result surface
-// and outcome on top of it (ResultJobBase). Read by the job headers next to this one
-// (library_jobs.h, preview_load_job.h, dm_jobs.h); the views only ever touch
-// the concrete jobs, never these directly.
+// and outcome on top of it (ResultJobBase). Read by the job headers in src/ui/
+// (library_jobs.h, preview_load_job.h, dm_jobs.h, update_job.h); the views
+// only ever touch the concrete jobs, never these directly. It lives in app/
+// because it needs no ImGui, so a library without the GUI can hold a job.
 
-#ifndef HYDRA_UI_JOB_BASE_H
-#define HYDRA_UI_JOB_BASE_H
+#ifndef HYDRA_APP_JOB_BASE_H
+#define HYDRA_APP_JOB_BASE_H
 
 #include <atomic>
 #include <exception>
@@ -122,4 +123,4 @@ protected:
 
 }  // namespace hydra::ui
 
-#endif  // HYDRA_UI_JOB_BASE_H
+#endif  // HYDRA_APP_JOB_BASE_H

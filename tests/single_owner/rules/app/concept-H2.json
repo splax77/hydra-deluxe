@@ -12,11 +12,11 @@
       "must_match": [
         "box.detail += \" \\xC2\\xB7 \" + next->chord.rowstr(pro_drums);",
         "std::snprintf(buf, sizeof buf, \"x%d \\xC2\\xB7 combo %d\", shown, at.combo);",
-        "if (s.eta_s) time += \" \\xC2\\xB7 \" + time_left_text(*s.eta_s);"
+        "if (s.eta_s) time += \" \\xC2\\xB7 \" + app::time_left_text(*s.eta_s);"
       ],
       "must_not_match": [
         "box.detail += kFactSeparator + next->chord.rowstr(pro_drums);",
-        "if (s.eta_s) time += app::kFactSeparator + time_left_text(*s.eta_s);"
+        "if (s.eta_s) time += app::kFactSeparator + app::time_left_text(*s.eta_s);"
       ],
       "owner_lines": [
         {

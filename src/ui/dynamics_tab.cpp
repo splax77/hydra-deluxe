@@ -6,13 +6,13 @@
 #include <utility>
 #include <vector>
 
+#include "app/display_format.h"  // format_duration
 #include "app/dynamics_breakdown.h"
 #include "core/model.h"  // group_thousands, counted
 #include "imgui.h"
 #include "ui/app_state.h"  // ViewedSong
 #include "ui/column_widths.h"
 #include "ui/fonts.h"
-#include "ui/library_parts.h"  // format_duration
 #include "ui/text_role.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
@@ -160,7 +160,7 @@ namespace detail {
 std::string dynamics_enabled_text(const app::DynamicsBreakdown& bd) {
     if (!bd.dynamics_enabled) return "Dynamics enabled: no (markings ignored by Clone Hero)";
     if (!bd.late_tag_ms) return "Dynamics enabled: yes";
-    return "Dynamics enabled: from " + format_duration(*bd.late_tag_ms / 1000.0) + " on (" +
+    return "Dynamics enabled: from " + app::format_duration(*bd.late_tag_ms / 1000.0) + " on (" +
            counted(bd.marks_before_tag, "earlier marking", "earlier markings") +
            " ignored by Clone Hero)";
 }

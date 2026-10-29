@@ -1,7 +1,7 @@
 #include "ui/library_parts.h"
 
 #include "app/analysis.h"        // batch_cant_analyze_text
-#include "app/display_format.h"  // kFactSeparator
+#include "app/display_format.h"  // kFactSeparator, format_duration, time_left_text
 #include "app/user_messages.h"
 #include "core/model.h"
 #include "core/strutil.h"
@@ -67,17 +67,6 @@ app::SettingsText setting_values(const app::Settings& s) {
 }
 
 }  // namespace
-
-std::string format_duration(double seconds) {
-    const long long total = seconds <= 0.0 ? 0 : static_cast<long long>(seconds + 0.5);
-    const long long h = total / 3600, m = (total / 60) % 60, s = total % 60;
-    char buf[32];
-    if (h > 0)
-        std::snprintf(buf, sizeof(buf), "%lld:%02lld:%02lld", h, m, s);
-    else
-        std::snprintf(buf, sizeof(buf), "%lld:%02lld", m, s);
-    return buf;
-}
 
 BatchSettingsSummary batch_settings_summary(const app::Settings& s) {
     BatchSettingsSummary out;
@@ -457,11 +446,11 @@ void render_batch_strip(AppState& app) {
 
         ImGui::PushStyleColor(ImGuiCol_FrameBg, kStripTrack);
         ImGui::PushStyleColor(ImGuiCol_PlotHistogram, kAccentColor);
-        ImGui::ProgressBar(progress_fraction(s.completed, s.total), ImVec2(-1.0f, px(6.0f)), "");
+        ImGui::ProgressBar(app::progress_fraction(s.completed, s.total), ImVec2(-1.0f, px(6.0f)), "");
         ImGui::PopStyleColor(2);
 
-        std::string time = format_duration(s.elapsed_s) + " elapsed";
-        if (s.eta_s) time += app::kFactSeparator + time_left_text(*s.eta_s);
+        std::string time = app::format_duration(s.elapsed_s) + " elapsed";
+        if (s.eta_s) time += app::kFactSeparator + app::time_left_text(*s.eta_s);
         ImGui::PushStyleColor(ImGuiCol_Text, kStripText2);
         ImGui::TextUnformatted(batch_counts(s).c_str());
         // The time starts right after the counts: text at the left, as
@@ -539,7 +528,7 @@ void render_batch_done(AppState& app) {
     ImGui::PushTextWrapPos(left_x + text_w);
     ImGui::TextWrapped("%s: %s%stook %s", stopped ? "Stopped" : "Finished",
                        batch_counts(s).c_str(), app::kFactSeparator,
-                       format_duration(s.elapsed_s).c_str());
+                       app::format_duration(s.elapsed_s).c_str());
     ImGui::PushStyleColor(ImGuiCol_Text, text2);
     if (stopped) {
         ImGui::TextWrapped("Every result finished before Stop is kept.");

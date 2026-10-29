@@ -239,6 +239,7 @@ bool Harness::init() {
     opts.dpi_scale = 1.0f;
     opts.ini_file = "-";  // no persisted ImGui layout between runs
     opts.resource_dir = HYDRA_RESOURCE_DIR;
+    opts.before_ini_load = hydra::ui::install_placement_handler;
     hydra::ui::setup_imgui(opts);
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = ImVec2((float)width, (float)height);

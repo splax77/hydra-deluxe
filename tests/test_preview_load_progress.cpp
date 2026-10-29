@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "app/display_format.h"  // progress_fraction
 #include "app/preview_source.h"
 #include "app/preview_view.h"  // build_preview_scene
 #include "audio/stem_reader.h"
@@ -31,7 +32,6 @@
 #include "store/record_store.h"
 #include "temp_util.h"
 #include "ui/preview_load_job.h"
-#include "ui/widgets.h"  // progress_fraction
 #include "wait_util.h"
 
 using hydra::ui::ByteRateClock;
@@ -227,7 +227,7 @@ TEST_CASE("Preview load progress: a zero total gives a finite fraction") {
 }
 
 TEST_CASE("progress_fraction: 0 of 0 is empty, and the fraction stays between 0 and 1") {
-    using hydra::ui::progress_fraction;
+    using hydra::app::progress_fraction;
     CHECK(progress_fraction(0, 0) == 0.0f);  // nothing reported yet
     CHECK(progress_fraction(1, 2) == 0.5f);
     // More done than the total, as in the zero-total case above: full, no further.
