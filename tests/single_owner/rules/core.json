@@ -2419,17 +2419,23 @@
       "date": "2026-10-24",
       "decision": "SQZ-GT-REVIEW",
       "added_by": "SQZ-GT-REVIEW",
-      "pattern": "(>=|<|[^-]>)\\s*(\\*\\s*(\\w+(\\.|->))*|(\\w+(\\.|->))+)squeeze_min_ms\\b|\\b(floor_ms|squeeze_min_ms)\\s*(<=|>|<)|(>=|<)\\s*\\*?(\\w+(\\.|->))*floor_ms\\b",
+      "pattern": "(>=|<|[^-]>)\\s*(\\*\\s*(\\w+(\\.|->))*|(\\w+(\\.|->))+)squeeze_min_ms\\b|\\b(floor_ms|squeeze_min_ms)\\s*(<=|>|<)|(>=|<)\\s*\\*?(\\w+(\\.|->))*floor_ms\\b|(>=|<)\\s*(\\*\\s*(\\w+(\\.|->))*|(\\w+(\\.|->))+)squeeze_max_ms\\b|\\bsqueeze_max_ms\\s*(<=|>(?!=))",
       "must_match": [
         "if (*facts.hardest_ms >= *q.squeeze_min_ms) return true;",
         "if (*facts.hardest_ms < *q.squeeze_min_ms) return false;",
         "return ms >= floor_ms;",
-        "if (q.squeeze_min_ms > hardest) return false;"
+        "if (q.squeeze_min_ms > hardest) return false;",
+        "if (*facts.hardest_ms < *q.squeeze_max_ms) return true;",
+        "if (*facts.hardest_ms >= *q.squeeze_max_ms) return false;",
+        "if (q.squeeze_max_ms > hardest) return true;"
       ],
       "must_not_match": [
         "timing_reaches_floor(*facts.hardest_ms, *q.squeeze_min_ms);",
         "std::optional<double> squeeze_min_ms; // squeeze>=N or squeeze>N",
-        "q.squeeze_min_ms = ms;"
+        "q.squeeze_min_ms = ms;",
+        "? !timing_reaches_floor(*facts.hardest_ms, *q.squeeze_max_ms)",
+        "if (*facts.hardest_ms <= *q.squeeze_max_ms) return true;",
+        "if (q.squeeze_max_ms >= hardest) return true;"
       ],
       "owner_lines": [
         {
@@ -2438,7 +2444,7 @@
           "why": "timing_reaches_floor, the owner"
         }
       ],
-      "note": "Any comparison against a ms floor by its name, on either side. squeeze>N is the negation of timing_within_limit, which its own row covers. Decided by: derive-once review of SQZ-GT"
+      "note": "Any comparison against a ms floor by its name, on either side, and any strict below-the-limit comparison against squeeze_max_ms, since squeeze<N is the negation of this owner (D266). squeeze>N is the negation of timing_within_limit, which its own row covers. Decided by: derive-once review of SQZ-GT; D266"
     },
     {
       "question": "In what order does a chord list its notes?",
