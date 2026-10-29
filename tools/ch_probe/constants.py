@@ -54,14 +54,15 @@ RVA_NOTE_PROCESSING = 0x20DCC90
 # of 0x20 there is BYTE offset 0x100. Confirm every offset here live.
 RVA_HIT_CHECK = 0x100DAB0
 
-# The two drum-engine methods the Frida trace can hook, one call per note.
-# Source: docs/research/2026-10-28-clone-hero-mcp-feasibility.md, "Test 3: the
-# hit method". Each ran exactly once per note in both bot runs, where every
-# note was hit. Only the score method below has since been traced on a run
-# with misses; what a missed note does to the dynamics method is not known.
-# A third once-per-note method sits on the engine's generic base class and has
-# no constant here: the dump gives that class's methods no RVA, so the tracer
-# cannot find it by name (plan 2026-10-28-ch-mcp-server, question 6).
+# The two drum-engine methods the Frida trace can hook. Source:
+# docs/research/2026-10-28-clone-hero-mcp-feasibility.md, "Test 3: the hit
+# method". Each ran exactly once per note in both bot runs, where every note
+# was hit. Only the score method below has since been traced on a run with
+# misses; what a missed note does to the dynamics method is not known.
+# A third method that ran once per note sits on the engine's generic base
+# class and has no constant here: the dump gives that class's methods no RVA,
+# so the tracer cannot find it by name (plan 2026-10-28-ch-mcp-server,
+# question 6).
 
 # Adds a hit's points to the score; its arguments are a note and the base
 # points. It fires once per hit note, and not for a missed note or an overhit
@@ -71,8 +72,8 @@ RVA_NOTE_SCORE_ADD = 0x20DEEC0
 # Handles a hit's accent and ghost flags.
 RVA_NOTE_DYNAMICS = 0x20DE770
 
-# The methods ch_trace_start hooks when it is given none: one call per note
-# (plan 2026-10-28-ch-mcp-server, question 6).
+# The methods ch_trace_start hooks when it is given none: one call per hit note
+# (plan 2026-10-28-ch-mcp-server, question 6 and "Live results (2026-10-29)").
 PER_NOTE_DEFAULT_RVAS = (RVA_NOTE_SCORE_ADD,)
 
 
