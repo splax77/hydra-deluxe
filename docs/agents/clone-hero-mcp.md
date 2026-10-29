@@ -1,6 +1,6 @@
 # Driving Clone Hero with the `ch` MCP server
 
-The `ch` server lets an agent drive Clone Hero as text. It can start the game, read its state through Frida (a tool that loads a small script into a running program), trace each note the game processes, press drum lanes, read the end-of-song stats, and stop the game with the user's files put back. Claude Code starts it from the `ch` entry in `.mcp.json`. The plan it was built from is `docs/superpowers/plans/2026-10-28-ch-mcp-server.md`.
+The `ch` server lets an agent drive Clone Hero as text. It can start the game, read its state through Frida (a tool that loads a small script into a running program), trace each note the player hits, press drum lanes, read the end-of-song stats, and stop the game with the user's files put back. Claude Code starts it from the `ch` entry in `.mcp.json`. The plan it was built from is `docs/superpowers/plans/2026-10-28-ch-mcp-server.md`.
 
 ## When to use it
 
@@ -28,8 +28,10 @@ Each live run names its pass and fail lines before it starts, has a cap on how m
 
 1. `ch_start` with a song folder for a bot run, or with none to open the menu so the user can start a song by hand.
 2. `ch_attach`, then `ch_state` or `ch_snapshot` to read the game.
-3. For a trace, `ch_trace_start` once the song is loaded, `ch_notes` to read the calls in pieces, and `ch_trace_stop`.
+3. For a trace, `ch_trace_start` once the song is loaded, `ch_notes` to read the calls in pieces, and `ch_trace_stop`. The default hook fires once per note the player hits; a missed note and an overhit fire nothing, so a run with misses has fewer calls than notes.
 4. For key presses, `ch_press` or `ch_play_chart` on a song the user started from the menu. A song launched with a bot is played by the bot.
 5. `ch_stop`, and check that every file was restored.
+
+Two things the live steps of 2026-10-29 found. In the one bot run tried, the results screen took no keys, so the user could not leave it; end a bot run with `ch_stop`. And `ch_state` says "menu" only before the first song: after a song, the finished `GameManager` stayed in memory, and `ch_state` kept saying "song over" even though the user was back at the main menu.
 
 If the game is updated, every Frida tool refuses until a dump of the new build exists; the refusal names the scripts to run.
