@@ -58,9 +58,10 @@ class Snapshot:
     """The watched engine fields, all from one read.
 
     The Star Power fields come after the first five. Their offsets are not yet
-    confirmed live (see constants.py), and some are read at two widths because
-    the evidence does not settle the width; the overlay spike's write-up picks
-    one. Their names match the columns in experiments/overlay_logs.py."""
+    confirmed live (see constants.py, which also cites the evidence for each
+    field's width). Some are read at two widths so the live log can confirm
+    that evidence. Their names match the columns in
+    experiments/overlay_logs.py."""
 
     window_ms: float
     clock_s: float

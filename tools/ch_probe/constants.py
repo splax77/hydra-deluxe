@@ -84,9 +84,13 @@ OFF_SCORE = 0x94
 OFF_HIT_TIME = 0x2E0
 
 # Star Power fields. From the disassembly, docs/audit/ch-evidence.md answer
-# 37; not yet confirmed live. The answer does not settle every field's width,
-# so engine.decode_snapshot reads some of them at more than one width and the
-# overlay spike's write-up picks one.
+# 37; not yet confirmed live. Answer 37 gives no widths. The SP amount and
+# maximum are 64-bit (docs/audit/ch-evidence.md, "Things that surprised me"
+# item 5). The Il2Cpp dump note
+# (experiments/results/overlay-spike/il2cpp-fields.md) says the active flag
+# and the overflow flag are 1-byte bools and the multiplier a 4-byte int.
+# engine.decode_snapshot still reads several widths of each, so the live log
+# can confirm that evidence.
 
 # SP amount, a whole number of chart ticks. From the disassembly,
 # docs/audit/ch-evidence.md answer 37; not yet confirmed live.
