@@ -1,6 +1,6 @@
 # tools/ch_mcp
 
-This folder holds the code for the Clone Hero MCP feasibility tests. Those tests check whether an MCP server (a tool server an agent can call) can be built on top of a running Clone Hero. The plan `docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md` is the spec for everything here.
+This folder holds the code for the Clone Hero MCP feasibility tests. Those tests check whether an MCP server (a tool server an agent can call) can be built on top of a running Clone Hero. The plan `docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md` is the spec for those tests. The server built on what they proved is described under "The server" at the end of this page.
 
 ## Making the dump and its facts file
 

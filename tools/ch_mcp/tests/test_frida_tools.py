@@ -44,13 +44,17 @@ BACKUP_LINE = "backup folder: X (taken now)"
 
 
 class FakeGame:
-    """game_tools.GameTools' four methods FridaTools calls."""
+    """game_tools.GameTools' five methods FridaTools calls."""
 
     def __init__(self, launched_at=None):
         self.launched = launched_at
         self.backups = 0
         self.hooks = []
         self.play = None
+        self.folder = None
+
+    def session_dir(self):
+        return self.folder
 
     def ensure_backup(self):
         self.backups += 1
@@ -156,10 +160,11 @@ class Rig(unittest.TestCase):
 
     def tools(self, replies=(), game=None, load_facts=None, attached=False):
         self.game = game if game is not None else FakeGame()
+        self.game.folder = self.tmp
         self.session = ReplySession(list(replies))
         self.frida = FakeFrida(self.session)
         tools = FT.FridaTools(
-            self.game, threading.RLock(), lambda: self.tmp,
+            self.game, threading.RLock(),
             frida_mod=self.frida, wait=instant_wait,
             current_build=lambda: VERSION,
             load_facts=load_facts or self.load_facts,
@@ -228,11 +233,30 @@ class AttachTest(Rig):
         self.frida.session = None
         out = tools.ch_attach()
         self.assertIn(f"{C.PROCESS_NAME} is not running", out)
-        self.assertIn("state: not running", tools.ch_state())
+        self.assertIn("state: not running (found by the last ch_attach)", tools.ch_state())
+
+    def test_a_game_that_closes_after_the_attach_is_not_attached_with_frida_reason(self):
+        tools = self.tools([STATE], attached=True)
+        tools._agent._on_detached("process-terminated")
+        out = tools.ch_state()
+        self.assertIn("state: not attached (session detached: process-terminated)", out)
+        self.assertNotIn("not running", out)
+
+    def test_attaching_again_after_the_game_dropped_the_session_closes_the_old_log(self):
+        tools = self.tools([STATE, STATE], attached=True)
+        old = tools._agent
+        old._on_detached("process-terminated")
+        out = tools.ch_attach()
+        self.assertIn("state: playing", out)
+        self.assertTrue(old._log.closed)
+        self.assertIsNot(tools._agent, old)
 
     def test_a_missing_state_agent_says_how_to_build_it(self):
         os.remove(os.path.join(self.agent_dir, FT.STATE_AGENT_FILE))
         out = self.tools([STATE]).ch_attach()
+        path = os.path.join(self.agent_dir, FT.STATE_AGENT_FILE)
+        self.assertEqual(out.splitlines()[-1],
+                         TH.agent_missing_line(path, FT.STATE_AGENT_NAME))
         self.assertIn("npm run build:state", out)
         self.assertEqual(self.frida.attached_to, [])
 
@@ -300,9 +324,25 @@ class TraceTest(Rig):
         self.assertEqual(self.traces, [])
 
     def test_trace_start_before_attach_refuses(self):
-        out = self.tools().ch_trace_start(self.song)
+        tools = self.tools()
+        out = tools.ch_trace_start(self.song)
         self.assertIn(FT.NOT_ATTACHED, out)
         self.assertEqual(self.traces, [])
+        self.assertEqual(self.game.backups, 0)
+
+    def test_trace_start_takes_the_backup_just_before_it_hooks(self):
+        tools = self.tools([STATE, STATE], attached=True)
+        self.game.backups = 0  # as if the game side held no backup yet
+        lines = tools.ch_trace_start(self.song).splitlines()
+        self.assertEqual(self.game.backups, 1)
+        self.assertEqual(lines[0], BACKUP_LINE)
+        self.assertTrue(lines[1].startswith("trace started"))
+
+    def test_a_refused_trace_start_takes_no_backup(self):
+        tools = self.tools([STATE, MENU], attached=True)
+        self.game.backups = 0
+        tools.ch_trace_start(self.song)
+        self.assertEqual(self.game.backups, 0)
 
     def test_trace_start_hooks_the_default_method_from_the_facts(self):
         tools = self.tools([STATE, STATE], attached=True)

@@ -473,6 +473,12 @@ class TraceSessionTest(unittest.TestCase):
                             agent_path=self.agent)
         self.assertEqual(str(raised.exception), TH.agent_missing_line(self.agent))
 
+    def test_the_missing_agent_line_names_the_agents_own_build_script(self):
+        self.assertEqual(TH.agent_missing_line("a.js"),
+                         "a.js not found; run npm run build:trace in tools/ch_mcp/agent first")
+        self.assertEqual(TH.agent_missing_line("b.js", "state"),
+                         "b.js not found; run npm run build:state in tools/ch_mcp/agent first")
+
     def test_a_session_needs_a_method(self):
         with self.assertRaises(ValueError):
             TH.TraceSession(self.NOTES, "Eng", [], self.out_path,

@@ -39,7 +39,8 @@ ATTACH_CAP_S = 30.0
 READ_CAP_S = 5.0
 
 AGENT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent")
-STATE_AGENT_FILE = "state.js"
+STATE_AGENT_NAME = "state"
+STATE_AGENT_FILE = f"{STATE_AGENT_NAME}.js"
 
 # ch_trace_start's refusal when the state read finds no live GameManager.
 NO_GAME_MANAGER = ("no live GameManager: start the song (pause it if you like), "
@@ -79,24 +80,20 @@ def _field_lines(snapshot: dict) -> List[str]:
     return [f"{key}: {_value_text(value)}" for key, value in snapshot.items()]
 
 
-def _state_agent_missing(path: str) -> str:
-    return f"{path} not found; run npm run build:state in tools/ch_mcp/agent first"
-
-
 class FridaTools:
     """The seven Frida tools and the session state between them.
 
     `game` is the server's game_tools.GameTools (the tests pass a fake with
-    the same four methods); its stop hook, registered here, stops the trace
-    and detaches. `session_dir` returns the folder the agent logs go in (the
-    game side's session folder). Every outside seam is an argument, so the
+    the same five methods); its stop hook, registered here, stops the trace
+    and detaches, and its session_dir() is the folder the agent logs go in.
+    Every outside seam is an argument, so the
     tests swap each for a fake: `frida_mod` (None imports frida when the
     first attach needs it), `wait` (how a read waits for its reply),
     `current_build` and `load_facts` (build_facts'), `trace_session`
     (trace_hits.TraceSession), `agent_dir`, `now` and `sleep` (the clock
     `game.launched_at` is on)."""
 
-    def __init__(self, game, lock, session_dir: Callable[[], str], *,
+    def __init__(self, game, lock, *,
                  frida_mod: Any = None,
                  wait: Optional[Callable] = None,
                  current_build: Callable[[], str] = build_facts.current_build,
@@ -107,7 +104,6 @@ class FridaTools:
                  sleep: Callable[[float], None] = time.sleep):
         self._game = game
         self._lock = lock
-        self._session_dir = session_dir
         self._frida_mod = frida_mod
         self._wait = wait
         self._current_build = current_build
@@ -144,7 +140,7 @@ class FridaTools:
             lines.append(f"build: {version} (facts: {build_facts.facts_path(version)})")
             path = os.path.join(self._agent_dir, STATE_AGENT_FILE)
             if not os.path.isfile(path):
-                lines.append(_state_agent_missing(path))
+                lines.append(TH.agent_missing_line(path, STATE_AGENT_NAME))
                 return "\n".join(lines)
             launched = self._game.launched_at()
             if launched is None:
@@ -157,8 +153,12 @@ class FridaTools:
                     lines.append(f"waited {remaining:.1f} s, so the attach comes "
                                  f"{ATTACH_DELAY_S:g} s after the launch (ATTACH_DELAY_S)")
                     self._sleep(remaining)
+            if self._agent is not None:
+                # A session the game dropped: detach closes its log file.
+                self._agent.detach()
+                self._agent = None
             self._count += 1
-            log = os.path.join(self._session_dir(), f"state-{self._count}.jsonl")
+            log = os.path.join(self._game.session_dir(), f"state-{self._count}.jsonl")
             agent = FA.LiveAgent(path, log_path=log, frida_mod=self._frida_mod,
                                  wait=self._wait, out=self._said.append)
             started = self._now()
@@ -235,10 +235,6 @@ class FridaTools:
             except build_facts.BuildFactsError as e:
                 return f"{e}\nno trace started"
             lines: List[str] = []
-            if self._game.launched_at() is None:
-                backup = self._game.ensure_backup()
-                if backup:
-                    lines.append(backup)
             snapshot = self._read(lines)
             if snapshot is None:
                 lines.append("no trace started")
@@ -258,7 +254,7 @@ class FridaTools:
                 lines.append(f"no notes in {notes_path}; no trace started")
                 return self._reply(lines)
             self._count += 1
-            out_path = os.path.join(self._session_dir(), f"trace-{self._count}.jsonl")
+            out_path = os.path.join(self._game.session_dir(), f"trace-{self._count}.jsonl")
             agent_path = os.path.join(self._agent_dir, os.path.basename(TH.DEFAULT_AGENT))
             try:
                 session = self._trace_session(notes, engine, methods, out_path,
@@ -268,6 +264,12 @@ class FridaTools:
             except TH.AgentMissing as e:
                 lines.append(str(e))
                 return self._reply(lines)
+            # The hooks are the first touch of the game this call makes, so the
+            # backup comes after every refusal above and just before them.
+            # ensure_backup knows whether a run or an earlier call holds one.
+            backup = self._game.ensure_backup()
+            if backup:
+                lines.append(backup)
             self._trace = session.start()
             lines.append(f"trace started; log: {out_path}")
             lines.append(f"engine class: {engine}, constructor RVA 0x{ctor_rva:X}; "
@@ -349,7 +351,14 @@ class FridaTools:
         agent = self._agent
         if agent is None or not agent.alive:
             word = state_words(None, running=not self._not_running)
-            why = f" ({agent.gone_reason})" if agent is not None else ""
+            # "not running" is what the last attach found; the game may have
+            # started since, so the line says whose answer it is.
+            if agent is not None:
+                why = f" ({agent.gone_reason})"
+            elif self._not_running:
+                why = " (found by the last ch_attach)"
+            else:
+                why = ""
             lines.append(f"state: {word}{why}; {NOT_ATTACHED}")
             return None
         try:
