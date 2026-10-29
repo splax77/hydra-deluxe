@@ -6,7 +6,7 @@ Task id `ch-mcp-server-plan`, session `local_a083ea2f-e2a3-44ac-b2c0-2ae3db88ab7
 
 ## The plain version
 
-An MCP server is a helper program that gives an agent a set of tools to call. The project already has one for Hydra, `tools/hydra_ui_mcp.py`. This plan builds the same kind of helper for Clone Hero, so an agent can start the game, launch a chart with a bot, attach to the running game and read its clock and state, see each note the game processes, press drum lanes, read the end-of-song stats, and stop the game with the user's files put back.
+An MCP server is a helper program that gives an agent a set of tools to call. The project already has one for Hydra, `tools/hydra_ui_mcp.py`. This plan builds the same kind of helper for Clone Hero, so an agent can start the game, launch a chart with a bot, attach to the running game and read its clock and state, see each note the player hits, press drum lanes, read the end-of-song stats, and stop the game with the user's files put back.
 
 Nothing in the server is new mechanism. Each tool wraps a module that already exists in `tools/ch_mcp/` or `tools/ch_probe/` and already ran against the game on 2026-10-28: the bot launcher (`bot_run.py`), the Frida attach runner and its agents (`frida_attach.py`, `agent/*.ts`), the hit tracer (`trace_hits.py`), the key presser (`ch_probe/experiments/play_chart.py` and `ch_probe/input_driver.py`), the chart installer and the stats comparison. The server owns only the transport: the tool list, one live session at a time, the caps on waits and replies, and the reports when something dies. Every rule about the game stays in the module that already owns it.
 
