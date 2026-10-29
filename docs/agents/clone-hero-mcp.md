@@ -32,6 +32,6 @@ Each live run names its pass and fail lines before it starts, has a cap on how m
 4. For key presses, `ch_press` or `ch_play_chart` on a song the user started from the menu. A song launched with a bot is played by the bot.
 5. `ch_stop`, and check that every file was restored.
 
-Two things the live steps of 2026-10-29 found. A bot run's results screen takes no keys, so the user cannot leave it; end the run with `ch_stop`. And `ch_state` says "menu" only before the first song: after a song, the finished `GameManager` stays in memory, and `ch_state` keeps saying "song over" even when the user is back at the main menu.
+Two things the live steps of 2026-10-29 found. In the one bot run tried, the results screen took no keys, so the user could not leave it; end a bot run with `ch_stop`. And `ch_state` says "menu" only before the first song: after a song, the finished `GameManager` stayed in memory, and `ch_state` kept saying "song over" even though the user was back at the main menu.
 
 If the game is updated, every Frida tool refuses until a dump of the new build exists; the refusal names the scripts to run.
