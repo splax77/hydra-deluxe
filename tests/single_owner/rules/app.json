@@ -518,7 +518,7 @@
     },
     {
       "question": "How is a number rounded on a report page?",
-      "owner": "the C++ text the payload carries: format_percent and percent_steps, format_avg_mult and format_ms in src/app/display_format.cpp",
+      "owner": "the C++ text the payload carries: format_percent and percent_steps, format_avg_mult in src/app/display_format.cpp, and format_ms in src/core/model.cpp",
       "owner_file": "src/app/display_format.cpp",
       "owner_symbol": "format_percent",
       "date": "2026-10-04",
