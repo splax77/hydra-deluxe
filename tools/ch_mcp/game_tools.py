@@ -34,15 +34,10 @@ from tools.ch_probe.input_driver import InputDriver, Lane, find_game_window
 
 # How long ch_install_chart waits for install_chart.install, whose silent
 # audio comes from an ffmpeg call with no timeout of its own (the plan's
-# question 5d, approved 2026-10-29).
+# question 5d).
 INSTALL_CAP_S = 60.0
 
 SCRATCH_PREFIX = "ch_live_"
-
-# bot_run.finish_run words a stop that worked for its own command line, which
-# has a --stop flag. The server has no such flag, so ch_stop says it plainly.
-_FINISH_RUN_STOP_LINE = "stopped the game (--stop)"
-_STOP_LINE = "stopped the game"
 
 _NOT_RUNNING = f"{C.PROCESS_NAME} is not running"
 
@@ -407,9 +402,7 @@ class GameTools:
 
     def _env_into(self, lines: List[str]) -> bot_run.Env:
         """The server's Env with its printed lines going into `lines`."""
-        def say(line: str) -> None:
-            lines.append(_STOP_LINE if line == _FINISH_RUN_STOP_LINE else line)
-        return dataclasses.replace(self._env, out=say)
+        return dataclasses.replace(self._env, out=lines.append)
 
     def _stop_all(self, lines: List[str]) -> bool:
         """The stop hooks, the play stop, then the game and the restore.
@@ -430,7 +423,8 @@ class GameTools:
         env = self._env_into(lines)
         if self._run is not None:
             try:
-                ok = bot_run.finish_run(self._run, stop=True, env=env)
+                ok = bot_run.finish_run(self._run, stop=True, env=env,
+                                        stop_line=bot_run.STOPPED_LINE)
             except Exception as e:
                 lines.append(f"stopping the game failed: {type(e).__name__}: {e}; "
                              f"the backup is still in {self._run.backup_dir}")
@@ -443,9 +437,8 @@ class GameTools:
             lines.append("the server did not start the game, so it does not close it")
             if bot_run.restore_only(self._adopted_backup, env) != 0:
                 return False
-            lines.append("if the game is still running it may write these files again when it "
-                         "closes; after closing it, run "
-                         + bot_run._restore_hint(self._adopted_backup))
+            lines.append("if the game is still running it "
+                         + bot_run.late_write_hint(self._adopted_backup))
             self._adopted_backup = None
             return True
         lines.append("no run is open and no backup was taken; nothing to restore")

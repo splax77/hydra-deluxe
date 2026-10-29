@@ -52,6 +52,12 @@ POLL_INTERVAL_S = 1.0
 POLL_CAP_EXTRA_S = 60.0
 EXIT_CHECK_S = 30.0
 
+# What finish_run says when a stop it was asked for worked. The command line
+# asks with --stop and says so; a caller with no such flag (the MCP server)
+# passes STOPPED_LINE as finish_run's stop_line.
+STOPPED_LINE = "stopped the game"
+STOPPED_BY_FLAG_LINE = f"{STOPPED_LINE} (--stop)"
+
 MANIFEST = "manifest.json"
 PRO_DRUMS_INSTRUMENT = "ProDrums"
 
@@ -280,10 +286,19 @@ def _restore_hint(backup_dir: str) -> str:
     return f'py tools/ch_mcp/bot_run.py --restore "{backup_dir}"'
 
 
-def finish_run(run: Run, *, stop: bool, env: Optional[Env] = None) -> bool:
+def late_write_hint(backup_dir: str) -> str:
+    """What a user is told when a game that may still run could rewrite the
+    files that were just restored. The caller says whether the game runs."""
+    return ("may write these files again when it closes; after closing it, run "
+            + _restore_hint(backup_dir))
+
+
+def finish_run(run: Run, *, stop: bool, env: Optional[Env] = None,
+               stop_line: str = STOPPED_BY_FLAG_LINE) -> bool:
     """Stop the game when asked, then put the user files back. A game that
     is still running after the stop's wait is reported and the restore still
-    runs. Returns False when the restore failed."""
+    runs. A stop that worked prints `stop_line`. Returns False when the
+    restore failed."""
     env = env or Env()
     game = run.game
     try:
@@ -294,15 +309,14 @@ def finish_run(run: Run, *, stop: bool, env: Optional[Env] = None) -> bool:
                 env.out(f"{C.PROCESS_NAME} (pid {game.pid}) was told to stop but was "
                         f"still running after {EXIT_CHECK_S:.0f} s")
             else:
-                env.out("stopped the game (--stop)")
+                env.out(stop_line)
     except BaseException:
         _restore(run.backup_dir, env)
         raise
     if not _restore(run.backup_dir, env):
         return False
     if game.is_running():
-        env.out("the game is still running and may write these files again when it closes; "
-                "after closing it, run " + _restore_hint(run.backup_dir))
+        env.out("the game is still running and " + late_write_hint(run.backup_dir))
     return True
 
 

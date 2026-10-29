@@ -230,12 +230,17 @@ class GameToolsTest(unittest.TestCase):
     def test_shutdown_with_an_adopted_game_restores_only(self):
         t = ToolRig(self.tmp)
         t.tools.ensure_backup()
+        backup = t.backup_dir()
         _write(t.r.path("user.bin"), b"changed by the game")
         reply = t.tools.shutdown()
         self.assertEqual(t.r.launch.commands, [])
         self.assertFalse(t.r.game.stopped)
         self.assertIn("user.bin: restored", reply)
         self.assertIn("the server did not start the game, so it does not close it", reply)
+        self.assertEqual(reply.splitlines()[-1],
+                         "if the game is still running it may write these files again when it "
+                         "closes; after closing it, run py tools/ch_mcp/bot_run.py --restore "
+                         f'"{backup}"')
         t.r.assert_all_restored(self)
 
     # -- ensure_backup and launched_at ----------------------------------------------
