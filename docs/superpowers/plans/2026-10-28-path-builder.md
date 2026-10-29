@@ -32,6 +32,8 @@ Each quotes what the code really does and gives my recommendation. All seven are
 
 PB-3 (reading Hydra's path text back) itself is not a question. Decision 4 says path text copies both ways between the programs, and the spec's Errors section covers a pasted path, so PB-3 is required and has no "no" answer.
 
+**The paste form (the user's answer, 2026-10-29: "Read both forms").** Hydra's Copy path button and Ctrl+C copy the long form, `Path::pathstring_verbose` (`src/ui/paths_tab.cpp` line 619, `copy_selected_path`): the multiplier squeezes, each window with its timings (`Activation::notationstr_verbose`), then `Score: ...`. PB-3's reader takes only the short form, `Path::pathstring`. So the builder's paste accepts both forms (task PB-3b), and the builder's own Copy writes the long form, as Hydra's does (PB-4). Hydra is unchanged. The other two choices put to the user were a short-form-only paste that refuses Hydra's text, and changing Hydra's Copy path to the short form.
+
 ## What the code does today (checked)
 
 **The pinned search.** `EngineOptions` (`src/search/engine.h` lines 25 to 56) has `target_act_ticks` and `target_deact_ticks`. The rule the spec names sits in `Engine::run` (`src/search/engine.cpp` lines 1848 to 1863): on every fill node, when `target_act_ticks_` is set, a listed fill keeps only the activating child and any other fill keeps only the declining parent. The pinned end is answered at the SP node by `pinned_end` (lines 560 to 571), which looks the activation's tick up in `target_act_ticks_` and reads the matching `target_deact_ticks_` entry; that part stays as it is for free-after.
@@ -288,11 +290,25 @@ Run: `hydra_tests.exe -sf=*test_pb_strip.cpp`; `hydra_pathbuilder_uitest.exe --t
 
 Done when all pass. Blockers: PB-2a, RD-1, RD-2. earlyStart: fork from PB-2a's executor commit, merging RD-2's branch.
 
+#### PB-3b. Reading Hydra's long Copy path text
+
+Owns `src/search/pathstring_read.{h,cpp}` and `tests/test_pathstring_read.cpp` (PB-3's files).
+
+What it builds. `paths_from_pathstring` also accepts the text `Path::pathstring_verbose` writes (the user's answer, "Read both forms"). It reads only the windows section, found by the writer's own section separators, and matches each candidate window by comparing its `Activation::notationstr_verbose()` with the token, exactly as PB-3 compares `notationstr()`. It never parses what a token or a timing means, and it ignores the multiplier-squeeze and score sections. If the separators the writer uses are not enough to split the text without reading a token's meaning, the executor stops and reports.
+
+Questions: "is this the long form or the short form" (one check in the reader, read from the writer's section shape); "which fill does this long token mean" (the reader, comparing with `notationstr_verbose`, the writer).
+
+Tests: `pathstring read: every corpus path round-trips from Hydra's long Copy path text` (every path in every corpus record, read back from `pathstring_verbose(record.multsqueezes)`, has the same activation ticks and the same `pathstring()` as the original), and `pathstring read: long text with no activations gives a path with no activations`.
+
+Run: `hydra_tests.exe "-sf=*test_pathstring_read.cpp,*single_owner*"`.
+
+Done when the tests pass. Blockers: PB-3. earlyStart: fork from PB-3's merge.
+
 #### PB-4. Saved path files, copy and paste
 
 Owns `src/pathbuilder/pb_files.{h,cpp}` (new), `src/pathbuilder/pb_menu.{h,cpp}` (PB-1's file; PB-4 adds the items only), `tests/test_pb_files.cpp` (new), `tests/pb_ui/pbtest_files.cpp` (new).
 
-What it builds. Save and open of the builder's own path files through `paths_json` and `windows_from_json` (`tools/replay_json.h`, the `hydra_replay_json` library), the saved branches those files add to the left list, and copy and paste of a path as `Path::pathstring` text. Paste calls PB-3's reader and, when the text does not fit the chart, refuses with that reason and leaves the player's path as it was (the spec's Errors section). Undo and redo (PB-1) cover paste and open.
+What it builds. Save and open of the builder's own path files through `paths_json` and `windows_from_json` (`tools/replay_json.h`, the `hydra_replay_json` library), the saved branches those files add to the left list, and copy and paste of a path. Copy writes `Path::pathstring_verbose`, the same long text Hydra's Copy path writes; paste accepts the long or the short form (the user's answer, "Read both forms"). Paste calls PB-3's reader and, when the text does not fit the chart, refuses with that reason and leaves the player's path as it was (the spec's Errors section). Undo and redo (PB-1) cover paste and open.
 
 Questions: "what text is a path" (`Path::pathstring`); "what is in a saved file" (`paths_json`, `windows_from_json`); "which path does this text mean" (PB-3).
 
@@ -365,6 +381,7 @@ All seven are answered, so this lists what changing an answer later would touch.
 | The installer gives the builder a Start Menu shortcut (Q2) | Q2 answer | HY-1 | `installer: the builder has a Start Menu shortcut` in `test_launch.cpp` reads `installer/hydra.iss` |
 | Saved files use `hydra_replay`'s JSON shape | spec "Saving" | PB-4 | the save-then-open round trip in `test_pb_files.cpp` goes through `paths_json` and `windows_from_json` |
 | Copy and paste use Hydra's path text, both ways | spec decision 4 | PB-3, PB-4 | `pathstring read: every corpus best path round-trips`; the copy-then-paste round trip in `test_pb_files.cpp` |
+| Paste accepts Hydra's long Copy path text as well as the short form; the builder's Copy writes the long form | user's answer, 2026-10-29 | PB-3b, PB-4 | `pathstring read: every corpus path round-trips from Hydra's long Copy path text`; PB-4's copy-then-paste round trip uses the long form |
 | A pasted path that does not fit is refused with the reason; the path stays | spec Errors | PB-3, PB-4 | `pathstring read: a token no fill can place is refused with its position`; `paste-refused-keeps-path` and the unchanged-path pin in `test_pb_files.cpp` |
 | An impossible click shows search_target's reason and changes nothing | spec Errors | PB-2a | `impossible-click-message` and the unit pin |
 | A chart that fails to load shows Hydra's message | spec Errors | PB-1 | `file-open-error` pins the `plain_error` sentence |
