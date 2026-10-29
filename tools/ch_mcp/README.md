@@ -28,7 +28,7 @@ Clone Hero 1.0 is a Mono build: its game code is plain .NET assemblies in `Clone
 
 ## What facts.json holds
 
-`facts.json` is one JSON object with four keys. Any later reader of a game build, such as one for a Mono build, writes the same shape.
+`facts.json` is one JSON object with four keys, written as UTF-8 with the scrambled names kept as they are (not escaped), so read it with `encoding="utf-8"`. Any later reader of a game build, such as one for a Mono build, writes the same shape.
 
 `game_version` is the version string the caller passed. `dump_file` is the name of the file the facts came from.
 
