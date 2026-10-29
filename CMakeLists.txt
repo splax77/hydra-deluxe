@@ -352,6 +352,7 @@ add_library(hydra_search STATIC
     src/search/graph.cpp
     src/search/engine.cpp
     src/search/pather.cpp
+    src/search/pathstring_read.cpp
 )
 target_link_libraries(hydra_search PUBLIC hydra_core)
 target_link_libraries(hydra_search PRIVATE hydra_warnings)
