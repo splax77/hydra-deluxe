@@ -62,6 +62,15 @@ BaselineDates parse_dates(const nlohmann::json& entry, const std::string& where)
 // a different day, so iso_plus_days(s, 0) == s says s is a real date.
 std::string iso_plus_days(const std::string& iso, int days);
 
+// Today on this machine's calendar, as YYYY-MM-DD. The one place a baseline's
+// "today" comes from.
+std::string today_iso();
+
+// Empty while `today` (YYYY-MM-DD) is on or before the entry's remove_by,
+// else the failure, which starts with `where`. The one verdict on whether a
+// baseline entry is past its date, for this scan and the layering test.
+std::string baseline_due(const std::string& where, const BaselineDates& d, const std::string& today);
+
 // How a baseline entry is named in failures.
 std::string copy_entry_name(const KnownCopy& k);
 std::string clone_entry_name(const KnownClone& k);

@@ -162,6 +162,22 @@ std::string iso_plus_days(const std::string& iso, int days) {
     return buf;
 }
 
+std::string today_iso() {
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+    localtime_s(&local, &now);
+    char buf[16];
+    std::strftime(buf, sizeof buf, "%Y-%m-%d", &local);
+    return buf;
+}
+
+// ISO dates compare as plain text.
+std::string baseline_due(const std::string& where, const BaselineDates& d, const std::string& today) {
+    if (today <= d.remove_by) return {};
+    return where + ": past its remove_by date " + d.remove_by + " (added by " + d.added_by + " on " + d.date +
+           "): fix it and delete the entry";
+}
+
 BaselineDates parse_dates(const json& entry, const std::string& where) {
     BaselineDates d{required_string(entry, "date", where), required_string(entry, "added_by", where),
                     required_string(entry, "remove_by", where)};
