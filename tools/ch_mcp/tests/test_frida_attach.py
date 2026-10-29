@@ -342,9 +342,11 @@ class ReplySession(FakeSession):
 
 
 # What state.ts sends, by the field names it reads.
-STATE = {"found": True, "instances": 1, "songTime": 3.5, "isPaused": False,
+STATE = {"found": True, "instances": 1, "destroyed": 0, "songTime": 3.5, "isPaused": False,
          "isSongOver": False, "isSongPlaying": True, "songLoaded": True}
-MENU = {"found": False, "reason": "no live GameManager"}
+MENU = {"found": False, "reason": "no live GameManager", "destroyed": 0}
+# A read that found no live GameManager and skipped one destroyed one.
+MENU_ONE_DESTROYED = {**MENU, "destroyed": 1}
 
 
 class LiveAgentTest(Workspace):
@@ -689,6 +691,7 @@ class NoWritesTest(unittest.TestCase):
             "return (_c, a) => a[slot].toInt32();",
             "const r = retval.toInt32() + this.context.rax.toInt32();",
             "const b = Memory.alloc(8); const s = Memory.scan(p, 8, pat, cb);",
+            "return obj.field<NativePointer>(NATIVE_OBJECT_FIELD).value.isNull();",
         ]
         for line in ok:
             with self.subTest(line=line):
@@ -702,6 +705,26 @@ class NoWritesTest(unittest.TestCase):
             with self.subTest(agent=os.path.basename(path)):
                 with open(path, encoding="utf-8") as fh:
                     self.assertEqual(no_write_findings(fh.read()), [])
+
+
+class DestroyedSkipTest(unittest.TestCase):
+    def read(self, name):
+        with open(os.path.join(AGENT_DIR, name), encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_the_lookup_reads_the_native_object_field_by_name(self):
+        # UnityEngine.Object's field, read by name through the bridge: no
+        # offset and no method call decides whether a GameManager is destroyed.
+        text = self.read("gamemanager.ts")
+        self.assertIn('NATIVE_OBJECT_FIELD = "m_CachedPtr"', text)
+        self.assertIn("field<NativePointer>(NATIVE_OBJECT_FIELD).value.isNull()", text)
+        self.assertNotIn(".method(", text)
+
+    def test_the_state_agent_sends_the_destroyed_count_in_both_replies(self):
+        text = self.read("state.ts")
+        self.assertIn("lookUpGameManager()", text)
+        self.assertIn("destroyed: found.destroyed", text)
+        self.assertIn("        destroyed,\n", text)
 
 
 class BuildScriptsTest(unittest.TestCase):

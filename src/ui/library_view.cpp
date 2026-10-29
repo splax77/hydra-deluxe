@@ -175,8 +175,8 @@ void render_main_window(AppState& app) {
 
     // The song panel's "Rescan library" and the Song folders' "Scan now"
     // land here: the scan modal belongs to this window, so the scan has to
-    // start from its frame. start_scan refuses when AppState::can_scan says
-    // no, and then there is no modal to open.
+    // start from its frame. start_scan may refuse (see AppState::start_scan),
+    // and then there is no modal to open.
     if (app.request_scan) {
         app.request_scan = false;
         app.start_scan();

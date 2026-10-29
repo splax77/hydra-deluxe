@@ -281,6 +281,10 @@ struct PreviewScene {
     std::vector<PreviewDrumLane> drum_lanes;  // from the song's drum lanes
     std::vector<PreviewFill> fills;         // candidate activation-fill windows
     std::vector<PreviewActivation> activations;  // overlay: the path's activations
+    // Overlay: the fills a second, "ghost" path activates on, as indices into
+    // `fills` in chart order. apply_preview_overlay names them by the rule
+    // that names the drawn path's Taken fill. Empty with no ghost path.
+    std::vector<size_t> ghost_fills;
     // Overlay: where each bar banked after the path's last window arrived
     // (Path::trailing_bank_ticks). Empty without a path.
     std::vector<int64_t> trailing_bank_ticks;
@@ -537,11 +541,16 @@ double sp_meter_bars_at(const SpMeterCurve& curve, double ms);
 // notes (D48, Q25). See build_preview_base for what happens without it.
 // `song_length_ms` is the song's length (app::song_length_ms, D75): it
 // becomes song_length_ms, where the SP meter curve closes.
+//
+// `ghost_path` (may be null) is a second path drawn faintly beside the first:
+// it fills ghost_fills and nothing else. Without one the scene is exactly
+// what it was before the ghost existed.
 PreviewScene build_preview_scene(const Song& song, const Path* path,
                                  int sp_cap = kCloneHeroSpCap,
                                  const core::Rules& rules = core::default_rules(),
                                  std::optional<double> audio_end_ms = std::nullopt,
-                                 std::optional<double> song_length_ms = std::nullopt);
+                                 std::optional<double> song_length_ms = std::nullopt,
+                                 const Path* ghost_path = nullptr);
 
 // The same scene in two halves, so a path change rebuilds only what the path
 // changes. build_preview_scene(song, path, cap, rules) is exactly
@@ -552,8 +561,9 @@ PreviewScene build_preview_scene(const Song& song, const Path* path,
 // sections, measure_spans, timing, song_length_ms and has_notes.
 // Every fill in a base reads Hidden, the field's default.
 //
-// The overlay owns the rest: activations, every fill's state, score and
-// sp_meter. Those read the path, the SP cap or the rules. The SP meter is
+// The overlay owns the rest: activations, every fill's state, ghost_fills,
+// score and sp_meter. Those read the path, the ghost path, the SP cap or the
+// rules. The SP meter is
 // overlay even without a path: its ceiling is the record's cap and its drain
 // is the path's activations.
 //
@@ -570,7 +580,8 @@ PreviewScene build_preview_base(const Song& song,
                                 std::optional<double> song_length_ms = std::nullopt);
 PreviewScene apply_preview_overlay(PreviewScene base, const Song& song, const Path* path,
                                    int sp_cap = kCloneHeroSpCap,
-                                   const core::Rules& rules = core::default_rules());
+                                   const core::Rules& rules = core::default_rules(),
+                                   const Path* ghost_path = nullptr);
 
 // Identity of the path an overlay was built from: path_identity, the same
 // rule the Paths tab's all-0 dedupe reads. Callers that must notice a changed

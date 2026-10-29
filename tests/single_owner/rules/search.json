@@ -176,6 +176,42 @@
       "note": "A tick list becomes activation-only pins in one place: sorted, each tick once. A pin built from a variable in a loop restates that. Literal-tick pins in tests do not match."
     },
     {
+      "question": "In what order does a list of pinned windows run, and which lists are refused?",
+      "owner": "sort_and_check_windows in src/search/pather.cpp",
+      "owner_file": "src/search/pather.cpp",
+      "owner_symbol": "sort_and_check_windows",
+      "date": "2026-10-29",
+      "decision": "derive-once review of Path Builder EN-3 (2026-10-29)",
+      "added_by": "EN-3-review",
+      "pattern": "\\ba\\.act_tick\\s*<\\s*b\\.act_tick",
+      "anchor": "act_tick <",
+      "must_match": [
+        "[](const PinnedWindow& a, const PinnedWindow& b) { return a.act_tick < b.act_tick; });",
+        "return a.act_tick < b.act_tick;"
+      ],
+      "must_not_match": [
+        "sort_and_check_windows(windows);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/search/pather.cpp",
+          "line_text": "[](const PinnedWindow& a, const PinnedWindow& b) { return a.act_tick < b.act_tick; });",
+          "why": "sort_and_check_windows, the owner"
+        },
+        {
+          "file": "src/core/replay.cpp",
+          "line_text": "return a.act_tick < b.act_tick;",
+          "why": "orders replay_path's own Window records, not a PinnedWindow list"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools",
+        "tests"
+      ],
+      "note": "search_target, best_finish and the Path Builder's build_ladder all order and check their windows through sort_and_check_windows. A sort of PinnedWindow by act tick elsewhere restates it."
+    },
+    {
       "question": "Which rule names a fill deadline?",
       "owner": "fill_rule_name in src/search/graph.h",
       "owner_file": "src/search/graph.h",
