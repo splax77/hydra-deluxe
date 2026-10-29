@@ -47,6 +47,9 @@ TEST_CASE("pathstring read: every corpus best path round-trips") {
             const Path got = paths_from_pathstring(song, cfg, p->pathstring());
             CHECK(act_ticks(got) == act_ticks(*p));
             CHECK(got.pathstring() == p->pathstring());
+            // The same ends and score too: two tied variants that print the
+            // same text would read back as one of them, and this names it.
+            CHECK(path_identity(got) == path_identity(*p));
         }
     }
     CHECK(paths > 0);
@@ -77,7 +80,8 @@ TEST_CASE("pathstring read: a token no fill can place is refused with its positi
 TEST_CASE("pathstring read: \"(No activations.)\" gives a path with no activations") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     const Song& song = corpus::song(corpus::first_chart_with_notes(), cfg.reading());
-    const Path got = paths_from_pathstring(song, cfg, "(No activations.)");
+    const std::string none = Path().pathstring();
+    const Path got = paths_from_pathstring(song, cfg, none);
     CHECK_FALSE(got.has_activations());
-    CHECK(got.pathstring() == "(No activations.)");
+    CHECK(got.pathstring() == none);
 }
