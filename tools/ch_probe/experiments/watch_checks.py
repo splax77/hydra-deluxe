@@ -63,6 +63,12 @@ def parse_value(text: str):
         return float(text)
 
 
+def same_value(a, b) -> bool:
+    """Whether two logged values are equal, a NaN read counting as equal to
+    itself (sp_watch.py's change test treats it the same way)."""
+    return a == b or (a != a and b != b)
+
+
 def load_watch_rows(path: str) -> list[dict]:
     """The watcher log's rows, each a dict keyed by WATCH_COLUMNS. Raises
     ValueError when the header is not WATCH_COLUMNS."""
@@ -95,7 +101,7 @@ def hit_time_check(rows: Sequence[dict], chords: Sequence[dict]) -> list[str]:
     PASS when every chord in the span counts."""
     changes = [(C.s_to_ms(cur["clock_s"]), C.s_to_ms(cur["hit_time_s"]), i)
                for i, (prev, cur) in enumerate(zip(rows, rows[1:]), start=1)
-               if cur["hit_time_s"] != prev["hit_time_s"]]
+               if not same_value(cur["hit_time_s"], prev["hit_time_s"])]
     if not rows:
         return ["FAIL hit time (+0x2E0): the log has no rows"]
     first_ms = C.s_to_ms(rows[0]["clock_s"])
@@ -158,7 +164,8 @@ def pause_check(rows: Sequence[dict]) -> list[str]:
     lines = []
     for i, j in pauses:
         a, b = rows[i], rows[j]
-        moved = [f"{c} {a[c]} -> {b[c]}" for c in others if a[c] != b[c]]
+        moved = [f"{c} {a[c]} -> {b[c]}" for c in others
+                 if not same_value(a[c], b[c])]
         end_note = (" (ends at the log's final row, where the watcher stopped)"
                     if j == len(rows) - 1 else "")
         lines.append(

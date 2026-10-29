@@ -139,6 +139,17 @@ class WatchTest(unittest.TestCase):
         self.assertGreater(rows[1][0] - rows[0][0], 5.0)
         self.assertEqual(rows[1][1], 3.0)
 
+    def test_a_clock_that_jumps_back_ends_the_run_with_a_final_row(self):
+        rows = []
+        clock = FakeClock()
+        summary = sp_watch.watch(
+            snapshots([snap_at(30.0), snap_at(30.01), snap_at(2.0)]),
+            rows.append, now=clock.now, sleep=clock.sleep)
+        self.assertEqual(summary.reason,
+                         "clock jumped back (30.01 -> 2.00 s)")
+        self.assertEqual([r[1] for r in rows], [30.0, 30.01, 2.0])
+        self.assertEqual(summary.last_clock_s, 2.0)
+
     def test_the_wall_clock_cap_ends_a_run_whose_clock_keeps_moving(self):
         rows = []
         clock = FakeClock(step=1.0)

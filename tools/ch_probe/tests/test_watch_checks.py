@@ -69,6 +69,14 @@ class HitTimeCheckTest(unittest.TestCase):
         self.assertTrue(W.hit_time_check(rows, chords)[0].startswith(
             "PASS hit time (+0x2E0): 2 of 2 "))
 
+    def test_a_nan_hit_time_held_before_the_hit_is_not_a_change(self):
+        nan = float("nan")
+        rows = [row(10.0, 0.9, hit_time_s=nan), row(10.02, 0.93, hit_time_s=nan),
+                row(10.05, 1.0, hit_time_s=1.005),
+                row(10.15, 1.1, hit_time_s=1.005)]
+        lines = W.hit_time_check(rows, [{"index": 7, "ms": 1000.0}])
+        self.assertTrue(lines[0].startswith("PASS hit time (+0x2E0): 1 of 1 "))
+
     def test_chords_outside_the_log_are_not_judged(self):
         chords = [{"index": 1, "ms": 500.0}, {"index": 2, "ms": 1000.0}]
         lines = W.hit_time_check(hit_rows(1.009), chords)
@@ -100,6 +108,12 @@ class PauseCheckTest(unittest.TestCase):
                          "PASS pause: wall 10.000 to 15.100 s (5.100 s), clock "
                          "5.000 to 5.000 s (ends at the log's final row, where "
                          "the watcher stopped)")
+
+    def test_a_nan_read_held_across_the_pause_is_not_a_move(self):
+        nan = float("nan")
+        rows = [row(10.0, 5.0), row(10.5, 5.4, sp_end_s=nan),
+                row(12.5, 5.41, sp_end_s=nan), row(12.6, 5.5)]
+        self.assertEqual(W.pause_check(rows)[1], "  other fields: none moved")
 
     def test_a_wall_gap_where_the_clock_moved_is_not_a_pause(self):
         rows = [row(10.0, 5.0), row(12.0, 7.0)]
