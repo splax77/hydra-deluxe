@@ -621,7 +621,7 @@ std::string Path::pathstring_verbose(const std::vector<MultSqueeze>& multsqueeze
 
     std::string out;
     for (size_t i = 0; i < sections.size(); ++i) {
-        if (i) out += " | ";
+        if (i) out += kPathSectionSeparator;
         out += sections[i];
     }
     return out;
