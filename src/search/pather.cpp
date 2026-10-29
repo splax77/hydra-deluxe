@@ -310,9 +310,9 @@ std::vector<PinnedWindow> prefix_of(const std::vector<PinnedWindow>& windows, si
     return std::vector<PinnedWindow>(windows.begin(), windows.begin() + (std::ptrdiff_t)k);
 }
 
-// Sorts `windows` by act tick and refuses a list a target cannot pin
-// (std::invalid_argument, the texts pather.h's search_target names).
-// search_target and best_finish both check their windows here.
+}  // namespace
+
+// Every target search orders and checks its windows here (see pather.h).
 void sort_and_check_windows(std::vector<PinnedWindow>& windows) {
     std::sort(windows.begin(), windows.end(),
               [](const PinnedWindow& a, const PinnedWindow& b) { return a.act_tick < b.act_tick; });
@@ -329,6 +329,8 @@ void sort_and_check_windows(std::vector<PinnedWindow>& windows) {
             throw std::invalid_argument(at + " ends before it activates");
     }
 }
+
+namespace {
 
 // search_target over windows already checked, on a graph already built.
 // best_finish reads its failure from here, so a window that cannot happen
@@ -398,8 +400,12 @@ std::vector<PinnedWindow> activation_pins(std::vector<int64_t> ticks) {
 
 TargetResult search_target(const Song& song, const SearchSettings& settings,
                            std::vector<PinnedWindow> windows) {
+    return search_target(search_graph(song, settings), std::move(windows));
+}
+
+TargetResult search_target(const ScoreGraph& graph, std::vector<PinnedWindow> windows) {
     sort_and_check_windows(windows);
-    return target_on_graph(search_graph(song, settings), windows);
+    return target_on_graph(graph, windows);
 }
 
 TargetResult best_finish(const ScoreGraph& graph, const SearchSettings& settings,
