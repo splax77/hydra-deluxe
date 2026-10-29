@@ -1,10 +1,10 @@
 # Il2Cpp dump: the engine's fields and where the chart checksum lives (2026-10-28)
 
-Task I of `docs/superpowers/plans/2026-10-28-overlay-spike.md`. This file holds the class and field lines that the spike uses, copied from a fresh Il2CppDumper run over the installed game. Nothing here was read from a running game. Every line inside a code block is copied from `dump.cs` as it stands, tab indents and all. Clone Hero's names are obfuscated, so most class and field names are strings of modifier letters (`ʿʶʴˀ...`). This file names each class by its `TypeDefIndex`, a stable number the dump prints after each class line.
+Task I of `docs/superpowers/plans/2026-10-28-overlay-spike.md`. This file holds the class and field lines that the spike uses, copied from a fresh Il2CppDumper run over the installed game. Nothing here was read from a running game. Every line inside a code block is copied from `dump.cs` as it stands, tab indents and all. A block shows only the lines the spike uses, in dump order, so lines between them are left out; the complete lists are the two engine classes under "The base engine class's full field list" and "The drums engine class's own fields". Where this file says "presumably" or "the dump does not say", the dump does not show it and it is not checked. Clone Hero's names are obfuscated, so most class and field names are strings of modifier letters (`ʿʶʴˀ...`). This file names each class by its `TypeDefIndex`, the number the dump prints after each class line. The numbers hold for this game build only; an update can renumber them, so search by the class line, not by the number alone.
 
 ## How the dump was made
 
-Il2CppDumper v6.7.46 ran once, offline, on the two game files: `C:\Clone Hero\1.1 june\Clone Hero\GameAssembly.dll` and `...\Clone Hero_Data\il2cpp_data\Metadata\global-metadata.dat`. It ran from its own folder with absolute paths, as the plan says. Output went to a new empty folder in the session scratch area, `scratchpad\il2cpp-dump`, and is not committed.
+Il2CppDumper v6.7.46 ran offline on the two game files (the first start failed at once, as item 1 below says, and the second made the dump): `C:\Clone Hero\1.1 june\Clone Hero\GameAssembly.dll` and `...\Clone Hero_Data\il2cpp_data\Metadata\global-metadata.dat`. It ran from its own folder with absolute paths, as the plan says. Output went to a new empty folder in the session scratch area, `scratchpad\il2cpp-dump`, and is not committed.
 
 Two things needed handling, and neither changed any file:
 
@@ -23,7 +23,7 @@ The fields at `0x68`, `0x1B0`, `0x42`, `0x48`, `0x120` and `0x130` all belong to
 public abstract class ʿʶʴˀʴʾʵʵʶʳʲ // TypeDefIndex: 8288
 ```
 
-The match does not rest on offsets alone. `docs/audit/ch-evidence.md` answers 37 and 222 name methods by address, and the dump prints each method's RVA (its address inside `GameAssembly.dll`). Every one of those addresses is a method of class 8288. ActivateStarPower is at 0x20F5640 (vtable slot 14). The per-update SP routine is at 0x20F6800 (slot 12). The end-time function is at 0x20F37E0. The score adders are at 0x20F5F70, 0x20F6A50 and 0x20F6EB0:
+The grep looked for a class with a field line ending in each of `// 0x68`, `// 0x1B0`, `// 0x42`, `// 0x48`, `// 0x120` and `// 0x130` (instance fields only), over the whole dump. In the game's own images (type indexes 0 to 1450 and 8242 to 8690) only class 8288 has all six. Six structs of the Rewired input library (type indexes 5060, 5063, 5072, 5164, 5169 and 5175) also have fields at all six offsets, so offsets alone would not settle it. The match rests on the method addresses as well. `docs/audit/ch-evidence.md` answers 37 and 222 name methods by address, and the dump prints each method's RVA (its address inside `GameAssembly.dll`). Every one of those addresses is a method of class 8288. ActivateStarPower is at 0x20F5640 (vtable slot 14). The per-update SP routine is at 0x20F6800 (slot 12). The end-time function is at 0x20F37E0. The score adders are at 0x20F5F70, 0x20F6A50 and 0x20F6EB0:
 
 ```
 	// RVA: 0x20F5640 Offset: 0x20F4A40 VA: 0x1820F5640 Slot: 14
@@ -40,7 +40,7 @@ The match does not rest on offsets alone. `docs/audit/ch-evidence.md` answers 37
 	protected virtual void ʿʾʹʲˀʶʷʵʶʶˀ(ʽʿʸʸʾʶʶʾʶʹʲ ʼʽʶʽʴʳˀˁˁʼʸ, int ʷʾʲʶʼʿʴʶʲʸʳ = 50) { }
 ```
 
-The end-time function takes a `long` and a `double` and returns a `double`. That fits answer 37's "end time from (amount, activation time)": a whole-number tick amount in, seconds out.
+The end-time function takes a `long` and a `double` and returns a `double`. That fits answer 37's "end time from (amount, activation time)": a whole-number tick amount and a `double` activation time in, a `double` end time out. The dump gives no unit for the two times (the plan's `sp_end_s` column assumes seconds; that is checked live, not here).
 
 ### The live drums object is a subclass
 
@@ -51,7 +51,7 @@ public abstract class ʿʺʸʺʼʴʸʼʻʳʼ<TInputs> : ʿʶʴˀʴʾʵʵʶʳʲ /
 public sealed class ʺʺʸʶʿʵˀʸʲˀʲ : ʿʺʸʺʼʴʸʼʻʳʼ<ʾʸʸʻʷʸˁʾˁʽʸ> // TypeDefIndex: 8255
 ```
 
-Class 8255 is the drums engine because the drum disassembly (`docs/audit/drum-lanes/FINDINGS-play-time.md`) names its press handler (0x20DEAA0), drum hit routine (0x20DE770, slot 11), score function (0x20DEEC0, slot 6) and constructor (0x20DF680). All four are methods of 8255 in the dump:
+Class 8255 is the drums engine because the drum disassembly (`docs/audit/drum-lanes/FINDINGS-play-time.md`) names its press handler (0x20DEAA0), drum hit routine (0x20DE770, slot 11) and score function (0x20DEEC0, slot 6), and `tools/ch_probe/constants.py` names the drums engine constructor (0x20DF680, `RVA_DRUMS_ENGINE_CTOR`). All four are methods of 8255 in the dump:
 
 ```
 	// RVA: 0x20DEEC0 Offset: 0x20DE2C0 VA: 0x1820DEEC0 Slot: 6
@@ -60,9 +60,9 @@ Class 8255 is the drums engine because the drum disassembly (`docs/audit/drum-la
 	// RVA: 0x20DE770 Offset: 0x20DDB70 VA: 0x1820DE770 Slot: 11
 ```
 
-A subclass keeps its base class's field offsets, so the base-class offsets below hold on the drums object unchanged. The two other concrete engines (classes 8289 and 8655, under the generic class 8544) add no fields of their own.
+A subclass keeps its base class's field offsets, so the base-class offsets below hold on the drums object unchanged. The only other concrete engines are classes 8289 and 8655. Both sit under the generic class 8544, and neither prints any field of its own. Class 8544 does (40 fields, all printed at `// 0x0`), so their real offsets are not in the dump. That does not touch the base-class offsets.
 
-The generic class 8253 prints its own four fields at `// 0x0`, because their offsets depend on the type argument. The base class's last field is an `int` at `0x294`, and class 8255's first field is at `0x2C0`, so 8253's fields fill the gap between them. That gap does not touch any offset this spike reads.
+The generic class 8253 prints its own four fields at `// 0x0`, because their offsets depend on the type argument. The base class's last field is an `int` at `0x294`, and class 8255's first field is at `0x2C0`. The 40 bytes between them presumably hold 8253's four fields (the dump does not give their offsets). That gap does not touch any offset this spike reads.
 
 ### The six Star Power offsets
 
@@ -110,7 +110,7 @@ public struct ʴʻʽʻʲʾʸʵʺʶʲ // TypeDefIndex: 8496
 	public readonly long ʵʿʵʲʽʽʽʵʸˀʾ; // 0x8
 ```
 
-The field at `0x198`, which `engine.py` calls "flags", has the modifiers flag enum as its type (class 8576, shown under "Song, difficulty, modifiers, combo and speed"). It is 4 bytes wide and `readonly`. So the engine object holds the modifiers the song was started with.
+The field at `0x198`, which `engine.py` calls "flags", has the modifiers flag enum as its type (class 8576, shown under "Song, difficulty, modifiers, combo and speed"). It is 4 bytes wide and `readonly`, which fits the modifiers the song was started with. The dump does not show when the field is set or whether it changes after.
 
 The hit-time candidate at `+0x2E0` is a field of the drums class 8255, not of the base class. It is a double:
 
@@ -285,7 +285,7 @@ public struct ˁʶʾʿʲʵʷʲʼʵʻ : IEquatable<ˁʶʾʿʲʵʷʲʼʵʻ>, IComp
 
 An MD5 is 16 bytes, so this fits the MD5 that `scorestats.json` records as `checksum`. The dump only shows the size. Whether these bytes equal that MD5 is the live check in run 3. `checksumStringCached` at `0x48` is a string pointer, presumably the hex text of the same value. It may be null until something asks for `ChecksumString`.
 
-The game keeps the song being played in `GlobalVariables.currentSongEntry`. `GlobalVariables` (type 1048) is a Unity object with a static `instance` field, so a reader can follow pointers from a fixed address instead of searching memory:
+The song being played is presumably in `GlobalVariables.currentSongEntry`, going by its name; the dump does not show when the game sets it. `GlobalVariables` (type 1048) is a Unity object with a static `instance` field, so a reader may be able to follow pointers from a fixed address instead of searching memory:
 
 ```
 public class GlobalVariables : MonoBehaviour // TypeDefIndex: 1048
@@ -297,7 +297,7 @@ public class GlobalVariables : MonoBehaviour // TypeDefIndex: 1048
 	public static GlobalVariables instance; // 0x8
 ```
 
-So the chain is: GlobalVariables' static fields, then `+0x8` to `instance`, then `+0x28` to `currentSongEntry`, then `+0x38` to the 16 checksum bytes. The static `0x8` is an offset inside the class's static-fields block, not inside the object. The block is reached through the class's type-info pointer. `script.json` puts `GlobalVariables_TypeInfo` at address 63895696 (0x3CEF890) inside `GameAssembly.dll`. The dump does not say at which offset an Il2CppClass keeps its static-fields pointer for metadata version 31. That offset, and whether `currentSongEntry` changes when a new song starts, are live checks for Task S's finder. `selectedSong` at `0x20` has a different, obfuscated type, the base class of `SongEntry`. `script.json` also lists `SongEntry_TypeInfo` at 63774712 (0x3CD1FF8).
+So the chain is: GlobalVariables' static fields, then `+0x8` to `instance`, then `+0x28` to `currentSongEntry`, then `+0x38` to the 16 checksum bytes. The static `0x8` is an offset inside the class's static-fields block, not inside the object. The block is reached through the class's type-info pointer. `script.json` puts `GlobalVariables_TypeInfo` at address 63895696 (0x3CEF890) inside `GameAssembly.dll`. The dump does not say at which offset an Il2CppClass keeps its static-fields pointer for metadata version 31. That offset, whether `instance` holds the live object, and whether `currentSongEntry` holds the playing song and changes when a new song starts, are live checks. They are for the checksum work: Task C's finder (run 3 of the plan's sitting) reports where the hash really sits, and this route is the dump's candidate to compare with what it finds. `selectedSong` at `0x20` has a different, obfuscated type, the base class of `SongEntry`. `script.json` also lists `SongEntry_TypeInfo` at 63774712 (0x3CD1FF8).
 
 ### Other routes to the same `SongEntry` or engine
 
@@ -385,7 +385,22 @@ public struct Hash : IEquatable<Hash> // TypeDefIndex: 15773
 	public const int Size = 32;
 ```
 
-StrikeCore class 8538 has methods that return a Blake3 `Hash`, and `GameManager.song` at `0xA8` is of that class's type. So does class 8661, which is the type of a field inside the engine's chart-data struct at `+0x48` of that struct. That hints that the game also computes a Blake3 hash of the loaded chart. No such hash is stored as a named field on those classes in the dump, so this file does not name a place to read it.
+The grep also matched the methods that make or return a Blake3 `Hash`. These are those lines, with their classes:
+
+```
+public static class ʾˁʸˁˁʻʿˁˁʲʽ // TypeDefIndex: 8346
+	public static Hash ʿʵʶʷʵʾʸʺʽʻʹ(ReadOnlySpan<byte> ʽʽʿʿʾʲʵʽʼʷˀ) { }
+	public static string ʼʶʷʷʼʿʴʴʺʵʵ(Hash ʷˁʿʴʸʶʳʸʲʻʲ) { }
+public class ˁʿʺʲʲʹˀʴʾʻʻ : IDisposable // TypeDefIndex: 8538
+	public Hash ʻʾʳʳʻʷʺʶʲʵʵ() { }
+	public Hash ʽʻʴʶʺˁʳʸʸʳʿ() { }
+	public Hash ʷʻʿʽʲʾˀˀʸʹʾ() { }
+public class ʷʿʽʽʵʻʶʹʼʼʺ : IDisposable // TypeDefIndex: 8661
+	public Hash ʽʳʸʿʷʽʼˁʸʻʼ() { }
+	public Hash ʼʿʼʺʹˁʲʾʷʿʶ() { }
+```
+
+Class 8346 is a static helper whose two methods turn bytes into a `Hash` and a `Hash` into a string. Class 8538 has methods that return a `Hash`, and `GameManager.song` at `0xA8` is of that class's type. So does class 8661, which is the type of a field inside the engine's chart-data struct at `+0x48` of that struct (class 8263; the same struct holds a class 8538 field at `+0x50`). That hints that the game also computes a Blake3 hash of the loaded chart, but the dump does not show what is hashed. Neither 8538 nor 8661 has a field of type `Hash`. The only field of that type in the game's images is the `Nullable<Hash>` at `0x30` of class 8516 above. Class 8516 also holds a class 8538 field at `0x10` and a class 8661 field at `0x18`, and three classes hold one of it: `CliGameLauncher` at `0x60`, the profile-settings class 451 at `0xE0` and class 8564 at `0x10`. Whether that hash is of the chart, and when it is filled in, are not shown by the dump; they are live checks.
 
 Outside the game images, the same grep hit .NET's `MD5`, `HMACMD5` and `MD5CryptoServiceProvider` classes, the Mono TLS code, zstd's frame checksum fields, and TextMeshPro and XML hash codes. None of them holds game state.
 
@@ -429,7 +444,7 @@ public class ˁʻʽʷʽʻʾʵʷˀʶ // TypeDefIndex: 1435
 	public ʹʺʿʻʲʹʻʹʹʵʸ ʲʼʽʺʿʹʽʻʵʺʶ; // 0x10
 ```
 
-**Modifiers.** The modifiers are a flag enum, class 8576, 4 bytes. It is the type of the engine's `readonly` field at `+0x198` and of class 8526's field at `0x14`. The first lines and the drum flags:
+**Modifiers.** The modifiers are a flag enum, class 8576, 4 bytes. It is the type of the engine's `readonly` field at `+0x198` and of class 8526's field at `0x14`. Selected lines (`None`, `Shuffle` and the drum flags):
 
 ```
 public enum ʷʴʼʴʴʷˁʵʺʴˁ // TypeDefIndex: 8576
@@ -451,7 +466,7 @@ Some values repeat (for example `AllStrums = 2` and `DoubleKick = 2`), so a flag
 	public int speed; // 0xA8
 ```
 
-The other speed-named fields are UI scrolling, animation and the Pong mini-game. The profile settings in class 8526 hold many fields of the obfuscated types `ʽʾʺʼʶʺʻʹʹʵʵ` and `ˁʼʼʼʷʳʹʲʿˀʻ`; the speed may be one of them, but the dump gives no name to tell which.
+The other speed-named fields in the game images are leaderboard filters and locals (`speedMin`, `speedMax`, `minSpeed`, `maxSpeed` and a `speed` int in async leaderboard code), UI scrolling and animation, the Pong mini-game, `SongSelect.speedText` (a label), and `noteSpeed` (a `float`) in the generic note-renderer class `BaseNoteRenderer` at an offset the dump prints as `0x0` because the class is generic. That last one is the highway scroll speed by its name, not a song speed, and the dump does not show how it is set. The profile settings in class 8526 hold many fields of the obfuscated types `ʽʾʺʼʶʺʻʹʹʵʵ` and `ˁʼʼʼʷʳʹʲʿˀʻ`; the speed may be one of them, but the dump gives no name to tell which.
 
 **Combo.** No combo-named field turned up on the engine or on any game class that holds live play state. The hits are `maxCombo` in the leaderboard records (`SlimScoreData` at `0x38`, `ScoreData` at `0xD8`), UI objects (`BasePlayer.comboCounter` at `0x38`, a `ComboColor` display; `ScoreManager.comboTransform` and `comboFont`), and three enum values named `RealDrums...Combo`. The engine's combo count is presumably one of the obfuscated `int` fields between `0x88` and `0xEC` of class 8288, but the dump does not say which, and this file does not guess.
 
@@ -462,4 +477,16 @@ public class SPBar : MonoBehaviour, ˀˁʸʿʻʻʹʼʹʽʷ // TypeDefIndex: 676
 	public SpriteRenderer starPowerBar; // 0x20
 ```
 
-No field named like `sp_bar_ticks`, `spBar` in ticks or `starPowerBar` holds a number. The meter's size in ticks is the engine's `readonly long` at `+0x1B0`, as above. `StarPowerController` (type 678) and `SpNeckRenderer` (type 641) are the visual effects.
+No field named like `sp_bar_ticks`, `spBar` in ticks or `starPowerBar` holds a number. The meter's size in ticks is presumably the engine's `readonly long` at `+0x1B0` (answer 37 calls it the maximum); the dump shows only its type. `StarPowerController` (type 678) and `SpNeckRenderer` (type 641) look like visual effects by their names. The other Star Power fields that hold numbers in the game images are these:
+
+```
+public class ʲʻʳʶʲʼʸʴʾʲʳ.ScoreData // TypeDefIndex: 297
+	public int spPhraseCount; // 0xC0
+	public int spPhrasesHit; // 0xC4
+private struct ʲʽʶʳʺʹʳˀʾʴʹ.ˁʺʲʿʽʳʶʾʵʲʲ // TypeDefIndex: 8264
+	public int currentStarpowerIndex; // 0x0
+	public long spStart; // 0x10
+	public long spEnd; // 0x18
+```
+
+`ScoreData` is the leaderboard record. Class 8264 is marked `[CompilerGenerated]` and is nested in the same outer class as the chart-data struct 8263, so it is a helper the compiler made for one method (its fields also include a list of Star Power phrases), not a stored meter.
