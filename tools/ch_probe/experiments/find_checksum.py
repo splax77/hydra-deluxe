@@ -7,7 +7,11 @@ the game's writable memory once for every form of that hash
 text of a .NET string is then traced back: the finder looks for a pointer to
 that string object in the engine object, then in the objects the engine's
 pointers lead to (walk_pointers owns how far). A path found that way is a
-cheap reader for a future overlay; without one, a hash that stays at the same
+cheap reader for a future overlay. A raw-bytes hit is traced back another
+way, because the Il2Cpp dump says the game keeps the checksum as raw bytes in
+a SongEntry that a static GlobalVariables instance points to: one more search
+of memory looks for pointers to each candidate SongEntry. Without a path, a
+hash that stays at the same
 address is the fallback. So the search runs a second time, RESCAN_GAP_S
 later, and says which hits held still and which moved.
 
@@ -242,6 +246,52 @@ def read_string_object(proc, addr: int) -> Optional[str]:
         return None
 
 
+# --- the SongEntry holder search ------------------------------------------------
+#
+# The Il2Cpp dump (Task I's il2cpp-fields.md, from dump.cs) names a field
+# SongEntry.checksum holding 16 raw bytes, and a GlobalVariables instance
+# whose currentSongEntry field points to the playing SongEntry. Both offsets
+# are read off the dump only, not confirmed live.
+
+SONG_ENTRY_CHECKSUM_OFFSET = 0x38       # SongEntry.checksum
+GLOBALS_CURRENT_SONG_OFFSET = 0x28      # GlobalVariables.currentSongEntry
+
+
+def holders_in_data(base: int, data: bytes,
+                    targets: Iterable[int]) -> List[Tuple[int, int]]:
+    """(holder address, target) for every 8-aligned slot in one region's
+    bytes that holds a pointer equal to one of `targets`."""
+    found: List[Tuple[int, int]] = []
+    for target in targets:
+        needle = struct.pack("<Q", target)
+        pos = data.find(needle)
+        while pos != -1:
+            if (base + pos) % POINTER_SIZE == 0:
+                found.append((base + pos, target))
+            pos = data.find(needle, pos + 1)
+    return found
+
+
+def scan_for_holders(proc, targets: Iterable[int], *,
+                     regions: Callable = live_rw_regions) -> List[Tuple[int, int]]:
+    """One pass over the regions `regions(proc)` names, collecting every
+    slot that points to one of `targets`, each holder once."""
+    wanted = list(dict.fromkeys(targets))
+    seen = set()
+    found: List[Tuple[int, int]] = []
+    for base, size in regions(proc):
+        try:
+            data = proc.read(base, size)
+        except OSError:
+            continue  # unreadable region
+        for holder, target in holders_in_data(base, data, wanted):
+            if holder not in seen:
+                seen.add(holder)
+                found.append((holder, target))
+    found.sort()
+    return found
+
+
 # --- the song clock around each step --------------------------------------------
 
 CLOCK_MOVING = "moving"
@@ -315,6 +365,7 @@ def run(
         first = _timed_scan(proc, engine, forms, regions, now, out,
                             "First search")
         _pointer_report(proc, engine, first.hits, now, out)
+        _song_entry_report(proc, engine, first.hits, regions, now, out)
 
         out.write(f"\nWaiting {RESCAN_GAP_S:g} s for the second search...\n")
         sleep(RESCAN_GAP_S)
@@ -375,6 +426,38 @@ def _pointer_report(proc, engine: int, hits: Sequence[Hit], now,
     out.write(f"  read {result.objects_read} objects{cap_note}, "
               f"took {took * 1000:.0f} ms, clock {state}\n")
     return result
+
+
+def _song_entry_report(proc, engine: int, hits: Sequence[Hit], regions, now,
+                       out: TextIO) -> None:
+    """For each raw-bytes hit, take the SongEntry it would sit in, search
+    memory once for pointers to those objects, and print each holder with the
+    GlobalVariables instance it would belong to."""
+    entries: Dict[int, int] = {}   # raw hit address -> candidate SongEntry
+    for hit in hits:
+        if hit.form.name == S.FORM_RAW:
+            entries[hit.address] = hit.address - SONG_ENTRY_CHECKSUM_OFFSET
+    out.write(f"\nSongEntry holders: {len(entries)} candidate SongEntry "
+              "objects from the raw-bytes hits\n")
+    if not entries:
+        out.write("  no raw-bytes hits, so no holder search\n")
+        return
+    clock_before = _read_clock(proc, engine)
+    start = now()
+    holders = scan_for_holders(proc, entries.values(), regions=regions)
+    took = now() - start
+    state = clock_state(clock_before, _read_clock(proc, engine))
+    for raw_hit, entry in entries.items():
+        mine = [h for h, target in holders if target == entry]
+        for holder in mine:
+            out.write(f"  rawhit {raw_hit:#x} -> SongEntry {entry:#x} <- held "
+                      f"at {holder:#x} (candidate GlobalVariables = "
+                      f"{holder - GLOBALS_CURRENT_SONG_OFFSET:#x})\n")
+        if not mine:
+            out.write(f"  rawhit {raw_hit:#x} -> SongEntry {entry:#x} <- "
+                      "no pointer to it found\n")
+    out.write(f"  {len(holders)} holders, took {took * 1000:.0f} ms, "
+              f"clock {state}\n")
 
 
 def main() -> None:

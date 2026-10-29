@@ -216,6 +216,40 @@ class PointerWalkTest(unittest.TestCase):
         self.assertIn("clock frozen", text)
 
 
+class SongEntryHolderTest(unittest.TestCase):
+    def test_a_pointer_to_the_song_entry_names_its_holder(self):
+        entry = 0x70000            # the SongEntry; its checksum at +0x38
+        globals_obj = 0x80000      # holds the SongEntry at +0x28
+        entry_bytes = b"\0" * 0x38 + RAW + b"\0" * 8
+        globals_bytes = object_with({0x28: entry})[:0x40]
+        # A copy of the pointer one byte off alignment is not a holder.
+        stray = b"\0" + struct.pack("<Q", entry) + b"\0" * 7
+        proc, _ = fakes.fake_process(
+            {ENGINE: object_with({}), entry: entry_bytes,
+             globals_obj: globals_bytes, 0x90000: stray},
+            BASE, consts=VERIFY_CONSTS, clocks={CLOCK: [1.0, 2.0]})
+        regions = lambda p: [(entry, len(entry_bytes)),
+                             (globals_obj, len(globals_bytes)),
+                             (0x90000, len(stray))]
+        code, text = run_finder(proc, regions)
+        self.assertEqual(code, 0)
+        self.assertIn("rawhit 0x70038 -> SongEntry 0x70000 <- held at 0x80028 "
+                      "(candidate GlobalVariables = 0x80000)", text)
+        self.assertIn("  1 holders, took", text)
+
+    def test_no_pointer_to_the_song_entry_says_so(self):
+        entry = 0x70000
+        entry_bytes = b"\0" * 0x38 + RAW + b"\0" * 8
+        proc, _ = fakes.fake_process(
+            {ENGINE: object_with({}), entry: entry_bytes},
+            BASE, consts=VERIFY_CONSTS, clocks={CLOCK: [1.0]})
+        code, text = run_finder(proc, lambda p: [(entry, len(entry_bytes))])
+        self.assertEqual(code, 0)
+        self.assertIn("rawhit 0x70038 -> SongEntry 0x70000 <- no pointer to "
+                      "it found", text)
+        self.assertIn("  0 holders, took", text)
+
+
 class MovingMemory:
     """Memory whose region contents change when the finder sleeps between
     its two searches."""
