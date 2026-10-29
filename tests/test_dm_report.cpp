@@ -389,6 +389,26 @@ TEST_CASE("collect_dm_rows: a leaderboard row's DMBot names lose their Clone Her
     }
 }
 
+TEST_CASE("collect_dm_rows: a leaderboard row with no charter shows the library's, else "
+          "(unknown) (D266 item 2)") {
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+
+    // DMBot knows the song but sent no charter; the library's chart lends its.
+    net::DmScore no_charter = make_score(kHash, optimal - 10);
+    no_charter.charter.clear();
+
+    // The same score on a song the library doesn't have: nothing to lend.
+    net::DmScore no_charter_unmatched = no_charter;
+    no_charter_unmatched.identifier = "00ff00ff00ff00ff00ff00ff00ff00ff";
+
+    const std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
+        store, {no_charter, no_charter_unmatched}, testdm::profile());
+    REQUIRE(rows.size() == 2);
+    CHECK(rows[0].charter == "Stored Charter");
+    CHECK(rows[1].charter == kUnknownTitle);
+}
+
 namespace {
 
 // The text the comparison window's column `id` shows for `row`

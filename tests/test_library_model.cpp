@@ -295,16 +295,19 @@ TEST_CASE("library model: Album sorts on the album its cell shows, blanks first"
                                                 "YYZ"});
 }
 
-TEST_CASE("library model: an empty or placeholder artist reads (unknown), and the charter is trimmed") {
-    // D56 item 2: every missing artist reads "(unknown)". The charter reads
-    // display_charter's text: tags gone, the spaces at its ends trimmed.
+TEST_CASE("library model: an empty or placeholder artist or charter reads (unknown), and the "
+          "charter is trimmed") {
+    // D56 item 2 and D266 item 2: every missing artist or charter reads
+    // "(unknown)". A present charter reads display_charter's text: tags gone,
+    // the spaces at its ends trimmed.
     LibraryModel m;
     m.set_charts({chart("a", "Song A", "", " <b>Bob</b> ", "common"),
-                  chart("b", "Song B", "<unknown artist>", "Charter", "common")});
+                  chart("b", "Song B", "<unknown artist>", "<unknown charter>", "common")});
     REQUIRE(m.rows().size() == 2);
     CHECK(m.rows()[0].artist == "(unknown)");
     CHECK(m.rows()[0].charter == "Bob");
     CHECK(m.rows()[1].artist == "(unknown)");
+    CHECK(m.rows()[1].charter == "(unknown)");
 }
 
 TEST_CASE("library model: a name sorts on the text its cell shows, not the stored text") {
