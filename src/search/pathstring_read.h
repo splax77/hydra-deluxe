@@ -1,5 +1,5 @@
-// Reading Hydra's path text back into a path. Path::pathstring writes the
-// text; this finds the path it names on one chart. The text carries no ticks,
+// Reading Hydra's path text back into a path. Path::pathstring and
+// Path::pathstring_verbose write the text; this finds the path it names on one chart. The text carries no ticks,
 // so the engine places each window: see paths_from_pathstring below.
 
 #ifndef HYDRA_SEARCH_PATHSTRING_READ_H
@@ -21,8 +21,16 @@ namespace hydra {
 // activation alone. The first fill whose window prints the token is taken,
 // with the end the returned path gives it. The answer is search_target's
 // path for every window pinned in full. Path::pathstring's text for a path
-// with no windows reads back as that path. Throws std::invalid_argument for
-// empty text, and for a token no fill can place, naming its position.
+// with no windows reads back as that path.
+//
+// It also reads the long text Path::pathstring_verbose writes (Hydra's Copy
+// path). Text holding the writer's section separator is the long form; only
+// its windows section is read, and the multiplier-squeeze and score sections
+// are ignored. There each window is matched the same way, comparing the
+// candidate's Activation::notationstr_verbose with the text where the
+// previous window ended. Throws std::invalid_argument for empty text, for long
+// text whose section count is not the writer's, and for a window no fill can
+// place, naming its position.
 Path paths_from_pathstring(const Song& song, const SearchSettings& settings,
                            const std::string& text);
 
