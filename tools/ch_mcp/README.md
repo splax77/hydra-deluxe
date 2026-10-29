@@ -24,6 +24,8 @@ py tools/ch_mcp/dump_facts.py "C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-du
 
 The tests run with `py -m pytest tools/ch_mcp/tests/test_dump_facts.py -q`. They use a small hand-written `dump.cs` and a fake dumper, so they never touch the game.
 
+Clone Hero 1.0 is a Mono build: its game code is plain .NET assemblies in `Clone Hero_Data\Managed\`, so there is no dump to make. `py tools/ch_mcp/mono_facts.py --game "C:\Clone Hero\1.0 old\Clone Hero" --version v1.0.0.4045-master --out "C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\4045"` reads the assemblies listed in `GAME_ASSEMBLIES` through `mono_reader.ps1` (PowerShell 7's own metadata reader, nothing installed) and writes the same `facts.json` shape. Mono metadata holds no addresses, so every field `offset` and method `rva` is null, and `signatures` has no `drums_engine`, because that entry is found by an address. `typedef_index` is the type's row number in its own assembly's TypeDef table; rows restart in each assembly, so two classes can share one. `dump_file` lists the assemblies read. The version string is the only one of its shape in `Clone Hero_Data\globalgamemanagers`; the exe's version info gives only the Unity version.
+
 ## What facts.json holds
 
 `facts.json` is one JSON object with four keys. Any later reader of a game build, such as one for a Mono build, writes the same shape.
