@@ -10,7 +10,9 @@ The plan has three layers. The first is free: the game already launches songs fr
 
 The scrambling (obfuscation) turned out to be much less of a blocker than it looked. The game's on-screen components keep their real names, and those are exactly the objects an MCP wants to read first. The details are in "The obfuscation, measured" below.
 
-One thing is the user's call, not a technical question. Clone Hero's EULA forbids reverse-engineering or modifying the game. Every layer past the first does some of that, and so does the existing `tools/ch_probe` work. See "Risks".
+One thing is the user's call, not a technical question. Clone Hero's EULA forbids reverse-engineering or modifying the game. Every layer past the first does some of that, and so does the existing `tools/ch_probe` work. See "Risks". The user made that call on 2026-10-28 and chose to go ahead; "Results of the four tests" below says how.
+
+The four tests ran on 2026-10-28. All four settled their question: layers A and C both work, and the per-note hook exists. The results are at the end.
 
 ## What exists today
 
@@ -36,7 +38,7 @@ Put together with bot launches, those files make a cheap first win for Hydra. Ha
 
 ## The obfuscation, measured
 
-The game was scrambled with Beebyte Obfuscator 3.13.0; the dump contains a marker class named `__BB_OBFUSCATOR_VERSION_3_13_0`. Beebyte replaces names with strings of odd Unicode letters such as `ʺʻʻˁˀʹʿʲʻʴʿ`. On 2026-10-28 a scout ran Il2CppDumper v6.7.46, a tool that rebuilds a Unity game's class list from its files, and counted the result. Il2CppDumper was already in `C:\Users\Patrick\Downloads\Il2CppDumper-net7-v6.7.46\`. It needs `DOTNET_ROLL_FORWARD=Major` to run on the installed .NET 8 and 10. The output is in this session's scratch folder, which is temporary, so plan to regenerate it.
+The game was scrambled with Beebyte Obfuscator 3.13.0; the dump contains a marker class named `__BB_OBFUSCATOR_VERSION_3_13_0`. Beebyte replaces names with strings of odd Unicode letters such as `ʺʻʻˁˀʹʿʲʻʴʿ`. On 2026-10-28 a scout ran Il2CppDumper v6.7.46, a tool that rebuilds a Unity game's class list from its files, and counted the result. Il2CppDumper was already in `C:\Users\Patrick\Downloads\Il2CppDumper-net7-v6.7.46\`. It needs `DOTNET_ROLL_FORWARD=Major` to run on the installed .NET 8 and 10. The durable copy is in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\`, made by `tools/ch_mcp/dump_build.py`.
 
 Only 4 of the 95 assemblies the scout counted (the DLLs that hold the game's code) are scrambled:
 
@@ -55,7 +57,7 @@ What is scrambled is the logic behind them. The score, combo and multiplier coun
 
 The known tool that unscrambles Beebyte is Beebyte-Deobfuscator, a plugin for Il2CppInspector. It needs an unscrambled build of the same game to compare against, and there is none on this machine. So the plan below does not depend on it.
 
-The open question is whether the scrambled names change with each game update. Beebyte can reuse a saved name table between builds, or draw new names each time. Its manual could not be reached, and only one Clone Hero build is on this machine, so this is unsettled. The plan below assumes the worst: scrambled names and all memory offsets change with every update.
+The open question was whether the scrambled names change with each game update. Beebyte can reuse a saved name table between builds, or draw new names each time. Test 4 below compared v1.0 with v1.1 and found the names mostly redrawn. So the plan assumes the worst: scrambled names and all memory offsets change with every update.
 
 ## Four ways to build it
 
@@ -89,15 +91,15 @@ To keep it working across updates, store the class map as signatures rather than
 
 **Online play and leaderboards.** The game carries a large online stack (CHNet, MagicOnion, Socket.IO). The MCP should run only offline, on a test profile. It is unknown whether scores from an instrumented session would upload anywhere.
 
-**The hit code.** The per-note layer has the lowest confidence. The scout put it at about 55%, against about 85% for the clock, state, song select and results layer. The engine class sits in StrikeCore, which is 95% scrambled, and nobody has yet found the method that decides a hit.
+**The hit code.** Before the tests this layer had the lowest confidence: the scout put it at about 55%, against about 85% for the clock, state, song select and results layer. Test 3 found the per-note methods, so it is no longer the blocker. What is left is reading a note's result and offset from the hook's arguments.
 
-**Updates.** Unknown until two builds can be compared. Plan for every update to need a re-derive step.
+**Updates.** Test 4 shows the scrambled names change across a major update. Plan for every update to need a re-derive step.
 
 **Input.** `SendInput` needs focus and has no timing promise. The wiki warns that keyboards can drop keys in chords. Exact-time testing needs input inside the process, which is still to be proven.
 
 ## Next steps: four small tests that settle the unknowns
 
-Each test is short and needs the game running with the user present.
+Each test is short and needs the game running with the user present. They ran on 2026-10-28; "Results of the four tests" below has what each found.
 
 1. **Bot launch.** Run `"Clone Hero.exe" --song "C:\Clone Hero\songs\Hydra Probe\Window Map" --player Drums,Expert`. Check whether `scorestats.json` is rewritten, whether `is_bot` is true, whether the bot uses Star Power, and whether the game exits or returns to a menu. This settles how much layer A can do.
 2. **Frida attach.** Attach with `frida-il2cpp-bridge`, find `GameManager`, and print `songTime` and `isSongOver` while a song plays. This proves layer C's foundation.
@@ -105,6 +107,65 @@ Each test is short and needs the game running with the user present.
 4. **A second build.** If the user has, or can get, any other Clone Hero build, dump it and compare the scrambled names. This settles the update question. It would also open the Beebyte-Deobfuscator route if that build were unscrambled.
 
 One lead is worth a look along the way: the empty `HitDetection-*.log` files may have a setting that fills them. (An earlier draft also named a `RemoteControl` class. The dump holds no such class. The word is only the value `RemoteControl = 100` of Rewired's `JoystickType` enum, so it is not a lead.)
+
+## Results of the four tests
+
+The tools are in `tools/ch_mcp/`, built and reviewed from the plan `docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md`. The raw outputs (stats copies, clock samples, trace tables, backups) are in that session's scratch folder, `C:\Users\Patrick\AppData\Local\Temp\claude\C--Users-Patrick-Downloads-Hydra-hydra-test\6a549de0-baf9-484b-bc31-5c46be6059e6\scratchpad\`, under `l1`, `l2`, `l3` and `l4`. That folder is temporary. Every run backed up the five user files first and restored them afterwards, byte for byte.
+
+**The EULA.** The reviewed plan's first question says the EULA forbids reverse-engineering. Two later edits said it allows it: one in the session handoff (`docs/handoffs/2026-10-28-ch-mcp-feasibility-tests-handoff.md`, written 20:16), and an uncommitted change to the plan's old worktree copy (20:17). Neither says who made it. The main session read that copy, asked the user's approval with the word "allows", and the user approved tests 2 and 3 on that wrong premise. The EULA's License Restrictions forbid you to "disassemble, decrypt, reverse compile or reverse engineer any part of the Application". When the mistake came out, after the tests had run, the user chose to go ahead and take the risk. All the work read the game. It wrote nothing into the game's memory or its folder.
+
+### Test 1: the bot launch (layer A)
+
+Passed. `"Clone Hero.exe" --song <folder> --player Drums,Expert` plays the chart with a bot and writes `scorestats.json` when the song ends. The game then stays on the results screen and does not exit. The launcher closed it. The stats file names no profile (`profile_name` is empty).
+
+| Chart | Game total_notes | Hydra gems / chords | Game sp_phrases_total | Hydra SP phrase ends | Game score | Hydra score |
+|---|---|---|---|---|---|---|
+| Window Map (all kicks) | 142 | 142 / 142 | 0 | 0 | 25,550 | 25,550 |
+| Trippin SP Spike, bot on ProDrums | 1,257 | 1,257 / 857 | 11 | 11 | 290,975 | 290,975 |
+| Trippin SP Spike, bot on Drums | 1,257 | 1,257 / 857 | 11 | 11 | 248,550 | 257,150 |
+
+The game numbers come from its `scorestats.json`. The Hydra numbers come from `hydra_replay score` on the same `notes.chart`, with `--prodrums 0` for the Drums row. The game's `total_notes` counts gems, not chords.
+
+The bot never uses Star Power. It earned 0 of the 11 phrases, with 0 activations and 0 time in Star Power. So bot runs can check how Hydra reads a chart, and its score with no Star Power, but nothing about Star Power paths.
+
+The bot does play dynamics. On ProDrums it hit all 9 accents and all 34 ghosts. Keyboard input never registers one: a key-press run on ProDrums hit 0 of 9 and 0 of 34. In the game's code, a ghost or accent counts only when the hit carries a velocity reading on the right side of a threshold (handler `0x20DE770`). A keyboard press has no such reading.
+
+**Plain Drums drops dynamics.** The Drums row differs by 8,600 points. That is the chart's 9 accents and 34 ghosts, at 50 points each, times the 4× multiplier. The game counted 0 accents and 0 ghosts in that run. The cause is in its chart builder `0x20D2EA0`. At `0x20D32E5` it compares the instrument with ProDrums (value 9). For any other instrument it calls `0x20F16E0`, which folds cymbal lanes onto toms, and then `0x20EFEE0`. At `0x20EFF3B` that function runs `and [note+0x7c], 0xfff3ffff`, which clears the accent and ghost bits on every note. MIDI dynamics go through the same note builder, so `.mid` charts lose them too; that is read from the code, not run. The user ruled this a Clone Hero bug. Hydra keeps scoring dynamics in its normal-drums mode. So a normal-drums comparison of a chart with dynamics will differ by exactly the dynamics points, and charts with dynamics should be compared as ProDrums.
+
+### Test 2: the Frida attach (layer C's foundation)
+
+Passed. `frida-il2cpp-bridge` 0.14.0 runs on this build's metadata version 31. The agent found `GameManager` by name in the `CloneHero` image and read its fields by name, with no offsets. Over one Window Map run it took 371 samples. `songTime` rose from 3.07 s to 63.21 s, and advanced 59.894 s over 59.898 s of wall time. `isSongOver` turned true at the end, there was one live instance throughout, and no errors came.
+
+The plan's step waited for `OnCountdownStart` in the session log before attaching. That does not work: a song started from the command line writes only its `Loading Song` line until later. The working run attached 8 s after launch instead.
+
+### Test 3: the hit method (layer C's per-note layer)
+
+Passed. In every run, three methods ran exactly once per note, and no other method came within one of the note count:
+- `0x20DEEC0` on the drum engine, which scores a hit; its arguments are a note and the base points (50).
+- `0x20DE770` on the drum engine, the dynamics hit handler.
+- `0x100E6E0` on the engine's generic base class.
+
+| Run | Notes | Count of each of the three |
+|---|---|---|
+| Bot, Window Map | 142 | 142 |
+| Bot, Edge Walk | 120 | 120 |
+| Key presses (`play_chart.py`), Window Map | 142 | 139 |
+
+The key-press run went through the same three methods. Its count is three short because the tracer's cap (song length plus 30 s) ran while the song sat paused before play. The trace ended after note 138 (55.86 s) and before note 139 (58.86 s). `play_chart.py` itself hit all 142 notes, and the game's score matched Hydra's 25,550.
+
+A second run logged each call of the two engine methods with the game clock. All 284 calls on Window Map landed within 85 ms of their nearest note, and most within 3 ms. So these methods are the per-note hook. Reading the hit's result and offset from the note object is the next piece of work.
+
+The "combo: {0}" string is used by a static method of `BasePlayer` for the drum inputs (`0x1168290`), not by the engine. That was found by a byte scan for references, not a disassembly.
+
+### Test 4: a second build
+
+The user had v1.0.0.4045 at `C:\Clone Hero\1.0 old\`. It is a Mono build (Unity 2021.3.45f2) with plain .NET assemblies, so it was read with .NET's metadata reader instead of Il2CppDumper. Both builds' class lists are in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\` (`4045` and `6142`).
+
+The names were reshuffled. `compare_dumps.py` found 539 scrambled class names in 1.0. Only 164 come back in 1.1 with the same name and shape, and 189 more keep the name but changed shape. The drum engine's 1.1 name is not in 1.0 at all. `GameManager` shares 13 of its 63 field names with 1.0, and in 1.0 all 63 are scrambled, while 1.1 keeps 40 readable. So the MCP must find scrambled classes again by shape after an update. A small patch might keep more names; 1.0 to 1.1 also changed the Unity version and the scripting backend, so this test cannot say.
+
+### What to fix in the tools
+
+Three small faults showed up. `frida_attach.py` and `trace_hits.py` report the cap as an error ("session detached: application-requested") and exit 1, even when the run worked. `bot_run.py --no-wait` prints its restore command with `py -I`; that runs, but is the form the Frida tools reject. And the cap of a trace that waits on a paused song should start when the song plays, not at attach.
 
 ## Sources
 
