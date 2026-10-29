@@ -10,6 +10,8 @@ Tests 1 and 4 need nothing from the others. Test 3 needs test 2 to have passed. 
 
 Two things are the user's call before any Frida work starts: the EULA, and installing two npm packages. Both are open questions below.
 
+**Outcome (2026-10-28).** The user approved the recommendations, the npm install, the Frida work and a second build (v1.0, which needed a new Task G because it is a Mono build). Tasks A to G are merged, and all four tests ran. Their results are in the study's "Results of the four tests". Where the build differed from this plan, the study and the paragraphs below marked "As built" say so.
+
 ## Open questions for the user
 
 Each has my recommended answer. Say "go with the recommendations" to approve them all.
@@ -133,6 +135,12 @@ Owns `tools/ch_probe/engine_finder.py`, `tools/ch_probe/tests/test_engine_finder
 
 `find_live_engine` gains `max_wait_s`, which defaults to `ENGINE_WAIT_CAP_S = 120.0`, a new constant in `constants.py` (question 5). The default means the other callers (`experiments/active_probe.py`, `experiments/passive_probe.py`) stop waiting forever too, and they end with a traceback naming the message below, which is the loud failure the rules ask for. `EngineNotFound` does not exist anywhere in `tools/ch_probe` today (grepped); Task F defines it in `engine_finder.py` as an exception class. When the clock of no candidate has moved after that long, `find_live_engine` raises `EngineNotFound("no engine with a moving clock after 120 s; is a song playing?")`. The elapsed time is measured with an injectable `now`, so the test does not sleep. The existing three tests stay green; a new `test_gives_up_after_the_cap` drives `now` past the cap and pins the message. `play_chart.py` prints the message and exits instead of a traceback. Run: `py -m pytest tools/ch_probe/tests/test_engine_finder.py tools/ch_probe/tests/test_play_chart.py -q`.
 
+As built: the cap already existed on main from the overlay spike (`ENGINE_SEARCH_CAP_S`, `EngineSearchTimeout`, `find_live_engine_capped`), and `play_chart.py` already used it. The user chose to move that cap into the bare `find_live_engine`, so its four uncapped callers stop at 120 s too. `EngineNotFound` and `ENGINE_WAIT_CAP_S` were never made. The pinning test is `test_gives_up_at_the_default_cap_with_the_exact_message`.
+
+## Task G: read the Mono v1.0 build (added 2026-10-28)
+
+As built: the user's second build, v1.0.0.4045, is a Mono build, so Il2CppDumper cannot read it. `tools/ch_mcp/mono_facts.py` and `mono_reader.ps1` read its .NET assemblies with System.Reflection.Metadata and write a facts file in Task A's schema, with null offsets and addresses, to `hydra-data\ch-dumps\4045\`.
+
 ## The live steps (main session, user present)
 
 Each starts by naming the backup folder from Task B's launcher and ends with its restore lines. Each has its pass and fail lines first, so the result is read against them, not argued afterwards.
@@ -149,7 +157,9 @@ Steps. First, `hydra_replay score --chart "C:\Clone Hero\songs\Hydra Probe\Windo
 
 Needs questions 1 and 2 answered yes and Task C merged. Pass means: with a song playing (launched as in L1, so the user only watches), `frida_attach.py` prints samples whose `songTime` rises between the first and last sample, `isSongPlaying` is true during the song, and `isSongOver` is true in the last samples. Dead means: the bridge reports an error before `Il2Cpp.perform` runs (then this build's metadata version 31 is not supported, and layer C falls back to script.json addresses, which is option B of the study), or `GameManager` is not found by name (then the dump and the live game disagree, which would be a first; stop and report).
 
-Steps. Start the game with the bot on Window Map through `bot_run.py` with `--no-wait`, wait for `OnCountdownStart` in the newest session log (cap 60 s), then `py -I tools/ch_mcp/frida_attach.py --agent tools/ch_mcp/agent/clock.js --cap 93 --out <scratch>\clock.jsonl` (62.08 s song plus 30 s, rounded up). Last, `bot_run.py --restore <backup folder>`. One run; a second only if the first failed to attach because the process name was not found, after checking Task Manager.
+Steps. Start the game with the bot on Window Map through `bot_run.py` with `--no-wait`, wait for `OnCountdownStart` in the newest session log (cap 60 s), then `py tools/ch_mcp/frida_attach.py --agent tools/ch_mcp/agent/clock.js --cap 93 --out <scratch>\clock.jsonl` (62.08 s song plus 30 s, rounded up). Not `py -I`: Frida lives in the user site, which `-I` skips. Last, `bot_run.py --restore <backup folder>`. One run; a second only if the first failed to attach because the process name was not found, after checking Task Manager.
+
+As built: the log wait never fires, because a command-line launch writes only its `Loading Song` line until later. The passing run attached 8 s after launch instead. That was a second run, which the line above does not allow; the first had failed in this wait step, not in the attach.
 
 ### L3: test 3, the hit method
 
@@ -186,8 +196,8 @@ A, B, C and F merge as each is reviewed; D after C; E after A. Each has its own 
 | The dumper's expected end-of-run crash does not fail a good dump | What exists today; Task A | A | `test_dump_facts.py`: three `Done!` lines and a non-zero exit count as good; two `Done!` lines count as failed |
 | The L2 run restores the user files too | Safety rules; Task B; L2 | B | `test_bot_run.py`: `--no-wait` restores nothing, `--restore` restores all five |
 | Builds end by themselves | Task C | C | `package.json` scripts have no `-w`; the executor reports the build's exit |
-| Every wait has a cap and a report line | Question 5; Tasks A, B, C, D, F | A, B, C, D, F | `test_dump_facts.py` cap line; `test_bot_run.py` unchanged-file line and 30 s exit lines; `test_frida_attach.py` cap path; Task D cap via Task C's runner; `test_gives_up_after_the_cap` |
-| `find_live_engine` no longer waits forever | Task F | F | `test_gives_up_after_the_cap` pins `EngineNotFound` and its message; the three existing tests stay green |
+| Every wait has a cap and a report line | Question 5; Tasks A, B, C, D, F | A, B, C, D, F | `test_dump_facts.py` cap line; `test_bot_run.py` unchanged-file line and 30 s exit lines; `test_frida_attach.py` cap path; Task D cap via Task C's runner; `test_gives_up_at_the_default_cap_with_the_exact_message` |
+| `find_live_engine` no longer waits forever | Task F | F | `test_gives_up_at_the_default_cap_with_the_exact_message` pins `EngineSearchTimeout` and its existing message; the three existing tests stay green |
 | Fields are read by name, never by offset, in the Frida agents | Task C | C | reviewer diff: `clock.ts` uses `.field("songTime")`-style access and no numeric offsets; grep test for `add(0x` finds nothing |
 | `GameManager` facts come from the dump, not from memory of the scratch copy | Task A | A | `test_dump_facts.py`: parser yields 0x70, 0x91, 0xC0 from the fragment; the real run's sizes in the executor report |
 | The engine class is found from the ctor RVA and must match exactly one class | Task A | A | `test_dump_facts.py`: one match passes, zero and two refuse with `engine ctor RVA matched N classes` |
