@@ -12,8 +12,8 @@
 
 namespace hydra::pathbuilder {
 
-// The type list File > Open shows: the chart files Hydra reads (the formats
-// chart_format_of in parse/chart_files.h names), then every file.
+// The type list File > Open shows: the chart files Hydra reads (the extensions
+// chart_extensions in parse/chart_files.h lists), then every file.
 std::vector<ui::FileTypeFilter> chart_file_types();
 
 // Shows File > Open's dialog over `owner`. The picked file, or nullopt when

@@ -140,6 +140,10 @@
           "why": "it converts the Path Builder's startup message box text, not a path"
         },
         {
+          "file": "src/pathbuilder/pb_open.cpp",
+          "why": "it converts the file dialog's type-list labels and patterns, not a path"
+        },
+        {
           "file": "tools/precheck/code_mask.cpp",
           "why": "it counts the UTF-16 units of source text, not a path"
         },

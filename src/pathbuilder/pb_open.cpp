@@ -7,12 +7,21 @@
 #include <shellapi.h>
 
 #include "core/winstr.h"
+#include "parse/chart_files.h"
 
 namespace hydra::pathbuilder {
 
 std::vector<ui::FileTypeFilter> chart_file_types() {
-    // Kept beside chart_format_of's list; a format added there is added here.
-    return {{L"Charts (.mid, .chart, .sng, .srb)", L"*.mid;*.chart;*.sng;*.srb"},
+    std::string names, patterns;
+    for (const ChartExtension& e : chart_extensions()) {
+        if (!names.empty()) {
+            names += ", ";
+            patterns += ';';
+        }
+        names += e.extension;
+        patterns += "*" + std::string(e.extension);
+    }
+    return {{utf8_to_wide("Charts (" + names + ")"), utf8_to_wide(patterns)},
             {L"All files", L"*.*"}};
 }
 
