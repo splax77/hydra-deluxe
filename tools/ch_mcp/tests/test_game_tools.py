@@ -106,6 +106,15 @@ class GameToolsTest(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
+    def test_session_dir_is_the_scratch_folder_the_backups_go_in(self):
+        t = ToolRig(self.tmp)
+        folder = t.tools.session_dir()
+        self.assertTrue(os.path.isdir(folder))
+        self.assertTrue(folder.startswith(t.scratch_root))
+        self.assertEqual(t.tools.session_dir(), folder)
+        t.tools.ch_start(t.r.song)
+        self.assertEqual(os.path.dirname(t.backup_dir()), t.tools.session_dir())
+
     # -- ch_start ----------------------------------------------------------------
 
     def test_ch_start_with_a_song_backs_up_before_the_launch_and_names_it_all(self):

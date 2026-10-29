@@ -56,9 +56,7 @@ class Helper:
         self.env = env if env is not None else bot_run.Env(out=_to_stderr)
         self.game = GameTools(self.env, self.lock, scratch_root, **(game_kw or {}))
         frida_kw = {"now": self.env.now, "sleep": self.env.sleep, **(frida_kw or {})}
-        # GameTools has no public accessor for its session folder; the Frida
-        # logs go beside its backups and stats copies.
-        self.frida = FridaTools(self.game, self.lock, self.game._session_dir, **frida_kw)
+        self.frida = FridaTools(self.game, self.lock, **frida_kw)
 
     def ch_status(self) -> str:
         with self.lock:
