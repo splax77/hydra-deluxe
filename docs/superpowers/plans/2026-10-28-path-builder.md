@@ -309,6 +309,8 @@ A check, not a build, capped at 20 minutes, then report what was seen. First hea
 
 ## Waves, in one line each
 
+The library plan replaces four of this plan's tasks (user's answer to Q6, 2026-10-28). That plan is `docs/superpowers/plans/2026-10-28-hydra-libraries.md` on branch `claude/hydra-libraries-plan`. Its T2 replaces PV-1 and SH-1, its T4 replaces PV-2 (with no folder move, so RD-2 edits `src/ui/preview_controller.*` where it is today), and its T5 replaces UT-1. So PB-1 waits on that plan's T2, T4 and T5, and RD-2 waits on its T4. EN-1, EN-2, EN-3 and RD-1 can run beside that plan's first two waves. HY-1 and PB-3 each add a source line to a library list that the library plan's T1 rewrites, so they fork from T1's executor branch or wait for its merge. Where the waves line below names PV-1, PV-2, SH-1 or UT-1, read the library plan's task in its place.
+
 Wave 1: EN-1, PV-1, RD-1, HY-1 and PB-3 start together. Wave 2: EN-2 forks from EN-1, PV-2 from PV-1, SH-1 from PV-2, UT-1 from SH-1, EN-3 from EN-2. Wave 3: PB-1 forks from UT-1; RD-2 forks from PV-2 and merges RD-1. Wave 4: PB-2a after PB-1 and EN-3, then PB-2b (after RD-2 too); PB-4 after PB-1 and PB-3, beside PB-2a. Wave 5: DOC-1, then RA-1, then the merges to `main`. Each merge runs what `hydra_precheck.exe --tests` prints plus the three repo-wide checks (rule 1).
 
 ## What a different answer changes
