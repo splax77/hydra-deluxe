@@ -769,7 +769,9 @@ std::vector<std::string> pick_lines(const TestPick& pick) {
     if (pick.whole_suite) first += "whole suite";
     else if (tests.empty()) first += "(none)";  // an empty -sf= filter would run every test case
     else {
-        first += "-sf=";
+        // Quoted, so PowerShell passes the filter whole (tests/run_guard.h
+        // says why an unquoted one breaks).
+        first += "\"-sf=";
         std::string last;
         for (const PickedTest& t : tests) {
             const std::string pattern = "*" + file_name(t.file);
@@ -778,10 +780,15 @@ std::vector<std::string> pick_lines(const TestPick& pick) {
             first += pattern;
             last = pattern;
         }
+        first += "\"";
     }
     lines.push_back(first);
     // The three repo-wide checks of CLAUDE.md rule 1, run at every merge.
-    lines.push_back("always: \"-tc=docs match code*\" \"-sf=*single_owner*\" \"-sf=*test_precheck*\"");
+    // One line each: doctest keeps only the last of a repeated filter, so
+    // each check is its own command.
+    lines.push_back("always: \"-tc=docs match code*\"");
+    lines.push_back("always: \"-sf=*single_owner*\"");
+    lines.push_back("always: \"-sf=*test_precheck*\"");
 
     std::string names = "names:";
     for (const PickName& n : pick.names)
