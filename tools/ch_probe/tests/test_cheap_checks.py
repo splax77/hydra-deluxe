@@ -168,7 +168,7 @@ class PollCostReportTest(unittest.TestCase):
             clock.sleep(next(find_steps))
             return next(found)
 
-        snap_steps = [0.001, 0.002, 0.003]
+        snap_steps = [0.001, 0.002, 0.004]
         reads = {"snap": 0, "single": 0}
         read_from = []
 
@@ -199,7 +199,7 @@ class PollCostReportTest(unittest.TestCase):
             "engine find: min 250.000 ms, median 750.000 ms, max 2000.000 ms (5 runs)",
             "memory scans: 2 in all; regions per scan 10 to 12; "
             "bytes per scan 4,096 to 8,192",
-            "snapshot() read: min 1.000 ms, median 2.000 ms, max 3.000 ms (1000 runs)",
+            "snapshot() read: min 1.000 ms, median 2.000 ms, max 4.000 ms (1000 runs)",
             "read_u32 read: min 0.500 ms, median 0.500 ms, max 0.500 ms (1000 runs)",
         ])
         self.assertEqual(reads, {"snap": 1000, "single": 1000})
