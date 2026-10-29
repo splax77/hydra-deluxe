@@ -20,6 +20,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_mcp import compare_dumps as C  # noqa: E402
+from tools.ch_mcp.dump_facts import is_readable  # noqa: E402
 
 SCR_X = "ʺʺʸʶʿʵ"
 SCR_Y = "ʿʺʸʺʼʴ"
@@ -37,13 +38,13 @@ def method(name, rva=0x1000):
     return {"name": name, "return": "void", "params": [], "static": False, "rva": rva}
 
 
-def cls(name, fields=(), methods=(), namespace="", readable=None):
+def cls(name, fields=(), methods=(), namespace=""):
     return {
         "name": name,
         "namespace": namespace,
         "kind": "class",
         "typedef_index": 1,
-        "readable": name.isascii() if readable is None else readable,
+        "readable": is_readable(name),
         "base": None,
         "interfaces": [],
         "fields": list(fields),

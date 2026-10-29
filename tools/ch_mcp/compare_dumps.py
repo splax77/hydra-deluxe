@@ -105,8 +105,10 @@ def compare(old: dict, new: dict) -> list[str]:
     names verdict."""
     old_index = _index(old["classes"])
     new_index = _index(new["classes"])
-    old_readable = {k for k, v in old_index.items() if v[0]["readable"]}
-    new_readable = {k for k, v in new_index.items() if v[0]["readable"]}
+    # Class names go through the same `is_readable` as member names, so the
+    # two never disagree; the stored `readable` flag is not read.
+    old_readable = {k for k in old_index if is_readable(k[1])}
+    new_readable = {k for k in new_index if is_readable(k[1])}
     old_scrambled = set(old_index) - old_readable
     new_scrambled = set(new_index) - new_readable
 
