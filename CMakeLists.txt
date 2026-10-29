@@ -422,7 +422,8 @@ endif()
 # Decodes chart stems to float PCM, mixes them, and (GUI-side) drives the
 # output device. It also owns a song's length, the end of its mixed audio
 # (song_audio.cpp, D69). Kept separate from hydra_app so hydra_batch and
-# hydra_fillcompare never pull in the codec libraries; linked by hydra_ui and
+# hydra_fillcompare never pull in the codec libraries; linked by the GUI
+# libraries (hydra_preview and hydra_uibase below own those links) and by
 # hydra_tests. The decode and mix code is pure and unit-tested; only the
 # player owns a miniaudio device.
 # Depends on hydra_app for the PreviewAudioStem type and file I/O helpers.
@@ -453,7 +454,8 @@ target_link_libraries(hydra_audio PRIVATE
 # config, the instant timeline (track_state) and the draw-list builder
 # (highway_draw, where every Onyx number lives) — is device-free and
 # unit-tested; only preview_renderer touches D3D. Kept out of hydra_app like
-# hydra_audio; linked by hydra_ui and hydra_tests.
+# hydra_audio; linked by the GUI libraries (hydra_preview and hydra_uibase
+# below own those links) and by hydra_tests.
 add_library(hydra_render STATIC
     src/render/obj_loader.cpp
     src/render/preview_config.cpp
@@ -469,6 +471,23 @@ target_include_directories(hydra_render PRIVATE third_party/json)
 # files at runtime; hydra_image decodes the Onyx textures.
 target_link_libraries(hydra_render PRIVATE
     d3d11 dxgi d3dcompiler hydra_image hydra_warnings)
+
+# ---- hydra_preview: the Preview's controller, loader and transport --------
+# What plays a chart in the Preview without drawing any of Hydra's window: the
+# controller drives the offscreen renderer and the audio engine, the load job
+# decodes and mixes the stems, and the transport plays, pauses and seeks. No
+# ImGui and no AppState, so another GUI program can play a chart through it.
+# The files stay in src/ui/ and the namespace stays hydra::ui.
+add_library(hydra_preview STATIC
+    src/ui/preview_controller.cpp
+    src/ui/preview_controller.h
+    src/ui/preview_load_job.cpp
+    src/ui/preview_load_job.h
+    src/ui/preview_transport.cpp
+    src/ui/preview_transport.h
+)
+target_link_libraries(hydra_preview PUBLIC hydra_app hydra_audio hydra_render)
+target_link_libraries(hydra_preview PRIVATE hydra_warnings)
 
 # ---- hydra_dm: the DMBot leaderboards feature (GUI-only) -----------------
 # Kept out of hydra_app so the CLI tools do not link WinHTTP or carry the
@@ -535,9 +554,6 @@ add_library(hydra_ui STATIC
     src/ui/settings_bar.cpp
     src/ui/version_bar.cpp
     src/ui/library_view.cpp
-    src/ui/preview_controller.cpp
-    src/ui/preview_load_job.cpp
-    src/ui/preview_transport.cpp
     src/ui/report_window.cpp
     src/ui/path_report_window.cpp
     src/ui/dm_report_window.cpp
@@ -548,11 +564,10 @@ add_library(hydra_ui STATIC
     src/ui/report_state.h
     src/ui/resource.h
 )
-# hydra_render + hydra_audio join the GUI here (Phase 5): the Preview tab's
-# controller (preview_controller.cpp) drives the offscreen renderer and the
-# audio engine, and preview_load_job.cpp's PreviewLoadJob decodes + mixes
-# stems. PUBLIC so the exes link them transitively.
-target_link_libraries(hydra_ui PUBLIC hydra_uibase hydra_dm hydra_render hydra_audio)
+# hydra_preview and hydra_uibase bring the renderer and the audio engine with
+# them, so this list names neither. PUBLIC so the exes link them all
+# transitively.
+target_link_libraries(hydra_ui PUBLIC hydra_uibase hydra_preview hydra_dm)
 target_link_libraries(hydra_ui PRIVATE hydra_warnings)
 
 # Attached GUI testing (`Hydra.exe --uitest ...`, docs/agents/ui-testing.md)
