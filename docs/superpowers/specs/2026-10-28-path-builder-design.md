@@ -30,7 +30,10 @@ practice mode, a browser version, and a CHOpt-style phrase-count notation.
    of the best path's score, red at 1% or more. The 1% is of Hydra's best
    path total for the chart under the active settings.
 4. Path text: Hydra's own notation only (`Path::pathstring`), so text copies
-   between the two programs unchanged.
+   between the two programs unchanged. "Read both forms" (2026-10-29): Hydra's
+   Copy path button writes the long form, `Path::pathstring_verbose`, so the
+   builder's paste reads that long form as well as the short one, and the
+   builder's own Copy writes the long form. Hydra is unchanged.
 5. Name: Path Builder. Window title "Hydra Deluxe Path Builder", file
    `HydraPathBuilder.exe`.
 6. "Optimal, flag tight" (2026-10-29, replacing the 2026-10-28 wording).
@@ -69,7 +72,8 @@ Opening a chart:
 
 Saving: the builder's own path files use the JSON shape `hydra_replay`
 already reads and writes (tools/replay_json.cpp). Copy and paste use Hydra's
-path text.
+path text: Copy writes the long form Hydra's Copy path writes, and paste
+accepts the long or the short form (decision 4).
 
 ## The engine change
 
@@ -126,7 +130,7 @@ beats BF(k-1). There is no gain and no fourth cost colour.
 
 A window that needs tighter timing than the Path limit keeps its cost colour
 and gets a violet note (`chip_color(ChipToken::t5)`) naming the timing it
-needs and the limit, for example "needs 130 ms, your limit is 10 ms". The
+needs and the limit, for example "needs 130.0 ms, your limit is 10.0 ms". The
 note can sit on any window shown in the builder: the player's own, and the
 windows of Hydra's best path when it is the path on screen. Whether a window
 is over the limit is `Activation::within_ms_limit`, the same pieces the
