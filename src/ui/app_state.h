@@ -608,6 +608,9 @@ public:
     std::unique_ptr<DmFetchUsersJob> dm_fetch_job;
     std::unique_ptr<DmReportJob> dm_report_job;
 
+    // Starts scan_job, or refuses and starts nothing: when can_scan says no,
+    // or when scan_blocked_by_missing_folder does. Callers open the scan
+    // modal only when scan_job is set.
     void start_scan();
     void start_batch(bool redo);
     void start_dm_fetch();  // loads the dmleaderboards user list
@@ -687,8 +690,7 @@ public:
     // Set by the details modal's "Rescan library" remedy, the Song folders'
     // "Scan now", startup_notice_closed and the startup open of a library
     // whose scan is out of date: the main window calls start_scan on its next
-    // frame (the scan modal belongs to it), which refuses when can_scan says
-    // no.
+    // frame (the scan modal belongs to it), which may refuse (start_scan).
     bool request_scan = false;
     // True while the scan the app asked for on open (request_rescan_on_open)
     // is pending or its dialog is up: the Scanning charts dialog then opens
@@ -780,10 +782,16 @@ private:
     // the failure. tick() and wait_store_open() both collect through it.
     void collect_store_open();
     // The opened library's scan is out of date (StoreOpenJob::rescan_needed):
-    // asks for a scan (request_scan, scan_started_by_open), or sets the
-    // status line's problem when a chart folder cannot be read
-    // (app::library_rescan_blocked_notice) and asks for nothing.
+    // asks for a scan (request_scan, scan_started_by_open), or asks for
+    // nothing when scan_blocked_by_missing_folder says no.
     void request_rescan_on_open();
+    // The one check that a chart folder cannot be read, which every scan
+    // makes before it starts (request_rescan_on_open, start_scan). A scan
+    // over a folder it cannot list would write a library without that
+    // folder's charts and drop their results (D266). When one is missing it
+    // sets the status line's problem (app::library_rescan_blocked_notice)
+    // and returns true.
+    bool scan_blocked_by_missing_folder();
     std::exception_ptr store_open_error_;
     std::string startup_notice_;  // what startup_notice returns
 

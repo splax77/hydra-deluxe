@@ -253,7 +253,7 @@ artist, album, charter or folder, in any order; `"quotes"` match a phrase, and
 `title:`, `artist:`, `album:`, `charter:` and `folder:` limit a word or phrase
 to one field. A chart with no album matches nothing through it. `stars:N`
 (exactly N stars) and `squeeze<=N` (hardest squeeze or required early fill at
-most N ms; `squeeze<N` means the same) test the
+most N ms; `squeeze<N` is strict, under N ms, D266) test the
 record's best path and only ever match ready rows. `squeeze>N` and
 `squeeze>=N` are the floor side, above N or at least N; a floor and a limit
 together give a range, and a path that needs no timing reaches no floor. Any
@@ -770,6 +770,15 @@ _Avoid_: player, viewer
 The 3D fretboard the Preview draws, with the drum notes scrolling toward the
 strike line as the song plays.
 _Avoid_: fretboard, track
+
+**Ghost path**:
+A second Path the Preview draws faintly beside the one it shows: only the fills
+it activates on, as edge-only outlines on the note highway
+(`PreviewController::set_ghost_path`; the scene's `ghost_fills` come from
+`app::apply_preview_overlay`). It sets no fill state, and a changed chart
+draws none, as it draws no path (`drawn_path`). It has nothing to do with a
+ghost note (a dynamics velocity, see Gem).
+_Avoid_: shadow path, second path
 
 **Gem**:
 One drawn note on the note highway. Its model shows the drum type (tom, cymbal,

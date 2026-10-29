@@ -1149,7 +1149,7 @@
       "must_match": [
         "path_ = path ? std::optional<Path>(*path) : std::nullopt;",
         "requested_path_key_ = path_key;",
-        "path_key_ = overlay_key(path_key, sp_cap_);",
+        "path_key_ = overlay_key(path_key, sp_cap, ghost_key_);",
         "sp_cap_ = sp_cap;"
       ],
       "must_not_match": [
@@ -1177,7 +1177,7 @@
         },
         {
           "file": "src/ui/preview_controller.cpp",
-          "line_text": "path_key_ = overlay_key(path_key, sp_cap);",
+          "line_text": "path_key_ = overlay_key(path_key, sp_cap, ghost_key_);",
           "why": "record_request, the owner"
         }
       ],
@@ -1197,7 +1197,8 @@
       "pattern": "\\bdrawn_path\\(|std::optional<Path>\\(\\*drawn\\)",
       "anchor": "drawn",
       "must_match": [
-        "const Path* drawn = drawn_path(path_, chart_changed_);",
+        "const Path* drawn = drawn_path(stored, chart_changed_);",
+        "drawn_path(ghost_, chart_changed_)",
         "drawn ? std::optional<Path>(*drawn) : std::nullopt, sp_cap_, rules_, key.noteshuffle,"
       ],
       "must_not_match": [
@@ -1207,7 +1208,7 @@
       "owner_lines": [
         {
           "file": "src/ui/preview_controller.cpp",
-          "line_text": "const Path* drawn = drawn_path(path_, chart_changed_);",
+          "line_text": "const Path* drawn = drawn_path(stored, chart_changed_);",
           "why": "path_to_draw, the owner"
         },
         {
@@ -1219,7 +1220,7 @@
       "scope": [
         "src/ui/preview_controller.cpp"
       ],
-      "note": "The overlay build and the notes reload each used to work this out and copy it inline. Decided by: finding 126 (drawn_path); derive-once review of preview-keeps-place (finding 3)"
+      "note": "The overlay build and the notes reload each used to work this out and copy it inline. The ghost path asks the same owner (path_to_draw(ghost_)), so a changed chart hides it as it hides the path. Decided by: finding 126 (drawn_path); derive-once review of preview-keeps-place (finding 3)"
     },
     {
       "question": "How is a Preview job's scene and highway built from a mode's notes?",
@@ -1242,7 +1243,7 @@
       "owner_lines": [
         {
           "file": "src/ui/preview_load_job.cpp",
-          "line_text": "app::build_preview_scene(song, path, sp_cap, rules, audio_end_ms, song_length_ms);",
+          "line_text": "built.scene = app::build_preview_scene(song, path, sp_cap, rules, audio_end_ms,",
           "why": "build_scene_and_highway, the owner"
         }
       ],

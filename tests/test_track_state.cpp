@@ -136,7 +136,8 @@ bool same_instant(const TrackInstant& a, const TrackInstant& b) {
     for (size_t i = 0; i < a.notes.size(); ++i)
         if (!same_gem(a.notes[i], b.notes[i])) return false;
     return a.overdrive == b.overdrive && a.solo == b.solo && a.fill == b.fill &&
-           a.fill_taken == b.fill_taken && a.sp_active == b.sp_active &&
+           a.fill_taken == b.fill_taken && a.fill_ghost == b.fill_ghost &&
+           a.sp_active == b.sp_active &&
            a.fill_lane == b.fill_lane && a.fill_lane_pad == b.fill_lane_pad &&
            a.drum_lane_red == b.drum_lane_red && a.drum_lane_yellow == b.drum_lane_yellow &&
            a.drum_lane_blue == b.drum_lane_blue && a.drum_lane_green == b.drum_lane_green;
@@ -367,6 +368,48 @@ TEST_CASE("build_track_state: taken, offered and hidden fills toggle different s
                   "4.500000 - - od=. so=. fi=O ft=. sp=. ln=. pad=-",
                   "5.000250 - - od=. so=. fi=O ft=. sp=. ln=. pad=-",
                   "6.500250 - - od=. so=. fi=. ft=. sp=. ln=. pad=-"});
+}
+
+// A ghost path's fills drive `fill_ghost` over their own spans, whatever the
+// drawn path did with them: here the taken fill and the hidden one. Without a
+// ghost no instant has the field on, and the timeline is the one pinned in
+// the case above.
+TEST_CASE("build_track_state: the ghost sweep holds the ghost fills and nothing else") {
+    PreviewScene plain = taken_offered_hidden_scene();
+    PreviewScene ghosted = plain;
+    ghosted.ghost_fills = {0, 2};
+
+    const TrackState none = build_track_state(plain, TrackStateOptions{});
+    for (const TrackInstant& i : none.instants()) CHECK(i.fill_ghost == Toggle::Empty);
+
+    const TrackState st = build_track_state(ghosted, TrackStateOptions{});
+    // Taken [1.0, 2.0005] and hidden [7.0, 8.0005]; the offered fill at
+    // [4.0, 5.0005] is no ghost's.
+    std::vector<std::pair<double, Toggle>> ghost_edges;
+    for (const TrackInstant& i : st.instants())
+        if (i.fill_ghost != Toggle::Empty) ghost_edges.push_back({i.t, i.fill_ghost});
+    REQUIRE(ghost_edges.size() == 6);
+    const std::vector<std::pair<double, Toggle>> want = {
+        {1.0, Toggle::Start}, {2.0, Toggle::On}, {2.0005, Toggle::End},
+        {7.0, Toggle::Start}, {8.0, Toggle::On}, {8.0005, Toggle::End}};
+    for (size_t k = 0; k < want.size(); ++k) {
+        CAPTURE(k);
+        CHECK(ghost_edges[k].first == doctest::Approx(want[k].first));
+        CHECK(ghost_edges[k].second == want[k].second);
+    }
+    // Between the edges the sweep reads on inside a ghost fill and off
+    // elsewhere, through the empty-window fallback too.
+    CHECK(st.synthesize(1.5).fill_ghost == Toggle::On);
+    CHECK(st.synthesize(4.5).fill_ghost == Toggle::Empty);
+    CHECK(st.synthesize(7.5).fill_ghost == Toggle::On);
+
+    // Every other field is the plain timeline's: each of its instants reads
+    // the same line in the ghosted one (instant_line leaves fill_ghost out).
+    for (const TrackInstant& i : none.instants()) {
+        const TrackInstant* g = find(st.instants(), i.t);
+        REQUIRE(g);
+        CHECK(instant_line(*g) == instant_line(i));
+    }
 }
 
 TEST_CASE("build_track_state: beats land on instants; solo toggles") {
@@ -841,7 +884,7 @@ void check_rebuild(const PreviewScene& from, const PreviewScene& to, const std::
 // A random overlay over `scene`'s fills: each fill Hidden, Offered or Taken,
 // and activations whose SP windows start and end on notes, beats, fill
 // edges, each other or nowhere in particular, some empty or backwards, some
-// lighting a lane on a taken fill.
+// lighting a lane on a taken fill, and a ghost path's fills.
 void randomize_overlay(PreviewScene& scene, std::mt19937& rng, const std::vector<double>& moments) {
     auto pick = [&rng](uint32_t n) { return static_cast<uint32_t>(rng() % n); };
     auto moment = [&]() { return moments[pick(static_cast<uint32_t>(moments.size()))]; };
@@ -874,6 +917,10 @@ void randomize_overlay(PreviewScene& scene, std::mt19937& rng, const std::vector
         }
         scene.activations.push_back(a);
     }
+    // A ghost path's fills: any fill, whatever its state.
+    scene.ghost_fills.clear();
+    for (size_t k = 0; k < scene.fills.size(); ++k)
+        if (pick(3) == 0) scene.ghost_fills.push_back(k);
 }
 
 // A path-free scene and four random overlays over it, the base itself first.

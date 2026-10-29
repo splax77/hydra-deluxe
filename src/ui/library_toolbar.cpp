@@ -70,7 +70,7 @@ void render_actions_row(AppState& app) {
     begin_disabled_button(scan_off);
     if (ImGui::Button("Scan library")) {
         app.start_scan();
-        ImGui::OpenPopup(kScanModalId);
+        if (app.scan_job) ImGui::OpenPopup(kScanModalId);
     }
     end_disabled_button(scan_off);
     busy_tooltip();

@@ -836,6 +836,60 @@ TEST_CASE("build_preview_scene: each activation names the fill it took") {
     CHECK_FALSE(s4.activations[0].taken_fill.has_value());
 }
 
+// A ghost path lists the fills its activations stand on and changes nothing
+// else: the drawn path's fill states and activations are the ones built with
+// no ghost. Fills end at 480, 960, 1440 and 1920.
+TEST_CASE("build_preview_scene: a ghost path lists its own taken fills and nothing else") {
+    Song song = make_fill_song();
+    Path drawn;
+    drawn.activations = {act_at(song, 1440, {960})};
+    // Takes 480, 1440 and 1920; its passed-over 960 and the tick 1700 that is
+    // no fill are no ghost fills.
+    Path ghost;
+    ghost.activations = {act_at(song, 480, {}), act_at(song, 1440, {960}),
+                         act_at(song, 1920, {1700})};
+
+    const PreviewScene plain = build_preview_scene(song, &drawn);
+    CHECK(plain.ghost_fills.empty());
+    const PreviewScene with = build_preview_scene(song, &drawn, kCloneHeroSpCap,
+                                                  core::default_rules(), std::nullopt,
+                                                  std::nullopt, &ghost);
+    CHECK(with.ghost_fills == std::vector<size_t>{0, 2, 3});
+    REQUIRE(with.fills.size() == plain.fills.size());
+    for (size_t i = 0; i < plain.fills.size(); ++i)
+        CHECK(with.fills[i].state == plain.fills[i].state);
+    REQUIRE(with.activations.size() == plain.activations.size());
+    CHECK(with.activations[0].taken_fill == plain.activations[0].taken_fill);
+
+    // No drawn path: every fill still reads Offered, as for an unanalyzed chart.
+    const PreviewScene alone = build_preview_scene(song, nullptr, kCloneHeroSpCap,
+                                                   core::default_rules(), std::nullopt,
+                                                   std::nullopt, &ghost);
+    CHECK(alone.ghost_fills == std::vector<size_t>{0, 2, 3});
+    for (const PreviewFill& f : alone.fills) CHECK(f.state == PreviewFillState::Offered);
+
+    // A later overlay with no ghost clears the list.
+    const PreviewScene cleared = apply_preview_overlay(with, song, &drawn);
+    CHECK(cleared.ghost_fills.empty());
+}
+
+// On a real chart the ghost path's fills are the ones the same path takes when
+// it is the drawn path, pinned from one run.
+TEST_CASE("build_preview_scene: a corpus best path as the ghost lists its taken fills") {
+    const AnalysisResult& r = corpus::analyzed_by_ten_scores();
+    const Path& best = r.record.best_path();
+    const PreviewScene scene = build_preview_scene(r.song, nullptr, kCloneHeroSpCap,
+                                                   core::default_rules(), std::nullopt,
+                                                   std::nullopt, &best);
+    CHECK(scene.ghost_fills == std::vector<size_t>{2, 7});
+
+    const PreviewScene drawn = build_preview_scene(r.song, &best);
+    std::vector<size_t> taken;
+    for (const PreviewActivation& a : drawn.activations)
+        if (a.taken_fill) taken.push_back(*a.taken_fill);
+    CHECK(scene.ghost_fills == taken);
+}
+
 // The Preview lights a stored passed-over fill by matching its tick to a fill
 // in the scene, and drops a tick that matches none. A miss would mean the
 // record and the chart disagree, so on the corpus there must be none.

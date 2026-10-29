@@ -277,6 +277,7 @@ void parse_squeeze(LibraryQuery& q, std::string_view op, std::string_view value)
     }
     if (is_max) {
         q.squeeze_max_ms = ms;
+        q.squeeze_max_strict = op == "<";
     } else {
         q.squeeze_min_ms = ms;
         q.squeeze_min_strict = op == ">";
@@ -416,9 +417,13 @@ bool query_matches(const LibraryQuery& q, const SearchableRow& row, const RowFac
         if (q.stars && *facts.stars != *q.stars) return false;
         // A path that needs no timing (Path::needs_timing) passes any limit
         // and reaches no floor: it has nothing to squeeze.
-        if (q.squeeze_max_ms && facts.hardest_ms &&
-            !timing_within_limit(*facts.hardest_ms, *q.squeeze_max_ms))
-            return false;
+        if (q.squeeze_max_ms && facts.hardest_ms) {
+            const bool below =
+                q.squeeze_max_strict
+                    ? !timing_reaches_floor(*facts.hardest_ms, *q.squeeze_max_ms)
+                    : timing_within_limit(*facts.hardest_ms, *q.squeeze_max_ms);
+            if (!below) return false;
+        }
         if (q.squeeze_min_ms) {
             if (!facts.hardest_ms) return false;
             const bool above =
@@ -478,7 +483,7 @@ const std::vector<SearchTip>& search_tips() {
         {"stars:7", "Songs whose best path earns exactly 7 stars."},
         {"squeeze<=20",
          "Songs whose best path's hardest squeeze or required early fill is 20 ms or less. "
-         "A path that needs no timing counts too. squeeze<20 means the same."},
+         "A path that needs no timing counts too. squeeze<20 leaves out exactly 20 ms."},
         {"squeeze>20",
          "Songs whose best path's hardest squeeze or required early fill is more than 20 ms. "
          "squeeze>=20 also keeps exactly 20 ms. A path that needs no timing never counts."},
