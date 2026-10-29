@@ -507,7 +507,8 @@ target_include_directories(hydra_dm PRIVATE third_party/json)
 # ---- hydra_uibase: the GUI base -------------------------------------------
 # What any of Hydra's GUI programs needs without Hydra's own window: ImGui's
 # set-up and shutdown, the UI scale, the theme, the fonts, the shared widgets,
-# the icons and the folder dialog. Nothing here reads AppState.
+# the icons, the file and folder dialogs and the main window's Win32 and
+# Direct3D pieces (win32_window.h). Nothing here reads AppState.
 add_library(hydra_uibase STATIC
     src/ui/imgui_setup.cpp
     src/ui/column_widths.cpp
