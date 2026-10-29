@@ -195,9 +195,6 @@ private:
     ScopedHook seam_;
 };
 
-// True when `s` is somewhere in visible_text(h) (uitest_engine.h).
-bool on_screen(Harness& h, const std::string& s);
-
 // How many times `s` appears in visible_text(h).
 size_t count_on_screen(Harness& h, const std::string& s);
 

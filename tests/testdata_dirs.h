@@ -18,6 +18,12 @@ namespace corpus {
 // testdata/input, the chart corpus.
 inline std::string root() { return HYDRA_INPUT_DIR; }
 
+// Green Day - Burnout's notes.mid in the corpus: the real song the GUI tests
+// open, quick to analyze at the scratch settings' depth.
+inline std::string burnout_notes() {
+    return root() + "/common/Summer Blast _25 Setlist/Tier 4/Green Day - Burnout/notes.mid";
+}
+
 // testdata, the fixtures folder that holds the corpus. A target that leaves
 // HYDRA_TESTDATA_DIR out (CMakeLists.txt says which) gets no testdata_root(),
 // so a caller there fails to compile.

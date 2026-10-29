@@ -361,10 +361,6 @@ void OpenGate::open() { g_open_gate_open = true; }
 
 int OpenGate::started() const { return g_open_gate_started.load(); }
 
-bool on_screen(Harness& h, const std::string& s) {
-    return visible_text(h).find(s) != std::string::npos;
-}
-
 size_t count_on_screen(Harness& h, const std::string& s) {
     const std::string all = visible_text(h);
     size_t n = 0;

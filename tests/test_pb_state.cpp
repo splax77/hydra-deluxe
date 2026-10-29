@@ -12,6 +12,7 @@
 #include "program_scope.h"
 #include "scratch_settings.h"
 #include "temp_util.h"
+#include "testdata_dirs.h"
 #include "wait_util.h"
 
 #include "pathbuilder/pb_paths.h"
@@ -23,12 +24,6 @@ using hydra::pathbuilder::PbState;
 using hydra::pathbuilder::PlayerPath;
 
 namespace {
-
-// A corpus chart the GUI tests use too: a real song, quick to analyze at the
-// scratch settings' depth.
-std::string burnout() {
-    return corpus::root() + "/common/Summer Blast _25 Setlist/Tier 4/Green Day - Burnout/notes.mid";
-}
 
 // Opens `path` under the GUI tests' settings and waits for the open to end.
 void open_and_wait(PbState& s, const std::string& path) {
@@ -45,7 +40,7 @@ void open_and_wait(PbState& s, const std::string& path) {
 
 TEST_CASE("pb state: a corpus chart opens with its record, and the list holds every path") {
     PbState s;
-    open_and_wait(s, burnout());
+    open_and_wait(s, corpus::burnout_notes());
     REQUIRE(s.error().empty());
     const OpenChart* c = s.chart();
     REQUIRE(c != nullptr);
@@ -53,7 +48,7 @@ TEST_CASE("pb state: a corpus chart opens with its record, and the list holds ev
     REQUIRE_FALSE(c->record.paths.empty());
     CHECK(c->graph != nullptr);
     CHECK_FALSE(c->entry.md5.empty());
-    CHECK(c->entry.notespath == burnout());
+    CHECK(c->entry.notespath == corpus::burnout_notes());
 
     const auto rows = hydra::pathbuilder::path_rows(c->record, {});
     CHECK(rows.size() == c->record.paths.size() + c->record.allzero_paths.size());

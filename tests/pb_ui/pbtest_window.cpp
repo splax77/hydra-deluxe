@@ -29,20 +29,11 @@ bool write_file(const std::string& path, const std::string& text) {
     return true;
 }
 
-// The chart test_pb_state.cpp opens too.
-std::string burnout() {
-    return corpus::root() + "/common/Summer Blast _25 Setlist/Tier 4/Green Day - Burnout/notes.mid";
-}
-
-bool on_screen(Harness& h, const std::string& part) {
-    return uitest::visible_text(h).find(part) != std::string::npos;
-}
-
 // Opens the chart from the command line and reads the left list: every row's
 // label, total and gap is on screen.
 void test_open_and_list(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    h.chart_arg = burnout();
+    h.chart_arg = corpus::burnout_notes();
     reset_app(h);
     IM_CHECK(wait_idle(ctx));
     ctx->Yield(2);

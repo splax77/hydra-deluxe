@@ -288,6 +288,10 @@ std::string visible_text(Engine& e) {
     return s;
 }
 
+bool on_screen(Engine& e, const std::string& s) {
+    return visible_text(e).find(s) != std::string::npos;
+}
+
 namespace {
 
 // The drawn items under `parent` at every depth (-1), because items inside

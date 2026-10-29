@@ -162,6 +162,9 @@ void idle_frame(ImGuiTestContext* ctx);
 // (EngineHooks::status_line), for substring checks.
 std::string visible_text(Engine& e);
 
+// True when `s` is somewhere in visible_text.
+bool on_screen(Engine& e, const std::string& s);
+
 // A window drawn last frame whose name holds `part`, or nullptr when none
 // was. A part finds child windows too, whose names ImGui mangles.
 ImGuiWindow* window_named(const char* part);
