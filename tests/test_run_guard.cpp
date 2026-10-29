@@ -22,14 +22,22 @@ TEST_CASE("run guard: an unquoted filter split at its dot is refused") {
     CHECK(refuse_arguments(Args{"-tc=fuzz", ".seeds*"}).has_value());
 }
 
-TEST_CASE("run guard: a repeated filter is refused, whatever its spelling") {
+TEST_CASE("run guard: a filter given twice is refused, however many dashes or dt- prefix it has") {
     CHECK(refuse_arguments(Args{"-sf=*single_owner*", "-sf=*test_precheck*"}) ==
           std::optional<std::string>(
-              "hydra_tests: \"-sf=*single_owner*\" and \"-sf=*test_precheck*\" are the same kind of "
-              "filter. doctest reads only the last of a repeated filter and drops the others without a "
-              "word. Join the patterns with commas in one filter, or run each as its own command."));
-    CHECK(refuse_arguments(Args{"-sf=*a.cpp", "--dt-source-file=*b.cpp"}).has_value());
-    CHECK(refuse_arguments(Args{"--test-case=x*", "-s", "-dt-tc=y*"}).has_value());
+              "hydra_tests: \"-sf=*single_owner*\" and \"-sf=*test_precheck*\" give the same filter twice. "
+              "doctest keeps only one of them and drops the other without a word. Join the patterns with "
+              "commas in one filter, or run each as its own command."));
+    CHECK(refuse_arguments(Args{"-sf=*a.cpp", "--dt-sf=*b.cpp"}).has_value());
+    CHECK(refuse_arguments(Args{"--tc=x*", "-s", "-dt-tc=y*"}).has_value());
+    CHECK(refuse_arguments(Args{"--source-file=*a.cpp", "-source-file=*b.cpp"}).has_value());
+}
+
+TEST_CASE("run guard: two spellings of one filter are both kept by doctest, so they pass") {
+    // doctest reads "sf" and "source-file" separately and joins their patterns.
+    CHECK(refuse_arguments(Args{"-sf=*a.cpp", "--source-file=*b.cpp"}) == std::nullopt);
+    CHECK(refuse_arguments(Args{"-sf=*a.cpp", "--dt-source-file=*b.cpp"}) == std::nullopt);
+    CHECK(refuse_arguments(Args{"--test-case=x*", "-s", "-dt-tc=y*"}) == std::nullopt);
 }
 
 TEST_CASE("run guard: well-formed command lines pass the argument check") {
@@ -54,11 +62,8 @@ TEST_CASE("run guard: a real run whose include filter matched nothing is refused
     CHECK(refuse_zero_match(Args{"--dt-test-suite=none"}, 0).has_value());
 }
 
-TEST_CASE("run guard: listings, exclude-only runs and matched runs pass the zero check") {
+TEST_CASE("run guard: exclude-only runs and matched runs pass the zero check") {
     CHECK(refuse_zero_match(Args{"-sf=*test_a.cpp"}, 22) == std::nullopt);
-    CHECK(refuse_zero_match(Args{"-ltc", "-sf=*no_such_file_xyz*"}, 0) == std::nullopt);
-    CHECK(refuse_zero_match(Args{"--count", "-sf=*no_such_file_xyz*"}, 0) == std::nullopt);
-    CHECK(refuse_zero_match(Args{"-sf=*no_such_file_xyz*", "--no-run=true"}, 0) == std::nullopt);
     CHECK(refuse_zero_match(Args{"-sfe=*a*,*b*"}, 0) == std::nullopt);
     // A subcase filter does not choose test cases.
     CHECK(refuse_zero_match(Args{"-sc=nothing*"}, 0) == std::nullopt);

@@ -39,7 +39,9 @@ struct FilterSpelling {
 };
 
 // A copy of the filter names Context::parseArgs in
-// third_party/doctest/doctest.h reads; that function owns them.
+// third_party/doctest/doctest.h reads; that function owns them. It reads each
+// spelling on its own: one spelling given twice keeps a single copy, while two
+// spellings of one filter (`-sf` and `--source-file`) are both kept and joined.
 inline constexpr FilterSpelling kFilterSpellings[] = {
     {"source-file", FilterKind::SourceFile, true},
     {"sf", FilterKind::SourceFile, true},
@@ -60,17 +62,6 @@ inline constexpr FilterSpelling kFilterSpellings[] = {
     {"reporters", FilterKind::Reporters, false},
     {"r", FilterKind::Reporters, false},
 };
-
-// The flags that make a run list, count or print instead of running tests.
-// A copy of the names Context::parseArgs reads, which owns them.
-inline constexpr std::string_view kQueryFlags[] = {
-    "help", "h", "?", "version", "v", "count", "c", "list-test-cases", "ltc",
-    "list-test-suites", "lts", "list-reporters", "lr",
-};
-
-// The no-run option's names, which Context::parseArgs also owns. It takes a
-// value as well as standing alone.
-inline constexpr std::string_view kNoRunNames[] = {"no-run", "nr"};
 
 // An option's name and value as doctest reads them: the text after the leading
 // dashes and the optional "dt-" prefix (parseOptionImpl in doctest.h owns how
@@ -113,33 +104,28 @@ inline std::optional<std::string> refuse_arguments(const std::vector<std::string
         if (!first) continue;
         for (size_t j = i + 1; j < args.size(); ++j) {
             const std::optional<FilterSpelling> again = filter_of(args[j]);
-            if (again && again->kind == first->kind)
+            if (again && again->name == first->name)
                 return "hydra_tests: \"" + args[i] + "\" and \"" + args[j] +
-                       "\" are the same kind of filter. doctest reads only the last of a repeated filter "
-                       "and drops the others without a word. Join the patterns with commas in one "
-                       "filter, or run each as its own command.";
+                       "\" give the same filter twice. doctest keeps only one of them and drops the "
+                       "other without a word. Join the patterns with commas in one filter, or run each "
+                       "as its own command.";
         }
     }
     return std::nullopt;
 }
 
 // The refusal for a run that tested nothing, after it ends; nothing when it is
-// fine. `passing` is the number of test cases that passed the filters, from
-// doctest's run stats. Only a real run with an include filter can be refused:
-// a listing may match nothing on purpose, and an exclude-only run is the rest
-// of the suite.
+// fine. `args` are the arguments after the program's own name. `passing` is
+// the number of test cases that passed the filters, from doctest's run stats.
+// The caller asks only after doctest reported the end of a run, which it does
+// for a real run and not for a listing, a count, help or no-run, so a listing
+// that matches nothing on purpose never gets here. An exclude-only run is the
+// rest of the suite, so only an include filter can be refused.
 inline std::optional<std::string> refuse_zero_match(const std::vector<std::string>& args, unsigned passing) {
     if (passing != 0) return std::nullopt;
     std::string named;
     bool any_include = false;
     for (const std::string& a : args) {
-        const std::string_view body = option_body(a);
-        for (std::string_view flag : kQueryFlags)
-            if (body == flag) return std::nullopt;
-        // no-run with any value skips the check, even "=false": a missed
-        // check costs no more than a plain doctest run did.
-        for (std::string_view name : kNoRunNames)
-            if (names_option(body, name)) return std::nullopt;
         const std::optional<FilterSpelling> f = filter_of(a);
         if (!f || f->kind == FilterKind::Reporters) continue;
         any_include = any_include || f->include;
