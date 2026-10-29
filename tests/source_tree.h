@@ -8,6 +8,7 @@
 
 #include <filesystem>
 #include <string>
+#include <utility>
 
 #ifndef HYDRA_SOURCE_DIR
 #error "HYDRA_SOURCE_DIR must be defined (see CMakeLists.txt)"
@@ -35,9 +36,8 @@ inline bool walk_visits(const std::string& rel) {
 // order. rel is the file's repo-relative path with forward slashes, such as
 // "src/core/winstr.cpp"; its first part is the top folder.
 template <typename Visit>
-void for_each_source_file(Visit&& visit) {
+void for_each_source_file(const std::filesystem::path& root, Visit&& visit) {
     namespace fs = std::filesystem;
-    const fs::path root = sourcetree::root();
     for (const std::string sub : kWalkedFolders) {
         for (const fs::directory_entry& e : fs::recursive_directory_iterator(root / sub)) {
             if (!e.is_regular_file()) continue;
@@ -45,6 +45,11 @@ void for_each_source_file(Visit&& visit) {
             visit(e.path(), rel);
         }
     }
+}
+
+template <typename Visit>
+void for_each_source_file(Visit&& visit) {
+    for_each_source_file(sourcetree::root(), std::forward<Visit>(visit));
 }
 
 }  // namespace sourcetree

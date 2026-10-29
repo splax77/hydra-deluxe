@@ -31,6 +31,7 @@
 
 #include "../audio_chart_fixtures.h"  // write_text_file
 #include "../code_lexer.h"
+#include "../precheck_fixture.h"
 #include "../source_tree.h"
 #include "../temp_util.h"
 #include "check_scan.h"
@@ -295,6 +296,67 @@ TEST_CASE("single-owner: the row scan's messages, pinned on a made-up file") {
     CHECK(stale_message(listed[1]) ==
           "owner line no longer matches (update it): src/a.cpp: return made_up(9); (rule: "
           "rules/made_up.json)");
+}
+
+TEST_CASE("single-owner: the walk reads committed and new files, never ignored ones") {
+    using namespace precheck_fixture;
+    const std::string dir = testtemp::temp_dir("single_owner_walk_git");
+    testtemp::remove_dir(dir);
+    fs::create_directories(hydra::os_path(dir));
+    fixture_git(dir, {"init", "-q", "-b", "main"});
+    const std::string answer = "x = made_up(3)\n";
+    write_fixture_file(dir, ".gitignore", "tools/vendor/\n");
+    write_fixture_file(dir, "tools/kept.py", answer);
+    commit_all(dir, "kept");
+    write_fixture_file(dir, "tools/vendor/ignored.py", answer);
+    write_fixture_file(dir, "tools/new.py", answer);
+    fs::create_directories(hydra::os_path(dir + "\\src"));
+    fs::create_directories(hydra::os_path(dir + "\\tests"));
+
+    OwnerRule r;
+    r.question = "Is this a made-up question?";
+    r.owner = "made_up in src/a.cpp";
+    r.rules_file = "rules/made_up.json";
+    r.pattern = "made_up\\(";
+    r.anchor = "made_up(";
+    r.language = "py";
+    const std::vector<CompiledRule> compiled = {compile_rule(r)};
+    const std::vector<ListedLine> listed;
+    RowScan scan = start_row_scan(compiled, listed);
+    std::vector<std::string> visited;
+    sourcetree::for_each_source_file(fs::path(hydra::os_path(dir)), [&](const fs::path& path,
+                                                                         const std::string& rel) {
+        visited.push_back(rel);
+        const std::optional<codelex::Lang> lang = walk_language(rel);
+        if (!lang) return;
+        std::ifstream in(path);
+        scan_rows(scan, rel, *lang == codelex::Lang::Python, in);
+    });
+    std::ostringstream seen;
+    for (const std::string& rel : visited) seen << "visited " << rel << "\n";
+    for (const std::string& p : scan.problems) seen << "flagged " << p << "\n";
+    INFO(seen.str());
+    CHECK(visited ==std::vector<std::string>{"tools/kept.py", "tools/new.py"});
+    CHECK(scan.problems ==
+          std::vector<std::string>{
+              "tools/kept.py:1: answers \"Is this a made-up question?\", which belongs to made_up in "
+              "src/a.cpp: x = made_up(3) (rule: rules/made_up.json)",
+              "tools/new.py:1: answers \"Is this a made-up question?\", which belongs to made_up in "
+              "src/a.cpp: x = made_up(3) (rule: rules/made_up.json)"});
+    testtemp::remove_dir(dir);
+
+    // A folder outside any git repo fails loudly, naming the folder.
+    const std::string plain = testtemp::temp_dir("single_owner_walk_plain");
+    const fs::path plain_root = fs::path(hydra::os_path(plain));
+    std::string error;
+    try {
+        sourcetree::for_each_source_file(plain_root, [](const fs::path&, const std::string&) {});
+    } catch (const std::exception& e) {
+        error = e.what();
+    }
+    INFO(error);
+    CHECK(error.find(plain_root.u8string()) != std::string::npos);
+    testtemp::remove_dir(plain);
 }
 
 TEST_CASE("single-owner: the hit sink reports taken, used-up and unlisted lines") {
