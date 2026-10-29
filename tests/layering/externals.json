@@ -1,0 +1,20 @@
+{
+  "externals": [
+    {"header": "imgui_te_*.h", "target": "imgui_test_engine", "must_match": ["imgui_te_engine.h", "imgui_te_context.h"]},
+    {"header": "imgui_capture_tool.h", "target": "imgui_test_engine", "must_match": ["imgui_capture_tool.h"]},
+    {"header": "imgui*.h", "target": "imgui", "must_match": ["imgui.h", "imgui_internal.h", "imgui_impl_dx11.h"]},
+    {"header": "imstb*", "target": "imgui", "must_match": ["imstb_truetype.h"]},
+    {"header": "d3d11.h", "target": "d3d11", "must_match": ["d3d11.h"]},
+    {"header": "dxgi.h", "target": "dxgi", "must_match": ["dxgi.h"]},
+    {"header": "d3dcompiler.h", "target": "d3dcompiler", "must_match": ["d3dcompiler.h"]},
+    {"header": "sqlite3.h", "target": "sqlite3", "must_match": ["sqlite3.h"]},
+    {"header": "miniz.h", "target": "miniz", "must_match": ["miniz.h"]},
+    {"header": "miniaudio.h", "target": "miniaudio", "must_match": ["miniaudio.h"]},
+    {"header": "stb_vorbis.c", "target": "stb_vorbis", "must_match": ["stb_vorbis.c"]},
+    {"header": "opus*.h", "target": "opus", "must_match": ["opus.h", "opus_multistream.h"]},
+    {"header": "ogg/*.h", "target": "ogg", "must_match": ["ogg/ogg.h"]},
+    {"header": "winhttp.h", "target": "winhttp", "must_match": ["winhttp.h"]},
+    {"header": "json.hpp", "include_dir": "third_party/json", "must_match": ["json.hpp"]},
+    {"header": "stb_image.h", "include_dir": "third_party/stb", "must_match": ["stb_image.h"]}
+  ]
+}

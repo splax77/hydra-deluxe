@@ -306,6 +306,13 @@ add_library(hydra_core STATIC
     src/core/strutil.cpp
     src/core/winstr.cpp
     src/core/audio_sniff.cpp
+    src/core/app_version.h
+    src/core/backend_value.h
+    src/core/bounds.h
+    src/core/error_kind.h
+    src/core/little_endian.h
+    src/core/sqout_chord.h
+    src/core/version.h
     src/parse/midi.cpp
     src/parse/song.cpp
     src/parse/section_names.cpp
@@ -315,6 +322,8 @@ add_library(hydra_core STATIC
     src/parse/chart_files.cpp
     src/parse/sng.cpp
     src/parse/text_decode.cpp
+    src/parse/chart_reading.h
+    src/parse/timesig.h
     src/search/graph.cpp
     src/search/engine.cpp
     src/search/pather.cpp
@@ -322,6 +331,7 @@ add_library(hydra_core STATIC
     src/store/chart_index.cpp
     src/store/upgrade_files.cpp
     src/store/library_file.cpp
+    src/store/stored_versions.h
     src/app/allocator.cpp
     src/app/analysis.cpp
     src/app/config.cpp
@@ -341,6 +351,9 @@ add_library(hydra_core STATIC
     src/app/report_files.cpp
     src/app/user_messages.cpp
     src/app/update_verify.cpp
+    src/app/preview_clock.h
+    src/app/update_key.h
+    src/app/work_pool.h
 )
 target_include_directories(hydra_core PUBLIC src)
 target_compile_definitions(hydra_core PUBLIC HYDRA_VERSION="${PROJECT_VERSION}"
@@ -390,6 +403,7 @@ add_library(hydra_audio STATIC
     src/audio/stream_mix.cpp
     src/audio/player.cpp
     src/audio/device.cpp
+    src/audio/frames.h
 )
 target_link_libraries(hydra_audio PUBLIC hydra_core)
 # miniaudio decodes WAV/MP3/FLAC (its dr_libs) and, GUI-side, drives the device;
@@ -468,6 +482,20 @@ add_library(hydra_ui STATIC
     src/ui/theme.cpp
     src/ui/update_job.cpp
     src/ui/win32_dialogs.cpp
+    src/ui/activation_row_layout.h
+    src/ui/badge_pill.h
+    src/ui/details_parts.h
+    src/ui/details_view.h
+    src/ui/fallback_fonts.h
+    src/ui/fonts.h
+    src/ui/generation.h
+    src/ui/job_base.h
+    src/ui/label_layout.h
+    src/ui/library_parts.h
+    src/ui/report_state.h
+    src/ui/resource.h
+    src/ui/text_role.h
+    src/ui/widgets.h
 )
 # hydra_render + hydra_audio join the GUI here (Phase 5): the Preview tab's
 # controller (preview_controller.cpp) drives the offscreen renderer and the
@@ -502,6 +530,7 @@ add_library(hydra_uitest_harness STATIC
     tests/ui/uitest_batch_reports.cpp
     tests/ui/uitest_paths.cpp
     tests/ui/uitest_report_windows.cpp
+    tests/ui/live_protocol.h
     tests/report_samples.cpp
 )
 target_include_directories(hydra_uitest_harness PUBLIC tests/ui)
@@ -545,7 +574,7 @@ endif()
 
 # ---- hydra_batch / hydra_fillcompare: the command-line tools -------------
 # Both read the same settings INI and database the GUI uses.
-add_executable(hydra_batch src/cli/batch.cpp)
+add_executable(hydra_batch src/cli/batch.cpp src/cli/batch_scope.h)
 add_executable(hydra_fillcompare src/cli/fillcompare.cpp)
 foreach(tool IN ITEMS hydra_batch hydra_fillcompare)
     target_link_libraries(${tool} PRIVATE hydra_core hydra_warnings)
@@ -730,6 +759,7 @@ add_library(hydra_precheck_lib STATIC
     tools/precheck/check_rows.cpp
     tools/precheck/changed_names.cpp
     tools/precheck/test_pick.cpp
+    tools/precheck/text.h
     # The single-owner scan's engine, the one reader of the scan rows. It is
     # compiled here only; hydra_tests' scan gets it by linking this library.
     tests/single_owner/engine.cpp
