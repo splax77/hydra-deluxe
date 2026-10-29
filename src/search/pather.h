@@ -179,6 +179,37 @@ std::vector<Path> keep_prefix_paths(std::vector<Path> paths,
                                     const std::vector<PinnedWindow>& windows,
                                     std::vector<bool>* promoted = nullptr);
 
+// The one graph a set of settings searches: analyze_chart, both target
+// searches and best_finish build it here, so a target search runs on the
+// graph the main search ran on (decision D45). graph_build_cap says how tall
+// it is. A caller that runs many searches on one chart builds it once.
+ScoreGraph search_graph(const Song& song, const SearchSettings& settings);
+
+// The options a best-finish run uses: the main search's depth and soft Path
+// limit (the ones analyze_chart reads), following `windows` (their act ticks,
+// and the ends of those pinned in full) and running free after the last one
+// (EngineOptions::free_after). The one place that says so; best_finish runs
+// them, and a test of the engine's free_after reads them here too.
+EngineOptions best_finish_options(const SearchSettings& settings,
+                                  const std::vector<PinnedWindow>& windows);
+
+// The best path that starts with `windows` (keep_prefix_paths) and runs free
+// after the last one (EngineOptions::free_after), searched with
+// best_finish_options. The Path
+// limit does not judge a pinned window (EngineOptions::target_act_ticks), so
+// the result can outscore the main search's best. The windows are checked
+// and sorted as search_target checks them, with the same exceptions. With no
+// window it returns the main search's paths (analyze_chart's). When nothing
+// comes back, realized_prefix, failed_tick and failed_reason are
+// search_target's answer for the same windows on the same graph.
+// paths.front() is the best finish.
+TargetResult best_finish(const ScoreGraph& graph, const SearchSettings& settings,
+                         std::vector<PinnedWindow> windows);
+
+// The same, on the graph search_graph builds for `song`.
+TargetResult best_finish(const Song& song, const SearchSettings& settings,
+                         std::vector<PinnedWindow> windows);
+
 // Full analysis for one chart: one pass at settings.sp_cap bars (4 is Clone
 // Hero's rule; any other number is a what-if). Throws std::logic_error when
 // the song has no notes, because that is a caller bug: callers check first

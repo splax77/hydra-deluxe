@@ -356,6 +356,14 @@ inline std::vector<const Path*> all_tied(const std::vector<Path>& roots) {
     return out;
 }
 
+// Every root and tied variant in `roots`, roots first.
+inline std::vector<const Path*> roots_and_tied(const std::vector<Path>& roots) {
+    std::vector<const Path*> out;
+    for (const Path& p : roots) out.push_back(&p);
+    for (const Path* v : all_tied(roots)) out.push_back(v);
+    return out;
+}
+
 // The ticks a path activates on, in order: what search_target is told.
 inline std::vector<int64_t> act_ticks(const Path& p) {
     std::vector<int64_t> at;

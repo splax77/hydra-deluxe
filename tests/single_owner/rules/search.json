@@ -79,17 +79,12 @@
         {
           "file": "src/search/pather.cpp",
           "line_text": "options.target_act_ticks = ticks;",
-          "why": "search_target, the owner"
+          "why": "pin_windows, which search_target and best_finish both pin through"
         },
         {
           "file": "tests/test_engine_sweeps.cpp",
           "line_text": "pinned.target_act_ticks = ticks;",
           "why": "tests EngineOptions' plumbing, not search_target's filter"
-        },
-        {
-          "file": "tests/test_search_target.cpp",
-          "line_text": "options.target_act_ticks = ticks;",
-          "why": "tests EngineOptions::free_after, which search_target never sets (it pins every fill); the pins are the windows' own act ticks"
         },
         {
           "file": "tests/test_sp_end.cpp",
