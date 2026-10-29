@@ -294,7 +294,12 @@ target_include_directories(hydra_image PUBLIC src PRIVATE third_party/stb)
 # every Hydra target (see hydra_warnings).
 target_compile_options(hydra_image PRIVATE /W1 /EHsc /utf-8)
 
-# ---- hydra_core: everything below the GUI/CLI shells ---------------------
+# Below the GUI and the command-line shells sit five libraries, each linking
+# only the ones under it: hydra_core, then hydra_parse and hydra_search, then
+# hydra_store, then hydra_app on top. tests/test_layering.cpp checks that every
+# file includes only what its library links.
+
+# ---- hydra_core: the chart model, Song, scoring, replay and strings -------
 add_library(hydra_core STATIC
     src/core/timing.cpp
     src/core/song.cpp
@@ -314,6 +319,18 @@ add_library(hydra_core STATIC
     src/core/little_endian.h
     src/core/sqout_chord.h
     src/core/version.h
+)
+target_include_directories(hydra_core PUBLIC src)
+# PUBLIC so every library and program above sees them.
+target_compile_definitions(hydra_core PUBLIC HYDRA_VERSION="${PROJECT_VERSION}"
+                           HYDRA_APP_NAME="${HYDRA_APP_NAME}"
+                           HYDRA_APP_USER_MODEL_ID="${HYDRA_APP_USER_MODEL_ID}")
+# shell32: winstr.cpp splits every entry point's Unicode command line with
+# CommandLineToArgvW.
+target_link_libraries(hydra_core PRIVATE shell32 hydra_warnings)
+
+# ---- hydra_parse: the chart, MIDI, .sng and .srb readers ------------------
+add_library(hydra_parse STATIC
     src/parse/midi.cpp
     src/parse/song.cpp
     src/parse/section_names.cpp
@@ -325,14 +342,38 @@ add_library(hydra_core STATIC
     src/parse/text_decode.cpp
     src/parse/chart_reading.h
     src/parse/timesig.h
+)
+# miniz: srb.cpp inflates Clone Hero's .srb bundles.
+target_link_libraries(hydra_parse PUBLIC hydra_core miniz)
+target_link_libraries(hydra_parse PRIVATE hydra_warnings)
+
+# ---- hydra_search: the graph, the engine and the pather -------------------
+add_library(hydra_search STATIC
     src/search/graph.cpp
     src/search/engine.cpp
     src/search/pather.cpp
+)
+target_link_libraries(hydra_search PUBLIC hydra_core)
+target_link_libraries(hydra_search PRIVATE hydra_warnings)
+
+# ---- hydra_store: the database, the chart index and the library file ------
+add_library(hydra_store STATIC
     src/store/record_store.cpp
     src/store/chart_index.cpp
     src/store/upgrade_files.cpp
     src/store/library_file.cpp
     src/store/stored_versions.h
+)
+target_link_libraries(hydra_store PUBLIC hydra_core sqlite3)
+# hydra_search: record_store.cpp names a lens's fill rule in its key-mismatch
+# error with search/graph.h's fill_rule_name. No store header needs search.
+target_link_libraries(hydra_store PRIVATE hydra_search hydra_warnings)
+
+# ---- hydra_app: analysis, settings, reports and the text the screens show -
+# The top of the shared logic, with no GUI in it. hydra_batch and
+# hydra_fillcompare link this alone, so it carries no codec and no WinHTTP
+# (hydra_audio and hydra_dm keep those).
+add_library(hydra_app STATIC
     src/app/allocator.cpp
     src/app/analysis.cpp
     src/app/config.cpp
@@ -357,42 +398,34 @@ add_library(hydra_core STATIC
     src/app/update_key.h
     src/app/work_pool.h
 )
-target_include_directories(hydra_core PUBLIC src)
-target_compile_definitions(hydra_core PUBLIC HYDRA_VERSION="${PROJECT_VERSION}"
-                           HYDRA_APP_NAME="${HYDRA_APP_NAME}"
-                           HYDRA_APP_USER_MODEL_ID="${HYDRA_APP_USER_MODEL_ID}")
-# store/ needs sqlite3; app/ hashes chart files via CNG (bcrypt.lib) and walks
-# folders via the Win32 Find*File API (already linked into every Windows exe).
-# shell32: report_files.cpp hands hydra_fillcompare's finished page to the
-# browser with ShellExecuteW, and winstr.cpp splits every entry point's
-# Unicode command line with CommandLineToArgvW. shell32 + ole32 + uuid:
-# report_files.cpp finds Documents with SHGetKnownFolderPath(FOLDERID_Documents)
-# and frees the answer with CoTaskMemFree. shlwapi: open_in_browser looks up
-# the .html program (AssocQueryStringW) to hand it a long page's short name
-# directly.
-target_link_libraries(hydra_core PUBLIC sqlite3 miniz)
-target_link_libraries(hydra_core PRIVATE bcrypt shell32 shlwapi ole32 uuid hydra_warnings)
+target_link_libraries(hydra_app PUBLIC hydra_parse hydra_search hydra_store)
+# bcrypt: analysis.cpp and preview_source.cpp hash chart files through CNG,
+# and update_verify.cpp checks an update's signature. shell32:
+# report_files.cpp hands a finished page to the browser with ShellExecuteW.
+# shlwapi: open_in_browser looks up the .html program (AssocQueryStringW) to
+# hand it a long page's short name directly.
+target_link_libraries(hydra_app PRIVATE bcrypt shell32 shlwapi hydra_warnings)
 # allocator.cpp calls mimalloc by name, so it needs mimalloc.h. Only the
 # header folder: every exe links mimalloc first already (hydra_use_mimalloc),
-# and linking it here too makes CMake move it after hydra_core on each exe's
+# and linking it here too makes CMake move it after hydra_app on each exe's
 # link line, behind d3d11.dll, where mimalloc-redirect.dll gives up and leaves
 # malloc on the Windows heap.
 # HYDRA_MIMALLOC is PUBLIC so the tests that check the redirect (and the GUI
 # runner's start check) are compiled only where there is one.
 if(HYDRA_MIMALLOC)
-    target_include_directories(hydra_core PRIVATE
+    target_include_directories(hydra_app PRIVATE
                                $<TARGET_PROPERTY:mimalloc,INTERFACE_INCLUDE_DIRECTORIES>)
-    target_compile_definitions(hydra_core PUBLIC HYDRA_MIMALLOC)
+    target_compile_definitions(hydra_app PUBLIC HYDRA_MIMALLOC)
 endif()
 
 # ---- hydra_audio: the Preview audio engine (decode + mix + player) -------
 # Decodes chart stems to float PCM, mixes them, and (GUI-side) drives the
 # output device. It also owns a song's length, the end of its mixed audio
-# (song_audio.cpp, D69). Kept separate from hydra_core so hydra_fillcompare
-# never pulls in the codec libraries; linked by hydra_ui,
-# hydra_tests and hydra_batch (so a batch can save song lengths). The decode and mix
-# code is pure and unit-tested; only the player owns a miniaudio device.
-# Depends on hydra_core for the PreviewAudioStem type and file I/O helpers.
+# (song_audio.cpp, D69). Kept separate from hydra_app so hydra_batch and
+# hydra_fillcompare never pull in the codec libraries; linked by hydra_ui and
+# hydra_tests. The decode and mix code is pure and unit-tested; only the
+# player owns a miniaudio device.
+# Depends on hydra_app for the PreviewAudioStem type and file I/O helpers.
 add_library(hydra_audio STATIC
     src/audio/decode.cpp
     src/audio/mapped_file.cpp
@@ -407,7 +440,7 @@ add_library(hydra_audio STATIC
     src/audio/device.cpp
     src/audio/frames.h
 )
-target_link_libraries(hydra_audio PUBLIC hydra_core)
+target_link_libraries(hydra_audio PUBLIC hydra_app)
 # miniaudio decodes WAV/MP3/FLAC (its dr_libs) and, GUI-side, drives the device;
 # stb_vorbis decodes OGG; libopus over a libogg page demux decodes OPUS.
 target_link_libraries(hydra_audio PRIVATE
@@ -419,7 +452,7 @@ target_link_libraries(hydra_audio PRIVATE
 # offscreen D3D11 target (docs/adr/0005). The pure half — the .obj reader, the
 # config, the instant timeline (track_state) and the draw-list builder
 # (highway_draw, where every Onyx number lives) — is device-free and
-# unit-tested; only preview_renderer touches D3D. Kept out of hydra_core like
+# unit-tested; only preview_renderer touches D3D. Kept out of hydra_app like
 # hydra_audio; linked by hydra_ui and hydra_tests.
 add_library(hydra_render STATIC
     src/render/obj_loader.cpp
@@ -429,7 +462,7 @@ add_library(hydra_render STATIC
     src/render/overlay_layout.cpp
     src/render/preview_renderer.cpp
 )
-target_link_libraries(hydra_render PUBLIC hydra_core)
+target_link_libraries(hydra_render PUBLIC hydra_app)
 # third_party/json parses assets/preview/3d-config.json (preview_config).
 target_include_directories(hydra_render PRIVATE third_party/json)
 # d3d11/dxgi drive the offscreen targets and d3dcompiler compiles the HLSL
@@ -438,7 +471,7 @@ target_link_libraries(hydra_render PRIVATE
     d3d11 dxgi d3dcompiler hydra_image hydra_warnings)
 
 # ---- hydra_dm: the DMBot leaderboards feature (GUI-only) -----------------
-# Kept out of hydra_core so the CLI tools don't link WinHTTP or carry the
+# Kept out of hydra_app so the CLI tools do not link WinHTTP or carry the
 # comparison page. third_party/json parses the leaderboard API responses.
 add_library(hydra_dm STATIC
     src/app/dm_report.cpp
@@ -447,7 +480,7 @@ add_library(hydra_dm STATIC
     src/net/http.cpp
     src/app/update_release.cpp
 )
-target_link_libraries(hydra_dm PUBLIC hydra_core)
+target_link_libraries(hydra_dm PUBLIC hydra_app)
 target_link_libraries(hydra_dm PRIVATE winhttp hydra_warnings)
 target_include_directories(hydra_dm PRIVATE third_party/json)
 
@@ -478,7 +511,7 @@ add_library(hydra_uibase STATIC
 # a file map. d3d11 is PUBLIC because icons.h hands out ID3D11 types.
 target_link_libraries(hydra_uibase PUBLIC imgui imgui_test_engine hydra_render hydra_audio d3d11)
 # ole32: the folder-picker dialog (COM's IFileOpenDialog). shell32 is not
-# needed here: hydra_core links it for report_files.cpp's ShellExecuteW.
+# needed here: hydra_app links it for report_files.cpp's ShellExecuteW.
 # hydra_image: icons.cpp decodes its PNGs through the shared stb TU.
 target_link_libraries(hydra_uibase PRIVATE ole32 hydra_image hydra_warnings)
 
@@ -592,7 +625,7 @@ endif()
 add_executable(hydra_batch src/cli/batch.cpp src/cli/batch_scope.h)
 add_executable(hydra_fillcompare src/cli/fillcompare.cpp)
 foreach(tool IN ITEMS hydra_batch hydra_fillcompare)
-    target_link_libraries(${tool} PRIVATE hydra_core hydra_warnings)
+    target_link_libraries(${tool} PRIVATE hydra_app hydra_warnings)
 endforeach()
 
 # ---- hydra_tests: the doctest harness ------------------------------------
@@ -723,7 +756,7 @@ include(CPack)
 
 # ---- hydra_bench: engine timing harness (not a test; built on demand) ----
 add_executable(hydra_bench EXCLUDE_FROM_ALL tools/bench.cpp)
-target_link_libraries(hydra_bench PRIVATE hydra_core hydra_warnings)
+target_link_libraries(hydra_bench PRIVATE hydra_app hydra_warnings)
 target_include_directories(hydra_bench PRIVATE tests third_party/json)
 target_compile_definitions(hydra_bench PRIVATE
     HYDRA_INPUT_DIR="${CMAKE_SOURCE_DIR}/testdata/input"
@@ -734,7 +767,7 @@ target_compile_definitions(hydra_bench PRIVATE
 # stored paths, and self-checks the replay against the engine over the
 # corpus (hence the same corpus_util.h wiring hydra_bench uses).
 add_executable(hydra_replay EXCLUDE_FROM_ALL tools/replay.cpp)
-target_link_libraries(hydra_replay PRIVATE hydra_core hydra_warnings)
+target_link_libraries(hydra_replay PRIVATE hydra_app hydra_warnings)
 target_include_directories(hydra_replay PRIVATE tests third_party/json)
 target_compile_definitions(hydra_replay PRIVATE
     HYDRA_INPUT_DIR="${CMAKE_SOURCE_DIR}/testdata/input"
@@ -795,11 +828,11 @@ target_compile_definitions(hydra_tests PRIVATE
 
 # ---- hydra_replay_json: the dump/target JSON shapes (tools only) ----------
 # hydra_replay writes and reads these, and tests/test_replay pins them. The
-# app never reads a path as JSON, so this stays out of hydra_core, and core/
+# app never reads a path as JSON, so this stays out of hydra_app, and core/
 # stays free of the JSON library.
 add_library(hydra_replay_json STATIC tools/replay_json.cpp)
 target_include_directories(hydra_replay_json PUBLIC tools third_party/json)
-target_link_libraries(hydra_replay_json PUBLIC hydra_core PRIVATE hydra_warnings)
+target_link_libraries(hydra_replay_json PUBLIC hydra_app PRIVATE hydra_warnings)
 target_link_libraries(hydra_replay PRIVATE hydra_replay_json)
 target_link_libraries(hydra_tests PRIVATE hydra_replay_json)
 
@@ -819,7 +852,7 @@ if(HYDRA_FUZZ)
         get_filename_component(hydra_fuzz_exe ${hydra_fuzz_source} NAME_WE)
         add_executable(${hydra_fuzz_exe} ${hydra_fuzz_source})
         target_link_libraries(${hydra_fuzz_exe} PRIVATE
-            hydra_core hydra_audio hydra_image hydra_warnings)
+            hydra_audio hydra_image hydra_warnings)
         add_dependencies(hydra_fuzz ${hydra_fuzz_exe})
     endforeach()
 endif()

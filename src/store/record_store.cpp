@@ -15,6 +15,7 @@
 #include "core/little_endian.h"
 #include "core/stars.h"
 #include "core/winstr.h"
+#include "search/graph.h"  // fill_rule_for, fill_rule_name
 #include "store/chart_index.h"
 #include "store/stored_versions.h"
 #include "store/upgrade_files.h"

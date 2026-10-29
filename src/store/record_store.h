@@ -43,8 +43,6 @@
 #include "store/library_file.h"
 #include "core/rules.h"
 #include "core/timing.h"
-#include "parse/song.h"
-#include "search/graph.h"
 
 struct sqlite3;
 struct sqlite3_stmt;
