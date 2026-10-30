@@ -9,11 +9,10 @@
 
 #include "audio_chart_fixtures.h"  // write_text_file
 #include "chart_text.h"
+#include "pb_open_util.h"
 #include "program_scope.h"
-#include "scratch_settings.h"
 #include "temp_util.h"
 #include "testdata_dirs.h"
-#include "wait_util.h"
 
 #include "pathbuilder/pb_paths.h"
 #include "pathbuilder/pb_state.h"
@@ -22,21 +21,6 @@ using hydra::pathbuilder::OpenChart;
 using hydra::pathbuilder::PathHistory;
 using hydra::pathbuilder::PbState;
 using hydra::pathbuilder::PlayerPath;
-
-namespace {
-
-// Opens `path` under the GUI tests' settings and waits for the open to end.
-void open_and_wait(PbState& s, const std::string& path) {
-    s.open_with(path, scratch_settings());
-    testwait::wait_until(
-        [&] {
-            s.poll();
-            return !s.busy();
-        },
-        "the Path Builder's open to finish");
-}
-
-}  // namespace
 
 TEST_CASE("pb state: a corpus chart opens with its record, and the list holds every path") {
     PbState s;
