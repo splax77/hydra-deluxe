@@ -669,10 +669,13 @@ add_library(hydra_pathbuilder STATIC
     src/pathbuilder/pb_menu.cpp
     src/pathbuilder/pb_window.cpp
     src/pathbuilder/pb_resource.h
+    src/pathbuilder/pb_files.cpp
 )
 target_link_libraries(hydra_pathbuilder PUBLIC hydra_uibase hydra_preview hydra_app)
 # shell32: the dropped-file calls (DragQueryFileW, DragFinish) in pb_open.cpp.
 target_link_libraries(hydra_pathbuilder PRIVATE shell32 hydra_warnings)
+# hydra_replay_json: the saved path files' JSON shape (pb_files.h).
+target_link_libraries(hydra_pathbuilder PUBLIC hydra_replay_json)
 add_executable(HydraPathBuilder WIN32 src/pathbuilder/main.cpp src/pathbuilder/pathbuilder.rc)
 target_link_libraries(HydraPathBuilder PRIVATE
     hydra_pathbuilder hydra_replay_json imgui d3d11 dxgi d3dcompiler hydra_warnings)
