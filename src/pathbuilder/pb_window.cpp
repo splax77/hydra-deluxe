@@ -206,18 +206,35 @@ void PbApp::draw_highway(const OpenChart& chart, const Path* shown) {
     const int w = static_cast<int>(avail.x);
     const int h = static_cast<int>(avail.y - strip_h - ImGui::GetStyle().ItemSpacing.y);
     if (w <= 0 || h <= 0) return;
+    // The image is a named item so a click on it, and the GUI test, can find
+    // it; the highway is drawn over the item's rectangle.
+    const ImVec2 img_min = ImGui::GetCursorScreenPos();
+    const ImVec2 img_size(static_cast<float>(w), static_cast<float>(h));
+    ImGui::InvisibleButton("##highway_image", img_size);
+    const bool highway_clicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
     if (ID3D11ShaderResourceView* srv = preview_->render(w, h))
-        ImGui::Image((ImTextureID)(intptr_t)srv, ImVec2(static_cast<float>(w), static_cast<float>(h)));
+        ImGui::GetWindowDrawList()->AddImage((ImTextureID)(intptr_t)srv, img_min,
+                                             ImVec2(img_min.x + img_size.x, img_min.y + img_size.y));
+    std::optional<size_t> clicked;
+    if (highway_clicked) {
+        const ImVec2 m = ImGui::GetIO().MousePos;
+        clicked = preview_->fill_at_image(render::ImagePoint{m.x - img_min.x, m.y - img_min.y}, w, h);
+    }
 
     const app::PreviewScene& scene = preview_->scene();
-    const std::optional<size_t> clicked =
-        draw_strip(scene, preview_->playback_end_ms(), nullptr, strip_h);
+    const std::optional<size_t> on_strip =
+        draw_strip(scene, preview_->playback_end_ms(), state.decisions().run(), strip_h);
+    if (on_strip) clicked = on_strip;
     if (clicked && *clicked < scene.fills.size() && chart.has_star_power()) {
         const app::PreviewFill& f = scene.fills[*clicked];
-        // An offered fill starts a window on the player's path (pb_coach.h).
+        // An offered fill starts a window on the player's path and a taken
+        // one removes it (pb_coach.h).
+        DecisionList& d = state.decisions();
         if (f.state == app::PreviewFillState::Offered)
-            state.decisions().click_fill(state.search_graph(), s,
-                                         state.history().current().windows, f.chord_tick);
+            d.click_fill(state.search_graph(), s, state.history().current().windows, f.chord_tick);
+        else if (f.state == app::PreviewFillState::Taken)
+            d.click_remove(state.search_graph(), s, state.history().current().windows,
+                           f.chord_tick);
     }
 }
 
