@@ -30,6 +30,14 @@ hydra_fillcompare ... --no-open
 stops with exit code 2, so a bare run can't start a library-wide analysis by
 accident. The other `hydra_batch` flags in the list go with either form.
 
+`hydra_batch --whole-library` saves its scan as the library, as `Scan library`
+does, so it refuses the same way (D268). If a chart folder from the settings
+cannot be read, it prints the notice `app::library_scan_blocked_notice` writes
+for a scan the user asked for and stops with exit code 2, before it opens the
+database. `app::first_missing_chart_folder` is the one check of which folder is
+missing. A run over folders given by hand never saves the library, so it skips
+that check.
+
 Both read the app's settings file, so they work at the same SP cap, timing
 limit, score range and chart mode the app is set to. The fill rule is the
 exception, below. Both read the scoring rules from `hydra_rules.ini` next to

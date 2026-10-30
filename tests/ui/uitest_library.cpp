@@ -15,7 +15,7 @@
 #include "../testdata_dirs.h"  // root
 #include "app/config.h"
 #include "app/user_messages.h"  // old_library_set_aside_notice, library_rescan_notice,
-                                // library_rescan_blocked_notice
+                                // library_scan_blocked_notice
 #include "core/error_kind.h"
 #include "imgui_internal.h"
 #include "parse/song.h"  // NoNotesError
@@ -1471,6 +1471,7 @@ void test_rescan_on_open_cancel(ImGuiTestContext* ctx) {
 // D266 (user ruling "Refuse, like on open"): a click on Scan library with a
 // chart folder that cannot be read starts no scan, opens no scan window, keeps
 // the library and its saved results, and the status line names the folder.
+// D268 ("Its own sentence"): the line is the manual scan's, not the open's.
 void test_scan_missing_folder(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -1495,8 +1496,10 @@ void test_scan_missing_folder(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->scan_job == nullptr);
     IM_CHECK(!ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId));  // no scan window
     IM_CHECK(h.app->status_is_problem);
-    IM_CHECK(h.app->status_message == hydra::app::library_rescan_blocked_notice(missing));
-    IM_CHECK(on_screen(h, hydra::app::library_rescan_blocked_notice(missing)));
+    const std::string notice =
+        hydra::app::library_scan_blocked_notice(missing, hydra::app::ScanAsker::User);
+    IM_CHECK(h.app->status_message == notice);
+    IM_CHECK(on_screen(h, notice));
     IM_CHECK(h.app->library_shown_count() == rows);
     IM_CHECK(h.app->store->record_count() == records);
 }

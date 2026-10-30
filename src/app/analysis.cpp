@@ -420,6 +420,13 @@ std::optional<std::string> save_scan_as_library(store::RecordStore& store,
     return std::nullopt;
 }
 
+std::optional<std::string> first_missing_chart_folder(
+    const std::vector<std::string>& chartfolders) {
+    for (const std::string& folder : chartfolders)
+        if (!is_directory_utf8(folder)) return folder;
+    return std::nullopt;
+}
+
 store::ChartLibraryCache load_scan_cache(store::RecordStore& store) {
     try {
         return store.chart_library_cache();

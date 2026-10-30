@@ -167,6 +167,19 @@ TEST_CASE("user_messages: the set-aside notice names the file the store set asid
           "as library.db.pre-2.2.0 and started a fresh library.");
 }
 
+// D268 ("Its own sentence"): the scan the app starts on open says the library
+// needs a scan; every other scan says nothing was scanned. Both name the
+// folder and end with the same second sentence.
+TEST_CASE("user_messages: a missing chart folder's notice names the scan that asked") {
+    using hydra::app::ScanAsker;
+    CHECK(hydra::app::library_scan_blocked_notice("D:\\Songs", ScanAsker::Open) ==
+          "Your library needs a scan, but D:\\Songs cannot be read. Click Scan library when it "
+          "is back.");
+    CHECK(hydra::app::library_scan_blocked_notice("D:\\Songs", ScanAsker::User) ==
+          "D:\\Songs cannot be read, so nothing was scanned. Click Scan library when it is "
+          "back.");
+}
+
 // The Stale chip stands for many rows, so it names both causes.
 TEST_CASE("user_messages: the Stale chip's tooltip names both causes") {
     CHECK(hydra::app::stale_chip_text() ==

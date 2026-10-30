@@ -133,28 +133,26 @@ void AppState::request_rescan_on_open() {
     if (!can_scan()) return;
     // Checked here as well as in start_scan, so the open asks for no scan and
     // its dialog line never waits for one.
-    if (scan_blocked_by_missing_folder()) return;
+    if (scan_blocked_by_missing_folder(app::ScanAsker::Open)) return;
     request_scan = true;
     scan_started_by_open = true;
 }
 
-bool AppState::scan_blocked_by_missing_folder() {
-    for (const std::string& folder : settings.chartfolders) {
-        if (!is_directory_utf8(folder)) {
-            set_problem(app::library_rescan_blocked_notice(folder));
-            return true;
-        }
-    }
-    return false;
+bool AppState::scan_blocked_by_missing_folder(app::ScanAsker asker) {
+    const std::optional<std::string> missing =
+        app::first_missing_chart_folder(settings.chartfolders);
+    if (!missing) return false;
+    set_problem(app::library_scan_blocked_notice(*missing, asker));
+    return true;
 }
 
 void AppState::startup_notice_closed() {
     if (startup_notice_.empty()) return;
     startup_notice_.clear();
     // The fresh library is empty; the chart folders came from the ini, so
-    // the scan finds the same songs. start_scan refuses a scan it cannot
-    // run, as it does for the toolbar's button.
-    request_scan = true;
+    // the scan finds the same songs. Hydra starts this scan on its own, as it
+    // does for an out-of-date library, so it asks the same way (D268).
+    request_rescan_on_open();
 }
 
 void AppState::set_render_device(ID3D11Device* device, ID3D11DeviceContext* context) {
@@ -638,7 +636,10 @@ void AppState::start_scan() {
     }
     // Every scan, the button's included, stops here, so the toolbar's button
     // stays on and the click shows the notice instead (D266).
-    if (scan_blocked_by_missing_folder()) {
+    // The open's own scan keeps the open's sentence (D268). Every other scan,
+    // the one after the set-aside box included, gets the other one.
+    if (scan_blocked_by_missing_folder(scan_started_by_open ? app::ScanAsker::Open
+                                                            : app::ScanAsker::User)) {
         scan_started_by_open = false;
         return;
     }

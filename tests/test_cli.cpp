@@ -309,6 +309,54 @@ TEST_CASE("hydra_batch refuses a run with no folder and no --whole-library, and 
     CHECK_FALSE(fs::exists(fs::u8path(db)));
 }
 
+// D268 ("Refuse, like the app"): a whole-library run saves its scan as the
+// library, so a chart folder it cannot read stops it before it scans, saves or
+// analyzes anything. The library and the results stay as the first run left
+// them, and the run names the folder in the manual scan's sentence.
+TEST_CASE("hydra_batch --whole-library refuses a chart folder that cannot be read") {
+    CliSandbox box("missing_folder");
+    const std::string db = box.db("library.db");
+    const std::string settings_file = (box.dir / "hydra_settings.ini").u8string();
+    hydra::app::Settings settings{};
+    settings.chartfolders = {box.folder()};
+    REQUIRE(settings.save_file(settings_file));
+    RunResult first = run_exe(box.batch, {hydra::cli::kWholeLibraryFlag.data(), "--db", db});
+    INFO(first.output);
+    REQUIRE(first.exit_code == 0);
+    int64_t records_before = 0;
+    size_t library_before = 0;
+    {
+        hydra::store::RecordStore store(db);
+        records_before = store.record_count();
+        library_before = store.chart_library_cache().size();
+    }
+    REQUIRE(records_before == 1);
+    REQUIRE(library_before == 1);
+
+    const std::string missing = (box.dir / "gone").u8string();
+    REQUIRE_FALSE(fs::exists(fs::u8path(missing)));
+    settings.chartfolders.push_back(missing);
+    REQUIRE(settings.save_file(settings_file));
+    RunResult r =
+        run_exe(box.batch, {hydra::cli::kWholeLibraryFlag.data(), "--redo", "--db", db});
+    INFO(r.output);
+    CHECK(r.exit_code == 2);
+    CHECK(contains(r.output, hydra::app::library_scan_blocked_notice(
+                                 missing, hydra::app::ScanAsker::User)));
+    CHECK_FALSE(contains(r.output, "Discovering charts"));
+    {
+        hydra::store::RecordStore store(db);
+        CHECK(store.record_count() == records_before);
+        CHECK(store.chart_library_cache().size() == library_before);
+    }
+
+    // A run over folders passed by hand never saves the library, so the
+    // settings' missing folder does not stop it.
+    RunResult by_hand = run_exe(box.batch, {"--db", db, box.folder()});
+    INFO(by_hand.output);
+    CHECK(by_hand.exit_code == 0);
+}
+
 TEST_CASE("hydra_batch names a bad hydra_rules.ini and stops") {
     CliSandbox box("bad_rules");
     {
