@@ -183,6 +183,10 @@ PathListView build_path_list(const HydraRecord& record);
 
 // ---- the path list as buttons (the Paths tab and the Preview's list) --------
 
+// What every list calls the best all-0 path: the Paths tab's heading over its
+// section, and the Path Builder's left-list row.
+inline constexpr const char* kBestAllZeroLabel = "Best all-0 path";
+
 // One path as a button in the list.
 struct PathButtonView {
     enum class Group { Optimal, Within, AllZero };
