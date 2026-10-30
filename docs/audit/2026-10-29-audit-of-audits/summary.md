@@ -30,7 +30,7 @@ The second is a closure written by the agent that found the problem, with a word
 
 A third path showed up once, but it matters. A question described code that had already changed. Phase 6 question 4 (2026-10-04) told the user the Preview's xN disc stays doubled after Star Power ends. Commit 4983e1f1 had already made it drop at the SP end on 2026-10-03, as D10 and D11 had ruled. The user answered "leave it" (D53 item 4) to a description of behaviour that no longer existed. The code is right, but the record is wrong.
 
-Fixes that quietly picked a side were less common than feared. Of the GONE items the scouts flagged with "Side picked without a ruling", most did have a ruling once someone searched the session cards. The 09-24 plan decisions 3, 4, 5, 7, 9 and 13 were all asked on 2026-09-24 (card `2026-09-24-da599242`). Finding 53 is covered by the user's "why is 1.0 using its own frozen copy of the code? other than following a different rule it shouldnt be re-deriving anything" and "Yes. Move the 1.0 generator onto MeasureIndex/MeasureCount, keep only its own fill rule, and show me which test-corpus charts' 1.0 fills and scores move before merging." (card `2026-10-24-a124ccd9`). The ones still without a ruling change nothing the user sees, or touch only developer tools (38, 59, 84, 133, 317, 321). The one exception is 143, where the same chart in two folders is two library rows; it goes on the question list.
+Fixes that quietly picked a side were less common than feared. Of the GONE items the scouts flagged with "Side picked without a ruling", most did have a ruling once someone searched the session cards. The 09-24 plan decisions 3, 4, 5, 7, 9 and 13 were all asked on 2026-09-24 (card `2026-09-24-da599242`). Finding 53 is covered by the user's "why is 1.0 using its own frozen copy of the code? other than following a different rule it shouldnt be re-deriving anything" and "Yes. Move the 1.0 generator onto MeasureIndex/MeasureCount, keep only its own fill rule, and show me which test-corpus charts' 1.0 fills and scores move before merging." (card `2026-10-24-a124ccd9`). The ones still without a ruling change nothing the user sees, or touch only developer tools (38, 59, 84, 133, 317, 321). Finding 143, where the same chart in two folders is two library rows, was first put on the question list. Review took it off: you ruled it on 2026-10-05 (D76, D77, D79: "Count every copy"), and `questions.md` says where.
 
 ## What the main session changed
 
@@ -60,7 +60,7 @@ The smaller audits: the 09-24 audit's finding 34 (the M39 band again) and the me
 
 ## Records to correct
 
-Each of these says something false about today's code or rulings. None needs a question.
+Each of these is a false statement about today's code or rulings, or dead code with a comment. None needs a question.
 
 - D53 item 4 says the xN disc stays doubled after SP ends and was never checked on video. D10 says it was checked, and the code drops it (4983e1f1).
 - ADR 0023 lines 92-93 still list the late meter walk as live. Commits b57a2155 and 5677f8d3 removed it.
@@ -69,7 +69,7 @@ Each of these says something false about today's code or rulings. None needs a q
 - CONTEXT.md lines 735-737 say the quarter-note beat rules match Clone Hero's code. ADR 0023 and `ch-evidence.md` say the 6/8 beat count is unknown.
 - A comment in `src/core/model.h` and phase 7 question 4 say D13 decided the squeeze-out-at-0 case. D13 covers only a squeeze-in at 0.
 - The 2026-09-24 plan decisions and the 2026-09-26 answers about the 09-25 audit's section 5 exist only in session cards `2026-09-24-da599242` and `2026-09-26-4908325e`. They have no D-record.
-- `last_note_start_ms` in `src/app/song_length.h` has no caller left, and its comment is stale.
+- `last_note_start_ms` in `src/app/song_length.h` has no caller in `src` or `tools`. Only one test (`tests/test_preview_scene.cpp:91`) calls it. Its comment says it agrees with the Preview's `last_note_ms`, and that test is the only thing that pins it.
 
 ## Open, by the stop rule
 

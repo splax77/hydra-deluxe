@@ -2,7 +2,7 @@
 
 These are the questions for the user from the audit of the past audits. The Backend timings rating questions (M39, 306, 33, finding 34, and the 0 ms against leeway split) are not here; they went to the user first, with the design in `blocks/AOA-R2-design.md`. A drafting agent (aadb3cfe748cef780) checked every line below against the code at 1fc55723 rather than taking it from the scouts' blocks, and the main session edited Q3, Q4 and Q9 to take out reasons nobody had written down. Where a split came from an agent's choice and no ruling names both sides, I say so. Nobody chose any of these splits in a question that showed both sides; that is why each one is here. Your standing rule from 2026-10-29 is "yes everything should use one rule", and the recommendations follow it unless I say why not.
 
-The groups: settings (4 questions), charts and song files (3), search and lists (2), wording and small behaviour (5), numbers confirmed unseen (1), rare cases (1), hooks (2). Eighteen in all. Dropped items are at the end.
+The groups: settings (4 questions), charts and song files (3), search and lists (1; Q9 was withdrawn in review, see "Dropped"), wording and small behaviour (5), numbers confirmed unseen (1), rare cases (1), hooks (2). Seventeen in all, numbered Q1 to Q18 with no Q9. Dropped items are at the end.
 
 ---
 
@@ -16,7 +16,7 @@ Three doors, three answers. In the settings file, `sp_cap=0` or junk becomes the
 
 Examples. `sp_cap=0` in the file: the app runs at 4 bars. Type 0 in the box: 1 bar, which never activates Star Power (the Paths tab says so). `sp_cap=-3` in the file: 4 bars; -3 in the box: 1 bar. `hydra_replay --cap 0`: an error. `sp_cap=5` is 5 bars through every door.
 
-Where it came from: the file rule is the old "Auto" value kept as 4 after you dropped Auto (ui-redesign decision 6 said "leave the default as 4"); the box rule came from Q14's "nearest edge"; replay's refusal was an executor's choice. No question ever showed you the three side by side. Q14 (D51) said every number setting is "pulled to the nearest edge ... when the file loads, and when you type it", which the file does not do for this key.
+Where it came from: the file rule is the old "Auto" value kept as 4 after you dropped Auto (ui-redesign decision 6 said "leave the default as 4"); the box rule came from Q14's "nearest edge". Two of the three doors do have a record, written by the main session after your "go with recommended answers to everything" on 2026-10-04 and never shown to you as a question: the D51 addendum (fix-decisions.md:199) says "0, junk and `auto` still read as 4", and its code-only list (:201) says "`--cap 0` still refuses on the command line". No question ever showed you the three side by side. Q14 (D51) said every number setting is "pulled to the nearest edge ... when the file loads, and when you type it", which the file does not do for this key.
 
 Options: (a) nearest edge everywhere, so 0 reads 1 through every door; (b) default 4 everywhere; (c) refuse everywhere (the file would need an error line); (d) keep the three as they are.
 
@@ -26,7 +26,7 @@ Recommendation: (a), one rule, and it is the rule D51 Q14 already states. Strong
 
 D51 Q14 ruled "pulled to the nearest edge". The key table does that for most keys (`Outside::NearestEdge` is the default at `src/app/config.cpp:148`) but two keys go to the default instead: `number("depth_mode", ..., 0, 1, Outside::Default)` (:192) and `number("hit_window_ms", ..., 1.0, kNoCeiling, Outside::Default)` (:199). `pull_into_range` (:226-229) returns `defaults()` for those.
 
-Examples. `mslimit_value=900` reads 500 (the edge, as ruled). `hit_window_ms=0.5` reads 85 (the default), where the ruling gives 1. `depth_mode=7` reads 0 (the default), where the ruling gives 1. The hit window has no Settings box, so "the range its box enforces" never applied to it; the D51 addendum (fix-decisions.md:199) said depth_mode out of range reads as the default, but that line was written after the batch answer, not asked.
+Examples. `mslimit_value=900` reads 500 (the edge, as ruled). `hit_window_ms=0.5` reads 85 (the default), where the ruling gives 1. `depth_mode=7` reads 0 (the default), where the ruling gives 1. The hit window has no Settings box, so "the range its box enforces" never applied to it; the D51 addendum (fix-decisions.md:198) said depth_mode out of range reads as the default, but that line was written after the batch answer, not asked. One more ruling touches the hit window: D67 (fix-decisions.md:279) says a value that is not a clean number, such as `90abc`, falls back to the default 85. Junk reads as 0 before the range is applied (`config.cpp:242-244`), so under option (a) `90abc` would read 1, not 85; if you choose (a), say whether D67 still holds for junk.
 
 Options: (a) nearest edge for every number key, as D51 Q14 says; (b) default for every number key; (c) keep the two exceptions.
 
@@ -82,9 +82,9 @@ Examples. A folder with `guitar.ogg` holding real Vorbis plays. A folder with `n
 
 Where it came from: the concept audit's M64 paragraph said "no byte sniff for loose files" and you answered "go with recommended"; the paragraph never named these three outcomes. The split itself is older: the `.srb` path was written separately.
 
-Options: (a) bytes everywhere (read the first bytes of each loose file, drop a "preview" name in both); (b) name everywhere (an `.srb` stream would need a name it does not have, so this is really "bytes for .srb, name elsewhere", which is today); (c) keep as is.
+Options: (a) bytes everywhere (read the first bytes of each loose file in a folder or `.sng`, so `notes.ogg` holding garbage is dropped, and keep the "preview" name test for loose files, since an `.srb` stream has no name to test); (b) name everywhere (an `.srb` stream has no name, so this cannot be built; it is the same as keeping today's split); (c) keep as is.
 
-Recommendation: (a). It costs one small read per file at Preview open and removes the silent-missing-stem case. Strongest case against: whether a real `.srb` ever carries a preview clip was not checked, so the only visible difference may never happen; "keep as is" costs nothing until one does.
+Recommendation: (a). It costs one small read per file at Preview open and makes the folder and the `.srb` agree on what counts as a stem; a garbage `notes.ogg` is still not played, it just stops being counted as a stem that failed to open. Strongest case against: whether a real `.srb` ever carries a preview clip was not checked, so the only visible difference may never happen; "keep as is" costs nothing until one does.
 
 ### Q7. Keep Hydra's rule that one authored fill turns off all generated fills, until a live Clone Hero check?
 
@@ -102,7 +102,7 @@ Recommendation: (b), because this one can move a score and the check is one song
 
 ## Group 3: search and lists
 
-What this group is about: the Library and the report windows say different things when nothing matches, and a chart's identity in the list is a choice nobody made.
+What this group is about: the Library and the report windows say different things when nothing matches.
 
 ### Q8. When a search matches nothing, one sentence everywhere, and one hint in the box?
 
@@ -116,17 +116,9 @@ Options: (a) one sentence and one hint pattern everywhere, for example "Nothing 
 
 Recommendation: (a). Strongest case against: the Library has chips and the windows have a dropdown, so "filters" is true in one place and not the other; a shared sentence has to avoid both words, which is why (c) exists.
 
-### Q9. Is the same chart file in two folders two rows or one?
+### Q9. Withdrawn in review: the same chart file in two folders is two rows, and you ruled that (D76, D77, D79)
 
-A row's identity is its notes path: `inline const std::string& row_key(const LibraryChart& row) { return row.notespath; }` (`src/ui/library_model.h:82`). The header comment says "Never the md5: the same chart can sit in two folders, and each copy is its own row (audit finding 143)". Results are stored once per chart content (D115, one record per chart and profile), so two rows share one result.
-
-Examples. One copy of a song: one row. The same `notes.mid` copied into two folders: two rows with the same title, both showing the same path and score, and a batch counts it twice. A chart edited in one folder only: two rows that now differ.
-
-Where it came from: an agent's plan comment during finding 143's fix. No question put it to you; the finding's own "Wait for ... to finish analyzing" case is gone from the code, so this is the only side left.
-
-Options: (a) two rows, as today; (b) one row per chart content, listing both folders; (c) two rows, but a mark that says "same as <other folder>".
-
-Recommendation: (a), since the list mirrors your song folders. (Whether Clone Hero lists both copies was not checked.) Strongest case against: a library count that says 1,200 when 1,150 are distinct charts, and a batch that analyzes the same notes twice.
+Nothing to decide here. See "Dropped" at the end for the rulings that cover it.
 
 ---
 
@@ -138,7 +130,7 @@ What this group is about: five small places where two parts of the app answer on
 
 Batch strip: average time per finished chart so far, times the charts left; shown once 3 charts have finished (`src/ui/library_jobs.cpp:261-262`: `if (... completed < kEtaMinFinished ...) return std::nullopt; return elapsed_s / completed * (total - completed);`, `kEtaMinFinished = 3` at `library_jobs.h:219`). Preview load and the startup screen: a byte rate over the last second, shown once 3 seconds have passed (`src/ui/preview_load_job.cpp:287`: `if (elapsed_s < kTimeLeftAfterSeconds || ...) return "";`, `kTimeLeftAfterSeconds = 3.0`, `preview_load_job.h:90`; the one-second window at `preview_load_job.cpp:97`). Both print through `time_left_text` (`src/app/display_format.h:58-60`).
 
-Examples. Three 90-second charts: the strip shows nothing for 270 s. A 300 MB `.sng` in the Preview: "about N left" at 3 s. The gap: 100 charts where the first 3 are cached and finish in 1 s each: the strip says "about 0:03 left" while the next ones take 20 s each; the Preview's one-second window would correct itself within a second.
+Examples. Three 90-second charts: the strip shows nothing for 270 s. A 300 MB `.sng` in the Preview: "about N left" at 3 s. The gap: 100 charts where the first 3 are cached and finish in 1 s each: after 3 s the strip says "about 1:37 left" (3 s / 3 charts x 97 left) while the next 97 take 20 s each, over half an hour; the Preview's one-second window would correct itself within a second.
 
 Where it came from: the batch rule is in the 2026-09-27 UI design spec you approved; the Preview rule was built separately and D100 item 4 copied it to the startup screen. Neither text mentions the other job.
 
@@ -174,7 +166,7 @@ Recommendation: (a). Strongest case against: replay and precheck are developer t
 
 Path report: closing frees its rows and cancels a running build (`src/ui/app_state.cpp:954-963` `close_path_report`, via the window's close callback at `src/ui/path_report_window.cpp:274`; `drop_rows` at :65). Comparison window: no close callback is set (`src/ui/dm_report_window.cpp:135-157` sets row_click, refresh, try_again, cancel and compare_another only), so the slot keeps its result and reopen is instant.
 
-Examples. Close and reopen the path report: the building bar again (about 3 s warm, 19 s cold on your library, D103 item 28). Close and reopen the comparison: the old table shows at once. The gap is memory while shut: about 1,100 leaderboard rows kept against the 68,000 path rows that caused the ruling.
+Examples. Close and reopen the path report: the building bar again (about 3 s warm, 19 s cold on your library, D103 item 28). Close and reopen the comparison: the old table shows at once. The gap is memory while shut: about 1,100 leaderboard rows kept (one player's 1,147 scores in the D103 item 27 example) against the 68,037 path rows that caused the ruling.
 
 Where it came from: D103 item 28 asked about the path report only, and its record says "The comparison window is unchanged", which was the recorder's note, not an option you chose.
 
@@ -254,13 +246,13 @@ What this group is about: two things the 2026-10-25 rebuild of `C:\Users\Patrick
 
 ### Q17. Bring back the media guard (D189), or drop it on purpose?
 
-D189 (2026-10-10) ruled: the main session may write ffmpeg or yt-dlp output under `C:\ytdl` freely; other output outside scratch asks first in the main session and is refused in a subagent. Today no hook checks any of that: a grep for `ffmpeg`, `yt-dlp` and `ytdl` over `C:\Users\Patrick\.claude\settings.json` and every file in `C:\Users\Patrick\.claude\gates` finds nothing. The rebuild plan's two "gone" lists (`docs/superpowers/plans/2026-10-25-hooks-from-scratch.md:86` and :208) do not name it, and your "approve as reommended" was over those lists. The guard was built on branch ho-mediaout and never merged, so it was off before the rebuild too.
+D189 (2026-10-10) ruled: the main session may write ffmpeg or yt-dlp output under `C:\ytdl` freely; other output outside scratch asks first in the main session and is refused in a subagent. Today no hook checks any of that: a grep for `ffmpeg`, `yt-dlp` and `ytdl` over `C:\Users\Patrick\.claude\settings.json` and the hook code and docs in `C:\Users\Patrick\.claude\gates` (not its `state` folder, which holds old agent reports) finds nothing. The guard was live from 2026-10-10: it lived in the risky Bash gate and was merged into the hooks repo as 1380a37 ("Merge mediaout: hook overhaul R6 wave"). The 2026-10-25 switch (11b80b1) retired that gate. The rebuild plan's two "gone" lists (`docs/superpowers/plans/2026-10-25-hooks-from-scratch.md:86` and :208) name `bash_risky_gate` (line 86: "its real rules move to the ref judge and the delete rule") but never the media guard inside it, and your "approve as reommended" was over those lists. Neither the ref judge nor the delete rule looks at ffmpeg or yt-dlp output.
 
 Examples. Main session writes yt-dlp output into `C:\ytdl`: D189 says free, today free (agree). A subagent runs ffmpeg over a file outside scratch and writes beside it: D189 says refuse, today nothing refuses. Main session writes ffmpeg output to `D:\x`: D189 says ask, today nothing asks.
 
 Options: (a) build it as one small rule in the existing per-call hook (the delete rule's shape: literal paths only); (b) drop D189 and record that; (c) keep as is, which is (b) without the record.
 
-Recommendation: (a). The ruling stands until you change it, and the rebuild's own rule was "no hook with no objective behind it", which this one has. Strongest case against: the rebuild cut 14,000 lines to 2,200 for a reason, and the delete rule already covers the worst case (a subagent destroying a file); a media write outside scratch is a mess, not a loss.
+Recommendation: (a). The ruling stands until you change it, and the rebuild's own rule was "no hook with no objective behind it", which this one has. Strongest case against: the rebuild planned to cut about 14,000 lines of hook code to about 2,200 for a reason (the plan's own estimate), and the delete rule already covers the worst case (a subagent destroying a file); a media write outside scratch is a mess, not a loss.
 
 ### Q18. Should a new or changed deny rule in the hooks run in shadow mode first?
 
@@ -279,7 +271,7 @@ Recommendation: (a). The replay harness answers the same question with real data
 - **D2: 60 (blank artist placeholder).** The code has one rule now: `artist_or_unknown` and `charter_or_unknown` run on every scan item (`src/app/analysis.cpp:715-716`), so a blank artist shows the placeholder like a blank charter. The question you saw named only the charter. No split remains to ask about; the main session may want to tell you in one line that the artist column changed with it.
 - **D2: 67 (report-page search).** D56 item 1 names both sides in the words you approved: "Quotes and the Library's field prefixes (artist:, title:, charter:) are ordinary words on a report page. The Library keeps the full query language" (`docs/audit/2026-10-03-fix-decisions.md:232`). The code matches (`src/app/html_page.cpp:337-345`). Ruled, not a gap.
 - **The changed-chart sentence (`src/ui/preview_tab.cpp:465`).** Confirmed both: the code says "Click the song again to see its path." and D51 call 18 says "Analyze it again to see its path." But D94 (2026-10-07, fix-decisions.md:418) records that you chose the "Click the song again" wording after the Analyze button went away, and the single-owner rule `tests/single_owner/rules/ui.json:128-133` pins D94's words. Ruled later, not a split. Small note: that rule's `must_match` list (:120) still carries the old D51 sentence as an accepted spelling.
-- **U: 143's original case.** The "Wait for <title> to finish analyzing" panel is gone (a82f74ee) and the three row compares are one helper. Only the row-identity choice remained, and that is Q9.
+- **U: 143's original case, and the row-identity choice (was Q9).** The "Wait for <title> to finish analyzing" panel is gone (a82f74ee) and the three row compares are one helper (`row_key`, `src/ui/library_model.h:81`, the notes path; each copy of a chart in two folders is its own row). The drafting pass asked whether those two folders should be one row, on the ground that no question had put it to you. Review found that you ruled it on 2026-10-05, in session `89d79ed1` (card `2026-10-05-89d79ed1`): you said "if the library count and the analyzed count disagree, that is a violation of derive once", then chose "Count every copy (Recommended)" (D76, fix-decisions.md:336-338); D77 extends it to the path report ("yes count every copy in the report too, and add the test") and D79 to the fill comparison. The library lists every folder, a chart in several folders is analyzed once, and every count includes every copy. Asking for one row per chart content would reverse D76. The scout for 143 searched only the question files and the decision log for "143", "two folders" and "Wait for", and never found these.
 - **R7.36's parked lookups.** `kParkedLookups = 16` was removed in a82f74ee; the other two values are in Q15's table.
 - **R7.32's 59.5 s switch.** Gone (`src/app/display_format.h:58-60` formats every length the same way); the shares, pacing and 3 s gate are in Q15.
 - **327's 64-byte Ogg tag window.** Not found in `src/audio` or `src/net` at 1fc55723; I did not search further, so it is neither confirmed nor in the table.
