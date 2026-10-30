@@ -21,8 +21,11 @@ namespace hydra::pathbuilder {
 // cost_list), then, once the run is complete, the player's total (one
 // "after your last window" cost below the last window's level). Empty
 // before BF(0) lands. No level is above the one before it, because no cost
-// is below zero (cost_tier's guard).
-std::vector<int64_t> step_levels(const app::LadderRun& run);
+// is below zero (cost_tier's guard). `window_count` is how many windows the
+// path on screen has (the decision list's rows); with none the line is empty
+// too, as the decision list then shows no costs (the user's ruling, "Hide
+// it").
+std::vector<int64_t> step_levels(const app::LadderRun& run, size_t window_count);
 
 // One fill's marker on the strip, in the strip's own x (0 at its left
 // edge). Its click area is exactly this rectangle (plan Q4).
@@ -46,9 +49,10 @@ std::optional<size_t> marker_at(const std::vector<StripMarker>& markers, float x
 
 // Draws the strip at the cursor, `height` tall and as wide as the region
 // left, and returns the index into scene.fills of a marker clicked this
-// frame. `run` (may be null) is the ladder for the path on screen.
+// frame. `run` (may be null) is the ladder for the path on screen and
+// `window_count` that path's windows, as step_levels reads them.
 std::optional<size_t> draw_strip(const app::PreviewScene& scene, double end_ms,
-                                 const app::LadderRun* run, float height);
+                                 const app::LadderRun* run, size_t window_count, float height);
 
 // The strip's name as an item, so the GUI test can find its rectangle.
 inline constexpr const char* kStripId = "##strip";

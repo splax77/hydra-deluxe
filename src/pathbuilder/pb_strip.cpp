@@ -9,9 +9,9 @@
 
 namespace hydra::pathbuilder {
 
-std::vector<int64_t> step_levels(const app::LadderRun& run) {
+std::vector<int64_t> step_levels(const app::LadderRun& run, size_t window_count) {
     std::vector<int64_t> out;
-    if (run.ladder.bf.empty()) return out;
+    if (window_count == 0 || run.ladder.bf.empty()) return out;
     const app::CostList costs = app::cost_list(run.ladder);
     out.push_back(run.ladder.bf.front());
     for (int64_t c : costs.windows) out.push_back(out.back() - c);
@@ -57,7 +57,7 @@ std::optional<size_t> marker_at(const std::vector<StripMarker>& markers, float x
 }
 
 std::optional<size_t> draw_strip(const app::PreviewScene& scene, double end_ms,
-                                 const app::LadderRun* run, float height) {
+                                 const app::LadderRun* run, size_t window_count, float height) {
     const float width = ImGui::GetContentRegionAvail().x;
     if (width <= 0.0f || height <= 0.0f) return std::nullopt;
     const ImVec2 mn = ImGui::GetCursorScreenPos();
@@ -82,7 +82,7 @@ std::optional<size_t> draw_strip(const app::PreviewScene& scene, double end_ms,
     // The step line: each level held until the next window's activation,
     // the last one (the player's total) reaching the right edge.
     if (run) {
-        const std::vector<int64_t> levels = step_levels(*run);
+        const std::vector<int64_t> levels = step_levels(*run, window_count);
         if (!levels.empty()) {
             const int64_t top = levels.front();
             const int64_t bottom = *std::min_element(levels.begin(), levels.end());

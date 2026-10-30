@@ -301,8 +301,9 @@ void PbApp::draw_highway(const OpenChart& chart, const Path* shown) {
     }
 
     const app::PreviewScene& scene = preview_->scene();
-    const std::optional<size_t> on_strip =
-        draw_strip(scene, preview_->playback_end_ms(), state.decisions().run(), strip_h);
+    const DecisionList& coach = state.decisions();
+    const std::optional<size_t> on_strip = draw_strip(scene, preview_->playback_end_ms(), coach.run(),
+                                                      coach.list().rows.size(), strip_h);
     if (on_strip) clicked = on_strip;
     if (clicked && *clicked < scene.fills.size() && chart.has_star_power()) {
         const app::PreviewFill& f = scene.fills[*clicked];

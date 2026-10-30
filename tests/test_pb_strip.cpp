@@ -51,7 +51,7 @@ TEST_CASE("strip: the step line starts at BF(0), steps by each cost, ends at the
     const LadderRun run = hydra::app::build_ladder(*c.graph, c.settings, *two.windows);
     REQUIRE(run.complete);
 
-    const std::vector<int64_t> levels = hydra::pathbuilder::step_levels(run);
+    const std::vector<int64_t> levels = hydra::pathbuilder::step_levels(run, two.windows->size());
     // From one run: BF(0), one level per window, then the player's total.
     CHECK(levels == std::vector<int64_t>{378315, 364675, 364675, 364675});
     CHECK(levels.front() == run.ladder.bf.front());
@@ -63,8 +63,33 @@ TEST_CASE("strip: the step line starts at BF(0), steps by each cost, ends at the
     LadderRun partial = run;
     partial.complete = false;
     partial.ladder.bf.resize(2);
-    CHECK(hydra::pathbuilder::step_levels(partial) == std::vector<int64_t>{378315, 364675});
-    CHECK(hydra::pathbuilder::step_levels(LadderRun{}).empty());
+    CHECK(hydra::pathbuilder::step_levels(partial, two.windows->size()) ==
+          std::vector<int64_t>{378315, 364675});
+    CHECK(hydra::pathbuilder::step_levels(LadderRun{}, two.windows->size()).empty());
+}
+
+TEST_CASE("strip: no step line while the path on screen has no windows") {
+    PbState s;
+    s.open_with(corpus::burnout_notes(), scratch_settings());
+    testwait::wait_until(
+        [&] {
+            s.poll();
+            return !s.busy();
+        },
+        "the Path Builder's open to finish");
+    REQUIRE(s.chart() != nullptr);
+    const OpenChart& c = *s.chart();
+
+    // The ladder over no windows still lands BF(0) and a total, as the
+    // decision list's ladder does for an empty path.
+    const LadderRun run = hydra::app::build_ladder(*c.graph, c.settings, {});
+    REQUIRE(run.complete);
+    REQUIRE(run.ladder.bf.size() == 1);
+    CHECK(run.ladder.bf.front() == 378315);
+    // The user's ruling, "Hide it": only the markers until a window is added.
+    CHECK(hydra::pathbuilder::step_levels(run, 0).empty());
+    // The same run read as a path with a window keeps its line.
+    CHECK_FALSE(hydra::pathbuilder::step_levels(run, 1).empty());
 }
 
 TEST_CASE("strip: markers leave hidden fills out and click exactly where drawn") {
