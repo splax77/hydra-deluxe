@@ -4,7 +4,7 @@ The user asked for a full audit of every past audit. The goal is to find each pl
 
 ## Why: what went wrong with M39
 
-The Backend timings table on the Paths tab rates each note by how far it lands from the Star Power end. Its two kinds of row use different middle bands. A plain row reads "Standard" from -10 ms to under 3 ms. The squeezed-out row reads "Standard SqOut" from -10 ms to under 10 ms. Take a note 5 ms after the end: as a plain row it reads "Hard (uncounted)", and as a squeezed-out row it reads "Standard SqOut (uncounted)". The code lives in `BackendSqueeze::summarystr` (`src/core/model.cpp`). The 3 is the leeway setting, through `core::counted_without_squeeze`. The 10 is `kBackendInnerBandMs`.
+The Backend timings table on the Paths tab rates each note by how far it lands from the Star Power end. Its two kinds of row use different middle bands. A plain row reads "Standard" from -10 ms to under 3 ms. The squeezed-out row reads "Standard SqOut" from -10 ms to under 10 ms. Take a note 5 ms after the end: as a plain row it reads "Hard (uncounted)", and as a squeezed-out row it reads "Standard SqOut (uncounted)". The code lives in `BackendSqueeze::summarystr` (`src/core/model.cpp`). The 3 is the default of the leeway setting, through `core::counted_without_squeeze`. The 10 is `kBackendInnerBandMs`.
 
 The split came from public Hydra's author in commit c9c00cf7 (2025-08-12, "New ratings for the backends table"). That was a year before the user's first commit. Four steps then passed it by without the user ever ruling on it:
 
@@ -31,7 +31,7 @@ Read `docs/agents/audit-method.md` first. It is the method this audit runs by: t
 
 Most of the work is in two audits.
 
-**The 2026-10-03 derivation audit.** `docs/audit/2026-10-03-fix-triage.json` lists 396 findings. 133 of them carry a `decision` field: 64 drifts, 45 assumptions, 20 duplicates, 3 double readings and 1 doc. Seven are `settled_by_decision` and one is `closed`; those eight are ids 53, 141, 307, 314, 317, 320, 321 and 341. Read each finding in `2026-10-03-derivation-audit.md` (headings look like `#### 306.`). Then find the question the user saw: the phase 3-5, 6 and 7 question files in `docs/audit/`. Then find the decision that answered it in `2026-10-03-fix-decisions.md`; D48, D50 and D51 were "all recommended" batches. Last, check whether the code today still has the split.
+**The 2026-10-03 derivation audit.** `docs/audit/2026-10-03-fix-triage.json` lists 396 findings. 133 of them carry a non-empty `decision` field (the question put to the user): 64 drifts, 45 assumptions, 20 duplicates, 3 double readings and 1 doc. Of those 133, 126 are `fixed` and seven are `settled_by_decision`: ids 53, 141, 307, 314, 317, 320 and 321. One more row, id 341, is `closed` and has an empty `decision`. Those are the only eight rows that are not `fixed`. Read each finding in `2026-10-03-derivation-audit.md` (headings look like `#### 306.`). Then find the question the user saw: the phase 3-5, 6 and 7 question files in `docs/audit/`. Then find the decision that answered it in `2026-10-03-fix-decisions.md`; D48, D50 and D51 were "all recommended" batches. Last, check whether the code today still has the split.
 
 **The 2026-10-11 concept audit** (`docs/audit/2026-10-11-concept-audit/`). Check every way a finding left without a question:
 - the "Already decided, no question" section of `questions.md` (M04, M09, M27, M39, M60, M61);
@@ -44,12 +44,12 @@ Two items already look wrong. M04 says "no decision covers that" about the empty
 **The smaller audits.** These need one quick pass for closures of the same kind:
 - `2026-09-24-derivation-audit.md` and `2026-09-25-codebase-audit.md`;
 - `2026-10-04-phase6-recheck/` (a.md to d.md);
-- `2026-10-10-test-suite-audit.md`, and `docs/handoffs/2026-10-25-test-audit/report.md`;
+- `2026-10-10-test-suite-audit.md`, and `docs/handoffs/2026-10-25-test-audit/report.md` (not committed yet; it sits untracked in the main checkout);
 - `2026-10-10-hook-audit.md` and `2026-10-25-hook-design-audit.md`. These are about hooks, so a split there is a split in hook behaviour.
 
 **Out of scope.** The session-time audits (`2026-10-04-step1-2-session-audit.md`, `2026-10-04-session-audit/`) measure where time went and close no product choices. `drum-lanes/`, `note-shuffle/` and `ch-evidence.md` are reverse-engineering investigations. Look at those only when a scout follows a reference into them.
 
-The decision log's D1 to D47 records were never reached by any decision audit (`2026-10-29-path-builder-build-handoff.md`, open items). Where a closure cites one of them, check it the same way.
+The decision log's D1 to D47 records were never reached by any decision audit (`docs/handoffs/2026-10-29-path-builder-build-handoff.md`, open items; that file is not committed yet and sits untracked in the main checkout). Where a closure cites one of them, check it the same way.
 
 ## What each verdict looks like
 
@@ -71,7 +71,7 @@ A good first wave is four scouts:
 1. the concept audit's closures;
 2. the derivation audit's 45 assumptions that carry a decision;
 3. the derivation audit's 67 drifts and double readings that carry a decision;
-4. its 21 duplicate and doc findings that carry a decision, the eight settled or closed ids, and the smaller audits.
+4. its 21 duplicate and doc findings that carry a decision, the eight rows that are `settled_by_decision` or `closed` (most also sit in the lists above, so this scout checks them once more), and the smaller audits.
 
 Each scout has a budget of 100 tool calls and 20 minutes (rule 7). A scout that can't finish lists the ids it didn't reach, and a fresh scout takes those. Expect a second wave.
 

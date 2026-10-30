@@ -33,15 +33,15 @@ Every finding leaves by exactly one of these. An audit that reports a finding wi
 
 The plan says what the audit reads and what it leaves out, and why. It names the kinds of finding it looks for, the four exits above, each agent's caps and the stop rule. It goes to the user and waits for their yes (CLAUDE.md agent rule 3).
 
-The scope is the user's words, not a narrower version of them. Narrowing it is its own question to the user. The user has had to widen audits after the fact: "the first pass should cover everything" (D113), and "Leave nothing in a "pre-existing, left alone" pile." (D119).
+The scope is the user's words, not a narrower version of them. Narrowing it is its own question to the user. The user has set audit scope wide each time: "the first pass should cover everything" (the words behind D113, from card `2026-10-11-8bffee2b`), and "Leave nothing in a "pre-existing, left alone" pile." (D119).
 
 Before any finder starts, the plan lists the decisions and plans the audit must read: `docs/audit/2026-10-03-fix-decisions.md`, `docs/adr/` and the plans under `docs/superpowers/plans/` for the area. The 2026-10-03 audit skipped the one-squeeze-rating-rule plan, so three things the user had already decided showed up as undecided.
 
-Every stage that repeats needs a cap and a line saying what happens at the cap. The 2026-10-03 derivation audit ran completeness rounds "until a round finds nothing". Every round found something, and the user stopped it after six. A stop rule that can never be met is no stop rule.
+Every stage that repeats needs a cap and a line saying what happens at the cap. The 2026-10-03 derivation audit was done only when "a completeness pass finds nothing new". Every pass and round found something, and the user stopped it after round six. A stop rule that can never be met is no stop rule.
 
 ### 2. Calibrate
 
-Before the finders start, one agent gets a file with known problems and no hint of what they are. It must find them. The 2026-10-03 audit did this with `src/core/squeeze_rating.cpp` at 707c285, and the agent found both known problems. If the calibration agent misses a known problem, fix the brief before sending anyone else.
+Before the finders start, one agent gets a file with known problems and no hint of what they are. It must find them. The 2026-10-03 audit did this with `src/core/squeeze_rating.cpp` at 707c285, and the agent found both known problems. If the calibration agent misses a known problem, stop and report the miss to the user, and fix the brief before sending anyone else.
 
 The calibration brief must not describe the known problems, even as an example. That audit's first calibration brief worded its example too close to the two bugs, so the run proved nothing and was thrown away.
 
@@ -95,7 +95,7 @@ Write each question so the user can rule on exactly what the code does:
 - Name the options without leaning. Then give a recommendation and the strongest case against it.
 - Ask about the split itself, not something next to it. D48 question 4 asked whether 10 ms should follow the leeway, and never said that the other row uses 3 ms.
 
-Send splits alone or in small groups (the user's ruling, 2026-10-29). Five or fewer per message is a good size. A batch answer such as "all recommended" covers only what each question's text says. The phase 3-5 file put 33 questions in one message, and its one-line answer settled things nobody had shown the user.
+Send splits alone or in small groups. The user approved that rule on 2026-10-29 ("yes both"). The number is not the user's: "five or fewer per message" is the main session's own suggestion for what "small" means, so it can change. A batch answer such as "all recommended" covers only what each question's text says. The phase 3-5 file put 33 questions in one message, and its one-line answer settled things nobody had shown the user.
 
 ### 8. Record
 
@@ -115,7 +115,8 @@ Every finder, verifier and closure-checker brief starts with `docs/agents/brief-
 - the four exits, with the rule that only the main session picks an exit;
 - that every split in a table is its own line in the report;
 - that "on purpose", "by design", "deliberately" and "kept" are claims, not evidence;
-- that a search that finds nothing proves nothing on its own (the preamble's rule).
+- that a search that finds nothing proves nothing on its own (the preamble's rule);
+- that no whole-library run happens without the user's `allow library run` in chat (CLAUDE.md agent rule 8). A verifier in the 2026-10-03 audit started `hydra_batch` with no arguments by accident.
 
 ## What went wrong before
 
@@ -123,20 +124,20 @@ Each story below is a real miss, with where its record lives. Most sources are s
 
 ### The split two audits saw and neither asked about (M39)
 
-The Backend timings table rates each note by how far it lands from the Star Power end. A plain row reads "Standard" from -10 ms to under 3 ms, where 3 is the leeway setting. The squeezed-out row reads "Standard SqOut" from -10 ms to under 10 ms, where 10 is `kBackendInnerBandMs`. So a note 5 ms after the end reads "Hard (uncounted)" on one row and "Standard SqOut (uncounted)" on the other. Public Hydra's author added both ladders in commit c9c00cf7 (2025-08-12). That was a year before the user's first commit.
+The Backend timings table rates each note by how far it lands from the Star Power end. A plain row reads "Standard" from -10 ms to under 3 ms, where 3 is the default of the leeway setting (the most a note can land after the end and still count). The squeezed-out row reads "Standard SqOut" from -10 ms to under 10 ms, where 10 is `kBackendInnerBandMs`. So a note 5 ms after the end reads "Hard (uncounted)" on one row and "Standard SqOut (uncounted)" on the other. Public Hydra's author added both ladders in commit c9c00cf7 (2025-08-12). That was a year before the user's first commit.
 
 Four steps passed the split by:
 
 1. A 2026-08-21 session asked about "two squeeze rating ladders" (card `2026-08-21-266e74ad`). The user chose "Behaviour-preserving only". That question was about the report tiers against the row labels, a different pair.
-2. Derivation audit finding 306 (2026-10-03) had the split in its own table, at +3 and +10 ms. It was titled "Backend rating bands start at a fixed 10 ms nobody chose". Its question became D48 question 4, which said only that a row "turns 'Easy SqOut' at +10 ms and 'Easy' at -10 ms". The user answered all 33 questions in that file with "all recommended". The triage then marked 306 "fixed", because the 10 got a name.
+2. Derivation audit finding 306 (2026-10-03) had the split in its own table, at +3 and +10 ms. It was titled "Backend rating bands start at a fixed 10 ms nobody chose". Its question became D48 question 4, which described only the 10 ms edges: a row "turns "Easy SqOut" at +10 ms and "Easy" at -10 ms". It never said that the plain row changes at +3. The user answered all 33 questions in that file with "all recommended". The triage then marked 306 "fixed", because the 10 got a name.
 3. D50 item 1 reworded the report footer. It settled the report-against-rows pair and nothing else.
-4. The concept audit (2026-10-11) re-found it as M39. Verifier V5 wrote both row tables, then matched the finding to D50 item 1 because both were about "two ladders". `questions.md` listed it under "Already decided, no question", a section the audit's plan never defined.
+4. The concept audit (2026-10-11) re-found it as M39. Verifier V5 wrote both row tables, then matched the finding to D50 item 1 by topic, since both were about two ladders. `questions.md` listed it under "Already decided, no question", a section the audit's plan never defined.
 
-The user found it on 2026-10-29 by reading a handoff's open items. Two other items in that same "already decided" list show the same pattern. M04 says "no decision covers that" and is still listed as decided. M60 says the charter "deliberately differs" and names no ruling.
+The user found it on 2026-10-29, when the Path Builder handoff's list of open items named it. Two other items in that same "already decided" list show the same pattern. M04 says "no decision covers that" and is still listed as decided. M60 says the charter "deliberately differs" and names no ruling.
 
 ### A question narrower than the code (D51 and D80)
 
-Phase 7 question 4 described the free squeeze-in rule as "exactly at the SP end". The code ran "at or before the SP end". The user approved the batch with "all recommended" (D51), and the fix built from that wording hid row badges the question never mentioned. A later session found the missing badges and restored them as D80 (card `2026-10-06-dcdf0961`). The user's memory file `questions-describe-the-real-rule` holds their reaction and three more cases of the same kind.
+Phase 7 question 4 described a free squeeze as "a squeeze-in at exactly the SP end" (SP is Star Power). The code's rule was "at or before the SP end, however early" (D80). The user approved the batch with "all recommended" (D51), and the fix built from that wording hid row badges the question never mentioned. The user then asked why a 5+ activation had no badge, and the badges were restored as D80 (card `2026-10-06-dcdf0961`). The user's memory file `questions-describe-the-real-rule` holds their reaction and three more cases of the same kind.
 
 ### Audits that ignored what was already decided
 
@@ -152,15 +153,15 @@ The 2026-10-03 audit's first calibration brief described the two known bugs too 
 
 ### A stop rule that was never met
 
-The 2026-10-03 audit was to stop when a completeness round found nothing new. Rounds 3 to 6 confirmed 26, 14, 11 and 12 new findings. The user stopped it after round 6, and a seventh round after delivery added 44 more (`docs/audit/2026-10-03-derivation-audit.md`, section 3 and "Round 7"). The concept audit then dropped completeness rounds and relied on a recurrence check instead.
+The 2026-10-03 audit was to stop when a completeness round found nothing new. Rounds 3 to 6 confirmed 26, 14, 11 and 12 new findings. The user stopped it after round 6, and a seventh round after delivery added 44 more (`docs/audit/2026-10-03-derivation-audit.md`, section 3 and "Round 7"). The concept audit's plan then dropped completeness rounds and relied on its phase 7 recurrence gate instead.
 
 ### A triage file that drifted
 
-On 2026-10-05 the triage file showed 192 of 396 findings open, though phase 6 had finished its findings. No merge had marked its rows (card `2026-10-05-18216767`). The rows were rebuilt from merge records and spot-checked against the code.
+On 2026-10-05 the triage file showed 192 of 396 findings open, though phase 6 had finished its findings. No merge had marked its rows (card `2026-10-05-18216767`). The phase 6 rows were then marked from the merge records, with 16 of them spot-checked against the code, and read-only agents checked the other open rows.
 
 ### Side notes left for later
 
-The concept audit's scouts raised five side notes outside their jobs. They were parked, and a later session checked them (card `2026-10-11-8eb32145`). Four held, and one showed that the brief preamble was wrong about when an agent learns its id.
+The concept audit's scouts raised five side notes outside their jobs. They were parked, and a later session checked them (card `2026-10-11-8eb32145`). Four were real problems: a function returned the wrong number, four audio headers named the wrong error type, a stem file that another program held open for writing dropped from the Preview with no message, and the brief preamble promised an agent its id on its first hook reply when the hook gave it only after five minutes. The fifth matched Clone Hero and needed no fix.
 
 ### What these have in common
 
