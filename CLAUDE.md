@@ -24,6 +24,10 @@ Look there when the user mentions an earlier session or a past decision, asks to
 
 A start-of-session hook asks the main session to write cards for finished sessions that have none. Do it alongside the user's request, as the hook's message says.
 
+### Audits
+
+Before you plan an audit, brief an audit agent, or close any audit finding, read `docs/agents/audit-method.md`. It says how an audit runs and why past audits lost findings. Every finding leaves by one of four exits. A split goes to the user unless a ruling quoted in the user's own words names both of its sides, and a fresh agent checks every closure.
+
 ### GUI testing
 
 To verify anything in the GUI, run `hydra_uitest` (headless, drives the real UI by widget label, returns text) instead of launching the app and taking screenshots. See `docs/agents/ui-testing.md`. To drive Hydra's GUI one step at a time and read it back as text, use the project's `hydra` MCP server: call `hydra_start` (headless on the test charts, or the real window on a snapshot copy of the user's library), then the other `hydra_*` tools; "Live mode and the MCP server" in `docs/agents/ui-testing.md` explains them.

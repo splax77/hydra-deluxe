@@ -23,6 +23,7 @@
 #include <optional>
 
 #include "app/preview_clock.h"
+#include "app/preview_source.h"  // audio_ms_of_chart_ms, chart_ms_of_audio_ms
 #include "audio/frames.h"
 #include "audio/player.h"
 

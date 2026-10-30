@@ -131,26 +131,28 @@ void AppState::request_rescan_on_open() {
     // When start_scan would refuse, ask for nothing: the dialog's notice
     // would otherwise wait for a later scan the app did not start.
     if (!can_scan()) return;
-    // A scan over a folder it cannot list writes a library without that
-    // folder's charts and drops their results, so a missing folder stops the
-    // scan the user did not ask for.
-    for (const std::string& folder : settings.chartfolders) {
-        if (!is_directory_utf8(folder)) {
-            set_problem(app::library_rescan_blocked_notice(folder));
-            return;
-        }
-    }
+    // Checked here as well as in start_scan, so the open asks for no scan and
+    // its dialog line never waits for one.
+    if (scan_blocked_by_missing_folder(app::ScanAsker::Open)) return;
     request_scan = true;
     scan_started_by_open = true;
+}
+
+bool AppState::scan_blocked_by_missing_folder(app::ScanAsker asker) {
+    const std::optional<std::string> missing =
+        app::first_missing_chart_folder(settings.chartfolders);
+    if (!missing) return false;
+    set_problem(app::library_scan_blocked_notice(*missing, asker));
+    return true;
 }
 
 void AppState::startup_notice_closed() {
     if (startup_notice_.empty()) return;
     startup_notice_.clear();
     // The fresh library is empty; the chart folders came from the ini, so
-    // the scan finds the same songs. start_scan refuses when can_scan says
-    // no, as the toolbar's button does.
-    request_scan = true;
+    // the scan finds the same songs. Hydra starts this scan on its own, as it
+    // does for an out-of-date library, so it asks the same way (D268).
+    request_rescan_on_open();
 }
 
 void AppState::set_render_device(ID3D11Device* device, ID3D11DeviceContext* context) {
@@ -630,6 +632,15 @@ void AppState::start_scan() {
         // line must not wait for a later scan the user starts. A scan already
         // running keeps its line.
         if (!scan_job) scan_started_by_open = false;
+        return;
+    }
+    // Every scan, the button's included, stops here, so the toolbar's button
+    // stays on and the click shows the notice instead (D266).
+    // The open's own scan keeps the open's sentence (D268). Every other scan,
+    // the one after the set-aside box included, gets the other one.
+    if (scan_blocked_by_missing_folder(scan_started_by_open ? app::ScanAsker::Open
+                                                            : app::ScanAsker::User)) {
+        scan_started_by_open = false;
         return;
     }
     scan_job = std::make_unique<ScanJob>(settings.chartfolders, *store);

@@ -253,7 +253,7 @@ artist, album, charter or folder, in any order; `"quotes"` match a phrase, and
 `title:`, `artist:`, `album:`, `charter:` and `folder:` limit a word or phrase
 to one field. A chart with no album matches nothing through it. `stars:N`
 (exactly N stars) and `squeeze<=N` (hardest squeeze or required early fill at
-most N ms; `squeeze<N` means the same) test the
+most N ms; `squeeze<N` is strict, under N ms, D266) test the
 record's best path and only ever match ready rows. `squeeze>N` and
 `squeeze>=N` are the floor side, above N or at least N; a floor and a limit
 together give a range, and a path that needs no timing reaches no floor. Any
@@ -724,8 +724,8 @@ between two ticks is Clone Hero's continuous count, `MeasureCount`: a part
 measure before a mid-measure change counts as its share of the old measure.
 Star Power's end, the phrase extension and the cap ceiling read it, through
 `SongTiming::plusmeasure`, which walks it in exact whole numbers. The
-position text (`format_measure`, such as "m32.1.0") counts measures and beats
-from 1 and the tick from 0.
+position text (`format_measure` in src/core/timing.h, such as "m32.1.0")
+counts measures and beats from 1 and the tick from 0.
 _Avoid_: bar (for a measure)
 
 **Beat**:
@@ -770,6 +770,15 @@ _Avoid_: player, viewer
 The 3D fretboard the Preview draws, with the drum notes scrolling toward the
 strike line as the song plays.
 _Avoid_: fretboard, track
+
+**Ghost path**:
+A second Path the Preview draws faintly beside the one it shows: only the fills
+it activates on, as edge-only outlines on the note highway
+(`PreviewController::set_ghost_path`; the scene's `ghost_fills` come from
+`app::apply_preview_overlay`). It sets no fill state, and a changed chart
+draws none, as it draws no path (`drawn_path`). It has nothing to do with a
+ghost note (a dynamics velocity, see Gem).
+_Avoid_: shadow path, second path
 
 **Gem**:
 One drawn note on the note highway. Its model shows the drum type (tom, cymbal,
@@ -902,3 +911,28 @@ gate was measured at the game) and extended to .sng and .srb by
 docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md (decision 4).
 _Avoid_: player (the whole Preview), scrubber (the UI control only), playhead
 (the audio follower only)
+
+### Code layout
+
+**Code library**:
+One of the twelve static libraries the code under src/ is built as (apart
+from the programs' own source files, src/ui/main.cpp and src/cli/), such as
+`hydra_core`, `hydra_app` or `hydra_ui`. Hydra's own programs link them; no
+outside project does. The GUI test runner and two tools have small libraries
+of their own beside them. Which library a file is in is the source list in
+`CMakeLists.txt` that names it, or that names the .cpp file of the same name
+for a header. The folder is not the answer: src/ui/ holds files of
+`hydra_preview`, `hydra_uibase` and `hydra_ui`, and src/app/ holds files of
+`hydra_app` and `hydra_dm`. docs/development.md lists them in order, and
+docs/adr/0032 records why.
+_Avoid_: library (that is the user's charts), module, component
+
+**Layering rule**:
+A file includes only headers from its own code library and the libraries that
+library links, following PUBLIC links onward but PRIVATE links one step only.
+The link lines in `CMakeLists.txt` say which; tests/test_layering.cpp reads
+them and fails on any include that reaches further. A third-party header
+counts as the link line its row in tests/layering/externals.json names. A
+wrong-way include is fixed, never parked: tests/layering/known_gaps.json stays
+empty, and the case "layering: no known gap is left" fails if it is not.
+_Avoid_: dependency rule

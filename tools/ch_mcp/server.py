@@ -80,7 +80,7 @@ def build_server(helper: Optional[Helper] = None):
             " bot plays it; with none the game opens at its menu) after backing up the"
             " user's files; ch_stop closes it and puts them back. ch_attach, ch_state and"
             " ch_snapshot read the game through Frida; ch_trace_start, ch_notes and"
-            " ch_trace_stop trace each note it processes. ch_press and ch_play_chart press"
+            " ch_trace_stop trace each note the player hits. ch_press and ch_play_chart press"
             " drum lanes on a song the user started from the menu."
             " See docs/agents/clone-hero-mcp.md."),
     )
@@ -165,8 +165,10 @@ def build_server(helper: Optional[Helper] = None):
     @server.tool()
     def ch_trace_start(song_folder: str, score_json: str | None = None,
                        with_dynamics: bool = False) -> str:
-        """Start tracing each note the game processes, in the background. The
-        notes come from the song folder's manifest, else from score_json.
+        """Start tracing, in the background, each note the player hits: the
+        default hook fires once per hit note and never for a missed note or
+        an overhit. The notes come from the song folder's manifest, else from
+        score_json.
         with_dynamics=True also hooks the accent and ghost method. Needs
         ch_attach and a started song."""
         return capped(h.frida.ch_trace_start(song_folder, score_json, with_dynamics))

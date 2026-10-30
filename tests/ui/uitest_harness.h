@@ -1,10 +1,13 @@
-// hydra_uitest — the headless GUI test runner (docs/agents/ui-testing.md).
+// hydra_uitest — Hydra's half of the headless GUI test runner
+// (docs/agents/ui-testing.md).
 //
-// Runs Hydra's real ImGui UI with no window: a WARP (software) D3D11 device,
-// an offscreen render target, and the Dear ImGui Test Engine injecting input.
-// Tests find widgets by label ("Scan charts"), click them, and read back the
-// app's state and the text on screen. Everything runs on scratch files in a
-// temp folder; no browser, sound card, or network is touched.
+// The engine (uitest_engine.h) runs a UI with no window and reads it back;
+// this file hands it Hydra: the AppState it draws, the hooks the command
+// verbs reach Hydra through, the seams, the gates and the helpers every
+// test calls. Tests find widgets by label ("Scan charts"), click them, and
+// read back the app's state and the text on screen. Everything runs on
+// scratch files in a temp folder; no browser, sound card, or network is
+// touched.
 
 #ifndef HYDRA_TESTS_UI_UITEST_HARNESS_H
 #define HYDRA_TESTS_UI_UITEST_HARNESS_H
@@ -16,13 +19,10 @@
 #include <string>
 #include <vector>
 
-#include <d3d11.h>
-#include <dxgi.h>
-#include <wrl/client.h>
+// The engine first: its Windows headers come before the test engine's.
+#include "uitest_engine.h"
 
 #include "../scoped_hook.h"
-#include "imgui_te_context.h"
-#include "imgui_te_engine.h"
 #include "ui/app_shell.h"
 #include "ui/app_state.h"
 #include "ui/column_widths.h"
@@ -30,23 +30,15 @@
 
 namespace uitest {
 
-struct Harness {
-    // Offscreen D3D11 (WARP) + the render target ImGui draws into.
-    Microsoft::WRL::ComPtr<ID3D11Device> device;
-    Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
-    Microsoft::WRL::ComPtr<ID3D11Texture2D> rt;
-    Microsoft::WRL::ComPtr<ID3D11RenderTargetView> rtv;
-    int width = 1280;
-    int height = 800;
+struct Harness : Engine {
+    // Installs the engine's hooks (EngineHooks) on this harness's AppState.
+    Harness();
 
-    // Scratch files. temp_dir holds the settings INI, the DB, and the HTML
+    // Hydra's scratch files, in the engine's temp_dir beside the HTML
     // reports the jobs write next to the DB.
-    std::string temp_dir;
     std::string db_path;
     std::string ini_path;
     std::string rules_path;
-    std::string shots_dir;  // where `screenshot` files go (default: temp_dir)
-    bool keep_temp = false;
     // --db: each test starts from a copy of this database instead of an
     // empty one. The file itself is only read, never opened by the app.
     std::string seed_db;
@@ -58,11 +50,6 @@ struct Harness {
     // Set by reset_app for the one frame that runs with the old app undrawn,
     // so nothing it drew is still waiting to render when it is freed.
     bool app_hidden = false;
-    ImGuiTestEngine* engine = nullptr;
-    hydra::ui::FrameText frame_text;
-
-    // Command file for the "script" test (--script).
-    std::string script_path;
 
     // The live test's pipe, exactly as --pipe gave it. The live channel opens
     // this name and never makes one up.
@@ -75,33 +62,18 @@ struct Harness {
     // writes one. The live hello line reports it.
     std::string crash_dump;
 
-    // Headless: WARP device, offscreen render target, ImGui context, engine.
+    // Headless: Engine::init with Hydra's ImGui options, then Hydra's
+    // scratch paths.
     bool init();
-    void frame();     // one full ImGui frame + engine PostSwap
-    void shutdown();  // engine, ImGui, scratch dir
 
-    // Attached (Hydra.exe --uitest): the app already owns the window, device,
-    // and ImGui context; the harness adds scratch paths, the engine (at a
-    // watchable speed), and captures from the swapchain. main.cpp drives the
-    // frames itself and calls engine_post_swap() after Present.
+    // Attached (Hydra.exe --uitest): Engine::init_attached, then Hydra's
+    // scratch paths. main.cpp drives the frames itself and calls
+    // ImGuiTestEngine_PostSwap after Present.
     bool init_attached(ID3D11Device* dev, ID3D11DeviceContext* ctx, IDXGISwapChain* swapchain);
-    bool attached = false;
-    IDXGISwapChain* swapchain = nullptr;  // attached only
     // Queue a test by name or, when `what` names a file, as a script.
     bool queue(const std::string& what);
-    // Print [PASS]/[FAIL] (+ the log of each failure) for every test that has
-    // finished since the last call; returns the failure count of all tests
-    // printed so far. The runner calls it after every frame, so a crash later
-    // in the run still leaves the earlier results on screen.
-    int print_results(FILE* out);
-    std::vector<const ImGuiTest*> printed;  // tests print_results has shown
-    int printed_failures = 0;
-    // The test the engine is running now, or nullptr between tests.
-    const ImGuiTest* running_test() const;
-    // Stop the engine and drop the app. Must run before ImGui::DestroyContext;
-    // shutdown() calls it too (idempotent).
-    void stop();
-    bool stopped = false;
+    // Stop the engine and drop the app (Engine::stop).
+    void stop() override;
 };
 
 // Whether a test name given on the command line picks the test called
@@ -137,48 +109,20 @@ std::string pipe_problem(bool live, const std::string& pipe_name);
 void reset_app(Harness& h, const std::string& rules_text = "", bool wait_store = true);
 
 // Register every C++ test (the uitest_<area>.cpp files, in the order
-// uitest_tests.cpp fixes) and, when h.script_path is set, the "script" test
-// (uitest_script.cpp). Each test's UserData is &h.
+// uitest_tests.cpp fixes) through register_test (uitest_engine.h). Each
+// test's UserData is h's Engine.
 void register_tests(Harness& h);
-void register_script_test(Harness& h);
 // Register the "live" test (uitest_live.cpp), which --live queues: it takes
 // command lines from a named pipe. What ends it is run_live's loop
 // (uitest_live.cpp).
 void register_live_test(Harness& h);
-// Register one test under the name --test and --list use. The script and live
-// tests register through it.
-void register_test(Harness& h, const char* name, void (*fn)(ImGuiTestContext*));
-// Whether a line a script file or the live pipe handed over is a command to
-// run (defined in uitest_script.cpp, the one place that decides). On true,
-// `command` holds the line as run_command takes it.
-bool command_line(const std::string& raw, std::string& command);
 
-// ---- helpers shared by the tests and the script interpreter --------------
+// ---- helpers shared by the tests ------------------------------------------
 
+// The Harness a test runs under (Hydra's tests are all registered on one).
 inline Harness& harness(ImGuiTestContext* ctx) {
-    return *static_cast<Harness*>(ctx->Test->UserData);
+    return static_cast<Harness&>(engine_of(ctx));
 }
-
-// True once the test engine is stopping, as when the app's window closed.
-// The engine's stop runs the test until it returns, so any loop in a test
-// that waits on something outside it must end when this holds.
-bool engine_stopping(ImGuiTestContext* ctx);
-
-// Forget an abort the engine raised on its own, such as the person at the
-// window holding Esc, so the test goes on. Does nothing while the engine is
-// stopping: that abort is meant.
-void clear_abort(ImGuiTestContext* ctx);
-
-// Yield frames until pred() holds or `seconds` of wall-clock pass. Jobs run
-// on real threads, so the wait is wall-clock, not frame-count. Returns false
-// at once when the test has already failed (ctx->IsError()) or the engine is
-// stopping (engine_stopping).
-bool wait_until(ImGuiTestContext* ctx, const std::function<bool()>& pred, double seconds);
-
-// One step of that wait: a frame, then a short nap. For a loop that polls
-// something wait_until's predicate cannot express; such a loop checks
-// engine_stopping itself.
-void idle_frame(ImGuiTestContext* ctx);
 
 // True while any background job (scan, batch, analyze, report, DM fetch/report)
 // or the Preview's load is still running.
@@ -251,10 +195,7 @@ private:
     ScopedHook seam_;
 };
 
-// All text ImGui drew last frame plus the status line, for substring checks.
-std::string visible_text(Harness& h);
-
-// True when `s` is somewhere in visible_text(h).
+// True when `s` is somewhere in visible_text(h) (uitest_engine.h).
 bool on_screen(Harness& h, const std::string& s);
 
 // How many times `s` appears in visible_text(h).
@@ -267,48 +208,9 @@ std::string canned_dm_users();
 std::string canned_dm_score(const std::string& identifier, int points);
 std::string canned_dm_scores(const std::vector<std::string>& score_rows);
 
-// A window drawn last frame whose name holds `part`, or nullptr when none
-// was. A part finds child windows too, whose names ImGui mangles.
-ImGuiWindow* window_named(const char* part);
-
-// Whether `row` sits wholly inside the list's visible area.
-bool fully_shown(const ImGuiWindow* list, const ImRect& row);
-
-// The widget tree (label, id, state flags, rect) of every window whose name
-// holds `window_name`, or of every window when it is empty. One line per
-// window and per item, each ending in a newline. With `contains`, only the
-// item lines holding it are kept, each under its window's line; a window
-// with no such item is left out.
-std::string widget_dump(ImGuiTestContext* ctx, const std::string& window_name,
-                        const std::string& contains = "");
-
-// The one line that names the top open modal dialog and its buttons, which
-// block every click and key outside it, or "" when no modal is open. No
-// newline at the end. Every reply that mentions an open dialog uses it.
-std::string open_modal_note(ImGuiTestContext* ctx);
-
-// The lines of `text` that hold `part`, each ending in a newline, or a line
-// saying none did. The text verb's filter.
-std::string lines_holding(const std::string& text, const std::string& part);
-
-// One item's line in widget_dump's shape, indented two spaces per `depth`.
-// The one place an item line is formatted.
-std::string item_line(const ImGuiTestItemInfo& it, int depth);
-
-// The key AppState fields, one per line, each ending in a newline.
+// The key AppState fields, one per line, each ending in a newline. The
+// state verb's text (EngineHooks::state_text).
 std::string state_text(Harness& h);
-
-// Save the current frame to `file` (PNG). Returns false if the capture failed.
-// The saved file's full path goes to *saved_to when the caller asks for it
-// (the screenshot verb puts it in its result); otherwise it is printed.
-// With `crop`, only that rectangle is saved, clamped to the frame; without
-// it, the whole frame.
-bool screenshot(ImGuiTestContext* ctx, const std::string& file, std::string* saved_to = nullptr,
-                const ImRect* crop = nullptr);
-
-// Escape '/' and '#' in a label so it can be used as one path segment of an
-// ImGuiTestRef ("**/" + escape(title)).
-std::string escape_ref(const std::string& label);
 
 // How wide ImGui draws `s` in `font` (the current font when null), at the
 // size it draws text now: the style's base size times its main and DPI
@@ -377,12 +279,6 @@ void open_titled(ImGuiTestContext* ctx, const std::string& search, const std::st
 std::string open_titled_reason(ImGuiTestContext* ctx, const std::string& search,
                                const std::string& title,
                                double settle_seconds = kSettleWaitSeconds);
-// The drawn items under the current ref, child windows included, whose label
-// is `label` (compared the way the engine's "**/" lookup compares: by the
-// label's hash, so "text###id" matches on what follows "###"). One gather, the
-// one widget_dump walks too.
-std::vector<ImGuiTestItemInfo> drawn_items_labelled(ImGuiTestContext* ctx,
-                                                    const std::string& label);
 // Wait for the open song's analysis (the click, or a setting changed with the
 // song open, starts it: D87 item 1, D90 item 1) and check it is Ready. Then
 // lands the panel on its Paths tab.

@@ -100,6 +100,19 @@ int batch_main() {
 
     hydra::app::Settings settings = hydra::app::Settings::load_for_command_line(legacy_fills);
     if (const int code = hydra::app::load_tool_rules(rulespath, settings.rules)) return code;
+    // A whole-library run saves its scan as the library, so a chart folder it
+    // cannot read stops it before the store opens, as Scan library stops
+    // (D268). A run over folder arguments leaves the library alone and goes on.
+    if (scope == BatchScope::Library) {
+        if (const std::optional<std::string> missing =
+                hydra::app::first_missing_chart_folder(settings.chartfolders)) {
+            std::fprintf(stderr, "%s\n",
+                         hydra::app::library_scan_blocked_notice(*missing,
+                                                                 hydra::app::ScanAsker::User)
+                             .c_str());
+            return 2;
+        }
+    }
     hydra::app::BatchRun run = settings.batch_run();
     const hydra::app::AnalysisSettings& analysis = run.settings;
     const std::string& chartmode = run.profile.chartmode;

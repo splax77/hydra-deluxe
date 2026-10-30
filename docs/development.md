@@ -30,6 +30,14 @@ hydra_fillcompare ... --no-open
 stops with exit code 2, so a bare run can't start a library-wide analysis by
 accident. The other `hydra_batch` flags in the list go with either form.
 
+`hydra_batch --whole-library` saves its scan as the library, as `Scan library`
+does, so it refuses the same way (D268). If a chart folder from the settings
+cannot be read, it prints the notice `app::library_scan_blocked_notice` writes
+for a scan the user asked for and stops with exit code 2, before it opens the
+database. `app::first_missing_chart_folder` is the one check of which folder is
+missing. A run over folders given by hand never saves the library, so it skips
+that check.
+
 Both read the app's settings file, so they work at the same SP cap, timing
 limit, score range and chart mode the app is set to. The fill rule is the
 exception, below. Both read the scoring rules from `hydra_rules.ini` next to
@@ -100,6 +108,29 @@ It builds Release with the `ship` preset (in `build-ship\`, without the
 attached GUI tests), stages the ship list via `cmake --install` (so stray user
 data in the build tree can never leak into a release), downloads and caches
 the VC++ redistributable, and compiles `installer\hydra.iss`.
+
+### Libraries
+
+Apart from the programs' own source files (src/ui/main.cpp and src/cli/), the
+code under src/ is built as twelve static libraries, and each program links
+only the ones it needs. `CMakeLists.txt` is the one place that says which library a
+file is in (its source lists) and which libraries each one may use (its link
+lines). Lowest first: `hydra_core` (the chart model, `Song`, scoring, replay
+and timing) and `hydra_image` link nothing of Hydra's. `hydra_parse` and
+`hydra_search` link `hydra_core`, and so does `hydra_store`, which also links
+`hydra_search` privately. `hydra_app` links those three and is the top of the
+logic, with no GUI in it; `hydra_batch` and `hydra_fillcompare` link it alone.
+`hydra_audio`, `hydra_render` and `hydra_dm` link `hydra_app`. `hydra_preview`
+links `hydra_audio` and `hydra_render`, and `hydra_uibase` (the GUI base:
+ImGui set-up, theme, fonts, widgets) links them too. `hydra_ui`, Hydra's own
+window, links `hydra_uibase`, `hydra_preview` and `hydra_dm`. Files stay in
+their folders, so src/ui/ holds files of three libraries and src/app/ of two.
+
+The layering test, tests/test_layering.cpp, reads those lists and fails when a
+file includes a header from a library its own does not link. A wrong-way
+include gets fixed, not parked: the test keeps tests/layering/known_gaps.json
+empty. A third-party header needs one row in tests/layering/externals.json.
+ADR 0032 records the design.
 
 ### What a Release build does
 

@@ -44,8 +44,8 @@ void open_in_path_builder(AppState& app) {
 // Title, "artist · charted by charter", and open in Path Builder / hide
 // library / previous / next / close at the right. Clone Hero rich-text tags
 // (<color=...>) are stripped for display; the title is display_title's, the
-// artist display_artist's and the charter display_charter's, so a title or a
-// missing artist reads "(unknown)".
+// artist display_artist's and the charter display_charter's, so a missing
+// title, artist or charter reads "(unknown)".
 void render_panel_header(AppState& app) {
     const ImGuiStyle& style = ImGui::GetStyle();
     const float button = ImGui::GetFrameHeight();
@@ -96,9 +96,8 @@ void render_panel_header(AppState& app) {
         ScopedFont font(TextRole::SongTitle);
         text_ellipsized(display_title(song.title).c_str(), text_w);
     }
-    std::string byline = display_artist(song.artist);
-    const std::string charter = display_charter(song.charter);
-    if (!charter.empty()) byline += app::kFactSeparator + ("charted by " + charter);
+    const std::string byline = display_artist(song.artist) + app::kFactSeparator +
+                               ("charted by " + display_charter(song.charter));
     ImGui::PushStyleColor(ImGuiCol_Text, kSubtleTextColor);
     text_ellipsized(byline.c_str(), text_w);
     ImGui::PopStyleColor();

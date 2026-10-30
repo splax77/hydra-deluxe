@@ -44,7 +44,7 @@ A library file from a version older than 2.2.0 is too old to convert. Hydra Delu
 
 > This library file is from a Hydra version older than 2.2.0, so Hydra set it aside as hydra.db.pre-2.2.0 and started a fresh library.
 
-When you close the box, Hydra Deluxe scans your song folders, which it keeps in `hydra_settings.ini`, next to the program. Your songs come back as `Not analyzed`. This version doesn't read the old results in `hydra.db.pre-2.2.0`, so delete that file yourself if you don't want it.
+When you close the box, Hydra Deluxe scans your song folders, which it keeps in `hydra_settings.ini`, next to the program. Your songs come back as `Not analyzed`. If a song folder can't be read, no scan starts, the list stays empty, and the line under the toolbar says `Your library needs a scan, but <folder> cannot be read. Click Scan library when it is back.` This version doesn't read the old results in `hydra.db.pre-2.2.0`, so delete that file yourself if you don't want it.
 
 If the old file can't be renamed, a message box says so, with the reason from Windows in the middle of the sentence, and Hydra Deluxe closes when you dismiss it:
 
@@ -76,7 +76,7 @@ Removing a folder takes its songs out of the list at the next scan, and that sca
 
 Hydra Deluxe reads `notes.mid` or `notes.chart` folders with a `song.ini`, `.sng` archives, and the `.srb` bundles that Clone Hero's built-in setlist ships with. Adding the game's own `Clone Hero_Data\StreamingAssets\songs` folder brings in the default songs too.
 
-`Scan library` reads your folders and updates the song list. A song needs a valid ini file to show up. A song that fails is skipped, and the scan window lists the problems when it finishes. Re-scans are fast, because a chart whose file size and timestamp haven't changed is not read again. You can cancel a scan part-way, and the old library stays as it was. When Hydra Deluxe opens a library that an older version scanned, it starts this scan by itself, and the `Scanning charts` window says `An older version of Hydra scanned this library. Scanning again to read what this version adds.` If you click `Cancel`, the scan starts again the next time you open Hydra Deluxe, and if a song folder can't be read, it waits and a line under the toolbar names the folder. Songs stay in the list as they were until the next scan, even if you changed their files, so scan again after you add, remove or edit songs.
+`Scan library` reads your folders and updates the song list. A song needs a valid ini file to show up. A song that fails is skipped, and the scan window lists the problems when it finishes. Re-scans are fast, because a chart whose file size and timestamp haven't changed is not read again. You can cancel a scan part-way, and the old library stays as it was. When Hydra Deluxe opens a library that an older version scanned, it starts this scan by itself, and the `Scanning charts` window says `An older version of Hydra scanned this library. Scanning again to read what this version adds.` If you click `Cancel`, the scan starts again the next time you open Hydra Deluxe, and if a song folder can't be read, it waits and a line under the toolbar names the folder. A scan you start yourself stops the same way: while a song folder can't be read, clicking `Scan library` scans nothing, your songs and results stay as they were, and the line under the toolbar says `<folder> cannot be read, so nothing was scanned. Click Scan library when it is back.` Songs stay in the list as they were until the next scan, even if you changed their files, so scan again after you add, remove or edit songs.
 
 `Analyze library...` analyzes many songs at once, in the background. While a search or a chip other than `All` narrows the list, the button reads `Analyze shown (N)...` and analyzes only the N songs the table shows. A filter Hydra Deluxe can't read narrows nothing, so with only `stars:9` typed and the `All` chip on, the button still reads `Analyze library...`. See [Analyzing the whole library](#analyzing-the-whole-library).
 
@@ -208,10 +208,11 @@ Searching ignores case and accents, so `ALLISTER` finds Allister and `beyonce` f
 | `title:` | the title only | `title:everlong` finds Everlong |
 | `stars:N` | songs whose best path earns exactly N stars (0 to 7) | `stars:7` finds Burnout once it is analyzed |
 | `squeeze<=N` | songs whose best path's hardest squeeze or required early fill is N ms or less | `squeeze<=200` keeps Burnout (163 ms); `squeeze<=20` drops it |
+| `squeeze<N` | songs whose best path's hardest squeeze or required early fill is less than N ms | `squeeze<200` keeps Burnout (163 ms); `squeeze<163` drops it |
 | `squeeze>N` | songs whose best path's hardest squeeze or required early fill is more than N ms | `squeeze>20` keeps Burnout (163 ms); `squeeze>163` drops it |
 | `squeeze>=N` | songs whose best path's hardest squeeze or required early fill is N ms or more | `squeeze>=163` keeps Burnout (163 ms); `squeeze>=200` drops it |
 
-You can mix them: `charter:hoph2o stars:7`. `squeeze<N` means the same as `squeeze<=N`: at most N. A low and a high squeeze filter together give a range: `squeeze>=10 squeeze<=200` keeps Burnout. A path that needs no timing passes any `squeeze<=` limit and never matches `squeeze>` or `squeeze>=`, since it has nothing to squeeze.
+You can mix them: `charter:hoph2o stars:7`. A song at exactly N ms matches `squeeze<=N` and `squeeze>=N`, and drops out of `squeeze<N` and `squeeze>N`. A low and a high squeeze filter together give a range: `squeeze>=10 squeeze<=200` keeps Burnout. A path that needs no timing passes any `squeeze<=` or `squeeze<` limit and never matches `squeeze>` or `squeeze>=`, since it has nothing to squeeze.
 
 `stars:` and the squeeze filters only look at current results. A song that is `Not analyzed`, `Stale` or `Can't analyze` never matches them. A filter Hydra Deluxe can't read, like `stars:9` or `squeeze=20`, shows a short note under the search box and is left out of the search.
 
@@ -324,7 +325,7 @@ The transport buttons are `-5s`, `< 10 ms`, `Play`/`Pause`, `10 ms >` and `+5s`,
 
 The same keys are drawn as keycaps in a bar under the highway, in the buttons' order. Each button's tooltip names its key too.
 
-The scrubber under the highway shows where you are. Its gold marks are the path's activations, in the same gold as the next-activation box. The scrubber measures position against the song's length, like the Paths timeline, so an activation sits at the same spot on both. The scrubber ends at the song's end, and so does playback: audio that runs past the end doesn't play. A chart with no length shows no gold marks, and nothing stops playback.<!-- owners: PreviewController::playback_end_ms (the one end), app::song_length_ms (the song's length) --> The beat lines run on to the end of the audio.
+The scrubber under the highway shows where you are. Its gold marks are the path's activations, in the same gold as the next-activation box. The scrubber measures position against the song's length, like the Paths timeline, so an activation sits at the same spot on both. The scrubber ends at the song's end, and so does playback: audio that runs past the end doesn't play. A chart with no length shows no gold marks, and nothing stops playback.<!-- owners: PreviewController::playback_end_ms (the one end), app::song_length_ms (the song's length) --> The beat lines stop at the song's end too, so none is drawn past where playback stops. A chart with no length draws them two measures past its last note.
 
 ### When the settings or the chart change
 
@@ -610,4 +611,4 @@ Every result remembers the rules it was made with. After you change the file, re
 
 ## For power users: command line tools
 
-You never need these; everything they do is in the app. Two console programs sit next to Hydra.exe and share its settings and library. `hydra_batch` analyzes the library, and `hydra_fillcompare` compares Clone Hero 1.0 and 1.1 fill results. The path report lives only in the app. The [developer page](development.md#command-line-tools) lists their flags.
+You never need these; everything they do is in the app. Two console programs sit next to Hydra.exe and share its settings and library. `hydra_batch` analyzes the library, and `hydra_fillcompare` compares Clone Hero 1.0 and 1.1 fill results. The path report lives only in the app. A `hydra_batch --whole-library` run saves its scan as your library, the way `Scan library` does, so it refuses the same way: if one of your song folders can't be read, it prints `<folder> cannot be read, so nothing was scanned. Click Scan library when it is back.` and stops with exit code 2 before it scans or analyzes anything. The [developer page](development.md#command-line-tools) lists their flags.

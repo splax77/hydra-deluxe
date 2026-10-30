@@ -259,9 +259,11 @@ std::string library_rescan_notice() {
            "version adds.";
 }
 
-std::string library_rescan_blocked_notice(const std::string& folder) {
-    return "Your library needs a scan, but " + folder +
-           " cannot be read. Click Scan library when it is back.";
+std::string library_scan_blocked_notice(const std::string& folder, ScanAsker asker) {
+    const std::string first = asker == ScanAsker::Open
+                                  ? "Your library needs a scan, but " + folder + " cannot be read."
+                                  : folder + " cannot be read, so nothing was scanned.";
+    return first + " Click Scan library when it is back.";
 }
 
 std::string stale_chip_text() {

@@ -46,8 +46,8 @@ struct CommandResult {
     std::string text;
 };
 
-// A fresh app with the ref on //Hydra: how a session starts, and what the
-// reset verb does.
+// A fresh program (EngineHooks::reset) with the ref on the engine's home_ref:
+// how a session starts, and what the reset verb does.
 void start_session(ImGuiTestContext* ctx);
 
 // Run one command line ("verb rest"), as command_line hands it over: not

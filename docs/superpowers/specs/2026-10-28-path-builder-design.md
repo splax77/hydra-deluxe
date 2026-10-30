@@ -22,7 +22,7 @@ These are left out on purpose, for a later version: the "Why here?" button
 (the best path that avoids one activation), the score diff by category,
 practice mode, a browser version, and a CHOpt-style phrase-count notation.
 
-## User decisions (all 2026-10-28)
+## User decisions (2026-10-28, except where dated)
 
 1. Size of the first version: the Coach.
 2. Opening a chart: both from Hydra's song panel and on its own.
@@ -30,11 +30,18 @@ practice mode, a browser version, and a CHOpt-style phrase-count notation.
    of the best path's score, red at 1% or more. The 1% is of Hydra's best
    path total for the chart under the active settings.
 4. Path text: Hydra's own notation only (`Path::pathstring`), so text copies
-   between the two programs unchanged.
+   between the two programs unchanged. "Read both forms" (2026-10-29): Hydra's
+   Copy path button writes the long form, `Path::pathstring_verbose`, so the
+   builder's paste reads that long form as well as the short one, and the
+   builder's own Copy writes the long form. Hydra is unchanged.
 5. Name: Path Builder. Window title "Hydra Deluxe Path Builder", file
    `HydraPathBuilder.exe`.
-6. A window that needs tighter timing than the Path limit and beats the best
-   path within the limit shows as a flagged gain (see "Costs").
+6. "Optimal, flag tight" (2026-10-29, replacing the 2026-10-28 wording).
+   Costs are measured against Hydra's optimal path. A window that needs
+   tighter timing than the Path limit keeps its cost colour and gets a
+   violet note naming the timing it needs and the limit (see "Costs"). The
+   user turned down a within-limit baseline (a search with the limit made
+   hard) and a switch between two baselines.
 7. Fills can be clicked on the 3D highway and on the flat strip below it.
 
 ## How it is built and shipped
@@ -65,7 +72,8 @@ Opening a chart:
 
 Saving: the builder's own path files use the JSON shape `hydra_replay`
 already reads and writes (tools/replay_json.cpp). Copy and paste use Hydra's
-path text.
+path text: Copy writes the long form Hydra's Copy path writes, and paste
+accepts the long or the short form (decision 4).
 
 ## The engine change
 
@@ -107,11 +115,27 @@ second way.
 Colours (decision 3): green at exactly 0, yellow above 0 and under 1% of
 BF(0), red at 1% of BF(0) or more. A cost exactly at 1% is red.
 
-A negative cost happens only when the player's window needs tighter timing
-than the Path limit (decision 6). It shows as a gain ("+900") in a fourth
-colour, with a note naming the timing the window needs and the limit. The
-plan picks the colour from src/ui/theme.h and shows it to the user with the
-screen.
+BF(0) is the optimal path, whatever the Path limit says. Hydra's best path is
+the top of the sorted search result (`HydraRecord::best_path`), and the Path
+limit is a soft filter: it drops an over-limit path only when a same-group
+path inside the limit, or one tying the optimal score, scores more. The
+Path limit tooltip says the same: a path that ties the best score is kept
+whatever its timing. Nothing computes a "best path within the limit", and
+the best finish runs under the same options as the main search, so BF(0) is
+that same optimal path.
+
+So a cost is never below zero (decision 6, "Optimal, flag tight"). A pinned
+search can only choose among the paths the free search could, so BF(k) never
+beats BF(k-1). There is no gain and no fourth cost colour.
+
+A window that needs tighter timing than the Path limit keeps its cost colour
+and gets a violet note (`chip_color(ChipToken::t5)`) naming the timing it
+needs and the limit, for example "needs 130.0 ms, your limit is 10.0 ms". The
+note can sit on any window shown in the builder: the player's own, and the
+windows of Hydra's best path when it is the path on screen. Whether a window
+is over the limit is `Activation::within_ms_limit`, the same pieces the
+search's limit check asks; the timing named is `Activation::difficulty`,
+the figure the Paths tab's path button shows.
 
 When the player clicks a fill to start a new window, the window gets the end
 that gives the best finish: the builder pins only the new activation, lets
@@ -184,8 +208,11 @@ identities, each against numbers the engine produces:
 3. For a few hand-built paths, the costs add up exactly to the gap. The
    expected numbers are pinned from one run.
 
-If a test chart has a window that beats the best path's limit, a test pins
-the negative cost too.
+No cost is below zero, on any test chart; the cost tests assert it. The
+corpus has charts whose optimal path needs a squeeze tighter than 10 ms (a
+scout counted 10 of 97, August Burns Red "White Washed" among them), so a
+test pins the tight-window note on one of them under a 10 ms limit, with
+figures from the executor's own run.
 
 The Preview move is checked by Hydra's existing Preview tests and UI scripts:
 Hydra must not change.
@@ -219,4 +246,9 @@ on the engine option and the main window.
 
 - Charts longer than the test set are untimed. The worker thread covers a
   slow one, but no number backs it yet.
-- The gain colour is picked in the plan and shown with the screen.
+- The tight-window note's colour (violet, the user's Q1 answer) is seen with
+  the screen at the real-app check.
+- A negative Path limit ("lower or negative values demand more slack") can
+  fail a squeeze that needs no timing, which `Activation::difficulty` leaves
+  out. On such a window the note has a flag but no figure to name. The plan
+  sends that case to the user; nothing is invented for it.

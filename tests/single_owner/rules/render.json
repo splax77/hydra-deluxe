@@ -91,11 +91,11 @@
       "date": "2026-10-04",
       "decision": "audit R7.15",
       "added_by": "J1-3",
-      "pattern": "&\\s*(st\\.)?fill_\\s*,\\s*&\\s*(st\\.)?fill_taken_\\s*,\\s*&\\s*(st\\.)?sp_active_\\s*,\\s*&\\s*(st\\.)?fill_lane_ivs_\\b",
+      "pattern": "&\\s*(st\\.)?fill_\\s*,\\s*&\\s*(st\\.)?fill_taken_\\s*,\\s*&\\s*(st\\.)?fill_ghost_\\s*,\\s*&\\s*(st\\.)?sp_active_\\s*,\\s*&\\s*(st\\.)?fill_lane_ivs_\\b",
       "anchor": "fill_lane_ivs_",
       "must_match": [
-        "{&st.fill_, &st.fill_taken_, &st.sp_active_, &st.fill_lane_ivs_})",
-        "sorted_edges({&st.fill_, &st.fill_taken_, &st.sp_active_, &st.fill_lane_ivs_});"
+        "{&st.fill_, &st.fill_taken_, &st.fill_ghost_, &st.sp_active_, &st.fill_lane_ivs_})",
+        "sorted_edges({&st.fill_, &st.fill_taken_, &st.fill_ghost_, &st.sp_active_, &st.fill_lane_ivs_});"
       ],
       "must_not_match": [
         "for (const std::vector<TrackState::Interval>* ivs : {&st.overdrive_, &st.solo_})"
@@ -103,7 +103,7 @@
       "owner_lines": [
         {
           "file": "src/render/track_state.cpp",
-          "line_text": "sorted_edges({&fill_, &fill_taken_, &sp_active_, &fill_lane_ivs_});",
+          "line_text": "sorted_edges({&fill_, &fill_taken_, &fill_ghost_, &sp_active_, &fill_lane_ivs_});",
           "why": "merge_overlay_edges, the one merge build_track_state and rebuild_overlay_fields use"
         }
       ]

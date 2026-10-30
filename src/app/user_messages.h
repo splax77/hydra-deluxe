@@ -116,9 +116,21 @@ std::string old_library_set_aside_notice(const std::string& db_path);
 // (store::RecordStore::chart_library_out_of_date).
 std::string library_rescan_notice();
 
-// The status line's problem when the library is out of date but `folder`,
-// one of the chart folders, cannot be read, so the app starts no scan.
-std::string library_rescan_blocked_notice(const std::string& folder);
+// Which scan a missing chart folder stopped (D268).
+enum class ScanAsker {
+    // The scan the app starts by itself when it opens a library whose scan is
+    // out of date (store::RecordStore::chart_library_out_of_date).
+    Open,
+    // Every other scan: one the user asked for in the app, and hydra_batch's
+    // whole-library run.
+    User,
+};
+
+// What Hydra says when `folder`, one of the chart folders
+// (app::first_missing_chart_folder), cannot be read, so the scan `asker`
+// asked for does not run: the app's status line problem, and hydra_batch's
+// refusal.
+std::string library_scan_blocked_notice(const std::string& folder, ScanAsker asker);
 
 // What the library's Stale chip says when hovered. The chip stands for many
 // rows, so it names both causes stale_text can name.

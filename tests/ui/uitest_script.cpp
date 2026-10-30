@@ -7,7 +7,7 @@
 #include <fstream>
 #include <string>
 
-#include "uitest_harness.h"  // before the engine header: see uitest_commands.cpp
+#include "uitest_engine.h"  // first: see uitest_commands.cpp
 #include "uitest_commands.h"
 
 namespace uitest {
@@ -17,7 +17,7 @@ namespace {
 // Echo each line, run it, print what it produced, and stop at the first
 // failure or at quit.
 void run_script(ImGuiTestContext* ctx) {
-    Harness& h = harness(ctx);
+    Engine& h = engine_of(ctx);
     start_session(ctx);
 
     std::ifstream f(h.script_path);
@@ -54,6 +54,6 @@ bool command_line(const std::string& raw, std::string& command) {
     return !command.empty() && command[0] != '#';
 }
 
-void register_script_test(Harness& h) { register_test(h, "script", run_script); }
+void register_script_test(Engine& e) { register_test(e, "script", run_script); }
 
 }  // namespace uitest

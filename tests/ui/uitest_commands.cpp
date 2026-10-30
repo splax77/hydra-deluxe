@@ -1,9 +1,9 @@
 // The command interpreter (uitest_commands.h). Verb table:
 // docs/agents/ui-testing.md.
 
-// The harness first: its Windows headers define a Yield() macro that the
+// The engine first: its Windows headers define a Yield() macro that the
 // test engine's header, included after them, undefines.
-#include "uitest_harness.h"
+#include "uitest_engine.h"
 #include "uitest_commands.h"
 
 #include <cstdarg>
@@ -171,23 +171,15 @@ std::string named(const std::vector<ImGuiTestItemInfo>& items) {
 
 // A wildcard lookup of a library row's title scrolls the whole library when
 // the row is not drawn, which with a full library takes minutes. So such a
-// lookup is refused while the search box is empty. The rows' labels are the
-// Title column's text (the row's Selectable in library_table.cpp). A widget of
-// that label drawn outside the library (a button that shares a song's title)
-// is found without any scrolling, so it goes ahead; `searches_here` says the
-// ref searches under the current window, where drawn_items_labelled looks.
+// lookup is refused while the search box is empty; the program says which
+// labels those are (EngineHooks::is_library_row_title). A widget of that
+// label drawn outside the library (a button that shares a song's title) is
+// found without any scrolling, so it goes ahead; `searches_here` says the ref
+// searches under the current window, where drawn_items_labelled looks.
 // Empty when the lookup may go ahead.
-std::string library_scroll_refusal(ImGuiTestContext* ctx, Harness& h, const std::string& label,
+std::string library_scroll_refusal(ImGuiTestContext* ctx, Engine& e, const std::string& label,
                                    bool searches_here) {
-    const auto& a = *h.app;
-    if (!a.search.empty()) return "";
-    bool is_title = false;
-    for (const hydra::ui::LibraryRow& row : a.library.rows())
-        if (hydra::ui::library_cell_text(row, hydra::ui::kColumnTitle) == label) {
-            is_title = true;
-            break;
-        }
-    if (!is_title) return "";
+    if (!e.hooks.is_library_row_title || !e.hooks.is_library_row_title(label)) return "";
     if (searches_here)
         for (const ImGuiTestItemInfo& it : drawn_items_labelled(ctx, label))
             if (std::strstr(it.Window->Name, "##library") == nullptr) return "";
@@ -210,7 +202,7 @@ struct ItemRef {
     bool retried = false;
 };
 
-ItemRef item_ref(ImGuiTestContext* ctx, Harness& h, const std::string& ref) {
+ItemRef item_ref(ImGuiTestContext* ctx, Engine& h, const std::string& ref) {
     const bool wildcard = ref.find("**/") != std::string::npos;
     if (!wildcard && !ref.empty() && ref[0] == '/') return {ref};
     if (!wildcard) {
@@ -242,12 +234,13 @@ ItemRef item_ref(ImGuiTestContext* ctx, Harness& h, const std::string& ref) {
 }  // namespace
 
 void start_session(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    ctx->SetRef("//Hydra");
+    Engine& e = engine_of(ctx);
+    if (e.hooks.reset) e.hooks.reset();
+    ctx->SetRef(e.home_ref.c_str());
 }
 
 CommandResult run_command(ImGuiTestContext* ctx, CommandSession& session, const std::string& line) {
-    Harness& h = harness(ctx);
+    Engine& h = engine_of(ctx);
     const int lineno = session.line;
     const double timeout = session.timeout;
     std::string verb, rest;
@@ -288,14 +281,16 @@ CommandResult run_command(ImGuiTestContext* ctx, CommandSession& session, const 
         if (!resolve(ref, target)) return refuse(target.refusal);
         ctx->ItemInputValue(target.ref.c_str(), text.c_str());
     } else if (verb == "open") {
-        // open <title>: open_titled with the title as the search. The ref
-        // goes back to //Hydra, where a session starts, so later refs read
-        // as they did before the open. The wait for the song's tabs is capped
-        // by the timeout in force, like wait-idle, so a live open never
-        // outlasts the longest a command may take.
+        // open <title>: the program's open (EngineHooks::open_song; Hydra's
+        // searches for the title). The ref goes back to home_ref, where a
+        // session starts, so later refs read as they did before the open.
+        // The wait for the song to settle is capped by the timeout in force,
+        // like wait-idle, so a live open never outlasts the longest a command
+        // may take.
         if (rest.empty()) return refuse("open needs a song title");
-        const std::string why = open_titled_reason(ctx, rest, rest, timeout);
-        ctx->SetRef("//Hydra");
+        if (!h.hooks.open_song) return refuse("open has no songs to open in this program");
+        const std::string why = h.hooks.open_song(ctx, rest, timeout);
+        ctx->SetRef(h.home_ref.c_str());
         if (!why.empty()) return refuse(why);
     } else if (verb == "key") {
         ImGuiKeyChord chord = 0;
@@ -318,7 +313,7 @@ CommandResult run_command(ImGuiTestContext* ctx, CommandSession& session, const 
             ctx->SleepNoSkip((float)seconds, 1.0f / 60.0f);
         }
     } else if (verb == "wait-idle") {
-        if (!wait_until(ctx, [&] { return !jobs_busy(h); }, timeout))
+        if (!wait_until(ctx, [&] { return !h.hooks.jobs_busy || !h.hooks.jobs_busy(); }, timeout))
             return refuse(message("jobs still running after %g s", timeout));
         // Jobs are done, but an open dialog still blocks the next command.
         if (const std::string note = open_modal_note(ctx); !note.empty()) r.text = note + "\n";
@@ -351,7 +346,7 @@ CommandResult run_command(ImGuiTestContext* ctx, CommandSession& session, const 
         if (it.ID == 0) return refuse(message("rect found no item \"%s\"", rest.c_str()));
         r.text = item_line(it, 0);
     } else if (verb == "state") {
-        r.text = state_text(h);
+        if (h.hooks.state_text) r.text = h.hooks.state_text();
     } else if (verb == "screenshot") {
         // screenshot <file> [| <ref>]: after a bar, only that window's or
         // item's rectangle is saved. A window name is tried first, then an item.

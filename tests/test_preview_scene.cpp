@@ -76,19 +76,13 @@ TEST_CASE("color_of: each lane maps back to the colour it was drawn from") {
 
 // The scene's song length is the length it is given (D75), never a note's
 // time: not the last drawn note, and not a later note-less timestamp. Without
-// one there is no length. The beat lines without an audio end still end two
-// measures past the last drawn note, as before.
-TEST_CASE("build_preview_scene: the song length is the one handed in, never the audio's end") {
+// one there is no length, and the beat lines end two measures past the last
+// drawn note.
+TEST_CASE("build_preview_scene: the song length is the one handed in, never a note's time") {
     Song song = make_hand_song();
     SongTimestamp empty;  // a timestamp with no notes, after the last chord
     empty.timecode = song.timecode(960);
     song.sequence.push_back(empty);
-
-    // An audio end alone is not a length (D75): the song's length is handed
-    // in on its own.
-    const PreviewScene with_audio =
-        build_preview_scene(song, nullptr, kCloneHeroSpCap, core::default_rules(), 4321.0);
-    CHECK(with_audio.song_length_ms == 0.0);
 
     PreviewScene scene = build_preview_scene(song, nullptr);
     REQUIRE(scene.has_notes);
@@ -397,8 +391,8 @@ TEST_CASE("build_beat_events: the fainter line is halfway back to the line befor
 
 TEST_CASE("build_preview_scene fills beats, tempos and resolution") {
     Song song = make_hand_song();
-    // The Preview passes the audio's end, as the load does: here the audio
-    // runs the plan's 5 s past the last note (tick 720, 750 ms), to 5750 ms.
+    // The Preview passes the song's length, as the load does: here 5 s past
+    // the last note (tick 720, 750 ms), 5750 ms.
     PreviewScene scene = build_preview_scene(song, nullptr, kCloneHeroSpCap,
                                              core::default_rules(), 5750.0);
     REQUIRE(scene.timing.has_value());
@@ -413,20 +407,45 @@ TEST_CASE("build_preview_scene fills beats, tempos and resolution") {
     CHECK(scene.beats.back().kind == PreviewBeatKind::Beat);
 }
 
-TEST_CASE("build_preview_scene: the beat lines run to the end of the audio") {
-    // The audio-tail chart: the last note is at tick 1920 (1000 ms) and the
-    // audio stops 5 s later, at 6000 ms, which is tick 11520 (six measures of
-    // 1920 ticks). The beat lines keep scrolling through that tail and stop at
-    // the barline on the audio's end (D48, Q25).
+// The beat lines stop where playback stops: at the song's length, never at
+// the audio's end (D266). The audio-tail chart's last note is at tick 1920
+// (1000 ms) and its audio stops 5 s later, at 6000 ms. A beat is 480 ticks
+// (250 ms) and a measure 1920 ticks (1000 ms).
+TEST_CASE("build_preview_scene: the beat lines stop at the song's length (D266)") {
     const test::AudioTailChart c = test::audio_tail_chart();
-    const PreviewScene scene =
-        build_preview_scene(c.song, nullptr, kCloneHeroSpCap, core::default_rules(), c.audio_end_ms);
-    REQUIRE(!scene.beats.empty());
-    CHECK(scene.beats.back().tick == 11520);
-    CHECK(scene.beats.back().kind == PreviewBeatKind::MeasureLine);
-    CHECK(scene.beats.back().ms == doctest::Approx(6000.0));
-    // The base alone gives the same grid: the overlay never touches beats.
-    CHECK(build_preview_base(c.song, c.audio_end_ms).beats.back().tick == 11520);
+
+    SUBCASE("a length that agrees with the audio's end draws the grid it always did") {
+        // 6000 ms is tick 11520, six measures in: the last line is that barline.
+        const PreviewScene scene = build_preview_scene(c.song, nullptr, kCloneHeroSpCap,
+                                                       core::default_rules(), c.audio_end_ms);
+        REQUIRE(!scene.beats.empty());
+        CHECK(scene.beats.back().tick == 11520);
+        CHECK(scene.beats.back().kind == PreviewBeatKind::MeasureLine);
+        CHECK(scene.beats.back().ms == doctest::Approx(6000.0));
+        // The base alone gives the same grid: the overlay never touches beats.
+        CHECK(build_preview_base(c.song, c.audio_end_ms).beats.back().tick == 11520);
+    }
+
+    SUBCASE("music past the song's length draws no lines past it") {
+        // A 4000 ms song with 6000 ms of audio. The barline at tick 7680 sits
+        // exactly on the length, so it is the last line drawn.
+        const PreviewScene at = build_preview_base(c.song, 4000.0);
+        REQUIRE(!at.beats.empty());
+        CHECK(at.beats.back().tick == 7680);
+        CHECK(at.beats.back().kind == PreviewBeatKind::MeasureLine);
+        CHECK(at.beats.back().ms == 4000.0);
+        for (const PreviewBeat& b : at.beats) CHECK(b.ms <= at.song_length_ms);
+
+        // A tenth of a millisecond shorter: a playhead there shows tick 7680,
+        // but that barline is past the end, so the last line is the half-beat
+        // before it, at tick 7440 (3875 ms).
+        const PreviewScene before = build_preview_base(c.song, 3999.9);
+        REQUIRE(!before.beats.empty());
+        CHECK(before.song_length_ms == 3999.9);
+        CHECK(before.beats.back().tick == 7440);
+        CHECK(before.beats.back().kind == PreviewBeatKind::Half);
+        for (const PreviewBeat& b : before.beats) CHECK(b.ms <= before.song_length_ms);
+    }
 }
 
 TEST_CASE("build_preview_scene: no path means no overlay") {
@@ -834,6 +853,57 @@ TEST_CASE("build_preview_scene: each activation names the fill it took") {
     PreviewScene s4 = build_preview_scene(song, &off_fill);
     REQUIRE(s4.activations.size() == 1);
     CHECK_FALSE(s4.activations[0].taken_fill.has_value());
+}
+
+// A ghost path lists the fills its activations stand on and changes nothing
+// else: the drawn path's fill states and activations are the ones built with
+// no ghost. Fills end at 480, 960, 1440 and 1920.
+TEST_CASE("build_preview_scene: a ghost path lists its own taken fills and nothing else") {
+    Song song = make_fill_song();
+    Path drawn;
+    drawn.activations = {act_at(song, 1440, {960})};
+    // Takes 480, 1440 and 1920; its passed-over 960 and the tick 1700 that is
+    // no fill are no ghost fills.
+    Path ghost;
+    ghost.activations = {act_at(song, 480, {}), act_at(song, 1440, {960}),
+                         act_at(song, 1920, {1700})};
+
+    const PreviewScene plain = build_preview_scene(song, &drawn);
+    CHECK(plain.ghost_fills.empty());
+    const PreviewScene with = build_preview_scene(song, &drawn, kCloneHeroSpCap,
+                                                  core::default_rules(), std::nullopt, &ghost);
+    CHECK(with.ghost_fills == std::vector<size_t>{0, 2, 3});
+    REQUIRE(with.fills.size() == plain.fills.size());
+    for (size_t i = 0; i < plain.fills.size(); ++i)
+        CHECK(with.fills[i].state == plain.fills[i].state);
+    REQUIRE(with.activations.size() == plain.activations.size());
+    CHECK(with.activations[0].taken_fill == plain.activations[0].taken_fill);
+
+    // No drawn path: every fill still reads Offered, as for an unanalyzed chart.
+    const PreviewScene alone = build_preview_scene(song, nullptr, kCloneHeroSpCap,
+                                                   core::default_rules(), std::nullopt, &ghost);
+    CHECK(alone.ghost_fills == std::vector<size_t>{0, 2, 3});
+    for (const PreviewFill& f : alone.fills) CHECK(f.state == PreviewFillState::Offered);
+
+    // A later overlay with no ghost clears the list.
+    const PreviewScene cleared = apply_preview_overlay(with, song, &drawn);
+    CHECK(cleared.ghost_fills.empty());
+}
+
+// On a real chart the ghost path's fills are the ones the same path takes when
+// it is the drawn path, pinned from one run.
+TEST_CASE("build_preview_scene: a corpus best path as the ghost lists its taken fills") {
+    const AnalysisResult& r = corpus::analyzed_by_ten_scores();
+    const Path& best = r.record.best_path();
+    const PreviewScene scene = build_preview_scene(r.song, nullptr, kCloneHeroSpCap,
+                                                   core::default_rules(), std::nullopt, &best);
+    CHECK(scene.ghost_fills == std::vector<size_t>{2, 7});
+
+    const PreviewScene drawn = build_preview_scene(r.song, &best);
+    std::vector<size_t> taken;
+    for (const PreviewActivation& a : drawn.activations)
+        if (a.taken_fill) taken.push_back(*a.taken_fill);
+    CHECK(scene.ghost_fills == taken);
 }
 
 // The Preview lights a stored passed-over fill by matching its tick to a fill
