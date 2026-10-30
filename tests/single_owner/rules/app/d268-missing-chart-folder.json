@@ -1,0 +1,50 @@
+{
+  "rules": [
+    {
+      "question": "Which of the chart folders cannot be read as a folder, so that a library scan must refuse?",
+      "owner": "app::first_missing_chart_folder in src/app/analysis.cpp",
+      "owner_file": "src/app/analysis.cpp",
+      "owner_symbol": "first_missing_chart_folder",
+      "date": "2026-10-29",
+      "decision": "D268",
+      "added_by": "D266-scan2-review",
+      "pattern": "is_directory_utf8\\(",
+      "anchor": "is_directory_utf8(",
+      "exempt": [
+        {
+          "file": "src/core/winstr.h",
+          "why": "declares is_directory_utf8, the disk check every caller uses"
+        },
+        {
+          "file": "src/core/winstr.cpp",
+          "why": "defines is_directory_utf8, the disk check every caller uses"
+        },
+        {
+          "file": "src/store/upgrade_files.cpp",
+          "why": "tells a file from a folder among the files of a store being upgraded; it reads no chart folder"
+        }
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/analysis.cpp",
+          "line_text": "if (!is_directory_utf8(folder)) return folder;",
+          "why": "the one loop over the chart folders that names the first unreadable one"
+        },
+        {
+          "file": "src/app/analysis.cpp",
+          "line_text": "if (is_directory_utf8(root)) {",
+          "why": "the scan walk skips a root that is not a folder; that decides what to walk, not whether to refuse"
+        }
+      ],
+      "must_match": [
+        "        if (!is_directory_utf8(folder)) {",
+        "    for (const std::string& f : settings.chartfolders) ok = ok && is_directory_utf8(f);"
+      ],
+      "must_not_match": [
+        "    if (const std::optional<std::string> missing = app::first_missing_chart_folder(folders)) {"
+      ],
+      "scope": ["src", "tools"],
+      "note": "The scan walk in analysis.cpp skips a root that is not a folder, which is its own question (what to walk), so both lines in the owner file are listed. Any other line that checks a folder on disk is flagged: a chart folder check outside the owner would give the app and hydra_batch two answers to which folder is missing. Decided by: D268 (D266 item 4)."
+    }
+  ]
+}
