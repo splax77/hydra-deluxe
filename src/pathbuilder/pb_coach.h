@@ -1,7 +1,7 @@
 // The Path Builder's decision list: one row per window of the path on screen,
 // with what the window cost (EN-3's ladder, app/path_costs.h), the timing it
 // needs and the tight-window note; the end choices of a window; "Finish for
-// me"; and a click that starts a new window. Every number is read from its
+// me"; and the clicks that start and remove a window. Every number is read from its
 // owner: costs from cost_list and cost_tier, timings from
 // Activation::difficulty and format_ms, the note from
 // Activation::within_ms_limit. Plan: docs/superpowers/plans/
@@ -88,7 +88,8 @@ std::vector<EndChoice> end_choices(const ScoreGraph& graph, const SearchSettings
 
 // What a click on a fill makes of the player's path.
 struct ClickResult {
-    // The new path, when the window can happen.
+    // The new windows, set when the click worked, and the engine's path for
+    // them, empty when no window is left (PlayerPath's rule).
     std::optional<std::vector<PinnedWindow>> windows;
     std::optional<Path> path;
     // impossible_window_text, or plain_error's sentence and details line for
@@ -119,6 +120,12 @@ ClickResult start_window(const ScoreGraph& graph, const SearchSettings& settings
 // EndChoice's window), the way start_window treats the windows around it.
 ClickResult choose_end(const ScoreGraph& graph, const SearchSettings& settings,
                        const std::vector<PinnedWindow>& windows, const PinnedWindow& chosen);
+
+// Removes the window on `act_tick`, treating the windows around it the way
+// start_window does. Removing the last window leaves no window and no path.
+// A tick with no window changes nothing: the result is empty.
+ClickResult remove_window(const ScoreGraph& graph, const SearchSettings& settings,
+                          const std::vector<PinnedWindow>& windows, int64_t act_tick);
 
 // "Finish for me": the path behind BF(n) for a ladder over `window_count`
 // windows (LadderRun::best), or nothing until the ladder has BF(n). The
@@ -239,6 +246,10 @@ public:
     // a worker. An impossible click leaves the path and sets message().
     void click_fill(std::shared_ptr<const ScoreGraph> graph, const SearchSettings& settings,
                     const std::vector<PinnedWindow>& windows, int64_t act_tick);
+    // Removes the window on `act_tick` from the player's path
+    // (remove_window), on a worker, as click_fill starts one.
+    void click_remove(std::shared_ptr<const ScoreGraph> graph, const SearchSettings& settings,
+                      const std::vector<PinnedWindow>& windows, int64_t act_tick);
     // The click's or end choice's failure: plain sentence and details line.
     const std::string& message() const { return message_; }
     const std::string& detail() const { return detail_; }
@@ -252,6 +263,9 @@ public:
     const CoachList& list() const { return list_; }
     std::optional<size_t> selected() const { return selected_; }
     const std::vector<EndChoice>& ends() const { return ends_; }
+    // The ladder for the path on screen as far as it has got, as the rows
+    // read it; null before its first request. The strip's step line reads it.
+    const app::LadderRun* run() const { return run_ ? &*run_ : nullptr; }
 
     // Draws the column. `preview` (may be null) is sought to a row's
     // activation when the row is clicked.
@@ -265,6 +279,8 @@ private:
     std::shared_ptr<const ScoreGraph> graph_;
     SearchSettings settings_;
     CoachList list_;
+    // The run list_ was built from (refresh_list).
+    std::optional<app::LadderRun> run_;
     // "Finish for me"'s path (finish_for_me), once the ladder has it.
     std::optional<Path> finish_;
     size_t list_landed_ = static_cast<size_t>(-1);

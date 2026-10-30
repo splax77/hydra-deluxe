@@ -114,17 +114,18 @@ std::vector<EndChoice> end_choices(const ScoreGraph& graph, const SearchSettings
 
 namespace {
 
-// The player's windows with `at` put in: the windows before it as they are,
-// `at` itself, and the ones after it whole (`keep_later`) or by their
-// activation only. `replace` drops a window on at's tick.
-std::vector<PinnedWindow> pins_around(const std::vector<PinnedWindow>& windows,
-                                      const PinnedWindow& at, bool replace, bool keep_later) {
+// The player's windows changed at `tick`: the windows before it as they are,
+// `at` (none puts nothing in), and the ones after it whole (`keep_later`) or
+// by their activation only. `replace` drops a window already on `tick`.
+std::vector<PinnedWindow> pins_around(const std::vector<PinnedWindow>& windows, int64_t tick,
+                                      const std::optional<PinnedWindow>& at, bool replace,
+                                      bool keep_later) {
     std::vector<PinnedWindow> pins;
     for (const PinnedWindow& w : windows)
-        if (w.act_tick < at.act_tick) pins.push_back(w);
-    pins.push_back(at);
+        if (w.act_tick < tick) pins.push_back(w);
+    if (at) pins.push_back(*at);
     for (const PinnedWindow& w : windows)
-        if (w.act_tick > at.act_tick || (w.act_tick == at.act_tick && !replace))
+        if (w.act_tick > tick || (w.act_tick == tick && !replace))
             pins.push_back(keep_later ? w
                                       : PinnedWindow{w.act_tick, std::nullopt, false, std::nullopt});
     return pins;
@@ -143,22 +144,25 @@ bool later_end_changed(const std::vector<PinnedWindow>& before,
     return false;
 }
 
-// `windows` with `at` put in (pins_around). The windows after it keep the
-// ends the player chose while best_finish can still reach them; when it
+// `windows` changed at `act_tick` (pins_around). The windows after it keep
+// the ends the player chose while best_finish can still reach them; when it
 // cannot, they are pinned by their activation alone and take the ends the
 // best finish chooses, and the result says so. Then search_target for the
-// player's own path.
+// player's own path. No window left: no path.
 ClickResult repin(const ScoreGraph& graph, const SearchSettings& settings,
-                  const std::vector<PinnedWindow>& windows, const PinnedWindow& at,
-                  bool replace) {
-    const int64_t act_tick = at.act_tick;
+                  const std::vector<PinnedWindow>& windows, int64_t act_tick,
+                  const std::optional<PinnedWindow>& at, bool replace) {
     ClickResult out;
     try {
-        std::vector<PinnedWindow> pins = pins_around(windows, at, replace, true);
+        std::vector<PinnedWindow> pins = pins_around(windows, act_tick, at, replace, true);
+        if (pins.empty()) {
+            out.windows.emplace();
+            return out;
+        }
         TargetResult bf = best_finish(graph, settings, pins);
         bool repicked = false;
         if (bf.paths.empty()) {
-            pins = pins_around(windows, at, replace, false);
+            pins = pins_around(windows, act_tick, at, replace, false);
             bf = best_finish(graph, settings, pins);
             repicked = true;
         }
@@ -187,13 +191,21 @@ ClickResult repin(const ScoreGraph& graph, const SearchSettings& settings,
 
 ClickResult start_window(const ScoreGraph& graph, const SearchSettings& settings,
                          const std::vector<PinnedWindow>& windows, int64_t act_tick) {
-    return repin(graph, settings, windows,
+    return repin(graph, settings, windows, act_tick,
                  PinnedWindow{act_tick, std::nullopt, false, std::nullopt}, false);
 }
 
 ClickResult choose_end(const ScoreGraph& graph, const SearchSettings& settings,
                        const std::vector<PinnedWindow>& windows, const PinnedWindow& chosen) {
-    return repin(graph, settings, windows, chosen, true);
+    return repin(graph, settings, windows, chosen.act_tick, chosen, true);
+}
+
+ClickResult remove_window(const ScoreGraph& graph, const SearchSettings& settings,
+                          const std::vector<PinnedWindow>& windows, int64_t act_tick) {
+    bool found = false;
+    for (const PinnedWindow& w : windows) found = found || w.act_tick == act_tick;
+    if (!found) return {};
+    return repin(graph, settings, windows, act_tick, std::nullopt, true);
 }
 
 std::optional<Path> finish_for_me(const app::LadderRun& run, size_t window_count) {
@@ -330,6 +342,7 @@ void DecisionList::show(std::shared_ptr<const ScoreGraph> graph, const SearchSet
         error_ = app::plain_error(e);
         coach_.clear();
         list_ = CoachList{};
+        run_.reset();
         finish_.reset();
         return;
     }
@@ -342,10 +355,10 @@ void DecisionList::refresh_list() {
     const size_t landed = coach_.landed();
     if (landed == list_landed_) return;
     list_landed_ = landed;
-    const std::optional<app::LadderRun> run = coach_.run();
+    run_ = coach_.run();
     const Path none;
-    list_ = coach_list(shown_ ? *shown_ : none, run ? *run : app::LadderRun{}, settings_);
-    finish_ = run ? finish_for_me(*run, shown_windows_.size()) : std::nullopt;
+    list_ = coach_list(shown_ ? *shown_ : none, run_ ? *run_ : app::LadderRun{}, settings_);
+    finish_ = run_ ? finish_for_me(*run_, shown_windows_.size()) : std::nullopt;
 }
 
 void DecisionList::poll(PbState& state) {
@@ -366,10 +379,10 @@ void DecisionList::poll(PbState& state) {
             message_ = std::move(r.message);
             detail_ = std::move(r.detail);
             notice_ = std::move(r.notice);
-            if (r.windows && r.path) {
+            if (r.windows) {
                 PlayerPath next;
                 next.windows = std::move(*r.windows);
-                next.path = std::move(*r.path);
+                next.path = std::move(r.path);
                 state.history().edit(std::move(next));
                 player_changed_ = true;
             }
@@ -390,6 +403,7 @@ void DecisionList::clear() {
     shown_.reset();
     shown_windows_.clear();
     list_ = CoachList{};
+    run_.reset();
     finish_.reset();
     list_landed_ = static_cast<size_t>(-1);
     error_.clear();
@@ -422,6 +436,15 @@ void DecisionList::click_fill(std::shared_ptr<const ScoreGraph> graph,
     if (!graph) return;
     start_edit([graph, settings, windows, act_tick] {
         return start_window(*graph, settings, windows, act_tick);
+    });
+}
+
+void DecisionList::click_remove(std::shared_ptr<const ScoreGraph> graph,
+                                const SearchSettings& settings,
+                                const std::vector<PinnedWindow>& windows, int64_t act_tick) {
+    if (!graph) return;
+    start_edit([graph, settings, windows, act_tick] {
+        return remove_window(*graph, settings, windows, act_tick);
     });
 }
 

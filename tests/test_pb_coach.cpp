@@ -1,6 +1,7 @@
 // The Path Builder's decision list (src/pathbuilder/pb_coach.h): the rows a
-// ladder fills, the tight-window note, the end choices, "Finish for me", a
-// click that starts a window, and the worker a newer request supersedes.
+// ladder fills, the tight-window note, the end choices, "Finish for me", the
+// clicks that start and remove a window, and the worker a newer request
+// supersedes.
 // Charts come from the corpus; every figure is pinned from one run.
 
 #include "doctest.h"
@@ -251,6 +252,115 @@ TEST_CASE("coach click: a later end that is no longer possible is picked again, 
     CHECK(r.notice == hydra::pathbuilder::kLaterEndRepickedText);
     CHECK(r.path->pathstring() == "3+ 0 2");
     CHECK((*r.windows)[1].deact_tick != best[1].deact_tick);
+}
+
+TEST_CASE("coach remove: the later windows keep the ends the player chose while they can") {
+    PbState s;
+    open_and_wait(s, white_washed_notes(), scratch_settings());
+    REQUIRE(s.chart() != nullptr);
+    const OpenChart& c = *s.chart();
+    const std::vector<PinnedWindow> best = hydra::pinned_windows(c.record.best_path());
+    REQUIRE(best.size() == 5);
+    CHECK(c.record.best_path().pathstring() == "0 1 3 0- 0");
+    // From one run: removing the second window keeps every later end.
+    const ClickResult r =
+        hydra::pathbuilder::remove_window(*c.graph, c.settings, best, best[1].act_tick);
+    REQUIRE(r.windows.has_value());
+    REQUIRE(r.path.has_value());
+    CHECK(r.message.empty());
+    CHECK(r.notice.empty());
+    REQUIRE(r.windows->size() == 4);
+    CHECK((*r.windows)[0].act_tick == 42240);
+    CHECK((*r.windows)[0].deact_tick == 53760);
+    for (size_t i = 1; i < 4; ++i) {
+        CHECK((*r.windows)[i].act_tick == best[i + 1].act_tick);
+        CHECK((*r.windows)[i].deact_tick == best[i + 1].deact_tick);
+    }
+    CHECK(r.path->pathstring() == "0 7 0- 0");
+    CHECK(r.path->totalscore() == 667020);
+}
+
+TEST_CASE("coach remove: a later end that is no longer possible is picked again, and said so") {
+    PbState s;
+    open_and_wait(s, corpus::burnout_notes(), scratch_settings());
+    REQUIRE(s.chart() != nullptr);
+    const OpenChart& c = *s.chart();
+    const std::vector<PinnedWindow> best = hydra::pinned_windows(c.record.best_path());
+    REQUIRE(best.size() == 3);
+    // From one run: without the first window, the second can no longer end
+    // where it did.
+    const ClickResult r =
+        hydra::pathbuilder::remove_window(*c.graph, c.settings, best, best[0].act_tick);
+    REQUIRE(r.windows.has_value());
+    REQUIRE(r.path.has_value());
+    CHECK(r.message.empty());
+    CHECK(r.notice == hydra::pathbuilder::kLaterEndRepickedText);
+    REQUIRE(r.windows->size() == 2);
+    CHECK((*r.windows)[0].act_tick == 109440);
+    CHECK((*r.windows)[0].deact_tick == 128640);
+    CHECK(best[1].deact_tick == 120960);
+    CHECK(r.path->pathstring() == "9 1");
+    CHECK(r.path->totalscore() == 364675);
+}
+
+TEST_CASE("coach remove: removing every window leaves the empty path") {
+    PbState s;
+    open_and_wait(s, corpus::burnout_notes(), scratch_settings());
+    REQUIRE(s.chart() != nullptr);
+    const OpenChart& c = *s.chart();
+    std::vector<PinnedWindow> windows = hydra::pinned_windows(c.record.best_path());
+    REQUIRE(windows.size() == 3);
+    // Last window first: from one run, the first two keep their ends.
+    const ClickResult two =
+        hydra::pathbuilder::remove_window(*c.graph, c.settings, windows, windows[2].act_tick);
+    REQUIRE(two.windows.has_value());
+    REQUIRE(two.path.has_value());
+    CHECK(two.notice.empty());
+    REQUIRE(two.windows->size() == 2);
+    CHECK((*two.windows)[0].deact_tick == windows[0].deact_tick);
+    CHECK((*two.windows)[1].deact_tick == windows[1].deact_tick);
+    CHECK(two.path->pathstring() == "3- 1");
+    CHECK(two.path->totalscore() == 358235);
+    windows = *two.windows;
+    while (!windows.empty()) {
+        const ClickResult r = hydra::pathbuilder::remove_window(*c.graph, c.settings, windows,
+                                                                windows.back().act_tick);
+        REQUIRE(r.windows.has_value());
+        CHECK(r.message.empty());
+        REQUIRE(r.windows->size() + 1 == windows.size());
+        windows = *r.windows;
+        // A window left has a path; none left has none (PlayerPath's rule).
+        CHECK(r.path.has_value() == !windows.empty());
+    }
+}
+
+TEST_CASE("coach remove: a tick with no window changes nothing") {
+    PbState s;
+    open_and_wait(s, corpus::burnout_notes(), scratch_settings());
+    REQUIRE(s.chart() != nullptr);
+    const OpenChart& c = *s.chart();
+    const std::vector<PinnedWindow> best = hydra::pinned_windows(c.record.best_path());
+    const ClickResult r = hydra::pathbuilder::remove_window(*c.graph, c.settings, best, 0);
+    CHECK_FALSE(r.windows.has_value());
+    CHECK_FALSE(r.path.has_value());
+    CHECK(r.message.empty());
+    CHECK(r.notice.empty());
+}
+
+TEST_CASE("coach remove: a removal that breaks a later window leaves the path and says why") {
+    PbState s;
+    open_and_wait(s, white_washed_notes(), scratch_settings());
+    REQUIRE(s.chart() != nullptr);
+    const OpenChart& c = *s.chart();
+    const std::vector<PinnedWindow> best = hydra::pinned_windows(c.record.best_path());
+    REQUIRE(best.size() == 5);
+    // From one run: without the third window, a later one cannot happen.
+    const ClickResult r =
+        hydra::pathbuilder::remove_window(*c.graph, c.settings, best, best[2].act_tick);
+    CHECK_FALSE(r.windows.has_value());
+    CHECK_FALSE(r.path.has_value());
+    CHECK(r.message == hydra::pathbuilder::impossible_window_text("activation", false));
+    CHECK(r.notice.empty());
 }
 
 TEST_CASE("coach rows: a path with no window has no after-your-last-window line") {
