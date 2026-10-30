@@ -1546,6 +1546,38 @@
       "note": "The Preview picker's \"label##index\" id. The library's chip id (\")##\" + c.id) is another widget's and does not fit. Decided by: audit finding 352; phase 6 task J4-4 (D53, D54)"
     },
     {
+      "question": "What does a list call the best all-0 path?",
+      "owner": "kBestAllZeroLabel in src/app/path_view.h",
+      "owner_file": "src/app/path_view.h",
+      "owner_symbol": "kBestAllZeroLabel",
+      "date": "2026-10-29",
+      "decision": "Path Builder plan, task PB-2a (one owner for the label the Paths tab and the Path Builder share)",
+      "added_by": "PB-2a",
+      "pattern": "^[^/]*\"Best all-0 path\"",
+      "anchor": "\"Best all-0 path\"",
+      "must_match": [
+        ": \"Best all-0 path\";",
+        "add(i == 0 ? \"Best all-0 path\" : \"All-0 path \" + std::to_string(i + 1),"
+      ],
+      "must_not_match": [
+        ": app::kBestAllZeroLabel;",
+        "add(i == 0 ? std::string(app::kBestAllZeroLabel) : \"All-0 path \" + std::to_string(i + 1),",
+        "std::string label;  // \"Best path\", \"Path 2\", \"Best all-0 path\", a branch's name"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/path_view.h",
+          "line_text": "inline constexpr const char* kBestAllZeroLabel = \"Best all-0 path\";",
+          "why": "kBestAllZeroLabel, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools"
+      ],
+      "note": "The Paths tab's heading over the all-0 section and the Path Builder's left-list row each typed this name. A line whose literal comes after a // is a comment naming the row, not a copy. Tests are out of scope: a GUI test pins the text it reads on screen."
+    },
+    {
       "question": "How does a command-line tool end on an error?",
       "owner": "tool_error in src/app/user_messages.cpp",
       "owner_file": "src/app/user_messages.cpp",

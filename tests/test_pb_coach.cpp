@@ -172,6 +172,100 @@ TEST_CASE("coach rows: a window over the Path limit carries the tight-window not
     for (size_t i = 0; i < 3; ++i) CHECK(own_list.rows[i].note.empty());
 }
 
+TEST_CASE("coach rows: a squeeze with time to spare under a lower limit names the limit alone") {
+    PbState s;
+    open_and_wait(s, white_washed_notes(), scratch_settings());
+    REQUIRE(s.chart() != nullptr);
+    const OpenChart& c = *s.chart();
+    // From one run: White Washed's all-0 path ends on a squeeze-in with
+    // 130.4 ms to spare, so it needs no timing.
+    REQUIRE_FALSE(c.record.allzero_paths.empty());
+    const Path& allzero = c.record.allzero_paths.front();
+    CHECK(allzero.pathstring() == "0 0 0 0 0 0+");
+    const ActivationWalk acts = allzero.walk_activations();
+    REQUIRE(acts.size() == 6);
+    const Activation& spare = acts[5];
+    CHECK_FALSE(spare.difficulty().has_value());
+    // A limit below its figure: the window is over it, with no timing to name.
+    CHECK_FALSE(spare.within_ms_limit(-200.0));
+    CHECK(hydra::pathbuilder::tight_window_note(spare, -200.0) == "over your limit of -200 ms");
+    // Inside a limit it meets, no note.
+    CHECK(hydra::pathbuilder::tight_window_note(spare, -10.0).empty());
+}
+
+TEST_CASE("coach click: a later window keeps the end the player chose while it can") {
+    PbState s;
+    open_and_wait(s, white_washed_notes(), scratch_settings());
+    REQUIRE(s.chart() != nullptr);
+    const OpenChart& c = *s.chart();
+    // The best path's first four windows, the fourth given its squeeze-in end.
+    std::vector<PinnedWindow> four = hydra::pinned_windows(c.record.best_path());
+    four.resize(4);
+    const std::vector<PinnedWindow> before(four.begin(), four.begin() + 3);
+    const auto ends = hydra::pathbuilder::end_choices(*c.graph, c.settings, before, four[3].act_tick);
+    // From one run: the squeeze-in end, then the squeeze-out end.
+    REQUIRE(ends.size() == 2);
+    CHECK(ends[0].token == "0+");
+    CHECK(ends[0].window.deact_tick == 257280);
+    CHECK(ends[1].token == "0-");
+    CHECK(ends[1].window.deact_tick == 253440);
+    const ClickResult chosen = hydra::pathbuilder::choose_end(*c.graph, c.settings, four, ends[0].window);
+    REQUIRE(chosen.windows.has_value());
+    REQUIRE(chosen.path.has_value());
+    CHECK(chosen.path->pathstring() == "0 1 3 0+");
+
+    // An edit before it (the first window given its own end again) keeps the
+    // fourth window's squeeze-in, though the best finish would pick the
+    // squeeze-out for it.
+    const ClickResult again =
+        hydra::pathbuilder::choose_end(*c.graph, c.settings, *chosen.windows, chosen.windows->front());
+    REQUIRE(again.windows.has_value());
+    REQUIRE(again.path.has_value());
+    CHECK(again.message.empty());
+    CHECK(again.notice.empty());
+    CHECK((*again.windows)[3].deact_tick == 257280);
+    CHECK(again.path->pathstring() == "0 1 3 0+");
+    std::vector<PinnedWindow> act_only = *chosen.windows;
+    act_only[3] = PinnedWindow{act_only[3].act_tick, std::nullopt, false, std::nullopt};
+    const hydra::TargetResult picked = hydra::best_finish(*c.graph, c.settings, act_only);
+    REQUIRE_FALSE(picked.paths.empty());
+    CHECK(hydra::pinned_windows(picked.paths.front())[3].deact_tick == 253440);
+}
+
+TEST_CASE("coach click: a later end that is no longer possible is picked again, and said so") {
+    PbState s;
+    open_and_wait(s, corpus::burnout_notes(), scratch_settings());
+    REQUIRE(s.chart() != nullptr);
+    const OpenChart& c = *s.chart();
+    const std::vector<PinnedWindow> best = hydra::pinned_windows(c.record.best_path());
+    REQUIRE(best.size() == 3);
+    const auto ends = hydra::pathbuilder::end_choices(*c.graph, c.settings, {}, best[0].act_tick);
+    // From one run: the first window can end on a squeeze-in instead.
+    REQUIRE_FALSE(ends.empty());
+    CHECK(ends[0].token == "3+");
+    CHECK(ends[0].window.deact_tick == 74880);
+    const ClickResult r = hydra::pathbuilder::choose_end(*c.graph, c.settings, best, ends[0].window);
+    REQUIRE(r.windows.has_value());
+    REQUIRE(r.path.has_value());
+    CHECK(r.message.empty());
+    CHECK(r.notice == hydra::pathbuilder::kLaterEndRepickedText);
+    CHECK(r.path->pathstring() == "3+ 0 2");
+    CHECK((*r.windows)[1].deact_tick != best[1].deact_tick);
+}
+
+TEST_CASE("coach rows: a path with no window has no after-your-last-window line") {
+    PbState s;
+    open_and_wait(s, corpus::burnout_notes(), scratch_settings());
+    REQUIRE(s.chart() != nullptr);
+    const OpenChart& c = *s.chart();
+    const LadderRun run = ladder(c, {});
+    REQUIRE(run.complete);
+    const CoachList list = hydra::pathbuilder::coach_list(Path{}, run, c.settings);
+    CHECK(list.rows.empty());
+    CHECK_FALSE(list.after_last.has_value());
+    CHECK_FALSE(list.after_last_tier.has_value());
+}
+
 TEST_CASE("coach worker: a newer request supersedes the older") {
     PbState s;
     open_and_wait(s, corpus::burnout_notes(), scratch_settings());

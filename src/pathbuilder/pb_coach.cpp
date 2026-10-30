@@ -18,8 +18,10 @@ namespace hydra::pathbuilder {
 std::string tight_window_note(const Activation& act, const std::optional<double>& limit_ms) {
     if (!limit_ms || act.within_ms_limit(*limit_ms)) return {};
     const std::optional<double> needs = act.difficulty();
-    // The negative-limit edge: tight, with no figure the limit fails on.
-    if (!needs || timing_within_limit(*needs, *limit_ms)) return {};
+    // The negative-limit edge: over the limit with no figure the limit fails
+    // on, so the note names the limit alone.
+    if (!needs || timing_within_limit(*needs, *limit_ms))
+        return "over your limit of " + format_ms_whole(*limit_ms);
     return "needs " + format_ms(*needs) + ", your limit is " + format_ms_whole(*limit_ms);
 }
 
@@ -53,7 +55,9 @@ CoachList coach_list(const Path& shown, const app::LadderRun& run,
         }
         out.rows.push_back(std::move(row));
     }
-    if (run.complete && costs) {
+    // A path with no window shows only "No windows yet." (the user's ruling,
+    // "Hide the line").
+    if (run.complete && costs && !out.rows.empty()) {
         out.after_last = costs->after_last;
         out.after_last_tier = app::cost_tier(costs->after_last, bf0);
     }
@@ -111,24 +115,53 @@ std::vector<EndChoice> end_choices(const ScoreGraph& graph, const SearchSettings
 namespace {
 
 // The player's windows with `at` put in: the windows before it as they are,
-// `at` itself, and the ones after it by their activation only (each takes
-// the end the best finish chooses). `replace` drops a window on at's tick.
-// Then best_finish, keeping the ends it chose, and search_target for the
+// `at` itself, and the ones after it whole (`keep_later`) or by their
+// activation only. `replace` drops a window on at's tick.
+std::vector<PinnedWindow> pins_around(const std::vector<PinnedWindow>& windows,
+                                      const PinnedWindow& at, bool replace, bool keep_later) {
+    std::vector<PinnedWindow> pins;
+    for (const PinnedWindow& w : windows)
+        if (w.act_tick < at.act_tick) pins.push_back(w);
+    pins.push_back(at);
+    for (const PinnedWindow& w : windows)
+        if (w.act_tick > at.act_tick || (w.act_tick == at.act_tick && !replace))
+            pins.push_back(keep_later ? w
+                                      : PinnedWindow{w.act_tick, std::nullopt, false, std::nullopt});
+    return pins;
+}
+
+// Whether a window after `act_tick` in `before` ends differently in `after`.
+bool later_end_changed(const std::vector<PinnedWindow>& before,
+                       const std::vector<PinnedWindow>& after, int64_t act_tick) {
+    for (const PinnedWindow& w : before) {
+        if (w.act_tick <= act_tick) continue;
+        for (const PinnedWindow& n : after)
+            if (n.act_tick == w.act_tick &&
+                (n.deact_tick != w.deact_tick || n.squeezed_out != w.squeezed_out))
+                return true;
+    }
+    return false;
+}
+
+// `windows` with `at` put in (pins_around). The windows after it keep the
+// ends the player chose while best_finish can still reach them; when it
+// cannot, they are pinned by their activation alone and take the ends the
+// best finish chooses, and the result says so. Then search_target for the
 // player's own path.
 ClickResult repin(const ScoreGraph& graph, const SearchSettings& settings,
                   const std::vector<PinnedWindow>& windows, const PinnedWindow& at,
                   bool replace) {
     const int64_t act_tick = at.act_tick;
     ClickResult out;
-    std::vector<PinnedWindow> pins;
-    for (const PinnedWindow& w : windows)
-        if (w.act_tick < act_tick) pins.push_back(w);
-    pins.push_back(at);
-    for (const PinnedWindow& w : windows)
-        if (w.act_tick > act_tick || (w.act_tick == act_tick && !replace))
-            pins.push_back(PinnedWindow{w.act_tick, std::nullopt, false, std::nullopt});
     try {
-        const TargetResult bf = best_finish(graph, settings, pins);
+        std::vector<PinnedWindow> pins = pins_around(windows, at, replace, true);
+        TargetResult bf = best_finish(graph, settings, pins);
+        bool repicked = false;
+        if (bf.paths.empty()) {
+            pins = pins_around(windows, at, replace, false);
+            bf = best_finish(graph, settings, pins);
+            repicked = true;
+        }
         if (bf.paths.empty()) {
             out.message = impossible_window_text(bf.failed_reason, bf.failed_tick == act_tick);
             return out;
@@ -140,6 +173,7 @@ ClickResult repin(const ScoreGraph& graph, const SearchSettings& settings,
             out.message = impossible_window_text(own.failed_reason, own.failed_tick == act_tick);
             return out;
         }
+        if (repicked && later_end_changed(windows, mine, act_tick)) out.notice = kLaterEndRepickedText;
         out.windows = std::move(mine);
         out.path = std::move(own.paths.front());
     } catch (const std::exception& e) {
@@ -331,6 +365,7 @@ void DecisionList::poll(PbState& state) {
             ClickResult& r = click_job_->result();
             message_ = std::move(r.message);
             detail_ = std::move(r.detail);
+            notice_ = std::move(r.notice);
             if (r.windows && r.path) {
                 PlayerPath next;
                 next.windows = std::move(*r.windows);
@@ -364,6 +399,7 @@ void DecisionList::clear() {
     if (click_job_) retired_clicks_.push_back(std::move(click_job_));
     message_.clear();
     detail_.clear();
+    notice_.clear();
 }
 
 bool DecisionList::take_player_changed() {
@@ -376,7 +412,8 @@ void DecisionList::start_edit(std::function<ClickResult()> fn) {
     if (click_job_) retired_clicks_.push_back(std::move(click_job_));
     message_.clear();
     detail_.clear();
-    click_job_ = std::make_unique<WorkJob<ClickResult>>(std::move(fn));
+    notice_.clear();
+    click_job_ =std::make_unique<WorkJob<ClickResult>>(std::move(fn));
 }
 
 void DecisionList::click_fill(std::shared_ptr<const ScoreGraph> graph,
@@ -417,6 +454,7 @@ void DecisionList::draw(PbState& state, ui::PreviewController* preview) {
         }
         if (!detail_.empty()) ImGui::TextDisabled("%s", detail_.c_str());
     }
+    if (!notice_.empty()) ImGui::TextWrapped("%s", notice_.c_str());
     const std::string ladder_error = coach_.error();
     if (!ladder_error.empty()) {
         {
