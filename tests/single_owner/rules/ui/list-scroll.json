@@ -23,12 +23,17 @@
           "file": "src/ui/list_scroll.cpp",
           "line_text": "ImGui::ScrollToItem(kNearestEdgeScrollFlags);",
           "why": "scroll_last_row: the one ImGui call that moves a list to its selected row"
+        },
+        {
+          "file": "src/ui/list_scroll.cpp",
+          "line_text": "ImGui::SetScrollY(ImGui::GetScrollY() + top_now - *last.top);",
+          "why": "keep_last_row_in_place: the one ImGui call that puts the selected row back where it sat when every row changes height"
         }
       ],
       "scope": [
         "src"
       ],
-      "note": "Every click once centred the clicked row, so the list crept and the next click at the same spot landed on another song. selection_scroll decides from why the selection changed (SelectionSource) and scroll_last_row applies it. A list that scrolls itself any other way is a second answer. The scope is src because a GUI test sets the scroll position by hand to set up its case."
+      "note": "Every click once centred the clicked row, so the list crept and the next click at the same spot landed on another song. selection_scroll decides from why the selection changed (SelectionSource) and scroll_last_row applies it; row_keeps_place decides when every row changes height and keep_last_row_in_place applies that. A list that scrolls itself any other way is a second answer. The scope is src because a GUI test sets the scroll position by hand to set up its case."
     }
   ]
 }

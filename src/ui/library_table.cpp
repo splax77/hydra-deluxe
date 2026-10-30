@@ -474,7 +474,7 @@ void render_table(AppState& app, ImVec2 size) {
 
     const std::vector<size_t>& order = app.library_view_order();
     const std::vector<LibraryRow>& rows = app.library.rows();
-    const std::string selected_path = app.selected ? row_key(*app.selected) : std::string();
+    const std::string selected_path = app.selected ? app.selected->notespath : std::string();
 
     // A new selection asks the scroll owner (ui/list_scroll.h), once, how to
     // move the list to its row. Only a change of the selected song counts: a
