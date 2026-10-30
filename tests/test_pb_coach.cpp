@@ -292,7 +292,7 @@ TEST_CASE("coach click: a fill before a window keeps the later end and picks the
     std::vector<PinnedWindow> other = skipped;
     other.insert(other.begin() + 3, ends[0].window);
     const hydra::TargetResult worse = hydra::best_finish(*c.graph, c.settings, other);
-    CHECK((worse.paths.empty() || worse.paths.front().totalscore() < 706180));
+    CHECK((worse.paths.empty() || worse.paths.front().totalscore() < r.path->totalscore()));
     REQUIRE(r.windows->size() == 5);
     CHECK((*r.windows)[3].act_tick == 245760);
     CHECK((*r.windows)[3].deact_tick == 253440);
