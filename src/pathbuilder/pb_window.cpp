@@ -16,7 +16,7 @@
 #include "pathbuilder/pb_open.h"
 #include "search/graph.h"  // fill_rule_for
 #include "ui/preview_controller.h"
-#include "ui/widgets.h"  // WarnColor
+#include "ui/widgets.h"  // WarnColor, error_detail_line
 
 namespace hydra::pathbuilder {
 
@@ -177,7 +177,7 @@ void PbApp::draw() {
             ui::WarnColor warn;
             ImGui::TextWrapped("%s", refusal_.c_str());
         }
-        if (!refusal_detail_.empty()) ImGui::TextDisabled("%s", refusal_detail_.c_str());
+        ui::error_detail_line(refusal_detail_);
     }
     if (state.opening()) ImGui::TextWrapped("Opening %s ...", state.requested_path().c_str());
     if (!state.error().empty()) {
@@ -185,7 +185,7 @@ void PbApp::draw() {
             ui::WarnColor warn;
             ImGui::TextWrapped("%s", state.error().c_str());
         }
-        if (!state.error_detail().empty()) ImGui::TextDisabled("%s", state.error_detail().c_str());
+        ui::error_detail_line(state.error_detail());
     }
 
     if (const OpenChart* chart = state.chart())
@@ -259,8 +259,7 @@ void PbApp::draw_highway(const OpenChart& chart, const Path* shown) {
             ui::WarnColor warn;
             ImGui::TextWrapped("%s", preview_->error().c_str());
         }
-        if (!preview_->error_detail().empty())
-            ImGui::TextDisabled("%s", preview_->error_detail().c_str());
+        ui::error_detail_line(preview_->error_detail());
         return;
     }
     if (preview_->loading()) {
