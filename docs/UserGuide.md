@@ -324,7 +324,7 @@ The transport buttons are `-5s`, `< 10 ms`, `Play`/`Pause`, `10 ms >` and `+5s`,
 
 The same keys are drawn as keycaps in a bar under the highway, in the buttons' order. Each button's tooltip names its key too.
 
-The scrubber under the highway shows where you are. Its gold marks are the path's activations, in the same gold as the next-activation box. The scrubber measures position against the song's length, like the Paths timeline, so an activation sits at the same spot on both. The scrubber ends at the song's end, and so does playback: audio that runs past the end doesn't play. A chart with no length shows no gold marks, and nothing stops playback.<!-- owners: PreviewController::playback_end_ms (the one end), app::song_length_ms (the song's length) --> The beat lines run on to the end of the audio.
+The scrubber under the highway shows where you are. Its gold marks are the path's activations, in the same gold as the next-activation box. The scrubber measures position against the song's length, like the Paths timeline, so an activation sits at the same spot on both. The scrubber ends at the song's end, and so does playback: audio that runs past the end doesn't play. A chart with no length shows no gold marks, and nothing stops playback.<!-- owners: PreviewController::playback_end_ms (the one end), app::song_length_ms (the song's length) --> The beat lines stop at the song's end too, so none is drawn past where playback stops. A chart with no length draws them two measures past its last note.
 
 ### When the settings or the chart change
 

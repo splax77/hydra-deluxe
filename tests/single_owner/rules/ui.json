@@ -1233,17 +1233,17 @@
       "pattern": "\\bapp::build_preview_scene\\(",
       "anchor": "app::build_preview_scene(",
       "must_match": [
-        "app::build_preview_scene(ps.song, path, sp_cap_, rules_, audio_end_ms, song_length_ms);",
+        "app::build_preview_scene(ps.song, path, sp_cap_, rules_, song_length_ms);",
         "app::PreviewScene scene = app::build_preview_scene("
       ],
       "must_not_match": [
-        "built->scene = app::build_preview_base(song, audio_end_ms, song_length_ms);",
+        "built->scene = app::build_preview_base(song, song_length_ms);",
         "PreviewScene build_preview_scene(const Song& song, const Path* path, int sp_cap,"
       ],
       "owner_lines": [
         {
           "file": "src/ui/preview_load_job.cpp",
-          "line_text": "built.scene = app::build_preview_scene(song, path, sp_cap, rules, audio_end_ms,",
+          "line_text": "built.scene = app::build_preview_scene(song, path, sp_cap, rules, song_length_ms, ghost);",
           "why": "build_scene_and_highway, the owner"
         }
       ],
