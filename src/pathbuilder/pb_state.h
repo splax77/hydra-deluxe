@@ -16,6 +16,7 @@
 #include "app/config.h"
 #include "app/job_base.h"
 #include "core/model.h"
+#include "pathbuilder/pb_coach.h"
 #include "search/graph.h"
 #include "search/pather.h"  // PinnedWindow
 #include "store/record_store.h"  // ChartLibraryEntry
@@ -98,10 +99,15 @@ public:
     bool undo();
     bool redo();
     const PlayerPath& current() const { return states_[current_]; }
+    // Counts every change of the current state. A reader that keeps
+    // something built from current().path compares this, not the path's
+    // address, which an edit after an undo reuses.
+    uint64_t generation() const { return generation_; }
 
 private:
     std::vector<PlayerPath> states_{PlayerPath{}};
     size_t current_ = 0;
+    uint64_t generation_ = 0;
 };
 
 // The builder's state between frames: the chart that is open (or being
@@ -117,14 +123,22 @@ public:
     // Takes in a finished open, and drops replaced opens that have stopped.
     // Call once per frame.
     void poll();
-    // An open is running, or a replaced one has not stopped yet.
-    bool busy() const { return job_ != nullptr || !retired_.empty(); }
+    // An open is running, a replaced one has not stopped yet, or the
+    // decision list's searches are running.
+    bool busy() const { return job_ != nullptr || !retired_.empty() || decisions_.busy(); }
     // The chart being opened is not in yet.
     bool opening() const { return job_ != nullptr; }
     // The chart being opened, or the one last asked for.
     const std::string& requested_path() const { return requested_; }
 
     const OpenChart* chart() const { return chart_.get(); }
+    // The open chart's search graph, for a search on a worker: the pointer
+    // also keeps the chart alive, whose song the graph reads, so a search
+    // still running when another chart opens never reads a freed song.
+    // Null with no chart open.
+    std::shared_ptr<const ScoreGraph> search_graph() const {
+        return chart_ ? std::shared_ptr<const ScoreGraph>(chart_, chart_->graph.get()) : nullptr;
+    }
     // Why the last open failed: the plain sentence and the details line under
     // it (empty when the sentence already quotes it). Both empty after an open
     // that worked.
@@ -134,13 +148,19 @@ public:
     PathHistory& history() { return history_; }
     const PathHistory& history() const { return history_; }
 
+    // The right column's decision list (pb_coach.h). poll() takes its
+    // answers in; a newly opened chart clears it.
+    DecisionList& decisions() { return decisions_; }
+    const DecisionList& decisions() const { return decisions_; }
+
 private:
+    DecisionList decisions_;
     std::string requested_;
     std::unique_ptr<OpenJob> job_;
     // Opens a newer open replaced, cancelled and still stopping. poll() drops
     // each once it has finished, so the window never waits on one.
     std::vector<std::unique_ptr<OpenJob>> retired_;
-    std::unique_ptr<OpenChart> chart_;
+    std::shared_ptr<const OpenChart> chart_;
     std::string error_;
     std::string error_detail_;
     PathHistory history_;

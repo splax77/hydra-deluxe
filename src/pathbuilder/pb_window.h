@@ -67,6 +67,7 @@ private:
     // and what it was built for, so it is rebuilt only when that changes.
     std::string overlay_key_;
     const Path* overlay_for_ = nullptr;
+    uint64_t overlay_generation_ = 0;  // PathHistory::generation it was built at
     bool overlay_built_ = false;
     // The file dialog never appeared: said once under the menu.
     bool dialog_failed_ = false;

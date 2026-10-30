@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <exception>
+#include <string>
 
 #include "imgui.h"
 
@@ -138,17 +139,33 @@ void PbApp::draw_body(const OpenChart& chart) {
     ImGui::EndChild();
 
     ImGui::SameLine();
-    // The decision list's column; its rows come with the cost ladder.
+    // The decision list's column (pb_coach.h): the path on screen, named by
+    // its left-list row or by the player's history generation.
     ImGui::BeginChild("##decisions", ImVec2(0, 0), ImGuiChildFlags_Borders);
-    if (!chart.has_star_power()) ImGui::TextWrapped("%s", kNothingToBuildText);
+    if (!chart.has_star_power()) {
+        ImGui::TextWrapped("%s", kNothingToBuildText);
+    } else {
+        DecisionList& d = state.decisions();
+        if (d.take_player_changed()) list_ui_.picked.reset();
+        const std::string key =
+            list_ui_.picked && *list_ui_.picked < rows_.size()
+                ? "row " + std::to_string(*list_ui_.picked)
+                : "player " + std::to_string(state.history().generation());
+        d.show(state.search_graph(), chart.settings, shown_path(), key);
+        d.draw(state, preview_.get());
+    }
     ImGui::EndChild();
 }
 
 void PbApp::draw_highway(const OpenChart& chart, const Path* shown) {
     if (!preview_) return;
-    if (!overlay_built_ || shown != overlay_for_) {
+    // An edit after an undo can put the new path at the old one's address,
+    // so the history's generation is compared as well as the pointer.
+    const uint64_t generation = state.history().generation();
+    if (!overlay_built_ || shown != overlay_for_ || generation != overlay_generation_) {
         overlay_key_ = app::path_overlay_key(shown);
         overlay_for_ = shown;
+        overlay_generation_ = generation;
         overlay_built_ = true;
     }
     const app::AnalysisSettings& s = chart.settings;

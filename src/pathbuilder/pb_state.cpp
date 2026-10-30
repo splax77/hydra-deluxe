@@ -68,23 +68,27 @@ PlayerPath player_copy_of(const Path& path) {
 void PathHistory::reset(PlayerPath start) {
     states_.assign(1, std::move(start));
     current_ = 0;
+    ++generation_;
 }
 
 void PathHistory::edit(PlayerPath next) {
     states_.resize(current_ + 1);
     states_.push_back(std::move(next));
     current_ = states_.size() - 1;
+    ++generation_;
 }
 
 bool PathHistory::undo() {
     if (!can_undo()) return false;
     --current_;
+    ++generation_;
     return true;
 }
 
 bool PathHistory::redo() {
     if (!can_redo()) return false;
     ++current_;
+    ++generation_;
     return true;
 }
 
@@ -104,8 +108,12 @@ void PbState::open_with(const std::string& notespath, const app::Settings& setti
 void PbState::poll() {
     for (auto it = retired_.begin(); it != retired_.end();)
         it = (*it)->finished() ? retired_.erase(it) : it + 1;
+    decisions_.poll(*this);
     if (!job_ || !job_->finished()) return;
     if (job_->ok()) {
+        // The decision list's searches run on the old chart's graph, which
+        // they share; clear them before that chart goes.
+        decisions_.clear();
         chart_ = job_->take();
         error_.clear();
         error_detail_.clear();

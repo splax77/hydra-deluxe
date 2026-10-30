@@ -10,6 +10,7 @@
 #ifndef HYDRA_PATHBUILDER_PB_COACH_H
 #define HYDRA_PATHBUILDER_PB_COACH_H
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -104,6 +105,11 @@ struct ClickResult {
 ClickResult start_window(const ScoreGraph& graph, const SearchSettings& settings,
                          const std::vector<PinnedWindow>& windows, int64_t act_tick);
 
+// Gives the window on `chosen`'s activation the end `chosen` pins (an
+// EndChoice's window), the way start_window treats the windows around it.
+ClickResult choose_end(const ScoreGraph& graph, const SearchSettings& settings,
+                       const std::vector<PinnedWindow>& windows, const PinnedWindow& chosen);
+
 // "Finish for me": the path behind BF(n) for a ladder over `window_count`
 // windows (LadderRun::best), or nothing until the ladder has BF(n). The
 // caller makes it the player's path with player_copy_of.
@@ -143,6 +149,8 @@ public:
     ~LadderJob();
     // The run as far as it has got.
     app::LadderRun snapshot() const;
+    // How many times the run has grown, so a reader rebuilds only then.
+    size_t landed() const { return landed_.load(); }
 
 private:
     std::shared_ptr<const ScoreGraph> graph_;
@@ -150,6 +158,7 @@ private:
     std::vector<PinnedWindow> windows_;
     mutable std::mutex mu_;
     app::LadderRun run_;
+    std::atomic<size_t> landed_{0};
 };
 
 // The decision list's worker: one ladder per path shown, the newest request
@@ -165,6 +174,8 @@ public:
     bool busy() const;
     // The newest run as far as it has got; empty before any request.
     std::optional<app::LadderRun> run() const;
+    // LadderJob::landed of the newest run, plus one once it has finished.
+    size_t landed() const;
     // The plain sentence and details line of a ladder that threw.
     std::string error() const;
     std::string error_detail() const;
@@ -178,6 +189,90 @@ private:
     std::unique_ptr<LadderJob> job_;
     std::vector<std::unique_ptr<LadderJob>> retired_;
     size_t superseded_ = 0;
+};
+
+class PbState;
+
+}  // namespace hydra::pathbuilder
+
+namespace hydra::ui {
+class PreviewController;
+}
+
+namespace hydra::pathbuilder {
+
+// What the "Finish for me" button says.
+inline constexpr const char* kFinishForMeLabel = "Finish for me";
+// The heading over the decision list.
+inline constexpr const char* kDecisionsHeading = "Your decisions";
+
+// The right column: the decision list for the path on screen, its end
+// choices, "Finish for me", and the clicks that change the player's path.
+// Its searches run on worker threads (Coach, WorkJob); poll takes their
+// answers in.
+class DecisionList {
+public:
+    // The path on screen and a key that names it: a left-list row, or the
+    // player's own path at a PathHistory::generation. A new key starts its
+    // ladder and clears the selected row. `graph` is PbState::search_graph
+    // and `settings` the open chart's.
+    void show(std::shared_ptr<const ScoreGraph> graph, const SearchSettings& settings,
+              const Path* shown, const std::string& key);
+    // Takes in a finished click or end choice (an edit of the player's path
+    // in `state`'s history) and the end choices of the selected row.
+    void poll(PbState& state);
+    bool busy() const;
+    // Forgets everything, for a newly opened chart.
+    void clear();
+
+    // Starts a window at `act_tick` on the player's path (start_window), on
+    // a worker. An impossible click leaves the path and sets message().
+    void click_fill(std::shared_ptr<const ScoreGraph> graph, const SearchSettings& settings,
+                    const std::vector<PinnedWindow>& windows, int64_t act_tick);
+    // The click's or end choice's failure: plain sentence and details line.
+    const std::string& message() const { return message_; }
+    const std::string& detail() const { return detail_; }
+    // True once after poll made an edit of the player's path, so the
+    // window shows the player's path again.
+    bool take_player_changed();
+
+    // The rows for the path on screen as the ladder stands.
+    const CoachList& list() const { return list_; }
+    std::optional<size_t> selected() const { return selected_; }
+    const std::vector<EndChoice>& ends() const { return ends_; }
+
+    // Draws the column. `preview` (may be null) is sought to a row's
+    // activation when the row is clicked.
+    void draw(PbState& state, ui::PreviewController* preview);
+
+private:
+    Coach coach_;
+    std::string key_;
+    std::optional<Path> shown_;
+    std::vector<PinnedWindow> shown_windows_;
+    std::shared_ptr<const ScoreGraph> graph_;
+    SearchSettings settings_;
+    CoachList list_;
+    // "Finish for me"'s path (finish_for_me), once the ladder has it.
+    std::optional<Path> finish_;
+    size_t list_landed_ = static_cast<size_t>(-1);
+    std::string error_;  // pinned_windows refused the shown path
+
+    std::optional<size_t> selected_;
+    std::vector<EndChoice> ends_;
+    std::unique_ptr<WorkJob<std::vector<EndChoice>>> ends_job_;
+    std::unique_ptr<WorkJob<ClickResult>> click_job_;
+    // Replaced jobs still running: dropped once they finish, so the window
+    // never waits on one.
+    std::vector<std::unique_ptr<WorkJob<std::vector<EndChoice>>>> retired_ends_;
+    std::vector<std::unique_ptr<WorkJob<ClickResult>>> retired_clicks_;
+    std::string message_;
+    std::string detail_;
+    bool player_changed_ = false;
+
+    void select(size_t row);
+    void start_edit(std::function<ClickResult()> fn);
+    void refresh_list();
 };
 
 }  // namespace hydra::pathbuilder
