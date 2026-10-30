@@ -1019,33 +1019,83 @@ std::optional<size_t> row_in_lower_half(ImGuiTestContext* ctx, const ImGuiWindow
     return std::nullopt;
 }
 
-// A click on a row selects it and leaves the list where it is (the user's
-// rule, 2026-10-14: a click never scrolls). The clicked row sits in the lower
-// half, where centring it would move the list.
-void test_library_click_keeps_scroll(ImGuiTestContext* ctx) {
+// Row k's rect when it is wholly on screen; none otherwise, including when
+// the clipper skipped it. row_rect is the same lookup for a row that must be
+// there.
+std::optional<ImRect> drawn_row_rect(ImGuiTestContext* ctx, size_t k) {
+    Harness& h = harness(ctx);
+    const std::string& title = h.app->library_row_at(k).title;
+    const ImGuiTestItemInfo info =
+        ctx->ItemInfo(("//Hydra/**/" + escape_ref(title)).c_str(), ImGuiTestOpFlags_NoError);
+    if (info.ID == 0 || !fully_shown(library_table_window(), info.RectFull)) return std::nullopt;
+    return info.RectFull;
+}
+
+// A click on a row selects it and opens the song panel. The panel makes the
+// rows two lines tall, and the clicked song stays at the same height on
+// screen; closing the panel makes them one line again, and the song still
+// stays put (the user's rule: a click never moves the song under the
+// pointer). The clicked row sits in the lower half of a list scrolled to its
+// middle, where a list that kept its pixel offset would lose it.
+void test_library_click_keeps_row_in_place(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
     ctx->Yield(3);
+    ImGuiTable* table = library_table();
     ImGuiWindow* list = library_table_window();
-    IM_CHECK_RETV(list != nullptr, );
+    IM_CHECK_RETV(table != nullptr && list != nullptr, );
     IM_CHECK_GT(list->ScrollMax.y, 0.0f);  // the corpus is taller than the list
     ImGui::SetScrollY(list, IM_TRUNC(list->ScrollMax.y * 0.5f));
     ctx->Yield(3);
-    const float scroll = list->Scroll.y;
-    IM_CHECK_GT(scroll, 0.0f);
+    IM_CHECK_GT(list->Scroll.y, 0.0f);
 
     const std::optional<size_t> k = row_in_lower_half(ctx, list, 0);
     IM_CHECK_RETV(k.has_value(), );
     const std::string title = h.app->library_row_at(*k).title;
+    const ImRect before = row_rect(ctx, *k);
+    const float y_before = before.Min.y - list->InnerRect.Min.y;
+    const float row_h_before = table->RowMinHeight;
+    // ImGui keeps a scroll offset in whole pixels (it rounds the target), so
+    // the row may land up to one pixel from where it was.
+    const float tolerance = 1.0f;
+
+    // The row is found where it sits now, and is the same height on screen.
+    const auto check_in_place = [&](const char* when, bool taller) {
+        const std::optional<ImRect> now = drawn_row_rect(ctx, *k);
+        if (!now) {
+            ctx->LogInfo("%s: the clicked row is not wholly on screen (scroll %.1f)", when,
+                         list->Scroll.y);
+            IM_CHECK_RETV(now.has_value(), );
+        }
+        const float y_now = now->Min.y - list->InnerRect.Min.y;
+        ctx->LogInfo("%s: row top %.1f below the list's top, before the click %.1f; "
+                     "row height %.1f, before %.1f",
+                     when, y_now, y_before, now->GetHeight(), before.GetHeight());
+        if (taller) {
+            IM_CHECK_GT(now->GetHeight(), before.GetHeight());
+        } else {
+            IM_CHECK_EQ(now->GetHeight(), before.GetHeight());
+        }
+        IM_CHECK_LE(ImAbs(y_now - y_before), tolerance);
+    };
+
     ctx->SetRef("//Hydra");
     ctx->ItemClick(("**/" + escape_ref(title)).c_str());
     IM_CHECK(wait_until(ctx, [&] { return h.app->selected && h.app->selected->title == title; },
                         5));
+    // The panel hides Album, which puts it under the artist: two-line rows.
+    IM_CHECK_RETV(wait_until(ctx, [&] { return table->RowMinHeight > row_h_before; }, 5), );
+    ctx->Yield(3);  // the list's new scroll lands a frame after the rows change
+    check_in_place("panel open", true);
+    if (ctx->IsError()) return;
+
+    ctx->ItemClick("**/X##closepanel");
+    IM_CHECK_RETV(wait_until(ctx, [&] { return table->RowMinHeight == row_h_before; }, 5), );
     ctx->Yield(3);
-    ctx->LogInfo("scroll before the click %.1f, after %.1f", scroll, list->Scroll.y);
-    IM_CHECK_EQ(list->Scroll.y, scroll);
+    IM_CHECK(h.app->selected && h.app->selected->title == title);  // still selected
+    check_in_place("panel closed", false);
 }
 
 // Next in the song panel moves the list only for a row that is not wholly on
@@ -1911,7 +1961,7 @@ const std::vector<TestEntry>& library_tests() {
         {"library-layout", test_library_layout},
         {"library-column-widths", test_library_column_widths},
         {"library-widths-hold", test_library_widths_hold},
-        {"library-click-keeps-scroll", test_library_click_keeps_scroll},
+        {"library-click-keeps-row-in-place", test_library_click_keeps_row_in_place},
         {"library-next-scrolls-just-enough", test_library_next_scrolls_just_enough},
         {"library-columns-at-start", test_library_columns_at_start},
         {"library-twin-rows", test_library_twin_rows},
