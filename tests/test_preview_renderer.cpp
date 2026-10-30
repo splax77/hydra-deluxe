@@ -60,11 +60,11 @@ int count_non_background(const PreviewConfig& cfg, const std::vector<uint8_t>& i
 // The pixel at the centre of the one gem drawn with texture `tex` in `scene`
 // at `now_ms`: its draw box from build_highway_draws, projected through the
 // renderer's camera (project_to_image). The renderer draws at 1x speed
-// (kPlaybackSpeed in render/preview_renderer.cpp).
+// (kPlaybackSpeed in render/preview_renderer.h).
 const uint8_t* gem_centre(const PreviewConfig& cfg, const PreviewScene& scene, double now_ms,
                           TextureId tex, const std::vector<uint8_t>& img, int w, int h) {
     const TrackState state = build_track_state(scene, TrackStateOptions{});
-    const std::vector<DrawCommand> draws = build_highway_draws(state, cfg, now_ms / 1000.0, 1.0);
+    const std::vector<DrawCommand> draws = build_highway_draws(state, cfg, now_ms / 1000.0, kPlaybackSpeed);
     const DrawCommand* gem = nullptr;
     for (const DrawCommand& c : draws)
         if (c.light == LightKind::GemOffset && c.material.texture == tex) {
