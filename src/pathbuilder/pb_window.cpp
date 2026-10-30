@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <exception>
+#include <optional>
 #include <string>
 
 #include "imgui.h"
@@ -11,6 +12,7 @@
 #include "app/user_messages.h"
 #include "pathbuilder/pb_menu.h"
 #include "pathbuilder/pb_open.h"
+#include "pathbuilder/pb_strip.h"
 #include "search/graph.h"  // fill_rule_for
 #include "ui/preview_controller.h"
 #include "ui/widgets.h"  // WarnColor
@@ -171,6 +173,9 @@ void PbApp::draw_highway(const OpenChart& chart, const Path* shown) {
     const app::AnalysisSettings& s = chart.settings;
     preview_->open(chart.entry, s.reading(), fill_rule_for(s.legacy_fills), shown, overlay_key_,
                    s.sp_cap, s.rules);
+    // Hydra's best path as faint outlines; the controller does nothing when
+    // it already has this one.
+    if (chart.has_star_power()) preview_->set_ghost_path(&chart.record.best_path());
     preview_->poll();
 
     if (preview_->has_error()) {
@@ -194,12 +199,26 @@ void PbApp::draw_highway(const OpenChart& chart, const Path* shown) {
     if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Space, false))
         preview_->toggle();
 
+    // The strip under the highway is as tall as the Preview's scrub bar,
+    // whose marks its markers match (plan Q4).
+    const float strip_h = ImGui::GetFrameHeight();
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const int w = static_cast<int>(avail.x);
-    const int h = static_cast<int>(avail.y);
+    const int h = static_cast<int>(avail.y - strip_h - ImGui::GetStyle().ItemSpacing.y);
     if (w <= 0 || h <= 0) return;
     if (ID3D11ShaderResourceView* srv = preview_->render(w, h))
         ImGui::Image((ImTextureID)(intptr_t)srv, ImVec2(static_cast<float>(w), static_cast<float>(h)));
+
+    const app::PreviewScene& scene = preview_->scene();
+    const std::optional<size_t> clicked =
+        draw_strip(scene, preview_->playback_end_ms(), nullptr, strip_h);
+    if (clicked && *clicked < scene.fills.size() && chart.has_star_power()) {
+        const app::PreviewFill& f = scene.fills[*clicked];
+        // An offered fill starts a window on the player's path (pb_coach.h).
+        if (f.state == app::PreviewFillState::Offered)
+            state.decisions().click_fill(state.search_graph(), s,
+                                         state.history().current().windows, f.chord_tick);
+    }
 }
 
 }  // namespace hydra::pathbuilder

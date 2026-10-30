@@ -669,6 +669,7 @@ add_library(hydra_pathbuilder STATIC
     src/pathbuilder/pb_menu.cpp
     src/pathbuilder/pb_window.cpp
     src/pathbuilder/pb_resource.h
+    src/pathbuilder/pb_strip.cpp
 )
 target_link_libraries(hydra_pathbuilder PUBLIC hydra_uibase hydra_preview hydra_app)
 # shell32: the dropped-file calls (DragQueryFileW, DragFinish) in pb_open.cpp.
