@@ -2,13 +2,16 @@
 
 #include <cstdint>
 #include <exception>
+#include <optional>
 #include <string>
+#include <utility>
 
 #include "imgui.h"
 
 #include "app/display_format.h"  // clock_str
 #include "app/preview_view.h"    // path_overlay_key
 #include "app/user_messages.h"
+#include "pathbuilder/pb_files.h"
 #include "pathbuilder/pb_menu.h"
 #include "pathbuilder/pb_open.h"
 #include "search/graph.h"  // fill_rule_for
@@ -22,9 +25,13 @@ namespace {
 // The share of the window's width each side column takes.
 constexpr float kSideColumnShare = 0.22f;
 
-// What the window says when the file dialog never appeared.
+// What the window says when the file dialog never appeared: File > Open's,
+// then Open path...'s or Save path...'s (a dropped file opens as a chart, so
+// dragging is no way round for those).
 constexpr const char* kDialogFailedText =
     "The file dialog didn't open. Drag a chart file onto this window instead.";
+constexpr const char* kPathDialogFailedText =
+    "The file dialog didn't open, so no path file was opened or saved.";
 
 }  // namespace
 
@@ -53,19 +60,85 @@ void PbApp::take_in_chart() {
     const OpenChart* chart = state.chart();
     if (chart == rows_chart_) return;
     rows_chart_ = chart;
-    rows_ = chart ? path_rows(chart->record, {}) : std::vector<PathRow>{};
+    // A saved branch is a path on the chart it was opened onto.
+    branches_.clear();
+    rebuild_rows();
     list_ui_ = PathListUi{};
+    set_refusal({}, {});
     overlay_built_ = false;
 }
 
+void PbApp::rebuild_rows() {
+    const OpenChart* chart = state.chart();
+    rows_ = chart ? path_rows(chart->record, branches_) : std::vector<PathRow>{};
+}
+
+void PbApp::set_refusal(std::string sentence, std::string detail) {
+    refusal_ = std::move(sentence);
+    refusal_detail_ = std::move(detail);
+    refusal_generation_ = state.history().generation();
+}
+
 void PbApp::act_on_menu() {
+    const OpenChart* chart = state.chart();
     const PathHistory& h = state.history();
-    switch (draw_menu(state.chart() != nullptr && h.can_undo(),
-                      state.chart() != nullptr && h.can_redo())) {
+    const Path* shown = shown_path();
+    // Paste and Open path... place windows on the chart's fills, so they need
+    // a chart with Star Power (kNothingToBuildText says why there is none).
+    const bool can_build = chart != nullptr && chart->has_star_power();
+    MenuFlags flags;
+    flags.can_undo = chart != nullptr && h.can_undo();
+    flags.can_redo = chart != nullptr && h.can_redo();
+    flags.can_open_path = can_build;
+    flags.can_save_path = chart != nullptr && shown != nullptr;
+    flags.can_copy = chart != nullptr && shown != nullptr;
+    flags.can_paste = can_build;
+    const MenuChoice choice = draw_menu(flags);
+    if (choice != MenuChoice::None) set_refusal({}, {});
+
+    switch (choice) {
         case MenuChoice::Open: {
             bool failed = false;
             if (const std::optional<std::string> path = ask_for_chart(owner, &failed)) open(*path);
-            dialog_failed_ = failed;
+            dialog_failed_ = failed ? kDialogFailedText : nullptr;
+            break;
+        }
+        case MenuChoice::OpenPath: {
+            bool failed = false;
+            if (const std::optional<std::string> file = ask_for_path_file(owner, &failed)) {
+                const std::optional<Refusal> refused =
+                    open_path_file(state.history(), branches_, *chart, *file);
+                rebuild_rows();
+                if (refused)
+                    set_refusal(refused->message, refused->detail);
+                else
+                    list_ui_.picked.reset();
+            }
+            dialog_failed_ = failed ? kPathDialogFailedText : nullptr;
+            break;
+        }
+        case MenuChoice::SavePath: {
+            bool failed = false;
+            if (const std::optional<std::string> file = ask_where_to_save_path(owner, &failed)) {
+                try {
+                    save_path_file(*file, *shown, chart->song);
+                } catch (const std::exception& e) {
+                    set_refusal(app::plain_error(e), app::plain_error_detail(e));
+                }
+            }
+            dialog_failed_ = failed ? kPathDialogFailedText : nullptr;
+            break;
+        }
+        case MenuChoice::Copy:
+            ImGui::SetClipboardText(copy_text(chart->record, *shown).c_str());
+            break;
+        case MenuChoice::Paste: {
+            const char* text = ImGui::GetClipboardText();
+            if (const std::optional<Refusal> refused =
+                    paste_path(state.history(), *chart, text ? text : ""))
+                set_refusal(refused->message, refused->detail);
+            else
+                list_ui_.picked.reset();
             break;
         }
         case MenuChoice::Undo:
@@ -96,7 +169,15 @@ void PbApp::draw() {
 
     if (dialog_failed_) {
         ui::WarnColor warn;
-        ImGui::TextWrapped("%s", kDialogFailedText);
+        ImGui::TextWrapped("%s", dialog_failed_);
+    }
+    // A refusal shows as an open's error does, until the player's path changes.
+    if (!refusal_.empty() && refusal_generation_ == state.history().generation()) {
+        {
+            ui::WarnColor warn;
+            ImGui::TextWrapped("%s", refusal_.c_str());
+        }
+        if (!refusal_detail_.empty()) ImGui::TextDisabled("%s", refusal_detail_.c_str());
     }
     if (state.opening()) ImGui::TextWrapped("Opening %s ...", state.requested_path().c_str());
     if (!state.error().empty()) {

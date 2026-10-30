@@ -29,6 +29,19 @@ std::optional<std::string> ask_for_chart(HWND owner, bool* failed) {
     return ui::browse_for_file(owner, chart_file_types(), failed);
 }
 
+std::vector<ui::FileTypeFilter> path_file_types() {
+    const std::wstring ext = kPathFileExtension;
+    return {{L"Path files (." + ext + L")", L"*." + ext}, {L"All files", L"*.*"}};
+}
+
+std::optional<std::string> ask_for_path_file(HWND owner, bool* failed) {
+    return ui::browse_for_file(owner, path_file_types(), failed);
+}
+
+std::optional<std::string> ask_where_to_save_path(HWND owner, bool* failed) {
+    return ui::browse_for_save_file(owner, path_file_types(), kPathFileExtension, failed);
+}
+
 std::optional<std::string> take_dropped_file(void* hdrop) {
     const HDROP drop = static_cast<HDROP>(hdrop);
     std::optional<std::string> path;

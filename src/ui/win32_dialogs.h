@@ -32,6 +32,15 @@ struct FileTypeFilter {
 std::optional<std::string> browse_for_file(HWND owner, const std::vector<FileTypeFilter>& types,
                                            bool* failed = nullptr);
 
+// The system's save dialog: the file to write, picked or typed, with the type
+// list `types`. It asks before replacing a file that exists. A name typed
+// with no extension gets `default_extension` (L"json", no dot). Cancel and
+// failure answer as browse_for_folder's do.
+std::optional<std::string> browse_for_save_file(HWND owner,
+                                                const std::vector<FileTypeFilter>& types,
+                                                const std::wstring& default_extension,
+                                                bool* failed = nullptr);
+
 }  // namespace hydra::ui
 
 #endif  // HYDRA_UI_WIN32_DIALOGS_H
