@@ -398,6 +398,14 @@ ID3D11ShaderResourceView* PreviewController::render(int width, int height) {
     }
 }
 
+std::optional<size_t> PreviewController::fill_at_image(render::ImagePoint point, int width,
+                                                       int height) const {
+    // A scene not yet taken in by render() is not the one on screen, and the
+    // renderer's indices are into the one it drew.
+    if (!renderer_ || !have_frame_ || scene_dirty_) return std::nullopt;
+    return renderer_->fill_at_image(point, width, height, transport_.now_ms());
+}
+
 // ---- transport controls: forwarded to the Transport --------------------
 
 void PreviewController::play() {

@@ -199,6 +199,12 @@ public:
     // first successful render). Resizes the target when the region changes.
     ID3D11ShaderResourceView* render(int width, int height);
 
+    // The fill under `point` on the width x height image render() drew, as
+    // its index into scene().fills (PreviewRenderer::fill_at_image at the
+    // transport's position). None before the first render, while the scene
+    // drawn is not scene() yet, or where no fill is lit.
+    std::optional<size_t> fill_at_image(render::ImagePoint point, int width, int height) const;
+
     // Transport controls, driven by the display clock; audio (when any)
     // follows. Safe before the chart has loaded (nothing to move yet).
     void play();
