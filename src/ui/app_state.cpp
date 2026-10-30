@@ -150,9 +150,9 @@ void AppState::startup_notice_closed() {
     if (startup_notice_.empty()) return;
     startup_notice_.clear();
     // The fresh library is empty; the chart folders came from the ini, so
-    // the scan finds the same songs. start_scan refuses a scan it cannot
-    // run, as it does for the toolbar's button.
-    request_scan = true;
+    // the scan finds the same songs. Hydra starts this scan on its own, as it
+    // does for an out-of-date library, so it asks the same way (D268).
+    request_rescan_on_open();
 }
 
 void AppState::set_render_device(ID3D11Device* device, ID3D11DeviceContext* context) {

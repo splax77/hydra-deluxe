@@ -511,10 +511,48 @@ TEST_CASE("an AppState on a pre-2.2.0 library sets it aside, leaves one notice, 
         app.startup_notice_closed();
         CHECK(app.startup_notice().empty());
         CHECK(app.request_scan);
+        // Hydra starts this scan on its own, like the scan of an out-of-date
+        // library, so it is the open's scan (D268).
+        CHECK(app.scan_started_by_open);
         // Once: a second close asks for nothing more.
         app.request_scan = false;
         app.startup_notice_closed();
         CHECK_FALSE(app.request_scan);
+    }
+    remove_aside();
+}
+
+// D268: the scan after the set-aside box is one Hydra starts itself, so a chart
+// folder it cannot read stops it with the open's sentence, not the manual one.
+TEST_CASE("the scan after the set-aside box says the library needs a scan when a chart folder "
+          "cannot be read") {
+    ScratchPaths paths("appstate_setasidemissing");
+    const std::string aside = hydra::store::set_aside_path(paths.db);
+    auto remove_aside = [&] {
+        for (const std::string& f : hydra::store::with_side_files(aside))
+            std::filesystem::remove(std::filesystem::u8path(f));
+    };
+    remove_aside();
+    const std::string missing = testtemp::temp_path("appstate_setasidemissing", "_nofolder");
+    REQUIRE_FALSE(std::filesystem::exists(std::filesystem::u8path(missing)));
+    Settings s = scratch_settings();
+    s.chartfolders.push_back(missing);
+    REQUIRE(s.save());
+    std::filesystem::copy_file(
+        std::filesystem::u8path(corpus::testdata_root() + "/store/v2.1.0-schema4.db"),
+        std::filesystem::u8path(paths.db), std::filesystem::copy_options::overwrite_existing);
+    {
+        AppState app;
+        app.wait_store_open();
+        REQUIRE(app.store_ready());
+        REQUIRE_FALSE(app.startup_notice().empty());
+        app.startup_notice_closed();
+        CHECK_FALSE(app.request_scan);
+        CHECK_FALSE(app.scan_started_by_open);
+        CHECK(app.scan_job == nullptr);
+        CHECK(app.status_is_problem);
+        CHECK(app.status_message ==
+              hydra::app::library_scan_blocked_notice(missing, hydra::app::ScanAsker::Open));
     }
     remove_aside();
 }

@@ -278,7 +278,8 @@ public:
     // here.
     const std::string& startup_notice() const { return startup_notice_; }
     // The box has closed: forgets the sentence and asks for the scan the
-    // fresh library needs (request_scan), so the scan starts after the box.
+    // fresh library needs, the way the open asks for an out-of-date library's
+    // (request_rescan_on_open), so the scan starts after the box.
     // Does nothing when no sentence is waiting.
     void startup_notice_closed();
     // Where the startup open is, for the startup screen. A default progress
@@ -695,7 +696,8 @@ public:
     bool request_scan = false;
     // True while the scan the app asked for on open (request_rescan_on_open)
     // is pending or its dialog is up: the Scanning charts dialog then opens
-    // with app::library_rescan_notice. The dialog clears it when it closes.
+    // with app::library_rescan_notice, and a refusal of that scan is worded
+    // for app::ScanAsker::Open. The dialog clears it when it closes.
     bool scan_started_by_open = false;
 
     // The status line under the toolbar. set_status is news ("Path report
@@ -782,9 +784,11 @@ private:
     // Moves a finished startup open into place: the store and library, or
     // the failure. tick() and wait_store_open() both collect through it.
     void collect_store_open();
-    // The opened library's scan is out of date (StoreOpenJob::rescan_needed):
-    // asks for a scan (request_scan, scan_started_by_open), or asks for
-    // nothing when scan_blocked_by_missing_folder says no.
+    // The scan the app starts on its own at open: for a library whose scan is
+    // out of date (StoreOpenJob::rescan_needed), and for the fresh library
+    // after the set-aside box (startup_notice_closed). Asks for a scan
+    // (request_scan, scan_started_by_open), or asks for nothing when
+    // scan_blocked_by_missing_folder says no.
     void request_rescan_on_open();
     // Asks app::first_missing_chart_folder before every scan starts
     // (request_rescan_on_open, start_scan). When it names a folder, this sets

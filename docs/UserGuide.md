@@ -44,7 +44,7 @@ A library file from a version older than 2.2.0 is too old to convert. Hydra Delu
 
 > This library file is from a Hydra version older than 2.2.0, so Hydra set it aside as hydra.db.pre-2.2.0 and started a fresh library.
 
-When you close the box, Hydra Deluxe scans your song folders, which it keeps in `hydra_settings.ini`, next to the program. Your songs come back as `Not analyzed`. This version doesn't read the old results in `hydra.db.pre-2.2.0`, so delete that file yourself if you don't want it.
+When you close the box, Hydra Deluxe scans your song folders, which it keeps in `hydra_settings.ini`, next to the program. Your songs come back as `Not analyzed`. If a song folder can't be read, no scan starts, the list stays empty, and the line under the toolbar says `Your library needs a scan, but <folder> cannot be read. Click Scan library when it is back.` This version doesn't read the old results in `hydra.db.pre-2.2.0`, so delete that file yourself if you don't want it.
 
 If the old file can't be renamed, a message box says so, with the reason from Windows in the middle of the sentence, and Hydra Deluxe closes when you dismiss it:
 
