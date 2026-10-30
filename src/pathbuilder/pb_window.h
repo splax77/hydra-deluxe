@@ -98,6 +98,8 @@ private:
     void draw_highway(const OpenChart& chart, const Path* shown);
     // The path the highway shows: the picked row's, else the player's own.
     const Path* shown_path() const;
+    // The picked row's path, null while the player's own path is shown.
+    const Path* shown_row() const;
 };
 
 }  // namespace hydra::pathbuilder

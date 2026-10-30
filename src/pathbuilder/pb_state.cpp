@@ -65,6 +65,11 @@ PlayerPath player_copy_of(const Path& path) {
     return p;
 }
 
+std::vector<PinnedWindow> click_windows(const PathHistory& history, const Path* shown_row) {
+    if (shown_row) return player_copy_of(*shown_row).windows;
+    return history.current().windows;
+}
+
 void PathHistory::reset(PlayerPath start) {
     states_.assign(1, std::move(start));
     current_ = 0;

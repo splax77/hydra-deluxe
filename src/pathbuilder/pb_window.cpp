@@ -50,8 +50,13 @@ void PbApp::close_preview() {
     if (preview_) preview_->close();
 }
 
-const Path* PbApp::shown_path() const {
+const Path* PbApp::shown_row() const {
     if (list_ui_.picked && *list_ui_.picked < rows_.size()) return rows_[*list_ui_.picked].path;
+    return nullptr;
+}
+
+const Path* PbApp::shown_path() const {
+    if (const Path* row = shown_row()) return row;
     const std::optional<Path>& mine = state.history().current().path;
     return mine ? &*mine : nullptr;
 }
@@ -307,15 +312,19 @@ void PbApp::draw_highway(const OpenChart& chart, const Path* shown) {
     if (on_strip) clicked = on_strip;
     if (clicked && *clicked < scene.fills.size() && chart.has_star_power()) {
         const app::PreviewFill& f = scene.fills[*clicked];
-        // An offered fill starts a window on the player's path and a taken
-        // one removes it (pb_coach.h).
-        DecisionList& d = state.decisions();
-        if (f.state == app::PreviewFillState::Offered)
-            d.click_fill(state.search_graph(), s, state.history().current().windows, f.chord_tick,
-                         generation);
-        else if (f.state == app::PreviewFillState::Taken)
-            d.click_remove(state.search_graph(), s, state.history().current().windows,
-                           f.chord_tick, generation);
+        // An offered fill starts a window and a taken one removes it
+        // (pb_coach.h), on the windows click_windows names for the path on
+        // screen.
+        try {
+            const std::vector<PinnedWindow> windows = click_windows(state.history(), shown_row());
+            DecisionList& d = state.decisions();
+            if (f.state == app::PreviewFillState::Offered)
+                d.click_fill(state.search_graph(), s, windows, f.chord_tick, generation);
+            else if (f.state == app::PreviewFillState::Taken)
+                d.click_remove(state.search_graph(), s, windows, f.chord_tick, generation);
+        } catch (const std::exception& e) {
+            set_refusal(app::plain_error(e), app::plain_error_detail(e));
+        }
     }
 }
 

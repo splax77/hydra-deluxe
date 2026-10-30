@@ -247,8 +247,10 @@ public:
     // Forgets everything, for a newly opened chart.
     void clear();
 
-    // Starts a window at `act_tick` on the player's path (start_window), on
-    // a worker. An impossible click leaves the path and sets message().
+    // Starts a window at `act_tick` on `windows` (start_window), on a
+    // worker; the answer becomes the player's path as one edit. `windows`
+    // are the ones click_windows (pb_state.h) names. An impossible click
+    // leaves the path and sets message().
     // `generation` is PathHistory::generation() at the click: the answer is
     // thrown away if the player's path changed since (undo, redo, Finish for
     // me, another edit), and the player clicks again if they still want it.
@@ -256,8 +258,8 @@ public:
     void click_fill(std::shared_ptr<const ScoreGraph> graph, const SearchSettings& settings,
                     const std::vector<PinnedWindow>& windows, int64_t act_tick,
                     uint64_t generation);
-    // Removes the window on `act_tick` from the player's path
-    // (remove_window), on a worker, as click_fill starts one.
+    // Removes the window on `act_tick` from `windows` (remove_window), on a
+    // worker, as click_fill starts one.
     void click_remove(std::shared_ptr<const ScoreGraph> graph, const SearchSettings& settings,
                       const std::vector<PinnedWindow>& windows, int64_t act_tick,
                       uint64_t generation);

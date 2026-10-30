@@ -85,6 +85,17 @@ struct PlayerPath {
 // (pinned_windows), as "Edit a copy" makes it.
 PlayerPath player_copy_of(const Path& path);
 
+class PathHistory;
+
+// The windows a click on a fill (the highway or the strip) acts on. While a
+// left-list row is on screen (`shown_row`, null when the player's own path
+// is) they are the windows of the copy "Edit a copy" makes of it
+// (player_copy_of), so the click's one edit makes the copy and applies the
+// click, and one undo puts back the path from before the click (the user's
+// ruling, "Copy it, then apply"). Otherwise they are the player's own.
+// Throws what player_copy_of throws.
+std::vector<PinnedWindow> click_windows(const PathHistory& history, const Path* shown_row);
+
 // Undo and redo over the player's path: every state the path has been in,
 // with no cap, and which one is current.
 class PathHistory {
