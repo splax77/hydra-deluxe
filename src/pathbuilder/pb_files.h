@@ -36,7 +36,8 @@ struct Refusal {
 // Reads `text` (the long or the short form) on the open chart and makes the
 // path it names the player's, as one edit of `history` (player_copy_of, as
 // "Edit a copy" makes it), so undo puts the old path back. When the text does
-// not fit the chart, `history` is left as it was and the refusal says why.
+// not fit the chart, `history` is left as it was and the refusal says why:
+// the reader's refusal reaches plain_error as ErrorKind::PathTextRefused.
 std::optional<Refusal> paste_path(PathHistory& history, const OpenChart& chart,
                                   const std::string& text);
 
@@ -44,15 +45,16 @@ std::optional<Refusal> paste_path(PathHistory& history, const OpenChart& chart,
 // paths_json's, the shape `hydra_replay score --path` reads.
 nlohmann::json path_file_json(const Path& path, const Song& song);
 
-// Writes path_file_json to `file`, replacing it. Throws std::runtime_error
-// when the file cannot be written.
+// Writes path_file_json to `file`, replacing it. Throws
+// KindedError(ErrorKind::PathFileWrite) when the file cannot be written.
 void save_path_file(const std::string& file, const Path& path, const Song& song);
 
 // The paths a path file holds, on the open chart: each entry of its "paths"
 // array read back by windows_from_json, pinned in full (pinned_windows) and
-// handed to search_target, whose path it is. Throws std::runtime_error when
-// the file cannot be read or is not that shape, and std::invalid_argument
-// when an entry's windows do not fit the chart.
+// handed to search_target, whose path it is. Throws
+// KindedError(ErrorKind::PathFileUnreadable) when the file cannot be opened,
+// and KindedError(ErrorKind::PathFileRefused) when it is not that shape or an
+// entry's windows do not fit the chart; the text names the file and the entry.
 std::vector<Path> read_path_file(const std::string& file, const OpenChart& chart);
 
 // Opens a path file: every path read_path_file finds is added to `branches`

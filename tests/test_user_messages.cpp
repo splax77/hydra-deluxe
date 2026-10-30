@@ -242,6 +242,15 @@ TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its
         {ErrorKind::UpdateUnverified,
          "Hydra couldn't verify the update it downloaded, so it was not installed. Try again "
          "later, or download the release from GitHub yourself."},
+        {ErrorKind::PathTextRefused,
+         "This text doesn't match a path on this chart, so your path stays as it was."},
+        {ErrorKind::PathFileRefused,
+         "This file doesn't hold a path for this chart, so your path stays as it was."},
+        {ErrorKind::PathFileUnreadable,
+         "Hydra couldn't read this path file, so your path stays as it was."},
+        {ErrorKind::PathFileWrite,
+         "Hydra couldn't save the path file. Check that the disk isn't full and the folder "
+         "isn't read-only."},
     };
     for (const auto& [kind, sentence] : cases) {
         CAPTURE(static_cast<int>(kind));

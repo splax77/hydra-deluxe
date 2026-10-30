@@ -91,6 +91,17 @@ constexpr const char* kAudioDecode =
 constexpr const char* kPreviewAssets =
     "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.";
 constexpr const char* kStopped = "Stopped before it finished.";
+// The Path Builder's paste and path files. The paste sentence is the user's
+// own words (PB-4, 2026-10-29).
+constexpr const char* kPathTextRefused =
+    "This text doesn't match a path on this chart, so your path stays as it was.";
+constexpr const char* kPathFileRefused =
+    "This file doesn't hold a path for this chart, so your path stays as it was.";
+constexpr const char* kPathFileUnreadable =
+    "Hydra couldn't read this path file, so your path stays as it was.";
+constexpr const char* kPathFileWrite =
+    "Hydra couldn't save the path file. Check that the disk isn't full and the folder "
+    "isn't read-only.";
 
 // The two sentences built around a detail.
 std::string http_status_sentence(const char* server, int code) {
@@ -171,6 +182,10 @@ std::optional<KindSentence> kind_sentence(const KindedError& e) {
         case ErrorKind::AudioDecode: return KindSentence{kAudioDecode};
         case ErrorKind::PreviewAssets: return KindSentence{kPreviewAssets};
         case ErrorKind::UpdateUnverified: return KindSentence{kUpdateUnverifiedSentence};
+        case ErrorKind::PathTextRefused: return KindSentence{kPathTextRefused};
+        case ErrorKind::PathFileRefused: return KindSentence{kPathFileRefused};
+        case ErrorKind::PathFileUnreadable: return KindSentence{kPathFileUnreadable};
+        case ErrorKind::PathFileWrite: return KindSentence{kPathFileWrite};
     }
     return std::nullopt;
 }

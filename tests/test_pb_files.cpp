@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "audio_chart_fixtures.h"  // write_text_file
 #include "replay_json.h"
 #include "record_fixtures.h"
 #include "scratch_settings.h"
@@ -86,11 +87,58 @@ TEST_CASE("pb files: a path file that cannot be read changes nothing and says wh
     std::vector<Path> branches;
     const std::optional<Refusal> refused = hydra::pathbuilder::open_path_file(h, branches, c, file);
     REQUIRE(refused.has_value());
-    CHECK(refused->message == hydra::app::kSomethingWentWrong);
+    CHECK(refused->message == "Hydra couldn't read this path file, so your path stays as it was.");
     CHECK(refused->detail == "cannot read the path file: " + file);
     CHECK(branches.empty());
     CHECK_FALSE(h.can_undo());
     CHECK_FALSE(h.current().path.has_value());
+}
+
+TEST_CASE("pb files: a path file that does not fit the chart changes nothing and says why") {
+    PbState s;
+    const OpenChart& c = open_burnout(s);
+    const std::string dir = testtemp::temp_dir("pb_files_refused");
+    PathHistory& h = s.history();
+    std::vector<Path> branches;
+
+    // Not JSON at all.
+    const std::string not_json = dir + "\\not_json.json";
+    audiochart::write_text_file(not_json, "not a path");
+    std::optional<Refusal> refused = hydra::pathbuilder::open_path_file(h, branches, c, not_json);
+    REQUIRE(refused.has_value());
+    CHECK(refused->message ==
+          "This file doesn't hold a path for this chart, so your path stays as it was.");
+    CHECK(refused->detail == "the path file " + not_json + " is not valid JSON");
+
+    // hydra_replay's shape, with a window on a tick Burnout has no fill on.
+    const std::string off_chart = dir + "\\off_chart.json";
+    audiochart::write_text_file(
+        off_chart, R"({"paths": [{"activations": [{"act_tick": 1, "deact_tick": 2}]}]})");
+    refused = hydra::pathbuilder::open_path_file(h, branches, c, off_chart);
+    REQUIRE(refused.has_value());
+    CHECK(refused->message ==
+          "This file doesn't hold a path for this chart, so your path stays as it was.");
+    CHECK(refused->detail.rfind("path 1 of " + off_chart, 0) == 0);
+
+    CHECK(branches.empty());
+    CHECK_FALSE(h.can_undo());
+    CHECK_FALSE(h.current().path.has_value());
+}
+
+TEST_CASE("pb files: a path file that cannot be written says why") {
+    PbState s;
+    const OpenChart& c = open_burnout(s);
+    // A folder that does not exist under the scratch folder.
+    const std::string file = testtemp::temp_dir("pb_files_unwritable") + "\\missing\\path.json";
+    try {
+        hydra::pathbuilder::save_path_file(file, c.record.best_path(), c.song);
+        FAIL("the save did not refuse");
+    } catch (const std::exception& e) {
+        CHECK(hydra::app::plain_error(e) ==
+              "Hydra couldn't save the path file. Check that the disk isn't full and the folder "
+              "isn't read-only.");
+        CHECK(hydra::app::plain_error_detail(e) == "cannot write the path file: " + file);
+    }
 }
 
 // Copy writes the long text Hydra's Copy path writes, so a Copy that wrote
@@ -136,7 +184,9 @@ TEST_CASE("pb files: a paste that does not fit the chart is refused and leaves t
 
     const std::optional<Refusal> refused = hydra::pathbuilder::paste_path(h, c, "99");
     REQUIRE(refused.has_value());
-    CHECK(refused->message == hydra::app::kSomethingWentWrong);
+    // The user's own words for a paste that does not fit (PB-4, 2026-10-29).
+    CHECK(refused->message ==
+          "This text doesn't match a path on this chart, so your path stays as it was.");
     CHECK(refused->detail == "window 1 (\"99\") matches no fill on this chart");
     CHECK(h.generation() == generation);
     CHECK_FALSE(h.can_redo());
