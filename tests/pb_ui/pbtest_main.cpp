@@ -52,6 +52,7 @@ int main() {
     pbtest::register_tests(h);
     pbtest::register_coach_tests(h);
     pbtest::register_strip_tests(h);
+    pbtest::register_file_tests(h);
 
     if (list) {
         ImVector<ImGuiTest*> tests;

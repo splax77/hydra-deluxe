@@ -17,11 +17,11 @@ namespace hydra::ui {
 
 namespace {
 
-// Shows the system's open dialog over `owner`, set up by `configure`, and
-// returns the picked item's file-system path. Both pickers below go through
-// it, so they cancel and fail alike.
-std::optional<std::string> show_open_dialog(HWND owner,
-                                            const std::function<void(IFileOpenDialog&)>& configure,
+// Shows the system's file dialog `clsid` (the open or the save dialog) over
+// `owner`, set up by `configure`, and returns the picked item's file-system
+// path. Every picker below goes through it, so they cancel and fail alike.
+std::optional<std::string> show_file_dialog(HWND owner, REFCLSID clsid,
+                                            const std::function<void(IFileDialog&)>& configure,
                                             bool* failed) {
     if (failed) *failed = false;
 
@@ -36,9 +36,8 @@ std::optional<std::string> show_open_dialog(HWND owner,
     }
 
     std::optional<std::string> result;
-    ComPtr<IFileOpenDialog> dialog;
-    if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
-                                   IID_PPV_ARGS(&dialog)))) {
+    ComPtr<IFileDialog> dialog;
+    if (SUCCEEDED(CoCreateInstance(clsid, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))) {
         configure(*dialog.Get());
 
         if (SUCCEEDED(dialog->Show(owner))) {
@@ -60,12 +59,20 @@ std::optional<std::string> show_open_dialog(HWND owner,
     return result;
 }
 
+// `types` as the dialog takes them. The dialog reads the strings until Show
+// returns, so `types` must outlive the call.
+std::vector<COMDLG_FILTERSPEC> filter_specs(const std::vector<FileTypeFilter>& types) {
+    std::vector<COMDLG_FILTERSPEC> specs;
+    for (const FileTypeFilter& t : types) specs.push_back({t.name.c_str(), t.patterns.c_str()});
+    return specs;
+}
+
 }  // namespace
 
 std::optional<std::string> browse_for_folder(HWND owner, bool* failed) {
-    return show_open_dialog(
-        owner,
-        [](IFileOpenDialog& dialog) {
+    return show_file_dialog(
+        owner, CLSID_FileOpenDialog,
+        [](IFileDialog& dialog) {
             DWORD flags = 0;
             dialog.GetOptions(&flags);
             dialog.SetOptions(flags | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
@@ -75,17 +82,33 @@ std::optional<std::string> browse_for_folder(HWND owner, bool* failed) {
 
 std::optional<std::string> browse_for_file(HWND owner, const std::vector<FileTypeFilter>& types,
                                            bool* failed) {
-    // The dialog reads these until Show returns; `types` outlives the call.
-    std::vector<COMDLG_FILTERSPEC> specs;
-    for (const FileTypeFilter& t : types) specs.push_back({t.name.c_str(), t.patterns.c_str()});
-    return show_open_dialog(
-        owner,
-        [&](IFileOpenDialog& dialog) {
+    const std::vector<COMDLG_FILTERSPEC> specs = filter_specs(types);
+    return show_file_dialog(
+        owner, CLSID_FileOpenDialog,
+        [&](IFileDialog& dialog) {
             DWORD flags = 0;
             dialog.GetOptions(&flags);
             dialog.SetOptions(flags | FOS_FILEMUSTEXIST | FOS_FORCEFILESYSTEM);
             if (!specs.empty())
                 dialog.SetFileTypes(static_cast<UINT>(specs.size()), specs.data());
+        },
+        failed);
+}
+
+std::optional<std::string> browse_for_save_file(HWND owner,
+                                                const std::vector<FileTypeFilter>& types,
+                                                const std::wstring& default_extension,
+                                                bool* failed) {
+    const std::vector<COMDLG_FILTERSPEC> specs = filter_specs(types);
+    return show_file_dialog(
+        owner, CLSID_FileSaveDialog,
+        [&](IFileDialog& dialog) {
+            DWORD flags = 0;
+            dialog.GetOptions(&flags);
+            dialog.SetOptions(flags | FOS_OVERWRITEPROMPT | FOS_FORCEFILESYSTEM);
+            if (!specs.empty())
+                dialog.SetFileTypes(static_cast<UINT>(specs.size()), specs.data());
+            if (!default_extension.empty()) dialog.SetDefaultExtension(default_extension.c_str());
         },
         failed);
 }

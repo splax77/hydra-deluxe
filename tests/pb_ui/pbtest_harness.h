@@ -61,6 +61,8 @@ void register_tests(Harness& h);
 void register_coach_tests(Harness& h);
 // The clicks on the highway and the strip (pbtest_strip.cpp).
 void register_strip_tests(Harness& h);
+// Copy, paste and the path files' tests (pbtest_files.cpp).
+void register_file_tests(Harness& h);
 
 }  // namespace pbtest
 

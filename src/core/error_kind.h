@@ -44,6 +44,12 @@ enum class ErrorKind {
     AudioDecode,
     PreviewAssets,
     UpdateUnverified,  // an update refused before install; the text names which check failed
+    // The Path Builder's refusals. Each text names the reason (which window or
+    // which entry of the file did not fit).
+    PathTextRefused,     // pasted path text names no path on the open chart
+    PathFileRefused,     // a path file holds no path that fits the open chart
+    PathFileUnreadable,  // a path file could not be opened
+    PathFileWrite,       // a path file could not be saved
 };
 
 // ---- remembered failures ---------------------------------------------------
