@@ -33,10 +33,6 @@ using hydra::pathbuilder::CoachRow;
 using hydra::pathbuilder::DecisionList;
 using hydra::pathbuilder::PbState;
 
-std::string white_washed_notes() {
-    return corpus::root() + "/common/IB24/T5/August Burns Red - White Washed/notes.mid";
-}
-
 // Opens `chart` in a fresh builder and waits for the open to end.
 bool open_chart(ImGuiTestContext* ctx, const std::string& chart) {
     Harness& h = harness(ctx);
@@ -180,7 +176,7 @@ void test_impossible_click_message(ImGuiTestContext* ctx) {
 // violet note, and its cost stays green.
 void test_tight_window_note(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    IM_CHECK_RETV(open_chart(ctx, white_washed_notes()), );
+    IM_CHECK_RETV(open_chart(ctx, corpus::white_washed_notes()), );
     PbState& s = h.app->state;
     IM_CHECK(s.chart()->settings.ms_filter == std::optional<double>(10.0));
     IM_CHECK_RETV(show_best_path(ctx), );

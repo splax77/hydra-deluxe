@@ -11,7 +11,7 @@
 
 #include "scratch_settings.h"
 #include "testdata_dirs.h"
-#include "wait_util.h"
+#include "pb_open_util.h"
 
 #include "pathbuilder/pb_coach.h"
 #include "pathbuilder/pb_state.h"
@@ -28,21 +28,6 @@ using hydra::pathbuilder::OpenChart;
 using hydra::pathbuilder::PbState;
 
 namespace {
-
-std::string white_washed_notes() {
-    return corpus::root() + "/common/IB24/T5/August Burns Red - White Washed/notes.mid";
-}
-
-// Opens `path` under `settings` and waits for the open to end.
-void open_and_wait(PbState& s, const std::string& path, const hydra::app::Settings& settings) {
-    s.open_with(path, settings);
-    testwait::wait_until(
-        [&] {
-            s.poll();
-            return !s.busy();
-        },
-        "the Path Builder's open to finish");
-}
 
 LadderRun ladder(const OpenChart& c, const std::vector<PinnedWindow>& windows) {
     return hydra::app::build_ladder(*c.graph, c.settings, windows);
@@ -132,7 +117,7 @@ TEST_CASE("coach rows: a window over the Path limit carries the tight-window not
     limited.mslimit_enabled = true;
     limited.mslimit_value = 10;
     PbState s;
-    open_and_wait(s, white_washed_notes(), limited);
+    open_and_wait(s, corpus::white_washed_notes(), limited);
     REQUIRE(s.chart() != nullptr);
     const OpenChart& c = *s.chart();
     REQUIRE(c.settings.ms_filter == std::optional<double>(10.0));
@@ -175,7 +160,7 @@ TEST_CASE("coach rows: a window over the Path limit carries the tight-window not
 
 TEST_CASE("coach rows: a squeeze with time to spare under a lower limit names the limit alone") {
     PbState s;
-    open_and_wait(s, white_washed_notes(), scratch_settings());
+    open_and_wait(s, corpus::white_washed_notes(), scratch_settings());
     REQUIRE(s.chart() != nullptr);
     const OpenChart& c = *s.chart();
     // From one run: White Washed's all-0 path ends on a squeeze-in with
@@ -196,7 +181,7 @@ TEST_CASE("coach rows: a squeeze with time to spare under a lower limit names th
 
 TEST_CASE("coach click: a later window keeps the end the player chose while it can") {
     PbState s;
-    open_and_wait(s, white_washed_notes(), scratch_settings());
+    open_and_wait(s, corpus::white_washed_notes(), scratch_settings());
     REQUIRE(s.chart() != nullptr);
     const OpenChart& c = *s.chart();
     // The best path's first four windows, the fourth given its squeeze-in end.

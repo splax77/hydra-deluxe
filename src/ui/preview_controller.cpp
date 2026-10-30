@@ -73,14 +73,6 @@ void retire(std::unique_ptr<Job>& job, std::vector<std::unique_ptr<Job>>& retire
     retired.push_back(std::move(job));
 }
 
-// Drops the retired jobs whose threads have ended.
-template <typename Job>
-void drop_finished(std::vector<std::unique_ptr<Job>>& retired) {
-    retired.erase(std::remove_if(retired.begin(), retired.end(),
-                                 [](const std::unique_ptr<Job>& j) { return j->finished(); }),
-                  retired.end());
-}
-
 }  // namespace
 
 PreviewController::~PreviewController() { close(); }
@@ -269,9 +261,9 @@ void PreviewController::close() {
 
 void PreviewController::poll() {
     // Replaced notes, base and overlay builds that have finished can go.
-    drop_finished(retired_scene_jobs_);
-    drop_finished(retired_base_jobs_);
-    drop_finished(retired_notes_jobs_);
+    drop_finished_jobs(retired_scene_jobs_);
+    drop_finished_jobs(retired_base_jobs_);
+    drop_finished_jobs(retired_notes_jobs_);
     // A new mode's notes are ready: swap them in (or show why not). If the
     // path changed while they were read, its overlay builds next.
     if (notes_job_ && notes_job_->finished()) {
