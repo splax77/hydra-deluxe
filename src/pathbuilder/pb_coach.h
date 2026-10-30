@@ -32,8 +32,8 @@ namespace hydra::pathbuilder {
 // names the timing the window needs (Activation::difficulty through
 // format_ms) and the limit (format_ms_whole). Empty when no limit is set or
 // the window is inside it. A window that fails a negative limit through a
-// squeeze that needs no timing has no figure to name; its wording is the
-// user's call (the plan's "Out of scope"), so it also reads empty until then.
+// squeeze that needs no timing has no figure to name, so its note names the
+// limit alone (the user's ruling, "Note, limit only").
 std::string tight_window_note(const Activation& act, const std::optional<double>& limit_ms);
 
 // One row of the decision list.
@@ -53,7 +53,8 @@ struct CoachRow {
 // The whole list for one path.
 struct CoachList {
     std::vector<CoachRow> rows;
-    // The "after your last window" line, once the ladder is complete.
+    // The "after your last window" line, once the ladder is complete; none
+    // while the path has no window.
     std::optional<int64_t> after_last;
     std::optional<app::CostTier> after_last_tier;
     // Why the ladder stopped (impossible_window_text), empty when it did not.
@@ -94,13 +95,22 @@ struct ClickResult {
     // a click the window checks refuse; empty when the click worked.
     std::string message;
     std::string detail;
+    // kLaterEndRepickedText when a later window's end had to change; empty
+    // otherwise. Set only on a click that worked.
+    std::string notice;
 };
+
+// What the builder says when a later window's chosen end is no longer
+// possible after a click, so the best finish picked a new one.
+inline constexpr const char* kLaterEndRepickedText =
+    "The end you chose for a later window isn't possible any more, so Hydra picked a new one.";
 
 // Starts a window at `act_tick`: pins only that activation, runs
 // best_finish, and keeps the end it chose. The windows before the click keep
-// their ends; those after it keep their activations and take the ends the
-// best finish chose, since the new window changes the Star Power they start
-// with. The player's own path is search_target over the new windows. An
+// their ends. Those after it keep theirs too while that is still possible;
+// when the new window's Star Power rules one out, they keep only their
+// activations, take the ends the best finish chose, and the result's notice
+// says so. The player's own path is search_target over the new windows. An
 // impossible click changes nothing and says why.
 ClickResult start_window(const ScoreGraph& graph, const SearchSettings& settings,
                          const std::vector<PinnedWindow>& windows, int64_t act_tick);
@@ -232,6 +242,8 @@ public:
     // The click's or end choice's failure: plain sentence and details line.
     const std::string& message() const { return message_; }
     const std::string& detail() const { return detail_; }
+    // The last click's or end choice's ClickResult::notice.
+    const std::string& notice() const { return notice_; }
     // True once after poll made an edit of the player's path, so the
     // window shows the player's path again.
     bool take_player_changed();
@@ -268,6 +280,7 @@ private:
     std::vector<std::unique_ptr<WorkJob<ClickResult>>> retired_clicks_;
     std::string message_;
     std::string detail_;
+    std::string notice_;
     bool player_changed_ = false;
 
     void select(size_t row);
