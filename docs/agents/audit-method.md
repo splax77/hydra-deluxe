@@ -84,7 +84,9 @@ A fresh agent checks every closure: every finding that left by exit 1, 3 or 4. T
 - **REOPEN:** it doesn't hold. The finding becomes a question.
 - **GONE:** the code no longer has the split. The checker names the commit that removed it.
 
-Then the main session checks each exit 3 PASS itself: it greps the quoted words in the cited file. A quote that isn't there turns the PASS into REOPEN. This check needs no judgment, so it gets no exceptions.
+Then the main session checks each exit 3 PASS itself: it greps the quoted words in the cited file. A quote that isn't there turns the PASS into REOPEN. This check needs no judgment, so it gets no exceptions. A script can do the grep for every block at once; `docs/audit/2026-10-29-audit-of-audits/briefs/checkquotes.py` is one. A checker that shortens file names must write a legend for them at the top of its file, or the script can't tell which file a quote claims to come from.
+
+Before a checker calls something "no ruling found", it searches the session cards, not just the decision log. Many rulings were typed in chat and never got a D-record: the 2026-09-24 plan decisions, the 2026-09-26 answers about the 09-25 audit, and the user's words behind finding 53 all live only in cards. Three checkers marked finding 53 "side picked without a ruling" because none of them read card `2026-10-24-a124ccd9`.
 
 ### 7. Ask the user
 
@@ -94,6 +96,9 @@ Write each question so the user can rule on exactly what the code does:
 - Give one example from each end, and one from the gap where the two sides disagree. Use game terms: a note 5 ms after the Star Power end reads "Hard (uncounted)" on one row and "Standard SqOut (uncounted)" on the other.
 - Name the options without leaning. Then give a recommendation and the strongest case against it.
 - Ask about the split itself, not something next to it. D48 question 4 asked whether 10 ms should follow the leeway, and never said that the other row uses 3 ms.
+- Show every value the question asks the user to confirm. Phase 3-5 question 33 asked the user to confirm "the audio reader limits" and "the loading bar's shares and pacing" and showed none of the numbers. Its "all recommended" confirmed nothing the user had seen.
+- Read the code again on the day the question goes out, and describe what it does that day. Phase 6 question 4 told the user the Preview's xN disc stays doubled after Star Power ends. A commit the day before had already made it drop.
+- Never give a split a purpose nobody wrote down. Say where the split came from (the commit and its author) and that nobody chose it, then ask whether one rule should replace it. The main session broke this in the audit of the past audits, and the user's answer is the rule: "yes everything should use one rule."
 
 Send splits alone or in small groups. The user approved that rule on 2026-10-29 ("yes both"). The number is not the user's: "five or fewer per message" is the main session's own suggestion for what "small" means, so it can change. A batch answer such as "all recommended" covers only what each question's text says. The phase 3-5 file put 33 questions in one message, and its one-line answer settled things nobody had shown the user.
 
@@ -116,7 +121,9 @@ Every finder, verifier and closure-checker brief starts with `docs/agents/brief-
 - that every split in a table is its own line in the report;
 - that "on purpose", "by design", "deliberately" and "kept" are claims, not evidence;
 - that a search that finds nothing proves nothing on its own (the preamble's rule);
-- that no whole-library run happens without the user's `allow library run` in chat (CLAUDE.md agent rule 8). A verifier in the 2026-10-03 audit started `hydra_batch` with no arguments by accident.
+- that no whole-library run happens without the user's `allow library run` in chat (CLAUDE.md agent rule 8). A verifier in the 2026-10-03 audit started `hydra_batch` with no arguments by accident;
+- where the user's words can be: the decision log, the question files, the plans, and the session cards with their condensed transcripts;
+- for a second-wave agent, the exact ids it takes, not "whatever the first wave did not cover". A second-wave scout in the audit of the past audits was told to skip items that already had blocks. It redid twelve of them and never reached the ones it was sent for.
 
 ## What went wrong before
 
@@ -162,6 +169,16 @@ On 2026-10-05 the triage file showed 192 of 396 findings open, though phase 6 ha
 ### Side notes left for later
 
 The concept audit's scouts raised five side notes outside their jobs. They were parked, and a later session checked them (card `2026-10-11-8eb32145`). Four were real problems: a function returned the wrong number, four audio headers named the wrong error type, a stem file that another program held open for writing dropped from the Preview with no message, and the brief preamble promised an agent its id on its first hook reply when the hook gave it only after five minutes. The fifth matched Clone Hero and needed no fix.
+
+### What the audit of the past audits found (2026-10-29)
+
+Twelve fresh scouts checked 219 closures from every past audit by the rules on this page (`docs/audit/2026-10-29-audit-of-audits/summary.md`). 24 of them, about one in nine, did not hold. Nearly all the leaks came by two paths.
+
+The first was a question that showed less than the code does. Finding 66 asked about one row of a three-row table. Phase 3-5 question 33 asked the user to confirm a list of tuning numbers by topic and showed none of them. That is the M39 story again, nine more times.
+
+The second was a closure the finding's own agent wrote, with a word in place of a ruling. The concept audit's "code-only" list and its "Already decided" section let six splits out with "kept", "stays" or "left alone". A third kind showed up once. The 2026-10-25 hook rebuild replaced every hook, and its list of what it dropped never named the media guard the user had ruled on (D189). A plan that replaces a whole system lists every ruled behaviour it keeps and every one it drops.
+
+The audit also found a question that described code which had already changed (phase 6 question 4, the xN disc). And the main session made the mistake this page warns about. Asked about M39, it explained the two ladders as one row rating "getting a note in" and the other "pushing it out", a purpose nobody had written down. The user's answer: "why are we even using two different systems? why are you still trying to convince me of more convoluted bullshit?", and then "yes everything should use one rule."
 
 ### What these have in common
 
