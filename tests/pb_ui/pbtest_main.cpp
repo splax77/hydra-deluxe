@@ -50,6 +50,7 @@ int main() {
 
     if (!h.init()) return 1;
     pbtest::register_tests(h);
+    pbtest::register_coach_tests(h);
 
     if (list) {
         ImVector<ImGuiTest*> tests;

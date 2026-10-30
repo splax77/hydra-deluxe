@@ -2,6 +2,8 @@
 
 #include "imgui.h"
 
+#include "app/path_view.h"  // kBestAllZeroLabel
+
 namespace hydra::pathbuilder {
 
 std::vector<PathRow> path_rows(const HydraRecord& record, const std::vector<Path>& branches) {
@@ -20,7 +22,7 @@ std::vector<PathRow> path_rows(const HydraRecord& record, const std::vector<Path
     for (size_t i = 0; i < record.paths.size(); ++i)
         add(i == 0 ? "Best path" : "Path " + std::to_string(i + 1), record.paths[i]);
     for (size_t i = 0; i < record.allzero_paths.size(); ++i)
-        add(i == 0 ? "Best all-0 path" : "All-0 path " + std::to_string(i + 1),
+        add(i == 0 ? std::string(app::kBestAllZeroLabel) : "All-0 path " + std::to_string(i + 1),
             record.allzero_paths[i]);
     for (size_t i = 0; i < branches.size(); ++i)
         add("Your branch " + std::to_string(i + 1), branches[i]);

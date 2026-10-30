@@ -46,8 +46,10 @@ void reset_app(Harness& h);
 // `seconds`; false when the wait ran out or the test failed.
 bool wait_idle(ImGuiTestContext* ctx, double seconds = 60.0);
 
-// Every builder test (pbtest_window.cpp).
+// The builder's main-window tests (pbtest_window.cpp).
 void register_tests(Harness& h);
+// The decision list's tests (pbtest_coach.cpp).
+void register_coach_tests(Harness& h);
 
 }  // namespace pbtest
 

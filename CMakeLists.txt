@@ -699,6 +699,7 @@ add_executable(hydra_pathbuilder_uitest
     tests/pb_ui/pbtest_main.cpp
     tests/pb_ui/pbtest_harness.cpp
     tests/pb_ui/pbtest_window.cpp
+    tests/pb_ui/pbtest_coach.cpp
 )
 target_link_libraries(hydra_pathbuilder_uitest PRIVATE
     hydra_pathbuilder hydra_uitest_engine d3d11 dxgi d3dcompiler hydra_warnings)
