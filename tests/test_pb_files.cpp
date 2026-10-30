@@ -11,10 +11,9 @@
 #include "audio_chart_fixtures.h"  // write_text_file
 #include "replay_json.h"
 #include "record_fixtures.h"
-#include "scratch_settings.h"
+#include "pb_open_util.h"
 #include "temp_util.h"
 #include "testdata_dirs.h"
-#include "wait_util.h"
 
 #include "app/user_messages.h"
 #include "pathbuilder/pb_files.h"
@@ -31,13 +30,7 @@ namespace {
 
 // Burnout, opened under the GUI tests' settings, with the open finished.
 const OpenChart& open_burnout(PbState& s) {
-    s.open_with(corpus::burnout_notes(), scratch_settings());
-    testwait::wait_until(
-        [&] {
-            s.poll();
-            return !s.busy();
-        },
-        "the Path Builder's open to finish");
+    open_and_wait(s, corpus::burnout_notes());
     REQUIRE(s.error().empty());
     REQUIRE(s.chart() != nullptr);
     REQUIRE_FALSE(s.chart()->record.paths.empty());
