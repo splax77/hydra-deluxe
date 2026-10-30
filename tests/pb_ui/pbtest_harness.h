@@ -50,6 +50,8 @@ bool wait_idle(ImGuiTestContext* ctx, double seconds = 60.0);
 void register_tests(Harness& h);
 // The decision list's tests (pbtest_coach.cpp).
 void register_coach_tests(Harness& h);
+// Copy, paste and the path files' tests (pbtest_files.cpp).
+void register_file_tests(Harness& h);
 
 }  // namespace pbtest
 
