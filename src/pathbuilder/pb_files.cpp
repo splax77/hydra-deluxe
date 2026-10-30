@@ -32,13 +32,7 @@ std::optional<Refusal> paste_path(PathHistory& history, const OpenChart& chart,
                                   const std::string& text) {
     try {
         // Both steps run before the edit, so a refusal leaves the history alone.
-        Path read;
-        try {
-            read = paths_from_pathstring(chart.song, chart.settings, text);
-        } catch (const std::invalid_argument& e) {
-            // The reader's refusal (pathstring_read.h): text that names no path here.
-            throw KindedError(ErrorKind::PathTextRefused, e.what());
-        }
+        const Path read = paths_from_pathstring(chart.song, chart.settings, text);
         PlayerPath next = player_copy_of(read);
         history.edit(std::move(next));
     } catch (const std::exception& e) {
