@@ -241,7 +241,7 @@ TEST_CASE("coach click: a later end that is no longer possible is picked again, 
 
 TEST_CASE("coach remove: the later windows keep the ends the player chose while they can") {
     PbState s;
-    open_and_wait(s, white_washed_notes(), scratch_settings());
+    open_and_wait(s, corpus::white_washed_notes(), scratch_settings());
     REQUIRE(s.chart() != nullptr);
     const OpenChart& c = *s.chart();
     const std::vector<PinnedWindow> best = hydra::pinned_windows(c.record.best_path());
@@ -334,7 +334,7 @@ TEST_CASE("coach remove: a tick with no window changes nothing") {
 
 TEST_CASE("coach remove: a removal that breaks a later window leaves the path and says why") {
     PbState s;
-    open_and_wait(s, white_washed_notes(), scratch_settings());
+    open_and_wait(s, corpus::white_washed_notes(), scratch_settings());
     REQUIRE(s.chart() != nullptr);
     const OpenChart& c = *s.chart();
     const std::vector<PinnedWindow> best = hydra::pinned_windows(c.record.best_path());
@@ -344,8 +344,53 @@ TEST_CASE("coach remove: a removal that breaks a later window leaves the path an
         hydra::pathbuilder::remove_window(*c.graph, c.settings, best, best[2].act_tick);
     CHECK_FALSE(r.windows.has_value());
     CHECK_FALSE(r.path.has_value());
-    CHECK(r.message == hydra::pathbuilder::impossible_window_text("activation", false));
+    CHECK(r.message == hydra::pathbuilder::removal_impossible_text());
+    CHECK(r.message ==
+          "Removing this window makes one of your later windows impossible, so the path stays "
+          "as it was.");
     CHECK(r.notice.empty());
+}
+
+TEST_CASE("coach click: a result that arrives after the player's path changed is dropped") {
+    PbState s;
+    open_and_wait(s, corpus::burnout_notes(), scratch_settings());
+    REQUIRE(s.chart() != nullptr);
+    const OpenChart& c = *s.chart();
+    const ActivationWalk best = c.record.best_path().walk_activations();
+    REQUIRE(best.size() >= 2);
+    const int64_t tick = best[1].timecode.ticks();
+    hydra::pathbuilder::DecisionList& d = s.decisions();
+    auto settle = [&] {
+        testwait::wait_until(
+            [&] {
+                d.poll(s);
+                return !d.busy();
+            },
+            "the click's search to land");
+    };
+
+    // The forced order: the click starts, the player's path changes (the
+    // empty path stands in for an undo, a redo or Finish for me), then the
+    // answer is taken in.
+    d.click_fill(s.search_graph(), c.settings, s.history().current().windows, tick,
+                 s.history().generation());
+    s.history().edit(hydra::pathbuilder::PlayerPath{});
+    const uint64_t after_change = s.history().generation();
+    settle();
+    CHECK(s.history().generation() == after_change);  // the answer made no edit
+    CHECK(s.history().current().windows.empty());
+    CHECK_FALSE(d.take_player_changed());
+    CHECK(d.message().empty());
+    CHECK(d.notice().empty());
+
+    // The same click made on the path as it now stands is taken in.
+    d.click_fill(s.search_graph(), c.settings, s.history().current().windows, tick,
+                 s.history().generation());
+    settle();
+    CHECK(s.history().generation() == after_change + 1);
+    REQUIRE(s.history().current().windows.size() == 1);
+    CHECK(s.history().current().windows.front().act_tick == tick);
+    CHECK(d.take_player_changed());
 }
 
 TEST_CASE("coach rows: a path with no window has no after-your-last-window line") {

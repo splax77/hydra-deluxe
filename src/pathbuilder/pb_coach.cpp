@@ -79,6 +79,11 @@ std::string impossible_window_text(const std::string& failed_reason, bool at_cli
     return app::kSomethingWentWrong;
 }
 
+std::string removal_impossible_text() {
+    return "Removing this window makes one of your later windows impossible, so the path stays "
+           "as it was.";
+}
+
 std::vector<EndChoice> end_choices(const ScoreGraph& graph, const SearchSettings& settings,
                                    const std::vector<PinnedWindow>& before, int64_t act_tick) {
     std::vector<PinnedWindow> pins = before;
@@ -166,15 +171,21 @@ ClickResult repin(const ScoreGraph& graph, const SearchSettings& settings,
             bf = best_finish(graph, settings, pins);
             repicked = true;
         }
+        // A removal puts no window on `act_tick`, so what breaks is always a
+        // later window and it has its own sentence.
+        auto refusal = [&](const TargetResult& failed) {
+            return at ? impossible_window_text(failed.failed_reason, failed.failed_tick == act_tick)
+                      : removal_impossible_text();
+        };
         if (bf.paths.empty()) {
-            out.message = impossible_window_text(bf.failed_reason, bf.failed_tick == act_tick);
+            out.message = refusal(bf);
             return out;
         }
         std::vector<PinnedWindow> mine = pinned_windows(bf.paths.front());
         mine.resize(pins.size());
         TargetResult own = search_target(graph, mine);
         if (own.paths.empty()) {
-            out.message = impossible_window_text(own.failed_reason, own.failed_tick == act_tick);
+            out.message = refusal(own);
             return out;
         }
         if (repicked && later_end_changed(windows, mine, act_tick)) out.notice = kLaterEndRepickedText;
@@ -364,7 +375,11 @@ void DecisionList::poll(PbState& state) {
         ends_job_.reset();
     }
     if (click_job_ && click_job_->finished()) {
-        if (!click_job_->ok()) {
+        if (state.history().generation() != click_generation_) {
+            // The player's path changed while the search ran (undo, redo,
+            // Finish for me, another edit), so its answer is for a path that
+            // is gone. The player clicks again if they still want it.
+        } else if (!click_job_->ok()) {
             message_ = click_job_->message();
             detail_ = click_job_->error();
         } else {
@@ -415,30 +430,37 @@ bool DecisionList::take_player_changed() {
     return changed;
 }
 
-void DecisionList::start_edit(std::function<ClickResult()> fn) {
+void DecisionList::start_edit(std::function<ClickResult()> fn, uint64_t generation) {
     if (click_job_) retired_clicks_.push_back(std::move(click_job_));
     message_.clear();
     detail_.clear();
     notice_.clear();
-    click_job_ =std::make_unique<WorkJob<ClickResult>>(std::move(fn));
+    click_generation_ = generation;
+    click_job_ = std::make_unique<WorkJob<ClickResult>>(std::move(fn));
 }
 
 void DecisionList::click_fill(std::shared_ptr<const ScoreGraph> graph,
                               const SearchSettings& settings,
-                              const std::vector<PinnedWindow>& windows, int64_t act_tick) {
+                              const std::vector<PinnedWindow>& windows, int64_t act_tick,
+                              uint64_t generation) {
     if (!graph) return;
-    start_edit([graph, settings, windows, act_tick] {
-        return start_window(*graph, settings, windows, act_tick);
-    });
+    start_edit(
+        [graph, settings, windows, act_tick] {
+            return start_window(*graph, settings, windows, act_tick);
+        },
+        generation);
 }
 
 void DecisionList::click_remove(std::shared_ptr<const ScoreGraph> graph,
                                 const SearchSettings& settings,
-                                const std::vector<PinnedWindow>& windows, int64_t act_tick) {
+                                const std::vector<PinnedWindow>& windows, int64_t act_tick,
+                                uint64_t generation) {
     if (!graph) return;
-    start_edit([graph, settings, windows, act_tick] {
-        return remove_window(*graph, settings, windows, act_tick);
-    });
+    start_edit(
+        [graph, settings, windows, act_tick] {
+            return remove_window(*graph, settings, windows, act_tick);
+        },
+        generation);
 }
 
 void DecisionList::select(size_t row) {
@@ -529,9 +551,11 @@ void DecisionList::draw(PbState& state, ui::PreviewController* preview) {
                 const SearchSettings settings = settings_;
                 const std::vector<PinnedWindow> windows = shown_windows_;
                 const PinnedWindow chosen = c.window;
-                start_edit([graph, settings, windows, chosen] {
-                    return choose_end(*graph, settings, windows, chosen);
-                });
+                start_edit(
+                    [graph, settings, windows, chosen] {
+                        return choose_end(*graph, settings, windows, chosen);
+                    },
+                    state.history().generation());
             }
             ImGui::PopID();
         }

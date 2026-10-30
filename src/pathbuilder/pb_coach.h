@@ -71,6 +71,10 @@ CoachList coach_list(const Path& shown, const app::LadderRun& run,
 // window that broke is the one just clicked.
 std::string impossible_window_text(const std::string& failed_reason, bool at_click);
 
+// What the builder says when removing a window would make a later window
+// impossible (remove_window): the path stays as it was.
+std::string removal_impossible_text();
+
 // One way a window can end.
 struct EndChoice {
     PinnedWindow window;   // the window pinned in full with this end
@@ -92,8 +96,9 @@ struct ClickResult {
     // them, empty when no window is left (PlayerPath's rule).
     std::optional<std::vector<PinnedWindow>> windows;
     std::optional<Path> path;
-    // impossible_window_text, or plain_error's sentence and details line for
-    // a click the window checks refuse; empty when the click worked.
+    // impossible_window_text (removal_impossible_text for a removal), or
+    // plain_error's sentence and details line for a click the window checks
+    // refuse; empty when the click worked.
     std::string message;
     std::string detail;
     // kLaterEndRepickedText when a later window's end had to change; empty
@@ -244,12 +249,18 @@ public:
 
     // Starts a window at `act_tick` on the player's path (start_window), on
     // a worker. An impossible click leaves the path and sets message().
+    // `generation` is PathHistory::generation() at the click: the answer is
+    // thrown away if the player's path changed since (undo, redo, Finish for
+    // me, another edit), and the player clicks again if they still want it.
+    // The same holds for a removal and for an end choice.
     void click_fill(std::shared_ptr<const ScoreGraph> graph, const SearchSettings& settings,
-                    const std::vector<PinnedWindow>& windows, int64_t act_tick);
+                    const std::vector<PinnedWindow>& windows, int64_t act_tick,
+                    uint64_t generation);
     // Removes the window on `act_tick` from the player's path
     // (remove_window), on a worker, as click_fill starts one.
     void click_remove(std::shared_ptr<const ScoreGraph> graph, const SearchSettings& settings,
-                      const std::vector<PinnedWindow>& windows, int64_t act_tick);
+                      const std::vector<PinnedWindow>& windows, int64_t act_tick,
+                      uint64_t generation);
     // The click's or end choice's failure: plain sentence and details line.
     const std::string& message() const { return message_; }
     const std::string& detail() const { return detail_; }
@@ -290,6 +301,8 @@ private:
     std::vector<EndChoice> ends_;
     std::unique_ptr<WorkJob<std::vector<EndChoice>>> ends_job_;
     std::unique_ptr<WorkJob<ClickResult>> click_job_;
+    // PathHistory::generation() when click_job_ started.
+    uint64_t click_generation_ = 0;
     // Replaced jobs still running: dropped once they finish, so the window
     // never waits on one.
     std::vector<std::unique_ptr<WorkJob<std::vector<EndChoice>>>> retired_ends_;
@@ -300,7 +313,7 @@ private:
     bool player_changed_ = false;
 
     void select(size_t row);
-    void start_edit(std::function<ClickResult()> fn);
+    void start_edit(std::function<ClickResult()> fn, uint64_t generation);
     void refresh_list();
 };
 

@@ -231,10 +231,11 @@ void PbApp::draw_highway(const OpenChart& chart, const Path* shown) {
         // one removes it (pb_coach.h).
         DecisionList& d = state.decisions();
         if (f.state == app::PreviewFillState::Offered)
-            d.click_fill(state.search_graph(), s, state.history().current().windows, f.chord_tick);
+            d.click_fill(state.search_graph(), s, state.history().current().windows, f.chord_tick,
+                         generation);
         else if (f.state == app::PreviewFillState::Taken)
             d.click_remove(state.search_graph(), s, state.history().current().windows,
-                           f.chord_tick);
+                           f.chord_tick, generation);
     }
 }
 

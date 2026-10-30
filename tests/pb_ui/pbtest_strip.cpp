@@ -122,7 +122,7 @@ void test_strip_click_removes_window(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(best.size() >= 2, );
     const int64_t tick = best[1].timecode.ticks();
     s.decisions().click_fill(s.search_graph(), s.chart()->settings, s.history().current().windows,
-                             tick);
+                             tick, s.history().generation());
     IM_CHECK_RETV(wait_for_edit(ctx), );
     IM_CHECK_RETV(s.history().current().windows.size() == 1, );
     IM_CHECK_RETV(s.decisions().list().rows.size() == 1, );

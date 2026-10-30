@@ -59,7 +59,8 @@ bool click_fill(ImGuiTestContext* ctx, int64_t act_tick) {
     Harness& h = harness(ctx);
     PbState& s = h.app->state;
     s.decisions().click_fill(s.search_graph(), s.chart()->settings,
-                             s.history().current().windows, act_tick);
+                             s.history().current().windows, act_tick,
+                             s.history().generation());
     if (!wait_idle(ctx)) return false;
     ctx->Yield(2);
     // The edit's frame asked for the new path's ladder.
