@@ -25,6 +25,10 @@ namespace hydra::pathbuilder {
 // One chart, opened: everything the builder reads while it shows the chart.
 struct OpenChart {
     explicit OpenChart(Song song_in) : song(std::move(song_in)) {}
+    // The graph keeps a reference to `song` (ScoreGraph), so an open chart
+    // never moves: it lives behind the unique_ptr load_open_chart returns.
+    OpenChart(const OpenChart&) = delete;
+    OpenChart& operator=(const OpenChart&) = delete;
 
     std::string chart_path;  // the file opened
     // The settings the chart was read and searched under: Settings::batch_run()
@@ -48,8 +52,9 @@ struct OpenChart {
 // whose error the user sees), builds the graph and runs analyze_chart over it.
 // Throws what those throw. Setting *cancel stops the search, by
 // app::stop_on_cancel's rule.
-OpenChart load_open_chart(const std::string& notespath, const app::Settings& settings,
-                          const std::atomic<bool>* cancel = nullptr);
+std::unique_ptr<OpenChart> load_open_chart(const std::string& notespath,
+                                           const app::Settings& settings,
+                                           const std::atomic<bool>* cancel = nullptr);
 
 // load_open_chart on a worker thread. Its message() and error() are the plain
 // sentence and details line of a failed open (app::plain_error and

@@ -9,14 +9,17 @@
 
 namespace hydra::pathbuilder {
 
-OpenChart load_open_chart(const std::string& notespath, const app::Settings& settings,
-                          const std::atomic<bool>* cancel) {
+std::unique_ptr<OpenChart> load_open_chart(const std::string& notespath,
+                                           const app::Settings& settings,
+                                           const std::atomic<bool>* cancel) {
     const app::AnalysisSettings run = settings.batch_run().settings;
     const app::SharedBytes container = app::read_preview_container(
         [](const std::string& p) { return read_file_bytes(p); }, notespath);
-    OpenChart c(app::resolve_preview_song(notespath, container, run.reading(), run.rules,
-                                          fill_rule_for(run.legacy_fills))
-                    .song);
+    auto chart = std::make_unique<OpenChart>(
+        app::resolve_preview_song(notespath, container, run.reading(), run.rules,
+                                  fill_rule_for(run.legacy_fills))
+            .song);
+    OpenChart& c = *chart;
     c.chart_path = notespath;
     c.settings = run;
     require_notes(c.song, c.settings.difficulty, c.settings.prodrums);
@@ -26,7 +29,7 @@ OpenChart load_open_chart(const std::string& notespath, const app::Settings& set
     c.entry.notespath = notespath;
     c.entry.md5 = app::hash_chart_file(notespath);
     c.entry.timing = app::chart_timing_meta(std::nullopt, notespath);
-    return c;
+    return chart;
 }
 
 OpenJob::OpenJob(std::string notespath, app::Settings settings)
@@ -35,8 +38,7 @@ OpenJob::OpenJob(std::string notespath, app::Settings settings)
         spawn([this] {
             run_guarded([this] {
                 try {
-                    chart_ = std::make_unique<OpenChart>(
-                        load_open_chart(notespath_, settings_, &cancel_));
+                    chart_ = load_open_chart(notespath_, settings_, &cancel_);
                 } catch (const app::AnalysisCancelled&) {
                     throw_if_cancelled();  // a newer open replaced this one
                     return false;

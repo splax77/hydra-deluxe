@@ -663,6 +663,7 @@ endif()
 # Hydra's own window comes with it.
 add_library(hydra_pathbuilder STATIC
     src/pathbuilder/pb_state.cpp
+    src/pathbuilder/pb_coach.cpp
     src/pathbuilder/pb_paths.cpp
     src/pathbuilder/pb_open.cpp
     src/pathbuilder/pb_menu.cpp
