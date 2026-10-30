@@ -479,20 +479,31 @@ void render_table(AppState& app, ImVec2 size) {
     // A new selection asks the scroll owner (ui/list_scroll.h), once, how to
     // move the list to its row. Only a change of the selected song counts: a
     // reload that keeps the open song (follow_selected_row) moves nothing.
+    // Rows of a new height (row_h above, which the song panel changes by
+    // hiding Album) ask the same owner whether the selected row goes back
+    // where it sat on screen last frame. The panel's click and the new height
+    // can land on the same frame, so a clicked row's place counts too.
+    const bool new_selection = selected_path != app.library_ui.scrolled_to;
+    const RowPlace last_place = app.library_ui.row_place;
+    const bool keep_place = row_keeps_place(last_place, row_h, selected_path);
     std::optional<size_t> scroll_to;
-    if (selected_path != app.library_ui.scrolled_to) {
-        app.library_ui.scrolled_to = selected_path;
+    std::optional<size_t> keep_at;
+    if (new_selection) app.library_ui.scrolled_to = selected_path;
+    if (new_selection || keep_place)
         for (size_t k = 0; k < order.size(); ++k)
             if (app.is_selected_row(rows[order[k]].entry)) {
-                scroll_to = k;
+                if (new_selection) scroll_to = k;
+                if (keep_place) keep_at = k;
                 break;
             }
-    }
+    // This frame's place of the selected row, filled in when that row is drawn.
+    RowPlace place{row_h, std::string(), std::nullopt};
 
-    // Only the rows on screen are drawn.
+    // Only the rows on screen are drawn, and the row a scroll is aimed at.
     ImGuiListClipper clipper;
     clipper.Begin(static_cast<int>(order.size()));
     if (scroll_to) clipper.IncludeItemByIndex(static_cast<int>(*scroll_to));
+    if (keep_at) clipper.IncludeItemByIndex(static_cast<int>(*keep_at));
     while (clipper.Step()) {
         for (int k = clipper.DisplayStart; k < clipper.DisplayEnd; ++k) {
             const size_t index = order[static_cast<size_t>(k)];
@@ -532,6 +543,8 @@ void render_table(AppState& app, ImVec2 size) {
             const float title_text_w = title_cut ? title_kept_w : title_w;
             if (scroll_to && *scroll_to == static_cast<size_t>(k))
                 scroll_last_row(selection_scroll(app.last_selection_source));
+            if (keep_at && *keep_at == static_cast<size_t>(k)) keep_last_row_in_place(last_place);
+            if (selected || clicked) place = place_of_last_row(row_h, row_key(row.entry));
             if (searching_words)
                 overlay_matches(title_pos, title,
                                 app::match_spans(q, app::QueryField::Title, title),
@@ -600,6 +613,7 @@ void render_table(AppState& app, ImVec2 size) {
             ImGui::PopID();
         }
     }
+    app.library_ui.row_place = place;
     ImGui::EndTable();
 }
 

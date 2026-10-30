@@ -34,4 +34,25 @@ void scroll_last_row(ScrollTo how) {
     }
 }
 
+bool row_keeps_place(const RowPlace& last, float row_h, const std::string& row) {
+    // A click never moves the song under the pointer (selection_scroll), and
+    // a change of row height alone would.
+    return row_h != last.row_h && !row.empty() && row == last.row && last.top.has_value();
+}
+
+// The row's top is measured from the list window's top, the same way in
+// place_of_last_row and here, so whatever sits above the rows (a frozen
+// header) cancels out.
+void keep_last_row_in_place(const RowPlace& last) {
+    if (!last.top) return;
+    const float top_now = ImGui::GetItemRectMin().y - ImGui::GetWindowPos().y;
+    ImGui::SetScrollY(ImGui::GetScrollY() + top_now - *last.top);
+}
+
+RowPlace place_of_last_row(float row_h, const std::string& row) {
+    RowPlace place{row_h, row, std::nullopt};
+    if (ImGui::IsItemVisible()) place.top = ImGui::GetItemRectMin().y - ImGui::GetWindowPos().y;
+    return place;
+}
+
 }  // namespace hydra::ui

@@ -70,7 +70,12 @@ Whether a list moves when its selected row changes, and how far. The owner is
 changed (`SelectionSource`, recorded by `AppState::select`); `scroll_last_row`
 is the one place that asks ImGui to scroll. A click on a row never scrolls;
 a step or a pick from another window brings the row in at the nearest edge,
-and moves nothing if it is already on screen. It leaves out where a column
+and moves nothing if it is already on screen. The same page owns the other
+case that moves a list: when every row changes height under a selected row
+(the Library's song panel hides Album, which makes rows two lines tall),
+`row_keeps_place` says the selected row goes back to the same height on
+screen, and `keep_last_row_in_place` is the one place that asks ImGui to do
+it. A row that was off screen stays off screen. It leaves out where a column
 sits and how a table is sized.
 
 **Rescan cache**:
