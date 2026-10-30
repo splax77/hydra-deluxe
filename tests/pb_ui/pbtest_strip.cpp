@@ -57,6 +57,27 @@ std::optional<size_t> fill_on(const PreviewScene& scene, int64_t tick) {
     return std::nullopt;
 }
 
+// Clicks the middle of the strip marker of the fill on `tick`, as the strip
+// lays it out, after checking the fill is taken on the path on screen. False
+// when a check failed and nothing was clicked.
+bool click_taken_marker(ImGuiTestContext* ctx, hydra::ui::PreviewController& pc, int64_t tick) {
+    const std::optional<size_t> fill = fill_on(pc.scene(), tick);
+    IM_CHECK_RETV(fill.has_value(), false);
+    IM_CHECK_RETV(pc.scene().fills[*fill].state == PreviewFillState::Taken, false);
+    const ImRect strip = ctx->ItemInfo(("**/" + std::string(hydra::pathbuilder::kStripId)).c_str())
+                             .RectFull;
+    const std::vector<hydra::pathbuilder::StripMarker> markers = hydra::pathbuilder::strip_markers(
+        pc.scene(), pc.playback_end_ms(), strip.GetWidth(), 0.0f);
+    std::optional<float> x;
+    for (const hydra::pathbuilder::StripMarker& m : markers)
+        if (m.fill == *fill) x = (m.x0 + m.x1) * 0.5f;
+    IM_CHECK_RETV(x.has_value(), false);
+    IM_CHECK_RETV(hydra::pathbuilder::marker_at(markers, *x) == std::optional<size_t>(*fill), false);
+    ctx->MouseMoveToPos(ImVec2(strip.Min.x + *x, strip.GetCenter().y));
+    ctx->MouseClick(0);
+    return true;
+}
+
 // A click on the highway, on the fill Hydra's best path activates second:
 // the player's path, empty until now, gains that window and the decision
 // list a row.
@@ -116,23 +137,8 @@ void test_strip_click_removes_window(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(click_fill(ctx, tick), );
     IM_CHECK_RETV(s.history().current().windows.size() == 1, );
     IM_CHECK_RETV(s.decisions().list().rows.size() == 1, );
-    const std::optional<size_t> fill = fill_on(pc.scene(), tick);
-    IM_CHECK_RETV(fill.has_value(), );
-    IM_CHECK_RETV(pc.scene().fills[*fill].state == PreviewFillState::Taken, );
 
-    // The middle of the taken fill's marker, as the strip lays it out.
-    const ImRect strip = ctx->ItemInfo(("**/" + std::string(hydra::pathbuilder::kStripId)).c_str())
-                             .RectFull;
-    const std::vector<hydra::pathbuilder::StripMarker> markers = hydra::pathbuilder::strip_markers(
-        pc.scene(), pc.playback_end_ms(), strip.GetWidth(), 0.0f);
-    std::optional<float> x;
-    for (const hydra::pathbuilder::StripMarker& m : markers)
-        if (m.fill == *fill) x = (m.x0 + m.x1) * 0.5f;
-    IM_CHECK_RETV(x.has_value(), );
-    IM_CHECK_RETV(hydra::pathbuilder::marker_at(markers, *x) == std::optional<size_t>(*fill), );
-
-    ctx->MouseMoveToPos(ImVec2(strip.Min.x + *x, strip.GetCenter().y));
-    ctx->MouseClick(0);
+    IM_CHECK_RETV(click_taken_marker(ctx, pc, tick), );
     IM_CHECK_RETV(wait_for_edit(ctx), );
     IM_CHECK(s.decisions().message().empty());
     IM_CHECK(s.history().current().windows.empty());
@@ -160,24 +166,8 @@ void test_click_on_shown_path_copies(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(wait_idle(ctx), );
     ctx->Yield(2);
     IM_CHECK_RETV(h.app->list_ui().picked.has_value(), );
-    const int64_t tick = best[2].act_tick;
-    const std::optional<size_t> fill = fill_on(pc.scene(), tick);
-    IM_CHECK_RETV(fill.has_value(), );
-    IM_CHECK_RETV(pc.scene().fills[*fill].state == PreviewFillState::Taken, );
-
-    const ImRect strip = ctx->ItemInfo(("**/" + std::string(hydra::pathbuilder::kStripId)).c_str())
-                             .RectFull;
-    const std::vector<hydra::pathbuilder::StripMarker> markers = hydra::pathbuilder::strip_markers(
-        pc.scene(), pc.playback_end_ms(), strip.GetWidth(), 0.0f);
-    std::optional<float> x;
-    for (const hydra::pathbuilder::StripMarker& m : markers)
-        if (m.fill == *fill) x = (m.x0 + m.x1) * 0.5f;
-    IM_CHECK_RETV(x.has_value(), );
-    IM_CHECK_RETV(hydra::pathbuilder::marker_at(markers, *x) == std::optional<size_t>(*fill), );
-
     const uint64_t before = s.history().generation();
-    ctx->MouseMoveToPos(ImVec2(strip.Min.x + *x, strip.GetCenter().y));
-    ctx->MouseClick(0);
+    IM_CHECK_RETV(click_taken_marker(ctx, pc, best[2].act_tick), );
     IM_CHECK_RETV(wait_for_edit(ctx), );
     IM_CHECK(s.decisions().message().empty());
     // One edit: the copy and the removal together.

@@ -8,9 +8,9 @@
 #include <optional>
 #include <vector>
 
+#include "pb_open_util.h"
 #include "scratch_settings.h"
 #include "testdata_dirs.h"
-#include "wait_util.h"
 
 #include "pathbuilder/pb_coach.h"
 #include "pathbuilder/pb_state.h"
@@ -28,13 +28,7 @@ using hydra::pathbuilder::StripMarker;
 
 TEST_CASE("strip: the step line starts at BF(0), steps by each cost, ends at the player's total") {
     PbState s;
-    s.open_with(corpus::burnout_notes(), scratch_settings());
-    testwait::wait_until(
-        [&] {
-            s.poll();
-            return !s.busy();
-        },
-        "the Path Builder's open to finish");
+    open_and_wait(s, corpus::burnout_notes(), scratch_settings());
     REQUIRE(s.chart() != nullptr);
     const OpenChart& c = *s.chart();
     const ActivationWalk best = c.record.best_path().walk_activations();
@@ -70,13 +64,7 @@ TEST_CASE("strip: the step line starts at BF(0), steps by each cost, ends at the
 
 TEST_CASE("strip: no step line while the path on screen has no windows") {
     PbState s;
-    s.open_with(corpus::burnout_notes(), scratch_settings());
-    testwait::wait_until(
-        [&] {
-            s.poll();
-            return !s.busy();
-        },
-        "the Path Builder's open to finish");
+    open_and_wait(s, corpus::burnout_notes(), scratch_settings());
     REQUIRE(s.chart() != nullptr);
     const OpenChart& c = *s.chart();
 
