@@ -58,10 +58,12 @@ void save_path_file(const std::string& file, const Path& path, const Song& song)
 std::vector<Path> read_path_file(const std::string& file, const OpenChart& chart);
 
 // Opens a path file: every path read_path_file finds is added to `branches`
-// (the left list's saved branches), and the first becomes the player's path
-// as one edit of `history`, so undo puts the old path back. When the file
-// cannot be read or does not fit the chart, nothing changes and the refusal
-// says why.
+// (the left list's saved branches) unless the left list (path_rows) already
+// shows it, judged by path_identity, so each path shows once (the user's
+// ruling, "Show each path once"). The first path becomes the player's path
+// either way, as one edit of `history`, so undo puts the old path back. When
+// the file cannot be read or does not fit the chart, nothing changes and the
+// refusal says why.
 std::optional<Refusal> open_path_file(PathHistory& history, std::vector<Path>& branches,
                                       const OpenChart& chart, const std::string& file);
 

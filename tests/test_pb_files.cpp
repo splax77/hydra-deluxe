@@ -16,7 +16,9 @@
 #include "testdata_dirs.h"
 
 #include "app/user_messages.h"
+#include "pathbuilder/pb_coach.h"
 #include "pathbuilder/pb_files.h"
+#include "pathbuilder/pb_paths.h"
 #include "pathbuilder/pb_state.h"
 
 using hydra::Path;
@@ -49,25 +51,69 @@ void check_same_path(const Path& got, const Path& want) {
 TEST_CASE("pb files: a saved path file opens back as the same path, as a branch and the player's") {
     PbState s;
     const OpenChart& c = open_burnout(s);
-    const Path& best = c.record.best_path();
+    // A path the left list does not show yet: one window on the fill Hydra's
+    // best path activates second.
+    const hydra::ActivationWalk best_acts = c.record.best_path().walk_activations();
+    REQUIRE(best_acts.size() >= 2);
+    const hydra::pathbuilder::ClickResult one = hydra::pathbuilder::start_window(
+        *c.graph, c.settings, {}, best_acts[1].timecode.ticks());
+    REQUIRE(one.path.has_value());
+    const Path& mine = *one.path;
+    for (const hydra::pathbuilder::PathRow& row : hydra::pathbuilder::path_rows(c.record, {}))
+        REQUIRE(path_identity(*row.path) != path_identity(mine));
     const std::string file = testtemp::temp_dir("pb_files_save") + "\\path.json";
 
     // The file is hydra_replay's shape: a "paths" array as paths_json writes it.
-    CHECK(hydra::pathbuilder::path_file_json(best, c.song)["paths"] ==
-          hydra::paths_json({&best}, c.song.timing()));
-    hydra::pathbuilder::save_path_file(file, best, c.song);
+    CHECK(hydra::pathbuilder::path_file_json(mine, c.song)["paths"] ==
+          hydra::paths_json({&mine}, c.song.timing()));
+    hydra::pathbuilder::save_path_file(file, mine, c.song);
 
     PathHistory& h = s.history();
     std::vector<Path> branches;
     REQUIRE_FALSE(hydra::pathbuilder::open_path_file(h, branches, c, file).has_value());
     REQUIRE(branches.size() == 1);
-    check_same_path(branches.front(), best);
+    check_same_path(branches.front(), mine);
     REQUIRE(h.current().path.has_value());
-    check_same_path(*h.current().path, best);
+    check_same_path(*h.current().path, mine);
     // Opening is one edit: undo puts the empty path back, redo the opened one.
     REQUIRE(h.undo());
     CHECK_FALSE(h.current().path.has_value());
     REQUIRE(h.redo());
+    REQUIRE(h.current().path.has_value());
+    check_same_path(*h.current().path, mine);
+}
+
+// The user's ruling, "Show each path once": a path the left list already
+// shows is not added again, and the file's first path is still the player's.
+TEST_CASE("pb files: opening a path file twice shows each path once") {
+    PbState s;
+    const OpenChart& c = open_burnout(s);
+    const hydra::ActivationWalk best_acts = c.record.best_path().walk_activations();
+    REQUIRE(best_acts.size() >= 2);
+    const hydra::pathbuilder::ClickResult one = hydra::pathbuilder::start_window(
+        *c.graph, c.settings, {}, best_acts[1].timecode.ticks());
+    REQUIRE(one.path.has_value());
+    const std::string dir = testtemp::temp_dir("pb_files_twice");
+    const std::string file = dir + "\\path.json";
+    hydra::pathbuilder::save_path_file(file, *one.path, c.song);
+
+    PathHistory& h = s.history();
+    std::vector<Path> branches;
+    REQUIRE_FALSE(hydra::pathbuilder::open_path_file(h, branches, c, file).has_value());
+    REQUIRE(branches.size() == 1);
+    REQUIRE(h.undo());  // the player's path is empty again
+    REQUIRE_FALSE(hydra::pathbuilder::open_path_file(h, branches, c, file).has_value());
+    CHECK(branches.size() == 1);
+    REQUIRE(h.current().path.has_value());
+    check_same_path(*h.current().path, *one.path);
+
+    // A file holding Hydra's best path adds no branch, since the list's
+    // "Best path" row is that path, but makes it the player's.
+    const Path& best = c.record.best_path();
+    const std::string best_file = dir + "\\best.json";
+    hydra::pathbuilder::save_path_file(best_file, best, c.song);
+    REQUIRE_FALSE(hydra::pathbuilder::open_path_file(h, branches, c, best_file).has_value());
+    CHECK(branches.size() == 1);
     REQUIRE(h.current().path.has_value());
     check_same_path(*h.current().path, best);
 }
