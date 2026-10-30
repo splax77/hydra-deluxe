@@ -11,7 +11,7 @@
 #include "pathbuilder/pb_state.h"
 #include "ui/preview_controller.h"
 #include "ui/theme.h"    // chip_color
-#include "ui/widgets.h"  // WarnColor
+#include "ui/widgets.h"  // WarnColor, error_detail_line
 
 namespace hydra::pathbuilder {
 
@@ -490,7 +490,7 @@ void DecisionList::draw(PbState& state, ui::PreviewController* preview) {
             ui::WarnColor warn;
             ImGui::TextWrapped("%s", message_.c_str());
         }
-        if (!detail_.empty()) ImGui::TextDisabled("%s", detail_.c_str());
+        ui::error_detail_line(detail_);
     }
     if (!notice_.empty()) ImGui::TextWrapped("%s", notice_.c_str());
     const std::string ladder_error = coach_.error();
@@ -499,8 +499,7 @@ void DecisionList::draw(PbState& state, ui::PreviewController* preview) {
             ui::WarnColor warn;
             ImGui::TextWrapped("%s", ladder_error.c_str());
         }
-        const std::string d = coach_.error_detail();
-        if (!d.empty()) ImGui::TextDisabled("%s", d.c_str());
+        ui::error_detail_line(coach_.error_detail());
     }
 
     if (list_.rows.empty()) ImGui::TextDisabled("No windows yet.");
