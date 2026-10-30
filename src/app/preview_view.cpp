@@ -288,14 +288,13 @@ double last_note_ms(const PreviewScene& scene) {
 }
 
 PreviewScene build_preview_scene(const Song& song, const Path* path, int sp_cap,
-                                 const core::Rules& rules, std::optional<double> audio_end_ms,
-                                 std::optional<double> song_length_ms, const Path* ghost_path) {
-    return apply_preview_overlay(build_preview_base(song, audio_end_ms, song_length_ms), song,
-                                 path, sp_cap, rules, ghost_path);
+                                 const core::Rules& rules, std::optional<double> song_length_ms,
+                                 const Path* ghost_path) {
+    return apply_preview_overlay(build_preview_base(song, song_length_ms), song, path, sp_cap,
+                                 rules, ghost_path);
 }
 
-PreviewScene build_preview_base(const Song& song, std::optional<double> audio_end_ms,
-                                std::optional<double> song_length_ms) {
+PreviewScene build_preview_base(const Song& song, std::optional<double> song_length_ms) {
     PreviewScene scene;
     if (song.is_empty()) return scene;
 
@@ -350,24 +349,28 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
     // it in. None given, no length.
     scene.song_length_ms = song_length_ms.value_or(0.0);
 
-    // The beat grid runs to the end of the audio, so lines keep scrolling
-    // while music plays past the last note (D48, Q25). The end is the tick a
-    // playhead there shows, the same rule the time box uses. Without the
-    // audio's end it runs two measures past the last drawn note
+    // The beat grid stops where playback stops: at the song's length, never
+    // at the audio's end (D266). The walk goes to the tick a playhead there
+    // shows, the same rule the time box uses, and any line that tick's
+    // rounding carries past the length is dropped. A song with no length
+    // (has_song_length) runs two measures past the last drawn note
     // (last_drawn_note), counted in ticks because beat lines sit on measures
     // and beats.
     const SongTiming& timing = song.timing();
     scene.timing = timing;  // the time box names ticks with the engine's math
     if (const PreviewNote* last = last_drawn_note(scene)) {
-        const int64_t last_tick = last->tick;
-        int64_t grid_end = last_tick;
-        if (audio_end_ms.has_value()) {
-            grid_end = std::max(last_tick, timing.display_tick_at_ms(*audio_end_ms));
+        if (has_song_length(scene.song_length_ms)) {
+            scene.beats =
+                build_beat_events(timing, timing.display_tick_at_ms(scene.song_length_ms));
+            const double end = scene.song_length_ms;
+            scene.beats.erase(std::remove_if(scene.beats.begin(), scene.beats.end(),
+                                             [end](const PreviewBeat& b) { return b.ms > end; }),
+                              scene.beats.end());
         } else {
             const MeasureIndex& mi = timing.measure_index();
-            grid_end = last_tick + 2 * mi.length_at(mi.span_at(last_tick));
+            scene.beats = build_beat_events(
+                timing, last->tick + 2 * mi.length_at(mi.span_at(last->tick)));
         }
-        scene.beats = build_beat_events(timing, grid_end);
     }
     for (const auto& kv : song.bpm_changes) {
         PreviewTempo t;

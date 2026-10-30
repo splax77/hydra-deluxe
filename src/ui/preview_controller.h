@@ -370,13 +370,10 @@ private:
     // tab (or the ghost, or the cap) changed the selection under it; poll()
     // closes the gap.
     std::shared_ptr<const Song> song_;  // shared read-only with scene jobs
-    // Where the song's audio stops in chart time (the load's
-    // Result::audio_end_ms), kept with the song so every base built for it
-    // runs the beat lines to the same end. Empty without audio.
-    std::optional<double> audio_end_ms_;
-    // The song's length (the load's Result::song_length_ms, D75) lives on
+    // The song's length (the load's Result::song_length_ms, D255) lives on
     // the transport (PreviewTransport::song_length_ms), which owns the
-    // playhead's range; every base's SP meter closes at it.
+    // playhead's range; every base's SP meter closes at it and its beat
+    // lines stop at it (D266).
     // The song's path-free scene and timeline, shared read-only with scene
     // jobs so a path change builds only the overlay. poll() starts base_job_
     // to build it once the load has landed (a scene job that runs first

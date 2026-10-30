@@ -168,7 +168,7 @@ void PreviewController::start_notes_job(const store::ChartLibraryEntry& entry,
     job_path_key_ = path_key_;
     notes_job_ = std::make_unique<PreviewNotesJob>(entry, key.reading, key.fills,
                                                    path_to_draw(path_), sp_cap_, rules_,
-                                                   audio_end_ms_, path_to_draw(ghost_));
+                                                   path_to_draw(ghost_));
     notes_job_->start();
 }
 
@@ -216,7 +216,7 @@ void PreviewController::start_scene_job() {
     retire(scene_job_, retired_scene_jobs_);
     scene_job_ = std::make_unique<PreviewSceneJob>(
         song_, scene_base_, path_to_draw(path_), sp_cap_, rules_, path_key_, track_opts(),
-        audio_end_ms_, transport_.song_length_ms(), path_to_draw(ghost_));
+        transport_.song_length_ms(), path_to_draw(ghost_));
     scene_job_->start();
 }
 
@@ -244,7 +244,6 @@ void PreviewController::close() {
     // empty scene's timeline.
     show_scene({}, std::nullopt, {}, {});
     song_.reset();
-    audio_end_ms_.reset();
     scene_base_.reset();
     path_.reset();
     ghost_.reset();
@@ -299,8 +298,8 @@ void PreviewController::poll() {
         base_job_.reset();
     }
     if (base_due()) {
-        base_job_ = std::make_unique<PreviewBaseJob>(song_, track_opts(), audio_end_ms_,
-                                                     transport_.song_length_ms());
+        base_job_ =
+            std::make_unique<PreviewBaseJob>(song_, track_opts(), transport_.song_length_ms());
         base_job_->start();
         base_started_ = true;
     }
@@ -311,7 +310,6 @@ void PreviewController::poll() {
     if (ok) {
         PreviewLoadJob::Result result = job_->take_result();
         song_ = std::make_shared<const Song>(std::move(result.song));
-        audio_end_ms_ = result.audio_end_ms;
         chart_changed_ = result.chart_changed;
         show_scene(std::move(result.scene), std::move(result.track_state), result.track_opts,
                    job_path_key_);

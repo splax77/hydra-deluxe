@@ -95,6 +95,18 @@ inline constexpr double kTimeLeftAfterSeconds = 3.0;
 // rate: PreviewLoadJob::Progress and StoreOpenProgress.
 std::string gated_time_left_text(double elapsed_s, double time_left_s);
 
+// What PreviewLoadJob and PreviewNotesJob both read a chart's notes with and
+// draw over them, as their constructors take it.
+struct PreviewJobInputs {
+    store::ChartLibraryEntry entry;
+    ChartReading reading;     // which notes to read, handed to the loader
+    FillDeadlineRule fills;   // which game version's fills, handed to the loader
+    std::optional<Path> path;
+    int sp_cap;               // the record's SP cap, used only to scale the SP meter
+    core::Rules rules;        // copied: the job outlives the caller's settings
+    std::optional<Path> ghost;
+};
+
 // Prepares a chart for the 3D Preview off the render thread, on the same job
 // base as ViewJob. Two branches run at once:
 //   (a) parse the chart, build the PreviewScene, and build the highway
@@ -102,9 +114,9 @@ std::string gated_time_left_text(double elapsed_s, double time_left_s);
 //   (b) find every audio stem and open it (audio::open_song_stems). An
 //       open reads the compressed file's layout, not its audio, so even an
 //       8-hour stem opens in well under a second.
-// Once both are done the readers are mixed by audio::mix_song_stems, the step
-// the song's length uses too, into a stream that plays them straight from
-// the compressed bytes. The controller pulls the finished
+// Once both are done the readers are mixed by audio::mix_song_stems into a
+// stream that plays them straight from the compressed bytes. The controller
+// pulls the finished
 // scene, timeline and mix, hands the timeline to the renderer and the mix to
 // an audio::Playhead. None of this runs on-frame.
 //
@@ -127,14 +139,11 @@ public:
         std::unique_ptr<audio::MixSource> audio;
         // Where chart time 0 sits in `audio` (audio::SongMix::audio_offset_ms).
         double audio_offset_ms = 0.0;
-        // Where the audio stops in chart time (audio::SongMix::end_chart_ms).
-        // The beat lines run to it, and the controller hands it to every
-        // later base build. It is not the song's length.
-        std::optional<double> audio_end_ms;
         // The song's length (app::song_length_ms, D255), worked out from
-        // the chart's metadata and its parsed facts with no audio read. The scene's SP meter
-        // closes at it, the scrubber ends at it, and the controller hands it
-        // to every later base build. Empty when the owner gives none.
+        // the chart's metadata and its parsed facts with no audio read. The
+        // scene's SP meter closes at it, its beat lines stop at it (D266),
+        // the scrubber ends at it, and the controller hands it to every later
+        // base build. Empty when the owner gives none.
         std::optional<double> song_length_ms;
         // The parsed song the scene was built from. The controller keeps it so
         // a later path selection can rebuild the overlay without re-parsing.
@@ -158,7 +167,7 @@ public:
     // Where the load is, for the Preview tab's loading bar. The steps are
     // shown in this order, and the step shown is the first one not yet done.
     // Opening audio runs beside reading the chart; the scene and the highway
-    // wait for it, because the beat lines run to the audio's end.
+    // are built once both are done.
     enum class Step { Reading, Opening, Building, Highway };
     struct Progress {
         Step step = Step::Reading;
@@ -189,13 +198,7 @@ private:
     std::vector<std::unique_ptr<audio::StemReader>> open_audio(app::SharedBytes container,
                                                                const std::atomic<bool>& stop);
 
-    store::ChartLibraryEntry entry_;
-    ChartReading reading_;   // which notes to read, handed to the loader
-    FillDeadlineRule fills_;  // which game version's fills, handed to the loader
-    std::optional<Path> path_;
-    int sp_cap_;  // the record's SP cap, used only to scale the preview's SP meter
-    core::Rules rules_;  // copied: the job outlives the caller's settings
-    std::optional<Path> ghost_;
+    PreviewJobInputs in_;
     std::optional<Result> result_;
 
     // Written by the workers, read by the render thread; each field is its own
@@ -220,15 +223,12 @@ private:
 // then builds the scene and the highway for them. It opens no audio and does
 // not hash the chart file: the audio and the "chart changed" answer belong to
 // the file, not the mode, so the controller keeps the first load's. `path` is
-// the path to draw (already drawn_path's answer), and `audio_end_ms` is the
-// first load's Result::audio_end_ms, which the beat lines run to. `ghost` is
-// PreviewLoadJob's.
+// the path to draw (already drawn_path's answer). `ghost` is PreviewLoadJob's.
 class PreviewNotesJob : public ResultJobBase {
 public:
     PreviewNotesJob(store::ChartLibraryEntry entry, const ChartReading& reading,
                     FillDeadlineRule fills, std::optional<Path> path, int sp_cap,
-                    core::Rules rules, std::optional<double> audio_end_ms,
-                    std::optional<Path> ghost = std::nullopt);
+                    core::Rules rules, std::optional<Path> ghost = std::nullopt);
     ~PreviewNotesJob() { shutdown(); }
 
     void start();
@@ -248,19 +248,12 @@ public:
     // Valid once finished() && ok(); moves the result out (call once).
     Result take_result();
     // The Pro Drums setting the notes were read with.
-    bool pro() const { return reading_.prodrums; }
+    bool pro() const { return in_.reading.prodrums; }
 
 private:
     void run();
 
-    store::ChartLibraryEntry entry_;
-    ChartReading reading_;
-    FillDeadlineRule fills_;
-    std::optional<Path> path_;
-    int sp_cap_;
-    core::Rules rules_;  // copied: the job outlives the caller's settings
-    std::optional<double> audio_end_ms_;
-    std::optional<Path> ghost_;
+    PreviewJobInputs in_;
     std::optional<Result> result_;
 };
 
@@ -274,12 +267,11 @@ struct PreviewSceneBase {
     render::TrackStateOptions track_opts;
 };
 
-// Builds a song's PreviewSceneBase. `audio_end_ms` and `song_length_ms` are
-// the load's Result fields of those names (app::build_preview_base reads
-// both). `check_cancel` runs between the steps and may throw to stop the
-// build.
+// Builds a song's PreviewSceneBase. `song_length_ms` is the load's Result
+// field of that name (app::build_preview_base reads it). `check_cancel` runs
+// between the steps and may throw to stop the build.
 std::shared_ptr<const PreviewSceneBase> build_scene_base(
-    const Song& song, render::TrackStateOptions track_opts, std::optional<double> audio_end_ms,
+    const Song& song, render::TrackStateOptions track_opts,
     std::optional<double> song_length_ms, const std::function<void()>& check_cancel);
 
 // Builds the PreviewSceneBase off the UI thread once a chart has loaded, so
@@ -287,7 +279,6 @@ std::shared_ptr<const PreviewSceneBase> build_scene_base(
 class PreviewBaseJob : public ResultJobBase {
 public:
     PreviewBaseJob(std::shared_ptr<const Song> song, render::TrackStateOptions track_opts,
-                   std::optional<double> audio_end_ms,
                    std::optional<double> song_length_ms = std::nullopt);
     ~PreviewBaseJob() { shutdown(); }
 
@@ -300,7 +291,6 @@ private:
 
     std::shared_ptr<const Song> song_;
     render::TrackStateOptions track_opts_;
-    std::optional<double> audio_end_ms_;
     std::optional<double> song_length_ms_;
     std::shared_ptr<const PreviewSceneBase> base_;
 };
@@ -313,16 +303,15 @@ private:
 // `base` may be null, or built for other timeline options: then the job
 // builds it first and hands it back in Output::base for the next job. `key`
 // is the overlay key the scene is built for; `track_opts` are the timeline
-// options the controller draws with (its pro-drums setting); `audio_end_ms`
-// and `song_length_ms` are the load's Result fields, for a base the job has
-// to build. `ghost` is PreviewLoadJob's; the timeline's overlay rebuild reads
-// it from the scene.
+// options the controller draws with (its pro-drums setting); `song_length_ms`
+// is the load's Result field, for a base the job has to build. `ghost` is
+// PreviewLoadJob's; the timeline's overlay rebuild reads it from the scene.
 class PreviewSceneJob : public ResultJobBase {
 public:
     PreviewSceneJob(std::shared_ptr<const Song> song,
                     std::shared_ptr<const PreviewSceneBase> base, std::optional<Path> path,
                     int sp_cap, core::Rules rules, std::string key,
-                    render::TrackStateOptions track_opts, std::optional<double> audio_end_ms,
+                    render::TrackStateOptions track_opts,
                     std::optional<double> song_length_ms = std::nullopt,
                     std::optional<Path> ghost = std::nullopt);
     ~PreviewSceneJob() { shutdown(); }
@@ -352,7 +341,6 @@ private:
     core::Rules rules_;
     std::string key_;
     render::TrackStateOptions track_opts_;
-    std::optional<double> audio_end_ms_;
     std::optional<double> song_length_ms_;
     std::optional<Path> ghost_;
     std::optional<Output> output_;

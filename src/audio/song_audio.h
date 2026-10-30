@@ -1,8 +1,7 @@
 // A song's audio as one piece: its stems opened, mixed into the one stream the
-// Preview plays, and how long that stream runs in chart time. That last answer
-// is where the audio ends, which bounds the Preview's playback (D48). It is
-// not the song's length: app::song_length_ms answers that from the chart's
-// metadata, with no audio opened (D75).
+// Preview plays. Nothing here says where the song ends: app::song_length_ms
+// answers that from the chart's metadata, with no audio opened (D75, D255),
+// and the Preview's playback and beat lines stop there.
 //
 // Nothing here decodes audio in the usual case. Opening a stem reads its
 // layout, not its sound (open_stem_reader).
@@ -49,7 +48,7 @@ uint64_t stems_total_bytes(const std::vector<std::optional<StemBytes>>& stems);
 std::vector<std::unique_ptr<StemReader>> open_song_stems(
     std::vector<std::optional<StemBytes>> stems, const OpenProgress& progress = nullptr);
 
-// The song's stems mixed into one stream, and where its audio ends.
+// The song's stems mixed into one stream.
 struct SongMix {
     // Every reader mixed while it plays, at kOutRate and kOutChannels. A
     // negative chart offset is silence in front of the stems (the mix's
@@ -59,9 +58,6 @@ struct SongMix {
     // padded into the front of `mix` instead, because the playhead cannot
     // seek below 0.
     double audio_offset_ms = 0.0;
-    // Where the audio stops in chart time (audio_end_chart_ms of `mix`).
-    // Empty when no stem has any audio: the front pad alone is not audio.
-    std::optional<double> end_chart_ms;
 };
 
 // Mixes `readers` for a chart whose time 0 sits `offset_ms` into the audio

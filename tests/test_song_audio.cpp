@@ -114,7 +114,7 @@ TEST_CASE("open_song_stems skips a stem that will not open and reports its progr
     }
 }
 
-TEST_CASE("mix_song_stems pads a negative offset in front and finds where the audio ends") {
+TEST_CASE("mix_song_stems pads a negative offset in front") {
     // The same stem mixed with no offset gives the plain length.
     std::vector<std::unique_ptr<StemReader>> plain_readers;
     plain_readers.push_back(sine_reader());
@@ -129,12 +129,12 @@ TEST_CASE("mix_song_stems pads a negative offset in front and finds where the au
     CHECK(padded.audio_offset_ms == 0.0);
     REQUIRE(padded.mix != nullptr);
     CHECK(padded.mix->length_frames() == plain.mix->length_frames() + 12000);
-    CHECK(padded.end_chart_ms.has_value());
 
-    // No readers: the front pad alone is not audio, so there is no end.
+    // No readers: the front pad alone is all there is.
     const SongMix none = mix_song_stems({}, -250.0);
     REQUIRE(none.mix != nullptr);
-    CHECK_FALSE(none.end_chart_ms.has_value());
+    CHECK(none.mix->length_frames() == 12000);
     const SongMix none_unpadded = mix_song_stems({}, 0.0);
-    CHECK_FALSE(none_unpadded.end_chart_ms.has_value());
+    REQUIRE(none_unpadded.mix != nullptr);
+    CHECK(none_unpadded.mix->length_frames() == 0);
 }

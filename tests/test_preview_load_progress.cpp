@@ -379,7 +379,6 @@ TEST_CASE("a Preview load plays the good stem when another stem will not open") 
         REQUIRE(r.audio != nullptr);
         // Only the sine was mixed: the same length as the sine alone.
         CHECK(r.audio->length_frames() == plain_frames(testaudio::fixture_path("sine220.ogg")));
-        CHECK(r.audio_end_ms.has_value());
     }
 
     SUBCASE("the junk stem is the only one") {
@@ -393,7 +392,9 @@ TEST_CASE("a Preview load plays the good stem when another stem will not open") 
         REQUIRE(job.ok());
         CHECK(job.progress().bytes_total == junk.size());
         PreviewLoadJob::Result r = job.take_result();
-        CHECK_FALSE(r.audio_end_ms.has_value());
+        // Nothing opened, so nothing plays.
+        REQUIRE(r.audio != nullptr);
+        CHECK(r.audio->length_frames() == 0);
     }
 }
 
