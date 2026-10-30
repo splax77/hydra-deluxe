@@ -252,8 +252,7 @@ void Coach::request(std::shared_ptr<const ScoreGraph> graph, const SearchSetting
 }
 
 void Coach::poll() {
-    for (auto it = retired_.begin(); it != retired_.end();)
-        it = (*it)->finished() ? retired_.erase(it) : it + 1;
+    ui::drop_finished_jobs(retired_);
 }
 
 bool Coach::busy() const { return (job_ && !job_->finished()) || !retired_.empty(); }
@@ -304,12 +303,6 @@ std::string cost_text(int64_t cost) {
     return cost == 0 ? std::string("0") : "-" + group_thousands(cost);
 }
 
-template <class Job>
-void drop_finished(std::vector<std::unique_ptr<Job>>& jobs) {
-    for (auto it = jobs.begin(); it != jobs.end();)
-        it = (*it)->finished() ? jobs.erase(it) : it + 1;
-}
-
 }  // namespace
 
 void DecisionList::show(std::shared_ptr<const ScoreGraph> graph, const SearchSettings& settings,
@@ -350,8 +343,8 @@ void DecisionList::refresh_list() {
 
 void DecisionList::poll(PbState& state) {
     coach_.poll();
-    drop_finished(retired_ends_);
-    drop_finished(retired_clicks_);
+    ui::drop_finished_jobs(retired_ends_);
+    ui::drop_finished_jobs(retired_clicks_);
     refresh_list();
     if (ends_job_ && ends_job_->finished()) {
         if (ends_job_->ok()) ends_ = std::move(ends_job_->result());

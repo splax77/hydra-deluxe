@@ -24,6 +24,12 @@ inline std::string burnout_notes() {
     return root() + "/common/Summer Blast _25 Setlist/Tier 4/Green Day - Burnout/notes.mid";
 }
 
+// August Burns Red - White Washed's notes.mid in the corpus: its best path
+// has a squeeze tighter than the GUI tests' 10 ms Path limit.
+inline std::string white_washed_notes() {
+    return root() + "/common/IB24/T5/August Burns Red - White Washed/notes.mid";
+}
+
 // testdata, the fixtures folder that holds the corpus. A target that leaves
 // HYDRA_TESTDATA_DIR out (CMakeLists.txt says which) gets no testdata_root(),
 // so a caller there fails to compile.

@@ -1578,6 +1578,34 @@
       "note": "The Paths tab's heading over the all-0 section and the Path Builder's left-list row each typed this name. A line whose literal comes after a // is a comment naming the row, not a copy. Tests are out of scope: a GUI test pins the text it reads on screen."
     },
     {
+      "question": "Which code lets go of the parked jobs whose threads have ended?",
+      "owner": "drop_finished_jobs in src/app/job_base.h",
+      "owner_file": "src/app/job_base.h",
+      "owner_symbol": "drop_finished_jobs",
+      "date": "2026-10-29",
+      "decision": "derive-once review of PB-2a (kind A: four sweeps of a parked list, one in each of the Preview, the Path Builder's open, its decision list and the report windows)",
+      "added_by": "PB-2a review",
+      "pattern": "finished\\(\\) \\? .*\\.erase\\(|\\{ return \\w+->finished\\(\\); \\}",
+      "anchor": "finished()",
+      "owner_files": [
+        "src/app/job_base.h"
+      ],
+      "must_match": [
+        "        it = (*it)->finished() ? retired_.erase(it) : it + 1;",
+        "                       [](const std::unique_ptr<ReportJob>& job) { return job->finished(); }),"
+      ],
+      "must_not_match": [
+        "    drop_finished_jobs(parked_reports);",
+        "    ui::drop_finished_jobs(retired_);",
+        "bool Coach::busy() const { return (job_ && !job_->finished()) || !retired_.empty(); }"
+      ],
+      "scope": [
+        "src",
+        "tools"
+      ],
+      "note": "A parked list is swept by erasing the entries whose finished() is true, whether by an iterator loop or by remove_if with a lambda; both spellings are matched. A job asked for its own finished() in a condition is a different question and does not erase."
+    },
+    {
       "question": "How does a command-line tool end on an error?",
       "owner": "tool_error in src/app/user_messages.cpp",
       "owner_file": "src/app/user_messages.cpp",

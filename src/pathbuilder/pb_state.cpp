@@ -106,8 +106,7 @@ void PbState::open_with(const std::string& notespath, const app::Settings& setti
 }
 
 void PbState::poll() {
-    for (auto it = retired_.begin(); it != retired_.end();)
-        it = (*it)->finished() ? retired_.erase(it) : it + 1;
+    ui::drop_finished_jobs(retired_);
     decisions_.poll(*this);
     if (!job_ || !job_->finished()) return;
     if (job_->ok()) {
