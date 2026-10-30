@@ -120,14 +120,14 @@ TEST_CASE("category_scores: the squeeze-out cut is basescore at each note's mult
     }
 }
 
-// Finding 4: the copied path's timing used to cut 12.6 ms down to "12 ms",
-// while the badge said 13.
-TEST_CASE("notationstr_verbose: a 12.6 ms squeeze copies as 13 ms") {
+// The copied path writes a needed timing with one decimal, as every screen
+// does (D265).
+TEST_CASE("notationstr_verbose: a 12.6 ms squeeze copies as 12.6 ms") {
     Activation a;
     test::set_skips(a, 0);
     a.e_offset = 300.0;  // not e-critical
     a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.6});
-    CHECK(a.notationstr_verbose() == "0+ (13 ms)");
+    CHECK(a.notationstr_verbose() == "0+ (12.6 ms)");
 }
 
 TEST_CASE("squeeze symbols, timing, difficulty") {

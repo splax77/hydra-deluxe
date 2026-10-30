@@ -3,7 +3,7 @@
 // The note/chord/path/record types the parser fills and the search produces.
 // The *string* forms here (Path::pathstring/pathstring_verbose,
 // Activation::notationstr) are user-visible and pinned by the tests:
-// comma-grouped scores, whole ms rounded to nearest (format_ms_whole), the
+// comma-grouped scores, timings in ms to one decimal (format_ms), the
 // exact +/- squeeze symbols and [KRYBG] slot layout.
 //
 // hydra.db stores no records, only summaries (D87); a record is rebuilt by
@@ -664,10 +664,10 @@ struct Activation {
     // Every timing this activation has, in the notation's order: the early
     // fill first when the activation is E-critical, then each squeeze in
     // sqinouts order. A fill with time to spare is listed too (D261), its
-    // figure below 0 ("early fill -56 ms": SP was ready 56 ms before the
+    // figure below 0 ("early fill -56.2 ms": SP was ready 56.2 ms before the
     // deadline). So is a squeeze that needs no timing
     // (SPSqueeze::needs_no_timing), as 2.0 showed it (D80); its figure is 0
-    // or less ("squeeze in -316 ms": the note already lands 316 ms inside
+    // or less ("squeeze in -315.8 ms": the note already lands 315.8 ms inside
     // SP). hardest() picks from this list, leaving those two out. The Paths
     // tab's row shows one badge per entry; empty means no badge.
     std::vector<ActivationTiming> badge_timings() const;
@@ -932,9 +932,16 @@ std::string counted(int64_t n, const std::string& one, const std::string& many);
 // The verb a sentence puts after such a count: "has" at exactly 1, else "have".
 const char* has_have(int64_t n);
 
-// A timing in whole ms with its unit: 12.4 reads "12 ms", 12.6 reads
-// "13 ms". Rounds to nearest; an exact half rounds away from zero
-// (std::lround), D48 Q2.
+// Every timing a window needs, wherever a screen or the copied path shows
+// it: one decimal, a space, the unit ("163.5 ms", D57 item 1; D265). The
+// caller decides the sign; the early fill passes
+// Activation::e_difficulty(true), which is positive when the fill is hit
+// early.
+std::string format_ms(double ms);
+
+// A ms limit the user sets, in whole ms with its unit: 12.4 reads "12 ms",
+// 12.6 reads "13 ms". Rounds to nearest; an exact half rounds away from zero
+// (std::lround), D48 Q2. A timing a window needs is format_ms's (D265).
 std::string format_ms_whole(double ms);
 
 }  // namespace hydra

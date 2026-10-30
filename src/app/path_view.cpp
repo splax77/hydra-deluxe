@@ -71,7 +71,7 @@ std::vector<ActivationBadge> activation_badges(const Activation& act) {
     // are difficult; the badges only word them.
     std::vector<ActivationBadge> out;
     for (const ActivationTiming& t : act.badge_timings())
-        out.push_back({badge_word(t.part) + " " + format_ms_whole(t.ms), t.difficult});
+        out.push_back({badge_word(t.part) + " " + format_ms(t.ms), t.difficult});
     return out;
 }
 
@@ -89,7 +89,7 @@ std::string longest_activation_badge() {
     for (size_t i = 1; i < std::size(kBadgeWords); ++i)
         if (std::strlen(kBadgeWords[i].word) > std::strlen(kBadgeWords[longest].word))
             longest = i;
-    return std::string(kBadgeWords[longest].word) + " " + format_ms_whole(-kSqueezeWindowMs);
+    return std::string(kBadgeWords[longest].word) + " " + format_ms(-kSqueezeWindowMs);
 }
 
 std::vector<TextLine> squeeze_sentences(const Activation& act,

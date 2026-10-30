@@ -130,7 +130,10 @@ beats BF(k-1). There is no gain and no fourth cost colour.
 
 A window that needs tighter timing than the Path limit keeps its cost colour
 and gets a violet note (`chip_color(ChipToken::t5)`) naming the timing it
-needs and the limit, for example "needs 130.0 ms, your limit is 10.0 ms". The
+needs and the limit, for example "needs 130.0 ms, your limit is 10 ms". The
+timing is written by `format_ms`, one decimal like every timing a window
+needs (D265); the limit by `format_ms_whole`, in whole ms as the Settings
+summary writes it, because it is a setting the player types. The
 note can sit on any window shown in the builder: the player's own, and the
 windows of Hydra's best path when it is the path on screen. Whether a window
 is over the limit is `Activation::within_ms_limit`, the same pieces the

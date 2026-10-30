@@ -207,10 +207,10 @@ Searching ignores case and accents, so `ALLISTER` finds Allister and `beyonce` f
 | `folder:` | the folder only | `folder:"tier 4"` finds the 5 songs in Tier 4 |
 | `title:` | the title only | `title:everlong` finds Everlong |
 | `stars:N` | songs whose best path earns exactly N stars (0 to 7) | `stars:7` finds Burnout once it is analyzed |
-| `squeeze<=N` | songs whose best path's hardest squeeze or required early fill is N ms or less | `squeeze<=200` keeps Burnout (163 ms); `squeeze<=20` drops it |
-| `squeeze<N` | songs whose best path's hardest squeeze or required early fill is less than N ms | `squeeze<200` keeps Burnout (163 ms); `squeeze<163` drops it |
-| `squeeze>N` | songs whose best path's hardest squeeze or required early fill is more than N ms | `squeeze>20` keeps Burnout (163 ms); `squeeze>163` drops it |
-| `squeeze>=N` | songs whose best path's hardest squeeze or required early fill is N ms or more | `squeeze>=163` keeps Burnout (163 ms); `squeeze>=200` drops it |
+| `squeeze<=N` | songs whose best path's hardest squeeze or required early fill is N ms or less | `squeeze<=200` keeps Burnout (163.0 ms); `squeeze<=20` drops it |
+| `squeeze<N` | songs whose best path's hardest squeeze or required early fill is less than N ms | `squeeze<200` keeps Burnout (163.0 ms); `squeeze<163` drops it |
+| `squeeze>N` | songs whose best path's hardest squeeze or required early fill is more than N ms | `squeeze>20` keeps Burnout (163.0 ms); `squeeze>163` drops it |
+| `squeeze>=N` | songs whose best path's hardest squeeze or required early fill is N ms or more | `squeeze>=163` keeps Burnout (163.0 ms); `squeeze>=200` drops it |
 
 You can mix them: `charter:hoph2o stars:7`. A song at exactly N ms matches `squeeze<=N` and `squeeze>=N`, and drops out of `squeeze<N` and `squeeze>N`. A low and a high squeeze filter together give a range: `squeeze>=10 squeeze<=200` keeps Burnout. A path that needs no timing passes any `squeeze<=` or `squeeze<` limit and never matches `squeeze>` or `squeeze>=`, since it has nothing to squeeze.
 
@@ -256,9 +256,9 @@ The right side starts with a summary, like `Activations 3 · no SP left over`. U
 
 The timeline runs to the end of the song, worked out the way Clone Hero works it out, from the chart's own files. The song usually ends at its stated length: the `song_length` line in song.ini, the same key in a .sng, or the length stored in a .srb. When the chart also has an end event (`[end]` in a .mid, `end` or `[end]` in a .chart), the song ends at whichever of the two comes first. A stated length that ends before the chart's last note ends is wrong, so Hydra Deluxe ignores it, the same as when the chart states no length. Then the song ends at the end event, or, with no end event, where the last note of any instrument and difficulty ends (a sustain counts to its end). An end event less than one beat after that last note doesn't count, as in Clone Hero. Like the game, Hydra Deluxe adds one second after the end. Hydra Deluxe never opens the audio to find the length, so a chart with no audio still gets a timeline. Clone Hero measures the audio where Hydra Deluxe reads the stated length, so when a stated length is wrong but still runs past the last note, your song can end at a different time in the game. A song with a long outro ends its last mark well before the right edge. A chart with no length at all, meaning no stated length, no end event and no notes, shows no marks.
 
-Each activation is one row. It shows the activation's number, its notation, its measure (like `m32.1.0`), the bars of SP banked when you activate (like `1 bar` or `2 bars`), and a badge for each of its timings, like `squeeze out 163 ms` or `early fill 20 ms`; a row with an early fill and a squeeze shows both, the fill first. When the right side is too narrow for a row's badges to fit beside its bars, the badges move under the row's measure, still inside the row. If they don't fit on one line there, they wrap onto more lines. Click a row to open it, or use `Expand all` and `Collapse all`. Every row starts closed.
+Each activation is one row. It shows the activation's number, its notation, its measure (like `m32.1.0`), the bars of SP banked when you activate (like `1 bar` or `2 bars`), and a badge for each of its timings, like `squeeze out 163.0 ms` or `early fill 20.0 ms`; a row with an early fill and a squeeze shows both, the fill first. When the right side is too narrow for a row's badges to fit beside its bars, the badges move under the row's measure, still inside the row. If they don't fit on one line there, they wrap onto more lines. Click a row to open it, or use `Expand all` and `Collapse all`. Every row starts closed.
 
-An activation that skips fills keeps its early fill badge, because that timing decides whether the first fill shows up. An early fill with time to spare still gets a badge, with a figure below 0: `early fill -56 ms` means your Star Power is ready 56 ms before the fill's deadline, so the fill shows up however you hit the activation. This holds while that margin is under 60 ms, the same fills that carry the `E` in the notation; with 60 ms or more to spare the row has no early fill badge. That badge is never orange, and it never counts as a path's hardest timing. A squeeze that happens on its own still gets one too, with a figure of 0 or below: `squeeze in -316 ms` means the phrase's last note already lands 316 ms before Star Power ends.
+An activation that skips fills keeps its early fill badge, because that timing decides whether the first fill shows up. An early fill with time to spare still gets a badge, with a figure below 0: `early fill -56.2 ms` means your Star Power is ready 56.2 ms before the fill's deadline, so the fill shows up however you hit the activation. This holds while that margin is under 60 ms, the same fills that carry the `E` in the notation; with 60 ms or more to spare the row has no early fill badge. That badge is never orange, and it never counts as a path's hardest timing. A squeeze that happens on its own still gets one too, with a figure of 0 or below: `squeeze in -315.8 ms` means the phrase's last note already lands 315.8 ms before Star Power ends.
 
 An open row shows these, in order:
 
@@ -302,7 +302,7 @@ The Preview plays the chart as a 3D note highway, in time with the song's audio.
 
 ![The Preview tab for Burnout, stopped at its first activation](images/preview-tab.png)
 
-*The Preview stopped at Burnout's first activation. The next activation box shows `3- (163 ms)`, and the SP meter runs up the right edge.*
+*The Preview stopped at Burnout's first activation. The next activation box shows `3- (163.0 ms)`, and the SP meter runs up the right edge.*
 
 Where Star Power runs out, a bright teal line crosses the floor and a small teal triangle sits just outside each railing, level with the line. A note just before the end can cover the line, but the triangles stay in view, so you can always see exactly where SP stops.
 
@@ -345,7 +345,7 @@ The SP meter, at the right edge, is a gauge of banked Star Power, one line per b
 
 The drain box, at the top right beside the meter, shows how long one bar of SP lasts at the current tempo, like `1 bar / 2.5 s`. While SP is running on the path it reads `SP drain` and `empties in` the time left, in teal like the floor. Otherwise it reads `SP drain (if activated)` and `full meter`: how long a full meter would last at the current tempo.
 
-The next activation box, at the top right under the drain box, starts with the next activation's number, like `Next: activation 2 of 3`. Under that is the activation in path notation with its timings, like `5+ (100 ms)`, and then where it is and its chord. After the last activation the box goes away. `Copy path` includes the same text for each activation.
+The next activation box, at the top right under the drain box, starts with the next activation's number, like `Next: activation 2 of 3`. Under that is the activation in path notation with its timings, like `5+ (100.0 ms)`, and then where it is and its chord. After the last activation the box goes away. `Copy path` includes the same text for each activation.
 
 The solo box appears right of the highway, a little below the middle, once you hit a solo's first note. It shows how much of the solo you have hit so far, like `85%`, and under that the notes, like `102 / 120 notes`. The percent is worked out the way Clone Hero works it out, so it can read one below the exact share. Hitting the solo's last note ends the solo. The box then shows `Perfect Solo!` for 1.5 seconds, then the solo bonus of 100 points per note, like `+12,000`, for 1.5 seconds, and then goes away. The path hits every note, so a solo always ends in `Perfect Solo!`. If a new solo starts while the box still shows the last one's result, the new solo takes over. The box works before the song is analyzed too.
 

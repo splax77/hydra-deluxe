@@ -61,7 +61,7 @@ TEST_CASE("build_activations: the early fill reads positive = early on both line
     CHECK(av.notation == "E0");
     CHECK(av.measure == "m1.1.0");
     REQUIRE(av.badges.size() == 1);
-    CHECK(av.badges[0].text == "early fill 12 ms");
+    CHECK(av.badges[0].text == "early fill 12.3 ms");
     CHECK(av.early_fill == "Early fill: 12.3 ms (required)");
 
     // E-critical but not E0, with SP ready 20 ms before the deadline: the
@@ -75,7 +75,7 @@ TEST_CASE("build_activations: the early fill reads positive = early on both line
     av = view_of(e1);
     CHECK(av.notation == "E1");
     REQUIRE(av.badges.size() == 1);
-    CHECK(av.badges[0].text == "early fill -20 ms");
+    CHECK(av.badges[0].text == "early fill -20.0 ms");
     CHECK_FALSE(av.badges[0].warn);
     CHECK_FALSE(av.difficult);
     CHECK(av.early_fill == "Early fill: -20.0 ms (optional)");
@@ -561,7 +561,7 @@ TEST_CASE("activation rows: Burnout's three activations") {
     CHECK(a1.sp_bars == 3);
     CHECK(a1.bars == "3 bars");
     REQUIRE(a1.badges.size() == 1);
-    CHECK(a1.badges[0].text == "squeeze out 163 ms");
+    CHECK(a1.badges[0].text == "squeeze out 163.0 ms");
     CHECK(a1.badges[0].warn);
     CHECK(a1.difficult);
     CHECK(a1.chord == "[Kick - Green cymbal]");
@@ -697,22 +697,22 @@ TEST_CASE("activation badges: one per timing, the fill first, then each squeeze"
 
     Activation sqin = no_timing();
     sqin.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.4});
-    CHECK(badge_texts(sqin) == Texts{"squeeze in 12 ms"});
-    // Whole ms round to nearest (D48 Q2): 12.6 reads 13, and an exact half
-    // rounds up too, the same as the copied path.
+    CHECK(badge_texts(sqin) == Texts{"squeeze in 12.4 ms"});
+    // One decimal (D265): the figure the path button and the copied path show,
+    // with no rounding to whole ms.
     sqin.sqinouts[0].offset_ms = 12.6;
-    CHECK(badge_texts(sqin) == Texts{"squeeze in 13 ms"});
+    CHECK(badge_texts(sqin) == Texts{"squeeze in 12.6 ms"});
     sqin.sqinouts[0].offset_ms = 12.5;
-    CHECK(badge_texts(sqin) == Texts{"squeeze in 13 ms"});
+    CHECK(badge_texts(sqin) == Texts{"squeeze in 12.5 ms"});
 
     Activation sqout = no_timing();
     sqout.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -163.0});
-    CHECK(badge_texts(sqout) == Texts{"squeeze out 163 ms"});
+    CHECK(badge_texts(sqout) == Texts{"squeeze out 163.0 ms"});
     CHECK(badge_warns(sqout) == Warns{true});
 
     // A1, the user's row: the free squeeze keeps its badge beside the fill,
     // fill first, both grey.
-    CHECK(badge_texts(user_row()) == Texts{"early fill 0 ms", "squeeze in -12 ms"});
+    CHECK(badge_texts(user_row()) == Texts{"early fill 0.0 ms", "squeeze in -12.0 ms"});
     CHECK(badge_warns(user_row()) == Warns{false, false});
 
     // A2: a free squeeze-in (already inside SP) has nothing to time, but the
@@ -720,23 +720,23 @@ TEST_CASE("activation badges: one per timing, the fill first, then each squeeze"
     // still needs no timing, so the path button and filter are unchanged.
     Activation free_in = no_timing();
     free_in.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -315.8});
-    CHECK(badge_texts(free_in) == Texts{"squeeze in -316 ms"});
+    CHECK(badge_texts(free_in) == Texts{"squeeze in -315.8 ms"});
     CHECK(badge_warns(free_in) == Warns{false});
     CHECK_FALSE(free_in.needs_timing());
     // A free squeeze-out (already past the SP end) reads the same way.
     Activation free_out = no_timing();
     free_out.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, 40.0});
-    CHECK(badge_texts(free_out) == Texts{"squeeze out -40 ms"});
+    CHECK(badge_texts(free_out) == Texts{"squeeze out -40.0 ms"});
     // A5: two squeezes give two badges in list order, free one included.
     free_in.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 1.0});
-    CHECK(badge_texts(free_in) == Texts{"squeeze in -316 ms", "squeeze in 1 ms"});
+    CHECK(badge_texts(free_in) == Texts{"squeeze in -315.8 ms", "squeeze in 1.0 ms"});
 
     // A3: a required fill with 10 ms to spare still gets its badge, grey, and
     // stays nothing to time (D261, D51 call 4).
     Activation slack = no_timing();
     slack.e_offset = 10.0;
     REQUIRE(slack.is_E0());
-    CHECK(badge_texts(slack) == Texts{"early fill -10 ms"});
+    CHECK(badge_texts(slack) == Texts{"early fill -10.0 ms"});
     CHECK(badge_warns(slack) == Warns{false});
     CHECK_FALSE(slack.difficulty().has_value());
     CHECK(slack.within_ms_limit(0.0));
@@ -745,18 +745,19 @@ TEST_CASE("activation badges: one per timing, the fill first, then each squeeze"
     // orange on its own.
     Activation e0 = no_timing();
     e0.e_offset = -30.0;
-    CHECK(badge_texts(e0) == Texts{"early fill 30 ms"});
+    CHECK(badge_texts(e0) == Texts{"early fill 30.0 ms"});
     CHECK(badge_warns(e0) == Warns{true});
     e0.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -5.0});
-    CHECK(badge_texts(e0) == Texts{"early fill 30 ms", "squeeze out 5 ms"});
+    CHECK(badge_texts(e0) == Texts{"early fill 30.0 ms", "squeeze out 5.0 ms"});
     CHECK(badge_warns(e0) == Warns{true, true});
     // Tied exactly: both show, fill first; hardest() still names the squeeze.
     Activation tie = e0;
     tie.sqinouts[0].offset_ms = -30.0;
-    CHECK(badge_texts(tie) == Texts{"early fill 30 ms", "squeeze out 30 ms"});
+    CHECK(badge_texts(tie) == Texts{"early fill 30.0 ms", "squeeze out 30.0 ms"});
     // A5: three timings give three badges.
     e0.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.6});
-    CHECK(badge_texts(e0) == Texts{"early fill 30 ms", "squeeze out 5 ms", "squeeze in 13 ms"});
+    CHECK(badge_texts(e0) ==
+          Texts{"early fill 30.0 ms", "squeeze out 5.0 ms", "squeeze in 12.6 ms"});
 
     // An optional (E1) fill still gets a badge: its timing decides whether the
     // first fill shows up, which is how the skips are counted. Optional, so
@@ -764,10 +765,10 @@ TEST_CASE("activation badges: one per timing, the fill first, then each squeeze"
     Activation e1 = no_timing();
     test::set_skips(e1, 1);
     e1.e_offset = -30.0;
-    CHECK(badge_texts(e1) == Texts{"early fill 30 ms"});
+    CHECK(badge_texts(e1) == Texts{"early fill 30.0 ms"});
     CHECK(badge_warns(e1) == Warns{false});
     e1.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -5.0});
-    CHECK(badge_texts(e1) == Texts{"early fill 30 ms", "squeeze out 5 ms"});
+    CHECK(badge_texts(e1) == Texts{"early fill 30.0 ms", "squeeze out 5.0 ms"});
     CHECK(badge_warns(e1) == Warns{false, true});
 }
 
@@ -779,7 +780,7 @@ TEST_CASE("activation badges: an early fill with time to spare shows, grey (D261
     act.e_offset = 56.2;
     act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -56.0});
     REQUIRE(act.is_e_critical());
-    CHECK(badge_texts(act) == Texts{"early fill -56 ms", "squeeze in -56 ms"});
+    CHECK(badge_texts(act) == Texts{"early fill -56.2 ms", "squeeze in -56.0 ms"});
     CHECK(badge_warns(act) == Warns{false, false});
     CHECK_FALSE(act.difficulty().has_value());
 }
@@ -807,11 +808,11 @@ TEST_CASE("activation badges: the user's row agrees with the copied path") {
     // to time).
     const Activation act = user_row();
     const std::string verbose = act.notationstr_verbose();
-    CHECK(verbose == "E3+ (0 ms/-12 ms)");
+    CHECK(verbose == "E3+ (0.0 ms/-12.0 ms)");
     const std::vector<ActivationBadge> badges = activation_badges(act);
     REQUIRE(badges.size() == 2);
-    CHECK(badges[0].text == "early fill 0 ms");
-    CHECK(badges[1].text == "squeeze in -12 ms");
+    CHECK(badges[0].text == "early fill 0.0 ms");
+    CHECK(badges[1].text == "squeeze in -12.0 ms");
     // Each badge's figure is the copied path's figure, in the same order.
     const std::string fill_fig = badges[0].text.substr(std::string("early fill ").size());
     const std::string sq_fig = badges[1].text.substr(std::string("squeeze in ").size());
@@ -828,8 +829,8 @@ TEST_CASE("activation badges: the user's row agrees with the copied path") {
 }
 
 TEST_CASE("activation badge and copied path agree") {
-    // A 12.6 ms squeeze-in: the badge and the copied path both say 13 ms, and
-    // the path button keeps its one decimal.
+    // A 12.6 ms squeeze-in: the badge, the copied path and the path button
+    // all say 12.6 ms (D265).
     Activation act;
     test::set_skips(act, 0);
     act.e_offset = 300.0;  // not e-critical
@@ -840,9 +841,9 @@ TEST_CASE("activation badge and copied path agree") {
     const std::vector<ActivationBadge> badges = activation_badges(act);
     REQUIRE(badges.size() == 1);
     const std::string badge = badges[0].text;
-    CHECK(badge == "squeeze in 13 ms");
+    CHECK(badge == "squeeze in 12.6 ms");
     const std::string verbose = act.notationstr_verbose();
-    CHECK(verbose == "0+ (13 ms)");
+    CHECK(verbose == "0+ (12.6 ms)");
     // The badge's number is the copied path's number.
     const std::string number = badge.substr(std::string("squeeze in ").size());
     CHECK(verbose.find("(" + number + ")") != std::string::npos);
@@ -852,6 +853,7 @@ TEST_CASE("activation badge and copied path agree") {
     PathButtonsView v = build_path_buttons(rec, 0, 2);
     REQUIRE(v.buttons.size() == 1);
     CHECK(v.buttons[0].timing == "12.6 ms");
+    CHECK(v.buttons[0].timing == number);  // and the path button's
 }
 
 TEST_CASE("measure labels: one numbering rule for the rows, the timeline and the first measure") {
@@ -867,8 +869,8 @@ TEST_CASE("measure labels: one numbering rule for the rows, the timeline and the
 
 TEST_CASE("longest_activation_badge: the widest wording with the window's figure") {
     const std::string longest = longest_activation_badge();
-    CHECK(longest == "squeeze out -500 ms");
-    CHECK(longest.size() == 19);
+    CHECK(longest == "squeeze out -500.0 ms");
+    CHECK(longest.size() == 21);
     // A9: no single badge of any badge fixture is longer.
     for (const Activation& act : badge_fixtures())
         for (const ActivationBadge& b : activation_badges(act)) CHECK(longest.size() >= b.text.size());

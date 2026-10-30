@@ -21,12 +21,6 @@ std::string format_avg_mult(double v) {
     return buf;
 }
 
-std::string format_ms(double ms) {
-    char buf[64];
-    std::snprintf(buf, sizeof(buf), "%.1f ms", ms);
-    return buf;
-}
-
 namespace {
 
 int64_t ten_to(int decimals) {
