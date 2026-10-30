@@ -239,6 +239,69 @@ TEST_CASE("coach click: a later end that is no longer possible is picked again, 
     CHECK((*r.windows)[1].deact_tick != best[1].deact_tick);
 }
 
+// A click on an unused fill that sits before a window of the path used to
+// fail with the generic sentence, since the new window was pinned with no end
+// before windows pinned with theirs (sort_and_check_windows).
+TEST_CASE("coach click: a fill that rules out a later window is refused in the later-window sentence") {
+    PbState s;
+    open_and_wait(s, corpus::burnout_notes(), scratch_settings());
+    REQUIRE(s.chart() != nullptr);
+    const OpenChart& c = *s.chart();
+    const std::vector<PinnedWindow> best = hydra::pinned_windows(c.record.best_path());
+    REQUIRE(best.size() == 3);
+    constexpr int64_t kFillTick = 36480;
+    REQUIRE(kFillTick < best[0].act_tick);
+
+    // From one run: this fill can end one way, and with it the first window
+    // (tick 59520) cannot happen, even with its activation alone. The click
+    // is refused in the later-window sentence, not the generic one.
+    const ClickResult r = hydra::pathbuilder::start_window(*c.graph, c.settings, best, kFillTick);
+    CHECK_FALSE(r.windows.has_value());
+    CHECK_FALSE(r.path.has_value());
+    CHECK(r.message == hydra::pathbuilder::impossible_window_text("activation", false));
+    CHECK(r.detail.empty());
+    CHECK(r.notice.empty());
+}
+
+// White Washed's best path with its fourth window taken out and its fill
+// clicked again: the fifth window keeps its end, and the new window takes
+// the end, of the two it can have, that scores higher with it.
+TEST_CASE("coach click: a fill before a window keeps the later end and picks the best new end") {
+    PbState s;
+    open_and_wait(s, corpus::white_washed_notes(), scratch_settings());
+    REQUIRE(s.chart() != nullptr);
+    const OpenChart& c = *s.chart();
+    const std::vector<PinnedWindow> best = hydra::pinned_windows(c.record.best_path());
+    REQUIRE(best.size() == 5);
+    std::vector<PinnedWindow> skipped = best;
+    skipped.erase(skipped.begin() + 3);
+
+    const ClickResult r =
+        hydra::pathbuilder::start_window(*c.graph, c.settings, skipped, best[3].act_tick);
+    REQUIRE(r.windows.has_value());
+    REQUIRE(r.path.has_value());
+    CHECK(r.message.empty());
+    CHECK(r.notice.empty());
+    // From one run: the new window can end at 257280 or 253440, the other
+    // end scores lower with the last window kept, so it takes 253440 and the
+    // path is the best path.
+    const auto ends = hydra::pathbuilder::end_choices(
+        *c.graph, c.settings, std::vector<PinnedWindow>(best.begin(), best.begin() + 3), best[3].act_tick);
+    REQUIRE(ends.size() == 2);
+    CHECK(ends[0].window.deact_tick == 257280);
+    std::vector<PinnedWindow> other = skipped;
+    other.insert(other.begin() + 3, ends[0].window);
+    const hydra::TargetResult worse = hydra::best_finish(*c.graph, c.settings, other);
+    CHECK((worse.paths.empty() || worse.paths.front().totalscore() < 706180));
+    REQUIRE(r.windows->size() == 5);
+    CHECK((*r.windows)[3].act_tick == 245760);
+    CHECK((*r.windows)[3].deact_tick == 253440);
+    CHECK((*r.windows)[4].deact_tick == best[4].deact_tick);
+    CHECK(r.path->pathstring() == "0 1 3 0- 0");
+    CHECK(r.path->totalscore() == 706180);
+    CHECK(c.record.best_path().totalscore() == 706180);
+}
+
 TEST_CASE("coach remove: the later windows keep the ends the player chose while they can") {
     PbState s;
     open_and_wait(s, corpus::white_washed_notes(), scratch_settings());

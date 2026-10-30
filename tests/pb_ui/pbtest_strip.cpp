@@ -58,12 +58,13 @@ std::optional<size_t> fill_on(const PreviewScene& scene, int64_t tick) {
 }
 
 // Clicks the middle of the strip marker of the fill on `tick`, as the strip
-// lays it out, after checking the fill is taken on the path on screen. False
-// when a check failed and nothing was clicked.
-bool click_taken_marker(ImGuiTestContext* ctx, hydra::ui::PreviewController& pc, int64_t tick) {
+// lays it out, after checking the fill is in `state` on the path on screen.
+// False when a check failed and nothing was clicked.
+bool click_strip_marker(ImGuiTestContext* ctx, hydra::ui::PreviewController& pc, int64_t tick,
+                        PreviewFillState state) {
     const std::optional<size_t> fill = fill_on(pc.scene(), tick);
     IM_CHECK_RETV(fill.has_value(), false);
-    IM_CHECK_RETV(pc.scene().fills[*fill].state == PreviewFillState::Taken, false);
+    IM_CHECK_RETV(pc.scene().fills[*fill].state == state, false);
     const ImRect strip = ctx->ItemInfo(("**/" + std::string(hydra::pathbuilder::kStripId)).c_str())
                              .RectFull;
     const std::vector<hydra::pathbuilder::StripMarker> markers = hydra::pathbuilder::strip_markers(
@@ -138,7 +139,7 @@ void test_strip_click_removes_window(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(s.history().current().windows.size() == 1, );
     IM_CHECK_RETV(s.decisions().list().rows.size() == 1, );
 
-    IM_CHECK_RETV(click_taken_marker(ctx, pc, tick), );
+    IM_CHECK_RETV(click_strip_marker(ctx, pc, tick, PreviewFillState::Taken), );
     IM_CHECK_RETV(wait_for_edit(ctx), );
     IM_CHECK(s.decisions().message().empty());
     IM_CHECK(s.history().current().windows.empty());
@@ -149,8 +150,10 @@ void test_strip_click_removes_window(ImGuiTestContext* ctx) {
 }
 
 // The user's ruling, "Copy it, then apply": with Best path picked in the left
-// list, a click on the strip marker of its last window makes the player's
-// path Best path without that window, and one Undo gives back the empty path.
+// list, a click on the strip marker of an unused fill before its first window
+// is refused and changes nothing, and a click on the marker of its last
+// window makes the player's path Best path without that window, and one Undo
+// gives back the empty path.
 void test_click_on_shown_path_copies(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     IM_CHECK_RETV(open_burnout(ctx), );
@@ -167,7 +170,21 @@ void test_click_on_shown_path_copies(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK_RETV(h.app->list_ui().picked.has_value(), );
     const uint64_t before = s.history().generation();
-    IM_CHECK_RETV(click_taken_marker(ctx, pc, best[2].act_tick), );
+
+    // An unused fill before the first window (the same tick test_pb_coach.cpp
+    // pins): its Star Power rules out Best path's first window, so the click is
+    // refused in the later-window sentence, and the path on screen stays.
+    constexpr int64_t kFillBeforeFirst = 36480;
+    IM_CHECK_RETV(kFillBeforeFirst < best[0].act_tick, );
+    IM_CHECK_RETV(click_strip_marker(ctx, pc, kFillBeforeFirst, PreviewFillState::Offered), );
+    IM_CHECK_RETV(wait_for_edit(ctx), );
+    IM_CHECK_STR_EQ(s.decisions().message().c_str(),
+                    hydra::pathbuilder::impossible_window_text("activation", false).c_str());
+    IM_CHECK(s.history().generation() == before);
+    IM_CHECK(s.history().current().windows.empty());
+    IM_CHECK(h.app->list_ui().picked.has_value());
+
+    IM_CHECK_RETV(click_strip_marker(ctx, pc, best[2].act_tick, PreviewFillState::Taken), );
     IM_CHECK_RETV(wait_for_edit(ctx), );
     IM_CHECK(s.decisions().message().empty());
     // One edit: the copy and the removal together.

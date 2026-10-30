@@ -119,15 +119,21 @@ std::vector<EndChoice> end_choices(const ScoreGraph& graph, const SearchSettings
 
 namespace {
 
+// The windows of `windows` that activate before `tick`.
+std::vector<PinnedWindow> windows_before(const std::vector<PinnedWindow>& windows, int64_t tick) {
+    std::vector<PinnedWindow> before;
+    for (const PinnedWindow& w : windows)
+        if (w.act_tick < tick) before.push_back(w);
+    return before;
+}
+
 // The player's windows changed at `tick`: the windows before it as they are,
 // `at` (none puts nothing in), and the ones after it whole (`keep_later`) or
 // by their activation only. `replace` drops a window already on `tick`.
 std::vector<PinnedWindow> pins_around(const std::vector<PinnedWindow>& windows, int64_t tick,
                                       const std::optional<PinnedWindow>& at, bool replace,
                                       bool keep_later) {
-    std::vector<PinnedWindow> pins;
-    for (const PinnedWindow& w : windows)
-        if (w.act_tick < tick) pins.push_back(w);
+    std::vector<PinnedWindow> pins = windows_before(windows, tick);
     if (at) pins.push_back(*at);
     for (const PinnedWindow& w : windows)
         if (w.act_tick > tick || (w.act_tick == tick && !replace))
@@ -149,11 +155,38 @@ bool later_end_changed(const std::vector<PinnedWindow>& before,
     return false;
 }
 
+// best_finish for `windows` changed at `act_tick` with the windows after it
+// pinned whole (pins_around). sort_and_check_windows refuses a window with no
+// end before windows that pin theirs, so a new window (`at` with no end) with
+// later windows is tried with each end end_choices finds for it, and the end
+// whose best finish scores highest among those that work wins. Empty paths
+// when no end works.
+TargetResult best_finish_keeping_later(const ScoreGraph& graph, const SearchSettings& settings,
+                                       const std::vector<PinnedWindow>& windows, int64_t act_tick,
+                                       const std::optional<PinnedWindow>& at, bool replace) {
+    bool has_later = false;
+    for (const PinnedWindow& w : windows) has_later = has_later || w.act_tick > act_tick;
+    if (!at || at->deact_tick || !has_later)
+        return best_finish(graph, settings, pins_around(windows, act_tick, at, replace, true));
+
+    TargetResult best;
+    for (const EndChoice& choice :
+         end_choices(graph, settings, windows_before(windows, act_tick), act_tick)) {
+        TargetResult tried = best_finish(
+            graph, settings, pins_around(windows, act_tick, choice.window, replace, true));
+        if (tried.paths.empty()) continue;
+        if (best.paths.empty() || tried.paths.front().totalscore() > best.paths.front().totalscore())
+            best = std::move(tried);
+    }
+    return best;
+}
+
 // `windows` changed at `act_tick` (pins_around). The windows after it keep
-// the ends the player chose while best_finish can still reach them; when it
-// cannot, they are pinned by their activation alone and take the ends the
-// best finish chooses, and the result says so. Then search_target for the
-// player's own path. No window left: no path.
+// the ends the player chose while best_finish can still reach them
+// (best_finish_keeping_later); when it cannot, they are pinned by their
+// activation alone and take the ends the best finish chooses, and the result
+// says so. Then search_target for the player's own path. No window left: no
+// path.
 ClickResult repin(const ScoreGraph& graph, const SearchSettings& settings,
                   const std::vector<PinnedWindow>& windows, int64_t act_tick,
                   const std::optional<PinnedWindow>& at, bool replace) {
@@ -164,7 +197,7 @@ ClickResult repin(const ScoreGraph& graph, const SearchSettings& settings,
             out.windows.emplace();
             return out;
         }
-        TargetResult bf = best_finish(graph, settings, pins);
+        TargetResult bf = best_finish_keeping_later(graph, settings, windows, act_tick, at, replace);
         bool repicked = false;
         if (bf.paths.empty()) {
             pins = pins_around(windows, act_tick, at, replace, false);

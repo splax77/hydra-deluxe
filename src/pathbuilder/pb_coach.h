@@ -113,10 +113,11 @@ inline constexpr const char* kLaterEndRepickedText =
 
 // Starts a window at `act_tick`: pins only that activation, runs
 // best_finish, and keeps the end it chose. The windows before the click keep
-// their ends. Those after it keep theirs too while that is still possible;
-// when the new window's Star Power rules one out, they keep only their
-// activations, take the ends the best finish chose, and the result's notice
-// says so. The player's own path is search_target over the new windows. An
+// their ends. Those after it keep theirs too while that is still possible,
+// the new window taking, among its end_choices, the end whose best finish
+// scores highest with them kept; when none of those works, they keep only
+// their activations, take the ends the best finish chose, and the result's
+// notice says so. The player's own path is search_target over the new windows. An
 // impossible click changes nothing and says why.
 ClickResult start_window(const ScoreGraph& graph, const SearchSettings& settings,
                          const std::vector<PinnedWindow>& windows, int64_t act_tick);
