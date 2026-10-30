@@ -130,7 +130,7 @@ struct LibraryViewState {
     // only when the selected song changes. Whether and how far it then moves
     // is ui/list_scroll.h's call.
     std::string scrolled_to;
-    // Where the selected row sat on screen last frame, keyed by notespath, so
+    // Where the selected row sat on screen last frame, keyed by row_key, so
     // a change of row height can put it back (ui/list_scroll.h decides).
     RowPlace row_place;
     // The dmleaderboards picker's name filter.

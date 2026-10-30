@@ -474,7 +474,7 @@ void render_table(AppState& app, ImVec2 size) {
 
     const std::vector<size_t>& order = app.library_view_order();
     const std::vector<LibraryRow>& rows = app.library.rows();
-    const std::string selected_path = app.selected ? app.selected->notespath : std::string();
+    const std::string selected_path = app.selected ? row_key(*app.selected) : std::string();
 
     // A new selection asks the scroll owner (ui/list_scroll.h), once, how to
     // move the list to its row. Only a change of the selected song counts: a
@@ -544,7 +544,7 @@ void render_table(AppState& app, ImVec2 size) {
             if (scroll_to && *scroll_to == static_cast<size_t>(k))
                 scroll_last_row(selection_scroll(app.last_selection_source));
             if (keep_at && *keep_at == static_cast<size_t>(k)) keep_last_row_in_place(last_place);
-            if (selected || clicked) place = place_of_last_row(row_h, row.entry.notespath);
+            if (selected || clicked) place = place_of_last_row(row_h, row_key(row.entry));
             if (searching_words)
                 overlay_matches(title_pos, title,
                                 app::match_spans(q, app::QueryField::Title, title),
