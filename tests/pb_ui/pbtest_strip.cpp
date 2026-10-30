@@ -55,16 +55,6 @@ std::optional<size_t> fill_on(const PreviewScene& scene, int64_t tick) {
     return std::nullopt;
 }
 
-// Waits for a click's search and the new path's ladder to land.
-bool wait_for_edit(ImGuiTestContext* ctx) {
-    if (!wait_idle(ctx)) return false;
-    ctx->Yield(2);
-    // The edit's frame asked for the new path's ladder and overlay.
-    if (!wait_idle(ctx)) return false;
-    ctx->Yield(2);
-    return true;
-}
-
 // A click on the highway, on the fill Hydra's best path activates second:
 // the player's path, empty until now, gains that window and the decision
 // list a row.
@@ -121,9 +111,7 @@ void test_strip_click_removes_window(ImGuiTestContext* ctx) {
     const hydra::ActivationWalk best = s.chart()->record.best_path().walk_activations();
     IM_CHECK_RETV(best.size() >= 2, );
     const int64_t tick = best[1].timecode.ticks();
-    s.decisions().click_fill(s.search_graph(), s.chart()->settings, s.history().current().windows,
-                             tick, s.history().generation());
-    IM_CHECK_RETV(wait_for_edit(ctx), );
+    IM_CHECK_RETV(click_fill(ctx, tick), );
     IM_CHECK_RETV(s.history().current().windows.size() == 1, );
     IM_CHECK_RETV(s.decisions().list().rows.size() == 1, );
     const std::optional<size_t> fill = fill_on(pc.scene(), tick);

@@ -53,22 +53,6 @@ bool show_best_path(ImGuiTestContext* ctx) {
     return true;
 }
 
-// Starts a window at `act_tick` on the player's path, as a click on a fill
-// does, and waits for it and the new path's ladder to land.
-bool click_fill(ImGuiTestContext* ctx, int64_t act_tick) {
-    Harness& h = harness(ctx);
-    PbState& s = h.app->state;
-    s.decisions().click_fill(s.search_graph(), s.chart()->settings,
-                             s.history().current().windows, act_tick,
-                             s.history().generation());
-    if (!wait_idle(ctx)) return false;
-    ctx->Yield(2);
-    // The edit's frame asked for the new path's ladder.
-    if (!wait_idle(ctx)) return false;
-    ctx->Yield(2);
-    return true;
-}
-
 // The vertical span of the glyphs the decision list's column drew last frame
 // in `color`, or nothing when it drew none.
 std::optional<std::pair<float, float>> glyph_span(ImU32 color) {

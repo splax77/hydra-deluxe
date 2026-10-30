@@ -5,6 +5,7 @@
 #ifndef HYDRA_TESTS_PB_UI_PBTEST_HARNESS_H
 #define HYDRA_TESTS_PB_UI_PBTEST_HARNESS_H
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -45,6 +46,14 @@ void reset_app(Harness& h);
 // Waits until the builder has nothing running (PbApp::busy), at most
 // `seconds`; false when the wait ran out or the test failed.
 bool wait_idle(ImGuiTestContext* ctx, double seconds = 60.0);
+
+// Waits for an edit of the player's path: its search, then the new path's
+// ladder and overlay, which the edit's frame asks for. False as wait_idle.
+bool wait_for_edit(ImGuiTestContext* ctx);
+
+// Starts a window at `act_tick` on the player's path, as a click on a fill
+// does, and waits for the edit to land (wait_for_edit).
+bool click_fill(ImGuiTestContext* ctx, int64_t act_tick);
 
 // The builder's main-window tests (pbtest_window.cpp).
 void register_tests(Harness& h);

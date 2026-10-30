@@ -105,4 +105,20 @@ bool wait_idle(ImGuiTestContext* ctx, double seconds) {
     return uitest::wait_until(ctx, [&] { return !h.app || !h.app->busy(); }, seconds);
 }
 
+bool click_fill(ImGuiTestContext* ctx, int64_t act_tick) {
+    hydra::pathbuilder::PbState& s = harness(ctx).app->state;
+    s.decisions().click_fill(s.search_graph(), s.chart()->settings, s.history().current().windows,
+                             act_tick, s.history().generation());
+    return wait_for_edit(ctx);
+}
+
+bool wait_for_edit(ImGuiTestContext* ctx) {
+    if (!wait_idle(ctx)) return false;
+    ctx->Yield(2);
+    // The edit's frame asked for the new path's ladder and overlay.
+    if (!wait_idle(ctx)) return false;
+    ctx->Yield(2);
+    return true;
+}
+
 }  // namespace pbtest
