@@ -253,6 +253,13 @@ The user answered all seven questions in one line: "Yes, as recommended". So:
 6. A cant-activate fill (the third look) is a 13 px ring (`kCantSize`, `.fill.no`, mockup line 53).
 7. The timeline axis puts a time label every step of 30000 ms (`kTimelineAxisStepMs`, `s += 30`, mockup line 264). When a step is narrower than one label, the timeline labels every few steps; the least gap is a label's own width, not a number.
 
+**More answers from the wave 1 merges (2026-10-30), in the user's words:**
+
+- Asked whether a step sentence shows the mockup's "0:45" or Hydra's clock "0:45.789", the user answered "Hydra's 0:45.789 (Recommended)". `step_sentence` writes the time with `clock_str`.
+- Asked whether the text says "two" with a typed star or "2" with the star drawn, the user answered "\"2\", star drawn (Recommended)". The count is written from `kSpActivationBars`, and the screen (PB-5) draws the star with `draw_star` beside the sentences where the mockup has one.
+- Asked whether the timeline's text gets the mockup's 10.5 to 12.5 px sizes and bold band numbers, the user answered "Decide at the real-app check (Recommended)". The timeline uses the Label and Figure text roles until RA-2.
+- Asked whether the timeline hides a practice section named "End", the user answered "Hide it on the timeline (Recommended)". The Preview tab keeps showing it.
+
 The same message approved the plan with the "Out of scope" list as written, so the highway text labels, the squeeze-out ring and the "lost because the meter was full" note stay out.
 
 ## Promise map
