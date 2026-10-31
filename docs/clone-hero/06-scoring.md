@@ -15,25 +15,25 @@ Label: Proven in the game's code
 Evidence: The base adder works out the gem count at lines 17 to 38 (stored count at note +0x50, else a popcount of the lane mask). The drum hit routine passes 50 as the base at line 127 of its listing. The game also holds 50 as a named constant of class #8611 (dump.cs line 549143). Live: Window Map's base_score 7,100 is 142 gems times 50.
 Game code (6142): adder RVA `0x20F6EB0`, `code/6142/add_note_score_20F6EB0.asm` lines 17 to 38; drum hit routine RVA `0x20DE770`, `code/6142/note_hit_dynamics_20DE770.asm` line 127
 Hydra: `kNoteBasePoints` in src/core/model.h line 143; `ChordNote::basescore` in src/core/model.cpp line 84
-Ruling: none needed: same rule (D51 recorded it: the user answered "all recommended", decision log line 156)
+Ruling: none needed: same rule. No decision names the 50 itself; D51 call 13 (decision log line 156, items in docs/audit/2026-10-04-phase-7-questions.md item 13) records the cymbal's +15, the solo's 100 and the multiplier steps "as they are", not the 50.
 Found: wave 2 scouts R4 and R6; this plan's wave 1 scout H6
 
 ### SC-02 A cymbal gem pays 15 more
 
 Rule: A gem on a cymbal lane pays 65 instead of 50. The test is any of three lane-mask bits (0xE0).
 Label: Proven in the game's code
-Evidence: The drum score method calls the cymbal test and adds 15 at lines 13 to 16 before tail-calling the base adder at line 31. The same +15 shape is in the star base (SC-21).
+Evidence: The drum score method calls the cymbal test and adds 15 at lines 13 to 16 before tail-calling the base adder at line 31. The cymbal test (RVA `0x214BE30`) is `test word [note+0x80], 0xE0`, as the star base's note says too (`code/6142/star_base_20F4680.md` line 16); the reviewer of this page also read it with tools/ch_mcp/chdis.py on the 6142 DLL, 2026-10-30. The same +15 shape is in the star base (SC-27).
 Game code (6142): RVA `0x20DEEC0` (drum override of slot 6), `code/6142/note_score_add_20DEEC0.asm` lines 13 to 16 and 31
 Hydra: `kCymbalBonusPoints` in src/core/model.h line 144; `ChordNote::basescore` in src/core/model.cpp line 84
-Ruling: none needed: same rule
+Ruling: none needed: same rule (D51 call 13 records the cymbal's +15 "as they are", decision log line 156)
 Found: wave 2 scouts R4 and R6; this plan's wave 1 scout H6
 
 ### SC-03 A hit adds points times the multiplier, with no speed term
 
-Rule: A hit raises the score by its points times the current multiplier, and adds the plain points to a raw total. Nothing in the adder depends on playback speed.
+Rule: A hit raises the score by its points times the current multiplier, and adds the plain points to a raw total. Nothing in the adder depends on playback speed. The adder returns at once, scoring nothing, when the engine's player kind is RemotePlayer (value 1, SP-23); a player, bot or replay engine scores.
 Label: Proven in the game's code
-Evidence: Lines 36 to 41 add points to +0xC0 and points times +0x48 to the score at +0x94. ghidra_decompile_all.txt lines 53749 to 53751 read the same. A speed term applied to the points before the adder is not ruled out; a half-speed video matched Hydra's curve point for point (card e05522d2).
-Game code (6142): RVA `0x20F6EB0`, `code/6142/add_note_score_20F6EB0.asm` lines 36 to 41; `#8288+0x94`
+Evidence: Lines 13 and 14 compare the player kind at +0x190 with 1 and skip the whole adder. Lines 36 to 41 add points to +0xC0 and points times +0x48 to the score at +0x94. ghidra_decompile_all.txt lines 53749 to 53751 read the same. A speed term applied to the points before the adder is not ruled out; a half-speed video matched Hydra's curve point for point (card e05522d2).
+Game code (6142): RVA `0x20F6EB0`, `code/6142/add_note_score_20F6EB0.asm` lines 13 and 14 and 36 to 41; `#8288+0x94`, `#8288+0x190`
 Hydra: `category_scores` in src/core/scoring.cpp line 26; no speed owner, only `is_base_speed` in src/net/dmbot_client.h line 36 for leaderboard comparisons
 Ruling: none needed: same rule
 Found: wave 2 scout R4; this plan's wave 1 scouts H6 and HB
@@ -57,7 +57,7 @@ Label: Proven in the game's code
 Evidence: Lines 1 and 2 test the streak at +0x88 against 30; lines 3 to 9 divide by 10 and add 1; lines 11 and 12 store 4 above 30; lines 13 to 16 double it when +0x42 is set. At a streak of exactly 30 the division gives 4 too, so wave 2 scout R10's "4x from combo 31" is wrong by one; the step is at 30. Live: run 1's multiplier read only 1, 2, 3, 4 and 8.
 Game code (6142): RVA `0x20F52E0` (slot 10), `code/6142/multiplier_from_streak_20F52E0.asm` lines 1 to 16
 Hydra: `to_multiplier` in src/core/timing.cpp line 12; `kStarPowerMultiplier` in src/core/timing.h line 48
-Ruling: none needed: same rule (D51, as in SC-01)
+Ruling: none needed: same rule (D51 call 13 records the steps at combos 10, 20 and 30 "as they are", decision log line 156)
 Found: wave 2 scouts R6 and R10; this plan's wave 1 scouts H6, H7b and HB
 
 ### SC-06 The streak counts gems, and the multiplier is worked out after each hit
@@ -94,7 +94,7 @@ Found: wave 2 scouts R4 and R6; this plan's wave 1 scout H6
 
 Rule: The adder also changes a fourth total at +0xD0: it takes away (multiplier minus 1) times points outside Star Power when one note flag is set, and adds half times points inside Star Power when another is set. What the total and the flags mean is not known.
 Label: Unknown
-Evidence: The instructions are lines 51 to 54 and 74 to 80 of the adder; the flag getters `0x214BBA0` and `0x214B600` each test one bit of note +0x84 (wave 2 scout R4). The tie to the file's squeezed_score is a guess (SC-30).
+Evidence: The instructions are lines 51 to 54 and 74 to 80 of the adder; the flag getters `0x214BBA0` and `0x214B600` each test one bit of note +0x84 (wave 2 scout R4). The tie to the file's squeezed_score is a guess (SC-37).
 Game code (6142): RVA `0x20F6EB0`, `code/6142/add_note_score_20F6EB0.asm` lines 51 to 54 and 74 to 80
 Hydra: no owner: not searched
 Ruling: none yet: the meaning is not settled
@@ -124,9 +124,9 @@ Found: this plan's wave 1 scout HB
 
 ### SC-12 An accent or ghost pays double only when marked as performed
 
-Rule: An accent or ghost gem pays double only when the hit handler has marked it as performed (bit 4 of note +0x84). Otherwise it pays its plain value.
+Rule: An accent or ghost gem pays double only when the hit handler has marked it as performed (the flag with value 4 in the word at note +0x84). Otherwise it pays its plain value.
 Label: Proven in the game's code
-Evidence: The drum score method calls the bit test and doubles at lines 19 to 24, then tail-calls the adder at line 31.
+Evidence: The drum score method calls the flag test and doubles at lines 19 to 24, then tail-calls the adder at line 31. The test (RVA `0x214BB40`) is `test byte [note+0x84], 4`, and the hit handler's setter (RVA `0x214B740`) sets that same flag; the reviewer of this page read both with tools/ch_mcp/chdis.py on the 6142 DLL, 2026-10-30, and neither is a committed listing.
 Game code (6142): RVA `0x20DEEC0`, `code/6142/note_score_add_20DEEC0.asm` lines 19 to 31
 Hydra: no owner for a performed mark: Hydra pays every accent and ghost as performed (src/core/scoring.cpp)
 Ruling: open split: see questions page Q-51
@@ -270,7 +270,7 @@ Found: wave 2 scout R6; this plan's wave 1 scout H6
 
 Rule: The rounding after the float multiply is Math.Ceiling, so a cutoff moves by one point only when the base score is not a multiple of 5; drum bases always are.
 Label: Unknown
-Evidence: unchecked by the scout: the helper's body was not opened. The memory note ch-star-cutoffs says roundsd mode 0xA, read 2026-09-27 in session 9168b711 (listing lost). Multiples of 5 follow from 50, 65, 100 and 130 (SC-01, SC-02).
+Evidence: unchecked by the scout: the helper's body was not opened. The memory note ch-star-cutoffs says roundsd mode 0xA, read 2026-09-27 in session 9168b711 (listing lost). The reviewer of this page opened the helper once (tools/ch_mcp/chdis.py on the 6142 DLL, 2026-10-30, no listing committed): it tests a stored CPU-feature value and, when it is 2 or more, jumps to `roundsd xmm0, xmm0, 0xa`, which rounds up; below 2 it runs a software routine that was not read. That fits "rounds up" on a machine with that instruction, and the software path is why the block stays Unknown. Multiples of 5 follow from 50, 65, 100 and 130 (SC-01, SC-02).
 Game code (6142): call target in `code/6142/star_count_210DD00.asm` lines 46 to 48, not opened
 Hydra: `star_cutoff` in src/core/stars.cpp line 9
 Ruling: none needed: no drum chart reaches the difference
@@ -280,7 +280,7 @@ Found: wave 2 scout R6; this plan's wave 1 scout H6
 
 Rule: The drums star base is the sum over notes of (50, plus 15 for a cymbal) times the gem count, times 2 when the note carries either dynamic flag (once, even with both). There is no sustain term for drums. It runs when the instrument is Drums (6) or ProDrums (9), after the Note Shuffle, and is stored at +0x1D0.
 Label: Proven in the game's code
-Evidence: Star base lines 68 (drums branch), 87 to 101 (cymbal and the two flag tests), 103 to 118 (gem count) and 120 to 123 (the sum); lines 68 to 80 and 147 to 149 leave the sustain term at 0. The constructor picks the drums branch for 6 or 9 at lines 183 to 189, calls it at line 196 and stores the result at line 202. That the two flags are accent and ghost is the scouts' reading (the dump does not name them).
+Evidence: Star base lines 68 (drums branch), 87 to 101 (cymbal and the two flag tests), 103 to 118 (gem count) and 120 to 123 (the sum); lines 68 to 80 and 147 to 149 leave the sustain term at 0. The constructor picks the drums branch for 6 or 9 at lines 183 to 189, calls it at line 196 and stores the result at line 202. That the two flags are accent and ghost is the scouts' reading (the dump does not name them). Live: the game's base_score is 73,520 on Trippin SP Spike ProDrums, 62,850 on its plain Drums run (1,257 gems times 50, no cymbals or dynamics) and 7,100 on Window Map (142 gems times 50); wave 1 scout H6 found these equal to Hydra's chart base score on all three.
 Game code (6142): RVA `0x20F4680`, `code/6142/star_base_20F4680.asm` lines 68 to 149; constructor RVA `0x20F79E0`, `code/6142/engine_ctor_20F79E0.asm` lines 183 to 202
 Hydra: `Path::chart_base_score` in src/core/model.cpp line 833
 Ruling: none needed: same rule (a Hydra note holds one dynamic type, so the both-flags case does not arise)

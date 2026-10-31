@@ -25,3 +25,5 @@ Line 105: clear +0x130.
 Lines 107 to 108: null-reference throw. Lines 109 to 129: the exception above.
 
 What it does not do: it never clears the active flag and never writes zero to the meter on purpose. Star Power is ended by the deactivate method at 0x20F5490 (committed listing `docs/audit/drum-lanes/play/f20f5490_deactivate_sp.asm`), which sets the flag to 0, halves the multiplier and zeroes the meter. What calls the deactivate method was not found: a byte scan for direct calls found only jumps from three generic engine wrappers (RVAs 0xFAD470, 0xFBBFD0 and 0xFBC0B0), none from the drums class. The end-time check in 0x20F6A50 (see `advance_events_20F6A50.md`) sends a virtual event at the end time; that this event runs the deactivate method is not proven here.
+
+Reviewer note, 2026-10-30: the byte at +0x130 is also set by every Star Power gain (sp_gain_20F4FA0.asm line 45), so it means "the meter changed", not only "the meter was clamped"; only this update, on the active path, clears it (line 105). See page 5, SP-13.
