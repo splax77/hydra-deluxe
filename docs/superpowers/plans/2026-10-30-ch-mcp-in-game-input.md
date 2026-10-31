@@ -185,9 +185,11 @@ Owns `tools/ch_mcp/agent/kit.ts`, `tools/ch_mcp/kit_methods.json`, `tools/ch_mcp
 
 Tests on the fake agent: a press with `read` sends the names and prints `seen`; an argument of `None` sends the constant and a given one overrides it; `ch_kit_watch(20)` sends `watch` with 20 and prints a reply with no true reads as "no key reached a player", and one with a true read as a failure naming the frame and the reader; `watch` while a play session runs is refused; the fixture tests of `test_frida_attach` pass with the three new names. Run: `py -m pytest tools/ch_mcp/tests/test_kit_tools.py tools/ch_mcp/tests/test_frida_attach.py -q`.
 
-### T8: `ch_start_song` (the old plan's task, unchanged; after LS-M)
+### ~~T8: `ch_start_song` (the old plan's task, unchanged; after LS-M)~~ (struck)
 
-As the old plan says, with one change: it is called after the kit walk reaches the main menu, and LS-K3 is its first use.
+Struck on 2026-10-31 with the old plan's T8, by the user's answer to question 4 of `docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md`: this task only pointed at that one, and LS-K3, its first use, is struck too.
+
+As the old plan said, with one change: it was to be called after the kit walk reaches the main menu, and LS-K3 was to be its first use.
 
 ### Order
 
@@ -209,7 +211,9 @@ Each names pass and fail before it runs, has a run cap and a minutes cap, and en
 
 After LS-K1's setup, `ch_kit_status` must show every player's keyboard and mouse flags false. The main session then says in chat "type a few drum letters (a s j k l) and click anywhere, in any window but the game, in the next 20 seconds", and calls K7's `ch_kit_watch(20)`, which samples every player's `GetAnyButton()` and the controllers' `GetAnyButton()` for those 20 seconds. Pass: no true read, and the foreground count still 0. Fail: any true; report which action and the time, and the plan stops here for the user, because the rest cannot run while the user's keys reach the game.
 
-### LS-K3: the menu walk, with the method watch (3 runs, 15 minutes)
+### ~~LS-K3: the menu walk, with the method watch (3 runs, 15 minutes)~~ (struck)
+
+Struck on 2026-10-31 by the user's answer to question 4 of `docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md`: a song now starts from the command line for a human player, so this step does not run, and the menu walk and the method watch are kept only for a day that route breaks.
 
 `ch_start()`, `ch_attach`, `ch_kit_setup`, `ch_method_watch_start()`, then `ch_open_song` one step at a time (`ch_kit_press` per step, `ch_menu` after each), writing down what `active` reads on the profile screen, the main menu, the song list and the player screen, and the instrument and difficulty the player screen shows. Stop line, checked first: `onlineMenuActive` true on a screen where Online is closed stops the run and goes to the user. Stop line two: an instrument or difficulty other than 9 and 3 stops before Ready and goes to the user with the numbers. Pass: `song_loaded` reached with only kit presses, the foreground count 0, and `ch_method_watch_stop` naming a `LoadScene*` call and the call before it (LS-M's pass line); `menu_steps.json` is corrected in a one-file data commit with `"verified": true`, and `start_method.json` is written as the old plan says. Fail: three runs or 15 minutes without `song_loaded`; the third run may try the `currentSong` field set once and report what the list did. LS-M's fail line (two runs with no `LoadScene*` hooked) stands as written there.
 
