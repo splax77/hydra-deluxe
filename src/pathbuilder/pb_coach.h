@@ -1,6 +1,7 @@
 // The Path Builder's decision list: one row per window of the path on screen,
 // with what the window cost (EN-3's ladder, app/path_costs.h), the timing it
-// needs and the tight-window note; the end choices of a window; "Finish the
+// needs and the tight-window note; the end choices of a window and which one
+// it kept; "Finish the
 // rest for me"; and the clicks that start and remove a window. Every number is read from its
 // owner: costs from cost_list and cost_tier, timings from
 // Activation::difficulty and format_ms, the note from
@@ -81,7 +82,14 @@ struct EndChoice {
     std::string token;     // its Activation::notationstr
     std::string timing;    // as CoachRow::timing
     int64_t best_finish = 0;  // BF with this end pinned
+    // The window's activation in the path search_target found with this end,
+    // so the screen reads the end's measure and squeezes from it.
+    Activation activation;
 };
+
+// Whether `end` is the end the player's window `window` kept: the same
+// pair end_choices tells ends apart by.
+bool is_kept_end(const PinnedWindow& window, const EndChoice& end);
 
 // The distinct ends of the window at `act_tick`, with the windows before it
 // (`before`, pinned as they are) kept: search_target with the window pinned
