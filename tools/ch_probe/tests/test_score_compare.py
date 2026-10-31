@@ -282,5 +282,57 @@ class PressLogFileTest(unittest.TestCase):
                 score_compare.load_press_log(path)
 
 
+def _load_text(text):
+    """load_press_log on a log holding exactly `text`."""
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "press.csv")
+        with open(path, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+        return score_compare.load_press_log(path)
+
+
+class PressLogHeaderTest(unittest.TestCase):
+    """Hand-written logs: the six-column header written before the kit press,
+    today's ten-column one, and headers that are neither."""
+
+    def test_a_six_column_log_loads_with_blank_kit_fields(self):
+        rows = _load_text(
+            "index,chart_ms,clock_ms_at_press,score_before,score_after,hit\n"
+            "0,3398.25,3398.75,0,115,1\n"
+            "1,4616.5,4617.5,115,115,0\n")
+        self.assertEqual(rows, [
+            score_compare.Press(0, 3398.25, 3398.75, 0, 115, True, "", "", "", ""),
+            score_compare.Press(1, 4616.5, 4617.5, 115, 115, False, "", "", "", ""),
+        ])
+
+    def test_a_ten_column_log_loads(self):
+        rows = _load_text(
+            "index,chart_ms,clock_ms_at_press,score_before,score_after,hit,"
+            "down_frame,up_frame,down_ms,up_ms\n"
+            "2,2000.0,1998.5,200,280,1,812,813,1998.25,2014.75\n"
+            "3,2500.0,2501.0,280,380,1,,,,\n")
+        self.assertEqual(rows, [
+            score_compare.Press(2, 2000.0, 1998.5, 200, 280, True,
+                                "812", "813", "1998.25", "2014.75"),
+            score_compare.Press(3, 2500.0, 2501.0, 280, 380, True, "", "", "", ""),
+        ])
+
+    def test_other_headers_are_refused(self):
+        for header in (
+            # the six old names in another order
+            "chart_ms,index,clock_ms_at_press,score_before,score_after,hit",
+            # the old six plus only the first kit column
+            "index,chart_ms,clock_ms_at_press,score_before,score_after,hit,down_frame",
+            # the old header short one column
+            "index,chart_ms,clock_ms_at_press,score_before,score_after",
+            # the kit columns in another order
+            "index,chart_ms,clock_ms_at_press,score_before,score_after,hit,"
+            "up_frame,down_frame,down_ms,up_ms",
+        ):
+            with self.subTest(header=header):
+                with self.assertRaisesRegex(ValueError, r"header \[.*\] is not \["):
+                    _load_text(header + "\n")
+
+
 if __name__ == "__main__":
     unittest.main()
