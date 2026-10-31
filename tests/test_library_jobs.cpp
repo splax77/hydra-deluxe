@@ -192,16 +192,17 @@ TEST_CASE("jobs: time left leaves a pause out of its window") {
     released = 1;
     wait_until([&] { return job.snapshot().completed == 1; }, "the chart in flight to finish");
     CHECK_FALSE(job.snapshot().eta_s.has_value());
-    std::this_thread::sleep_for(1200ms);  // far longer than the run time that follows
+    constexpr auto kPause = 1200ms;  // far longer than the run time that follows
+    std::this_thread::sleep_for(kPause);
 
     job.resume();
     released = 2;
     wait_until([&] { return job.snapshot().completed == 2; }, "the second chart to finish");
     // Two charts left over a rate of 2 charts in the window's span: the span
-    // in seconds. Counting the pause would make it 1.2 s or more.
+    // in seconds. Counting the pause would make it kPause or more.
     const std::optional<double> eta = job.snapshot().eta_s;
     REQUIRE(eta.has_value());
-    CHECK(*eta < 0.6);
+    CHECK(*eta < std::chrono::duration<double>(kPause).count() / 2);
 
     released = 4;
     wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
