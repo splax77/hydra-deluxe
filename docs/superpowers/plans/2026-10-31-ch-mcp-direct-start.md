@@ -69,6 +69,8 @@ From code: the loader calls `GetSystemPlayer` at 0x396D55 and keeps the result (
 
 What the code cannot answer: whether the drums input reads the System Player at all, and whether Rewired lets a custom controller be added to it and reads it there. That is the one live question of LS-D1: a kit press on the System Player must register as a hit. If it does not, the plan stops for the user with a new plan for the Player1 route, because the field set is not designed yet (it needs D2's answer and the user's yes under question 6). It is not a run-time option of this plan.
 
+LS-D1 run 1 answered part of this on 2026-10-31: the kit can be added to System, but the game loads no drum map for it there (rows P19 and P20). The choice between loading that map onto System and the Player1 route is now question 7.
+
 ### 3. What a human run leaves behind
 
 Three places. Profiles: the loader clones a profile; whether the clone is ever saved to `profiles.ini` or `profiles.bin` is a lead (index -1). Task D6 adds both files to the backup list now (D2's trace shows the game keeps them in the Documents folder, so they belong in `DOCUMENTS_FILES`), so the run cannot leave a trace there whatever the trace finds, and D2 reads the save path to say which. Scores: `scorestats.json`, `scoredata.bin` and `scoresext.bin` are already backed up and restored byte for byte. Online: the game's log shows "Unauthorized" for analytics in bot runs, but that is an observation, not a rule. D2 traces the score submit path from the stats record builder 0x1144C0 and says whether a human score posts anywhere when nobody is logged in. Until D2 answers, LS-D2's stop line keeps the run on the test chart only, and the question of a network block goes to the user if D2 cannot settle it.
@@ -102,7 +104,7 @@ When the observer sees `GameAssembly.dll` (the match is on the exact name), the 
 
 Why two byte checks: `BA 01 00 00 00` is the common instruction `mov edx, 1`, so the five bytes alone could match by chance at the same RVA in another build. The loader's own first twelve bytes make a wrong build very unlikely to pass. There is no other build check in the code today; the server never compares the game's version.
 
-Boot takes seconds; LS-D0 measures the time from resume to the engine clock moving, so LS-D2 knows whether `ch_sp_watch_start` and `ch_play_chart` can be armed before the resume within `engine_finder.ENGINE_SEARCH_CAP_S`.
+Boot takes seconds; LS-D0 measures the time from resume to the engine clock moving, so LS-D2 knows whether `ch_sp_watch_start` and `ch_play_chart` can be armed before the resume within `engine_finder.ENGINE_SEARCH_CAP_S`. As built, they cannot: `ch_start` returns only after the resume (row P38), so LS-D2 starts both after `ch_kit_setup`.
 
 ### The kit's player
 
@@ -131,8 +133,15 @@ Answered 2026-10-31: shown all six with their recommendations, the user said "ap
 2. **If the paused attach fails** (LS-D0), the later runs change one field of `launch_patch.json` at a time: first `"defer": true`, then `"launch": "spawn"`, which gives up the minimized, not-active launch. Recommended: run the spawn form once with the foreground watch as judge, and stop for good if the count is above 0. The other side: skip it and go to the late route (a race, see section 1 above).
 3. **Profiles in the backup.** Recommended: add `profiles.ini` and `profiles.bin` to the backup list now, before D2 says whether the clone is saved. The other side: wait for D2; one more trace before the first human run.
 4. **The built pieces.** Recommended: keep the menu walk, the method watch, `start_method.json` and T8 on disk and registered, mark them in `docs/agents/clone-hero-mcp.md` as the route for a day the direct route breaks, and strike LS-K3 and T8 from the two older plans with a one-line note pointing here. The other side: delete `ch_open_song`, `menu_steps.json`, the method watch and `start_candidates.json`, so there is one route. Both leave `menu.ts`'s reads, which `ch_menu` and the Online check use.
-5. **Which chart LS-D2 plays.** Recommended: Window Map (142 hits with keys in L2), so LS-K4's pass line carries over. The other side: Senri, which LS-K5 needs anyway, with no hit count to compare.
+5. **Which chart LS-D2 plays.** Recommended: Window Map (142 hits with keys in L2), so LS-K4's pass line carries over. The other side: Senri, which LS-K5 needs anyway, with no hit count to compare. Replaced on 2026-10-31: Window Map has no Star Power phrases (row P25), so LS-D2 now plays the Senri chart (row P26), under the premise-map plan's question 2 (row P41).
 6. **Is the one-byte patch allowed?** Ruling 4 says what D272 and the 2026-10-28 hook approval cover and what they do not. The patch changes the game's own code so that the loader makes a human player. Recommended: yes, as proposed: one byte, in memory only, checked against the bytes it must read first, with the disk file never touched. The other side: no, and the plan then needs the late route (set `is_bot` through the game's setter after the loader), which is a race that nothing in the code bounds, and no hook or code patch is placed at all. If the answer is no, this plan does not start.
+
+Questions 7 to 10 were added on 2026-10-31 by the retrofit (task PM-4 of the premise-map plan). They are open, and the live steps that use them wait for the answers.
+
+7. **Which Rewired player gets the kit.** LS-D1 run 1 handed the kit to the System Player, and the game gave it no drum map, because System's list of default maps for custom controllers is empty (rows P19 and P20). The drum map is category 1, layout 2, for the kit's definition 6, and Rewired has a `LoadMap` that takes a category and a layout (row P21). Recommended (the main session's view): keep the kit on System and load that one map onto it by name, a small change to the kit's setup. Whether presses on System then reach the drums input is LS-D1a to LS-D1d's question (row P22). The other side: the Player1 route, where the slot's Rewired player is set to Player1 by a field set inside the game's own object. That field set is not designed, it must land before the drums player reads the slot, and it needs the field's name from the dump (section 2).
+8. **Can a song be played to its end before the online question is settled?** D2's trace did not settle whether a finished song posts anything online when nobody is logged in; page 07 IN-73 is labelled Unknown (row P39). LS-D0 and LS-D1 stopped mid-song, but LS-D2d plays the Senri chart to its end, so the game's end-of-song code runs. Recommended: block the game's network for the run. The other side: run as is, on the reading that nobody is logged in and the gateway text has no direct caller, which is not a code fact.
+9. **Which Hydra score file LS-D2d plays and compares against.** The direct start sets the DoubleKick modifier on the drums branch (row P2), and the Senri chart has 40 double-kick notes (row P28). Whether the game's DoubleKick means those notes are played, and whether `hydra_replay score --prodrums 1 --bass2x 1` prices the same chart, was not checked (row P35). The auto-player presses every chord, so the game activates Star Power at every fill reached with the meter at least half full (row P34), and a score file with no activations would not match that. Recommended: make the score file with `--prodrums 1 --bass2x 1`, play it, then make a second score file whose `--acts` are the activations `ch_sp_watch_status` recorded, and compare against that one. The other side: compare only the hit count and the meter, and drop `ch_compare` from LS-D2 (LS-D2g).
+10. **How a call is marked seen in this plan.** `docs/agents/premise-map.md` says a call is seen only on the same player, route and chart, and only when a run has shown it. Read strictly, no step could ever start a new chart, because `ch_stop` and `ch_attach` are new on every chart. So this plan judges a call that takes no chart or player word on the launch kind and the kit's player, and marks a call proved by an earlier step of this plan with that step's passing run, before the run exists. Recommended: accept both readings for this plan, and change the page to say so. The other side: keep the strict page, and let each chart's first step hold more than one new call, written as an exception the user allows by name.
 
 ## Tasks
 
@@ -194,25 +203,109 @@ D1, D3, D4 and D6 start together from `main`; their files do not overlap. D2 sta
 
 Each names its pass and fail lines, has a run cap and a minutes cap, and ends with `ch_stop`, whose reply must show every file line (five today, seven after D6), the registry line, the kit teardown checks and the foreground count. A restore failure stops the sequence and goes to the user with the line. The game's MD5 (`Get-FileHash` on `GameAssembly.dll`) is taken before LS-D0 and after each step's `ch_stop`; a change is a fail of ruling 5 and stops everything. No step starts before the user has answered question 6.
 
+### What the retrofit changed, and why the order is new
+
+Task PM-4 of `docs/superpowers/plans/2026-10-31-premise-map.md` rewrote this section on 2026-10-31, after LS-D0 run 1 and LS-D1 run 1. The user approved it by answering that plan's question 2 (row P41). Three things changed.
+
+First, each step now tries one new tool call. The old LS-D1 chained four calls no human launch had used (`ch_kit_setup` on a new player, `ch_trace_start`, `ch_kit_press`, `ch_notes`), and the old LS-D2 chained six. A failure there could not say which piece broke. So the old LS-D1 is now LS-D1a to LS-D1d, and the old LS-D2 is now LS-D2a to LS-D2g. Some of the new steps run inside an earlier step's game, after that step's pass line, so the split costs few extra launches. Each step's `Calls:` line lists its calls in order, with the one new call marked `(never tried)` (`docs/agents/premise-map.md`, "The call list of a live step").
+
+Second, LS-D2 plays the Senri chart, not Window Map. Window Map has no Star Power phrases (row P25), so the old pass line could never be met. The Senri chart, "Ladies Talk", has 25 (row P26). That replaces the answer to question 5.
+
+Third, the kit's player is open again. LS-D1 run 1 showed that the kit on the System Player gets no drum map (rows P19 and P20). Which way to go next is question 7, and no kit step runs before the user answers it.
+
+How a call is marked here. A call that takes a chart or a player word (`ch_start`, `ch_play_chart`, `ch_trace_start`) counts as seen only on that same chart and player word. A call that takes neither is judged on the launch kind (a human direct start) and the kit's player. A `seen` marker that names a step of this plan still to run, such as `(seen: LS-D1a's passing run)`, means that step must pass first; the later step does not start until that run's folder exists, and the go request names the folder. Both readings are question 10, because `docs/agents/premise-map.md` asks for "the same chart" on every call and names only runs that have happened.
+
 ### LS-D0: the paused launch and the byte (3 runs, 15 minutes)
+
+Calls: `ch_start(<Window Map folder>, human=True)` (seen: LS-D0 run 1), `ch_status` (seen: LS-D0 run 1), `ch_attach` (seen: LS-D0 run 1), `ch_state` (seen: LS-D0 run 1), `ch_stop` (seen: LS-D0 run 1)
+
+Done. Run 1 on 2026-10-31 met every pass line but the foreground count: the game came to the front once, at the launch (row P16). The user, shown that, said "Yes, run LS-D1", which accepts the launch-time focus grab as a pass (row P17). The result is on page 07 as IN-74 (rows P15 and P18). Runs 2 and 3 are not needed.
 
 What only a run can settle: the four live questions of section 1. Run 1: `ch_start(<Window Map folder>, human=True)`, then `ch_status` every 5 s up to 60 s from the resume. Pass: the status shows `before` `BA 01 00 00 00` and `after` `BA 00 00 00 00`, `entry_before` equal to `entry_expect`, "loader ran after patch: yes" within 60 s, `ch_attach` then `ch_state` show a live `GameManager` and a moving clock (the song started with no press; if the clock never moves while the loader line says yes, the song waits for a Ready press, and the report says so, with `ch_snapshot`), the foreground count is 0, and the MD5 is unchanged. Record: the module names the arm reply listed, the seconds from resume to `patched`, and the seconds from resume to the moving clock. Stop line: a state of `refused` ends the step and goes to the user with both byte strings, because the build differs from 6142. Fail run 1: the attach or the arm ends at its cap, the patch cap passes with the state still `waiting`, the agent errors inside the observer, or the loader line says "no". The report then names which. Run 2, only after a fail of run 1, sets `"defer": true` in `launch_patch.json` (the patch moves out of the observer's call). Run 3, only after a fail of run 2 and only if the user answered question 2 as recommended, sets `"launch": "spawn"` as well; its pass line is the same plus the foreground count, and a count above 0 ends the plan's launch question for the user. Fail on all three: the late route goes back to the user as a new plan.
 
-### LS-D1: a hit through the kit, and which player (1 run, 10 minutes)
+### LS-D1a: the kit's setup on the player question 7 picks (2 runs, 10 minutes)
 
-What only a run can settle: whether the drums input reads a kit on the System Player. No tool reads the score or `IsBot` today, so the proof is the hit trace. `ch_start(..., human=True)`, `ch_attach`, `ch_kit_setup(player="System")`, `ch_trace_start`, then `ch_kit_press("red")` timed at a red note by hand against `ch_state`'s clock, then `ch_notes`. Pass: `ch_kit_press`'s `seen` shows the action true on the kit's player, and `ch_notes` lists a hit at that press. Then `KIT_PLAYER` is recorded as `System` in a one-line data commit quoting the reply. Fail: no `seen`, or `seen` true with no hit in `ch_notes`. The report quotes both replies and the plan stops for the user with a new plan for the Player1 route (section 2): its field set is not designed and is not run-time-selectable here.
+Calls: `ch_start(<Window Map folder>, human=True)` (seen: LS-D0 run 1), `ch_attach` (seen: LS-D0 run 1), `ch_kit_setup(player=<question 7's player>)` (never tried), `ch_stop` (seen: LS-D0 run 1)
 
-### LS-D2: Star Power on Window Map (2 runs, 15 minutes)
+Run 1 of the old LS-D1 counts as this step's first run. It handed the kit to `System` with no map load, and the setup refused because the kit had no map (row P19). The next run waits for the user's answer to question 7 and for the code change that answer needs (row P22). No press is sent in this step. Pass: the setup reply prints all ten bindings matching `KIT_BINDINGS`, every player's keyboard and mouse off, and the teardown in `ch_stop` all "ok". Fail: a refusal or a binding that differs; the report quotes the setup reply and the kit agent's log, and the step goes back to the user. Stop line, before the run: question 7 is answered and its change is merged.
 
-`ch_start(..., human=True)`, `ch_attach`, `ch_kit_setup`, `ch_sp_watch_start`, `ch_play_chart(<Window Map score JSON>, song_folder=..., route="kit")`, armed before the resume if LS-D0's boot time fits `ENGINE_SEARCH_CAP_S`, else right after `ch_kit_setup`. Pass: `ch_play_status` ends `done`, `ch_sp_watch_status` lists at least one rise of the meter and one activation, `ch_compare` passes against Hydra's score file, the hit count is 142 or the missing rows are all before the kit's setup time, and the foreground count is 0. Fail: no rise of the meter with hits landing (the kind is not 0: report `ch_status`'s loader line and go to the user); or hits missing after setup (report the rows' frames as LS-K4 says). Run 2 is allowed once, only after a missed-hits fail that LS-K4's reading explains as the frame grain. Stop line, before the run: D2's online trace must be on page 07, or the user has answered the network question.
+### LS-D1b: one press, read back on the kit's player (2 runs, 10 minutes)
 
-### LS-D3: nothing left behind (1 run, 5 minutes; inside LS-D2's `ch_stop`)
+Calls: `ch_start(<Window Map folder>, human=True)` (seen: LS-D0 run 1), `ch_attach` (seen: LS-D0 run 1), `ch_kit_setup(player=<question 7's player>)` (seen: LS-D1a's passing run), `ch_kit_press("red", read="Red")` (never tried), `ch_stop` (seen: LS-D0 run 1)
+
+What only a run can settle: whether a press on the kit reaches the player question 7 picks. Pass: the press reply's `seen` shows `Red` true on the kit's player during the hold. Fail: `Red` never reads true; the report quotes the reply. To read the kick pad, the action name is `Orange`, not "Kick" (row P37). LS-D1c and LS-D1d run inside this step's game, after its pass line, before its `ch_stop`.
+
+### LS-D1c: the hit trace starts (inside LS-D1b's run)
+
+Calls: `ch_trace_start(<Window Map folder>)` (never tried)
+
+Window Map's folder holds the manifest the trace reads. Pass: the reply says the trace started. Fail: an error or a refusal; the report quotes it, and LS-D1d does not run.
+
+### LS-D1d: a hit through the kit (inside LS-D1b's run)
+
+Calls: `ch_state` (seen: LS-D0 run 1), `ch_kit_press("red")` (seen: LS-D1b's passing run), `ch_notes` (never tried)
+
+What only a run can settle: whether the drums input reads the kit on the player question 7 picks. No tool reads the score or `IsBot` today, so the proof is the hit trace. The press is timed at a red note by hand against `ch_state`'s clock. Pass: `ch_notes` lists a hit at that press. Then `KIT_PLAYER` is recorded as question 7's player in a one-line data commit that quotes the reply. Fail: no hit in `ch_notes`; the report quotes both replies and the plan stops for the user.
+
+### LS-D2a: the Senri chart starts by the direct route as ProDrums (2 runs, 10 minutes)
+
+Calls: `ch_start(<Ladies Talk folder>, human=True, player="ProDrums,Expert")` (never tried), `ch_status` (seen: LS-D0 run 1), `ch_attach` (seen: LS-D0 run 1), `ch_state` (seen: LS-D0 run 1), `ch_stop` (seen: LS-D0 run 1)
+
+The folder is `C:\Clone Hero\songs\Hydra Probe\Ladies Talk fill check`, the same chart LS-K5 plays (row P26). The player word is named, because the default `Drums,Expert` drops accents and ghosts (rows P4 and P32), and this is a pro-drums chart (row P29). No kit, no press. Pass: the status shows "loader ran after patch: yes", `ch_state` shows a moving clock, and the MD5 is unchanged. Fail: the launch or the patch fails, or the clock never moves; the report quotes `ch_status`. Stop line, before the run: question 8 is answered, because LS-D2d plays a song to its end (row P39).
+
+### LS-D2b: the Star Power watch on the Senri chart (2 runs, 10 minutes)
+
+Calls: `ch_start(<Ladies Talk folder>, human=True, player="ProDrums,Expert")` (seen: LS-D2a's passing run), `ch_attach` (seen: LS-D0 run 1), `ch_kit_setup(player=<question 7's player>)` (seen: LS-D1a's passing run), `ch_sp_watch_start(<Ladies Talk folder>)` (never tried), `ch_stop` (seen: LS-D0 run 1)
+
+`ch_start` returns only after the resume, and `ch_attach` waits about 5 s after the launch, so nothing can be armed before the resume (row P38). The watch starts after `ch_kit_setup`. No press. Pass: the watch's CSV, read from disk, holds rows with a moving clock and an empty meter. Fail: the watch finds no engine or ends at its cap; the report quotes its reply. LS-D2c runs inside this step's game, before its `ch_stop`.
+
+### LS-D2c: the watch's status (inside LS-D2b's run)
+
+Calls: `ch_sp_watch_status` (never tried)
+
+Pass: the reply names the engine's address and lists the rows the CSV holds. Fail: an error, or rows that disagree with the CSV; the report quotes both.
+
+### LS-D2d: Star Power on the Senri chart (2 runs, 15 minutes)
+
+Calls: `ch_start(<Ladies Talk folder>, human=True, player="ProDrums,Expert")` (seen: LS-D2a's passing run), `ch_attach` (seen: LS-D0 run 1), `ch_kit_setup(player=<question 7's player>)` (seen: LS-D1a's passing run), `ch_sp_watch_start(<Ladies Talk folder>)` (seen: LS-D2b's passing run), `ch_play_chart(<Senri score JSON>, song_folder=<Ladies Talk folder>, route="kit")` (never tried), `ch_sp_watch_status` (seen: LS-D2c's passing run), `ch_stop` (seen: LS-D0 run 1)
+
+The score JSON is the one question 9 settles (rows P35 and P36). `ch_play_chart` is called right after `ch_sp_watch_start`. Pass: `ch_sp_watch_status` lists at least one rise of the meter and one activation, and the foreground count is 0. A rise proves the player's kind is not Bot (rows P7 and P30). An activation needs a hit on a fill's activation note with the meter at least half full (rows P33 and P34). Fail: no rise of the meter with presses landing (the kind is not 0: report `ch_status`'s loader line and go to the user); or presses missing after setup (report the rows' frames as LS-K4 says). Run 2 is allowed once, only after a missed-hits fail that LS-K4's reading explains as the frame grain. LS-D2e, LS-D2f and LS-D2g run inside this step's game, before its `ch_stop`, and LS-D3 reads that `ch_stop`.
+
+### LS-D2e: the play session's status (inside LS-D2d's run)
+
+Calls: `ch_play_status` (never tried)
+
+Pass: the session ends `done`, and every press row with `hit` 0 lies before the kit's setup time. Fail: rows with `hit` 0 after setup; the report gives their frames against the chart time.
+
+### LS-D2f: the stats file after the song (inside LS-D2d's run)
+
+Calls: `ch_wait_stats` (never tried)
+
+Pass: the reply names a stats copy written after the song ended. Fail: it ends at its cap; the report quotes it.
+
+### LS-D2g: the score against Hydra's (inside LS-D2d's run)
+
+Calls: `ch_compare(<stats copy>, <Senri score JSON>)` (never tried)
+
+Pass: the compare passes against the score file question 9 settles. Fail on the compare alone: the report quotes its three lines and goes to the user; the score file, not the run, may be what differs (question 9).
+
+### LS-D3: nothing left behind (1 run, 5 minutes; inside LS-D2d's `ch_stop`)
+
+Calls: `ch_stop` (seen: LS-D0 run 1)
 
 Pass: every file line says "unchanged" or "restored", `profiles.ini` and `profiles.bin` among them, the registry line is one of the two, the teardown checks are all "ok", and the MD5 matches. Fail: any other line; it goes to the user with the line and the backup folder.
 
-### LS-K4 and LS-K5
+### LS-K4: the auto-player on Window Map
 
-They stand as written in `2026-10-30-ch-mcp-in-game-input.md`, with the song started by `ch_start(..., human=True)` instead of `ch_start_song` or the kit walk.
+Calls: `ch_start(<Window Map folder>, human=True)` (seen: LS-D0 run 1), `ch_attach` (seen: LS-D0 run 1), `ch_kit_setup(player=<question 7's player>)` (seen: LS-D1a's passing run), `ch_play_chart(<Window Map score JSON>, song_folder=<Window Map folder>, route="kit")` (never tried), `ch_play_status` (seen: LS-D2e's passing run), `ch_wait_stats` (seen: LS-D2f's passing run), `ch_compare(<stats copy>, <Window Map score JSON>)` (seen: LS-D2g's passing run), `ch_stop` (seen: LS-D0 run 1)
+
+It stands as written in `2026-10-30-ch-mcp-in-game-input.md`, with the song started by `ch_start(..., human=True)` instead of `ch_start_song` or the kit walk. It runs after LS-D2g, so its only new piece is `ch_play_chart` on Window Map.
+
+### LS-K5: the Senri fill check
+
+Calls: `ch_start(<Ladies Talk folder>, human=True, player="ProDrums,Expert")` (seen: LS-D2a's passing run), `ch_attach` (seen: LS-D0 run 1), `ch_kit_setup(player=<question 7's player>)` (seen: LS-D1a's passing run), `ch_sp_watch_start(<Ladies Talk folder>)` (seen: LS-D2b's passing run), `ch_play_chart(<Senri score JSON>, song_folder=<Ladies Talk folder>, route="kit")` (seen: LS-D2d's passing run), `ch_sp_between(114778.9, 166544.0)` (never tried), `ch_stop` (seen: LS-D0 run 1)
+
+It stands as written in `2026-10-30-ch-mcp-in-game-input.md`, with the song started by `ch_start(..., human=True)` and the same player word as LS-D2a. It runs after LS-D2d, so its only new piece is `ch_sp_between`.
 
 ## Out of scope (needs the user's yes to leave out)
 
@@ -240,7 +333,8 @@ They stand as written in `2026-10-30-ch-mcp-in-game-input.md`, with the song sta
 | `ch_stop` detaches the launch agent | The launch | D6 | `test_game_tools`: detach recorded before the stop |
 | `profiles.ini` and `profiles.bin` are backed up and restored | Question 3 | D6; LS-D3 | `test_game_files`: the two copied and restored byte for byte; LS-D3's lines |
 | The kit's player is a parameter with one default | Section 2 | D4; LS-D1 | `test_kit_tools`: `None` sends `Player1`, a name is sent as is; the data commit quotes LS-D1 |
-| The kit on the System Player registers hits | Section 2 | LS-D1 | `ch_kit_press` `seen` true and a hit in `ch_notes`; the step fails otherwise |
+| The kit on the player question 7 picks registers hits | Section 2; question 7 | LS-D1a to LS-D1d | `ch_kit_press` `seen` true (LS-D1b) and a hit in `ch_notes` (LS-D1d); the step fails otherwise |
+| Each live step tries one new call | Live steps; premise-map plan question 2 | PM-4 | `hydra_tests.exe "-tc=docs match code*"`, the Premise map check |
 | The game facts are on page 07 with a facts row each and a listing | The write-back | D1, D2 | `hydra_tests.exe "-tc=docs match code*"`; `dump_facts.py --check`; reviewer reads blocks against listings |
 | IN-38 is corrected only on a read of the bytes | Leads | D1 | D1's report quotes the disassembly at 0x114703 and 0x114CC9 or keeps the label |
 | Each lead is checked before it is written as a fact | Leads | D1, D2 | each block's label and evidence line; a trace out of budget is Unknown with where we looked |
@@ -251,6 +345,57 @@ They stand as written in `2026-10-30-ch-mcp-in-game-input.md`, with the song sta
 | Every live step has pass, fail, a run cap and a minutes cap, and ends with the restore lines | Live steps | main session | each step's report names its count, minutes and deciding reply |
 | No planning agent and no task touches the running game | Brief | all | every task is offline on fakes; the live steps are the main session's |
 | Nothing runs over the user's library | Rule 8 | all | every tool takes one folder |
+
+## Premise map
+
+The facts this plan stands on, in the shape `docs/agents/premise-map.md` owns. Added on 2026-10-31 by the retrofit (PM-4). A row marked `unchecked` is not settled; the step or question in its Status settles it.
+
+| Premise | Kind | Source | Status |
+|---|---|---|---|
+| P1: With no replay, the command-line loader sets the profile's `is_bot` to 1 with `mov edx, 1` at 0x396EC5, so the byte that decides it is 0x396EC6 | data | `docs/clone-hero/07-internals.md` IN-61 | checked 2026-10-31, label Proven in the game's code |
+| P2: Drums (6) and ProDrums (9) both take the loader's drums branch, which sets controller type Drums and the modifiers to DoubleKick | data | `docs/clone-hero/07-internals.md` IN-62 | checked 2026-10-31, label Proven in the game's code |
+| P3: The `--player` parser matches two comma-split words lower-case; `prodrums` gives 9 and `drums` gives 6 | data | `docs/clone-hero/07-internals.md` IN-63 | checked 2026-10-31, label Proven in the game's code |
+| P4: `ch_start` sends the player word it is given, and its default is `Drums,Expert` | code | `tools/ch_mcp/bot_run.py` line 60 (`DEFAULT_PLAYER`), `tools/ch_mcp/game_tools.py` line 248 | checked 2026-10-31 |
+| P5: The loader stores the Rewired System Player in the slot's player field | data | `docs/clone-hero/07-internals.md` IN-66 | checked 2026-10-31, label Proven in the game's code |
+| P6: The profile keeps instrument, difficulty, modifiers, `is_bot` and controller type at fixed places (+0x10, +0x11, +0x14, +0x48, +0x60) | data | `docs/clone-hero/07-internals.md` IN-65 | checked 2026-10-31, label Proven in the game's code |
+| P7: A drums player's kind is RemotePlayer, then Bot when `is_bot` is not 0, then Replay, else Player (0) | data | `docs/clone-hero/07-internals.md` IN-64 | checked 2026-10-31, label Proven in the game's code |
+| P8: The player screen copies the profile's controller type, and the profile screen's Controller row writes it | data | `docs/clone-hero/07-internals.md` IN-57 and IN-67 | checked 2026-10-31, both labelled Proven in the game's code |
+| P9: The loader is reached only from the first scene's coroutines, starting at `UnpackingScene.MoveNext` 0x361C60 | unchecked | this plan's "What was verified in the code"; no page 07 block holds the chain (searched `docs/clone-hero/07-internals.md` for 0x361C60) | LS-D0: run 1 showed the loader running once, early (row P15), which is all the live steps use; the chain itself stays unread |
+| P10: `GameAssembly.dll` is not loaded while the game is paused, so the patch can only wait for it | run | `hydra-data\ch-mcp-runs\2026-10-31\ls-d0-run1\replies.txt` line 8 (39 modules at the arm, none of them GameAssembly.dll) | checked 2026-10-31 |
+| P11: The installed il2cpp bridge waits for `GameAssembly.dll` with `Process.attachModuleObserver` | code | `dist/index.js` line 1198 of `frida-il2cpp-bridge` under `tools/ch_mcp/agent` in the main checkout | checked 2026-10-31 |
+| P12: `launch_human` starts the game paused, attaches, arms, resumes, and returns only once the status says patched | code | `tools/ch_mcp/bot_run.py` line 615 (`launch_human`) | checked 2026-10-31 |
+| P13: The backup list holds `profiles.ini` and `profiles.bin` beside `settings.ini` and `scorestats.json` | code | `tools/ch_mcp/game_files.py` line 47 (`DOCUMENTS_FILES`) | checked 2026-10-31 |
+| P14: The game keeps `profiles.ini` and `profiles.bin` in its Documents folder | data | `docs/clone-hero/07-internals.md` IN-70 | checked 2026-10-31, label Proven in the game's code |
+| P15: A paused direct start patches the byte 0.5 s after the resume, the loader runs once on the patched byte, and the song plays with no press | run | `hydra-data\ch-mcp-runs\2026-10-31\ls-d0-run1\replies.txt` lines 10 to 27 | checked 2026-10-31 |
+| P16: In LS-D0 run 1 the game came to the front once, at the launch | run | `hydra-data\ch-mcp-runs\2026-10-31\ls-d0-run1\replies.txt` lines 19 and 30 | checked 2026-10-31 |
+| P17: The user accepted the launch-time focus grab as a pass | ruling | the user's words "Yes, run LS-D1", session `90d40bc9`, as the main session quoted them in PM-4's brief; no card holds them yet | checked 2026-10-31, from the brief's quote; the reviewer's brief must carry the quote for this row to stand |
+| P18: Page 07 holds LS-D0's result as a live-run block | data | `docs/clone-hero/07-internals.md` IN-74 | checked 2026-10-31, label Proven in a live run |
+| P19: The kit on the System Player got no map, so `ch_kit_setup(player="System")` refused before any press | run | `hydra-data\ch-mcp-runs\2026-10-31\ls-d1-run1\replies.txt` lines 16 to 27 and `kit-1.jsonl` | checked 2026-10-31 |
+| P20: System's default custom-controller maps are empty; Player1 to Player4 list category 1 with layouts 0 and 2, and the kit's drum map is definition 6 at category 1, layout 2 | data | `docs/clone-hero/07-internals.md` IN-76 | checked 2026-10-31, label Proven in a live run |
+| P21: Rewired's map helper has a `LoadMap` that takes a category and a layout | data | `docs/clone-hero/07-internals.md` IN-76 (it cites `dump.cs` lines 303867 and 303889) | checked 2026-10-31, label Proven in a live run; the call itself was never made |
+| P22: With the drum map loaded onto System, kit presses reach the drums input | unchecked | nothing yet; `docs/clone-hero/07-internals.md` IN-68 says this was not checked | question 7, then LS-D1a, LS-D1b and LS-D1d |
+| P23: The drums input reads the slot's Rewired player again at each button read | data | `docs/clone-hero/07-internals.md` IN-68 | checked 2026-10-31, label Proven in the game's code |
+| P24: The kit's player is a `ch_kit_setup` argument whose default is `KIT_PLAYER`, `Player1` | code | `tools/ch_mcp/kit_tools.py` line 57 | checked 2026-10-31 |
+| P25: Window Map has no Star Power phrases: no `S` line, and 142 `N` lines under ExpertDrums | chart | `C:\Clone Hero\songs\Hydra Probe\Window Map\notes.chart` (md5 292c54ff4c4c3f36bdd5e89c6ae5f904) | checked 2026-10-31, counted by script |
+| P26: The Senri chart has 25 Star Power phrases: 25 note-116 notes on its PART DRUMS track, and none on any other track | chart | `C:\Clone Hero\songs\Hydra Probe\Ladies Talk fill check\notes.mid` (md5 9569049a5f3100d1eb759359e6eaaef5, the same bytes as `testdata/input/common/IB24/T6/Senri Kawaguchi - Ladies Talk [Kiyo Sen] (Drumeo Performance)/notes.mid`) | checked 2026-10-31, counted by script; first phrase at tick 11520, last at tick 286320, resolution 480 |
+| P27: The two run folders hold only `ch_start`, `ch_status`, `ch_attach`, `ch_state`, `ch_kit_setup` and `ch_stop`, so no other call has run on a human launch | run | `hydra-data\ch-mcp-runs\2026-10-31\ls-d0-run1\replies.txt` and `ls-d1-run1\replies.txt` (each call headed `== ch_...`) | checked 2026-10-31 |
+| P28: The Senri chart has 40 double-kick notes (MIDI note 95) on PART DRUMS | chart | `C:\Clone Hero\songs\Hydra Probe\Ladies Talk fill check\notes.mid` | checked 2026-10-31, counted by script |
+| P29: The Senri chart is marked pro drums | chart | `C:\Clone Hero\songs\Hydra Probe\Ladies Talk fill check\song.ini` (`pro_drums = True`) | checked 2026-10-31 |
+| P30: The game reads note 116 on PART DRUMS as a Star Power phrase, and its gain code gives a Player-kind drums player those phrases | unchecked | `docs/clone-hero/05-star-power.md` SP-07 is labelled Unknown; the kind test at 0x20F4FD5 has no page block (searched `docs/clone-hero/05-star-power.md`) | LS-D2d, whose pass line is a rise of the meter |
+| P31: Hydra reads note 116 as a Star Power phrase | code | `src/parse/song.cpp` line 683 (`kSpMarkerPitch`) | checked 2026-10-31 |
+| P32: Plain Drums clears accents and ghosts; ProDrums keeps them | data | `docs/clone-hero/06-scoring.md` SC-15 | checked 2026-10-31, label Proven in the game's code |
+| P33: A phrase adds a quarter of the full bar to the meter | data | `docs/clone-hero/05-star-power.md` SP-12 | checked 2026-10-31, label Proven in the game's code |
+| P34: Drums activate only by hitting a fill's activation note, with Star Power able to activate | data | `docs/clone-hero/05-star-power.md` SP-17 | checked 2026-10-31, label Proven in the game's code |
+| P35: The game's DoubleKick modifier plays the double-kick notes, and `hydra_replay score --prodrums 1 --bass2x 1` prices the same chart the run plays | unchecked | `docs/clone-hero/07-internals.md` IN-62 names the modifier, not what it does | question 9 |
+| P36: `hydra_replay score` takes `--prodrums`, `--bass2x` and `--acts` | code | `tools/replay.cpp` line 100 (the usage text) | checked 2026-10-31 |
+| P37: The kit's kick pad reads as the game action `Orange`, not "Kick" | code | `tools/ch_mcp/kit_tools.py` line 139 (`KIT_BINDINGS` element 22) | checked 2026-10-31 |
+| P38: Nothing can be armed before the resume: `ch_start` returns after it, and `ch_attach` waits 5 s from the launch | code | `tools/ch_mcp/bot_run.py` line 615 (`launch_human`), `tools/ch_mcp/frida_tools.py` line 36 (`ATTACH_DELAY_S`) | checked 2026-10-31 |
+| P39: Whether a finished song posts anything online when nobody is logged in | unchecked | `docs/clone-hero/07-internals.md` IN-73 is labelled Unknown | question 8 |
+| P40: The user allowed the one-byte patch in memory | unchecked | this plan's question list reports "approve"; no card for session `b15bb484` sits in `docs/sessions/index.md` | question 6, once its card quotes the user's words |
+| P41: The user approved the retrofit, which changes LS-D2's chart and the order of the live steps | ruling | the user's words "Approve all six" on `docs/superpowers/plans/2026-10-31-premise-map.md` question 2, as the main session quoted them in PM-4's brief; no card holds them yet | checked 2026-10-31, from the brief's quote; the reviewer's brief must carry the quote for this row to stand |
+| P42: The game's DLL kept its MD5 through both runs | run | `hydra-data\ch-mcp-runs\2026-10-31\ls-d0-run1\replies.txt` lines 2 and 3, `ls-d1-run1\replies.txt` lines 2 and 3 | checked 2026-10-31 |
+| P43: A bot is fed the chart's notes as input, and `is_bot` is read again on every call | data | `docs/clone-hero/07-internals.md` IN-69 | checked 2026-10-31, label Proven in the game's code |
+| P44: Window Map's folder holds the manifest `ch_trace_start` reads | chart | `C:\Clone Hero\songs\Hydra Probe\Window Map\manifest.json` | checked 2026-10-31 |
 
 ## Prior art
 
