@@ -1339,3 +1339,24 @@ TEST_CASE("a folder two roots reach takes its rootfolder from the root the walk 
     CHECK(via_r[0].rootfolder == "sub");
     CHECK(via_sub[0].rootfolder == ".");
 }
+
+// AOA-W3 V3-SN5: one folder given twice as a root, the second time in other
+// letter case, with backslashes and a trailing one, is walked once. Every
+// chart comes out once, as the first spelling finds it.
+TEST_CASE("discover_charts walks a folder given twice in two spellings once") {
+    const std::string root = corpus::root();
+    const std::string respelled =
+        hydra::replace_all(hydra::to_lower_ascii(root), "/", "\\") + "\\";
+    REQUIRE(respelled != root);
+
+    auto [once, errors_once] = discover_charts({root});
+    auto [twice, errors_twice] = discover_charts({root, respelled});
+    CHECK(errors_once.empty());
+    CHECK(errors_twice.empty());
+    REQUIRE(!once.empty());
+
+    std::vector<std::string> once_paths, twice_paths;
+    for (const ScanItem& it : once) once_paths.push_back(it.notespath);
+    for (const ScanItem& it : twice) twice_paths.push_back(it.notespath);
+    CHECK(twice_paths == once_paths);
+}

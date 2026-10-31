@@ -158,8 +158,14 @@ void StoreOpenJob::run() {
 
 // ---- ScanJob --------------------------------------------------------------
 
+namespace {
+std::function<void()> g_scan_hold;
+}  // namespace
+
+void set_scan_hold_for_test(std::function<void()> hold) { g_scan_hold = std::move(hold); }
+
 ScanJob::ScanJob(std::vector<std::string> rootfolders, store::RecordStore& store)
-    : rootfolders_(std::move(rootfolders)), store_(store) {}
+    : rootfolders_(std::move(rootfolders)), store_(store), hold_(g_scan_hold) {}
 
 void ScanJob::start() { spawn([this] { run(); }); }
 
@@ -169,6 +175,20 @@ ScanProgress ScanJob::snapshot() const {
 }
 
 void ScanJob::run() {
+    // An exception ends the scan as a problem in its list, as a failed save
+    // does, and the library stays as it was.
+    try {
+        scan();
+    } catch (const std::exception& e) {
+        std::lock_guard<std::mutex> lock(mu_);
+        progress_.errors.push_back(app::plain_error_line(e));
+        progress_.phase = ScanProgress::Phase::Done;
+        progress_.finished = true;
+    }
+}
+
+void ScanJob::scan() {
+    if (hold_) hold_();
     // The previous scan's rows: any chart whose files are unchanged
     // (sig_unchanged) reuses its md5/metadata without being read again.
     const store::ChartLibraryCache cache = app::load_scan_cache(store_);

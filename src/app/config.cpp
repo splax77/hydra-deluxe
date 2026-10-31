@@ -75,11 +75,9 @@ bool installed_by_setup() {
     static const bool answer = [] {
         const std::wstring registered = registered_install_location();
         if (registered.empty()) return false;
-        const std::wstring here = win32_path(trim_trailing_separators(exe_dir()));
-        const std::wstring there = win32_path(trim_trailing_separators(wide_to_utf8(registered)));
-        if (here.empty() || there.empty()) return false;
-        return CompareStringOrdinal(here.c_str(), static_cast<int>(here.size()), there.c_str(),
-                                    static_cast<int>(there.size()), TRUE) == CSTR_EQUAL;
+        const std::string here = exe_dir();
+        if (here.empty()) return false;
+        return same_folder(here, wide_to_utf8(registered));
     }();
     return answer;
 }

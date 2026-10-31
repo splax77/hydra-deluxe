@@ -188,14 +188,21 @@ public:
     ScanProgress snapshot() const;
 
 private:
-    void run();
+    void run();   // scan() with its exceptions caught
+    void scan();  // the scan itself
 
     std::vector<std::string> rootfolders_;
     store::RecordStore& store_;
+    std::function<void()> hold_;  // set_scan_hold_for_test's hook, taken at construction
 
     mutable std::mutex mu_;
     ScanProgress progress_;
 };
+
+// Test seam: when set, every scan job built from now on calls this on its own
+// thread before it reads anything, so a test can make a scan throw. An empty
+// hook clears it. Only tests set it.
+void set_scan_hold_for_test(std::function<void()> hold);
 
 // ---- BatchJob ---------------------------------------------------------
 
