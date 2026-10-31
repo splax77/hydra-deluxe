@@ -171,7 +171,7 @@ Enum enumerate(const ScoreGraph& graph) {
 
     en.edge_views.reserve(en.edges.size());
     for (const ScoreGraphEdge* o : en.edges) {
-        EdgeView v;
+        EdgeView v{};
         v.dest = node_of(o->dest);
         v.notes_points = (int32_t)o->notes_points;
         v.comboscore = (int32_t)o->comboscore;
@@ -1981,7 +1981,8 @@ std::vector<MPath> rebuild(const ScoreGraph& graph, const Enum& en,
                 // SP outlasted the chart, so no deact edge was ever built and
                 // no edge holds these notes. Measure the song's trailing notes
                 // against the SP end the search tracked -- the same offset rule
-                // add_deact_edge uses, just against a node the graph never made.
+                // (offset_from_sp_end) a deact edge's rows use, just against a
+                // node the graph never made.
                 const double end_ms = timing.ms_index().at(oa.final_sp_end);
                 for (const BackendSqueeze& b : tail_backends) {
                     const double off = offset_from_sp_end(b.timecode.ms(), end_ms);
