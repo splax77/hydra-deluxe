@@ -4,6 +4,7 @@
 // 1. Every backticked code name in them is still a name the code uses (see
 //    code_words for which words count). A name that left the code fails with
 //    the doc, the line and the name, so the fixer knows which sentence to edit.
+//    On a Clone Hero page only the lines code_name_lines picks name Hydra code.
 // 2. The User Guide's hydra_rules.ini sample, read by the app's own rules-file
 //    reader, equals core::Rules{}.
 // 3. A default written in prose carries a marker right after it,
@@ -15,12 +16,14 @@
 //    file is a PNG within the size limits (kDocImageMaxBytes and
 //    kDocImagesMaxTotalBytes).
 // 5. Every game fact on a Clone Hero page (docs/clone-hero/) has a row in that
-//    build's facts table, every method address and field offset in
-//    tools/ch_probe/constants.py has a row in the 6142 table, and every rule
-//    block has the page template's shape. The fact forms, the table columns
-//    and the template are question 2 and "The page template" in
+//    build's facts table, found by the row's `cited` span, every method
+//    address and field offset in tools/ch_probe/constants.py has a row in the
+//    6142 table, no span on those pages holds a scrambled name, and every rule
+//    block has the page template's shape. The fact forms and the template are
+//    question 2 and "The page template" in
 //    docs/superpowers/plans/2026-10-30-clone-hero-reference.md;
-//    tools/ch_mcp/dump_facts.py --tsv writes the tables.
+//    tools/ch_mcp/dump_facts.py --tsv writes the tables and owns how a span
+//    resolves to a fact (its TABLE_COLUMNS are the columns).
 //
 // It finds the repo and walks the code through tests/source_tree.h, as the
 // scans in tests/single_owner/ do.
@@ -395,61 +398,6 @@ std::string report(const std::vector<std::string>& problems) {
 
 }  // namespace
 
-TEST_CASE("docs match code: every backticked code name exists in src/, tools/ or tests/") {
-    const std::set<std::string> words = code_words();
-    REQUIRE(words.size() > 1000);  // the walk found the sources
-    std::vector<bool> allow_used(allowed().size(), false);
-    std::vector<std::string> problems;
-    int names_checked = 0;
-    for (const Doc& d : docs()) {
-        bool fenced = false;
-        int skip_level = 0;  // inside a skipped section of this level; 0 = not
-        for (size_t i = 0; i < d.lines.size(); ++i) {
-            const std::string& line = d.lines[i];
-            if (is_fence(line)) {
-                fenced = !fenced;
-                continue;
-            }
-            if (fenced) continue;
-            if (const int level = heading_level(line)) {
-                if (skip_level && level <= skip_level) skip_level = 0;
-                if (!skip_level && !first_heading_skip_reason(line).empty()) skip_level = level;
-            }
-            if (skip_level) continue;
-            for (const std::string& span : inline_spans(line)) {
-                const std::vector<std::string> parts = code_name_parts(span);
-                if (parts.empty()) continue;
-                ++names_checked;
-                bool all_found = true;
-                for (const std::string& p : parts) all_found = all_found && words.count(p);
-                if (all_found) continue;
-                bool ok = false;
-                for (size_t a = 0; a < allowed().size(); ++a) {
-                    if (d.rel.rfind(allowed()[a].doc, 0) == 0 && parts.back() == allowed()[a].name) {
-                        allow_used[a] = true;
-                        ok = true;
-                    }
-                }
-                if (ok) continue;
-                std::string missing;
-                for (const std::string& p : parts)
-                    if (!words.count(p)) missing += (missing.empty() ? "" : ", ") + p;
-                problems.push_back(d.rel + ":" + std::to_string(i + 1) + ": `" + span + "` names " +
-                                   missing + ", which the code does not use (see code_words)");
-            }
-        }
-    }
-    // An allow-list entry that no doc needs any more is removed, so the list
-    // only shrinks.
-    for (size_t a = 0; a < allowed().size(); ++a)
-        if (!allow_used[a])
-            problems.push_back("allow-list entry no doc needs: " + allowed()[a].doc + " `" +
-                               allowed()[a].name + "`");
-    CHECK(names_checked > 100);  // the docs had names to check
-    INFO(report(problems));
-    CHECK(problems.empty());
-}
-
 TEST_CASE("docs match code: the User Guide's hydra_rules.ini sample is the defaults") {
     const fs::path root = sourcetree::root();
     const std::vector<std::string> guide = read_lines(root / "docs" / "UserGuide.md");
@@ -665,6 +613,7 @@ struct FactRow {
     std::string member;
     std::optional<uint64_t> rva;     // blank for 4045, whose dump has no addresses
     std::optional<uint64_t> offset;  // a field's offset, blank for others
+    std::string cited;               // the span as a page writes it
 };
 
 struct FactsTable {
@@ -673,11 +622,11 @@ struct FactsTable {
     std::vector<FactRow> rows;
 };
 
-// The facts tables' columns, in the order question 2 gives them, and the
-// column line tools/ch_mcp/dump_facts.py --tsv writes after the # header.
+// The facts tables' columns, and the column line tools/ch_mcp/dump_facts.py
+// --tsv writes after the # header (its TABLE_COLUMNS).
 enum FactColumn : size_t { kColBuild, kColKind, kColTypeDefIndex, kColClass, kColMember, kColRva,
-                           kColOffset, kColCount };
-constexpr const char* kFactColumnLine = "build\tkind\ttypedef_index\tclass\tmember\trva\toffset";
+                           kColOffset, kColCited, kColCount };
+constexpr const char* kFactColumnLine = "build\tkind\ttypedef_index\tclass\tmember\trva\toffset\tcited";
 
 // The repo-relative path of one build's facts table.
 std::string facts_table_rel(const std::string& build) {
@@ -717,7 +666,7 @@ FactsTable load_facts_table(const std::string& build, std::vector<std::string>& 
             continue;
         }
         FactRow r{cols[kColTypeDefIndex], cols[kColClass], cols[kColMember], read_hex(cols[kColRva]),
-                  read_hex(cols[kColOffset])};
+                  read_hex(cols[kColOffset]), cols[kColCited]};
         if (!cols[kColRva].empty() && !r.rva)
             problems.push_back(where + "the RVA \"" + cols[kColRva] + "\" is not a hex number");
         if (!cols[kColOffset].empty() && !r.offset)
@@ -727,26 +676,13 @@ FactsTable load_facts_table(const std::string& build, std::vector<std::string>& 
     return t;
 }
 
-// Whether a table has the row a fact span names.
-bool has_row(const FactsTable& t, const FactSpan& f) {
-    for (const FactRow& r : t.rows) {
-        switch (f.form) {
-            case FactForm::Rva:
-                if (r.rva && *r.rva == f.number) return true;
-                break;
-            case FactForm::ClassMember:
-                if (r.class_name == f.left && r.member == f.right) return true;
-                break;
-            case FactForm::IndexMember:
-                if (r.type_def_index == f.left && r.member == f.right) return true;
-                break;
-            case FactForm::IndexOffset:
-                if (r.type_def_index == f.left && r.offset && *r.offset == f.number) return true;
-                break;
-            default:
-                break;
-        }
-    }
+// Whether a table has a row for a page span. The tool resolved the span when
+// it wrote the table (a readable name from the names map, a namespaced class
+// such as `System.Math`), so the test only looks the span up as written.
+bool has_row(const FactsTable& t, const std::string& span) {
+    const std::string cited = hydra::trim(span);
+    for (const FactRow& r : t.rows)
+        if (r.cited == cited) return true;
     return false;
 }
 
@@ -755,13 +691,16 @@ bool has_row(const FactsTable& t, const FactSpan& f) {
 constexpr const char* kFixedLines[] = {"Rule:", "Label:", "Evidence:", "Game code (", "Hydra:", "Ruling:",
                                        "Found:"};
 
-// The four labels, from the same template.
-constexpr const char* kLabels[] = {"Proven in the game's code", "Proven in a live run",
-                                   "Hydra assumes it, never checked", "Unknown"};
+// The four labels, from the same template. A block with the assumed label
+// cites Hydra code on its Evidence line (code_name_lines).
+constexpr const char* kAssumedLabel = "Hydra assumes it, never checked";
+constexpr const char* kLabels[] = {"Proven in the game's code", "Proven in a live run", kAssumedLabel,
+                                   "Unknown"};
 
-// The builds that have a facts table. A span's build is its block's Game code
-// line, else the nearest heading above it that names a build ("Build
-// 1.0.0.4045"), else 1.1; tools/ch_mcp/dump_facts.py --tsv picks the same.
+// The builds that have a facts table. A span's build is the one its page's
+// place gives (place_build_of), else its block's Game code line, else the
+// nearest heading above it that names a build ("Build 1.0.0.4045"), else 1.1;
+// tools/ch_mcp/dump_facts.py --tsv picks the same.
 constexpr const char* kBuild11 = "6142";
 constexpr const char* kBuild10 = "4045";
 
@@ -806,8 +745,18 @@ struct PageScan {
     std::vector<int> block_of;           // index into blocks, or -1
     std::vector<bool> fenced;            // inside a fenced code block, so skipped
     std::vector<std::string> build_at;   // the nearest build heading above, else 6142
+    std::string place_build;             // the build the page's place gives, else empty
     std::vector<std::pair<std::string, size_t>> q_headings;  // on the questions page
 };
+
+// The build a page's place gives: a file under code/<build>/ takes that build
+// for every span in it, so one rule holds for every note and no heading form
+// has to be remembered. tools/ch_mcp/dump_facts.py place_build picks the same.
+std::string place_build_of(const std::string& name) {
+    static const std::regex under_build(R"(^code/(\d+)/)");
+    std::smatch m;
+    return std::regex_search(name, m, under_build) ? m.str(1) : std::string();
+}
 
 PageScan scan_page(const Doc& d) {
     static const std::regex build_heading(R"(\bBuild \d+\.\d+\.\d+\.(\d+)\b)");
@@ -817,11 +766,12 @@ PageScan scan_page(const Doc& d) {
     for (const char* not_area : kNotAreaPages) area = area && name != not_area;
     PageScan s;
     s.doc = &d;
+    s.place_build = place_build_of(name);
     s.block_of.assign(d.lines.size(), -1);
     s.fenced.assign(d.lines.size(), false);
-    s.build_at.assign(d.lines.size(), kBuild11);
+    std::string build = s.place_build.empty() ? kBuild11 : s.place_build;
+    s.build_at.assign(d.lines.size(), build);
     bool fenced = false;
-    std::string build = kBuild11;
     // The headings above that name a build, outermost first: a section's
     // build ends where the next heading of its level or a higher one starts.
     std::vector<std::pair<int, std::string>> sections;
@@ -836,7 +786,9 @@ PageScan scan_page(const Doc& d) {
             std::smatch m;
             while (!sections.empty() && sections.back().first >= level) sections.pop_back();
             if (std::regex_search(text, m, build_heading)) sections.emplace_back(level, m.str(1));
-            build = sections.empty() ? kBuild11 : sections.back().second;
+            build = !s.place_build.empty() ? s.place_build
+                    : sections.empty()     ? kBuild11
+                                           : sections.back().second;
             cur = -1;
             if (level == 3) {
                 s.blocks.push_back(RuleBlock{static_cast<int>(i + 1), area, {}, build});
@@ -854,12 +806,51 @@ PageScan scan_page(const Doc& d) {
     return s;
 }
 
+// The lines of a doc check 1 reads. A Clone Hero page documents the game, so
+// most of its spans are the game's names; Hydra code appears only on a
+// block's `Hydra:` line, and on the `Evidence:` line of a block labelled
+// kAssumedLabel (the page template). Every line of any other doc is read.
+std::vector<bool> code_name_lines(const Doc& d) {
+    if (d.rel.rfind(std::string(kCloneHeroDir) + "/", 0) != 0) return std::vector<bool>(d.lines.size(), true);
+    std::vector<bool> out(d.lines.size(), false);
+    const PageScan s = scan_page(d);
+    for (const RuleBlock& b : s.blocks) {
+        const auto lines_of = [&b](const char* key) {
+            const auto it = b.fixed.find(key);
+            return it == b.fixed.end() ? std::vector<size_t>{} : it->second;
+        };
+        for (size_t i : lines_of("Hydra:")) out[i] = true;
+        bool assumed = false;
+        for (size_t i : lines_of("Label:"))
+            assumed = assumed || hydra::trim(d.lines[i].substr(std::string("Label:").size())) == kAssumedLabel;
+        if (assumed)
+            for (size_t i : lines_of("Evidence:")) out[i] = true;
+    }
+    return out;
+}
+
+// Every span on a Clone Hero page that holds a byte outside ASCII. The
+// game's scrambled names are written by our readable name from that build's
+// names map instead; tools/ch_mcp/dump_facts.py refuses the same spans.
+void check_ascii_spans(const PageScan& s, std::vector<std::string>& problems) {
+    const Doc& d = *s.doc;
+    for (size_t i = 0; i < d.lines.size(); ++i) {
+        if (s.fenced[i]) continue;
+        for (const std::string& span : inline_spans(d.lines[i]))
+            if (std::any_of(span.begin(), span.end(), [](char c) { return static_cast<unsigned char>(c) >= 0x80; }))
+                problems.push_back(d.rel + ":" + std::to_string(i + 1) + ": `" + span +
+                                   "` holds a non-ASCII letter; write the readable name from " + kCloneHeroDir +
+                                   "/code/names-<build>.tsv instead");
+    }
+}
+
 CloneHeroCheck check_clone_hero(const std::vector<Doc>& pages) {
     CloneHeroCheck out;
     std::vector<PageScan> scans;
     for (const Doc& d : pages) {
         scans.push_back(scan_page(d));
         for (const RuleBlock& b : scans.back().blocks) out.blocks += b.rule ? 1 : 0;
+        check_ascii_spans(scans.back(), out.problems);
     }
     // This branch lands on main before task J1 writes the facts tables, over
     // the skeleton pages, so with no rule block anywhere nothing is checked.
@@ -896,8 +887,9 @@ CloneHeroCheck check_clone_hero(const std::vector<Doc>& pages) {
             for (size_t i : b.fixed["Game code ("]) {
                 std::smatch m;
                 const std::string& line = d.lines[i];
-                if (std::regex_search(line, m, game_code) && tables.count(m.str(1)))
-                    b.build = m.str(1);
+                if (std::regex_search(line, m, game_code) && tables.count(m.str(1))) {
+                    if (s.place_build.empty()) b.build = m.str(1);  // the place wins over a Game code line
+                }
                 else if (b.rule)
                     problems.push_back(d.rel + ":" + std::to_string(i + 1) +
                                        ": the Game code line names no build with a facts table (" +
@@ -962,7 +954,7 @@ CloneHeroCheck check_clone_hero(const std::vector<Doc>& pages) {
                 const FactsTable& t = table->second;
                 if (!t.present) continue;  // reported once above
                 ++out.checked[f.form];
-                if (!has_row(t, f)) problems.push_back(where + " has no row in " + t.rel);
+                if (!has_row(t, span)) problems.push_back(where + " has no row in " + t.rel);
             }
         }
     }
@@ -1031,6 +1023,104 @@ CloneHeroCheck check_clone_hero(const std::vector<Doc>& pages) {
 
 }  // namespace
 
+TEST_CASE("docs match code: every backticked code name exists in src/, tools/ or tests/") {
+    const std::set<std::string> words = code_words();
+    REQUIRE(words.size() > 1000);  // the walk found the sources
+    std::vector<bool> allow_used(allowed().size(), false);
+    std::vector<std::string> problems;
+    int names_checked = 0;
+    for (const Doc& d : docs()) {
+        const std::vector<bool> read = code_name_lines(d);
+        bool fenced = false;
+        int skip_level = 0;  // inside a skipped section of this level; 0 = not
+        for (size_t i = 0; i < d.lines.size(); ++i) {
+            const std::string& line = d.lines[i];
+            if (is_fence(line)) {
+                fenced = !fenced;
+                continue;
+            }
+            if (fenced) continue;
+            if (const int level = heading_level(line)) {
+                if (skip_level && level <= skip_level) skip_level = 0;
+                if (!skip_level && !first_heading_skip_reason(line).empty()) skip_level = level;
+            }
+            if (skip_level || !read[i]) continue;
+            for (const std::string& span : inline_spans(line)) {
+                const std::vector<std::string> parts = code_name_parts(span);
+                if (parts.empty()) continue;
+                ++names_checked;
+                bool all_found = true;
+                for (const std::string& p : parts) all_found = all_found && words.count(p);
+                if (all_found) continue;
+                bool ok = false;
+                for (size_t a = 0; a < allowed().size(); ++a) {
+                    if (d.rel.rfind(allowed()[a].doc, 0) == 0 && parts.back() == allowed()[a].name) {
+                        allow_used[a] = true;
+                        ok = true;
+                    }
+                }
+                if (ok) continue;
+                std::string missing;
+                for (const std::string& p : parts)
+                    if (!words.count(p)) missing += (missing.empty() ? "" : ", ") + p;
+                problems.push_back(d.rel + ":" + std::to_string(i + 1) + ": `" + span + "` names " +
+                                   missing + ", which the code does not use (see code_words)");
+            }
+        }
+    }
+    // An allow-list entry that no doc needs any more is removed, so the list
+    // only shrinks.
+    for (size_t a = 0; a < allowed().size(); ++a)
+        if (!allow_used[a])
+            problems.push_back("allow-list entry no doc needs: " + allowed()[a].doc + " `" +
+                               allowed()[a].name + "`");
+    CHECK(names_checked > 100);  // the docs had names to check
+    INFO(report(problems));
+    CHECK(problems.empty());
+}
+
+TEST_CASE("docs match code: which Clone Hero page lines name Hydra code") {
+    const Doc page{"docs/clone-hero/05-star-power.md",
+                   {"# Star Power", "`game_note_count` before any block", "### SP-01 a proven rule",
+                    "Rule: `rule_word`", "Label: Proven in the game's code", "Evidence: `evidence_word`",
+                    "Game code (6142): `GameManager.Update`", "Hydra: `close_sp_phrase` in src/parse/song.cpp",
+                    "### SP-02 an assumed rule", "Label: Hydra assumes it, never checked",
+                    "Evidence: `activation_initial_end_times`", "Hydra: no owner",
+                    "## Open splits", "Hydra: `not_in_a_block`"}};
+    const std::vector<bool> read = code_name_lines(page);
+    const std::vector<bool> want = {false, false, false, false, false, false, false, true,
+                                    false, false, true,  true,  false, false};
+    CHECK(read == want);
+    // Any other doc is read whole.
+    const Doc other{"docs/agents/x.md", {"Hydra: a", "`b_c`"}};
+    CHECK(code_name_lines(other) == std::vector<bool>{true, true});
+}
+
+TEST_CASE("docs match code: a scrambled name on a Clone Hero page fails with its line") {
+    const Doc page{"docs/clone-hero/04-fills.md",
+                   {"# Fills", "`#8255.fillDeadline` is fine", "`#8255.\xca\xb8\xca\xb8` is not",
+                    "```", "`\xca\xb8` in a fence is not prose", "```", "`DrumsPlayer.\xca\xbb` neither"}};
+    std::vector<std::string> problems;
+    check_ascii_spans(scan_page(page), problems);
+    REQUIRE(problems.size() == 2);
+    CHECK(problems[0].rfind("docs/clone-hero/04-fills.md:3: `#8255.", 0) == 0);
+    CHECK(problems[0].find("holds a non-ASCII letter; write the readable name from "
+                           "docs/clone-hero/code/names-<build>.tsv instead") != std::string::npos);
+    CHECK(problems[1].rfind("docs/clone-hero/04-fills.md:7: ", 0) == 0);
+}
+
+TEST_CASE("docs match code: a page span is found by the table's cited column") {
+    FactsTable t;
+    t.present = true;
+    t.rows.push_back(FactRow{"1721", "Math", "", std::nullopt, std::nullopt, "System.Math"});
+    t.rows.push_back(FactRow{"8255", "", "\xca\xb8", uint64_t{0x20DEEC0}, std::nullopt, "#8255.addScore"});
+    CHECK(has_row(t, "System.Math"));
+    CHECK(has_row(t, " #8255.addScore "));
+    // The dump's own parts are not enough: the tool writes each span it resolved.
+    CHECK(!has_row(t, "Math.System"));
+    CHECK(!has_row(t, "0x20DEEC0"));
+}
+
 TEST_CASE("docs match code: what counts as a game fact on a Clone Hero page") {
     CHECK(fact_form("0x20DF680").form == FactForm::Rva);
     CHECK(fact_form("0x20DF680").number == 0x20DF680);
@@ -1071,14 +1161,35 @@ TEST_CASE("docs match code: which spans and which build a Clone Hero page line h
     CHECK(scan.block_of[5] == -1);
     CHECK(scan.build_at[5] == kBuild10);  // the section's build, not the block's Game code line
     CHECK(scan.build_at[7] == kBuild11);
+
+    // A file under code/<build>/ takes that build for every span, whatever
+    // its headings say: the 1.0 notes open with "Clone Hero 1.0 (build 4045)",
+    // which the heading rule does not read.
+    const Doc note10{"docs/clone-hero/code/4045/fill_deadline.md",
+                     {"# Clone Hero 1.0 (build 4045): the fill deadline", "`a.b`", "## Build 1.1.0.6142", "`c.d`",
+                      "### X", "Game code (6142): a", "`e.f`"}};
+    const PageScan scan10 = scan_page(note10);
+    CHECK(scan10.place_build == kBuild10);
+    for (size_t i : {1, 3, 6}) CHECK(scan10.build_at[i] == kBuild10);
+    REQUIRE(scan10.blocks.size() == 1);
+    CHECK(scan10.blocks[0].build == kBuild10);
+    CHECK(!scan10.blocks[0].rule);
+    // Anywhere else the place gives nothing: a page, a table, a file under no build.
+    CHECK(place_build_of("04-fills.md").empty());
+    CHECK(place_build_of("code/names-4045.tsv").empty());
+    CHECK(place_build_of("notes/code/4045/x.md").empty());
+    CHECK(place_build_of("code/6142/sp_update_20F6800.md") == kBuild11);
+    CHECK(scan_page(Doc{"docs/clone-hero/04-fills.md", {"`a.b`"}}).place_build.empty());
 }
 
 TEST_CASE("docs match code: every game fact on a Clone Hero page has a home") {
     const CloneHeroCheck result = check_clone_hero(clone_hero_pages());
     // Only once the pages hold rule blocks: the skeleton the writers start
     // from has no facts to check, so a count there would fail an empty folder.
+    // IndexMember is left out: a page may name every scrambled member through
+    // a renamed class (`DrumsEngine.addScore`) rather than its TypeDefIndex.
     if (result.blocks > 0)
-        for (FactForm form : {FactForm::Rva, FactForm::ClassMember, FactForm::IndexMember, FactForm::IndexOffset}) {
+        for (FactForm form : {FactForm::Rva, FactForm::ClassMember, FactForm::IndexOffset}) {
             INFO("fact form " << static_cast<int>(form) << " (see FactForm)");
             CHECK(result.checked.count(form));
         }
