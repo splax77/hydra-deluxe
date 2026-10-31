@@ -257,7 +257,6 @@ TEST_CASE("field fixture: What's My Age Again? (Sync Chart) SqOut") {
     CHECK(sqout.difficulty() == doctest::Approx(191.0825).epsilon(1e-5));
     CHECK(effective_backend_ms(sqout.difficulty(), r) == doctest::Approx(192.308).epsilon(1e-4));
     CHECK(squeeze_budget_ms(r) == doctest::Approx(168.92).epsilon(1e-4));
-    CHECK(squeeze_budget_ms(r, 70.0) == doctest::Approx(139.11).epsilon(1e-4));
 
     // The failed 130% attempt: real-ms displacements scale by 1.3 into chart
     // ms; the early arm is then discounted by r. 75.4/72.3 misses the gap by
@@ -325,8 +324,6 @@ TEST_CASE("field fixture: Dumpweed SqOut end anchored on the deact node") {
     CHECK(gap == doctest::Approx(143.129).epsilon(1e-4));
     const double r = scales->post.early;
     CHECK(effective_backend_ms(gap, r) == doctest::Approx(147.94).epsilon(1e-3));
-    // The budget at this scale for a 70 ms window, pinned from one run.
-    CHECK(squeeze_budget_ms(r, 70.0) == doctest::Approx(135.458).epsilon(1e-4));
     CHECK(74.1 * r + 75.1 > gap);         // the video's successful split
     CHECK(74.1 * 0.890911 + 75.1 < gap);  // the old scale called it a miss
 
@@ -631,8 +628,8 @@ TEST_CASE("rate_activation: the stored scales are the only scales") {
     CHECK(r.scale_governs);
 }
 
-TEST_CASE("timing_tiers: the ladder at W=85 and at W=70") {
-    // The default 85 ms window -> a 170 ms two-hit budget: the 2 ms "Normal"
+TEST_CASE("timing_tiers: the ladder at the 85 ms hit window") {
+    // The 85 ms window (kHitWindowMs) -> a 170 ms two-hit budget: the 2 ms "Normal"
     // floor, then quarters of the budget.
     std::vector<TimingTier> t85 = timing_tiers();
     REQUIRE(t85.size() == 7);
@@ -651,6 +648,8 @@ TEST_CASE("timing_tiers: the ladder at W=85 and at W=70") {
     CHECK(std::string(t85[2].tok) == "t2");
     REQUIRE(t85[2].cutoff.has_value());
     CHECK(*t85[2].cutoff == doctest::Approx(85.0));
+    // The Extreme edge is the window itself, read from its one owner.
+    CHECK(*t85[2].cutoff == kHitWindowMs);
 
     CHECK(std::string(t85[3].name) == "Insane");
     CHECK(std::string(t85[3].tok) == "t3");

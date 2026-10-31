@@ -113,25 +113,6 @@ TEST_CASE("commit_settings analyzes again when the ms limit or the score range c
     CHECK(app->viewed.ready());
 }
 
-TEST_CASE("commit_settings with a non-identity change analyzes nothing again") {
-    ScratchPaths paths("appstate_plain");
-    const ChartLibraryEntry song = corpus_chart("click_plain");
-    std::unique_ptr<AppState> app = app_with(paths, {song});
-    click(*app, song);
-
-    GenerationWatcher records;
-    records.changed(app->record_generation);
-
-    // The hit window is a display setting -- it never reaches the search, so
-    // nothing cached goes stale and nothing is analyzed again.
-    app->settings.hit_window_ms += 1;
-    app->commit_settings();
-    CHECK_FALSE(records.changed(app->record_generation));
-    CHECK(app->view_job == nullptr);
-    CHECK(app->viewed.ready());
-    CHECK(Settings::load_file(paths.ini).hit_window_ms == app->settings.hit_window_ms);
-}
-
 // Ruling 12: a burst of setting changes (a held +/- box) runs one job at a
 // time and ends with one analysis of the final settings. The settings in
 // between are never saved. The first step's job is held at a latch, as a

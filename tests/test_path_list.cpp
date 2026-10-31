@@ -241,30 +241,28 @@ TEST_CASE("PathsTabCache: views are built once and rebuilt only when their input
     // Every button carries its path's own notation.
     for (const PathButtonView& b : list.buttons) CHECK(b.notation == b.path->pathstring());
 
-    // The details: once per (path, record, hit window, backend limit).
+    // The details: once per (path, record, backend limit).
     const Path& best = rec.best_path();
     for (int frame = 0; frame < 5; ++frame)
-        cache.details(best, rec, 8, &timing, 70.0, std::nullopt, core::default_rules());
+        cache.details(best, rec, 8, &timing, std::nullopt, core::default_rules());
     CHECK(cache.details_builds() == 1);
-    cache.details(best, rec, 8, &timing, 71.0, std::nullopt, core::default_rules());
+    cache.details(best, rec, 8, &timing, 30.0, core::default_rules());
     CHECK(cache.details_builds() == 2);
-    cache.details(best, rec, 8, &timing, 71.0, 30.0, core::default_rules());
+    cache.details(best, rec, 9, &timing, 30.0, core::default_rules());
     CHECK(cache.details_builds() == 3);
-    cache.details(best, rec, 9, &timing, 71.0, 30.0, core::default_rules());
-    CHECK(cache.details_builds() == 4);
     std::vector<const Path*> all = rec.all_paths();
     if (all.size() > 1) {
-        cache.details(*all[1], rec, 9, &timing, 71.0, 30.0, core::default_rules());
-        CHECK(cache.details_builds() == 5);
+        cache.details(*all[1], rec, 9, &timing, 30.0, core::default_rules());
+        CHECK(cache.details_builds() == 4);
     }
 
     // What the cache hands back is what a fresh build gives.
     const PathsTabCache::Details& d =
-        cache.details(best, rec, 9, &timing, 71.0, 30.0, core::default_rules());
+        cache.details(best, rec, 9, &timing, 30.0, core::default_rules());
     CHECK(d.breakdown == build_score_breakdown(best));
     CHECK(d.squeezes.size() == build_multsqueezes(rec).size());
     CHECK(d.activations.acts.size() ==
-          build_activations(best, rec, &timing, 71.0, 30.0).acts.size());
+          build_activations(best, rec, &timing, 30.0).acts.size());
 }
 
 TEST_CASE("path buttons: Burnout's list, in the mockup's groups") {
@@ -346,7 +344,7 @@ TEST_CASE("multiplier squeeze: the note names follow the Pro Drums setting") {
     const SongTiming& timing = ar.song.timing();
     auto squeezes_of = [&](bool pro_drums) {
         PathsTabCache cache;
-        return cache.details(rec.best_path(), rec, 1, &timing, 70.0, std::nullopt,
+        return cache.details(rec.best_path(), rec, 1, &timing, std::nullopt,
                              core::default_rules(), std::nullopt, pro_drums).squeezes;
     };
     const std::vector<MultSqueezeView> on = squeezes_of(true);
@@ -404,21 +402,21 @@ TEST_CASE("PathsTabCache: folds reset for a new path, not for a display setting"
     const Path& best = rec.best_path();
     PathsTabCache cache;
 
-    cache.details(best, rec, 1, &timing, 70.0, std::nullopt, core::default_rules());
+    cache.details(best, rec, 1, &timing,std::nullopt, core::default_rules());
     REQUIRE(cache.ui().act_open.size() == 3);
     CHECK(cache.ui().act_open == std::vector<char>{0, 0, 0});
     cache.ui().set_all(true);
 
     // A display setting rebuilds the rows but keeps what is unfolded.
-    cache.details(best, rec, 1, &timing, 70.0, 30.0, core::default_rules());
+    cache.details(best, rec, 1, &timing,30.0, core::default_rules());
     CHECK(cache.ui().all_open());
-    cache.details(best, rec, 1, &timing, 70.0, 30.0, core::default_rules(), 126000.0);
+    cache.details(best, rec, 1, &timing,30.0, core::default_rules(), 126000.0);
     CHECK(cache.ui().all_open());
     CHECK(cache.details_builds() == 3);
 
     // Another path starts fresh: every row folded again.
     const Path& other = *rec.all_paths()[1];
-    cache.details(other, rec, 1, &timing, 70.0, 30.0, core::default_rules(), 126000.0);
+    cache.details(other, rec, 1, &timing,30.0, core::default_rules(), 126000.0);
     CHECK(cache.ui().act_open.size() == other.walk_activations().size());
     CHECK(cache.ui().act_open == std::vector<char>(other.walk_activations().size(), 0));
     CHECK_FALSE(cache.ui().all_open());

@@ -113,15 +113,13 @@ TEST_CASE("the fill page carries the shared stylesheet and script") {
 // The six path rows and four scores the samples page shows
 // (tests/report_samples.h). The path_tiles and dm_tiles cases are pinned on
 // them.
-using report_samples::kSampleHitWindowMs;
 using report_samples::sample_dm_rows;
 using report_samples::sample_path_rows;
 
 TEST_CASE("path_tiles: the six sample rows") {
     const std::vector<report::ReportRow> rows = sample_path_rows();
     const hydra::store::ChartIndex library = report_samples::sample_index();
-    CHECK(tile_pairs(report::path_tiles(rows, every_row(rows.size()), kSampleHitWindowMs,
-                                        library)) ==
+    CHECK(tile_pairs(report::path_tiles(rows, every_row(rows.size()), library)) ==
           TilePairs{{"Charts shown", "3 of 3"},
                     {"Paths shown", "6"},
                     {"Hardest ms", "171.0 ms"},
@@ -134,21 +132,21 @@ TEST_CASE("path_tiles: the tiles count only the rows shown") {
     const hydra::store::ChartIndex library = report_samples::sample_index();
     // Song A's three rows and Song C's one: two charts, no Beyond row, and the
     // hardest timing is Song C's 90 ms.
-    CHECK(tile_pairs(report::path_tiles(rows, {0, 1, 2, 5}, kSampleHitWindowMs, library)) ==
+    CHECK(tile_pairs(report::path_tiles(rows, {0, 1, 2, 5}, library)) ==
           TilePairs{{"Charts shown", "2 of 3"},
                     {"Paths shown", "4"},
                     {"Hardest ms", "90.0 ms"},
                     {"Past 170 ms", "0"},
                     {"Highest skip", "1"}});
     // Song A's mode with no squeeze alone: no timing to show.
-    CHECK(tile_pairs(report::path_tiles(rows, {2}, kSampleHitWindowMs, library)) ==
+    CHECK(tile_pairs(report::path_tiles(rows, {2}, library)) ==
           TilePairs{{"Charts shown", "1 of 3"},
                     {"Paths shown", "1"},
                     {"Hardest ms", "—"},
                     {"Past 170 ms", "0"},
                     {"Highest skip", "0"}});
     // Nothing passes the filters.
-    CHECK(tile_pairs(report::path_tiles(rows, {}, kSampleHitWindowMs, library)) ==
+    CHECK(tile_pairs(report::path_tiles(rows, {}, library)) ==
           TilePairs{{"Charts shown", "0 of 3"},
                     {"Paths shown", "0"},
                     {"Hardest ms", "—"},
@@ -162,11 +160,11 @@ TEST_CASE("path_tiles: Charts shown adds each chart's copies once") {
     // rows still count its copies once. The library's own count, after "of",
     // counts the same copies.
     const hydra::store::ChartIndex library = report_samples::sample_index(1200, 2);
-    CHECK(report::path_tiles(rows, every_row(rows.size()), kSampleHitWindowMs, library)[0]
+    CHECK(report::path_tiles(rows, every_row(rows.size()), library)[0]
               .value == "1,203 of 1,203");
-    CHECK(report::path_tiles(rows, {0, 1, 2}, kSampleHitWindowMs, library)[0].value ==
+    CHECK(report::path_tiles(rows, {0, 1, 2}, library)[0].value ==
           "1,200 of 1,203");
-    CHECK(report::path_tiles(rows, {3}, kSampleHitWindowMs, library)[0].value == "2 of 1,203");
+    CHECK(report::path_tiles(rows, {3}, library)[0].value == "2 of 1,203");
 }
 
 TEST_CASE("dm_tiles: the four sample scores") {
@@ -347,6 +345,6 @@ TEST_CASE("path report counts charts by hash in the Charts shown tile") {
          hydra::store::ChartLibraryEntry{"h2", "Same", "Name"}});
 
     // Two charts, however many rows each has, and even when the names match.
-    CHECK(report::path_tiles({a, a2, b}, every_row(3), 85.0, library)[0].value == "2 of 2");
-    CHECK(report::path_tiles({a, a2, b}, {0, 1}, 85.0, library)[0].value == "1 of 2");
+    CHECK(report::path_tiles({a, a2, b}, every_row(3), library)[0].value == "2 of 2");
+    CHECK(report::path_tiles({a, a2, b}, {0, 1}, library)[0].value == "1 of 2");
 }

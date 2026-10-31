@@ -346,9 +346,8 @@ TEST_CASE("jobs: a report job lists the records filed under its run") {
     RecordStore store(":memory:");
     BatchRun run = test_run();
     run.profile.lens = hydra::store::Lens::from(std::optional<int>(20), 1, 7);
-    const hydra::ui::ReportJob job(store, run, 85.5);
+    const hydra::ui::ReportJob job(store, run);
     CHECK(job.profile() == run.profile);
-    CHECK(job.hit_window_ms() == 85.5);  // the decimal is kept (D51 call 15)
 }
 
 // D97: an empty report shows generate_report's own reason when it gives one,

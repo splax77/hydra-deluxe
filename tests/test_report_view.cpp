@@ -36,8 +36,6 @@ using report_view::Tone;
 
 namespace {
 
-constexpr double kWindow = 85.0;  // the default hit window; Beyond starts at 170 ms
-
 ReportRow path_row(std::string song, std::string artist, std::string charter,
                    std::string path, int64_t score, std::optional<double> ms,
                    bool optimal) {
@@ -49,7 +47,7 @@ ReportRow path_row(std::string song, std::string artist, std::string charter,
     r.score = score;
     r.optimal = optimal;
     r.ms = ms;
-    std::tie(r.tier, r.tok) = report::tier_for(ms, kWindow);
+    std::tie(r.tier, r.tok) = report::tier_for(ms);
     return r;
 }
 
@@ -68,7 +66,7 @@ std::vector<std::string> dm_texts(const std::vector<DmReportRow>& rows) {
 TableView<ReportRow> path_view(std::vector<ReportRow> rows) {
     std::vector<std::string> texts = path_texts(rows);
     return TableView<ReportRow>(std::move(rows), std::move(texts),
-                                path_report_view::path_columns(kWindow));
+                                path_report_view::path_columns());
 }
 
 TableView<DmReportRow> dm_view(std::vector<DmReportRow> rows) {
@@ -284,7 +282,7 @@ TEST_CASE("report view sort: first directions, empty values sink, two keys, stab
 // User-chosen wording: "Hardest ms" (D48 Q7), "hardest squeeze or required early fill" (D51 call 5), definitions as hover text (D103 item 4).
 // The page lists one profile, so it has no Mode column (D115 A2-2).
 TEST_CASE("path report columns: the page's fourteen, in order, word for word") {
-    const auto cols = path_report_view::path_columns(kWindow);
+    const auto cols = path_report_view::path_columns();
     CHECK(ids(cols) == std::vector<std::string>{"song", "artist", "charter", "path", "score",
                                                 "acts", "skip", "ms", "tier", "efill", "mult",
                                                 "sqin", "sqout", "notes"});
@@ -307,7 +305,7 @@ TEST_CASE("path report columns: the page's fourteen, in order, word for word") {
         "Activations: how many times the path uses Star Power.",
         "The most fills any one activation passes over before activating.",
         "The hardest squeeze or required early fill the path needs, in ms: the gap at the SP end, or at the fill deadline. It leaves out the frontend timing scale. A dash means it needs none.",
-        "How hard Hardest ms is, in bands of your hit window. Beyond means more than twice the hit window.",
+        "How hard Hardest ms is, in bands of the 85 ms hit window. Beyond means more than twice the hit window.",
         "The hardest early fill on the path (written E0 in the path): how many ms early you must hit to summon the fill. Negative means slack. A dash means the path has none.",
         "Average multiplier: the score without solo bonuses divided by the base score (every note at 1x).",
         "SP phrase notes squeezed into an active SP window (+ in the path).",
@@ -335,7 +333,7 @@ TEST_CASE("path report columns: the page's fourteen, in order, word for word") {
 }
 
 TEST_CASE("path report cells read as the page wrote them") {
-    const auto cols = path_report_view::path_columns(kWindow);
+    const auto cols = path_report_view::path_columns();
     ReportRow r = path_row("Halo", "Beyonce", "Someone", "2(+) E0 1", 1234567, 12.34, true);
     r.acts = 3;
     r.skip = 2;
@@ -370,15 +368,15 @@ TEST_CASE("path report cells read as the page wrote them") {
 }
 
 TEST_CASE("path report: Timing choices and the keep-rule") {
-    const std::vector<TimingTier> tiers = timing_tiers(kWindow);
-    const auto choices = path_report_view::timing_choices(kWindow);
+    const std::vector<TimingTier> tiers = timing_tiers();
+    const auto choices = path_report_view::timing_choices();
     REQUIRE(choices.size() == tiers.size() + 1);
     // The window's start, new-result and Clear filters index keeps every tier.
     CHECK_FALSE(choices[report_view::kEveryRowChoice].tier.has_value());
     CHECK(choices[0].label == "All timing tiers");
     for (size_t i = 0; i < tiers.size(); ++i) {
         CHECK(choices[i + 1].tier == std::optional<std::string>(tiers[i].name));
-        CHECK(choices[i + 1].label == path_report_view::tier_label(tiers[i].name, kWindow));
+        CHECK(choices[i + 1].label == path_report_view::tier_label(tiers[i].name));
     }
     CHECK(choices[1].label == "Normal");
     CHECK(choices[choices.size() - 2].label == "Beyond 170 ms");
