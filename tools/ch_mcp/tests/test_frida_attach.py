@@ -25,6 +25,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
+from tools.ch_mcp.tests import test_launch_core as LC  # noqa: E402
 from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
 
 AGENT_DIR = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "agent")
@@ -1041,6 +1042,63 @@ class LaunchAgentTest(unittest.TestCase):
         for what, text in bad.items():
             with self.subTest(case=what):
                 self.assertNotEqual(patch_findings(text), [])
+
+
+@unittest.skipIf(LC.NODE is None, "node is not on PATH, so launch_core.ts cannot run")
+class LaunchRepliesTest(Workspace):
+    """The statuses launch_core.ts really builds, run through LiveAgent's
+    request path as launch.ts sends them (a copy of the status plus the id).
+    LiveAgent raises on an `error` key, so a status that carried one would
+    fail every poll of bot_run.launch_human."""
+
+    def request_status(self, status):
+        session = ReplySession([{"state": "idle"}, status])
+        agent = FA.LiveAgent(self.agent, log_path=self.out_path,
+                             frida_mod=FakeFrida(session), wait=instant_wait,
+                             out=self.lines.append)
+        self.addCleanup(agent.detach)
+        agent.start(30.0)
+        return agent.request({"type": "status"}, 5.0)
+
+    def test_every_status_the_agent_builds_comes_back_whole(self):
+        statuses = {
+            "waiting": LC.run({"op": "waiting"})["status"],
+            "patched": LC.apply()["status"],
+            "patched, loader ran": LC.apply(loader_runs=2)["status"],
+            "refused, entry differs": LC.apply(
+                {LC.LOADER: [0x48, 0x89, 0x5C], LC.SITE: LC.SITE_BYTES})["status"],
+            "refused, write did not take": LC.apply(write_sticks=False)["status"],
+            "refused, read threw": LC.apply(read_throws=True)["status"],
+        }
+        for what, status in statuses.items():
+            with self.subTest(case=what):
+                self.assertEqual(self.request_status(status), status)
+        self.assertEqual(statuses["refused, entry differs"]["state"], "refused")
+        self.assertIn("nothing was written", statuses["refused, entry differs"]["reason"])
+
+    def test_launch_ts_sends_an_error_key_only_for_a_fault(self):
+        # Its one `error:` site is the catch that answers a message that threw.
+        with open(os.path.join(AGENT_DIR, LAUNCH_AGENT), encoding="utf-8") as fh:
+            code = [line for line in fh.read().splitlines()
+                    if not line.lstrip().startswith("//")]
+        sites = [line.strip() for line in code if re.search(r"\berror\b", line)]
+        self.assertEqual(sites, ["send({ error: `${message.type} failed: ${e}`, id });"])
+        with open(os.path.join(AGENT_DIR, LAUNCH_CORE), encoding="utf-8") as fh:
+            self.assertNotRegex(
+                "\n".join(l for l in fh.read().splitlines()
+                          if not l.lstrip().startswith("//")), r"\berror\s*:")
+
+    def test_an_agent_fault_still_raises_with_its_text(self):
+        session = ReplySession([{"state": "idle"}, {"error": "arm failed: boom"}])
+        agent = FA.LiveAgent(self.agent, log_path=self.out_path,
+                             frida_mod=FakeFrida(session), wait=instant_wait,
+                             out=self.lines.append)
+        self.addCleanup(agent.detach)
+        agent.start(30.0)
+        with self.assertRaises(FA.ReadFailed) as caught:
+            agent.request({"type": "arm", "patch": {}}, 5.0)
+        self.assertEqual(caught.exception.reason, FA.END_AGENT_ERROR)
+        self.assertIn("arm failed: boom", str(caught.exception))
 
 
 class BuildScriptsTest(unittest.TestCase):

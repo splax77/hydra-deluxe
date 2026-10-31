@@ -26,6 +26,8 @@ ORIGINAL = {
     "scoredata.bin": b"\x00\x01\x02",
     "scoresext.bin": b"\x03\x04",
     "user.bin": b"\x05" * 64,
+    "profiles.ini": b"[profile]\nplayer_name = Tester\n",
+    "profiles.bin": b"\x06\x07\x08",
 }
 
 
@@ -65,10 +67,33 @@ class BackupRestoreTest(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def test_the_five_files_are_the_safety_rule_list(self):
+    def test_the_backed_up_files_are_the_safety_rule_list(self):
         self.assertEqual(sorted(G.DOCUMENTS_FILES + G.LOCALLOW_FILES), sorted(ORIGINAL))
 
-    def test_round_trip_restores_all_five_byte_for_byte(self):
+    def test_the_profiles_files_are_backed_up_from_locallow(self):
+        # The direct-start plan's question 3, answered 2026-10-31.
+        self.assertEqual(G.LOCALLOW_FILES[-2:], ("profiles.ini", "profiles.bin"))
+
+    def test_the_profiles_files_are_copied_and_restored_byte_for_byte(self):
+        f = Folders(self.tmp, absent=("profiles.bin",))
+        backup = G.backup(f.docs, f.low, f.root, stamp=lambda: "s")
+        self.assertEqual(_read(os.path.join(backup, "profiles.ini")), ORIGINAL["profiles.ini"])
+        self.assertFalse(os.path.exists(os.path.join(backup, "profiles.bin")))
+
+        # The run: the game saves a cloned profile into both files.
+        _write(f.path("profiles.ini"), b"[profile]\nplayer_name = clone\n")
+        _write(f.path("profiles.bin"), b"clone")
+
+        lines = G.restore(backup, out=lambda _l: None)
+        self.assertEqual(_read(f.path("profiles.ini")), ORIGINAL["profiles.ini"])
+        self.assertFalse(os.path.exists(f.path("profiles.bin")))
+        aside = os.path.join(backup, "profiles.bin" + G.AFTER_RUN_SUFFIX)
+        self.assertEqual(_read(aside), b"clone")
+        self.assertIn("profiles.ini: restored", lines)
+        self.assertIn(f"profiles.bin: absent before the run; the game's new copy moved to {aside}",
+                      lines)
+
+    def test_round_trip_restores_every_file_byte_for_byte(self):
         f = Folders(self.tmp, absent=("user.bin",))
         backup = G.backup(f.docs, f.low, f.root, stamp=lambda: "20261028-101500")
         self.assertEqual(backup, os.path.join(f.root, "backup-20261028-101500"))
@@ -92,6 +117,8 @@ class BackupRestoreTest(unittest.TestCase):
             "scoredata.bin: restored",
             "scoresext.bin: unchanged",
             f"user.bin: absent before the run; the game's new copy moved to {aside}",
+            "profiles.ini: unchanged",
+            "profiles.bin: unchanged",
         ])
 
     def test_a_file_absent_before_and_after_is_reported_unchanged(self):
@@ -188,7 +215,7 @@ class RegistryTest(unittest.TestCase):
         with open(os.path.join(backup, G.BACKUP_MANIFEST), encoding="utf-8") as f:
             entries = json.load(f)["files"]
         self.assertEqual(entries[-1], {"name": "rewired.reg", "key": G.REGISTRY_KEY})
-        self.assertEqual(len(entries), 6)
+        self.assertEqual(len(entries), 8)
 
     def test_backup_with_no_runner_leaves_the_key_out(self):
         backup = G.backup(self.f.docs, self.f.low, self.f.root, stamp=lambda: "s")

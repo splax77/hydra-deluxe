@@ -38,9 +38,12 @@ LOCALLOW_DIR = os.path.join(_HOME, "AppData", "LocalLow", "srylain Inc_", "Clone
 
 SCORESTATS = "scorestats.json"
 SETTINGS = "settings.ini"
-# The five files a live step backs up, by the folder they live in.
+# The files a live step backs up, by the folder they live in. The two
+# profiles files are there because a human run's loader clones a profile, and
+# whether the game saves that clone is not yet known (the direct-start plan's
+# question 3, answered 2026-10-31: back them up now).
 DOCUMENTS_FILES = (SETTINGS, SCORESTATS)
-LOCALLOW_FILES = ("scoredata.bin", "scoresext.bin", "user.bin")
+LOCALLOW_FILES = ("scoredata.bin", "scoresext.bin", "user.bin", "profiles.ini", "profiles.bin")
 
 BACKUP_PREFIX = "backup-"
 BACKUP_MANIFEST = "backup.json"
@@ -130,7 +133,8 @@ def _export_registry(key: str, path: str, run_reg: RegRunner) -> None:
 def backup(documents_dir: str, locallow_dir: str, backup_root: str, *,
            stamp: Callable[[], str] = _stamp,
            run_reg: Optional[RegRunner] = None) -> str:
-    """Copy the five user files into a new dated folder under `backup_root`
+    """Copy the user files (DOCUMENTS_FILES and LOCALLOW_FILES) into a new
+    dated folder under `backup_root`
     and return that folder. A file that does not exist is recorded as absent,
     so restore() can put that state back too. With a `run_reg`, REGISTRY_KEY
     is exported beside them as REGISTRY_BACKUP and recorded in the manifest

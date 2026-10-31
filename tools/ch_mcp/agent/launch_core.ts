@@ -49,7 +49,7 @@ export interface Status {
     loader_runs: number;
     bytes_at_first_run: string | null;
     patched_at_ms: number | null;
-    error: string | null;
+    reason: string | null;
 }
 
 const RVA = /^0x[0-9A-Fa-f]+$/;
@@ -134,7 +134,7 @@ export function waitingStatus(): Status {
         loader_runs: 0,
         bytes_at_first_run: null,
         patched_at_ms: null,
-        error: null,
+        reason: null,
     };
 }
 
@@ -149,14 +149,14 @@ function loaderRan(status: Status, patch: Patch, io: Io): void {
         status.bytes_at_first_run = formatBytes(
             io.readBytes(patch.patch_rva, parseBytes(patch.expect)!.length));
     } catch (e) {
-        status.error = `reading the patch site at the loader's first run failed: ${e}`;
+        status.reason = `reading the patch site at the loader's first run failed: ${e}`;
     }
 }
 
 // The whole decision, made once when the module appears. Both byte checks
 // must pass before anything is written; then the write, its read-back, and
 // only after those the read-only hook on the loader's entry. Any difference
-// or failure ends in `refused` with the reason in `error`, and the caller
+// or failure ends in `refused` with its `reason`, and the caller
 // kills the game on a refusal (bot_run.launch_human).
 export function applyPatch(patch: Patch, io: Io, module: ModuleSeen,
                            now: () => number): Status {
@@ -172,7 +172,7 @@ export function applyPatch(patch: Patch, io: Io, module: ModuleSeen,
         status.before = formatBytes(before);
         if (!same(entry, entryExpect) || !same(before, expect)) {
             status.state = "refused";
-            status.error = `the game's bytes are not the ones launch_patch.json expects: ` +
+            status.reason = `the game's bytes are not the ones launch_patch.json expects: ` +
                 `the loader's entry at ${patch.loader_rva} reads ${status.entry_before} ` +
                 `(expected ${patch.entry_expect}), the patch site at ${patch.patch_rva} ` +
                 `reads ${status.before} (expected ${patch.expect}); nothing was written`;
@@ -183,7 +183,7 @@ export function applyPatch(patch: Patch, io: Io, module: ModuleSeen,
         status.after = formatBytes(after);
         if (!same(after, write)) {
             status.state = "refused";
-            status.error = `the write did not take: the patch site at ${patch.patch_rva} ` +
+            status.reason = `the write did not take: the patch site at ${patch.patch_rva} ` +
                 `reads ${status.after} after writing ${patch.write}`;
             return status;
         }
@@ -192,7 +192,7 @@ export function applyPatch(patch: Patch, io: Io, module: ModuleSeen,
         status.state = "patched";
     } catch (e) {
         status.state = "refused";
-        status.error = `patching ${patch.module} failed: ${e}`;
+        status.reason = `patching ${patch.module} failed: ${e}`;
     }
     return status;
 }
