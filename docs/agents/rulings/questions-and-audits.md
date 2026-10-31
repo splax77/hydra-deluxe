@@ -2,6 +2,7 @@
 
 How a question goes to the user, what to do when Hydra answers one question two ways, and when an audit finding may close. The line format is in README.md beside this file. Newest first.
 
+- **2026-10-31** "Yes, require it", to: "Should every rule question list each screen's before and after text?" (session a7d95f1c-a1ce-46e9-bf4d-2e7cfbd98d1e; note: questions-describe-the-real-rule; backs: docs/agents/agent-rules.md rule 11)
 - **2026-10-29** "when did they diverge and why? did i ever ask for it?" (session 2026-10-29-caca5d75, by date; note: never-keep-a-split-quietly; backs: docs/agents/audit-method.md)
 - **2026-10-29** "why are we even using two different systems? why are you still trying to convince me of more convoluted bullshit?" and ruled "yes everything should use one rule" for the Backend timings rows (M39/306/33). (session 2026-10-29-caca5d75, by date; note: never-keep-a-split-quietly; backs: docs/agents/audit-method.md)
 - **2026-10-29** As the note records it: It closes only on the user's words that name both sides. The five rules the user approved on 2026-10-29 ("yes both"): a split is a question by default; "already decided" must quote the ruling, and the quote must name both values. And: The user asked "how can i trust the results of any audit when this keeps happening?" (session: not stated; note: audit-closures-need-quoted-ruling; backs: docs/agents/audit-method.md)

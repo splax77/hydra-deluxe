@@ -68,3 +68,4 @@ These hold for the main session and every agent it sends out. Each is in short f
 8. Nobody runs a full library test without the user's explicit permission, asked for in chat first.
 9. Never trust another agent's summary or the comments it left behind. The code and the source data are the source of truth. Check a claim against them before you repeat it or act on it. A handoff is another agent's summary. Before any new work starts from a handoff, every claim in it is checked against what actually exists: the code is the source of truth, and a handoff claim that does not match the code is wrong. `docs/agents/handoff.md` says what a handoff holds and how to check one.
 10. After a push, report done and move on. Don't wait for CI or check it unless your change is to CI itself.
+11. A question that changes what Hydra does lists what the user will see: every screen that reads the changed value, with its text before and after from a real chart.
