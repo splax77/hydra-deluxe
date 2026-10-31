@@ -501,7 +501,7 @@ The table has one row per path and starts sorted by score, highest first. Its co
 | `Acts` | Activations: how many times the path uses Star Power. |
 | `Max skip` | The most fills any one activation passes over before activating. |
 | `Hardest ms` | The hardest squeeze or required early fill the path needs, in ms: the gap at the SP end, or at the fill deadline. It leaves out the frontend timing scale. A dash means it needs none. |
-| `Timing` | The path's timing tier, the bands the timing dropdown lists. It sorts in the dropdown's order, from `Normal` to `None`. |
+| `Timing` | The path's timing tier, the bands the timing dropdown lists. It sorts in the dropdown's order, from `Normal` to `No timing needed`. |
 | `Early fill (ms)` | The hardest early fill on the path (written `E0` in the path): how many ms early you must hit to summon the fill. Negative means slack. A dash means the path has none. |
 | `Average Multiplier` | The score without solo bonuses divided by the base score (every note at 1x). |
 | `SqIn` | SP phrase notes squeezed into an active SP window (`+` in the path). |
