@@ -99,6 +99,8 @@ constexpr ImU32 kActivateSampleColor = rgba(0x77, 0xcc, 0x99, 1.0f);
 constexpr float kActivateSampleW = 2.0f;
 constexpr float kActivateSampleRiseRem = 0.2f;
 constexpr ImU32 kEnoughSwatchColor = rgba(54, 208, 214, 0.28f);
+// The shading itself: drawMeter's `fill="rgba(54,208,214,.16)"` (line 546).
+constexpr ImU32 kEnoughShadeColor = rgba(54, 208, 214, 0.16f);
 constexpr float kEnoughSwatchHRem = 0.6f;
 constexpr float kEnoughSwatchDropRem = 0.05f;
 
@@ -400,6 +402,30 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
                                  acts.y1 - metrics.band_inset}});
     }
 
+    // Where enough is saved: the saved line read against the activate line
+    // (a smaller y is higher), from the end of the last activation's band, so
+    // the phrase count is compared only where activate_y was placed. A
+    // segment that crosses the line splits where its straight line meets it,
+    // as it is drawn.
+    float from_x = 0.0f;
+    for (const TimelineBand& b : out.bands) from_x = std::max(from_x, b.rect.x1);
+    for (size_t i = 0; i + 1 < out.saved_line.size(); i += 2) {
+        const TimelinePoint a = out.saved_line[i], b = out.saved_line[i + 1];
+        const bool a_in = a.y <= out.activate_y, b_in = b.y <= out.activate_y;
+        if (!a_in && !b_in) continue;
+        float x0 = a.x, x1 = b.x;
+        if (a_in != b_in) {
+            const float cross = a.x + (out.activate_y - a.y) / (b.y - a.y) * (b.x - a.x);
+            (a_in ? x1 : x0) = cross;
+        }
+        x0 = std::max(x0, from_x);
+        if (!(x1 > x0)) continue;
+        if (!out.saved_enough.empty() && out.saved_enough.back().x1 >= x0)
+            out.saved_enough.back().x1 = std::max(out.saved_enough.back().x1, x1);
+        else
+            out.saved_enough.push_back({x0, saved.y0, x1, saved.y1});
+    }
+
     const TimelineRect& fr = out.row(TimelineRow::Fills);
     const float half = metrics.fill_size * 0.5f;
     auto listed = [](const std::vector<int64_t>& ticks, int64_t tick) {
@@ -565,8 +591,10 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         for (float x : l.phrase_x) draw_star(dl, at(x - size * 0.5f, y), size, true, kStarColor);
     }
 
-    // Star Power saved: the activate line, then the curve on top.
+    // Star Power saved: the shading where enough is saved, the activate line,
+    // then the curve on top.
     {
+        for (const TimelineRect& e : l.saved_enough) dl->AddRectFilled(at(e.x0, e.y0), at(e.x1, e.y1), kEnoughShadeColor);
         const float ay = l.activate_y;
         draw_dashed(dl, {at(0.0f, ay), at(l.width, ay)}, kActivateLineColor, px(1.0f));
         std::vector<ImVec2> pts;

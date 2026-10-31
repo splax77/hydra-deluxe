@@ -143,6 +143,66 @@ TEST_CASE("preview timeline: the insets move the bands, the fills and the saved 
     CHECK(l.activate_y == doctest::Approx(35.0f));
 }
 
+TEST_CASE("preview timeline: the saved row's enough stretches start after the last activation and split a segment at the line") {
+    app::PreviewScene s = fx::timed_scene();
+    app::PreviewActivation act;
+    act.ms = 2000.0;
+    act.has_sp_end = true;
+    act.sp_end_ms = 3000.0;
+    s.activations = {act};
+    // Three bars before the activation, drained to none by its end, then a
+    // climb from one bar to the cap that crosses the line at two.
+    s.sp_meter.cap = 4;
+    s.sp_meter.segments = {{0.0, 2000.0, 3.0, 3.0},
+                           {2000.0, 3000.0, 3.0, 0.0},
+                           {3000.0, 5000.0, 0.0, 0.0},
+                           {5000.0, 9000.0, 1.0, 4.0},
+                           {9000.0, 10000.0, 4.0, 4.0}};
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, metrics());
+    // The three bars before the window are not shaded; the climb is from its
+    // crossing on, merged with the stretch at the cap. Pinned from one run.
+    REQUIRE(l.saved_enough.size() == 1);
+    CHECK(l.saved_enough[0].x0 == doctest::Approx(633.3333f));
+    CHECK(l.saved_enough[0].x1 == doctest::Approx(1000.0f));
+    // The saved row's full height, 30 to 40 px down.
+    CHECK(l.saved_enough[0].y0 == doctest::Approx(30.0f));
+    CHECK(l.saved_enough[0].y1 == doctest::Approx(40.0f));
+}
+
+TEST_CASE("preview timeline: a segment ending exactly on the line is enough") {
+    app::PreviewScene s = fx::timed_scene();
+    // A climb that ends on two bars, a stretch on the line, then a drain
+    // that starts on it.
+    s.sp_meter.cap = 4;
+    s.sp_meter.segments = {{0.0, 3000.0, 0.0, 2.0},
+                           {3000.0, 6000.0, 2.0, 2.0},
+                           {6000.0, 8000.0, 2.0, 0.0},
+                           {8000.0, 10000.0, 0.0, 0.0}};
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, metrics());
+    // Pinned from one run.
+    REQUIRE(l.saved_enough.size() == 1);
+    CHECK(l.saved_enough[0].x0 == doctest::Approx(300.0f));
+    CHECK(l.saved_enough[0].x1 == doctest::Approx(600.0f));
+}
+
+TEST_CASE("preview timeline: with no activation every stretch at or above the line is shaded") {
+    app::PreviewScene s = fx::timed_scene();
+    // Above the line, down across it, below, up across it, above.
+    s.sp_meter.cap = 4;
+    s.sp_meter.segments = {{0.0, 2000.0, 3.0, 3.0},
+                           {2000.0, 4000.0, 3.0, 1.0},
+                           {4000.0, 6000.0, 1.0, 1.0},
+                           {6000.0, 8000.0, 1.0, 3.0},
+                           {8000.0, 10000.0, 3.0, 3.0}};
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, metrics());
+    // Pinned from one run.
+    REQUIRE(l.saved_enough.size() == 2);
+    CHECK(l.saved_enough[0].x0 == doctest::Approx(0.0f));
+    CHECK(l.saved_enough[0].x1 == doctest::Approx(300.0f));
+    CHECK(l.saved_enough[1].x0 == doctest::Approx(700.0f));
+    CHECK(l.saved_enough[1].x1 == doctest::Approx(1000.0f));
+}
+
 TEST_CASE("preview timeline: the ghost path's windows are bands in their own row, which is 0 tall with no ghost") {
     app::PreviewScene s = scene_with_fills();
     ui::TimelineMetrics m = metrics();
