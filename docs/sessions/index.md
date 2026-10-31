@@ -436,6 +436,10 @@ One session is kept locally and has no line here.
 - 2026-10-31 a379bc75 MCP kit live steps handoff (2026-10-31) | clone-hero, tests, review, planning | Ended with LS-K0, LS-K1 and LS-K2 run, the kit change merged to main as 00e752a8, and a handoff written for LS-K3 and later; nothing was pushed. [write-back]
 - 2026-10-31 597e0795 MCP kit live steps handoff (2026-10-31) | clone-hero, tests, review, agents | Ended with the three reader fixes (f3bcbe9b) and the stop-reply order fix (b4e52436) merged to main after one reviewer each, and a handoff written for run 2; nothing was pushed. [write-back]
 - 2026-10-31 5cc1cc07 MCP kit live steps handoff (2026-10-31) | clone-hero, agents, review, docs | The session ended with the run 3 handoff written, after run 2 stopped on the player screen without loading the song; ch_stop put the user's files back.
+- 2026-10-31 6777b546 Agent harness design patterns (2026-10-31) | hooks, agents, memory, docs, review, planning | The session ended with every planned change reviewed and merged, into Hydra's main and into the local hooks repo, and nothing pushed.
+- 2026-10-31 b15bb484 MCP kit live steps handoff (2026-10-31) | clone-hero, planning, review, agents, memory | The session ended with the direct-start build merged to main and a handoff written on its own branch, with no live step run yet.
+- 2026-10-31 66400966 Session cards into docs and handoff cleanup (2026-10-31) | docs, transcripts, hooks, review, memory | The session ended with both parts merged to main and main pushed to GitHub, after the user said yes to the push.
+- 2026-10-31 b478542c Audit of audits REST handoff (2026-10-31) | review, agents, tests, report-table, comparison-status, rules-file-error | The session ended with every approved change merged into main (main now at 38d27ba6), nothing pushed, and two open notes waiting for the user's yes to drop them.
 
 ## Proposed tags
 
