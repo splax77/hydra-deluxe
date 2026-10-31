@@ -14,7 +14,8 @@
 // itself keeps no timer.
 //
 // Messages, in order:
-//   {hooked, classes, missing, no_code, not_hooked}  once, after hooking
+//   {hooked, classes, missing, no_code, not_hooked, skipped}
+//                                                    once, after hooking
 //   {call, class, names, rva, args, songTime, t_ms}  once per call
 //   {error}                                          instead, when nothing
 //                                                    could be hooked
@@ -27,9 +28,18 @@ import { Arg, decode, ObjectReader, Target, targetsOf } from "./hooks_common.js"
 interface WatchClass {
     label: string;      // the class name the replies use
     full_name: string;  // namespace and name, as the image looks it up
+    assembly: string | null;  // the one assembly to look in, or null for every one
     hook: "all" | "listed" | "by_name";
     rvas: number[];     // for "listed": the methods' RVAs
     names: string[];    // for "by_name": the method names, every overload
+    skip_rvas: number[];  // for "all": addresses not to hook (method_watch.py's shared_rvas)
+}
+
+// One address an "all" class left unhooked, as the start reply names it.
+interface Skipped {
+    class: string;
+    names: string[];
+    rva: string;
 }
 
 interface Settings {
@@ -56,9 +66,18 @@ const readArgObject: ObjectReader = (obj) => {
     return klass.name;
 };
 
-// The class in every image, so one that only shares its name with another is
+// The class in the one assembly its entry names. With no assembly named, the
+// class in every image, so one that only shares its name with another is
 // refused rather than guessed at (trace.ts's findEngine does the same).
-function findClass(fullName: string): Il2Cpp.Class | string {
+function findClass(fullName: string, assemblyName: string | null): Il2Cpp.Class | string {
+    if (assemblyName !== null) {
+        const assembly = Il2Cpp.domain.tryAssembly(assemblyName);
+        if (assembly === null) {
+            return `assembly ${assemblyName} not found`;
+        }
+        const klass = assembly.image.tryClass(fullName);
+        return klass === null ? `class ${fullName} not found in assembly ${assemblyName}` : klass;
+    }
     const found: Il2Cpp.Class[] = [];
     for (const assembly of Il2Cpp.domain.assemblies) {
         const klass = assembly.image.tryClass(fullName);
@@ -78,9 +97,9 @@ function rvaText(rva: number): string {
 
 // The targets of one class, added to `byAddress` (one target per code
 // address, across every class). Returns what could not be found.
-function watchClass(c: WatchClass, byAddress: Map<string, Target>,
-                    noCode: string[]): { hooked: number; missing: string[] } {
-    const klass = findClass(c.full_name);
+function watchClass(c: WatchClass, byAddress: Map<string, Target>, noCode: string[],
+                    skipped: Skipped[]): { hooked: number; missing: string[] } {
+    const klass = findClass(c.full_name, c.assembly);
     if (typeof klass === "string") {
         return { hooked: 0, missing: [klass] };
     }
@@ -108,11 +127,17 @@ function watchClass(c: WatchClass, byAddress: Map<string, Target>,
     }
     const own = new Map<string, Target>();
     targetsOf(klass, c.label, wanted, own, noCode, readArgObject);
+    const skip = new Set(c.skip_rvas.map(rvaText));
     let hooked = 0;
     for (const [key, t] of own) {
         // A listed class hooks only the listed addresses, not an overload
         // that shares a listed method's name.
         if (c.hook === "listed" && !c.rvas.map(rvaText).includes(t.entry.rva)) {
+            continue;
+        }
+        // Code other classes run too would bury this class's calls.
+        if (skip.has(t.entry.rva)) {
+            skipped.push({ class: c.label, names: t.entry.names, rva: t.entry.rva });
             continue;
         }
         const known = byAddress.get(key);
@@ -148,16 +173,17 @@ function run(s: Settings, startMs: number) {
     const byAddress = new Map<string, Target>();
     const noCode: string[] = [];
     const missing: string[] = [];
+    const skipped: Skipped[] = [];
     const classes: { class: string; hooked: number }[] = [];
     for (const c of s.classes) {
-        const result = watchClass(c, byAddress, noCode);
+        const result = watchClass(c, byAddress, noCode, skipped);
         classes.push({ class: c.label, hooked: result.hooked });
         missing.push(...result.missing);
     }
     const targets = [...byAddress.values()];
     if (targets.length === 0) {
         send({ error: "no method of the watched classes could be hooked",
-               classes, missing, no_code: noCode });
+               classes, missing, no_code: noCode, skipped });
         return;
     }
     const songTime = songClock();
@@ -179,7 +205,7 @@ function run(s: Settings, startMs: number) {
             notHooked.push(`${t.entry.owner} ${t.entry.names.join("/")}: ${e}`);
         }
     }
-    send({ hooked, classes, missing, no_code: noCode, not_hooked: notHooked });
+    send({ hooked, classes, missing, no_code: noCode, not_hooked: notHooked, skipped });
 }
 
 recv("start", (message: Settings) => {
