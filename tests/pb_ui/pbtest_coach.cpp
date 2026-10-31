@@ -132,6 +132,8 @@ void test_cant_activate_reason(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(s.history().generation(), generation);
     IM_CHECK(!s.history().current().path.has_value());
     IM_CHECK(!s.history().can_undo());
+    // As the locked-fill test: the pointer must not stay on the fill.
+    move_off_timeline(ctx);
 }
 
 // One activation on Burnout, then a click on a fill before it: the guide
@@ -157,6 +159,9 @@ void test_locked_fill_says_left_to_right(ImGuiTestContext* ctx) {
     // The path is as it was: the one step, and none at m12.
     IM_CHECK(on_screen(h, step_row));
     IM_CHECK(!on_screen(h, "m12 →"));
+    // The pointer would stay on that fill into the next test, whose fresh
+    // builder would read it as a hover.
+    move_off_timeline(ctx);
 }
 
 // White Washed under the GUI tests' Path limit (10 ms, the app's default):
@@ -184,11 +189,6 @@ void test_tight_window_note(ImGuiTestContext* ctx) {
     IM_CHECK_LE(span->second - span->first, ImGui::GetTextLineHeightWithSpacing());
 }
 
-// Burnout's fills these tests point at, by chord tick, from one run: the
-// first fill the player can activate on (m20) and the second (m40), as
-// pbtest_build.cpp names them.
-constexpr int64_t kFirstFillTick = 36480;
-constexpr int64_t kSecondFillTick = 74880;
 // The Preview clock's tail on Burnout, the song's length (from one run).
 constexpr const char* kBurnoutClockTail = " / 2:10.088";
 // The first fill's span start as the clock reads it, where a hover or a
@@ -196,14 +196,6 @@ constexpr const char* kBurnoutClockTail = " / 2:10.088";
 constexpr const char* kFirstFillSpanStart = "0:23.840";
 // How long a check waits for a card whose search is still running.
 constexpr double kCardWaitSeconds = 60.0;
-
-std::string any_ref(const std::string& label) { return "**/" + label; }
-
-std::string fill_ref(int64_t tick) { return any_ref(hydra::ui::timeline_fill_id(tick)); }
-
-// The list row the screen names after the fill's chord tick (pb_window.cpp's
-// draw_choices).
-std::string choice_ref(int64_t tick) { return any_ref("##choice_" + std::to_string(tick)); }
 
 // The Preview's clock as the screen drew it last frame, "0:23.840 / 2:10.088",
 // or empty when it is not drawn.
@@ -214,13 +206,6 @@ std::string burnout_clock(Harness& h) {
     size_t from = tail;
     while (from > 0 && text[from - 1] != ' ' && text[from - 1] != '\n' && text[from - 1] != '\r') --from;
     return text.substr(from, tail + std::string(kBurnoutClockTail).size() - from);
-}
-
-// Moves the pointer off the timeline and the list, onto the legend's
-// checkbox, so no fill or row stays hovered.
-void move_off_timeline(ImGuiTestContext* ctx) {
-    ctx->MouseMove(any_ref(hydra::pathbuilder::kShowBestPathLabel).c_str());
-    ctx->Yield(2);
 }
 
 // Burnout playing, then a hover on its first fill: the hover pauses and shows

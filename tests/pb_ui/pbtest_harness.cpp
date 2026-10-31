@@ -14,6 +14,7 @@
 #include "app/config.h"
 #include "audio/device.h"
 #include "ui/preview_controller.h"
+#include "ui/preview_timeline.h"  // timeline_fill_id
 
 namespace fs = std::filesystem;
 
@@ -110,6 +111,17 @@ bool click_fill(ImGuiTestContext* ctx, int64_t act_tick) {
     s.decisions().click_fill(s.search_graph(), s.chart()->settings, s.history().current().windows,
                              act_tick, s.history().generation());
     return wait_for_edit(ctx);
+}
+
+std::string any_ref(const std::string& label) { return "**/" + label; }
+
+std::string fill_ref(int64_t tick) { return any_ref(hydra::ui::timeline_fill_id(tick)); }
+
+std::string choice_ref(int64_t tick) { return any_ref("##choice_" + std::to_string(tick)); }
+
+void move_off_timeline(ImGuiTestContext* ctx) {
+    ctx->MouseMove(any_ref(hydra::pathbuilder::kShowBestPathLabel).c_str());
+    ctx->Yield(2);
 }
 
 bool click_step(ImGuiTestContext* ctx, size_t index) {

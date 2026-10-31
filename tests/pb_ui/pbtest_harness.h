@@ -55,6 +55,26 @@ bool wait_for_edit(ImGuiTestContext* ctx);
 // does, and waits for the edit to land (wait_for_edit).
 bool click_fill(ImGuiTestContext* ctx, int64_t act_tick);
 
+// Burnout's first two fills the player can activate on (m20 and m40), by chord
+// tick, from one run under the GUI tests' settings.
+inline constexpr int64_t kFirstFillTick = 36480;
+inline constexpr int64_t kSecondFillTick = 74880;
+
+// The test engine's reference for the widget named `label` anywhere in the
+// builder's windows.
+std::string any_ref(const std::string& label);
+
+// The timeline's item for the fill at chord tick `tick`.
+std::string fill_ref(int64_t tick);
+
+// The list row the screen names after the fill's chord tick (pb_window.cpp's
+// draw_choices).
+std::string choice_ref(int64_t tick);
+
+// Moves the pointer off the timeline and the list, onto the legend's
+// checkbox, so no fill or row stays hovered and a fill's tooltip goes.
+void move_off_timeline(ImGuiTestContext* ctx);
+
 // Clicks the row of step `index` (from 0) in "Your activations", which opens
 // it to its sentence, and gives the click a frame to land. It leaves the
 // test's ref on the steps panel.
