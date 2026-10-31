@@ -25,6 +25,15 @@ void draw_scrub_marks(const std::vector<double>& marks);
 // when `filled`, else an outline in `col`.
 void draw_star(ImDrawList* dl, ImVec2 min, float size, bool filled, ImU32 col);
 
+// The marks the Path Builder's legend explains, one swatch each: a fill the
+// player can activate on, the player's own activation, and a fill they can't.
+enum class LegendSwatch { Offered, Activation, Cant };
+
+// One legend swatch of `kind`, drawn in the colours the Fills row draws that
+// mark in, as an item one text line tall at the cursor. The legend's words go
+// after it with ImGui::SameLine(0, 0).
+void legend_swatch(LegendSwatch kind);
+
 // The axis puts a time label every 30 s, as the mockup does
 // (docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html,
 // renderRows: `s += 30`).

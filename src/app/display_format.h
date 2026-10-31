@@ -47,6 +47,19 @@ int64_t percent_steps(int64_t part, int64_t total, int decimals);
 // away from zero.
 std::string format_points_short(int64_t points);
 
+// The minus sign before a cost on the Path Builder's screen: U+2212 in UTF-8,
+// as the mockup writes it. The UI font (ShipporiAntiqueB1-Regular.ttf) has
+// the glyph, and so does the first backup font (segoeui.ttf).
+inline constexpr char kCostMinus[] = "\xE2\x88\x92";
+
+// A cost under a fill on the timeline: kCostMinus, then format_points_short
+// ("−1.2k"), the mockup's `"−" + short(st.cost)`.
+std::string format_cost_short(int64_t cost);
+
+// A cost in full: kCostMinus, then group_thousands ("−1,234"), the mockup's
+// `"−" + fmt(...)` on an end choice.
+std::string format_cost(int64_t cost);
+
 // A song time as the Preview's clock shows it, "m:ss.mmm" ("1:04.000"). The
 // time rounds to the nearest whole ms first (a half rounds away from zero),
 // then splits into minutes and seconds, so 59,999.6 ms reads "1:00.000".

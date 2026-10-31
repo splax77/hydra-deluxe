@@ -15,6 +15,7 @@
 #include "../chart_text.h"
 #include "../testdata_dirs.h"
 
+#include "app/display_format.h"  // kFactSeparator
 #include "app/preview_view.h"
 #include "core/winstr.h"
 #include "pathbuilder/pb_text.h"
@@ -46,7 +47,15 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(h.app->state.chart() != nullptr, );
     IM_CHECK(!h.app->state.history().current().path.has_value());
     IM_CHECK(h.app->shown_path() == &*h.app->state.chart()->empty_path);
-    IM_CHECK(on_screen(h, hydra::pathbuilder::intro_text()));
+    // The intro is drawn with the star inside it, so its two sides are on
+    // screen and the joined sentence is not.
+    const std::string intro = hydra::pathbuilder::intro_text();
+    const size_t star = hydra::pathbuilder::intro_star_at();
+    IM_CHECK(on_screen(h, intro.substr(0, star) + hydra::pathbuilder::kStarOpen));
+    IM_CHECK(on_screen(h, hydra::pathbuilder::kStarClose + intro.substr(star)));
+    IM_CHECK(!on_screen(h, intro));
+    // The highway's "where" line at the song's start: the measure, then the clock.
+    IM_CHECK(on_screen(h, std::string("m1") + hydra::app::kFactSeparator + "0:00.000"));
     IM_CHECK(on_screen(h, "Step 1."));
     for (const char* label : {hydra::pathbuilder::kYourScoreLabel,
                               hydra::pathbuilder::kBestPossibleLabel,

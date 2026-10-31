@@ -10,13 +10,25 @@
 
 namespace hydra::pathbuilder {
 
-std::string intro_text() {
+namespace {
+
+// intro_text up to the star.
+std::string intro_before_star() {
     return "Build your own Star Power path, left to right. Click a glowing fill to activate Star "
            "Power there. You need at least " + std::to_string(kSpActivationBars) +
-           " Star Power phrases saved since your last activation. The number under each glowing "
-           "fill is what activating there costs you. The highway below shows the notes wherever "
-           "you hover or click.";
+           " Star Power phrases";
 }
+
+}  // namespace
+
+std::string intro_text() {
+    return intro_before_star() +
+           " saved since your last activation. The number under each glowing fill is what "
+           "activating there costs you. The highway below shows the notes wherever you hover or "
+           "click.";
+}
+
+size_t intro_star_at() { return intro_before_star().size(); }
 
 const char* const kNoStepsText =
     "None yet. Each activation you make shows up here: where it starts and ends, any squeeze it "
@@ -158,10 +170,12 @@ GuideMessage guide_text(const GuideFacts& facts) {
                     " saved phrases, so your path is finished. Your score is " +
                     group_thousands(facts.player_total) + ".",
                 false};
-    t += " Save " + need + " more phrases, then activate again.";
+    t += " Save " + need + " more phrases";
+    const size_t star_at = t.size();
+    t += ", then activate again.";
     if (facts.earliest_fill) t += " The next glowing fill is " + *facts.earliest_fill + ".";
     if (facts.best_fill) t += " Your best next choice is " + *facts.best_fill + ".";
-    return {t, false};
+    return {t, false, star_at};
 }
 
 StepText step_sentence(const SongTiming& timing, const Activation& act, int64_t cost,

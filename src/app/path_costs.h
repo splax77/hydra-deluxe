@@ -77,6 +77,12 @@ struct CandidateCost {
 std::vector<CandidateCost> candidate_costs(int64_t bf0, int64_t bf_n,
                                            const std::vector<CandidateFinish>& candidates);
 
+// The costs of one window's end choices, each against the best of them:
+// `best_finishes` holds each end's best finish (BF with that end pinned), and
+// the cost of an end is the highest of them minus its own, in the order given.
+// The best end costs 0. The one place an end choice's cost is worked out.
+std::vector<int64_t> end_costs(const std::vector<int64_t>& best_finishes);
+
 // One ladder run as it stands. The ladder's bf holds the values landed so
 // far, best[k] is the path behind bf[k] (best_finish's paths.front()), and
 // player_path is the path behind player_total (search_target's

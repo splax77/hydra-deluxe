@@ -1,6 +1,7 @@
 #include "pathbuilder/pb_window.h"
 
 #include <algorithm>
+#include <cfloat>
 #include <cstdint>
 #include <exception>
 #include <optional>
@@ -8,9 +9,11 @@
 #include <utility>
 
 #include "imgui.h"
+#include "imgui_internal.h"  // ImFontCalcTextSizeEx, CalcWrapWidthForPos, the window's text cursor
 
 #include "app/config.h"          // chartmode_key
-#include "app/display_format.h"  // clock_str, format_points_short, kFactSeparator
+#include "app/display_format.h"  // clock_str, format_cost, format_cost_short, kFactSeparator
+#include "app/path_costs.h"      // end_costs
 #include "app/preview_view.h"    // path_overlay_key
 #include "app/report.h"          // ChipToken
 #include "app/user_messages.h"
@@ -37,6 +40,8 @@ constexpr float kHighwayW = 600.0f;
 // `.num .hint{max-width:190px}` and `.tip{max-width:360px}`.
 constexpr float kScoreHintW = 190.0f;
 constexpr float kTooltipW = 360.0f;
+// The space between the legend's items: `.legend{gap:18px}`.
+constexpr float kLegendGap = 18.0f;
 
 // What the window says when the file dialog never appeared: File > Open's,
 // then Open path...'s or Save path...'s (a dropped file opens as a chart, so
@@ -57,13 +62,45 @@ ImVec4 tier_color(app::CostTier tier) {
     return ui::chip_color(ChipToken::muted);
 }
 
-// The Star Power star the mockup writes as a ★ in a sentence, drawn after the
-// text just drawn, one text line tall.
-void star_after_text() {
-    ImGui::SameLine();
+// `text` wrapped at the window's edge, with the Star Power star the mockup
+// writes as "(★)" at byte `star_at` (pb_text's intro_star_at and
+// GuideMessage::star_at), one text line tall. The sentence is drawn as one
+// text item with no-break spaces where the star goes, so it wraps as one
+// sentence; the star is drawn over that gap, found by ImGui's own wrap
+// layout of the same text.
+void text_with_star(const std::string& text, std::optional<size_t> star_at) {
+    ui::ScopedFont prose(ui::TextRole::Prose);
+    if (!star_at || *star_at > text.size()) {
+        ImGui::TextWrapped("%s", text.c_str());
+        return;
+    }
     const float size = ImGui::GetTextLineHeight();
-    const ImVec2 at = ImGui::GetCursorScreenPos();
-    ImGui::Dummy(ImVec2(size, size));
+    constexpr const char* kNoBreakSpace = "\xC2\xA0";  // U+00A0, which ImGui never wraps at
+    const float space_w = ImGui::CalcTextSize(kNoBreakSpace).x;
+    std::string gap;
+    float gap_w = 0.0f;
+    while (space_w > 0.0f && gap_w < size) {
+        gap += kNoBreakSpace;
+        gap_w += space_w;
+    }
+    const std::string open = text.substr(0, *star_at) + kStarOpen;
+    const std::string drawn = open + gap + kStarClose + text.substr(*star_at);
+
+    ImGuiWindow* window = ImGui::GetCurrentWindow();
+    const bool own_wrap = window->DC.TextWrapPos < 0.0f;  // as TextWrapped does
+    if (own_wrap) ImGui::PushTextWrapPos(0.0f);
+    const ImVec2 pos(window->DC.CursorPos.x, window->DC.CursorPos.y + window->DC.CurrLineTextBaseOffset);
+    const float wrap_w = ImGui::CalcWrapWidthForPos(window->DC.CursorPos, window->DC.TextWrapPos);
+    ImGui::TextUnformatted(drawn.c_str(), drawn.c_str() + drawn.size());
+    if (own_wrap) ImGui::PopTextWrapPos();
+
+    // Where the gap starts: the end of `open` in the wrapped layout, given
+    // as the bottom of its line.
+    ImVec2 end;
+    ImFontCalcTextSizeEx(ui::font_for(ui::TextRole::Prose).font, ImGui::GetFontSize(), FLT_MAX, wrap_w, drawn.c_str(),
+                         drawn.c_str() + open.size(), drawn.c_str() + drawn.size(), nullptr, &end,
+                         0);
+    const ImVec2 at(pos.x + end.x + (gap_w - size) * 0.5f, pos.y + end.y - ImGui::GetFontSize());
     ui::draw_star(ImGui::GetWindowDrawList(), at, size, true, ImGui::GetColorU32(ui::kStarPowerColor));
 }
 
@@ -318,8 +355,7 @@ void PbApp::draw_body(const OpenChart& chart) {
         pending_select_.reset();
     }
 
-    ImGui::TextWrapped("%s", intro_text().c_str());
-    star_after_text();
+    text_with_star(intro_text(), intro_star_at());
     draw_scores(chart);
     draw_guide(chart);
     draw_legend(chart);
@@ -432,10 +468,7 @@ void PbApp::draw_guide(const OpenChart& chart) {
     ImGui::PushStyleColor(ImGuiCol_Border, guide_.refuse ? ui::chip_color(app::report::ChipToken::t3)
                                                          : ui::kAccentColor);
     ImGui::BeginChild("##guide", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
-    ImGui::TextWrapped("%s", guide_.text.c_str());
-    // The mockup's ★ beside the sentences that count saved phrases: step 1
-    // and "Save 2 more phrases".
-    if (!facts.message && !(facts.last_end && facts.fills_after_last == 0)) star_after_text();
+    text_with_star(guide_.text, guide_.star_at);
     if (!guide_message_ && !state.decisions().message().empty())
         ui::error_detail_line(state.decisions().detail());
     const std::string error = state.decisions().error();
@@ -451,14 +484,19 @@ void PbApp::draw_guide(const OpenChart& chart) {
 }
 
 void PbApp::draw_legend(const OpenChart& chart) {
-    ImGui::TextDisabled("%s", kLegendCanText);
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", kLegendMineText);
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", kLegendCantText);
-    ImGui::SameLine();
+    const std::pair<ui::LegendSwatch, const char*> items[] = {
+        {ui::LegendSwatch::Offered, kLegendCanText},
+        {ui::LegendSwatch::Activation, kLegendMineText},
+        {ui::LegendSwatch::Cant, kLegendCantText},
+    };
+    for (const auto& [swatch, text] : items) {
+        ui::legend_swatch(swatch);
+        ImGui::SameLine(0.0f, 0.0f);
+        ImGui::TextDisabled("%s", text);
+        ImGui::SameLine(0.0f, ui::px(kLegendGap));
+    }
     ImGui::TextDisabled("%s", kLegendSeekText);
-    ImGui::SameLine();
+    ImGui::SameLine(0.0f, ui::px(kLegendGap));
     ImGui::Checkbox(kShowBestPathLabel, &show_best_);
     (void)chart;
 }
@@ -486,7 +524,7 @@ void PbApp::draw_timeline(const OpenChart& chart) {
             in.cant_ticks.push_back(scene.fills[i].chord_tick);
     for (const app::CandidateCost& c : d.candidates())
         in.labels.push_back(ui::TimelineFillLabel{
-            c.act_tick, c.cost <= 0 ? std::string(kBestFillLabel) : "-" + app::format_points_short(c.cost),
+            c.act_tick, c.cost <= 0 ? std::string(kBestFillLabel) : app::format_cost_short(c.cost),
             ImGui::GetColorU32(tier_color(c.tier))});
 
     const ui::TimelineEvents ev = ui::PreviewTimeline{}.draw(in);
@@ -585,7 +623,14 @@ void PbApp::draw_highway(const OpenChart& chart) {
     ImGui::SameLine();
     if (ImGui::Button(preview_->playing() ? kPauseLabel : kPlayLabel)) preview_->toggle();
     ImGui::SameLine();
-    ImGui::TextDisabled("%s", app::clock_str(preview_->position_ms()).c_str());
+    // The mockup's "where" line, the measure and the clock at the highway's
+    // time: the measure is the tick the Preview's time box shows at that time
+    // (display_tick_at_ms), named by measure_label.
+    const double now_ms = preview_->position_ms();
+    std::string where = app::clock_str(now_ms);
+    if (const std::optional<SongTiming>& timing = preview_->scene().timing)
+        where = measure_label(timing->timecode(timing->display_tick_at_ms(now_ms))) + app::kFactSeparator + where;
+    ImGui::TextDisabled("%s", where.c_str());
     if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Space, false))
         preview_->toggle();
 
@@ -669,6 +714,9 @@ void PbApp::draw_steps(const OpenChart& chart) {
         if (sel == i) {
             if (last && d.selected() == i && d.ends().size() > 1) {
                 ImGui::TextDisabled("%s", kEndItAtLabel);
+                std::vector<int64_t> finishes;
+                for (const EndChoice& c : d.ends()) finishes.push_back(c.best_finish);
+                const std::vector<int64_t> costs = app::end_costs(finishes);
                 for (size_t e = 0; e < d.ends().size(); ++e) {
                     const EndChoice& c = d.ends()[e];
                     std::string label = c.window.deact_tick
@@ -677,7 +725,7 @@ void PbApp::draw_steps(const OpenChart& chart) {
                     label += app::kFactSeparator;
                     label += c.timing.empty() ? std::string(kNoTimingNeededText) : c.timing;
                     label += app::kFactSeparator;
-                    label += group_thousands(c.best_finish);
+                    label += costs[e] <= 0 ? std::string(kBestFillLabel) : app::format_cost(costs[e]);
                     ImGui::PushID(static_cast<int>(e));
                     if (ImGui::Button(label.c_str())) {
                         pending_guide_.reset();

@@ -60,7 +60,8 @@ inline constexpr const char* kRemoveLastLabel = "Remove";
 inline constexpr const char* kRemoveEarlierLabel = "Remove this and later ones";
 inline constexpr const char* kEndItAtLabel = "End it at:";
 inline constexpr const char* kNoTimingNeededText = "no timing needed";
-// The cost under the best next fill on the timeline.
+// The cost under the best next fill on the timeline, and on the best of the
+// last activation's end choices.
 inline constexpr const char* kBestFillLabel = "best";
 
 // The builder's whole state between frames.

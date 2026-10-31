@@ -1,5 +1,6 @@
 #include "app/path_costs.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 
@@ -36,6 +37,15 @@ std::vector<CandidateCost> candidate_costs(int64_t bf0, int64_t bf_n,
         priced.tier = cost_tier(priced.cost, bf0);
         out.push_back(priced);
     }
+    return out;
+}
+
+std::vector<int64_t> end_costs(const std::vector<int64_t>& best_finishes) {
+    std::vector<int64_t> out;
+    if (best_finishes.empty()) return out;
+    const int64_t best = *std::max_element(best_finishes.begin(), best_finishes.end());
+    out.reserve(best_finishes.size());
+    for (int64_t f : best_finishes) out.push_back(best - f);
     return out;
 }
 

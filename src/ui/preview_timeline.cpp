@@ -126,6 +126,13 @@ constexpr float kCantSize = 13.0f;
 constexpr float kCantBorder = 2.0f;
 constexpr float kFillLabelTop = 30.0f;
 
+// The legend's swatches: `.legend i{width:12px; height:12px;
+// border-radius:50%; margin-right:6px}`. Their colours are the fills' above;
+// `.lg-use`'s glow is drawn as the offered fill's ring, and `.lg-no`'s
+// `border:2px solid var(--dim)` is kCantBorder.
+constexpr float kSwatchSize = 12.0f;
+constexpr float kSwatchGap = 6.0f;
+
 // The playhead: `.playhead{width:2px; background:#fff; opacity:.55}`.
 constexpr float kPlayheadW = 2.0f;
 constexpr ImU32 kPlayheadColor = rgba(0xff, 0xff, 0xff, 0.55f);
@@ -173,6 +180,28 @@ void draw_star(ImDrawList* dl, ImVec2 min, float size, bool filled, ImU32 col) {
         dl->AddConcavePolyFilled(pts, kPoints * 2, col);
     else
         dl->AddPolyline(pts, kPoints * 2, col, ImDrawFlags_Closed, std::max(1.0f, size * kStroke));
+}
+
+void legend_swatch(LegendSwatch kind) {
+    const float line = ImGui::GetTextLineHeight();
+    const ImVec2 mn = ImGui::GetCursorScreenPos();
+    ImGui::Dummy(ImVec2(px(kSwatchSize) + px(kSwatchGap), line));
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const float r = px(kSwatchSize) * 0.5f;
+    const ImVec2 c(mn.x + r, mn.y + line * 0.5f);
+    switch (kind) {
+        case LegendSwatch::Offered:
+            dl->AddCircleFilled(c, r + px(kOfferedRing), kOfferedRingColor);
+            dl->AddCircleFilled(c, r, kOfferedColor);
+            break;
+        case LegendSwatch::Activation:
+            dl->AddCircleFilled(c, r, kPathColor);
+            break;
+        case LegendSwatch::Cant:
+            // As on the Fills row, the border sits inside the box.
+            dl->AddCircle(c, (px(kSwatchSize) - px(kCantBorder)) * 0.5f, kDimColor, 0, px(kCantBorder));
+            break;
+    }
 }
 
 std::string timeline_fill_id(int64_t chord_tick) { return "##fill_" + std::to_string(chord_tick); }

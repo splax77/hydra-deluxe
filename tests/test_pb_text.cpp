@@ -154,6 +154,29 @@ TEST_CASE("guide text: step 1 names the earliest offered fill; a finished path s
           "Can't activate at m12: This is before your last activation. You build left to "
           "right; Undo goes back a step.");
     CHECK(guide_text(finished).refuse);
+    // Neither sentence carries the star; only "Save 2 more phrases" does.
+    CHECK_FALSE(step1.star_at);
+    CHECK_FALSE(end.star_at);
+}
+
+TEST_CASE("star place: just after the word phrases, in the intro and the guide") {
+    const std::string intro = intro_text();
+    REQUIRE(intro_star_at() <= intro.size());
+    CHECK(intro.substr(0, intro_star_at()) ==
+          "Build your own Star Power path, left to right. Click a glowing fill to activate Star "
+          "Power there. You need at least 2 Star Power phrases");
+    CHECK(intro.substr(intro_star_at(), 33) == " saved since your last activation");
+
+    GuideFacts next;
+    next.last_end = "m40";
+    next.earliest_fill = "m52";
+    next.fills_after_last = 1;
+    const GuideMessage g = guide_text(next);
+    CHECK(g.text ==
+          "Your Star Power runs until m40. Save 2 more phrases, then activate again. The next "
+          "glowing fill is m52.");
+    REQUIRE(g.star_at);
+    CHECK(g.text.substr(0, *g.star_at) == "Your Star Power runs until m40. Save 2 more phrases");
 }
 
 TEST_CASE("fill hover text: the two numbers and the difference agree") {

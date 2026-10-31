@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "core/model.h"  // group_thousands
+
 namespace hydra::app {
 
 double py_round3(double v) {
@@ -54,6 +56,10 @@ std::string format_points_short(int64_t points) {
     }
     return buf;
 }
+
+std::string format_cost_short(int64_t cost) { return kCostMinus + format_points_short(cost); }
+
+std::string format_cost(int64_t cost) { return kCostMinus + group_thousands(cost); }
 
 std::string format_percent(int64_t part, int64_t total, int decimals) {
     const int64_t steps = percent_steps(part, total, decimals);

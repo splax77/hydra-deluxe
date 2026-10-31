@@ -25,6 +25,17 @@ using app::PreviewScene;
 // The intro under the title; its phrase count is kSpActivationBars.
 std::string intro_text();
 
+// Where the Star Power star goes in a sentence the screen draws one in: a
+// byte offset into the sentence's text, just after the word "phrases" the
+// star stands beside. The text holds no star, so a test reads the sentence
+// whole; the screen draws kStarOpen, the star (ui::draw_star) and kStarClose
+// at the offset, as the mockup writes "phrases (★)".
+inline constexpr const char* kStarOpen = " (";
+inline constexpr const char* kStarClose = ")";
+
+// The star's place in intro_text.
+size_t intro_star_at();
+
 // The sentences that take no figure, each from the mockup.
 extern const char* const kNoStepsText;
 extern const char* const kActivationRemovedText;
@@ -84,10 +95,12 @@ std::string fill_hover_text(const PreviewScene& scene, size_t fill_index,
                             const std::optional<FillHoverNumbers>& numbers);
 
 // A one-shot message the guide line shows after an action, and whether it is
-// a refusal (drawn red-edged).
+// a refusal (drawn red-edged). star_at is the star's place in the text (as
+// intro_star_at), set only on guide_text's "Save 2 more phrases" sentence.
 struct GuideMessage {
     std::string text;
     bool refuse = false;
+    std::optional<size_t> star_at;
 };
 
 // "Can't activate at m12: <reason>", a refusal.

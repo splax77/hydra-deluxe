@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "app/config.h"
+#include "app/display_format.h"
 #include "app/path_costs.h"
 #include "core/model.h"
 #include "corpus_default_cfg.h"
@@ -189,6 +190,17 @@ TEST_CASE("candidate costs: a negative cost is a bug") {
     CHECK(level[0].best_finish == 1000);
     CHECK(level[0].cost == 0);
     CHECK(level[0].tier == CostTier::Green);
+}
+
+TEST_CASE("end costs: each end against the best of them, in the order given") {
+    // The best end need not come first: end_choices lists them in
+    // search_target's order.
+    CHECK(hydra::app::end_costs({398210, 412850, 412850, 411616}) ==
+          std::vector<int64_t>{14640, 0, 0, 1234});
+    CHECK(hydra::app::end_costs({}).empty());
+    // The end choices write a cost with the minus sign U+2212, in full.
+    CHECK(hydra::app::format_cost(1234) == "\xE2\x88\x92" "1,234");
+    CHECK(hydra::app::format_cost_short(13640) == "\xE2\x88\x92" "13.6k");
 }
 
 TEST_CASE("build ladder: a list the target searches refuse is refused before any search") {
