@@ -159,12 +159,6 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
                           "This choice costs 140 points."));
 }
 
-// Symphony X - Set the World on Fire's notes.chart in the corpus: a song
-// about six minutes long, so longer than the timeline's window.
-std::string long_song_notes() {
-    return corpus::root() + "/common/IB24/T5/Symphony X - Set the World on Fire/notes.chart";
-}
-
 // The line of visible text that holds the scrollbar's readout for a song
 // `length` long (the readout ends " of <length>"), or "" when none does.
 std::string readout_line(Harness& h, const std::string& length) {

@@ -10,6 +10,7 @@
 #include "imgui_te_internal.h"
 
 #include "../scratch_settings.h"
+#include "../testdata_dirs.h"
 
 #include "app/config.h"
 #include "audio/device.h"
@@ -111,6 +112,10 @@ bool click_fill(ImGuiTestContext* ctx, int64_t act_tick) {
     s.decisions().click_fill(s.search_graph(), s.chart()->settings, s.history().current().windows,
                              act_tick, s.history().generation());
     return wait_for_edit(ctx);
+}
+
+std::string long_song_notes() {
+    return corpus::root() + "/common/IB24/T5/Symphony X - Set the World on Fire/notes.chart";
 }
 
 std::string any_ref(const std::string& label) { return "**/" + label; }

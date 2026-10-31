@@ -60,6 +60,10 @@ bool click_fill(ImGuiTestContext* ctx, int64_t act_tick);
 inline constexpr int64_t kFirstFillTick = 36480;
 inline constexpr int64_t kSecondFillTick = 74880;
 
+// Symphony X - Set the World on Fire's notes.chart in the corpus: a song
+// about six minutes long, so longer than the timeline's window.
+std::string long_song_notes();
+
 // The test engine's reference for the widget named `label` anywhere in the
 // builder's windows.
 std::string any_ref(const std::string& label);

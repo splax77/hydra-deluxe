@@ -1,17 +1,19 @@
-// The Path Builder's build-a-whole-path test: one GUI test that builds a path
-// on Burnout by clicking the screen's own widgets (the timeline's fills, the
-// "Where to activate next" rows, the step rows and the buttons), and checks
-// each step only in the text the screen drew. Task PB-6 of
-// docs/superpowers/plans/2026-10-30-path-builder-redesign.md, updated by TS-4
-// of docs/superpowers/plans/2026-10-31-path-builder-redesign-2.md. Every
-// tick, sentence, clock and figure is pinned from one run under the GUI tests'
-// settings (tests/scratch_settings.h).
+// The Path Builder's click-through tests: a whole path built on Burnout by
+// clicking the screen's own widgets (the timeline's fills, the "Where to
+// activate next" rows, the step rows and the buttons), a path started past
+// the first window of a song longer than it, and the window following the
+// playhead while that song plays. Each step is checked only in what the
+// screen drew (its text and its items). Every tick, sentence, clock and
+// figure is pinned from one run under the GUI tests' settings
+// (tests/scratch_settings.h).
 
 // First: its Windows headers come before the test engine's, which undefine
 // their Yield() macro (uitest_engine.h says why).
 #include "pbtest_harness.h"
 
+#include <cmath>
 #include <cstdint>
+#include <functional>
 #include <string>
 
 #include "imgui_te_context.h"
@@ -22,7 +24,8 @@
 #include "pathbuilder/pb_menu.h"    // kStartOverLabel
 #include "pathbuilder/pb_text.h"    // kNoStepsText, kBestFillLabel, locked_message
 #include "pathbuilder/pb_window.h"  // the score and button labels
-#include "ui/preview_timeline.h"    // timeline_fill_id, kTimelineFillsLabel
+#include "ui/preview_timeline.h"    // timeline_fill_id, kTimelineFillsLabel, the scroll buttons
+#include "ui/timeline_view.h"       // kTimelineWindowMs, open_view, follow_playing, wheel
 
 namespace pbtest {
 
@@ -41,8 +44,22 @@ constexpr double kTextWaitSeconds = 60.0;
 constexpr int64_t kCantFillTick = 83040;
 constexpr int64_t kLockedFillTick = 59520;
 
-// The Preview's "Act >" button (ui::draw_preview_panel).
+// The Preview's "Act >" and "< Act" buttons (ui::draw_preview_panel).
 constexpr const char* kNextActRef = "**/Act >##nextact";
+constexpr const char* kPrevActRef = "**/< Act##prevact";
+
+// The Preview's "+5s" button and how far it jumps (kJumpSeconds in
+// ui::draw_preview_panel's file).
+constexpr const char* kJumpForwardLabel = "+5s";
+constexpr double kJumpForwardMs = 5000.0;
+
+// The long song (long_song_notes), from one run: the Preview's end as the
+// clock spells it and in ms, the readout's tail, and the chord tick of its
+// fill at m69 (3:15.859), past the first window.
+constexpr const char* kLongSongClockTail = " / 5:59.957";
+constexpr double kLongSongMs = 359957.0;
+constexpr const char* kLongSongOf = " of 5:59";
+constexpr int64_t kLongSongFillTick = 133920;
 
 bool is_line_end(char c) { return c == '\r' || c == '\n'; }
 
@@ -85,6 +102,42 @@ bool wait_text(ImGuiTestContext* ctx, const std::string& s) {
     return uitest::wait_until(ctx, [&] { return on_screen(h, s); }, kTextWaitSeconds);
 }
 
+// The Preview's play button's two words (ui::draw_preview_panel): "Play"
+// while paused, "Pause" while playing.
+constexpr const char* kPlayWord = "Play";
+constexpr const char* kPauseWord = "Pause";
+
+// True when the Preview's play button reads `word` and no button reads the
+// other word. The key bar's "Play/pause" is text, not a button, so the
+// buttons are looked up as items. Reads from the test's current ref.
+bool play_button_reads(ImGuiTestContext* ctx, const char* word) {
+    const char* other = std::string(word) == kPlayWord ? kPauseWord : kPlayWord;
+    return ctx->ItemInfo(any_ref(word).c_str(), ImGuiTestOpFlags_NoError).ID != 0 &&
+           ctx->ItemInfo(any_ref(other).c_str(), ImGuiTestOpFlags_NoError).ID == 0;
+}
+
+// Scrolls the side panel (the list over the steps) so the item `ref` inside
+// it sits in the panel's middle, or as near as the panel scrolls. The test
+// engine scrolls only an item's own window, and a list row's window is the
+// list, which the side panel holds; after a new step the panel shows the
+// steps, so the list's rows can be above its top. False when the panel is
+// not drawn.
+bool scroll_side_to(ImGuiTestContext* ctx, const std::string& ref) {
+    Harness& h = harness(ctx);
+    const std::string side_ref = h.home_ref + "/##side";
+    ImGuiWindow* side = ctx->WindowInfo(side_ref.c_str(), ImGuiTestOpFlags_NoError).Window;
+    if (!side) {
+        ctx->LogError("no side panel at %s", side_ref.c_str());
+        return false;
+    }
+    const ImGuiTestItemInfo item = ctx->ItemInfo(ref.c_str());
+    if (item.ID == 0) return false;
+    const float delta = side->InnerClipRect.GetCenter().y - item.RectFull.GetCenter().y;
+    ctx->ScrollToY(side->ID, ImClamp(side->Scroll.y - delta, 0.0f, side->ScrollMax.y));
+    ctx->Yield(2);
+    return !ctx->IsError();
+}
+
 void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     h.chart_arg = corpus::burnout_notes();
@@ -106,16 +159,20 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(best_words_under_fills(h), size_t{1});
     IM_CHECK(on_screen(h, "m32 0:40.945 · 3 phrases · ends m38 · squeeze-out 163.0 ms best"));
 
-    // The hover on the first fill: its tooltip gives the best finish with
-    // this fill and the best finish now, and the cost between them.
+    // The hover on the first fill: its card gives the phrases saved, the best
+    // finish with this fill and its cost, then the best choice now and where
+    // Hydra would end it (the words fill-card pins). ImGui's text log writes
+    // a card row's two cells on one line, each after a "|".
+    const std::string best_line = "Best choice now is m32 (378,315).";
     ctx->MouseMove(fill_ref(kFirstFillTick).c_str());
-    IM_CHECK_RETV(wait_text(ctx, "If you activate here"), );
-    IM_CHECK(on_screen(h, "Fill at m20 · 0:25.123"));
-    IM_CHECK(on_screen(h, "If you activate here, the best you can still finish with is 378,175."));
-    IM_CHECK(on_screen(h, "Your best choice right now is m32, which keeps 378,315."));
-    IM_CHECK(on_screen(h, "So activating here costs 140 points."));
+    IM_CHECK_RETV(wait_text(ctx, best_line), );
+    IM_CHECK(on_screen(h, "m20 · 0:25.123"));
+    IM_CHECK(on_screen(h, "Phrases saved | 2"));
+    IM_CHECK(on_screen(h, "Best finish here | 378,175"));
+    IM_CHECK(on_screen(h, "Cost | −140"));
+    IM_CHECK(on_screen(h, "Hydra would end it at m24."));
     move_off_timeline(ctx);
-    IM_CHECK(!on_screen(h, "If you activate here"));
+    IM_CHECK(!on_screen(h, best_line));
 
     // The click on it: the steps panel gains its compact row, open to its
     // sentence because the click selected the step it made, and the score
@@ -137,17 +194,21 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(figure_under(h, kBestReachLabel).c_str(), "378,175");
 
     // The list names the second fill. Hovering its row moves the Preview's
-    // clock to the fill's span start; moving off puts it back. From one run:
-    // the click on the first fill left the clock at that fill's span start.
+    // clock to the fill's span start; moving off puts it back and leaves the
+    // Preview paused, its button still reading Play. From one run: the click
+    // on the first fill left the clock at that fill's span start.
     const std::string clock_after_one = "0:23.840 / 2:10.088";
     IM_CHECK(on_screen(h, "m40 0:51.421 · 2 phrases · ends m44 −1,580"));
     IM_CHECK(on_screen(h, clock_after_one));
+    IM_CHECK_RETV(scroll_side_to(ctx, choice_ref(kSecondFillTick)), );
     ctx->MouseMove(choice_ref(kSecondFillTick).c_str());
     ctx->Yield(2);
     IM_CHECK(on_screen(h, "0:50.095 / 2:10.088"));
     IM_CHECK(!on_screen(h, clock_after_one));
     move_off_timeline(ctx);
     IM_CHECK(on_screen(h, clock_after_one));
+    ctx->SetRef(h.home_ref.c_str());
+    IM_CHECK(play_button_reads(ctx, kPlayWord));
 
     // The click on that row makes the second activation: its compact row,
     // open to its sentence, while the first step shrinks to its compact row.
@@ -167,12 +228,14 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(two_step_score.c_str(), "340,675");
     IM_CHECK_STR_EQ(figure_under(h, kBestReachLabel).c_str(), "376,595");
 
-    // "Act >" jumps the Preview from where it stands, before the first
-    // activation, to the first activation's clock (m20, 0:25.123).
-    IM_CHECK(on_screen(h, clock_after_one));
+    // The row click left the clock at the second fill's span start, as a
+    // click on a fill does (the clock row-click-moves-clock pins). "Act >"
+    // jumps the Preview from there, just before the second activation, to
+    // that activation's clock (m40, 0:51.421).
+    IM_CHECK(on_screen(h, "0:50.095 / 2:10.088"));
     ctx->ItemClick(kNextActRef);
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "0:25.123 / 2:10.088"));
+    IM_CHECK(on_screen(h, "0:51.421 / 2:10.088"));
 
     // A click on the first step's row opens it to its sentence and closes the
     // second.
@@ -234,10 +297,233 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(figure_under(h, kYourScoreLabel).c_str(), empty_score.c_str());
 }
 
+// Opens the long song (long_song_notes) with nothing hovered, and leaves the
+// test's ref on the builder's window. False when it did not settle.
+bool open_long_song(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    h.chart_arg = long_song_notes();
+    reset_app(h);
+    if (!wait_idle(ctx)) return false;
+    ctx->Yield(2);
+    ctx->SetRef(h.home_ref.c_str());
+    // The pointer is wherever the last test left it, maybe on a fill.
+    move_off_timeline(ctx);
+    return !ctx->IsError();
+}
+
+// Gives the last action two frames, then reads `expected` on screen; the
+// lines that hold a readout are logged when it is not there.
+bool readout_reads(ImGuiTestContext* ctx, const std::string& expected) {
+    Harness& h = harness(ctx);
+    ctx->Yield(2);
+    if (on_screen(h, expected)) return true;
+    ctx->LogError("readout lines: %s", uitest::lines_holding(visible_text(h), kLongSongOf).c_str());
+    return false;
+}
+
+// The long song past three minutes: one window forward, the card of a fill
+// there, a click on it, and "< Act" from a window scrolled back to the start,
+// which brings the window to the activation. Every figure is from one run.
+void test_build_a_path_on_a_long_song(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    IM_CHECK_RETV(open_long_song(ctx), );
+    const std::string forward = any_ref(hydra::ui::kScrollForwardLabel);
+    const std::string back = any_ref(hydra::ui::kScrollBackLabel);
+    IM_CHECK_RETV(readout_reads(ctx, "0:00 – 3:00 of 5:59"), );
+    IM_CHECK_STR_EQ(figure_under(h, kYourScoreLabel).c_str(), "729,960");
+    // The fill is past the window, so it has no item yet.
+    IM_CHECK(ctx->ItemInfo(fill_ref(kLongSongFillTick).c_str(), ImGuiTestOpFlags_NoError).ID == 0);
+
+    // One window forward: the window stops at the song's end.
+    ctx->ItemClick(forward.c_str());
+    IM_CHECK_RETV(readout_reads(ctx, "2:59 – 5:59 of 5:59"), );
+
+    // The hover on the fill: its card, headed by its measure and clock.
+    const std::string best_line = "Best choice now is m15 (1,150,660).";
+    ctx->MouseMove(fill_ref(kLongSongFillTick).c_str());
+    IM_CHECK_RETV(wait_text(ctx, best_line), );
+    IM_CHECK(on_screen(h, "m69 · 3:15.859"));
+    IM_CHECK(on_screen(h, "Phrases saved | 4"));
+    IM_CHECK(on_screen(h, "Best finish here | 944,680"));
+    IM_CHECK(on_screen(h, "Cost | −205,980"));
+    IM_CHECK(on_screen(h, "Hydra would end it at m90."));
+
+    // The click on it: the step's compact row and the scores.
+    ctx->ItemClick(fill_ref(kLongSongFillTick).c_str());
+    IM_CHECK_RETV(wait_for_edit(ctx), );
+    move_off_timeline(ctx);
+    IM_CHECK_RETV(wait_text(ctx, "m69 → m90 4 phrases −205,980"), );
+    IM_CHECK_STR_EQ(figure_under(h, kYourScoreLabel).c_str(), "879,860");
+    IM_CHECK_STR_EQ(figure_under(h, kBestReachLabel).c_str(), "944,680");
+
+    // The click left the clock at the fill's span start; "+5s" carries it
+    // past the activation, still inside the window, so the window stays.
+    IM_CHECK(on_screen(h, "3:14.431" + std::string(kLongSongClockTail)));
+    ctx->ItemClick(any_ref(kJumpForwardLabel).c_str());
+    IM_CHECK(readout_reads(ctx, "2:59 – 5:59 of 5:59"));
+    IM_CHECK(on_screen(h, "3:19.431" + std::string(kLongSongClockTail)));
+    // Back to the song's start: the clock stays where it was, outside the
+    // window.
+    ctx->ItemClick(back.c_str());
+    IM_CHECK(readout_reads(ctx, "0:00 – 3:00 of 5:59"));
+    IM_CHECK(on_screen(h, "3:19.431" + std::string(kLongSongClockTail)));
+    // "< Act" jumps the clock back to the activation, outside the window,
+    // and the window comes to it.
+    ctx->ItemClick(kPrevActRef);
+    IM_CHECK(readout_reads(ctx, "2:30 – 5:30 of 5:59"));
+    IM_CHECK(on_screen(h, "3:15.859" + std::string(kLongSongClockTail)));
+}
+
+// One reading of the screen on the long song: the readout's start and end
+// in whole seconds, its text, and the Preview's clock in ms. A part the
+// screen did not show stays below zero.
+struct LongSongShown {
+    std::string readout;
+    int start_s = -1;
+    int end_s = -1;
+    double clock_ms = -1.0;
+};
+
+// "m:ss" or "m:ss.mmm" as ms; below zero when it is neither.
+double clock_text_ms(const std::string& t) {
+    const size_t colon = t.find(':');
+    if (colon == 0 || colon == std::string::npos || colon + 3 > t.size()) return -1.0;
+    const size_t dot = t.find('.', colon);
+    const std::string mins = t.substr(0, colon);
+    const std::string secs = t.substr(colon + 1, dot == std::string::npos ? std::string::npos : dot - colon - 1);
+    const std::string frac = dot == std::string::npos ? std::string("0") : t.substr(dot + 1);
+    for (const std::string* part : {&mins, &secs, &frac})
+        if (part->empty() || part->find_first_not_of("0123456789") != std::string::npos) return -1.0;
+    return (std::stoi(mins) * 60.0 + std::stoi(secs)) * 1000.0 + std::stoi(frac);
+}
+
+// The word before `at` in `text`, from the last space or line end.
+std::string word_before(const std::string& text, size_t at) {
+    size_t from = at;
+    while (from > 0 && text[from - 1] != ' ' && text[from - 1] != '\n' && text[from - 1] != '\r' &&
+           text[from - 1] != '{')
+        --from;
+    return text.substr(from, at - from);
+}
+
+LongSongShown read_long_song(Harness& h) {
+    LongSongShown shown;
+    const std::string text = visible_text(h);
+    const std::string dash = " – ";
+    const size_t of = text.find(kLongSongOf);
+    const size_t at_dash = of == std::string::npos ? std::string::npos : text.rfind(dash, of);
+    if (at_dash != std::string::npos) {
+        const std::string start = word_before(text, at_dash);
+        const std::string end = text.substr(at_dash + dash.size(), of - at_dash - dash.size());
+        shown.readout = start + dash + end + kLongSongOf;
+        shown.start_s = static_cast<int>(clock_text_ms(start) / 1000.0);
+        shown.end_s = static_cast<int>(clock_text_ms(end) / 1000.0);
+    }
+    const size_t tail = text.find(kLongSongClockTail);
+    if (tail != std::string::npos) shown.clock_ms = clock_text_ms(word_before(text, tail));
+    return shown;
+}
+
+// How many "+5s" presses carry the clock across `ms`, rounded up. The clock
+// also runs while playing, which only shortens the way.
+int presses_across(double ms) { return static_cast<int>(std::ceil(ms / kJumpForwardMs)); }
+
+// Presses "+5s" until `done` holds, at most `cap` presses. False, with
+// `what` logged, when it never held.
+bool press_jump_until(ImGuiTestContext* ctx, int cap, const std::function<bool()>& done,
+                      const char* what) {
+    for (int i = 0; i < cap && !done(); ++i) {
+        ctx->ItemClick(any_ref(kJumpForwardLabel).c_str());
+        ctx->Yield(2);
+        if (ctx->IsError()) return false;
+    }
+    if (done()) return true;
+    ctx->LogError("%s after %d presses", what, cap);
+    return false;
+}
+
+// The long song playing: "+5s" carries the playhead past three quarters of
+// the window and the window turns; a wheel notch moves it and stops the
+// following, so the playhead runs out of the window and the window stays;
+// a pause and a second Play turn following back on. The clock runs on real
+// time while playing, so where the first turn lands is checked against
+// ui::follow_playing at the clock before and after the press that turned it,
+// and only the last window, held at the song's end, is pinned.
+void test_follow_the_playhead(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    IM_CHECK_RETV(open_long_song(ctx), );
+    const std::string opening = "0:00 – 3:00 of 5:59";
+    IM_CHECK_RETV(readout_reads(ctx, opening), );
+
+    ctx->ItemClick(any_ref(kPlayWord).c_str());
+    ctx->Yield(2);
+    IM_CHECK_RETV(play_button_reads(ctx, kPauseWord), );
+
+    // The first turn comes before the playhead crosses one whole window.
+    double clock_before_press = 0.0;
+    const bool turned = press_jump_until(
+        ctx, presses_across(hydra::ui::kTimelineWindowMs),
+        [&] {
+            const LongSongShown s = read_long_song(h);
+            if (s.readout != opening) return true;
+            clock_before_press = s.clock_ms;
+            return false;
+        },
+        "the window never turned");
+    IM_CHECK_RETV(turned, );
+    const LongSongShown first = read_long_song(h);
+    IM_CHECK_RETV(first.start_s >= 0 && first.clock_ms >= 0.0, );
+    const hydra::ui::TimelineView open = hydra::ui::open_view(kLongSongMs);
+    const double earliest =
+        hydra::ui::follow_playing(open, clock_before_press + kJumpForwardMs, kLongSongMs).start_ms;
+    const double latest = hydra::ui::follow_playing(open, first.clock_ms, kLongSongMs).start_ms;
+    IM_CHECK_GE(first.start_s, static_cast<int>(earliest / 1000.0));
+    IM_CHECK_LE(first.start_s, static_cast<int>(latest / 1000.0));
+    IM_CHECK(first.start_s > 0);
+
+    // A wheel notch down over the rows, away from the Fills row, moves the
+    // window by one notch (ui::wheel) and stops the following.
+    const ImRect rows = ctx->ItemInfo(any_ref("##timeline").c_str()).RectFull;
+    ctx->MouseMoveToPos(ImVec2(rows.GetCenter().x, rows.Min.y + rows.GetHeight() * 0.4f));
+    ctx->MouseWheelY(-1.0f);
+    ctx->Yield(2);
+    const LongSongShown wheeled = read_long_song(h);
+    IM_CHECK_RETV(wheeled.start_s >= 0 && wheeled.clock_ms >= 0.0, );
+    const int notch_s =
+        static_cast<int>(hydra::ui::wheel(open, 1.0, kLongSongMs).start_ms / 1000.0);
+    IM_CHECK_EQ(wheeled.start_s, first.start_s + notch_s);
+    IM_CHECK_EQ(wheeled.end_s, first.end_s + notch_s);
+    IM_CHECK_RETV(play_button_reads(ctx, kPauseWord), );
+
+    // "+5s" until the playhead is past the window's right edge: the window
+    // stays where the wheel put it. The readout floors its end to whole
+    // seconds, so the window ends before the next whole second.
+    const double past_end_ms = (wheeled.end_s + 1) * 1000.0;
+    IM_CHECK_RETV(press_jump_until(
+                      ctx, presses_across(past_end_ms - wheeled.clock_ms),
+                      [&] { return read_long_song(h).clock_ms > past_end_ms; },
+                      "the playhead never left the window"), );
+    IM_CHECK_RETV(play_button_reads(ctx, kPauseWord), );
+    IM_CHECK_STR_EQ(read_long_song(h).readout.c_str(), wheeled.readout.c_str());
+
+    // A pause moves nothing; a second Play turns following back on, and the
+    // window comes to the playhead, held at the song's end.
+    ctx->ItemClick(any_ref(kPauseWord).c_str());
+    ctx->Yield(2);
+    IM_CHECK(play_button_reads(ctx, kPlayWord));
+    IM_CHECK_STR_EQ(read_long_song(h).readout.c_str(), wheeled.readout.c_str());
+    ctx->ItemClick(any_ref(kPlayWord).c_str());
+    IM_CHECK(readout_reads(ctx, "2:59 – 5:59 of 5:59"));
+    ctx->ItemClick(any_ref(kPauseWord).c_str());
+    ctx->Yield(2);
+}
+
 }  // namespace
 
 void register_build_tests(Harness& h) {
     uitest::register_test(h, "build-a-path-by-clicking", test_build_a_path_by_clicking);
+    uitest::register_test(h, "build-a-path-on-a-long-song", test_build_a_path_on_a_long_song);
+    uitest::register_test(h, "follow-the-playhead", test_follow_the_playhead);
 }
 
 }  // namespace pbtest
