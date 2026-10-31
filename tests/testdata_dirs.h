@@ -30,6 +30,14 @@ inline std::string white_washed_notes() {
     return root() + "/common/IB24/T5/August Burns Red - White Washed/notes.mid";
 }
 
+// Smash Mouth - I'm A Believer's notes.chart in the corpus: its best path's
+// second activation can end two ways, with a squeeze-in or a squeeze-out on
+// the Star Power end.
+inline std::string believer_notes() {
+    return root() +
+           "/common/IB24/T1/Smash Mouth - I_m A Believer (The Monkees cover) [highfine]/notes.chart";
+}
+
 // testdata, the fixtures folder that holds the corpus. A target that leaves
 // HYDRA_TESTDATA_DIR out (CMakeLists.txt says which) gets no testdata_root(),
 // so a caller there fails to compile.

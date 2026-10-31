@@ -68,7 +68,6 @@ inline constexpr const char* kStepsHeading = ui::kTimelineActivationsLabel;
 inline constexpr const char* kRemoveLastLabel = "Remove";
 inline constexpr const char* kRemoveEarlierLabel = "Remove this and later ones";
 inline constexpr const char* kEndItAtLabel = "End it at:";
-inline constexpr const char* kNoTimingNeededText = "no timing needed";
 
 // The builder's whole state between frames.
 class PbApp {

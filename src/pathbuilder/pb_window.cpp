@@ -60,6 +60,10 @@ constexpr float kChoicesMaxRem = 21.0f;
 constexpr float kTierDotRem = 0.7f;
 // A step's numbered disc: line 136, `.step .n{width:1.6rem}`.
 constexpr float kStepDiscRem = 1.6f;
+// How strongly an earlier step draws an ending it did not keep:
+// docs/superpowers/specs/2026-10-31-path-builder-mockup-4/step-panel-mockup.html
+// line 30, `.end.fixed:not(.on){opacity:0.45}`.
+constexpr float kFixedEndAlpha = 0.45f;
 
 using ui::rem;
 
@@ -273,8 +277,10 @@ void PbApp::select_step(size_t index) {
     selected_ = index;
     selected_generation_ = state.history().generation();
     steps_block_h_ = -1.0f;  // draw_steps scrolls the opened step into view
-    // End choices are offered on the last activation only (the user's answer Q6).
-    if (index + 1 == state.history().current().windows.size()) state.decisions().select(index);
+    // Every opened step works out its endings now, never ahead of time (the
+    // fourth mockup's plan, "computed when opened"); draw_steps lets only the
+    // last step's be chosen.
+    state.decisions().select(index);
     if (preview_) preview_->seek_activation(index);
 }
 
@@ -901,8 +907,6 @@ void PbApp::draw_steps(const OpenChart& chart) {
     const std::vector<PinnedWindow>& windows = h.current().windows;
     if (windows.empty() || !h.current().path) {
         dim_wrapped(kNoStepsText);
-        ImGui::Spacing();
-        dim_wrapped(glossary_text());
         return;
     }
     const Path& path = *h.current().path;
@@ -915,16 +919,10 @@ void PbApp::draw_steps(const OpenChart& chart) {
     for (size_t i = 0; i < acts.size(); ++i) {
         ImGui::PushID(static_cast<int>(i));
         const bool last = i + 1 == acts.size();
-        // Each step's three numbers come from one ladder: the cost cost_list
-        // worked out (CoachRow::cost) and the best finishes either side of it.
-        std::optional<StepText> text;
-        if (i < list.rows.size() && list.rows[i].cost && run && run->ladder.bf.size() > i + 1)
-            text = step_sentence(chart.song.timing(), acts[i], *list.rows[i].cost, run->ladder.bf[i],
-                                 run->ladder.bf[i + 1], chart.settings.ms_filter);
         // The compact row: the step's number in a disc of the path's colour,
-        // where it starts and ends, the phrases it spends, and its cost at
-        // the right. The whole row is one selectable; its pieces are drawn
-        // over it.
+        // where it starts and ends, the phrases it spends and its timings
+        // (StepShort), and its cost at the right. The whole row is one
+        // selectable; its pieces are drawn over it.
         const std::string number = std::to_string(i + 1);
         const StepShort brief = step_short(chart.song.timing(), acts[i]);
         const std::optional<int64_t> cost = i < list.rows.size() ? list.rows[i].cost : std::nullopt;
@@ -949,44 +947,61 @@ void PbApp::draw_steps(const OpenChart& chart) {
         ImGui::TextUnformatted(brief.span.c_str());
         ImGui::SameLine();
         ImGui::SetCursorPosY(text_y);
-        ImGui::TextDisabled("%s", brief.saved.c_str());
+        const std::string saved =
+            brief.squeezes.empty() ? brief.saved : brief.saved + app::kFactSeparator + brief.squeezes;
+        ImGui::TextDisabled("%s", saved.c_str());
         const std::string cost_label = cost ? cost_or_best(*cost) : std::string(kPendingText);
         text_at_right(cost_label, start.x, row_w,
                       tier ? tier_color(*tier) : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
         ImGui::SetCursorPosY(start.y + row_h + ImGui::GetStyle().ItemSpacing.y);
 
-        // The selected step opens to its full sentence.
+        // The opened step: one line per ending when it has more than one
+        // (the fourth mockup's step panel), the violet note when the step is
+        // over the Path limit, then Remove. The endings are the ones
+        // DecisionList::select worked out when the step opened; until they
+        // land the step shows no lines.
         if (sel == i) {
-            ImGui::PushTextWrapPos(0.0f);
-            ImGui::TextWrapped("%s", text ? text->sentence.c_str() : kPendingText);
-            if (text) {
-                dim_wrapped(text->why);
-                if (!text->note.empty()) {
-                    ImGui::PushStyleColor(ImGuiCol_Text, violet);
-                    ImGui::TextWrapped("%s", text->note.c_str());
-                    ImGui::PopStyleColor();
-                }
-            }
-            ImGui::PopTextWrapPos();
-        }
-
-        if (sel == i) {
-            if (last && d.selected() == i && d.ends().size() > 1) {
+            if (d.selected() == i && d.ends().size() > 1 && i < windows.size()) {
                 ImGui::TextDisabled("%s", kEndItAtLabel);
                 std::vector<int64_t> finishes;
                 for (const EndChoice& c : d.ends()) finishes.push_back(c.best_finish);
                 const std::vector<int64_t> costs = app::end_costs(finishes);
                 for (size_t e = 0; e < d.ends().size(); ++e) {
                     const EndChoice& c = d.ends()[e];
-                    std::string label = c.window.deact_tick
-                                            ? measure_label(chart.song.timing().timecode(*c.window.deact_tick))
-                                            : c.token;
-                    label += app::kFactSeparator;
-                    label += c.timing.empty() ? std::string(kNoTimingNeededText) : c.timing;
-                    label += app::kFactSeparator;
-                    label += cost_or_best(costs[e]);
+                    const bool kept = is_kept_end(windows[i], c);
                     ImGui::PushID(static_cast<int>(e));
-                    if (ImGui::Button(label.c_str())) {
+                    // Only the step being built can change its end. An
+                    // earlier step's lines take no clicks; the one it kept
+                    // keeps its full colour, the others are greyed.
+                    if (!last) {
+                        ImGui::PushStyleVar(ImGuiStyleVar_DisabledAlpha, kept ? 1.0f : kFixedEndAlpha);
+                        ImGui::BeginDisabled();
+                    }
+                    // The line is one selectable, in the selected look for
+                    // the kept end; its mark, words and cost are drawn over it.
+                    const ImVec2 line = ImGui::GetCursorPos();
+                    const float line_w = ImGui::GetContentRegionAvail().x;
+                    const float line_h = ImGui::GetFrameHeight();
+                    const std::string id =
+                        "##end_" + (c.window.deact_tick ? std::to_string(*c.window.deact_tick)
+                                                        : c.activation.notationstr());
+                    ImGui::SetNextItemAllowOverlap();
+                    bool picked = ImGui::Selectable(id.c_str(), kept, 0, ImVec2(0, line_h));
+                    ImGui::SetCursorPos(line);
+                    picked = ImGui::RadioButton("##mark", kept) || picked;
+                    ImGui::SameLine();
+                    ImGui::SetCursorPosY(line.y + (line_h - ImGui::GetTextLineHeight()) * 0.5f);
+                    ImGui::TextUnformatted(end_choice_text(chart.song.timing(), c.activation).c_str());
+                    const ImVec4 cost_col = run && !run->ladder.bf.empty()
+                                                ? tier_color(app::cost_tier(costs[e], run->ladder.bf.front()))
+                                                : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
+                    text_at_right(cost_or_best(costs[e]), line.x, line_w, cost_col);
+                    if (!last) {
+                        ImGui::EndDisabled();
+                        ImGui::PopStyleVar();
+                    }
+                    ImGui::SetCursorPosY(line.y + line_h + ImGui::GetStyle().ItemSpacing.y);
+                    if (picked && last) {
                         pending_guide_.reset();
                         pending_select_ = i;
                         d.choose_end(c.window, h.generation());
@@ -994,18 +1009,26 @@ void PbApp::draw_steps(const OpenChart& chart) {
                     ImGui::PopID();
                 }
             }
+            const std::string note = tight_window_note(acts[i], chart.settings.ms_filter);
+            if (!note.empty()) {
+                ImGui::PushStyleColor(ImGuiCol_Text, violet);
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextWrapped("%s", note.c_str());
+                ImGui::PopTextWrapPos();
+                ImGui::PopStyleColor();
+            }
             if (ImGui::Button(last ? kRemoveLastLabel : kRemoveEarlierLabel)) {
                 pending_select_.reset();
                 pending_guide_ = removed_message(i, last);
                 d.click_remove(state.search_graph(), chart.settings, windows, windows[i].act_tick,
                                h.generation());
             }
-            // The panel scrolls the opened step into view, row, sentence,
-            // note and buttons, as little as it can (its top first when it
-            // is taller than the panel). It does so when the step opens and
-            // whenever the block's height changes, as when its sentence or
-            // end choices land; a scroll by hand leaves the height alone, so
-            // the panel never pulls back against it.
+            // The panel scrolls the opened step into view, row, ending
+            // lines, note and button, as little as it can (its top first
+            // when it is taller than the panel). It does so when the step
+            // opens and whenever the block's height changes, as when its
+            // endings land; a scroll by hand leaves the height alone, so the
+            // panel never pulls back against it.
             const float block_bottom = ImGui::GetCursorScreenPos().y;
             const float block_h = block_bottom - start_screen.y;
             if (block_h != steps_block_h_) {
@@ -1017,19 +1040,10 @@ void PbApp::draw_steps(const OpenChart& chart) {
         ImGui::Separator();
         ImGui::PopID();
     }
-    if (list.after_last) {
-        const std::string left = leftover_text(*list.after_last);
-        if (*list.after_last > 0)
-            ImGui::TextWrapped("%s", left.c_str());
-        else
-            ImGui::TextColored(tier_color(app::CostTier::Green), "%s", left.c_str());
-    }
     if (!list.failure.empty()) {
         ui::WarnColor warn;
         ImGui::TextWrapped("%s", list.failure.c_str());
     }
-    ImGui::Spacing();
-    dim_wrapped(glossary_text());
 }
 
 }  // namespace hydra::pathbuilder

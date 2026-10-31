@@ -9,6 +9,9 @@
 // The fill card follows the third mockup
 // (docs/superpowers/specs/2026-10-31-path-builder-mockup-3/), plan
 // docs/superpowers/plans/2026-10-31-path-builder-redesign-3.md, task TX-3.
+// The step rows and ending lines follow the fourth mockup
+// (docs/superpowers/specs/2026-10-31-path-builder-mockup-4/), plan
+// docs/superpowers/plans/2026-10-31-step-panel-and-d13.md, task B1.
 
 #ifndef HYDRA_PATHBUILDER_PB_TEXT_H
 #define HYDRA_PATHBUILDER_PB_TEXT_H
@@ -86,10 +89,9 @@ std::string fill_reason(const PreviewScene& scene, size_t fill_index);
 // The kind alone.
 FillRefusal fill_refusal(const PreviewScene& scene, size_t fill_index);
 
-// ", ending with a squeeze-out that needs 12.3 ms and a squeeze-in that needs
-// no timing", one clause per squeeze in Activation::badge_timings, each
-// figure through format_ms. Empty when the activation has no squeeze.
-std::string squeeze_end_text(const Activation& act);
+// Every squeeze and early fill the builder names is worded by the Paths tab's
+// badges (app::activation_badges); pb_text.cpp's badges_text is the one place
+// that joins them.
 
 // The "Where to activate next" list's words, from the mockup's
 // renderChoices: its heading, the hint under it, and what it says when the
@@ -104,7 +106,7 @@ extern const char* const kNoChoicesText;
 // (bars_saved_at; the engine already held the meter at its cap, so no cap is
 // applied here), and "ends m36" from `end`,
 // the candidate's activation (DecisionList::candidate_end) with its
-// squeezes in short form ("squeeze-out 12.3 ms", "squeeze-in, no timing").
+// timings as end_choice_text words them.
 // A null `end` (the candidate's search has not landed) reads kPendingText in
 // place of the end; an `end` with no deact node leaves the end out.
 std::string candidate_row_text(const PreviewScene& scene, size_t fill_index,
@@ -121,13 +123,25 @@ std::vector<int64_t> choice_order(const std::vector<int64_t>& offered,
 
 // A compact step's two pieces: `span` is where the activation starts and
 // where its Star Power ends, "m32 → m36" (measure_label of the activation
-// and of its deact node; the start alone when it has none), and `saved` the
-// phrases it spends, "2 phrases" (Activation::sp_meter, as step_sentence).
+// and of its deact node; the start alone when it has none), `saved` the
+// phrases it spends, "2 phrases" (Activation::sp_meter, as step_sentence),
+// and `squeezes` its timings as the Paths tab's badges word them (badges_text;
+// empty when it has none).
+// The screen joins `squeezes` to `saved` with app::kFactSeparator only when
+// it is not empty (the fourth mockup's step row).
 struct StepShort {
     std::string span;
     std::string saved;
+    std::string squeezes;
 };
 StepShort step_short(const SongTiming& timing, const Activation& act);
+
+// One ending line of an opened step, "ends m89 · squeeze out 0.0 ms": where
+// `act`'s Star Power ends (measure_label of its deact node; its
+// Activation::notationstr when it has none), then its timings (badges_text),
+// joined by app::kFactSeparator, when it has any. The
+// list row's end (candidate_row_text) reads it too.
+std::string end_choice_text(const SongTiming& timing, const Activation& act);
 
 // "costs nothing" or "costs 1,234 points" (group_thousands).
 std::string cost_text(int64_t cost);
@@ -183,7 +197,7 @@ struct FillHoverCard {
 // saved (bars_saved_at), the best finish here and the cost (cost_or_best),
 // then a grey line naming the best choice (kBestChoiceNowText when this fill
 // costs nothing) and, when `numbers` has a hydra_end with a deact node, where
-// Hydra would end it (squeeze_end_text). `numbers` empty means the
+// Hydra would end it (its timings by badges_text). `numbers` empty means the
 // candidate's search has not landed: the last two rows read kPendingText and
 // no grey line follows.
 FillHoverCard fill_hover_card(const PreviewScene& scene, size_t fill_index,
@@ -244,7 +258,7 @@ struct StepText {
 
 // The step for activation `act`: where it starts (measure_label, clock_str),
 // the bars it spends (Activation::sp_meter), where its Star Power ends (its
-// deact node), its squeezes (squeeze_end_text), and its cost, with `before`
+// deact node), its timings (badges_text), and its cost, with `before`
 // and `after` the best finish before and after it (the ladder's bf[i] and
 // bf[i + 1]) and `cost` cost_list's figure for it.
 StepText step_sentence(const SongTiming& timing, const Activation& act, int64_t cost,

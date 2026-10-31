@@ -117,6 +117,20 @@ bool play_button_reads(ImGuiTestContext* ctx, const char* word) {
            ctx->ItemInfo(any_ref(other).c_str(), ImGuiTestOpFlags_NoError).ID == 0;
 }
 
+// True when the opened step's button reads `remove` and no button reads the
+// other Remove label (pb_window.h's kRemoveLastLabel and kRemoveEarlierLabel),
+// so the step open is the last one or an earlier one as `remove` says. Only
+// one step is open at a time. Reads from the test's current ref.
+bool open_step_remove_reads(ImGuiTestContext* ctx, const char* remove) {
+    const char* other = std::string(remove) == kRemoveLastLabel ? kRemoveEarlierLabel : kRemoveLastLabel;
+    return ctx->ItemInfo(any_ref(remove).c_str(), ImGuiTestOpFlags_NoError).ID != 0 &&
+           ctx->ItemInfo(any_ref(other).c_str(), ImGuiTestOpFlags_NoError).ID == 0;
+}
+
+// The first words of a step sentence ("Activate at m20 ..."). The step panel
+// draws no such sentence, so these words must not be on screen.
+constexpr const char* kOldSentenceStart = "Activate at";
+
 void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     h.chart_arg = corpus::burnout_notes();
@@ -136,7 +150,7 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     // Before any click, every fill that costs nothing says "best" under it.
     // From one run: one such fill, m32, whose list row says "best" too.
     IM_CHECK_EQ(best_words_under_fills(h), size_t{1});
-    IM_CHECK(on_screen(h, "m32 0:40.945 · 3 phrases · ends m38 · squeeze-out 163.0 ms best"));
+    IM_CHECK(on_screen(h, "m32 0:40.945 · 3 phrases · ends m38 · squeeze out 163.0 ms best"));
 
     // The hover on the first fill: its card gives the phrases saved, the best
     // finish with this fill and its cost, then the best choice now and where
@@ -153,18 +167,21 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     move_off_timeline(ctx);
     IM_CHECK(!on_screen(h, best_line));
 
-    // The click on it: the steps panel gains its compact row, open to its
-    // sentence because the click selected the step it made, and the score
-    // line moves.
+    // The click on it: the steps panel gains its compact row, open because
+    // the click selected the step it made, and the score line moves. From
+    // one run: the step has one ending, so the opened step draws no ending
+    // lines, only its Remove button.
     const std::string step_one_row = "m20 → m24 2 phrases −140";
-    const std::string step_one =
-        "Activate at m20 (0:25.123) with 2 phrases saved. Star Power runs until m24. This choice "
-        "costs 140 points.";
     ctx->ItemClick(fill_ref(kFirstFillTick).c_str());
     IM_CHECK_RETV(wait_for_edit(ctx), );
     move_off_timeline(ctx);
     IM_CHECK_RETV(wait_text(ctx, step_one_row), );
-    IM_CHECK(on_screen(h, step_one));
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->Yield(2);
+    ctx->SetRef(h.home_ref.c_str());
+    IM_CHECK(open_step_remove_reads(ctx, kRemoveLastLabel));
+    IM_CHECK(!on_screen(h, kEndItAtLabel));
+    IM_CHECK(!on_screen(h, kOldSentenceStart));
     IM_CHECK(!on_screen(h, kNoStepsText));
     IM_CHECK(!on_screen(h, "m40 →"));
     const std::string one_step_score = figure_under(h, kYourScoreLabel);
@@ -191,18 +208,20 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     IM_CHECK(play_button_reads(ctx, kPlayWord));
 
     // The click on that row makes the second activation: its compact row,
-    // open to its sentence, while the first step shrinks to its compact row.
+    // open, while the first step's compact row stays. From one run: this
+    // step has one ending too, so it draws only its Remove button.
     const std::string step_two_row = "m40 → m44 2 phrases −1,580";
-    const std::string step_two =
-        "Activate at m40 (0:51.421) with 2 phrases saved. Star Power runs until m44. This choice "
-        "costs 1,580 points.";
     ctx->ItemClick(choice_ref(kSecondFillTick).c_str());
     IM_CHECK_RETV(wait_for_edit(ctx), );
     move_off_timeline(ctx);
     IM_CHECK_RETV(wait_text(ctx, step_two_row), );
-    IM_CHECK(on_screen(h, step_two));
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->Yield(2);
+    ctx->SetRef(h.home_ref.c_str());
+    IM_CHECK(open_step_remove_reads(ctx, kRemoveLastLabel));
+    IM_CHECK(!on_screen(h, kEndItAtLabel));
+    IM_CHECK(!on_screen(h, kOldSentenceStart));
     IM_CHECK(on_screen(h, step_one_row));
-    IM_CHECK(!on_screen(h, step_one));
     const std::string two_step_score = figure_under(h, kYourScoreLabel);
     IM_CHECK(two_step_score != one_step_score);
     IM_CHECK_STR_EQ(two_step_score.c_str(), "340,675");
@@ -221,12 +240,17 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(on_screen(h, "0:51.421 / 2:10.088"));
 
-    // A click on the first step's row opens it to its sentence and closes the
-    // second.
+    // A click on the first step's row opens it and closes the second: the
+    // open step's button is the one an earlier step draws, and both rows
+    // stay.
     IM_CHECK_RETV(click_step(ctx, 0), );
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->Yield(2);
     ctx->SetRef(h.home_ref.c_str());
-    IM_CHECK(on_screen(h, step_one));
-    IM_CHECK(!on_screen(h, step_two));
+    IM_CHECK(open_step_remove_reads(ctx, kRemoveEarlierLabel));
+    IM_CHECK(!on_screen(h, kEndItAtLabel));
+    IM_CHECK(!on_screen(h, kOldSentenceStart));
+    IM_CHECK(on_screen(h, step_one_row));
     IM_CHECK(on_screen(h, step_two_row));
 
     // A fill the player cannot activate on: the guide line says why, and the

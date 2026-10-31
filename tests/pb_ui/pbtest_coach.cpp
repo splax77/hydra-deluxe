@@ -1,6 +1,6 @@
-// The Path Builder's steps panel and guide line, driven headless: "Finish the
-// rest for me", the tight-window note, and a click on a fill the player
-// cannot activate on. Every figure is pinned from one run under the GUI
+// The Path Builder's steps panel and guide line, driven headless: a step's
+// ending lines, "Finish the rest for me", the tight-window note, and a click
+// on a fill the player cannot activate on. Every figure is pinned from one run under the GUI
 // tests' settings (tests/scratch_settings.h).
 
 // First: its Windows headers come before the test engine's, which undefine
@@ -89,13 +89,8 @@ void test_finish_for_me(ImGuiTestContext* ctx) {
         IM_CHECK(mine.path->pathstring() == "9");
         IM_CHECK_EQ(mine.path->totalscore(), int64_t{349875});
     }
-    // The steps panel's one step as its compact row; its row opens it to its
-    // sentence. Then the line after the steps. From one run.
+    // The steps panel's one step as its compact row. From one run.
     IM_CHECK(on_screen(h, "m58 → m68 4 phrases −13,640"));
-    IM_CHECK_RETV(click_step(ctx, 0), );
-    IM_CHECK(on_screen(h, "Activate at m58 (1:15.166) with 4 phrases saved. Star Power runs until m68. "
-                          "This choice costs 13,640 points."));
-    IM_CHECK(on_screen(h, hydra::pathbuilder::leftover_text(14800)));
 
     ctx->SetRef(h.home_ref.c_str());
     ctx->ItemClick(("**/" + std::string(hydra::pathbuilder::kFinishForMeLabel)).c_str());
@@ -166,7 +161,7 @@ void test_locked_fill_says_left_to_right(ImGuiTestContext* ctx) {
 
 // White Washed under the GUI tests' Path limit (10 ms, the app's default):
 // Hydra's best path's fourth window needs more, so its step carries the
-// violet note.
+// violet note, under its ending lines.
 void test_tight_window_note(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     IM_CHECK_RETV(open_chart(ctx, corpus::white_washed_notes()), );
@@ -174,11 +169,18 @@ void test_tight_window_note(ImGuiTestContext* ctx) {
     IM_CHECK(s.chart()->settings.ms_filter == std::optional<double>(10.0));
     IM_CHECK_RETV(paste_best_path(ctx), );
     IM_CHECK_RETV(s.history().current().windows.size() == 5, );
-    // The fourth step opens to its sentence and note when its row is clicked.
-    // From one run.
+    // The fourth step opens to its ending lines and the note when its row is
+    // clicked. From one run.
     IM_CHECK_RETV(click_step(ctx, 3), );
-    IM_CHECK(on_screen(h, "Activate at m132 (2:51.485) with 2 phrases saved."));
-    IM_CHECK(on_screen(h, "needs 130.4 ms, your limit is 10 ms"));
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->Yield(2);
+    const std::string note = "needs 130.4 ms, your limit is 10 ms";
+    const std::string kept_line = "(x) ends m136 · squeeze out 130.4 ms";
+    const std::string text = visible_text(h);
+    IM_CHECK(text.find(kept_line) != std::string::npos);
+    IM_CHECK(text.find(note) != std::string::npos);
+    IM_CHECK(text.find(kept_line) < text.find(note));
+    IM_CHECK(!on_screen(h, "Activate at"));
 
     // The note is the only text the panel draws in the violet chip's colour,
     // and it is one line.
@@ -187,6 +189,108 @@ void test_tight_window_note(ImGuiTestContext* ctx) {
     const std::optional<std::pair<float, float>> span = glyph_span(violet);
     IM_CHECK_RETV(span.has_value(), );
     IM_CHECK_LE(span->second - span->first, ImGui::GetTextLineHeightWithSpacing());
+}
+
+// How many glyph vertices the steps panel drew last frame inside `rect`:
+// in `color` only, or in any colour when `color` is 0.
+size_t glyphs_in(const ImRect& rect, ImU32 color) {
+    const ImGuiWindow* column = uitest::window_named("##steps");
+    if (!column || !column->DrawList) return 0;
+    const ImVec2 white = ImGui::GetDrawListSharedData()->TexUvWhitePixel;
+    size_t n = 0;
+    for (const ImDrawVert& v : column->DrawList->VtxBuffer) {
+        if (v.uv.x == white.x && v.uv.y == white.y) continue;
+        if (color != 0 && v.col != color) continue;
+        if (rect.Contains(v.pos)) ++n;
+    }
+    return n;
+}
+
+// Smash Mouth's best path is "1 0+ 0 0": its second activation can end on a
+// squeeze-in at m78 or a squeeze-out at m76, both at 0.0 ms. The opened
+// step shows both ending lines in the Paths tab's badge words, the kept one
+// marked; a click on the other moves the mark and the score. Once a third
+// activation is made, step 2 opened again shows the same lines, not
+// clickable, the kept one still marked and the other greyed.
+void test_choose_an_ending(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    IM_CHECK_RETV(open_chart(ctx, corpus::believer_notes()), );
+    PbState& s = h.app->state;
+    const hydra::ActivationWalk best = s.chart()->record.best_path().walk_activations();
+    IM_CHECK_RETV(best.size() >= 3, );
+    // From one run: the best path's first three activations, and the two
+    // ends of the second by their deact node's tick.
+    IM_CHECK_EQ(best[0].timecode.ticks(), int64_t{26880});
+    IM_CHECK_EQ(best[1].timecode.ticks(), int64_t{52992});
+    IM_CHECK_EQ(best[2].timecode.ticks(), int64_t{74496});
+    const std::string sq_in_end = any_ref("##end_59136");
+    const std::string sq_out_end = any_ref("##end_57600");
+
+    IM_CHECK_RETV(click_fill(ctx, best[0].timecode.ticks()), );
+    IM_CHECK_RETV(click_fill(ctx, best[1].timecode.ticks()), );
+    IM_CHECK_RETV(click_step(ctx, 1), );
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->Yield(2);
+    // From one run: the row, the two lines and the score.
+    IM_CHECK(on_screen(h, "m70 → m78 3 phrases · squeeze in 0.0 ms best"));
+    IM_CHECK(on_screen(h, hydra::pathbuilder::kEndItAtLabel));
+    IM_CHECK(on_screen(h, "(x) ends m78 · squeeze in 0.0 ms best"));
+    IM_CHECK(on_screen(h, "( ) ends m76 · squeeze out 0.0 ms −2,680"));
+    IM_CHECK(on_screen(h, "336,575"));
+    ctx->SetRef(h.home_ref.c_str());
+    IM_CHECK((ctx->ItemInfo(sq_out_end.c_str()).ItemFlags & ImGuiItemFlags_Disabled) == 0);
+
+    // The other ending: the mark moves, the row and the score follow.
+    ctx->ItemClick(sq_out_end.c_str());
+    IM_CHECK_RETV(wait_for_edit(ctx), );
+    IM_CHECK_EQ(s.history().current().windows.size(), size_t{2});
+    IM_CHECK(on_screen(h, "m70 → m76 3 phrases · squeeze out 0.0 ms −2,680"));
+    IM_CHECK(on_screen(h, "( ) ends m78 · squeeze in 0.0 ms best"));
+    IM_CHECK(on_screen(h, "(x) ends m76 · squeeze out 0.0 ms −2,680"));
+    IM_CHECK(on_screen(h, "330,075"));
+    IM_CHECK(!on_screen(h, "336,575"));
+
+    // And back.
+    ctx->SetRef(h.home_ref.c_str());
+    ctx->ItemClick(sq_in_end.c_str());
+    IM_CHECK_RETV(wait_for_edit(ctx), );
+    IM_CHECK(on_screen(h, "(x) ends m78 · squeeze in 0.0 ms best"));
+    IM_CHECK(on_screen(h, "336,575"));
+
+    // A third activation, then step 2 again: its lines are fixed now.
+    IM_CHECK_RETV(click_fill(ctx, best[2].timecode.ticks()), );
+    IM_CHECK_RETV(s.history().current().windows.size() == 3, );
+    IM_CHECK_RETV(click_step(ctx, 1), );
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "(x) ends m78 · squeeze in 0.0 ms best"));
+    IM_CHECK(on_screen(h, "( ) ends m76 · squeeze out 0.0 ms −2,680"));
+    ctx->SetRef(h.home_ref.c_str());
+    const ImGuiTestItemInfo kept = ctx->ItemInfo(sq_in_end.c_str());
+    const ImGuiTestItemInfo other = ctx->ItemInfo(sq_out_end.c_str());
+    IM_CHECK_RETV(kept.ID != 0 && other.ID != 0, );
+    IM_CHECK((kept.ItemFlags & ImGuiItemFlags_Disabled) != 0);
+    IM_CHECK((other.ItemFlags & ImGuiItemFlags_Disabled) != 0);
+    // The kept line's words are in the text colour; the other line's are
+    // drawn, but never in it.
+    const ImU32 text = ImGui::GetColorU32(ImGuiCol_Text);
+    IM_CHECK(glyphs_in(kept.RectFull, text) > 0);
+    IM_CHECK(glyphs_in(other.RectFull, 0) > 0);
+    IM_CHECK_EQ(glyphs_in(other.RectFull, text), size_t{0});
+    // A click on the greyed line changes nothing.
+    const uint64_t generation = s.history().generation();
+    ctx->ItemClick(sq_out_end.c_str());
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->Yield(2);
+    IM_CHECK_EQ(s.history().generation(), generation);
+    IM_CHECK_EQ(s.history().current().windows.size(), size_t{3});
+    IM_CHECK(on_screen(h, "(x) ends m78 · squeeze in 0.0 ms best"));
+
+    // The opened step's old paragraphs and the panel's old lines are gone.
+    for (const char* gone : {"Activate at", "This choice costs", "You still have Star Power",
+                             "no timing needed", "Cost: how many points", "Before it, the best",
+                             "Nothing left on the table"})
+        IM_CHECK(!on_screen(h, gone));
 }
 
 // The Preview clock's tail on Burnout, the song's length (from one run).
@@ -290,6 +394,7 @@ void test_row_click_moves_clock(ImGuiTestContext* ctx) {
 }  // namespace
 
 void register_coach_tests(Harness& h) {
+    uitest::register_test(h, "choose-an-ending", test_choose_an_ending);
     uitest::register_test(h, "finish-for-me", test_finish_for_me);
     uitest::register_test(h, "cant-activate-reason", test_cant_activate_reason);
     uitest::register_test(h, "tight-window-note", test_tight_window_note);
