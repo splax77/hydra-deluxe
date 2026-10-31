@@ -1,8 +1,10 @@
 // The kit agent: a virtual drum kit inside the game. It builds one Rewired
 // custom controller from the game's own drum definition, hands it to one
 // player with the game's default map, presses its pads and buttons on
-// request, and takes it away again. Nothing it does touches the keyboard or
-// the window, so the game can stay minimized and unfocused.
+// request, and takes it away again. It sends no key presses and never touches
+// the window, so the game can stay minimized and unfocused. While the kit is
+// set up, Rewired's keyboard is switched off, so the user's own keys reach no
+// player; teardown switches it back.
 //
 // The plan is docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md
 // ("One agent for the kit"). The user allowed method calls and field sets
@@ -28,6 +30,7 @@ import "frida-il2cpp-bridge";
 export const ALLOWED_CALLS = [
     "get_configuration", "get_controllers", "get_players",
     "get_ignoreInputWhenAppNotInFocus", "set_ignoreInputWhenAppNotInFocus",
+    "get_keyboardEnabled", "set_keyboardEnabled",
     "GetFirstCustomControllerWithTag", "CreateCustomController", "DestroyCustomController",
     "get_AllPlayers", "get_id", "get_name",
     "get_hasKeyboard", "set_hasKeyboard", "get_hasMouse", "set_hasMouse",
@@ -82,6 +85,7 @@ interface PlayerRecord {
 interface Recorded {
     tag: string;
     switchWas: boolean;
+    keyboardWas: boolean;
     players: PlayerRecord[];
     kit: Il2Cpp.Object | null;
     target: PlayerRecord | null;
@@ -146,6 +150,15 @@ function ignoresUnfocused(cfg: Il2Cpp.Object): boolean {
 
 function setIgnoresUnfocused(cfg: Il2Cpp.Object, value: boolean): void {
     cfg.method("set_ignoreInputWhenAppNotInFocus", 1).invoke(value);
+}
+
+// Whether Rewired's keyboard device reads keys at all, for every player.
+function keyboardOn(): boolean {
+    return controllers().method<boolean>("get_keyboardEnabled").invoke();
+}
+
+function setKeyboardOn(value: boolean): void {
+    controllers().method("set_keyboardEnabled", 1).invoke(value);
 }
 
 function customType(): Il2Cpp.Field.Type {
@@ -229,10 +242,11 @@ function needInteger(m: Message, key: string): number {
     return v;
 }
 
-// Runs on the main thread. Records the switch and every player's keyboard and
-// mouse flags before it changes anything, then turns the switch off, takes
-// the keyboard and mouse from every player, finds or builds the kit, gives it
-// to the named player and loads the default maps.
+// Runs on the main thread. Records the switch, Rewired's keyboard and every
+// player's keyboard and mouse flags before it changes anything, then turns the
+// switch off, switches Rewired's keyboard off, takes the keyboard and mouse
+// from every player, finds or builds the kit, gives it to the named player and
+// loads the default maps.
 function setup(m: Message) {
     const tag = needString(m, "tag");
     const definitionId = needInteger(m, "definition_id");
@@ -243,10 +257,12 @@ function setup(m: Message) {
     // the ones the first setup set, not the user's.
     const first = recorded === null;
     if (recorded === null) {
-        recorded = { tag, switchWas: ignoresUnfocused(cfg), players, kit: null, target: null };
+        recorded = { tag, switchWas: ignoresUnfocused(cfg), keyboardWas: keyboardOn(), players,
+                     kit: null, target: null };
     }
     const rec = recorded;
     setIgnoresUnfocused(cfg, false);
+    setKeyboardOn(false);
     for (const p of players) {
         setFlags(p.helper, false, false);
     }
@@ -273,6 +289,8 @@ function setup(m: Message) {
         first_setup: first,
         switch_was: rec.switchWas,
         switch_now: ignoresUnfocused(cfg),
+        keyboard_was: rec.keyboardWas,
+        keyboard_now: keyboardOn(),
         players_was: rec.players.map(playerLine),
         players_now: allPlayers().map(playerLine),
         kit: { id: kitId(kit), tag, created, player: playerName },
@@ -521,6 +539,7 @@ function status(m: Message) {
         frame: frameCount(),
         focused: unity("UnityEngine.Application").method<boolean>("get_isFocused").invoke(),
         switch_now: ignoresUnfocused(config()),
+        keyboard_now: keyboardOn(),
         setup_recorded: recorded !== null,
         kit_tag: tag,
         kit_exists: tag === null ? null : kit !== null,
@@ -548,7 +567,8 @@ function step(checks: Check[], what: string, fn: () => string | Check): void {
 
 // Runs on the main thread. Clears every element a press wrote, takes the kit
 // from its player, destroys it, gives every player back the keyboard and
-// mouse flags setup recorded, puts the switch back, and checks each.
+// mouse flags setup recorded, puts Rewired's keyboard and the switch back, and
+// checks each.
 function teardown(m: Message) {
     const checks: Check[] = [];
     const rec = recorded;
@@ -585,7 +605,7 @@ function teardown(m: Message) {
     });
     if (rec === null) {
         checks.push({ what: "setup record", ok: false,
-                      detail: "setup did not run in this agent, so no flags or switch were put back" });
+                      detail: "setup did not run in this agent, so no flags, keyboard or switch were put back" });
         return { checks, all_ok: false };
     }
     for (const p of rec.players) {
@@ -598,6 +618,12 @@ function teardown(m: Message) {
                      detail: `${p.name}: keyboard ${kb} (was ${p.hasKeyboard}), mouse ${mouse} (was ${p.hasMouse})` };
         });
     }
+    step(checks, "keyboard", () => {
+        setKeyboardOn(rec.keyboardWas);
+        const now = keyboardOn();
+        return { what: "keyboard", ok: now === rec.keyboardWas,
+                 detail: `keyboardEnabled ${now} (was ${rec.keyboardWas})` };
+    });
     step(checks, "switch", () => {
         const cfg = config();
         setIgnoresUnfocused(cfg, rec.switchWas);

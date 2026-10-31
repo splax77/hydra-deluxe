@@ -58,7 +58,7 @@ def by_name_only_findings(text: str) -> list[tuple[int, str, str]]:
 # to KIT_METHODS.
 MENU_AGENT = "menu.ts"
 KIT_AGENT = "kit.ts"
-CALL_SITES = {MENU_AGENT: 1, KIT_AGENT: 40}
+CALL_SITES = {MENU_AGENT: 1, KIT_AGENT: 42}
 LISTED_AGENTS = (MENU_AGENT, KIT_AGENT)
 KIT_METHODS = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "kit_methods.json")
 # A method looked up by name, with an optional type argument; group 2 is the
