@@ -1,5 +1,7 @@
 # Session index
 
+One session from 2026-10-31 is kept locally and not listed here, because it was about the PC's own setup, not Hydra.
+
 - 2026-08-09 62055a3c Freeze error diagnosis (2026-08-09) | batch-running, library, path, report-table, performance, tests | Ended with the freeze fixed, the library analyzed to 18,022 records, and a sortable path report with a score column. The conversation shows no commit, so the changes sit in the working tree.
 - 2026-08-10 571ec5d5 Hydra uncapped starpower version (2026-08-10) | sp-cap, path, performance, batch-running | Ended at 12:42 UTC with all six big charts finishing uncapped, the slowest in 98.8 seconds.
 - 2026-08-10 1d1ee323 Chart analysis performance (2026-08-10) | performance, analyze, path, tests | The session ended with the speedups in the working tree and verified; the transcript shows no commit.
@@ -424,7 +426,6 @@
 - 2026-10-31 adbda2b2 Audit of audits handoff (2026-10-31) | clone-hero, review, hooks, planning, settings-files, batch-time-left | The session ended when the user sent the stop message at 01:57 UTC, with some work merged, some reviewed but unmerged, and a handoff committed on main. [write-back]
 - 2026-10-31 28fa9d03 Path builder redesign handoff (2026-10-31) | path, preview, activation, planning, review | Ended at 03:28 UTC by writing a handoff, with the real-app check still open and nothing on main or pushed.
 - 2026-10-31 b02ab3e6 Clone Hero reference build handoff (2026-10-31) | clone-hero, docs, agents, hooks, review, tests | The session ended when the user sent the stop message at 03:13 UTC, with the code tasks on main, the area pages on the join branch, and three branches stopped mid-review.
-- 2026-10-31 12fcfbd2 Memory usage discrepancy (2026-10-31) | memory, performance, agents, planning | Ended at 03:46 UTC with a handoff written for a planning session, not committed, and the patched SignalRGB test still running.
 - 2026-10-31 a5f17ca5 MCP live steps handoff (2026-10-31) | clone-hero, agents, hooks, planning | Ended after the user's stop-and-handoff order: both running agents were stopped, and a handoff was written. [write-back]
 - 2026-10-31 a1eb703d Audit of audits build handoff (2026-10-31) | settings-files, report-table, performance, comparison-status, review, planning | The session ended when the user sent the stop message at 03:15 UTC, after six changes had merged to main and before T8 and the footer change merged.
 - 2026-10-31 695effb2 Squeeze timing (2026-10-31) | squeeze, transfer-scale, activation, sp-phrase, tempo, transcripts | The session ended after answering the question: the squeeze-out on this path cannot be done, and the card batch it started was checked and indexed.
