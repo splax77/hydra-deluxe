@@ -33,7 +33,8 @@ constexpr double kTextWaitSeconds = 60.0;
 
 // Burnout's fills the test clicks, by chord tick, from one run: the first two
 // fills the player can activate on (m20 and m40), and the fill at m44, which
-// the second activation's Star Power runs over.
+// comes after the second activation's Star Power has ended, with no phrases
+// saved there.
 constexpr int64_t kFirstFillTick = 36480;
 constexpr int64_t kSecondFillTick = 74880;
 constexpr int64_t kCantFillTick = 83040;
