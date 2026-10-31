@@ -157,7 +157,8 @@ void draw_coverage(PathWindow& w, const GeneratedReport& r) {
 void draw_body(PathWindow& w, const report_frame::Frame& frame, const PathReportInput& input) {
     TableView<ReportRow>& view = *w.view;
     if (w.tiles_dirty) {
-        w.tiles = app::report::path_tiles(view.rows(), view.visible(), input.result->library);
+        w.tiles = app::report::path_tiles(view.rows(), view.visible(),
+                                          input.result->library_charts);
         w.tiles_dirty = false;
     }
     report_frame::tiles(w.tiles);

@@ -23,6 +23,11 @@ std::vector<hydra::app::report::ReportRow> sample_path_rows();
 // the copies given, and Song C once.
 hydra::store::ChartIndex sample_index(int song_a_copies = 1, int song_b_copies = 1);
 
+// `rows` with each row's copies read from `library`, the way collect_rows
+// sets them (ReportRow::copies).
+std::vector<hydra::app::report::ReportRow> counted_against(
+    std::vector<hydra::app::report::ReportRow> rows, const hydra::store::ChartIndex& library);
+
 // The four scores.
 std::vector<hydra::app::dm_report::DmReportRow> sample_dm_rows();
 

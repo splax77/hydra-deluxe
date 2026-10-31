@@ -46,6 +46,17 @@ TilePairs tile_pairs(const std::vector<report::Tile>& tiles) {
     return out;
 }
 
+// path_tiles over hand-built rows counted against `library`: each row carries
+// its chart's copies the way collect_rows sets them, and the "of" half is the
+// library's own count, as generate_report hands it over
+// (GeneratedReport::library_charts).
+std::vector<report::Tile> tiles_against(std::vector<report::ReportRow> rows,
+                                        const std::vector<size_t>& shown,
+                                        const hydra::store::ChartIndex& library) {
+    return report::path_tiles(report_samples::counted_against(std::move(rows), library), shown,
+                              library.count(library.song_ids()));
+}
+
 }  // namespace
 
 TEST_CASE("write_report_file swaps the page in and leaves no .tmp behind") {
@@ -119,7 +130,7 @@ using report_samples::sample_path_rows;
 TEST_CASE("path_tiles: the six sample rows") {
     const std::vector<report::ReportRow> rows = sample_path_rows();
     const hydra::store::ChartIndex library = report_samples::sample_index();
-    CHECK(tile_pairs(report::path_tiles(rows, every_row(rows.size()), library)) ==
+    CHECK(tile_pairs(tiles_against(rows, every_row(rows.size()), library)) ==
           TilePairs{{"Charts shown", "3 of 3"},
                     {"Paths shown", "6"},
                     {"Hardest ms", "171.0 ms"},
@@ -132,21 +143,21 @@ TEST_CASE("path_tiles: the tiles count only the rows shown") {
     const hydra::store::ChartIndex library = report_samples::sample_index();
     // Song A's three rows and Song C's one: two charts, no Beyond row, and the
     // hardest timing is Song C's 90 ms.
-    CHECK(tile_pairs(report::path_tiles(rows, {0, 1, 2, 5}, library)) ==
+    CHECK(tile_pairs(tiles_against(rows, {0, 1, 2, 5}, library)) ==
           TilePairs{{"Charts shown", "2 of 3"},
                     {"Paths shown", "4"},
                     {"Hardest ms", "90.0 ms"},
                     {"Past 170 ms", "0"},
                     {"Highest skip", "1"}});
     // Song A's mode with no squeeze alone: no timing to show.
-    CHECK(tile_pairs(report::path_tiles(rows, {2}, library)) ==
+    CHECK(tile_pairs(tiles_against(rows, {2}, library)) ==
           TilePairs{{"Charts shown", "1 of 3"},
                     {"Paths shown", "1"},
                     {"Hardest ms", "—"},
                     {"Past 170 ms", "0"},
                     {"Highest skip", "0"}});
     // Nothing passes the filters.
-    CHECK(tile_pairs(report::path_tiles(rows, {}, library)) ==
+    CHECK(tile_pairs(tiles_against(rows, {}, library)) ==
           TilePairs{{"Charts shown", "0 of 3"},
                     {"Paths shown", "0"},
                     {"Hardest ms", "—"},
@@ -160,11 +171,11 @@ TEST_CASE("path_tiles: Charts shown adds each chart's copies once") {
     // rows still count its copies once. The library's own count, after "of",
     // counts the same copies.
     const hydra::store::ChartIndex library = report_samples::sample_index(1200, 2);
-    CHECK(report::path_tiles(rows, every_row(rows.size()), library)[0]
+    CHECK(tiles_against(rows, every_row(rows.size()), library)[0]
               .value == "1,203 of 1,203");
-    CHECK(report::path_tiles(rows, {0, 1, 2}, library)[0].value ==
+    CHECK(tiles_against(rows, {0, 1, 2}, library)[0].value ==
           "1,200 of 1,203");
-    CHECK(report::path_tiles(rows, {3}, library)[0].value == "2 of 1,203");
+    CHECK(tiles_against(rows, {3}, library)[0].value == "2 of 1,203");
 }
 
 TEST_CASE("dm_tiles: the four sample scores") {
@@ -345,6 +356,6 @@ TEST_CASE("path report counts charts by hash in the Charts shown tile") {
          hydra::store::ChartLibraryEntry{"h2", "Same", "Name"}});
 
     // Two charts, however many rows each has, and even when the names match.
-    CHECK(report::path_tiles({a, a2, b}, every_row(3), library)[0].value == "2 of 2");
-    CHECK(report::path_tiles({a, a2, b}, {0, 1}, library)[0].value == "1 of 2");
+    CHECK(tiles_against({a, a2, b}, every_row(3), library)[0].value == "2 of 2");
+    CHECK(tiles_against({a, a2, b}, {0, 1}, library)[0].value == "1 of 2");
 }

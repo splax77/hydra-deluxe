@@ -87,7 +87,12 @@ Fixture& fixture() {
 
 std::shared_ptr<GeneratedReport> sample_path_result() {
     auto r = std::make_shared<GeneratedReport>();
-    r->paths = report_samples::sample_path_rows();
+    // The sample rows counted against the sample library, as generate_report
+    // hands them over: each row carries its chart's copies, and
+    // library_charts is the library's own count.
+    const hydra::store::ChartIndex library = report_samples::sample_index();
+    r->paths = report_samples::counted_against(report_samples::sample_path_rows(), library);
+    r->library_charts = library.count(library.song_ids());
     r->rows = static_cast<int64_t>(r->paths.size());
     r->subtitle = "sample path subtitle";
     r->footer = "sample path footer";

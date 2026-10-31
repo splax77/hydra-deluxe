@@ -31,12 +31,17 @@ const ChartLibraryEntry* ChartIndex::naming(const std::string& song_id) const {
     return it == charts_.end() ? nullptr : &it->second.naming;
 }
 
-int64_t ChartIndex::count(const std::vector<std::string>& song_ids) const {
+int64_t count_charts(const std::vector<std::string>& song_ids,
+                     const std::function<int(const std::string&)>& copies) {
     std::unordered_set<std::string> seen;
     int64_t total = 0;
     for (const std::string& id : song_ids)
         if (seen.insert(id).second) total += copies(id);
     return total;
+}
+
+int64_t ChartIndex::count(const std::vector<std::string>& song_ids) const {
+    return count_charts(song_ids, [this](const std::string& id) { return copies(id); });
 }
 
 }  // namespace hydra::store

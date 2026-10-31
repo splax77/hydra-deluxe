@@ -51,8 +51,14 @@ struct ReportRow {
     int sqin = 0;
     int sqout = 0;
     int notes = 0;
+    // How many library rows the row's chart counts as
+    // (store::ChartIndex::copies), kept so the Charts shown tile counts
+    // without the library's index (D282). collect_rows sets it from
+    // ChartIndex::copies; a row built any other way counts no chart until its
+    // maker sets it.
+    int copies = 0;
     // The chart this row belongs to (its song id). Every chart count on the
-    // page asks store::ChartIndex::count over these ids.
+    // page asks store::count_charts over these ids.
     std::string hyhash;
 };
 
@@ -89,13 +95,13 @@ inline ChipToken tier_token(const std::string& tok) {
 
 // The path report's five tiles over the rows a window shows: `shown` holds
 // their indices into `rows`. The Beyond edge (beyond_edge_text) names the
-// "Past N ms" tile. `library` counts the Charts shown tile
-// (GeneratedReport::library), which reads "<shown> of <library>": the charts
-// with rows shown, of every chart the library lists, both counted in library
-// rows. Takes over the page script's `stats`.
+// "Past N ms" tile. The Charts shown tile reads "<shown> of <library>": the
+// charts with rows shown, counted over the rows' own copies
+// (ReportRow::copies), of `library_charts`, every chart the library lists
+// (GeneratedReport::library_charts). Both count library rows. Takes over the
+// page script's `stats`.
 std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
-                             const std::vector<size_t>& shown,
-                             const store::ChartIndex& library);
+                             const std::vector<size_t>& shown, int64_t library_charts);
 
 // (label, token) for a hardest-squeeze value (raw ms), e.g. (Extreme, t2):
 // hydra::tier_for (core/squeeze_rating.h) on a freshly built timing_tiers
@@ -163,7 +169,8 @@ struct ReportOptions {
 
 // What collect_rows found: the page's rows, the library they were read
 // against, and the library's charts that gave no rows because they have no
-// Ready record (library_lookup's other two groups).
+// Ready record (library_lookup's other two groups). generate_report counts
+// through the library and then lets it go; only the rows outlive the build.
 struct CollectedRows {
     std::vector<ReportRow> rows;
     store::ChartIndex library;
@@ -174,7 +181,8 @@ struct CollectedRows {
 // The page's rows, read from the store: every Ready record of options.run's
 // profile whose chart the library lists (library_lookup), in the library's
 // scan order, each giving up to options.max_paths rows in its stored rank
-// order. Nothing is analyzed and no chart file is opened.
+// order. The row list holds exactly its rows, with no spare capacity (D282).
+// Nothing is analyzed and no chart file is opened.
 CollectedRows collect_rows(store::RecordStore& store, const ReportOptions& options);
 
 // ---- generate_report -------------------------------------------------------
@@ -243,7 +251,7 @@ struct GeneratedReport {
     int64_t songs = 0;
     int64_t rows = 0;
     // Every chart the library lists, in library rows (ChartIndex::count):
-    // the "of" half of the Charts shown tile. With no filters,
+    // the "of" half of the Charts shown tile (path_tiles). With no filters,
     // songs + cant_analyze_charts + no_result_charts == library_charts.
     int64_t library_charts = 0;
     // The library's charts whose stored result is a failure, in library rows,
@@ -268,11 +276,10 @@ struct GeneratedReport {
     // and a cancel keep each caller's own words.
     std::string why_empty;
     // The rows themselves, one per path, in collect_rows' order. Empty when
-    // there is no page.
+    // there is no page. Each carries its chart's copies, so the window
+    // recounts its Charts shown tile from the rows alone (path_tiles); the
+    // report keeps no chart index of its own (D282).
     std::vector<ReportRow> paths;
-    // The library the rows were read against. The window recounts its
-    // Charts shown tile through it (path_tiles).
-    store::ChartIndex library;
     // The line under the page's heading and the note at its foot, as the page
     // shows them. Empty when there is no page.
     std::string subtitle;

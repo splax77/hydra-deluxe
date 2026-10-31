@@ -229,6 +229,24 @@ TEST_CASE("report rows: a tied top-score variant is optimal too") {
 
 TEST_CASE("report rows list every stored record (4 bars)") { check_cap(4); }
 
+// The row list holds no spare room once collect_rows returns, and the report
+// hands that same list over (D282): five charts at one path each, then at
+// every path.
+TEST_CASE("collect_rows: the row list is sized to its rows") {
+    store::RecordStore store(":memory:");
+    REQUIRE(fill_store(store, 4, 5) == 5);
+    for (const int64_t max_paths : {int64_t{1}, report::kEveryPathSentinel}) {
+        INFO("max_paths " << max_paths);
+        report::ReportOptions options = fixture_options(4);
+        options.max_paths = max_paths;
+        const report::CollectedRows collected = report::collect_rows(store, options);
+        REQUIRE_FALSE(collected.rows.empty());
+        CHECK(collected.rows.capacity() == collected.rows.size());
+        const report::GeneratedReport page = report::generate_report(store, options);
+        CHECK(page.paths.capacity() == page.paths.size());
+    }
+}
+
 // The spec's row-by-row test, in its batch-then-read form: a batch saves the
 // charts, the report reads them back, and every row matches the row a fresh
 // analysis of the same chart under the same settings gives.
@@ -359,14 +377,19 @@ TEST_CASE("report counts every library copy of a chart, and leaves out a chart t
         CHECK(r.hyhash == "h0");
         CHECK(r.song != "Title 1");
     }
-    // The Charts shown tile asks store::ChartIndex::count too, so one shown
-    // row of h0 still counts both copies.
-    CHECK(report::path_tiles(out.paths, {0}, out.library)[0].value ==
+    // The report keeps no chart index (D282): each row carries its chart's
+    // copies, so one shown row of h0 still counts both copies, and every h0
+    // row together counts them once.
+    REQUIRE(out.paths.size() > 1);
+    for (const report::ReportRow& r : out.paths) CHECK(r.copies == 2);
+    CHECK(report::path_tiles(out.paths, {0}, out.library_charts)[0].value ==
           "2 of 2");
+    CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.library_charts)[0]
+              .value == "2 of 2");
 }
 
 // The Charts shown tile and generate_report's subtitle both count through
-// ChartIndex::count, so with every row shown the two totals agree, and the
+// store::count_charts, so with every row shown the two totals agree, and the
 // tile's "of" reads the library count generate_report hands over.
 TEST_CASE("path report: the Charts shown tile counts what generate_report counts") {
     store::RecordStore store(":memory:");
@@ -382,7 +405,7 @@ TEST_CASE("path report: the Charts shown tile counts what generate_report counts
     REQUIRE(rows_h1 > 0);
     CHECK(static_cast<int64_t>(rows_h0 + rows_h1) == out.rows);
     CHECK(out.library_charts == 5);
-    CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.library)[0]
+    CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.library_charts)[0]
               .value == "5 of 5");
 }
 
@@ -408,7 +431,7 @@ TEST_CASE("generate_report hands over its rows, subtitle and footer") {
     CHECK(out.footer.rfind("Generated from ", 0) == 0);
     CHECK(out.footer.find("'Beyond' means past the 170 ms window.") != std::string::npos);
 
-    CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.library)[0]
+    CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.library_charts)[0]
               .value == "5 of 5");
 }
 
@@ -482,7 +505,7 @@ TEST_CASE("path report coverage: shown + can't analyze + no result is the librar
     CHECK(page.no_result_line == counted(page.no_result_charts, "chart has", "charts have") +
                                      " no result under these settings");
     // The Charts shown tile reads the same two counts, with no filters.
-    CHECK(report::path_tiles(page.paths, every_row(page.paths.size()), page.library)[0]
+    CHECK(report::path_tiles(page.paths, every_row(page.paths.size()), page.library_charts)[0]
               .value == std::to_string(page.songs) + " of " + std::to_string(page.library_charts));
 }
 
@@ -513,7 +536,7 @@ TEST_CASE("path report coverage: a chart with a stored failure gets no row and o
     CHECK(group.charts[0].text == expert_no_notes_text());
     CHECK(page.cant_analyze_line == "1 chart has no Expert Pro Drums notes");
     CHECK(page.no_result_line.empty());
-    CHECK(report::path_tiles(page.paths, every_row(page.paths.size()), page.library)[0]
+    CHECK(report::path_tiles(page.paths, every_row(page.paths.size()), page.library_charts)[0]
               .value == "1 of 2");
 }
 

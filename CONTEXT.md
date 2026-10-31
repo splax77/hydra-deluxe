@@ -62,7 +62,9 @@ built by `RecordStore::chart_index` from the rows in scan order, is the one
 answer to which charts the library lists (`ChartIndex::lists`), how many
 copies each has (`ChartIndex::copies`; `ChartIndex::count` adds them up for a
 set of charts) and which copy names it (`ChartIndex::naming`, the first row)
-(D115).
+(D115). The adding-up rule itself is `store::count_charts`, which
+`ChartIndex::count` calls; the path report keeps no index once it is built,
+so its Charts shown tile asks that rule over the copies each row kept (D282).
 
 **Selection scroll**:
 Whether a list moves when its selected row changes, and how far. The owner is

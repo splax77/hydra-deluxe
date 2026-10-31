@@ -478,9 +478,9 @@
     },
     {
       "question": "How many charts does a page or its tool count?",
-      "owner": "store::ChartIndex::count, which generate_report, path_tiles, tally_fill_rows and the fill page's stats() (through the payload's \"k\") all ask",
+      "owner": "store::count_charts, which generate_report and tally_fill_rows ask through ChartIndex::count, path_tiles asks over its rows' copies, and the fill page's stats() asks through the payload's \"k\"",
       "owner_file": "src/store/chart_index.cpp",
-      "owner_symbol": "ChartIndex::count",
+      "owner_symbol": "count_charts",
       "date": "2026-10-05",
       "decision": "D79",
       "added_by": "COUNT-P",
