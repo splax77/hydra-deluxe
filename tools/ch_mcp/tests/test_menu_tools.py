@@ -408,11 +408,16 @@ class StepsFileTest(unittest.TestCase):
     def test_it_loads_and_starts_unverified(self):
         self.assertIs(self.data["verified"], False)
 
-    def test_it_names_the_two_manual_pages_and_the_plan(self):
+    def test_it_names_the_two_manual_pages_and_only_repo_files_that_exist(self):
+        # The test names no repo file itself: a plan the file cites leaves the
+        # repo when its work is done, and this check then fails until the
+        # citation moves with it.
         wiki = [s for s in self.data["sources"] if s.startswith("https://wiki.clonehero.net/")]
         self.assertEqual(len(wiki), 2)
-        self.assertIn("docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md",
-                      self.data["sources"])
+        for source in self.data["sources"]:
+            if source in wiki:
+                continue
+            self.assertTrue(os.path.isfile(os.path.join(_REPO_ROOT, source)), source)
 
     def test_every_item_is_a_kit_item(self):
         for step in self.steps:

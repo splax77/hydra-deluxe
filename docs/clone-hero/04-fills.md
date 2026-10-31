@@ -3,7 +3,7 @@
 This page covers written fills, the fills the game generates, their deadlines, and when a fill shows up.
 It describes build 1.1 (v1.1.0.6142), and build 1.0 (v1.0.0.4045) under its own heading.
 "The decompile" on this page means Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
-Last write-back: 2026-10-30.
+Last write-back: 2026-10-31.
 
 ## Written fills
 
@@ -223,7 +223,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: The deadline adds `+0x300` to the engine field at #8288+0x108. One reading calls that field the current tick; another reads it as the song clock in whole milliseconds.
 Label: Unknown
-Evidence: only the add at `code/6142/fill_deadline_20DDB70.asm` lines 24 to 26. `+0x108` is not among the fields named in `tools/ch_probe/experiments/results/overlay-spike/il2cpp-fields.md`, and its writer was not looked for. The current-tick reading is `docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md` line 21. The whole-milliseconds reading comes from session 8157f2dc on 2026-09-25 (condensed transcript lines 1394 to 1422). A tick compare against fill start ticks fits the current-tick reading; neither is proven.
+Evidence: only the add at `code/6142/fill_deadline_20DDB70.asm` lines 24 to 26. `+0x108` is not among the fields named in `tools/ch_probe/experiments/results/overlay-spike/il2cpp-fields.md`, and its writer was not looked for. The current-tick reading is the D115 timing plan's (session 08261223, 2026-10-12): read from an annotated disassembly kept locally outside the repo (drums.ann lines 887 to 955), it said every fill whose start tick is at or below the current tick plus `+0x300` loses its flag, and it named no writer for the field. The whole-milliseconds reading comes from session 8157f2dc on 2026-09-25; that session's card does not mention it, and its own record is not kept. A tick compare against fill start ticks fits the current-tick reading; neither is proven.
 Game code (6142): field #8288+0x108; its writer was not read.
 Hydra: no owner
 Ruling: none needed: no Hydra rule depends on it
@@ -447,7 +447,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: In Splax's Desecration Day full combo on Clone Hero v1.0.0.4080 (video uploaded 2026-03-17), the player activated at tick 25680, a fill the 1.1 rule rejects, and scored 955,660, above Hydra's 1.1 optimal 955,500. Hydra's 1.0 rule lets that fill through: the player's activations equal Hydra's 1.0 optimal path.
 Label: Proven in a live run
-Evidence: `C:\ytdl\videos\Desecration Day Pro Drums FC [68yrLU78FLo].fcreport.md` line 23 (activation 1 at tick 25680) and lines 36 to 38 (optimal 959,340 with Hydra path 0 `0 3- 4- 4 1 0`, actual 955,660); the results screenshot shows "Clone Hero v1.0.0.4080-final". The build is 4080, not 4045, and it is a third-party video, not a controlled run. It shows Hydra's rule agrees with one fill, not the formula. Hydra's own timing of that fill: under the 1.1 rule the meter reaches half 363 ms too late for the fill to appear, and under the 1.0 rule it appears with 212 ms to spare (session d46444c2, condensed transcript line 67; Hydra's numbers, not read from the game). The fcreport's lines 37 and 38 put the played path's ceiling at 957,320 and the run 1,660 below it.
+Evidence: `C:\ytdl\videos\Desecration Day Pro Drums FC [68yrLU78FLo].fcreport.md` line 23 (activation 1 at tick 25680) and lines 36 to 38 (optimal 959,340 with Hydra path 0 `0 3- 4- 4 1 0`, actual 955,660); the results screenshot shows "Clone Hero v1.0.0.4080-final". The build is 4080, not 4045, and it is a third-party video, not a controlled run. It shows Hydra's rule agrees with one fill, not the formula. Hydra's own timing of that fill: under the 1.1 rule the meter reaches half 363 ms too late for the fill to appear, and under the 1.0 rule it appears with 212 ms to spare (Hydra's numbers, not read from the game; session d46444c2 worked them out, and its card, docs/sessions/2026-09-03-d46444c2.md, records the 1.0 pricing but not these two timings, whose record is not kept). The fcreport's lines 37 and 38 put the played path's ceiling at 957,320 and the run 1,660 below it.
 Game code (4045): see FL-42.
 Hydra: `kLegacyFillsFlag` in src/app/config.h line 53; `fill_rule_for` in src/search/graph.h line 45.
 Ruling: none needed: same rule

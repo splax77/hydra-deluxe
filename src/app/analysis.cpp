@@ -508,11 +508,16 @@ void walk_folders(const std::vector<std::string>& rootfolders, const ScanCallbac
     const std::atomic<bool>* cancel = callbacks.cancel;
 
     std::deque<WalkNode> nodes;  // references stay valid across push_back
-    std::vector<size_t> roots;   // every root that is a folder, repeats included
+    std::vector<size_t> roots;   // every root that is a folder, each folder once
     std::unordered_map<std::string, size_t> node_of;  // a subfolder's path -> its node
     std::unordered_set<std::string> visited;           // roots and listed subfolders
     for (const std::string& root : rootfolders) {
-        if (is_directory_utf8(root)) {
+        // A folder given again, in any spelling (same_folder), is walked only
+        // from its first one, so its charts are listed once.
+        const bool repeat = std::any_of(roots.begin(), roots.end(), [&](size_t idx) {
+            return same_folder(nodes[idx].dir, root);
+        });
+        if (!repeat && is_directory_utf8(root)) {
             nodes.push_back(WalkNode{root, {}, {}, {}});
             roots.push_back(nodes.size() - 1);
         }
@@ -899,7 +904,6 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
             if (wr.failed) ++progress.failed;
             else ++progress.analyzed;
             progress.completed = progress.analyzed + progress.failed;
-            progress.current_title = wr.item.title;
             if (callbacks.on_progress) callbacks.on_progress(progress);
             if (wr.failed) {
                 if (callbacks.on_error) callbacks.on_error(wr.item.title, wr.sentence, wr.error);

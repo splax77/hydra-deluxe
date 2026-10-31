@@ -32,11 +32,11 @@ Found: 2026-10-28, feasibility study line 137; checked 2026-10-30, session b02ab
 
 Rule: After a song, the destroyed game manager is still in memory. Unity's m_CachedPtr field (+0x10 of the base Object) is null on it, which tells it apart from a live one; at the main menu the tools read "menu (no live GameManager)" with one destroyed instance.
 Label: Proven in a live run
-Evidence: the field layout is `dump.cs` line 695824 (m_CachedPtr at 0x10). The live behaviour is recorded only as text in `docs/superpowers/plans/2026-10-28-ch-mcp-server.md` lines 310 and 316 (2026-10-29, session e9b04efc); no raw result file was kept.
+Evidence: the field layout is `dump.cs` line 695824 (m_CachedPtr at 0x10). The live behaviour comes from two runs on 2026-10-29 in session e9b04efc, on the Window Map probe chart. First, after a song the user went back to the main menu, and two state reads both said "song over", with the game manager found and one instance, at a song time of 63.56 s. Then, once the tools skipped a game manager whose m_CachedPtr is null, a second run left the song for the main menu and both the attach and the state read said "menu (no live GameManager)", found false, with one destroyed instance. The session's card (docs/sessions/2026-10-29-e9b04efc.md) records both runs. No raw result file was kept.
 Game code (6142): the base Object's native-pointer field; no method.
 Hydra: no owner. The tool check is in tools/ch_mcp/agent/gamemanager.ts lines 39 to 60.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-29, session e9b04efc (written up in the plan lines above; `docs/agents/clone-hero-mcp.md` repeated it and now points here).
+Found: 2026-10-29, session e9b04efc (`docs/agents/clone-hero-mcp.md` repeated it and now points here).
 
 ### IN-04 The game manager is where the timing settings enter a song
 
@@ -46,7 +46,7 @@ Evidence: `code/6142/gm_awake_B41A0.asm` lines 147 to 165 and the millisecond-to
 Game code (6142): `GameManager.Awake`, RVA `0xB41A0`; helper RVA `0x210C1F0`; the load coroutine's MoveNext (a scrambled nested class of GameManager), RVA `0xD8D80`.
 Hydra: no owner: Hydra has no calibration and no practice-speed model (a grep for `calibrat` in src/ finds nothing).
 Ruling: none needed here: the timing rules and their rulings are page 03's.
-Found: 2026-10-28, overlay spike handoff (`docs/handoffs/2026-10-28-overlay-spike-sitting-handoff.md`); listed 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-28, overlay spike handoff (docs/handoffs/2026-10-28-overlay-spike-sitting-handoff.md, removed; `git show 444631e6:docs/handoffs/2026-10-28-overlay-spike-sitting-handoff.md`); listed 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-05 The song clock is its own class with two getters
 
@@ -154,7 +154,7 @@ Found: 2026-09-25, session 8157f2dc.
 
 Rule: The constant the tools name `RVA_HITCHECK_THRESHOLD` (a double, 0.75, in the DLL's data) is not a hit grade. The drum engine compares the song clock minus the round start at +0x2E0 (IN-12) with it, and when the time is over 0.75 s while a round is pending it makes one virtual call and clears the round state.
 Label: Proven in the game's code
-Evidence: `RVA_HITCHECK_THRESHOLD = 0x31406E8` (tools/ch_probe/constants.py line 191); the listings annotate the address as `[0x31406e8] xmm dbl=(0.75, 12.0)`. Its two users are `docs/audit/drum-lanes/play/f20ddec0.asm` lines 30 to 45 (clock at +0x100 minus +0x2E0, compared with it; the break needs +0x2C4 and +0x2C8 non-zero and the byte at +0x2F1 zero, then clears +0x2EC, +0x2C4, +0x2C8 and +0x2F0) and its twin `f20de5b0.asm` lines 17 to 19. The virtual call's target was not read. The earlier session printout (8157f2dc, condensed lines 233 to 234) only showed the value 0.75.
+Evidence: `RVA_HITCHECK_THRESHOLD = 0x31406E8` (tools/ch_probe/constants.py line 191); the listings annotate the address as `[0x31406e8] xmm dbl=(0.75, 12.0)`. Its two users are `docs/audit/drum-lanes/play/f20ddec0.asm` lines 30 to 45 (clock at +0x100 minus +0x2E0, compared with it; the break needs +0x2C4 and +0x2C8 non-zero and the byte at +0x2F1 zero, then clears +0x2EC, +0x2C4, +0x2C8 and +0x2F0) and its twin `f20de5b0.asm` lines 17 to 19. The virtual call's target was not read. Session 8157f2dc (2026-09-25) printed the value 0.75 earlier; that printout is not kept, and it showed only the value.
 Game code (6142): engine methods at RVA `0x20DDEC0` and `0x20DE5B0`, the listings above.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
@@ -164,7 +164,7 @@ Found: 2026-09-25, session 8157f2dc.
 
 Rule: The window formula's normal branch (flags bit 0x1000 clear) reads the four constants that tools/ch_probe/constants.py files under `RVA_FORMULA_PRECISION`, and the precision branch reads the four filed under `RVA_FORMULA_NORMAL`. So the tool's normal-mode prediction runs on the precision constants.
 Label: Proven in the game's code
-Evidence: GD lines 767 to 781, read again for this page: the bit-clear branch (lines 772 to 774) multiplies by the addresses listed at constants.py lines 175 to 180, and the bit-set branch (lines 779 to 781) by those at lines 166 to 171. The arithmetic fits the live run: with the bit-clear constants' values, as session 8157f2dc printed them (condensed transcript lines 215 to 219), the formula gives 171.43126 ms at an input of 170 and 96.29316 ms at 75, and `tools/ch_probe/experiments/results/poll_windows.csv` holds 171.431308 and 96.293167 as its largest and smallest totals; the other table gives -242 and -78.
+Evidence: GD lines 767 to 781, read again for this page: the bit-clear branch (lines 772 to 774) multiplies by the addresses listed at constants.py lines 175 to 180, and the bit-set branch (lines 779 to 781) by those at lines 166 to 171. The arithmetic fits the live run: the comment above `WINDOW_CAP_MS` in tools/ch_probe/constants.py (lines 235 to 239) records that the formula with the DLL's constants gives 171.4313075 ms at an input of 170 and 96.2931672 ms at 75, and `tools/ch_probe/experiments/results/poll_windows.csv` holds 171.431308 and 96.293167 as its largest and smallest totals. Session 8157f2dc (2026-09-25) printed the constants' values and found these totals came from the bit-clear table, while the other table gives -242 and -78; that printout is not kept.
 Game code (6142): window formula, RVA `0x20DDDA0`; flags field `#8288+0x198`.
 Hydra: no owner in src/; the two tables are `RVA_FORMULA_NORMAL` (constants.py line 166) and `RVA_FORMULA_PRECISION` (line 175), and the tool's normal-window prediction (`predicted_window_normal` in tools/ch_probe/experiments/analysis.py, fed by `normal_formula_constants` at lines 312 to 316) reads the first.
 Ruling: open split: see questions page Q-76
@@ -186,7 +186,7 @@ Found: 2026-10-28, session 6a549de0 (feasibility study lines 143 to 156).
 
 Rule: On a bot run the per-note calls come a few milliseconds after the note: the first two calls on Window Map came at 3003.0 ms for a note at 3000 ms. A key-press trace stopped at 139 of 142 notes because its cap ran out while the song sat paused; a later run with the cap counted from song time got all 142.
 Label: Proven in a live run
-Evidence: `RUNS\l3\trace-wm-args.txt` first lines (+3.0 ms); `RUNS\l3\keys\trace-keys-count.txt` (139, "ended: done (agent: cap)"). The study's figures of 284 calls and a 1.75 ms median were not recomputed, the 142-of-142 rerun is recorded only in `docs/superpowers/plans/2026-10-28-ch-mcp-server.md` line 308, and "paused" as the cause is the study's inference.
+Evidence: `RUNS\l3\trace-wm-args.txt` first lines (+3.0 ms); `RUNS\l3\keys\trace-keys-count.txt` (139, "ended: done (agent: cap)"). The study's figures of 284 calls and a 1.75 ms median were not recomputed, the 142-of-142 rerun is L2 run 1 of 2026-10-29 in session e9b04efc (the presser hit 142 of 142, and the trace fired 142 times, one per note, all within 85 ms of the note, the largest gap 4.1 ms; card docs/sessions/2026-10-29-e9b04efc.md, no trace log kept), and "paused" as the cause is the study's inference.
 Game code (6142): RVA `0x20DE770` and `0x20DEEC0`.
 Hydra: no owner.
 Ruling: user: "Song cap + 120 s (Recommended)" (card 12d82c30, 02:03 UTC, to "How long should the new wall-clock cap be?"); it sets the tool's cap, not a game rule.
@@ -194,9 +194,9 @@ Found: 2026-10-28, sessions 6a549de0 and 12d82c30 (feasibility study lines 154 t
 
 ### IN-19 Whether the score method fires only for hit notes
 
-Rule: The plan records that `0x20DEEC0` fired 77 times on a run where the game counted 77 hit notes of 142 and 10 overhits, with every section equal, so it would fire only for hit notes. The trace half of that record is not on disk.
+Rule: A live run recorded that `0x20DEEC0` fired 77 times on a run where the game counted 77 hit notes of 142 and 10 overhits, with every section equal, so it would fire only for hit notes. The trace half of that record is not on disk.
 Label: Unknown
-Evidence: not checked: it needs the run's trace log. The game's side was the file `l2-run2-scorestats.json` of session e9b04efc, which was not kept (77 hit, 142 total, 10 excess, section hits 2, 8, 12, 15, 11, 10, 5, 8, 3, 3); the 77 calls are text in `docs/superpowers/plans/2026-10-28-ch-mcp-server.md` line 312.
+Evidence: not checked: it needs the run's trace log. The game's side was the file `l2-run2-scorestats.json` of session e9b04efc, which was not kept (77 hit, 142 total, 10 excess, section hits 2, 8, 12, 15, 11, 10, 5, 8, 3, 3). The run was L2 run 2 on Window Map, 2026-10-29: the user let the opening notes pass and played the rest by hand, with no presser, and the trace stopped with "ended: done (agent: song over)" after 77 calls, on 77 different notes, the trace's count equal to the game's in each of the ten sections. The session's card (docs/sessions/2026-10-29-e9b04efc.md) records the 77 calls, the 77 hits and the ten matching sections.
 Game code (6142): #8255 method RVA `0x20DEEC0`.
 Hydra: no owner. The tool comment is at tools/ch_probe/constants.py lines 67 to 69.
 Ruling: none needed: no Hydra rule reads it.
@@ -206,7 +206,7 @@ Found: 2026-10-29, session e9b04efc (L2 run 2).
 
 Rule: Only the score method has been traced on a run with misses, so whether `0x20DE770` fires for a missed note is not known.
 Label: Unknown
-Evidence: looked in `RUNS\l3` (counts only for clean runs and one key run with 3 late notes) and the plan's live results; GD lines 1112 to 1199 show no branch that names a miss.
+Evidence: looked in `RUNS\l3` (counts only for clean runs and one key run with 3 late notes) and the 2026-10-29 live runs of session e9b04efc (IN-03, IN-18, IN-19, IN-36 and IN-43 carry what they found; none traced this method on a run with misses); GD lines 1112 to 1199 show no branch that names a miss.
 Game code (6142): #8255 method RVA `0x20DE770`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
@@ -426,7 +426,7 @@ Found: 2026-10-28, session 6a549de0 (feasibility study line 131).
 
 Rule: After a command-line bot run the results screen took no keys at all, with Frida detached too. Whether the command-line launch is the cause is not settled.
 Label: Proven in a live run
-Evidence: one run, 2026-10-29, recorded as text only in `docs/superpowers/plans/2026-10-28-ch-mcp-server.md` line 304 (`docs/agents/clone-hero-mcp.md` once repeated it and now points here); no key log kept.
+Evidence: one run, L1 on 2026-10-29 in session e9b04efc: on the bot run's results screen the game took no keys, so the user could not go back to the menu, and it took none after the tools detached Frida either. Only that one bot run was tried, and no bot run was compared with a song started from the menu. The session's card (docs/sessions/2026-10-29-e9b04efc.md) records it; `docs/agents/clone-hero-mcp.md` once repeated it and now points here. No key log was kept.
 Game code (6142): not found.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
@@ -498,7 +498,7 @@ Found: 2026-09-25, session 8157f2dc.
 
 Rule: A song started from the command line writes only its "Loading Song" line to the session log at first, so waiting for "OnCountdownStart" never works; the tools attach about 5 s after launch.
 Label: Unknown
-Evidence: not checked: no session-log file was kept; the record is the study's Test 2 text and the plan's L1 text (`docs/superpowers/plans/2026-10-28-ch-mcp-server.md` line 300).
+Evidence: not checked: no session-log file was kept; the record is the study's Test 2 text and the L1 live run of 2026-10-29 (session e9b04efc), in which the attach waited 4.8 s so that it came 5 s after the launch, then attached in 1.2 s and read the state "playing".
 Game code (6142): not found.
 Hydra: no owner. The tool's delay is `ATTACH_DELAY_S` (tools/ch_mcp/frida_tools.py).
 Ruling: none needed: no Hydra rule reads it.
@@ -508,7 +508,7 @@ Found: 2026-10-28, feasibility study line 139.
 
 Rule: The game ships empty `HitDetection-Standard.log` and `HitDetection-Validation.log` files; a setting or flag that fills them was suspected and never found.
 Label: Unknown
-Evidence: looked in the feasibility study (lines 33 and 109) and `docs/handoffs/2026-10-28-ch-mcp-results-handoff.md` line 39; nothing was tested.
+Evidence: looked in the feasibility study (lines 33 and 109) and docs/handoffs/2026-10-28-ch-mcp-results-handoff.md line 39 (removed; `git show 444631e6:docs/handoffs/2026-10-28-ch-mcp-results-handoff.md`); nothing was tested.
 Game code (6142): not found.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
@@ -624,7 +624,7 @@ Found: 2026-09-25, feasibility study line 19; checked 2026-10-30, session b02ab3
 
 Rule: The player's saved score file, `scoredata.bin` in the game's LocalLow\srylain Inc_\Clone Hero folder (`LOCALLOW_DIR` in tools/ch_mcp/game_files.py line 37), holds one best score per chart per instrument and a play count per song. It stores the chart's hash next to each score, with no song title or artist. A human run changes it (and `scoresext.bin`); the tools restore both after a run.
 Label: Unknown
-Evidence: no reader of the file's format is committed and the game's writer was not read. Session c8856afd (2026-10-10) decoded the user's copy with a one-off script that was not kept (condensed transcript lines 296 to 307: "stores only the chart hash next to each score, with no title or artist"); session e8435f64 (2026-10-09, condensed line 42) states the one-best-score rule from the dmleaderboards backend, which reads the uploaded file. That a human run changes both files is session 6a549de0 (condensed line 457). No repo file holds any of these.
+Evidence: no reader of the file's format is committed and the game's writer was not read. Session c8856afd (2026-10-10) decoded the user's copy with a one-off script that was not kept; its finding that the file "stores only the chart hash next to each score, with no title or artist" comes from the session's own record, which is not kept. Session e8435f64 (2026-10-09) states the one-best-score rule from the dmleaderboards backend, which reads the uploaded file; its card (docs/sessions/2026-10-09-e8435f64.md) says dmleaderboards keeps only the best run per chart and copies play_count from the game's save file. That a human run changes both files is from session 6a549de0's own record, which is not kept. No repo file holds any of these.
 Game code (6142): not found: the writer was not looked for.
 Hydra: no owner. The chart hash is Clone Hero's song id (page 01, CR-10); the tools back the file up and restore it in tools/ch_mcp/game_files.py.
 Ruling: none needed: no Hydra rule reads it.

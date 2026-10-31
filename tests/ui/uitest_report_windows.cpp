@@ -2,13 +2,14 @@
 // open the path report or the comparison window on the sample rows
 // (tests/report_samples.h) through ReportWindowInput, the struct AppState
 // fills in the app, and drive the window by its labels. Their own GUI
-// function draws the windows; only report-window-states' analysis-off step
+// function draws the windows, and the app's frame leaves them alone meanwhile
+// (drawn_by_fixture); only report-window-states' analysis-off step
 // fills the input from AppState (path_report_input). More work the same way:
 // the column widths and the window's fit to the screen (one column-width rule
 // plan, Part 3), and the cells' and header's alignment (2026-10-14
 // column-shares plan). The rest (task 6)
-// run end to end: the app draws both windows itself from run_frame while a
-// slot's window_open is set, so they have no GUI function. Under hydra_uitest
+// run end to end: the app draws both windows itself from run_frame, so they
+// have no GUI function. Under hydra_uitest
 // there is no platform backend, so each report window draws inside the main
 // viewport, over the main window's rectangle (D103 item 14): close it before
 // clicking the toolbar or the finished strip.
@@ -159,6 +160,16 @@ void note_rule_widths() {
     f.rule_widths =
         hydra::ui::place_columns(hydra::ui::report_frame::measure(view), specs, room).widths;
     ImGui::End();
+}
+
+// Runs `Test` with the app's frame leaving the report windows to
+// draw_windows. Each window keeps one state for the process, so the app's
+// own call, with AppState's empty input, would otherwise drop the rows the
+// fixture handed it.
+template <void (*Test)(ImGuiTestContext*)>
+void drawn_by_fixture(ImGuiTestContext* ctx) {
+    const ScopedHook alone(hydra::ui::set_app_skips_report_windows_for_test, true);
+    Test(ctx);
 }
 
 // The test's GUI function: both windows, every frame, with their text kept.
@@ -1319,6 +1330,33 @@ void test_reopen(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(shown_count(h).c_str(), count.c_str());  // the same rows as before
 }
 
+// A report that lands while the path window is hidden lets the one it
+// replaced go at once (D280): the app draws the hidden window every frame,
+// so the window's view stops holding the old rows now, not at the reopen.
+// The build is held until the window is hidden, so it lands while hidden.
+void test_hidden_lets_go(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    if (!open_batch_report(ctx)) return;
+    const std::weak_ptr<const GeneratedReport> old = h.app->path_report.result;
+
+    ReportHold hold;
+    open_path_report_declining_batch(ctx, /*refresh=*/true);
+    if (ctx->IsError()) return;
+    IM_CHECK_RETV(wait_until(ctx, [&] {
+        return h.app->report_job != nullptr &&
+               h.app->path_report_build() == hydra::ui::ReportBuild::Building;
+    }, 10), );
+    press_escape_on(ctx, path_window());
+    IM_CHECK_RETV(!h.app->path_report.window_open, );
+    IM_CHECK(!old.expired());  // nothing has replaced it yet
+
+    hold.release();
+    IM_CHECK_RETV(path_report_ready(ctx), );
+    IM_CHECK(!h.app->path_report.window_open);
+    IM_CHECK(h.app->path_report.result != nullptr);
+    IM_CHECK(old.expired());
+}
+
 // The path table's sort as ImGui holds it: table column index and direction,
 // first key first. The window hands the table its view's sort.
 std::vector<std::pair<int, int>> table_sort(ImGuiTestContext* ctx) {
@@ -1499,6 +1537,7 @@ const std::vector<TestEntry>& report_window_flow_tests() {
         {"report-window-dm-handover", test_dm_handover},
         {"report-window-row-click", test_row_click},
         {"report-window-reopen", test_reopen},
+        {"report-window-hidden-lets-go", test_hidden_lets_go},
         {"report-window-reopen-keeps-filters", test_reopen_keeps_filters},
         {"report-window-out-of-date", test_out_of_date},
     };
@@ -1507,16 +1546,18 @@ const std::vector<TestEntry>& report_window_flow_tests() {
 
 void register_report_window_tests(Harness& h) {
     static const TestEntry kTests[] = {
-        {"report-window-sort", test_sort},     {"report-window-filters", test_filters},
-        {"report-window-states", test_states}, {"report-window-keys", test_keys},
-        {"report-window-close-button", test_close_button},
-        {"report-window-hidden-new-result", test_hidden_new_result},
-        {"report-windows-both", test_both},
-        {"report-window-chip-label", test_chip_label},
-        {"report-window-column-widths", test_column_widths},
-        {"report-window-cells-left", test_cells_left},
-        {"report-window-header-narrow", test_header_narrow},
-        {"report-window-fits-screen", test_fits_screen},
+        {"report-window-sort", drawn_by_fixture<test_sort>},
+        {"report-window-filters", drawn_by_fixture<test_filters>},
+        {"report-window-states", drawn_by_fixture<test_states>},
+        {"report-window-keys", drawn_by_fixture<test_keys>},
+        {"report-window-close-button", drawn_by_fixture<test_close_button>},
+        {"report-window-hidden-new-result", drawn_by_fixture<test_hidden_new_result>},
+        {"report-windows-both", drawn_by_fixture<test_both>},
+        {"report-window-chip-label", drawn_by_fixture<test_chip_label>},
+        {"report-window-column-widths", drawn_by_fixture<test_column_widths>},
+        {"report-window-cells-left", drawn_by_fixture<test_cells_left>},
+        {"report-window-header-narrow", drawn_by_fixture<test_header_narrow>},
+        {"report-window-fits-screen", drawn_by_fixture<test_fits_screen>},
     };
     for (const TestEntry& e : kTests) {
         ImGuiTest* t = IM_REGISTER_TEST(h.engine, "hydra", e.name);

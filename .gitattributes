@@ -13,3 +13,7 @@
 *.ico binary
 *.bin binary
 *.sig binary
+
+# The session-card tools record each card's sha, so a card's line endings
+# must not change on checkout.
+docs/sessions/*.md -text

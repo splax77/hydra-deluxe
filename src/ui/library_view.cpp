@@ -19,6 +19,9 @@ namespace hydra::ui {
 
 namespace {
 
+// set_app_skips_report_windows_for_test (ui/report_window.h).
+bool g_skip_report_windows = false;
+
 // The library pane: heading, search box, chips and table (library_table.cpp),
 // or the empty-library message when nothing is scanned yet.
 void render_library_pane(AppState& app) {
@@ -199,14 +202,16 @@ void render_main_window(AppState& app) {
     ImGui::End();
 
     // The report windows (D103), each its own OS window beside this one,
-    // drawn while its slot says it is open. Each window clears that flag
-    // itself when it closes, and both keep their rows (D271 item 7). The path
-    // report's close then runs AppState::close_path_report through the
+    // called every frame, open or not: a hidden window lets go of a result a
+    // newer one replaced (D280), and otherwise keeps its rows (D271 item 7).
+    // Each window clears its slot's window_open itself when it closes. The
+    // path report's close then runs AppState::close_path_report through the
     // window's close callback, which ends a question the window was asking.
-    if (app.path_report.window_open)
-        draw_path_report_window(&app.path_report.window_open, path_report_input(app));
-    if (app.dm_report.window_open)
-        draw_dm_report_window(&app.dm_report.window_open, dm_report_input(app));
+    if (g_skip_report_windows) return;
+    draw_path_report_window(&app.path_report.window_open, path_report_input(app));
+    draw_dm_report_window(&app.dm_report.window_open, dm_report_input(app));
 }
+
+void set_app_skips_report_windows_for_test(bool skip) { g_skip_report_windows = skip; }
 
 }  // namespace hydra::ui

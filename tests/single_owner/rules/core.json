@@ -1539,7 +1539,7 @@
         "tools",
         "tests"
       ],
-      "note": "The root and one more byte cut off a path. relpath in analysis.cpp cuts only after a separator and keeps backslashes: Python's os.path.relpath for the library's stored path, another question. Decided by: audit finding 274; phase 6 task J2-1 (D53, D54)"
+      "note": "The root and the separator after it cut off a path. relpath in analysis.cpp cuts only after a separator and keeps backslashes: Python's os.path.relpath for the library's stored path, another question. Decided by: audit finding 274; phase 6 task J2-1 (D53, D54)"
     },
     {
       "question": "Does a string end with a tail?",
@@ -2625,6 +2625,27 @@
         }
       ],
       "note": "The app's name and a version are joined in one place, so the bar's name and the update sentences read the same. A name built by hand from HYDRA_APP_NAME and a space, or a literal \"Hydra Deluxe \" before a version, is a second copy. Sentences that name the app without a version (the not-installed line, the window title) are not this question. Decided by: D260, the version bar plan (docs/superpowers/plans/2026-10-23-update-check-on-launch.md, Where the text comes from)"
+    },
+    {
+      "question": "Do these two paths name one folder?",
+      "owner": "same_folder in src/core/winstr.cpp",
+      "owner_file": "src/core/winstr.cpp",
+      "owner_symbol": "same_folder",
+      "date": "2026-10-31",
+      "decision": "AOA-W3 V3-SN5 (the user approved walking a repeated song folder once)",
+      "added_by": "AOA-W3-F3 review",
+      "pattern": "\\bCompareStringOrdinal\\(",
+      "anchor": "CompareStringOrdinal(",
+      "owner_files": [
+        "src/core/winstr.cpp"
+      ],
+      "must_match": [
+        "return CompareStringOrdinal(here.c_str(), static_cast<int>(here.size()), there.c_str(),"
+      ],
+      "must_not_match": [
+        "return same_folder(here, wide_to_utf8(registered));"
+      ],
+      "note": "Two folders spelled with another letter case, slash direction, trailing separator or long-path prefix are one folder. A second comparison of two paths worked out by hand (the way installed_by_setup once did) can disagree with the scan. The test helper is_under_temp in tests/temp_util.h asks whether a path lies below the temp folder, a different question, and is outside this row's scope. Decided by: AOA-W3 V3-SN5 (the Song folders scan lists a repeated folder once)"
     }
   ]
 }

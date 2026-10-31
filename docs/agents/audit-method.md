@@ -122,12 +122,12 @@ Every finder, verifier and closure-checker brief starts with `docs/agents/brief-
 - that "on purpose", "by design", "deliberately" and "kept" are claims, not evidence;
 - that a search that finds nothing proves nothing on its own (the preamble's rule);
 - that no whole-library run happens without the user's `allow library run` in chat (CLAUDE.md agent rule 8). A verifier in the 2026-10-03 audit started `hydra_batch` with no arguments by accident;
-- where the user's words can be: the decision log, the question files, the plans, and the session cards with their condensed transcripts;
+- where the user's words can be: the decision log, the question files, the plans, and the session cards in `docs/sessions/`. A card keeps the user's typed words, the label they chose and the start of each question, not the full question or option text, so a closure that needs the full wording finds it only where a D-record or question file copied it;
 - for a second-wave agent, the exact ids it takes, not "whatever the first wave did not cover". A second-wave scout in the audit of the past audits was told to skip items that already had blocks. It redid twelve of them and never reached the ones it was sent for.
 
 ## What went wrong before
 
-Each story below is a real miss, with where its record lives. Most sources are session cards in `C:\Users\Patrick\.claude\projects\C--Users-Patrick-Downloads-Hydra-hydra-test\session-cards\cards\`, named by date and session id. The rule each story led to is in the stages above.
+Each story below is a real miss, with where its record lives. Most sources are session cards in `docs/sessions/`, named by date and session id. The rule each story led to is in the stages above.
 
 ### The split two audits saw and neither asked about (M39)
 
@@ -186,4 +186,4 @@ The finding step worked in every story above. Each miss happened later: a questi
 
 ## Sources
 
-The M39 trail is in `docs/audit/2026-10-03-derivation-audit.md` (finding 306), `docs/audit/2026-10-04-phase-3-5-questions.md` (question 4), `docs/audit/2026-10-03-fix-decisions.md` (D48 and D50), `docs/audit/2026-10-11-concept-audit/findings/V5.md` (M39) and `docs/audit/2026-10-11-concept-audit/questions.md` ("Already decided, no question"). The split itself is `BackendSqueeze::summarystr` in `src/core/model.cpp`. The audit of every past audit, which checks every closure by this page's rules, is handed off in `docs/handoffs/2026-10-29-audit-of-audits-handoff.md`.
+The M39 trail is in `docs/audit/2026-10-03-derivation-audit.md` (finding 306), `docs/audit/2026-10-04-phase-3-5-questions.md` (question 4), `docs/audit/2026-10-03-fix-decisions.md` (D48 and D50), `docs/audit/2026-10-11-concept-audit/findings/V5.md` (M39) and `docs/audit/2026-10-11-concept-audit/questions.md` ("Already decided, no question"). The split itself is `BackendSqueeze::summarystr` in `src/core/model.cpp`. The audit of every past audit, which checks every closure by this page's rules, is recorded in `docs/audit/2026-10-29-audit-of-audits/`. It was handed off in `docs/handoffs/2026-10-29-audit-of-audits-handoff.md` (removed; `git show 444631e6:docs/handoffs/2026-10-29-audit-of-audits-handoff.md`).

@@ -32,7 +32,7 @@
         },
         {
           "file": "src/app/analysis.cpp",
-          "line_text": "if (is_directory_utf8(root)) {",
+          "line_text": "if (!repeat && is_directory_utf8(root)) {",
           "why": "the scan walk skips a root that is not a folder; that decides what to walk, not whether to refuse"
         }
       ],

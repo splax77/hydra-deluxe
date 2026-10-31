@@ -151,6 +151,20 @@ TEST_CASE("trim_trailing_separators: drops every slash or backslash at the end, 
     CHECK(hydra::trim_trailing_separators("").empty());
 }
 
+// AOA-W3 V3-SN5: letter case, slash direction, a trailing separator, "." and
+// ".." and the long-path prefix never make two folders; a different name does.
+TEST_CASE("same_folder: one folder in several spellings, and two different folders") {
+    CHECK(hydra::same_folder("C:\\Songs\\Pack", "c:\\songs\\pack"));
+    CHECK(hydra::same_folder("C:\\Songs\\Pack", "C:/Songs/Pack/"));
+    CHECK(hydra::same_folder("C:\\Songs\\Pack\\", "C:\\Songs\\Pack"));
+    CHECK(hydra::same_folder("C:\\Songs\\x\\..\\Pack\\.", "C:\\Songs\\Pack"));
+    CHECK(hydra::same_folder("\\\\?\\C:\\Songs\\Pack", "C:\\Songs\\Pack"));
+    CHECK(hydra::same_folder("C:\\", "c:/"));
+    CHECK_FALSE(hydra::same_folder("C:\\Songs\\Pack", "C:\\Songs\\Pack2"));
+    CHECK_FALSE(hydra::same_folder("C:\\Songs\\Pack", "C:\\Songs"));
+    CHECK_FALSE(hydra::same_folder("C:\\Songs", "D:\\Songs"));
+}
+
 // Finding 251's table, the rule the scan's stored rootfolder has always used.
 TEST_CASE("parent_folder: a file's folder, a trailing slash's parent, and empty for a bare name") {
     CHECK(hydra::parent_folder("C:\\a\\b\\notes.mid") == "C:\\a\\b");

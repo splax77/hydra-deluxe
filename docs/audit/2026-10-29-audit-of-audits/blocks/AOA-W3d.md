@@ -216,7 +216,7 @@ Code today = main 76ffb2a8 in `.claude/worktrees/aoa-w3`. Paths below are relati
 ### V7-SN1: `prev_tick` starts at 0 in Note Shuffle, so a first note at tick 0 reads as "same chord"
 
 - **Splits:** None: Hydra and Clone Hero's decoded code agree.
-- **How it left:** already checked. Session card 2026-10-11-8eb32145 (claim 4): "It holds, and it matches Clone Hero." with "The capped reference at `docs/audit/note-shuffle/probes/capped/shuffle_ref_capped.py:70` says both start at 0." (condensed file, line 58-62). W2a (docs/audit/2026-10-29-audit-of-audits/blocks/AOA-W2a.md:148) marked it REOPEN for lack of a live run, without reading that card's answer.
+- **How it left:** already checked. Session card 2026-10-11-8eb32145 (claim 4): "It holds, and it matches Clone Hero." with "The capped reference at `docs/audit/note-shuffle/probes/capped/shuffle_ref_capped.py:70` says both start at 0." (that report text was not kept; card `docs/sessions/2026-10-11-8eb32145.md`:20 says only "Claim 4 held and needed no fix"). W2a (docs/audit/2026-10-29-audit-of-audits/blocks/AOA-W2a.md:148) marked it REOPEN for lack of a live run, without reading that card's answer.
 - **Code today:** src/parse/note_shuffle.cpp:140 `int64_t prev_tick = 0;`, :146 `const bool same_chord = nt.tick == prev_tick;`. The reference file's line 70 reads "prev_tick = 0      # r13 / [rsp+0x58], both start at 0" and its line 81 `if is_drums and nt.tick == prev_tick:`. By reading.
 - **Verdict:** PASS
 - **Why:** Hydra follows the game's decoded code at this point, which is the source of truth for Note Shuffle (D105: "go with the game's rule" per the memory note). The card's extra argument (the game froze on a chart that puts four notes on tick 0) I did not re-check.
