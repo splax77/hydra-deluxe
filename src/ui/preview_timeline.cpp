@@ -336,14 +336,17 @@ void dot_item(ImU32 col, float diameter, const char* centred_text) {
 std::string timeline_fill_id(int64_t chord_tick) { return "##fill_" + std::to_string(chord_tick); }
 
 std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, double length_ms,
-                                              float width, const TimelineMetrics& metrics,
+                                              TimelineView view, float width,
+                                              const TimelineMetrics& metrics,
                                               const TimelineFillMarks& marks) {
-    if (!app::has_song_length(length_ms)) return std::nullopt;
+    if (!app::has_song_length(length_ms) || !(view.span_ms > 0.0)) return std::nullopt;
     TimelineLayout out;
     out.width = width;
     out.length_ms = length_ms;
-    // Every x is song_fraction's, which has a value whenever the length is usable.
-    auto x_of = [&](double ms) { return static_cast<float>(*app::song_fraction(ms, length_ms)) * width; };
+    out.view = view;
+    // Every x is the view's fraction, which is not held to 0..1, so a mark
+    // outside the window lands outside the track.
+    auto x_of = [&](double ms) { return static_cast<float>(fraction(view, ms)) * width; };
 
     // The ghost row shows only while the scene has ghost windows to put in it.
     float y = 0.0f;
@@ -354,18 +357,25 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
         y += h;
     }
 
-    // The song's length is a number read from the chart's metadata, so the
-    // label count follows the width: when one step is narrower than the gap
-    // the labels need, take every n-th step. n is infinite for a width of 0.
-    // The song's start gets no label, as the second mockup's renderRows
-    // skips it (`if (s)`, line 452).
+    // The window's span can come from a song length read from the chart's
+    // metadata, so the label count follows the width: when one step is
+    // narrower than the gap the labels need, take every n-th step, counted
+    // from the song's start so a label keeps its moment as the window moves.
+    // The song's start gets no label, as the third mockup's renderRows skips
+    // it (`if (s && ...)`, line 548). Only the steps inside the window get
+    // one: the mockup's `vis` also takes steps just past either edge, but
+    // inside_start would pull such a label in over a moment it does not name.
     if (width > 0.0f) {
-        const double step_px = kTimelineAxisStepMs / length_ms * static_cast<double>(width);
+        const double step_px = kTimelineAxisStepMs / view.span_ms * static_cast<double>(width);
         const double every = static_cast<double>(metrics.axis_label_gap) > step_px
                                  ? std::ceil(static_cast<double>(metrics.axis_label_gap) / step_px)
                                  : 1.0;
-        for (double k = every; k * kTimelineAxisStepMs < length_ms; k += every) {
+        // The first labelled step at or after the window's start.
+        const double first =
+            std::max(every, std::ceil(view.start_ms / kTimelineAxisStepMs / every) * every);
+        for (double k = first; k * kTimelineAxisStepMs < length_ms; k += every) {
             const double ms = k * kTimelineAxisStepMs;
+            if (!in_view(view, ms)) break;  // past the window's end
             TimelineTick t;
             t.ms = ms;
             t.x = x_of(ms);
@@ -376,11 +386,16 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
     }
 
     const TimelineRect& sec = out.row(TimelineRow::Sections);
+    size_t shown = 0;  // the sections shown so far, for the shading
     for (size_t i = 0; i < scene.sections.size(); ++i) {
         if (scene.sections[i].name == kTimelineHiddenSectionName) continue;
+        const bool shaded = shown++ % 2 == 1;
         const double end = i + 1 < scene.sections.size() ? scene.sections[i + 1].ms : length_ms;
+        // A section wholly before or after the window is left out (line 556).
+        if (fraction(view, end) < 0.0 || fraction(view, scene.sections[i].ms) > 1.0) continue;
         TimelineSection s;
         s.name = scene.sections[i].name;
+        s.shaded = shaded;
         s.rect = {x_of(scene.sections[i].ms), sec.y0, x_of(end), sec.y1};
         // The name sits section_pad in from both edges.
         s.shown = metrics.section_width
@@ -425,7 +440,7 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
     // the phrase count is compared only where activate_y was placed. A
     // segment that crosses the line splits where its straight line meets it,
     // as it is drawn.
-    float from_x = 0.0f;
+    float from_x = x_of(0.0);
     for (const TimelineBand& b : out.bands) from_x = std::max(from_x, b.rect.x1);
     for (size_t i = 0; i + 1 < out.saved_line.size(); i += 2) {
         const TimelinePoint a = out.saved_line[i], b = out.saved_line[i + 1];
@@ -445,13 +460,14 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
     }
 
     const TimelineRect& fr = out.row(TimelineRow::Fills);
-    const float half = metrics.fill_size * 0.5f;
     auto listed = [](const std::vector<int64_t>& ticks, int64_t tick) {
         return std::find(ticks.begin(), ticks.end(), tick) != ticks.end();
     };
     const float best_w = measure(metrics.cost_width, marks.best_label);
     for (size_t i = 0; i < scene.fills.size(); ++i) {
         const app::PreviewFill& f = scene.fills[i];
+        // A fill outside the window gets no item and no word (line 578).
+        if (!in_view(view, f.span.end_ms)) continue;
         TimelineFillItem item;
         item.fill = i;
         item.chord_tick = f.chord_tick;
@@ -469,8 +485,9 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
         for (const TimelineFillTint& t : marks.tints)
             if (t.chord_tick == f.chord_tick) item.tint = t.col;
         item.x = x_of(f.span.end_ms);
-        const float cy = fr.y0 + metrics.fill_center_y;
-        item.hit = {item.x - half, cy - half, item.x + half, cy + half};
+        item.y = fr.y0 + metrics.fill_center_y;
+        // The hit box's sides are set below, once every fill in view is placed.
+        item.hit = {item.x, fr.y0, item.x, fr.y1};
 
         if (listed(marks.best_ticks, f.chord_tick)) {
             TimelineBestLabel b;
@@ -483,6 +500,22 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
             out.best_labels.push_back(b);
         }
         out.fills.push_back(std::move(item));
+    }
+
+    // Each fill's hit box reaches halfway to its neighbours in x, the first
+    // from the row's left edge and the last to its right edge, so the boxes
+    // tile the row and a point picks the nearest fill (the third mockup's
+    // `nearest`, lines 599 to 608). Fills are taken in x order, whatever
+    // order the scene lists them in.
+    std::vector<TimelineFillItem*> by_x;
+    by_x.reserve(out.fills.size());
+    for (TimelineFillItem& item : out.fills) by_x.push_back(&item);
+    std::stable_sort(by_x.begin(), by_x.end(),
+                     [](const TimelineFillItem* a, const TimelineFillItem* b) { return a->x < b->x; });
+    for (size_t k = 0; k < by_x.size(); ++k) {
+        TimelineFillItem& item = *by_x[k];
+        item.hit.x0 = k == 0 ? 0.0f : (by_x[k - 1]->x + item.x) * 0.5f;
+        item.hit.x1 = k + 1 == by_x.size() ? width : (item.x + by_x[k + 1]->x) * 0.5f;
     }
     return out;
 }
@@ -504,9 +537,11 @@ TimelineHit timeline_hit(const TimelineLayout& layout, float x, float y) {
     if (!(TimelineRect{0.0f, 0.0f, layout.width, layout.height()}.contains(x, y)) ||
         !(layout.width > 0.0f))
         return hit;
-    // song_fraction run backwards: the share of the width is the share of the song.
+    if (layout.row(TimelineRow::Fills).contains(x, y)) return hit;
+    // The view's fraction run backwards: the share of the width is the share
+    // of the window.
     hit.kind = TimelineHit::Kind::Time;
-    hit.ms = static_cast<double>(x) / static_cast<double>(layout.width) * layout.length_ms;
+    hit.ms = layout.view.start_ms + static_cast<double>(x) / static_cast<double>(layout.width) * layout.view.span_ms;
     return hit;
 }
 
@@ -519,7 +554,6 @@ TimelineMetrics timeline_metrics() {
     m.row_h[static_cast<size_t>(TimelineRow::Ghost)] = rem(kGhostRowRem);
     m.row_h[static_cast<size_t>(TimelineRow::Activations)] = rem(kActivationsRowRem);
     m.row_h[static_cast<size_t>(TimelineRow::Fills)] = rem(kFillsRowRem);
-    m.fill_size = rem(kFillRem);
     m.fill_center_y = rem(kFillCenterRem);
     m.band_inset = rem(kBandInsetRem);
     m.saved_inset = px(kSavedInset);
@@ -545,7 +579,9 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
     const float label_w = rem(kLabelColumnRem);
     const float track_w = ImGui::GetContentRegionAvail().x - label_w;
     if (!(track_w > 0.0f)) return ev;
-    const std::optional<TimelineLayout> laid = timeline_layout(*in.scene, in.length_ms, track_w, timeline_metrics(), in);
+    const TimelineView view = in.view.value_or(open_view(in.length_ms));
+    const std::optional<TimelineLayout> laid =
+        timeline_layout(*in.scene, in.length_ms, view, track_w, timeline_metrics(), in);
     if (!laid) return ev;
     const TimelineLayout& l = *laid;
     const ImVec2 t0(origin.x + label_w, origin.y);
@@ -579,6 +615,11 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         log_text(ImVec2(origin.x, y), names[r]);
     }
 
+    // Everything on the track is clipped to the rows' rectangle, so a mark
+    // half outside the window shows its visible half (the third mockup's
+    // `.track{overflow:hidden}`, line 98).
+    dl->PushClipRect(t0, at(l.width, l.height()), true);
+
     // The axis's time labels, where the layout put them.
     {
         ScopedFont font(TextRole::TimelineAxis);
@@ -586,14 +627,14 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         for (const TimelineTick& t : l.axis_ticks) dl->AddText(at(t.text_x, y), kDimColor, t.text.c_str());
     }
 
-    // Sections: the odd ones shaded (kSectionShade), each with its left edge
-    // and its name, cut to fit by the layout.
+    // Sections: the ones the layout marks shaded in kSectionShade, each with
+    // its left edge and its name, cut to fit by the layout.
     {
         ScopedFont font(TextRole::TimelineSection);
         for (size_t i = 0; i < l.sections.size(); ++i) {
             const TimelineRect& r = l.sections[i].rect;
             const ImVec2 mn = at(r.x0, r.y0), mx = at(r.x1, r.y1);
-            if (i % 2 == 1) dl->AddRectFilled(mn, mx, kSectionShade);
+            if (l.sections[i].shaded) dl->AddRectFilled(mn, mx, kSectionShade);
             dl->AddRectFilled(mn, ImVec2(mn.x + px(1.0f), mx.y), kSectionEdge);
             dl->PushClipRect(mn, mx, true);
             dl->AddText(ImVec2(mn.x + rem(kSectionPadSideRem), mn.y + rem(kSectionPadTopRem)), kMutedColor,
@@ -655,16 +696,20 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         }
     }
 
-    // The fills, each its own item, before the rows' item so a fill takes the
-    // hover over the row under it.
+    // The fills, each its own item over its hit box, before the rows' item so
+    // a fill takes the hover over the row under it. ImGui refuses an item
+    // with no width, which only a fill whose neighbours on both sides share
+    // its x gets; the pointer reaches that moment through them.
     for (const TimelineFillItem& f : l.fills) {
-        const ImVec2 mn = at(f.hit.x0, f.hit.y0);
-        ImGui::SetCursorScreenPos(mn);
-        if (ImGui::InvisibleButton(f.id.c_str(), ImVec2(f.hit.x1 - f.hit.x0, f.hit.y1 - f.hit.y0)))
-            ev.clicked_fill = f.fill;
-        const bool hovered = ImGui::IsItemHovered();
+        bool hovered = false;
+        if (f.hit.x1 > f.hit.x0) {
+            ImGui::SetCursorScreenPos(at(f.hit.x0, f.hit.y0));
+            if (ImGui::InvisibleButton(f.id.c_str(), ImVec2(f.hit.x1 - f.hit.x0, f.hit.y1 - f.hit.y0)))
+                ev.clicked_fill = f.fill;
+            hovered = ImGui::IsItemHovered();
+        }
         if (hovered) ev.hovered_fill = f.fill;
-        const ImVec2 c = at(f.x, (f.hit.y0 + f.hit.y1) * 0.5f);
+        const ImVec2 c = at(f.x, f.y);
         // A fill the caller highlights is drawn as hovered, with the selected
         // band's outline around it.
         const bool highlighted = in.highlighted && *in.highlighted == f.fill;
@@ -707,7 +752,8 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         }
     }
 
-    // The rows' own item: a click off every fill lands on a band or a moment.
+    // The rows' own item: a click off every fill lands on a band, a moment,
+    // or, in the Fills row, nothing.
     ImGui::SetCursorScreenPos(t0);
     if (ImGui::InvisibleButton("##timeline", ImVec2(l.width, l.height()))) {
         const ImVec2 m = ImGui::GetIO().MousePos;
@@ -716,11 +762,13 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         if (hit.kind == TimelineHit::Kind::Time) ev.clicked_ms = hit.ms;
     }
 
-    // The playhead, over every row.
-    if (const std::optional<double> f = app::song_fraction(in.position_ms, in.length_ms)) {
-        const float x = static_cast<float>(*f) * l.width;
+    // The playhead, over every row, while it is inside the window (the third
+    // mockup's placePlayhead, line 662).
+    if (in_view(l.view, in.position_ms)) {
+        const float x = static_cast<float>(fraction(l.view, in.position_ms)) * l.width;
         dl->AddRectFilled(at(x, 0.0f), at(x + px(kPlayheadW), l.height()), kPlayheadColor);
     }
+    dl->PopClipRect();
     return ev;
 }
 
