@@ -30,7 +30,7 @@ public:
     // The window is the last `units` units finished: the batch strip's
     // charts (D283). Nothing shows until that many have finished. The rate
     // is `units` over the time from the `units`-th last finish to now.
-    static TimeLeftClock over_last_units(int units) { return TimeLeftClock(std::max(1, units)); }
+    static TimeLeftClock over_last_units(int units) { return TimeLeftClock((std::max)(1, units)); }
 
     // `done` units of work had finished by `now_s`. Units that finish in one
     // reading share its time.
@@ -43,12 +43,12 @@ public:
         } else {
             const double before = done_;
             if (done > before) {
-                const double fresh = std::min(done - before, static_cast<double>(units_));
+                const double fresh = (std::min)(done - before, static_cast<double>(units_));
                 for (int i = 0; i < static_cast<int>(fresh); ++i) finishes_.push_back(now_s);
                 while (static_cast<int>(finishes_.size()) > units_) finishes_.pop_front();
             }
         }
-        done_ = std::max(done_, done);
+        done_ = (std::max)(done_, done);
     }
 
     // Seconds left of `total` at the window's rate, or empty while the rate
@@ -56,12 +56,12 @@ public:
     // answer returns that answer.
     std::optional<double> read(double now_s, double total) {
         if (answered_at_s_ && now_s - *answered_at_s_ < kTimeLeftStepSeconds) return answer_;
-        std::optional<double> rate;  // units a second over the window
+        double rate = 0.0;  // units a second over the window
         if (units_ == 0) {
             if (!window_start_s_) return answer_;
             const double span = now_s - *window_start_s_;
             if (span < kTimeLeftStepSeconds) return answer_;
-            rate = std::max(0.0, done_ - window_start_done_) / span;
+            rate = (std::max)(0.0, done_ - window_start_done_) / span;
             window_start_s_ = now_s;
             window_start_done_ = done_;
         } else {
@@ -70,8 +70,8 @@ public:
             if (!(span > 0.0)) return answer_;
             rate = units_ / span;
         }
-        answer_ = *rate > 0.0 ? std::optional<double>(std::max(0.0, total - done_) / *rate)
-                              : std::nullopt;
+        answer_ = rate > 0.0 ? std::optional<double>((std::max)(0.0, total - done_) / rate)
+                             : std::nullopt;
         answered_at_s_ = now_s;
         return answer_;
     }

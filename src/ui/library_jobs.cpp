@@ -257,20 +257,27 @@ double BatchClock::elapsed_s(double now) const {
     return std::max(0.0, end - *started_ - paused_total_);
 }
 
-std::optional<double> batch_eta_s(double elapsed_s, int completed, int total) {
-    if (total <= 0 || completed < kEtaMinFinished || completed > total) return std::nullopt;
-    return elapsed_s / completed * (total - completed);
+namespace {
+
+// The batch's time-left clock for a run on `workers` workers (D283).
+app::TimeLeftClock batch_time_left(int workers) {
+    return app::TimeLeftClock::over_last_units(kTimeLeftWorkerRounds * workers);
 }
+
+}  // namespace
 
 BatchJob::BatchJob(app::BatchPlan plan, app::BatchRun run, store::RecordStore& store)
     : plan_(std::move(plan)),
       run_(std::move(run)),
       store_(store),
-      workers_(app::batch_worker_count()) {}
+      workers_(app::batch_worker_count()),
+      time_left_(batch_time_left(workers_)) {}
 
 void BatchJob::set_analyzer_for_test(app::ChartAnalyzer analyze, int workers) {
     analyze_ = std::move(analyze);
     workers_ = workers;  // stored as given: run_work_pool checks it
+    std::lock_guard<std::mutex> lock(mu_);
+    time_left_ = batch_time_left(workers_);
 }
 
 namespace {
@@ -371,7 +378,7 @@ BatchJob::Snapshot BatchJob::snapshot() const {
     std::lock_guard<std::mutex> lock(mu_);
     Snapshot s = snap_;
     s.elapsed_s = clock_.elapsed_s(steady_seconds());
-    if (!s.finished && !s.paused) s.eta_s = batch_eta_s(s.elapsed_s, s.completed, s.total);
+    if (!s.finished && !s.paused) s.eta_s = time_left_.read(s.elapsed_s, s.total);
     return s;
 }
 
@@ -398,6 +405,9 @@ void BatchJob::run() {
         snap_.analyzed = p.analyzed;
         snap_.skipped = p.skipped;
         snap_.failed = p.failed;
+        // A save group's charts share the time their report lands, on the
+        // batch clock, which leaves paused time out.
+        time_left_.record(clock_.elapsed_s(steady_seconds()), p.completed);
     };
     callbacks.on_error = [this](const std::string& title, const std::string& sentence,
                                 const std::string& error) {

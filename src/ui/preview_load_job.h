@@ -19,6 +19,7 @@
 #include "app/job_base.h"
 #include "app/preview_source.h"
 #include "app/preview_view.h"
+#include "app/time_left.h"
 #include "audio/stem_reader.h"
 #include "audio/stream_mix.h"
 #include "core/model.h"
@@ -66,34 +67,21 @@ PreviewNotes read_preview_notes(const store::ChartLibraryEntry& entry,
                                 const ChartReading& reading, FillDeadlineRule fills,
                                 const core::Rules& rules);
 
-// Turns "bytes done so far" readings into a time-left estimate for the
-// loading bar. The rate is measured over at least one second of the load's
-// own progress, and the answer changes at most once a second, so the text
-// doesn't flicker.
+// The loading bar's time left, in bytes: app::TimeLeftClock over the last
+// second of the load's own progress.
 class ByteRateClock {
 public:
     // `now_s` is seconds since the load started. Returns the seconds left at
-    // the current rate, or -1 while the rate is not known yet (under a second
-    // measured, or no bytes moved in the last second).
+    // the current rate, or -1 while the rate is not known yet.
     double update(double now_s, uint64_t bytes_done, uint64_t bytes_total);
 
 private:
-    double window_start_s_ = -1.0;
-    uint64_t window_start_bytes_ = 0;
-    double last_publish_s_ = -1.0;
-    double published_ = -1.0;
+    app::TimeLeftClock clock_ = app::TimeLeftClock::over_last_second();
 };
 
-// A ByteRateClock's estimate shows only once its job is this old: the
-// Preview loader's gate, which the startup open's copy reuses (D48 Q20 owns
-// the words, app::time_left_text).
+// The loading bar's time left shows only once the load is this old
+// (app::time_left_line applies it; D48 Q20 owns the words, app::time_left_text).
 inline constexpr double kTimeLeftAfterSeconds = 3.0;
-
-// The time-left line for a job `elapsed_s` old whose ByteRateClock gave
-// `time_left_s`: the one gate (kTimeLeftAfterSeconds, a known rate) and the
-// one set of words. Each caller checks only that its job is in a step with a
-// rate: PreviewLoadJob::Progress and StoreOpenProgress.
-std::string gated_time_left_text(double elapsed_s, double time_left_s);
 
 // What PreviewLoadJob and PreviewNotesJob both read a chart's notes with and
 // draw over them, as their constructors take it.

@@ -10,6 +10,7 @@
 #include <chrono>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -143,6 +144,34 @@ TEST_CASE("jobs: time left shows nothing until 2W charts have finished, then sho
     const std::optional<double> at_window = clock.read(4.0, 40);
     REQUIRE(at_window.has_value());
     CHECK(*at_window == doctest::Approx(12.0));
+}
+
+TEST_CASE("jobs: the batch strip's time left waits for two rounds of its workers") {
+    // One worker, so the window is 2 charts. Each chart waits for its turn.
+    std::atomic<int> released{0};
+    auto started = std::make_shared<std::atomic<int>>(0);
+    const hydra::app::ChartAnalyzer one_by_one =
+        [&released, started](const std::string&, const AnalysisSettings&,
+                             const std::function<void(float)>&) -> AnalysisResult {
+        const int me = (*started)++;
+        wait_until([&released, me] { return released.load() > me; }, "the test to release it");
+        throw hydra::KindedError(hydra::ErrorKind::ChartUnreadable, "MD5 hashing failed");
+    };
+    RecordStore store(":memory:");
+    BatchJob job(plan_of(fake_charts(4)), test_run(), store);
+    job.set_analyzer_for_test(one_by_one, /*workers=*/1);
+    job.start();
+
+    released = 1;
+    wait_until([&] { return job.snapshot().completed == 1; }, "the first chart to finish");
+    CHECK_FALSE(job.snapshot().eta_s.has_value());
+    released = 2;
+    wait_until([&] { return job.snapshot().completed == 2; }, "the second chart to finish");
+    CHECK(job.snapshot().eta_s.has_value());
+
+    released = 4;
+    wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
+    CHECK_FALSE(job.snapshot().eta_s.has_value());
 }
 
 TEST_CASE("jobs: pause lets the chart in flight finish and starts no new one") {

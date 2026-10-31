@@ -31,6 +31,7 @@
 #include "app/dynamics_breakdown.h"
 #include "app/job_base.h"
 #include "app/report.h"
+#include "app/time_left.h"
 #include "core/model.h"
 #include "store/record_store.h"
 #include "ui/library_model.h"
@@ -220,13 +221,6 @@ private:
 // (D283). app::TimeLeftClock does the rest.
 inline constexpr int kTimeLeftWorkerRounds = 2;
 
-// How many charts must finish before a time-left estimate shows.
-inline constexpr int kEtaMinFinished = 3;
-
-// Time left: the average wall time per finished chart so far, times the
-// charts still to go. Empty until kEtaMinFinished charts have finished.
-std::optional<double> batch_eta_s(double elapsed_s, int completed, int total);
-
 class BatchJob : public JobBase {
 public:
     // Runs exactly this plan (app::plan_batch), the one the confirm showed
@@ -274,8 +268,9 @@ public:
         bool paused = false;
         // Wall time since start(), paused time left out; frozen once finished.
         double elapsed_s = 0.0;
-        // Seconds left. Empty until kEtaMinFinished charts finish, while
-        // paused, and once finished.
+        // Seconds left (app::TimeLeftClock over the last
+        // kTimeLeftWorkerRounds rounds of workers). Empty until that window
+        // is full, while paused, and once finished.
         std::optional<double> eta_s;
         // The chart a worker started most recently. Empty once finished.
         std::string current_title;
@@ -326,6 +321,10 @@ private:
     mutable std::mutex mu_;
     Snapshot snap_;     // guarded by mu_
     BatchClock clock_;  // guarded by mu_
+    // Fed each finish on clock_'s time, so paused stretches never count in
+    // its window; read by snapshot(). Its window follows workers_ (see
+    // kTimeLeftWorkerRounds). Guarded by mu_.
+    mutable app::TimeLeftClock time_left_;
 };
 
 // GUI-test seam: when set, every batch the app starts runs this analyzer on

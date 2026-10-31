@@ -5,7 +5,7 @@
 #include <string>
 
 #include "app/analysis.h"  // chart_changed_since
-#include "app/display_format.h"  // time_left_text, progress_fraction
+#include "app/display_format.h"  // progress_fraction
 #include "app/preview_source.h"
 #include "app/preview_view.h"
 #include "app/song_length.h"   // song_length_ms
@@ -87,24 +87,9 @@ PreviewNotes read_preview_notes(const store::ChartLibraryEntry& entry,
 }
 
 double ByteRateClock::update(double now_s, uint64_t bytes_done, uint64_t bytes_total) {
-    if (window_start_s_ < 0.0) {
-        window_start_s_ = now_s;
-        window_start_bytes_ = bytes_done;
-        last_publish_s_ = now_s;
-        return published_;
-    }
-    // At most one new answer a second, each from the last second's bytes.
-    if (now_s - last_publish_s_ < 1.0 || now_s - window_start_s_ < 1.0) return published_;
-    const double span = now_s - window_start_s_;
-    const uint64_t moved =
-        bytes_done > window_start_bytes_ ? bytes_done - window_start_bytes_ : 0;
-    const double rate = static_cast<double>(moved) / span;
-    const uint64_t left = bytes_total > bytes_done ? bytes_total - bytes_done : 0;
-    published_ = rate > 0.0 ? static_cast<double>(left) / rate : -1.0;
-    window_start_s_ = now_s;
-    window_start_bytes_ = bytes_done;
-    last_publish_s_ = now_s;
-    return published_;
+    return clock_
+        .update(now_s, static_cast<double>(bytes_done), static_cast<double>(bytes_total))
+        .value_or(-1.0);
 }
 
 PreviewLoadJob::PreviewLoadJob(store::ChartLibraryEntry entry, const ChartReading& reading,
@@ -283,16 +268,11 @@ std::string PreviewLoadJob::Progress::label() const {
     return "";
 }
 
-std::string gated_time_left_text(double elapsed_s, double time_left_s) {
-    if (elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0)) return "";
-    return app::time_left_text(time_left_s);
-}
-
 // Only the Preview's own step check lives here: opening audio is the one step
-// with a byte rate. The gate and the words are gated_time_left_text's.
+// with a byte rate. The gate check and the words are app::time_left_line's.
 std::string PreviewLoadJob::Progress::time_left_text() const {
     if (step != Step::Opening) return "";
-    return gated_time_left_text(elapsed_s, time_left_s);
+    return app::time_left_line(elapsed_s, kTimeLeftAfterSeconds, time_left_s);
 }
 
 PreviewNotesJob::PreviewNotesJob(store::ChartLibraryEntry entry, const ChartReading& reading,
