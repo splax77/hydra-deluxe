@@ -73,7 +73,8 @@ class ServerTest(unittest.TestCase):
 
     def test_the_trace_texts_say_the_hook_fires_on_hits(self):
         # Live step L2 found the default hook fires only on hit notes (plan
-        # 2026-10-28-ch-mcp-server, "Live results (2026-10-29)").
+        # 2026-10-28-ch-mcp-server, "Live results (2026-10-29)"; removed, read
+        # it with git show ec91f8d1:docs/superpowers/plans/2026-10-28-ch-mcp-server.md).
         server = S.build_server(self.helper)
         tools = {t.name: t for t in asyncio.run(server.list_tools())}
         for name, text in (("instructions", server.instructions),

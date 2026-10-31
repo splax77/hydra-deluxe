@@ -1097,7 +1097,7 @@
         "tests",
         "tools"
       ],
-      "note": "A made-up window's ticks read off a song's chords. Windows built from literal ticks are not flagged; only ones read off a sequence. Decided by: derive-once review of ct-w2, finding 1 (2026-10-10); plan 2026-10-10-ci-test-tooling task 7"
+      "note": "A made-up window's ticks read off a song's chords. Windows built from literal ticks are not flagged; only ones read off a sequence. Decided by: derive-once review of ct-w2, finding 1 (2026-10-10); plan 2026-10-10-ci-test-tooling task 7 (removed; git show ec91f8d1:docs/superpowers/plans/2026-10-10-ci-test-tooling.md)"
     },
     {
       "question": "How many GUI test processes does the CI runner start at once?",

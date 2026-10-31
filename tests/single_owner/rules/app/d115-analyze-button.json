@@ -24,7 +24,7 @@
         "src/ui/app_state.cpp",
         "src/ui/library_dialogs.cpp"
       ],
-      "note": "The heading, the button's count and the batch's charts all read the rows on screen, so they agree whatever the search and the chip. The query's matches whatever the chip (the All chip's count, or a second walk over the query) is the old, second answer. The All chip's own label in library_table.cpp reads that count on purpose and is out of scope. Decided by: D115 (analyze-button-design.md in the D115 plan folder)."
+      "note": "The heading, the button's count and the batch's charts all read the rows on screen, so they agree whatever the search and the chip. The query's matches whatever the chip (the All chip's count, or a second walk over the query) is the old, second answer. The All chip's own label in library_table.cpp reads that count on purpose and is out of scope. Decided by: D115 (analyze-button-design.md in the D115 plan folder, removed; git show ec91f8d1:docs/superpowers/plans/2026-10-12-one-record-per-chart/analyze-button-design.md)."
     }
   ]
 }

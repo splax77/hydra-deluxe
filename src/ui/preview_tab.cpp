@@ -218,8 +218,8 @@ float line_height(float size) { return size * 1.25f; }
 
 // The next-activation box's notation line over its other lines' size. The
 // user approved the ratio through the Preview mock on 2026-10-10 (option B,
-// in docs/handoffs/2026-10-10-preview-next-act-stars-mock/preview_mock.html
-// (removed; git show 444631e6:docs/handoffs/2026-10-10-preview-next-act-stars-mock/preview_mock.html)),
+// in the mock, removed from the repo; read it with
+// git show 444631e6:docs/handoffs/2026-10-10-preview-next-act-stars-mock/preview_mock.html),
 // where the notation line is 17px and the box's other lines 12px (D111).
 constexpr float kNextActNotationScale = 17.0f / 12.0f;
 

@@ -16,7 +16,7 @@ The full rows are also in `2026-10-03-fix-triage.json` next to this file, for sc
 
 15 fixes would change stored analysis results, so records would need re-analysis, and 21 more might. Every other fix leaves stored results alone.
 
-The existing plan `2026-10-03-one-squeeze-rating-rule.md` fully covers findings 24, 25, 26, 137, 303 and partly covers 33, 94, 127, 144, 259. It does not fix 27, 28 or 29, which are the other step-1 squeeze facts.
+The existing plan `docs/superpowers/plans/2026-10-03-one-squeeze-rating-rule.md` (removed; `git show ec91f8d1:docs/superpowers/plans/2026-10-03-one-squeeze-rating-rule.md`) fully covers findings 24, 25, 26, 137, 303 and partly covers 33, 94, 127, 144, 259. It does not fix 27, 28 or 29, which are the other step-1 squeeze facts.
 
 ## Weighty decisions, by the step they block
 
