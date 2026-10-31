@@ -1527,7 +1527,7 @@
         "src",
         "tools"
       ],
-      "note": "Time left is the work still to go over the rate in the job's own window: the last 2W finished charts for the batch strip (D283), the last second of bytes for the Preview (D271 item 4). The pattern looks for what is left (a total minus what is done) divided, or a division followed by it, which is how the mean since the start and the byte rate were both typed before. A count of what is left with no division is not a time and passes."
+      "note": "Time left is the work still to go over the rate in the job's own window: the last 2W finished charts for the batch strip (D283), the last second of bytes for the Preview (D271 item 4). The pattern looks for what is left (a total minus what is done) on the same line as a division, which is how the mean since the start was typed before. The byte rate's old left-over sat on a line of its own and was divided on the next, which a line scan cannot join, so that shape is not caught. A count of what is left with no division is not a time and passes."
     },
     {
       "question": "Has a job run long enough for its progress to show?",
