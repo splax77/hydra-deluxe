@@ -697,9 +697,10 @@ constexpr const char* kAssumedLabel = "Hydra assumes it, never checked";
 constexpr const char* kLabels[] = {"Proven in the game's code", "Proven in a live run", kAssumedLabel,
                                    "Unknown"};
 
-// The builds that have a facts table. A span's build is its block's Game code
-// line, else the nearest heading above it that names a build ("Build
-// 1.0.0.4045"), else 1.1; tools/ch_mcp/dump_facts.py --tsv picks the same.
+// The builds that have a facts table. A span's build is the one its page's
+// place gives (place_build_of), else its block's Game code line, else the
+// nearest heading above it that names a build ("Build 1.0.0.4045"), else 1.1;
+// tools/ch_mcp/dump_facts.py --tsv picks the same.
 constexpr const char* kBuild11 = "6142";
 constexpr const char* kBuild10 = "4045";
 
@@ -744,8 +745,18 @@ struct PageScan {
     std::vector<int> block_of;           // index into blocks, or -1
     std::vector<bool> fenced;            // inside a fenced code block, so skipped
     std::vector<std::string> build_at;   // the nearest build heading above, else 6142
+    std::string place_build;             // the build the page's place gives, else empty
     std::vector<std::pair<std::string, size_t>> q_headings;  // on the questions page
 };
+
+// The build a page's place gives: a file under code/<build>/ takes that build
+// for every span in it, so one rule holds for every note and no heading form
+// has to be remembered. tools/ch_mcp/dump_facts.py place_build picks the same.
+std::string place_build_of(const std::string& name) {
+    static const std::regex under_build(R"(^code/(\d+)/)");
+    std::smatch m;
+    return std::regex_search(name, m, under_build) ? m.str(1) : std::string();
+}
 
 PageScan scan_page(const Doc& d) {
     static const std::regex build_heading(R"(\bBuild \d+\.\d+\.\d+\.(\d+)\b)");
@@ -755,11 +766,12 @@ PageScan scan_page(const Doc& d) {
     for (const char* not_area : kNotAreaPages) area = area && name != not_area;
     PageScan s;
     s.doc = &d;
+    s.place_build = place_build_of(name);
     s.block_of.assign(d.lines.size(), -1);
     s.fenced.assign(d.lines.size(), false);
-    s.build_at.assign(d.lines.size(), kBuild11);
+    std::string build = s.place_build.empty() ? kBuild11 : s.place_build;
+    s.build_at.assign(d.lines.size(), build);
     bool fenced = false;
-    std::string build = kBuild11;
     // The headings above that name a build, outermost first: a section's
     // build ends where the next heading of its level or a higher one starts.
     std::vector<std::pair<int, std::string>> sections;
@@ -774,7 +786,9 @@ PageScan scan_page(const Doc& d) {
             std::smatch m;
             while (!sections.empty() && sections.back().first >= level) sections.pop_back();
             if (std::regex_search(text, m, build_heading)) sections.emplace_back(level, m.str(1));
-            build = sections.empty() ? kBuild11 : sections.back().second;
+            build = !s.place_build.empty() ? s.place_build
+                    : sections.empty()     ? kBuild11
+                                           : sections.back().second;
             cur = -1;
             if (level == 3) {
                 s.blocks.push_back(RuleBlock{static_cast<int>(i + 1), area, {}, build});
@@ -873,8 +887,9 @@ CloneHeroCheck check_clone_hero(const std::vector<Doc>& pages) {
             for (size_t i : b.fixed["Game code ("]) {
                 std::smatch m;
                 const std::string& line = d.lines[i];
-                if (std::regex_search(line, m, game_code) && tables.count(m.str(1)))
-                    b.build = m.str(1);
+                if (std::regex_search(line, m, game_code) && tables.count(m.str(1))) {
+                    if (s.place_build.empty()) b.build = m.str(1);  // the place wins over a Game code line
+                }
                 else if (b.rule)
                     problems.push_back(d.rel + ":" + std::to_string(i + 1) +
                                        ": the Game code line names no build with a facts table (" +
@@ -1146,6 +1161,25 @@ TEST_CASE("docs match code: which spans and which build a Clone Hero page line h
     CHECK(scan.block_of[5] == -1);
     CHECK(scan.build_at[5] == kBuild10);  // the section's build, not the block's Game code line
     CHECK(scan.build_at[7] == kBuild11);
+
+    // A file under code/<build>/ takes that build for every span, whatever
+    // its headings say: the 1.0 notes open with "Clone Hero 1.0 (build 4045)",
+    // which the heading rule does not read.
+    const Doc note10{"docs/clone-hero/code/4045/fill_deadline.md",
+                     {"# Clone Hero 1.0 (build 4045): the fill deadline", "`a.b`", "## Build 1.1.0.6142", "`c.d`",
+                      "### X", "Game code (6142): a", "`e.f`"}};
+    const PageScan scan10 = scan_page(note10);
+    CHECK(scan10.place_build == kBuild10);
+    for (size_t i : {1, 3, 6}) CHECK(scan10.build_at[i] == kBuild10);
+    REQUIRE(scan10.blocks.size() == 1);
+    CHECK(scan10.blocks[0].build == kBuild10);
+    CHECK(!scan10.blocks[0].rule);
+    // Anywhere else the place gives nothing: a page, a table, a file under no build.
+    CHECK(place_build_of("04-fills.md").empty());
+    CHECK(place_build_of("code/names-4045.tsv").empty());
+    CHECK(place_build_of("notes/code/4045/x.md").empty());
+    CHECK(place_build_of("code/6142/sp_update_20F6800.md") == kBuild11);
+    CHECK(scan_page(Doc{"docs/clone-hero/04-fills.md", {"`a.b`"}}).place_build.empty());
 }
 
 TEST_CASE("docs match code: every game fact on a Clone Hero page has a home") {

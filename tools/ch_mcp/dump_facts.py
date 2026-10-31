@@ -410,6 +410,9 @@ _HEADING_RE = re.compile(r"^(?P<hashes>#{1,6}) (?P<text>.*)$")
 _BLOCK_LEVEL = 3
 _GAME_CODE_RE = re.compile(r"^Game code \((?P<build>\d+)\):")
 _BUILD_HEADING_RE = re.compile(r"\bBuild \d+\.\d+\.\d+\.(?P<build>\d+)\b")
+# A file under `code/<build>/` in the pages folder is one build's notes, so
+# its place gives the build of every span in it.
+_PLACE_BUILD_RE = re.compile(r"^code/(?P<build>\d+)/")
 
 # `cited` is the span as the page writes it (a constants.py name for a row
 # that file gives), so the C++ test matches a page span by that column alone
@@ -425,7 +428,10 @@ NAMES_COLUMNS = ("build", "typedef_index", "class", "member", "name", "what")
 _BUILDS_KEYED_BY_NAME = frozenset({"4045"})
 # The builds whose facts.json lists no properties (mono_facts.py reads only
 # fields and methods), so a map row naming a property cannot be checked there.
+# A page span that resolves to one gets a table row of this kind, from the
+# map alone.
 _BUILDS_WITHOUT_PROPERTIES = frozenset({"4045"})
+UNLISTED_PROPERTY_KIND = "property-unlisted"
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_]\w*$", re.ASCII)
 
 
@@ -584,13 +590,22 @@ def game_fact(span: str, modules: frozenset[str] | None = None) -> Fact | None:
     return None
 
 
-def span_builds(lines: list[str]) -> list[tuple[int, str, str]]:
+def place_build(path: str, pages_dir: str) -> str | None:
+    """The build a page's place under `pages_dir` gives, or None. A file under
+    `code/<build>/` takes that build for every span in it."""
+    rel = os.path.relpath(os.path.abspath(path), os.path.abspath(pages_dir)).replace("\\", "/")
+    m = _PLACE_BUILD_RE.match(rel)
+    return m.group("build") if m else None
+
+
+def span_builds(lines: list[str], place: str | None = None) -> list[tuple[int, str, str]]:
     """Each backticked span of a page with its line number and its build.
 
-    A span in a `###` block takes the build of the block's `Game code (<N>)`
-    line; otherwise the build of the nearest heading above it that names
-    `Build x.y.z.N`; otherwise DEFAULT_BUILD. Fenced code is not prose and is
-    skipped.
+    A page whose place gives a build (`place`, from `place_build`) puts every
+    span in that build. Otherwise a span in a `###` block takes the build of
+    the block's `Game code (<N>)` line; otherwise the build of the nearest
+    heading above it that names `Build x.y.z.N`; otherwise DEFAULT_BUILD.
+    Fenced code is not prose and is skipped.
     """
     block_build: dict[int, str] = {}
     block = None
@@ -624,6 +639,7 @@ def span_builds(lines: list[str]) -> list[tuple[int, str, str]]:
         build = block_build.get(block) if block is not None else None
         if build is None:
             build = sections[-1][1] if sections else DEFAULT_BUILD
+        build = place or build
         out.extend((i + 1, s, build) for s in _SPAN_RE.findall(line))
     return out
 
@@ -654,7 +670,7 @@ def page_facts(pages_dir: str, build: str,
         with open(path, encoding="utf-8") as f:
             lines = f.read().splitlines()
         shown = _display_path(path)
-        for lineno, span, span_build in span_builds(lines):
+        for lineno, span, span_build in span_builds(lines, place_build(path, pages_dir)):
             if span_build != build:
                 continue
             if not span.isascii():
@@ -787,6 +803,23 @@ def _member_row(build: str, cls: dict, kind: str, member: dict) -> tuple:
     return _row(build, kind, cls, member["name"], rva=member.get("rva"))
 
 
+def _unlisted_property_rows(index: _Index, build: str, cls: dict, member: str, names: NamesMap,
+                            via: list[NameRow]) -> list[tuple]:
+    """The rows for a member our map names that the dump does not list. In a
+    build whose facts.json lists no properties, a map row whose member is no
+    field or method of its class is a property; the nearest class in `cls`'s
+    chain with such a row gives it. A build that lists its properties has none."""
+    if names.has_properties:
+        return []
+    for c in index.chain(cls):
+        listed = {m["name"] for m in c["fields"] + c["methods"]}
+        found = [r for r in names.member_rows_named(c, member) if r.member not in listed]
+        if found:
+            via.extend(found)
+            return [_row(build, UNLISTED_PROPERTY_KIND, c, r.member) for r in found]
+    return []
+
+
 def _lookup(index: _Index, build: str, fact: Fact,
             names: NamesMap) -> tuple[list[tuple], str, list[NameRow]]:
     """The table rows for one fact, or an empty list and the reason, and the
@@ -809,6 +842,10 @@ def _lookup(index: _Index, build: str, fact: Fact,
                                     and m.get("offset") == fact.address)
         else:
             found = _member_matches(index, cls, _named(names, fact.member, via))
+            if not found:
+                unlisted = _unlisted_property_rows(index, build, cls, fact.member, names, via)
+                if len(unlisted) == 1:
+                    return unlisted, "", via
         if len(found) != 1:
             return [], f"matches {len(found)} members of TypeDefIndex {fact.index} and its bases", via
         return [_member_row(build, cls, *found[0])], "", via
@@ -823,18 +860,22 @@ def _lookup(index: _Index, build: str, fact: Fact,
     if len(owners) > 1:
         return [], f"class {fact.left} matches {len(owners)} classes", via
     for cls in owners:
-        rows += [_member_row(build, cls, kind, m) for kind, m in
-                 _member_matches(index, cls, _named(names, fact.member, via))]
+        listed = _member_matches(index, cls, _named(names, fact.member, via))
+        rows += ([_member_row(build, cls, kind, m) for kind, m in listed] if listed
+                 else _unlisted_property_rows(index, build, cls, fact.member, names, via))
     if len(rows) != 1:
         return [], f"matches {len(rows)} classes and members", via
     return rows, "", via
 
 
 def table_rows(classes: list[dict], build: str, cited: list[Cited], instances: list[dict] = (),
-               names: NamesMap | None = None) -> tuple[list[tuple], list[str]]:
+               names: NamesMap | None = None,
+               warnings: list[str] | None = None) -> tuple[list[tuple], list[str]]:
     """One row per distinct fact and span, sorted, and an error for each fact
     that is not exactly one dump entry (an address several methods share
-    excepted). The rows `names` resolved through are added to `names.used`."""
+    excepted). The rows `names` resolved through are added to `names.used`. A
+    span that resolves to a property the dump does not list gets a row of
+    kind UNLISTED_PROPERTY_KIND and a line in `warnings` when a list is given."""
     if names is None:
         names = NamesMap([], build)
     index = _Index(classes, instances)
@@ -845,6 +886,9 @@ def table_rows(classes: list[dict], build: str, cited: list[Cited], instances: l
         if found:
             rows.update(r + (c.span,) for r in found)
             names.used.update(via)
+            if warnings is not None and any(r[1] == UNLISTED_PROPERTY_KIND for r in found):
+                warnings.append(f"{c.where}: `{c.span}` is a property that build {build}'s facts.json does "
+                                "not list, so its table row comes from the names map alone")
         else:
             errors.append(f"{c.where}: `{c.span}` {reason} in build {build}")
     return sorted(rows), errors
@@ -970,10 +1014,11 @@ def build_table(dump_path: str, pages_dir: str, dll_path: str, version: str | No
         from_constants, constants_errors = constants_facts(constants_path, classes)
         cited += from_constants
         errors += constants_errors
-    rows, lookup_errors = table_rows(classes, build, cited, instances, names)
+    lookup_warnings: list[str] = []
+    rows, lookup_errors = table_rows(classes, build, cited, instances, names, lookup_warnings)
     map_errors, map_warnings = check_names(classes, names)
     if warnings is not None:
-        warnings.extend(map_warnings)
+        warnings.extend(lookup_warnings + map_warnings)
     return render_table(version, dll_path, rows), errors + lookup_errors + map_errors
 
 

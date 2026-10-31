@@ -590,6 +590,44 @@ class FactsTableTests(_TableFixture):
                                             "GameManager.Update"]])
         self.assertIn("# version: v1.0.0.4045-master", text.splitlines())
 
+    def test_a_file_under_code_and_a_build_takes_that_build_for_every_span(self):
+        lines = ["# Clone Hero 1.0 (build 4045): the notes", "`A.b`", "## Build 1.0.0.9999", "`C.d`"]
+        self.assertEqual([b for _, _, b in D.span_builds(lines, "4045")], ["4045", "4045"])
+        # With no place, the heading rule still applies and the default build holds elsewhere.
+        self.assertEqual([b for _, _, b in D.span_builds(lines)], ["6142", "9999"])
+        self.assertEqual(D.place_build(os.path.join(self.pages, "code", "4045", "n.md"), self.pages), "4045")
+        self.assertEqual(D.place_build(os.path.join(self.pages, "code", "6142", "sub", "n.md"), self.pages), "6142")
+        for outside in (("n.md",), ("code", "names.md"), ("sub", "code", "4045", "n.md")):
+            self.assertIsNone(D.place_build(os.path.join(self.pages, *outside), self.pages))
+
+    def test_a_note_under_code_4045_is_looked_up_in_the_4045_table_not_the_6142_one(self):
+        facts = {"game_version": "v1.0.0.4045-master", "classes": [
+            {"name": "GameManager", "namespace": "", "kind": "class", "typedef_index": 562,
+             "readable": True, "base": None, "interfaces": [],
+             "fields": [], "methods": [{"name": "Update", "return": "void", "params": [],
+                                        "static": False, "rva": None}]}]}
+        path = os.path.join(self.tmp, "facts.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(facts, f)
+        os.makedirs(os.path.join(self.pages, "code", "4045"))
+        self.page("# Clone Hero 1.0 (build 4045): notes\n\nThe game runs `GameManager.Update`.\n",
+                  name=os.path.join("code", "4045", "note.md"))
+        text, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants)
+        self.assertEqual(errors, [])
+        self.assertEqual(self.rows(text)[0][7], "GameManager.Update")
+        # The same page elsewhere is a 6142 page, so the 4045 run leaves its span alone.
+        os.remove(os.path.join(self.pages, "code", "4045", "note.md"))
+        self.page("# Clone Hero 1.0 (build 4045): notes\n\nThe game runs `GameManager.Update`.\n")
+        text, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants)
+        self.assertEqual(self.rows(text), [])
+        # A 6142 note under code/6142 is looked up in 6142 even under a heading naming another build.
+        os.remove(os.path.join(self.pages, "page.md"))
+        os.makedirs(os.path.join(self.pages, "code", "6142"))
+        self.page("## Build 1.0.0.4045\n\n`GameManager.songTime`\n", name=os.path.join("code", "6142", "n.md"))
+        text, errors = self.table()
+        self.assertEqual(errors, [])
+        self.assertIn("GameManager.songTime", text)
+
 
 # More of the tiny dump for the names map: a namespaced class, and a readable
 # class with a scrambled field.
@@ -748,6 +786,42 @@ class NamesMapTests(_TableFixture):
         self.assertIn("names-4045.tsv:5: the class `ʻʻʻ` matches 0 classes", errors[0])
         self.assertTrue(any("names-4045.tsv:4:" in w and "facts.json has no properties to check it against" in w
                             for w in warnings), warnings)
+
+    def test_a_4045_span_naming_a_mapped_property_gets_an_unlisted_row_and_a_warning(self):
+        scrambled, prop = "ʶˀʵ", "ʸʶʳ"
+        facts = {"game_version": "v1.0.0.4045-master", "classes": [
+            {"name": scrambled, "namespace": "", "kind": "class", "typedef_index": 3,
+             "readable": False, "base": None, "interfaces": [],
+             "fields": [], "methods": [{"name": "ʹʹʾ", "return": "void", "params": [],
+                                        "static": False, "rva": None}]}]}
+        path = os.path.join(self.tmp, "facts.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(facts, f, ensure_ascii=False)
+        self.names(MAP_COLUMNS + f"4045\t\t{scrambled}\t\tFillGenerator\tBuilds the fills.\n"
+                   + f"4045\t\t{scrambled}\tʹʹʾ\tbuild\tBuilds one fill.\n"
+                   + f"4045\t\t{scrambled}\t{prop}\tWrittenFills\tA property.\n", build="4045")
+        self.page("# P\n\n## Build 1.0.0.4045\n\n`FillGenerator.WrittenFills` and `FillGenerator.build`\n"
+                  "`FillGenerator.noSuchThing`\n")
+        warnings = []
+        text, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants,
+                                     warnings=warnings)
+        rows = self.rows(text)
+        self.assertIn(["4045", "property-unlisted", "3", "", prop, "", "", "FillGenerator.WrittenFills"], rows)
+        self.assertIn(["4045", "method", "3", "", "ʹʹʾ", "", "", "FillGenerator.build"], rows)
+        # A member with no map row and no facts.json entry stays an error.
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("page.md:6: `FillGenerator.noSuchThing` matches 0 classes and members in build 4045", errors[0])
+        self.assertTrue(any("page.md:5: `FillGenerator.WrittenFills` is a property" in w for w in warnings),
+                        warnings)
+        self.assertFalse(any("`FillGenerator.build`" in w for w in warnings), warnings)
+
+    def test_a_6142_span_naming_a_member_the_dump_lacks_is_an_error_not_an_unlisted_row(self):
+        self.names(GOOD_MAP + "6142\t8255\tʺʺʸ\tʻʻʻ\tghost\tA member the class lacks.\n")
+        self.page("# P\n\n`DrumsEngine.ghost`\n")
+        text, errors, _ = self.table_and_warnings()
+        self.assertNotIn("property-unlisted", text)
+        self.assertTrue(any("`DrumsEngine.ghost` matches 0 classes and members in build 6142" in e
+                            for e in errors), errors)
 
 
 if __name__ == "__main__":
