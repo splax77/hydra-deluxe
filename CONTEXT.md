@@ -416,30 +416,40 @@ command-line tool stops instead: `app::load_tool_rules` (src/app/rules_file.h)
 loads the rules for every tool and prints `ini_file_tool_text`, the tools'
 sentence and then the loader's line. Numbers in the file are read through
 `parse_finite_number` (src/core/strutil.h), so "nan", "inf" and hex are
-errors (D114 item 8).
+errors (D114 item 8). What the loader refuses, and the wording it shares with
+hydra_settings.ini, is under Settings files.
 
-**Settings file error**:
-What a bad hydra_settings.ini is. `Settings::load_file` (src/app/config.h)
-refuses what the rules loader refuses: a line with no `=`, an unknown key, a
-value that is not a whole number, an on/off that is not `0` or `1`, and a
-`view_difficulty` that names no difficulty. It throws `SettingsFileError`
-(kind `SettingsFile`, whose app sentence is `kSettingsOffSentence`). In the app,
-Hydra opens on a default `Settings`, analysis is off as for the rules file, no
-scan starts and `save_settings` writes nothing, so the file is never touched
-(`AppState::settings_error`, D276 item 1). `AppState::analysis_off_lines` gives
-the lines for both files, and the toolbar, the song panel and the path report
-window draw them through `analysis_off_notice` (src/ui/widgets.h). A
-command-line tool stops instead: `app::load_tool_settings` (src/app/config.h)
-loads the settings for every tool and prints them through `ini_file_tool_text`.
-Both loaders word those lines
-through `ini_not_key_value_text`, `ini_unknown_key_text` and
+**Settings files**:
+How hydra_settings.ini and hydra_rules.ini are read, and what a bad
+hydra_settings.ini does (D270). Both files follow one rule: anything the
+loader can't read refuses the whole file, with an error that names the file,
+the key and the value. `Settings::load_file` (src/app/config.h) refuses what
+the rules loader, `load_rules_file` (src/app/rules_file.h), refuses: a line
+with no `=`, an unknown key, and a value its key can't take. In the settings
+file that is a value that is not a whole number, an on/off that is not `0` or
+`1`, or a `view_difficulty` that names no difficulty. Both loaders word those
+lines through `ini_not_key_value_text`, `ini_unknown_key_text` and
 `ini_bad_value_text`, and read whole numbers through `parse_whole_number`, all
 in src/app/ini_errors.h (D270 call 4); a scan row (ini-errors.json) holds
 that. A number outside its range loads at the nearest edge in the settings
-file, where `hydra_rules.ini` refuses a number below one of its five floors
-(D270 calls 1 to 3). A key on `kRetiredSettingsKeys` is skipped and left out
-at the next save (D270 call 7). It leaves out a refusal of hydra_rules.ini
-(Rules file error).
+file, so `sp_cap=0` reads 1, where `hydra_rules.ini` refuses a number below
+one of its five floors (D270 calls 1 to 3). A key Hydra used to write is
+skipped, not refused: `kRetiredSettingsKeys` (src/app/config.h) and
+`kRetiredRulesKeys` (src/app/rules_file.cpp) list them, and
+`is_retired_key` asks. A live key of the same name wins. A retired settings
+key is left out at the next save (D270 call 7). `hit_window_ms` is one of
+them, because the hit window is no longer a setting (Hit window).
+A refused hydra_settings.ini throws `SettingsFileError` (kind `SettingsFile`,
+whose app sentence is `kSettingsOffSentence`). In the app, Hydra opens on a
+default `Settings`, analysis is off as for the rules file, no scan starts and
+`save_settings` writes nothing, so the file is never touched
+(`AppState::settings_error`, D276 item 1). `AppState::analysis_off_lines` gives
+the lines for both files, the settings file's first, and the toolbar, the song
+panel and the path report window draw them through `analysis_off_notice`
+(src/ui/widgets.h). A command-line tool stops instead:
+`app::load_tool_settings` (src/app/config.h) loads the settings for every tool
+and prints the error through `ini_file_tool_text`, exit code 2. What a refused
+hydra_rules.ini does is its own entry (Rules file error).
 
 **Job outcome**:
 How a finished background job ended: done, cancelled or failed
@@ -570,11 +580,11 @@ src/core/stars.cpp; D48, Q33).
 
 **Early fill (E)**:
 An activation timing (the `E` notation) near a fill's spawn deadline. The
-window has two sides, each a fixed number of its own, never the hit-window
-setting, because the search reads them (src/core/model.h).
+window has two sides, each a fixed number and never a setting, because the
+search reads them (src/core/model.h).
 On the orange side, Star Power comes ready after the deadline, so you must
-hit early to summon the fill. It reaches 85 ms<!-- default: kHitWindowMs -->
-(`kHitWindowMs`, read by `fill_refuses`): later than that the fill
+hit early to summon the fill. It reaches 85 ms<!-- default: kHitWindowMs -->,
+the hit window (`kHitWindowMs`, read by `fill_refuses`): later than that the fill
 never spawns, and the search drops the activation.
 On the white side, Star Power comes ready before the deadline with less than
 60 ms<!-- default: kEarlyFillSlackMs --> to spare (`kEarlyFillSlackMs`, read
@@ -645,12 +655,19 @@ database holds both rules' records; the old label on the whole file
 (`engine_mode`) is retired (D115, docs/adr/0010).
 
 **Hit window**:
-The per-side ms window Clone Hero registers a hit in. A setting; feeds the
-squeeze budgets, ratings, and report tiers, never the search. The report's
-timing tiers are Normal below 2 ms (`kDifficultMs`), then Hard below half a
-hit window, Extreme below one window, Insane below one and a half, Insane+
-below two, and Beyond from two windows up (`timing_tiers` in
-src/core/squeeze_rating.cpp; D48, Q33).
+The per-side ms window Clone Hero registers a hit in, Clone Hero's Pro Drums
+window: 85 ms<!-- default: kHitWindowMs --> (`kHitWindowMs` in
+src/core/model.h). It is one fixed number, not a setting (D270 call 8). The
+search's early fill reach (`fill_refuses`), the squeeze budgets
+(`squeeze_budget_ms`, `nominal_budget_ms`), the Rating words and the report's
+timing tiers all read it. The old `hit_window_ms` key is retired and skipped
+(Settings files). The report's timing tiers are Normal up to 2 ms
+(`kDifficultMs`), then Hard up to half a hit window, Extreme up to one window,
+Insane up to one and a half, Insane+ up to two, and Beyond past two windows;
+each edge belongs to the band below it (`timing_tiers` and `tier_for` in
+src/core/squeeze_rating.cpp; D48, Q3 and Q33). The report's footer and its
+Timing column's tooltip call it "the 85 ms hit window", printed by
+`hit_window_text` (src/app/report.h; D278 item 4).
 
 **Transfer scale**:
 How frontend timing error carries to the SP end. SP length is measured in
@@ -695,17 +712,26 @@ The displayed difficulty judgement of a squeeze: its rating label, its
 effective ms once the transfer scale is applied, and whether the scale is
 material enough to warn about. `rate_activation` in
 src/core/squeeze_rating.cpp works out the scales and effective ms
-(`rate_note` for each row). The Rating cell's word ("Easy", "Hard
+(`rate_note` for each row). The Rating cell's word ("Normal", "Hard
 (uncounted)" and so on) is `BackendSqueeze::summarystr`'s, in
-src/core/model.cpp. That ladder differs from the report's timing tiers
-(`timing_tiers`), and the report's footer says the two can differ.
+src/core/model.cpp, one rule for every row (D269). The figure banded is the
+row's needed timing, `backend_row_timing` (src/core/model.h): a squeezed-out
+row needs its SqOut's `squeeze_difficulty`, a plain row the engine counts
+(`counted_without_squeeze`) needs nothing, and an uncounted plain row needs
+its offset. A row that needs nothing reads Normal whatever its scale; any
+other row with an eff. figure is banded on that figure (D276 item 2). The
+bands are the report's timing tiers (`timing_tiers`, through `tier_for`), so
+the cell and the report share one ladder. "(uncounted)" is added wherever
+`counted_without_squeeze` says the engine pays nothing. The badges and the
+report stay on raw ms (D269 call 5), so a row under a scale can read a
+different word from its path's report tier, and the report's footer says the
+two can differ.
 
 **Needs no timing**:
 A squeeze that is already done with no frontend timing: a SqIn whose note the
 SP walk already pays, or a SqOut whose note it does not. `SPSqueeze::needs_no_timing`
 in src/core/model.h is the one answer, and the rating and the details sentence
-both read it. The word "Free" in the Rating cell is a different test,
-`BackendSqueeze::summarystr`'s, on a backend row's offset.
+both read it.
 _Avoid_: free (for this test)
 
 **Backend leeway**:
