@@ -108,7 +108,7 @@ Boot takes seconds; LS-D0 measures the time from resume to the engine clock movi
 
 ### The kit's player
 
-`ch_kit_setup(player=None)` gains `player`; `None` means `KIT_PLAYER`. `KIT_PLAYER` stays `Player1` until LS-D1 decides, then a one-line data commit records the answer with the step's reply quoted. The agent already takes the player name in its `setup` message, so `kit.ts` does not change for this.
+`ch_kit_setup(player=None)` gains `player`; `None` means `KIT_PLAYER`. `KIT_PLAYER` stays `Player1` until LS-D1 decides, then a one-line data commit records the answer with the step's reply quoted. The agent already takes the player name in its `setup` message, so `kit.ts` does not change for this. Loading the drum map onto System does change `kit.ts`, and that is task M1 of `docs/superpowers/plans/2026-10-31-ch-mcp-kit-map-and-network-block.md`; LS-D1a's pass line and stop line are the ones in that plan's LS-D1a.
 
 ### Who owns which question
 
