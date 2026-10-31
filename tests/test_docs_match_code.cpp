@@ -26,10 +26,11 @@
 // 6. No permanent doc (every markdown file git lists, less the folders
 //    kNotPermanentDirs skips) names a path into a scratch folder
 //    (scratch_path_re).
-// 7. No permanent doc, and no comment in the code, names a file or folder
-//    under docs/ that is not in the tree (docs_path_re), unless the line says
-//    how to read it now (is_removed_citation). The session cards keep their
-//    old paths (kSessionCardsDir).
+// 7. No permanent doc, and no comment in the code (src, tools, tests, the
+//    installer, .github and the files at the repo root), names a file or
+//    folder under docs/ that is not in the tree (docs_path_re), unless the
+//    line says how to read it now (is_removed_citation). The session cards
+//    keep their old paths (kSessionCardsDir).
 //
 // It finds the repo and walks the code through tests/source_tree.h, as the
 // scans in tests/single_owner/ do.
@@ -1309,13 +1310,15 @@ namespace {
 // points at it: a permanent doc, or a comment in the code, that names a file
 // or folder under docs/ which is not in the tree fails with its line.
 //
-// docs_path_re is what counts as a docs path. A line number or an anchor
+// docs_path_re is what counts as a docs path: docs/, then folders, then a file
+// with an extension (a page, a picture, a data file). A folder is written with
+// its closing slash; one without it is not read. A line number or an anchor
 // written after the path is not part of it, so the file is checked and the
 // place in it is not. A path written relative to another folder, or into
 // another repo by its full folder, is not read. is_removed_citation is what
 // lets a line name a file that is gone.
 const std::regex& docs_path_re() {
-    static const std::regex re(R"((?:^|[^\w.\-/\\])(docs/(?:[\w.\-]+/)*(?:[\w.\-]+\.md)?)(?![\w\-/]|\.\w))");
+    static const std::regex re(R"((?:^|[^\w.\-/\\])(docs/(?:[\w.\-]+/)*(?:[\w.\-]+\.[A-Za-z0-9]+)?)(?![\w\-/]|\.\w))");
     return re;
 }
 
@@ -1341,9 +1344,11 @@ bool is_removed_citation(const std::string& line, const std::string& path) {
 // message does, so it keeps the paths it named after a plan leaves.
 constexpr const char* kSessionCardsDir = "docs/sessions/";
 
-// The installer's folder. The code walk (sourcetree::source_files) does not
-// visit it, and its scripts cite docs too.
-constexpr const char* kInstallerDir = "installer";
+// The files outside the code walk (sourcetree::source_files) whose comments
+// cite docs too: the installer's scripts, the CI workflows and actions, and
+// the files at the repo root (CMakeLists.txt and the rest). The pathspec
+// ":(glob)*" is the root's own files, no folder below it.
+constexpr const char* kExtraCodePaths[] = {"installer", ".github", ":(glob)*"};
 
 // Whether the docs path `path` is a file in `tree`, or a folder that holds one.
 bool in_tree(const std::set<std::string>& tree, const std::string& path) {
@@ -1414,7 +1419,8 @@ TEST_CASE("docs match code: no permanent doc or code comment names a docs path t
 
     std::vector<Doc> all = markdown_docs();
     std::vector<std::string> code = sourcetree::source_files(root);
-    for (std::string& rel : sourcetree::git_listed(root, kInstallerDir)) code.push_back(std::move(rel));
+    for (const char* spec : kExtraCodePaths)
+        for (std::string& rel : sourcetree::git_listed(root, spec)) code.push_back(std::move(rel));
     int code_files = 0;
     for (const std::string& rel : code) {
         const fs::path p = root / fs::u8path(rel);
@@ -1456,11 +1462,12 @@ TEST_CASE("docs match code: the docs path check reads each path form and skips t
              "See docs/none/.",                                                     // 7: a folder with none
              "See docs/a.md:120 and docs/a.md#part.",                               // 8: a place in a file
              "See docs/gone.md:12.",                                                // 9
-             "See tools/docs/gone.md, ../docs/gone.md and docs/gone.mdx.",          // 10: not docs paths
+             "See tools/docs/gone.md, ../docs/gone.md and C:/r/docs/gone.md.",      // 10: not docs paths
              "See docs/sub/<date>-x.md and docs/sub/*.md.",                         // 11: the folder part
              "See docs/a.md, docs/gone.md and docs/sub/gone.md",                    // 12: two on a line
              "Wrapped: git show",                                                   // 13
-             "0123abcd:docs/gone.md was here, and docs/sub/gone.md too."}},         // 14: wrapped removed form
+             "0123abcd:docs/gone.md was here, and docs/sub/gone.md too.",           // 14: wrapped removed form
+             "See docs/images/gone.png, docs/gone.mdx and docs/a.md."}},            // 15: any extension
         Doc{"docs/handoffs/2026-10-31-x-handoff.md", {"See docs/gone.md."}},
         Doc{"docs/superpowers/plans/2026-10-31-x.md", {"See docs/gone.md."}},
         Doc{"docs/sessions/2026-10-31-0123abcd.md", {"See docs/gone.md."}},
@@ -1475,6 +1482,7 @@ TEST_CASE("docs match code: the docs path check reads each path form and skips t
         "docs/x.md:7: names docs/none/,",    "docs/x.md:9: names docs/gone.md,",
         "docs/x.md:12: names docs/gone.md,", "docs/x.md:12: names docs/sub/gone.md,",
         "docs/x.md:14: names docs/sub/gone.md,",
+        "docs/x.md:15: names docs/images/gone.png,", "docs/x.md:15: names docs/gone.mdx,",
         "docs/sessions-old/x.md:1: names docs/gone.md,",
         "src/x.cpp:1: names docs/gone.md,",  "src/x.cpp:3: names docs/gone.md,",
         "tools/x.py:1: names docs/gone.md,", "tools/x.py:3: names docs/gone.md,",
