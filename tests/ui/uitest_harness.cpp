@@ -59,11 +59,15 @@ void init_scratch(Harness& h) {
     hydra::app::set_path_overrides(po);
 }
 
-// Whether a wildcard lookup of `label` would scroll the library: the search
-// box is empty and `label` is a row's Title text (the row's Selectable in
+// Whether the library shows every row: the search box is empty.
+// EngineHooks::library_unfiltered, and the first half of library_row_title.
+bool library_unfiltered(const Harness& h) { return h.app && h.app->search.empty(); }
+
+// Whether a lookup of `label` would scroll the library: the library is
+// unfiltered and `label` is a row's Title text (the row's Selectable in
 // library_table.cpp). EngineHooks::is_library_row_title.
 bool library_row_title(const Harness& h, const std::string& label) {
-    if (!h.app || !h.app->search.empty()) return false;
+    if (!library_unfiltered(h)) return false;
     for (const hydra::ui::LibraryRow& row : h.app->library.rows())
         if (hydra::ui::library_cell_text(row, hydra::ui::kColumnTitle) == label) return true;
     return false;
@@ -81,6 +85,7 @@ Harness::Harness() {
     hooks.is_library_row_title = [this](const std::string& label) {
         return library_row_title(*this, label);
     };
+    hooks.library_unfiltered = [this] { return library_unfiltered(*this); };
     hooks.open_song = [](ImGuiTestContext* ctx, const std::string& title, double settle_seconds) {
         return open_titled_reason(ctx, title, title, settle_seconds);
     };
