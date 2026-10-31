@@ -47,6 +47,12 @@ SCRATCH_PREFIX = "ch_live_"
 ROUTE_KIT = "kit"
 ROUTE_KEYS = "keys"
 ROUTES = (ROUTE_KIT, ROUTE_KEYS)
+# ch_play_chart's reply when no route is given and the kit is not set up. It
+# names the kit setup and not the keys route, so no run takes the keyboard
+# unasked (the user's answer to the plan's question 6, 2026-10-30, "Lock it
+# too").
+NO_ROUTE_NO_KIT = ("refused: no route given and the kit is not set up; "
+                   "call ch_kit_setup first")
 
 _NOT_RUNNING = f"{C.PROCESS_NAME} is not running"
 
@@ -513,13 +519,16 @@ class GameTools:
         folder. `song_folder`, when given, sets the run cap through run_cap_s;
         with none the run keeps live_play's own cap. `route` is ROUTE_KIT
         (presses through the virtual kit inside the game) or ROUTE_KEYS (keys
-        to the focused window); None picks the kit once it is set up."""
+        to the focused window); None means the kit, and is refused until the
+        kit is set up, so no run takes the keyboard unless asked to."""
         with self._lock:
             if self._play is not None and self._play.running():
                 return "a play session is already running; call ch_play_stop first"
             kit_press = self._kit_press_source() if self._kit_press_source is not None else None
             if route is None:
-                route = ROUTE_KIT if kit_press is not None else ROUTE_KEYS
+                if kit_press is None:
+                    return NO_ROUTE_NO_KIT
+                route = ROUTE_KIT
             if route not in ROUTES:
                 return f'unknown route "{route}"; routes: {", ".join(ROUTES)}'
             if route == ROUTE_KIT and kit_press is None:

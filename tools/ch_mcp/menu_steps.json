@@ -1,47 +1,57 @@
 {
   "verified": false,
-  "about": "The key steps ch_open_song presses to start a song from the main menu, written from the manual and not yet tried on the game. Live step LS1 of docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md presses them one at a time, corrects this file in a one-file data commit, sets verified to true and settles each unproven mark. menu_tools.py says how a step is read.",
+  "about": "The kit presses ch_open_song makes to walk from the title screen to a loaded song, written from the manual, the plan's probe facts and the plan, and not yet tried on the game. Every item is a press on the virtual kit inside the game; the kit route presses no keys and cannot type, so no step searches. Live step LS-K3 of docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md presses them one at a time, corrects this file in a one-file data commit, sets verified to true and settles each unproven mark. menu_tools.py says how a step is read.",
   "sources": [
     "https://wiki.clonehero.net/books/guitars-drums-controllers/page/keyboard-and-gamepads",
-    "https://wiki.clonehero.net/books/clone-hero-manual/page/how-to-play"
+    "https://wiki.clonehero.net/books/clone-hero-manual/page/how-to-play",
+    "docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md"
   ],
   "steps": [
     {
-      "name": "profile and game mode",
-      "keys": ["enter", "lane:green", "lane:green"],
-      "expect": "song_select_live",
+      "name": "profile screen",
+      "items": ["kit:start"],
+      "expect": "profile_screen_active",
       "unproven": true,
-      "manual": "Keyboard and Gamepads: \"You need to press Start and select a profile using Strum Up/Down and Green before you can navigate the menus.\" Its table: Start/Pause is Enter, Green is A. How to Play: \"Once you select your game mode you are then shown your current song list to choose from.\"",
-      "guess": "Enter opens the profile menu and the first Green picks the highlighted profile. The second Green picks the highlighted main menu item, guessed to be Quickplay; the manual does not name the item order. Whether a live SongSelect object means the song list is on screen is unproven."
+      "manual": "Keyboard and Gamepads: \"You need to press Start and select a profile using Strum Up/Down and Green before you can navigate the menus.\" The plan's probe facts: the kit's Start button opened \"Choose a Profile\".",
+      "guess": "Whether PlayerProfileMenu reads active true while that screen is shown is unproven."
     },
     {
-      "name": "search",
-      "keys": ["lane:blue", "text:{name}"],
-      "expect": "selected_folder_is_target",
-      "manual": "How to Play: \"short press the Blue fret to open the search tool!\" Keyboard and Gamepads table: Blue is K, Strum Up/Down are the arrow keys.",
-      "guess": "The search box takes the typed name, and Down moves through the results. Neither page says which key the search box takes text from."
+      "name": "pick the profile",
+      "items": ["kit:green"],
+      "expect": "main_menu_active",
+      "unproven": true,
+      "manual": "Keyboard and Gamepads, as in step 1: Green selects the profile.",
+      "guess": "Green picks the highlighted profile and the main menu shows. MainMenu may already read active under the profile screen, so this word may hold before the profile is picked."
     },
     {
-      "name": "confirm the song",
-      "keys": ["lane:green"],
-      "expect": "player_screen_live",
+      "name": "main menu item",
+      "items": ["kit:green"],
+      "expect": "song_select_active",
       "unproven": true,
-      "manual": "How to Play: \"Once you select a song, you are then prompted to select your instrument, the difficulty, and apply modifiers.\" Keyboard and Gamepads says \"press Green to select the option\" and \"then use Green to confirm your selection\" in its settings paragraph, not about songs.",
-      "guess": "Green on the selected song opens the player screen, carried over from the settings paragraph; the manual does not say it for songs. Whether a live PlayerSelectionMenu object means that screen is on screen is unproven."
+      "manual": "How to Play: \"Once you select your game mode you are then shown your current song list to choose from.\"",
+      "guess": "Green picks the highlighted main menu item, guessed to be Quickplay; the manual does not name the item order."
+    },
+    {
+      "name": "pick the selected song",
+      "items": ["kit:green"],
+      "expect": "player_screen_active",
+      "unproven": true,
+      "manual": "How to Play: \"Once you select a song, you are then prompted to select your instrument, the difficulty, and apply modifiers.\"",
+      "guess": "Green picks whatever song the list has selected, which may not be the target: the kit cannot type into the search. The plan starts a chosen song with ch_start_song instead (its task T8)."
     },
     {
       "name": "ready",
-      "keys": ["lane:green"],
+      "items": ["kit:green"],
       "expect": "game_manager_live",
-      "manual": "How to Play: \"Once you select a song, you are then prompted to select your instrument, the difficulty, and apply modifiers.\" Neither page names the Ready press.",
-      "guess": "The manual does not say what the Ready press is. Green is guessed, with the player screen's default instrument and difficulty."
+      "manual": "How to Play, as in step 4. Neither page names the Ready press.",
+      "guess": "Green is guessed for Ready, with the player screen's default instrument and difficulty. ch_menu prints both with their words; the plan's LS-K3 pass line needs ProDrums and Expert."
     },
     {
       "name": "song loads",
-      "keys": [],
+      "items": [],
       "expect": "song_loaded",
       "manual": "No press: this step waits for the loaded song.",
-      "guess": "The game loads the song with no further key."
+      "guess": "The game loads the song with no further press."
     }
   ]
 }

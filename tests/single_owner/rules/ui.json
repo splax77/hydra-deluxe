@@ -931,7 +931,7 @@
       "owner_lines": [
         {
           "file": "src/ui/app_state.cpp",
-          "line_text": "return !settings.chartfolders.empty() && !scan_job && !batch_running();",
+          "line_text": "return settings_error.empty() && !settings.chartfolders.empty() && !scan_job &&",
           "why": "can_scan, the owner"
         }
       ],

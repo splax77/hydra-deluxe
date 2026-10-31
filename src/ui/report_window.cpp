@@ -157,12 +157,7 @@ bool state_body(const Frame& f) {
             // Never built, and no build could start (AppState's request
             // refused it): the header, and why when analysis is off, as the
             // toolbar words it.
-            if (!f.analysis_off_error.empty()) {
-                ImGui::PushTextWrapPos(0.0f);
-                ImGui::TextColored(kWarningColor, "%s", f.analysis_off_sentence);
-                ImGui::TextColored(kWarningColor, "%s", f.analysis_off_error.c_str());
-                ImGui::PopTextWrapPos();
-            }
+            analysis_off_notice(f.analysis_off, /*with_errors=*/true);
             return true;
         case ReportBuild::Building: {
             // The first line says what is happening; any after it are dim

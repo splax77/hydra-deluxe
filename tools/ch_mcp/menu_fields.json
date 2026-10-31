@@ -1,0 +1,51 @@
+{
+    "about": "The menu fields agent/menu.ts reads by name, for every live instance of the class each one names, and the enum table frida_tools.menu_lines prints each value's word from. Each entry gives the line of the Il2CppDumper dump of the build below that the field and its enum type were read from; tests/test_frida_tools.py checks those lines when the dump is on this machine. The two player-screen fields are private and have obfuscated names, so a new build needs this file read again from its dump. The plan is docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md, \"Menus without seeing\" and task K4.",
+    "build": "6142",
+    "fields": [
+        {
+            "key": "instrument",
+            "class": "PlayerSelectionMenu",
+            "class_dump_line": 72822,
+            "field": "ʷʻʺʼʴʶʴʳʽʺʿ",
+            "dump_line": 72890,
+            "enum": "ʼˁʿʷʶʸʴʼʹʾʶ",
+            "enum_dump_line": 533184,
+            "values": {
+                "0": "Guitar",
+                "1": "Bass",
+                "2": "Rhythm",
+                "3": "GuitarCoop",
+                "4": "SixFretGuitar",
+                "5": "SixFretBass",
+                "6": "Drums",
+                "7": "Keys",
+                "8": "Band",
+                "9": "ProDrums",
+                "10": "SixFretRhythm",
+                "11": "SixFretGuitarCoop",
+                "12": "Crowd",
+                "13": "Vocals",
+                "14": "SixFretKeys",
+                "15": "None",
+                "16": "Count"
+            }
+        },
+        {
+            "key": "difficulty",
+            "class": "PlayerSelectionMenu",
+            "class_dump_line": 72822,
+            "field": "ʵʽˀˁʿʿʷʿʶˁʺ",
+            "dump_line": 72891,
+            "enum": "ˁʹʴʸʸʲʸˁʺʸʸ",
+            "enum_dump_line": 550049,
+            "values": {
+                "-1": "None",
+                "0": "Easy",
+                "1": "Medium",
+                "2": "Hard",
+                "3": "Expert",
+                "4": "Count"
+            }
+        }
+    ]
+}

@@ -3,8 +3,10 @@
 The kit agent (agent/kit.ts, built to kit.js) builds one Rewired custom
 controller from the game's own drum definition, hands it to a player with the
 game's default map, presses its pads and buttons on request and takes it away
-again. Nothing it does touches the keyboard or the window, so the game can stay
-minimized and unfocused (the plan
+again. It sends no key presses and never touches the window, so the game can
+stay minimized and unfocused; while the kit is set up, the Rewired devices in
+KIT_DEVICES are switched off so the user's own keys and mouse reach no player
+(the plan
 docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md, "One agent for the
 kit" and "The tools").
 
@@ -27,6 +29,7 @@ thread takes too (the play thread never takes the server's lock).
 from __future__ import annotations
 
 import dataclasses
+import math
 import os
 import threading
 import time
@@ -70,9 +73,19 @@ KIT_REWRITE = True
 # Whether a press runs on the game's main thread. False runs it on Frida's
 # own thread, the plan's first try ("One agent for the kit"); LS-K1 decides.
 KIT_PRESS_ON_MAIN = False
+# The longest watch ch_kit_watch accepts, in seconds (the user's answer to
+# the plan's K7 question, 2026-10-30, "Cap at 60 s (Recommended)"). A longer
+# one is refused, naming this cap.
+KIT_WATCH_MAX_S = 60.0
 # ch_kit_status counts frames over this long to give the frame rate (the
 # plan's "Where the schedule runs").
 KIT_RATE_WINDOW_S = 1.0
+
+# The Rewired devices kit.ts switches off for the run, by the name its setup
+# and status replies key each one's read-back with (the user's rulings of
+# 2026-10-30: the keyboard, "Switch it off (Recommended)", and the mouse,
+# "Switch it off too (Recommended)").
+KIT_DEVICES = ("keyboard", "mouse")
 
 # The prefix a menu step names a kit item with (menu_steps.json's kit: items).
 KIT_PREFIX = "kit:"
@@ -166,17 +179,94 @@ def setup_message() -> dict:
             "player": KIT_PLAYER}
 
 
-def press_message(elements: Sequence[KitElement], hold_frames: int = KIT_HOLD_FRAMES) -> dict:
-    """The press message for `elements`, each once, in order."""
+def press_message(elements: Sequence[KitElement], hold_frames: int = KIT_HOLD_FRAMES, *,
+                  rewrite: bool = KIT_REWRITE, on_main: bool = KIT_PRESS_ON_MAIN,
+                  read: Sequence[str] = ()) -> dict:
+    """The press message for `elements`, each once, in order. `read` names
+    the game actions the agent reads back on the kit's player during the
+    hold; the message carries it only when it names some."""
     seen: List[KitElement] = []
     for e in elements:
         if e not in seen:
             seen.append(e)
-    return {"type": "press",
-            "elements": [{"id": e.id, "value": True if e.button else KIT_AXIS_VALUE}
-                         for e in seen],
-            "hold_frames": hold_frames, "cap_s": KIT_PRESS_CAP_S,
-            "rewrite": KIT_REWRITE, "on_main": KIT_PRESS_ON_MAIN}
+    message = {"type": "press",
+               "elements": [{"id": e.id, "value": True if e.button else KIT_AXIS_VALUE}
+                            for e in seen],
+               "hold_frames": hold_frames, "cap_s": KIT_PRESS_CAP_S,
+               "rewrite": rewrite, "on_main": on_main}
+    if read:
+        message["read"] = list(read)
+    return message
+
+
+def parse_actions(read: Union[None, str, Sequence[str]]) -> List[str]:
+    """A comma list or sequence of game action names for a press to read
+    back, each once, in order; [] for None. The names go to the game as
+    given, because the game's GetButton is what knows them. Raises
+    KitRefused for a name that is not text."""
+    if read is None:
+        return []
+    raw = read.split(",") if isinstance(read, str) else list(read)
+    names: List[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            raise KitRefused(f"read takes game action names, not {item!r}")
+        name = item.strip()
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def watch_message(seconds: float) -> dict:
+    """The watch message: read every player for `seconds`, and give up at
+    the cap the request waits for."""
+    return {"type": "watch", "seconds": seconds, "cap_s": watch_cap_s(seconds)}
+
+
+def watch_cap_s(seconds: float) -> float:
+    """How long a watch of `seconds` gets to answer: the watch itself plus
+    KIT_PRESS_CAP_S (the plan, task K7)."""
+    return seconds + KIT_PRESS_CAP_S
+
+
+def seen_lines(reply: dict) -> List[str]:
+    """A press reply's read-back, one line per change, or nothing when the
+    press asked for no read."""
+    if "seen" not in reply:
+        return []
+    lines = [f"read back on the kit's player: {', '.join(reply.get('read') or [])}"]
+    seen = reply.get("seen") or []
+    lines.extend(f"  frame {s.get('frame')}: {s.get('action')} {_flag_text(s.get('value'))}"
+                 for s in seen)
+    if not seen:
+        lines.append("  no reads came back")
+    return lines
+
+
+def watch_lines(reply: dict) -> List[str]:
+    """The watch reply as lines: what was sampled, then either that no key
+    reached a player or a failure line with each true read listed. Only a
+    reply that sampled at least one tick on at least one reader and counted
+    no true read says no key reached a player; a reply that sampled nothing
+    is a failure too, so a watch that read nothing never reads as a pass."""
+    readers = reply.get("readers") or []
+    ticks = reply.get("ticks")
+    lines = [f"watched {reply.get('seconds')} s: {ticks} ticks, frames "
+             f"{reply.get('first_frame')} to {reply.get('last_frame')}, readers: "
+             f"{', '.join(readers)}"]
+    count = reply.get("true_count")
+    reads = reply.get("reads") or []
+    if count == 0 and not reads:
+        if not readers or not isinstance(ticks, int) or ticks < 1:
+            lines.append("FAILED: the watch sampled nothing, so it proves nothing")
+        else:
+            lines.append("no key reached a player")
+        return lines
+    lines.append(f"FAILED: a key reached a player: {count} true reads; "
+                 f"the first {len(reads)} that turned true:")
+    lines.extend(f"  at {r.get('ms')} ms, frame {r.get('frame')}: {r.get('who')} "
+                 "GetAnyButton true" for r in reads)
+    return lines
 
 
 def binding_problems(maps: Any) -> List[str]:
@@ -210,11 +300,32 @@ def _flag_text(value: Any) -> str:
     return "on" if value is True else "off" if value is False else str(value)
 
 
+def device_label(device: str) -> str:
+    """The Rewired property a KIT_DEVICES device is read and set through, as
+    the lines print it."""
+    return f"{device.capitalize()}.enabled"
+
+
+def devices_problem(reply: dict) -> Optional[str]:
+    """Why the setup reply does not show every KIT_DEVICES device switched
+    off, or None when it does. Only a read-back of false passes, so a reply
+    with no read-back is refused too."""
+    on = [f"Rewired's {d} ({device_label(d)}) reads {_flag_text(reply.get(f'{d}_now'))}"
+          for d in KIT_DEVICES if reply.get(f"{d}_now") is not False]
+    if not on:
+        return None
+    return (f"refused: {' and '.join(on)} after setup, not off, so the user's own "
+            "input would still reach the game")
+
+
 def setup_lines(reply: dict) -> List[str]:
-    """The setup reply as lines: the switch, each player's keyboard and mouse
-    flags before and now, the kit, and each map with its bindings."""
+    """The setup reply as lines: the switch, each KIT_DEVICES device, each
+    player's keyboard and mouse flags before and now, the kit, and each map
+    with its bindings."""
     lines = [f"ignoreInputWhenAppNotInFocus: was {_flag_text(reply.get('switch_was'))}, "
              f"now {_flag_text(reply.get('switch_now'))}"]
+    lines.extend(f"{device_label(d)}: was {_flag_text(reply.get(f'{d}_was'))}, "
+                 f"now {_flag_text(reply.get(f'{d}_now'))}" for d in KIT_DEVICES)
     now = {p.get("id"): p for p in reply.get("players_now") or []}
     for p in reply.get("players_was") or []:
         n = now.get(p.get("id"), {})
@@ -276,7 +387,7 @@ def read_pause_setting(documents_dir: str = game_files.DOCUMENTS_DIR) -> str:
 
 
 class KitTools:
-    """The four kit tools, press_items for the menu driver, kit_press for the
+    """The five kit tools, press_items for the menu driver, kit_press for the
     auto-player, and the kit agent between them.
 
     `game` is the server's game_tools.GameTools: this class takes its backup,
@@ -321,9 +432,10 @@ class KitTools:
 
     def ch_kit_setup(self) -> str:
         """Check the attach and settings.ini, take the backup, attach the kit
-        agent, send setup and check the bindings it read back against
-        KIT_BINDINGS. A setup that fails or reads other bindings is torn down
-        again, so nothing is left half done."""
+        agent, send setup, check with devices_problem that the Rewired
+        devices read off, and check the bindings it read back against
+        KIT_BINDINGS. A setup that fails, leaves a device on or reads other
+        bindings is torn down again, so nothing is left half done."""
         with self._lock:
             if not self._frida.is_attached():
                 return NOT_ATTACHED
@@ -370,6 +482,11 @@ class KitTools:
                 lines.extend(self._teardown_and_detach())
                 return self._reply(lines)
             lines.extend(setup_lines(reply))
+            devices = devices_problem(reply)
+            if devices is not None:
+                lines.append(devices)
+                lines.extend(self._teardown_and_detach())
+                return self._reply(lines)
             problems = binding_problems(reply.get("maps"))
             if problems:
                 lines.append("refused: the kit's bindings differ from KIT_BINDINGS:")
@@ -381,35 +498,54 @@ class KitTools:
             return self._reply(lines)
 
     def ch_kit_press(self, items: Union[str, Sequence[str]],
-                     hold_frames: Optional[int] = None) -> str:
+                     hold_frames: Optional[int] = None, rewrite: Optional[bool] = None,
+                     on_main: Optional[bool] = None,
+                     read: Union[None, str, Sequence[str]] = None) -> str:
         """Press one chord of kit items, such as "green,kick" or "start", and
         print the frames it went down and came up on. press_items does the
-        work."""
-        return self.press_items(items, hold_frames).text
+        work and says what each argument does."""
+        return self.press_items(items, hold_frames, rewrite=rewrite, on_main=on_main,
+                                read=read).text
 
     def press_items(self, items: Union[str, Sequence[str]],
-                    hold_frames: Optional[int] = None) -> PressResult:
+                    hold_frames: Optional[int] = None, *, rewrite: Optional[bool] = None,
+                    on_main: Optional[bool] = None,
+                    read: Union[None, str, Sequence[str]] = None) -> PressResult:
         """Press one chord of kit items (KIT_ELEMENTS names, with or without
         KIT_PREFIX), held `hold_frames` frames (KIT_HOLD_FRAMES when None).
-        The result says whether the press went out, for the menu driver."""
+        `rewrite` and `on_main` set the press's rewrite and thread
+        (KIT_REWRITE and KIT_PRESS_ON_MAIN when None). `read` names game
+        actions, such as "Green", that the agent reads back on the kit's
+        player during the hold; the text then lists each change it saw. The
+        result says whether the press went out, for the menu driver."""
         with self._lock:
             try:
                 names = parse_items(items)
+                actions = parse_actions(read)
             except KitRefused as e:
                 return PressResult(False, str(e))
             hold = KIT_HOLD_FRAMES if hold_frames is None else hold_frames
             if isinstance(hold, bool) or not isinstance(hold, int) or hold < 1:
                 return PressResult(False, f"hold_frames is a whole number of 1 or more, "
                                           f"not {hold_frames!r}")
+            for what, value in (("rewrite", rewrite), ("on_main", on_main)):
+                if value is not None and not isinstance(value, bool):
+                    return PressResult(False, f"{what} is true, false or left out, "
+                                              f"not {value!r}")
             agent = self._ready_agent()
             if agent is None:
                 return PressResult(False, NOT_SET_UP)
             if self._play_running():
                 return PressResult(False, PLAY_RUNNING)
             elements = [KIT_ELEMENTS[n] for n in names]
+            message = press_message(
+                elements, hold,
+                rewrite=KIT_REWRITE if rewrite is None else rewrite,
+                on_main=KIT_PRESS_ON_MAIN if on_main is None else on_main,
+                read=actions)
             try:
                 with self._request_lock:
-                    reply = agent.request(press_message(elements, hold), KIT_PRESS_CAP_S)
+                    reply = agent.request(message, KIT_PRESS_CAP_S)
             except FA.ReadFailed as e:
                 return PressResult(False, self._reply(
                     [f"press failed: {e}{self._cap_note(e, 'KIT_PRESS_CAP_S')}"]))
@@ -418,15 +554,49 @@ class KitTools:
             down_ms, up_ms = reply.get("down_ms"), reply.get("up_ms")
             held = (f"{up_ms - down_ms:g} ms" if isinstance(down_ms, (int, float))
                     and isinstance(up_ms, (int, float)) else "? ms")
-            return PressResult(True, self._reply([
+            lines = [
                 f"pressed {', '.join(names)} (elements "
                 f"{', '.join(str(e.id) for e in elements)}) for {hold} frames: down at frame "
-                f"{down}, up at frame {up} ({frames} frames apart, {held} by the agent's clock)"]))
+                f"{down}, up at frame {up} ({frames} frames apart, {held} by the agent's clock)"]
+            if rewrite is not None or on_main is not None:
+                lines.append(f"rewrite {_flag_text(reply.get('rewrite'))}, main thread "
+                             f"{_flag_text(reply.get('on_main'))} (as the agent ran it)")
+            lines.extend(seen_lines(reply))
+            return PressResult(True, self._reply(lines))
+
+    def ch_kit_watch(self, seconds: float) -> str:
+        """For `seconds`, have the kit agent read GetAnyButton on every
+        Rewired player and on its controllers, and print whether any read
+        came true: a true read means a key or button reached a player. It
+        is refused while a play session runs, because the kit's own presses
+        read true; the server's lock keeps a press from running meanwhile.
+        A `seconds` above KIT_WATCH_MAX_S is refused."""
+        with self._lock:
+            if (isinstance(seconds, bool) or not isinstance(seconds, (int, float))
+                    or not math.isfinite(seconds) or not seconds > 0):
+                return f"seconds is a number above 0, not {seconds!r}"
+            if seconds > KIT_WATCH_MAX_S:
+                return (f"seconds is at most {KIT_WATCH_MAX_S:g} (KIT_WATCH_MAX_S), "
+                        f"not {seconds!r}")
+            agent = self._ready_agent()
+            if agent is None:
+                return NOT_SET_UP
+            if self._play_running():
+                return PLAY_RUNNING
+            cap = watch_cap_s(seconds)
+            try:
+                with self._request_lock:
+                    reply = agent.request(watch_message(seconds), cap)
+            except FA.ReadFailed as e:
+                note = " (seconds plus KIT_PRESS_CAP_S)" if e.reason == FA.END_CAP else ""
+                return self._reply([f"watch failed: {e}{note}"])
+            return self._reply(watch_lines(reply))
 
     def ch_kit_status(self) -> str:
         """The kit agent's status: the frame count, the frame rate over
-        KIT_RATE_WINDOW_S, whether the game has focus, the switch, the kit,
-        each player's keyboard and mouse flags, then the foreground count."""
+        KIT_RATE_WINDOW_S, whether the game has focus, the switch, each
+        KIT_DEVICES device, the kit, each player's keyboard and mouse flags,
+        then the foreground count."""
         with self._lock:
             lines: List[str] = []
             agent = self._agent
@@ -448,8 +618,8 @@ class KitTools:
 
     def ch_kit_teardown(self) -> str:
         """Clear the kit's elements, remove the kit, give every player back
-        the keyboard and mouse flags setup recorded, put the switch back,
-        print each check, and detach the kit agent."""
+        the keyboard and mouse flags setup recorded, put the Rewired devices
+        and the switch back, print each check, and detach the kit agent."""
         with self._lock:
             if self._play_running():
                 return PLAY_RUNNING
@@ -492,6 +662,8 @@ class KitTools:
             lines.append("frame rate: not known (no two frame counts)")
         lines.append(f"game focused: {_flag_text(second.get('focused'))}")
         lines.append(f"ignoreInputWhenAppNotInFocus: {_flag_text(second.get('switch_now'))}")
+        lines.extend(f"{device_label(d)}: {_flag_text(second.get(f'{d}_now'))}"
+                     for d in KIT_DEVICES)
         if second.get("kit_exists"):
             lines.append(f"kit: controller {second.get('kit_id')}, tag {second.get('kit_tag')}")
         else:

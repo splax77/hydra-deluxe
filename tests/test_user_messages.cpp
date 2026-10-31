@@ -10,6 +10,7 @@
 #include <string>
 #include <utility>
 
+#include "app/config.h"  // SettingsFileError
 #include "app/rules_file.h"
 #include "app/user_messages.h"
 #include "chart_text.h"
@@ -131,8 +132,18 @@ TEST_CASE("user_messages: report, rules, memory") {
           "is restarted.");
     // The command-line tools' text (D114 item 11): their sentence, then the
     // loader's line.
-    CHECK(hydra::app::rules_file_tool_text(bad_rules) ==
+    CHECK(hydra::app::ini_file_tool_text("hydra_rules.ini", bad_rules) ==
           "hydra_rules.ini has an error:\nhydra_rules.ini:3: unknown key \"x\"");
+    // The settings file's: its own sentence in the app (D276 item 1), and
+    // the same tools' text naming its file.
+    const hydra::app::SettingsFileError bad_settings(
+        "hydra_settings.ini: sp_cap = \"abc\" is not a whole number");
+    CHECK(plain_error(bad_settings) ==
+          "hydra_settings.ini has an error, so Hydra is running on its default settings and "
+          "saving nothing until the file is fixed and Hydra is restarted.");
+    CHECK(hydra::app::ini_file_tool_text("hydra_settings.ini", bad_settings) ==
+          "hydra_settings.ini has an error:\nhydra_settings.ini: sp_cap = \"abc\" is not a "
+          "whole number");
     CHECK(plain_error(std::bad_alloc()) ==
           "Hydra ran out of memory on this chart. Close other programs and try again.");
 }
@@ -234,6 +245,9 @@ TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its
         {ErrorKind::RulesFile,
          "hydra_rules.ini has an error, so analysis is off until the file is fixed and "
          "Hydra is restarted."},
+        {ErrorKind::SettingsFile,
+         "hydra_settings.ini has an error, so Hydra is running on its default settings and "
+         "saving nothing until the file is fixed and Hydra is restarted."},
         {ErrorKind::AudioDecode, kAudioDecode},
         {ErrorKind::PreviewAssets,
          "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them."},

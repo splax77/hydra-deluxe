@@ -12,6 +12,7 @@
 
 #include "app/analysis.h"        // kBatchPreparingText
 #include "app/display_format.h"  // kFactSeparator
+#include "app/html_page.h"       // search_hint
 #include "app/path_report_view.h"
 #include "app/user_messages.h"
 #include "imgui.h"
@@ -60,7 +61,7 @@ void apply_filters(PathWindow& w) {
     w.tiles_dirty = true;
 }
 
-// Lets the window's copy of the rows go, and the cells fitted from them,
+// Lets the window's view of the rows go, and the cells fitted from them,
 // keeping the sort they were in.
 void drop_rows(PathWindow& w) {
     if (w.view) w.sort = w.view->sort();
@@ -90,7 +91,8 @@ void rebuild(PathWindow& w, const std::shared_ptr<const GeneratedReport>& result
     texts.reserve(result->paths.size());
     for (const ReportRow& r : result->paths) texts.push_back(view_rules::path_search_text(r));
     w.view = std::make_unique<TableView<ReportRow>>(
-        result->paths, std::move(texts), view_rules::path_columns());
+        app::report_view::shared_rows(result, &GeneratedReport::paths), std::move(texts),
+        view_rules::path_columns());
     w.widths = report_frame::measure(*w.view);
     // A kept sort naming a column these rows lack falls back to the first.
     const auto has_column = [&w](const app::report_view::SortSpec& s) {
@@ -161,8 +163,10 @@ void draw_body(PathWindow& w, const report_frame::Frame& frame, const PathReport
     report_frame::tiles(w.tiles);
     draw_coverage(w, *input.result);
 
-    if (report_frame::search_box(w.memory, "Search song, artist, charter, or path notation"))
-        apply_filters(w);
+    // What path_search_text folds for each row (app/path_report_view.cpp).
+    static const std::string search_hint =
+        app::html::search_hint({"song", "artist", "charter", "path notation"});
+    if (report_frame::search_box(w.memory, search_hint.c_str())) apply_filters(w);
     if (report_frame::dropdown("##timing", w.labels, w.timing)) apply_filters(w);
     ImGui::SameLine();
     if (ImGui::Checkbox("Optimal paths only", &w.best_only)) apply_filters(w);
@@ -189,6 +193,9 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
     PathWindow& w = path_window();
     if (!*open) {
         w.memory.was_open = false;
+        // The view keeps its whole result alive (shared_rows), so a result
+        // that replaced it while hidden lets it go now, not at the reopen.
+        if (!report_frame::same_result(w.built_from, input.result)) drop_rows(w);
         return;
     }
     if (!report_frame::same_result(w.built_from, input.result))
@@ -221,8 +228,7 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
         }
     }
     frame.placeholder_rows = true;
-    frame.analysis_off_sentence = app::kAnalysisOffSentence;
-    frame.analysis_off_error = input.rules_error;
+    frame.analysis_off = input.analysis_off;
     frame.failure_sentence = app::kPathReportFailed;
     if (result && !w.view) frame.empty_text = result->why_empty;
 
@@ -239,7 +245,7 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
 PathReportInput path_report_input(AppState& app) {
     const PathReportSlot& slot = app.path_report;
     PathReportInput in = input_from_slot(slot, app.path_report_build());
-    in.rules_error = app.rules_error;
+    in.analysis_off = app.analysis_off_lines();
     in.keep_filters = slot.built_on_open;
     if (const BatchJob* batch = app.path_report_batch()) {
         const BatchJob::Snapshot s = batch->snapshot();

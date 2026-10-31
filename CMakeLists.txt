@@ -396,6 +396,7 @@ add_library(hydra_app STATIC
     src/app/report_files.cpp
     src/app/user_messages.cpp
     src/app/update_verify.cpp
+    src/app/ini_errors.h
     src/app/job_base.h
     src/app/preview_clock.h
     src/app/update_key.h
@@ -524,6 +525,7 @@ add_library(hydra_uibase STATIC
     src/ui/fonts.h
     src/ui/generation.h
     src/ui/label_layout.h
+    src/ui/report_state.h
     src/ui/text_role.h
     src/ui/widgets.h
 )
@@ -564,7 +566,6 @@ add_library(hydra_ui STATIC
     src/ui/details_parts.h
     src/ui/details_view.h
     src/ui/library_parts.h
-    src/ui/report_state.h
     src/ui/resource.h
 )
 # hydra_preview and hydra_uibase bring the renderer and the audio engine with

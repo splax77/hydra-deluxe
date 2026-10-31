@@ -80,7 +80,7 @@ Hydra Deluxe reads `notes.mid` or `notes.chart` folders with a `song.ini`, `.sng
 
 `Analyze library...` analyzes many songs at once, in the background. While a search or a chip other than `All` narrows the list, the button reads `Analyze shown (N)...` and analyzes only the N songs the table shows. A filter Hydra Deluxe can't read narrows nothing, so with only `stars:9` typed and the `All` chip on, the button still reads `Analyze library...`. See [Analyzing the whole library](#analyzing-the-whole-library).
 
-`Compare with dmleaderboards...` compares a player's leaderboard scores with your stored results. It works only under Expert, an SP cap of 4, `1.0 fills` off and Note Shuffle off. With any other settings the button is greyed out, and hovering it says which setting is in the way. See [Reports](#reports).
+`Compare with dmleaderboards...` compares a player's leaderboard scores with your stored results at SP cap 4, Clone Hero's rule, whatever your `SP cap` setting says. It works only under Expert, with `1.0 fills` off and Note Shuffle off. With any other settings the button is greyed out, and hovering it says which setting is in the way. See [Reports](#reports).
 
 `Analysis settings: ...` shows the settings your analyses run under, and opens the panel where you change them. See [Analysis settings](#analysis-settings).
 
@@ -151,7 +151,7 @@ While a batch runs, the settings are locked. The button's label ends in ` (locke
 
 `Note Shuffle` scores the chart the way Clone Hero 1.1's Note Shuffle modifier rearranges it. The game moves notes between pads, and the move is the same every time for a given chart and drum setting. So each Difficulty, Pro Drums and 2x Bass choice gets its own shuffled result, kept beside the unshuffled one. The Paths, Preview, Stars and Dynamics tabs and batches all use the shuffled chart while it's on. If Clone Hero would freeze trying to shuffle a chart, that chart shows no path, and a sentence saying so takes its place. The leaderboard comparison is off while Note Shuffle is on, because leaderboard scores don't say whether it was used.
 
-`SP cap` is the most bars of Star Power the meter can hold during the analysis. 4 is Clone Hero's rule and the default. Leave it at 4 for paths you mean to play. Any other number is a what-if: its scores can't be reached in the game. At 1 bar no path can activate Star Power, and the Paths tab says so. Results are kept per cap, so a 4-bar result and a 16-bar result for the same song sit side by side. The leaderboard comparison only runs at 4 bars.
+`SP cap` is the most bars of Star Power the meter can hold during the analysis. 4 is Clone Hero's rule and the default. Leave it at 4 for paths you mean to play. Any other number is a what-if: its scores can't be reached in the game. At 1 bar no path can activate Star Power, and the Paths tab says so. Results are kept per cap, so a 4-bar result and a 16-bar result for the same song sit side by side. The leaderboard comparison always reads the 4-bar results, whatever this setting says.
 
 `1.0 fills` spawns drum fills by Clone Hero 1.0's rule instead of 1.1's. A fill only appears if your Star Power was ready in time. Clone Hero 1.1 wants it ready 4 beats before the fill. 1.0 wanted it about one fill-length before, so short fills were looser and long fills stricter. Leave it off for current Clone Hero, and check it to price a run played on 1.0. Results are kept per rule, so a song can hold a 1.1 result and a 1.0 result side by side. The leaderboard comparison needs it off. Everywhere else, Hydra Deluxe names the two rules `Clone Hero 1.0` and `Clone Hero 1.1`, or `CH 1.0` and `CH 1.1` in narrow columns.
 
@@ -187,7 +187,7 @@ The chips above the table filter by state: `All`, `Not analyzed`, `Stale`, `Anal
 
 ### The search box
 
-Type in the search box, which reads `Search songs` while it's empty, to narrow the list. `Ctrl+F` jumps to it. `Escape` or its `X` clears it. The heading above shows how many songs match, like `Library 5 of 97 charts`. The text that matched is highlighted in gold.
+Type in the search box, which reads `Search song, artist, album, charter, or folder` while it's empty, to narrow the list. `Ctrl+F` jumps to it. `Escape` or its `X` clears it. The heading above shows how many songs match, like `Library 5 of 97 charts`. The text that matched is highlighted in gold. When no song matches, the list says `Nothing matches.`
 
 ![The search box holding squeeze<=20, with the Search tips list open under it](images/search-tips.png)
 
@@ -439,7 +439,7 @@ Both report windows have the same layout. From top to bottom:
 
 Click a column heading to sort by it, and click it again to flip the order. Shift+click another heading to add a second sort. Empty values always sink to the bottom. Text columns sort the way the Library does. To hide or show a column, right-click a column heading and pick it from the menu. The row number column always stays. Columns are sized the way the Library's are, and number cells start at the left like the text. A width you drag holds until the report is built again or you change the search.
 
-When no row passes the filters, the window says `Nothing matches those filters.` `Clear filters` then empties the search and sets the dropdown back to its first entry.
+When no row passes the filters, the window says `Nothing matches.` `Clear filters` then empties the search and sets the dropdown back to its first entry.
 
 The window never changes its rows behind your back. After a batch, a report built before it shows a strip: `Your library changed since this report was built (a batch finished at HH:MM).` Opening a song that saves a new result shows the same strip with no time: `Your library changed since this report was built.` Changing a setting the report depends on shows `The settings changed since this report was built.` Each report's section below lists the settings that count for it. The old rows stay readable under the strip. `Refresh` builds the report again and clears the strip.
 
@@ -520,11 +520,11 @@ Older versions saved the reports as web pages, `hydra_paths.html` and `hydra_dmc
 
 `Compare with dmleaderboards...` compares a [dmleaderboards.com](https://dmleaderboards.com) player's posted scores with your stored optimals. Pick a player from the searchable list in the `Compare dmleaderboards user` box; Hydra Deluxe remembers the last pick. Picking a player closes the box and opens the comparison in its own window, titled `dmleaderboards: <player> — Hydra`. Hydra Deluxe fetches the player's scores and matches them to your analyzed songs by chart hash.
 
-The comparison needs Expert, an SP cap of 4, `1.0 fills` off and Note Shuffle off. The leaderboard only holds Expert scores played under Clone Hero's rules, and its scores don't say whether Note Shuffle was on. Only songs analyzed under the current settings can match, so analyze your library first for a full comparison.
+The comparison needs Expert, `1.0 fills` off and Note Shuffle off. The leaderboard only holds Expert scores played under Clone Hero's rules, and its scores don't say whether Note Shuffle was on. Any `SP cap` setting works, because the comparison always uses SP cap 4, Clone Hero's rule. Only songs analyzed at SP cap 4 under the rest of the current settings can match, so set `SP cap` to 4 and analyze your library first for a full comparison.
 
 The first request after a while can take tens of seconds, because the leaderboard's server has to wake up. While the scores load, the window says `Fetching scores and building the report...` and `The leaderboard server can take a moment to wake up.`, over a moving bar. The server gives no count, so the bar only shows that work is happening. `Cancel` closes the window and reopens the player list.
 
-The comparison window has the same layout, keyboard and placement as the path report window (see [Report windows](#report-windows)). Its header reads `Hydra vs dmleaderboards`, and its line gives the player's name and total number of scores. Next to `Refresh`, which fetches the player's scores again and rebuilds the comparison, the header has `Compare another player...`, which reopens the box. There is one comparison window, so comparing another player replaces what it shows. Closing the window doesn't keep the comparison: to see it again, pick the player again, which fetches the scores again.
+The comparison window has the same layout, keyboard and placement as the path report window (see [Report windows](#report-windows)). Its header reads `Hydra vs dmleaderboards`. The line under it reads like `<player> — N scores — SP cap 4, Clone Hero's rule`: the player's name, their total number of scores and the cap the comparison uses. Next to `Refresh`, which fetches the player's scores again and rebuilds the comparison, the header has `Compare another player...`, which reopens the box. There is one comparison window, so comparing another player replaces what it shows. Closing the window doesn't keep the comparison: to see it again, pick the player again, which fetches the scores again.
 
 Every row gets one status. The status dropdown shows one status at a time, or `All charts`. These are its entries:
 

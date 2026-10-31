@@ -17,10 +17,11 @@ with game_tools.GameTools; every tool holds it.
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import time
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from tools.ch_mcp import build_facts
 from tools.ch_mcp import frida_attach as FA
@@ -51,6 +52,9 @@ NOT_ATTACHED = "not attached; call ch_attach first"
 
 # The key of state.ts's reply that holds menu.ts's block.
 MENU_BLOCK = "menu"
+# The menu fields menu.ts reads and their enum words; menu.ts bundles the same
+# file at build time.
+MENU_FIELDS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "menu_fields.json")
 
 
 class StateUnread(Exception):
@@ -91,12 +95,43 @@ def _field_lines(snapshot: dict) -> List[str]:
             if key != MENU_BLOCK]
 
 
+@functools.lru_cache(maxsize=None)
+def menu_fields() -> dict:
+    """menu_fields.json, read once: the fields agent/menu.ts reads, each with
+    its enum table."""
+    with open(MENU_FIELDS_FILE, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _enum_words(key: str) -> Optional[Dict[str, str]]:
+    for field in menu_fields()["fields"]:
+        if field["key"] == key:
+            return field["values"]
+    return None
+
+
+def _field_text(key: str, values: Any) -> str:
+    """One menu field's values, one per live instance, each number with its
+    word from menu_fields.json's table; anything else as sent."""
+    if not isinstance(values, list):
+        return _value_text(values)
+    words = _enum_words(key) or {}
+    parts = []
+    for value in values:
+        if isinstance(value, int) and not isinstance(value, bool):
+            parts.append(f"{value} ({words.get(str(value), 'not in menu_fields.json')})")
+        else:
+            parts.append(_value_text(value))
+    return "[" + ", ".join(parts) + "]"
+
+
 def menu_lines(menu: Optional[dict]) -> List[str]:
     """state.ts's menu block as lines: each menu class with its live and
-    destroyed counts and, for the menus that hold one, each live instance's
-    onlineMenuActive read; then the selected song and GlobalVariables'
-    fields. The agent's values are printed as sent; this names no menu state
-    of its own."""
+    destroyed counts, each live instance's active read, for the menus that
+    hold one each live instance's onlineMenuActive read, and the fields
+    menu_fields.json names with their enum words; then the selected song and
+    GlobalVariables' fields. The agent's values are printed as sent; this
+    names no menu state of its own."""
     if menu is None:
         return ["menu: not read (the agent sent no menu block)"]
     if "error" in menu:
@@ -107,8 +142,14 @@ def menu_lines(menu: Optional[dict]) -> List[str]:
             lines.append(f"{name}: {entry.get('reason')}")
             continue
         line = f"{name}: {entry['live']} live, {entry['destroyed']} destroyed"
+        if "active" in entry:
+            line += f"; active: {_value_text(entry['active'])}"
         if "onlineMenuActive" in entry:
             line += f"; onlineMenuActive: {_value_text(entry['onlineMenuActive'])}"
+        fields = entry.get("fields")
+        if isinstance(fields, dict):
+            for key, values in fields.items():
+                line += f"; {key}: {_field_text(key, values)}"
         lines.append(line)
     song = menu.get("selectedSong")
     if song is None:

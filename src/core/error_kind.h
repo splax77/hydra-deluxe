@@ -41,6 +41,7 @@ enum class ErrorKind {
     NoRecords,
     ReportWrite,
     RulesFile,
+    SettingsFile,
     AudioDecode,
     PreviewAssets,
     UpdateUnverified,  // an update refused before install; the text names which check failed

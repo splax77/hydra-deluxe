@@ -1093,7 +1093,7 @@
       ],
       "must_not_match": [
         "ImGui::SetTooltip(\"%s\", refused.c_str());",
-        "ImGui::SetTooltip(\"Compare a dmleaderboards player's scores against your library.\");"
+        "ImGui::SetTooltip(\"%s\", app::dm_report::compare_tooltip().c_str());"
       ],
       "note": "The Compare button's three refusal sentences typed outside the gate."
     },

@@ -33,16 +33,19 @@ using hydra::ui::detail::settings_changes_summary;
 
 namespace {
 
-// Loads settings from an INI holding exactly `text`, then deletes the file.
+// Loads settings from an INI holding exactly `text`, then deletes the file,
+// whether the load returns or throws.
 Settings load_ini_text(const char* tag, const std::string& text) {
     const std::string path = testtemp::temp_path(tag, ".ini");
     {
         std::ofstream f(path, std::ios::trunc);
         f << text;
     }
-    Settings s = Settings::load_file(path);
-    std::remove(path.c_str());
-    return s;
+    struct Remove {
+        const std::string& path;
+        ~Remove() { std::remove(path.c_str()); }
+    } remove_after{path};
+    return Settings::load_file(path);
 }
 
 // Every field the INI holds, compared one by one.
@@ -59,7 +62,6 @@ void check_same_settings(const Settings& r, const Settings& s) {
     CHECK(r.mslimit_value == s.mslimit_value);
     CHECK(r.backendlimit_enabled == s.backendlimit_enabled);
     CHECK(r.backendlimit_value == s.backendlimit_value);
-    CHECK(r.hit_window_ms == s.hit_window_ms);
     CHECK(r.preview_volume == s.preview_volume);
     CHECK(r.sp_cap == s.sp_cap);
     CHECK(r.legacy_fills == s.legacy_fills);
@@ -82,7 +84,6 @@ TEST_CASE("settings round-trip through an INI file") {
     s.mslimit_value = 42;
     s.backendlimit_enabled = true;
     s.backendlimit_value = 42;
-    s.hit_window_ms = 79;
     s.preview_volume = 23;
     s.sp_cap = 16;
     s.legacy_fills = true;
@@ -122,7 +123,7 @@ TEST_CASE("settings: load and save name the same keys") {
         "is_rescan",        "view_difficulty",      "view_prodrums",      "view_bass2x",
         "view_noteshuffle",
         "depth_value",     "depth_mode",           "mslimit_enabled",    "mslimit_value",
-        "backendlimit_enabled", "backendlimit_value", "hit_window_ms",    "preview_volume",
+        "backendlimit_enabled", "backendlimit_value", "preview_volume",
         "sp_cap",           "legacy_fills",         "auto_open_report",   "dm_last_user",
         "chartfolder"};
     CHECK(names == expected);
@@ -201,6 +202,32 @@ TEST_CASE("command-line settings take the fill rule from the flag, the rest from
     CHECK(on.batch_run().profile.lens.legacy_fills == 1);
 }
 
+// The tools' one loader (D270 call 4). The text it prints is checked through
+// the tools themselves in test_cli.cpp.
+TEST_CASE("load_tool_settings gives the tools' settings, or exit code 2 for a refused file") {
+    const ScratchPaths paths("tool_settings");
+    auto write_ini = [&](const std::string& text) {
+        std::ofstream f(paths.ini, std::ios::trunc);
+        f << text;
+    };
+
+    write_ini("legacy_fills=1\nsp_cap=2\n");
+    Settings st;
+    CHECK(hydra::app::load_tool_settings(st, std::nullopt) == 0);
+    CHECK(st.legacy_fills);  // no flag of its own: the file's setting stands
+    CHECK(st.sp_cap == 2);
+    CHECK(hydra::app::load_tool_settings(st, false) == 0);
+    CHECK_FALSE(st.legacy_fills);  // the tool's flag wins
+    CHECK(st.sp_cap == 2);
+
+    write_ini("sp_cap=abc\n");
+    Settings untouched;
+    untouched.sp_cap = 7;
+    CHECK(hydra::app::load_tool_settings(untouched, std::nullopt) == 2);
+    CHECK(hydra::app::load_tool_settings(untouched, true) == 2);
+    CHECK(untouched.sp_cap == 7);
+}
+
 TEST_CASE("a missing INI yields defaults") {
     Settings r = Settings::load_file(testtemp::temp_path("missing_never_written", ".ini"));
     Settings d;
@@ -213,7 +240,6 @@ TEST_CASE("a missing INI yields defaults") {
     CHECK(r.mslimit_value == 10);
     CHECK(r.backendlimit_enabled == false);
     CHECK(r.backendlimit_value == 50);
-    CHECK(r.hit_window_ms == 85);
     CHECK(r.preview_volume == 40);
     CHECK_FALSE(r.legacy_fills);
 }
@@ -225,33 +251,62 @@ TEST_CASE("config: the default depth is the search's, 4") {
     CHECK(hydra::SearchSettings{}.depth_value == 4);
 }
 
-TEST_CASE("malformed INI lines are tolerated") {
-    const std::string path = testtemp::temp_path("malformed", ".ini");
-    {
-        std::ofstream f(path, std::ios::trunc);
-        f << "# a comment line\n"
-          << "\n"
-          << "   \t \n"
-          << "no_equals_sign_here\n"
-          << "unknown_key=whatever\n"
-          << "depth_value=not_a_number\n"
-          << "  mslimit_value =  25  \n"
-          << "view_prodrums=0\n";
-    }
-    Settings r = Settings::load_file(path);
-    std::remove(path.c_str());
-
+TEST_CASE("blank and comment lines load, and keys and values are trimmed") {
+    const Settings r = load_ini_text("tidy", "# a comment line\n"
+                                             "\n"
+                                             "   \t \n"
+                                             "  mslimit_value =  25  \n"
+                                             "view_prodrums=0\n");
     // "  mslimit_value =  25  ": the key and the value are trimmed.
     CHECK(r.mslimit_value == 25);
     // "view_prodrums=0": 0 is off.
     CHECK(r.view_prodrums == false);
-    // "depth_value=not_a_number": junk reads as 0, and 0 is the depth floor.
-    CHECK(r.depth_value == 0);
-    // The comment, blank, "="-less and unknown lines set nothing.
+    // The comment and blank lines set nothing.
     CHECK(r.chartfolders.empty());
 }
 
-// D51 Q14.
+// D270 call 4 ("refuse anything bad"), calls 5 and 6, D276: each bad line on
+// its own stops the load with an error naming the file, the key and the value.
+TEST_CASE("a bad line refuses") {
+    const std::string path = testtemp::temp_path("badline", ".ini");
+    // Loads a file holding just `line`.
+    auto load = [&path](const char* line) {
+        {
+            std::ofstream f(path, std::ios::trunc);
+            f << line << "\n";
+        }
+        return Settings::load_file(path);
+    };
+    using hydra::app::SettingsFileError;
+    CHECK_THROWS_WITH_AS(load("no_equals_sign_here"),
+                         (path + ": \"no_equals_sign_here\" is not key = value").c_str(),
+                         SettingsFileError);
+    CHECK_THROWS_WITH_AS(load("unknown_key=whatever"),
+                         (path + ": unknown key \"unknown_key\"").c_str(), SettingsFileError);
+    CHECK_THROWS_WITH_AS(load("depth_value=not_a_number"),
+                         (path + ": depth_value = \"not_a_number\" is not a whole number").c_str(),
+                         SettingsFileError);
+    CHECK_THROWS_WITH_AS(load("view_prodrums=yes"),
+                         (path + ": view_prodrums = \"yes\" is not 0 or 1").c_str(),
+                         SettingsFileError);
+    CHECK_THROWS_WITH_AS(
+        load("view_difficulty=Expret"),
+        (path + ": view_difficulty = \"Expret\" is not Expert, Hard, Medium or Easy").c_str(),
+        SettingsFileError);
+    CHECK_THROWS_WITH_AS(load("sp_cap=abc"),
+                         (path + ": sp_cap = \"abc\" is not a whole number").c_str(),
+                         SettingsFileError);
+    CHECK_THROWS_WITH_AS(load("sp_cap=auto"),
+                         (path + ": sp_cap = \"auto\" is not a whole number").c_str(),
+                         SettingsFileError);
+    // A decimal in a whole-number key is not a clean number (D276).
+    CHECK_THROWS_WITH_AS(load("preview_volume=40.5"),
+                         (path + ": preview_volume = \"40.5\" is not a whole number").c_str(),
+                         SettingsFileError);
+    std::remove(path.c_str());
+}
+
+// D51 Q14, D270 calls 1 and 2.
 TEST_CASE("settings: a value outside its range loads at the nearest edge") {
     // The Path limit's range is the squeeze window on either side.
     CHECK(load_ini_text("range1", "mslimit_value=900\n").mslimit_value ==
@@ -266,15 +321,18 @@ TEST_CASE("settings: a value outside its range loads at the nearest edge") {
     CHECK(back.backendlimit_value == 0);
     REQUIRE(back.backend_limit().has_value());
     CHECK(*back.backend_limit() == 0.0);
+    CHECK(load_ini_text("range4b", "backendlimit_value=900\n").backendlimit_value ==
+          static_cast<int>(hydra::kSqueezeWindowMs));
     // Volume is 0 to 100 percent.
     CHECK(load_ini_text("range5", "preview_volume=150\n").preview_volume == 100);
     CHECK(load_ini_text("range6", "preview_volume=-5\n").preview_volume == 0);
-    // depth_mode is a switch, not a range: anything but 1 is scores (D51
-    // addendum), so the result is filed under the lens it searched by
-    // (finding 56).
-    CHECK(load_ini_text("range7", "depth_mode=2\n").depth_mode == 0);
+    // depth_mode's range is 0 to 1, so a stray number lands on an edge too.
+    CHECK(load_ini_text("range7", "depth_mode=7\n").depth_mode == 1);
     CHECK(load_ini_text("range8", "depth_mode=-1\n").depth_mode == 0);
     CHECK(load_ini_text("range9", "depth_mode=1\n").depth_mode == 1);
+    // The cap's floor is 1 bar, in the file as in the box.
+    CHECK(load_ini_text("range10", "sp_cap=0\n").sp_cap == 1);
+    CHECK(load_ini_text("range11", "sp_cap=-3\n").sp_cap == 1);
 }
 
 TEST_CASE("Settings::clamp is the one range every caller asks") {
@@ -285,12 +343,8 @@ TEST_CASE("Settings::clamp is the one range every caller asks") {
     CHECK(Settings::clamp(&Settings::backendlimit_value, -30) == 0);
     CHECK(Settings::clamp(&Settings::depth_value, -1) == 0);
     CHECK(Settings::clamp(&Settings::preview_volume, 150) == 100);
-    // The cap's floor is 1 bar when typed (D51 Q16); only the file reads 0 as 4.
+    // The cap's floor is 1 bar (D51 Q16).
     CHECK(Settings::clamp(&Settings::sp_cap, 0) == 1);
-    CHECK(load_ini_text("clamp1", "sp_cap=0\n").sp_cap == 4);
-    // No edge to land on: the default. The hit window's case is
-    // "settings: the hit window keeps a decimal", since it is not an int box.
-    CHECK(Settings::clamp(&Settings::depth_mode, 2) == 0);
     // The volume percent as a gain.
     CHECK(Settings::volume_gain(40) == 0.4f);
     CHECK(Settings::volume_gain(150) == 1.0f);
@@ -301,29 +355,6 @@ TEST_CASE("Settings::clamp is the one range every caller asks") {
     CHECK(s.search_depth_mode() == hydra::DepthMode::Points);
     s.depth_mode = 2;
     CHECK(s.search_depth_mode() == hydra::DepthMode::Scores);
-}
-
-// D51 Q15.
-TEST_CASE("settings: the hit window keeps a decimal, and 0 reads the default") {
-    const Settings half = load_ini_text("hitwin1", "hit_window_ms=85.5\n");
-    CHECK(half.hit_window_ms == 85.5);
-    // 0 has no edge to land on (the file-load form of the old clamp line).
-    CHECK(load_ini_text("hitwin2", "hit_window_ms=0\n").hit_window_ms == hydra::kHitWindowMs);
-
-    // What save_file writes on the hit_window_ms line: 85.5 as typed, and the
-    // default as the whole number today's files hold.
-    const std::string path = testtemp::temp_path("hitwin3", ".ini");
-    auto saved_line = [&path](const Settings& s) {
-        REQUIRE(s.save_file(path));
-        std::ifstream f(path);
-        std::string line;
-        while (std::getline(f, line))
-            if (line.rfind("hit_window_ms=", 0) == 0) return line;
-        return std::string();
-    };
-    CHECK(saved_line(half) == "hit_window_ms=85.5");
-    CHECK(saved_line(Settings{}) == "hit_window_ms=85");
-    std::remove(path.c_str());
 }
 
 // D51 Q15.
@@ -339,10 +370,11 @@ TEST_CASE("settings: a # after a value is a comment") {
 }
 
 TEST_CASE("settings: on/off keys take 0 or 1 only") {
-    // Anything but 0 or 1 leaves the setting as it was.
-    CHECK(load_ini_text("bool1", "view_prodrums=true\n").view_prodrums == true);
+    // Anything but 0 or 1 refuses (D270 call 4).
+    CHECK_THROWS_AS(load_ini_text("bool1", "view_prodrums=true\n"),
+                    hydra::app::SettingsFileError);
     CHECK(load_ini_text("bool2", "view_prodrums=0\n").view_prodrums == false);
-    CHECK(load_ini_text("bool3", "legacy_fills=yes\n").legacy_fills == false);
+    CHECK_THROWS_AS(load_ini_text("bool3", "legacy_fills=yes\n"), hydra::app::SettingsFileError);
     CHECK(load_ini_text("bool4", "legacy_fills=1\n").legacy_fills == true);
 }
 
@@ -473,7 +505,7 @@ TEST_CASE("view_noteshuffle: off by default, and the INI key loads and saves it"
     CHECK(std::find(lines.begin(), lines.end(), "view_noteshuffle=1") != lines.end());
 }
 
-TEST_CASE("view_difficulty round-trips, and a junk value normalizes to Expert") {
+TEST_CASE("view_difficulty round-trips, and a junk value refuses") {
     const std::string path = testtemp::temp_path("difficulty", ".ini");
 
     Settings s;
@@ -482,18 +514,12 @@ TEST_CASE("view_difficulty round-trips, and a junk value normalizes to Expert") 
     Settings r = Settings::load_file(path);
     CHECK(r.view_difficulty == "Hard");
     CHECK(r.difficulty() == hydra::Difficulty::Hard);
-
-    // A hand-edited INI can hold anything; the loaded settings never do, so a
-    // junk word can't reach chartmode_key and invent a chartmode.
-    {
-        std::ofstream f(path, std::ios::trunc);
-        f << "view_difficulty=Legendary\n";
-    }
-    Settings junk = Settings::load_file(path);
-    CHECK(junk.view_difficulty == "Expert");
-    CHECK(junk.difficulty() == hydra::Difficulty::Expert);
-    CHECK(junk.chartmode_key() == "Expert Pro Drums, 2x Bass");
     std::remove(path.c_str());
+
+    // A hand-edited INI can hold anything; a word that names no difficulty
+    // stops the load (D270 call 4), so it can't reach chartmode_key.
+    CHECK_THROWS_AS(load_ini_text("difficulty_junk", "view_difficulty=Legendary\n"),
+                    hydra::app::SettingsFileError);
 }
 
 TEST_CASE("view_difficulty matches any case and loads as the real name") {
@@ -640,6 +666,39 @@ TEST_CASE("each retired settings key loads silently and is never written back") 
     }
 }
 
+// Every settings file Hydra wrote since the hit window was added holds this
+// line (D270 call 7, D276), so it is named here and not left to the list loop.
+TEST_CASE("hit_window_ms in an older file is skipped, whatever it says, and dropped on save") {
+    for (const char* value : {"85", "85.5", "banana"}) {
+        CAPTURE(value);
+        const Settings s = load_ini_text("hitwin_retired", std::string("hit_window_ms=") + value +
+                                                              "\nsp_cap=8\n");
+        // The live line beside it still reads.
+        CHECK(s.sp_cap == 8);
+    }
+    const std::string path = testtemp::temp_path("hitwin_dropped", ".ini");
+    {
+        std::ofstream f(path, std::ios::trunc);
+        f << "hit_window_ms=85\n";
+    }
+    REQUIRE(Settings::load_file(path).save_file(path));
+    std::ifstream in(path);
+    const std::string saved{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    in.close();
+    CHECK(saved.find("hit_window_ms") == std::string::npos);
+    std::remove(path.c_str());
+}
+
+// The whole-number test is app::parse_whole_number's, the one the rules file
+// reads through (D270 call 4): a whole value spelled as a decimal reads, one
+// too big for an int refuses.
+TEST_CASE("settings: a whole-number key reads a whole decimal and refuses a number too big") {
+    CHECK(load_ini_text("whole1", "sp_cap=8.0\n").sp_cap == 8);
+    CHECK(load_ini_text("whole2", "preview_volume=1e1\n").preview_volume == 10);
+    CHECK_THROWS_AS(load_ini_text("whole3", "sp_cap=99999999999\n"),
+                    hydra::app::SettingsFileError);
+}
+
 TEST_CASE("legacy_fills_for reads fill_rule_for backwards") {
     using hydra::FillDeadlineRule;
     CHECK(hydra::legacy_fills_for(FillDeadlineRule::Ch10));
@@ -671,7 +730,7 @@ TEST_CASE("batch_run bundles one Settings' profile and search settings") {
     CHECK(run.settings.sp_cap == 16);
 }
 
-TEST_CASE("sp_cap round-trips as a number; auto, zero, junk and pre-1.6 keys read as 4") {
+TEST_CASE("sp_cap: 0 reads 1, auto and junk refuse, pre-1.6 keys are skipped") {
     const std::string path = testtemp::temp_path("spcap", ".ini");
 
     // A number reads back as that number, and cap_query asks for it exactly.
@@ -681,38 +740,18 @@ TEST_CASE("sp_cap round-trips as a number; auto, zero, junk and pre-1.6 keys rea
     CHECK(Settings::load_file(path).sp_cap == 64);
     CHECK(Settings::load_file(path).cap_query().exact == 64);
 
-    // Hydra 1.8.4 wrote "auto" for Auto, which is gone. It reads as Clone
-    // Hero's 4, and saving writes the number back.
-    {
-        std::ofstream f(path, std::ios::trunc);
-        f << "sp_cap=auto\n";
-    }
-    Settings from_auto = Settings::load_file(path);
-    CHECK(from_auto.sp_cap == 4);
-    CHECK(from_auto.cap_query().exact == 4);
-    REQUIRE(from_auto.save_file(path));
-    CHECK(Settings::load_file(path).sp_cap == 4);
+    // Hydra 1.8.4 wrote "auto" for Auto, which is gone; old versions get no
+    // support (D270 call 6), so it refuses like any junk.
+    std::remove(path.c_str());
+    CHECK_THROWS_AS(load_ini_text("spcap_auto", "sp_cap=auto\n"), hydra::app::SettingsFileError);
+    CHECK_THROWS_AS(load_ini_text("spcap_junk", "sp_cap=banana\n"),
+                    hydra::app::SettingsFileError);
+    // 0 lands on the 1-bar floor (D270 call 1).
+    CHECK(load_ini_text("spcap_zero", "sp_cap=0\n").sp_cap == 1);
 
     // The old Uncapped-edition keys, which the main app also used to write as
-    // "off, 8", must not turn an existing INI into 8 bars. Garbage and zero
-    // keep the default too.
-    {
-        std::ofstream f(path, std::ios::trunc);
-        f << "sp_cap_enabled=0\n"
-          << "sp_cap_value=8\n";
-    }
-    CHECK(Settings::load_file(path).sp_cap == 4);
-    {
-        std::ofstream f(path, std::ios::trunc);
-        f << "sp_cap=0\n";
-    }
-    CHECK(Settings::load_file(path).sp_cap == 4);
-    {
-        std::ofstream f(path, std::ios::trunc);
-        f << "sp_cap=banana\n";
-    }
-    CHECK(Settings::load_file(path).sp_cap == 4);
-    std::remove(path.c_str());
+    // "off, 8", are retired: skipped, so they never turn a file into 8 bars.
+    CHECK(load_ini_text("spcap_old", "sp_cap_enabled=0\nsp_cap_value=8\n").sp_cap == 4);
 }
 
 TEST_CASE("to_analysis_settings maps the cap") {
@@ -804,7 +843,8 @@ TEST_CASE("save_file that cannot land keeps the old file whole and leaves no .tm
 
 // The lens files a result by the unit the search ran with (search_depth_mode),
 // so an int the search reads as scores files beside 0, never as a third row.
-TEST_CASE("lens: depth_mode is the search's unit, so a stray int files as scores") {
+// load_file lands a stray number on 0 or 1, so the 7 here is set in memory.
+TEST_CASE("lens: depth_mode is the search's unit, so a stray in-memory int files as scores") {
     Settings s;
     s.depth_mode = 7;
     CHECK(s.lens().depth_mode == 0);
@@ -856,7 +896,6 @@ TEST_CASE("settings reset: puts back each panel setting and keeps the rest") {
     for (const AnalysisField& f : kAnalysisFields) change_analysis_field(s, f);
     s.chartfolders = {"C:/Songs"};
     s.preview_volume = 75;
-    s.hit_window_ms = 60.5;
     s.backendlimit_enabled = true;
     s.auto_open_report = true;
     s.dm_last_user = "1234";
@@ -873,7 +912,6 @@ TEST_CASE("settings reset: puts back each panel setting and keeps the rest") {
     CHECK(ra.reading() == da.reading());
     CHECK(r.chartfolders == s.chartfolders);
     CHECK(r.preview_volume == 75);
-    CHECK(r.hit_window_ms == 60.5);
     CHECK(r.backendlimit_enabled);
     CHECK(r.auto_open_report);
     CHECK(r.dm_last_user == "1234");

@@ -170,11 +170,7 @@ void render_panel_notices(AppState& app) {
     }
     // Without the file's error: the toolbar above already shows it (D114
     // item 13).
-    if (app.analysis_blocked()) {
-        ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextColored(kWarningColor, "%s", app::kAnalysisOffSentence);
-        ImGui::PopTextWrapPos();
-    }
+    analysis_off_notice(app.analysis_off_lines(), /*with_errors=*/false);
 }
 
 // The click's progress box, its cancel line and its error. Display only;

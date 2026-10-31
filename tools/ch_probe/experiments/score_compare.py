@@ -1,8 +1,9 @@
 """Compare the game's score in a press log with Hydra's running total.
 
 Inputs: the press log play_chart.py writes with --log (its columns are
-overlay_logs.PRESS_LOG_COLUMNS) and the `hydra_replay score --path` JSON the
-run played. Pure logic: no process, no game.
+overlay_logs.PRESS_LOG_COLUMNS; load_press_log also reads logs written before
+the kit columns existed) and the `hydra_replay score --path` JSON the run
+played. Pure logic: no process, no game.
 
 The score check. For each press, the game's `score_after` is set against
 Hydra's `cum.total` at that chord, through the running difference
@@ -56,7 +57,8 @@ _REPO_ROOT = os.path.abspath(
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS
+from tools.ch_probe.experiments.overlay_logs import (
+    KEYS_PRESS_COLUMNS, KIT_PRESS_COLUMNS, PRESS_LOG_COLUMNS)
 
 # A run that hits fewer than this percent of its presses is a FAIL (the
 # overlay spike plan, Task B step 3).
@@ -66,16 +68,25 @@ MIN_HIT_PERCENT = 98
 # accent; dynamic_str in src/core/model.cpp owns them.
 _DYNAMIC_WORDS = ("ghost", "accent")
 
+# Press logs written before the kit press existed hold only
+# KEYS_PRESS_COLUMNS. load_press_log reads them too, with the kit columns
+# blank.
+
 
 @dataclass(frozen=True)
 class Press:
-    """One press-log row."""
+    """One press-log row. The kit fields keep the log's text as written; they
+    are blank for a keys-route run and for a log from before the kit press."""
     index: int
     chart_ms: float
     clock_ms_at_press: float
     score_before: int
     score_after: int
     hit: bool
+    down_frame: str = ""
+    up_frame: str = ""
+    down_ms: str = ""
+    up_ms: str = ""
 
 
 @dataclass(frozen=True)
@@ -88,16 +99,18 @@ class HydraChord:
 
 
 def load_press_log(path: str) -> List[Press]:
-    """The press log's rows. Raises ValueError when the header is not
-    PRESS_LOG_COLUMNS."""
+    """The press log's rows. Raises ValueError when the header is neither
+    PRESS_LOG_COLUMNS nor KEYS_PRESS_COLUMNS."""
     with open(path, encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
-        if tuple(reader.fieldnames or ()) != PRESS_LOG_COLUMNS:
+        if tuple(reader.fieldnames or ()) not in (PRESS_LOG_COLUMNS, KEYS_PRESS_COLUMNS):
             raise ValueError(
-                f"{path}: header {reader.fieldnames} is not {list(PRESS_LOG_COLUMNS)}")
+                f"{path}: header {reader.fieldnames} is not {list(PRESS_LOG_COLUMNS)}"
+                f" or {list(KEYS_PRESS_COLUMNS)}")
         return [Press(int(row["index"]), float(row["chart_ms"]),
                       float(row["clock_ms_at_press"]), int(row["score_before"]),
-                      int(row["score_after"]), row["hit"] == "1")
+                      int(row["score_after"]), row["hit"] == "1",
+                      **{c: row.get(c) or "" for c in KIT_PRESS_COLUMNS})
                 for row in reader]
 
 

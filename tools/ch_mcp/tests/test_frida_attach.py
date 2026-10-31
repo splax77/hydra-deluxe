@@ -58,7 +58,7 @@ def by_name_only_findings(text: str) -> list[tuple[int, str, str]]:
 # to KIT_METHODS.
 MENU_AGENT = "menu.ts"
 KIT_AGENT = "kit.ts"
-CALL_SITES = {MENU_AGENT: 1, KIT_AGENT: 37}
+CALL_SITES = {MENU_AGENT: 1, KIT_AGENT: 44}
 LISTED_AGENTS = (MENU_AGENT, KIT_AGENT)
 KIT_METHODS = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "kit_methods.json")
 # A method looked up by name, with an optional type argument; group 2 is the
@@ -811,7 +811,8 @@ class AllowedCallsTest(unittest.TestCase):
 
     def test_agent_calls_only_named_methods(self):
         texts = self.real_texts()
-        self.assertEqual(allowed_calls(texts[MENU_AGENT]), ["get_activeInHierarchy"])
+        self.assertEqual(allowed_calls(texts[MENU_AGENT]),
+                         ["get_activeInHierarchy", "get_gameObject"])
         self.assertEqual(call_findings(texts), [])
 
     def test_only_the_listed_agents_hold_a_list(self):

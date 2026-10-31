@@ -32,7 +32,8 @@ from tools.ch_probe.tests.test_play_chart import _FakeSongClock, _FakeTime  # no
 BACKUP_LINE = "backup folder: X (taken now)"
 
 # What kit.ts's status sends, by the field names it reads.
-STATUS = {"frame": 1000, "focused": False, "switch_now": True, "setup_recorded": False,
+STATUS = {"frame": 1000, "focused": False, "switch_now": True, "keyboard_now": True,
+          "mouse_now": True, "setup_recorded": False,
           "kit_tag": "hydra-kit", "kit_exists": False, "kit_id": None,
           "players": [{"id": 0, "name": "Player1", "has_keyboard": True, "has_mouse": False}]}
 
@@ -54,6 +55,7 @@ BINDINGS = [
 def setup_reply(bindings=BINDINGS):
     return {
         "first_setup": True, "switch_was": True, "switch_now": False,
+        "keyboard_was": True, "keyboard_now": False, "mouse_was": True, "mouse_now": False,
         "players_was": [
             {"id": 9999999, "name": "System", "has_keyboard": True, "has_mouse": True},
             {"id": 0, "name": "Player1", "has_keyboard": True, "has_mouse": False}],
@@ -71,6 +73,8 @@ PRESS_REPLY = {"down_frame": 1200, "up_frame": 1202, "down_ms": 5000, "up_ms": 5
 TEARDOWN_OK = {"checks": [
     {"what": "elements cleared", "ok": True, "detail": "2 cleared"},
     {"what": "kit gone", "ok": True, "detail": "no controller tagged hydra-kit"},
+    {"what": "keyboard", "ok": True, "detail": "Keyboard.enabled true (was true)"},
+    {"what": "mouse", "ok": True, "detail": "Mouse.enabled true (was true)"},
     {"what": "switch", "ok": True, "detail": "ignoreInputWhenAppNotInFocus true (was true)"},
 ], "all_ok": True}
 
@@ -78,6 +82,15 @@ TEARDOWN_MISMATCH = {"checks": [
     {"what": "kit gone", "ok": True, "detail": "no controller tagged hydra-kit"},
     {"what": "player 0 flags", "ok": False,
      "detail": "Player1: keyboard false (was true), mouse false (was false)"},
+    {"what": "keyboard", "ok": False, "detail": "Keyboard.enabled false (was true)"},
+    {"what": "mouse", "ok": True, "detail": "Mouse.enabled true (was true)"},
+], "all_ok": False}
+
+# Only the mouse check fails: each device is its own step.
+TEARDOWN_MOUSE_MISMATCH = {"checks": [
+    {"what": "keyboard", "ok": True, "detail": "Keyboard.enabled true (was true)"},
+    {"what": "mouse", "ok": False, "detail": "Mouse.enabled false (was true)"},
+    {"what": "switch", "ok": True, "detail": "ignoreInputWhenAppNotInFocus true (was true)"},
 ], "all_ok": False}
 
 
@@ -187,6 +200,7 @@ class ConstantsTest(unittest.TestCase):
         self.assertEqual(K.KIT_SETUP_CAP_S, 10)
         self.assertEqual(K.KIT_PRESS_CAP_S, 1)
         self.assertEqual(K.KIT_AXIS_VALUE, 1.0)
+        self.assertEqual(K.KIT_WATCH_MAX_S, 60.0)
         self.assertEqual(K.KIT_DEFINITION_ID, 6)
         self.assertEqual(K.KIT_TAG, "hydra-kit")
         self.assertEqual(K.KIT_PLAYER, "Player1")
@@ -232,6 +246,8 @@ class SetupTest(Rig):
             {"type": "setup", "tag": "hydra-kit", "definition_id": 6, "player": "Player1"}])
         self.assertEqual(lines[0], BACKUP_LINE)
         self.assertIn("ignoreInputWhenAppNotInFocus: was on, now off", lines)
+        self.assertIn("Keyboard.enabled: was on, now off", lines)
+        self.assertIn("Mouse.enabled: was on, now off", lines)
         self.assertIn("player 9999999 System: keyboard was on, now off; mouse was on, now off", lines)
         self.assertIn("player 0 Player1: keyboard was on, now off; mouse was off, now off", lines)
         self.assertIn("kit: controller 7, tag hydra-kit, created, on Player1", lines)
@@ -250,6 +266,67 @@ class SetupTest(Rig):
         self.assertEqual(self.posted()[-1], {"type": "teardown", "tag": "hydra-kit"})
         self.assertIn("kit teardown: all checks ok", lines)
         self.assertEqual(lines[-1], "kit agent: detached")
+        self.assertIsNone(self.game.kit_source())
+
+    def test_a_keyboard_left_on_is_refused_and_torn_down(self):
+        reply = setup_reply()
+        reply["keyboard_now"] = True
+        tools = self.tools([STATUS, reply, TEARDOWN_OK])
+        lines = tools.ch_kit_setup().splitlines()
+        self.assertIn("Keyboard.enabled: was on, now on", lines)
+        self.assertIn("refused: Rewired's keyboard (Keyboard.enabled) reads on after setup, "
+                      "not off, so the user's own input would still reach the game", lines)
+        self.assertNotIn("bindings: all 10 match KIT_BINDINGS", lines)
+        self.assertEqual(self.posted()[-1], {"type": "teardown", "tag": "hydra-kit"})
+        self.assertIn("kit teardown: keyboard: ok (Keyboard.enabled true (was true))", lines)
+        self.assertEqual(lines[-1], "kit agent: detached")
+        self.assertIsNone(self.game.kit_source())
+
+    def test_a_mouse_left_on_is_refused_and_torn_down(self):
+        reply = setup_reply()
+        reply["mouse_now"] = True
+        tools = self.tools([STATUS, reply, TEARDOWN_OK])
+        lines = tools.ch_kit_setup().splitlines()
+        self.assertIn("Keyboard.enabled: was on, now off", lines)
+        self.assertIn("Mouse.enabled: was on, now on", lines)
+        self.assertIn("refused: Rewired's mouse (Mouse.enabled) reads on after setup, "
+                      "not off, so the user's own input would still reach the game", lines)
+        self.assertNotIn("bindings: all 10 match KIT_BINDINGS", lines)
+        self.assertEqual(self.posted()[-1], {"type": "teardown", "tag": "hydra-kit"})
+        self.assertIn("kit teardown: mouse: ok (Mouse.enabled true (was true))", lines)
+        self.assertEqual(lines[-1], "kit agent: detached")
+        self.assertIsNone(self.game.kit_source())
+
+    def test_both_left_on_name_both_in_one_refusal(self):
+        reply = {**setup_reply(), "keyboard_now": True, "mouse_now": True}
+        self.assertEqual(K.devices_problem(reply),
+                         "refused: Rewired's keyboard (Keyboard.enabled) reads on and Rewired's "
+                         "mouse (Mouse.enabled) reads on after setup, not off, so the user's own "
+                         "input would still reach the game")
+
+    def test_a_reply_with_no_keyboard_or_mouse_read_back_is_refused(self):
+        reply = setup_reply()
+        del reply["keyboard_now"]
+        self.assertEqual(K.devices_problem(reply),
+                         "refused: Rewired's keyboard (Keyboard.enabled) reads None after setup, "
+                         "not off, so the user's own input would still reach the game")
+        reply = setup_reply()
+        del reply["mouse_now"]
+        self.assertEqual(K.devices_problem(reply),
+                         "refused: Rewired's mouse (Mouse.enabled) reads None after setup, "
+                         "not off, so the user's own input would still reach the game")
+        self.assertIsNone(K.devices_problem(setup_reply()))
+
+    def test_a_setup_reply_missing_mouse_now_is_refused_and_torn_down(self):
+        reply = setup_reply()
+        del reply["mouse_now"]
+        tools = self.tools([STATUS, reply, TEARDOWN_OK])
+        lines = tools.ch_kit_setup().splitlines()
+        self.assertIn("Mouse.enabled: was on, now None", lines)
+        self.assertIn("refused: Rewired's mouse (Mouse.enabled) reads None after setup, "
+                      "not off, so the user's own input would still reach the game", lines)
+        self.assertNotIn("bindings: all 10 match KIT_BINDINGS", lines)
+        self.assertEqual(self.posted()[-1], {"type": "teardown", "tag": "hydra-kit"})
         self.assertIsNone(self.game.kit_source())
 
     def test_a_disabled_map_or_a_missing_binding_is_a_difference(self):
@@ -302,6 +379,122 @@ class PressTest(Rig):
                          "hold_frames is a whole number of 1 or more, not 0")
 
 
+class PressOptionsTest(Rig):
+    def test_a_press_with_read_sends_the_names_and_prints_seen(self):
+        reply = {**PRESS_REPLY, "read": ["Green"], "seen": [
+            {"frame": 1200, "action": "Green", "value": False},
+            {"frame": 1201, "action": "Green", "value": True},
+            {"frame": 1202, "action": "Green", "value": False}]}
+        tools = self.set_up([reply])
+        lines = tools.ch_kit_press("green", read="Green").splitlines()
+        self.assertEqual(self.posted()[-1], {
+            "type": "press", "elements": [{"id": 3, "value": 1.0}], "hold_frames": 2,
+            "cap_s": 1, "rewrite": True, "on_main": False, "read": ["Green"]})
+        self.assertEqual(lines[1:], [
+            "read back on the kit's player: Green",
+            "  frame 1200: Green off",
+            "  frame 1201: Green on",
+            "  frame 1202: Green off"])
+
+    def test_read_takes_a_list_each_name_once_and_refuses_a_name_that_is_not_text(self):
+        tools = self.set_up([{**PRESS_REPLY, "read": ["Green", "Orange"], "seen": []}])
+        lines = tools.ch_kit_press("green", read=["Green", " Orange", "Green"]).splitlines()
+        self.assertEqual(self.posted()[-1]["read"], ["Green", "Orange"])
+        self.assertEqual(lines[-2:], ["read back on the kit's player: Green, Orange",
+                                      "  no reads came back"])
+        self.assertEqual(tools.ch_kit_press("green", read=[3]),
+                         "read takes game action names, not 3")
+
+    def test_none_sends_the_constants_and_a_given_value_overrides_them(self):
+        tools = self.set_up([PRESS_REPLY, {**PRESS_REPLY, "rewrite": False, "on_main": True}])
+        reply = tools.ch_kit_press("green")
+        self.assertEqual((self.posted()[-1]["rewrite"], self.posted()[-1]["on_main"]),
+                         (K.KIT_REWRITE, K.KIT_PRESS_ON_MAIN))
+        self.assertNotIn("read", self.posted()[-1])
+        self.assertEqual(len(reply.splitlines()), 1)
+        lines = tools.ch_kit_press("green", hold_frames=1, rewrite=False,
+                                   on_main=True).splitlines()
+        self.assertEqual((self.posted()[-1]["rewrite"], self.posted()[-1]["on_main"],
+                          self.posted()[-1]["hold_frames"]), (False, True, 1))
+        self.assertEqual(lines[1], "rewrite off, main thread on (as the agent ran it)")
+
+    def test_rewrite_and_on_main_take_only_true_or_false(self):
+        tools = self.set_up()
+        self.assertEqual(tools.ch_kit_press("green", rewrite="no"),
+                         "rewrite is true, false or left out, not 'no'")
+        self.assertEqual(tools.ch_kit_press("green", on_main=1),
+                         "on_main is true, false or left out, not 1")
+
+
+WATCH_QUIET = {"seconds": 20, "ticks": 3100, "first_frame": 5000, "last_frame": 8200,
+               "readers": ["System", "Player1", "controllers"], "true_count": 0, "reads": []}
+
+
+class WatchTest(Rig):
+    def test_a_watch_with_no_true_read_says_no_key_reached_a_player(self):
+        tools = self.set_up([WATCH_QUIET])
+        lines = tools.ch_kit_watch(20).splitlines()
+        self.assertEqual(self.posted()[-1], {"type": "watch", "seconds": 20, "cap_s": 21})
+        self.assertEqual(lines, [
+            "watched 20 s: 3100 ticks, frames 5000 to 8200, readers: System, Player1, controllers",
+            "no key reached a player"])
+
+    def test_a_true_read_is_a_failure_naming_the_frame_and_the_reader(self):
+        loud = {**WATCH_QUIET, "true_count": 7,
+                "reads": [{"ms": 4210, "frame": 5672, "who": "System"},
+                          {"ms": 9000, "frame": 6440, "who": "controllers"}]}
+        tools = self.set_up([loud])
+        lines = tools.ch_kit_watch(20).splitlines()
+        self.assertEqual(lines[1:], [
+            "FAILED: a key reached a player: 7 true reads; the first 2 that turned true:",
+            "  at 4210 ms, frame 5672: System GetAnyButton true",
+            "  at 9000 ms, frame 6440: controllers GetAnyButton true"])
+
+    def test_refused_while_a_play_session_runs_before_setup_and_on_a_bad_length(self):
+        tools = self.tools()
+        self.assertEqual(tools.ch_kit_watch(20), K.NOT_SET_UP)
+        tools = self.set_up()
+        sent = len(self.posted())
+        self.game.play = {"last_row": None, "press_count": 0, "stop": None}
+        self.assertEqual(tools.ch_kit_watch(20), K.PLAY_RUNNING)
+        self.game.play = None
+        for bad in (0, -1, True, "20", float("inf")):
+            self.assertEqual(tools.ch_kit_watch(bad), f"seconds is a number above 0, not {bad!r}")
+        self.assertEqual(len(self.posted()), sent)
+
+    def test_a_watch_that_sampled_nothing_is_a_failure_not_a_pass(self):
+        for empty in ({**WATCH_QUIET, "ticks": 0}, {**WATCH_QUIET, "readers": []},
+                      {k: v for k, v in WATCH_QUIET.items() if k != "ticks"}):
+            tools = self.set_up([empty])
+            lines = tools.ch_kit_watch(20).splitlines()
+            self.assertEqual(lines[-1], "FAILED: the watch sampled nothing, so it proves nothing")
+
+    def test_a_reply_with_listed_reads_fails_even_if_its_count_says_zero(self):
+        odd = {**WATCH_QUIET, "reads": [{"ms": 5, "frame": 5001, "who": "Player1"}]}
+        tools = self.set_up([odd])
+        lines = tools.ch_kit_watch(20).splitlines()
+        self.assertTrue(lines[1].startswith("FAILED: a key reached a player"))
+
+    def test_a_watch_is_allowed_at_the_cap_and_refused_just_above_it(self):
+        tools = self.set_up([{**WATCH_QUIET, "seconds": 60}])
+        sent = len(self.posted())
+        lines = tools.ch_kit_watch(60).splitlines()
+        self.assertEqual(self.posted()[-1], {"type": "watch", "seconds": 60, "cap_s": 61})
+        self.assertEqual(lines[-1], "no key reached a player")
+        self.assertEqual(len(self.posted()), sent + 1)
+        self.assertEqual(tools.ch_kit_watch(60.001),
+                         "seconds is at most 60 (KIT_WATCH_MAX_S), not 60.001")
+        self.assertEqual(tools.ch_kit_watch(3600),
+                         "seconds is at most 60 (KIT_WATCH_MAX_S), not 3600")
+        self.assertEqual(len(self.posted()), sent + 1)
+
+    def test_a_watch_with_no_reply_ends_at_its_cap(self):
+        tools = self.set_up([None])
+        self.assertEqual(tools.ch_kit_watch(2.5),
+                         "watch failed: no reply to the watch request within the cap of 3.5 s "
+                         "(seconds plus KIT_PRESS_CAP_S)")
+
+
 class KitPressTest(Rig):
     def test_the_kit_press_reply_rides_into_the_press_row_and_the_log(self):
         tools = self.set_up([PRESS_REPLY])
@@ -333,7 +526,8 @@ class KitPressTest(Rig):
 
 class StatusTest(Rig):
     def test_the_frame_rate_comes_from_two_reads_one_second_apart(self):
-        later = {**STATUS, "frame": 1160, "kit_exists": True, "kit_id": 7,
+        later = {**STATUS, "frame": 1160, "keyboard_now": False, "mouse_now": False,
+                 "kit_exists": True, "kit_id": 7,
                  "players": [{"id": 0, "name": "Player1", "has_keyboard": False,
                               "has_mouse": False}]}
         tools = self.set_up([STATUS, later])
@@ -344,6 +538,8 @@ class StatusTest(Rig):
             "frame rate: 160.0 frames a second (160 frames in 1.00 s)",
             "game focused: off",
             "ignoreInputWhenAppNotInFocus: on",
+            "Keyboard.enabled: off",
+            "Mouse.enabled: off",
             "kit: controller 7, tag hydra-kit",
             "player 0 Player1: keyboard off, mouse off",
             "foreground went to the game 0 times so far"])
@@ -364,6 +560,8 @@ class TeardownTest(Rig):
         self.assertEqual(lines, [
             "kit teardown: elements cleared: ok (2 cleared)",
             "kit teardown: kit gone: ok (no controller tagged hydra-kit)",
+            "kit teardown: keyboard: ok (Keyboard.enabled true (was true))",
+            "kit teardown: mouse: ok (Mouse.enabled true (was true))",
             "kit teardown: switch: ok (ignoreInputWhenAppNotInFocus true (was true))",
             "kit teardown: all checks ok",
             "kit agent: detached"])
@@ -375,7 +573,19 @@ class TeardownTest(Rig):
         lines = tools.ch_kit_teardown().splitlines()
         self.assertIn("kit teardown failed on player 0 flags: Player1: keyboard false "
                       "(was true), mouse false (was false)", lines)
+        self.assertIn("kit teardown failed on keyboard: Keyboard.enabled false (was true)", lines)
+        self.assertIn("kit teardown: mouse: ok (Mouse.enabled true (was true))", lines)
         self.assertIn("kit teardown: NOT all checks ok; see the lines above", lines)
+
+    def test_a_mouse_mismatch_is_printed_as_a_failure(self):
+        tools = self.set_up([TEARDOWN_MOUSE_MISMATCH])
+        lines = tools.ch_kit_teardown().splitlines()
+        self.assertEqual(lines, [
+            "kit teardown: keyboard: ok (Keyboard.enabled true (was true))",
+            "kit teardown failed on mouse: Mouse.enabled false (was true)",
+            "kit teardown: switch: ok (ignoreInputWhenAppNotInFocus true (was true))",
+            "kit teardown: NOT all checks ok; see the lines above",
+            "kit agent: detached"])
 
     def test_refused_while_a_play_session_runs_and_with_nothing_attached(self):
         tools = self.tools()
