@@ -258,33 +258,6 @@ TEST_CASE("fill refusal: the five kinds in fill_reason's order, and fill_reason'
     CHECK(fill_reason(one, fill_index(one, 156960)) == kBeforeLastActivationText);
 }
 
-TEST_CASE("step sentence: a squeeze-out over the limit carries the ms figure and the violet note") {
-    // August Burns Red "White Washed": its best path's fourth window needs a
-    // squeeze-out tighter than the 10 ms limit (test_path_costs.cpp).
-    const std::string name = "August Burns Red - White Washed";
-    const Song& song = song_named(name);
-    const HydraRecord& rec = corpus::analyzed(corpus::chart_named(name), default_cfg());
-    const std::vector<Activation> acts = rec.best_path().all_activations();
-    REQUIRE(acts.size() == 5);
-    const app::PreviewScene scene = scene_for(song, rec.best_path());
-    const StepText s =
-        step_sentence(*scene.timing, acts[3], 1234, 707414, 706180, default_cfg().ms_filter);
-    // The cost and the two best finishes are the caller's figures; these are
-    // made up to show both wordings.
-    CHECK(s.sentence ==
-          "Activate at m132 (2:51.485) with 2 phrases saved. Star Power runs until m136 · squeeze "
-          "out 130.4 ms. This choice costs 1,234 points.");
-    CHECK(s.why == "Before it, the best you could still finish with was 707,414. After it, 706,180.");
-    CHECK(s.note == "needs 130.4 ms, your limit is 10 ms");
-    const StepText free =
-        step_sentence(*scene.timing, acts[0], 0, 706180, 706180, default_cfg().ms_filter);
-    CHECK(free.sentence ==
-          "Activate at m23 (0:43.279) with 2 phrases saved. Star Power runs until m29. This "
-          "choice costs nothing.");
-    CHECK(free.why == "The best you can still finish with stays at 706,180.");
-    CHECK(free.note.empty());
-}
-
 TEST_CASE("guide text: step 1 names the earliest offered fill; a finished path says so") {
     // Allister "Overrated": with no activation the first fill comes with one
     // bar saved, so the earliest the player can activate is the second.

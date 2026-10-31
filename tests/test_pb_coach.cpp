@@ -77,17 +77,14 @@ TEST_CASE("coach rows: a two-click path fills the ladder, the rows, the ends and
     CHECK(list.rows[1].cost == 0);
     CHECK(list.rows[1].tier == CostTier::Green);
     CHECK(list.after_last == 0);
-    // Rows inside the limit carry no note, and these need no timing.
-    for (const auto& r : list.rows) {
-        CHECK(r.note.empty());
-        CHECK(r.timing.empty());
-    }
+    // Rows inside the limit carry no note.
+    for (const auto& r : list.rows) CHECK(r.note.empty());
     CHECK(list.failure.empty());
 
     // The first window's end choices: one end, from one run.
     const auto ends = hydra::pathbuilder::end_choices(*c.graph, c.settings, {}, first);
     REQUIRE(ends.size() == 1);
-    CHECK(ends[0].token == "9");
+    CHECK(ends[0].activation.notationstr() == "9");
     CHECK(ends[0].window.deact_tick == 128640);
     CHECK(ends[0].best_finish == 364675);
 
@@ -142,7 +139,6 @@ TEST_CASE("coach rows: a window over the Path limit carries the tight-window not
 
     // From one run: the tight window is the fourth, a squeeze-out.
     CHECK(list.rows[3].token == "0-");
-    CHECK(list.rows[3].timing == "130.4 ms");
     CHECK(list.rows[3].note == "needs 130.4 ms, your limit is 10 ms");
 
     // The player's own path, the best path's first four windows pinned in
@@ -230,9 +226,9 @@ TEST_CASE("coach end: choosing the last window's end pins it") {
     const auto [four, ends] = fourth_window_ends(c);
     // From one run: the squeeze-in end, then the squeeze-out end.
     REQUIRE(ends.size() == 2);
-    CHECK(ends[0].token == "0+");
+    CHECK(ends[0].activation.notationstr() == "0+");
     CHECK(ends[0].window.deact_tick == 257280);
-    CHECK(ends[1].token == "0-");
+    CHECK(ends[1].activation.notationstr() == "0-");
     CHECK(ends[1].window.deact_tick == 253440);
     const ClickResult chosen = hydra::pathbuilder::choose_end(*c.graph, c.settings, four, ends[0].window);
     REQUIRE(chosen.windows.has_value());
@@ -245,7 +241,6 @@ TEST_CASE("coach end: choosing the last window's end pins it") {
     // Each end carries its activation, so the screen reads the end's words
     // from it. From one run: the squeeze-in end's squeeze needs no timing,
     // the squeeze-out end's needs 130.4 ms.
-    for (const auto& e : ends) CHECK(e.activation.notationstr() == e.token);
     const std::vector<hydra::ActivationTiming> in = ends[0].activation.badge_timings();
     REQUIRE(in.size() == 1);
     CHECK(in[0].part == hydra::TimingPart::SqueezeIn);
@@ -307,7 +302,7 @@ TEST_CASE("coach end: an earlier window's endings are the same list") {
         REQUIRE(a.size() == b.size());
         for (size_t e = 0; e < a.size(); ++e) {
             CAPTURE(e);
-            CHECK(a[e].token == b[e].token);
+            CHECK(a[e].activation.notationstr() == b[e].activation.notationstr());
             CHECK(a[e].window.deact_tick == b[e].window.deact_tick);
             CHECK(a[e].window.squeezed_out == b[e].window.squeezed_out);
             CHECK(a[e].best_finish == b[e].best_finish);
@@ -324,7 +319,7 @@ TEST_CASE("coach end: an earlier window's endings are the same list") {
     const auto third_last = ends_when_opened(2, 3);
     const auto third_earlier = ends_when_opened(2, 5);
     REQUIRE(third_last.size() == 1);
-    CHECK(third_last[0].token == "3");
+    CHECK(third_last[0].activation.notationstr() == "3");
     CHECK(third_last[0].window.deact_tick == 215040);
     CHECK(third_last[0].best_finish == 706180);
     same_list(third_earlier, third_last);
@@ -336,10 +331,10 @@ TEST_CASE("coach end: an earlier window's endings are the same list") {
     const auto fourth_last = ends_when_opened(3, 4);
     const auto fourth_earlier = ends_when_opened(3, 5);
     REQUIRE(fourth_last.size() == 2);
-    CHECK(fourth_last[0].token == "0+");
+    CHECK(fourth_last[0].activation.notationstr() == "0+");
     CHECK(fourth_last[0].window.deact_tick == 257280);
     CHECK(fourth_last[0].best_finish == 692360);
-    CHECK(fourth_last[1].token == "0-");
+    CHECK(fourth_last[1].activation.notationstr() == "0-");
     CHECK(fourth_last[1].window.deact_tick == 253440);
     CHECK(fourth_last[1].best_finish == 706180);
     same_list(fourth_earlier, fourth_last);

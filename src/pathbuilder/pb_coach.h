@@ -1,10 +1,9 @@
 // The Path Builder's decision list: one row per window of the path on screen,
-// with what the window cost (EN-3's ladder, app/path_costs.h), the timing it
-// needs and the tight-window note; the end choices of a window and which one
-// it kept; "Finish the rest for me"; and the clicks that start and remove a
-// window. Every number is read from its owner: costs from cost_list and cost_tier, timings from
-// Activation::difficulty and format_ms, the note from
-// Activation::within_ms_limit. Plan: docs/superpowers/plans/
+// with what the window cost (EN-3's ladder, app/path_costs.h) and the
+// tight-window note; the end choices of a window and which one it kept;
+// "Finish the rest for me"; and the clicks that start and remove a window.
+// Every number is read from its owner: costs from cost_list and cost_tier,
+// the note from Activation::within_ms_limit. Plan: docs/superpowers/plans/
 // 2026-10-28-path-builder.md, task PB-2a. The candidate queue, which prices
 // each fill the player could activate on next (app::candidate_costs), is task
 // CO-2 of docs/superpowers/plans/2026-10-30-path-builder-redesign.md; that
@@ -48,9 +47,6 @@ struct CoachRow {
     // What the window cost and its colour, once the ladder has reached it.
     std::optional<int64_t> cost;
     std::optional<app::CostTier> tier;
-    // The timing the window needs, as the Paths tab's button writes it;
-    // empty when it needs none.
-    std::string timing;
     std::string note;  // tight_window_note
 };
 
@@ -77,9 +73,7 @@ std::string impossible_window_text(const std::string& failed_reason, bool at_cli
 
 // One way a window can end.
 struct EndChoice {
-    PinnedWindow window;   // the window pinned in full with this end
-    std::string token;     // its Activation::notationstr
-    std::string timing;    // as CoachRow::timing
+    PinnedWindow window;      // the window pinned in full with this end
     int64_t best_finish = 0;  // BF with this end pinned
     // The window's activation in the path search_target found with this end,
     // so the screen reads the end's measure and squeezes from it.

@@ -21,15 +21,6 @@ std::string tight_window_note(const Activation& act, const std::optional<double>
     return "needs " + format_ms(*needs) + ", your limit is " + format_ms_whole(*limit_ms);
 }
 
-namespace {
-
-std::string timing_text(const Activation& act) {
-    const std::optional<double> needs = act.difficulty();
-    return needs ? format_ms(*needs) : std::string();
-}
-
-}  // namespace
-
 CoachList coach_list(const Path& shown, const app::LadderRun& run,
                      const SearchSettings& settings) {
     CoachList out;
@@ -43,7 +34,6 @@ CoachList coach_list(const Path& shown, const app::LadderRun& run,
         CoachRow row;
         row.act_tick = a.timecode.ticks();
         row.token = a.notationstr();
-        row.timing = timing_text(a);
         row.note = tight_window_note(a, settings.ms_filter);
         if (costs && i < costs->windows.size()) {
             row.cost = costs->windows[i];
@@ -106,8 +96,6 @@ std::vector<EndChoice> end_choices(const ScoreGraph& graph, const SearchSettings
         if (bf.paths.empty()) return;
         EndChoice c;
         c.window = w;
-        c.token = acts[k].notationstr();
-        c.timing = timing_text(acts[k]);
         c.best_finish = bf.paths.front().totalscore();
         c.activation = acts[k];
         out.push_back(std::move(c));
