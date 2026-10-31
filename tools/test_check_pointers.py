@@ -195,6 +195,69 @@ class TestPointers(Base):
         self.assertIn(self.memory, context)  # said once, at the top
         self.assertNotIn(self.memory + os.sep, context.split("\n", 1)[1])  # not on every line
 
+    def removed_commit(self, repo, rel):
+        """Commit a file at rel in repo, then remove it in a second commit; the first hash."""
+        if not os.path.isdir(os.path.join(repo, ".git")):
+            git(repo, "init", "-q", "-b", "main")
+        write(os.path.join(repo, rel), "old text\n")
+        git(repo, "add", rel)
+        git(repo, "commit", "-q", "-m", "add")
+        commit = git(repo, "rev-parse", "HEAD")
+        git(repo, "rm", "-q", rel)
+        git(repo, "commit", "-q", "-m", "remove")
+        return commit
+
+    def test_git_show_fallback_that_opens(self):
+        # A removed file whose own line gives a git show that opens is fine. The same pointer
+        # on a line with no fallback is still broken, in either order, so a verdict for one
+        # line is never reused for another.
+        h = self.removed_commit(self.repo, "docs/old.md")
+        self.note("`docs/old.md`\n"
+                  "`docs/old.md` (removed; `git show %s:docs/old.md`)\n"
+                  "`docs\\old.md:12` (archived; `git show %s:docs/old.md`)\n"
+                  "`docs/old.md`\n" % (h, h[:8]))
+        code, out, err = self.run_check()
+        self.assertEqual(self.broken(out), [SHOWN + ":1: docs/old.md (missing)",
+                                            SHOWN + ":4: docs/old.md (missing)"], out + err)
+        self.assertIn("pointers: 4 checked, 2 broken", out)
+
+    def test_git_show_fallback_that_does_not_open(self):
+        h = self.removed_commit(self.repo, "docs/old.md")
+        other = git(self.repo, "rev-parse", "HEAD~2")  # the start commit, before docs/old.md
+        self.note("`docs/old.md` (removed; `git show %s:docs/old.md`)\n"
+                  "`docs/old.md` (removed; `git show %s:docs/other.md`)\n"
+                  "`docs/old.md` (removed; `git show %s:docs/old.md`)\n"
+                  "`docs/old.md` (removed; `git show %s:Docs/Old.md`)\n" % (other, h, "0" * 40, h))
+        code, out, err = self.run_check()
+        self.assertEqual(self.broken(out), [SHOWN + ":%d: docs/old.md (missing)" % n for n in (1, 2, 3, 4)],
+                         out + err)
+
+    def test_git_show_fallback_in_hooks_repo(self):
+        # "hooks repo" on the line sends the git show to the hooks repo; without those words the
+        # same commit is looked for in the Hydra repo, where it does not exist.
+        h = self.removed_commit(self.claude, "docs/plan.md")
+        self.note("`docs/plan.md` (hooks repo, never merged; read it there with `git show %s:docs/plan.md`)\n"
+                  "`docs/plan.md` (removed; `git show %s:docs/plan.md`)\n" % (h, h))
+        code, out, err = self.run_check()
+        self.assertEqual(self.broken(out), [SHOWN + ":2: docs/plan.md (missing)"], out + err)
+
+    def test_quoted_pointer_skipped_only_in_rulings(self):
+        line = 'The user approved "see src/gone_q.cpp and `src/gone_bq.cpp` there" and `src/gone_after.cpp`.\n'
+        ruling = os.path.join("docs", "agents", "rulings", "x.md")
+        guide = os.path.join("docs", "agents", "guide.md")
+        write(os.path.join(self.repo, ruling), line)
+        write(os.path.join(self.repo, guide), line)
+        self.note(line)
+        code, out, err = self.run_check()
+        lines = self.broken(out)
+        self.assertEqual([x for x in lines if x.startswith(ruling)],
+                         [ruling + ":1: src/gone_after.cpp (missing)"], out + err)
+        for shown in (guide, SHOWN):
+            self.assertEqual(sorted(x for x in lines if x.startswith(shown)),
+                             sorted(shown + ":1: src/%s.cpp (missing)" % n
+                                    for n in ("gone_q", "gone_bq", "gone_after")), out + err)
+        self.assertIn("pointers: 7 checked, 7 broken", out)
+
     def test_bad_argument(self):
         r = subprocess.run([sys.executable, "-I", SCRIPT, "--memory", os.path.join(self.tmp, "no-such")],
                            capture_output=True, text=True)
