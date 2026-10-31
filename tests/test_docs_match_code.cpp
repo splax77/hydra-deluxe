@@ -120,6 +120,9 @@ std::vector<Doc> docs() {
 }
 
 // The inline code spans on one line: the text between each pair of backticks.
+// A span is never empty, so two backticks in a row do not pair: the second one
+// opens the next span. tools/ch_mcp/dump_facts.py (_SPAN_RE) reads spans the
+// same way.
 std::vector<std::string> inline_spans(const std::string& line) {
     std::vector<std::string> out;
     size_t from = 0;
@@ -128,6 +131,10 @@ std::vector<std::string> inline_spans(const std::string& line) {
         if (open == std::string::npos) break;
         const size_t close = line.find('`', open + 1);
         if (close == std::string::npos) break;
+        if (close == open + 1) {
+            from = close;
+            continue;
+        }
         out.push_back(line.substr(open + 1, close - open - 1));
         from = close + 1;
     }
@@ -773,8 +780,13 @@ constexpr const char* kDataAddressNames[] = {
     "RVA_FORMULA_DIVISOR", "RVA_FORMULA_EXPONENT", "RVA_HITCHECK_THRESHOLD"};
 constexpr const char* kProbeConstants = "tools/ch_probe/constants.py";
 
+// A ### heading and the lines under it up to the next heading of any level.
+// `rule` is whether the page is an area page, where such a block is a rule
+// block with the template's shape; on any other page the block only decides
+// which build its spans belong to.
 struct RuleBlock {
     int line = 0;  // the ### heading's line number
+    bool rule = false;
     std::map<std::string, std::vector<size_t>> fixed;  // fixed line -> line indexes
     std::string build;  // the facts table its spans are looked up in
 };
@@ -810,6 +822,9 @@ PageScan scan_page(const Doc& d) {
     s.build_at.assign(d.lines.size(), kBuild11);
     bool fenced = false;
     std::string build = kBuild11;
+    // The headings above that name a build, outermost first: a section's
+    // build ends where the next heading of its level or a higher one starts.
+    std::vector<std::pair<int, std::string>> sections;
     int cur = -1;
     for (size_t i = 0; i < d.lines.size(); ++i) {
         const std::string& line = d.lines[i];
@@ -819,10 +834,12 @@ PageScan scan_page(const Doc& d) {
         } else if (const int level = heading_level(line)) {
             const std::string text = hydra::trim(line.substr(static_cast<size_t>(level)));
             std::smatch m;
-            if (std::regex_search(text, m, build_heading)) build = m.str(1);
-            if (level <= 3) cur = -1;
-            if (level == 3 && area) {
-                s.blocks.push_back(RuleBlock{static_cast<int>(i + 1), {}, build});
+            while (!sections.empty() && sections.back().first >= level) sections.pop_back();
+            if (std::regex_search(text, m, build_heading)) sections.emplace_back(level, m.str(1));
+            build = sections.empty() ? kBuild11 : sections.back().second;
+            cur = -1;
+            if (level == 3) {
+                s.blocks.push_back(RuleBlock{static_cast<int>(i + 1), area, {}, build});
                 cur = static_cast<int>(s.blocks.size()) - 1;
             }
             if (name == kQuestionsPage && std::regex_search(text, m, q_heading))
@@ -842,7 +859,7 @@ CloneHeroCheck check_clone_hero(const std::vector<Doc>& pages) {
     std::vector<PageScan> scans;
     for (const Doc& d : pages) {
         scans.push_back(scan_page(d));
-        out.blocks += static_cast<int>(scans.back().blocks.size());
+        for (const RuleBlock& b : scans.back().blocks) out.blocks += b.rule ? 1 : 0;
     }
     // This branch lands on main before task J1 writes the facts tables, over
     // the skeleton pages, so with no rule block anywhere nothing is checked.
@@ -876,21 +893,22 @@ CloneHeroCheck check_clone_hero(const std::vector<Doc>& pages) {
         // The shape of each block.
         for (RuleBlock& b : blocks) {
             const std::string where = d.rel + ":" + std::to_string(b.line) + ": the rule block ";
-            for (const char* key : kFixedLines) {
-                const size_t n = b.fixed[key].size();
-                if (n == 0) problems.push_back(where + "has no `" + key + "` line");
-                if (n > 1)
-                    problems.push_back(where + "has " + std::to_string(n) + " `" + key + "` lines, not one");
-            }
             for (size_t i : b.fixed["Game code ("]) {
                 std::smatch m;
                 const std::string& line = d.lines[i];
                 if (std::regex_search(line, m, game_code) && tables.count(m.str(1)))
                     b.build = m.str(1);
-                else
+                else if (b.rule)
                     problems.push_back(d.rel + ":" + std::to_string(i + 1) +
                                        ": the Game code line names no build with a facts table (" +
                                        kBuild11 + " or " + kBuild10 + ")");
+            }
+            if (!b.rule) continue;
+            for (const char* key : kFixedLines) {
+                const size_t n = b.fixed[key].size();
+                if (n == 0) problems.push_back(where + "has no `" + key + "` line");
+                if (n > 1)
+                    problems.push_back(where + "has " + std::to_string(n) + " `" + key + "` lines, not one");
             }
             for (size_t i : b.fixed["Label:"]) {
                 const std::string label = hydra::trim(d.lines[i].substr(std::string("Label:").size()));
@@ -1033,6 +1051,26 @@ TEST_CASE("docs match code: what counts as a game fact on a Clone Hero page") {
     CHECK(fact_form("dump.cs").form == FactForm::None);
     CHECK(fact_form("Song::check_activations").form == FactForm::None);
     CHECK(fact_form("RVA_CONST_NORMAL_BACK").form == FactForm::None);
+}
+
+TEST_CASE("docs match code: which spans and which build a Clone Hero page line has") {
+    // Two backticks in a row do not pair; the second opens the next span.
+    CHECK(inline_spans("``x``") == std::vector<std::string>{"x"});
+    CHECK(inline_spans("`a``b`") == std::vector<std::string>{"a", "b"});
+    CHECK(inline_spans("a `b` c `d").size() == 1);
+
+    // A block ends at the next heading of any level, and a build heading
+    // covers its own section only.
+    const Doc under_build{"docs/clone-hero/04-fills.md",
+                          {"## Build 1.0.0.4045", "### X", "Game code (4045): a", "`a.b`", "#### sub",
+                           "`c.d`", "## Other", "`e.f`"}};
+    const PageScan scan = scan_page(under_build);
+    REQUIRE(scan.blocks.size() == 1);
+    CHECK(scan.blocks[0].fixed.at("Game code (").size() == 1);
+    CHECK(scan.block_of[3] == 0);
+    CHECK(scan.block_of[5] == -1);
+    CHECK(scan.build_at[5] == kBuild10);  // the section's build, not the block's Game code line
+    CHECK(scan.build_at[7] == kBuild11);
 }
 
 TEST_CASE("docs match code: every game fact on a Clone Hero page has a home") {
