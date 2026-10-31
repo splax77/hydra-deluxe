@@ -736,19 +736,15 @@ counts measures and beats from 1 and the tick from 0.
 _Avoid_: bar (for a measure)
 
 **Beat**:
-One step of Clone Hero's grid: the resolution × 4 ÷ the time signature's
-bottom number, cut down to whole ticks, so a quarter note in 4/4 and an eighth note in 6/8. The beat
-lines and the position text's beat number count these, so they always agree.
+One step of Clone Hero's grid, so a quarter note in 4/4 and an eighth note in
+6/8. The beat lines and the position text's beat number count these, so they
+always agree. The game's grid step and where the grid restarts are
+docs/clone-hero/04-fills.md (FL-26).
 Two rules count quarter notes in every meter instead: the fill spawn deadline
-(CH 1.1) and the generated fill's half-beat distance. The grid step and both
-rules come from reading Clone Hero 1.1's code (the grid at 0x20DACA0, its 4.0
-read from the game file's data), not from a run of the game. The deadline is
-`resolution << 2` ticks before the fill starts (0x20DDB70), and the distance
-is whole ticks of resolution × 0.5 (that 0.5 also read from the game file),
-plus one tick (0x20D2B30); the reading is
-in docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md.
-What is still unknown: no run of a 6/8 chart in Clone Hero is on record for
-either rule, so the code reading has not been checked in the game.
+(CH 1.1) and the generated fill's half-beat distance. The game's side of both
+is docs/clone-hero/04-fills.md (FL-19 and FL-20 for the deadline, FL-14 for
+the distance). No run of a 6/8 chart in Clone Hero is on record for either
+rule (FL-20 says so for the deadline).
 
 **Section**:
 A named part of the song from the chart's section markers, such as "Chorus

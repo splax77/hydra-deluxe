@@ -12,11 +12,11 @@ My recommendation: do not model the lane leniency. Decide separately whether to 
 
 ## How a lane note is marked
 
-The lane bits on a note's flag word, and who sets them, now live in docs/clone-hero/02-note-list.md (NL-56).
+The lane bits on a note's flag word, and who sets them, now live in docs/clone-hero/02-note-list.md (NL-56). The lane builder sets them at 0x20D16BA, 0x20D16DB and 0x20D16F8 (`f20d12c0.asm`).
 
 The builder only flags notes whose pad is in the lane's pad mask (the test at 0x20D168F). A note on an unlit pad inside the lane gets no flag and is an ordinary note.
 
-Which code reads those bits, and the limit of the scan that found it (`play/flagscan_dword.py`, `play/flagscan_byte.py`), now live in docs/clone-hero/02-note-list.md (NL-56).
+Which code reads those bits, and the limit of the scan that found it (`play/flagscan_dword.py`, `play/flagscan_byte.py`), is in docs/clone-hero/02-note-list.md (NL-56). The scan covered the whole code section: only the lane builder and the drum engine (0x20DC000 to 0x20DF700) use the bits, and the base hit routine (0x20F63F0), the score function (0x20DEEC0), the Star Power code and the star-base code never read them.
 
 ## What the engine keeps for a lane
 
@@ -37,9 +37,9 @@ Each update the engine walks the notes that are past the window (`f20f5810_base_
 The drum engine overrides that slot at 0x20DCAD0 (`f20dcad0.asm`). A normal miss runs the base miss code at 0x20F3610 (`f20f3610_base_miss.asm`). The override can instead tail-jump to the hit routine (slot 11, at 0x20DCC11). The note becomes a hit when it is on a pad in the lane mask and one of these holds:
 
 - **The grant budget is not used up.** This rule now lives in docs/clone-hero/03-timing.md (TM-45).
-- **A lane pad was pressed a moment ago.** This rule now lives in docs/clone-hero/03-timing.md (TM-45).
+- **A lane pad was pressed a moment ago.** This rule now lives in docs/clone-hero/03-timing.md (TM-45). This path does not spend the budget.
 
-How a lane press resets the budget now lives in docs/clone-hero/03-timing.md (TM-45).
+The grant limits and the 0.075 s test are in docs/clone-hero/03-timing.md (TM-45). Every press on a lane pad zeroes both counters at +0x2E8 and +0x2EC with one 8-byte write (0x20DECF3), so during a roll you can drop a couple of notes and the game still credits them. TM-45 does not hold that reset.
 
 A missed note on a double lane that is on a pad not yet in the mask joins the mask and is granted as well (0x20DCB3F to 0x20DCBF1). A real miss on a non-kick note that fails both tests clears the lane (0x20DCC46 to 0x20DCC6A).
 
