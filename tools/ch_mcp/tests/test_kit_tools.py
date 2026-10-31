@@ -67,6 +67,23 @@ def setup_reply(bindings=BINDINGS):
     }
 
 
+# A setup error reply carrying a native fault, in the shape kit.ts's faultOf
+# sends: hex as bare digits, registers in no particular order.
+SETUP_FAULT = {
+    "error": "setup failed: Error: access violation accessing 0x58",
+    "fault": {
+        "type": "access-violation", "address": "7ffb21f557f2",
+        "module": "GameAssembly.dll", "offset": "1f557f2",
+        "operation": "read", "memory_address": "58",
+        "registers": {"pc": "7ffb21f557f2", "sp": "aff0", "rip": "7ffb21f557f2",
+                      "rsp": "aff0", "rax": "0", "rcx": "18", "rdx": "2", "rbx": "1c2a0",
+                      "rbp": "0", "rsi": "0", "rdi": "0", "r8": "0", "r9": "0", "r10": "0",
+                      "r11": "0", "r12": "0", "r13": "0", "r14": "0", "r15": "0"},
+        "stack": ["Error: access violation accessing 0x58", "    at invokeRaw (method.ts:234)",
+                  "    at setup (kit.ts:308)"],
+    },
+}
+
 PRESS_REPLY = {"down_frame": 1200, "up_frame": 1202, "down_ms": 5000, "up_ms": 5013,
                "hold_frames": 2, "rewrite": False, "on_main": False}
 
@@ -442,6 +459,48 @@ class SetupPlayerTest(Rig):
         self.assertEqual(lines[-1], "kit agent: detached")
         self.assertIsNone(self.game.kit_source())
 
+    def test_a_faulted_setup_prints_the_fault_then_tears_down(self):
+        tools = self.tools([STATUS, SETUP_FAULT, TEARDOWN_OK])
+        lines = tools.ch_kit_setup(player="System").splitlines()
+        at = lines.index("setup failed: the agent sent an error: setup failed: "
+                         "Error: access violation accessing 0x58")
+        self.assertEqual(lines[at + 1:at + 8], [
+            "fault: access-violation at GameAssembly.dll+0x1f557f2 (0x7ffb21f557f2), "
+            "read of 0x58",
+            "registers: rax=0x0 rbx=0x1c2a0 rcx=0x18 rdx=0x2 rsi=0x0 rdi=0x0 rbp=0x0 "
+            "rsp=0xaff0 r8=0x0 r9=0x0 r10=0x0 r11=0x0 r12=0x0 r13=0x0 r14=0x0 r15=0x0 "
+            "rip=0x7ffb21f557f2 pc=0x7ffb21f557f2 sp=0xaff0",
+            "stack:",
+            "  Error: access violation accessing 0x58",
+            "  at invokeRaw (method.ts:234)",
+            "  at setup (kit.ts:308)",
+            "kit teardown: elements cleared: ok (2 cleared)",
+        ])
+        self.assertEqual(self.posted()[-1], {"type": "teardown", "tag": "hydra-kit"})
+        self.assertIn("kit teardown: all checks ok", lines)
+        self.assertEqual(lines[-1], "kit agent: detached")
+
+    def test_a_fault_outside_every_module_prints_a_readable_line(self):
+        fault = {**SETUP_FAULT["fault"], "module": None, "offset": None,
+                 "address": "58", "operation": None, "memory_address": None,
+                 "registers": {}, "stack": []}
+        tools = self.tools([STATUS, {**SETUP_FAULT, "fault": fault}, TEARDOWN_OK])
+        lines = tools.ch_kit_setup().splitlines()
+        self.assertIn("fault: access-violation at 0x58 (in no module), "
+                      "no memory access recorded", lines)
+        self.assertIn("registers: none sent", lines)
+        self.assertNotIn("stack:", lines)
+        self.assertIn("kit teardown: all checks ok", lines)
+
+    def test_an_error_with_no_fault_prints_no_fault_lines(self):
+        error = {"error": "setup failed: Error: no player named Player9; players: System, Player1"}
+        tools = self.tools([STATUS, error, TEARDOWN_OK])
+        lines = tools.ch_kit_setup(player="Player9").splitlines()
+        at = lines.index("setup failed: the agent sent an error: setup failed: Error: no player "
+                         "named Player9; players: System, Player1")
+        self.assertEqual(lines[at + 1], "kit teardown: elements cleared: ok (2 cleared)")
+        self.assertFalse([line for line in lines if line.startswith(("fault:", "registers:"))])
+
     def test_a_refusal_before_the_attach_still_names_the_given_player(self):
         tools = self.tools(attached=False)
         self.assertEqual(tools.ch_kit_setup(player="System"),
@@ -621,6 +680,25 @@ class KitPressTest(Rig):
             table = list(csv.DictReader(f))
         self.assertEqual((table[0]["down_frame"], table[0]["up_ms"]), ("1200", "5013"))
         self.assertIsNotNone(tools.kit_press())
+
+    def test_a_faulted_kit_press_carries_the_fault_in_its_error(self):
+        self.set_up([{**SETUP_FAULT, "error": "press failed: Error: access violation accessing 0x58"}])
+        press = self.game.kit_source()
+        with self.assertRaises(K.FA.ReadFailed) as caught:
+            press([Lane.GREEN])
+        lines = str(caught.exception).splitlines()
+        self.assertEqual(lines[0], "the agent sent an error: press failed: "
+                                   "Error: access violation accessing 0x58")
+        self.assertEqual(lines[1], "fault: access-violation at GameAssembly.dll+0x1f557f2 "
+                                   "(0x7ffb21f557f2), read of 0x58")
+        self.assertEqual(caught.exception.reason, K.FA.END_AGENT_ERROR)
+        self.assertEqual(caught.exception.reply["fault"]["type"], "access-violation")
+
+    def test_a_kit_press_error_with_no_fault_is_raised_unchanged(self):
+        self.set_up([{"error": "press failed: boom"}])
+        with self.assertRaises(K.FA.ReadFailed) as caught:
+            self.game.kit_source()([Lane.GREEN])
+        self.assertEqual(str(caught.exception), "the agent sent an error: press failed: boom")
 
     def test_no_kit_press_before_setup(self):
         self.tools()

@@ -401,18 +401,57 @@ def teardown_lines(reply: dict) -> List[str]:
     return lines
 
 
+# The order fault_lines prints the x64 general registers in. Any other
+# register the agent sends follows, by name.
+FAULT_REGISTERS = ("rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "rsp",
+                   "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "rip")
+
+
+def fault_lines(error: FA.LiveAgentError) -> List[str]:
+    """The native fault a failed kit request's error reply carries, as kit.ts's
+    faultOf sends it: where it faulted, the memory access, the registers and
+    the JS stack. No lines when the reply holds no fault."""
+    reply = getattr(error, "reply", None)
+    fault = reply.get("fault") if isinstance(reply, dict) else None
+    if not isinstance(fault, dict):
+        return []
+    where = (f"{fault.get('module')}+0x{fault.get('offset')} (0x{fault.get('address')})"
+             if fault.get("module") is not None
+             else f"0x{fault.get('address')} (in no module)")
+    access = (f"{fault.get('operation')} of 0x{fault.get('memory_address')}"
+              if fault.get("operation") is not None else "no memory access recorded")
+    lines = [f"fault: {fault.get('type')} at {where}, {access}"]
+    regs = fault.get("registers") if isinstance(fault.get("registers"), dict) else {}
+    names = [n for n in FAULT_REGISTERS if n in regs]
+    names += sorted(n for n in regs if n not in FAULT_REGISTERS)
+    lines.append("registers: " + (" ".join(f"{n}=0x{regs[n]}" for n in names) or "none sent"))
+    stack = fault.get("stack") if isinstance(fault.get("stack"), list) else []
+    if stack:
+        lines.append("stack:")
+        lines.extend(f"  {str(s).strip()}" for s in stack if str(s).strip())
+    return lines
+
+
 def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = None,
               hold_frames: int = KIT_HOLD_FRAMES) -> Callable[[Sequence[int]], dict]:
     """The auto-player's press on the kit route: a callable that sends one
     chord's lanes to the kit agent and returns its reply, which play_chords
     keeps in the press row. It waits at most KIT_PRESS_CAP_S and raises
-    frida_attach.ReadFailed when no reply comes, which ends the run."""
+    frida_attach.ReadFailed when no reply comes, which ends the run. A reply
+    that carries a native fault puts fault_lines under the error's message,
+    since the run reports only that message."""
     lock = request_lock if request_lock is not None else threading.Lock()
 
     def press(lanes: Sequence[int]) -> dict:
         message = press_message([lane_element(lane) for lane in lanes], hold_frames)
         with lock:
-            return agent.request(message, KIT_PRESS_CAP_S)
+            try:
+                return agent.request(message, KIT_PRESS_CAP_S)
+            except FA.ReadFailed as e:
+                lines = fault_lines(e)
+                if not lines:
+                    raise
+                raise FA.ReadFailed(e.reason, "\n".join([str(e), *lines]), e.reply) from e
     return press
 
 
@@ -530,6 +569,7 @@ class KitTools:
                     reply = agent.request(setup_message(player), KIT_SETUP_CAP_S)
             except FA.ReadFailed as e:
                 lines.append(f"setup failed: {e}{self._cap_note(e, 'KIT_SETUP_CAP_S')}")
+                lines.extend(fault_lines(e))
                 lines.extend(self._teardown_and_detach())
                 return self._reply(lines)
             lines.extend(setup_lines(reply))
@@ -606,7 +646,8 @@ class KitTools:
                     reply = agent.request(message, KIT_PRESS_CAP_S)
             except FA.ReadFailed as e:
                 return PressResult(False, self._reply(
-                    [f"press failed: {e}{self._cap_note(e, 'KIT_PRESS_CAP_S')}"]))
+                    [f"press failed: {e}{self._cap_note(e, 'KIT_PRESS_CAP_S')}",
+                     *fault_lines(e)]))
             down, up = reply.get("down_frame"), reply.get("up_frame")
             frames = up - down if isinstance(down, int) and isinstance(up, int) else "?"
             down_ms, up_ms = reply.get("down_ms"), reply.get("up_ms")
@@ -647,7 +688,7 @@ class KitTools:
                     reply = agent.request(watch_message(seconds), cap)
             except FA.ReadFailed as e:
                 note = " (seconds plus KIT_PRESS_CAP_S)" if e.reason == FA.END_CAP else ""
-                return self._reply([f"watch failed: {e}{note}"])
+                return self._reply([f"watch failed: {e}{note}", *fault_lines(e)])
             return self._reply(watch_lines(reply))
 
     def ch_kit_status(self) -> str:
@@ -668,6 +709,7 @@ class KitTools:
                     second, t1 = self._status(agent), self._now()
                 except FA.ReadFailed as e:
                     lines.append(f"status failed: {e}{self._cap_note(e, 'READ_CAP_S')}")
+                    lines.extend(fault_lines(e))
                 else:
                     lines.extend(self._status_lines(first, second, t1 - t0))
             fg = self._game.foreground_line()
@@ -744,6 +786,7 @@ class KitTools:
         except FA.ReadFailed as e:
             lines.append(f"kit teardown failed on the request: {e}"
                          f"{self._cap_note(e, 'KIT_SETUP_CAP_S')}")
+            lines.extend(fault_lines(e))
         else:
             lines.extend(teardown_lines(reply))
         lines.append("kit agent: " + agent.detach())

@@ -196,11 +196,13 @@ def run_agent(agent_path: str, cap_s: float,
 
 class LiveAgentError(Exception):
     """A LiveAgent attach or read that failed. `reason` is one of the END_*
-    reasons; the message is the line to show."""
+    reasons; the message is the line to show. `reply` is the agent's whole
+    error reply, when there was one, so a caller can read its other keys."""
 
-    def __init__(self, reason: str, message: str) -> None:
+    def __init__(self, reason: str, message: str, reply: dict | None = None) -> None:
         super().__init__(message)
         self.reason = reason
+        self.reply = reply
 
 
 class AttachFailed(LiveAgentError):
@@ -397,7 +399,7 @@ class LiveAgent:
         reply = {k: v for k, v in pending.reply.items() if k != "id"}
         if "error" in reply:
             raise ReadFailed(END_AGENT_ERROR,
-                             f"the agent sent an error: {reply['error']}")
+                             f"the agent sent an error: {reply['error']}", reply)
         return reply
 
     def _on_message(self, message: dict, data: Any) -> None:
