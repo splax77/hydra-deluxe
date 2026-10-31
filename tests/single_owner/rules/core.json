@@ -1863,11 +1863,12 @@
       "date": "2026-10-05",
       "decision": "D51",
       "added_by": "RP",
-      "pattern": "SP cap 4\\b",
-      "anchor": "SP cap 4",
+      "pattern": "SP cap (to )?4\\b",
+      "anchor": "SP cap",
       "must_match": [
         "{k:'optimal', t:'Hydra opt', num:true,  d:'The optimal score Hydra found for the chart at SP cap 4, the Clone Hero rule.'},",
-        "\"at SP cap 4: set SP cap to 4, analyze them, then compare again.\";"
+        "\"at SP cap 4: set SP cap to 4, analyze them, then compare again.\";",
+        "\"Set SP cap to 4 before you analyze.\";"
       ],
       "must_not_match": [
         "\": set SP cap to \" + cap + \", analyze them, then compare again.\";",
