@@ -191,6 +191,12 @@ One question. It is the only place the approved page says nothing, because the p
 
 **Q1. A song shorter than the window.** The mockup's `clampView` (line 354) keeps the window's start at 0 when the song is shorter than 3 minutes, and `fr` (line 355) still divides by the 3-minute span, so a 2:10 song fills 72% of the track and the rest is empty; the readout would read "0:00 – 2:10 of 2:10" either way. Example one way: Burnout (2:10, the GUI tests' chart) and The Reaper draw as they do today, over the whole width, because the window is the song's length when the song is shorter than 3 minutes. Example the other way: Burnout's timeline stops at 72% of the width and the strip's frame covers the whole strip. Recommendation: the window is the smaller of 3 minutes and the song's length (`min(kTimelineWindowMs, length_ms)`), so every song under 3 minutes keeps today's layout and the scrollbar's thumb fills its bar. The case against: it is not literally what the page's script does, though the page never showed a short song.
 
+## The user's answers (2026-10-31)
+
+The main session asked: "Songs shorter than 3 minutes: the mockup never showed one. Should the window be the song's length then (so Burnout, 2:10, fills the whole timeline as today), rather than a 3-minute window with the last 28% empty?" The user answered "Fill the width (Rec.)": the window is the smaller of 3 minutes and the song's length.
+
+The main session then asked: "Approve plan 3 as described? One thing it leaves out on purpose: if you scroll by hand while the song plays and then press +5s past the window's edge, the window stays put until you pause, scroll or press Play." The user answered "Approve, start building". So the plan is approved as written, with its "Out of scope" list.
+
 ## Settled from the approved page, not asked
 
 The scrollbar's arrow buttons read ◀ and ▶, as the approved page draws them (line 249). An earlier draft of this plan asked whether to write "<" and ">" instead, on the worry that the font lacks the glyphs. It does not need the question: `src/ui/fallback_fonts.h` merges Segoe UI Symbol behind both of Hydra's fonts, and that file holds both code points (read on this machine, 2026-10-31). If a machine has no Segoe UI Symbol, the two buttons draw as "?"; the font list's own test (`tests/test_font_coverage.cpp`) is where that shows, and TL-2b does not change the list.
