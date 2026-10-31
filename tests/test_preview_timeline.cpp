@@ -199,6 +199,123 @@ TEST_CASE("preview timeline: the Section row leaves out a section named End") {
     CHECK(l.sections[3].rect.x1 == doctest::Approx(1000.0f));
 }
 
+namespace {
+
+// A test measure: 10 px for each character, counting a UTF-8 sequence as one.
+float ten_px_each(const std::string& s) {
+    float w = 0.0f;
+    for (unsigned char c : s)
+        if ((c & 0xC0) != 0x80) w += 10.0f;
+    return w;
+}
+
+// Offered fills ending at each of `end_ms`, chord tick = end, each with a
+// four-character label 40 px wide.
+struct LabelledFills {
+    app::PreviewScene scene;
+    std::vector<ui::TimelineFillLabel> labels;
+};
+LabelledFills labelled_fills(const std::vector<double>& end_ms) {
+    LabelledFills out{fx::timed_scene(), {}};
+    for (double e : end_ms) {
+        app::PreviewFill f = fx::fill(fx::span(e - 500.0, e), PreviewFillState::Offered);
+        f.chord_tick = static_cast<int64_t>(e);
+        out.scene.fills.push_back(f);
+        out.labels.push_back({f.chord_tick, "-1.0", 0});
+    }
+    return out;
+}
+
+ui::TimelineMetrics label_metrics() {
+    ui::TimelineMetrics m = metrics();
+    m.cost_top = 3.0f;
+    m.cost_line_h = 5.0f;
+    m.section_pad = 4.0f;
+    m.cost_width = ten_px_each;
+    m.section_width = ten_px_each;
+    m.axis_width = ten_px_each;
+    return m;
+}
+
+}  // namespace
+
+TEST_CASE("preview timeline: a cost label that would touch the one before it drops to a second line") {
+    const ui::TimelineMetrics m = label_metrics();
+
+    // Fills at 200, 240 and 300 px; each label is 40 px, centred. The second
+    // starts at 220 px, where the first ends, so it touches and drops to line
+    // 1. The third starts at 280 px, clear of the first, so it stays on line
+    // 0. Pinned from one run.
+    const LabelledFills touch = labelled_fills({2000.0, 2400.0, 3000.0});
+    const ui::TimelineLayout l = *ui::timeline_layout(touch.scene, kLengthMs, kWidth, m, touch.labels);
+    REQUIRE(l.cost_labels.size() == 3);
+    CHECK(l.cost_labels[0].line == 0);
+    CHECK(l.cost_labels[0].rect.x0 == doctest::Approx(180.0f));
+    CHECK(l.cost_labels[0].rect.x1 == doctest::Approx(220.0f));
+    CHECK(l.cost_labels[1].line == 1);
+    CHECK(l.cost_labels[1].rect.x0 == doctest::Approx(220.0f));
+    CHECK(l.cost_labels[2].line == 0);
+    CHECK(l.cost_clashes == 0);
+    // The Fills row starts at 50 px; line 0 is 3 px down, line 1 one 5 px
+    // line under it, and the row is that one line taller.
+    CHECK(l.cost_labels[0].rect.y0 == doctest::Approx(53.0f));
+    CHECK(l.cost_labels[1].rect.y0 == doctest::Approx(58.0f));
+    CHECK(l.cost_labels[1].rect.y1 == doctest::Approx(63.0f));
+    CHECK(l.row(ui::TimelineRow::Fills).y1 == doctest::Approx(65.0f));
+    CHECK(l.height() == doctest::Approx(65.0f));
+
+    // One pixel further, the second label starts at 221 px and clears the
+    // first: every label on line 0, and the row keeps its height.
+    const LabelledFills clear = labelled_fills({2000.0, 2410.0, 3000.0});
+    const ui::TimelineLayout c = *ui::timeline_layout(clear.scene, kLengthMs, kWidth, m, clear.labels);
+    REQUIRE(c.cost_labels.size() == 3);
+    for (const ui::TimelineCostLabel& lab : c.cost_labels) CHECK(lab.line == 0);
+    CHECK(c.height() == doctest::Approx(60.0f));
+}
+
+TEST_CASE("preview timeline: a cost label that touches the last label on both lines goes where the last one ends first, and is counted") {
+    // Fills at 200, 210 and 220 px: line 0 ends at 220, line 1 at 230, and
+    // the third starts at 200, touching both. Pinned from one run.
+    const LabelledFills f = labelled_fills({2000.0, 2100.0, 2200.0});
+    const ui::TimelineLayout l = *ui::timeline_layout(f.scene, kLengthMs, kWidth, label_metrics(), f.labels);
+    REQUIRE(l.cost_labels.size() == 3);
+    CHECK(l.cost_labels[0].line == 0);
+    CHECK(l.cost_labels[1].line == 1);
+    CHECK(l.cost_labels[2].line == 0);
+    CHECK(l.cost_clashes == 1);
+}
+
+TEST_CASE("preview timeline: a section name too long for its section ends in an ellipsis") {
+    app::PreviewScene s = fx::timed_scene();
+    s.sections ={{0, 0.0, "Intro"}, {400, 400.0, "Verse 1b"}, {1000, 1000.0, "Chorus"}};
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, label_metrics());
+    // Intro is 40 px wide, 32 px inside its 4 px pads; Verse 1b 60 px, 52
+    // inside; Chorus 900 px. Pinned from one run.
+    REQUIRE(l.sections.size() == 3);
+    CHECK(l.sections[0].shown == "In\xE2\x80\xA6");
+    CHECK(l.sections[1].shown == "Vers\xE2\x80\xA6");
+    CHECK(l.sections[1].name == "Verse 1b");
+    CHECK(l.sections[2].shown == "Chorus");
+}
+
+TEST_CASE("preview timeline: the axis labels stay inside the timeline") {
+    const app::PreviewScene s = fx::timed_scene();
+    // A 61 s song on 1,000 px: labels at 0, 30 and 60 s, each 40 px. Pinned
+    // from one run.
+    const ui::TimelineLayout l = *ui::timeline_layout(s, 61000.0, kWidth, label_metrics());
+    REQUIRE(l.axis_ticks.size() == 3);
+    // 0:00 would start 20 px left of the timeline, in the label column; it
+    // starts at the timeline's left edge instead.
+    CHECK(l.axis_ticks[0].text == "0:00");
+    CHECK(l.axis_ticks[0].x == doctest::Approx(0.0f));
+    CHECK(l.axis_ticks[0].text_x == doctest::Approx(0.0f));
+    // 0:30 is centred on its moment.
+    CHECK(l.axis_ticks[1].text_x == doctest::Approx(471.8033f));
+    // 1:00 at 983.6 px would end past the right edge; it ends on it.
+    CHECK(l.axis_ticks[2].text == "1:00");
+    CHECK(l.axis_ticks[2].text_x == doctest::Approx(960.0f));
+}
+
 TEST_CASE("preview timeline: a huge song length gets labels by the width, not by the length") {
     const app::PreviewScene s = scene_with_fills();
     ui::TimelineMetrics m = metrics();

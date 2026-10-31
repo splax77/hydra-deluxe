@@ -6,6 +6,7 @@
 #include "app/display_format.h"  // format_duration
 #include "core/timing.h"  // kSpActivationBars
 #include "imgui_internal.h"  // IM_PI
+#include "render/overlay_layout.h"  // ellipsize
 #include "ui/fonts.h"     // px
 #include "ui/text_role.h"  // ScopedFont, text_size
 #include "ui/theme.h"     // kBestPathColor
@@ -137,6 +138,18 @@ constexpr float kSwatchGap = 6.0f;
 constexpr float kPlayheadW = 2.0f;
 constexpr ImU32 kPlayheadColor = rgba(0xff, 0xff, 0xff, 0.55f);
 
+// `text`'s width by `width_of`, or 0 with no measure.
+float measure(const TimelineTextWidth& width_of, const std::string& text) {
+    return width_of ? width_of(text) : 0.0f;
+}
+
+// Where a text `w` wide starts when centred on `center` (the mockup's
+// `transform:translateX(-50%)`) but kept between 0 and `width`. Text wider
+// than the timeline starts at 0.
+float inside_start(float center, float w, float width) {
+    return std::max(0.0f, std::min(center - w * 0.5f, width - w));
+}
+
 }  // namespace
 
 // ImGui keeps 2 px of padding and half a grab at each end of a float slider,
@@ -207,7 +220,8 @@ void legend_swatch(LegendSwatch kind) {
 std::string timeline_fill_id(int64_t chord_tick) { return "##fill_" + std::to_string(chord_tick); }
 
 std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, double length_ms,
-                                              float width, const TimelineMetrics& metrics) {
+                                              float width, const TimelineMetrics& metrics,
+                                              const std::vector<TimelineFillLabel>& labels) {
     if (!app::has_song_length(length_ms)) return std::nullopt;
     TimelineLayout out;
     out.width = width;
@@ -234,7 +248,12 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
                                  : 1.0;
         for (double k = 0.0; k * kTimelineAxisStepMs < length_ms; k += every) {
             const double ms = k * kTimelineAxisStepMs;
-            out.axis_ticks.push_back({ms, x_of(ms)});
+            TimelineTick t;
+            t.ms = ms;
+            t.x = x_of(ms);
+            t.text = app::format_duration(ms / 1000.0);
+            t.text_x = inside_start(t.x, measure(metrics.axis_width, t.text), width);
+            out.axis_ticks.push_back(std::move(t));
         }
     }
 
@@ -242,8 +261,15 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
     for (size_t i = 0; i < scene.sections.size(); ++i) {
         if (scene.sections[i].name == kTimelineHiddenSectionName) continue;
         const double end = i + 1 < scene.sections.size() ? scene.sections[i + 1].ms : length_ms;
-        out.sections.push_back({scene.sections[i].name,
-                                {x_of(scene.sections[i].ms), sec.y0, x_of(end), sec.y1}});
+        TimelineSection s;
+        s.name = scene.sections[i].name;
+        s.rect = {x_of(scene.sections[i].ms), sec.y0, x_of(end), sec.y1};
+        // The name sits section_pad in from both edges.
+        s.shown = metrics.section_width
+                      ? render::ellipsize(s.name, (s.rect.x1 - s.rect.x0) - 2.0f * metrics.section_pad,
+                                          metrics.section_width)
+                      : s.name;
+        out.sections.push_back(std::move(s));
     }
 
     for (const app::PreviewSpan& p : scene.sp_phrases) out.phrase_x.push_back(x_of(p.start_ms));
@@ -290,6 +316,42 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
         item.hit = {item.x - half, cy - half, item.x + half, cy + half};
         out.fills.push_back(std::move(item));
     }
+
+    // The cost labels, each under its fill, in order along the timeline.
+    for (const TimelineFillItem& f : out.fills)
+        for (const TimelineFillLabel& lab : labels) {
+            if (lab.chord_tick != f.chord_tick) continue;
+            TimelineCostLabel c;
+            c.fill = f.fill;
+            c.text = lab.text;
+            c.col = lab.col;
+            const float w = measure(metrics.cost_width, lab.text);
+            c.rect.x0 = inside_start(f.x, w, width);
+            c.rect.x1 = c.rect.x0 + w;
+            out.cost_labels.push_back(std::move(c));
+        }
+    std::stable_sort(out.cost_labels.begin(), out.cost_labels.end(),
+                     [](const TimelineCostLabel& a, const TimelineCostLabel& b) { return a.rect.x0 < b.rect.x0; });
+    // Where the last label on each line ends; a box that starts there or
+    // before would touch it.
+    std::optional<float> line_end[2];
+    auto clear_of = [&](int line, float x0) { return !line_end[line] || x0 > *line_end[line]; };
+    bool second_line = false;
+    for (TimelineCostLabel& c : out.cost_labels) {
+        if (clear_of(0, c.rect.x0)) {
+            c.line = 0;
+        } else if (clear_of(1, c.rect.x0)) {
+            c.line = 1;
+        } else {
+            c.line = *line_end[0] <= *line_end[1] ? 0 : 1;
+            ++out.cost_clashes;
+        }
+        second_line = second_line || c.line == 1;
+        line_end[c.line] = c.rect.x1;
+        c.rect.y0 = fr.y0 + metrics.cost_top + static_cast<float>(c.line) * metrics.cost_line_h;
+        c.rect.y1 = c.rect.y0 + metrics.cost_line_h;
+    }
+    if (second_line) out.rows[static_cast<size_t>(TimelineRow::Fills)].y1 += metrics.cost_line_h;
     return out;
 }
 
@@ -330,7 +392,17 @@ TimelineMetrics timeline_metrics() {
     m.band_inset = px(kBandInset);
     m.saved_inset = px(kSavedInset);
     // A label's own width and a space, in the font the labels draw in.
-    m.axis_label_gap = text_size(TextRole::Figure, "00:00 ").x;
+    m.axis_label_gap = text_size(TextRole::TimelineAxis, "00:00 ").x;
+    m.cost_top = px(kFillLabelTop);
+    m.cost_line_h = text_size(TextRole::TimelineCost, "0").y;
+    m.section_pad = px(kSectionPad);
+    // Each measure is made this frame, at this frame's scale.
+    auto in_role = [](TextRole role) -> TimelineTextWidth {
+        return [w = measure_in_role(role)](const std::string& s) { return w(s); };
+    };
+    m.cost_width = in_role(TextRole::TimelineCost);
+    m.section_width = in_role(TextRole::TimelineSection);
+    m.axis_width = in_role(TextRole::TimelineAxis);
     return m;
 }
 
@@ -341,7 +413,8 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
     const float label_w = px(kLabelColumnW);
     const float track_w = ImGui::GetContentRegionAvail().x - label_w;
     if (!(track_w > 0.0f)) return ev;
-    const std::optional<TimelineLayout> laid = timeline_layout(*in.scene, in.length_ms, track_w, timeline_metrics());
+    const std::optional<TimelineLayout> laid =
+        timeline_layout(*in.scene, in.length_ms, track_w, timeline_metrics(), in.labels);
     if (!laid) return ev;
     const TimelineLayout& l = *laid;
     const ImVec2 t0(origin.x + label_w, origin.y);
@@ -377,20 +450,17 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
                         nullptr, label_wrap);
     }
 
-    // The axis's time labels, each centred on its moment.
+    // The axis's time labels, where the layout put them.
     {
-        ScopedFont font(TextRole::Figure);
+        ScopedFont font(TextRole::TimelineAxis);
         const float y = l.row(TimelineRow::Axis).y0 + px(kAxisLabelTop);
-        for (const TimelineTick& t : l.axis_ticks) {
-            const std::string s = app::format_duration(t.ms / 1000.0);
-            const ImVec2 sz = ImGui::CalcTextSize(s.c_str());
-            dl->AddText(at(t.x - sz.x * 0.5f, y), kDimColor, s.c_str());
-        }
+        for (const TimelineTick& t : l.axis_ticks) dl->AddText(at(t.text_x, y), kDimColor, t.text.c_str());
     }
 
-    // Sections: every other one shaded, each with its left edge and its name.
+    // Sections: every other one shaded, each with its left edge and its name,
+    // cut to fit by the layout.
     {
-        ScopedFont font(TextRole::Label);
+        ScopedFont font(TextRole::TimelineSection);
         for (size_t i = 0; i < l.sections.size(); ++i) {
             const TimelineRect& r = l.sections[i].rect;
             const ImVec2 mn = at(r.x0, r.y0), mx = at(r.x1, r.y1);
@@ -398,7 +468,7 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
             dl->AddRectFilled(mn, ImVec2(mn.x + px(1.0f), mx.y), kSectionEdge);
             dl->PushClipRect(mn, mx, true);
             dl->AddText(ImVec2(mn.x + px(kSectionPad), mn.y + px(kSectionPad)), kMutedColor,
-                        l.sections[i].name.c_str());
+                        l.sections[i].shown.c_str());
             dl->PopClipRect();
         }
     }
@@ -461,7 +531,6 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
 
     // The fills, each its own item, before the rows' item so a fill takes the
     // hover over the row under it.
-    const float fills_y0 = l.row(TimelineRow::Fills).y0;
     for (const TimelineFillItem& f : l.fills) {
         const ImVec2 mn = at(f.hit.x0, f.hit.y0);
         ImGui::SetCursorScreenPos(mn);
@@ -483,12 +552,13 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
             // a border in from the edge.
             dl->AddCircle(c, (px(kCantSize) - px(kCantBorder)) * 0.5f, kDimColor, 0, px(kCantBorder));
         }
-        for (const TimelineFillLabel& lab : in.labels) {
-            if (lab.chord_tick != f.chord_tick) continue;
-            ScopedFont font(TextRole::Figure);
-            const ImVec2 sz = ImGui::CalcTextSize(lab.text.c_str());
-            dl->AddText(at(f.x - sz.x * 0.5f, fills_y0 + px(kFillLabelTop)), lab.col, lab.text.c_str());
-        }
+    }
+
+    // The cost labels, on the lines and at the places the layout gave them.
+    {
+        ScopedFont font(TextRole::TimelineCost);
+        for (const TimelineCostLabel& c : l.cost_labels)
+            dl->AddText(at(c.rect.x0, c.rect.y0), c.col, c.text.c_str());
     }
 
     // The rows' own item: a click off every fill lands on a band or a moment.

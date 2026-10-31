@@ -33,14 +33,20 @@ enum class TextRole {
     HeadlinePath,    // the song panel's headline path
     AppVersion,      // the version bar's app name and version
     DialogQuestion,  // the batch dialog's question
+    // The Path Builder timeline's small text, at the sizes of the mockup
+    // (docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html),
+    // as the user chose (plan 2026-10-30-path-builder-redesign, PV-4).
+    TimelineCost,     // the cost under a fill (`.flab`, tabular figures)
+    TimelineSection,  // a section's name (`.sec`)
+    TimelineAxis,     // a time on the axis (`.axis span`)
 };
 
-// The number of roles. DialogQuestion is the last enumerator; a new role goes
+// The number of roles. TimelineAxis is the last enumerator; a new role goes
 // before it or moves this anchor, and the static_assert below makes either
 // change touch font_for and the test table in tests/test_text_role.cpp.
 inline constexpr std::size_t kTextRoleCount =
-    static_cast<std::size_t>(TextRole::DialogQuestion) + 1;
-static_assert(kTextRoleCount == 12,
+    static_cast<std::size_t>(TextRole::TimelineAxis) + 1;
+static_assert(kTextRoleCount == 15,
               "a new TextRole needs its case in font_for and its row in tests/test_text_role.cpp");
 
 // A font and the base size to push it at. Size 0 keeps the current size.
@@ -74,6 +80,10 @@ inline FontPick font_for(TextRole role) {
         case TextRole::HeadlinePath: return {mono, 24.0f};
         case TextRole::AppVersion: return {deflt, 20.0f};
         case TextRole::DialogQuestion: return {deflt, 20.0f};
+        // Mono, like Figure, keeps the mockup's tabular figures.
+        case TextRole::TimelineCost: return {mono, 10.5f};   // `.flab{font-size:10.5px}`
+        case TextRole::TimelineSection: return {deflt, 11.5f};  // `.sec{font-size:11.5px}`
+        case TextRole::TimelineAxis: return {mono, 11.0f};   // `.axis span{font-size:11px}`
     }
     IM_ASSERT(false && "font_for: a value outside TextRole");
     return {deflt, 0.0f};

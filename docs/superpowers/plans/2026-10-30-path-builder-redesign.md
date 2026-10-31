@@ -263,11 +263,20 @@ The user answered all seven questions in one line: "Yes, as recommended". So:
 5. A legend swatch is 12 px across (`kSwatchSize` in `src/ui/preview_timeline.cpp`, `.legend i{width:12px; height:12px}`, mockup line 32).
 6. A short cost writes a figure under 1,000 whole and from 1,000 as thousands to one place with a "k" (the `1000` in `format_points_short`, `src/app/display_format.cpp`, `const short = n => n >= 1000 ? ...`, mockup line 147).
 
+**User decisions (PV-4, 2026-10-30):**
+
+1. At the real-app check the user saw cost labels run into each other, section names cut mid-letter and the axis's "0:00" cross into the label column. Asked "When two fills sit so close that their cost labels would touch (like \"−8.7k\" and \"−10.0k\" near 1:50), what should the timeline do?", the user answered "Stagger to a 2nd line (Recommended)": a label that would touch the one before it drops to a second line under it, every cost stays visible, and the Fills row gets one text line taller. `timeline_layout` in `src/ui/preview_timeline.cpp` gives each cost label its line (`TimelineCostLabel::line`), and the Fills row grows by one cost line only when some label is on line 1. A label that would touch the last label on both lines goes on the line whose last label ends first and is counted in `TimelineLayout::cost_clashes`; there is no third line.
+2. Asked whether the timeline's text should be smaller like the mockup (cost labels 10.5 px, section names 11.5 px), the user answered "Mockup's smaller sizes (Recommended)": new font roles at the mockup's sizes for the cost labels, section names and axis times. They live in `src/ui/text_role.h` with the other roles:
+   - `TextRole::TimelineCost`, the mono font at 10.5 px (`.flab{font-size:10.5px}`, mockup line 55). Mono keeps the mockup's `font-variant-numeric:tabular-nums`.
+   - `TextRole::TimelineSection`, the default font at 11.5 px (`.sec{font-size:11.5px}`, mockup line 42).
+   - `TextRole::TimelineAxis`, the mono font at 11 px (`.axis span{font-size:11px}`, mockup line 56).
+3. With these, a section name too wide for its section ends in "…" (`.sec{text-overflow:ellipsis}`, mockup line 42), cut by `render::ellipsize`. The axis labels and cost labels stay centred on their moment (`transform:translateX(-50%)`, mockup lines 55 and 56) but never start left of the timeline or end right of it, so "0:00" no longer reaches into the label column. The band numbers keep the Label role: the mockup's bold (`.band.mine{font-weight:600}`, mockup line 46) needs a bold face, and Hydra loads none.
+
 **More answers from the wave 1 merges (2026-10-30), in the user's words:**
 
 - Asked whether a step sentence shows the mockup's "0:45" or Hydra's clock "0:45.789", the user answered "Hydra's 0:45.789 (Recommended)". `step_sentence` writes the time with `clock_str`.
 - Asked whether the text says "two" with a typed star or "2" with the star drawn, the user answered "\"2\", star drawn (Recommended)". The count is written from `kSpActivationBars`, and the screen (PB-5) draws the star with `draw_star` beside the sentences where the mockup has one.
-- Asked whether the timeline's text gets the mockup's 10.5 to 12.5 px sizes and bold band numbers, the user answered "Decide at the real-app check (Recommended)". The timeline uses the Label and Figure text roles until RA-2.
+- Asked whether the timeline's text gets the mockup's 10.5 to 12.5 px sizes and bold band numbers, the user answered "Decide at the real-app check (Recommended)". The timeline used the Label and Figure text roles until the real-app check; "User decisions (PV-4)" above has the sizes the user chose there.
 - Asked whether the timeline hides a practice section named "End", the user answered "Hide it on the timeline (Recommended)". The Preview tab keeps showing it.
 
 The same message approved the plan with the "Out of scope" list as written, so the highway text labels, the squeeze-out ring and the "lost because the meter was full" note stay out.

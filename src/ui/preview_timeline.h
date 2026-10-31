@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -64,6 +65,10 @@ inline constexpr const char* kTimelineHiddenSectionName = "End";
 enum class TimelineRow { Axis, Sections, Phrases, Saved, Ghost, Activations, Fills };
 inline constexpr size_t kTimelineRowCount = 7;
 
+// How wide a piece of text draws, in pixels. Empty measures every text as 0
+// wide.
+using TimelineTextWidth = std::function<float(const std::string&)>;
+
 // Each row's height, the side of a fill's square hit box, how far down the
 // Fills row a fill's centre sits, how far an activation band stands in from
 // its row's top and bottom, how far the saved line's zero and cap stand in
@@ -73,6 +78,11 @@ inline constexpr size_t kTimelineRowCount = 7;
 // next gets a label every few steps instead, so the number of labels follows
 // the width, never the song's length; a gap of 0 turns that off, which only
 // a test with a short song should do.
+//
+// The text the layout places: how far down the Fills row a cost label's
+// first line starts and how tall one line is, how far a section's name
+// stands in from its edges, and a measure for each kind of text in the font
+// it draws in (text_role.h's TimelineCost, TimelineSection and TimelineAxis).
 struct TimelineMetrics {
     float row_h[kTimelineRowCount] = {};
     float fill_size = 0.0f;
@@ -80,6 +90,12 @@ struct TimelineMetrics {
     float band_inset = 0.0f;
     float saved_inset = 0.0f;
     float axis_label_gap = 0.0f;
+    float cost_top = 0.0f;
+    float cost_line_h = 0.0f;
+    float section_pad = 0.0f;
+    TimelineTextWidth cost_width;
+    TimelineTextWidth section_width;
+    TimelineTextWidth axis_width;
 };
 
 // The mockup's sizes at the display's scale (px), for the timeline as
@@ -111,10 +127,13 @@ struct TimelineFillItem {
     TimelineRect hit;
 };
 
-// One section: its name and the stretch until the next section (or the
-// song's end). A section named kTimelineHiddenSectionName gets none.
+// One section: its name, the name as it fits between the section's edges
+// (render::ellipsize's cut, as the mockup's `.sec{text-overflow:ellipsis}`),
+// and the stretch until the next section (or the song's end). A section named
+// kTimelineHiddenSectionName gets none.
 struct TimelineSection {
     std::string name;
+    std::string shown;
     TimelineRect rect;
 };
 
@@ -125,10 +144,37 @@ struct TimelineBand {
     TimelineRect rect;
 };
 
-// One time label on the axis: its moment and its x.
+// One time label on the axis: its moment, its x, its text, and where the text
+// starts. The text is centred on its moment, as the mockup's `.axis span`
+// is, but never starts left of the timeline or ends right of it, so the first
+// label stays out of the label column.
 struct TimelineTick {
     double ms = 0.0;
     float x = 0.0f;
+    std::string text;
+    float text_x = 0.0f;
+};
+
+// The text under one fill (its cost), in the colour the caller picked.
+struct TimelineFillLabel {
+    int64_t chord_tick = 0;
+    std::string text;
+    ImU32 col = 0;
+};
+
+// A cost label as the layout places it: its fill's index in the scene, its
+// text and colour, the line it sits on (0, or 1 under it), and its box. Each
+// is centred under its fill and kept inside the timeline, as the axis labels
+// are. A label goes on line 0 unless its box would touch the last line-0
+// label's; then it goes on line 1. One that would touch the last label on
+// both lines goes on the line whose last label ends first, and
+// TimelineLayout::cost_clashes counts it.
+struct TimelineCostLabel {
+    size_t fill = 0;
+    std::string text;
+    ImU32 col = 0;
+    int line = 0;
+    TimelineRect rect;
 };
 
 struct TimelineLayout {
@@ -151,6 +197,10 @@ struct TimelineLayout {
     std::vector<TimelineRect> ghost_bands;
     std::vector<TimelineBand> bands;
     std::vector<TimelineFillItem> fills;
+    // In order along the timeline. The Fills row is one cost line taller
+    // when any label is on line 1.
+    std::vector<TimelineCostLabel> cost_labels;
+    size_t cost_clashes = 0;
     float height() const { return rows[kTimelineRowCount - 1].y1; }
     const TimelineRect& row(TimelineRow r) const { return rows[static_cast<size_t>(r)]; }
 };
@@ -159,9 +209,11 @@ struct TimelineLayout {
 std::string timeline_fill_id(int64_t chord_tick);
 
 // Lay the scene out `width` pixels wide over `length_ms` (the Preview's
-// playback end). No value when song_fraction has no song length to use.
+// playback end), with `labels` under their fills. No value when
+// song_fraction has no song length to use.
 std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, double length_ms,
-                                              float width, const TimelineMetrics& metrics);
+                                              float width, const TimelineMetrics& metrics,
+                                              const std::vector<TimelineFillLabel>& labels = {});
 
 // What a point lands on: a fill's hit box, else an activation band, else,
 // anywhere inside the timeline, the moment under it. Outside, nothing.
@@ -172,13 +224,6 @@ struct TimelineHit {
     double ms = 0.0;   // for Time
 };
 TimelineHit timeline_hit(const TimelineLayout& layout, float x, float y);
-
-// The text under one fill (its cost), in the colour the caller picked.
-struct TimelineFillLabel {
-    int64_t chord_tick = 0;
-    std::string text;
-    ImU32 col = 0;
-};
 
 // What the timeline draws this frame. `cant_ticks` are fills drawn as
 // can't-activate although the scene says Offered (the screen's left-to-right
