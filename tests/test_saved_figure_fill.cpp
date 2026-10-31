@@ -35,7 +35,7 @@ const char* const kSmashMouth = "Smash Mouth - I_m A Believer";
 const char* const kEverlong = "Foo Fighters - Everlong";
 
 // The running settings every case fills under: the defaults.
-const Settings& default_settings() {
+const Settings& fill_settings() {
     static const Settings s;
     return s;
 }
@@ -47,7 +47,7 @@ struct CorpusChart {
 };
 
 // The corpus chart whose path holds `name`.
-CorpusChart corpus_chart(const std::string& name) {
+CorpusChart named_chart(const std::string& name) {
     const std::string chart = corpus::chart_named(name);
     REQUIRE_FALSE(chart.empty());
     return {chart, corpus::scanned_entry(chart, name)};
@@ -57,13 +57,13 @@ CorpusChart corpus_chart(const std::string& name) {
 // under the running settings.
 void save_old(RecordStore& store, const CorpusChart& chart, const std::vector<int>& emptied,
               const std::function<void(PreparedRecord&)>& edit = {}) {
-    hydra::test::save_as_old_build(store, chart.file, chart.entry, default_settings(), emptied,
+    hydra::test::save_as_old_build(store, chart.file, chart.entry, fill_settings(), emptied,
                                    edit);
 }
 
 // The saved figure of every rank of chart `md5`'s record, in rank order.
 std::vector<std::optional<double>> figures_of(RecordStore& store, const std::string& md5) {
-    return hydra::test::saved_figures(store, md5, default_settings().profile());
+    return hydra::test::saved_figures(store, md5, fill_settings().profile());
 }
 
 // A progress callback that counts its calls and the charts it was told of,
@@ -85,7 +85,7 @@ struct Counter {
 
 TEST_CASE("a saved path with a squeeze-in on the SP end gets its figure back") {
     RecordStore store(":memory:");
-    const CorpusChart chart = corpus_chart(kSmashMouth);
+    const CorpusChart chart = named_chart(kSmashMouth);
     const ChartLibraryEntry& entry = chart.entry;
     save_old(store, chart, {1, 2, 3});
     const std::vector<std::optional<double>> before = figures_of(store, entry.md5);
@@ -95,81 +95,81 @@ TEST_CASE("a saved path with a squeeze-in on the SP end gets its figure back") {
     CHECK_FALSE(before[2].has_value());
 
     Counter first;
-    CHECK(hydra::app::fill_saved_hardest(store, default_settings(), first.fn()));
+    CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), first.fn()));
     // One chart: reported before it and once it is done.
     CHECK(first.calls == 2);
     CHECK(first.charts_total == 1);
-    const hydra::store::RecordLookup found = store.lookup_one(entry.md5, default_settings().profile());
+    const hydra::store::RecordLookup found = store.lookup_one(entry.md5, fill_settings().profile());
     CHECK(found.record.paths[0].path == "1 0+ 0 0");
     CHECK(figures_of(store, entry.md5) ==
           std::vector<std::optional<double>>{0.0, 0.0, 0.0, std::nullopt, 0.0});
-    CHECK(store.hardest_figure_filled(default_settings().profile()));
+    CHECK(store.hardest_figure_filled(fill_settings().profile()));
 
     // The marker is set, so a second run reads no chart.
     Counter second;
-    CHECK(hydra::app::fill_saved_hardest(store, default_settings(), second.fn()));
+    CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), second.fn()));
     CHECK(second.calls == 0);
 }
 
 TEST_CASE("a saved path whose chart is gone keeps its empty figure") {
     RecordStore store(":memory:");
-    CorpusChart chart = corpus_chart(kSmashMouth);
+    CorpusChart chart = named_chart(kSmashMouth);
     ChartLibraryEntry& entry = chart.entry;
     entry.notespath = entry.rootfolder + "\\no such folder\\notes.chart";
     save_old(store, chart, {1});
 
-    CHECK(hydra::app::fill_saved_hardest(store, default_settings(), {}));
+    CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), {}));
     CHECK_FALSE(figures_of(store, entry.md5)[0].has_value());
-    CHECK(store.hardest_figure_filled(default_settings().profile()));
+    CHECK(store.hardest_figure_filled(fill_settings().profile()));
 }
 
 TEST_CASE("a row that disagrees with its replay keeps its empty figure") {
     RecordStore store(":memory:");
-    const CorpusChart chart = corpus_chart(kSmashMouth);
+    const CorpusChart chart = named_chart(kSmashMouth);
     const ChartLibraryEntry& entry = chart.entry;
     save_old(store, chart, {1, 2}, [](PreparedRecord& p) { p.record.paths[0].score += 1; });
 
-    CHECK(hydra::app::fill_saved_hardest(store, default_settings(), {}));
+    CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), {}));
     const std::vector<std::optional<double>> after = figures_of(store, entry.md5);
     // Rank 1's score no longer matches its replay; rank 2 still does.
     CHECK_FALSE(after[0].has_value());
     CHECK(after[1] == std::optional<double>(0.0));
-    CHECK(store.hardest_figure_filled(default_settings().profile()));
+    CHECK(store.hardest_figure_filled(fill_settings().profile()));
 }
 
 TEST_CASE("a stop leaves the marker unset") {
     RecordStore store(":memory:");
-    const CorpusChart chart = corpus_chart(kSmashMouth);
+    const CorpusChart chart = named_chart(kSmashMouth);
     const ChartLibraryEntry& entry = chart.entry;
     save_old(store, chart, {1});
 
     Counter stopped;
     stopped.stop_at = 1;
-    CHECK_FALSE(hydra::app::fill_saved_hardest(store, default_settings(), stopped.fn()));
+    CHECK_FALSE(hydra::app::fill_saved_hardest(store, fill_settings(), stopped.fn()));
     CHECK(stopped.calls == 1);
-    CHECK_FALSE(store.hardest_figure_filled(default_settings().profile()));
+    CHECK_FALSE(store.hardest_figure_filled(fill_settings().profile()));
     CHECK_FALSE(figures_of(store, entry.md5)[0].has_value());
 
     // The next run goes on and finishes.
     Counter next;
-    CHECK(hydra::app::fill_saved_hardest(store, default_settings(), next.fn()));
+    CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), next.fn()));
     CHECK(next.charts_total == 1);
     CHECK(figures_of(store, entry.md5)[0] == std::optional<double>(0.0));
-    CHECK(store.hardest_figure_filled(default_settings().profile()));
+    CHECK(store.hardest_figure_filled(fill_settings().profile()));
 }
 
 TEST_CASE("an inside-Star-Power squeeze-in fills a negative figure that shows as none") {
     RecordStore store(":memory:");
-    const CorpusChart chart = corpus_chart(kEverlong);
+    const CorpusChart chart = named_chart(kEverlong);
     const ChartLibraryEntry& entry = chart.entry;
     save_old(store, chart, {1});
-    const hydra::store::RecordLookup saved = store.lookup_one(entry.md5, default_settings().profile());
+    const hydra::store::RecordLookup saved = store.lookup_one(entry.md5, fill_settings().profile());
     REQUIRE(saved.record.paths.size() >= 1);
     CHECK(saved.record.paths[0].path == "1 2 3+");
     CHECK(saved.record.paths[0].sqin_count == 1);
     CHECK(saved.record.paths[0].sqout_count == 0);
 
-    CHECK(hydra::app::fill_saved_hardest(store, default_settings(), {}));
+    CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), {}));
     const std::optional<double> figure = figures_of(store, entry.md5)[0];
     REQUIRE(figure.has_value());
     CHECK(*figure == -189.83750000002328);
