@@ -14,7 +14,7 @@
 #include "app/config.h"          // chartmode_key
 #include "app/display_format.h"  // clock_str, format_cost, format_cost_short, kFactSeparator
 #include "app/path_costs.h"      // end_costs
-#include "app/preview_view.h"    // path_overlay_key
+#include "app/preview_view.h"    // path_overlay_key, fill_index_on_chord
 #include "app/report.h"          // ChipToken
 #include "app/user_messages.h"
 #include "core/timing.h"  // measure_label
@@ -116,13 +116,6 @@ std::string figure_or_pending(const std::optional<int64_t>& v) {
     return v ? group_thousands(*v) : std::string(kPendingText);
 }
 
-// The scene index of the fill on `tick`, if the scene has one.
-std::optional<size_t> fill_on(const app::PreviewScene& scene, int64_t tick) {
-    for (size_t i = 0; i < scene.fills.size(); ++i)
-        if (scene.fills[i].chord_tick == tick) return i;
-    return std::nullopt;
-}
-
 // The first candidate that costs nothing: the best next fill (candidate_costs
 // gives the best one cost 0), or null while none has landed.
 const app::CandidateCost* best_candidate(const std::vector<app::CandidateCost>& candidates) {
@@ -136,7 +129,7 @@ std::optional<std::string> best_fill_name(const app::PreviewScene& scene,
                                           const std::vector<app::CandidateCost>& candidates) {
     const app::CandidateCost* best = best_candidate(candidates);
     if (!best) return std::nullopt;
-    const std::optional<size_t> i = fill_on(scene, best->act_tick);
+    const std::optional<size_t> i = app::fill_index_on_chord(scene, best->act_tick);
     if (!i) return std::nullopt;
     return fill_name(scene, scene.fills[*i]);
 }
@@ -605,8 +598,12 @@ void PbApp::click_fill(const OpenChart& chart, size_t index) {
     if (index >= scene.fills.size()) return;
     const PreviewFill& f = scene.fills[index];
     if (f.state == app::PreviewFillState::Taken) {
-        for (size_t k = 0; k < scene.activations.size(); ++k)
-            if (scene.activations[k].tick == f.chord_tick) select_step(k);
+        // The step standing on this fill is the one whose taken_fill is it.
+        for (size_t k = 0; k < scene.activations.size(); ++k) {
+            if (scene.activations[k].taken_fill != index) continue;
+            select_step(k);
+            break;
+        }
         return;
     }
     const std::string reason = fill_reason(scene, index);

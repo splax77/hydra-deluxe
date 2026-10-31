@@ -329,6 +329,11 @@ struct PreviewScene {
     bool has_sp_gauge() const { return timing.has_value(); }
 };
 
+// The index in scene.fills of the fill riding on the chord at `tick`, or none:
+// the same lookup apply_preview_overlay makes to mark a fill, for a caller that
+// asks about one tick.
+std::optional<size_t> fill_index_on_chord(const PreviewScene& scene, int64_t tick);
+
 // The last note the highway draws, or null when the scene has none. The one
 // answer to "when is the scene's last note": the beat grid ends past it. It
 // is not the song's length (PreviewScene::song_length_ms, app::song_length_ms).

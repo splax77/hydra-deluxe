@@ -278,6 +278,11 @@ const PreviewActivation* running_activation(const PreviewScene& scene, double no
 
 }  // namespace
 
+std::optional<size_t> fill_index_on_chord(const PreviewScene& scene, int64_t tick) {
+    size_t from = 0;
+    return fill_on_chord(scene.fills, tick, from);
+}
+
 const PreviewNote* last_drawn_note(const PreviewScene& scene) {
     return scene.notes.empty() ? nullptr : &scene.notes.back();
 }
