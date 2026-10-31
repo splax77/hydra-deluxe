@@ -20,8 +20,7 @@ import sys
 DEFAULT_DUMPER = r"C:\Users\Patrick\Downloads\Il2CppDumper-net7-v6.7.46\Il2CppDumper.exe"
 
 # The cap on one dumper run, which the user approved on 2026-10-28 as
-# question 5 of docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md
-# (removed; git show
+# question 5 of the feasibility-tests plan (removed; read it with git show
 # 444631e6:docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md).
 DUMPER_CAP_S = 600
 

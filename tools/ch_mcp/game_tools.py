@@ -1,10 +1,10 @@
 """The Clone Hero MCP server's game-side tools: start and stop the game, read
 its stats files, press drum lanes and menu keys, and run the auto-player.
 
-Each tool is a thin call into the module that owns the work (the plan
-docs/superpowers/plans/2026-10-28-ch-mcp-server.md (removed; git show
-444631e6:docs/superpowers/plans/2026-10-28-ch-mcp-server.md), "The tools" and
-"Who owns which question"). This module adds only the session state the server keeps
+Each tool is a thin call into the module that owns the work (the server
+plan's "The tools" and "Who owns which question"; the plan is removed, read it
+with git show 444631e6:docs/superpowers/plans/2026-10-28-ch-mcp-server.md).
+This module adds only the session state the server keeps
 between tool calls: the open bot_run.Run, the backup folder, the play thread
 and its press rows, and one scratch folder per session.
 

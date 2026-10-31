@@ -375,9 +375,8 @@ def write_facts(dump_path: str, game_version: str, engine_ctor_rva: int) -> tupl
 # ---- the facts table (--tsv) -------------------------------------------------
 
 # The build a page fact belongs to when nothing on the page names another
-# (task K5a of docs/superpowers/plans/2026-10-30-clone-hero-reference.md
-# (removed; git show
-# 444631e6:docs/superpowers/plans/2026-10-30-clone-hero-reference.md)). constants.py
+# (task K5a of the Clone Hero reference plan; removed, read it with git show
+# 444631e6:docs/superpowers/plans/2026-10-30-clone-hero-reference.md). constants.py
 # describes this build too (its docstring), so its facts are this build's.
 DEFAULT_BUILD = "6142"
 
