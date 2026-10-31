@@ -474,7 +474,7 @@ Found: 2026-10-18, session b71e9156.
 
 Rule: the load coroutine builds the song length as the earlier of the end event and the later of the audio length and the last note end, plus 1 second; an unusable end event drops the Min.
 Label: Unknown
-Evidence: the 1 second is the double 1.0 at RVA `0x3063DC0` in the DLL's read-only data (it has no `constants.py` name yet); `code/6142/gm_load_coroutine_D8D80.asm` line 388 adds it (`addsd` from `0x3063dc0`, dbl=1.0). That listing was not re-read for the Min and Max in this pass, the Min and Max helpers were not opened, and the 2026-10-18 disassembly survives only as about ten lines quoted in docs/handoffs/2026-10-18-song-length-end-event-handoff.md lines 164 to 186.
+Evidence: the 1 second is the double 1.0 at RVA 0x3063DC0 in the DLL's read-only data (a constant, not a method; it has no `constants.py` name yet); `code/6142/gm_load_coroutine_D8D80.asm` line 388 adds it to the length. That listing was not re-read for the Min and Max in this pass, the Min and Max helpers were not opened, and the 2026-10-18 disassembly survives only as about ten lines quoted in docs/handoffs/2026-10-18-song-length-end-event-handoff.md lines 164 to 186.
 Game code (6142): load coroutine RVA `0xD8D80`; listing lost; read 2026-10-18 in session b71e9156.
 Hydra: `app::song_length_ms` in src/app/song_length.cpp line 28; `kSongEndPadMs` in src/app/song_length.h line 37.
 Ruling: D255 item 2: "Copy the pad (Recommended)".

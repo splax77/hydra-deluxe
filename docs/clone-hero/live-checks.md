@@ -12,7 +12,7 @@ A "bot run" is a song the game's own bot plays from a command-line start; the bo
 
 **FL-27.** Question: does Clone Hero offer a fill inside the second drum solo of "Ladies Talk", where no fill is written? The run that takes it is step LS3 of the Star Power plan.
 
-The chart is `testdata/input/common/IB24/T6/Senri Kawaguchi - Ladies Talk [Kiyo Sen] (Drumeo Performance)/notes.mid`, at 480 ticks a beat. Both sources agree on the ticks. Wave 1 scout H4 read the chart: the last written fill before the gap runs from tick 131,520 to 132,960, the next from 191,760 to 193,200, and the solo from 140,400 to 186,480. LS3 reads them from Hydra's score file: the fill before the solo ends on chord 1019 at tick 132,960 (114,628.9 ms, measure m76), and the fill after ends on chord 1514 at tick 193,200 (166,546.0 ms, m108). LS3's window is those two times moved inward, 114,778.9 to 166,544.0 ms.
+The chart is `testdata/input/common/IB24/T6/Senri Kawaguchi - Ladies Talk [Kiyo Sen] (Drumeo Performance)/notes.mid`, at 480 ticks a beat. Both sources agree on the ticks. In the chart, the last written fill before the gap runs from tick 131,520 to 132,960, the next from 191,760 to 193,200, and the solo from 140,400 to 186,480. LS3 reads them from Hydra's score file: the fill before the solo ends on chord 1019 at tick 132,960 (114,628.9 ms, measure m76), and the fill after ends on chord 1514 at tick 193,200 (166,546.0 ms, m108). LS3's window is those two times moved inward, 114,778.9 to 166,544.0 ms.
 
 Pass: no Star Power flip inside the window, although Star Power is ready there with the flag clear. Fail: a flip inside it. Needs Star Power and a menu start: the bot never activates, and the flip comes from the game's press handler at a flagged note.
 
