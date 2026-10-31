@@ -42,6 +42,10 @@ enum class LegendSwatch { Offered, Activation, Cant, Locked, Tinted };
 // it with ImGui::SameLine(0, 0).
 void legend_swatch(LegendSwatch kind, ImU32 col = 0);
 
+// How wide a legend swatch's item is, for a caller that lays the legend's
+// entries out in lines.
+float legend_swatch_width();
+
 // A filled circle `diameter` wide in `col`, as an item at the cursor, with
 // `centred_text` (when not null) centred in it in the colour the activation
 // bands write their numbers in. Callers outside ui/ draw their dots through

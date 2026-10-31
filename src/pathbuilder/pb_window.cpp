@@ -22,6 +22,7 @@
 #include "pathbuilder/pb_menu.h"
 #include "pathbuilder/pb_open.h"
 #include "search/graph.h"  // fill_rule_for
+#include "ui/fonts.h"  // rem
 #include "ui/preview_controller.h"
 #include "ui/preview_panel.h"
 #include "ui/preview_timeline.h"
@@ -34,12 +35,16 @@ namespace hydra::pathbuilder {
 namespace {
 
 // The second mockup's sizes, each in rem: a multiple of the font size
-// (rem() below), as the user's answer to plan Q1 chose. Each names its line
+// (ui::rem), as the user's answer to plan Q1 chose. Each names its line
 // of docs/superpowers/specs/2026-10-31-path-builder-mockup-2/mockup_template.html.
 // The side column beside the Preview and the gap before it: line 91,
 // `.lower{grid-template-columns:minmax(0,1fr) 27rem;gap:.6rem}`.
 constexpr float kSideColumnRem = 27.0f;
 constexpr float kLowerGapRem = 0.6f;
+// The head row's gaps: line 34, `.head{...gap:2rem}` (before the scores and
+// before the buttons), and line 37, `.nums{gap:1.6rem}` (between the scores).
+constexpr float kHeadGapRem = 2.0f;
+constexpr float kScoresGapRem = 1.6f;
 // How wide the hover tooltip may grow before it wraps: line 87, `.tip{max-width:24rem}`.
 constexpr float kTooltipRem = 24.0f;
 // The space between the legend's items: line 48, `.legend{gap:1.1rem}`.
@@ -51,7 +56,7 @@ constexpr float kTierDotRem = 0.7f;
 // A step's numbered disc: line 136, `.step .n{width:1.6rem}`.
 constexpr float kStepDiscRem = 1.6f;
 
-float rem(float n) { return n * ImGui::GetFontSize(); }
+using ui::rem;
 
 // What the window says when the file dialog never appeared: File > Open's,
 // then Open path...'s or Save path...'s (a dropped file opens as a chart, so
@@ -446,7 +451,7 @@ void PbApp::draw_head(const OpenChart& chart) {
     const char* hints[] = {kYourScoreHint, kBestReachHint, kBestPossibleHint};
     const std::optional<int64_t> values[] = {mine, reach, best};
     for (size_t i = 0; i < 3; ++i) {
-        ImGui::SameLine(0.0f, rem(kLegendGapRem));
+        ImGui::SameLine(0.0f, rem(i == 0 ? kHeadGapRem : kScoresGapRem));
         ImGui::BeginGroup();
         ImGui::TextDisabled("%s", labels[i]);
         if (i == 0) {
@@ -467,7 +472,7 @@ void PbApp::draw_head(const OpenChart& chart) {
 
     PathHistory& h = state.history();
     DecisionList& d = state.decisions();
-    ImGui::SameLine(0.0f, rem(kLegendGapRem));
+    ImGui::SameLine(0.0f, rem(kHeadGapRem));
     ImGui::BeginDisabled(!h.can_undo());
     if (ImGui::Button(kUndoLabel)) {
         pending_guide_.reset();
@@ -562,7 +567,7 @@ void PbApp::draw_legend(const OpenChart& chart) {
     // The entries flow left to right and wrap at the window's edge, as the
     // mockup's `.legend{flex-wrap:wrap}` does.
     const float gap = rem(kLegendGapRem);
-    const float swatch_w = ImGui::GetTextLineHeight();
+    const float swatch_w = ui::legend_swatch_width();
     bool first = true;
     const auto next_entry = [&](float w) {
         if (!first && ui::fits_on_line(w, gap)) ImGui::SameLine(0.0f, gap);

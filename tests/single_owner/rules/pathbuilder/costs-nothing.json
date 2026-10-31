@@ -12,7 +12,7 @@
       "pattern": "\\bcosts?(?:\\[\\w+\\])?\\s*(?:<=|>)\\s*0\\b",
       "must_match": [
         "if (c.cost > 0) continue;",
-        "c.act_tick, c.cost <= 0 ? std::string(kBestFillLabel) : app::format_cost_short(c.cost),",
+        "c.act_tick, c.cost <= 0 ? std::string(kBestFillLabel) : app::format_cost(c.cost),",
         "label += costs[e] <= 0 ? std::string(kBestFillLabel) : app::format_cost(costs[e]);",
         "if (numbers->cost <= 0) {"
       ],

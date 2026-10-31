@@ -7,7 +7,7 @@
 #include "core/timing.h"  // kSpActivationBars
 #include "imgui_internal.h"  // IM_PI
 #include "render/overlay_layout.h"  // ellipsize
-#include "ui/fonts.h"     // px
+#include "ui/fonts.h"     // px, rem
 #include "ui/text_role.h"  // ScopedFont, text_size
 #include "ui/theme.h"     // kBestPathColor
 
@@ -34,10 +34,6 @@ constexpr ImU32 rgba(int r, int g, int b, float a) {
 constexpr ImU32 with_alpha_of(ImU32 col, ImU32 alpha_of) {
     return (col & ~IM_COL32_A_MASK) | (alpha_of & IM_COL32_A_MASK);
 }
-
-// A size in rem: one rem is the current font size, as the second mockup's
-// `html{font-size:15px}` (line 17) makes it there.
-float rem(float r) { return r * ImGui::GetFontSize(); }
 
 // Row heights, from renderRows' `style="height:...rem"` on each `.row`
 // (second mockup, lines 451 to 476).
@@ -290,11 +286,13 @@ void draw_star(ImDrawList* dl, ImVec2 min, float size, bool filled, ImU32 col) {
         dl->AddPolyline(pts, kPoints * 2, col, ImDrawFlags_Closed, std::max(1.0f, size * kStroke));
 }
 
+float legend_swatch_width() { return rem(kSwatchRem) + rem(kSwatchGapRem); }
+
 void legend_swatch(LegendSwatch kind, ImU32 col) {
     const float line = ImGui::GetTextLineHeight();
     const ImVec2 mn = ImGui::GetCursorScreenPos();
     const float size = rem(kSwatchRem);
-    ImGui::Dummy(ImVec2(size + rem(kSwatchGapRem), line));
+    ImGui::Dummy(ImVec2(legend_swatch_width(), line));
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const float r = size * 0.5f;
     const ImVec2 c(mn.x + r, mn.y + line * 0.5f);
