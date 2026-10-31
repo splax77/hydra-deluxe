@@ -166,7 +166,7 @@ Rule: The window formula's normal branch (flags bit 0x1000 clear) reads the four
 Label: Proven in the game's code
 Evidence: GD lines 767 to 781, read again for this page: the bit-clear branch (lines 772 to 774) multiplies by the addresses listed at constants.py lines 175 to 180, and the bit-set branch (lines 779 to 781) by those at lines 166 to 171. Wave 1 scout H7b checked the arithmetic: with the bit-clear constants the formula gives 171.43126 ms at an input of 170 and 96.29316 ms at 75, the two ends of `tools/ch_probe/experiments/results/poll_windows.csv`; the other table gives -242 and -78.
 Game code (6142): window formula, RVA `0x20DDDA0`; flags field `#8288+0x198`.
-Hydra: no owner in src/; the two tables are `RVA_FORMULA_NORMAL` (constants.py line 166) and `RVA_FORMULA_PRECISION` (line 175), and the tool's normal-window prediction in tools/ch_probe/analysis.py reads the first.
+Hydra: no owner in src/; the two tables are `RVA_FORMULA_NORMAL` (constants.py line 166) and `RVA_FORMULA_PRECISION` (line 175), and the tool's normal-window prediction (`predicted_window_normal` in tools/ch_probe/experiments/analysis.py, fed by `normal_formula_constants` at lines 312 to 316) reads the first.
 Ruling: open split: see questions page Q-76
 Found: 2026-10-30, this plan's wave 1 scout H7b.
 
@@ -176,7 +176,7 @@ Found: 2026-10-30, this plan's wave 1 scout H7b.
 
 Rule: On a drums run, three methods run once for every note: `0x20DEEC0` on the drum engine (adds a hit's points; its arguments are the note and base points 50), `0x20DE770` on the drum engine (handles a hit's accent and ghost flags), and `0x100E6E0` on the base #8253 instantiated on #8663. No other method came within one of the note count.
 Label: Proven in a live run
-Evidence: `RUNS\l3\trace-wm-count.txt` (2026-10-28, bot, Window Map, 142 notes): "once per note (count 142)" lists the three, and the next lowest count is 2402; `RUNS\l3\keys\trace-keys-count.txt` (key presses): 139 each, cut short by the trace's cap (see IN-18). The signatures are `dump.cs` lines 527454 to 527455, 527547 to 527548 and 527352 to 527353. Listings of the first two are on page 06 (`code/6142/note_score_add_20DEEC0.asm`, `code/6142/note_hit_dynamics_20DE770.asm`).
+Evidence: `RUNS\l3\trace-wm-count.txt` (2026-10-28, bot, Window Map, 142 notes): "once per note (count 142)" lists the three, and of the 44 hooked addresses the only counts above 142 are 2402 and then 20,831 and up (the others read 0); `RUNS\l3\keys\trace-keys-count.txt` (key presses): 139 each, cut short by the trace's cap (see IN-18). The signatures are `dump.cs` lines 527454 to 527455, 527547 to 527548 and 527352 to 527353. Listings of the first two are on page 06 (`code/6142/note_score_add_20DEEC0.asm`, `code/6142/note_hit_dynamics_20DE770.asm`).
 Game code (6142): #8255 methods RVA `0x20DEEC0` and `0x20DE770`; #8253 instantiation method RVA `0x100E6E0`.
 Hydra: no owner. The tool's names are `RVA_NOTE_SCORE_ADD`, `RVA_NOTE_DYNAMICS` and `PER_NOTE_DEFAULT_RVAS` in tools/ch_probe/constants.py lines 70 to 77.
 Ruling: none needed: no Hydra rule reads it.
@@ -276,9 +276,9 @@ Found: 2026-10-30, this plan's wave 2 scout R8.
 
 ### IN-27 The flag at +0x130 is set on every gain, not only on an overflow
 
-Rule: The byte at +0x130 is set by the gain method on every gain and also by the per-update clamp when the meter overflows, so it is not only an overflow flag. What clears it was not read.
+Rule: The byte at +0x130 is set by the gain method on every gain and also by the per-update clamp when the meter overflows, so it is not only an overflow flag. While Star Power is on, the per-update method recomputes the end time at +0x120 when the byte is set and then clears it; no clear was found in these two methods for the Star-Power-off case, and no other method was searched.
 Label: Proven in the game's code
-Evidence: `code/6142/sp_gain_20F4FA0.asm` lines 44 to 57 (sets +0x130, then sends the new meter ratio); GD lines 53552 to 53562 (the clamp in the per-update method sets it too). The live data fits: in `overlay-spike/run1_cal0_sp_watch.csv` the flag is 1 in 22,890 rows, all with Star Power off and 1440 or 2880 ticks in the meter, and first turns on at 5.715 s with a quarter meter and no clamp.
+Evidence: `code/6142/sp_gain_20F4FA0.asm` lines 44 to 57 (sets +0x130, then sends the new meter ratio); GD lines 53552 to 53572 (the clamp in the per-update method sets it at line 53556; the test at line 53558 recomputes the end time and the store at line 53572 clears it, all inside the Star-Power-on branch that starts at line 53512). The live data fits that: the flag is 0 in all 11,436 rows with Star Power on, and in `overlay-spike/run1_cal0_sp_watch.csv` it is 1 in 22,890 rows, all with Star Power off and 1440 or 2880 ticks in the meter, and first turns on at 5.715 s with a quarter meter and no clamp.
 Game code (6142): `#8288+0x130`; gain method RVA `0x20F4FA0`; per-update method RVA `0x20F6800`.
 Hydra: no owner in src/. The tool calls it `OFF_SP_OVERFLOW` (tools/ch_probe/constants.py line 140) and its comment at lines 137 to 140 says it is set only on an overfill.
 Ruling: open split: see questions page Q-79
@@ -292,7 +292,7 @@ Rule: `SongEntry` (TypeDefIndex 176) holds the song checksum at +0x38. `GlobalVa
 Label: Proven in the game's code
 Evidence: `dump.cs` line 11073 (the class) and its checksum field at 0x38; `dump.cs` lines 55801 to 55830 (currentSongEntry at 0x28, static instance at 0x8). `overlay-spike/il2cpp-fields.md` lines 263 to 300 give the same, and say nothing there was read from a running game.
 Game code (6142): `SongEntry.checksum`, `GlobalVariables.currentSongEntry`, `GlobalVariables.instance`; dump text, no listing.
-Hydra: no owner of the route. Hydra's own chart id is `hash_chart_file` in src/app/analysis.h line 83; whether it equals this checksum is page 01's song-id row.
+Hydra: no owner of the route. Hydra's own chart id is `hash_chart_file` in src/app/analysis.h line 88; whether it equals this checksum is page 01's song-id row.
 Ruling: none needed: no Hydra rule reads it.
 Found: this plan's wave 1 scout H7a (docs survey line 191).
 
@@ -342,10 +342,9 @@ Found: 2026-10-30, this plan's wave 2 scouts R8 and R4.
 
 ### IN-33 A remote player's engine adds no score and drains no Star Power
 
-Rule: When the player kind is RemotePlayer, the engine's score adds and its Star Power update return early; Player, Bot and Replay engines run them.
+Rule: When the player kind is RemotePlayer, the engine's two score adds return at once and its per-update Star Power method skips the drain step (it still runs the clamp after it); Player, Bot and Replay engines run all of them.
 Label: Proven in the game's code
-Evidence: `code/6142/add_note_score_20F6EB0.asm` lines 13 to 14, `code/6142/add_points_20F5F70.asm` line 1 and `code/6142/sp_update_20F6800.asm` lines 37 to 38 (each compares +0x190 with 1); the enum at `dump.cs` line 546294.
-Game code (6142): RVA `0x20F6EB0`, RVA `0x20F5F70`, RVA `0x20F6800`; field `#8288+0x190`.
+Evidence: `code/6142/add_note_score_20F6EB0.asm` lines 13 to 14, `code/6142/add_points_20F5F70.asm` line 1 and `code/6142/sp_update_20F6800.asm` lines 37 to 38 (each compares +0x190 with 1; the first two jump to their return, the third jumps past the drain to the clamp, listing line 69); the enum at `dump.cs` line 546294.Game code (6142): RVA `0x20F6EB0`, RVA `0x20F5F70`, RVA `0x20F6800`; field `#8288+0x190`.
 Hydra: no owner: Hydra has no network player.
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-10-30, this plan's wave 2 scout R4.
@@ -394,7 +393,7 @@ Found: 2026-10-28, feasibility study lines 31 and 119.
 
 Rule: The "is_bot" key of `scorestats.json` seems to come from a serializer reading a field name, because no code refers to the string.
 Label: Unknown
-Evidence: unchecked by the scout: a scan of 838,088 direct calls and data references found no reference to the "is_bot" string slot (`stringliteral.json` slot 0x3CBAE88), while the same scan found the "combo: {0}" references, but a reference through a table the scan does not follow would also look like this.
+Evidence: unchecked by the scout: a scan of 838,088 direct calls and data references found no reference to the "is_bot" string's slot in `stringliteral.json`, while the same scan found the "combo: {0}" references, but a reference through a table the scan does not follow would also look like this.
 Game code (6142): not found.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
@@ -543,6 +542,28 @@ Game code (6142): generator RVA `0x20D2B30`; gain method RVA `0x20F4FA0`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-10-30, this plan's wave 2 scout R8.
+
+## The earlier probe and the launch line
+
+### IN-53 The command-line launch flags and what the game does after a bot song
+
+Rule: The game's manual lists the flags `--song <folder>`, `--player <Instrument>,<Difficulty>`, `--profile`, `-i` and `-v`, and a song started with `--song` and `--player` plays with a bot. After the bot song ended, the game was still running 30 s later, on a menu or the results screen.
+Label: Unknown
+Evidence: unchecked by the scout: the manual page was not opened and the "still running 30 s later" check is one observation recorded only in the feasibility study (lines 29 and 119). What the tools send is `launch_command` in tools/ch_mcp/bot_run.py (lines 160 to 169): `--song`, `--player`, and `--profile` when a profile is given; the three bot runs behind IN-37 show that launch does play a song to its end.
+Game code (6142): not found: the command-line parser was not read.
+Hydra: no owner. The tool's command line is `launch_command` in tools/ch_mcp/bot_run.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-28, feasibility study lines 29 and 119.
+
+### IN-54 The first auto-player counted a hit when the score rose
+
+Rule: In September 2026 the probe's auto-player (`experiments/play_chart.py`) played the chart "Slipping" and counted a hit each time the score went up; the probe finds the drum engine by scanning memory for the two window constants stored side by side at +0x30 and +0x38.
+Label: Proven in a live run
+Evidence: `tools/ch_probe/experiments/results/hit_detect.csv` (2026-09-25 run, tracked by commit 283e0288): 60 rows, every `hit` True, the `score` column rising on every row from 1350 to 4850. The file does not name the script that wrote it, and its date is the commit's, not checked against a game log. That the auto-player counts a hit when the score rises is the feasibility study's line 19 (the code of `play_chart.py` was not read for this). The memory scan is the docstring and code of `tools/ch_probe/engine_finder.py`.
+Game code (6142): none read; a live run and the tool's own memory scan.
+Hydra: no owner. The tool's finder is `find_live_engine` in tools/ch_probe/engine_finder.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-09-25, feasibility study line 19; checked by this plan's wave 1 scout H7a.
 
 ## Rows waiting on a live run
 
