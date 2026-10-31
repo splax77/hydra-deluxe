@@ -908,14 +908,16 @@ TEST_CASE("preview scene: fills after the last activation read Offered when the 
             break;
         }
     REQUIRE(path != nullptr);
+    REQUIRE(test::act_ticks(*path) == std::vector<int64_t>{123838});
     REQUIRE(path->trailing_skipped_fill_ticks == std::vector<int64_t>{244800, 281759});
+    const int64_t last_act = test::act_ticks(*path).back();
 
     const PreviewScene scene = build_preview_scene(song, path, cfg.sp_cap, cfg.rules);
     CHECK(scene.trailing_skipped_fill_ticks == path->trailing_skipped_fill_ticks);
     // Each fill after the activation and its state, pinned from one run.
     std::string after;
     for (const PreviewFill& f : scene.fills) {
-        if (f.chord_tick <= 123838) continue;
+        if (f.chord_tick <= last_act) continue;
         after += std::to_string(f.chord_tick) + ":" +
                  (f.state == PreviewFillState::Offered  ? "O"
                   : f.state == PreviewFillState::Taken ? "T"
@@ -930,7 +932,7 @@ TEST_CASE("preview scene: fills after the last activation read Offered when the 
     bare.trailing_skipped_fill_ticks.clear();
     const PreviewScene without = build_preview_scene(song, &bare, cfg.sp_cap, cfg.rules);
     for (const PreviewFill& f : without.fills)
-        if (f.chord_tick > 123838) CHECK(f.state == PreviewFillState::Hidden);
+        if (f.chord_tick > last_act) CHECK(f.state == PreviewFillState::Hidden);
 }
 
 // The Preview lights a stored passed-over fill by matching its tick to a fill
