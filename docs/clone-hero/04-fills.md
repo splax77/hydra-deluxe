@@ -81,7 +81,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: What the byte at a written fill's `+0x20` means, and what sets it, is not known.
 Label: Unknown
-Evidence: it is read only at `code/6142/fill_to_activation_20CFF60.asm` line 86; the constructor-like method `0x20FB9A0` that the add-fill method calls was not read. `docs/audit/ch-evidence.md` line 243 says fills with that byte set are skipped, and names no writer.
+Evidence: it is read only at `code/6142/fill_to_activation_20CFF60.asm` line 86; the constructor-like method `0x20FB9A0` that the add-fill method calls was not read.
 Game code (6142): not found: looked in the eight fill listings under `code/6142/` (`plain_drums_20EFEE0`, `fold_20F16E0`, `fill_to_activation_20CFF60`, `nearest_chord_5DE030`, `fill_generator_20D2B30`, `fill_deadline_20DDB70`, `grid_restart_20DACA0` and `add_fill_215BD50`) and in `docs/audit/ch-evidence.md`.
 Hydra: no owner: Hydra's written fill has no such field.
 Ruling: none found
