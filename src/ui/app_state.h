@@ -218,11 +218,10 @@ struct ReportSlot {
     // An out-of-date event that landed while a build was running. That build
     // read the old library or settings, so its result starts out of date.
     ReportOutOfDate out_of_date_during_build = ReportOutOfDate::None;
-    // `result` was built because its window opened with nothing in memory,
-    // as after a close let the rows go (D103 item 28). The window then keeps
-    // the search, timing, Optimal paths only and sort the user left; a result
-    // from Refresh or a batch starts them over. The path report only;
-    // AppState::collect_path_report sets it.
+    // `result` was built because its window opened with nothing in memory.
+    // The window then keeps the search, timing, Optimal paths only and sort
+    // the user left; a result from Refresh or a batch starts them over. The
+    // path report only; AppState::collect_path_report sets it.
     bool built_on_open = false;
 
     // A build stopped by Cancel. The outcome reads Cancelled, and an
@@ -583,18 +582,16 @@ public:
     // results already stored.
     void cancel_path_report();
     // Opens the path report window: the toolbar's "Open path report", the
-    // finished strip's "Open report". With nothing in memory (never built
-    // this session, or let go by close_path_report) it requests a build whose
-    // result keeps the window's filters (ReportSlot::built_on_open).
+    // finished strip's "Open report". With nothing built this session it
+    // requests a build whose result keeps the window's filters
+    // (ReportSlot::built_on_open); otherwise it shows the slot as it is.
     void show_path_report();
-    // Closes the path report window (D103 item 28): its X, Esc and Ctrl+W
-    // all come here, through the window's close callback. The rows go, a
-    // build still running stops as its Cancel stops it and never lands, and
-    // the slot starts over as never built, so the next show_path_report
-    // builds again. A batch the report waited on keeps running, with its
-    // strip; its finish builds the report as any batch's does. A question
-    // the window was asking goes with it: nothing runs, and no confirm opens
-    // in the main window.
+    // Closes the path report window (D271 item 7): its X, Esc and Ctrl+W
+    // all come here, through the window's close callback. It only hides the
+    // window, as the comparison's close does: the rows, the outcome and a
+    // build or batch wait still running all stay. A question the window was
+    // asking ends as a "no" (D276 item 6): nothing runs, no confirm opens in
+    // the main window, and a reopen with nothing built asks again.
     void close_path_report();
     // Whether the toolbar offers "Open path report" with nothing built: the
     // library has rows and analysis is on, since opening is how a library is
