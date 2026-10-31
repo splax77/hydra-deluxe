@@ -149,12 +149,7 @@ void render_actions_row(AppState& app) {
     render_status_line(app);
     // A bad settings or rules file is not a passing message: it stays under
     // the toolbar for as long as analysis is off.
-    for (const AppState::AnalysisOffLines& off : app.analysis_off_lines()) {
-        ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextColored(kWarningColor, "%s", off.sentence);
-        ImGui::TextColored(kWarningColor, "%s", off.error.c_str());
-        ImGui::PopTextWrapPos();
-    }
+    analysis_off_notice(app.analysis_off_lines(), /*with_errors=*/true);
     render_folder_manager(app);
 }
 

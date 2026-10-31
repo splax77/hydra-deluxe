@@ -221,8 +221,7 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
         }
     }
     frame.placeholder_rows = true;
-    frame.analysis_off_sentence = app::kAnalysisOffSentence;
-    frame.analysis_off_error = input.rules_error;
+    frame.analysis_off = input.analysis_off;
     frame.failure_sentence = app::kPathReportFailed;
     if (result && !w.view) frame.empty_text = result->why_empty;
 
@@ -239,7 +238,7 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
 PathReportInput path_report_input(AppState& app) {
     const PathReportSlot& slot = app.path_report;
     PathReportInput in = input_from_slot(slot, app.path_report_build());
-    in.rules_error = app.rules_error;
+    in.analysis_off = app.analysis_off_lines();
     in.keep_filters = slot.built_on_open;
     if (const BatchJob* batch = app.path_report_batch()) {
         const BatchJob::Snapshot s = batch->snapshot();

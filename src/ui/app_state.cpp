@@ -501,7 +501,7 @@ void AppState::update_view_job() {
             reload_library();  // the panel's entry follows its row (follow_selected_row)
         }
         if (job->analysis_off()) {
-            v.state = ViewedSong::State::RulesBroken;
+            v.state = ViewedSong::State::AnalysisOff;
         } else if (!out.analysis) {
             v.state = ViewedSong::State::Failed;
             v.message = std::move(out.analysis_message);
@@ -581,8 +581,8 @@ bool AppState::can_scan() const {
            !batch_running();
 }
 
-std::vector<AppState::AnalysisOffLines> AppState::analysis_off_lines() const {
-    std::vector<AnalysisOffLines> lines;
+std::vector<AnalysisOffLine> AppState::analysis_off_lines() const {
+    std::vector<AnalysisOffLine> lines;
     if (!settings_error.empty()) lines.push_back({app::kSettingsOffSentence, settings_error});
     if (!rules_error.empty()) lines.push_back({app::kAnalysisOffSentence, rules_error});
     return lines;

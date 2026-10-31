@@ -346,7 +346,7 @@ void test_rules_error(ImGuiTestContext* ctx) {
     open_details(ctx, 0);
     if (ctx->IsError()) return;
     IM_CHECK(wait_until(ctx, [&] {
-        return h.app->viewed.state == hydra::ui::ViewedSong::State::RulesBroken;
+        return h.app->viewed.state == hydra::ui::ViewedSong::State::AnalysisOff;
     }, 60));
     IM_CHECK(!h.app->viewed.record.has_value());
     IM_CHECK(h.app->library_row_at(0).status == hydra::store::RecordStatus::NotAnalyzed);

@@ -44,6 +44,7 @@
 #include "ui/app_state.h"
 #include "ui/library_jobs.h"  // set_view_analyzer_for_test
 #include "ui/library_parts.h"  // analyze_shown_label
+#include "ui/report_window.h"  // path_report_input
 
 using hydra::app::Settings;
 using hydra::store::ChartLibraryEntry;
@@ -582,11 +583,16 @@ TEST_CASE("a bad hydra_rules.ini names the key and keeps analysis off") {
     app.wait_store_open();
     CHECK(app.rules_error.find("max_tied_paths") != std::string::npos);
     CHECK(app.analysis_blocked());
+    // The path report window is given the same lines the toolbar draws.
+    const hydra::ui::PathReportInput window = hydra::ui::path_report_input(app);
+    REQUIRE(window.analysis_off.size() == 1);
+    CHECK(std::string(window.analysis_off[0].sentence) == hydra::app::kAnalysisOffSentence);
+    CHECK(window.analysis_off[0].error == app.rules_error);
 
     // A click analyzes nothing, but the Dynamics count needs only the parse,
     // so it still shows.
     click(app, song);
-    CHECK(app.viewed.state == ViewedSong::State::RulesBroken);
+    CHECK(app.viewed.state == ViewedSong::State::AnalysisOff);
     CHECK_FALSE(app.viewed.record.has_value());
     CHECK(app.viewed.dynamics.has_value());
     CHECK(hydra::test::record_rows_in(paths.db) == 0);
@@ -614,10 +620,16 @@ TEST_CASE("a bad hydra_settings.ini keeps analysis off and saves nothing") {
         CHECK(app.analysis_blocked());
         CHECK_FALSE(app.can_analyze());
         // The screens' lines: the settings file's sentence over its error.
-        const std::vector<AppState::AnalysisOffLines> off = app.analysis_off_lines();
+        const std::vector<hydra::ui::AnalysisOffLine> off = app.analysis_off_lines();
         REQUIRE(off.size() == 1);
         CHECK(std::string(off[0].sentence) == hydra::app::kSettingsOffSentence);
         CHECK(off[0].error == app.settings_error);
+        // With only the settings file bad, the path report window still gets
+        // a reason, the same line.
+        const hydra::ui::PathReportInput window = hydra::ui::path_report_input(app);
+        REQUIRE(window.analysis_off.size() == 1);
+        CHECK(std::string(window.analysis_off[0].sentence) == hydra::app::kSettingsOffSentence);
+        CHECK(window.analysis_off[0].error == app.settings_error);
         // The defaults, not the file's lines before the bad one.
         CHECK(app.settings.chartfolders.empty());
 

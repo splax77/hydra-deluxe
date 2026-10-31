@@ -171,7 +171,7 @@ struct ViewedSong {
         Cancelled,    // the panel's Cancel stopped it ("Analysis cancelled.")
         Failed,       // `message` and `error` say why
         FileMissing,  // the chart file is gone; the panel's notice says so
-        RulesBroken,  // analysis is off; only the Dynamics count ran
+        AnalysisOff,  // analysis is off; only the Dynamics count ran
     };
     State state = State::None;
     std::optional<HydraRecord> record;     // set only when Ready
@@ -186,7 +186,7 @@ struct ViewedSong {
     std::string message;
     std::string error;
     // The Dynamics count, or why it failed. Set in every state the job
-    // finished in, RulesBroken included.
+    // finished in, AnalysisOff included.
     std::optional<app::DynamicsBreakdown> dynamics;
     std::string dynamics_message;
     std::string dynamics_error;
@@ -299,7 +299,7 @@ public:
     void wait_store_open();
     // Set at startup when hydra_rules.ini is bad (the loader's message, which
     // names the key). While set, analysis is off: start_batch does nothing
-    // and a click counts only the Dynamics (ViewedSong::State::RulesBroken).
+    // and a click counts only the Dynamics (ViewedSong::State::AnalysisOff).
     // It clears only on a restart with a fixed file; there is no fallback to
     // the default rules.
     std::string rules_error;
@@ -316,11 +316,7 @@ public:
     // sentence from app/user_messages.h and the loader's error, the settings
     // file first (D103 item 24, D114 item 11, D276 item 1). Empty when
     // analysis is on.
-    struct AnalysisOffLines {
-        const char* sentence;
-        std::string error;
-    };
-    std::vector<AnalysisOffLines> analysis_off_lines() const;
+    std::vector<AnalysisOffLine> analysis_off_lines() const;
 
     // Library browsing: every scanned chart in memory, with its stored
     // summary, filtered by the search and the status chip and sorted by the
