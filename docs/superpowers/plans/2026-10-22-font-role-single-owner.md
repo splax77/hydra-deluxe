@@ -54,6 +54,15 @@ A role is the kind of text, not the font. A future draw call picks a role by ask
 
 The four fixed-size variants are **SongTitle** (default, 26 px; `details_panel.cpp` 70), **HeadlineScore** (default, 40 px; 110), **HeadlinePath** (mono, 24 px; 115) and **DialogQuestion** (default, 20 px; `library_dialogs.cpp` 351). They match the mockup (Main.dc.html 135 and 136) and change nothing visible.
 
+Roles added since this plan was written, each in `font_for` in `src/ui/text_role.h`:
+
+- **AppVersion** is the version bar's app name and version (default, 20 px).
+- **TimelineCost** is the cost under a fill on the Path Builder's timeline (mono, 10.5 px). Mono, like Figure, because the mockup sets tabular figures on it (`.flab`, line 55 of `docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html`).
+- **TimelineSection** is a section's name on that timeline (default, 11.5 px; `.sec`, mockup line 42).
+- **TimelineAxis** is a time on that timeline's axis (mono, 11 px; `.axis span`, mockup line 56).
+
+The three timeline roles take the mockup's sizes because the user chose them at the real-app check ("User decisions (PV-4, 2026-10-30)" in `docs/superpowers/plans/2026-10-30-path-builder-redesign.md`).
+
 ## The owner
 
 One header, `src/ui/text_role.h`, in namespace `hydra::ui`. It is the only file that reads `g_mono_font`, calls `ImGui::PushFont`, or asks `ImGui::GetFont()` for a font to draw with. `fonts.h` keeps the handle and `app_shell.cpp` keeps the loader; neither picks a role.
