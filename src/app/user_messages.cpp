@@ -159,6 +159,7 @@ std::optional<KindSentence> kind_sentence(const KindedError& e) {
         case ErrorKind::NoRecords: return KindSentence{kNoRecords};
         case ErrorKind::ReportWrite: return KindSentence{kReportWrite};
         case ErrorKind::RulesFile: return KindSentence{kAnalysisOffSentence};
+        case ErrorKind::SettingsFile: return KindSentence{kSettingsOffSentence};
         case ErrorKind::AudioDecode: return KindSentence{kAudioDecode};
         case ErrorKind::PreviewAssets: return KindSentence{kPreviewAssets};
         case ErrorKind::UpdateUnverified: return KindSentence{kUpdateUnverifiedSentence};
@@ -196,8 +197,8 @@ std::string plain_error_line(const std::exception& e) {
     return plain_error_line(plain_error(e), plain_error_detail(e));
 }
 
-std::string rules_file_tool_text(const std::exception& e) {
-    return std::string("hydra_rules.ini has an error:\n") + e.what();
+std::string ini_file_tool_text(std::string_view file_name, const std::exception& e) {
+    return std::string(file_name) + " has an error:\n" + e.what();
 }
 
 std::string plain_error_block(const std::exception& e) {

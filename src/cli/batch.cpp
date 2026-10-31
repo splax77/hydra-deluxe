@@ -99,7 +99,10 @@ int batch_main() {
         return 2;
     }
 
-    hydra::app::Settings settings = hydra::app::Settings::load_for_command_line(legacy_fills);
+    // A bad settings file stops the run before the store opens, as a bad
+    // rules file does (D270 call 4).
+    hydra::app::Settings settings;
+    if (const int code = hydra::app::load_tool_settings(settings, legacy_fills)) return code;
     if (const int code = hydra::app::load_tool_rules(rulespath, settings.rules)) return code;
     // A whole-library run saves its scan as the library, so a chart folder it
     // cannot read stops it before the store opens, as Scan library stops

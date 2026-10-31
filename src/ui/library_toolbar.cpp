@@ -93,7 +93,7 @@ void render_actions_row(AppState& app) {
         if (c >= '0' && c <= '9') c = widest;
     const float analyze_w =
         std::max(button_slot_width("Analyze library..."), button_slot_width(sample.c_str()));
-    // Off with nothing to analyze, under a bad hydra_rules.ini, or mid-batch.
+    // Off with nothing to analyze, or when AppState::can_analyze says no.
     const bool analyze_off = analyzable == 0 || !app.can_analyze();
     begin_disabled_button(analyze_off);
     if (button_in_slot(label.c_str(), analyze_w)) app.open_batch_confirm();
@@ -147,14 +147,9 @@ void render_actions_row(AppState& app) {
     }
 
     render_status_line(app);
-    // A bad rules file is not a passing message: it stays under the toolbar
-    // for as long as analysis is off.
-    if (app.analysis_blocked()) {
-        ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextColored(kWarningColor, "%s", app::kAnalysisOffSentence);
-        ImGui::TextColored(kWarningColor, "%s", app.rules_error.c_str());
-        ImGui::PopTextWrapPos();
-    }
+    // A bad settings or rules file is not a passing message: it stays under
+    // the toolbar for as long as analysis is off.
+    analysis_off_notice(app.analysis_off_lines(), /*with_errors=*/true);
     render_folder_manager(app);
 }
 
