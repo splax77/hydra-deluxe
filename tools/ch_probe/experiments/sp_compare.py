@@ -210,11 +210,17 @@ class Rise(NamedTuple):
         return self.after - self.before
 
 
+def _rise_rows(rows: list, amount_col: str) -> list:
+    """The index of every row whose amount is above the row before it. This is
+    the one place that says what a rise is."""
+    return [i for i in range(1, len(rows))
+            if rows[i][amount_col] > rows[i - 1][amount_col]]
+
+
 def phrase_rises(rows: list, amount_col: str) -> list:
     """Every step up of the amount from one row to the next, as Rise tuples."""
     return [Rise(_ms(rows[i]), rows[i - 1][amount_col], rows[i][amount_col])
-            for i in range(1, len(rows))
-            if rows[i][amount_col] > rows[i - 1][amount_col]]
+            for i in _rise_rows(rows, amount_col)]
 
 
 def _inside(row: dict, start_ms: float, end_ms: float) -> bool:
@@ -230,8 +236,10 @@ def flips_between(rows: list, start_ms: float, end_ms: float) -> list:
 
 
 def at_ready_level(amount, sp_max) -> bool:
-    """Whether an amount is enough for an activation on a meter of sp_max."""
-    return amount >= READY_FRACTION * sp_max
+    """Whether an amount is enough for an activation on a meter of sp_max. A
+    meter that holds nothing (sp_max 0, a read before the game set it up) is
+    never ready."""
+    return sp_max > 0 and amount >= READY_FRACTION * sp_max
 
 
 @dataclass
@@ -267,21 +275,21 @@ def _check_phrase_rises(report: Report, rows: list, chords: list,
                         amount_col: str, max_col: str) -> None:
     used_steps = set()
     full_sizes = []
+    rise_rows = _rise_rows(rows, amount_col)
     for chord in chords:
         if not chord["is_sp_phrase_end"]:
             continue
         lo = chord["ms"] - EARLY_CREDIT_MS
         hi = chord["ms"] + EVENT_WINDOW_MS
         step = None
-        for i in range(1, len(rows)):
+        for i in rise_rows:
             t = _ms(rows[i])
             if t < lo or i in used_steps:
                 continue
             if t > hi:
                 break
-            if rows[i][amount_col] > rows[i - 1][amount_col]:
-                step = i
-                break
+            step = i
+            break
         if step is None:
             report.check(False, f"phrase rise after {_chord_label(chord)}: "
                          f"missing (no rise from {_fmt(lo)} to {_fmt(hi)})")
