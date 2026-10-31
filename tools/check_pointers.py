@@ -7,7 +7,10 @@ the way the docs-vs-code test does for numbers. It never fixes a document.
     py -I tools/check_pointers.py [--memory <folder>] [--gates <folder>] [--repo <root>] [--session-start]
 
 documents() says which files are read, Pointers.judge() how one pointer is judged, and
-is_pointer() which names count. Each broken pointer prints as
+is_pointer() which names count. A pointer to a file that left the repo is not broken when its
+own line says how to read the file from git history (Pointers.has_fallback()). On the rulings
+pages a pointer inside the user's quoted words is not checked, since those words stay as the
+user typed them (in_quotes()). Each broken pointer prints as
 "file:line: pointer (missing | retired | found at <other place>)", then one summary line.
 Exit 0 when nothing is broken, 1 when something is, 2 on a bad argument. With
 --session-start (the SessionStart hook's form) it always exits 0 and prints a hook reply
@@ -17,6 +20,7 @@ only when something is broken, or when the check itself failed.
 import argparse
 import json
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -30,6 +34,30 @@ HOOK_EXTENSIONS = (".py", ".ps1", ".sh")
 HOOK_FOLDERS = ("", "lib", "tests")
 SKIP_FOLDERS = {".git", "__pycache__", "state"}
 SESSIONS_LINE = "Sessions:"
+# A backticked git show of one file at one commit, as a doc gives it for a file that left the repo.
+GIT_SHOW = re.compile(r"`git show ([0-9a-fA-F]{7,40}):([^`\s]+)`")
+# Words on a line that say its git show is to be run in the hooks repo (lower case).
+HOOKS_REPO_WORDS = "hooks repo"
+# The folder of the rulings pages, below the repo root; they quote the user word for word.
+RULINGS_FOLDER = os.path.join("docs", "agents", "rulings")
+
+
+def _slashes(p):
+    return p.replace("\\", "/")
+
+
+def in_quotes(line, tok, nth):
+    """Whether the nth appearance (from 0) of a token on its line sits inside a double-quoted
+    span there. The tokeniser gives no column, so the token is found again on the line with the
+    tokeniser's own span pattern: a backticked token among the spans, a bare one in the text
+    left when the spans are blanked out."""
+    spans = doc_tokens._SPAN
+    if tok.backticked:
+        starts = [m.start() for m in spans.finditer(line) if m.group(2).strip() == tok.text]
+    else:
+        rest = spans.sub(lambda m: " " * len(m.group(0)), line)
+        starts = [m.start() for m in re.finditer(re.escape(tok.text), rest)]
+    return nth < len(starts) and line.count('"', 0, starts[nth]) % 2 == 1
 
 
 def documents(repo_root, memory):
@@ -78,6 +106,7 @@ class Pointers:
         self._refs = None
         self._index = None
         self._old_names = None
+        self._opens = {}
 
     def is_pointer(self, t):
         """Whether a token names a file: the tokeniser's path shape, minus the names that only
@@ -109,7 +138,8 @@ class Pointers:
         relative path may be written from the document's own folder, the repo's root or the
         hooks repo's root; a bare hook name may also sit in a hook folder. Only the path as
         written counts, in the case the folders hold, so a file that merely ends the same way
-        is a hint and never a pass."""
+        is a hint and never a pass. This verdict reads no line, so it does not see a git show
+        fallback beside the pointer; check() asks has_fallback() for that afterwards."""
         p = doc_tokens.strip_line_ref(t)
         if doc_tokens.is_absolute(p):
             full = os.path.normpath(os.path.expanduser(p))
@@ -125,6 +155,25 @@ class Pointers:
             if os.path.exists(full) and self._exact_case(root, os.path.relpath(full, root)):
                 return self._live(full)
         return self._broken(p)
+
+    def has_fallback(self, t, line):
+        """Whether the pointer's own line gives a git show of the same path at a commit where it
+        opens. This is how a doc keeps naming a file that left the repo (CLAUDE.md, "Doc review",
+        gives the form), so such a pointer is not broken. Any wording around the git show is
+        accepted; the words in HOOKS_REPO_WORDS on the line send it to the hooks repo instead of
+        the Hydra repo. A git show that does not open leaves the pointer broken."""
+        p = _slashes(doc_tokens.strip_line_ref(t))
+        root = self.hooks_root if HOOKS_REPO_WORDS in line.lower() else self.repo.root
+        for m in GIT_SHOW.finditer(line):
+            commit, target = m.group(1), _slashes(doc_tokens.strip_line_ref(m.group(2)))
+            if target != p:
+                continue
+            key = (root, commit + ":" + target)
+            if key not in self._opens:
+                self._opens[key] = check_handoff.git(root, ["cat-file", "-e", key[1]])[0] == 0
+            if self._opens[key]:
+                return True
+        return False
 
     def _exact_case(self, root, rel):
         """Whether rel is spelled below root in the case the folders hold; on Windows a file
@@ -181,22 +230,35 @@ class Pointers:
 
 
 def check(repo_root, memory, gates):
-    """(broken lines, number of pointers checked)."""
+    """(broken lines, number of pointers checked). Two cases are left out on top of
+    is_pointer(): on a rulings page, a pointer inside the user's quoted words is not checked
+    at all (in_quotes() finds it), because a ruling keeps the user's words as typed; and a
+    pointer whose own line gives a working git show is not broken (Pointers.has_fallback())."""
     pointers = Pointers(repo_root, gates)
+    rulings = os.path.join(repo_root, RULINGS_FOLDER)
     broken, checked, verdicts = [], 0, {}
     for shown, full in documents(repo_root, memory):
         with open(full, encoding="utf-8", errors="replace") as f:
             text = f.read()
         lines = text.splitlines()
         folder = os.path.dirname(full)
+        is_ruling = _inside(rulings, full)
+        seen = {}  # (line, text, backticked) -> how many times that token came before on its line
         for tok in doc_tokens.tokens(text):
-            if lines[tok.line - 1].lstrip().startswith(SESSIONS_LINE) or not pointers.is_pointer(tok.text):
+            line = lines[tok.line - 1]
+            nth = seen.get(tok, 0)
+            seen[tok] = nth + 1
+            if line.lstrip().startswith(SESSIONS_LINE) or not pointers.is_pointer(tok.text):
+                continue
+            if is_ruling and in_quotes(line, tok, nth):
                 continue
             checked += 1
+            # The verdict depends only on the pointer and the folder, so it is cached; the
+            # fallback depends on the line, so it is asked per line.
             key = (tok.text, folder)
             if key not in verdicts:
                 verdicts[key] = pointers.judge(tok.text, folder)
-            if verdicts[key]:
+            if verdicts[key] and not pointers.has_fallback(tok.text, line):
                 broken.append("%s:%d: %s (%s)" % (shown, tok.line, tok.text, verdicts[key]))
     return broken, checked
 
