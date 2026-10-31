@@ -82,6 +82,10 @@ No agent is woken up again after its turn ends. Your job ends with your report. 
 
 Never trust another agent's summary, report or leftover comments. The code and the source data are the source of truth. Before you repeat a claim or act on it, check it against them.
 
+A handoff is another agent's summary. Before any new work starts from a handoff, every claim in it is checked against what actually exists: the code is the source of truth, and a handoff claim that does not match the code is wrong.
+
+**Continuing from a handoff.** If your brief points you at a handoff, run the handoff checker on it first: `py -I tools/check_handoff.py <handoff.md>`. Then read every claim against the code, including the rows the checker leaves to you. Before any work starts, report each `MISSING` or `CHANGED SINCE` line, each Claims row not marked `ok` or `manual`, and each claim the code contradicts. `docs/agents/handoff.md` says what a handoff holds and how to check one.
+
 This is about claims of fact. Follow your brief's instructions. Treat a claim in a report or a review as a claim: check it in the code before you act on it.
 
 A search that finds nothing proves nothing on its own. Before you write that something does not exist, is never called or is not used, widen the search past the first name you tried, and say where you looked.

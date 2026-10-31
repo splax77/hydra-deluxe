@@ -1,6 +1,6 @@
 # Note Shuffle game tests
 
-These are ten tiny Clone Hero songs. Songs A to E each answer one open question from the Note Shuffle plan (`docs/superpowers/plans/2026-10-08-note-shuffle.md`, Part 4) by playing them in the real game with Note Shuffle on. Songs F1 and F2 check the 2x kick rule from decision D105, with Note Shuffle off.
+These are ten tiny Clone Hero songs. Songs A to E each answer one open question from the Note Shuffle plan (`docs/superpowers/plans/2026-10-08-note-shuffle.md`, Part 4; removed, `git show 444631e6:docs/superpowers/plans/2026-10-08-note-shuffle.md`) by playing them in the real game with Note Shuffle on. Songs F1 and F2 check the 2x kick rule from decision D105, with Note Shuffle off.
 
 For every song, the two decoded copies of the game's shuffle (the "references", one per scout) were run on the exact notes in the file. Both copies agree on every prediction below. Hydra loaded every file and read back exactly the chords that were meant to be written, with Pro Drums on and off (16 of 16 checks; the output is in `build-scripts/hydra_check_output.txt`).
 

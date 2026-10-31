@@ -1,5 +1,6 @@
 # Phase 1 lead probes for the concept duplication audit (plan:
-# docs/superpowers/plans/2026-10-11-concept-duplication-audit.md, phase 1).
+# docs/superpowers/plans/2026-10-11-concept-duplication-audit.md, phase 1; removed,
+# git show 444631e6:docs/superpowers/plans/2026-10-11-concept-duplication-audit.md).
 # A record of the audit's one run, not a tool. Reads src/ only and prints
 # markdown to stdout. Thresholds are D113 item 8.
 #

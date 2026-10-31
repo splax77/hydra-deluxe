@@ -1,6 +1,6 @@
 # Audit of the past audits: summary (2026-10-29, session 61cee421)
 
-This audit checked how every past Hydra audit closed its findings. The question for each closure was simple: did the user ever rule on exactly this, in words that name both sides? It ran by `docs/agents/audit-method.md` and the handoff `docs/handoffs/2026-10-29-audit-of-audits-handoff.md`.
+This audit checked how every past Hydra audit closed its findings. The question for each closure was simple: did the user ever rule on exactly this, in words that name both sides? It ran by `docs/agents/audit-method.md` and the handoff `docs/handoffs/2026-10-29-audit-of-audits-handoff.md` (removed; `git show 444631e6:docs/handoffs/2026-10-29-audit-of-audits-handoff.md`).
 
 Twelve read-only scouts did the checking, nine in a first wave and three in a second. One planner designed the single Backend timings rating rule the user asked for. Every scout's blocks are in `blocks/`, and the common brief and the two helper scripts are in `briefs/`. The main session checked every PASS quote with `briefs/checkquotes.py`. That script looks for each quoted span in the repo's docs, the code, the session cards and the hooks folder. All of them were found, except three, which the main session settled by hand (see "What the main session changed").
 
@@ -73,7 +73,7 @@ Each of these is a false statement about today's code or rulings, or dead code w
 
 ## Open, by the stop rule
 
-The audit stopped after two waves of scouts. These were not reached, or need a live run, and stay open with where to look:
+The audit stopped after two waves of scouts. These were not reached, or needed a live run. Wave 3 (2026-10-31, below) took every one of them except the live check behind Q7:
 
 - Second claims inside concept-audit items the first wave closed: M03 and M05's fill-page claims (V1.md:85, 172), M06's `posted` sink (V1.md:201), M07's colour tokens (V1.md:235), M17's "is this SP cap Clone Hero's" check (V2.md:161), M21's blank `sig` (V3.md:29), M23's blank charter (V3.md:70), V4's Ch10 sentence (V4.md:174), M72 and M73's junk policy (V8.md:151), M74's stored-key byte (V8.md:195), and M77 and M81 to M83 (V9). The "Side notes" list at the end of each V file was not read.
 - D114 items 17 and 18 answered questions about the Preview's playback range, which D255 item 5 later replaced. Those two answers need a re-check against D255.
@@ -81,6 +81,18 @@ The audit stopped after two waves of scouts. These were not reached, or need a l
 - The concept side notes about `Playhead::read_frames` (the class is gone) and the audio headers' "throws std::runtime_error" wording (checked only for `device.h`).
 - Weak PASSes, read from the finding's own tables and not re-checked in code: M16, M34, M36, M37 and M48.
 
+## Wave 3 (2026-10-31)
+
+Five scouts read the open list above at main 76ffb2a8, and two fresh checkers checked every PASS and GONE they wrote. Of 68 items, 53 left as PASS or GONE and 52 of those held. The other 15, and the one that did not hold, need a fix or went to the user.
+
+Two labels in the open list were wrong. V8.md:151 sits in M73's block, not M72's, and V8.md:195 sits in M75's block; the real M74 left the concept audit as question Q20. The `Playhead` class is not gone (`src/audio/player.cpp`), but its side note is fixed (15f2e917). The `prev_tick = 0` note needs no live run: the game's code proves it, now NL-72 on `docs/clone-hero/02-note-list.md`.
+
+The user's calls are D284. The Timing column sorts in ladder order, and a score on a chart the library doesn't list reads "Not in your library" at any speed. The rules file's missing top and the silent damaged stem are dropped, as D271 item 1 drops a case no real chart shows.
+
+One bug changes what the user sees only in its own case: two song folder lines that name one folder (by case or slash, which the Song folders dialog's exact-text check lets through) list each chart twice, because `walk_folders` keeps repeated roots and nothing removes them later (AOA-W3-CHK2, V3-SN5).
+
+Fourteen fixes change nothing the user sees. Two are robustness fixes: the scan job runs with no exception guard (V9-SN1), and two Hydra processes saving settings share one temp file name (V8-SN4). Three are wrong answers no screen shows: the fill page's sort calls two empty cells unequal in both orders (V1-SN3), an audio decode error that returns no frames reads as a normal end (V8-SN1), and `relative_slash_path` drops a letter when the root has no separator after it (M75's block). Three are dead code: the report windows' closed branch (V1-SN4), `BatchProgress::current_title` (V3-SN1) and `note_in_span` (V6-SN4). One is an uninitialised `EdgeView v;` (V4-SN4). Five are comments: `report.h` still lists `--t0` to `--t5`, `app_state.h` calls `commit_settings` the one place that knows a record's identity (V2-SN4), `engine.cpp` names `add_deact_edge` (V4-SN2), `preview_view.h` says "those carrying a timecode" (V6-SN3), and `mixer.h` does not say that `mix_stems` throws. Each block names its file and line.
+
 ## Files here
 
-`blocks/AOA-*.md` holds each scout's blocks. A1 and A2 cover the derivation audit's assumptions, D1 to D3 its drifts and double readings, and U its duplicates and its rows not marked fixed. C1 and C2 cover the concept audit, and S the smaller audits. W2a to W2c are the second wave, and R1 is the rating-rule design. `briefs/common.md` is the brief every scout read. `questions.md` is the question list for the user.
+`blocks/AOA-*.md` holds each scout's blocks. A1 and A2 cover the derivation audit's assumptions, D1 to D3 its drifts and double readings, and U its duplicates and its rows not marked fixed. C1 and C2 cover the concept audit, and S the smaller audits. W2a to W2c are the second wave, W3a to W3e the third, with its closure checks in W3-CHK1 and W3-CHK2, and R1 is the rating-rule design. `briefs/common.md` is the brief every scout read. `questions.md` is the question list for the user.

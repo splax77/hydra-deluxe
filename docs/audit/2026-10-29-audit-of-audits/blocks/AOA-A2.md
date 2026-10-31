@@ -17,8 +17,8 @@ Summary: no real split in any of the 22. They are numbers nobody chose, plus two
 ### derivation 328: probe decision cut-offs
 
 - **Splits:** None: dev-tool thresholds nobody chose (tools/ch_probe/constants.py:297 `HIT_TIME_MAX_GAP_MS = 10.0`, :300 `CLOCK_FRESH_S = 0.002`, :306 `CLAMP_TOLERANCE_MS = 1.0`, :309 `CLAMP_DECISIVE_FRACTION = 0.8`). They now live in one file, so the in-file repeat of SETTLE_MS is not a split.
-- **How it left:** a question-less ruling in a plan list approved as a batch. docs/superpowers/plans/2026-10-04-phase-6.md:180: "The developer-tool and pool numbers are recorded as they are, D49-style: the probe cut-offs in 328 (10 ms hit-time gap, 2 ms fresh clock, 50 ms fill cap, 1.0 ms tolerance, 80 % majority, 0.001 window floor, 0.000001 clock step)".
-- **User's words:** DEC:211 D54: "Approved with D53: the "Recorded as recommended" list in `docs/superpowers/plans/2026-10-04-phase-6.md`, as written." DEC:205 D53: the user answered "use recommended answers to everything". DEC:219 repeats "the probe cut-offs in 328".
+- **How it left:** a question-less ruling in a plan list approved as a batch. `docs/superpowers/plans/2026-10-04-phase-6.md`, line 180 (removed; `git show 444631e6:docs/superpowers/plans/2026-10-04-phase-6.md`): "The developer-tool and pool numbers are recorded as they are, D49-style: the probe cut-offs in 328 (10 ms hit-time gap, 2 ms fresh clock, 50 ms fill cap, 1.0 ms tolerance, 80 % majority, 0.001 window floor, 0.000001 clock step)".
+- **User's words:** DEC:211 D54: "Approved with D53: the "Recorded as recommended" list in `docs/superpowers/plans/2026-10-04-phase-6.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-04-phase-6.md`), as written." DEC:205 D53: the user answered "use recommended answers to everything". DEC:219 repeats "the probe cut-offs in 328".
 - **Code today:** the four named thresholds above are in constants.py with those values, by reading. I did not check the 50 ms fill cap or the 0.001 / 0.000001 pair.
 - **Verdict:** PASS
 - **Why:** The plan line the user approved names each number with its value, and the code still holds them. It changes only a developer probe's console verdicts.
@@ -46,7 +46,7 @@ Summary: no real split in any of the 22. They are numbers nobody chose, plus two
 
 - **Splits:** None. The two homes (marker with no note; duplicate note) now answer the same way: both raise `ChartFileError` and the .chart parser's per-op catch skips the op (src/core/model.cpp:287-304). The .mid path also skips such an op (audit side note in docs/audit/2026-10-11-concept-audit/findings/V7.md:34).
 - **How it left:** a ruling in chat, recorded as D27. DEC:65: "a `.chart` modifier with no note is skipped, as Clone Hero does at 0x215DDB0 (331)".
-- **User's words:** DEC:65 D27: "Approved as recommended: ..." (the user's exact chat words are not quoted in the log). Searched: DEC, the step-2 plan header (docs/superpowers/plans/2026-10-03-step2-parser-rules.md:39), ADR 0023 line 40, the phase question files; not the session cards in full.
+- **User's words:** DEC:65 D27: "Approved as recommended: ..." (the user's exact chat words are not quoted in the log). Searched: DEC, the step-2 plan header (`docs/superpowers/plans/2026-10-03-step2-parser-rules.md`, line 39; removed, `git show 444631e6:docs/superpowers/plans/2026-10-03-step2-parser-rules.md`), ADR 0023 line 40, the phase question files; not the session cards in full.
 - **Code today:** marker with no note is dropped with the rest of the chart intact, src/core/model.cpp:291-304, by reading.
 - **Verdict:** PASS
 - **Why:** The ruling names the behaviour (skip, not reject) and its Clone Hero source. Nothing sits on the other side to disagree.
@@ -73,7 +73,7 @@ Summary: no real split in any of the 22. They are numbers nobody chose, plus two
 
 - **Splits:** None: four bare 2s became `kSpActivationBars = 2` (src/core/timing.h:51); engine and graph read it (src/search/engine.cpp:818, 946-947, 965; src/search/graph.cpp:386). I found no bare 2 left for this question.
 - **How it left:** a plan list approved as a batch, D54.
-- **User's words:** docs/superpowers/plans/2026-10-04-phase-6.md:181: "`kSpActivationBars = 2` (half a meter to activate, a Clone Hero rule no doc states; finding 334)". DEC:211 D54: "Approved with D53: the "Recorded as recommended" list ... as written." DEC:220 repeats it. CONTEXT.md:472 now records it.
+- **User's words:** `docs/superpowers/plans/2026-10-04-phase-6.md`, line 181 (removed; `git show 444631e6:docs/superpowers/plans/2026-10-04-phase-6.md`): "`kSpActivationBars = 2` (half a meter to activate, a Clone Hero rule no doc states; finding 334)". DEC:211 D54: "Approved with D53: the "Recorded as recommended" list ... as written." DEC:220 repeats it. CONTEXT.md:472 now records it.
 - **Code today:** as above, by reading.
 - **Verdict:** PASS
 - **Why:** The approved list names the number and what it means, and the code has one owner. I did not check Clone Hero itself for the rule.

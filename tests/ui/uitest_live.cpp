@@ -26,6 +26,7 @@
 #include "../wait_util.h"
 #include "core/winstr.h"
 #include "live_protocol.h"
+#include "ui/library_model.h"
 
 namespace uitest {
 
@@ -316,6 +317,12 @@ void run_live(ImGuiTestContext* ctx) {
 // The corpus song the guard tests open and click.
 constexpr const char* kSong = "Burnout";
 
+// What the item verbs say when a ref names kSong's row on the unfiltered
+// library (library_scroll_refusal in uitest_commands.cpp).
+constexpr const char* kRowRefusal =
+    "refused: \"Burnout\" is a library row's title and the search box is empty, so finding "
+    "it would scroll the whole library; use \"open Burnout\", or type into **/##search first";
+
 // A live session on the scanned corpus, ref on //Hydra.
 CommandSession scanned_session(ImGuiTestContext* ctx) {
     start_session(ctx);
@@ -356,14 +363,11 @@ void test_command_row_click_refused(ImGuiTestContext* ctx) {
     CommandSession session = scanned_session(ctx);
     if (ctx->IsError()) return;
     IM_CHECK(h.app->search.empty());
-    const std::string refusal =
-        "refused: \"Burnout\" is a library row's title and the search box is empty, so finding "
-        "it would scroll the whole library; use \"open Burnout\", or type into **/##search first";
     // Both the wildcard ref and the bare one, which would be retried as it.
     for (const char* line : {"click **/Burnout", "click Burnout", "check **/Burnout"}) {
         const CommandResult r = run_command(ctx, session, line);
         IM_CHECK(!r.ok);
-        IM_CHECK_STR_EQ(r.text.c_str(), refusal.c_str());
+        IM_CHECK_STR_EQ(r.text.c_str(), kRowRefusal);
     }
     IM_CHECK(!ctx->IsError());
     IM_CHECK(!h.app->selected);
@@ -380,6 +384,89 @@ void test_command_row_click_after_search(ImGuiTestContext* ctx) {
     IM_CHECK(r.ok);
     ctx->Yield(3);
     IM_CHECK(h.app->selected && h.app->selected->title == kSong);
+}
+
+// An absolute ref to a row is held to the same guard as a wildcard one. The
+// ref is the row's own path, so after a search it finds the row: the table
+// sits in the library's child window, and the row's Selectable under a PushID
+// of its index in the library's rows (library_table.cpp). The child window is
+// named in full, its '/' escaped, because its ID hashes its whole name.
+void test_library_scroll_guard_absolute_ref(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    CommandSession session = scanned_session(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(h.app->search.empty());
+    const std::vector<hydra::ui::LibraryRow>& rows = h.app->library.rows();
+    size_t index = 0;
+    while (index < rows.size() &&
+           hydra::ui::library_cell_text(rows[index], hydra::ui::kColumnTitle) != kSong)
+        ++index;
+    IM_CHECK_RETV(index < rows.size(), );
+    const ImGuiWindow* list = window_named("##librarytable");
+    IM_CHECK_RETV(list != nullptr && list->ParentWindow != nullptr, );
+    std::string library_window;
+    for (const char* c = list->ParentWindow->Name; *c; ++c)
+        library_window += *c == '/' ? std::string("\\/") : std::string(1, *c);
+    const std::string click = "click //" + library_window + "/##librarytable/$$" +
+                              std::to_string(index) + "/" + kSong;
+
+    CommandResult r = run_command(ctx, session, click);
+    IM_CHECK(!r.ok);
+    IM_CHECK_STR_EQ(r.text.c_str(), kRowRefusal);
+    IM_CHECK(!ctx->IsError());
+    IM_CHECK(!h.app->selected);
+
+    r = run_command(ctx, session, "type **/##search | burnout");
+    IM_CHECK(r.ok);
+    r = run_command(ctx, session, click);
+    IM_CHECK_STR_EQ(r.text.c_str(), "");
+    IM_CHECK(r.ok);
+    ctx->Yield(3);
+    IM_CHECK(h.app->selected && h.app->selected->title == kSong);
+}
+
+// The key verb refuses the keys that scroll the focused library by a page or
+// to an end while the search box is empty. It reads the focused window, so
+// the same key goes through on a filtered library or in another window, and
+// a key that moves one row goes through too.
+void test_library_scroll_guard_keys(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    CommandSession session = scanned_session(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(h.app->search.empty());
+    ImGuiWindow* list = window_named("##librarytable");
+    IM_CHECK_RETV(list != nullptr, );
+    ctx->WindowFocus(list->ID);
+
+    CommandResult r = run_command(ctx, session, "key PageDown");
+    IM_CHECK(!r.ok);
+    IM_CHECK_STR_EQ(r.text.c_str(),
+                    "refused: PageDown would scroll the whole library and the search box is "
+                    "empty; type into **/##search first, or ask the user");
+    r = run_command(ctx, session, "key Down");
+    IM_CHECK_STR_EQ(r.text.c_str(), "");
+    IM_CHECK(r.ok);
+
+    r = run_command(ctx, session, "type **/##search | burnout");
+    IM_CHECK(r.ok);
+    ctx->WindowFocus(list->ID);
+    r = run_command(ctx, session, "key PageDown");
+    IM_CHECK_STR_EQ(r.text.c_str(), "");
+    IM_CHECK(r.ok);
+
+    r = run_command(ctx, session, "type **/##search |");
+    IM_CHECK(r.ok);
+    IM_CHECK(h.app->search.empty());
+    h.app->show_path_report();
+    ctx->Yield(3);
+    ImGuiWindow* report = window_named("###pathreport");
+    IM_CHECK_RETV(report != nullptr, );
+    ctx->WindowFocus(report->ID);
+    r = run_command(ctx, session, "key PageDown");
+    IM_CHECK_STR_EQ(r.text.c_str(), "");
+    IM_CHECK(r.ok);
+    h.app->close_path_report();
+    IM_CHECK(!ctx->IsError());
 }
 
 void test_command_bare_ref_retried(ImGuiTestContext* ctx) {
@@ -499,6 +586,8 @@ const std::vector<TestEntry>& command_tests() {
         {"command-open-unknown", test_command_open_unknown},
         {"command-row-click-refused", test_command_row_click_refused},
         {"command-row-click-after-search", test_command_row_click_after_search},
+        {"library-scroll-guard-absolute-ref", test_library_scroll_guard_absolute_ref},
+        {"library-scroll-guard-keys", test_library_scroll_guard_keys},
         {"command-bare-ref-retried", test_command_bare_ref_retried},
         {"command-bare-ref-missing", test_command_bare_ref_missing},
         {"command-modal-named", test_command_modal_named},
