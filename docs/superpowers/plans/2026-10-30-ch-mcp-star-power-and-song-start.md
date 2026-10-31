@@ -213,6 +213,8 @@ T2, T3, T4 and T7 start together. T1 starts from T2's branch. T6 starts from T3 
 
 Each names pass and fail before it runs, has a run cap, and ends with `ch_stop`'s restore lines. The user says in chat when a run may start.
 
+Further live checks come from `docs/clone-hero/live-checks.md`, the Clone Hero reference's list of rows that only a live run can settle; LS3 is its first item.
+
 ### LS0: a song on the command line with no player (1 run)
 
 `launch_command` always adds `--player` when it has a song, so the main session runs `"C:\Clone Hero\1.1 june\Clone Hero\Clone Hero.exe" --song "C:\Clone Hero\songs\Hydra Probe\Window Map"` by hand after `game_files.backup`, then `ch_attach`, `ch_state` and `ch_sp_watch_start`. Pass means: the song starts, `ch_sp` shows a moving engine clock, and the notes go by unhit (no bot) within 30 s; then the route exists and `launch_command` gets a no-player form in a follow-up task. Fail means a bot plays, the game shows an error, or the menu opens; record the reply. One run; restore through `bot_run.py --restore`.
