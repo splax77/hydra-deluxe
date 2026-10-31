@@ -696,7 +696,7 @@ TEST_CASE("UI timings: Copied!, search re-filter, batch refresh and the progress
     CHECK(AppState::kSearchThrottleSeconds == 0.15);
     CHECK(AppState::kBatchRefreshSeconds == 1.0);
     CHECK(AppState::kFileCheckSeconds == 2.0);    // D48 Q33, the one file-check interval
-    CHECK(AppState::kStatusFadeSeconds == 6.0);   // the toolbar's since 2026-08-18
+    CHECK(AppState::kStatusFadeSeconds == 6.0);   // D273 item 1, the status fade
     CHECK(AppState::kViewProgressDelaySeconds == 0.15);  // D87 item 6
 }
 

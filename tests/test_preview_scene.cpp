@@ -20,7 +20,6 @@
 #include "app/config.h"  // Settings: the app's default analysis settings
 #include "app/preview_view.h"
 #include "app/path_view.h"
-#include "app/song_length.h"
 #include "core/model.h"
 #include "core/replay.h"
 #include "core/squeeze_rating.h"
@@ -87,8 +86,6 @@ TEST_CASE("build_preview_scene: the song length is the one handed in, never a no
     PreviewScene scene = build_preview_scene(song, nullptr);
     REQUIRE(scene.has_notes);
     CHECK(last_note_ms(scene) == doctest::Approx(750.0));
-    // The chart-level answer ignores the note-less timestamp the same way.
-    CHECK(app::last_note_start_ms(song) == last_note_ms(scene));
     CHECK(scene.song_length_ms == 0.0);
     const PreviewScene before = build_preview_scene(make_hand_song(), nullptr);
     REQUIRE_FALSE(scene.beats.empty());

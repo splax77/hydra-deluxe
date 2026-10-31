@@ -32,12 +32,6 @@ std::optional<double> stated_length_ms(std::optional<double> raw_ms);
 // core/strutil.h parse_finite_number.
 std::optional<double> stated_length_ms_of_text(std::string_view text);
 
-// When the last note of `song`'s parsed drum chart starts, in chart time;
-// empty when it has no notes. It agrees with last_note_ms of the Preview's
-// scene (app/preview_view.h), which is built from a Song. song_length_ms does
-// not read it: a song's end reads Song::last_note_end_tick.
-std::optional<double> last_note_start_ms(const Song& song);
-
 // The time Clone Hero adds after a song's end before its results screen
 // (D255, the user's answer 2). song_length_ms adds it last, in chart time.
 inline constexpr double kSongEndPadMs = 1000.0;
