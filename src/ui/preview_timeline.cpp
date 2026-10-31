@@ -28,6 +28,7 @@ constexpr float kAxisRowH = 18.0f;
 constexpr float kSectionsRowH = 24.0f;
 constexpr float kPhrasesRowH = 22.0f;
 constexpr float kSavedRowH = 46.0f;
+constexpr float kGhostRowH = 30.0f;  // the "Hydra's best" row, line 279
 constexpr float kActivationsRowH = 34.0f;
 constexpr float kFillsRowH = 50.0f;
 
@@ -65,6 +66,39 @@ constexpr float kActivateDash = 4.0f;
 constexpr ImU32 kActivateLabelColor = rgba(0x77, 0xcc, 0x99, 1.0f);
 constexpr float kActivateLabelRight = 4.0f;
 constexpr float kActivateLabelRise = 3.0f;
+
+// The ghost bands: `.band.ghost{border:1.5px dashed #bdbdbd}` (line 48). The
+// mockup gives `dashed` no length; the user ruled it the activate line's
+// dash, kActivateDash (plan, "User decisions (PV-3)"). A CSS border sits
+// inside the box.
+constexpr ImU32 kGhostColor = rgba(0xbd, 0xbd, 0xbd, 1.0f);
+constexpr float kGhostW = 1.5f;
+
+// Draws the line through `pts` as dashes: kActivateDash on, then kActivateDash
+// off, counted along the line from its first point. The activate line and the
+// ghost bands' outlines both go through here.
+void draw_dashed(ImDrawList* dl, const std::vector<ImVec2>& pts, ImU32 col, float thickness) {
+    const float dash = px(kActivateDash);
+    if (!(dash > 0.0f)) return;
+    float phase = 0.0f;  // how far into the current dash-and-gap the line is
+    for (size_t i = 0; i + 1 < pts.size(); ++i) {
+        const ImVec2 a = pts[i], b = pts[i + 1];
+        const float len = std::hypot(b.x - a.x, b.y - a.y);
+        if (!(len > 0.0f)) continue;
+        const ImVec2 dir((b.x - a.x) / len, (b.y - a.y) / len);
+        for (float pos = 0.0f; pos < len;) {
+            const bool on = phase < dash;
+            const float to_edge = (on ? dash : 2.0f * dash) - phase;
+            const bool reaches = to_edge <= len - pos;
+            const float step = reaches ? to_edge : len - pos;
+            if (on)
+                dl->AddLine(ImVec2(a.x + dir.x * pos, a.y + dir.y * pos),
+                            ImVec2(a.x + dir.x * (pos + step), a.y + dir.y * (pos + step)), col, thickness);
+            pos += step;
+            phase = !reaches ? phase + step : (on ? dash : 0.0f);
+        }
+    }
+}
 
 // The drawn path, bands and taken fills: --sp. The bands:
 // `.band{top:6px; bottom:6px; border-radius:4px}`, `.band.mine{color:#0d1418}`,
@@ -152,10 +186,13 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
     // Every x is song_fraction's, which has a value whenever the length is usable.
     auto x_of = [&](double ms) { return static_cast<float>(*app::song_fraction(ms, length_ms)) * width; };
 
+    // The ghost row shows only while the scene has ghost windows to put in it.
     float y = 0.0f;
     for (size_t r = 0; r < kTimelineRowCount; ++r) {
-        out.rows[r] = {0.0f, y, width, y + metrics.row_h[r]};
-        y += metrics.row_h[r];
+        const bool no_ghost = static_cast<TimelineRow>(r) == TimelineRow::Ghost && scene.ghost_windows.empty();
+        const float h = no_ghost ? 0.0f : metrics.row_h[r];
+        out.rows[r] = {0.0f, y, width, y + h};
+        y += h;
     }
 
     // The song's length is a number read from the chart's metadata, so the
@@ -174,6 +211,7 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
 
     const TimelineRect& sec = out.row(TimelineRow::Sections);
     for (size_t i = 0; i < scene.sections.size(); ++i) {
+        if (scene.sections[i].name == kTimelineHiddenSectionName) continue;
         const double end = i + 1 < scene.sections.size() ? scene.sections[i + 1].ms : length_ms;
         out.sections.push_back({scene.sections[i].name,
                                 {x_of(scene.sections[i].ms), sec.y0, x_of(end), sec.y1}});
@@ -193,6 +231,13 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
         out.saved_line.push_back({x_of(s.end_ms), y_of(s.end_bars)});
     }
     out.activate_y = y_of(kSpActivationBars);
+
+    // The ghost bands stand in from their row as the activation bands do
+    // (`.band` sets both).
+    const TimelineRect& ghost = out.row(TimelineRow::Ghost);
+    for (const std::pair<double, double>& w : scene.ghost_windows)
+        out.ghost_bands.push_back({x_of(w.first), ghost.y0 + metrics.band_inset, x_of(w.second),
+                                   ghost.y1 - metrics.band_inset});
 
     const TimelineRect& acts = out.row(TimelineRow::Activations);
     for (size_t i = 0; i < scene.activations.size(); ++i) {
@@ -248,8 +293,7 @@ TimelineMetrics timeline_metrics() {
     m.row_h[static_cast<size_t>(TimelineRow::Sections)] = px(kSectionsRowH);
     m.row_h[static_cast<size_t>(TimelineRow::Phrases)] = px(kPhrasesRowH);
     m.row_h[static_cast<size_t>(TimelineRow::Saved)] = px(kSavedRowH);
-    // The ghost row waits for the ghost path's windows on PreviewScene.
-    m.row_h[static_cast<size_t>(TimelineRow::Ghost)] = 0.0f;
+    m.row_h[static_cast<size_t>(TimelineRow::Ghost)] = px(kGhostRowH);
     m.row_h[static_cast<size_t>(TimelineRow::Activations)] = px(kActivationsRowH);
     m.row_h[static_cast<size_t>(TimelineRow::Fills)] = px(kFillsRowH);
     m.fill_size = px(kFillSize);
@@ -280,7 +324,7 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
                                                   kTimelineSectionsLabel,
                                                   kTimelinePhrasesLabel,
                                                   kTimelineSavedLabel,
-                                                  nullptr,
+                                                  kTimelineGhostLabel,
                                                   kTimelineActivationsLabel,
                                                   kTimelineFillsLabel};
     const float label_wrap = label_w - px(kLabelPadRight);
@@ -341,9 +385,7 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
     // Star Power saved: the activate line and its label, then the curve on top.
     {
         const float ay = l.activate_y;
-        const float dash = px(kActivateDash);
-        for (float x = 0.0f; x < l.width; x += 2.0f * dash)
-            dl->AddLine(at(x, ay), at(std::min(x + dash, l.width), ay), kActivateLineColor, px(1.0f));
+        draw_dashed(dl, {at(0.0f, ay), at(l.width, ay)}, kActivateLineColor, px(1.0f));
         ScopedFont font(TextRole::Label);
         const std::string label = std::to_string(kSpActivationBars) + kTimelineActivateLabelTail;
         const ImVec2 sz = ImGui::CalcTextSize(label.c_str());
@@ -354,6 +396,19 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         for (const TimelinePoint& p : l.saved_line) pts.push_back(at(p.x, p.y));
         if (pts.size() >= 2)
             dl->AddPolyline(pts.data(), static_cast<int>(pts.size()), kStarColor, ImDrawFlags_None, px(kSavedLineW));
+    }
+
+    // The ghost bands: a dashed rounded outline, no fill. The stroke's centre
+    // line is half its width inside the band's edge, as a CSS border is, and
+    // the corners are the drawn bands' rounding less that half width.
+    for (const TimelineRect& g : l.ghost_bands) {
+        const float half = px(kGhostW) * 0.5f;
+        dl->PathRect(at(g.x0 + half, g.y0 + half), at(g.x1 - half, g.y1 - half), px(kBandRounding) - half);
+        std::vector<ImVec2> outline(dl->_Path.Data, dl->_Path.Data + dl->_Path.Size);
+        dl->PathClear();
+        if (outline.empty()) continue;
+        outline.push_back(outline.front());
+        draw_dashed(dl, outline, kGhostColor, px(kGhostW));
     }
 
     // The drawn path's activations: numbered bands, the selected one outlined.

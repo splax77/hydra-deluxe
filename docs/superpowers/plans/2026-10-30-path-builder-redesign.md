@@ -252,6 +252,7 @@ The user answered all seven questions in one line: "Yes, as recommended". So:
 5. An offered fill grows 1.2 times when hovered (`kOfferedHoverScale`, `.fill.use:hover`, mockup line 51).
 6. A cant-activate fill (the third look) is a 13 px ring (`kCantSize`, `.fill.no`, mockup line 53).
 7. The timeline axis puts a time label every step of 30000 ms (`kTimelineAxisStepMs`, `s += 30`, mockup line 264). When a step is narrower than one label, the timeline labels every few steps; the least gap is a label's own width, not a number.
+8. The user was asked "When \"Show Hydra's best path\" is on, its activations show as dashed outlines on the timeline. The mockup never gives a dash length. Which should they use?" and answered "4 px on, 4 px off (Recommended)", the same dash as the timeline's "2 phrases: enough to activate" line. So each ghost band is a dashed rounded outline drawn with `kActivateDash`, in `kGhostColor` (#bdbdbd) at `kGhostW` (1.5 px), both from mockup line 48, with `kBandRounding` corners.
 
 **More answers from the wave 1 merges (2026-10-30), in the user's words:**
 
