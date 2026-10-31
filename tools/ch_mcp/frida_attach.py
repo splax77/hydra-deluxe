@@ -9,7 +9,8 @@ prints the clock summary.
 
 `LiveAgent` is the long-lived form for a caller that asks questions between
 other work: it stays attached with one request/response agent loaded
-(agent/state.ts) and answers each `read` until it is detached.
+(agent/state.ts, or agent/kit.ts for the virtual kit) and posts each request
+until it is detached.
 
 The safety rules it follows are in docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md,
 "Safety rules for every live step", and docs/agents/clone-hero-mcp.md,
@@ -209,13 +210,13 @@ class AttachFailed(LiveAgentError):
 
 
 class ReadFailed(LiveAgentError):
-    """LiveAgent.read got no reply: the cap passed, the session dropped, or
-    the agent reported an error."""
+    """LiveAgent.read or LiveAgent.request got no reply: the cap passed, the
+    session dropped, or the agent reported an error."""
 
 
 @dataclass
 class _Pending:
-    """The one read waiting for its reply."""
+    """The one request waiting for its reply."""
     id: int
     event: threading.Event
     reply: Any = None
@@ -225,16 +226,21 @@ class _Pending:
 # The reason `gone_reason` holds after the caller's own detach.
 _DETACHED_BY_CALLER = "detached by the caller"
 
+# The message a read posts, before LiveAgent adds the id.
+_READ = {"type": "read"}
+
 
 class LiveAgent:
     """One attach that stays open, with a request/response agent loaded.
 
     `start(cap_s)` attaches to the game, loads the agent and returns the
-    first read; `read(cap_s)` asks again; `detach()` ends the session. Each
-    read posts `{"type": "read", "id": n}` and takes only the reply carrying
-    the same id, so a reply that comes after its read gave up is logged and
-    dropped, never handed to a later read. Every message the agent sends is
-    written to `log_path`, one JSON line each, as run_agent does.
+    first read; `read(cap_s)` asks again; `request(message, cap_s)` posts
+    any other message; `detach()` ends the session. Each request goes out
+    with the next id, `n`, and takes only the reply carrying the same id, so
+    a reply that comes after its request gave up is logged and dropped, never
+    handed to a later one. A read is the request `{"type": "read"}`. Every
+    message the agent sends is written to `log_path`, one JSON line each, as
+    run_agent does.
 
     `alive` is False once the session has dropped or been detached, and
     `gone_reason` then says why. One LiveAgent attaches once; attach again
@@ -297,7 +303,7 @@ class LiveAgent:
                 if self.gone_reason is None:
                     self.alive = True
             try:
-                first = self._request(cap_s, "the first read")
+                first = self._request(_READ, cap_s, "the first read")
             except ReadFailed as e:
                 raise AttachFailed(e.reason, f"{e}; detached") from e
             started = True
@@ -311,7 +317,18 @@ class LiveAgent:
         most `cap_s` seconds. A `found: false` reply is data, not a failure.
         Raises ReadFailed naming the cap, the detach reason or the agent's
         error."""
-        return self._request(cap_s, "the read")
+        return self._request(_READ, cap_s, "the read")
+
+    def request(self, message: dict, cap_s: float) -> dict:
+        """Post `message` with the next id and return the agent's reply to
+        it, waiting at most `cap_s` seconds. The message names its own
+        `type`; the id is LiveAgent's to give, so a message that carries one
+        is refused. Fails as `read` does, naming the message's type."""
+        if not isinstance(message, dict) or not isinstance(message.get("type"), str):
+            raise ValueError(f"a request is a dict with a text 'type': {message!r}")
+        if "id" in message:
+            raise ValueError(f"a request carries no 'id' of its own: {message!r}")
+        return self._request(message, cap_s, f"the {message['type']} request")
 
     def detach(self) -> str:
         """Detach once and return what happened. A second call detaches
@@ -341,7 +358,7 @@ class LiveAgent:
                     self._log.close()
         return line
 
-    def _request(self, cap_s: float, what: str) -> dict:
+    def _request(self, message: dict, cap_s: float, what: str) -> dict:
         with self._lock:
             if not self.alive:
                 reason = END_DETACHED
@@ -355,7 +372,7 @@ class LiveAgent:
             # Outside the lock: the reply may arrive on Frida's thread
             # before post returns.
             try:
-                script.post({"type": "read", "id": pending.id})
+                script.post({**message, "id": pending.id})
             except Exception as e:  # noqa: BLE001
                 # The game can drop the session between the alive check and
                 # the post; Frida then refuses the post.
