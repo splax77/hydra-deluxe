@@ -42,7 +42,7 @@ None of these has started, and each needs the user's yes:
 ## Things that bite
 
 - **Running Frida:** use `py`, not `py -I`, because frida is installed in the user site-packages.
-- **Attaching after a launch:** waiting on the session log for `OnCountdownStart` never works after a command-line launch (IN-43 in docs/clone-hero/07-internals.md says why). Attach about 5 s after launch instead, because the first probe note is at 3 s.
+- **Attaching after a launch:** after a command-line launch the session log writes only its `Loading Song` line at first, so waiting on it for `OnCountdownStart` never works (IN-43 in docs/clone-hero/07-internals.md holds the finding). Attach about 5 s after launch instead, because the first probe note is at 3 s.
 - **Starting the tracer:** it needs a live `GameManager` when it attaches, and the menu has none. For a human-started song, start the song, pause it, attach, then unpause. Since main 6bdbc494 the trace's cap counts song time, so the pause no longer uses it up; a wall-clock backstop of the song cap plus 120 s still ends a song that never starts.
 - **`node_modules` in the main checkout:** since main 18825c8a the repo scans read git's file list, so a `npm install` in `tools/ch_mcp/agent` no longer fails them. Run `npm install` and `npm run build:clock` or `build:trace` there when needed.
 - **Backups:** every live run backs up the five user files and restores them. A human run changes `scoredata.bin`, so restoring discards that run's saved score.

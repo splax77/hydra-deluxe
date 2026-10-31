@@ -36,7 +36,7 @@ Evidence: the field layout is `dump.cs` line 695824 (m_CachedPtr at 0x10). The l
 Game code (6142): the base Object's native-pointer field; no method.
 Hydra: no owner. The tool check is in tools/ch_mcp/agent/gamemanager.ts lines 39 to 60.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-29, session e9b04efc (`docs/agents/clone-hero-mcp.md` lines 37 to 47).
+Found: 2026-10-29, session e9b04efc (written up in the plan lines above; `docs/agents/clone-hero-mcp.md` repeated it and now points here).
 
 ### IN-04 The game manager is where the timing settings enter a song
 
@@ -373,7 +373,7 @@ Found: 2026-10-28, session 6a549de0 (feasibility study line 131).
 
 Rule: After a command-line bot run the results screen took no keys at all, with Frida detached too. Whether the command-line launch is the cause is not settled.
 Label: Proven in a live run
-Evidence: one run, 2026-10-29, recorded as text only in `docs/superpowers/plans/2026-10-28-ch-mcp-server.md` line 304 and `docs/agents/clone-hero-mcp.md` line 43; no key log kept.
+Evidence: one run, 2026-10-29, recorded as text only in `docs/superpowers/plans/2026-10-28-ch-mcp-server.md` line 304 (`docs/agents/clone-hero-mcp.md` once repeated it and now points here); no key log kept.
 Game code (6142): not found.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
@@ -445,7 +445,7 @@ Found: 2026-09-25, session 8157f2dc.
 
 Rule: A song started from the command line writes only its "Loading Song" line to the session log at first, so waiting for "OnCountdownStart" never works; the tools attach about 5 s after launch.
 Label: Unknown
-Evidence: unchecked by the scout: no session-log file was kept; the record is the study's text (line 139) and the plan's L1 text (`docs/superpowers/plans/2026-10-28-ch-mcp-server.md` line 300).
+Evidence: unchecked by the scout: no session-log file was kept; the record is the study's Test 2 text and the plan's L1 text (`docs/superpowers/plans/2026-10-28-ch-mcp-server.md` line 300).
 Game code (6142): not found.
 Hydra: no owner. The tool's delay is `ATTACH_DELAY_S` (tools/ch_mcp/frida_tools.py).
 Ruling: none needed: no Hydra rule reads it.
