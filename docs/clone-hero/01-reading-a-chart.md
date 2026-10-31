@@ -80,7 +80,7 @@ Found: 2026-09-15, session 450488b5.
 
 Rule: Hydra reads such an entry by sniffing the chart bytes for `MThd` rather than refusing it; the game's handling is unread, and none of the 30 shipped bundles has such a name.
 Label: Hydra assumes it, never checked
-Evidence: `load_songpath_srb` in src/parse/song.cpp line 2038 holds the sniff; docs/audit/2026-10-29-audit-of-audits/questions.md lines 63 to 75 found no real container with an odd name. D27 says .sng and .srb find their notes file "the same way", and the audit's Q5 shows they differ.
+Evidence: `load_songpath_srb` in src/parse/song.cpp line 2038 holds the sniff; docs/audit/2026-10-29-audit-of-audits/questions.md lines 63 to 75 found no real container with an odd name. The audit's Q5 quotes the chat batch behind D27 as saying ".sng and .srb would find their notes file the same way" (D27 itself says "one container-entry rule (61)") and shows the two differ today.
 Game code (6142): not found: not read.
 Hydra: `load_songpath_srb` in src/parse/song.cpp line 2038.
 Ruling: none found.
@@ -137,7 +137,7 @@ Label: Proven in the game's code
 Evidence: docs/audit/note-shuffle/step0/open1/midi_reader_2155C00.asm line 218 (the lowercase call at 0x2155FDF), lines 297 to 302 (the "part drums" compare at 0x2156134) and lines 503 to 508 (the "part drum" compare at 0x21564A8).
 Game code (6142): a method of the .mid reader class #8626, RVA `0x2155C00`, the listing above.
 Hydra: `is_drums_track_name` in src/parse/midi.cpp line 446, names in `kDrumsTrackNames` in src/parse/midi.h line 97.
-Ruling: D252: chose "Yes, build it" (card 2026-10-17-77c0ebab, 00:31 UTC).
+Ruling: D252 (decision log line 882) states the rule and the addresses; the user's quoted call on it is only the build approval, chose "Yes, build it" (card 2026-10-17-77c0ebab, 00:31 UTC).
 Found: 2026-10-16, session 77c0ebab.
 
 ### CR-14 When two tracks carry a drum name, the first in file order wins
@@ -382,7 +382,7 @@ Found: 2026-10-30, wave 2 scout R9.
 
 Rule: a note is in a solo when its tick is at or after the solo's start and strictly before start plus length; the first covered note gets SoloBegin (0x200) and the last SoloEnd (0x400), and a solo that covers no note sets no flag.
 Label: Proven in the game's code
-Evidence: `code/6142/solo_flags_20D18F0.asm` lines 72 to 74 (the start compare), 82 to 85 (the end compare leaves at start plus length), 91 and 92 (no covered note, no flag), 120 (SoloBegin) and 157 (SoloEnd); flag values from dump.cs lines 548203 and 548204. Lines 34 to 39 limit it to instrument 6 or 9; what the test at `0x214BCC0` checks was not read.
+Evidence: `code/6142/solo_flags_20D18F0.asm` lines 72 to 74 (the start compare), 82 to 85 (the end compare leaves at start plus length), 91 and 92 (no covered note, no flag), 120 (SoloBegin) and 157 (SoloEnd); flag values from dump.cs lines 548206 and 548207. Lines 34 to 39 limit it to instrument 6 or 9; what the test at `0x214BCC0` checks was not read.
 Game code (6142): a static method of class #8265, RVA `0x20D18F0`, called from the builder `0x20D2EA0`.
 Hydra: `find_solo_sections` in src/parse/song.cpp line 63, with the comment at lines 953 to 956 that the note-off tick is outside the solo.
 Ruling: none needed: same rule.
@@ -454,7 +454,7 @@ Found: 2026-10-18, session c433b17f; listed by wave 2 scout R3.
 
 Rule: the .mid vocals method writes its pitches and phrase markers only to the chart-wide lyric list and never calls the gem adder, so a vocal note never counts toward the last note end. Hydra counts a vocals track's low notes.
 Label: Proven in the game's code
-Evidence: decompile lines 43955 to 44246 (FUN_1821579b0): its calls to 0x2152CC0 (a function the dump does not list as a method) are at lines 44067 to 44231, and no call to the gem adder appears in lines 43900 to 44300; that function writes the lyric list (decompile lines 40632 to 40655). The .chart vocals and the binary note-stream loaders were not checked. No listing was made.
+Evidence: decompile lines 43955 to 44246 (FUN_1821579b0): its calls to 0x2152CC0 (a function the dump does not list as a method) are at lines 44067 to 44231, and no direct call to the gem adder (0x20CEC60, the "midi sink" function, listed in docs/audit/note-shuffle/step0/open1/midi_sink_20CEC60.asm) appears in lines 43900 to 44300; that function writes the lyric list (decompile lines 40632 to 40655). Two other callees, the track lookup at 0x20CFD40 (line 44151) and FUN_18212d1e0 (lines 44227 and 44239, not in the decompile), were not read. The .chart vocals and the binary note-stream loaders were not checked. No listing was made.
 Game code (6142): .mid vocals method RVA `0x21579B0`, decompile lines 43955 to 44246; lyric adder RVA 0x2152CC0 (a function the dump does not list as a method).
 Hydra: `MidiFile::last_note_end_tick` in src/parse/midi.cpp lines 464 to 487 counts vocals pitches 36 to 57 (`kVocalsTrackName` in src/parse/midi.h line 122).
 Ruling: open split: see questions page Q-74.

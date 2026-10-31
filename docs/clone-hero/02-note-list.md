@@ -276,7 +276,7 @@ Found: 2026-10-03, session cebf3006; listed by wave 2 scout R1.
 
 Rule: the builder's only gate on 2x kicks is bit 2 of its modifier byte, at every difficulty; with the bit clear it calls a step that unlinks every note carrying the 2x-kick flag (0x100000) from its chord and removes it.
 Label: Proven in the game's code
-Evidence: docs/audit/note-shuffle/step0/open2/f20d2ea0_build.asm lines 231 to 236 (the bit test and the call); `code/6142/two_x_kick_drop_20EFF60.asm` lines 37 to 140 (the test call, the unlink at lines 46 to 93, the blanked slot at line 98, the RemoveAll at line 140); `code/6142/double_kick_test_214B850.asm` line 1 tests 0x100000 (DrumsDoubleKick in dump.cs line 548218). That bit 2 is the player's Double Kick setting comes from the live run in NL-28, not a listing.
+Evidence: docs/audit/note-shuffle/step0/open2/f20d2ea0_build.asm lines 231 to 236 (the bit test and the call); `code/6142/two_x_kick_drop_20EFF60.asm` lines 37 to 140 (the test call, the unlink at lines 46 to 93, the blanked slot at line 98, the RemoveAll at line 140); `code/6142/double_kick_test_214B850.asm` line 1 tests 0x100000 (DrumsDoubleKick in dump.cs line 548217). That bit 2 is the player's Double Kick setting comes from the live run in NL-28, not a listing.
 Game code (6142): builder RVA `0x20D2EA0`; removal step RVA `0x20EFF60` of class #8278; test RVA `0x214B850`.
 Hydra: `Chord::apply_2x_bass` in src/core/model.cpp line 280, called with `mode_bass2x_` in src/parse/song.cpp line 847.
 Ruling: D20 (as NL-24); D105: chose "Match the game, test first (Recommended)" (card 2026-10-09-30beeb6e).
@@ -484,7 +484,7 @@ Found: 2026-10-09, session 30beeb6e.
 
 Rule: the redraw loop repeats until the drawn pad is free, with no counter, timer or fallback. So a four-colour chord followed by a chord whose first note has no copy loops forever, and so does a zero generator state (the first four notes all on tick 0), which draws red every time.
 Label: Proven in the game's code
-Evidence: docs/audit/note-shuffle/step0/open34/shuffle_20f0c30.asm lines 285 to 315 (the loop and its only exits) and docs/audit/note-shuffle/step0/open34/lanedraw_20f0b30.asm lines 12 to 52 (a zero state stays zero and gives index 1). The 2026-10-09 runs C1 and D1 hung as the song loaded (FINDINGS.md lines 56 and 57; video group 4.mp4, not viewed by this plan's scouts).
+Evidence: docs/audit/note-shuffle/step0/open34/shuffle_20f0c30.asm lines 285 to 315 (the loop and its only exits) and docs/audit/note-shuffle/step0/open34/lanedraw_20f0b30.asm lines 12 to 52 (a zero state stays zero and gives index 1). The 2026-10-09 runs C1 and D1 hung as the song loaded (FINDINGS.md line 57; video group 4.mp4, not viewed by this plan's scouts).
 Game code (6142): RVAs `0x20F0C30` and `0x20F0B30`, the listings above.
 Hydra: `apply_note_shuffle` in src/parse/note_shuffle.cpp lines 162 and 163 return the freeze, shown as `ErrorKind::NoteShuffleFreezes`; `LaneGenerator::state_is_zero` line 81.
 Ruling: D104 item 5 (record text): "A chart the game can't shuffle gets no path."
