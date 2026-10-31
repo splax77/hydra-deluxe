@@ -193,7 +193,7 @@ std::string build_page_template() {
     page = replace_all(std::move(page), "__STATUS__", status_js);
     // The search box's hint is the report windows' (html_page.h).
     page = replace_all(std::move(page), "__SEARCH_HINT__",
-                       html::html_escape(html::kSearchChartsHint));
+                       html::html_escape(html::charts_search_hint()));
     std::string tile = kInBothPhrase;
     tile[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(tile[0])));
     std::string tile_js;

@@ -187,7 +187,7 @@ The chips above the table filter by state: `All`, `Not analyzed`, `Stale`, `Anal
 
 ### The search box
 
-Type in the search box, which reads `Search songs` while it's empty, to narrow the list. `Ctrl+F` jumps to it. `Escape` or its `X` clears it. The heading above shows how many songs match, like `Library 5 of 97 charts`. The text that matched is highlighted in gold.
+Type in the search box, which reads `Search song, artist, album, charter, or folder` while it's empty, to narrow the list. `Ctrl+F` jumps to it. `Escape` or its `X` clears it. The heading above shows how many songs match, like `Library 5 of 97 charts`. The text that matched is highlighted in gold. When no song matches, the list says `Nothing matches.`
 
 ![The search box holding squeeze<=20, with the Search tips list open under it](images/search-tips.png)
 
@@ -439,7 +439,7 @@ Both report windows have the same layout. From top to bottom:
 
 Click a column heading to sort by it, and click it again to flip the order. Shift+click another heading to add a second sort. Empty values always sink to the bottom. Text columns sort the way the Library does. To hide or show a column, right-click a column heading and pick it from the menu. The row number column always stays. Columns are sized the way the Library's are, and number cells start at the left like the text. A width you drag holds until the report is built again or you change the search.
 
-When no row passes the filters, the window says `Nothing matches those filters.` `Clear filters` then empties the search and sets the dropdown back to its first entry.
+When no row passes the filters, the window says `Nothing matches.` `Clear filters` then empties the search and sets the dropdown back to its first entry.
 
 The window never changes its rows behind your back. After a batch, a report built before it shows a strip: `Your library changed since this report was built (a batch finished at HH:MM).` Opening a song that saves a new result shows the same strip with no time: `Your library changed since this report was built.` Changing a setting the report depends on shows `The settings changed since this report was built.` Each report's section below lists the settings that count for it. The old rows stay readable under the strip. `Refresh` builds the report again and clears the strip.
 

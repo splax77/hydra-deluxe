@@ -12,6 +12,7 @@
 
 #include "app/analysis.h"        // kBatchPreparingText
 #include "app/display_format.h"  // kFactSeparator
+#include "app/html_page.h"       // search_hint
 #include "app/path_report_view.h"
 #include "app/user_messages.h"
 #include "imgui.h"
@@ -161,8 +162,10 @@ void draw_body(PathWindow& w, const report_frame::Frame& frame, const PathReport
     report_frame::tiles(w.tiles);
     draw_coverage(w, *input.result);
 
-    if (report_frame::search_box(w.memory, "Search song, artist, charter, or path notation"))
-        apply_filters(w);
+    // What path_search_text folds for each row (app/path_report_view.cpp).
+    static const std::string search_hint =
+        app::html::search_hint({"song", "artist", "charter", "path notation"});
+    if (report_frame::search_box(w.memory, search_hint.c_str())) apply_filters(w);
     if (report_frame::dropdown("##timing", w.labels, w.timing)) apply_filters(w);
     ImGui::SameLine();
     if (ImGui::Checkbox("Optimal paths only", &w.best_only)) apply_filters(w);
