@@ -53,8 +53,8 @@ TilePairs tile_pairs(const std::vector<report::Tile>& tiles) {
 std::vector<report::Tile> tiles_against(std::vector<report::ReportRow> rows,
                                         const std::vector<size_t>& shown,
                                         const hydra::store::ChartIndex& library) {
-    for (report::ReportRow& r : rows) r.copies = library.copies(r.hyhash);
-    return report::path_tiles(rows, shown, library.count(library.song_ids()));
+    return report::path_tiles(report_samples::counted_against(std::move(rows), library), shown,
+                              library.count(library.song_ids()));
 }
 
 }  // namespace

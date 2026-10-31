@@ -954,11 +954,11 @@
     },
     {
       "question": "How many charts does a path report list?",
-      "owner": "store::ChartIndex::count in src/store/chart_index.cpp",
+      "owner": "store::count_charts in src/store/chart_index.cpp, which ChartIndex::count calls",
       "owner_file": "src/store/chart_index.cpp",
-      "owner_symbol": "ChartIndex::count",
+      "owner_symbol": "count_charts",
       "date": "2026-10-14",
-      "decision": "D53, D77, D115 (task A2-2 moved the owner to ChartIndex::count)",
+      "decision": "D53, D77, D115 (task A2-2 moved the owner to ChartIndex::count), D282 (the rule moved into store::count_charts)",
       "added_by": "RW-T7",
       "pattern": "\\.(insert|emplace)\\([^)]*\\.hyhash|\\.(insert|emplace)\\([^)]*\\)\\.second\\)\\s*[\\w.>-]+\\s*\\+=",
       "must_match": [
@@ -976,13 +976,13 @@
         {
           "file": "src/store/chart_index.cpp",
           "line_text": "if (seen.insert(id).second) total += copies(id);",
-          "why": "ChartIndex::count, the owner"
+          "why": "count_charts, the owner"
         }
       ],
       "scope": [
         "src"
       ],
-      "note": "The path report's subtitle and its Charts shown tile, and the comparison pages' counts, all ask the library index. A page that adds up each chart's copies itself is a second answer. Decided by: audit finding 242; phase 6 task J2-2 (D53); D77 (copies); D115 (task A2-2)"
+      "note": "The path report's subtitle and its Charts shown tile, and the comparison pages' counts, all ask store::count_charts, through the library index (ChartIndex::count) or, for the path report's tile, over the copies its rows kept. A page that adds up each chart's copies itself is a second answer. Decided by: audit finding 242; phase 6 task J2-2 (D53); D77 (copies); D115 (task A2-2)"
     },
     {
       "question": "Which side of a report comparison is higher?",

@@ -64,6 +64,12 @@ hydra::store::ChartIndex sample_index(int song_a_copies, int song_b_copies) {
     return hydra::store::ChartIndex::from_rows(library);
 }
 
+std::vector<report::ReportRow> counted_against(std::vector<report::ReportRow> rows,
+                                               const hydra::store::ChartIndex& library) {
+    for (report::ReportRow& r : rows) r.copies = library.copies(r.hyhash);
+    return rows;
+}
+
 std::vector<dm_report::DmReportRow> sample_dm_rows() {
     std::vector<dm_report::DmReportRow> dm;
     // The delta, the percent (in hundredths, as the payload carries it) and
