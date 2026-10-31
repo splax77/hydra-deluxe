@@ -1,0 +1,101 @@
+{
+  "game_version": "v1.1.0.6142-final",
+  "checksum": "DDCD74C4B2FEA312695257379DE1B66D",
+  "song_name": "Trippin SP Spike",
+  "artist_name": "Hydra Probe",
+  "charter_name": "Hydra Probe",
+  "playback_speed": 100,
+  "game_mode": "Quickplay",
+  "score_timestamp": "2026-10-29T00:39:18.1348342Z",
+  "band_score": 365095,
+  "band_stars": 7,
+  "player_count": 1,
+  "players": [
+    {
+      "instrument": "ProDrums",
+      "difficulty": "Expert",
+      "profile_name": "Guest",
+      "modifiers": [
+        "DoubleKick"
+      ],
+      "remote_network_player": false,
+      "lefty_flip": false,
+      "no_fail": true,
+      "video_calibration": 0,
+      "audio_calibration": 0,
+      "controller_type": "Drums",
+      "score": 365095,
+      "base_score": 73520,
+      "solo_bonus_total": 0,
+      "squeezed_score": 1385,
+      "clean_play_bonus": 0,
+      "note_score": 71235,
+      "sustain_score": 0,
+      "sp_score": 83260,
+      "combo_score": 210600,
+      "notes_hit": 1257,
+      "total_notes": 1257,
+      "max_streak": 1257,
+      "end_streak": 1257,
+      "excess_hits": 0,
+      "sp_phrases_earned": 11,
+      "sp_phrases_total": 11,
+      "sp_activations": 4,
+      "time_in_sp": 50.0282326,
+      "sp_ticks_accumulated": 15840,
+      "sp_bar_ticks": 5760,
+      "stars": 7,
+      "avg_multiplier": 4.9659276,
+      "squeezed_notes": 7,
+      "squeeze_note_losses": 1,
+      "frets_ghosted": 0,
+      "accent_notes_hit": 0,
+      "accent_notes_total": 9,
+      "ghost_notes_hit": 0,
+      "ghost_notes_total": 34,
+      "is_fc": true,
+      "versus_winner": true,
+      "is_bot": false,
+      "is_pfc": true,
+      "failed_in_run_time": -1,
+      "section_count": 7,
+      "section_stats": [
+        {
+          "section_name": "Verse 1",
+          "notes_hit": 224,
+          "notes_count": 224
+        },
+        {
+          "section_name": "Chorus 1",
+          "notes_hit": 129,
+          "notes_count": 129
+        },
+        {
+          "section_name": "Verse 2",
+          "notes_hit": 206,
+          "notes_count": 206
+        },
+        {
+          "section_name": "Chorus 2",
+          "notes_hit": 250,
+          "notes_count": 250
+        },
+        {
+          "section_name": "Guitar Solo A",
+          "notes_hit": 140,
+          "notes_count": 140
+        },
+        {
+          "section_name": "Guitar Solo B",
+          "notes_hit": 68,
+          "notes_count": 68
+        },
+        {
+          "section_name": "Chorus 3",
+          "notes_hit": 240,
+          "notes_count": 240
+        }
+      ]
+    }
+  ]
+}
