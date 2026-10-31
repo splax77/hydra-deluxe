@@ -16,6 +16,8 @@ On the first page the m91 ending read "no squeeze". The user: "no squeeze is wro
 
 That wording comes from D13 (2026-10-04): `SPSqueeze::needs_no_timing` in `src/core/model.h` calls a SqIn at offset 0 needing no timing, while the SqOut on the same note reads 0.0 ms. Asked where that came from, the user said: "who came up with this rule and when was it approved by me? i never asked for suqeeze ins to be treated differently for no reasons", then "why was this presented to me in the first place? why did that session think different squeezes needed their own rules?". The main session explained the origin (two copies of one check disagreed at exactly 0; the fix sided with where a perfectly timed hit lands) and asked: "Reverse D13 everywhere, planned with the step panel?" The user answered "Yes, plan it".
 
+On the Paths tab, a squeeze-in at exactly 0.0 ms had a sentence saying to hit the note "no more than 0.0 ms late". The user (2026-10-31, with a screenshot): "why does the squeeze in text say "no more than 0.0ms late" instead of "more than 0.0ms early" ??? who approved this text?? this makes no sense".
+
 ## What the page shows
 
 - A step's row: its span, its phrases and its squeezes in the list rows' short form ("m83 → m89 · 3 phrases · squeeze-out 0.0 ms"), and its cost. A step with no squeeze shows no squeeze words.
