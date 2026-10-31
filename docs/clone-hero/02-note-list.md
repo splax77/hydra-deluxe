@@ -2,7 +2,7 @@
 
 This page covers how Clone Hero turns the chart's drum notes into the note list it scores.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-10-30.
+Last write-back: 2026-10-31.
 
 ## Cymbals and toms
 
@@ -234,7 +234,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: ADR 0023 says 48 library charts carry the marker. A scan in session 1b0a7cd8 found it in 22 of 19,883 chart files, and in 5 of them the game's reading (NL-21) raises the best score over Hydra's: Periphery Marigold by 29,280, Periphery Lune by 11,520, Vadrum Drum Intro Medley by 12,000, Northlane Corruption by 2,280 and Bearstronaut Shadow by 1,320. The best path is the same under both readings in all five.
 Label: Unknown
-Evidence: the 22 and the five deltas are in session 1b0a7cd8's condensed transcript (the table at lines 131 to 135, the file count at line 140); its card names the same five charts. The scan scripts were not kept, so no repo file holds the result. The two counts (48 and 22) disagree, and settling them needs a whole-library scan, which needs the user's permission.
+Evidence: the session's card (docs/sessions/2026-09-28-1b0a7cd8.md) names the same five charts in a library of 19,883, and says each has a different best score under the game's reading and the same recommended path. The 22 and the five deltas come from the session's own record, which is not kept. The scan scripts were not kept either, so no repo file holds the result. The two counts (48 and 22) disagree, and settling them needs a whole-library scan, which needs the user's permission.
 Game code (6142): not found: data, not code.
 Hydra: none.
 Ruling: none found.
@@ -722,7 +722,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: some song folders carry an `expert+.mid` next to `notes.mid`. In Synovial's Slipping the `expert+.mid` holds no gem on pitch 95 and 1,217 on pitch 96, which is the 915 normal kicks plus the 302 2x kicks of `notes.mid` (NL-31). So that file puts every 2x kick on the normal kick pitch, and the game plays `notes.mid`.
 Label: Unknown
-Evidence: session 8157f2dc (2026-09-25), condensed transcript lines 3160 and 3255, counted the pitches of both files in that folder. No script or result file is in the repo, and only this one chart was counted. That the game plays `notes.mid` there is the session's reading from the 2x kicks it registered; whether the game ever opens `expert+.mid` was not read in its code.
+Evidence: session 8157f2dc (2026-09-25) counted the pitches of both files in that folder. Its card (docs/sessions/2026-09-25-8157f2dc.md) records the real Slipping `notes.mid` and its 302 gems on pitch 95; the `expert+.mid` counts come from the session's own record, which is not kept. No script or result file is in the repo, and only this one chart was counted. That the game plays `notes.mid` there is the session's reading from the 2x kicks it registered; whether the game ever opens `expert+.mid` was not read in its code.
 Game code (6142): not found: data, not code.
 Hydra: none: Hydra reads only the notes file.
 Ruling: none needed.
@@ -734,7 +734,7 @@ Found: 2026-09-25, session 8157f2dc.
 
 Rule: a bot run on a 480-resolution .mid with Note Shuffle on scored 180 points more than Hydra's unshuffled number, all from toms that became cymbals. The decoded shuffle (NL-40 to NL-46), fed the file's own ticks, put all 22 of the video chart's notes in their filmed positions. Scaling the ticks to 192 per beat matched 11 of 22, and dropping the rule that a new chord's first note avoids the previous chord's colours matched 5 of 22.
 Label: Unknown
-Evidence: docs/superpowers/plans/2026-10-08-note-shuffle.md lines 27 to 33 state the 22 of 22, the 11 of 22, the 5 of 22 and the 180 points; card 2026-10-09-6c19d0ef (lines 11 and 21) says the run was a bot run and all 22 matched. The video is C:/Users/Patrick/Videos/2026-10-08 21-52-37.mp4 (it exists today; the reference build did not watch it), and the probe scripts were not kept.
+Evidence: two scouts in session 6c19d0ef decoded the shuffle separately, and both references put all 22 notes of the video's chart ("turkish man yelling meow at an egg", Expert Pro Drums with 2x Kick and Note Shuffle) where the video shows them; its card (docs/sessions/2026-10-09-6c19d0ef.md) says the run was a bot run and all 22 matched. The same session's own record, which is not kept, gives the score gap: the video scored 2,725 against Hydra's 2,545 for the unshuffled chart, because the shuffle turned seven toms into cymbals, two hit at 1x and five at 2x, which is exactly 180. Session cfb6f1fa (2026-10-08) then ran the three probe checks against the same video: the file's own ticks match 22 of 22, ticks scaled to 192 per beat match 11 of 22, and dropping the previous-colours rule matches 5 of 22. Its card (docs/sessions/2026-10-09-cfb6f1fa.md) records all three results. The video is C:/Users/Patrick/Videos/2026-10-08 21-52-37.mp4 (it exists today; the reference build did not watch it), and the probe scripts were not kept.
 Game code (6142): not found: a filmed run, not code; the algorithm is NL-40 to NL-46.
 Hydra: `apply_note_shuffle` in src/parse/note_shuffle.cpp pins rows from later runs (NL-52); no test uses this video.
 Ruling: none needed.
