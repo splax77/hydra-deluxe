@@ -129,6 +129,8 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	282	CliGameLauncher	ʶʷʶʲʽʼʼʾʿʵʵ	0x3968D0		0x3968D0
 6142	method	3374	Controller	get_enabled	0x1D5C350		0x1D5C350
 6142	method	3374	Controller	set_enabled	0x1D5D1F0		0x1D5D1F0
+6142	method	3686	Player.ControllerHelper.MapHelper	LoadDefaultMaps	0x1F50710		0x1F50710
+6142	method	3710	Player.ControllerHelper	AddController	0x1F2D2B0		0x1F2D2B0
 6142	method	3711	Player	GetButton	0x1F3B730		0x1F3B730
 6142	method	3711	Player	GetButtonDown	0x1F39540		0x1F39540
 6142	method	443		MoveNext	0xD8D80		0xD8D80

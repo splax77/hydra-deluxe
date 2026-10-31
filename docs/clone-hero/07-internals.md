@@ -770,6 +770,16 @@ Hydra: no owner: Hydra never reads the running game. The kit's allowed calls are
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-10-31, session f018b7c2 (the kit's keyboard and mouse switch-off), checked in the dump on 2026-10-31, session 90d40bc9.
 
+### IN-76 Rewired gives a custom controller no default map on the System Player
+
+Rule: A custom controller can be added to Rewired's System Player during a song. Asking that player to load its default maps for custom controllers then loads none, so the controller has no bindings there.
+Label: Proven in a live run
+Evidence: LS-D1 run 1 of `docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md`, 2026-10-31, on Window Map after a direct start. Result files in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-31\ls-d1-run1\`: `replies.txt` and `kit-1.jsonl`. The setup reply says the kit was created and added to System, and its maps list for the kit is empty, so `ch_kit_setup` refused and tore the kit down with every check ok. Why System has no default map was not read; the map helper also has a LoadMap that takes a category and a layout (`dump.cs` lines 303867 and 303889), which this run did not try.
+Game code (6142): AddController RVA `0x1F2D2B0` (`dump.cs` line 306697) and LoadDefaultMaps RVA `0x1F50710` (`dump.cs` line 304761), as listed in tools/ch_mcp/kit_methods.json.
+Hydra: no owner: Hydra never reads the running game. The tools hand the kit to a player in `ch_kit_setup` in tools/ch_mcp/kit_tools.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session 90d40bc9 (LS-D1 run 1), from a live run.
+
 ## Saved score files
 
 ### IN-55 scoredata.bin keeps one best score per chart and instrument
