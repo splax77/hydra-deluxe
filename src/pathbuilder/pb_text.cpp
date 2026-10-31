@@ -8,6 +8,7 @@
 
 #include "app/display_format.h"
 #include "app/path_costs.h"  // costs_nothing
+#include "app/path_view.h"   // activation_badges
 #include "core/backend_value.h"    // after_sp_end
 #include "pathbuilder/pb_coach.h"  // tight_window_note
 
@@ -123,42 +124,27 @@ FillRefusal fill_refusal(const PreviewScene& scene, size_t fill_index) {
 
 namespace {
 
-// The squeezes an activation's sentences name: its badge_timings without the
-// early-fill part, in the order listed. squeeze_end_text and the list row's
-// short form both read this, so which timings count is decided here once.
-std::vector<ActivationTiming> squeezes_of(const Activation& act) {
-    std::vector<ActivationTiming> out;
-    for (const ActivationTiming& t : act.badge_timings())
-        if (t.part != TimingPart::EarlyFill) out.push_back(t);
+// An activation's timings as the Paths tab's badges word them
+// (app::activation_badges), joined by app::kFactSeparator; empty when it has
+// none. The builder words no squeeze or early fill itself: every place it
+// names one reads this.
+std::string badges_text(const Activation& act) {
+    std::string out;
+    for (const app::ActivationBadge& b : app::activation_badges(act)) {
+        if (!out.empty()) out += app::kFactSeparator;
+        out += b.text;
+    }
     return out;
 }
 
-const char* squeeze_word(const ActivationTiming& t) {
-    return t.part == TimingPart::SqueezeOut ? "squeeze-out" : "squeeze-in";
+// " · squeeze out 12.3 ms" after an end measure: badges_text behind the
+// separator, or nothing when the activation has no timing.
+std::string badges_after(const Activation& act) {
+    const std::string b = badges_text(act);
+    return b.empty() ? b : app::kFactSeparator + b;
 }
 
 }  // namespace
-
-// "squeeze-out 12.3 ms, squeeze-in, no timing": the mockup's sqShort.
-std::string squeeze_short_text(const Activation& act) {
-    std::string out;
-    for (const ActivationTiming& t : squeezes_of(act)) {
-        if (!out.empty()) out += ", ";
-        out += squeeze_word(t);
-        out += t.required ? " " + format_ms(t.ms) : ", no timing";
-    }
-    return out;
-}
-
-std::string squeeze_end_text(const Activation& act) {
-    std::string out;
-    for (const ActivationTiming& t : squeezes_of(act)) {
-        out += out.empty() ? ", ending with " : " and ";
-        out += std::string("a ") + squeeze_word(t);
-        out += t.required ? " that needs " + format_ms(t.ms) : " that needs no timing";
-    }
-    return out;
-}
 
 const char* const kChoicesHeading = "Where to activate next";
 const char* const kChoicesHint =
@@ -209,16 +195,13 @@ StepShort step_short(const SongTiming& timing, const Activation& act) {
     if (const std::optional<int64_t> d = act.deact_tick())
         s.span += " \xE2\x86\x92 " + measure_at(timing, *d);  // a right arrow
     s.saved = counted(act.sp_meter(), "phrase", "phrases");
-    s.squeezes = squeeze_short_text(act);
+    s.squeezes = badges_text(act);
     return s;
 }
 
 std::string end_choice_text(const SongTiming& timing, const Activation& act) {
     const std::optional<int64_t> d = act.deact_tick();
-    std::string t = d ? "ends " + measure_at(timing, *d) : act.notationstr();
-    const std::string sq = squeeze_short_text(act);
-    if (!sq.empty()) t += app::kFactSeparator + sq;
-    return t;
+    return (d ? "ends " + measure_at(timing, *d) : act.notationstr()) + badges_after(act);
 }
 
 std::string cost_text(int64_t cost) {
@@ -232,13 +215,12 @@ std::string cost_or_best(int64_t cost) {
 
 namespace {
 
-// "Hydra would end it at m97, ending with ... ." for the candidate's
+// "Hydra would end it at m97 · squeeze out 0.0 ms." for the candidate's
 // activation, or nothing when it has no deact node. fill_hover_card says it.
 std::optional<std::string> hydra_end_sentence(const PreviewScene& scene, const Activation& end) {
     const std::optional<int64_t> d = end.deact_tick();
     if (!d) return std::nullopt;
-    return "Hydra would end it at " + measure_at(scene_timing(scene), *d) + squeeze_end_text(end) +
-           ".";
+    return "Hydra would end it at " + measure_at(scene_timing(scene), *d) + badges_after(end) + ".";
 }
 
 // The heading's name and clock, "m87 · 2:25.655".
@@ -336,8 +318,7 @@ StepText step_sentence(const SongTiming& timing, const Activation& act, int64_t 
                  app::clock_str(act.timecode.ms()) + ") with " +
                  counted(act.sp_meter(), "phrase", "phrases") + " saved.";
     if (const std::optional<int64_t> d = act.deact_tick())
-        s.sentence += " Star Power runs until " + measure_at(timing, *d) +
-                      squeeze_end_text(act) + ".";
+        s.sentence += " Star Power runs until " + measure_at(timing, *d) + badges_after(act) + ".";
     s.sentence += " This choice " + cost_text(cost) + ".";
     s.why = !app::costs_nothing(cost)
                 ? "Before it, the best you could still finish with was " + group_thousands(before) +

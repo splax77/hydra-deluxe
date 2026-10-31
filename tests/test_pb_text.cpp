@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "app/config.h"
+#include "app/path_view.h"  // activation_badges
 #include "app/preview_view.h"
 #include "core/model.h"
 #include "corpus_default_cfg.h"
@@ -72,9 +73,7 @@ TEST_CASE("candidate row: the clock, phrases, end and squeeze of a priced fill")
     const size_t idx = fill_index(three, 245760);
     CHECK(fill_refusal(three, idx) == FillRefusal::None);
     CHECK(candidate_row_text(three, idx, &ends[3]) ==
-          "2:51.485 · 2 phrases · ends m136 · squeeze-out 130.4 ms");
-    // The same squeeze, once, in the step's long form.
-    CHECK(squeeze_end_text(ends[3]) == ", ending with a squeeze-out that needs 130.4 ms");
+          "2:51.485 · 2 phrases · ends m136 · squeeze out 130.4 ms");
     // Before its search lands, the end reads kPendingText.
     CHECK(candidate_row_text(three, idx, nullptr) == "2:51.485 · 2 phrases · ...");
     // With no squeeze the row stops at the end: the best path's last
@@ -84,26 +83,24 @@ TEST_CASE("candidate row: the clock, phrases, end and squeeze of a priced fill")
           "3:20.702 · 2 phrases · ends m150");
     // A hand-built activation with the same end carries one squeeze of each
     // kind just inside Star Power, so neither needs timing
-    // (SPSqueeze::needs_no_timing): the short form and the long form both
-    // say so.
+    // (SPSqueeze::needs_no_timing): the row still words each as the Paths
+    // tab's badge does, with its figure, joined by the separator. A
+    // hand-built Activation has no skips and an early-fill offset of 0, so it
+    // is an E0 and its early fill is listed first, as the Paths tab lists it.
     Activation free_squeezes;
     free_squeezes.sp_end_steps.push_back({0, *ends[3].deact_tick(), SpEndKind::Activation});
     free_squeezes.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -0.001},
                               SPSqueeze{SqueezeKind::SqOut, 0.001}};
     CHECK(candidate_row_text(three, idx, &free_squeezes) ==
-          "2:51.485 · 2 phrases · ends m136 · squeeze-in, no timing, squeeze-out, no timing");
-    CHECK(squeeze_end_text(free_squeezes) ==
-          ", ending with a squeeze-in that needs no timing and a squeeze-out that needs no "
-          "timing");
+          "2:51.485 · 2 phrases · ends m136 · early fill 0.0 ms · squeeze in -0.0 ms · squeeze "
+          "out -0.0 ms");
     // A squeeze-in exactly on the SP end needs 0.0 ms, the same as a
-    // squeeze-out there (D301): its figure, not "no timing".
+    // squeeze-out there (D301).
     Activation on_end;
     on_end.sp_end_steps.push_back({0, *ends[3].deact_tick(), SpEndKind::Activation});
     on_end.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 0.0}};
-    CHECK(squeeze_short_text(on_end) == "squeeze-in 0.0 ms");
     CHECK(candidate_row_text(three, idx, &on_end) ==
-          "2:51.485 · 2 phrases · ends m136 · squeeze-in 0.0 ms");
-    CHECK(squeeze_end_text(on_end) == ", ending with a squeeze-in that needs 0.0 ms");
+          "2:51.485 · 2 phrases · ends m136 · early fill 0.0 ms · squeeze in 0.0 ms");
 }
 
 TEST_CASE("choice order: cheapest first, ties in chart order, pending last") {
@@ -140,7 +137,7 @@ TEST_CASE("step short: start, end and phrases") {
     CHECK(third.saved == "4 phrases");
 }
 
-TEST_CASE("step short: the row carries the squeezes in the short form") {
+TEST_CASE("step short: the row carries the Paths tab's badge words") {
     // August Burns Red "White Washed": its best path's fourth window ends
     // with a squeeze-out (the step sentence test below); the first has none.
     // Pinned from one run.
@@ -153,13 +150,13 @@ TEST_CASE("step short: the row carries the squeezes in the short form") {
     const StepShort fourth = step_short(*scene.timing, acts[3]);
     CHECK(fourth.span == "m132 → m136");
     CHECK(fourth.saved == "2 phrases");
-    CHECK(fourth.squeezes == "squeeze-out 130.4 ms");
+    CHECK(fourth.squeezes == "squeeze out 130.4 ms");
     const StepShort first = step_short(*scene.timing, acts[0]);
     CHECK(first.span == "m23 → m29");
     CHECK(first.squeezes.empty());
 }
 
-TEST_CASE("end choice text: the end measure and the short form") {
+TEST_CASE("end choice text: the end measure and the Paths tab's badge words") {
     // August Burns Red "White Washed" on its best path, as the step short
     // test above. Pinned from one run.
     const std::string name = "August Burns Red - White Washed";
@@ -169,23 +166,29 @@ TEST_CASE("end choice text: the end measure and the short form") {
     REQUIRE(acts.size() == 5);
     const app::PreviewScene scene = scene_for(song, rec.best_path());
     const SongTiming& timing = *scene.timing;
-    CHECK(end_choice_text(timing, acts[3]) == "ends m136 · squeeze-out 130.4 ms");
-    // No squeeze, no squeeze words.
+    CHECK(end_choice_text(timing, acts[3]) == "ends m136 · squeeze out 130.4 ms");
+    // No timing to name, no badge words.
     CHECK(end_choice_text(timing, acts[0]) == "ends m29");
     // A hand-built end on the same deact node with a squeeze-in inside Star
     // Power, which needs no timing, and one exactly on the SP end, which
-    // needs 0.0 ms (D301).
+    // needs 0.0 ms (D301). Both read their badge's figure. Each hand-built
+    // Activation is an E0 (no skips, early-fill offset 0), so its early fill
+    // comes first, as on the Paths tab.
     Activation inside;
     inside.sp_end_steps.push_back({0, *acts[3].deact_tick(), SpEndKind::Activation});
-    inside.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -0.001}};
-    CHECK(end_choice_text(timing, inside) == "ends m136 · squeeze-in, no timing");
+    inside.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -130.4}};
+    CHECK(end_choice_text(timing, inside) == "ends m136 · early fill 0.0 ms · squeeze in -130.4 ms");
     Activation on_end = inside;
     on_end.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 0.0}};
-    CHECK(end_choice_text(timing, on_end) == "ends m136 · squeeze-in 0.0 ms");
+    CHECK(end_choice_text(timing, on_end) == "ends m136 · early fill 0.0 ms · squeeze in 0.0 ms");
+    // The words are the Paths tab's badges, one for one.
+    std::vector<std::string> badges;
+    for (const app::ActivationBadge& b : app::activation_badges(on_end)) badges.push_back(b.text);
+    CHECK(badges == std::vector<std::string>{"early fill 0.0 ms", "squeeze in 0.0 ms"});
     // An end with no deact node names its notation instead of a measure.
     Activation no_end;
     no_end.sqinouts = {SPSqueeze{SqueezeKind::SqOut, 0.0}};
-    CHECK(end_choice_text(timing, no_end) == "E0- · squeeze-out 0.0 ms");
+    CHECK(end_choice_text(timing, no_end) == "E0- · early fill 0.0 ms · squeeze out 0.0 ms");
 }
 
 TEST_CASE("locked message: the fill's name, no Can't-activate prefix") {
@@ -269,8 +272,8 @@ TEST_CASE("step sentence: a squeeze-out over the limit carries the ms figure and
     // The cost and the two best finishes are the caller's figures; these are
     // made up to show both wordings.
     CHECK(s.sentence ==
-          "Activate at m132 (2:51.485) with 2 phrases saved. Star Power runs until m136, ending "
-          "with a squeeze-out that needs 130.4 ms. This choice costs 1,234 points.");
+          "Activate at m132 (2:51.485) with 2 phrases saved. Star Power runs until m136 · squeeze "
+          "out 130.4 ms. This choice costs 1,234 points.");
     CHECK(s.why == "Before it, the best you could still finish with was 707,414. After it, 706,180.");
     CHECK(s.note == "needs 130.4 ms, your limit is 10 ms");
     const StepText free =
