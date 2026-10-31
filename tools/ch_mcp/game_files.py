@@ -41,9 +41,11 @@ SETTINGS = "settings.ini"
 # The files a live step backs up, by the folder they live in. The two
 # profiles files are there because a human run's loader clones a profile, and
 # whether the game saves that clone is not yet known (the direct-start plan's
-# question 3, answered 2026-10-31: back them up now).
-DOCUMENTS_FILES = (SETTINGS, SCORESTATS)
-LOCALLOW_FILES = ("scoredata.bin", "scoresext.bin", "user.bin", "profiles.ini", "profiles.bin")
+# question 3, answered 2026-10-31: back them up now). The game keeps them in
+# the Documents folder; its LocalLow copies are only read (page 07, IN-70),
+# so they are not backed up.
+DOCUMENTS_FILES = (SETTINGS, SCORESTATS, "profiles.ini", "profiles.bin")
+LOCALLOW_FILES = ("scoredata.bin", "scoresext.bin", "user.bin")
 
 BACKUP_PREFIX = "backup-"
 BACKUP_MANIFEST = "backup.json"
