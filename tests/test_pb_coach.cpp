@@ -202,16 +202,32 @@ TEST_CASE("coach click: a fill that rules out a later window is refused in the l
     CHECK(r.detail.empty());
 }
 
+namespace {
+
+// White Washed's best path cut to its first four windows, and the ends of
+// the fourth, the last.
+struct FourthWindowEnds {
+    std::vector<PinnedWindow> four;
+    std::vector<hydra::pathbuilder::EndChoice> ends;
+};
+
+FourthWindowEnds fourth_window_ends(const OpenChart& c) {
+    FourthWindowEnds out;
+    out.four = hydra::pinned_windows(c.record.best_path());
+    out.four.resize(4);
+    const std::vector<PinnedWindow> before(out.four.begin(), out.four.begin() + 3);
+    out.ends = hydra::pathbuilder::end_choices(*c.graph, c.settings, before, out.four[3].act_tick);
+    return out;
+}
+
+}  // namespace
+
 TEST_CASE("coach end: choosing the last window's end pins it") {
     PbState s;
     open_and_wait(s, corpus::white_washed_notes(), scratch_settings());
     REQUIRE(s.chart() != nullptr);
     const OpenChart& c = *s.chart();
-    // The best path's first four windows; the fourth is the last.
-    std::vector<PinnedWindow> four = hydra::pinned_windows(c.record.best_path());
-    four.resize(4);
-    const std::vector<PinnedWindow> before(four.begin(), four.begin() + 3);
-    const auto ends = hydra::pathbuilder::end_choices(*c.graph, c.settings, before, four[3].act_tick);
+    const auto [four, ends] = fourth_window_ends(c);
     // From one run: the squeeze-in end, then the squeeze-out end.
     REQUIRE(ends.size() == 2);
     CHECK(ends[0].token == "0+");
@@ -225,6 +241,110 @@ TEST_CASE("coach end: choosing the last window's end pins it") {
     REQUIRE(chosen.windows->size() == 4);
     CHECK((*chosen.windows)[3].deact_tick == 257280);
     CHECK(chosen.path->pathstring() == "0 1 3 0+");
+
+    // Each end carries its activation, so the screen reads the end's words
+    // from it. From one run: the squeeze-in end's squeeze needs no timing,
+    // the squeeze-out end's needs 130.4 ms.
+    for (const auto& e : ends) CHECK(e.activation.notationstr() == e.token);
+    const std::vector<hydra::ActivationTiming> in = ends[0].activation.badge_timings();
+    REQUIRE(in.size() == 1);
+    CHECK(in[0].part == hydra::TimingPart::SqueezeIn);
+    CHECK_FALSE(in[0].required);
+    const std::vector<hydra::ActivationTiming> out = ends[1].activation.badge_timings();
+    REQUIRE(out.size() == 1);
+    CHECK(out[0].part == hydra::TimingPart::SqueezeOut);
+    CHECK(out[0].required);
+    CHECK(hydra::format_ms(out[0].ms) == "130.4 ms");
+}
+
+TEST_CASE("coach end: the kept end is the window's own end") {
+    PbState s;
+    open_and_wait(s, corpus::white_washed_notes(), scratch_settings());
+    REQUIRE(s.chart() != nullptr);
+    const OpenChart& c = *s.chart();
+    const auto [four, ends] = fourth_window_ends(c);
+    REQUIRE(ends.size() == 2);
+    // The best path kept the squeeze-out end (its fourth token is "0-").
+    CHECK_FALSE(hydra::pathbuilder::is_kept_end(four[3], ends[0]));
+    CHECK(hydra::pathbuilder::is_kept_end(four[3], ends[1]));
+    CHECK(ends[1].window.deact_tick == four[3].deact_tick);
+
+    // Once the player chooses the squeeze-in end, that end is the kept one.
+    const ClickResult chosen = hydra::pathbuilder::choose_end(*c.graph, c.settings, four, ends[0].window);
+    REQUIRE(chosen.windows.has_value());
+    REQUIRE(chosen.windows->size() == 4);
+    CHECK(hydra::pathbuilder::is_kept_end((*chosen.windows)[3], ends[0]));
+    CHECK_FALSE(hydra::pathbuilder::is_kept_end((*chosen.windows)[3], ends[1]));
+}
+
+// An earlier step's endings are computed when the step is opened
+// (DecisionList::select), never stored. The windows after it are not in
+// `before`, so its list is the one it had when it was the last window.
+TEST_CASE("coach end: an earlier window's endings are the same list") {
+    PbState s;
+    open_and_wait(s, corpus::white_washed_notes(), scratch_settings());
+    REQUIRE(s.chart() != nullptr);
+    const OpenChart& c = *s.chart();
+    const std::vector<PinnedWindow> five = hydra::pinned_windows(c.record.best_path());
+    REQUIRE(five.size() == 5);
+
+    // A window's ends as the screen opens it (DecisionList::select) on the
+    // path of the first `count` windows.
+    hydra::pathbuilder::DecisionList& d = s.decisions();
+    auto ends_when_opened = [&](size_t row, size_t count) {
+        const std::vector<PinnedWindow> windows(five.begin(),
+                                                five.begin() + static_cast<std::ptrdiff_t>(count));
+        const hydra::TargetResult found = hydra::search_target(*c.graph, windows);
+        REQUIRE_FALSE(found.paths.empty());
+        d.show(s.search_graph(), c.settings, &found.paths.front(), std::to_string(count));
+        d.select(row);
+        testwait::poll_until_idle(d, "the step's endings to land", s);
+        return d.ends();
+    };
+    // The same ends, in the same order, at the same best finishes.
+    auto same_list = [](const std::vector<hydra::pathbuilder::EndChoice>& a,
+                        const std::vector<hydra::pathbuilder::EndChoice>& b) {
+        REQUIRE(a.size() == b.size());
+        for (size_t e = 0; e < a.size(); ++e) {
+            CAPTURE(e);
+            CHECK(a[e].token == b[e].token);
+            CHECK(a[e].window.deact_tick == b[e].window.deact_tick);
+            CHECK(a[e].window.squeezed_out == b[e].window.squeezed_out);
+            CHECK(a[e].best_finish == b[e].best_finish);
+        }
+    };
+    auto kept_count = [&](size_t row, const std::vector<hydra::pathbuilder::EndChoice>& ends) {
+        size_t kept = 0;
+        for (const auto& e : ends) kept += hydra::pathbuilder::is_kept_end(five[row], e) ? 1 : 0;
+        return kept;
+    };
+
+    // The third window, opened as the last of three and as the third of
+    // five. From one run: one end.
+    const auto third_last = ends_when_opened(2, 3);
+    const auto third_earlier = ends_when_opened(2, 5);
+    REQUIRE(third_last.size() == 1);
+    CHECK(third_last[0].token == "3");
+    CHECK(third_last[0].window.deact_tick == 215040);
+    CHECK(third_last[0].best_finish == 706180);
+    same_list(third_earlier, third_last);
+    CHECK(kept_count(2, third_earlier) == 1);
+
+    // The fourth window, opened as the last of four and as the fourth of
+    // five. From one run: the squeeze-in end, then the squeeze-out end the
+    // best path kept.
+    const auto fourth_last = ends_when_opened(3, 4);
+    const auto fourth_earlier = ends_when_opened(3, 5);
+    REQUIRE(fourth_last.size() == 2);
+    CHECK(fourth_last[0].token == "0+");
+    CHECK(fourth_last[0].window.deact_tick == 257280);
+    CHECK(fourth_last[0].best_finish == 692360);
+    CHECK(fourth_last[1].token == "0-");
+    CHECK(fourth_last[1].window.deact_tick == 253440);
+    CHECK(fourth_last[1].best_finish == 706180);
+    same_list(fourth_earlier, fourth_last);
+    CHECK_FALSE(hydra::pathbuilder::is_kept_end(five[3], fourth_earlier[0]));
+    CHECK(hydra::pathbuilder::is_kept_end(five[3], fourth_earlier[1]));
 }
 
 // The player builds left to right (plan 2026-10-30, Q1), so Remove takes the
