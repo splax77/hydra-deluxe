@@ -39,7 +39,7 @@ Run the precheck: `build-cpp\Release\hydra_precheck.exe --repo <worktree path> -
 Run the scan test and the docs test with their filters, and nothing else:
 
 - the scan test: `build-cpp\Release\hydra_tests.exe -tc="single-owner*"`;
-- the docs test, once it exists: `build-cpp\Release\hydra_tests.exe -sf=*docs_match_code*`.
+- the docs test: `build-cpp\Release\hydra_tests.exe -sf=*docs_match_code*`.
 
 Also run any test case your brief names. Never run the full suite. The main session runs the merge's tests once, after the review: the ones `build-cpp\Release\hydra_precheck.exe --repo <worktree path> --tests main...<wave branch>` prints (CLAUDE.md rule 1).
 
