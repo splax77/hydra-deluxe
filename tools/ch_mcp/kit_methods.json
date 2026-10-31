@@ -36,7 +36,9 @@
         {"name": "get_Count", "image": "mscorlib", "class": "System.Collections.Generic.List<T>", "dump_line": 232963, "signature": "public int get_Count()", "note": "Called on the IList that get_AllPlayers, GetMaps and get_AllMaps return. The dump types those returns only as IList, so its line is List<T>'s; the probe of 2026-10-30 called get_Count on all three returns live (q2_players.js, q6_setup.js, q7_press.js)."},
         {"name": "get_Item", "image": "mscorlib", "class": "System.Collections.Generic.List<T>", "dump_line": 234331, "signature": "public T get_Item(int index)", "note": "As get_Count: called on the same three IList returns, which the probe read the same way."},
         {"name": "get_frameCount", "image": "UnityEngine.CoreModule", "class": "UnityEngine.Time", "dump_line": 696583, "signature": "public static int get_frameCount()"},
-        {"name": "get_isFocused", "image": "UnityEngine.CoreModule", "class": "UnityEngine.Application", "dump_line": 687296, "signature": "public static bool get_isFocused()"}
+        {"name": "get_isFocused", "image": "UnityEngine.CoreModule", "class": "UnityEngine.Application", "dump_line": 687296, "signature": "public static bool get_isFocused()"},
+        {"name": "GetButton", "image": "Rewired_Core", "class": "Rewired.Player", "dump_line": 306988, "signature": "public bool GetButton(string actionName)", "overload": ["System.String"]},
+        {"name": "GetAnyButton", "image": "Rewired_Core", "class": "Rewired.Player", "dump_line": 307138, "signature": "public bool GetAnyButton()", "also": [{"class": "Rewired.ReInput.ControllerHelper", "dump_line": 310008, "signature": "public bool GetAnyButton()"}], "note": "kit.ts calls this name on two classes, each with no argument: on every Player and on ReInput's ControllerHelper. A name is listed once (tests/test_frida_attach.py refuses a name listed twice), so the second class sits under also."}
     ],
     "fields": [
         {"name": "controllers", "image": "Rewired_Core", "class": "Rewired.Player", "dump_line": 306914, "signature": "public readonly Player.ControllerHelper controllers"},

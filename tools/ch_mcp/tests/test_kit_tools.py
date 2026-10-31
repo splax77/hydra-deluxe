@@ -302,6 +302,96 @@ class PressTest(Rig):
                          "hold_frames is a whole number of 1 or more, not 0")
 
 
+class PressOptionsTest(Rig):
+    def test_a_press_with_read_sends_the_names_and_prints_seen(self):
+        reply = {**PRESS_REPLY, "read": ["Green"], "seen": [
+            {"frame": 1200, "action": "Green", "value": False},
+            {"frame": 1201, "action": "Green", "value": True},
+            {"frame": 1202, "action": "Green", "value": False}]}
+        tools = self.set_up([reply])
+        lines = tools.ch_kit_press("green", read="Green").splitlines()
+        self.assertEqual(self.posted()[-1], {
+            "type": "press", "elements": [{"id": 3, "value": 1.0}], "hold_frames": 2,
+            "cap_s": 1, "rewrite": True, "on_main": False, "read": ["Green"]})
+        self.assertEqual(lines[1:], [
+            "read back on the kit's player: Green",
+            "  frame 1200: Green off",
+            "  frame 1201: Green on",
+            "  frame 1202: Green off"])
+
+    def test_read_takes_a_list_each_name_once_and_refuses_a_name_that_is_not_text(self):
+        tools = self.set_up([{**PRESS_REPLY, "read": ["Green", "Orange"], "seen": []}])
+        lines = tools.ch_kit_press("green", read=["Green", " Orange", "Green"]).splitlines()
+        self.assertEqual(self.posted()[-1]["read"], ["Green", "Orange"])
+        self.assertEqual(lines[-2:], ["read back on the kit's player: Green, Orange",
+                                      "  no reads came back"])
+        self.assertEqual(tools.ch_kit_press("green", read=[3]),
+                         "read takes game action names, not 3")
+
+    def test_none_sends_the_constants_and_a_given_value_overrides_them(self):
+        tools = self.set_up([PRESS_REPLY, {**PRESS_REPLY, "rewrite": False, "on_main": True}])
+        reply = tools.ch_kit_press("green")
+        self.assertEqual((self.posted()[-1]["rewrite"], self.posted()[-1]["on_main"]),
+                         (K.KIT_REWRITE, K.KIT_PRESS_ON_MAIN))
+        self.assertNotIn("read", self.posted()[-1])
+        self.assertEqual(len(reply.splitlines()), 1)
+        lines = tools.ch_kit_press("green", hold_frames=1, rewrite=False,
+                                   on_main=True).splitlines()
+        self.assertEqual((self.posted()[-1]["rewrite"], self.posted()[-1]["on_main"],
+                          self.posted()[-1]["hold_frames"]), (False, True, 1))
+        self.assertEqual(lines[1], "rewrite off, main thread on (as the agent ran it)")
+
+    def test_rewrite_and_on_main_take_only_true_or_false(self):
+        tools = self.set_up()
+        self.assertEqual(tools.ch_kit_press("green", rewrite="no"),
+                         "rewrite is true, false or left out, not 'no'")
+        self.assertEqual(tools.ch_kit_press("green", on_main=1),
+                         "on_main is true, false or left out, not 1")
+
+
+WATCH_QUIET = {"seconds": 20, "ticks": 3100, "first_frame": 5000, "last_frame": 8200,
+               "readers": ["System", "Player1", "controllers"], "true_count": 0, "reads": []}
+
+
+class WatchTest(Rig):
+    def test_a_watch_with_no_true_read_says_no_key_reached_a_player(self):
+        tools = self.set_up([WATCH_QUIET])
+        lines = tools.ch_kit_watch(20).splitlines()
+        self.assertEqual(self.posted()[-1], {"type": "watch", "seconds": 20, "cap_s": 21})
+        self.assertEqual(lines, [
+            "watched 20 s: 3100 ticks, frames 5000 to 8200, readers: System, Player1, controllers",
+            "no key reached a player"])
+
+    def test_a_true_read_is_a_failure_naming_the_frame_and_the_reader(self):
+        loud = {**WATCH_QUIET, "true_count": 7,
+                "reads": [{"ms": 4210, "frame": 5672, "who": "System"},
+                          {"ms": 9000, "frame": 6440, "who": "controllers"}]}
+        tools = self.set_up([loud])
+        lines = tools.ch_kit_watch(20).splitlines()
+        self.assertEqual(lines[1:], [
+            "FAILED: a key reached a player: 7 true reads; the first 2 that turned true:",
+            "  at 4210 ms, frame 5672: System GetAnyButton true",
+            "  at 9000 ms, frame 6440: controllers GetAnyButton true"])
+
+    def test_refused_while_a_play_session_runs_before_setup_and_on_a_bad_length(self):
+        tools = self.tools()
+        self.assertEqual(tools.ch_kit_watch(20), K.NOT_SET_UP)
+        tools = self.set_up()
+        sent = len(self.posted())
+        self.game.play = {"last_row": None, "press_count": 0, "stop": None}
+        self.assertEqual(tools.ch_kit_watch(20), K.PLAY_RUNNING)
+        self.game.play = None
+        for bad in (0, -1, True, "20", float("inf")):
+            self.assertEqual(tools.ch_kit_watch(bad), f"seconds is a number above 0, not {bad!r}")
+        self.assertEqual(len(self.posted()), sent)
+
+    def test_a_watch_with_no_reply_ends_at_its_cap(self):
+        tools = self.set_up([None])
+        self.assertEqual(tools.ch_kit_watch(2.5),
+                         "watch failed: no reply to the watch request within the cap of 3.5 s "
+                         "(seconds plus KIT_PRESS_CAP_S)")
+
+
 class KitPressTest(Rig):
     def test_the_kit_press_reply_rides_into_the_press_row_and_the_log(self):
         tools = self.set_up([PRESS_REPLY])

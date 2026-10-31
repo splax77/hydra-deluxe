@@ -540,7 +540,7 @@ class GameToolsTest(unittest.TestCase):
 
         t = ToolRig(self.tmp, live_play=live_play)
         _write(os.path.join(t.r.song, G.SONG_INI), b"[song]\nsong_length = 260504\n")
-        reply = t.tools.ch_play_chart(self._score_json(), song_folder=t.r.song)
+        reply = t.tools.ch_play_chart(self._score_json(), song_folder=t.r.song, route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertEqual(seen, [320.504])
         self.assertIn("run cap: 320.504 s", reply.splitlines())
@@ -555,7 +555,7 @@ class GameToolsTest(unittest.TestCase):
     def test_a_second_ch_play_chart_is_refused_while_one_runs(self):
         t = ToolRig(self.tmp)
         score = self._score_json()
-        first = t.tools.ch_play_chart(score)
+        first = t.tools.ch_play_chart(score, route="keys")
         self.assertIn("play session started: 2 chords", first)
         self.assertIn("waiting for a moving clock (cap 120 s)", first)
         self.assertTrue(t.live_play.delivered.wait(THREAD_CAP_S))
@@ -567,7 +567,7 @@ class GameToolsTest(unittest.TestCase):
 
     def test_ch_play_stop_sets_the_flag_and_ch_play_status_reports_the_result(self):
         t = ToolRig(self.tmp)
-        t.tools.ch_play_chart(self._score_json(), log="press.csv")
+        t.tools.ch_play_chart(self._score_json(), log="press.csv", route="keys")
         self.assertTrue(t.live_play.delivered.wait(THREAD_CAP_S))
         snapshot = t.tools.play_snapshot()
         self.assertEqual(snapshot, {"last_row": ROWS[-1], "press_count": 2, "stop": None})
@@ -598,7 +598,7 @@ class GameToolsTest(unittest.TestCase):
     def test_a_run_with_no_engine_reports_the_finders_message(self):
         t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(
             stop=play_chart.STOP_NO_ENGINE, message="no song started within 120 s"))
-        t.tools.ch_play_chart(self._score_json())
+        t.tools.ch_play_chart(self._score_json(), route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         lines = t.tools.ch_play_status().splitlines()
         self.assertIn(f"ended: {play_chart.STOP_NO_ENGINE}", lines)
@@ -606,7 +606,7 @@ class GameToolsTest(unittest.TestCase):
 
     def test_ch_stop_tells_a_running_play_session_to_stop(self):
         t = ToolRig(self.tmp)
-        t.tools.ch_play_chart(self._score_json())
+        t.tools.ch_play_chart(self._score_json(), route="keys")
         self.assertTrue(t.live_play.delivered.wait(THREAD_CAP_S))
         reply = t.tools.ch_stop()
         self.assertIn("play session told to stop", reply)
@@ -649,9 +649,25 @@ class GameToolsTest(unittest.TestCase):
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertIs(seen[-1]["press"], kit_press)
 
-    def test_no_route_picks_keys_while_the_kit_is_not_set_up(self):
+    NO_ROUTE_REFUSED = ("refused: no route given and the kit is not set up; "
+                        "call ch_kit_setup first")
+
+    def test_no_route_is_refused_while_the_kit_is_not_set_up(self):
         t, seen = self._kit_rig(None)
-        reply = t.tools.ch_play_chart(self._score_json())
+        self.assertEqual(t.tools.ch_play_chart(self._score_json()), self.NO_ROUTE_REFUSED)
+        self.assertIsNone(t.tools._play)
+        self.assertEqual(seen, [])
+
+    def test_no_route_is_refused_with_no_kit_tools_and_presses_no_key(self):
+        t = ToolRig(self.tmp)
+        self.assertEqual(t.tools.ch_play_chart(self._score_json()), self.NO_ROUTE_REFUSED)
+        self.assertIsNone(t.tools._play)
+        self.assertEqual(t.live_play.calls, [])
+        self.assertEqual(t.driver.events, [])
+
+    def test_route_keys_presses_keys_through_the_driver(self):
+        t, seen = self._kit_rig(None)
+        reply = t.tools.ch_play_chart(self._score_json(), route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertIs(seen[-1]["driver"], t.driver)
         self.assertNotIn("press", seen[-1])
