@@ -60,8 +60,8 @@ These counts were taken from the pages on 2026-10-31, by counting their `###` he
 | 04 fills | 45 | 32 | 2 | 4 | 7 |
 | 05 Star Power | 46 | 22 | 3 | 9 | 12 |
 | 06 scoring | 37 | 17 | 7 | 3 | 10 |
-| 07 internals | 55 | 25 | 11 | 0 | 19 |
-| All pages | 353 | 182 | 34 | 34 | 103 |
+| 07 internals | 67 | 37 | 11 | 0 | 19 |
+| All pages | 365 | 194 | 34 | 34 | 103 |
 
 Eleven of page 4's blocks describe build 1.0. The questions page holds 24 open questions, and the live-checks page holds 72 checks covering 82 rows.
 

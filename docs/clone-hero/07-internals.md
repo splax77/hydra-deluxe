@@ -332,13 +332,13 @@ Found: 2026-10-31, session 5cc1cc07 (task LS-K3-menu-fields), checked in the dum
 
 ### IN-57 The player screen keeps the profile's controller type as a byte enum at +0x1E8
 
-Rule: `PlayerSelectionMenu` holds a controller type at +0x1E8. Its type is a one-byte enum (TypeDefIndex 8309) with four words: Guitar 0, SixFretGuitar 1, Drums 2 and FiveLaneDrums 3.
+Rule: `PlayerSelectionMenu` holds a controller type at +0x1E8. Its type is a one-byte enum (TypeDefIndex 8309) with four words: Guitar 0, SixFretGuitar 1, Drums 2 and FiveLaneDrums 3. The screen copies it from its profile's "controller_type" setting (IN-65) in OnEnable and again in Update; the profile screen's Controller row is what writes that setting (IN-67).
 Label: Proven in the game's code
-Evidence: `dump.cs` line 72873 (the field at 0x1E8) and lines 532200 to 532208 (the enum, its byte value field and its four words). This is dump text, not a listing.
-Game code (6142): `#1429+0x1E8`; field only, no method.
+Evidence: `dump.cs` line 72873 (the field at 0x1E8) and lines 532200 to 532208 (the enum, its byte value field and its four words). The copies were read with tools/ch_mcp/chdis.py on 2026-10-31, with no listing: OnEnable `0x32BF80` (`dump.cs` line 72986) calls the profile's controller-type getter `0x2123320` at 0x32C2CE and stores its byte at 0x32C2D7, and Update `0x3314E0` (`dump.cs` line 72974) does the same at 0x3315CC and 0x3315D3. Update reaches the profile through the menu's +0x20 and then +0x10 (0x3315B8 and 0x3315C1); OnEnable's path to it was not read. The getter reads the setting at profile +0x60 (0x2123345) and returns it as enum #8309 (`dump.cs` line 541772).
+Game code (6142): `#1429+0x1E8`; OnEnable RVA `0x32BF80`, Update RVA `0x3314E0`, getter RVA `0x2123320`.
 Hydra: no owner: Hydra never reads the running game. The tools read it through tools/ch_mcp/menu_fields.json.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-31, session 5cc1cc07 (task LS-K3-menu-fields), checked in the dump.
+Found: 2026-10-31, session 5cc1cc07 (task LS-K3-menu-fields), checked in the dump; the copies read 2026-10-31, session b15bb484 (task D1).
 
 ### IN-58 The player screen has four ints on BaseMenu and two row arrays of its own
 
@@ -374,23 +374,23 @@ Found: 2026-10-31, session 5cc1cc07, from a decompile of build 6142.
 
 ### IN-31 The bot never gains Star Power
 
-Rule: A bot never gains Star Power meter: the engine's gain method returns before adding anything when the player kind is Bot (or a remote player). On a chart with 11 phrases the bot hit every note and earned 0 phrases, with 0 activations and 0 time in Star Power, so a bot run can never test a Star Power rule.
+Rule: A bot never gains Star Power meter: the engine's gain method returns before adding anything when the player kind is Bot (or a remote player). On a chart with 11 phrases the bot hit every note and earned 0 phrases, with 0 activations and 0 time in Star Power, so a bot run can never test a Star Power rule. The kind is Bot because the drums player's kind method gives Bot to a slot whose profile has "is_bot" on (IN-64), and the command-line loader switches it on when no replay is given (IN-61).
 Label: Proven in the game's code
-Evidence: `code/6142/sp_gain_20F4FA0.asm` lines 13 to 16 (the player kind at +0x190 compared with 2 and with 1, each jumping to the return at line 58). Live, 2026-10-28: `RUNS\l1\bot\scorestats-Trippin_SP_Spike-20261028-210052.json` (Drums) and `...-212754.json` (ProDrums): 11 phrases offered, 0 earned, 0 activations, 0 time in Star Power, 1,257 notes hit, is_bot true. The same chart played by keys earned 11 phrases and activated 4 times (`overlay-spike/run1_cal0_scorestats.json`). The listing shows only this route; no other method that adds meter was searched.
+Evidence: `code/6142/sp_gain_20F4FA0.asm` lines 13 to 16 (the player kind at +0x190 compared with 2 and with 1, each jumping to the return at line 58). The kind's source is `code/6142/player_kind_11676A0.asm` lines 110 to 132 and `code/6142/cli_loader_3968D0.asm` lines 324 to 329. Live, 2026-10-28: `RUNS\l1\bot\scorestats-Trippin_SP_Spike-20261028-210052.json` (Drums) and `...-212754.json` (ProDrums): 11 phrases offered, 0 earned, 0 activations, 0 time in Star Power, 1,257 notes hit, is_bot true. The same chart played by keys earned 11 phrases and activated 4 times (`overlay-spike/run1_cal0_scorestats.json`). The listing shows only this route; no other method that adds meter was searched.
 Game code (6142): #8288 gain method, RVA `0x20F4FA0`; field `#8288+0x190`.
 Hydra: no owner: Hydra has no bot model (no "is_bot" in src/).
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-28, session 6a549de0 (feasibility study line 129); code read 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-28, session 6a549de0 (feasibility study line 129); code read 2026-10-30, session b02ab3e6 (the reference build); the kind's source read 2026-10-31, session b15bb484 (task D1).
 
 ### IN-32 The engine's player kind is set once by its constructor
 
-Rule: The engine's player kind is a 4-byte enum at +0x190 (Player 0, RemotePlayer 1, Bot 2, Replay 3), written once in the base engine's constructor. Which caller passes Bot for a bot player was not followed.
+Rule: The engine's player kind is a 4-byte enum at +0x190 (Player 0, RemotePlayer 1, Bot 2, Replay 3), written once in the base engine's constructor from the +0x10 of its third argument, a set-up record. For drums, the value Bot is written into such a record by the drums player's kind method (IN-64). That this same record reaches the constructor rests on its matching shape; the copy between them was not followed.
 Label: Proven in the game's code
-Evidence: enum #8553 at `dump.cs` lines 546294 to 546301; the field at `dump.cs` line 530029; the store at 0x20F7BCB, inside `0x20F79E0`, is line 93 of `code/6142/engine_ctor_20F79E0.asm` (page 06's listing), checked for this page.
-Game code (6142): `#8288+0x190`; base engine constructor RVA `0x20F79E0`.
+Evidence: enum #8553 at `dump.cs` lines 546294 to 546301; the field at `dump.cs` line 530029; the store at 0x20F7BCB, inside `0x20F79E0`, is line 93 of `code/6142/engine_ctor_20F79E0.asm` (page 06's listing), checked for this page, and line 9 keeps the third argument in `r14`. The kind method `code/6142/player_kind_11676A0.asm` fills a record with the same fields (+0, +8, +0xC, +0xD, +0xE and +0x10) that the constructor reads at lines 83 to 94. Its caller, the `DrumsPlayer` method `0x33C560`, calls it at 0x33C8D5 and copies the result into a larger record (0x33C8DA to 0x33C8F8, read with tools/ch_mcp/chdis.py on 2026-10-31, no listing); the rest of that path was not read.
+Game code (6142): `#8288+0x190`; base engine constructor RVA `0x20F79E0`; kind method RVA `0x11676A0`; its caller RVA `0x33C560`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the kind method and its caller, 2026-10-31, session b15bb484 (task D1).
 
 ### IN-33 A remote player's engine adds no score and drains no Star Power
 
@@ -442,15 +442,15 @@ Hydra: no owner. The tool backs the file up and restores it in tools/ch_mcp/game
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-10-28, feasibility study lines 31 and 119.
 
-### IN-38 Nothing in the code names the "is_bot" string
+### IN-38 A stats writer names the "is_bot" key in code
 
-Rule: The "is_bot" key of `scorestats.json` seems to come from a serializer reading a field name, because no code refers to the string.
-Label: Unknown
-Evidence: not checked: a scan of 838,088 direct calls and data references found no reference to the "is_bot" string's slot in `stringliteral.json`, while the same scan found the "combo: {0}" references, but a reference through a table the scan does not follow would also look like this. The scan's script and output were not kept.
-Game code (6142): not found.
+Rule: The "is_bot" key is written by code, not by a serializer reading a field name. A JSON stats writer passes the "is_bot" string to the JSON writer's bool call, with the bool from its record's +0xB6. The profile constructor uses the same string to name its "is_bot" setting (IN-65). An earlier scan that found no reference to the string was wrong.
+Label: Proven in the game's code
+Evidence: read with tools/ch_mcp/chdis.py on 2026-10-31 in `0x1144C0` (`dump.cs` line 30475, a method of class #561 taking a `Utf8JsonWriter`); no listing of it is committed. At 0x114703 the method's one-time set-up loads the "is_bot" string slot (`lea rcx, [rip + 0x3ba677e]`, the slot at 0x3CBAE88). At 0x114CC9 it loads the same slot as the property name (`mov rdx, qword ptr [rip + 0x3ba61b8]`), after reading the value byte at 0x114CC1 (`movzx r8d, byte ptr [r14 + 0xb6]`), and calls the JSON writer's WriteBoolean at 0x114CD3; the keys around it are "is_fc", "versus_winner" and "is_pfc". The profile constructor loads the same slot at 0x2123CE3. Whether this writer makes `scorestats.json` or another file was not traced. The earlier scan's script and output were not kept.
+Game code (6142): stats writer RVA `0x1144C0`; profile constructor RVA `0x2123890`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); corrected 2026-10-31, session b15bb484 (task D1), from the disassembly.
 
 ### IN-39 Why scores are switched off is kept in GlobalVariables
 
@@ -600,13 +600,13 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-53 The command-line launch flags and what the game does after a bot song
 
-Rule: The game's manual lists the flags `--song <folder>`, `--player <Instrument>,<Difficulty>`, `--profile`, `-i` and `-v`, and a song started with `--song` and `--player` plays with a bot. After the bot song ended, the game was still running 30 s later, on a menu or the results screen.
-Label: Unknown
-Evidence: not checked: the manual page was not opened and the "still running 30 s later" check is one observation recorded only in the feasibility study (lines 29 and 119). What the tools send is `launch_command` in tools/ch_mcp/bot_run.py (lines 160 to 169): `--song`, `--player`, and `--profile` when a profile is given; the three bot runs behind IN-37 show that launch does play a song to its end.
-Game code (6142): not found: the command-line parser was not read.
+Rule: A song started with `--song` and `--player` plays with a bot, because the command-line loader switches the profile's "is_bot" setting on when no replay is given (IN-61). The `--player` value is read as in IN-63.
+Label: Proven in the game's code
+Evidence: `code/6142/cli_loader_3968D0.asm` lines 322 to 329 (IN-61), and the parser read for IN-63. Not checked: the flag list from the game's manual (`--song <folder>`, `--player <Instrument>,<Difficulty>`, `--profile`, `-i` and `-v`), because the manual page was not opened and the flag reader was not read; and that the game was still running 30 s after the bot song ended, which is one observation recorded only in the feasibility study (lines 29 and 119). What the tools send is `launch_command` in tools/ch_mcp/bot_run.py: `--song`, `--player`, and `--profile` when a profile is given; the three bot runs behind IN-37 show that launch does play a song to its end.
+Game code (6142): the loader RVA `0x3968D0` and the `--player` parser RVA `0x396110`; the flag reader was not read.
 Hydra: no owner. The tool's command line is `launch_command` in tools/ch_mcp/bot_run.py.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-28, feasibility study lines 29 and 119.
+Found: 2026-10-28, feasibility study lines 29 and 119; the loader and the parser read 2026-10-31, session b15bb484 (task D1).
 
 ### IN-54 The first auto-player counted a hit when the score rose
 
@@ -617,6 +617,78 @@ Game code (6142): none read; a live run and the tool's own memory scan.
 Hydra: no owner. The tool's finder is `find_live_engine` in tools/ch_probe/engine_finder.py.
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-09-25, feasibility study line 19; checked 2026-10-30, session b02ab3e6 (the reference build).
+
+## The command-line loader
+
+### IN-61 A command-line start with no replay switches the profile's is_bot setting on
+
+Rule: When the game starts a song from the command line, its player loader writes the parsed instrument and difficulty into the slot's profile. Then, when no replay file was given, it sets the profile's "is_bot" setting to 1. With a replay file it skips that write and takes the controller type and modifiers from the replay instead. The 1 is the immediate of one instruction, `mov edx, 1` at 0x396EC5, so the byte that makes the player a bot is 0x396EC6.
+Label: Proven in the game's code
+Evidence: `code/6142/cli_loader_3968D0.asm` lines 320 and 321 (instrument to profile +0x10, difficulty to +0x11), lines 322 and 323 (the replay field at +0x60 compared with null, jumping to the replay branch at line 358), lines 324 to 329 (the "is_bot" setting at +0x48, `mov edx, 1`, the int setter `0xFE5F50`, which stores the value at the setting's +0x10), and lines 358 to 405 (the replay branch, with no "is_bot" write). The bytes `BA 01 00 00 00` at 0x396EC5 are the plan's reading of the DLL's file bytes (docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md); the listing holds no bytes, but `mov edx, 1` with a 32-bit immediate is that encoding. `code/6142/cli_loader_3968D0.md` explains every branch.
+Game code (6142): `CliGameLauncher` loader, RVA `0x3968D0` (`dump.cs` line 17992); the replay field `#282+0x60`; the profile fields `#8526+0x10`, `#8526+0x11` and `#8526+0x48`; the setter RVA `0xFE5F50`.
+Hydra: no owner: Hydra never reads the running game. The tools start the game this way in `launch_command` in tools/ch_mcp/bot_run.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session b15bb484 (task D1), from the disassembly.
+
+### IN-62 ProDrums takes the loader's drums branch: controller type Drums and modifiers DoubleKick
+
+Rule: In the no-replay branch the loader first sets the profile's modifiers to None (1). Then Drums (6) and ProDrums (9) both take the drums branch, which sets the profile's "controller_type" setting to Drums (2) and the modifiers to DoubleKick (2). The six-fret instruments get controller type SixFretGuitar (1) and every other instrument gets Guitar (0), with the modifiers left at None.
+Label: Proven in the game's code
+Evidence: `code/6142/cli_loader_3968D0.asm` line 330 (modifiers 1), lines 331 to 334 (compare with 6 and 9, both jumping to line 350), lines 350 to 357 (the setter with 2 on +0x60, then 2 to +0x14), lines 335 to 349 with lines 406 and 407 (the mask `0x4C30` and the setter with 1 or 0). The enums are `dump.cs` lines 533194 and 533197 (Drums 6, ProDrums 9), lines 532200 to 532208 (controller type, Drums 2) and lines 547680 and 547703 (None 1, DoubleKick 2; AllStrums shares the value 2). The bot runs' DoubleKick modifier (IN-42) fits this branch.
+Game code (6142): RVA `0x3968D0`; the profile fields `#8526+0x14` and `#8526+0x60`.
+Hydra: no owner: Hydra never reads the running game. The tools send `ProDrums,Expert` from `launch_command` in tools/ch_mcp/bot_run.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session b15bb484 (task D1), from the disassembly.
+
+### IN-63 The --player value is two comma-split words, matched lower-case
+
+Rule: The `--player` parser splits its text at the first commas, lower-cases the first two parts and matches each against a fixed word list. The instrument words and values are guitar 0, bass 1, rhythm 2, guitarcoop 3, guitar6fret 4, bass6fret 5, drums 6, keys 7, prodrums 9, rhythm6fret 10, guitarcoop6fret 11 and keys6fret 14; any other word gives Guitar (0). The difficulty words are easy 0, medium 1, hard 2 and expert 3; any other word gives Expert (3). A value with no comma has no second part, and the parser throws.
+Label: Proven in the game's code
+Evidence: read with tools/ch_mcp/chdis.py on the 6142 DLL on 2026-10-31, from `0x396110` to the next method at 0x3964F0; no listing of it is committed. The split on `0x2c` (a comma) is at 0x396215, the two lower-case calls at 0x39623F and 0x396260, the string-hash switch from 0x39626D, and each word's string compare is followed by its value, for example `mov bl, 9` at 0x3962CD after "prodrums". Every failed compare lands on `xor bl, bl` at 0x3963D3, and the difficulty's last step at 0x3964A3 to 0x3964AB keeps 3 unless the word is "easy". The array-bounds throw is at 0x3964E0. The method is `dump.cs` line 17940, returning the pair of the instrument enum (#8326) and the difficulty enum (#8617).
+Game code (6142): `CliGameLauncher` parser, RVA `0x396110`.
+Hydra: no owner: Hydra never reads the running game. The tools' value is `launch_command` in tools/ch_mcp/bot_run.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session b15bb484 (task D1), from the disassembly.
+
+### IN-64 The drums player's kind is RemotePlayer, then Bot, then Replay, else Player
+
+Rule: The method that fills the drums engine's set-up record decides the player kind with three tests on the player's slot, in this order. A slot whose profile marks it remote gets RemotePlayer (1). Otherwise a slot whose profile has "is_bot" above 0 gets Bot (2). Otherwise a slot whose profile holds a replay gets Replay (3). Everything else gets Player (0). So with "is_bot" at 0 and no replay, a local drums player is Player.
+Label: Proven in the game's code
+Evidence: `code/6142/player_kind_11676A0.asm` lines 110 to 132 (the remote test, the bot test, the replay test and the three stores to the record's +0x10). The bot test `0x13F8B0` reads the slot's profile, its "is_bot" setting at +0x48, and the setting's bool conversion `0x210BF30`, which is `cmp dword ptr [rbx + 0x10], 0` then `seta al`. The replay test `0x13F8E0` is true when the profile's +0xE0 is not null. The remote test `0x337720` returns the profile's byte at +0xB1. The three were read with tools/ch_mcp/chdis.py on 2026-10-31 and have no listing of their own. The enum is `dump.cs` line 546294. `code/6142/player_kind_11676A0.md` explains the lines and says how far the record's hand-off to the engine was followed.
+Game code (6142): `#996` method, RVA `0x11676A0`; tests RVA `0x337720`, RVA `0x13F8B0`, RVA `0x13F8E0`; bool conversion RVA `0x210BF30`; the slot field `#901.player`.
+Hydra: no owner: Hydra has no bot model.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session b15bb484 (task D1), from the disassembly; the plan for the direct start (docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md) named the method as a lead.
+
+### IN-65 The profile keeps instrument, difficulty, modifiers, is_bot and controller type at fixed places
+
+Rule: The profile's base class holds the instrument as a byte enum at +0x10, the difficulty as a byte enum at +0x11, the modifier flags as an int enum at +0x14, the "is_bot" setting at +0x48 and the "controller_type" setting at +0x60. Both settings are int settings; "is_bot" is built with the default false, and the game reads it as true when its int is above 0. A new profile starts as Guitar on Expert with the modifiers None.
+Label: Proven in the game's code
+Evidence: the fields are `dump.cs` lines 541668 to 541683 (class #8526, the base of the profile class #451 at line 25613), with the enums at lines 533184 (#8326), 550049 (#8617) and 547675 (#8576), and the setting class #8308 at line 532111. The constructor `0x2123890` stores the setting named "controller_type" at +0x60 (0x2123B0F to 0x2123B4B) and the one named "is_bot" at +0x48 (0x2123CE3 to 0x2123D0A, built by the bool constructor at 0x210C430, `dump.cs` line 532178, with `xor r9d, r9d`), and writes the word 0x300 to +0x10 and 1 to +0x14 (0x2123A49 and 0x2123A53). It was read with tools/ch_mcp/chdis.py on 2026-10-31; no listing of it is committed. The bool conversion is IN-64's.
+Game code (6142): `#8526+0x10`, `#8526+0x11`, `#8526+0x14`, `#8526+0x48`, `#8526+0x60`; profile constructor RVA `0x2123890`.
+Hydra: no owner: Hydra never reads the running game.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session b15bb484 (task D1), from the dump and the disassembly.
+
+### IN-66 The loader gives the slot the Rewired System Player
+
+Rule: The loader stores a Rewired player in the slot's player field. It is the System Player, fetched with GetSystemPlayer, unless a bool of the launcher is set; then it takes an entry of Rewired's player list instead. Whether the drums input reads this field, and what sets the bool, was not traced.
+Label: Proven in the game's code
+Evidence: `code/6142/cli_loader_3968D0.asm` lines 195 to 213 (the slot from `GlobalVariables.playerList` and its index written to +0x28), line 215 (the launcher's bool at +0x58), line 244 (the GetSystemPlayer call, `dump.cs` line 310436), lines 217 to 233 (the other route, through a helper at 0x2C421D0 that was not read) and line 246 (the store to the slot's +0x18, whose type is Rewired's `Player`, `dump.cs` line 73341).
+Game code (6142): RVA `0x3968D0`; the slot field `#1435+0x18`; the launcher's bool `#282+0x58`.
+Hydra: no owner: Hydra never reads the running game. The kit's player is `KIT_PLAYER` in tools/ch_mcp/kit_tools.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session b15bb484 (task D1), from the disassembly.
+
+### IN-67 The profile screen's Controller row writes the profile's controller type and resets its modifiers
+
+Rule: When the profile screen applies its row named "Controller" with a value other than the profile's current controller type, it writes the new value into the profile's "controller_type" setting and sets the profile's modifiers to None (1).
+Label: Proven in the game's code
+Evidence: read with tools/ch_mcp/chdis.py on 2026-10-31 in the `PlayerProfileMenu` method `0x1E68D0` (`dump.cs` line 45883); no listing of it is committed. The compare with the text "Controller" is at 0x1E6C48 to 0x1E6C55. Then 0x1E6C6B to 0x1E6C7E compare the setting at profile +0x60 with the int at +0x40 of the menu object in `rbx`, 0x1E6C92 calls the int setter `0xFE5F50` with that int, and 0x1E6C97 writes 1 to profile +0x14. The profile is reached through `rbx` +0x20 and then +0x10 (0x1E69A5 and 0x1E69D2). That `rbx` still holds the menu at 0x1E6C7B, and so that +0x40 is the cursor of IN-58, was not checked.
+Game code (6142): `PlayerProfileMenu` method RVA `0x1E68D0`; the profile fields `#8526+0x14` and `#8526+0x60`.
+Hydra: no owner: Hydra never reads the running game.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session b15bb484 (task D1), from the disassembly.
 
 ## Saved score files
 
