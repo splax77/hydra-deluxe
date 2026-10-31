@@ -509,7 +509,8 @@ target_include_directories(hydra_dm PRIVATE third_party/json)
 # What any of Hydra's GUI programs needs without Hydra's own window: ImGui's
 # set-up and shutdown, the UI scale, the theme, the fonts, the shared widgets,
 # the icons, the file and folder dialogs, the Preview panel both GUI programs
-# draw (preview_panel.h) and the main window's Win32 and Direct3D pieces
+# draw (preview_panel.h), the Path Builder timeline's window arithmetic
+# (timeline_view.h) and the main window's Win32 and Direct3D pieces
 # (win32_window.h). Nothing here reads AppState.
 add_library(hydra_uibase STATIC
     src/ui/imgui_setup.cpp
@@ -520,6 +521,7 @@ add_library(hydra_uibase STATIC
     src/ui/preview_panel.cpp
     src/ui/preview_timeline.cpp
     src/ui/theme.cpp
+    src/ui/timeline_view.cpp
     src/ui/win32_dialogs.cpp
     src/ui/win32_window.cpp
     src/ui/activation_row_layout.h
@@ -530,6 +532,7 @@ add_library(hydra_uibase STATIC
     src/ui/label_layout.h
     src/ui/preview_panel.h
     src/ui/text_role.h
+    src/ui/timeline_view.h
     src/ui/widgets.h
 )
 # imgui_test_engine goes wherever imgui does: imconfig.h turns the engine's
