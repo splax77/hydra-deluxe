@@ -184,7 +184,7 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
     // The saved row runs from no bars near its bottom to the meter's cap near
     // its top, saved_inset in from each.
     const TimelineRect& saved = out.row(TimelineRow::Saved);
-    const float cap = static_cast<float>(std::max(1, scene.sp_meter.cap));
+    const float cap = static_cast<float>(scene.sp_meter.cap);
     const float zero_y = saved.y1 - metrics.saved_inset;
     const float span_y = (saved.y1 - saved.y0) - 2.0f * metrics.saved_inset;
     auto y_of = [&](double bars) { return zero_y - static_cast<float>(bars) / cap * span_y; };
