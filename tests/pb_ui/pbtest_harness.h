@@ -80,8 +80,8 @@ std::string choice_ref(int64_t tick);
 void move_off_timeline(ImGuiTestContext* ctx);
 
 // Clicks the row of step `index` (from 0) in "Your activations", which opens
-// it to its sentence, and gives the click a frame to land. It leaves the
-// test's ref on the steps panel.
+// it (what an opened step shows is PbApp::draw_steps'), and gives the click
+// a frame to land. It leaves the test's ref on the steps panel.
 bool click_step(ImGuiTestContext* ctx, size_t index);
 
 // Scrolls the side panel (the list over the steps) so the item `ref` inside

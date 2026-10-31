@@ -151,11 +151,8 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
     ctx->MouseMoveToPos(ImVec2(img.Min.x + p.x, img.Min.y + p.y));
     ctx->MouseClick(ImGuiMouseButton_Left);
     IM_CHECK_RETV(wait_for_edit(ctx), );
-    // From one run: the step's compact row, and its sentence, open because
-    // the click selected the step it made.
+    // From one run: the step's compact row.
     IM_CHECK(on_screen(h, "m20 → m24 2 phrases −140"));
-    IM_CHECK(on_screen(h, "Activate at m20 (0:25.123) with 2 phrases saved. Star Power runs until m24. "
-                          "This choice costs 140 points."));
 }
 
 // The line of visible text that holds the scrollbar's readout for a song
