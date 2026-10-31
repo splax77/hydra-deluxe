@@ -52,6 +52,8 @@ Merges and commits on `main` that touch code need a review from a fresh agent fi
 
 Only what outsiders read, and plans, get a review from a fresh agent, and each document gets it once. A document is reviewed as a committed file on a branch, the same way code is. Text goes to GitHub only through `C:\Users\Patrick\.claude\gates\publish.ps1`. The gated steps, how to send a document for review and the user's waiver are in `docs/agents/doc-review.md`, "What is gated".
 
+A finished plan or handoff leaves the repo in the same merge that finishes its work. The docs check (`hydra_tests.exe "-tc=docs match code*"`) proves nothing still points at it: a line that still names it must say how to read it now, as `<path>` (removed; `git show <commit>:<path>`).
+
 ## Agent rules
 
 These hold for the main session and every agent it sends out. Each is in short form; the full text, and which hooks check which rule, is in `docs/agents/agent-rules.md`.

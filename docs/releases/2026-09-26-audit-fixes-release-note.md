@@ -1,6 +1,6 @@
 # Release note: the 2026-09-26 audit fixes
 
-This release fixes everything in the 2026-09-25 codebase audit. Most of it is invisible: bugs that only showed under rare conditions, dead code, speed, and cleanup. The plan is docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md.
+This release fixes everything in the 2026-09-25 codebase audit. Most of it is invisible: bugs that only showed under rare conditions, dead code, speed, and cleanup. The plan is `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md`).
 
 ## Re-analyze once
 
