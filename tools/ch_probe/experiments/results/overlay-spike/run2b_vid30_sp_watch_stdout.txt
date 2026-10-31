@@ -1,0 +1,11 @@
+100:video = 30
+101:audio = 0
+Connecting to Clone Hero (read-only)...
+  Waiting for a song to play (start it now)...
+..  Engine at 0x213c7866a80. Writing tools/ch_probe/experiments/results/overlay-spike/run2b_vid30_sp_watch.csv
+  Stopped: clock frozen at 117.97 s for over 5 s (song quit or paused).
+  Rows written: 26641
+  Engine: 0x213c7866a80
+  First clock: 0.628 s, last clock: 117.973 s
+
+[exited with code 0]
