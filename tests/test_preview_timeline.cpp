@@ -1,6 +1,6 @@
-// The Preview's whole-song timeline: its pure layout and hit test
-// (ui/preview_timeline). No ImGui context is needed; the on-screen click is
-// the Path Builder's GUI test.
+// The Preview's timeline: its pure layout and hit test (ui/preview_timeline).
+// No ImGui context is needed; the on-screen click is the Path Builder's GUI
+// test.
 #include "doctest.h"
 
 #include "core/timing.h"
@@ -14,17 +14,20 @@ namespace fx = hydra::test_fixtures;
 
 namespace {
 
-// A 10 s song 1,000 px wide, so one pixel is 10 ms. Every row is 10 px tall
-// and a fill's hit box 10 px square: sizes for the test only.
+// A 10 s song 1,000 px wide, so one pixel is 10 ms over the whole song.
+// Every row is 10 px tall: sizes for the test only.
 constexpr double kLengthMs = 10000.0;
 constexpr float kWidth = 1000.0f;
 
 ui::TimelineMetrics metrics() {
     ui::TimelineMetrics m;
     for (float& h : m.row_h) h = 10.0f;
-    m.fill_size = 10.0f;
     return m;
 }
+
+// A window over the whole of a song `length_ms` long, which lays the song
+// out as the timeline did before it had a window.
+ui::TimelineView whole(double length_ms) { return ui::TimelineView{0.0, length_ms}; }
 
 app::PreviewScene scene_with_fills() {
     app::PreviewScene s = fx::timed_scene();
@@ -48,7 +51,7 @@ app::PreviewScene scene_with_fills() {
 
 TEST_CASE("preview timeline: every fill is an item named by its chord tick") {
     const app::PreviewScene s = scene_with_fills();
-    const std::optional<ui::TimelineLayout> l = ui::timeline_layout(s, kLengthMs, kWidth, metrics());
+    const std::optional<ui::TimelineLayout> l = ui::timeline_layout(s, kLengthMs, whole(kLengthMs), kWidth, metrics());
     REQUIRE(l.has_value());
     REQUIRE(l->fills.size() == 3);
     CHECK(l->fills[0].id == "##fill_2000");
@@ -63,30 +66,158 @@ TEST_CASE("preview timeline: every fill is an item named by its chord tick") {
     REQUIRE(l->bands.size() == 1);
     CHECK(l->bands[0].rect.x0 == doctest::Approx(500.0f));
     CHECK(l->bands[0].rect.x1 == doctest::Approx(650.0f));
-    // No usable song length, no timeline.
-    CHECK_FALSE(ui::timeline_layout(s, 0.0, kWidth, metrics()).has_value());
+    // No usable song length, or a window with no span: no timeline.
+    CHECK_FALSE(ui::timeline_layout(s, 0.0, whole(kLengthMs), kWidth, metrics()).has_value());
+    CHECK_FALSE(ui::timeline_layout(s, kLengthMs, whole(0.0), kWidth, metrics()).has_value());
 }
 
-TEST_CASE("preview timeline: a point on a fill names that fill and a point on the axis names its time") {
+TEST_CASE("preview timeline: a point anywhere in the Fills row names the nearest fill, halfway to its neighbours") {
     const app::PreviewScene s = scene_with_fills();
-    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, metrics());
+    // A 6 s window from the start, so 6 ms a pixel: the fills at 2,000 and
+    // 5,000 ms are in view at 333.3 and 833.3 px, the one at 8,000 is not.
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, ui::TimelineView{0.0, 6000.0}, kWidth, metrics());
     const ui::TimelineRect& fills = l.row(ui::TimelineRow::Fills);
+    REQUIRE(l.fills.size() == 2);
 
-    const ui::TimelineHit on_fill = ui::timeline_hit(l, 202.0f, fills.y0 + 3.0f);
-    CHECK(on_fill.kind == ui::TimelineHit::Kind::Fill);
-    CHECK(on_fill.index == 0);
+    // The two boxes meet halfway between the fills and span the row's full
+    // height; the first starts at the left edge, the last ends at the right.
+    // Pinned from one run.
+    CHECK(l.fills[0].hit.x0 == doctest::Approx(0.0f));
+    CHECK(l.fills[0].hit.x1 == doctest::Approx(583.3333f));
+    CHECK(l.fills[1].hit.x0 == doctest::Approx(583.3333f));
+    CHECK(l.fills[1].hit.x1 == doctest::Approx(1000.0f));
+    CHECK(l.fills[0].hit.y0 == doctest::Approx(fills.y0));
+    CHECK(l.fills[0].hit.y1 == doctest::Approx(fills.y1));
+    // The dots stay where they were drawn: fill_center_y down the row.
+    CHECK(l.fills[0].y == doctest::Approx(fills.y0));
 
+    // Just past the midpoint names the second fill; left of the first fill,
+    // near the row's bottom, names the first; right of the last names the last.
+    const ui::TimelineHit past_mid = ui::timeline_hit(l, 590.0f, fills.y0 + 1.0f);
+    CHECK(past_mid.kind == ui::TimelineHit::Kind::Fill);
+    CHECK(past_mid.index == 1);
+    const ui::TimelineHit left = ui::timeline_hit(l, 10.0f, fills.y1 - 1.0f);
+    CHECK(left.kind == ui::TimelineHit::Kind::Fill);
+    CHECK(left.index == 0);
+    const ui::TimelineHit right = ui::timeline_hit(l, 990.0f, fills.y0 + 5.0f);
+    CHECK(right.kind == ui::TimelineHit::Kind::Fill);
+    CHECK(right.index == 1);
+
+    // The Activations row still names a band or a time. The band, 5,000 to
+    // 6,500 ms, starts at 833.3 px.
     const ui::TimelineRect& acts = l.row(ui::TimelineRow::Activations);
-    const ui::TimelineHit on_band = ui::timeline_hit(l, 600.0f, acts.y0 + 1.0f);
+    const ui::TimelineHit on_band = ui::timeline_hit(l, 900.0f, acts.y0 + 1.0f);
     CHECK(on_band.kind == ui::TimelineHit::Kind::Band);
     CHECK(on_band.index == 0);
+    const ui::TimelineHit off_band = ui::timeline_hit(l, 100.0f, acts.y0 + 1.0f);
+    CHECK(off_band.kind == ui::TimelineHit::Kind::Time);
+    CHECK(off_band.ms == doctest::Approx(600.0));
 
     const ui::TimelineRect& axis = l.row(ui::TimelineRow::Axis);
     const ui::TimelineHit on_axis = ui::timeline_hit(l, 350.0f, axis.y0 + 1.0f);
     CHECK(on_axis.kind == ui::TimelineHit::Kind::Time);
-    CHECK(on_axis.ms == doctest::Approx(3500.0));
+    CHECK(on_axis.ms == doctest::Approx(2100.0));
 
     CHECK(ui::timeline_hit(l, 350.0f, l.height() + 1.0f).kind == ui::TimelineHit::Kind::None);
+
+    // A window with no fill in it, 8.5 to 10 s: the Fills row names nothing,
+    // not even a moment.
+    const ui::TimelineLayout empty =
+        *ui::timeline_layout(s, kLengthMs, ui::TimelineView{8500.0, 1500.0}, kWidth, metrics());
+    CHECK(empty.fills.empty());
+    const ui::TimelineRect& empty_fills = empty.row(ui::TimelineRow::Fills);
+    CHECK(ui::timeline_hit(empty, 500.0f, empty_fills.y0 + 5.0f).kind == ui::TimelineHit::Kind::None);
+}
+
+TEST_CASE("preview timeline: a fill outside the window has no item and a band half outside keeps its visible half") {
+    app::PreviewScene s = scene_with_fills();
+    s.sections = {{0, 0.0, "Intro"}, {3000, 3000.0, "Verse"}, {7000, 7000.0, "Chorus"}};
+    ui::TimelineFillMarks marks;
+    marks.best_ticks = {2000, 8000};
+    marks.best_label = "best";
+    // A 4 s window from 6 s, so 4 ms a pixel. Pinned from one run.
+    const ui::TimelineLayout l =
+        *ui::timeline_layout(s, kLengthMs, ui::TimelineView{6000.0, 4000.0}, kWidth, metrics(), marks);
+    // Only the fill at 8,000 ms is inside; the word under the best fill at
+    // 2,000 ms goes with its fill.
+    REQUIRE(l.fills.size() == 1);
+    CHECK(l.fills[0].id == "##fill_8000");
+    CHECK(l.fills[0].fill == 2);
+    CHECK(l.fills[0].x == doctest::Approx(500.0f));
+    REQUIRE(l.best_labels.size() == 1);
+    CHECK(l.best_labels[0].fill == 2);
+    // The band, 5,000 to 6,500 ms, starts left of the window and ends 125 px
+    // into it; the draw clips the rest.
+    REQUIRE(l.bands.size() == 1);
+    CHECK(l.bands[0].rect.x0 == doctest::Approx(-250.0f));
+    CHECK(l.bands[0].rect.x1 == doctest::Approx(125.0f));
+    // Intro ends before the window and is left out. Verse reaches in from the
+    // left and keeps the shade it has from the song's start (the second
+    // section shown); Chorus runs to the song's end.
+    REQUIRE(l.sections.size() == 2);
+    CHECK(l.sections[0].name == "Verse");
+    CHECK(l.sections[0].rect.x0 == doctest::Approx(-750.0f));
+    CHECK(l.sections[0].rect.x1 == doctest::Approx(250.0f));
+    CHECK(l.sections[0].shaded);
+    CHECK(l.sections[1].name == "Chorus");
+    CHECK(l.sections[1].rect.x1 == doctest::Approx(1000.0f));
+    CHECK_FALSE(l.sections[1].shaded);
+}
+
+TEST_CASE("preview timeline: the window moves every x by the view's start") {
+    app::PreviewScene s = scene_with_fills();
+    s.ghost_windows = {{1000.0, 2500.0}};
+    s.sp_phrases = {fx::span(3000.0, 3500.0)};
+    s.sp_meter.cap = 4;
+    s.sp_meter.segments = {{0.0, 3000.0, 0.0, 4.0}};
+    // The same 5 s window, at the song's start and 2 s in: 5 ms a pixel, so
+    // every x moves 400 px left. Pinned from one run.
+    const ui::TimelineLayout a = *ui::timeline_layout(s, kLengthMs, ui::TimelineView{0.0, 5000.0}, kWidth, metrics());
+    const ui::TimelineLayout b = *ui::timeline_layout(s, kLengthMs, ui::TimelineView{2000.0, 5000.0}, kWidth, metrics());
+    REQUIRE(a.fills.size() == 2);
+    REQUIRE(b.fills.size() == 2);
+    CHECK(a.fills[0].x == doctest::Approx(400.0f));
+    CHECK(b.fills[0].x == doctest::Approx(0.0f));
+    CHECK(a.fills[1].x == doctest::Approx(1000.0f));
+    CHECK(b.fills[1].x == doctest::Approx(600.0f));
+    REQUIRE(a.bands.size() == 1);
+    CHECK(a.bands[0].rect.x0 == doctest::Approx(1000.0f));
+    CHECK(b.bands[0].rect.x0 == doctest::Approx(600.0f));
+    CHECK(b.bands[0].rect.x1 == doctest::Approx(900.0f));
+    REQUIRE(b.ghost_bands.size() == 1);
+    CHECK(a.ghost_bands[0].x0 == doctest::Approx(200.0f));
+    CHECK(b.ghost_bands[0].x0 == doctest::Approx(-200.0f));
+    REQUIRE(b.phrase_x.size() == 1);
+    CHECK(a.phrase_x[0] == doctest::Approx(600.0f));
+    CHECK(b.phrase_x[0] == doctest::Approx(200.0f));
+    REQUIRE(b.saved_line.size() == 2);
+    CHECK(b.saved_line[0].x == doctest::Approx(-400.0f));
+    CHECK(b.saved_line[1].x == doctest::Approx(200.0f));
+    // A point names the moment under it in the window.
+    const ui::TimelineHit at_b = ui::timeline_hit(b, 100.0f, b.row(ui::TimelineRow::Axis).y0 + 1.0f);
+    CHECK(at_b.kind == ui::TimelineHit::Kind::Time);
+    CHECK(at_b.ms == doctest::Approx(2500.0));
+}
+
+TEST_CASE("preview timeline: the axis labels the 30 s steps inside the window and thins them by its span") {
+    const app::PreviewScene s = fx::timed_scene();
+    // A 10-minute song, a 3-minute window from 0:45 on 1,000 px: the steps
+    // from 1:00 to 3:30 are inside. Pinned from one run.
+    const ui::TimelineView view{45000.0, 180000.0};
+    const ui::TimelineLayout l = *ui::timeline_layout(s, 600000.0, view, kWidth, metrics());
+    REQUIRE(l.axis_ticks.size() == 6);
+    CHECK(l.axis_ticks[0].ms == doctest::Approx(60000.0));
+    CHECK(l.axis_ticks[0].x == doctest::Approx(83.3333f));
+    CHECK(l.axis_ticks[5].ms == doctest::Approx(210000.0));
+    // 30 s is 166.7 px of this window; a gap of 200 px takes every second
+    // step, counted from the song's start: 1:00, 2:00 and 3:00.
+    ui::TimelineMetrics m = metrics();
+    m.axis_label_gap = 200.0f;
+    const ui::TimelineLayout thin = *ui::timeline_layout(s, 600000.0, view, kWidth, m);
+    REQUIRE(thin.axis_ticks.size() == 3);
+    CHECK(thin.axis_ticks[0].ms == doctest::Approx(60000.0));
+    CHECK(thin.axis_ticks[1].ms == doctest::Approx(120000.0));
+    CHECK(thin.axis_ticks[2].ms == doctest::Approx(180000.0));
 }
 
 TEST_CASE("preview timeline: the saved line has a point at each segment start and end and a mark at kSpActivationBars") {
@@ -96,7 +227,7 @@ TEST_CASE("preview timeline: the saved line has a point at each segment start an
     s.sp_meter.cap = 4;
     s.sp_meter.segments = {{0.0, 3000.0, 2.0, 2.0}, {3000.0, 5000.0, 3.0, 3.0},
                            {5000.0, 8000.0, 3.0, 0.0}};
-    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, metrics());
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, whole(kLengthMs), kWidth, metrics());
     // The saved row is the fourth 10 px row, 30 to 40 px down: none at its
     // bottom, the cap of 4 at its top. Pinned from one run.
     REQUIRE(l.saved_line.size() == 6);
@@ -121,7 +252,7 @@ TEST_CASE("preview timeline: the insets move the bands, the fills and the saved 
     m.saved_inset = 1.0f;
     // A 65 s song on the same 1,000 px, so the axis has two labels: 0:30 and
     // 1:00, the start getting none.
-    const ui::TimelineLayout l = *ui::timeline_layout(s, 65000.0, kWidth, m);
+    const ui::TimelineLayout l = *ui::timeline_layout(s, 65000.0, whole(65000.0), kWidth, m);
     // Pinned from one run.
     REQUIRE(l.axis_ticks.size() == 2);
     CHECK(l.axis_ticks[0].ms == doctest::Approx(30000.0));
@@ -132,10 +263,12 @@ TEST_CASE("preview timeline: the insets move the bands, the fills and the saved 
     REQUIRE(l.bands.size() == 1);
     CHECK(l.bands[0].rect.y0 == doctest::Approx(42.0f));
     CHECK(l.bands[0].rect.y1 == doctest::Approx(48.0f));
-    // The Fills row starts at 50 px; a fill's 10 px box is centred 6 px down.
+    // The Fills row is 50 to 60 px down; a fill's dot is centred 6 px down
+    // it, and its hit box is the row's full height.
     REQUIRE(l.fills.size() == 3);
-    CHECK(l.fills[0].hit.y0 == doctest::Approx(51.0f));
-    CHECK(l.fills[0].hit.y1 == doctest::Approx(61.0f));
+    CHECK(l.fills[0].y == doctest::Approx(56.0f));
+    CHECK(l.fills[0].hit.y0 == doctest::Approx(50.0f));
+    CHECK(l.fills[0].hit.y1 == doctest::Approx(60.0f));
     // The saved row is 30 to 40 px down: none at 39, the cap at 31.
     REQUIRE(l.saved_line.size() == 2);
     CHECK(l.saved_line[0].y == doctest::Approx(39.0f));
@@ -158,7 +291,7 @@ TEST_CASE("preview timeline: the saved row's enough stretches start after the la
                            {3000.0, 5000.0, 0.0, 0.0},
                            {5000.0, 9000.0, 1.0, 4.0},
                            {9000.0, 10000.0, 4.0, 4.0}};
-    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, metrics());
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, whole(kLengthMs), kWidth, metrics());
     // The three bars before the window are not shaded; the climb is from its
     // crossing on, merged with the stretch at the cap. Pinned from one run.
     REQUIRE(l.saved_enough.size() == 1);
@@ -178,7 +311,7 @@ TEST_CASE("preview timeline: a segment ending exactly on the line is enough") {
                            {3000.0, 6000.0, 2.0, 2.0},
                            {6000.0, 8000.0, 2.0, 0.0},
                            {8000.0, 10000.0, 0.0, 0.0}};
-    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, metrics());
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, whole(kLengthMs), kWidth, metrics());
     // Pinned from one run.
     REQUIRE(l.saved_enough.size() == 1);
     CHECK(l.saved_enough[0].x0 == doctest::Approx(300.0f));
@@ -194,7 +327,7 @@ TEST_CASE("preview timeline: with no activation every stretch at or above the li
                            {4000.0, 6000.0, 1.0, 1.0},
                            {6000.0, 8000.0, 1.0, 3.0},
                            {8000.0, 10000.0, 3.0, 3.0}};
-    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, metrics());
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, whole(kLengthMs), kWidth, metrics());
     // Pinned from one run.
     REQUIRE(l.saved_enough.size() == 2);
     CHECK(l.saved_enough[0].x0 == doctest::Approx(0.0f));
@@ -210,7 +343,7 @@ TEST_CASE("preview timeline: the ghost path's windows are bands in their own row
 
     // No ghost: the row has no height and no bands, and the rows below it
     // move up.
-    const ui::TimelineLayout bare = *ui::timeline_layout(s, kLengthMs, kWidth, m);
+    const ui::TimelineLayout bare = *ui::timeline_layout(s, kLengthMs, whole(kLengthMs), kWidth, m);
     CHECK(bare.ghost_bands.empty());
     CHECK(bare.row(ui::TimelineRow::Ghost).y0 == doctest::Approx(40.0f));
     CHECK(bare.row(ui::TimelineRow::Ghost).y1 == doctest::Approx(40.0f));
@@ -219,7 +352,7 @@ TEST_CASE("preview timeline: the ghost path's windows are bands in their own row
 
     // Two ghost windows. Pinned from one run.
     s.ghost_windows = {{1000.0, 2500.0}, {6000.0, 9000.0}};
-    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, m);
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, whole(kLengthMs), kWidth, m);
     const ui::TimelineRect& ghost = l.row(ui::TimelineRow::Ghost);
     CHECK(ghost.y0 == doctest::Approx(40.0f));
     CHECK(ghost.y1 == doctest::Approx(50.0f));
@@ -246,7 +379,7 @@ TEST_CASE("preview timeline: the Section row leaves out a section named End") {
     app::PreviewScene s = fx::timed_scene();
     s.sections = {{0, 0.0, "Intro"}, {3000, 3000.0, "Verse"}, {9000, 9000.0, "End"},
                   {9500, 9500.0, "Ending"}, {9800, 9800.0, "end"}};
-    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, metrics());
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, whole(kLengthMs), kWidth, metrics());
     // The section before End still stops where End starts; a name that only
     // starts with End, or is end in lower case, stays. Pinned from one run.
     REQUIRE(l.sections.size() == 4);
@@ -287,7 +420,7 @@ TEST_CASE("preview timeline: a tinted fill reads its tint and an untinted offere
     s.fills = {fill_at(2000.0, PreviewFillState::Offered), fill_at(3000.0, PreviewFillState::Offered)};
     ui::TimelineFillMarks marks;
     marks.tints = {{2000, IM_COL32(1, 2, 3, 255)}};
-    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, metrics(), marks);
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, whole(kLengthMs), kWidth, metrics(), marks);
     REQUIRE(l.fills.size() == 2);
     REQUIRE(l.fills[0].tint.has_value());
     CHECK(*l.fills[0].tint == IM_COL32(1, 2, 3, 255));
@@ -308,7 +441,7 @@ TEST_CASE("preview timeline: every fill in best_ticks has a word under it, kept 
     marks.tints = {{100, IM_COL32(1, 2, 3, 255)}};
     marks.best_ticks = {100, 5000};
     marks.best_label = "best";
-    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, label_metrics(), marks);
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, whole(kLengthMs), kWidth, label_metrics(), marks);
     REQUIRE(l.best_labels.size() == 2);
     CHECK(l.best_labels[0].fill == 0);
     CHECK(l.best_labels[0].col == IM_COL32(1, 2, 3, 255));
@@ -337,7 +470,7 @@ TEST_CASE("preview timeline: looks are Taken, then Locked, then Offered, then Ca
     ui::TimelineFillMarks marks;
     marks.locked_ticks = {1000, 2000, 3000};
     marks.cant_ticks = {3000, 5000};
-    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, metrics(), marks);
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, whole(kLengthMs), kWidth, metrics(), marks);
     REQUIRE(l.fills.size() == 6);
     using Look = ui::TimelineFillLook;
     const Look want[6] = {Look::Taken, Look::Locked, Look::Locked, Look::Offered, Look::Cant, Look::Cant};
@@ -350,7 +483,7 @@ TEST_CASE("preview timeline: looks are Taken, then Locked, then Offered, then Ca
 TEST_CASE("preview timeline: a section name too long for its section ends in an ellipsis") {
     app::PreviewScene s = fx::timed_scene();
     s.sections ={{0, 0.0, "Intro"}, {400, 400.0, "Verse 1b"}, {1000, 1000.0, "Chorus"}};
-    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, label_metrics());
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, whole(kLengthMs), kWidth, label_metrics());
     // Intro is 40 px wide, 32 px inside its 4 px pads; Verse 1b 60 px, 52
     // inside; Chorus 900 px. Pinned from one run.
     REQUIRE(l.sections.size() == 3);
@@ -364,7 +497,7 @@ TEST_CASE("preview timeline: the axis labels stay inside the timeline") {
     const app::PreviewScene s = fx::timed_scene();
     // A 61 s song on 1,000 px: labels at 30 and 60 s, each 40 px; the start
     // gets none. Pinned from one run.
-    const ui::TimelineLayout l = *ui::timeline_layout(s, 61000.0, kWidth, label_metrics());
+    const ui::TimelineLayout l = *ui::timeline_layout(s, 61000.0, whole(61000.0), kWidth, label_metrics());
     REQUIRE(l.axis_ticks.size() == 2);
     // 0:30 is centred on its moment.
     CHECK(l.axis_ticks[0].text == "0:30");
@@ -379,7 +512,7 @@ TEST_CASE("preview timeline: a label that would start left of the timeline start
     // A 50-minute song on 1,000 px: 0:30 sits at 10 px, and its 40 px label
     // centred there would start 10 px left of the timeline. Pinned from one
     // run.
-    const ui::TimelineLayout l = *ui::timeline_layout(s, 3000000.0, kWidth, label_metrics());
+    const ui::TimelineLayout l = *ui::timeline_layout(s, 3000000.0, whole(3000000.0), kWidth, label_metrics());
     REQUIRE_FALSE(l.axis_ticks.empty());
     CHECK(l.axis_ticks[0].text == "0:30");
     CHECK(l.axis_ticks[0].x == doctest::Approx(10.0f));
@@ -392,14 +525,14 @@ TEST_CASE("preview timeline: a huge song length gets labels by the width, not by
     m.axis_label_gap = 50.0f;
     // A 10-minute song on 1,000 px: 30 s is 50 px, exactly the gap, so every
     // step but the start is labelled: 19 labels. Pinned from one run.
-    const ui::TimelineLayout normal = *ui::timeline_layout(s, 600000.0, kWidth, m);
+    const ui::TimelineLayout normal = *ui::timeline_layout(s, 600000.0, whole(600000.0), kWidth, m);
     CHECK(normal.axis_ticks.size() == 19);
     // Twice the length: 30 s is 25 px, so every second step: 19 labels, 60 s apart.
-    const ui::TimelineLayout longer = *ui::timeline_layout(s, 1200000.0, kWidth, m);
+    const ui::TimelineLayout longer = *ui::timeline_layout(s, 1200000.0, whole(1200000.0), kWidth, m);
     REQUIRE(longer.axis_ticks.size() == 19);
     CHECK(longer.axis_ticks[0].ms == doctest::Approx(60000.0));
     CHECK(longer.axis_ticks[1].ms == doctest::Approx(120000.0));
     // A length a corrupt song.ini could state: still a handful of labels.
-    const ui::TimelineLayout huge = *ui::timeline_layout(s, 1e300, kWidth, m);
+    const ui::TimelineLayout huge = *ui::timeline_layout(s, 1e300, whole(1e300), kWidth, m);
     CHECK(huge.axis_ticks.size() <= 20);
 }

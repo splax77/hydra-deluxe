@@ -1,9 +1,9 @@
-// The Preview's whole-song timeline: one row per kind of thing in a
-// PreviewScene, laid out over one width, each x from song_fraction (the
-// scrub bar's own rule). The layout and the hit test are pure, so they run
-// with no ImGui context; the drawing is thin over them. The scrub bar's gold
-// marks and the score box's star glyph are drawn here too, so one place owns
-// that geometry.
+// The Preview's timeline: one row per kind of thing in a PreviewScene, laid
+// out over one width through a window on the song (TimelineView), each x from
+// the view's fraction (ui/timeline_view.h). The layout and the hit test are
+// pure, so they run with no ImGui context; the drawing is thin over them. The
+// scrub bar's gold marks and the score box's star glyph are drawn here too,
+// so one place owns that geometry.
 #pragma once
 
 #include <cstddef>
@@ -15,6 +15,7 @@
 
 #include "app/preview_view.h"
 #include "imgui.h"
+#include "ui/timeline_view.h"
 
 namespace hydra::ui {
 
@@ -89,15 +90,14 @@ inline constexpr size_t kTimelineRowCount = 7;
 // wide.
 using TimelineTextWidth = std::function<float(const std::string&)>;
 
-// Each row's height, the side of a fill's square hit box, how far down the
-// Fills row a fill's centre sits, how far an activation band stands in from
-// its row's top and bottom, how far the saved line's zero and cap stand in
-// from its row's bottom and top, and the least distance between two axis
-// labels, in pixels. The layout reads them from here; timeline_metrics()
-// gives the screen's. A song so long that every 30 s label would crowd the
-// next gets a label every few steps instead, so the number of labels follows
-// the width, never the song's length; a gap of 0 turns that off, which only
-// a test with a short song should do.
+// Each row's height, how far down the Fills row a fill's centre sits, how far
+// an activation band stands in from its row's top and bottom, how far the
+// saved line's zero and cap stand in from its row's bottom and top, and the
+// least distance between two axis labels, in pixels. The layout reads them
+// from here; timeline_metrics() gives the screen's. A window so long that
+// every 30 s label would crowd the next gets a label every few steps instead,
+// so the number of labels follows the width, never the window's length; a gap
+// of 0 turns that off, which only a test with a short song should do.
 //
 // The text the layout places: how far down the Fills row the word under a
 // fill starts and how tall its line is, how far a section's name
@@ -105,7 +105,6 @@ using TimelineTextWidth = std::function<float(const std::string&)>;
 // it draws in (text_role.h's TimelineCost, TimelineSection and TimelineAxis).
 struct TimelineMetrics {
     float row_h[kTimelineRowCount] = {};
-    float fill_size = 0.0f;
     float fill_center_y = 0.0f;
     float band_inset = 0.0f;
     float saved_inset = 0.0f;
@@ -142,11 +141,15 @@ struct TimelinePoint {
 // Offered fill not in cant_ticks is Offered; every other fill is Cant.
 enum class TimelineFillLook { Taken, Locked, Offered, Cant };
 
-// One fill: its index in PreviewScene::fills, its chord tick, the ImGui item
-// name a GUI test and the player click (timeline_fill_id), the state the
-// scene gives it, the look it is drawn in, the caller's tint for it (none
-// when the caller gave none), and its hit box in the Fills row, centred on
-// the fill's end.
+// One fill inside the window: its index in PreviewScene::fills, its chord
+// tick, the ImGui item name a GUI test and the player click
+// (timeline_fill_id), the state the scene gives it, the look it is drawn in,
+// the caller's tint for it (none when the caller gave none), the centre of
+// its dot (x at the fill's end, y fill_center_y down the Fills row), and its
+// hit box. The hit box is the Fills row's full height, from halfway to the
+// fill in view before it (or the row's left edge) to halfway to the one after
+// it (or the right edge), so a point anywhere in the row lands on the nearest
+// fill (the third mockup's `nearest`, answer 2 of its answers.md).
 struct TimelineFillItem {
     size_t fill = 0;
     int64_t chord_tick = 0;
@@ -155,17 +158,23 @@ struct TimelineFillItem {
     TimelineFillLook look = TimelineFillLook::Cant;
     std::optional<ImU32> tint;
     float x = 0.0f;
+    float y = 0.0f;
     TimelineRect hit;
 };
 
-// One section: its name, the name as it fits between the section's edges
-// (render::ellipsize's cut, as the mockup's `.sec{text-overflow:ellipsis}`),
-// and the stretch until the next section (or the song's end). A section named
-// kTimelineHiddenSectionName gets none.
+// One section that reaches into the window: its name, the name as it fits
+// between the section's edges (render::ellipsize's cut, as the mockup's
+// `.sec{text-overflow:ellipsis}`), the stretch until the next section (or the
+// song's end), and whether it is shaded. A section named
+// kTimelineHiddenSectionName gets none. The shading alternates over the
+// sections shown, counted from the song's start, so a section keeps its shade
+// as the window moves (the third mockup's `shown++`, line 554, counted before
+// the window's test on line 556).
 struct TimelineSection {
     std::string name;
     std::string shown;
     TimelineRect rect;
+    bool shaded = false;
 };
 
 // One activation's window as a band in the Activations row: its index in
@@ -214,13 +223,17 @@ struct TimelineBestLabel {
     TimelineRect rect;
 };
 
+// Every x is in the window's pixels: 0 at the window's start, `width` at its
+// end, and outside 0..width for a moment outside it, so a band half outside
+// the window keeps its visible half when the draw clips to the track.
 struct TimelineLayout {
     float width = 0.0f;
     double length_ms = 0.0;
+    TimelineView view;
     TimelineRect rows[kTimelineRowCount];
-    // Every kTimelineAxisStepMs after the start (the start itself gets no
-    // label), or every few of them when TimelineMetrics::axis_label_gap says
-    // they would crowd.
+    // Every kTimelineAxisStepMs after the song's start that falls inside the
+    // window (the start itself gets no label), or every few of them when
+    // TimelineMetrics::axis_label_gap says they would crowd.
     std::vector<TimelineTick> axis_ticks;
     std::vector<TimelineSection> sections;
     std::vector<float> phrase_x;  // each SP phrase's start
@@ -250,15 +263,21 @@ struct TimelineLayout {
 // The item name of the fill on `chord_tick`: "##fill_<chord_tick>".
 std::string timeline_fill_id(int64_t chord_tick);
 
-// Lay the scene out `width` pixels wide over `length_ms` (the Preview's
-// playback end), each fill in the look `marks` give it. No value when
-// song_fraction has no song length to use.
+// Lay the scene of a song `length_ms` long (the Preview's playback end) out
+// `width` pixels wide over the window `view`, each fill in the look `marks`
+// give it. Only the fills inside the window get an item (the third mockup's
+// renderRows, line 578), and only the sections that reach into it. No value
+// when app::has_song_length refuses the length or the window has no span.
 std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, double length_ms,
-                                              float width, const TimelineMetrics& metrics,
+                                              TimelineView view, float width,
+                                              const TimelineMetrics& metrics,
                                               const TimelineFillMarks& marks = {});
 
 // What a point lands on: a fill's hit box, else an activation band, else,
-// anywhere inside the timeline, the moment under it. Outside, nothing.
+// anywhere inside the timeline but the Fills row, the moment under it. The
+// Fills row never names a moment, so a point there with no fill in view lands
+// on nothing (the third mockup's seek listener skips the row, line 592).
+// Outside, nothing.
 struct TimelineHit {
     enum class Kind { None, Fill, Band, Time };
     Kind kind = Kind::None;
@@ -268,13 +287,15 @@ struct TimelineHit {
 TimelineHit timeline_hit(const TimelineLayout& layout, float x, float y);
 
 // What the timeline draws this frame: the scene, the fills' marks (the base),
-// `selected` to outline that activation's band, and `highlighted` to draw that
-// fill (an index into the scene's fills) as hovered, with the selected band's
-// outline.
+// the window on the song it shows, `selected` to outline that activation's
+// band, and `highlighted` to draw that fill (an index into the scene's fills)
+// as hovered, with the selected band's outline. With no `view`, the timeline
+// shows the window the song opens with (open_view).
 struct TimelineInput : TimelineFillMarks {
     const app::PreviewScene* scene = nullptr;
     double length_ms = 0.0;    // the Preview's playback end
     double position_ms = 0.0;  // the playhead
+    std::optional<TimelineView> view;
     std::optional<size_t> selected;
     std::optional<size_t> highlighted;
 };
@@ -288,9 +309,10 @@ struct TimelineEvents {
     std::optional<double> clicked_ms;  // a click anywhere else on the rows
 };
 
-// The whole-song timeline as ImGui items at the cursor, the window's width
-// wide: a label column, then the rows over timeline_layout. Each fill is an
-// InvisibleButton named timeline_fill_id(chord_tick). Draws nothing when the
+// The timeline as ImGui items at the cursor, the ImGui window's width wide: a
+// label column, then the rows over timeline_layout, clipped to the rows'
+// rectangle. Each fill in view is an InvisibleButton named
+// timeline_fill_id(chord_tick) over its hit box. Draws nothing when the
 // layout has no value.
 class PreviewTimeline {
 public:
