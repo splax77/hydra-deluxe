@@ -381,7 +381,7 @@ Found: 2026-10-30, wave 2 scout R1.
 Rule: a .mid flam marker (pitch 109) on a chord with exactly one pad (a kick may be with it) adds a copy one pad up, right after it, and the copy counts toward the shuffle seed; for green, Hydra keeps green and copies blue, while the game moves the source to blue and copies green, which gives the same pair.
 Label: Unknown
 Evidence: unchecked by the scout: only the first 50 lines of the flam step in docs/audit/note-shuffle/step0/open2/drum_pretransforms_20ef450_20eff60_20f0320_20f1420_20f16e0_20efee0.asm were read, not the single-pad test or the insert. FINDINGS.md line 21 says the pads agree.
-Game code (6142): RVA `0x20EF450` (or `0x20F0320`, which FINDINGS names); the insert was not read.
+Game code (6142): RVA `0x20EF450`, the flam step; the single-pad test was not read. The address 0x20F0320 in the same listing is not the flam: it rewrites note types in place and inserts nothing (code/6142/two_x_kick_drop_20F0320.md), and FINDINGS.md names no address for it.
 Hydra: `Chord::apply_flam_conversion` in src/core/model.cpp lines 228 to 239; `kFlamMarkerPitch` in src/parse/song.cpp line 679.
 Ruling: none found.
 Found: 2026-10-09, session 30beeb6e.

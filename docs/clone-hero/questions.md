@@ -2,7 +2,7 @@
 
 This page lists every split between Clone Hero and Hydra that has no ruling yet, each with an id.
 It describes build 1.1 (v1.1.0.6142) unless a question says otherwise.
-Last write-back: 2026-10-30.
+Last write-back: 2026-10-31.
 
 Each question gives the game's real rule, an example from each end, and what Hydra does today with its owner. Every question here is named by the `Ruling:` line of at least one rule block on the area pages, and every `Q-nn` a `Ruling:` line names has its heading here. The docs test checks both directions.
 
@@ -187,14 +187,14 @@ Other end: a .mid whose vocals track runs past every instrument note, with no en
 
 What Hydra does today: `MidiFile::last_note_end_tick` in src/parse/midi.cpp lines 464 to 487 reads a vocals track's low pitches as notes (`kVocalsTrackName` in src/parse/midi.h line 122). Owner: src/parse/midi.cpp, whose result becomes the one song end D255 made every part of Hydra use. D255 item 3 ruled "All instruments" for the last note end; it was decided before the vocals method was read, and it does not say whether vocals count as an instrument.
 
-### Q-75 Whether the .mid [end] event is matched exactly or as a prefix
+### Q-75 A .mid [end] event with white space round it: an end event in the game, plain text in Hydra
 
-The game's real rule: the .mid events reader (RVA `0x21544E0`) compares the event text with `[end]` through the function at 0x2C61990 (decompile lines 41924 and 41953, in the stretch 41940 to 41990 that CR-39 cites). Its third argument at both calls is DAT_183d09cf0. The committed listings annotate that same address as the method info for MemoryExtensions.StartsWith on chars, an ordinal, case-sensitive prefix test (code/6142/chart_e_handler_213CAF0.asm lines 135 and 140, where the same call is the `[mix` starts-with test). Read that way, the .mid test is "starts with `[end]`", case-sensitive. Which of the two calls holds the `[end]` literal was not traced, and the function's body is not in the decompile, so page 1 keeps CR-39 at Unknown. Page row CR-39.
+The game's real rule: the .mid events reader (RVA `0x21544E0`) trims the white space off both ends of the event text (docs/audit/note-shuffle/step0/open1/midi_events_track_21544E0.asm line 98), then tests it for equality with `[end]` (lines 218 to 243; the compare is an ordinal, case-sensitive SequenceEqual on character spans, not a starts-with test). A match goes to the end setter. So `[end]` with a space or tab before or after it is an end event. Page row CR-39, which is Proven; the exact and case-sensitive part of the test is the same in Hydra and is not in question.
 
-One end: `[end]` exactly. Both the game and Hydra end the song there.
-Other end: `[end] x`, or `[end]` followed by other text. Under the prefix reading the game ends the song there and Hydra does not. `[END]` is not an end event under either reading.
+One end: a text event `[end]`, or `[END]`, or `[end] x`. The game and Hydra agree on each: the first ends the song, the other two do not.
+Other end: a text event `[end] ` (one trailing space) or ` [end]`. The game trims it and ends the song there; Hydra's .mid pass requires the whole text to start with "[" and end with "]", so it sees a plain text event and finds no end event.
 
-What Hydra does today: `is_end_event` in src/parse/song.cpp line 46 needs the body to equal "end" exactly; its comment at lines 43 to 45 says this matches the game's own compare, "exact and case-sensitive". Owner: src/parse/song.cpp. The question: if the game's test is a prefix test, should Hydra's .mid end test become one too?
+What Hydra does today: the .mid pass at src/parse/song.cpp lines 1126 to 1135 skips any text that does not start with "[" and end with "]" before it calls `is_end_event` (line 46), and the text reader in src/parse/midi.cpp (line 131) trims nothing. Owner: src/parse/song.cpp. No library count (no library run), so how many charts hold a padded end event is not known. The question: should Hydra's .mid end test trim the text first, as the game does?
 
 ### Q-76 The two window-formula tables in constants.py carry each other's names
 

@@ -2,7 +2,7 @@
 
 This page lists the rows only a run of the real game can settle.
 It describes build 1.1 (v1.1.0.6142) unless a check names build 1.0.
-Last write-back: 2026-10-30.
+Last write-back: 2026-10-31.
 
 Each check gives its row id, the question in one line, what a pass and a fail look like, and whether a bot run is enough or the run needs Star Power activation and a menu start. The Star Power plan, `docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md`, takes its live steps from this list. Where one entry covers two or three rows, they share one run.
 
@@ -35,8 +35,6 @@ Pass: no Star Power flip inside the window, although Star Power is ready there w
 **CR-31.** Does a wrong-case key such as "[section intro]" show a different name from "[section Intro]"? Pass: the names differ as Hydra says. Needs a menu start (the practice menu).
 
 **CR-34.** Nested .chart solos (solo 0, solo 100, soloend 200, soloend 300, notes at 150 and 250). Pass: both notes earn the solo bonus (solo_bonus_total in scorestats.json). Fail: only the 150 note. A bot run is enough.
-
-**CR-39.** Does [end] x or [END] on the events track end the song? Pass: GameManager's songLength follows it. Fail: it is ignored. A bot start is enough (read the length after load).
 
 **CR-44.** Vocals running past the last drum note, no end event, short audio. Pass: songLength follows the drums (the game's code). Fail: it follows the vocals. A bot start is enough.
 
