@@ -39,6 +39,7 @@ export const ALLOWED_CALLS = [
     "SetAxisValueById", "SetButtonValueById",
     "get_Count", "get_Item",
     "get_frameCount", "get_isFocused",
+    "GetButton", "GetAnyButton",
 ];
 
 // The images and classes, as the Il2CppDumper dump of build 6142 names them;
@@ -57,6 +58,10 @@ interface Message {
     [key: string]: unknown;
 }
 
+// How many true reads a watch reply lists; the rest are only counted (the
+// plan, task K7).
+const WATCH_LIST_MAX = 20;
+
 // One element of a press: an axis takes a number, a button takes true.
 interface Element {
     id: number;
@@ -66,6 +71,7 @@ interface Element {
 interface PlayerRecord {
     id: number;
     name: string | null;
+    player: Il2Cpp.Object;
     helper: Il2Cpp.Object;
     hasKeyboard: boolean;
     hasMouse: boolean;
@@ -160,6 +166,7 @@ function allPlayers(): PlayerRecord[] {
         return {
             id: p.method<number>("get_id").invoke(),
             name: text(p.method<Il2Cpp.String>("get_name").invoke()),
+            player: p,
             helper: pc,
             hasKeyboard: pc.method<boolean>("get_hasKeyboard").invoke(),
             hasMouse: pc.method<boolean>("get_hasMouse").invoke(),
@@ -303,10 +310,44 @@ function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// The press's optional "read": the game action names to read back on the
+// kit's player, or none.
+function readNames(m: Message): string[] {
+    const raw = m.read;
+    if (raw === undefined || raw === null) {
+        return [];
+    }
+    if (!Array.isArray(raw) || !raw.every((n) => typeof n === "string" && n !== "")) {
+        throw new Error(`a press "read" is a list of action names: ${JSON.stringify(raw)}`);
+    }
+    return raw;
+}
+
+// What the player's GetButton reads for one action.
+function button(player: Il2Cpp.Object, action: string): boolean {
+    return player.method<boolean>("GetButton", 1).overload("System.String")
+        .invoke(Il2Cpp.string(action));
+}
+
+// Reads each action named in `names` on `player` at `frame`, and adds a line
+// to `seen` for every action whose value differs from its last read.
+function readBack(player: Il2Cpp.Object, names: string[], frame: number,
+                  last: Map<string, boolean>, seen: object[]): void {
+    for (const action of names) {
+        const value = button(player, action);
+        if (last.get(action) !== value) {
+            last.set(action, value);
+            seen.push({ frame, action, value });
+        }
+    }
+}
+
 // Sets every element, waits until the frame count has moved on by the hold,
 // writing the values again each tick when `rewrite` is true, then clears
 // every element. The release runs even when the wait fails. Each step runs on
-// the main thread when `on_main` is true, else on Frida's own thread.
+// the main thread when `on_main` is true, else on Frida's own thread. With a
+// "read" list, each step also reads those actions on the kit's player, and
+// the reply's `seen` holds each change.
 async function press(m: Message) {
     const rec = recorded;
     if (rec === null || rec.kit === null) {
@@ -322,6 +363,19 @@ async function press(m: Message) {
     const rewrite = m.rewrite === true;
     const onMain = m.on_main === true;
     const where = onMain ? "main" : undefined;
+    const names = readNames(m);
+    const reader = names.length === 0 ? null : (rec.target === null ? null : rec.target.player);
+    if (names.length > 0 && reader === null) {
+        throw new Error("press has a read list but setup recorded no player to read it on");
+    }
+    const last = new Map<string, boolean>();
+    const seen: object[] = [];
+    // One step's reads: none without a read list.
+    const look = (frame: number) => {
+        if (reader !== null) {
+            readBack(reader, names, frame, last, seen);
+        }
+    };
     for (const e of elements) {
         touched.set(e.id, typeof e.value === "boolean");
     }
@@ -336,7 +390,9 @@ async function press(m: Message) {
     try {
         downFrame = await Il2Cpp.perform(() => {
             write(kit, elements, false);
-            return frameCount();
+            const f = frameCount();
+            look(f);
+            return f;
         }, where);
         downMs = Date.now();
         let frame = downFrame;
@@ -351,18 +407,22 @@ async function press(m: Message) {
                 if (rewrite) {
                     write(kit, elements, false);
                 }
-                return frameCount();
+                const f = frameCount();
+                look(f);
+                return f;
             }, where);
         }
     } catch (e) {
         failure = e instanceof Error ? e : new Error(`${e}`);
     }
     // The release runs on every path: after the hold, after a failed wait and
-    // at the cap.
+    // at the cap. Its read is the last one the reply carries.
     try {
         upFrame = await Il2Cpp.perform(() => {
             write(kit, elements, true);
-            return frameCount();
+            const f = frameCount();
+            look(f);
+            return f;
         }, where);
         upMs = Date.now();
     } catch (e) {
@@ -372,8 +432,84 @@ async function press(m: Message) {
     if (failure !== null) {
         throw new Error(`${failure.message}; released at frame ${upFrame}`);
     }
-    return { down_frame: downFrame, up_frame: upFrame, down_ms: downMs, up_ms: upMs,
-             hold_frames: hold, rewrite, on_main: onMain };
+    const reply: { [key: string]: unknown } = {
+        down_frame: downFrame, up_frame: upFrame, down_ms: downMs, up_ms: upMs,
+        hold_frames: hold, rewrite, on_main: onMain,
+    };
+    if (names.length > 0) {
+        reply.read = names;
+        reply.seen = seen;
+    }
+    return reply;
+}
+
+// Who a watch read was made by, and how it reads.
+interface Reader {
+    who: string;
+    read: () => boolean;
+}
+
+// For `seconds`, reads GetAnyButton on every player (the System player
+// included) and on ReInput's controllers each tick, on Frida's own thread.
+// The reply counts the ticks and the true reads, and lists each read that
+// turned true, up to WATCH_LIST_MAX, with its time and frame. A tick that
+// ends past `cap_s` ends the watch with an error, so no reply comes after
+// the caller stopped waiting.
+async function watch(m: Message) {
+    const seconds = m.seconds;
+    if (typeof seconds !== "number" || !(seconds > 0)) {
+        throw new Error('watch needs a "seconds" above 0');
+    }
+    const capS = m.cap_s;
+    if (typeof capS !== "number" || !(capS > seconds)) {
+        throw new Error('watch needs a "cap_s" above its "seconds"');
+    }
+    const readers = await Il2Cpp.perform(() => {
+        const out: Reader[] = allPlayers().map((p) => ({
+            who: p.name === null ? `player ${p.id}` : p.name,
+            read: () => p.player.method<boolean>("GetAnyButton", 0).invoke(),
+        }));
+        const ctl = controllers();
+        out.push({
+            who: "controllers",
+            read: () => ctl.method<boolean>("GetAnyButton", 0).invoke(),
+        });
+        return out;
+    });
+    const was = new Map<string, boolean>();
+    const reads: object[] = [];
+    let ticks = 0;
+    let trueCount = 0;
+    let firstFrame = -1;
+    let lastFrame = -1;
+    const start = Date.now();
+    while (Date.now() - start < seconds * 1000) {
+        const frame = await Il2Cpp.perform(() => {
+            const f = frameCount();
+            for (const r of readers) {
+                const value = r.read();
+                if (value) {
+                    trueCount += 1;
+                    if (was.get(r.who) !== true && reads.length < WATCH_LIST_MAX) {
+                        reads.push({ ms: Date.now() - start, frame: f, who: r.who });
+                    }
+                }
+                was.set(r.who, value);
+            }
+            return f;
+        });
+        ticks += 1;
+        if (firstFrame < 0) {
+            firstFrame = frame;
+        }
+        lastFrame = frame;
+        if (Date.now() - start >= capS * 1000) {
+            throw new Error(`the watch passed its cap of ${capS} s after ${ticks} ticks`);
+        }
+        await sleep(TICK_MS);
+    }
+    return { seconds, ticks, first_frame: firstFrame, last_frame: lastFrame,
+             readers: readers.map((r) => r.who), true_count: trueCount, reads };
 }
 
 // Runs on the main thread. The kit is looked up by the tag setup recorded,
@@ -486,6 +622,8 @@ function answer(m: Message): Promise<object> {
             return Il2Cpp.perform(() => teardown(m), "main");
         case "press":
             return press(m);
+        case "watch":
+            return watch(m);
         default:
             return Promise.reject(new Error(`unknown message type ${m.type}`));
     }
