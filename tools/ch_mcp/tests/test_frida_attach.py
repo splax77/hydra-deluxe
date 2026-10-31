@@ -608,6 +608,17 @@ class LiveAgentTest(Workspace):
                          "reading GameManager failed: boom")
         self.assertEqual(caught.exception.reason, FA.END_AGENT_ERROR)
 
+    def test_an_agent_error_carries_its_whole_reply(self):
+        agent, _ = self.started(
+            [STATE, {"error": "setup failed: boom", "fault": {"type": "access-violation"}}])
+        with self.assertRaises(FA.ReadFailed) as caught:
+            agent.read(5.0)
+        self.assertEqual(caught.exception.reply,
+                         {"error": "setup failed: boom", "fault": {"type": "access-violation"}})
+
+    def test_a_failure_with_no_reply_carries_none(self):
+        self.assertIsNone(FA.ReadFailed(FA.END_CAP, "no reply").reply)
+
     def test_a_script_exception_fails_the_read(self):
         agent, _ = self.started(
             [STATE, [{"type": "error", "description": "TypeError: boom"}]])
